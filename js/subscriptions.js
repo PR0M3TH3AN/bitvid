@@ -20,6 +20,92 @@ import { devLogger, userLogger } from "./utils/logger.js";
 import moderationService from "./services/moderationService.js";
 import nostrService from "./services/nostrService.js";
 
+function normalizeHexPubkey(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+  const trimmed = value.trim();
+  return trimmed ? trimmed.toLowerCase() : "";
+}
+
+function extractEncryptionHints(event) {
+  if (!event || typeof event !== "object") {
+    return [];
+  }
+
+  const tags = Array.isArray(event.tags) ? event.tags : [];
+  const hints = [];
+
+  const pushUnique = (scheme) => {
+    if (!scheme || hints.includes(scheme)) {
+      return;
+    }
+    hints.push(scheme);
+  };
+
+  for (const tag of tags) {
+    if (!Array.isArray(tag) || tag.length < 2) {
+      continue;
+    }
+    const label = typeof tag[0] === "string" ? tag[0].trim().toLowerCase() : "";
+    if (label !== "encrypted" && label !== "encryption") {
+      continue;
+    }
+    const rawValue = typeof tag[1] === "string" ? tag[1] : "";
+    if (!rawValue) {
+      continue;
+    }
+    const parts = rawValue
+      .split(/[\s,]+/)
+      .map((part) => part.trim().toLowerCase())
+      .filter(Boolean);
+    for (const part of parts) {
+      if (part.startsWith("nip44")) {
+        if (/^nip44(?:[_-]?v2|v2)/.test(part)) {
+          pushUnique("nip44_v2");
+        } else {
+          pushUnique("nip44");
+        }
+      } else if (part === "nip04" || part === "nip-04") {
+        pushUnique("nip04");
+      }
+    }
+  }
+
+  return hints;
+}
+
+function determineDecryptionOrder(event, availableSchemes) {
+  const available = Array.isArray(availableSchemes) ? availableSchemes : [];
+  const availableSet = new Set(available);
+  const prioritized = [];
+
+  const hints = extractEncryptionHints(event);
+  const aliasMap = {
+    nip04: ["nip04"],
+    nip44: ["nip44", "nip44_v2"],
+    nip44_v2: ["nip44_v2", "nip44"],
+  };
+
+  for (const hint of hints) {
+    const candidates = Array.isArray(aliasMap[hint]) ? aliasMap[hint] : [hint];
+    for (const candidate of candidates) {
+      if (availableSet.has(candidate) && !prioritized.includes(candidate)) {
+        prioritized.push(candidate);
+        break;
+      }
+    }
+  }
+
+  for (const fallback of ["nip04", "nip44", "nip44_v2"]) {
+    if (availableSet.has(fallback) && !prioritized.includes(fallback)) {
+      prioritized.push(fallback);
+    }
+  }
+
+  return prioritized.length ? prioritized : available;
+}
+
 const getApp = () => getApplication();
 
 /**
@@ -104,25 +190,28 @@ class SubscriptionsManager {
         return;
       }
 
-      let decryptedStr = "";
-      try {
-        decryptedStr = await window.nostr.nip04.decrypt(
-          userPubkey,
-          newest.content
+      const decryptResult = await this.decryptSubscriptionEvent(newest, userPubkey);
+      if (!decryptResult.ok) {
+        userLogger.error(
+          "[SubscriptionsManager] Failed to decrypt subscription list:",
+          decryptResult.error,
         );
-      } catch (errDecrypt) {
-        userLogger.error("[SubscriptionsManager] Decryption failed:", errDecrypt);
         this.subscribedPubkeys.clear();
         this.subsEventId = null;
         this.loaded = true;
         return;
       }
 
+      const decryptedStr = decryptResult.plaintext;
+
       const parsed = JSON.parse(decryptedStr);
       const subArray = Array.isArray(parsed.subPubkeys)
         ? parsed.subPubkeys
         : [];
-      this.subscribedPubkeys = new Set(subArray);
+      const normalized = subArray
+        .map((value) => normalizeHexPubkey(value))
+        .filter((value) => Boolean(value));
+      this.subscribedPubkeys = new Set(normalized);
 
       this.loaded = true;
     } catch (err) {
@@ -131,22 +220,111 @@ class SubscriptionsManager {
   }
 
   isSubscribed(channelHex) {
-    return this.subscribedPubkeys.has(channelHex);
+    const normalized = normalizeHexPubkey(channelHex);
+    if (!normalized) {
+      return false;
+    }
+    return this.subscribedPubkeys.has(normalized);
   }
 
   getSubscribedAuthors() {
     return Array.from(this.subscribedPubkeys);
   }
 
+  async decryptSubscriptionEvent(event, userPubkey) {
+    const ciphertext = typeof event?.content === "string" ? event.content : "";
+    if (!ciphertext) {
+      const error = new Error("Subscription event is missing ciphertext content.");
+      error.code = "subscriptions-empty-ciphertext";
+      return { ok: false, error };
+    }
+
+    const nostrApi =
+      typeof window !== "undefined" && window && window.nostr ? window.nostr : null;
+    if (!nostrApi) {
+      const error = new Error("Nostr extension is unavailable for decrypting subscriptions.");
+      error.code = "nostr-extension-missing";
+      return { ok: false, error };
+    }
+
+    const decryptors = new Map();
+    const registerDecryptor = (scheme, handler) => {
+      if (!scheme || typeof handler !== "function" || decryptors.has(scheme)) {
+        return;
+      }
+      decryptors.set(scheme, handler);
+    };
+
+    if (nostrApi.nip04 && typeof nostrApi.nip04.decrypt === "function") {
+      registerDecryptor("nip04", (payload) => nostrApi.nip04.decrypt(userPubkey, payload));
+    }
+
+    const nip44 = nostrApi.nip44 && typeof nostrApi.nip44 === "object" ? nostrApi.nip44 : null;
+    if (nip44) {
+      if (typeof nip44.decrypt === "function") {
+        registerDecryptor("nip44", (payload) => nip44.decrypt(userPubkey, payload));
+      }
+
+      const nip44v2 = nip44.v2 && typeof nip44.v2 === "object" ? nip44.v2 : null;
+      if (nip44v2 && typeof nip44v2.decrypt === "function") {
+        registerDecryptor("nip44_v2", (payload) => nip44v2.decrypt(userPubkey, payload));
+        if (!decryptors.has("nip44")) {
+          registerDecryptor("nip44", (payload) => nip44v2.decrypt(userPubkey, payload));
+        }
+      }
+    }
+
+    if (!decryptors.size) {
+      const error = new Error("No compatible decryption helpers are available.");
+      error.code = "subscriptions-no-decryptors";
+      return { ok: false, error };
+    }
+
+    const availableSchemes = Array.from(decryptors.keys());
+    const order = determineDecryptionOrder(event, availableSchemes);
+    const attemptErrors = [];
+
+    for (const scheme of order) {
+      const decryptFn = decryptors.get(scheme);
+      if (!decryptFn) {
+        continue;
+      }
+      try {
+        const plaintext = await decryptFn(ciphertext);
+        if (typeof plaintext !== "string") {
+          const error = new Error("Decryption returned a non-string payload.");
+          error.code = "subscriptions-invalid-plaintext";
+          attemptErrors.push({ scheme, error });
+          continue;
+        }
+        return { ok: true, plaintext, scheme };
+      } catch (error) {
+        attemptErrors.push({ scheme, error });
+      }
+    }
+
+    const error = new Error("Failed to decrypt subscription list with available schemes.");
+    error.code = "subscriptions-decrypt-failed";
+    if (attemptErrors.length) {
+      error.cause = attemptErrors;
+    }
+    return { ok: false, error, errors: attemptErrors };
+  }
+
   async addChannel(channelHex, userPubkey) {
+    const normalizedChannel = normalizeHexPubkey(channelHex);
     if (!userPubkey) {
       throw new Error("No user pubkey => cannot addChannel.");
     }
-    if (this.subscribedPubkeys.has(channelHex)) {
+    if (!normalizedChannel) {
+      devLogger.warn("Attempted to subscribe to invalid pubkey", channelHex);
+      return;
+    }
+    if (this.subscribedPubkeys.has(normalizedChannel)) {
       devLogger.log("Already subscribed to", channelHex);
       return;
     }
-    this.subscribedPubkeys.add(channelHex);
+    this.subscribedPubkeys.add(normalizedChannel);
     await this.publishSubscriptionList(userPubkey);
     this.refreshActiveFeed({ reason: "subscription-update" }).catch((error) => {
       userLogger.warn(
@@ -157,14 +335,19 @@ class SubscriptionsManager {
   }
 
   async removeChannel(channelHex, userPubkey) {
+    const normalizedChannel = normalizeHexPubkey(channelHex);
     if (!userPubkey) {
       throw new Error("No user pubkey => cannot removeChannel.");
     }
-    if (!this.subscribedPubkeys.has(channelHex)) {
+    if (!normalizedChannel) {
+      devLogger.warn("Attempted to remove invalid pubkey from subscriptions", channelHex);
+      return;
+    }
+    if (!this.subscribedPubkeys.has(normalizedChannel)) {
       devLogger.log("Channel not found in subscription list:", channelHex);
       return;
     }
-    this.subscribedPubkeys.delete(channelHex);
+    this.subscribedPubkeys.delete(normalizedChannel);
     await this.publishSubscriptionList(userPubkey);
     this.refreshActiveFeed({ reason: "subscription-update" }).catch((error) => {
       userLogger.warn(
@@ -314,7 +497,14 @@ class SubscriptionsManager {
     }
 
     if (!this.loaded) {
-      await this.loadSubscriptions(userPubkey);
+      try {
+        await this.loadSubscriptions(userPubkey);
+      } catch (error) {
+        userLogger.error(
+          "[SubscriptionsManager] Failed to load subscriptions while rendering feed:",
+          error,
+        );
+      }
     }
 
     const channelHexes = this.getSubscribedAuthors();
@@ -373,7 +563,11 @@ class SubscriptionsManager {
     }
 
     const app = getApp();
-    const runtime = this.buildFeedRuntime({ app, authors: channelHexes });
+    const runtime = this.buildFeedRuntime({
+      app,
+      authors: channelHexes,
+      limit,
+    });
     const runOptions = {
       actorPubkey: userPubkey,
       limit,
@@ -393,6 +587,22 @@ class SubscriptionsManager {
         ? result.items.map((item) => item?.video).filter(Boolean)
         : [];
 
+      const metadata = result && typeof result.metadata === "object"
+        ? { ...result.metadata }
+        : {};
+
+      if (!metadata.feed) {
+        metadata.feed = "subscriptions";
+      }
+      if (limit) {
+        metadata.limit = limit;
+      }
+      if (reason) {
+        metadata.reason = reason;
+      }
+
+      const enrichedResult = { ...result, metadata };
+
       if (app?.videosMap instanceof Map) {
         videos.forEach((video) => {
           if (video && typeof video.id === "string" && video.id) {
@@ -401,20 +611,34 @@ class SubscriptionsManager {
         });
       }
 
-      this.lastResult = result;
-      this.renderSameGridStyle(result, containerId, { limit, reason });
+      this.lastResult = enrichedResult;
+      this.renderSameGridStyle(enrichedResult, containerId, {
+        limit,
+        reason,
+        emptyMessage:
+          "No playable subscription videos found yet. We'll keep watching for new posts.",
+      });
       this.hasRenderedOnce = true;
-      return result;
+      return enrichedResult;
     } catch (error) {
       userLogger.error(
         "[SubscriptionsManager] Failed to run subscriptions feed:",
         error
       );
-      container.innerHTML =
-        "<p class='text-muted-strong'>Unable to load subscriptions right now.</p>";
-      this.lastResult = null;
+      if (container && this.lastResult) {
+        const fallbackReason = reason
+          ? `${reason}:cached`
+          : "cached-result";
+        this.renderSameGridStyle(this.lastResult, containerId, {
+          limit,
+          reason: fallbackReason,
+        });
+      } else if (container) {
+        container.innerHTML =
+          "<p class='text-muted-strong'>Unable to load subscriptions right now.</p>";
+      }
       this.hasRenderedOnce = Boolean(container);
-      return null;
+      return this.lastResult;
     } finally {
       this.isRunningFeed = false;
       this.processScheduledRefresh();
@@ -500,9 +724,11 @@ class SubscriptionsManager {
     return app?.feedEngine || null;
   }
 
-  buildFeedRuntime({ app, authors = [] } = {}) {
+  buildFeedRuntime({ app, authors = [], limit = null } = {}) {
     const normalizedAuthors = Array.isArray(authors)
-      ? authors.filter((author) => typeof author === "string" && author)
+      ? authors
+          .map((author) => normalizeHexPubkey(author))
+          .filter((author) => Boolean(author))
       : [];
 
     const blacklist =
@@ -515,11 +741,18 @@ class SubscriptionsManager {
         ? (pubkey) => app.isAuthorBlocked(pubkey)
         : () => false;
 
+    const limitCandidate = Number(limit);
+    const normalizedLimit =
+      Number.isFinite(limitCandidate) && limitCandidate > 0
+        ? Math.floor(limitCandidate)
+        : null;
+
     return {
       subscriptionAuthors: normalizedAuthors,
       authors: normalizedAuthors,
       blacklistedEventIds: blacklist,
-      isAuthorBlocked
+      isAuthorBlocked,
+      limit: normalizedLimit
     };
   }
 
@@ -540,6 +773,10 @@ class SubscriptionsManager {
         ? { ...result.metadata }
         : {};
 
+    if (!metadata.feed) {
+      metadata.feed = "subscriptions";
+    }
+
     const limitCandidate = Number(options?.limit);
     const limit =
       Number.isFinite(limitCandidate) && limitCandidate > 0
@@ -552,10 +789,15 @@ class SubscriptionsManager {
       .filter((video) => video && typeof video === "object");
 
     if (!videos.length) {
-      container.innerHTML = `
-        <p class="flex justify-center items-center h-full w-full text-center text-muted-strong">
-          No videos available yet.
-        </p>`;
+      const reasonDetail =
+        typeof metadata.reason === "string" && metadata.reason
+          ? metadata.reason
+          : "empty";
+      this.renderEmptyState(container, {
+        message: options?.emptyMessage,
+        reason: reasonDetail,
+        metadata,
+      });
       return;
     }
 
@@ -587,6 +829,39 @@ class SubscriptionsManager {
 
     listView.state.feedMetadata = enrichedMetadata;
     listView.render(videos, enrichedMetadata);
+  }
+
+  renderEmptyState(container, { message, reason, metadata } = {}) {
+    if (!container) {
+      return;
+    }
+
+    const copy =
+      typeof message === "string" && message.trim()
+        ? message.trim()
+        : "No playable subscription videos found yet. We'll keep watching for new posts.";
+
+    container.innerHTML = getSidebarLoadingMarkup(copy, { showSpinner: false });
+
+    if (this.subscriptionListView && this.subscriptionListView.state) {
+      const currentMetadata =
+        this.subscriptionListView.state.feedMetadata &&
+        typeof this.subscriptionListView.state.feedMetadata === "object"
+          ? { ...this.subscriptionListView.state.feedMetadata }
+          : {};
+
+      if (metadata && typeof metadata === "object") {
+        Object.assign(currentMetadata, metadata);
+      }
+
+      if (reason && typeof reason === "string") {
+        currentMetadata.reason = reason;
+      } else if (!currentMetadata.reason) {
+        currentMetadata.reason = "empty";
+      }
+
+      this.subscriptionListView.state.feedMetadata = currentMetadata;
+    }
   }
 
   getListView(container, app) {

@@ -202,6 +202,8 @@ export const DEFAULT_NIP07_ENCRYPTION_METHODS = Object.freeze([
   "nip04.decrypt",
   "nip44.encrypt",
   "nip44.decrypt",
+  "nip44.v2.encrypt",
+  "nip44.v2.decrypt",
 ]);
 
 export const DEFAULT_NIP07_PERMISSION_METHODS = Object.freeze([
