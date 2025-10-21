@@ -16,6 +16,9 @@ test("loadSubscriptions aggregates relay results when one rejects", async () => 
   const originalRelays = Array.isArray(nostrClient.relays)
     ? [...nostrClient.relays]
     : nostrClient.relays;
+  const originalWriteRelays = Array.isArray(nostrClient.writeRelays)
+    ? [...nostrClient.writeRelays]
+    : nostrClient.writeRelays;
   const originalPool = nostrClient.pool;
   const originalEnsurePermissions = nostrClient.ensureExtensionPermissions;
 
@@ -31,6 +34,7 @@ test("loadSubscriptions aggregates relay results when one rejects", async () => 
     "wss://relay-c.example",
   ];
   nostrClient.relays = relayUrls;
+  nostrClient.writeRelays = relayUrls;
 
   const eventsByRelay = {
     "wss://relay-a.example": [
@@ -112,6 +116,7 @@ test("loadSubscriptions aggregates relay results when one rejects", async () => 
     }
   } finally {
     nostrClient.relays = originalRelays;
+    nostrClient.writeRelays = originalWriteRelays;
     nostrClient.pool = originalPool;
     nostrClient.ensureExtensionPermissions = originalEnsurePermissions;
     if (typeof originalWindowNostr === "undefined") {
@@ -132,6 +137,9 @@ test("loadSubscriptions falls back to nip44 when hinted", async () => {
   const originalRelays = Array.isArray(nostrClient.relays)
     ? [...nostrClient.relays]
     : nostrClient.relays;
+  const originalWriteRelays = Array.isArray(nostrClient.writeRelays)
+    ? [...nostrClient.writeRelays]
+    : nostrClient.writeRelays;
   const originalPool = nostrClient.pool;
   const originalEnsurePermissions = nostrClient.ensureExtensionPermissions;
 
@@ -143,6 +151,7 @@ test("loadSubscriptions falls back to nip44 when hinted", async () => {
 
   const relayUrls = ["wss://relay-nip44.example"];
   nostrClient.relays = relayUrls;
+  nostrClient.writeRelays = relayUrls;
 
   const event = {
     id: "event-nip44",
@@ -197,6 +206,7 @@ test("loadSubscriptions falls back to nip44 when hinted", async () => {
     );
   } finally {
     nostrClient.relays = originalRelays;
+    nostrClient.writeRelays = originalWriteRelays;
     nostrClient.pool = originalPool;
     nostrClient.ensureExtensionPermissions = originalEnsurePermissions;
     if (typeof originalWindowNostr === "undefined") {
@@ -217,6 +227,9 @@ test("loadSubscriptions handles nip44.v2 decryptors", async () => {
   const originalRelays = Array.isArray(nostrClient.relays)
     ? [...nostrClient.relays]
     : nostrClient.relays;
+  const originalWriteRelays = Array.isArray(nostrClient.writeRelays)
+    ? [...nostrClient.writeRelays]
+    : nostrClient.writeRelays;
   const originalPool = nostrClient.pool;
   const originalEnsurePermissions = nostrClient.ensureExtensionPermissions;
 
@@ -228,6 +241,7 @@ test("loadSubscriptions handles nip44.v2 decryptors", async () => {
 
   const relayUrls = ["wss://relay-nip44-v2.example"];
   nostrClient.relays = relayUrls;
+  nostrClient.writeRelays = relayUrls;
 
   const event = {
     id: "event-nip44-v2",
@@ -283,6 +297,7 @@ test("loadSubscriptions handles nip44.v2 decryptors", async () => {
     );
   } finally {
     nostrClient.relays = originalRelays;
+    nostrClient.writeRelays = originalWriteRelays;
     nostrClient.pool = originalPool;
     nostrClient.ensureExtensionPermissions = originalEnsurePermissions;
     if (typeof originalWindowNostr === "undefined") {

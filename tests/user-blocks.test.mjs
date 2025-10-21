@@ -22,6 +22,9 @@ await (async () => {
   const originalRelays = Array.isArray(nostrClient.relays)
     ? [...nostrClient.relays]
     : nostrClient.relays;
+  const originalWriteRelays = Array.isArray(nostrClient.writeRelays)
+    ? [...nostrClient.writeRelays]
+    : nostrClient.writeRelays;
   const originalBlocked = new Set(userBlocks.blockedPubkeys);
   const originalBlockEventId = userBlocks.blockEventId;
   const originalLoaded = userBlocks.loaded;
@@ -54,6 +57,7 @@ await (async () => {
 
   nostrClient.pool = pool;
   nostrClient.relays = relays;
+  nostrClient.writeRelays = relays;
 
   assert.equal(
     typeof nostrClient.pool?.list,
@@ -118,6 +122,7 @@ await (async () => {
     userBlocks.loaded = originalLoaded;
     nostrClient.pool = originalPool;
     nostrClient.relays = originalRelays;
+    nostrClient.writeRelays = originalWriteRelays;
     window.nostr = originalNostr;
   }
 })();
@@ -138,6 +143,9 @@ await (async () => {
   const originalRelays = Array.isArray(nostrClient.relays)
     ? [...nostrClient.relays]
     : nostrClient.relays;
+  const originalWriteRelays = Array.isArray(nostrClient.writeRelays)
+    ? [...nostrClient.writeRelays]
+    : nostrClient.writeRelays;
   const originalBlocked = new Set(userBlocks.blockedPubkeys);
   const originalBlockEventId = userBlocks.blockEventId;
   const originalBlockEventCreatedAt = userBlocks.blockEventCreatedAt;
@@ -171,6 +179,7 @@ await (async () => {
 
   nostrClient.pool = pool;
   nostrClient.relays = relays;
+  nostrClient.writeRelays = relays;
 
   assert.equal(
     typeof nostrClient.pool?.list,
@@ -266,6 +275,7 @@ await (async () => {
     userBlocks.loaded = originalLoaded;
     nostrClient.pool = originalPool;
     nostrClient.relays = originalRelays;
+    nostrClient.writeRelays = originalWriteRelays;
     window.nostr = originalNostr;
   }
 })();

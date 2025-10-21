@@ -608,6 +608,9 @@ async function testRecordVideoViewEmitsJsonPayload() {
   const originalRelays = Array.isArray(nostrClient.relays)
     ? [...nostrClient.relays]
     : nostrClient.relays;
+  const originalWriteRelays = Array.isArray(nostrClient.writeRelays)
+    ? [...nostrClient.writeRelays]
+    : nostrClient.writeRelays;
   const originalEnsureSessionActor = nostrClient.ensureSessionActor;
   const originalSessionActor = nostrClient.sessionActor;
   const originalPubkey = nostrClient.pubkey;
@@ -653,6 +656,7 @@ async function testRecordVideoViewEmitsJsonPayload() {
     },
   };
   nostrClient.relays = ["wss://relay.example"];
+  nostrClient.writeRelays = ["wss://relay.example"];
   nostrClient.ensureSessionActor = async () => {
     nostrClient.sessionActor = {
       pubkey: "pub-record-json",
@@ -705,6 +709,7 @@ async function testRecordVideoViewEmitsJsonPayload() {
   } finally {
     nostrClient.pool = originalPool;
     nostrClient.relays = originalRelays;
+    nostrClient.writeRelays = originalWriteRelays;
     nostrClient.ensureSessionActor = originalEnsureSessionActor;
     nostrClient.sessionActor = originalSessionActor;
     nostrClient.pubkey = originalPubkey;
@@ -726,6 +731,7 @@ async function testSignAndPublishFallbackUsesSessionActor() {
   const originalExtension = window.nostr;
   const originalPool = nostrClient.pool;
   const originalRelays = nostrClient.relays;
+  const originalWriteRelays = nostrClient.writeRelays;
   const originalPubkey = nostrClient.pubkey;
   const originalSessionActor = nostrClient.sessionActor;
   const originalEnsureSessionActor = nostrClient.ensureSessionActor;
@@ -749,6 +755,7 @@ async function testSignAndPublishFallbackUsesSessionActor() {
       },
     };
     nostrClient.relays = ["wss://relay.fallback"];
+    nostrClient.writeRelays = ["wss://relay.fallback"];
     nostrClient.pubkey = "logged-user";
     nostrClient.sessionActor = {
       pubkey: "session-actor",
@@ -809,6 +816,7 @@ async function testSignAndPublishFallbackUsesSessionActor() {
     }
     nostrClient.pool = originalPool;
     nostrClient.relays = originalRelays;
+    nostrClient.writeRelays = originalWriteRelays;
     nostrClient.pubkey = originalPubkey;
     nostrClient.sessionActor = originalSessionActor;
     nostrClient.ensureSessionActor = originalEnsureSessionActor;
@@ -876,6 +884,9 @@ async function testHydrateHistoryPrefersRootEvent() {
   const originalRelays = Array.isArray(nostrClient.relays)
     ? [...nostrClient.relays]
     : [];
+  const originalWriteRelays = Array.isArray(nostrClient.writeRelays)
+    ? [...nostrClient.writeRelays]
+    : nostrClient.writeRelays;
   const originalPopulate = nostrClient.populateNip71MetadataForVideos;
   const originalAllEvents = nostrClient.allEvents;
   const originalActiveMap = nostrClient.activeMap;
@@ -920,6 +931,7 @@ async function testHydrateHistoryPrefersRootEvent() {
       list: async () => [],
     };
     nostrClient.relays = ["wss://relay.example"];
+    nostrClient.writeRelays = ["wss://relay.example"];
     nostrClient.populateNip71MetadataForVideos = async () => {};
     nostrClient.allEvents = new Map([[latestVideo.id, latestVideo]]);
     nostrClient.activeMap = new Map([[`ROOT:${rootId}`, latestVideo]]);
@@ -954,6 +966,7 @@ async function testHydrateHistoryPrefersRootEvent() {
   } finally {
     nostrClient.pool = originalPool;
     nostrClient.relays = originalRelays;
+    nostrClient.writeRelays = originalWriteRelays;
     nostrClient.populateNip71MetadataForVideos = originalPopulate;
     nostrClient.allEvents = originalAllEvents;
     nostrClient.activeMap = originalActiveMap;

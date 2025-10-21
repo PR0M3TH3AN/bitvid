@@ -222,6 +222,12 @@ class RelayPreferencesManager {
       });
     } else if (nostrClient) {
       nostrClient.relays = this.getAllRelayUrls();
+      const writeUrls = this.getWriteRelayUrls();
+      if (Array.isArray(writeUrls) && writeUrls.length) {
+        nostrClient.writeRelays = [...writeUrls];
+      } else {
+        nostrClient.writeRelays = this.getAllRelayUrls();
+      }
     }
   }
 
