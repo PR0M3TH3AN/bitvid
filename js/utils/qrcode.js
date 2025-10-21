@@ -156,21 +156,25 @@ var QRCode;
 	}
 	
 	// android 2.x doesn't support Data-URI spec
-	function _getAndroid() {
-		var android = false;
-		var sAgent = navigator.userAgent;
-		
-		if (/android/i.test(sAgent)) { // android
-			android = true;
-			var aMat = sAgent.toString().match(/android ([0-9]\.[0-9])/i);
-			
-			if (aMat && aMat[1]) {
-				android = parseFloat(aMat[1]);
-			}
-		}
-		
-		return android;
-	}
+        function _getAndroid() {
+                if (typeof navigator === "undefined" || !navigator.userAgent) {
+                        return false;
+                }
+
+                var android = false;
+                var sAgent = navigator.userAgent;
+
+                if (/android/i.test(sAgent)) { // android
+                        android = true;
+                        var aMat = sAgent.toString().match(/android ([0-9]\.[0-9])/i);
+
+                        if (aMat && aMat[1]) {
+                                android = parseFloat(aMat[1]);
+                        }
+                }
+
+                return android;
+        }
 	
 	var svgDrawer = (function() {
 
@@ -279,26 +283,42 @@ var QRCode;
 			this._elCanvas.style.display = "none";			
 		}
 		
-		// Android 2.1 bug workaround
-		// http://code.google.com/p/android/issues/detail?id=5141
-		if (this._android && this._android <= 2.1) {
-	    	var factor = 1 / window.devicePixelRatio;
-	        var drawImage = CanvasRenderingContext2D.prototype.drawImage; 
-	    	CanvasRenderingContext2D.prototype.drawImage = function (image, sx, sy, sw, sh, dx, dy, dw, dh) {
-	    		if (("nodeName" in image) && /img/i.test(image.nodeName)) {
-		        	for (var i = arguments.length - 1; i >= 1; i--) {
-		            	arguments[i] = arguments[i] * factor;
-		        	}
-	    		} else if (typeof dw == "undefined") {
-	    			arguments[1] *= factor;
-	    			arguments[2] *= factor;
-	    			arguments[3] *= factor;
-	    			arguments[4] *= factor;
-	    		}
-	    		
-	        	drawImage.apply(this, arguments); 
-	    	};
-		}
+                // Android 2.1 bug workaround
+                // http://code.google.com/p/android/issues/detail?id=5141
+                var legacyAndroidVersion = (function () {
+                        try {
+                                return _getAndroid();
+                        } catch (error) {
+                                return false;
+                        }
+                })();
+
+                if (
+                        legacyAndroidVersion &&
+                        legacyAndroidVersion <= 2.1 &&
+                        typeof CanvasRenderingContext2D !== "undefined"
+                ) {
+                        var pixelRatio =
+                                typeof window !== "undefined" && window.devicePixelRatio
+                                        ? window.devicePixelRatio
+                                        : 1;
+                        var factor = pixelRatio ? 1 / pixelRatio : 1;
+                        var drawImage = CanvasRenderingContext2D.prototype.drawImage;
+                        CanvasRenderingContext2D.prototype.drawImage = function (image, sx, sy, sw, sh, dx, dy, dw, dh) {
+                                if (("nodeName" in image) && /img/i.test(image.nodeName)) {
+                                        for (var i = arguments.length - 1; i >= 1; i--) {
+                                                arguments[i] = arguments[i] * factor;
+                                        }
+                                } else if (typeof dw == "undefined") {
+                                        arguments[1] *= factor;
+                                        arguments[2] *= factor;
+                                        arguments[3] *= factor;
+                                        arguments[4] *= factor;
+                                }
+
+                                drawImage.apply(this, arguments);
+                        };
+                }
 		
 		/**
 		 * Check whether the user's browser supports Data URI or not
