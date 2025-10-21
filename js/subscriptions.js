@@ -28,6 +28,70 @@ function normalizeHexPubkey(value) {
   return trimmed ? trimmed.toLowerCase() : "";
 }
 
+function extractEncryptionHints(event) {
+  if (!event || typeof event !== "object") {
+    return [];
+  }
+
+  const tags = Array.isArray(event.tags) ? event.tags : [];
+  const hints = [];
+
+  const pushUnique = (scheme) => {
+    if (!scheme || hints.includes(scheme)) {
+      return;
+    }
+    hints.push(scheme);
+  };
+
+  for (const tag of tags) {
+    if (!Array.isArray(tag) || tag.length < 2) {
+      continue;
+    }
+    const label = typeof tag[0] === "string" ? tag[0].trim().toLowerCase() : "";
+    if (label !== "encrypted" && label !== "encryption") {
+      continue;
+    }
+    const rawValue = typeof tag[1] === "string" ? tag[1] : "";
+    if (!rawValue) {
+      continue;
+    }
+    const parts = rawValue
+      .split(/[\s,]+/)
+      .map((part) => part.trim().toLowerCase())
+      .filter(Boolean);
+    for (const part of parts) {
+      if (part.startsWith("nip44")) {
+        pushUnique("nip44");
+      } else if (part === "nip04" || part === "nip-04") {
+        pushUnique("nip04");
+      }
+    }
+  }
+
+  return hints;
+}
+
+function determineDecryptionOrder(event, availableSchemes) {
+  const available = Array.isArray(availableSchemes) ? availableSchemes : [];
+  const availableSet = new Set(available);
+  const prioritized = [];
+
+  const hints = extractEncryptionHints(event);
+  for (const hint of hints) {
+    if (availableSet.has(hint) && !prioritized.includes(hint)) {
+      prioritized.push(hint);
+    }
+  }
+
+  for (const fallback of ["nip04", "nip44"]) {
+    if (availableSet.has(fallback) && !prioritized.includes(fallback)) {
+      prioritized.push(fallback);
+    }
+  }
+
+  return prioritized.length ? prioritized : available;
+}
+
 const getApp = () => getApplication();
 
 /**
@@ -112,19 +176,19 @@ class SubscriptionsManager {
         return;
       }
 
-      let decryptedStr = "";
-      try {
-        decryptedStr = await window.nostr.nip04.decrypt(
-          userPubkey,
-          newest.content
+      const decryptResult = await this.decryptSubscriptionEvent(newest, userPubkey);
+      if (!decryptResult.ok) {
+        userLogger.error(
+          "[SubscriptionsManager] Failed to decrypt subscription list:",
+          decryptResult.error,
         );
-      } catch (errDecrypt) {
-        userLogger.error("[SubscriptionsManager] Decryption failed:", errDecrypt);
         this.subscribedPubkeys.clear();
         this.subsEventId = null;
         this.loaded = true;
         return;
       }
+
+      const decryptedStr = decryptResult.plaintext;
 
       const parsed = JSON.parse(decryptedStr);
       const subArray = Array.isArray(parsed.subPubkeys)
@@ -151,6 +215,67 @@ class SubscriptionsManager {
 
   getSubscribedAuthors() {
     return Array.from(this.subscribedPubkeys);
+  }
+
+  async decryptSubscriptionEvent(event, userPubkey) {
+    const ciphertext = typeof event?.content === "string" ? event.content : "";
+    if (!ciphertext) {
+      const error = new Error("Subscription event is missing ciphertext content.");
+      error.code = "subscriptions-empty-ciphertext";
+      return { ok: false, error };
+    }
+
+    const nostrApi =
+      typeof window !== "undefined" && window && window.nostr ? window.nostr : null;
+    if (!nostrApi) {
+      const error = new Error("Nostr extension is unavailable for decrypting subscriptions.");
+      error.code = "nostr-extension-missing";
+      return { ok: false, error };
+    }
+
+    const decryptors = new Map();
+    if (nostrApi.nip04 && typeof nostrApi.nip04.decrypt === "function") {
+      decryptors.set("nip04", (payload) => nostrApi.nip04.decrypt(userPubkey, payload));
+    }
+    if (nostrApi.nip44 && typeof nostrApi.nip44.decrypt === "function") {
+      decryptors.set("nip44", (payload) => nostrApi.nip44.decrypt(userPubkey, payload));
+    }
+
+    if (!decryptors.size) {
+      const error = new Error("No compatible decryption helpers are available.");
+      error.code = "subscriptions-no-decryptors";
+      return { ok: false, error };
+    }
+
+    const availableSchemes = Array.from(decryptors.keys());
+    const order = determineDecryptionOrder(event, availableSchemes);
+    const attemptErrors = [];
+
+    for (const scheme of order) {
+      const decryptFn = decryptors.get(scheme);
+      if (!decryptFn) {
+        continue;
+      }
+      try {
+        const plaintext = await decryptFn(ciphertext);
+        if (typeof plaintext !== "string") {
+          const error = new Error("Decryption returned a non-string payload.");
+          error.code = "subscriptions-invalid-plaintext";
+          attemptErrors.push({ scheme, error });
+          continue;
+        }
+        return { ok: true, plaintext, scheme };
+      } catch (error) {
+        attemptErrors.push({ scheme, error });
+      }
+    }
+
+    const error = new Error("Failed to decrypt subscription list with available schemes.");
+    error.code = "subscriptions-decrypt-failed";
+    if (attemptErrors.length) {
+      error.cause = attemptErrors;
+    }
+    return { ok: false, error, errors: attemptErrors };
   }
 
   async addChannel(channelHex, userPubkey) {
