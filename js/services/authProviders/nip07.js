@@ -1,7 +1,7 @@
 const PROVIDER_ID = "nip07";
-const PROVIDER_LABEL = "Login with Extension";
+const PROVIDER_LABEL = "extension (nip-07)";
 const PROVIDER_DESCRIPTION =
-  "Use a NIP-07 compatible browser extension to authenticate.";
+  "Authorize with a NIP-07 browser extension like Alby or nos2x.";
 const PROVIDER_CAPABILITIES = Object.freeze([
   Object.freeze({
     id: "signing",
@@ -47,6 +47,8 @@ export default {
   id: PROVIDER_ID,
   label: PROVIDER_LABEL,
   description: PROVIDER_DESCRIPTION,
+  eyebrow: "Recommended",
+  tone: "accent",
   badgeVariant: "info",
   capabilities: PROVIDER_CAPABILITIES,
   button: PROVIDER_BUTTON,
