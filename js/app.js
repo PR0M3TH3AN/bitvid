@@ -412,6 +412,7 @@ class Application {
     // Profile and login modal controller state
     this.profileController = null;
     this.loginModalController = null;
+    this.loginModalPendingTask = null;
     this.currentUserNpub = null;
 
     try {
@@ -436,49 +437,27 @@ class Application {
                 `[LoginModal] Provider selected: ${providerId}.`,
               );
             },
-            onLoginSuccess: async ({ result }) => {
-              if (!result || typeof result !== "object") {
-                return;
-              }
-
-              const { pubkey, detail } = result;
-              devLogger.log(
-                "[LoginModal] Login result returned pubkey:",
-                pubkey,
-              );
-
-              if (
-                pubkey &&
-                detail &&
-                typeof detail === "object" &&
-                detail.__handled !== true
-              ) {
-                try {
-                  await this.handleAuthLogin(detail);
-                } catch (error) {
+            onLoginSuccess: (payload) => {
+              const maybePromise = this.handleLoginModalSuccess(payload);
+              if (maybePromise && typeof maybePromise.then === "function") {
+                maybePromise.catch((error) => {
                   devLogger.error(
-                    "[LoginModal] handleAuthLogin fallback failed:",
+                    "[LoginModal] handleLoginModalSuccess threw:",
                     error,
                   );
-                }
+                });
               }
             },
-            onLoginError: async ({ message, error, provider }) => {
-              const fallbackMessage =
-                typeof message === "string" && message.trim()
-                  ? message.trim()
-                  : this.describeLoginError(
-                      error,
-                      provider?.errorMessage ||
-                        "Failed to login. Please try again.",
-                    );
-
-              userLogger.warn(
-                provider && provider.id
-                  ? `[LoginModal] Login failed for provider ${provider.id}.`
-                  : "[LoginModal] Login failed for provider.",
-              );
-              this.showError(fallbackMessage);
+            onLoginError: (payload) => {
+              const maybePromise = this.handleLoginModalError(payload);
+              if (maybePromise && typeof maybePromise.then === "function") {
+                maybePromise.catch((error) => {
+                  devLogger.error(
+                    "[LoginModal] handleLoginModalError threw:",
+                    error,
+                  );
+                });
+              }
             },
           },
           helpers: {
@@ -1990,6 +1969,267 @@ class Application {
     }
   }
 
+  async handleLoginModalSuccess(payload = {}) {
+    const result =
+      payload && typeof payload === "object" ? payload.result || null : null;
+    const pubkey =
+      (result &&
+      typeof result === "object" &&
+      typeof result.pubkey === "string"
+        ? result.pubkey
+        : typeof result === "string"
+        ? result
+        : null) || null;
+
+    devLogger.log("[LoginModal] Login result returned pubkey:", pubkey);
+
+    const pendingTask =
+      this.loginModalPendingTask &&
+      this.loginModalPendingTask.type === "add-profile"
+        ? this.loginModalPendingTask
+        : null;
+
+    if (pendingTask) {
+      pendingTask.resolve(result);
+      return;
+    }
+
+    if (!result || typeof result !== "object") {
+      return;
+    }
+
+    const { detail } = result;
+
+    if (
+      pubkey &&
+      detail &&
+      typeof detail === "object" &&
+      detail.__handled !== true
+    ) {
+      try {
+        await this.handleAuthLogin(detail);
+      } catch (error) {
+        devLogger.error(
+          "[LoginModal] handleAuthLogin fallback failed:",
+          error,
+        );
+      }
+    }
+  }
+
+  async handleLoginModalError(payload = {}) {
+    const message =
+      typeof payload?.message === "string" && payload.message.trim()
+        ? payload.message.trim()
+        : null;
+    const error = payload?.error || null;
+    const provider = payload?.provider || null;
+
+    const fallbackMessage =
+      message ||
+      this.describeLoginError(
+        error,
+        provider?.errorMessage || "Failed to login. Please try again.",
+      );
+
+    const normalizedMessage =
+      typeof fallbackMessage === "string" && fallbackMessage.trim()
+        ? fallbackMessage.trim()
+        : "Failed to login. Please try again.";
+
+    const pendingTask =
+      this.loginModalPendingTask &&
+      this.loginModalPendingTask.type === "add-profile"
+        ? this.loginModalPendingTask
+        : null;
+
+    if (pendingTask) {
+      const rejectionError =
+        error instanceof Error
+          ? error
+          : new Error(normalizedMessage || "Failed to login.");
+      if (
+        normalizedMessage &&
+        rejectionError &&
+        normalizedMessage !== rejectionError.message
+      ) {
+        rejectionError.message = normalizedMessage;
+      }
+      if (
+        error &&
+        typeof error === "object" &&
+        error.code &&
+        !rejectionError.code
+      ) {
+        rejectionError.code = error.code;
+      }
+      pendingTask.reject(rejectionError);
+      return;
+    }
+
+    userLogger.warn(
+      provider && provider.id
+        ? `[LoginModal] Login failed for provider ${provider.id}.`
+        : "[LoginModal] Login failed for provider.",
+    );
+    this.showError(normalizedMessage);
+  }
+
+  async requestProfileAdditionLogin({ triggerElement } = {}) {
+    if (
+      this.loginModalController &&
+      typeof this.loginModalController.setNextRequestLoginOptions ===
+        "function"
+    ) {
+      try {
+        return await this.openLoginModalForProfileAddition({
+          triggerElement,
+        });
+      } catch (error) {
+        if (
+          error &&
+          (error.code === "login-cancelled" || error.code === "user-cancelled")
+        ) {
+          throw error;
+        }
+        if (
+          !error ||
+          (error.code !== "modal-unavailable" &&
+            error.code !== "modal-open-failed")
+        ) {
+          throw error;
+        }
+        devLogger.warn(
+          "[profileModal] Falling back to direct login for profile addition:",
+          error,
+        );
+      }
+    }
+
+    return this.authService.requestLogin({
+      allowAccountSelection: true,
+      autoApply: false,
+    });
+  }
+
+  async openLoginModalForProfileAddition({ triggerElement } = {}) {
+    const controller = this.loginModalController;
+    if (!controller) {
+      const error = new Error("Login modal unavailable.");
+      error.code = "modal-unavailable";
+      throw error;
+    }
+
+    if (typeof controller.setNextRequestLoginOptions === "function") {
+      controller.setNextRequestLoginOptions({
+        allowAccountSelection: true,
+        autoApply: false,
+      });
+    }
+
+    const loginModal =
+      prepareStaticModal({ id: "loginModal" }) ||
+      document.getElementById("loginModal");
+
+    if (!loginModal) {
+      const error = new Error("Login modal unavailable.");
+      error.code = "modal-unavailable";
+      throw error;
+    }
+
+    if (this.loginModalPendingTask) {
+      const error = new Error(
+        "Another login operation is already in progress.",
+      );
+      error.code = "login-in-progress";
+      throw error;
+    }
+
+    const isModalOpen = () =>
+      loginModal.getAttribute("data-open") === "true" &&
+      !loginModal.classList.contains("hidden");
+
+    return new Promise((resolve, reject) => {
+      let observer = null;
+      let pollTimer = null;
+      let settled = false;
+
+      const pendingTask = { type: "add-profile" };
+
+      const finalize =
+        (handler) =>
+        (value) => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          if (observer) {
+            observer.disconnect();
+            observer = null;
+          }
+          if (
+            pollTimer !== null &&
+            typeof window !== "undefined" &&
+            typeof window.clearInterval === "function"
+          ) {
+            window.clearInterval(pollTimer);
+          }
+          pollTimer = null;
+          if (this.loginModalPendingTask === pendingTask) {
+            this.loginModalPendingTask = null;
+          }
+          if (!isModalOpen() && typeof setGlobalModalState === "function") {
+            setGlobalModalState("login", false);
+          }
+          handler(value);
+        };
+
+      pendingTask.resolve = finalize((value) => resolve(value));
+      pendingTask.reject = finalize((errorValue) => reject(errorValue));
+      this.loginModalPendingTask = pendingTask;
+
+      if (typeof MutationObserver === "function") {
+        observer = new MutationObserver(() => {
+          if (!isModalOpen()) {
+            const cancelError = new Error("Login cancelled.");
+            cancelError.code = "login-cancelled";
+            pendingTask.reject(cancelError);
+          }
+        });
+
+        observer.observe(loginModal, {
+          attributes: true,
+          attributeFilter: ["data-open", "class"],
+        });
+      } else if (
+        typeof window !== "undefined" &&
+        typeof window.setInterval === "function"
+      ) {
+        pollTimer = window.setInterval(() => {
+          if (!isModalOpen()) {
+            const cancelError = new Error("Login cancelled.");
+            cancelError.code = "login-cancelled";
+            pendingTask.reject(cancelError);
+          }
+        }, 200);
+      }
+
+      const opened = openStaticModal(loginModal, { triggerElement });
+      const currentlyOpen = isModalOpen();
+
+      if (!opened && !currentlyOpen) {
+        const openError = new Error("Unable to open login modal.");
+        openError.code = "modal-open-failed";
+        pendingTask.reject(openError);
+        return;
+      }
+
+      if (typeof setGlobalModalState === "function") {
+        setGlobalModalState("login", true);
+      }
+    });
+  }
+
   async handleAddProfile(controller) {
     const button =
       (controller && controller.addAccountButton) ||
@@ -2029,11 +2269,11 @@ class Application {
           titleEl.textContent = "Connecting...";
         }
         if (hintEl) {
-          hintEl.textContent = "Check your extension";
+          hintEl.textContent = "Complete the login prompt from your provider.";
         }
         button.setAttribute(
           "aria-label",
-          "Connecting to your Nostr extension",
+          "Connecting to your Nostr account",
         );
       } else {
         if (titleEl) {
@@ -2053,10 +2293,31 @@ class Application {
     setLoadingState(true);
 
     try {
-      const loginResult = await this.authService.requestLogin({
-        allowAccountSelection: true,
-        autoApply: false,
-      });
+      let loginResult;
+      try {
+        loginResult = await this.requestProfileAdditionLogin({
+          triggerElement: button,
+        });
+      } catch (requestError) {
+        const cancellationCodes = new Set([
+          "login-cancelled",
+          "user-cancelled",
+          "modal-dismissed",
+        ]);
+        if (
+          requestError &&
+          typeof requestError === "object" &&
+          typeof requestError.code === "string" &&
+          cancellationCodes.has(requestError.code)
+        ) {
+          devLogger.log(
+            "[profileModal] Add profile login cancelled by user.",
+            requestError,
+          );
+          return;
+        }
+        throw requestError;
+      }
 
       const { pubkey, authType: loginAuthType, providerId } =
         typeof loginResult === "object" && loginResult
@@ -2103,7 +2364,7 @@ class Application {
       const normalizedPubkey = this.normalizeHexPubkey(pubkey);
       if (!normalizedPubkey) {
         throw new Error(
-          "Received an invalid public key from the Nostr extension.",
+          "Received an invalid public key from the authentication provider.",
         );
       }
 
@@ -2142,7 +2403,25 @@ class Application {
 
       this.showSuccess("Profile added. Select it when you're ready to switch.");
     } catch (error) {
-      devLogger.error("Failed to add profile via NIP-07:", error);
+      const cancellationCodes = new Set([
+        "login-cancelled",
+        "user-cancelled",
+        "modal-dismissed",
+      ]);
+      if (
+        error &&
+        typeof error === "object" &&
+        typeof error.code === "string" &&
+        cancellationCodes.has(error.code)
+      ) {
+        devLogger.log("[profileModal] Add profile flow cancelled.", error);
+        return;
+      }
+
+      devLogger.error(
+        "[profileModal] Failed to add profile via authentication provider:",
+        error,
+      );
       const message = this.describeLoginError(
         error,
         "Couldn't add that profile. Please try again.",

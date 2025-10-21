@@ -247,6 +247,8 @@ export default class LoginModalController {
     this.activeNip46Form = null;
     this.remoteSignerUnsubscribe = null;
     this.lastRemoteSignerStatus = null;
+    this.nextRequestLoginOptions = null;
+    this.nextRequestLoginOptionsResolver = null;
 
     this.initializeRemoteSignerStatus();
     this.initialized = false;
@@ -1300,11 +1302,18 @@ export default class LoginModalController {
       `[LoginModalController] Starting login for provider ${providerId}.`,
     );
 
+    const requestOptions = { providerId, ...providerOptions };
+
+    const extraOptions = await this.resolveNextRequestLoginOptions({
+      provider: entry.provider.source || entry.provider,
+      providerId,
+    });
+    if (extraOptions && typeof extraOptions === "object") {
+      Object.assign(requestOptions, extraOptions);
+    }
+
     try {
-      const result = await this.services.authService.requestLogin({
-        providerId,
-        ...providerOptions,
-      });
+      const result = await this.services.authService.requestLogin(requestOptions);
 
       devLogger.log(
         `[LoginModalController] Login resolved for ${providerId} with pubkey:`,
@@ -1349,6 +1358,51 @@ export default class LoginModalController {
     }
   }
 
+  setNextRequestLoginOptions(options) {
+    if (typeof options === "function") {
+      this.nextRequestLoginOptionsResolver = options;
+      this.nextRequestLoginOptions = null;
+      return;
+    }
+
+    if (options && typeof options === "object") {
+      this.nextRequestLoginOptions = { ...options };
+      this.nextRequestLoginOptionsResolver = null;
+      return;
+    }
+
+    this.nextRequestLoginOptions = null;
+    this.nextRequestLoginOptionsResolver = null;
+  }
+
+  async resolveNextRequestLoginOptions(context = {}) {
+    if (typeof this.nextRequestLoginOptionsResolver === "function") {
+      const resolver = this.nextRequestLoginOptionsResolver;
+      this.nextRequestLoginOptionsResolver = null;
+      this.nextRequestLoginOptions = null;
+      try {
+        const resolved = await resolver({ controller: this, ...context });
+        if (resolved && typeof resolved === "object") {
+          return { ...resolved };
+        }
+      } catch (error) {
+        devLogger.warn(
+          "[LoginModalController] Next request options resolver threw:",
+          error,
+        );
+      }
+      return {};
+    }
+
+    if (this.nextRequestLoginOptions && typeof this.nextRequestLoginOptions === "object") {
+      const options = this.nextRequestLoginOptions;
+      this.nextRequestLoginOptions = null;
+      return { ...options };
+    }
+
+    return {};
+  }
+
   destroy() {
     if (this.providerContainer && this.boundClickHandler) {
       this.providerContainer.removeEventListener("click", this.boundClickHandler);
@@ -1371,6 +1425,8 @@ export default class LoginModalController {
     this.remoteSignerUnsubscribe = null;
 
     this.providerEntries.clear();
+    this.nextRequestLoginOptions = null;
+    this.nextRequestLoginOptionsResolver = null;
     this.initialized = false;
   }
 }
