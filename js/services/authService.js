@@ -19,6 +19,7 @@ import {
   getProfileCacheEntry as getCachedProfileEntry,
   setProfileCacheEntry as setCachedProfileEntry,
 } from "../state/cache.js";
+import { getAuthProvider } from "./authProviders/index.js";
 
 class SimpleEventEmitter {
   constructor(logger = null) {
@@ -163,12 +164,42 @@ export default class AuthService {
     return Array.isArray(saved) ? saved.map((entry) => ({ ...entry })) : [];
   }
 
-  emitProfileList(reason = "update") {
-    this.emit("profile:updated", {
+  emitProfileList(reason = "update", extraDetail = null) {
+    const savedProfiles = this.cloneSavedProfiles();
+    const activeProfilePubkey = getActiveProfilePubkey();
+    const detail = {
       reason,
-      savedProfiles: this.cloneSavedProfiles(),
-      activeProfilePubkey: getActiveProfilePubkey(),
-    });
+      savedProfiles,
+      activeProfilePubkey,
+    };
+
+    if (extraDetail && typeof extraDetail === "object") {
+      Object.assign(detail, extraDetail);
+    }
+
+    if (!("activeProfileAuthType" in detail)) {
+      const normalizedActive = this.normalizeHexPubkey(activeProfilePubkey);
+      if (normalizedActive) {
+        const activeEntry = savedProfiles.find((entry) => {
+          const normalizedEntry = this.normalizeHexPubkey(entry?.pubkey);
+          return normalizedEntry && normalizedEntry === normalizedActive;
+        });
+
+        if (
+          activeEntry &&
+          typeof activeEntry.authType === "string" &&
+          activeEntry.authType.trim()
+        ) {
+          detail.activeProfileAuthType = activeEntry.authType;
+        } else {
+          detail.activeProfileAuthType = null;
+        }
+      } else {
+        detail.activeProfileAuthType = null;
+      }
+    }
+
+    this.emit("profile:updated", detail);
   }
 
   safeEncodeNpub(pubkey) {
@@ -239,32 +270,72 @@ export default class AuthService {
   }
 
   async requestLogin(options = {}) {
-    if (!this.nostrClient || typeof this.nostrClient.login !== "function") {
-      throw new Error("Nostr login is not available.");
+    const normalizedOptions =
+      options && typeof options === "object" ? { ...options } : {};
+    const {
+      providerId: rawProviderId,
+      autoApply,
+      persistActive: persistActiveOption,
+      ...providerOptions
+    } = normalizedOptions;
+
+    const providerId =
+      typeof rawProviderId === "string" && rawProviderId.trim()
+        ? rawProviderId.trim()
+        : "nip07";
+
+    const provider = getAuthProvider(providerId);
+    if (!provider || typeof provider.login !== "function") {
+      throw new Error(`Unknown auth provider: ${providerId}`);
     }
 
-    const result = await this.nostrClient.login(options);
-    const pubkey =
-      typeof result === "string"
-        ? result
-        : result && typeof result === "object"
-        ? result.pubkey || result.publicKey || ""
-        : "";
+    const providerResult = await provider.login({
+      nostrClient: this.nostrClient,
+      options: providerOptions,
+    });
+
+    let pubkey = "";
+    let signer = null;
+    if (typeof providerResult === "string") {
+      pubkey = providerResult;
+    } else if (providerResult && typeof providerResult === "object") {
+      if (typeof providerResult.pubkey === "string") {
+        pubkey = providerResult.pubkey;
+      } else if (typeof providerResult.publicKey === "string") {
+        pubkey = providerResult.publicKey;
+      }
+
+      if (providerResult.signer !== undefined) {
+        signer = providerResult.signer;
+      }
+    }
 
     const trimmed = typeof pubkey === "string" ? pubkey.trim() : "";
+
+    const authType =
+      providerResult &&
+      typeof providerResult === "object" &&
+      typeof providerResult.authType === "string" &&
+      providerResult.authType.trim()
+        ? providerResult.authType.trim()
+        : provider.id;
+
     if (!trimmed) {
-      return { pubkey: null };
+      return { pubkey: null, authType, signer, providerId };
     }
 
-    if (options?.autoApply === false) {
-      return { pubkey: trimmed };
+    if (autoApply === false) {
+      return { pubkey: trimmed, authType, signer, providerId };
     }
 
     const detail = await this.login(trimmed, {
-      persistActive: options?.persistActive !== false,
+      persistActive: persistActiveOption !== false,
+      authType,
+      signer,
+      providerId,
     });
 
-    return { pubkey: trimmed, detail };
+    return { pubkey: trimmed, detail, authType, signer, providerId };
   }
 
   async handleUploadSubmit(payload, { publish } = {}) {
@@ -292,6 +363,8 @@ export default class AuthService {
     const persistActive =
       normalizedOptions.persistActive === false ? false : true;
 
+    const existingProfiles = getSavedProfiles();
+
     const previousPubkey = this.normalizeHexPubkey(getPubkey()) || getPubkey();
     const normalized = this.normalizeHexPubkey(pubkey);
     const trimmed = typeof pubkey === "string" ? pubkey.trim() : "";
@@ -299,6 +372,42 @@ export default class AuthService {
     if (!nextPubkey) {
       throw new Error("A valid pubkey is required for login.");
     }
+
+    const normalizedAuthType = (() => {
+      if (
+        typeof normalizedOptions.authType === "string" &&
+        normalizedOptions.authType.trim()
+      ) {
+        return normalizedOptions.authType.trim();
+      }
+
+      if (Array.isArray(existingProfiles)) {
+        const normalizedNext = normalized || this.normalizeHexPubkey(trimmed);
+        if (normalizedNext) {
+          const existingEntry = existingProfiles.find((entry) => {
+            const normalizedEntry = this.normalizeHexPubkey(entry?.pubkey);
+            return normalizedEntry && normalizedEntry === normalizedNext;
+          });
+          if (
+            existingEntry &&
+            typeof existingEntry.authType === "string" &&
+            existingEntry.authType.trim()
+          ) {
+            return existingEntry.authType.trim();
+          }
+        }
+      }
+
+      return "nip07";
+    })();
+
+    const normalizedSigner =
+      normalizedOptions.signer !== undefined ? normalizedOptions.signer : null;
+    const providerId =
+      typeof normalizedOptions.providerId === "string" &&
+      normalizedOptions.providerId.trim()
+        ? normalizedOptions.providerId.trim()
+        : null;
 
     const identityChanged = previousPubkey !== nextPubkey;
 
@@ -333,7 +442,7 @@ export default class AuthService {
         npub: npub || (cachedProfile.npub ?? null),
         name: cachedProfile.name || draft[existingIndex]?.name || "",
         picture: cachedProfile.picture || draft[existingIndex]?.picture || "",
-        authType: "nip07",
+        authType: normalizedAuthType,
       };
 
       if (existingIndex >= 0) {
@@ -365,9 +474,11 @@ export default class AuthService {
       persistSavedProfiles({ persistActive: true });
     }
 
-    if (savedProfilesMutated) {
-      this.emitProfileList("login");
-    }
+    this.emitProfileList("login", {
+      authType: normalizedAuthType,
+      signer: normalizedSigner,
+      providerId,
+    });
 
     const activeLoginPubkey = getPubkey();
     const normalizedLoginPubkey =
@@ -380,6 +491,9 @@ export default class AuthService {
       identityChanged,
       savedProfiles: this.cloneSavedProfiles(),
       activeProfilePubkey: getActiveProfilePubkey(),
+      authType: normalizedAuthType,
+      signer: normalizedSigner,
+      providerId,
       postLogin: {
         pubkey: normalizedLoginPubkey,
         blocksLoaded: false,
