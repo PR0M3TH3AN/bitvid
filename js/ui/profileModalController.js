@@ -21,6 +21,7 @@ const DEFAULT_ADMIN_DM_IMAGE_URL =
   "https://beta.bitvid.network/assets/jpg/video-thumbnail-fallback.jpg";
 const DEFAULT_BITVID_WEBSITE_URL = "https://bitvid.network/";
 const NWC_URI_SCHEME = "nostr+walletconnect://";
+const SECRET_PLACEHOLDER = "*****";
 const DEFAULT_MAX_WALLET_DEFAULT_ZAP = 100000000;
 const DEFAULT_SAVED_PROFILE_LABEL = "Saved profile";
 
@@ -1262,7 +1263,15 @@ export class ProfileModalController {
     }
 
     if (this.walletUriInput instanceof HTMLElement) {
+      this.walletUriInput.addEventListener("focus", () => {
+        this.revealSecretInputValue(this.walletUriInput);
+      });
+      this.walletUriInput.addEventListener("blur", () => {
+        this.handleSecretInputBlur(this.walletUriInput);
+        this.applyWalletControlState();
+      });
       this.walletUriInput.addEventListener("input", () => {
+        this.handleSecretInputChange(this.walletUriInput);
         this.applyWalletControlState();
       });
     }
@@ -2984,10 +2993,7 @@ export class ProfileModalController {
   applyWalletControlState() {
     const hasActive = Boolean(this.normalizeHexPubkey(this.getActivePubkey()));
     const busy = this.isWalletBusy();
-    const uriValue =
-      typeof this.walletUriInput?.value === "string"
-        ? this.walletUriInput.value.trim()
-        : "";
+    const uriValue = this.getSecretInputValue(this.walletUriInput);
     const hasUri = uriValue.length > 0;
 
     const applyDisabledState = (element, disabled) => {
@@ -3049,20 +3055,17 @@ export class ProfileModalController {
 
   refreshWalletPaneState() {
     const hasActive = Boolean(this.normalizeHexPubkey(this.getActivePubkey()));
-    const setInputValue = (element, value) => {
-      if (element && typeof element === "object" && "value" in element) {
+    if (!hasActive) {
+      this.setSecretInputValue(this.walletUriInput, "");
+      if (this.walletDefaultZapInput && "value" in this.walletDefaultZapInput) {
         try {
-          element.value = value;
+          this.walletDefaultZapInput.value = "";
         } catch (error) {
-          if (element instanceof HTMLElement) {
-            element.setAttribute("data-value", value);
+          if (this.walletDefaultZapInput instanceof HTMLElement) {
+            this.walletDefaultZapInput.setAttribute("data-value", "");
           }
         }
       }
-    };
-    if (!hasActive) {
-      setInputValue(this.walletUriInput, "");
-      setInputValue(this.walletDefaultZapInput, "");
       this.updateWalletStatus("Sign in to connect a wallet.", "info");
       this.applyWalletControlState();
       return;
@@ -3072,13 +3075,20 @@ export class ProfileModalController {
     if (!settings || typeof settings !== "object") {
       settings = this.services.nwcSettings.createDefaultNwcSettings();
     }
-    setInputValue(this.walletUriInput, settings.nwcUri || "");
-    setInputValue(
-      this.walletDefaultZapInput,
-      settings.defaultZap === null || settings.defaultZap === undefined
-        ? ""
-        : String(settings.defaultZap),
-    );
+    this.setSecretInputValue(this.walletUriInput, settings.nwcUri || "");
+    if (this.walletDefaultZapInput && "value" in this.walletDefaultZapInput) {
+      const defaultZapValue =
+        settings.defaultZap === null || settings.defaultZap === undefined
+          ? ""
+          : String(settings.defaultZap);
+      try {
+        this.walletDefaultZapInput.value = defaultZapValue;
+      } catch (error) {
+        if (this.walletDefaultZapInput instanceof HTMLElement) {
+          this.walletDefaultZapInput.setAttribute("data-value", defaultZapValue);
+        }
+      }
+    }
 
     if (settings.nwcUri) {
       this.updateWalletStatus(
@@ -3092,11 +3102,155 @@ export class ProfileModalController {
     this.applyWalletControlState();
   }
 
+  isSecretInputElement(element) {
+    if (!element || typeof element !== "object") {
+      return false;
+    }
+    if (typeof HTMLInputElement !== "undefined" && element instanceof HTMLInputElement) {
+      return true;
+    }
+    return typeof element.value === "string";
+  }
+
+  sanitizeSecretValue(value) {
+    return typeof value === "string" ? value.trim() : "";
+  }
+
+  getSecretInputValue(element) {
+    if (!this.isSecretInputElement(element)) {
+      return "";
+    }
+
+    const placeholder =
+      typeof element.dataset?.secretPlaceholder === "string"
+        ? element.dataset.secretPlaceholder
+        : SECRET_PLACEHOLDER;
+    const stored = this.sanitizeSecretValue(
+      typeof element.dataset?.secretValue === "string"
+        ? element.dataset.secretValue
+        : "",
+    );
+    const raw = this.sanitizeSecretValue(element.value);
+    const isMasked = element.dataset?.secretMasked === "true";
+
+    if (isMasked && placeholder && raw === placeholder) {
+      return stored;
+    }
+
+    if (!raw && isMasked) {
+      return stored;
+    }
+
+    return raw;
+  }
+
+  setSecretInputValue(element, value) {
+    if (!this.isSecretInputElement(element)) {
+      return;
+    }
+
+    const sanitized = this.sanitizeSecretValue(value);
+    if (!sanitized) {
+      if (element.dataset) {
+        delete element.dataset.secretValue;
+        delete element.dataset.secretMasked;
+        delete element.dataset.secretPlaceholder;
+      }
+      element.value = "";
+      return;
+    }
+
+    const placeholder = SECRET_PLACEHOLDER;
+    if (element.dataset) {
+      element.dataset.secretValue = sanitized;
+      element.dataset.secretPlaceholder = placeholder;
+      element.dataset.secretMasked = "true";
+    }
+    element.value = placeholder;
+  }
+
+  revealSecretInputValue(element) {
+    if (!this.isSecretInputElement(element)) {
+      return;
+    }
+
+    const stored = this.sanitizeSecretValue(
+      typeof element.dataset?.secretValue === "string"
+        ? element.dataset.secretValue
+        : "",
+    );
+
+    if (!stored) {
+      if (element.dataset) {
+        delete element.dataset.secretMasked;
+      }
+      return;
+    }
+
+    if (element.dataset) {
+      element.dataset.secretMasked = "false";
+    }
+    element.value = stored;
+    try {
+      if (typeof element.setSelectionRange === "function") {
+        const length = stored.length;
+        element.setSelectionRange(length, length);
+      }
+    } catch (error) {
+      // Ignore selection errors on unsupported input types.
+    }
+  }
+
+  handleSecretInputChange(element) {
+    if (!this.isSecretInputElement(element)) {
+      return;
+    }
+
+    const value = this.sanitizeSecretValue(element.value);
+    if (!value) {
+      if (element.dataset) {
+        element.dataset.secretMasked = "false";
+        delete element.dataset.secretValue;
+      }
+      return;
+    }
+
+    if (element.dataset) {
+      element.dataset.secretValue = value;
+      element.dataset.secretMasked = "false";
+      if (!element.dataset.secretPlaceholder) {
+        element.dataset.secretPlaceholder = SECRET_PLACEHOLDER;
+      }
+    }
+  }
+
+  handleSecretInputBlur(element) {
+    if (!this.isSecretInputElement(element)) {
+      return;
+    }
+
+    const value = this.sanitizeSecretValue(this.getSecretInputValue(element));
+    if (!value) {
+      if (element.dataset) {
+        delete element.dataset.secretValue;
+        delete element.dataset.secretMasked;
+        delete element.dataset.secretPlaceholder;
+      }
+      element.value = "";
+      return;
+    }
+
+    if (element.dataset) {
+      element.dataset.secretValue = value;
+      element.dataset.secretPlaceholder =
+        element.dataset.secretPlaceholder || SECRET_PLACEHOLDER;
+      element.dataset.secretMasked = "true";
+    }
+    element.value = element.dataset?.secretPlaceholder || SECRET_PLACEHOLDER;
+  }
+
   getWalletFormValues() {
-    const uri =
-      typeof this.walletUriInput?.value === "string"
-        ? this.walletUriInput.value.trim()
-        : "";
+    const uri = this.getSecretInputValue(this.walletUriInput);
     const defaultZapRaw =
       typeof this.walletDefaultZapInput?.value === "string"
         ? this.walletDefaultZapInput.value.trim()
