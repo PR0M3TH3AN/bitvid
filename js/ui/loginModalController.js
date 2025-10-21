@@ -229,6 +229,8 @@ export default class LoginModalController {
           : "",
       slowTimer: null,
       clickHandler: null,
+      renderResult: null,
+      uiHooks: null,
     };
 
     if (!isDisabled) {
@@ -237,6 +239,34 @@ export default class LoginModalController {
         this.handleProviderClick(providerId);
       };
       button.addEventListener("click", state.clickHandler);
+    }
+
+    if (typeof ui.render === "function") {
+      try {
+        const renderResult = ui.render({
+          wrapper,
+          button,
+          provider,
+          controller: this,
+        });
+        if (renderResult && typeof renderResult === "object") {
+          state.renderResult = renderResult;
+          if (renderResult.uiHooks && typeof renderResult.uiHooks === "object") {
+            state.uiHooks = renderResult.uiHooks;
+          } else if (
+            typeof renderResult.setStatus === "function" ||
+            typeof renderResult.setError === "function" ||
+            typeof renderResult.setConnectUri === "function"
+          ) {
+            state.uiHooks = renderResult;
+          }
+        }
+      } catch (error) {
+        console.error(
+          `[LoginModalController] Provider "${providerId}" render failed:`,
+          error,
+        );
+      }
     }
 
     this.providerStates.set(providerId, state);
@@ -251,6 +281,16 @@ export default class LoginModalController {
       state.button.removeEventListener("click", state.clickHandler);
     }
     this.clearSlowTimer(state);
+    if (state.renderResult && typeof state.renderResult.destroy === "function") {
+      try {
+        state.renderResult.destroy();
+      } catch (error) {
+        console.error(
+          "[LoginModalController] Provider render destroy failed:",
+          error,
+        );
+      }
+    }
   }
 
   invokeCallback(name, ...args) {
@@ -371,7 +411,10 @@ export default class LoginModalController {
     this.setLoadingState(providerId, true);
 
     try {
-      const result = await this.authService.requestLogin({ providerId });
+      const result = await this.authService.requestLogin({
+        providerId,
+        ui: state?.uiHooks || null,
+      });
       this.hide();
       this.invokeCallback("onSuccess", result, { provider });
     } catch (error) {
