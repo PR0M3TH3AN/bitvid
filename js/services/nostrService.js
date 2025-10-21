@@ -297,6 +297,24 @@ export class NostrService {
       index.get(author).push(video);
     }
 
+    for (const [author, videos] of index.entries()) {
+      if (!Array.isArray(videos) || videos.length <= 1) {
+        continue;
+      }
+      videos.sort((a, b) => {
+        const aCreatedCandidate = Number(a?.created_at);
+        const bCreatedCandidate = Number(b?.created_at);
+        const aCreated = Number.isFinite(aCreatedCandidate)
+          ? aCreatedCandidate
+          : 0;
+        const bCreated = Number.isFinite(bCreatedCandidate)
+          ? bCreatedCandidate
+          : 0;
+        return bCreated - aCreated;
+      });
+      index.set(author, videos);
+    }
+
     this.videosByAuthorIndex = index;
     this.authorIndexDirty = false;
     return this.videosByAuthorIndex;
@@ -400,13 +418,25 @@ export class NostrService {
     const index = this.ensureVideosByAuthorIndex();
     const collected = [];
     const seen = new Set();
+    const limitCandidate = Number(options?.limit);
+    const limit =
+      Number.isFinite(limitCandidate) && limitCandidate > 0
+        ? Math.floor(limitCandidate)
+        : null;
+    const perAuthorLimit = limit
+      ? Math.max(limit * 2, limit + 5)
+      : null;
 
     for (const author of normalizedAuthors) {
       const entries = index.get(author);
-      if (!Array.isArray(entries)) {
+      if (!Array.isArray(entries) || entries.length === 0) {
         continue;
       }
-      for (const video of entries) {
+      const sliceCount = perAuthorLimit
+        ? Math.min(perAuthorLimit, entries.length)
+        : entries.length;
+      for (let idx = 0; idx < sliceCount; idx += 1) {
+        const video = entries[idx];
         if (!video || typeof video !== "object") {
           continue;
         }
@@ -421,13 +451,19 @@ export class NostrService {
 
     const filtered = this.filterVideos(collected, options);
 
-    return filtered.sort((a, b) => {
+    const sorted = filtered.sort((a, b) => {
       const aCreatedCandidate = Number(a?.created_at);
       const bCreatedCandidate = Number(b?.created_at);
       const aCreated = Number.isFinite(aCreatedCandidate) ? aCreatedCandidate : 0;
       const bCreated = Number.isFinite(bCreatedCandidate) ? bCreatedCandidate : 0;
       return bCreated - aCreated;
     });
+
+    if (limit) {
+      return sorted.slice(0, limit);
+    }
+
+    return sorted;
   }
 
   async loadVideos({

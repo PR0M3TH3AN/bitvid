@@ -373,7 +373,11 @@ class SubscriptionsManager {
     }
 
     const app = getApp();
-    const runtime = this.buildFeedRuntime({ app, authors: channelHexes });
+    const runtime = this.buildFeedRuntime({
+      app,
+      authors: channelHexes,
+      limit,
+    });
     const runOptions = {
       actorPubkey: userPubkey,
       limit,
@@ -410,11 +414,20 @@ class SubscriptionsManager {
         "[SubscriptionsManager] Failed to run subscriptions feed:",
         error
       );
-      container.innerHTML =
-        "<p class='text-muted-strong'>Unable to load subscriptions right now.</p>";
-      this.lastResult = null;
+      if (container && this.lastResult) {
+        const fallbackReason = reason
+          ? `${reason}:cached`
+          : "cached-result";
+        this.renderSameGridStyle(this.lastResult, containerId, {
+          limit,
+          reason: fallbackReason,
+        });
+      } else if (container) {
+        container.innerHTML =
+          "<p class='text-muted-strong'>Unable to load subscriptions right now.</p>";
+      }
       this.hasRenderedOnce = Boolean(container);
-      return null;
+      return this.lastResult;
     } finally {
       this.isRunningFeed = false;
       this.processScheduledRefresh();
@@ -500,7 +513,7 @@ class SubscriptionsManager {
     return app?.feedEngine || null;
   }
 
-  buildFeedRuntime({ app, authors = [] } = {}) {
+  buildFeedRuntime({ app, authors = [], limit = null } = {}) {
     const normalizedAuthors = Array.isArray(authors)
       ? authors.filter((author) => typeof author === "string" && author)
       : [];
@@ -515,11 +528,18 @@ class SubscriptionsManager {
         ? (pubkey) => app.isAuthorBlocked(pubkey)
         : () => false;
 
+    const limitCandidate = Number(limit);
+    const normalizedLimit =
+      Number.isFinite(limitCandidate) && limitCandidate > 0
+        ? Math.floor(limitCandidate)
+        : null;
+
     return {
       subscriptionAuthors: normalizedAuthors,
       authors: normalizedAuthors,
       blacklistedEventIds: blacklist,
-      isAuthorBlocked
+      isAuthorBlocked,
+      limit: normalizedLimit
     };
   }
 

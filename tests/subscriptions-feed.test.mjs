@@ -199,8 +199,65 @@ async function testNoAuthorsSkipsLookup() {
   assert.deepEqual(result.videos, [], "no authors should yield an empty feed");
 }
 
+async function testLimitApplied() {
+  const engine = createFeedEngine();
+  const feedName = "subscriptions-limit";
+
+  const videos = [
+    { id: "video-1", pubkey: "pub1", created_at: 100 },
+    { id: "video-2", pubkey: "pub1", created_at: 200 },
+    { id: "video-3", pubkey: "pub1", created_at: 300 },
+    { id: "video-4", pubkey: "pub1", created_at: 400 },
+    { id: "video-5", pubkey: "pub1", created_at: 500 },
+  ];
+
+  const calls = [];
+  const service = {
+    async getActiveVideosByAuthors(authors, options) {
+      calls.push({ authors, options });
+      return videos;
+    },
+    async getFilteredActiveVideos() {
+      throw new Error("limit run should not use fallback lookup");
+    },
+  };
+
+  engine.registerFeed(feedName, {
+    source: createSubscriptionAuthorsSource({ service }),
+    stages: [
+      createBlacklistFilterStage({ shouldIncludeVideo: () => true }),
+      createDedupeByRootStage(),
+    ],
+    sorter: createChronologicalSorter(),
+  });
+
+  const result = await engine.runFeed(feedName, {
+    runtime: {
+      subscriptionAuthors: ["pub1"],
+      authors: ["pub1"],
+      blacklistedEventIds: new Set(),
+      isAuthorBlocked: () => false,
+      limit: 3,
+    },
+  });
+
+  assert.equal(calls.length, 1, "limit run should request targeted lookup once");
+  assert.equal(
+    calls[0]?.options?.limit,
+    3,
+    "limit option should be forwarded to the service lookup",
+  );
+
+  assert.deepEqual(
+    result.videos.map((video) => video.id),
+    ["video-5", "video-4", "video-3"],
+    "feed should only include the newest videos within the limit",
+  );
+}
+
 await testBlockedCreatorsFiltered();
 await testDuplicateRootsFiltered();
 await testNoAuthorsSkipsLookup();
+await testLimitApplied();
 
 console.log("subscriptions-feed tests passed");

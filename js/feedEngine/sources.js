@@ -92,12 +92,19 @@ export function createSubscriptionAuthorsSource({ service } = {}) {
       return [];
     }
 
+    const limitCandidate = Number(context?.runtime?.limit);
+    const limit =
+      Number.isFinite(limitCandidate) && limitCandidate > 0
+        ? Math.floor(limitCandidate)
+        : null;
+
     const options = {
       blacklistedEventIds: toSet(context?.runtime?.blacklistedEventIds),
       isAuthorBlocked:
         typeof context?.runtime?.isAuthorBlocked === "function"
           ? context.runtime.isAuthorBlocked
           : () => false,
+      limit,
     };
 
     const authorList = Array.from(authors);
@@ -129,7 +136,15 @@ export function createSubscriptionAuthorsSource({ service } = {}) {
       return author && authors.has(author);
     });
 
-    return filtered.map((video) => ({
+    const sorted = filtered
+      .slice()
+      .sort(
+        (a, b) => (Number(b?.created_at) || 0) - (Number(a?.created_at) || 0)
+      );
+
+    const limited = limit ? sorted.slice(0, limit) : sorted;
+
+    return limited.map((video) => ({
       video,
       metadata: {
         source: "nostr:subscriptions",
