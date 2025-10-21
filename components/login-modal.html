@@ -240,10 +240,10 @@
           class="space-y-4 rounded-xl border border-border bg-overlay-panel-soft px-5 py-4"
         >
           <div class="space-y-2">
-            <h3 class="text-lg font-semibold text-text">Connect remote signer</h3>
+            <h3 class="text-lg font-semibold text-text">Pair a remote signer</h3>
             <p class="text-sm text-text-muted">
-              Paste the <code>nostrconnect://</code> or <code>bunker://</code> link
-              from your signer to establish a Nostr Connect session.
+              Scan the QR code with your signer or share the connect link to start a
+              Nostr Connect session.
             </p>
           </div>
           <div
@@ -251,27 +251,78 @@
             class="hidden rounded-lg border border-danger/60 bg-danger/10 px-4 py-2 text-sm text-danger"
             role="alert"
           ></div>
+          <div data-nip46-handshake-panel class="space-y-3">
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-start">
+              <div
+                class="flex h-48 w-48 items-center justify-center rounded-lg border border-border-strong bg-bg-muted"
+                data-nip46-qr
+                aria-hidden="true"
+              >
+                <div class="text-center text-xs text-text-muted">
+                  Generating connect code…
+                </div>
+              </div>
+              <div class="flex-1 space-y-2">
+                <label class="block text-sm font-medium text-text" for="nip46HandshakeUri">
+                  Connect URI
+                </label>
+                <textarea
+                  id="nip46HandshakeUri"
+                  class="input"
+                  rows="3"
+                  spellcheck="false"
+                  autocomplete="off"
+                  data-nip46-handshake-uri
+                  readonly
+                ></textarea>
+                <div class="flex flex-wrap items-center gap-2">
+                  <button type="button" class="btn-ghost text-sm" data-nip46-copy-uri disabled>
+                    Copy link
+                  </button>
+                </div>
+                <p
+                  data-nip46-secret
+                  class="hidden text-xs text-text-muted"
+                ></p>
+              </div>
+            </div>
+          </div>
+          <div
+            data-nip46-status
+            class="hidden rounded-lg border border-info/40 bg-info/10 px-4 py-2 text-sm text-info"
+            role="status"
+          ></div>
+          <div
+            data-nip46-auth
+            class="hidden rounded-lg border border-warning/50 bg-warning/10 px-4 py-2 text-sm text-warning"
+            role="alert"
+          >
+            <p data-nip46-auth-message class="mb-2"></p>
+            <button type="button" class="btn-link text-sm" data-nip46-auth-open>
+              Open signer challenge
+            </button>
+          </div>
           <div class="space-y-2">
-            <label
-              class="block text-sm font-medium text-text"
-              for="nip46ConnectUri"
-            >
-              Connection string
-            </label>
-            <textarea
-              id="nip46ConnectUri"
-              class="input"
-              rows="3"
-              spellcheck="false"
-              autocomplete="off"
-              placeholder="nostrconnect://… or bunker://…"
-              data-nip46-connect-uri
-              required
-            ></textarea>
-            <p class="text-xs text-text-muted">
-              We will connect to the relays embedded in the link and request signing
-              permissions on your behalf.
-            </p>
+            <button type="button" class="btn-link text-sm" data-nip46-toggle-manual>
+              Paste a signer-provided bunker link instead
+            </button>
+            <div class="hidden space-y-2" data-nip46-manual-fields>
+              <label class="block text-sm font-medium text-text" for="nip46LegacyUri">
+                Signer link
+              </label>
+              <textarea
+                id="nip46LegacyUri"
+                class="input"
+                rows="2"
+                spellcheck="false"
+                autocomplete="off"
+                placeholder="bunker://…"
+                data-nip46-legacy-uri
+              ></textarea>
+              <p class="text-xs text-text-muted">
+                Use this fallback when your signer cannot scan QR codes.
+              </p>
+            </div>
           </div>
           <div class="space-y-2">
             <label class="inline-flex items-center gap-2 text-sm text-text">
