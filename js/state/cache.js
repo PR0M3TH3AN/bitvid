@@ -9,7 +9,7 @@ const PROFILE_CACHE_VERSION = 1;
 const PROFILE_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
 const SAVED_PROFILES_STORAGE_KEY = "bitvid:savedProfiles:v1";
-const SAVED_PROFILES_STORAGE_VERSION = 1;
+const SAVED_PROFILES_STORAGE_VERSION = 2;
 
 const URL_HEALTH_TTL_MS = 45 * 60 * 1000; // 45 minutes
 const URL_HEALTH_TIMEOUT_RETRY_MS = 5 * 60 * 1000; // 5 minutes
@@ -261,17 +261,19 @@ export function persistSavedProfiles({ persistActive = true } = {}) {
 
   const payload = {
     version: SAVED_PROFILES_STORAGE_VERSION,
-    entries: savedProfiles.map((entry) => ({
-      pubkey: entry.pubkey,
-      npub:
-        typeof entry.npub === "string" && entry.npub.trim() ? entry.npub.trim() : null,
-      name: typeof entry.name === "string" ? entry.name : "",
-      picture: typeof entry.picture === "string" ? entry.picture : "",
-      authType:
-        typeof entry.authType === "string" && entry.authType.trim()
-          ? entry.authType.trim()
-          : "nip07",
-    })),
+    entries: savedProfiles.map((entry) => {
+      const sanitizedAuthType =
+        typeof entry.authType === "string" ? sanitizeProfileString(entry.authType) : "";
+
+      return {
+        pubkey: entry.pubkey,
+        npub:
+          typeof entry.npub === "string" && entry.npub.trim() ? entry.npub.trim() : null,
+        name: typeof entry.name === "string" ? entry.name : "",
+        picture: typeof entry.picture === "string" ? entry.picture : "",
+        authType: sanitizedAuthType || null,
+      };
+    }),
     activePubkey: activePubkeyToPersist,
   };
 
@@ -294,7 +296,19 @@ export function loadSavedProfilesFromStorage() {
   let needsRewrite = false;
   try {
     const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object" && parsed.version === SAVED_PROFILES_STORAGE_VERSION) {
+    const parsedVersion =
+      parsed && typeof parsed === "object" && typeof parsed.version === "number"
+        ? parsed.version
+        : 1;
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      parsedVersion <= SAVED_PROFILES_STORAGE_VERSION &&
+      parsed.entries
+    ) {
+      if (parsedVersion !== SAVED_PROFILES_STORAGE_VERSION) {
+        needsRewrite = true;
+      }
       const entries = Array.isArray(parsed.entries) ? parsed.entries : [];
       const seenPubkeys = new Set();
       for (const candidate of entries) {
@@ -309,10 +323,13 @@ export function loadSavedProfilesFromStorage() {
         }
 
         seenPubkeys.add(normalizedPubkey);
-        const storedAuthType =
-          typeof candidate.authType === "string" && candidate.authType.trim()
-            ? candidate.authType.trim()
-            : "nip07";
+        const storedAuthTypeRaw =
+          typeof candidate.authType === "string" ? sanitizeProfileString(candidate.authType) : "";
+        const isLegacyEntry = !("authType" in candidate) || parsedVersion < 2;
+        const storedAuthType = storedAuthTypeRaw || (isLegacyEntry ? "nip07" : null);
+        if (isLegacyEntry && storedAuthType !== candidate.authType) {
+          needsRewrite = true;
+        }
         const npub =
           typeof candidate.npub === "string" && candidate.npub.trim()
             ? candidate.npub.trim()
@@ -333,6 +350,10 @@ export function loadSavedProfilesFromStorage() {
         }
 
         if (entry.npub && typeof candidate.npub !== "string" && entry.npub !== candidate.npub) {
+          needsRewrite = true;
+        }
+
+        if (storedAuthTypeRaw && storedAuthTypeRaw !== candidate.authType) {
           needsRewrite = true;
         }
 

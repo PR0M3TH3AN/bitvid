@@ -39,7 +39,7 @@ function resolveAuthTypeLabel(authType) {
     return "Saved profile";
   }
 
-  return trimmed;
+  return `Connected via ${trimmed}`;
 }
 
 const DEFAULT_INTERNAL_NWC_SETTINGS = Object.freeze({
