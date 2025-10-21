@@ -59,8 +59,8 @@ function createInternalDefaultNwcSettings() {
 }
 
 const DEFAULT_INTERNAL_MODERATION_SETTINGS = Object.freeze({
-  blurThreshold: 3,
-  autoplayBlockThreshold: 2,
+  blurThreshold: 1,
+  autoplayBlockThreshold: 1,
   trustedMuteHideThreshold: getTrustedMuteHideThreshold(),
   trustedSpamHideThreshold: getTrustedSpamHideThreshold(),
 });

@@ -4,8 +4,8 @@ import { accessControl } from "../accessControl.js";
 import { userBlocks, USER_BLOCK_EVENTS } from "../userBlocks.js";
 import logger from "../utils/logger.js";
 
-const AUTOPLAY_TRUST_THRESHOLD = 2;
-const BLUR_TRUST_THRESHOLD = 3;
+const AUTOPLAY_TRUST_THRESHOLD = 1;
+const BLUR_TRUST_THRESHOLD = 1;
 
 function normalizeUserLogger(candidate) {
   if (

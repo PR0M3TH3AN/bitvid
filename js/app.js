@@ -5364,10 +5364,10 @@ class Application {
     const defaults = this.defaultModerationSettings || getDefaultModerationSettings();
     const defaultBlur = Number.isFinite(defaults?.blurThreshold)
       ? Math.max(0, Math.floor(defaults.blurThreshold))
-      : 3;
+      : 1;
     const defaultAutoplay = Number.isFinite(defaults?.autoplayBlockThreshold)
       ? Math.max(0, Math.floor(defaults.autoplayBlockThreshold))
-      : 2;
+      : 1;
     const defaultTrustedMuteHide = Number.isFinite(
       defaults?.trustedMuteHideThreshold,
     )
