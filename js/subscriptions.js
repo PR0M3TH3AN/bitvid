@@ -141,23 +141,69 @@ class SubscriptionsManager {
       return;
     }
     try {
+      const normalizedUserPubkey = normalizeHexPubkey(userPubkey) || userPubkey;
+      const sessionActorPubkey = normalizeHexPubkey(
+        nostrClient?.sessionActor?.pubkey,
+      );
+
+      const authorSet = new Set();
+      if (normalizedUserPubkey) {
+        authorSet.add(normalizedUserPubkey);
+      }
+      if (sessionActorPubkey) {
+        authorSet.add(sessionActorPubkey);
+      }
+
+      const authors = Array.from(authorSet);
+      if (!authors.length && userPubkey) {
+        authors.push(userPubkey);
+      }
+
       const filter = {
         kinds: [30002],
-        authors: [userPubkey],
+        authors,
         "#d": [SUBSCRIPTION_LIST_IDENTIFIER],
         limit: 1
       };
 
-      const relayPromises = [];
-      for (const url of nostrClient.relays) {
-        const listPromise = nostrClient.pool
-          .list([url], [filter])
-          .catch((err) => {
-            userLogger.error(`[SubscriptionsManager] Relay error at ${url}`, err);
-            throw err;
-          });
-        relayPromises.push(listPromise);
+      const relaySet = new Set();
+      const addRelayCandidates = (candidates) => {
+        if (!candidates) {
+          return;
+        }
+        const iterable = Array.isArray(candidates)
+          ? candidates
+          : candidates instanceof Set
+          ? Array.from(candidates)
+          : [];
+        for (const candidate of iterable) {
+          if (typeof candidate !== "string") {
+            continue;
+          }
+          const trimmed = candidate.trim();
+          if (trimmed) {
+            relaySet.add(trimmed);
+          }
+        }
+      };
+
+      addRelayCandidates(nostrClient.readRelays);
+      addRelayCandidates(nostrClient.relays);
+      addRelayCandidates(DEFAULT_RELAY_URLS);
+
+      const relayUrls = Array.from(relaySet);
+      if (!relayUrls.length) {
+        devLogger.warn(
+          "[SubscriptionsManager] No relay URLs available while loading subscriptions.",
+        );
       }
+
+      const relayPromises = relayUrls.map((url) =>
+        nostrClient.pool.list([url], [filter]).catch((err) => {
+          userLogger.error(`[SubscriptionsManager] Relay error at ${url}`, err);
+          return [];
+        }),
+      );
 
       const settledResults = await Promise.allSettled(relayPromises);
       const events = [];
