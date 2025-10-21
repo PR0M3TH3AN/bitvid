@@ -42,4 +42,11 @@ Automated regression coverage now exercises these flows on the unified design-sy
    - Play the same video until a view event is logged, then log out (or switch to a different pubkey) and repeat the playback.
    - Confirm two distinct view events appear (e.g., via relay logs or UI counters) and the aggregated view count increments twice.
 
+8. **Direct key login (nsec)**
+   - Choose the "Direct key" option in the login modal and confirm the warning copy reads `"Unsafe by default" — imported keys stay decrypted only for this session unless you protect them with a passphrase.`
+   - Sign in with a new nsec or mnemonic, opt into remembering it, and verify the passphrase prompt blocks submission until both passphrase fields match.
+   - Reload the page, select "Unlock saved key", enter the passphrase, and confirm the account unlocks without re-entering the secret.
+   - Publish a video while logged in with the direct-key provider and confirm the resulting event is signed (relays accept it) and the UI reports success.
+   - Log out and ensure the session clears decrypted key material; stored keys should require the passphrase to unlock again.
+
 Document findings (pass/fail notes plus relevant screenshots or logs) so they can be attached to release or PR notes.

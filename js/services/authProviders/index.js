@@ -1,4 +1,5 @@
 import nip07 from "./nip07.js";
+import nsec from "./nsec.js";
 
 function normalizeProviderId(provider, fallbackId) {
   if (provider && typeof provider.id === "string") {
@@ -36,7 +37,7 @@ function normalizeProviderMetadata(provider, fallbackId) {
   return Object.freeze({ id, label, description, badgeVariant });
 }
 
-const providerList = [nip07].filter(Boolean);
+const providerList = [nip07, nsec].filter(Boolean);
 const providerMap = {};
 const metadataMap = {};
 

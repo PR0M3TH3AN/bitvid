@@ -229,10 +229,15 @@ export default class LoginModalController {
     };
 
     this.providerContainer = null;
+    this.modalBody =
+      this.modalElement?.querySelector(".modal-body") || null;
+    this.nsecTemplate =
+      this.modalElement?.querySelector("template[data-login-nsec-dialog]") || null;
     this.template = null;
     this.providerEntries = new Map();
     this.slowTimers = new Map();
     this.boundClickHandler = (event) => this.handleContainerClick(event);
+    this.activeNsecForm = null;
     this.initialized = false;
 
     this.initialize();
@@ -257,6 +262,294 @@ export default class LoginModalController {
 
     this.providerContainer.addEventListener("click", this.boundClickHandler);
     this.initialized = true;
+  }
+
+  getNostrClient() {
+    const service = this.services?.authService;
+    if (!service || typeof service !== "object") {
+      return null;
+    }
+
+    return service.nostrClient || null;
+  }
+
+  getStoredNsecMetadata() {
+    const nostrClient = this.getNostrClient();
+    if (!nostrClient || typeof nostrClient.getStoredSessionActorMetadata !== "function") {
+      return null;
+    }
+
+    try {
+      return nostrClient.getStoredSessionActorMetadata();
+    } catch (error) {
+      devLogger.warn("[LoginModalController] Failed to inspect stored session actor:", error);
+    }
+
+    return null;
+  }
+
+  async promptForNsecOptions() {
+    if (!this.modalBody || !this.nsecTemplate) {
+      userLogger.warn("[LoginModalController] Direct key login is unavailable in this build.");
+      return null;
+    }
+
+    if (this.activeNsecForm) {
+      return null;
+    }
+
+    const fragment = this.nsecTemplate.content
+      ? this.nsecTemplate.content.cloneNode(true)
+      : null;
+    if (!fragment) {
+      return null;
+    }
+
+    const form = fragment.querySelector("[data-nsec-form]");
+    if (!(form instanceof HTMLFormElement)) {
+      return null;
+    }
+
+    const unlockSection = form.querySelector("[data-nsec-unlock-section]");
+    const unlockRadio = form.querySelector('[data-nsec-mode="unlock"]');
+    const importRadio = form.querySelector('[data-nsec-mode="import"]');
+    const unlockPassphrase = form.querySelector("[data-nsec-unlock-passphrase]");
+    const importFields = form.querySelector("[data-nsec-import-fields]");
+    const secretField = form.querySelector("[data-nsec-secret]");
+    const rememberCheckbox = form.querySelector("[data-nsec-remember]");
+    const passphraseFields = form.querySelector("[data-nsec-passphrase-fields]");
+    const passphraseInput = form.querySelector("[data-nsec-passphrase]");
+    const passphraseConfirm = form.querySelector("[data-nsec-passphrase-confirm]");
+    const cancelButton = form.querySelector("[data-nsec-cancel]");
+    const errorNode = form.querySelector("[data-nsec-error]");
+
+    const storedMetadata = this.getStoredNsecMetadata();
+    const hasEncryptedStored = storedMetadata?.hasEncryptedKey === true;
+
+    if (unlockSection instanceof HTMLElement) {
+      unlockSection.classList.toggle("hidden", !hasEncryptedStored);
+    }
+
+    if (unlockRadio instanceof HTMLInputElement) {
+      unlockRadio.checked = hasEncryptedStored;
+    }
+    if (importRadio instanceof HTMLInputElement) {
+      importRadio.checked = !hasEncryptedStored;
+    }
+
+    const elementsToHide = [];
+    for (const child of Array.from(this.modalBody.children)) {
+      if (child instanceof HTMLElement && child !== form) {
+        if (child.tagName === "TEMPLATE") {
+          continue;
+        }
+        const wasHidden = child.classList.contains("hidden");
+        if (!wasHidden) {
+          child.classList.add("hidden");
+        }
+        elementsToHide.push({ element: child, wasHidden });
+      }
+    }
+
+    this.modalBody.appendChild(form);
+    this.activeNsecForm = form;
+
+    const setError = (message) => {
+      if (!(errorNode instanceof HTMLElement)) {
+        return;
+      }
+      const normalized = typeof message === "string" ? message.trim() : "";
+      if (normalized) {
+        errorNode.textContent = normalized;
+        errorNode.classList.remove("hidden");
+      } else {
+        errorNode.textContent = "";
+        errorNode.classList.add("hidden");
+      }
+    };
+
+    const updatePassphraseVisibility = () => {
+      if (!(passphraseFields instanceof HTMLElement)) {
+        return;
+      }
+      const shouldShow = !!(rememberCheckbox instanceof HTMLInputElement && rememberCheckbox.checked);
+      passphraseFields.hidden = !shouldShow;
+      if (passphraseInput instanceof HTMLInputElement) {
+        passphraseInput.disabled = !shouldShow;
+        passphraseInput.required = shouldShow;
+        if (!shouldShow) {
+          passphraseInput.value = "";
+        }
+      }
+      if (passphraseConfirm instanceof HTMLInputElement) {
+        passphraseConfirm.disabled = !shouldShow;
+        passphraseConfirm.required = shouldShow;
+        if (!shouldShow) {
+          passphraseConfirm.value = "";
+        }
+      }
+    };
+
+    const updateMode = () => {
+      const usingUnlock = unlockRadio instanceof HTMLInputElement && unlockRadio.checked;
+
+      if (importFields instanceof HTMLElement) {
+        importFields.classList.toggle("hidden", usingUnlock);
+      }
+      if (unlockPassphrase instanceof HTMLInputElement) {
+        unlockPassphrase.disabled = !usingUnlock;
+        unlockPassphrase.required = usingUnlock;
+        if (!usingUnlock) {
+          unlockPassphrase.value = "";
+        }
+      }
+      if (secretField instanceof HTMLTextAreaElement) {
+        secretField.disabled = usingUnlock;
+        secretField.required = !usingUnlock;
+        if (usingUnlock) {
+          secretField.value = "";
+        }
+      }
+      if (rememberCheckbox instanceof HTMLInputElement) {
+        rememberCheckbox.disabled = usingUnlock;
+        if (usingUnlock) {
+          rememberCheckbox.checked = false;
+        }
+      }
+      updatePassphraseVisibility();
+
+      if (usingUnlock) {
+        if (unlockPassphrase instanceof HTMLInputElement) {
+          unlockPassphrase.focus();
+        }
+      } else if (secretField instanceof HTMLTextAreaElement) {
+        secretField.focus();
+      }
+    };
+
+    updatePassphraseVisibility();
+    updateMode();
+    setError("");
+
+    const handleModeChange = () => {
+      setError("");
+      updateMode();
+    };
+
+    if (unlockRadio instanceof HTMLInputElement) {
+      unlockRadio.addEventListener("change", handleModeChange);
+    }
+    if (importRadio instanceof HTMLInputElement) {
+      importRadio.addEventListener("change", handleModeChange);
+    }
+    const handleRememberChange = () => {
+      setError("");
+      updatePassphraseVisibility();
+    };
+    if (rememberCheckbox instanceof HTMLInputElement) {
+      rememberCheckbox.addEventListener("change", handleRememberChange);
+    }
+
+    const cleanup = () => {
+      if (unlockRadio instanceof HTMLInputElement) {
+        unlockRadio.removeEventListener("change", handleModeChange);
+      }
+      if (importRadio instanceof HTMLInputElement) {
+        importRadio.removeEventListener("change", handleModeChange);
+      }
+      if (rememberCheckbox instanceof HTMLInputElement) {
+        rememberCheckbox.removeEventListener("change", handleRememberChange);
+      }
+
+      if (form.parentElement) {
+        form.parentElement.removeChild(form);
+      }
+      for (const entry of elementsToHide) {
+        if (!(entry?.element instanceof HTMLElement)) {
+          continue;
+        }
+        if (!entry.wasHidden) {
+          entry.element.classList.remove("hidden");
+        }
+      }
+      this.activeNsecForm = null;
+    };
+
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (detail) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        cleanup();
+        resolve(detail);
+      };
+
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        setError("");
+
+        const usingUnlock = unlockRadio instanceof HTMLInputElement && unlockRadio.checked && hasEncryptedStored;
+        if (usingUnlock) {
+          if (!(unlockPassphrase instanceof HTMLInputElement) || !unlockPassphrase.value.trim()) {
+            setError("Enter the passphrase to unlock your stored key.");
+            if (unlockPassphrase instanceof HTMLInputElement) {
+              unlockPassphrase.focus();
+            }
+            return;
+          }
+
+          finish({ unlockStored: true, passphrase: unlockPassphrase.value });
+          return;
+        }
+
+        if (!(secretField instanceof HTMLTextAreaElement)) {
+          setError("A private key is required to continue.");
+          return;
+        }
+
+        const secret = secretField.value.trim();
+        if (!secret) {
+          setError("Paste an nsec, hex key, or mnemonic to continue.");
+          secretField.focus();
+          return;
+        }
+
+        const remember = rememberCheckbox instanceof HTMLInputElement && rememberCheckbox.checked;
+        let passphrase = "";
+        if (remember) {
+          if (!(passphraseInput instanceof HTMLInputElement) || !(passphraseConfirm instanceof HTMLInputElement)) {
+            setError("A passphrase is required to remember this key.");
+            return;
+          }
+
+          const pass = passphraseInput.value;
+          const confirm = passphraseConfirm.value;
+          if (!pass || !confirm) {
+            setError("Enter and confirm a passphrase to encrypt your key.");
+            passphraseInput.focus();
+            return;
+          }
+          if (pass !== confirm) {
+            setError("Passphrases do not match.");
+            passphraseConfirm.focus();
+            return;
+          }
+          passphrase = pass;
+        }
+
+        finish(
+          remember
+            ? { secret, persist: true, passphrase }
+            : { secret, persist: false }
+        );
+      });
+
+      if (cancelButton instanceof HTMLButtonElement) {
+        cancelButton.addEventListener("click", () => finish(null), { once: true });
+      }
+    });
   }
 
   resolveTemplate() {
@@ -563,6 +856,29 @@ export default class LoginModalController {
 
     safeInvoke(this.callbacks.onProviderSelected, providerId);
 
+    let providerOptions = {};
+    if (entry.provider.id === "nsec") {
+      try {
+        const nsecOptions = await this.promptForNsecOptions();
+        if (!nsecOptions) {
+          devLogger.log(
+            "[LoginModalController] Direct key login cancelled by the user.",
+          );
+          if (entry.button instanceof HTMLButtonElement) {
+            entry.button.focus();
+          }
+          return;
+        }
+        providerOptions = nsecOptions;
+      } catch (promptError) {
+        devLogger.error(
+          "[LoginModalController] Failed to collect direct key credentials:",
+          promptError,
+        );
+        return;
+      }
+    }
+
     this.setLoadingState(providerId, true);
     devLogger.log(
       `[LoginModalController] Starting login for provider ${providerId}.`,
@@ -571,6 +887,7 @@ export default class LoginModalController {
     try {
       const result = await this.services.authService.requestLogin({
         providerId,
+        ...providerOptions,
       });
 
       devLogger.log(
