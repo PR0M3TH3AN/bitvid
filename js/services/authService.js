@@ -21,6 +21,9 @@ import {
   getProfileCacheEntry as getCachedProfileEntry,
   setProfileCacheEntry as setCachedProfileEntry,
 } from "../state/cache.js";
+import getDefaultAuthProvider, {
+  providers as defaultAuthProviders,
+} from "./authProviders/index.js";
 
 class SimpleEventEmitter {
   constructor(logger = null) {
@@ -85,11 +88,17 @@ export default class AuthService {
     relayManager,
     logger,
     accessControl,
+    authProviders,
+    getAuthProvider,
   } = {}) {
     this.nostrClient = nostrClient || null;
     this.userBlocks = userBlocks || null;
     this.relayManager = relayManager || null;
     this.accessControl = accessControl || null;
+    this.authProviders =
+      authProviders && typeof authProviders === "object"
+        ? authProviders
+        : defaultAuthProviders;
 
     if (typeof logger === "function") {
       this.logger = logger;
@@ -106,6 +115,40 @@ export default class AuthService {
         userLogger.warn("[AuthService] logger threw", logError);
       }
     });
+
+    if (typeof getAuthProvider === "function") {
+      this.resolveAuthProvider = (providerId) => {
+        const normalizedId = this.normalizeProviderId(providerId);
+        const provider = getAuthProvider(normalizedId);
+        if (!provider || typeof provider.login !== "function") {
+          const error = new Error(`Unknown auth provider: ${normalizedId}`);
+          error.code = "unknown-auth-provider";
+          throw error;
+        }
+        return provider;
+      };
+    } else {
+      this.resolveAuthProvider = (providerId) => {
+        const normalizedId = this.normalizeProviderId(providerId);
+        const registry = this.authProviders || defaultAuthProviders;
+        const provider =
+          registry && typeof registry === "object"
+            ? registry[normalizedId]
+            : null;
+
+        if (provider && typeof provider.login === "function") {
+          return provider;
+        }
+
+        return getDefaultAuthProvider(normalizedId);
+      };
+    }
+  }
+
+  normalizeProviderId(providerId) {
+    return typeof providerId === "string" && providerId.trim()
+      ? providerId.trim()
+      : "nip07";
   }
 
   log(...args) {
@@ -252,42 +295,85 @@ export default class AuthService {
     return null;
   }
 
-  async requestLogin(options = {}) {
-    if (!this.nostrClient || typeof this.nostrClient.login !== "function") {
-      throw new Error("Nostr login is not available.");
-    }
+  async requestLogin(rawOptions = {}) {
+    const normalizedOptions =
+      rawOptions && typeof rawOptions === "object" ? { ...rawOptions } : {};
+    const {
+      providerId: requestedProviderId = "nip07",
+      persistActive,
+      autoApply,
+      ...providerOptions
+    } = normalizedOptions;
 
-    const result = await this.nostrClient.login(options);
-    const permissionResult = await requestDefaultExtensionPermissions();
-    if (!permissionResult.ok) {
-      const error = new Error(
-        "The NIP-07 extension denied the permission request required to finish logging in.",
-      );
-      error.code = "extension-permission-denied";
-      error.cause = permissionResult.error;
-      throw error;
-    }
+    const providerId = this.normalizeProviderId(requestedProviderId);
+    const provider = this.resolveAuthProvider(providerId);
+    const providerResult = await provider.login({
+      nostrClient: this.nostrClient,
+      options: providerOptions,
+    });
+
+    const rawPubkey =
+      providerResult && typeof providerResult === "object"
+        ? providerResult.pubkey
+        : providerResult;
     const pubkey =
-      typeof result === "string"
-        ? result
-        : result && typeof result === "object"
-        ? result.pubkey || result.publicKey || ""
+      typeof rawPubkey === "string"
+        ? rawPubkey
+        : providerResult && typeof providerResult === "object"
+        ? providerResult.publicKey || ""
         : "";
+
+    const authTypeCandidate =
+      providerResult && typeof providerResult === "object"
+        ? providerResult.authType
+        : null;
+    const authType =
+      typeof authTypeCandidate === "string" && authTypeCandidate.trim()
+        ? authTypeCandidate.trim()
+        : providerId;
+    const signer =
+      providerResult && typeof providerResult === "object"
+        ? providerResult.signer || null
+        : null;
+    const detailAuthType =
+      typeof authType === "string" && authType.trim() ? authType.trim() : "nip07";
+
+    if (authType === "nip07") {
+      const permissionResult = await requestDefaultExtensionPermissions();
+      if (!permissionResult.ok) {
+        const error = new Error(
+          "The NIP-07 extension denied the permission request required to finish logging in.",
+        );
+        error.code = "extension-permission-denied";
+        error.cause = permissionResult.error;
+        throw error;
+      }
+    }
 
     const trimmed = typeof pubkey === "string" ? pubkey.trim() : "";
     if (!trimmed) {
-      return { pubkey: null };
+      return { pubkey: null, providerId, authType: detailAuthType, signer };
     }
 
-    if (options?.autoApply === false) {
-      return { pubkey: trimmed };
+    if (autoApply === false) {
+      return { pubkey: trimmed, providerId, authType: detailAuthType, signer };
     }
 
     const detail = await this.login(trimmed, {
-      persistActive: options?.persistActive !== false,
+      persistActive: persistActive !== false,
+      providerId,
+      authType: detailAuthType,
+      signer,
+      providerResult,
     });
 
-    return { pubkey: trimmed, detail };
+    return {
+      pubkey: trimmed,
+      detail,
+      providerId,
+      authType: detailAuthType,
+      signer,
+    };
   }
 
   async handleUploadSubmit(payload, { publish } = {}) {
@@ -311,9 +397,24 @@ export default class AuthService {
 
   async login(pubkey, options = {}) {
     const normalizedOptions =
-      options && typeof options === "object" ? options : { persistActive: true };
+      options && typeof options === "object" ? { ...options } : {};
     const persistActive =
       normalizedOptions.persistActive === false ? false : true;
+    const providerId = this.normalizeProviderId(normalizedOptions.providerId);
+    const authTypeCandidate =
+      typeof normalizedOptions.authType === "string" && normalizedOptions.authType.trim()
+        ? normalizedOptions.authType.trim()
+        : providerId;
+    const authType = authTypeCandidate || "nip07";
+    const signer = Object.prototype.hasOwnProperty.call(normalizedOptions, "signer")
+      ? normalizedOptions.signer ?? null
+      : null;
+    const providerResult = Object.prototype.hasOwnProperty.call(
+      normalizedOptions,
+      "providerResult",
+    )
+      ? normalizedOptions.providerResult ?? null
+      : null;
 
     const previousPubkey = this.normalizeHexPubkey(getPubkey()) || getPubkey();
     const normalized = this.normalizeHexPubkey(pubkey);
@@ -376,6 +477,11 @@ export default class AuthService {
     setCurrentUserNpub(npub);
 
     let savedProfilesMutated = false;
+    const entryAuthType =
+      typeof authType === "string" && authType.trim()
+        ? authType.trim()
+        : "nip07";
+
     mutateSavedProfiles((profiles) => {
       const draft = Array.isArray(profiles) ? profiles.slice() : [];
       const existingIndex = draft.findIndex((entry) => {
@@ -391,7 +497,7 @@ export default class AuthService {
         npub: npub || (cachedProfile.npub ?? null),
         name: cachedProfile.name || draft[existingIndex]?.name || "",
         picture: cachedProfile.picture || draft[existingIndex]?.picture || "",
-        authType: "nip07",
+        authType: entryAuthType,
       };
 
       if (existingIndex >= 0) {
@@ -438,6 +544,10 @@ export default class AuthService {
       identityChanged,
       savedProfiles: this.cloneSavedProfiles(),
       activeProfilePubkey: getActiveProfilePubkey(),
+      providerId,
+      authType: entryAuthType,
+      signer,
+      providerResult,
       postLogin: {
         pubkey: normalizedLoginPubkey,
         blocksLoaded: false,
