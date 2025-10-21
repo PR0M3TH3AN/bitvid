@@ -603,10 +603,19 @@ class RelayPreferencesManager {
       throw error;
     }
 
-    if (!window?.nostr?.signEvent) {
-      const error = new Error(
-        "A NIP-07 extension is required to publish relay preferences."
-      );
+    const activeSigner = nostrClient.getActiveSignerForPubkey(normalizedPubkey);
+    const signerSign =
+      activeSigner && typeof activeSigner.signEvent === "function"
+        ? activeSigner.signEvent
+        : null;
+    const extensionSign =
+      typeof window?.nostr?.signEvent === "function"
+        ? window.nostr.signEvent.bind(window.nostr)
+        : null;
+    const signFn = signerSign || extensionSign;
+
+    if (!signFn) {
+      const error = new Error("A NIP-07 extension is required to publish relay preferences.");
       error.code = "nostr-extension-missing";
       throw error;
     }
@@ -632,7 +641,7 @@ class RelayPreferencesManager {
       relays: entries,
     });
 
-    const signedEvent = await window.nostr.signEvent(event);
+    const signedEvent = await signFn(event);
     const targets = this.getPublishTargets(options?.relayUrls);
 
     if (!targets.length) {

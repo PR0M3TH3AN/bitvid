@@ -73,7 +73,18 @@ class UserBlockListManager {
       return;
     }
 
-    if (!window?.nostr?.nip04?.decrypt) {
+    const activeSigner = nostrClient.getActiveSignerForPubkey(normalized);
+    const signerDecrypt =
+      activeSigner && typeof activeSigner.decrypt === "function"
+        ? activeSigner.decrypt
+        : null;
+    const extensionDecrypt =
+      window?.nostr?.nip04?.decrypt
+        ? window.nostr.nip04.decrypt.bind(window.nostr.nip04)
+        : null;
+    const decryptFn = signerDecrypt || extensionDecrypt;
+
+    if (!decryptFn) {
       console.warn(
         "[UserBlockList] nip04.decrypt is unavailable; treating block list as empty."
       );
@@ -200,7 +211,7 @@ class UserBlockListManager {
 
         let decrypted = "";
         try {
-          decrypted = await window.nostr.nip04.decrypt(normalized, newest.content);
+          decrypted = await decryptFn(normalized, newest.content);
         } catch (err) {
           console.error("[UserBlockList] Failed to decrypt block list:", err);
           this.blockedPubkeys.clear();
@@ -373,23 +384,42 @@ class UserBlockListManager {
   }
 
   async publishBlockList(userPubkey) {
-    if (!window?.nostr?.nip04?.encrypt) {
-      const err = new Error(
-        "NIP-04 encryption is required to update the block list."
-      );
-      err.code = "nip04-missing";
-      throw err;
-    }
-
-    if (typeof window.nostr.signEvent !== "function") {
-      const err = new Error("Nostr extension missing signEvent support.");
-      err.code = "nip04-missing";
-      throw err;
-    }
-
     const normalized = normalizeHex(userPubkey);
     if (!normalized) {
       throw new Error("Invalid user pubkey.");
+    }
+
+    const activeSigner = nostrClient.getActiveSignerForPubkey(normalized);
+    const signerEncrypt =
+      activeSigner && typeof activeSigner.encrypt === "function"
+        ? activeSigner.encrypt
+        : null;
+    const extensionEncrypt =
+      window?.nostr?.nip04?.encrypt
+        ? window.nostr.nip04.encrypt.bind(window.nostr.nip04)
+        : null;
+    const encryptFn = signerEncrypt || extensionEncrypt;
+
+    if (!encryptFn) {
+      const err = new Error("NIP-04 encryption is required to update the block list.");
+      err.code = "nip04-missing";
+      throw err;
+    }
+
+    const signerSign =
+      activeSigner && typeof activeSigner.signEvent === "function"
+        ? activeSigner.signEvent
+        : null;
+    const extensionSign =
+      typeof window?.nostr?.signEvent === "function"
+        ? window.nostr.signEvent.bind(window.nostr)
+        : null;
+    const signFn = signerSign || extensionSign;
+
+    if (!signFn) {
+      const err = new Error("Nostr extension missing signEvent support.");
+      err.code = "nip04-missing";
+      throw err;
     }
 
     const payload = {
@@ -401,7 +431,7 @@ class UserBlockListManager {
 
     let cipherText = "";
     try {
-      cipherText = await window.nostr.nip04.encrypt(normalized, plaintext);
+      cipherText = await encryptFn(normalized, plaintext);
     } catch (error) {
       const err = new Error("Failed to encrypt block list.");
       err.code = "nip04-missing";
@@ -414,7 +444,7 @@ class UserBlockListManager {
       content: cipherText,
     });
 
-    const signedEvent = await window.nostr.signEvent(event);
+    const signedEvent = await signFn(event);
 
     const publishResults = await publishEventToRelays(
       nostrClient.pool,
