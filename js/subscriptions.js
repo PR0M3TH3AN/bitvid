@@ -42,6 +42,27 @@ class SubscriptionsManager {
       console.warn("[SubscriptionsManager] No pubkey => cannot load subs.");
       return;
     }
+    const activeSigner = nostrClient.getActiveSignerForPubkey(userPubkey);
+    const signerDecrypt =
+      activeSigner && typeof activeSigner.decrypt === "function"
+        ? activeSigner.decrypt
+        : null;
+    const extensionDecrypt =
+      window?.nostr?.nip04?.decrypt
+        ? window.nostr.nip04.decrypt.bind(window.nostr.nip04)
+        : null;
+    const decryptFn = signerDecrypt || extensionDecrypt;
+
+    if (!decryptFn) {
+      console.warn(
+        "[SubscriptionsManager] Decryption unavailable; treating subscription list as empty."
+      );
+      this.subscribedPubkeys.clear();
+      this.subsEventId = null;
+      this.loaded = true;
+      return;
+    }
+
     try {
       const filter = {
         kinds: [30002],
@@ -76,10 +97,7 @@ class SubscriptionsManager {
 
       let decryptedStr = "";
       try {
-        decryptedStr = await window.nostr.nip04.decrypt(
-          userPubkey,
-          newest.content
-        );
+        decryptedStr = await decryptFn(userPubkey, newest.content);
       } catch (errDecrypt) {
         console.error("[SubscriptionsManager] Decryption failed:", errDecrypt);
         this.subscribedPubkeys.clear();
@@ -157,6 +175,35 @@ class SubscriptionsManager {
       throw new Error("No pubkey => cannot publish subscription list.");
     }
 
+    const activeSigner = nostrClient.getActiveSignerForPubkey(userPubkey);
+    const signerEncrypt =
+      activeSigner && typeof activeSigner.encrypt === "function"
+        ? activeSigner.encrypt
+        : null;
+    const extensionEncrypt =
+      window?.nostr?.nip04?.encrypt
+        ? window.nostr.nip04.encrypt.bind(window.nostr.nip04)
+        : null;
+    const encryptFn = signerEncrypt || extensionEncrypt;
+
+    if (!encryptFn) {
+      throw new Error("NIP-04 encryption is required to update subscriptions.");
+    }
+
+    const signerSign =
+      activeSigner && typeof activeSigner.signEvent === "function"
+        ? activeSigner.signEvent
+        : null;
+    const extensionSign =
+      typeof window?.nostr?.signEvent === "function"
+        ? window.nostr.signEvent.bind(window.nostr)
+        : null;
+    const signFn = signerSign || extensionSign;
+
+    if (!signFn) {
+      throw new Error("Nostr signing support is required to update subscriptions.");
+    }
+
     const plainObj = { subPubkeys: Array.from(this.subscribedPubkeys) };
     const plainStr = JSON.stringify(plainObj);
 
@@ -170,7 +217,7 @@ class SubscriptionsManager {
      */
     let cipherText = "";
     try {
-      cipherText = await window.nostr.nip04.encrypt(userPubkey, plainStr);
+      cipherText = await encryptFn(userPubkey, plainStr);
     } catch (err) {
       console.error("Encryption failed:", err);
       throw err;
@@ -184,7 +231,7 @@ class SubscriptionsManager {
 
     let signedEvent;
     try {
-      signedEvent = await window.nostr.signEvent(evt);
+      signedEvent = await signFn(evt);
     } catch (signErr) {
       console.error("Failed to sign subscription list:", signErr);
       throw signErr;

@@ -40,6 +40,14 @@ import {
   assertAnyRelayAccepted,
 } from "./nostrPublish.js";
 import { nostrToolsReady } from "./nostrToolsBootstrap.js";
+import {
+  DEFAULT_NIP07_PERMISSION_METHODS,
+  getEnableVariantTimeoutMs,
+  NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE,
+  NIP07_LOGIN_TIMEOUT_MS,
+  runNip07WithRetry,
+} from "./nip07Support.js";
+import { getAuthProvider } from "./services/authProviders/index.js";
 
 /**
  * The default relay set BitVid bootstraps with before loading a user's
@@ -58,26 +66,6 @@ const RELAY_URLS = Array.from(DEFAULT_RELAY_URLS);
 const EVENTS_CACHE_STORAGE_KEY = "bitvid:eventsCache:v1";
 const LEGACY_EVENTS_STORAGE_KEY = "bitvidEvents";
 const EVENTS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
-const NIP07_LOGIN_TIMEOUT_MS = 60_000; // 60 seconds
-const NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE =
-  "Timed out waiting for the NIP-07 extension. Confirm the extension prompt in your browser toolbar and try again.";
-
-const DEFAULT_ENABLE_VARIANT_TIMEOUT_MS = 7000;
-
-function getEnableVariantTimeoutMs() {
-  const overrideValue =
-    typeof globalThis !== "undefined" &&
-    globalThis !== null &&
-    Number.isFinite(globalThis.__BITVID_NIP07_ENABLE_VARIANT_TIMEOUT_MS__)
-      ? Math.floor(globalThis.__BITVID_NIP07_ENABLE_VARIANT_TIMEOUT_MS__)
-      : null;
-
-  if (overrideValue !== null && overrideValue > 0) {
-    return Math.max(50, overrideValue);
-  }
-
-  return DEFAULT_ENABLE_VARIANT_TIMEOUT_MS;
-}
 const SESSION_ACTOR_STORAGE_KEY = "bitvid:sessionActor:v1";
 const VIEW_EVENT_GUARD_PREFIX = "bitvid:viewed";
 const REBROADCAST_GUARD_PREFIX = "bitvid:rebroadcast:v1";
@@ -88,15 +76,6 @@ const WATCH_HISTORY_REPUBLISH_BASE_DELAY_MS = 2000;
 const WATCH_HISTORY_REPUBLISH_MAX_DELAY_MS = 5 * 60 * 1000;
 const WATCH_HISTORY_REPUBLISH_MAX_ATTEMPTS = 8;
 const WATCH_HISTORY_REPUBLISH_JITTER = 0.25;
-
-const DEFAULT_NIP07_PERMISSION_METHODS = Object.freeze([
-  "get_public_key",
-  "sign_event",
-  "nip04.encrypt",
-  "nip04.decrypt",
-  "read_relays",
-  "write_relays",
-]);
 
 const viewEventPublishMemory = new Map();
 const rebroadcastAttemptMemory = new Map();
@@ -172,7 +151,7 @@ function readToolkitFromScope(scope = globalScope) {
   return null;
 }
 
-const __nostrToolsBootstrapResult = await (async () => {
+const __nostrToolsBootstrapPromise = (async () => {
   try {
     const result = await nostrToolsReadySource;
     if (result && typeof result === "object" && result.ok === false) {
@@ -199,15 +178,20 @@ const __nostrToolsBootstrapResult = await (async () => {
   }
 })();
 
-let cachedNostrTools = __nostrToolsBootstrapResult.toolkit || null;
-const nostrToolsBootstrapFailure = __nostrToolsBootstrapResult.failure || null;
+let cachedNostrTools = null;
+let nostrToolsBootstrapFailure = null;
 
-if (!cachedNostrTools && nostrToolsBootstrapFailure && isDevMode) {
-  console.warn(
-    "[nostr] nostr-tools helpers unavailable after bootstrap.",
-    nostrToolsBootstrapFailure
-  );
-}
+__nostrToolsBootstrapPromise.then((bootstrap) => {
+  cachedNostrTools = bootstrap.toolkit || null;
+  nostrToolsBootstrapFailure = bootstrap.failure || null;
+
+  if (!cachedNostrTools && nostrToolsBootstrapFailure && isDevMode) {
+    console.warn(
+      "[nostr] nostr-tools helpers unavailable after bootstrap.",
+      nostrToolsBootstrapFailure
+    );
+  }
+});
 
 function rememberNostrTools(candidate) {
   const normalized = normalizeToolkitCandidate(candidate);
@@ -355,103 +339,6 @@ function logErrorOnce(message, eventContent = null) {
     console.error(
       "Maximum error log limit reached. Further errors will be suppressed."
     );
-  }
-}
-
-function withNip07Timeout(
-  operation,
-  {
-    timeoutMs = NIP07_LOGIN_TIMEOUT_MS,
-    message = NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE,
-  } = {},
-) {
-  const numericTimeout = Number(timeoutMs);
-  const effectiveTimeout =
-    Number.isFinite(numericTimeout) && numericTimeout > 0
-      ? numericTimeout
-      : NIP07_LOGIN_TIMEOUT_MS;
-
-  let timeoutId;
-  const timeoutPromise = new Promise((_, reject) => {
-    timeoutId = setTimeout(() => {
-      reject(new Error(message));
-    }, effectiveTimeout);
-  });
-
-  let operationResult;
-  try {
-    operationResult = operation();
-  } catch (err) {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
-    throw err;
-  }
-
-  const operationPromise = Promise.resolve(operationResult);
-
-  return Promise.race([operationPromise, timeoutPromise]).finally(() => {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
-  });
-}
-
-async function runNip07WithRetry(
-  operation,
-  {
-    label = "NIP-07 operation",
-    timeoutMs = NIP07_LOGIN_TIMEOUT_MS,
-    retryMultiplier = 2,
-  } = {},
-) {
-  let hasStarted = false;
-  let cachedPromise = null;
-
-  const getOrStartOperation = () => {
-    if (!hasStarted) {
-      hasStarted = true;
-      try {
-        cachedPromise = Promise.resolve(operation());
-      } catch (error) {
-        hasStarted = false;
-        cachedPromise = null;
-        throw error;
-      }
-    }
-
-    return cachedPromise;
-  };
-
-  try {
-    return await withNip07Timeout(getOrStartOperation, {
-      timeoutMs,
-      message: NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE,
-    });
-  } catch (error) {
-    const isTimeoutError =
-      error instanceof Error &&
-      error.message === NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE;
-
-    if (!isTimeoutError || retryMultiplier <= 1) {
-      throw error;
-    }
-
-    const extendedTimeout = Math.max(
-      timeoutMs,
-      Math.round(timeoutMs * retryMultiplier),
-    );
-
-    if (isDevMode) {
-      console.warn(
-        `[nostr] ${label} taking longer than ${timeoutMs}ms. Waiting up to ${extendedTimeout}ms for extension response.`,
-      );
-    }
-
-    return withNip07Timeout(getOrStartOperation, {
-      timeoutMs: extendedTimeout,
-      message: NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE,
-    });
   }
 }
 
@@ -3088,6 +2975,8 @@ export class NostrClient {
     this.countRequestCounter = 0;
     this.countUnsupportedRelays = new Set();
     this.extensionPermissionCache = new Set();
+    this.activeSigner = null;
+    this.providerSigners = new Map();
   }
 
   markExtensionPermissions(methods = []) {
@@ -3189,6 +3078,119 @@ export class NostrClient {
       ok: false,
       error: lastError || new Error("permission-denied"),
     };
+  }
+
+  setActiveSigner(signer) {
+    if (!this.providerSigners || typeof this.providerSigners.set !== "function") {
+      this.providerSigners = new Map();
+    }
+
+    if (!signer) {
+      this.activeSigner = null;
+      this.providerSigners.clear();
+      return null;
+    }
+
+    const normalizedProviderId =
+      typeof signer.providerId === "string" && signer.providerId.trim()
+        ? signer.providerId.trim().toLowerCase()
+        : "";
+    const normalizedPubkey =
+      typeof signer.pubkey === "string" && signer.pubkey.trim()
+        ? signer.pubkey.trim().toLowerCase()
+        : "";
+    const signEventFn =
+      signer && typeof signer.signEvent === "function" ? signer.signEvent : null;
+    const encryptFn =
+      signer && typeof signer.encrypt === "function" ? signer.encrypt : null;
+    const decryptFn =
+      signer && typeof signer.decrypt === "function" ? signer.decrypt : null;
+
+    const hasCapability = !!(signEventFn || encryptFn || decryptFn);
+
+    if (!hasCapability) {
+      if (normalizedProviderId) {
+        this.providerSigners.delete(normalizedProviderId);
+        if (this.activeSigner?.providerId === normalizedProviderId) {
+          this.activeSigner = null;
+        }
+      } else {
+        this.activeSigner = null;
+      }
+      return null;
+    }
+
+    const metadata =
+      signer && typeof signer.metadata === "object" && signer.metadata !== null
+        ? { ...signer.metadata }
+        : null;
+
+    const normalizedSigner = {
+      providerId: normalizedProviderId || null,
+      pubkey: normalizedPubkey,
+      signEvent: signEventFn,
+      encrypt: encryptFn,
+      decrypt: decryptFn,
+      metadata,
+    };
+
+    if (normalizedProviderId) {
+      this.providerSigners.set(normalizedProviderId, normalizedSigner);
+    }
+
+    this.activeSigner = normalizedSigner;
+    return normalizedSigner;
+  }
+
+  clearActiveSigner(providerId = null) {
+    if (!this.providerSigners || typeof this.providerSigners.delete !== "function") {
+      this.providerSigners = new Map();
+    }
+
+    if (typeof providerId === "string" && providerId.trim()) {
+      const normalized = providerId.trim().toLowerCase();
+      const removed = this.providerSigners.get(normalized);
+      this.providerSigners.delete(normalized);
+      if (removed && this.activeSigner?.providerId === normalized) {
+        this.activeSigner = null;
+      }
+      return;
+    }
+
+    this.providerSigners.clear();
+    this.activeSigner = null;
+  }
+
+  getActiveSigner() {
+    return this.activeSigner || null;
+  }
+
+  getActiveSignerForPubkey(pubkey) {
+    const active = this.getActiveSigner();
+    if (!active) {
+      return null;
+    }
+
+    const normalizedTarget =
+      typeof pubkey === "string" && pubkey.trim() ? pubkey.trim().toLowerCase() : "";
+    const normalizedActive =
+      typeof active.pubkey === "string" && active.pubkey.trim()
+        ? active.pubkey.trim().toLowerCase()
+        : "";
+
+    if (!normalizedTarget) {
+      return active;
+    }
+
+    if (!normalizedActive || normalizedActive === normalizedTarget) {
+      return active;
+    }
+
+    return null;
+  }
+
+  async ensureNostrTools() {
+    return ensureNostrTools();
   }
 
   applyRootCreatedAt(video) {
@@ -5666,31 +5668,48 @@ export class NostrClient {
 
     let signedEvent = null;
 
-    if (
-      normalizedActor &&
-      normalizedActor === normalizedLogged &&
-      window?.nostr &&
-      typeof window.nostr.signEvent === "function"
-    ) {
+    const activeSigner = this.getActiveSignerForPubkey(normalizedActor);
+    if (activeSigner && typeof activeSigner.signEvent === "function") {
       try {
-        signedEvent = await window.nostr.signEvent(event);
+        signedEvent = await activeSigner.signEvent(event);
       } catch (error) {
-        console.warn("[nostr] Failed to sign view event with extension:", error);
-        return { ok: false, error: "signing-failed", details: error };
+        if (isDevMode) {
+          console.warn("[nostr] Active signer failed to sign view event:", error);
+        }
+        signedEvent = null;
       }
-    } else {
-      try {
-        if (!this.sessionActor || this.sessionActor.pubkey !== actorPubkey) {
-          await this.ensureSessionActor(true);
+    }
+
+    if (!signedEvent) {
+      const extensionSigner =
+        normalizedActor &&
+        normalizedActor === normalizedLogged &&
+        window?.nostr &&
+        typeof window.nostr.signEvent === "function"
+          ? window.nostr.signEvent.bind(window.nostr)
+          : null;
+
+      if (extensionSigner) {
+        try {
+          signedEvent = await extensionSigner(event);
+        } catch (error) {
+          console.warn("[nostr] Failed to sign view event with extension:", error);
+          return { ok: false, error: "signing-failed", details: error };
         }
-        if (!this.sessionActor || this.sessionActor.pubkey !== actorPubkey) {
-          throw new Error("session-actor-mismatch");
+      } else {
+        try {
+          if (!this.sessionActor || this.sessionActor.pubkey !== actorPubkey) {
+            await this.ensureSessionActor(true);
+          }
+          if (!this.sessionActor || this.sessionActor.pubkey !== actorPubkey) {
+            throw new Error("session-actor-mismatch");
+          }
+          const privateKey = this.sessionActor.privateKey;
+          signedEvent = signEventWithPrivateKey(event, privateKey);
+        } catch (error) {
+          console.warn("[nostr] Failed to sign view event with session key:", error);
+          return { ok: false, error: "signing-failed", details: error };
         }
-        const privateKey = this.sessionActor.privateKey;
-        signedEvent = signEventWithPrivateKey(event, privateKey);
-      } catch (error) {
-        console.warn("[nostr] Failed to sign view event with session key:", error);
-        return { ok: false, error: "signing-failed", details: error };
       }
     }
 
@@ -5748,7 +5767,7 @@ export class NostrClient {
         if (isDevMode) {
           console.warn(
             "[nostr] Failed to ingest optimistic view event:",
-            error
+            error,
           );
         }
       }
@@ -5879,173 +5898,53 @@ export class NostrClient {
    * Attempt login with a Nostr extension
    */
   async login(options = {}) {
+    const provider = getAuthProvider("nip07");
+    if (!provider || typeof provider.login !== "function") {
+      throw new Error("NIP-07 login is not available.");
+    }
+
+    const normalizedOptions =
+      options && typeof options === "object" ? { ...options } : {};
+
     try {
-      const extension = window.nostr;
-      if (!extension) {
-        console.log("No Nostr extension found");
-        throw new Error(
-          "Please install a Nostr extension (Alby, nos2x, etc.)."
-        );
-      }
-
-      const { allowAccountSelection = false, expectPubkey } =
-        typeof options === "object" && options !== null ? options : {};
-      const normalizedExpectedPubkey =
-        typeof expectPubkey === "string" && expectPubkey.trim()
-          ? expectPubkey.trim().toLowerCase()
-          : null;
-
-      if (typeof extension.getPublicKey !== "function") {
-        throw new Error(
-          "This NIP-07 extension is missing getPublicKey support. Please update the extension."
-        );
-      }
-
-      if (typeof extension.enable === "function") {
-        if (isDevMode) {
-          console.log("Requesting permissions from NIP-07 extension...");
-        }
-        const requestedPermissionMethods = Array.from(
-          DEFAULT_NIP07_PERMISSION_METHODS,
-        );
-
-        const permissionVariants = [null];
-        const objectPermissions = requestedPermissionMethods
-          .map((method) =>
-            typeof method === "string" && method.trim()
-              ? { method: method.trim() }
-              : null,
-          )
-          .filter(Boolean);
-        if (objectPermissions.length) {
-          permissionVariants.push({ permissions: objectPermissions });
-        }
-        const stringPermissions = Array.from(
-          new Set(objectPermissions.map((entry) => entry.method)),
-        );
-        if (stringPermissions.length) {
-          permissionVariants.push({ permissions: stringPermissions });
-        }
-        let enableError = null;
-        for (const options of permissionVariants) {
-          try {
-            await runNip07WithRetry(
-              () =>
-                options
-                  ? extension.enable(options)
-                  : extension.enable(),
-              {
-                label: "extension.enable",
-                ...(options
-                  ? {
-                      timeoutMs: Math.min(
-                        NIP07_LOGIN_TIMEOUT_MS,
-                        getEnableVariantTimeoutMs(),
-                      ),
-                    }
-                  : {}),
-                retryMultiplier: 1,
-              },
-            );
-            enableError = null;
-            break;
-          } catch (error) {
-            enableError = error;
-            if (options && isDevMode) {
-              console.warn(
-                "[nostr] extension.enable request with explicit permissions failed:",
-                error,
-              );
-            }
-          }
-        }
-
-        if (enableError) {
-          throw new Error(
-            enableError && enableError.message
-              ? enableError.message
-              : "The NIP-07 extension denied the permission request.",
-          );
-        }
-
-        this.markExtensionPermissions(requestedPermissionMethods);
-      }
-
-      if (allowAccountSelection && typeof extension.selectAccounts === "function") {
-        try {
-          const selection = await runNip07WithRetry(
-            () => extension.selectAccounts(expectPubkey ? [expectPubkey] : undefined),
-            { label: "extension.selectAccounts" }
-          );
-
-          const didCancelSelection =
-            selection === undefined ||
-            selection === null ||
-            selection === false ||
-            (Array.isArray(selection) && selection.length === 0);
-
-          if (didCancelSelection) {
-            throw new Error("Account selection was cancelled.");
-          }
-        } catch (selectionErr) {
-          const message =
-            selectionErr && typeof selectionErr.message === "string"
-              ? selectionErr.message
-              : "Account selection was cancelled.";
-          throw new Error(message);
-        }
-      }
-      const pubkey = await runNip07WithRetry(() => extension.getPublicKey(), {
-        label: "extension.getPublicKey",
+      const result = await provider.login({
+        nostrClient: this,
+        options: normalizedOptions,
+        legacy: true,
       });
-      if (!pubkey || typeof pubkey !== "string") {
-        throw new Error(
-          "The NIP-07 extension did not return a public key. Please try again."
-        );
-      }
 
-      if (
-        normalizedExpectedPubkey &&
-        pubkey.toLowerCase() !== normalizedExpectedPubkey
-      ) {
-        throw new Error(
-          "The selected account doesn't match the expected profile. Please try again."
-        );
-      }
-      const nip19Tools = await ensureNostrTools();
-      const npubEncode = nip19Tools?.nip19?.npubEncode;
-      if (typeof npubEncode !== "function") {
-        throw new Error("NostrTools nip19 encoder is unavailable.");
-      }
-      const npub = npubEncode(pubkey);
-
-      if (isDevMode) {
-        console.log("Got pubkey:", pubkey);
-        console.log("Converted to npub:", npub);
-        console.log("Whitelist:", accessControl.getWhitelist());
-        console.log("Blacklist:", accessControl.getBlacklist());
-      }
-      // Access control
-      if (!accessControl.canAccess(npub)) {
-        if (accessControl.isBlacklisted(npub)) {
-          throw new Error("Your account has been blocked on this platform.");
-        } else {
-          throw new Error("Access restricted to whitelisted users only.");
+      let pubkey = "";
+      if (typeof result === "string") {
+        pubkey = result;
+      } else if (result && typeof result === "object") {
+        if (typeof result.pubkey === "string") {
+          pubkey = result.pubkey;
+        } else if (typeof result.publicKey === "string") {
+          pubkey = result.publicKey;
         }
       }
-      this.pubkey = pubkey;
-      if (isDevMode) {
-        console.log("Logged in with extension. Pubkey:", this.pubkey);
+
+      const trimmed = typeof pubkey === "string" ? pubkey.trim() : "";
+      if (trimmed) {
+        this.pubkey = trimmed;
+        return trimmed;
       }
-      return this.pubkey;
-    } catch (err) {
-      console.error("Login error:", err);
-      throw err;
+
+      return pubkey || null;
+    } catch (error) {
+      console.error("Login error:", error);
+      throw error;
     }
   }
-
   logout() {
     this.pubkey = null;
+    try {
+      this.clearActiveSigner();
+    } catch (error) {
+      if (isDevMode) {
+        console.warn("[nostr] Failed to clear active signer during logout:", error);
+      }
+    }
     for (const timer of this.watchHistoryRepublishTimers.values()) {
       if (timer && typeof timer.timer === "number") {
         clearTimeout(timer.timer);
@@ -6080,19 +5979,14 @@ export class NostrClient {
       return { ok: false, error: "nostr-uninitialized" };
     }
 
-    const extension = window?.nostr;
-    if (!extension) {
-      return { ok: false, error: "nostr-extension-missing" };
-    }
-
-    const nip04 = extension.nip04;
-    if (!nip04 || typeof nip04.encrypt !== "function") {
-      return { ok: false, error: "nip04-unavailable" };
-    }
-
-    if (typeof extension.signEvent !== "function") {
-      return { ok: false, error: "sign-event-unavailable" };
-    }
+    const extension = typeof window !== "undefined" ? window.nostr : null;
+    const nip04 = extension?.nip04;
+    const extensionEncrypt =
+      nip04 && typeof nip04.encrypt === "function" ? nip04.encrypt.bind(nip04) : null;
+    const extensionSign =
+      extension && typeof extension.signEvent === "function"
+        ? extension.signEvent.bind(extension)
+        : null;
 
     let actorHex =
       typeof actorPubkeyOverride === "string" && actorPubkeyOverride.trim()
@@ -6103,14 +5997,25 @@ export class NostrClient {
       actorHex = this.pubkey.trim();
     }
 
-    if (!actorHex && typeof extension.getPublicKey === "function") {
+    let activeSigner = null;
+    if (actorHex) {
+      activeSigner = this.getActiveSignerForPubkey(actorHex);
+    } else {
+      const candidate = this.getActiveSigner();
+      if (candidate?.pubkey) {
+        actorHex = candidate.pubkey;
+        activeSigner = this.getActiveSignerForPubkey(actorHex);
+      }
+    }
+
+    if (!actorHex && typeof extension?.getPublicKey === "function") {
       try {
         actorHex = await extension.getPublicKey();
       } catch (error) {
         if (isDevMode) {
           console.warn(
             "[nostr] Failed to fetch actor pubkey from extension:",
-            error
+            error,
           );
         }
       }
@@ -6120,6 +6025,21 @@ export class NostrClient {
       return { ok: false, error: "missing-actor-pubkey" };
     }
 
+    const normalizedActor = actorHex.trim();
+    activeSigner = this.getActiveSignerForPubkey(normalizedActor) || activeSigner;
+
+    const signerEncrypt =
+      activeSigner && typeof activeSigner.encrypt === "function"
+        ? activeSigner.encrypt
+        : null;
+    const encryptFn = signerEncrypt || extensionEncrypt;
+    if (!encryptFn) {
+      if (!extensionEncrypt && !extensionSign && !signerEncrypt) {
+        return { ok: false, error: "nostr-extension-missing" };
+      }
+      return { ok: false, error: "nip04-unavailable" };
+    }
+
     const targetHex = decodeNpubToHex(trimmedTarget);
     if (!targetHex) {
       return { ok: false, error: "invalid-target" };
@@ -6127,7 +6047,7 @@ export class NostrClient {
 
     let ciphertext = "";
     try {
-      ciphertext = await nip04.encrypt(targetHex, trimmedMessage);
+      ciphertext = await encryptFn(targetHex, trimmedMessage);
     } catch (error) {
       return { ok: false, error: "encryption-failed", details: error };
     }
@@ -6137,21 +6057,41 @@ export class NostrClient {
       created_at: Math.floor(Date.now() / 1000),
       tags: [["p", targetHex]],
       content: ciphertext,
-      pubkey: actorHex,
+      pubkey: normalizedActor,
     };
 
-    let signedEvent;
-    try {
-      signedEvent = await extension.signEvent(event);
-    } catch (error) {
-      return { ok: false, error: "signature-failed", details: error };
+    let signedEvent = null;
+    const signerSign =
+      activeSigner && typeof activeSigner.signEvent === "function"
+        ? activeSigner.signEvent
+        : null;
+
+    if (signerSign) {
+      try {
+        signedEvent = await signerSign(event);
+      } catch (error) {
+        if (isDevMode) {
+          console.warn("[nostr] Active signer failed to sign DM:", error);
+        }
+      }
+    }
+
+    if (!signedEvent) {
+      if (!extensionSign) {
+        return { ok: false, error: "sign-event-unavailable" };
+      }
+      try {
+        signedEvent = await extensionSign(event);
+      } catch (error) {
+        return { ok: false, error: "signature-failed", details: error };
+      }
     }
 
     const relays =
       Array.isArray(this.relays) && this.relays.length ? this.relays : RELAY_URLS;
 
     const publishResults = await Promise.all(
-      relays.map((url) => publishEventToRelay(this.pool, url, signedEvent))
+      relays.map((url) => publishEventToRelay(this.pool, url, signedEvent)),
     );
 
     const success = publishResults.some((result) => result.success);
@@ -6200,57 +6140,82 @@ export class NostrClient {
     let signedEvent = null;
     let signerPubkey = null;
 
-    if (
-      extensionSigner &&
-      normalizedEventPubkey &&
-      normalizedEventPubkey === normalizedLogged
-    ) {
-      signedEvent = await extensionSigner(event);
-    } else {
+    const activeSigner = this.getActiveSignerForPubkey(normalizedEventPubkey);
+    if (activeSigner && typeof activeSigner.signEvent === "function") {
       try {
-        const currentSessionPubkey =
-          typeof this.sessionActor?.pubkey === "string"
-            ? this.sessionActor.pubkey.toLowerCase()
-            : "";
-
+        signedEvent = await activeSigner.signEvent(event);
         if (
-          usingSessionActor &&
-          normalizedEventPubkey &&
-          normalizedEventPubkey !== currentSessionPubkey
+          !signerPubkey &&
+          activeSigner &&
+          typeof activeSigner.pubkey === "string" &&
+          activeSigner.pubkey
         ) {
-          await this.ensureSessionActor(true);
-        } else {
-          await this.ensureSessionActor();
+          signerPubkey = activeSigner.pubkey;
         }
-
-        const sessionActor = this.sessionActor;
-        if (
-          !sessionActor ||
-          typeof sessionActor.pubkey !== "string" ||
-          !sessionActor.pubkey ||
-          typeof sessionActor.privateKey !== "string" ||
-          !sessionActor.privateKey
-        ) {
-          throw new Error("session-actor-unavailable");
-        }
-
-        const normalizedSessionPubkey = sessionActor.pubkey.toLowerCase();
-        if (
-          !normalizedEventPubkey ||
-          normalizedEventPubkey !== normalizedSessionPubkey ||
-          event.pubkey !== sessionActor.pubkey
-        ) {
-          eventToSign = { ...event, pubkey: sessionActor.pubkey };
-        }
-
-        signedEvent = signEventWithPrivateKey(
-          eventToSign,
-          sessionActor.privateKey
-        );
-        signerPubkey = sessionActor.pubkey;
       } catch (error) {
-        console.warn("[nostr] Failed to sign event with session key:", error);
-        throw error;
+        if (isDevMode) {
+          console.warn(
+            `[nostr] Active signer failed to sign ${context}:`,
+            error,
+          );
+        }
+        signedEvent = null;
+      }
+    }
+
+    if (!signedEvent) {
+      if (
+        extensionSigner &&
+        normalizedEventPubkey &&
+        normalizedEventPubkey === normalizedLogged
+      ) {
+        signedEvent = await extensionSigner(event);
+      } else {
+        try {
+          const currentSessionPubkey =
+            typeof this.sessionActor?.pubkey === "string"
+              ? this.sessionActor.pubkey.toLowerCase()
+              : "";
+
+          if (
+            usingSessionActor &&
+            normalizedEventPubkey &&
+            normalizedEventPubkey !== currentSessionPubkey
+          ) {
+            await this.ensureSessionActor(true);
+          } else {
+            await this.ensureSessionActor();
+          }
+
+          const sessionActor = this.sessionActor;
+          if (
+            !sessionActor ||
+            typeof sessionActor.pubkey !== "string" ||
+            !sessionActor.pubkey ||
+            typeof sessionActor.privateKey !== "string" ||
+            !sessionActor.privateKey
+          ) {
+            throw new Error("session-actor-unavailable");
+          }
+
+          const normalizedSessionPubkey = sessionActor.pubkey.toLowerCase();
+          if (
+            !normalizedEventPubkey ||
+            normalizedEventPubkey !== normalizedSessionPubkey ||
+            event.pubkey !== sessionActor.pubkey
+          ) {
+            eventToSign = { ...event, pubkey: sessionActor.pubkey };
+          }
+
+          signedEvent = signEventWithPrivateKey(
+            eventToSign,
+            sessionActor.privateKey
+          );
+          signerPubkey = sessionActor.pubkey;
+        } catch (error) {
+          console.warn("[nostr] Failed to sign event with session key:", error);
+          throw error;
+        }
       }
     }
 
@@ -6755,44 +6720,20 @@ export class NostrClient {
     }
 
     try {
-      const signedEvent = await window.nostr.signEvent(event);
-      if (isDevMode) {
-        console.log("Signed edited event:", signedEvent);
-      }
-
-      const publishResults = await publishEventToRelays(
-        this.pool,
-        this.relays,
-        signedEvent
-      );
-
-      let publishSummary;
-      try {
-        publishSummary = assertAnyRelayAccepted(publishResults, {
-          context: "edited video note",
-        });
-      } catch (publishError) {
-        if (publishError?.relayFailures?.length) {
-          publishError.relayFailures.forEach(
-            ({ url, error: relayError, reason }) => {
-              console.error(
-                `[nostr] Edited video rejected by ${url}: ${reason}`,
-                relayError || reason
-              );
-            }
-          );
-        }
-        throw publishError;
-      }
+      const { signedEvent, summary } = await this.signAndPublishEvent(event, {
+        context: "edited video note",
+        logName: "edited video note",
+        relaysOverride: this.relays,
+      });
 
       if (isDevMode) {
-        publishSummary.accepted.forEach(({ url }) =>
+        summary.accepted.forEach(({ url }) =>
           console.log(`Edited video published to ${url}`)
         );
       }
 
-      if (publishSummary.failed.length) {
-        publishSummary.failed.forEach(({ url, error: relayError }) => {
+      if (summary.failed.length) {
+        summary.failed.forEach(({ url, error: relayError }) => {
           const reason =
             relayError instanceof Error
               ? relayError.message
@@ -6895,40 +6836,20 @@ export class NostrClient {
       content: JSON.stringify(contentObject),
     };
 
-    const signedEvent = await window.nostr.signEvent(event);
-    const publishResults = await publishEventToRelays(
-      this.pool,
-      this.relays,
-      signedEvent
-    );
-
-    let publishSummary;
-    try {
-      publishSummary = assertAnyRelayAccepted(publishResults, {
-        context: "video revert",
-      });
-    } catch (publishError) {
-      if (publishError?.relayFailures?.length) {
-        publishError.relayFailures.forEach(
-          ({ url, error: relayError, reason }) => {
-            console.error(
-              `[nostr] Video revert rejected by ${url}: ${reason}`,
-              relayError || reason
-            );
-          }
-        );
-      }
-      throw publishError;
-    }
+    const { signedEvent, summary } = await this.signAndPublishEvent(event, {
+      context: "video revert",
+      logName: "video revert",
+      relaysOverride: this.relays,
+    });
 
     if (isDevMode) {
-      publishSummary.accepted.forEach(({ url }) =>
+      summary.accepted.forEach(({ url }) =>
         console.log(`Revert event published to ${url}`)
       );
     }
 
-    if (publishSummary.failed.length) {
-      publishSummary.failed.forEach(({ url, error: relayError }) => {
+    if (summary.failed.length) {
+      summary.failed.forEach(({ url, error: relayError }) => {
         const reason =
           relayError instanceof Error
             ? relayError.message
