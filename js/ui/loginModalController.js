@@ -140,7 +140,7 @@ function resolveWindow(doc) {
 }
 
 function resolveButtonVariantClasses(variant, className) {
-  const classes = new Set(["w-full", "text-left"]);
+  const classes = new Set(["login-option"]);
 
   if (typeof className === "string" && className.trim()) {
     className
@@ -155,16 +155,18 @@ function resolveButtonVariantClasses(variant, className) {
 
   switch (variant) {
     case "ghost":
-      classes.add("btn-ghost");
+      classes.add("login-option--ghost");
       break;
     case "outline":
-      classes.add("btn-outline");
+      classes.add("login-option--outline");
       break;
     case "link":
-      classes.add("btn-link");
+      classes.add("login-option--link");
       break;
+    case "primary":
+    case "default":
     default:
-      classes.add("btn");
+      classes.add("login-option--primary");
       break;
   }
 

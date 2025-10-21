@@ -14,7 +14,7 @@ const PROVIDER_CAPABILITIES = Object.freeze([
   }),
 ]);
 const PROVIDER_BUTTON = Object.freeze({
-  variant: "outline",
+  variant: "primary",
 });
 const PROVIDER_MESSAGES = Object.freeze({
   loading: "Connecting to remote signer…",

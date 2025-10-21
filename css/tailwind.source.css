@@ -501,6 +501,15 @@
     @apply pointer-events-none cursor-not-allowed opacity-60 shadow-none;
   }
 
+  .btn-link {
+    @apply focus-ring inline-flex items-center gap-1 text-sm font-semibold text-accent transition duration-base ease-out;
+  }
+
+  .btn-link:hover,
+  .btn-link:focus-visible {
+    @apply text-accent-strong underline;
+  }
+
   .progress,
   [data-progress-meter] {
     --progress-height: var(--progress-height-md);
@@ -577,6 +586,87 @@
   .btn-ghost[data-variant="critical"]:hover,
   .btn-ghost[data-variant="critical"]:focus-visible {
     @apply bg-critical bg-opacity-20 text-critical-strong;
+  }
+
+  .login-option {
+    @apply focus-ring relative flex w-full flex-col gap-3 rounded-2xl border border-border bg-overlay-panel-soft px-5 py-4 text-left text-text shadow-sm transition duration-base ease-in-out;
+  }
+
+  .login-option:hover {
+    @apply border-border-strong bg-overlay-panel shadow-md;
+  }
+
+  .login-option:focus-visible {
+    @apply border-accent bg-overlay-panel shadow-md;
+  }
+
+  .login-option:disabled,
+  .login-option[aria-disabled="true"] {
+    @apply cursor-not-allowed opacity-60 shadow-none;
+  }
+
+  .login-option--primary {
+    @apply shadow-sm;
+  }
+
+  .login-option--ghost {
+    @apply bg-transparent shadow-none;
+  }
+
+  .login-option--ghost:hover,
+  .login-option--ghost:focus-visible {
+    @apply bg-overlay-panel-soft shadow-sm;
+  }
+
+  .login-option--outline {
+    @apply bg-transparent border-border-strong;
+  }
+
+  .login-option--outline:hover,
+  .login-option--outline:focus-visible {
+    @apply bg-overlay-panel-soft shadow-sm;
+  }
+
+  .login-option--link {
+    @apply border border-transparent bg-transparent text-accent shadow-none;
+  }
+
+  .login-option--link:hover,
+  .login-option--link:focus-visible {
+    @apply text-accent-strong underline;
+  }
+
+  .login-option__header {
+    @apply flex w-full items-start justify-between gap-3;
+  }
+
+  .login-option__copy {
+    @apply flex min-w-0 flex-col items-start gap-1;
+  }
+
+  .login-option__label {
+    @apply text-base font-semibold text-text;
+  }
+
+  .login-option__description {
+    @apply text-sm text-text-muted;
+  }
+
+  .login-option__chevron {
+    @apply inline-flex h-8 w-8 items-center justify-center rounded-full bg-panel text-text-muted transition duration-base ease-in-out;
+  }
+
+  .login-option:hover .login-option__chevron,
+  .login-option:focus-visible .login-option__chevron {
+    @apply bg-accent text-white;
+  }
+
+  .login-option__status {
+    @apply flex w-full items-center justify-between gap-2 text-sm text-text-muted;
+  }
+
+  .login-option__capabilities {
+    @apply flex flex-wrap gap-2;
   }
 
   .btn-ghost[data-state="active"],
