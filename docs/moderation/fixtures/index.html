@@ -126,14 +126,41 @@
           ],
         },
         {
-          key: "trusted-mute",
-          heading: "Trusted mute (F1 mute list)",
+          key: "trusted-report-hide",
+          heading: "Trusted report hide (≥3 spam reports)",
           description:
-            "Card should explain that a trusted contact muted this author without enabling overrides.",
+            "Card should render hidden with spam copy until the viewer clicks \"Show anyway\".",
+          enableOverride: true,
+          thresholds: { reportHide: 3 },
           video: {
             id: "4".repeat(64),
-            title: "Fixture: Trusted Mute",
+            title: "Fixture: Trusted Report Hide",
             pubkey: "aa".repeat(32),
+            thumbnail: "/assets/jpg/video-thumbnail-fallback.jpg",
+          },
+          moderation: {
+            blockAutoplay: true,
+            blurThumbnail: true,
+            trustedCount: 3,
+            reportType: "spam",
+          },
+          reporters: [
+            { name: "Jess F1", pubkey: "b".repeat(64), latest: 1_700_000_010 },
+            { name: "Mira F1", pubkey: "c".repeat(64), latest: 1_700_000_020 },
+            { name: "Omar F1", pubkey: "d".repeat(64), latest: 1_700_000_030 },
+          ],
+        },
+        {
+          key: "trusted-mute-hide",
+          heading: "Trusted mute hide (F1 mute list threshold)",
+          description:
+            "Card should default to hidden when a trusted contact mutes the author and allow an override.",
+          enableOverride: true,
+          thresholds: { muteHide: 1 },
+          video: {
+            id: "5".repeat(64),
+            title: "Fixture: Trusted Mute Hide",
+            pubkey: "bb".repeat(32),
             thumbnail: "/assets/jpg/video-thumbnail-fallback.jpg",
           },
           moderation: {
@@ -284,14 +311,20 @@
         const sanitizedReporters = normalizeFixtureReporters(activeReporters);
         const thresholds =
           fixture.thresholds && typeof fixture.thresholds === "object"
-            ? { blur: 3, autoplay: 2, ...fixture.thresholds }
-            : { blur: 3, autoplay: 2 };
+            ? { blur: 3, autoplay: 2, reportHide: 3, muteHide: 1, ...fixture.thresholds }
+            : { blur: 3, autoplay: 2, reportHide: 3, muteHide: 1 };
         const autoplayThreshold = Number.isFinite(thresholds.autoplay)
           ? Math.max(0, Math.floor(thresholds.autoplay))
           : 2;
         const blurThreshold = Number.isFinite(thresholds.blur)
           ? Math.max(0, Math.floor(thresholds.blur))
           : 3;
+        const reportHideThreshold = Number.isFinite(thresholds.reportHide)
+          ? Math.max(0, Math.floor(thresholds.reportHide))
+          : 3;
+        const muteHideThreshold = Number.isFinite(thresholds.muteHide)
+          ? Math.max(0, Math.floor(thresholds.muteHide))
+          : 1;
         const initialBlock = fixture.moderation.blockAutoplay === true;
         const initialBlur = fixture.moderation.blurThumbnail === true;
         const trustedCount = sanitizedReporters.length;
@@ -307,16 +340,57 @@
           latest: reporter.latest,
         }));
 
+        const muterEntries = Array.isArray(fixture.muters) ? fixture.muters : [];
+        const muterPubkeys = muterEntries
+          .map((muter) => (typeof muter?.pubkey === "string" ? muter.pubkey : ""))
+          .filter(Boolean);
+        const muterDisplayNames = muterEntries
+          .map((muter) => (typeof muter?.name === "string" ? muter.name : ""))
+          .filter(Boolean);
+        const trustedMuted = fixture.moderation.trustedMuted === true;
+        const muteCount = Number.isFinite(fixture.moderation.trustedMuteCount)
+          ? Math.max(0, Math.floor(fixture.moderation.trustedMuteCount))
+          : muterPubkeys.length;
+
+        const hideFromMute = trustedMuted && muteCount >= muteHideThreshold;
+        const hideFromReports = trustedCount >= reportHideThreshold;
+        let hidden = fixture.moderation.hidden === true;
+        let hideReason =
+          typeof fixture.moderation.hideReason === "string"
+            ? fixture.moderation.hideReason
+            : "";
+        const hideBypass =
+          typeof fixture.moderation.hideBypass === "string"
+            ? fixture.moderation.hideBypass
+            : "";
+
+        if (hideFromMute) {
+          hidden = true;
+          hideReason = "trusted-mute-hide";
+        } else if (hideFromReports) {
+          hidden = true;
+          hideReason = "trusted-report-hide";
+        } else if (!hidden) {
+          hideReason = "";
+        }
+
+        const hideCounts = hidden
+          ? {
+              trustedMuteCount: muteCount,
+              trustedReportCount: trustedCount,
+            }
+          : null;
+
         const base = {
           reportType: fixture.moderation.reportType,
           trustedCount,
           reporterDisplayNames,
           reporterPubkeys,
           trustedReporters: trustedReporterEntries,
-          original: {
-            blockAutoplay: initialBlock,
-            blurThumbnail: initialBlur,
-          },
+          trustedMuted,
+          trustedMuters: muterPubkeys,
+          trustedMuteCount: muteCount,
+          trustedMuterDisplayNames: muterDisplayNames,
         };
 
         const summary = buildSummary(fixture, videoId, sanitizedReporters);
@@ -324,24 +398,33 @@
           base.summary = summary;
         }
 
-        if (fixture.moderation.trustedMuted) {
-          base.trustedMuted = true;
-          const muterPubkeys = Array.isArray(fixture.muters)
-            ? fixture.muters
-                .map((muter) => (typeof muter?.pubkey === "string" ? muter.pubkey : ""))
-                .filter(Boolean)
-            : [];
-          base.trustedMuters = muterPubkeys;
-          const muteCount = Number.isFinite(fixture.moderation.trustedMuteCount)
-            ? Math.max(0, Math.floor(fixture.moderation.trustedMuteCount))
-            : muterPubkeys.length;
-          base.trustedMuteCount = muteCount;
-          base.trustedMuterDisplayNames = Array.isArray(fixture.muters)
-            ? fixture.muters
-                .map((muter) => (typeof muter?.name === "string" ? muter.name : ""))
-                .filter(Boolean)
-            : [];
-        }
+        const computedBlock = initialBlock && trustedCount >= autoplayThreshold;
+        const computedBlur = initialBlur && trustedCount >= blurThreshold;
+
+        const originalState = {
+          blockAutoplay: computedBlock,
+          blurThumbnail: computedBlur,
+          hidden,
+          hideReason: hidden ? hideReason : "",
+          hideCounts: hideCounts
+            ? {
+                trustedMuteCount: Math.max(0, Number(hideCounts.trustedMuteCount) || 0),
+                trustedReportCount: Math.max(0, Number(hideCounts.trustedReportCount) || 0),
+              }
+            : null,
+          hideBypass,
+          hideTriggered: hidden,
+        };
+
+        base.original = {
+          blockAutoplay: originalState.blockAutoplay,
+          blurThumbnail: originalState.blurThumbnail,
+          hidden: originalState.hidden,
+          hideReason: originalState.hideReason,
+          hideCounts: originalState.hideCounts,
+          hideBypass: originalState.hideBypass,
+          hideTriggered: originalState.hideTriggered,
+        };
 
         if (overrideEntry?.showAnyway) {
           base.viewerOverride = {
@@ -352,9 +435,44 @@
           };
           base.blockAutoplay = false;
           base.blurThumbnail = false;
+          base.hidden = false;
+          if (base.hideReason) {
+            delete base.hideReason;
+          }
+          if (base.hideCounts) {
+            delete base.hideCounts;
+          }
+          if (base.hideBypass) {
+            delete base.hideBypass;
+          }
         } else {
-          base.blockAutoplay = initialBlock && trustedCount >= autoplayThreshold;
-          base.blurThumbnail = initialBlur && trustedCount >= blurThreshold;
+          base.blockAutoplay = originalState.blockAutoplay;
+          base.blurThumbnail = originalState.blurThumbnail;
+          if (originalState.hidden) {
+            base.hidden = true;
+            if (originalState.hideReason) {
+              base.hideReason = originalState.hideReason;
+            }
+            if (originalState.hideCounts) {
+              base.hideCounts = { ...originalState.hideCounts };
+            }
+            if (originalState.hideBypass) {
+              base.hideBypass = originalState.hideBypass;
+            }
+          } else {
+            if (base.hidden) {
+              delete base.hidden;
+            }
+            if (base.hideReason) {
+              delete base.hideReason;
+            }
+            if (base.hideCounts) {
+              delete base.hideCounts;
+            }
+            if (base.hideBypass) {
+              delete base.hideBypass;
+            }
+          }
         }
 
         return base;

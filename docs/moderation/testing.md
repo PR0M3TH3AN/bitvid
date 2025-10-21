@@ -6,9 +6,10 @@
 - [ ] Blur at ≥3 F1 reports of `nudity`; autoplay blocked at ≥2.
   - Automated coverage: `tests/visual/moderation.spec.ts` blur and autoplay scenarios (run via `npm run test:visual`).
 - [ ] Hide videos once trusted mute/spam thresholds are met.
+  - Automated coverage: `tests/visual/moderation.spec.ts` trusted hide scenarios (run via `npm run test:visual`).
   - Manual: adjust thresholds in the profile modal, simulate trusted mutes/reports, and verify cards disappear until "show anyway" is used.
-- [ ] “Show anyway” works and records only local pref.
-  - Automated coverage: `tests/visual/moderation.spec.ts` show-anyway persistence scenario (run via `npm run test:visual`).
+- [ ] “Show anyway” works for blurred and hidden cards and records only local pref.
+  - Automated coverage: `tests/visual/moderation.spec.ts` show-anyway persistence and trusted hide scenarios (run via `npm run test:visual`).
 - [ ] Mute list (10000) downranks/hides consistently.
   - Manual: subscribe to fixture B and verify muted author disappears from feeds after refresh.
 - [ ] Admin lists (30000) take effect only when subscribed.
@@ -40,7 +41,7 @@ Expected:
 
 * After 1 report → no blur; autoplay allowed.
 * After 2 reports → autoplay blocked.
-* After 3 reports → thumbnail blurred; reason chip shown.
+* After 3 reports → thumbnail blurred; reason chip shown. At the spam threshold (`TRUSTED_SPAM_HIDE_THRESHOLD`) the card hides entirely and the badge copy switches to "Hidden · 3 trusted spam reports" until the viewer overrides it.
 
 **Exercises:** [`ModerationService.ingestReportEvent()`](../../js/services/moderationService.js) and [`ModerationService.getTrustedReportSummary()`](../../js/services/moderationService.js) wire through [`createModerationStage()`](../../js/feedEngine/stages.js) so [`bitvidApp.decorateVideoModeration()`](../../js/app.js) can hand the summary to [`VideoCard.refreshModerationUi()`](../../js/ui/components/VideoCard.js).
 
@@ -55,7 +56,7 @@ Expected:
 }
 ```
 
-Expected: author’s items are downranked/hidden for this viewer.
+Expected: author’s items are downranked/hidden for this viewer. When the mute threshold (`TRUSTED_MUTE_HIDE_THRESHOLD`) is met, cards render with "Hidden · 1 trusted mute" and require a "Show anyway" override to display content.
 
 **Exercises:** [`ModerationService.ingestTrustedMuteEvent()`](../../js/services/moderationService.js) updates [`ModerationService.isAuthorMutedByTrusted()`](../../js/services/moderationService.js) / [`getTrustedMutersForAuthor()`](../../js/services/moderationService.js), which [`createModerationStage()`](../../js/feedEngine/stages.js) propagates to the video item before [`VideoCard.refreshModerationUi()`](../../js/ui/components/VideoCard.js) renders the mute state.
 
@@ -85,6 +86,6 @@ Expected: when viewer subscribes to this list, author is hard-hidden.
 ## Automated checks (suggested)
 
 * `npm run test:unit` — covers `tests/moderation/trusted-report-count.test.mjs` for deduping and mute handling.
-* `npm run test:visual` — runs Playwright fixtures in `tests/visual/moderation.spec.ts` against `/docs/moderation/fixtures/index.html`.
+* `npm run test:visual` — runs Playwright fixtures in `tests/visual/moderation.spec.ts` against `/docs/moderation/fixtures/index.html`, covering blur thresholds, autoplay blocks, trusted hide badges, and the override UX.
 * Integration test: emit events over a local relay; assert UI state.
 * Regression test: ensure Home feed ignores reputation gating.

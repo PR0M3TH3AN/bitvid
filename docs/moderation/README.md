@@ -22,7 +22,7 @@ bitvid is follow-centric. Your Home feed comes from people you follow (F1). Disc
 - [`ModerationService`](../../js/services/moderationService.js) orchestrates ingest and scoring. Review the service for the trusted-report math and helper entry points.
 - [`createModerationStage`](../../js/feedEngine/stages.js) wires the service into the feed engine where moderation summaries decorate timeline items.
 - [`bitvidApp.decorateVideoModeration`](../../js/app.js) connects stage output to the UI layer alongside feature-flag plumbing.
-- [`VideoCard.refreshModerationUi`](../../js/ui/components/VideoCard.js) applies badges, blur states, and "show anyway" toggles.
+- [`VideoCard.refreshModerationUi`](../../js/ui/components/VideoCard.js) applies badges, blur states, hide metadata (`data-moderation-hidden`), and the "show anyway" toggles.
 
 ## Where to extend
 Thread new moderation behaviors through the same service → stage → app → UI flow above. Extending the existing layers keeps overrides, feature flags, and QA hooks consistent—avoid spinning up parallel moderation modules unless the architecture document explicitly calls for it.
@@ -30,13 +30,20 @@ Thread new moderation behaviors through the same service → stage → app → U
 ## Defaults (policy)
 - Blur video thumbnails if **≥ 3** F1 friends report `nudity`.
 - Disable autoplay preview if **≥ 2** F1 friends report `nudity`.
-- Hide videos when **≥ 1** trusted contact mutes the author (`TRUSTED_MUTE_HIDE_THRESHOLD`).
-- Hide videos when **≥ 3** trusted contacts file spam reports (`TRUSTED_SPAM_HIDE_THRESHOLD`).
+- Hide videos when **≥ 1** trusted contact mutes the author (`TRUSTED_MUTE_HIDE_THRESHOLD`). Cards render with `data-moderation-hidden="true"`, the badge reads `Hidden · 1 trusted mute`, and a "Show anyway" button becomes available.
+- Hide videos when **≥ 3** trusted contacts file spam reports (`TRUSTED_SPAM_HIDE_THRESHOLD`). The badge copy escalates to `Hidden · 3 trusted spam reports` and the card stays hidden until the viewer overrides it.
 - Downrank author when any F1 has them in mute list (10000).
 - Opt-in admin lists (30000 with `d=bitvid:admin:*`) can hard-hide content.
 - Trust seeds from `DEFAULT_TRUST_SEED_NPUBS` count as baseline F1 contacts (toggle via `FEATURE_TRUST_SEEDS`).
 
 > You can override all defaults in **Settings → Safety & Moderation**.
+
+### Hide thresholds & feature flags
+
+- `TRUSTED_MUTE_HIDE_THRESHOLD` and `TRUSTED_SPAM_HIDE_THRESHOLD` determine when moderation metadata marks an item as hidden. Both feed the `original.hide*` fields that `VideoCard` inspects before deciding whether to render the hidden summary container.
+- `FEATURE_TRUSTED_HIDE_CONTROLS` shows the additional threshold inputs in the profile modal so operators can raise/lower the hide triggers client-side.
+- When any hide threshold fires we persist the active counts (`hideCounts.trustedMuteCount`, `hideCounts.trustedReportCount`) so analytics/debugging tools can show why an item disappeared.
+- Cards that arrive with `original.hidden === true` automatically expose the "Show anyway" chip so viewers can inspect hidden content. Activating the override clears blur/autoplay restrictions alongside the hidden state.
 
 ## Community blacklist federation
 
