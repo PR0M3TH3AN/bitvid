@@ -1961,10 +1961,38 @@ class Application {
     setLoadingState(true);
 
     try {
-      const { pubkey } = await this.authService.requestLogin({
+      const loginResult = await this.authService.requestLogin({
         allowAccountSelection: true,
         autoApply: false,
       });
+
+      const { pubkey, authType: loginAuthType, providerId } =
+        typeof loginResult === "object" && loginResult
+          ? loginResult
+          : { pubkey: loginResult };
+
+      const detailAuthType =
+        typeof loginResult?.detail?.authType === "string"
+          ? loginResult.detail.authType
+          : null;
+      const detailProviderId =
+        typeof loginResult?.detail?.providerId === "string"
+          ? loginResult.detail.providerId
+          : null;
+
+      const resolvedAuthType = (() => {
+        const candidates = [detailAuthType, loginAuthType, detailProviderId, providerId];
+        for (const candidate of candidates) {
+          if (typeof candidate !== "string") {
+            continue;
+          }
+          const trimmed = candidate.trim();
+          if (trimmed) {
+            return trimmed;
+          }
+        }
+        return "nip07";
+      })();
 
       const normalizedPubkey = this.normalizeHexPubkey(pubkey);
       if (!normalizedPubkey) {
@@ -1999,7 +2027,7 @@ class Application {
         npub,
         name,
         picture,
-        authType: "nip07",
+        authType: resolvedAuthType,
       });
 
       persistSavedProfiles({ persistActive: false });

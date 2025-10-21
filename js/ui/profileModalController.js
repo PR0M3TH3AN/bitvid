@@ -1518,8 +1518,12 @@ export class ProfileModalController {
           if (meta.npub) {
             button.dataset.npub = meta.npub;
           }
-          if (entry.authType) {
-            button.dataset.authType = entry.authType;
+          const normalizedAuthType =
+            typeof entry.authType === "string" && entry.authType.trim()
+              ? entry.authType.trim()
+              : null;
+          if (normalizedAuthType) {
+            button.dataset.authType = normalizedAuthType;
           }
 
           const normalizedPubkey = this.normalizeHexPubkey(entry.pubkey);
@@ -1555,7 +1559,7 @@ export class ProfileModalController {
           label.className =
             "text-3xs font-semibold uppercase tracking-extra-wide text-status-info";
           label.textContent =
-            entry.authType === "nsec" ? "Direct key" : "Saved profile";
+            normalizedAuthType === "nsec" ? "Direct key" : "Saved profile";
 
           const action = document.createElement("span");
           action.className = "text-xs font-medium text-muted";
