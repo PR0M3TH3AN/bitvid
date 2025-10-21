@@ -58,13 +58,22 @@
           type="button"
           data-provider-button
         >
-          <span class="flex flex-col items-start gap-2">
+          <span class="flex w-full flex-col items-start gap-2">
             <span data-provider-label class="text-base font-semibold"></span>
             <span data-provider-description class="text-sm text-text-muted"></span>
-            <span
-              data-provider-status
-              class="text-sm text-text-muted hidden"
-            ></span>
+            <div
+              data-provider-status-row
+              class="hidden flex w-full items-center justify-between gap-2 text-sm text-text-muted"
+            >
+              <span data-provider-status class="truncate"></span>
+              <button
+                type="button"
+                class="btn-link text-sm hidden"
+                data-provider-disconnect
+              >
+                Disconnect
+              </button>
+            </div>
             <span
               data-provider-capabilities
               class="flex flex-wrap gap-2"
@@ -172,6 +181,64 @@
           <div class="flex justify-end gap-2">
             <button type="button" class="btn-ghost" data-nsec-cancel>Cancel</button>
             <button type="submit" class="btn" data-nsec-submit>Continue</button>
+          </div>
+        </form>
+      </template>
+      <template data-login-nip46-dialog>
+        <form
+          data-nip46-form
+          class="space-y-4 rounded-xl border border-border bg-overlay-panel-soft px-5 py-4"
+        >
+          <div class="space-y-2">
+            <h3 class="text-lg font-semibold text-text">Connect remote signer</h3>
+            <p class="text-sm text-text-muted">
+              Paste the <code>nostrconnect://</code> or <code>bunker://</code> link
+              from your signer to establish a Nostr Connect session.
+            </p>
+          </div>
+          <div
+            data-nip46-error
+            class="hidden rounded-lg border border-danger/60 bg-danger/10 px-4 py-2 text-sm text-danger"
+            role="alert"
+          ></div>
+          <div class="space-y-2">
+            <label
+              class="block text-sm font-medium text-text"
+              for="nip46ConnectUri"
+            >
+              Connection string
+            </label>
+            <textarea
+              id="nip46ConnectUri"
+              class="input"
+              rows="3"
+              spellcheck="false"
+              autocomplete="off"
+              placeholder="nostrconnect://… or bunker://…"
+              data-nip46-connect-uri
+              required
+            ></textarea>
+            <p class="text-xs text-text-muted">
+              We will connect to the relays embedded in the link and request signing
+              permissions on your behalf.
+            </p>
+          </div>
+          <div class="space-y-2">
+            <label class="inline-flex items-center gap-2 text-sm text-text">
+              <input type="checkbox" class="checkbox" data-nip46-remember checked />
+              <span>Remember this signer for future logins</span>
+            </label>
+            <button
+              type="button"
+              class="btn-link text-sm hidden"
+              data-nip46-reuse
+            >
+              Reconnect using the saved session
+            </button>
+          </div>
+          <div class="flex justify-end gap-2">
+            <button type="button" class="btn-ghost" data-nip46-cancel>Cancel</button>
+            <button type="submit" class="btn" data-nip46-submit>Connect</button>
           </div>
         </form>
       </template>

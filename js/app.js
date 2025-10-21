@@ -428,6 +428,7 @@ class Application {
           providers: authProviders,
           services: {
             authService: this.authService,
+            nostrClient,
           },
           callbacks: {
             onProviderSelected: (providerId) => {
