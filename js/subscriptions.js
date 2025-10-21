@@ -1,5 +1,6 @@
 // js/subscriptions.js
 import {
+  getActiveSigner,
   nostrClient,
   convertEventToVideo as sharedConvertEventToVideo,
   requestDefaultExtensionPermissions,
@@ -286,14 +287,6 @@ class SubscriptionsManager {
       return { ok: false, error };
     }
 
-    const nostrApi =
-      typeof window !== "undefined" && window && window.nostr ? window.nostr : null;
-    if (!nostrApi) {
-      const error = new Error("Nostr extension is unavailable for decrypting subscriptions.");
-      error.code = "nostr-extension-missing";
-      return { ok: false, error };
-    }
-
     const decryptors = new Map();
     const registerDecryptor = (scheme, handler) => {
       if (!scheme || typeof handler !== "function" || decryptors.has(scheme)) {
@@ -302,28 +295,48 @@ class SubscriptionsManager {
       decryptors.set(scheme, handler);
     };
 
-    if (nostrApi.nip04 && typeof nostrApi.nip04.decrypt === "function") {
-      registerDecryptor("nip04", (payload) => nostrApi.nip04.decrypt(userPubkey, payload));
+    const signer = getActiveSigner();
+    if (signer?.nip04Decrypt) {
+      registerDecryptor("nip04", (payload) => signer.nip04Decrypt(userPubkey, payload));
     }
 
-    const nip44 = nostrApi.nip44 && typeof nostrApi.nip44 === "object" ? nostrApi.nip44 : null;
-    if (nip44) {
-      if (typeof nip44.decrypt === "function") {
-        registerDecryptor("nip44", (payload) => nip44.decrypt(userPubkey, payload));
+    if (signer?.nip44Decrypt) {
+      registerDecryptor("nip44", (payload) => signer.nip44Decrypt(userPubkey, payload));
+    }
+
+    const nostrApi =
+      typeof window !== "undefined" && window && window.nostr ? window.nostr : null;
+    if (nostrApi) {
+      if (nostrApi.nip04 && typeof nostrApi.nip04.decrypt === "function") {
+        registerDecryptor("nip04", (payload) =>
+          nostrApi.nip04.decrypt(userPubkey, payload)
+        );
       }
 
-      const nip44v2 = nip44.v2 && typeof nip44.v2 === "object" ? nip44.v2 : null;
-      if (nip44v2 && typeof nip44v2.decrypt === "function") {
-        registerDecryptor("nip44_v2", (payload) => nip44v2.decrypt(userPubkey, payload));
-        if (!decryptors.has("nip44")) {
-          registerDecryptor("nip44", (payload) => nip44v2.decrypt(userPubkey, payload));
+      const nip44 =
+        nostrApi.nip44 && typeof nostrApi.nip44 === "object" ? nostrApi.nip44 : null;
+      if (nip44) {
+        if (typeof nip44.decrypt === "function") {
+          registerDecryptor("nip44", (payload) => nip44.decrypt(userPubkey, payload));
+        }
+
+        const nip44v2 = nip44.v2 && typeof nip44.v2 === "object" ? nip44.v2 : null;
+        if (nip44v2 && typeof nip44v2.decrypt === "function") {
+          registerDecryptor("nip44_v2", (payload) =>
+            nip44v2.decrypt(userPubkey, payload)
+          );
+          if (!decryptors.has("nip44")) {
+            registerDecryptor("nip44", (payload) => nip44v2.decrypt(userPubkey, payload));
+          }
         }
       }
     }
 
     if (!decryptors.size) {
-      const error = new Error("No compatible decryption helpers are available.");
-      error.code = "subscriptions-no-decryptors";
+      const error = new Error(
+        "No active signer or extension decryptors are available for subscriptions."
+      );
+      error.code = "nostr-extension-missing";
       return { ok: false, error };
     }
 
@@ -413,17 +426,40 @@ class SubscriptionsManager {
       throw new Error("No pubkey => cannot publish subscription list.");
     }
 
-    const permissionResult = await requestDefaultExtensionPermissions();
-    if (!permissionResult.ok) {
-      userLogger.warn(
-        "[SubscriptionsManager] Extension permissions denied while updating subscriptions.",
-        permissionResult.error,
-      );
+    const signer = getActiveSigner();
+    if (!signer) {
       const error = new Error(
-        "The NIP-07 extension must allow encryption and signing before updating subscriptions.",
+        "An active signer is required to update subscriptions."
       );
-      error.code = "extension-permission-denied";
-      error.cause = permissionResult.error;
+      error.code = "signer-missing";
+      throw error;
+    }
+
+    if (signer.type === "extension") {
+      const permissionResult = await requestDefaultExtensionPermissions();
+      if (!permissionResult.ok) {
+        userLogger.warn(
+          "[SubscriptionsManager] Signer permissions denied while updating subscriptions.",
+          permissionResult.error,
+        );
+        const error = new Error(
+          "The active signer must allow encryption and signing before updating subscriptions.",
+        );
+        error.code = "extension-permission-denied";
+        error.cause = permissionResult.error;
+        throw error;
+      }
+    }
+
+    if (typeof signer.nip04Encrypt !== "function") {
+      const error = new Error("NIP-04 encryption is required to update subscriptions.");
+      error.code = "nip04-missing";
+      throw error;
+    }
+
+    if (typeof signer.signEvent !== "function") {
+      const error = new Error("Active signer missing signEvent support.");
+      error.code = "sign-event-missing";
       throw error;
     }
 
@@ -440,7 +476,7 @@ class SubscriptionsManager {
      */
     let cipherText = "";
     try {
-      cipherText = await window.nostr.nip04.encrypt(userPubkey, plainStr);
+      cipherText = await signer.nip04Encrypt(userPubkey, plainStr);
     } catch (err) {
       userLogger.error("Encryption failed:", err);
       throw err;
@@ -454,7 +490,7 @@ class SubscriptionsManager {
 
     let signedEvent;
     try {
-      signedEvent = await window.nostr.signEvent(evt);
+      signedEvent = await signer.signEvent(evt);
     } catch (signErr) {
       userLogger.error("Failed to sign subscription list:", signErr);
       throw signErr;

@@ -42,6 +42,31 @@ When managing relay metadata, use `buildRelayListEvent` so the resulting
 replaceable event follows NIP-65 (`kind:10002`) with `"r"` tags describing the
 read/write split.
 
+### Active signer registry
+
+Authentication providers should register their capabilities with the
+`nostrClient` after login so every publish helper can reuse them:
+
+```js
+import { setActiveSigner } from "./nostr.js";
+
+setActiveSigner({
+  type: "extension", // optional label, used to request NIP-07 permissions
+  pubkey, // hex or npub of the active account
+  signEvent: (event) => extension.signEvent(event),
+  nip04Encrypt: (targetHex, plaintext) => extension.nip04.encrypt(targetHex, plaintext),
+  nip04Decrypt: (actorHex, ciphertext) => extension.nip04.decrypt(actorHex, ciphertext),
+  nip44Encrypt: (targetHex, plaintext) => extension.nip44.encrypt(targetHex, plaintext),
+  nip44Decrypt: (actorHex, ciphertext) => extension.nip44.decrypt(actorHex, ciphertext),
+});
+```
+
+`setActiveSigner` accepts any object that implements the subset of capabilities
+you support. `nostrClient` will prefer the registered signer for signing and
+encryption before falling back to session actors. Call `clearActiveSigner()` on
+logout if your integration manages session state manually; the built-in logout
+handler already does this for the default extension flow.
+
 ### Accessing raw events
 
 `NostrClient` now keeps a lightweight cache of parsed videos alongside a

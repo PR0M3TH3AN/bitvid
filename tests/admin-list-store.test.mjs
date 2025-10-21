@@ -52,7 +52,7 @@ const {
 } = await import(
   "../js/adminListStore.js"
 );
-const { nostrClient } = await import("../js/nostr.js");
+const { nostrClient, setActiveSigner } = await import("../js/nostr.js");
 const {
   ADMIN_SUPER_NPUB,
   ADMIN_LIST_NAMESPACE,
@@ -288,6 +288,12 @@ if (!globalThis.window.nostr) {
 globalThis.window.nostr.signEvent = async (event) => ({
   ...event,
   id: "signed-event",
+});
+
+setActiveSigner({
+  pubkey: superHex,
+  signEvent: globalThis.window.nostr.signEvent,
+  type: "test",
 });
 
 resetListRegistry();

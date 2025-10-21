@@ -57,6 +57,8 @@ export const DEFAULT_RELAY_URLS = Object.freeze([
 
 const RELAY_URLS = Array.from(DEFAULT_RELAY_URLS);
 
+let activeSigner = null;
+
 const EVENTS_CACHE_STORAGE_KEY = "bitvid:eventsCache:v1";
 const LEGACY_EVENTS_STORAGE_KEY = "bitvidEvents";
 const EVENTS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
@@ -2432,6 +2434,119 @@ function normalizeActorKey(actor) {
   return trimmed.toLowerCase();
 }
 
+export function getActiveSigner() {
+  return activeSigner;
+}
+
+export function clearActiveSigner() {
+  activeSigner = null;
+  return activeSigner;
+}
+
+export function setActiveSigner(candidate = null) {
+  if (!candidate || typeof candidate !== "object") {
+    activeSigner = null;
+    return activeSigner;
+  }
+
+  const pubkeyInput =
+    typeof candidate.pubkey === "string"
+      ? candidate.pubkey
+      : typeof candidate.pubKey === "string"
+        ? candidate.pubKey
+        : "";
+  const normalizedPubkey = normalizeActorKey(pubkeyInput);
+
+  let signEvent = null;
+  if (typeof candidate.signEvent === "function") {
+    signEvent = candidate.signEvent;
+  }
+
+  let nip04Encrypt = null;
+  if (typeof candidate.nip04Encrypt === "function") {
+    nip04Encrypt = candidate.nip04Encrypt;
+  } else if (candidate.nip04 && typeof candidate.nip04.encrypt === "function") {
+    nip04Encrypt = candidate.nip04.encrypt.bind(candidate.nip04);
+  }
+
+  let nip04Decrypt = null;
+  if (typeof candidate.nip04Decrypt === "function") {
+    nip04Decrypt = candidate.nip04Decrypt;
+  } else if (candidate.nip04 && typeof candidate.nip04.decrypt === "function") {
+    nip04Decrypt = candidate.nip04.decrypt.bind(candidate.nip04);
+  }
+
+  let nip44Encrypt = null;
+  if (typeof candidate.nip44Encrypt === "function") {
+    nip44Encrypt = candidate.nip44Encrypt;
+  } else if (candidate.nip44 && typeof candidate.nip44.encrypt === "function") {
+    nip44Encrypt = candidate.nip44.encrypt.bind(candidate.nip44);
+  } else if (
+    candidate.nip44?.v2 &&
+    typeof candidate.nip44.v2.encrypt === "function"
+  ) {
+    nip44Encrypt = candidate.nip44.v2.encrypt.bind(candidate.nip44.v2);
+  }
+
+  let nip44Decrypt = null;
+  if (typeof candidate.nip44Decrypt === "function") {
+    nip44Decrypt = candidate.nip44Decrypt;
+  } else if (candidate.nip44 && typeof candidate.nip44.decrypt === "function") {
+    nip44Decrypt = candidate.nip44.decrypt.bind(candidate.nip44);
+  } else if (
+    candidate.nip44?.v2 &&
+    typeof candidate.nip44.v2.decrypt === "function"
+  ) {
+    nip44Decrypt = candidate.nip44.v2.decrypt.bind(candidate.nip44.v2);
+  }
+
+  const signerType =
+    typeof candidate.type === "string" && candidate.type.trim()
+      ? candidate.type.trim()
+      : null;
+
+  activeSigner = {
+    type: signerType,
+    pubkey: normalizedPubkey,
+    signEvent,
+    nip04Encrypt,
+    nip04Decrypt,
+    nip44Encrypt,
+    nip44Decrypt,
+  };
+
+  return activeSigner;
+}
+
+function resolveActiveSigner(targetActor) {
+  const signer = getActiveSigner();
+  if (!signer) {
+    return null;
+  }
+
+  const normalizedTarget = normalizeActorKey(targetActor);
+  const normalizedSigner = normalizeActorKey(signer.pubkey);
+  if (normalizedTarget && normalizedSigner && normalizedTarget !== normalizedSigner) {
+    return null;
+  }
+
+  if (
+    typeof signer.signEvent !== "function" &&
+    typeof signer.nip04Encrypt !== "function" &&
+    typeof signer.nip04Decrypt !== "function" &&
+    typeof signer.nip44Encrypt !== "function" &&
+    typeof signer.nip44Decrypt !== "function"
+  ) {
+    return null;
+  }
+
+  return signer;
+}
+
+function shouldRequestExtensionPermissions(signer) {
+  return signer?.type === "extension";
+}
+
 function canonicalizeWatchHistoryItems(rawItems, maxItems = WATCH_HISTORY_MAX_ITEMS) {
   const seen = new Map();
   if (Array.isArray(rawItems)) {
@@ -3642,13 +3757,13 @@ export class NostrClient {
       typeof this.pubkey === "string" && this.pubkey
         ? this.pubkey.toLowerCase()
         : "";
-    const extension = window?.nostr;
-    const canSignWithExtension =
+    const activeSigner = resolveActiveSigner(this.pubkey);
+    const canSignWithActiveSigner =
       !!normalizedLogged &&
-      extension &&
-      typeof extension.signEvent === "function";
+      activeSigner &&
+      typeof activeSigner.signEvent === "function";
 
-    if (!forceRenew && canSignWithExtension) {
+    if (!forceRenew && canSignWithActiveSigner) {
       return normalizedLogged;
     }
 
@@ -4283,21 +4398,29 @@ export class NostrClient {
     }
 
     const actorPubkey = resolvedActor || actorKey;
-    const extension = window?.nostr;
-    const extensionActorKey = normalizeActorKey(this.pubkey);
-    const canUseExtensionSign =
-      extension &&
-      typeof extension.signEvent === "function" &&
-      actorKey === extensionActorKey;
+    const normalizedLogged = normalizeActorKey(this.pubkey);
+    const signer = resolveActiveSigner(actorKey);
+    const canUseActiveSignerSign =
+      normalizedLogged &&
+      normalizedLogged === actorKey &&
+      signer &&
+      typeof signer.signEvent === "function";
+    const useActiveSignerEncrypt =
+      canUseActiveSignerSign &&
+      signer &&
+      typeof signer.nip04Encrypt === "function";
+    const activeSigner = canUseActiveSignerSign ? signer : null;
+    const encryptionSigner = useActiveSignerEncrypt ? signer : null;
 
-    const useExtensionEncrypt =
-      canUseExtensionSign &&
-      extension &&
-      extension.nip04 &&
-      typeof extension.nip04.encrypt === "function";
+    if (
+      (canUseActiveSignerSign || useActiveSignerEncrypt) &&
+      shouldRequestExtensionPermissions(signer)
+    ) {
+      await this.ensureExtensionPermissions(DEFAULT_NIP07_PERMISSION_METHODS);
+    }
 
     let privateKey = "";
-    if (!canUseExtensionSign) {
+    if (!canUseActiveSignerSign) {
       if (!this.sessionActor || this.sessionActor.pubkey !== actorKey) {
         const ensured = await this.ensureSessionActor();
         if (normalizeActorKey(ensured) !== actorKey) {
@@ -4311,10 +4434,6 @@ export class NostrClient {
       if (!privateKey) {
         return { ok: false, error: "missing-session-key", retryable: false };
       }
-    }
-
-    if (useExtensionEncrypt) {
-      await this.ensureExtensionPermissions(DEFAULT_NIP07_PERMISSION_METHODS);
     }
 
     const canonicalItems = canonicalizeWatchHistoryItems(
@@ -4387,8 +4506,8 @@ export class NostrClient {
     };
 
     const encryptChunk = async (plaintext) => {
-      if (useExtensionEncrypt) {
-        return extension.nip04.encrypt(actorPubkey, plaintext);
+      if (encryptionSigner) {
+        return encryptionSigner.nip04Encrypt(actorPubkey, plaintext);
       }
       const tools = await ensureNip04Tools();
       if (!tools?.nip04 || typeof tools.nip04.encrypt !== "function") {
@@ -4398,8 +4517,8 @@ export class NostrClient {
     };
 
     const signEvent = async (event) => {
-      if (canUseExtensionSign) {
-        return extension.signEvent(event);
+      if (activeSigner) {
+        return activeSigner.signEvent(event);
       }
       return signEventWithPrivateKey(event, privateKey);
     };
@@ -4843,12 +4962,23 @@ export class NostrClient {
 
     const actorKeyIsHex = /^[0-9a-f]{64}$/.test(actorKey);
 
+    const normalizedLogged = normalizeActorKey(this.pubkey);
+    const signer = resolveActiveSigner(actorKey);
+    const canUseActiveSignerDecrypt =
+      normalizedLogged &&
+      normalizedLogged === actorKey &&
+      signer &&
+      typeof signer.nip04Decrypt === "function";
+    const decryptSigner = canUseActiveSignerDecrypt ? signer : null;
+
+    if (decryptSigner && shouldRequestExtensionPermissions(decryptSigner)) {
+      await this.ensureExtensionPermissions(DEFAULT_NIP07_PERMISSION_METHODS);
+    }
+
     devLogger.info("[nostr] Fetching watch history from relays.", {
       actor: resolvedActor,
       forceRefresh: options.forceRefresh === true,
       });
-
-    const extension = window?.nostr;
 
     const existingEntry = this.watchHistoryCache.get(actorKey);
     const now = Date.now();
@@ -5122,26 +5252,24 @@ export class NostrClient {
         expectedPlaintextFormat:
         "JSON string with { version, items, snapshot, chunkIndex, totalChunks }",
         });
-      const extensionDecrypt =
-        extension &&
-        typeof extension?.nip04?.decrypt === "function" &&
-        normalizeActorKey(this.pubkey) === actorKey;
-      if (extensionDecrypt) {
-        await this.ensureExtensionPermissions(DEFAULT_NIP07_PERMISSION_METHODS);
+      if (decryptSigner) {
         devLogger.info(
-          "[nostr] Using logged in user's extension key to decrypt watch history chunk.",
+          "[nostr] Using active signer to decrypt watch history chunk.",
           {
-          actorKey,
-          chunkIdentifier: context.chunkIdentifier ?? null,
-          eventId: context.eventId ?? null,
+            actorKey,
+            chunkIdentifier: context.chunkIdentifier ?? null,
+            eventId: context.eventId ?? null,
           },
         );
-        const plaintext = await extension.nip04.decrypt(actorKey, ciphertext);
-        devLogger.info("[nostr] Successfully decrypted watch history chunk via extension key.", {
-          actorKey,
-          chunkIdentifier: context.chunkIdentifier ?? null,
-          eventId: context.eventId ?? null,
-          });
+        const plaintext = await decryptSigner.nip04Decrypt(actorKey, ciphertext);
+        devLogger.info(
+          "[nostr] Successfully decrypted watch history chunk via active signer.",
+          {
+            actorKey,
+            chunkIdentifier: context.chunkIdentifier ?? null,
+            eventId: context.eventId ?? null,
+          },
+        );
         return plaintext;
       }
       if (!this.sessionActor || this.sessionActor.pubkey !== actorKey) {
@@ -5841,28 +5969,33 @@ export class NostrClient {
 
     let signedEvent = null;
 
-    if (
+    const signer = resolveActiveSigner(actorPubkey);
+    const canUseActiveSigner =
       normalizedActor &&
       normalizedActor === normalizedLogged &&
-      window?.nostr &&
-      typeof window.nostr.signEvent === "function"
-    ) {
-      const permissionResult = await this.ensureExtensionPermissions(
-        DEFAULT_NIP07_PERMISSION_METHODS,
-      );
+      signer &&
+      typeof signer.signEvent === "function";
+
+    if (canUseActiveSigner) {
+      let permissionResult = { ok: true };
+      if (shouldRequestExtensionPermissions(signer)) {
+        permissionResult = await this.ensureExtensionPermissions(
+          DEFAULT_NIP07_PERMISSION_METHODS,
+        );
+      }
       if (permissionResult.ok) {
         try {
-          signedEvent = await window.nostr.signEvent(event);
+          signedEvent = await signer.signEvent(event);
         } catch (error) {
           userLogger.warn(
-            "[nostr] Failed to sign view event with extension:",
+            "[nostr] Failed to sign view event with active signer:",
             error,
           );
           return { ok: false, error: "signing-failed", details: error };
         }
       } else {
         userLogger.warn(
-          "[nostr] Extension permissions missing; signing view event with session key.",
+          "[nostr] Active signer permissions missing; signing view event with session key.",
           permissionResult.error,
         );
       }
@@ -6163,6 +6296,17 @@ export class NostrClient {
       this.pubkey = pubkey;
       devLogger.log("Logged in with extension. Pubkey:", this.pubkey);
 
+      setActiveSigner({
+        type: "extension",
+        pubkey,
+        signEvent:
+          typeof extension.signEvent === "function"
+            ? extension.signEvent.bind(extension)
+            : null,
+        nip04: extension.nip04,
+        nip44: extension.nip44,
+      });
+
       const postLoginPermissions = await this.ensureExtensionPermissions(
         DEFAULT_NIP07_PERMISSION_METHODS,
       );
@@ -6181,6 +6325,7 @@ export class NostrClient {
 
   logout() {
     this.pubkey = null;
+    clearActiveSigner();
     for (const timer of this.watchHistoryRepublishTimers.values()) {
       if (timer && typeof timer.timer === "number") {
         clearTimeout(timer.timer);
@@ -6222,33 +6367,41 @@ export class NostrClient {
       return { ok: false, error: "nostr-uninitialized" };
     }
 
-    const extension = window?.nostr;
-    if (!extension) {
-      return { ok: false, error: "nostr-extension-missing" };
+    const activeSignerCandidate =
+      typeof actorPubkeyOverride === "string" && actorPubkeyOverride.trim()
+        ? resolveActiveSigner(actorPubkeyOverride)
+        : resolveActiveSigner(this.pubkey);
+    const baseActiveSigner = activeSignerCandidate || getActiveSigner();
+    const signer =
+      typeof actorPubkeyOverride === "string" && actorPubkeyOverride.trim()
+        ? activeSignerCandidate
+        : baseActiveSigner
+        ? resolveActiveSigner(baseActiveSigner.pubkey || this.pubkey)
+        : null;
+
+    if (!signer || typeof signer.signEvent !== "function") {
+      return { ok: false, error: "sign-event-unavailable" };
     }
 
-    const permissionResult = await this.ensureExtensionPermissions(
-      DEFAULT_NIP07_PERMISSION_METHODS,
-    );
-    if (!permissionResult.ok) {
-      userLogger.warn(
-        "[nostr] Cannot send direct message without extension permissions.",
-        permissionResult.error,
-      );
-      return {
-        ok: false,
-        error: "extension-permission-denied",
-        details: permissionResult.error,
-      };
-    }
-
-    const nip04 = extension.nip04;
-    if (!nip04 || typeof nip04.encrypt !== "function") {
+    if (typeof signer.nip04Encrypt !== "function") {
       return { ok: false, error: "nip04-unavailable" };
     }
 
-    if (typeof extension.signEvent !== "function") {
-      return { ok: false, error: "sign-event-unavailable" };
+    if (shouldRequestExtensionPermissions(signer)) {
+      const permissionResult = await this.ensureExtensionPermissions(
+        DEFAULT_NIP07_PERMISSION_METHODS,
+      );
+      if (!permissionResult.ok) {
+        userLogger.warn(
+          "[nostr] Cannot send direct message without extension permissions.",
+          permissionResult.error,
+        );
+        return {
+          ok: false,
+          error: "extension-permission-denied",
+          details: permissionResult.error,
+        };
+      }
     }
 
     let actorHex =
@@ -6260,15 +6413,8 @@ export class NostrClient {
       actorHex = this.pubkey.trim();
     }
 
-    if (!actorHex && typeof extension.getPublicKey === "function") {
-      try {
-        actorHex = await extension.getPublicKey();
-      } catch (error) {
-        devLogger.warn(
-          "[nostr] Failed to fetch actor pubkey from extension:",
-          error
-        );
-      }
+    if (!actorHex && typeof signer?.pubkey === "string") {
+      actorHex = signer.pubkey;
     }
 
     if (!actorHex) {
@@ -6282,7 +6428,7 @@ export class NostrClient {
 
     let ciphertext = "";
     try {
-      ciphertext = await nip04.encrypt(targetHex, trimmedMessage);
+      ciphertext = await signer.nip04Encrypt(targetHex, trimmedMessage);
     } catch (error) {
       return { ok: false, error: "encryption-failed", details: error };
     }
@@ -6297,7 +6443,7 @@ export class NostrClient {
 
     let signedEvent;
     try {
-      signedEvent = await extension.signEvent(event);
+      signedEvent = await signer.signEvent(event);
     } catch (error) {
       return { ok: false, error: "signature-failed", details: error };
     }
@@ -6334,12 +6480,6 @@ export class NostrClient {
       relaysOverride = null,
     } = {}
   ) {
-    const extension = window?.nostr;
-    const extensionSigner =
-      extension && typeof extension.signEvent === "function"
-        ? extension.signEvent.bind(extension)
-        : null;
-
     const normalizedEventPubkey =
       event && typeof event.pubkey === "string"
         ? event.pubkey.toLowerCase()
@@ -6351,30 +6491,35 @@ export class NostrClient {
       normalizedLogged &&
       normalizedEventPubkey !== normalizedLogged;
 
+    const signer = resolveActiveSigner(normalizedEventPubkey || this.pubkey);
+    const canUseActiveSigner =
+      !usingSessionActor &&
+      signer &&
+      typeof signer.signEvent === "function";
+
     let eventToSign = event;
     let signedEvent = null;
     let signerPubkey = null;
 
-    if (
-      extensionSigner &&
-      normalizedEventPubkey &&
-      normalizedEventPubkey === normalizedLogged
-    ) {
-      const permissionResult = await this.ensureExtensionPermissions(
-        DEFAULT_NIP07_PERMISSION_METHODS,
-      );
+    if (canUseActiveSigner) {
+      let permissionResult = { ok: true };
+      if (shouldRequestExtensionPermissions(signer)) {
+        permissionResult = await this.ensureExtensionPermissions(
+          DEFAULT_NIP07_PERMISSION_METHODS,
+        );
+      }
       if (permissionResult.ok) {
         try {
-          signedEvent = await extensionSigner(event);
+          signedEvent = await signer.signEvent(event);
         } catch (error) {
           userLogger.warn(
-            "[nostr] Failed to sign event with extension:",
+            "[nostr] Failed to sign event with active signer:",
             error,
           );
         }
       } else {
         userLogger.warn(
-          "[nostr] Extension permissions missing; falling back to session signer.",
+          "[nostr] Active signer permissions missing; falling back to session signer.",
           permissionResult.error,
         );
       }
@@ -6918,31 +7063,35 @@ export class NostrClient {
     devLogger.log("Creating edited event with root ID:", oldRootId);
           devLogger.log("Event content:", event.content);
 
-    const extensionSigner = window?.nostr?.signEvent;
-    if (typeof extensionSigner !== "function") {
-      const error = new Error("A NIP-07 extension with signEvent support is required to edit videos.");
+    const signer = resolveActiveSigner(userPubkeyLower);
+    if (!signer || typeof signer.signEvent !== "function") {
+      const error = new Error(
+        "An active signer with signEvent support is required to edit videos.",
+      );
       error.code = "nostr-extension-missing";
       throw error;
     }
 
-    const permissionResult = await this.ensureExtensionPermissions(
-      DEFAULT_NIP07_PERMISSION_METHODS,
-    );
-    if (!permissionResult.ok) {
-      userLogger.warn(
-        "[nostr] Extension permissions denied while editing a video.",
-        permissionResult.error,
+    if (shouldRequestExtensionPermissions(signer)) {
+      const permissionResult = await this.ensureExtensionPermissions(
+        DEFAULT_NIP07_PERMISSION_METHODS,
       );
-      const error = new Error(
-        "The NIP-07 extension must grant decrypt and sign permissions before editing a video.",
-      );
-      error.code = "extension-permission-denied";
-      error.cause = permissionResult.error;
-      throw error;
+      if (!permissionResult.ok) {
+        userLogger.warn(
+          "[nostr] Signer permissions denied while editing a video.",
+          permissionResult.error,
+        );
+        const error = new Error(
+          "The active signer must grant decrypt and sign permissions before editing a video.",
+        );
+        error.code = "extension-permission-denied";
+        error.cause = permissionResult.error;
+        throw error;
+      }
     }
 
     try {
-      const signedEvent = await extensionSigner(event);
+      const signedEvent = await signer.signEvent(event);
       devLogger.log("Signed edited event:", signedEvent);
 
       const publishResults = await publishEventToRelays(
@@ -7083,36 +7232,34 @@ export class NostrClient {
       content: JSON.stringify(contentObject),
     };
 
-    const extension = window?.nostr;
-    const extensionSigner =
-      extension && typeof extension.signEvent === "function"
-        ? extension.signEvent.bind(extension)
-        : null;
-    if (typeof extensionSigner !== "function") {
+    const signer = resolveActiveSigner(pubkey);
+    if (!signer || typeof signer.signEvent !== "function") {
       const error = new Error(
-        "A NIP-07 extension with signEvent support is required to revert videos.",
+        "An active signer with signEvent support is required to revert videos.",
       );
       error.code = "nostr-extension-missing";
       throw error;
     }
 
-    const permissionResult = await this.ensureExtensionPermissions(
-      DEFAULT_NIP07_PERMISSION_METHODS,
-    );
-    if (!permissionResult.ok) {
-      userLogger.warn(
-        "[nostr] Extension permissions denied while reverting a video.",
-        permissionResult.error,
+    if (shouldRequestExtensionPermissions(signer)) {
+      const permissionResult = await this.ensureExtensionPermissions(
+        DEFAULT_NIP07_PERMISSION_METHODS,
       );
-      const error = new Error(
-        "The NIP-07 extension must grant decrypt and sign permissions before reverting a video.",
-      );
-      error.code = "extension-permission-denied";
-      error.cause = permissionResult.error;
-      throw error;
+      if (!permissionResult.ok) {
+        userLogger.warn(
+          "[nostr] Signer permissions denied while reverting a video.",
+          permissionResult.error,
+        );
+        const error = new Error(
+          "The active signer must grant decrypt and sign permissions before reverting a video.",
+        );
+        error.code = "extension-permission-denied";
+        error.cause = permissionResult.error;
+        throw error;
+      }
     }
 
-    const signedEvent = await extensionSigner(event);
+    const signedEvent = await signer.signEvent(event);
     const publishResults = await publishEventToRelays(
       this.pool,
       this.relays,
@@ -7381,34 +7528,31 @@ export class NostrClient {
 
     const deleteSummaries = [];
     if (identifierRecords.length) {
-      const extension = window?.nostr;
-      const extensionSigner =
-        extension && typeof extension.signEvent === "function"
-          ? extension.signEvent.bind(extension)
-          : null;
-
-      if (typeof extensionSigner !== "function") {
+      const signer = resolveActiveSigner(pubkey);
+      if (!signer || typeof signer.signEvent !== "function") {
         const error = new Error(
-          "A NIP-07 extension with signEvent support is required to delete videos.",
+          "An active signer with signEvent support is required to delete videos.",
         );
         error.code = "nostr-extension-missing";
         throw error;
       }
 
-      const permissionResult = await this.ensureExtensionPermissions(
-        DEFAULT_NIP07_PERMISSION_METHODS,
-      );
-      if (!permissionResult.ok) {
-        userLogger.warn(
-          "[nostr] Extension permissions denied while deleting videos.",
-          permissionResult.error,
+      if (shouldRequestExtensionPermissions(signer)) {
+        const permissionResult = await this.ensureExtensionPermissions(
+          DEFAULT_NIP07_PERMISSION_METHODS,
         );
-        const error = new Error(
-          "The NIP-07 extension must grant decrypt and sign permissions before deleting a video.",
-        );
-        error.code = "extension-permission-denied";
-        error.cause = permissionResult.error;
-        throw error;
+        if (!permissionResult.ok) {
+          userLogger.warn(
+            "[nostr] Signer permissions denied while deleting videos.",
+            permissionResult.error,
+          );
+          const error = new Error(
+            "The active signer must grant decrypt and sign permissions before deleting a video.",
+          );
+          error.code = "extension-permission-denied";
+          error.cause = permissionResult.error;
+          throw error;
+        }
       }
 
       const chunkSize = 100;
@@ -7426,7 +7570,7 @@ export class NostrClient {
             : "Delete published video events",
         };
 
-        const signedDelete = await extensionSigner(deleteEvent);
+        const signedDelete = await signer.signEvent(deleteEvent);
         const publishResults = await publishEventToRelays(
           this.pool,
           this.relays,
