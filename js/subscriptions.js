@@ -339,7 +339,14 @@ class SubscriptionsManager {
     }
 
     if (!this.loaded) {
-      await this.loadSubscriptions(userPubkey);
+      try {
+        await this.loadSubscriptions(userPubkey);
+      } catch (error) {
+        userLogger.error(
+          "[SubscriptionsManager] Failed to load subscriptions while rendering feed:",
+          error,
+        );
+      }
     }
 
     const channelHexes = this.getSubscribedAuthors();
@@ -422,6 +429,22 @@ class SubscriptionsManager {
         ? result.items.map((item) => item?.video).filter(Boolean)
         : [];
 
+      const metadata = result && typeof result.metadata === "object"
+        ? { ...result.metadata }
+        : {};
+
+      if (!metadata.feed) {
+        metadata.feed = "subscriptions";
+      }
+      if (limit) {
+        metadata.limit = limit;
+      }
+      if (reason) {
+        metadata.reason = reason;
+      }
+
+      const enrichedResult = { ...result, metadata };
+
       if (app?.videosMap instanceof Map) {
         videos.forEach((video) => {
           if (video && typeof video.id === "string" && video.id) {
@@ -430,10 +453,15 @@ class SubscriptionsManager {
         });
       }
 
-      this.lastResult = result;
-      this.renderSameGridStyle(result, containerId, { limit, reason });
+      this.lastResult = enrichedResult;
+      this.renderSameGridStyle(enrichedResult, containerId, {
+        limit,
+        reason,
+        emptyMessage:
+          "No playable subscription videos found yet. We'll keep watching for new posts.",
+      });
       this.hasRenderedOnce = true;
-      return result;
+      return enrichedResult;
     } catch (error) {
       userLogger.error(
         "[SubscriptionsManager] Failed to run subscriptions feed:",
@@ -587,6 +615,10 @@ class SubscriptionsManager {
         ? { ...result.metadata }
         : {};
 
+    if (!metadata.feed) {
+      metadata.feed = "subscriptions";
+    }
+
     const limitCandidate = Number(options?.limit);
     const limit =
       Number.isFinite(limitCandidate) && limitCandidate > 0
@@ -599,10 +631,15 @@ class SubscriptionsManager {
       .filter((video) => video && typeof video === "object");
 
     if (!videos.length) {
-      container.innerHTML = `
-        <p class="flex justify-center items-center h-full w-full text-center text-muted-strong">
-          No videos available yet.
-        </p>`;
+      const reasonDetail =
+        typeof metadata.reason === "string" && metadata.reason
+          ? metadata.reason
+          : "empty";
+      this.renderEmptyState(container, {
+        message: options?.emptyMessage,
+        reason: reasonDetail,
+        metadata,
+      });
       return;
     }
 
@@ -634,6 +671,39 @@ class SubscriptionsManager {
 
     listView.state.feedMetadata = enrichedMetadata;
     listView.render(videos, enrichedMetadata);
+  }
+
+  renderEmptyState(container, { message, reason, metadata } = {}) {
+    if (!container) {
+      return;
+    }
+
+    const copy =
+      typeof message === "string" && message.trim()
+        ? message.trim()
+        : "No playable subscription videos found yet. We'll keep watching for new posts.";
+
+    container.innerHTML = getSidebarLoadingMarkup(copy, { showSpinner: false });
+
+    if (this.subscriptionListView && this.subscriptionListView.state) {
+      const currentMetadata =
+        this.subscriptionListView.state.feedMetadata &&
+        typeof this.subscriptionListView.state.feedMetadata === "object"
+          ? { ...this.subscriptionListView.state.feedMetadata }
+          : {};
+
+      if (metadata && typeof metadata === "object") {
+        Object.assign(currentMetadata, metadata);
+      }
+
+      if (reason && typeof reason === "string") {
+        currentMetadata.reason = reason;
+      } else if (!currentMetadata.reason) {
+        currentMetadata.reason = "empty";
+      }
+
+      this.subscriptionListView.state.feedMetadata = currentMetadata;
+    }
   }
 
   getListView(container, app) {

@@ -203,6 +203,11 @@ test(
 
     assert.equal(runCalls.length, 1, "engine.run should execute after warm-up");
     assert.equal(renderCalls.length, 1, "initial render should occur once");
+    assert.equal(
+      renderCalls[0].options.emptyMessage.includes("No playable subscription videos"),
+      true,
+      "empty state should provide a descriptive message",
+    );
 
     nostrService.emit("videos:updated", {
       reason: "subscription",
@@ -225,6 +230,11 @@ test(
       renderCalls[1].result.items[0].video.id,
       "video-1",
       "updated render should receive fresh videos",
+    );
+    assert.equal(
+      renderCalls[1].options.emptyMessage.includes("No playable subscription videos"),
+      true,
+      "subsequent renders should retain the empty state message for metadata",
     );
 
     if (typeof manager.unsubscribeFromNostrUpdates === "function") {
@@ -256,4 +266,52 @@ test(
     }
   },
 );
+
+test("renderSameGridStyle shows empty state message", async () => {
+  const SubscriptionsManager = subscriptions.constructor;
+
+  const originalWindow = globalThis.window;
+  const originalDocument = globalThis.document;
+
+  const dom = new JSDOM(
+    "<!doctype html><div id=\"subscriptionsVideoList\"></div>",
+    { url: "https://example.test/" },
+  );
+
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+
+  const manager = new SubscriptionsManager();
+
+  manager.renderSameGridStyle(
+    { items: [] },
+    "subscriptionsVideoList",
+    { emptyMessage: "Custom empty state copy." },
+  );
+
+  const container = dom.window.document.getElementById("subscriptionsVideoList");
+  assert.match(
+    container.textContent,
+    /Custom empty state copy\./,
+    "empty state should render the provided copy",
+  );
+  assert.ok(
+    !container.textContent.includes("Fetching subscriptions"),
+    "loading spinner should be removed when rendering the empty state",
+  );
+
+  dom.window.close();
+
+  if (typeof originalWindow === "undefined") {
+    delete globalThis.window;
+  } else {
+    globalThis.window = originalWindow;
+  }
+
+  if (typeof originalDocument === "undefined") {
+    delete globalThis.document;
+  } else {
+    globalThis.document = originalDocument;
+  }
+});
 
