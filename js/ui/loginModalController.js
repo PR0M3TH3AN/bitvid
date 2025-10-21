@@ -40,10 +40,22 @@ function normalizeProvider(provider, fallbackId, index) {
       ? provider.label.trim()
       : rawId;
 
+  const eyebrow =
+    typeof provider.eyebrow === "string" && provider.eyebrow.trim()
+      ? provider.eyebrow.trim()
+      : "";
+
   const description =
     typeof provider.description === "string" && provider.description.trim()
       ? provider.description.trim()
       : "";
+
+  const rawTone =
+    typeof provider.tone === "string" && provider.tone.trim()
+      ? provider.tone.trim().toLowerCase()
+      : "";
+
+  const tone = rawTone ? rawTone : "";
 
   const button = provider.button && typeof provider.button === "object"
     ? provider.button
@@ -66,11 +78,13 @@ function normalizeProvider(provider, fallbackId, index) {
     id: rawId,
     source: provider,
     label,
+    eyebrow,
     description,
     button,
     messages,
     capabilities,
     order,
+    tone,
     disabled: provider.disabled === true || provider.available === false,
     errorMessage:
       typeof provider.errorMessage === "string" && provider.errorMessage.trim()
@@ -949,11 +963,23 @@ export default class LoginModalController {
       provider.button?.variant,
       provider.button?.className,
     );
+    if (provider.tone) {
+      button.dataset.tone = provider.tone;
+    } else {
+      delete button.dataset.tone;
+      button.removeAttribute("data-tone");
+    }
     button.disabled = provider.disabled;
     if (provider.disabled) {
       button.setAttribute("aria-disabled", "true");
     } else {
       button.removeAttribute("aria-disabled");
+    }
+
+    const eyebrowNode = button.querySelector("[data-provider-eyebrow]");
+    if (eyebrowNode instanceof HTMLElement) {
+      eyebrowNode.textContent = provider.eyebrow || "";
+      eyebrowNode.classList.toggle("hidden", !provider.eyebrow);
     }
 
     const labelNode = button.querySelector("[data-provider-label]");

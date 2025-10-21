@@ -589,76 +589,133 @@
   }
 
   .login-option {
-    @apply focus-ring relative flex w-full flex-col gap-3 rounded-2xl border border-border bg-overlay-panel-soft px-5 py-4 text-left text-text shadow-sm transition duration-base ease-in-out;
+    @apply focus-ring relative flex h-full w-full flex-col gap-4 overflow-hidden border border-border bg-overlay-panel-soft px-6 py-5 text-left text-text shadow-lg transition duration-300 ease-out;
+    border-radius: calc(var(--radius-xl) * 1.12);
+    isolation: isolate;
+    backdrop-filter: blur(var(--blur-modal-backdrop));
+    background-image: linear-gradient(
+      140deg,
+      color-mix(in srgb, var(--surface-overlay-panel-soft) 88%, transparent) 0%,
+      color-mix(in srgb, var(--surface-overlay-panel) 72%, transparent) 100%
+    );
+    transform: translate3d(0, 0, 0);
+    transition-property: border-color, box-shadow, transform;
   }
 
-  .login-option:hover {
-    @apply border-border-strong bg-overlay-panel shadow-md;
+  .login-option::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    border-radius: inherit;
+    opacity: 0;
+    transform: translate3d(0, 14%, 0);
+    transition: opacity 220ms ease, transform 220ms ease;
+    background: radial-gradient(
+      115% 115% at 0% 0%,
+      color-mix(in srgb, var(--status-neutral) 32%, transparent) 0%,
+      transparent 65%
+    );
   }
 
+  .login-option:hover,
   .login-option:focus-visible {
-    @apply border-accent bg-overlay-panel shadow-md;
+    @apply border-border-strong;
+    box-shadow: var(--shadow-modal);
+    transform: translate3d(0, -3px, 0);
+  }
+
+  .login-option:hover::after,
+  .login-option:focus-visible::after {
+    opacity: 0.65;
+    transform: translate3d(0, 0, 0);
   }
 
   .login-option:disabled,
   .login-option[aria-disabled="true"] {
     @apply cursor-not-allowed opacity-60 shadow-none;
+    transform: none;
+  }
+
+  .login-option[data-tone="accent"]::after {
+    background: radial-gradient(
+      120% 120% at 0% 0%,
+      color-mix(in srgb, var(--status-info) 38%, transparent) 0%,
+      transparent 65%
+    );
+  }
+
+  .login-option[data-tone="warning"]::after {
+    background: radial-gradient(
+      120% 120% at 0% 0%,
+      color-mix(in srgb, var(--status-warning) 42%, transparent) 0%,
+      transparent 65%
+    );
   }
 
   .login-option--primary {
-    @apply shadow-sm;
+    @apply border-border;
   }
 
   .login-option--ghost {
-    @apply bg-transparent shadow-none;
-  }
-
-  .login-option--ghost:hover,
-  .login-option--ghost:focus-visible {
-    @apply bg-overlay-panel-soft shadow-sm;
+    background-image: linear-gradient(
+      145deg,
+      color-mix(in srgb, var(--surface-overlay-panel-soft) 82%, transparent) 0%,
+      color-mix(in srgb, var(--surface-overlay-panel-soft) 68%, transparent) 100%
+    );
   }
 
   .login-option--outline {
-    @apply bg-transparent border-border-strong;
-  }
-
-  .login-option--outline:hover,
-  .login-option--outline:focus-visible {
-    @apply bg-overlay-panel-soft shadow-sm;
+    @apply border-border-strong;
   }
 
   .login-option--link {
     @apply border border-transparent bg-transparent text-accent shadow-none;
   }
 
-  .login-option--link:hover,
-  .login-option--link:focus-visible {
-    @apply text-accent-strong underline;
+  .login-option__header,
+  .login-option__copy,
+  .login-option__status,
+  .login-option__capabilities {
+    position: relative;
+    z-index: 1;
   }
 
   .login-option__header {
-    @apply flex w-full items-start justify-between gap-3;
+    @apply flex w-full items-start justify-between gap-4;
   }
 
   .login-option__copy {
-    @apply flex min-w-0 flex-col items-start gap-1;
+    @apply flex min-w-0 flex-col items-start gap-2;
+  }
+
+  .login-option__eyebrow {
+    @apply text-[0.7rem] font-semibold uppercase text-text-muted;
+    letter-spacing: 0.18em;
+  }
+
+  .login-option:hover .login-option__eyebrow,
+  .login-option:focus-visible .login-option__eyebrow {
+    @apply text-text;
   }
 
   .login-option__label {
-    @apply text-base font-semibold text-text;
+    @apply text-lg font-semibold text-text;
   }
 
   .login-option__description {
-    @apply text-sm text-text-muted;
+    @apply text-sm leading-relaxed text-text-muted;
   }
 
   .login-option__chevron {
-    @apply inline-flex h-8 w-8 items-center justify-center rounded-full bg-panel text-text-muted transition duration-base ease-in-out;
+    @apply inline-flex h-9 w-9 items-center justify-center rounded-full bg-overlay-panel text-text-muted transition duration-200 ease-out;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border-overlay) 60%, transparent);
   }
 
   .login-option:hover .login-option__chevron,
   .login-option:focus-visible .login-option__chevron {
     @apply bg-accent text-white;
+    box-shadow: none;
   }
 
   .login-option__status {
@@ -667,6 +724,7 @@
 
   .login-option__capabilities {
     @apply flex flex-wrap gap-2;
+    position: relative;
   }
 
   .btn-ghost[data-state="active"],

@@ -45,7 +45,9 @@
         </p>
       </div>
 
-      <section class="space-y-4 rounded-2xl border border-border bg-overlay-panel-soft p-4 sm:p-5">
+      <section
+        class="space-y-5 rounded-3xl border border-border bg-overlay-panel-soft/90 p-4 shadow-lg backdrop-blur-sm sm:p-5"
+      >
         <div class="space-y-1">
           <h3 class="text-base font-semibold text-text">Available methods</h3>
           <p class="text-sm text-text-muted">
@@ -54,7 +56,10 @@
         </div>
 
         <!-- Login provider buttons are rendered dynamically -->
-        <div data-login-providers class="grid gap-3 sm:grid-cols-2"></div>
+        <div
+          data-login-providers
+          class="grid auto-rows-fr gap-4 sm:grid-cols-2 xl:grid-cols-3"
+        ></div>
       </section>
 
       <div class="space-y-3">
@@ -83,6 +88,10 @@
         >
           <span class="login-option__header">
             <span class="login-option__copy">
+              <span
+                data-provider-eyebrow
+                class="login-option__eyebrow hidden"
+              ></span>
               <span data-provider-label class="login-option__label"></span>
               <span
                 data-provider-description

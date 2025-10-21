@@ -1,6 +1,7 @@
 const PROVIDER_ID = "nip46";
-const PROVIDER_LABEL = "Remote signer";
-const PROVIDER_DESCRIPTION = "Connect to a NIP-46 compatible signer via Nostr Connect.";
+const PROVIDER_LABEL = "remote signer (nip-46)";
+const PROVIDER_DESCRIPTION =
+  "Connect to a remote signer via Nostr Connect for hardware or mobile approvals.";
 const PROVIDER_CAPABILITIES = Object.freeze([
   Object.freeze({
     id: "signing",
@@ -63,6 +64,8 @@ export default {
   id: PROVIDER_ID,
   label: PROVIDER_LABEL,
   description: PROVIDER_DESCRIPTION,
+  eyebrow: "Nostr Connect",
+  tone: "accent",
   badgeVariant: "info",
   capabilities: PROVIDER_CAPABILITIES,
   button: PROVIDER_BUTTON,

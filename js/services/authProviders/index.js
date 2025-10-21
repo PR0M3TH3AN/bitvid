@@ -59,8 +59,8 @@ if (!Object.prototype.hasOwnProperty.call(providerMap, "nip07")) {
 const builtInMetadata = [
   {
     id: "nsec",
-    label: "Direct key",
-    description: "Use a saved nsec key stored locally.",
+    label: "nsec or seed (direct private key)",
+    description: "Use a saved private key stored locally.",
     badgeVariant: "warning",
   },
 ];

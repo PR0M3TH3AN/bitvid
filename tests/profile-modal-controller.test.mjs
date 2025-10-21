@@ -582,14 +582,17 @@ for (const _ of [0]) {
     assert.equal(extensionButton.dataset.providerId, 'nip07');
     const extensionLabel = extensionButton.querySelector('[data-provider-variant]');
     assert.ok(extensionLabel, 'extension entry should include a provider badge');
-    assert.equal(extensionLabel.textContent, 'Login with Extension');
+    assert.equal(extensionLabel.textContent, 'extension (nip-07)');
     assert.equal(extensionLabel.dataset.providerVariant, 'info');
     assert.equal(extensionButton.getAttribute('aria-pressed'), 'false');
 
     assert.equal(directKeyButton.dataset.providerId, 'nsec');
     const directKeyLabel = directKeyButton.querySelector('[data-provider-variant]');
     assert.ok(directKeyLabel, 'direct key entry should include a provider badge');
-    assert.equal(directKeyLabel.textContent, 'Direct key');
+    assert.equal(
+      directKeyLabel.textContent,
+      'nsec or seed (direct private key)',
+    );
     assert.equal(directKeyLabel.dataset.providerVariant, 'warning');
     assert.equal(directKeyButton.getAttribute('aria-pressed'), 'false');
   });
