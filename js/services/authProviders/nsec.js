@@ -1,6 +1,7 @@
 const PROVIDER_ID = "nsec";
-const PROVIDER_LABEL = "Direct key";
-const PROVIDER_DESCRIPTION = "Import an nsec or mnemonic seed.";
+const PROVIDER_LABEL = "nsec or seed (direct private key)";
+const PROVIDER_DESCRIPTION =
+  "Paste an nsec, hex key, or BIP-39 seed. Keep it encrypted on this device if you choose.";
 const PROVIDER_CAPABILITIES = Object.freeze([
   Object.freeze({
     id: "signing",
@@ -64,6 +65,8 @@ export default {
   id: PROVIDER_ID,
   label: PROVIDER_LABEL,
   description: PROVIDER_DESCRIPTION,
+  eyebrow: "Advanced",
+  tone: "warning",
   badgeVariant: "warning",
   capabilities: PROVIDER_CAPABILITIES,
   button: PROVIDER_BUTTON,
