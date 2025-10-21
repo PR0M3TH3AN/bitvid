@@ -98,15 +98,51 @@ test.describe("moderation fixtures", () => {
     ).toHaveCount(0);
   });
 
-  test("trusted mute fixture annotates mute reason", async ({ page }) => {
+  test("trusted report hide fixture supports show anyway override", async ({ page }) => {
     await page.goto(FIXTURE_URL, { waitUntil: "networkidle" });
 
-    const muteCard = page.locator('[data-test-id="trusted-mute"]');
+    const hideCard = page.locator('[data-test-id="trusted-report-hide"]');
+    const badge = hideCard.locator('[data-moderation-badge="true"]');
+    const showAnywayButton = hideCard.getByRole("button", { name: "Show anyway" });
+
+    await expect(hideCard).toHaveAttribute("data-moderation-hidden", "true");
+    await expect(hideCard).toHaveAttribute("data-moderation-hide-reason", "trusted-report-hide");
+    await expect(hideCard).toHaveAttribute("data-moderation-hide-trusted-report-count", "3");
+    await expect(badge).toContainText("Hidden · 3 trusted spam reports");
+    await expect(showAnywayButton).toBeVisible();
+
+    await showAnywayButton.click();
+
+    await expect(hideCard).not.toHaveAttribute("data-moderation-hidden", "true");
+    await expect(hideCard).toHaveAttribute("data-moderation-override", "show-anyway");
+    await expect(hideCard.locator('[data-moderation-badge="true"]')).toContainText(
+      "Showing despite 3 trusted spam reports",
+    );
+  });
+
+  test("trusted mute hide fixture annotates mute reason and can be overridden", async ({
+    page,
+  }) => {
+    await page.goto(FIXTURE_URL, { waitUntil: "networkidle" });
+
+    const muteCard = page.locator('[data-test-id="trusted-mute-hide"]');
+    const badge = muteCard.locator('[data-moderation-badge="true"]');
+    const showAnywayButton = muteCard.getByRole("button", { name: "Show anyway" });
+
+    await expect(muteCard).toHaveAttribute("data-moderation-hidden", "true");
+    await expect(muteCard).toHaveAttribute("data-moderation-hide-reason", "trusted-mute-hide");
+    await expect(muteCard).toHaveAttribute("data-moderation-hide-trusted-mute-count", "1");
     await expect(muteCard).toHaveAttribute("data-moderation-trusted-mute", "true");
     await expect(muteCard).toHaveAttribute("data-moderation-trusted-mute-count", "1");
-    await expect(muteCard).not.toHaveAttribute("data-moderation-override", "show-anyway");
+    await expect(badge).toContainText("Hidden · 1 trusted mute");
+    await expect(showAnywayButton).toBeVisible();
 
-    const badge = muteCard.locator('[data-moderation-badge="true"]');
-    await expect(badge).toContainText("Muted by a trusted contact");
+    await showAnywayButton.click();
+
+    await expect(muteCard).not.toHaveAttribute("data-moderation-hidden", "true");
+    await expect(muteCard).toHaveAttribute("data-moderation-override", "show-anyway");
+    await expect(muteCard.locator('[data-moderation-badge="true"]')).toContainText(
+      "Showing despite 1 trusted mute",
+    );
   });
 });

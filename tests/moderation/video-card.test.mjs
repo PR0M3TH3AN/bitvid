@@ -175,3 +175,86 @@ test("VideoCard renders moderation badges and respects viewer override", async (
   assert.ok(!card.hiddenSummaryEl || card.hiddenSummaryEl.parentElement !== card.getRoot());
   assert.ok(card.moderationBadgeEl.textContent.includes("Showing despite"));
 });
+
+test(
+  "VideoCard hides content when hide metadata is present and override unmasks it",
+  async (t) => {
+    const { document } = setupDom(t);
+    withMockedNostrTools(t);
+
+    const app = await createModerationAppHarness();
+    const videoId = "b".repeat(64);
+
+    const video = {
+      id: videoId,
+      title: "Hidden Clip",
+      pubkey: "c".repeat(64),
+      moderation: {
+        blockAutoplay: true,
+        blurThumbnail: true,
+        reportType: "spam",
+        trustedCount: 3,
+        trustedReporters: [
+          { pubkey: "d".repeat(64), latest: 1_700_000_001 },
+          { pubkey: "e".repeat(64), latest: 1_700_000_002 },
+          { pubkey: "f".repeat(64), latest: 1_700_000_003 },
+        ],
+      },
+    };
+
+    t.after(() => {
+      clearModerationOverride(video.id, { persist: false });
+    });
+
+    app.videosMap.set(video.id, video);
+    app.currentVideo = video;
+    app.decorateVideoModeration(video);
+
+    const card = new VideoCard({
+      document,
+      video,
+      formatters: {
+        formatTimeAgo: () => "moments ago",
+      },
+      helpers: {
+        isMagnetSupported: () => true,
+      },
+    });
+
+    document.body.appendChild(card.getRoot());
+
+    const contextBeforeOverride = card.getModerationContext();
+    assert.equal(contextBeforeOverride.activeHidden, true);
+    assert.equal(contextBeforeOverride.effectiveHideReason, "trusted-report-hide");
+    assert.equal(contextBeforeOverride.allowOverride, true);
+
+    assert.equal(card.getRoot().dataset.moderationHidden, "true");
+    assert.equal(card.getRoot().dataset.moderationHideReason, "trusted-report-hide");
+    assert.equal(card.getRoot().dataset.moderationHideTrustedReportCount, "3");
+    assert.ok(card.hiddenSummaryEl);
+    assert.equal(card.anchorEl.hasAttribute("hidden"), true);
+    assert.equal(card.contentEl.hasAttribute("hidden"), true);
+    assert.ok(card.moderationActionButton);
+    assert.ok(card.moderationBadgeEl.textContent.includes("Hidden"));
+
+    card.onModerationOverride = ({ video: overrideVideo, card: overrideCard }) =>
+      app.handleModerationOverride({ video: overrideVideo, card: overrideCard });
+
+    card.moderationActionButton.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const contextAfterOverride = card.getModerationContext();
+    assert.equal(contextAfterOverride.overrideActive, true);
+    assert.equal(contextAfterOverride.activeHidden, false);
+    assert.equal(contextAfterOverride.effectiveHideReason, "trusted-report-hide");
+
+    assert.equal(card.getRoot().dataset.moderationHidden, undefined);
+    assert.equal(card.getRoot().dataset.moderationOverride, "show-anyway");
+    assert.equal(card.getRoot().dataset.moderationHideReason, undefined);
+    assert.equal(card.getRoot().dataset.moderationHideTrustedReportCount, undefined);
+    assert.equal(card.anchorEl.hasAttribute("hidden"), false);
+    assert.equal(card.contentEl.hasAttribute("hidden"), false);
+    assert.ok(!card.hiddenSummaryEl || card.hiddenSummaryEl.parentElement !== card.getRoot());
+    assert.ok(card.moderationBadgeEl.textContent.includes("Showing despite"));
+  },
+);
