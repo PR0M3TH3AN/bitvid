@@ -3,6 +3,7 @@ import {
   nostrClient,
   convertEventToVideo as sharedConvertEventToVideo,
   requestDefaultExtensionPermissions,
+  DEFAULT_RELAY_URLS,
 } from "./nostr.js";
 import {
   buildSubscriptionListEvent,
@@ -413,9 +414,24 @@ class SubscriptionsManager {
       throw signErr;
     }
 
+    const sanitizeRelayList = (candidate) =>
+      Array.isArray(candidate)
+        ? candidate
+            .map((url) => (typeof url === "string" ? url.trim() : ""))
+            .filter(Boolean)
+        : [];
+
+    const writeRelays = sanitizeRelayList(nostrClient.writeRelays);
+    const fallbackRelays = writeRelays.length
+      ? writeRelays
+      : sanitizeRelayList(nostrClient.relays);
+    const targetRelays = fallbackRelays.length
+      ? fallbackRelays
+      : Array.from(DEFAULT_RELAY_URLS);
+
     const publishResults = await publishEventToRelays(
       nostrClient.pool,
-      nostrClient.relays,
+      targetRelays,
       signedEvent
     );
 

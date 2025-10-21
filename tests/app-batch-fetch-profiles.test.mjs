@@ -49,11 +49,15 @@ test("batchFetchProfiles handles fast and failing relays", async () => {
   const originalRelays = Array.isArray(nostrClient.relays)
     ? [...nostrClient.relays]
     : [];
+  const originalWriteRelays = Array.isArray(nostrClient.writeRelays)
+    ? [...nostrClient.writeRelays]
+    : nostrClient.writeRelays;
   const originalPool = nostrClient.pool;
 
   const poolListCalls = [];
 
   nostrClient.relays = [FAST_RELAY, FAIL_RELAY];
+  nostrClient.writeRelays = [FAST_RELAY, FAIL_RELAY];
   nostrClient.pool = {
     list: (relays, filters) => {
       poolListCalls.push({ relays, filters });
@@ -88,6 +92,7 @@ test("batchFetchProfiles handles fast and failing relays", async () => {
     });
   } finally {
     nostrClient.relays = originalRelays;
+    nostrClient.writeRelays = originalWriteRelays;
     nostrClient.pool = originalPool;
   }
 
