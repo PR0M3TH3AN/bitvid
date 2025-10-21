@@ -5958,6 +5958,19 @@ export class NostrClient {
         }
       }
     }
+    const nip46Provider = getAuthProvider("nip46");
+    if (nip46Provider && typeof nip46Provider.clearStorage === "function") {
+      try {
+        nip46Provider.clearStorage({ reason: "logout" });
+      } catch (error) {
+        if (isDevMode) {
+          console.warn(
+            "[nostr] Failed to clear nip46 provider storage during logout:",
+            error,
+          );
+        }
+      }
+    }
     for (const timer of this.watchHistoryRepublishTimers.values()) {
       if (timer && typeof timer.timer === "number") {
         clearTimeout(timer.timer);

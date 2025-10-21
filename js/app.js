@@ -33,7 +33,10 @@ import watchHistoryService from "./watchHistoryService.js";
 import r2Service from "./services/r2Service.js";
 import PlaybackService from "./services/playbackService.js";
 import AuthService from "./services/authService.js";
-import { listAuthProviders } from "./services/authProviders/index.js";
+import {
+  listAuthProviders,
+  initializeAuthProviders,
+} from "./services/authProviders/index.js";
 import NwcSettingsService from "./services/nwcSettingsService.js";
 import nostrService from "./services/nostrService.js";
 import DiscussionCountService from "./services/discussionCountService.js";
@@ -349,6 +352,12 @@ class Application {
         this.handleProfileUpdated(detail)
       )
     );
+
+    initializeAuthProviders({
+      nostrClient,
+      authService: this.authService,
+      logger: (message, ...args) => this.log(message, ...args),
+    });
 
     this.loginModalController = null;
 
