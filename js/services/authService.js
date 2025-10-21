@@ -521,6 +521,8 @@ export default class AuthService {
       providerResult,
     );
 
+    const entryProviderId = this.normalizeProviderId(providerId) || entryAuthType;
+
     mutateSavedProfiles((profiles) => {
       const draft = Array.isArray(profiles) ? profiles.slice() : [];
       const existingIndex = draft.findIndex((entry) => {
@@ -537,6 +539,7 @@ export default class AuthService {
         name: cachedProfile.name || draft[existingIndex]?.name || "",
         picture: cachedProfile.picture || draft[existingIndex]?.picture || "",
         authType: entryAuthType,
+        providerId: entryProviderId,
       };
 
       if (existingIndex >= 0) {
@@ -545,7 +548,8 @@ export default class AuthService {
           currentEntry.npub !== nextEntry.npub ||
           currentEntry.name !== nextEntry.name ||
           currentEntry.picture !== nextEntry.picture ||
-          currentEntry.authType !== nextEntry.authType;
+          currentEntry.authType !== nextEntry.authType ||
+          currentEntry.providerId !== nextEntry.providerId;
         if (changed) {
           draft[existingIndex] = nextEntry;
           savedProfilesMutated = true;
@@ -791,11 +795,15 @@ export default class AuthService {
     return { removed: changed };
   }
 
-  async switchProfile(pubkey) {
+  async switchProfile(pubkey, options = {}) {
     const normalizedTarget = this.normalizeHexPubkey(pubkey);
     if (!normalizedTarget) {
       throw new Error("Unable to switch profiles: invalid account.");
     }
+
+    const normalizedOptions =
+      options && typeof options === "object" ? { ...options } : {};
+    const providerId = this.normalizeProviderId(normalizedOptions.providerId);
 
     const normalizedActive = this.normalizeHexPubkey(getActiveProfilePubkey());
     if (normalizedActive && normalizedActive === normalizedTarget) {
@@ -806,6 +814,7 @@ export default class AuthService {
       allowAccountSelection: true,
       expectPubkey: normalizedTarget,
       persistActive: true,
+      ...(providerId ? { providerId } : {}),
     };
     const autoApply = requestOptions.autoApply !== false;
 
@@ -827,7 +836,10 @@ export default class AuthService {
     if (!detail && !autoApply) {
       const fallbackTarget =
         this.normalizeHexPubkey(requestedPubkey) || requestedPubkey || normalizedTarget;
-      detail = await this.login(fallbackTarget, { persistActive: true });
+      detail = await this.login(fallbackTarget, {
+        persistActive: true,
+        providerId,
+      });
     }
 
     mutateSavedProfiles((profiles) => {

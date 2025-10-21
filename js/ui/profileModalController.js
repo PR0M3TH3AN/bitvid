@@ -11,6 +11,7 @@ import {
   getTrustedSpamHideThreshold,
   RUNTIME_FLAGS,
 } from "../constants.js";
+import { getProviderMetadata } from "../services/authProviders/index.js";
 import { devLogger, userLogger } from "../utils/logger.js";
 
 const noop = () => {};
@@ -21,6 +22,30 @@ const DEFAULT_ADMIN_DM_IMAGE_URL =
 const DEFAULT_BITVID_WEBSITE_URL = "https://bitvid.network/";
 const NWC_URI_SCHEME = "nostr+walletconnect://";
 const DEFAULT_MAX_WALLET_DEFAULT_ZAP = 100000000;
+const DEFAULT_SAVED_PROFILE_LABEL = "Saved profile";
+
+const PROVIDER_BADGE_BASE_CLASS =
+  "text-3xs font-semibold uppercase tracking-extra-wide";
+const PROVIDER_BADGE_VARIANT_CLASS_MAP = Object.freeze({
+  info: "text-status-info",
+  success: "text-status-success",
+  warning: "text-status-warning",
+  danger: "text-status-danger",
+  neutral: "text-muted",
+  accent: "text-accent",
+  primary: "text-accent",
+});
+
+function resolveProviderBadgeClass(variant) {
+  if (typeof variant === "string" && variant.trim()) {
+    const normalized = variant.trim().toLowerCase();
+    if (Object.prototype.hasOwnProperty.call(PROVIDER_BADGE_VARIANT_CLASS_MAP, normalized)) {
+      return PROVIDER_BADGE_VARIANT_CLASS_MAP[normalized];
+    }
+  }
+
+  return PROVIDER_BADGE_VARIANT_CLASS_MAP.neutral;
+}
 
 const DEFAULT_INTERNAL_NWC_SETTINGS = Object.freeze({
   nwcUri: "",
@@ -1419,8 +1444,8 @@ export class ProfileModalController {
         ? (value) => this.formatShortNpub(value)
         : (value) => (typeof value === "string" ? value : "");
     const activeNameFallback = activeMeta?.npub
-      ? formatNpub(activeMeta.npub) || "Saved profile"
-      : "Saved profile";
+      ? formatNpub(activeMeta.npub) || DEFAULT_SAVED_PROFILE_LABEL
+      : DEFAULT_SAVED_PROFILE_LABEL;
     const activeDisplayName = hasActiveProfile
       ? activeMeta?.name?.trim() || activeNameFallback
       : "No active profile";
@@ -1545,7 +1570,9 @@ export class ProfileModalController {
           avatarImg.src = meta.picture || FALLBACK_PROFILE_AVATAR;
           const cardDisplayName =
             meta.name?.trim() ||
-            (meta.npub ? formatNpub(meta.npub) || "Saved profile" : "Saved profile");
+            (meta.npub
+              ? formatNpub(meta.npub) || DEFAULT_SAVED_PROFILE_LABEL
+              : DEFAULT_SAVED_PROFILE_LABEL);
           avatarImg.alt = `${cardDisplayName} avatar`;
           avatarSpan.appendChild(avatarImg);
 
@@ -1555,11 +1582,24 @@ export class ProfileModalController {
           const topLine = document.createElement("div");
           topLine.className = "flex flex-wrap items-center gap-3";
 
+          const providerId = this.getEntryProviderId(entry);
+          const providerInfo = this.resolveEntryProviderMetadata(entry);
+          const providerLabel =
+            (providerInfo && providerInfo.label) || DEFAULT_SAVED_PROFILE_LABEL;
+          const badgeVariant = resolveProviderBadgeClass(
+            providerInfo && providerInfo.badgeVariant,
+          );
+
           const label = document.createElement("span");
-          label.className =
-            "text-3xs font-semibold uppercase tracking-extra-wide text-status-info";
-          label.textContent =
-            normalizedAuthType === "nsec" ? "Direct key" : "Saved profile";
+          label.className = `${PROVIDER_BADGE_BASE_CLASS} ${badgeVariant}`;
+          label.textContent = providerLabel;
+          label.dataset.providerVariant =
+            (providerInfo && providerInfo.badgeVariant) || "neutral";
+          if (providerId) {
+            label.dataset.providerId = providerId;
+          } else if (providerInfo && providerInfo.id) {
+            label.dataset.providerId = providerInfo.id;
+          }
 
           const action = document.createElement("span");
           action.className = "text-xs font-medium text-muted";
@@ -1589,6 +1629,15 @@ export class ProfileModalController {
             : `Switch to ${cardDisplayName}`;
           button.setAttribute("aria-label", ariaLabel);
 
+          const datasetProviderId =
+            providerId || (providerInfo && providerInfo.id) || "";
+
+          if (datasetProviderId) {
+            button.dataset.providerId = datasetProviderId;
+          } else {
+            delete button.dataset.providerId;
+          }
+
           const activateProfile = async (event) => {
             if (event) {
               event.preventDefault();
@@ -1602,13 +1651,22 @@ export class ProfileModalController {
             button.dataset.loading = "true";
             button.setAttribute("aria-busy", "true");
 
-          try {
-            await this.switchProfile(entry.pubkey, { entry });
-          } catch (error) {
-            userLogger.error("Failed to switch profile:", error);
-          } finally {
-            button.dataset.loading = "false";
-            button.setAttribute("aria-busy", "false");
+            const logProviderId =
+              providerId || (providerInfo && providerInfo.id) || normalizedAuthType || "unknown";
+
+            try {
+              await this.switchProfile(entry.pubkey, {
+                entry,
+                providerId: providerId || null,
+              });
+            } catch (error) {
+              userLogger.error(
+                `[ProfileModalController] Failed to switch profile for provider ${logProviderId}:`,
+                error,
+              );
+            } finally {
+              button.dataset.loading = "false";
+              button.setAttribute("aria-busy", "false");
             }
           };
 
@@ -4708,14 +4766,18 @@ export class ProfileModalController {
     );
   }
 
-  async requestSwitchProfile({ pubkey, entry } = {}) {
+  async requestSwitchProfile({ pubkey, entry, providerId } = {}) {
     const callback = this.callbacks.onRequestSwitchProfile;
     if (callback && callback !== noop) {
-      return callback({ controller: this, pubkey, entry });
+      return callback({ controller: this, pubkey, entry, providerId });
     }
 
     if (!pubkey) {
       throw new Error("Missing target pubkey for switch request.");
+    }
+
+    if (providerId) {
+      return this.services.switchProfile(pubkey, { providerId });
     }
 
     return this.services.switchProfile(pubkey);
@@ -5618,14 +5680,14 @@ export class ProfileModalController {
     }
   }
 
-  async switchProfile(pubkey, { entry } = {}) {
+  async switchProfile(pubkey, { entry, providerId } = {}) {
     if (!pubkey) {
       return { switched: false, reason: "missing-pubkey" };
     }
 
     let result;
     try {
-      result = await this.requestSwitchProfile({ pubkey, entry });
+      result = await this.requestSwitchProfile({ pubkey, entry, providerId });
     } catch (error) {
       const message =
         error && typeof error.message === "string" && error.message.trim()
@@ -5659,6 +5721,41 @@ export class ProfileModalController {
 
   setSavedProfiles(...args) {
     return this.state.setSavedProfiles(...args);
+  }
+
+  normalizeProviderId(providerId) {
+    if (typeof providerId !== "string") {
+      return null;
+    }
+
+    const trimmed = providerId.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    return trimmed;
+  }
+
+  getEntryProviderId(entry) {
+    if (!entry || typeof entry !== "object") {
+      return null;
+    }
+
+    const explicit = this.normalizeProviderId(entry.providerId);
+    if (explicit) {
+      return explicit;
+    }
+
+    return this.normalizeProviderId(entry.authType);
+  }
+
+  resolveEntryProviderMetadata(entry) {
+    const providerId = this.getEntryProviderId(entry);
+    if (providerId) {
+      return getProviderMetadata(providerId);
+    }
+
+    return getProviderMetadata();
   }
 
   persistSavedProfiles(...args) {

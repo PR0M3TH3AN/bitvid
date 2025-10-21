@@ -2085,6 +2085,20 @@ class Application {
         return "nip07";
       })();
 
+      const resolvedProviderId = (() => {
+        const candidates = [detailProviderId, providerId, resolvedAuthType];
+        for (const candidate of candidates) {
+          if (typeof candidate !== "string") {
+            continue;
+          }
+          const trimmed = candidate.trim();
+          if (trimmed) {
+            return trimmed;
+          }
+        }
+        return resolvedAuthType;
+      })();
+
       const normalizedPubkey = this.normalizeHexPubkey(pubkey);
       if (!normalizedPubkey) {
         throw new Error(
@@ -2119,6 +2133,7 @@ class Application {
         name,
         picture,
         authType: resolvedAuthType,
+        providerId: resolvedProviderId,
       });
 
       persistSavedProfiles({ persistActive: false });
@@ -2955,12 +2970,12 @@ class Application {
     }
   }
 
-  async handleProfileSwitchRequest({ pubkey } = {}) {
+  async handleProfileSwitchRequest({ pubkey, providerId } = {}) {
     if (!pubkey) {
       throw new Error("Missing pubkey for profile switch request.");
     }
 
-    const result = await this.authService.switchProfile(pubkey);
+    const result = await this.authService.switchProfile(pubkey, { providerId });
 
     if (result?.switched) {
       try {

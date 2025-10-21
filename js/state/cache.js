@@ -364,6 +364,10 @@ export function persistSavedProfiles({ persistActive = true } = {}) {
         typeof entry.authType === "string" && entry.authType.trim()
           ? entry.authType.trim()
           : null,
+      providerId:
+        typeof entry.providerId === "string" && entry.providerId.trim()
+          ? entry.providerId.trim()
+          : null,
     })),
     activePubkey: activePubkeyToPersist,
   };
@@ -430,6 +434,24 @@ export function loadSavedProfilesFromStorage() {
             needsRewrite = true;
           }
         }
+        const rawProviderId =
+          typeof candidate.providerId === "string" ? candidate.providerId : null;
+        let storedProviderId = null;
+        if (rawProviderId) {
+          const trimmedProviderId = rawProviderId.trim();
+          if (trimmedProviderId) {
+            storedProviderId = trimmedProviderId;
+            if (trimmedProviderId !== rawProviderId) {
+              needsRewrite = true;
+            }
+          }
+        }
+        if (!storedProviderId && storedAuthType) {
+          storedProviderId = storedAuthType;
+          if (rawProviderId !== storedProviderId) {
+            needsRewrite = true;
+          }
+        }
         const npub =
           typeof candidate.npub === "string" && candidate.npub.trim()
             ? candidate.npub.trim()
@@ -441,6 +463,7 @@ export function loadSavedProfilesFromStorage() {
           name: typeof candidate.name === "string" ? candidate.name : "",
           picture: typeof candidate.picture === "string" ? candidate.picture : "",
           authType: storedAuthType,
+          providerId: storedProviderId,
         };
 
         if (
