@@ -267,7 +267,10 @@ export function persistSavedProfiles({ persistActive = true } = {}) {
         typeof entry.npub === "string" && entry.npub.trim() ? entry.npub.trim() : null,
       name: typeof entry.name === "string" ? entry.name : "",
       picture: typeof entry.picture === "string" ? entry.picture : "",
-      authType: entry.authType === "nsec" ? "nsec" : "nip07",
+      authType:
+        typeof entry.authType === "string" && entry.authType.trim()
+          ? entry.authType.trim()
+          : "nip07",
     })),
     activePubkey: activePubkeyToPersist,
   };
@@ -306,7 +309,10 @@ export function loadSavedProfilesFromStorage() {
         }
 
         seenPubkeys.add(normalizedPubkey);
-        const storedAuthType = candidate.authType === "nsec" ? "nsec" : "nip07";
+        const storedAuthType =
+          typeof candidate.authType === "string" && candidate.authType.trim()
+            ? candidate.authType.trim()
+            : "nip07";
         const npub =
           typeof candidate.npub === "string" && candidate.npub.trim()
             ? candidate.npub.trim()

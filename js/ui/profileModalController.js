@@ -5,6 +5,7 @@ import {
   BITVID_WEBSITE_URL as CONFIG_BITVID_WEBSITE_URL,
   MAX_WALLET_DEFAULT_ZAP as CONFIG_MAX_WALLET_DEFAULT_ZAP,
 } from "../config.js";
+import { getAuthProvider } from "../services/authProviders/index.js";
 
 const noop = () => {};
 
@@ -14,6 +15,32 @@ const DEFAULT_ADMIN_DM_IMAGE_URL =
 const DEFAULT_BITVID_WEBSITE_URL = "https://bitvid.network/";
 const NWC_URI_SCHEME = "nostr+walletconnect://";
 const DEFAULT_MAX_WALLET_DEFAULT_ZAP = 100000000;
+
+function resolveAuthTypeLabel(authType) {
+  if (typeof authType !== "string") {
+    return "Saved profile";
+  }
+
+  const trimmed = authType.trim();
+  if (!trimmed) {
+    return "Saved profile";
+  }
+
+  const provider = getAuthProvider(trimmed);
+  if (provider && typeof provider.label === "string" && provider.label) {
+    return provider.label;
+  }
+
+  if (trimmed === "nsec") {
+    return "Direct key";
+  }
+
+  if (trimmed === "nip07") {
+    return "Saved profile";
+  }
+
+  return trimmed;
+}
 
 const DEFAULT_INTERNAL_NWC_SETTINGS = Object.freeze({
   nwcUri: "",
@@ -1306,8 +1333,7 @@ export class ProfileModalController {
 
           const label = document.createElement("span");
           label.className = "profile-card__label";
-          label.textContent =
-            entry.authType === "nsec" ? "Direct key" : "Saved profile";
+          label.textContent = resolveAuthTypeLabel(entry.authType);
 
           const action = document.createElement("span");
           action.className = "profile-card__action";
