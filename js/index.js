@@ -29,6 +29,9 @@ import {
   isLockdownMode,
 } from "./config.js";
 import AuthService from "./services/authService.js";
+import getAuthProvider, {
+  providers as authProviders,
+} from "./services/authProviders/index.js";
 import { accessControl } from "./accessControl.js";
 import { nostrClient } from "./nostr.js";
 import { userBlocks } from "./userBlocks.js";
@@ -106,6 +109,8 @@ function getLockdownAuthService() {
     relayManager,
     logger: devLogger,
     accessControl,
+    authProviders,
+    getAuthProvider,
   });
 
   try {
