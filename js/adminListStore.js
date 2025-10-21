@@ -28,6 +28,9 @@ const LEGACY_STORAGE_KEYS = {
   blacklistLegacy: "bitvid_blacklist",
 };
 
+const ADMIN_STATE_CACHE_VERSION = 1;
+const ADMIN_STATE_CACHE_KEY = `bitvid_admin_state_v${ADMIN_STATE_CACHE_VERSION}`;
+
 function createError(code, message, cause) {
   const error = new Error(message);
   error.code = code;
@@ -262,6 +265,54 @@ function loadLegacyAdminState() {
 
   const sanitized = sanitizeAdminState({ editors, whitelist, blacklist });
   return hasAnyEntries(sanitized) ? sanitized : null;
+}
+
+export function readCachedAdminState() {
+  if (typeof localStorage === "undefined") {
+    return null;
+  }
+
+  let raw = null;
+  try {
+    raw = localStorage.getItem(ADMIN_STATE_CACHE_KEY);
+  } catch (error) {
+    devLogger.warn(
+      "[adminListStore] Failed to read admin state cache:",
+      error,
+    );
+    return null;
+  }
+
+  if (raw === null) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    return sanitizeAdminState(parsed || {});
+  } catch (error) {
+    devLogger.warn(
+      "[adminListStore] Failed to parse admin state cache:",
+      error,
+    );
+    return null;
+  }
+}
+
+export function writeCachedAdminState(state) {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+
+  try {
+    const sanitized = sanitizeAdminState(state || {});
+    localStorage.setItem(ADMIN_STATE_CACHE_KEY, JSON.stringify(sanitized));
+  } catch (error) {
+    devLogger.warn(
+      "[adminListStore] Failed to write admin state cache:",
+      error,
+    );
+  }
 }
 
 function clearLegacyStorageFor(listKey) {
@@ -958,33 +1009,64 @@ export async function loadAdminState() {
     );
   }
 
-  const nostrState = await loadNostrState();
+  let mergedState = null;
+  let cachedState = null;
 
-  let mergedState = nostrState;
   try {
-    const communityEntries = await loadCommunityBlacklistEntries();
-    if (Array.isArray(communityEntries) && communityEntries.length) {
-      const baseEditors = Array.isArray(nostrState?.editors)
-        ? nostrState.editors
-        : [];
-      const baseWhitelist = Array.isArray(nostrState?.whitelist)
-        ? nostrState.whitelist
-        : [];
-      const baseBlacklist = Array.isArray(nostrState?.blacklist)
-        ? nostrState.blacklist
-        : [];
+    const nostrState = await loadNostrState();
 
-      mergedState = sanitizeAdminState({
-        editors: baseEditors,
-        whitelist: baseWhitelist,
-        blacklist: [...baseBlacklist, ...communityEntries],
-      });
+    mergedState = nostrState;
+    try {
+      const communityEntries = await loadCommunityBlacklistEntries();
+      if (Array.isArray(communityEntries) && communityEntries.length) {
+        const baseEditors = Array.isArray(nostrState?.editors)
+          ? nostrState.editors
+          : [];
+        const baseWhitelist = Array.isArray(nostrState?.whitelist)
+          ? nostrState.whitelist
+          : [];
+        const baseBlacklist = Array.isArray(nostrState?.blacklist)
+          ? nostrState.blacklist
+          : [];
+
+        mergedState = sanitizeAdminState({
+          editors: baseEditors,
+          whitelist: baseWhitelist,
+          blacklist: [...baseBlacklist, ...communityEntries],
+        });
+      }
+    } catch (error) {
+      devLogger.warn(
+        "[adminListStore] Failed to merge community blacklist entries:",
+        error,
+      );
     }
   } catch (error) {
     devLogger.warn(
-      "[adminListStore] Failed to merge community blacklist entries:",
+      "[adminListStore] Failed to load admin lists from relays:",
       error,
     );
+
+    cachedState = readCachedAdminState();
+    if (cachedState) {
+      return cachedState;
+    }
+
+    throw error;
+  }
+
+  if (!cachedState) {
+    cachedState = readCachedAdminState();
+  }
+
+  if (mergedState) {
+    if (hasAnyEntries(mergedState)) {
+      writeCachedAdminState(mergedState);
+    } else if (cachedState && hasAnyEntries(cachedState)) {
+      return cachedState;
+    } else {
+      writeCachedAdminState(mergedState);
+    }
   }
 
   if (!hasAnyEntries(mergedState)) {
@@ -997,7 +1079,7 @@ export async function loadAdminState() {
     }
   }
 
-  return mergedState;
+  return mergedState || sanitizeAdminState();
 }
 
 export async function persistAdminState(actorNpub, updates) {

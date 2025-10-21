@@ -47,6 +47,7 @@ process.on("exit", () => {
 const {
   loadAdminState,
   persistAdminState,
+  readCachedAdminState,
   __adminListStoreTestHooks,
 } = await import(
   "../js/adminListStore.js"
@@ -61,6 +62,7 @@ const {
 const { ADMIN_LIST_IDENTIFIERS } = await import(
   "../js/nostrEventSchemas.js"
 );
+const { AccessControl } = await import("../js/accessControl.js");
 
 const {
   extractNpubsFromEvent,
@@ -105,6 +107,10 @@ mockNip19.decode = undefined;
 mockNip19.npubEncode = undefined;
 
 globalThis.window.NostrTools.nip19 = mockNip19;
+
+if (typeof localStorage !== "undefined") {
+  localStorage.clear();
+}
 
 const fallbackHex = "abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd";
 
@@ -255,6 +261,10 @@ nostrClient.pool = {
     const dTag = dValues.length ? dValues[0] : "";
     const authorKey = authors.length ? authors[0] : "*";
 
+    if (listFailureMode === "throw-all") {
+      throw new Error("list failure for cache test");
+    }
+
     if (listFailureMode === "throw-authors" && authors.length) {
       throw new Error("list failure for authors");
     }
@@ -384,6 +394,52 @@ assert.ok(
   !adminState.blacklist.includes(editorNpub),
   "should exclude editor members from merged blacklist",
 );
+
+const cachedSnapshot = readCachedAdminState();
+assert.deepEqual(
+  cachedSnapshot,
+  adminState,
+  "should cache the merged admin state after successful load",
+);
+
+setListFailureMode("throw-all");
+
+const cachedFallback = await loadAdminState();
+assert.deepEqual(
+  cachedFallback,
+  adminState,
+  "should return cached admin state when relay queries fail",
+);
+
+const accessControlFromCache = new AccessControl();
+
+assert.ok(
+  accessControlFromCache.getEditors().includes(editorNpub),
+  "should hydrate access control editors from cached state",
+);
+assert.deepEqual(
+  accessControlFromCache.getWhitelist(),
+  adminState.whitelist,
+  "should hydrate access control whitelist from cached state",
+);
+assert.deepEqual(
+  accessControlFromCache.getBlacklist(),
+  adminState.blacklist,
+  "should hydrate access control blacklist from cached state",
+);
+
+await assert.doesNotReject(
+  () => accessControlFromCache.refresh(),
+  "should keep cached state available when refresh relies on cached data",
+);
+
+assert.deepEqual(
+  accessControlFromCache.getBlacklist(),
+  adminState.blacklist,
+  "should preserve cached blacklist entries after a failed refresh",
+);
+
+setListFailureMode(null);
 
 resetListRegistry();
 setListFailureMode("throw-authors");
