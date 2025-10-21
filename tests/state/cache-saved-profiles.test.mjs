@@ -42,6 +42,7 @@ test("persistSavedProfiles preserves custom authType strings", () => {
         name: "",
         picture: "",
         authType: "custom-wallet",
+        providerId: "custom-wallet",
       },
     ],
     { persist: false, persistActive: false },
@@ -55,6 +56,7 @@ test("persistSavedProfiles preserves custom authType strings", () => {
   const stored = JSON.parse(storedRaw);
   assert.equal(stored.entries.length, 1);
   assert.equal(stored.entries[0].authType, "custom-wallet");
+  assert.equal(stored.entries[0].providerId, "custom-wallet");
 });
 
 test("loadSavedProfilesFromStorage retains custom provider authType", () => {
@@ -71,6 +73,7 @@ test("loadSavedProfilesFromStorage retains custom provider authType", () => {
           name: "",
           picture: "",
           authType: "nostr-wallet-connect",
+          providerId: "nostr-wallet-connect",
         },
       ],
       activePubkey: null,
@@ -80,9 +83,11 @@ test("loadSavedProfilesFromStorage retains custom provider authType", () => {
   const { profiles } = loadSavedProfilesFromStorage();
   assert.equal(profiles.length, 1);
   assert.equal(profiles[0].authType, "nostr-wallet-connect");
+  assert.equal(profiles[0].providerId, "nostr-wallet-connect");
 
   const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
   assert.equal(stored.entries[0].authType, "nostr-wallet-connect");
+  assert.equal(stored.entries[0].providerId, "nostr-wallet-connect");
 });
 
 test("loadSavedProfilesFromStorage migrates missing authType to nip07", () => {
@@ -107,9 +112,11 @@ test("loadSavedProfilesFromStorage migrates missing authType to nip07", () => {
   const { profiles } = loadSavedProfilesFromStorage();
   assert.equal(profiles.length, 1);
   assert.equal(profiles[0].authType, "nip07");
+  assert.equal(profiles[0].providerId, "nip07");
 
   const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
   assert.equal(stored.entries[0].authType, "nip07");
+  assert.equal(stored.entries[0].providerId, "nip07");
 });
 
 test("loadSavedProfilesFromStorage trims stored authType values", () => {
@@ -126,6 +133,7 @@ test("loadSavedProfilesFromStorage trims stored authType values", () => {
           name: "",
           picture: "",
           authType: "  extension-provider  ",
+          providerId: "  extension-provider  ",
         },
       ],
       activePubkey: null,
@@ -135,7 +143,9 @@ test("loadSavedProfilesFromStorage trims stored authType values", () => {
   const { profiles } = loadSavedProfilesFromStorage();
   assert.equal(profiles.length, 1);
   assert.equal(profiles[0].authType, "extension-provider");
+  assert.equal(profiles[0].providerId, "extension-provider");
 
   const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
   assert.equal(stored.entries[0].authType, "extension-provider");
+  assert.equal(stored.entries[0].providerId, "extension-provider");
 });

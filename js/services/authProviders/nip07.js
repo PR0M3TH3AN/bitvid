@@ -47,6 +47,7 @@ export default {
   id: PROVIDER_ID,
   label: PROVIDER_LABEL,
   description: PROVIDER_DESCRIPTION,
+  badgeVariant: "info",
   capabilities: PROVIDER_CAPABILITIES,
   button: PROVIDER_BUTTON,
   messages: PROVIDER_MESSAGES,

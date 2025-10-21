@@ -440,12 +440,16 @@ for (const _ of [0]) {
         npub: 'npub1abcdefghijkmnopqrstuvwxyz1234567890example',
         name: '',
         picture: '',
+        providerId: 'nip07',
+        authType: 'nip07',
       },
       {
         pubkey: 'b'.repeat(64),
         npub: 'npub1zyxwvutsrqponmlkjihgfedcba1234567890sample',
         name: '',
         picture: '',
+        providerId: 'nsec',
+        authType: 'nsec',
       },
     ];
 
@@ -469,6 +473,62 @@ for (const _ of [0]) {
     assert.ok(switcherNpubEl, 'switcher should render the secondary profile');
     const expectedSwitcher = formatShortNpub(sampleProfiles[1].npub);
     assert.equal(switcherNpubEl.textContent, expectedSwitcher);
+  });
+
+  test('renderSavedProfiles applies provider metadata', async () => {
+    const sampleProfiles = [
+      {
+        pubkey: defaultActorHex,
+        npub: 'npub1abcdefghijkmnopqrstuvwxyz1234567890example',
+        name: 'Primary Account',
+        picture: '',
+        providerId: 'nip07',
+        authType: 'nip07',
+      },
+      {
+        pubkey: 'b'.repeat(64),
+        npub: 'npub1zyxwvutsrqponmlkjihgfedcba1234567890sample',
+        name: 'Backup',
+        picture: '',
+        providerId: 'nsec',
+        authType: 'nsec',
+      },
+    ];
+
+    const controller = createController({
+      services: {
+        formatShortNpub,
+      },
+    });
+
+    await controller.load();
+
+    controller.state.setSavedProfiles(sampleProfiles);
+    controller.state.setActivePubkey(null);
+
+    controller.renderSavedProfiles();
+
+    const buttons = Array.from(
+      controller.switcherList.querySelectorAll('button[data-provider-id]'),
+    );
+
+    assert.equal(buttons.length, 2, 'expected two provider entries in the switcher');
+
+    const [extensionButton, directKeyButton] = buttons;
+
+    assert.equal(extensionButton.dataset.providerId, 'nip07');
+    const extensionLabel = extensionButton.querySelector('[data-provider-variant]');
+    assert.ok(extensionLabel, 'extension entry should include a provider badge');
+    assert.equal(extensionLabel.textContent, 'Login with Extension');
+    assert.equal(extensionLabel.dataset.providerVariant, 'info');
+    assert.equal(extensionButton.getAttribute('aria-pressed'), 'false');
+
+    assert.equal(directKeyButton.dataset.providerId, 'nsec');
+    const directKeyLabel = directKeyButton.querySelector('[data-provider-variant]');
+    assert.ok(directKeyLabel, 'direct key entry should include a provider badge');
+    assert.equal(directKeyLabel.textContent, 'Direct key');
+    assert.equal(directKeyLabel.dataset.providerVariant, 'warning');
+    assert.equal(directKeyButton.getAttribute('aria-pressed'), 'false');
   });
 }
 
