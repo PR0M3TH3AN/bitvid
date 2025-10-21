@@ -89,6 +89,7 @@ import {
 import { VideoListView } from "./ui/views/VideoListView.js";
 import MoreMenuController from "./ui/moreMenuController.js";
 import ProfileModalController from "./ui/profileModalController.js";
+import LoginModalController from "./ui/loginModalController.js";
 import ZapController from "./ui/zapController.js";
 import { MediaLoader } from "./utils/mediaLoader.js";
 import { pointerArrayToKey } from "./utils/pointer.js";
@@ -408,13 +409,103 @@ class Application {
       })
     );
 
+    // Profile and login modal controller state
+    this.profileController = null;
+    this.loginModalController = null;
+    this.currentUserNpub = null;
+
+    try {
+      const loginModalElement = document.getElementById("loginModal");
+      if (loginModalElement) {
+        const closeLoginModal = () => {
+          if (closeStaticModal("loginModal")) {
+            setGlobalModalState("login", false);
+          }
+        };
+
+        this.loginModalController = new LoginModalController({
+          modalElement: loginModalElement,
+          providers: authProviders,
+          services: {
+            authService: this.authService,
+          },
+          callbacks: {
+            onProviderSelected: (providerId) => {
+              devLogger.log(
+                `[LoginModal] Provider selected: ${providerId}.`,
+              );
+            },
+            onLoginSuccess: async ({ result }) => {
+              if (!result || typeof result !== "object") {
+                return;
+              }
+
+              const { pubkey, detail } = result;
+              devLogger.log(
+                "[LoginModal] Login result returned pubkey:",
+                pubkey,
+              );
+
+              if (
+                pubkey &&
+                detail &&
+                typeof detail === "object" &&
+                detail.__handled !== true
+              ) {
+                try {
+                  await this.handleAuthLogin(detail);
+                } catch (error) {
+                  devLogger.error(
+                    "[LoginModal] handleAuthLogin fallback failed:",
+                    error,
+                  );
+                }
+              }
+            },
+            onLoginError: async ({ message, error, provider }) => {
+              const fallbackMessage =
+                typeof message === "string" && message.trim()
+                  ? message.trim()
+                  : this.describeLoginError(
+                      error,
+                      provider?.errorMessage ||
+                        "Failed to login. Please try again.",
+                    );
+
+              userLogger.warn(
+                provider && provider.id
+                  ? `[LoginModal] Login failed for provider ${provider.id}.`
+                  : "[LoginModal] Login failed for provider.",
+              );
+              this.showError(fallbackMessage);
+            },
+          },
+          helpers: {
+            closeModal: closeLoginModal,
+            describeLoginError: (error, fallbackMessage) =>
+              this.describeLoginError(
+                error,
+                typeof fallbackMessage === "string" && fallbackMessage.trim()
+                  ? fallbackMessage.trim()
+                  : "Failed to login. Please try again.",
+              ),
+          },
+        });
+      } else {
+        devLogger.warn(
+          "[Application] Login modal controller disabled: modal container not found.",
+        );
+      }
+    } catch (error) {
+      devLogger.error(
+        "[Application] Failed to initialize login modal controller:",
+        error,
+      );
+    }
+
     // Optional: a "profile" button or avatar (if used)
     this.profileButton = document.getElementById("profileButton") || null;
     this.profileAvatar = document.getElementById("profileAvatar") || null;
-
-    // Profile modal controller state
-    this.profileController = null;
-    this.currentUserNpub = null;
 
     // Upload modal component
     this.uploadButton = document.getElementById("uploadButton") || null;
@@ -2301,89 +2392,7 @@ class Application {
       });
     }
 
-    // 6) NIP-07 button inside the login modal => call the extension & login
-    const nip07Button = document.getElementById("loginNIP07");
-    if (nip07Button) {
-      const originalLabel = nip07Button.textContent;
-      let slowExtensionTimer = null;
-      const slowExtensionDelayMs = 8_000;
-
-      const clearSlowExtensionTimer = () => {
-        if (slowExtensionTimer) {
-          clearTimeout(slowExtensionTimer);
-          slowExtensionTimer = null;
-        }
-      };
-
-      const setLoadingState = (isLoading) => {
-        if (isLoading) {
-          nip07Button.disabled = true;
-          nip07Button.dataset.state = "loading";
-          nip07Button.setAttribute("aria-busy", "true");
-          nip07Button.textContent = "Connecting to NIP-07 extension...";
-
-          clearSlowExtensionTimer();
-          slowExtensionTimer = window.setTimeout(() => {
-            if (nip07Button.dataset.state === "loading") {
-              nip07Button.textContent = "Waiting for the extension prompt…";
-            }
-          }, slowExtensionDelayMs);
-        } else {
-          nip07Button.disabled = false;
-          delete nip07Button.dataset.state;
-          nip07Button.setAttribute("aria-busy", "false");
-          clearSlowExtensionTimer();
-          nip07Button.textContent = originalLabel;
-        }
-      };
-
-      nip07Button.addEventListener("click", async () => {
-        if (nip07Button.dataset.state === "loading") {
-          return;
-        }
-
-        setLoadingState(true);
-        devLogger.log(
-          "[app.js] loginNIP07 clicked! Attempting extension login..."
-        );
-        try {
-          const { pubkey, detail } = await this.authService.requestLogin();
-          devLogger.log("[NIP-07] login returned pubkey:", pubkey);
-
-          if (pubkey) {
-            if (
-              detail &&
-              typeof detail === "object" &&
-              detail.__handled !== true
-            ) {
-              try {
-                await this.handleAuthLogin(detail);
-              } catch (error) {
-                devLogger.error(
-                  "[NIP-07] handleAuthLogin fallback failed:",
-                  error,
-                );
-              }
-            }
-
-            if (closeStaticModal("loginModal")) {
-              setGlobalModalState("login", false);
-            }
-          }
-        } catch (err) {
-          devLogger.error("[NIP-07 login error]", err);
-          const message = this.describeLoginError(
-            err,
-            "Failed to login with NIP-07. Please try again.",
-          );
-          this.showError(message);
-        } finally {
-          setLoadingState(false);
-        }
-      });
-    }
-
-    // 7) Cleanup on page unload
+    // 6) Cleanup on page unload
     window.addEventListener("beforeunload", () => {
       this.flushWatchHistory("session-end", "beforeunload").catch((error) => {
         devLogger.warn("[beforeunload] Watch history flush failed:", error);
@@ -2406,13 +2415,13 @@ class Application {
       }
     });
 
-    // 8) Handle back/forward navigation => hide video modal
+    // 7) Handle back/forward navigation => hide video modal
     window.addEventListener("popstate", async () => {
       devLogger.log("[popstate] user navigated back/forward; cleaning modal...");
       await this.hideModal();
     });
 
-    // 9) Event delegation for the “Application Form” button inside the login modal
+    // 8) Event delegation for the “Application Form” button inside the login modal
     document.addEventListener("click", (event) => {
       if (event.target && event.target.id === "openApplicationModal") {
         // Hide the login modal
@@ -8297,6 +8306,20 @@ class Application {
         }
       }
       this.profileController = null;
+    }
+
+    if (this.loginModalController) {
+      if (typeof this.loginModalController.destroy === "function") {
+        try {
+          this.loginModalController.destroy();
+        } catch (error) {
+          devLogger.warn(
+            "[Application] Failed to destroy login modal controller:",
+            error,
+          );
+        }
+      }
+      this.loginModalController = null;
     }
 
     this.videoList = null;

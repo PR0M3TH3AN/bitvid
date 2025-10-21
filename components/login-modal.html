@@ -50,14 +50,28 @@
       <!-- Simple horizontal rule -->
       <div class="my-2 border-t border-border/60"></div>
 
-      <!-- Existing login buttons -->
-      <button
-        id="loginNIP07"
-        class="btn w-full"
-        type="button"
-      >
-        Login with Extension (NIP-07)
-      </button>
+      <!-- Login provider buttons are rendered dynamically -->
+      <div data-login-providers class="space-y-3"></div>
+      <template data-login-provider-template>
+        <button
+          class="btn w-full text-left"
+          type="button"
+          data-provider-button
+        >
+          <span class="flex flex-col items-start gap-2">
+            <span data-provider-label class="text-base font-semibold"></span>
+            <span data-provider-description class="text-sm text-text-muted"></span>
+            <span
+              data-provider-status
+              class="text-sm text-text-muted hidden"
+            ></span>
+            <span
+              data-provider-capabilities
+              class="flex flex-wrap gap-2"
+            ></span>
+          </span>
+        </button>
+      </template>
       <button
         id="loginNSEC"
         class="btn-ghost w-full"
