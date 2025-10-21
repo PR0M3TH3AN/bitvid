@@ -202,6 +202,10 @@ export default class LoginModalController {
         services.authService && typeof services.authService === "object"
           ? services.authService
           : null,
+      nostrClient:
+        services.nostrClient && typeof services.nostrClient === "object"
+          ? services.nostrClient
+          : null,
     };
 
     this.callbacks = {
@@ -233,11 +237,18 @@ export default class LoginModalController {
       this.modalElement?.querySelector(".modal-body") || null;
     this.nsecTemplate =
       this.modalElement?.querySelector("template[data-login-nsec-dialog]") || null;
+    this.nip46Template =
+      this.modalElement?.querySelector("template[data-login-nip46-dialog]") || null;
     this.template = null;
     this.providerEntries = new Map();
     this.slowTimers = new Map();
     this.boundClickHandler = (event) => this.handleContainerClick(event);
     this.activeNsecForm = null;
+    this.activeNip46Form = null;
+    this.remoteSignerUnsubscribe = null;
+    this.lastRemoteSignerStatus = null;
+
+    this.initializeRemoteSignerStatus();
     this.initialized = false;
 
     this.initialize();
@@ -260,11 +271,20 @@ export default class LoginModalController {
 
     this.renderProviders();
 
+    if (typeof this.lastRemoteSignerStatus !== "undefined") {
+      this.applyRemoteSignerStatus(this.lastRemoteSignerStatus);
+    }
+
     this.providerContainer.addEventListener("click", this.boundClickHandler);
     this.initialized = true;
   }
 
   getNostrClient() {
+    const direct = this.services?.nostrClient;
+    if (direct && typeof direct === "object") {
+      return direct;
+    }
+
     const service = this.services?.authService;
     if (!service || typeof service !== "object") {
       return null;
@@ -286,6 +306,143 @@ export default class LoginModalController {
     }
 
     return null;
+  }
+
+  getStoredNip46Metadata() {
+    const nostrClient = this.getNostrClient();
+    if (!nostrClient || typeof nostrClient.getStoredNip46Metadata !== "function") {
+      return null;
+    }
+
+    try {
+      return nostrClient.getStoredNip46Metadata();
+    } catch (error) {
+      devLogger.warn(
+        "[LoginModalController] Failed to inspect stored NIP-46 session:",
+        error,
+      );
+    }
+
+    return null;
+  }
+
+  initializeRemoteSignerStatus() {
+    const nostrClient = this.getNostrClient();
+    if (!nostrClient) {
+      this.applyRemoteSignerStatus(null);
+      return;
+    }
+
+    if (typeof nostrClient.getRemoteSignerStatus === "function") {
+      try {
+        const status = nostrClient.getRemoteSignerStatus();
+        this.applyRemoteSignerStatus(status);
+      } catch (error) {
+        devLogger.warn(
+          "[LoginModalController] Failed to read initial remote signer status:",
+          error,
+        );
+        this.applyRemoteSignerStatus(null);
+      }
+    } else {
+      this.applyRemoteSignerStatus(null);
+    }
+
+    if (typeof nostrClient.onRemoteSignerChange === "function") {
+      try {
+        this.remoteSignerUnsubscribe = nostrClient.onRemoteSignerChange((status) => {
+          this.applyRemoteSignerStatus(status);
+        });
+      } catch (error) {
+        devLogger.warn(
+          "[LoginModalController] Failed to subscribe to remote signer updates:",
+          error,
+        );
+      }
+    }
+  }
+
+  formatRemoteSignerLabel(status) {
+    if (!status || typeof status !== "object") {
+      return "remote signer";
+    }
+
+    const { label, remoteNpub, remotePubkey } = status;
+    if (typeof label === "string" && label.trim()) {
+      return label.trim();
+    }
+
+    if (typeof remoteNpub === "string" && remoteNpub.trim()) {
+      return remoteNpub.trim();
+    }
+
+    if (typeof remotePubkey === "string" && remotePubkey.trim()) {
+      const trimmed = remotePubkey.trim();
+      if (trimmed.length <= 16) {
+        return trimmed;
+      }
+      return `${trimmed.slice(0, 8)}…${trimmed.slice(-6)}`;
+    }
+
+    return "remote signer";
+  }
+
+  applyRemoteSignerStatus(status) {
+    this.lastRemoteSignerStatus = status || null;
+    const storedMetadata = this.getStoredNip46Metadata();
+    const hasStoredSession = storedMetadata?.hasSession === true;
+
+    const normalizedState =
+      typeof status?.state === "string" && status.state.trim()
+        ? status.state.trim()
+        : hasStoredSession
+        ? "stored"
+        : "idle";
+
+    let message = "";
+    let showDisconnect = false;
+
+    switch (normalizedState) {
+      case "connected": {
+        if (typeof status?.userNpub === "string" && status.userNpub.trim()) {
+          message = `Connected as ${status.userNpub.trim()}`;
+        } else {
+          const label = this.formatRemoteSignerLabel(status);
+          message = `Connected to ${label}`;
+        }
+        showDisconnect = true;
+        break;
+      }
+      case "connecting": {
+        message = "Connecting to remote signer…";
+        break;
+      }
+      case "error": {
+        message =
+          typeof status?.message === "string" && status.message.trim()
+            ? status.message.trim()
+            : "Remote signer unavailable.";
+        break;
+      }
+      case "stored": {
+        if (hasStoredSession) {
+          const label = this.formatRemoteSignerLabel(status || storedMetadata);
+          message = `Saved remote signer (${label}) ready to connect.`;
+        }
+        break;
+      }
+      default: {
+        message = "";
+        break;
+      }
+    }
+
+    this.setProviderStatus("nip46", {
+      message,
+      reset: !message,
+      showDisconnect,
+      statusState: normalizedState,
+    });
   }
 
   async promptForNsecOptions() {
@@ -552,6 +709,160 @@ export default class LoginModalController {
     });
   }
 
+  async promptForNip46Options() {
+    if (!this.modalBody || !this.nip46Template) {
+      userLogger.warn(
+        "[LoginModalController] Remote signer login is unavailable in this build.",
+      );
+      return null;
+    }
+
+    if (this.activeNip46Form) {
+      return null;
+    }
+
+    const fragment = this.nip46Template.content
+      ? this.nip46Template.content.cloneNode(true)
+      : null;
+    if (!fragment) {
+      return null;
+    }
+
+    const form = fragment.querySelector("[data-nip46-form]");
+    if (!(form instanceof HTMLFormElement)) {
+      return null;
+    }
+
+    const connectInput = form.querySelector("[data-nip46-connect-uri]");
+    const rememberCheckbox = form.querySelector("[data-nip46-remember]");
+    const reuseButton = form.querySelector("[data-nip46-reuse]");
+    const cancelButton = form.querySelector("[data-nip46-cancel]");
+    const errorNode = form.querySelector("[data-nip46-error]");
+
+    const storedMetadata = this.getStoredNip46Metadata();
+    const hasStoredSession = storedMetadata?.hasSession === true;
+
+    if (reuseButton instanceof HTMLButtonElement) {
+      reuseButton.classList.toggle("hidden", !hasStoredSession);
+    }
+
+    const elementsToHide = [];
+    for (const child of Array.from(this.modalBody.children)) {
+      if (child instanceof HTMLElement && child !== form) {
+        if (child.tagName === "TEMPLATE") {
+          continue;
+        }
+        const wasHidden = child.classList.contains("hidden");
+        if (!wasHidden) {
+          child.classList.add("hidden");
+        }
+        elementsToHide.push({ element: child, wasHidden });
+      }
+    }
+
+    this.modalBody.appendChild(form);
+    this.activeNip46Form = form;
+
+    const setError = (message) => {
+      if (!(errorNode instanceof HTMLElement)) {
+        return;
+      }
+      const normalized = typeof message === "string" ? message.trim() : "";
+      if (normalized) {
+        errorNode.textContent = normalized;
+        errorNode.classList.remove("hidden");
+      } else {
+        errorNode.textContent = "";
+        errorNode.classList.add("hidden");
+      }
+    };
+
+    setError("");
+    if (connectInput instanceof HTMLTextAreaElement) {
+      connectInput.focus();
+    }
+
+    let submitHandler = null;
+    let cancelHandler = null;
+    let reuseHandler = null;
+
+    const cleanup = () => {
+      if (submitHandler) {
+        form.removeEventListener("submit", submitHandler);
+      }
+      if (cancelHandler && cancelButton instanceof HTMLButtonElement) {
+        cancelButton.removeEventListener("click", cancelHandler);
+      }
+      if (reuseHandler && reuseButton instanceof HTMLButtonElement) {
+        reuseButton.removeEventListener("click", reuseHandler);
+      }
+
+      if (form.parentElement) {
+        form.parentElement.removeChild(form);
+      }
+      for (const entry of elementsToHide) {
+        if (!(entry?.element instanceof HTMLElement)) {
+          continue;
+        }
+        if (!entry.wasHidden) {
+          entry.element.classList.remove("hidden");
+        }
+      }
+      this.activeNip46Form = null;
+    };
+
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (detail) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        cleanup();
+        resolve(detail);
+      };
+
+      submitHandler = (event) => {
+        event.preventDefault();
+        setError("");
+
+        if (!(connectInput instanceof HTMLTextAreaElement)) {
+          setError("Enter the remote signer connection link to continue.");
+          return;
+        }
+
+        const raw = connectInput.value.trim();
+        if (!raw) {
+          setError("Paste the nostrconnect:// or bunker:// link from your signer.");
+          connectInput.focus();
+          return;
+        }
+
+        const remember =
+          rememberCheckbox instanceof HTMLInputElement ? rememberCheckbox.checked : true;
+        finish({ connectionString: raw, remember: remember !== false });
+      };
+
+      form.addEventListener("submit", submitHandler);
+
+      if (cancelButton instanceof HTMLButtonElement) {
+        cancelHandler = (event) => {
+          event.preventDefault();
+          finish(null);
+        };
+        cancelButton.addEventListener("click", cancelHandler);
+      }
+
+      if (reuseButton instanceof HTMLButtonElement) {
+        reuseHandler = (event) => {
+          event.preventDefault();
+          finish({ reuseStored: true });
+        };
+        reuseButton.addEventListener("click", reuseHandler);
+      }
+    });
+  }
+
   resolveTemplate() {
     if (!this.modalElement) {
       return null;
@@ -660,6 +971,17 @@ export default class LoginModalController {
       statusNode.classList.add("hidden");
     }
 
+    const statusRow = button.querySelector("[data-provider-status-row]");
+    if (statusRow instanceof HTMLElement) {
+      statusRow.classList.add("hidden");
+    }
+
+    const disconnectButton = button.querySelector("[data-provider-disconnect]");
+    if (disconnectButton instanceof HTMLButtonElement) {
+      disconnectButton.dataset.providerId = provider.id;
+      disconnectButton.classList.add("hidden");
+    }
+
     const capabilitiesNode = button.querySelector(
       "[data-provider-capabilities]",
     );
@@ -702,6 +1024,9 @@ export default class LoginModalController {
         button,
         descriptionNode: descriptionNode instanceof HTMLElement ? descriptionNode : null,
         statusNode: statusNode instanceof HTMLElement ? statusNode : null,
+        statusRow: statusRow instanceof HTMLElement ? statusRow : null,
+        disconnectButton:
+          disconnectButton instanceof HTMLButtonElement ? disconnectButton : null,
         defaultDescription: provider.description,
       },
     };
@@ -710,6 +1035,17 @@ export default class LoginModalController {
   handleContainerClick(event) {
     const target = event.target;
     if (!(target instanceof Element)) {
+      return;
+    }
+
+    const disconnectButton = target.closest("[data-provider-disconnect]");
+    if (disconnectButton instanceof HTMLButtonElement) {
+      const providerId = disconnectButton.dataset.providerId;
+      if (providerId) {
+        this.handleProviderDisconnect(providerId);
+      }
+      event.preventDefault();
+      event.stopPropagation();
       return;
     }
 
@@ -726,8 +1062,58 @@ export default class LoginModalController {
     this.handleProviderSelection(providerId);
   }
 
+  async handleProviderDisconnect(providerId) {
+    if (providerId !== "nip46") {
+      return;
+    }
+
+    const nostrClient = this.getNostrClient();
+    if (!nostrClient || typeof nostrClient.disconnectRemoteSigner !== "function") {
+      return;
+    }
+
+    try {
+      await nostrClient.disconnectRemoteSigner({ keepStored: false });
+    } catch (error) {
+      devLogger.warn("[LoginModalController] Failed to disconnect remote signer:", error);
+    }
+  }
+
   getProviderEntry(providerId) {
     return this.providerEntries.get(providerId) || null;
+  }
+
+  setProviderStatus(providerId, options = {}) {
+    const entry = this.getProviderEntry(providerId);
+    if (!entry) {
+      return;
+    }
+
+    const {
+      message = "",
+      reset = false,
+      showDisconnect = false,
+      disableDisconnect = false,
+      statusState = null,
+    } = options || {};
+
+    if (statusState) {
+      entry.statusState = statusState;
+    } else {
+      delete entry.statusState;
+    }
+
+    this.updateStatusMessage(entry, message, reset);
+
+    const shouldShowRow = !reset && typeof message === "string" && message.trim();
+    if (entry.statusRow instanceof HTMLElement) {
+      entry.statusRow.classList.toggle("hidden", !shouldShowRow);
+    }
+
+    if (entry.disconnectButton instanceof HTMLButtonElement) {
+      entry.disconnectButton.classList.toggle("hidden", !showDisconnect);
+      entry.disconnectButton.disabled = !!disableDisconnect;
+    }
   }
 
   setLoadingState(providerId, isLoading) {
@@ -741,10 +1127,14 @@ export default class LoginModalController {
       entry.button.dataset.state = "loading";
       entry.button.setAttribute("aria-busy", "true");
 
-      this.updateStatusMessage(
-        entry,
-        entry.provider.messages.loading || "Connecting…",
-      );
+      const loadingMessage = entry.provider.messages.loading || "Connecting…";
+      this.setProviderStatus(providerId, {
+        message: loadingMessage,
+        reset: false,
+        showDisconnect: false,
+        disableDisconnect: true,
+        statusState: "loading",
+      });
       this.startSlowTimer(providerId, entry);
     } else {
       const shouldRemainDisabled = entry.provider.disabled === true;
@@ -758,7 +1148,7 @@ export default class LoginModalController {
       delete entry.button.dataset.state;
       entry.button.removeAttribute("aria-busy");
       this.stopSlowTimer(providerId);
-      this.updateStatusMessage(entry, "", true);
+      this.setProviderStatus(providerId, { message: "", reset: true });
     }
   }
 
@@ -812,7 +1202,13 @@ export default class LoginModalController {
 
       const slowMessage =
         entry.provider.messages.slow || "Waiting for the provider…";
-      this.updateStatusMessage(entry, slowMessage);
+      this.setProviderStatus(providerId, {
+        message: slowMessage,
+        reset: false,
+        showDisconnect: false,
+        statusState: "waiting",
+        disableDisconnect: true,
+      });
     }, timeout);
 
     this.slowTimers.set(providerId, timerId);
@@ -873,6 +1269,26 @@ export default class LoginModalController {
       } catch (promptError) {
         devLogger.error(
           "[LoginModalController] Failed to collect direct key credentials:",
+          promptError,
+        );
+        return;
+      }
+    } else if (entry.provider.id === "nip46") {
+      try {
+        const nip46Options = await this.promptForNip46Options();
+        if (!nip46Options) {
+          devLogger.log(
+            "[LoginModalController] Remote signer login cancelled by the user.",
+          );
+          if (entry.button instanceof HTMLButtonElement) {
+            entry.button.focus();
+          }
+          return;
+        }
+        providerOptions = nip46Options;
+      } catch (promptError) {
+        devLogger.error(
+          "[LoginModalController] Failed to collect remote signer connection:",
           promptError,
         );
         return;
@@ -941,6 +1357,18 @@ export default class LoginModalController {
     for (const providerId of this.slowTimers.keys()) {
       this.stopSlowTimer(providerId);
     }
+
+    if (typeof this.remoteSignerUnsubscribe === "function") {
+      try {
+        this.remoteSignerUnsubscribe();
+      } catch (error) {
+        devLogger.warn(
+          "[LoginModalController] Remote signer unsubscribe handler threw:",
+          error,
+        );
+      }
+    }
+    this.remoteSignerUnsubscribe = null;
 
     this.providerEntries.clear();
     this.initialized = false;

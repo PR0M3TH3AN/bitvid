@@ -187,6 +187,169 @@ function clearStoredNip07Permissions() {
     // ignore cleanup issues
   }
 }
+const NIP46_RPC_KIND = 24_133;
+const NIP46_SESSION_STORAGE_KEY = "bitvid:nip46:session:v1";
+const NIP46_PUBLISH_TIMEOUT_MS = 8_000;
+const NIP46_RESPONSE_TIMEOUT_MS = 15_000;
+const NIP46_SIGN_EVENT_TIMEOUT_MS = 20_000;
+const NIP46_MAX_RETRIES = 1;
+
+function getNip46Storage() {
+  if (typeof localStorage !== "undefined" && localStorage) {
+    return localStorage;
+  }
+
+  if (typeof globalThis !== "undefined" && globalThis?.localStorage) {
+    return globalThis.localStorage;
+  }
+
+  return null;
+}
+
+function sanitizeStoredNip46Session(candidate) {
+  if (!candidate || typeof candidate !== "object") {
+    return null;
+  }
+
+  const version = Number(candidate.version) || 0;
+  if (version !== 1) {
+    return null;
+  }
+
+  const clientPrivateKey =
+    typeof candidate.clientPrivateKey === "string" && HEX64_REGEX.test(candidate.clientPrivateKey)
+      ? candidate.clientPrivateKey.toLowerCase()
+      : "";
+  const clientPublicKey =
+    typeof candidate.clientPublicKey === "string" && candidate.clientPublicKey.trim()
+      ? candidate.clientPublicKey.trim().toLowerCase()
+      : "";
+  const remotePubkey =
+    typeof candidate.remotePubkey === "string" && candidate.remotePubkey.trim()
+      ? candidate.remotePubkey.trim().toLowerCase()
+      : "";
+
+  if (!clientPrivateKey || !remotePubkey) {
+    return null;
+  }
+
+  const relays = Array.isArray(candidate.relays)
+    ? candidate.relays
+        .map((relay) => (typeof relay === "string" ? relay.trim() : ""))
+        .filter(Boolean)
+    : [];
+
+  const metadata =
+    candidate.metadata && typeof candidate.metadata === "object"
+      ? {
+          name:
+            typeof candidate.metadata.name === "string"
+              ? candidate.metadata.name.trim()
+              : "",
+          url:
+            typeof candidate.metadata.url === "string"
+              ? candidate.metadata.url.trim()
+              : "",
+          image:
+            typeof candidate.metadata.image === "string"
+              ? candidate.metadata.image.trim()
+              : "",
+        }
+      : {};
+
+  return {
+    version: 1,
+    clientPrivateKey,
+    clientPublicKey,
+    remotePubkey,
+    relays,
+    secret:
+      typeof candidate.secret === "string" && candidate.secret.trim()
+        ? candidate.secret.trim()
+        : "",
+    permissions:
+      typeof candidate.permissions === "string" && candidate.permissions.trim()
+        ? candidate.permissions.trim()
+        : "",
+    metadata,
+    userPubkey:
+      typeof candidate.userPubkey === "string" && candidate.userPubkey.trim()
+        ? candidate.userPubkey.trim().toLowerCase()
+        : "",
+    lastConnectedAt: Number.isFinite(candidate.lastConnectedAt)
+      ? candidate.lastConnectedAt
+      : Date.now(),
+  };
+}
+
+function readStoredNip46Session() {
+  const storage = getNip46Storage();
+  if (!storage) {
+    return null;
+  }
+
+  let raw = null;
+  try {
+    raw = storage.getItem(NIP46_SESSION_STORAGE_KEY);
+  } catch (error) {
+    return null;
+  }
+
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    return sanitizeStoredNip46Session(parsed);
+  } catch (error) {
+    try {
+      storage.removeItem(NIP46_SESSION_STORAGE_KEY);
+    } catch (cleanupError) {
+      devLogger.warn(
+        "[nostr] Failed to clear corrupt NIP-46 session entry:",
+        cleanupError,
+      );
+    }
+    return null;
+  }
+}
+
+function writeStoredNip46Session(payload) {
+  const storage = getNip46Storage();
+  if (!storage) {
+    return;
+  }
+
+  const normalized = sanitizeStoredNip46Session(payload);
+  if (!normalized) {
+    try {
+      storage.removeItem(NIP46_SESSION_STORAGE_KEY);
+    } catch (error) {
+      // ignore cleanup failures
+    }
+    return;
+  }
+
+  try {
+    storage.setItem(NIP46_SESSION_STORAGE_KEY, JSON.stringify(normalized));
+  } catch (error) {
+    // ignore persistence failures
+  }
+}
+
+function clearStoredNip46Session() {
+  const storage = getNip46Storage();
+  if (!storage) {
+    return;
+  }
+
+  try {
+    storage.removeItem(NIP46_SESSION_STORAGE_KEY);
+  } catch (error) {
+    // ignore cleanup issues
+  }
+}
 const SESSION_ACTOR_STORAGE_KEY = "bitvid:sessionActor:v1";
 const SESSION_ACTOR_ENCRYPTION_VERSION = 1;
 const SESSION_ACTOR_KDF_ITERATIONS = 250_000;
@@ -3113,6 +3276,606 @@ function cloneEventForCache(event) {
   return cloned;
 }
 
+function createNip46RequestId() {
+  try {
+    if (typeof crypto !== "undefined" && crypto?.getRandomValues) {
+      const bytes = new Uint8Array(16);
+      crypto.getRandomValues(bytes);
+      return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+    }
+  } catch (error) {
+    // fall through to timestamp-based id
+  }
+
+  const timestamp = Date.now().toString(16);
+  const entropy = Math.floor(Math.random() * 0xffffff)
+    .toString(16)
+    .padStart(6, "0");
+  return `${timestamp}${entropy}`;
+}
+
+function normalizeNostrPubkey(candidate) {
+  if (typeof candidate !== "string") {
+    return "";
+  }
+
+  const trimmed = candidate.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  if (HEX64_REGEX.test(trimmed)) {
+    return trimmed.toLowerCase();
+  }
+
+  const decoded = decodeNpubToHex(trimmed);
+  if (decoded && HEX64_REGEX.test(decoded)) {
+    return decoded.toLowerCase();
+  }
+
+  return trimmed.toLowerCase();
+}
+
+function resolveNip46Relays(relays, fallbackRelays = []) {
+  const primary = sanitizeRelayList(Array.isArray(relays) ? relays : []);
+  if (primary.length) {
+    return primary;
+  }
+
+  const fallback = sanitizeRelayList(Array.isArray(fallbackRelays) ? fallbackRelays : []);
+  if (fallback.length) {
+    return fallback;
+  }
+
+  return Array.from(DEFAULT_RELAY_URLS);
+}
+
+function parseNip46ConnectionString(uri) {
+  const value = typeof uri === "string" ? uri.trim() : "";
+  if (!value) {
+    return null;
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch (error) {
+    return null;
+  }
+
+  const scheme = parsed.protocol.replace(/:$/, "").toLowerCase();
+  const params = parsed.searchParams || new URLSearchParams();
+
+  const relays = params
+    .getAll("relay")
+    .map((relay) => {
+      if (typeof relay !== "string") {
+        return "";
+      }
+      try {
+        return decodeURIComponent(relay.trim());
+      } catch (error) {
+        return relay.trim();
+      }
+    })
+    .filter(Boolean);
+
+  const permissionsParam = params.get("perms") || params.get("permissions") || "";
+  const metadata = {
+    name: "",
+    url: "",
+    image: "",
+  };
+
+  for (const key of ["name", "url", "image"]) {
+    const raw = params.get(key);
+    if (typeof raw === "string" && raw.trim()) {
+      try {
+        metadata[key] = decodeURIComponent(raw.trim());
+      } catch (error) {
+        metadata[key] = raw.trim();
+      }
+    }
+  }
+
+  let remotePubkey = "";
+  let clientPubkey = "";
+
+  if (scheme === "bunker") {
+    remotePubkey = parsed.hostname || "";
+    if (!remotePubkey && parsed.pathname && parsed.pathname !== "/") {
+      remotePubkey = parsed.pathname.replace(/^\/+/, "");
+    }
+  } else if (scheme === "nostrconnect" || scheme === "web+nostrconnect") {
+    clientPubkey = parsed.hostname || "";
+    if (!clientPubkey && parsed.pathname && parsed.pathname !== "/") {
+      clientPubkey = parsed.pathname.replace(/^\/+/, "");
+    }
+    remotePubkey =
+      params.get("remote") ||
+      params.get("remotePubkey") ||
+      params.get("signer") ||
+      "";
+  }
+
+  const secretParam = params.get("secret") || "";
+
+  return {
+    scheme,
+    type: scheme === "bunker" ? "remote" : "client",
+    remotePubkey: normalizeNostrPubkey(remotePubkey),
+    clientPubkey: normalizeNostrPubkey(clientPubkey),
+    relays,
+    secret: typeof secretParam === "string" ? secretParam.trim() : "",
+    permissions: typeof permissionsParam === "string" ? permissionsParam.trim() : "",
+    metadata,
+  };
+}
+
+class Nip46RpcClient {
+  constructor({
+    nostrClient,
+    clientPrivateKey,
+    clientPublicKey,
+    remotePubkey,
+    relays,
+    secret,
+    permissions,
+    metadata,
+  } = {}) {
+    this.nostrClient = nostrClient || null;
+    this.clientPrivateKey =
+      typeof clientPrivateKey === "string" && HEX64_REGEX.test(clientPrivateKey)
+        ? clientPrivateKey.toLowerCase()
+        : "";
+    this.clientPublicKey = normalizeNostrPubkey(clientPublicKey);
+    this.remotePubkey = normalizeNostrPubkey(remotePubkey);
+    this.relays = resolveNip46Relays(relays, nostrClient?.relays || []);
+    this.secret = typeof secret === "string" ? secret.trim() : "";
+    this.permissions = typeof permissions === "string" ? permissions.trim() : "";
+    this.metadata = metadata && typeof metadata === "object" ? { ...metadata } : {};
+
+    if (!this.clientPrivateKey) {
+      throw new Error("A NIP-46 client private key is required.");
+    }
+
+    if (!this.clientPublicKey) {
+      const tools = getCachedNostrTools();
+      if (!tools || typeof tools.getPublicKey !== "function") {
+        throw new Error("Public key derivation is unavailable.");
+      }
+      this.clientPublicKey = tools.getPublicKey(this.clientPrivateKey);
+      if (!this.clientPublicKey || !HEX64_REGEX.test(this.clientPublicKey)) {
+        throw new Error("Failed to derive a valid public key for the remote signer session.");
+      }
+      this.clientPublicKey = this.clientPublicKey.toLowerCase();
+    }
+
+    if (!this.remotePubkey) {
+      throw new Error("A remote signer pubkey is required.");
+    }
+
+    this.pendingRequests = new Map();
+    this.subscription = null;
+    this.destroyed = false;
+    this.cipher = null;
+    this.lastSeen = 0;
+    this.userPubkey = "";
+    this.activeSignerCache = null;
+  }
+
+  get pool() {
+    return this.nostrClient?.pool || null;
+  }
+
+  async ensurePool() {
+    if (this.pool) {
+      return this.pool;
+    }
+
+    if (!this.nostrClient || typeof this.nostrClient.ensurePool !== "function") {
+      throw new Error("Remote signer requires a nostr client pool.");
+    }
+
+    await this.nostrClient.ensurePool();
+    return this.pool;
+  }
+
+  async ensureCipher() {
+    if (this.cipher) {
+      return this.cipher;
+    }
+
+    const tools = (await ensureNostrTools()) || getCachedNostrTools();
+    if (!tools) {
+      throw new Error("NostrTools helpers are unavailable for remote signing.");
+    }
+
+    let encrypt = null;
+    let decrypt = null;
+
+    if (tools?.nip44?.v2?.encrypt && tools?.nip44?.v2?.decrypt) {
+      encrypt = (priv, pub, payload) => tools.nip44.v2.encrypt(priv, pub, payload);
+      decrypt = (priv, pub, payload) => tools.nip44.v2.decrypt(priv, pub, payload);
+    } else if (tools?.nip44?.encrypt && tools?.nip44?.decrypt) {
+      encrypt = (priv, pub, payload) => tools.nip44.encrypt(priv, pub, payload);
+      decrypt = (priv, pub, payload) => tools.nip44.decrypt(priv, pub, payload);
+    } else if (tools?.nip04?.encrypt && tools?.nip04?.decrypt) {
+      encrypt = (priv, pub, payload) => tools.nip04.encrypt(priv, pub, payload);
+      decrypt = (priv, pub, payload) => tools.nip04.decrypt(priv, pub, payload);
+    }
+
+    if (!encrypt || !decrypt) {
+      throw new Error("Remote signer encryption helpers are unavailable.");
+    }
+
+    this.cipher = { encrypt, decrypt };
+    return this.cipher;
+  }
+
+  async encryptPayload(payload) {
+    const { encrypt } = await this.ensureCipher();
+    const serialized = typeof payload === "string" ? payload : JSON.stringify(payload);
+    return encrypt(this.clientPrivateKey, this.remotePubkey, serialized);
+  }
+
+  async decryptPayload(ciphertext) {
+    const { decrypt } = await this.ensureCipher();
+    return decrypt(this.clientPrivateKey, this.remotePubkey, ciphertext);
+  }
+
+  async ensureSubscription() {
+    if (this.subscription) {
+      return this.subscription;
+    }
+
+    const pool = await this.ensurePool();
+    const filters = [
+      {
+        kinds: [NIP46_RPC_KIND],
+        authors: [this.remotePubkey],
+        "#p": [this.clientPublicKey],
+      },
+    ];
+
+    const relays = this.relays.length ? this.relays : resolveNip46Relays([], this.nostrClient?.relays || []);
+
+    const sub = pool.sub(relays, filters);
+    sub.on("event", (event) => {
+      this.handleEvent(event);
+    });
+    sub.on("eose", () => {
+      // no-op; responses are push-based
+    });
+    this.subscription = sub;
+    return sub;
+  }
+
+  handleEvent(event) {
+    if (this.destroyed) {
+      return;
+    }
+
+    if (!event || event.kind !== NIP46_RPC_KIND) {
+      return;
+    }
+
+    if (typeof event.pubkey !== "string" || normalizeNostrPubkey(event.pubkey) !== this.remotePubkey) {
+      return;
+    }
+
+    const tags = Array.isArray(event.tags) ? event.tags : [];
+    const targetsClient = tags.some(
+      (tag) =>
+        Array.isArray(tag) &&
+        tag[0] === "p" &&
+        typeof tag[1] === "string" &&
+        normalizeNostrPubkey(tag[1]) === this.clientPublicKey,
+    );
+
+    if (!targetsClient) {
+      return;
+    }
+
+    Promise.resolve()
+      .then(() => this.decryptPayload(event.content))
+      .then((payload) => {
+        let parsed;
+        try {
+          parsed = JSON.parse(payload);
+        } catch (error) {
+          devLogger.warn("[nostr] Remote signer returned malformed payload:", error);
+          return;
+        }
+
+        if (!parsed || typeof parsed !== "object") {
+          return;
+        }
+
+        const requestId = typeof parsed.id === "string" ? parsed.id : "";
+        if (!requestId || !this.pendingRequests.has(requestId)) {
+          return;
+        }
+
+        const pending = this.pendingRequests.get(requestId);
+        this.pendingRequests.delete(requestId);
+        clearTimeout(pending.timeoutId);
+
+        this.lastSeen = Date.now();
+
+        if (
+          parsed.result === "auth_url" &&
+          typeof parsed.error === "string" &&
+          parsed.error.trim()
+        ) {
+          const authError = new Error("Remote signer requires additional authentication.");
+          authError.code = "auth-challenge";
+          authError.authUrl = parsed.error.trim();
+          pending.reject(authError);
+          return;
+        }
+
+        if (typeof parsed.error === "string" && parsed.error.trim()) {
+          const err = new Error(parsed.error.trim());
+          err.code = "nip46-error";
+          pending.reject(err);
+          return;
+        }
+
+        pending.resolve(parsed.result ?? null);
+      })
+      .catch((error) => {
+        devLogger.warn("[nostr] Failed to decrypt NIP-46 payload:", error);
+      });
+  }
+
+  rejectAllPending(error) {
+    for (const [id, pending] of this.pendingRequests.entries()) {
+      clearTimeout(pending.timeoutId);
+      try {
+        pending.reject(error);
+      } catch (rejectError) {
+        devLogger.warn("[nostr] Pending NIP-46 promise reject failed for", id, rejectError);
+      }
+    }
+    this.pendingRequests.clear();
+  }
+
+  async sendRpc(method, params = [], options = {}) {
+    if (this.destroyed) {
+      throw new Error("Remote signer session has been disposed.");
+    }
+
+    const timeoutMs = Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
+      ? options.timeoutMs
+      : NIP46_RESPONSE_TIMEOUT_MS;
+    const retries = Number.isFinite(options.retries) && options.retries >= 0
+      ? options.retries
+      : NIP46_MAX_RETRIES;
+
+    let lastError = null;
+
+    for (let attempt = 0; attempt <= retries; attempt += 1) {
+      await this.ensureSubscription();
+
+      const requestId = createNip46RequestId();
+      const message = {
+        id: requestId,
+        method,
+        params: Array.isArray(params) ? params : [],
+      };
+
+      let event;
+      try {
+        const content = await this.encryptPayload(message);
+        event = signEventWithPrivateKey(
+          {
+            kind: NIP46_RPC_KIND,
+            pubkey: this.clientPublicKey,
+            created_at: Math.floor(Date.now() / 1000),
+            tags: [["p", this.remotePubkey]],
+            content,
+          },
+          this.clientPrivateKey,
+        );
+      } catch (error) {
+        lastError = error;
+        break;
+      }
+
+      const responsePromise = new Promise((resolve, reject) => {
+        const timeoutId = setTimeout(() => {
+          this.pendingRequests.delete(requestId);
+          const timeoutError = new Error(
+            `Timed out waiting for remote signer response to ${method}.`,
+          );
+          timeoutError.code = "nip46-timeout";
+          reject(timeoutError);
+        }, timeoutMs);
+
+        this.pendingRequests.set(requestId, {
+          resolve,
+          reject,
+          timeoutId,
+          method,
+        });
+      });
+
+      try {
+        const publishResults = await publishEventToRelays(
+          await this.ensurePool(),
+          this.relays,
+          event,
+          { timeoutMs: NIP46_PUBLISH_TIMEOUT_MS },
+        );
+        assertAnyRelayAccepted(publishResults, { context: method });
+      } catch (error) {
+        const pending = this.pendingRequests.get(requestId);
+        if (pending) {
+          clearTimeout(pending.timeoutId);
+          this.pendingRequests.delete(requestId);
+        }
+        lastError = error;
+        continue;
+      }
+
+      try {
+        const result = await responsePromise;
+        return result;
+      } catch (error) {
+        lastError = error;
+        if (error?.code === "auth-challenge") {
+          throw error;
+        }
+      }
+    }
+
+    if (lastError) {
+      throw lastError;
+    }
+
+    throw new Error(`Remote signer request for ${method} failed.`);
+  }
+
+  async connect({ permissions } = {}) {
+    const params = [this.remotePubkey];
+    const requestedPermissions = permissions || this.permissions || "";
+
+    if (this.secret || requestedPermissions) {
+      params.push(this.secret || "");
+    }
+    if (requestedPermissions) {
+      params.push(requestedPermissions);
+    }
+
+    const result = await this.sendRpc("connect", params, {
+      timeoutMs: Math.max(NIP46_RESPONSE_TIMEOUT_MS, 12_000),
+      retries: 0,
+    });
+
+    if (this.secret) {
+      const normalizedResult = typeof result === "string" ? result.trim() : "";
+      if (!normalizedResult || normalizedResult !== this.secret) {
+        const error = new Error("Remote signer secret mismatch. Rejecting connection.");
+        error.code = "nip46-secret-mismatch";
+        throw error;
+      }
+    }
+
+    return result;
+  }
+
+  async getUserPubkey() {
+    const result = await this.sendRpc("get_public_key", [], {
+      timeoutMs: NIP46_RESPONSE_TIMEOUT_MS,
+      retries: 0,
+    });
+    const pubkey = typeof result === "string" ? result.trim() : "";
+    if (!pubkey) {
+      const error = new Error("Remote signer did not return a public key.");
+      error.code = "nip46-empty-pubkey";
+      throw error;
+    }
+    this.userPubkey = normalizeNostrPubkey(pubkey);
+    return this.userPubkey;
+  }
+
+  async ping() {
+    try {
+      const result = await this.sendRpc("ping", [], {
+        timeoutMs: 5000,
+        retries: 0,
+      });
+      return typeof result === "string" && result.trim().toLowerCase() === "pong";
+    } catch (error) {
+      return false;
+    }
+  }
+
+  async signEvent(event, options = {}) {
+    if (!event || typeof event !== "object") {
+      throw new Error("A Nostr event is required for remote signing.");
+    }
+
+    const unsigned = {
+      kind: event.kind,
+      created_at: event.created_at,
+      content: typeof event.content === "string" ? event.content : "",
+      tags: Array.isArray(event.tags)
+        ? event.tags.map((tag) => (Array.isArray(tag) ? [...tag] : tag))
+        : [],
+      pubkey:
+        typeof event.pubkey === "string" && event.pubkey.trim()
+          ? event.pubkey.trim()
+          : this.userPubkey,
+    };
+
+    const result = await this.sendRpc(
+      "sign_event",
+      [JSON.stringify(unsigned)],
+      {
+        timeoutMs: Number.isFinite(options.timeoutMs)
+          ? options.timeoutMs
+          : NIP46_SIGN_EVENT_TIMEOUT_MS,
+        retries: Number.isFinite(options.retries) ? options.retries : NIP46_MAX_RETRIES,
+      },
+    );
+
+    if (!result) {
+      const error = new Error("Remote signer returned an empty response.");
+      error.code = "nip46-empty-response";
+      throw error;
+    }
+
+    if (typeof result === "object") {
+      return result;
+    }
+
+    try {
+      return JSON.parse(result);
+    } catch (error) {
+      const failure = new Error("Remote signer returned malformed signed event.");
+      failure.code = "nip46-invalid-response";
+      failure.cause = error;
+      throw failure;
+    }
+  }
+
+  getActiveSigner() {
+    if (!this.userPubkey) {
+      return null;
+    }
+
+    if (!this.activeSignerCache) {
+      this.activeSignerCache = {
+        type: "nip46",
+        pubkey: this.userPubkey,
+        signEvent: (event) => this.signEvent(event),
+      };
+    }
+
+    return this.activeSignerCache;
+  }
+
+  async destroy() {
+    if (this.destroyed) {
+      return;
+    }
+    this.destroyed = true;
+
+    if (this.subscription && typeof this.subscription.unsub === "function") {
+      try {
+        this.subscription.unsub();
+      } catch (error) {
+        devLogger.warn("[nostr] Failed to unsubscribe remote signer session:", error);
+      }
+    }
+    this.subscription = null;
+
+    this.rejectAllPending(new Error("Remote signer session closed."));
+  }
+}
+
 const BECH32_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
 const BECH32_CHARSET_MAP = (() => {
   const map = new Map();
@@ -3290,6 +4053,39 @@ function decodeNpubToHex(npub) {
   }
 
   return "";
+}
+
+function encodeHexToNpub(pubkey) {
+  if (typeof pubkey !== "string") {
+    return "";
+  }
+
+  const normalized = pubkey.trim().toLowerCase();
+  if (!normalized || !HEX64_REGEX.test(normalized)) {
+    return "";
+  }
+
+  let toolkit = getCachedNostrTools();
+  if (!toolkit || typeof toolkit?.nip19?.npubEncode !== "function") {
+    const fallbackToolkit = readToolkitFromScope();
+    if (fallbackToolkit?.nip19?.npubEncode) {
+      toolkit = fallbackToolkit;
+    }
+  }
+
+  const encoder = toolkit?.nip19?.npubEncode;
+  if (typeof encoder !== "function") {
+    return "";
+  }
+
+  try {
+    return encoder(normalized);
+  } catch (error) {
+    if (isDevMode) {
+      devLogger.warn("[nostr] Failed to encode npub:", error);
+    }
+    return "";
+  }
 }
 
 const EXTENSION_MIME_MAP = {
@@ -3615,6 +4411,24 @@ export class NostrClient {
     this.watchHistoryLastCreatedAt = 0;
     this.countRequestCounter = 0;
     this.countUnsupportedRelays = new Set();
+    this.nip46Client = null;
+    this.remoteSignerListeners = new Set();
+    const storedRemoteSigner = this.getStoredNip46Metadata();
+    this.remoteSignerStatus = {
+      state: storedRemoteSigner.hasSession ? "stored" : "idle",
+      remotePubkey: storedRemoteSigner.remotePubkey || "",
+      remoteNpub: storedRemoteSigner.remoteNpub || "",
+      userPubkey: storedRemoteSigner.userPubkey || "",
+      userNpub: storedRemoteSigner.userNpub || "",
+      relays: storedRemoteSigner.relays || [],
+      metadata: storedRemoteSigner.metadata || {},
+      label:
+        (storedRemoteSigner.metadata && storedRemoteSigner.metadata.name) || "",
+      message: null,
+      error: null,
+      hasStoredSession: storedRemoteSigner.hasSession,
+    };
+    this.pendingRemoteSignerRestore = null;
     let storedPermissions = null;
     const hasLocalStorage =
       (typeof window !== "undefined" &&
@@ -3634,6 +4448,425 @@ export class NostrClient {
 
     this.extensionPermissionCache =
       storedPermissions instanceof Set ? storedPermissions : new Set();
+  }
+
+  getStoredNip46Metadata() {
+    const stored = readStoredNip46Session();
+    if (!stored) {
+      return { hasSession: false };
+    }
+
+    const remotePubkey = stored.remotePubkey || "";
+    const userPubkey = stored.userPubkey || "";
+
+    return {
+      hasSession: true,
+      remotePubkey,
+      remoteNpub: encodeHexToNpub(remotePubkey),
+      clientPublicKey: stored.clientPublicKey || "",
+      relays: Array.isArray(stored.relays) ? [...stored.relays] : [],
+      metadata: stored.metadata || {},
+      userPubkey,
+      userNpub: encodeHexToNpub(userPubkey),
+    };
+  }
+
+  getRemoteSignerStatus() {
+    return { ...this.remoteSignerStatus };
+  }
+
+  emitRemoteSignerChange(status = {}) {
+    const stored = this.getStoredNip46Metadata();
+    const nextState =
+      typeof status.state === "string" && status.state.trim()
+        ? status.state.trim()
+        : this.nip46Client
+        ? "connected"
+        : stored.hasSession
+        ? "stored"
+        : "idle";
+
+    const remotePubkey =
+      (typeof status.remotePubkey === "string" && status.remotePubkey.trim()) ||
+      this.nip46Client?.remotePubkey ||
+      stored.remotePubkey ||
+      "";
+    const userPubkey =
+      (typeof status.userPubkey === "string" && status.userPubkey.trim()) ||
+      this.nip46Client?.userPubkey ||
+      stored.userPubkey ||
+      "";
+
+    const metadataCandidate =
+      status.metadata || this.nip46Client?.metadata || stored.metadata || {};
+    const metadata =
+      metadataCandidate && typeof metadataCandidate === "object"
+        ? { ...metadataCandidate }
+        : {};
+    const relays = Array.isArray(status.relays)
+      ? status.relays.slice()
+      : (this.nip46Client?.relays || stored.relays || []).slice();
+
+    const snapshot = {
+      state: nextState,
+      remotePubkey,
+      userPubkey,
+      relays,
+      metadata,
+      label:
+        status.label ||
+        metadata?.name ||
+        this.nip46Client?.metadata?.name ||
+        stored.metadata?.name ||
+        "",
+      remoteNpub:
+        (typeof status.remoteNpub === "string" && status.remoteNpub.trim()) ||
+        encodeHexToNpub(remotePubkey) ||
+        stored.remoteNpub ||
+        "",
+      userNpub:
+        (typeof status.userNpub === "string" && status.userNpub.trim()) ||
+        encodeHexToNpub(userPubkey) ||
+        stored.userNpub ||
+        "",
+      message: status.message || null,
+      error: status.error || null,
+      hasStoredSession: stored.hasSession,
+    };
+
+    this.remoteSignerStatus = snapshot;
+
+    for (const listener of Array.from(this.remoteSignerListeners)) {
+      try {
+        listener(snapshot);
+      } catch (error) {
+        devLogger.warn("[nostr] Remote signer listener threw:", error);
+      }
+    }
+
+    return snapshot;
+  }
+
+  onRemoteSignerChange(listener) {
+    if (typeof listener !== "function") {
+      return () => {};
+    }
+
+    this.remoteSignerListeners.add(listener);
+    return () => {
+      this.remoteSignerListeners.delete(listener);
+    };
+  }
+
+  async createNip46KeyPair(existingPrivateKey = "", existingPublicKey = "") {
+    let privateKey =
+      typeof existingPrivateKey === "string" && existingPrivateKey.trim()
+        ? existingPrivateKey.trim().toLowerCase()
+        : "";
+
+    if (privateKey && !HEX64_REGEX.test(privateKey)) {
+      const error = new Error("Invalid remote signer private key.");
+      error.code = "invalid-private-key";
+      throw error;
+    }
+
+    if (!privateKey) {
+      const tools = (await ensureNostrTools()) || getCachedNostrTools();
+      if (!tools) {
+        throw new Error("Unable to generate a remote signer key pair.");
+      }
+
+      let generated = null;
+      if (typeof tools.generateSecretKey === "function") {
+        generated = tools.generateSecretKey();
+      }
+
+      if (generated instanceof Uint8Array) {
+        privateKey = bytesToHex(generated);
+      } else if (Array.isArray(generated)) {
+        privateKey = bytesToHex(Uint8Array.from(generated));
+      } else if (typeof generated === "string") {
+        privateKey = generated.trim().toLowerCase();
+      }
+
+      if (!privateKey || !HEX64_REGEX.test(privateKey)) {
+        throw new Error("Generated remote signer key is invalid.");
+      }
+
+      privateKey = privateKey.toLowerCase();
+    }
+
+    let publicKey =
+      typeof existingPublicKey === "string" && existingPublicKey.trim()
+        ? existingPublicKey.trim().toLowerCase()
+        : "";
+
+    if (!publicKey) {
+      const tools = (await ensureNostrTools()) || getCachedNostrTools();
+      if (!tools || typeof tools.getPublicKey !== "function") {
+        throw new Error("Public key derivation is unavailable for remote signing.");
+      }
+      publicKey = tools.getPublicKey(privateKey);
+    }
+
+    if (!publicKey || !HEX64_REGEX.test(publicKey)) {
+      throw new Error("Derived remote signer public key is invalid.");
+    }
+
+    return { privateKey, publicKey: publicKey.toLowerCase() };
+  }
+
+  installNip46Client(client, { userPubkey } = {}) {
+    if (this.nip46Client && this.nip46Client !== client) {
+      try {
+        this.nip46Client.destroy();
+      } catch (error) {
+        devLogger.warn("[nostr] Failed to dispose previous remote signer client:", error);
+      }
+    }
+
+    this.nip46Client = client;
+    if (userPubkey) {
+      this.nip46Client.userPubkey = userPubkey;
+    }
+
+    const signer = client.getActiveSigner();
+    if (signer) {
+      setActiveSigner(signer);
+    }
+
+    return signer;
+  }
+
+  async connectRemoteSigner({ connectionString, remember = true } = {}) {
+    const parsed = parseNip46ConnectionString(connectionString);
+    if (!parsed || parsed.type !== "remote" || !parsed.remotePubkey) {
+      const error = new Error(
+        "Unsupported NIP-46 URI. Paste the bunker:// link provided by your signer.",
+      );
+      error.code = "invalid-connection-string";
+      throw error;
+    }
+
+    const keyPair = await this.createNip46KeyPair();
+    const relays = resolveNip46Relays(parsed.relays, this.relays);
+
+    this.emitRemoteSignerChange({
+      state: "connecting",
+      remotePubkey: parsed.remotePubkey,
+      relays,
+      metadata: parsed.metadata,
+    });
+
+    const client = new Nip46RpcClient({
+      nostrClient: this,
+      clientPrivateKey: keyPair.privateKey,
+      clientPublicKey: keyPair.publicKey,
+      remotePubkey: parsed.remotePubkey,
+      relays,
+      secret: parsed.secret,
+      permissions: parsed.permissions,
+      metadata: parsed.metadata,
+    });
+
+    try {
+      await client.ensureSubscription();
+      await client.connect({ permissions: parsed.permissions });
+      const userPubkey = await client.getUserPubkey();
+      client.metadata = parsed.metadata;
+      const signer = this.installNip46Client(client, { userPubkey });
+
+      if (remember) {
+        writeStoredNip46Session({
+          version: 1,
+          clientPrivateKey: keyPair.privateKey,
+          clientPublicKey: keyPair.publicKey,
+          remotePubkey: parsed.remotePubkey,
+          relays,
+          secret: parsed.secret,
+          permissions: parsed.permissions,
+          metadata: parsed.metadata,
+          userPubkey,
+          lastConnectedAt: Date.now(),
+        });
+      } else {
+        clearStoredNip46Session();
+      }
+
+      this.emitRemoteSignerChange({
+        state: "connected",
+        remotePubkey: parsed.remotePubkey,
+        userPubkey,
+        relays,
+        metadata: parsed.metadata,
+      });
+
+      return { pubkey: userPubkey, signer };
+    } catch (error) {
+      await client.destroy().catch(() => {});
+      this.nip46Client = null;
+      if (!remember) {
+        clearStoredNip46Session();
+      }
+      this.emitRemoteSignerChange({
+        state: "error",
+        remotePubkey: parsed.remotePubkey,
+        relays,
+        metadata: parsed.metadata,
+        message: error?.message || "Remote signer connection failed.",
+        error,
+      });
+      throw error;
+    }
+  }
+
+  async useStoredRemoteSigner(options = {}) {
+    const normalizedOptions =
+      options && typeof options === "object" ? options : {};
+    const silent = normalizedOptions.silent === true;
+    const forgetOnError = normalizedOptions.forgetOnError === true;
+
+    const stored = readStoredNip46Session();
+    if (!stored) {
+      const error = new Error("No remote signer session is stored on this device.");
+      error.code = "no-stored-session";
+      throw error;
+    }
+
+    const relays = resolveNip46Relays(stored.relays, this.relays);
+
+    this.emitRemoteSignerChange({
+      state: "connecting",
+      remotePubkey: stored.remotePubkey,
+      relays,
+      metadata: stored.metadata,
+    });
+
+    const client = new Nip46RpcClient({
+      nostrClient: this,
+      clientPrivateKey: stored.clientPrivateKey,
+      clientPublicKey: stored.clientPublicKey,
+      remotePubkey: stored.remotePubkey,
+      relays,
+      secret: stored.secret,
+      permissions: stored.permissions,
+      metadata: stored.metadata,
+    });
+
+    try {
+      await client.ensureSubscription();
+      await client.connect({ permissions: stored.permissions });
+      const userPubkey = await client.getUserPubkey();
+      client.metadata = stored.metadata;
+      const signer = this.installNip46Client(client, { userPubkey });
+
+      writeStoredNip46Session({
+        ...stored,
+        userPubkey,
+        lastConnectedAt: Date.now(),
+      });
+
+      this.emitRemoteSignerChange({
+        state: "connected",
+        remotePubkey: stored.remotePubkey,
+        userPubkey,
+        relays,
+        metadata: stored.metadata,
+      });
+
+      return { pubkey: userPubkey, signer };
+    } catch (error) {
+      await client.destroy().catch(() => {});
+      this.nip46Client = null;
+      const fatalCodes = new Set([
+        "nip46-secret-mismatch",
+        "invalid-private-key",
+        "invalid-connection-string",
+      ]);
+      const shouldForgetStored = forgetOnError || fatalCodes.has(error?.code);
+      if (shouldForgetStored) {
+        clearStoredNip46Session();
+      }
+
+      const status = {
+        state: shouldForgetStored ? "idle" : silent ? "stored" : "error",
+        remotePubkey: stored.remotePubkey,
+        relays,
+        metadata: stored.metadata,
+      };
+
+      if (!silent || shouldForgetStored) {
+        status.message =
+          error?.message || "Failed to reconnect to the remote signer.";
+      }
+      status.error = error;
+
+      this.emitRemoteSignerChange(status);
+
+      if (silent) {
+        devLogger.log("[nostr] Silent remote signer restore failed:", error);
+      } else {
+        devLogger.warn(
+          "[nostr] Stored remote signer reconnection failed:",
+          error,
+        );
+      }
+      throw error;
+    }
+  }
+
+  scheduleStoredRemoteSignerRestore() {
+    if (this.nip46Client) {
+      return this.pendingRemoteSignerRestore || null;
+    }
+
+    if (this.pendingRemoteSignerRestore) {
+      return this.pendingRemoteSignerRestore;
+    }
+
+    const stored = this.getStoredNip46Metadata();
+    if (!stored.hasSession) {
+      return null;
+    }
+
+    const attempt = this.useStoredRemoteSigner({ silent: true })
+      .catch(() => null)
+      .finally(() => {
+        this.pendingRemoteSignerRestore = null;
+      });
+
+    this.pendingRemoteSignerRestore = attempt;
+    return attempt;
+  }
+
+  async disconnectRemoteSigner({ keepStored = true } = {}) {
+    this.pendingRemoteSignerRestore = null;
+    if (this.nip46Client) {
+      try {
+        await this.nip46Client.destroy();
+      } catch (error) {
+        devLogger.warn("[nostr] Failed to tear down remote signer client:", error);
+      }
+      this.nip46Client = null;
+    }
+
+    const activeSigner = getActiveSigner();
+    if (activeSigner?.type === "nip46") {
+      clearActiveSigner();
+    }
+
+    if (!keepStored) {
+      clearStoredNip46Session();
+    }
+
+    const stored = keepStored ? this.getStoredNip46Metadata() : { hasSession: false };
+    this.emitRemoteSignerChange({
+      state: stored.hasSession ? "stored" : "idle",
+      remotePubkey: stored.remotePubkey || "",
+      userPubkey: stored.userPubkey || "",
+      relays: stored.relays || [],
+      metadata: stored.metadata || {},
+    });
   }
 
   recordTombstone(activeKey, createdAt) {
@@ -6715,18 +7948,24 @@ export class NostrClient {
 
     this.restoreLocalData();
 
-      try {
-        await this.ensurePool();
-        const results = await this.connectToRelays();
-        const successfulRelays = results
-          .filter((r) => r.success)
-          .map((r) => r.url);
-        if (successfulRelays.length === 0) {
-          throw new Error("No relays connected");
-        }
-        devLogger.log(
-          `Connected to ${successfulRelays.length} relay(s)`,
-        );
+    try {
+      this.scheduleStoredRemoteSignerRestore();
+    } catch (error) {
+      devLogger.warn("[nostr] Failed to schedule remote signer restoration:", error);
+    }
+
+    try {
+      await this.ensurePool();
+      const results = await this.connectToRelays();
+      const successfulRelays = results
+        .filter((r) => r.success)
+        .map((r) => r.url);
+      if (successfulRelays.length === 0) {
+        throw new Error("No relays connected");
+      }
+      devLogger.log(
+        `Connected to ${successfulRelays.length} relay(s)`,
+      );
     } catch (err) {
       userLogger.error("Nostr init failed:", err);
       throw err;
@@ -6957,6 +8196,17 @@ export class NostrClient {
     clearActiveSigner();
     const previousSessionActor = this.sessionActor;
     this.sessionActor = null;
+
+    if (this.nip46Client) {
+      Promise.resolve()
+        .then(() => this.disconnectRemoteSigner({ keepStored: true }))
+        .catch((error) => {
+          devLogger.warn(
+            "[nostr] Failed to disconnect remote signer during logout:",
+            error,
+          );
+        });
+    }
 
     const shouldClearStoredSession =
       previousSessionActor &&
