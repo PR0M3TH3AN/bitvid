@@ -151,6 +151,39 @@ export default class AuthService {
       : "nip07";
   }
 
+  normalizeAuthType(authTypeCandidate, providerId, providerResult) {
+    const candidates = [];
+
+    if (typeof authTypeCandidate === "string") {
+      candidates.push(authTypeCandidate);
+    }
+
+    if (providerResult && typeof providerResult === "object") {
+      const resultAuthType = providerResult.authType;
+      if (typeof resultAuthType === "string") {
+        candidates.push(resultAuthType);
+      }
+
+      const resultProviderId = providerResult.providerId;
+      if (typeof resultProviderId === "string") {
+        candidates.push(resultProviderId);
+      }
+    }
+
+    if (typeof providerId === "string") {
+      candidates.push(providerId);
+    }
+
+    for (const candidate of candidates) {
+      const trimmed = candidate.trim();
+      if (trimmed) {
+        return trimmed;
+      }
+    }
+
+    return "nip07";
+  }
+
   log(...args) {
     try {
       this.logger(...args);
@@ -327,10 +360,11 @@ export default class AuthService {
       providerResult && typeof providerResult === "object"
         ? providerResult.authType
         : null;
-    const authType =
-      typeof authTypeCandidate === "string" && authTypeCandidate.trim()
-        ? authTypeCandidate.trim()
-        : providerId;
+    const authType = this.normalizeAuthType(
+      authTypeCandidate,
+      providerId,
+      providerResult,
+    );
     const signer =
       providerResult && typeof providerResult === "object"
         ? providerResult.signer || null
@@ -401,19 +435,23 @@ export default class AuthService {
     const persistActive =
       normalizedOptions.persistActive === false ? false : true;
     const providerId = this.normalizeProviderId(normalizedOptions.providerId);
-    const authTypeCandidate =
-      typeof normalizedOptions.authType === "string" && normalizedOptions.authType.trim()
-        ? normalizedOptions.authType.trim()
-        : providerId;
-    const authType = authTypeCandidate || "nip07";
-    const signer = Object.prototype.hasOwnProperty.call(normalizedOptions, "signer")
-      ? normalizedOptions.signer ?? null
-      : null;
     const providerResult = Object.prototype.hasOwnProperty.call(
       normalizedOptions,
       "providerResult",
     )
       ? normalizedOptions.providerResult ?? null
+      : null;
+    const authTypeCandidate =
+      typeof normalizedOptions.authType === "string"
+        ? normalizedOptions.authType
+        : null;
+    const authType = this.normalizeAuthType(
+      authTypeCandidate,
+      providerId,
+      providerResult,
+    );
+    const signer = Object.prototype.hasOwnProperty.call(normalizedOptions, "signer")
+      ? normalizedOptions.signer ?? null
       : null;
 
     const previousPubkey = this.normalizeHexPubkey(getPubkey()) || getPubkey();
@@ -477,10 +515,11 @@ export default class AuthService {
     setCurrentUserNpub(npub);
 
     let savedProfilesMutated = false;
-    const entryAuthType =
-      typeof authType === "string" && authType.trim()
-        ? authType.trim()
-        : "nip07";
+    const entryAuthType = this.normalizeAuthType(
+      authType,
+      providerId,
+      providerResult,
+    );
 
     mutateSavedProfiles((profiles) => {
       const draft = Array.isArray(profiles) ? profiles.slice() : [];
