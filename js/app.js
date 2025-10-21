@@ -415,73 +415,7 @@ class Application {
     this.loginModalPendingTask = null;
     this.currentUserNpub = null;
 
-    try {
-      const loginModalElement = document.getElementById("loginModal");
-      if (loginModalElement) {
-        const closeLoginModal = () => {
-          if (closeStaticModal("loginModal")) {
-            setGlobalModalState("login", false);
-          }
-        };
-
-        this.loginModalController = new LoginModalController({
-          modalElement: loginModalElement,
-          providers: authProviders,
-          services: {
-            authService: this.authService,
-            nostrClient,
-          },
-          callbacks: {
-            onProviderSelected: (providerId) => {
-              devLogger.log(
-                `[LoginModal] Provider selected: ${providerId}.`,
-              );
-            },
-            onLoginSuccess: (payload) => {
-              const maybePromise = this.handleLoginModalSuccess(payload);
-              if (maybePromise && typeof maybePromise.then === "function") {
-                maybePromise.catch((error) => {
-                  devLogger.error(
-                    "[LoginModal] handleLoginModalSuccess threw:",
-                    error,
-                  );
-                });
-              }
-            },
-            onLoginError: (payload) => {
-              const maybePromise = this.handleLoginModalError(payload);
-              if (maybePromise && typeof maybePromise.then === "function") {
-                maybePromise.catch((error) => {
-                  devLogger.error(
-                    "[LoginModal] handleLoginModalError threw:",
-                    error,
-                  );
-                });
-              }
-            },
-          },
-          helpers: {
-            closeModal: closeLoginModal,
-            describeLoginError: (error, fallbackMessage) =>
-              this.describeLoginError(
-                error,
-                typeof fallbackMessage === "string" && fallbackMessage.trim()
-                  ? fallbackMessage.trim()
-                  : "Failed to login. Please try again.",
-              ),
-          },
-        });
-      } else {
-        devLogger.warn(
-          "[Application] Login modal controller disabled: modal container not found.",
-        );
-      }
-    } catch (error) {
-      devLogger.error(
-        "[Application] Failed to initialize login modal controller:",
-        error,
-      );
-    }
+    this.initializeLoginModalController({ logIfMissing: true });
 
     // Optional: a "profile" button or avatar (if used)
     this.profileButton = document.getElementById("profileButton") || null;
@@ -2076,6 +2010,7 @@ class Application {
   }
 
   async requestProfileAdditionLogin({ triggerElement } = {}) {
+    this.initializeLoginModalController();
     if (
       this.loginModalController &&
       typeof this.loginModalController.setNextRequestLoginOptions ===
@@ -2449,6 +2384,95 @@ class Application {
     }
 
     return fallbackMessage;
+  }
+
+  initializeLoginModalController(options = {}) {
+    const { logIfMissing = false } =
+      options && typeof options === "object" ? options : {};
+
+    if (this.loginModalController) {
+      return true;
+    }
+
+    let loginModalElement = null;
+    try {
+      loginModalElement = document.getElementById("loginModal") || null;
+    } catch (error) {
+      devLogger.warn(
+        "[Application] Failed to look up login modal container:",
+        error,
+      );
+    }
+
+    if (!(loginModalElement instanceof HTMLElement)) {
+      if (logIfMissing) {
+        devLogger.warn(
+          "[Application] Login modal controller disabled: modal container not found.",
+        );
+      }
+      return false;
+    }
+
+    const closeLoginModal = () => {
+      if (closeStaticModal("loginModal")) {
+        setGlobalModalState("login", false);
+      }
+    };
+
+    try {
+      this.loginModalController = new LoginModalController({
+        modalElement: loginModalElement,
+        providers: authProviders,
+        services: {
+          authService: this.authService,
+          nostrClient,
+        },
+        callbacks: {
+          onProviderSelected: (providerId) => {
+            devLogger.log(`[LoginModal] Provider selected: ${providerId}.`);
+          },
+          onLoginSuccess: (payload) => {
+            const maybePromise = this.handleLoginModalSuccess(payload);
+            if (maybePromise && typeof maybePromise.then === "function") {
+              maybePromise.catch((error) => {
+                devLogger.error(
+                  "[LoginModal] handleLoginModalSuccess threw:",
+                  error,
+                );
+              });
+            }
+          },
+          onLoginError: (payload) => {
+            const maybePromise = this.handleLoginModalError(payload);
+            if (maybePromise && typeof maybePromise.then === "function") {
+              maybePromise.catch((error) => {
+                devLogger.error(
+                  "[LoginModal] handleLoginModalError threw:",
+                  error,
+                );
+              });
+            }
+          },
+        },
+        helpers: {
+          closeModal: closeLoginModal,
+          describeLoginError: (error, fallbackMessage) =>
+            this.describeLoginError(
+              error,
+              typeof fallbackMessage === "string" && fallbackMessage.trim()
+                ? fallbackMessage.trim()
+                : "Failed to login. Please try again.",
+            ),
+        },
+      });
+      return true;
+    } catch (error) {
+      devLogger.error(
+        "[Application] Failed to initialize login modal controller:",
+        error,
+      );
+      return false;
+    }
   }
 
   canCurrentUserManageBlacklist() {

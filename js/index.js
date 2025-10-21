@@ -515,6 +515,20 @@ async function bootstrapInterface() {
 
   devLogger.log("Modals loaded.");
 
+  if (
+    application &&
+    typeof application.initializeLoginModalController === "function"
+  ) {
+    try {
+      application.initializeLoginModalController();
+    } catch (error) {
+      devLogger.error(
+        "[Interface] Failed to initialize login modal controller after loading markup:",
+        error,
+      );
+    }
+  }
+
   [
     "loginModal",
     "nostrFormModal",
