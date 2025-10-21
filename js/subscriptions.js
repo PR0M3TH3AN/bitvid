@@ -61,7 +61,11 @@ function extractEncryptionHints(event) {
       .filter(Boolean);
     for (const part of parts) {
       if (part.startsWith("nip44")) {
-        pushUnique("nip44");
+        if (/^nip44(?:[_-]?v2|v2)/.test(part)) {
+          pushUnique("nip44_v2");
+        } else {
+          pushUnique("nip44");
+        }
       } else if (part === "nip04" || part === "nip-04") {
         pushUnique("nip04");
       }
@@ -77,13 +81,23 @@ function determineDecryptionOrder(event, availableSchemes) {
   const prioritized = [];
 
   const hints = extractEncryptionHints(event);
+  const aliasMap = {
+    nip04: ["nip04"],
+    nip44: ["nip44", "nip44_v2"],
+    nip44_v2: ["nip44_v2", "nip44"],
+  };
+
   for (const hint of hints) {
-    if (availableSet.has(hint) && !prioritized.includes(hint)) {
-      prioritized.push(hint);
+    const candidates = Array.isArray(aliasMap[hint]) ? aliasMap[hint] : [hint];
+    for (const candidate of candidates) {
+      if (availableSet.has(candidate) && !prioritized.includes(candidate)) {
+        prioritized.push(candidate);
+        break;
+      }
     }
   }
 
-  for (const fallback of ["nip04", "nip44"]) {
+  for (const fallback of ["nip04", "nip44", "nip44_v2"]) {
     if (availableSet.has(fallback) && !prioritized.includes(fallback)) {
       prioritized.push(fallback);
     }
@@ -234,11 +248,30 @@ class SubscriptionsManager {
     }
 
     const decryptors = new Map();
+    const registerDecryptor = (scheme, handler) => {
+      if (!scheme || typeof handler !== "function" || decryptors.has(scheme)) {
+        return;
+      }
+      decryptors.set(scheme, handler);
+    };
+
     if (nostrApi.nip04 && typeof nostrApi.nip04.decrypt === "function") {
-      decryptors.set("nip04", (payload) => nostrApi.nip04.decrypt(userPubkey, payload));
+      registerDecryptor("nip04", (payload) => nostrApi.nip04.decrypt(userPubkey, payload));
     }
-    if (nostrApi.nip44 && typeof nostrApi.nip44.decrypt === "function") {
-      decryptors.set("nip44", (payload) => nostrApi.nip44.decrypt(userPubkey, payload));
+
+    const nip44 = nostrApi.nip44 && typeof nostrApi.nip44 === "object" ? nostrApi.nip44 : null;
+    if (nip44) {
+      if (typeof nip44.decrypt === "function") {
+        registerDecryptor("nip44", (payload) => nip44.decrypt(userPubkey, payload));
+      }
+
+      const nip44v2 = nip44.v2 && typeof nip44.v2 === "object" ? nip44.v2 : null;
+      if (nip44v2 && typeof nip44v2.decrypt === "function") {
+        registerDecryptor("nip44_v2", (payload) => nip44v2.decrypt(userPubkey, payload));
+        if (!decryptors.has("nip44")) {
+          registerDecryptor("nip44", (payload) => nip44v2.decrypt(userPubkey, payload));
+        }
+      }
     }
 
     if (!decryptors.size) {
