@@ -5945,6 +5945,19 @@ export class NostrClient {
         console.warn("[nostr] Failed to clear active signer during logout:", error);
       }
     }
+    const nsecProvider = getAuthProvider("nsec");
+    if (nsecProvider && typeof nsecProvider.clearStorage === "function") {
+      try {
+        nsecProvider.clearStorage({ reason: "logout" });
+      } catch (error) {
+        if (isDevMode) {
+          console.warn(
+            "[nostr] Failed to clear nsec provider storage during logout:",
+            error,
+          );
+        }
+      }
+    }
     for (const timer of this.watchHistoryRepublishTimers.values()) {
       if (timer && typeof timer.timer === "number") {
         clearTimeout(timer.timer);
