@@ -6,6 +6,7 @@ import {
 } from "../nwcSettings.js";
 import { MAX_WALLET_DEFAULT_ZAP } from "../config.js";
 import { devLogger, userLogger } from "../utils/logger.js";
+import createProfileSettingsStore from "../state/profileSettingsStore.js";
 
 const NWC_URI_SCHEME = "nostr+walletconnect://";
 
@@ -53,7 +54,10 @@ export default class NwcSettingsService {
     this.createDefaultSettings = isFunction(createDefaultSettings)
       ? createDefaultSettings
       : () => createDefaultNwcSettings();
-    this.cache = new Map();
+    this.cache = createProfileSettingsStore({
+      clone: (value) => this.cloneSettings(value),
+      logger: this.logger.dev,
+    });
   }
 
   cloneSettings(settings) {
@@ -101,7 +105,8 @@ export default class NwcSettingsService {
           ? { ...settings }
           : this.createDefaultNwcSettings();
       this.cache.set(normalized, record);
-      return this.cloneSettings(record);
+      const cached = this.cache.get(normalized);
+      return cached || this.createDefaultNwcSettings();
     } catch (error) {
       if (isFunction(this.logger.user?.warn)) {
         this.logger.user.warn(
@@ -111,7 +116,8 @@ export default class NwcSettingsService {
       }
       const fallback = this.createDefaultNwcSettings();
       this.cache.set(normalized, fallback);
-      return this.cloneSettings(fallback);
+      const cached = this.cache.get(normalized);
+      return cached || this.createDefaultNwcSettings();
     }
   }
 
@@ -121,7 +127,7 @@ export default class NwcSettingsService {
       return this.createDefaultNwcSettings();
     }
     const cached = this.cache.get(normalized);
-    return cached ? this.cloneSettings(cached) : this.createDefaultNwcSettings();
+    return cached ? cached : this.createDefaultNwcSettings();
   }
 
   createDefaultNwcSettings() {
@@ -178,7 +184,8 @@ export default class NwcSettingsService {
           ? { ...updated }
           : this.createDefaultNwcSettings();
       this.cache.set(normalized, record);
-      return this.cloneSettings(record);
+      const cached = this.cache.get(normalized);
+      return cached || this.createDefaultNwcSettings();
     } catch (error) {
       if (isFunction(this.logger.user?.warn)) {
         this.logger.user.warn(
@@ -294,14 +301,6 @@ export default class NwcSettingsService {
     const normalizedActive = this.getNormalizedPubkey(
       pubkey !== undefined ? pubkey : this.getActivePubkey(),
     );
-    const normalizedPrevious = this.getNormalizedPubkey(previousPubkey);
-
-    if (
-      normalizedPrevious &&
-      (!normalizedActive || normalizedPrevious !== normalizedActive)
-    ) {
-      await this.clearStoredNwcSettings(normalizedPrevious, { silent: true });
-    }
 
     if (normalizedActive) {
       await this.hydrateNwcSettingsForPubkey(normalizedActive);
@@ -315,13 +314,14 @@ export default class NwcSettingsService {
       previousPubkey !== undefined ? previousPubkey : pubkey,
     );
     if (normalizedPrevious) {
-      await this.clearStoredNwcSettings(normalizedPrevious, { silent: false });
+      this.cache.delete(normalizedPrevious);
     }
-    this.clearCache();
     return this.createDefaultNwcSettings();
   }
 
   onIdentityChanged() {
-    this.clearCache();
+    // Intentionally preserve cached settings so profile switches retain
+    // per-account configuration. Explicit cache clearing remains
+    // available via `clearCache()` when required by callers.
   }
 }

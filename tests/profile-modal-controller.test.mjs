@@ -433,6 +433,69 @@ for (const _ of [0]) {
     });
   });
 
+  test('wallet URI input masks persisted values and restores on focus', async (t) => {
+    const controller = createController();
+    await controller.load();
+
+    controller.state.setActivePubkey('a'.repeat(64));
+
+    await controller.show('wallet');
+
+    const sampleUri =
+      'nostr+walletconnect://pub1?relay=wss://relay.example.com';
+    await controller.services.nwcSettings.updateActiveNwcSettings({
+      nwcUri: sampleUri,
+      defaultZap: 21,
+    });
+
+    controller.refreshWalletPaneState();
+
+    assert.ok(
+      controller.walletUriInput instanceof window.HTMLElement,
+      'wallet URI input should exist',
+    );
+    assert.equal(controller.walletUriInput.value, '*****');
+    assert.equal(controller.walletUriInput.dataset.secretValue, sampleUri);
+    assert.equal(
+      controller.walletDisconnectButton?.classList.contains('hidden'),
+      false,
+      'disconnect button should remain visible when a URI exists',
+    );
+
+    const formValues = controller.getWalletFormValues();
+    assert.equal(formValues.uri, sampleUri);
+
+    controller.walletUriInput.dispatchEvent(new window.Event('focus'));
+    assert.equal(controller.walletUriInput.value, sampleUri);
+
+    controller.walletUriInput.dispatchEvent(new window.Event('blur'));
+    assert.equal(controller.walletUriInput.value, '*****');
+
+    controller.walletUriInput.dispatchEvent(new window.Event('focus'));
+    const updatedUri = `${sampleUri}&name=bitvid`;
+    controller.walletUriInput.value = updatedUri;
+    controller.walletUriInput.dispatchEvent(new window.Event('input'));
+    controller.walletUriInput.dispatchEvent(new window.Event('blur'));
+
+    const updatedValues = controller.getWalletFormValues();
+    assert.equal(updatedValues.uri, updatedUri);
+    assert.equal(controller.walletUriInput.value, '*****');
+
+    controller.walletUriInput.dispatchEvent(new window.Event('focus'));
+    controller.walletUriInput.value = '';
+    controller.walletUriInput.dispatchEvent(new window.Event('input'));
+    controller.walletUriInput.dispatchEvent(new window.Event('blur'));
+
+    assert.equal(controller.walletUriInput.value, '');
+    assert.equal(controller.walletUriInput.dataset.secretValue, undefined);
+
+    t.after(() => {
+      try {
+        controller.hide({ silent: true });
+      } catch {}
+    });
+  });
+
   test('Profile modal uses abbreviated npub display', async () => {
     const sampleProfiles = [
       {
