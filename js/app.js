@@ -33,6 +33,7 @@ import watchHistoryService from "./watchHistoryService.js";
 import r2Service from "./services/r2Service.js";
 import PlaybackService from "./services/playbackService.js";
 import AuthService from "./services/authService.js";
+import { listAuthProviders } from "./services/authProviders/index.js";
 import NwcSettingsService from "./services/nwcSettingsService.js";
 import nostrService from "./services/nostrService.js";
 import DiscussionCountService from "./services/discussionCountService.js";
@@ -40,6 +41,7 @@ import { initQuickR2Upload } from "./r2-quick.js";
 import { createWatchHistoryRenderer } from "./historyView.js";
 import WatchHistoryController from "./ui/watchHistoryController.js";
 import WatchHistoryTelemetry from "./services/watchHistoryTelemetry.js";
+import LoginModalController from "./ui/loginModalController.js";
 import { getSidebarLoadingMarkup } from "./sidebarLoading.js";
 import { subscriptions } from "./subscriptions.js";
 import { isWatchHistoryDebugEnabled } from "./watchHistoryDebug.js";
@@ -347,6 +349,37 @@ class Application {
         this.handleProfileUpdated(detail)
       )
     );
+
+    this.loginModalController = null;
+
+    const loginModalElement = document.getElementById("loginModal") || null;
+    const loginOptionsContainer =
+      loginModalElement?.querySelector("[data-login-options]") || null;
+    const closeLoginModalButton =
+      document.getElementById("closeLoginModal") || null;
+
+    if (loginModalElement) {
+      try {
+        this.loginModalController = new LoginModalController({
+          modalElement: loginModalElement,
+          optionsContainer: loginOptionsContainer,
+          closeButton: closeLoginModalButton,
+          providers: listAuthProviders(),
+          authService: this.authService,
+          callbacks: {
+            onOpen: () => setGlobalModalState("login", true),
+            onClose: () => setGlobalModalState("login", false),
+            onError: (message) => this.showError(message),
+          },
+        });
+      } catch (error) {
+        console.error(
+          "[app.js] Failed to initialize LoginModalController:",
+          error,
+        );
+        this.loginModalController = null;
+      }
+    }
 
     // Optional: a "profile" button or avatar (if used)
     this.profileButton = document.getElementById("profileButton") || null;
@@ -909,10 +942,6 @@ class Application {
     if (this.moreMenuController) {
       this.moreMenuController.attachVideoListView(this.videoListView);
     }
-
-    // NEW: reference to the login modal's close button
-    this.closeLoginModalBtn =
-      document.getElementById("closeLoginModal") || null;
 
     // Build a set of blacklisted event IDs (hex) from nevent strings, skipping empties
     this.blacklistedEventIds = new Set();
@@ -1659,10 +1688,24 @@ class Application {
     setLoadingState(true);
 
     try {
-      const { pubkey } = await this.authService.requestLogin({
+      const {
+        pubkey,
+        authType: loginAuthType,
+        providerId: selectedProviderId,
+      } = await this.authService.requestLogin({
         allowAccountSelection: true,
         autoApply: false,
       });
+
+      const resolvedAuthType = (() => {
+        if (typeof loginAuthType === "string" && loginAuthType.trim()) {
+          return loginAuthType.trim();
+        }
+        if (typeof selectedProviderId === "string" && selectedProviderId.trim()) {
+          return selectedProviderId.trim();
+        }
+        return "nip07";
+      })();
 
       const normalizedPubkey = this.normalizeHexPubkey(pubkey);
       if (!normalizedPubkey) {
@@ -1697,7 +1740,7 @@ class Application {
         npub,
         name,
         picture,
-        authType: "nip07",
+        authType: resolvedAuthType,
       });
 
       persistSavedProfiles({ persistActive: false });
@@ -1847,6 +1890,10 @@ class Application {
     if (this.loginButton) {
       this.loginButton.addEventListener("click", () => {
         console.log("Login button clicked!");
+        if (this.loginModalController) {
+          this.loginModalController.show();
+          return;
+        }
         const loginModal = document.getElementById("loginModal");
         if (loginModal) {
           loginModal.classList.remove("hidden");
@@ -1855,103 +1902,7 @@ class Application {
       });
     }
 
-    // 5) Close login modal button => hide modal
-    if (this.closeLoginModalBtn) {
-      this.closeLoginModalBtn.addEventListener("click", () => {
-        console.log("[app.js] closeLoginModal button clicked!");
-        const loginModal = document.getElementById("loginModal");
-        if (loginModal) {
-          loginModal.classList.add("hidden");
-          setGlobalModalState("login", false);
-        }
-      });
-    }
-
-    // 6) NIP-07 button inside the login modal => call the extension & login
-    const nip07Button = document.getElementById("loginNIP07");
-    if (nip07Button) {
-      const originalLabel = nip07Button.textContent;
-      let slowExtensionTimer = null;
-      const slowExtensionDelayMs = 8_000;
-
-      const clearSlowExtensionTimer = () => {
-        if (slowExtensionTimer) {
-          clearTimeout(slowExtensionTimer);
-          slowExtensionTimer = null;
-        }
-      };
-
-      const setLoadingState = (isLoading) => {
-        if (isLoading) {
-          nip07Button.disabled = true;
-          nip07Button.dataset.loading = "true";
-          nip07Button.setAttribute("aria-busy", "true");
-          nip07Button.textContent = "Connecting to NIP-07 extension...";
-
-          clearSlowExtensionTimer();
-          slowExtensionTimer = window.setTimeout(() => {
-            if (nip07Button.dataset.loading === "true") {
-              nip07Button.textContent = "Waiting for the extension prompt…";
-            }
-          }, slowExtensionDelayMs);
-        } else {
-          nip07Button.disabled = false;
-          nip07Button.dataset.loading = "false";
-          nip07Button.setAttribute("aria-busy", "false");
-          clearSlowExtensionTimer();
-          nip07Button.textContent = originalLabel;
-        }
-      };
-
-      nip07Button.addEventListener("click", async () => {
-        if (nip07Button.dataset.loading === "true") {
-          return;
-        }
-
-        setLoadingState(true);
-        console.log(
-          "[app.js] loginNIP07 clicked! Attempting extension login..."
-        );
-        try {
-          const { pubkey, detail } = await this.authService.requestLogin();
-          console.log("[NIP-07] login returned pubkey:", pubkey);
-
-          if (pubkey) {
-            if (
-              detail &&
-              typeof detail === "object" &&
-              detail.__handled !== true
-            ) {
-              try {
-                await this.handleAuthLogin(detail);
-              } catch (error) {
-                console.error(
-                  "[NIP-07] handleAuthLogin fallback failed:",
-                  error,
-                );
-              }
-            }
-
-            const loginModal = document.getElementById("loginModal");
-            if (loginModal) {
-              loginModal.classList.add("hidden");
-              setGlobalModalState("login", false);
-            }
-          }
-        } catch (err) {
-          console.error("[NIP-07 login error]", err);
-          const message =
-            err && typeof err.message === "string" && err.message.trim()
-              ? err.message.trim()
-              : "Failed to login with NIP-07. Please try again.";
-          this.showError(message);
-        } finally {
-          setLoadingState(false);
-        }
-      });
-    }
-
-    // 7) Cleanup on page unload
+    // 5) Cleanup on page unload
     window.addEventListener("beforeunload", () => {
       this.flushWatchHistory("session-end", "beforeunload").catch((error) => {
         if (isDevMode) {
