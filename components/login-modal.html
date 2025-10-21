@@ -36,49 +36,90 @@
       </button>
     </div>
 
-    <!-- Body with buttons (unchanged) -->
-    <div id="loginModalDescription" class="modal-body space-y-4 overflow-y-auto">
-      <!-- Application Form button -->
-      <button
-        id="openApplicationModal"
-        class="btn w-full"
-        type="button"
-      >
-        Application Form
-      </button>
+    <!-- Body -->
+    <div id="loginModalDescription" class="modal-body space-y-6 overflow-y-auto">
+      <div class="space-y-2 text-left">
+        <p class="text-sm text-text-muted">
+          Choose how you'd like to sign in. Connect a browser extension, link a
+          remote signer, or work directly with your keys when you need to.
+        </p>
+      </div>
 
-      <!-- Simple horizontal rule -->
-      <div class="my-2 border-t border-border/60"></div>
+      <section class="space-y-4 rounded-2xl border border-border bg-overlay-panel-soft p-4 sm:p-5">
+        <div class="space-y-1">
+          <h3 class="text-base font-semibold text-text">Available methods</h3>
+          <p class="text-sm text-text-muted">
+            Pick the option that matches how you manage your Nostr identity.
+          </p>
+        </div>
 
-      <!-- Login provider buttons are rendered dynamically -->
-      <div data-login-providers class="space-y-3"></div>
+        <!-- Login provider buttons are rendered dynamically -->
+        <div data-login-providers class="grid gap-3 sm:grid-cols-2"></div>
+      </section>
+
+      <div class="space-y-3">
+        <div class="space-y-1 text-left">
+          <h3 class="text-sm font-semibold uppercase tracking-wide text-text-muted">
+            Need an invite?
+          </h3>
+          <p class="text-sm text-text-muted">
+            Submit an application and we'll send you updates when new slots open.
+          </p>
+        </div>
+        <button
+          id="openApplicationModal"
+          class="btn w-full"
+          type="button"
+        >
+          Application Form
+        </button>
+      </div>
+
       <template data-login-provider-template>
         <button
-          class="btn w-full text-left"
+          class="login-option"
           type="button"
           data-provider-button
         >
-          <span class="flex w-full flex-col items-start gap-2">
-            <span data-provider-label class="text-base font-semibold"></span>
-            <span data-provider-description class="text-sm text-text-muted"></span>
-            <div
-              data-provider-status-row
-              class="hidden flex w-full items-center justify-between gap-2 text-sm text-text-muted"
-            >
-              <span data-provider-status class="truncate"></span>
-              <button
-                type="button"
-                class="btn-link text-sm hidden"
-                data-provider-disconnect
+          <span class="login-option__header">
+            <span class="login-option__copy">
+              <span data-provider-label class="login-option__label"></span>
+              <span
+                data-provider-description
+                class="login-option__description"
+              ></span>
+            </span>
+            <span aria-hidden="true" class="login-option__chevron">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                class="h-5 w-5"
               >
-                Disconnect
-              </button>
-            </div>
-            <span
-              data-provider-capabilities
-              class="flex flex-wrap gap-2"
-            ></span>
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M9 5l7 7-7 7"
+                />
+              </svg>
+            </span>
           </span>
+          <div data-provider-status-row class="login-option__status hidden">
+            <span data-provider-status class="truncate"></span>
+            <button
+              type="button"
+              class="btn-link text-sm hidden"
+              data-provider-disconnect
+            >
+              Disconnect
+            </button>
+          </div>
+          <span
+            data-provider-capabilities
+            class="login-option__capabilities hidden"
+          ></span>
         </button>
       </template>
       <template data-login-nsec-dialog>
