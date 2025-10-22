@@ -1630,12 +1630,12 @@
     position: relative;
     isolation: isolate;
     overflow: visible;
-    --video-modal-ambient-bleed: clamp(var(--space-xl), 10vw, var(--space-4xl));
-    --video-modal-ambient-scale: 1.26;
-    --video-modal-ambient-blur: clamp(128px, 18vw, 256px);
-    --video-modal-ambient-opacity: 0.96;
-    --video-modal-ambient-overlay-opacity: 0.45;
-    --video-modal-ambient-translate-y: clamp(-0.75rem, -2vw, -1.5rem);
+    --video-modal-ambient-bleed: clamp(var(--space-2xl), 14vw, var(--space-5xl));
+    --video-modal-ambient-scale: 1.42;
+    --video-modal-ambient-blur: clamp(160px, 22vw, 320px);
+    --video-modal-ambient-opacity: 1;
+    --video-modal-ambient-overlay-opacity: 0.56;
+    --video-modal-ambient-translate-y: clamp(-1.25rem, -2.85vw, -2.25rem);
   }
 
   .video-modal__video {
@@ -1653,7 +1653,7 @@
 
   .video-modal__ambient {
     position: absolute;
-    inset: calc(var(--video-modal-ambient-bleed) * -1.35);
+    inset: calc(var(--video-modal-ambient-bleed) * -1.8);
     z-index: 0;
     pointer-events: none;
     display: grid;
@@ -1663,18 +1663,18 @@
   .video-modal__ambient::before {
     content: "";
     position: absolute;
-    inset: calc(var(--video-modal-ambient-bleed) * -0.5);
+    inset: calc(var(--video-modal-ambient-bleed) * -1.1);
     border-radius: calc(var(--radius-3xl) + var(--video-modal-ambient-bleed));
     background: radial-gradient(
-      circle at 50% 48%,
-      color-mix(in srgb, var(--color-overlay-strong) 38%, transparent) 0%,
-      color-mix(in srgb, var(--color-overlay) 24%, transparent) 65%,
+      circle at 50% 46%,
+      color-mix(in srgb, var(--color-overlay-strong) 52%, transparent) 0%,
+      color-mix(in srgb, var(--color-overlay) 32%, transparent) 62%,
       transparent 100%
     );
     opacity: var(--video-modal-ambient-overlay-opacity);
-    filter: blur(calc(var(--video-modal-ambient-blur) * 0.32));
+    filter: blur(calc(var(--video-modal-ambient-blur) * 0.38));
     transform: translate3d(0, var(--video-modal-ambient-translate-y), 0)
-      scale(1.12);
+      scale(1.26);
   }
 
   .video-modal__ambient-canvas {
@@ -1684,13 +1684,14 @@
     transform-origin: center;
     transform: translate3d(0, var(--video-modal-ambient-translate-y), 0)
       scale(var(--video-modal-ambient-scale));
-    filter: blur(var(--video-modal-ambient-blur)) saturate(1.42)
-      brightness(0.82);
+    filter: blur(var(--video-modal-ambient-blur)) saturate(1.68)
+      brightness(1.12);
     opacity: var(--video-modal-ambient-opacity);
     mask-image: radial-gradient(
-      circle,
-      color-mix(in srgb, var(--color-black) 94%, transparent) 0%,
-      color-mix(in srgb, var(--color-black) 78%, transparent) 68%,
+      circle at 50% 44%,
+      color-mix(in srgb, var(--color-black) 98%, transparent) 0%,
+      color-mix(in srgb, var(--color-black) 92%, transparent) 58%,
+      color-mix(in srgb, var(--color-black) 70%, transparent) 84%,
       transparent 100%
     );
   }
