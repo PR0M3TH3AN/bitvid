@@ -251,18 +251,18 @@
             class="hidden rounded-lg border border-danger/60 bg-danger/10 px-4 py-2 text-sm text-danger"
             role="alert"
           ></div>
-          <div data-nip46-handshake-panel class="space-y-3">
-            <div class="flex flex-col gap-4 sm:flex-row sm:items-start">
+          <div data-nip46-handshake-panel class="space-y-4">
+            <div class="flex flex-col items-center gap-5 sm:items-stretch">
               <div
-                class="flex h-48 w-48 items-center justify-center rounded-lg border border-border-strong bg-bg-muted"
+                class="flex aspect-square w-full max-w-sm items-center justify-center rounded-2xl border border-border-strong bg-white p-5 shadow-sm sm:max-w-md sm:p-8"
                 data-nip46-qr
                 aria-hidden="true"
               >
-                <div class="text-center text-xs text-text-muted">
+                <div class="w-full text-center text-sm text-text-muted">
                   Generating connect code…
                 </div>
               </div>
-              <div class="flex-1 space-y-2">
+              <div class="w-full space-y-3 sm:max-w-xl">
                 <label class="block text-sm font-medium text-text" for="nip46HandshakeUri">
                   Connect URI
                 </label>
@@ -276,13 +276,18 @@
                   readonly
                 ></textarea>
                 <div class="flex flex-wrap items-center gap-2">
-                  <button type="button" class="btn-ghost text-sm" data-nip46-copy-uri disabled>
+                  <button
+                    type="button"
+                    class="btn-ghost w-full text-sm sm:w-auto"
+                    data-nip46-copy-uri
+                    disabled
+                  >
                     Copy link
                   </button>
                 </div>
                 <p
                   data-nip46-secret
-                  class="hidden text-xs text-text-muted"
+                  class="hidden break-words text-xs text-text-muted"
                 ></p>
               </div>
             </div>
