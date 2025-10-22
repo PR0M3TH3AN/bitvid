@@ -5811,7 +5811,8 @@ export class ProfileModalController {
   }
 
   async hydrateActiveWalletSettings(pubkey) {
-    const hydrate = this.services.nwcSettings?.hydrateNwcSettingsForPubkey;
+    const service = this.services.nwcSettings;
+    const hydrate = service?.hydrateNwcSettingsForPubkey;
     if (typeof hydrate !== "function") {
       return null;
     }
@@ -5824,7 +5825,7 @@ export class ProfileModalController {
     }
 
     try {
-      return await hydrate(normalized);
+      return await hydrate.call(service, normalized);
     } catch (error) {
       userLogger.warn(
         `[ProfileModalController] Failed to hydrate wallet settings for ${normalized}:`,
