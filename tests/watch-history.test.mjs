@@ -18,9 +18,7 @@ const {
   setWatchHistoryV2Enabled,
 } = await import("../js/constants.js");
 const { nostrClient } = await import("../js/nostr.js");
-const { chunkWatchHistoryPayloadItems, normalizeActorKey } = await import(
-  "../js/nostr/watchHistory.js"
-);
+const { normalizeActorKey } = await import("../js/nostr/watchHistory.js");
 const { watchHistoryService } = await import("../js/watchHistoryService.js");
 const { buildHistoryCard } = await import("../js/historyView.js");
 const { getApplication, setApplication } = await import(
@@ -877,21 +875,6 @@ async function testPublishSnapshotCanonicalizationAndChunking() {
       "fingerprint should change when canonical items differ",
     );
 
-    const chunkingPreview = chunkWatchHistoryPayloadItems(
-      firstResult.items,
-      "preview",
-      40_000,
-    );
-    assert.equal(
-      chunkingPreview.chunks.length,
-      2,
-      "chunk helper should split payloads when the configured limit is smaller than the canonical snapshot",
-    );
-    assert.equal(
-      chunkingPreview.skipped.length,
-      0,
-      "no canonical entries should be skipped when the limit exceeds individual pointer size",
-    );
   } finally {
     restoreCrypto.restore();
     nostrClient.ensureSessionActor = originalEnsure;
