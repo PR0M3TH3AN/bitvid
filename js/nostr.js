@@ -749,6 +749,7 @@ export const __testExports = {
   DEFAULT_NIP07_ENCRYPTION_METHODS,
   decryptNip46PayloadWithKeys,
   createNip46Cipher,
+  normalizeNip46CiphertextPayload,
 };
 
 function withRequestTimeout(promise, timeoutMs, onTimeout, message = "Request timed out") {
@@ -3715,12 +3716,50 @@ function decodeBytesToUtf8(value) {
 
 function normalizeNip46CiphertextPayload(payload) {
   const visited = new Set();
+  const candidates = new Set();
+
+  const addCandidate = (value) => {
+    if (typeof value !== "string") {
+      return;
+    }
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return;
+    }
+    candidates.add(trimmed);
+  };
+
+  const addCiphertextWithNonce = (ciphertext, nonce) => {
+    const normalizedCiphertext = typeof ciphertext === "string" ? ciphertext.trim() : "";
+    const normalizedNonce = typeof nonce === "string" ? nonce.trim() : "";
+
+    if (!normalizedCiphertext) {
+      return;
+    }
+
+    addCandidate(normalizedCiphertext);
+
+    if (!normalizedNonce) {
+      return;
+    }
+
+    const strippedNonce = normalizedNonce.replace(/^\?iv=/i, "");
+
+    addCandidate(`${normalizedCiphertext}\n${strippedNonce}`);
+    addCandidate(`${normalizedCiphertext}?iv=${strippedNonce}`);
+
+    if (strippedNonce !== normalizedNonce) {
+      addCandidate(`${normalizedCiphertext}${normalizedNonce}`);
+    }
+  };
 
   const coerce = (value) => {
     if (typeof value === "string") {
+      addCandidate(value);
+
       const trimmed = value.trim();
       if (!trimmed) {
-        return "";
+        return;
       }
 
       const firstChar = trimmed.charAt(0);
@@ -3730,81 +3769,71 @@ function normalizeNip46CiphertextPayload(payload) {
         (firstChar === "[" && lastChar === "]")
       ) {
         try {
-          const parsed = JSON.parse(trimmed);
-          const normalized = coerce(parsed);
-          if (normalized) {
-            return normalized;
-          }
+          coerce(JSON.parse(trimmed));
         } catch (error) {
-          // ignore JSON parse errors and fall through to returning the trimmed string
+          // ignore JSON parse errors and fall through
         }
       }
-
-      return trimmed;
+      return;
     }
 
     if (Array.isArray(value)) {
       const decoded = decodeBytesToUtf8(value);
       if (decoded) {
-        return decoded.trim();
+        addCandidate(decoded);
+        return;
       }
 
-      const parts = [];
       for (const entry of value) {
-        const normalized = coerce(entry);
-        if (normalized) {
-          parts.push(normalized);
-        }
+        coerce(entry);
       }
-      if (!parts.length) {
-        return "";
-      }
-      if (parts.length === 1) {
-        return parts[0];
-      }
-      return parts.join("\n");
+      return;
     }
 
     if (value && typeof value === "object") {
       const decoded = decodeBytesToUtf8(value);
       if (decoded) {
-        return decoded.trim();
+        addCandidate(decoded);
+        return;
       }
 
-      if (typeof value.type === "string" && value.type.toLowerCase() === "buffer" && Array.isArray(value.data)) {
+      if (
+        typeof value.type === "string" &&
+        value.type.toLowerCase() === "buffer" &&
+        Array.isArray(value.data)
+      ) {
         const bufferDecoded = decodeBytesToUtf8(value.data);
         if (bufferDecoded) {
-          return bufferDecoded.trim();
+          addCandidate(bufferDecoded);
+          return;
         }
       }
 
       if (visited.has(value)) {
-        return "";
+        return;
       }
       visited.add(value);
 
       const ciphertextCandidates = [
-        typeof value.ciphertext === "string" ? value.ciphertext.trim() : "",
-        typeof value.cipher_text === "string" ? value.cipher_text.trim() : "",
-        typeof value.content === "string" ? value.content.trim() : "",
-        typeof value.payload === "string" ? value.payload.trim() : "",
-        typeof value.result === "string" ? value.result.trim() : "",
-        typeof value.value === "string" ? value.value.trim() : "",
-        typeof value.data === "string" ? value.data.trim() : "",
+        typeof value.ciphertext === "string" ? value.ciphertext : "",
+        typeof value.cipher_text === "string" ? value.cipher_text : "",
+        typeof value.content === "string" ? value.content : "",
+        typeof value.payload === "string" ? value.payload : "",
+        typeof value.result === "string" ? value.result : "",
+        typeof value.value === "string" ? value.value : "",
+        typeof value.data === "string" ? value.data : "",
       ];
 
-      const ciphertext = ciphertextCandidates.find(Boolean) || "";
       const nonceCandidates = [
-        typeof value.nonce === "string" ? value.nonce.trim() : "",
-        typeof value.iv === "string" ? value.iv.trim() : "",
+        typeof value.nonce === "string" ? value.nonce : "",
+        typeof value.iv === "string" ? value.iv : "",
       ];
-      const nonce = nonceCandidates.find(Boolean) || "";
 
-      if (ciphertext && nonce) {
-        return `${ciphertext}\n${nonce}`;
-      }
-      if (ciphertext) {
-        return ciphertext;
+      const ciphertext = ciphertextCandidates.find((candidate) => candidate && candidate.trim());
+      const nonce = nonceCandidates.find((candidate) => candidate && candidate.trim());
+
+      if (ciphertext || nonce) {
+        addCiphertextWithNonce(ciphertext || "", nonce || "");
       }
 
       const nestedKeys = [
@@ -3819,24 +3848,21 @@ function normalizeNip46CiphertextPayload(payload) {
 
       for (const key of nestedKeys) {
         if (key in value) {
-          const normalized = coerce(value[key]);
-          if (normalized) {
-            return normalized;
-          }
+          coerce(value[key]);
         }
       }
 
-      return "";
+      return;
     }
 
     if (typeof value === "number" || typeof value === "boolean") {
-      return String(value);
+      addCandidate(String(value));
     }
-
-    return "";
   };
 
-  return coerce(payload);
+  coerce(payload);
+
+  return Array.from(candidates);
 }
 
 export function createNip46Cipher(tools, privateKey, remotePubkey) {
@@ -3908,8 +3934,20 @@ async function decryptNip46PayloadWithKeys(privateKey, remotePubkey, ciphertext)
   }
 
   const { decrypt } = createNip46Cipher(tools, privateKey, remotePubkey);
-  const normalizedCiphertext = normalizeNip46CiphertextPayload(ciphertext);
-  return decrypt(normalizedCiphertext);
+  const normalizedCandidates = normalizeNip46CiphertextPayload(ciphertext);
+
+  const tried = [];
+  for (const candidate of normalizedCandidates) {
+    try {
+      return decrypt(candidate);
+    } catch (error) {
+      tried.push({ candidate, error });
+    }
+  }
+
+  const failure = new Error("Failed to decrypt NIP-46 payload with available candidates.");
+  failure.attempts = tried;
+  throw failure;
 }
 
 class Nip46RpcClient {
