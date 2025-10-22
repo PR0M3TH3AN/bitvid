@@ -1,6 +1,7 @@
 import { createModalAccessibility } from "./modalAccessibility.js";
 import createPopover from "../overlay/popoverEngine.js";
 import { createVideoMoreMenuPanel } from "./videoMenuRenderers.js";
+import { attachAmbientBackground } from "../ambientBackground.js";
 import { applyDesignSystemAttributes } from "../../designSystem.js";
 import { devLogger } from "../../utils/logger.js";
 
@@ -94,6 +95,8 @@ export class VideoModal {
 
     this.modalPosterCleanup = null;
     this.videoEventCleanup = null;
+    this.ambientCanvas = null;
+    this.detachAmbientBackground = null;
 
     this.activeVideo = null;
 
@@ -147,6 +150,7 @@ export class VideoModal {
   }
 
   setVideoElement(videoElement) {
+    this.teardownAmbientGlow({ clear: false });
     this.detachVideoEvents();
     this.clearPosterCleanup();
 
@@ -160,6 +164,8 @@ export class VideoModal {
     } else {
       this.modalVideo = null;
     }
+
+    this.attachAmbientGlow();
 
     return this.modalVideo;
   }
@@ -250,6 +256,8 @@ export class VideoModal {
     this.modalMorePopover = null;
     this.modalMoreMenuPanel = null;
 
+    this.teardownAmbientGlow({ clear: false });
+
     const previousScrollRegion = this.scrollRegion;
     if (previousScrollRegion && this.modalNavScrollHandler) {
       previousScrollRegion.removeEventListener(
@@ -287,6 +295,8 @@ export class VideoModal {
     this.shareBtn = playerModal.querySelector("#shareBtn") || null;
     this.modalZapBtn = playerModal.querySelector("#modalZapBtn") || null;
     this.modalMoreBtn = playerModal.querySelector("#modalMoreBtn") || null;
+
+    this.ambientCanvas = playerModal.querySelector("#ambientCanvas") || null;
 
     this.modalZapDialog = playerModal.querySelector("#modalZapDialog") || null;
     this.modalZapForm = playerModal.querySelector("#modalZapForm") || null;
@@ -356,6 +366,8 @@ export class VideoModal {
     this.setShareEnabled(false);
     this.resetStats();
 
+    this.attachAmbientGlow();
+
     if (!this.activeVideo && this.playerModal) {
       this.playerModal.classList.add("hidden");
       this.playerModal.setAttribute("hidden", "");
@@ -405,6 +417,90 @@ export class VideoModal {
       this.videoEventCleanup();
     }
     this.videoEventCleanup = null;
+  }
+
+  getAmbientFallbackColor() {
+    const canvas = this.ambientCanvas;
+    const doc =
+      canvas?.ownerDocument ||
+      this.document ||
+      (typeof document !== "undefined" ? document : null);
+    const win = doc?.defaultView || (typeof window !== "undefined" ? window : null);
+
+    if (doc && win && typeof win.getComputedStyle === "function") {
+      const styles = win.getComputedStyle(doc.documentElement);
+      const tokens = [
+        "--color-overlay-strong",
+        "--color-overlay",
+        "--color-surface",
+        "--color-bg",
+      ];
+
+      for (const token of tokens) {
+        const value = styles.getPropertyValue(token);
+        if (value && value.trim()) {
+          return value.trim();
+        }
+      }
+    }
+
+    return "#000000";
+  }
+
+  clearAmbientCanvas() {
+    const canvas = this.ambientCanvas;
+    if (!canvas || typeof canvas.getContext !== "function") {
+      return;
+    }
+    const context = canvas.getContext("2d");
+    if (!context) {
+      return;
+    }
+
+    const width = canvas.width || canvas.clientWidth || 0;
+    const height = canvas.height || canvas.clientHeight || 0;
+    if (!width || !height) {
+      return;
+    }
+
+    context.fillStyle = this.getAmbientFallbackColor();
+    context.fillRect(0, 0, width, height);
+  }
+
+  teardownAmbientGlow({ clear = true } = {}) {
+    const detach = this.detachAmbientBackground;
+    this.detachAmbientBackground = null;
+
+    if (typeof detach === "function") {
+      try {
+        detach({ clear });
+        return;
+      } catch (error) {
+        this.log("[VideoModal] Failed to teardown ambient background", error);
+      }
+    }
+
+    if (clear) {
+      this.clearAmbientCanvas();
+    }
+  }
+
+  attachAmbientGlow() {
+    if (!this.modalVideo || !this.ambientCanvas) {
+      this.clearAmbientCanvas();
+      return;
+    }
+
+    try {
+      this.detachAmbientBackground = attachAmbientBackground(
+        this.modalVideo,
+        this.ambientCanvas,
+      );
+    } catch (error) {
+      this.detachAmbientBackground = null;
+      this.log("[VideoModal] Failed to attach ambient background", error);
+      this.clearAmbientCanvas();
+    }
   }
 
   bindActionButtons() {
