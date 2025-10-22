@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { Buffer } from "node:buffer";
 import test from "node:test";
 
 const PAYLOAD = { message: "hello", count: 42 };
@@ -129,5 +130,68 @@ test("decryptNip46PayloadWithKeys coerces structured handshake payloads", async 
     jsonRoundTrip,
     serialized,
     "helper should also decrypt JSON-serialized handshake payloads",
+  );
+});
+
+test("decryptNip46PayloadWithKeys decodes buffer-based handshake payloads", async () => {
+  const nostrTools = await loadNostrTools();
+  const { generateSecretKey, getPublicKey, nip44, utils } = nostrTools;
+
+  const clientSecret = utils.bytesToHex(generateSecretKey());
+  const remoteSecret = utils.bytesToHex(generateSecretKey());
+  const remotePubkey = getPublicKey(remoteSecret);
+
+  const serialized = JSON.stringify(PAYLOAD);
+  const conversationKey =
+    typeof nip44.v2.getConversationKey === "function"
+      ? nip44.v2.getConversationKey(clientSecret, remotePubkey)
+      : nip44.v2.utils.getConversationKey(clientSecret, remotePubkey);
+  const ciphertext = nip44.v2.encrypt(serialized, conversationKey);
+  const ciphertextBuffer = Buffer.from(ciphertext, "utf8");
+
+  const bufferPayload = ciphertextBuffer;
+
+  const { __testExports } = await import("../js/nostr.js");
+  const { decryptNip46PayloadWithKeys } = __testExports;
+
+  const bufferRoundTrip = await decryptNip46PayloadWithKeys(
+    clientSecret,
+    remotePubkey,
+    bufferPayload,
+  );
+
+  assert.equal(
+    bufferRoundTrip,
+    serialized,
+    "helper should decrypt handshake payloads that serialize buffers",
+  );
+
+  const jsonBufferPayload = JSON.stringify(bufferPayload);
+  const jsonBufferRoundTrip = await decryptNip46PayloadWithKeys(
+    clientSecret,
+    remotePubkey,
+    jsonBufferPayload,
+  );
+
+  assert.equal(
+    jsonBufferRoundTrip,
+    serialized,
+    "helper should decrypt JSON-encoded buffer handshake payloads",
+  );
+
+  const objectBufferPayload = {
+    ciphertext: ciphertextBuffer,
+  };
+
+  const objectBufferRoundTrip = await decryptNip46PayloadWithKeys(
+    clientSecret,
+    remotePubkey,
+    objectBufferPayload,
+  );
+
+  assert.equal(
+    objectBufferRoundTrip,
+    serialized,
+    "helper should decrypt objects containing buffer encoded ciphertext",
   );
 });
