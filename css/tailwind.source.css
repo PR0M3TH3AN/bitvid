@@ -1410,6 +1410,31 @@
     box-shadow: none;
   }
 
+  .video-modal__panel > :not(.video-modal__ambient) {
+    position: relative;
+    z-index: 1;
+  }
+
+  .video-modal__ambient {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+    border-radius: inherit;
+    background: var(--color-overlay-strong);
+  }
+
+  .video-modal__ambient-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    transform: scale(1.08);
+    transform-origin: center;
+    filter: blur(40px) saturate(1.25) brightness(0.8);
+  }
+
   #playerModal .watch-container {
     width: 100%;
     max-width: var(--player-modal-inline-max, var(--layout-player-max-width));
