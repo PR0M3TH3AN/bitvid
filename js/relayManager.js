@@ -1,6 +1,6 @@
 import { isDevMode } from "./config.js";
+import { DEFAULT_RELAY_URLS } from "./nostr/toolkit.js";
 import {
-  DEFAULT_RELAY_URLS,
   getActiveSigner,
   nostrClient,
   requestDefaultExtensionPermissions,
