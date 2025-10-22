@@ -3555,15 +3555,56 @@ class Nip46RpcClient {
     let encrypt = null;
     let decrypt = null;
 
-    if (tools?.nip44?.v2?.encrypt && tools?.nip44?.v2?.decrypt) {
-      encrypt = (priv, pub, payload) => tools.nip44.v2.encrypt(priv, pub, payload);
-      decrypt = (priv, pub, payload) => tools.nip44.v2.decrypt(priv, pub, payload);
-    } else if (tools?.nip44?.encrypt && tools?.nip44?.decrypt) {
-      encrypt = (priv, pub, payload) => tools.nip44.encrypt(priv, pub, payload);
-      decrypt = (priv, pub, payload) => tools.nip44.decrypt(priv, pub, payload);
+    const nip44v2GetConversationKey =
+      typeof tools?.nip44?.v2?.getConversationKey === "function"
+        ? tools.nip44.v2.getConversationKey
+        : typeof tools?.nip44?.v2?.utils?.getConversationKey === "function"
+          ? tools.nip44.v2.utils.getConversationKey
+          : null;
+
+    if (
+      tools?.nip44?.v2?.encrypt &&
+      tools?.nip44?.v2?.decrypt &&
+      nip44v2GetConversationKey
+    ) {
+      const conversationKey = nip44v2GetConversationKey(
+        this.clientPrivateKey,
+        this.remotePubkey,
+      );
+
+      if (!conversationKey) {
+        throw new Error("Failed to derive a nip44 conversation key for remote signing.");
+      }
+
+      encrypt = (plaintext, nonce) =>
+        typeof nonce === "string"
+          ? tools.nip44.v2.encrypt(plaintext, conversationKey, nonce)
+          : tools.nip44.v2.encrypt(plaintext, conversationKey);
+      decrypt = (ciphertext) => tools.nip44.v2.decrypt(ciphertext, conversationKey);
+    } else if (
+      tools?.nip44?.encrypt &&
+      tools?.nip44?.decrypt &&
+      typeof tools?.nip44?.getConversationKey === "function"
+    ) {
+      const conversationKey = tools.nip44.getConversationKey(
+        this.clientPrivateKey,
+        this.remotePubkey,
+      );
+
+      if (!conversationKey) {
+        throw new Error("Failed to derive a nip44 conversation key for remote signing.");
+      }
+
+      encrypt = (plaintext, nonce) =>
+        typeof nonce === "string"
+          ? tools.nip44.encrypt(plaintext, conversationKey, nonce)
+          : tools.nip44.encrypt(plaintext, conversationKey);
+      decrypt = (ciphertext) => tools.nip44.decrypt(ciphertext, conversationKey);
     } else if (tools?.nip04?.encrypt && tools?.nip04?.decrypt) {
-      encrypt = (priv, pub, payload) => tools.nip04.encrypt(priv, pub, payload);
-      decrypt = (priv, pub, payload) => tools.nip04.decrypt(priv, pub, payload);
+      const privateKey = this.clientPrivateKey;
+      const remotePubkey = this.remotePubkey;
+      encrypt = (plaintext) => tools.nip04.encrypt(privateKey, remotePubkey, plaintext);
+      decrypt = (ciphertext) => tools.nip04.decrypt(privateKey, remotePubkey, ciphertext);
     }
 
     if (!encrypt || !decrypt) {
@@ -3577,12 +3618,12 @@ class Nip46RpcClient {
   async encryptPayload(payload) {
     const { encrypt } = await this.ensureCipher();
     const serialized = typeof payload === "string" ? payload : JSON.stringify(payload);
-    return encrypt(this.clientPrivateKey, this.remotePubkey, serialized);
+    return encrypt(serialized);
   }
 
   async decryptPayload(ciphertext) {
     const { decrypt } = await this.ensureCipher();
-    return decrypt(this.clientPrivateKey, this.remotePubkey, ciphertext);
+    return decrypt(ciphertext);
   }
 
   async ensureSubscription() {
@@ -4433,7 +4474,7 @@ function getActiveKey(video) {
   return `LEGACY:${video.id}`;
 }
 
-export { convertEventToVideo };
+export { convertEventToVideo, Nip46RpcClient };
 
 export class NostrClient {
   constructor() {
