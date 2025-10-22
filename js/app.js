@@ -64,6 +64,7 @@ import {
   formatViewCount,
   ingestLocalViewEvent,
 } from "./viewCounter.js";
+import { recordVideoView as recordVideoViewApi } from "./nostr/viewEvents.js";
 import { splitAndZap as splitAndZapDefault } from "./payments/zapSplit.js";
 import { showLoginRequiredToZapNotification } from "./payments/zapNotifications.js";
 import {
@@ -8688,6 +8689,8 @@ class Application {
     }
   }
 }
+
+Application.recordVideoView = recordVideoViewApi;
 
 /**
  * Given an array of video objects,
