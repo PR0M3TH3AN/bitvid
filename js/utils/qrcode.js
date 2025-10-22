@@ -1,16 +1,27 @@
-/**
- * @fileoverview
- * - Using the 'QRCode for Javascript library'
- * - Fixed dataset of 'QRCode for Javascript library' for support full-spec.
- * - this library has no dependencies.
- * 
- * @author davidshimjs
- * @see <a href="http://www.d-project.com/" target="_blank">http://www.d-project.com/</a>
- * @see <a href="http://jeromeetienne.github.com/jquery-qrcode/" target="_blank">http://jeromeetienne.github.com/jquery-qrcode/</a>
- */
-var QRCode;
+const hasDocument =
+  typeof document !== "undefined" &&
+  typeof document.createElement === "function" &&
+  typeof document.createElementNS === "function";
 
-(function () {
+let QRCodeExport = null;
+let createQrCodeExport = null;
+let renderQrCodeExport = null;
+let updateQrCodeExport = null;
+
+if (hasDocument) {
+  /**
+   * @fileoverview
+   * - Using the 'QRCode for Javascript library'
+   * - Fixed dataset of 'QRCode for Javascript library' for support full-spec.
+   * - this library has no dependencies.
+   *
+   * @author davidshimjs
+   * @see <a href="http://www.d-project.com/" target="_blank">http://www.d-project.com/</a>
+   * @see <a href="http://jeromeetienne.github.com/jquery-qrcode/" target="_blank">http://jeromeetienne.github.com/jquery-qrcode/</a>
+   */
+  var QRCode;
+
+  (function () {
 	//---------------------------------------------------------------------
 	// QRCode for JavaScript
 	//
@@ -631,24 +642,58 @@ var QRCode;
 	 * @name QRCode.CorrectLevel
 	 */
 	QRCode.CorrectLevel = QRErrorCorrectLevel;
-})();
+  })();
 
-export { QRCode };
+  QRCodeExport = QRCode;
 
-export function createQrCode(element, options = {}) {
-  return new QRCode(element, options);
-}
+  createQrCodeExport = function createQrCode(element, options = {}) {
+    return new QRCode(element, options);
+  };
 
-export function renderQrCode(element, text, options = {}) {
-  const normalizedOptions = Object.assign({}, options, { text });
-  const instance = new QRCode(element, normalizedOptions);
-  return instance;
-}
+  renderQrCodeExport = function renderQrCode(element, text, options = {}) {
+    const normalizedOptions = Object.assign({}, options, { text });
+    const instance = new QRCode(element, normalizedOptions);
+    return instance;
+  };
 
-export function updateQrCode(instance, text) {
-  if (!instance || typeof instance.makeCode !== "function") {
-    throw new Error("Invalid QRCode instance");
+  updateQrCodeExport = function updateQrCode(instance, text) {
+    if (!instance || typeof instance.makeCode !== "function") {
+      throw new Error("Invalid QRCode instance");
+    }
+    instance.makeCode(text);
+    return instance;
+  };
+} else {
+  class QRCodeStub {
+    constructor() {
+      throw new Error("QR code rendering requires a DOM environment.");
+    }
+
+    makeCode() {
+      throw new Error("QR code rendering requires a DOM environment.");
+    }
+
+    clear() {}
   }
-  instance.makeCode(text);
-  return instance;
+
+  QRCodeExport = QRCodeStub;
+
+  createQrCodeExport = function createQrCodeStub() {
+    throw new Error("QR code rendering requires a DOM environment.");
+  };
+
+  renderQrCodeExport = function renderQrCodeStub() {
+    throw new Error("QR code rendering requires a DOM environment.");
+  };
+
+  updateQrCodeExport = function updateQrCodeStub() {
+    throw new Error("QR code rendering requires a DOM environment.");
+  };
 }
+
+export { QRCodeExport as QRCode };
+export {
+  createQrCodeExport as createQrCode,
+  renderQrCodeExport as renderQrCode,
+  updateQrCodeExport as updateQrCode,
+};
