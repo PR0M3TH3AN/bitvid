@@ -21,6 +21,10 @@ import { ALLOW_NSFW_CONTENT } from "./config.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import moderationService from "./services/moderationService.js";
 import nostrService from "./services/nostrService.js";
+import {
+  listVideoViewEvents as listVideoViewEventsApi,
+  subscribeVideoViewEvents as subscribeVideoViewEventsApi,
+} from "./nostr/viewEvents.js";
 
 function normalizeHexPubkey(value) {
   if (typeof value !== "string") {
@@ -1241,5 +1245,8 @@ class SubscriptionsManager {
     return sharedConvertEventToVideo(evt);
   }
 }
+
+SubscriptionsManager.listVideoViewEvents = listVideoViewEventsApi;
+SubscriptionsManager.subscribeVideoViewEvents = subscribeVideoViewEventsApi;
 
 export const subscriptions = new SubscriptionsManager();

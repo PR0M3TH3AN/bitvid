@@ -17,15 +17,35 @@ import {
   VIEW_COUNT_DEDUPE_WINDOW_SECONDS,
 } from "./config.js";
 import { userLogger } from "./utils/logger.js";
+import { nostrClient } from "./nostr.js";
 import {
-  countVideoViewEvents,
-  listVideoViewEvents,
-  subscribeVideoViewEvents,
-} from "./nostr.js";
+  countVideoViewEvents as countVideoViewEventsForClient,
+  listVideoViewEvents as listVideoViewEventsForClient,
+  subscribeVideoViewEvents as subscribeVideoViewEventsForClient,
+} from "./nostr/viewEvents.js";
 
 const VIEW_COUNTER_STORAGE_KEY = "bitvid:view-counter:v1";
 const STORAGE_DEBOUNCE_MS = 500;
 const SECONDS_PER_DAY = 86_400;
+
+const listVideoViewEvents = (pointer, options) => {
+  if (typeof nostrClient.listVideoViewEvents === "function") {
+    return nostrClient.listVideoViewEvents(pointer, options);
+  }
+  return listVideoViewEventsForClient(nostrClient, pointer, options);
+};
+const countVideoViewEvents = (pointer, options) => {
+  if (typeof nostrClient.countVideoViewEvents === "function") {
+    return nostrClient.countVideoViewEvents(pointer, options);
+  }
+  return countVideoViewEventsForClient(nostrClient, pointer, options);
+};
+const subscribeVideoViewEvents = (pointer, options) => {
+  if (typeof nostrClient.subscribeVideoViewEvents === "function") {
+    return nostrClient.subscribeVideoViewEvents(pointer, options);
+  }
+  return subscribeVideoViewEventsForClient(nostrClient, pointer, options);
+};
 
 /** @type {Map<string, ViewCounterState>} */
 const pointerStates = new Map();
