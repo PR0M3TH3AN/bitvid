@@ -339,33 +339,53 @@ class UserBlockListManager {
       });
     };
 
-    const permissionResult = await requestDefaultExtensionPermissions();
-    if (!permissionResult.ok) {
-      userLogger.warn(
-        "[UserBlockList] Unable to load block list without extension permissions.",
-        permissionResult.error,
-      );
-      this.reset();
-      this.loaded = true;
-      const error =
-        permissionResult.error instanceof Error
-          ? permissionResult.error
-          : new Error("Extension permissions required to load block list.");
-      emitStatus({ status: "error", error });
-      emitStatus({ status: "settled" });
-      return;
+    const activeSigner = getActiveSigner();
+    const signerDecryptor =
+      activeSigner && typeof activeSigner.nip04Decrypt === "function"
+        ? activeSigner.nip04Decrypt
+        : null;
+
+    let extensionDecryptor =
+      typeof window?.nostr?.nip04?.decrypt === "function"
+        ? (pubkey, payload) => window.nostr.nip04.decrypt(pubkey, payload)
+        : null;
+
+    if (!signerDecryptor && !extensionDecryptor) {
+      const permissionResult = await requestDefaultExtensionPermissions();
+      if (!permissionResult.ok) {
+        userLogger.warn(
+          "[UserBlockList] Unable to load block list via extension decryptor; permissions denied.",
+          permissionResult.error,
+        );
+        this.reset();
+        this.loaded = true;
+        const error =
+          permissionResult.error instanceof Error
+            ? permissionResult.error
+            : new Error(
+                "Extension permissions are required to use the browser decryptor.",
+              );
+        emitStatus({ status: "error", error, decryptor: "extension" });
+        emitStatus({ status: "settled" });
+        return;
+      }
+
+      extensionDecryptor =
+        typeof window?.nostr?.nip04?.decrypt === "function"
+          ? (pubkey, payload) => window.nostr.nip04.decrypt(pubkey, payload)
+          : null;
     }
 
-    if (!window?.nostr?.nip04?.decrypt) {
+    if (!signerDecryptor && !extensionDecryptor) {
       userLogger.warn(
-        "[UserBlockList] nip04.decrypt is unavailable; treating block list as empty."
+        "[UserBlockList] No nip04 decryptor available; treating block list as empty.",
       );
       this.reset();
       this.loaded = true;
-      emitStatus({
-        status: "error",
-        error: new Error("nip04.decrypt is unavailable"),
-      });
+      const error = new Error(
+        "No NIP-04 decryptor is available to load the block list.",
+      );
+      emitStatus({ status: "error", error, decryptor: "unavailable" });
       emitStatus({ status: "settled" });
       return;
     }
@@ -549,28 +569,39 @@ class UserBlockListManager {
           return;
         }
 
-        const activeSigner = getActiveSigner();
-        const decryptWithActiveSigner =
-          activeSigner && typeof activeSigner.nip04Decrypt === "function";
-
         let decrypted = "";
+        const decryptPath = signerDecryptor
+          ? "active-signer"
+          : extensionDecryptor
+            ? "extension"
+            : "unavailable";
         try {
-          if (decryptWithActiveSigner) {
-            decrypted = await activeSigner.nip04Decrypt(normalized, newest.content);
-          } else if (window?.nostr?.nip04?.decrypt) {
-            decrypted = await window.nostr.nip04.decrypt(normalized, newest.content);
+          if (signerDecryptor) {
+            decrypted = await signerDecryptor(normalized, newest.content);
+          } else if (extensionDecryptor) {
+            decrypted = await extensionDecryptor(normalized, newest.content);
           } else {
             throw new Error("nip04-unavailable");
           }
         } catch (err) {
-          userLogger.error("[UserBlockList] Failed to decrypt block list:", err);
+          userLogger.error(
+            `[UserBlockList] Failed to decrypt block list via ${decryptPath}:`,
+            err,
+          );
           applyBlockedPubkeys([], {
             source,
             reason: "decrypt-error",
             event: newest,
             error: err,
+            decryptor: decryptPath,
           });
-          emitStatus({ status: "error", event: newest, error: err, source });
+          emitStatus({
+            status: "error",
+            event: newest,
+            error: err,
+            source,
+            decryptor: decryptPath,
+          });
           return;
         }
 
