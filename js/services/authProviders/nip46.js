@@ -1,5 +1,35 @@
 import { devLogger } from "../../utils/logger.js";
 
+function summarizeHexForLog(value) {
+  if (typeof value !== "string" || !value.trim()) {
+    return "";
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (normalized.length <= 12) {
+    return `${normalized} (len:${normalized.length})`;
+  }
+  return `${normalized.slice(0, 8)}…${normalized.slice(-4)} (len:${normalized.length})`;
+}
+
+function summarizeSecretForLog(value) {
+  if (typeof value !== "string" || !value.trim()) {
+    return "<empty>";
+  }
+
+  const trimmed = value.trim();
+  const visible = trimmed.length <= 4 ? "*".repeat(trimmed.length) : `${"*".repeat(3)}…`;
+  return `${visible} (len:${trimmed.length})`;
+}
+
+function sanitizeNip46UriForLog(value) {
+  if (typeof value !== "string" || !value) {
+    return "";
+  }
+
+  return value.replace(/(secret=)([^&#]+)/gi, "$1***");
+}
+
 const PROVIDER_ID = "nip46";
 const PROVIDER_LABEL = "remote signer (nip-46)";
 const PROVIDER_DESCRIPTION =
@@ -112,6 +142,16 @@ export default {
     }
 
     const normalized = normalizeOptions(options);
+
+    devLogger.debug("[nip46] Login requested", {
+      mode: normalized.mode,
+      reuseStored: normalized.reuseStored,
+      remember: normalized.remember,
+      hasConnectionString: Boolean(normalized.connectionString),
+      relayCount: normalized.relays.length,
+      permissions: normalized.permissions || null,
+      secret: summarizeSecretForLog(normalized.secret),
+    });
     let result = null;
 
     if (normalized.reuseStored) {
@@ -120,8 +160,12 @@ export default {
         error.code = "no-stored-session";
         throw error;
       }
+      devLogger.debug("[nip46] Reusing stored remote signer session");
 
       result = await nostrClient.useStoredRemoteSigner();
+      devLogger.debug("[nip46] Stored remote signer returned", {
+        pubkey: summarizeHexForLog(normalizePubkey(result)),
+      });
     } else if (normalized.mode === "manual") {
       const uri = normalized.connectionString;
       if (!uri) {
@@ -130,11 +174,19 @@ export default {
         throw error;
       }
 
+      devLogger.debug("[nip46] Initiating manual remote signer connect", {
+        uri: sanitizeNip46UriForLog(uri),
+        remember: normalized.remember,
+      });
+
       result = await nostrClient.connectRemoteSigner({
         connectionString: uri,
         remember: normalized.remember,
         onAuthUrl: normalized.onAuthUrl,
         onStatus: normalized.onStatus,
+      });
+      devLogger.debug("[nip46] Manual connect completed", {
+        pubkey: summarizeHexForLog(normalizePubkey(result)),
       });
     } else {
       if (normalized.onStatus) {
@@ -156,6 +208,15 @@ export default {
         permissions: normalized.permissions,
       });
 
+      devLogger.debug("[nip46] Prepared remote signer handshake", {
+        relays: Array.isArray(handshake.relays) ? handshake.relays : [],
+        permissions: handshake.permissions || null,
+        clientPublicKey: summarizeHexForLog(handshake.clientPublicKey),
+        secret: summarizeSecretForLog(handshake.secret),
+        metadataKeys: Object.keys(handshake.metadata || {}),
+        connectionString: sanitizeNip46UriForLog(handshake.connectionString),
+      });
+
       if (normalized.onHandshakePrepared) {
         try {
           normalized.onHandshakePrepared(handshake);
@@ -163,6 +224,12 @@ export default {
           devLogger.warn("[nip46] Handshake prepared callback threw:", callbackError);
         }
       }
+
+      devLogger.debug("[nip46] Connecting to remote signer with prepared handshake", {
+        remember: normalized.remember,
+        handshakeAlgorithm: handshake.algorithm || null,
+        connectionString: sanitizeNip46UriForLog(handshake.connectionString),
+      });
 
       result = await nostrClient.connectRemoteSigner({
         connectionString: handshake.connectionString,
@@ -184,6 +251,11 @@ export default {
     }
 
     const pubkey = normalizePubkey(result);
+
+    devLogger.debug("[nip46] Login finished", {
+      pubkey: summarizeHexForLog(pubkey),
+      hasSigner: Boolean(result && typeof result === "object" && result.signer),
+    });
 
     return {
       authType: PROVIDER_ID,
