@@ -4993,6 +4993,49 @@ export class NostrClient {
 
     const waitTimeout = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : NIP46_HANDSHAKE_TIMEOUT_MS;
 
+    const coerceStructuredString = (value) => {
+      if (typeof value === "string") {
+        return value.trim();
+      }
+      if (Array.isArray(value)) {
+        for (const entry of value) {
+          const candidate = coerceStructuredString(entry);
+          if (candidate) {
+            return candidate;
+          }
+        }
+        return "";
+      }
+      if (value && typeof value === "object") {
+        const preferredKeys = [
+          "secret",
+          "message",
+          "status",
+          "reason",
+          "detail",
+          "description",
+          "value",
+          "result",
+          "url",
+        ];
+        for (const key of preferredKeys) {
+          if (Object.prototype.hasOwnProperty.call(value, key)) {
+            const candidate = coerceStructuredString(value[key]);
+            if (candidate) {
+              return candidate;
+            }
+          }
+        }
+        for (const entry of Object.values(value)) {
+          const candidate = coerceStructuredString(entry);
+          if (candidate) {
+            return candidate;
+          }
+        }
+      }
+      return "";
+    };
+
     return new Promise((resolve, reject) => {
       let settled = false;
       const cleanup = () => {
@@ -5051,8 +5094,8 @@ export class NostrClient {
               return;
             }
 
-            const resultValue = typeof parsed?.result === "string" ? parsed.result.trim() : "";
-            const errorValue = typeof parsed?.error === "string" ? parsed.error.trim() : "";
+            const resultValue = coerceStructuredString(parsed?.result);
+            const errorValue = coerceStructuredString(parsed?.error);
 
             if (resultValue === "auth_url" && errorValue) {
               if (typeof onAuthUrl === "function") {
