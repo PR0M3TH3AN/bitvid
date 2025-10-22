@@ -74,13 +74,18 @@ test("decryptNip46PayloadWithKeys handles nip44.v2 ciphertext", async () => {
   const { __testExports } = await import("../js/nostr.js");
   const { decryptNip46PayloadWithKeys } = __testExports;
 
-  const roundTrip = await decryptNip46PayloadWithKeys(
+  const { plaintext, algorithm } = await decryptNip46PayloadWithKeys(
     clientSecret,
     remotePubkey,
     ciphertext,
   );
 
-  assert.equal(roundTrip, serialized, "helper should decrypt nip44.v2 ciphertext");
+  assert.equal(plaintext, serialized, "helper should decrypt nip44.v2 ciphertext");
+  assert.equal(
+    algorithm,
+    "nip44.v2",
+    "helper should report nip44.v2 as the active algorithm",
+  );
 });
 
 test("decryptNip46PayloadWithKeys coerces structured handshake payloads", async () => {
@@ -107,29 +112,41 @@ test("decryptNip46PayloadWithKeys coerces structured handshake payloads", async 
   const { __testExports } = await import("../js/nostr.js");
   const { decryptNip46PayloadWithKeys } = __testExports;
 
-  const roundTrip = await decryptNip46PayloadWithKeys(
-    clientSecret,
-    remotePubkey,
-    structuredPayload,
-  );
+  const { plaintext: structuredPlaintext, algorithm } =
+    await decryptNip46PayloadWithKeys(
+      clientSecret,
+      remotePubkey,
+      structuredPayload,
+    );
 
   assert.equal(
-    roundTrip,
+    structuredPlaintext,
     serialized,
     "helper should decrypt ciphertext encoded as an object with nonce",
   );
-
-  const jsonPayload = JSON.stringify(structuredPayload);
-  const jsonRoundTrip = await decryptNip46PayloadWithKeys(
-    clientSecret,
-    remotePubkey,
-    jsonPayload,
+  assert.equal(
+    algorithm,
+    "nip44.v2",
+    "structured payload should report nip44.v2 algorithm",
   );
 
+  const jsonPayload = JSON.stringify(structuredPayload);
+  const { plaintext: jsonPlaintext, algorithm: jsonAlgorithm } =
+    await decryptNip46PayloadWithKeys(
+      clientSecret,
+      remotePubkey,
+      jsonPayload,
+    );
+
   assert.equal(
-    jsonRoundTrip,
+    jsonPlaintext,
     serialized,
     "helper should also decrypt JSON-serialized handshake payloads",
+  );
+  assert.equal(
+    jsonAlgorithm,
+    "nip44.v2",
+    "JSON payload should report nip44.v2 algorithm",
   );
 });
 
@@ -154,45 +171,63 @@ test("decryptNip46PayloadWithKeys decodes buffer-based handshake payloads", asyn
   const { __testExports } = await import("../js/nostr.js");
   const { decryptNip46PayloadWithKeys } = __testExports;
 
-  const bufferRoundTrip = await decryptNip46PayloadWithKeys(
-    clientSecret,
-    remotePubkey,
-    bufferPayload,
-  );
+  const { plaintext: bufferPlaintext, algorithm } =
+    await decryptNip46PayloadWithKeys(
+      clientSecret,
+      remotePubkey,
+      bufferPayload,
+    );
 
   assert.equal(
-    bufferRoundTrip,
+    bufferPlaintext,
     serialized,
     "helper should decrypt handshake payloads that serialize buffers",
   );
-
-  const jsonBufferPayload = JSON.stringify(bufferPayload);
-  const jsonBufferRoundTrip = await decryptNip46PayloadWithKeys(
-    clientSecret,
-    remotePubkey,
-    jsonBufferPayload,
+  assert.equal(
+    algorithm,
+    "nip44.v2",
+    "buffer payload should report nip44.v2 algorithm",
   );
 
+  const jsonBufferPayload = JSON.stringify(bufferPayload);
+  const { plaintext: jsonBufferPlaintext, algorithm: jsonBufferAlgorithm } =
+    await decryptNip46PayloadWithKeys(
+      clientSecret,
+      remotePubkey,
+      jsonBufferPayload,
+    );
+
   assert.equal(
-    jsonBufferRoundTrip,
+    jsonBufferPlaintext,
     serialized,
     "helper should decrypt JSON-encoded buffer handshake payloads",
+  );
+  assert.equal(
+    jsonBufferAlgorithm,
+    "nip44.v2",
+    "JSON buffer payload should report nip44.v2 algorithm",
   );
 
   const objectBufferPayload = {
     ciphertext: ciphertextBuffer,
   };
 
-  const objectBufferRoundTrip = await decryptNip46PayloadWithKeys(
-    clientSecret,
-    remotePubkey,
-    objectBufferPayload,
-  );
+  const { plaintext: objectBufferPlaintext, algorithm: objectBufferAlgorithm } =
+    await decryptNip46PayloadWithKeys(
+      clientSecret,
+      remotePubkey,
+      objectBufferPayload,
+    );
 
   assert.equal(
-    objectBufferRoundTrip,
+    objectBufferPlaintext,
     serialized,
     "helper should decrypt objects containing buffer encoded ciphertext",
+  );
+  assert.equal(
+    objectBufferAlgorithm,
+    "nip44.v2",
+    "object buffer payload should report nip44.v2 algorithm",
   );
 });
 
@@ -228,7 +263,13 @@ test("decryptNip46PayloadWithKeys supports nip04-style ciphertext wrappers", asy
     "normalizer should include nip04-style ciphertext",
   );
 
-  const { decrypt } = createNip46Cipher(patchedTools, clientSecret, remotePubkey);
+  const cipher = createNip46Cipher(patchedTools, clientSecret, remotePubkey);
+  assert.equal(
+    cipher.algorithm,
+    "nip04",
+    "nip04-only toolchain should resolve the nip04 algorithm",
+  );
+  const { decrypt } = cipher;
   let decrypted = "";
   for (const candidate of candidates) {
     try {
