@@ -933,8 +933,8 @@ export default class LoginModalController {
         if (uri) {
           try {
             qrInstance = renderQrCode(qrContainer, uri, {
-              width: 224,
-              height: 224,
+              width: 256,
+              height: 256,
             });
           } catch (error) {
             qrInstance = null;
