@@ -42,14 +42,14 @@
       <div class="player-modal__content video-modal__panel flex flex-col gap-6">
         <div class="video-modal__layout">
           <div class="video-modal__primary flex flex-col gap-6">
-            <div class="watch-container">
+            <div class="watch-container video-modal__stage">
+              <div class="video-modal__ambient" aria-hidden="true">
+                <canvas
+                  id="ambientCanvas"
+                  class="video-modal__ambient-canvas"
+                ></canvas>
+              </div>
               <div class="video-modal__video">
-                <div class="video-modal__ambient" aria-hidden="true">
-                  <canvas
-                    id="ambientCanvas"
-                    class="video-modal__ambient-canvas"
-                  ></canvas>
-                </div>
                 <video
                   id="modalVideo"
                   class="video-modal__media"
