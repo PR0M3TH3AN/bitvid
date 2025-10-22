@@ -163,6 +163,453 @@ const REBROADCAST_GUARD_PREFIX = "bitvid:rebroadcast:v1";
 const viewEventPublishMemory = new Map();
 const rebroadcastAttemptMemory = new Map();
 
+function resolveVideoViewPointer(pointer) {
+  const normalized = normalizePointerInput(pointer);
+  if (!normalized || typeof normalized.value !== "string") {
+    throw new Error("Invalid video pointer supplied for view lookup.");
+  }
+
+  const value = normalized.value.trim();
+  if (!value) {
+    throw new Error("Invalid video pointer supplied for view lookup.");
+  }
+
+  const type = normalized.type === "a" ? "a" : "e";
+  const descriptor = { type, value };
+
+  if (typeof normalized.relay === "string" && normalized.relay.trim()) {
+    descriptor.relay = normalized.relay.trim();
+  }
+
+  return descriptor;
+}
+
+function createVideoViewEventFilters(pointer) {
+  let resolved;
+
+  if (
+    pointer &&
+    typeof pointer === "object" &&
+    (pointer.type === "a" || pointer.type === "e") &&
+    typeof pointer.value === "string"
+  ) {
+    const value = pointer.value.trim();
+    if (!value) {
+      throw new Error("Invalid video pointer supplied for view lookup.");
+    }
+    resolved = { type: pointer.type === "a" ? "a" : "e", value };
+    if (typeof pointer.relay === "string" && pointer.relay.trim()) {
+      resolved.relay = pointer.relay.trim();
+    }
+  } else {
+    resolved = resolveVideoViewPointer(pointer);
+  }
+
+  const pointerFilter = {
+    kinds: [VIEW_EVENT_KIND],
+    "#t": ["view"],
+  };
+
+  if (resolved.type === "a") {
+    pointerFilter["#a"] = [resolved.value];
+  } else {
+    pointerFilter["#e"] = [resolved.value];
+  }
+
+  const filters = [pointerFilter];
+
+  if (VIEW_FILTER_INCLUDE_LEGACY_VIDEO) {
+    filters.push({
+      kinds: [VIEW_EVENT_KIND],
+      "#t": ["view"],
+      "#video": [resolved.value],
+    });
+  }
+
+  return { pointer: resolved, filters };
+}
+
+function deriveViewEventBucketIndex(createdAtSeconds) {
+  const timestamp = Number.isFinite(createdAtSeconds)
+    ? Math.floor(createdAtSeconds)
+    : Math.floor(Date.now() / 1000);
+  const windowSize = Math.max(
+    1,
+    Number(VIEW_COUNT_DEDUPE_WINDOW_SECONDS) || 0
+  );
+  return Math.floor(timestamp / windowSize);
+}
+
+function getViewEventGuardWindowMs() {
+  const windowSeconds = Math.max(
+    1,
+    Number(VIEW_COUNT_DEDUPE_WINDOW_SECONDS) || 0
+  );
+  return windowSeconds * 1000;
+}
+
+function deriveViewEventPointerScope(pointer) {
+  const pointerValue =
+    typeof pointer?.value === "string" ? pointer.value.trim().toLowerCase() : "";
+  if (!pointerValue) {
+    return "";
+  }
+  const pointerType = pointer?.type === "a" ? "a" : "e";
+  return `${pointerType}:${pointerValue}`;
+}
+
+function generateViewEventEntropy() {
+  const cryptoRef =
+    (typeof globalThis !== "undefined" &&
+      /** @type {Crypto | undefined} */ (globalThis.crypto)) ||
+    null;
+
+  if (cryptoRef && typeof cryptoRef.getRandomValues === "function") {
+    try {
+      const buffer = new Uint32Array(2);
+      cryptoRef.getRandomValues(buffer);
+      return Array.from(buffer, (value) =>
+        value.toString(16).padStart(8, "0")
+      ).join("");
+    } catch (error) {
+      devLogger.warn("[nostr] Failed to gather crypto entropy for view event:", error);
+    }
+  }
+
+  const fallbackA = Math.floor(Math.random() * 0xffffffff)
+    .toString(16)
+    .padStart(8, "0");
+  const fallbackB = Math.floor(Math.random() * 0xffffffff)
+    .toString(16)
+    .padStart(8, "0");
+  return `${fallbackA}${fallbackB}`;
+}
+
+function generateViewEventDedupeTag(actorPubkey, pointer, createdAtSeconds) {
+  const scope = deriveViewEventPointerScope(pointer) || "unknown";
+  const normalizedActor =
+    typeof actorPubkey === "string" && actorPubkey.trim()
+      ? actorPubkey.trim().toLowerCase()
+      : "anon";
+  const timestamp = Number.isFinite(createdAtSeconds)
+    ? Math.max(0, Math.floor(createdAtSeconds))
+    : Math.floor(Date.now() / 1000);
+  const entropy = generateViewEventEntropy();
+  return `${scope}:${normalizedActor}:${timestamp}:${entropy}`;
+}
+
+function hasRecentViewPublish(scope, bucketIndex) {
+  if (!scope || !Number.isFinite(bucketIndex)) {
+    return false;
+  }
+
+  const windowMs = getViewEventGuardWindowMs();
+  const now = Date.now();
+  const entry = viewEventPublishMemory.get(scope);
+
+  if (entry) {
+    const age = now - Number(entry.seenAt);
+    if (!Number.isFinite(entry.seenAt) || age >= windowMs) {
+      viewEventPublishMemory.delete(scope);
+    } else if (Number(entry.bucket) === bucketIndex) {
+      return true;
+    }
+  }
+
+  if (typeof localStorage === "undefined") {
+    return false;
+  }
+
+  const storageKey = `${VIEW_EVENT_GUARD_PREFIX}:${scope}`;
+  let rawValue = null;
+  try {
+    rawValue = localStorage.getItem(storageKey);
+  } catch (error) {
+    devLogger.warn("[nostr] Failed to read view guard entry:", error);
+    return false;
+  }
+
+  if (typeof rawValue !== "string" || !rawValue) {
+    return false;
+  }
+
+  const [storedBucketRaw, storedSeenRaw] = rawValue.split(":", 2);
+  const storedBucket = Number(storedBucketRaw);
+  const storedSeenAt = Number(storedSeenRaw);
+
+  if (!Number.isFinite(storedBucket) || !Number.isFinite(storedSeenAt)) {
+    try {
+      localStorage.removeItem(storageKey);
+    } catch (error) {
+      devLogger.warn("[nostr] Failed to clear corrupt view guard entry:", error);
+    }
+    return false;
+  }
+
+  if (now - storedSeenAt >= windowMs) {
+    try {
+      localStorage.removeItem(storageKey);
+    } catch (error) {
+      devLogger.warn("[nostr] Failed to remove expired view guard entry:", error);
+    }
+    return false;
+  }
+
+  viewEventPublishMemory.set(scope, {
+    bucket: storedBucket,
+    seenAt: storedSeenAt,
+  });
+
+  return storedBucket === bucketIndex;
+}
+
+function rememberViewPublish(scope, bucketIndex) {
+  if (!scope || !Number.isFinite(bucketIndex)) {
+    return;
+  }
+
+  const now = Date.now();
+  const windowMs = getViewEventGuardWindowMs();
+  const entry = viewEventPublishMemory.get(scope);
+  if (entry && Number.isFinite(entry.seenAt) && now - entry.seenAt >= windowMs) {
+    viewEventPublishMemory.delete(scope);
+  }
+
+  viewEventPublishMemory.set(scope, {
+    bucket: bucketIndex,
+    seenAt: now,
+  });
+
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+
+  const storageKey = `${VIEW_EVENT_GUARD_PREFIX}:${scope}`;
+  try {
+    localStorage.setItem(storageKey, `${bucketIndex}:${now}`);
+  } catch (error) {
+    devLogger.warn("[nostr] Failed to persist view guard entry:", error);
+  }
+}
+
+function deriveRebroadcastBucketIndex(referenceSeconds = null) {
+  const windowSeconds = Math.max(
+    1,
+    Number(ENSURE_PRESENCE_REBROADCAST_COOLDOWN_SECONDS) || 0
+  );
+  const baseSeconds = Number.isFinite(referenceSeconds)
+    ? Math.max(0, Math.floor(referenceSeconds))
+    : Math.floor(Date.now() / 1000);
+  return Math.floor(baseSeconds / windowSeconds);
+}
+
+function getRebroadcastCooldownWindowMs() {
+  const windowSeconds = Math.max(
+    1,
+    Number(ENSURE_PRESENCE_REBROADCAST_COOLDOWN_SECONDS) || 0
+  );
+  return windowSeconds * 1000;
+}
+
+function deriveRebroadcastScope(pubkey, eventId) {
+  const normalizedPubkey =
+    typeof pubkey === "string" && pubkey.trim()
+      ? pubkey.trim().toLowerCase()
+      : "";
+  const normalizedEventId =
+    typeof eventId === "string" && eventId.trim()
+      ? eventId.trim().toLowerCase()
+      : "";
+  if (!normalizedPubkey || !normalizedEventId) {
+    return "";
+  }
+  return `${normalizedPubkey}:${normalizedEventId}`;
+}
+
+function readRebroadcastGuardEntry(scope) {
+  if (!scope) {
+    return null;
+  }
+
+  const windowMs = getRebroadcastCooldownWindowMs();
+  const now = Date.now();
+  const entry = rebroadcastAttemptMemory.get(scope);
+
+  if (entry) {
+    const age = now - Number(entry.seenAt);
+    if (!Number.isFinite(entry.seenAt) || age >= windowMs) {
+      rebroadcastAttemptMemory.delete(scope);
+    } else {
+      return entry;
+    }
+  }
+
+  if (typeof localStorage === "undefined") {
+    return null;
+  }
+
+  const storageKey = `${REBROADCAST_GUARD_PREFIX}:${scope}`;
+  let rawValue = null;
+  try {
+    rawValue = localStorage.getItem(storageKey);
+  } catch (error) {
+    devLogger.warn("[nostr] Failed to read rebroadcast guard entry:", error);
+    return null;
+  }
+
+  if (typeof rawValue !== "string" || !rawValue) {
+    return null;
+  }
+
+  const [storedBucketRaw, storedSeenRaw] = rawValue.split(":", 2);
+  const storedBucket = Number(storedBucketRaw);
+  const storedSeenAt = Number(storedSeenRaw);
+
+  if (!Number.isFinite(storedBucket) || !Number.isFinite(storedSeenAt)) {
+    try {
+      localStorage.removeItem(storageKey);
+    } catch (error) {
+      devLogger.warn(
+        "[nostr] Failed to clear corrupt rebroadcast guard entry:",
+        error
+      );
+    }
+    return null;
+  }
+
+  if (now - storedSeenAt >= windowMs) {
+    try {
+      localStorage.removeItem(storageKey);
+    } catch (error) {
+      devLogger.warn("[nostr] Failed to remove expired rebroadcast guard entry:", error);
+    }
+    return null;
+  }
+
+  const normalizedEntry = {
+    bucket: storedBucket,
+    seenAt: storedSeenAt,
+  };
+  rebroadcastAttemptMemory.set(scope, normalizedEntry);
+  return normalizedEntry;
+}
+
+function hasRecentRebroadcastAttempt(scope, bucketIndex) {
+  if (!scope || !Number.isFinite(bucketIndex)) {
+    return false;
+  }
+
+  const entry = readRebroadcastGuardEntry(scope);
+  return entry ? Number(entry.bucket) === bucketIndex : false;
+}
+
+function rememberRebroadcastAttempt(scope, bucketIndex) {
+  if (!scope || !Number.isFinite(bucketIndex)) {
+    return;
+  }
+
+  const now = Date.now();
+  const windowMs = getRebroadcastCooldownWindowMs();
+  const entry = rebroadcastAttemptMemory.get(scope);
+  if (entry && Number.isFinite(entry.seenAt) && now - entry.seenAt >= windowMs) {
+    rebroadcastAttemptMemory.delete(scope);
+  }
+
+  const normalizedEntry = { bucket: bucketIndex, seenAt: now };
+  rebroadcastAttemptMemory.set(scope, normalizedEntry);
+
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+
+  const storageKey = `${REBROADCAST_GUARD_PREFIX}:${scope}`;
+  try {
+    localStorage.setItem(storageKey, `${bucketIndex}:${now}`);
+  } catch (error) {
+    devLogger.warn("[nostr] Failed to persist rebroadcast guard entry:", error);
+  }
+}
+
+function getRebroadcastCooldownState(scope) {
+  if (!scope) {
+    return null;
+  }
+  const entry = readRebroadcastGuardEntry(scope);
+  if (!entry || !Number.isFinite(entry.seenAt)) {
+    return null;
+  }
+  const windowMs = getRebroadcastCooldownWindowMs();
+  const expiresAt = entry.seenAt + windowMs;
+  const remainingMs = Math.max(0, expiresAt - Date.now());
+  if (remainingMs <= 0) {
+    return null;
+  }
+  return {
+    scope,
+    seenAt: entry.seenAt,
+    bucket: entry.bucket,
+    expiresAt,
+    remainingMs,
+  };
+}
+
+function isVideoViewEvent(event, pointer) {
+  if (!event || typeof event !== "object") {
+    return false;
+  }
+
+  if (!Number.isFinite(event.kind) || event.kind !== VIEW_EVENT_KIND) {
+    return false;
+  }
+
+  const tags = Array.isArray(event.tags) ? event.tags : [];
+  let hasViewTag = false;
+  let matchesPointer = false;
+
+  const pointerValueRaw =
+    typeof pointer?.value === "string" ? pointer.value.trim() : "";
+  const pointerValueLower = pointerValueRaw.toLowerCase();
+  const pointerType = pointer?.type === "a" ? "a" : "e";
+
+  for (const tag of tags) {
+    if (!Array.isArray(tag) || tag.length < 2) {
+      continue;
+    }
+
+    const tagName = typeof tag[0] === "string" ? tag[0].toLowerCase() : "";
+    const tagValue = typeof tag[1] === "string" ? tag[1].trim().toLowerCase() : "";
+
+    if (!tagName || !tagValue) {
+      continue;
+    }
+
+    if (tagName === "t" && tagValue === "view") {
+      hasViewTag = true;
+      continue;
+    }
+
+    if (pointerType === "a" && tagName === "a" && tagValue === pointerValueLower) {
+      matchesPointer = true;
+      continue;
+    }
+
+    if (pointerType === "e" && tagName === "e" && tagValue === pointerValueLower) {
+      matchesPointer = true;
+      continue;
+    }
+
+    if (
+      VIEW_FILTER_INCLUDE_LEGACY_VIDEO &&
+      tagName === "video" &&
+      tagValue === pointerValueLower
+    ) {
+      matchesPointer = true;
+    }
+  }
+
+  return hasViewTag && matchesPointer;
+}
+
 const VIEW_EVENT_SCHEMA = getNostrEventSchema(NOTE_TYPES.VIEW_EVENT);
 const VIEW_EVENT_KIND = Number.isFinite(VIEW_EVENT_SCHEMA?.kind)
   ? VIEW_EVENT_SCHEMA.kind
@@ -4124,6 +4571,7 @@ export class NostrClient {
       created_at: createdAt,
       pointerValue: pointer.value,
       pointerTag,
+      dedupeTag: generateViewEventDedupeTag(actorPubkey, pointer, createdAt),
       includeSessionTag: usingSessionActor,
       additionalTags,
       content,
