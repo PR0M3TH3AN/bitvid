@@ -3857,6 +3857,61 @@ function normalizeNip46CiphertextPayload(payload) {
     }
   };
 
+  const extractScalarString = (value) => {
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      return trimmed ? trimmed : "";
+    }
+
+    if (typeof value === "number" || typeof value === "boolean") {
+      return String(value);
+    }
+
+    if (Array.isArray(value)) {
+      const decoded = decodeBytesToUtf8(value);
+      if (decoded) {
+        return decoded;
+      }
+
+      if (value.length === 1) {
+        return extractScalarString(value[0]);
+      }
+
+      return "";
+    }
+
+    if (!value || typeof value !== "object") {
+      return "";
+    }
+
+    const decoded = decodeBytesToUtf8(value);
+    if (decoded) {
+      return decoded;
+    }
+
+    const preferredKeys = [
+      "ciphertext",
+      "cipher_text",
+      "payload",
+      "content",
+      "result",
+      "value",
+      "data",
+      "nonce",
+      "iv",
+      "secret",
+      "message",
+    ];
+
+    for (const key of preferredKeys) {
+      if (typeof value[key] === "string" && value[key].trim()) {
+        return value[key].trim();
+      }
+    }
+
+    return "";
+  };
+
   const coerce = (value) => {
     if (typeof value === "string") {
       addCandidate(value);
@@ -3886,6 +3941,23 @@ function normalizeNip46CiphertextPayload(payload) {
       if (decoded) {
         addCandidate(decoded);
         return;
+      }
+
+      const scalarEntries = [];
+      for (const entry of value) {
+        const scalar = extractScalarString(entry);
+        if (scalar) {
+          scalarEntries.push(scalar);
+        }
+      }
+
+      if (scalarEntries.length >= 2) {
+        for (let i = 0; i < scalarEntries.length; i += 1) {
+          for (let j = i + 1; j < scalarEntries.length; j += 1) {
+            addCiphertextWithNonce(scalarEntries[i], scalarEntries[j]);
+            addCiphertextWithNonce(scalarEntries[j], scalarEntries[i]);
+          }
+        }
       }
 
       for (const entry of value) {
