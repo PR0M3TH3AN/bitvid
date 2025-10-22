@@ -24,12 +24,15 @@ import {
 export const nostrClient = new NostrClient();
 
 registerNostrClient(nostrClient, {
-  requestPermissions: () =>
-    nostrClient.ensureExtensionPermissions(DEFAULT_NIP07_PERMISSION_METHODS),
+  requestPermissions: (
+    methods = DEFAULT_NIP07_PERMISSION_METHODS,
+  ) => nostrClient.ensureExtensionPermissions(methods),
 });
 
-export function requestDefaultExtensionPermissions() {
-  return requestRegisteredPermissions(DEFAULT_NIP07_PERMISSION_METHODS);
+export function requestDefaultExtensionPermissions(
+  methods = DEFAULT_NIP07_PERMISSION_METHODS,
+) {
+  return requestRegisteredPermissions(methods);
 }
 
 export const recordVideoView = (...args) =>
