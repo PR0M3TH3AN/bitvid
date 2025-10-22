@@ -2448,6 +2448,18 @@
     z-index: var(--z-modal-top-content);
   }
 
+  #modalContainer > #loginModal {
+    z-index: var(--z-modal-top-root);
+  }
+
+  #modalContainer > #loginModal > .bv-modal-backdrop {
+    z-index: var(--z-modal-top-overlay);
+  }
+
+  #modalContainer > #loginModal .bv-modal__panel {
+    z-index: var(--z-modal-top-content);
+  }
+
   #modalContainer > #playerModal {
     z-index: var(--z-modal-player);
   }
