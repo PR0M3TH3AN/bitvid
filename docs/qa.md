@@ -47,6 +47,7 @@ Automated regression coverage now exercises these flows on the unified design-sy
    - Sign in with a new nsec or mnemonic, opt into remembering it, and verify the passphrase prompt blocks submission until both passphrase fields match.
    - Reload the page, select "Unlock saved key", enter the passphrase, and confirm the account unlocks without re-entering the secret.
    - Publish a video while logged in with the direct-key provider and confirm the resulting event is signed (relays accept it) and the UI reports success.
+   - While still signed in via the direct-key provider, send a direct message to a second account and confirm it decrypts successfully on the recipient before release.
    - Log out and ensure the session clears decrypted key material; stored keys should require the passphrase to unlock again.
 
 Document findings (pass/fail notes plus relevant screenshots or logs) so they can be attached to release or PR notes.
