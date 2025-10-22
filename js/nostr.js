@@ -762,6 +762,8 @@ export const __testExports = {
   decryptNip46PayloadWithKeys,
   createNip46Cipher,
   normalizeNip46CiphertextPayload,
+  parseNip46ConnectionString,
+  attemptDecryptNip46HandshakePayload,
 };
 
 function withRequestTimeout(promise, timeoutMs, onTimeout, message = "Request timed out") {
@@ -3556,24 +3558,31 @@ function parseNip46ConnectionString(uri) {
     return null;
   }
 
+  const decodeParam = (raw) => {
+    if (typeof raw !== "string") {
+      return "";
+    }
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      return "";
+    }
+    try {
+      return decodeURIComponent(trimmed);
+    } catch (error) {
+      return trimmed;
+    }
+  };
+
   const scheme = parsed.protocol.replace(/:$/, "").toLowerCase();
   const params = parsed.searchParams || new URLSearchParams();
 
   const relays = params
     .getAll("relay")
-    .map((relay) => {
-      if (typeof relay !== "string") {
-        return "";
-      }
-      try {
-        return decodeURIComponent(relay.trim());
-      } catch (error) {
-        return relay.trim();
-      }
-    })
+    .map((relay) => decodeParam(relay))
     .filter(Boolean);
 
-  const permissionsParam = params.get("perms") || params.get("permissions") || "";
+  const permissionsParam =
+    decodeParam(params.get("perms")) || decodeParam(params.get("permissions")) || "";
   const metadata = {
     name: "",
     url: "",
@@ -3581,37 +3590,86 @@ function parseNip46ConnectionString(uri) {
   };
 
   for (const key of ["name", "url", "image"]) {
-    const raw = params.get(key);
-    if (typeof raw === "string" && raw.trim()) {
-      try {
-        metadata[key] = decodeURIComponent(raw.trim());
-      } catch (error) {
-        metadata[key] = raw.trim();
-      }
+    const decoded = decodeParam(params.get(key));
+    if (decoded) {
+      metadata[key] = decoded;
     }
   }
 
-  let remotePubkey = "";
+  const remoteSignerParamKeys = [
+    "remote-signer-key",
+    "remote_signer_key",
+    "remotesignerkey",
+    "remoteSignerKey",
+    "remote-signer-pubkey",
+    "remote_signer_pubkey",
+    "remoteSignerPubkey",
+  ];
+
+  let remoteSignerParam = "";
+  for (const key of remoteSignerParamKeys) {
+    const candidate = decodeParam(params.get(key));
+    if (candidate) {
+      remoteSignerParam = candidate;
+      break;
+    }
+  }
+
+  const remoteFallbackParam =
+    decodeParam(params.get("remote")) ||
+    decodeParam(params.get("remotePubkey")) ||
+    decodeParam(params.get("signer")) ||
+    "";
+
+  let remotePubkey = remoteSignerParam || remoteFallbackParam || "";
   let clientPubkey = "";
+  let userPubkeyHint = "";
 
   if (scheme === "bunker") {
-    remotePubkey = parsed.hostname || "";
-    if (!remotePubkey && parsed.pathname && parsed.pathname !== "/") {
-      remotePubkey = parsed.pathname.replace(/^\/+/, "");
+    let bunkerIdentifier = parsed.hostname || "";
+    if (!bunkerIdentifier && parsed.pathname && parsed.pathname !== "/") {
+      bunkerIdentifier = parsed.pathname.replace(/^\/+/, "");
+    }
+
+    const normalizedIdentifier = normalizeNostrPubkey(bunkerIdentifier);
+
+    if (remoteSignerParam) {
+      userPubkeyHint = normalizedIdentifier;
+    } else if (!remotePubkey) {
+      remotePubkey = normalizedIdentifier;
+    }
+
+    if (!userPubkeyHint) {
+      const userParamCandidates = [
+        "user",
+        "user_pubkey",
+        "user-pubkey",
+        "pubkey",
+        "npub",
+        "profile",
+      ];
+      for (const key of userParamCandidates) {
+        const candidate = decodeParam(params.get(key));
+        if (candidate) {
+          userPubkeyHint = normalizeNostrPubkey(candidate);
+          if (userPubkeyHint) {
+            break;
+          }
+        }
+      }
+
+      if (!userPubkeyHint && normalizedIdentifier && normalizedIdentifier !== remotePubkey) {
+        userPubkeyHint = normalizedIdentifier;
+      }
     }
   } else if (scheme === "nostrconnect" || scheme === "web+nostrconnect") {
     clientPubkey = parsed.hostname || "";
     if (!clientPubkey && parsed.pathname && parsed.pathname !== "/") {
       clientPubkey = parsed.pathname.replace(/^\/+/, "");
     }
-    remotePubkey =
-      params.get("remote") ||
-      params.get("remotePubkey") ||
-      params.get("signer") ||
-      "";
   }
 
-  const secretParam = params.get("secret") || "";
+  const secretParam = decodeParam(params.get("secret"));
 
   return {
     scheme,
@@ -3619,9 +3677,10 @@ function parseNip46ConnectionString(uri) {
     remotePubkey: normalizeNostrPubkey(remotePubkey),
     clientPubkey: normalizeNostrPubkey(clientPubkey),
     relays,
-    secret: typeof secretParam === "string" ? secretParam.trim() : "",
+    secret: secretParam,
     permissions: typeof permissionsParam === "string" ? permissionsParam.trim() : "",
     metadata,
+    userPubkeyHint: normalizeNostrPubkey(userPubkeyHint),
   };
 }
 
@@ -4059,6 +4118,39 @@ async function decryptNip46PayloadWithKeys(privateKey, remotePubkey, ciphertext)
   }
 
   const failure = new Error("Failed to decrypt NIP-46 payload with available candidates.");
+  failure.attempts = tried;
+  throw failure;
+}
+
+async function attemptDecryptNip46HandshakePayload({
+  clientPrivateKey,
+  candidateRemotePubkeys = [],
+  ciphertext,
+}) {
+  const tried = [];
+  const seen = new Set();
+
+  for (const candidate of candidateRemotePubkeys) {
+    const normalized = normalizeNostrPubkey(candidate);
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    try {
+      const result = await decryptNip46PayloadWithKeys(
+        clientPrivateKey,
+        normalized,
+        ciphertext,
+      );
+      return { ...result, remotePubkey: normalized };
+    } catch (error) {
+      tried.push({ remotePubkey: normalized, error });
+    }
+  }
+
+  const failure = new Error(
+    "Failed to decrypt remote signer handshake payload with provided keys.",
+  );
   failure.attempts = tried;
   throw failure;
 }
@@ -5336,6 +5428,7 @@ export class NostrClient {
     onAuthUrl,
     onStatus,
     timeoutMs,
+    expectedRemotePubkey,
   } = {}) {
     const normalizedClientPublicKey = normalizeNostrPubkey(clientPublicKey);
     if (!normalizedClientPublicKey) {
@@ -5446,14 +5539,22 @@ export class NostrClient {
           return;
         }
 
-        const remotePubkey = normalizeNostrPubkey(event.pubkey);
-        if (!remotePubkey) {
-          return;
+        const eventRemotePubkey = normalizeNostrPubkey(event.pubkey);
+        const candidateRemotePubkeys = [];
+        if (expectedRemotePubkey) {
+          candidateRemotePubkeys.push(expectedRemotePubkey);
+        }
+        if (eventRemotePubkey) {
+          candidateRemotePubkeys.push(eventRemotePubkey);
         }
 
         Promise.resolve()
           .then(() =>
-            decryptNip46PayloadWithKeys(clientPrivateKey, remotePubkey, event.content),
+            attemptDecryptNip46HandshakePayload({
+              clientPrivateKey,
+              candidateRemotePubkeys,
+              ciphertext: event.content,
+            }),
           )
           .then((payloadResult) => {
             const plaintext = payloadResult?.plaintext ?? "";
@@ -5504,7 +5605,7 @@ export class NostrClient {
                   phase: "handshake",
                   state: "acknowledged",
                   message: "Remote signer acknowledged the connect request.",
-                  remotePubkey,
+                  remotePubkey: payloadResult?.remotePubkey || eventRemotePubkey || "",
                 });
               } catch (callbackError) {
                 devLogger.warn("[nostr] Handshake status callback threw:", callbackError);
@@ -5512,7 +5613,8 @@ export class NostrClient {
             }
 
             resolve({
-              remotePubkey,
+              remotePubkey: payloadResult?.remotePubkey || eventRemotePubkey || "",
+              eventPubkey: eventRemotePubkey || "",
               response: parsed,
               algorithm: normalizeNip46EncryptionAlgorithm(payloadResult?.algorithm),
             });
@@ -5645,6 +5747,8 @@ export class NostrClient {
         state: "connecting",
         relays,
         metadata,
+        remotePubkey: parsed.remotePubkey || "",
+        userPubkey: parsed.userPubkeyHint || "",
         message: "Waiting for the signer to acknowledge the connection.",
       });
 
@@ -5658,6 +5762,7 @@ export class NostrClient {
           onAuthUrl: (url, context) => handleAuthChallenge(url, context),
           onStatus: handleStatus,
           timeoutMs: handshakeTimeoutMs,
+          expectedRemotePubkey: parsed.remotePubkey,
         });
       } catch (error) {
         this.emitRemoteSignerChange({
@@ -5692,6 +5797,7 @@ export class NostrClient {
         remotePubkey,
         relays,
         metadata,
+        userPubkey: parsed.userPubkeyHint || "",
       });
     }
 
