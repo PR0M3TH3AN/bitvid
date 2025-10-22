@@ -288,3 +288,132 @@ test("decryptNip46PayloadWithKeys supports nip04-style ciphertext wrappers", asy
     "nip04 decrypt should succeed for structured payload candidates",
   );
 });
+
+test("parseNip46ConnectionString handles remote signer key hints", async () => {
+  const nostrTools = await loadNostrTools();
+  const { generateSecretKey, getPublicKey, nip19, utils } = nostrTools;
+
+  const signerSecret = utils.bytesToHex(generateSecretKey());
+  const userSecret = utils.bytesToHex(generateSecretKey());
+
+  const signerPubkey = getPublicKey(signerSecret).toLowerCase();
+  const userPubkey = getPublicKey(userSecret).toLowerCase();
+
+  const signerNpub = nip19.npubEncode(signerPubkey);
+  const userNpub = nip19.npubEncode(userPubkey);
+
+  const uri =
+    `bunker://${userNpub}?remote-signer-key=${encodeURIComponent(signerNpub)}` +
+    `&relay=${encodeURIComponent("wss://relay.example.com")}`;
+
+  const { __testExports } = await import("../js/nostr.js");
+  const { parseNip46ConnectionString } = __testExports;
+
+  const parsed = parseNip46ConnectionString(uri);
+
+  assert.ok(parsed, "parser should return a payload");
+  assert.equal(
+    parsed.remotePubkey,
+    signerPubkey,
+    "remote signer pubkey should come from the remote-signer-key parameter",
+  );
+  assert.equal(
+    parsed.userPubkeyHint,
+    userPubkey,
+    "user pubkey hint should reflect the bunker URI hostname",
+  );
+  assert.deepEqual(
+    parsed.relays,
+    ["wss://relay.example.com"],
+    "relay parameters should be decoded",
+  );
+});
+
+test(
+  "attemptDecryptNip46HandshakePayload falls back to expected remote signer key",
+  async () => {
+    const nostrTools = await loadNostrTools();
+    const { generateSecretKey, getPublicKey, nip44, utils } = nostrTools;
+
+    const clientSecret = utils.bytesToHex(generateSecretKey());
+    const remoteSignerSecret = utils.bytesToHex(generateSecretKey());
+    const userSecret = utils.bytesToHex(generateSecretKey());
+
+    const remoteSignerPubkey = getPublicKey(remoteSignerSecret).toLowerCase();
+    const userPubkey = getPublicKey(userSecret).toLowerCase();
+
+    const conversationKey =
+      typeof nip44.v2.getConversationKey === "function"
+        ? nip44.v2.getConversationKey(clientSecret, remoteSignerPubkey)
+        : nip44.v2.utils.getConversationKey(clientSecret, remoteSignerPubkey);
+
+    const payload = JSON.stringify({ id: "ack", result: "ok" });
+    const ciphertext = nip44.v2.encrypt(payload, conversationKey);
+
+    const { __testExports } = await import("../js/nostr.js");
+    const { attemptDecryptNip46HandshakePayload } = __testExports;
+
+    const result = await attemptDecryptNip46HandshakePayload({
+      clientPrivateKey: clientSecret,
+      candidateRemotePubkeys: [userPubkey, remoteSignerPubkey],
+      ciphertext,
+    });
+
+    assert.equal(
+      result.remotePubkey,
+      remoteSignerPubkey,
+      "helper should return the remote signer key that successfully decrypted the payload",
+    );
+    assert.equal(
+      result.plaintext,
+      payload,
+      "helper should yield the handshake plaintext",
+    );
+  },
+);
+
+test(
+  "attemptDecryptNip46HandshakePayload handles array-encoded nip04 payloads",
+  async () => {
+    const nostrTools = await loadNostrTools();
+    const { generateSecretKey, getPublicKey, nip04, utils } = nostrTools;
+
+    const clientSecret = utils.bytesToHex(generateSecretKey());
+    const clientPubkey = getPublicKey(clientSecret).toLowerCase();
+    const remoteSecret = utils.bytesToHex(generateSecretKey());
+    const remotePubkey = getPublicKey(remoteSecret).toLowerCase();
+
+    const payload = JSON.stringify({ id: "ack", result: "ack" });
+    const ciphertext = nip04.encrypt(remoteSecret, clientPubkey, payload);
+    const [ciphertextPart, ivPart] = ciphertext.split("?iv=");
+
+    assert.ok(ivPart, "nip04 encryption should emit an iv segment");
+
+    const encodedPayload = JSON.stringify([ciphertextPart, ivPart]);
+
+    const { __testExports } = await import("../js/nostr.js");
+    const { attemptDecryptNip46HandshakePayload } = __testExports;
+
+    const result = await attemptDecryptNip46HandshakePayload({
+      clientPrivateKey: clientSecret,
+      candidateRemotePubkeys: [remotePubkey],
+      ciphertext: encodedPayload,
+    });
+
+    assert.equal(
+      result.remotePubkey,
+      remotePubkey,
+      "helper should resolve the remote signer key for array payloads",
+    );
+    assert.equal(
+      result.plaintext,
+      payload,
+      "helper should decrypt nip04 payloads serialized as arrays",
+    );
+    assert.equal(
+      result.algorithm,
+      "nip04",
+      "helper should report the nip04 algorithm for nip04 ciphertext",
+    );
+  },
+);

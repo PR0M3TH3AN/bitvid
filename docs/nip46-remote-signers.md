@@ -36,6 +36,18 @@ URI manually when QR pairing isn’t available. These URIs can advertise the sam
 `relay=`, `secret=`, `perms=`, `name`, `url`, and `image` parameters described
 above. If no relays are specified the default bundle listed earlier is used.
 
+Recent remote signers also append a `remote-signer-key=` parameter that
+identifies the key the bunker uses for encrypted RPC traffic. The hostname/path
+may now refer to the *user* pubkey instead of the signer key, so clients must:
+
+1. Decrypt handshake acknowledgements with the `remote-signer-key` when
+   provided, falling back to the event author as a legacy escape hatch.
+2. Continue calling `get_public_key` after the `connect` RPC to learn the user
+   pubkey rather than trusting the bunker URI host.
+
+bitvid automatically persists both the signer key and the user pubkey returned
+by `get_public_key` so reconnect flows display accurate metadata.
+
 ## Relay requirements
 
 The remote signer must subscribe to `kind 24133` events targeted at the client
