@@ -199,6 +199,11 @@ const NIP46_SIGN_EVENT_TIMEOUT_MS = 20_000;
 const NIP46_MAX_RETRIES = 1;
 const NIP46_HANDSHAKE_TIMEOUT_MS = 60_000;
 const NIP46_AUTH_CHALLENGE_MAX_ATTEMPTS = 5;
+const NIP46_ENCRYPTION_ALGORITHMS = Object.freeze([
+  "nip44.v2",
+  "nip44",
+  "nip04",
+]);
 
 function getNip46Storage() {
   if (typeof localStorage !== "undefined" && localStorage) {
@@ -269,6 +274,13 @@ function sanitizeStoredNip46Session(candidate) {
     clientPublicKey,
     remotePubkey,
     relays,
+    encryption: normalizeNip46EncryptionAlgorithm(
+      typeof candidate.encryption === "string"
+        ? candidate.encryption
+        : typeof candidate.algorithm === "string"
+        ? candidate.algorithm
+        : "",
+    ),
     secret:
       typeof candidate.secret === "string" && candidate.secret.trim()
         ? candidate.secret.trim()
@@ -3484,6 +3496,39 @@ function normalizeNostrPubkey(candidate) {
   return trimmed.toLowerCase();
 }
 
+function normalizeNip46EncryptionAlgorithm(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed) {
+    return "";
+  }
+
+  if (NIP46_ENCRYPTION_ALGORITHMS.includes(trimmed)) {
+    return trimmed;
+  }
+
+  const aliasMap = new Map([
+    ["nip44v2", "nip44.v2"],
+    ["nip44-v2", "nip44.v2"],
+    ["nip44_v2", "nip44.v2"],
+    ["nip44-v1", "nip44"],
+    ["nip44v1", "nip44"],
+    ["nip44_v1", "nip44"],
+    ["nip-44", "nip44"],
+    ["nip-04", "nip04"],
+    ["nip04.v1", "nip04"],
+  ]);
+
+  if (aliasMap.has(trimmed)) {
+    return aliasMap.get(trimmed) || "";
+  }
+
+  return "";
+}
+
 function resolveNip46Relays(relays, fallbackRelays = []) {
   const primary = sanitizeRelayList(Array.isArray(relays) ? relays : []);
   if (primary.length) {
@@ -3865,31 +3910,60 @@ function normalizeNip46CiphertextPayload(payload) {
   return Array.from(candidates);
 }
 
-export function createNip46Cipher(tools, privateKey, remotePubkey) {
+function resolveAvailableNip46Ciphers(
+  tools,
+  privateKey,
+  remotePubkey,
+  { preferredAlgorithm } = {},
+) {
   if (!tools) {
-    throw new Error("NostrTools helpers are unavailable for remote signing.");
+    return [];
   }
 
-  const nip44v2GetConversationKey = resolveNip44V2ConversationKeyGetter(tools);
+  const normalizedPreferred = normalizeNip46EncryptionAlgorithm(preferredAlgorithm);
+  const available = [];
 
+  const registerCipher = (algorithm, factory) => {
+    try {
+      const cipher = factory();
+      if (
+        cipher &&
+        typeof cipher.encrypt === "function" &&
+        typeof cipher.decrypt === "function"
+      ) {
+        available.push({ ...cipher, algorithm });
+      }
+    } catch (error) {
+      // Ignore individual algorithm failures so other fallbacks can run.
+      devLogger.debug?.(
+        "[nostr] Skipping unavailable NIP-46 cipher algorithm",
+        algorithm,
+        error,
+      );
+    }
+  };
+
+  const nip44v2GetConversationKey = resolveNip44V2ConversationKeyGetter(tools);
   if (
     tools?.nip44?.v2?.encrypt &&
     tools?.nip44?.v2?.decrypt &&
     typeof nip44v2GetConversationKey === "function"
   ) {
-    const conversationKey = nip44v2GetConversationKey(privateKey, remotePubkey);
+    registerCipher("nip44.v2", () => {
+      const conversationKey = nip44v2GetConversationKey(privateKey, remotePubkey);
 
-    if (!conversationKey) {
-      throw new Error("Failed to derive a nip44 conversation key for remote signing.");
-    }
+      if (!conversationKey) {
+        throw new Error("Failed to derive a nip44 conversation key for remote signing.");
+      }
 
-    return {
-      encrypt: (plaintext, nonce) =>
-        typeof nonce === "string"
-          ? tools.nip44.v2.encrypt(plaintext, conversationKey, nonce)
-          : tools.nip44.v2.encrypt(plaintext, conversationKey),
-      decrypt: (ciphertext) => tools.nip44.v2.decrypt(ciphertext, conversationKey),
-    };
+      return {
+        encrypt: (plaintext, nonce) =>
+          typeof nonce === "string"
+            ? tools.nip44.v2.encrypt(plaintext, conversationKey, nonce)
+            : tools.nip44.v2.encrypt(plaintext, conversationKey),
+        decrypt: (ciphertext) => tools.nip44.v2.decrypt(ciphertext, conversationKey),
+      };
+    });
   }
 
   const nip44GetConversationKey = resolveLegacyNip44ConversationKeyGetter(tools);
@@ -3899,32 +3973,60 @@ export function createNip46Cipher(tools, privateKey, remotePubkey) {
     tools?.nip44?.decrypt &&
     typeof nip44GetConversationKey === "function"
   ) {
-    const conversationKey = nip44GetConversationKey(privateKey, remotePubkey);
+    registerCipher("nip44", () => {
+      const conversationKey = nip44GetConversationKey(privateKey, remotePubkey);
 
-    if (!conversationKey) {
-      throw new Error("Failed to derive a nip44 conversation key for remote signing.");
-    }
+      if (!conversationKey) {
+        throw new Error("Failed to derive a nip44 conversation key for remote signing.");
+      }
 
-    return {
-      encrypt: (plaintext, nonce) =>
-        typeof nonce === "string"
-          ? tools.nip44.encrypt(plaintext, conversationKey, nonce)
-          : tools.nip44.encrypt(plaintext, conversationKey),
-      decrypt: (ciphertext) => tools.nip44.decrypt(ciphertext, conversationKey),
-    };
+      return {
+        encrypt: (plaintext, nonce) =>
+          typeof nonce === "string"
+            ? tools.nip44.encrypt(plaintext, conversationKey, nonce)
+            : tools.nip44.encrypt(plaintext, conversationKey),
+        decrypt: (ciphertext) => tools.nip44.decrypt(ciphertext, conversationKey),
+      };
+    });
   }
 
   if (tools?.nip04?.encrypt && tools?.nip04?.decrypt) {
-    const privateKeyHex = typeof privateKey === "string" ? privateKey : "";
-    const remotePubkeyHex = typeof remotePubkey === "string" ? remotePubkey : "";
+    registerCipher("nip04", () => {
+      const privateKeyHex = typeof privateKey === "string" ? privateKey : "";
+      const remotePubkeyHex = typeof remotePubkey === "string" ? remotePubkey : "";
 
-    return {
-      encrypt: (plaintext) => tools.nip04.encrypt(privateKeyHex, remotePubkeyHex, plaintext),
-      decrypt: (ciphertext) => tools.nip04.decrypt(privateKeyHex, remotePubkeyHex, ciphertext),
-    };
+      if (!privateKeyHex || !remotePubkeyHex) {
+        throw new Error("Missing keys for nip04 encryption.");
+      }
+
+      return {
+        encrypt: (plaintext) =>
+          tools.nip04.encrypt(privateKeyHex, remotePubkeyHex, plaintext),
+        decrypt: (ciphertext) =>
+          tools.nip04.decrypt(privateKeyHex, remotePubkeyHex, ciphertext),
+      };
+    });
   }
 
-  throw new Error("Remote signer encryption helpers are unavailable.");
+  if (normalizedPreferred) {
+    const index = available.findIndex((entry) => entry.algorithm === normalizedPreferred);
+    if (index > 0) {
+      const [preferred] = available.splice(index, 1);
+      available.unshift(preferred);
+    }
+  }
+
+  return available;
+}
+
+export function createNip46Cipher(tools, privateKey, remotePubkey, options = {}) {
+  const available = resolveAvailableNip46Ciphers(tools, privateKey, remotePubkey, options);
+
+  if (!available.length) {
+    throw new Error("Remote signer encryption helpers are unavailable.");
+  }
+
+  return available[0];
 }
 
 async function decryptNip46PayloadWithKeys(privateKey, remotePubkey, ciphertext) {
@@ -3933,15 +4035,26 @@ async function decryptNip46PayloadWithKeys(privateKey, remotePubkey, ciphertext)
     throw new Error("NostrTools helpers are unavailable for NIP-46 payload decryption.");
   }
 
-  const { decrypt } = createNip46Cipher(tools, privateKey, remotePubkey);
+  const ciphers = resolveAvailableNip46Ciphers(tools, privateKey, remotePubkey);
+  if (!ciphers.length) {
+    throw new Error("Remote signer encryption helpers are unavailable for NIP-46 payload decryption.");
+  }
   const normalizedCandidates = normalizeNip46CiphertextPayload(ciphertext);
+  const candidates = normalizedCandidates.length
+    ? normalizedCandidates
+    : typeof ciphertext === "string"
+    ? [ciphertext]
+    : [];
 
   const tried = [];
-  for (const candidate of normalizedCandidates) {
-    try {
-      return decrypt(candidate);
-    } catch (error) {
-      tried.push({ candidate, error });
+  for (const cipher of ciphers) {
+    for (const candidate of candidates) {
+      try {
+        const plaintext = cipher.decrypt(candidate);
+        return { plaintext, algorithm: cipher.algorithm };
+      } catch (error) {
+        tried.push({ candidate, algorithm: cipher.algorithm, error });
+      }
     }
   }
 
@@ -3957,6 +4070,7 @@ class Nip46RpcClient {
     clientPublicKey,
     remotePubkey,
     relays,
+    encryption,
     secret,
     permissions,
     metadata,
@@ -3969,6 +4083,7 @@ class Nip46RpcClient {
     this.clientPublicKey = normalizeNostrPubkey(clientPublicKey);
     this.remotePubkey = normalizeNostrPubkey(remotePubkey);
     this.relays = resolveNip46Relays(relays, nostrClient?.relays || []);
+    this.encryptionAlgorithm = normalizeNip46EncryptionAlgorithm(encryption);
     this.secret = typeof secret === "string" ? secret.trim() : "";
     this.permissions = typeof permissions === "string" ? permissions.trim() : "";
     this.metadata = metadata && typeof metadata === "object" ? { ...metadata } : {};
@@ -4029,11 +4144,16 @@ class Nip46RpcClient {
       throw new Error("NostrTools helpers are unavailable for remote signing.");
     }
 
-    this.cipher = createNip46Cipher(
+    const cipher = createNip46Cipher(
       tools,
       this.clientPrivateKey,
       this.remotePubkey,
+      { preferredAlgorithm: this.encryptionAlgorithm },
     );
+    this.cipher = cipher;
+    if (!this.encryptionAlgorithm && cipher?.algorithm) {
+      this.encryptionAlgorithm = cipher.algorithm;
+    }
     return this.cipher;
   }
 
@@ -4990,6 +5110,7 @@ export class NostrClient {
       clientPublicKey: stored.clientPublicKey || "",
       relays: Array.isArray(stored.relays) ? [...stored.relays] : [],
       metadata: stored.metadata || {},
+      encryption: stored.encryption || "",
       userPubkey,
       userNpub: encodeHexToNpub(userPubkey),
     };
@@ -5030,6 +5151,10 @@ export class NostrClient {
     const relays = Array.isArray(status.relays)
       ? status.relays.slice()
       : (this.nip46Client?.relays || stored.relays || []).slice();
+    const encryption =
+      (typeof status.encryption === "string" && status.encryption.trim()
+        ? normalizeNip46EncryptionAlgorithm(status.encryption)
+        : "") || this.nip46Client?.encryptionAlgorithm || stored.encryption || "";
 
     const snapshot = {
       state: nextState,
@@ -5037,6 +5162,7 @@ export class NostrClient {
       userPubkey,
       relays,
       metadata,
+      encryption,
       label:
         status.label ||
         metadata?.name ||
@@ -5326,11 +5452,14 @@ export class NostrClient {
         }
 
         Promise.resolve()
-          .then(() => decryptNip46PayloadWithKeys(clientPrivateKey, remotePubkey, event.content))
-          .then((payload) => {
+          .then(() =>
+            decryptNip46PayloadWithKeys(clientPrivateKey, remotePubkey, event.content),
+          )
+          .then((payloadResult) => {
+            const plaintext = payloadResult?.plaintext ?? "";
             let parsed;
             try {
-              parsed = JSON.parse(payload);
+              parsed = JSON.parse(plaintext);
             } catch (error) {
               devLogger.warn("[nostr] Failed to parse remote signer handshake payload:", error);
               return;
@@ -5385,6 +5514,7 @@ export class NostrClient {
             resolve({
               remotePubkey,
               response: parsed,
+              algorithm: normalizeNip46EncryptionAlgorithm(payloadResult?.algorithm),
             });
           })
           .catch((error) => {
@@ -5463,6 +5593,7 @@ export class NostrClient {
     let clientPrivateKey = "";
     let clientPublicKey = "";
     let remotePubkey = normalizeNostrPubkey(parsed.remotePubkey);
+    let handshakeAlgorithm = "";
 
     if (parsed.type === "client") {
       clientPrivateKey =
@@ -5540,6 +5671,9 @@ export class NostrClient {
       }
 
       remotePubkey = normalizeNostrPubkey(handshakeResult?.remotePubkey);
+      handshakeAlgorithm = normalizeNip46EncryptionAlgorithm(
+        handshakeResult?.algorithm,
+      );
       if (!remotePubkey) {
         const error = new Error("Remote signer did not return a valid public key.");
         error.code = "missing-remote-pubkey";
@@ -5580,6 +5714,7 @@ export class NostrClient {
       secret,
       permissions,
       metadata,
+      encryption: handshakeAlgorithm,
     });
 
     try {
@@ -5634,6 +5769,7 @@ export class NostrClient {
           clientPublicKey,
           remotePubkey,
           relays,
+          encryption: client.encryptionAlgorithm || handshakeAlgorithm || "",
           secret,
           permissions,
           metadata,
@@ -5707,6 +5843,7 @@ export class NostrClient {
       clientPublicKey: stored.clientPublicKey,
       remotePubkey: stored.remotePubkey,
       relays,
+      encryption: stored.encryption,
       secret: stored.secret,
       permissions: stored.permissions,
       metadata: stored.metadata,
@@ -5721,6 +5858,7 @@ export class NostrClient {
 
       writeStoredNip46Session({
         ...stored,
+        encryption: client.encryptionAlgorithm || stored.encryption || "",
         userPubkey,
         lastConnectedAt: Date.now(),
       });
