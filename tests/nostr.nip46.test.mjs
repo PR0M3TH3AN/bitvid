@@ -81,3 +81,53 @@ test("decryptNip46PayloadWithKeys handles nip44.v2 ciphertext", async () => {
 
   assert.equal(roundTrip, serialized, "helper should decrypt nip44.v2 ciphertext");
 });
+
+test("decryptNip46PayloadWithKeys coerces structured handshake payloads", async () => {
+  const nostrTools = await loadNostrTools();
+  const { generateSecretKey, getPublicKey, nip44, utils } = nostrTools;
+
+  const clientSecret = utils.bytesToHex(generateSecretKey());
+  const remoteSecret = utils.bytesToHex(generateSecretKey());
+  const remotePubkey = getPublicKey(remoteSecret);
+
+  const serialized = JSON.stringify(PAYLOAD);
+  const conversationKey =
+    typeof nip44.v2.getConversationKey === "function"
+      ? nip44.v2.getConversationKey(clientSecret, remotePubkey)
+      : nip44.v2.utils.getConversationKey(clientSecret, remotePubkey);
+  const ciphertext = nip44.v2.encrypt(serialized, conversationKey);
+  const [ciphertextPart, nonce] = ciphertext.split("\n");
+
+  const structuredPayload = {
+    ciphertext: ciphertextPart,
+    nonce,
+  };
+
+  const { __testExports } = await import("../js/nostr.js");
+  const { decryptNip46PayloadWithKeys } = __testExports;
+
+  const roundTrip = await decryptNip46PayloadWithKeys(
+    clientSecret,
+    remotePubkey,
+    structuredPayload,
+  );
+
+  assert.equal(
+    roundTrip,
+    serialized,
+    "helper should decrypt ciphertext encoded as an object with nonce",
+  );
+
+  const jsonPayload = JSON.stringify(structuredPayload);
+  const jsonRoundTrip = await decryptNip46PayloadWithKeys(
+    clientSecret,
+    remotePubkey,
+    jsonPayload,
+  );
+
+  assert.equal(
+    jsonRoundTrip,
+    serialized,
+    "helper should also decrypt JSON-serialized handshake payloads",
+  );
+});

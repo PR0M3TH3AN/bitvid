@@ -3636,6 +3636,115 @@ function resolveLegacyNip44ConversationKeyGetter(tools) {
   return null;
 }
 
+function normalizeNip46CiphertextPayload(payload) {
+  const visited = new Set();
+
+  const coerce = (value) => {
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed) {
+        return "";
+      }
+
+      const firstChar = trimmed.charAt(0);
+      const lastChar = trimmed.charAt(trimmed.length - 1);
+      if (
+        (firstChar === "{" && lastChar === "}") ||
+        (firstChar === "[" && lastChar === "]")
+      ) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          const normalized = coerce(parsed);
+          if (normalized) {
+            return normalized;
+          }
+        } catch (error) {
+          // ignore JSON parse errors and fall through to returning the trimmed string
+        }
+      }
+
+      return trimmed;
+    }
+
+    if (Array.isArray(value)) {
+      const parts = [];
+      for (const entry of value) {
+        const normalized = coerce(entry);
+        if (normalized) {
+          parts.push(normalized);
+        }
+      }
+      if (!parts.length) {
+        return "";
+      }
+      if (parts.length === 1) {
+        return parts[0];
+      }
+      return parts.join("\n");
+    }
+
+    if (value && typeof value === "object") {
+      if (visited.has(value)) {
+        return "";
+      }
+      visited.add(value);
+
+      const ciphertextCandidates = [
+        typeof value.ciphertext === "string" ? value.ciphertext.trim() : "",
+        typeof value.cipher_text === "string" ? value.cipher_text.trim() : "",
+        typeof value.content === "string" ? value.content.trim() : "",
+        typeof value.payload === "string" ? value.payload.trim() : "",
+        typeof value.result === "string" ? value.result.trim() : "",
+        typeof value.value === "string" ? value.value.trim() : "",
+        typeof value.data === "string" ? value.data.trim() : "",
+      ];
+
+      const ciphertext = ciphertextCandidates.find(Boolean) || "";
+      const nonceCandidates = [
+        typeof value.nonce === "string" ? value.nonce.trim() : "",
+        typeof value.iv === "string" ? value.iv.trim() : "",
+      ];
+      const nonce = nonceCandidates.find(Boolean) || "";
+
+      if (ciphertext && nonce) {
+        return `${ciphertext}\n${nonce}`;
+      }
+      if (ciphertext) {
+        return ciphertext;
+      }
+
+      const nestedKeys = [
+        "ciphertext",
+        "cipher_text",
+        "payload",
+        "result",
+        "value",
+        "data",
+        "content",
+      ];
+
+      for (const key of nestedKeys) {
+        if (key in value) {
+          const normalized = coerce(value[key]);
+          if (normalized) {
+            return normalized;
+          }
+        }
+      }
+
+      return "";
+    }
+
+    if (typeof value === "number" || typeof value === "boolean") {
+      return String(value);
+    }
+
+    return "";
+  };
+
+  return coerce(payload);
+}
+
 export function createNip46Cipher(tools, privateKey, remotePubkey) {
   if (!tools) {
     throw new Error("NostrTools helpers are unavailable for remote signing.");
@@ -3705,7 +3814,8 @@ async function decryptNip46PayloadWithKeys(privateKey, remotePubkey, ciphertext)
   }
 
   const { decrypt } = createNip46Cipher(tools, privateKey, remotePubkey);
-  return decrypt(ciphertext);
+  const normalizedCiphertext = normalizeNip46CiphertextPayload(ciphertext);
+  return decrypt(normalizedCiphertext);
 }
 
 class Nip46RpcClient {
