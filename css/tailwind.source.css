@@ -1630,70 +1630,66 @@
     position: relative;
     isolation: isolate;
     overflow: visible;
-    --video-modal-ambient-bleed: clamp(var(--space-2xl), 14vw, var(--space-5xl));
-    --video-modal-ambient-scale: 1.42;
-    --video-modal-ambient-blur: clamp(160px, 22vw, 320px);
+    --video-modal-ambient-bleed: clamp(var(--space-2xl), 12vw, var(--space-5xl));
+    --video-modal-ambient-scale: 1.38;
+    --video-modal-ambient-blur: clamp(128px, 20vw, 256px);
     --video-modal-ambient-opacity: 1;
-    --video-modal-ambient-overlay-opacity: 0.56;
-    --video-modal-ambient-translate-y: clamp(-1.25rem, -2.85vw, -2.25rem);
   }
 
   .video-modal__video {
     position: relative;
     z-index: 1;
-    background-color: color-mix(
-      in srgb,
-      var(--color-surface) 78%,
-      transparent
-    );
     border-radius: var(--radius-xl);
     padding-block: clamp(var(--space-xs), 2.5vw, var(--space-md-plus));
+    background-color: color-mix(
+      in srgb,
+      var(--color-surface) 82%,
+      transparent
+    );
+    box-shadow: 0 0 0 1px color-mix(
+        in srgb,
+        var(--color-border-strong) 8%,
+        transparent
+      )
+      inset;
     overflow: visible;
   }
 
   .video-modal__ambient {
     position: absolute;
-    inset: calc(var(--video-modal-ambient-bleed) * -1.8);
-    z-index: 0;
+    inset: calc(var(--video-modal-ambient-bleed) * -1);
+    border-radius: calc(var(--radius-3xl) + var(--video-modal-ambient-bleed));
     pointer-events: none;
-    display: grid;
-    place-items: center;
+    z-index: 0;
+    display: block;
+    overflow: visible;
   }
 
   .video-modal__ambient::before {
     content: "";
     position: absolute;
-    inset: calc(var(--video-modal-ambient-bleed) * -1.1);
-    border-radius: calc(var(--radius-3xl) + var(--video-modal-ambient-bleed));
+    inset: 0;
+    border-radius: inherit;
     background: radial-gradient(
-      circle at 50% 46%,
-      color-mix(in srgb, var(--color-overlay-strong) 52%, transparent) 0%,
-      color-mix(in srgb, var(--color-overlay) 32%, transparent) 62%,
+      circle at 50% 50%,
+      color-mix(in srgb, var(--color-overlay-strong) 18%, transparent) 0%,
+      color-mix(in srgb, var(--color-overlay) 34%, transparent) 62%,
       transparent 100%
     );
-    opacity: var(--video-modal-ambient-overlay-opacity);
-    filter: blur(calc(var(--video-modal-ambient-blur) * 0.38));
-    transform: translate3d(0, var(--video-modal-ambient-translate-y), 0)
-      scale(1.26);
+    opacity: 0.9;
+    mix-blend-mode: screen;
+    pointer-events: none;
   }
 
   .video-modal__ambient-canvas {
     position: relative;
     width: 100%;
     height: 100%;
-    transform-origin: center;
-    transform: translate3d(0, var(--video-modal-ambient-translate-y), 0)
-      scale(var(--video-modal-ambient-scale));
-    filter: blur(var(--video-modal-ambient-blur)) saturate(1.68)
-      brightness(1.12);
+    display: block;
+    transform: scale(var(--video-modal-ambient-scale));
+    filter: blur(var(--video-modal-ambient-blur)) saturate(2)
+      brightness(1.24);
     opacity: var(--video-modal-ambient-opacity);
-    mask-image: radial-gradient(
-      circle at 50% 44%,
-      color-mix(in srgb, var(--color-black) 98%, transparent) 0%,
-      color-mix(in srgb, var(--color-black) 92%, transparent) 58%,
-      color-mix(in srgb, var(--color-black) 70%, transparent) 84%,
-      transparent 100%
-    );
   }
 
   @media (min-width: theme('screens.lg')) {
