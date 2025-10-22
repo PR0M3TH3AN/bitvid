@@ -230,7 +230,22 @@ class SubscriptionsManager {
       const newest = events[0];
       this.subsEventId = newest.id;
 
-      const permissionResult = await requestDefaultExtensionPermissions();
+      const signer = getActiveSigner();
+      const signerHasNip04 = typeof signer?.nip04Decrypt === "function";
+      const signerHasNip44 = typeof signer?.nip44Decrypt === "function";
+      const hints = extractEncryptionHints(newest);
+      const requiresNip44 = hints.includes("nip44") || hints.includes("nip44_v2");
+      const requiresNip04 =
+        !hints.length || hints.includes("nip04") || !requiresNip44;
+
+      let permissionResult = { ok: true };
+      const signerCoversRequiredSchemes =
+        (!requiresNip04 || signerHasNip04) && (!requiresNip44 || signerHasNip44);
+
+      if (!signerCoversRequiredSchemes) {
+        permissionResult = await requestDefaultExtensionPermissions();
+      }
+
       if (!permissionResult.ok) {
         userLogger.warn(
           "[SubscriptionsManager] Extension permissions denied while loading subscriptions; treating list as empty.",
@@ -300,18 +315,21 @@ class SubscriptionsManager {
     };
 
     const signer = getActiveSigner();
-    if (signer?.nip04Decrypt) {
+    const signerHasNip04 = typeof signer?.nip04Decrypt === "function";
+    const signerHasNip44 = typeof signer?.nip44Decrypt === "function";
+
+    if (signerHasNip04) {
       registerDecryptor("nip04", (payload) => signer.nip04Decrypt(userPubkey, payload));
     }
 
-    if (signer?.nip44Decrypt) {
+    if (signerHasNip44) {
       registerDecryptor("nip44", (payload) => signer.nip44Decrypt(userPubkey, payload));
     }
 
     const nostrApi =
       typeof window !== "undefined" && window && window.nostr ? window.nostr : null;
     if (nostrApi) {
-      if (nostrApi.nip04 && typeof nostrApi.nip04.decrypt === "function") {
+      if (!signerHasNip04 && nostrApi.nip04 && typeof nostrApi.nip04.decrypt === "function") {
         registerDecryptor("nip04", (payload) =>
           nostrApi.nip04.decrypt(userPubkey, payload)
         );
@@ -320,7 +338,7 @@ class SubscriptionsManager {
       const nip44 =
         nostrApi.nip44 && typeof nostrApi.nip44 === "object" ? nostrApi.nip44 : null;
       if (nip44) {
-        if (typeof nip44.decrypt === "function") {
+        if (!signerHasNip44 && typeof nip44.decrypt === "function") {
           registerDecryptor("nip44", (payload) => nip44.decrypt(userPubkey, payload));
         }
 
