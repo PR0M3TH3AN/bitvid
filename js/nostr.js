@@ -54,137 +54,29 @@ import {
   resolveSimplePoolConstructor,
 } from "./nostr/toolkit.js";
 import { devLogger, userLogger } from "./utils/logger.js";
+import {
+  DEFAULT_NIP07_ENCRYPTION_METHODS,
+  DEFAULT_NIP07_PERMISSION_METHODS,
+  clearStoredNip07Permissions,
+  normalizePermissionMethod,
+  readStoredNip07Permissions,
+  requestEnablePermissions,
+  runNip07WithRetry,
+  writeStoredNip07Permissions,
+} from "./nostr/nip07Permissions.js";
+import {
+  clearStoredSessionActor as clearStoredSessionActorEntry,
+  decryptSessionPrivateKey,
+  encryptSessionPrivateKey,
+  persistSessionActor as persistSessionActorEntry,
+  readStoredSessionActorEntry,
+} from "./nostr/sessionActor.js";
 
 let activeSigner = null;
 
 const EVENTS_CACHE_STORAGE_KEY = "bitvid:eventsCache:v1";
 const LEGACY_EVENTS_STORAGE_KEY = "bitvidEvents";
 const EVENTS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
-const NIP07_LOGIN_TIMEOUT_MS = 60_000; // 60 seconds
-const NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE =
-  "Timed out waiting for the NIP-07 extension. Confirm the extension prompt in your browser toolbar and try again.";
-const NIP07_PERMISSIONS_STORAGE_KEY = "bitvid:nip07:permissions";
-
-// Give the NIP-07 extension enough time to surface its approval prompt and let
-// users unlock/authorize it. Seven seconds proved too aggressive once vendors
-// started requiring an unlock step, so we extend the window substantially while
-// still allowing manual overrides via __BITVID_NIP07_ENABLE_VARIANT_TIMEOUT_MS__.
-const DEFAULT_ENABLE_VARIANT_TIMEOUT_MS = 45_000;
-
-function getEnableVariantTimeoutMs() {
-  const overrideValue =
-    typeof globalThis !== "undefined" &&
-    globalThis !== null &&
-    Number.isFinite(globalThis.__BITVID_NIP07_ENABLE_VARIANT_TIMEOUT_MS__)
-      ? Math.floor(globalThis.__BITVID_NIP07_ENABLE_VARIANT_TIMEOUT_MS__)
-      : null;
-
-  if (overrideValue !== null && overrideValue > 0) {
-    return Math.max(50, overrideValue);
-  }
-
-  return DEFAULT_ENABLE_VARIANT_TIMEOUT_MS;
-}
-
-function normalizePermissionMethod(method) {
-  return typeof method === "string" && method.trim() ? method.trim() : "";
-}
-
-function getNip07PermissionStorage() {
-  const scope =
-    typeof globalThis !== "undefined" && globalThis ? globalThis : undefined;
-  const browserWindow =
-    typeof window !== "undefined" && window ? window : undefined;
-
-  if (browserWindow?.localStorage) {
-    return browserWindow.localStorage;
-  }
-
-  if (scope?.localStorage) {
-    return scope.localStorage;
-  }
-
-  return null;
-}
-
-function readStoredNip07Permissions() {
-  const storage = getNip07PermissionStorage();
-  if (!storage) {
-    return new Set();
-  }
-
-  let rawValue = null;
-  try {
-    rawValue = storage.getItem(NIP07_PERMISSIONS_STORAGE_KEY);
-  } catch (error) {
-    return new Set();
-  }
-
-  if (!rawValue) {
-    return new Set();
-  }
-
-  try {
-    const parsed = JSON.parse(rawValue);
-    const storedMethods = Array.isArray(parsed)
-      ? parsed
-      : Array.isArray(parsed?.grantedMethods)
-        ? parsed.grantedMethods
-        : Array.isArray(parsed?.methods)
-          ? parsed.methods
-          : [];
-    return new Set(
-      storedMethods
-        .map((method) => normalizePermissionMethod(method))
-        .filter(Boolean),
-    );
-  } catch (error) {
-    clearStoredNip07Permissions();
-    return new Set();
-  }
-}
-
-function writeStoredNip07Permissions(methods) {
-  const storage = getNip07PermissionStorage();
-  if (!storage) {
-    return;
-  }
-
-  const normalized = Array.from(
-    new Set(
-      Array.from(methods || [])
-        .map((method) => normalizePermissionMethod(method))
-        .filter(Boolean),
-    ),
-  );
-
-  try {
-    if (!normalized.length) {
-      storage.removeItem(NIP07_PERMISSIONS_STORAGE_KEY);
-      return;
-    }
-
-    storage.setItem(
-      NIP07_PERMISSIONS_STORAGE_KEY,
-      JSON.stringify({ grantedMethods: normalized }),
-    );
-  } catch (error) {
-    // ignore persistence failures
-  }
-}
-
-function clearStoredNip07Permissions() {
-  const storage = getNip07PermissionStorage();
-  if (!storage) {
-    return;
-  }
-
-  try {
-    storage.removeItem(NIP07_PERMISSIONS_STORAGE_KEY);
-  } catch (error) {
-    // ignore cleanup issues
-  }
-}
 const NIP46_RPC_KIND = 24_133;
 const NIP46_SESSION_STORAGE_KEY = "bitvid:nip46:session:v1";
 const NIP46_PUBLISH_TIMEOUT_MS = 8_000;
@@ -362,13 +254,6 @@ function clearStoredNip46Session() {
     // ignore cleanup issues
   }
 }
-const SESSION_ACTOR_STORAGE_KEY = "bitvid:sessionActor:v1";
-const SESSION_ACTOR_ENCRYPTION_VERSION = 1;
-const SESSION_ACTOR_KDF_ITERATIONS = 250_000;
-const SESSION_ACTOR_KDF_HASH = "SHA-256";
-const SESSION_ACTOR_ENCRYPTION_ALGORITHM = "AES-GCM";
-const SESSION_ACTOR_SALT_BYTES = 16;
-const SESSION_ACTOR_IV_BYTES = 12;
 const HEX64_REGEX = /^[0-9a-f]{64}$/i;
 const VIEW_EVENT_GUARD_PREFIX = "bitvid:viewed";
 const REBROADCAST_GUARD_PREFIX = "bitvid:rebroadcast:v1";
@@ -379,25 +264,6 @@ const WATCH_HISTORY_REPUBLISH_BASE_DELAY_MS = 2000;
 const WATCH_HISTORY_REPUBLISH_MAX_DELAY_MS = 5 * 60 * 1000;
 const WATCH_HISTORY_REPUBLISH_MAX_ATTEMPTS = 8;
 const WATCH_HISTORY_REPUBLISH_JITTER = 0.25;
-
-export const DEFAULT_NIP07_ENCRYPTION_METHODS = Object.freeze([
-  // Encryption helpers — request both legacy NIP-04 and modern NIP-44 upfront
-  "nip04.encrypt",
-  "nip04.decrypt",
-  "nip44.encrypt",
-  "nip44.decrypt",
-  "nip44.v2.encrypt",
-  "nip44.v2.decrypt",
-]);
-
-export const DEFAULT_NIP07_PERMISSION_METHODS = Object.freeze([
-  // Core auth + relay metadata
-  "get_public_key",
-  "sign_event",
-  "read_relays",
-  "write_relays",
-  ...DEFAULT_NIP07_ENCRYPTION_METHODS,
-]);
 
 const viewEventPublishMemory = new Map();
 const rebroadcastAttemptMemory = new Map();
@@ -443,101 +309,6 @@ function logErrorOnce(message, eventContent = null) {
     userLogger.error(
       "Maximum error log limit reached. Further errors will be suppressed."
     );
-  }
-}
-
-function withNip07Timeout(
-  operation,
-  {
-    timeoutMs = NIP07_LOGIN_TIMEOUT_MS,
-    message = NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE,
-  } = {},
-) {
-  const numericTimeout = Number(timeoutMs);
-  const effectiveTimeout =
-    Number.isFinite(numericTimeout) && numericTimeout > 0
-      ? numericTimeout
-      : NIP07_LOGIN_TIMEOUT_MS;
-
-  let timeoutId;
-  const timeoutPromise = new Promise((_, reject) => {
-    timeoutId = setTimeout(() => {
-      reject(new Error(message));
-    }, effectiveTimeout);
-  });
-
-  let operationResult;
-  try {
-    operationResult = operation();
-  } catch (err) {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
-    throw err;
-  }
-
-  const operationPromise = Promise.resolve(operationResult);
-
-  return Promise.race([operationPromise, timeoutPromise]).finally(() => {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
-  });
-}
-
-async function runNip07WithRetry(
-  operation,
-  {
-    label = "NIP-07 operation",
-    timeoutMs = NIP07_LOGIN_TIMEOUT_MS,
-    retryMultiplier = 2,
-  } = {},
-) {
-  let hasStarted = false;
-  let cachedPromise = null;
-
-  const getOrStartOperation = () => {
-    if (!hasStarted) {
-      hasStarted = true;
-      try {
-        cachedPromise = Promise.resolve(operation());
-      } catch (error) {
-        hasStarted = false;
-        cachedPromise = null;
-        throw error;
-      }
-    }
-
-    return cachedPromise;
-  };
-
-  try {
-    return await withNip07Timeout(getOrStartOperation, {
-      timeoutMs,
-      message: NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE,
-    });
-  } catch (error) {
-    const isTimeoutError =
-      error instanceof Error &&
-      error.message === NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE;
-
-    if (!isTimeoutError || retryMultiplier <= 1) {
-      throw error;
-    }
-
-    const extendedTimeout = Math.max(
-      timeoutMs,
-      Math.round(timeoutMs * retryMultiplier),
-    );
-
-    devLogger.warn(
-    `[nostr] ${label} taking longer than ${timeoutMs}ms. Waiting up to ${extendedTimeout}ms for extension response.`,
-    );
-
-    return withNip07Timeout(getOrStartOperation, {
-      timeoutMs: extendedTimeout,
-      message: NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE,
-    });
   }
 }
 
@@ -2693,314 +2464,6 @@ function bytesToHex(bytes) {
   return Array.from(bytes)
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
-}
-
-function arrayBufferToBase64(buffer) {
-  if (!buffer) {
-    return "";
-  }
-
-  let view;
-  if (buffer instanceof ArrayBuffer) {
-    view = new Uint8Array(buffer);
-  } else if (ArrayBuffer.isView(buffer)) {
-    view = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
-  } else {
-    return "";
-  }
-
-  if (typeof globalThis?.btoa === "function") {
-    let binary = "";
-    for (let index = 0; index < view.length; index += 1) {
-      binary += String.fromCharCode(view[index]);
-    }
-    return globalThis.btoa(binary);
-  }
-
-  if (typeof Buffer !== "undefined") {
-    return Buffer.from(view).toString("base64");
-  }
-
-  return "";
-}
-
-function base64ToUint8Array(base64) {
-  if (typeof base64 !== "string" || !base64.trim()) {
-    return null;
-  }
-
-  let binary;
-  try {
-    if (typeof globalThis?.atob === "function") {
-      binary = globalThis.atob(base64);
-    } else if (typeof Buffer !== "undefined") {
-      binary = Buffer.from(base64, "base64").toString("binary");
-    } else {
-      return null;
-    }
-  } catch (error) {
-    return null;
-  }
-
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return bytes;
-}
-
-function generateRandomBytes(length) {
-  const size = Number.isFinite(length) ? Math.max(0, Math.floor(length)) : 0;
-  if (size <= 0) {
-    return new Uint8Array(0);
-  }
-
-  if (globalThis?.crypto?.getRandomValues) {
-    const array = new Uint8Array(size);
-    globalThis.crypto.getRandomValues(array);
-    return array;
-  }
-
-  throw new Error("secure-random-unavailable");
-}
-
-function isSubtleCryptoAvailable() {
-  return !!(
-    globalThis?.crypto?.subtle &&
-    typeof globalThis.crypto.subtle.importKey === "function"
-  );
-}
-
-async function deriveSessionEncryptionKey(passphrase, saltBytes, iterations, hash) {
-  if (!isSubtleCryptoAvailable()) {
-    throw new Error("webcrypto-unavailable");
-  }
-
-  if (!(saltBytes instanceof Uint8Array)) {
-    throw new Error("invalid-salt");
-  }
-
-  const encoder = typeof TextEncoder === "function" ? new TextEncoder() : null;
-  if (!encoder) {
-    throw new Error("text-encoder-unavailable");
-  }
-
-  const passphraseBytes = encoder.encode(passphrase);
-
-  const baseKey = await globalThis.crypto.subtle.importKey(
-    "raw",
-    passphraseBytes,
-    { name: "PBKDF2" },
-    false,
-    ["deriveKey"],
-  );
-
-  const normalizedIterations = Number.isFinite(iterations)
-    ? Math.max(1, Math.floor(iterations))
-    : SESSION_ACTOR_KDF_ITERATIONS;
-  const normalizedHash = typeof hash === "string" && hash.trim()
-    ? hash.trim()
-    : SESSION_ACTOR_KDF_HASH;
-
-  return globalThis.crypto.subtle.deriveKey(
-    {
-      name: "PBKDF2",
-      salt: saltBytes,
-      iterations: normalizedIterations,
-      hash: normalizedHash,
-    },
-    baseKey,
-    { name: SESSION_ACTOR_ENCRYPTION_ALGORITHM, length: 256 },
-    false,
-    ["encrypt", "decrypt"],
-  );
-}
-
-async function encryptSessionPrivateKey(privateKey, passphrase) {
-  if (typeof privateKey !== "string" || !privateKey.trim()) {
-    throw new Error("invalid-private-key");
-  }
-
-  if (typeof passphrase !== "string" || !passphrase.trim()) {
-    throw new Error("passphrase-required");
-  }
-
-  if (!isSubtleCryptoAvailable()) {
-    throw new Error("webcrypto-unavailable");
-  }
-
-  const encoder = typeof TextEncoder === "function" ? new TextEncoder() : null;
-  if (!encoder) {
-    throw new Error("text-encoder-unavailable");
-  }
-
-  const payload = encoder.encode(privateKey);
-  const salt = generateRandomBytes(SESSION_ACTOR_SALT_BYTES);
-  const iv = generateRandomBytes(SESSION_ACTOR_IV_BYTES);
-  const key = await deriveSessionEncryptionKey(
-    passphrase,
-    salt,
-    SESSION_ACTOR_KDF_ITERATIONS,
-    SESSION_ACTOR_KDF_HASH,
-  );
-
-  const ciphertext = await globalThis.crypto.subtle.encrypt(
-    { name: SESSION_ACTOR_ENCRYPTION_ALGORITHM, iv },
-    key,
-    payload,
-  );
-
-  return {
-    ciphertext: arrayBufferToBase64(ciphertext),
-    salt: arrayBufferToBase64(salt),
-    iv: arrayBufferToBase64(iv),
-    iterations: SESSION_ACTOR_KDF_ITERATIONS,
-    hash: SESSION_ACTOR_KDF_HASH,
-    algorithm: SESSION_ACTOR_ENCRYPTION_ALGORITHM,
-    version: SESSION_ACTOR_ENCRYPTION_VERSION,
-  };
-}
-
-function normalizeStoredEncryptionMetadata(metadata) {
-  if (!metadata || typeof metadata !== "object") {
-    return null;
-  }
-
-  const salt = typeof metadata.salt === "string" ? metadata.salt.trim() : "";
-  const iv = typeof metadata.iv === "string" ? metadata.iv.trim() : "";
-  if (!salt || !iv) {
-    return null;
-  }
-
-  const iterations = Number.isFinite(metadata.iterations)
-    ? Math.max(1, Math.floor(metadata.iterations))
-    : SESSION_ACTOR_KDF_ITERATIONS;
-  const version = Number.isFinite(metadata.version)
-    ? Math.max(1, Math.floor(metadata.version))
-    : SESSION_ACTOR_ENCRYPTION_VERSION;
-  const algorithm =
-    typeof metadata.algorithm === "string" && metadata.algorithm.trim()
-      ? metadata.algorithm.trim()
-      : SESSION_ACTOR_ENCRYPTION_ALGORITHM;
-  const hash =
-    typeof metadata.hash === "string" && metadata.hash.trim()
-      ? metadata.hash.trim()
-      : SESSION_ACTOR_KDF_HASH;
-
-  return { version, algorithm, salt, iv, iterations, hash };
-}
-
-async function decryptSessionPrivateKey(payload, passphrase) {
-  if (!payload || typeof payload !== "object") {
-    throw new Error("encrypted-session-invalid");
-  }
-
-  if (typeof passphrase !== "string" || !passphrase.trim()) {
-    throw new Error("passphrase-required");
-  }
-
-  if (!isSubtleCryptoAvailable()) {
-    throw new Error("webcrypto-unavailable");
-  }
-
-  const ciphertext =
-    typeof payload.privateKeyEncrypted === "string"
-      ? payload.privateKeyEncrypted.trim()
-      : "";
-  const encryption = normalizeStoredEncryptionMetadata(payload.encryption);
-
-  if (!ciphertext || !encryption) {
-    throw new Error("encrypted-session-invalid");
-  }
-
-  const cipherBytes = base64ToUint8Array(ciphertext);
-  const saltBytes = base64ToUint8Array(encryption.salt);
-  const ivBytes = base64ToUint8Array(encryption.iv);
-  if (!cipherBytes || !saltBytes || !ivBytes) {
-    throw new Error("encrypted-session-invalid");
-  }
-
-  const key = await deriveSessionEncryptionKey(
-    passphrase,
-    saltBytes,
-    encryption.iterations,
-    encryption.hash,
-  );
-
-  let decrypted;
-  try {
-    decrypted = await globalThis.crypto.subtle.decrypt(
-      { name: encryption.algorithm || SESSION_ACTOR_ENCRYPTION_ALGORITHM, iv: ivBytes },
-      key,
-      cipherBytes,
-    );
-  } catch (error) {
-    const failure = new Error("Failed to decrypt the stored private key.");
-    failure.code = "decrypt-failed";
-    failure.cause = error;
-    throw failure;
-  }
-
-  const decoder = typeof TextDecoder === "function" ? new TextDecoder() : null;
-  if (!decoder) {
-    throw new Error("text-decoder-unavailable");
-  }
-
-  return decoder.decode(decrypted);
-}
-
-function readStoredSessionActorEntry() {
-  if (typeof localStorage === "undefined") {
-    return null;
-  }
-
-  let raw = null;
-  try {
-    raw = localStorage.getItem(SESSION_ACTOR_STORAGE_KEY);
-  } catch (error) {
-    devLogger.warn("[nostr] Failed to read session actor from storage:", error);
-    return null;
-  }
-
-  if (!raw || typeof raw !== "string") {
-    return null;
-  }
-
-  try {
-    const parsed = JSON.parse(raw);
-    const pubkey =
-      typeof parsed?.pubkey === "string" ? parsed.pubkey.trim() : "";
-    const privateKey =
-      typeof parsed?.privateKey === "string" ? parsed.privateKey.trim() : "";
-    const privateKeyEncrypted =
-      typeof parsed?.privateKeyEncrypted === "string"
-        ? parsed.privateKeyEncrypted.trim()
-        : "";
-    const encryption = normalizeStoredEncryptionMetadata(parsed?.encryption);
-    const createdAt = Number.isFinite(parsed?.createdAt)
-      ? parsed.createdAt
-      : Date.now();
-
-    return {
-      pubkey,
-      privateKey,
-      privateKeyEncrypted,
-      encryption,
-      createdAt,
-    };
-  } catch (error) {
-    devLogger.warn("[nostr] Failed to parse stored session actor:", error);
-    try {
-      localStorage.removeItem(SESSION_ACTOR_STORAGE_KEY);
-    } catch (cleanupError) {
-      devLogger.warn(
-        "[nostr] Failed to clear corrupt session actor entry:",
-        cleanupError,
-      );
-    }
-  }
-
-  return null;
 }
 
 async function computeWatchHistoryFingerprintForItems(items) {
@@ -6608,55 +6071,18 @@ export class NostrClient {
       return { ok: false, error: new Error("extension-unavailable") };
     }
 
-    if (typeof extension.enable !== "function") {
+    const enableResult = await requestEnablePermissions(extension, outstanding, {
+      isDevMode,
+    });
+
+    if (enableResult?.ok) {
       this.markExtensionPermissions(outstanding);
-      return { ok: true, code: "enable-unavailable" };
-    }
-
-    // Always request the full set of methods first so extensions surface the
-    // "All Access" prompt instead of defaulting to "Get Public Key" only.
-    const permissionVariants = [];
-    if (outstanding.length) {
-      permissionVariants.push({
-        permissions: outstanding.map((method) => ({ method })),
-      });
-      permissionVariants.push({ permissions: outstanding });
-    }
-    permissionVariants.push(null);
-
-    let lastError = null;
-    for (const options of permissionVariants) {
-      const variantTimeoutOverrides = options
-        ? {
-            timeoutMs: Math.min(
-              NIP07_LOGIN_TIMEOUT_MS,
-              getEnableVariantTimeoutMs(),
-            ),
-            retryMultiplier: 1,
-          }
-        : { retryMultiplier: 1 };
-
-      try {
-        await runNip07WithRetry(
-          () => (options ? extension.enable(options) : extension.enable()),
-          { label: "extension.enable", ...variantTimeoutOverrides },
-        );
-        this.markExtensionPermissions(outstanding);
-        return { ok: true };
-      } catch (error) {
-        lastError = error;
-        if (options && isDevMode) {
-          userLogger.warn(
-            "[nostr] extension.enable request with explicit permissions failed:",
-            error,
-          );
-        }
-      }
+      return enableResult;
     }
 
     return {
       ok: false,
-      error: lastError || new Error("permission-denied"),
+      error: enableResult?.error || new Error("permission-denied"),
     };
   }
 
@@ -6811,69 +6237,11 @@ export class NostrClient {
   }
 
   persistSessionActor(actor) {
-    if (typeof localStorage === "undefined") {
-      return;
-    }
-
-    if (
-      !actor ||
-      typeof actor.pubkey !== "string" ||
-      !actor.pubkey ||
-      ((typeof actor.privateKey !== "string" || !actor.privateKey) &&
-        (typeof actor.privateKeyEncrypted !== "string" ||
-          !actor.privateKeyEncrypted))
-    ) {
-      return;
-    }
-
-    const createdAt = Number.isFinite(actor.createdAt)
-      ? actor.createdAt
-      : Date.now();
-
-    const payload = {
-      pubkey: actor.pubkey,
-      createdAt,
-    };
-
-    if (typeof actor.privateKey === "string" && actor.privateKey) {
-      payload.privateKey = actor.privateKey;
-    } else if (
-      typeof actor.privateKeyEncrypted === "string" &&
-      actor.privateKeyEncrypted &&
-      actor.encryption &&
-      typeof actor.encryption === "object"
-    ) {
-      const normalizedEncryption = normalizeStoredEncryptionMetadata(
-        actor.encryption,
-      );
-      if (!normalizedEncryption) {
-        return;
-      }
-      payload.privateKeyEncrypted = actor.privateKeyEncrypted;
-      payload.encryption = normalizedEncryption;
-    } else {
-      return;
-    }
-
-    try {
-      localStorage.setItem(
-        SESSION_ACTOR_STORAGE_KEY,
-        JSON.stringify(payload)
-      );
-    } catch (error) {
-      devLogger.warn("[nostr] Failed to persist session actor:", error);
-    }
+    persistSessionActorEntry(actor);
   }
 
   clearStoredSessionActor() {
-    if (typeof localStorage === "undefined") {
-      return;
-    }
-    try {
-      localStorage.removeItem(SESSION_ACTOR_STORAGE_KEY);
-    } catch (error) {
-      devLogger.warn("[nostr] Failed to clear stored session actor:", error);
-    }
+    clearStoredSessionActorEntry();
   }
 
   mintSessionActor() {
@@ -13224,6 +12592,11 @@ function isNip04EncryptedWatchHistoryEvent(pointerEvent, ciphertext) {
 }
 
 export const nostrClient = new NostrClient();
+
+export {
+  DEFAULT_NIP07_ENCRYPTION_METHODS,
+  DEFAULT_NIP07_PERMISSION_METHODS,
+} from "./nostr/nip07Permissions.js";
 
 registerNostrClient(nostrClient, {
   requestPermissions: () =>
