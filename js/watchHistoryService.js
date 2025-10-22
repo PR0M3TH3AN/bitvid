@@ -1,12 +1,11 @@
 // js/watchHistoryService.js
 
+import { nostrClient, requestDefaultExtensionPermissions } from "./nostr.js";
 import {
-  nostrClient,
   normalizePointerInput,
   pointerKey,
   normalizeActorKey,
-  requestDefaultExtensionPermissions,
-} from "./nostr.js";
+} from "./nostr/watchHistory.js";
 import {
   WATCH_HISTORY_CACHE_TTL_MS,
   WATCH_HISTORY_MAX_ITEMS,
