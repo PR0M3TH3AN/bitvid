@@ -64,6 +64,7 @@ export const countVideoViewEvents = (...args) => {
 
 export {
   __testExports,
+  NostrClient,
   getActiveSigner,
   setActiveSigner,
   clearActiveSigner,
@@ -71,6 +72,18 @@ export {
   shouldRequestExtensionPermissions,
 } from "./nostr/client.js";
 export { DEFAULT_NIP07_ENCRYPTION_METHODS, DEFAULT_NIP07_PERMISSION_METHODS } from "./nostr/nip07Permissions.js";
+export {
+  buildNip71MetadataTags,
+  buildNip71VideoEvent,
+  collectNip71PointerRequests,
+  extractNip71MetadataFromTags,
+  getDTagValueFromTags,
+  mergeNip71MetadataIntoVideo,
+  populateNip71MetadataForVideos,
+  processNip71Events,
+  buildVideoPointerValue,
+  stringFromInput,
+} from "./nostr/nip71.js";
 export {
   normalizePointerInput,
   pointerKey,
@@ -88,3 +101,4 @@ export {
   createVideoViewEventFilters,
   getViewEventGuardWindowMs,
 } from "./nostr/viewEvents.js";
+export { convertEventToVideo } from "./nostr/nip71.js";
