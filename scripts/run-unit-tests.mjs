@@ -27,7 +27,11 @@ async function collectTests(dir) {
       continue;
     }
 
-    if (entry.isFile() && entry.name.endsWith(".test.mjs")) {
+    const isTestFile =
+      entry.isFile() &&
+      (entry.name.endsWith(".test.mjs") || entry.name.endsWith(".test.js"));
+
+    if (isTestFile) {
       const content = await readFile(fullPath, "utf8");
       if (content.includes("node:test")) {
         testFiles.push(fullPath);
