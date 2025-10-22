@@ -195,3 +195,55 @@ test("decryptNip46PayloadWithKeys decodes buffer-based handshake payloads", asyn
     "helper should decrypt objects containing buffer encoded ciphertext",
   );
 });
+
+test("decryptNip46PayloadWithKeys supports nip04-style ciphertext wrappers", async () => {
+  const nostrTools = await loadNostrTools();
+  const { generateSecretKey, getPublicKey, nip04, utils } = nostrTools;
+
+  const clientSecret = utils.bytesToHex(generateSecretKey());
+  const remoteSecret = utils.bytesToHex(generateSecretKey());
+  const remotePubkey = getPublicKey(remoteSecret);
+
+  const serialized = JSON.stringify(PAYLOAD);
+  const ciphertext = await nip04.encrypt(clientSecret, remotePubkey, serialized);
+  const [ciphertextPart, iv] = ciphertext.split("?iv=");
+
+  const structuredPayload = {
+    ciphertext: ciphertextPart,
+    iv,
+  };
+
+  const patchedTools = {
+    ...nostrTools,
+    nip44: undefined,
+  };
+
+  const { __testExports } = await import("../js/nostr.js");
+  const { createNip46Cipher, normalizeNip46CiphertextPayload } = __testExports;
+
+  const candidates = normalizeNip46CiphertextPayload(structuredPayload);
+
+  assert.ok(
+    candidates.includes(`${ciphertextPart}?iv=${iv}`),
+    "normalizer should include nip04-style ciphertext",
+  );
+
+  const { decrypt } = createNip46Cipher(patchedTools, clientSecret, remotePubkey);
+  let decrypted = "";
+  for (const candidate of candidates) {
+    try {
+      decrypted = decrypt(candidate);
+      if (decrypted) {
+        break;
+      }
+    } catch (error) {
+      // continue trying other candidates
+    }
+  }
+
+  assert.equal(
+    decrypted,
+    serialized,
+    "nip04 decrypt should succeed for structured payload candidates",
+  );
+});
