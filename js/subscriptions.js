@@ -4,8 +4,8 @@ import {
   nostrClient,
   convertEventToVideo as sharedConvertEventToVideo,
   requestDefaultExtensionPermissions,
-  DEFAULT_RELAY_URLS,
 } from "./nostr.js";
+import { DEFAULT_RELAY_URLS } from "./nostr/toolkit.js";
 import {
   buildSubscriptionListEvent,
   SUBSCRIPTION_LIST_IDENTIFIER

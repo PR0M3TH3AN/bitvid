@@ -2,9 +2,9 @@
 
 import {
   nostrClient,
-  DEFAULT_RELAY_URLS,
-  convertEventToVideo as sharedConvertEventToVideo
+  convertEventToVideo as sharedConvertEventToVideo,
 } from "./nostr.js";
+import { DEFAULT_RELAY_URLS } from "./nostr/toolkit.js";
 import { subscriptions } from "./subscriptions.js";
 import { attachHealthBadges } from "./gridHealth.js";
 import { attachUrlHealthBadges } from "./urlHealthObserver.js";
