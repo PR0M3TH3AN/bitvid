@@ -4194,6 +4194,35 @@ async function decryptNip46PayloadWithKeys(privateKey, remotePubkey, ciphertext)
   throw failure;
 }
 
+function summarizeHexForLog(value) {
+  if (typeof value !== "string" || !value.trim()) {
+    return "";
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (normalized.length <= 12) {
+    return `${normalized} (len:${normalized.length})`;
+  }
+  return `${normalized.slice(0, 8)}…${normalized.slice(-4)} (len:${normalized.length})`;
+}
+
+function summarizeSecretForLog(value) {
+  if (typeof value !== "string" || !value.trim()) {
+    return "<empty>";
+  }
+
+  const trimmed = value.trim();
+  const visible = trimmed.length <= 4 ? "*".repeat(trimmed.length) : `${"*".repeat(3)}…`;
+  return `${visible} (len:${trimmed.length})`;
+}
+
+function summarizeMetadataForLog(metadata) {
+  if (!metadata || typeof metadata !== "object") {
+    return [];
+  }
+  return Object.keys(metadata).slice(0, 12);
+}
+
 async function attemptDecryptNip46HandshakePayload({
   clientPrivateKey,
   candidateRemotePubkeys = [],
@@ -4208,14 +4237,26 @@ async function attemptDecryptNip46HandshakePayload({
       continue;
     }
     seen.add(normalized);
+    devLogger.debug("[nostr] Handshake decrypt attempt", {
+      remotePubkey: summarizeHexForLog(normalized),
+      ciphertextLength: typeof ciphertext === "string" ? ciphertext.length : 0,
+    });
     try {
       const result = await decryptNip46PayloadWithKeys(
         clientPrivateKey,
         normalized,
         ciphertext,
       );
+      devLogger.debug("[nostr] Handshake decrypt succeeded", {
+        remotePubkey: summarizeHexForLog(normalized),
+        algorithm: result?.algorithm || null,
+      });
       return { ...result, remotePubkey: normalized };
     } catch (error) {
+      devLogger.debug("[nostr] Handshake decrypt failed for candidate", {
+        remotePubkey: summarizeHexForLog(normalized),
+        error: error?.message || error,
+      });
       tried.push({ remotePubkey: normalized, error });
     }
   }
@@ -4224,6 +4265,12 @@ async function attemptDecryptNip46HandshakePayload({
     "Failed to decrypt remote signer handshake payload with provided keys.",
   );
   failure.attempts = tried;
+  devLogger.warn("[nostr] Exhausted handshake decrypt candidates", {
+    attempts: tried.map((entry) => ({
+      remotePubkey: summarizeHexForLog(entry.remotePubkey),
+      error: entry.error?.message || entry.error,
+    })),
+  });
   throw failure;
 }
 
@@ -5440,6 +5487,14 @@ export class NostrClient {
     const handshakeSecret =
       typeof secret === "string" && secret.trim() ? secret.trim() : generateNip46Secret();
 
+    devLogger.debug("[nostr] Preparing remote signer handshake", {
+      clientPublicKey: summarizeHexForLog(keyPair.publicKey),
+      relays: resolvedRelays,
+      permissions: requestedPermissions || null,
+      secret: summarizeSecretForLog(handshakeSecret),
+      metadataKeys: summarizeMetadataForLog(sanitizedMetadata),
+    });
+
     const params = [];
     for (const relay of resolvedRelays) {
       params.push(`relay=${encodeURIComponent(relay)}`);
@@ -5456,6 +5511,12 @@ export class NostrClient {
 
     const query = params.length ? `?${params.join("&")}` : "";
     const uri = `nostrconnect://${keyPair.publicKey}${query}`;
+
+    devLogger.debug("[nostr] Prepared nostrconnect URI", {
+      uri,
+      relayCount: resolvedRelays.length,
+      metadataKeys: summarizeMetadataForLog(sanitizedMetadata),
+    });
 
     return {
       type: "client",
@@ -5515,6 +5576,14 @@ export class NostrClient {
     if (!resolvedRelays.length) {
       throw new Error("No relays available to complete the remote signer handshake.");
     }
+
+    devLogger.debug("[nostr] Waiting for remote signer handshake", {
+      clientPubkey: summarizeHexForLog(normalizedClientPublicKey),
+      relays: resolvedRelays,
+      secret: summarizeSecretForLog(secret),
+      timeoutMs: Number.isFinite(timeoutMs) ? timeoutMs : undefined,
+      expectedRemotePubkey: summarizeHexForLog(expectedRemotePubkey || ""),
+    });
 
     const pool = await this.ensurePool();
     const filters = [
@@ -5590,14 +5659,23 @@ export class NostrClient {
         cleanup();
         const error = new Error("Timed out waiting for the remote signer to acknowledge the connection.");
         error.code = "nip46-handshake-timeout";
+        devLogger.warn("[nostr] Handshake wait timed out", {
+          clientPubkey: summarizeHexForLog(normalizedClientPublicKey),
+          relays: resolvedRelays,
+        });
         reject(error);
       }, waitTimeout);
 
       let subscription;
       try {
         subscription = pool.sub(resolvedRelays, filters);
+        devLogger.debug("[nostr] Handshake subscription established", {
+          relays: resolvedRelays,
+          filters,
+        });
       } catch (error) {
         cleanup();
+        devLogger.warn("[nostr] Failed to subscribe for handshake responses", error);
         reject(error);
         return;
       }
@@ -5608,6 +5686,7 @@ export class NostrClient {
         }
 
         if (!event || event.kind !== NIP46_RPC_KIND) {
+          devLogger.debug("[nostr] Ignoring non-handshake event during wait", event);
           return;
         }
 
@@ -5619,6 +5698,15 @@ export class NostrClient {
         if (eventRemotePubkey) {
           candidateRemotePubkeys.push(eventRemotePubkey);
         }
+
+        devLogger.debug("[nostr] Processing handshake event", {
+          eventId: typeof event.id === "string" ? event.id : "",
+          eventPubkey: summarizeHexForLog(eventRemotePubkey || ""),
+          candidateRemotePubkeys: candidateRemotePubkeys.map((key) =>
+            summarizeHexForLog(key),
+          ),
+          contentLength: typeof event.content === "string" ? event.content.length : 0,
+        });
 
         Promise.resolve()
           .then(() =>
@@ -5637,6 +5725,15 @@ export class NostrClient {
               devLogger.warn("[nostr] Failed to parse remote signer handshake payload:", error);
               return;
             }
+
+            devLogger.debug("[nostr] Handshake payload parsed", {
+              remotePubkey: summarizeHexForLog(payloadResult?.remotePubkey || ""),
+              eventPubkey: summarizeHexForLog(eventRemotePubkey || ""),
+              algorithm: payloadResult?.algorithm || null,
+              requestId: typeof parsed?.id === "string" ? parsed.id : "",
+              hasResult: parsed?.result !== undefined,
+              hasError: parsed?.error !== undefined,
+            });
 
             const resultValue = coerceStructuredString(parsed?.result);
             const errorValue = coerceStructuredString(parsed?.error);
@@ -5690,6 +5787,13 @@ export class NostrClient {
               response: parsed,
               algorithm: normalizeNip46EncryptionAlgorithm(payloadResult?.algorithm),
             });
+
+            devLogger.debug("[nostr] Handshake wait resolved", {
+              remotePubkey: summarizeHexForLog(payloadResult?.remotePubkey || eventRemotePubkey || ""),
+              eventPubkey: summarizeHexForLog(eventRemotePubkey || ""),
+              result: resultValue || null,
+              hasSecret: Boolean(secret),
+            });
           })
           .catch((error) => {
             devLogger.warn("[nostr] Failed to decrypt remote signer handshake payload:", error);
@@ -5727,6 +5831,21 @@ export class NostrClient {
     const baseMetadata = sanitizeNip46Metadata(parsed.metadata);
     const overrideMetadata = sanitizeNip46Metadata(providedMetadata);
     const metadata = { ...baseMetadata, ...overrideMetadata };
+
+    devLogger.debug("[nostr] Connecting to remote signer", {
+      connectionType: parsed.type,
+      parsedRemotePubkey: summarizeHexForLog(parsed.remotePubkey || ""),
+      providedClientPublicKey: summarizeHexForLog(providedClientPublicKey),
+      providedClientPrivateKey: summarizeSecretForLog(
+        typeof providedClientPrivateKey === "string" ? providedClientPrivateKey : "",
+      ),
+      providedSecret: summarizeSecretForLog(providedSecret),
+      providedPermissions: providedPermissions || null,
+      handshakeTimeoutMs,
+      parsedRelays: parsed.relays,
+      overrideRelayCount: Array.isArray(providedRelays) ? providedRelays.length : 0,
+      metadataKeys: summarizeMetadataForLog(metadata),
+    });
 
     const handleStatus = (status) => {
       if (typeof onStatus !== "function") {
@@ -5895,8 +6014,23 @@ export class NostrClient {
       encryption: handshakeAlgorithm,
     });
 
+    devLogger.debug("[nostr] Remote signer RPC client created", {
+      clientPublicKey: summarizeHexForLog(client.clientPublicKey),
+      remotePubkey: summarizeHexForLog(remotePubkey),
+      relays,
+      permissions,
+      secret: summarizeSecretForLog(secret),
+      metadataKeys: summarizeMetadataForLog(metadata),
+      handshakeAlgorithm,
+    });
+
     try {
       await client.ensureSubscription();
+
+      devLogger.debug("[nostr] Remote signer subscription ready", {
+        remotePubkey: summarizeHexForLog(remotePubkey),
+        relayCount: relays.length,
+      });
 
       handleStatus({
         phase: "connect",
@@ -5909,9 +6043,20 @@ export class NostrClient {
       // Attempt the connect RPC, handling auth challenges when provided.
       for (;;) {
         try {
+          devLogger.debug("[nostr] Sending NIP-46 connect request", {
+            remotePubkey: summarizeHexForLog(remotePubkey),
+            attempt: attempts + 1,
+            permissions: permissions || null,
+          });
           await client.connect({ permissions });
           break;
         } catch (error) {
+          devLogger.warn("[nostr] Connect RPC attempt failed", {
+            remotePubkey: summarizeHexForLog(remotePubkey),
+            attempt: attempts + 1,
+            code: error?.code || null,
+            message: error?.message || String(error),
+          });
           if (error?.code === "auth-challenge" && error.authUrl) {
             attempts += 1;
             handleStatus({
@@ -5937,6 +6082,10 @@ export class NostrClient {
       }
 
       const userPubkey = await client.getUserPubkey();
+      devLogger.debug("[nostr] Retrieved user pubkey from remote signer", {
+        remotePubkey: summarizeHexForLog(remotePubkey),
+        userPubkey: summarizeHexForLog(userPubkey),
+      });
       client.metadata = metadata;
       const signer = this.installNip46Client(client, { userPubkey });
 
@@ -5974,8 +6123,24 @@ export class NostrClient {
         userPubkey,
       });
 
+      devLogger.debug("[nostr] Remote signer connection established", {
+        remotePubkey: summarizeHexForLog(remotePubkey),
+        userPubkey: summarizeHexForLog(userPubkey),
+        relays,
+        permissions: permissions || null,
+        secret: summarizeSecretForLog(secret),
+      });
+
       return { pubkey: userPubkey, signer };
     } catch (error) {
+      devLogger.error("[nostr] Remote signer connection failed", {
+        remotePubkey: summarizeHexForLog(remotePubkey),
+        relays,
+        permissions: permissions || null,
+        secret: summarizeSecretForLog(secret),
+        message: error?.message || String(error),
+        code: error?.code || null,
+      });
       await client.destroy().catch(() => {});
       this.nip46Client = null;
       if (!remember) {
