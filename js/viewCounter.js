@@ -17,35 +17,15 @@ import {
   VIEW_COUNT_DEDUPE_WINDOW_SECONDS,
 } from "./config.js";
 import { userLogger } from "./utils/logger.js";
-import { nostrClient } from "./nostr.js";
 import {
-  countVideoViewEvents as countVideoViewEventsForClient,
-  listVideoViewEvents as listVideoViewEventsForClient,
-  subscribeVideoViewEvents as subscribeVideoViewEventsForClient,
-} from "./nostr/viewEvents.js";
+  countVideoViewEvents as countVideoViewEventsApi,
+  listVideoViewEvents as listVideoViewEventsApi,
+  subscribeVideoViewEvents as subscribeVideoViewEventsApi,
+} from "./nostr.js";
 
 const VIEW_COUNTER_STORAGE_KEY = "bitvid:view-counter:v1";
 const STORAGE_DEBOUNCE_MS = 500;
 const SECONDS_PER_DAY = 86_400;
-
-const listVideoViewEvents = (pointer, options) => {
-  if (typeof nostrClient.listVideoViewEvents === "function") {
-    return nostrClient.listVideoViewEvents(pointer, options);
-  }
-  return listVideoViewEventsForClient(nostrClient, pointer, options);
-};
-const countVideoViewEvents = (pointer, options) => {
-  if (typeof nostrClient.countVideoViewEvents === "function") {
-    return nostrClient.countVideoViewEvents(pointer, options);
-  }
-  return countVideoViewEventsForClient(nostrClient, pointer, options);
-};
-const subscribeVideoViewEvents = (pointer, options) => {
-  if (typeof nostrClient.subscribeVideoViewEvents === "function") {
-    return nostrClient.subscribeVideoViewEvents(pointer, options);
-  }
-  return subscribeVideoViewEventsForClient(nostrClient, pointer, options);
-};
 
 /** @type {Map<string, ViewCounterState>} */
 const pointerStates = new Map();
@@ -53,7 +33,6 @@ const pointerStates = new Map();
 const pointerListeners = new Map();
 let persistTimer = null;
 let nextTokenId = 1;
-let nostrClientRef = null;
 
 restoreCacheSnapshot();
 
@@ -476,11 +455,11 @@ async function hydratePointer(key, listeners) {
   const options = listeners.options || {};
   setPointerStatus(key, "hydrating");
   const sinceSeconds = Math.floor(Date.now() / 1000) - VIEW_COUNT_BACKFILL_MAX_DAYS * SECONDS_PER_DAY;
-  const listPromise = listVideoViewEvents(pointer, {
+  const listPromise = listVideoViewEventsApi(pointer, {
     since: sinceSeconds,
     relays: options.relays,
   });
-  const countPromise = countVideoViewEvents(pointer, {
+  const countPromise = countVideoViewEventsApi(pointer, {
     relays: options.relays,
     signal: options.signal,
   });
@@ -555,7 +534,7 @@ function ensureLiveSubscription(key, listeners) {
   const options = listeners.options || {};
   try {
     const since = Math.floor(Date.now() / 1000) - Math.max(1, VIEW_COUNT_DEDUPE_WINDOW_SECONDS);
-    const unsubscribe = subscribeVideoViewEvents(pointer, {
+    const unsubscribe = subscribeVideoViewEventsApi(pointer, {
       relays: options.relays,
       since,
       onEvent: (event) => {
@@ -584,7 +563,10 @@ function ensureLiveSubscription(key, listeners) {
 }
 
 export function initViewCounter({ nostrClient } = {}) {
-  nostrClientRef = nostrClient || null;
+  if (nostrClient && typeof nostrClient === "object") {
+    // The singleton Nostr client is already registered inside js/nostr.js.
+    // This hook remains for backwards compatibility.
+  }
 }
 
 export function subscribeToVideoViewCount(pointerInput, handler, options = {}) {

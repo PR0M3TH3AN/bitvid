@@ -1,6 +1,6 @@
 // js/app.js
 
-import { nostrClient } from "./nostr.js";
+import { nostrClient, recordVideoView as recordVideoViewApi } from "./nostr.js";
 import { torrentClient } from "./webtorrent.js";
 import {
   isDevMode,
@@ -64,7 +64,6 @@ import {
   formatViewCount,
   ingestLocalViewEvent,
 } from "./viewCounter.js";
-import { recordVideoView as recordVideoViewApi } from "./nostr/viewEvents.js";
 import { splitAndZap as splitAndZapDefault } from "./payments/zapSplit.js";
 import { showLoginRequiredToZapNotification } from "./payments/zapNotifications.js";
 import {

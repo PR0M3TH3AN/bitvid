@@ -4,6 +4,8 @@ import {
   nostrClient,
   convertEventToVideo as sharedConvertEventToVideo,
   requestDefaultExtensionPermissions,
+  listVideoViewEvents as listVideoViewEventsApi,
+  subscribeVideoViewEvents as subscribeVideoViewEventsApi,
 } from "./nostr.js";
 import { DEFAULT_RELAY_URLS } from "./nostr/toolkit.js";
 import {
@@ -21,10 +23,6 @@ import { ALLOW_NSFW_CONTENT } from "./config.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import moderationService from "./services/moderationService.js";
 import nostrService from "./services/nostrService.js";
-import {
-  listVideoViewEvents as listVideoViewEventsApi,
-  subscribeVideoViewEvents as subscribeVideoViewEventsApi,
-} from "./nostr/viewEvents.js";
 
 function normalizeHexPubkey(value) {
   if (typeof value !== "string") {
