@@ -931,10 +931,32 @@ export default class LoginModalController {
       if (qrContainer instanceof HTMLElement) {
         qrContainer.innerHTML = "";
         if (uri) {
-          qrInstance = renderQrCode(qrContainer, uri, { width: 224, height: 224 });
+          try {
+            qrInstance = renderQrCode(qrContainer, uri, {
+              width: 224,
+              height: 224,
+            });
+          } catch (error) {
+            qrInstance = null;
+            devLogger.warn(
+              "[LoginModalController] Failed to render NIP-46 QR code:",
+              error,
+            );
+            const fallback = this.document?.createElement("div");
+            if (fallback) {
+              fallback.className = "text-center text-xs text-text-muted";
+              fallback.textContent =
+                "Unable to render QR code. Use the connect link below.";
+              qrContainer.appendChild(fallback);
+            }
+          }
         } else {
           qrInstance = null;
         }
+      }
+      setPendingState(false);
+      if (submitButton instanceof HTMLButtonElement) {
+        submitButton.disabled = true;
       }
       resetStatus();
       clearAuthChallenge();
