@@ -930,11 +930,35 @@ export default class LoginModalController {
       }
       if (qrContainer instanceof HTMLElement) {
         qrContainer.innerHTML = "";
+        const resolveTokenColor = (tokenName, fallback) => {
+          if (!tokenName) {
+            return fallback;
+          }
+          const doc = this.document;
+          const win = this.window;
+          if (!doc || !win || typeof win.getComputedStyle !== "function") {
+            return fallback;
+          }
+          const root = doc.documentElement;
+          if (!root) {
+            return fallback;
+          }
+          const computed = win.getComputedStyle(root);
+          if (!computed) {
+            return fallback;
+          }
+          const value = computed.getPropertyValue(tokenName);
+          return value && value.trim() ? value.trim() : fallback;
+        };
+        const qrLightColor = resolveTokenColor("--color-white", "#ffffff");
+        const qrDarkColor = resolveTokenColor("--color-black", "#000000");
         if (uri) {
           try {
             qrInstance = renderQrCode(qrContainer, uri, {
               width: 256,
               height: 256,
+              colorLight: qrLightColor,
+              colorDark: qrDarkColor,
             });
           } catch (error) {
             qrInstance = null;
