@@ -54,3 +54,30 @@ test("Nip46RpcClient encrypts payloads with nip44 conversation keys", async () =
     "client should decrypt ciphertext produced by nostr-tools",
   );
 });
+
+test("decryptNip46PayloadWithKeys handles nip44.v2 ciphertext", async () => {
+  const nostrTools = await loadNostrTools();
+  const { generateSecretKey, getPublicKey, nip44, utils } = nostrTools;
+
+  const clientSecret = utils.bytesToHex(generateSecretKey());
+  const remoteSecret = utils.bytesToHex(generateSecretKey());
+  const remotePubkey = getPublicKey(remoteSecret);
+
+  const serialized = JSON.stringify(PAYLOAD);
+  const conversationKey =
+    typeof nip44.v2.getConversationKey === "function"
+      ? nip44.v2.getConversationKey(clientSecret, remotePubkey)
+      : nip44.v2.utils.getConversationKey(clientSecret, remotePubkey);
+  const ciphertext = nip44.v2.encrypt(serialized, conversationKey);
+
+  const { __testExports } = await import("../js/nostr.js");
+  const { decryptNip46PayloadWithKeys } = __testExports;
+
+  const roundTrip = await decryptNip46PayloadWithKeys(
+    clientSecret,
+    remotePubkey,
+    ciphertext,
+  );
+
+  assert.equal(roundTrip, serialized, "helper should decrypt nip44.v2 ciphertext");
+});

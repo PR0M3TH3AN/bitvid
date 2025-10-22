@@ -747,6 +747,8 @@ async function runNip07WithRetry(
 export const __testExports = {
   runNip07WithRetry,
   DEFAULT_NIP07_ENCRYPTION_METHODS,
+  decryptNip46PayloadWithKeys,
+  createNip46Cipher,
 };
 
 function withRequestTimeout(promise, timeoutMs, onTimeout, message = "Request timed out") {
@@ -3610,26 +3612,100 @@ function sanitizeNip46Metadata(metadata) {
   return normalized;
 }
 
+function resolveNip44V2ConversationKeyGetter(tools) {
+  if (typeof tools?.nip44?.v2?.getConversationKey === "function") {
+    return tools.nip44.v2.getConversationKey.bind(tools.nip44.v2);
+  }
+
+  if (typeof tools?.nip44?.v2?.utils?.getConversationKey === "function") {
+    return tools.nip44.v2.utils.getConversationKey.bind(tools.nip44.v2.utils);
+  }
+
+  return null;
+}
+
+function resolveLegacyNip44ConversationKeyGetter(tools) {
+  if (typeof tools?.nip44?.getConversationKey === "function") {
+    return tools.nip44.getConversationKey.bind(tools.nip44);
+  }
+
+  if (typeof tools?.nip44?.utils?.getConversationKey === "function") {
+    return tools.nip44.utils.getConversationKey.bind(tools.nip44.utils);
+  }
+
+  return null;
+}
+
+export function createNip46Cipher(tools, privateKey, remotePubkey) {
+  if (!tools) {
+    throw new Error("NostrTools helpers are unavailable for remote signing.");
+  }
+
+  const nip44v2GetConversationKey = resolveNip44V2ConversationKeyGetter(tools);
+
+  if (
+    tools?.nip44?.v2?.encrypt &&
+    tools?.nip44?.v2?.decrypt &&
+    typeof nip44v2GetConversationKey === "function"
+  ) {
+    const conversationKey = nip44v2GetConversationKey(privateKey, remotePubkey);
+
+    if (!conversationKey) {
+      throw new Error("Failed to derive a nip44 conversation key for remote signing.");
+    }
+
+    return {
+      encrypt: (plaintext, nonce) =>
+        typeof nonce === "string"
+          ? tools.nip44.v2.encrypt(plaintext, conversationKey, nonce)
+          : tools.nip44.v2.encrypt(plaintext, conversationKey),
+      decrypt: (ciphertext) => tools.nip44.v2.decrypt(ciphertext, conversationKey),
+    };
+  }
+
+  const nip44GetConversationKey = resolveLegacyNip44ConversationKeyGetter(tools);
+
+  if (
+    tools?.nip44?.encrypt &&
+    tools?.nip44?.decrypt &&
+    typeof nip44GetConversationKey === "function"
+  ) {
+    const conversationKey = nip44GetConversationKey(privateKey, remotePubkey);
+
+    if (!conversationKey) {
+      throw new Error("Failed to derive a nip44 conversation key for remote signing.");
+    }
+
+    return {
+      encrypt: (plaintext, nonce) =>
+        typeof nonce === "string"
+          ? tools.nip44.encrypt(plaintext, conversationKey, nonce)
+          : tools.nip44.encrypt(plaintext, conversationKey),
+      decrypt: (ciphertext) => tools.nip44.decrypt(ciphertext, conversationKey),
+    };
+  }
+
+  if (tools?.nip04?.encrypt && tools?.nip04?.decrypt) {
+    const privateKeyHex = typeof privateKey === "string" ? privateKey : "";
+    const remotePubkeyHex = typeof remotePubkey === "string" ? remotePubkey : "";
+
+    return {
+      encrypt: (plaintext) => tools.nip04.encrypt(privateKeyHex, remotePubkeyHex, plaintext),
+      decrypt: (ciphertext) => tools.nip04.decrypt(privateKeyHex, remotePubkeyHex, ciphertext),
+    };
+  }
+
+  throw new Error("Remote signer encryption helpers are unavailable.");
+}
+
 async function decryptNip46PayloadWithKeys(privateKey, remotePubkey, ciphertext) {
   const tools = (await ensureNostrTools()) || getCachedNostrTools();
   if (!tools) {
     throw new Error("NostrTools helpers are unavailable for NIP-46 payload decryption.");
   }
 
-  let decrypt = null;
-  if (tools?.nip44?.v2?.decrypt) {
-    decrypt = (priv, pub, payload) => tools.nip44.v2.decrypt(priv, pub, payload);
-  } else if (tools?.nip44?.decrypt) {
-    decrypt = (priv, pub, payload) => tools.nip44.decrypt(priv, pub, payload);
-  } else if (tools?.nip04?.decrypt) {
-    decrypt = (priv, pub, payload) => tools.nip04.decrypt(priv, pub, payload);
-  }
-
-  if (!decrypt) {
-    throw new Error("Remote signer encryption helpers are unavailable.");
-  }
-
-  return decrypt(privateKey, remotePubkey, ciphertext);
+  const { decrypt } = createNip46Cipher(tools, privateKey, remotePubkey);
+  return decrypt(ciphertext);
 }
 
 class Nip46RpcClient {
@@ -3711,66 +3787,11 @@ class Nip46RpcClient {
       throw new Error("NostrTools helpers are unavailable for remote signing.");
     }
 
-    let encrypt = null;
-    let decrypt = null;
-
-    const nip44v2GetConversationKey =
-      typeof tools?.nip44?.v2?.getConversationKey === "function"
-        ? tools.nip44.v2.getConversationKey
-        : typeof tools?.nip44?.v2?.utils?.getConversationKey === "function"
-          ? tools.nip44.v2.utils.getConversationKey
-          : null;
-
-    if (
-      tools?.nip44?.v2?.encrypt &&
-      tools?.nip44?.v2?.decrypt &&
-      nip44v2GetConversationKey
-    ) {
-      const conversationKey = nip44v2GetConversationKey(
-        this.clientPrivateKey,
-        this.remotePubkey,
-      );
-
-      if (!conversationKey) {
-        throw new Error("Failed to derive a nip44 conversation key for remote signing.");
-      }
-
-      encrypt = (plaintext, nonce) =>
-        typeof nonce === "string"
-          ? tools.nip44.v2.encrypt(plaintext, conversationKey, nonce)
-          : tools.nip44.v2.encrypt(plaintext, conversationKey);
-      decrypt = (ciphertext) => tools.nip44.v2.decrypt(ciphertext, conversationKey);
-    } else if (
-      tools?.nip44?.encrypt &&
-      tools?.nip44?.decrypt &&
-      typeof tools?.nip44?.getConversationKey === "function"
-    ) {
-      const conversationKey = tools.nip44.getConversationKey(
-        this.clientPrivateKey,
-        this.remotePubkey,
-      );
-
-      if (!conversationKey) {
-        throw new Error("Failed to derive a nip44 conversation key for remote signing.");
-      }
-
-      encrypt = (plaintext, nonce) =>
-        typeof nonce === "string"
-          ? tools.nip44.encrypt(plaintext, conversationKey, nonce)
-          : tools.nip44.encrypt(plaintext, conversationKey);
-      decrypt = (ciphertext) => tools.nip44.decrypt(ciphertext, conversationKey);
-    } else if (tools?.nip04?.encrypt && tools?.nip04?.decrypt) {
-      const privateKey = this.clientPrivateKey;
-      const remotePubkey = this.remotePubkey;
-      encrypt = (plaintext) => tools.nip04.encrypt(privateKey, remotePubkey, plaintext);
-      decrypt = (ciphertext) => tools.nip04.decrypt(privateKey, remotePubkey, ciphertext);
-    }
-
-    if (!encrypt || !decrypt) {
-      throw new Error("Remote signer encryption helpers are unavailable.");
-    }
-
-    this.cipher = { encrypt, decrypt };
+    this.cipher = createNip46Cipher(
+      tools,
+      this.clientPrivateKey,
+      this.remotePubkey,
+    );
     return this.cipher;
   }
 
