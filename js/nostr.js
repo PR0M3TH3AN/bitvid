@@ -8959,10 +8959,6 @@ export class NostrClient {
       return { ok: false, error: "sign-event-unavailable" };
     }
 
-    if (typeof signer.nip04Encrypt !== "function") {
-      return { ok: false, error: "nip04-unavailable" };
-    }
-
     if (shouldRequestExtensionPermissions(signer)) {
       const permissionResult = await this.ensureExtensionPermissions(
         DEFAULT_NIP07_PERMISSION_METHODS,
@@ -9002,11 +8998,78 @@ export class NostrClient {
       return { ok: false, error: "invalid-target" };
     }
 
+    const encryptionCandidates = [];
+    if (typeof signer.nip44Encrypt === "function") {
+      encryptionCandidates.push({
+        scheme: "nip44",
+        encrypt: signer.nip44Encrypt,
+      });
+    }
+    if (typeof signer.nip04Encrypt === "function") {
+      encryptionCandidates.push({
+        scheme: "nip04",
+        encrypt: signer.nip04Encrypt,
+      });
+    }
+
+    const encryptionErrors = [];
     let ciphertext = "";
-    try {
-      ciphertext = await signer.nip04Encrypt(targetHex, trimmedMessage);
-    } catch (error) {
-      return { ok: false, error: "encryption-failed", details: error };
+
+    for (const candidate of encryptionCandidates) {
+      try {
+        const encrypted = await candidate.encrypt(targetHex, trimmedMessage);
+        if (typeof encrypted === "string" && encrypted) {
+          ciphertext = encrypted;
+          break;
+        }
+      } catch (error) {
+        encryptionErrors.push({ scheme: candidate.scheme, error });
+      }
+    }
+
+    if (!ciphertext) {
+      const normalizedActorHex = normalizeActorKey(actorHex);
+      const sessionActor = this.sessionActor;
+      const sessionMatchesActor =
+        sessionActor &&
+        typeof sessionActor.pubkey === "string" &&
+        sessionActor.pubkey.toLowerCase() === normalizedActorHex &&
+        typeof sessionActor.privateKey === "string" &&
+        sessionActor.privateKey;
+
+      if (sessionMatchesActor) {
+        try {
+          const tools = (await ensureNostrTools()) || getCachedNostrTools();
+          if (tools?.nip04 && typeof tools.nip04.encrypt === "function") {
+            const encrypted = await tools.nip04.encrypt(
+              sessionActor.privateKey,
+              targetHex,
+              trimmedMessage,
+            );
+            if (typeof encrypted === "string" && encrypted) {
+              ciphertext = encrypted;
+            }
+          } else {
+            encryptionErrors.push({
+              scheme: "nip04",
+              error: new Error("nostr-tools nip04 helpers unavailable"),
+            });
+          }
+        } catch (error) {
+          encryptionErrors.push({ scheme: "nip04", error });
+        }
+      }
+    }
+
+    if (!ciphertext) {
+      const details =
+        encryptionErrors.length === 1
+          ? encryptionErrors[0].error
+          : encryptionErrors.map((entry) => ({
+              scheme: entry.scheme,
+              error: entry.error,
+            }));
+      return { ok: false, error: "encryption-failed", details };
     }
 
     const event = {
