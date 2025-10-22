@@ -1,6 +1,6 @@
 // js/feedEngine/watchHistoryFeed.js
 
-import { pointerKey, normalizePointerInput } from "../nostr.js";
+import { pointerKey, normalizePointerInput } from "../nostr/watchHistory.js";
 import watchHistoryService from "../watchHistoryService.js";
 import nostrService from "../services/nostrService.js";
 import { createWatchHistoryMetadataResolver } from "../watchHistoryMetadata.js";

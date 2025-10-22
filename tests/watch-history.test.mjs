@@ -17,11 +17,10 @@ const {
   getWatchHistoryV2Enabled,
   setWatchHistoryV2Enabled,
 } = await import("../js/constants.js");
-const {
-  nostrClient,
-  chunkWatchHistoryPayloadItems,
-  normalizeActorKey,
-} = await import("../js/nostr.js");
+const { nostrClient } = await import("../js/nostr.js");
+const { chunkWatchHistoryPayloadItems, normalizeActorKey } = await import(
+  "../js/nostr/watchHistory.js"
+);
 const { watchHistoryService } = await import("../js/watchHistoryService.js");
 const { buildHistoryCard } = await import("../js/historyView.js");
 const { getApplication, setApplication } = await import(

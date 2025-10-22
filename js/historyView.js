@@ -1,12 +1,8 @@
 // js/historyView.js
 
 import watchHistoryService from "./watchHistoryService.js";
-import {
-  pointerKey,
-  normalizePointerInput,
-  nostrClient,
-  updateWatchHistoryList
-} from "./nostr.js";
+import { nostrClient, updateWatchHistoryList } from "./nostr.js";
+import { pointerKey, normalizePointerInput } from "./nostr/watchHistory.js";
 import {
   WATCH_HISTORY_BATCH_RESOLVE,
   WATCH_HISTORY_BATCH_PAGE_SIZE
