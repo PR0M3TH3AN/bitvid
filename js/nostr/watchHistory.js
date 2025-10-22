@@ -2196,6 +2196,63 @@ class WatchHistoryManager {
   }
 }
 
+export function getWatchHistoryCacheTtlMs(manager) {
+  return manager.getCacheTtlMs();
+}
+
+export function getWatchHistoryStorage(manager) {
+  return manager.getStorage();
+}
+
+export function persistWatchHistoryEntry(manager, actorInput, entry) {
+  return manager.persistEntry(actorInput, entry);
+}
+
+export function cancelWatchHistoryRepublish(manager, snapshotId = null) {
+  return manager.cancelRepublish(snapshotId);
+}
+
+export function scheduleWatchHistoryRepublish(
+  manager,
+  snapshotId,
+  operation,
+  options = {},
+) {
+  return manager.scheduleRepublish(snapshotId, operation, options);
+}
+
+export function getWatchHistoryFingerprint(
+  manager,
+  actorInput,
+  itemsOverride = null,
+) {
+  return manager.getFingerprint(actorInput, itemsOverride);
+}
+
+export function ensureWatchHistoryBackgroundRefresh(manager, actorInput = null) {
+  return manager.ensureBackgroundRefresh(actorInput);
+}
+
+export function publishWatchHistorySnapshot(manager, rawItems, options = {}) {
+  return manager.publishSnapshot(rawItems, options);
+}
+
+export function updateWatchHistoryList(manager, rawItems = [], options = {}) {
+  return manager.updateList(rawItems, options);
+}
+
+export function removeWatchHistoryItem(manager, pointerInput, options = {}) {
+  return manager.removeItem(pointerInput, options);
+}
+
+export function fetchWatchHistory(manager, actorInput, options = {}) {
+  return manager.fetch(actorInput, options);
+}
+
+export function resolveWatchHistory(manager, actorInput, options = {}) {
+  return manager.resolve(actorInput, options);
+}
+
 /**
  * Create a watch-history manager. Callers supply the nostr client hooks needed
  * to sign, encrypt, fetch, and publish events. All dependencies are optional;

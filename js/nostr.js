@@ -19,7 +19,25 @@ import {
 // 🔧 merged conflicting changes from codex/update-video-publishing-and-parsing-logic vs unstable
 import { deriveTitleFromEvent, magnetFromText } from "./videoEventUtils.js";
 import { extractMagnetHints } from "./magnet.js";
-import { createWatchHistoryManager, normalizePointerInput, pointerKey, chunkWatchHistoryPayloadItems, normalizeActorKey } from "./nostr/watchHistory.js";
+import {
+  createWatchHistoryManager,
+  normalizePointerInput,
+  pointerKey,
+  chunkWatchHistoryPayloadItems,
+  normalizeActorKey,
+  getWatchHistoryCacheTtlMs as getWatchHistoryCacheTtlMsFromManager,
+  getWatchHistoryStorage as getWatchHistoryStorageFromManager,
+  persistWatchHistoryEntry as persistWatchHistoryEntryToManager,
+  cancelWatchHistoryRepublish as cancelWatchHistoryRepublishForManager,
+  scheduleWatchHistoryRepublish as scheduleWatchHistoryRepublishForManager,
+  getWatchHistoryFingerprint as getWatchHistoryFingerprintFromManager,
+  ensureWatchHistoryBackgroundRefresh as ensureWatchHistoryBackgroundRefreshForManager,
+  publishWatchHistorySnapshot as publishWatchHistorySnapshotWithManager,
+  updateWatchHistoryList as updateWatchHistoryListWithManager,
+  removeWatchHistoryItem as removeWatchHistoryItemWithManager,
+  fetchWatchHistory as fetchWatchHistoryWithManager,
+  resolveWatchHistory as resolveWatchHistoryWithManager,
+} from "./nostr/watchHistory.js";
 import {
   buildVideoPostEvent,
   buildVideoMirrorEvent,
@@ -4117,44 +4135,72 @@ export class NostrClient {
   }
 
   getWatchHistoryCacheTtlMs() {
-    return this.watchHistory.getCacheTtlMs();
+    return getWatchHistoryCacheTtlMsFromManager(this.watchHistory);
   }
 
   getWatchHistoryStorage() {
-    return this.watchHistory.getStorage();
+    return getWatchHistoryStorageFromManager(this.watchHistory);
   }
 
   persistWatchHistoryEntry(actorInput, entry) {
-    this.watchHistory.persistEntry(actorInput, entry);
+    persistWatchHistoryEntryToManager(this.watchHistory, actorInput, entry);
   }
 
   cancelWatchHistoryRepublish(snapshotId = null) {
-    this.watchHistory.cancelRepublish(snapshotId);
+    cancelWatchHistoryRepublishForManager(this.watchHistory, snapshotId);
   }
 
   scheduleWatchHistoryRepublish(snapshotId, operation, options = {}) {
-    return this.watchHistory.scheduleRepublish(snapshotId, operation, options);
+    return scheduleWatchHistoryRepublishForManager(
+      this.watchHistory,
+      snapshotId,
+      operation,
+      options,
+    );
   }
   async getWatchHistoryFingerprint(actorInput, itemsOverride = null) {
-    return this.watchHistory.getFingerprint(actorInput, itemsOverride);
+    return getWatchHistoryFingerprintFromManager(
+      this.watchHistory,
+      actorInput,
+      itemsOverride,
+    );
   }
   ensureWatchHistoryBackgroundRefresh(actorInput = null) {
-    return this.watchHistory.ensureBackgroundRefresh(actorInput);
+    return ensureWatchHistoryBackgroundRefreshForManager(
+      this.watchHistory,
+      actorInput,
+    );
   }
   async publishWatchHistorySnapshot(rawItems, options = {}) {
-    return this.watchHistory.publishSnapshot(rawItems, options);
+    return publishWatchHistorySnapshotWithManager(
+      this.watchHistory,
+      rawItems,
+      options,
+    );
   }
   async updateWatchHistoryList(rawItems = [], options = {}) {
-    return this.watchHistory.updateList(rawItems, options);
+    return updateWatchHistoryListWithManager(
+      this.watchHistory,
+      rawItems,
+      options,
+    );
   }
   async removeWatchHistoryItem(pointerInput, options = {}) {
-    return this.watchHistory.removeItem(pointerInput, options);
+    return removeWatchHistoryItemWithManager(
+      this.watchHistory,
+      pointerInput,
+      options,
+    );
   }
   async fetchWatchHistory(actorInput, options = {}) {
-    return this.watchHistory.fetch(actorInput, options);
+    return fetchWatchHistoryWithManager(this.watchHistory, actorInput, options);
   }
   async resolveWatchHistory(actorInput, options = {}) {
-    return this.watchHistory.resolve(actorInput, options);
+    return resolveWatchHistoryWithManager(
+      this.watchHistory,
+      actorInput,
+      options,
+    );
   }
   async listVideoViewEvents(pointer, options = {}) {
     if (!this.pool) {
@@ -8271,10 +8317,10 @@ export const recordVideoView = (...args) =>
   nostrClient.recordVideoView(...args);
 
 export const updateWatchHistoryList = (...args) =>
-  nostrClient.updateWatchHistoryList(...args);
+  updateWatchHistoryListWithManager(nostrClient.watchHistory, ...args);
 
 export const removeWatchHistoryItem = (...args) =>
-  nostrClient.removeWatchHistoryItem(...args);
+  removeWatchHistoryItemWithManager(nostrClient.watchHistory, ...args);
 
 export const listVideoViewEvents = (...args) => {
   if (typeof nostrClient.listVideoViewEvents !== "function") {
@@ -8297,7 +8343,15 @@ export const countVideoViewEvents = (...args) => {
   return nostrClient.countVideoViewEvents(...args);
 };
 
-export { normalizePointerInput, pointerKey, chunkWatchHistoryPayloadItems, normalizeActorKey };
+export {
+  normalizePointerInput,
+  pointerKey,
+  chunkWatchHistoryPayloadItems,
+  normalizeActorKey,
+  parseWatchHistoryContentWithFallback,
+  isNip04EncryptedWatchHistoryEvent,
+  watchHistoryHelpers,
+} from "./nostr/watchHistory.js";
 export {
   getActiveSigner,
   setActiveSigner,
