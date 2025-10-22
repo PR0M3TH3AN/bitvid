@@ -4,7 +4,7 @@ const LOCAL_IMPORT_TIMEOUT = 2500;
 const NODE_IMPORT_TIMEOUT = 1500;
 const SCRIPT_FALLBACK_TIMEOUT = 6000;
 const CDN_BUNDLE_URL =
-  "https://cdn.jsdelivr.net/npm/nostr-tools@2.10.4/lib/nostr.bundle.min.js";
+  "https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/lib/nostr.bundle.min.js";
 const LOCAL_BUNDLE_RELATIVE_URL = "../vendor/nostr-tools.bundle.min.js";
 
 const moduleUrl =
