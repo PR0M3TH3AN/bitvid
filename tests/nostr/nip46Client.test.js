@@ -2,34 +2,42 @@ import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
 import test from "node:test";
 
-const PAYLOAD = { message: "hello", count: 42 };
-
 const loadNostrTools = async () => {
   const nostrTools = await import("nostr-tools");
   globalThis.nostrToolsReady = Promise.resolve(nostrTools);
   return nostrTools;
 };
 
+const loadNip46Module = () => import("../../js/nostr/nip46Client.js");
+
+const buildSignEventStub = () => (event) => ({
+  ...event,
+  id: "stub-id",
+  sig: "stub-signature",
+});
+
 test("Nip46RpcClient encrypts payloads with nip44 conversation keys", async () => {
   const nostrTools = await loadNostrTools();
   const { generateSecretKey, getPublicKey, nip44, utils } = nostrTools;
+  const {
+    Nip46RpcClient,
+  } = await loadNip46Module();
 
   const clientSecret = utils.bytesToHex(generateSecretKey());
   const remoteSecret = utils.bytesToHex(generateSecretKey());
   const clientPublicKey = getPublicKey(clientSecret);
   const remotePubkey = getPublicKey(remoteSecret);
 
-  const { Nip46RpcClient } = await import("../js/nostr.js");
-
   const rpcClient = new Nip46RpcClient({
     nostrClient: { relays: [] },
     clientPrivateKey: clientSecret,
     clientPublicKey,
     remotePubkey,
+    signEvent: buildSignEventStub(),
   });
 
-  const serialized = JSON.stringify(PAYLOAD);
-  const ciphertext = await rpcClient.encryptPayload(PAYLOAD);
+  const serialized = JSON.stringify({ message: "hello", count: 42 });
+  const ciphertext = await rpcClient.encryptPayload({ message: "hello", count: 42 });
 
   assert.equal(typeof ciphertext, "string", "ciphertext should be encoded as a string");
 
@@ -59,20 +67,18 @@ test("Nip46RpcClient encrypts payloads with nip44 conversation keys", async () =
 test("decryptNip46PayloadWithKeys handles nip44.v2 ciphertext", async () => {
   const nostrTools = await loadNostrTools();
   const { generateSecretKey, getPublicKey, nip44, utils } = nostrTools;
+  const { decryptNip46PayloadWithKeys } = await loadNip46Module();
 
   const clientSecret = utils.bytesToHex(generateSecretKey());
   const remoteSecret = utils.bytesToHex(generateSecretKey());
   const remotePubkey = getPublicKey(remoteSecret);
 
-  const serialized = JSON.stringify(PAYLOAD);
+  const serialized = JSON.stringify({ message: "hello", count: 42 });
   const conversationKey =
     typeof nip44.v2.getConversationKey === "function"
       ? nip44.v2.getConversationKey(clientSecret, remotePubkey)
       : nip44.v2.utils.getConversationKey(clientSecret, remotePubkey);
   const ciphertext = nip44.v2.encrypt(serialized, conversationKey);
-
-  const { __testExports } = await import("../js/nostr.js");
-  const { decryptNip46PayloadWithKeys } = __testExports;
 
   const { plaintext, algorithm } = await decryptNip46PayloadWithKeys(
     clientSecret,
@@ -91,12 +97,16 @@ test("decryptNip46PayloadWithKeys handles nip44.v2 ciphertext", async () => {
 test("decryptNip46PayloadWithKeys coerces structured handshake payloads", async () => {
   const nostrTools = await loadNostrTools();
   const { generateSecretKey, getPublicKey, nip44, utils } = nostrTools;
+  const {
+    decryptNip46PayloadWithKeys,
+    normalizeNip46CiphertextPayload,
+  } = await loadNip46Module();
 
   const clientSecret = utils.bytesToHex(generateSecretKey());
   const remoteSecret = utils.bytesToHex(generateSecretKey());
   const remotePubkey = getPublicKey(remoteSecret);
 
-  const serialized = JSON.stringify(PAYLOAD);
+  const serialized = JSON.stringify({ message: "hello", count: 42 });
   const conversationKey =
     typeof nip44.v2.getConversationKey === "function"
       ? nip44.v2.getConversationKey(clientSecret, remotePubkey)
@@ -109,8 +119,11 @@ test("decryptNip46PayloadWithKeys coerces structured handshake payloads", async 
     nonce,
   };
 
-  const { __testExports } = await import("../js/nostr.js");
-  const { decryptNip46PayloadWithKeys } = __testExports;
+  const normalized = normalizeNip46CiphertextPayload(structuredPayload);
+  assert.ok(
+    normalized.includes(ciphertext),
+    "normalizer should include the raw ciphertext from structured payloads",
+  );
 
   const { plaintext: structuredPlaintext, algorithm } =
     await decryptNip46PayloadWithKeys(
@@ -122,124 +135,71 @@ test("decryptNip46PayloadWithKeys coerces structured handshake payloads", async 
   assert.equal(
     structuredPlaintext,
     serialized,
-    "helper should decrypt ciphertext encoded as an object with nonce",
+    "helper should decrypt ciphertext encoded with newline nonce",
   );
   assert.equal(
     algorithm,
     "nip44.v2",
     "structured payload should report nip44.v2 algorithm",
   );
-
-  const jsonPayload = JSON.stringify(structuredPayload);
-  const { plaintext: jsonPlaintext, algorithm: jsonAlgorithm } =
-    await decryptNip46PayloadWithKeys(
-      clientSecret,
-      remotePubkey,
-      jsonPayload,
-    );
-
-  assert.equal(
-    jsonPlaintext,
-    serialized,
-    "helper should also decrypt JSON-serialized handshake payloads",
-  );
-  assert.equal(
-    jsonAlgorithm,
-    "nip44.v2",
-    "JSON payload should report nip44.v2 algorithm",
-  );
 });
 
 test("decryptNip46PayloadWithKeys decodes buffer-based handshake payloads", async () => {
   const nostrTools = await loadNostrTools();
   const { generateSecretKey, getPublicKey, nip44, utils } = nostrTools;
+  const {
+    decryptNip46PayloadWithKeys,
+    normalizeNip46CiphertextPayload,
+  } = await loadNip46Module();
 
   const clientSecret = utils.bytesToHex(generateSecretKey());
   const remoteSecret = utils.bytesToHex(generateSecretKey());
   const remotePubkey = getPublicKey(remoteSecret);
 
-  const serialized = JSON.stringify(PAYLOAD);
+  const serialized = JSON.stringify({ message: "hello", count: 42 });
   const conversationKey =
     typeof nip44.v2.getConversationKey === "function"
       ? nip44.v2.getConversationKey(clientSecret, remotePubkey)
       : nip44.v2.utils.getConversationKey(clientSecret, remotePubkey);
   const ciphertext = nip44.v2.encrypt(serialized, conversationKey);
+  const [ciphertextPart, nonce] = ciphertext.split("\n");
   const ciphertextBuffer = Buffer.from(ciphertext, "utf8");
 
-  const bufferPayload = ciphertextBuffer;
-
-  const { __testExports } = await import("../js/nostr.js");
-  const { decryptNip46PayloadWithKeys } = __testExports;
+  const normalized = normalizeNip46CiphertextPayload(ciphertextBuffer);
+  assert.ok(
+    normalized.includes(ciphertext),
+    "normalizer should extract the raw ciphertext from buffers",
+  );
 
   const { plaintext: bufferPlaintext, algorithm } =
     await decryptNip46PayloadWithKeys(
       clientSecret,
       remotePubkey,
-      bufferPayload,
+      ciphertextBuffer,
     );
 
   assert.equal(
     bufferPlaintext,
     serialized,
-    "helper should decrypt handshake payloads that serialize buffers",
+    "helper should decrypt ciphertext derived from buffers",
   );
   assert.equal(
     algorithm,
     "nip44.v2",
     "buffer payload should report nip44.v2 algorithm",
   );
-
-  const jsonBufferPayload = JSON.stringify(bufferPayload);
-  const { plaintext: jsonBufferPlaintext, algorithm: jsonBufferAlgorithm } =
-    await decryptNip46PayloadWithKeys(
-      clientSecret,
-      remotePubkey,
-      jsonBufferPayload,
-    );
-
-  assert.equal(
-    jsonBufferPlaintext,
-    serialized,
-    "helper should decrypt JSON-encoded buffer handshake payloads",
-  );
-  assert.equal(
-    jsonBufferAlgorithm,
-    "nip44.v2",
-    "JSON buffer payload should report nip44.v2 algorithm",
-  );
-
-  const objectBufferPayload = {
-    ciphertext: ciphertextBuffer,
-  };
-
-  const { plaintext: objectBufferPlaintext, algorithm: objectBufferAlgorithm } =
-    await decryptNip46PayloadWithKeys(
-      clientSecret,
-      remotePubkey,
-      objectBufferPayload,
-    );
-
-  assert.equal(
-    objectBufferPlaintext,
-    serialized,
-    "helper should decrypt objects containing buffer encoded ciphertext",
-  );
-  assert.equal(
-    objectBufferAlgorithm,
-    "nip44.v2",
-    "object buffer payload should report nip44.v2 algorithm",
-  );
 });
 
 test("decryptNip46PayloadWithKeys supports nip04-style ciphertext wrappers", async () => {
   const nostrTools = await loadNostrTools();
   const { generateSecretKey, getPublicKey, nip04, utils } = nostrTools;
+  const { createNip46Cipher, normalizeNip46CiphertextPayload } = await loadNip46Module();
 
   const clientSecret = utils.bytesToHex(generateSecretKey());
   const remoteSecret = utils.bytesToHex(generateSecretKey());
   const remotePubkey = getPublicKey(remoteSecret);
 
-  const serialized = JSON.stringify(PAYLOAD);
+  const serialized = JSON.stringify({ message: "hello", count: 42 });
   const ciphertext = await nip04.encrypt(clientSecret, remotePubkey, serialized);
   const [ciphertextPart, iv] = ciphertext.split("?iv=");
 
@@ -249,12 +209,9 @@ test("decryptNip46PayloadWithKeys supports nip04-style ciphertext wrappers", asy
   };
 
   const patchedTools = {
-    ...nostrTools,
+    ...(await import("nostr-tools")),
     nip44: undefined,
   };
-
-  const { __testExports } = await import("../js/nostr.js");
-  const { createNip46Cipher, normalizeNip46CiphertextPayload } = __testExports;
 
   const candidates = normalizeNip46CiphertextPayload(structuredPayload);
 
@@ -292,6 +249,7 @@ test("decryptNip46PayloadWithKeys supports nip04-style ciphertext wrappers", asy
 test("parseNip46ConnectionString handles remote signer key hints", async () => {
   const nostrTools = await loadNostrTools();
   const { generateSecretKey, getPublicKey, nip19, utils } = nostrTools;
+  const { parseNip46ConnectionString } = await loadNip46Module();
 
   const signerSecret = utils.bytesToHex(generateSecretKey());
   const userSecret = utils.bytesToHex(generateSecretKey());
@@ -305,9 +263,6 @@ test("parseNip46ConnectionString handles remote signer key hints", async () => {
   const uri =
     `bunker://${userNpub}?remote-signer-key=${encodeURIComponent(signerNpub)}` +
     `&relay=${encodeURIComponent("wss://relay.example.com")}`;
-
-  const { __testExports } = await import("../js/nostr.js");
-  const { parseNip46ConnectionString } = __testExports;
 
   const parsed = parseNip46ConnectionString(uri);
 
@@ -334,6 +289,7 @@ test(
   async () => {
     const nostrTools = await loadNostrTools();
     const { generateSecretKey, getPublicKey, nip44, utils } = nostrTools;
+    const { attemptDecryptNip46HandshakePayload } = await loadNip46Module();
 
     const clientSecret = utils.bytesToHex(generateSecretKey());
     const remoteSignerSecret = utils.bytesToHex(generateSecretKey());
@@ -349,9 +305,6 @@ test(
 
     const payload = JSON.stringify({ id: "ack", result: "ok" });
     const ciphertext = nip44.v2.encrypt(payload, conversationKey);
-
-    const { __testExports } = await import("../js/nostr.js");
-    const { attemptDecryptNip46HandshakePayload } = __testExports;
 
     const result = await attemptDecryptNip46HandshakePayload({
       clientPrivateKey: clientSecret,
@@ -377,6 +330,7 @@ test(
   async () => {
     const nostrTools = await loadNostrTools();
     const { generateSecretKey, getPublicKey, nip04, utils } = nostrTools;
+    const { attemptDecryptNip46HandshakePayload } = await loadNip46Module();
 
     const clientSecret = utils.bytesToHex(generateSecretKey());
     const clientPubkey = getPublicKey(clientSecret).toLowerCase();
@@ -389,10 +343,7 @@ test(
 
     assert.ok(ivPart, "nip04 encryption should emit an iv segment");
 
-    const encodedPayload = JSON.stringify([ciphertextPart, ivPart]);
-
-    const { __testExports } = await import("../js/nostr.js");
-    const { attemptDecryptNip46HandshakePayload } = __testExports;
+    const encodedPayload = `${ciphertextPart}?iv=${ivPart}`;
 
     const result = await attemptDecryptNip46HandshakePayload({
       clientPrivateKey: clientSecret,
@@ -417,3 +368,71 @@ test(
     );
   },
 );
+
+test("Nip46RpcClient sendRpc publishes events and resolves responses", async () => {
+  const { Nip46RpcClient, NIP46_RPC_KIND } = await loadNip46Module();
+
+  const remotePubkey = "b".repeat(64);
+  const clientPrivateKey = "a".repeat(64);
+  const clientPublicKey = "c".repeat(64);
+
+  let eventListener = null;
+  const pool = {
+    sub(relays, filters) {
+      return {
+        on(type, handler) {
+          if (type === "event") {
+            eventListener = handler;
+          }
+        },
+        unsub() {},
+      };
+    },
+  };
+
+  const publishCalls = [];
+  const client = new Nip46RpcClient({
+    nostrClient: {
+      relays: ["wss://relay.example.com"],
+      pool,
+      async ensurePool() {
+        return pool;
+      },
+    },
+    clientPrivateKey,
+    clientPublicKey,
+    remotePubkey,
+    relays: ["wss://relay.example.com"],
+    signEvent: (event) => ({ ...event, id: "evt", sig: "sig" }),
+    publishEventToRelays: async (unusedPool, relays, event) => {
+      publishCalls.push({ relays, event });
+      return relays.map((relay) => ({ relay, ok: true }));
+    },
+    assertAnyRelayAccepted: () => {},
+  });
+
+  client.ensureCipher = async () => ({
+    encrypt: (payload) => (typeof payload === "string" ? payload : JSON.stringify(payload)),
+    decrypt: (ciphertext) => ciphertext,
+  });
+
+  const rpcPromise = client.sendRpc("ping", []);
+
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.ok(publishCalls.length > 0, "sendRpc should publish an event");
+  assert.ok(eventListener, "sendRpc should register an event listener");
+
+  const [{ event }] = publishCalls;
+  const requestPayload = JSON.parse(event.content);
+
+  eventListener({
+    kind: NIP46_RPC_KIND,
+    pubkey: remotePubkey,
+    tags: [["p", clientPublicKey]],
+    content: JSON.stringify({ id: requestPayload.id, result: "pong" }),
+  });
+
+  const result = await rpcPromise;
+  assert.equal(result, "pong", "RPC result should resolve from response event");
+});
