@@ -3636,6 +3636,83 @@ function resolveLegacyNip44ConversationKeyGetter(tools) {
   return null;
 }
 
+let sharedTextDecoder = null;
+
+function decodeBytesToUtf8(value) {
+  if (value == null) {
+    return "";
+  }
+
+  if (typeof Buffer !== "undefined" && typeof Buffer.isBuffer === "function" && Buffer.isBuffer(value)) {
+    try {
+      return value.toString("utf8");
+    } catch (error) {
+      return "";
+    }
+  }
+
+  let view = null;
+
+  if (value instanceof Uint8Array) {
+    view = value;
+  } else if (typeof ArrayBuffer !== "undefined") {
+    if (value instanceof ArrayBuffer) {
+      view = new Uint8Array(value);
+    } else if (typeof ArrayBuffer.isView === "function" && ArrayBuffer.isView(value)) {
+      try {
+        view = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+      } catch (error) {
+        view = null;
+      }
+    }
+  }
+
+  if (!view && Array.isArray(value)) {
+    const bytes = [];
+    for (const entry of value) {
+      if (typeof entry === "number" && Number.isFinite(entry)) {
+        const normalized = entry & 0xff;
+        if (normalized < 0 || normalized > 255) {
+          return "";
+        }
+        bytes.push(normalized);
+      } else {
+        return "";
+      }
+    }
+    if (!bytes.length) {
+      return "";
+    }
+    view = Uint8Array.from(bytes);
+  }
+
+  if (!view || !view.length) {
+    return "";
+  }
+
+  if (!sharedTextDecoder && typeof TextDecoder === "function") {
+    try {
+      sharedTextDecoder = new TextDecoder();
+    } catch (error) {
+      sharedTextDecoder = null;
+    }
+  }
+
+  if (sharedTextDecoder) {
+    try {
+      return sharedTextDecoder.decode(view);
+    } catch (error) {
+      // fall through to manual decoding
+    }
+  }
+
+  let result = "";
+  for (let index = 0; index < view.length; index += 1) {
+    result += String.fromCharCode(view[index]);
+  }
+  return result;
+}
+
 function normalizeNip46CiphertextPayload(payload) {
   const visited = new Set();
 
@@ -3667,6 +3744,11 @@ function normalizeNip46CiphertextPayload(payload) {
     }
 
     if (Array.isArray(value)) {
+      const decoded = decodeBytesToUtf8(value);
+      if (decoded) {
+        return decoded.trim();
+      }
+
       const parts = [];
       for (const entry of value) {
         const normalized = coerce(entry);
@@ -3684,6 +3766,18 @@ function normalizeNip46CiphertextPayload(payload) {
     }
 
     if (value && typeof value === "object") {
+      const decoded = decodeBytesToUtf8(value);
+      if (decoded) {
+        return decoded.trim();
+      }
+
+      if (typeof value.type === "string" && value.type.toLowerCase() === "buffer" && Array.isArray(value.data)) {
+        const bufferDecoded = decodeBytesToUtf8(value.data);
+        if (bufferDecoded) {
+          return bufferDecoded.trim();
+        }
+      }
+
       if (visited.has(value)) {
         return "";
       }
