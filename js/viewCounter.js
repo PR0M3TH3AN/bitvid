@@ -22,18 +22,18 @@ import {
   countVideoViewEvents,
   listVideoViewEvents,
   subscribeVideoViewEvents,
-} from "./nostr/index.js";
+} from "./nostr/viewEventBindings.js";
 
 const VIEW_COUNTER_STORAGE_KEY = "bitvid:view-counter:v1";
 const STORAGE_DEBOUNCE_MS = 500;
 const SECONDS_PER_DAY = 86_400;
 
 const listVideoViewEventsApi = (pointer, options) =>
-  listVideoViewEvents(nostrClient, pointer, options);
+  listVideoViewEvents(pointer, options);
 const subscribeVideoViewEventsApi = (pointer, options) =>
-  subscribeVideoViewEvents(nostrClient, pointer, options);
+  subscribeVideoViewEvents(pointer, options);
 const countVideoViewEventsApi = (pointer, options) =>
-  countVideoViewEvents(nostrClient, pointer, options);
+  countVideoViewEvents(pointer, options);
 
 /** @type {Map<string, ViewCounterState>} */
 const pointerStates = new Map();

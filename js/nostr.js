@@ -5,36 +5,25 @@ import {
   requestDefaultExtensionPermissions,
 } from "./nostr/defaultClient.js";
 import {
+  recordVideoView,
+  listVideoViewEvents,
+  subscribeVideoViewEvents,
+  countVideoViewEvents,
+} from "./nostr/viewEventBindings.js";
+import {
   updateWatchHistoryList,
   removeWatchHistoryItem,
 } from "./nostr/watchHistoryBindings.js";
 
 export { nostrClient, requestDefaultExtensionPermissions };
 
-export const recordVideoView = (...args) =>
-  nostrClient.recordVideoView(...args);
-
 export { updateWatchHistoryList, removeWatchHistoryItem };
 
-export const listVideoViewEvents = (...args) => {
-  if (typeof nostrClient.listVideoViewEvents !== "function") {
-    throw new Error("Video view listing is unavailable in this build.");
-  }
-  return nostrClient.listVideoViewEvents(...args);
-};
-
-export const subscribeVideoViewEvents = (...args) => {
-  if (typeof nostrClient.subscribeVideoViewEvents !== "function") {
-    throw new Error("Video view subscriptions are unavailable in this build.");
-  }
-  return nostrClient.subscribeVideoViewEvents(...args);
-};
-
-export const countVideoViewEvents = (...args) => {
-  if (typeof nostrClient.countVideoViewEvents !== "function") {
-    throw new Error("Video view counting is unavailable in this build.");
-  }
-  return nostrClient.countVideoViewEvents(...args);
+export {
+  recordVideoView,
+  listVideoViewEvents,
+  subscribeVideoViewEvents,
+  countVideoViewEvents,
 };
 
 export {
