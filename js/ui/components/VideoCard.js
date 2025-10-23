@@ -20,6 +20,7 @@ export class VideoCard {
     helpers = {},
     assets = {},
     state = {},
+    variant = "default",
     ensureGlobalMoreMenuHandlers,
     onRequestCloseAllMenus,
     nsfwContext = null,
@@ -84,6 +85,12 @@ export class VideoCard {
         : null;
 
     this.designSystem = normalizeDesignSystemContext(designSystem);
+
+    const normalizedVariant =
+      typeof variant === "string" && variant.trim().toLowerCase() === "compact"
+        ? "compact"
+        : "default";
+    this.variant = normalizedVariant;
 
     this.nsfwContext = {
       isNsfw: Boolean(nsfwContext?.isNsfw),
@@ -324,8 +331,14 @@ export class VideoCard {
   build() {
     const doc = this.document;
 
+    const isCompact = this.variant === "compact";
+    const cardClassNames = ["card"];
+    if (isCompact) {
+      cardClassNames.push("card--compact");
+    }
+
     const root = this.createElement("div", {
-      classNames: ["card"]
+      classNames: cardClassNames,
     });
 
     this.root = root;
@@ -343,15 +356,22 @@ export class VideoCard {
     this.applySourceDatasets();
     this.applyModerationDatasets();
 
+    const anchorClassNames = [
+      "block",
+      "cursor-pointer",
+      "relative",
+      "group",
+      "overflow-hidden",
+      "video-card__media",
+    ];
+    if (isCompact) {
+      anchorClassNames.push("rounded-lg", "flex-shrink-0");
+    } else {
+      anchorClassNames.push("rounded-t-lg");
+    }
+
     const anchor = this.createElement("a", {
-      classNames: [
-        "block",
-        "cursor-pointer",
-        "relative",
-        "group",
-        "rounded-t-lg",
-        "overflow-hidden"
-      ],
+      classNames: anchorClassNames,
       attrs: {
         href: this.shareUrl
       }
@@ -360,33 +380,48 @@ export class VideoCard {
     this.anchorEl = anchor;
 
     const ratio = this.createElement("div", {
-      classNames: ["ratio-16-9"]
+      classNames: ["ratio-16-9", "video-card__media-ratio"],
     });
     const thumbnail = this.buildThumbnail();
     ratio.appendChild(thumbnail);
     anchor.appendChild(ratio);
 
+    const contentClassNames = [
+      "video-card__content",
+      "p-md",
+      "bv-stack",
+      "bv-stack--tight",
+    ];
+    if (isCompact) {
+      contentClassNames.push("flex-1");
+    }
+
     const content = this.createElement("div", {
-      classNames: ["p-md", "bv-stack", "bv-stack--tight"]
+      classNames: contentClassNames,
     });
     this.contentEl = content;
 
+    const titleClassNames = [
+      "video-card__title",
+      isCompact ? "text-base" : "text-lg",
+      isCompact ? "font-semibold" : "font-bold",
+      "text-text",
+      "line-clamp-2",
+      "cursor-pointer",
+    ];
+    if (isCompact) {
+      titleClassNames.push("leading-snug");
+    }
+
     const title = this.createElement("h3", {
-      classNames: [
-        "video-card__title",
-        "text-lg",
-        "font-bold",
-        "text-text",
-        "line-clamp-2",
-        "cursor-pointer"
-      ],
+      classNames: titleClassNames,
       textContent: this.video.title
     });
     title.dataset.videoId = this.video.id;
     this.titleEl = title;
 
     const header = this.createElement("div", {
-      classNames: ["flex", "items-center", "justify-between"]
+      classNames: ["flex", "items-center", "justify-between"],
     });
 
     const authorSection = this.buildAuthorSection();
@@ -642,8 +677,13 @@ export class VideoCard {
   }
 
   buildAuthorSection() {
+    const isCompact = this.variant === "compact";
     const wrapper = this.createElement("div", {
-      classNames: ["flex", "items-center", "space-x-3"]
+      classNames: [
+        "flex",
+        "items-center",
+        isCompact ? "space-x-2" : "space-x-3",
+      ],
     });
 
     const avatarWrapper = this.createElement("div", {
@@ -683,8 +723,14 @@ export class VideoCard {
     const authorMeta = this.createElement("div", { classNames: ["min-w-0"] });
 
     const authorName = this.createElement("p", {
-      classNames: ["text-sm", "text-muted", "author-name", "cursor-pointer"],
-      textContent: "Loading name..."
+      classNames: [
+        isCompact ? "text-xs" : "text-sm",
+        "text-muted",
+        "author-name",
+        "cursor-pointer",
+        "video-card__author-name",
+      ],
+      textContent: "Loading name...",
     });
     if (this.video.pubkey) {
       authorName.dataset.pubkey = this.video.pubkey;
@@ -694,10 +740,11 @@ export class VideoCard {
       classNames: [
         "flex",
         "items-center",
-        "text-xs",
+        isCompact ? "gap-2" : "mt-1",
+        isCompact ? "text-2xs" : "text-xs",
         "text-muted-strong",
-        "mt-1"
-      ]
+        "video-card__meta",
+      ],
     });
 
     const timeEl = this.createElement("span", {
@@ -707,8 +754,13 @@ export class VideoCard {
     this.timestampEl = timeEl;
 
     if (this.pointerInfo && this.pointerInfo.key) {
+      const dotClassNames = ["text-muted-strong"];
+      if (!isCompact) {
+        dotClassNames.push("mx-1");
+      }
+
       const dot = this.createElement("span", {
-        classNames: ["mx-1", "text-muted-strong"],
+        classNames: dotClassNames,
         textContent: "•"
       });
       dot.setAttribute("aria-hidden", "true");
@@ -851,9 +903,10 @@ export class VideoCard {
   }
 
   buildBadgesContainer() {
+    const isCompact = this.variant === "compact";
     const pieces = [];
 
-    if (this.playbackUrl) {
+    if (!isCompact && this.playbackUrl) {
       const badge = this.createElement("span", {
         classNames: ["badge", "url-health-badge"]
       });
@@ -864,7 +917,7 @@ export class VideoCard {
       pieces.push(badge);
     }
 
-    if (this.magnetSupported && this.magnetProvided) {
+    if (!isCompact && this.magnetSupported && this.magnetProvided) {
       const badge = this.createElement("span", {
         classNames: ["badge", "torrent-health-badge"]
       });
@@ -1904,6 +1957,10 @@ export class VideoCard {
   }
 
   buildDiscussionCount() {
+    if (this.variant === "compact") {
+      return null;
+    }
+
     if (this.video.enableComments === false) {
       return null;
     }
