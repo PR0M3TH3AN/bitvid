@@ -23,6 +23,7 @@ import {
 import { attachHealthBadges } from "./gridHealth.js";
 import { attachUrlHealthBadges } from "./urlHealthObserver.js";
 import { updateVideoCardSourceVisibility } from "./utils/cardSourceVisibility.js";
+import { collectVideoTags } from "./utils/videoTags.js";
 import { ADMIN_INITIAL_EVENT_BLACKLIST } from "./lists.js";
 import { userBlocks } from "./userBlocks.js";
 import { relayManager } from "./relayManager.js";
@@ -7772,6 +7773,9 @@ class Application {
 
     this.decorateVideoModeration(this.currentVideo);
 
+    const modalTags = collectVideoTags(this.currentVideo);
+    this.currentVideo.displayTags = modalTags;
+
     if (Number.isFinite(knownPostedAt)) {
       this.cacheVideoRootCreatedAt(this.currentVideo, knownPostedAt);
     } else if (this.currentVideo.rootCreatedAt) {
@@ -7875,6 +7879,7 @@ class Application {
         title: video.title || "Untitled",
         description: video.description || "No description available.",
         timestamps: timestampPayload,
+        tags: modalTags,
         creator: {
           name: creatorProfile.name,
           avatarUrl: creatorProfile.picture,
@@ -8086,7 +8091,10 @@ class Application {
       editedAt,
     });
 
-    this.videoModal.updateMetadata({ timestamps: payload });
+    const modalTags = collectVideoTags(video);
+    video.displayTags = modalTags;
+
+    this.videoModal.updateMetadata({ timestamps: payload, tags: modalTags });
   }
 
   async playVideoWithoutEvent(options = {}) {
@@ -8096,6 +8104,7 @@ class Application {
       title = "Untitled",
       description = "",
       trigger,
+      tags: rawTags,
     } = options || {};
     const hasTrigger = Object.prototype.hasOwnProperty.call(
       options || {},
@@ -8117,6 +8126,10 @@ class Application {
     const usableMagnet = decodedMagnet || trimmedMagnet;
     const magnetSupported = isValidMagnetUri(usableMagnet);
     const sanitizedMagnet = magnetSupported ? usableMagnet : "";
+
+    const modalTags = collectVideoTags({
+      nip71: { hashtags: rawTags },
+    });
 
     this.zapController?.setVisibility(false);
     this.zapController?.resetState();
@@ -8140,6 +8153,7 @@ class Application {
       lightningAddress: null,
       pointer: null,
       pointerKey: null,
+      displayTags: modalTags,
     };
 
     this.decorateVideoModeration(this.currentVideo);
@@ -8156,6 +8170,7 @@ class Application {
         title: title || "Untitled",
         description: description || "No description available.",
         timestamp: "",
+        tags: modalTags,
         creator: {
           name: "Unknown",
           avatarUrl: "assets/svg/default-profile.svg",
