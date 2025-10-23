@@ -12,7 +12,7 @@ const modalMarkupPromise = readFile(
   "utf8"
 );
 
-async function setupModal({ lazyLoad = false } = {}) {
+export async function setupModal({ lazyLoad = false } = {}) {
   const markup = await modalMarkupPromise;
   const modalMarkup = lazyLoad ? "" : markup;
   const dom = new JSDOM(
