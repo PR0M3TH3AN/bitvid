@@ -50,14 +50,37 @@ export async function publishVideoReaction(
       )
     : [];
 
+  const optionRelay =
+    typeof options.pointerRelay === "string" && options.pointerRelay.trim()
+      ? options.pointerRelay.trim()
+      : "";
+
+  const pointerRelay =
+    typeof pointer.relay === "string" && pointer.relay.trim()
+      ? pointer.relay.trim()
+      : optionRelay;
+
   const pointerTag =
     pointer.type === "a"
-      ? pointer.relay
-        ? ["a", pointer.value, pointer.relay]
+      ? pointerRelay
+        ? ["a", pointer.value, pointerRelay]
         : ["a", pointer.value]
-      : pointer.relay
-      ? ["e", pointer.value, pointer.relay]
+      : pointerRelay
+      ? ["e", pointer.value, pointerRelay]
       : ["e", pointer.value];
+
+  const normalizedPointer = {
+    type: pointer.type,
+    value: pointer.value,
+    relay: pointerRelay || null,
+  };
+
+  const explicitTargetAuthor =
+    typeof options.targetAuthorPubkey === "string" && options.targetAuthorPubkey.trim()
+      ? options.targetAuthorPubkey.trim()
+      : typeof options.authorPubkey === "string" && options.authorPubkey.trim()
+      ? options.authorPubkey.trim()
+      : "";
 
   let content = "+";
   if (typeof options.content === "string") {
@@ -82,6 +105,8 @@ export async function publishVideoReaction(
     created_at: createdAt,
     pointerValue: pointer.value,
     pointerTag,
+    targetPointer: normalizedPointer,
+    targetAuthorPubkey: explicitTargetAuthor,
     additionalTags,
     content,
   });
