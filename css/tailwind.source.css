@@ -1724,6 +1724,82 @@
     @apply border-b border-border border-opacity-20 pb-4;
   }
 
+  /* Video modal tag strip */
+  .video-modal__tags {
+    @apply -mx-1 flex gap-2 overflow-x-auto px-1;
+    scrollbar-gutter: stable both-edges;
+    overscroll-behavior-x: contain;
+  }
+
+  .video-modal__tags[hidden] {
+    display: none;
+  }
+
+  .video-modal__tags[data-fade] {
+    position: relative;
+  }
+
+  .video-modal__tags[data-fade]::before,
+  .video-modal__tags[data-fade]::after {
+    content: "";
+    position: sticky;
+    top: 0;
+    bottom: 0;
+    width: var(--space-lg);
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .video-modal__tags[data-fade]::before {
+    left: 0;
+    background: linear-gradient(
+      to right,
+      var(--surface-overlay-muted),
+      transparent
+    );
+  }
+
+  .video-modal__tags[data-fade]::after {
+    right: 0;
+    background: linear-gradient(
+      to left,
+      var(--surface-overlay-muted),
+      transparent
+    );
+  }
+
+  .video-tag-pill {
+    @apply inline-flex items-center gap-2 rounded-full border border-status-neutral-border bg-status-neutral-surface px-3 py-1 text-xs font-medium text-status-neutral-on;
+    @apply relative justify-center whitespace-nowrap transition;
+    @apply min-h-[calc(var(--space-sm)+var(--space-xs))];
+  }
+
+  .video-tag-pill[data-size="compact"] {
+    @apply px-2 py-0.5 text-2xs;
+  }
+
+  .video-tag-pill__label {
+    @apply transition-opacity duration-150 ease-in-out;
+    opacity: 1;
+  }
+
+  .video-tag-pill__icon {
+    @apply absolute inset-0 flex items-center justify-center transition duration-150 ease-in-out;
+    opacity: 0;
+    transform: scale(0.8);
+  }
+
+  .video-tag-pill:hover .video-tag-pill__label,
+  .video-tag-pill:focus-visible .video-tag-pill__label {
+    opacity: 0;
+  }
+
+  .video-tag-pill:hover .video-tag-pill__icon,
+  .video-tag-pill:focus-visible .video-tag-pill__icon {
+    opacity: 1;
+    transform: scale(1);
+  }
+
   .video-modal__actions-row {
     @apply flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between;
   }
