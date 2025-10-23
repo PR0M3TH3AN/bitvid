@@ -2,9 +2,7 @@
 
 import watchHistoryService from "./watchHistoryService.js";
 import { nostrClient } from "./nostr.js";
-import {
-  updateWatchHistoryList as updateWatchHistoryListWithManager,
-} from "./nostr/index.js";
+import { updateWatchHistoryList } from "./nostr/watchHistoryBindings.js";
 import { pointerKey, normalizePointerInput } from "./nostr/watchHistory.js";
 import {
   WATCH_HISTORY_BATCH_RESOLVE,
@@ -35,13 +33,6 @@ const FALLBACK_THUMBNAIL = "assets/svg/default-thumbnail.svg";
 const FALLBACK_AVATAR = "assets/svg/default-profile.svg";
 const isDevEnv =
   typeof process !== "undefined" && process?.env?.NODE_ENV !== "production";
-
-const updateWatchHistoryList = (items, options) =>
-  updateWatchHistoryListWithManager(
-    nostrClient.watchHistory,
-    items,
-    options,
-  );
 
 function escapeSelector(value) {
   if (typeof value !== "string") {

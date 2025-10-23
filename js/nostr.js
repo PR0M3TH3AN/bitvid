@@ -5,20 +5,16 @@ import {
   requestDefaultExtensionPermissions,
 } from "./nostr/defaultClient.js";
 import {
-  updateWatchHistoryList as updateWatchHistoryListWithManager,
-  removeWatchHistoryItem as removeWatchHistoryItemWithManager,
-} from "./nostr/watchHistory.js";
+  updateWatchHistoryList,
+  removeWatchHistoryItem,
+} from "./nostr/watchHistoryBindings.js";
 
 export { nostrClient, requestDefaultExtensionPermissions };
 
 export const recordVideoView = (...args) =>
   nostrClient.recordVideoView(...args);
 
-export const updateWatchHistoryList = (...args) =>
-  updateWatchHistoryListWithManager(nostrClient.watchHistory, ...args);
-
-export const removeWatchHistoryItem = (...args) =>
-  removeWatchHistoryItemWithManager(nostrClient.watchHistory, ...args);
+export { updateWatchHistoryList, removeWatchHistoryItem };
 
 export const listVideoViewEvents = (...args) => {
   if (typeof nostrClient.listVideoViewEvents !== "function") {
