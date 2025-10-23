@@ -3,7 +3,7 @@ import { DEFAULT_RELAY_URLS } from "./nostr/toolkit.js";
 import {
   nostrClient,
   requestDefaultExtensionPermissions,
-} from "./nostr.js";
+} from "./nostrClientFacade.js";
 import { getActiveSigner } from "./nostr/index.js";
 import { buildRelayListEvent } from "./nostrEventSchemas.js";
 import { devLogger, userLogger } from "./utils/logger.js";

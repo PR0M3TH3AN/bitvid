@@ -1,7 +1,7 @@
 // js/app.js
 
-import { nostrClient } from "./nostr.js";
-import { recordVideoView } from "./nostr/index.js";
+import { nostrClient } from "./nostrClientFacade.js";
+import { recordVideoView } from "./nostrViewEventsFacade.js";
 import { torrentClient } from "./webtorrent.js";
 import {
   isDevMode,

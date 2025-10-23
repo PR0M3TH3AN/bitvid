@@ -2,7 +2,7 @@
 import {
   nostrClient,
   requestDefaultExtensionPermissions,
-} from "./nostr.js";
+} from "./nostrClientFacade.js";
 import { getActiveSigner } from "./nostr/index.js";
 import { buildBlockListEvent, BLOCK_LIST_IDENTIFIER } from "./nostrEventSchemas.js";
 import { userLogger } from "./utils/logger.js";
