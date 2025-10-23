@@ -4,7 +4,23 @@
 // facades. Prefer importing from the facades directly in new modules so the
 // wiring between the default client and helper layers stays explicit.
 
-export { nostrClient, requestDefaultExtensionPermissions } from "./nostrClientFacade.js";
+import {
+  nostrClient as defaultNostrClient,
+  requestDefaultExtensionPermissions,
+} from "./nostrClientFacade.js";
+
+export { requestDefaultExtensionPermissions };
+export { defaultNostrClient as nostrClient };
+
+export const publishVideoReaction = (...args) => {
+  if (
+    !defaultNostrClient ||
+    typeof defaultNostrClient.publishVideoReaction !== "function"
+  ) {
+    throw new Error("Video reaction publishing is unavailable in this build.");
+  }
+  return defaultNostrClient.publishVideoReaction(...args);
+};
 
 export {
   __testExports,

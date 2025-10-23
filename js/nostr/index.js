@@ -55,3 +55,5 @@ export {
   publishViewEvent,
   recordVideoView,
 } from "./viewEvents.js";
+
+export { publishVideoReaction } from "./reactionEvents.js";
