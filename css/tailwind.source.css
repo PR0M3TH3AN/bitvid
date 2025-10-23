@@ -1789,6 +1789,10 @@
     transform: scale(0.8);
   }
 
+  .video-tag-pill__icon svg {
+    @apply h-3 w-3;
+  }
+
   .video-tag-pill:hover .video-tag-pill__label,
   .video-tag-pill:focus-visible .video-tag-pill__label {
     opacity: 0;

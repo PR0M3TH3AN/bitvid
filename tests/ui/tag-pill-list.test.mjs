@@ -32,8 +32,11 @@ test("renderTagPillStrip builds buttons with labels and icons", () => {
 
     const icon = button.querySelector(".video-tag-pill__icon");
     assert(icon, "icon span should be present");
-    assert.equal(icon.dataset.icon, "plus");
     assert.equal(icon.getAttribute("aria-hidden"), "true");
+
+    const svg = icon.querySelector("svg");
+    assert(svg, "plus icon svg should be present");
+    assert.equal(svg.getAttribute("viewBox"), "0 0 16 16");
   }
 });
 
@@ -87,6 +90,9 @@ test("updateTagPillStrip replaces buttons and rewires handlers", () => {
 
   assert.equal(root.querySelectorAll("button").length, 1);
   assert.equal(updatedButtons[0].dataset.tag, "video");
+
+  const updatedIcon = updatedButtons[0].querySelector(".video-tag-pill__icon svg");
+  assert(updatedIcon, "updated button should contain the svg icon");
 
   // Ensure the old handler is removed by dispatching a click on the detached button.
   initialButtons[0].dispatchEvent(new document.defaultView.Event("click", { bubbles: true }));
