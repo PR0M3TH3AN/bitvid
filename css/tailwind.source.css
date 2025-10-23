@@ -1772,6 +1772,7 @@
     @apply inline-flex items-center gap-2 rounded-full border border-status-neutral-border bg-status-neutral-surface px-3 py-1 text-xs font-medium text-status-neutral-on;
     @apply relative justify-center whitespace-nowrap transition;
     @apply min-h-[calc(var(--space-sm)+var(--space-xs))];
+    @apply me-1;
   }
 
   .video-tag-pill[data-size="compact"] {
@@ -1787,6 +1788,10 @@
     @apply absolute inset-0 flex items-center justify-center transition duration-150 ease-in-out;
     opacity: 0;
     transform: scale(0.8);
+  }
+
+  .video-tag-pill__icon svg {
+    @apply h-3 w-3;
   }
 
   .video-tag-pill:hover .video-tag-pill__label,

@@ -37,7 +37,23 @@ function createTagButton({ doc, tag, onTagActivate }) {
   const icon = doc.createElement("span");
   icon.className = "video-tag-pill__icon";
   icon.setAttribute("aria-hidden", "true");
-  icon.dataset.icon = "plus";
+
+  const svgNS = "http://www.w3.org/2000/svg";
+  const svg = doc.createElementNS(svgNS, "svg");
+  svg.setAttribute("viewBox", "0 0 16 16");
+  svg.setAttribute("width", "16");
+  svg.setAttribute("height", "16");
+  svg.setAttribute("fill", "currentColor");
+  svg.setAttribute("focusable", "false");
+
+  const path = doc.createElementNS(svgNS, "path");
+  path.setAttribute(
+    "d",
+    "M8.75 3.5a.75.75 0 0 0-1.5 0v3.75H3.5a.75.75 0 1 0 0 1.5h3.75V12.5a.75.75 0 0 0 1.5 0V8.75H12.5a.75.75 0 0 0 0-1.5H8.75z",
+  );
+
+  svg.append(path);
+  icon.append(svg);
 
   button.append(label, icon);
 
