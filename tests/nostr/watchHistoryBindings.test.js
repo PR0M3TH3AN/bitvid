@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { nostrClient } from "../../js/nostr/defaultClient.js";
+import { nostrClient } from "../../js/nostrClientFacade.js";
 import {
-  updateWatchHistoryList,
-  removeWatchHistoryItem,
-} from "../../js/nostr/watchHistoryBindings.js";
+  updateWatchHistoryListWithDefaultClient as updateWatchHistoryList,
+  removeWatchHistoryItemWithDefaultClient as removeWatchHistoryItem,
+} from "../../js/nostrWatchHistoryFacade.js";
 
 const originalWatchHistory = nostrClient.watchHistory;
 

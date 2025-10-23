@@ -3,12 +3,12 @@
 import "./test-helpers/setup-localstorage.mjs";
 import assert from "node:assert/strict";
 
-const { nostrClient } = await import("../js/nostr.js");
+const { nostrClient } = await import("../js/nostrClientFacade.js");
 const {
-  listVideoViewEvents,
-  subscribeVideoViewEvents,
-  countVideoViewEvents,
-} = await import("../js/nostr/viewEventBindings.js");
+  listVideoViewEventsWithDefaultClient,
+  subscribeVideoViewEventsWithDefaultClient,
+  countVideoViewEventsWithDefaultClient,
+} = await import("../js/nostrViewEventsFacade.js");
 
 function temporarilyUnset(client, methodName) {
   const original = client[methodName];
@@ -21,9 +21,12 @@ function temporarilyUnset(client, methodName) {
 async function testListBindingGuardsMissingMethod() {
   const restore = temporarilyUnset(nostrClient, "listVideoViewEvents");
   try {
-    assert.throws(() => listVideoViewEvents({ type: "e", value: "guard" }), {
-      message: "Video view listing is unavailable in this build.",
-    });
+    assert.throws(
+      () => listVideoViewEventsWithDefaultClient({ type: "e", value: "guard" }),
+      {
+        message: "Video view listing is unavailable in this build.",
+      }
+    );
   } finally {
     restore();
   }
@@ -33,7 +36,8 @@ async function testSubscribeBindingGuardsMissingMethod() {
   const restore = temporarilyUnset(nostrClient, "subscribeVideoViewEvents");
   try {
     assert.throws(
-      () => subscribeVideoViewEvents({ type: "e", value: "guard" }),
+      () =>
+        subscribeVideoViewEventsWithDefaultClient({ type: "e", value: "guard" }),
       {
         message: "Video view subscriptions are unavailable in this build.",
       }
@@ -46,9 +50,12 @@ async function testSubscribeBindingGuardsMissingMethod() {
 async function testCountBindingGuardsMissingMethod() {
   const restore = temporarilyUnset(nostrClient, "countVideoViewEvents");
   try {
-    assert.throws(() => countVideoViewEvents({ type: "e", value: "guard" }), {
-      message: "Video view counting is unavailable in this build.",
-    });
+    assert.throws(
+      () => countVideoViewEventsWithDefaultClient({ type: "e", value: "guard" }),
+      {
+        message: "Video view counting is unavailable in this build.",
+      }
+    );
   } finally {
     restore();
   }
@@ -65,7 +72,7 @@ async function testListBindingPassesThroughWhenAvailable() {
     return sentinel;
   };
   try {
-    const result = await listVideoViewEvents(pointer, options);
+    const result = await listVideoViewEventsWithDefaultClient(pointer, options);
     assert.equal(result, sentinel, "binding should return the client result");
     assert.deepEqual(
       receivedArgs,
@@ -89,7 +96,7 @@ async function testSubscribeBindingPassesThroughWhenAvailable() {
     return unsubscribe;
   };
   try {
-    const result = subscribeVideoViewEvents(pointer, options);
+    const result = subscribeVideoViewEventsWithDefaultClient(pointer, options);
     assert.equal(result, unsubscribe, "binding should return unsubscribe value");
     assert.deepEqual(
       receivedArgs,
@@ -112,7 +119,7 @@ async function testCountBindingPassesThroughWhenAvailable() {
     return sentinel;
   };
   try {
-    const result = await countVideoViewEvents(pointer, options);
+    const result = await countVideoViewEventsWithDefaultClient(pointer, options);
     assert.equal(result, sentinel, "binding should return the client result");
     assert.deepEqual(
       receivedArgs,
