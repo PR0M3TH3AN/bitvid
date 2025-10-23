@@ -1725,7 +1725,87 @@
   }
 
   .video-modal__actions-row {
-    @apply flex flex-wrap items-center gap-3;
+    @apply flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between;
+  }
+
+  .video-modal__reactions {
+    @apply flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4;
+  }
+
+  .video-modal__reaction-buttons {
+    @apply inline-flex flex-wrap items-center gap-2;
+  }
+
+  .video-modal__reaction-button {
+    --video-modal-reaction-active-bg: color-mix(
+      in srgb,
+      var(--color-accent) 22%,
+      var(--surface-overlay-panel)
+    );
+    --video-modal-reaction-active-border: color-mix(
+      in srgb,
+      var(--color-accent) 38%,
+      var(--border-overlay)
+    );
+  }
+
+  .video-modal__reaction-button[aria-pressed="true"] {
+    color: var(--color-accent-strong);
+    background-color: var(--video-modal-reaction-active-bg);
+    border-color: var(--video-modal-reaction-active-border);
+  }
+
+  .video-modal__reaction-button[aria-pressed="true"]
+    .video-modal__reaction-count {
+    color: var(--color-accent-strong);
+  }
+
+  .video-modal__reaction-count {
+    @apply text-sm font-semibold text-muted;
+  }
+
+  .video-modal__reaction-meter {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    flex-wrap: wrap;
+    flex: 1 1 var(--menu-min-width);
+    max-inline-size: 100%;
+  }
+
+  .video-modal__reaction-meter-label {
+    @apply text-sm font-medium text-muted;
+    min-inline-size: 6rem;
+  }
+
+  .video-modal__reaction-meter-track {
+    position: relative;
+    flex: 1 1 auto;
+    inline-size: 100%;
+    block-size: var(--space-xs);
+    border-radius: var(--radius-full);
+    background-color: var(--color-border-muted);
+    overflow: hidden;
+  }
+
+  .video-modal__reaction-meter-fill {
+    position: absolute;
+    inset-inline-start: 0;
+    inset-block-start: 0;
+    block-size: 100%;
+    inline-size: 0%;
+    max-inline-size: 100%;
+    background-image: linear-gradient(
+      90deg,
+      var(--color-accent) 0%,
+      var(--color-accent-strong) 100%
+    );
+    transition: inline-size var(--motion-duration-base)
+        var(--motion-ease-out);
+  }
+
+  .video-modal__actions-group {
+    @apply flex flex-wrap items-center gap-3 justify-end;
   }
 
   .video-modal__action-button {

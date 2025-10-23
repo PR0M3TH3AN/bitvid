@@ -73,6 +73,7 @@ import {
   truncateMiddle,
   formatShortNpub,
 } from "./utils/formatters.js";
+import reactionCounter from "./reactionCounter.js";
 import {
   escapeHTML as escapeHtml,
   removeTrackingScripts,
@@ -722,6 +723,14 @@ class Application {
       "video:share",
       this.boundVideoModalShareHandler
     );
+    this.boundVideoModalReactionHandler = (event) => {
+      const detail = event?.detail || {};
+      this.handleVideoReaction(detail);
+    };
+    this.videoModal.addEventListener(
+      "video:reaction",
+      this.boundVideoModalReactionHandler
+    );
     this.boundVideoModalContextActionHandler = (event) => {
       const detail = event?.detail || {};
       const action = typeof detail.action === "string" ? detail.action : "";
@@ -878,6 +887,13 @@ class Application {
     this.videoSubscription = this.nostrService.getVideoSubscription() || null;
     this.videoList = null;
     this.modalViewCountUnsub = null;
+    this.modalReactionUnsub = null;
+    this.modalReactionPointerKey = null;
+    this.modalReactionState = {
+      counts: { "+": 0, "-": 0 },
+      total: 0,
+      userReaction: "",
+    };
 
     // Videos stored as a Map (key=event.id)
     this.videosMap = this.nostrService.getVideosMap();
@@ -1747,6 +1763,123 @@ class Application {
     }
   }
 
+  resetModalReactionState() {
+    this.modalReactionState = {
+      counts: { "+": 0, "-": 0 },
+      total: 0,
+      userReaction: "",
+    };
+    if (this.videoModal?.updateReactionSummary) {
+      this.videoModal.updateReactionSummary({
+        total: 0,
+        counts: { "+": 0, "-": 0 },
+        userReaction: "",
+      });
+    }
+  }
+
+  teardownModalReactionSubscription() {
+    if (typeof this.modalReactionUnsub === "function") {
+      try {
+        this.modalReactionUnsub();
+      } catch (error) {
+        devLogger.warn(
+          "[reaction] Failed to tear down modal subscription:",
+          error,
+        );
+      }
+    }
+    this.modalReactionUnsub = null;
+    this.modalReactionPointerKey = null;
+    this.resetModalReactionState();
+  }
+
+  subscribeModalReactions(pointer, pointerKey) {
+    if (!this.videoModal?.updateReactionSummary) {
+      this.teardownModalReactionSubscription();
+      return;
+    }
+
+    this.teardownModalReactionSubscription();
+
+    if (!pointer || !pointerKey) {
+      return;
+    }
+
+    try {
+      const normalizedUser = this.normalizeHexPubkey(this.pubkey);
+      const unsubscribe = reactionCounter.subscribe(pointer, (snapshot) => {
+        const counts = { ...this.modalReactionState.counts };
+        if (snapshot?.counts && typeof snapshot.counts === "object") {
+          for (const [key, value] of Object.entries(snapshot.counts)) {
+            counts[key] = this.normalizeReactionCount(value);
+          }
+        }
+        if (!Object.prototype.hasOwnProperty.call(counts, "+")) {
+          counts["+"] = 0;
+        }
+        if (!Object.prototype.hasOwnProperty.call(counts, "-")) {
+          counts["-"] = 0;
+        }
+
+        let total = Number.isFinite(snapshot?.total)
+          ? Math.max(0, Number(snapshot.total))
+          : 0;
+        if (!Number.isFinite(total) || total === 0) {
+          total = 0;
+          for (const value of Object.values(counts)) {
+            total += this.normalizeReactionCount(value);
+          }
+        }
+
+        let userReaction = "";
+        if (normalizedUser && snapshot?.reactions) {
+          const record = snapshot.reactions[normalizedUser] || null;
+          if (record && typeof record.content === "string") {
+            userReaction =
+              record.content === "+"
+                ? "+"
+                : record.content === "-"
+                  ? "-"
+                  : "";
+          }
+        }
+
+        this.modalReactionState = {
+          counts,
+          total,
+          userReaction,
+        };
+        this.videoModal.updateReactionSummary({
+          total,
+          counts,
+          userReaction,
+        });
+      });
+
+      this.modalReactionPointerKey = pointerKey;
+      this.modalReactionUnsub = () => {
+        try {
+          unsubscribe?.();
+        } catch (error) {
+          devLogger.warn(
+            "[reaction] Failed to tear down modal subscription:",
+            error,
+          );
+        } finally {
+          this.modalReactionUnsub = null;
+          this.modalReactionPointerKey = null;
+        }
+      };
+    } catch (error) {
+      devLogger.warn(
+        "[reaction] Failed to subscribe modal reaction counter:",
+        error,
+      );
+      this.resetModalReactionState();
+    }
+  }
+
   subscribeModalViewCount(pointer, pointerKey) {
     const viewEl = this.videoModal?.getViewCountElement() || null;
     if (!viewEl) {
@@ -1809,6 +1942,209 @@ class Application {
         this.videoModal.updateViewCountLabel("– views");
         this.videoModal.setViewCountPointer(null);
       }
+    }
+  }
+
+  applyModalReactionOptimisticUpdate(nextReaction) {
+    if (nextReaction !== "+" && nextReaction !== "-") {
+      return null;
+    }
+
+    const previousCounts = {
+      ...(this.modalReactionState?.counts || {}),
+    };
+    const previousTotalValue = Number.isFinite(this.modalReactionState?.total)
+      ? Math.max(0, Number(this.modalReactionState.total))
+      : null;
+    const previousReaction = this.modalReactionState?.userReaction || "";
+
+    const likeBefore = this.normalizeReactionCount(previousCounts["+"]);
+    const dislikeBefore = this.normalizeReactionCount(previousCounts["-"]);
+    const otherCounts = {};
+    for (const [key, value] of Object.entries(previousCounts)) {
+      if (key === "+" || key === "-") {
+        continue;
+      }
+      otherCounts[key] = this.normalizeReactionCount(value);
+    }
+
+    let likeCount = likeBefore;
+    let dislikeCount = dislikeBefore;
+
+    if (previousReaction === "+") {
+      likeCount = Math.max(0, likeCount - 1);
+    } else if (previousReaction === "-") {
+      dislikeCount = Math.max(0, dislikeCount - 1);
+    }
+
+    if (nextReaction === "+") {
+      likeCount += 1;
+    } else if (nextReaction === "-") {
+      dislikeCount += 1;
+    }
+
+    const updatedCounts = {
+      ...previousCounts,
+      "+": likeCount,
+      "-": dislikeCount,
+    };
+
+    let updatedTotal = likeCount + dislikeCount;
+    for (const value of Object.values(otherCounts)) {
+      updatedTotal += this.normalizeReactionCount(value);
+    }
+
+    this.modalReactionState = {
+      counts: updatedCounts,
+      total: updatedTotal,
+      userReaction: nextReaction,
+    };
+
+    if (this.videoModal?.updateReactionSummary) {
+      this.videoModal.updateReactionSummary({
+        total: updatedTotal,
+        counts: updatedCounts,
+        userReaction: nextReaction,
+      });
+    }
+
+    const fallbackPreviousTotal = Number.isFinite(previousTotalValue)
+      ? previousTotalValue
+      : likeBefore +
+        dislikeBefore +
+        Object.values(otherCounts).reduce(
+          (sum, value) => sum + this.normalizeReactionCount(value),
+          0
+        );
+
+    return {
+      counts: previousCounts,
+      total: fallbackPreviousTotal,
+      userReaction: previousReaction,
+    };
+  }
+
+  restoreModalReactionSnapshot(snapshot) {
+    if (!snapshot) {
+      return;
+    }
+
+    const countsInput =
+      snapshot.counts && typeof snapshot.counts === "object"
+        ? snapshot.counts
+        : {};
+    const counts = { ...countsInput };
+    for (const [key, value] of Object.entries(counts)) {
+      counts[key] = this.normalizeReactionCount(value);
+    }
+    if (!Object.prototype.hasOwnProperty.call(counts, "+")) {
+      counts["+"] = 0;
+    }
+    if (!Object.prototype.hasOwnProperty.call(counts, "-")) {
+      counts["-"] = 0;
+    }
+
+    let total = Number.isFinite(snapshot.total)
+      ? Math.max(0, Number(snapshot.total))
+      : 0;
+    if (!Number.isFinite(total) || total === 0) {
+      total = 0;
+      for (const value of Object.values(counts)) {
+        total += this.normalizeReactionCount(value);
+      }
+    }
+
+    const userReaction =
+      snapshot.userReaction === "+"
+        ? "+"
+        : snapshot.userReaction === "-"
+          ? "-"
+          : "";
+
+    this.modalReactionState = {
+      counts,
+      total,
+      userReaction,
+    };
+
+    if (this.videoModal?.updateReactionSummary) {
+      this.videoModal.updateReactionSummary({
+        total,
+        counts,
+        userReaction,
+      });
+    }
+  }
+
+  async handleVideoReaction(detail = {}) {
+    if (!this.videoModal) {
+      return;
+    }
+
+    const requestedReaction =
+      typeof detail.reaction === "string" ? detail.reaction : "";
+    const normalizedReaction =
+      requestedReaction === "+"
+        ? "+"
+        : requestedReaction === "-"
+          ? "-"
+          : "";
+
+    if (!normalizedReaction) {
+      return;
+    }
+
+    const previousReaction = this.modalReactionState?.userReaction || "";
+    const pointer = this.currentVideoPointer;
+    const pointerKey = this.currentVideoPointerKey || pointerArrayToKey(pointer);
+    if (!pointer || !pointerKey) {
+      if (this.videoModal) {
+        this.videoModal.setUserReaction(previousReaction);
+      }
+      devLogger.info(
+        "[reaction] Ignoring reaction request until modal pointer is available.",
+      );
+      return;
+    }
+    if (normalizedReaction === previousReaction) {
+      return;
+    }
+
+    if (!this.isUserLoggedIn()) {
+      this.showError("Please login to react to videos.");
+      this.videoModal.setUserReaction(previousReaction);
+      return;
+    }
+
+    let rollbackSnapshot = null;
+    try {
+      rollbackSnapshot = this.applyModalReactionOptimisticUpdate(
+        normalizedReaction
+      );
+    } catch (error) {
+      devLogger.warn("[reaction] Failed to apply optimistic reaction state:", error);
+    }
+
+    try {
+      const result = await reactionCounter.publish(pointer, {
+        content: normalizedReaction,
+        video: this.currentVideo,
+        currentVideoPubkey: this.currentVideo?.pubkey,
+        pointerKey,
+      });
+
+      if (!result?.ok) {
+        if (rollbackSnapshot) {
+          this.restoreModalReactionSnapshot(rollbackSnapshot);
+        }
+        this.showError("Failed to send reaction. Please try again.");
+      }
+    } catch (error) {
+      devLogger.warn("[reaction] Failed to publish reaction:", error);
+      if (rollbackSnapshot) {
+        this.restoreModalReactionSnapshot(rollbackSnapshot);
+      }
+      this.showError("Failed to send reaction. Please try again.");
     }
   }
 
@@ -3872,6 +4208,7 @@ class Application {
           this.playbackService.cleanupWatchdog();
         }
         this.teardownModalViewCountSubscription();
+        this.teardownModalReactionSubscription();
 
         if (!preserveObservers && this.mediaLoader) {
           this.mediaLoader.disconnect();
@@ -4438,6 +4775,7 @@ class Application {
     this.cancelPendingViewLogging();
     this.clearActiveIntervals();
     this.teardownModalViewCountSubscription();
+    this.teardownModalReactionSubscription();
 
     // 2) Close the modal UI right away so the user gets instant feedback
     const modalVideoElement =
@@ -7461,6 +7799,10 @@ class Application {
       this.currentVideoPointer,
       this.currentVideoPointerKey
     );
+    this.subscribeModalReactions(
+      this.currentVideoPointer,
+      this.currentVideoPointerKey
+    );
 
     this.syncModalMoreMenuData();
 
@@ -7767,6 +8109,7 @@ class Application {
     this.currentVideoPointer = null;
     this.currentVideoPointerKey = null;
     this.subscribeModalViewCount(null, null);
+    this.subscribeModalReactions(null, null);
 
     const sanitizedUrl = typeof url === "string" ? url.trim() : "";
     const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
@@ -7879,6 +8222,14 @@ class Application {
     }
 
     return null;
+  }
+
+  normalizeReactionCount(value) {
+    if (Number.isFinite(value)) {
+      return Math.max(0, Math.round(Number(value)));
+    }
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed)) : 0;
   }
 
   normalizeHexPubkey(pubkey) {
