@@ -266,7 +266,11 @@ export function createPopover(trigger, render, options = {}) {
     }
 
     const restoreScroll = () => {
-      view.scrollTo(scrollX, scrollY);
+      try {
+        view.scrollTo(scrollX, scrollY);
+      } catch (error) {
+        logger.dev?.warn?.("[popover] scroll restoration failed", error);
+      }
     };
 
     restoreScroll();

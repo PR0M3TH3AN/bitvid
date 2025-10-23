@@ -32,7 +32,7 @@ test("renderTagPillStrip builds buttons with labels and icons", () => {
 
     const icon = button.querySelector(".video-tag-pill__icon");
     assert(icon, "icon span should be present");
-    assert.equal(icon.textContent, "+");
+    assert.equal(icon.dataset.icon, "plus");
     assert.equal(icon.getAttribute("aria-hidden"), "true");
   }
 });

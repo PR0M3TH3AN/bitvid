@@ -601,6 +601,7 @@ export class VideoModal {
 
         if (this.modalZapOpenPromise) {
           this.modalZapPendingToggle = "close";
+          this.closeZapDialog({ silent: true, restoreFocus: false });
           return;
         }
 
@@ -774,7 +775,10 @@ export class VideoModal {
         const { silent = false, ...rest } = options;
         const wasOpen = popover.isOpen?.() === true;
         const result = originalClose(rest);
-        if (wasOpen && result) {
+        const wasDialogMarkedOpen =
+          this.modalZapDialogOpen === true ||
+          this.modalZapDialog?.dataset?.state === "open";
+        if (wasOpen || wasDialogMarkedOpen) {
           this.modalZapPendingToggle = null;
           this.modalZapOpenPromise = null;
           this.modalZapDialog.dataset.state = "closed";
@@ -784,7 +788,7 @@ export class VideoModal {
           if (this.modalZapBtn) {
             this.modalZapBtn.setAttribute("aria-expanded", "false");
           }
-          if (!silent) {
+          if (!silent && (wasOpen || wasDialogMarkedOpen)) {
             this.dispatch("zap:close", { video: this.activeVideo });
           }
         }
@@ -1610,7 +1614,21 @@ export class VideoModal {
             this.modalZapDialog.setAttribute("aria-hidden", "false");
           }
           this.focusZapAmount();
+          return true;
         }
+
+        if (this.modalZapDialog) {
+          this.modalZapDialog.hidden = false;
+          this.modalZapDialog.dataset.state = "open";
+          this.modalZapDialog.setAttribute("aria-hidden", "false");
+          this.modalZapDialogOpen = true;
+          if (this.modalZapBtn) {
+            this.modalZapBtn.setAttribute("aria-expanded", "true");
+          }
+          this.focusZapAmount();
+          return true;
+        }
+
         return opened;
       }
 
@@ -1647,6 +1665,13 @@ export class VideoModal {
   }
 
   closeZapDialog({ silent = false, restoreFocus } = {}) {
+    const dialogAppearsOpen = this.isZapDialogOpen();
+
+    if (this.modalZapOpenPromise && !dialogAppearsOpen) {
+      this.modalZapPendingToggle = "close";
+      return;
+    }
+
     this.modalZapPendingToggle = null;
     if (this.modalZapPopover?.close) {
       const options = { silent };

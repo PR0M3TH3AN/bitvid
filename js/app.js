@@ -7420,11 +7420,35 @@ class Application {
       magnet: trimmedMagnet,
     });
 
-    if (
+    const modalVideoIsConnected = (() => {
+      if (!this.modalVideo) {
+        return false;
+      }
+      if (typeof this.modalVideo.isConnected === "boolean") {
+        return this.modalVideo.isConnected;
+      }
+      const ownerDocument = this.modalVideo.ownerDocument ||
+        (typeof document !== "undefined" ? document : null);
+      if (ownerDocument?.contains) {
+        try {
+          return ownerDocument.contains(this.modalVideo);
+        } catch (error) {
+          devLogger.warn(
+            "[playVideoWithFallback] Failed to determine modal video connection state",
+            error,
+          );
+        }
+      }
+      return true;
+    })();
+
+    const shouldReuseActiveSession =
+      modalVideoIsConnected &&
       this.activePlaybackSession &&
       typeof this.activePlaybackSession.matchesRequestSignature === "function" &&
-      this.activePlaybackSession.matchesRequestSignature(requestSignature)
-    ) {
+      this.activePlaybackSession.matchesRequestSignature(requestSignature);
+
+    if (shouldReuseActiveSession) {
       this.log(
         "[playVideoWithFallback] Duplicate playback request detected; reusing active session."
       );
