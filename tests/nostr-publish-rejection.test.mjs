@@ -5,7 +5,14 @@ if (typeof globalThis.window === "undefined") {
   globalThis.window = {};
 }
 
+if (!window.crypto || !window.crypto.getRandomValues) {
+  const { webcrypto } = await import("node:crypto");
+  window.crypto = webcrypto;
+}
+
 const originalWindowNostr = window.nostr;
+const originalWindowNostrTools = window.NostrTools;
+const nostrToolsModule = await import("nostr-tools");
 
 window.nostr = {
   ...(originalWindowNostr || {}),
@@ -20,11 +27,42 @@ window.nostr = {
   },
 };
 
+window.NostrTools = {
+  ...(originalWindowNostrTools || {}),
+  ...nostrToolsModule,
+  generatePrivateKey: () => {
+    const raw = nostrToolsModule.generateSecretKey();
+    const bytes = raw instanceof Uint8Array ? raw : Uint8Array.from(raw || []);
+    return Array.from(bytes)
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+  },
+  getEventHash: nostrToolsModule.getEventHash,
+  signEvent: (event, priv) => {
+    const signed = nostrToolsModule.finalizeEvent(event, priv);
+    return signed.sig;
+  },
+};
+
+let activeSignerCleanup = null;
+
 try {
   const { RelayPublishError } = await import("../js/nostrPublish.js");
-  const { nostrClient } = await import("../js/nostr.js");
+  const { nostrClient, setActiveSigner, clearActiveSigner } = await import("../js/nostr.js");
   const { subscriptions } = await import("../js/subscriptions.js");
   const { userBlocks } = await import("../js/userBlocks.js");
+
+  setActiveSigner({
+    type: "session",
+    pubkey: "f".repeat(64),
+    signEvent: async (event) => ({
+      ...event,
+      id: event?.id || `signed-${event.kind}`,
+      sig: `sig-${event.kind}`,
+    }),
+    nip04Encrypt: async (_pubkey, plaintext) => `cipher:${plaintext}`,
+  });
+  activeSignerCleanup = clearActiveSigner;
 
   function createRejectingPool(reason = "relay rejected") {
     const calls = [];
@@ -245,9 +283,21 @@ try {
 
   console.log("nostr publish rejection tests passed");
 } finally {
+  if (typeof activeSignerCleanup === "function") {
+    try {
+      activeSignerCleanup();
+    } catch (_) {
+      // ignore cleanup errors
+    }
+  }
   if (typeof originalWindowNostr === "undefined") {
     delete window.nostr;
   } else {
     window.nostr = originalWindowNostr;
+  }
+  if (typeof originalWindowNostrTools === "undefined") {
+    delete window.NostrTools;
+  } else {
+    window.NostrTools = originalWindowNostrTools;
   }
 }

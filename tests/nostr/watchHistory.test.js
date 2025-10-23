@@ -1,3 +1,4 @@
+import "../test-helpers/setup-localstorage.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -300,6 +301,139 @@ test("fetchWatchHistory falls back to pointer payload when nip04 decrypt fails",
       ["pointer-from-snapshot"],
       "fallback pointer items should be used when decrypt fails",
     );
+  } finally {
+    manager.clear();
+  }
+});
+
+test("publishWatchHistorySnapshot uses injected nostr-tools helpers when signer cannot encrypt", async () => {
+  const actorPubkey = "f".repeat(64);
+  const sessionPrivateKey = "a".repeat(64);
+  let encryptCalls = 0;
+  const toolkit = {
+    nip04: {
+      encrypt: async (_priv, _pub, plaintext) => {
+        encryptCalls += 1;
+        return `encrypted:${plaintext}`;
+      },
+    },
+  };
+
+  const manager = createWatchHistoryManager({
+    getActivePubkey: () => actorPubkey,
+    getSessionActor: () => ({ pubkey: actorPubkey, privateKey: sessionPrivateKey }),
+    ensureSessionActor: async () => actorPubkey,
+    resolveActiveSigner: () => null,
+    shouldRequestExtensionPermissions: () => false,
+    ensureExtensionPermissions: async () => ({ ok: true }),
+    ensureNostrTools: async () => toolkit,
+    getCachedNostrTools: () => toolkit,
+    signEventWithPrivateKey: (event) => ({
+      ...event,
+      id: `signed-${event.kind}`,
+      sig: `sig-${event.kind}`,
+    }),
+    getReadRelays: () => ["wss://relay.integration"],
+    getWriteRelays: () => ["wss://relay.integration"],
+    getRelayFallback: () => ["wss://relay.integration"],
+    getPool: () => ({
+      publish: () => ({
+        on(eventName, handler) {
+          if (eventName === "ok") {
+            handler();
+          }
+          return this;
+        },
+      }),
+    }),
+  });
+
+  try {
+    const result = await manager.publishSnapshot(
+      [{ type: "e", value: "pointer", watchedAt: 123 }],
+      { actorPubkey, snapshotId: "snapshot-injected" },
+    );
+
+    assert.equal(
+      result.ok,
+      true,
+      "snapshot publish should succeed with injected toolkit helpers",
+    );
+    assert(
+      encryptCalls > 0,
+      "fallback nostr-tools encrypt helper should be invoked",
+    );
+  } finally {
+    manager.clear();
+  }
+});
+
+test("publishWatchHistorySnapshot caches successful snapshot results", async () => {
+  const actorPubkey = "c".repeat(64);
+  const sessionPrivateKey = "s".repeat(64);
+  const relayUrls = ["wss://relay.cache"];
+  const publishCalls = [];
+
+  const manager = createWatchHistoryManager({
+    getActivePubkey: () => actorPubkey,
+    getSessionActor: () => ({ pubkey: actorPubkey, privateKey: sessionPrivateKey }),
+    ensureSessionActor: async () => actorPubkey,
+    resolveActiveSigner: () => null,
+    shouldRequestExtensionPermissions: () => false,
+    signEventWithPrivateKey: async (event, key) => ({
+      ...event,
+      id: `${event.kind}:${event.created_at}:${event.content?.length || 0}`,
+      sig: `sig-${key}`,
+    }),
+    ensureNostrTools: async () => ({
+      nip04: {
+        encrypt: async (priv, pub, plaintext) => `enc:${priv}:${pub}:${plaintext}`,
+      },
+    }),
+    getWriteRelays: () => relayUrls,
+    getRelayFallback: () => relayUrls,
+    getPool: () => ({
+      publish(urls, event) {
+        publishCalls.push({ urls, event });
+        return {
+          on(eventName, handler) {
+            if (eventName === "ok") {
+              setTimeout(handler, 0);
+            }
+            return this;
+          },
+        };
+      },
+    }),
+  });
+
+  try {
+    const items = [{ type: "e", value: "cached-pointer", watchedAt: 234 }];
+    const result = await manager.publishSnapshot(items, {
+      actorPubkey,
+      relays: relayUrls,
+      snapshotId: "snapshot-cache",
+    });
+
+    assert.equal(result.ok, true, "snapshot publish should succeed");
+    assert(publishCalls.length > 0, "publish helper should be invoked");
+
+    const actorKey = actorPubkey.toLowerCase();
+    const cacheEntry = manager.cache.get(actorKey);
+    assert.ok(cacheEntry, "cache entry should be stored for the actor");
+    assert.equal(cacheEntry.items.length, 1, "cache should retain canonical items");
+    assert.equal(cacheEntry.items[0]?.value, "cached-pointer");
+    assert.equal(cacheEntry.snapshotId, result.snapshotId);
+    assert.deepStrictEqual(cacheEntry.items, result.items);
+
+    const storage = manager.getStorage();
+    assert.ok(storage.actors[actorKey], "storage should persist the cache entry");
+    assert.equal(storage.actors[actorKey].snapshotId, result.snapshotId);
+    assert.equal(storage.actors[actorKey].items.length, 1);
+
+    const fingerprint = manager.fingerprints.get(actorKey);
+    assert.ok(fingerprint, "fingerprint cache should be populated");
+    assert.equal(fingerprint, cacheEntry.fingerprint);
   } finally {
     manager.clear();
   }

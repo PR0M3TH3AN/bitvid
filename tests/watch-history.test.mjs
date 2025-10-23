@@ -17,7 +17,10 @@ const {
   getWatchHistoryV2Enabled,
   setWatchHistoryV2Enabled,
 } = await import("../js/constants.js");
-const { nostrClient } = await import("../js/nostr.js");
+const { nostrClient, setActiveSigner, getActiveSigner, clearActiveSigner } = await import(
+  "../js/nostr.js",
+);
+const { rememberNostrTools } = await import("../js/nostr/toolkit.js");
 const { normalizeActorKey } = await import("../js/nostr/watchHistory.js");
 const { watchHistoryService } = await import("../js/watchHistoryService.js");
 const { buildHistoryCard } = await import("../js/historyView.js");
@@ -39,6 +42,10 @@ setWatchHistoryV2Enabled(true);
 
 const originalWindowNostr = window.nostr;
 const originalNostrTools = window.NostrTools || {};
+const originalWatchHistoryEnsureTools =
+  nostrClient.watchHistory?.deps?.ensureNostrTools || null;
+const originalWatchHistoryGetCachedTools =
+  nostrClient.watchHistory?.deps?.getCachedNostrTools || null;
 const originalPool = nostrClient.pool;
 const originalRelays = Array.isArray(nostrClient.relays)
   ? [...nostrClient.relays]
@@ -302,19 +309,30 @@ nostrClient.relays = ["wss://relay.test"];
 nostrClient.readRelays = ["wss://relay.test"];
 nostrClient.writeRelays = ["wss://relay.test"];
 
-function installSessionCrypto({ privateKey }) {
+async function installSessionCrypto({ privateKey }) {
   const original = window.NostrTools || {};
   let encryptCalls = 0;
   let decryptCalls = 0;
+  const { createHash, randomBytes } = await import("node:crypto");
+  const deriveHex = (input) =>
+    createHash("sha256").update(String(input ?? ""), "utf8").digest("hex");
+  const previousEnsure =
+    nostrClient.watchHistory?.deps?.ensureNostrTools || null;
+  const previousGetCached =
+    nostrClient.watchHistory?.deps?.getCachedNostrTools || null;
   window.NostrTools = {
     ...original,
+    generatePrivateKey: () => randomBytes(32).toString("hex"),
+    getPublicKey: (secret) => {
+      const normalized = typeof secret === "string" ? secret.trim() : "";
+      if (!normalized) {
+        throw new Error("missing-secret");
+      }
+      return deriveHex(`pub:${normalized}`);
+    },
     getEventHash: (event) =>
       `hash-${event.kind}-${event.created_at}-${event.tags?.length || 0}`,
-    signEvent: (event, key) => ({
-      ...event,
-      id: `signed-${event.kind}-${event.created_at}-${event.tags?.length || 0}`,
-      sig: `sig-${key}`,
-    }),
+    signEvent: (_event, key) => `sig-${key}`,
     nip04: {
       ...(original.nip04 || {}),
       encrypt: async (secret, pub, plaintext) => {
@@ -333,9 +351,28 @@ function installSessionCrypto({ privateKey }) {
       },
     },
   };
+  rememberNostrTools(window.NostrTools);
+  globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__ = window.NostrTools;
+  globalThis.nostrToolsReady = Promise.resolve(window.NostrTools);
+  if (nostrClient.watchHistory?.deps) {
+    nostrClient.watchHistory.deps.ensureNostrTools = async () => window.NostrTools;
+    nostrClient.watchHistory.deps.getCachedNostrTools = () => window.NostrTools;
+  }
   return {
     restore() {
       window.NostrTools = original;
+      if (nostrClient.watchHistory?.deps) {
+        if (previousEnsure) {
+          nostrClient.watchHistory.deps.ensureNostrTools = previousEnsure;
+        } else {
+          delete nostrClient.watchHistory.deps.ensureNostrTools;
+        }
+        if (previousGetCached) {
+          nostrClient.watchHistory.deps.getCachedNostrTools = previousGetCached;
+        } else {
+          delete nostrClient.watchHistory.deps.getCachedNostrTools;
+        }
+      }
     },
     getEncryptCalls: () => encryptCalls,
     getDecryptCalls: () => decryptCalls,
@@ -396,8 +433,24 @@ function installExtensionCrypto({ actor }) {
       },
     },
   };
+  rememberNostrTools(window.NostrTools);
+  globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__ = window.NostrTools;
+  globalThis.nostrToolsReady = Promise.resolve(window.NostrTools);
+  const previousSigner = getActiveSigner();
+  setActiveSigner({
+    type: "extension",
+    pubkey: actor,
+    signEvent: window.nostr.signEvent,
+    nip04Encrypt: window.nostr.nip04.encrypt,
+    nip04Decrypt: window.nostr.nip04.decrypt,
+  });
   return {
     restore() {
+      if (previousSigner) {
+        setActiveSigner(previousSigner);
+      } else {
+        clearActiveSigner();
+      }
       window.nostr = originalNostr;
       window.NostrTools = originalTools;
     },
@@ -644,7 +697,7 @@ async function testFetchWatchHistoryExtensionDecryptsHexAndNpub() {
   const runVariant = async (label, actorInput, pubkeyInput) => {
     await publishEvents();
 
-    const sessionCrypto = installSessionCrypto({ privateKey: `session-${label}` });
+    const sessionCrypto = await installSessionCrypto({ privateKey: `session-${label}` });
     const extensionCrypto = installExtensionCrypto({ actor: actorHex });
 
     const previousEnsure = nostrClient.ensureSessionActor;
@@ -727,7 +780,7 @@ async function testPublishSnapshotCanonicalizationAndChunking() {
   poolHarness.setResolver(() => ({ ok: true }));
 
   const actor = "session-pubkey";
-  const restoreCrypto = installSessionCrypto({ privateKey: "session-priv" });
+  const restoreCrypto = await installSessionCrypto({ privateKey: "session-priv" });
 
   const originalEnsure = nostrClient.ensureSessionActor;
   const originalSession = nostrClient.sessionActor;
@@ -755,6 +808,9 @@ async function testPublishSnapshotCanonicalizationAndChunking() {
       { tag: ["a", "30023:pub:episode", "wss://relay.two"] },
       { type: "e", value: "pointer-small", watchedAt: 80 },
     ];
+
+    const { getCachedNostrTools } = await import("../js/nostr/toolkit.js");
+    getCachedNostrTools();
 
     const firstResult = await nostrClient.publishWatchHistorySnapshot(rawItems, {
       actorPubkey: actor,
@@ -890,7 +946,7 @@ async function testPublishSnapshotUsesExtensionCrypto() {
   poolHarness.setResolver(() => ({ ok: true }));
 
   const actor = "ext-pubkey";
-  const sessionRestore = installSessionCrypto({ privateKey: "session-priv" });
+  const sessionRestore = await installSessionCrypto({ privateKey: "session-priv" });
   const extension = installExtensionCrypto({ actor });
   const originalEnsure = nostrClient.ensureSessionActor;
   const originalSession = nostrClient.sessionActor;
@@ -1013,7 +1069,7 @@ async function testPublishSnapshotFailureRetry() {
   nostrClient.watchHistoryLastCreatedAt = 0;
 
   const actor = "retry-actor";
-  const restoreCrypto = installSessionCrypto({ privateKey: "retry-priv" });
+  const restoreCrypto = await installSessionCrypto({ privateKey: "retry-priv" });
   const originalEnsure = nostrClient.ensureSessionActor;
   const originalSession = nostrClient.sessionActor;
   const originalPub = nostrClient.pubkey;
@@ -1070,7 +1126,7 @@ async function testWatchHistoryPartialRelayRetry() {
   nostrClient.watchHistoryLastCreatedAt = 0;
 
   const actor = "partial-actor";
-  const restoreCrypto = installSessionCrypto({ privateKey: "partial-priv" });
+  const restoreCrypto = await installSessionCrypto({ privateKey: "partial-priv" });
   const originalEnsure = nostrClient.ensureSessionActor;
   const originalSession = nostrClient.sessionActor;
   const originalPub = nostrClient.pubkey;
@@ -1270,10 +1326,11 @@ async function testWatchHistoryPartialRelayRetry() {
 }
 
 async function testResolveWatchHistoryBatchingWindow() {
-  const actor = "batch-window-actor";
+  const actor = "b".repeat(64);
   const originalEnsure = nostrClient.ensureSessionActor;
   const originalPub = nostrClient.pubkey;
   const originalFetch = nostrClient.fetchWatchHistory;
+  const originalManagerFetch = nostrClient.watchHistory.fetch;
   const originalCache = nostrClient.watchHistoryCache;
   const originalStorage = nostrClient.watchHistoryStorage;
 
@@ -1289,11 +1346,13 @@ async function testResolveWatchHistoryBatchingWindow() {
       watchedAt: 1_700_100_000 + index,
     }));
 
-    nostrClient.fetchWatchHistory = async () => ({
+    const fetchResult = {
       items: syntheticItems.map((item) => ({ ...item })),
       snapshotId: "batch-snapshot",
       pointerEvent: null,
-    });
+    };
+    nostrClient.fetchWatchHistory = async () => fetchResult;
+    nostrClient.watchHistory.fetch = async () => fetchResult;
 
     const resolved = await nostrClient.resolveWatchHistory(actor, {
       forceRefresh: true,
@@ -1332,6 +1391,7 @@ async function testResolveWatchHistoryBatchingWindow() {
     nostrClient.ensureSessionActor = originalEnsure;
     nostrClient.pubkey = originalPub;
     nostrClient.fetchWatchHistory = originalFetch;
+    nostrClient.watchHistory.fetch = originalManagerFetch;
     nostrClient.watchHistoryCache = originalCache;
     nostrClient.watchHistoryStorage = originalStorage;
   }
@@ -1351,7 +1411,7 @@ async function testWatchHistoryServiceIntegration() {
     infoHash: "89abcdef0123456789abcdef0123456789abcdef",
     legacyInfoHash: "89abcdef0123456789abcdef0123456789abcdef",
   };
-  const restoreCrypto = installSessionCrypto({ privateKey: "service-priv" });
+  const restoreCrypto = await installSessionCrypto({ privateKey: "service-priv" });
   const originalEnsure = nostrClient.ensureSessionActor;
   const originalSession = nostrClient.sessionActor;
   const originalPub = nostrClient.pubkey;
@@ -2143,6 +2203,20 @@ console.log("watch-history.test.mjs completed successfully");
 
 window.nostr = originalWindowNostr;
 window.NostrTools = originalNostrTools;
+if (nostrClient.watchHistory?.deps) {
+  if (originalWatchHistoryEnsureTools) {
+    nostrClient.watchHistory.deps.ensureNostrTools =
+      originalWatchHistoryEnsureTools;
+  } else {
+    delete nostrClient.watchHistory.deps.ensureNostrTools;
+  }
+  if (originalWatchHistoryGetCachedTools) {
+    nostrClient.watchHistory.deps.getCachedNostrTools =
+      originalWatchHistoryGetCachedTools;
+  } else {
+    delete nostrClient.watchHistory.deps.getCachedNostrTools;
+  }
+}
 nostrClient.pool = originalPool;
 nostrClient.relays = originalRelays;
 nostrClient.readRelays = originalReadRelays;
