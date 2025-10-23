@@ -17,6 +17,9 @@ bitvid is follow-centric. Your Home feed comes from people you follow (F1). Disc
 - **Lists**: NIP-51 (mute list 10000, categorized people 30000, bookmarks 30001).
 - **Replies/threads**: NIP-10 (comments).
 - **Counts**: NIP-45 (relay COUNT; optional fallbacks).
+- **View metrics**: [`js/nostr/viewEventBindings.js`](../../js/nostr/viewEventBindings.js) wraps the shared client so moderation
+  toggles hit the same record/list/subscribe/count helpers that enforce our NIP-71/NIP-78 guard rails when relays disable optional
+  methods.
 
 ## Runtime flow (blur, hide, override)
 - [`ModerationService`](../../js/services/moderationService.js) orchestrates ingest and scoring. Review the service for the trusted-report math and helper entry points.
