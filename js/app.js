@@ -2081,12 +2081,6 @@ class Application {
       return;
     }
 
-    const pointer = this.currentVideoPointer;
-    if (!pointer) {
-      this.showError("Reactions are unavailable for this video.");
-      return;
-    }
-
     const requestedReaction =
       typeof detail.reaction === "string" ? detail.reaction : "";
     const normalizedReaction =
@@ -2101,6 +2095,17 @@ class Application {
     }
 
     const previousReaction = this.modalReactionState?.userReaction || "";
+    const pointer = this.currentVideoPointer;
+    const pointerKey = this.currentVideoPointerKey || pointerArrayToKey(pointer);
+    if (!pointer || !pointerKey) {
+      if (this.videoModal) {
+        this.videoModal.setUserReaction(previousReaction);
+      }
+      devLogger.info(
+        "[reaction] Ignoring reaction request until modal pointer is available.",
+      );
+      return;
+    }
     if (normalizedReaction === previousReaction) {
       return;
     }
@@ -2125,6 +2130,7 @@ class Application {
         content: normalizedReaction,
         video: this.currentVideo,
         currentVideoPubkey: this.currentVideo?.pubkey,
+        pointerKey,
       });
 
       if (!result?.ok) {
