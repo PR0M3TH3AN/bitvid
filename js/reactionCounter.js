@@ -218,6 +218,75 @@ function notifyHandlers(key) {
   }
 }
 
+function subscribeToPointer(pointerInput, handler) {
+  if (typeof handler !== "function") {
+    return () => {};
+  }
+
+  const canonical = canonicalizePointerForState(pointerInput);
+  if (!canonical) {
+    return () => {};
+  }
+
+  const { key, pointer } = canonical;
+  const state = ensurePointerState(key, pointer);
+  let handlers = pointerHandlers.get(key);
+  if (!handlers) {
+    handlers = new Set();
+    pointerHandlers.set(key, handlers);
+  }
+  handlers.add(handler);
+
+  if (state) {
+    try {
+      handler(snapshotState(state));
+    } catch (error) {
+      userLogger.warn("[reactionCounter] Reaction handler threw:", error);
+    }
+  }
+
+  return () => {
+    unsubscribeFromPointer(pointer, handler);
+  };
+}
+
+function unsubscribeFromPointer(pointerInput, handler) {
+  const canonical = canonicalizePointerForState(pointerInput);
+  if (!canonical) {
+    return;
+  }
+
+  const { key } = canonical;
+  const handlers = pointerHandlers.get(key);
+  if (!handlers) {
+    return;
+  }
+
+  if (handler && typeof handler === "function") {
+    handlers.delete(handler);
+  } else {
+    handlers.clear();
+  }
+
+  if (handlers.size === 0) {
+    pointerHandlers.delete(key);
+  }
+}
+
+function getPointerSnapshot(pointerInput) {
+  const canonical = canonicalizePointerForState(pointerInput);
+  if (!canonical) {
+    return null;
+  }
+
+  const state = pointerStates.get(canonical.key);
+  if (!state) {
+    return null;
+  }
+
+  return snapshotState(state);
+}
+
 export function ingestLocalReaction({ event, pointer }) {
   if (!event || !pointer) {
     return;
@@ -353,5 +422,13 @@ export const reactionCounter = {
 };
 
 reactionCounter.ingestLocalReaction = ingestLocalReaction;
+reactionCounter.subscribe = subscribeToPointer;
+reactionCounter.unsubscribe = unsubscribeFromPointer;
+reactionCounter.getSnapshot = getPointerSnapshot;
 
 export default reactionCounter;
+export {
+  subscribeToPointer as subscribeToReactions,
+  unsubscribeFromPointer as unsubscribeFromReactions,
+  getPointerSnapshot as getReactionSnapshot,
+};

@@ -61,6 +61,24 @@ export class VideoModal {
     this.shareBtn = null;
     this.modalZapBtn = null;
     this.modalMoreBtn = null;
+    this.reactionButtons = {
+      "+": null,
+      "-": null,
+    };
+    this.reactionMeter = null;
+    this.reactionMeterFill = null;
+    this.reactionMeterLabel = null;
+    this.reactionMeterAssistive = null;
+    this.reactionCountLabels = {
+      "+": null,
+      "-": null,
+    };
+    this.reactionState = {
+      counts: { "+": 0, "-": 0 },
+      total: 0,
+      userReaction: "",
+    };
+    this.reactionNumberFormatter = null;
 
     this.modalAccessibility = null;
     this.modalNavScrollHandler = null;
@@ -104,6 +122,7 @@ export class VideoModal {
     this.handleShareRequest = this.handleShareRequest.bind(this);
     this.handleCreatorNavigation = this.handleCreatorNavigation.bind(this);
     this.handleModalMoreButtonClick = this.handleModalMoreButtonClick.bind(this);
+    this.handleReactionClick = this.handleReactionClick.bind(this);
 
     this.MODAL_LOADING_POSTER = "assets/gif/please-stand-by.gif";
   }
@@ -295,6 +314,22 @@ export class VideoModal {
     this.shareBtn = playerModal.querySelector("#shareBtn") || null;
     this.modalZapBtn = playerModal.querySelector("#modalZapBtn") || null;
     this.modalMoreBtn = playerModal.querySelector("#modalMoreBtn") || null;
+    this.reactionButtons["+"] =
+      playerModal.querySelector("#modalLikeBtn") || null;
+    this.reactionButtons["-"] =
+      playerModal.querySelector("#modalDislikeBtn") || null;
+    this.reactionMeter =
+      playerModal.querySelector("[data-reaction-meter]") || null;
+    this.reactionMeterFill =
+      playerModal.querySelector("[data-reaction-meter-fill]") || null;
+    this.reactionMeterLabel =
+      playerModal.querySelector("[data-reaction-meter-label]") || null;
+    this.reactionMeterAssistive =
+      playerModal.querySelector("[data-reaction-meter-sr]") || null;
+    this.reactionCountLabels["+"] =
+      playerModal.querySelector("[data-reaction-like-count]") || null;
+    this.reactionCountLabels["-"] =
+      playerModal.querySelector("[data-reaction-dislike-count]") || null;
 
     this.ambientCanvas = playerModal.querySelector("#ambientCanvas") || null;
 
@@ -321,6 +356,14 @@ export class VideoModal {
     this.modalZapDialogOpen = false;
     this.setupModalZapPopover();
     this.setupModalMorePopover();
+
+    Object.values(this.reactionButtons).forEach((button) => {
+      if (button) {
+        button.addEventListener("click", this.handleReactionClick);
+      }
+    });
+    this.syncReactionButtons();
+    this.updateReactionMeterDisplay();
 
     const closeButton = playerModal.querySelector("#closeModal");
     if (closeButton) {
@@ -912,11 +955,53 @@ export class VideoModal {
     }
   }
 
+  handleReactionClick(event) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+
+    const button = event?.currentTarget;
+    if (!button || typeof button !== "object") {
+      return;
+    }
+
+    if (button.disabled || button.getAttribute("aria-disabled") === "true") {
+      return;
+    }
+
+    const reactionValue =
+      typeof button.dataset?.reaction === "string"
+        ? button.dataset.reaction.trim()
+        : "";
+    const normalized =
+      reactionValue === "+"
+        ? "+"
+        : reactionValue === "-"
+          ? "-"
+          : "";
+
+    if (!normalized) {
+      return;
+    }
+
+    const currentReaction = this.reactionState?.userReaction || "";
+    if (normalized === currentReaction) {
+      return;
+    }
+
+    this.dispatch("video:reaction", {
+      video: this.activeVideo,
+      reaction: normalized,
+      previousReaction: currentReaction,
+    });
+  }
+
   open(video, options = {}) {
     this.activeVideo = video || null;
     if (!this.playerModal) {
       return;
     }
+
+    this.resetReactions();
 
     this.playerModal.classList.remove("hidden");
     this.playerModal.removeAttribute("hidden");
@@ -947,6 +1032,174 @@ export class VideoModal {
       this.modalMorePopover.close({ restoreFocus: false });
     }
     this.forceRemovePoster("close");
+  }
+
+  resetReactions() {
+    this.reactionState = {
+      counts: { "+": 0, "-": 0 },
+      total: 0,
+      userReaction: "",
+    };
+    this.syncReactionButtons();
+    this.updateReactionMeterDisplay();
+  }
+
+  setUserReaction(reaction) {
+    const normalized = reaction === "+" ? "+" : reaction === "-" ? "-" : "";
+    if (!this.reactionState) {
+      this.reactionState = {
+        counts: { "+": 0, "-": 0 },
+        total: 0,
+        userReaction: normalized,
+      };
+    } else {
+      this.reactionState.userReaction = normalized;
+    }
+    this.syncReactionButtons();
+  }
+
+  updateReactionSummary({ total, counts, userReaction } = {}) {
+    if (!this.reactionState) {
+      this.reactionState = {
+        counts: { "+": 0, "-": 0 },
+        total: 0,
+        userReaction: "",
+      };
+    }
+
+    if (counts && typeof counts === "object") {
+      const nextCounts = { ...this.reactionState.counts };
+      for (const [key, value] of Object.entries(counts)) {
+        nextCounts[key] = this.normalizeReactionCount(value);
+      }
+      this.reactionState.counts = nextCounts;
+    }
+
+    if (Number.isFinite(total)) {
+      this.reactionState.total = Math.max(0, Number(total));
+    } else if (counts && typeof counts === "object") {
+      let computedTotal = 0;
+      for (const value of Object.values(this.reactionState.counts)) {
+        computedTotal += this.normalizeReactionCount(value);
+      }
+      this.reactionState.total = computedTotal;
+    }
+
+    if (userReaction !== undefined) {
+      this.setUserReaction(userReaction);
+    } else {
+      this.syncReactionButtons();
+    }
+
+    this.updateReactionMeterDisplay();
+  }
+
+  syncReactionButtons() {
+    const current = this.reactionState?.userReaction || "";
+    const likeButton = this.reactionButtons?.["+"] || null;
+    const dislikeButton = this.reactionButtons?.["-"] || null;
+    if (likeButton) {
+      likeButton.setAttribute("aria-pressed", current === "+" ? "true" : "false");
+    }
+    if (dislikeButton) {
+      dislikeButton.setAttribute("aria-pressed", current === "-" ? "true" : "false");
+    }
+  }
+
+  updateReactionMeterDisplay() {
+    if (!this.reactionState) {
+      return;
+    }
+
+    const counts = this.reactionState.counts || {};
+    const likeCount = this.normalizeReactionCount(counts["+"]);
+    const dislikeCount = this.normalizeReactionCount(counts["-"]);
+    const totalReactions = likeCount + dislikeCount;
+    const likeRatio = totalReactions > 0
+      ? Math.round((likeCount / totalReactions) * 100)
+      : 0;
+
+    if (this.reactionCountLabels?.["+"]) {
+      this.reactionCountLabels["+"].textContent = this.formatReactionCount(
+        likeCount
+      );
+    }
+    if (this.reactionCountLabels?.["-"]) {
+      this.reactionCountLabels["-"].textContent = this.formatReactionCount(
+        dislikeCount
+      );
+    }
+
+    const meterLabel =
+      totalReactions > 0
+        ? `${likeRatio}% positive`
+        : "No reactions yet";
+    const assistiveLabel =
+      totalReactions > 0
+        ? `${likeRatio}% positive (${this.formatReactionCount(
+            likeCount
+          )} likes and ${this.formatReactionCount(dislikeCount)} dislikes)`
+        : "No reactions yet";
+
+    if (this.reactionMeter) {
+      this.reactionMeter.setAttribute("aria-valuenow", String(likeRatio));
+      this.reactionMeter.setAttribute("aria-valuetext", assistiveLabel);
+    }
+
+    if (this.reactionMeterLabel) {
+      this.reactionMeterLabel.textContent = meterLabel;
+    }
+
+    if (this.reactionMeterAssistive) {
+      this.reactionMeterAssistive.textContent = assistiveLabel;
+    }
+
+    if (this.reactionMeterFill) {
+      this.reactionMeterFill.style.inlineSize = `${likeRatio}%`;
+      this.reactionMeterFill.style.width = `${likeRatio}%`;
+    }
+  }
+
+  normalizeReactionCount(value) {
+    if (Number.isFinite(value)) {
+      return Math.max(0, Math.round(Number(value)));
+    }
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed)) : 0;
+  }
+
+  getReactionNumberFormatter() {
+    if (this.reactionNumberFormatter === false) {
+      return null;
+    }
+    if (this.reactionNumberFormatter) {
+      return this.reactionNumberFormatter;
+    }
+    try {
+      if (this.window?.Intl?.NumberFormat) {
+        this.reactionNumberFormatter = new this.window.Intl.NumberFormat();
+        return this.reactionNumberFormatter;
+      }
+    } catch (error) {
+      this.reactionNumberFormatter = false;
+      return null;
+    }
+    this.reactionNumberFormatter = false;
+    return null;
+  }
+
+  formatReactionCount(value) {
+    const numeric = Number.isFinite(value) ? Number(value) : Number(value || 0);
+    const safeValue = Number.isFinite(numeric) ? Math.max(0, Math.round(numeric)) : 0;
+    const formatter = this.getReactionNumberFormatter();
+    if (formatter) {
+      try {
+        return formatter.format(safeValue);
+      } catch (error) {
+        // fallback below
+      }
+    }
+    return String(safeValue);
   }
 
   applyLoadingPoster() {
