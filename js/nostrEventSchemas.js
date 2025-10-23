@@ -689,6 +689,8 @@ export function buildReactionEvent({
   pointerValue,
   pointerTag,
   pointerTags = [],
+  targetPointer = null,
+  targetAuthorPubkey = "",
   additionalTags = [],
   content = "",
 }) {
@@ -703,6 +705,93 @@ export function buildReactionEvent({
   normalizedPointerTags.forEach((tag) => {
     tags.push(tag);
   });
+
+  const resolvePointerDetails = (pointerCandidate) => {
+    if (!pointerCandidate) {
+      return null;
+    }
+
+    if (Array.isArray(pointerCandidate) && pointerCandidate.length >= 2) {
+      const [type, value, relay] = pointerCandidate;
+      const normalizedType = type === "a" ? "a" : type === "e" ? "e" : "";
+      const normalizedValue = typeof value === "string" ? value.trim() : "";
+      if (!normalizedType || !normalizedValue) {
+        return null;
+      }
+      const normalizedRelay =
+        typeof relay === "string" && relay.trim() ? relay.trim() : "";
+      return { type: normalizedType, value: normalizedValue, relay: normalizedRelay };
+    }
+
+    if (pointerCandidate && typeof pointerCandidate === "object") {
+      const { type, value, relay } = pointerCandidate;
+      const normalizedType = type === "a" ? "a" : type === "e" ? "e" : "";
+      const normalizedValue = typeof value === "string" ? value.trim() : "";
+      if (!normalizedType || !normalizedValue) {
+        return null;
+      }
+      const normalizedRelay =
+        typeof relay === "string" && relay.trim() ? relay.trim() : "";
+      return { type: normalizedType, value: normalizedValue, relay: normalizedRelay };
+    }
+
+    return null;
+  };
+
+  const pointerDetails = (() => {
+    const explicitPointer = resolvePointerDetails(targetPointer);
+    if (explicitPointer) {
+      return explicitPointer;
+    }
+
+    const pointerTagEntry = normalizedPointerTags.find(
+      (tag) => Array.isArray(tag) && tag.length >= 2 && (tag[0] === "a" || tag[0] === "e")
+    );
+    if (!pointerTagEntry) {
+      return null;
+    }
+
+    return resolvePointerDetails(pointerTagEntry);
+  })();
+
+  const resolvedRelay = pointerDetails?.relay || "";
+
+  const normalizedAuthorPubkey = (() => {
+    if (typeof targetAuthorPubkey === "string" && targetAuthorPubkey.trim()) {
+      return targetAuthorPubkey.trim();
+    }
+
+    if (pointerDetails?.type === "a" && pointerDetails.value) {
+      const segments = pointerDetails.value.split(":");
+      if (segments.length >= 2) {
+        const candidate = segments[1]?.trim();
+        if (candidate) {
+          return candidate;
+        }
+      }
+    }
+
+    return "";
+  })();
+
+  if (normalizedAuthorPubkey) {
+    const existingAuthorTag = tags.find(
+      (tag) => Array.isArray(tag) && tag[0] === "p" && tag[1] === normalizedAuthorPubkey
+    );
+    if (!existingAuthorTag) {
+      if (resolvedRelay) {
+        tags.push(["p", normalizedAuthorPubkey, resolvedRelay]);
+      } else {
+        tags.push(["p", normalizedAuthorPubkey]);
+      }
+    } else if (resolvedRelay) {
+      if (existingAuthorTag.length < 3) {
+        existingAuthorTag.push(resolvedRelay);
+      } else if (existingAuthorTag[2] !== resolvedRelay) {
+        existingAuthorTag[2] = resolvedRelay;
+      }
+    }
+  }
 
   if (Array.isArray(additionalTags)) {
     additionalTags.forEach((tag) => {
