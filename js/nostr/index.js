@@ -34,9 +34,12 @@ export {
   parseWatchHistoryContentWithFallback,
   isNip04EncryptedWatchHistoryEvent,
   watchHistoryHelpers,
+} from "./watchHistory.js";
+
+export {
   updateWatchHistoryList,
   removeWatchHistoryItem,
-} from "./watchHistory.js";
+} from "./watchHistoryBindings.js";
 
 export {
   deriveViewEventBucketIndex,
