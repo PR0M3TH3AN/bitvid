@@ -1123,6 +1123,9 @@ class SubscriptionsManager {
     };
 
     const listView = new VideoListView(listViewConfig);
+    if (typeof listView.setPopularTagsContainer === "function") {
+      listView.setPopularTagsContainer(null);
+    }
 
     listView.setPlaybackHandler((detail) => {
       if (!detail) {

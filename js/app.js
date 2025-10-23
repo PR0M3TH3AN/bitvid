@@ -887,6 +887,7 @@ class Application {
     this.currentVideoPointerKey = null;
     this.videoSubscription = this.nostrService.getVideoSubscription() || null;
     this.videoList = null;
+    this.videoListPopularTags = null;
     this.modalViewCountUnsub = null;
     this.modalReactionUnsub = null;
     this.modalReactionPointerKey = null;
@@ -1197,6 +1198,11 @@ class Application {
     }
 
     this.videoList = null;
+    if (this.videoListPopularTags) {
+      this.videoListPopularTags.textContent = "";
+      this.videoListPopularTags.hidden = true;
+    }
+    this.videoListPopularTags = null;
 
     if (this.mediaLoader && typeof this.mediaLoader.disconnect === "function") {
       this.mediaLoader.disconnect();
@@ -2902,6 +2908,11 @@ class Application {
 
     const target = container || document.getElementById("videoList");
     this.videoList = target || null;
+    const tagsRoot = document.getElementById("recentVideoTags");
+    this.videoListPopularTags = tagsRoot || null;
+    if (typeof this.videoListView.setPopularTagsContainer === "function") {
+      this.videoListView.setPopularTagsContainer(this.videoListPopularTags);
+    }
     this.videoListView.mount(this.videoList || null);
     return this.videoList;
   }
@@ -2933,6 +2944,11 @@ class Application {
         : "Refreshing videos…";
 
     this.videoList = isElement(container) ? container : null;
+    const tagsRoot = document.getElementById("recentVideoTags");
+    this.videoListPopularTags = isElement(tagsRoot) ? tagsRoot : null;
+    if (typeof this.videoListView.setPopularTagsContainer === "function") {
+      this.videoListView.setPopularTagsContainer(this.videoListPopularTags);
+    }
 
     if (this.videoList) {
       this.videoList.innerHTML = getSidebarLoadingMarkup(messageContext);
@@ -8831,6 +8847,11 @@ class Application {
     }
 
     this.videoList = null;
+    if (this.videoListPopularTags) {
+      this.videoListPopularTags.textContent = "";
+      this.videoListPopularTags.hidden = true;
+    }
+    this.videoListPopularTags = null;
   }
 
   shareActiveVideo() {
