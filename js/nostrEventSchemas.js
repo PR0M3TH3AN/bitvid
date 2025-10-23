@@ -16,6 +16,7 @@ export const NOTE_TYPES = Object.freeze({
   REPOST: "repost",
   RELAY_LIST: "relayList",
   VIEW_EVENT: "viewEvent",
+  VIDEO_REACTION: "videoReaction",
   WATCH_HISTORY_INDEX: "watchHistoryIndex",
   WATCH_HISTORY_CHUNK: "watchHistoryChunk",
   SUBSCRIPTION_LIST: "subscriptionList",
@@ -192,6 +193,17 @@ const BASE_SCHEMAS = {
     content: {
       format: "text",
       description: "Optional plaintext content used for diagnostics.",
+    },
+  },
+  [NOTE_TYPES.VIDEO_REACTION]: {
+    type: NOTE_TYPES.VIDEO_REACTION,
+    label: "Reaction event",
+    kind: 7,
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      format: "text",
+      description:
+        "Reaction payload for the referenced event (e.g., '+', '-', or emoji).",
     },
   },
   [NOTE_TYPES.WATCH_HISTORY_INDEX]: {
@@ -382,6 +394,41 @@ function appendSchemaTags(tags, schema) {
     }
   });
   return tags;
+}
+
+function collectPointerTags(schema, {
+  pointerValue,
+  pointerTag,
+  pointerTags = [],
+} = {}) {
+  const normalized = [];
+
+  const pointerTagName = schema?.pointerTagName;
+  if (pointerValue && pointerTagName) {
+    const normalizedValue =
+      typeof pointerValue === "string" ? pointerValue : String(pointerValue);
+    if (normalizedValue) {
+      normalized.push([pointerTagName, normalizedValue]);
+    }
+  }
+
+  if (Array.isArray(pointerTag) && pointerTag.length >= 2) {
+    normalized.push(
+      pointerTag.map((value) => (typeof value === "string" ? value : String(value)))
+    );
+  }
+
+  if (Array.isArray(pointerTags)) {
+    pointerTags.forEach((tag) => {
+      if (Array.isArray(tag) && tag.length >= 2) {
+        normalized.push(
+          tag.map((value) => (typeof value === "string" ? value : String(value)))
+        );
+      }
+    });
+  }
+
+  return normalized;
 }
 
 export function buildVideoPostEvent({
@@ -590,25 +637,11 @@ export function buildViewEvent({
     tags.push([schema.topicTag.name, schema.topicTag.value]);
   }
 
-  const pointerTagName = schema?.pointerTagName;
-  if (pointerValue && pointerTagName) {
-    tags.push([pointerTagName, pointerValue]);
-  }
-  const normalizedPointerTags = [];
-  if (Array.isArray(pointerTag) && pointerTag.length >= 2) {
-    normalizedPointerTags.push(
-      pointerTag.map((value) => (typeof value === "string" ? value : String(value)))
-    );
-  }
-  if (Array.isArray(pointerTags)) {
-    pointerTags.forEach((tag) => {
-      if (Array.isArray(tag) && tag.length >= 2) {
-        normalizedPointerTags.push(
-          tag.map((value) => (typeof value === "string" ? value : String(value)))
-        );
-      }
-    });
-  }
+  const normalizedPointerTags = collectPointerTags(schema, {
+    pointerValue,
+    pointerTag,
+    pointerTags,
+  });
   normalizedPointerTags.forEach((tag) => {
     tags.push(tag);
   });
@@ -643,6 +676,48 @@ export function buildViewEvent({
 
   return {
     kind: schema?.kind ?? WATCH_HISTORY_KIND,
+    pubkey,
+    created_at,
+    tags,
+    content: resolvedContent,
+  };
+}
+
+export function buildReactionEvent({
+  pubkey,
+  created_at,
+  pointerValue,
+  pointerTag,
+  pointerTags = [],
+  additionalTags = [],
+  content = "",
+}) {
+  const schema = getNostrEventSchema(NOTE_TYPES.VIDEO_REACTION);
+  const tags = [];
+
+  const normalizedPointerTags = collectPointerTags(schema, {
+    pointerValue,
+    pointerTag,
+    pointerTags,
+  });
+  normalizedPointerTags.forEach((tag) => {
+    tags.push(tag);
+  });
+
+  if (Array.isArray(additionalTags)) {
+    additionalTags.forEach((tag) => {
+      if (Array.isArray(tag) && tag.length >= 2) {
+        tags.push(tag.map((value) => (typeof value === "string" ? value : String(value))));
+      }
+    });
+  }
+
+  appendSchemaTags(tags, schema);
+
+  const resolvedContent = ensureValidUtf8Content(content);
+
+  return {
+    kind: schema?.kind ?? 7,
     pubkey,
     created_at,
     tags,

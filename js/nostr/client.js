@@ -52,6 +52,7 @@ import {
   publishViewEvent as publishViewEventForClient,
   recordVideoView as recordVideoViewForClient,
 } from "./viewEvents.js";
+import { publishVideoReaction as publishVideoReactionForClient } from "./reactionEvents.js";
 import {
   publishEventToRelay,
   publishEventToRelays,
@@ -2740,6 +2741,15 @@ export class NostrClient {
 
   async publishViewEvent(videoPointer, options = {}) {
     return publishViewEventForClient(this, videoPointer, options, {
+      resolveActiveSigner,
+      shouldRequestExtensionPermissions,
+      signEventWithPrivateKey,
+      DEFAULT_NIP07_PERMISSION_METHODS,
+    });
+  }
+
+  async publishVideoReaction(pointer, options = {}) {
+    return publishVideoReactionForClient(this, pointer, options, {
       resolveActiveSigner,
       shouldRequestExtensionPermissions,
       signEventWithPrivateKey,
