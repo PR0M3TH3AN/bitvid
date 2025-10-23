@@ -3,6 +3,15 @@ import { renderQrCode } from "../utils/qrcode.js";
 
 const noop = () => {};
 const SLOW_PROVIDER_DELAY_MS = 8_000;
+const MODAL_CLOSE_POLL_INTERVAL_MS = 200;
+
+function createError(code, message) {
+  const error = new Error(message);
+  if (code) {
+    error.code = code;
+  }
+  return error;
+}
 
 function toArray(input) {
   if (!input) {
@@ -247,6 +256,12 @@ export default class LoginModalController {
         typeof helpers.describeLoginError === "function"
           ? helpers.describeLoginError
           : (_, fallbackMessage) => fallbackMessage,
+      openModal:
+        typeof helpers.openModal === "function" ? helpers.openModal : null,
+      prepareModal:
+        typeof helpers.prepareModal === "function" ? helpers.prepareModal : null,
+      setModalState:
+        typeof helpers.setModalState === "function" ? helpers.setModalState : null,
     };
 
     this.providerContainer = null;
@@ -267,6 +282,8 @@ export default class LoginModalController {
     this.lastRemoteSignerStatus = null;
     this.nextRequestLoginOptions = null;
     this.nextRequestLoginOptionsResolver = null;
+    this.pendingTask = null;
+    this.modalPrepared = false;
 
     this.initializeRemoteSignerStatus();
     this.initialized = false;
@@ -297,6 +314,309 @@ export default class LoginModalController {
 
     this.providerContainer.addEventListener("click", this.boundClickHandler);
     this.initialized = true;
+  }
+
+  ensureModalPrepared() {
+    if (!(this.modalElement instanceof HTMLElement)) {
+      return null;
+    }
+
+    if (!this.modalPrepared && typeof this.helpers.prepareModal === "function") {
+      try {
+        const prepared = this.helpers.prepareModal(this.modalElement);
+        if (prepared instanceof HTMLElement) {
+          this.modalElement = prepared;
+        }
+      } catch (error) {
+        devLogger.warn(
+          "[LoginModalController] Failed to prepare login modal for accessibility:",
+          error,
+        );
+      }
+    }
+
+    this.modalPrepared = true;
+    return this.modalElement instanceof HTMLElement ? this.modalElement : null;
+  }
+
+  isModalOpen() {
+    const modal = this.modalElement;
+    if (!(modal instanceof HTMLElement)) {
+      return false;
+    }
+
+    if (typeof modal.dataset?.open === "string") {
+      return modal.dataset.open === "true";
+    }
+
+    const attr = modal.getAttribute("data-open");
+    if (typeof attr === "string") {
+      return attr === "true";
+    }
+
+    return !modal.classList.contains("hidden");
+  }
+
+  openModal({ triggerElement } = {}) {
+    const modal = this.ensureModalPrepared();
+    if (!(modal instanceof HTMLElement)) {
+      throw this.createModalUnavailableError();
+    }
+
+    if (typeof this.helpers.openModal === "function") {
+      try {
+        const result = this.helpers.openModal({
+          modal,
+          triggerElement,
+        });
+        return result !== false;
+      } catch (error) {
+        devLogger.warn(
+          "[LoginModalController] Failed to open login modal via helper:",
+          error,
+        );
+        return false;
+      }
+    }
+
+    try {
+      modal.classList.remove("hidden");
+      modal.setAttribute("data-open", "true");
+      return true;
+    } catch (error) {
+      devLogger.warn(
+        "[LoginModalController] Failed to toggle login modal visibility:",
+        error,
+      );
+    }
+
+    return false;
+  }
+
+  createModalUnavailableError() {
+    return createError("modal-unavailable", "Login modal unavailable.");
+  }
+
+  createLoginInProgressError() {
+    return createError(
+      "login-in-progress",
+      "Another login operation is already in progress.",
+    );
+  }
+
+  createModalOpenFailedError() {
+    return createError("modal-open-failed", "Unable to open login modal.");
+  }
+
+  createCancellationError() {
+    return createError("login-cancelled", "Login cancelled.");
+  }
+
+  startModalCloseWatch(task) {
+    const modal = this.modalElement;
+    if (!(modal instanceof HTMLElement)) {
+      return;
+    }
+
+    const handleClose = () => {
+      if (task.settled) {
+        return;
+      }
+      task.reject(this.createCancellationError());
+    };
+
+    if (typeof MutationObserver === "function") {
+      try {
+        const observer = new MutationObserver(() => {
+          if (!this.isModalOpen()) {
+            handleClose();
+          }
+        });
+        observer.observe(modal, {
+          attributes: true,
+          attributeFilter: ["data-open", "class"],
+        });
+        task.observer = observer;
+        return;
+      } catch (error) {
+        devLogger.warn(
+          "[LoginModalController] Failed to observe login modal close state:",
+          error,
+        );
+      }
+    }
+
+    if (
+      this.window &&
+      typeof this.window.setInterval === "function" &&
+      typeof this.window.clearInterval === "function"
+    ) {
+      const timerId = this.window.setInterval(() => {
+        if (!this.isModalOpen()) {
+          handleClose();
+        }
+      }, MODAL_CLOSE_POLL_INTERVAL_MS);
+      task.pollTimer = timerId;
+    }
+  }
+
+  stopModalCloseWatch(task) {
+    if (!task) {
+      return;
+    }
+
+    if (task.observer && typeof task.observer.disconnect === "function") {
+      try {
+        task.observer.disconnect();
+      } catch (error) {
+        devLogger.warn(
+          "[LoginModalController] Failed to disconnect login modal observer:",
+          error,
+        );
+      }
+    }
+
+    task.observer = null;
+
+    if (
+      typeof task.pollTimer === "number" &&
+      this.window &&
+      typeof this.window.clearInterval === "function"
+    ) {
+      try {
+        this.window.clearInterval(task.pollTimer);
+      } catch (error) {
+        devLogger.warn(
+          "[LoginModalController] Failed to clear login modal polling timer:",
+          error,
+        );
+      }
+    }
+
+    task.pollTimer = null;
+  }
+
+  createPendingModalTask(type, { triggerElement } = {}) {
+    const modal = this.ensureModalPrepared();
+    if (!(modal instanceof HTMLElement)) {
+      throw this.createModalUnavailableError();
+    }
+
+    if (this.pendingTask) {
+      throw this.createLoginInProgressError();
+    }
+
+    return new Promise((resolve, reject) => {
+      const task = {
+        type,
+        resolve: null,
+        reject: null,
+        settled: false,
+        observer: null,
+        pollTimer: null,
+      };
+
+      const finalize = (handler) => (value) => {
+        if (task.settled) {
+          return;
+        }
+        task.settled = true;
+        this.stopModalCloseWatch(task);
+        if (this.pendingTask === task) {
+          this.pendingTask = null;
+        }
+        if (
+          typeof this.helpers.setModalState === "function" &&
+          !this.isModalOpen()
+        ) {
+          try {
+            this.helpers.setModalState("login", false);
+          } catch (error) {
+            devLogger.warn(
+              "[LoginModalController] Failed to synchronize login modal state:",
+              error,
+            );
+          }
+        }
+        handler(value);
+      };
+
+      task.resolve = finalize((value) => resolve(value));
+      task.reject = finalize((errorValue) => reject(errorValue));
+
+      this.pendingTask = task;
+
+      this.startModalCloseWatch(task);
+
+      let opened = false;
+      try {
+        opened = this.openModal({ triggerElement });
+      } catch (error) {
+        devLogger.warn(
+          "[LoginModalController] Opening login modal threw:",
+          error,
+        );
+      }
+
+      if (!opened && !this.isModalOpen()) {
+        task.reject(this.createModalOpenFailedError());
+        return;
+      }
+
+      if (typeof this.helpers.setModalState === "function") {
+        try {
+          this.helpers.setModalState("login", true);
+        } catch (error) {
+          devLogger.warn(
+            "[LoginModalController] Failed to mark login modal as open in app state:",
+            error,
+          );
+        }
+      }
+    });
+  }
+
+  resolvePendingTask(result, { type } = {}) {
+    const task = this.pendingTask;
+    if (!task || (type && task.type !== type) || typeof task.resolve !== "function") {
+      return false;
+    }
+    task.resolve(result);
+    return true;
+  }
+
+  rejectPendingTask(error, { type } = {}) {
+    const task = this.pendingTask;
+    if (!task || (type && task.type !== type) || typeof task.reject !== "function") {
+      return false;
+    }
+    task.reject(error);
+    return true;
+  }
+
+  requestAddProfileLogin({ triggerElement, requestOptions } = {}) {
+    const options = {
+      allowAccountSelection: true,
+      autoApply: false,
+      ...(requestOptions && typeof requestOptions === "object"
+        ? requestOptions
+        : {}),
+    };
+
+    let promise;
+
+    try {
+      promise = this.createPendingModalTask("add-profile", { triggerElement });
+    } catch (error) {
+      this.setNextRequestLoginOptions(null);
+      throw error;
+    }
+
+    this.setNextRequestLoginOptions(() => ({ ...options }));
+
+    return promise.finally(() => {
+      this.setNextRequestLoginOptions(null);
+    });
   }
 
   getNostrClient() {
@@ -1742,14 +2062,25 @@ export default class LoginModalController {
         result?.pubkey,
       );
 
+      const consumed = this.resolvePendingTask(result, { type: "add-profile" });
+      const shouldClose =
+        result &&
+        typeof result === "object" &&
+        typeof result.pubkey === "string" &&
+        result.pubkey.trim();
+
+      if (shouldClose) {
+        this.helpers.closeModal();
+      }
+
+      if (consumed) {
+        return;
+      }
+
       await safeInvokeAsync(this.callbacks.onLoginSuccess, {
         provider: entry.provider.source || entry.provider,
         result,
       });
-
-      if (result && typeof result.pubkey === "string" && result.pubkey.trim()) {
-        this.helpers.closeModal();
-      }
     } catch (error) {
       devLogger.error(
         `[LoginModalController] Login failed for ${providerId}:`,
@@ -1770,9 +2101,35 @@ export default class LoginModalController {
         );
       }
 
+      const rejectionError =
+        error instanceof Error
+          ? error
+          : new Error(message || "Failed to login. Please try again.");
+
+      if (message && message !== rejectionError.message) {
+        rejectionError.message = message;
+      }
+
+      if (
+        error &&
+        typeof error === "object" &&
+        typeof error.code === "string" &&
+        !rejectionError.code
+      ) {
+        rejectionError.code = error.code;
+      }
+
+      const consumed = this.rejectPendingTask(rejectionError, {
+        type: "add-profile",
+      });
+
+      if (consumed) {
+        return;
+      }
+
       await safeInvokeAsync(this.callbacks.onLoginError, {
         provider: entry.provider.source || entry.provider,
-        error,
+        error: rejectionError,
         message,
       });
     } finally {
@@ -1836,6 +2193,19 @@ export default class LoginModalController {
   }
 
   destroy() {
+    if (this.pendingTask && typeof this.pendingTask.reject === "function") {
+      try {
+        this.pendingTask.reject(this.createCancellationError());
+      } catch (error) {
+        devLogger.warn(
+          "[LoginModalController] Failed to cancel pending login task during destroy:",
+          error,
+        );
+      }
+    }
+
+    this.pendingTask = null;
+
     if (this.providerContainer && this.boundClickHandler) {
       this.providerContainer.removeEventListener("click", this.boundClickHandler);
     }

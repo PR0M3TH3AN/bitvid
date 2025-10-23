@@ -25,6 +25,12 @@ const SECRET_PLACEHOLDER = "*****";
 const DEFAULT_MAX_WALLET_DEFAULT_ZAP = 100000000;
 const DEFAULT_SAVED_PROFILE_LABEL = "Saved profile";
 
+const ADD_PROFILE_CANCELLATION_CODES = new Set([
+  "login-cancelled",
+  "user-cancelled",
+  "modal-dismissed",
+]);
+
 const PROVIDER_BADGE_BASE_CLASS =
   "text-3xs font-semibold uppercase tracking-extra-wide";
 const PROVIDER_BADGE_VARIANT_CLASS_MAP = Object.freeze({
@@ -153,6 +159,25 @@ const SERVICE_CONTRACT = [
     description:
       "Formats npub strings for display using the canonical short representation (npubXXXX…XXXX).",
     fallback: () => (value) => (typeof value === "string" ? value : ""),
+  },
+  {
+    key: "requestAddProfileLogin",
+    type: "function",
+    description:
+      "Opens the login modal and resolves with the authentication result for the add-profile flow.",
+    fallback: () => async () => {
+      throw new Error("Login service unavailable.");
+    },
+  },
+  {
+    key: "describeLoginError",
+    type: "function",
+    description:
+      "Maps authentication errors to human-readable strings for add-profile messaging.",
+    fallback: () => (_, fallbackMessage) =>
+      typeof fallbackMessage === "string" && fallbackMessage.trim()
+        ? fallbackMessage.trim()
+        : "Failed to login. Please try again.",
   },
   {
     key: "getProfileCacheEntry",
@@ -766,6 +791,14 @@ export class ProfileModalController {
     this.describeAdminErrorService = this.services.describeAdminError;
     this.describeNotificationErrorService =
       this.services.describeNotificationError;
+    this.describeLoginErrorService = this.services.describeLoginError;
+    this.requestAddProfileLoginService = this.services.requestAddProfileLogin;
+    this.log =
+      typeof this.services.log === "function"
+        ? this.services.log
+        : (...args) => {
+            devLogger.log(...args);
+          };
 
     this.callbacks = {
       onClose: callbacks.onClose || noop,
@@ -920,6 +953,7 @@ export class ProfileModalController {
     this.lastMobileViewState = "menu";
     this.setActivePane(this.getActivePane());
     this.setWalletPaneBusy(this.isWalletBusy());
+    this.addAccountButtonState = null;
     this.adminEmptyMessages = new Map();
   }
 
@@ -1223,7 +1257,7 @@ export class ProfileModalController {
 
     if (this.addAccountButton instanceof HTMLElement) {
       this.addAccountButton.addEventListener("click", () => {
-        this.callbacks.onAddAccount(this);
+        void this.handleAddAccountRequest();
       });
     }
 
@@ -1379,6 +1413,211 @@ export class ProfileModalController {
           void this.handleAdminListMutation("blacklist", "add");
         }
       });
+    }
+  }
+
+  resolveAddAccountLoginError(error, fallbackMessage = "") {
+    const describe = this.describeLoginErrorService;
+    const fallback =
+      typeof fallbackMessage === "string" && fallbackMessage.trim()
+        ? fallbackMessage.trim()
+        : "Couldn't add that profile. Please try again.";
+
+    if (typeof describe === "function") {
+      try {
+        const message = describe(error, fallback);
+        if (typeof message === "string" && message.trim()) {
+          return message.trim();
+        }
+      } catch (describeError) {
+        devLogger.warn(
+          "[ProfileModalController] describeLoginError service threw:",
+          describeError,
+        );
+      }
+    }
+
+    return fallback;
+  }
+
+  setAddAccountLoading(isLoading) {
+    if (!(this.addAccountButton instanceof HTMLElement)) {
+      return;
+    }
+
+    const button = this.addAccountButton;
+    const titleEl = button.querySelector("[data-profile-add-title]");
+    const hintEl = button.querySelector("[data-profile-add-hint]");
+
+    if (isLoading) {
+      this.addAccountButtonState = {
+        originalDisabled: button.disabled,
+        originalAriaLabel: button.getAttribute("aria-label"),
+        titleElement: titleEl instanceof HTMLElement ? titleEl : null,
+        hintElement: hintEl instanceof HTMLElement ? hintEl : null,
+        originalTitle:
+          titleEl instanceof HTMLElement ? titleEl.textContent || "" : "",
+        originalHint:
+          hintEl instanceof HTMLElement ? hintEl.textContent || "" : "",
+      };
+
+      button.disabled = true;
+      button.dataset.state = "loading";
+      button.setAttribute("aria-busy", "true");
+      button.setAttribute("aria-disabled", "true");
+
+      if (this.addAccountButtonState.titleElement) {
+        this.addAccountButtonState.titleElement.textContent = "Connecting...";
+      }
+
+      if (this.addAccountButtonState.hintElement) {
+        this.addAccountButtonState.hintElement.textContent =
+          "Complete the login prompt from your provider.";
+      }
+
+      button.setAttribute(
+        "aria-label",
+        "Connecting to your Nostr account",
+      );
+
+      return;
+    }
+
+    const state = this.addAccountButtonState;
+
+    if (state) {
+      button.disabled = !!state.originalDisabled;
+      if (state.originalDisabled) {
+        button.setAttribute("aria-disabled", "true");
+      } else {
+        button.removeAttribute("aria-disabled");
+      }
+
+      if (state.titleElement) {
+        state.titleElement.textContent = state.originalTitle || "";
+      }
+
+      if (state.hintElement) {
+        state.hintElement.textContent = state.originalHint || "";
+      }
+
+      if (state.originalAriaLabel === null) {
+        button.removeAttribute("aria-label");
+      } else if (typeof state.originalAriaLabel === "string") {
+        button.setAttribute("aria-label", state.originalAriaLabel);
+      }
+    } else {
+      if (button.disabled) {
+        button.setAttribute("aria-disabled", "true");
+      } else {
+        button.removeAttribute("aria-disabled");
+      }
+    }
+
+    button.setAttribute("aria-busy", "false");
+    delete button.dataset.state;
+
+    this.addAccountButtonState = null;
+  }
+
+  isAddAccountCancellationError(error) {
+    if (!error || typeof error !== "object") {
+      return false;
+    }
+
+    const code =
+      typeof error.code === "string" && error.code.trim()
+        ? error.code.trim()
+        : "";
+
+    if (!code) {
+      return false;
+    }
+
+    return ADD_PROFILE_CANCELLATION_CODES.has(code);
+  }
+
+  async handleAddAccountRequest() {
+    if (!(this.addAccountButton instanceof HTMLElement)) {
+      return;
+    }
+
+    if (this.addAccountButton.dataset.state === "loading") {
+      return;
+    }
+
+    const requestLogin = this.requestAddProfileLoginService;
+    if (typeof requestLogin !== "function") {
+      devLogger.warn(
+        "[ProfileModalController] requestAddProfileLogin service unavailable.",
+      );
+      this.showError("Login is unavailable right now. Please try again later.");
+      return;
+    }
+
+    this.setAddAccountLoading(true);
+
+    try {
+      const loginResult = await requestLogin({
+        controller: this,
+        triggerElement: this.addAccountButton,
+      });
+
+      if (loginResult === undefined) {
+        return;
+      }
+
+      await this.invokeAddAccountCallback(loginResult);
+    } catch (error) {
+      if (this.isAddAccountCancellationError(error)) {
+        try {
+          this.log(
+            "[ProfileModalController] Add profile flow cancelled by user.",
+            error,
+          );
+        } catch (logError) {
+          devLogger.warn(
+            "[ProfileModalController] Failed to log cancellation event:",
+            logError,
+          );
+        }
+        return;
+      }
+
+      devLogger.error(
+        "[ProfileModalController] Failed to complete add profile authentication:",
+        error,
+      );
+
+      const message = this.resolveAddAccountLoginError(
+        error,
+        "Couldn't add that profile. Please try again.",
+      );
+
+      if (message) {
+        this.showError(message);
+      }
+    } finally {
+      this.setAddAccountLoading(false);
+    }
+  }
+
+  async invokeAddAccountCallback(loginResult) {
+    if (typeof this.callbacks.onAddAccount !== "function") {
+      return;
+    }
+
+    try {
+      await this.callbacks.onAddAccount({
+        controller: this,
+        loginResult,
+      });
+    } catch (error) {
+      devLogger.warn(
+        "[ProfileModalController] onAddAccount callback threw:",
+        error,
+      );
+      throw error;
     }
   }
 
