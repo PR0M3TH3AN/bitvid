@@ -78,10 +78,7 @@ import {
   removeTrackingScripts,
 } from "./utils/domUtils.js";
 import { VideoModal } from "./ui/components/VideoModal.js";
-import { UploadModal } from "./ui/components/UploadModal.js";
-import { EditModal } from "./ui/components/EditModal.js";
 import { RevertModal } from "./ui/components/RevertModal.js";
-import { DeleteModal } from "./ui/components/DeleteModal.js";
 import {
   prepareStaticModal,
   openStaticModal,
@@ -92,6 +89,9 @@ import MoreMenuController from "./ui/moreMenuController.js";
 import ProfileModalController from "./ui/profileModalController.js";
 import LoginModalController from "./ui/loginModalController.js";
 import ZapController from "./ui/zapController.js";
+import initUploadModal from "./ui/initUploadModal.js";
+import initEditModal from "./ui/initEditModal.js";
+import initDeleteModal from "./ui/initDeleteModal.js";
 import { MediaLoader } from "./utils/mediaLoader.js";
 import { pointerArrayToKey } from "./utils/pointer.js";
 import { resolveVideoPointer } from "./utils/videoPointer.js";
@@ -424,44 +424,41 @@ class Application {
     this.profileButton = document.getElementById("profileButton") || null;
     this.profileAvatar = document.getElementById("profileAvatar") || null;
 
+    const modalContainer = document.getElementById("modalContainer") || null;
+
     // Upload modal component
     this.uploadButton = document.getElementById("uploadButton") || null;
-    const uploadModalEvents = new EventTarget();
-    this.uploadModal =
-      (typeof ui.uploadModal === "function"
-        ? ui.uploadModal({ app: this, eventTarget: uploadModalEvents })
-        : ui.uploadModal) ||
-      new UploadModal({
+    const uploadModalSetup = initUploadModal({
+      app: this,
+      uploadModalOverride: ui.uploadModal,
+      container: modalContainer,
+      services: {
         authService: this.authService,
         r2Service: this.r2Service,
-        publishVideoNote: (payload, options) =>
-          this.publishVideoNote(payload, options),
+      },
+      utilities: {
         removeTrackingScripts,
         setGlobalModalState,
+      },
+      callbacks: {
+        publishVideoNote: (payload, options) =>
+          this.publishVideoNote(payload, options),
         showError: (message) => this.showError(message),
         showSuccess: (message) => this.showSuccess(message),
         getCurrentPubkey: () => this.pubkey,
         safeEncodeNpub: (pubkey) => this.safeEncodeNpub(pubkey),
-        eventTarget: uploadModalEvents,
-        container: document.getElementById("modalContainer") || null,
-      });
-    this.boundUploadSubmitHandler = (event) => {
-      this.handleUploadSubmitEvent(event);
-    };
-    this.uploadModal.addEventListener(
-      "upload:submit",
-      this.boundUploadSubmitHandler
-    );
+        onSubmit: (event) => this.handleUploadSubmitEvent(event),
+      },
+    });
+    this.uploadModal = uploadModalSetup.modal;
+    this.uploadModalEvents = uploadModalSetup.events;
+    this.boundUploadSubmitHandler = uploadModalSetup.handlers.submit;
 
-    const editModalEvents = new EventTarget();
-    this.editModal =
-      (typeof ui.editModal === "function"
-        ? ui.editModal({ app: this, eventTarget: editModalEvents })
-        : ui.editModal) ||
-      new EditModal({
-        removeTrackingScripts,
-        setGlobalModalState,
-        showError: (message) => this.showError(message),
+    const editModalSetup = initEditModal({
+      app: this,
+      editModalOverride: ui.editModal,
+      container: modalContainer,
+      services: {
         getMode: () => (isDevMode ? "dev" : "live"),
         sanitizers: {
           text: (value) => (typeof value === "string" ? value.trim() : ""),
@@ -469,26 +466,23 @@ class Application {
           magnet: (value) => (typeof value === "string" ? value.trim() : ""),
           checkbox: (value) => !!value,
         },
+      },
+      utilities: {
+        removeTrackingScripts,
+        setGlobalModalState,
         escapeHtml: (value) => escapeHtml(value),
-        eventTarget: editModalEvents,
-        container: document.getElementById("modalContainer") || null,
-      });
+      },
+      callbacks: {
+        showError: (message) => this.showError(message),
+        onSubmit: (event) => this.handleEditModalSubmit(event),
+        onCancel: () => this.showError(""),
+      },
+    });
 
-    this.boundEditModalSubmitHandler = (event) => {
-      this.handleEditModalSubmit(event);
-    };
-    this.editModal.addEventListener(
-      "video:edit-submit",
-      this.boundEditModalSubmitHandler
-    );
-
-    this.boundEditModalCancelHandler = () => {
-      this.showError("");
-    };
-    this.editModal.addEventListener(
-      "video:edit-cancel",
-      this.boundEditModalCancelHandler
-    );
+    this.editModal = editModalSetup.modal;
+    this.editModalEvents = editModalSetup.events;
+    this.boundEditModalSubmitHandler = editModalSetup.handlers.submit;
+    this.boundEditModalCancelHandler = editModalSetup.handlers.cancel;
 
     this.revertModal =
       (typeof ui.revertModal === "function"
@@ -504,7 +498,7 @@ class Application {
         truncateMiddle,
         formatShortNpub: (value) => formatShortNpub(value),
         fallbackThumbnailSrc: FALLBACK_THUMBNAIL_SRC,
-        container: document.getElementById("modalContainer") || null,
+        container: modalContainer,
       });
 
     this.boundRevertConfirmHandler = (event) => {
@@ -515,34 +509,25 @@ class Application {
       this.boundRevertConfirmHandler
     );
 
-    const deleteModalEvents = new EventTarget();
-    this.deleteModal =
-      (typeof ui.deleteModal === "function"
-        ? ui.deleteModal({ app: this, eventTarget: deleteModalEvents })
-        : ui.deleteModal) ||
-      new DeleteModal({
+    const deleteModalSetup = initDeleteModal({
+      app: this,
+      deleteModalOverride: ui.deleteModal,
+      container: modalContainer,
+      utilities: {
         removeTrackingScripts,
         setGlobalModalState,
         truncateMiddle,
-        container: document.getElementById("modalContainer") || null,
-        eventTarget: deleteModalEvents,
-      });
+      },
+      callbacks: {
+        onConfirm: (event) => this.handleDeleteModalConfirm(event),
+        onCancel: () => this.showError(""),
+      },
+    });
 
-    this.boundDeleteConfirmHandler = (event) => {
-      this.handleDeleteModalConfirm(event);
-    };
-    this.deleteModal.addEventListener(
-      "video:delete-confirm",
-      this.boundDeleteConfirmHandler
-    );
-
-    this.boundDeleteCancelHandler = () => {
-      this.showError("");
-    };
-    this.deleteModal.addEventListener(
-      "video:delete-cancel",
-      this.boundDeleteCancelHandler
-    );
+    this.deleteModal = deleteModalSetup.modal;
+    this.deleteModalEvents = deleteModalSetup.events;
+    this.boundDeleteConfirmHandler = deleteModalSetup.handlers.confirm;
+    this.boundDeleteCancelHandler = deleteModalSetup.handlers.cancel;
 
     try {
       const profileModalContainer = document.getElementById("modalContainer") || null;
