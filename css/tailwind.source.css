@@ -1669,7 +1669,7 @@
   }
 
   .video-modal__layout {
-    @apply grid gap-6 lg:gap-8;
+    @apply grid items-start gap-6 lg:gap-8;
   }
 
   @media (min-width: theme('screens.lg')) {
@@ -1677,6 +1677,13 @@
       grid-template-columns:
         minmax(0, var(--video-modal-primary-fr))
         minmax(var(--video-modal-secondary-min), var(--video-modal-secondary-fr, 1fr));
+    }
+  }
+
+  @media (min-width: theme('screens.lg')) {
+    .video-modal__primary,
+    .video-modal__secondary {
+      min-height: 0;
     }
   }
 
@@ -1698,6 +1705,16 @@
 
   .video-modal__secondary {
     @apply flex flex-col gap-4;
+  }
+
+  .video-modal__similar {
+    @apply flex flex-col gap-6;
+  }
+
+  @media (min-width: theme('screens.lg')) {
+    .video-modal__similar {
+      align-self: stretch;
+    }
   }
 
   .video-modal__stage {
