@@ -5,6 +5,12 @@ import { attachAmbientBackground } from "../ambientBackground.js";
 import { applyDesignSystemAttributes } from "../../designSystem.js";
 import { devLogger } from "../../utils/logger.js";
 import { renderTagPillStrip } from "./tagPillList.js";
+import { VideoCard } from "./VideoCard.js";
+import {
+  subscribeToVideoViewCount,
+  unsubscribeFromVideoViewCount,
+  formatViewCount,
+} from "../../viewCounter.js";
 
 export class VideoModal {
   constructor({
@@ -82,6 +88,13 @@ export class VideoModal {
       userReaction: "",
     };
     this.reactionNumberFormatter = null;
+
+    this.similarContentContainer = null;
+    this.similarContentHeading = null;
+    this.similarContentList = null;
+    this.similarContentCards = [];
+    this.similarContentViewCountSubscriptions = [];
+    this.pendingSimilarContent = null;
 
     this.modalAccessibility = null;
     this.modalNavScrollHandler = null;
@@ -291,6 +304,8 @@ export class VideoModal {
       );
     }
 
+    this.clearSimilarContent({ preservePending: true });
+
     this.playerModal = playerModal;
     this.modalPanel = playerModal.querySelector(".bv-modal__panel") || null;
     this.modalBackdrop = playerModal.querySelector("[data-dismiss]") || null;
@@ -303,6 +318,33 @@ export class VideoModal {
     this.videoTagsRoot = nextVideoTagsRoot;
     if (this.videoTagsRoot) {
       this.cleanupVideoTags(this.videoTagsRoot);
+    }
+
+    const similarHeading =
+      playerModal.querySelector("#playerModalSimilarContentHeading") || null;
+    const similarList =
+      playerModal.querySelector("#playerModalSimilarContentList") || null;
+    const similarSection =
+      similarList?.closest(
+        "[aria-labelledby='playerModalSimilarContentHeading']"
+      ) || similarHeading?.closest(
+        "[aria-labelledby='playerModalSimilarContentHeading']"
+      ) || null;
+    const similarContainer =
+      similarList?.closest(".watch-container") ||
+      similarHeading?.closest(".watch-container") ||
+      similarSection?.closest(".watch-container") ||
+      similarSection ||
+      null;
+
+    this.similarContentHeading = similarHeading;
+    this.similarContentList = similarList;
+    this.similarContentContainer = similarContainer;
+
+    if (similarList && similarList.children.length) {
+      this.toggleSimilarContentVisibility(true);
+    } else {
+      this.toggleSimilarContentVisibility(false);
     }
 
     const previousTags = Array.isArray(this.videoTagsData)
@@ -352,6 +394,12 @@ export class VideoModal {
       playerModal.querySelector("[data-reaction-dislike-count]") || null;
 
     this.renderVideoTags(previousTags);
+
+    if (Array.isArray(this.pendingSimilarContent)) {
+      const pendingSimilar = this.pendingSimilarContent;
+      this.pendingSimilarContent = null;
+      this.setSimilarContent(pendingSimilar);
+    }
 
     this.ambientCanvas = playerModal.querySelector("#ambientCanvas") || null;
 
@@ -1058,6 +1106,7 @@ export class VideoModal {
       this.modalMorePopover.close({ restoreFocus: false });
     }
     this.renderVideoTags([]);
+    this.clearSimilarContent();
     this.forceRemovePoster("close");
   }
 
@@ -2243,6 +2292,437 @@ export class VideoModal {
     if (this.creatorNpub) {
       this.creatorNpub.textContent = npub || "";
     }
+  }
+
+  setSimilarContent(entries = []) {
+    const normalizedItems = Array.isArray(entries)
+      ? entries.filter((item) => item && typeof item === "object")
+      : [];
+
+    if (!this.similarContentList) {
+      this.pendingSimilarContent = normalizedItems.slice();
+      return;
+    }
+
+    this.pendingSimilarContent = null;
+    this.clearSimilarContent();
+
+    if (!normalizedItems.length) {
+      return;
+    }
+
+    const fragment = this.document.createDocumentFragment();
+    const renderedCards = [];
+    const viewSubscriptions = [];
+
+    normalizedItems.forEach((item, position) => {
+      const baseVideo =
+        item && typeof item === "object" && item.video && typeof item.video === "object"
+          ? item.video
+          : item;
+      if (
+        !baseVideo ||
+        typeof baseVideo !== "object" ||
+        !baseVideo.id ||
+        !baseVideo.title
+      ) {
+        return;
+      }
+
+      const pointerInfo = this.normalizeSimilarPointerInfo(item, baseVideo);
+      const shareUrl =
+        typeof item.shareUrl === "string" && item.shareUrl.trim()
+          ? item.shareUrl.trim()
+          : typeof baseVideo.shareUrl === "string" && baseVideo.shareUrl.trim()
+            ? baseVideo.shareUrl.trim()
+            : typeof baseVideo.url === "string" && baseVideo.url.trim()
+              ? baseVideo.url.trim()
+              : "#";
+      const timeAgo =
+        typeof item.timeAgo === "string" && item.timeAgo
+          ? item.timeAgo
+          : typeof baseVideo.timeAgo === "string" && baseVideo.timeAgo
+            ? baseVideo.timeAgo
+            : "";
+      const postedAtCandidate =
+        Number.isFinite(item.postedAt)
+          ? Math.floor(item.postedAt)
+          : Number.isFinite(baseVideo.postedAt)
+            ? Math.floor(baseVideo.postedAt)
+            : Number.isFinite(baseVideo.rootCreatedAt)
+              ? Math.floor(baseVideo.rootCreatedAt)
+              : Number.isFinite(baseVideo.created_at)
+                ? Math.floor(baseVideo.created_at)
+                : null;
+
+      const capabilities =
+        item && typeof item.capabilities === "object" && item.capabilities
+          ? { ...item.capabilities }
+          : {};
+      const nsfwContext =
+        item && typeof item.nsfwContext === "object" && item.nsfwContext
+          ? { ...item.nsfwContext }
+          : {
+              isNsfw: baseVideo?.isNsfw === true,
+              allowNsfw: item?.allowNsfw !== false,
+              viewerIsOwner:
+                item?.viewerIsOwner === true ||
+                Boolean(item?.capabilities?.canEdit),
+            };
+
+      const cardOptions = {
+        document: this.document,
+        video: baseVideo,
+        index: position,
+        shareUrl,
+        pointerInfo,
+        timeAgo,
+        postedAt: postedAtCandidate,
+        capabilities,
+        nsfwContext,
+        variant: "compact",
+      };
+
+      if (typeof item.cardState === "string" && item.cardState) {
+        cardOptions.cardState = item.cardState;
+      }
+      if (typeof item.motionState === "string" && item.motionState) {
+        cardOptions.motionState = item.motionState;
+      }
+      if (item.helpers && typeof item.helpers === "object") {
+        cardOptions.helpers = item.helpers;
+      }
+      if (item.assets && typeof item.assets === "object") {
+        cardOptions.assets = item.assets;
+      }
+      if (item.state && typeof item.state === "object") {
+        cardOptions.state = item.state;
+      }
+      if (item.designSystem) {
+        cardOptions.designSystem = item.designSystem;
+      }
+
+      let card;
+      try {
+        card = new VideoCard(cardOptions);
+      } catch (error) {
+        this.log("[VideoModal] Failed to render similar content card", error);
+        return;
+      }
+
+      const cardIndex = renderedCards.length;
+      this.prepareSimilarVideoCard(card, cardOptions, cardIndex);
+
+      const root = card.getRoot();
+      if (!root) {
+        return;
+      }
+
+      const listItem = this.document.createElement("li");
+      listItem.classList.add("player-modal__module-item");
+      listItem.appendChild(root);
+      fragment.appendChild(listItem);
+      renderedCards.push(card);
+
+      const viewSubscription = this.attachSimilarCardViewCounter(
+        card,
+        pointerInfo
+      );
+      if (viewSubscription) {
+        viewSubscriptions.push(viewSubscription);
+      }
+    });
+
+    this.similarContentList.appendChild(fragment);
+    this.similarContentCards = renderedCards;
+    this.similarContentViewCountSubscriptions = viewSubscriptions;
+    this.toggleSimilarContentVisibility(renderedCards.length > 0);
+  }
+
+  clearSimilarContent(options = {}) {
+    this.teardownSimilarContentSubscriptions();
+
+    if (Array.isArray(this.similarContentCards)) {
+      this.similarContentCards.forEach((card) => {
+        if (!card) {
+          return;
+        }
+        try {
+          card.closeMoreMenu?.({ restoreFocus: false });
+        } catch (error) {
+          this.log("[VideoModal] Failed to close more menu during cleanup", error);
+        }
+        try {
+          card.closeSettingsMenu?.({ restoreFocus: false });
+        } catch (error) {
+          this.log(
+            "[VideoModal] Failed to close settings menu during cleanup",
+            error
+          );
+        }
+        card.onPlay = null;
+      });
+    }
+
+    this.similarContentCards = [];
+    if (this.similarContentList) {
+      this.similarContentList.textContent = "";
+    }
+
+    if (!options?.preservePending) {
+      this.pendingSimilarContent = null;
+    }
+
+    this.toggleSimilarContentVisibility(false);
+  }
+
+  teardownSimilarContentSubscriptions() {
+    if (!Array.isArray(this.similarContentViewCountSubscriptions)) {
+      this.similarContentViewCountSubscriptions = [];
+      return;
+    }
+
+    for (const entry of this.similarContentViewCountSubscriptions) {
+      if (!entry || !entry.pointer || !entry.token) {
+        continue;
+      }
+      try {
+        unsubscribeFromVideoViewCount(entry.pointer, entry.token);
+      } catch (error) {
+        this.log(
+          "[VideoModal] Failed to unsubscribe similar view counter",
+          error
+        );
+      }
+    }
+
+    this.similarContentViewCountSubscriptions = [];
+  }
+
+  toggleSimilarContentVisibility(isVisible) {
+    const container = this.similarContentContainer;
+    if (container) {
+      if (isVisible) {
+        container.removeAttribute("hidden");
+        container.setAttribute("aria-hidden", "false");
+      } else {
+        container.setAttribute("hidden", "");
+        container.setAttribute("aria-hidden", "true");
+      }
+    }
+
+    const heading = this.similarContentHeading;
+    if (heading) {
+      if (isVisible) {
+        heading.removeAttribute("hidden");
+        heading.setAttribute("aria-hidden", "false");
+      } else {
+        heading.setAttribute("hidden", "");
+        heading.setAttribute("aria-hidden", "true");
+      }
+    }
+
+    const list = this.similarContentList;
+    if (list) {
+      if (isVisible) {
+        list.removeAttribute("hidden");
+        list.setAttribute("aria-hidden", "false");
+      } else {
+        list.setAttribute("hidden", "");
+        list.setAttribute("aria-hidden", "true");
+      }
+    }
+  }
+
+  normalizeSimilarPointerInfo(entry, video) {
+    const candidateInfo =
+      entry && typeof entry.pointerInfo === "object"
+        ? entry.pointerInfo
+        : video && typeof video.pointerInfo === "object"
+          ? video.pointerInfo
+          : null;
+
+    let pointer = candidateInfo?.pointer ?? null;
+    let key =
+      typeof candidateInfo?.key === "string" && candidateInfo.key
+        ? candidateInfo.key
+        : typeof candidateInfo?.pointerKey === "string" && candidateInfo.pointerKey
+          ? candidateInfo.pointerKey
+          : "";
+
+    if (!pointer) {
+      pointer =
+        entry?.pointer ?? entry?.pointerTag ?? video?.pointer ?? video?.pointerTag ?? null;
+    }
+
+    if (!key) {
+      const keyCandidates = [
+        entry?.pointerKey,
+        entry?.pointerId,
+        entry?.pointerIdentifier,
+        video?.pointerKey,
+        video?.pointerId,
+        video?.pointerIdentifier,
+      ];
+      for (const candidateKey of keyCandidates) {
+        if (typeof candidateKey === "string" && candidateKey.trim()) {
+          key = candidateKey.trim();
+          break;
+        }
+      }
+    }
+
+    if (!pointer) {
+      if (!key) {
+        return null;
+      }
+      return { pointer: null, key };
+    }
+
+    if (!key) {
+      key = this.derivePointerKeyFromInput(pointer);
+    }
+
+    return { pointer, key };
+  }
+
+  derivePointerKeyFromInput(pointer) {
+    if (!pointer) {
+      return "";
+    }
+    if (Array.isArray(pointer)) {
+      const [type, value] = pointer;
+      if (typeof value === "string" && value.trim()) {
+        const normalizedType = type === "a" ? "a" : "e";
+        return `${normalizedType}:${value.trim()}`;
+      }
+      return "";
+    }
+    if (typeof pointer === "object") {
+      if (typeof pointer.key === "string" && pointer.key.trim()) {
+        return pointer.key.trim();
+      }
+      if (
+        typeof pointer.pointerKey === "string" &&
+        pointer.pointerKey.trim()
+      ) {
+        return pointer.pointerKey.trim();
+      }
+      if (
+        typeof pointer.type === "string" &&
+        typeof pointer.value === "string" &&
+        pointer.value.trim()
+      ) {
+        const normalizedType = pointer.type === "a" ? "a" : "e";
+        return `${normalizedType}:${pointer.value.trim()}`;
+      }
+      if (Array.isArray(pointer.tag)) {
+        return this.derivePointerKeyFromInput(pointer.tag);
+      }
+      return "";
+    }
+    if (typeof pointer === "string") {
+      const trimmed = pointer.trim();
+      if (!trimmed) {
+        return "";
+      }
+      if (/^(?:naddr|nevent)/i.test(trimmed)) {
+        return "";
+      }
+      if (trimmed.includes(":")) {
+        return trimmed;
+      }
+      return `e:${trimmed}`;
+    }
+    return "";
+  }
+
+  prepareSimilarVideoCard(card, cardOptions, index) {
+    if (!card) {
+      return;
+    }
+
+    card.onPlay = ({ event, video: selectedVideo, card: sourceCard }) => {
+      this.dispatch("similar:select", {
+        event,
+        video: selectedVideo || cardOptions.video,
+        card: sourceCard || card,
+        index,
+        pointerInfo: cardOptions.pointerInfo || null,
+        shareUrl: cardOptions.shareUrl || "#",
+      });
+    };
+
+    if (card.moreMenuButton) {
+      const button = card.moreMenuButton;
+      const parent = button.parentElement;
+      if (parent) {
+        parent.removeChild(button);
+        if (!parent.childElementCount) {
+          parent.remove();
+        }
+      } else {
+        button.remove();
+      }
+      card.moreMenuButton = null;
+    }
+  }
+
+  attachSimilarCardViewCounter(card, pointerInfo) {
+    if (!card || typeof card.getViewCountElement !== "function") {
+      return null;
+    }
+
+    const viewEl = card.getViewCountElement();
+    if (!viewEl) {
+      return null;
+    }
+
+    if (pointerInfo?.key) {
+      viewEl.dataset.viewPointer = pointerInfo.key;
+    } else if (viewEl.dataset?.viewPointer) {
+      delete viewEl.dataset.viewPointer;
+    }
+
+    if (!pointerInfo || !pointerInfo.pointer) {
+      viewEl.textContent = "– views";
+      return null;
+    }
+
+    viewEl.textContent = "Loading views…";
+
+    try {
+      const token = subscribeToVideoViewCount(
+        pointerInfo.pointer,
+        ({ total, status }) => {
+          if (!viewEl || !viewEl.isConnected) {
+            return;
+          }
+          viewEl.textContent = this.getViewCountLabel(total, status);
+        }
+      );
+      return { pointer: pointerInfo.pointer, token };
+    } catch (error) {
+      this.log("[VideoModal] Failed to subscribe similar view counter", error);
+      viewEl.textContent = "– views";
+      return null;
+    }
+  }
+
+  getViewCountLabel(total, status) {
+    if (Number.isFinite(total)) {
+      return this.formatViewCountLabel(Number(total));
+    }
+    if (status === "hydrating") {
+      return "Loading views…";
+    }
+    return "– views";
+  }
+
+  formatViewCountLabel(total) {
+    const numeric = Number.isFinite(total) ? Math.max(0, Number(total)) : 0;
+    const label = numeric === 1 ? "view" : "views";
+    return `${formatViewCount(numeric)} ${label}`;
   }
 
   syncMoreMenuData({ currentVideo, canManageBlacklist }) {
