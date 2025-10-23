@@ -1,7 +1,9 @@
 // js/userBlocks.js
-import { nostrClient } from "./nostr.js";
+import {
+  nostrClient,
+  requestDefaultExtensionPermissions,
+} from "./nostr.js";
 import { getActiveSigner } from "./nostr/index.js";
-import { requestDefaultExtensionPermissions } from "./nostrClientRegistry.js";
 import { buildBlockListEvent, BLOCK_LIST_IDENTIFIER } from "./nostrEventSchemas.js";
 import { userLogger } from "./utils/logger.js";
 import {

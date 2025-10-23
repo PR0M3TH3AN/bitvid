@@ -1,12 +1,14 @@
 // js/subscriptions.js
-import { nostrClient } from "./nostr.js";
+import {
+  nostrClient,
+  requestDefaultExtensionPermissions,
+} from "./nostr.js";
 import {
   getActiveSigner,
   convertEventToVideo as sharedConvertEventToVideo,
   listVideoViewEvents,
   subscribeVideoViewEvents,
 } from "./nostr/index.js";
-import { requestDefaultExtensionPermissions } from "./nostrClientRegistry.js";
 import { DEFAULT_RELAY_URLS } from "./nostr/toolkit.js";
 import {
   buildSubscriptionListEvent,
