@@ -1,9 +1,7 @@
 // js/channelProfile.js
 
-import {
-  nostrClient,
-  convertEventToVideo as sharedConvertEventToVideo,
-} from "./nostr.js";
+import { nostrClient } from "./nostr.js";
+import { convertEventToVideo as sharedConvertEventToVideo } from "./nostr/index.js";
 import { DEFAULT_RELAY_URLS } from "./nostr/toolkit.js";
 import { subscriptions } from "./subscriptions.js";
 import { attachHealthBadges } from "./gridHealth.js";

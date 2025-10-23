@@ -1,6 +1,7 @@
 // js/app.js
 
-import { nostrClient, recordVideoView as recordVideoViewApi } from "./nostr.js";
+import { nostrClient } from "./nostr.js";
+import { recordVideoView } from "./nostr/index.js";
 import { torrentClient } from "./webtorrent.js";
 import {
   isDevMode,
@@ -136,6 +137,8 @@ import {
   URL_PROBE_TIMEOUT_MS,
   urlHealthConstants,
 } from "./state/cache.js";
+
+const recordVideoViewApi = (...args) => recordVideoView(nostrClient, ...args);
 
 const UNSUPPORTED_BTITH_MESSAGE =
   "This magnet link is missing a compatible BitTorrent v1 info hash.";

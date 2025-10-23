@@ -7,7 +7,7 @@ import {
   getCurrentUserNpub,
 } from "../state/appState.js";
 import { userLogger } from "../utils/logger.js";
-import { requestDefaultExtensionPermissions } from "../nostr.js";
+import { requestDefaultExtensionPermissions } from "../nostrClientRegistry.js";
 import {
   getSavedProfiles,
   getActiveProfilePubkey,
