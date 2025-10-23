@@ -4,6 +4,7 @@ import { createVideoMoreMenuPanel } from "./videoMenuRenderers.js";
 import { attachAmbientBackground } from "../ambientBackground.js";
 import { applyDesignSystemAttributes } from "../../designSystem.js";
 import { devLogger } from "../../utils/logger.js";
+import { renderTagPillStrip } from "./tagPillList.js";
 
 export class VideoModal {
   constructor({
@@ -54,6 +55,8 @@ export class VideoModal {
     this.videoTimestamp = null;
     this.videoEditedTimestamp = null;
     this.videoViewCountEl = null;
+    this.videoTagsRoot = null;
+    this.videoTagsData = Object.freeze([]);
     this.creatorAvatar = null;
     this.creatorName = null;
     this.creatorNpub = null;
@@ -123,6 +126,7 @@ export class VideoModal {
     this.handleCreatorNavigation = this.handleCreatorNavigation.bind(this);
     this.handleModalMoreButtonClick = this.handleModalMoreButtonClick.bind(this);
     this.handleReactionClick = this.handleReactionClick.bind(this);
+    this.handleVideoTagActivate = this.handleVideoTagActivate.bind(this);
 
     this.MODAL_LOADING_POSTER = "assets/gif/please-stand-by.gif";
   }
@@ -210,6 +214,8 @@ export class VideoModal {
         }
       } else {
         this.loaded = false;
+        this.cleanupVideoTags();
+        this.videoTagsRoot = null;
         this.playerModal = null;
       }
     }
@@ -290,6 +296,20 @@ export class VideoModal {
     this.modalBackdrop = playerModal.querySelector("[data-dismiss]") || null;
     this.scrollRegion = this.modalPanel || playerModal;
 
+    const nextVideoTagsRoot = playerModal.querySelector("#videoTags") || null;
+    if (this.videoTagsRoot && this.videoTagsRoot !== nextVideoTagsRoot) {
+      this.cleanupVideoTags(this.videoTagsRoot);
+    }
+    this.videoTagsRoot = nextVideoTagsRoot;
+    if (this.videoTagsRoot) {
+      this.cleanupVideoTags(this.videoTagsRoot);
+    }
+
+    const previousTags = Array.isArray(this.videoTagsData)
+      ? [...this.videoTagsData]
+      : [];
+    this.videoTagsData = null;
+
     this.modalVideo = playerModal.querySelector("#modalVideo") || null;
     this.modalStatus = playerModal.querySelector("#modalStatus") || null;
     this.modalProgress = playerModal.querySelector("#modalProgress") || null;
@@ -330,6 +350,8 @@ export class VideoModal {
       playerModal.querySelector("[data-reaction-like-count]") || null;
     this.reactionCountLabels["-"] =
       playerModal.querySelector("[data-reaction-dislike-count]") || null;
+
+    this.renderVideoTags(previousTags);
 
     this.ambientCanvas = playerModal.querySelector("#ambientCanvas") || null;
 
@@ -1031,6 +1053,7 @@ export class VideoModal {
     if (this.modalMorePopover?.close) {
       this.modalMorePopover.close({ restoreFocus: false });
     }
+    this.renderVideoTags([]);
     this.forceRemovePoster("close");
   }
 
@@ -1104,6 +1127,151 @@ export class VideoModal {
     if (dislikeButton) {
       dislikeButton.setAttribute("aria-pressed", current === "-" ? "true" : "false");
     }
+  }
+
+  cleanupVideoTags(root = this.videoTagsRoot) {
+    if (!root) {
+      return;
+    }
+
+    const buttons = root.querySelectorAll("button");
+    buttons.forEach((button) => {
+      const handler = button.__tagPillClickHandler;
+      if (handler) {
+        button.removeEventListener("click", handler);
+        delete button.__tagPillClickHandler;
+      }
+    });
+
+    root.textContent = "";
+  }
+
+  toggleVideoTagsVisibility(isVisible) {
+    const root = this.videoTagsRoot;
+    if (!root) {
+      return;
+    }
+
+    if (isVisible) {
+      root.classList.remove("hidden");
+      root.removeAttribute("hidden");
+      root.setAttribute("aria-hidden", "false");
+      return;
+    }
+
+    root.classList.add("hidden");
+    root.setAttribute("hidden", "");
+    root.setAttribute("aria-hidden", "true");
+  }
+
+  normalizeVideoTags(tags) {
+    if (!tags) {
+      return [];
+    }
+
+    let iterable;
+    if (Array.isArray(tags)) {
+      iterable = tags;
+    } else if (typeof tags === "string") {
+      iterable = [tags];
+    } else if (typeof tags?.[Symbol.iterator] === "function") {
+      iterable = Array.from(tags);
+    } else {
+      iterable = [];
+    }
+
+    const seen = new Set();
+    const normalized = [];
+
+    for (const entry of iterable) {
+      if (entry === null || entry === undefined) {
+        continue;
+      }
+
+      const raw = typeof entry === "string" ? entry : String(entry ?? "");
+      const trimmed = raw.trim().replace(/^#+/, "");
+
+      if (!trimmed) {
+        continue;
+      }
+
+      const key = trimmed.toLocaleLowerCase();
+      if (seen.has(key)) {
+        continue;
+      }
+
+      seen.add(key);
+      normalized.push(trimmed);
+    }
+
+    return normalized.sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" }),
+    );
+  }
+
+  areVideoTagsEqual(nextTags, previousTags) {
+    if (!Array.isArray(nextTags) || !Array.isArray(previousTags)) {
+      return false;
+    }
+
+    if (nextTags.length !== previousTags.length) {
+      return false;
+    }
+
+    for (let index = 0; index < nextTags.length; index += 1) {
+      if (nextTags[index] !== previousTags[index]) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  renderVideoTags(tags = []) {
+    const normalized = this.normalizeVideoTags(tags);
+    const hasTags = normalized.length > 0;
+    const root = this.videoTagsRoot;
+
+    if (root) {
+      if (this.areVideoTagsEqual(normalized, this.videoTagsData)) {
+        this.toggleVideoTagsVisibility(hasTags);
+        return;
+      }
+
+      this.cleanupVideoTags(root);
+
+      if (hasTags) {
+        const { root: strip } = renderTagPillStrip({
+          document: root.ownerDocument || this.document,
+          tags: normalized,
+          onTagActivate: this.handleVideoTagActivate,
+        });
+
+        if (strip) {
+          root.appendChild(strip);
+        }
+      }
+
+      this.toggleVideoTagsVisibility(hasTags);
+    }
+
+    this.videoTagsData = Object.freeze([...normalized]);
+  }
+
+  handleVideoTagActivate(tag, { event, button } = {}) {
+    const normalized =
+      typeof tag === "string" ? tag : String(tag ?? "");
+
+    if (!normalized) {
+      return;
+    }
+
+    this.dispatch("tag:activate", {
+      tag: normalized,
+      video: this.activeVideo,
+      trigger: button || null,
+      nativeEvent: event || null,
+    });
   }
 
   updateReactionMeterDisplay() {
@@ -1881,13 +2049,17 @@ export class VideoModal {
     timestamp,
     timestamps,
     viewCount,
-    creator
+    creator,
+    tags,
   } = {}) {
     if (this.videoTitle && title !== undefined) {
       this.videoTitle.textContent = title || "Untitled";
     }
     if (this.videoDescription && description !== undefined) {
       this.renderVideoDescription(description);
+    }
+    if (tags !== undefined) {
+      this.renderVideoTags(tags ?? []);
     }
     if (timestamps) {
       this.updateTimestamps(timestamps);
