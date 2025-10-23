@@ -724,6 +724,63 @@ class Application {
       "video:share",
       this.boundVideoModalShareHandler
     );
+    this.boundVideoModalSimilarSelectHandler = (event) => {
+      const detail = event?.detail || {};
+      const selectedVideo =
+        detail && typeof detail.video === "object" ? detail.video : null;
+      const triggerCandidate =
+        detail?.event?.currentTarget ||
+        (detail?.card && typeof detail.card.getRoot === "function"
+          ? detail.card.getRoot()
+          : null);
+
+      this.setLastModalTrigger(triggerCandidate || null);
+
+      if (detail?.event) {
+        detail.event.preventDefault?.();
+        detail.event.stopPropagation?.();
+      }
+
+      if (!selectedVideo) {
+        return;
+      }
+
+      const playbackOptions = {
+        trigger: this.lastModalTrigger,
+      };
+
+      if (typeof selectedVideo.url === "string" && selectedVideo.url) {
+        playbackOptions.url = selectedVideo.url;
+      }
+      if (typeof selectedVideo.magnet === "string" && selectedVideo.magnet) {
+        playbackOptions.magnet = selectedVideo.magnet;
+      }
+
+      if (typeof selectedVideo.id === "string" && selectedVideo.id) {
+        Promise.resolve(
+          this.playVideoByEventId(selectedVideo.id, playbackOptions)
+        ).catch((error) => {
+          devLogger.error(
+            "[Application] Failed to play selected similar video:",
+            error
+          );
+        });
+        return;
+      }
+
+      Promise.resolve(this.playVideoWithFallback(playbackOptions)).catch(
+        (error) => {
+          devLogger.error(
+            "[Application] Failed to start playback for similar video:",
+            error
+          );
+        }
+      );
+    };
+    this.videoModal.addEventListener(
+      "similar:select",
+      this.boundVideoModalSimilarSelectHandler
+    );
     this.boundVideoModalReactionHandler = (event) => {
       const detail = event?.detail || {};
       this.handleVideoReaction(detail);
@@ -1735,6 +1792,234 @@ class Application {
       dTag: dTagValue,
       fallbackEventId: video.id,
     });
+  }
+
+  computeSimilarContentCandidates({ activeVideo = this.currentVideo, maxItems = 5 } = {}) {
+    const target = activeVideo && typeof activeVideo === "object" ? activeVideo : null;
+    if (!target) {
+      return [];
+    }
+
+    const activeTagsSource = Array.isArray(target.displayTags) && target.displayTags.length
+      ? target.displayTags
+      : collectVideoTags(target);
+
+    const activeTagSet = new Set();
+    for (const tag of activeTagsSource) {
+      if (typeof tag !== "string") {
+        continue;
+      }
+      const normalized = tag.trim().toLowerCase();
+      if (normalized) {
+        activeTagSet.add(normalized);
+      }
+    }
+
+    if (activeTagSet.size === 0) {
+      return [];
+    }
+
+    const limit = Number.isFinite(maxItems) && maxItems > 0
+      ? Math.max(1, Math.floor(maxItems))
+      : 5;
+
+    let candidateSource = [];
+    if (Array.isArray(this.videoListView?.currentVideos) && this.videoListView.currentVideos.length) {
+      candidateSource = this.videoListView.currentVideos;
+    } else if (this.videosMap instanceof Map && this.videosMap.size) {
+      candidateSource = Array.from(this.videosMap.values());
+    } else if (nostrClient && typeof nostrClient.getActiveVideos === "function") {
+      try {
+        const activeVideos = nostrClient.getActiveVideos();
+        if (Array.isArray(activeVideos)) {
+          candidateSource = activeVideos;
+        }
+      } catch (error) {
+        devLogger.warn("[Application] Failed to read active videos for similar content:", error);
+      }
+    }
+
+    if (!Array.isArray(candidateSource) || candidateSource.length === 0) {
+      return [];
+    }
+
+    const activeId = typeof target.id === "string" ? target.id : "";
+    const activePointerKey = typeof target.pointerKey === "string" ? target.pointerKey : "";
+    const seenKeys = new Set();
+    if (activeId) {
+      const normalizedId = activeId.trim().toLowerCase();
+      if (normalizedId) {
+        seenKeys.add(normalizedId);
+      }
+    }
+    if (activePointerKey) {
+      const normalizedPointer = activePointerKey.trim().toLowerCase();
+      if (normalizedPointer) {
+        seenKeys.add(normalizedPointer);
+      }
+    }
+
+    const results = [];
+
+    for (const candidate of candidateSource) {
+      if (!candidate || typeof candidate !== "object") {
+        continue;
+      }
+      if (candidate === target) {
+        continue;
+      }
+
+      const candidateId = typeof candidate.id === "string" ? candidate.id : "";
+      if (candidateId && candidateId === activeId) {
+        continue;
+      }
+      if (candidate.deleted === true) {
+        continue;
+      }
+      if (candidate.isPrivate === true) {
+        continue;
+      }
+
+      const candidatePubkey = typeof candidate.pubkey === "string" ? candidate.pubkey : "";
+      if (candidatePubkey && this.isAuthorBlocked(candidatePubkey)) {
+        continue;
+      }
+
+      const candidateTagsSource = Array.isArray(candidate.displayTags) && candidate.displayTags.length
+        ? candidate.displayTags
+        : collectVideoTags(candidate);
+      if (!Array.isArray(candidateTagsSource) || candidateTagsSource.length === 0) {
+        continue;
+      }
+
+      const candidateTagSet = new Set();
+      for (const tag of candidateTagsSource) {
+        if (typeof tag !== "string") {
+          continue;
+        }
+        const normalized = tag.trim().toLowerCase();
+        if (normalized) {
+          candidateTagSet.add(normalized);
+        }
+      }
+
+      if (candidateTagSet.size === 0) {
+        continue;
+      }
+
+      let sharedCount = 0;
+      for (const tag of candidateTagSet) {
+        if (activeTagSet.has(tag)) {
+          sharedCount += 1;
+        }
+      }
+
+      if (sharedCount === 0) {
+        continue;
+      }
+
+      const pointerInfo = this.deriveVideoPointerInfo(candidate);
+      const pointerKey = typeof candidate.pointerKey === "string" && candidate.pointerKey.trim()
+        ? candidate.pointerKey.trim()
+        : typeof pointerInfo?.key === "string" && pointerInfo.key
+          ? pointerInfo.key
+          : "";
+
+      const dedupeKeyRaw = (candidateId || pointerKey || "").trim();
+      if (dedupeKeyRaw) {
+        const dedupeKey = dedupeKeyRaw.toLowerCase();
+        if (seenKeys.has(dedupeKey)) {
+          continue;
+        }
+        seenKeys.add(dedupeKey);
+      }
+
+      if (!Array.isArray(candidate.displayTags) || candidate.displayTags.length === 0) {
+        candidate.displayTags = Array.isArray(candidateTagsSource)
+          ? candidateTagsSource.slice()
+          : [];
+      }
+
+      let postedAt = this.getKnownVideoPostedAt(candidate);
+      if (!Number.isFinite(postedAt) && Number.isFinite(candidate.rootCreatedAt)) {
+        postedAt = Math.floor(candidate.rootCreatedAt);
+      }
+      if (!Number.isFinite(postedAt) && Number.isFinite(candidate.created_at)) {
+        postedAt = Math.floor(candidate.created_at);
+      }
+      if (!Number.isFinite(postedAt)) {
+        postedAt = null;
+      }
+
+      let shareUrl = "";
+      if (typeof candidate.shareUrl === "string" && candidate.shareUrl.trim()) {
+        shareUrl = candidate.shareUrl.trim();
+      } else if (candidateId) {
+        shareUrl = this.buildShareUrlFromEventId(candidateId) || "";
+      }
+
+      results.push({
+        video: candidate,
+        pointerInfo: pointerInfo || null,
+        shareUrl,
+        postedAt,
+        sharedTagCount: sharedCount,
+      });
+    }
+
+    if (results.length === 0) {
+      return [];
+    }
+
+    results.sort((a, b) => {
+      if (b.sharedTagCount !== a.sharedTagCount) {
+        return b.sharedTagCount - a.sharedTagCount;
+      }
+      const tsA = Number.isFinite(a.postedAt) ? a.postedAt : 0;
+      const tsB = Number.isFinite(b.postedAt) ? b.postedAt : 0;
+      return tsB - tsA;
+    });
+
+    return results.slice(0, limit).map((entry) => {
+      const normalizedPostedAt = Number.isFinite(entry.postedAt)
+        ? Math.floor(entry.postedAt)
+        : null;
+      const timeAgo = normalizedPostedAt !== null ? this.formatTimeAgo(normalizedPostedAt) : "";
+      return {
+        video: entry.video,
+        pointerInfo: entry.pointerInfo,
+        shareUrl: entry.shareUrl,
+        postedAt: normalizedPostedAt,
+        timeAgo,
+        sharedTagCount: entry.sharedTagCount,
+      };
+    });
+  }
+
+  updateModalSimilarContent({ activeVideo = this.currentVideo, maxItems } = {}) {
+    if (!this.videoModal) {
+      return;
+    }
+
+    const target = activeVideo && typeof activeVideo === "object" ? activeVideo : null;
+    if (!target) {
+      if (typeof this.videoModal.clearSimilarContent === "function") {
+        this.videoModal.clearSimilarContent();
+      }
+      return;
+    }
+
+    const matches = this.computeSimilarContentCandidates({ activeVideo: target, maxItems });
+    if (matches.length > 0) {
+      if (typeof this.videoModal.setSimilarContent === "function") {
+        this.videoModal.setSimilarContent(matches);
+      }
+      return;
+    }
+
+    if (typeof this.videoModal.clearSimilarContent === "function") {
+      this.videoModal.clearSimilarContent();
+    }
   }
 
   formatViewCountLabel(total) {
@@ -4793,6 +5078,16 @@ class Application {
     this.clearActiveIntervals();
     this.teardownModalViewCountSubscription();
     this.teardownModalReactionSubscription();
+    if (
+      this.videoModal &&
+      typeof this.videoModal.clearSimilarContent === "function"
+    ) {
+      try {
+        this.videoModal.clearSimilarContent();
+      } catch (error) {
+        devLogger.warn("[hideModal] Failed to clear similar content:", error);
+      }
+    }
 
     // 2) Close the modal UI right away so the user gets instant feedback
     const modalVideoElement =
@@ -5415,6 +5710,7 @@ class Application {
       : [];
 
     this.videoListView.render(decoratedVideos, metadata);
+    this.updateModalSimilarContent();
   }
 
   refreshVideoDiscussionCounts(videos = [], options = {}) {
@@ -7815,6 +8111,7 @@ class Application {
 
     const modalTags = collectVideoTags(this.currentVideo);
     this.currentVideo.displayTags = modalTags;
+    this.updateModalSimilarContent({ activeVideo: this.currentVideo });
 
     if (Number.isFinite(knownPostedAt)) {
       this.cacheVideoRootCreatedAt(this.currentVideo, knownPostedAt);
@@ -8133,6 +8430,7 @@ class Application {
 
     const modalTags = collectVideoTags(video);
     video.displayTags = modalTags;
+    this.updateModalSimilarContent({ activeVideo: video });
 
     this.videoModal.updateMetadata({ timestamps: payload, tags: modalTags });
   }
@@ -8197,6 +8495,7 @@ class Application {
     };
 
     this.decorateVideoModeration(this.currentVideo);
+    this.updateModalSimilarContent({ activeVideo: this.currentVideo });
 
     this.syncModalMoreMenuData();
 
@@ -8733,6 +9032,13 @@ class Application {
           this.boundVideoModalShareHandler
         );
         this.boundVideoModalShareHandler = null;
+      }
+      if (this.boundVideoModalSimilarSelectHandler) {
+        this.videoModal.removeEventListener(
+          "similar:select",
+          this.boundVideoModalSimilarSelectHandler
+        );
+        this.boundVideoModalSimilarSelectHandler = null;
       }
       if (this.boundVideoModalCreatorHandler) {
         this.videoModal.removeEventListener(
