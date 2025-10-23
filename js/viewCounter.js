@@ -17,12 +17,12 @@ import {
   VIEW_COUNT_DEDUPE_WINDOW_SECONDS,
 } from "./config.js";
 import { userLogger } from "./utils/logger.js";
-import { nostrClient } from "./nostr.js";
+import { nostrClient } from "./nostrClientFacade.js";
 import {
-  countVideoViewEvents,
-  listVideoViewEvents,
-  subscribeVideoViewEvents,
-} from "./nostr/viewEventBindings.js";
+  countVideoViewEventsWithDefaultClient as countVideoViewEvents,
+  listVideoViewEventsWithDefaultClient as listVideoViewEvents,
+  subscribeVideoViewEventsWithDefaultClient as subscribeVideoViewEvents,
+} from "./nostrViewEventsFacade.js";
 
 const VIEW_COUNTER_STORAGE_KEY = "bitvid:view-counter:v1";
 const STORAGE_DEBOUNCE_MS = 500;

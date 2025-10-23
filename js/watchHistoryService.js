@@ -3,7 +3,7 @@
 import {
   nostrClient,
   requestDefaultExtensionPermissions,
-} from "./nostr.js";
+} from "./nostrClientFacade.js";
 import {
   normalizePointerInput,
   pointerKey,

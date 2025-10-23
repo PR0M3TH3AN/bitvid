@@ -1,8 +1,10 @@
 // js/historyView.js
 
 import watchHistoryService from "./watchHistoryService.js";
-import { nostrClient } from "./nostr.js";
-import { updateWatchHistoryList } from "./nostr/watchHistoryBindings.js";
+import { nostrClient } from "./nostrClientFacade.js";
+import {
+  updateWatchHistoryListWithDefaultClient as updateWatchHistoryList,
+} from "./nostrWatchHistoryFacade.js";
 import { pointerKey, normalizePointerInput } from "./nostr/watchHistory.js";
 import {
   WATCH_HISTORY_BATCH_RESOLVE,

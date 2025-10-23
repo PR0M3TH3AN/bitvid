@@ -2,13 +2,15 @@
 import {
   nostrClient,
   requestDefaultExtensionPermissions,
-} from "./nostr.js";
+} from "./nostrClientFacade.js";
 import {
   getActiveSigner,
   convertEventToVideo as sharedConvertEventToVideo,
+} from "./nostr/index.js";
+import {
   listVideoViewEvents,
   subscribeVideoViewEvents,
-} from "./nostr/index.js";
+} from "./nostrViewEventsFacade.js";
 import { DEFAULT_RELAY_URLS } from "./nostr/toolkit.js";
 import {
   buildSubscriptionListEvent,
