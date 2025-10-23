@@ -402,6 +402,25 @@
           </div>
 
           <aside class="video-modal__secondary flex flex-col gap-4">
+            <div class="watch-container hidden lg:flex lg:flex-col">
+              <section
+                class="player-modal__module"
+                aria-labelledby="playerModalSimilarContentHeading"
+              >
+                <h2
+                  id="playerModalSimilarContentHeading"
+                  class="player-modal__module-title"
+                >
+                  Similar Content
+                </h2>
+                <ul
+                  id="playerModalSimilarContentList"
+                  class="player-modal__module-list player-modal__module-scroll"
+                  role="list"
+                ></ul>
+              </section>
+            </div>
+
             <div class="watch-container">
               <div class="video-modal__stats rounded-2xl border border-border border-opacity-20 bg-surface px-6 py-5 shadow-sm">
                 <div class="video-modal__progress">

@@ -1474,6 +1474,52 @@
     box-shadow: var(--shadow-sm);
   }
 
+  #playerModal .player-modal__module {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+    width: 100%;
+    padding: clamp(var(--space-md-plus), 3vw, var(--space-2xl));
+    border-radius: var(--radius-xl);
+    border: var(--border-width-hairline) solid var(--color-border-translucent);
+    background-color: var(--color-surface);
+    box-shadow: var(--shadow-sm);
+  }
+
+  #playerModal .player-modal__module-title {
+    margin: 0;
+    font-size: var(--font-size-lg);
+    font-weight: 600;
+    line-height: 1.3;
+    color: var(--color-text);
+  }
+
+  #playerModal .player-modal__module-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  #playerModal .player-modal__module-scroll {
+    max-height: clamp(
+      14rem,
+      calc(100vh - (var(--player-modal-vertical-padding) * 2) - var(--space-2xl)),
+      28rem
+    );
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    padding-inline-end: var(--space-2xs);
+  }
+
+  #playerModal .player-modal__module-scroll > li {
+    scroll-margin-block: var(--space-xs);
+  }
+
   @media (max-width: theme('screens.xs')) {
     #playerModal .modal-nav .icon-button {
       width: var(--space-xl);
