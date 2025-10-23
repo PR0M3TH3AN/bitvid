@@ -2,6 +2,26 @@ if (typeof globalThis.window === "undefined") {
   globalThis.window = {};
 }
 
+if (typeof globalThis.self === "undefined") {
+  globalThis.self = globalThis;
+}
+
+if (typeof globalThis.WebSocket === "undefined") {
+  globalThis.WebSocket = class WebSocket {};
+}
+
+if (typeof globalThis.navigator === "undefined") {
+  globalThis.navigator = { userAgent: "node" };
+}
+
+if (typeof globalThis.window.WebSocket === "undefined") {
+  globalThis.window.WebSocket = globalThis.WebSocket;
+}
+
+if (typeof globalThis.window.navigator === "undefined") {
+  globalThis.window.navigator = globalThis.navigator;
+}
+
 if (typeof globalThis.localStorage === "undefined") {
   const store = new Map();
   globalThis.localStorage = {

@@ -1879,6 +1879,9 @@ class Application {
       if (candidate.isPrivate === true) {
         continue;
       }
+      if (candidate.isNsfw === true && ALLOW_NSFW_CONTENT !== true) {
+        continue;
+      }
 
       const candidatePubkey = typeof candidate.pubkey === "string" ? candidate.pubkey : "";
       if (candidatePubkey && this.isAuthorBlocked(candidatePubkey)) {
