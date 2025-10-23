@@ -1,10 +1,12 @@
 import { VideoCard } from "../components/VideoCard.js";
+import { renderTagPillStrip } from "../components/tagPillList.js";
 import {
   subscribeToVideoViewCount,
   unsubscribeFromVideoViewCount,
 } from "../../viewCounter.js";
 import { normalizeDesignSystemContext } from "../../designSystem.js";
 import { userLogger } from "../../utils/logger.js";
+import { collectVideoTags } from "../../utils/videoTags.js";
 
 const EMPTY_VIDEO_LIST_SIGNATURE = "__EMPTY__";
 
@@ -174,6 +176,8 @@ export class VideoListView {
     this.currentVideos = [];
     this.lastRenderedVideoSignature = null;
     this._lastRenderedVideoListElement = null;
+    this.popularTagsRoot = null;
+    this._popularTagStrip = null;
 
     this.handlers = {
       playback: null,
@@ -256,6 +260,12 @@ export class VideoListView {
     this.currentVideos = [];
     this.lastRenderedVideoSignature = null;
     this._lastRenderedVideoListElement = null;
+    if (this.popularTagsRoot) {
+      this.popularTagsRoot.textContent = "";
+      this.popularTagsRoot.hidden = true;
+    }
+    this.popularTagsRoot = null;
+    this._popularTagStrip = null;
   }
 
   setPlaybackHandler(handler) {
@@ -282,6 +292,91 @@ export class VideoListView {
     this.handlers.moderationOverride = typeof handler === "function" ? handler : null;
   }
 
+  setPopularTagsContainer(container) {
+    if (this.popularTagsRoot && this.popularTagsRoot !== container) {
+      this.popularTagsRoot.textContent = "";
+      this.popularTagsRoot.hidden = true;
+    }
+
+    this.popularTagsRoot = container || null;
+    this._popularTagStrip = null;
+
+    if (this.popularTagsRoot) {
+      this.popularTagsRoot.textContent = "";
+      this.popularTagsRoot.hidden = true;
+    }
+  }
+
+  updatePopularTags(videos) {
+    const root = this.popularTagsRoot;
+    if (!root) {
+      return;
+    }
+
+    if (!Array.isArray(videos) || videos.length === 0) {
+      root.textContent = "";
+      root.hidden = true;
+      this._popularTagStrip = null;
+      return;
+    }
+
+    const counts = new Map();
+    const displayNames = new Map();
+
+    videos.forEach((video) => {
+      const tags = collectVideoTags(video);
+      tags.forEach((tag) => {
+        if (typeof tag !== "string" || !tag) {
+          return;
+        }
+        const lower = tag.toLowerCase();
+        counts.set(lower, (counts.get(lower) || 0) + 1);
+        if (!displayNames.has(lower)) {
+          displayNames.set(lower, tag);
+        }
+      });
+    });
+
+    if (!counts.size) {
+      root.textContent = "";
+      root.hidden = true;
+      this._popularTagStrip = null;
+      return;
+    }
+
+    const tagEntries = Array.from(counts.entries()).map(([lower, count]) => ({
+      count,
+      tag: displayNames.get(lower) || lower,
+    }));
+
+    tagEntries.sort((a, b) => {
+      if (b.count !== a.count) {
+        return b.count - a.count;
+      }
+      const lowerA = a.tag.toLowerCase();
+      const lowerB = b.tag.toLowerCase();
+      if (lowerA === lowerB) {
+        return a.tag.localeCompare(b.tag);
+      }
+      return lowerA.localeCompare(lowerB);
+    });
+
+    const tags = tagEntries.map((entry) => entry.tag);
+    const doc = this.document || root.ownerDocument || null;
+    if (!doc) {
+      root.textContent = "";
+      root.hidden = true;
+      this._popularTagStrip = null;
+      return;
+    }
+
+    const { root: strip } = renderTagPillStrip({ document: doc, tags });
+    root.textContent = "";
+    root.appendChild(strip);
+    root.hidden = false;
+    this._popularTagStrip = strip;
+  }
+
   render(videos, metadata = null) {
     if (!this.container) {
       return [];
@@ -306,6 +401,8 @@ export class VideoListView {
       }
       return canEdit || !isPrivate;
     });
+
+    this.updatePopularTags(displayVideos);
 
     this.syncViewCountSubscriptions(displayVideos);
     this.cleanupThumbnailCache(displayVideos);
