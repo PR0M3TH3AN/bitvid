@@ -1,4 +1,5 @@
 export {
+  __testExports,
   NostrClient,
   getActiveSigner,
   setActiveSigner,
