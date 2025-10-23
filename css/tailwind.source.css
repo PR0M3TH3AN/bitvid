@@ -960,6 +960,34 @@
     z-index: 1;
   }
 
+  .card--compact {
+    @apply flex flex-row items-stretch gap-md;
+  }
+
+  .card--compact .video-card__media {
+    @apply block w-40 shrink-0 overflow-hidden rounded-lg sm:w-56;
+  }
+
+  .card--compact .video-card__content {
+    @apply flex min-w-0 flex-1 flex-col gap-sm p-md;
+  }
+
+  .card--compact .video-card__title {
+    @apply text-base font-semibold leading-snug;
+  }
+
+  .card--compact .video-card__author-name {
+    @apply text-xs;
+  }
+
+  .card--compact .video-card__meta {
+    @apply mt-0 flex items-center gap-2 text-2xs text-muted-strong;
+  }
+
+  .card--compact .video-card__meta .view-count-text {
+    @apply text-2xs;
+  }
+
   .card:hover,
   .card:focus-within {
     --video-card-lift-translate-y: -0.35rem;
