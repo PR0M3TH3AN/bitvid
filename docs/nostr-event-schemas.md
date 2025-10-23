@@ -48,7 +48,8 @@ Authentication providers should register their capabilities with the
 `nostrClient` after login so every publish helper can reuse them:
 
 ```js
-import { setActiveSigner } from "./nostr/index.js";
+import { nostrClient } from "./nostrClientFacade.js";
+import { setActiveSigner } from "./nostr/client.js";
 
 setActiveSigner({
   type: "extension", // optional label, used to request NIP-07 permissions
@@ -59,10 +60,14 @@ setActiveSigner({
   nip44Encrypt: (targetHex, plaintext) => extension.nip44.encrypt(targetHex, plaintext),
   nip44Decrypt: (actorHex, ciphertext) => extension.nip44.decrypt(actorHex, ciphertext),
 });
+
+await nostrClient.ensureExtensionPermissions();
 ```
 
 `setActiveSigner` accepts any object that implements the subset of capabilities
-you support. `nostrClient` will prefer the registered signer for signing and
+you support. `nostrClient` (imported from the
+[NIP-07](https://github.com/nostr-protocol/nips/blob/master/07.md)-aligned
+`nostrClientFacade.js`) will prefer the registered signer for signing and
 encryption before falling back to session actors. Call `clearActiveSigner()` on
 logout if your integration manages session state manually; the built-in logout
 handler already does this for the default extension flow.
@@ -99,13 +104,32 @@ timestamps.
 `nostrClient` instance, registers it with the runtime via
 `registerNostrClient`, and exposes helpers like
 `requestDefaultExtensionPermissions`. Import the singleton or permission helper
-from this module or from the canonical export barrel at
-[`js/nostr/index.js`](../js/nostr/index.js) whenever you need to run a NIP-07
-handshake. `js/nostr.js` re-exports the default client alongside the
-singleton-aware bindings for view counters and watch history so legacy imports
-continue to resolve. New NIP features should reuse this bootstrapper instead of
-creating bespoke clients so permission caching and relay wiring stay
-consistent.【F:js/nostr/defaultClient.js†L1-L25】
+through the dedicated facade when you need to run a NIP-07 handshake:
+
+```js
+import { nostrClient, requestDefaultExtensionPermissions } from "./nostrClientFacade.js";
+```
+
+`js/nostr.js` remains as a compatibility shim while downstream packages migrate;
+it forwards to the new facades but is slated for removal once legacy imports
+are retired.【F:js/nostr/defaultClient.js†L1-L25】【F:js/nostr.js†L1-L92】
+
+For analytics, route through the
+[NIP-71](https://github.com/nostr-protocol/nips/blob/master/71.md) helpers in
+`nostrViewEventsFacade.js`:
+
+```js
+import { recordVideoView } from "./nostrViewEventsFacade.js";
+```
+
+Watch-history list management layers
+[NIP-51](https://github.com/nostr-protocol/nips/blob/master/51.md) semantics on
+encrypted snapshots—import from `nostrWatchHistoryFacade.js` to stay aligned
+with the chunk/index lifecycle:
+
+```js
+import { updateWatchHistoryListWithDefaultClient } from "./nostrWatchHistoryFacade.js";
+```
 
 ## Event catalogue
 

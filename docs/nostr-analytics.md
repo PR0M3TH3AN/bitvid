@@ -26,7 +26,13 @@ Every view event includes a unique `#d` tag derived from the pointer scope, the 
 
 ### Client bindings & feature toggles
 
-When wiring moderation or playback toggles into view analytics, call through [`js/nostr/viewEventBindings.js`](../js/nostr/viewEventBindings.js). The binding wraps the singleton client so feature flags, relay discovery, and COUNT/LIST fallbacks all run through the same guard clauses that enforce the NIP-71/NIP-78 schemas. Modules that need to no-op when relays disable optional methods can rely on the binding’s "unavailable" errors to short-circuit cleanly.
+When wiring moderation or playback toggles into view analytics, import helpers from the [NIP-71](https://github.com/nostr-protocol/nips/blob/master/71.md) facade and let it reach into the binding layer for you:
+
+```js
+import { recordVideoView, subscribeVideoViewEvents } from "../nostrViewEventsFacade.js";
+```
+
+The facade wraps [`js/nostr/viewEventBindings.js`](../js/nostr/viewEventBindings.js) so feature flags, relay discovery, and COUNT/LIST fallbacks all run through the same guard clauses that enforce the NIP-71/NIP-78 schemas. `js/nostr.js` still exports shimmed versions for legacy bundles, but new code should migrate to the facades to keep the eventual removal painless. Modules that need to no-op when relays disable optional methods can rely on the binding’s "unavailable" errors to short-circuit cleanly.
 
 ### Hydration, COUNT, and UI sync
 

@@ -192,6 +192,19 @@ fresh output so third-party dependencies cannot sneak inline style mutations
 into production. Use `npm run build:beacon:bundle` only if you need the raw
 esbuild output for debugging.
 
+### Nostr facade migration
+
+Nostr helpers now ship behind dedicated facades so downstream plugins can pick
+the entry point that matches their feature set:
+
+1. **Default client ([NIP-07](https://github.com/nostr-protocol/nips/blob/master/07.md)):** `import { nostrClient, requestDefaultExtensionPermissions } from './nostrClientFacade.js';`
+2. **View counters ([NIP-71](https://github.com/nostr-protocol/nips/blob/master/71.md)):** `import { recordVideoView, subscribeVideoViewEvents } from './nostrViewEventsFacade.js';`
+3. **Watch-history lists ([NIP-51](https://github.com/nostr-protocol/nips/blob/master/51.md) + [NIP-04](https://github.com/nostr-protocol/nips/blob/master/04.md) encryption):** `import { updateWatchHistoryListWithDefaultClient } from './nostrWatchHistoryFacade.js';`
+
+`js/nostr.js` remains as a compatibility shim while existing plugins migrate, but
+it will be removed in a future release. Move any legacy `import { ... } from './nostr.js';`
+calls over to the facades above so upgrades stay painless.
+
 The build command compiles Tailwind with `tailwind.config.cjs`, runs it through
 the PostCSS pipeline defined in `postcss.config.cjs` (for autoprefixing), and
 emits the purged, minified stylesheet at `css/tailwind.generated.css`. Commit the
