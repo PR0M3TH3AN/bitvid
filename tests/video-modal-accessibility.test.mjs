@@ -37,10 +37,83 @@ export async function setupModal({ lazyLoad = false } = {}) {
   globalThis.KeyboardEvent = window.KeyboardEvent;
   globalThis.MouseEvent = window.MouseEvent;
   const hadWebSocket = typeof globalThis.WebSocket !== "undefined";
-  if (typeof window.scrollTo !== "function") {
-    window.scrollTo = () => {};
+  const noopScrollTo = () => {};
+  const windowPrototype = Object.getPrototypeOf(window) || null;
+  const prototypeDescriptor = windowPrototype
+    ? Object.getOwnPropertyDescriptor(windowPrototype, "scrollTo")
+    : null;
+  const hadPrototypeScrollTo = !!prototypeDescriptor;
+  let restorePrototypeScrollTo = () => {};
+  if (windowPrototype) {
+    try {
+      Object.defineProperty(windowPrototype, "scrollTo", {
+        configurable: true,
+        enumerable: false,
+        writable: true,
+        value: noopScrollTo,
+      });
+      restorePrototypeScrollTo = () => {
+        if (hadPrototypeScrollTo) {
+          Object.defineProperty(windowPrototype, "scrollTo", prototypeDescriptor);
+        } else {
+          delete windowPrototype.scrollTo;
+        }
+      };
+    } catch (error) {
+      restorePrototypeScrollTo = () => {
+        if (hadPrototypeScrollTo) {
+          try {
+            Object.defineProperty(windowPrototype, "scrollTo", prototypeDescriptor);
+          } catch (restoreError) {
+            windowPrototype.scrollTo = prototypeDescriptor?.value;
+          }
+        } else {
+          delete windowPrototype.scrollTo;
+        }
+      };
+      try {
+        windowPrototype.scrollTo = noopScrollTo;
+      } catch (assignError) {
+        // ignore inability to override prototype; relying on own property override
+      }
+    }
   }
-  globalThis.scrollTo = window.scrollTo;
+  const hadOwnScrollTo = Object.prototype.hasOwnProperty.call(window, "scrollTo");
+  const originalWindowScrollTo = window.scrollTo;
+  try {
+    Object.defineProperty(window, "scrollTo", {
+      configurable: true,
+      enumerable: false,
+      writable: true,
+      value: noopScrollTo,
+    });
+  } catch (error) {
+    window.scrollTo = noopScrollTo;
+  }
+  const originalGlobalScrollTo = globalThis.scrollTo;
+  globalThis.scrollTo = noopScrollTo;
+  const restoreScrollTo = () => {
+    restorePrototypeScrollTo();
+    if (hadOwnScrollTo) {
+      try {
+        Object.defineProperty(window, "scrollTo", {
+          configurable: true,
+          enumerable: false,
+          writable: true,
+          value: originalWindowScrollTo,
+        });
+      } catch (error) {
+        window.scrollTo = originalWindowScrollTo;
+      }
+    } else {
+      delete window.scrollTo;
+    }
+    if (originalGlobalScrollTo !== undefined) {
+      globalThis.scrollTo = originalGlobalScrollTo;
+    } else {
+      delete globalThis.scrollTo;
+    }
+  };
   if (!hadWebSocket) {
     globalThis.WebSocket = class {
       constructor() {}
@@ -133,7 +206,7 @@ export async function setupModal({ lazyLoad = false } = {}) {
     delete globalThis.location;
     delete globalThis.KeyboardEvent;
     delete globalThis.MouseEvent;
-    delete globalThis.scrollTo;
+    restoreScrollTo();
     if (!hadWebSocket) {
       delete globalThis.WebSocket;
     }
@@ -321,10 +394,83 @@ async function setupPlaybackHarness() {
   globalThis.MouseEvent = window.MouseEvent;
   globalThis.self = window;
   const hadHarnessWebSocket = typeof globalThis.WebSocket !== "undefined";
-  if (typeof window.scrollTo !== "function") {
-    window.scrollTo = () => {};
+  const noopScrollTo = () => {};
+  const windowPrototype = Object.getPrototypeOf(window) || null;
+  const prototypeDescriptor = windowPrototype
+    ? Object.getOwnPropertyDescriptor(windowPrototype, "scrollTo")
+    : null;
+  const hadPrototypeScrollTo = !!prototypeDescriptor;
+  let restorePrototypeScrollTo = () => {};
+  if (windowPrototype) {
+    try {
+      Object.defineProperty(windowPrototype, "scrollTo", {
+        configurable: true,
+        enumerable: false,
+        writable: true,
+        value: noopScrollTo,
+      });
+      restorePrototypeScrollTo = () => {
+        if (hadPrototypeScrollTo) {
+          Object.defineProperty(windowPrototype, "scrollTo", prototypeDescriptor);
+        } else {
+          delete windowPrototype.scrollTo;
+        }
+      };
+    } catch (error) {
+      restorePrototypeScrollTo = () => {
+        if (hadPrototypeScrollTo) {
+          try {
+            Object.defineProperty(windowPrototype, "scrollTo", prototypeDescriptor);
+          } catch (restoreError) {
+            windowPrototype.scrollTo = prototypeDescriptor?.value;
+          }
+        } else {
+          delete windowPrototype.scrollTo;
+        }
+      };
+      try {
+        windowPrototype.scrollTo = noopScrollTo;
+      } catch (assignError) {
+        // ignore inability to override prototype; relying on own property override
+      }
+    }
   }
-  globalThis.scrollTo = window.scrollTo;
+  const hadOwnScrollTo = Object.prototype.hasOwnProperty.call(window, "scrollTo");
+  const originalWindowScrollTo = window.scrollTo;
+  try {
+    Object.defineProperty(window, "scrollTo", {
+      configurable: true,
+      enumerable: false,
+      writable: true,
+      value: noopScrollTo,
+    });
+  } catch (error) {
+    window.scrollTo = noopScrollTo;
+  }
+  const originalGlobalScrollTo = globalThis.scrollTo;
+  globalThis.scrollTo = noopScrollTo;
+  const restoreScrollTo = () => {
+    restorePrototypeScrollTo();
+    if (hadOwnScrollTo) {
+      try {
+        Object.defineProperty(window, "scrollTo", {
+          configurable: true,
+          enumerable: false,
+          writable: true,
+          value: originalWindowScrollTo,
+        });
+      } catch (error) {
+        window.scrollTo = originalWindowScrollTo;
+      }
+    } else {
+      delete window.scrollTo;
+    }
+    if (originalGlobalScrollTo !== undefined) {
+      globalThis.scrollTo = originalGlobalScrollTo;
+    } else {
+      delete globalThis.scrollTo;
+    }
+  };
   if (!hadHarnessWebSocket) {
     globalThis.WebSocket = class {
       constructor() {}
@@ -415,7 +561,7 @@ async function setupPlaybackHarness() {
     delete globalThis.KeyboardEvent;
     delete globalThis.MouseEvent;
     delete globalThis.self;
-    delete globalThis.scrollTo;
+    restoreScrollTo();
     if (!hadHarnessWebSocket) {
       delete globalThis.WebSocket;
     }

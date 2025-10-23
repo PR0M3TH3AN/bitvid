@@ -37,7 +37,7 @@ function createTagButton({ doc, tag, onTagActivate }) {
   const icon = doc.createElement("span");
   icon.className = "video-tag-pill__icon";
   icon.setAttribute("aria-hidden", "true");
-  icon.textContent = "+";
+  icon.dataset.icon = "plus";
 
   button.append(label, icon);
 
