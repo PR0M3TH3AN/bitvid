@@ -12,11 +12,11 @@ Most operators can ship with the defaults—24-hour deduplication, a 90-day back
 
 ### Anonymous session keys
 
-Playback telemetry runs even when a viewer has not connected a Nostr account. The client first calls [`ensureSessionActor`](../js/nostr.js#L2011-L2105) to mint or restore an ephemeral keypair stored in `localStorage`. That session actor signs view events until the user authenticates, ensuring relays still see consistent pubkeys without blocking anonymous playback.
+Playback telemetry runs even when a viewer has not connected a Nostr account. The client first calls [`ensureSessionActor`](../js/nostr/client.js#L2445-L2504) to mint or restore an ephemeral keypair stored in `localStorage`. That session actor signs view events until the user authenticates, ensuring relays still see consistent pubkeys without blocking anonymous playback.
 
 ### Publish latency expectations
 
-When a player crosses the 12-second watch threshold, bitvid invokes [`publishViewEvent`](../js/nostr.js#L2159-L2323) through the view-only [`recordVideoView`](../js/nostr.js#L4516-L4555) contract. The helper considers the publish successful as soon as any configured relay acknowledges the event, which in practice keeps latency under a second on public relays. The UI optimistically increments totals by feeding the signed event into [`ingestLocalViewEvent`](../js/viewCounter.js#L608-L640), so cards and modals reflect the new view immediately even while other relays finish syncing.
+When a player crosses the 12-second watch threshold, bitvid invokes [`publishViewEvent`](../js/nostr/viewEvents.js#L662-L838) through the view-only [`recordVideoView`](../js/nostr/viewEvents.js#L854-L879) contract. The helper considers the publish successful as soon as any configured relay acknowledges the event, which in practice keeps latency under a second on public relays. The UI optimistically increments totals by feeding the signed event into [`ingestLocalViewEvent`](../js/viewCounter.js#L619-L633), so cards and modals reflect the new view immediately even while other relays finish syncing.
 
 The watch history pipeline has been retired; `recordVideoView` now focuses solely on analytics publishing.
 

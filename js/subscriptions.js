@@ -1,12 +1,12 @@
 // js/subscriptions.js
+import { nostrClient } from "./nostr.js";
 import {
   getActiveSigner,
-  nostrClient,
   convertEventToVideo as sharedConvertEventToVideo,
-  requestDefaultExtensionPermissions,
-  listVideoViewEvents as listVideoViewEventsApi,
-  subscribeVideoViewEvents as subscribeVideoViewEventsApi,
-} from "./nostr.js";
+  listVideoViewEvents,
+  subscribeVideoViewEvents,
+} from "./nostr/index.js";
+import { requestDefaultExtensionPermissions } from "./nostrClientRegistry.js";
 import { DEFAULT_RELAY_URLS } from "./nostr/toolkit.js";
 import {
   buildSubscriptionListEvent,
@@ -111,6 +111,11 @@ function determineDecryptionOrder(event, availableSchemes) {
 }
 
 const getApp = () => getApplication();
+
+const listVideoViewEventsApi = (pointer, options) =>
+  listVideoViewEvents(nostrClient, pointer, options);
+const subscribeVideoViewEventsApi = (pointer, options) =>
+  subscribeVideoViewEvents(nostrClient, pointer, options);
 
 /**
  * Manages the user's subscription list (kind=30002) *privately*,

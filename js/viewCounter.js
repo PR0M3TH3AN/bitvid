@@ -17,15 +17,23 @@ import {
   VIEW_COUNT_DEDUPE_WINDOW_SECONDS,
 } from "./config.js";
 import { userLogger } from "./utils/logger.js";
+import { nostrClient } from "./nostr.js";
 import {
-  countVideoViewEvents as countVideoViewEventsApi,
-  listVideoViewEvents as listVideoViewEventsApi,
-  subscribeVideoViewEvents as subscribeVideoViewEventsApi,
-} from "./nostr.js";
+  countVideoViewEvents,
+  listVideoViewEvents,
+  subscribeVideoViewEvents,
+} from "./nostr/index.js";
 
 const VIEW_COUNTER_STORAGE_KEY = "bitvid:view-counter:v1";
 const STORAGE_DEBOUNCE_MS = 500;
 const SECONDS_PER_DAY = 86_400;
+
+const listVideoViewEventsApi = (pointer, options) =>
+  listVideoViewEvents(nostrClient, pointer, options);
+const subscribeVideoViewEventsApi = (pointer, options) =>
+  subscribeVideoViewEvents(nostrClient, pointer, options);
+const countVideoViewEventsApi = (pointer, options) =>
+  countVideoViewEvents(nostrClient, pointer, options);
 
 /** @type {Map<string, ViewCounterState>} */
 const pointerStates = new Map();

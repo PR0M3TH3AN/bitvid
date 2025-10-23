@@ -1,10 +1,8 @@
 import { isDevMode } from "./config.js";
 import { DEFAULT_RELAY_URLS } from "./nostr/toolkit.js";
-import {
-  getActiveSigner,
-  nostrClient,
-  requestDefaultExtensionPermissions,
-} from "./nostr.js";
+import { nostrClient } from "./nostr.js";
+import { getActiveSigner } from "./nostr/index.js";
+import { requestDefaultExtensionPermissions } from "./nostrClientRegistry.js";
 import { buildRelayListEvent } from "./nostrEventSchemas.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import {

@@ -48,7 +48,7 @@ Authentication providers should register their capabilities with the
 `nostrClient` after login so every publish helper can reuse them:
 
 ```js
-import { setActiveSigner } from "./nostr.js";
+import { setActiveSigner } from "./nostr/index.js";
 
 setActiveSigner({
   type: "extension", // optional label, used to request NIP-07 permissions
@@ -143,7 +143,7 @@ plus an optional leading `['head','1']` marker so relays can prioritize the firs
 ciphertext. All chunk content is encrypted with NIP-04 and stores only pointer
 entries; richer metadata remains on-device via the
 [`WatchHistoryService`](../js/watchHistoryService.js) APIs, which default to
-pointer-only writes and local-only metadata caches.【F:config/instance-config.js†L60-L78】【F:js/nostrEventSchemas.js†L157-L189】【F:js/nostr.js†L2329-L2369】【F:js/watchHistoryService.js†L331-L376】
+pointer-only writes and local-only metadata caches.【F:config/instance-config.js†L60-L78】【F:js/nostrEventSchemas.js†L157-L189】【F:js/nostr/watchHistory.js†L1343-L1400】【F:js/watchHistoryService.js†L331-L376】
 
 Refer to the [`WatchHistoryService`](../js/watchHistoryService.js) for queue
 management hooks, manual snapshot helpers, and metadata toggle controls that
