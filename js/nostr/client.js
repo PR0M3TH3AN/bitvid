@@ -2452,6 +2452,11 @@ export class NostrClient {
       !!normalizedLogged &&
       activeSigner &&
       typeof activeSigner.signEvent === "function";
+    const canSignWithExtension =
+      !!normalizedLogged &&
+      activeSigner &&
+      typeof activeSigner.signEvent === "function" &&
+      shouldRequestExtensionPermissions(activeSigner);
 
     if (!forceRenew && canSignWithActiveSigner) {
       return normalizedLogged;
@@ -3237,6 +3242,10 @@ export class NostrClient {
     if (!pubkey) throw new Error("Not logged in to publish video.");
 
     const { videoData, nip71Metadata } = extractVideoPublishPayload(videoPayload);
+    const nip71EditedFlag =
+      videoPayload && typeof videoPayload === "object"
+        ? videoPayload.nip71Edited
+        : null;
 
     // NOTE: Keep the Upload, Edit, and Revert flows synchronized when
     // updating shared fields. Changes here must be reflected in the modal
@@ -3274,6 +3283,7 @@ export class NostrClient {
     const finalIsNsfw = videoData.isNsfw === true;
     const finalIsForKids =
       videoData.isForKids === true && !finalIsNsfw;
+    const wantPrivate = videoData.isPrivate === true;
     const finalWs =
       typeof videoData.ws === "string" ? videoData.ws.trim() : "";
     const finalXs =
@@ -3389,10 +3399,10 @@ export class NostrClient {
           description: contentObject.description,
           url: contentObject.url,
           magnet: contentObject.magnet,
-          thumbnail: contentObject.thumbnail,
-          mode: contentObject.mode,
-          isPrivate: contentObject.isPrivate,
-          isNsfw: contentObject.isNsfw,
+      thumbnail: contentObject.thumbnail,
+      mode: contentObject.mode,
+      isPrivate: wantPrivate,
+      isNsfw: contentObject.isNsfw,
           isForKids: contentObject.isForKids,
         };
 

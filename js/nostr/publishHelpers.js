@@ -9,20 +9,61 @@ import {
 import { buildRepostEvent, buildVideoMirrorEvent } from "../nostrEventSchemas.js";
 import { normalizePointerInput } from "./watchHistory.js";
 import { sanitizeRelayList } from "./nip46Client.js";
-import { RELAY_URLS, getCachedNostrTools } from "./toolkit.js";
+import {
+  RELAY_URLS,
+  getCachedNostrTools,
+  readToolkitFromScope,
+} from "./toolkit.js";
 import { DEFAULT_NIP07_PERMISSION_METHODS } from "./nip07Permissions.js";
 import { devLogger, userLogger } from "../utils/logger.js";
 
 const REBROADCAST_GUARD_PREFIX = "bitvid:rebroadcast:v1";
 const rebroadcastAttemptMemory = new Map();
 
+const HEX_PRIVATE_KEY_REGEX = /^[0-9a-f]{64}$/i;
+
 export function signEventWithPrivateKey(event, privateKey) {
   const tools = getCachedNostrTools();
+  const scopedTools = readToolkitFromScope();
+  const canonicalTools =
+    typeof globalThis !== "undefined" &&
+    globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__
+      ? globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__
+      : null;
+  const signFn =
+    typeof canonicalTools?.signEvent === "function"
+      ? canonicalTools.signEvent
+      : typeof tools?.signEvent === "function"
+        ? tools.signEvent
+        : typeof scopedTools?.signEvent === "function"
+          ? scopedTools.signEvent
+          : null;
+  // console.debug('signEventWithPrivateKey', {
+  //   signFn: typeof signFn,
+  //   scopedSign: typeof scopedTools?.signEvent,
+  //   cachedSign: typeof tools?.signEvent,
+  // });
+  const finalizeFn =
+    typeof canonicalTools?.finalizeEvent === "function"
+      ? canonicalTools.finalizeEvent
+      : typeof tools?.finalizeEvent === "function"
+        ? tools.finalizeEvent
+        : typeof scopedTools?.finalizeEvent === "function"
+          ? scopedTools.finalizeEvent
+          : null;
+  const hashFn =
+    typeof canonicalTools?.getEventHash === "function"
+      ? canonicalTools.getEventHash
+      : typeof tools?.getEventHash === "function"
+        ? tools.getEventHash
+        : typeof scopedTools?.getEventHash === "function"
+          ? scopedTools.getEventHash
+          : null;
+
   if (
     !privateKey ||
     typeof privateKey !== "string" ||
-    !tools?.getEventHash ||
-    typeof tools.signEvent !== "function"
+    (!signFn && !finalizeFn)
   ) {
     throw new Error("Missing signing primitives");
   }
@@ -38,10 +79,50 @@ export function signEventWithPrivateKey(event, privateKey) {
     tags,
     content: typeof event.content === "string" ? event.content : "",
   };
-  const id = tools.getEventHash(prepared);
-  const sig = tools.signEvent(prepared, privateKey);
 
-  return { ...prepared, id, sig };
+  if (signFn) {
+    const signature = signFn(prepared, privateKey);
+    if (signature && typeof signature === "object") {
+      const idValue =
+        typeof signature.id === "string"
+          ? signature.id
+          : hashFn
+            ? hashFn(prepared)
+            : null;
+      const sigValue =
+        typeof signature.sig === "string"
+          ? signature.sig
+          : typeof signature.signature === "string"
+            ? signature.signature
+            : null;
+      if (!idValue || !sigValue) {
+        throw new Error("Missing signing primitives");
+      }
+      return { ...prepared, id: idValue, sig: sigValue };
+    }
+
+    const sigValue = typeof signature === "string" ? signature : null;
+    if (!sigValue || !hashFn) {
+      throw new Error("Missing signing primitives");
+    }
+    const idValue = hashFn(prepared);
+    return { ...prepared, id: idValue, sig: sigValue };
+  }
+
+  const normalizedKey = privateKey.trim();
+  if (!HEX_PRIVATE_KEY_REGEX.test(normalizedKey)) {
+    throw new Error("Missing signing primitives");
+  }
+
+  const finalized = finalizeFn(prepared, normalizedKey);
+  if (
+    !finalized ||
+    typeof finalized.id !== "string" ||
+    typeof finalized.sig !== "string"
+  ) {
+    throw new Error("Missing signing primitives");
+  }
+  return finalized;
 }
 
 export function deriveRebroadcastBucketIndex(referenceSeconds = null) {

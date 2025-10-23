@@ -88,7 +88,9 @@ function mergePointerDetails(target, source) {
     target.watchedAt = Math.max(0, Math.floor(source.watchedAt));
   }
   if (typeof source.relay === "string" && source.relay.trim()) {
-    target.relay = source.relay.trim();
+    if (!target.relay || !target.relay.trim()) {
+      target.relay = source.relay.trim();
+    }
   }
   if (!target.metadata && source.metadata && typeof source.metadata === "object") {
     target.metadata = clonePointerMetadata(source.metadata);
@@ -175,11 +177,7 @@ export function pointerKey(pointer) {
   if (!type || !value) {
     return "";
   }
-  const relay =
-    typeof pointer.relay === "string" && pointer.relay.trim()
-      ? pointer.relay.trim().toLowerCase()
-      : "";
-  return relay ? `${type}:${value}:${relay}` : `${type}:${value}`;
+  return `${type}:${value}`;
 }
 
 function normalizePointerTag(tag) {
@@ -466,7 +464,10 @@ export function normalizeActorKey(actor) {
   if (/^[0-9a-f]{64}$/i.test(trimmed)) {
     return trimmed.toLowerCase();
   }
-  const decoder = getCachedNostrTools()?.nip19?.decode;
+  const toolkit = getCachedNostrTools();
+  const decoder =
+    (typeof window !== "undefined" ? window?.NostrTools?.nip19?.decode : null) ||
+    toolkit?.nip19?.decode;
   if (typeof decoder === "function") {
     try {
       const decoded = decoder(trimmed);
@@ -729,7 +730,11 @@ export function isNip04EncryptedWatchHistoryEvent(pointerEvent, ciphertext) {
 
 class WatchHistoryManager {
   constructor(deps) {
-    this.deps = deps || {};
+    this.deps = {
+      ensureNostrTools,
+      getCachedNostrTools,
+      ...(deps || {}),
+    };
     this.cache = new Map();
     this.storage = null;
     this.republishTimers = new Map();
@@ -1225,11 +1230,51 @@ class WatchHistoryManager {
       if (cachedNip04Tools) {
         return cachedNip04Tools;
       }
-      const tools = await ensureNostrTools();
-      if (tools?.nip04 && typeof tools.nip04.encrypt === "function") {
-        cachedNip04Tools = tools;
-        return cachedNip04Tools;
+
+      const ensureToolkit =
+        typeof this.deps.ensureNostrTools === "function"
+          ? this.deps.ensureNostrTools
+          : ensureNostrTools;
+      if (ensureToolkit) {
+        try {
+          const ensured = await ensureToolkit();
+          if (
+            ensured?.nip04 &&
+            typeof ensured.nip04.encrypt === "function"
+          ) {
+            cachedNip04Tools = ensured;
+            return cachedNip04Tools;
+          }
+        } catch (error) {
+          devLogger.warn(
+            "[nostr] Failed to resolve nostr-tools for watch history:",
+            error,
+          );
+        }
       }
+
+      const readCachedToolkit =
+        typeof this.deps.getCachedNostrTools === "function"
+          ? this.deps.getCachedNostrTools
+          : getCachedNostrTools;
+      if (readCachedToolkit) {
+        try {
+          const cached = await readCachedToolkit();
+          if (
+            cached?.nip04 &&
+            typeof cached.nip04.encrypt === "function"
+          ) {
+            cachedNip04Tools = cached;
+            return cachedNip04Tools;
+          }
+        } catch (error) {
+          devLogger.warn(
+            "[nostr] Failed to read cached nostr-tools for watch history:",
+            error,
+          );
+        }
+      }
+
       return null;
     };
     const encryptChunk = async (plaintext) => {
@@ -1483,6 +1528,40 @@ class WatchHistoryManager {
     if (!success && errorCode) {
       result.error = errorCode;
     }
+
+    const shouldPersistLocally =
+      pointerAcceptedCount > 0 && !chunkRejectedEverywhere;
+
+    if (shouldPersistLocally) {
+      const storage = this.getStorage();
+      const previousEntry =
+        this.cache.get(actorKey) || storage.actors?.[actorKey] || {};
+      const metadata = sanitizeWatchHistoryMetadata(previousEntry.metadata);
+      metadata.updatedAt = Date.now();
+      metadata.status = success ? "ok" : "partial";
+      metadata.lastPublishResults = result.publishResults;
+      metadata.skippedCount = result.skippedCount || 0;
+      if (success) {
+        delete metadata.lastError;
+      } else {
+        metadata.lastError = result.error || "publish-partial";
+      }
+
+      const entry = {
+        actor: actorPubkey,
+        items: canonicalItems,
+        snapshotId,
+        pointerEvent: result.pointerEvent,
+        chunkEvents: result.chunkEvents,
+        savedAt: Date.now(),
+        fingerprint: await this.getFingerprint(actorPubkey, canonicalItems),
+        metadata,
+      };
+
+      this.cache.set(actorKey, entry);
+      this.persistEntry(actorKey, entry);
+    }
+
     devLogger.info("[nostr] Watch history snapshot publish result.", {
       actor: actorKey,
       snapshotId,
