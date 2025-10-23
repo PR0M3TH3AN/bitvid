@@ -99,8 +99,11 @@ timestamps.
 `nostrClient` instance, registers it with the runtime via
 `registerNostrClient`, and exposes helpers like
 `requestDefaultExtensionPermissions`. Import the singleton or permission helper
-from this module (or from the `js/nostr.js` barrel) whenever you need to run a
-NIP-07 handshake. New NIP features should reuse this bootstrapper instead of
+from this module or from the canonical export barrel at
+[`js/nostr/index.js`](../js/nostr/index.js) whenever you need to run a NIP-07
+handshake. `js/nostr.js` re-exports the default client alongside the
+singleton-aware bindings for view counters and watch history so legacy imports
+continue to resolve. New NIP features should reuse this bootstrapper instead of
 creating bespoke clients so permission caching and relay wiring stay
 consistent.【F:js/nostr/defaultClient.js†L1-L25】
 
