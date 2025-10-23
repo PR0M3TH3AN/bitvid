@@ -1,39 +1,15 @@
 // js/nostr.js
 
 import {
-  NostrClient,
-  getActiveSigner,
-  setActiveSigner,
-  clearActiveSigner,
-  resolveActiveSigner,
-  shouldRequestExtensionPermissions,
-} from "./nostr/client.js";
-import {
-  DEFAULT_NIP07_ENCRYPTION_METHODS,
-  DEFAULT_NIP07_PERMISSION_METHODS,
-} from "./nostr/nip07Permissions.js";
+  nostrClient,
+  requestDefaultExtensionPermissions,
+} from "./nostr/defaultClient.js";
 import {
   updateWatchHistoryList as updateWatchHistoryListWithManager,
   removeWatchHistoryItem as removeWatchHistoryItemWithManager,
 } from "./nostr/watchHistory.js";
-import {
-  registerNostrClient,
-  requestDefaultExtensionPermissions as requestRegisteredPermissions,
-} from "./nostrClientRegistry.js";
 
-export const nostrClient = new NostrClient();
-
-registerNostrClient(nostrClient, {
-  requestPermissions: (
-    methods = DEFAULT_NIP07_PERMISSION_METHODS,
-  ) => nostrClient.ensureExtensionPermissions(methods),
-});
-
-export function requestDefaultExtensionPermissions(
-  methods = DEFAULT_NIP07_PERMISSION_METHODS,
-) {
-  return requestRegisteredPermissions(methods);
-}
+export { nostrClient, requestDefaultExtensionPermissions };
 
 export const recordVideoView = (...args) =>
   nostrClient.recordVideoView(...args);
@@ -74,7 +50,10 @@ export {
   resolveActiveSigner,
   shouldRequestExtensionPermissions,
 } from "./nostr/client.js";
-export { DEFAULT_NIP07_ENCRYPTION_METHODS, DEFAULT_NIP07_PERMISSION_METHODS } from "./nostr/nip07Permissions.js";
+export {
+  DEFAULT_NIP07_ENCRYPTION_METHODS,
+  DEFAULT_NIP07_PERMISSION_METHODS,
+} from "./nostr/nip07Permissions.js";
 export {
   buildNip71MetadataTags,
   buildNip71VideoEvent,

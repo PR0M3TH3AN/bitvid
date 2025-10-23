@@ -93,6 +93,17 @@ client can republish exactly what was signed, including the original
 payload actually changes; this avoids accidental drift in dedupe tags or
 timestamps.
 
+### Default client bootstrap
+
+[`js/nostr/defaultClient.js`](../js/nostr/defaultClient.js) builds the shared
+`nostrClient` instance, registers it with the runtime via
+`registerNostrClient`, and exposes helpers like
+`requestDefaultExtensionPermissions`. Import the singleton or permission helper
+from this module (or from the `js/nostr.js` barrel) whenever you need to run a
+NIP-07 handshake. New NIP features should reuse this bootstrapper instead of
+creating bespoke clients so permission caching and relay wiring stay
+consistent.【F:js/nostr/defaultClient.js†L1-L25】
+
 ## Event catalogue
 
 | Note | Kind (default) | Tags | Content format |

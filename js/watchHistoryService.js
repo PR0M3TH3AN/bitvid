@@ -1,7 +1,9 @@
 // js/watchHistoryService.js
 
-import { nostrClient } from "./nostr.js";
-import { requestDefaultExtensionPermissions } from "./nostrClientRegistry.js";
+import {
+  nostrClient,
+  requestDefaultExtensionPermissions,
+} from "./nostr.js";
 import {
   normalizePointerInput,
   pointerKey,
