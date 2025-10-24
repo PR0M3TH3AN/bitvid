@@ -346,6 +346,13 @@ export class VideoModal {
     this.similarContentList = similarList;
     this.similarContentContainer = similarContainer;
 
+    this.normalizeModalLayoutStructure(playerModal, {
+      layout: playerModal.querySelector(".video-modal__layout") || null,
+      primary: playerModal.querySelector(".video-modal__primary") || null,
+      secondary: playerModal.querySelector(".video-modal__secondary") || null,
+      similarContainer,
+    });
+
     this.setupSimilarContentMediaQuery();
 
     if (similarList && similarList.children.length) {
@@ -2481,6 +2488,65 @@ export class VideoModal {
     }
 
     this.toggleSimilarContentVisibility(false);
+  }
+
+  normalizeModalLayoutStructure(
+    playerModal,
+    { layout, primary, secondary, similarContainer }
+  ) {
+    if (!playerModal || !layout || !primary || !secondary) {
+      return;
+    }
+
+    const layoutClassList = layout.classList;
+    const legacyLayoutClasses = [
+      "flex",
+      "flex-col",
+      "flex-row",
+      "gap-4",
+      "gap-6",
+      "gap-8",
+      "gap-y-6",
+      "gap-y-8",
+    ];
+    legacyLayoutClasses.forEach((className) => {
+      if (layoutClassList.contains(className)) {
+        layoutClassList.remove(className);
+      }
+    });
+
+    if (layout.hasAttribute("style")) {
+      layout.removeAttribute("style");
+    }
+
+    if (primary.hasAttribute("style")) {
+      primary.removeAttribute("style");
+    }
+    if (secondary.hasAttribute("style")) {
+      secondary.removeAttribute("style");
+    }
+
+    if (!layout.contains(primary)) {
+      layout.appendChild(primary);
+    }
+
+    if (!layout.contains(secondary)) {
+      layout.appendChild(secondary);
+    }
+
+    if (primary.nextElementSibling !== secondary) {
+      layout.appendChild(primary);
+      layout.appendChild(secondary);
+    }
+
+    if (similarContainer) {
+      if (similarContainer.hasAttribute("style")) {
+        similarContainer.removeAttribute("style");
+      }
+      if (!secondary.contains(similarContainer)) {
+        secondary.prepend(similarContainer);
+      }
+    }
   }
 
   teardownSimilarContentSubscriptions() {
