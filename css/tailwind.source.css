@@ -1439,7 +1439,7 @@
   }
 
   #playerModal .watch-container.video-modal__similar {
-    padding-inline: clamp(var(--space-3xs), 1vw, var(--space-sm));
+    padding-inline: clamp(var(--space-4xs), 0.75vw, var(--space-xs));
   }
 
   #playerModal .video-modal__primary > .watch-container:first-child {
@@ -1500,7 +1500,7 @@
     flex-direction: column;
     gap: clamp(var(--space-sm), 1.75vw, var(--space-md));
     width: 100%;
-    padding: clamp(var(--space-sm), 2vw, var(--space-lg));
+    padding: clamp(var(--space-sm), 1.5vw, var(--space-lg));
     border-radius: var(--radius-xl);
     border: var(--border-width-hairline) solid var(--color-border-translucent);
     background-color: var(--color-surface);
@@ -1526,8 +1526,8 @@
   }
 
   #playerModal .video-modal__similar .player-modal__module {
-    gap: clamp(var(--space-xs), 1.25vw, var(--space-md));
-    padding: clamp(var(--space-sm), 1.5vw, var(--space-lg));
+    gap: clamp(var(--space-xs), 1.1vw, var(--space-sm));
+    padding: clamp(var(--space-xs), 1vw, var(--space-sm));
     border-width: 0;
     box-shadow: none;
     background-color: transparent;
@@ -1697,7 +1697,9 @@
       46vw,
       var(--video-modal-secondary-max)
     );
-    @apply grid gap-3 lg:gap-5;
+    --video-modal-gap: clamp(var(--space-sm), 1.5vw, var(--space-md-plus));
+    @apply grid;
+    gap: var(--video-modal-gap);
     width: min(100%, var(--video-modal-layout-max));
     margin-inline: auto;
     grid-template-columns: minmax(0, 1fr);
