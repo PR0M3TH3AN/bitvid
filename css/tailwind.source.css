@@ -1669,7 +1669,21 @@
   }
 
   .video-modal__layout {
+    --video-modal-primary-fr: 1.1fr;
+    --video-modal-secondary-min: clamp(
+      calc(var(--space-2xl) * 6),
+      32vw,
+      calc(var(--space-2xl) * 8)
+    );
+    --video-modal-secondary-fr: 0.9fr;
     @apply grid items-start gap-6 lg:gap-8;
+  }
+
+  @media (min-width: theme('screens.xl')) {
+    .video-modal__layout {
+      --video-modal-primary-fr: 1.4fr;
+      --video-modal-secondary-fr: 1fr;
+    }
   }
 
   @media (min-width: theme('screens.lg')) {
@@ -1704,15 +1718,17 @@
   }
 
   .video-modal__secondary {
+    min-width: 0;
     @apply flex flex-col gap-4;
   }
 
   .video-modal__similar {
-    @apply flex flex-col gap-6;
+    display: none;
   }
 
   @media (min-width: theme('screens.lg')) {
     .video-modal__similar {
+      @apply flex flex-col gap-6;
       align-self: stretch;
     }
   }
