@@ -12,29 +12,39 @@
     <div class="player-modal__container video-modal__container">
       <div id="modalNav" class="modal-nav modal-nav--visible">
         <div class="watch-container modal-nav__bar">
-          <div class="modal-actions">
-            <button
-              id="closeModal"
-              type="button"
-              class="icon-button focus-ring accent-action-button"
+          <div class="modal-nav__rail">
+            <div class="modal-nav__slot modal-nav__slot--primary">
+              <div class="modal-actions">
+                <button
+                  id="closeModal"
+                  type="button"
+                  class="icon-button focus-ring accent-action-button"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    class="h-5 w-5"
+                    aria-hidden="true"
+                  >
+                    <path d="M15 18l-6-6 6-6" />
+                  </svg>
+                  <span class="sr-only">Close player</span>
+                </button>
+              </div>
+            </div>
+            <div
+              class="modal-nav__slot modal-nav__slot--context"
+              data-modal-nav-context
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                class="h-5 w-5"
-                aria-hidden="true"
-              >
-                <path d="M15 18l-6-6 6-6" />
-              </svg>
-              <span class="sr-only">Close player</span>
-            </button>
+              <div id="modalNavContext" class="modal-nav__context" hidden></div>
+            </div>
           </div>
         </div>
       </div>
@@ -86,8 +96,8 @@
                   </div>
                 </div>
 
-                <div class="video-modal__actions-row flex flex-wrap items-center justify-between gap-3">
-                  <div class="video-modal__reactions flex flex-wrap items-center gap-3 sm:gap-4">
+                <div class="video-modal__actions-row">
+                  <div class="video-modal__reactions">
                     <div class="video-modal__reaction-buttons inline-flex flex-wrap items-center gap-2">
                       <button
                         id="modalLikeBtn"
@@ -178,7 +188,7 @@
                       <span class="sr-only" data-reaction-meter-sr>No reactions yet</span>
                     </div>
                   </div>
-                  <div class="video-modal__actions-group flex flex-wrap items-center gap-3">
+                  <div class="video-modal__actions-group">
                     <button
                       id="copyMagnetBtn"
                       type="button"

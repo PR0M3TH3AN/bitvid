@@ -1650,11 +1650,25 @@
   }
 
   #playerModal .modal-nav__bar {
-    @apply flex w-full items-center justify-between gap-3 px-2 py-2 sm:px-4;
+    @apply flex w-full items-center justify-start gap-3 py-2;
     padding-inline: var(
       --player-modal-inline-padding,
       clamp(var(--space-sm), 3vw, var(--space-xl))
     );
+  }
+
+  #playerModal .modal-nav__rail {
+    @apply flex w-full items-center justify-between gap-3;
+  }
+
+  #playerModal .modal-nav__slot {
+    @apply flex items-center gap-2;
+  }
+
+  #playerModal .modal-nav__slot--context {
+    @apply justify-end;
+    margin-inline-start: auto;
+    min-inline-size: 0;
   }
 
   #playerModal .modal-nav__context {
@@ -2108,11 +2122,13 @@
   }
 
   .video-modal__actions-row {
-    @apply flex flex-col gap-4 md:flex-row md:items-start md:justify-between;
+    @apply flex w-full flex-wrap items-start gap-y-3 gap-x-4;
   }
 
   .video-modal__reactions {
-    @apply flex flex-wrap items-start gap-3 md:flex-nowrap md:items-center md:gap-4;
+    @apply flex flex-wrap items-start gap-3 sm:gap-4;
+    flex: 1 1 var(--menu-min-width);
+    min-inline-size: 0;
   }
 
   .video-modal__reaction-buttons {
@@ -2187,7 +2203,8 @@
   }
 
   .video-modal__actions-group {
-    @apply flex flex-wrap items-center justify-start gap-3 md:justify-end;
+    @apply flex flex-wrap items-start justify-end gap-3;
+    margin-inline-start: auto;
   }
 
   .video-modal__action-button {
