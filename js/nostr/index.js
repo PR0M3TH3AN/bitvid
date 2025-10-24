@@ -57,3 +57,9 @@ export {
 } from "./viewEvents.js";
 
 export { publishVideoReaction } from "./reactionEvents.js";
+export {
+  COMMENT_EVENT_KIND,
+  publishComment,
+  listVideoComments,
+  subscribeVideoComments,
+} from "./commentEvents.js";

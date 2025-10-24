@@ -54,6 +54,11 @@ import {
 } from "./viewEvents.js";
 import { publishVideoReaction as publishVideoReactionForClient } from "./reactionEvents.js";
 import {
+  publishComment as publishCommentForClient,
+  listVideoComments as listVideoCommentsForClient,
+  subscribeVideoComments as subscribeVideoCommentsForClient,
+} from "./commentEvents.js";
+import {
   publishEventToRelay,
   publishEventToRelays,
   assertAnyRelayAccepted,
@@ -2755,6 +2760,23 @@ export class NostrClient {
       signEventWithPrivateKey,
       DEFAULT_NIP07_PERMISSION_METHODS,
     });
+  }
+
+  async publishVideoComment(target, options = {}) {
+    return publishCommentForClient(this, target, options, {
+      resolveActiveSigner,
+      shouldRequestExtensionPermissions,
+      signEventWithPrivateKey,
+      DEFAULT_NIP07_PERMISSION_METHODS,
+    });
+  }
+
+  async fetchVideoComments(target, options = {}) {
+    return listVideoCommentsForClient(this, target, options);
+  }
+
+  subscribeVideoComments(target, options = {}) {
+    return subscribeVideoCommentsForClient(this, target, options);
   }
 
   async recordVideoView(videoPointer, options = {}) {
