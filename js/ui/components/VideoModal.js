@@ -61,6 +61,8 @@ export class VideoModal {
     this.modalStatus = null;
     this.modalProgress = null;
     this.modalProgressStatus = null;
+    this.modalStatsContainer = null;
+    this.modalStats = null;
     this.modalPeers = null;
     this.modalSpeed = null;
     this.modalDownloaded = null;
@@ -145,7 +147,8 @@ export class VideoModal {
     this.commentsEmptyState = null;
     this.commentsList = null;
     this.commentsLoadMoreButton = null;
-    this.commentsDisabledMessage = null;
+    this.commentsDisabledPlaceholder = null;
+    this.commentsDisabledPlaceholderDefaultText = "";
     this.commentsComposer = null;
     this.commentsInput = null;
     this.commentsSubmitButton = null;
@@ -397,17 +400,27 @@ export class VideoModal {
     this.similarContentList = similarList;
     this.similarContentContainer = similarContainer;
 
+    const statsContainerCandidate =
+      playerModal.querySelector("[data-video-stats-container]") ||
+      playerModal
+        .querySelector("[data-video-stats]")
+        ?.closest("[data-video-stats-container]") ||
+      playerModal
+        .querySelector("[data-video-stats]")
+        ?.closest(".watch-container") ||
+      playerModal.querySelector("[data-video-stats]") ||
+      playerModal
+        .querySelector(".video-modal__stats")
+        ?.closest(".watch-container") ||
+      playerModal.querySelector(".video-modal__stats") ||
+      null;
+
     this.normalizeModalLayoutStructure(playerModal, {
       layout: playerModal.querySelector(".video-modal__layout") || null,
       primary: playerModal.querySelector(".video-modal__primary") || null,
       secondary: playerModal.querySelector(".video-modal__secondary") || null,
       similarContainer,
-      statsContainer:
-        playerModal
-          .querySelector(".video-modal__stats")
-          ?.closest(".watch-container") ||
-        playerModal.querySelector(".video-modal__stats") ||
-        null,
+      statsContainer: statsContainerCandidate,
     });
 
     this.setupSimilarContentMediaQuery();
@@ -428,10 +441,21 @@ export class VideoModal {
     this.modalProgress = playerModal.querySelector("#modalProgress") || null;
     this.modalProgressStatus =
       playerModal.querySelector("#modalProgressStatus") || null;
+    this.modalStatsContainer =
+      playerModal.querySelector("[data-video-stats-container]") ||
+      statsContainerCandidate ||
+      null;
+    this.modalStats =
+      playerModal.querySelector("[data-video-stats]") ||
+      this.modalStatsContainer?.querySelector("[data-video-stats]") ||
+      this.modalStatsContainer?.querySelector(".video-modal__stats") ||
+      playerModal.querySelector(".video-modal__stats") ||
+      null;
     this.modalPeers = playerModal.querySelector("#modalPeers") || null;
     this.modalSpeed = playerModal.querySelector("#modalSpeed") || null;
     this.modalDownloaded =
       playerModal.querySelector("#modalDownloaded") || null;
+    this.setTorrentStatsVisibility(false);
     this.videoTitle = playerModal.querySelector("#videoTitle") || null;
     this.videoDescription =
       playerModal.querySelector("#videoDescription") || null;
@@ -512,8 +536,10 @@ export class VideoModal {
       commentsRoot?.querySelector("[data-comments-list]") || null;
     this.commentsLoadMoreButton =
       commentsRoot?.querySelector("[data-comments-load-more]") || null;
-    this.commentsDisabledMessage =
-      commentsRoot?.querySelector("[data-comments-disabled]") || null;
+    this.commentsDisabledPlaceholder =
+      playerModal.querySelector("[data-comments-disabled-placeholder]") ||
+      commentsRoot?.querySelector("[data-comments-disabled]") ||
+      null;
     this.commentsComposer =
       commentsRoot?.querySelector("[data-comments-composer]") || null;
     this.commentsInput =
@@ -558,8 +584,12 @@ export class VideoModal {
       }
     }
 
-    if (this.commentsDisabledMessage) {
-      this.commentsDisabledMessage.setAttribute("hidden", "");
+    if (this.commentsDisabledPlaceholder) {
+      const disabledText = this.commentsDisabledPlaceholder.textContent || "";
+      if (disabledText) {
+        this.commentsDisabledPlaceholderDefaultText = disabledText;
+      }
+      this.commentsDisabledPlaceholder.setAttribute("hidden", "");
     }
     if (this.commentsComposer) {
       this.commentsComposer.removeAttribute("hidden");
@@ -847,6 +877,36 @@ export class VideoModal {
     }
   }
 
+  showCommentsDisabledMessage(message) {
+    const placeholder = this.commentsDisabledPlaceholder;
+    if (placeholder) {
+      const fallbackText = this.commentsDisabledPlaceholderDefaultText || "";
+      const nextText =
+        typeof message === "string" && message.trim()
+          ? message.trim()
+          : fallbackText;
+      if (nextText) {
+        placeholder.textContent = nextText;
+      } else if (fallbackText) {
+        placeholder.textContent = fallbackText;
+      }
+      placeholder.removeAttribute("hidden");
+      placeholder.classList?.remove("hidden");
+    }
+    this.setCommentsVisibility(false);
+  }
+
+  hideCommentsDisabledMessage() {
+    const placeholder = this.commentsDisabledPlaceholder;
+    if (placeholder) {
+      if (this.commentsDisabledPlaceholderDefaultText) {
+        placeholder.textContent = this.commentsDisabledPlaceholderDefaultText;
+      }
+      placeholder.setAttribute("hidden", "");
+      placeholder.classList?.add("hidden");
+    }
+  }
+
   setCommentComposerState({ disabled = false, reason = "" } = {}) {
     const normalizedReason = typeof reason === "string" ? reason : "";
 
@@ -871,12 +931,8 @@ export class VideoModal {
       this.commentsInput.disabled = shouldDisable;
     }
 
-    if (this.commentsDisabledMessage) {
-      if (normalizedReason === "disabled") {
-        this.commentsDisabledMessage.removeAttribute("hidden");
-      } else {
-        this.commentsDisabledMessage.setAttribute("hidden", "");
-      }
+    if (normalizedReason !== "disabled") {
+      this.hideCommentsDisabledMessage();
     }
 
     if (this.commentsComposer) {
@@ -914,6 +970,7 @@ export class VideoModal {
       this.commentsInput.disabled = false;
       this.commentsInput.value = "";
     }
+    this.hideCommentsDisabledMessage();
     this.commentComposerState = {
       disabled: false,
       reason: "",
@@ -1477,7 +1534,8 @@ export class VideoModal {
     this.commentsEmptyState = null;
     this.commentsList = null;
     this.commentsLoadMoreButton = null;
-    this.commentsDisabledMessage = null;
+    this.commentsDisabledPlaceholder = null;
+    this.commentsDisabledPlaceholderDefaultText = "";
     this.commentsComposer = null;
     this.commentsInput = null;
     this.commentsSubmitButton = null;
@@ -2486,11 +2544,48 @@ export class VideoModal {
     this.updateSpeed("");
     this.updateDownloaded("");
     this.updateProgress("0%");
+    this.setTorrentStatsVisibility(false);
   }
 
   updateStatus(message) {
     if (this.modalStatus) {
       this.modalStatus.textContent = message || "";
+    }
+  }
+
+  setTorrentStatsVisibility(shouldShow) {
+    const visible = Boolean(shouldShow);
+    const container = this.modalStatsContainer;
+    const stats = this.modalStats;
+    const toggle = (element, show) => {
+      if (!element) {
+        return;
+      }
+      if (show) {
+        element.removeAttribute("hidden");
+        element.classList?.remove("hidden");
+      } else {
+        element.setAttribute("hidden", "");
+        element.classList?.add("hidden");
+      }
+    };
+
+    if (container) {
+      toggle(container, visible);
+      if (stats) {
+        if (visible) {
+          stats.removeAttribute("hidden");
+          stats.classList?.remove("hidden");
+        } else {
+          stats.setAttribute("hidden", "");
+          stats.classList?.add("hidden");
+        }
+      }
+      return;
+    }
+
+    if (stats) {
+      toggle(stats, visible);
     }
   }
 
