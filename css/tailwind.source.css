@@ -2174,7 +2174,7 @@
   }
 
   .video-modal__reactions {
-    @apply flex flex-wrap items-start gap-3 sm:gap-4;
+    @apply flex basis-full flex-wrap items-start gap-3 sm:gap-4 md:basis-auto;
     flex: 1 1 var(--menu-min-width);
     min-inline-size: 0;
   }
@@ -2251,8 +2251,14 @@
   }
 
   .video-modal__actions-group {
-    @apply flex flex-wrap items-start justify-end gap-3;
-    margin-inline-start: auto;
+    @apply flex basis-full flex-wrap items-start justify-start gap-3 md:flex-none md:basis-auto md:justify-end;
+    min-inline-size: 0;
+  }
+
+  @media (min-width: theme("screens.md")) {
+    .video-modal__actions-group {
+      margin-inline-start: auto;
+    }
   }
 
   .video-modal__action-button {
