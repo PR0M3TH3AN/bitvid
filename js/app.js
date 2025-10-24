@@ -677,7 +677,15 @@ class Application {
         logger: {
           log: (message, ...args) => this.log(message, ...args),
         },
+        mediaLoader: this.mediaLoader,
       });
+
+    if (
+      this.videoModal &&
+      typeof this.videoModal.setMediaLoader === "function"
+    ) {
+      this.videoModal.setMediaLoader(this.mediaLoader);
+    }
     this.zapController = new ZapController({
       videoModal: this.videoModal,
       getCurrentVideo: () => this.currentVideo,

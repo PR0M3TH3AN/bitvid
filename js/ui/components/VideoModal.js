@@ -18,6 +18,7 @@ export class VideoModal {
     setGlobalModalState,
     document: doc,
     logger,
+    mediaLoader,
   } = {}) {
     if (!doc) {
       throw new Error("VideoModal requires a document reference.");
@@ -42,6 +43,8 @@ export class VideoModal {
       this.logger = devLogger;
     }
     this.eventTarget = new EventTarget();
+
+    this.mediaLoader = null;
 
     this.loaded = false;
 
@@ -146,6 +149,8 @@ export class VideoModal {
     this.handleVideoTagActivate = this.handleVideoTagActivate.bind(this);
 
     this.MODAL_LOADING_POSTER = "assets/gif/please-stand-by.gif";
+
+    this.setMediaLoader(mediaLoader);
   }
 
   log(message, ...args) {
@@ -2456,6 +2461,7 @@ export class VideoModal {
     this.similarContentList.appendChild(fragment);
     this.similarContentCards = renderedCards;
     this.similarContentViewCountSubscriptions = viewSubscriptions;
+    this.observeLazyMedia(this.similarContentList);
     this.toggleSimilarContentVisibility(renderedCards.length > 0);
   }
 
@@ -2592,6 +2598,18 @@ export class VideoModal {
     this.refreshSimilarContentVisibility();
   }
 
+  setMediaLoader(mediaLoader) {
+    if (mediaLoader && typeof mediaLoader.observe === "function") {
+      this.mediaLoader = mediaLoader;
+      if (this.similarContentList && this.similarContentList.children.length) {
+        this.observeLazyMedia(this.similarContentList);
+      }
+      return;
+    }
+
+    this.mediaLoader = null;
+  }
+
   refreshSimilarContentVisibility() {
     const shouldShow =
       this.similarContentVisible && this.matchesSimilarContentDesktop();
@@ -2613,6 +2631,29 @@ export class VideoModal {
       element.setAttribute("hidden", "");
       element.setAttribute("aria-hidden", "true");
     }
+  }
+
+  observeLazyMedia(container) {
+    if (
+      !container ||
+      !this.mediaLoader ||
+      typeof this.mediaLoader.observe !== "function"
+    ) {
+      return;
+    }
+
+    const lazyNodes = container.querySelectorAll("[data-lazy]");
+    if (!lazyNodes.length) {
+      return;
+    }
+
+    lazyNodes.forEach((node) => {
+      try {
+        this.mediaLoader.observe(node);
+      } catch (error) {
+        this.log("[VideoModal] Failed to observe lazy media", error);
+      }
+    });
   }
 
   matchesSimilarContentDesktop() {

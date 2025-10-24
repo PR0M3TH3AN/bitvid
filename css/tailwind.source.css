@@ -1671,7 +1671,7 @@
   .video-modal__layout {
     --video-modal-secondary-size: clamp(
       var(--video-modal-secondary-min),
-      38vw,
+      40vw,
       var(--video-modal-secondary-max)
     );
     @apply grid gap-6 lg:gap-8;
@@ -1688,7 +1688,7 @@
     .video-modal__layout {
       --video-modal-secondary-size: clamp(
         var(--video-modal-secondary-min),
-        32vw,
+        36vw,
         var(--video-modal-secondary-max)
       );
       grid-template-columns:
@@ -1724,7 +1724,7 @@
     .video-modal__layout {
       --video-modal-secondary-size: clamp(
         var(--video-modal-secondary-min),
-        28vw,
+        32vw,
         var(--video-modal-secondary-max)
       );
     }
@@ -1799,6 +1799,8 @@
     #playerModal .video-modal__similar .player-modal__module {
       height: 100%;
       display: flex;
+      flex: 1 1 auto;
+      min-height: 0;
       flex-direction: column;
     }
 
@@ -1809,6 +1811,8 @@
 
     #playerModal .video-modal__similar .player-modal__module-scroll {
       height: 100%;
+      max-height: none;
+      min-height: 0;
     }
   }
 
