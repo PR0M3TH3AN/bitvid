@@ -351,6 +351,12 @@ export class VideoModal {
       primary: playerModal.querySelector(".video-modal__primary") || null,
       secondary: playerModal.querySelector(".video-modal__secondary") || null,
       similarContainer,
+      statsContainer:
+        playerModal
+          .querySelector(".video-modal__stats")
+          ?.closest(".watch-container") ||
+        playerModal.querySelector(".video-modal__stats") ||
+        null,
     });
 
     this.setupSimilarContentMediaQuery();
@@ -2492,7 +2498,7 @@ export class VideoModal {
 
   normalizeModalLayoutStructure(
     playerModal,
-    { layout, primary, secondary, similarContainer }
+    { layout, primary, secondary, similarContainer, statsContainer }
   ) {
     if (!playerModal || !layout || !primary || !secondary) {
       return;
@@ -2545,6 +2551,15 @@ export class VideoModal {
       }
       if (!secondary.contains(similarContainer)) {
         secondary.prepend(similarContainer);
+      }
+    }
+
+    if (statsContainer) {
+      if (statsContainer.hasAttribute("style")) {
+        statsContainer.removeAttribute("style");
+      }
+      if (!primary.contains(statsContainer)) {
+        primary.appendChild(statsContainer);
       }
     }
   }
