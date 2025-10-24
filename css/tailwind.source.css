@@ -1669,28 +1669,28 @@
   }
 
   .video-modal__layout {
-    --video-modal-primary-fr: 1.1fr;
-    --video-modal-secondary-min: clamp(
-      calc(var(--space-2xl) * 6),
-      32vw,
-      calc(var(--space-2xl) * 8)
+    --video-modal-primary-columns: minmax(0, 1.2fr);
+    --video-modal-secondary-columns: minmax(
+      clamp(var(--space-4xl), 28vw, var(--space-7xl)),
+      1fr
     );
-    --video-modal-secondary-fr: 0.9fr;
     @apply grid items-start gap-6 lg:gap-8;
   }
 
   @media (min-width: theme('screens.xl')) {
     .video-modal__layout {
-      --video-modal-primary-fr: 1.4fr;
-      --video-modal-secondary-fr: 1fr;
+      --video-modal-primary-columns: minmax(0, 1.4fr);
+      --video-modal-secondary-columns: minmax(
+        clamp(var(--space-5xl), 30vw, var(--space-8xl)),
+        1fr
+      );
     }
   }
 
   @media (min-width: theme('screens.lg')) {
     .video-modal__layout {
-      grid-template-columns:
-        minmax(0, var(--video-modal-primary-fr))
-        minmax(var(--video-modal-secondary-min), var(--video-modal-secondary-fr, 1fr));
+      grid-template-columns: var(--video-modal-primary-columns)
+        var(--video-modal-secondary-columns);
     }
   }
 
