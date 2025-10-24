@@ -12,10 +12,13 @@ import {
   formatViewCount,
 } from "../../viewCounter.js";
 import {
-  truncateMiddle,
   formatAbsoluteTimestamp,
   formatTimeAgo,
+  formatShortNpub,
 } from "../../utils/formatters.js";
+import { sanitizeProfileMediaUrl } from "../../utils/profileMedia.js";
+
+const HEX64_REGEX = /^[0-9a-f]{64}$/i;
 
 export class VideoModal {
   constructor({
@@ -171,6 +174,8 @@ export class VideoModal {
     this.commentProfiles = new Map();
     this.commentNodes = new Map();
     this.commentChildLists = new Map();
+    this.commentNodeElements = new Map();
+    this.commentNpubEncodingFailures = new Set();
     this.commentRetryButton = null;
     this.commentCallbacks = {
       teardown: null,
@@ -198,6 +203,7 @@ export class VideoModal {
     this.handleVideoTagActivate = this.handleVideoTagActivate.bind(this);
 
     this.MODAL_LOADING_POSTER = "assets/gif/please-stand-by.gif";
+    this.DEFAULT_PROFILE_AVATAR = "assets/svg/default-profile.svg";
 
     this.setMediaLoader(mediaLoader);
   }
@@ -1154,13 +1160,14 @@ export class VideoModal {
 
     const avatarWrapper = this.document.createElement("div");
     avatarWrapper.classList.add("comment-thread__avatar");
-    avatarWrapper.setAttribute("aria-hidden", "true");
+
+    const avatarImg = this.document.createElement("img");
+    avatarImg.hidden = true;
+    avatarImg.loading = "lazy";
+    avatarImg.decoding = "async";
+    avatarWrapper.appendChild(avatarImg);
+
     const avatarLabel = this.document.createElement("span");
-    avatarLabel.appendChild(
-      this.document.createTextNode(
-        this.getCommentAvatarInitial(event.pubkey)
-      )
-    );
     avatarWrapper.appendChild(avatarLabel);
 
     const content = this.document.createElement("div");
@@ -1171,9 +1178,6 @@ export class VideoModal {
 
     const authorEl = this.document.createElement("span");
     authorEl.classList.add("comment-thread__author");
-    authorEl.appendChild(
-      this.document.createTextNode(this.getCommentAuthorName(event.pubkey))
-    );
     meta.appendChild(authorEl);
 
     const timestamp = this.getCommentTimestampLabel(event.created_at);
@@ -1192,6 +1196,20 @@ export class VideoModal {
 
     content.appendChild(meta);
 
+    const identityMeta = this.document.createElement("div");
+    identityMeta.classList.add(
+      "flex",
+      "items-center",
+      "gap-2",
+      "text-2xs",
+      "text-muted-strong"
+    );
+    identityMeta.hidden = true;
+    const npubLabel = this.document.createElement("span");
+    npubLabel.classList.add("truncate");
+    identityMeta.appendChild(npubLabel);
+    content.appendChild(identityMeta);
+
     const body = this.document.createElement("p");
     body.classList.add("comment-thread__body");
     body.appendChild(
@@ -1203,6 +1221,15 @@ export class VideoModal {
 
     const actions = this.document.createElement("div");
     actions.classList.add("comment-thread__actions");
+
+    const copyButton = this.document.createElement("button");
+    copyButton.type = "button";
+    copyButton.classList.add("comment-thread__copy-npub");
+    copyButton.textContent = "Copy npub";
+    copyButton.dataset.originalLabel = "Copy npub";
+    copyButton.hidden = true;
+    this.bindCommentCopyHandler(copyButton);
+    actions.appendChild(copyButton);
 
     const muteButton = this.document.createElement("button");
     muteButton.type = "button";
@@ -1233,40 +1260,365 @@ export class VideoModal {
 
     this.commentNodes.set(commentId, listItem);
     this.commentChildLists.set(commentId, replies);
+    this.commentNodeElements.set(commentId, {
+      avatarImg,
+      avatarLabel,
+      authorEl,
+      npubContainer: identityMeta,
+      npubLabel,
+      copyButton,
+    });
+
+    this.updateCommentNodeProfile(commentId, event.pubkey);
 
     return listItem;
   }
 
-  getCommentAuthorName(pubkey) {
-    const normalized =
-      typeof pubkey === "string" && pubkey.trim() ? pubkey.trim() : "";
-    if (!normalized) {
-      return "Anonymous";
+  bindCommentCopyHandler(button) {
+    if (!button) {
+      return;
     }
 
-    const profile = this.commentProfiles.get(normalized.toLowerCase());
-    if (profile && typeof profile === "object") {
-      const displayName =
-        profile.display_name ||
-        profile.name ||
-        profile.username ||
-        profile.npub ||
-        "";
-      if (displayName) {
-        return displayName;
+    button.addEventListener("click", async () => {
+      const npub =
+        typeof button.dataset.npub === "string" && button.dataset.npub
+          ? button.dataset.npub
+          : "";
+      const originalLabel =
+        typeof button.dataset.originalLabel === "string" &&
+        button.dataset.originalLabel
+          ? button.dataset.originalLabel
+          : "Copy npub";
+      if (!button.dataset.originalLabel) {
+        button.dataset.originalLabel = originalLabel;
+      }
+
+      if (!npub) {
+        this.showCommentCopyFeedback(button, "Copy failed", "error");
+        return;
+      }
+
+      try {
+        const clipboard = this.window?.navigator?.clipboard;
+        if (!clipboard || typeof clipboard.writeText !== "function") {
+          throw new Error("Clipboard unavailable");
+        }
+        await clipboard.writeText(npub);
+        this.showCommentCopyFeedback(button, "Copied!", "copied");
+      } catch (error) {
+        this.log("[VideoModal] Failed to copy comment npub", error);
+        this.showCommentCopyFeedback(button, "Copy failed", "error");
+      }
+    });
+  }
+
+  showCommentCopyFeedback(button, message, state = "") {
+    if (!button) {
+      return;
+    }
+
+    const originalLabel =
+      typeof button.dataset.originalLabel === "string" &&
+      button.dataset.originalLabel
+        ? button.dataset.originalLabel
+        : "Copy npub";
+
+    button.textContent = message;
+    if (state) {
+      button.dataset.state = state;
+    } else if (button.dataset.state) {
+      delete button.dataset.state;
+    }
+
+    const timeoutId = Number.parseInt(
+      button.dataset.feedbackTimeoutId || "",
+      10
+    );
+    if (
+      Number.isFinite(timeoutId) &&
+      this.window &&
+      typeof this.window.clearTimeout === "function"
+    ) {
+      this.window.clearTimeout(timeoutId);
+    }
+
+    if (!this.window || typeof this.window.setTimeout !== "function") {
+      button.textContent = button.dataset.originalLabel || originalLabel;
+      if (button.dataset.feedbackTimeoutId) {
+        delete button.dataset.feedbackTimeoutId;
+      }
+      return;
+    }
+
+    const nextId = this.window.setTimeout(() => {
+      button.textContent = button.dataset.originalLabel || originalLabel;
+      if (button.dataset.state) {
+        delete button.dataset.state;
+      }
+      if (button.dataset.feedbackTimeoutId) {
+        delete button.dataset.feedbackTimeoutId;
+      }
+    }, 2000);
+
+    button.dataset.feedbackTimeoutId = String(nextId);
+  }
+
+  updateCommentNodeProfile(commentId, pubkey) {
+    if (!(this.commentNodeElements instanceof Map)) {
+      this.commentNodeElements = new Map();
+    }
+
+    if (!commentId || !this.commentNodeElements.has(commentId)) {
+      return;
+    }
+
+    const node = this.commentNodes.get(commentId);
+    if (!node) {
+      return;
+    }
+
+    const refs = this.commentNodeElements.get(commentId);
+    const profile = this.getCommentAuthorProfile(pubkey);
+
+    if (refs.authorEl) {
+      refs.authorEl.textContent = profile.displayName;
+    }
+
+    if (refs.avatarLabel) {
+      refs.avatarLabel.textContent = profile.initial;
+      refs.avatarLabel.hidden = Boolean(profile.avatarUrl);
+    }
+
+    if (refs.avatarImg) {
+      if (!refs.avatarImg.dataset.commentAvatarBound) {
+        const labelRef = refs.avatarLabel;
+        const imgRef = refs.avatarImg;
+        refs.avatarImg.addEventListener("error", () => {
+          if (imgRef && imgRef.src !== this.DEFAULT_PROFILE_AVATAR) {
+            imgRef.src = this.DEFAULT_PROFILE_AVATAR;
+            return;
+          }
+          if (imgRef) {
+            imgRef.hidden = true;
+          }
+          if (labelRef) {
+            labelRef.hidden = false;
+          }
+        });
+        refs.avatarImg.dataset.commentAvatarBound = "true";
+      }
+
+      if (profile.avatarUrl) {
+        refs.avatarImg.src = profile.avatarUrl;
+        refs.avatarImg.alt = `${profile.displayName}'s avatar`;
+        refs.avatarImg.hidden = false;
+        if (refs.avatarLabel) {
+          refs.avatarLabel.hidden = true;
+        }
+      } else {
+        refs.avatarImg.hidden = true;
+        if (refs.avatarLabel) {
+          refs.avatarLabel.hidden = false;
+        }
       }
     }
 
-    return truncateMiddle(normalized, 16) || "Anonymous";
+    if (refs.npubContainer) {
+      if (profile.shortNpub) {
+        refs.npubContainer.hidden = false;
+        if (refs.npubLabel) {
+          refs.npubLabel.textContent = profile.shortNpub;
+          if (profile.npub) {
+            refs.npubLabel.title = profile.npub;
+          } else if (refs.npubLabel.title) {
+            refs.npubLabel.removeAttribute("title");
+          }
+        }
+      } else {
+        refs.npubContainer.hidden = true;
+        if (refs.npubLabel) {
+          refs.npubLabel.textContent = "";
+          if (refs.npubLabel.title) {
+            refs.npubLabel.removeAttribute("title");
+          }
+        }
+      }
+    }
+
+    if (refs.copyButton) {
+      const originalLabel =
+        typeof refs.copyButton.dataset.originalLabel === "string" &&
+        refs.copyButton.dataset.originalLabel
+          ? refs.copyButton.dataset.originalLabel
+          : "Copy npub";
+
+      if (profile.npub) {
+        refs.copyButton.hidden = false;
+        refs.copyButton.disabled = false;
+        refs.copyButton.dataset.npub = profile.npub;
+        refs.copyButton.setAttribute(
+          "aria-label",
+          `Copy ${profile.displayName}'s npub`
+        );
+        refs.copyButton.textContent = originalLabel;
+        if (refs.copyButton.dataset.state) {
+          delete refs.copyButton.dataset.state;
+        }
+      } else {
+        refs.copyButton.hidden = true;
+        refs.copyButton.disabled = true;
+        if (refs.copyButton.dataset.state) {
+          delete refs.copyButton.dataset.state;
+        }
+        if (refs.copyButton.dataset.npub) {
+          delete refs.copyButton.dataset.npub;
+        }
+        refs.copyButton.removeAttribute("aria-label");
+        refs.copyButton.textContent = originalLabel;
+      }
+    }
+  }
+
+  updateCommentNodesForAuthor(pubkey) {
+    if (typeof pubkey !== "string" || !pubkey.trim()) {
+      return;
+    }
+    const normalized = pubkey.trim().toLowerCase();
+    this.commentNodes.forEach((node, id) => {
+      const author =
+        typeof node?.dataset?.commentAuthor === "string"
+          ? node.dataset.commentAuthor.trim().toLowerCase()
+          : "";
+      if (author && author === normalized) {
+        this.updateCommentNodeProfile(id, pubkey);
+      }
+    });
+  }
+
+  getCommentAuthorName(pubkey) {
+    return this.getCommentAuthorProfile(pubkey).displayName;
   }
 
   getCommentAvatarInitial(pubkey) {
-    const name = this.getCommentAuthorName(pubkey) || "";
-    const initial = name.trim().charAt(0);
-    if (initial) {
-      return initial.toUpperCase();
+    return this.getCommentAuthorProfile(pubkey).initial;
+  }
+
+  getCommentAuthorProfile(pubkey) {
+    const normalized =
+      typeof pubkey === "string" && pubkey.trim() ? pubkey.trim() : "";
+    const profileEntry = normalized
+      ? this.commentProfiles.get(normalized.toLowerCase()) || null
+      : null;
+
+    const rawPicture =
+      profileEntry && typeof profileEntry.picture === "string"
+        ? profileEntry.picture
+        : "";
+    const sanitizedPicture = sanitizeProfileMediaUrl(rawPicture);
+    const avatarUrl = sanitizedPicture || this.DEFAULT_PROFILE_AVATAR;
+
+    let npub = "";
+    if (profileEntry && typeof profileEntry.npub === "string") {
+      const trimmed = profileEntry.npub.trim();
+      if (trimmed) {
+        if (trimmed.startsWith("npub")) {
+          npub = trimmed;
+        } else if (HEX64_REGEX.test(trimmed)) {
+          npub = this.encodeCommentPubkeyToNpub(trimmed);
+        }
+      }
     }
-    return "?";
+
+    if (!npub && profileEntry && typeof profileEntry.pubkey === "string") {
+      const trimmed = profileEntry.pubkey.trim();
+      if (trimmed) {
+        npub = this.encodeCommentPubkeyToNpub(trimmed);
+      }
+    }
+
+    if (!npub && normalized) {
+      npub = this.encodeCommentPubkeyToNpub(normalized);
+    }
+
+    let displayName = "";
+    if (profileEntry && typeof profileEntry === "object") {
+      const candidates = [
+        profileEntry.display_name,
+        profileEntry.name,
+        profileEntry.username,
+      ];
+      for (const candidate of candidates) {
+        if (typeof candidate !== "string") {
+          continue;
+        }
+        const trimmed = candidate.trim();
+        if (trimmed) {
+          displayName = trimmed;
+          break;
+        }
+      }
+    }
+
+    if (displayName && HEX64_REGEX.test(displayName)) {
+      displayName = "";
+    }
+
+    if (!displayName && npub) {
+      displayName = formatShortNpub(npub);
+    }
+
+    if (!displayName) {
+      displayName = "Anonymous";
+    }
+
+    const shortNpub = npub ? formatShortNpub(npub) : "";
+    const initialCandidate = displayName.trim().charAt(0) || "";
+    const initial = initialCandidate ? initialCandidate.toUpperCase() : "?";
+
+    return {
+      displayName,
+      avatarUrl,
+      npub,
+      shortNpub,
+      initial,
+    };
+  }
+
+  encodeCommentPubkeyToNpub(pubkey) {
+    if (typeof pubkey !== "string") {
+      return "";
+    }
+
+    const trimmed = pubkey.trim();
+    if (!trimmed) {
+      return "";
+    }
+
+    if (trimmed.startsWith("npub1")) {
+      return trimmed;
+    }
+
+    if (!HEX64_REGEX.test(trimmed)) {
+      return "";
+    }
+
+    if (this.commentNpubEncodingFailures.has(trimmed)) {
+      return "";
+    }
+
+    try {
+      const encoded = this.window?.NostrTools?.nip19?.npubEncode?.(trimmed);
+      if (typeof encoded === "string" && encoded) {
+        return encoded;
+      }
+    } catch (error) {
+      if (!this.commentNpubEncodingFailures.has(trimmed)) {
+        this.log("[VideoModal] Failed to encode comment author pubkey", error);
+      }
+    }
+
+    this.commentNpubEncodingFailures.add(trimmed);
+    return "";
   }
 
   getCommentTimestampLabel(createdAt) {
@@ -1457,6 +1809,7 @@ export class VideoModal {
     }
     const normalized = pubkey.trim().toLowerCase();
     this.commentProfiles.set(normalized, profile);
+    this.updateCommentNodesForAuthor(pubkey);
   }
 
   clearComments() {
@@ -1469,6 +1822,16 @@ export class VideoModal {
       this.commentChildLists = new Map();
     } else {
       this.commentChildLists.clear();
+    }
+    if (!(this.commentNodeElements instanceof Map)) {
+      this.commentNodeElements = new Map();
+    } else {
+      this.commentNodeElements.clear();
+    }
+    if (this.commentNpubEncodingFailures instanceof Set) {
+      this.commentNpubEncodingFailures.clear();
+    } else {
+      this.commentNpubEncodingFailures = new Set();
     }
     if (this.commentsList) {
       this.commentsList.textContent = "";
@@ -1514,6 +1877,7 @@ export class VideoModal {
     this.commentProfiles = new Map();
     this.commentNodes = new Map();
     this.commentChildLists = new Map();
+    this.commentNodeElements = new Map();
     this.commentComposerState = {
       disabled: true,
       reason: "",
