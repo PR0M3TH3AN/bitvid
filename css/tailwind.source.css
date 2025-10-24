@@ -1926,16 +1926,16 @@
 
   #playerModal .video-modal__similar .player-modal__module-item > .card {
     --player-modal-similar-thumb: clamp(
-      6.75rem,
-      calc(var(--video-modal-secondary-min, 320px) * 0.34),
-      10.5rem
+      5.5rem,
+      calc(var(--video-modal-secondary-min, 320px) * 0.3),
+      9.5rem
     );
     display: grid;
     grid-template-columns: var(--player-modal-similar-thumb) minmax(0, 1fr);
-    grid-auto-rows: minmax(0, 1fr);
+    grid-auto-rows: minmax(var(--player-modal-similar-thumb), auto);
     align-items: stretch;
-    gap: clamp(var(--space-4xs), 0.65vw, var(--space-2xs));
-    padding: clamp(var(--space-4xs), 0.7vw, var(--space-sm));
+    gap: clamp(var(--space-5xs), 0.55vw, var(--space-3xs));
+    padding: clamp(var(--space-5xs), 0.6vw, var(--space-xs));
     width: 100%;
   }
 
@@ -1945,6 +1945,7 @@
     > .card
     .video-card__media {
     inline-size: var(--player-modal-similar-thumb);
+    block-size: 100%;
     max-inline-size: clamp(
       calc(var(--space-xl-plus) * 1.25),
       24vw,
@@ -1959,6 +1960,7 @@
     .video-card__content {
     padding: 0;
     min-width: 0;
+    min-inline-size: 0;
     display: flex;
     flex-direction: column;
     gap: clamp(var(--space-4xs), 0.6vw, var(--space-2xs));
