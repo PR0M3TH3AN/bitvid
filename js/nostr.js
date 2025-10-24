@@ -22,6 +22,36 @@ export const publishVideoReaction = (...args) => {
   return defaultNostrClient.publishVideoReaction(...args);
 };
 
+export const publishVideoComment = (...args) => {
+  if (
+    !defaultNostrClient ||
+    typeof defaultNostrClient.publishVideoComment !== "function"
+  ) {
+    throw new Error("Video comment publishing is unavailable in this build.");
+  }
+  return defaultNostrClient.publishVideoComment(...args);
+};
+
+export const fetchVideoComments = (...args) => {
+  if (
+    !defaultNostrClient ||
+    typeof defaultNostrClient.fetchVideoComments !== "function"
+  ) {
+    throw new Error("Video comment fetching is unavailable in this build.");
+  }
+  return defaultNostrClient.fetchVideoComments(...args);
+};
+
+export const subscribeVideoComments = (...args) => {
+  if (
+    !defaultNostrClient ||
+    typeof defaultNostrClient.subscribeVideoComments !== "function"
+  ) {
+    throw new Error("Video comment subscriptions are unavailable in this build.");
+  }
+  return defaultNostrClient.subscribeVideoComments(...args);
+};
+
 export {
   __testExports,
   NostrClient,
