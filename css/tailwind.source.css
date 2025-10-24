@@ -1881,14 +1881,8 @@
   }
 
   #playerModal .video-modal__similar .player-modal__module-item > .card {
-    display: grid;
-    grid-template-columns: clamp(4rem, 8.5vw, 5.25rem) minmax(0, 1fr);
-    align-items: start;
     gap: clamp(var(--space-4xs), 0.8vw, var(--space-xs));
     padding: clamp(var(--space-3xs), 0.75vw, var(--space-sm));
-    border-radius: var(--radius-xl);
-    background-color: var(--color-surface);
-    box-shadow: var(--shadow-sm);
   }
 
   #playerModal
@@ -1896,34 +1890,11 @@
     .player-modal__module-item
     > .card
     .video-card__media {
-    width: 100%;
-    aspect-ratio: 16 / 9;
-    border-radius: var(--radius-lg);
-    @apply overflow-hidden;
-  }
-
-  #playerModal
-    .video-modal__similar
-    .player-modal__module-item
-    > .card
-    .video-card__media
-    .ratio-16-9 {
-    width: 100%;
-  }
-
-  #playerModal
-    .video-modal__similar
-    .player-modal__module-item
-    > .card
-    .video-card__media
-    img,
-  #playerModal
-    .video-modal__similar
-    .player-modal__module-item
-    > .card
-    .video-card__media
-    video {
-    @apply h-full w-full object-cover;
+    max-inline-size: clamp(
+      calc(var(--space-xl-plus) * 1.25),
+      24vw,
+      calc(var(--space-2xl-plus) * 1.75)
+    );
   }
 
   #playerModal
