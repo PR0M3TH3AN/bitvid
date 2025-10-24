@@ -1449,6 +1449,10 @@
     overflow: visible;
   }
 
+  #playerModal .watch-container.video-modal__similar {
+    padding-inline: clamp(var(--space-sm), 2.25vw, var(--space-lg));
+  }
+
   #playerModal .video-modal__primary > .watch-container:first-child {
     padding-block-start: var(--player-modal-vertical-padding);
   }
@@ -1505,9 +1509,9 @@
   #playerModal .player-modal__module {
     display: flex;
     flex-direction: column;
-    gap: var(--space-md);
+    gap: clamp(var(--space-sm), 1.75vw, var(--space-md));
     width: 100%;
-    padding: clamp(var(--space-md), 2.5vw, var(--space-xl));
+    padding: clamp(var(--space-sm), 2vw, var(--space-lg));
     border-radius: var(--radius-xl);
     border: var(--border-width-hairline) solid var(--color-border-translucent);
     background-color: var(--color-surface);
@@ -1672,10 +1676,10 @@
   .video-modal__layout {
     --video-modal-secondary-size: clamp(
       var(--video-modal-secondary-min),
-      40vw,
+      42vw,
       var(--video-modal-secondary-max)
     );
-    @apply grid gap-5 lg:gap-8;
+    @apply grid gap-4 lg:gap-6;
     width: min(100%, var(--video-modal-layout-max));
     margin-inline: auto;
     grid-template-columns: minmax(0, 1fr);
@@ -1689,7 +1693,7 @@
     .video-modal__layout {
       --video-modal-secondary-size: clamp(
         var(--video-modal-secondary-min),
-        36vw,
+        38vw,
         var(--video-modal-secondary-max)
       );
       grid-template-columns:
@@ -1725,7 +1729,7 @@
     .video-modal__layout {
       --video-modal-secondary-size: clamp(
         var(--video-modal-secondary-min),
-        32vw,
+        34vw,
         var(--video-modal-secondary-max)
       );
     }
@@ -1822,14 +1826,16 @@
   }
 
   #playerModal .player-modal__module-item > .card {
-    @apply flex w-full flex-row items-start gap-md;
+    @apply flex w-full flex-row items-stretch gap-md flex-nowrap;
   }
 
   #playerModal .player-modal__module-item > .card .video-card__media {
-    @apply shrink-0;
+    width: clamp(5.75rem, 18vw, 8rem);
+    @apply shrink-0 overflow-hidden rounded-lg;
   }
 
   #playerModal .player-modal__module-item > .card .video-card__content {
+    padding: clamp(var(--space-sm), 1.25vw, var(--space-md));
     @apply flex min-w-0 flex-1 flex-col gap-sm;
   }
 
