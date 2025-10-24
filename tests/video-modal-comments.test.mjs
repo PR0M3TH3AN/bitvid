@@ -117,7 +117,7 @@ test("VideoModal comment composer updates messaging and dispatches events", asyn
   modal.setCommentComposerState({ disabled: true, reason: "login-required" });
   assert.equal(modal.commentsInput.disabled, true);
   assert.equal(modal.commentsComposer.hasAttribute("hidden"), false);
-  assert.equal(modal.commentsDisabledMessage.hasAttribute("hidden"), true);
+  assert.equal(modal.commentsDisabledPlaceholder.hasAttribute("hidden"), true);
   assert.equal(modal.commentComposerHint.textContent.trim(), "Log in to add a comment.");
   assert.equal(modal.commentsStatusMessage.textContent.trim(), "");
 
@@ -131,13 +131,14 @@ test("VideoModal comment composer updates messaging and dispatches events", asyn
   );
   assert.ok(modal.commentRetryButton, "retry button should be rendered for error state");
 
+  modal.showCommentsDisabledMessage("Comments have been turned off for this video.");
   modal.setCommentComposerState({ disabled: true, reason: "disabled" });
   assert.equal(modal.commentsComposer.hasAttribute("hidden"), true);
-  assert.equal(modal.commentsDisabledMessage.hasAttribute("hidden"), false);
+  assert.equal(modal.commentsDisabledPlaceholder.hasAttribute("hidden"), false);
 
   modal.setCommentComposerState({ disabled: false, reason: "" });
   assert.equal(modal.commentsComposer.hasAttribute("hidden"), false);
-  assert.equal(modal.commentsDisabledMessage.hasAttribute("hidden"), true);
+  assert.equal(modal.commentsDisabledPlaceholder.hasAttribute("hidden"), true);
   assert.equal(modal.commentComposerHint.textContent.trim(), defaultHint.trim());
 
   const loginRequests = [];

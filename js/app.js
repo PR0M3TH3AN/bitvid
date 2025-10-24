@@ -2328,8 +2328,13 @@ class Application {
 
     this.teardownModalCommentSubscription({ resetUi: false });
 
+    this.videoModal.hideCommentsDisabledMessage?.();
+
     if (video.enableComments === false) {
       this.resetModalCommentState();
+      this.videoModal.showCommentsDisabledMessage?.(
+        "Comments have been turned off for this video."
+      );
       return;
     }
 
@@ -2398,12 +2403,17 @@ class Application {
     }
 
     if (this.currentVideo?.enableComments === false) {
+      this.videoModal.showCommentsDisabledMessage?.(
+        "Comments have been turned off for this video."
+      );
       this.videoModal.setCommentComposerState?.({
         disabled: true,
         reason: "disabled",
       });
       return;
     }
+
+    this.videoModal.hideCommentsDisabledMessage?.();
 
     if (!this.isUserLoggedIn()) {
       this.videoModal.setCommentComposerState?.({
@@ -8222,6 +8232,7 @@ class Application {
 
       if (this.videoModal) {
         this.videoModal.updateStatus("Streaming via WebTorrent");
+        this.videoModal.setTorrentStatsVisibility?.(true);
       }
 
       const torrentInstance = await torrentClient.streamVideo(
@@ -8511,6 +8522,10 @@ class Application {
 
     subscribe("sourcechange", ({ source } = {}) => {
       this.playSource = source || null;
+      const usingTorrent = source === "torrent";
+      if (this.videoModal) {
+        this.videoModal.setTorrentStatsVisibility?.(usingTorrent);
+      }
     });
 
     subscribe("error", ({ error, message } = {}) => {
