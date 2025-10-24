@@ -1669,21 +1669,90 @@
   }
 
   .video-modal__layout {
-    @apply grid items-start gap-6 lg:gap-8;
+    --video-modal-secondary-size: clamp(
+      var(--video-modal-secondary-min),
+      40vw,
+      var(--video-modal-secondary-max)
+    );
+    @apply grid gap-6 lg:gap-8;
+    width: min(100%, var(--video-modal-layout-max));
+    margin-inline: auto;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "primary"
+      "secondary";
+    align-items: start;
   }
 
   @media (min-width: theme('screens.lg')) {
     .video-modal__layout {
+      --video-modal-secondary-size: clamp(
+        var(--video-modal-secondary-min),
+        36vw,
+        var(--video-modal-secondary-max)
+      );
       grid-template-columns:
-        minmax(0, var(--video-modal-primary-fr))
-        minmax(var(--video-modal-secondary-min), var(--video-modal-secondary-fr, 1fr));
+        minmax(0, 1fr)
+        minmax(var(--video-modal-secondary-min), var(--video-modal-secondary-size));
+      grid-template-areas: "primary secondary";
+      align-items: stretch;
+      grid-auto-flow: column;
+    }
+
+    .video-modal__primary {
+      min-width: 0;
+      min-height: 0;
+      grid-area: primary;
+    }
+
+    .video-modal__secondary {
+      min-width: var(--video-modal-secondary-min);
+      min-height: 0;
+      max-width: var(--video-modal-secondary-size);
+      grid-area: secondary;
+      height: 100%;
+    }
+
+    #playerModal .video-modal__layout .watch-container {
+      max-width: none;
+      margin-inline: 0;
+      width: 100%;
     }
   }
 
+  @media (min-width: theme('screens.xl')) {
+    .video-modal__layout {
+      --video-modal-secondary-size: clamp(
+        var(--video-modal-secondary-min),
+        32vw,
+        var(--video-modal-secondary-max)
+      );
+    }
+  }
+
+  #playerModal .video-modal__layout {
+    display: grid;
+  }
+
   @media (min-width: theme('screens.lg')) {
-    .video-modal__primary,
-    .video-modal__secondary {
-      min-height: 0;
+    #playerModal .video-modal__layout {
+      grid-template-columns:
+        minmax(0, 1fr)
+        minmax(
+          var(--video-modal-secondary-min),
+          var(--video-modal-secondary-size)
+        );
+      grid-template-areas: "primary secondary";
+      align-items: stretch;
+      grid-auto-flow: column;
+    }
+
+    #playerModal .video-modal__primary {
+      grid-area: primary;
+    }
+
+    #playerModal .video-modal__secondary {
+      grid-area: secondary;
     }
   }
 
@@ -1701,20 +1770,70 @@
 
   .video-modal__primary {
     @apply flex flex-col gap-6;
+    min-width: 0;
+    min-height: 0;
   }
 
   .video-modal__secondary {
     @apply flex flex-col gap-4;
+    min-width: 0;
+    min-height: 0;
+    width: 100%;
+    align-self: stretch;
   }
 
   .video-modal__similar {
-    @apply flex flex-col gap-6;
+    display: none;
   }
 
   @media (min-width: theme('screens.lg')) {
     .video-modal__similar {
+      @apply flex flex-col gap-6;
       align-self: stretch;
+      flex: 1 1 auto;
+      min-height: 0;
     }
+  }
+
+  @media (min-width: theme('screens.lg')) {
+    #playerModal .video-modal__similar .player-modal__module {
+      height: 100%;
+      display: flex;
+      flex: 1 1 auto;
+      min-height: 0;
+      flex-direction: column;
+    }
+
+    #playerModal .video-modal__similar .player-modal__module-list {
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+
+    #playerModal .video-modal__similar .player-modal__module-scroll {
+      height: 100%;
+      max-height: none;
+      min-height: 0;
+    }
+  }
+
+  #playerModal .player-modal__module-item {
+    width: 100%;
+  }
+
+  #playerModal .player-modal__module-item > .card {
+    @apply flex w-full flex-row items-start gap-md;
+  }
+
+  #playerModal .player-modal__module-item > .card .video-card__media {
+    @apply shrink-0;
+  }
+
+  #playerModal .player-modal__module-item > .card .video-card__content {
+    @apply flex min-w-0 flex-1 flex-col gap-sm;
+  }
+
+  #playerModal .player-modal__module-item > .card .video-card__meta {
+    @apply flex flex-wrap items-center gap-2 text-xs text-muted-strong;
   }
 
   .video-modal__stage {

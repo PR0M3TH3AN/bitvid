@@ -205,8 +205,14 @@
   --popup-padding-inline: 1rem;
   --popup-padding-block: 0.75rem;
   --video-modal-primary-fr: 1.85fr;
-  --video-modal-secondary-min: 260px;
+  --video-modal-secondary-min: 320px;
+  --video-modal-secondary-max: 32rem;
   --video-modal-secondary-fr: 1fr;
+  --video-modal-layout-max: calc(
+    var(--layout-player-max-width) +
+    var(--video-modal-secondary-max) +
+    var(--space-2xl-plus)
+  );
   --revert-modal-sidebar-min: 240px;
   --revert-modal-sidebar-width: 280px;
   --popover-inline-safe-max: calc(100vw - var(--space-xl));
