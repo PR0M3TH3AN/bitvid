@@ -1392,6 +1392,11 @@
 
   #playerModal {
     --player-modal-vertical-padding: var(--space-md-plus);
+    --player-modal-primary-inline-padding-lg: clamp(
+      var(--space-sm),
+      2.75vw,
+      var(--space-lg)
+    );
   }
 
   #playerModal > .bv-modal__panel {
@@ -1795,6 +1800,22 @@
 
     #playerModal .video-modal__secondary {
       grid-area: secondary;
+    }
+  }
+
+  @media (min-width: theme("screens.lg")) {
+    #playerModal .video-modal__primary {
+      --player-modal-inline-padding: var(
+        --player-modal-primary-inline-padding-lg,
+        clamp(var(--space-sm), 2.75vw, var(--space-lg))
+      );
+    }
+
+    #playerModal .modal-nav__bar {
+      --player-modal-inline-padding: var(
+        --player-modal-primary-inline-padding-lg,
+        clamp(var(--space-sm), 2.75vw, var(--space-lg))
+      );
     }
   }
 
