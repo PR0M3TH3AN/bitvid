@@ -47,12 +47,42 @@ export default class CommentThreadService {
   constructor({
     nostrClient = null,
     app = null,
+    fetchVideoComments = null,
+    subscribeVideoComments = null,
+    getProfileCacheEntry = null,
+    batchFetchProfiles = null,
     limit = DEFAULT_INITIAL_LIMIT,
     hydrationDebounceMs = DEFAULT_HYDRATION_DEBOUNCE_MS,
     logger = devLogger,
   } = {}) {
     this.nostrClient = nostrClient;
     this.app = app;
+    this.fetchVideoComments =
+      typeof fetchVideoComments === "function"
+        ? fetchVideoComments
+        : this.nostrClient &&
+            typeof this.nostrClient.fetchVideoComments === "function"
+          ? (...args) => this.nostrClient.fetchVideoComments(...args)
+          : null;
+    this.subscribeVideoComments =
+      typeof subscribeVideoComments === "function"
+        ? subscribeVideoComments
+        : this.nostrClient &&
+            typeof this.nostrClient.subscribeVideoComments === "function"
+          ? (...args) => this.nostrClient.subscribeVideoComments(...args)
+          : null;
+    this.getProfileCacheEntry =
+      typeof getProfileCacheEntry === "function"
+        ? getProfileCacheEntry
+        : this.app && typeof this.app.getProfileCacheEntry === "function"
+        ? (pubkey) => this.app.getProfileCacheEntry(pubkey)
+        : null;
+    this.batchFetchProfiles =
+      typeof batchFetchProfiles === "function"
+        ? batchFetchProfiles
+        : this.app && typeof this.app.batchFetchProfiles === "function"
+        ? (pubkeys) => this.app.batchFetchProfiles(pubkeys)
+        : null;
     this.defaultLimit = toPositiveInteger(limit, DEFAULT_INITIAL_LIMIT);
     this.hydrationDelay = Math.max(
       0,
@@ -118,8 +148,7 @@ export default class CommentThreadService {
       return { success: false };
     }
 
-    if (!this.nostrClient ||
-      typeof this.nostrClient.fetchVideoComments !== "function") {
+    if (typeof this.fetchVideoComments !== "function") {
       this.emitError(
         new Error("Nostr client is missing fetchVideoComments implementation."),
       );
@@ -135,7 +164,7 @@ export default class CommentThreadService {
 
     let events = [];
     try {
-      events = await this.nostrClient.fetchVideoComments(target, {
+      events = await this.fetchVideoComments(target, {
         limit: fetchLimit,
         relays: this.activeRelays,
       });
@@ -166,10 +195,7 @@ export default class CommentThreadService {
   }
 
   startSubscription(target) {
-    if (
-      !this.nostrClient ||
-      typeof this.nostrClient.subscribeVideoComments !== "function"
-    ) {
+    if (typeof this.subscribeVideoComments !== "function") {
       return;
     }
 
@@ -179,7 +205,7 @@ export default class CommentThreadService {
     };
 
     try {
-      const cleanup = this.nostrClient.subscribeVideoComments(target, options);
+      const cleanup = this.subscribeVideoComments(target, options);
       if (typeof cleanup === "function") {
         this.subscriptionCleanup = () => {
           try {
@@ -335,7 +361,7 @@ export default class CommentThreadService {
       return;
     }
 
-    const cachedProfile = this.getProfileFromApp(pubkey);
+    const cachedProfile = this.getProfileFromCache(pubkey);
     if (cachedProfile) {
       this.profileCache.set(pubkey, cachedProfile);
       return;
@@ -345,15 +371,19 @@ export default class CommentThreadService {
     this.scheduleProfileHydration();
   }
 
-  getProfileFromApp(pubkey) {
-    if (!this.app || typeof this.app.getProfileCacheEntry !== "function") {
+  getProfileFromCache(pubkey) {
+    if (typeof this.getProfileCacheEntry !== "function") {
       return null;
     }
     try {
-      const entry = this.app.getProfileCacheEntry(pubkey);
+      const entry = this.getProfileCacheEntry(pubkey);
+      if (!entry) {
+        return null;
+      }
       if (entry && typeof entry === "object" && entry.profile) {
         return entry.profile;
       }
+      return entry;
     } catch (error) {
       if (this.logger?.warn) {
         this.logger.warn(
@@ -387,12 +417,12 @@ export default class CommentThreadService {
     const pubkeys = Array.from(this.profileQueue);
     this.profileQueue.clear();
 
-    if (!this.app || typeof this.app.batchFetchProfiles !== "function") {
+    if (typeof this.batchFetchProfiles !== "function") {
       return;
     }
 
     const hydrationPromise = Promise.resolve(
-      this.app.batchFetchProfiles(pubkeys),
+      this.batchFetchProfiles(pubkeys),
     )
       .catch((error) => {
         if (this.logger?.warn) {
@@ -405,7 +435,7 @@ export default class CommentThreadService {
       })
       .then(() => {
         pubkeys.forEach((pubkey) => {
-          const profile = this.getProfileFromApp(pubkey);
+          const profile = this.getProfileFromCache(pubkey);
           if (profile) {
             this.profileCache.set(pubkey, profile);
           }
@@ -488,7 +518,7 @@ export default class CommentThreadService {
       return this.profileCache.get(normalized);
     }
 
-    const profile = this.getProfileFromApp(normalized);
+    const profile = this.getProfileFromCache(normalized);
     if (profile) {
       this.profileCache.set(normalized, profile);
       return profile;

@@ -82,8 +82,11 @@ async function testThreadFlow() {
   };
 
   const service = new CommentThreadService({
-    nostrClient,
-    app,
+    fetchVideoComments: (...args) => nostrClient.fetchVideoComments(...args),
+    subscribeVideoComments: (...args) =>
+      nostrClient.subscribeVideoComments(...args),
+    getProfileCacheEntry: (pubkey) => app.getProfileCacheEntry(pubkey),
+    batchFetchProfiles: (pubkeys) => app.batchFetchProfiles(pubkeys),
     hydrationDebounceMs: 0,
   });
 
@@ -217,8 +220,11 @@ async function testTeardownCancelsHydration() {
   };
 
   const service = new CommentThreadService({
-    nostrClient,
-    app,
+    fetchVideoComments: (...args) => nostrClient.fetchVideoComments(...args),
+    subscribeVideoComments: (...args) =>
+      nostrClient.subscribeVideoComments(...args),
+    getProfileCacheEntry: (pubkey) => app.getProfileCacheEntry(pubkey),
+    batchFetchProfiles: (pubkeys) => app.batchFetchProfiles(pubkeys),
     hydrationDebounceMs: 50,
   });
 

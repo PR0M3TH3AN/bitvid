@@ -47,6 +47,7 @@ import getAuthProvider, {
 import NwcSettingsService from "./services/nwcSettingsService.js";
 import nostrService from "./services/nostrService.js";
 import DiscussionCountService from "./services/discussionCountService.js";
+import CommentThreadService from "./services/commentThreadService.js";
 import { initQuickR2Upload } from "./r2-quick.js";
 import { createWatchHistoryRenderer } from "./historyView.js";
 import WatchHistoryController from "./ui/watchHistoryController.js";
@@ -236,6 +237,11 @@ class Application {
     this.boundVideoModalCreatorHandler = null;
     this.boundVideoModalZapHandler = null;
     this.boundVideoModalZapWalletHandler = null;
+    this.boundVideoModalCommentSubmitHandler = null;
+    this.boundVideoModalCommentRetryHandler = null;
+    this.boundVideoModalCommentLoadMoreHandler = null;
+    this.boundVideoModalCommentLoginHandler = null;
+    this.boundVideoModalCommentMuteHandler = null;
     this.pendingModalZapOpen = false;
     this.videoListViewPlaybackHandler = null;
     this.videoListViewEditHandler = null;
@@ -245,6 +251,15 @@ class Application {
     this.moreMenuController = null;
     this.latestFeedMetadata = null;
     this.lastModalTrigger = null;
+    this.modalCommentState = {
+      videoEventId: null,
+      videoDefinitionAddress: null,
+      parentCommentId: null,
+    };
+    this.modalCommentProfiles = new Map();
+    this.modalCommentLimit = 40;
+    this.modalCommentLoadPromise = null;
+    this.modalCommentPublishPromise = null;
 
     this.nostrService = services.nostrService || nostrService;
     this.r2Service = services.r2Service || r2Service;
@@ -415,6 +430,39 @@ class Application {
         }
       })
     );
+
+    this.commentThreadService =
+      services.commentThreadService ||
+      new CommentThreadService({
+        fetchVideoComments: (target, options) =>
+          nostrClient?.fetchVideoComments?.(target, options),
+        subscribeVideoComments: (target, options) =>
+          nostrClient?.subscribeVideoComments?.(target, options),
+        getProfileCacheEntry: (pubkey) => this.getProfileCacheEntry(pubkey),
+        batchFetchProfiles: (pubkeys) => this.batchFetchProfiles(pubkeys),
+        logger: {
+          warn: (...args) => devLogger.warn(...args),
+        },
+      });
+    this.boundCommentThreadReadyHandler = (snapshot) =>
+      this.handleCommentThreadReady(snapshot);
+    this.boundCommentThreadAppendHandler = (payload) =>
+      this.handleCommentThreadAppend(payload);
+    this.boundCommentThreadErrorHandler = (error) =>
+      this.handleCommentThreadError(error);
+    if (
+      this.commentThreadService &&
+      typeof this.commentThreadService.setCallbacks === "function"
+    ) {
+      this.commentThreadService.setCallbacks({
+        onThreadReady: this.boundCommentThreadReadyHandler,
+        onCommentsAppended: this.boundCommentThreadAppendHandler,
+        onError: this.boundCommentThreadErrorHandler,
+      });
+      if (this.commentThreadService.defaultLimit) {
+        this.modalCommentLimit = this.commentThreadService.defaultLimit;
+      }
+    }
 
     // Profile and login modal controller state
     this.profileController = null;
@@ -881,6 +929,41 @@ class Application {
     this.videoModal.addEventListener(
       "zap:wallet-link",
       this.boundVideoModalZapWalletHandler
+    );
+    this.boundVideoModalCommentSubmitHandler = (event) => {
+      this.handleVideoModalCommentSubmit(event?.detail || {});
+    };
+    this.videoModal.addEventListener(
+      "comment:submit",
+      this.boundVideoModalCommentSubmitHandler
+    );
+    this.boundVideoModalCommentRetryHandler = (event) => {
+      this.handleVideoModalCommentRetry(event?.detail || {});
+    };
+    this.videoModal.addEventListener(
+      "comment:retry",
+      this.boundVideoModalCommentRetryHandler
+    );
+    this.boundVideoModalCommentLoadMoreHandler = (event) => {
+      this.handleVideoModalCommentLoadMore(event?.detail || {});
+    };
+    this.videoModal.addEventListener(
+      "comment:load-more",
+      this.boundVideoModalCommentLoadMoreHandler
+    );
+    this.boundVideoModalCommentLoginHandler = (event) => {
+      this.handleVideoModalCommentLoginRequired(event?.detail || {});
+    };
+    this.videoModal.addEventListener(
+      "comment:login-required",
+      this.boundVideoModalCommentLoginHandler
+    );
+    this.boundVideoModalCommentMuteHandler = (event) => {
+      this.handleVideoModalCommentMute(event?.detail || {});
+    };
+    this.videoModal.addEventListener(
+      "comment:mute-author",
+      this.boundVideoModalCommentMuteHandler
     );
 
     this.moreMenuController = new MoreMenuController({
@@ -2182,6 +2265,515 @@ class Application {
         error,
       );
       this.resetModalReactionState();
+    }
+  }
+
+  resetModalCommentState({ hide = true } = {}) {
+    if (!this.videoModal) {
+      return;
+    }
+
+    this.videoModal.clearComments?.();
+    this.videoModal.resetCommentComposer?.();
+    this.videoModal.setCommentComposerState?.({
+      disabled: true,
+      reason: "disabled",
+    });
+    if (hide) {
+      this.videoModal.setCommentsVisibility?.(false);
+    }
+    this.videoModal.setCommentStatus?.("");
+  }
+
+  teardownModalCommentSubscription({ resetUi = true } = {}) {
+    if (this.commentThreadService) {
+      try {
+        this.commentThreadService.teardown();
+      } catch (error) {
+        devLogger.warn("[comment] Failed to teardown modal comment thread:", error);
+      }
+    }
+    this.modalCommentLoadPromise = null;
+    this.modalCommentPublishPromise = null;
+    this.modalCommentState = {
+      videoEventId: null,
+      videoDefinitionAddress: null,
+      parentCommentId: null,
+    };
+    this.modalCommentProfiles = new Map();
+    if (resetUi) {
+      this.resetModalCommentState();
+    }
+    this.videoModal?.setCommentSectionCallbacks?.({ teardown: null });
+  }
+
+  subscribeModalComments(video) {
+    if (!this.videoModal) {
+      return;
+    }
+
+    if (!video) {
+      this.teardownModalCommentSubscription();
+      return;
+    }
+
+    this.videoModal.setCommentSectionCallbacks?.({
+      teardown: () => this.teardownModalCommentSubscription(),
+    });
+
+    if (!this.commentThreadService) {
+      this.resetModalCommentState();
+      return;
+    }
+
+    this.teardownModalCommentSubscription({ resetUi: false });
+
+    if (video.enableComments === false) {
+      this.resetModalCommentState();
+      return;
+    }
+
+    const videoEventId =
+      typeof video.id === "string" && video.id.trim() ? video.id.trim() : "";
+    const videoDefinitionAddress = buildVideoAddressPointer(video);
+
+    if (!videoEventId || !videoDefinitionAddress) {
+      this.resetModalCommentState({ hide: false });
+      this.videoModal.setCommentStatus?.(
+        "Comments are unavailable for this video.",
+      );
+      return;
+    }
+
+    this.modalCommentState = {
+      videoEventId,
+      videoDefinitionAddress,
+      parentCommentId: null,
+    };
+    this.modalCommentProfiles = new Map();
+    if (this.commentThreadService.defaultLimit) {
+      this.modalCommentLimit = this.commentThreadService.defaultLimit;
+    }
+
+    this.videoModal.setCommentsVisibility?.(true);
+    this.videoModal.clearComments?.();
+    this.videoModal.resetCommentComposer?.();
+    this.videoModal.setCommentStatus?.("Loading comments…");
+    this.applyCommentComposerAuthState();
+
+    const loadPromise = this.commentThreadService.loadThread({
+      video,
+      parentCommentId: null,
+      limit: this.modalCommentLimit,
+    });
+
+    if (!loadPromise || typeof loadPromise.then !== "function") {
+      this.applyCommentComposerAuthState();
+      return;
+    }
+
+    this.modalCommentLoadPromise = loadPromise;
+    loadPromise
+      .then(() => {
+        if (this.modalCommentLoadPromise === loadPromise) {
+          this.modalCommentLoadPromise = null;
+        }
+        this.applyCommentComposerAuthState();
+      })
+      .catch((error) => {
+        if (this.modalCommentLoadPromise === loadPromise) {
+          this.modalCommentLoadPromise = null;
+        }
+        this.handleCommentThreadError(error);
+      });
+  }
+
+  applyCommentComposerAuthState() {
+    if (!this.videoModal) {
+      return;
+    }
+
+    if (!this.modalCommentState.videoEventId) {
+      return;
+    }
+
+    if (this.currentVideo?.enableComments === false) {
+      this.videoModal.setCommentComposerState?.({
+        disabled: true,
+        reason: "disabled",
+      });
+      return;
+    }
+
+    if (!this.isUserLoggedIn()) {
+      this.videoModal.setCommentComposerState?.({
+        disabled: true,
+        reason: "login-required",
+      });
+      return;
+    }
+
+    this.videoModal.setCommentComposerState?.({
+      disabled: false,
+      reason: "",
+    });
+    this.videoModal.setCommentStatus?.("");
+  }
+
+  handleCommentThreadReady(snapshot) {
+    if (!snapshot || !this.videoModal) {
+      return;
+    }
+
+    if (snapshot.videoEventId !== this.modalCommentState.videoEventId) {
+      return;
+    }
+
+    this.modalCommentProfiles = this.createMapFromInput(snapshot.profiles);
+    this.modalCommentState.parentCommentId =
+      typeof snapshot.parentCommentId === "string" &&
+      snapshot.parentCommentId.trim()
+        ? snapshot.parentCommentId.trim()
+        : null;
+
+    const sanitizedSnapshot = this.buildModalCommentSnapshot(snapshot);
+    this.videoModal.renderComments?.(sanitizedSnapshot);
+    this.videoModal.setCommentStatus?.("");
+    this.applyCommentComposerAuthState();
+  }
+
+  handleCommentThreadAppend(payload) {
+    if (!payload || !this.videoModal) {
+      return;
+    }
+
+    if (payload.videoEventId !== this.modalCommentState.videoEventId) {
+      return;
+    }
+
+    const comments = this.createMapFromInput(payload.commentsById);
+    const profiles = this.createMapFromInput(payload.profiles);
+    profiles.forEach((profile, pubkey) => {
+      this.modalCommentProfiles.set(pubkey, profile);
+    });
+
+    const commentIds = Array.isArray(payload.commentIds)
+      ? payload.commentIds
+      : [];
+
+    commentIds.forEach((commentId) => {
+      if (!comments.has(commentId)) {
+        return;
+      }
+      const event = comments.get(commentId);
+      if (!event || this.shouldHideModalComment(event)) {
+        return;
+      }
+      const enriched = this.enrichCommentEvent(event);
+      this.videoModal.appendComment?.(enriched);
+    });
+  }
+
+  handleCommentThreadError(error) {
+    if (error) {
+      devLogger.warn("[comment]", error);
+    }
+    if (!this.videoModal) {
+      return;
+    }
+    this.videoModal.setCommentStatus?.(
+      "Failed to load comments. Please try again later.",
+    );
+    if (!this.isUserLoggedIn()) {
+      this.videoModal.setCommentComposerState?.({
+        disabled: true,
+        reason: "login-required",
+      });
+    }
+  }
+
+  createMapFromInput(input) {
+    if (input instanceof Map) {
+      return new Map(input);
+    }
+    const map = new Map();
+    if (Array.isArray(input)) {
+      input.forEach((entry) => {
+        if (Array.isArray(entry) && entry.length >= 2) {
+          map.set(entry[0], entry[1]);
+        }
+      });
+      return map;
+    }
+    if (input && typeof input === "object") {
+      Object.entries(input).forEach(([key, value]) => {
+        map.set(key, value);
+      });
+    }
+    return map;
+  }
+
+  createChildrenMapFromInput(input) {
+    const source = input instanceof Map ? input : this.createMapFromInput(input);
+    const result = new Map();
+    source.forEach((value, key) => {
+      const list = Array.isArray(value) ? value.filter(Boolean) : [];
+      result.set(key, list);
+    });
+    return result;
+  }
+
+  enrichCommentEvent(event) {
+    const cloned = { ...(event || {}) };
+    const normalized = this.normalizeHexPubkey(cloned.pubkey);
+    if (normalized && this.modalCommentProfiles.has(normalized)) {
+      cloned.profile = this.modalCommentProfiles.get(normalized);
+    }
+    return cloned;
+  }
+
+  buildModalCommentSnapshot(snapshot) {
+    const comments = this.createMapFromInput(snapshot?.commentsById);
+    const children = this.createChildrenMapFromInput(snapshot?.childrenByParent);
+    const sanitizedComments = new Map();
+
+    comments.forEach((event, key) => {
+      if (!event || this.shouldHideModalComment(event)) {
+        return;
+      }
+      sanitizedComments.set(key, this.enrichCommentEvent(event));
+    });
+
+    const sanitizedChildren = new Map();
+    children.forEach((ids, parentId) => {
+      const filtered = ids.filter((id) => sanitizedComments.has(id));
+      sanitizedChildren.set(parentId, filtered);
+    });
+
+    return {
+      videoEventId: snapshot.videoEventId,
+      parentCommentId: snapshot.parentCommentId || null,
+      commentsById: sanitizedComments,
+      childrenByParent: sanitizedChildren,
+      profiles: this.modalCommentProfiles,
+    };
+  }
+
+  shouldHideModalComment(event) {
+    const normalized = this.normalizeHexPubkey(event?.pubkey);
+    if (!normalized) {
+      return false;
+    }
+
+    if (userBlocks?.isBlocked?.(normalized)) {
+      return true;
+    }
+
+    try {
+      if (moderationService?.isAuthorMutedByViewer?.(normalized)) {
+        return true;
+      }
+    } catch (error) {
+      devLogger.warn("[comment] Failed to check viewer mute state:", error);
+    }
+
+    try {
+      if (moderationService?.isAuthorMutedByTrusted?.(normalized)) {
+        return true;
+      }
+    } catch (error) {
+      devLogger.warn("[comment] Failed to check trusted mute state:", error);
+    }
+
+    return false;
+  }
+
+  async handleVideoModalCommentSubmit(detail = {}) {
+    if (this.modalCommentPublishPromise) {
+      return;
+    }
+
+    const text =
+      typeof detail.text === "string" && detail.text.trim()
+        ? detail.text.trim()
+        : "";
+    if (!text) {
+      return;
+    }
+
+    if (!this.isUserLoggedIn()) {
+      this.videoModal.setCommentComposerState?.({
+        disabled: true,
+        reason: "login-required",
+      });
+      this.handleVideoModalCommentLoginRequired(detail);
+      return;
+    }
+
+    const video = this.currentVideo;
+    if (!video || video.enableComments === false) {
+      return;
+    }
+
+    const videoEventId =
+      typeof video.id === "string" && video.id.trim() ? video.id.trim() : "";
+    const videoDefinitionAddress = buildVideoAddressPointer(video);
+
+    if (!videoEventId || !videoDefinitionAddress) {
+      this.showError("Comments are unavailable for this video.");
+      return;
+    }
+
+    const parentCommentId =
+      typeof detail.parentId === "string" && detail.parentId.trim()
+        ? detail.parentId.trim()
+        : null;
+
+    this.videoModal.setCommentComposerState?.({
+      disabled: true,
+      reason: "submitting",
+    });
+
+    const publishPromise = Promise.resolve(
+      nostrClient.publishVideoComment(
+        {
+          videoEventId,
+          videoDefinitionAddress,
+          parentCommentId,
+        },
+        {
+          content: text,
+        },
+      ),
+    );
+
+    this.modalCommentPublishPromise = publishPromise;
+
+    try {
+      const result = await publishPromise;
+      if (!result?.ok || !result.event) {
+        throw result?.error || new Error("publish-failed");
+      }
+
+      const event = this.enrichCommentEvent(result.event);
+      if (this.commentThreadService) {
+        try {
+          this.commentThreadService.processIncomingEvent(event);
+        } catch (error) {
+          devLogger.warn(
+            "[comment] Failed to process optimistic comment event:",
+            error,
+          );
+          this.videoModal.appendComment?.(event);
+        }
+      } else {
+        this.videoModal.appendComment?.(event);
+      }
+
+      this.videoModal.resetCommentComposer?.();
+      this.applyCommentComposerAuthState();
+      this.videoModal.setCommentStatus?.("Comment posted.");
+    } catch (error) {
+      devLogger.warn("[comment] Failed to publish comment:", error);
+      this.videoModal.setCommentComposerState?.({
+        disabled: false,
+        reason: "error",
+      });
+      this.showError("Failed to post comment. Please try again.");
+    } finally {
+      if (this.modalCommentPublishPromise === publishPromise) {
+        this.modalCommentPublishPromise = null;
+      }
+    }
+  }
+
+  handleVideoModalCommentRetry(detail = {}) {
+    this.handleVideoModalCommentSubmit(detail);
+  }
+
+  handleVideoModalCommentLoadMore() {
+    if (!this.commentThreadService || !this.currentVideo) {
+      return;
+    }
+
+    if (this.modalCommentLoadPromise) {
+      return;
+    }
+
+    const increment = this.commentThreadService.defaultLimit || 40;
+    this.modalCommentLimit = (this.modalCommentLimit || increment) + increment;
+
+    const loadPromise = this.commentThreadService.loadThread({
+      video: this.currentVideo,
+      parentCommentId: this.modalCommentState.parentCommentId,
+      limit: this.modalCommentLimit,
+    });
+
+    if (!loadPromise || typeof loadPromise.then !== "function") {
+      return;
+    }
+
+    this.modalCommentLoadPromise = loadPromise;
+    loadPromise
+      .then(() => {
+        if (this.modalCommentLoadPromise === loadPromise) {
+          this.modalCommentLoadPromise = null;
+        }
+        this.applyCommentComposerAuthState();
+      })
+      .catch((error) => {
+        if (this.modalCommentLoadPromise === loadPromise) {
+          this.modalCommentLoadPromise = null;
+        }
+        devLogger.warn("[comment] Failed to load more comments:", error);
+        this.showError("Failed to load more comments. Please try again.");
+      });
+  }
+
+  handleVideoModalCommentLoginRequired(detail = {}) {
+    this.applyCommentComposerAuthState();
+    this.initializeLoginModalController({ logIfMissing: true });
+    const triggerElement = detail?.triggerElement || null;
+    try {
+      const opened = this.loginModalController?.openModal?.({ triggerElement });
+      if (opened) {
+        return;
+      }
+    } catch (error) {
+      devLogger.warn("[comment] Failed to open login modal:", error);
+    }
+
+    this.authService
+      .requestLogin({ allowAccountSelection: true })
+      .catch((error) => {
+        devLogger.warn("[comment] Login request failed:", error);
+      });
+  }
+
+  async handleVideoModalCommentMute(detail = {}) {
+    const pubkey =
+      typeof detail?.pubkey === "string" && detail.pubkey.trim()
+        ? detail.pubkey.trim()
+        : "";
+    if (!pubkey) {
+      return;
+    }
+
+    if (!this.isUserLoggedIn()) {
+      this.handleVideoModalCommentLoginRequired(detail);
+      return;
+    }
+
+    try {
+      await userBlocks.addBlock(pubkey, this.pubkey);
+      const snapshot = this.commentThreadService?.getSnapshot?.();
+      if (snapshot) {
+        this.handleCommentThreadReady(snapshot);
+      }
+      this.showStatus?.("Author muted.");
+    } catch (error) {
+      devLogger.warn("[comment] Failed to mute author:", error);
+      this.showError("Failed to mute this author. Please try again.");
     }
   }
 
@@ -4207,6 +4799,7 @@ class Application {
     }
 
     this.applyAuthenticatedUiState();
+    this.applyCommentComposerAuthState();
 
     const loginContext = {
       pubkey: detail?.pubkey || this.pubkey,
@@ -4405,6 +4998,7 @@ class Application {
     }
 
     this.applyLoggedOutUiState();
+    this.applyCommentComposerAuthState();
 
     if (this.videoModal?.closeZapDialog) {
       try {
@@ -8123,6 +8717,7 @@ class Application {
       this.currentVideoPointer,
       this.currentVideoPointerKey
     );
+    this.subscribeModalComments(this.currentVideo);
 
     this.syncModalMoreMenuData();
 
@@ -8436,6 +9031,7 @@ class Application {
     this.currentVideoPointerKey = null;
     this.subscribeModalViewCount(null, null);
     this.subscribeModalReactions(null, null);
+    this.subscribeModalComments(null);
 
     const sanitizedUrl = typeof url === "string" ? url.trim() : "";
     const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
@@ -8991,6 +9587,7 @@ class Application {
     }
 
     if (this.videoModal) {
+      this.teardownModalCommentSubscription({ resetUi: false });
       if (this.boundVideoModalCloseHandler) {
         this.videoModal.removeEventListener(
           "modal:close",
@@ -9068,6 +9665,41 @@ class Application {
         );
         this.boundVideoModalZapWalletHandler = null;
       }
+      if (this.boundVideoModalCommentSubmitHandler) {
+        this.videoModal.removeEventListener(
+          "comment:submit",
+          this.boundVideoModalCommentSubmitHandler
+        );
+        this.boundVideoModalCommentSubmitHandler = null;
+      }
+      if (this.boundVideoModalCommentRetryHandler) {
+        this.videoModal.removeEventListener(
+          "comment:retry",
+          this.boundVideoModalCommentRetryHandler
+        );
+        this.boundVideoModalCommentRetryHandler = null;
+      }
+      if (this.boundVideoModalCommentLoadMoreHandler) {
+        this.videoModal.removeEventListener(
+          "comment:load-more",
+          this.boundVideoModalCommentLoadMoreHandler
+        );
+        this.boundVideoModalCommentLoadMoreHandler = null;
+      }
+      if (this.boundVideoModalCommentLoginHandler) {
+        this.videoModal.removeEventListener(
+          "comment:login-required",
+          this.boundVideoModalCommentLoginHandler
+        );
+        this.boundVideoModalCommentLoginHandler = null;
+      }
+      if (this.boundVideoModalCommentMuteHandler) {
+        this.videoModal.removeEventListener(
+          "comment:mute-author",
+          this.boundVideoModalCommentMuteHandler
+        );
+        this.boundVideoModalCommentMuteHandler = null;
+      }
       if (typeof this.videoModal.destroy === "function") {
         try {
           this.videoModal.destroy();
@@ -9129,6 +9761,25 @@ class Application {
         }
       }
       this.loginModalController = null;
+    }
+
+    if (this.commentThreadService?.setCallbacks) {
+      this.commentThreadService.setCallbacks({
+        onThreadReady: null,
+        onCommentsAppended: null,
+        onError: null,
+      });
+    }
+    if (this.commentThreadService) {
+      try {
+        this.commentThreadService.teardown();
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to destroy comment thread service:",
+          error,
+        );
+      }
+      this.commentThreadService = null;
     }
 
     this.videoList = null;
