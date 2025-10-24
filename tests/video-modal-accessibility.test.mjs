@@ -895,6 +895,68 @@ for (const _ of [0]) {
   );
 
   test(
+    "video modal comments region exposes aria landmarks and stays in the focus order",
+    async (t) => {
+      const { document, modal, playerModal, trigger, cleanup } = await setupModal();
+      t.after(cleanup);
+
+      modal.open(null, { triggerElement: trigger });
+      await Promise.resolve();
+
+      const commentsRoot = document.querySelector("[data-comments-root]");
+      const commentsHeading = document.getElementById("videoModalCommentsHeading");
+      const commentComposer = document.querySelector("[data-comments-composer]");
+      const commentInput = document.querySelector("[data-comments-input]");
+
+      assert.ok(commentsRoot, "expected comment container");
+      assert.ok(commentsHeading, "expected comment heading");
+      assert.ok(commentComposer, "expected comment composer");
+      assert.ok(commentInput, "expected comment textarea");
+
+      assert.equal(commentsRoot.getAttribute("role"), "region");
+      assert.equal(
+        commentsRoot.getAttribute("aria-labelledby"),
+        commentsHeading.id,
+      );
+      assert.equal(
+        commentComposer.getAttribute("aria-labelledby"),
+        commentsHeading.id,
+      );
+      assert.equal(
+        commentInput.getAttribute("aria-describedby"),
+        "commentComposerHelp commentComposerCount",
+      );
+
+      const focusableSelectors = [
+        "a[href]",
+        "area[href]",
+        "button:not([disabled])",
+        'input:not([type="hidden"]):not([disabled])',
+        "select:not([disabled])",
+        "textarea:not([disabled])",
+        "iframe",
+        "object",
+        "embed",
+        '[contenteditable="true"]',
+        "[tabindex]",
+        "audio[controls]",
+        "video[controls]",
+      ].join(",");
+
+      const focusable = Array.from(
+        playerModal.querySelectorAll(focusableSelectors),
+      );
+
+      assert.ok(
+        focusable.includes(commentInput),
+        "comment textarea should participate in modal focus order",
+      );
+
+      modal.close();
+    },
+  );
+
+  test(
     "video modal zap dialog updates aria state while toggling",
     async (t) => {
       const { window, document, modal, playerModal, trigger, cleanup } =

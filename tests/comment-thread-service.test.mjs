@@ -1,5 +1,4 @@
-// Run with: node tests/comment-thread-service.test.mjs
-
+import test from "node:test";
 import assert from "node:assert/strict";
 
 import CommentThreadService from "../js/services/commentThreadService.js";
@@ -13,14 +12,17 @@ function createBaseVideo() {
   };
 }
 
-function createComment({ id, pubkey, createdAt, parentId = null }) {
-  const baseTags = [
-    ["e", "video123"],
-    ["a", "30078:authorpk:video-root"],
-  ];
-  const tags = parentId
-    ? [...baseTags, ["e", parentId]]
-    : [...baseTags];
+function createComment({
+  id,
+  pubkey,
+  createdAt,
+  parentId = null,
+  extraTags = [],
+}) {
+  const tags = [["e", "video123"], ["a", "30078:authorpk:video-root"], ...extraTags];
+  if (parentId) {
+    tags.push(["e", parentId]);
+  }
   return {
     id,
     kind: 1,
@@ -33,213 +35,210 @@ function createComment({ id, pubkey, createdAt, parentId = null }) {
 
 const tick = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function testThreadFlow() {
-  const video = createBaseVideo();
-  const initialEvents = [
-    createComment({ id: "comment-1", pubkey: "pk1", createdAt: 100 }),
-    createComment({ id: "comment-2", pubkey: "pk2", createdAt: 90 }),
-    createComment({
-      id: "reply-1",
-      pubkey: "pk3",
-      createdAt: 110,
-      parentId: "comment-1",
-    }),
-  ];
+test(
+  "CommentThreadService hydrates, subscribes, and dedupes incoming comment events",
+  async (t) => {
+    const video = createBaseVideo();
+    const initialEvents = [
+      createComment({ id: "comment-1", pubkey: "pk1", createdAt: 100 }),
+      createComment({ id: "comment-2", pubkey: "pk2", createdAt: 90 }),
+      createComment({
+        id: "reply-1",
+        pubkey: "pk3",
+        createdAt: 110,
+        parentId: "comment-1",
+      }),
+    ];
 
-  const profileCache = new Map();
-  const batchCalls = [];
-  const app = {
-    getProfileCacheEntry: (pubkey) =>
-      profileCache.has(pubkey) ? { profile: profileCache.get(pubkey) } : null,
-    batchFetchProfiles: async (pubkeys) => {
-      batchCalls.push([...pubkeys]);
-      pubkeys.forEach((pubkey) => {
-        profileCache.set(pubkey, {
-          name: `Profile ${pubkey}`,
-          picture: `https://example.com/${pubkey}.png`,
+    let fetchCalls = 0;
+    let lastFetchTarget = null;
+    let lastFetchOptions = null;
+    const fetchVideoComments = async (target, options) => {
+      fetchCalls += 1;
+      lastFetchTarget = target;
+      lastFetchOptions = options;
+      return initialEvents;
+    };
+
+    let subscribeCalls = 0;
+    let unsubscribeCalled = 0;
+    let subscriptionHandler = null;
+    let subscriptionOptions = null;
+    let subscriptionTarget = null;
+    const subscribeVideoComments = (target, options = {}) => {
+      subscribeCalls += 1;
+      subscriptionTarget = target;
+      subscriptionOptions = options;
+      subscriptionHandler = typeof options.onEvent === "function" ? options.onEvent : null;
+      return () => {
+        unsubscribeCalled += 1;
+      };
+    };
+
+    const cachedProfiles = new Map([
+      ["pk1", { name: "Cached profile" }],
+    ]);
+    const hydrationRequests = [];
+
+    const service = new CommentThreadService({
+      fetchVideoComments,
+      subscribeVideoComments,
+      getProfileCacheEntry: (pubkey) =>
+        cachedProfiles.get(pubkey?.toLowerCase?.() || pubkey) || null,
+      batchFetchProfiles: async (pubkeys) => {
+        hydrationRequests.push([...pubkeys]);
+        pubkeys.forEach((pubkey) => {
+          cachedProfiles.set(pubkey.toLowerCase(), {
+            name: `Profile ${pubkey}`,
+          });
         });
-      });
-    },
-  };
+      },
+      hydrationDebounceMs: 0,
+    });
 
-  let subscriptionHandler = null;
-  const nostrClient = {
-    fetchVideoComments: async () => initialEvents,
-    subscribeVideoComments: (_target, options = {}) => {
-      subscriptionHandler = typeof options.onEvent === "function"
-        ? options.onEvent
-        : null;
-      return () => {
-        subscriptionHandler = null;
-      };
-    },
-  };
+    const initialPayloads = [];
+    const appendedPayloads = [];
+    const errorPayloads = [];
 
-  const received = {
-    initial: [],
-    appended: [],
-    errors: [],
-  };
+    service.setCallbacks({
+      onThreadReady: (payload) => initialPayloads.push(payload),
+      onCommentsAppended: (payload) => appendedPayloads.push(payload),
+      onError: (error) => errorPayloads.push(error),
+    });
 
-  const service = new CommentThreadService({
-    fetchVideoComments: (...args) => nostrClient.fetchVideoComments(...args),
-    subscribeVideoComments: (...args) =>
-      nostrClient.subscribeVideoComments(...args),
-    getProfileCacheEntry: (pubkey) => app.getProfileCacheEntry(pubkey),
-    batchFetchProfiles: (pubkeys) => app.batchFetchProfiles(pubkeys),
-    hydrationDebounceMs: 0,
-  });
+    const snapshot = await service.loadThread({ video, relays: ["wss://relay.example"] });
+    await service.waitForProfileHydration();
 
-  service.setCallbacks({
-    onThreadReady: (payload) => received.initial.push(payload),
-    onCommentsAppended: (payload) => received.appended.push(payload),
-    onError: (error) => received.errors.push(error),
-  });
+    assert.equal(fetchCalls, 1, "fetchVideoComments should be called once");
+    assert.deepStrictEqual(lastFetchTarget, {
+      videoEventId: "video123",
+      videoDefinitionAddress: "30078:authorpk:video-root",
+      parentCommentId: "",
+    });
+    assert.deepStrictEqual(lastFetchOptions, {
+      limit: service.defaultLimit,
+      relays: ["wss://relay.example"],
+    });
 
-  await service.loadThread({ video });
-  await tick(10);
-  await service.waitForProfileHydration();
+    assert.equal(subscribeCalls, 1, "subscribeVideoComments should be invoked");
+    assert.deepStrictEqual(subscriptionTarget, lastFetchTarget);
+    assert.ok(subscriptionOptions?.onEvent, "subscription handler should be provided");
 
-  assert.equal(received.initial.length, 1, "initial callback should fire once");
-  assert.equal(received.errors.length, 0, "no errors should be reported");
-  assert.equal(batchCalls.length, 1, "profiles should be fetched once for unknown authors");
-  assert.deepEqual(
-    new Set(batchCalls[0]),
-    new Set(["pk1", "pk2", "pk3"]),
-    "hydration should request each unique pubkey",
-  );
+    assert.equal(errorPayloads.length, 0, "no errors should be emitted");
+    assert.equal(initialPayloads.length, 1, "thread ready callback should fire once");
 
-  const initialPayload = received.initial[0];
-  assert.ok(initialPayload.childrenByParent instanceof Map);
-  assert.deepEqual(
-    initialPayload.topLevelIds,
-    ["comment-2", "comment-1"],
-    "top-level comments should be sorted by created_at",
-  );
-  assert.deepEqual(
-    initialPayload.childrenByParent.get(null),
-    ["comment-2", "comment-1"],
-    "root mapping should expose top-level ids",
-  );
-  assert.deepEqual(
-    initialPayload.childrenByParent.get("comment-1"),
-    ["reply-1"],
-    "parent mapping should include replies",
-  );
-  assert.ok(
-    service.getProfile("pk3"),
-    "profiles should be cached for retrieval",
-  );
-  assert.ok(subscriptionHandler, "subscription handler should be registered");
+    const initialSnapshot = initialPayloads[0];
+    assert.ok(initialSnapshot.childrenByParent instanceof Map);
+    assert.deepStrictEqual(initialSnapshot.topLevelIds, [
+      "comment-2",
+      "comment-1",
+    ]);
+    assert.deepStrictEqual(
+      initialSnapshot.childrenByParent.get(null),
+      ["comment-2", "comment-1"],
+      "root mapping should list top-level comments",
+    );
+    assert.deepStrictEqual(
+      initialSnapshot.childrenByParent.get("comment-1"),
+      ["reply-1"],
+      "child mapping should include replies",
+    );
 
-  const newReply = createComment({
-    id: "reply-2",
-    pubkey: "pk4",
-    createdAt: 120,
-    parentId: "comment-2",
-  });
+    assert.ok(service.getProfile("pk1"), "cached profile should be readable");
+    assert.ok(service.getProfile("pk2"), "hydrated profile should be cached");
+    assert.ok(service.getProfile("pk3"), "reply author profile should be cached");
+    assert.deepStrictEqual(
+      hydrationRequests,
+      [["pk2", "pk3"]],
+      "profile hydration should fetch unknown authors once",
+    );
 
-  subscriptionHandler(newReply);
-  await tick(10);
-  await service.waitForProfileHydration();
-  for (let attempt = 0; attempt < 5 && batchCalls.length < 2; attempt += 1) {
-    await tick(20);
-  }
-  assert.equal(
-    batchCalls.length,
-    2,
-    "hydration should fetch new reply authors",
-  );
-  assert.equal(
-    service.profileQueue.size,
-    0,
-    "profile queue should be cleared after hydration",
-  );
+    assert.equal(
+      snapshot.childrenByParent.get(null).length,
+      2,
+      "loadThread should return populated snapshot",
+    );
 
-  assert.equal(
-    received.appended.length,
-    1,
-    "one append callback should fire for the new reply",
-  );
-  const appendPayload = received.appended[0];
-  assert.equal(
-    appendPayload.parentCommentId,
-    "comment-2",
-    "append payload should identify the parent comment",
-  );
-  assert.deepEqual(
-    appendPayload.commentIds,
-    ["reply-2"],
-    "append payload should surface the new reply id",
-  );
-  assert.ok(
-    service.getProfilesSnapshot().has("pk4"),
-    "new reply author should be hydrated and cached",
-  );
+    const newReply = createComment({
+      id: "reply-2",
+      pubkey: "pk4",
+      createdAt: 120,
+      parentId: "comment-2",
+    });
 
-  // Duplicate events should be ignored.
-  subscriptionHandler(newReply);
-  await tick();
-  assert.equal(
-    received.appended.length,
-    1,
-    "duplicate events should not trigger additional append callbacks",
-  );
+    subscriptionHandler?.(newReply);
+    for (let attempt = 0; attempt < 5 && hydrationRequests.length < 2; attempt += 1) {
+      await tick(10);
+      await service.waitForProfileHydration();
+    }
 
-  service.teardown();
-}
+    assert.equal(appendedPayloads.length, 1, "new reply should trigger append callback");
+    const appendPayload = appendedPayloads[0];
+    assert.equal(appendPayload.parentCommentId, "comment-2");
+    assert.deepStrictEqual(appendPayload.commentIds, ["reply-2"]);
+    assert.ok(appendPayload.commentsById instanceof Map);
+    assert.ok(
+      appendPayload.commentsById.has("reply-2"),
+      "appended payload should contain the new reply",
+    );
+    assert.equal(hydrationRequests.length, 2, "hydration should run for appended replies");
+    assert.deepStrictEqual(hydrationRequests[1], ["pk4"]);
+    const profilesSnapshot = service.getProfilesSnapshot();
+    assert.equal(
+      profilesSnapshot.has("pk4"),
+      true,
+      "profile snapshot should include the new reply author",
+    );
+    assert.ok(service.getProfile("pk4"), "new reply author should be hydrated");
+    assert.equal(service.profileQueue.size, 0, "profile queue should be flushed");
 
-async function testTeardownCancelsHydration() {
-  const video = createBaseVideo();
-  const delayedReply = createComment({
-    id: "delayed-1",
-    pubkey: "pk9",
-    createdAt: 200,
-  });
+    subscriptionHandler?.(newReply);
+    await tick();
+    assert.equal(
+      appendedPayloads.length,
+      1,
+      "duplicate events should not trigger extra append callbacks",
+    );
 
-  let unsubscribed = false;
-  let batchCallCount = 0;
-  let subscriptionHandler = null;
-  const app = {
-    getProfileCacheEntry: () => null,
-    batchFetchProfiles: async () => {
-      batchCallCount += 1;
-    },
-  };
+    service.teardown();
+    assert.equal(unsubscribeCalled, 1, "teardown should unsubscribe from feed");
+  },
+);
 
-  const nostrClient = {
-    fetchVideoComments: async () => [],
-    subscribeVideoComments: (_target, options = {}) => {
-      subscriptionHandler = typeof options.onEvent === "function"
-        ? options.onEvent
-        : null;
-      return () => {
-        unsubscribed = true;
-      };
-    },
-  };
+test(
+  "CommentThreadService teardown cancels hydration timers",
+  async () => {
+    const video = createBaseVideo();
+    const delayedComment = createComment({ id: "pending-1", pubkey: "pk9", createdAt: 200 });
 
-  const service = new CommentThreadService({
-    fetchVideoComments: (...args) => nostrClient.fetchVideoComments(...args),
-    subscribeVideoComments: (...args) =>
-      nostrClient.subscribeVideoComments(...args),
-    getProfileCacheEntry: (pubkey) => app.getProfileCacheEntry(pubkey),
-    batchFetchProfiles: (pubkeys) => app.batchFetchProfiles(pubkeys),
-    hydrationDebounceMs: 50,
-  });
+    let unsubscribeCalled = false;
+    let hydrationCalls = 0;
+    let subscriptionHandler = null;
 
-  await service.loadThread({ video });
-  assert.ok(subscriptionHandler, "subscription handler should be available");
+    const service = new CommentThreadService({
+      fetchVideoComments: async () => [],
+      subscribeVideoComments: (_target, options = {}) => {
+        subscriptionHandler = typeof options.onEvent === "function" ? options.onEvent : null;
+        return () => {
+          unsubscribeCalled = true;
+        };
+      },
+      getProfileCacheEntry: () => null,
+      batchFetchProfiles: async () => {
+        hydrationCalls += 1;
+      },
+      hydrationDebounceMs: 50,
+    });
 
-  subscriptionHandler(delayedReply);
-  service.teardown();
-  await tick(80);
+    await service.loadThread({ video });
+    assert.ok(subscriptionHandler, "subscription handler should be registered");
 
-  assert.equal(batchCallCount, 0, "teardown should cancel pending hydration timers");
-  assert.equal(unsubscribed, true, "teardown should unsubscribe from nostr feed");
-}
+    subscriptionHandler(delayedComment);
+    service.teardown();
 
-await testThreadFlow();
-await testTeardownCancelsHydration();
+    await tick(80);
 
-console.log("comment-thread-service tests passed");
+    assert.equal(hydrationCalls, 0, "hydration timer should be cancelled on teardown");
+    assert.equal(unsubscribeCalled, true, "teardown should invoke subscription cleanup");
+  },
+);
