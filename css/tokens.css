@@ -81,7 +81,9 @@
   --blur-thumbnail-blur: 18px;
   --modal-nav-backdrop-blur: 6px;
 
-  --app-header-centerline-offset: calc(var(--space-sm) + (var(--space-2xl-plus) / 2));
+  --app-header-centerline-offset: calc(
+    var(--space-sm) + (var(--space-2xl-plus) / 2)
+  );
   --border-default: var(--color-border);
   --border-subtle: var(--color-border-subtle);
   --border-strong: var(--color-border-translucent-stronger);
@@ -209,9 +211,8 @@
   --video-modal-secondary-max: 44rem;
   --video-modal-secondary-fr: 1fr;
   --video-modal-layout-max: calc(
-    var(--layout-player-max-width) +
-    var(--video-modal-secondary-max) +
-    var(--space-2xl-plus)
+    var(--layout-player-max-width) + var(--video-modal-secondary-max) +
+      var(--space-2xl-plus)
   );
   --revert-modal-sidebar-min: 240px;
   --revert-modal-sidebar-width: 280px;
@@ -307,7 +308,8 @@
   --shadow-sidebar-trigger: 0 1.25rem 2.5rem -1.35rem var(--color-shadow-panel);
   --shadow-sidebar-dropup: 0 1.75rem 3.25rem -1.45rem var(--color-sidebar-glow);
   --shadow-sidebar-panel: 0 2.25rem 4.5rem -1.85rem var(--color-shadow-sidebar);
-  --shadow-sidebar-focus-ring: 0 0 0 0.125rem var(--color-sidebar-glow),
+  --shadow-sidebar-focus-ring:
+    0 0 0 0.125rem var(--color-sidebar-glow),
     0 0 0 0.25rem var(--color-sidebar-hover-strong);
   --shadow-popover-zap: 0 22px 48px -18px var(--color-shadow-intense);
   --shadow-video-modal: 0 1rem 2.25rem var(--color-shadow-elevated);
@@ -479,11 +481,7 @@
     var(--color-sidebar-border-strong) 40%,
     transparent
   );
-  --scrollbar-thumb: color-mix(
-    in srgb,
-    var(--color-accent) 64%,
-    transparent
-  );
+  --scrollbar-thumb: color-mix(in srgb, var(--color-accent) 64%, transparent);
   --scrollbar-thumb-hover: color-mix(
     in srgb,
     var(--color-accent-strong) 76%,
@@ -494,11 +492,31 @@
   --color-sidebar-surface-alt: rgb(236 240 247 / 0.72);
   --color-sidebar-border: rgb(184 194 212 / 0.28);
   --color-sidebar-border-strong: rgb(148 163 184 / 0.36);
-  --color-sidebar-hover: color-mix(in srgb, var(--color-accent) 16%, transparent);
-  --color-sidebar-hover-strong: color-mix(in srgb, var(--color-accent-strong) 24%, transparent);
-  --color-sidebar-glow: color-mix(in srgb, var(--color-accent) 36%, transparent);
-  --color-sidebar-accent-start: color-mix(in srgb, var(--color-accent-strong) 88%, transparent);
-  --color-sidebar-accent-end: color-mix(in srgb, var(--color-accent) 82%, transparent);
+  --color-sidebar-hover: color-mix(
+    in srgb,
+    var(--color-accent) 16%,
+    transparent
+  );
+  --color-sidebar-hover-strong: color-mix(
+    in srgb,
+    var(--color-accent-strong) 24%,
+    transparent
+  );
+  --color-sidebar-glow: color-mix(
+    in srgb,
+    var(--color-accent) 36%,
+    transparent
+  );
+  --color-sidebar-accent-start: color-mix(
+    in srgb,
+    var(--color-accent-strong) 88%,
+    transparent
+  );
+  --color-sidebar-accent-end: color-mix(
+    in srgb,
+    var(--color-accent) 82%,
+    transparent
+  );
   --color-sidebar-text-muted: var(--color-text-muted);
   --sidebar-icon-filter: brightness(0) saturate(100%);
 
@@ -647,11 +665,7 @@
     var(--color-sidebar-surface-alt) 54%,
     transparent
   );
-  --scrollbar-thumb: color-mix(
-    in srgb,
-    var(--color-accent) 72%,
-    transparent
-  );
+  --scrollbar-thumb: color-mix(in srgb, var(--color-accent) 72%, transparent);
   --scrollbar-thumb-hover: color-mix(
     in srgb,
     var(--color-accent-strong) 84%,
@@ -662,11 +676,31 @@
   --color-sidebar-surface-alt: rgb(10 18 32 / 0.8);
   --color-sidebar-border: rgb(86 106 142 / 0.26);
   --color-sidebar-border-strong: rgb(112 133 170 / 0.42);
-  --color-sidebar-hover: color-mix(in srgb, var(--color-accent) 22%, transparent);
-  --color-sidebar-hover-strong: color-mix(in srgb, var(--color-accent-strong) 32%, transparent);
-  --color-sidebar-glow: color-mix(in srgb, var(--color-accent) 42%, transparent);
-  --color-sidebar-accent-start: color-mix(in srgb, var(--color-accent) 92%, transparent);
-  --color-sidebar-accent-end: color-mix(in srgb, var(--color-accent-strong) 88%, transparent);
+  --color-sidebar-hover: color-mix(
+    in srgb,
+    var(--color-accent) 22%,
+    transparent
+  );
+  --color-sidebar-hover-strong: color-mix(
+    in srgb,
+    var(--color-accent-strong) 32%,
+    transparent
+  );
+  --color-sidebar-glow: color-mix(
+    in srgb,
+    var(--color-accent) 42%,
+    transparent
+  );
+  --color-sidebar-accent-start: color-mix(
+    in srgb,
+    var(--color-accent) 92%,
+    transparent
+  );
+  --color-sidebar-accent-end: color-mix(
+    in srgb,
+    var(--color-accent-strong) 88%,
+    transparent
+  );
   --color-sidebar-text-muted: var(--color-text-muted);
   --sidebar-icon-filter: brightness(0) invert(1);
 
