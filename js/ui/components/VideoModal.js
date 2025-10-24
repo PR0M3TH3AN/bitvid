@@ -2443,6 +2443,10 @@ export class VideoModal {
         return;
       }
 
+      if (root.classList) {
+        root.classList.add("player-modal__similar-card");
+      }
+
       const listItem = this.document.createElement("li");
       listItem.classList.add("player-modal__module-item");
       listItem.appendChild(root);
