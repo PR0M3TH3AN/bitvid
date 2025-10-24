@@ -1450,7 +1450,7 @@
   }
 
   #playerModal .watch-container.video-modal__similar {
-    padding-inline: clamp(var(--space-xs), 1.75vw, var(--space-md-plus));
+    padding-inline: clamp(var(--space-3xs), 1vw, var(--space-sm));
   }
 
   #playerModal .video-modal__primary > .watch-container:first-child {
@@ -1701,10 +1701,10 @@
   .video-modal__layout {
     --video-modal-secondary-size: clamp(
       var(--video-modal-secondary-min),
-      42vw,
+      46vw,
       var(--video-modal-secondary-max)
     );
-    @apply grid gap-4 lg:gap-6;
+    @apply grid gap-3 lg:gap-5;
     width: min(100%, var(--video-modal-layout-max));
     margin-inline: auto;
     grid-template-columns: minmax(0, 1fr);
@@ -1718,7 +1718,7 @@
     .video-modal__layout {
       --video-modal-secondary-size: clamp(
         var(--video-modal-secondary-min),
-        38vw,
+        40vw,
         var(--video-modal-secondary-max)
       );
       grid-template-columns:
@@ -1754,7 +1754,7 @@
     .video-modal__layout {
       --video-modal-secondary-size: clamp(
         var(--video-modal-secondary-min),
-        34vw,
+        36vw,
         var(--video-modal-secondary-max)
       );
     }
@@ -1854,71 +1854,105 @@
     @apply flex w-full flex-row items-stretch gap-md flex-nowrap;
   }
 
-  #playerModal .player-modal__module-item > .card .video-card__media {
+  #playerModal .player-modal__module-item > .card:not(.player-modal__similar-card)
+    .video-card__media {
     width: clamp(5.75rem, 18vw, 8rem);
     @apply shrink-0 overflow-hidden rounded-lg;
   }
 
-  #playerModal .player-modal__module-item > .card .video-card__content {
+  #playerModal .player-modal__module-item > .card:not(.player-modal__similar-card)
+    .video-card__content {
     padding: clamp(var(--space-sm), 1.25vw, var(--space-md));
     @apply flex min-w-0 flex-1 flex-col gap-sm;
   }
 
-  #playerModal .player-modal__module-item > .card .video-card__meta {
+  #playerModal .player-modal__module-item > .card:not(.player-modal__similar-card)
+    .video-card__meta {
     @apply flex flex-wrap items-center gap-2 text-xs text-muted-strong;
   }
 
-  #playerModal .player-modal__module-item > .card.player-modal__similar-card {
+  #playerModal .video-modal__similar .player-modal__module-list {
+    gap: clamp(var(--space-2xs), 0.85vw, var(--space-sm));
+  }
+
+  #playerModal .video-modal__similar .player-modal__module-item > .card {
     display: grid;
-    grid-template-columns: clamp(4.25rem, 11vw, 5.5rem) minmax(0, 1fr);
-    align-items: flex-start;
-    gap: clamp(var(--space-xs), 1vw, var(--space-sm));
-    padding: clamp(var(--space-2xs), 1vw, var(--space-sm));
+    grid-template-columns: clamp(4rem, 8.5vw, 5.25rem) minmax(0, 1fr);
+    align-items: start;
+    gap: clamp(var(--space-4xs), 0.8vw, var(--space-xs));
+    padding: clamp(var(--space-3xs), 0.75vw, var(--space-sm));
+    border-radius: var(--radius-xl);
+    background-color: var(--color-surface);
+    box-shadow: var(--shadow-sm);
   }
 
   #playerModal
+    .video-modal__similar
     .player-modal__module-item
-    > .card.player-modal__similar-card
+    > .card
     .video-card__media {
     width: 100%;
     aspect-ratio: 16 / 9;
-    @apply overflow-hidden rounded-lg;
+    border-radius: var(--radius-lg);
+    @apply overflow-hidden;
   }
 
   #playerModal
+    .video-modal__similar
     .player-modal__module-item
-    > .card.player-modal__similar-card
+    > .card
+    .video-card__media
+    .ratio-16-9 {
+    width: 100%;
+  }
+
+  #playerModal
+    .video-modal__similar
+    .player-modal__module-item
+    > .card
     .video-card__media
     img,
   #playerModal
+    .video-modal__similar
     .player-modal__module-item
-    > .card.player-modal__similar-card
+    > .card
     .video-card__media
     video {
     @apply h-full w-full object-cover;
   }
 
   #playerModal
+    .video-modal__similar
     .player-modal__module-item
-    > .card.player-modal__similar-card
+    > .card
     .video-card__content {
     padding: 0;
-    @apply gap-1 min-w-0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: clamp(var(--space-4xs), 0.6vw, var(--space-2xs));
   }
 
   #playerModal
+    .video-modal__similar
     .player-modal__module-item
-    > .card.player-modal__similar-card
+    > .card
     .video-card__title {
     font-size: clamp(var(--font-size-sm), 1.05vw, var(--font-size-base));
     line-height: 1.35;
   }
 
   #playerModal
+    .video-modal__similar
     .player-modal__module-item
-    > .card.player-modal__similar-card
+    > .card
     .video-card__meta {
-    @apply gap-1 text-2xs;
+    margin-top: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: clamp(var(--space-5xs), 0.5vw, var(--space-4xs));
+    @apply text-2xs text-muted-strong;
   }
 
   .video-modal__stage {
