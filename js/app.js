@@ -96,7 +96,9 @@ import initEditModal from "./ui/initEditModal.js";
 import initDeleteModal from "./ui/initDeleteModal.js";
 import { MediaLoader } from "./utils/mediaLoader.js";
 import { pointerArrayToKey } from "./utils/pointer.js";
-import { resolveVideoPointer } from "./utils/videoPointer.js";
+import resolveVideoPointer, {
+  buildVideoAddressPointer,
+} from "./utils/videoPointer.js";
 import { isValidMagnetUri } from "./utils/magnetValidators.js";
 import { dedupeToNewestByRoot } from "./utils/videoDeduper.js";
 import { buildServiceWorkerFallbackStatus } from "./utils/serviceWorkerFallbackMessages.js";
@@ -6177,41 +6179,7 @@ class Application {
       return this.discussionCountService.getVideoAddressPointer(video);
     }
 
-    if (!video || typeof video !== "object") {
-      return "";
-    }
-
-    const tags = Array.isArray(video.tags) ? video.tags : [];
-    const dTag = tags.find(
-      (tag) =>
-        Array.isArray(tag) &&
-        tag.length >= 2 &&
-        tag[0] === "d" &&
-        typeof tag[1] === "string" &&
-        tag[1].trim()
-    );
-
-    if (!dTag) {
-      return "";
-    }
-
-    const pubkey =
-      typeof video.pubkey === "string" ? video.pubkey.trim() : "";
-    if (!pubkey) {
-      return "";
-    }
-
-    const identifier = dTag[1].trim();
-    if (!identifier) {
-      return "";
-    }
-
-    const kind =
-      Number.isFinite(video.kind) && video.kind > 0
-        ? Math.floor(video.kind)
-        : VIDEO_EVENT_KIND;
-
-    return `${kind}:${pubkey}:${identifier}`;
+    return buildVideoAddressPointer(video, { defaultKind: VIDEO_EVENT_KIND });
   }
 
   bindThumbnailFallbacks(container) {
