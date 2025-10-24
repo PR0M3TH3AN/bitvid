@@ -961,11 +961,11 @@
   }
 
   .card--compact {
-    @apply flex flex-row items-stretch gap-md;
+    @apply flex flex-row items-start gap-md;
   }
 
   .card--compact .video-card__media {
-    @apply block w-40 shrink-0 overflow-hidden rounded-lg sm:w-56;
+    @apply block w-32 shrink-0 overflow-hidden rounded-lg sm:w-48;
   }
 
   .card--compact .video-card__content {
@@ -1402,7 +1402,7 @@
   }
 
   #playerModal {
-    --player-modal-vertical-padding: var(--space-lg);
+    --player-modal-vertical-padding: var(--space-md-plus);
   }
 
   #playerModal > .bv-modal__panel {
@@ -1444,7 +1444,7 @@
     margin-inline: auto;
     padding-inline: var(
       --player-modal-inline-padding,
-      clamp(var(--space-md-plus), 4vw, var(--space-2xl))
+      clamp(var(--space-md), 4vw, var(--space-xl-plus))
     );
     overflow: visible;
   }
@@ -1465,7 +1465,7 @@
   #playerModal .modal-info-panel {
     display: flex;
     flex-direction: column;
-    gap: var(--space-lg);
+    gap: var(--space-md-plus);
   }
 
   #playerModal h2#videoTitle {
@@ -1495,7 +1495,7 @@
     display: flex;
     align-items: center;
     gap: var(--space-md);
-    padding: var(--space-md-plus) var(--space-lg);
+    padding: var(--space-md) var(--space-lg);
     border-radius: var(--radius-xl);
     border: var(--border-width-hairline) solid var(--color-border-translucent);
     background-color: var(--color-surface);
@@ -1507,7 +1507,7 @@
     flex-direction: column;
     gap: var(--space-md);
     width: 100%;
-    padding: clamp(var(--space-md-plus), 3vw, var(--space-2xl));
+    padding: clamp(var(--space-md), 2.5vw, var(--space-xl));
     border-radius: var(--radius-xl);
     border: var(--border-width-hairline) solid var(--color-border-translucent);
     background-color: var(--color-surface);
@@ -1539,9 +1539,10 @@
       28rem
     );
     overflow-y: auto;
+    overflow-x: hidden;
     overscroll-behavior: contain;
     scrollbar-gutter: stable;
-    padding-inline-end: var(--space-2xs);
+    padding-inline-end: var(--space-xs);
   }
 
   #playerModal .player-modal__module-scroll > li {
@@ -1628,10 +1629,10 @@
   }
 
   #playerModal .modal-nav__bar {
-    @apply flex w-full items-center gap-3 px-2 py-2 sm:px-4;
+    @apply flex w-full items-center justify-between gap-3 px-2 py-2 sm:px-4;
     padding-inline: var(
       --player-modal-inline-padding,
-      clamp(var(--space-md-plus), 4vw, var(--space-2xl))
+      clamp(var(--space-sm), 3vw, var(--space-xl))
     );
   }
 
@@ -1641,13 +1642,13 @@
 
   #playerModal .modal-nav .modal-actions {
     @apply flex items-center gap-2;
-    margin-left: auto;
+    margin-left: 0;
   }
 
   #playerModal .modal-nav .icon-button {
     @apply inline-flex items-center justify-center rounded-full text-muted transition duration-150 ease-out;
-    width: var(--icon-size-lg);
-    height: var(--icon-size-lg);
+    width: var(--icon-size-md);
+    height: var(--icon-size-md);
     background: var(--color-surface-tint-subtle);
     border: var(--border-width-hairline) solid var(--color-border-translucent-medium);
     color: var(--color-text-muted);
@@ -1674,7 +1675,7 @@
       40vw,
       var(--video-modal-secondary-max)
     );
-    @apply grid gap-6 lg:gap-8;
+    @apply grid gap-5 lg:gap-8;
     width: min(100%, var(--video-modal-layout-max));
     margin-inline: auto;
     grid-template-columns: minmax(0, 1fr);
@@ -2016,11 +2017,11 @@
   }
 
   .video-modal__actions-row {
-    @apply flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between;
+    @apply flex flex-col gap-4 md:flex-row md:items-start md:justify-between;
   }
 
   .video-modal__reactions {
-    @apply flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4;
+    @apply flex flex-wrap items-start gap-3 md:flex-nowrap md:items-center md:gap-4;
   }
 
   .video-modal__reaction-buttons {
@@ -2096,7 +2097,7 @@
   }
 
   .video-modal__actions-group {
-    @apply flex flex-wrap items-center gap-3 justify-end;
+    @apply flex flex-wrap items-center gap-3 justify-start md:justify-end;
   }
 
   .video-modal__action-button {
@@ -2118,7 +2119,7 @@
   .video-modal__channel,
   .video-modal__description,
   .video-modal__stats {
-    @apply rounded-2xl border border-border border-opacity-20 bg-surface px-6 py-5 shadow-sm;
+    @apply rounded-2xl border border-border border-opacity-20 bg-surface px-5 py-4 shadow-sm;
   }
 
   .video-modal__description-body {
