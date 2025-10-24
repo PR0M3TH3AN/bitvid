@@ -17,6 +17,7 @@ export const NOTE_TYPES = Object.freeze({
   RELAY_LIST: "relayList",
   VIEW_EVENT: "viewEvent",
   VIDEO_REACTION: "videoReaction",
+  VIDEO_COMMENT: "videoComment",
   WATCH_HISTORY_INDEX: "watchHistoryIndex",
   WATCH_HISTORY_CHUNK: "watchHistoryChunk",
   SUBSCRIPTION_LIST: "subscriptionList",
@@ -62,6 +63,33 @@ function ensureValidUtf8Content(value) {
     }
   } else {
     normalized = String(value);
+  }
+
+  if (normalized) {
+    const builder = [];
+    let mutated = false;
+    for (let index = 0; index < normalized.length; index += 1) {
+      const code = normalized.charCodeAt(index);
+      if (code >= 0xd800 && code <= 0xdbff) {
+        const nextCode = normalized.charCodeAt(index + 1);
+        if (nextCode >= 0xdc00 && nextCode <= 0xdfff) {
+          builder.push(normalized[index], normalized[index + 1]);
+          index += 1;
+        } else {
+          mutated = true;
+        }
+      } else if (code >= 0xdc00 && code <= 0xdfff) {
+        mutated = true;
+      } else {
+        builder.push(normalized[index]);
+      }
+    }
+    if (mutated) {
+      devLogger.warn(
+        "[nostrEventSchemas] Dropping unmatched surrogate characters from event content"
+      );
+      normalized = builder.join("");
+    }
   }
 
   if (!cachedUtf8Encoder && typeof TextEncoder !== "undefined") {
@@ -204,6 +232,20 @@ const BASE_SCHEMAS = {
       format: "text",
       description:
         "Reaction payload for the referenced event (e.g., '+', '-', or emoji).",
+    },
+  },
+  [NOTE_TYPES.VIDEO_COMMENT]: {
+    type: NOTE_TYPES.VIDEO_COMMENT,
+    label: "Video comment",
+    kind: 1,
+    videoEventTagName: "e",
+    videoDefinitionTagName: "a",
+    parentCommentTagName: "e",
+    participantTagName: "p",
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      format: "text",
+      description: "Plain text comment body sanitized for UTF-8 compatibility.",
     },
   },
   [NOTE_TYPES.WATCH_HISTORY_INDEX]: {
@@ -807,6 +849,114 @@ export function buildReactionEvent({
 
   return {
     kind: schema?.kind ?? 7,
+    pubkey,
+    created_at,
+    tags,
+    content: resolvedContent,
+  };
+}
+
+export function buildCommentEvent({
+  pubkey,
+  created_at,
+  videoEventId = "",
+  videoEventRelay = "",
+  videoDefinitionAddress = "",
+  videoDefinitionRelay = "",
+  parentCommentId = "",
+  parentCommentRelay = "",
+  threadParticipantPubkey = "",
+  threadParticipantRelay = "",
+  additionalTags = [],
+  content = "",
+}) {
+  const schema = getNostrEventSchema(NOTE_TYPES.VIDEO_COMMENT);
+  const tags = [];
+
+  const videoEventTagName = schema?.videoEventTagName || "e";
+  const normalizedVideoEventId =
+    typeof videoEventId === "string" ? videoEventId.trim() : "";
+  const normalizedVideoEventRelay =
+    typeof videoEventRelay === "string" ? videoEventRelay.trim() : "";
+  if (videoEventTagName && normalizedVideoEventId) {
+    if (normalizedVideoEventRelay) {
+      tags.push([videoEventTagName, normalizedVideoEventId, normalizedVideoEventRelay]);
+    } else {
+      tags.push([videoEventTagName, normalizedVideoEventId]);
+    }
+  }
+
+  const videoDefinitionTagName = schema?.videoDefinitionTagName || "a";
+  const normalizedVideoDefinitionAddress =
+    typeof videoDefinitionAddress === "string"
+      ? videoDefinitionAddress.trim()
+      : "";
+  const normalizedVideoDefinitionRelay =
+    typeof videoDefinitionRelay === "string" ? videoDefinitionRelay.trim() : "";
+  if (videoDefinitionTagName && normalizedVideoDefinitionAddress) {
+    if (normalizedVideoDefinitionRelay) {
+      tags.push([
+        videoDefinitionTagName,
+        normalizedVideoDefinitionAddress,
+        normalizedVideoDefinitionRelay,
+      ]);
+    } else {
+      tags.push([videoDefinitionTagName, normalizedVideoDefinitionAddress]);
+    }
+  }
+
+  const parentCommentTagName = schema?.parentCommentTagName || "e";
+  const normalizedParentCommentId =
+    typeof parentCommentId === "string" ? parentCommentId.trim() : "";
+  const normalizedParentCommentRelay =
+    typeof parentCommentRelay === "string" ? parentCommentRelay.trim() : "";
+  if (parentCommentTagName && normalizedParentCommentId) {
+    if (normalizedParentCommentRelay) {
+      tags.push([
+        parentCommentTagName,
+        normalizedParentCommentId,
+        normalizedParentCommentRelay,
+      ]);
+    } else {
+      tags.push([parentCommentTagName, normalizedParentCommentId]);
+    }
+  }
+
+  const participantTagName = schema?.participantTagName || "p";
+  const normalizedThreadParticipantPubkey =
+    typeof threadParticipantPubkey === "string"
+      ? threadParticipantPubkey.trim()
+      : "";
+  const normalizedThreadParticipantRelay =
+    typeof threadParticipantRelay === "string"
+      ? threadParticipantRelay.trim()
+      : "";
+  if (participantTagName && normalizedThreadParticipantPubkey) {
+    if (normalizedThreadParticipantRelay) {
+      tags.push([
+        participantTagName,
+        normalizedThreadParticipantPubkey,
+        normalizedThreadParticipantRelay,
+      ]);
+    } else {
+      tags.push([participantTagName, normalizedThreadParticipantPubkey]);
+    }
+  }
+
+  if (Array.isArray(additionalTags)) {
+    additionalTags.forEach((tag) => {
+      if (Array.isArray(tag) && tag.length >= 2) {
+        tags.push(tag.map((value) => (typeof value === "string" ? value : String(value))));
+      }
+    });
+  }
+
+  appendSchemaTags(tags, schema);
+
+  const resolvedContent = ensureValidUtf8Content(content);
+
+  return {
+    kind: schema?.kind ?? 1,
     pubkey,
     created_at,
     tags,
