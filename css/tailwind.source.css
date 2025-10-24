@@ -1450,7 +1450,7 @@
   }
 
   #playerModal .watch-container.video-modal__similar {
-    padding-inline: clamp(var(--space-sm), 2.25vw, var(--space-lg));
+    padding-inline: clamp(var(--space-xs), 1.75vw, var(--space-md-plus));
   }
 
   #playerModal .video-modal__primary > .watch-container:first-child {
@@ -1537,21 +1537,21 @@
   }
 
   #playerModal .video-modal__similar .player-modal__module {
-    gap: clamp(var(--space-sm), 1.5vw, var(--space-md));
-    padding: clamp(var(--space-sm), 1.75vw, var(--space-lg));
+    gap: clamp(var(--space-xs), 1.25vw, var(--space-md));
+    padding: clamp(var(--space-sm), 1.5vw, var(--space-lg));
     border-width: 0;
     box-shadow: none;
     background-color: transparent;
   }
 
   #playerModal .video-modal__similar .player-modal__module-title {
-    padding-inline: clamp(var(--space-2xs), 1.25vw, var(--space-sm));
+    padding-inline: clamp(var(--space-3xs), 1vw, var(--space-sm));
   }
 
   #playerModal .video-modal__similar .player-modal__module-list {
-    gap: clamp(var(--space-sm), 1.25vw, var(--space-md));
-    padding-inline: clamp(var(--space-2xs), 1.5vw, var(--space-sm));
-    padding-bottom: clamp(var(--space-sm), 1.5vw, var(--space-md));
+    gap: clamp(var(--space-xs), 1vw, var(--space-sm));
+    padding-inline: clamp(var(--space-3xs), 1vw, var(--space-sm));
+    padding-bottom: clamp(var(--space-sm), 1.25vw, var(--space-md));
   }
 
   #playerModal .player-modal__module-scroll {
@@ -1868,25 +1868,57 @@
     @apply flex flex-wrap items-center gap-2 text-xs text-muted-strong;
   }
 
-  #playerModal .video-modal__similar .player-modal__module-item > .card {
+  #playerModal .player-modal__module-item > .card.player-modal__similar-card {
     display: grid;
-    grid-template-columns: clamp(4.75rem, 15vw, 6.5rem) minmax(0, 1fr);
+    grid-template-columns: clamp(4.25rem, 11vw, 5.5rem) minmax(0, 1fr);
     align-items: flex-start;
-    gap: clamp(var(--space-sm), 1.25vw, var(--space-md));
-    padding: clamp(var(--space-xs), 1.25vw, var(--space-sm));
+    gap: clamp(var(--space-xs), 1vw, var(--space-sm));
+    padding: clamp(var(--space-2xs), 1vw, var(--space-sm));
   }
 
-  #playerModal .video-modal__similar .player-modal__module-item > .card .video-card__media {
+  #playerModal
+    .player-modal__module-item
+    > .card.player-modal__similar-card
+    .video-card__media {
     width: 100%;
+    aspect-ratio: 16 / 9;
+    @apply overflow-hidden rounded-lg;
   }
 
-  #playerModal .video-modal__similar .player-modal__module-item > .card .video-card__content {
+  #playerModal
+    .player-modal__module-item
+    > .card.player-modal__similar-card
+    .video-card__media
+    img,
+  #playerModal
+    .player-modal__module-item
+    > .card.player-modal__similar-card
+    .video-card__media
+    video {
+    @apply h-full w-full object-cover;
+  }
+
+  #playerModal
+    .player-modal__module-item
+    > .card.player-modal__similar-card
+    .video-card__content {
     padding: 0;
-    @apply gap-xs;
+    @apply gap-1 min-w-0;
   }
 
-  #playerModal .video-modal__similar .player-modal__module-item > .card .video-card__meta {
-    @apply gap-xs text-2xs;
+  #playerModal
+    .player-modal__module-item
+    > .card.player-modal__similar-card
+    .video-card__title {
+    font-size: clamp(var(--font-size-sm), 1.05vw, var(--font-size-base));
+    line-height: 1.35;
+  }
+
+  #playerModal
+    .player-modal__module-item
+    > .card.player-modal__similar-card
+    .video-card__meta {
+    @apply gap-1 text-2xs;
   }
 
   .video-modal__stage {
