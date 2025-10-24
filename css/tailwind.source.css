@@ -1652,28 +1652,25 @@
 
   #playerModal .modal-nav {
     @apply sticky top-0 z-overlay-nav translate-y-0 transition-transform duration-150;
-    background-color: var(--color-overlay-darker);
+    background-color: var(--surface-overlay-panel);
     background-image: linear-gradient(
       180deg,
-      var(--color-overlay-panel-gradient-start) 0%,
-      var(--color-overlay-panel-gradient-end) 100%
+      color-mix(in srgb, var(--surface-overlay-panel) 94%, transparent) 0%,
+      color-mix(in srgb, var(--surface-overlay-panel) 88%, transparent) 100%
     );
-    border-bottom: var(--border-width-hairline) solid
-      var(--color-border-translucent);
+    border-bottom: var(--border-width-hairline) solid var(--border-overlay);
     backdrop-filter: blur(var(--modal-nav-backdrop-blur));
     -webkit-backdrop-filter: blur(var(--modal-nav-backdrop-blur));
   }
 
   #playerModal .modal-nav__bar {
-    @apply flex w-full items-center justify-start gap-3 py-2;
-    padding-inline: var(
-      --player-modal-inline-padding,
-      clamp(var(--space-sm), 3vw, var(--space-xl))
-    );
+    @apply flex w-full items-center justify-start gap-2;
+    padding-block: var(--space-xs);
+    padding-inline: clamp(var(--space-sm), 2.5vw, var(--space-lg));
   }
 
   #playerModal .modal-nav__rail {
-    @apply flex w-full items-center justify-between gap-3;
+    @apply flex w-full items-center justify-between gap-2;
   }
 
   #playerModal .modal-nav__slot {
@@ -1693,22 +1690,22 @@
   #playerModal .modal-nav .modal-actions {
     @apply flex items-center gap-2;
     margin-left: 0;
+    align-self: stretch;
   }
 
   #playerModal .modal-nav .icon-button {
     @apply inline-flex items-center justify-center rounded-full text-muted transition duration-150 ease-out;
-    width: var(--icon-size-md);
-    height: var(--icon-size-md);
-    background: var(--color-surface-tint-subtle);
-    border: var(--border-width-hairline) solid
-      var(--color-border-translucent-medium);
+    inline-size: var(--icon-size-md);
+    block-size: var(--icon-size-md);
+    background: var(--surface-overlay-panel-tint);
+    border: var(--border-width-hairline) solid var(--border-overlay);
     color: var(--color-text-muted);
   }
 
   #playerModal .modal-nav .icon-button:hover,
   #playerModal .modal-nav .icon-button:focus-visible {
-    background: var(--color-border-translucent-bright);
-    border-color: var(--color-border-translucent-strong);
+    background: var(--surface-overlay-panel-soft);
+    border-color: var(--border-overlay-strong);
     color: var(--color-text);
   }
 
@@ -2164,13 +2161,17 @@
   }
 
   .video-modal__actions-row {
-    @apply flex w-full flex-wrap items-start gap-y-3 gap-x-4;
+    @apply flex w-full flex-wrap items-start gap-y-3 gap-x-3 sm:gap-x-4;
+  }
+
+  .video-modal__reactions,
+  .video-modal__actions-group {
+    flex: 1 1 var(--menu-min-width);
+    min-inline-size: 0;
   }
 
   .video-modal__reactions {
     @apply flex basis-full flex-wrap items-start gap-3 sm:gap-4 md:basis-auto;
-    flex: 1 1 var(--menu-min-width);
-    min-inline-size: 0;
   }
 
   .video-modal__reaction-buttons {
@@ -2245,8 +2246,7 @@
   }
 
   .video-modal__actions-group {
-    @apply flex basis-full flex-wrap items-start justify-start gap-3 md:flex-none md:basis-auto md:justify-end;
-    min-inline-size: 0;
+    @apply flex basis-full flex-wrap items-start justify-start gap-3 md:basis-auto md:justify-end;
   }
 
   @media (min-width: theme("screens.md")) {
