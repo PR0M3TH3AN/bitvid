@@ -53,3 +53,31 @@ test("buildCommentEvent includes parent pointers for threaded replies", () => {
   const participantTags = event.tags.filter((tag) => Array.isArray(tag) && tag[0] === "p");
   assert.deepEqual(participantTags, [["p", "parent-author"]]);
 });
+
+test("buildCommentEvent normalizes optional relays and preserves additional tags", () => {
+  const event = buildCommentEvent({
+    pubkey: "author",
+    created_at: 1700000300,
+    videoEventId: "event123",
+    videoEventRelay: "wss://comments.main",
+    videoDefinitionAddress: "30078:deadbeefcafebabe:clip-2",
+    videoDefinitionRelay: "wss://video.def",
+    parentCommentId: "root-comment",
+    parentCommentRelay: "wss://parent",
+    threadParticipantPubkey: "cafecafe",
+    threadParticipantRelay: "wss://profile",
+    additionalTags: [["client", "bitvid"], ["p", "cafecafe", "wss://override"]],
+    content: " Appreciated! \ud800",
+  });
+
+  assert.equal(event.kind, 1);
+  assert.deepStrictEqual(event.tags, [
+    ["e", "event123", "wss://comments.main"],
+    ["a", "30078:deadbeefcafebabe:clip-2", "wss://video.def"],
+    ["e", "root-comment", "wss://parent"],
+    ["p", "cafecafe", "wss://profile"],
+    ["client", "bitvid"],
+    ["p", "cafecafe", "wss://override"],
+  ]);
+  assert.equal(event.content, " Appreciated! ");
+});
