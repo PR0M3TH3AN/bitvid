@@ -11,6 +11,11 @@ import {
   unsubscribeFromVideoViewCount,
   formatViewCount,
 } from "../../viewCounter.js";
+import {
+  truncateMiddle,
+  formatAbsoluteTimestamp,
+  formatTimeAgo,
+} from "../../utils/formatters.js";
 
 export class VideoModal {
   constructor({
@@ -133,6 +138,47 @@ export class VideoModal {
       playbackMagnet: "",
       canManageBlacklist: false,
     };
+
+    this.commentsRoot = null;
+    this.commentsContainer = null;
+    this.commentsCountLabel = null;
+    this.commentsEmptyState = null;
+    this.commentsList = null;
+    this.commentsLoadMoreButton = null;
+    this.commentsDisabledMessage = null;
+    this.commentsComposer = null;
+    this.commentsInput = null;
+    this.commentsSubmitButton = null;
+    this.commentsStatusMessage = null;
+    this.commentsCharCount = null;
+    this.commentComposerHint = null;
+    this.commentComposerDefaultHint = "";
+    this.commentComposerDefaultCountText = "";
+    this.commentStatusDefaultText = "";
+    this.commentComposerMaxLength = 0;
+    this.commentComposerState = {
+      disabled: true,
+      reason: "",
+      parentCommentId: null,
+    };
+    this.commentThreadContext = {
+      videoEventId: "",
+      parentCommentId: null,
+    };
+    this.commentProfiles = new Map();
+    this.commentNodes = new Map();
+    this.commentChildLists = new Map();
+    this.commentRetryButton = null;
+    this.commentCallbacks = {
+      teardown: null,
+    };
+    this.boundCommentSubmitHandler =
+      this.handleCommentComposerSubmit.bind(this);
+    this.boundCommentInputHandler =
+      this.handleCommentComposerInput.bind(this);
+    this.boundCommentLoadMoreHandler =
+      this.handleCommentLoadMore.bind(this);
+    this.boundCommentRetryHandler = this.handleCommentRetry.bind(this);
 
     this.modalPosterCleanup = null;
     this.videoEventCleanup = null;
@@ -452,6 +498,77 @@ export class VideoModal {
     this.setupModalZapPopover();
     this.setupModalMorePopover();
 
+    this.detachCommentEventHandlers();
+
+    const commentsRoot =
+      playerModal.querySelector("[data-comments-root]") || null;
+    this.commentsRoot = commentsRoot;
+    this.commentsContainer = commentsRoot;
+    this.commentsCountLabel =
+      commentsRoot?.querySelector("[data-comments-count]") || null;
+    this.commentsEmptyState =
+      commentsRoot?.querySelector("[data-comments-empty]") || null;
+    this.commentsList =
+      commentsRoot?.querySelector("[data-comments-list]") || null;
+    this.commentsLoadMoreButton =
+      commentsRoot?.querySelector("[data-comments-load-more]") || null;
+    this.commentsDisabledMessage =
+      commentsRoot?.querySelector("[data-comments-disabled]") || null;
+    this.commentsComposer =
+      commentsRoot?.querySelector("[data-comments-composer]") || null;
+    this.commentsInput =
+      this.commentsComposer?.querySelector("[data-comments-input]") || null;
+    this.commentsSubmitButton =
+      this.commentsComposer?.querySelector("[data-comments-submit]") || null;
+    this.commentsStatusMessage =
+      this.commentsComposer?.querySelector("[data-comments-status]") ||
+      commentsRoot?.querySelector("[data-comments-status]") ||
+      null;
+    this.commentsCharCount =
+      this.commentsComposer?.querySelector("[data-comments-char-count]") ||
+      null;
+    this.commentComposerHint =
+      this.commentsComposer?.querySelector("#commentComposerHelp") ||
+      this.commentsComposer?.querySelector(".comment-composer__hint") ||
+      this.commentComposerHint ||
+      null;
+
+    if (this.commentComposerHint) {
+      const hintText = this.commentComposerHint.textContent || "";
+      if (hintText) {
+        this.commentComposerDefaultHint = hintText;
+      }
+    }
+    if (this.commentsCharCount) {
+      const countText = this.commentsCharCount.textContent || "";
+      if (countText) {
+        this.commentComposerDefaultCountText = countText;
+      }
+    }
+    if (this.commentsStatusMessage) {
+      const statusText = this.commentsStatusMessage.textContent || "";
+      if (statusText) {
+        this.commentStatusDefaultText = statusText;
+      }
+    }
+    if (this.commentsInput) {
+      const parsedMax = Number(this.commentsInput.maxLength);
+      if (Number.isFinite(parsedMax) && parsedMax > 0) {
+        this.commentComposerMaxLength = parsedMax;
+      }
+    }
+
+    if (this.commentsDisabledMessage) {
+      this.commentsDisabledMessage.setAttribute("hidden", "");
+    }
+    if (this.commentsComposer) {
+      this.commentsComposer.removeAttribute("hidden");
+    }
+
+    this.clearComments();
+    this.resetCommentComposer();
+    this.attachCommentEventHandlers();
+
     Object.values(this.reactionButtons).forEach((button) => {
       if (button) {
         button.addEventListener("click", this.handleReactionClick);
@@ -512,6 +629,862 @@ export class VideoModal {
       this.document?.body?.classList?.remove("modal-open");
       this.document?.documentElement?.classList?.remove("modal-open");
     }
+  }
+
+  attachCommentEventHandlers() {
+    if (this.commentsComposer && this.boundCommentSubmitHandler) {
+      this.commentsComposer.addEventListener(
+        "submit",
+        this.boundCommentSubmitHandler
+      );
+    }
+    if (this.commentsInput && this.boundCommentInputHandler) {
+      this.commentsInput.addEventListener(
+        "input",
+        this.boundCommentInputHandler
+      );
+    }
+    if (this.commentsLoadMoreButton && this.boundCommentLoadMoreHandler) {
+      this.commentsLoadMoreButton.addEventListener(
+        "click",
+        this.boundCommentLoadMoreHandler
+      );
+    }
+    if (this.commentRetryButton && this.boundCommentRetryHandler) {
+      this.commentRetryButton.addEventListener(
+        "click",
+        this.boundCommentRetryHandler
+      );
+    }
+  }
+
+  detachCommentEventHandlers() {
+    if (this.commentsComposer && this.boundCommentSubmitHandler) {
+      this.commentsComposer.removeEventListener(
+        "submit",
+        this.boundCommentSubmitHandler
+      );
+    }
+    if (this.commentsInput && this.boundCommentInputHandler) {
+      this.commentsInput.removeEventListener(
+        "input",
+        this.boundCommentInputHandler
+      );
+    }
+    if (this.commentsLoadMoreButton && this.boundCommentLoadMoreHandler) {
+      this.commentsLoadMoreButton.removeEventListener(
+        "click",
+        this.boundCommentLoadMoreHandler
+      );
+    }
+    if (this.commentRetryButton && this.boundCommentRetryHandler) {
+      this.commentRetryButton.removeEventListener(
+        "click",
+        this.boundCommentRetryHandler
+      );
+    }
+  }
+
+  handleCommentComposerSubmit(event) {
+    if (event && typeof event.preventDefault === "function") {
+      event.preventDefault();
+    }
+
+    const triggerElement =
+      (event && event.submitter) || this.commentsSubmitButton || null;
+
+    if (this.commentComposerState.reason === "login-required") {
+      this.dispatch("comment:login-required", { triggerElement });
+      return;
+    }
+
+    if (this.commentComposerState.disabled) {
+      return;
+    }
+
+    const text = this.getCommentInputValue();
+    if (!text) {
+      return;
+    }
+
+    this.dispatch("comment:submit", {
+      text,
+      parentId: this.commentComposerState.parentCommentId || null,
+      triggerElement,
+    });
+  }
+
+  handleCommentComposerInput() {
+    this.updateCommentCharCount();
+    this.updateCommentSubmitState();
+  }
+
+  handleCommentLoadMore(event) {
+    if (event && typeof event.preventDefault === "function") {
+      event.preventDefault();
+    }
+    const triggerElement =
+      (event && event.currentTarget) || this.commentsLoadMoreButton || null;
+    this.dispatch("comment:load-more", {
+      parentId: this.commentThreadContext.parentCommentId || null,
+      triggerElement,
+    });
+  }
+
+  handleCommentRetry(event) {
+    if (event && typeof event.preventDefault === "function") {
+      event.preventDefault();
+    }
+    const triggerElement =
+      (event && event.currentTarget) || this.commentRetryButton || null;
+    this.dispatch("comment:retry", {
+      text: this.getCommentInputValue(),
+      parentId: this.commentComposerState.parentCommentId || null,
+      triggerElement,
+    });
+  }
+
+  getCommentInputValue({ trimmed = true } = {}) {
+    const value = this.commentsInput ? this.commentsInput.value || "" : "";
+    return trimmed ? value.trim() : value;
+  }
+
+  updateCommentSubmitState() {
+    if (!this.commentsSubmitButton) {
+      return;
+    }
+    const hasText = !!this.getCommentInputValue();
+    const shouldDisable = this.commentComposerState.disabled || !hasText;
+    this.commentsSubmitButton.disabled = shouldDisable;
+  }
+
+  updateCommentCharCount() {
+    if (!this.commentsCharCount) {
+      return;
+    }
+    const length = this.commentsInput ? this.commentsInput.value.length : 0;
+    const safeLength = Number.isFinite(length) ? Math.max(0, length) : 0;
+    const max = Number.isFinite(this.commentComposerMaxLength)
+      ? Math.max(0, this.commentComposerMaxLength)
+      : 0;
+    const label = max > 0 ? `${safeLength} / ${max}` : `${safeLength}`;
+    this.commentsCharCount.textContent = label;
+  }
+
+  setCommentHintText(text) {
+    if (!this.commentComposerHint) {
+      return;
+    }
+    const message =
+      typeof text === "string" && text
+        ? text
+        : this.commentComposerDefaultHint || "";
+    this.commentComposerHint.textContent = message;
+  }
+
+  removeCommentRetryButton() {
+    if (!this.commentRetryButton) {
+      return;
+    }
+    this.commentRetryButton.removeEventListener(
+      "click",
+      this.boundCommentRetryHandler
+    );
+    if (this.commentRetryButton.parentNode) {
+      this.commentRetryButton.parentNode.removeChild(this.commentRetryButton);
+    }
+    this.commentRetryButton = null;
+  }
+
+  setCommentStatus(message, { showRetry = false } = {}) {
+    if (!this.commentsStatusMessage) {
+      return;
+    }
+
+    this.removeCommentRetryButton();
+
+    while (this.commentsStatusMessage.firstChild) {
+      this.commentsStatusMessage.removeChild(
+        this.commentsStatusMessage.firstChild
+      );
+    }
+
+    const text =
+      typeof message === "string" && message
+        ? message
+        : this.commentStatusDefaultText || "";
+    if (text) {
+      this.commentsStatusMessage.appendChild(
+        this.document.createTextNode(text)
+      );
+    }
+
+    if (showRetry) {
+      const spacer = this.document.createTextNode(" ");
+      const retryButton = this.document.createElement("button");
+      retryButton.type = "button";
+      retryButton.classList.add("comment-thread__retry", "focus-ring");
+      retryButton.appendChild(this.document.createTextNode("Retry"));
+      retryButton.addEventListener("click", this.boundCommentRetryHandler);
+      this.commentsStatusMessage.appendChild(spacer);
+      this.commentsStatusMessage.appendChild(retryButton);
+      this.commentRetryButton = retryButton;
+    }
+  }
+
+  setCommentsVisibility(isVisible) {
+    const root = this.commentsContainer || this.commentsRoot;
+    if (!root) {
+      return;
+    }
+    const shouldShow = Boolean(isVisible);
+    if (shouldShow) {
+      root.removeAttribute("hidden");
+      root.classList?.remove("hidden");
+    } else {
+      root.setAttribute("hidden", "");
+      root.classList?.add("hidden");
+    }
+  }
+
+  setCommentComposerState({ disabled = false, reason = "" } = {}) {
+    const normalizedReason = typeof reason === "string" ? reason : "";
+
+    let shouldDisable = !!disabled;
+    switch (normalizedReason) {
+      case "login-required":
+      case "submitting":
+      case "disabled":
+        shouldDisable = true;
+        break;
+      case "error":
+        shouldDisable = false;
+        break;
+      default:
+        break;
+    }
+
+    this.commentComposerState.disabled = shouldDisable;
+    this.commentComposerState.reason = normalizedReason;
+
+    if (this.commentsInput) {
+      this.commentsInput.disabled = shouldDisable;
+    }
+
+    if (this.commentsDisabledMessage) {
+      if (normalizedReason === "disabled") {
+        this.commentsDisabledMessage.removeAttribute("hidden");
+      } else {
+        this.commentsDisabledMessage.setAttribute("hidden", "");
+      }
+    }
+
+    if (this.commentsComposer) {
+      if (normalizedReason === "disabled") {
+        this.commentsComposer.setAttribute("hidden", "");
+      } else {
+        this.commentsComposer.removeAttribute("hidden");
+      }
+    }
+
+    if (normalizedReason === "login-required") {
+      this.setCommentHintText("Log in to add a comment.");
+      this.setCommentStatus("");
+    } else if (normalizedReason === "submitting") {
+      this.setCommentHintText(this.commentComposerDefaultHint);
+      this.setCommentStatus("Posting comment…");
+    } else if (normalizedReason === "error") {
+      this.setCommentHintText(this.commentComposerDefaultHint);
+      this.setCommentStatus("We couldn't post your comment. Try again?", {
+        showRetry: true,
+      });
+    } else if (normalizedReason === "disabled") {
+      this.setCommentHintText(this.commentComposerDefaultHint);
+      this.setCommentStatus("");
+    } else {
+      this.setCommentHintText(this.commentComposerDefaultHint);
+      this.setCommentStatus("");
+    }
+
+    this.updateCommentSubmitState();
+  }
+
+  resetCommentComposer() {
+    if (this.commentsInput) {
+      this.commentsInput.disabled = false;
+      this.commentsInput.value = "";
+    }
+    this.commentComposerState = {
+      disabled: false,
+      reason: "",
+      parentCommentId: null,
+    };
+    this.setCommentHintText(this.commentComposerDefaultHint);
+    this.setCommentStatus("");
+    this.updateCommentCharCount();
+    this.updateCommentSubmitState();
+  }
+
+  setCommentSectionCallbacks({ teardown = null } = {}) {
+    this.commentCallbacks.teardown =
+      typeof teardown === "function" ? teardown : null;
+  }
+
+  invokeCommentTeardown() {
+    const teardown = this.commentCallbacks.teardown;
+    if (typeof teardown !== "function") {
+      return;
+    }
+    this.commentCallbacks.teardown = null;
+    try {
+      teardown();
+    } catch (error) {
+      this.log("[VideoModal] Failed to teardown comment services", error);
+    }
+  }
+
+  renderComments(snapshot) {
+    if (!this.commentsList || !this.document) {
+      return;
+    }
+
+    const commentsMap = this.normalizeCommentMap(snapshot?.commentsById);
+    const childrenMap = this.normalizeChildrenMap(snapshot?.childrenByParent);
+    this.commentProfiles = this.normalizeProfileMap(snapshot?.profiles);
+
+    this.commentThreadContext.videoEventId =
+      typeof snapshot?.videoEventId === "string"
+        ? snapshot.videoEventId.trim()
+        : "";
+    this.commentThreadContext.parentCommentId =
+      typeof snapshot?.parentCommentId === "string" &&
+      snapshot.parentCommentId.trim()
+        ? snapshot.parentCommentId.trim()
+        : null;
+
+    this.commentNodes.clear();
+    this.commentChildLists = new Map();
+    this.commentChildLists.set(null, this.commentsList);
+
+    this.commentsList.textContent = "";
+
+    const fragment = this.document.createDocumentFragment();
+    const topLevelIds = this.getChildCommentIds(childrenMap, null);
+    topLevelIds.forEach((commentId) => {
+      const node = this.buildCommentTree(
+        commentId,
+        commentsMap,
+        childrenMap,
+        0
+      );
+      if (node) {
+        fragment.appendChild(node);
+      }
+    });
+
+    this.commentsList.appendChild(fragment);
+
+    this.updateCommentCount(this.commentNodes.size);
+    this.toggleCommentEmptyState(this.commentNodes.size === 0);
+  }
+
+  appendComment(event) {
+    if (!event || typeof event !== "object" || !this.commentsList) {
+      return;
+    }
+
+    const commentId =
+      typeof event.id === "string" && event.id.trim() ? event.id.trim() : "";
+    if (!commentId || this.commentNodes.has(commentId)) {
+      return;
+    }
+
+    if (event.profile && typeof event.pubkey === "string") {
+      this.mergeCommentProfile(event.pubkey, event.profile);
+    }
+
+    const parentId = this.extractParentCommentId(event);
+    const parentNode =
+      parentId && this.commentNodes.has(parentId)
+        ? this.commentNodes.get(parentId)
+        : null;
+    const depth = parentNode
+      ? Math.max(0, Number(parentNode.dataset?.commentDepth) || 0) + 1
+      : 0;
+
+    const node = this.createCommentNode(event, { depth });
+    if (!node) {
+      return;
+    }
+
+    const container = this.getCommentChildrenContainer(parentId);
+    if (!container) {
+      this.log("[VideoModal] Missing container for appended comment", parentId);
+      return;
+    }
+
+    container.appendChild(node);
+    this.updateCommentCount(this.commentNodes.size);
+    this.toggleCommentEmptyState(this.commentNodes.size === 0);
+  }
+
+  buildCommentTree(commentId, commentsMap, childrenMap, depth = 0) {
+    const normalizedId =
+      typeof commentId === "string" && commentId.trim()
+        ? commentId.trim()
+        : "";
+    if (!normalizedId) {
+      return null;
+    }
+
+    const event = commentsMap.get(normalizedId);
+    if (!event) {
+      return null;
+    }
+
+    const node = this.createCommentNode(event, { depth });
+    if (!node) {
+      return null;
+    }
+
+    const repliesContainer = this.commentChildLists.get(normalizedId);
+    if (repliesContainer) {
+      const childIds = this.getChildCommentIds(childrenMap, normalizedId);
+      if (childIds.length) {
+        const fragment = this.document.createDocumentFragment();
+        childIds.forEach((childId) => {
+          const childNode = this.buildCommentTree(
+            childId,
+            commentsMap,
+            childrenMap,
+            depth + 1
+          );
+          if (childNode) {
+            fragment.appendChild(childNode);
+          }
+        });
+        if (fragment.childNodes.length) {
+          repliesContainer.appendChild(fragment);
+        }
+      }
+    }
+
+    return node;
+  }
+
+  createCommentNode(event, { depth = 0 } = {}) {
+    if (!event || typeof event !== "object" || !this.document) {
+      return null;
+    }
+
+    const commentId =
+      typeof event.id === "string" && event.id.trim() ? event.id.trim() : "";
+    if (!commentId) {
+      return null;
+    }
+
+    if (this.commentNodes.has(commentId)) {
+      return this.commentNodes.get(commentId);
+    }
+
+    const listItem = this.document.createElement("li");
+    listItem.classList.add("comment-thread__item");
+    listItem.dataset.commentId = commentId;
+    listItem.dataset.commentDepth = String(Math.max(0, depth));
+    if (typeof event.pubkey === "string" && event.pubkey.trim()) {
+      listItem.dataset.commentAuthor = event.pubkey.trim();
+    }
+
+    const avatarWrapper = this.document.createElement("div");
+    avatarWrapper.classList.add("comment-thread__avatar");
+    avatarWrapper.setAttribute("aria-hidden", "true");
+    const avatarLabel = this.document.createElement("span");
+    avatarLabel.appendChild(
+      this.document.createTextNode(
+        this.getCommentAvatarInitial(event.pubkey)
+      )
+    );
+    avatarWrapper.appendChild(avatarLabel);
+
+    const content = this.document.createElement("div");
+    content.classList.add("comment-thread__content");
+
+    const meta = this.document.createElement("div");
+    meta.classList.add("comment-thread__meta");
+
+    const authorEl = this.document.createElement("span");
+    authorEl.classList.add("comment-thread__author");
+    authorEl.appendChild(
+      this.document.createTextNode(this.getCommentAuthorName(event.pubkey))
+    );
+    meta.appendChild(authorEl);
+
+    const timestamp = this.getCommentTimestampLabel(event.created_at);
+    if (timestamp.text) {
+      const timeEl = this.document.createElement("time");
+      timeEl.classList.add("comment-thread__timestamp");
+      if (timestamp.iso) {
+        timeEl.setAttribute("datetime", timestamp.iso);
+      }
+      if (timestamp.title) {
+        timeEl.title = timestamp.title;
+      }
+      timeEl.appendChild(this.document.createTextNode(timestamp.text));
+      meta.appendChild(timeEl);
+    }
+
+    content.appendChild(meta);
+
+    const body = this.document.createElement("p");
+    body.classList.add("comment-thread__body");
+    body.appendChild(
+      this.document.createTextNode(
+        typeof event.content === "string" ? event.content : ""
+      )
+    );
+    content.appendChild(body);
+
+    const actions = this.document.createElement("div");
+    actions.classList.add("comment-thread__actions");
+
+    const muteButton = this.document.createElement("button");
+    muteButton.type = "button";
+    muteButton.classList.add("comment-thread__mute");
+    muteButton.appendChild(this.document.createTextNode("Mute author"));
+    muteButton.addEventListener("click", (domEvent) => {
+      const triggerElement = domEvent?.currentTarget || muteButton;
+      this.dispatch("comment:mute-author", {
+        commentId,
+        pubkey:
+          typeof event.pubkey === "string" && event.pubkey
+            ? event.pubkey
+            : "",
+        triggerElement,
+      });
+    });
+    actions.appendChild(muteButton);
+
+    content.appendChild(actions);
+
+    const replies = this.document.createElement("ul");
+    replies.classList.add("comment-thread__replies");
+    replies.setAttribute("data-comment-replies", "");
+    content.appendChild(replies);
+
+    listItem.appendChild(avatarWrapper);
+    listItem.appendChild(content);
+
+    this.commentNodes.set(commentId, listItem);
+    this.commentChildLists.set(commentId, replies);
+
+    return listItem;
+  }
+
+  getCommentAuthorName(pubkey) {
+    const normalized =
+      typeof pubkey === "string" && pubkey.trim() ? pubkey.trim() : "";
+    if (!normalized) {
+      return "Anonymous";
+    }
+
+    const profile = this.commentProfiles.get(normalized.toLowerCase());
+    if (profile && typeof profile === "object") {
+      const displayName =
+        profile.display_name ||
+        profile.name ||
+        profile.username ||
+        profile.npub ||
+        "";
+      if (displayName) {
+        return displayName;
+      }
+    }
+
+    return truncateMiddle(normalized, 16) || "Anonymous";
+  }
+
+  getCommentAvatarInitial(pubkey) {
+    const name = this.getCommentAuthorName(pubkey) || "";
+    const initial = name.trim().charAt(0);
+    if (initial) {
+      return initial.toUpperCase();
+    }
+    return "?";
+  }
+
+  getCommentTimestampLabel(createdAt) {
+    const numeric = Number(createdAt);
+    if (!Number.isFinite(numeric) || numeric <= 0) {
+      return { text: "", iso: "", title: "" };
+    }
+
+    const date = new Date(numeric * 1000);
+    if (Number.isNaN(date.getTime())) {
+      return { text: "", iso: "", title: "" };
+    }
+
+    let text = "";
+    try {
+      text = formatTimeAgo(numeric);
+    } catch (error) {
+      this.log("[VideoModal] Failed to format comment timestamp", error);
+    }
+    if (!text) {
+      text = formatAbsoluteTimestamp(numeric);
+    }
+
+    return {
+      text,
+      iso: date.toISOString(),
+      title: formatAbsoluteTimestamp(numeric),
+    };
+  }
+
+  normalizeCommentMap(candidate) {
+    if (candidate instanceof Map) {
+      return new Map(candidate);
+    }
+    if (Array.isArray(candidate)) {
+      const map = new Map();
+      candidate.forEach(([key, value]) => {
+        if (typeof key === "string" && key.trim()) {
+          map.set(key.trim(), value);
+        }
+      });
+      return map;
+    }
+    if (candidate && typeof candidate === "object") {
+      const map = new Map();
+      Object.entries(candidate).forEach(([key, value]) => {
+        if (typeof key === "string" && key.trim()) {
+          map.set(key.trim(), value);
+        }
+      });
+      return map;
+    }
+    return new Map();
+  }
+
+  normalizeChildrenMap(candidate) {
+    const map = new Map();
+    if (candidate instanceof Map) {
+      candidate.forEach((value, key) => {
+        map.set(this.normalizeParentKey(key), this.normalizeIdList(value));
+      });
+      return map;
+    }
+    if (Array.isArray(candidate)) {
+      candidate.forEach(([key, value]) => {
+        map.set(this.normalizeParentKey(key), this.normalizeIdList(value));
+      });
+      return map;
+    }
+    if (candidate && typeof candidate === "object") {
+      Object.entries(candidate).forEach(([key, value]) => {
+        map.set(this.normalizeParentKey(key), this.normalizeIdList(value));
+      });
+    }
+    return map;
+  }
+
+  normalizeProfileMap(candidate) {
+    const map = new Map();
+    if (candidate instanceof Map) {
+      candidate.forEach((value, key) => {
+        const normalizedKey =
+          typeof key === "string" && key.trim() ? key.trim().toLowerCase() : "";
+        if (normalizedKey) {
+          map.set(normalizedKey, value);
+        }
+      });
+      return map;
+    }
+    if (Array.isArray(candidate)) {
+      candidate.forEach(([key, value]) => {
+        const normalizedKey =
+          typeof key === "string" && key.trim() ? key.trim().toLowerCase() : "";
+        if (normalizedKey) {
+          map.set(normalizedKey, value);
+        }
+      });
+      return map;
+    }
+    if (candidate && typeof candidate === "object") {
+      Object.entries(candidate).forEach(([key, value]) => {
+        const normalizedKey =
+          typeof key === "string" && key.trim() ? key.trim().toLowerCase() : "";
+        if (normalizedKey) {
+          map.set(normalizedKey, value);
+        }
+      });
+    }
+    return map;
+  }
+
+  normalizeIdList(value) {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+    return value
+      .map((entry) =>
+        typeof entry === "string" && entry.trim() ? entry.trim() : ""
+      )
+      .filter(Boolean);
+  }
+
+  normalizeParentKey(value) {
+    if (value === null || value === undefined) {
+      return null;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed || trimmed === "null" || trimmed === "undefined") {
+        return null;
+      }
+      return trimmed;
+    }
+    return this.normalizeParentKey(String(value));
+  }
+
+  getChildCommentIds(childrenMap, parentId) {
+    const key = this.normalizeParentKey(parentId);
+    const list = childrenMap.get(key);
+    return Array.isArray(list) ? [...list] : [];
+  }
+
+  getCommentChildrenContainer(parentId) {
+    const key = this.normalizeParentKey(parentId);
+    if (key === null) {
+      return this.commentChildLists.get(null) || this.commentsList;
+    }
+    if (this.commentChildLists.has(key)) {
+      return this.commentChildLists.get(key);
+    }
+    const parentNode = this.commentNodes.get(key);
+    if (parentNode) {
+      const existing = parentNode.querySelector("[data-comment-replies]");
+      if (existing) {
+        this.commentChildLists.set(key, existing);
+        return existing;
+      }
+    }
+    return this.commentChildLists.get(null) || this.commentsList;
+  }
+
+  extractParentCommentId(event) {
+    const tags = Array.isArray(event?.tags) ? event.tags : [];
+    const values = [];
+    for (const tag of tags) {
+      if (!Array.isArray(tag) || tag.length < 2) {
+        continue;
+      }
+      const [name, value] = tag;
+      if (name !== "e") {
+        continue;
+      }
+      const normalized = typeof value === "string" ? value.trim() : "";
+      if (!normalized || normalized === this.commentThreadContext.videoEventId) {
+        continue;
+      }
+      values.push(normalized);
+    }
+    if (!values.length) {
+      return null;
+    }
+    return values[values.length - 1];
+  }
+
+  mergeCommentProfile(pubkey, profile) {
+    if (typeof pubkey !== "string" || !pubkey.trim()) {
+      return;
+    }
+    const normalized = pubkey.trim().toLowerCase();
+    this.commentProfiles.set(normalized, profile);
+  }
+
+  clearComments() {
+    if (!(this.commentNodes instanceof Map)) {
+      this.commentNodes = new Map();
+    } else {
+      this.commentNodes.clear();
+    }
+    if (!(this.commentChildLists instanceof Map)) {
+      this.commentChildLists = new Map();
+    } else {
+      this.commentChildLists.clear();
+    }
+    if (this.commentsList) {
+      this.commentsList.textContent = "";
+      this.commentChildLists.set(null, this.commentsList);
+    }
+    this.updateCommentCount(0);
+    this.toggleCommentEmptyState(true);
+  }
+
+  updateCommentCount(count) {
+    if (!this.commentsCountLabel) {
+      return;
+    }
+    const numeric = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
+    const label = numeric === 1 ? "1 comment" : `${numeric} comments`;
+    this.commentsCountLabel.textContent = label;
+  }
+
+  toggleCommentEmptyState(isEmpty) {
+    const shouldShow = Boolean(isEmpty);
+    if (this.commentsEmptyState) {
+      if (shouldShow) {
+        this.commentsEmptyState.removeAttribute("hidden");
+      } else {
+        this.commentsEmptyState.setAttribute("hidden", "");
+      }
+    }
+    if (this.commentsList) {
+      if (shouldShow) {
+        this.commentsList.setAttribute("data-empty", "true");
+      } else {
+        this.commentsList.removeAttribute("data-empty");
+      }
+    }
+  }
+
+  destroy() {
+    this.close();
+    this.detachCommentEventHandlers();
+    this.removeCommentRetryButton();
+    this.invokeCommentTeardown();
+
+    this.commentProfiles = new Map();
+    this.commentNodes = new Map();
+    this.commentChildLists = new Map();
+    this.commentComposerState = {
+      disabled: true,
+      reason: "",
+      parentCommentId: null,
+    };
+    this.commentThreadContext = {
+      videoEventId: "",
+      parentCommentId: null,
+    };
+    this.commentComposerDefaultHint = "";
+    this.commentComposerDefaultCountText = "";
+    this.commentStatusDefaultText = "";
+    this.commentComposerMaxLength = 0;
+
+    this.commentsRoot = null;
+    this.commentsContainer = null;
+    this.commentsCountLabel = null;
+    this.commentsEmptyState = null;
+    this.commentsList = null;
+    this.commentsLoadMoreButton = null;
+    this.commentsDisabledMessage = null;
+    this.commentsComposer = null;
+    this.commentsInput = null;
+    this.commentsSubmitButton = null;
+    this.commentsStatusMessage = null;
+    this.commentsCharCount = null;
+    this.commentComposerHint = null;
+    this.commentRetryButton = null;
   }
 
   bindVideoEvents() {
@@ -1130,6 +2103,9 @@ export class VideoModal {
     if (this.modalMorePopover?.close) {
       this.modalMorePopover.close({ restoreFocus: false });
     }
+    this.invokeCommentTeardown();
+    this.clearComments();
+    this.resetCommentComposer();
     this.renderVideoTags([]);
     this.clearSimilarContent();
     this.forceRemovePoster("close");
