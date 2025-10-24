@@ -95,6 +95,10 @@ export class VideoModal {
     this.similarContentCards = [];
     this.similarContentViewCountSubscriptions = [];
     this.pendingSimilarContent = null;
+    this.similarContentVisible = false;
+    this.similarContentMediaQuery = null;
+    this.handleSimilarContentMediaChange =
+      this.handleSimilarContentMediaChange.bind(this);
 
     this.modalAccessibility = null;
     this.modalNavScrollHandler = null;
@@ -311,6 +315,7 @@ export class VideoModal {
     this.modalBackdrop = playerModal.querySelector("[data-dismiss]") || null;
     this.scrollRegion = this.modalPanel || playerModal;
 
+    this.teardownSimilarContentMediaQuery();
     const nextVideoTagsRoot = playerModal.querySelector("#videoTags") || null;
     if (this.videoTagsRoot && this.videoTagsRoot !== nextVideoTagsRoot) {
       this.cleanupVideoTags(this.videoTagsRoot);
@@ -340,6 +345,8 @@ export class VideoModal {
     this.similarContentHeading = similarHeading;
     this.similarContentList = similarList;
     this.similarContentContainer = similarContainer;
+
+    this.setupSimilarContentMediaQuery();
 
     if (similarList && similarList.children.length) {
       this.toggleSimilarContentVisibility(true);
@@ -2500,38 +2507,102 @@ export class VideoModal {
   }
 
   toggleSimilarContentVisibility(isVisible) {
-    const container = this.similarContentContainer;
-    if (container) {
-      if (isVisible) {
-        container.removeAttribute("hidden");
-        container.setAttribute("aria-hidden", "false");
-      } else {
-        container.setAttribute("hidden", "");
-        container.setAttribute("aria-hidden", "true");
+    this.similarContentVisible = Boolean(isVisible);
+    this.refreshSimilarContentVisibility();
+  }
+
+  refreshSimilarContentVisibility() {
+    const shouldShow =
+      this.similarContentVisible && this.matchesSimilarContentDesktop();
+
+    this.setElementVisibility(this.similarContentContainer, shouldShow);
+    this.setElementVisibility(this.similarContentHeading, shouldShow);
+    this.setElementVisibility(this.similarContentList, shouldShow);
+  }
+
+  setElementVisibility(element, shouldShow) {
+    if (!element) {
+      return;
+    }
+
+    if (shouldShow) {
+      element.removeAttribute("hidden");
+      element.setAttribute("aria-hidden", "false");
+    } else {
+      element.setAttribute("hidden", "");
+      element.setAttribute("aria-hidden", "true");
+    }
+  }
+
+  matchesSimilarContentDesktop() {
+    if (this.similarContentMediaQuery) {
+      return this.similarContentMediaQuery.matches;
+    }
+
+    const win = this.window;
+    if (!win || typeof win.matchMedia !== "function") {
+      return true;
+    }
+
+    try {
+      return win.matchMedia("(min-width: 1024px)").matches;
+    } catch (error) {
+      this.log(
+        "[VideoModal] Failed to evaluate similar content media query",
+        error
+      );
+      return true;
+    }
+  }
+
+  setupSimilarContentMediaQuery() {
+    const win = this.window;
+    if (!win || typeof win.matchMedia !== "function") {
+      this.similarContentMediaQuery = null;
+      this.refreshSimilarContentVisibility();
+      return;
+    }
+
+    const query = win.matchMedia("(min-width: 1024px)");
+    if (this.similarContentMediaQuery === query) {
+      this.refreshSimilarContentVisibility();
+      return;
+    }
+
+    this.teardownSimilarContentMediaQuery();
+    this.similarContentMediaQuery = query;
+
+    if (query) {
+      if (typeof query.addEventListener === "function") {
+        query.addEventListener("change", this.handleSimilarContentMediaChange);
+      } else if (typeof query.addListener === "function") {
+        query.addListener(this.handleSimilarContentMediaChange);
       }
     }
 
-    const heading = this.similarContentHeading;
-    if (heading) {
-      if (isVisible) {
-        heading.removeAttribute("hidden");
-        heading.setAttribute("aria-hidden", "false");
-      } else {
-        heading.setAttribute("hidden", "");
-        heading.setAttribute("aria-hidden", "true");
-      }
+    this.refreshSimilarContentVisibility();
+  }
+
+  teardownSimilarContentMediaQuery() {
+    const query = this.similarContentMediaQuery;
+    if (!query) {
+      return;
     }
 
-    const list = this.similarContentList;
-    if (list) {
-      if (isVisible) {
-        list.removeAttribute("hidden");
-        list.setAttribute("aria-hidden", "false");
-      } else {
-        list.setAttribute("hidden", "");
-        list.setAttribute("aria-hidden", "true");
-      }
+    if (typeof query.removeEventListener === "function") {
+      query.removeEventListener(
+        "change",
+        this.handleSimilarContentMediaChange
+      );
+    } else if (typeof query.removeListener === "function") {
+      query.removeListener(this.handleSimilarContentMediaChange);
     }
+
+    this.similarContentMediaQuery = null;
+  }
+
+  handleSimilarContentMediaChange() {
+    this.refreshSimilarContentVisibility();
   }
 
   normalizeSimilarPointerInfo(entry, video) {

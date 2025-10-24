@@ -1729,6 +1729,32 @@
     }
   }
 
+  #playerModal .video-modal__layout {
+    display: grid;
+  }
+
+  @media (min-width: theme('screens.lg')) {
+    #playerModal .video-modal__layout {
+      grid-template-columns:
+        minmax(0, 1fr)
+        minmax(
+          var(--video-modal-secondary-min),
+          var(--video-modal-secondary-size)
+        );
+      grid-template-areas: "primary secondary";
+      align-items: start;
+      grid-auto-flow: column;
+    }
+
+    #playerModal .video-modal__primary {
+      grid-area: primary;
+    }
+
+    #playerModal .video-modal__secondary {
+      grid-area: secondary;
+    }
+  }
+
   .revert-modal__layout {
     @apply grid gap-6;
   }
