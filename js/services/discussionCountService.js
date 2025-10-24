@@ -1,4 +1,5 @@
 import { devLogger } from "../utils/logger.js";
+import { buildVideoAddressPointer } from "../utils/videoPointer.js";
 
 const DEFAULT_MAX_DISCUSSION_COUNT_VIDEOS = 24;
 const COUNT_UNSUPPORTED_TITLE = "Relay does not support NIP-45 COUNT queries.";
@@ -132,7 +133,7 @@ export default class DiscussionCountService {
       filters.push({ kinds: [1], "#e": [eventId] });
     }
 
-    const address = this.getVideoAddressPointer(video);
+    const address = buildVideoAddressPointer(video);
     if (address) {
       filters.push({ kinds: [1], "#a": [address] });
     }
@@ -141,40 +142,7 @@ export default class DiscussionCountService {
   }
 
   getVideoAddressPointer(video) {
-    if (!video || typeof video !== "object") {
-      return "";
-    }
-
-    const tags = Array.isArray(video.tags) ? video.tags : [];
-    const dTag = tags.find(
-      (tag) =>
-        Array.isArray(tag) &&
-        tag.length >= 2 &&
-        tag[0] === "d" &&
-        typeof tag[1] === "string" &&
-        tag[1].trim()
-    );
-
-    if (!dTag) {
-      return "";
-    }
-
-    const pubkey = typeof video.pubkey === "string" ? video.pubkey.trim() : "";
-    if (!pubkey) {
-      return "";
-    }
-
-    const identifier = dTag[1].trim();
-    if (!identifier) {
-      return "";
-    }
-
-    const kind =
-      Number.isFinite(video.kind) && video.kind > 0
-        ? Math.floor(video.kind)
-        : 30078;
-
-    return `${kind}:${pubkey}:${identifier}`;
+    return buildVideoAddressPointer(video);
   }
 
   setDiscussionCountPending(element) {

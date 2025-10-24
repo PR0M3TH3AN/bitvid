@@ -1,6 +1,7 @@
 // js/utils/videoPointer.js
 
 import { pointerArrayToKey } from "./pointer.js";
+import { devLogger } from "./logger.js";
 
 const DEFAULT_VIDEO_KIND = 30078;
 
@@ -49,3 +50,60 @@ export function resolveVideoPointer({
 }
 
 export default resolveVideoPointer;
+
+export function buildVideoAddressPointer(
+  video,
+  { defaultKind = DEFAULT_VIDEO_KIND, logger = devLogger } = {}
+) {
+  if (!video || typeof video !== "object") {
+    return "";
+  }
+
+  const tags = Array.isArray(video.tags) ? video.tags : [];
+  const dTag = tags.find(
+    (tag) =>
+      Array.isArray(tag) &&
+      tag.length >= 2 &&
+      tag[0] === "d" &&
+      typeof tag[1] === "string" &&
+      tag[1].trim()
+  );
+
+  if (!dTag) {
+    return "";
+  }
+
+  const pubkey = typeof video.pubkey === "string" ? video.pubkey.trim() : "";
+  if (!pubkey) {
+    return "";
+  }
+
+  const identifier = dTag[1].trim();
+  if (!identifier) {
+    return "";
+  }
+
+  let kind = defaultKind;
+  if (Number.isFinite(video.kind) && video.kind > 0) {
+    kind = Math.floor(video.kind);
+  } else if (typeof video.kind === "string" && video.kind.trim()) {
+    const parsed = Number(video.kind);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      kind = Math.floor(parsed);
+    }
+  }
+
+  if (!Number.isFinite(kind) || kind <= 0) {
+    if (logger?.warn) {
+      logger.warn(
+        "[videoPointer] Invalid kind detected while building video pointer; defaulting to 30078.",
+        { kind: video.kind }
+      );
+    }
+    kind = DEFAULT_VIDEO_KIND;
+  }
+
+  return `${kind}:${pubkey}:${identifier}`;
+}
+
+export { DEFAULT_VIDEO_KIND };
