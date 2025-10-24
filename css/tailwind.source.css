@@ -1454,7 +1454,7 @@
   }
 
   #playerModal .watch-container.video-modal__similar {
-    padding-inline: clamp(var(--space-4xs), 0.75vw, var(--space-xs));
+    padding-inline: clamp(var(--space-2xs), 0.75vw, var(--space-xs));
   }
 
   #playerModal .video-modal__primary > .watch-container:first-child {
@@ -1513,9 +1513,9 @@
   #playerModal .player-modal__module {
     display: flex;
     flex-direction: column;
-    gap: clamp(var(--space-sm), 1.75vw, var(--space-md));
+    gap: clamp(var(--space-xs), 1.25vw, var(--space-sm));
     width: 100%;
-    padding: clamp(var(--space-sm), 1.5vw, var(--space-lg));
+    padding: clamp(var(--space-sm), 1.25vw, var(--space-md));
     border-radius: var(--radius-xl);
     border: var(--border-width-hairline) solid var(--color-border-translucent);
     background-color: var(--color-surface);
@@ -1541,21 +1541,21 @@
   }
 
   #playerModal .video-modal__similar .player-modal__module {
-    gap: clamp(var(--space-xs), 1.1vw, var(--space-sm));
-    padding: clamp(var(--space-xs), 1vw, var(--space-sm));
+    gap: clamp(var(--space-xs), 0.9vw, var(--space-sm));
+    padding: clamp(var(--space-xs), 0.85vw, var(--space-sm));
     border-width: 0;
     box-shadow: none;
     background-color: transparent;
   }
 
   #playerModal .video-modal__similar .player-modal__module-title {
-    padding-inline: clamp(var(--space-3xs), 1vw, var(--space-sm));
+    padding-inline: clamp(var(--space-2xs), 0.75vw, var(--space-xs));
   }
 
   #playerModal .video-modal__similar .player-modal__module-list {
-    gap: clamp(var(--space-xs), 1vw, var(--space-sm));
-    padding-inline: clamp(var(--space-3xs), 1vw, var(--space-sm));
-    padding-bottom: clamp(var(--space-sm), 1.25vw, var(--space-md));
+    gap: clamp(var(--space-xs), 0.85vw, var(--space-sm));
+    padding-inline: clamp(var(--space-2xs), 0.75vw, var(--space-xs));
+    padding-bottom: clamp(var(--space-xs), 0.9vw, var(--space-sm));
   }
 
   #playerModal .player-modal__module-scroll {
@@ -1726,7 +1726,7 @@
       46vw,
       var(--video-modal-secondary-max)
     );
-    --video-modal-gap: clamp(var(--space-sm), 1.5vw, var(--space-md-plus));
+    --video-modal-gap: clamp(var(--space-xs), 1vw, var(--space-sm));
     @apply grid;
     gap: var(--video-modal-gap);
     width: min(100%, var(--video-modal-layout-max));
