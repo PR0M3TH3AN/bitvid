@@ -71,7 +71,12 @@
             <div class="watch-container">
               <div class="modal-info-panel">
                 <div class="video-modal__details flex flex-col gap-6">
-                <div id="videoTags" class="video-modal__tags" hidden aria-hidden="true"></div>
+                  <div
+                    id="videoTags"
+                    class="video-modal__tags"
+                    hidden
+                    aria-hidden="true"
+                  ></div>
                 <div
                   class="video-modal__headline flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between"
                 >
@@ -407,6 +412,125 @@
                     No description available.
                   </p>
                 </div>
+
+                <section
+                  class="video-modal__comments comment-thread"
+                  aria-labelledby="videoModalCommentsHeading"
+                  role="region"
+                  data-comments-root
+                >
+                  <div class="comment-thread__header">
+                    <h2
+                      id="videoModalCommentsHeading"
+                      class="comment-thread__title"
+                    >
+                      Comments
+                    </h2>
+                    <p
+                      class="comment-thread__count"
+                      data-comments-count
+                      aria-live="polite"
+                    >
+                      0 comments
+                    </p>
+                  </div>
+
+                  <p
+                    class="comment-thread__empty"
+                    data-comments-empty
+                    role="status"
+                    aria-live="polite"
+                  >
+                    No comments yet. Be the first to share your thoughts.
+                  </p>
+
+                  <ol
+                    class="comment-thread__list"
+                    data-comments-list
+                    role="list"
+                    aria-live="polite"
+                  ></ol>
+
+                  <button
+                    type="button"
+                    class="comment-thread__load-more focus-ring"
+                    data-comments-load-more
+                    hidden
+                  >
+                    Load more comments
+                  </button>
+
+                  <div
+                    class="comment-thread__disabled"
+                    data-comments-disabled
+                    role="status"
+                    aria-live="polite"
+                    hidden
+                  >
+                    Comments are turned off for this video.
+                  </div>
+
+                  <form
+                    class="comment-composer"
+                    data-comments-composer
+                    aria-labelledby="videoModalCommentsHeading"
+                    novalidate
+                  >
+                    <div class="comment-composer__field">
+                      <label
+                        for="commentComposerInput"
+                        class="comment-composer__label"
+                      >
+                        Add a comment
+                      </label>
+                      <textarea
+                        id="commentComposerInput"
+                        name="comment"
+                        class="textarea comment-composer__textarea"
+                        rows="3"
+                        maxlength="500"
+                        placeholder="Share your thoughts"
+                        aria-describedby="commentComposerHelp commentComposerCount"
+                        data-comments-input
+                        required
+                      ></textarea>
+                    </div>
+
+                    <div class="comment-composer__footer">
+                      <p
+                        id="commentComposerHelp"
+                        class="comment-composer__hint"
+                      >
+                        Keep it respectful and follow the community guidelines.
+                      </p>
+                      <div class="comment-composer__actions">
+                        <p
+                          id="commentComposerCount"
+                          class="comment-composer__char-count"
+                          data-comments-char-count
+                          aria-live="polite"
+                        >
+                          0 / 500
+                        </p>
+                        <button
+                          type="submit"
+                          class="comment-composer__submit btn"
+                          data-comments-submit
+                          disabled
+                        >
+                          Post
+                        </button>
+                      </div>
+                    </div>
+
+                    <p
+                      class="comment-composer__status sr-only"
+                      data-comments-status
+                      role="status"
+                      aria-live="polite"
+                    ></p>
+                  </form>
+                </section>
               </div>
             </div>
           </div>
