@@ -941,7 +941,17 @@
   }
 
   .card--compact .video-card__media {
-    @apply block w-32 shrink-0 overflow-hidden rounded-lg sm:w-48;
+    inline-size: clamp(
+      8rem,
+      calc(var(--video-modal-secondary-min, 320px) * 0.4),
+      12.5rem
+    );
+    flex-basis: clamp(
+      8rem,
+      calc(var(--video-modal-secondary-min, 320px) * 0.4),
+      12.5rem
+    );
+    @apply block shrink-0 overflow-hidden rounded-lg;
   }
 
   .card--compact .video-card__content {
@@ -1927,6 +1937,22 @@
     .player-modal__module-item
     > .card
     .video-card__media {
+    inline-size: min(
+      clamp(
+        8rem,
+        calc(var(--video-modal-secondary-min, 320px) * 0.38),
+        12rem
+      ),
+      calc(50% - var(--space-4xs))
+    );
+    flex-basis: min(
+      clamp(
+        8rem,
+        calc(var(--video-modal-secondary-min, 320px) * 0.38),
+        12rem
+      ),
+      calc(50% - var(--space-4xs))
+    );
     max-inline-size: clamp(
       calc(var(--space-xl-plus) * 1.25),
       24vw,
@@ -1939,6 +1965,7 @@
     .player-modal__module-item
     > .card
     .video-card__content {
+    min-inline-size: 50%;
     padding: 0;
     min-width: 0;
     display: flex;
