@@ -192,6 +192,20 @@ export const DEFAULT_WHITELIST_MODE_ENABLED = true;
 export const ALLOW_NSFW_CONTENT = false;
 
 /**
+ * Baseline trusted accounts used to seed the moderation graph.
+ *
+ * Provide Nostr npubs for the operators and moderators you trust by default.
+ * Downstream modules treat these accounts as the starting point for the F1
+ * network that powers trusted reports and mutes. Operators should feel free to
+ * edit the list to match their deployment; bitvid will freeze and sanitize the
+ * values at runtime when reading from `js/config.js`.
+ */
+export const DEFAULT_TRUST_SEED_NPUBS = [
+  "npub1424242424242424242424242424242424242424242424242424qamrcaj",
+  "npub1hwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwasxw04hu",
+];
+
+/**
  * Baseline trusted-report count that triggers thumbnail blurring.
  *
  * When a video receives at least this many trusted reports for the active
