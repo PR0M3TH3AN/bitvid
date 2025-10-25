@@ -5,24 +5,38 @@ import {
   DEFAULT_TRUST_SEED_NPUBS,
   FEATURE_TRUST_SEEDS,
 } from "./constants.js";
+import { ADMIN_SUPER_NPUB } from "./config.js";
 import { accessControl } from "./accessControl.js";
 import moderationService from "./services/moderationService.js";
 import nostrService from "./services/nostrService.js";
 import r2Service from "./services/r2Service.js";
 import { loadView } from "./viewManager.js";
 
-function mergeSeedsWithWhitelist(source) {
-  const seeds = new Set(DEFAULT_TRUST_SEED_NPUBS);
+function normalizeNpub(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
 
-  if (source && typeof source[Symbol.iterator] === "function") {
-    for (const value of source) {
-      if (typeof value !== "string") {
-        continue;
-      }
-      const trimmed = value.trim();
-      if (trimmed) {
-        seeds.add(trimmed);
-      }
+function buildTrustedSeeds({ superAdmin, editors, fallbackSeeds }) {
+  const seeds = new Set();
+
+  const addSeed = (value) => {
+    const normalized = normalizeNpub(value);
+    if (normalized) {
+      seeds.add(normalized);
+    }
+  };
+
+  addSeed(superAdmin);
+
+  if (editors && typeof editors[Symbol.iterator] === "function") {
+    for (const value of editors) {
+      addSeed(value);
+    }
+  }
+
+  if (!seeds.size && fallbackSeeds && typeof fallbackSeeds[Symbol.iterator] === "function") {
+    for (const value of fallbackSeeds) {
+      addSeed(value);
     }
   }
 
@@ -40,12 +54,18 @@ async function bootstrapTrustedSeeds() {
     return;
   }
 
-  const applySeeds = (whitelist = null) => {
+  const applySeeds = () => {
     try {
-      const merged = mergeSeedsWithWhitelist(
-        whitelist ?? accessControl?.getWhitelist?.()
-      );
-      moderationService.setTrustedSeeds(merged);
+      const editors =
+        accessControl && typeof accessControl.getEditors === "function"
+          ? accessControl.getEditors()
+          : [];
+      const seeds = buildTrustedSeeds({
+        superAdmin: ADMIN_SUPER_NPUB,
+        editors,
+        fallbackSeeds: DEFAULT_TRUST_SEED_NPUBS,
+      });
+      moderationService.setTrustedSeeds(seeds);
     } catch {
       // Swallow bootstrap errors so login flow can continue; flag enables quick rollback.
     }
@@ -62,8 +82,8 @@ async function bootstrapTrustedSeeds() {
   applySeeds();
 
   if (accessControl && typeof accessControl.onWhitelistChange === "function") {
-    accessControl.onWhitelistChange((nextWhitelist) => {
-      applySeeds(nextWhitelist);
+    accessControl.onWhitelistChange(() => {
+      applySeeds();
     });
   }
 }
