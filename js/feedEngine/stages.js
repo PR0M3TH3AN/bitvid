@@ -664,9 +664,7 @@ export function createModerationStage({
 
       let hideBypass = "";
       if (hideTriggered) {
-        if (adminWhitelist) {
-          hideBypass = "admin-whitelist";
-        } else if (viewerOverrideActive) {
+        if (viewerOverrideActive) {
           hideBypass = "viewer-override";
         } else if (feedPolicyBypass) {
           hideBypass = "feed-policy";
