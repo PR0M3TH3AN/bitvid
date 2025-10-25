@@ -2,7 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
 
-import { renderTagPillStrip, updateTagPillStrip } from "../../js/ui/components/tagPillList.js";
+import {
+  renderTagPillStrip,
+  updateTagPillStrip,
+} from "../../js/ui/components/tagPillList.js";
 
 test("renderTagPillStrip builds buttons with labels and icons", () => {
   const { document } = new JSDOM("<!DOCTYPE html>").window;
@@ -25,6 +28,7 @@ test("renderTagPillStrip builds buttons with labels and icons", () => {
     assert.equal(button.dataset.size, "compact");
     assert.equal(button.dataset.tag, tag);
     assert.equal(button.title, `#${tag}`);
+    assert.equal(button.dataset.preferenceState, "neutral");
 
     const label = button.querySelector(".video-tag-pill__label");
     assert(label, "label span should be present");
@@ -38,6 +42,20 @@ test("renderTagPillStrip builds buttons with labels and icons", () => {
     assert(svg, "plus icon svg should be present");
     assert.equal(svg.getAttribute("viewBox"), "0 0 16 16");
   }
+});
+
+test("renderTagPillStrip applies preference state styling", () => {
+  const { document } = new JSDOM("<!DOCTYPE html>").window;
+  const { buttons } = renderTagPillStrip({
+    document,
+    tags: ["nostr", "video"],
+    getTagState(tag) {
+      return tag === "nostr" ? "interest" : "disinterest";
+    },
+  });
+
+  assert.equal(buttons[0].dataset.preferenceState, "interest");
+  assert.equal(buttons[1].dataset.preferenceState, "disinterest");
 });
 
 test("renderTagPillStrip wires the activation callback", () => {
@@ -86,6 +104,7 @@ test("updateTagPillStrip replaces buttons and rewires handlers", () => {
     onTagActivate(tag, { button }) {
       secondActivations.push({ tag, button });
     },
+    getTagState: () => "interest",
   });
 
   assert.equal(root.querySelectorAll("button").length, 1);
@@ -93,6 +112,7 @@ test("updateTagPillStrip replaces buttons and rewires handlers", () => {
 
   const updatedIcon = updatedButtons[0].querySelector(".video-tag-pill__icon svg");
   assert(updatedIcon, "updated button should contain the svg icon");
+  assert.equal(updatedButtons[0].dataset.preferenceState, "interest");
 
   // Ensure the old handler is removed by dispatching a click on the detached button.
   initialButtons[0].dispatchEvent(new document.defaultView.Event("click", { bubbles: true }));

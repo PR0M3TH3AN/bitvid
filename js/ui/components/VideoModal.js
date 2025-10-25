@@ -4,7 +4,10 @@ import { createVideoMoreMenuPanel } from "./videoMenuRenderers.js";
 import { attachAmbientBackground } from "../ambientBackground.js";
 import { applyDesignSystemAttributes } from "../../designSystem.js";
 import { devLogger } from "../../utils/logger.js";
-import { renderTagPillStrip } from "./tagPillList.js";
+import {
+  renderTagPillStrip,
+  applyTagPreferenceState,
+} from "./tagPillList.js";
 import { SimilarContentCard } from "./SimilarContentCard.js";
 import {
   subscribeToVideoViewCount,
@@ -231,6 +234,7 @@ export class VideoModal {
     this.detachAmbientBackground = null;
 
     this.activeVideo = null;
+    this.tagPreferenceStateResolver = null;
 
     this.handleCopyRequest = this.handleCopyRequest.bind(this);
     this.handleShareRequest = this.handleShareRequest.bind(this);
@@ -2854,6 +2858,7 @@ export class VideoModal {
     if (root) {
       if (this.areVideoTagsEqual(normalized, this.videoTagsData)) {
         this.toggleVideoTagsVisibility(hasTags);
+        this.refreshTagPreferenceStates();
         return;
       }
 
@@ -2864,6 +2869,7 @@ export class VideoModal {
           document: root.ownerDocument || this.document,
           tags: normalized,
           onTagActivate: this.handleVideoTagActivate,
+          getTagState: (tag) => this.resolveTagPreferenceState(tag),
         });
 
         if (strip) {
@@ -2890,6 +2896,41 @@ export class VideoModal {
       video: this.activeVideo,
       trigger: button || null,
       nativeEvent: event || null,
+    });
+  }
+
+  setTagPreferenceStateResolver(resolver) {
+    this.tagPreferenceStateResolver =
+      typeof resolver === "function" ? resolver : null;
+  }
+
+  resolveTagPreferenceState(tag) {
+    if (typeof this.tagPreferenceStateResolver !== "function") {
+      return "neutral";
+    }
+
+    try {
+      return this.tagPreferenceStateResolver(tag);
+    } catch (error) {
+      devLogger.warn(
+        "[VideoModal] Failed to resolve tag preference state:",
+        error,
+      );
+      return "neutral";
+    }
+  }
+
+  refreshTagPreferenceStates() {
+    const root = this.videoTagsRoot;
+    if (!root) {
+      return;
+    }
+
+    const buttons = root.querySelectorAll("button[data-tag]");
+    buttons.forEach((button) => {
+      const tag = button.dataset.tag || "";
+      const state = this.resolveTagPreferenceState(tag);
+      applyTagPreferenceState(button, state);
     });
   }
 

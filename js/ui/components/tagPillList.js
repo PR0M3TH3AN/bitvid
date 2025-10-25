@@ -22,7 +22,35 @@ function assertDocument(doc) {
   }
 }
 
-function createTagButton({ doc, tag, onTagActivate }) {
+const TAG_PREFERENCE_STATES = new Set(["interest", "disinterest"]);
+
+function normalizeTagPreferenceState(state) {
+  if (typeof state !== "string") {
+    return "neutral";
+  }
+
+  const trimmed = state.trim().toLowerCase();
+  if (TAG_PREFERENCE_STATES.has(trimmed)) {
+    return trimmed;
+  }
+
+  return "neutral";
+}
+
+function applyPreferenceState(button, state) {
+  if (!button || typeof button !== "object" || button.nodeType !== 1) {
+    return;
+  }
+
+  const normalized = normalizeTagPreferenceState(state);
+  button.dataset.preferenceState = normalized;
+}
+
+export function applyTagPreferenceState(button, state) {
+  applyPreferenceState(button, state);
+}
+
+function createTagButton({ doc, tag, onTagActivate, getTagState }) {
   const button = doc.createElement("button");
   button.type = "button";
   button.classList.add("pill", "video-tag-pill", "focus-ring");
@@ -57,6 +85,17 @@ function createTagButton({ doc, tag, onTagActivate }) {
 
   button.append(label, icon);
 
+  if (getTagState) {
+    try {
+      const state = getTagState(tag);
+      applyPreferenceState(button, state);
+    } catch (error) {
+      // Ignore state resolution errors; leave button in neutral state.
+    }
+  } else {
+    applyPreferenceState(button, null);
+  }
+
   if (onTagActivate) {
     const handler = (event) => {
       onTagActivate(tag, { event, button });
@@ -80,7 +119,12 @@ function cleanupExistingButtons(root) {
   root.textContent = "";
 }
 
-export function renderTagPillStrip({ document: doc, tags = [], onTagActivate } = {}) {
+export function renderTagPillStrip({
+  document: doc,
+  tags = [],
+  onTagActivate,
+  getTagState,
+} = {}) {
   const resolvedDocument = resolveDocument(doc);
   assertDocument(resolvedDocument);
 
@@ -88,7 +132,12 @@ export function renderTagPillStrip({ document: doc, tags = [], onTagActivate } =
   root.classList.add("video-tag-strip");
 
   const buttons = tags.map((tag) =>
-    createTagButton({ doc: resolvedDocument, tag, onTagActivate }),
+    createTagButton({
+      doc: resolvedDocument,
+      tag,
+      onTagActivate,
+      getTagState,
+    }),
   );
   root.append(...buttons);
 
@@ -99,6 +148,7 @@ export function updateTagPillStrip({
   root,
   tags = [],
   onTagActivate,
+  getTagState,
   document: doc,
 } = {}) {
   if (!root) {
@@ -111,7 +161,12 @@ export function updateTagPillStrip({
   cleanupExistingButtons(root);
 
   const buttons = tags.map((tag) =>
-    createTagButton({ doc: resolvedDocument, tag, onTagActivate }),
+    createTagButton({
+      doc: resolvedDocument,
+      tag,
+      onTagActivate,
+      getTagState,
+    }),
   );
   root.append(...buttons);
 
