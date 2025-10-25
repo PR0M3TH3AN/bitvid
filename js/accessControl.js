@@ -83,7 +83,24 @@ class AccessControl {
     this._whitelistListeners = new Set();
     this._editorListeners = new Set();
 
-    this._hydrateFromCache();
+    this._scheduleHydrateFromCache();
+  }
+
+  _scheduleHydrateFromCache() {
+    const runHydrate = () => {
+      try {
+        this._hydrateFromCache();
+      } catch (error) {
+        userLogger.error("accessControl failed to hydrate from cache", error);
+      }
+    };
+
+    if (typeof queueMicrotask === "function") {
+      queueMicrotask(runHydrate);
+      return;
+    }
+
+    Promise.resolve().then(runHydrate);
   }
 
   _hydrateFromCache() {
