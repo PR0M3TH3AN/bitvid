@@ -1,6 +1,8 @@
 import { normalizeDesignSystemContext } from "../../designSystem.js";
 import { formatShortNpub } from "../../utils/formatters.js";
 
+const DEFAULT_PROFILE_AVATAR = "assets/svg/default-profile.svg";
+
 export class SimilarContentCard {
   constructor({
     document: doc,
@@ -58,6 +60,7 @@ export class SimilarContentCard {
     this.thumbnailEl = null;
     this.contentEl = null;
     this.titleEl = null;
+    this.avatarEl = null;
     this.authorNameEl = null;
     this.authorNpubEl = null;
     this.timeEl = null;
@@ -85,41 +88,7 @@ export class SimilarContentCard {
   updateIdentity(nextIdentity = {}) {
     this.identity = this.normalizeIdentity(nextIdentity, this.identity);
 
-    if (this.authorNameEl) {
-      const label =
-        this.identity.name ||
-        this.identity.shortNpub ||
-        this.identity.npub ||
-        "";
-      this.authorNameEl.textContent = label;
-      if (this.identity.pubkey) {
-        this.authorNameEl.dataset.pubkey = this.identity.pubkey;
-      } else if (this.authorNameEl.dataset?.pubkey) {
-        delete this.authorNameEl.dataset.pubkey;
-      }
-    }
-
-    if (this.authorNpubEl) {
-      const label = this.identity.shortNpub || this.identity.npub || "";
-      this.authorNpubEl.textContent = label;
-      if (!label) {
-        this.authorNpubEl.setAttribute("aria-hidden", "true");
-      } else {
-        this.authorNpubEl.setAttribute("aria-hidden", "false");
-      }
-
-      if (this.identity.npub) {
-        this.authorNpubEl.setAttribute("title", this.identity.npub);
-      } else {
-        this.authorNpubEl.removeAttribute("title");
-      }
-
-      if (this.identity.pubkey) {
-        this.authorNpubEl.dataset.pubkey = this.identity.pubkey;
-      } else if (this.authorNpubEl.dataset?.pubkey) {
-        delete this.authorNpubEl.dataset.pubkey;
-      }
-    }
+    this.applyIdentityToElements();
   }
 
   normalizePointerInfo(info) {
@@ -224,7 +193,98 @@ export class SimilarContentCard {
       name = shortNpub || npub || "";
     }
 
-    return { name, npub, shortNpub, pubkey };
+    const picture = (() => {
+      const entries = [
+        candidate.picture,
+        candidate.image,
+        candidate.photo,
+        baseline.picture,
+        baseline.image,
+        baseline.photo,
+        this.video?.author?.picture,
+        this.video?.creator?.picture,
+        this.video?.profile?.picture,
+        this.video?.authorPicture,
+        this.video?.creatorPicture,
+      ];
+
+      for (const entry of entries) {
+        if (typeof entry !== "string") {
+          continue;
+        }
+        const trimmed = entry.trim();
+        if (trimmed) {
+          return trimmed;
+        }
+      }
+
+      return "";
+    })();
+
+    return { name, npub, shortNpub, pubkey, picture };
+  }
+
+  applyIdentityToElements() {
+    const nameLabel =
+      this.identity.name ||
+      this.identity.shortNpub ||
+      this.identity.npub ||
+      "";
+    const npubLabel = this.identity.shortNpub || this.identity.npub || "";
+
+    if (this.authorNameEl) {
+      this.authorNameEl.textContent = nameLabel;
+      if (this.identity.pubkey) {
+        this.authorNameEl.dataset.pubkey = this.identity.pubkey;
+      } else if (this.authorNameEl.dataset?.pubkey) {
+        delete this.authorNameEl.dataset.pubkey;
+      }
+    }
+
+    if (this.authorNpubEl) {
+      this.authorNpubEl.textContent = npubLabel;
+
+      const hasNpub = Boolean(npubLabel);
+      const normalizedName = nameLabel.trim().toLowerCase();
+      const normalizedNpub = npubLabel.trim().toLowerCase();
+      const isDuplicate =
+        hasNpub && normalizedName && normalizedName === normalizedNpub;
+
+      this.authorNpubEl.hidden = !hasNpub || isDuplicate;
+      this.authorNpubEl.setAttribute(
+        "aria-hidden",
+        !hasNpub || isDuplicate ? "true" : "false",
+      );
+
+      if (this.identity.npub && !isDuplicate) {
+        this.authorNpubEl.setAttribute("title", this.identity.npub);
+      } else {
+        this.authorNpubEl.removeAttribute("title");
+      }
+
+      if (this.identity.pubkey) {
+        this.authorNpubEl.dataset.pubkey = this.identity.pubkey;
+      } else if (this.authorNpubEl.dataset?.pubkey) {
+        delete this.authorNpubEl.dataset.pubkey;
+      }
+    }
+
+    if (this.avatarEl) {
+      const picture = this.identity.picture || DEFAULT_PROFILE_AVATAR;
+      if (this.avatarEl.getAttribute("src") !== picture) {
+        this.avatarEl.src = picture;
+      }
+
+      const altLabel =
+        nameLabel || this.identity.shortNpub || this.identity.npub || "Channel";
+      this.avatarEl.alt = `${altLabel}'s avatar`;
+
+      if (this.identity.pubkey) {
+        this.avatarEl.dataset.pubkey = this.identity.pubkey;
+      } else if (this.avatarEl.dataset?.pubkey) {
+        delete this.avatarEl.dataset.pubkey;
+      }
+    }
   }
 
   build() {
@@ -404,35 +464,36 @@ export class SimilarContentCard {
     wrapper.classList.add("player-modal__similar-card-author");
     wrapper.style.minWidth = "0";
 
+    const avatarWrapper = this.document.createElement("span");
+    avatarWrapper.classList.add("player-modal__similar-card-avatar");
+
+    const avatarImg = this.document.createElement("img");
+    avatarImg.classList.add("player-modal__similar-card-avatar-img");
+    avatarImg.decoding = "async";
+    avatarImg.loading = "lazy";
+    avatarImg.alt = "";
+    avatarWrapper.appendChild(avatarImg);
+
+    const textWrapper = this.document.createElement("span");
+    textWrapper.classList.add("player-modal__similar-card-author-meta");
+    textWrapper.style.minWidth = "0";
+
     const nameEl = this.document.createElement("span");
     nameEl.classList.add("author-name", "player-modal__similar-card-author-name");
-    nameEl.textContent =
-      this.identity.name || this.identity.shortNpub || this.identity.npub || "";
-    if (this.identity.pubkey) {
-      nameEl.dataset.pubkey = this.identity.pubkey;
-    }
+    textWrapper.appendChild(nameEl);
 
     const npubEl = this.document.createElement("span");
     npubEl.classList.add("author-npub", "player-modal__similar-card-author-npub");
-    const npubLabel = this.identity.shortNpub || this.identity.npub || "";
-    npubEl.textContent = npubLabel;
-    if (npubLabel) {
-      npubEl.setAttribute("aria-hidden", "false");
-    } else {
-      npubEl.setAttribute("aria-hidden", "true");
-    }
-    if (this.identity.npub) {
-      npubEl.setAttribute("title", this.identity.npub);
-    }
-    if (this.identity.pubkey) {
-      npubEl.dataset.pubkey = this.identity.pubkey;
-    }
+    textWrapper.appendChild(npubEl);
 
-    wrapper.appendChild(nameEl);
-    wrapper.appendChild(npubEl);
+    wrapper.appendChild(avatarWrapper);
+    wrapper.appendChild(textWrapper);
 
+    this.avatarEl = avatarImg;
     this.authorNameEl = nameEl;
     this.authorNpubEl = npubEl;
+
+    this.applyIdentityToElements();
 
     return wrapper;
   }
