@@ -19,6 +19,7 @@ import {
 import { sanitizeProfileMediaUrl } from "../../utils/profileMedia.js";
 
 const HEX64_REGEX = /^[0-9a-f]{64}$/i;
+const SIMILAR_CONTENT_LIMIT = 10;
 
 export class VideoModal {
   constructor({
@@ -3900,16 +3901,20 @@ export class VideoModal {
     const normalizedItems = Array.isArray(entries)
       ? entries.filter((item) => item && typeof item === "object")
       : [];
+    const limitedItems =
+      SIMILAR_CONTENT_LIMIT > 0
+        ? normalizedItems.slice(0, SIMILAR_CONTENT_LIMIT)
+        : normalizedItems.slice();
 
     if (!this.similarContentList) {
-      this.pendingSimilarContent = normalizedItems.slice();
+      this.pendingSimilarContent = limitedItems.slice();
       return;
     }
 
     this.pendingSimilarContent = null;
     this.clearSimilarContent();
 
-    if (!normalizedItems.length) {
+    if (!limitedItems.length) {
       return;
     }
 
@@ -3917,7 +3922,7 @@ export class VideoModal {
     const renderedCards = [];
     const viewSubscriptions = [];
 
-    normalizedItems.forEach((item, position) => {
+    limitedItems.forEach((item, position) => {
       const baseVideo =
         item && typeof item === "object" && item.video && typeof item.video === "object"
           ? item.video
