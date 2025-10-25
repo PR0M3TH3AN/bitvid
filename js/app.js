@@ -52,7 +52,9 @@ import NwcSettingsService from "./services/nwcSettingsService.js";
 import nostrService from "./services/nostrService.js";
 import DiscussionCountService from "./services/discussionCountService.js";
 import CommentThreadService from "./services/commentThreadService.js";
-import hashtagPreferences from "./services/hashtagPreferencesService.js";
+import hashtagPreferences, {
+  HASHTAG_PREFERENCES_EVENTS,
+} from "./services/hashtagPreferencesService.js";
 import { initQuickR2Upload } from "./r2-quick.js";
 import { createWatchHistoryRenderer } from "./historyView.js";
 import WatchHistoryController from "./ui/watchHistoryController.js";
@@ -301,6 +303,33 @@ class Application {
       });
     this.hashtagPreferences =
       services.hashtagPreferences || hashtagPreferences;
+    this.hashtagPreferencesSnapshot =
+      this.createHashtagPreferencesSnapshot();
+    this.hashtagPreferencesSnapshotSignature =
+      this.computeHashtagPreferencesSignature(
+        this.hashtagPreferencesSnapshot,
+      );
+    this.boundHashtagPreferencesChangeHandler = null;
+    this.unsubscribeFromHashtagPreferencesChange = null;
+    if (
+      this.hashtagPreferences &&
+      typeof this.hashtagPreferences.on === "function"
+    ) {
+      this.boundHashtagPreferencesChangeHandler = (detail) =>
+        this.handleHashtagPreferencesChange(detail);
+      try {
+        this.unsubscribeFromHashtagPreferencesChange =
+          this.hashtagPreferences.on(
+            HASHTAG_PREFERENCES_EVENTS.CHANGE,
+            this.boundHashtagPreferencesChangeHandler,
+          );
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to subscribe to hashtag preferences changes:",
+          error,
+        );
+      }
+    }
     if (
       this.nwcSettingsService &&
       typeof this.nwcSettingsService.setActivePubkeyGetter === "function"
@@ -629,6 +658,12 @@ class Application {
             this.requestProfileAdditionLogin(options),
           describeLoginError: (error, fallbackMessage) =>
             this.describeLoginError(error, fallbackMessage),
+          hashtagPreferences: this.hashtagPreferences,
+          getHashtagPreferences: () => this.getHashtagPreferences(),
+          describeHashtagPreferencesError: (error, fallbackMessage) =>
+            this.describeHashtagPreferencesError(error, {
+              fallbackMessage,
+            }),
           log: (...args) => this.log(...args),
           closeAllMoreMenus: (options) => this.closeAllMoreMenus(options),
           clipboard:
@@ -3606,6 +3641,278 @@ class Application {
     }
   }
 
+  describeHashtagPreferencesError(error, options = {}) {
+    const { operation = "update", fallbackMessage } =
+      options && typeof options === "object" ? options : {};
+    const code =
+      error && typeof error.code === "string" ? error.code.trim() : "";
+
+    if (code === "hashtag-preferences-empty") {
+      return "";
+    }
+
+    switch (code) {
+      case "hashtag-preferences-missing-pubkey":
+        return "Select a profile before managing hashtag preferences.";
+      case "hashtag-preferences-missing-signer":
+        return "Connect a Nostr signer that supports encryption before managing hashtag preferences.";
+      case "hashtag-preferences-extension-denied":
+        return "Permission to manage hashtag preferences was denied by your signer.";
+      case "hashtag-preferences-no-decryptors":
+        return "Unable to decrypt hashtag preferences with the active signer.";
+      case "hashtag-preferences-decrypt-failed":
+        return "Failed to decrypt hashtag preferences. Please try again.";
+      case "hashtag-preferences-no-encryptor":
+        return "No supported encryption methods are available to publish hashtag preferences.";
+      case "hashtag-preferences-encrypt-failed":
+        return "Failed to encrypt hashtag preferences. Please try again.";
+      case "hashtag-preferences-no-relays":
+        return "No relays are configured to publish hashtag preferences.";
+      default:
+        break;
+    }
+
+    const normalizedOperation =
+      typeof operation === "string" ? operation.trim().toLowerCase() : "";
+    const fallback =
+      typeof fallbackMessage === "string" && fallbackMessage.trim()
+        ? fallbackMessage.trim()
+        : normalizedOperation === "load"
+        ? "Failed to load hashtag preferences. Please try again."
+        : normalizedOperation === "reset"
+        ? "Failed to reset hashtag preferences."
+        : "Failed to update hashtag preferences. Please try again.";
+
+    return fallback;
+  }
+
+  normalizeHashtagPreferenceList(list) {
+    if (!Array.isArray(list)) {
+      return [];
+    }
+
+    const normalized = [];
+    const seen = new Set();
+
+    for (const entry of list) {
+      if (typeof entry !== "string") {
+        continue;
+      }
+      const trimmed = entry.trim();
+      if (!trimmed) {
+        continue;
+      }
+      const lowered = trimmed.toLowerCase();
+      if (seen.has(lowered)) {
+        continue;
+      }
+      seen.add(lowered);
+      normalized.push(lowered);
+    }
+
+    normalized.sort((a, b) => a.localeCompare(b));
+    return normalized;
+  }
+
+  createHashtagPreferencesSnapshot(detail = {}) {
+    const service = this.hashtagPreferences;
+    const sourceInterests = Array.isArray(detail?.interests)
+      ? detail.interests
+      : typeof service?.getInterests === "function"
+      ? service.getInterests()
+      : [];
+    const sourceDisinterests = Array.isArray(detail?.disinterests)
+      ? detail.disinterests
+      : typeof service?.getDisinterests === "function"
+      ? service.getDisinterests()
+      : [];
+
+    const rawEventId =
+      typeof detail?.eventId === "string" && detail.eventId.trim()
+        ? detail.eventId.trim()
+        : typeof service?.eventId === "string" && service.eventId.trim()
+        ? service.eventId.trim()
+        : "";
+
+    const createdAtSource =
+      detail?.createdAt ?? service?.eventCreatedAt ?? null;
+    const createdAtNumeric = Number(createdAtSource);
+    const createdAt = Number.isFinite(createdAtNumeric)
+      ? createdAtNumeric
+      : null;
+
+    const action =
+      typeof detail?.action === "string" ? detail.action.trim() : "";
+
+    const loaded =
+      detail?.loaded === true ||
+      (detail?.loaded === false
+        ? false
+        : Boolean(service && service.loaded));
+
+    return {
+      interests: this.normalizeHashtagPreferenceList(sourceInterests),
+      disinterests: this.normalizeHashtagPreferenceList(sourceDisinterests),
+      eventId: rawEventId || null,
+      createdAt,
+      loaded,
+      action,
+    };
+  }
+
+  computeHashtagPreferencesSignature(snapshot = {}) {
+    const interests = Array.isArray(snapshot.interests)
+      ? snapshot.interests.join(",")
+      : "";
+    const disinterests = Array.isArray(snapshot.disinterests)
+      ? snapshot.disinterests.join(",")
+      : "";
+    const eventId =
+      typeof snapshot.eventId === "string" && snapshot.eventId
+        ? snapshot.eventId
+        : "";
+    const createdAt = Number.isFinite(snapshot.createdAt)
+      ? Number(snapshot.createdAt)
+      : "";
+    const loaded = snapshot.loaded === true ? "1" : "0";
+
+    return [interests, disinterests, eventId, createdAt, loaded].join("|");
+  }
+
+  updateCachedHashtagPreferences(detail = {}) {
+    const snapshot = this.createHashtagPreferencesSnapshot(detail);
+    const signature = this.computeHashtagPreferencesSignature(snapshot);
+    const changed = signature !== this.hashtagPreferencesSnapshotSignature;
+
+    this.hashtagPreferencesSnapshot = {
+      interests: [...snapshot.interests],
+      disinterests: [...snapshot.disinterests],
+      eventId: snapshot.eventId,
+      createdAt: snapshot.createdAt,
+      loaded: snapshot.loaded,
+      action: snapshot.action,
+    };
+    this.hashtagPreferencesSnapshotSignature = signature;
+
+    return { snapshot: this.hashtagPreferencesSnapshot, changed };
+  }
+
+  handleHashtagPreferencesChange(detail = {}) {
+    const { changed } = this.updateCachedHashtagPreferences(detail);
+
+    if (
+      this.profileController &&
+      typeof this.profileController.handleHashtagPreferencesChange ===
+        "function"
+    ) {
+      try {
+        this.profileController.handleHashtagPreferencesChange({
+          action:
+            typeof detail?.action === "string" ? detail.action : "",
+          preferences: this.getHashtagPreferences(),
+        });
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to notify profile controller about hashtag preferences change:",
+          error,
+        );
+      }
+    }
+
+    if (!changed) {
+      return;
+    }
+
+    const action =
+      typeof detail?.action === "string" && detail.action.trim()
+        ? detail.action.trim()
+        : "";
+    const refreshReason = action
+      ? `hashtag-preferences-${action}`
+      : "hashtag-preferences-change";
+
+    Promise.resolve(
+      this.onVideosShouldRefresh({ reason: refreshReason }),
+    ).catch((error) => {
+      devLogger.warn(
+        "[Application] Failed to refresh videos after hashtag preference change:",
+        error,
+      );
+    });
+  }
+
+  getHashtagPreferences() {
+    const snapshot = this.hashtagPreferencesSnapshot || {};
+    return {
+      interests: Array.isArray(snapshot.interests)
+        ? [...snapshot.interests]
+        : [],
+      disinterests: Array.isArray(snapshot.disinterests)
+        ? [...snapshot.disinterests]
+        : [],
+      eventId:
+        typeof snapshot.eventId === "string" && snapshot.eventId
+          ? snapshot.eventId
+          : null,
+      createdAt: Number.isFinite(snapshot.createdAt)
+        ? Number(snapshot.createdAt)
+        : null,
+      loaded: snapshot.loaded === true,
+    };
+  }
+
+  async loadHashtagPreferencesForPubkey(pubkey) {
+    if (
+      !this.hashtagPreferences ||
+      typeof this.hashtagPreferences.load !== "function"
+    ) {
+      return null;
+    }
+
+    try {
+      await this.hashtagPreferences.load(pubkey);
+      return true;
+    } catch (error) {
+      devLogger.error(
+        "[Application] Failed to load hashtag preferences:",
+        error,
+      );
+      const message = this.describeHashtagPreferencesError(error, {
+        operation: "load",
+      });
+      if (message) {
+        this.showError(message);
+      }
+      return null;
+    }
+  }
+
+  resetHashtagPreferencesState() {
+    if (
+      !this.hashtagPreferences ||
+      typeof this.hashtagPreferences.reset !== "function"
+    ) {
+      return false;
+    }
+
+    try {
+      this.hashtagPreferences.reset();
+      return true;
+    } catch (error) {
+      devLogger.error(
+        "[Application] Failed to reset hashtag preferences:",
+        error,
+      );
+      const message = this.describeHashtagPreferencesError(error, {
+        operation: "reset",
+      });
+      if (message) {
+        this.showError(message);
+      }
+      return false;
+    }
+  }
+
   async onAccessControlUpdated() {
     if (this.profileController) {
       try {
@@ -4993,6 +5300,14 @@ class Application {
       identityChanged: Boolean(detail?.identityChanged),
     };
 
+    if (loginContext.identityChanged) {
+      this.resetHashtagPreferencesState();
+    }
+
+    const hashtagPreferencesPromise = Promise.resolve(
+      this.loadHashtagPreferencesForPubkey(loginContext.pubkey),
+    );
+
     if (this.zapController) {
       try {
         this.zapController.setVisibility(
@@ -5079,6 +5394,7 @@ class Application {
     }
 
     await nwcPromise;
+    await hashtagPreferencesPromise;
 
     try {
       await accessControl.ensureReady();
@@ -5164,6 +5480,8 @@ class Application {
 
     this.resetViewLoggingState();
     this.pendingModalZapOpen = false;
+
+    this.resetHashtagPreferencesState();
 
     await this.nwcSettingsService.onLogout({
       pubkey: detail?.pubkey || this.pubkey,
@@ -9650,6 +9968,19 @@ class Application {
       }
       this.watchHistoryTelemetry = null;
     }
+
+    if (typeof this.unsubscribeFromHashtagPreferencesChange === "function") {
+      try {
+        this.unsubscribeFromHashtagPreferencesChange();
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to unsubscribe hashtag preferences change listener:",
+          error,
+        );
+      }
+      this.unsubscribeFromHashtagPreferencesChange = null;
+    }
+    this.boundHashtagPreferencesChangeHandler = null;
 
     if (typeof this.unsubscribeFromPubkeyState === "function") {
       try {
