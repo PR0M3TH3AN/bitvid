@@ -2028,7 +2028,27 @@ class Application {
   }
 
   computeSimilarContentCandidates({ activeVideo = this.currentVideo, maxItems = 5 } = {}) {
-    const target = activeVideo && typeof activeVideo === "object" ? activeVideo : null;
+    const decorateCandidate = (video) => {
+      if (!video || typeof video !== "object") {
+        return video;
+      }
+      if (typeof this.decorateVideoModeration === "function") {
+        try {
+          const decorated = this.decorateVideoModeration(video);
+          if (decorated && typeof decorated === "object") {
+            return decorated;
+          }
+        } catch (error) {
+          devLogger.warn(
+            "[Application] Failed to decorate similar content candidate",
+            error,
+          );
+        }
+      }
+      return video;
+    };
+
+    const target = activeVideo && typeof activeVideo === "object" ? decorateCandidate(activeVideo) : null;
     if (!target) {
       return [];
     }
@@ -2095,35 +2115,36 @@ class Application {
     const results = [];
 
     for (const candidate of candidateSource) {
-      if (!candidate || typeof candidate !== "object") {
+      const decoratedCandidate = decorateCandidate(candidate);
+      if (!decoratedCandidate || typeof decoratedCandidate !== "object") {
         continue;
       }
-      if (candidate === target) {
+      if (decoratedCandidate === target) {
         continue;
       }
 
-      const candidateId = typeof candidate.id === "string" ? candidate.id : "";
+      const candidateId = typeof decoratedCandidate.id === "string" ? decoratedCandidate.id : "";
       if (candidateId && candidateId === activeId) {
         continue;
       }
-      if (candidate.deleted === true) {
+      if (decoratedCandidate.deleted === true) {
         continue;
       }
-      if (candidate.isPrivate === true) {
+      if (decoratedCandidate.isPrivate === true) {
         continue;
       }
-      if (candidate.isNsfw === true && ALLOW_NSFW_CONTENT !== true) {
+      if (decoratedCandidate.isNsfw === true && ALLOW_NSFW_CONTENT !== true) {
         continue;
       }
 
-      const candidatePubkey = typeof candidate.pubkey === "string" ? candidate.pubkey : "";
+      const candidatePubkey = typeof decoratedCandidate.pubkey === "string" ? decoratedCandidate.pubkey : "";
       if (candidatePubkey && this.isAuthorBlocked(candidatePubkey)) {
         continue;
       }
 
-      const candidateTagsSource = Array.isArray(candidate.displayTags) && candidate.displayTags.length
-        ? candidate.displayTags
-        : collectVideoTags(candidate);
+      const candidateTagsSource = Array.isArray(decoratedCandidate.displayTags) && decoratedCandidate.displayTags.length
+        ? decoratedCandidate.displayTags
+        : collectVideoTags(decoratedCandidate);
       if (!Array.isArray(candidateTagsSource) || candidateTagsSource.length === 0) {
         continue;
       }
@@ -2176,26 +2197,26 @@ class Application {
           : [];
       }
 
-      let postedAt = this.getKnownVideoPostedAt(candidate);
-      if (!Number.isFinite(postedAt) && Number.isFinite(candidate.rootCreatedAt)) {
-        postedAt = Math.floor(candidate.rootCreatedAt);
+      let postedAt = this.getKnownVideoPostedAt(decoratedCandidate);
+      if (!Number.isFinite(postedAt) && Number.isFinite(decoratedCandidate.rootCreatedAt)) {
+        postedAt = Math.floor(decoratedCandidate.rootCreatedAt);
       }
-      if (!Number.isFinite(postedAt) && Number.isFinite(candidate.created_at)) {
-        postedAt = Math.floor(candidate.created_at);
+      if (!Number.isFinite(postedAt) && Number.isFinite(decoratedCandidate.created_at)) {
+        postedAt = Math.floor(decoratedCandidate.created_at);
       }
       if (!Number.isFinite(postedAt)) {
         postedAt = null;
       }
 
       let shareUrl = "";
-      if (typeof candidate.shareUrl === "string" && candidate.shareUrl.trim()) {
-        shareUrl = candidate.shareUrl.trim();
+      if (typeof decoratedCandidate.shareUrl === "string" && decoratedCandidate.shareUrl.trim()) {
+        shareUrl = decoratedCandidate.shareUrl.trim();
       } else if (candidateId) {
         shareUrl = this.buildShareUrlFromEventId(candidateId) || "";
       }
 
       results.push({
-        video: candidate,
+        video: decoratedCandidate,
         pointerInfo: pointerInfo || null,
         shareUrl,
         postedAt,
