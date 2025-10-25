@@ -5,7 +5,7 @@ import { attachAmbientBackground } from "../ambientBackground.js";
 import { applyDesignSystemAttributes } from "../../designSystem.js";
 import { devLogger } from "../../utils/logger.js";
 import { renderTagPillStrip } from "./tagPillList.js";
-import { VideoCard } from "./VideoCard.js";
+import { SimilarContentCard } from "./SimilarContentCard.js";
 import {
   subscribeToVideoViewCount,
   unsubscribeFromVideoViewCount,
@@ -14,7 +14,7 @@ import {
 import {
   formatAbsoluteTimestamp,
   formatTimeAgo,
-  formatShortNpub,
+  formatShortNpub as defaultFormatShortNpub,
 } from "../../utils/formatters.js";
 import { sanitizeProfileMediaUrl } from "../../utils/profileMedia.js";
 
@@ -27,6 +27,9 @@ export class VideoModal {
     document: doc,
     logger,
     mediaLoader,
+    assets = {},
+    state = {},
+    helpers = {},
   } = {}) {
     if (!doc) {
       throw new Error("VideoModal requires a document reference.");
@@ -53,6 +56,37 @@ export class VideoModal {
     this.eventTarget = new EventTarget();
 
     this.mediaLoader = null;
+
+    const assetsConfig = assets && typeof assets === "object" ? assets : {};
+    this.fallbackThumbnailSrc =
+      typeof assetsConfig.fallbackThumbnailSrc === "string"
+        ? assetsConfig.fallbackThumbnailSrc
+        : "";
+
+    const stateConfig = state && typeof state === "object" ? state : {};
+    this.thumbnailCache =
+      stateConfig.loadedThumbnails instanceof Map
+        ? stateConfig.loadedThumbnails
+        : null;
+
+    const helperConfig = helpers && typeof helpers === "object" ? helpers : {};
+    const fallbackFormatShort = (value) => {
+      try {
+        return defaultFormatShortNpub(value);
+      } catch {
+        return typeof value === "string" ? value : "";
+      }
+    };
+    this.helpers = {
+      safeEncodeNpub:
+        typeof helperConfig.safeEncodeNpub === "function"
+          ? helperConfig.safeEncodeNpub
+          : () => "",
+      formatShortNpub:
+        typeof helperConfig.formatShortNpub === "function"
+          ? helperConfig.formatShortNpub
+          : fallbackFormatShort,
+    };
 
     this.loaded = false;
 
@@ -1593,14 +1627,14 @@ export class VideoModal {
     }
 
     if (!displayName && npub) {
-      displayName = formatShortNpub(npub);
+      displayName = this.helpers.formatShortNpub(npub);
     }
 
     if (!displayName) {
       displayName = "Anonymous";
     }
 
-    const shortNpub = npub ? formatShortNpub(npub) : "";
+    const shortNpub = npub ? this.helpers.formatShortNpub(npub) : "";
     const initialCandidate = displayName.trim().charAt(0) || "";
     const initial = initialCandidate ? initialCandidate.toUpperCase() : "?";
 
@@ -3923,10 +3957,6 @@ export class VideoModal {
                 ? Math.floor(baseVideo.created_at)
                 : null;
 
-      const capabilities =
-        item && typeof item.capabilities === "object" && item.capabilities
-          ? { ...item.capabilities }
-          : {};
       const nsfwContext =
         item && typeof item.nsfwContext === "object" && item.nsfwContext
           ? { ...item.nsfwContext }
@@ -3938,48 +3968,38 @@ export class VideoModal {
                 Boolean(item?.capabilities?.canEdit),
             };
 
-      const cardOptions = {
-        document: this.document,
-        video: baseVideo,
-        index: position,
-        shareUrl,
-        pointerInfo,
-        timeAgo,
-        postedAt: postedAtCandidate,
-        capabilities,
-        nsfwContext,
-        variant: "compact",
-      };
-
-      if (typeof item.cardState === "string" && item.cardState) {
-        cardOptions.cardState = item.cardState;
-      }
-      if (typeof item.motionState === "string" && item.motionState) {
-        cardOptions.motionState = item.motionState;
-      }
-      if (item.helpers && typeof item.helpers === "object") {
-        cardOptions.helpers = item.helpers;
-      }
-      if (item.assets && typeof item.assets === "object") {
-        cardOptions.assets = item.assets;
-      }
-      if (item.state && typeof item.state === "object") {
-        cardOptions.state = item.state;
-      }
-      if (item.designSystem) {
-        cardOptions.designSystem = item.designSystem;
-      }
+      const identity = this.buildSimilarCardIdentity(
+        baseVideo,
+        item?.identity || null
+      );
 
       let card;
       try {
-        card = new VideoCard(cardOptions);
+        card = new SimilarContentCard({
+          document: this.document,
+          video: baseVideo,
+          index: position,
+          shareUrl,
+          pointerInfo,
+          timeAgo,
+          postedAt: postedAtCandidate,
+          identity,
+          nsfwContext,
+          designSystem: item?.designSystem || null,
+          thumbnailCache: this.thumbnailCache,
+          fallbackThumbnailSrc: this.fallbackThumbnailSrc,
+        });
       } catch (error) {
         this.log("[VideoModal] Failed to render similar content card", error);
         return;
       }
 
       const cardIndex = renderedCards.length;
-      this.prepareSimilarVideoCard(card, cardOptions, cardIndex);
+      this.prepareSimilarVideoCard(
+        card,
+        { video: baseVideo, pointerInfo, shareUrl },
+        cardIndex
+      );
 
       const root = card.getRoot();
       if (!root) {
@@ -4377,19 +4397,23 @@ export class VideoModal {
     return "";
   }
 
-  prepareSimilarVideoCard(card, cardOptions, index) {
+  prepareSimilarVideoCard(card, meta, index) {
     if (!card) {
       return;
     }
 
+    const pointerInfo = meta?.pointerInfo || null;
+    const shareUrl = typeof meta?.shareUrl === "string" ? meta.shareUrl : "#";
+    const fallbackVideo = meta?.video || null;
+
     card.onPlay = ({ event, video: selectedVideo, card: sourceCard }) => {
       this.dispatch("similar:select", {
         event,
-        video: selectedVideo || cardOptions.video,
+        video: selectedVideo || fallbackVideo,
         card: sourceCard || card,
         index,
-        pointerInfo: cardOptions.pointerInfo || null,
-        shareUrl: cardOptions.shareUrl || "#",
+        pointerInfo: pointerInfo,
+        shareUrl,
       });
     };
 
@@ -4406,6 +4430,118 @@ export class VideoModal {
       }
       card.moreMenuButton = null;
     }
+  }
+
+  buildSimilarCardIdentity(video, overrides) {
+    const override = overrides && typeof overrides === "object" ? overrides : {};
+
+    const pubkeyCandidates = [
+      override.pubkey,
+      video?.pubkey,
+      video?.author?.pubkey,
+      video?.creator?.pubkey,
+    ];
+    let pubkey = "";
+    for (const candidate of pubkeyCandidates) {
+      if (typeof candidate !== "string") {
+        continue;
+      }
+      const trimmed = candidate.trim();
+      if (trimmed) {
+        pubkey = trimmed;
+        break;
+      }
+    }
+
+    const npubCandidates = [
+      override.npub,
+      video?.npub,
+      video?.authorNpub,
+      video?.creatorNpub,
+      video?.profile?.npub,
+    ];
+    let npub = "";
+    for (const candidate of npubCandidates) {
+      if (typeof candidate !== "string") {
+        continue;
+      }
+      const trimmed = candidate.trim();
+      if (trimmed) {
+        npub = trimmed;
+        break;
+      }
+    }
+
+    if (!npub && pubkey) {
+      try {
+        const encoded = this.helpers.safeEncodeNpub(pubkey);
+        if (typeof encoded === "string" && encoded.trim()) {
+          npub = encoded.trim();
+        }
+      } catch {
+        /* noop */
+      }
+    }
+
+    const shortNpubCandidates = [override.shortNpub, video?.shortNpub];
+    let shortNpub = "";
+    for (const candidate of shortNpubCandidates) {
+      if (typeof candidate !== "string") {
+        continue;
+      }
+      const trimmed = candidate.trim();
+      if (trimmed) {
+        shortNpub = trimmed;
+        break;
+      }
+    }
+
+    if (!shortNpub && npub) {
+      shortNpub = this.helpers.formatShortNpub(npub) || npub;
+    }
+
+    const nameCandidates = [
+      override.name,
+      override.displayName,
+      override.username,
+      video?.authorName,
+      video?.creatorName,
+      video?.creator?.name,
+      video?.author?.name,
+      video?.profile?.display_name,
+      video?.profile?.name,
+      video?.profile?.username,
+    ];
+
+    let name = "";
+    for (const candidate of nameCandidates) {
+      if (typeof candidate !== "string") {
+        continue;
+      }
+      const trimmed = candidate.trim();
+      if (!trimmed) {
+        continue;
+      }
+      if (HEX64_REGEX.test(trimmed)) {
+        continue;
+      }
+      name = trimmed;
+      break;
+    }
+
+    if (!name && shortNpub) {
+      name = shortNpub;
+    }
+    if (!name && npub) {
+      name = npub;
+    }
+
+    return {
+      name,
+      npub,
+      shortNpub,
+      pubkey,
+    };
   }
 
   attachSimilarCardViewCounter(card, pointerInfo) {
