@@ -127,6 +127,7 @@ test.describe("moderation fixtures", () => {
 
     const muteCard = page.locator('[data-test-id="trusted-mute-hide"]');
     const badge = muteCard.locator('[data-moderation-badge="true"]');
+    const thumbnail = muteCard.locator('img[data-video-thumbnail]');
     const showAnywayButton = muteCard.getByRole("button", { name: "Show anyway" });
 
     await expect(muteCard).toHaveAttribute("data-moderation-hidden", "true");
@@ -135,6 +136,7 @@ test.describe("moderation fixtures", () => {
     await expect(muteCard).toHaveAttribute("data-moderation-trusted-mute", "true");
     await expect(muteCard).toHaveAttribute("data-moderation-trusted-mute-count", "1");
     await expect(badge).toContainText("Hidden · 1 trusted mute");
+    await expect(thumbnail).toHaveAttribute("data-thumbnail-state", "blurred");
     await expect(showAnywayButton).toBeVisible();
 
     await showAnywayButton.click();
@@ -144,5 +146,6 @@ test.describe("moderation fixtures", () => {
     await expect(muteCard.locator('[data-moderation-badge="true"]')).toContainText(
       "Showing despite 1 trusted mute",
     );
+    await expect(thumbnail).not.toHaveAttribute("data-thumbnail-state", "blurred");
   });
 });

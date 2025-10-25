@@ -258,3 +258,46 @@ test(
     assert.ok(card.moderationBadgeEl.textContent.includes("Showing despite"));
   },
 );
+
+test("VideoCard blurs thumbnails when trusted mute triggers without reports", async (t) => {
+  const { document } = setupDom(t);
+  withMockedNostrTools(t);
+
+  const app = await createModerationAppHarness();
+  const videoId = "c".repeat(64);
+
+  const video = {
+    id: videoId,
+    title: "Muted Clip",
+    pubkey: "d".repeat(64),
+    moderation: {
+      trustedMuted: true,
+      trustedMuteCount: 1,
+      blockAutoplay: false,
+      blurThumbnail: false,
+      trustedCount: 0,
+      reportType: "nudity",
+    },
+  };
+
+  app.videosMap.set(video.id, video);
+  app.currentVideo = video;
+  app.decorateVideoModeration(video);
+
+  const card = new VideoCard({
+    document,
+    video,
+    formatters: {
+      formatTimeAgo: () => "moments ago",
+    },
+    helpers: {
+      isMagnetSupported: () => false,
+    },
+  });
+
+  document.body.appendChild(card.getRoot());
+
+  assert.equal(video.moderation.blurThumbnail, true);
+  assert.equal(card.getModerationContext().activeBlur, true);
+  assert.equal(card.thumbnailEl.dataset.thumbnailState, "blurred");
+});

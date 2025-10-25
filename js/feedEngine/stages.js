@@ -584,7 +584,7 @@ export function createModerationStage({
       }
 
       const blockAutoplay = trustedCount >= normalizedAutoplayThreshold;
-      const blurThumbnail = trustedCount >= normalizedBlurThreshold;
+      let blurThumbnail = trustedCount >= normalizedBlurThreshold;
       const adminWhitelist = adminStatus?.whitelisted === true;
       const adminWhitelistBypass = false;
 
@@ -598,7 +598,6 @@ export function createModerationStage({
           : {};
 
       metadataModeration.blockAutoplay = blockAutoplay;
-      metadataModeration.blurThumbnail = blurThumbnail;
       metadataModeration.summary = summary;
       metadataModeration.trustedCount = trustedCount;
       metadataModeration.reportType = normalizedReportType;
@@ -616,7 +615,6 @@ export function createModerationStage({
       }
 
       video.moderation.blockAutoplay = blockAutoplay;
-      video.moderation.blurThumbnail = blurThumbnail;
       video.moderation.trustedCount = trustedCount;
       video.moderation.reportType = normalizedReportType;
       video.moderation.adminWhitelist = adminWhitelist;
@@ -712,6 +710,13 @@ export function createModerationStage({
           delete video.moderation.hideBypass;
         }
       }
+
+      if (!blurThumbnail && (trustedMuted || hideTriggered)) {
+        blurThumbnail = true;
+      }
+
+      metadataModeration.blurThumbnail = blurThumbnail;
+      video.moderation.blurThumbnail = blurThumbnail;
 
       item.metadata.moderation = metadataModeration;
 

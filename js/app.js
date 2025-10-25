@@ -6757,7 +6757,7 @@ class Application {
 
     const thresholds = this.getActiveModerationThresholds();
     const computedBlockAutoplay = trustedCount >= thresholds.autoplayBlockThreshold;
-    const computedBlurThumbnail = trustedCount >= thresholds.blurThreshold;
+    let computedBlurThumbnail = trustedCount >= thresholds.blurThreshold;
 
     const muteHideThreshold = Number.isFinite(thresholds.trustedMuteHideThreshold)
       ? Math.max(0, Math.floor(thresholds.trustedMuteHideThreshold))
@@ -6791,6 +6791,10 @@ class Application {
     } else if (existingHideReason && existingHideCounts) {
       hideReason = existingHideReason;
       hideTriggered = true;
+    }
+
+    if (!computedBlurThumbnail && (trustedMuted || hideTriggered)) {
+      computedBlurThumbnail = true;
     }
 
     const hideCounts = hideTriggered
