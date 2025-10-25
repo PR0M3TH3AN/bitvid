@@ -176,6 +176,8 @@ export class VideoModal {
     this.commentChildLists = new Map();
     this.commentNodeElements = new Map();
     this.commentNpubEncodingFailures = new Set();
+    this.commentAvatarCache = new Map();
+    this.commentAvatarFailures = new Set();
     this.commentRetryButton = null;
     this.commentCallbacks = {
       teardown: null,
@@ -1394,7 +1396,18 @@ export class VideoModal {
         const labelRef = refs.avatarLabel;
         const imgRef = refs.avatarImg;
         refs.avatarImg.addEventListener("error", () => {
-          if (imgRef && imgRef.src !== this.DEFAULT_PROFILE_AVATAR) {
+          const failedSource =
+            typeof imgRef?.dataset?.commentAvatarSource === "string"
+              ? imgRef.dataset.commentAvatarSource
+              : "";
+          if (failedSource) {
+            this.registerCommentAvatarFailure(failedSource);
+          }
+          if (
+            imgRef &&
+            imgRef.dataset.commentAvatarCurrent !== this.DEFAULT_PROFILE_AVATAR
+          ) {
+            imgRef.dataset.commentAvatarCurrent = this.DEFAULT_PROFILE_AVATAR;
             imgRef.src = this.DEFAULT_PROFILE_AVATAR;
             return;
           }
@@ -1408,14 +1421,30 @@ export class VideoModal {
         refs.avatarImg.dataset.commentAvatarBound = "true";
       }
 
+      const nextSource = profile.avatarSource || "";
+      refs.avatarImg.dataset.commentAvatarSource = nextSource;
+
       if (profile.avatarUrl) {
-        refs.avatarImg.src = profile.avatarUrl;
+        if (
+          refs.avatarImg.dataset.commentAvatarCurrent !== profile.avatarUrl
+        ) {
+          refs.avatarImg.dataset.commentAvatarCurrent = profile.avatarUrl;
+          refs.avatarImg.src = profile.avatarUrl;
+        }
         refs.avatarImg.alt = `${profile.displayName}'s avatar`;
         refs.avatarImg.hidden = false;
         if (refs.avatarLabel) {
           refs.avatarLabel.hidden = true;
         }
       } else {
+        if (
+          refs.avatarImg.dataset.commentAvatarCurrent !==
+          this.DEFAULT_PROFILE_AVATAR
+        ) {
+          refs.avatarImg.dataset.commentAvatarCurrent =
+            this.DEFAULT_PROFILE_AVATAR;
+          refs.avatarImg.src = this.DEFAULT_PROFILE_AVATAR;
+        }
         refs.avatarImg.hidden = true;
         if (refs.avatarLabel) {
           refs.avatarLabel.hidden = false;
@@ -1515,7 +1544,7 @@ export class VideoModal {
         ? profileEntry.picture
         : "";
     const sanitizedPicture = sanitizeProfileMediaUrl(rawPicture);
-    const avatarUrl = sanitizedPicture || this.DEFAULT_PROFILE_AVATAR;
+    const avatar = this.resolveCommentAvatarAsset(normalized, sanitizedPicture);
 
     let npub = "";
     if (profileEntry && typeof profileEntry.npub === "string") {
@@ -1577,11 +1606,90 @@ export class VideoModal {
 
     return {
       displayName,
-      avatarUrl,
+      avatarUrl: avatar.url,
+      avatarSource: avatar.source,
       npub,
       shortNpub,
       initial,
     };
+  }
+
+  resolveCommentAvatarAsset(pubkey, sanitizedPicture) {
+    const normalizedPubkey = this.normalizeCommentAvatarKey(pubkey);
+    const normalizedSource =
+      typeof sanitizedPicture === "string" && sanitizedPicture
+        ? sanitizedPicture
+        : "";
+
+    if (normalizedSource && this.commentAvatarFailures.has(normalizedSource)) {
+      return { url: this.DEFAULT_PROFILE_AVATAR, source: "" };
+    }
+
+    if (normalizedPubkey && this.commentAvatarCache.has(normalizedPubkey)) {
+      const cached = this.commentAvatarCache.get(normalizedPubkey);
+      if (cached) {
+        const cachedSource =
+          typeof cached.source === "string" ? cached.source : "";
+        const cachedUrl =
+          typeof cached.url === "string" && cached.url
+            ? cached.url
+            : this.DEFAULT_PROFILE_AVATAR;
+
+        if (!normalizedSource) {
+          return { url: cachedUrl, source: cachedSource };
+        }
+
+        if (cachedSource === normalizedSource) {
+          return { url: cachedUrl, source: cachedSource };
+        }
+      }
+    }
+
+    const resolvedUrl = normalizedSource || this.DEFAULT_PROFILE_AVATAR;
+    if (normalizedPubkey) {
+      this.commentAvatarCache.set(normalizedPubkey, {
+        url: resolvedUrl,
+        source: normalizedSource,
+      });
+    }
+
+    return { url: resolvedUrl, source: normalizedSource };
+  }
+
+  normalizeCommentAvatarKey(value) {
+    if (typeof value !== "string") {
+      return "";
+    }
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return "";
+    }
+    return trimmed.toLowerCase();
+  }
+
+  registerCommentAvatarFailure(sourceUrl) {
+    if (typeof sourceUrl !== "string") {
+      return;
+    }
+    const trimmed = sourceUrl.trim();
+    if (!trimmed || trimmed === this.DEFAULT_PROFILE_AVATAR) {
+      return;
+    }
+
+    if (this.commentAvatarFailures.has(trimmed)) {
+      return;
+    }
+
+    this.commentAvatarFailures.add(trimmed);
+
+    this.commentAvatarCache.forEach((entry, key) => {
+      if (entry && entry.source === trimmed) {
+        this.commentAvatarCache.set(key, {
+          url: this.DEFAULT_PROFILE_AVATAR,
+          source: "",
+        });
+      }
+    });
   }
 
   encodeCommentPubkeyToNpub(pubkey) {
