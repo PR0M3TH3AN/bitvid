@@ -2,6 +2,10 @@
 
 import { getApplication } from "../applicationContext.js";
 import { IS_DEV_MODE } from "../config.js";
+import {
+  DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+  DEFAULT_BLUR_THRESHOLD,
+} from "../constants.js";
 import nostrService from "../services/nostrService.js";
 import moderationService from "../services/moderationService.js";
 import logger from "../utils/logger.js";
@@ -196,8 +200,8 @@ export function createWatchHistorySuppressionStage({
 
 export function createModerationStage({
   stageName = "moderation",
-  autoplayThreshold = 2,
-  blurThreshold = 3,
+  autoplayThreshold = DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+  blurThreshold = DEFAULT_BLUR_THRESHOLD,
   reportType = "nudity",
   service = null,
   getService,
@@ -213,10 +217,10 @@ export function createModerationStage({
 
   const normalizedAutoplayThreshold = Number.isFinite(autoplayThreshold)
     ? Math.max(0, Math.floor(autoplayThreshold))
-    : 2;
+    : DEFAULT_AUTOPLAY_BLOCK_THRESHOLD;
   const normalizedBlurThreshold = Number.isFinite(blurThreshold)
     ? Math.max(0, Math.floor(blurThreshold))
-    : 3;
+    : DEFAULT_BLUR_THRESHOLD;
   const normalizedMuteHideThreshold = sanitizeThreshold(
     trustedMuteHideThreshold,
     Number.POSITIVE_INFINITY,

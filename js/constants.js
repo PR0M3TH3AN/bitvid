@@ -1,8 +1,119 @@
+import {
+  DEFAULT_AUTOPLAY_BLOCK_THRESHOLD as CONFIG_DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+  DEFAULT_BLUR_THRESHOLD as CONFIG_DEFAULT_BLUR_THRESHOLD,
+  DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD as CONFIG_DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
+  DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD as CONFIG_DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
+} from "./config.js";
+
 export const DEFAULT_TRUST_SEED_NPUBS = Object.freeze([
   // Rollout: trust seeds count as F1 contacts. Rollback: flip FEATURE_TRUST_SEEDS to false.
   "npub1424242424242424242424242424242424242424242424242424qamrcaj",
   "npub1hwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwasxw04hu",
 ]);
+
+function coerceNonNegativeInteger(value, fallback) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return fallback;
+  }
+
+  const sanitized = Math.max(0, Math.floor(numeric));
+  if (!Number.isFinite(sanitized)) {
+    return fallback;
+  }
+
+  return sanitized;
+}
+
+function coerceBoolean(value, fallback) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) {
+      return fallback;
+    }
+    if (["false", "0", "off", "no"].includes(normalized)) {
+      return false;
+    }
+    if (["true", "1", "on", "yes"].includes(normalized)) {
+      return true;
+    }
+  }
+  if (value == null) {
+    return fallback;
+  }
+  return Boolean(value);
+}
+
+function freezeTrackers(list) {
+  return Object.freeze([...list]);
+}
+
+function sanitizeTrackerList(candidate, fallbackTrackers) {
+  const fallback = Array.isArray(fallbackTrackers) ? fallbackTrackers : [];
+  const input = Array.isArray(candidate) ? candidate : fallback;
+  const seen = new Set();
+  const sanitized = [];
+
+  for (const tracker of input) {
+    if (typeof tracker !== "string") {
+      continue;
+    }
+    const trimmed = tracker.trim();
+    if (!trimmed) {
+      continue;
+    }
+    if (!/^wss:\/\//i.test(trimmed)) {
+      continue;
+    }
+    const normalized = trimmed.toLowerCase();
+    if (seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    sanitized.push(trimmed);
+  }
+
+  if (!sanitized.length) {
+    return [...fallback];
+  }
+
+  return sanitized;
+}
+
+const DEFAULT_WSS_TRACKERS = Object.freeze([
+  "wss://tracker.openwebtorrent.com",
+  "wss://tracker.fastcast.nz",
+  "wss://tracker.webtorrent.dev",
+  "wss://tracker.sloppyta.co:443/announce",
+]);
+
+const SANITIZED_DEFAULT_BLUR_THRESHOLD = coerceNonNegativeInteger(
+  CONFIG_DEFAULT_BLUR_THRESHOLD,
+  1,
+);
+const SANITIZED_DEFAULT_AUTOPLAY_BLOCK_THRESHOLD = coerceNonNegativeInteger(
+  CONFIG_DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+  1,
+);
+const SANITIZED_DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD = coerceNonNegativeInteger(
+  CONFIG_DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
+  1,
+);
+const SANITIZED_DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD = coerceNonNegativeInteger(
+  CONFIG_DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
+  3,
+);
+
+export const DEFAULT_BLUR_THRESHOLD = SANITIZED_DEFAULT_BLUR_THRESHOLD;
+export const DEFAULT_AUTOPLAY_BLOCK_THRESHOLD =
+  SANITIZED_DEFAULT_AUTOPLAY_BLOCK_THRESHOLD;
+export const DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD =
+  SANITIZED_DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD;
+export const DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD =
+  SANITIZED_DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD;
 
 const DEFAULT_FLAGS = Object.freeze({
   URL_FIRST_ENABLED: true, // try URL before magnet in the player
@@ -12,14 +123,9 @@ const DEFAULT_FLAGS = Object.freeze({
   FEATURE_PUBLISH_NIP71: false,
   FEATURE_TRUST_SEEDS: true, // Rollback: disable to drop baseline trust seeds without code changes.
   FEATURE_TRUSTED_HIDE_CONTROLS: true,
-  TRUSTED_MUTE_HIDE_THRESHOLD: 1,
-  TRUSTED_SPAM_HIDE_THRESHOLD: 3,
-  WSS_TRACKERS: Object.freeze([
-    "wss://tracker.openwebtorrent.com",
-    "wss://tracker.fastcast.nz",
-    "wss://tracker.webtorrent.dev",
-    "wss://tracker.sloppyta.co:443/announce",
-  ]),
+  TRUSTED_MUTE_HIDE_THRESHOLD: DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
+  TRUSTED_SPAM_HIDE_THRESHOLD: DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
+  WSS_TRACKERS: DEFAULT_WSS_TRACKERS,
 });
 
 const globalScope = typeof globalThis === "object" && globalThis ? globalThis : undefined;
@@ -46,77 +152,6 @@ const runtimeFlags = (() => {
   }
   return initial;
 })();
-
-function coerceBoolean(value, fallback) {
-  if (typeof value === "boolean") {
-    return value;
-  }
-  if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase();
-    if (!normalized) {
-      return fallback;
-    }
-    if (["false", "0", "off", "no"].includes(normalized)) {
-      return false;
-    }
-    if (["true", "1", "on", "yes"].includes(normalized)) {
-      return true;
-    }
-  }
-  if (value == null) {
-    return fallback;
-  }
-  return Boolean(value);
-}
-
-function sanitizeTrackerList(candidate) {
-  const input = Array.isArray(candidate) ? candidate : DEFAULT_FLAGS.WSS_TRACKERS;
-  const seen = new Set();
-  const sanitized = [];
-
-  for (const tracker of input) {
-    if (typeof tracker !== "string") {
-      continue;
-    }
-    const trimmed = tracker.trim();
-    if (!trimmed) {
-      continue;
-    }
-    if (!/^wss:\/\//i.test(trimmed)) {
-      continue;
-    }
-    const normalized = trimmed.toLowerCase();
-    if (seen.has(normalized)) {
-      continue;
-    }
-    seen.add(normalized);
-    sanitized.push(trimmed);
-  }
-
-  if (!sanitized.length) {
-    return [...DEFAULT_FLAGS.WSS_TRACKERS];
-  }
-
-  return sanitized;
-}
-
-function freezeTrackers(list) {
-  return Object.freeze([...list]);
-}
-
-function coerceNonNegativeInteger(value, fallback) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) {
-    return fallback;
-  }
-
-  const sanitized = Math.max(0, Math.floor(numeric));
-  if (!Number.isFinite(sanitized)) {
-    return fallback;
-  }
-
-  return sanitized;
-}
 
 export let URL_FIRST_ENABLED = coerceBoolean(
   runtimeFlags.URL_FIRST_ENABLED,
@@ -154,7 +189,7 @@ export let FEATURE_TRUSTED_HIDE_CONTROLS = coerceBoolean(
 );
 
 export let WSS_TRACKERS = freezeTrackers(
-  sanitizeTrackerList(runtimeFlags.WSS_TRACKERS)
+  sanitizeTrackerList(runtimeFlags.WSS_TRACKERS, DEFAULT_FLAGS.WSS_TRACKERS)
 );
 
 export let TRUSTED_MUTE_HIDE_THRESHOLD = coerceNonNegativeInteger(
@@ -166,12 +201,6 @@ export let TRUSTED_SPAM_HIDE_THRESHOLD = coerceNonNegativeInteger(
   runtimeFlags.TRUSTED_SPAM_HIDE_THRESHOLD,
   DEFAULT_FLAGS.TRUSTED_SPAM_HIDE_THRESHOLD
 );
-
-export const DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD =
-  DEFAULT_FLAGS.TRUSTED_MUTE_HIDE_THRESHOLD;
-
-export const DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD =
-  DEFAULT_FLAGS.TRUSTED_SPAM_HIDE_THRESHOLD;
 
 Object.defineProperty(runtimeFlags, "URL_FIRST_ENABLED", {
   configurable: true,
@@ -272,7 +301,9 @@ Object.defineProperty(runtimeFlags, "WSS_TRACKERS", {
     return [...WSS_TRACKERS];
   },
   set(next) {
-    WSS_TRACKERS = freezeTrackers(sanitizeTrackerList(next));
+    WSS_TRACKERS = freezeTrackers(
+      sanitizeTrackerList(next, DEFAULT_FLAGS.WSS_TRACKERS)
+    );
   },
 });
 

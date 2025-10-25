@@ -192,6 +192,46 @@ export const DEFAULT_WHITELIST_MODE_ENABLED = true;
 export const ALLOW_NSFW_CONTENT = false;
 
 /**
+ * Baseline trusted-report count that triggers thumbnail blurring.
+ *
+ * When a video receives at least this many trusted reports for the active
+ * category (for example, `nudity`), thumbnails render with the blurred preview
+ * by default. Align this value with your moderation policy — the upstream
+ * deployment targets 3 trusted reports before blurring.
+ */
+export const DEFAULT_BLUR_THRESHOLD = 3;
+
+/**
+ * Baseline trusted-report count that blocks autoplay during browsing.
+ *
+ * Videos that meet or exceed this count will not autoplay in feeds unless the
+ * viewer explicitly opts in. Increase the number for a more permissive stance
+ * or decrease it if you want autoplay to stop sooner. The upstream deployment
+ * targets 2 trusted reports before blocking autoplay.
+ */
+export const DEFAULT_AUTOPLAY_BLOCK_THRESHOLD = 2;
+
+/**
+ * Trusted mute threshold that hides creators globally.
+ *
+ * Once this many trusted accounts mute a creator, their videos disappear from
+ * feeds until an operator intervenes. Keep the value low (1–2) to rapidly
+ * enforce community standards or raise it to tolerate more reports before
+ * hiding.
+ */
+export const DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD = 1;
+
+/**
+ * Trusted spam/report threshold that hides videos globally.
+ *
+ * When a video's trusted report count reaches this number, bitvid treats it as
+ * spam or policy violating content and removes it from default feeds. Align
+ * the value with your moderation policy — 3 trusted reports is the upstream
+ * baseline.
+ */
+export const DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD = 3;
+
+/**
  * Optional theme accent overrides for light and dark mode.
  *
  * Operators can provide hex color strings (e.g., `"#2563eb"`) to customize the
