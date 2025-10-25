@@ -31,15 +31,17 @@ bitvid is follow-centric. Your Home feed comes from people you follow (F1). Disc
 Thread new moderation behaviors through the same service → stage → app → UI flow above. Extending the existing layers keeps overrides, feature flags, and QA hooks consistent—avoid spinning up parallel moderation modules unless the architecture document explicitly calls for it.
 
 ## Defaults (policy)
-- Blur video thumbnails if **≥ 3** F1 friends report `nudity`.
-- Disable autoplay preview if **≥ 2** F1 friends report `nudity`.
-- Hide videos when **≥ 1** trusted contact mutes the author (`TRUSTED_MUTE_HIDE_THRESHOLD`). Cards render with `data-moderation-hidden="true"`, the badge reads `Hidden · 1 trusted mute`, and a "Show anyway" button becomes available.
-- Hide videos when **≥ 3** trusted contacts file spam reports (`TRUSTED_SPAM_HIDE_THRESHOLD`). The badge copy escalates to `Hidden · 3 trusted spam reports` and the card stays hidden until the viewer overrides it.
+- Blur video thumbnails when trusted `nudity` reports meet `DEFAULT_BLUR_THRESHOLD`.
+- Disable autoplay preview when the trusted `nudity` report count reaches `DEFAULT_AUTOPLAY_BLOCK_THRESHOLD`.
+- Hide videos when `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD` trusted contacts mute the author. Cards render with `data-moderation-hidden="true"`, the badge reads `Hidden · {count} trusted mute(s)`, and a "Show anyway" button becomes available.
+- Hide videos when `DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD` trusted contacts file spam reports. The badge copy escalates to `Hidden · {count} trusted spam report(s)` and the card stays hidden until the viewer overrides it.
 - Downrank author when any F1 has them in mute list (10000).
 - Opt-in admin lists (30000 with `d=bitvid:admin:*`) can hard-hide content.
 - Trust seeds from `DEFAULT_TRUST_SEED_NPUBS` count as baseline F1 contacts (toggle via `FEATURE_TRUST_SEEDS`).
 
-> You can override all defaults in **Settings → Safety & Moderation**.
+> Default values live in [`config/instance-config.js`](../../config/instance-config.js). The upstream configuration ships with blur at 3 trusted reports, autoplay block at 2, trusted mute hide at 1, and trusted spam hide at 3.
+
+> You can override all defaults in **Settings → Safety & Moderation** or by editing the exports in [`config/instance-config.js`](../../config/instance-config.js) before deploying your instance.
 
 ### Hide thresholds & feature flags
 
@@ -62,12 +64,12 @@ New operators should also note that fresh viewer accounts automatically inherit 
 
 ### Safety & Moderation controls
 
-The profile modal now exposes blur, autoplay, and hide thresholds so operators can dial in stricter or more permissive behavior. Enter a non-negative whole number to override the default or leave the field blank to fall back to the baseline values above. Adjustments are stored locally, applied immediately to the active feed, and rehydrate on every load.
+The profile modal now exposes blur, autoplay, and hide thresholds so operators can dial in stricter or more permissive behavior. Enter a non-negative whole number to override the default or leave the field blank to fall back to the baseline values from [`config/instance-config.js`](../../config/instance-config.js) (`DEFAULT_BLUR_THRESHOLD`, `DEFAULT_AUTOPLAY_BLOCK_THRESHOLD`, `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD`, `DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD`). Adjustments are stored locally, applied immediately to the active feed, and rehydrate on every load. Update the config file to change the per-instance defaults that new viewers see.
 
 ### Runtime flags
 
-- `TRUSTED_MUTE_HIDE_THRESHOLD` — numeric default for the trusted mute hide control (default `1`).
-- `TRUSTED_SPAM_HIDE_THRESHOLD` — numeric default for the trusted spam hide control (default `3`).
+- `TRUSTED_MUTE_HIDE_THRESHOLD` — numeric default for the trusted mute hide control. Initialized from `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD` in [`config/instance-config.js`](../../config/instance-config.js) (upstream ships with `1`).
+- `TRUSTED_SPAM_HIDE_THRESHOLD` — numeric default for the trusted spam hide control. Initialized from `DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD` in [`config/instance-config.js`](../../config/instance-config.js) (upstream ships with `3`).
 - `FEATURE_TRUSTED_HIDE_CONTROLS` — boolean toggle to hide/show the new trusted hide controls in the UI (default `true`).
 
 ## Files in this folder
