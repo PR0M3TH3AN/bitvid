@@ -3,6 +3,17 @@ import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
 
 import ProfileModalController from "../../js/ui/profileModalController.js";
+import {
+  DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+  DEFAULT_BLUR_THRESHOLD,
+  DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
+  DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
+} from "../../js/constants.js";
+
+const DEFAULT_BLUR_STRING = String(DEFAULT_BLUR_THRESHOLD);
+const DEFAULT_AUTOPLAY_STRING = String(DEFAULT_AUTOPLAY_BLOCK_THRESHOLD);
+const DEFAULT_TRUSTED_MUTE_STRING = String(DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD);
+const DEFAULT_TRUSTED_SPAM_STRING = String(DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD);
 
 const TEMPLATE_HTML = `
 <div id="profileModal">
@@ -67,18 +78,18 @@ beforeEach(async () => {
   };
 
   storedSettings = {
-    blurThreshold: 1,
-    autoplayBlockThreshold: 1,
-    trustedMuteHideThreshold: 1,
-    trustedSpamHideThreshold: 3,
+    blurThreshold: DEFAULT_BLUR_THRESHOLD,
+    autoplayBlockThreshold: DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+    trustedMuteHideThreshold: DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
+    trustedSpamHideThreshold: DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
   };
   moderationService = {
     getDefaultModerationSettings() {
       return {
-        blurThreshold: 1,
-        autoplayBlockThreshold: 1,
-        trustedMuteHideThreshold: 1,
-        trustedSpamHideThreshold: 3,
+        blurThreshold: DEFAULT_BLUR_THRESHOLD,
+        autoplayBlockThreshold: DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+        trustedMuteHideThreshold: DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
+        trustedSpamHideThreshold: DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
       };
     },
     getActiveModerationSettings() {
@@ -87,7 +98,8 @@ beforeEach(async () => {
     updateModerationSettings(partial = {}) {
       if (Object.prototype.hasOwnProperty.call(partial, "blurThreshold")) {
         const value = partial.blurThreshold;
-        storedSettings.blurThreshold = value === null ? 1 : value;
+        storedSettings.blurThreshold =
+          value === null ? DEFAULT_BLUR_THRESHOLD : value;
       }
       if (
         Object.prototype.hasOwnProperty.call(
@@ -96,7 +108,8 @@ beforeEach(async () => {
         )
       ) {
         const value = partial.autoplayBlockThreshold;
-        storedSettings.autoplayBlockThreshold = value === null ? 1 : value;
+        storedSettings.autoplayBlockThreshold =
+          value === null ? DEFAULT_AUTOPLAY_BLOCK_THRESHOLD : value;
       }
       if (
         Object.prototype.hasOwnProperty.call(
@@ -105,7 +118,8 @@ beforeEach(async () => {
         )
       ) {
         const value = partial.trustedMuteHideThreshold;
-        storedSettings.trustedMuteHideThreshold = value === null ? 1 : value;
+        storedSettings.trustedMuteHideThreshold =
+          value === null ? DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD : value;
       }
       if (
         Object.prototype.hasOwnProperty.call(
@@ -114,16 +128,17 @@ beforeEach(async () => {
         )
       ) {
         const value = partial.trustedSpamHideThreshold;
-        storedSettings.trustedSpamHideThreshold = value === null ? 3 : value;
+        storedSettings.trustedSpamHideThreshold =
+          value === null ? DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD : value;
       }
       return { ...storedSettings };
     },
     resetModerationSettings() {
       storedSettings = {
-        blurThreshold: 1,
-        autoplayBlockThreshold: 1,
-        trustedMuteHideThreshold: 1,
-        trustedSpamHideThreshold: 3,
+        blurThreshold: DEFAULT_BLUR_THRESHOLD,
+        autoplayBlockThreshold: DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+        trustedMuteHideThreshold: DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
+        trustedSpamHideThreshold: DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
       };
       return { ...storedSettings };
     },
@@ -185,10 +200,10 @@ afterEach(() => {
 test("moderation settings save updates service and disables control", async () => {
   await controller.load();
 
-  assert.equal(controller.moderationBlurInput.value, "1");
-  assert.equal(controller.moderationAutoplayInput.value, "1");
-  assert.equal(controller.moderationMuteHideInput.value, "1");
-  assert.equal(controller.moderationSpamHideInput.value, "3");
+  assert.equal(controller.moderationBlurInput.value, DEFAULT_BLUR_STRING);
+  assert.equal(controller.moderationAutoplayInput.value, DEFAULT_AUTOPLAY_STRING);
+  assert.equal(controller.moderationMuteHideInput.value, DEFAULT_TRUSTED_MUTE_STRING);
+  assert.equal(controller.moderationSpamHideInput.value, DEFAULT_TRUSTED_SPAM_STRING);
   assert.equal(controller.moderationSaveButton.disabled, true);
 
   controller.moderationBlurInput.value = "5";
@@ -249,15 +264,15 @@ test("moderation reset restores defaults and clearing inputs uses defaults", asy
   const resetContext = await controller.handleModerationSettingsReset();
   assert.equal(resetContext.success, true);
   assert.deepEqual(storedSettings, {
-    blurThreshold: 1,
-    autoplayBlockThreshold: 1,
-    trustedMuteHideThreshold: 1,
-    trustedSpamHideThreshold: 3,
+    blurThreshold: DEFAULT_BLUR_THRESHOLD,
+    autoplayBlockThreshold: DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+    trustedMuteHideThreshold: DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
+    trustedSpamHideThreshold: DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
   });
-  assert.equal(controller.moderationBlurInput.value, "1");
-  assert.equal(controller.moderationAutoplayInput.value, "1");
-  assert.equal(controller.moderationMuteHideInput.value, "1");
-  assert.equal(controller.moderationSpamHideInput.value, "3");
+  assert.equal(controller.moderationBlurInput.value, DEFAULT_BLUR_STRING);
+  assert.equal(controller.moderationAutoplayInput.value, DEFAULT_AUTOPLAY_STRING);
+  assert.equal(controller.moderationMuteHideInput.value, DEFAULT_TRUSTED_MUTE_STRING);
+  assert.equal(controller.moderationSpamHideInput.value, DEFAULT_TRUSTED_SPAM_STRING);
   assert.equal(
     controller.moderationStatusText.textContent,
     "Moderation defaults restored.",
@@ -276,8 +291,8 @@ test("moderation reset restores defaults and clearing inputs uses defaults", asy
   assert.equal(saveResult.success, true);
   assert.deepEqual(storedSettings, {
     blurThreshold: 7,
-    autoplayBlockThreshold: 1,
-    trustedMuteHideThreshold: 1,
+    autoplayBlockThreshold: DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+    trustedMuteHideThreshold: DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
     trustedSpamHideThreshold: 8,
   });
 
@@ -302,9 +317,39 @@ test("moderation reset restores defaults and clearing inputs uses defaults", asy
   const revertContext = await controller.handleModerationSettingsSave();
   assert.equal(revertContext.success, true);
   assert.deepEqual(storedSettings, {
-    blurThreshold: 1,
-    autoplayBlockThreshold: 1,
-    trustedMuteHideThreshold: 1,
-    trustedSpamHideThreshold: 3,
+    blurThreshold: DEFAULT_BLUR_THRESHOLD,
+    autoplayBlockThreshold: DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+    trustedMuteHideThreshold: DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
+    trustedSpamHideThreshold: DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
+  });
+});
+
+test("guest fallback uses config moderation defaults", async () => {
+  moderationService.getDefaultModerationSettings = () => null;
+  moderationService.getActiveModerationSettings = () => null;
+  storedSettings = null;
+
+  await controller.load();
+
+  assert.equal(controller.moderationBlurInput.value, DEFAULT_BLUR_STRING);
+  assert.equal(
+    controller.moderationAutoplayInput.value,
+    DEFAULT_AUTOPLAY_STRING,
+  );
+  assert.equal(
+    controller.moderationMuteHideInput.value,
+    DEFAULT_TRUSTED_MUTE_STRING,
+  );
+  assert.equal(
+    controller.moderationSpamHideInput.value,
+    DEFAULT_TRUSTED_SPAM_STRING,
+  );
+
+  const defaults = controller.getModerationSettingsDefaults();
+  assert.deepEqual(defaults, {
+    blurThreshold: DEFAULT_BLUR_THRESHOLD,
+    autoplayBlockThreshold: DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+    trustedMuteHideThreshold: DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
+    trustedSpamHideThreshold: DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
   });
 });

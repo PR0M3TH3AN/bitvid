@@ -7,8 +7,10 @@ import {
 } from "../config.js";
 import { normalizeDesignSystemContext } from "../designSystem.js";
 import {
-  getTrustedMuteHideThreshold,
-  getTrustedSpamHideThreshold,
+  DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+  DEFAULT_BLUR_THRESHOLD,
+  DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
+  DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
   RUNTIME_FLAGS,
 } from "../constants.js";
 import { getProviderMetadata } from "../services/authProviders/index.js";
@@ -65,10 +67,10 @@ function createInternalDefaultNwcSettings() {
 }
 
 const DEFAULT_INTERNAL_MODERATION_SETTINGS = Object.freeze({
-  blurThreshold: 1,
-  autoplayBlockThreshold: 1,
-  trustedMuteHideThreshold: getTrustedMuteHideThreshold(),
-  trustedSpamHideThreshold: getTrustedSpamHideThreshold(),
+  blurThreshold: DEFAULT_BLUR_THRESHOLD,
+  autoplayBlockThreshold: DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+  trustedMuteHideThreshold: DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
+  trustedSpamHideThreshold: DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
 });
 
 function createInternalDefaultModerationSettings() {

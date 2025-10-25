@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createModerationStage } from "../js/feedEngine/stages.js";
+import {
+  DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+  DEFAULT_BLUR_THRESHOLD,
+} from "../js/constants.js";
 
 test("moderation stage enforces admin lists without whitelist bypass", async () => {
   const whitelistedHex = "1".repeat(64);
@@ -55,8 +59,8 @@ test("moderation stage enforces admin lists without whitelist bypass", async () 
   const stage = createModerationStage({
     service,
     reportType: "nudity",
-    autoplayThreshold: 1,
-    blurThreshold: 1,
+    autoplayThreshold: DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+    blurThreshold: DEFAULT_BLUR_THRESHOLD,
   });
 
   const items = [

@@ -19,6 +19,10 @@ import {
   URL_FIRST_ENABLED,
   getTrustedMuteHideThreshold,
   getTrustedSpamHideThreshold,
+  DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+  DEFAULT_BLUR_THRESHOLD,
+  DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
+  DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
 } from "./constants.js";
 import { attachHealthBadges } from "./gridHealth.js";
 import { attachUrlHealthBadges } from "./urlHealthObserver.js";
@@ -6576,20 +6580,30 @@ class Application {
     const defaults = this.defaultModerationSettings || getDefaultModerationSettings();
     const defaultBlur = Number.isFinite(defaults?.blurThreshold)
       ? Math.max(0, Math.floor(defaults.blurThreshold))
-      : 1;
+      : DEFAULT_BLUR_THRESHOLD;
     const defaultAutoplay = Number.isFinite(defaults?.autoplayBlockThreshold)
       ? Math.max(0, Math.floor(defaults.autoplayBlockThreshold))
-      : 1;
+      : DEFAULT_AUTOPLAY_BLOCK_THRESHOLD;
+
+    const runtimeMuteSource = getTrustedMuteHideThreshold();
+    const runtimeTrustedMute = Number.isFinite(runtimeMuteSource)
+      ? Math.max(0, Math.floor(runtimeMuteSource))
+      : DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD;
     const defaultTrustedMuteHide = Number.isFinite(
       defaults?.trustedMuteHideThreshold,
     )
       ? Math.max(0, Math.floor(defaults.trustedMuteHideThreshold))
-      : getTrustedMuteHideThreshold();
+      : runtimeTrustedMute;
+
+    const runtimeSpamSource = getTrustedSpamHideThreshold();
+    const runtimeTrustedSpam = Number.isFinite(runtimeSpamSource)
+      ? Math.max(0, Math.floor(runtimeSpamSource))
+      : DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD;
     const defaultTrustedSpamHide = Number.isFinite(
       defaults?.trustedSpamHideThreshold,
     )
       ? Math.max(0, Math.floor(defaults.trustedSpamHideThreshold))
-      : getTrustedSpamHideThreshold();
+      : runtimeTrustedSpam;
 
     const blurSource = Number.isFinite(settings?.blurThreshold)
       ? Math.max(0, Math.floor(settings.blurThreshold))
