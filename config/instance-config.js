@@ -192,13 +192,16 @@ export const DEFAULT_WHITELIST_MODE_ENABLED = true;
 export const ALLOW_NSFW_CONTENT = false;
 
 /**
- * Baseline trusted accounts used to seed the moderation graph.
+ * Emergency fallback accounts for seeding the moderation graph.
  *
- * Provide Nostr npubs for the operators and moderators you trust by default.
- * Downstream modules treat these accounts as the starting point for the F1
- * network that powers trusted reports and mutes. Operators should feel free to
- * edit the list to match their deployment; bitvid will freeze and sanitize the
- * values at runtime when reading from `js/config.js`.
+ * Runtime moderation now derives its trust seeds from the Super Admin and the
+ * active moderator roster, ensuring their reports shape anonymous/default
+ * visitor filters automatically. The array below is kept only as a last-resort
+ * fallback when the live moderator lists cannot be loaded (for example,
+ * bootstrapping a brand-new deployment or recovering from relay outages).
+ * Populate it with the operator keys you want to lean on during that rare
+ * failure mode; under normal conditions these values are ignored. bitvid will
+ * freeze and sanitize the npubs at runtime when reading from `js/config.js`.
  */
 export const DEFAULT_TRUST_SEED_NPUBS = [
   "npub15jnttpymeytm80hatjqcvhhqhzrhx6gxp8pq0wn93rhnu8s9h9dsha32lx",

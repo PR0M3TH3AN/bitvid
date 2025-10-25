@@ -36,8 +36,8 @@ Thread new moderation behaviors through the same service → stage → app → U
 - Hide videos when `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD` trusted contacts mute the author. Cards render with `data-moderation-hidden="true"`, the badge reads `Hidden · {count} trusted mute(s)`, and a "Show anyway" button becomes available.
 - Hide videos when `DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD` trusted contacts file spam reports. The badge copy escalates to `Hidden · {count} trusted spam report(s)` and the card stays hidden until the viewer overrides it.
 - Downrank author when any F1 has them in mute list (10000).
-- Opt-in admin lists (30000 with `d=bitvid:admin:*`) can hard-hide content.
-- Trust seeds from `DEFAULT_TRUST_SEED_NPUBS` count as baseline F1 contacts (toggle via `FEATURE_TRUST_SEEDS`).
+- Opt-in admin lists (30000 with `d=bitvid:admin:*`) can hard-hide content, but whitelist entries no longer bypass moderation gates—they only influence Discovery rankings when a viewer opts into that list.
+- Trust seeds now come from the Super Admin plus every active moderator, so their reports shape anonymous/default visitor filters automatically. The `DEFAULT_TRUST_SEED_NPUBS` export only activates as an emergency fallback when those live lists cannot be loaded (toggle via `FEATURE_TRUST_SEEDS`).
 
 > Default thresholds now come directly from [`config/instance-config.js`](../../config/instance-config.js). Look for the exports `DEFAULT_BLUR_THRESHOLD`, `DEFAULT_AUTOPLAY_BLOCK_THRESHOLD`, `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD`, and `DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD` to adjust the instance-wide behavior before deploying. The upstream repo currently publishes example values of 3 trusted reports for blur, 2 for autoplay blocking, 1 trusted mute to hide authors, and 3 trusted spam reports to hide videos.
 
