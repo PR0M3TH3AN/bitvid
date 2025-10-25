@@ -76,6 +76,13 @@ Operators can tune thresholds and lists from the Profile modal:
   - **Report** to issue a NIP-56 moderation report.
 - When a rebroadcast hits rate limits, the app surfaces cooldown guidance (e.g., “Rebroadcast is cooling down. Try again in 30s.”) so operators know when to retry without spamming relays.
 
+### Hashtag interests & disinterests
+
+- The Profile modal’s **Hashtags** tab lets you maintain interests (tags you want surfaced) and disinterests (tags to downrank) with dedicated input fields and per-tag remove actions. Preferences are cached locally so list edits render instantly.
+- bitvid persists the lists by publishing a replaceable `kind 30005` event with the identifier `bitvid:tag-preferences`. The `HashtagPreferencesService` normalizes tags, keeps interests and disinterests mutually exclusive, and emits change events so UI stays in sync.【F:js/services/hashtagPreferencesService.js†L206-L276】【F:js/services/hashtagPreferencesService.js†L304-L324】【F:docs/nostr-event-schemas.md†L150-L168】
+- Preference payloads are encrypted before leaving the browser. The service attempts NIP-44 v2 first, falls back to NIP-44 or NIP-04 based on the signer/browser capabilities, records the active scheme in the `['encrypted', <scheme>]` tag, and decrypts in the same priority order when loading from relays.【F:js/services/hashtagPreferencesService.js†L520-L657】【F:js/services/hashtagPreferencesService.js†L356-L511】
+- Published ciphertext is stored on every configured write relay and accepted ones are tracked so operators can diagnose relay failures without exposing the plaintext list.【F:js/services/hashtagPreferencesService.js†L658-L711】
+
 ---
 
 ## For Developers

@@ -169,6 +169,13 @@ field must be a NIP-44 ciphertext representing the JSON shape
 share their preferred and muted hashtags without exposing the raw preferences on
 relays.
 
+When decrypting, the client inspects both `['encrypted', ...]` and
+`['encryption', ...]` hints on the event to prioritize NIP-44 v2 payloads,
+falling back to legacy NIP-44 or NIP-04 decryptors when required. Publishing
+performs the same capability probe, updating the existing `encrypted` tag with
+the negotiated scheme before signing so other readers know which cipher to try
+first.【F:js/services/hashtagPreferencesService.js†L356-L511】【F:js/services/hashtagPreferencesService.js†L520-L657】
+
 ### NIP-71 rollout
 
 bitvid now emits a paired NIP-71 event (kind `21` for long-form, `22` for short
