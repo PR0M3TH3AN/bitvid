@@ -3897,20 +3897,147 @@ class Application {
   }
 
   updateProfileInDOM(pubkey, profile) {
+    const normalizedPubkey =
+      typeof pubkey === "string" && pubkey.trim() ? pubkey.trim() : "";
+    if (!normalizedPubkey) {
+      return;
+    }
+
+    const normalizedProfile =
+      profile && typeof profile === "object" ? profile : {};
+
+    const pictureUrl =
+      typeof normalizedProfile.picture === "string"
+        ? normalizedProfile.picture
+        : "";
+
+    const resolveProfileName = () => {
+      const candidates = [
+        normalizedProfile.name,
+        normalizedProfile.display_name,
+        normalizedProfile.displayName,
+      ];
+      for (const candidate of candidates) {
+        if (typeof candidate !== "string") {
+          continue;
+        }
+        const trimmed = candidate.trim();
+        if (trimmed) {
+          return trimmed;
+        }
+      }
+      return "";
+    };
+
+    const resolvedName = resolveProfileName();
+
+    const explicitNpub =
+      typeof normalizedProfile.npub === "string"
+        ? normalizedProfile.npub.trim()
+        : "";
+
+    const fallbackNpub = (() => {
+      if (explicitNpub) {
+        return explicitNpub;
+      }
+      const encoded = this.safeEncodeNpub(normalizedPubkey);
+      return typeof encoded === "string" ? encoded : "";
+    })();
+
+    const shortNpubLabel = fallbackNpub
+      ? formatShortNpub(fallbackNpub) || fallbackNpub
+      : "";
+
     // For any .author-pic[data-pubkey=...]
     const picEls = document.querySelectorAll(
-      `.author-pic[data-pubkey="${pubkey}"]`
+      `.author-pic[data-pubkey="${normalizedPubkey}"]`
     );
     picEls.forEach((el) => {
-      el.src = profile.picture;
+      if (!el) {
+        return;
+      }
+      el.src = pictureUrl;
     });
+
+    const nameLabel = resolvedName || shortNpubLabel || fallbackNpub || "";
+
     // For any .author-name[data-pubkey=...]
     const nameEls = document.querySelectorAll(
-      `.author-name[data-pubkey="${pubkey}"]`
+      `.author-name[data-pubkey="${normalizedPubkey}"]`
     );
     nameEls.forEach((el) => {
-      el.textContent = profile.name;
+      if (!el) {
+        return;
+      }
+      el.textContent = nameLabel;
     });
+
+    const npubEls = document.querySelectorAll(
+      `.author-npub[data-pubkey="${normalizedPubkey}"]`
+    );
+    npubEls.forEach((el) => {
+      if (!el) {
+        return;
+      }
+
+      if (shortNpubLabel) {
+        el.textContent = shortNpubLabel;
+        el.setAttribute("aria-hidden", "false");
+      } else {
+        el.textContent = "";
+        el.setAttribute("aria-hidden", "true");
+      }
+
+      if (fallbackNpub) {
+        el.setAttribute("title", fallbackNpub);
+      } else {
+        el.removeAttribute("title");
+      }
+    });
+
+    if (!nameEls.length && !npubEls.length) {
+      return;
+    }
+
+    const cardInstances = new Set();
+    const collectCardInstance = (el) => {
+      if (!el || typeof el.closest !== "function") {
+        return;
+      }
+      const cardRoot = el.closest('[data-component="similar-content-card"]');
+      if (!cardRoot) {
+        return;
+      }
+      const instance = cardRoot.__bitvidSimilarContentCard;
+      if (instance && typeof instance.updateIdentity === "function") {
+        cardInstances.add(instance);
+      }
+    };
+
+    nameEls.forEach(collectCardInstance);
+    npubEls.forEach(collectCardInstance);
+
+    if (cardInstances.size) {
+      const identityPayload = {
+        name: resolvedName,
+        npub: fallbackNpub,
+        shortNpub: shortNpubLabel,
+        pubkey: normalizedPubkey,
+      };
+
+      cardInstances.forEach((card) => {
+        try {
+          card.updateIdentity(identityPayload);
+        } catch (error) {
+          if (devLogger?.warn) {
+            devLogger.warn(
+              "[app] Failed to update similar content card identity",
+              error
+            );
+          }
+        }
+      });
+    }
   }
 
   async publishVideoNote(payload, { onSuccess, suppressModalClose } = {}) {
