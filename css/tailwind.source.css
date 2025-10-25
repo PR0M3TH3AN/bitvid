@@ -798,6 +798,74 @@
     @apply border-status-neutral-border bg-status-neutral-surface text-status-neutral-on;
   }
 
+  .moderation-badge {
+    @apply inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-semibold normal-case tracking-tight shadow-sm;
+  }
+
+  .moderation-badge[data-variant="warning"] {
+    @apply border-status-warning-border bg-status-warning-surface text-status-warning-on;
+    box-shadow: 0 12px 30px color-mix(in srgb, var(--status-warning) 18%, transparent);
+  }
+
+  .moderation-badge[data-variant="neutral"] {
+    @apply border-status-neutral-border bg-status-neutral-surface text-status-neutral-on;
+    box-shadow: 0 12px 30px color-mix(in srgb, var(--status-neutral) 18%, transparent);
+  }
+
+  .moderation-badge__icon {
+    @apply inline-flex h-5 w-5 items-center justify-center rounded-full;
+    background-color: color-mix(in srgb, var(--status-warning) 18%, transparent);
+    color: var(--status-warning-on);
+  }
+
+  .moderation-badge[data-variant="neutral"] .moderation-badge__icon {
+    background-color: color-mix(in srgb, var(--status-neutral) 18%, transparent);
+    color: var(--status-neutral-on);
+  }
+
+  .moderation-badge__icon-mark {
+    @apply h-3.5 w-3.5;
+  }
+
+  .moderation-badge__text {
+    @apply text-xs font-semibold tracking-tight;
+  }
+
+  .moderation-badge__action {
+    @apply inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold normal-case tracking-tight transition duration-150 ease-out;
+    background-color: color-mix(in srgb, var(--status-warning) 16%, transparent);
+    border-color: color-mix(in srgb, var(--status-warning-border) 80%, transparent);
+    color: var(--status-warning-on);
+  }
+
+  .moderation-badge[data-variant="warning"] .moderation-badge__action:hover {
+    background-color: color-mix(in srgb, var(--status-warning) 24%, transparent);
+  }
+
+  .moderation-badge[data-variant="neutral"] .moderation-badge__action {
+    background-color: color-mix(in srgb, var(--status-neutral) 16%, transparent);
+    border-color: color-mix(in srgb, var(--status-neutral-border) 80%, transparent);
+    color: var(--status-neutral-on);
+  }
+
+  .moderation-badge[data-variant="neutral"] .moderation-badge__action:hover {
+    background-color: color-mix(in srgb, var(--status-neutral) 24%, transparent);
+  }
+
+  .moderation-badge__action:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--status-warning) 38%, transparent);
+    outline-offset: 2px;
+  }
+
+  .moderation-badge[data-variant="neutral"] .moderation-badge__action:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--status-neutral) 38%, transparent);
+  }
+
+  .moderation-badge__action[disabled] {
+    cursor: wait;
+    opacity: 0.7;
+  }
+
   .pill {
     @apply inline-flex items-center gap-2 rounded-full border border-status-neutral-border bg-status-neutral-surface px-3 py-1 text-xs font-medium text-status-neutral-on;
   }

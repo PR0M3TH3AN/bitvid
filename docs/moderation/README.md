@@ -27,6 +27,13 @@ bitvid is follow-centric. Your Home feed comes from people you follow (F1). Disc
 - [`bitvidApp.decorateVideoModeration`](../../js/app.js) connects stage output to the UI layer alongside feature-flag plumbing.
 - [`VideoCard.refreshModerationUi`](../../js/ui/components/VideoCard.js) applies badges, blur states, hide metadata (`data-moderation-hidden`), and the "show anyway" toggles.
 
+### Moderation badge pipeline
+
+- Every moderation payload now includes a `blurReason` that records why a thumbnail was blurred (`trusted-report`, `trusted-mute`, or a hide reason such as `trusted-mute-hide`). This travels with both the metadata stage output and the decorated `video.moderation.original` snapshot so UI can explain the decision even after a viewer override.
+- When a trusted mute forces a blur (without a report threshold firing) the badge copy shortens to **"Muted by a trusted contact"** so we don't repeat the blur state in the label. Reports still surface as "Blurred · {reason}" until the viewer taps "Show anyway".
+- The moderation badge now renders as a dedicated yellow chip with an icon and "Show anyway" pill that matches the rest of the design system tokens. Override states flip to the neutral palette and swap the icon for a confirmation check so operators can tell the difference at a glance.
+- The badge tooltip and `aria-label` continue to list the specific trusted contacts who muted or reported the content when that metadata is available.
+
 ## Where to extend
 Thread new moderation behaviors through the same service → stage → app → UI flow above. Extending the existing layers keeps overrides, feature flags, and QA hooks consistent—avoid spinning up parallel moderation modules unless the architecture document explicitly calls for it.
 

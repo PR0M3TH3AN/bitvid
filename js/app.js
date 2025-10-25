@@ -6757,7 +6757,9 @@ class Application {
 
     const thresholds = this.getActiveModerationThresholds();
     const computedBlockAutoplay = trustedCount >= thresholds.autoplayBlockThreshold;
-    let computedBlurThumbnail = trustedCount >= thresholds.blurThreshold;
+    const blurFromReports = trustedCount >= thresholds.blurThreshold;
+    let computedBlurThumbnail = blurFromReports;
+    let computedBlurReason = computedBlurThumbnail ? "trusted-report" : "";
 
     const muteHideThreshold = Number.isFinite(thresholds.trustedMuteHideThreshold)
       ? Math.max(0, Math.floor(thresholds.trustedMuteHideThreshold))
@@ -6795,6 +6797,19 @@ class Application {
 
     if (!computedBlurThumbnail && (trustedMuted || hideTriggered)) {
       computedBlurThumbnail = true;
+      if (hideTriggered) {
+        computedBlurReason = hideReason || "trusted-hide";
+      } else if (trustedMuted) {
+        computedBlurReason = "trusted-mute";
+      }
+    } else if (computedBlurThumbnail) {
+      if (hideTriggered) {
+        computedBlurReason = hideReason || "trusted-hide";
+      } else if (trustedMuted && !blurFromReports) {
+        computedBlurReason = "trusted-mute";
+      } else if (!computedBlurReason && blurFromReports) {
+        computedBlurReason = "trusted-report";
+      }
     }
 
     const hideCounts = hideTriggered
@@ -6828,6 +6843,7 @@ class Application {
       hideCounts: originalHideCounts,
       hideBypass,
       hideTriggered,
+      blurReason: computedBlurThumbnail ? computedBlurReason : "",
     };
 
     const decoratedModeration = {
@@ -6841,6 +6857,7 @@ class Application {
       trustedMuters: rawTrustedMuters,
       trustedMuteCount,
       trustedMuterDisplayNames,
+      blurReason: computedBlurThumbnail ? computedBlurReason : "",
       original: {
         blockAutoplay: originalState.blockAutoplay,
         blurThumbnail: originalState.blurThumbnail,
@@ -6849,8 +6866,13 @@ class Application {
         hideCounts: originalState.hideCounts,
         hideBypass: originalState.hideBypass,
         hideTriggered: originalState.hideTriggered,
+        blurReason: originalState.blurReason,
       },
     };
+
+    if (!computedBlurThumbnail && decoratedModeration.blurReason) {
+      delete decoratedModeration.blurReason;
+    }
 
     if (overrideActive) {
       decoratedModeration.blockAutoplay = false;

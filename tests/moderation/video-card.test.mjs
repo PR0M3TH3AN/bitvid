@@ -264,6 +264,12 @@ test("VideoCard blurs thumbnails when trusted mute triggers without reports", as
   withMockedNostrTools(t);
 
   const app = await createModerationAppHarness();
+  app.getActiveModerationThresholds = () => ({
+    autoplayBlockThreshold: Number.POSITIVE_INFINITY,
+    blurThreshold: Number.POSITIVE_INFINITY,
+    trustedMuteHideThreshold: 2,
+    trustedSpamHideThreshold: Number.POSITIVE_INFINITY,
+  });
   const videoId = "c".repeat(64);
 
   const video = {
@@ -298,6 +304,9 @@ test("VideoCard blurs thumbnails when trusted mute triggers without reports", as
   document.body.appendChild(card.getRoot());
 
   assert.equal(video.moderation.blurThumbnail, true);
+  assert.equal(video.moderation.blurReason, "trusted-mute");
   assert.equal(card.getModerationContext().activeBlur, true);
   assert.equal(card.thumbnailEl.dataset.thumbnailState, "blurred");
+  assert.equal(card.moderationBadgeEl.dataset.moderationState, "trusted-mute");
+  assert.equal(card.moderationBadgeTextEl.textContent, "Muted by a trusted contact");
 });

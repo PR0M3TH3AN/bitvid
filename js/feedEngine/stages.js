@@ -584,7 +584,9 @@ export function createModerationStage({
       }
 
       const blockAutoplay = trustedCount >= normalizedAutoplayThreshold;
-      let blurThumbnail = trustedCount >= normalizedBlurThreshold;
+      const blurFromReports = trustedCount >= normalizedBlurThreshold;
+      let blurThumbnail = blurFromReports;
+      let blurReason = blurThumbnail ? "trusted-report" : "";
       const adminWhitelist = adminStatus?.whitelisted === true;
       const adminWhitelistBypass = false;
 
@@ -713,10 +715,33 @@ export function createModerationStage({
 
       if (!blurThumbnail && (trustedMuted || hideTriggered)) {
         blurThumbnail = true;
+        if (hideTriggered) {
+          blurReason = hideReason || "trusted-hide";
+        } else if (trustedMuted) {
+          blurReason = "trusted-mute";
+        }
+      } else if (blurThumbnail) {
+        if (hideTriggered) {
+          blurReason = hideReason || "trusted-hide";
+        } else if (trustedMuted && !blurFromReports) {
+          blurReason = "trusted-mute";
+        } else if (!blurReason && blurFromReports) {
+          blurReason = "trusted-report";
+        }
       }
 
       metadataModeration.blurThumbnail = blurThumbnail;
+      if (blurThumbnail) {
+        metadataModeration.blurReason = blurReason;
+      } else if (metadataModeration.blurReason) {
+        delete metadataModeration.blurReason;
+      }
       video.moderation.blurThumbnail = blurThumbnail;
+      if (blurThumbnail) {
+        video.moderation.blurReason = blurReason;
+      } else if (video.moderation.blurReason) {
+        delete video.moderation.blurReason;
+      }
 
       item.metadata.moderation = metadataModeration;
 
