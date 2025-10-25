@@ -878,12 +878,25 @@ class SubscriptionsManager {
         ? Math.floor(limitCandidate)
         : null;
 
+    const preferenceSource =
+      typeof app?.getHashtagPreferences === "function"
+        ? app.getHashtagPreferences()
+        : {};
+
     return {
       subscriptionAuthors: normalizedAuthors,
       authors: normalizedAuthors,
       blacklistedEventIds: blacklist,
       isAuthorBlocked,
-      limit: normalizedLimit
+      limit: normalizedLimit,
+      tagPreferences: {
+        interests: Array.isArray(preferenceSource?.interests)
+          ? [...preferenceSource.interests]
+          : [],
+        disinterests: Array.isArray(preferenceSource?.disinterests)
+          ? [...preferenceSource.disinterests]
+          : [],
+      },
     };
   }
 
