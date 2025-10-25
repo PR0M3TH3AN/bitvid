@@ -97,6 +97,10 @@ export function createBlacklistFilterStage({
 
     const options = { blacklistedEventIds: blacklist, isAuthorBlocked };
 
+    // TODO(tag-preferences): incorporate context.runtime.tagPreferences once the
+    // filtering helpers are in place so this stage can drop disinterested tags
+    // without disturbing existing blacklist logic.
+
     const results = [];
 
     for (const item of items) {

@@ -103,6 +103,19 @@ function buildWatchHistoryFeedRuntime({ actor, cursor = 0 } = {}) {
     }
   };
 
+  const preferenceSource =
+    typeof app?.getHashtagPreferences === "function"
+      ? app.getHashtagPreferences()
+      : {};
+  runtime.tagPreferences = {
+    interests: Array.isArray(preferenceSource?.interests)
+      ? [...preferenceSource.interests]
+      : [],
+    disinterests: Array.isArray(preferenceSource?.disinterests)
+      ? [...preferenceSource.disinterests]
+      : []
+  };
+
   if (normalizedActor) {
     runtime.actor = normalizedActor;
   }

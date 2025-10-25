@@ -6434,6 +6434,9 @@ class Application {
       return this.feedEngine.registerFeed("recent", {
         source: createActiveNostrSource({ service: this.nostrService }),
         stages: [
+          // TODO(tag-preferences): introduce a dedicated stage here to filter by
+          // viewer interests/disinterests once the runtime metadata is wired up
+          // to filtering helpers.
           createBlacklistFilterStage({
             shouldIncludeVideo: (video, options) =>
               this.nostrService.shouldIncludeVideo(video, options),
@@ -6475,6 +6478,8 @@ class Application {
       return this.feedEngine.registerFeed("subscriptions", {
         source: createSubscriptionAuthorsSource({ service: this.nostrService }),
         stages: [
+          // TODO(tag-preferences): introduce preference-aware filtering ahead of
+          // the blacklist stage when tag-based ranking lands.
           createBlacklistFilterStage({
             shouldIncludeVideo: (video, options) =>
               this.nostrService.shouldIncludeVideo(video, options),
@@ -6533,9 +6538,19 @@ class Application {
         ? new Set(this.blacklistedEventIds)
         : new Set();
 
+    const preferenceSource =
+      typeof this.getHashtagPreferences === "function"
+        ? this.getHashtagPreferences()
+        : {};
+    const { interests = [], disinterests = [] } = preferenceSource || {};
+
     return {
       blacklistedEventIds: blacklist,
       isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
+      tagPreferences: {
+        interests: Array.isArray(interests) ? [...interests] : [],
+        disinterests: Array.isArray(disinterests) ? [...disinterests] : [],
+      },
     };
   }
 
