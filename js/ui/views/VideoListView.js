@@ -1,5 +1,8 @@
 import { VideoCard } from "../components/VideoCard.js";
-import { renderTagPillStrip } from "../components/tagPillList.js";
+import {
+  renderTagPillStrip,
+  applyTagPreferenceState,
+} from "../components/tagPillList.js";
 import {
   subscribeToVideoViewCount,
   unsubscribeFromVideoViewCount,
@@ -186,8 +189,10 @@ export class VideoListView {
       delete: null,
       blacklist: null,
       moderationOverride: null,
-      moderationHide: null,
+      tagActivate: null,
     };
+
+    this.tagPreferenceStateResolver = null;
 
     this.allowNsfw = allowNsfw !== false;
     this.designSystem = normalizeDesignSystemContext(designSystem);
@@ -293,8 +298,13 @@ export class VideoListView {
     this.handlers.moderationOverride = typeof handler === "function" ? handler : null;
   }
 
-  setModerationHideHandler(handler) {
-    this.handlers.moderationHide = typeof handler === "function" ? handler : null;
+  setTagActivationHandler(handler) {
+    this.handlers.tagActivate = typeof handler === "function" ? handler : null;
+  }
+
+  setTagPreferenceStateResolver(resolver) {
+    this.tagPreferenceStateResolver =
+      typeof resolver === "function" ? resolver : null;
   }
 
   setPopularTagsContainer(container) {
@@ -375,7 +385,13 @@ export class VideoListView {
       return;
     }
 
-    const { root: strip } = renderTagPillStrip({ document: doc, tags });
+    const { root: strip } = renderTagPillStrip({
+      document: doc,
+      tags,
+      onTagActivate: (tag, detail = {}) =>
+        this.handlePopularTagActivate(tag, detail),
+      getTagState: (tag) => this.resolveTagPreferenceState(tag),
+    });
     root.textContent = "";
     root.appendChild(strip);
     root.hidden = false;
@@ -1240,5 +1256,63 @@ export class VideoListView {
 
     const detail = this.extractPlaybackDetail(trigger, null);
     this.emitSelected(detail);
+  }
+
+  resolveTagPreferenceState(tag) {
+    const resolver = this.tagPreferenceStateResolver;
+    if (typeof resolver !== "function") {
+      return "neutral";
+    }
+
+    try {
+      return resolver(tag);
+    } catch (error) {
+      userLogger.warn(
+        "[VideoListView] Failed to resolve tag preference state:",
+        error,
+      );
+      return "neutral";
+    }
+  }
+
+  refreshTagPreferenceStates() {
+    if (!this._popularTagStrip) {
+      return;
+    }
+
+    const buttons = this._popularTagStrip.querySelectorAll("button[data-tag]");
+    buttons.forEach((button) => {
+      const tag = button.dataset.tag || "";
+      const state = this.resolveTagPreferenceState(tag);
+      applyTagPreferenceState(button, state);
+    });
+  }
+
+  handlePopularTagActivate(tag, { event = null, button = null } = {}) {
+    const normalizedTag =
+      typeof tag === "string" && tag.trim() ? tag.trim() : String(tag ?? "");
+    if (!normalizedTag) {
+      return;
+    }
+
+    const detail = {
+      tag: normalizedTag,
+      event,
+      trigger: button,
+      context: "popular-tags",
+    };
+
+    if (typeof this.handlers.tagActivate === "function") {
+      try {
+        this.handlers.tagActivate(detail);
+      } catch (error) {
+        userLogger.warn(
+          "[VideoListView] Tag activation handler threw an error:",
+          error,
+        );
+      }
+    }
+
+    this.emit("tag:activate", detail);
   }
 }

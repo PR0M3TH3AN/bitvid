@@ -95,6 +95,10 @@ import {
   closeStaticModal,
 } from "./ui/components/staticModalAccessibility.js";
 import { VideoListView } from "./ui/views/VideoListView.js";
+import createTagPreferenceMenu, {
+  TAG_PREFERENCE_ACTIONS,
+  applyTagPreferenceMenuState,
+} from "./ui/components/tagPreferenceMenu.js";
 import MoreMenuController from "./ui/moreMenuController.js";
 import ProfileModalController from "./ui/profileModalController.js";
 import LoginModalController from "./ui/loginModalController.js";
@@ -250,6 +254,7 @@ class Application {
     this.boundVideoModalCommentLoadMoreHandler = null;
     this.boundVideoModalCommentLoginHandler = null;
     this.boundVideoModalCommentMuteHandler = null;
+    this.boundVideoModalTagActivateHandler = null;
     this.pendingModalZapOpen = false;
     this.videoListViewPlaybackHandler = null;
     this.videoListViewEditHandler = null;
@@ -789,6 +794,14 @@ class Application {
     ) {
       this.videoModal.setMediaLoader(this.mediaLoader);
     }
+    if (
+      this.videoModal &&
+      typeof this.videoModal.setTagPreferenceStateResolver === "function"
+    ) {
+      this.videoModal.setTagPreferenceStateResolver((tag) =>
+        this.getTagPreferenceState(tag),
+      );
+    }
     this.zapController = new ZapController({
       videoModal: this.videoModal,
       getCurrentVideo: () => this.currentVideo,
@@ -834,6 +847,26 @@ class Application {
     this.videoModal.addEventListener(
       "video:share",
       this.boundVideoModalShareHandler
+    );
+    this.boundVideoModalTagActivateHandler = (event) => {
+      const detail = event?.detail || {};
+      const nativeEvent = detail?.nativeEvent || null;
+      if (nativeEvent) {
+        nativeEvent.preventDefault?.();
+        nativeEvent.stopPropagation?.();
+      }
+
+      this.handleTagPreferenceActivation({
+        tag: detail?.tag,
+        trigger: detail?.trigger || null,
+        context: "modal",
+        video: detail?.video || this.currentVideo || null,
+        event: nativeEvent,
+      });
+    };
+    this.videoModal.addEventListener(
+      "tag:activate",
+      this.boundVideoModalTagActivateHandler,
     );
     this.boundVideoModalSimilarSelectHandler = (event) => {
       const detail = event?.detail || {};
@@ -1068,6 +1101,7 @@ class Application {
     });
     this.moreMenuController.setVideoModal(this.videoModal);
     this.videoSettingsPopovers = new Map();
+    this.tagPreferencePopovers = new Map();
 
     // Hide/Show Subscriptions Link
     this.subscriptionsLink = null;
@@ -1236,6 +1270,24 @@ class Application {
         ? ui.videoListView({ app: this, config: videoListViewConfig })
         : ui.videoListView) ||
       new VideoListView(videoListViewConfig);
+
+    if (
+      this.videoListView &&
+      typeof this.videoListView.setTagPreferenceStateResolver === "function"
+    ) {
+      this.videoListView.setTagPreferenceStateResolver((tag) =>
+        this.getTagPreferenceState(tag),
+      );
+    }
+
+    if (
+      this.videoListView &&
+      typeof this.videoListView.setTagActivationHandler === "function"
+    ) {
+      this.videoListView.setTagActivationHandler((detail = {}) =>
+        this.handleTagPreferenceActivation(detail),
+      );
+    }
 
     this.videoListViewPlaybackHandler = ({
       videoId,
@@ -3718,6 +3770,44 @@ class Application {
     return normalized;
   }
 
+  normalizeTagPreferenceCandidate(tag) {
+    if (typeof tag !== "string") {
+      return "";
+    }
+
+    const trimmed = tag.trim().replace(/^#+/, "");
+    if (!trimmed) {
+      return "";
+    }
+
+    return trimmed.toLowerCase();
+  }
+
+  getTagPreferenceState(tag) {
+    const normalized = this.normalizeTagPreferenceCandidate(tag);
+    if (!normalized) {
+      return "neutral";
+    }
+
+    const { interests, disinterests } = this.getHashtagPreferences();
+    if (interests.includes(normalized)) {
+      return "interest";
+    }
+    if (disinterests.includes(normalized)) {
+      return "disinterest";
+    }
+    return "neutral";
+  }
+
+  getTagPreferenceMembership(tag) {
+    const state = this.getTagPreferenceState(tag);
+    return {
+      state,
+      interest: state === "interest",
+      disinterest: state === "disinterest",
+    };
+  }
+
   createHashtagPreferencesSnapshot(detail = {}) {
     const service = this.hashtagPreferences;
     const sourceInterests = Array.isArray(detail?.interests)
@@ -3804,6 +3894,8 @@ class Application {
   handleHashtagPreferencesChange(detail = {}) {
     const { changed } = this.updateCachedHashtagPreferences(detail);
 
+    this.refreshTagPreferenceUi();
+
     if (
       this.profileController &&
       typeof this.profileController.handleHashtagPreferencesChange ===
@@ -3863,6 +3955,63 @@ class Application {
         : null,
       loaded: snapshot.loaded === true,
     };
+  }
+
+  refreshTagPreferenceUi() {
+    if (this.videoModal?.refreshTagPreferenceStates) {
+      try {
+        this.videoModal.refreshTagPreferenceStates();
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to refresh video modal tag preference states:",
+          error,
+        );
+      }
+    }
+
+    if (this.videoListView?.refreshTagPreferenceStates) {
+      try {
+        this.videoListView.refreshTagPreferenceStates();
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to refresh list view tag preference states:",
+          error,
+        );
+      }
+    }
+
+    this.refreshActiveTagPreferenceMenus();
+  }
+
+  refreshActiveTagPreferenceMenus() {
+    if (!this.tagPreferencePopovers) {
+      return;
+    }
+
+    const isLoggedIn = this.isUserLoggedIn();
+    this.tagPreferencePopovers.forEach((entry) => {
+      if (!entry) {
+        return;
+      }
+
+      const buttons = entry.buttons || {};
+      if (!buttons || Object.keys(buttons).length === 0) {
+        return;
+      }
+
+      try {
+        applyTagPreferenceMenuState({
+          buttons,
+          membership: this.getTagPreferenceMembership(entry.tag),
+          isLoggedIn,
+        });
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to refresh tag preference menu state:",
+          error,
+        );
+      }
+    });
   }
 
   async loadHashtagPreferencesForPubkey(pubkey) {
@@ -7472,6 +7621,7 @@ class Application {
     }
 
     this.closeVideoSettingsMenu({ restoreFocus: options?.restoreFocus !== false });
+    this.closeTagPreferenceMenus({ restoreFocus: options?.restoreFocus !== false });
   }
 
   attachMoreMenuHandlers(container) {
@@ -7663,6 +7813,237 @@ class Application {
       }
     });
     return closed;
+  }
+
+  ensureTagPreferencePopover(detail = {}) {
+    const triggerCandidate = detail?.trigger || null;
+    const trigger =
+      triggerCandidate && triggerCandidate.nodeType === 1 ? triggerCandidate : null;
+    const rawTag = typeof detail?.tag === "string" ? detail.tag : "";
+    const tag = rawTag.trim();
+
+    if (!trigger || !tag) {
+      return null;
+    }
+
+    let entry = this.tagPreferencePopovers.get(trigger);
+
+    const render = ({ document: documentRef, close }) => {
+      const menu = createTagPreferenceMenu({
+        document: documentRef,
+        tag: entry.tag,
+        isLoggedIn: this.isUserLoggedIn(),
+        membership: this.getTagPreferenceMembership(entry.tag),
+        designSystem: this.designSystemContext,
+        onAction: (action, actionDetail = {}) => {
+          this.handleTagPreferenceMenuAction(action, {
+            tag: entry.tag,
+            trigger,
+            video: entry.video || null,
+            closePopover: close,
+            actionDetail,
+          });
+        },
+      });
+
+      if (!menu?.panel) {
+        return null;
+      }
+
+      entry.panel = menu.panel;
+      entry.buttons = menu.buttons;
+      return menu.panel;
+    };
+
+    if (!entry) {
+      entry = {
+        trigger,
+        tag,
+        context: detail.context || "",
+        video: detail.video || null,
+        panel: null,
+        buttons: null,
+        popover: null,
+      };
+
+      const ownerDocument =
+        trigger.ownerDocument || (typeof document !== "undefined" ? document : null);
+
+      const popover = createPopover(trigger, render, {
+        document: ownerDocument,
+        placement: "bottom-start",
+        restoreFocusOnClose: true,
+      });
+
+      if (!popover) {
+        return null;
+      }
+
+      const originalDestroy = popover.destroy?.bind(popover);
+      if (typeof originalDestroy === "function") {
+        popover.destroy = (...args) => {
+          originalDestroy(...args);
+          if (this.tagPreferencePopovers.get(trigger) === entry) {
+            this.tagPreferencePopovers.delete(trigger);
+          }
+        };
+      }
+
+      entry.popover = popover;
+      this.tagPreferencePopovers.set(trigger, entry);
+    } else {
+      entry.tag = tag;
+      entry.context = detail.context || entry.context || "";
+      entry.video = detail.video || entry.video || null;
+    }
+
+    return entry;
+  }
+
+  requestTagPreferenceMenu(detail = {}) {
+    const entry = this.ensureTagPreferencePopover(detail);
+    if (!entry?.popover) {
+      return;
+    }
+
+    const popover = entry.popover;
+    const restoreFocus = detail.restoreFocus !== false;
+
+    if (typeof popover.isOpen === "function" && popover.isOpen()) {
+      popover.close({ restoreFocus });
+      return;
+    }
+
+    this.closeTagPreferenceMenus({
+      restoreFocus: false,
+      skipTrigger: entry.trigger,
+    });
+    this.closeVideoSettingsMenu({ restoreFocus: false });
+    this.closeAllMoreMenus({
+      restoreFocus: false,
+      skipTrigger: entry.trigger,
+      skipView: true,
+    });
+
+    popover
+      .open()
+      .then(() => {
+        this.refreshActiveTagPreferenceMenus();
+      })
+      .catch((error) =>
+        userLogger.error("[TagPreferenceMenu] Failed to open popover:", error),
+      );
+  }
+
+  closeTagPreferenceMenus(detail = {}) {
+    const triggerCandidate = detail?.trigger || null;
+    const trigger =
+      triggerCandidate && triggerCandidate.nodeType === 1 ? triggerCandidate : null;
+    const restoreFocus = detail?.restoreFocus !== false;
+    const skipTrigger = detail?.skipTrigger || null;
+
+    if (trigger) {
+      const entry = this.tagPreferencePopovers.get(trigger);
+      if (entry?.popover && typeof entry.popover.close === "function") {
+        return entry.popover.close({ restoreFocus });
+      }
+      return false;
+    }
+
+    let closed = false;
+    this.tagPreferencePopovers.forEach((entry, key) => {
+      if (!entry?.popover || typeof entry.popover.close !== "function") {
+        return;
+      }
+      if (skipTrigger && key === skipTrigger) {
+        return;
+      }
+      const result = entry.popover.close({ restoreFocus });
+      closed = closed || result;
+    });
+    return closed;
+  }
+
+  handleTagPreferenceMenuAction(action, detail = {}) {
+    const tag = typeof detail?.tag === "string" ? detail.tag : "";
+    if (!tag) {
+      return;
+    }
+
+    const service = this.hashtagPreferences;
+    if (!service) {
+      return;
+    }
+
+    let result = false;
+    try {
+      switch (action) {
+        case TAG_PREFERENCE_ACTIONS.ADD_INTEREST:
+          result = service.addInterest(tag);
+          break;
+        case TAG_PREFERENCE_ACTIONS.REMOVE_INTEREST:
+          result = service.removeInterest(tag);
+          break;
+        case TAG_PREFERENCE_ACTIONS.ADD_DISINTEREST:
+          result = service.addDisinterest(tag);
+          break;
+        case TAG_PREFERENCE_ACTIONS.REMOVE_DISINTEREST:
+          result = service.removeDisinterest(tag);
+          break;
+        default:
+          userLogger.warn(`[TagPreferenceMenu] Unhandled action: ${action}`);
+          return;
+      }
+    } catch (error) {
+      devLogger.error(
+        "[Application] Failed to mutate hashtag preference via menu:",
+        error,
+      );
+      const message = this.describeHashtagPreferencesError(error, {
+        operation: "update",
+      });
+      if (message) {
+        this.showError(message);
+      }
+      return;
+    }
+
+    if (!result) {
+      return;
+    }
+
+    this.updateCachedHashtagPreferences();
+    this.refreshTagPreferenceUi();
+
+    if (typeof detail?.closePopover === "function") {
+      detail.closePopover({ restoreFocus: false });
+    }
+  }
+
+  handleTagPreferenceActivation(detail = {}) {
+    const tag = typeof detail?.tag === "string" ? detail.tag : "";
+    if (!tag) {
+      return;
+    }
+
+    const triggerCandidate = detail?.trigger || null;
+    const trigger =
+      triggerCandidate && triggerCandidate.nodeType === 1 ? triggerCandidate : null;
+    if (!trigger) {
+      return;
+    }
+
+    if (detail?.event) {
+      detail.event.preventDefault?.();
+      detail.event.stopPropagation?.();
+    }
+
+    this.requestTagPreferenceMenu({
+      trigger,
+      tag,
+      context: detail?.context || "",
+      video: detail?.video || null,
+    });
   }
 
   syncModalMoreMenuData() {
@@ -10229,6 +10610,13 @@ class Application {
         );
         this.boundVideoModalShareHandler = null;
       }
+      if (this.boundVideoModalTagActivateHandler) {
+        this.videoModal.removeEventListener(
+          "tag:activate",
+          this.boundVideoModalTagActivateHandler,
+        );
+        this.boundVideoModalTagActivateHandler = null;
+      }
       if (this.boundVideoModalSimilarSelectHandler) {
         this.videoModal.removeEventListener(
           "similar:select",
@@ -10329,18 +10717,29 @@ class Application {
       }
     }
 
+    this.closeTagPreferenceMenus({ restoreFocus: false });
+    if (this.tagPreferencePopovers) {
+      this.tagPreferencePopovers.clear();
+    }
+
     if (this.videoListView) {
       if (this.moreMenuController) {
         this.moreMenuController.detachVideoListView();
       }
-      this.videoListView.setPlaybackHandler(null);
-      this.videoListView.setEditHandler(null);
-      this.videoListView.setRevertHandler(null);
-      this.videoListView.setDeleteHandler(null);
-      this.videoListViewPlaybackHandler = null;
-      this.videoListViewEditHandler = null;
-      this.videoListViewRevertHandler = null;
-      this.videoListViewDeleteHandler = null;
+    this.videoListView.setPlaybackHandler(null);
+    this.videoListView.setEditHandler(null);
+    this.videoListView.setRevertHandler(null);
+    this.videoListView.setDeleteHandler(null);
+    if (typeof this.videoListView.setTagPreferenceStateResolver === "function") {
+      this.videoListView.setTagPreferenceStateResolver(null);
+    }
+    if (typeof this.videoListView.setTagActivationHandler === "function") {
+      this.videoListView.setTagActivationHandler(null);
+    }
+    this.videoListViewPlaybackHandler = null;
+    this.videoListViewEditHandler = null;
+    this.videoListViewRevertHandler = null;
+    this.videoListViewDeleteHandler = null;
       try {
         this.videoListView.destroy();
       } catch (error) {

@@ -2342,6 +2342,14 @@
     @apply px-2 py-0.5 text-2xs;
   }
 
+  .video-tag-pill[data-preference-state="interest"] {
+    @apply border-status-success-border bg-status-success-surface text-status-success-on;
+  }
+
+  .video-tag-pill[data-preference-state="disinterest"] {
+    @apply border-status-danger-border bg-status-danger-surface text-status-danger-on;
+  }
+
   .video-tag-pill__label {
     @apply transition-opacity duration-150 ease-in-out;
     opacity: 1;
