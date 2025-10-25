@@ -19,7 +19,7 @@
 - `hideIfTrustedMuteCount(author) >= DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD`
 - `hideIfTrustedSpamReports(event) >= DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD`
 
-Threshold constants are exported from [`config/instance-config.js`](../../config/instance-config.js) so operators can change the defaults without touching moderation code. The upstream repo ships with blur at 3, autoplay block at 2, trusted mute hide at 1, and trusted spam hide at 3.
+Threshold constants are exported from [`config/instance-config.js`](../../config/instance-config.js) so operators can change the defaults without touching moderation code. Inspect the `DEFAULT_BLUR_THRESHOLD`, `DEFAULT_AUTOPLAY_BLOCK_THRESHOLD`, `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD`, and `DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD` exports to set your policy. The upstream repo includes example values (blur at 3, autoplay block at 2, trusted mute hide at 1, trusted spam hide at 3), but treat those as guidance rather than hard-coded requirements.
 
 ### Why these numbers?
 - F1-only reports resist Sybil attacks.
