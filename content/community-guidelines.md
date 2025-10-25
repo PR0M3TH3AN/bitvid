@@ -56,7 +56,7 @@ To maintain a functional and ethical platform, the following types of content ar
 
 bitvid enforces these guidelines through client-side visibility rules that match the current `moreMenuController` and `userBlocks` behavior:
 
-- **Blurred previews:** When trusted NIP-56 `nudity` reports reach the configured blur threshold (`DEFAULT_BLUR_THRESHOLD` in [`config/instance-config.js`](../config/instance-config.js); upstream default: three trusted reporters), thumbnails render blurred and autoplay previews pause. Every blur includes a “show anyway” override.
+- **Blurred previews:** When trusted NIP-56 `nudity` reports reach the configured blur threshold (`DEFAULT_BLUR_THRESHOLD` in [`config/instance-config.js`](../config/instance-config.js)), thumbnails render blurred and autoplay previews pause. Every blur includes a “show anyway” override. The upstream configuration currently uses three trusted reporters, but adjust the export to match your policy.
 - **Downranked authors:** Muting a creator adds them to your NIP-51 mute list (kind `10000`). Videos from muted creators are deprioritized but still visible with clear badges so you can reverse the action.
 - **Personal blocks:** Blocking a creator adds them to your private block list (`userBlocks`). Videos from blocked creators are hidden from feeds, carousels, and modals unless you explicitly unblock them.
 - **Admin hard hides:** Moderator-maintained blacklists (NIP-51 kind `30000`) remove creators from default feeds for everyone using the hosted client. Moderators can still review the content through “show anyway” controls when auditing decisions.
@@ -88,7 +88,7 @@ You can manage moderation directly from the client using the existing menus rend
 
 ### **5.5 Safety & Moderation thresholds**
 
-- Open your profile avatar → **Profile** → **Safety & Moderation** to adjust blur and autoplay thresholds. Leave a field blank to return to the defaults exported from [`config/instance-config.js`](../config/instance-config.js) (`DEFAULT_BLUR_THRESHOLD`, `DEFAULT_AUTOPLAY_BLOCK_THRESHOLD`, `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD`, `DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD`). The hosted client currently ships with blur at 3 trusted reports, autoplay block at 2, trusted mute hide at 1, and trusted spam hide at 3.
+- Open your profile avatar → **Profile** → **Safety & Moderation** to adjust blur and autoplay thresholds. Leave a field blank to return to the defaults exported from [`config/instance-config.js`](../config/instance-config.js) (`DEFAULT_BLUR_THRESHOLD`, `DEFAULT_AUTOPLAY_BLOCK_THRESHOLD`, `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD`, `DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD`). The upstream repo ships example values of 3 trusted reports for blur, 2 for autoplay blocking, 1 trusted mute to hide authors, and 3 trusted spam reports to hide videos—tune the config file before deployment if your community needs different baselines.
 - These controls update immediately and sync with the moderation overlays applied by `moreMenuController` and `VideoCard` components. Operators can edit the config file to change the baseline before deploying their own instance.
 
 ## **6. Appeals and Feedback**
