@@ -75,6 +75,12 @@ New operators should also note that fresh viewer accounts automatically inherit 
 
 The profile modal now exposes blur, autoplay, and hide thresholds so operators can dial in stricter or more permissive behavior. Enter a non-negative whole number to override the default or leave the field blank to fall back to the baseline values from [`config/instance-config.js`](../../config/instance-config.js) (`DEFAULT_BLUR_THRESHOLD`, `DEFAULT_AUTOPLAY_BLOCK_THRESHOLD`, `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD`, `DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD`). Adjustments are stored locally, applied immediately to the active feed, and rehydrate on every load. Update the config file to change the per-instance defaults that new viewers see.
 
+### Personal hashtag preferences
+
+- The Profile modal’s Hashtags tab is wired to [`HashtagPreferencesService`](../../js/services/hashtagPreferencesService.js), which maintains a local snapshot of the viewer’s interests and disinterests, normalizes every tag, and guarantees that the two sets stay mutually exclusive before broadcasting UI change events.【F:js/services/hashtagPreferencesService.js†L206-L276】【F:js/services/hashtagPreferencesService.js†L304-L324】
+- `bitvidApp` resolves the active pubkey’s preferences at login, listens for `CHANGE` events, and forwards the normalized snapshot to controllers so moderation and discovery logic can react without querying relays again.【F:js/app.js†L3811-L3906】【F:js/app.js†L3940-L4050】
+- Publishing writes a replaceable `kind 30005` list with `d=bitvid:tag-preferences`, encrypting the `{ version, interests, disinterests }` payload via the best available NIP-44/NIP-04 scheme before hitting every configured write relay.【F:docs/nostr-event-schemas.md†L150-L168】【F:js/services/hashtagPreferencesService.js†L520-L711】
+
 ### Runtime flags
 
 - `TRUSTED_MUTE_HIDE_THRESHOLD` — numeric default for the trusted mute hide control. Initialized from `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD` in [`config/instance-config.js`](../../config/instance-config.js); the upstream config sets this to `1`, but adjust the export to match your policy.
