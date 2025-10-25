@@ -1,6 +1,10 @@
 import { normalizeDesignSystemContext } from "../../designSystem.js";
 import { updateVideoCardSourceVisibility } from "../../utils/cardSourceVisibility.js";
 import { userLogger } from "../../utils/logger.js";
+import {
+  applyModerationContextDatasets,
+  normalizeVideoModerationContext,
+} from "../moderationUiHelpers.js";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
@@ -974,162 +978,7 @@ export class VideoCard {
   }
 
   getModerationContext() {
-    const moderation =
-      this.video?.moderation && typeof this.video.moderation === "object"
-        ? this.video.moderation
-        : null;
-
-    const summary =
-      moderation?.summary && typeof moderation.summary === "object"
-        ? moderation.summary
-        : null;
-
-    let reportType = "";
-    if (typeof moderation?.reportType === "string" && moderation.reportType.trim()) {
-      reportType = moderation.reportType.trim().toLowerCase();
-    }
-
-    if (!reportType && summary && summary.types && typeof summary.types === "object") {
-      for (const [type, stats] of Object.entries(summary.types)) {
-        if (stats && Number.isFinite(stats.trusted) && Math.floor(stats.trusted) > 0) {
-          reportType = String(type).toLowerCase();
-          break;
-        }
-      }
-    }
-
-    let trustedCount = Number.isFinite(moderation?.trustedCount)
-      ? Math.max(0, Math.floor(moderation.trustedCount))
-      : 0;
-
-    if (!trustedCount && summary && summary.types && typeof summary.types === "object") {
-      for (const stats of Object.values(summary.types)) {
-        if (stats && Number.isFinite(stats.trusted)) {
-          trustedCount = Math.max(trustedCount, Math.floor(stats.trusted));
-        }
-      }
-    }
-
-    const reporterDisplayNames = Array.isArray(moderation?.reporterDisplayNames)
-      ? moderation.reporterDisplayNames
-          .map((name) => (typeof name === "string" ? name.trim() : ""))
-          .filter(Boolean)
-      : [];
-
-    const trustedMuted = moderation?.trustedMuted === true;
-    let trustedMuteCount = Number.isFinite(moderation?.trustedMuteCount)
-      ? Math.max(0, Math.floor(moderation.trustedMuteCount))
-      : 0;
-
-    if (!trustedMuteCount && Array.isArray(moderation?.trustedMuters)) {
-      const muters = moderation.trustedMuters
-        .map((value) => (typeof value === "string" ? value.trim() : ""))
-        .filter(Boolean);
-      trustedMuteCount = muters.length;
-    }
-
-    const trustedMuteDisplayNames = Array.isArray(moderation?.trustedMuterDisplayNames)
-      ? moderation.trustedMuterDisplayNames
-          .map((name) => (typeof name === "string" ? name.trim() : ""))
-          .filter(Boolean)
-      : [];
-
-    const original =
-      moderation?.original && typeof moderation.original === "object"
-        ? moderation.original
-        : {};
-
-    const activeHidden = moderation?.hidden === true;
-    const originalHidden = original.hidden === true;
-    const hideReasonActive =
-      typeof moderation?.hideReason === "string" ? moderation.hideReason.trim() : "";
-    const hideBypassActive =
-      typeof moderation?.hideBypass === "string" ? moderation.hideBypass.trim() : "";
-    const originalHideReason =
-      typeof original.hideReason === "string" ? original.hideReason.trim() : "";
-    const originalHideBypass =
-      typeof original.hideBypass === "string" ? original.hideBypass.trim() : "";
-    const originalHideTriggered = original.hideTriggered === true;
-
-    const normalizeHideCounts = (input) => {
-      if (!input || typeof input !== "object") {
-        return null;
-      }
-      const normalized = {};
-      let hasValue = false;
-      if (Number.isFinite(input.trustedMuteCount)) {
-        normalized.trustedMuteCount = Math.max(0, Math.floor(input.trustedMuteCount));
-        hasValue = true;
-      }
-      if (Number.isFinite(input.trustedReportCount)) {
-        normalized.trustedReportCount = Math.max(0, Math.floor(input.trustedReportCount));
-        hasValue = true;
-      }
-      return hasValue ? normalized : null;
-    };
-
-    const baseHideCounts = {
-      trustedMuteCount,
-      trustedReportCount: trustedCount,
-    };
-
-    const activeHideCounts =
-      normalizeHideCounts(moderation?.hideCounts) ||
-      (activeHidden || hideReasonActive ? { ...baseHideCounts } : null);
-    const originalHideCounts =
-      normalizeHideCounts(original?.hideCounts) ||
-      (originalHideTriggered ? { ...baseHideCounts } : null);
-
-    const effectiveHideReason = hideReasonActive || originalHideReason;
-    const effectiveHideCounts = activeHideCounts || originalHideCounts;
-
-    const blurReason =
-      typeof moderation?.blurReason === "string" ? moderation.blurReason.trim() : "";
-    const originalBlurReason =
-      typeof original?.blurReason === "string" ? original.blurReason.trim() : "";
-
-    const context = {
-      reportType,
-      friendlyType: reportType ? reportType.replace(/[_-]+/g, " ").trim() : "",
-      trustedCount,
-      reporterDisplayNames,
-      trustedMuted,
-      trustedMuteCount,
-      trustedMuteDisplayNames,
-      blurReason,
-      originalBlurReason,
-      originalBlur: original.blurThumbnail === true,
-      originalBlockAutoplay: original.blockAutoplay === true,
-      activeBlur: moderation?.blurThumbnail === true,
-      activeBlockAutoplay: moderation?.blockAutoplay === true,
-      overrideActive: moderation?.viewerOverride?.showAnyway === true,
-      activeHidden,
-      originalHidden,
-      originalHideTriggered,
-      hideReason: hideReasonActive,
-      hideCounts: activeHideCounts,
-      hideBypass: hideBypassActive,
-      originalHideReason,
-      originalHideCounts,
-      originalHideBypass,
-      effectiveHideReason,
-      effectiveHideCounts,
-    };
-
-    context.shouldShow =
-      context.originalBlur ||
-      context.originalBlockAutoplay ||
-      context.trustedCount > 0 ||
-      context.trustedMuted ||
-      context.overrideActive ||
-      context.originalHidden ||
-      context.activeHidden ||
-      context.originalHideTriggered;
-
-    context.allowOverride =
-      context.originalBlur || context.originalBlockAutoplay || context.originalHidden;
-
-    return context;
+    return normalizeVideoModerationContext(this.video?.moderation);
   }
 
   buildModerationReasonText(context) {
@@ -2372,114 +2221,12 @@ export class VideoCard {
   }
 
   applyModerationDatasets(context = this.getModerationContext()) {
-    if (!this.root) {
-      return;
-    }
-
-    if (context.originalBlockAutoplay && !context.overrideActive) {
-      this.root.dataset.autoplayPolicy = "blocked";
-    } else if (this.root.dataset.autoplayPolicy) {
-      delete this.root.dataset.autoplayPolicy;
-    }
-
-    if (context.overrideActive) {
-      this.root.dataset.moderationOverride = "show-anyway";
-    } else if (this.root.dataset.moderationOverride) {
-      delete this.root.dataset.moderationOverride;
-    }
-
-    if (this.thumbnailEl && !this.shouldMaskNsfwForOwner) {
-      if (context.activeBlur) {
-        this.thumbnailEl.dataset.thumbnailState = "blurred";
-      } else if (this.thumbnailEl.dataset.thumbnailState === "blurred") {
-        delete this.thumbnailEl.dataset.thumbnailState;
-      }
-    }
-
-    if (this.authorPicEl && !this.shouldMaskNsfwForOwner) {
-      if (context.activeBlur) {
-        this.authorPicEl.dataset.visualState = "blurred";
-      } else if (this.authorPicEl.dataset.visualState) {
-        delete this.authorPicEl.dataset.visualState;
-      }
-    }
-
-    const reportCount = Math.max(0, Number(context.trustedCount) || 0);
-    if (reportCount > 0) {
-      this.root.dataset.moderationReportCount = String(reportCount);
-      if (context.reportType) {
-        this.root.dataset.moderationReportType = context.reportType;
-      } else if (this.root.dataset.moderationReportType) {
-        delete this.root.dataset.moderationReportType;
-      }
-    } else {
-      if (this.root.dataset.moderationReportType) {
-        delete this.root.dataset.moderationReportType;
-      }
-      if (this.root.dataset.moderationReportCount) {
-        delete this.root.dataset.moderationReportCount;
-      }
-    }
-
-    if (context.trustedMuted) {
-      this.root.dataset.moderationTrustedMute = "true";
-      const muteCount = Math.max(0, Number(context.trustedMuteCount) || 0);
-      if (muteCount > 0) {
-        this.root.dataset.moderationTrustedMuteCount = String(muteCount);
-      } else if (this.root.dataset.moderationTrustedMuteCount) {
-        delete this.root.dataset.moderationTrustedMuteCount;
-      }
-    } else {
-      if (this.root.dataset.moderationTrustedMute) {
-        delete this.root.dataset.moderationTrustedMute;
-      }
-      if (this.root.dataset.moderationTrustedMuteCount) {
-        delete this.root.dataset.moderationTrustedMuteCount;
-      }
-    }
-
-    if (context.activeHidden && !context.overrideActive) {
-      this.root.dataset.moderationHidden = "true";
-      const reason = context.effectiveHideReason || context.hideReason;
-      if (reason) {
-        this.root.dataset.moderationHideReason = reason;
-      } else if (this.root.dataset.moderationHideReason) {
-        delete this.root.dataset.moderationHideReason;
-      }
-
-      const counts = context.hideCounts || context.effectiveHideCounts || null;
-      const muteCount = counts && Number.isFinite(counts.trustedMuteCount)
-        ? Math.max(0, Number(counts.trustedMuteCount))
-        : null;
-      const reportCountHide = counts && Number.isFinite(counts.trustedReportCount)
-        ? Math.max(0, Number(counts.trustedReportCount))
-        : null;
-
-      if (muteCount !== null) {
-        this.root.dataset.moderationHideTrustedMuteCount = String(muteCount);
-      } else if (this.root.dataset.moderationHideTrustedMuteCount) {
-        delete this.root.dataset.moderationHideTrustedMuteCount;
-      }
-
-      if (reportCountHide !== null) {
-        this.root.dataset.moderationHideTrustedReportCount = String(reportCountHide);
-      } else if (this.root.dataset.moderationHideTrustedReportCount) {
-        delete this.root.dataset.moderationHideTrustedReportCount;
-      }
-    } else {
-      if (this.root.dataset.moderationHidden) {
-        delete this.root.dataset.moderationHidden;
-      }
-      if (this.root.dataset.moderationHideReason) {
-        delete this.root.dataset.moderationHideReason;
-      }
-      if (this.root.dataset.moderationHideTrustedMuteCount) {
-        delete this.root.dataset.moderationHideTrustedMuteCount;
-      }
-      if (this.root.dataset.moderationHideTrustedReportCount) {
-        delete this.root.dataset.moderationHideTrustedReportCount;
-      }
-    }
+    applyModerationContextDatasets(context, {
+      root: this.root,
+      thumbnail: this.thumbnailEl,
+      avatar: this.authorPicEl,
+      shouldMaskNsfwForOwner: this.shouldMaskNsfwForOwner,
+    });
   }
 
   applyPlaybackDatasets() {
