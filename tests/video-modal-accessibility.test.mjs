@@ -172,6 +172,16 @@ export async function setupModal({ lazyLoad = false } = {}) {
     setGlobalModalState: () => {},
     document,
     logger: console,
+    assets: {
+      fallbackThumbnailSrc: "",
+    },
+    state: {
+      loadedThumbnails: new Map(),
+    },
+    helpers: {
+      safeEncodeNpub: (pubkey) => `npub:${pubkey}`,
+      formatShortNpub: (value) => value,
+    },
   });
 
   let playerModal = document.querySelector("#playerModal");

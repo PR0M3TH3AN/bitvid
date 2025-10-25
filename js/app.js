@@ -728,6 +728,16 @@ class Application {
           log: (message, ...args) => this.log(message, ...args),
         },
         mediaLoader: this.mediaLoader,
+        assets: {
+          fallbackThumbnailSrc: FALLBACK_THUMBNAIL_SRC,
+        },
+        state: {
+          loadedThumbnails: this.loadedThumbnails,
+        },
+        helpers: {
+          safeEncodeNpub: (pubkey) => this.safeEncodeNpub(pubkey),
+          formatShortNpub: (value) => formatShortNpub(value),
+        },
       });
 
     if (
