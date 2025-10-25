@@ -1430,7 +1430,9 @@
     @apply border-opacity-60 shadow-lg;
   }
 
-  .card img[data-thumbnail-state="blurred"] {
+  .card img[data-thumbnail-state="blurred"],
+  .card img[data-visual-state="blurred"],
+  .channel-profile-container img[data-visual-state="blurred"] {
     @apply transition duration-base ease-in-out;
     filter: blur(var(--blur-thumbnail-blur));
     transform: scale(1.05);

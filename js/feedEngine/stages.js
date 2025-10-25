@@ -583,7 +583,8 @@ export function createModerationStage({
         trustedMuters = [];
       }
 
-      const blockAutoplay = trustedCount >= normalizedAutoplayThreshold;
+      const blockAutoplay =
+        trustedCount >= normalizedAutoplayThreshold || trustedMuted;
       const blurFromReports = trustedCount >= normalizedBlurThreshold;
       let blurThumbnail = blurFromReports;
       let blurReason = blurThumbnail ? "trusted-report" : "";

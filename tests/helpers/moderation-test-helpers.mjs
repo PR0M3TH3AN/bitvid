@@ -197,6 +197,7 @@ export async function createModerationAppHarness() {
   app.deriveModerationTrustedCount = Application.prototype.deriveModerationTrustedCount;
   app.getReporterDisplayName = Application.prototype.getReporterDisplayName;
   app.handleModerationOverride = Application.prototype.handleModerationOverride;
+  app.handleModerationHide = Application.prototype.handleModerationHide;
 
   app.videosMap = new Map();
   app.currentVideo = null;

@@ -114,6 +114,7 @@ export class VideoCard {
       onRequestSettingsMenu: null,
       onCloseSettingsMenu: null,
       onModerationOverride: null,
+      onModerationHide: null,
     };
 
     this.moderationBadgeEl = null;
@@ -121,10 +122,12 @@ export class VideoCard {
     this.moderationBadgeIconWrapper = null;
     this.moderationBadgeIconSvg = null;
     this.moderationActionButton = null;
+    this.moderationHideButton = null;
     this.moderationBadgeId = "";
     this.badgesContainerEl = null;
     this.hiddenSummaryEl = null;
     this.boundShowAnywayHandler = (event) => this.handleShowAnywayClick(event);
+    this.boundModerationHideHandler = (event) => this.handleModerationHideClick(event);
 
     this.root = null;
     this.anchorEl = null;
@@ -198,6 +201,10 @@ export class VideoCard {
 
   set onModerationOverride(fn) {
     this.callbacks.onModerationOverride = typeof fn === "function" ? fn : null;
+  }
+
+  set onModerationHide(fn) {
+    this.callbacks.onModerationHide = typeof fn === "function" ? fn : null;
   }
 
   set onMoreAction(fn) {
@@ -1264,6 +1271,80 @@ export class VideoCard {
     return button;
   }
 
+  createModerationHideButton() {
+    const button = this.createElement("button", {
+      classNames: ["moderation-badge__action", "flex-shrink-0"],
+      attrs: {
+        type: "button",
+        "data-moderation-action": "hide",
+        "aria-describedby": this.getModerationBadgeId(),
+      },
+      textContent: "Hide",
+    });
+    button.addEventListener("click", this.boundModerationHideHandler);
+    return button;
+  }
+
+  handleModerationHideClick(event) {
+    if (event) {
+      if (typeof event.preventDefault === "function") {
+        event.preventDefault();
+      }
+      if (typeof event.stopPropagation === "function") {
+        event.stopPropagation();
+      }
+    }
+
+    const button = this.moderationHideButton;
+    if (button) {
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+    }
+
+    if (!this.callbacks.onModerationHide) {
+      if (button) {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+      }
+      return;
+    }
+
+    let result;
+    try {
+      result = this.callbacks.onModerationHide({
+        event,
+        video: this.video,
+        card: this,
+      });
+    } catch (error) {
+      userLogger.warn("[VideoCard] onModerationHide callback threw", error);
+      if (button) {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+      }
+      return;
+    }
+
+    Promise.resolve(result)
+      .then((handled) => {
+        if (handled === false) {
+          if (button) {
+            button.disabled = false;
+            button.removeAttribute("aria-busy");
+          }
+          return;
+        }
+        this.refreshModerationUi();
+      })
+      .catch((error) => {
+        userLogger.warn("[VideoCard] Moderation hide failed", error);
+        if (button) {
+          button.disabled = false;
+          button.removeAttribute("aria-busy");
+        }
+      });
+  }
+
   handleShowAnywayClick(event) {
     if (event) {
       if (typeof event.preventDefault === "function") {
@@ -1389,6 +1470,16 @@ export class VideoCard {
     return wrapper;
   }
 
+  shouldShowModerationHideButton(context = this.getModerationContext()) {
+    if (!context || !context.trustedMuted) {
+      return false;
+    }
+    if (context.activeHidden && !context.overrideActive) {
+      return false;
+    }
+    return true;
+  }
+
   buildModerationBadge(context = this.getModerationContext()) {
     if (!context.shouldShow) {
       this.moderationBadgeEl = null;
@@ -1402,6 +1493,13 @@ export class VideoCard {
         );
       }
       this.moderationActionButton = null;
+      if (this.moderationHideButton) {
+        this.moderationHideButton.removeEventListener(
+          "click",
+          this.boundModerationHideHandler,
+        );
+      }
+      this.moderationHideButton = null;
       return null;
     }
 
@@ -1490,6 +1588,24 @@ export class VideoCard {
       this.moderationActionButton = null;
     }
 
+    if (this.shouldShowModerationHideButton(context)) {
+      if (!this.moderationHideButton) {
+        const hideButton = this.createModerationHideButton();
+        badge.appendChild(hideButton);
+        this.moderationHideButton = hideButton;
+      } else {
+        this.moderationHideButton.disabled = false;
+        this.moderationHideButton.removeAttribute("aria-busy");
+      }
+    } else if (this.moderationHideButton) {
+      this.moderationHideButton.removeEventListener(
+        "click",
+        this.boundModerationHideHandler,
+      );
+      this.moderationHideButton.remove();
+      this.moderationHideButton = null;
+    }
+
     return badge;
   }
 
@@ -1521,6 +1637,13 @@ export class VideoCard {
           "click",
           this.boundShowAnywayHandler,
         );
+      }
+      if (this.moderationHideButton) {
+        this.moderationHideButton.removeEventListener(
+          "click",
+          this.boundModerationHideHandler,
+        );
+        this.moderationHideButton = null;
       }
       this.moderationBadgeEl = null;
       this.moderationBadgeTextEl = null;
@@ -1669,6 +1792,24 @@ export class VideoCard {
     } else {
       this.moderationActionButton.disabled = false;
       this.moderationActionButton.removeAttribute("aria-busy");
+    }
+
+    if (this.shouldShowModerationHideButton(context)) {
+      if (!this.moderationHideButton) {
+        const hideButton = this.createModerationHideButton();
+        badge.appendChild(hideButton);
+        this.moderationHideButton = hideButton;
+      } else {
+        this.moderationHideButton.disabled = false;
+        this.moderationHideButton.removeAttribute("aria-busy");
+      }
+    } else if (this.moderationHideButton) {
+      this.moderationHideButton.removeEventListener(
+        "click",
+        this.boundModerationHideHandler,
+      );
+      this.moderationHideButton.remove();
+      this.moderationHideButton = null;
     }
   }
 
@@ -2252,6 +2393,14 @@ export class VideoCard {
         this.thumbnailEl.dataset.thumbnailState = "blurred";
       } else if (this.thumbnailEl.dataset.thumbnailState === "blurred") {
         delete this.thumbnailEl.dataset.thumbnailState;
+      }
+    }
+
+    if (this.authorPicEl && !this.shouldMaskNsfwForOwner) {
+      if (context.activeBlur) {
+        this.authorPicEl.dataset.visualState = "blurred";
+      } else if (this.authorPicEl.dataset.visualState) {
+        delete this.authorPicEl.dataset.visualState;
       }
     }
 

@@ -307,6 +307,86 @@ test("VideoCard blurs thumbnails when trusted mute triggers without reports", as
   assert.equal(video.moderation.blurReason, "trusted-mute");
   assert.equal(card.getModerationContext().activeBlur, true);
   assert.equal(card.thumbnailEl.dataset.thumbnailState, "blurred");
+  assert.equal(card.authorPicEl.dataset.visualState, "blurred");
+  assert.equal(card.getRoot().dataset.autoplayPolicy, "blocked");
   assert.equal(card.moderationBadgeEl.dataset.moderationState, "trusted-mute");
-  assert.equal(card.moderationBadgeTextEl.textContent, "Muted by a trusted contact");
+  assert.equal(
+    card.moderationBadgeTextEl.textContent,
+    "Autoplay blocked · Muted by a trusted contact",
+  );
+  assert.ok(card.moderationHideButton);
+  assert.equal(
+    card.moderationHideButton?.dataset?.moderationAction,
+    "hide",
+  );
+});
+
+test("VideoCard hide action restores trusted mute hide state after override", async (t) => {
+  const { document } = setupDom(t);
+  withMockedNostrTools(t);
+
+  const app = await createModerationAppHarness();
+  app.getActiveModerationThresholds = () => ({
+    autoplayBlockThreshold: Number.POSITIVE_INFINITY,
+    blurThreshold: Number.POSITIVE_INFINITY,
+    trustedMuteHideThreshold: 1,
+    trustedSpamHideThreshold: Number.POSITIVE_INFINITY,
+  });
+
+  const videoId = "d".repeat(64);
+  const video = {
+    id: videoId,
+    title: "Muted Hide Clip",
+    pubkey: "e".repeat(64),
+    moderation: {
+      trustedMuted: true,
+      trustedMuteCount: 1,
+      trustedMuters: ["f".repeat(64)],
+      trustedCount: 0,
+      reportType: "nudity",
+    },
+  };
+
+  app.videosMap.set(video.id, video);
+  app.currentVideo = video;
+  app.decorateVideoModeration(video);
+
+  const card = new VideoCard({
+    document,
+    video,
+    formatters: {
+      formatTimeAgo: () => "moments ago",
+    },
+    helpers: {
+      isMagnetSupported: () => false,
+    },
+  });
+
+  document.body.appendChild(card.getRoot());
+
+  assert.equal(card.getModerationContext().activeHidden, true);
+  assert.equal(card.getRoot().dataset.moderationHidden, "true");
+
+  card.onModerationOverride = ({ video: overrideVideo, card: overrideCard }) =>
+    app.handleModerationOverride({ video: overrideVideo, card: overrideCard });
+
+  card.moderationActionButton.click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  const contextAfterOverride = card.getModerationContext();
+  assert.equal(contextAfterOverride.overrideActive, true);
+  assert.equal(contextAfterOverride.activeHidden, false);
+  assert.ok(card.moderationHideButton);
+
+  card.onModerationHide = ({ video: targetVideo, card: targetCard }) =>
+    app.handleModerationHide({ video: targetVideo, card: targetCard });
+
+  card.moderationHideButton.click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  const contextAfterHide = card.getModerationContext();
+  assert.equal(contextAfterHide.overrideActive, false);
+  assert.equal(contextAfterHide.activeHidden, true);
+  assert.equal(card.getRoot().dataset.moderationHidden, "true");
+  assert.equal(card.moderationHideButton, null);
 });
