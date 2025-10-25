@@ -32,6 +32,8 @@ await (async () => {
     : nostrClient.writeRelays;
   const originalBlocked = new Set(userBlocks.blockedPubkeys);
   const originalBlockEventId = userBlocks.blockEventId;
+  const originalMuteEventId = userBlocks.muteEventId;
+  const originalMuteEventCreatedAt = userBlocks.muteEventCreatedAt;
   const originalLoaded = userBlocks.loaded;
 
   const calls = [];
@@ -124,6 +126,8 @@ await (async () => {
   } finally {
     userBlocks.blockedPubkeys = originalBlocked;
     userBlocks.blockEventId = originalBlockEventId;
+    userBlocks.muteEventId = originalMuteEventId;
+    userBlocks.muteEventCreatedAt = originalMuteEventCreatedAt;
     userBlocks.loaded = originalLoaded;
     nostrClient.pool = originalPool;
     nostrClient.relays = originalRelays;
@@ -154,6 +158,8 @@ await (async () => {
   const originalBlocked = new Set(userBlocks.blockedPubkeys);
   const originalBlockEventId = userBlocks.blockEventId;
   const originalBlockEventCreatedAt = userBlocks.blockEventCreatedAt;
+  const originalMuteEventId = userBlocks.muteEventId;
+  const originalMuteEventCreatedAt = userBlocks.muteEventCreatedAt;
   const originalLoaded = userBlocks.loaded;
 
   const calls = [];
@@ -277,6 +283,8 @@ await (async () => {
     userBlocks.blockedPubkeys = originalBlocked;
     userBlocks.blockEventId = originalBlockEventId;
     userBlocks.blockEventCreatedAt = originalBlockEventCreatedAt;
+    userBlocks.muteEventId = originalMuteEventId;
+    userBlocks.muteEventCreatedAt = originalMuteEventCreatedAt;
     userBlocks.loaded = originalLoaded;
     nostrClient.pool = originalPool;
     nostrClient.relays = originalRelays;
@@ -298,6 +306,8 @@ await (async () => {
   const originalBlockEventId = userBlocks.blockEventId;
   const originalBlockEventCreatedAt = userBlocks.blockEventCreatedAt;
   const originalLastPublishedCreatedAt = userBlocks.lastPublishedCreatedAt;
+  const originalMuteEventId = userBlocks.muteEventId;
+  const originalMuteEventCreatedAt = userBlocks.muteEventCreatedAt;
   const originalLoaded = userBlocks.loaded;
   const originalSeedStateCache = userBlocks.seedStateCache;
   const originalNostrTools = window.NostrTools;
@@ -343,6 +353,8 @@ await (async () => {
   userBlocks.blockEventId = null;
   userBlocks.blockEventCreatedAt = null;
   userBlocks.lastPublishedCreatedAt = null;
+  userBlocks.muteEventId = null;
+  userBlocks.muteEventCreatedAt = null;
   userBlocks.loaded = false;
   userBlocks.seedStateCache = new Map();
 
@@ -435,6 +447,8 @@ await (async () => {
     userBlocks.blockEventId = originalBlockEventId;
     userBlocks.blockEventCreatedAt = originalBlockEventCreatedAt;
     userBlocks.lastPublishedCreatedAt = originalLastPublishedCreatedAt;
+    userBlocks.muteEventId = originalMuteEventId;
+    userBlocks.muteEventCreatedAt = originalMuteEventCreatedAt;
     userBlocks.loaded = originalLoaded;
     userBlocks.seedStateCache = originalSeedStateCache;
     window.NostrTools = originalNostrTools;
@@ -450,6 +464,8 @@ await (async () => {
   const originalBlockEventId = userBlocks.blockEventId;
   const originalBlockEventCreatedAt = userBlocks.blockEventCreatedAt;
   const originalLastPublishedCreatedAt = userBlocks.lastPublishedCreatedAt;
+  const originalMuteEventId = userBlocks.muteEventId;
+  const originalMuteEventCreatedAt = userBlocks.muteEventCreatedAt;
   const originalLoaded = userBlocks.loaded;
   const originalPool = nostrClient.pool;
   const originalRelays = Array.isArray(nostrClient.relays)
@@ -477,6 +493,8 @@ await (async () => {
   const decryptPayloads = new Map([
     [latestCiphertext, JSON.stringify({ blockedPubkeys: [] })],
   ]);
+
+  const signedEvents = [];
 
   nostrClient.relays = ["wss://direct-signer.example"];
   nostrClient.writeRelays = nostrClient.relays;
@@ -530,13 +548,19 @@ await (async () => {
       decryptPayloads.set(cipher, plaintext);
       return cipher;
     },
+    nip44Encrypt: async (pubkey, plaintext) => {
+      assert.equal(pubkey, actor, "nip44 encrypt should target the actor pubkey");
+      return `nip44:${plaintext}`;
+    },
     signEvent: async (event) => {
       eventCounter += 1;
-      return {
+      const signed = {
         ...event,
         id: `event-${eventCounter}`,
         created_at: event.created_at ?? Math.floor(Date.now() / 1000),
       };
+      signedEvents.push(signed);
+      return signed;
     },
   });
 
@@ -582,11 +606,21 @@ await (async () => {
       0,
       "direct signer flows should never trigger extension permission prompts",
     );
+
+    const muteEvent = signedEvents.find((event) => event.kind === 10000);
+    assert(muteEvent, "block list updates should publish a kind 10000 mute list event");
+    assert(
+      Array.isArray(muteEvent.tags) &&
+        muteEvent.tags.some((tag) => Array.isArray(tag) && tag[0] === "p" && tag[1] === target),
+      "mute list event should include p-tags for blocked pubkeys",
+    );
   } finally {
     userBlocks.blockedPubkeys = originalBlocked;
     userBlocks.blockEventId = originalBlockEventId;
     userBlocks.blockEventCreatedAt = originalBlockEventCreatedAt;
     userBlocks.lastPublishedCreatedAt = originalLastPublishedCreatedAt;
+    userBlocks.muteEventId = originalMuteEventId;
+    userBlocks.muteEventCreatedAt = originalMuteEventCreatedAt;
     userBlocks.loaded = originalLoaded;
     nostrClient.pool = originalPool;
     nostrClient.relays = originalRelays;
