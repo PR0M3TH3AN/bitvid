@@ -201,6 +201,7 @@ export async function createModerationAppHarness() {
 
   app.videosMap = new Map();
   app.currentVideo = null;
+  app.pendingModeratedPlayback = null;
 
   return app;
 }

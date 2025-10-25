@@ -273,6 +273,7 @@ class Application {
     this.modalCommentLimit = 40;
     this.modalCommentLoadPromise = null;
     this.modalCommentPublishPromise = null;
+    this.pendingModeratedPlayback = null;
 
     this.nostrService = services.nostrService || nostrService;
     this.r2Service = services.r2Service || r2Service;
@@ -6260,6 +6261,82 @@ class Application {
     }
   }
 
+  shouldDeferModeratedPlayback(video) {
+    if (!video || typeof video !== "object") {
+      return false;
+    }
+
+    const moderation =
+      video.moderation && typeof video.moderation === "object"
+        ? video.moderation
+        : null;
+
+    if (!moderation) {
+      return false;
+    }
+
+    if (moderation.viewerOverride?.showAnyway === true) {
+      return false;
+    }
+
+    const blurActive = moderation.blurThumbnail === true;
+    const hiddenActive = moderation.hidden === true;
+
+    return blurActive || hiddenActive;
+  }
+
+  resumePendingModeratedPlayback(video) {
+    const pending = this.pendingModeratedPlayback;
+    if (!pending) {
+      return;
+    }
+
+    const activeVideo = this.currentVideo || null;
+    const targetVideo = video && typeof video === "object" ? video : activeVideo;
+    if (!targetVideo) {
+      return;
+    }
+
+    const pendingId =
+      typeof pending.videoId === "string" && pending.videoId ? pending.videoId : "";
+    const targetId =
+      typeof targetVideo.id === "string" && targetVideo.id ? targetVideo.id : "";
+
+    const matchesId = pendingId && targetId && pendingId === targetId;
+    const matchesActive = !pendingId && !targetId && targetVideo === activeVideo;
+
+    if (!matchesId && !matchesActive) {
+      return;
+    }
+
+    this.pendingModeratedPlayback = null;
+
+    if (typeof this.playVideoWithFallback !== "function") {
+      return;
+    }
+
+    const playbackOptions = {
+      url: pending.url || "",
+      magnet: pending.magnet || "",
+    };
+
+    if (pending.triggerProvided) {
+      playbackOptions.trigger = Object.prototype.hasOwnProperty.call(pending, "trigger")
+        ? pending.trigger
+        : this.lastModalTrigger || null;
+    }
+
+    const playbackPromise = this.playVideoWithFallback(playbackOptions);
+    if (playbackPromise && typeof playbackPromise.catch === "function") {
+      playbackPromise.catch((error) => {
+        devLogger.error(
+          "[Application] Failed to resume moderated playback:",
+          error,
+        );
+      });
+    }
+  }
+
   buildShareUrlFromNevent(nevent) {
     if (!nevent) {
       return "";
@@ -6376,6 +6453,7 @@ class Application {
     this.clearActiveIntervals();
     this.teardownModalViewCountSubscription();
     this.teardownModalReactionSubscription();
+    this.pendingModeratedPlayback = null;
     if (
       this.videoModal &&
       typeof this.videoModal.clearSimilarContent === "function"
@@ -7522,6 +7600,8 @@ class Application {
         );
       }
     }
+
+    this.resumePendingModeratedPlayback(target);
 
     return true;
   }
@@ -9658,6 +9738,7 @@ class Application {
 
     this.currentVideoPointer = null;
     this.currentVideoPointerKey = null;
+    this.pendingModeratedPlayback = null;
 
     if (this.blacklistedEventIds.has(eventId)) {
       this.showError("This content has been removed or is not allowed.");
@@ -9818,11 +9899,28 @@ class Application {
 
     await this.showModalWithPoster(this.currentVideo);
 
-    const playbackPromise = this.playVideoWithFallback({
+    const playbackOptions = {
       url: trimmedUrl,
       magnet: magnetInput,
-      trigger: hasTrigger ? this.lastModalTrigger : null,
-    });
+    };
+    if (hasTrigger) {
+      playbackOptions.trigger = this.lastModalTrigger;
+    }
+
+    let playbackPromise = null;
+    if (this.shouldDeferModeratedPlayback(this.currentVideo)) {
+      const pendingVideoId =
+        (this.currentVideo && typeof this.currentVideo.id === "string" && this.currentVideo.id)
+          ? this.currentVideo.id
+          : eventId || null;
+      this.pendingModeratedPlayback = {
+        ...playbackOptions,
+        triggerProvided: hasTrigger,
+        videoId: pendingVideoId,
+      };
+    } else {
+      playbackPromise = this.playVideoWithFallback(playbackOptions);
+    }
 
     let lightningAddress = "";
     let creatorProfile = {
@@ -10103,6 +10201,7 @@ class Application {
     this.subscribeModalViewCount(null, null);
     this.subscribeModalReactions(null, null);
     this.subscribeModalComments(null);
+    this.pendingModeratedPlayback = null;
 
     const sanitizedUrl = typeof url === "string" ? url.trim() : "";
     const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
