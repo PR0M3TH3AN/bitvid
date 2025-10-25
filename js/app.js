@@ -52,6 +52,7 @@ import NwcSettingsService from "./services/nwcSettingsService.js";
 import nostrService from "./services/nostrService.js";
 import DiscussionCountService from "./services/discussionCountService.js";
 import CommentThreadService from "./services/commentThreadService.js";
+import hashtagPreferences from "./services/hashtagPreferencesService.js";
 import { initQuickR2Upload } from "./r2-quick.js";
 import { createWatchHistoryRenderer } from "./historyView.js";
 import WatchHistoryController from "./ui/watchHistoryController.js";
@@ -298,6 +299,8 @@ class Application {
         notifyError: (message) => this.showError(message),
         maxWalletDefaultZap: MAX_WALLET_DEFAULT_ZAP,
       });
+    this.hashtagPreferences =
+      services.hashtagPreferences || hashtagPreferences;
     if (
       this.nwcSettingsService &&
       typeof this.nwcSettingsService.setActivePubkeyGetter === "function"
