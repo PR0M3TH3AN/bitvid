@@ -2556,7 +2556,15 @@ class Application {
 
     const sanitizedChildren = new Map();
     children.forEach((ids, parentId) => {
-      const filtered = ids.filter((id) => sanitizedComments.has(id));
+      const seen = new Set();
+      const filtered = [];
+      ids.forEach((id) => {
+        if (!sanitizedComments.has(id) || seen.has(id)) {
+          return;
+        }
+        seen.add(id);
+        filtered.push(id);
+      });
       sanitizedChildren.set(parentId, filtered);
     });
 
