@@ -29,6 +29,7 @@ test("renderTagPillStrip builds buttons with labels and icons", () => {
     assert.equal(button.dataset.tag, tag);
     assert.equal(button.title, `#${tag}`);
     assert.equal(button.dataset.preferenceState, "neutral");
+    assert.equal(button.hasAttribute("data-variant"), false);
 
     const label = button.querySelector(".video-tag-pill__label");
     assert(label, "label span should be present");
@@ -55,7 +56,9 @@ test("renderTagPillStrip applies preference state styling", () => {
   });
 
   assert.equal(buttons[0].dataset.preferenceState, "interest");
+  assert.equal(buttons[0].dataset.variant, "success");
   assert.equal(buttons[1].dataset.preferenceState, "disinterest");
+  assert.equal(buttons[1].dataset.variant, "critical");
 });
 
 test("renderTagPillStrip wires the activation callback", () => {
@@ -113,6 +116,7 @@ test("updateTagPillStrip replaces buttons and rewires handlers", () => {
   const updatedIcon = updatedButtons[0].querySelector(".video-tag-pill__icon svg");
   assert(updatedIcon, "updated button should contain the svg icon");
   assert.equal(updatedButtons[0].dataset.preferenceState, "interest");
+  assert.equal(updatedButtons[0].dataset.variant, "success");
 
   // Ensure the old handler is removed by dispatching a click on the detached button.
   initialButtons[0].dispatchEvent(new document.defaultView.Event("click", { bubbles: true }));
