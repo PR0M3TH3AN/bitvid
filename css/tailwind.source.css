@@ -1928,9 +1928,9 @@
 
   .player-modal__similar-card {
     --player-modal-similar-thumb: clamp(
-      8.75rem,
-      calc(var(--video-modal-secondary-min, 320px) * 0.48),
-      13.25rem
+      11rem,
+      calc(var(--video-modal-secondary-min, 320px) * 0.62),
+      17rem
     );
     --player-modal-similar-gap: clamp(var(--space-4xs), 0.65vw, var(--space-2xs));
     --player-modal-similar-padding: clamp(
@@ -1994,6 +1994,7 @@
     display: block;
     position: relative;
     inline-size: var(--player-modal-similar-thumb);
+    block-size: 100%;
     max-inline-size: clamp(
       calc(var(--space-2xl-plus) * 1.1),
       28vw,
@@ -2007,8 +2008,7 @@
   .player-modal__similar-card-media img {
     display: block;
     width: 100%;
-    height: auto;
-    aspect-ratio: 16 / 9;
+    height: 100%;
     object-fit: cover;
     border-radius: inherit;
   }
@@ -2218,6 +2218,10 @@
     @apply -mx-1 flex gap-2 overflow-x-auto px-1;
     scrollbar-gutter: stable both-edges;
     overscroll-behavior-x: contain;
+  }
+
+  .video-modal__similar .video-modal__tags {
+    margin-bottom: clamp(var(--space-xs), 0.9vw, var(--space-md));
   }
 
   .video-modal__tags[hidden] {

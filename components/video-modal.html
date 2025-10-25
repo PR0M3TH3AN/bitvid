@@ -105,38 +105,31 @@
               <div class="modal-info-panel">
                 <div class="video-modal__details flex flex-col gap-6">
                   <div
-                    id="videoTags"
-                    class="video-modal__tags"
-                    hidden
-                    aria-hidden="true"
-                  ></div>
-                <div
-                  class="video-modal__headline flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between"
-                >
-                  <h2 id="videoTitle" class="video-modal__title"></h2>
-                  <div
-                    id="modalStatus"
-                    class="video-modal__status text-sm text-muted lg:text-right"
-                    role="status"
-                    aria-live="polite"
+                    class="video-modal__headline flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between"
                   >
-                    Initializing... Just give it a sec.
+                    <h2 id="videoTitle" class="video-modal__title"></h2>
+                    <div
+                      id="modalStatus"
+                      class="video-modal__status text-sm text-muted lg:text-right"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      Initializing... Just give it a sec.
+                    </div>
                   </div>
-                </div>
-
-                <div
-                  class="video-modal__meta flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div class="video-modal__meta-info flex flex-wrap items-center gap-3">
-                    <span id="videoTimestamp" class="modal-meta">Posted just now</span>
-                    <span id="videoEditedTimestamp" class="modal-meta hidden">Last edited just now</span>
-                    <span id="videoViewCount" class="modal-meta modal-view-count">– views</span>
+                  <div
+                    class="video-modal__meta flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div class="video-modal__meta-info flex flex-wrap items-center gap-3">
+                      <span id="videoTimestamp" class="modal-meta">Posted just now</span>
+                      <span id="videoEditedTimestamp" class="modal-meta hidden">Last edited just now</span>
+                      <span id="videoViewCount" class="modal-meta modal-view-count">– views</span>
+                    </div>
                   </div>
-                </div>
 
-                <div class="video-modal__actions-row">
-                  <div class="video-modal__reactions">
-                    <div class="video-modal__reaction-buttons inline-flex flex-wrap items-center gap-2">
+                  <div class="video-modal__actions-row">
+                    <div class="video-modal__reactions">
+                      <div class="video-modal__reaction-buttons inline-flex flex-wrap items-center gap-2">
                       <button
                         id="modalLikeBtn"
                         type="button"
@@ -570,6 +563,12 @@
 
           <aside class="video-modal__secondary flex flex-col gap-4">
             <div class="watch-container video-modal__similar">
+              <div
+                id="videoTags"
+                class="video-modal__tags"
+                hidden
+                aria-hidden="true"
+              ></div>
               <section
                 class="player-modal__module"
                 aria-labelledby="playerModalSimilarContentHeading"
