@@ -1,4 +1,5 @@
 import { normalizeDesignSystemContext } from "../../designSystem.js";
+import { formatShortNpub } from "../../utils/formatters.js";
 
 export class SimilarContentCard {
   constructor({
@@ -85,8 +86,12 @@ export class SimilarContentCard {
     this.identity = this.normalizeIdentity(nextIdentity, this.identity);
 
     if (this.authorNameEl) {
-      this.authorNameEl.textContent =
-        this.identity.name || this.identity.shortNpub || this.identity.npub || "";
+      const label =
+        this.identity.name ||
+        this.identity.shortNpub ||
+        this.identity.npub ||
+        "";
+      this.authorNameEl.textContent = label;
       if (this.identity.pubkey) {
         this.authorNameEl.dataset.pubkey = this.identity.pubkey;
       } else if (this.authorNameEl.dataset?.pubkey) {
@@ -102,6 +107,13 @@ export class SimilarContentCard {
       } else {
         this.authorNpubEl.setAttribute("aria-hidden", "false");
       }
+
+      if (this.identity.npub) {
+        this.authorNpubEl.setAttribute("title", this.identity.npub);
+      } else {
+        this.authorNpubEl.removeAttribute("title");
+      }
+
       if (this.identity.pubkey) {
         this.authorNpubEl.dataset.pubkey = this.identity.pubkey;
       } else if (this.authorNpubEl.dataset?.pubkey) {
@@ -185,13 +197,27 @@ export class SimilarContentCard {
     })();
 
     const shortNpub = (() => {
-      const entries = [candidate.shortNpub, baseline.shortNpub, npub];
+      const entries = [candidate.shortNpub, baseline.shortNpub];
+      let resolved = "";
       for (const entry of entries) {
-        if (typeof entry === "string" && entry.trim()) {
-          return entry.trim();
+        if (typeof entry !== "string") {
+          continue;
+        }
+        const trimmed = entry.trim();
+        if (trimmed) {
+          resolved = trimmed;
+          break;
         }
       }
-      return "";
+
+      if (npub) {
+        const formatted = formatShortNpub(npub);
+        if (formatted) {
+          resolved = formatted;
+        }
+      }
+
+      return resolved;
     })();
 
     if (!name) {
@@ -215,6 +241,7 @@ export class SimilarContentCard {
     }
 
     this.root = root;
+    this.root.__bitvidSimilarContentCard = this;
 
     const media = this.buildMediaSection();
     const content = this.buildContentSection();
@@ -393,6 +420,9 @@ export class SimilarContentCard {
       npubEl.setAttribute("aria-hidden", "false");
     } else {
       npubEl.setAttribute("aria-hidden", "true");
+    }
+    if (this.identity.npub) {
+      npubEl.setAttribute("title", this.identity.npub);
     }
     if (this.identity.pubkey) {
       npubEl.dataset.pubkey = this.identity.pubkey;
