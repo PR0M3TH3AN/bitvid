@@ -144,6 +144,7 @@ import {
   getInFlightUrlProbe,
   getModerationOverride,
   setModerationOverride,
+  clearModerationOverride,
   loadModerationOverridesFromStorage,
   getModerationSettings,
   getDefaultModerationSettings,
@@ -1349,6 +1350,9 @@ class Application {
 
     this.videoListView.setModerationOverrideHandler((detail = {}) =>
       this.handleModerationOverride(detail)
+    );
+    this.videoListView.setModerationHideHandler((detail = {}) =>
+      this.handleModerationHide(detail)
     );
 
     if (this.moreMenuController) {
@@ -6258,7 +6262,9 @@ class Application {
 
   autoplayModalVideo() {
     if (this.currentVideo?.moderation?.blockAutoplay) {
-      this.log("[moderation] Skipping autoplay due to trusted reports.");
+      this.log(
+        "[moderation] Skipping autoplay due to trusted reports or trusted mutes.",
+      );
       return;
     }
     if (!this.modalVideo) return;
@@ -7226,8 +7232,11 @@ class Application {
       : this.deriveModerationTrustedCount(summary, reportType);
 
     const thresholds = this.getActiveModerationThresholds();
-    const computedBlockAutoplay = trustedCount >= thresholds.autoplayBlockThreshold;
-    const computedBlurThumbnail = trustedCount >= thresholds.blurThreshold;
+    const computedBlockAutoplay =
+      trustedCount >= thresholds.autoplayBlockThreshold || trustedMuted;
+    const blurFromReports = trustedCount >= thresholds.blurThreshold;
+    let computedBlurThumbnail = blurFromReports;
+    let computedBlurReason = computedBlurThumbnail ? "trusted-report" : "";
 
     const muteHideThreshold = Number.isFinite(thresholds.trustedMuteHideThreshold)
       ? Math.max(0, Math.floor(thresholds.trustedMuteHideThreshold))
@@ -7263,6 +7272,23 @@ class Application {
       hideTriggered = true;
     }
 
+    if (!computedBlurThumbnail && (trustedMuted || hideTriggered)) {
+      computedBlurThumbnail = true;
+      if (hideTriggered) {
+        computedBlurReason = hideReason || "trusted-hide";
+      } else if (trustedMuted) {
+        computedBlurReason = "trusted-mute";
+      }
+    } else if (computedBlurThumbnail) {
+      if (hideTriggered) {
+        computedBlurReason = hideReason || "trusted-hide";
+      } else if (trustedMuted && !blurFromReports) {
+        computedBlurReason = "trusted-mute";
+      } else if (!computedBlurReason && blurFromReports) {
+        computedBlurReason = "trusted-report";
+      }
+    }
+
     const hideCounts = hideTriggered
       ? {
           trustedMuteCount,
@@ -7294,6 +7320,7 @@ class Application {
       hideCounts: originalHideCounts,
       hideBypass,
       hideTriggered,
+      blurReason: computedBlurThumbnail ? computedBlurReason : "",
     };
 
     const decoratedModeration = {
@@ -7307,6 +7334,7 @@ class Application {
       trustedMuters: rawTrustedMuters,
       trustedMuteCount,
       trustedMuterDisplayNames,
+      blurReason: computedBlurThumbnail ? computedBlurReason : "",
       original: {
         blockAutoplay: originalState.blockAutoplay,
         blurThumbnail: originalState.blurThumbnail,
@@ -7315,8 +7343,13 @@ class Application {
         hideCounts: originalState.hideCounts,
         hideBypass: originalState.hideBypass,
         hideTriggered: originalState.hideTriggered,
+        blurReason: originalState.blurReason,
       },
     };
+
+    if (!computedBlurThumbnail && decoratedModeration.blurReason) {
+      delete decoratedModeration.blurReason;
+    }
 
     if (overrideActive) {
       decoratedModeration.blockAutoplay = false;
@@ -7422,6 +7455,61 @@ class Application {
         card.refreshModerationUi();
       } catch (error) {
         devLogger.warn("[Application] Failed to refresh moderation UI:", error);
+      }
+    }
+
+    return true;
+  }
+
+  handleModerationHide({ video, card }) {
+    if (!video || typeof video !== "object" || !video.id) {
+      return false;
+    }
+
+    try {
+      clearModerationOverride(video.id);
+    } catch (error) {
+      devLogger.warn("[Application] Failed to clear moderation override:", error);
+    }
+
+    const storedVideo =
+      this.videosMap instanceof Map && video.id ? this.videosMap.get(video.id) : null;
+    const target = storedVideo || video;
+
+    const resetModerationState = (subject) => {
+      if (!subject || typeof subject !== "object") {
+        return;
+      }
+      const moderation =
+        subject.moderation && typeof subject.moderation === "object"
+          ? subject.moderation
+          : null;
+      if (!moderation) {
+        return;
+      }
+      if (moderation.viewerOverride) {
+        delete moderation.viewerOverride;
+      }
+      if (moderation.hideBypass) {
+        delete moderation.hideBypass;
+      }
+    };
+
+    if (target) {
+      resetModerationState(target);
+      this.decorateVideoModeration(target);
+    }
+
+    if (this.currentVideo && this.currentVideo.id === video.id) {
+      resetModerationState(this.currentVideo);
+      this.decorateVideoModeration(this.currentVideo);
+    }
+
+    if (card && typeof card.refreshModerationUi === "function") {
+      try {
+        card.refreshModerationUi();
+      } catch (error) {
+        devLogger.warn("[Application] Failed to refresh moderation UI after hide:", error);
       }
     }
 

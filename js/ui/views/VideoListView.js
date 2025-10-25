@@ -601,6 +601,19 @@ export class VideoListView {
         });
       };
 
+      videoCard.onModerationHide = ({ event: hideEvent }) => {
+        if (!this.handlers.moderationHide) {
+          return false;
+        }
+        const trigger = hideEvent?.currentTarget || hideEvent?.target || null;
+        return this.handlers.moderationHide({
+          event: hideEvent,
+          video,
+          card: videoCard,
+          trigger,
+        });
+      };
+
       videoCard.onEdit = ({ event: editEvent, video: editVideo, index: editIndex }) => {
         if (this.handlers.edit) {
           const trigger = editEvent?.currentTarget || editEvent?.target || null;
