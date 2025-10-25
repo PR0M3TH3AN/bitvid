@@ -3529,12 +3529,12 @@ export class VideoModal {
 
       const shareType = receipt.recipientType || receipt.type || "creator";
       const shareLabel = this.document.createElement("span");
-      const label =
-        shareType === "platform"
-          ? "Platform"
-          : shareType === "creator"
-            ? "Creator"
-            : "Lightning";
+      const isPlatformShare = shareType === "platform";
+      const label = isPlatformShare
+        ? "Platform fee"
+        : shareType === "creator"
+          ? "Creator"
+          : "Lightning";
       shareLabel.textContent = `${label} • ${Math.max(
         0,
         Math.round(Number(receipt.amount || 0))
@@ -3553,7 +3553,7 @@ export class VideoModal {
 
       const address = this.document.createElement("p");
       address.className = "mt-1 text-xs text-text break-all";
-      if (receipt.address) {
+      if (receipt.address && !isPlatformShare) {
         address.textContent = receipt.address;
         li.appendChild(address);
       }
