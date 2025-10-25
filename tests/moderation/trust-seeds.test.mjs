@@ -66,3 +66,23 @@ test("trusted seeds contribute to trusted report counts", (t) => {
   const reporters = service.getTrustedReporters(eventId, "nudity");
   assert.deepEqual(reporters.map((entry) => entry.pubkey), [seedHex]);
 });
+
+test("whitelist entries augment trusted seeds", (t) => {
+  withMockedNostrTools(t);
+
+  const whitelistHex = "a".repeat(64);
+  const whitelistNpub = `npub${whitelistHex}`;
+
+  const { service } = createModerationServiceHarness(t);
+  service.setTrustedSeeds([...DEFAULT_TRUST_SEED_NPUBS, whitelistNpub]);
+
+  assert.ok(
+    service.trustedSeedContacts.has(whitelistHex),
+    "whitelist npubs should populate trusted seed contacts"
+  );
+
+  assert.ok(
+    service.trustedContacts.has(whitelistHex),
+    "whitelist npubs should populate trusted contacts"
+  );
+});
