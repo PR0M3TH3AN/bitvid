@@ -62,7 +62,6 @@ function createTagButton({ doc, tag, onTagActivate, getTagState }) {
   const button = doc.createElement("button");
   button.type = "button";
   button.classList.add("pill", "video-tag-pill", "focus-ring");
-  button.dataset.size = "compact";
   button.dataset.tag = tag;
   button.title = `#${tag}`;
 
