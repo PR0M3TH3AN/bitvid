@@ -3,12 +3,18 @@ import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
 
 import ProfileModalController from "../../js/ui/profileModalController.js";
-import {
-  DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
-  DEFAULT_BLUR_THRESHOLD,
-  DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
-  DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
-} from "../../js/constants.js";
+import { getDefaultModerationSettings } from "../../js/state/cache.js";
+
+function createDefaultModerationSettingsSnapshot() {
+  return getDefaultModerationSettings();
+}
+
+const {
+  blurThreshold: DEFAULT_BLUR_THRESHOLD,
+  autoplayBlockThreshold: DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+  trustedMuteHideThreshold: DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
+  trustedSpamHideThreshold: DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
+} = createDefaultModerationSettingsSnapshot();
 
 const DEFAULT_BLUR_STRING = String(DEFAULT_BLUR_THRESHOLD);
 const DEFAULT_AUTOPLAY_STRING = String(DEFAULT_AUTOPLAY_BLOCK_THRESHOLD);
@@ -77,29 +83,20 @@ beforeEach(async () => {
     };
   };
 
-  storedSettings = {
-    blurThreshold: DEFAULT_BLUR_THRESHOLD,
-    autoplayBlockThreshold: DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
-    trustedMuteHideThreshold: DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
-    trustedSpamHideThreshold: DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
-  };
+  storedSettings = { ...createDefaultModerationSettingsSnapshot() };
   moderationService = {
     getDefaultModerationSettings() {
-      return {
-        blurThreshold: DEFAULT_BLUR_THRESHOLD,
-        autoplayBlockThreshold: DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
-        trustedMuteHideThreshold: DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
-        trustedSpamHideThreshold: DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
-      };
+      return createDefaultModerationSettingsSnapshot();
     },
     getActiveModerationSettings() {
       return { ...storedSettings };
     },
     updateModerationSettings(partial = {}) {
+      const defaults = createDefaultModerationSettingsSnapshot();
       if (Object.prototype.hasOwnProperty.call(partial, "blurThreshold")) {
         const value = partial.blurThreshold;
         storedSettings.blurThreshold =
-          value === null ? DEFAULT_BLUR_THRESHOLD : value;
+          value === null ? defaults.blurThreshold : value;
       }
       if (
         Object.prototype.hasOwnProperty.call(
@@ -109,7 +106,7 @@ beforeEach(async () => {
       ) {
         const value = partial.autoplayBlockThreshold;
         storedSettings.autoplayBlockThreshold =
-          value === null ? DEFAULT_AUTOPLAY_BLOCK_THRESHOLD : value;
+          value === null ? defaults.autoplayBlockThreshold : value;
       }
       if (
         Object.prototype.hasOwnProperty.call(
@@ -119,7 +116,7 @@ beforeEach(async () => {
       ) {
         const value = partial.trustedMuteHideThreshold;
         storedSettings.trustedMuteHideThreshold =
-          value === null ? DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD : value;
+          value === null ? defaults.trustedMuteHideThreshold : value;
       }
       if (
         Object.prototype.hasOwnProperty.call(
@@ -129,17 +126,12 @@ beforeEach(async () => {
       ) {
         const value = partial.trustedSpamHideThreshold;
         storedSettings.trustedSpamHideThreshold =
-          value === null ? DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD : value;
+          value === null ? defaults.trustedSpamHideThreshold : value;
       }
       return { ...storedSettings };
     },
     resetModerationSettings() {
-      storedSettings = {
-        blurThreshold: DEFAULT_BLUR_THRESHOLD,
-        autoplayBlockThreshold: DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
-        trustedMuteHideThreshold: DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
-        trustedSpamHideThreshold: DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
-      };
+      storedSettings = { ...createDefaultModerationSettingsSnapshot() };
       return { ...storedSettings };
     },
   };
