@@ -25,7 +25,6 @@ test("renderTagPillStrip builds buttons with labels and icons", () => {
     assert.ok(button.classList.contains("pill"));
     assert.ok(button.classList.contains("video-tag-pill"));
     assert.ok(button.classList.contains("focus-ring"));
-    assert.equal(button.dataset.size, "compact");
     assert.equal(button.dataset.tag, tag);
     assert.equal(button.title, `#${tag}`);
     assert.equal(button.dataset.preferenceState, "neutral");

@@ -2332,14 +2332,10 @@
   }
 
   .video-tag-pill {
-    @apply inline-flex items-center gap-2 rounded-full border border-status-neutral-border bg-status-neutral-surface px-3 py-1 text-xs font-medium text-status-neutral-on;
+    @apply inline-flex items-center gap-2 rounded-full border border-status-neutral-border bg-status-neutral-surface px-3 py-1 text-2xs font-medium text-status-neutral-on;
     @apply relative justify-center whitespace-nowrap transition;
     @apply min-h-[calc(var(--space-sm)+var(--space-xs))];
     @apply me-1;
-  }
-
-  .video-tag-pill[data-size="compact"] {
-    @apply px-2 py-0.5 text-2xs;
   }
 
   .video-tag-pill__label {
