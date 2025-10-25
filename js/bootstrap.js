@@ -11,6 +11,7 @@ import moderationService from "./services/moderationService.js";
 import nostrService from "./services/nostrService.js";
 import r2Service from "./services/r2Service.js";
 import { loadView } from "./viewManager.js";
+import hashtagPreferences from "./services/hashtagPreferencesService.js";
 
 function normalizeNpub(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -97,7 +98,7 @@ async function bootstrapTrustedSeeds() {
 bootstrapTrustedSeeds();
 
 function mergeServices(overrides = {}) {
-  const merged = { nostrService, r2Service };
+  const merged = { nostrService, r2Service, hashtagPreferences };
 
   if (overrides && typeof overrides === "object") {
     if (overrides.nostrService) {
@@ -105,6 +106,9 @@ function mergeServices(overrides = {}) {
     }
     if (overrides.r2Service) {
       merged.r2Service = overrides.r2Service;
+    }
+    if (overrides.hashtagPreferences) {
+      merged.hashtagPreferences = overrides.hashtagPreferences;
     }
   }
 
