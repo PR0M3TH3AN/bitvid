@@ -848,6 +848,38 @@ class Application {
       "video:share",
       this.boundVideoModalShareHandler
     );
+    this.boundVideoModalModerationOverrideHandler = (event) => {
+      const detail = event?.detail || {};
+      const targetVideo =
+        detail && typeof detail.video === "object"
+          ? detail.video
+          : this.currentVideo || null;
+      if (!targetVideo) {
+        const trigger = detail?.trigger;
+        if (trigger) {
+          trigger.disabled = false;
+          trigger.removeAttribute("aria-busy");
+        }
+        return;
+      }
+
+      const handled = this.handleModerationOverride({
+        video: targetVideo,
+        card: detail?.card || null,
+      });
+
+      if (handled === false) {
+        const trigger = detail?.trigger;
+        if (trigger) {
+          trigger.disabled = false;
+          trigger.removeAttribute("aria-busy");
+        }
+      }
+    };
+    this.videoModal.addEventListener(
+      "video:moderation-override",
+      this.boundVideoModalModerationOverrideHandler,
+    );
     this.boundVideoModalTagActivateHandler = (event) => {
       const detail = event?.detail || {};
       const nativeEvent = detail?.nativeEvent || null;
@@ -7473,6 +7505,24 @@ class Application {
       }
     }
 
+    const doc =
+      (this.videoModal && this.videoModal.document) ||
+      (typeof document !== "undefined" ? document : null);
+    if (doc && typeof doc.dispatchEvent === "function") {
+      try {
+        doc.dispatchEvent(
+          new CustomEvent("video:moderation-override", {
+            detail: { video: target },
+          }),
+        );
+      } catch (eventError) {
+        devLogger.warn(
+          "[Application] Failed to dispatch moderation override event:",
+          eventError,
+        );
+      }
+    }
+
     return true;
   }
 
@@ -7525,6 +7575,24 @@ class Application {
         card.refreshModerationUi();
       } catch (error) {
         devLogger.warn("[Application] Failed to refresh moderation UI after hide:", error);
+      }
+    }
+
+    const doc =
+      (this.videoModal && this.videoModal.document) ||
+      (typeof document !== "undefined" ? document : null);
+    if (doc && typeof doc.dispatchEvent === "function") {
+      try {
+        doc.dispatchEvent(
+          new CustomEvent("video:moderation-hide", {
+            detail: { video: target },
+          }),
+        );
+      } catch (eventError) {
+        devLogger.warn(
+          "[Application] Failed to dispatch moderation hide event:",
+          eventError,
+        );
       }
     }
 
@@ -10624,6 +10692,13 @@ class Application {
           this.boundVideoModalShareHandler
         );
         this.boundVideoModalShareHandler = null;
+      }
+      if (this.boundVideoModalModerationOverrideHandler) {
+        this.videoModal.removeEventListener(
+          "video:moderation-override",
+          this.boundVideoModalModerationOverrideHandler,
+        );
+        this.boundVideoModalModerationOverrideHandler = null;
       }
       if (this.boundVideoModalTagActivateHandler) {
         this.videoModal.removeEventListener(
