@@ -13,11 +13,13 @@
 - (Optional) reputation score from a reputation source (e.g., PageRank/DVM) for **Discovery** only.
 
 ## Default thresholds (can be tuned)
-- `blurThumbnail = trustedReportCount(event,'nudity') >= 3`
-- `hideAutoplay = trustedReportCount(event,'nudity') >= 2`
+- `blurThumbnail = trustedReportCount(event,'nudity') >= DEFAULT_BLUR_THRESHOLD`
+- `hideAutoplay = trustedReportCount(event,'nudity') >= DEFAULT_AUTOPLAY_BLOCK_THRESHOLD`
 - `downrankIfMutedByF1 = true`
-- `hideIfTrustedMuteCount(author) >= 1`
-- `hideIfTrustedSpamReports(event) >= 3`
+- `hideIfTrustedMuteCount(author) >= DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD`
+- `hideIfTrustedSpamReports(event) >= DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD`
+
+Threshold constants are exported from [`config/instance-config.js`](../../config/instance-config.js) so operators can change the defaults without touching moderation code. The upstream repo ships with blur at 3, autoplay block at 2, trusted mute hide at 1, and trusted spam hide at 3.
 
 ### Why these numbers?
 - F1-only reports resist Sybil attacks.
@@ -52,19 +54,19 @@ function trustedReportCount(eventId: string, type: Report['type'], viewerFollows
 }
 
 function shouldBlurThumb(eventId: string, ctx: Ctx): boolean {
-  return trustedReportCount(eventId, 'nudity', ctx.viewerFollows, ctx.reports) >= 3;
+  return trustedReportCount(eventId, 'nudity', ctx.viewerFollows, ctx.reports) >= DEFAULT_BLUR_THRESHOLD;
 }
 
 function shouldHideAutoplay(eventId: string, ctx: Ctx): boolean {
-  return trustedReportCount(eventId, 'nudity', ctx.viewerFollows, ctx.reports) >= 2;
+  return trustedReportCount(eventId, 'nudity', ctx.viewerFollows, ctx.reports) >= DEFAULT_AUTOPLAY_BLOCK_THRESHOLD;
 }
 
 function shouldHideForTrustedMute(authorHex: string, ctx: Ctx): boolean {
-  return ctx.trustedMuteCount(authorHex) >= 1;
+  return ctx.trustedMuteCount(authorHex) >= DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD;
 }
 
 function shouldHideForTrustedSpam(eventId: string, ctx: Ctx): boolean {
-  return trustedReportCount(eventId, 'spam', ctx.viewerFollows, ctx.reports) >= 3;
+  return trustedReportCount(eventId, 'spam', ctx.viewerFollows, ctx.reports) >= DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD;
 }
 ```
 
