@@ -2722,6 +2722,48 @@
     white-space: nowrap;
   }
 
+  .profile-hashtag-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-xs);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .profile-hashtag-item {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-3xs);
+    padding-block: var(--space-3xs);
+    padding-inline: var(--space-sm);
+    border-radius: var(--radius-full);
+    border: var(--border-width-hairline) solid var(--color-border-translucent);
+    background-color: var(--color-panel);
+    color: var(--color-text);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    line-height: var(--font-lineheight-tight);
+  }
+
+  .profile-hashtag-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: var(--space-md);
+    block-size: var(--space-md);
+    border-radius: var(--radius-full);
+    color: var(--color-text-muted);
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+  }
+
+  .profile-hashtag-remove:hover {
+    color: var(--color-text);
+  }
+
   .profile-modal__remove-button {
     @apply border-2;
   }

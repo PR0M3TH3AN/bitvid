@@ -169,6 +169,19 @@ afterEach(() => {
   container = null;
 });
 
+function normalizeTestTag(value) {
+  if (typeof value !== 'string') {
+    return '';
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  return trimmed.replace(/^#+/, '').toLowerCase();
+}
+
 function createController(options = {}) {
   const {
     services: serviceOverrides = {},
@@ -181,6 +194,7 @@ function createController(options = {}) {
     userBlocks: userBlocksOverrides = {},
     accessControl: accessControlOverrides = {},
     nostrClient: nostrClientOverrides = {},
+    hashtagPreferences: hashtagPreferencesOverrides = {},
     ...otherServices
   } = serviceOverrides;
 
@@ -203,6 +217,56 @@ function createController(options = {}) {
     getBlockedPubkeys: () => [],
   };
 
+  const hashtagStore = {
+    interests: new Set(),
+    disinterests: new Set(),
+  };
+
+  const baseHashtagPreferences = {
+    getInterests: () => Array.from(hashtagStore.interests).sort(),
+    getDisinterests: () => Array.from(hashtagStore.disinterests).sort(),
+    addInterest: (tag) => {
+      const normalized = normalizeTestTag(tag);
+      if (!normalized) {
+        return false;
+      }
+      const moved = hashtagStore.disinterests.delete(normalized);
+      const had = hashtagStore.interests.has(normalized);
+      hashtagStore.interests.add(normalized);
+      return !had || moved;
+    },
+    removeInterest: (tag) => {
+      const normalized = normalizeTestTag(tag);
+      if (!normalized) {
+        return false;
+      }
+      return hashtagStore.interests.delete(normalized);
+    },
+    addDisinterest: (tag) => {
+      const normalized = normalizeTestTag(tag);
+      if (!normalized) {
+        return false;
+      }
+      const moved = hashtagStore.interests.delete(normalized);
+      const had = hashtagStore.disinterests.has(normalized);
+      hashtagStore.disinterests.add(normalized);
+      return !had || moved;
+    },
+    removeDisinterest: (tag) => {
+      const normalized = normalizeTestTag(tag);
+      if (!normalized) {
+        return false;
+      }
+      return hashtagStore.disinterests.delete(normalized);
+    },
+    on: () => () => {},
+  };
+
+  const hashtagPreferences = {
+    ...baseHashtagPreferences,
+    ...hashtagPreferencesOverrides,
+  };
+
   const baseAccessControl = {
     ensureReady: async () => {},
     canEditAdminLists: () => false,
@@ -223,6 +287,15 @@ function createController(options = {}) {
     userBlocks: { ...baseUserBlocks, ...userBlocksOverrides },
     accessControl: { ...baseAccessControl, ...accessControlOverrides },
     nostrClient: { sessionActor: { pubkey: null }, ...nostrClientOverrides },
+    hashtagPreferences,
+    getHashtagPreferences: () => ({
+      interests: hashtagPreferences.getInterests(),
+      disinterests: hashtagPreferences.getDisinterests(),
+      eventId: null,
+      createdAt: null,
+      loaded: true,
+    }),
+    describeHashtagPreferencesError: () => '',
     onAccessControlUpdated: async () => {},
     describeAdminError: () => 'Unable to update moderation settings. Please try again.',
     describeNotificationError: () => '',
@@ -595,6 +668,158 @@ for (const _ of [0]) {
     );
     assert.equal(directKeyLabel.dataset.providerVariant, 'warning');
     assert.equal(directKeyButton.getAttribute('aria-pressed'), 'false');
+  });
+
+  test('Hashtag pane shows empty states by default', async (t) => {
+    const controller = createController();
+    await controller.load();
+    applyDesignSystemAttributes(document);
+
+    let cleanupRan = false;
+    const cleanup = () => {
+      try {
+        controller.hide({ silent: true });
+      } catch {}
+      cleanupRan = true;
+    };
+
+    try {
+      await controller.show('hashtags');
+      await waitForAnimationFrame(window, 2);
+
+      const interestList = document.getElementById('profileHashtagInterestList');
+      const interestEmpty = document.getElementById('profileHashtagInterestEmpty');
+      const disinterestList = document.getElementById('profileHashtagDisinterestList');
+      const disinterestEmpty = document.getElementById(
+        'profileHashtagDisinterestEmpty',
+      );
+
+      assert.ok(interestList && interestEmpty && disinterestList && disinterestEmpty);
+      assert.equal(interestList?.classList.contains('hidden'), true);
+      assert.equal(interestEmpty?.classList.contains('hidden'), false);
+      assert.equal(disinterestList?.classList.contains('hidden'), true);
+      assert.equal(disinterestEmpty?.classList.contains('hidden'), false);
+    } finally {
+      cleanup();
+    }
+
+    t.after(() => {
+      if (!cleanupRan) {
+        cleanup();
+      }
+      resetRuntimeFlags();
+    });
+  });
+
+  test('Hashtag pane adds, moves, and removes tags', async (t) => {
+    const controller = createController();
+    await controller.load();
+    applyDesignSystemAttributes(document);
+
+    let cleanupRan = false;
+    const cleanup = () => {
+      try {
+        controller.hide({ silent: true });
+      } catch {}
+      cleanupRan = true;
+    };
+
+    try {
+      await controller.show('hashtags');
+      await waitForAnimationFrame(window, 2);
+
+      controller.hashtagInterestInput.value = '#nostr';
+      controller.addHashtagInterestButton.click();
+      await waitForAnimationFrame(window, 2);
+
+      const interestList = document.getElementById('profileHashtagInterestList');
+      assert.equal(interestList?.classList.contains('hidden'), false);
+      assert.equal(interestList?.querySelectorAll('li').length, 1);
+      const interestLabel = interestList?.querySelector('li span');
+      assert.equal(interestLabel?.textContent, '#nostr');
+
+      const disinterestList = document.getElementById('profileHashtagDisinterestList');
+      const disinterestEmpty = document.getElementById('profileHashtagDisinterestEmpty');
+      assert.equal(disinterestList?.classList.contains('hidden'), true);
+      assert.equal(disinterestEmpty?.classList.contains('hidden'), false);
+
+      controller.hashtagDisinterestInput.value = '#nostr';
+      controller.addHashtagDisinterestButton.click();
+      await waitForAnimationFrame(window, 2);
+
+      assert.equal(interestList?.querySelectorAll('li').length, 0);
+      const interestEmpty = document.getElementById('profileHashtagInterestEmpty');
+      assert.equal(interestEmpty?.classList.contains('hidden'), false);
+
+      assert.equal(disinterestList?.classList.contains('hidden'), false);
+      assert.equal(disinterestList?.querySelectorAll('li').length, 1);
+      const disinterestLabel = disinterestList?.querySelector('li span');
+      assert.equal(disinterestLabel?.textContent, '#nostr');
+
+      const removeButton = disinterestList?.querySelector(
+        'button.profile-hashtag-remove',
+      );
+      assert.ok(removeButton);
+      removeButton.click();
+      await waitForAnimationFrame(window, 2);
+
+      assert.equal(disinterestList?.querySelectorAll('li').length, 0);
+      assert.equal(disinterestEmpty?.classList.contains('hidden'), false);
+    } finally {
+      cleanup();
+    }
+
+    t.after(() => {
+      if (!cleanupRan) {
+        cleanup();
+      }
+      resetRuntimeFlags();
+    });
+  });
+
+  test('Hashtag pane resets after logout when service clears tags', async (t) => {
+    const controller = createController();
+    await controller.load();
+    applyDesignSystemAttributes(document);
+
+    let cleanupRan = false;
+    const cleanup = () => {
+      try {
+        controller.hide({ silent: true });
+      } catch {}
+      cleanupRan = true;
+    };
+
+    try {
+      await controller.show('hashtags');
+      await waitForAnimationFrame(window, 2);
+
+      controller.hashtagInterestInput.value = 'art';
+      controller.addHashtagInterestButton.click();
+      await waitForAnimationFrame(window, 2);
+
+      const interestList = document.getElementById('profileHashtagInterestList');
+      assert.equal(interestList?.querySelectorAll('li').length, 1);
+
+      controller.hashtagPreferencesService.removeInterest('art');
+      await controller.handleAuthLogout({});
+      await waitForAnimationFrame(window, 2);
+
+      const interestEmpty = document.getElementById('profileHashtagInterestEmpty');
+      const disinterestEmpty = document.getElementById('profileHashtagDisinterestEmpty');
+      assert.equal(interestList?.querySelectorAll('li').length, 0);
+      assert.equal(interestEmpty?.classList.contains('hidden'), false);
+      assert.equal(disinterestEmpty?.classList.contains('hidden'), false);
+    } finally {
+      cleanup();
+    }
+
+    t.after(() => {
+      if (!cleanupRan) {
+        cleanup();
+      }
+      resetRuntimeFlags();
+    });
   });
 }
 

@@ -182,6 +182,55 @@ const SERVICE_CONTRACT = [
         : "Failed to login. Please try again.",
   },
   {
+    key: "hashtagPreferences",
+    type: "object",
+    description:
+      "Service providing access to interest and disinterest hashtag collections.",
+    fallback: () => ({
+      getInterests: () => [],
+      getDisinterests: () => [],
+      addInterest: () => false,
+      removeInterest: () => false,
+      addDisinterest: () => false,
+      removeDisinterest: () => false,
+      on: () => () => {},
+    }),
+  },
+  {
+    key: "getHashtagPreferences",
+    type: "function",
+    description:
+      "Returns the cached hashtag preferences snapshot (interests, disinterests, metadata).",
+    fallback: ({ resolved }) => () => {
+      const service = resolved.hashtagPreferences || {};
+      const interests =
+        typeof service.getInterests === "function"
+          ? service.getInterests()
+          : [];
+      const disinterests =
+        typeof service.getDisinterests === "function"
+          ? service.getDisinterests()
+          : [];
+      return {
+        interests,
+        disinterests,
+        eventId: null,
+        createdAt: null,
+        loaded: false,
+      };
+    },
+  },
+  {
+    key: "describeHashtagPreferencesError",
+    type: "function",
+    description:
+      "Maps hashtag preference errors to user-facing status messages for the modal.",
+    fallback: () => (_, fallbackMessage) =>
+      typeof fallbackMessage === "string" && fallbackMessage.trim()
+        ? fallbackMessage.trim()
+        : "Failed to update hashtag preferences. Please try again.",
+  },
+  {
     key: "getProfileCacheEntry",
     type: "function",
     description:
@@ -802,6 +851,28 @@ export class ProfileModalController {
             devLogger.log(...args);
           };
 
+    this.hashtagPreferencesService = this.services.hashtagPreferences;
+    this.describeHashtagPreferencesErrorService =
+      this.services.describeHashtagPreferencesError;
+    this.getHashtagPreferencesSnapshotService =
+      this.services.getHashtagPreferences;
+
+    if (
+      this.hashtagPreferencesService &&
+      typeof this.hashtagPreferencesService.on === "function"
+    ) {
+      this.hashtagPreferencesUnsubscribe = this.hashtagPreferencesService.on(
+        "change",
+        (detail) => {
+          this.handleHashtagPreferencesChange({
+            action:
+              typeof detail?.action === "string" ? detail.action : "change",
+            preferences: detail,
+          });
+        },
+      );
+    }
+
     this.callbacks = {
       onClose: callbacks.onClose || noop,
       onLogout: callbacks.onLogout || noop,
@@ -862,6 +933,7 @@ export class ProfileModalController {
       account: null,
       relays: null,
       wallet: null,
+      hashtags: null,
       blocked: null,
       history: null,
       admin: null,
@@ -870,6 +942,7 @@ export class ProfileModalController {
       account: null,
       relays: null,
       wallet: null,
+      hashtags: null,
       blocked: null,
       history: null,
       admin: null,
@@ -899,6 +972,15 @@ export class ProfileModalController {
     this.walletDisconnectButton = null;
     this.walletStatusText = null;
     this.profileWalletStatusText = null;
+    this.hashtagStatusText = null;
+    this.hashtagInterestList = null;
+    this.hashtagInterestEmpty = null;
+    this.hashtagInterestInput = null;
+    this.addHashtagInterestButton = null;
+    this.hashtagDisinterestList = null;
+    this.hashtagDisinterestEmpty = null;
+    this.hashtagDisinterestInput = null;
+    this.addHashtagDisinterestButton = null;
     this.moderationSettingsCard = null;
     this.moderationBlurInput = null;
     this.moderationAutoplayInput = null;
@@ -957,6 +1039,7 @@ export class ProfileModalController {
     this.setWalletPaneBusy(this.isWalletBusy());
     this.addAccountButtonState = null;
     this.adminEmptyMessages = new Map();
+    this.hashtagPreferencesUnsubscribe = null;
   }
 
   async load() {
@@ -991,6 +1074,7 @@ export class ProfileModalController {
     this.setupLayoutBreakpointObserver();
     this.applyModalStackingOverrides();
     this.registerEventListeners();
+    this.populateHashtagPreferences();
     this.refreshModerationSettingsUi();
     const preserveMenu = this.isMobileLayoutActive();
     this.selectPane(this.getActivePane(), { keepMenuView: preserveMenu });
@@ -1038,6 +1122,8 @@ export class ProfileModalController {
       document.getElementById("profileNavAccount") || null;
     this.navButtons.relays = document.getElementById("profileNavRelays") || null;
     this.navButtons.wallet = document.getElementById("profileNavWallet") || null;
+    this.navButtons.hashtags =
+      document.getElementById("profileNavHashtags") || null;
     this.navButtons.blocked =
       document.getElementById("profileNavBlocked") || null;
     this.navButtons.history =
@@ -1047,6 +1133,7 @@ export class ProfileModalController {
     this.panes.account = document.getElementById("profilePaneAccount") || null;
     this.panes.relays = document.getElementById("profilePaneRelays") || null;
     this.panes.wallet = document.getElementById("profilePaneWallet") || null;
+    this.panes.hashtags = document.getElementById("profilePaneHashtags") || null;
     this.panes.blocked = document.getElementById("profilePaneBlocked") || null;
     this.panes.history = document.getElementById("profilePaneHistory") || null;
     this.panes.admin = document.getElementById("profilePaneAdmin") || null;
@@ -1073,6 +1160,25 @@ export class ProfileModalController {
       document.getElementById("profileWalletDisconnect") || null;
     this.walletStatusText =
       document.getElementById("profileWalletStatus") || null;
+
+    this.hashtagStatusText =
+      document.getElementById("profileHashtagStatus") || null;
+    this.hashtagInterestList =
+      document.getElementById("profileHashtagInterestList") || null;
+    this.hashtagInterestEmpty =
+      document.getElementById("profileHashtagInterestEmpty") || null;
+    this.hashtagInterestInput =
+      document.getElementById("profileHashtagInterestInput") || null;
+    this.addHashtagInterestButton =
+      document.getElementById("profileAddHashtagInterestBtn") || null;
+    this.hashtagDisinterestList =
+      document.getElementById("profileHashtagDisinterestList") || null;
+    this.hashtagDisinterestEmpty =
+      document.getElementById("profileHashtagDisinterestEmpty") || null;
+    this.hashtagDisinterestInput =
+      document.getElementById("profileHashtagDisinterestInput") || null;
+    this.addHashtagDisinterestButton =
+      document.getElementById("profileAddHashtagDisinterestBtn") || null;
 
     this.profileRelayList = this.relayList;
     this.profileRelayInput = this.relayInput;
@@ -1298,6 +1404,36 @@ export class ProfileModalController {
       });
     }
 
+    if (this.addHashtagInterestButton instanceof HTMLElement) {
+      this.addHashtagInterestButton.addEventListener("click", () => {
+        void this.handleAddHashtagPreference("interest");
+      });
+    }
+
+    if (this.hashtagInterestInput instanceof HTMLElement) {
+      this.hashtagInterestInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          void this.handleAddHashtagPreference("interest");
+        }
+      });
+    }
+
+    if (this.addHashtagDisinterestButton instanceof HTMLElement) {
+      this.addHashtagDisinterestButton.addEventListener("click", () => {
+        void this.handleAddHashtagPreference("disinterest");
+      });
+    }
+
+    if (this.hashtagDisinterestInput instanceof HTMLElement) {
+      this.hashtagDisinterestInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          void this.handleAddHashtagPreference("disinterest");
+        }
+      });
+    }
+
     if (this.walletUriInput instanceof HTMLElement) {
       this.walletUriInput.addEventListener("focus", () => {
         this.revealSecretInputValue(this.walletUriInput);
@@ -1434,6 +1570,41 @@ export class ProfileModalController {
       } catch (describeError) {
         devLogger.warn(
           "[ProfileModalController] describeLoginError service threw:",
+          describeError,
+        );
+      }
+    }
+
+    return fallback;
+  }
+
+  describeHashtagPreferencesError(error, options = {}) {
+    const describe = this.describeHashtagPreferencesErrorService;
+    const { fallbackMessage, operation } =
+      options && typeof options === "object" ? options : {};
+    const normalizedOperation =
+      typeof operation === "string" && operation.trim()
+        ? operation.trim().toLowerCase()
+        : "update";
+
+    const fallback =
+      typeof fallbackMessage === "string" && fallbackMessage.trim()
+        ? fallbackMessage.trim()
+        : normalizedOperation === "load"
+        ? "Failed to load hashtag preferences. Please try again."
+        : normalizedOperation === "reset"
+        ? "Failed to reset hashtag preferences."
+        : "Failed to update hashtag preferences. Please try again.";
+
+    if (typeof describe === "function") {
+      try {
+        const message = describe(error, fallback);
+        if (typeof message === "string" && message.trim()) {
+          return message.trim();
+        }
+      } catch (describeError) {
+        devLogger.warn(
+          "[ProfileModalController] describeHashtagPreferencesError service threw:",
           describeError,
         );
       }
@@ -2420,6 +2591,8 @@ export class ProfileModalController {
       void this.populateProfileWatchHistory();
     } else if (target === "wallet") {
       this.refreshWalletPaneState();
+    } else if (target === "hashtags") {
+      this.populateHashtagPreferences();
     } else if (target === "blocked") {
       this.populateBlockedList();
     }
@@ -2820,6 +2993,372 @@ export class ProfileModalController {
       statusEl.appendChild(text);
       statusEl.classList.remove("hidden");
     }
+  }
+
+  normalizeHashtagTag(value) {
+    if (typeof value !== "string") {
+      return "";
+    }
+
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return "";
+    }
+
+    return trimmed.replace(/^#+/, "").toLowerCase();
+  }
+
+  formatHashtagTag(value) {
+    const normalized = this.normalizeHashtagTag(value);
+    if (!normalized) {
+      return "";
+    }
+    return `#${normalized}`;
+  }
+
+  sanitizeHashtagList(list) {
+    if (!Array.isArray(list)) {
+      return [];
+    }
+
+    const seen = new Set();
+    const normalized = [];
+
+    list.forEach((entry) => {
+      if (typeof entry !== "string") {
+        return;
+      }
+      const tag = this.normalizeHashtagTag(entry);
+      if (!tag || seen.has(tag)) {
+        return;
+      }
+      seen.add(tag);
+      normalized.push(tag);
+    });
+
+    normalized.sort((a, b) => a.localeCompare(b));
+    return normalized;
+  }
+
+  getResolvedHashtagPreferences(preferences = null) {
+    const candidate =
+      preferences && typeof preferences === "object" ? preferences : null;
+
+    let snapshot = null;
+    if (candidate) {
+      snapshot = candidate;
+    } else if (typeof this.getHashtagPreferencesSnapshotService === "function") {
+      try {
+        const resolved = this.getHashtagPreferencesSnapshotService();
+        if (resolved && typeof resolved === "object") {
+          snapshot = resolved;
+        }
+      } catch (error) {
+        devLogger.warn(
+          "[ProfileModalController] Failed to read hashtag preferences snapshot:",
+          error,
+        );
+      }
+    }
+
+    const service = this.hashtagPreferencesService || {};
+
+    const interestsSource = Array.isArray(snapshot?.interests)
+      ? snapshot.interests
+      : typeof service.getInterests === "function"
+      ? service.getInterests()
+      : [];
+    const disinterestsSource = Array.isArray(snapshot?.disinterests)
+      ? snapshot.disinterests
+      : typeof service.getDisinterests === "function"
+      ? service.getDisinterests()
+      : [];
+
+    return {
+      interests: this.sanitizeHashtagList(interestsSource),
+      disinterests: this.sanitizeHashtagList(disinterestsSource),
+    };
+  }
+
+  setHashtagStatus(message = "", tone = "muted") {
+    if (!(this.hashtagStatusText instanceof HTMLElement)) {
+      return;
+    }
+
+    const classList = this.hashtagStatusText.classList;
+    classList.remove(
+      "text-status-success",
+      "text-status-warning",
+      "text-status-danger",
+      "text-status-info",
+      "text-muted",
+    );
+
+    const normalized =
+      typeof message === "string" && message.trim() ? message.trim() : "";
+
+    if (!normalized) {
+      this.hashtagStatusText.textContent = "";
+      this.hashtagStatusText.classList.add("text-muted", "hidden");
+      return;
+    }
+
+    this.hashtagStatusText.textContent = normalized;
+    this.hashtagStatusText.classList.remove("hidden");
+
+    switch (tone) {
+      case "success":
+        classList.add("text-status-success");
+        break;
+      case "warning":
+      case "error":
+        classList.add("text-status-warning");
+        break;
+      case "info":
+        classList.add("text-status-info");
+        break;
+      default:
+        classList.add("text-muted");
+        break;
+    }
+  }
+
+  clearHashtagInputs() {
+    if (this.hashtagInterestInput instanceof HTMLInputElement) {
+      this.hashtagInterestInput.value = "";
+    }
+    if (this.hashtagDisinterestInput instanceof HTMLInputElement) {
+      this.hashtagDisinterestInput.value = "";
+    }
+  }
+
+  populateHashtagPreferences(preferences = null) {
+    const snapshot = this.getResolvedHashtagPreferences(preferences);
+
+    this.renderHashtagList("interest", snapshot.interests);
+    this.renderHashtagList("disinterest", snapshot.disinterests);
+
+    if (!snapshot.interests.length && !snapshot.disinterests.length) {
+      this.setHashtagStatus("", "muted");
+    }
+  }
+
+  renderHashtagList(type, tags) {
+    const list =
+      type === "interest" ? this.hashtagInterestList : this.hashtagDisinterestList;
+    const empty =
+      type === "interest" ? this.hashtagInterestEmpty : this.hashtagDisinterestEmpty;
+
+    if (!(list instanceof HTMLElement) || !(empty instanceof HTMLElement)) {
+      return;
+    }
+
+    list.innerHTML = "";
+
+    const normalized = this.sanitizeHashtagList(tags);
+    if (!normalized.length) {
+      empty.classList.remove("hidden");
+      list.classList.add("hidden");
+      return;
+    }
+
+    empty.classList.add("hidden");
+    list.classList.remove("hidden");
+
+    normalized.forEach((tag) => {
+      const item = this.createHashtagListItem(type, tag);
+      if (item) {
+        list.appendChild(item);
+      }
+    });
+  }
+
+  createHashtagListItem(type, tag) {
+    const normalized = this.normalizeHashtagTag(tag);
+    if (!normalized) {
+      return null;
+    }
+
+    const item = document.createElement("li");
+    item.className = "profile-hashtag-item";
+    item.dataset.hashtagType = type;
+    item.dataset.tag = normalized;
+
+    const label = document.createElement("span");
+    label.textContent = this.formatHashtagTag(normalized);
+    item.appendChild(label);
+
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "profile-hashtag-remove focus-ring";
+    removeButton.dataset.hashtagType = type;
+    removeButton.dataset.tag = normalized;
+    removeButton.setAttribute(
+      "aria-label",
+      type === "interest"
+        ? `Remove ${this.formatHashtagTag(normalized)} from interests`
+        : `Remove ${this.formatHashtagTag(normalized)} from disinterests`,
+    );
+    removeButton.innerHTML = "<span aria-hidden=\"true\">&times;</span>";
+    removeButton.addEventListener("click", () => {
+      void this.handleRemoveHashtagPreference(type, normalized);
+    });
+
+    item.appendChild(removeButton);
+
+    return item;
+  }
+
+  async handleAddHashtagPreference(type) {
+    const isInterest = type === "interest";
+    const input = isInterest
+      ? this.hashtagInterestInput
+      : this.hashtagDisinterestInput;
+
+    const rawValue =
+      input instanceof HTMLInputElement ? input.value || "" : "";
+    const normalized = this.normalizeHashtagTag(rawValue);
+
+    if (!(input instanceof HTMLInputElement)) {
+      return { success: false, reason: "missing-input" };
+    }
+
+    if (!normalized) {
+      const message = "Enter a hashtag to add.";
+      this.showError(message);
+      this.setHashtagStatus(message, "warning");
+      return { success: false, reason: "empty" };
+    }
+
+    const service = this.hashtagPreferencesService;
+    const addMethod = isInterest
+      ? service?.addInterest
+      : service?.addDisinterest;
+
+    if (typeof addMethod !== "function") {
+      const message = "Hashtag preferences are unavailable right now.";
+      this.showError(message);
+      this.setHashtagStatus(message, "warning");
+      return { success: false, reason: "service-unavailable" };
+    }
+
+    const snapshot = this.getResolvedHashtagPreferences();
+    const alreadyInTarget = isInterest
+      ? snapshot.interests.includes(normalized)
+      : snapshot.disinterests.includes(normalized);
+    const inOpposite = isInterest
+      ? snapshot.disinterests.includes(normalized)
+      : snapshot.interests.includes(normalized);
+
+    let result = false;
+    try {
+      result = addMethod.call(service, normalized);
+    } catch (error) {
+      const message = this.describeHashtagPreferencesError(error, {
+        fallbackMessage: "Failed to update hashtag preferences. Please try again.",
+      });
+      if (message) {
+        this.showError(message);
+        this.setHashtagStatus(message, "warning");
+      }
+      return { success: false, reason: error?.code || "service-error", error };
+    } finally {
+      if (input) {
+        input.value = "";
+      }
+    }
+
+    if (result) {
+      const actionMessage = inOpposite
+        ? `${this.formatHashtagTag(normalized)} moved to ${
+            isInterest ? "interests" : "disinterests"
+          }.`
+        : `${this.formatHashtagTag(normalized)} added to ${
+            isInterest ? "interests" : "disinterests"
+          }.`;
+      this.showSuccess(actionMessage);
+      this.setHashtagStatus(actionMessage, "success");
+      this.populateHashtagPreferences();
+      return { success: true, reason: inOpposite ? "moved" : "added" };
+    }
+
+    if (alreadyInTarget) {
+      const message = `${this.formatHashtagTag(normalized)} is already in your ${
+        isInterest ? "interests" : "disinterests"
+      }.`;
+      this.showStatus(message);
+      this.setHashtagStatus(message, "info");
+      this.populateHashtagPreferences();
+      return { success: false, reason: "duplicate" };
+    }
+
+    const fallbackMessage = this.describeHashtagPreferencesError(null, {
+      fallbackMessage: `Failed to add ${this.formatHashtagTag(normalized)}.`,
+    });
+    if (fallbackMessage) {
+      this.showError(fallbackMessage);
+      this.setHashtagStatus(fallbackMessage, "warning");
+    }
+    this.populateHashtagPreferences();
+    return { success: false, reason: "no-change" };
+  }
+
+  async handleRemoveHashtagPreference(type, candidate) {
+    const normalized = this.normalizeHashtagTag(candidate);
+    if (!normalized) {
+      return { success: false, reason: "invalid" };
+    }
+
+    const service = this.hashtagPreferencesService;
+    const removeMethod =
+      type === "interest"
+        ? service?.removeInterest
+        : service?.removeDisinterest;
+
+    if (typeof removeMethod !== "function") {
+      const message = "Hashtag preferences are unavailable right now.";
+      this.showError(message);
+      this.setHashtagStatus(message, "warning");
+      return { success: false, reason: "service-unavailable" };
+    }
+
+    let removed = false;
+    try {
+      removed = removeMethod.call(service, normalized);
+    } catch (error) {
+      const message = this.describeHashtagPreferencesError(error, {
+        fallbackMessage: `Failed to remove ${this.formatHashtagTag(normalized)}.`,
+      });
+      if (message) {
+        this.showError(message);
+        this.setHashtagStatus(message, "warning");
+      }
+      this.populateHashtagPreferences();
+      return { success: false, reason: error?.code || "service-error", error };
+    }
+
+    if (removed) {
+      const message = `${this.formatHashtagTag(normalized)} removed from ${
+        type === "interest" ? "interests" : "disinterests"
+      }.`;
+      this.showSuccess(message);
+      this.setHashtagStatus(message, "success");
+    } else {
+      const message = `${this.formatHashtagTag(normalized)} is already removed.`;
+      this.showStatus(message);
+      this.setHashtagStatus(message, "info");
+    }
+
+    this.populateHashtagPreferences();
+    return { success: removed, reason: removed ? "removed" : "already-removed" };
+  }
+
+  handleHashtagPreferencesChange(detail = {}) {
+    const preferences =
+      detail && typeof detail.preferences === "object"
+        ? detail.preferences
+        : detail;
+    this.populateHashtagPreferences(preferences);
   }
 
   populateBlockedList(blocked = null) {
@@ -5944,12 +6483,14 @@ export class ProfileModalController {
     this.populateBlockedList();
     this.populateProfileRelays();
     this.refreshWalletPaneState();
+    this.populateHashtagPreferences();
 
     postLoginPromise
       .then(() => {
         this.populateBlockedList();
         this.populateProfileRelays();
         this.refreshWalletPaneState();
+        this.populateHashtagPreferences();
       })
       .catch((error) => {
         userLogger.warn(
@@ -5997,6 +6538,9 @@ export class ProfileModalController {
     this.populateBlockedList();
     this.populateProfileRelays();
     this.refreshWalletPaneState();
+    this.populateHashtagPreferences();
+    this.clearHashtagInputs();
+    this.setHashtagStatus("", "muted");
 
     return true;
   }
