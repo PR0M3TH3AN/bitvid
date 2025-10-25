@@ -81,10 +81,16 @@ async function bootstrapTrustedSeeds() {
 
   applySeeds();
 
+  const applyOnChange = () => {
+    applySeeds();
+  };
+
   if (accessControl && typeof accessControl.onWhitelistChange === "function") {
-    accessControl.onWhitelistChange(() => {
-      applySeeds();
-    });
+    accessControl.onWhitelistChange(applyOnChange);
+  }
+
+  if (accessControl && typeof accessControl.onEditorsChange === "function") {
+    accessControl.onEditorsChange(applyOnChange);
   }
 }
 
