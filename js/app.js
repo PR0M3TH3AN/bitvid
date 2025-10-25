@@ -3940,16 +3940,10 @@ class Application {
         ? normalizedProfile.npub.trim()
         : "";
 
-    const fallbackNpub = (() => {
-      if (explicitNpub) {
-        return explicitNpub;
-      }
-      const encoded = this.safeEncodeNpub(normalizedPubkey);
-      return typeof encoded === "string" ? encoded : "";
-    })();
-
-    const shortNpubLabel = fallbackNpub
-      ? formatShortNpub(fallbackNpub) || fallbackNpub
+    const encodedPubkeyNpub = this.safeEncodeNpub(normalizedPubkey);
+    const resolvedNpub = explicitNpub || encodedPubkeyNpub || "";
+    const shortNpubLabel = resolvedNpub
+      ? formatShortNpub(resolvedNpub) || resolvedNpub
       : "";
 
     // For any .author-pic[data-pubkey=...]
@@ -3963,7 +3957,8 @@ class Application {
       el.src = pictureUrl;
     });
 
-    const nameLabel = resolvedName || shortNpubLabel || fallbackNpub || "";
+    const nameLabel =
+      resolvedName || shortNpubLabel || resolvedNpub || "";
 
     // For any .author-name[data-pubkey=...]
     const nameEls = document.querySelectorAll(
@@ -3976,26 +3971,55 @@ class Application {
       el.textContent = nameLabel;
     });
 
-    const npubEls = document.querySelectorAll(
-      `.author-npub[data-pubkey="${normalizedPubkey}"]`
-    );
+    const npubSelectors = new Set();
+    if (resolvedNpub) {
+      npubSelectors.add(`.author-npub[data-npub="${resolvedNpub}"]`);
+    }
+    npubSelectors.add(`.author-npub[data-pubkey="${normalizedPubkey}"]`);
+
+    const npubElements = new Set();
+    npubSelectors.forEach((selector) => {
+      document.querySelectorAll(selector).forEach((el) => {
+        if (el) {
+          npubElements.add(el);
+        }
+      });
+    });
+
+    const npubEls = Array.from(npubElements);
+
     npubEls.forEach((el) => {
       if (!el) {
         return;
       }
 
-      if (shortNpubLabel) {
-        el.textContent = shortNpubLabel;
+      const displayNpub = resolvedNpub
+        ? shortNpubLabel || resolvedNpub
+        : "";
+      const hasDisplayNpub = Boolean(displayNpub);
+
+      if (hasDisplayNpub) {
+        el.textContent = displayNpub;
         el.setAttribute("aria-hidden", "false");
       } else {
         el.textContent = "";
         el.setAttribute("aria-hidden", "true");
       }
 
-      if (fallbackNpub) {
-        el.setAttribute("title", fallbackNpub);
+      if (resolvedNpub) {
+        el.setAttribute("title", resolvedNpub);
+        if (el.dataset) {
+          el.dataset.npub = resolvedNpub;
+        }
       } else {
         el.removeAttribute("title");
+        if (el.dataset && "npub" in el.dataset) {
+          delete el.dataset.npub;
+        }
+      }
+
+      if (el.dataset && normalizedPubkey) {
+        el.dataset.pubkey = normalizedPubkey;
       }
     });
 
@@ -4024,7 +4048,7 @@ class Application {
     if (cardInstances.size) {
       const identityPayload = {
         name: resolvedName,
-        npub: fallbackNpub,
+        npub: resolvedNpub,
         shortNpub: shortNpubLabel,
         pubkey: normalizedPubkey,
       };

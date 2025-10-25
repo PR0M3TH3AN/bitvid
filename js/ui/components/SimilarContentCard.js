@@ -262,8 +262,18 @@ export class SimilarContentCard {
         this.authorNpubEl.removeAttribute("title");
       }
 
-      if (this.identity.pubkey) {
-        this.authorNpubEl.dataset.pubkey = this.identity.pubkey;
+      if (this.identity.npub) {
+        this.authorNpubEl.dataset.npub = this.identity.npub;
+      } else if (this.authorNpubEl.dataset?.npub) {
+        delete this.authorNpubEl.dataset.npub;
+      }
+
+      const resolvedPubkey =
+        this.identity.pubkey ||
+        (typeof this.video?.pubkey === "string" ? this.video.pubkey.trim() : "");
+
+      if (resolvedPubkey) {
+        this.authorNpubEl.dataset.pubkey = resolvedPubkey;
       } else if (this.authorNpubEl.dataset?.pubkey) {
         delete this.authorNpubEl.dataset.pubkey;
       }
