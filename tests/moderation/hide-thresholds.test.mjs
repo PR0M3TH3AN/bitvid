@@ -194,7 +194,7 @@ test("moderation stage bypasses hard hides on home feed", async () => {
   assert.equal(hideWhy.hideBypass, "feed-policy");
 });
 
-test("moderation stage allows admin-whitelisted videos despite hide thresholds", async () => {
+test("moderation stage hides admin-whitelisted videos once thresholds fire", async () => {
   const whitelistedHex = hex("f");
   const videoId = hex("4");
 
@@ -243,18 +243,26 @@ test("moderation stage allows admin-whitelisted videos despite hide thresholds",
 
   const result = await stage(items, context);
 
-  assert.equal(result.length, 1);
+  assert.equal(result.length, 0);
 
-  const metadata = result[0].metadata.moderation;
-  assert.equal(metadata.hidden, false);
+  const metadata = items[0].metadata.moderation;
+  assert.equal(metadata.hidden, true);
   assert.equal(metadata.hideReason, "trusted-report-hide");
-  assert.equal(metadata.hideBypass, "admin-whitelist");
+  assert.equal(metadata.hideBypass ?? null, null);
+  assert.equal(metadata.adminWhitelist, true);
   assert.deepEqual(metadata.hideCounts, { trustedMuteCount: 0, trustedReportCount: 6 });
+
+  const videoModeration = items[0].video.moderation;
+  assert.equal(videoModeration.hidden, true);
+  assert.equal(videoModeration.hideReason, "trusted-report-hide");
+  assert.equal(videoModeration.hideBypass ?? null, null);
+  assert.deepEqual(videoModeration.hideCounts, { trustedMuteCount: 0, trustedReportCount: 6 });
 
   const hideWhy = why.find((entry) => entry.reason === "trusted-report-hide");
   assert.ok(hideWhy);
-  assert.equal(hideWhy.hidden, false);
-  assert.equal(hideWhy.hideBypass, "admin-whitelist");
+  assert.equal(hideWhy.hidden, true);
+  assert.equal(hideWhy.hideBypass ?? null, null);
   assert.equal(hideWhy.adminWhitelist, true);
+  assert.equal(hideWhy.trustedReportCount, 6);
 });
 
