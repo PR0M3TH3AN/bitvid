@@ -189,6 +189,7 @@ export class VideoListView {
       delete: null,
       blacklist: null,
       moderationOverride: null,
+      moderationHide: null,
       tagActivate: null,
     };
 
@@ -296,6 +297,10 @@ export class VideoListView {
 
   setModerationOverrideHandler(handler) {
     this.handlers.moderationOverride = typeof handler === "function" ? handler : null;
+  }
+
+  setModerationHideHandler(handler) {
+    this.handlers.moderationHide = typeof handler === "function" ? handler : null;
   }
 
   setTagActivationHandler(handler) {
