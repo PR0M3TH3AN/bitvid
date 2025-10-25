@@ -9,6 +9,10 @@ import {
   withMockedNostrTools,
   createModerationAppHarness,
 } from "../helpers/moderation-test-helpers.mjs";
+import {
+  applyModerationContextDatasets,
+  normalizeVideoModerationContext,
+} from "../../js/ui/moderationUiHelpers.js";
 
 function setupDom(t) {
   const dom = new JSDOM("<!DOCTYPE html><html><body></body></html>", {
@@ -159,7 +163,9 @@ test("VideoCard renders moderation badges and respects viewer override", async (
   card.moderationActionButton.click();
   await new Promise((resolve) => setTimeout(resolve, 0));
 
-  const contextAfterOverride = card.getModerationContext();
+  const contextAfterOverride = normalizeVideoModerationContext(
+    card.video?.moderation,
+  );
   assert.equal(contextAfterOverride.overrideActive, true);
   assert.equal(contextAfterOverride.activeBlockAutoplay, false);
 
@@ -223,7 +229,9 @@ test(
 
     document.body.appendChild(card.getRoot());
 
-    const contextBeforeOverride = card.getModerationContext();
+    const contextBeforeOverride = normalizeVideoModerationContext(
+      card.video?.moderation,
+    );
     assert.equal(contextBeforeOverride.activeHidden, true);
     assert.equal(contextBeforeOverride.effectiveHideReason, "trusted-report-hide");
     assert.equal(contextBeforeOverride.allowOverride, true);
@@ -243,7 +251,9 @@ test(
     card.moderationActionButton.click();
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    const contextAfterOverride = card.getModerationContext();
+    const contextAfterOverride = normalizeVideoModerationContext(
+      card.video?.moderation,
+    );
     assert.equal(contextAfterOverride.overrideActive, true);
     assert.equal(contextAfterOverride.activeHidden, false);
     assert.equal(contextAfterOverride.effectiveHideReason, "trusted-report-hide");
@@ -305,7 +315,10 @@ test("VideoCard blurs thumbnails when trusted mute triggers without reports", as
 
   assert.equal(video.moderation.blurThumbnail, true);
   assert.equal(video.moderation.blurReason, "trusted-mute");
-  assert.equal(card.getModerationContext().activeBlur, true);
+  assert.equal(
+    normalizeVideoModerationContext(card.video?.moderation).activeBlur,
+    true,
+  );
   assert.equal(card.thumbnailEl.dataset.thumbnailState, "blurred");
   assert.equal(card.authorPicEl.dataset.visualState, "blurred");
   assert.equal(card.getRoot().dataset.autoplayPolicy, "blocked");
@@ -364,7 +377,10 @@ test("VideoCard hide action restores trusted mute hide state after override", as
 
   document.body.appendChild(card.getRoot());
 
-  assert.equal(card.getModerationContext().activeHidden, true);
+  assert.equal(
+    normalizeVideoModerationContext(card.video?.moderation).activeHidden,
+    true,
+  );
   assert.equal(card.getRoot().dataset.moderationHidden, "true");
 
   card.onModerationOverride = ({ video: overrideVideo, card: overrideCard }) =>
@@ -373,7 +389,9 @@ test("VideoCard hide action restores trusted mute hide state after override", as
   card.moderationActionButton.click();
   await new Promise((resolve) => setTimeout(resolve, 0));
 
-  const contextAfterOverride = card.getModerationContext();
+  const contextAfterOverride = normalizeVideoModerationContext(
+    card.video?.moderation,
+  );
   assert.equal(contextAfterOverride.overrideActive, true);
   assert.equal(contextAfterOverride.activeHidden, false);
   assert.ok(card.moderationHideButton);
@@ -384,9 +402,54 @@ test("VideoCard hide action restores trusted mute hide state after override", as
   card.moderationHideButton.click();
   await new Promise((resolve) => setTimeout(resolve, 0));
 
-  const contextAfterHide = card.getModerationContext();
+  const contextAfterHide = normalizeVideoModerationContext(card.video?.moderation);
   assert.equal(contextAfterHide.overrideActive, false);
   assert.equal(contextAfterHide.activeHidden, true);
   assert.equal(card.getRoot().dataset.moderationHidden, "true");
   assert.equal(card.moderationHideButton, null);
+});
+
+test("applyModerationContextDatasets clears blur when overrides are active", (t) => {
+  const { document } = setupDom(t);
+
+  const root = document.createElement("div");
+  const thumbnail = document.createElement("div");
+  const avatar = document.createElement("div");
+
+  const baselineContext = normalizeVideoModerationContext({
+    blurThumbnail: true,
+    reportType: "nudity",
+    trustedCount: 1,
+    original: { blockAutoplay: true },
+  });
+
+  applyModerationContextDatasets(baselineContext, {
+    root,
+    thumbnail,
+    avatar,
+  });
+
+  assert.equal(root.dataset.autoplayPolicy, "blocked");
+  assert.equal(root.dataset.moderationOverride, undefined);
+  assert.equal(thumbnail.dataset.thumbnailState, "blurred");
+  assert.equal(avatar.dataset.visualState, "blurred");
+
+  const overrideContext = normalizeVideoModerationContext({
+    blurThumbnail: true,
+    reportType: "nudity",
+    trustedCount: 1,
+    viewerOverride: { showAnyway: true },
+    original: { blockAutoplay: true },
+  });
+
+  applyModerationContextDatasets(overrideContext, {
+    root,
+    thumbnail,
+    avatar,
+  });
+
+  assert.equal(root.dataset.autoplayPolicy, undefined);
+  assert.equal(root.dataset.moderationOverride, "show-anyway");
+  assert.equal(thumbnail.dataset.thumbnailState, undefined);
+  assert.equal(avatar.dataset.visualState, undefined);
 });
