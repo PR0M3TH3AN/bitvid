@@ -1,15 +1,10 @@
 import {
   DEFAULT_AUTOPLAY_BLOCK_THRESHOLD as CONFIG_DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
   DEFAULT_BLUR_THRESHOLD as CONFIG_DEFAULT_BLUR_THRESHOLD,
+  DEFAULT_TRUST_SEED_NPUBS as CONFIG_DEFAULT_TRUST_SEED_NPUBS,
   DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD as CONFIG_DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
   DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD as CONFIG_DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
 } from "./config.js";
-
-export const DEFAULT_TRUST_SEED_NPUBS = Object.freeze([
-  // Rollout: trust seeds count as F1 contacts. Rollback: flip FEATURE_TRUST_SEEDS to false.
-  "npub1424242424242424242424242424242424242424242424242424qamrcaj",
-  "npub1hwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwasxw04hu",
-]);
 
 function coerceNonNegativeInteger(value, fallback) {
   const numeric = Number(value);
@@ -83,6 +78,32 @@ function sanitizeTrackerList(candidate, fallbackTrackers) {
   return sanitized;
 }
 
+function sanitizeTrustSeedList(candidate) {
+  if (!Array.isArray(candidate)) {
+    return [];
+  }
+
+  const seen = new Set();
+  const sanitized = [];
+
+  for (const npub of candidate) {
+    if (typeof npub !== "string") {
+      continue;
+    }
+    const trimmed = npub.trim();
+    if (!trimmed) {
+      continue;
+    }
+    if (seen.has(trimmed)) {
+      continue;
+    }
+    seen.add(trimmed);
+    sanitized.push(trimmed);
+  }
+
+  return sanitized;
+}
+
 const DEFAULT_WSS_TRACKERS = Object.freeze([
   "wss://tracker.openwebtorrent.com",
   "wss://tracker.fastcast.nz",
@@ -107,6 +128,10 @@ const SANITIZED_DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD = coerceNonNegativeInteger(
   3,
 );
 
+const SANITIZED_DEFAULT_TRUST_SEED_NPUBS = Object.freeze(
+  sanitizeTrustSeedList(CONFIG_DEFAULT_TRUST_SEED_NPUBS)
+);
+
 export const DEFAULT_BLUR_THRESHOLD = SANITIZED_DEFAULT_BLUR_THRESHOLD;
 export const DEFAULT_AUTOPLAY_BLOCK_THRESHOLD =
   SANITIZED_DEFAULT_AUTOPLAY_BLOCK_THRESHOLD;
@@ -114,6 +139,7 @@ export const DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD =
   SANITIZED_DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD;
 export const DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD =
   SANITIZED_DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD;
+export const DEFAULT_TRUST_SEED_NPUBS = SANITIZED_DEFAULT_TRUST_SEED_NPUBS;
 
 const DEFAULT_FLAGS = Object.freeze({
   URL_FIRST_ENABLED: true, // try URL before magnet in the player

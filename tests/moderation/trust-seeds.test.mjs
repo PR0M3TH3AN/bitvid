@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULT_TRUST_SEED_NPUBS } from "../../js/constants.js";
+import { DEFAULT_TRUST_SEED_NPUBS as CONFIG_DEFAULT_TRUST_SEED_NPUBS } from "../../js/config.js";
 import {
   withMockedNostrTools,
   createModerationServiceHarness,
@@ -8,6 +9,23 @@ import {
 } from "../helpers/moderation-test-helpers.mjs";
 
 const [PRIMARY_SEED_NPUB] = DEFAULT_TRUST_SEED_NPUBS;
+
+test("default trust seeds derive from config", () => {
+  const sanitizedConfigSeeds = Array.isArray(CONFIG_DEFAULT_TRUST_SEED_NPUBS)
+    ? Array.from(
+        new Set(
+          CONFIG_DEFAULT_TRUST_SEED_NPUBS
+            .filter((value) => typeof value === "string")
+            .map((value) => value.trim())
+            .filter(Boolean)
+        )
+      )
+    : [];
+
+  assert.ok(Object.isFrozen(DEFAULT_TRUST_SEED_NPUBS));
+  assert.deepEqual(DEFAULT_TRUST_SEED_NPUBS, sanitizedConfigSeeds);
+  assert.notStrictEqual(DEFAULT_TRUST_SEED_NPUBS, CONFIG_DEFAULT_TRUST_SEED_NPUBS);
+});
 
 function createTrustedMuteEvent({ owner, muted, id = "m".repeat(64), createdAt = 1_700_000_000 } = {}) {
   return {
