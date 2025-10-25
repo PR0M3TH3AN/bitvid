@@ -199,7 +199,7 @@ export const ALLOW_NSFW_CONTENT = false;
  * by default. Align this value with your moderation policy — the upstream
  * deployment targets 3 trusted reports before blurring.
  */
-export const DEFAULT_BLUR_THRESHOLD = 3;
+export const DEFAULT_BLUR_THRESHOLD = 1;
 
 /**
  * Baseline trusted-report count that blocks autoplay during browsing.
@@ -209,7 +209,7 @@ export const DEFAULT_BLUR_THRESHOLD = 3;
  * or decrease it if you want autoplay to stop sooner. The upstream deployment
  * targets 2 trusted reports before blocking autoplay.
  */
-export const DEFAULT_AUTOPLAY_BLOCK_THRESHOLD = 2;
+export const DEFAULT_AUTOPLAY_BLOCK_THRESHOLD = 1;
 
 /**
  * Trusted mute threshold that hides creators globally.
@@ -229,7 +229,7 @@ export const DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD = 1;
  * the value with your moderation policy — 3 trusted reports is the upstream
  * baseline.
  */
-export const DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD = 3;
+export const DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD = 1;
 
 /**
  * Optional theme accent overrides for light and dark mode.
