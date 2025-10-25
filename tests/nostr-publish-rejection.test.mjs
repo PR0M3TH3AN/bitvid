@@ -236,8 +236,12 @@ try {
 
     const originalBlocked = new Set(userBlocks.blockedPubkeys);
     const originalBlockEventId = userBlocks.blockEventId;
+    const originalMuteEventId = userBlocks.muteEventId;
+    const originalMuteEventCreatedAt = userBlocks.muteEventCreatedAt;
     userBlocks.blockedPubkeys = new Set(["abcd".repeat(16)]);
     userBlocks.blockEventId = null;
+    userBlocks.muteEventId = null;
+    userBlocks.muteEventCreatedAt = null;
 
     try {
       await assert.rejects(
@@ -273,6 +277,8 @@ try {
     } finally {
       userBlocks.blockedPubkeys = originalBlocked;
       userBlocks.blockEventId = originalBlockEventId;
+      userBlocks.muteEventId = originalMuteEventId;
+      userBlocks.muteEventCreatedAt = originalMuteEventCreatedAt;
       restoreRelayState(nostrClient, relaySnapshot);
     }
   }
