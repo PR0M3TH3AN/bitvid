@@ -81,6 +81,7 @@ class AccessControl {
     this._refreshPromise = Promise.resolve();
     this._hydratedFromCache = false;
     this._whitelistListeners = new Set();
+    this._editorListeners = new Set();
 
     this._hydrateFromCache();
   }
@@ -100,12 +101,15 @@ class AccessControl {
     const whitelist = Array.isArray(state?.whitelist) ? state.whitelist : [];
     const blacklist = Array.isArray(state?.blacklist) ? state.blacklist : [];
 
+    const previousEditors =
+      this.editors instanceof Set ? new Set(this.editors) : new Set();
     const previousWhitelist =
       this.whitelist instanceof Set ? new Set(this.whitelist) : new Set();
 
     this.editors = new Set(
       dedupeNpubs([...ADMIN_EDITORS_NPUBS, ...editors])
     );
+    const editorsChanged = !areSetsEqual(previousEditors, this.editors);
     const normalizedWhitelist = dedupeNpubs(whitelist);
     this.whitelist = new Set(normalizedWhitelist);
     const whitelistChanged = !areSetsEqual(previousWhitelist, this.whitelist);
@@ -142,6 +146,9 @@ class AccessControl {
     if (whitelistChanged) {
       this._emitWhitelistChange(Array.from(this.whitelist));
     }
+    if (editorsChanged) {
+      this._emitEditorsChange(Array.from(this.editors));
+    }
   }
 
   _emitWhitelistChange(whitelistValues) {
@@ -158,6 +165,24 @@ class AccessControl {
         listener(snapshot);
       } catch (error) {
         userLogger.error("accessControl whitelist listener failed", error);
+      }
+    }
+  }
+
+  _emitEditorsChange(editorsValues) {
+    if (!this._editorListeners.size) {
+      return;
+    }
+
+    const snapshot = Array.isArray(editorsValues)
+      ? [...editorsValues]
+      : this.getEditors();
+
+    for (const listener of Array.from(this._editorListeners)) {
+      try {
+        listener(snapshot);
+      } catch (error) {
+        userLogger.error("accessControl editors listener failed", error);
       }
     }
   }
@@ -266,6 +291,18 @@ class AccessControl {
 
     return () => {
       this._whitelistListeners.delete(listener);
+    };
+  }
+
+  onEditorsChange(listener) {
+    if (typeof listener !== "function") {
+      return () => {};
+    }
+
+    this._editorListeners.add(listener);
+
+    return () => {
+      this._editorListeners.delete(listener);
     };
   }
 
