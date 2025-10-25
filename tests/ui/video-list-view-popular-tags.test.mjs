@@ -59,6 +59,35 @@ test("VideoListView renders sorted popular tag pills", () => {
   );
 });
 
+test("VideoListView applies tag preference variants to popular tags", () => {
+  const { document, listRoot, tagsRoot } = createViewDom();
+  const view = new VideoListView({ document });
+  view.mount(listRoot);
+  view.setPopularTagsContainer(tagsRoot);
+  view.setTagPreferenceStateResolver((tag) =>
+    tag === "Nostr" ? "interest" : tag === "Video" ? "disinterest" : "neutral",
+  );
+
+  const videos = [
+    {
+      id: "v1",
+      title: "First",
+      pubkey: "pub1",
+      created_at: 3,
+      nip71: { hashtags: ["Nostr", "Video"] },
+    },
+  ];
+
+  view.render(videos);
+
+  const buttons = tagsRoot.querySelectorAll("button");
+  assert.equal(buttons.length, 2);
+  assert.equal(buttons[0].dataset.preferenceState, "interest");
+  assert.equal(buttons[0].dataset.variant, "success");
+  assert.equal(buttons[1].dataset.preferenceState, "disinterest");
+  assert.equal(buttons[1].dataset.variant, "critical");
+});
+
 test("VideoListView hides popular tags when no tags are available", () => {
   const { document, listRoot, tagsRoot } = createViewDom();
   const view = new VideoListView({ document });

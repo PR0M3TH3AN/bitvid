@@ -44,6 +44,14 @@ function applyPreferenceState(button, state) {
 
   const normalized = normalizeTagPreferenceState(state);
   button.dataset.preferenceState = normalized;
+
+  if (normalized === "interest") {
+    button.dataset.variant = "success";
+  } else if (normalized === "disinterest") {
+    button.dataset.variant = "critical";
+  } else {
+    delete button.dataset.variant;
+  }
 }
 
 export function applyTagPreferenceState(button, state) {
