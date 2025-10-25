@@ -139,10 +139,85 @@ import {
 let activeSigner = null;
 const activeSignerRegistry = new Map();
 
+function attachNipMethodAliases(signer) {
+  if (!signer || typeof signer !== "object") {
+    return;
+  }
+
+  const nip04 =
+    signer && typeof signer.nip04 === "object" && signer.nip04 !== null
+      ? signer.nip04
+      : null;
+  if (nip04) {
+    const encrypt =
+      typeof nip04.encrypt === "function" ? nip04.encrypt.bind(nip04) : null;
+    const decrypt =
+      typeof nip04.decrypt === "function" ? nip04.decrypt.bind(nip04) : null;
+
+    if (encrypt && typeof signer.nip04Encrypt !== "function") {
+      signer.nip04Encrypt = (targetPubkey, plaintext) =>
+        encrypt(targetPubkey, plaintext);
+    }
+
+    if (decrypt && typeof signer.nip04Decrypt !== "function") {
+      signer.nip04Decrypt = (actorPubkey, ciphertext) =>
+        decrypt(actorPubkey, ciphertext);
+    }
+  }
+
+  const nip44 =
+    signer && typeof signer.nip44 === "object" && signer.nip44 !== null
+      ? signer.nip44
+      : null;
+  if (nip44) {
+    const v2 =
+      typeof nip44.v2 === "object" && nip44.v2 !== null ? nip44.v2 : null;
+
+    const encrypt = (() => {
+      if (typeof signer.nip44Encrypt === "function") {
+        return null;
+      }
+      if (typeof v2?.encrypt === "function") {
+        return v2.encrypt.bind(v2);
+      }
+      if (typeof nip44.encrypt === "function") {
+        return nip44.encrypt.bind(nip44);
+      }
+      return null;
+    })();
+
+    const decrypt = (() => {
+      if (typeof signer.nip44Decrypt === "function") {
+        return null;
+      }
+      if (typeof v2?.decrypt === "function") {
+        return v2.decrypt.bind(v2);
+      }
+      if (typeof nip44.decrypt === "function") {
+        return nip44.decrypt.bind(nip44);
+      }
+      return null;
+    })();
+
+    if (encrypt) {
+      signer.nip44Encrypt = (targetPubkey, plaintext) =>
+        encrypt(targetPubkey, plaintext);
+    }
+
+    if (decrypt) {
+      signer.nip44Decrypt = (actorPubkey, ciphertext) =>
+        decrypt(actorPubkey, ciphertext);
+    }
+  }
+}
+
 function setActiveSigner(signer) {
   if (!signer || typeof signer !== "object") {
     return;
   }
+
+  attachNipMethodAliases(signer);
+
   activeSigner = signer;
   const pubkey =
     typeof signer.pubkey === "string" && signer.pubkey.trim()
