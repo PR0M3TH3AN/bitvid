@@ -315,6 +315,8 @@ class Application {
       this.computeHashtagPreferencesSignature(
         this.hashtagPreferencesSnapshot,
       );
+    this.hashtagPreferencesPublishInFlight = false;
+    this.hashtagPreferencesPublishPromise = null;
     this.boundHashtagPreferencesChangeHandler = null;
     this.unsubscribeFromHashtagPreferencesChange = null;
     if (
@@ -7919,7 +7921,7 @@ class Application {
         membership: this.getTagPreferenceMembership(entry.tag),
         designSystem: this.designSystemContext,
         onAction: (action, actionDetail = {}) => {
-          this.handleTagPreferenceMenuAction(action, {
+          void this.handleTagPreferenceMenuAction(action, {
             tag: entry.tag,
             trigger,
             video: entry.video || null,
@@ -8047,7 +8049,61 @@ class Application {
     return closed;
   }
 
-  handleTagPreferenceMenuAction(action, detail = {}) {
+  async persistHashtagPreferencesFromMenu() {
+    const service = this.hashtagPreferences;
+    const publish =
+      service && typeof service.publish === "function" ? service.publish : null;
+
+    if (!publish) {
+      const message = this.describeHashtagPreferencesError(null, {
+        fallbackMessage: "Hashtag preferences are unavailable right now.",
+      });
+      if (message) {
+        this.showError(message);
+      }
+      const error = new Error(
+        message || "Hashtag preferences are unavailable right now.",
+      );
+      error.code = "service-unavailable";
+      throw error;
+    }
+
+    if (this.hashtagPreferencesPublishInFlight) {
+      return this.hashtagPreferencesPublishPromise;
+    }
+
+    const normalizedPubkey = this.normalizeHexPubkey(this.pubkey);
+    const payload = normalizedPubkey ? { pubkey: normalizedPubkey } : {};
+
+    this.hashtagPreferencesPublishInFlight = true;
+
+    const publishPromise = (async () => {
+      try {
+        return await publish.call(service, payload);
+      } catch (error) {
+        const failure =
+          error instanceof Error ? error : new Error(String(error || ""));
+        if (!failure.code) {
+          failure.code = "hashtag-preferences-publish-failed";
+        }
+        const message = this.describeHashtagPreferencesError(failure, {
+          operation: "update",
+        });
+        if (message) {
+          this.showError(message);
+        }
+        throw failure;
+      } finally {
+        this.hashtagPreferencesPublishInFlight = false;
+        this.hashtagPreferencesPublishPromise = null;
+      }
+    })();
+
+    this.hashtagPreferencesPublishPromise = publishPromise;
+    return publishPromise;
+  }
+
+  async handleTagPreferenceMenuAction(action, detail = {}) {
     const tag = typeof detail?.tag === "string" ? detail.tag : "";
     if (!tag) {
       return;
@@ -8092,6 +8148,15 @@ class Application {
     }
 
     if (!result) {
+      return;
+    }
+
+    this.updateCachedHashtagPreferences();
+    this.refreshTagPreferenceUi();
+
+    try {
+      await this.persistHashtagPreferencesFromMenu();
+    } catch (error) {
       return;
     }
 

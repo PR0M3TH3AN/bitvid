@@ -259,6 +259,7 @@ function createController(options = {}) {
       }
       return hashtagStore.disinterests.delete(normalized);
     },
+    publish: async () => ({ ok: true }),
     on: () => () => {},
   };
 
@@ -765,6 +766,53 @@ for (const _ of [0]) {
 
       assert.equal(disinterestList?.querySelectorAll('li').length, 0);
       assert.equal(disinterestEmpty?.classList.contains('hidden'), false);
+    } finally {
+      cleanup();
+    }
+
+    t.after(() => {
+      if (!cleanupRan) {
+        cleanup();
+      }
+      resetRuntimeFlags();
+    });
+  });
+
+  test('handleAddHashtagPreference publishes updates', async (t) => {
+    const publishCalls = [];
+    const controller = createController({
+      services: {
+        hashtagPreferences: {
+          publish: async (payload) => {
+            publishCalls.push(payload);
+            return { ok: true };
+          },
+        },
+      },
+    });
+    await controller.load();
+    applyDesignSystemAttributes(document);
+
+    controller.state.setActivePubkey(defaultActorHex);
+
+    let cleanupRan = false;
+    const cleanup = () => {
+      try {
+        controller.hide({ silent: true });
+      } catch {}
+      cleanupRan = true;
+    };
+
+    try {
+      await controller.show('hashtags');
+      await waitForAnimationFrame(window, 2);
+
+      controller.hashtagInterestInput.value = '#nostr';
+      const result = await controller.handleAddHashtagPreference('interest');
+
+      assert.equal(result.success, true);
+      assert.equal(publishCalls.length, 1);
+      assert.deepEqual(publishCalls[0], { pubkey: defaultActorHex });
     } finally {
       cleanup();
     }

@@ -193,6 +193,7 @@ const SERVICE_CONTRACT = [
       removeInterest: () => false,
       addDisinterest: () => false,
       removeDisinterest: () => false,
+      publish: async () => false,
       on: () => () => {},
     }),
   },
@@ -856,6 +857,8 @@ export class ProfileModalController {
       this.services.describeHashtagPreferencesError;
     this.getHashtagPreferencesSnapshotService =
       this.services.getHashtagPreferences;
+    this.hashtagPreferencesPublishInFlight = false;
+    this.hashtagPreferencesPublishPromise = null;
 
     if (
       this.hashtagPreferencesService &&
@@ -3209,6 +3212,83 @@ export class ProfileModalController {
     return item;
   }
 
+  async persistHashtagPreferences(options = {}) {
+    const service = this.hashtagPreferencesService;
+    const publish =
+      service && typeof service.publish === "function" ? service.publish : null;
+
+    if (!publish) {
+      const message = this.describeHashtagPreferencesError(null, {
+        fallbackMessage: "Hashtag preferences are unavailable right now.",
+      });
+      if (message) {
+        this.showError(message);
+        this.setHashtagStatus(message, "warning");
+      }
+      const error = new Error(
+        message || "Hashtag preferences are unavailable right now.",
+      );
+      error.code = "service-unavailable";
+      throw error;
+    }
+
+    if (this.hashtagPreferencesPublishInFlight) {
+      return this.hashtagPreferencesPublishPromise;
+    }
+
+    const { successMessage, pubkey, progressMessage } =
+      options && typeof options === "object" ? options : {};
+
+    const resolvedPubkeyCandidate =
+      typeof pubkey === "string" && pubkey.trim()
+        ? pubkey
+        : this.getActivePubkey();
+    const normalizedPubkey = this.normalizeHexPubkey(resolvedPubkeyCandidate);
+
+    const payload = normalizedPubkey ? { pubkey: normalizedPubkey } : {};
+
+    const pendingMessage =
+      typeof progressMessage === "string" && progressMessage.trim()
+        ? progressMessage.trim()
+        : "Saving hashtag preferences…";
+    const finalMessage =
+      typeof successMessage === "string" && successMessage.trim()
+        ? successMessage.trim()
+        : "Hashtag preferences saved.";
+
+    this.hashtagPreferencesPublishInFlight = true;
+    this.setHashtagStatus(pendingMessage, "info");
+
+    const publishPromise = (async () => {
+      try {
+        const result = await publish.call(service, payload);
+        this.setHashtagStatus(finalMessage, "success");
+        return result;
+      } catch (error) {
+        const failure =
+          error instanceof Error ? error : new Error(String(error || ""));
+        if (!failure.code) {
+          failure.code = "hashtag-preferences-publish-failed";
+        }
+        const message = this.describeHashtagPreferencesError(failure, {
+          fallbackMessage:
+            "Failed to update hashtag preferences. Please try again.",
+        });
+        if (message) {
+          this.showError(message);
+          this.setHashtagStatus(message, "warning");
+        }
+        throw failure;
+      } finally {
+        this.hashtagPreferencesPublishInFlight = false;
+        this.hashtagPreferencesPublishPromise = null;
+      }
+    })();
+
+    this.hashtagPreferencesPublishPromise = publishPromise;
+    return publishPromise;
+  }
+
   async handleAddHashtagPreference(type) {
     const isInterest = type === "interest";
     const input = isInterest
@@ -3276,10 +3356,22 @@ export class ProfileModalController {
         : `${this.formatHashtagTag(normalized)} added to ${
             isInterest ? "interests" : "disinterests"
           }.`;
-      this.showSuccess(actionMessage);
-      this.setHashtagStatus(actionMessage, "success");
       this.populateHashtagPreferences();
-      return { success: true, reason: inOpposite ? "moved" : "added" };
+      try {
+        await this.persistHashtagPreferences({
+          successMessage: actionMessage,
+        });
+        this.showSuccess(actionMessage);
+        return { success: true, reason: inOpposite ? "moved" : "added" };
+      } catch (error) {
+        return {
+          success: false,
+          reason: error?.code || "publish-failed",
+          error,
+        };
+      } finally {
+        this.populateHashtagPreferences();
+      }
     }
 
     if (alreadyInTarget) {
@@ -3341,8 +3433,19 @@ export class ProfileModalController {
       const message = `${this.formatHashtagTag(normalized)} removed from ${
         type === "interest" ? "interests" : "disinterests"
       }.`;
-      this.showSuccess(message);
-      this.setHashtagStatus(message, "success");
+      this.populateHashtagPreferences();
+      try {
+        await this.persistHashtagPreferences({ successMessage: message });
+        this.showSuccess(message);
+      } catch (error) {
+        return {
+          success: false,
+          reason: error?.code || "publish-failed",
+          error,
+        };
+      } finally {
+        this.populateHashtagPreferences();
+      }
     } else {
       const message = `${this.formatHashtagTag(normalized)} is already removed.`;
       this.showStatus(message);
