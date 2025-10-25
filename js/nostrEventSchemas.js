@@ -22,6 +22,7 @@ export const NOTE_TYPES = Object.freeze({
   WATCH_HISTORY_CHUNK: "watchHistoryChunk",
   SUBSCRIPTION_LIST: "subscriptionList",
   USER_BLOCK_LIST: "userBlockList",
+  HASHTAG_PREFERENCES: "hashtagPreferences",
   ADMIN_MODERATION_LIST: "adminModerationList",
   ADMIN_BLACKLIST: "adminBlacklist",
   ADMIN_WHITELIST: "adminWhitelist",
@@ -311,6 +312,21 @@ const BASE_SCHEMAS = {
     content: {
       format: "nip04-json",
       description: "Encrypted JSON: { blockedPubkeys: string[] }.",
+    },
+  },
+  [NOTE_TYPES.HASHTAG_PREFERENCES]: {
+    type: NOTE_TYPES.HASHTAG_PREFERENCES,
+    label: "Hashtag preferences",
+    kind: 30005,
+    identifierTag: {
+      name: "d",
+      value: "bitvid:tag-preferences",
+    },
+    appendTags: [["encrypted", "nip44_v2"]],
+    content: {
+      format: "nip44-json",
+      description:
+        "NIP-44 encrypted JSON: { version, interests: string[], disinterests: string[] }.",
     },
   },
   [NOTE_TYPES.ADMIN_MODERATION_LIST]: {
@@ -1126,6 +1142,28 @@ export function buildBlockListEvent({
   appendSchemaTags(tags, schema);
   return {
     kind: schema?.kind ?? 30002,
+    pubkey,
+    created_at,
+    tags,
+    content: typeof content === "string" ? content : String(content ?? ""),
+  };
+}
+
+export function buildHashtagPreferenceEvent({
+  pubkey,
+  created_at,
+  content,
+}) {
+  const schema = getNostrEventSchema(NOTE_TYPES.HASHTAG_PREFERENCES);
+  const tags = [];
+  const identifierName = schema?.identifierTag?.name || "d";
+  const identifierValue = schema?.identifierTag?.value || "bitvid:tag-preferences";
+  if (identifierName && identifierValue) {
+    tags.push([identifierName, identifierValue]);
+  }
+  appendSchemaTags(tags, schema);
+  return {
+    kind: schema?.kind ?? 30005,
     pubkey,
     created_at,
     tags,
