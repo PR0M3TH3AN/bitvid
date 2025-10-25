@@ -201,8 +201,8 @@ export const ALLOW_NSFW_CONTENT = false;
  * values at runtime when reading from `js/config.js`.
  */
 export const DEFAULT_TRUST_SEED_NPUBS = [
-  "npub1424242424242424242424242424242424242424242424242424qamrcaj",
-  "npub1hwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwasxw04hu",
+  "npub15jnttpymeytm80hatjqcvhhqhzrhx6gxp8pq0wn93rhnu8s9h9dsha32lx",
+  "npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe",
 ];
 
 /**
