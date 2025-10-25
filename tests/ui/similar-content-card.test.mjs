@@ -149,6 +149,7 @@ test("renders author identity fields with provided datasets", (t) => {
     name: "Satoshi",
     npub: "npub1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq",
     pubkey: "pubkey-satoshi",
+    picture: "https://cdn.example.com/avatar.png",
   };
 
   const card = new SimilarContentCard({
@@ -160,8 +161,12 @@ test("renders author identity fields with provided datasets", (t) => {
   const root = card.getRoot();
   const nameEl = root.querySelector(".author-name");
   const npubEl = root.querySelector(".author-npub");
+  const avatarEl = root.querySelector(
+    ".player-modal__similar-card-avatar-img",
+  );
   assert(nameEl);
   assert(npubEl);
+  assert(avatarEl);
 
   assert.equal(nameEl.textContent, identity.name);
   assert.equal(nameEl.dataset.pubkey, identity.pubkey);
@@ -171,6 +176,11 @@ test("renders author identity fields with provided datasets", (t) => {
   assert.equal(npubEl.dataset.pubkey, identity.pubkey);
   assert.equal(npubEl.getAttribute("title"), identity.npub);
   assert.equal(npubEl.getAttribute("aria-hidden"), "false");
+  assert.equal(npubEl.hidden, false);
+
+  assert.equal(avatarEl.dataset.pubkey, identity.pubkey);
+  assert.equal(avatarEl.src, identity.picture);
+  assert.match(avatarEl.alt, /Satoshi/);
 });
 
 test("exposes view count element wired to pointer info", (t) => {
@@ -193,4 +203,40 @@ test("exposes view count element wired to pointer info", (t) => {
   assert.equal(viewEl.dataset.viewPointer, pointerInfo.key);
   assert.equal(viewEl.dataset.viewCount, "");
   assert.equal(viewEl.textContent, "– views");
+});
+
+test("hides duplicate npub pill and falls back to default avatar", (t) => {
+  const { document, cleanup } = createDom();
+  t.after(cleanup);
+
+  const npub = "npub1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq";
+
+  const card = new SimilarContentCard({
+    document,
+    video: createVideo({ id: "duplicates" }),
+    identity: { npub },
+  });
+
+  const root = card.getRoot();
+  const nameEl = root.querySelector(".author-name");
+  const npubEl = root.querySelector(".author-npub");
+  const avatarEl = root.querySelector(
+    ".player-modal__similar-card-avatar-img",
+  );
+  assert(nameEl);
+  assert(npubEl);
+  assert(avatarEl);
+
+  const expectedShort = formatShortNpub(npub);
+  assert.equal(nameEl.textContent, expectedShort);
+  assert.equal(npubEl.textContent, expectedShort);
+  assert.equal(npubEl.hidden, true);
+  assert.equal(npubEl.getAttribute("aria-hidden"), "true");
+  assert.equal(npubEl.hasAttribute("title"), false);
+
+  assert.ok(
+    avatarEl.src.endsWith("/assets/svg/default-profile.svg"),
+    "avatar should fall back to default profile icon",
+  );
+  assert.match(avatarEl.alt, /avatar$/i);
 });

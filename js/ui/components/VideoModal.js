@@ -4536,11 +4536,36 @@ export class VideoModal {
       name = npub;
     }
 
+    const pictureCandidates = [
+      override.picture,
+      override.image,
+      override.photo,
+      video?.picture,
+      video?.authorPicture,
+      video?.creatorPicture,
+      video?.author?.picture,
+      video?.creator?.picture,
+      video?.profile?.picture,
+    ];
+
+    let picture = "";
+    for (const candidate of pictureCandidates) {
+      if (typeof candidate !== "string") {
+        continue;
+      }
+      const trimmed = candidate.trim();
+      if (trimmed) {
+        picture = trimmed;
+        break;
+      }
+    }
+
     return {
       name,
       npub,
       shortNpub,
       pubkey,
+      picture,
     };
   }
 

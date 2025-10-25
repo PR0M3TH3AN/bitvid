@@ -1928,9 +1928,9 @@
 
   .player-modal__similar-card {
     --player-modal-similar-thumb: clamp(
-      6.75rem,
-      calc(var(--video-modal-secondary-min, 320px) * 0.34),
-      10.5rem
+      8.75rem,
+      calc(var(--video-modal-secondary-min, 320px) * 0.48),
+      13.25rem
     );
     --player-modal-similar-gap: clamp(var(--space-4xs), 0.65vw, var(--space-2xs));
     --player-modal-similar-padding: clamp(
@@ -1995,9 +1995,9 @@
     position: relative;
     inline-size: var(--player-modal-similar-thumb);
     max-inline-size: clamp(
-      calc(var(--space-xl-plus) * 1.25),
-      24vw,
-      calc(var(--space-2xl-plus) * 1.75)
+      calc(var(--space-2xl-plus) * 1.1),
+      28vw,
+      calc(var(--space-2xl-plus) * 2.1)
     );
     border-radius: var(--radius-lg);
     overflow: hidden;
@@ -2041,12 +2041,37 @@
 
   .player-modal__similar-card-author {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
-    column-gap: clamp(var(--space-5xs), 0.4vw, var(--space-4xs));
-    row-gap: var(--space-6xs);
+    column-gap: clamp(var(--space-5xs), 0.6vw, var(--space-3xs));
     font-size: var(--font-size-xs);
     color: var(--color-text-muted);
+    min-width: 0;
+  }
+
+  .player-modal__similar-card-avatar {
+    flex: 0 0 auto;
+    display: block;
+    inline-size: clamp(2.5rem, 0.8vw + 2.1rem, 3rem);
+    block-size: clamp(2.5rem, 0.8vw + 2.1rem, 3rem);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+    background-color: var(--color-surface-alt);
+    box-shadow: 0 0 0 1px
+      color-mix(in srgb, var(--color-border-strong) 65%, transparent);
+  }
+
+  .player-modal__similar-card-avatar-img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .player-modal__similar-card-author-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: clamp(var(--space-6xs), 0.35vw, var(--space-5xs));
     min-width: 0;
   }
 
