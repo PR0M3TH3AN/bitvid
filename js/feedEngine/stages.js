@@ -583,8 +583,11 @@ export function createModerationStage({
         trustedMuters = [];
       }
 
-      const blockAutoplay = trustedCount >= normalizedAutoplayThreshold;
-      const blurThumbnail = trustedCount >= normalizedBlurThreshold;
+      const blockAutoplay =
+        trustedCount >= normalizedAutoplayThreshold || trustedMuted;
+      const blurFromReports = trustedCount >= normalizedBlurThreshold;
+      let blurThumbnail = blurFromReports;
+      let blurReason = blurThumbnail ? "trusted-report" : "";
       const adminWhitelist = adminStatus?.whitelisted === true;
       const adminWhitelistBypass = false;
 
@@ -598,7 +601,6 @@ export function createModerationStage({
           : {};
 
       metadataModeration.blockAutoplay = blockAutoplay;
-      metadataModeration.blurThumbnail = blurThumbnail;
       metadataModeration.summary = summary;
       metadataModeration.trustedCount = trustedCount;
       metadataModeration.reportType = normalizedReportType;
@@ -616,7 +618,6 @@ export function createModerationStage({
       }
 
       video.moderation.blockAutoplay = blockAutoplay;
-      video.moderation.blurThumbnail = blurThumbnail;
       video.moderation.trustedCount = trustedCount;
       video.moderation.reportType = normalizedReportType;
       video.moderation.adminWhitelist = adminWhitelist;
@@ -711,6 +712,36 @@ export function createModerationStage({
         if (video.moderation.hideBypass) {
           delete video.moderation.hideBypass;
         }
+      }
+
+      if (!blurThumbnail && (trustedMuted || hideTriggered)) {
+        blurThumbnail = true;
+        if (hideTriggered) {
+          blurReason = hideReason || "trusted-hide";
+        } else if (trustedMuted) {
+          blurReason = "trusted-mute";
+        }
+      } else if (blurThumbnail) {
+        if (hideTriggered) {
+          blurReason = hideReason || "trusted-hide";
+        } else if (trustedMuted && !blurFromReports) {
+          blurReason = "trusted-mute";
+        } else if (!blurReason && blurFromReports) {
+          blurReason = "trusted-report";
+        }
+      }
+
+      metadataModeration.blurThumbnail = blurThumbnail;
+      if (blurThumbnail) {
+        metadataModeration.blurReason = blurReason;
+      } else if (metadataModeration.blurReason) {
+        delete metadataModeration.blurReason;
+      }
+      video.moderation.blurThumbnail = blurThumbnail;
+      if (blurThumbnail) {
+        video.moderation.blurReason = blurReason;
+      } else if (video.moderation.blurReason) {
+        delete video.moderation.blurReason;
       }
 
       item.metadata.moderation = metadataModeration;

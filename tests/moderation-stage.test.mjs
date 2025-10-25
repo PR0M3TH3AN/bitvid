@@ -94,6 +94,8 @@ test("moderation stage enforces admin lists without whitelist bypass", async () 
   const whitelistedItem = result[0];
   assert.equal(whitelistedItem.video.moderation.blockAutoplay, true);
   assert.equal(whitelistedItem.video.moderation.blurThumbnail, true);
+  assert.equal(whitelistedItem.video.moderation.blurReason, "trusted-report");
+  assert.equal(whitelistedItem.metadata.moderation.blurReason, "trusted-report");
   assert.equal(whitelistedItem.video.moderation.adminWhitelist, true);
   assert.equal(whitelistedItem.video.moderation.adminWhitelistBypass, false);
   assert.equal(whitelistedItem.metadata.moderation.adminWhitelistBypass, false);
@@ -101,6 +103,8 @@ test("moderation stage enforces admin lists without whitelist bypass", async () 
   const normalItem = result[1];
   assert.equal(normalItem.video.moderation.blockAutoplay, true);
   assert.equal(normalItem.video.moderation.blurThumbnail, true);
+  assert.equal(normalItem.video.moderation.blurReason, "trusted-report");
+  assert.equal(normalItem.metadata.moderation.blurReason, "trusted-report");
 
   const reasons = why.map((entry) => entry.reason);
   assert(reasons.includes("viewer-block"));
@@ -211,11 +215,14 @@ test("moderation stage applies provided thresholds", async () => {
   assert.equal(strictResult.length, 1);
   assert.equal(strictResult[0].video.moderation.blockAutoplay, false);
   assert.equal(strictResult[0].video.moderation.blurThumbnail, false);
+  assert.equal(strictResult[0].video.moderation.blurReason, undefined);
 
   const relaxedResult = await relaxedStage(items, {});
   assert.equal(relaxedResult.length, 1);
   assert.equal(relaxedResult[0].video.moderation.blockAutoplay, true);
   assert.equal(relaxedResult[0].video.moderation.blurThumbnail, true);
+  assert.equal(relaxedResult[0].video.moderation.blurReason, "trusted-report");
+  assert.equal(relaxedResult[0].metadata.moderation.blurReason, "trusted-report");
 });
 
 test("moderation stage propagates whitelist, muters, and threshold updates", async () => {
@@ -315,14 +322,18 @@ test("moderation stage propagates whitelist, muters, and threshold updates", asy
   assert.equal(whitelistedItem.metadata.moderation.adminWhitelist, true);
   assert.equal(whitelistedItem.metadata.moderation.blockAutoplay, true);
   assert.equal(whitelistedItem.metadata.moderation.blurThumbnail, true);
+  assert.equal(whitelistedItem.metadata.moderation.blurReason, "trusted-report");
   assert.equal(whitelistedItem.video.moderation.adminWhitelistBypass, false);
+  assert.equal(whitelistedItem.video.moderation.blurReason, "trusted-report");
 
   assert.equal(mutedItem.metadata.moderation.trustedMuted, true);
   assert.deepEqual(mutedItem.metadata.moderation.trustedMuters, [muterHex]);
   assert.equal(mutedItem.metadata.moderation.blockAutoplay, true);
   assert.equal(mutedItem.metadata.moderation.blurThumbnail, true);
+  assert.equal(mutedItem.metadata.moderation.blurReason, "trusted-report");
   assert.equal(mutedItem.video.moderation.trustedMuted, true);
   assert.deepEqual(mutedItem.video.moderation.trustedMuters, [muterHex]);
+  assert.equal(mutedItem.video.moderation.blurReason, "trusted-report");
 
   state.summaryById.set("muted-video", {
     eventId: "muted-video",
@@ -342,9 +353,11 @@ test("moderation stage propagates whitelist, muters, and threshold updates", asy
   assert.deepEqual(updatedMuted.metadata.moderation.trustedMuters, []);
   assert.equal(updatedMuted.metadata.moderation.blockAutoplay, false);
   assert.equal(updatedMuted.metadata.moderation.blurThumbnail, false);
+  assert.equal(updatedMuted.metadata.moderation.blurReason, undefined);
   assert.equal(updatedMuted.video.moderation.trustedMuted, false);
   assert.equal(updatedMuted.video.moderation.blockAutoplay, false);
   assert.equal(updatedMuted.video.moderation.blurThumbnail, false);
+  assert.equal(updatedMuted.video.moderation.blurReason, undefined);
 });
 
 test("moderation stage clears cached reporters and muters after service signals", async () => {

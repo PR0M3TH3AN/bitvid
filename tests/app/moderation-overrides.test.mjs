@@ -70,3 +70,77 @@ test("handleModerationOverride decorates stored and current videos then refreshe
   assert.equal(currentVideo.moderation.blockAutoplay, false);
   assert.equal(currentVideo.moderation.blurThumbnail, false);
 });
+
+test("handleModerationHide clears overrides and re-applies hidden state", async (t) => {
+  withMockedNostrTools(t);
+
+  const app = await createModerationAppHarness();
+  app.getActiveModerationThresholds = () => ({
+    autoplayBlockThreshold: Number.POSITIVE_INFINITY,
+    blurThreshold: Number.POSITIVE_INFINITY,
+    trustedMuteHideThreshold: 1,
+    trustedSpamHideThreshold: Number.POSITIVE_INFINITY,
+  });
+
+  const videoId = "b".repeat(64);
+  const incomingVideo = {
+    id: videoId,
+    moderation: {
+      trustedMuted: true,
+      trustedMuteCount: 1,
+      trustedMuters: [MUTER_HEX],
+      trustedCount: 0,
+      reportType: "nudity",
+    },
+  };
+
+  const storedVideo = {
+    id: videoId,
+    moderation: {
+      trustedMuted: true,
+      trustedMuteCount: 1,
+      trustedMuters: [MUTER_HEX],
+      trustedCount: 0,
+      reportType: "nudity",
+    },
+  };
+
+  const currentVideo = {
+    id: videoId,
+    moderation: {
+      trustedMuted: true,
+      trustedMuteCount: 1,
+      trustedMuters: [MUTER_HEX],
+      trustedCount: 0,
+      reportType: "nudity",
+    },
+  };
+
+  app.videosMap.set(videoId, storedVideo);
+  app.currentVideo = currentVideo;
+
+  app.decorateVideoModeration(incomingVideo);
+  app.decorateVideoModeration(storedVideo);
+  app.decorateVideoModeration(currentVideo);
+
+  const card = {
+    refreshModerationUi() {
+      /* noop */
+    },
+  };
+
+  app.handleModerationOverride({ video: incomingVideo, card });
+
+  assert.equal(storedVideo.moderation.viewerOverride?.showAnyway, true);
+  assert.equal(currentVideo.moderation.viewerOverride?.showAnyway, true);
+
+  const result = app.handleModerationHide({ video: incomingVideo, card });
+
+  assert.equal(result, true);
+  assert.equal(incomingVideo.moderation.viewerOverride, undefined);
+  assert.equal(storedVideo.moderation.viewerOverride, undefined);
+  assert.equal(currentVideo.moderation.viewerOverride, undefined);
+  assert.equal(incomingVideo.moderation.hidden, true);
+  assert.equal(storedVideo.moderation.hidden, true);
+  assert.equal(currentVideo.moderation.hidden, true);
+});

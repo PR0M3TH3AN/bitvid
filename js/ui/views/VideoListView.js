@@ -186,6 +186,7 @@ export class VideoListView {
       delete: null,
       blacklist: null,
       moderationOverride: null,
+      moderationHide: null,
     };
 
     this.allowNsfw = allowNsfw !== false;
@@ -290,6 +291,10 @@ export class VideoListView {
 
   setModerationOverrideHandler(handler) {
     this.handlers.moderationOverride = typeof handler === "function" ? handler : null;
+  }
+
+  setModerationHideHandler(handler) {
+    this.handlers.moderationHide = typeof handler === "function" ? handler : null;
   }
 
   setPopularTagsContainer(container) {
@@ -574,6 +579,19 @@ export class VideoListView {
           overrideEvent?.currentTarget || overrideEvent?.target || null;
         return this.handlers.moderationOverride({
           event: overrideEvent,
+          video,
+          card: videoCard,
+          trigger,
+        });
+      };
+
+      videoCard.onModerationHide = ({ event: hideEvent }) => {
+        if (!this.handlers.moderationHide) {
+          return false;
+        }
+        const trigger = hideEvent?.currentTarget || hideEvent?.target || null;
+        return this.handlers.moderationHide({
+          event: hideEvent,
           video,
           card: videoCard,
           trigger,

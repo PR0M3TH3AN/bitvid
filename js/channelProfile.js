@@ -56,6 +56,82 @@ let currentChannelNpub = null;
 let currentChannelLightningAddress = "";
 let channelZapPendingOpen = false;
 
+function normalizeHex(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+  const trimmed = value.trim().toLowerCase();
+  return /^[0-9a-f]{64}$/.test(trimmed) ? trimmed : "";
+}
+
+function shouldBlurChannelMedia(pubkey) {
+  const normalized = normalizeHex(pubkey);
+  if (!normalized) {
+    return false;
+  }
+
+  try {
+    if (moderationService.isAuthorMutedByViewer(normalized) === true) {
+      return true;
+    }
+  } catch (error) {
+    devLogger.warn("[ChannelProfile] Failed to resolve viewer mute state", error);
+  }
+
+  const app = getApp();
+  const videos =
+    app?.videosMap instanceof Map ? Array.from(app.videosMap.values()) : [];
+
+  for (const video of videos) {
+    if (!video || typeof video !== "object") {
+      continue;
+    }
+    const videoPubkey =
+      typeof video.pubkey === "string" ? video.pubkey.trim().toLowerCase() : "";
+    if (videoPubkey !== normalized) {
+      continue;
+    }
+    const moderation =
+      video.moderation && typeof video.moderation === "object"
+        ? video.moderation
+        : null;
+    if (!moderation) {
+      continue;
+    }
+    if (moderation.hidden === true) {
+      return true;
+    }
+    if (moderation.blurThumbnail === true) {
+      const reason =
+        typeof moderation.blurReason === "string"
+          ? moderation.blurReason.trim().toLowerCase()
+          : "";
+      if (reason.startsWith("trusted-")) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+function applyChannelVisualBlur({ bannerEl = null, avatarEl = null, pubkey = "" } = {}) {
+  const shouldBlur = shouldBlurChannelMedia(pubkey);
+  const applyState = (element) => {
+    if (!element) {
+      return;
+    }
+    if (shouldBlur) {
+      element.dataset.visualState = "blurred";
+    } else if (element.dataset.visualState) {
+      delete element.dataset.visualState;
+    }
+  };
+
+  applyState(bannerEl);
+  applyState(avatarEl);
+}
+
 const summarizeZapTracker = (tracker) =>
   Array.isArray(tracker)
     ? tracker.map((entry) => ({
@@ -3283,6 +3359,22 @@ function renderChannelVideosFromList({
       startPlayback(detail);
     };
 
+    videoCard.onModerationOverride = ({ video: overrideVideo, card: overrideCard }) =>
+      typeof app?.handleModerationOverride === "function"
+        ? app.handleModerationOverride({
+            video: overrideVideo,
+            card: overrideCard,
+          })
+        : false;
+
+    videoCard.onModerationHide = ({ video: hideVideo, card: hideCard }) =>
+      typeof app?.handleModerationHide === "function"
+        ? app.handleModerationHide({
+            video: hideVideo,
+            card: hideCard,
+          })
+        : false;
+
     videoCard.onEdit = ({ video: editVideo, index: editIndex }) => {
       app?.handleEditVideo?.({
         eventId: editVideo?.id || "",
@@ -3467,6 +3559,9 @@ function applyChannelProfileMetadata({
   if (avatarEl) {
     avatarEl.src = normalized.picture || FALLBACK_CHANNEL_AVATAR;
   }
+
+  const blurPubkey = pubkey || currentChannelHex || "";
+  applyChannelVisualBlur({ bannerEl, avatarEl, pubkey: blurPubkey });
 
   const nameEl = document.getElementById("channelName");
   if (nameEl) {

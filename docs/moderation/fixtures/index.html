@@ -402,7 +402,11 @@
         }
 
         const computedBlock = initialBlock && trustedCount >= autoplayThreshold;
-        const computedBlur = initialBlur && trustedCount >= blurThreshold;
+        let computedBlur = initialBlur && trustedCount >= blurThreshold;
+
+        if (!computedBlur && (trustedMuted || hidden)) {
+          computedBlur = true;
+        }
 
         const originalState = {
           blockAutoplay: computedBlock,

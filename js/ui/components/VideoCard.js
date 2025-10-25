@@ -114,15 +114,20 @@ export class VideoCard {
       onRequestSettingsMenu: null,
       onCloseSettingsMenu: null,
       onModerationOverride: null,
+      onModerationHide: null,
     };
 
     this.moderationBadgeEl = null;
     this.moderationBadgeTextEl = null;
+    this.moderationBadgeIconWrapper = null;
+    this.moderationBadgeIconSvg = null;
     this.moderationActionButton = null;
+    this.moderationHideButton = null;
     this.moderationBadgeId = "";
     this.badgesContainerEl = null;
     this.hiddenSummaryEl = null;
     this.boundShowAnywayHandler = (event) => this.handleShowAnywayClick(event);
+    this.boundModerationHideHandler = (event) => this.handleModerationHideClick(event);
 
     this.root = null;
     this.anchorEl = null;
@@ -196,6 +201,10 @@ export class VideoCard {
 
   set onModerationOverride(fn) {
     this.callbacks.onModerationOverride = typeof fn === "function" ? fn : null;
+  }
+
+  set onModerationHide(fn) {
+    this.callbacks.onModerationHide = typeof fn === "function" ? fn : null;
   }
 
   set onMoreAction(fn) {
@@ -1074,6 +1083,11 @@ export class VideoCard {
     const effectiveHideReason = hideReasonActive || originalHideReason;
     const effectiveHideCounts = activeHideCounts || originalHideCounts;
 
+    const blurReason =
+      typeof moderation?.blurReason === "string" ? moderation.blurReason.trim() : "";
+    const originalBlurReason =
+      typeof original?.blurReason === "string" ? original.blurReason.trim() : "";
+
     const context = {
       reportType,
       friendlyType: reportType ? reportType.replace(/[_-]+/g, " ").trim() : "",
@@ -1082,6 +1096,8 @@ export class VideoCard {
       trustedMuted,
       trustedMuteCount,
       trustedMuteDisplayNames,
+      blurReason,
+      originalBlurReason,
       originalBlur: original.blurThumbnail === true,
       originalBlockAutoplay: original.blockAutoplay === true,
       activeBlur: moderation?.blurThumbnail === true,
@@ -1222,16 +1238,18 @@ export class VideoCard {
       return "Hidden";
     }
 
+    const blurSource = (context.originalBlurReason || context.blurReason || "").toLowerCase();
+    const suppressBlurLabel =
+      blurSource === "trusted-mute" || blurSource === "trusted-mute-hide";
+
     const parts = [];
-    if (context.originalBlur) {
+    if (context.originalBlur && !suppressBlurLabel) {
       parts.push("Blurred");
     }
     if (context.originalBlockAutoplay) {
       parts.push("Autoplay blocked");
     }
-    if (context.trustedMuted && !context.originalBlur && !context.originalBlockAutoplay) {
-      parts.push(reason || "Muted by trusted contacts");
-    } else if (reason) {
+    if (reason) {
       parts.push(reason);
     }
 
@@ -1240,28 +1258,7 @@ export class VideoCard {
 
   createModerationOverrideButton() {
     const button = this.createElement("button", {
-      classNames: [
-        "inline-flex",
-        "items-center",
-        "rounded-full",
-        "border",
-        "border-status-warning-border",
-        "px-3",
-        "py-1",
-        "text-2xs",
-        "font-semibold",
-        "uppercase",
-        "tracking-extra-wide",
-        "text-status-warning-on",
-        "bg-transparent",
-        "hover:bg-status-warning-surface",
-        "transition",
-        "duration-150",
-        "focus-visible:outline",
-        "focus-visible:outline-2",
-        "focus-visible:outline-offset-2",
-        "focus-visible:outline-status-warning-border",
-      ],
+      classNames: ["moderation-badge__action", "flex-shrink-0"],
       attrs: {
         type: "button",
         "data-moderation-action": "override",
@@ -1272,6 +1269,80 @@ export class VideoCard {
     });
     button.addEventListener("click", this.boundShowAnywayHandler);
     return button;
+  }
+
+  createModerationHideButton() {
+    const button = this.createElement("button", {
+      classNames: ["moderation-badge__action", "flex-shrink-0"],
+      attrs: {
+        type: "button",
+        "data-moderation-action": "hide",
+        "aria-describedby": this.getModerationBadgeId(),
+      },
+      textContent: "Hide",
+    });
+    button.addEventListener("click", this.boundModerationHideHandler);
+    return button;
+  }
+
+  handleModerationHideClick(event) {
+    if (event) {
+      if (typeof event.preventDefault === "function") {
+        event.preventDefault();
+      }
+      if (typeof event.stopPropagation === "function") {
+        event.stopPropagation();
+      }
+    }
+
+    const button = this.moderationHideButton;
+    if (button) {
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+    }
+
+    if (!this.callbacks.onModerationHide) {
+      if (button) {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+      }
+      return;
+    }
+
+    let result;
+    try {
+      result = this.callbacks.onModerationHide({
+        event,
+        video: this.video,
+        card: this,
+      });
+    } catch (error) {
+      userLogger.warn("[VideoCard] onModerationHide callback threw", error);
+      if (button) {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+      }
+      return;
+    }
+
+    Promise.resolve(result)
+      .then((handled) => {
+        if (handled === false) {
+          if (button) {
+            button.disabled = false;
+            button.removeAttribute("aria-busy");
+          }
+          return;
+        }
+        this.refreshModerationUi();
+      })
+      .catch((error) => {
+        userLogger.warn("[VideoCard] Moderation hide failed", error);
+        if (button) {
+          button.disabled = false;
+          button.removeAttribute("aria-busy");
+        }
+      });
   }
 
   handleShowAnywayClick(event) {
@@ -1334,10 +1405,87 @@ export class VideoCard {
       });
   }
 
+  getModerationBadgeIconShape(state) {
+    if (state === "override") {
+      return {
+        d: "M10 18a8 8 0 100-16 8 8 0 000 16zm3.78-9.72a.75.75 0 00-1.06-1.06L9 11.94l-1.72-1.72a.75.75 0 10-1.06 1.06l2.25 2.25a.75.75 0 001.06 0l3.25-3.25z",
+        fillRule: "evenodd",
+        clipRule: "evenodd",
+      };
+    }
+
+    return {
+      d: "M10 18a8 8 0 100-16 8 8 0 000 16zm-.75-11.75a.75.75 0 011.5 0v4.5a.75.75 0 01-1.5 0v-4.5zm.75 8.5a1 1 0 100-2 1 1 0 000 2z",
+      fillRule: "evenodd",
+      clipRule: "evenodd",
+    };
+  }
+
+  updateModerationBadgeIcon(state) {
+    if (!this.moderationBadgeIconSvg) {
+      return;
+    }
+
+    this.moderationBadgeIconSvg.dataset.iconState = state;
+    const path = this.moderationBadgeIconSvg.firstElementChild;
+    if (!path) {
+      return;
+    }
+
+    const { d, fillRule, clipRule } = this.getModerationBadgeIconShape(state);
+    path.setAttribute("d", d);
+    if (fillRule) {
+      path.setAttribute("fill-rule", fillRule);
+    } else {
+      path.removeAttribute("fill-rule");
+    }
+    if (clipRule) {
+      path.setAttribute("clip-rule", clipRule);
+    } else {
+      path.removeAttribute("clip-rule");
+    }
+  }
+
+  createModerationBadgeIcon(state) {
+    const wrapper = this.createElement("span", {
+      classNames: ["moderation-badge__icon"],
+      attrs: { "aria-hidden": "true" },
+    });
+
+    const svg = this.document.createElementNS(SVG_NAMESPACE, "svg");
+    svg.setAttribute("viewBox", "0 0 20 20");
+    svg.setAttribute("focusable", "false");
+    svg.setAttribute("aria-hidden", "true");
+    svg.classList.add("moderation-badge__icon-mark");
+
+    const path = this.document.createElementNS(SVG_NAMESPACE, "path");
+    path.setAttribute("fill", "currentColor");
+    svg.appendChild(path);
+    wrapper.appendChild(svg);
+
+    this.moderationBadgeIconWrapper = wrapper;
+    this.moderationBadgeIconSvg = svg;
+    this.updateModerationBadgeIcon(state);
+
+    return wrapper;
+  }
+
+  shouldShowModerationHideButton(context = this.getModerationContext()) {
+    if (!context || !context.trustedMuted) {
+      return false;
+    }
+    if (context.activeHidden && !context.overrideActive) {
+      return false;
+    }
+    return true;
+  }
+
   buildModerationBadge(context = this.getModerationContext()) {
     if (!context.shouldShow) {
       this.moderationBadgeEl = null;
       this.moderationBadgeTextEl = null;
+      this.moderationBadgeIconWrapper = null;
+      this.moderationBadgeIconSvg = null;
       if (this.moderationActionButton) {
         this.moderationActionButton.removeEventListener(
           "click",
@@ -1345,11 +1493,18 @@ export class VideoCard {
         );
       }
       this.moderationActionButton = null;
+      if (this.moderationHideButton) {
+        this.moderationHideButton.removeEventListener(
+          "click",
+          this.boundModerationHideHandler,
+        );
+      }
+      this.moderationHideButton = null;
       return null;
     }
 
     const badge = this.createElement("div", {
-      classNames: ["badge", "flex", "flex-wrap", "items-center", "gap-sm"],
+      classNames: ["moderation-badge", "flex", "flex-wrap", "items-center", "gap-sm"],
     });
     badge.dataset.variant = context.overrideActive ? "neutral" : "warning";
     badge.dataset.moderationBadge = "true";
@@ -1362,6 +1517,7 @@ export class VideoCard {
           ? "trusted-mute"
           : "blocked";
     badge.dataset.moderationState = state;
+    this.updateModerationBadgeIcon(state);
     if (hiddenActive && context.effectiveHideReason) {
       badge.dataset.moderationHideReason = context.effectiveHideReason;
     }
@@ -1372,8 +1528,13 @@ export class VideoCard {
     badge.setAttribute("aria-live", "polite");
     badge.setAttribute("aria-atomic", "true");
 
+    const icon = this.createModerationBadgeIcon(state);
+    if (icon) {
+      badge.appendChild(icon);
+    }
+
     const text = this.createElement("span", {
-      classNames: ["whitespace-nowrap"],
+      classNames: ["moderation-badge__text", "whitespace-nowrap"],
       textContent: this.buildModerationBadgeText(context),
     });
     badge.appendChild(text);
@@ -1427,12 +1588,45 @@ export class VideoCard {
       this.moderationActionButton = null;
     }
 
+    if (this.shouldShowModerationHideButton(context)) {
+      if (!this.moderationHideButton) {
+        const hideButton = this.createModerationHideButton();
+        badge.appendChild(hideButton);
+        this.moderationHideButton = hideButton;
+      } else {
+        this.moderationHideButton.disabled = false;
+        this.moderationHideButton.removeAttribute("aria-busy");
+      }
+    } else if (this.moderationHideButton) {
+      this.moderationHideButton.removeEventListener(
+        "click",
+        this.boundModerationHideHandler,
+      );
+      this.moderationHideButton.remove();
+      this.moderationHideButton = null;
+    }
+
     return badge;
   }
 
   updateModerationBadge(context = this.getModerationContext()) {
     const badge = this.moderationBadgeEl;
     const hiddenActive = context.activeHidden && !context.overrideActive;
+
+    if (badge) {
+      if (!this.moderationBadgeIconWrapper) {
+        const iconWrapper = badge.querySelector(".moderation-badge__icon");
+        if (iconWrapper) {
+          this.moderationBadgeIconWrapper = iconWrapper;
+        }
+      }
+      if (!this.moderationBadgeIconSvg) {
+        const iconSvg = badge.querySelector(".moderation-badge__icon svg");
+        if (iconSvg) {
+          this.moderationBadgeIconSvg = iconSvg;
+        }
+      }
+    }
 
     if (!context.shouldShow) {
       if (badge && badge.parentElement) {
@@ -1444,8 +1638,17 @@ export class VideoCard {
           this.boundShowAnywayHandler,
         );
       }
+      if (this.moderationHideButton) {
+        this.moderationHideButton.removeEventListener(
+          "click",
+          this.boundModerationHideHandler,
+        );
+        this.moderationHideButton = null;
+      }
       this.moderationBadgeEl = null;
       this.moderationBadgeTextEl = null;
+      this.moderationBadgeIconWrapper = null;
+      this.moderationBadgeIconSvg = null;
       this.moderationActionButton = null;
       if (this.hiddenSummaryEl && this.hiddenSummaryEl.parentElement === this.root) {
         this.hiddenSummaryEl.remove();
@@ -1589,6 +1792,24 @@ export class VideoCard {
     } else {
       this.moderationActionButton.disabled = false;
       this.moderationActionButton.removeAttribute("aria-busy");
+    }
+
+    if (this.shouldShowModerationHideButton(context)) {
+      if (!this.moderationHideButton) {
+        const hideButton = this.createModerationHideButton();
+        badge.appendChild(hideButton);
+        this.moderationHideButton = hideButton;
+      } else {
+        this.moderationHideButton.disabled = false;
+        this.moderationHideButton.removeAttribute("aria-busy");
+      }
+    } else if (this.moderationHideButton) {
+      this.moderationHideButton.removeEventListener(
+        "click",
+        this.boundModerationHideHandler,
+      );
+      this.moderationHideButton.remove();
+      this.moderationHideButton = null;
     }
   }
 
@@ -2172,6 +2393,14 @@ export class VideoCard {
         this.thumbnailEl.dataset.thumbnailState = "blurred";
       } else if (this.thumbnailEl.dataset.thumbnailState === "blurred") {
         delete this.thumbnailEl.dataset.thumbnailState;
+      }
+    }
+
+    if (this.authorPicEl && !this.shouldMaskNsfwForOwner) {
+      if (context.activeBlur) {
+        this.authorPicEl.dataset.visualState = "blurred";
+      } else if (this.authorPicEl.dataset.visualState) {
+        delete this.authorPicEl.dataset.visualState;
       }
     }
 
