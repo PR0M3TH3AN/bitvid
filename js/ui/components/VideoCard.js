@@ -5,6 +5,7 @@ import {
   applyModerationContextDatasets,
   normalizeVideoModerationContext,
 } from "../moderationUiHelpers.js";
+import { buildModerationBadgeText } from "../moderationCopy.js";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
@@ -981,130 +982,6 @@ export class VideoCard {
     return normalizeVideoModerationContext(this.video?.moderation);
   }
 
-  buildModerationReasonText(context) {
-    if (!context) {
-      return "";
-    }
-
-    const reasons = [];
-
-    if (context.trustedMuted) {
-      const muteCount = Math.max(1, Number(context.trustedMuteCount) || 0);
-      const muteLabel = muteCount === 1 ? "trusted contact" : "trusted contacts";
-      reasons.push(`muted by ${muteCount === 1 ? "a" : muteCount} ${muteLabel}`);
-    }
-
-    const typeLabel = context.friendlyType || "this video";
-    const reportCount = Math.max(0, Number(context.trustedCount) || 0);
-    if (reportCount > 0) {
-      const friendLabel = reportCount === 1 ? "friend" : "friends";
-      reasons.push(`${reportCount} ${friendLabel} reported ${typeLabel}`);
-    } else if (!context.trustedMuted) {
-      reasons.push(context.friendlyType ? `reports of ${typeLabel}` : "reports");
-    }
-
-    if (!reasons.length) {
-      return "";
-    }
-
-    const combined = reasons.join(" · ");
-    return combined.charAt(0).toUpperCase() + combined.slice(1);
-  }
-
-  buildHiddenSummaryLabel(context) {
-    if (!context) {
-      return "";
-    }
-
-    const reason = context.effectiveHideReason;
-    if (!reason) {
-      return "";
-    }
-
-    const countsSource =
-      context.effectiveHideCounts || context.originalHideCounts || context.hideCounts || null;
-    const getCount = (key, fallback) => {
-      if (countsSource && Number.isFinite(countsSource[key])) {
-        return Math.max(0, Number(countsSource[key]));
-      }
-      if (Number.isFinite(context[key])) {
-        return Math.max(0, Number(context[key]));
-      }
-      return Math.max(0, Number(fallback) || 0);
-    };
-
-    if (reason === "trusted-mute-hide") {
-      const count = getCount("trustedMuteCount", context.trustedMuteCount || 0);
-      if (count > 0) {
-        const label = count === 1 ? "trusted mute" : "trusted mutes";
-        return `${count} ${label}`;
-      }
-      return "trusted mute";
-    }
-
-    if (reason === "trusted-report-hide") {
-      const count = getCount("trustedReportCount", context.trustedCount || 0);
-      const type = typeof context.friendlyType === "string" ? context.friendlyType.trim() : "";
-      const normalizedType = type ? type.toLowerCase() : "";
-      if (count > 0) {
-        const label = count === 1 ? "report" : "reports";
-        if (normalizedType) {
-          return `${count} trusted ${normalizedType} ${label}`;
-        }
-        const base = count === 1 ? "trusted report" : "trusted reports";
-        return `${count} ${base}`;
-      }
-      if (normalizedType) {
-        return `trusted ${normalizedType} reports`;
-      }
-      return "trusted reports";
-    }
-
-    return "";
-  }
-
-  buildModerationBadgeText(context) {
-    if (!context) {
-      return "";
-    }
-
-    const hiddenLabel = this.buildHiddenSummaryLabel(context);
-    const reason = this.buildModerationReasonText(context);
-    if (context.overrideActive) {
-      if (hiddenLabel) {
-        return `Showing despite ${hiddenLabel}`;
-      }
-      if (reason) {
-        return `Showing despite ${reason}`;
-      }
-      return "Showing despite reports";
-    }
-
-    if (context.activeHidden || (context.originalHidden && !context.overrideActive)) {
-      if (hiddenLabel) {
-        return `Hidden · ${hiddenLabel}`;
-      }
-      return "Hidden";
-    }
-
-    const blurSource = (context.originalBlurReason || context.blurReason || "").toLowerCase();
-    const suppressBlurLabel =
-      blurSource === "trusted-mute" || blurSource === "trusted-mute-hide";
-
-    const parts = [];
-    if (context.originalBlur && !suppressBlurLabel) {
-      parts.push("Blurred");
-    }
-    if (context.originalBlockAutoplay) {
-      parts.push("Autoplay blocked");
-    }
-    if (reason) {
-      parts.push(reason);
-    }
-
-    return parts.join(" · ");
-  }
-
   createModerationOverrideButton() {
     const button = this.createElement("button", {
       classNames: ["moderation-badge__action", "flex-shrink-0"],
@@ -1384,7 +1261,7 @@ export class VideoCard {
 
     const text = this.createElement("span", {
       classNames: ["moderation-badge__text", "whitespace-nowrap"],
-      textContent: this.buildModerationBadgeText(context),
+      textContent: buildModerationBadgeText(context, { variant: "card" }),
     });
     badge.appendChild(text);
 
@@ -1555,7 +1432,7 @@ export class VideoCard {
       delete badge.dataset.moderationHideReason;
     }
 
-    const textContent = this.buildModerationBadgeText(context);
+    const textContent = buildModerationBadgeText(context, { variant: "card" });
     if (this.moderationBadgeTextEl) {
       this.moderationBadgeTextEl.textContent = textContent;
     }
@@ -1715,7 +1592,7 @@ export class VideoCard {
 
       const summaryContainer = this.ensureHiddenSummaryContainer();
       if (summaryContainer) {
-        const description = this.buildModerationBadgeText(context);
+        const description = buildModerationBadgeText(context, { variant: "card" });
         if (description) {
           summaryContainer.setAttribute("aria-label", description);
         } else {

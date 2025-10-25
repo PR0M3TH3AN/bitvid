@@ -15,6 +15,7 @@ import {
   formatViewCount,
 } from "../../viewCounter.js";
 import { normalizeVideoModerationContext } from "../moderationUiHelpers.js";
+import { buildModerationBadgeText } from "../moderationCopy.js";
 import {
   formatAbsoluteTimestamp,
   formatTimeAgo,
@@ -3902,68 +3903,6 @@ export class VideoModal {
     return this.moderationBadgeId;
   }
 
-  buildModerationReasonText(context) {
-    if (!context) {
-      return "";
-    }
-
-    const reasons = [];
-
-    if (context.trustedMuted) {
-      const muteCount = Math.max(1, Number(context.trustedMuteCount) || 0);
-      const muteLabel = muteCount === 1 ? "trusted contact" : "trusted contacts";
-      reasons.push(
-        `muted by ${muteCount === 1 ? "a" : muteCount} ${muteLabel}`,
-      );
-    }
-
-    const typeLabel = context.friendlyType || "this video";
-    const reportCount = Math.max(0, Number(context.trustedCount) || 0);
-    if (reportCount > 0) {
-      const friendLabel = reportCount === 1 ? "friend" : "friends";
-      reasons.push(`${reportCount} ${friendLabel} reported ${typeLabel}`);
-    } else if (!context.trustedMuted) {
-      reasons.push(
-        context.friendlyType ? `reports of ${typeLabel}` : "reports",
-      );
-    }
-
-    if (!reasons.length) {
-      return "";
-    }
-
-    const combined = reasons.join(" · ");
-    return combined.charAt(0).toUpperCase() + combined.slice(1);
-  }
-
-  buildModerationBadgeText(context) {
-    if (!context) {
-      return "";
-    }
-
-    const blurSource = (context.originalBlurReason || context.blurReason || "")
-      .toLowerCase()
-      .trim();
-    const suppressBlurLabel =
-      blurSource === "trusted-mute" || blurSource === "trusted-mute-hide";
-
-    const parts = [];
-    if (!suppressBlurLabel) {
-      parts.push("Blurred");
-    }
-
-    const reason = this.buildModerationReasonText(context);
-    if (reason) {
-      parts.push(reason);
-    }
-
-    if (!parts.length) {
-      return "Blurred due to reports";
-    }
-
-    return parts.join(" · ");
-  }
-
   refreshActiveVideoModeration({ video = this.activeVideo } = {}) {
     if (!video) {
       this.activeModerationContext = null;
@@ -4038,7 +3977,7 @@ export class VideoModal {
         badge.id = badgeId;
       }
 
-      const textContent = this.buildModerationBadgeText(context);
+      const textContent = buildModerationBadgeText(context, { variant: "modal" });
       if (textEl) {
         textEl.textContent = textContent;
       }

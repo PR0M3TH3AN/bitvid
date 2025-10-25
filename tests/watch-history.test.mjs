@@ -1687,6 +1687,13 @@ async function testHistoryCardsUseDecryptedPlaybackMetadata() {
       "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567",
     infoHash: "0123456789abcdef0123456789abcdef01234567",
     legacyInfoHash: "0123456789abcdef0123456789abcdef01234567",
+    moderation: {
+      blurThumbnail: true,
+      original: { blurThumbnail: true },
+      trustedCount: 3,
+      reportType: "nudity",
+      summary: { types: { nudity: { trusted: 3 } } }
+    },
   };
 
   const item = {
@@ -1761,13 +1768,47 @@ async function testHistoryCardsUseDecryptedPlaybackMetadata() {
       this._classSet = new Set();
       this._className = "";
       this.classList = new FakeClassList(this);
+      this._listeners = new Map();
+      this.ownerDocument = null;
     }
 
     appendChild(child) {
       if (child && typeof child === "object") {
         child.parentNode = this;
+        if (this.ownerDocument) {
+          child.ownerDocument = this.ownerDocument;
+        }
       }
       this.children.push(child);
+      return child;
+    }
+
+    insertBefore(child, reference) {
+      if (child && typeof child === "object") {
+        child.parentNode = this;
+        if (this.ownerDocument) {
+          child.ownerDocument = this.ownerDocument;
+        }
+      }
+      if (!reference) {
+        this.children.push(child);
+        return child;
+      }
+      const index = this.children.indexOf(reference);
+      if (index === -1) {
+        this.children.push(child);
+      } else {
+        this.children.splice(index, 0, child);
+      }
+      return child;
+    }
+
+    removeChild(child) {
+      const index = this.children.indexOf(child);
+      if (index !== -1) {
+        this.children.splice(index, 1);
+        child.parentNode = null;
+      }
       return child;
     }
 
@@ -1794,6 +1835,51 @@ async function testHistoryCardsUseDecryptedPlaybackMetadata() {
     removeAttribute(name) {
       delete this.attributes[name];
     }
+
+    getAttribute(name) {
+      return Object.prototype.hasOwnProperty.call(this.attributes, name)
+        ? this.attributes[name]
+        : null;
+    }
+
+    addEventListener(type, handler) {
+      if (typeof handler !== "function") {
+        return;
+      }
+      if (!this._listeners.has(type)) {
+        this._listeners.set(type, new Set());
+      }
+      this._listeners.get(type).add(handler);
+    }
+
+    removeEventListener(type, handler) {
+      const listeners = this._listeners.get(type);
+      if (listeners) {
+        listeners.delete(handler);
+      }
+    }
+
+    dispatchEvent(event) {
+      if (!event || typeof event.type !== "string") {
+        return false;
+      }
+      const listeners = this._listeners.get(event.type);
+      if (!listeners) {
+        return true;
+      }
+      for (const handler of Array.from(listeners)) {
+        handler.call(this, event);
+      }
+      return true;
+    }
+
+    closest() {
+      return null;
+    }
+
+    get parentElement() {
+      return this.parentNode instanceof FakeElement ? this.parentNode : null;
+    }
   }
 
   function collectElements(root, predicate, results = []) {
@@ -1811,12 +1897,37 @@ async function testHistoryCardsUseDecryptedPlaybackMetadata() {
 
   const fakeDocument = {
     createElement(tagName) {
-      return new FakeElement(tagName);
+      const el = new FakeElement(tagName);
+      el.ownerDocument = fakeDocument;
+      return el;
     },
+    createElementNS(_ns, tagName) {
+      const el = new FakeElement(tagName);
+      el.ownerDocument = fakeDocument;
+      return el;
+    }
   };
 
   globalThis.document = fakeDocument;
   globalThis.HTMLElement = FakeElement;
+
+  const originalApp = getApplication();
+  const overrideCalls = [];
+  setApplication({
+    handleModerationOverride({ video }) {
+      overrideCalls.push(video);
+      return true;
+    },
+    handleModerationHide() {
+      return true;
+    },
+    decorateVideoModeration(videoInput) {
+      return videoInput;
+    },
+    safeEncodeNpub(value) {
+      return value;
+    }
+  });
 
   try {
     const card = buildHistoryCard({
@@ -1847,7 +1958,50 @@ async function testHistoryCardsUseDecryptedPlaybackMetadata() {
       pointerVideo.magnet,
       "play action should surface magnet from metadata",
     );
+
+    const blurredThumbs = collectElements(
+      card,
+      (element) => element.dataset?.thumbnailState === "blurred",
+    );
+    assert(
+      blurredThumbs.length >= 1,
+      "card should flag blurred thumbnails when moderation requests it",
+    );
+
+    const blurredAvatars = collectElements(
+      card,
+      (element) => element.dataset?.visualState === "blurred",
+    );
+    assert(
+      blurredAvatars.length >= 1,
+      "card should blur creator avatars when moderation requests it",
+    );
+
+    const overrideButtons = collectElements(
+      card,
+      (element) =>
+        element.tagName === "BUTTON" &&
+        element.dataset.moderationAction === "override",
+    );
+    assert.equal(
+      overrideButtons.length,
+      1,
+      "card should render a moderation override button",
+    );
+
+    overrideButtons[0].dispatchEvent({
+      type: "click",
+      preventDefault() {},
+      stopPropagation() {},
+    });
+    await Promise.resolve();
+    assert.equal(
+      overrideCalls.length,
+      1,
+      "override button should call the app override handler",
+    );
   } finally {
+    setApplication(originalApp || null);
     globalThis.document = originalDocument;
     globalThis.HTMLElement = originalHTMLElement;
   }

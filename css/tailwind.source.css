@@ -3245,6 +3245,13 @@
     @apply h-full w-full object-cover;
   }
 
+  .watch-history-card [data-thumbnail-state="blurred"] img,
+  .watch-history-card [data-visual-state="blurred"] img {
+    @apply transition duration-base ease-in-out;
+    filter: blur(var(--blur-thumbnail-blur));
+    transform: scale(1.05);
+  }
+
   .watch-history-card__details {
     @apply flex min-w-0 flex-1 flex-col justify-center gap-sm;
   }
@@ -3279,7 +3286,7 @@
   }
 
   .watch-history-card__creatorAvatar {
-    @apply flex h-10 w-10 items-center justify-center rounded-full bg-panel transition duration-base ease-out hover:ring-2 hover:ring-opacity-50 focus-visible:ring-2 focus-visible:ring-opacity-50;
+    @apply flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-panel transition duration-base ease-out hover:ring-2 hover:ring-opacity-50 focus-visible:ring-2 focus-visible:ring-opacity-50;
   }
 
   .watch-history-card__creatorAvatar:hover,
@@ -3309,6 +3316,18 @@
 
   .watch-history-card__action--danger {
     @apply bg-critical text-white hover:bg-critical-strong focus-visible:bg-critical-strong;
+  }
+
+  .watch-history-card__moderation {
+    @apply mt-sm flex flex-wrap items-center gap-sm;
+  }
+
+  .watch-history-card__hidden {
+    @apply mt-md rounded-lg border border-dashed border-border bg-panel/70 text-sm text-text;
+  }
+
+  .watch-history-card__hidden .moderation-badge {
+    @apply self-start;
   }
 }
 
