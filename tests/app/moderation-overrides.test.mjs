@@ -71,6 +71,43 @@ test("handleModerationOverride decorates stored and current videos then refreshe
   assert.equal(currentVideo.moderation.blurThumbnail, false);
 });
 
+test("handleModerationOverride resumes deferred playback", async (t) => {
+  withMockedNostrTools(t);
+
+  const app = await createModerationAppHarness();
+  const videoId = "d".repeat(64);
+
+  const storedVideo = { id: videoId, moderation: buildModerationState() };
+  const incomingVideo = { id: videoId, moderation: buildModerationState() };
+  const currentVideo = { id: videoId, moderation: buildModerationState() };
+
+  app.videosMap.set(videoId, storedVideo);
+  app.currentVideo = currentVideo;
+
+  const playbackCalls = [];
+  app.playVideoWithFallback = (options) => {
+    playbackCalls.push(options);
+    return Promise.resolve({ source: "hosted" });
+  };
+
+  app.pendingModeratedPlayback = {
+    url: "https://example.com/video.mp4",
+    magnet: "",
+    triggerProvided: false,
+    videoId,
+  };
+
+  const result = app.handleModerationOverride({ video: incomingVideo });
+
+  assert.equal(result, true);
+  assert.equal(app.pendingModeratedPlayback, null);
+  assert.equal(playbackCalls.length, 1);
+  assert.deepEqual(playbackCalls[0], {
+    url: "https://example.com/video.mp4",
+    magnet: "",
+  });
+});
+
 test("handleModerationHide clears overrides and re-applies hidden state", async (t) => {
   withMockedNostrTools(t);
 
