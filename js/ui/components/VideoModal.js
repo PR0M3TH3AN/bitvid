@@ -14,6 +14,7 @@ import {
   unsubscribeFromVideoViewCount,
   formatViewCount,
 } from "../../viewCounter.js";
+import { normalizeVideoModerationContext } from "../moderationUiHelpers.js";
 import {
   formatAbsoluteTimestamp,
   formatTimeAgo,
@@ -99,6 +100,7 @@ export class VideoModal {
     this.modalBackdrop = null;
     this.scrollRegion = null;
     this.modalVideo = null;
+    this.videoStage = null;
     this.modalStatus = null;
     this.modalProgress = null;
     this.modalProgressStatus = null;
@@ -234,7 +236,14 @@ export class VideoModal {
     this.detachAmbientBackground = null;
 
     this.activeVideo = null;
+    this.activeModerationContext = null;
     this.tagPreferenceStateResolver = null;
+
+    this.moderationOverlay = null;
+    this.moderationBadge = null;
+    this.moderationBadgeText = null;
+    this.moderationOverrideButton = null;
+    this.moderationBadgeId = "";
 
     this.handleCopyRequest = this.handleCopyRequest.bind(this);
     this.handleShareRequest = this.handleShareRequest.bind(this);
@@ -242,11 +251,28 @@ export class VideoModal {
     this.handleModalMoreButtonClick = this.handleModalMoreButtonClick.bind(this);
     this.handleReactionClick = this.handleReactionClick.bind(this);
     this.handleVideoTagActivate = this.handleVideoTagActivate.bind(this);
+    this.handleModerationOverrideClick =
+      this.handleModerationOverrideClick.bind(this);
+    this.handleGlobalModerationOverride =
+      this.handleGlobalModerationOverride.bind(this);
+    this.handleGlobalModerationHide =
+      this.handleGlobalModerationHide.bind(this);
 
     this.MODAL_LOADING_POSTER = "assets/gif/please-stand-by.gif";
     this.DEFAULT_PROFILE_AVATAR = "assets/svg/default-profile.svg";
 
     this.setMediaLoader(mediaLoader);
+
+    if (this.document) {
+      this.document.addEventListener(
+        "video:moderation-override",
+        this.handleGlobalModerationOverride,
+      );
+      this.document.addEventListener(
+        "video:moderation-hide",
+        this.handleGlobalModerationHide,
+      );
+    }
   }
 
   log(message, ...args) {
@@ -401,6 +427,17 @@ export class VideoModal {
 
     this.teardownAmbientGlow({ clear: false });
 
+    if (this.moderationOverrideButton) {
+      this.moderationOverrideButton.removeEventListener(
+        "click",
+        this.handleModerationOverrideClick,
+      );
+    }
+    this.moderationOverlay = null;
+    this.moderationBadge = null;
+    this.moderationBadgeText = null;
+    this.moderationOverrideButton = null;
+
     const previousScrollRegion = this.scrollRegion;
     if (previousScrollRegion && this.modalNavScrollHandler) {
       previousScrollRegion.removeEventListener(
@@ -482,6 +519,20 @@ export class VideoModal {
       ? [...this.videoTagsData]
       : [];
     this.videoTagsData = null;
+
+    this.videoStage = playerModal.querySelector(".video-modal__video") || null;
+    this.moderationOverlay =
+      this.videoStage?.querySelector("[data-moderation-overlay]") || null;
+    this.moderationBadge =
+      this.moderationOverlay?.querySelector("[data-moderation-badge='true']") || null;
+    this.moderationBadgeText =
+      this.moderationOverlay?.querySelector("[data-moderation-text]") || null;
+    const overrideButton =
+      this.moderationOverlay?.querySelector("[data-moderation-action='override']") || null;
+    if (overrideButton) {
+      overrideButton.addEventListener("click", this.handleModerationOverrideClick);
+      this.moderationOverrideButton = overrideButton;
+    }
 
     this.modalVideo = playerModal.querySelector("#modalVideo") || null;
     this.modalStatus = playerModal.querySelector("#modalStatus") || null;
@@ -568,6 +619,8 @@ export class VideoModal {
     this.modalZapDialogOpen = false;
     this.setupModalZapPopover();
     this.setupModalMorePopover();
+
+    this.refreshActiveVideoModeration({ video: this.activeVideo });
 
     this.detachCommentEventHandlers();
 
@@ -2021,6 +2074,30 @@ export class VideoModal {
     this.removeCommentRetryButton();
     this.invokeCommentTeardown();
 
+    if (this.document) {
+      this.document.removeEventListener(
+        "video:moderation-override",
+        this.handleGlobalModerationOverride,
+      );
+      this.document.removeEventListener(
+        "video:moderation-hide",
+        this.handleGlobalModerationHide,
+      );
+    }
+
+    if (this.moderationOverrideButton) {
+      this.moderationOverrideButton.removeEventListener(
+        "click",
+        this.handleModerationOverrideClick,
+      );
+    }
+    this.moderationOverlay = null;
+    this.moderationBadge = null;
+    this.moderationBadgeText = null;
+    this.moderationOverrideButton = null;
+    this.moderationBadgeId = "";
+    this.activeModerationContext = null;
+
     this.commentProfiles = new Map();
     this.commentNodes = new Map();
     this.commentChildLists = new Map();
@@ -2638,6 +2715,7 @@ export class VideoModal {
 
   open(video, options = {}) {
     this.activeVideo = video || null;
+    this.moderationBadgeId = "";
     if (!this.playerModal) {
       return;
     }
@@ -2656,10 +2734,12 @@ export class VideoModal {
     }
     this.setGlobalModalState("player", true);
     this.applyLoadingPoster();
+    this.refreshActiveVideoModeration({ video: this.activeVideo });
   }
 
   close() {
     this.activeVideo = null;
+    this.applyModerationOverlay(null);
     if (this.playerModal) {
       this.playerModal.classList.add("hidden");
       this.playerModal.setAttribute("hidden", "");
@@ -3794,6 +3874,300 @@ export class VideoModal {
     if (creator !== undefined) {
       this.updateCreator(creator);
     }
+
+    this.refreshActiveVideoModeration({ video: this.activeVideo });
+  }
+
+  getModerationBadgeId() {
+    if (this.moderationBadgeId) {
+      return this.moderationBadgeId;
+    }
+
+    const baseId =
+      typeof this.activeVideo?.id === "string" && this.activeVideo.id
+        ? this.activeVideo.id
+        : "";
+    if (!baseId) {
+      this.moderationBadgeId = "";
+      return this.moderationBadgeId;
+    }
+
+    const sanitized = baseId.replace(/[^a-zA-Z0-9_-]/g, "");
+    if (!sanitized) {
+      this.moderationBadgeId = "";
+      return this.moderationBadgeId;
+    }
+
+    this.moderationBadgeId = `video-modal-${sanitized}-moderation`;
+    return this.moderationBadgeId;
+  }
+
+  buildModerationReasonText(context) {
+    if (!context) {
+      return "";
+    }
+
+    const reasons = [];
+
+    if (context.trustedMuted) {
+      const muteCount = Math.max(1, Number(context.trustedMuteCount) || 0);
+      const muteLabel = muteCount === 1 ? "trusted contact" : "trusted contacts";
+      reasons.push(
+        `muted by ${muteCount === 1 ? "a" : muteCount} ${muteLabel}`,
+      );
+    }
+
+    const typeLabel = context.friendlyType || "this video";
+    const reportCount = Math.max(0, Number(context.trustedCount) || 0);
+    if (reportCount > 0) {
+      const friendLabel = reportCount === 1 ? "friend" : "friends";
+      reasons.push(`${reportCount} ${friendLabel} reported ${typeLabel}`);
+    } else if (!context.trustedMuted) {
+      reasons.push(
+        context.friendlyType ? `reports of ${typeLabel}` : "reports",
+      );
+    }
+
+    if (!reasons.length) {
+      return "";
+    }
+
+    const combined = reasons.join(" · ");
+    return combined.charAt(0).toUpperCase() + combined.slice(1);
+  }
+
+  buildModerationBadgeText(context) {
+    if (!context) {
+      return "";
+    }
+
+    const blurSource = (context.originalBlurReason || context.blurReason || "")
+      .toLowerCase()
+      .trim();
+    const suppressBlurLabel =
+      blurSource === "trusted-mute" || blurSource === "trusted-mute-hide";
+
+    const parts = [];
+    if (!suppressBlurLabel) {
+      parts.push("Blurred");
+    }
+
+    const reason = this.buildModerationReasonText(context);
+    if (reason) {
+      parts.push(reason);
+    }
+
+    if (!parts.length) {
+      return "Blurred due to reports";
+    }
+
+    return parts.join(" · ");
+  }
+
+  refreshActiveVideoModeration({ video = this.activeVideo } = {}) {
+    if (!video) {
+      this.activeModerationContext = null;
+      this.applyModerationOverlay(null);
+      return;
+    }
+
+    const context = normalizeVideoModerationContext(video.moderation);
+    this.activeModerationContext = context;
+    this.applyModerationOverlay(context);
+  }
+
+  applyModerationOverlay(context) {
+    const stage = this.videoStage;
+    const overlay = this.moderationOverlay;
+    const badge = this.moderationBadge;
+    const textEl = this.moderationBadgeText;
+    const button = this.moderationOverrideButton;
+
+    const shouldBlur = Boolean(context?.activeBlur && !context?.overrideActive);
+
+    if (!shouldBlur) {
+      if (stage && stage.dataset.visualState === "blurred") {
+        delete stage.dataset.visualState;
+      }
+      if (overlay) {
+        overlay.setAttribute("hidden", "");
+      }
+      if (badge) {
+        badge.dataset.variant = context?.overrideActive ? "neutral" : "warning";
+        if (badge.dataset.moderationState) {
+          delete badge.dataset.moderationState;
+        }
+        badge.removeAttribute("title");
+        if (badge.id && !this.activeVideo) {
+          badge.removeAttribute("id");
+        }
+        if (badge.hasAttribute("aria-label")) {
+          badge.removeAttribute("aria-label");
+        }
+      }
+      if (button) {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+      }
+      return;
+    }
+
+    if (stage) {
+      stage.dataset.visualState = "blurred";
+    }
+
+    if (overlay) {
+      overlay.removeAttribute("hidden");
+    }
+
+    if (this.modalVideo && typeof this.modalVideo.pause === "function") {
+      try {
+        this.modalVideo.pause();
+      } catch (error) {
+        // ignore pause failures (e.g., in unsupported environments)
+      }
+    }
+
+    if (badge) {
+      const state = context?.trustedMuted ? "trusted-mute" : "blocked";
+      badge.dataset.variant = "warning";
+      badge.dataset.moderationState = state;
+
+      const badgeId = this.getModerationBadgeId();
+      if (badgeId) {
+        badge.id = badgeId;
+      }
+
+      const textContent = this.buildModerationBadgeText(context);
+      if (textEl) {
+        textEl.textContent = textContent;
+      }
+
+      const muteNames = Array.isArray(context.trustedMuteDisplayNames)
+        ? context.trustedMuteDisplayNames
+            .map((name) => (typeof name === "string" ? name.trim() : ""))
+            .filter(Boolean)
+        : [];
+      const reporterNames = Array.isArray(context.reporterDisplayNames)
+        ? context.reporterDisplayNames
+            .map((name) => (typeof name === "string" ? name.trim() : ""))
+            .filter(Boolean)
+        : [];
+
+      const allNames = [...muteNames, ...reporterNames];
+      const uniqueNames = [];
+      const seenNameKeys = new Set();
+      for (const name of allNames) {
+        if (!name) {
+          continue;
+        }
+        const key = name.toLowerCase();
+        if (seenNameKeys.has(key)) {
+          continue;
+        }
+        seenNameKeys.add(key);
+        uniqueNames.push(name);
+      }
+
+      if (uniqueNames.length) {
+        const joined = uniqueNames.join(", ");
+        const hasMuted = muteNames.length > 0;
+        const hasReporters = reporterNames.length > 0;
+        const prefix = hasMuted && hasReporters
+          ? "Muted/Reported by"
+          : hasMuted
+            ? "Muted by"
+            : "Reported by";
+        badge.title = `${prefix} ${joined}`;
+        const baseLabel = textEl?.textContent?.trim() || textContent || "";
+        if (baseLabel) {
+          badge.setAttribute("aria-label", `${baseLabel}. ${prefix} ${joined}.`);
+        } else {
+          badge.setAttribute("aria-label", `${prefix} ${joined}.`);
+        }
+      } else {
+        badge.removeAttribute("title");
+        const baseLabel = textEl?.textContent?.trim();
+        if (baseLabel) {
+          badge.setAttribute("aria-label", `${baseLabel}.`);
+        } else {
+          badge.removeAttribute("aria-label");
+        }
+      }
+    }
+
+    if (button) {
+      button.disabled = false;
+      button.removeAttribute("aria-busy");
+      const badgeId = this.getModerationBadgeId();
+      if (badgeId) {
+        button.setAttribute("aria-describedby", badgeId);
+      } else {
+        button.removeAttribute("aria-describedby");
+      }
+    }
+  }
+
+  handleModerationOverrideClick(event) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+
+    const button = event?.currentTarget || this.moderationOverrideButton;
+    if (button) {
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+    }
+
+    if (!this.activeVideo) {
+      if (button) {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+      }
+      return;
+    }
+
+    const detail = {
+      video: this.activeVideo,
+      event,
+      trigger: button || null,
+      context: this.activeModerationContext || null,
+    };
+
+    const handled = this.dispatch("video:moderation-override", detail);
+    if (!handled && button) {
+      button.disabled = false;
+      button.removeAttribute("aria-busy");
+    }
+  }
+
+  handleGlobalModerationOverride(event) {
+    const detail = event?.detail || {};
+    const video = detail && typeof detail === "object" ? detail.video : null;
+    if (!video || !video.id || !this.activeVideo || this.activeVideo.id !== video.id) {
+      return;
+    }
+
+    if (this.activeVideo !== video) {
+      this.activeVideo = video;
+      this.moderationBadgeId = "";
+    }
+
+    this.refreshActiveVideoModeration({ video: this.activeVideo });
+  }
+
+  handleGlobalModerationHide(event) {
+    const detail = event?.detail || {};
+    const video = detail && typeof detail === "object" ? detail.video : null;
+    if (!video || !video.id || !this.activeVideo || this.activeVideo.id !== video.id) {
+      return;
+    }
+
+    if (this.activeVideo !== video) {
+      this.activeVideo = video;
+      this.moderationBadgeId = "";
+    }
+
+    this.refreshActiveVideoModeration({ video: this.activeVideo });
   }
 
   renderVideoDescription(description) {

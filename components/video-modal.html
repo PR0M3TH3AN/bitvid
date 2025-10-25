@@ -59,7 +59,50 @@
                   class="video-modal__ambient-canvas"
                 ></canvas>
               </div>
-              <div class="video-modal__video">
+              <div class="video-modal__video" data-video-surface>
+                <div
+                  class="video-modal__moderation-overlay"
+                  data-moderation-overlay
+                  hidden
+                >
+                  <div
+                    class="moderation-badge flex flex-wrap items-center gap-sm"
+                    data-moderation-badge="true"
+                    data-variant="warning"
+                    role="status"
+                    aria-live="polite"
+                    aria-atomic="true"
+                  >
+                    <span class="moderation-badge__icon" aria-hidden="true">
+                      <svg
+                        class="moderation-badge__icon-mark"
+                        viewBox="0 0 20 20"
+                        focusable="false"
+                        aria-hidden="true"
+                      >
+                        <path
+                          fill="currentColor"
+                          d="M10 18a8 8 0 100-16 8 8 0 000 16zm-.75-11.75a.75.75 0 011.5 0v4.5a.75.75 0 01-1.5 0v-4.5zm.75 8.5a1 1 0 100-2 1 1 0 000 2z"
+                          fill-rule="evenodd"
+                          clip-rule="evenodd"
+                        />
+                      </svg>
+                    </span>
+                    <span
+                      class="moderation-badge__text whitespace-nowrap"
+                      data-moderation-text
+                    >
+                      Content reported by trusted contacts
+                    </span>
+                    <button
+                      type="button"
+                      class="moderation-badge__action flex-shrink-0"
+                      data-moderation-action="override"
+                    >
+                      Show anyway
+                    </button>
+                  </div>
+                </div>
                 <video
                   id="modalVideo"
                   class="video-modal__media"
