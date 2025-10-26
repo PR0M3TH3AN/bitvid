@@ -56,6 +56,40 @@ const hasWorkingNip04 = (candidate) =>
     typeof candidate.decrypt === "function"
   );
 
+const hasWorkingNip44 = (candidate) =>
+  !!(
+    candidate &&
+    typeof candidate === "object" &&
+    ((
+      typeof candidate.encrypt === "function" &&
+      typeof candidate.decrypt === "function"
+    ) ||
+      (candidate.v2 &&
+        typeof candidate.v2 === "object" &&
+        typeof candidate.v2.encrypt === "function" &&
+        typeof candidate.v2.decrypt === "function"))
+  );
+
+const selectNip44Candidate = (moduleLike) => {
+  if (!moduleLike || typeof moduleLike !== "object") {
+    return null;
+  }
+
+  if (hasWorkingNip44(moduleLike.nip44)) {
+    return moduleLike.nip44;
+  }
+
+  if (hasWorkingNip44(moduleLike.default)) {
+    return moduleLike.default;
+  }
+
+  if (hasWorkingNip44(moduleLike)) {
+    return moduleLike;
+  }
+
+  return null;
+};
+
 const toSerializableError = (error) => {
   if (!error) {
     return null;
@@ -260,6 +294,11 @@ export function bootstrapNostrTools() {
             NODE_IMPORT_TIMEOUT,
             "node-nip04"
           ),
+          withTimeout(
+            () => import("nostr-tools/nip44"),
+            NODE_IMPORT_TIMEOUT,
+            "node-nip44"
+          ),
         ]
       : [];
 
@@ -276,6 +315,14 @@ export function bootstrapNostrTools() {
           ),
         REMOTE_IMPORT_TIMEOUT,
         "esm-nip04"
+      ),
+      withTimeout(
+        () =>
+          import(
+            "https://esm.sh/nostr-tools@1.8.3?target=es2022&exports=nip44"
+          ),
+        REMOTE_IMPORT_TIMEOUT,
+        "esm-nip44"
       ),
     ];
 
@@ -296,6 +343,7 @@ export function bootstrapNostrTools() {
 
     const resolvedModules = [];
     let resolvedNip04 = null;
+    let resolvedNip44 = null;
 
     dynamicResults.forEach((settledResult) => {
       if (settledResult.status !== "fulfilled") {
@@ -316,11 +364,24 @@ export function bootstrapNostrTools() {
         resolvedNip04 = result.value.nip04;
         return;
       }
+      if (!resolvedNip44 && result.label === "esm-nip44") {
+        const nip44Candidate = selectNip44Candidate(result.value);
+        if (nip44Candidate) {
+          resolvedNip44 = nip44Candidate;
+          return;
+        }
+      }
       const extracted = extractToolsFromModule(result.value);
       if (extracted && Object.keys(extracted).length > 0) {
         resolvedModules.push({ source: result.label, tools: extracted });
         if (!resolvedNip04 && hasWorkingNip04(extracted?.nip04)) {
           resolvedNip04 = extracted.nip04;
+        }
+        if (!resolvedNip44) {
+          const nip44Candidate = selectNip44Candidate(extracted);
+          if (nip44Candidate) {
+            resolvedNip44 = nip44Candidate;
+          }
         }
       }
     });
@@ -398,6 +459,12 @@ export function bootstrapNostrTools() {
           if (!resolvedNip04 && hasWorkingNip04(extracted?.nip04)) {
             resolvedNip04 = extracted.nip04;
           }
+          if (!resolvedNip44) {
+            const nip44Candidate = selectNip44Candidate(extracted);
+            if (nip44Candidate) {
+              resolvedNip44 = nip44Candidate;
+            }
+          }
           break;
         }
       }
@@ -409,9 +476,15 @@ export function bootstrapNostrTools() {
       if (!resolvedNip04 && hasWorkingNip04(existingGlobalTools?.nip04)) {
         resolvedNip04 = existingGlobalTools.nip04;
       }
+      if (!resolvedNip44) {
+        const nip44Candidate = selectNip44Candidate(existingGlobalTools);
+        if (nip44Candidate) {
+          resolvedNip44 = nip44Candidate;
+        }
+      }
     }
 
-    if (resolvedModules.length === 0 && !resolvedNip04) {
+    if (resolvedModules.length === 0 && !resolvedNip04 && !resolvedNip44) {
       const failure = {
         ok: false,
         reason: "Failed to resolve any nostr-tools helpers.",
@@ -454,6 +527,15 @@ export function bootstrapNostrTools() {
       );
     }
 
+    if (resolvedNip44) {
+      canonicalTools.nip44 = resolvedNip44;
+      devLogger.info("[bitvid] Initialized nostr nip44 helpers.");
+    } else {
+      userLogger.warn(
+        "[bitvid] NIP-44 helpers unavailable after bootstrap attempts."
+      );
+    }
+
     const frozenCanonical = Object.freeze({ ...canonicalTools });
 
     try {
@@ -475,6 +557,9 @@ export function bootstrapNostrTools() {
       const merged = Object.assign({}, frozenCanonical, candidate);
       if (!merged.nip04 && frozenCanonical.nip04) {
         merged.nip04 = frozenCanonical.nip04;
+      }
+      if (!merged.nip44 && frozenCanonical.nip44) {
+        merged.nip44 = frozenCanonical.nip44;
       }
       if (
         typeof merged.generatePrivateKey !== "function" &&

@@ -32,6 +32,48 @@ const nostrToolsReadySource =
     ? globalScope.nostrToolsReady
     : nostrToolsReady;
 
+function ensureCanonicalCrypto(candidate, scope = globalScope) {
+  if (!candidate || typeof candidate !== "object") {
+    return candidate;
+  }
+
+  const canonical =
+    scope && typeof scope === "object"
+      ? scope.__BITVID_CANONICAL_NOSTR_TOOLS__ || null
+      : null;
+
+  if (!canonical || typeof canonical !== "object") {
+    return candidate;
+  }
+
+  const needsNip04 = !candidate.nip04 && canonical.nip04;
+  const needsNip44 = !candidate.nip44 && canonical.nip44;
+
+  if (!needsNip04 && !needsNip44) {
+    return candidate;
+  }
+
+  if (Object.isFrozen(candidate)) {
+    const augmented = { ...candidate };
+    if (needsNip04) {
+      augmented.nip04 = canonical.nip04;
+    }
+    if (needsNip44) {
+      augmented.nip44 = canonical.nip44;
+    }
+    return Object.freeze(augmented);
+  }
+
+  if (needsNip04) {
+    candidate.nip04 = canonical.nip04;
+  }
+  if (needsNip44) {
+    candidate.nip44 = canonical.nip44;
+  }
+
+  return candidate;
+}
+
 export function normalizeToolkitCandidate(candidate) {
   if (
     candidate &&
@@ -39,7 +81,7 @@ export function normalizeToolkitCandidate(candidate) {
     candidate.ok !== false &&
     typeof candidate.then !== "function"
   ) {
-    return candidate;
+    return ensureCanonicalCrypto(candidate);
   }
   return null;
 }
