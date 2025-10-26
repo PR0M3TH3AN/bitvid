@@ -129,7 +129,7 @@ test("renderChannelVideosFromList decorates videos before storing", async (t) =>
   const container = document.getElementById("channelVideoList");
   const video = createVideoFixture();
 
-  const rendered = renderChannelVideosFromList({
+  const rendered = await renderChannelVideosFromList({
     videos: [video],
     container,
     app,
@@ -141,6 +141,93 @@ test("renderChannelVideosFromList decorates videos before storing", async (t) =>
   const stored = app.videosMap.get(video.id);
   assert.ok(stored, "decorated video stored in videosMap");
   assert.equal(stored.moderation.decoratedByTest, true);
+});
+
+test("renderChannelVideosFromList applies moderation blur without existing metadata", async (t) => {
+  const { document } = setupDom(t);
+  withMockedNostrTools(t);
+
+  nostrClient.allEvents = new Map();
+  nostrClient.rawEvents = new Set();
+
+  const app = await createModerationAppHarness();
+  app.loadedThumbnails = new Map();
+  app.videosMap = new Map();
+  app.buildShareUrlFromEventId = (id) => `https://example.invalid/watch/${id}`;
+  app.formatTimeAgo = () => "just now";
+  app.ensureGlobalMoreMenuHandlers = () => {};
+  app.closeAllMoreMenus = () => {};
+  app.normalizeHexPubkey = (value) =>
+    typeof value === "string" ? value.trim().toLowerCase() : "";
+  app.hasOlderVersion = () => false;
+  app.deriveVideoPointerInfo = () => null;
+  app.persistWatchHistoryMetadataForVideo = () => {};
+  app.canCurrentUserManageBlacklist = () => false;
+  app.isMagnetUriSupported = () => false;
+  app.mountVideoListView = () => {};
+  app.mediaLoader = { observe() {} };
+  app.attachMoreMenuHandlers = () => {};
+  app.getActiveModerationThresholds = () => ({
+    blurThreshold: 1,
+    autoplayBlockThreshold: Number.POSITIVE_INFINITY,
+    trustedMuteHideThreshold: Number.POSITIVE_INFINITY,
+    trustedSpamHideThreshold: Number.POSITIVE_INFINITY,
+  });
+
+  const stubModerationService = {
+    async refreshViewerFromClient() {},
+    async setActiveEventIds() {},
+    getAdminListSnapshot() {
+      return null;
+    },
+    getAccessControlStatus() {
+      return { hex: "", whitelisted: false, blacklisted: false };
+    },
+    getTrustedReportSummary() {
+      return { types: { nudity: { trusted: 2 } } };
+    },
+    trustedReportCount() {
+      return 2;
+    },
+    getTrustedReporters() {
+      return [];
+    },
+    isAuthorMutedByTrusted() {
+      return false;
+    },
+  };
+
+  app.nostrService = {
+    getModerationService() {
+      return stubModerationService;
+    },
+  };
+
+  const container = document.getElementById("channelVideoList");
+  const channelPubkey = "e".repeat(64);
+  __setChannelProfileTestState({ pubkey: channelPubkey });
+
+  const video = createVideoFixture({ pubkey: channelPubkey });
+  delete video.moderation;
+
+  const rendered = await renderChannelVideosFromList({
+    videos: [video],
+    container,
+    app,
+    loadToken: 0,
+  });
+
+  assert.equal(rendered, true, "channel render succeeded with moderation stage");
+  const stored = app.videosMap.get(video.id);
+  assert.ok(stored, "video stored in app map after moderation");
+  assert.equal(stored.moderation?.blurThumbnail, true, "moderation blur applied");
+
+  const thumbnail = container.querySelector('[data-video-thumbnail="true"]');
+  assert.ok(thumbnail, "video card thumbnail rendered");
+  assert.equal(thumbnail.dataset.thumbnailState, "blurred");
+
+  const bannerEl = document.getElementById("channelBanner");
+  assert.equal(bannerEl.dataset.visualState, "blurred");
 });
 
 test("applyChannelVisualBlur blurs banner and avatar when viewer mutes author", async (t) => {
@@ -216,7 +303,7 @@ test("moderation override clears channel blur via event wiring", async (t) => {
     moderation: moderationState,
   });
 
-  renderChannelVideosFromList({
+  await renderChannelVideosFromList({
     videos: [video],
     container,
     app,
@@ -290,7 +377,7 @@ test("channel header moderation badge reflects blur state and override actions",
   };
   const video = createVideoFixture({ pubkey: channelPubkey, moderation: moderationState });
 
-  renderChannelVideosFromList({
+  await renderChannelVideosFromList({
     videos: [video],
     container,
     app,
