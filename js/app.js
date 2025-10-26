@@ -5638,7 +5638,7 @@ class Application {
 
     this.showStatus(
       `${providerLabel} logins are still in development and may not work well yet. We recommend using a NIP-07 browser extension for the most reliable experience.`,
-      { showSpinner: false, autoHideMs: 15000 },
+      { showSpinner: false, autoHideMs: 5000 },
     );
   }
 
