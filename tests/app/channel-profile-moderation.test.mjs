@@ -431,3 +431,87 @@ test("channel header moderation badge reflects blur state and override actions",
   assert.equal(overrideContext.overrideActive, true);
   assert.ok(overrideText.startsWith("Showing despite"));
 });
+
+test("channel video cards update moderation state in place when summary changes", async (t) => {
+  const { document } = setupDom(t);
+  withMockedNostrTools(t);
+
+  nostrClient.allEvents = new Map();
+  nostrClient.rawEvents = new Set();
+
+  const app = await createModerationAppHarness();
+  app.loadedThumbnails = new Map();
+  app.videosMap = new Map();
+  app.buildShareUrlFromEventId = (id) => `https://example.invalid/watch/${id}`;
+  app.formatTimeAgo = () => "just now";
+  app.ensureGlobalMoreMenuHandlers = () => {};
+  app.closeAllMoreMenus = () => {};
+  app.normalizeHexPubkey = (value) =>
+    typeof value === "string" ? value.trim().toLowerCase() : "";
+  app.hasOlderVersion = () => false;
+  app.deriveVideoPointerInfo = () => null;
+  app.persistWatchHistoryMetadataForVideo = () => {};
+  app.canCurrentUserManageBlacklist = () => false;
+  app.isMagnetUriSupported = () => false;
+  app.mountVideoListView = () => {};
+  app.mediaLoader = { observe() {} };
+  app.attachMoreMenuHandlers = () => {};
+  app.getActiveModerationThresholds = () => ({
+    blurThreshold: 1,
+    autoplayBlockThreshold: Number.POSITIVE_INFINITY,
+    trustedMuteHideThreshold: Number.POSITIVE_INFINITY,
+    trustedSpamHideThreshold: Number.POSITIVE_INFINITY,
+  });
+
+  setApplication(app);
+  t.after(() => setApplication(null));
+
+  const video = createVideoFixture();
+  __setChannelProfileTestState({ pubkey: video.pubkey });
+  __ensureChannelModerationEventsForTests();
+
+  const container = document.getElementById("channelVideoList");
+  await renderChannelVideosFromList({
+    videos: [video],
+    container,
+    app,
+    loadToken: 0,
+  });
+
+  const cardEl = container.querySelector('[data-component="video-card"]');
+  assert.ok(cardEl, "video card rendered for channel");
+  const thumbnailEl = cardEl.querySelector('[data-video-thumbnail="true"]');
+  assert.ok(thumbnailEl, "card thumbnail present");
+  assert.equal(
+    thumbnailEl.dataset.thumbnailState || "",
+    "",
+    "thumbnail should not be blurred initially",
+  );
+
+  const existing = app.videosMap.get(video.id) || video;
+  const updatedVideo = {
+    ...existing,
+    moderation: {
+      ...(existing?.moderation || {}),
+      summary: {
+        types: {
+          nudity: { trusted: 3 },
+        },
+      },
+      trustedCount: 3,
+      blurThumbnail: true,
+      reportType: "nudity",
+    },
+  };
+  app.videosMap.set(video.id, updatedVideo);
+
+  const priorCard = container.querySelector('[data-component="video-card"]');
+
+  moderationService.emit("summary", { eventId: video.id });
+
+  const currentCard = container.querySelector('[data-component="video-card"]');
+  assert.strictEqual(currentCard, priorCard, "card should not rerender");
+  assert.equal(thumbnailEl.dataset.thumbnailState, "blurred");
+  assert.equal(cardEl.dataset.moderationReportType, "nudity");
+  assert.equal(cardEl.dataset.moderationReportCount, "3");
+});
