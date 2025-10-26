@@ -419,6 +419,8 @@ async function decryptLegacyDm(event, decryptors, actorPubkey) {
   const ciphertext = typeof event?.content === "string" ? event.content : "";
   const senderPubkey = normalizeHex(event?.pubkey);
   const hints = parseEncryptionHints(event?.tags);
+  const recipients = collectRecipients(event?.tags);
+  const normalizedActor = normalizeHex(actorPubkey);
 
   if (!ciphertext || !senderPubkey) {
     return buildDecryptResult({
@@ -437,38 +439,63 @@ async function decryptLegacyDm(event, decryptors, actorPubkey) {
   const ordered = orderDecryptors(decryptors, hints);
   const errors = [];
 
+  const remoteCandidates = [];
+  const seenRemotes = new Set();
+  const registerRemote = (candidate) => {
+    const normalized = normalizeHex(candidate);
+    if (!normalized || seenRemotes.has(normalized)) {
+      return;
+    }
+    seenRemotes.add(normalized);
+    remoteCandidates.push(normalized);
+  };
+
+  if (normalizedActor && normalizedActor === senderPubkey) {
+    for (const recipient of recipients) {
+      registerRemote(recipient?.pubkey);
+    }
+  }
+
+  registerRemote(senderPubkey);
+
+  for (const recipient of recipients) {
+    registerRemote(recipient?.pubkey);
+  }
+
   for (const decryptor of ordered) {
-    try {
-      const plaintext = await decryptor.decrypt(senderPubkey, ciphertext, {
-        event,
-        stage: "content",
-      });
-
-      if (typeof plaintext === "string") {
-        const recipients = collectRecipients(event?.tags);
-
-        return buildDecryptResult({
-          ok: true,
+    for (const remotePubkey of remoteCandidates) {
+      try {
+        const plaintext = await decryptor.decrypt(remotePubkey, ciphertext, {
           event,
-          message: {
-            ...cloneEvent(event),
-            content: plaintext,
-          },
-          plaintext,
-          recipients,
-          senderPubkey,
-          actorPubkey,
-          decryptor,
-          scheme: decryptor.scheme || hints.algorithms?.[0] || "",
+          stage: "content",
+          remotePubkey,
+        });
+
+        if (typeof plaintext === "string") {
+          return buildDecryptResult({
+            ok: true,
+            event,
+            message: {
+              ...cloneEvent(event),
+              content: plaintext,
+            },
+            plaintext,
+            recipients,
+            senderPubkey,
+            actorPubkey,
+            decryptor,
+            scheme: decryptor.scheme || hints.algorithms?.[0] || "",
+          });
+        }
+      } catch (error) {
+        errors.push({
+          scheme: decryptor.scheme || "",
+          source: decryptor.source || "",
+          stage: "content",
+          remotePubkey,
+          error,
         });
       }
-    } catch (error) {
-      errors.push({
-        scheme: decryptor.scheme || "",
-        source: decryptor.source || "",
-        stage: "content",
-        error,
-      });
     }
   }
 

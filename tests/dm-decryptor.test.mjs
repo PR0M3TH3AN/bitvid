@@ -48,6 +48,49 @@ test("decryptDM handles kind 4 events with nip04 ciphertext", async () => {
   assert.equal(result.direction, "incoming", "direction should be incoming for recipient");
 });
 
+test("decryptDM prefers recipient pubkeys when actor is the sender", async () => {
+  const nostrTools = await import("nostr-tools");
+  const { generateSecretKey, getPublicKey, nip04 } = nostrTools;
+
+  const senderSecret = generateSecretKey();
+  const recipientSecret = generateSecretKey();
+
+  const senderPubkey = getPublicKey(senderSecret);
+  const recipientPubkey = getPublicKey(recipientSecret);
+
+  const message = "Hello from the author";
+  const ciphertext = await nip04.encrypt(senderSecret, recipientPubkey, message);
+
+  const event = {
+    id: "outgoing-kind4",
+    kind: 4,
+    created_at: Math.floor(Date.now() / 1000),
+    pubkey: senderPubkey,
+    tags: [["p", recipientPubkey]],
+    content: ciphertext,
+  };
+
+  const context = {
+    actorPubkey: senderPubkey,
+    decryptors: [
+      {
+        scheme: "nip04",
+        priority: 0,
+        decrypt: (remotePubkey, cipher) =>
+          nip04.decrypt(senderSecret, remotePubkey, cipher),
+      },
+    ],
+  };
+
+  const result = await decryptDM(event, context);
+
+  assert.equal(result.ok, true, "decryptDM should succeed for outgoing event");
+  assert.equal(result.plaintext, message, "plaintext should match outgoing message");
+  assert.equal(result.recipients.length, 1, "recipient metadata should remain intact");
+  assert.equal(result.recipients[0].pubkey, recipientPubkey);
+  assert.equal(result.direction, "outgoing", "direction should be outgoing for the author");
+});
+
 test("decryptDM unwraps kind 1059 gift wraps with nip44", async () => {
   const nostrTools = await import("nostr-tools");
   const { generateSecretKey, getPublicKey, nip44, nip59 } = nostrTools;
