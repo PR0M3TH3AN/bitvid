@@ -24,7 +24,6 @@
 - Update note spec v3 transition to include new fields that have been added like "has previous" or "videoRootID" or enentID if null.
 - Change "explore" view to "kids" view and add flag to all notes to see if they are for kids.
 - Add "seed" lists.
-- Fix issue where page refreshes when pulling up a video in the video modal.
 - Fix sidebar media query settings on medium-sized screens. (tablet/laptops)
 - Fix various "text wrap" issues causing scroll left and right on profile and modal pages.
 
