@@ -276,6 +276,13 @@ const SERVICE_CONTRACT = [
     description: "Reference to the nostr client powering subscriptions and profile fetches.",
   },
   {
+    key: "subscriptions",
+    type: "object",
+    optional: true,
+    description:
+      "Subscriptions manager used by the profile modal to inspect or refresh the viewer's channel subscriptions.",
+  },
+  {
     key: "accessControl",
     type: "object",
     description:
@@ -851,6 +858,13 @@ export class ProfileModalController {
         : (...args) => {
             devLogger.log(...args);
           };
+
+    const subscriptionsServiceCandidate = this.services.subscriptions;
+    this.subscriptionsService =
+      subscriptionsServiceCandidate &&
+      typeof subscriptionsServiceCandidate === "object"
+        ? subscriptionsServiceCandidate
+        : null;
 
     this.hashtagPreferencesService = this.services.hashtagPreferences;
     this.describeHashtagPreferencesErrorService =
