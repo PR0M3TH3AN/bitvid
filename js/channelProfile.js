@@ -2140,7 +2140,7 @@ function renderZapReceipts(receipts, { partial = false } = {}) {
     if (partial) {
       const emptyItem = doc?.createElement?.("li");
       emptyItem.className =
-        "rounded border border-border bg-panel/70 p-3 text-text";
+        "rounded border border-border bg-overlay-panel-soft p-3 text-text";
       emptyItem.textContent = "No receipts were returned for this attempt.";
       list.appendChild(emptyItem);
     }
@@ -2156,7 +2156,7 @@ function renderZapReceipts(receipts, { partial = false } = {}) {
     if (!li) {
       return;
     }
-    li.className = "rounded border border-border bg-panel/70 p-3";
+    li.className = "rounded border border-border bg-overlay-panel-soft p-3";
 
     const header = doc?.createElement?.("div");
     if (!header) {

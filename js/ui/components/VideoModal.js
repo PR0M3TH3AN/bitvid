@@ -3646,7 +3646,7 @@ export class VideoModal {
 
     receipts.forEach((receipt) => {
       const li = this.document.createElement("li");
-      li.className = "rounded border border-border p-3 bg-panel/70";
+      li.className = "rounded border border-border p-3 bg-overlay-panel-soft";
 
       const header = this.document.createElement("div");
       header.className =

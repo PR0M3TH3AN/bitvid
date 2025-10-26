@@ -1450,7 +1450,7 @@ export function createWatchHistoryRenderer(config = {}) {
         info: "border-info/40 bg-info/10 text-info",
         warning: "border-warning-strong bg-warning-surface text-warning-strong",
         error: "border-critical/40 bg-critical/10 text-critical"
-      }[variant] || "border-border bg-panel/70 text-text";
+      }[variant] || "border-border bg-overlay-panel-soft text-text";
 
     if (elements.toastRegion.childElementCount >= 3) {
       const firstChild = elements.toastRegion.firstElementChild;
