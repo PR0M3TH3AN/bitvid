@@ -79,6 +79,185 @@ export function createDedupeByRootStage({
   };
 }
 
+function gatherTimestampFunctions({
+  context,
+  knownOverride,
+  resolveOverride,
+}) {
+  const knownFns = [];
+  const resolveFns = [];
+
+  const addKnown = (fn) => {
+    if (typeof fn === "function") {
+      knownFns.push(fn);
+    }
+  };
+
+  const addResolver = (fn) => {
+    if (typeof fn === "function") {
+      resolveFns.push(fn);
+    }
+  };
+
+  addKnown(knownOverride);
+  addResolver(resolveOverride);
+
+  const hookCandidates = [context?.hooks, context?.runtime];
+  for (const candidate of hookCandidates) {
+    if (!candidate || typeof candidate !== "object") {
+      continue;
+    }
+    const timestamps = candidate.timestamps;
+    if (!timestamps || typeof timestamps !== "object") {
+      continue;
+    }
+
+    addKnown(timestamps.getKnownVideoPostedAt);
+    addKnown(timestamps.getKnownPostedAt);
+    addResolver(timestamps.resolveVideoPostedAt);
+    addResolver(timestamps.getVideoPostedAt);
+  }
+
+  return { knownFns, resolveFns };
+}
+
+function applyResolvedTimestamp(video, timestamp) {
+  if (!video || typeof video !== "object") {
+    return false;
+  }
+
+  if (!Number.isFinite(timestamp)) {
+    return false;
+  }
+
+  const normalized = Math.floor(timestamp);
+  if (!Number.isFinite(normalized)) {
+    return false;
+  }
+
+  if (Number.isFinite(video.rootCreatedAt)) {
+    const existing = Math.floor(video.rootCreatedAt);
+    if (Number.isFinite(existing) && existing <= normalized) {
+      video.rootCreatedAt = existing;
+      return true;
+    }
+  }
+
+  video.rootCreatedAt = normalized;
+  return true;
+}
+
+async function resolveTimestampWithResolvers({
+  video,
+  detail,
+  resolvers,
+  stageName,
+  context,
+}) {
+  if (!Array.isArray(resolvers) || resolvers.length === 0) {
+    return null;
+  }
+
+  for (const resolver of resolvers) {
+    if (typeof resolver !== "function") {
+      continue;
+    }
+
+    try {
+      const value = await resolver(video, detail);
+      if (Number.isFinite(value)) {
+        return Math.floor(value);
+      }
+    } catch (error) {
+      context?.log?.(`[${stageName}] resolve timestamp hook threw`, error);
+    }
+  }
+
+  return null;
+}
+
+export function createResolvePostedAtStage({
+  stageName = "resolve-posted-at",
+  getKnownPostedAt,
+  resolvePostedAt,
+} = {}) {
+  return async function resolvePostedAtStage(items = [], context = {}) {
+    if (!Array.isArray(items) || items.length === 0) {
+      return items;
+    }
+
+    const { knownFns, resolveFns } = gatherTimestampFunctions({
+      context,
+      knownOverride: getKnownPostedAt,
+      resolveOverride: resolvePostedAt,
+    });
+
+    if (knownFns.length === 0 && resolveFns.length === 0) {
+      return items;
+    }
+
+    const tasks = [];
+
+    for (const item of items) {
+      const video = item?.video;
+      if (!video || typeof video !== "object") {
+        continue;
+      }
+
+      if (Number.isFinite(video.rootCreatedAt)) {
+        continue;
+      }
+
+      const detail = { entry: item, context };
+
+      let knownValue = null;
+      for (const candidate of knownFns) {
+        try {
+          const value = candidate(video, detail);
+          if (Number.isFinite(value)) {
+            knownValue = Math.floor(value);
+            break;
+          }
+        } catch (error) {
+          context?.log?.(`[${stageName}] known timestamp hook threw`, error);
+        }
+      }
+
+      if (knownValue !== null && Number.isFinite(knownValue)) {
+        applyResolvedTimestamp(video, knownValue);
+        continue;
+      }
+
+      if (!resolveFns.length) {
+        continue;
+      }
+
+      tasks.push(async () => {
+        const resolved = await resolveTimestampWithResolvers({
+          video,
+          detail,
+          resolvers: resolveFns,
+          stageName,
+          context,
+        });
+        if (resolved !== null && Number.isFinite(resolved)) {
+          applyResolvedTimestamp(video, resolved);
+        }
+      });
+    }
+
+    for (const task of tasks) {
+      try {
+        await task();
+      } catch (error) {
+        context?.log?.(`[${stageName}] resolution task failed`, error);
+      }
+    }
+
+    return items;
+  };
+}
+
 export function createBlacklistFilterStage({
   stageName = "blacklist-filter",
   shouldIncludeVideo,
