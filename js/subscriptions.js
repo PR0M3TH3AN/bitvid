@@ -1140,6 +1140,46 @@ class SubscriptionsManager {
       listView.setPopularTagsContainer(null);
     }
 
+    const buildModerationPayload = (detail = {}) => {
+      const event = detail?.event || null;
+      const trigger =
+        detail?.trigger ||
+        (event && (event.currentTarget || event.target)) ||
+        null;
+      const card = detail?.card || null;
+      const video = detail?.video || null;
+      const datasetContext = (() => {
+        const detailContext =
+          typeof detail?.context === "string" ? detail.context.trim() : "";
+        if (detailContext) {
+          return detailContext;
+        }
+        const datasetSource =
+          (detail?.dataset && typeof detail.dataset === "object"
+            ? detail.dataset
+            : null) ||
+          (trigger && trigger.dataset) ||
+          (card && card.root && card.root.dataset) ||
+          null;
+        if (
+          datasetSource &&
+          typeof datasetSource.context === "string" &&
+          datasetSource.context.trim()
+        ) {
+          return datasetSource.context.trim();
+        }
+        return "";
+      })();
+
+      return {
+        ...detail,
+        video,
+        card,
+        trigger,
+        context: datasetContext || "subscriptions",
+      };
+    };
+
     listView.setPlaybackHandler((detail) => {
       if (!detail) {
         return;
@@ -1205,6 +1245,20 @@ class SubscriptionsManager {
         context: dataset?.context || "subscriptions"
       };
       app?.handleMoreMenuAction?.("blacklist-author", detail);
+    });
+
+    listView.setModerationOverrideHandler((detail = {}) => {
+      if (typeof app?.handleModerationOverride !== "function") {
+        return false;
+      }
+      return app.handleModerationOverride(buildModerationPayload(detail));
+    });
+
+    listView.setModerationHideHandler((detail = {}) => {
+      if (typeof app?.handleModerationHide !== "function") {
+        return false;
+      }
+      return app.handleModerationHide(buildModerationPayload(detail));
     });
 
     listView.addEventListener("video:share", (event) => {

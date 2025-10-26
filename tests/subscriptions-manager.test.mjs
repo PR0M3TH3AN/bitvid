@@ -677,3 +677,137 @@ test("renderSameGridStyle shows empty state message", async () => {
   }
 });
 
+test(
+  "renderSameGridStyle forwards moderation badge actions to the application",
+  async () => {
+    const SubscriptionsManager = subscriptions.constructor;
+
+    const originalWindow = globalThis.window;
+    const originalDocument = globalThis.document;
+    const originalNavigator = globalThis.navigator;
+
+    const dom = new JSDOM(
+      "<!doctype html><div id=\"subscriptionsVideoList\"></div>",
+      { url: "https://example.test/" },
+    );
+
+    globalThis.window = dom.window;
+    globalThis.document = dom.window.document;
+    globalThis.navigator = dom.window.navigator;
+
+    const manager = new SubscriptionsManager();
+
+    const overrideCalls = [];
+    const hideCalls = [];
+
+    const app = {
+      videosMap: new Map(),
+      handleModerationOverride(detail) {
+        overrideCalls.push(detail);
+        return true;
+      },
+      handleModerationHide(detail) {
+        hideCalls.push(detail);
+        return true;
+      },
+      ensureGlobalMoreMenuHandlers() {},
+      closeAllMoreMenus() {},
+      handleMoreMenuAction() {},
+    };
+
+    setApplication(app);
+
+    const video = {
+      id: "video-moderated-1",
+      pubkey: "author-1",
+      title: "Moderated clip",
+      created_at: 1,
+      moderation: {
+        original: { hidden: true },
+        trustedMuted: true,
+        trustedMuteCount: 2,
+        summary: { types: { nudity: { trusted: 1 } } },
+      },
+    };
+
+    manager.renderSameGridStyle(
+      { items: [{ video }] },
+      "subscriptionsVideoList",
+    );
+
+    const container = dom.window.document.getElementById(
+      "subscriptionsVideoList",
+    );
+    const overrideButton = container.querySelector(
+      '[data-moderation-action="override"]',
+    );
+    assert.ok(overrideButton, "override button should render for moderated video");
+
+    overrideButton.click();
+    await Promise.resolve();
+
+    assert.equal(
+      overrideCalls.length,
+      1,
+      "app.handleModerationOverride should receive one call",
+    );
+    const overrideDetail = overrideCalls[0];
+    assert.equal(overrideDetail.video, video);
+    assert.equal(overrideDetail.card?.video, video);
+    assert.equal(
+      overrideDetail.context,
+      "subscriptions",
+      "override payload should include the subscriptions context",
+    );
+    assert.equal(overrideDetail.trigger, overrideButton);
+
+    const hideButton = container.querySelector('[data-moderation-action="hide"]');
+    assert.ok(hideButton, "hide button should render for moderated video");
+
+    hideButton.click();
+    await Promise.resolve();
+
+    assert.equal(
+      hideCalls.length,
+      1,
+      "app.handleModerationHide should receive one call",
+    );
+    const hideDetail = hideCalls[0];
+    assert.equal(hideDetail.video, video);
+    assert.equal(hideDetail.card?.video, video);
+    assert.equal(
+      hideDetail.context,
+      "subscriptions",
+      "hide payload should include the subscriptions context",
+    );
+    assert.equal(hideDetail.trigger, hideButton);
+
+    if (manager.subscriptionListView?.destroy) {
+      manager.subscriptionListView.destroy();
+      manager.subscriptionListView = null;
+    }
+
+    dom.window.close();
+
+    if (typeof originalWindow === "undefined") {
+      delete globalThis.window;
+    } else {
+      globalThis.window = originalWindow;
+    }
+
+    if (typeof originalDocument === "undefined") {
+      delete globalThis.document;
+    } else {
+      globalThis.document = originalDocument;
+    }
+
+    if (typeof originalNavigator === "undefined") {
+      delete globalThis.navigator;
+    } else {
+      globalThis.navigator = originalNavigator;
+    }
+
+    setApplication(null);
+  },
+);
+
