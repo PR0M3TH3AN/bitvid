@@ -6,6 +6,7 @@
 - **Watch History view** – A dedicated watch history page ships with privacy messaging, pagination, relay sync, and local cache controls.
 - **Zap controls** – Channel profiles manage zap visibility, login gating, retry flows, and receipt rendering via the Lightning controller on the page.
 - **Source visibility filtering** – Lists now hide cards whose hosted URLs are offline unless their WebTorrent fallback is healthy, reusing the shared guard in `js/utils/cardSourceVisibility.js`.
+- **Video modal stability** – Opening videos no longer refreshes the page when the modal launches.
 
 ## Bug Fixes
 
@@ -23,7 +24,6 @@
 - Update note spec v3 transition to include new fields that have been added like "has previous" or "videoRootID" or enentID if null.
 - Change "explore" view to "kids" view and add flag to all notes to see if they are for kids.
 - Add "seed" lists.
-- Fix issue where page refreshes when pulling up a video in the video modal.
 - Fix sidebar media query settings on medium-sized screens. (tablet/laptops)
 - Fix various "text wrap" issues causing scroll left and right on profile and modal pages.
 - Add comments to video modal pages.
