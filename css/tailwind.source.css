@@ -2278,7 +2278,7 @@
     z-index: 1;
     border-radius: var(--radius-xl);
     padding-block: clamp(var(--space-xs), 2.5vw, var(--space-md-plus));
-    background-color: color-mix(in srgb, var(--color-surface) 82%, transparent);
+    background-color: transparent;
     box-shadow: 0 0 0 1px
       color-mix(in srgb, var(--color-border-strong) 8%, transparent) inset;
     overflow: visible;
