@@ -1240,6 +1240,8 @@ class Application {
     this.statusMessage =
       this.statusContainer?.querySelector("[data-status-message]") || null;
     this.statusAutoHideHandle = null;
+    this.lastExperimentalWarningKey = null;
+    this.lastExperimentalWarningAt = 0;
 
     // Auth state
     this.pubkey = null;
@@ -3733,6 +3735,7 @@ class Application {
         callbacks: {
           onProviderSelected: (providerId) => {
             devLogger.log(`[LoginModal] Provider selected: ${providerId}.`);
+            this.maybeShowExperimentalLoginWarning(providerId);
           },
           onLoginSuccess: (payload) => {
             const maybePromise = this.handleLoginModalSuccess(payload);
@@ -5608,6 +5611,37 @@ class Application {
     }
   }
 
+  maybeShowExperimentalLoginWarning(provider) {
+    const normalizedProvider =
+      typeof provider === "string" ? provider.trim().toLowerCase() : "";
+
+    if (normalizedProvider !== "nsec" && normalizedProvider !== "nip46") {
+      return;
+    }
+
+    const now = Date.now();
+    if (
+      this.lastExperimentalWarningKey === normalizedProvider &&
+      typeof this.lastExperimentalWarningAt === "number" &&
+      now - this.lastExperimentalWarningAt < 2000
+    ) {
+      return;
+    }
+
+    this.lastExperimentalWarningKey = normalizedProvider;
+    this.lastExperimentalWarningAt = now;
+
+    const providerLabel =
+      normalizedProvider === "nsec"
+        ? "Direct nsec or seed"
+        : "NIP-46 remote signer";
+
+    this.showStatus(
+      `${providerLabel} logins are still in development and may not work well yet. We recommend using a NIP-07 browser extension for the most reliable experience.`,
+      { showSpinner: false, autoHideMs: 5000 },
+    );
+  }
+
   async handleAuthLogin(detail = {}) {
     const postLoginPromise =
       detail && typeof detail.postLoginPromise?.then === "function"
@@ -5636,16 +5670,7 @@ class Application {
     const normalizedProvider =
       (rawProviderId || rawAuthType).toLowerCase() || "";
 
-    if (normalizedProvider === "nsec" || normalizedProvider === "nip46") {
-      const providerLabel =
-        normalizedProvider === "nsec"
-          ? "Direct nsec or seed"
-          : "NIP-46 remote signer";
-      this.showStatus(
-        `${providerLabel} logins are still in development and may not work well yet. We recommend using a NIP-07 browser extension for the most reliable experience.`,
-        { showSpinner: false, autoHideMs: 15000 },
-      );
-    }
+    this.maybeShowExperimentalLoginWarning(normalizedProvider);
 
     const loginContext = {
       pubkey: detail?.pubkey || this.pubkey,
