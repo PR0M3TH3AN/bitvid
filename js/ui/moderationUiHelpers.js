@@ -1,3 +1,18 @@
+const SHOW_ANYWAY_LABEL = "Show anyway";
+const RESTORE_DEFAULT_MODERATION_LABEL = "Restore default moderation";
+
+export function getModerationOverrideActionLabels({ overrideActive } = {}) {
+  const active = overrideActive === true;
+  const label = active
+    ? RESTORE_DEFAULT_MODERATION_LABEL
+    : SHOW_ANYWAY_LABEL;
+
+  return {
+    text: label,
+    ariaLabel: label,
+  };
+}
+
 export function normalizeVideoModerationContext(moderationInput) {
   const moderation =
     moderationInput && typeof moderationInput === "object"
@@ -230,6 +245,8 @@ export function applyModerationContextDatasets(
     });
   };
 
+  const restoreCopy = getModerationOverrideActionLabels({ overrideActive: true });
+
   applyToRoots((el) => {
     if (context.originalBlockAutoplay && !context.overrideActive) {
       el.dataset.autoplayPolicy = "blocked";
@@ -239,8 +256,12 @@ export function applyModerationContextDatasets(
 
     if (context.overrideActive) {
       el.dataset.moderationOverride = "show-anyway";
+      el.dataset.moderationOverrideActionLabel = restoreCopy.text;
     } else if (el.dataset.moderationOverride) {
       delete el.dataset.moderationOverride;
+      if (el.dataset.moderationOverrideActionLabel) {
+        delete el.dataset.moderationOverrideActionLabel;
+      }
     }
   });
 

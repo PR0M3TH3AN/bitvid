@@ -15,6 +15,7 @@ import { userLogger } from "./utils/logger.js";
 import {
   normalizeVideoModerationContext,
   applyModerationContextDatasets,
+  getModerationOverrideActionLabels,
 } from "./ui/moderationUiHelpers.js";
 import { buildModerationBadgeText } from "./ui/moderationCopy.js";
 
@@ -587,17 +588,35 @@ function createHistoryCardBadge(ref, context) {
   if (typeof ref.boundOverride !== "function") {
     ref.boundOverride = (event) => handleHistoryCardModerationOverride(event, ref);
   }
+  if (typeof ref.boundHide !== "function") {
+    ref.boundHide = (event) => handleHistoryCardModerationHide(event, ref);
+  }
   if (typeof ref.boundBlock !== "function") {
     ref.boundBlock = (event) => handleHistoryCardModerationBlock(event, ref);
   }
   if (!ref.overrideButton) {
+    const { text: overrideLabel, ariaLabel: overrideAria } =
+      getModerationOverrideActionLabels({ overrideActive: false });
     const overrideButton = doc.createElement("button");
     overrideButton.type = "button";
     overrideButton.className = "moderation-badge__action flex-shrink-0";
     overrideButton.dataset.moderationAction = "override";
-    overrideButton.textContent = "Show anyway";
+    overrideButton.textContent = overrideLabel;
+    overrideButton.setAttribute("aria-label", overrideAria);
     overrideButton.addEventListener("click", ref.boundOverride);
     ref.overrideButton = overrideButton;
+  }
+  if (!ref.hideButton) {
+    const { text: restoreLabel, ariaLabel: restoreAria } =
+      getModerationOverrideActionLabels({ overrideActive: true });
+    const hideButton = doc.createElement("button");
+    hideButton.type = "button";
+    hideButton.className = "moderation-badge__action flex-shrink-0";
+    hideButton.dataset.moderationAction = "hide";
+    hideButton.textContent = restoreLabel;
+    hideButton.setAttribute("aria-label", restoreAria);
+    hideButton.addEventListener("click", ref.boundHide);
+    ref.hideButton = hideButton;
   }
   if (!ref.blockButton) {
     const blockButton = doc.createElement("button");
@@ -617,6 +636,9 @@ function updateHistoryCardBadge(ref, context) {
     if (ref.overrideButton && typeof ref.overrideButton.removeEventListener === "function" && typeof ref.boundOverride === "function") {
       ref.overrideButton.removeEventListener("click", ref.boundOverride);
     }
+    if (ref.hideButton && typeof ref.hideButton.removeEventListener === "function" && typeof ref.boundHide === "function") {
+      ref.hideButton.removeEventListener("click", ref.boundHide);
+    }
     if (ref.blockButton && typeof ref.blockButton.removeEventListener === "function" && typeof ref.boundBlock === "function") {
       ref.blockButton.removeEventListener("click", ref.boundBlock);
     }
@@ -629,6 +651,7 @@ function updateHistoryCardBadge(ref, context) {
     ref.badgeIconSvg = null;
     ref.badgeIconWrapper = null;
     ref.overrideButton = null;
+    ref.hideButton = null;
     ref.blockButton = null;
     return;
   }
@@ -714,6 +737,10 @@ function updateHistoryCardBadge(ref, context) {
   }
 
   if (!context.overrideActive && context.allowOverride && ref.overrideButton) {
+    const { text: overrideLabel, ariaLabel: overrideAria } =
+      getModerationOverrideActionLabels({ overrideActive: false });
+    ref.overrideButton.textContent = overrideLabel;
+    ref.overrideButton.setAttribute("aria-label", overrideAria);
     if (ref.overrideButton.parentNode !== badge) {
       badge.appendChild(ref.overrideButton);
     }
@@ -721,6 +748,20 @@ function updateHistoryCardBadge(ref, context) {
     ref.overrideButton.removeAttribute("aria-busy");
   } else if (ref.overrideButton && ref.overrideButton.parentNode === badge) {
     badge.removeChild(ref.overrideButton);
+  }
+
+  if (context.overrideActive && ref.hideButton) {
+    const { text: restoreLabel, ariaLabel: restoreAria } =
+      getModerationOverrideActionLabels({ overrideActive: true });
+    ref.hideButton.textContent = restoreLabel;
+    ref.hideButton.setAttribute("aria-label", restoreAria);
+    if (ref.hideButton.parentNode !== badge) {
+      badge.appendChild(ref.hideButton);
+    }
+    ref.hideButton.disabled = false;
+    ref.hideButton.removeAttribute("aria-busy");
+  } else if (ref.hideButton && ref.hideButton.parentNode === badge) {
+    badge.removeChild(ref.hideButton);
   }
 
   if (shouldShowHistoryCardBlockButton(context) && ref.blockButton) {
@@ -779,6 +820,14 @@ function updateHistoryCardAria(ref) {
       ref.overrideButton.setAttribute("aria-describedby", badgeId);
     } else {
       ref.overrideButton.removeAttribute("aria-describedby");
+    }
+  }
+
+  if (ref.hideButton) {
+    if (badgeId) {
+      ref.hideButton.setAttribute("aria-describedby", badgeId);
+    } else {
+      ref.hideButton.removeAttribute("aria-describedby");
     }
   }
 
@@ -881,6 +930,79 @@ function handleHistoryCardModerationOverride(event, ref) {
     .catch((error) => {
       if (isDevEnv) {
         userLogger.warn("[historyView] Moderation override failed:", error);
+      }
+      if (button) {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+      }
+    });
+}
+
+function handleHistoryCardModerationHide(event, ref) {
+  if (event) {
+    if (typeof event.preventDefault === "function") {
+      event.preventDefault();
+    }
+    if (typeof event.stopPropagation === "function") {
+      event.stopPropagation();
+    }
+  }
+
+  const button = ref.hideButton;
+  if (button) {
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+  }
+
+  const video = ref.video;
+  if (!video || typeof video !== "object" || !video.id) {
+    if (button) {
+      button.disabled = false;
+      button.removeAttribute("aria-busy");
+    }
+    return;
+  }
+
+  const app = getAppInstance();
+  let result;
+  try {
+    if (typeof app?.handleModerationHide === "function") {
+      result = app.handleModerationHide({ video });
+    } else {
+      const doc =
+        (ref.article && ref.article.ownerDocument) ||
+        (typeof document !== "undefined" ? document : null);
+      if (doc && typeof doc.dispatchEvent === "function") {
+        doc.dispatchEvent(new CustomEvent("video:moderation-hide", { detail: { video } }));
+      }
+      result = true;
+    }
+  } catch (error) {
+    if (button) {
+      button.disabled = false;
+      button.removeAttribute("aria-busy");
+    }
+    if (isDevEnv) {
+      userLogger.warn("[historyView] Moderation hide handler threw:", error);
+    }
+    return;
+  }
+
+  Promise.resolve(result)
+    .then((handled) => {
+      if (handled === false) {
+        if (button) {
+          button.disabled = false;
+          button.removeAttribute("aria-busy");
+        }
+        return;
+      }
+      const context = normalizeVideoModerationContext(ref.video?.moderation);
+      applyHistoryCardModeration(ref, context);
+    })
+    .catch((error) => {
+      if (isDevEnv) {
+        userLogger.warn("[historyView] Moderation hide failed:", error);
       }
       if (button) {
         button.disabled = false;

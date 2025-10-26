@@ -25,6 +25,7 @@ import {
 } from "./constants.js";
 import {
   applyModerationContextDatasets,
+  getModerationOverrideActionLabels,
   normalizeVideoModerationContext,
 } from "./ui/moderationUiHelpers.js";
 import { buildModerationBadgeText } from "./ui/moderationCopy.js";
@@ -76,8 +77,10 @@ const channelModerationBadgeState = {
   iconSvg: null,
   iconWrapper: null,
   overrideButton: null,
+  hideButton: null,
   blockButton: null,
   boundOverride: null,
+  boundHide: null,
   boundBlock: null,
   badgeId: "",
   app: null,
@@ -464,13 +467,34 @@ function ensureChannelModerationBadgeResources(doc) {
   }
 
   if (!channelModerationBadgeState.overrideButton) {
+    const { text: overrideLabel, ariaLabel: overrideAria } =
+      getModerationOverrideActionLabels({ overrideActive: false });
     const button = doc.createElement("button");
     button.type = "button";
     button.className = "moderation-badge__action flex-shrink-0";
     button.dataset.moderationAction = "override";
-    button.textContent = "Show anyway";
+    button.textContent = overrideLabel;
+    button.setAttribute("aria-label", overrideAria);
     button.addEventListener("click", channelModerationBadgeState.boundOverride);
     channelModerationBadgeState.overrideButton = button;
+  }
+
+  if (typeof channelModerationBadgeState.boundHide !== "function") {
+    channelModerationBadgeState.boundHide = (event) =>
+      handleChannelModerationHide(event);
+  }
+
+  if (!channelModerationBadgeState.hideButton) {
+    const { text: restoreLabel, ariaLabel: restoreAria } =
+      getModerationOverrideActionLabels({ overrideActive: true });
+    const hideButton = doc.createElement("button");
+    hideButton.type = "button";
+    hideButton.className = "moderation-badge__action flex-shrink-0";
+    hideButton.dataset.moderationAction = "hide";
+    hideButton.textContent = restoreLabel;
+    hideButton.setAttribute("aria-label", restoreAria);
+    hideButton.addEventListener("click", channelModerationBadgeState.boundHide);
+    channelModerationBadgeState.hideButton = hideButton;
   }
 
   if (!channelModerationBadgeState.blockButton) {
@@ -568,6 +592,10 @@ function renderChannelModerationBadge({
     normalizedContext.allowOverride &&
     ref.overrideButton
   ) {
+    const { text: overrideLabel, ariaLabel: overrideAria } =
+      getModerationOverrideActionLabels({ overrideActive: false });
+    ref.overrideButton.textContent = overrideLabel;
+    ref.overrideButton.setAttribute("aria-label", overrideAria);
     if (ref.overrideButton.parentNode !== badge) {
       badge.appendChild(ref.overrideButton);
     }
@@ -575,6 +603,20 @@ function renderChannelModerationBadge({
     ref.overrideButton.removeAttribute("aria-busy");
   } else if (ref.overrideButton && ref.overrideButton.parentNode === badge) {
     badge.removeChild(ref.overrideButton);
+  }
+
+  if (hasVideoTarget && normalizedContext.overrideActive && ref.hideButton) {
+    const { text: restoreLabel, ariaLabel: restoreAria } =
+      getModerationOverrideActionLabels({ overrideActive: true });
+    ref.hideButton.textContent = restoreLabel;
+    ref.hideButton.setAttribute("aria-label", restoreAria);
+    if (ref.hideButton.parentNode !== badge) {
+      badge.appendChild(ref.hideButton);
+    }
+    ref.hideButton.disabled = false;
+    ref.hideButton.removeAttribute("aria-busy");
+  } else if (ref.hideButton && ref.hideButton.parentNode === badge) {
+    badge.removeChild(ref.hideButton);
   }
 
   if (hasVideoTarget && shouldShowChannelBlockButton(normalizedContext) && ref.blockButton) {
@@ -592,6 +634,14 @@ function renderChannelModerationBadge({
       ref.overrideButton.setAttribute("aria-describedby", badge.id);
     } else {
       ref.overrideButton.removeAttribute("aria-describedby");
+    }
+  }
+
+  if (ref.hideButton) {
+    if (badge.id) {
+      ref.hideButton.setAttribute("aria-describedby", badge.id);
+    } else {
+      ref.hideButton.removeAttribute("aria-describedby");
     }
   }
 
@@ -643,6 +693,59 @@ function handleChannelModerationOverride(event) {
 
   if (handled) {
     updateChannelModerationVisuals({ app, pubkey: sourceVideo?.pubkey || currentChannelHex || "" });
+  } else if (button) {
+    button.disabled = false;
+    button.removeAttribute("aria-busy");
+  }
+}
+
+function handleChannelModerationHide(event) {
+  if (event) {
+    if (typeof event.preventDefault === "function") {
+      event.preventDefault();
+    }
+    if (typeof event.stopPropagation === "function") {
+      event.stopPropagation();
+    }
+  }
+
+  const sourceVideo = currentChannelModerationSourceVideo;
+  const app = channelModerationBadgeState.app || getApp();
+  const targetVideo =
+    app?.videosMap instanceof Map && sourceVideo?.id
+      ? app.videosMap.get(sourceVideo.id) || sourceVideo
+      : sourceVideo;
+
+  if (!targetVideo || typeof targetVideo !== "object" || !targetVideo.id) {
+    return;
+  }
+
+  const button = channelModerationBadgeState.hideButton;
+  if (button) {
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+  }
+
+  let handled = false;
+  try {
+    handled =
+      typeof app?.handleModerationHide === "function"
+        ? app.handleModerationHide({
+            video: targetVideo,
+          }) === true
+        : false;
+  } catch (error) {
+    devLogger.warn(
+      "[ChannelProfile] Failed to handle channel moderation hide",
+      error,
+    );
+  }
+
+  if (handled) {
+    updateChannelModerationVisuals({
+      app,
+      pubkey: sourceVideo?.pubkey || currentChannelHex || "",
+    });
   } else if (button) {
     button.disabled = false;
     button.removeAttribute("aria-busy");

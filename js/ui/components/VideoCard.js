@@ -3,6 +3,7 @@ import { updateVideoCardSourceVisibility } from "../../utils/cardSourceVisibilit
 import { userLogger } from "../../utils/logger.js";
 import {
   applyModerationContextDatasets,
+  getModerationOverrideActionLabels,
   normalizeVideoModerationContext,
 } from "../moderationUiHelpers.js";
 import { buildModerationBadgeText } from "../moderationCopy.js";
@@ -1000,6 +1001,9 @@ export class VideoCard {
   }
 
   createModerationOverrideButton() {
+    const { text: label, ariaLabel } = getModerationOverrideActionLabels({
+      overrideActive: false,
+    });
     const button = this.createElement("button", {
       classNames: ["moderation-badge__action", "flex-shrink-0"],
       attrs: {
@@ -1007,22 +1011,27 @@ export class VideoCard {
         "data-moderation-action": "override",
         "aria-pressed": "false",
         "aria-describedby": this.getModerationBadgeId(),
+        "aria-label": ariaLabel,
       },
-      textContent: "Show anyway",
+      textContent: label,
     });
     button.addEventListener("click", this.boundShowAnywayHandler);
     return button;
   }
 
   createModerationHideButton() {
+    const { text: label, ariaLabel } = getModerationOverrideActionLabels({
+      overrideActive: true,
+    });
     const button = this.createElement("button", {
       classNames: ["moderation-badge__action", "flex-shrink-0"],
       attrs: {
         type: "button",
         "data-moderation-action": "hide",
         "aria-describedby": this.getModerationBadgeId(),
+        "aria-label": ariaLabel,
       },
-      textContent: "Hide",
+      textContent: label,
     });
     button.addEventListener("click", this.boundModerationHideHandler);
     return button;
@@ -1697,17 +1706,25 @@ export class VideoCard {
         }
 
         if (desiredMode === "hide") {
-          this.moderationActionButton.textContent = "Hide";
+          const { text: label, ariaLabel } = getModerationOverrideActionLabels({
+            overrideActive: true,
+          });
+          this.moderationActionButton.textContent = label;
           this.moderationActionButton.dataset.moderationAction = "hide";
           this.moderationActionButton.removeAttribute("aria-pressed");
+          this.moderationActionButton.setAttribute("aria-label", ariaLabel);
           this.moderationActionButton.addEventListener(
             "click",
             this.boundModerationHideHandler,
           );
         } else {
-          this.moderationActionButton.textContent = "Show anyway";
+          const { text: label, ariaLabel } = getModerationOverrideActionLabels({
+            overrideActive: false,
+          });
+          this.moderationActionButton.textContent = label;
           this.moderationActionButton.dataset.moderationAction = "override";
           this.moderationActionButton.setAttribute("aria-pressed", "false");
+          this.moderationActionButton.setAttribute("aria-label", ariaLabel);
           this.moderationActionButton.addEventListener(
             "click",
             this.boundShowAnywayHandler,

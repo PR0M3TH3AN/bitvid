@@ -14,7 +14,10 @@ import {
   unsubscribeFromVideoViewCount,
   formatViewCount,
 } from "../../viewCounter.js";
-import { normalizeVideoModerationContext } from "../moderationUiHelpers.js";
+import {
+  getModerationOverrideActionLabels,
+  normalizeVideoModerationContext,
+} from "../moderationUiHelpers.js";
 import { buildModerationBadgeText } from "../moderationCopy.js";
 import {
   formatAbsoluteTimestamp,
@@ -4247,14 +4250,22 @@ export class VideoModal {
       }
 
       if (mode === "override") {
-        button.textContent = "Show anyway";
+        const { text, ariaLabel } = getModerationOverrideActionLabels({
+          overrideActive: false,
+        });
+        button.textContent = text;
         button.dataset.moderationAction = "override";
         button.setAttribute("aria-pressed", "false");
+        button.setAttribute("aria-label", ariaLabel);
         button.addEventListener("click", this.handleModerationOverrideClick);
       } else {
-        button.textContent = "Hide";
+        const { text, ariaLabel } = getModerationOverrideActionLabels({
+          overrideActive: true,
+        });
+        button.textContent = text;
         button.dataset.moderationAction = "hide";
         button.removeAttribute("aria-pressed");
+        button.setAttribute("aria-label", ariaLabel);
         button.addEventListener("click", this.handleModerationHideClick);
       }
 

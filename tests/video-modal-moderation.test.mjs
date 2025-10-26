@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 
 import { setupModal } from "./video-modal-accessibility.test.mjs";
 
+const RESTORE_BUTTON_LABEL = "Restore default moderation";
+
 test("VideoModal blurs and restores playback when moderation overlay toggles", async (t) => {
   const { modal, cleanup } = await setupModal();
   const document = modal.document;
@@ -59,8 +61,12 @@ test("VideoModal blurs and restores playback when moderation overlay toggles", a
       );
 
       let overrideEvent = null;
+      let hideEvent = null;
       modal.addEventListener("video:moderation-override", (event) => {
         overrideEvent = event;
+      });
+      modal.addEventListener("video:moderation-hide", (event) => {
+        hideEvent = event;
       });
 
       const showButton = overlay.querySelector(
@@ -82,6 +88,24 @@ test("VideoModal blurs and restores playback when moderation overlay toggles", a
 
       assert.equal(stage.dataset.visualState, undefined);
       assert.equal(overlay.hasAttribute("hidden"), true);
+
+      const restoreButton = document.querySelector(
+        "[data-moderation-action='hide']",
+      );
+      assert.ok(
+        restoreButton,
+        "Restore default moderation button should be present after override",
+      );
+      assert.equal(
+        restoreButton.textContent.trim(),
+        RESTORE_BUTTON_LABEL,
+        "Restore button should expose the new label",
+      );
+
+      restoreButton.click();
+
+      assert.ok(hideEvent, "clicking restore should emit moderation hide event");
+      assert.equal(hideEvent.detail.video, video);
 
       delete video.moderation.viewerOverride;
       video.moderation.blurThumbnail = true;

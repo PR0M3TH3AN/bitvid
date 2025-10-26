@@ -8,7 +8,7 @@
 - [ ] Hide videos once trusted mute/spam thresholds are met.
   - Automated coverage: `tests/visual/moderation.spec.ts` trusted hide scenarios (run via `npm run test:visual`).
   - Manual: adjust thresholds in the profile modal, simulate trusted mutes/reports, and verify cards disappear until "show anyway" is used.
-- [ ] “Show anyway” works for blurred and hidden cards and records only local pref.
+- [ ] “Show anyway” works for blurred and hidden cards, surfaces a “Restore default moderation” control, and records only local pref.
   - Automated coverage: `tests/visual/moderation.spec.ts` show-anyway persistence and trusted hide scenarios (run via `npm run test:visual`).
 - [ ] Mute list (10000) downranks/hides consistently.
   - Manual: subscribe to fixture B and verify muted author disappears from feeds after refresh.
@@ -56,7 +56,7 @@ Expected:
 }
 ```
 
-Expected: author’s items are downranked/hidden for this viewer. When the mute threshold (`TRUSTED_MUTE_HIDE_THRESHOLD`, sourced from `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD` in [`config/instance-config.js`](../../config/instance-config.js); upstream example: 1) is met, cards render with "Hidden · {count} trusted mute(s)" and require a "Show anyway" override to display content.
+Expected: author’s items are downranked/hidden for this viewer. When the mute threshold (`TRUSTED_MUTE_HIDE_THRESHOLD`, sourced from `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD` in [`config/instance-config.js`](../../config/instance-config.js); upstream example: 1) is met, cards render with "Hidden · {count} trusted mute(s)" and require a "Show anyway" override to display content plus a "Restore default moderation" control to revert.
 
 **Exercises:** [`ModerationService.ingestTrustedMuteEvent()`](../../js/services/moderationService.js) updates [`ModerationService.isAuthorMutedByTrusted()`](../../js/services/moderationService.js) / [`getTrustedMutersForAuthor()`](../../js/services/moderationService.js), which [`createModerationStage()`](../../js/feedEngine/stages.js) propagates to the video item before [`VideoCard.refreshModerationUi()`](../../js/ui/components/VideoCard.js) renders the mute state.
 
