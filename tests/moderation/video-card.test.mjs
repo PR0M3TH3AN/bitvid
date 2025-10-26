@@ -13,6 +13,7 @@ import {
   applyModerationContextDatasets,
   normalizeVideoModerationContext,
 } from "../../js/ui/moderationUiHelpers.js";
+import { buildModerationBadgeText } from "../../js/ui/moderationCopy.js";
 import { userBlocks } from "../../js/userBlocks.js";
 
 function setupDom(t) {
@@ -326,7 +327,7 @@ test("VideoCard blurs thumbnails when trusted mute triggers without reports", as
   assert.equal(card.moderationBadgeEl.dataset.moderationState, "trusted-mute");
   assert.equal(
     card.moderationBadgeTextEl.textContent,
-    "Autoplay blocked · Muted by a trusted contact",
+    "Content or user blocked by a trusted contact.",
   );
   assert.ok(card.moderationBlockButton);
   assert.equal(
@@ -474,3 +475,22 @@ test("applyModerationContextDatasets clears blur when overrides are active", (t)
   assert.equal(thumbnail.dataset.thumbnailState, undefined);
   assert.equal(avatar.dataset.visualState, undefined);
 });
+
+test(
+  "buildModerationBadgeText returns trusted contact block copy when autoplay block and trusted mute combine",
+  () => {
+    const context = {
+      originalBlockAutoplay: true,
+      trustedMuted: true,
+    };
+
+    assert.equal(
+      buildModerationBadgeText(context, { variant: "card" }),
+      "Content or user blocked by a trusted contact.",
+    );
+    assert.equal(
+      buildModerationBadgeText(context, { variant: "modal" }),
+      "Content or user blocked by a trusted contact.",
+    );
+  },
+);
