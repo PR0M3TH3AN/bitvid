@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
 
+import "../test-helpers/setup-localstorage.mjs";
+
 import {
   renderChannelVideosFromList,
   applyChannelVisualBlur,
@@ -10,11 +12,15 @@ import {
 } from "../../js/channelProfile.js";
 import { nostrClient } from "../../js/nostrClientFacade.js";
 import moderationService from "../../js/services/moderationService.js";
+import { setApplication } from "../../js/applicationContext.js";
+import { normalizeVideoModerationContext } from "../../js/ui/moderationUiHelpers.js";
+import { buildModerationBadgeText } from "../../js/ui/moderationCopy.js";
 import { withMockedNostrTools, createModerationAppHarness } from "../helpers/moderation-test-helpers.mjs";
 
 function setupDom(t) {
   const dom = new JSDOM(
     "<!DOCTYPE html><html><body>" +
+      '<div id="channelModerationBadge"></div>' +
       '<div id="channelBanner"></div>' +
       '<img id="channelAvatar" />' +
       '<div id="channelVideoList"></div>' +
@@ -107,6 +113,7 @@ test("renderChannelVideosFromList decorates videos before storing", async (t) =>
   app.mountVideoListView = () => {};
   app.mediaLoader = { observe() {} };
   app.attachMoreMenuHandlers = () => {};
+  app.decorateVideoModeration = (video) => video;
 
   const originalDecorate = app.decorateVideoModeration;
   let decoratedCount = 0;
@@ -203,7 +210,11 @@ test("moderation override clears channel blur via event wiring", async (t) => {
       types: { nudity: { trusted: 2 } },
     },
   };
-  const video = createVideoFixture({ pubkey: channelPubkey, moderation: moderationState });
+  const video = createVideoFixture({
+    id: "a".repeat(64),
+    pubkey: channelPubkey,
+    moderation: moderationState,
+  });
 
   renderChannelVideosFromList({
     videos: [video],
@@ -222,4 +233,114 @@ test("moderation override clears channel blur via event wiring", async (t) => {
 
   assert.equal(bannerEl.dataset.visualState, undefined);
   assert.equal(avatarEl.dataset.visualState, undefined);
+});
+
+test("channel header moderation badge reflects blur state and override actions", async (t) => {
+  const { document } = setupDom(t);
+  withMockedNostrTools(t);
+
+  nostrClient.allEvents = new Map();
+  nostrClient.rawEvents = new Set();
+
+  const app = await createModerationAppHarness();
+  app.loadedThumbnails = new Map();
+  app.videosMap = new Map();
+  app.buildShareUrlFromEventId = (id) => `https://example.invalid/watch/${id}`;
+  app.formatTimeAgo = () => "just now";
+  app.ensureGlobalMoreMenuHandlers = () => {};
+  app.closeAllMoreMenus = () => {};
+  app.normalizeHexPubkey = (value) =>
+    (typeof value === "string" ? value.trim().toLowerCase() : "");
+  app.hasOlderVersion = () => false;
+  app.deriveVideoPointerInfo = () => null;
+  app.persistWatchHistoryMetadataForVideo = () => {};
+  app.canCurrentUserManageBlacklist = () => false;
+  app.isMagnetUriSupported = () => false;
+  app.mountVideoListView = () => {};
+  app.mediaLoader = { observe() {} };
+  app.attachMoreMenuHandlers = () => {};
+  app.getActiveModerationThresholds = () => ({
+    blurThreshold: 1,
+    autoplayBlockThreshold: 1,
+    trustedMuteHideThreshold: 1,
+    trustedSpamHideThreshold: Number.POSITIVE_INFINITY,
+  });
+  let overrideCalls = 0;
+  app.handleModerationOverride = () => {
+    overrideCalls += 1;
+    return true;
+  };
+
+  setApplication(app);
+  t.after(() => {
+    setApplication(null);
+  });
+
+  const channelPubkey = "d".repeat(64);
+  __setChannelProfileTestState({ pubkey: channelPubkey });
+  __ensureChannelModerationEventsForTests();
+
+  const container = document.getElementById("channelVideoList");
+  const moderationState = {
+    blurThumbnail: true,
+    trustedCount: 2,
+    reportType: "nudity",
+    summary: { types: { nudity: { trusted: 2 } } },
+    original: { blurThumbnail: true, blockAutoplay: false },
+  };
+  const video = createVideoFixture({ pubkey: channelPubkey, moderation: moderationState });
+
+  renderChannelVideosFromList({
+    videos: [video],
+    container,
+    app,
+    loadToken: 0,
+  });
+
+  applyChannelVisualBlur({ app, pubkey: channelPubkey });
+  const storedVideo = app.videosMap.get(video.id);
+
+  const bannerEl = document.getElementById("channelBanner");
+  const avatarEl = document.getElementById("channelAvatar");
+  assert.equal(bannerEl.dataset.visualState, "blurred");
+  assert.equal(avatarEl.dataset.visualState, "blurred");
+
+  const badgeContainer = document.getElementById("channelModerationBadge");
+  const badge = badgeContainer.querySelector('[data-moderation-badge="true"]');
+  assert.ok(badge, "badge renders in channel header");
+
+  const textEl = badge.querySelector(".moderation-badge__text");
+  const context = normalizeVideoModerationContext(storedVideo.moderation);
+  const expectedText = buildModerationBadgeText(context, { variant: "card" });
+  assert.equal(textEl.textContent, expectedText);
+
+  const overrideButton = badge.querySelector('[data-moderation-action="override"]');
+  assert.ok(overrideButton, "override control is available");
+
+  overrideButton.click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(overrideCalls, 1);
+  const updatedVideo = app.videosMap.get(video.id);
+  if (!updatedVideo.moderation || typeof updatedVideo.moderation !== "object") {
+    updatedVideo.moderation = {};
+  }
+  updatedVideo.moderation.viewerOverride = { showAnyway: true };
+  updatedVideo.moderation.blurThumbnail = false;
+  updatedVideo.moderation.blockAutoplay = false;
+  const originalState = updatedVideo.moderation.original && typeof updatedVideo.moderation.original === "object"
+    ? { ...updatedVideo.moderation.original }
+    : {};
+  if (typeof originalState.blurThumbnail === "undefined") {
+    originalState.blurThumbnail = true;
+  }
+  if (typeof originalState.blockAutoplay === "undefined") {
+    originalState.blockAutoplay = true;
+  }
+  updatedVideo.moderation.original = originalState;
+  app.videosMap.set(updatedVideo.id, updatedVideo);
+  const overrideContext = normalizeVideoModerationContext(updatedVideo.moderation);
+  const overrideText = buildModerationBadgeText(overrideContext, { variant: "card" });
+
+  assert.equal(overrideContext.overrideActive, true);
+  assert.ok(overrideText.startsWith("Showing despite"));
 });
