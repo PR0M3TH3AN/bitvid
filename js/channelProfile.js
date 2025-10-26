@@ -20,6 +20,7 @@ import {
   applyModerationContextDatasets,
   normalizeVideoModerationContext,
 } from "./ui/moderationUiHelpers.js";
+import { buildModerationBadgeText } from "./ui/moderationCopy.js";
 import {
   calculateZapShares,
   describeShareType,
@@ -54,6 +55,25 @@ import {
 import { setModalState as setGlobalModalState } from "./state/appState.js";
 
 const getApp = () => getApplication();
+
+const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+const CHANNEL_MODERATION_BADGE_ID = "channel-moderation-badge";
+
+let currentChannelModerationSourceVideo = null;
+
+const channelModerationBadgeState = {
+  container: null,
+  badgeEl: null,
+  textEl: null,
+  iconSvg: null,
+  iconWrapper: null,
+  overrideButton: null,
+  hideButton: null,
+  boundOverride: null,
+  boundHide: null,
+  badgeId: "",
+  app: null,
+};
 
 let currentChannelHex = null;
 let currentChannelNpub = null;
@@ -198,6 +218,354 @@ function buildChannelModerationFallback(pubkey) {
   return fallback;
 }
 
+function getChannelModerationState(context) {
+  if (!context) {
+    return "";
+  }
+  if (context.overrideActive) {
+    return "override";
+  }
+  if (context.activeHidden && !context.overrideActive) {
+    return "hidden";
+  }
+  if (context.trustedMuted) {
+    return "trusted-mute";
+  }
+  return "blocked";
+}
+
+function shouldShowChannelHideButton(context) {
+  if (!context || !context.trustedMuted) {
+    return false;
+  }
+  if (context.activeHidden && !context.overrideActive) {
+    return false;
+  }
+  return true;
+}
+
+function getChannelModerationBadgeIconShape(state) {
+  if (state === "override") {
+    return {
+      d: "M10 18a8 8 0 100-16 8 8 0 000 16zm3.78-9.72a.75.75 0 00-1.06-1.06L9 11.94l-1.72-1.72a.75.75 0 10-1.06 1.06l2.25 2.25a.75.75 0 001.06 0l3.25-3.25z",
+      fillRule: "evenodd",
+      clipRule: "evenodd",
+    };
+  }
+
+  return {
+    d: "M10 18a8 8 0 100-16 8 8 0 000 16zm-.75-11.75a.75.75 0 011.5 0v4.5a.75.75 0 01-1.5 0v-4.5zm.75 8.5a1 1 0 100-2 1 1 0 000 2z",
+    fillRule: "evenodd",
+    clipRule: "evenodd",
+  };
+}
+
+function updateChannelModerationBadgeIcon(svg, state) {
+  if (!svg) {
+    return;
+  }
+  svg.dataset.iconState = state;
+  const path = svg.firstElementChild;
+  if (!path) {
+    return;
+  }
+  const { d, fillRule, clipRule } = getChannelModerationBadgeIconShape(state);
+  path.setAttribute("d", d);
+  if (fillRule) {
+    path.setAttribute("fill-rule", fillRule);
+  } else {
+    path.removeAttribute("fill-rule");
+  }
+  if (clipRule) {
+    path.setAttribute("clip-rule", clipRule);
+  } else {
+    path.removeAttribute("clip-rule");
+  }
+}
+
+function createChannelModerationBadgeIcon(doc, state) {
+  const wrapper = doc.createElement("span");
+  wrapper.className = "moderation-badge__icon";
+  wrapper.setAttribute("aria-hidden", "true");
+  const svg = doc.createElementNS(SVG_NAMESPACE, "svg");
+  svg.setAttribute("viewBox", "0 0 20 20");
+  svg.setAttribute("focusable", "false");
+  svg.setAttribute("aria-hidden", "true");
+  svg.classList.add("moderation-badge__icon-mark");
+  const path = doc.createElementNS(SVG_NAMESPACE, "path");
+  path.setAttribute("fill", "currentColor");
+  svg.appendChild(path);
+  wrapper.appendChild(svg);
+  updateChannelModerationBadgeIcon(svg, state);
+  return { wrapper, svg };
+}
+
+function getChannelModerationBadgeContainer(doc = typeof document !== "undefined" ? document : null) {
+  if (!doc || typeof doc.getElementById !== "function") {
+    return null;
+  }
+  channelModerationBadgeState.container = doc.getElementById("channelModerationBadge") || null;
+  return channelModerationBadgeState.container;
+}
+
+function ensureChannelModerationBadgeResources(doc) {
+  const container = getChannelModerationBadgeContainer(doc);
+  if (!container) {
+    return null;
+  }
+
+  if (!channelModerationBadgeState.badgeEl) {
+    const badge = doc.createElement("div");
+    badge.className = "moderation-badge flex flex-wrap items-center gap-sm";
+    badge.dataset.moderationBadge = "true";
+    const { wrapper, svg } = createChannelModerationBadgeIcon(doc, "blocked");
+    badge.appendChild(wrapper);
+    const text = doc.createElement("span");
+    text.className = "moderation-badge__text whitespace-nowrap";
+    badge.appendChild(text);
+    channelModerationBadgeState.badgeEl = badge;
+    channelModerationBadgeState.textEl = text;
+    channelModerationBadgeState.iconWrapper = wrapper;
+    channelModerationBadgeState.iconSvg = svg;
+  }
+
+  if (typeof channelModerationBadgeState.boundOverride !== "function") {
+    channelModerationBadgeState.boundOverride = (event) =>
+      handleChannelModerationOverride(event);
+  }
+
+  if (typeof channelModerationBadgeState.boundHide !== "function") {
+    channelModerationBadgeState.boundHide = (event) =>
+      handleChannelModerationHide(event);
+  }
+
+  if (!channelModerationBadgeState.overrideButton) {
+    const button = doc.createElement("button");
+    button.type = "button";
+    button.className = "moderation-badge__action flex-shrink-0";
+    button.dataset.moderationAction = "override";
+    button.textContent = "Show anyway";
+    button.addEventListener("click", channelModerationBadgeState.boundOverride);
+    channelModerationBadgeState.overrideButton = button;
+  }
+
+  if (!channelModerationBadgeState.hideButton) {
+    const hideButton = doc.createElement("button");
+    hideButton.type = "button";
+    hideButton.className = "moderation-badge__action flex-shrink-0";
+    hideButton.dataset.moderationAction = "hide";
+    hideButton.textContent = "Hide";
+    hideButton.addEventListener("click", channelModerationBadgeState.boundHide);
+    channelModerationBadgeState.hideButton = hideButton;
+  }
+
+  return channelModerationBadgeState;
+}
+
+function teardownChannelModerationBadge() {
+  const ref = channelModerationBadgeState;
+  currentChannelModerationSourceVideo = null;
+  if (ref.badgeEl && ref.badgeEl.parentNode) {
+    ref.badgeEl.parentNode.removeChild(ref.badgeEl);
+  }
+  if (ref.container) {
+    ref.container.removeAttribute("data-moderation-active");
+  }
+  ref.app = null;
+}
+
+function renderChannelModerationBadge({
+  context = null,
+  video = null,
+  app = null,
+  doc = typeof document !== "undefined" ? document : null,
+} = {}) {
+  const container = getChannelModerationBadgeContainer(doc);
+  if (!container) {
+    teardownChannelModerationBadge();
+    return;
+  }
+
+  const normalizedContext = context || null;
+  const shouldShow = Boolean(normalizedContext?.shouldShow);
+
+  currentChannelModerationSourceVideo =
+    video && typeof video === "object" && typeof video.id === "string"
+      ? video
+      : null;
+
+  if (!shouldShow) {
+    teardownChannelModerationBadge();
+    return;
+  }
+
+  const ref = ensureChannelModerationBadgeResources(doc);
+  if (!ref || !ref.badgeEl || !ref.textEl) {
+    teardownChannelModerationBadge();
+    return;
+  }
+
+  const badge = ref.badgeEl;
+  const state = normalizedContext.overrideActive
+    ? "override"
+    : getChannelModerationState(normalizedContext);
+
+  badge.dataset.variant = normalizedContext.overrideActive ? "neutral" : "warning";
+  badge.dataset.moderationState = state;
+  if (normalizedContext.effectiveHideReason) {
+    badge.dataset.moderationHideReason = normalizedContext.effectiveHideReason;
+  } else if (badge.dataset.moderationHideReason) {
+    delete badge.dataset.moderationHideReason;
+  }
+
+  updateChannelModerationBadgeIcon(ref.iconSvg, state);
+
+  const textContent =
+    buildModerationBadgeText(normalizedContext, { variant: "card" }) ||
+    "Moderated due to reports";
+  ref.textEl.textContent = textContent;
+
+  if (CHANNEL_MODERATION_BADGE_ID) {
+    badge.id = CHANNEL_MODERATION_BADGE_ID;
+  }
+
+  if (badge.parentNode !== container) {
+    container.appendChild(badge);
+  }
+
+  container.dataset.moderationActive = "true";
+
+  const hasVideoTarget = Boolean(currentChannelModerationSourceVideo?.id);
+
+  if (
+    hasVideoTarget &&
+    !normalizedContext.overrideActive &&
+    normalizedContext.allowOverride &&
+    ref.overrideButton
+  ) {
+    if (ref.overrideButton.parentNode !== badge) {
+      badge.appendChild(ref.overrideButton);
+    }
+    ref.overrideButton.disabled = false;
+    ref.overrideButton.removeAttribute("aria-busy");
+  } else if (ref.overrideButton && ref.overrideButton.parentNode === badge) {
+    badge.removeChild(ref.overrideButton);
+  }
+
+  if (hasVideoTarget && shouldShowChannelHideButton(normalizedContext) && ref.hideButton) {
+    if (ref.hideButton.parentNode !== badge) {
+      badge.appendChild(ref.hideButton);
+    }
+    ref.hideButton.disabled = false;
+    ref.hideButton.removeAttribute("aria-busy");
+  } else if (ref.hideButton && ref.hideButton.parentNode === badge) {
+    badge.removeChild(ref.hideButton);
+  }
+
+  if (ref.overrideButton) {
+    if (badge.id) {
+      ref.overrideButton.setAttribute("aria-describedby", badge.id);
+    } else {
+      ref.overrideButton.removeAttribute("aria-describedby");
+    }
+  }
+
+  if (ref.hideButton) {
+    if (badge.id) {
+      ref.hideButton.setAttribute("aria-describedby", badge.id);
+    } else {
+      ref.hideButton.removeAttribute("aria-describedby");
+    }
+  }
+
+  ref.badgeId = badge.id || "";
+  ref.app = app || getApp();
+}
+
+function handleChannelModerationOverride(event) {
+  if (event) {
+    if (typeof event.preventDefault === "function") {
+      event.preventDefault();
+    }
+    if (typeof event.stopPropagation === "function") {
+      event.stopPropagation();
+    }
+  }
+
+  const sourceVideo = currentChannelModerationSourceVideo;
+  const app = channelModerationBadgeState.app || getApp();
+  const targetVideo =
+    app?.videosMap instanceof Map && sourceVideo?.id
+      ? app.videosMap.get(sourceVideo.id) || sourceVideo
+      : sourceVideo;
+
+  if (!targetVideo || typeof targetVideo !== "object" || !targetVideo.id) {
+    return;
+  }
+
+  const button = channelModerationBadgeState.overrideButton;
+  if (button) {
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+  }
+
+  let handled = false;
+  try {
+    handled = app?.handleModerationOverride?.({ video: targetVideo }) === true;
+  } catch (error) {
+    devLogger.warn("[ChannelProfile] Failed to handle channel moderation override", error);
+  }
+
+  if (handled) {
+    updateChannelModerationVisuals({ app, pubkey: sourceVideo?.pubkey || currentChannelHex || "" });
+  } else if (button) {
+    button.disabled = false;
+    button.removeAttribute("aria-busy");
+  }
+}
+
+function handleChannelModerationHide(event) {
+  if (event) {
+    if (typeof event.preventDefault === "function") {
+      event.preventDefault();
+    }
+    if (typeof event.stopPropagation === "function") {
+      event.stopPropagation();
+    }
+  }
+
+  const sourceVideo = currentChannelModerationSourceVideo;
+  const app = channelModerationBadgeState.app || getApp();
+  const targetVideo =
+    app?.videosMap instanceof Map && sourceVideo?.id
+      ? app.videosMap.get(sourceVideo.id) || sourceVideo
+      : sourceVideo;
+
+  if (!targetVideo || typeof targetVideo !== "object" || !targetVideo.id) {
+    return;
+  }
+
+  const button = channelModerationBadgeState.hideButton;
+  if (button) {
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+  }
+
+  let handled = false;
+  try {
+    handled = app?.handleModerationHide?.({ video: targetVideo }) === true;
+  } catch (error) {
+    devLogger.warn("[ChannelProfile] Failed to handle channel moderation hide", error);
+  }
+
+  if (handled) {
+    updateChannelModerationVisuals({ app, pubkey: sourceVideo?.pubkey || currentChannelHex || "" });
+  } else if (button) {
+    button.disabled = false;
+    button.removeAttribute("aria-busy");
+  }
+}
+
 function resolveChannelModeration(pubkey, app = getApp()) {
   const normalized = normalizeHex(pubkey);
   if (!normalized) {
@@ -206,6 +574,7 @@ function resolveChannelModeration(pubkey, app = getApp()) {
 
   const matches = collectChannelVideos(normalized, app);
   let fallbackModeration = null;
+  let fallbackVideo = null;
 
   for (const candidate of matches) {
     const decorated = decorateChannelVideo(candidate, app);
@@ -221,23 +590,29 @@ function resolveChannelModeration(pubkey, app = getApp()) {
     }
 
     if (moderation.viewerOverride?.showAnyway === true) {
-      return moderation;
+      return { moderation, video: decorated };
     }
 
     if (moderation.hidden === true || moderation.blurThumbnail === true) {
-      return moderation;
+      return { moderation, video: decorated };
     }
 
     if (!fallbackModeration) {
       fallbackModeration = moderation;
+      fallbackVideo = decorated;
     }
   }
 
   if (fallbackModeration) {
-    return fallbackModeration;
+    return { moderation: fallbackModeration, video: fallbackVideo };
   }
 
-  return buildChannelModerationFallback(normalized);
+  const fallback = buildChannelModerationFallback(normalized);
+  if (fallback) {
+    return { moderation: fallback, video: null };
+  }
+
+  return null;
 }
 
 export function applyChannelVisualBlur({
@@ -247,7 +622,8 @@ export function applyChannelVisualBlur({
   app = null,
 } = {}) {
   const resolvedApp = app || getApp();
-  const moderation = resolveChannelModeration(pubkey, resolvedApp) || {};
+  const resolution = resolveChannelModeration(pubkey, resolvedApp);
+  const moderation = resolution?.moderation || {};
   const context = normalizeVideoModerationContext(moderation);
 
   const resolvedBanner = bannerEl ||
@@ -258,14 +634,21 @@ export function applyChannelVisualBlur({
     (typeof document !== "undefined"
       ? document.getElementById("channelAvatar")
       : null);
+  const doc = resolvedBanner?.ownerDocument ||
+    resolvedAvatar?.ownerDocument ||
+    (typeof document !== "undefined" ? document : null);
+  const badgeContainer = doc?.getElementById?.("channelModerationBadge") || null;
 
   const avatarElements = [resolvedAvatar, resolvedBanner].filter(Boolean);
 
   applyModerationContextDatasets(context, {
     root: resolvedBanner || null,
+    roots: badgeContainer ? [badgeContainer] : undefined,
     avatar: resolvedAvatar || null,
     avatars: avatarElements.length > 1 ? avatarElements : undefined,
   });
+
+  return { context, moderation, video: resolution?.video || null };
 }
 
 function updateChannelModerationVisuals({
@@ -281,11 +664,20 @@ function updateChannelModerationVisuals({
   const resolvedApp = app || getApp();
   const targetPubkey = pubkey || currentChannelHex || "";
   if (!targetPubkey) {
-    applyChannelVisualBlur({
+    const result = applyChannelVisualBlur({
       bannerEl,
       avatarEl,
       pubkey: "",
       app: resolvedApp,
+    });
+    renderChannelModerationBadge({
+      context: result?.context,
+      video: null,
+      app: resolvedApp,
+      doc:
+        bannerEl?.ownerDocument ||
+        avatarEl?.ownerDocument ||
+        (typeof document !== "undefined" ? document : null),
     });
     return;
   }
@@ -295,11 +687,21 @@ function updateChannelModerationVisuals({
   const resolvedAvatar =
     avatarEl || document.getElementById("channelAvatar");
 
-  applyChannelVisualBlur({
+  const result = applyChannelVisualBlur({
     bannerEl: resolvedBanner,
     avatarEl: resolvedAvatar,
     pubkey: targetPubkey,
     app: resolvedApp,
+  });
+
+  renderChannelModerationBadge({
+    context: result?.context,
+    video: result?.video,
+    app: resolvedApp,
+    doc:
+      resolvedBanner?.ownerDocument ||
+      resolvedAvatar?.ownerDocument ||
+      (typeof document !== "undefined" ? document : null),
   });
 }
 

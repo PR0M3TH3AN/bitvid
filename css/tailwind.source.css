@@ -1438,6 +1438,21 @@
     transform: scale(1.05);
   }
 
+  .channel-moderation-badge-anchor {
+    @apply flex flex-col gap-sm;
+    pointer-events: none;
+    width: 100%;
+  }
+
+  .channel-moderation-badge-anchor:empty {
+    display: none;
+  }
+
+  .channel-moderation-badge-anchor > [data-moderation-badge="true"] {
+    pointer-events: auto;
+    max-width: min(100%, 28rem);
+  }
+
   #playerModal .video-modal__video {
     position: relative;
   }
