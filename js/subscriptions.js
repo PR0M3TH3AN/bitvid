@@ -1,10 +1,17 @@
 // js/subscriptions.js
 import {
   nostrClient,
-  convertEventToVideo as sharedConvertEventToVideo,
   requestDefaultExtensionPermissions,
-  DEFAULT_RELAY_URLS,
-} from "./nostr.js";
+} from "./nostrClientFacade.js";
+import {
+  getActiveSigner,
+  convertEventToVideo as sharedConvertEventToVideo,
+} from "./nostr/index.js";
+import {
+  listVideoViewEvents,
+  subscribeVideoViewEvents,
+} from "./nostrViewEventsFacade.js";
+import { DEFAULT_RELAY_URLS } from "./nostr/toolkit.js";
 import {
   buildSubscriptionListEvent,
   SUBSCRIPTION_LIST_IDENTIFIER
@@ -109,6 +116,11 @@ function determineDecryptionOrder(event, availableSchemes) {
 
 const getApp = () => getApplication();
 
+const listVideoViewEventsApi = (pointer, options) =>
+  listVideoViewEvents(nostrClient, pointer, options);
+const subscribeVideoViewEventsApi = (pointer, options) =>
+  subscribeVideoViewEvents(nostrClient, pointer, options);
+
 /**
  * Manages the user's subscription list (kind=30002) *privately*,
  * using NIP-04 encryption for the content field.
@@ -187,9 +199,13 @@ class SubscriptionsManager {
         }
       };
 
-      addRelayCandidates(nostrClient.readRelays);
       addRelayCandidates(nostrClient.relays);
-      addRelayCandidates(DEFAULT_RELAY_URLS);
+      if (!relaySet.size) {
+        addRelayCandidates(nostrClient.readRelays);
+      }
+      if (!relaySet.size) {
+        addRelayCandidates(DEFAULT_RELAY_URLS);
+      }
 
       const relayUrls = Array.from(relaySet);
       if (!relayUrls.length) {
@@ -225,7 +241,22 @@ class SubscriptionsManager {
       const newest = events[0];
       this.subsEventId = newest.id;
 
-      const permissionResult = await requestDefaultExtensionPermissions();
+      const signer = getActiveSigner();
+      const signerHasNip04 = typeof signer?.nip04Decrypt === "function";
+      const signerHasNip44 = typeof signer?.nip44Decrypt === "function";
+      const hints = extractEncryptionHints(newest);
+      const requiresNip44 = hints.includes("nip44") || hints.includes("nip44_v2");
+      const requiresNip04 =
+        !hints.length || hints.includes("nip04") || !requiresNip44;
+
+      let permissionResult = { ok: true };
+      const signerCoversRequiredSchemes =
+        (!requiresNip04 || signerHasNip04) && (!requiresNip44 || signerHasNip44);
+
+      if (!signerCoversRequiredSchemes) {
+        permissionResult = await requestDefaultExtensionPermissions();
+      }
+
       if (!permissionResult.ok) {
         userLogger.warn(
           "[SubscriptionsManager] Extension permissions denied while loading subscriptions; treating list as empty.",
@@ -286,14 +317,6 @@ class SubscriptionsManager {
       return { ok: false, error };
     }
 
-    const nostrApi =
-      typeof window !== "undefined" && window && window.nostr ? window.nostr : null;
-    if (!nostrApi) {
-      const error = new Error("Nostr extension is unavailable for decrypting subscriptions.");
-      error.code = "nostr-extension-missing";
-      return { ok: false, error };
-    }
-
     const decryptors = new Map();
     const registerDecryptor = (scheme, handler) => {
       if (!scheme || typeof handler !== "function" || decryptors.has(scheme)) {
@@ -302,28 +325,51 @@ class SubscriptionsManager {
       decryptors.set(scheme, handler);
     };
 
-    if (nostrApi.nip04 && typeof nostrApi.nip04.decrypt === "function") {
-      registerDecryptor("nip04", (payload) => nostrApi.nip04.decrypt(userPubkey, payload));
+    const signer = getActiveSigner();
+    const signerHasNip04 = typeof signer?.nip04Decrypt === "function";
+    const signerHasNip44 = typeof signer?.nip44Decrypt === "function";
+
+    if (signerHasNip04) {
+      registerDecryptor("nip04", (payload) => signer.nip04Decrypt(userPubkey, payload));
     }
 
-    const nip44 = nostrApi.nip44 && typeof nostrApi.nip44 === "object" ? nostrApi.nip44 : null;
-    if (nip44) {
-      if (typeof nip44.decrypt === "function") {
-        registerDecryptor("nip44", (payload) => nip44.decrypt(userPubkey, payload));
+    if (signerHasNip44) {
+      registerDecryptor("nip44", (payload) => signer.nip44Decrypt(userPubkey, payload));
+    }
+
+    const nostrApi =
+      typeof window !== "undefined" && window && window.nostr ? window.nostr : null;
+    if (nostrApi) {
+      if (!signerHasNip04 && nostrApi.nip04 && typeof nostrApi.nip04.decrypt === "function") {
+        registerDecryptor("nip04", (payload) =>
+          nostrApi.nip04.decrypt(userPubkey, payload)
+        );
       }
 
-      const nip44v2 = nip44.v2 && typeof nip44.v2 === "object" ? nip44.v2 : null;
-      if (nip44v2 && typeof nip44v2.decrypt === "function") {
-        registerDecryptor("nip44_v2", (payload) => nip44v2.decrypt(userPubkey, payload));
-        if (!decryptors.has("nip44")) {
-          registerDecryptor("nip44", (payload) => nip44v2.decrypt(userPubkey, payload));
+      const nip44 =
+        nostrApi.nip44 && typeof nostrApi.nip44 === "object" ? nostrApi.nip44 : null;
+      if (nip44) {
+        if (!signerHasNip44 && typeof nip44.decrypt === "function") {
+          registerDecryptor("nip44", (payload) => nip44.decrypt(userPubkey, payload));
+        }
+
+        const nip44v2 = nip44.v2 && typeof nip44.v2 === "object" ? nip44.v2 : null;
+        if (nip44v2 && typeof nip44v2.decrypt === "function") {
+          registerDecryptor("nip44_v2", (payload) =>
+            nip44v2.decrypt(userPubkey, payload)
+          );
+          if (!decryptors.has("nip44")) {
+            registerDecryptor("nip44", (payload) => nip44v2.decrypt(userPubkey, payload));
+          }
         }
       }
     }
 
     if (!decryptors.size) {
-      const error = new Error("No compatible decryption helpers are available.");
-      error.code = "subscriptions-no-decryptors";
+      const error = new Error(
+        "No active signer or extension decryptors are available for subscriptions."
+      );
+      error.code = "nostr-extension-missing";
       return { ok: false, error };
     }
 
@@ -413,17 +459,40 @@ class SubscriptionsManager {
       throw new Error("No pubkey => cannot publish subscription list.");
     }
 
-    const permissionResult = await requestDefaultExtensionPermissions();
-    if (!permissionResult.ok) {
-      userLogger.warn(
-        "[SubscriptionsManager] Extension permissions denied while updating subscriptions.",
-        permissionResult.error,
-      );
+    const signer = getActiveSigner();
+    if (!signer) {
       const error = new Error(
-        "The NIP-07 extension must allow encryption and signing before updating subscriptions.",
+        "An active signer is required to update subscriptions."
       );
-      error.code = "extension-permission-denied";
-      error.cause = permissionResult.error;
+      error.code = "signer-missing";
+      throw error;
+    }
+
+    if (signer.type === "extension") {
+      const permissionResult = await requestDefaultExtensionPermissions();
+      if (!permissionResult.ok) {
+        userLogger.warn(
+          "[SubscriptionsManager] Signer permissions denied while updating subscriptions.",
+          permissionResult.error,
+        );
+        const error = new Error(
+          "The active signer must allow encryption and signing before updating subscriptions.",
+        );
+        error.code = "extension-permission-denied";
+        error.cause = permissionResult.error;
+        throw error;
+      }
+    }
+
+    if (typeof signer.nip04Encrypt !== "function") {
+      const error = new Error("NIP-04 encryption is required to update subscriptions.");
+      error.code = "nip04-missing";
+      throw error;
+    }
+
+    if (typeof signer.signEvent !== "function") {
+      const error = new Error("Active signer missing signEvent support.");
+      error.code = "sign-event-missing";
       throw error;
     }
 
@@ -440,7 +509,7 @@ class SubscriptionsManager {
      */
     let cipherText = "";
     try {
-      cipherText = await window.nostr.nip04.encrypt(userPubkey, plainStr);
+      cipherText = await signer.nip04Encrypt(userPubkey, plainStr);
     } catch (err) {
       userLogger.error("Encryption failed:", err);
       throw err;
@@ -454,7 +523,7 @@ class SubscriptionsManager {
 
     let signedEvent;
     try {
-      signedEvent = await window.nostr.signEvent(evt);
+      signedEvent = await signer.signEvent(evt);
     } catch (signErr) {
       userLogger.error("Failed to sign subscription list:", signErr);
       throw signErr;
@@ -809,12 +878,33 @@ class SubscriptionsManager {
         ? Math.floor(limitCandidate)
         : null;
 
+    const preferenceSource =
+      typeof app?.getHashtagPreferences === "function"
+        ? app.getHashtagPreferences()
+        : {};
+
+    const moderationThresholds =
+      typeof app?.getActiveModerationThresholds === "function"
+        ? app.getActiveModerationThresholds()
+        : null;
+
     return {
       subscriptionAuthors: normalizedAuthors,
       authors: normalizedAuthors,
       blacklistedEventIds: blacklist,
       isAuthorBlocked,
-      limit: normalizedLimit
+      limit: normalizedLimit,
+      tagPreferences: {
+        interests: Array.isArray(preferenceSource?.interests)
+          ? [...preferenceSource.interests]
+          : [],
+        disinterests: Array.isArray(preferenceSource?.disinterests)
+          ? [...preferenceSource.disinterests]
+          : [],
+      },
+      moderationThresholds: moderationThresholds
+        ? { ...moderationThresholds }
+        : undefined,
     };
   }
 
@@ -1054,6 +1144,49 @@ class SubscriptionsManager {
     };
 
     const listView = new VideoListView(listViewConfig);
+    if (typeof listView.setPopularTagsContainer === "function") {
+      listView.setPopularTagsContainer(null);
+    }
+
+    const buildModerationPayload = (detail = {}) => {
+      const event = detail?.event || null;
+      const trigger =
+        detail?.trigger ||
+        (event && (event.currentTarget || event.target)) ||
+        null;
+      const card = detail?.card || null;
+      const video = detail?.video || null;
+      const datasetContext = (() => {
+        const detailContext =
+          typeof detail?.context === "string" ? detail.context.trim() : "";
+        if (detailContext) {
+          return detailContext;
+        }
+        const datasetSource =
+          (detail?.dataset && typeof detail.dataset === "object"
+            ? detail.dataset
+            : null) ||
+          (trigger && trigger.dataset) ||
+          (card && card.root && card.root.dataset) ||
+          null;
+        if (
+          datasetSource &&
+          typeof datasetSource.context === "string" &&
+          datasetSource.context.trim()
+        ) {
+          return datasetSource.context.trim();
+        }
+        return "";
+      })();
+
+      return {
+        ...detail,
+        video,
+        card,
+        trigger,
+        context: datasetContext || "subscriptions",
+      };
+    };
 
     listView.setPlaybackHandler((detail) => {
       if (!detail) {
@@ -1122,6 +1255,20 @@ class SubscriptionsManager {
       app?.handleMoreMenuAction?.("blacklist-author", detail);
     });
 
+    listView.setModerationOverrideHandler((detail = {}) => {
+      if (typeof app?.handleModerationOverride !== "function") {
+        return false;
+      }
+      return app.handleModerationOverride(buildModerationPayload(detail));
+    });
+
+    listView.setModerationBlockHandler((detail = {}) => {
+      if (typeof app?.handleModerationBlock !== "function") {
+        return false;
+      }
+      return app.handleModerationBlock(buildModerationPayload(detail));
+    });
+
     listView.addEventListener("video:share", (event) => {
       const detail = event?.detail || {};
       const dataset = {
@@ -1183,5 +1330,8 @@ class SubscriptionsManager {
     return sharedConvertEventToVideo(evt);
   }
 }
+
+SubscriptionsManager.listVideoViewEvents = listVideoViewEventsApi;
+SubscriptionsManager.subscribeVideoViewEvents = subscribeVideoViewEventsApi;
 
 export const subscriptions = new SubscriptionsManager();

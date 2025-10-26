@@ -12,7 +12,7 @@ const modalMarkupPromise = readFile(
   "utf8"
 );
 
-async function setupModal({ lazyLoad = false } = {}) {
+export async function setupModal({ lazyLoad = false } = {}) {
   const markup = await modalMarkupPromise;
   const modalMarkup = lazyLoad ? "" : markup;
   const dom = new JSDOM(
@@ -37,10 +37,83 @@ async function setupModal({ lazyLoad = false } = {}) {
   globalThis.KeyboardEvent = window.KeyboardEvent;
   globalThis.MouseEvent = window.MouseEvent;
   const hadWebSocket = typeof globalThis.WebSocket !== "undefined";
-  if (typeof window.scrollTo !== "function") {
-    window.scrollTo = () => {};
+  const noopScrollTo = () => {};
+  const windowPrototype = Object.getPrototypeOf(window) || null;
+  const prototypeDescriptor = windowPrototype
+    ? Object.getOwnPropertyDescriptor(windowPrototype, "scrollTo")
+    : null;
+  const hadPrototypeScrollTo = !!prototypeDescriptor;
+  let restorePrototypeScrollTo = () => {};
+  if (windowPrototype) {
+    try {
+      Object.defineProperty(windowPrototype, "scrollTo", {
+        configurable: true,
+        enumerable: false,
+        writable: true,
+        value: noopScrollTo,
+      });
+      restorePrototypeScrollTo = () => {
+        if (hadPrototypeScrollTo) {
+          Object.defineProperty(windowPrototype, "scrollTo", prototypeDescriptor);
+        } else {
+          delete windowPrototype.scrollTo;
+        }
+      };
+    } catch (error) {
+      restorePrototypeScrollTo = () => {
+        if (hadPrototypeScrollTo) {
+          try {
+            Object.defineProperty(windowPrototype, "scrollTo", prototypeDescriptor);
+          } catch (restoreError) {
+            windowPrototype.scrollTo = prototypeDescriptor?.value;
+          }
+        } else {
+          delete windowPrototype.scrollTo;
+        }
+      };
+      try {
+        windowPrototype.scrollTo = noopScrollTo;
+      } catch (assignError) {
+        // ignore inability to override prototype; relying on own property override
+      }
+    }
   }
-  globalThis.scrollTo = window.scrollTo;
+  const hadOwnScrollTo = Object.prototype.hasOwnProperty.call(window, "scrollTo");
+  const originalWindowScrollTo = window.scrollTo;
+  try {
+    Object.defineProperty(window, "scrollTo", {
+      configurable: true,
+      enumerable: false,
+      writable: true,
+      value: noopScrollTo,
+    });
+  } catch (error) {
+    window.scrollTo = noopScrollTo;
+  }
+  const originalGlobalScrollTo = globalThis.scrollTo;
+  globalThis.scrollTo = noopScrollTo;
+  const restoreScrollTo = () => {
+    restorePrototypeScrollTo();
+    if (hadOwnScrollTo) {
+      try {
+        Object.defineProperty(window, "scrollTo", {
+          configurable: true,
+          enumerable: false,
+          writable: true,
+          value: originalWindowScrollTo,
+        });
+      } catch (error) {
+        window.scrollTo = originalWindowScrollTo;
+      }
+    } else {
+      delete window.scrollTo;
+    }
+    if (originalGlobalScrollTo !== undefined) {
+      globalThis.scrollTo = originalGlobalScrollTo;
+    } else {
+      delete globalThis.scrollTo;
+    }
+  };
   if (!hadWebSocket) {
     globalThis.WebSocket = class {
       constructor() {}
@@ -99,6 +172,16 @@ async function setupModal({ lazyLoad = false } = {}) {
     setGlobalModalState: () => {},
     document,
     logger: console,
+    assets: {
+      fallbackThumbnailSrc: "",
+    },
+    state: {
+      loadedThumbnails: new Map(),
+    },
+    helpers: {
+      safeEncodeNpub: (pubkey) => `npub:${pubkey}`,
+      formatShortNpub: (value) => value,
+    },
   });
 
   let playerModal = document.querySelector("#playerModal");
@@ -133,7 +216,7 @@ async function setupModal({ lazyLoad = false } = {}) {
     delete globalThis.location;
     delete globalThis.KeyboardEvent;
     delete globalThis.MouseEvent;
-    delete globalThis.scrollTo;
+    restoreScrollTo();
     if (!hadWebSocket) {
       delete globalThis.WebSocket;
     }
@@ -321,10 +404,83 @@ async function setupPlaybackHarness() {
   globalThis.MouseEvent = window.MouseEvent;
   globalThis.self = window;
   const hadHarnessWebSocket = typeof globalThis.WebSocket !== "undefined";
-  if (typeof window.scrollTo !== "function") {
-    window.scrollTo = () => {};
+  const noopScrollTo = () => {};
+  const windowPrototype = Object.getPrototypeOf(window) || null;
+  const prototypeDescriptor = windowPrototype
+    ? Object.getOwnPropertyDescriptor(windowPrototype, "scrollTo")
+    : null;
+  const hadPrototypeScrollTo = !!prototypeDescriptor;
+  let restorePrototypeScrollTo = () => {};
+  if (windowPrototype) {
+    try {
+      Object.defineProperty(windowPrototype, "scrollTo", {
+        configurable: true,
+        enumerable: false,
+        writable: true,
+        value: noopScrollTo,
+      });
+      restorePrototypeScrollTo = () => {
+        if (hadPrototypeScrollTo) {
+          Object.defineProperty(windowPrototype, "scrollTo", prototypeDescriptor);
+        } else {
+          delete windowPrototype.scrollTo;
+        }
+      };
+    } catch (error) {
+      restorePrototypeScrollTo = () => {
+        if (hadPrototypeScrollTo) {
+          try {
+            Object.defineProperty(windowPrototype, "scrollTo", prototypeDescriptor);
+          } catch (restoreError) {
+            windowPrototype.scrollTo = prototypeDescriptor?.value;
+          }
+        } else {
+          delete windowPrototype.scrollTo;
+        }
+      };
+      try {
+        windowPrototype.scrollTo = noopScrollTo;
+      } catch (assignError) {
+        // ignore inability to override prototype; relying on own property override
+      }
+    }
   }
-  globalThis.scrollTo = window.scrollTo;
+  const hadOwnScrollTo = Object.prototype.hasOwnProperty.call(window, "scrollTo");
+  const originalWindowScrollTo = window.scrollTo;
+  try {
+    Object.defineProperty(window, "scrollTo", {
+      configurable: true,
+      enumerable: false,
+      writable: true,
+      value: noopScrollTo,
+    });
+  } catch (error) {
+    window.scrollTo = noopScrollTo;
+  }
+  const originalGlobalScrollTo = globalThis.scrollTo;
+  globalThis.scrollTo = noopScrollTo;
+  const restoreScrollTo = () => {
+    restorePrototypeScrollTo();
+    if (hadOwnScrollTo) {
+      try {
+        Object.defineProperty(window, "scrollTo", {
+          configurable: true,
+          enumerable: false,
+          writable: true,
+          value: originalWindowScrollTo,
+        });
+      } catch (error) {
+        window.scrollTo = originalWindowScrollTo;
+      }
+    } else {
+      delete window.scrollTo;
+    }
+    if (originalGlobalScrollTo !== undefined) {
+      globalThis.scrollTo = originalGlobalScrollTo;
+    } else {
+      delete globalThis.scrollTo;
+    }
+  };
   if (!hadHarnessWebSocket) {
     globalThis.WebSocket = class {
       constructor() {}
@@ -415,7 +571,7 @@ async function setupPlaybackHarness() {
     delete globalThis.KeyboardEvent;
     delete globalThis.MouseEvent;
     delete globalThis.self;
-    delete globalThis.scrollTo;
+    restoreScrollTo();
     if (!hadHarnessWebSocket) {
       delete globalThis.WebSocket;
     }
@@ -746,6 +902,68 @@ for (const _ of [0]) {
       assert.equal(document.body.classList.contains("modal-open"), false);
       assert.strictEqual(document.activeElement, trigger);
     }
+  );
+
+  test(
+    "video modal comments region exposes aria landmarks and stays in the focus order",
+    async (t) => {
+      const { document, modal, playerModal, trigger, cleanup } = await setupModal();
+      t.after(cleanup);
+
+      modal.open(null, { triggerElement: trigger });
+      await Promise.resolve();
+
+      const commentsRoot = document.querySelector("[data-comments-root]");
+      const commentsHeading = document.getElementById("videoModalCommentsHeading");
+      const commentComposer = document.querySelector("[data-comments-composer]");
+      const commentInput = document.querySelector("[data-comments-input]");
+
+      assert.ok(commentsRoot, "expected comment container");
+      assert.ok(commentsHeading, "expected comment heading");
+      assert.ok(commentComposer, "expected comment composer");
+      assert.ok(commentInput, "expected comment textarea");
+
+      assert.equal(commentsRoot.getAttribute("role"), "region");
+      assert.equal(
+        commentsRoot.getAttribute("aria-labelledby"),
+        commentsHeading.id,
+      );
+      assert.equal(
+        commentComposer.getAttribute("aria-labelledby"),
+        commentsHeading.id,
+      );
+      assert.equal(
+        commentInput.getAttribute("aria-describedby"),
+        "commentComposerHelp commentComposerCount",
+      );
+
+      const focusableSelectors = [
+        "a[href]",
+        "area[href]",
+        "button:not([disabled])",
+        'input:not([type="hidden"]):not([disabled])',
+        "select:not([disabled])",
+        "textarea:not([disabled])",
+        "iframe",
+        "object",
+        "embed",
+        '[contenteditable="true"]',
+        "[tabindex]",
+        "audio[controls]",
+        "video[controls]",
+      ].join(",");
+
+      const focusable = Array.from(
+        playerModal.querySelectorAll(focusableSelectors),
+      );
+
+      assert.ok(
+        focusable.includes(commentInput),
+        "comment textarea should participate in modal focus order",
+      );
+
+      modal.close();
+    },
   );
 
   test(

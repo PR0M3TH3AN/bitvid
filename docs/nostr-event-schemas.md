@@ -42,6 +42,36 @@ When managing relay metadata, use `buildRelayListEvent` so the resulting
 replaceable event follows NIP-65 (`kind:10002`) with `"r"` tags describing the
 read/write split.
 
+### Active signer registry
+
+Authentication providers should register their capabilities with the
+`nostrClient` after login so every publish helper can reuse them:
+
+```js
+import { nostrClient } from "./nostrClientFacade.js";
+import { setActiveSigner } from "./nostr/client.js";
+
+setActiveSigner({
+  type: "extension", // optional label, used to request NIP-07 permissions
+  pubkey, // hex or npub of the active account
+  signEvent: (event) => extension.signEvent(event),
+  nip04Encrypt: (targetHex, plaintext) => extension.nip04.encrypt(targetHex, plaintext),
+  nip04Decrypt: (actorHex, ciphertext) => extension.nip04.decrypt(actorHex, ciphertext),
+  nip44Encrypt: (targetHex, plaintext) => extension.nip44.encrypt(targetHex, plaintext),
+  nip44Decrypt: (actorHex, ciphertext) => extension.nip44.decrypt(actorHex, ciphertext),
+});
+
+await nostrClient.ensureExtensionPermissions();
+```
+
+`setActiveSigner` accepts any object that implements the subset of capabilities
+you support. `nostrClient` (imported from the
+[NIP-07](https://github.com/nostr-protocol/nips/blob/master/07.md)-aligned
+`nostrClientFacade.js`) will prefer the registered signer for signing and
+encryption before falling back to session actors. Call `clearActiveSigner()` on
+logout if your integration manages session state manually; the built-in logout
+handler already does this for the default extension flow.
+
 ### Accessing raw events
 
 `NostrClient` now keeps a lightweight cache of parsed videos alongside a
@@ -68,6 +98,39 @@ client can republish exactly what was signed, including the original
 payload actually changes; this avoids accidental drift in dedupe tags or
 timestamps.
 
+### Default client bootstrap
+
+[`js/nostr/defaultClient.js`](../js/nostr/defaultClient.js) builds the shared
+`nostrClient` instance, registers it with the runtime via
+`registerNostrClient`, and exposes helpers like
+`requestDefaultExtensionPermissions`. Import the singleton or permission helper
+through the dedicated facade when you need to run a NIP-07 handshake:
+
+```js
+import { nostrClient, requestDefaultExtensionPermissions } from "./nostrClientFacade.js";
+```
+
+`js/nostr.js` remains as a compatibility shim while downstream packages migrate;
+it forwards to the new facades but is slated for removal once legacy imports
+are retired.【F:js/nostr/defaultClient.js†L1-L25】【F:js/nostr.js†L1-L92】
+
+For analytics, route through the
+[NIP-71](https://github.com/nostr-protocol/nips/blob/master/71.md) helpers in
+`nostrViewEventsFacade.js`:
+
+```js
+import { recordVideoView } from "./nostrViewEventsFacade.js";
+```
+
+Watch-history list management layers
+[NIP-51](https://github.com/nostr-protocol/nips/blob/master/51.md) semantics on
+encrypted snapshots—import from `nostrWatchHistoryFacade.js` to stay aligned
+with the chunk/index lifecycle:
+
+```js
+import { updateWatchHistoryListWithDefaultClient } from "./nostrWatchHistoryFacade.js";
+```
+
 ## Event catalogue
 
 | Note | Kind (default) | Tags | Content format |
@@ -75,6 +138,7 @@ timestamps.
 | Video post (`NOTE_TYPES.VIDEO_POST`) | `30078` | `['t','video']`, `['d', <stable video identifier>]` plus optional schema append tags | JSON payload using Content Schema v3 (`version`, `title`, optional `url`, `magnet`, `thumbnail`, `description`, `mode`, `videoRootId`, `deleted`, `isPrivate`, `isNsfw`, `isForKids`, `enableComments`, `ws`, `xs`) |
 | NIP-94 mirror (`NOTE_TYPES.VIDEO_MIRROR`) | `1063` | Tags forwarded from `publishVideo` (URL, mime type, thumbnail, alt text, magnet) | Plain text alt description |
 | Repost (`NOTE_TYPES.REPOST`) | `6` | `['e', <event id>, <relay?>]` with optional address pointer `['a', <kind:pubkey:identifier>, <relay?>]`, and `['p', <pubkey>]` when the origin author is known; inherits schema append tags | Empty content |
+| Video comment (`NOTE_TYPES.VIDEO_COMMENT`) | `1` | Mandatory `['e', <video event id>, <relay?>?]` and `['a', <kind:pubkey:identifier>, <relay?>?]` tags, optional parent pointers `['e', <parent comment id>, <relay?>?]`, and optional participant markers `['p', <pubkey>, <relay?>?]`; inherits schema append tags | Plain text body sanitized to valid UTF-8 |
 | NIP-71 video (`NOTE_TYPES.NIP71_VIDEO`) | `21` | `['title', <title>]`, optional `['published_at', <unix seconds>]`, optional `['alt', <text>]`, repeated `['imeta', ...]` entries describing NIP-92 media variants, optional `['duration', <seconds>]`, repeated `['text-track', <url>, <kind>, <language>]`, optional `['content-warning', <reason>]`, repeated `['segment', <start>, <end>, <title>, <thumbnail>]`, repeated hashtags `['t', <tag>]`, repeated participants `['p', <pubkey>, <relay?>]`, repeated references `['r', <url>]` | Plain text summary carried in the content field. Publishing is gated by the `FEATURE_PUBLISH_NIP71` runtime flag while the rollout stabilizes. |
 | NIP-71 short video (`NOTE_TYPES.NIP71_SHORT_VIDEO`) | `22` | Same as `NOTE_TYPES.NIP71_VIDEO`; the kind differentiates short-form presentations. | Plain text summary; gated by `FEATURE_PUBLISH_NIP71`. |
 | Relay list (`NOTE_TYPES.RELAY_LIST`) | `10002` | Repeating `['r', <relay url>]` tags, optionally with a marker of `'read'` or `'write'` to scope the relay; marker omitted for read/write relays | Empty content |
@@ -83,6 +147,7 @@ timestamps.
 | Watch history chunk (`NOTE_TYPES.WATCH_HISTORY_CHUNK`) | `WATCH_HISTORY_KIND` (default `30079`, clients also read legacy `30078`) | `['d', <snapshotId:index>]`, `['encrypted','nip04']`, `['snapshot', <id>]`, `['chunk', <index>, <total>]`, optional leading `['head','1']` on the first chunk, pointer tags for each item, plus schema append tags | NIP-04 encrypted JSON chunk (`{ version, snapshot, chunkIndex, totalChunks, items[] }`) |
 | Subscription list (`NOTE_TYPES.SUBSCRIPTION_LIST`) | `30002` | `['d', 'subscriptions']` | NIP-04 encrypted JSON `{ subPubkeys: string[] }` |
 | User block list (`NOTE_TYPES.USER_BLOCK_LIST`) | `30002` | `['d', 'user-blocks']` | NIP-04 encrypted JSON `{ blockedPubkeys: string[] }` |
+| Hashtag preferences (`NOTE_TYPES.HASHTAG_PREFERENCES`) | `30005` | `['d', 'bitvid:tag-preferences']` plus schema-appended `['encrypted','nip44_v2']` | NIP-44 encrypted JSON `{ version, interests: string[], disinterests: string[] }` |
 | Admin moderation list (`NOTE_TYPES.ADMIN_MODERATION_LIST`) | `30000` | `['d', 'bitvid:admin:editors']`, repeated `['p', <pubkey>]` entries | Empty content |
 | Admin blacklist (`NOTE_TYPES.ADMIN_BLACKLIST`) | `30000` | `['d', 'bitvid:admin:blacklist']`, repeated `['p', <pubkey>]` entries | Empty content |
 | Admin whitelist (`NOTE_TYPES.ADMIN_WHITELIST`) | `30000` | `['d', 'bitvid:admin:whitelist']`, repeated `['p', <pubkey>]` entries | Empty content |
@@ -92,6 +157,24 @@ The `isPrivate` flag in Content Schema v3 marks cards that should stay off share
 If you introduce a new Nostr feature, add its schema to
 `js/nostrEventSchemas.js` so that the catalogue stays complete and so existing
 builders inherit the same debugging knobs.
+
+### Hashtag preference lists
+
+Hashtag preference events (`NOTE_TYPES.HASHTAG_PREFERENCES`) live on a
+replaceable `30005` list with a stable identifier tag of
+`['d','bitvid:tag-preferences']`. The builder appends `['encrypted','nip44_v2']`
+so downstream clients can detect that the payload is encrypted. The `content`
+field must be a NIP-44 ciphertext representing the JSON shape
+`{ version, interests: string[], disinterests: string[] }`, allowing clients to
+share their preferred and muted hashtags without exposing the raw preferences on
+relays.
+
+When decrypting, the client inspects both `['encrypted', ...]` and
+`['encryption', ...]` hints on the event to prioritize NIP-44 v2 payloads,
+falling back to legacy NIP-44 or NIP-04 decryptors when required. Publishing
+performs the same capability probe, updating the existing `encrypted` tag with
+the negotiated scheme before signing so other readers know which cipher to try
+first.【F:js/services/hashtagPreferencesService.js†L356-L511】【F:js/services/hashtagPreferencesService.js†L520-L657】
 
 ### NIP-71 rollout
 
@@ -118,7 +201,7 @@ plus an optional leading `['head','1']` marker so relays can prioritize the firs
 ciphertext. All chunk content is encrypted with NIP-04 and stores only pointer
 entries; richer metadata remains on-device via the
 [`WatchHistoryService`](../js/watchHistoryService.js) APIs, which default to
-pointer-only writes and local-only metadata caches.【F:config/instance-config.js†L60-L78】【F:js/nostrEventSchemas.js†L157-L189】【F:js/nostr.js†L2329-L2369】【F:js/watchHistoryService.js†L331-L376】
+pointer-only writes and local-only metadata caches.【F:config/instance-config.js†L60-L78】【F:js/nostrEventSchemas.js†L157-L189】【F:js/nostr/watchHistory.js†L1343-L1400】【F:js/watchHistoryService.js†L331-L376】
 
 Refer to the [`WatchHistoryService`](../js/watchHistoryService.js) for queue
 management hooks, manual snapshot helpers, and metadata toggle controls that

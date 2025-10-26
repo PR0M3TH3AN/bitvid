@@ -12,17 +12,27 @@ Most operators can ship with the defaults—24-hour deduplication, a 90-day back
 
 ### Anonymous session keys
 
-Playback telemetry runs even when a viewer has not connected a Nostr account. The client first calls [`ensureSessionActor`](../js/nostr.js#L2011-L2105) to mint or restore an ephemeral keypair stored in `localStorage`. That session actor signs view events until the user authenticates, ensuring relays still see consistent pubkeys without blocking anonymous playback.
+Playback telemetry runs even when a viewer has not connected a Nostr account. The client first calls [`ensureSessionActor`](../js/nostr/client.js#L2445-L2504) to mint or restore an ephemeral keypair stored in `localStorage`. That session actor signs view events until the user authenticates, ensuring relays still see consistent pubkeys without blocking anonymous playback.
 
 ### Publish latency expectations
 
-When a player crosses the 12-second watch threshold, bitvid invokes [`publishViewEvent`](../js/nostr.js#L2159-L2323) through the view-only [`recordVideoView`](../js/nostr.js#L4516-L4555) contract. The helper considers the publish successful as soon as any configured relay acknowledges the event, which in practice keeps latency under a second on public relays. The UI optimistically increments totals by feeding the signed event into [`ingestLocalViewEvent`](../js/viewCounter.js#L608-L640), so cards and modals reflect the new view immediately even while other relays finish syncing.
+When a player crosses the 12-second watch threshold, bitvid invokes [`publishViewEvent`](../js/nostr/viewEvents.js#L662-L838) through the view-only [`recordVideoView`](../js/nostr/viewEvents.js#L854-L879) contract. The helper considers the publish successful as soon as any configured relay acknowledges the event, which in practice keeps latency under a second on public relays. The UI optimistically increments totals by feeding the signed event into [`ingestLocalViewEvent`](../js/viewCounter.js#L619-L633), so cards and modals reflect the new view immediately even while other relays finish syncing.
 
 The watch history pipeline has been retired; `recordVideoView` now focuses solely on analytics publishing.
 
 To avoid double-counting the same session, the playback stack respects the cooldown keys generated in [`js/app.js`](../js/app.js#L6825-L6893). The combination of pointer identity and viewer fingerprint prevents re-logging until the dedupe window expires or the user switches accounts.
 
 Every view event includes a unique `#d` tag derived from the pointer scope, the signing actor, and high-entropy randomness. Because kind `30079` is parameterized, this `#d` tag is what keeps individual view notes permanent—without it, a fresh event would overwrite the previous one from the same actor. Leave the tag intact (or provide one when overriding the schema) so relays retain the full stream of view history.
+
+### Client bindings & feature toggles
+
+When wiring moderation or playback toggles into view analytics, import helpers from the [NIP-71](https://github.com/nostr-protocol/nips/blob/master/71.md) facade and let it reach into the binding layer for you:
+
+```js
+import { recordVideoView, subscribeVideoViewEvents } from "../nostrViewEventsFacade.js";
+```
+
+The facade wraps [`js/nostr/viewEventBindings.js`](../js/nostr/viewEventBindings.js) so feature flags, relay discovery, and COUNT/LIST fallbacks all run through the same guard clauses that enforce the NIP-71/NIP-78 schemas. `js/nostr.js` still exports shimmed versions for legacy bundles, but new code should migrate to the facades to keep the eventual removal painless. Modules that need to no-op when relays disable optional methods can rely on the binding’s "unavailable" errors to short-circuit cleanly.
 
 ### Hydration, COUNT, and UI sync
 

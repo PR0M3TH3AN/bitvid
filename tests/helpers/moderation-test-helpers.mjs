@@ -1,5 +1,6 @@
 import "../test-helpers/setup-localstorage.mjs";
 import { ModerationService } from "../../js/services/moderationService.js";
+import { getDefaultModerationSettings } from "../../js/state/cache.js";
 
 const DEFAULT_CONTACT_OWNER = "f".repeat(64);
 
@@ -197,9 +198,21 @@ export async function createModerationAppHarness() {
   app.deriveModerationTrustedCount = Application.prototype.deriveModerationTrustedCount;
   app.getReporterDisplayName = Application.prototype.getReporterDisplayName;
   app.handleModerationOverride = Application.prototype.handleModerationOverride;
+  app.handleModerationBlock = Application.prototype.handleModerationBlock;
+  app.handleModerationHide = Application.prototype.handleModerationHide;
+  app.handleModerationSettingsChange =
+    Application.prototype.handleModerationSettingsChange;
+  app.normalizeModerationSettings =
+    Application.prototype.normalizeModerationSettings;
+  app.getActiveModerationThresholds =
+    Application.prototype.getActiveModerationThresholds;
+
+  app.defaultModerationSettings = getDefaultModerationSettings();
+  app.moderationSettings = { ...app.defaultModerationSettings };
 
   app.videosMap = new Map();
   app.currentVideo = null;
+  app.pendingModeratedPlayback = null;
 
   return app;
 }

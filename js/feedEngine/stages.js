@@ -2,6 +2,10 @@
 
 import { getApplication } from "../applicationContext.js";
 import { IS_DEV_MODE } from "../config.js";
+import {
+  DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+  DEFAULT_BLUR_THRESHOLD,
+} from "../constants.js";
 import nostrService from "../services/nostrService.js";
 import moderationService from "../services/moderationService.js";
 import logger from "../utils/logger.js";
@@ -75,6 +79,185 @@ export function createDedupeByRootStage({
   };
 }
 
+function gatherTimestampFunctions({
+  context,
+  knownOverride,
+  resolveOverride,
+}) {
+  const knownFns = [];
+  const resolveFns = [];
+
+  const addKnown = (fn) => {
+    if (typeof fn === "function") {
+      knownFns.push(fn);
+    }
+  };
+
+  const addResolver = (fn) => {
+    if (typeof fn === "function") {
+      resolveFns.push(fn);
+    }
+  };
+
+  addKnown(knownOverride);
+  addResolver(resolveOverride);
+
+  const hookCandidates = [context?.hooks, context?.runtime];
+  for (const candidate of hookCandidates) {
+    if (!candidate || typeof candidate !== "object") {
+      continue;
+    }
+    const timestamps = candidate.timestamps;
+    if (!timestamps || typeof timestamps !== "object") {
+      continue;
+    }
+
+    addKnown(timestamps.getKnownVideoPostedAt);
+    addKnown(timestamps.getKnownPostedAt);
+    addResolver(timestamps.resolveVideoPostedAt);
+    addResolver(timestamps.getVideoPostedAt);
+  }
+
+  return { knownFns, resolveFns };
+}
+
+function applyResolvedTimestamp(video, timestamp) {
+  if (!video || typeof video !== "object") {
+    return false;
+  }
+
+  if (!Number.isFinite(timestamp)) {
+    return false;
+  }
+
+  const normalized = Math.floor(timestamp);
+  if (!Number.isFinite(normalized)) {
+    return false;
+  }
+
+  if (Number.isFinite(video.rootCreatedAt)) {
+    const existing = Math.floor(video.rootCreatedAt);
+    if (Number.isFinite(existing) && existing <= normalized) {
+      video.rootCreatedAt = existing;
+      return true;
+    }
+  }
+
+  video.rootCreatedAt = normalized;
+  return true;
+}
+
+async function resolveTimestampWithResolvers({
+  video,
+  detail,
+  resolvers,
+  stageName,
+  context,
+}) {
+  if (!Array.isArray(resolvers) || resolvers.length === 0) {
+    return null;
+  }
+
+  for (const resolver of resolvers) {
+    if (typeof resolver !== "function") {
+      continue;
+    }
+
+    try {
+      const value = await resolver(video, detail);
+      if (Number.isFinite(value)) {
+        return Math.floor(value);
+      }
+    } catch (error) {
+      context?.log?.(`[${stageName}] resolve timestamp hook threw`, error);
+    }
+  }
+
+  return null;
+}
+
+export function createResolvePostedAtStage({
+  stageName = "resolve-posted-at",
+  getKnownPostedAt,
+  resolvePostedAt,
+} = {}) {
+  return async function resolvePostedAtStage(items = [], context = {}) {
+    if (!Array.isArray(items) || items.length === 0) {
+      return items;
+    }
+
+    const { knownFns, resolveFns } = gatherTimestampFunctions({
+      context,
+      knownOverride: getKnownPostedAt,
+      resolveOverride: resolvePostedAt,
+    });
+
+    if (knownFns.length === 0 && resolveFns.length === 0) {
+      return items;
+    }
+
+    const tasks = [];
+
+    for (const item of items) {
+      const video = item?.video;
+      if (!video || typeof video !== "object") {
+        continue;
+      }
+
+      if (Number.isFinite(video.rootCreatedAt)) {
+        continue;
+      }
+
+      const detail = { entry: item, context };
+
+      let knownValue = null;
+      for (const candidate of knownFns) {
+        try {
+          const value = candidate(video, detail);
+          if (Number.isFinite(value)) {
+            knownValue = Math.floor(value);
+            break;
+          }
+        } catch (error) {
+          context?.log?.(`[${stageName}] known timestamp hook threw`, error);
+        }
+      }
+
+      if (knownValue !== null && Number.isFinite(knownValue)) {
+        applyResolvedTimestamp(video, knownValue);
+        continue;
+      }
+
+      if (!resolveFns.length) {
+        continue;
+      }
+
+      tasks.push(async () => {
+        const resolved = await resolveTimestampWithResolvers({
+          video,
+          detail,
+          resolvers: resolveFns,
+          stageName,
+          context,
+        });
+        if (resolved !== null && Number.isFinite(resolved)) {
+          applyResolvedTimestamp(video, resolved);
+        }
+      });
+    }
+
+    for (const task of tasks) {
+      try {
+        await task();
+      } catch (error) {
+        context?.log?.(`[${stageName}] resolution task failed`, error);
+      }
+    }
+
+    return items;
+  };
+}
+
 export function createBlacklistFilterStage({
   stageName = "blacklist-filter",
   shouldIncludeVideo,
@@ -92,6 +275,10 @@ export function createBlacklistFilterStage({
         : () => false;
 
     const options = { blacklistedEventIds: blacklist, isAuthorBlocked };
+
+    // TODO(tag-preferences): incorporate context.runtime.tagPreferences once the
+    // filtering helpers are in place so this stage can drop disinterested tags
+    // without disturbing existing blacklist logic.
 
     const results = [];
 
@@ -196,34 +383,112 @@ export function createWatchHistorySuppressionStage({
 
 export function createModerationStage({
   stageName = "moderation",
-  autoplayThreshold = 2,
-  blurThreshold = 3,
+  autoplayThreshold,
+  blurThreshold,
   reportType = "nudity",
   service = null,
   getService,
-  trustedMuteHideThreshold = Number.POSITIVE_INFINITY,
-  trustedReportHideThreshold = Number.POSITIVE_INFINITY,
+  trustedMuteHideThreshold,
+  trustedReportHideThreshold,
 } = {}) {
-  const sanitizeThreshold = (value, fallback) => {
+  const sanitizeThreshold = (value, { fallback, allowInfinity = false } = {}) => {
     if (Number.isFinite(value)) {
       return Math.max(0, Math.floor(value));
+    }
+    if (allowInfinity && value === Number.POSITIVE_INFINITY) {
+      return Number.POSITIVE_INFINITY;
     }
     return fallback;
   };
 
-  const normalizedAutoplayThreshold = Number.isFinite(autoplayThreshold)
-    ? Math.max(0, Math.floor(autoplayThreshold))
-    : 2;
-  const normalizedBlurThreshold = Number.isFinite(blurThreshold)
-    ? Math.max(0, Math.floor(blurThreshold))
-    : 3;
-  const normalizedMuteHideThreshold = sanitizeThreshold(
+  const createThresholdResolver = (
+    candidate,
+    { runtimeKey, defaultValue, fallbackValue, allowInfinity = false },
+  ) => {
+    return (context) => {
+      const runtimeThresholds =
+        context?.runtime && typeof context.runtime === "object"
+          ? context.runtime.moderationThresholds
+          : null;
+
+      const runtimeValue =
+        runtimeThresholds && typeof runtimeThresholds === "object"
+          ? runtimeThresholds[runtimeKey]
+          : undefined;
+
+      const runtimeValid =
+        Number.isFinite(runtimeValue) ||
+        (allowInfinity && runtimeValue === Number.POSITIVE_INFINITY);
+
+      let value;
+
+      if (typeof candidate === "function") {
+        try {
+          value = candidate({
+            context,
+            runtimeThresholds,
+            runtimeValue,
+            defaultValue,
+          });
+        } catch (error) {
+          context?.log?.(
+            `[${stageName}] threshold resolver threw for ${runtimeKey}`,
+            error,
+          );
+          value = undefined;
+        }
+      } else if (Number.isFinite(candidate)) {
+        value = candidate;
+      } else if (allowInfinity && candidate === Number.POSITIVE_INFINITY) {
+        value = Number.POSITIVE_INFINITY;
+      }
+
+      const hasValidValue =
+        Number.isFinite(value) ||
+        (allowInfinity && value === Number.POSITIVE_INFINITY);
+
+      if (!hasValidValue) {
+        if (runtimeValid) {
+          value = runtimeValue;
+        } else {
+          value = defaultValue;
+        }
+      }
+
+      return sanitizeThreshold(value, {
+        fallback: fallbackValue,
+        allowInfinity,
+      });
+    };
+  };
+
+  const resolveAutoplayThreshold = createThresholdResolver(autoplayThreshold, {
+    runtimeKey: "autoplayBlockThreshold",
+    defaultValue: DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+    fallbackValue: DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+  });
+  const resolveBlurThreshold = createThresholdResolver(blurThreshold, {
+    runtimeKey: "blurThreshold",
+    defaultValue: DEFAULT_BLUR_THRESHOLD,
+    fallbackValue: DEFAULT_BLUR_THRESHOLD,
+  });
+  const resolveMuteHideThreshold = createThresholdResolver(
     trustedMuteHideThreshold,
-    Number.POSITIVE_INFINITY,
+    {
+      runtimeKey: "trustedMuteHideThreshold",
+      defaultValue: Number.POSITIVE_INFINITY,
+      fallbackValue: Number.POSITIVE_INFINITY,
+      allowInfinity: true,
+    },
   );
-  const normalizedReportHideThreshold = sanitizeThreshold(
+  const resolveReportHideThreshold = createThresholdResolver(
     trustedReportHideThreshold,
-    Number.POSITIVE_INFINITY,
+    {
+      runtimeKey: "trustedSpamHideThreshold",
+      defaultValue: Number.POSITIVE_INFINITY,
+      fallbackValue: Number.POSITIVE_INFINITY,
+      allowInfinity: true,
+    },
   );
   const normalizedReportType = typeof reportType === "string" ? reportType.trim().toLowerCase() : "nudity";
 
@@ -250,6 +515,11 @@ export function createModerationStage({
     } catch (error) {
       context?.log?.(`[${stageName}] Failed to refresh viewer context`, error);
     }
+
+    const normalizedAutoplayThreshold = resolveAutoplayThreshold(context);
+    const normalizedBlurThreshold = resolveBlurThreshold(context);
+    const normalizedMuteHideThreshold = resolveMuteHideThreshold(context);
+    const normalizedReportHideThreshold = resolveReportHideThreshold(context);
 
     const activeIds = new Set();
     for (const item of items) {
@@ -579,8 +849,11 @@ export function createModerationStage({
         trustedMuters = [];
       }
 
-      const blockAutoplay = trustedCount >= normalizedAutoplayThreshold;
-      const blurThumbnail = trustedCount >= normalizedBlurThreshold;
+      const blockAutoplay =
+        trustedCount >= normalizedAutoplayThreshold || trustedMuted;
+      const blurFromReports = trustedCount >= normalizedBlurThreshold;
+      let blurThumbnail = blurFromReports;
+      let blurReason = blurThumbnail ? "trusted-report" : "";
       const adminWhitelist = adminStatus?.whitelisted === true;
       const adminWhitelistBypass = false;
 
@@ -594,7 +867,6 @@ export function createModerationStage({
           : {};
 
       metadataModeration.blockAutoplay = blockAutoplay;
-      metadataModeration.blurThumbnail = blurThumbnail;
       metadataModeration.summary = summary;
       metadataModeration.trustedCount = trustedCount;
       metadataModeration.reportType = normalizedReportType;
@@ -612,7 +884,6 @@ export function createModerationStage({
       }
 
       video.moderation.blockAutoplay = blockAutoplay;
-      video.moderation.blurThumbnail = blurThumbnail;
       video.moderation.trustedCount = trustedCount;
       video.moderation.reportType = normalizedReportType;
       video.moderation.adminWhitelist = adminWhitelist;
@@ -660,9 +931,7 @@ export function createModerationStage({
 
       let hideBypass = "";
       if (hideTriggered) {
-        if (adminWhitelist) {
-          hideBypass = "admin-whitelist";
-        } else if (viewerOverrideActive) {
+        if (viewerOverrideActive) {
           hideBypass = "viewer-override";
         } else if (feedPolicyBypass) {
           hideBypass = "feed-policy";
@@ -709,6 +978,36 @@ export function createModerationStage({
         if (video.moderation.hideBypass) {
           delete video.moderation.hideBypass;
         }
+      }
+
+      if (!blurThumbnail && (trustedMuted || hideTriggered)) {
+        blurThumbnail = true;
+        if (hideTriggered) {
+          blurReason = hideReason || "trusted-hide";
+        } else if (trustedMuted) {
+          blurReason = "trusted-mute";
+        }
+      } else if (blurThumbnail) {
+        if (hideTriggered) {
+          blurReason = hideReason || "trusted-hide";
+        } else if (trustedMuted && !blurFromReports) {
+          blurReason = "trusted-mute";
+        } else if (!blurReason && blurFromReports) {
+          blurReason = "trusted-report";
+        }
+      }
+
+      metadataModeration.blurThumbnail = blurThumbnail;
+      if (blurThumbnail) {
+        metadataModeration.blurReason = blurReason;
+      } else if (metadataModeration.blurReason) {
+        delete metadataModeration.blurReason;
+      }
+      video.moderation.blurThumbnail = blurThumbnail;
+      if (blurThumbnail) {
+        video.moderation.blurReason = blurReason;
+      } else if (video.moderation.blurReason) {
+        delete video.moderation.blurReason;
       }
 
       item.metadata.moderation = metadataModeration;

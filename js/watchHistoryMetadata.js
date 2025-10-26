@@ -2,7 +2,7 @@
 
 import { getApplication } from "./applicationContext.js";
 import nostrService from "./services/nostrService.js";
-import { nostrClient } from "./nostr.js";
+import { nostrClient } from "./nostrClientFacade.js";
 import { logWatchHistoryDebug } from "./watchHistoryDebug.js";
 
 function logInfo(message, details) {

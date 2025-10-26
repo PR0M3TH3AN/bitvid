@@ -2,7 +2,7 @@ import { isDevMode } from "../config.js";
 import {
   normalizePointerInput,
   pointerKey as derivePointerKey,
-} from "../nostr.js";
+} from "../nostr/watchHistory.js";
 import { normalizeDesignSystemContext } from "../designSystem.js";
 import { devLogger } from "../utils/logger.js";
 

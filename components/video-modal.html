@@ -12,29 +12,39 @@
     <div class="player-modal__container video-modal__container">
       <div id="modalNav" class="modal-nav modal-nav--visible">
         <div class="watch-container modal-nav__bar">
-          <div class="modal-actions">
-            <button
-              id="closeModal"
-              type="button"
-              class="icon-button focus-ring accent-action-button"
+          <div class="modal-nav__rail">
+            <div class="modal-nav__slot modal-nav__slot--primary">
+              <div class="modal-actions">
+                <button
+                  id="closeModal"
+                  type="button"
+                  class="icon-button focus-ring accent-action-button"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    class="h-5 w-5"
+                    aria-hidden="true"
+                  >
+                    <path d="M15 18l-6-6 6-6" />
+                  </svg>
+                  <span class="sr-only">Close player</span>
+                </button>
+              </div>
+            </div>
+            <div
+              class="modal-nav__slot modal-nav__slot--context"
+              data-modal-nav-context
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                class="h-5 w-5"
-                aria-hidden="true"
-              >
-                <path d="M15 18l-6-6 6-6" />
-              </svg>
-              <span class="sr-only">Close player</span>
-            </button>
+              <div id="modalNavContext" class="modal-nav__context" hidden></div>
+            </div>
           </div>
         </div>
       </div>
@@ -42,8 +52,66 @@
       <div class="player-modal__content video-modal__panel flex flex-col gap-6">
         <div class="video-modal__layout">
           <div class="video-modal__primary flex flex-col gap-6">
-            <div class="watch-container">
-              <div class="video-modal__video">
+            <div class="watch-container video-modal__stage">
+              <div class="video-modal__ambient" aria-hidden="true">
+                <canvas
+                  id="ambientCanvas"
+                  class="video-modal__ambient-canvas"
+                ></canvas>
+              </div>
+              <div class="video-modal__video" data-video-surface>
+                <div
+                  class="video-modal__moderation-overlay"
+                  data-moderation-overlay
+                  hidden
+                >
+                  <div
+                    class="moderation-badge"
+                    data-moderation-badge="true"
+                    data-variant="warning"
+                    role="status"
+                    aria-live="polite"
+                    aria-atomic="true"
+                  >
+                    <span class="moderation-badge__label inline-flex items-center gap-xs">
+                      <span class="moderation-badge__icon" aria-hidden="true">
+                        <svg
+                          class="moderation-badge__icon-mark"
+                          viewBox="0 0 20 20"
+                          focusable="false"
+                          aria-hidden="true"
+                        >
+                          <path
+                            fill="currentColor"
+                            d="M10 18a8 8 0 100-16 8 8 0 000 16zm-.75-11.75a.75.75 0 011.5 0v4.5a.75.75 0 01-1.5 0v-4.5zm.75 8.5a1 1 0 100-2 1 1 0 000 2z"
+                            fill-rule="evenodd"
+                            clip-rule="evenodd"
+                          />
+                        </svg>
+                      </span>
+                      <span
+                        class="moderation-badge__text"
+                        data-moderation-text
+                      >
+                        Content or user blocked by a trusted contact.
+                      </span>
+                    </span>
+                    <div
+                      class="moderation-badge__actions"
+                      data-moderation-actions
+                    >
+                      <button
+                        type="button"
+                        class="moderation-badge__action flex-shrink-0"
+                        data-moderation-action="override"
+                        aria-pressed="false"
+                        aria-label="Show anyway"
+                      >
+                        Show anyway
+                      </button>
+                    </div>
+                  </div>
+                </div>
                 <video
                   id="modalVideo"
                   class="video-modal__media"
@@ -52,210 +120,163 @@
               </div>
             </div>
 
+            <div
+              class="watch-container"
+              data-video-stats-container
+              hidden
+            >
+              <div
+                class="video-modal__stats rounded-2xl border border-border border-opacity-20 bg-surface px-6 py-5 shadow-sm"
+                data-video-stats
+              >
+                <div class="video-modal__progress">
+                  <progress
+                    id="modalProgress"
+                    class="progress"
+                    max="100"
+                    value="0"
+                    data-variant="accent"
+                    aria-label="Download progress"
+                  ></progress>
+                  <p
+                    id="modalProgressStatus"
+                    class="sr-only"
+                    role="status"
+                    aria-live="polite"
+                  ></p>
+                </div>
+                <div class="video-modal__stat-metrics flex flex-wrap items-center justify-between gap-3 text-sm text-muted">
+                  <span id="modalPeers">Peers: 0</span>
+                  <span id="modalSpeed">Speed: 0 KB/s</span>
+                  <span id="modalDownloaded">Downloaded: 0 MB / 0 MB</span>
+                </div>
+              </div>
+            </div>
+
             <div class="watch-container">
               <div class="modal-info-panel">
                 <div class="video-modal__details flex flex-col gap-6">
-                <div
-                  class="video-modal__headline flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between"
-                >
-                  <h2 id="videoTitle" class="video-modal__title"></h2>
                   <div
-                    id="modalStatus"
-                    class="video-modal__status text-sm text-muted lg:text-right"
-                    role="status"
-                    aria-live="polite"
+                    class="video-modal__headline flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between"
                   >
-                    Initializing... Just give it a sec.
-                  </div>
-                </div>
-
-                <div
-                  class="video-modal__meta flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div class="video-modal__meta-info flex flex-wrap items-center gap-3">
-                    <span id="videoTimestamp" class="modal-meta">Posted just now</span>
-                    <span id="videoEditedTimestamp" class="modal-meta hidden">Last edited just now</span>
-                    <span id="videoViewCount" class="modal-meta modal-view-count">– views</span>
-                  </div>
-                </div>
-
-                <div class="video-modal__actions-row flex flex-wrap items-center gap-3">
-                  <button
-                    id="copyMagnetBtn"
-                    type="button"
-                    class="video-modal__action-button focus-ring accent-action-button"
-                    aria-label="Copy magnet"
-                  >
-                    <svg
-                      class="video-modal__action-icon icon-image"
-                      viewBox="0 0 24 24"
-                      aria-hidden="true"
-                      focusable="false"
-                    >
-                      <path
-                        fill="currentColor"
-                        d="M17.374 20.235c2.444-2.981 6.626-8.157 6.626-8.157l-3.846-3.092s-2.857 3.523-6.571 8.097c-4.312 5.312-11.881-2.41-6.671-6.671 4.561-3.729 8.097-6.57 8.097-6.57l-3.092-3.842s-5.173 4.181-8.157 6.621c-2.662 2.175-3.76 4.749-3.76 7.24 0 5.254 4.867 10.139 10.121 10.139 2.487 0 5.064-1.095 7.253-3.765zm4.724-7.953l-1.699 2.111-1.74-1.397 1.701-2.114 1.738 1.4zm-10.386-10.385l1.4 1.738-2.113 1.701-1.397-1.74 2.11-1.699z"
-                      />
-                    </svg>
-                    <span class="video-modal__action-label">Copy magnet</span>
-                  </button>
-                  <div class="popover" data-modal-zap-wrapper>
-                    <button
-                      id="modalZapBtn"
-                      type="button"
-                      class="video-modal__action-button focus-ring accent-action-button"
-                      aria-label="Send a zap"
-                      aria-haspopup="dialog"
-                      aria-expanded="false"
-                      aria-controls="modalZapDialog"
-                    >
-                      <svg
-                        class="video-modal__action-icon icon-image"
-                        viewBox="0 0 24 24"
-                        aria-hidden="true"
-                        focusable="false"
-                      >
-                        <polygon
-                          points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2"
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                        />
-                      </svg>
-                      <span class="video-modal__action-label">Zap</span>
-                    </button>
+                    <h2 id="videoTitle" class="video-modal__title"></h2>
                     <div
-                      id="modalZapDialog"
-                      class="popover__panel card w-72 max-w-popover-safe px-5 py-4"
-                      data-variant="zap"
-                      role="dialog"
-                      aria-hidden="true"
-                      data-state="closed"
-                      hidden
+                      id="modalStatus"
+                      class="video-modal__status text-sm text-muted lg:text-right"
+                      role="status"
+                      aria-live="polite"
                     >
-                      <div class="grid gap-4">
-                        <div class="mb-4 flex items-center justify-between gap-4">
-                          <h3 class="text-xs font-semibold uppercase tracking-wide text-muted">
-                            Send a zap
-                          </h3>
-                          <button
-                            type="button"
-                            id="modalZapCloseBtn"
-                            class="focus-ring inline-flex h-8 w-8 items-center justify-center rounded-full text-muted transition hover:text-text"
-                            aria-label="Close zap dialog"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                        <p
-                          id="modalZapWalletPrompt"
-                          class="mb-3 text-sm text-muted"
-                          aria-hidden="true"
-                          hidden
-                        >
-                          Connect a wallet in
-                          <button
-                            type="button"
-                            id="modalZapWalletLink"
-                            class="focus-ring inline-flex items-center gap-1 text-sm font-semibold text-info underline decoration-dotted underline-offset-2 hover:text-info-strong"
-                          >
-                            Wallet Connect settings
-                          </button>
-                          to send zaps.
-                        </p>
-                        <form id="modalZapForm" class="space-y-4">
-                          <div class="space-y-2">
-                            <label
-                              for="modalZapAmountInput"
-                              class="text-xs font-semibold uppercase tracking-wide text-muted"
-                            >
-                              Zap amount (sats)
-                            </label>
-                            <input
-                              id="modalZapAmountInput"
-                              type="number"
-                              min="1"
-                              step="1"
-                              inputmode="numeric"
-                              class="input"
-                              placeholder="Enter sats"
-                            />
-                          </div>
-                          <div class="space-y-2">
-                            <label
-                              for="modalZapCommentInput"
-                              class="text-xs font-semibold uppercase tracking-wide text-muted"
-                            >
-                              Comment (optional)
-                            </label>
-                            <textarea
-                              id="modalZapCommentInput"
-                              rows="2"
-                              maxlength="280"
-                              class="input resize-y"
-                              placeholder="Include a note with your zap"
-                            ></textarea>
-                          </div>
-                          <p
-                            id="modalZapSplitSummary"
-                            class="text-sm text-muted"
-                            aria-live="polite"
-                          >
-                            Enter an amount to view the split.
-                          </p>
-                          <p
-                            id="modalZapStatus"
-                            class="text-xs text-muted"
-                            role="status"
-                            aria-live="polite"
-                          ></p>
-                          <ul
-                            id="modalZapReceipts"
-                            class="space-y-2 text-xs text-muted"
-                          ></ul>
-                          <div class="flex items-center justify-end gap-2">
-                            <button
-                              type="submit"
-                              id="modalZapSendBtn"
-                              class="btn"
-                            >
-                              Send
-                            </button>
-                          </div>
-                        </form>
-                      </div>
+                      Initializing... Just give it a sec.
                     </div>
                   </div>
-                  <button
-                    id="shareBtn"
-                    type="button"
-                    class="video-modal__action-button focus-ring accent-action-button"
-                    aria-label="Share video"
+                  <div
+                    class="video-modal__meta flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
                   >
-                    <svg
-                      class="video-modal__action-icon icon-image"
-                      viewBox="0 0 24 24"
-                      aria-hidden="true"
-                      focusable="false"
+                    <div class="video-modal__meta-info flex flex-wrap items-center gap-3">
+                      <span id="videoTimestamp" class="modal-meta">Posted just now</span>
+                      <span id="videoEditedTimestamp" class="modal-meta hidden">Last edited just now</span>
+                      <span id="videoViewCount" class="modal-meta modal-view-count">– views</span>
+                    </div>
+                  </div>
+
+                  <div class="video-modal__actions-row">
+                    <div class="video-modal__reactions">
+                      <div class="video-modal__reaction-buttons inline-flex flex-wrap items-center gap-2">
+                      <button
+                        id="modalLikeBtn"
+                        type="button"
+                        class="video-modal__action-button video-modal__reaction-button focus-ring accent-action-button"
+                        data-reaction="+"
+                        aria-pressed="false"
+                        aria-label="Like this video"
+                      >
+                      <svg
+                        class="video-modal__action-icon icon-image"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                        focusable="false"
+                      >
+                        <path
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="1.5"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M7 10v12H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z"
+                        />
+                        <path
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="1.5"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M7 10 11.34 2.67A2 2 0 0 1 13.14 2H14a2 2 0 0 1 2 2v4h3.37a2 2 0 0 1 1.97 2.5l-1.1 5A2 2 0 0 1 18.3 18H11"
+                        />
+                      </svg>
+                        <span class="video-modal__action-label">Like</span>
+                        <span class="video-modal__reaction-count" data-reaction-like-count>0</span>
+                      </button>
+                      <button
+                        id="modalDislikeBtn"
+                        type="button"
+                        class="video-modal__action-button video-modal__reaction-button focus-ring accent-action-button"
+                        data-reaction="-"
+                        aria-pressed="false"
+                        aria-label="Dislike this video"
+                      >
+                      <svg
+                        class="video-modal__action-icon icon-image"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                        focusable="false"
+                      >
+                        <path
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="1.5"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M17 14V2h3a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2Z"
+                        />
+                        <path
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="1.5"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M17 14 12.66 21.33A2 2 0 0 1 10.86 22H10a2 2 0 0 1-2-2v-4H4.63a2 2 0 0 1-1.97-2.5l1.1-5A2 2 0 0 1 4.73 8H13"
+                        />
+                      </svg>
+                        <span class="video-modal__action-label">Dislike</span>
+                        <span class="video-modal__reaction-count" data-reaction-dislike-count>0</span>
+                      </button>
+                    </div>
+                    <div
+                      class="video-modal__reaction-meter"
+                      data-reaction-meter
+                      role="meter"
+                      aria-valuemin="0"
+                      aria-valuemax="100"
+                      aria-valuenow="0"
+                      aria-valuetext="No reactions yet"
                     >
-                      <path
-                        fill="currentColor"
-                        d="M5 7a5 5 0 1 1 0 10 5 5 0 0 1 0-10Zm11.122 12.065A4 4 0 1 1 24 20a4 4 0 0 1-7.878-.935l-5.488-2.927a6.009 6.009 0 0 1-.943 1.764l5.488 2.927ZM24 4a4 4 0 1 1-7.878.935l-5.488 2.927a6.01 6.01 0 0 1-.943-1.764l5.488-2.927A4 4 0 0 1 24 4Z"
-                      />
-                    </svg>
-                    <span class="video-modal__action-label">Share</span>
-                  </button>
-                  <div class="relative" data-more-menu-wrapper="true">
+                      <span class="video-modal__reaction-meter-label" data-reaction-meter-label>No reactions yet</span>
+                      <div class="video-modal__reaction-meter-track" aria-hidden="true">
+                        <div
+                          class="video-modal__reaction-meter-fill"
+                          data-reaction-meter-fill
+                          style="width: 0%"
+                        ></div>
+                      </div>
+                      <span class="sr-only" data-reaction-meter-sr>No reactions yet</span>
+                    </div>
+                  </div>
+                  <div class="video-modal__actions-group">
                     <button
-                      id="modalMoreBtn"
+                      id="copyMagnetBtn"
                       type="button"
                       class="video-modal__action-button focus-ring accent-action-button"
-                      aria-haspopup="true"
-                      aria-expanded="false"
-                      aria-label="More actions"
-                      data-more-dropdown="modal"
+                      aria-label="Copy magnet"
                     >
                       <svg
                         class="video-modal__action-icon icon-image"
@@ -263,12 +284,184 @@
                         aria-hidden="true"
                         focusable="false"
                       >
-                        <circle cx="5" cy="12" r="2" fill="currentColor" />
-                        <circle cx="12" cy="12" r="2" fill="currentColor" />
-                        <circle cx="19" cy="12" r="2" fill="currentColor" />
+                        <path
+                          fill="currentColor"
+                          d="M17.374 20.235c2.444-2.981 6.626-8.157 6.626-8.157l-3.846-3.092s-2.857 3.523-6.571 8.097c-4.312 5.312-11.881-2.41-6.671-6.671 4.561-3.729 8.097-6.57 8.097-6.57l-3.092-3.842s-5.173 4.181-8.157 6.621c-2.662 2.175-3.76 4.749-3.76 7.24 0 5.254 4.867 10.139 10.121 10.139 2.487 0 5.064-1.095 7.253-3.765zm4.724-7.953l-1.699 2.111-1.74-1.397 1.701-2.114 1.738 1.4zm-10.386-10.385l1.4 1.738-2.113 1.701-1.397-1.74 2.11-1.699z"
+                        />
                       </svg>
-                      <span class="video-modal__action-label">More</span>
+                      <span class="video-modal__action-label">Copy magnet</span>
                     </button>
+                    <div class="popover" data-modal-zap-wrapper>
+                      <button
+                        id="modalZapBtn"
+                        type="button"
+                        class="video-modal__action-button focus-ring accent-action-button"
+                        aria-label="Send a zap"
+                        aria-haspopup="dialog"
+                        aria-expanded="false"
+                        aria-controls="modalZapDialog"
+                      >
+                        <svg
+                          class="video-modal__action-icon icon-image"
+                          viewBox="0 0 24 24"
+                          aria-hidden="true"
+                          focusable="false"
+                        >
+                          <polygon
+                            points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                          />
+                        </svg>
+                        <span class="video-modal__action-label">Zap</span>
+                      </button>
+                      <div
+                        id="modalZapDialog"
+                        class="popover__panel card w-72 max-w-popover-safe px-5 py-4"
+                        data-variant="zap"
+                        role="dialog"
+                        aria-hidden="true"
+                        data-state="closed"
+                        hidden
+                      >
+                        <div class="grid gap-4">
+                          <div class="mb-4 flex items-center justify-between gap-4">
+                            <h3 class="text-xs font-semibold uppercase tracking-wide text-muted">
+                              Send a zap
+                            </h3>
+                            <button
+                              type="button"
+                              id="modalZapCloseBtn"
+                              class="focus-ring inline-flex h-8 w-8 items-center justify-center rounded-full text-muted transition hover:text-text"
+                              aria-label="Close zap dialog"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                          <p
+                            id="modalZapWalletPrompt"
+                            class="mb-3 text-sm text-muted"
+                            aria-hidden="true"
+                            hidden
+                          >
+                            Connect a wallet in
+                            <button
+                              type="button"
+                              id="modalZapWalletLink"
+                              class="focus-ring inline-flex items-center gap-1 text-sm font-semibold text-info underline decoration-dotted underline-offset-2 hover:text-info-strong"
+                            >
+                              Wallet Connect settings
+                            </button>
+                            to send zaps.
+                          </p>
+                          <form id="modalZapForm" class="space-y-4">
+                            <div class="space-y-2">
+                              <label
+                                for="modalZapAmountInput"
+                                class="text-xs font-semibold uppercase tracking-wide text-muted"
+                              >
+                                Zap amount (sats)
+                              </label>
+                              <input
+                                id="modalZapAmountInput"
+                                type="number"
+                                min="1"
+                                step="1"
+                                inputmode="numeric"
+                                class="input"
+                                placeholder="Enter sats"
+                              />
+                            </div>
+                            <div class="space-y-2">
+                              <label
+                                for="modalZapCommentInput"
+                                class="text-xs font-semibold uppercase tracking-wide text-muted"
+                              >
+                                Comment (optional)
+                              </label>
+                              <textarea
+                                id="modalZapCommentInput"
+                                rows="2"
+                                maxlength="280"
+                                class="input resize-y"
+                                placeholder="Include a note with your zap"
+                              ></textarea>
+                            </div>
+                            <p
+                              id="modalZapSplitSummary"
+                              class="text-sm text-muted"
+                              aria-live="polite"
+                            >
+                              Enter an amount to view the split.
+                            </p>
+                            <p
+                              id="modalZapStatus"
+                              class="text-xs text-muted"
+                              role="status"
+                              aria-live="polite"
+                            ></p>
+                            <ul
+                              id="modalZapReceipts"
+                              class="space-y-2 text-xs text-muted"
+                            ></ul>
+                            <div class="flex items-center justify-end gap-2">
+                              <button
+                                type="submit"
+                                id="modalZapSendBtn"
+                                class="btn"
+                              >
+                                Send
+                              </button>
+                            </div>
+                          </form>
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      id="shareBtn"
+                      type="button"
+                      class="video-modal__action-button focus-ring accent-action-button"
+                      aria-label="Share video"
+                    >
+                      <svg
+                        class="video-modal__action-icon icon-image"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                        focusable="false"
+                      >
+                        <path
+                          fill="currentColor"
+                          d="M5 7a5 5 0 1 1 0 10 5 5 0 0 1 0-10Zm11.122 12.065A4 4 0 1 1 24 20a4 4 0 0 1-7.878-.935l-5.488-2.927a6.009 6.009 0 0 1-.943 1.764l5.488 2.927ZM24 4a4 4 0 1 1-7.878.935l-5.488 2.927a6.01 6.01 0 0 1-.943-1.764l5.488-2.927A4 4 0 0 1 24 4Z"
+                        />
+                      </svg>
+                      <span class="video-modal__action-label">Share</span>
+                    </button>
+                    <div class="relative" data-more-menu-wrapper="true">
+                      <button
+                        id="modalMoreBtn"
+                        type="button"
+                        class="video-modal__action-button focus-ring accent-action-button"
+                        aria-haspopup="true"
+                        aria-expanded="false"
+                        aria-label="More actions"
+                        data-more-dropdown="modal"
+                      >
+                        <svg
+                          class="video-modal__action-icon icon-image"
+                          viewBox="0 0 24 24"
+                          aria-hidden="true"
+                          focusable="false"
+                        >
+                          <circle cx="5" cy="12" r="2" fill="currentColor" />
+                          <circle cx="12" cy="12" r="2" fill="currentColor" />
+                          <circle cx="19" cy="12" r="2" fill="currentColor" />
+                        </svg>
+                        <span class="video-modal__action-label">More</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -297,36 +490,155 @@
                     No description available.
                   </p>
                 </div>
+
+                <div
+                  class="comment-thread__disabled"
+                  data-comments-disabled-placeholder
+                  role="status"
+                  aria-live="polite"
+                  hidden
+                >
+                  Comments have been turned off for this video.
+                </div>
+
+                <section
+                  class="video-modal__comments comment-thread"
+                  aria-labelledby="videoModalCommentsHeading"
+                  role="region"
+                  data-comments-root
+                >
+                  <div class="comment-thread__header">
+                    <h2
+                      id="videoModalCommentsHeading"
+                      class="comment-thread__title"
+                    >
+                      Comments
+                    </h2>
+                    <p
+                      class="comment-thread__count"
+                      data-comments-count
+                      aria-live="polite"
+                    >
+                      0 comments
+                    </p>
+                  </div>
+
+                  <p
+                    class="comment-thread__empty"
+                    data-comments-empty
+                    role="status"
+                    aria-live="polite"
+                  >
+                    No comments yet. Be the first to share your thoughts.
+                  </p>
+
+                  <ol
+                    class="comment-thread__list"
+                    data-comments-list
+                    role="list"
+                    aria-live="polite"
+                  ></ol>
+
+                  <button
+                    type="button"
+                    class="comment-thread__load-more focus-ring"
+                    data-comments-load-more
+                    hidden
+                  >
+                    Load more comments
+                  </button>
+
+                  <form
+                    class="comment-composer"
+                    data-comments-composer
+                    aria-labelledby="videoModalCommentsHeading"
+                    novalidate
+                  >
+                    <div class="comment-composer__field">
+                      <label
+                        for="commentComposerInput"
+                        class="comment-composer__label"
+                      >
+                        Add a comment
+                      </label>
+                      <textarea
+                        id="commentComposerInput"
+                        name="comment"
+                        class="textarea comment-composer__textarea"
+                        rows="3"
+                        maxlength="500"
+                        placeholder="Share your thoughts"
+                        aria-describedby="commentComposerHelp commentComposerCount"
+                        data-comments-input
+                        required
+                      ></textarea>
+                    </div>
+
+                    <div class="comment-composer__footer">
+                      <p
+                        id="commentComposerHelp"
+                        class="comment-composer__hint"
+                      >
+                        Keep it respectful and follow the community guidelines.
+                      </p>
+                      <div class="comment-composer__actions">
+                        <p
+                          id="commentComposerCount"
+                          class="comment-composer__char-count"
+                          data-comments-char-count
+                          aria-live="polite"
+                        >
+                          0 / 500
+                        </p>
+                        <button
+                          type="submit"
+                          class="comment-composer__submit btn"
+                          data-comments-submit
+                          disabled
+                        >
+                          Post
+                        </button>
+                      </div>
+                    </div>
+
+                    <p
+                      class="comment-composer__status sr-only"
+                      data-comments-status
+                      role="status"
+                      aria-live="polite"
+                    ></p>
+                  </form>
+                </section>
               </div>
             </div>
           </div>
 
           <aside class="video-modal__secondary flex flex-col gap-4">
-            <div class="watch-container">
-              <div class="video-modal__stats rounded-2xl border border-border border-opacity-20 bg-surface px-6 py-5 shadow-sm">
-                <div class="video-modal__progress">
-                  <progress
-                    id="modalProgress"
-                    class="progress"
-                    max="100"
-                    value="0"
-                    data-variant="accent"
-                    aria-label="Download progress"
-                  ></progress>
-                  <p
-                    id="modalProgressStatus"
-                    class="sr-only"
-                    role="status"
-                    aria-live="polite"
-                  ></p>
-                </div>
-                <div class="video-modal__stat-metrics flex flex-wrap items-center justify-between gap-3 text-sm text-muted">
-                  <span id="modalPeers">Peers: 0</span>
-                  <span id="modalSpeed">Speed: 0 KB/s</span>
-                  <span id="modalDownloaded">Downloaded: 0 MB / 0 MB</span>
-                </div>
-              </div>
+            <div class="watch-container video-modal__similar">
+              <div
+                id="videoTags"
+                class="video-modal__tags"
+                hidden
+                aria-hidden="true"
+              ></div>
+              <section
+                class="player-modal__module"
+                aria-labelledby="playerModalSimilarContentHeading"
+              >
+                <h2
+                  id="playerModalSimilarContentHeading"
+                  class="player-modal__module-title"
+                >
+                  Similar Content
+                </h2>
+                <ul
+                  id="playerModalSimilarContentList"
+                  class="player-modal__module-list player-modal__module-scroll"
+                  role="list"
+                ></ul>
+              </section>
             </div>
+
           </aside>
         </div>
       </div>

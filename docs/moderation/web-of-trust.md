@@ -11,13 +11,16 @@
   - 10000 mute list → downrank/hide author content.
   - 30000 categorized people → optional admin lists (see below).
 - (Optional) reputation score from a reputation source (e.g., PageRank/DVM) for **Discovery** only.
+- Super Admin + active moderators are always treated as trust seeds for anonymous/default visitors. `DEFAULT_TRUST_SEED_NPUBS` in [`config/instance-config.js`](../../config/instance-config.js) only activates when those live moderator lists cannot be fetched.
 
 ## Default thresholds (can be tuned)
-- `blurThumbnail = trustedReportCount(event,'nudity') >= 3`
-- `hideAutoplay = trustedReportCount(event,'nudity') >= 2`
+- `blurThumbnail = trustedReportCount(event,'nudity') >= DEFAULT_BLUR_THRESHOLD`
+- `hideAutoplay = trustedReportCount(event,'nudity') >= DEFAULT_AUTOPLAY_BLOCK_THRESHOLD`
 - `downrankIfMutedByF1 = true`
-- `hideIfTrustedMuteCount(author) >= 1`
-- `hideIfTrustedSpamReports(event) >= 3`
+- `hideIfTrustedMuteCount(author) >= DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD`
+- `hideIfTrustedSpamReports(event) >= DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD`
+
+Threshold constants are exported from [`config/instance-config.js`](../../config/instance-config.js) so operators can change the defaults without touching moderation code. Inspect the `DEFAULT_BLUR_THRESHOLD`, `DEFAULT_AUTOPLAY_BLOCK_THRESHOLD`, `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD`, and `DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD` exports to set your policy. The upstream repo includes example values (blur at 3, autoplay block at 2, trusted mute hide at 1, trusted spam hide at 3), but treat those as guidance rather than hard-coded requirements.
 
 ### Why these numbers?
 - F1-only reports resist Sybil attacks.
@@ -26,7 +29,7 @@
 ## Admin lists (opt-in)
 - We recognize curated lists using `30000` events:
   - `['d','bitvid:admin:blacklist']` → hard-hide when subscribed.
-  - `['d','bitvid:admin:whitelist']` → always show in Discovery.
+- `['d','bitvid:admin:whitelist']` → improves Discovery ranking when subscribed but no longer bypasses moderation gates.
   - `['d','bitvid:admin:editors']` → trusted channel editors.
 - Users can subscribe/unsubscribe any time.
 
@@ -34,7 +37,7 @@
 
 1. **Personal blocks win first.** If a viewer blocks an author or reporter, we ignore their content and reports regardless of admin lists.
 2. **Admin blacklist applies next.** Entries on `bitvid:admin:blacklist` are hard-hidden and their reports suppressed before looking at thresholds.
-3. **F1 thresholds run last.** Blur/autoplay gating only evaluates trusted-report counts after personal blocks and admin blacklists. Admin whitelists may bypass Discovery gating, but never override a viewer block.
+3. **F1 thresholds run last.** Blur/autoplay gating only evaluates trusted-report counts after personal blocks and admin blacklists. Admin whitelists contribute to Discovery ranking when a viewer subscribes, but they never override moderation gates or a viewer block.
 
 ## Pseudocode
 
@@ -52,19 +55,19 @@ function trustedReportCount(eventId: string, type: Report['type'], viewerFollows
 }
 
 function shouldBlurThumb(eventId: string, ctx: Ctx): boolean {
-  return trustedReportCount(eventId, 'nudity', ctx.viewerFollows, ctx.reports) >= 3;
+  return trustedReportCount(eventId, 'nudity', ctx.viewerFollows, ctx.reports) >= DEFAULT_BLUR_THRESHOLD;
 }
 
 function shouldHideAutoplay(eventId: string, ctx: Ctx): boolean {
-  return trustedReportCount(eventId, 'nudity', ctx.viewerFollows, ctx.reports) >= 2;
+  return trustedReportCount(eventId, 'nudity', ctx.viewerFollows, ctx.reports) >= DEFAULT_AUTOPLAY_BLOCK_THRESHOLD;
 }
 
 function shouldHideForTrustedMute(authorHex: string, ctx: Ctx): boolean {
-  return ctx.trustedMuteCount(authorHex) >= 1;
+  return ctx.trustedMuteCount(authorHex) >= DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD;
 }
 
 function shouldHideForTrustedSpam(eventId: string, ctx: Ctx): boolean {
-  return trustedReportCount(eventId, 'spam', ctx.viewerFollows, ctx.reports) >= 3;
+  return trustedReportCount(eventId, 'spam', ctx.viewerFollows, ctx.reports) >= DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD;
 }
 ```
 

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import { JSDOM } from "jsdom";
 
-import { nostrClient } from "../js/nostr.js";
+import { nostrClient, getActiveSigner, setActiveSigner } from "../js/nostr.js";
 import { subscriptions } from "../js/subscriptions.js";
 import { setApplication } from "../js/applicationContext.js";
 import nostrService from "../js/services/nostrService.js";
@@ -312,6 +312,93 @@ test("loadSubscriptions handles nip44.v2 decryptors", async () => {
 });
 
 test(
+  "loadSubscriptions uses active signer decryptors without requesting extension permissions",
+  async () => {
+    const SubscriptionsManager = subscriptions.constructor;
+    const manager = new SubscriptionsManager();
+
+    const originalRelays = Array.isArray(nostrClient.relays)
+      ? [...nostrClient.relays]
+      : nostrClient.relays;
+    const originalWriteRelays = Array.isArray(nostrClient.writeRelays)
+      ? [...nostrClient.writeRelays]
+      : nostrClient.writeRelays;
+    const originalPool = nostrClient.pool;
+    const originalEnsurePermissions = nostrClient.ensureExtensionPermissions;
+    const originalSigner = getActiveSigner();
+
+    const hadWindow = typeof globalThis.window !== "undefined";
+    if (!hadWindow) {
+      globalThis.window = {};
+    }
+    const originalWindowNostr = globalThis.window.nostr;
+    delete globalThis.window.nostr;
+
+    const relayUrls = ["wss://relay-direct.example"];
+    nostrClient.relays = relayUrls;
+    nostrClient.writeRelays = relayUrls;
+
+    const event = {
+      id: "event-direct",
+      created_at: 600,
+      content: "cipher-direct",
+    };
+
+    nostrClient.pool = {
+      list() {
+        return Promise.resolve([event]);
+      },
+    };
+
+    let permissionCalls = 0;
+    nostrClient.ensureExtensionPermissions = async () => {
+      permissionCalls += 1;
+      return { ok: true };
+    };
+
+    const decryptCalls = [];
+    setActiveSigner({
+      pubkey: "user-pubkey-123",
+      async nip04Decrypt(pubkey, ciphertext) {
+        decryptCalls.push({ pubkey, ciphertext });
+        return JSON.stringify({ subPubkeys: ["pub-direct"] });
+      },
+    });
+
+    try {
+      await manager.loadSubscriptions("user-pubkey-123");
+
+      assert.equal(permissionCalls, 0, "should not request extension permissions");
+      assert.equal(decryptCalls.length, 1, "signer decrypt should be invoked once");
+      assert.deepEqual(
+        decryptCalls[0],
+        { pubkey: "user-pubkey-123", ciphertext: "cipher-direct" },
+        "signer decrypt should receive the expected arguments",
+      );
+      assert.deepEqual(
+        Array.from(manager.subscribedPubkeys),
+        ["pub-direct"],
+        "direct signer decrypt should populate subscriptions",
+      );
+    } finally {
+      nostrClient.relays = originalRelays;
+      nostrClient.writeRelays = originalWriteRelays;
+      nostrClient.pool = originalPool;
+      nostrClient.ensureExtensionPermissions = originalEnsurePermissions;
+      setActiveSigner(originalSigner);
+      if (typeof originalWindowNostr === "undefined") {
+        delete globalThis.window.nostr;
+      } else {
+        globalThis.window.nostr = originalWindowNostr;
+      }
+      if (!hadWindow) {
+        delete globalThis.window;
+      }
+    }
+  },
+);
+
+test(
   "showSubscriptionVideos waits for nostrService warm-up and refreshes after updates",
   async () => {
     const SubscriptionsManager = subscriptions.constructor;
@@ -453,6 +540,95 @@ test(
   },
 );
 
+test(
+  "publishSubscriptionList succeeds with direct signer without requesting extension permissions",
+  async () => {
+    const SubscriptionsManager = subscriptions.constructor;
+    const manager = new SubscriptionsManager();
+
+    const originalRelays = Array.isArray(nostrClient.relays)
+      ? [...nostrClient.relays]
+      : nostrClient.relays;
+    const originalWriteRelays = Array.isArray(nostrClient.writeRelays)
+      ? [...nostrClient.writeRelays]
+      : nostrClient.writeRelays;
+    const originalPool = nostrClient.pool;
+    const originalEnsurePermissions = nostrClient.ensureExtensionPermissions;
+    const originalSigner = getActiveSigner();
+
+    const relayUrls = ["wss://relay-direct.example"];
+    nostrClient.relays = relayUrls;
+    nostrClient.writeRelays = relayUrls;
+
+    let permissionCalls = 0;
+    nostrClient.ensureExtensionPermissions = async () => {
+      permissionCalls += 1;
+      return { ok: true };
+    };
+
+    const publishCalls = [];
+    nostrClient.pool = {
+      publish(urls, event) {
+        publishCalls.push({ urls, event });
+        return {
+          on(eventName, handler) {
+            if (eventName === "ok") {
+              handler();
+            }
+            return true;
+          },
+        };
+      },
+    };
+
+    const encryptCalls = [];
+    const signCalls = [];
+    setActiveSigner({
+      type: "nsec",
+      pubkey: "user-pubkey-123",
+      async nip04Encrypt(pubkey, plaintext) {
+        encryptCalls.push({ pubkey, plaintext });
+        return "cipher-direct";
+      },
+      async signEvent(event) {
+        signCalls.push(event);
+        return { ...event, id: "signed-direct-event" };
+      },
+    });
+
+    manager.subscribedPubkeys = new Set(["pub-direct"]);
+
+    try {
+      await manager.publishSubscriptionList("user-pubkey-123");
+
+      assert.equal(permissionCalls, 0, "should not request extension permissions");
+      assert.equal(encryptCalls.length, 1, "nip04Encrypt should be called once");
+      assert.equal(signCalls.length, 1, "signEvent should be called once");
+      assert.deepEqual(
+        encryptCalls[0],
+        {
+          pubkey: "user-pubkey-123",
+          plaintext: JSON.stringify({ subPubkeys: ["pub-direct"] }),
+        },
+        "nip04Encrypt should receive the serialized subscription list",
+      );
+      assert.equal(
+        signCalls[0].content,
+        "cipher-direct",
+        "signEvent should receive the encrypted content",
+      );
+      assert.equal(publishCalls.length, relayUrls.length, "should publish to each relay");
+      assert.equal(manager.subsEventId, "signed-direct-event");
+    } finally {
+      nostrClient.relays = originalRelays;
+      nostrClient.writeRelays = originalWriteRelays;
+      nostrClient.pool = originalPool;
+      nostrClient.ensureExtensionPermissions = originalEnsurePermissions;
+      setActiveSigner(originalSigner);
+    }
+  },
+);
+
 test("renderSameGridStyle shows empty state message", async () => {
   const SubscriptionsManager = subscriptions.constructor;
 
@@ -500,4 +676,138 @@ test("renderSameGridStyle shows empty state message", async () => {
     globalThis.document = originalDocument;
   }
 });
+
+test(
+  "renderSameGridStyle forwards moderation badge actions to the application",
+  async () => {
+    const SubscriptionsManager = subscriptions.constructor;
+
+    const originalWindow = globalThis.window;
+    const originalDocument = globalThis.document;
+    const originalNavigator = globalThis.navigator;
+
+    const dom = new JSDOM(
+      "<!doctype html><div id=\"subscriptionsVideoList\"></div>",
+      { url: "https://example.test/" },
+    );
+
+    globalThis.window = dom.window;
+    globalThis.document = dom.window.document;
+    globalThis.navigator = dom.window.navigator;
+
+    const manager = new SubscriptionsManager();
+
+    const overrideCalls = [];
+    const blockCalls = [];
+
+    const app = {
+      videosMap: new Map(),
+      handleModerationOverride(detail) {
+        overrideCalls.push(detail);
+        return true;
+      },
+      handleModerationBlock(detail) {
+        blockCalls.push(detail);
+        return true;
+      },
+      ensureGlobalMoreMenuHandlers() {},
+      closeAllMoreMenus() {},
+      handleMoreMenuAction() {},
+    };
+
+    setApplication(app);
+
+    const video = {
+      id: "video-moderated-1",
+      pubkey: "author-1",
+      title: "Moderated clip",
+      created_at: 1,
+      moderation: {
+        original: { hidden: true },
+        trustedMuted: true,
+        trustedMuteCount: 2,
+        summary: { types: { nudity: { trusted: 1 } } },
+      },
+    };
+
+    manager.renderSameGridStyle(
+      { items: [{ video }] },
+      "subscriptionsVideoList",
+    );
+
+    const container = dom.window.document.getElementById(
+      "subscriptionsVideoList",
+    );
+    const overrideButton = container.querySelector(
+      '[data-moderation-action="override"]',
+    );
+    assert.ok(overrideButton, "override button should render for moderated video");
+
+    overrideButton.click();
+    await Promise.resolve();
+
+    assert.equal(
+      overrideCalls.length,
+      1,
+      "app.handleModerationOverride should receive one call",
+    );
+    const overrideDetail = overrideCalls[0];
+    assert.equal(overrideDetail.video, video);
+    assert.equal(overrideDetail.card?.video, video);
+    assert.equal(
+      overrideDetail.context,
+      "subscriptions",
+      "override payload should include the subscriptions context",
+    );
+    assert.equal(overrideDetail.trigger, overrideButton);
+
+    const blockButton = container.querySelector('[data-moderation-action="block"]');
+    assert.ok(blockButton, "block button should render for moderated video");
+
+    blockButton.click();
+    await Promise.resolve();
+
+    assert.equal(
+      blockCalls.length,
+      1,
+      "app.handleModerationBlock should receive one call",
+    );
+    const blockDetail = blockCalls[0];
+    assert.equal(blockDetail.video, video);
+    assert.equal(blockDetail.card?.video, video);
+    assert.equal(
+      blockDetail.context,
+      "subscriptions",
+      "block payload should include the subscriptions context",
+    );
+    assert.equal(blockDetail.trigger, blockButton);
+
+    if (manager.subscriptionListView?.destroy) {
+      manager.subscriptionListView.destroy();
+      manager.subscriptionListView = null;
+    }
+
+    dom.window.close();
+
+    if (typeof originalWindow === "undefined") {
+      delete globalThis.window;
+    } else {
+      globalThis.window = originalWindow;
+    }
+
+    if (typeof originalDocument === "undefined") {
+      delete globalThis.document;
+    } else {
+      globalThis.document = originalDocument;
+    }
+
+    if (typeof originalNavigator === "undefined") {
+      delete globalThis.navigator;
+    } else {
+      globalThis.navigator = originalNavigator;
+    }
+
+    setApplication(null);
+  },
+);
 

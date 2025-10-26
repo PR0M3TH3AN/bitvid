@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createModerationStage } from "../js/feedEngine/stages.js";
+import {
+  DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+  DEFAULT_BLUR_THRESHOLD,
+} from "../js/constants.js";
 
 test("moderation stage enforces admin lists without whitelist bypass", async () => {
   const whitelistedHex = "1".repeat(64);
@@ -55,8 +59,8 @@ test("moderation stage enforces admin lists without whitelist bypass", async () 
   const stage = createModerationStage({
     service,
     reportType: "nudity",
-    autoplayThreshold: 2,
-    blurThreshold: 3,
+    autoplayThreshold: DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+    blurThreshold: DEFAULT_BLUR_THRESHOLD,
   });
 
   const items = [
@@ -90,6 +94,8 @@ test("moderation stage enforces admin lists without whitelist bypass", async () 
   const whitelistedItem = result[0];
   assert.equal(whitelistedItem.video.moderation.blockAutoplay, true);
   assert.equal(whitelistedItem.video.moderation.blurThumbnail, true);
+  assert.equal(whitelistedItem.video.moderation.blurReason, "trusted-report");
+  assert.equal(whitelistedItem.metadata.moderation.blurReason, "trusted-report");
   assert.equal(whitelistedItem.video.moderation.adminWhitelist, true);
   assert.equal(whitelistedItem.video.moderation.adminWhitelistBypass, false);
   assert.equal(whitelistedItem.metadata.moderation.adminWhitelistBypass, false);
@@ -97,6 +103,8 @@ test("moderation stage enforces admin lists without whitelist bypass", async () 
   const normalItem = result[1];
   assert.equal(normalItem.video.moderation.blockAutoplay, true);
   assert.equal(normalItem.video.moderation.blurThumbnail, true);
+  assert.equal(normalItem.video.moderation.blurReason, "trusted-report");
+  assert.equal(normalItem.metadata.moderation.blurReason, "trusted-report");
 
   const reasons = why.map((entry) => entry.reason);
   assert(reasons.includes("viewer-block"));
@@ -199,19 +207,158 @@ test("moderation stage applies provided thresholds", async () => {
 
   const relaxedStage = createModerationStage({
     service,
-    autoplayThreshold: 2,
-    blurThreshold: 3,
+    autoplayThreshold: 1,
+    blurThreshold: 1,
   });
 
   const strictResult = await strictStage(items, {});
   assert.equal(strictResult.length, 1);
   assert.equal(strictResult[0].video.moderation.blockAutoplay, false);
   assert.equal(strictResult[0].video.moderation.blurThumbnail, false);
+  assert.equal(strictResult[0].video.moderation.blurReason, undefined);
 
   const relaxedResult = await relaxedStage(items, {});
   assert.equal(relaxedResult.length, 1);
   assert.equal(relaxedResult[0].video.moderation.blockAutoplay, true);
   assert.equal(relaxedResult[0].video.moderation.blurThumbnail, true);
+  assert.equal(relaxedResult[0].video.moderation.blurReason, "trusted-report");
+  assert.equal(relaxedResult[0].metadata.moderation.blurReason, "trusted-report");
+});
+
+test("moderation stage respects runtime threshold changes", async () => {
+  const videoId = "runtime-threshold";
+  const authorHex = "e".repeat(64);
+
+  const service = {
+    async refreshViewerFromClient() {},
+    async setActiveEventIds() {},
+    getAdminListSnapshot() {
+      return { whitelist: new Set(), whitelistHex: new Set(), blacklist: new Set(), blacklistHex: new Set() };
+    },
+    getAccessControlStatus(identifier) {
+      return { hex: identifier, whitelisted: false, blacklisted: false };
+    },
+    getTrustedReportSummary() {
+      return null;
+    },
+    trustedReportCount() {
+      return 3;
+    },
+    getTrustedReporters() {
+      return [];
+    },
+  };
+
+  const stage = createModerationStage({ service });
+
+  const strictContext = {
+    runtime: {
+      moderationThresholds: {
+        autoplayBlockThreshold: 1,
+        blurThreshold: 1,
+        trustedMuteHideThreshold: Number.POSITIVE_INFINITY,
+        trustedSpamHideThreshold: 2,
+      },
+    },
+    addWhy() {},
+    log() {},
+  };
+
+  const relaxedContext = {
+    runtime: {
+      moderationThresholds: {
+        autoplayBlockThreshold: 5,
+        blurThreshold: 5,
+        trustedMuteHideThreshold: Number.POSITIVE_INFINITY,
+        trustedSpamHideThreshold: 10,
+      },
+    },
+    addWhy() {},
+    log() {},
+  };
+
+  const buildItem = () => ({ video: { id: videoId, pubkey: authorHex }, metadata: {} });
+
+  const hiddenItems = [buildItem()];
+  const hiddenResult = await stage(hiddenItems, strictContext);
+
+  assert.equal(hiddenResult.length, 0);
+  const hiddenMetadata = hiddenItems[0].metadata.moderation;
+  assert.equal(hiddenMetadata.hidden, true);
+  assert.equal(hiddenMetadata.hideReason, "trusted-report-hide");
+  assert.equal(hiddenMetadata.blockAutoplay, true);
+  assert.equal(hiddenMetadata.blurThumbnail, true);
+
+  const visibleItems = [buildItem()];
+  const visibleResult = await stage(visibleItems, relaxedContext);
+
+  assert.equal(visibleResult.length, 1);
+  const visibleModeration = visibleResult[0].video.moderation;
+  assert.equal(visibleModeration.hidden, false);
+  assert.equal(visibleModeration.blockAutoplay, false);
+  assert.equal(visibleModeration.blurThumbnail, false);
+});
+
+test("moderation stage supports function-based threshold resolvers", async () => {
+  const videoId = "resolver-threshold";
+  const authorHex = "f".repeat(64);
+
+  let autoplaySetting = 5;
+  let blurSetting = 6;
+  let hideSetting = Number.POSITIVE_INFINITY;
+
+  const service = {
+    async refreshViewerFromClient() {},
+    async setActiveEventIds() {},
+    getAdminListSnapshot() {
+      return { whitelist: new Set(), whitelistHex: new Set(), blacklist: new Set(), blacklistHex: new Set() };
+    },
+    getAccessControlStatus(identifier) {
+      return { hex: identifier, whitelisted: false, blacklisted: false };
+    },
+    getTrustedReportSummary() {
+      return null;
+    },
+    trustedReportCount() {
+      return 2;
+    },
+    getTrustedReporters() {
+      return [];
+    },
+  };
+
+  const stage = createModerationStage({
+    service,
+    autoplayThreshold: () => autoplaySetting,
+    blurThreshold: () => blurSetting,
+    trustedReportHideThreshold: () => hideSetting,
+  });
+
+  const createContext = () => ({ addWhy() {}, log() {} });
+  const buildItem = () => ({ video: { id: videoId, pubkey: authorHex }, metadata: {} });
+
+  const relaxedItems = [buildItem()];
+  const relaxedResult = await stage(relaxedItems, createContext());
+
+  assert.equal(relaxedResult.length, 1);
+  const relaxedModeration = relaxedResult[0].video.moderation;
+  assert.equal(relaxedModeration.blockAutoplay, false);
+  assert.equal(relaxedModeration.blurThumbnail, false);
+  assert.equal(relaxedModeration.hidden, false);
+
+  autoplaySetting = 1;
+  blurSetting = 1;
+  hideSetting = 1;
+
+  const strictItems = [buildItem()];
+  const strictResult = await stage(strictItems, createContext());
+
+  assert.equal(strictResult.length, 0);
+  const strictMetadata = strictItems[0].metadata.moderation;
+  assert.equal(strictMetadata.blockAutoplay, true);
+  assert.equal(strictMetadata.blurThumbnail, true);
+  assert.equal(strictMetadata.hidden, true);
+  assert.equal(strictMetadata.hideReason, "trusted-report-hide");
 });
 
 test("moderation stage propagates whitelist, muters, and threshold updates", async () => {
@@ -281,8 +428,8 @@ test("moderation stage propagates whitelist, muters, and threshold updates", asy
 
   const stage = createModerationStage({
     service,
-    autoplayThreshold: 2,
-    blurThreshold: 3,
+    autoplayThreshold: 1,
+    blurThreshold: 1,
     reportType: "nudity",
   });
 
@@ -311,22 +458,26 @@ test("moderation stage propagates whitelist, muters, and threshold updates", asy
   assert.equal(whitelistedItem.metadata.moderation.adminWhitelist, true);
   assert.equal(whitelistedItem.metadata.moderation.blockAutoplay, true);
   assert.equal(whitelistedItem.metadata.moderation.blurThumbnail, true);
+  assert.equal(whitelistedItem.metadata.moderation.blurReason, "trusted-report");
   assert.equal(whitelistedItem.video.moderation.adminWhitelistBypass, false);
+  assert.equal(whitelistedItem.video.moderation.blurReason, "trusted-report");
 
   assert.equal(mutedItem.metadata.moderation.trustedMuted, true);
   assert.deepEqual(mutedItem.metadata.moderation.trustedMuters, [muterHex]);
   assert.equal(mutedItem.metadata.moderation.blockAutoplay, true);
   assert.equal(mutedItem.metadata.moderation.blurThumbnail, true);
+  assert.equal(mutedItem.metadata.moderation.blurReason, "trusted-report");
   assert.equal(mutedItem.video.moderation.trustedMuted, true);
   assert.deepEqual(mutedItem.video.moderation.trustedMuters, [muterHex]);
+  assert.equal(mutedItem.video.moderation.blurReason, "trusted-report");
 
   state.summaryById.set("muted-video", {
     eventId: "muted-video",
-    totalTrusted: 1,
-    types: { nudity: { trusted: 1, total: 1, latest: 1_700_000_500 } },
+    totalTrusted: 0,
+    types: { nudity: { trusted: 0, total: 0, latest: 1_700_000_500 } },
     updatedAt: 1_700_000_600,
   });
-  state.trustedCounts.set("muted-video", 1);
+  state.trustedCounts.set("muted-video", 0);
   state.mutersByAuthor.set(mutedHex, []);
   state.mutedAuthors.delete(mutedHex);
 
@@ -338,9 +489,11 @@ test("moderation stage propagates whitelist, muters, and threshold updates", asy
   assert.deepEqual(updatedMuted.metadata.moderation.trustedMuters, []);
   assert.equal(updatedMuted.metadata.moderation.blockAutoplay, false);
   assert.equal(updatedMuted.metadata.moderation.blurThumbnail, false);
+  assert.equal(updatedMuted.metadata.moderation.blurReason, undefined);
   assert.equal(updatedMuted.video.moderation.trustedMuted, false);
   assert.equal(updatedMuted.video.moderation.blockAutoplay, false);
   assert.equal(updatedMuted.video.moderation.blurThumbnail, false);
+  assert.equal(updatedMuted.video.moderation.blurReason, undefined);
 });
 
 test("moderation stage clears cached reporters and muters after service signals", async () => {

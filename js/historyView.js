@@ -1,18 +1,23 @@
 // js/historyView.js
 
 import watchHistoryService from "./watchHistoryService.js";
+import { nostrClient } from "./nostrClientFacade.js";
 import {
-  pointerKey,
-  normalizePointerInput,
-  nostrClient,
-  updateWatchHistoryList
-} from "./nostr.js";
+  updateWatchHistoryListWithDefaultClient as updateWatchHistoryList,
+} from "./nostrWatchHistoryFacade.js";
+import { pointerKey, normalizePointerInput } from "./nostr/watchHistory.js";
 import {
   WATCH_HISTORY_BATCH_RESOLVE,
   WATCH_HISTORY_BATCH_PAGE_SIZE
 } from "./config.js";
 import { getApplication } from "./applicationContext.js";
 import { userLogger } from "./utils/logger.js";
+import {
+  normalizeVideoModerationContext,
+  applyModerationContextDatasets,
+  getModerationOverrideActionLabels,
+} from "./ui/moderationUiHelpers.js";
+import { buildModerationBadgeText } from "./ui/moderationCopy.js";
 
 export const WATCH_HISTORY_EMPTY_COPY =
   "Your watch history is empty. Watch some videos to populate this list.";
@@ -102,6 +107,19 @@ function buildWatchHistoryFeedRuntime({ actor, cursor = 0 } = {}) {
       actor: normalizedActor,
       cursor: Number.isFinite(cursor) ? cursor : 0
     }
+  };
+
+  const preferenceSource =
+    typeof app?.getHashtagPreferences === "function"
+      ? app.getHashtagPreferences()
+      : {};
+  runtime.tagPreferences = {
+    interests: Array.isArray(preferenceSource?.interests)
+      ? [...preferenceSource.interests]
+      : [],
+    disinterests: Array.isArray(preferenceSource?.disinterests)
+      ? [...preferenceSource.disinterests]
+      : []
   };
 
   if (normalizedActor) {
@@ -339,6 +357,753 @@ function getPointerVideoId(video, pointer) {
   return "";
 }
 
+const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+const historyCardRegistry = new Map();
+
+function sanitizeIdToken(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+  const token = value.trim().replace(/[^a-zA-Z0-9_-]/g, "");
+  return token;
+}
+
+function getHistoryCardModerationId(pointerKey) {
+  const token = sanitizeIdToken(pointerKey);
+  return token ? `watch-history-${token}-moderation` : "";
+}
+
+function getHistoryCardModerationState(context) {
+  if (!context) {
+    return "";
+  }
+  if (context.overrideActive) {
+    return "override";
+  }
+  if (context.activeHidden && !context.overrideActive) {
+    return "hidden";
+  }
+  if (context.trustedMuted) {
+    return "trusted-mute";
+  }
+  return "blocked";
+}
+
+function shouldShowHistoryCardBlockButton(context) {
+  if (!context || !context.trustedMuted) {
+    return false;
+  }
+  if (context.activeHidden && !context.overrideActive) {
+    return false;
+  }
+  return true;
+}
+
+function getModerationBadgeIconShape(state) {
+  if (state === "override") {
+    return {
+      d: "M10 18a8 8 0 100-16 8 8 0 000 16zm3.78-9.72a.75.75 0 00-1.06-1.06L9 11.94l-1.72-1.72a.75.75 0 10-1.06 1.06l2.25 2.25a.75.75 0 001.06 0l3.25-3.25z",
+      fillRule: "evenodd",
+      clipRule: "evenodd"
+    };
+  }
+
+  return {
+    d: "M10 18a8 8 0 100-16 8 8 0 000 16zm-.75-11.75a.75.75 0 011.5 0v4.5a.75.75 0 01-1.5 0v-4.5zm.75 8.5a1 1 0 100-2 1 1 0 000 2z",
+    fillRule: "evenodd",
+    clipRule: "evenodd"
+  };
+}
+
+function updateHistoryCardBadgeIcon(svg, state) {
+  if (!svg) {
+    return;
+  }
+  svg.dataset.iconState = state;
+  const path = svg.firstElementChild;
+  if (!path) {
+    return;
+  }
+  const { d, fillRule, clipRule } = getModerationBadgeIconShape(state);
+  path.setAttribute("d", d);
+  if (fillRule) {
+    path.setAttribute("fill-rule", fillRule);
+  } else {
+    path.removeAttribute("fill-rule");
+  }
+  if (clipRule) {
+    path.setAttribute("clip-rule", clipRule);
+  } else {
+    path.removeAttribute("clip-rule");
+  }
+}
+
+function createHistoryCardBadgeIcon(doc, state) {
+  const wrapper = doc.createElement("span");
+  wrapper.className = "moderation-badge__icon";
+  wrapper.setAttribute("aria-hidden", "true");
+  const svg = doc.createElementNS(SVG_NAMESPACE, "svg");
+  svg.setAttribute("viewBox", "0 0 20 20");
+  svg.setAttribute("focusable", "false");
+  svg.setAttribute("aria-hidden", "true");
+  svg.classList.add("moderation-badge__icon-mark");
+  const path = doc.createElementNS(SVG_NAMESPACE, "path");
+  path.setAttribute("fill", "currentColor");
+  svg.appendChild(path);
+  wrapper.appendChild(svg);
+  updateHistoryCardBadgeIcon(svg, state);
+  return { wrapper, svg };
+}
+
+function cleanupHistoryCard(pointerKey) {
+  if (!pointerKey || !historyCardRegistry.has(pointerKey)) {
+    return;
+  }
+  const ref = historyCardRegistry.get(pointerKey);
+  historyCardRegistry.delete(pointerKey);
+  if (!ref || typeof ref !== "object") {
+    return;
+  }
+  if (ref.overrideButton && typeof ref.overrideButton.removeEventListener === "function" && typeof ref.boundOverride === "function") {
+    ref.overrideButton.removeEventListener("click", ref.boundOverride);
+  }
+  if (ref.blockButton && typeof ref.blockButton.removeEventListener === "function" && typeof ref.boundBlock === "function") {
+    ref.blockButton.removeEventListener("click", ref.boundBlock);
+  }
+  if (ref.badgeEl && ref.badgeEl.parentNode) {
+    ref.badgeEl.parentNode.removeChild(ref.badgeEl);
+  }
+  if (ref.hiddenContainer && ref.hiddenContainer.parentNode) {
+    ref.hiddenContainer.parentNode.removeChild(ref.hiddenContainer);
+  }
+}
+
+function registerHistoryCard(pointerKey, ref) {
+  if (!pointerKey || !ref) {
+    return;
+  }
+  cleanupHistoryCard(pointerKey);
+  historyCardRegistry.set(pointerKey, ref);
+}
+
+function clearHistoryCardRegistry() {
+  const keys = Array.from(historyCardRegistry.keys());
+  keys.forEach((key) => {
+    cleanupHistoryCard(key);
+  });
+  historyCardRegistry.clear();
+}
+
+function ensureHiddenSummaryContainer(ref) {
+  const article = ref?.article;
+  if (!article || typeof article.insertBefore !== "function") {
+    return null;
+  }
+  let container = ref.hiddenContainer;
+  const doc = article.ownerDocument || document;
+  if (!container) {
+    container = doc.createElement("div");
+    container.className = "watch-history-card__hidden bv-stack bv-stack--tight p-md";
+    container.dataset.moderationHiddenContainer = "true";
+    container.setAttribute("role", "group");
+    container.setAttribute("aria-live", "polite");
+    ref.hiddenContainer = container;
+  }
+  container.hidden = false;
+  container.removeAttribute("aria-hidden");
+  if (container.parentNode !== article) {
+    article.insertBefore(container, article.firstChild || null);
+  }
+  return container;
+}
+
+function updateHistoryCardHiddenState(ref, context) {
+  const hiddenActive = Boolean(context?.activeHidden && !context?.overrideActive);
+  const primary = ref.primary;
+  const meta = ref.meta;
+
+  if (hiddenActive) {
+    if (primary && typeof primary.setAttribute === "function") {
+      primary.setAttribute("hidden", "");
+      primary.setAttribute("aria-hidden", "true");
+    }
+    if (meta && typeof meta.setAttribute === "function") {
+      meta.setAttribute("hidden", "");
+      meta.setAttribute("aria-hidden", "true");
+    }
+    const container = ensureHiddenSummaryContainer(ref);
+    if (container) {
+      const description = buildModerationBadgeText(context, { variant: "card" });
+      if (description) {
+        container.setAttribute("aria-label", description);
+      } else {
+        container.removeAttribute("aria-label");
+      }
+    }
+  } else {
+    if (primary && typeof primary.removeAttribute === "function") {
+      primary.removeAttribute("hidden");
+      primary.removeAttribute("aria-hidden");
+    }
+    if (meta && typeof meta.removeAttribute === "function") {
+      meta.removeAttribute("hidden");
+      meta.removeAttribute("aria-hidden");
+    }
+    const container = ref.hiddenContainer;
+    if (container) {
+      container.hidden = true;
+      container.setAttribute("aria-hidden", "true");
+      container.removeAttribute("aria-label");
+      container.removeAttribute("aria-labelledby");
+      if (container.parentNode) {
+        container.parentNode.removeChild(container);
+      }
+      ref.hiddenContainer = null;
+    }
+  }
+}
+
+function createHistoryCardBadge(ref, context) {
+  const article = ref?.article;
+  const doc = (article && article.ownerDocument) || (typeof document !== "undefined" ? document : null);
+  if (!doc) {
+    return null;
+  }
+  const badge = doc.createElement("div");
+  badge.className = "moderation-badge";
+  badge.dataset.moderationBadge = "true";
+  const label = doc.createElement("span");
+  label.className = "moderation-badge__label inline-flex items-center gap-xs";
+  const { wrapper, svg } = createHistoryCardBadgeIcon(doc, getHistoryCardModerationState(context));
+  label.appendChild(wrapper);
+  const text = doc.createElement("span");
+  text.className = "moderation-badge__text";
+  label.appendChild(text);
+  badge.appendChild(label);
+  ref.badgeEl = badge;
+  ref.badgeLabelEl = label;
+  ref.badgeTextEl = text;
+  ref.badgeIconSvg = svg;
+  ref.badgeIconWrapper = wrapper;
+  if (typeof ref.boundOverride !== "function") {
+    ref.boundOverride = (event) => handleHistoryCardModerationOverride(event, ref);
+  }
+  if (typeof ref.boundHide !== "function") {
+    ref.boundHide = (event) => handleHistoryCardModerationHide(event, ref);
+  }
+  if (typeof ref.boundBlock !== "function") {
+    ref.boundBlock = (event) => handleHistoryCardModerationBlock(event, ref);
+  }
+  if (!ref.overrideButton) {
+    const { text: overrideLabel, ariaLabel: overrideAria } =
+      getModerationOverrideActionLabels({ overrideActive: false });
+    const overrideButton = doc.createElement("button");
+    overrideButton.type = "button";
+    overrideButton.className = "moderation-badge__action flex-shrink-0";
+    overrideButton.dataset.moderationAction = "override";
+    overrideButton.textContent = overrideLabel;
+    overrideButton.setAttribute("aria-label", overrideAria);
+    overrideButton.addEventListener("click", ref.boundOverride);
+    ref.overrideButton = overrideButton;
+  }
+  if (!ref.hideButton) {
+    const { text: restoreLabel, ariaLabel: restoreAria } =
+      getModerationOverrideActionLabels({ overrideActive: true });
+    const hideButton = doc.createElement("button");
+    hideButton.type = "button";
+    hideButton.className = "moderation-badge__action flex-shrink-0";
+    hideButton.dataset.moderationAction = "hide";
+    hideButton.textContent = restoreLabel;
+    hideButton.setAttribute("aria-label", restoreAria);
+    hideButton.addEventListener("click", ref.boundHide);
+    ref.hideButton = hideButton;
+  }
+  if (!ref.blockButton) {
+    const blockButton = doc.createElement("button");
+    blockButton.type = "button";
+    blockButton.className = "moderation-badge__action flex-shrink-0";
+    blockButton.dataset.moderationAction = "block";
+    blockButton.textContent = "Block";
+    blockButton.addEventListener("click", ref.boundBlock);
+    ref.blockButton = blockButton;
+  }
+  return badge;
+}
+
+function updateHistoryCardBadge(ref, context) {
+  const hiddenActive = Boolean(context?.activeHidden && !context?.overrideActive);
+  if (!context?.shouldShow) {
+    if (ref.overrideButton && typeof ref.overrideButton.removeEventListener === "function" && typeof ref.boundOverride === "function") {
+      ref.overrideButton.removeEventListener("click", ref.boundOverride);
+    }
+    if (ref.hideButton && typeof ref.hideButton.removeEventListener === "function" && typeof ref.boundHide === "function") {
+      ref.hideButton.removeEventListener("click", ref.boundHide);
+    }
+    if (ref.blockButton && typeof ref.blockButton.removeEventListener === "function" && typeof ref.boundBlock === "function") {
+      ref.blockButton.removeEventListener("click", ref.boundBlock);
+    }
+    if (ref.badgeEl && ref.badgeEl.parentNode) {
+      ref.badgeEl.parentNode.removeChild(ref.badgeEl);
+    }
+    ref.badgeEl = null;
+    ref.badgeLabelEl = null;
+    ref.badgeTextEl = null;
+    ref.badgeIconSvg = null;
+    ref.badgeIconWrapper = null;
+    ref.overrideButton = null;
+    ref.hideButton = null;
+    ref.blockButton = null;
+    return;
+  }
+
+  if (!ref.badgeEl) {
+    createHistoryCardBadge(ref, context);
+  }
+
+  const badge = ref.badgeEl;
+  if (!badge) {
+    return;
+  }
+
+  badge.dataset.variant = context.overrideActive ? "neutral" : "warning";
+  const state = context.overrideActive ? "override" : getHistoryCardModerationState(context);
+  badge.dataset.moderationState = state;
+  if (hiddenActive && context.effectiveHideReason) {
+    badge.dataset.moderationHideReason = context.effectiveHideReason;
+  } else if (badge.dataset.moderationHideReason) {
+    delete badge.dataset.moderationHideReason;
+  }
+
+  if (ref.badgeIconSvg) {
+    updateHistoryCardBadgeIcon(ref.badgeIconSvg, state);
+  }
+
+  const textContent = buildModerationBadgeText(context, { variant: "card" });
+  if (ref.badgeTextEl) {
+    ref.badgeTextEl.textContent = textContent;
+  }
+
+  const muteNames = Array.isArray(context.trustedMuteDisplayNames)
+    ? context.trustedMuteDisplayNames
+        .map((name) => (typeof name === "string" ? name.trim() : ""))
+        .filter(Boolean)
+    : [];
+  const reporterNames = Array.isArray(context.reporterDisplayNames)
+    ? context.reporterDisplayNames
+        .map((name) => (typeof name === "string" ? name.trim() : ""))
+        .filter(Boolean)
+    : [];
+
+  const allNames = [...muteNames, ...reporterNames];
+  const uniqueNames = [];
+  const seen = new Set();
+  for (const name of allNames) {
+    if (!name) {
+      continue;
+    }
+    const key = name.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    uniqueNames.push(name);
+  }
+
+  if (uniqueNames.length) {
+    const hasMuted = muteNames.length > 0;
+    const hasReporters = reporterNames.length > 0;
+    const prefix = hasMuted && hasReporters
+      ? "Muted/Reported by"
+      : hasMuted
+        ? "Muted by"
+        : "Reported by";
+    const joined = uniqueNames.join(", ");
+    badge.title = `${prefix} ${joined}`;
+    badge.setAttribute("aria-label", `${textContent}. ${prefix} ${joined}.`);
+  } else if (textContent) {
+    badge.removeAttribute("title");
+    badge.setAttribute("aria-label", `${textContent}.`);
+  } else {
+    badge.removeAttribute("title");
+    badge.removeAttribute("aria-label");
+  }
+
+  const parent = hiddenActive ? ensureHiddenSummaryContainer(ref) : ref.badgeMount;
+  if (parent && badge.parentNode !== parent) {
+    if (badge.parentNode) {
+      badge.parentNode.removeChild(badge);
+    }
+    parent.appendChild(badge);
+  }
+
+  if (!context.overrideActive && context.allowOverride && ref.overrideButton) {
+    const { text: overrideLabel, ariaLabel: overrideAria } =
+      getModerationOverrideActionLabels({ overrideActive: false });
+    ref.overrideButton.textContent = overrideLabel;
+    ref.overrideButton.setAttribute("aria-label", overrideAria);
+    if (ref.overrideButton.parentNode !== badge) {
+      badge.appendChild(ref.overrideButton);
+    }
+    ref.overrideButton.disabled = false;
+    ref.overrideButton.removeAttribute("aria-busy");
+  } else if (ref.overrideButton && ref.overrideButton.parentNode === badge) {
+    badge.removeChild(ref.overrideButton);
+  }
+
+  if (context.overrideActive && ref.hideButton) {
+    const { text: restoreLabel, ariaLabel: restoreAria } =
+      getModerationOverrideActionLabels({ overrideActive: true });
+    ref.hideButton.textContent = restoreLabel;
+    ref.hideButton.setAttribute("aria-label", restoreAria);
+    if (ref.hideButton.parentNode !== badge) {
+      badge.appendChild(ref.hideButton);
+    }
+    ref.hideButton.disabled = false;
+    ref.hideButton.removeAttribute("aria-busy");
+  } else if (ref.hideButton && ref.hideButton.parentNode === badge) {
+    badge.removeChild(ref.hideButton);
+  }
+
+  if (shouldShowHistoryCardBlockButton(context) && ref.blockButton) {
+    if (ref.blockButton.parentNode !== badge) {
+      badge.appendChild(ref.blockButton);
+    }
+    ref.blockButton.disabled = false;
+    ref.blockButton.removeAttribute("aria-busy");
+  } else if (ref.blockButton && ref.blockButton.parentNode === badge) {
+    badge.removeChild(ref.blockButton);
+  }
+}
+
+function updateHistoryCardAria(ref) {
+  const badge = ref.badgeEl;
+  const badgeId = badge ? getHistoryCardModerationId(ref.pointerKey) : "";
+  if (badge) {
+    if (badgeId) {
+      badge.id = badgeId;
+    } else {
+      badge.removeAttribute("id");
+    }
+  }
+
+  const targets = [
+    ref.thumbnailLink,
+    ref.titleLink,
+    ref.playButton,
+    ref.channelButton,
+    ref.creatorNameButton,
+    ref.avatarButton
+  ].filter((el) => el && typeof el.getAttribute === "function");
+
+  targets.forEach((el) => {
+    const existing = el.getAttribute("aria-describedby") || "";
+    const tokens = existing.split(/\s+/).filter(Boolean);
+    if (ref.badgeId) {
+      for (let index = tokens.length - 1; index >= 0; index -= 1) {
+        if (tokens[index] === ref.badgeId) {
+          tokens.splice(index, 1);
+        }
+      }
+    }
+    if (badgeId) {
+      tokens.push(badgeId);
+    }
+    if (tokens.length) {
+      el.setAttribute("aria-describedby", Array.from(new Set(tokens)).join(" "));
+    } else {
+      el.removeAttribute("aria-describedby");
+    }
+  });
+
+  if (ref.overrideButton) {
+    if (badgeId) {
+      ref.overrideButton.setAttribute("aria-describedby", badgeId);
+    } else {
+      ref.overrideButton.removeAttribute("aria-describedby");
+    }
+  }
+
+  if (ref.hideButton) {
+    if (badgeId) {
+      ref.hideButton.setAttribute("aria-describedby", badgeId);
+    } else {
+      ref.hideButton.removeAttribute("aria-describedby");
+    }
+  }
+
+  if (ref.blockButton) {
+    if (badgeId) {
+      ref.blockButton.setAttribute("aria-describedby", badgeId);
+    } else {
+      ref.blockButton.removeAttribute("aria-describedby");
+    }
+  }
+
+  if (ref.hiddenContainer) {
+    if (badgeId) {
+      ref.hiddenContainer.setAttribute("aria-labelledby", badgeId);
+    } else {
+      ref.hiddenContainer.removeAttribute("aria-labelledby");
+    }
+  }
+
+  ref.badgeId = badgeId;
+}
+
+function applyHistoryCardModeration(ref, context) {
+  if (!ref) {
+    return;
+  }
+  const normalizedContext = context || normalizeVideoModerationContext(ref.video?.moderation);
+  applyModerationContextDatasets(normalizedContext, {
+    root: ref.article,
+    thumbnail: ref.thumbnailInner || ref.thumbnailLink,
+    avatar: ref.avatarButton
+  });
+  updateHistoryCardHiddenState(ref, normalizedContext);
+  updateHistoryCardBadge(ref, normalizedContext);
+  updateHistoryCardAria(ref);
+}
+
+function handleHistoryCardModerationOverride(event, ref) {
+  if (event) {
+    if (typeof event.preventDefault === "function") {
+      event.preventDefault();
+    }
+    if (typeof event.stopPropagation === "function") {
+      event.stopPropagation();
+    }
+  }
+
+  const button = ref.overrideButton;
+  if (button) {
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+  }
+
+  const video = ref.video;
+  if (!video || typeof video !== "object" || !video.id) {
+    if (button) {
+      button.disabled = false;
+      button.removeAttribute("aria-busy");
+    }
+    return;
+  }
+
+  const app = getAppInstance();
+  let result;
+  try {
+    if (typeof app?.handleModerationOverride === "function") {
+      result = app.handleModerationOverride({ video });
+    } else {
+      const doc = (ref.article && ref.article.ownerDocument) || (typeof document !== "undefined" ? document : null);
+      if (doc && typeof doc.dispatchEvent === "function") {
+        doc.dispatchEvent(
+          new CustomEvent("video:moderation-override", { detail: { video } })
+        );
+      }
+      result = true;
+    }
+  } catch (error) {
+    if (button) {
+      button.disabled = false;
+      button.removeAttribute("aria-busy");
+    }
+    if (isDevEnv) {
+      userLogger.warn("[historyView] Moderation override handler threw:", error);
+    }
+    return;
+  }
+
+  Promise.resolve(result)
+    .then((handled) => {
+      if (handled === false) {
+        if (button) {
+          button.disabled = false;
+          button.removeAttribute("aria-busy");
+        }
+        return;
+      }
+      const context = normalizeVideoModerationContext(ref.video?.moderation);
+      applyHistoryCardModeration(ref, context);
+    })
+    .catch((error) => {
+      if (isDevEnv) {
+        userLogger.warn("[historyView] Moderation override failed:", error);
+      }
+      if (button) {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+      }
+    });
+}
+
+function handleHistoryCardModerationHide(event, ref) {
+  if (event) {
+    if (typeof event.preventDefault === "function") {
+      event.preventDefault();
+    }
+    if (typeof event.stopPropagation === "function") {
+      event.stopPropagation();
+    }
+  }
+
+  const button = ref.hideButton;
+  if (button) {
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+  }
+
+  const video = ref.video;
+  if (!video || typeof video !== "object" || !video.id) {
+    if (button) {
+      button.disabled = false;
+      button.removeAttribute("aria-busy");
+    }
+    return;
+  }
+
+  const app = getAppInstance();
+  let result;
+  try {
+    if (typeof app?.handleModerationHide === "function") {
+      result = app.handleModerationHide({ video });
+    } else {
+      const doc =
+        (ref.article && ref.article.ownerDocument) ||
+        (typeof document !== "undefined" ? document : null);
+      if (doc && typeof doc.dispatchEvent === "function") {
+        doc.dispatchEvent(new CustomEvent("video:moderation-hide", { detail: { video } }));
+      }
+      result = true;
+    }
+  } catch (error) {
+    if (button) {
+      button.disabled = false;
+      button.removeAttribute("aria-busy");
+    }
+    if (isDevEnv) {
+      userLogger.warn("[historyView] Moderation hide handler threw:", error);
+    }
+    return;
+  }
+
+  Promise.resolve(result)
+    .then((handled) => {
+      if (handled === false) {
+        if (button) {
+          button.disabled = false;
+          button.removeAttribute("aria-busy");
+        }
+        return;
+      }
+      const context = normalizeVideoModerationContext(ref.video?.moderation);
+      applyHistoryCardModeration(ref, context);
+    })
+    .catch((error) => {
+      if (isDevEnv) {
+        userLogger.warn("[historyView] Moderation hide failed:", error);
+      }
+      if (button) {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+      }
+    });
+}
+
+function handleHistoryCardModerationBlock(event, ref) {
+  if (event) {
+    if (typeof event.preventDefault === "function") {
+      event.preventDefault();
+    }
+    if (typeof event.stopPropagation === "function") {
+      event.stopPropagation();
+    }
+  }
+
+  const button = ref.blockButton;
+  if (button) {
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+  }
+
+  const video = ref.video;
+  if (!video || typeof video !== "object" || !video.id) {
+    if (button) {
+      button.disabled = false;
+      button.removeAttribute("aria-busy");
+    }
+    return;
+  }
+
+  const app = getAppInstance();
+  let result;
+  try {
+    if (typeof app?.handleModerationBlock === "function") {
+      result = app.handleModerationBlock({ video });
+    } else {
+      const doc = (ref.article && ref.article.ownerDocument) || (typeof document !== "undefined" ? document : null);
+      if (doc && typeof doc.dispatchEvent === "function") {
+        doc.dispatchEvent(
+          new CustomEvent("video:moderation-block", { detail: { video } })
+        );
+        document.dispatchEvent(
+          new CustomEvent("video:moderation-hide", { detail: { video } })
+        );
+      }
+      result = true;
+    }
+  } catch (error) {
+    if (button) {
+      button.disabled = false;
+      button.removeAttribute("aria-busy");
+    }
+    if (isDevEnv) {
+      userLogger.warn("[historyView] Moderation block handler threw:", error);
+    }
+    return;
+  }
+
+  Promise.resolve(result)
+    .then((handled) => {
+      if (handled === false) {
+        if (button) {
+          button.disabled = false;
+          button.removeAttribute("aria-busy");
+        }
+        return;
+      }
+      const context = normalizeVideoModerationContext(ref.video?.moderation);
+      applyHistoryCardModeration(ref, context);
+    })
+    .catch((error) => {
+      if (isDevEnv) {
+        userLogger.warn("[historyView] Moderation block failed:", error);
+      }
+      if (button) {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+      }
+    });
+}
+
+function refreshRegisteredHistoryCards(video, context, pointerKeys = null) {
+  const filterSet = Array.isArray(pointerKeys) && pointerKeys.length ? new Set(pointerKeys) : null;
+  const videoId = video && typeof video.id === "string" ? video.id : "";
+  historyCardRegistry.forEach((ref, pointerKey) => {
+    if (!ref) {
+      return;
+    }
+    if (filterSet && !filterSet.has(pointerKey)) {
+      return;
+    }
+    if (videoId) {
+      ref.video = video;
+    }
+    applyHistoryCardModeration(ref, context);
+  });
+}
+
 export function buildHistoryCard({ item, video, profile, metadataPreference }) {
   const article = document.createElement("article");
   article.className = "watch-history-card";
@@ -426,6 +1191,9 @@ export function buildHistoryCard({ item, video, profile, metadataPreference }) {
 
   details.appendChild(titleLink);
   details.appendChild(created);
+  const moderationMount = document.createElement("div");
+  moderationMount.className = "watch-history-card__moderation flex flex-wrap items-center gap-sm";
+  details.appendChild(moderationMount);
 
   primary.appendChild(thumbnailLink);
   primary.appendChild(details);
@@ -556,6 +1324,43 @@ export function buildHistoryCard({ item, video, profile, metadataPreference }) {
 
   article.appendChild(primary);
   article.appendChild(meta);
+
+  if (pointerVideoId) {
+    article.dataset.videoId = pointerVideoId;
+  }
+
+  const moderationContext = normalizeVideoModerationContext(video?.moderation);
+  const cardRef = {
+    pointerKey: item.pointerKey,
+    article,
+    primary,
+    meta,
+    details,
+    badgeMount: moderationMount,
+    thumbnailInner,
+    thumbnailLink,
+    titleLink,
+    playButton,
+    channelButton,
+    removeButton,
+    creatorNameButton,
+    avatarButton: creatorAvatarButton,
+    video: video || null,
+    hiddenContainer: null,
+    badgeEl: null,
+    badgeLabelEl: null,
+    badgeTextEl: null,
+    badgeIconSvg: null,
+    badgeIconWrapper: null,
+    overrideButton: null,
+    blockButton: null,
+    badgeId: "",
+    boundOverride: null,
+    boundBlock: null
+  };
+
+  registerHistoryCard(item.pointerKey, cardRef);
+  applyHistoryCardModeration(cardRef, moderationContext);
 
   return article;
 }
@@ -767,7 +1572,7 @@ export function createWatchHistoryRenderer(config = {}) {
         info: "border-info/40 bg-info/10 text-info",
         warning: "border-warning-strong bg-warning-surface text-warning-strong",
         error: "border-critical/40 bg-critical/10 text-critical"
-      }[variant] || "border-border bg-panel/70 text-text";
+      }[variant] || "border-border bg-overlay-panel-soft text-text";
 
     if (elements.toastRegion.childElementCount >= 3) {
       const firstChild = elements.toastRegion.firstElementChild;
@@ -962,6 +1767,109 @@ export function createWatchHistoryRenderer(config = {}) {
     }
   }
 
+  function handleModerationUpdate(video) {
+    if (!video || typeof video !== "object" || !video.id) {
+      return;
+    }
+
+    let workingVideo = video;
+    if (typeof structuredClone === "function") {
+      try {
+        workingVideo = structuredClone(video);
+      } catch (error) {
+        workingVideo = video;
+      }
+    } else {
+      try {
+        workingVideo = JSON.parse(JSON.stringify(video));
+      } catch (error) {
+        workingVideo = { ...video };
+        if (video.moderation && typeof video.moderation === "object") {
+          workingVideo.moderation = { ...video.moderation };
+        }
+      }
+    }
+
+    const app = getAppInstance();
+    if (typeof app?.decorateVideoModeration === "function") {
+      try {
+        const decorated = app.decorateVideoModeration(workingVideo);
+        if (decorated) {
+          workingVideo = decorated;
+        }
+      } catch (error) {
+        if (isDevEnv) {
+          userLogger.warn(
+            "[historyView] Failed to decorate moderation update:",
+            error
+          );
+        }
+      }
+    }
+
+    const context = normalizeVideoModerationContext(workingVideo?.moderation);
+    const affectedPointers = [];
+    state.items.forEach((entry) => {
+      if (!entry) {
+        return;
+      }
+      const entryVideo = entry.metadata?.video || entry.video;
+      if (entryVideo && entryVideo.id === workingVideo.id) {
+        entry.metadata.video = workingVideo;
+        entry.video = workingVideo;
+        if (entry.pointerKey) {
+          const cached = state.metadataCache.get(entry.pointerKey) || {};
+          state.metadataCache.set(entry.pointerKey, {
+            ...cached,
+            video: workingVideo
+          });
+          if (state.metadataStorageEnabled) {
+            try {
+              watchHistoryService.setLocalMetadata?.(entry.pointerKey, {
+                ...cached,
+                video: workingVideo
+              });
+            } catch (error) {
+              if (isDevEnv) {
+                userLogger.warn(
+                  "[historyView] Failed to persist moderation metadata for pointer:",
+                  entry.pointerKey,
+                  error
+                );
+              }
+            }
+          }
+          affectedPointers.push(entry.pointerKey);
+        }
+      }
+    });
+
+    refreshRegisteredHistoryCards(
+      workingVideo,
+      context,
+      affectedPointers.length ? affectedPointers : null
+    );
+  }
+
+  function subscribeToModerationEvents() {
+    if (typeof document === "undefined" || typeof document.addEventListener !== "function") {
+      return;
+    }
+    const handler = (event) => {
+      const video = event?.detail?.video;
+      if (!video) {
+        return;
+      }
+      handleModerationUpdate(video);
+    };
+    document.addEventListener("video:moderation-override", handler);
+    document.addEventListener("video:moderation-block", handler);
+    subscriptions.add(() => {
+      document.removeEventListener("video:moderation-override", handler);
+      document.removeEventListener("video:moderation-block", handler);
+    });
+  }
+
   function setLoadingState(loading) {
     state.isLoading = loading;
     if (elements.loading) {
@@ -993,6 +1901,7 @@ export function createWatchHistoryRenderer(config = {}) {
       elements.grid.innerHTML = "";
       setHidden(elements.grid, true);
     }
+    clearHistoryCardRegistry();
     if (elements.empty) {
       setTextContent(elements.empty, emptyCopy);
       setHidden(elements.empty, false);
@@ -1205,6 +2114,27 @@ export function createWatchHistoryRenderer(config = {}) {
         video: video || null,
         profile: profile || null
       };
+
+      if (metadata.video && typeof metadata.video === "object") {
+        const app = getAppInstance();
+        if (typeof app?.decorateVideoModeration === "function") {
+          try {
+            const decorated = app.decorateVideoModeration(metadata.video);
+            if (decorated) {
+              metadata.video = decorated;
+            }
+          } catch (error) {
+            if (isDevEnv) {
+              userLogger.warn(
+                "[historyView] Failed to decorate video moderation:",
+                error
+              );
+            }
+          }
+        }
+      }
+
+      video = metadata.video || null;
 
       if (pointerKeyValue) {
         state.metadataCache.set(pointerKeyValue, {
@@ -1714,6 +2644,7 @@ export function createWatchHistoryRenderer(config = {}) {
     state.cursor = 0;
     state.hasMore = state.items.length > 0;
     elements.grid.innerHTML = "";
+    clearHistoryCardRegistry();
     removeEmptyDayContainers(elements.grid);
     if (!state.items.length) {
       showEmptyState();
@@ -1742,6 +2673,7 @@ export function createWatchHistoryRenderer(config = {}) {
       subscribeToMetadataPreference();
       subscribeToRepublishEvents();
       subscribeToFingerprintUpdates();
+      subscribeToModerationEvents();
       updateInfoCallout();
       state.metadataStorageEnabled =
         typeof watchHistoryService.shouldStoreMetadata === "function"
@@ -1881,6 +2813,7 @@ export function createWatchHistoryRenderer(config = {}) {
       if (elements.grid) {
         elements.grid.innerHTML = "";
       }
+      clearHistoryCardRegistry();
       state.initialized = false;
       state.items = [];
       state.cursor = 0;
@@ -1907,6 +2840,7 @@ export function createWatchHistoryRenderer(config = {}) {
         `[data-pointer-key="${escapeSelector(pointerKeyValue)}"]`
       );
       const parentDay = card?.closest("[data-history-day]");
+      cleanupHistoryCard(pointerKeyValue);
       if (card) {
         card.remove();
       }

@@ -29,8 +29,11 @@ import {
   isLockdownMode,
 } from "./config.js";
 import AuthService from "./services/authService.js";
+import getAuthProvider, {
+  providers as authProviders,
+} from "./services/authProviders/index.js";
 import { accessControl } from "./accessControl.js";
-import { nostrClient } from "./nostr.js";
+import { nostrClient } from "./nostrClientFacade.js";
 import { userBlocks } from "./userBlocks.js";
 import { relayManager } from "./relayManager.js";
 
@@ -106,6 +109,8 @@ function getLockdownAuthService() {
     relayManager,
     logger: devLogger,
     accessControl,
+    authProviders,
+    getAuthProvider,
   });
 
   try {
@@ -509,6 +514,20 @@ async function bootstrapInterface() {
   ]);
 
   devLogger.log("Modals loaded.");
+
+  if (
+    application &&
+    typeof application.initializeLoginModalController === "function"
+  ) {
+    try {
+      application.initializeLoginModalController();
+    } catch (error) {
+      devLogger.error(
+        "[Interface] Failed to initialize login modal controller after loading markup:",
+        error,
+      );
+    }
+  }
 
   [
     "loginModal",

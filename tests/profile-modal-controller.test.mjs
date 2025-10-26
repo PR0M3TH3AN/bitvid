@@ -169,6 +169,19 @@ afterEach(() => {
   container = null;
 });
 
+function normalizeTestTag(value) {
+  if (typeof value !== 'string') {
+    return '';
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  return trimmed.replace(/^#+/, '').toLowerCase();
+}
+
 function createController(options = {}) {
   const {
     services: serviceOverrides = {},
@@ -181,6 +194,7 @@ function createController(options = {}) {
     userBlocks: userBlocksOverrides = {},
     accessControl: accessControlOverrides = {},
     nostrClient: nostrClientOverrides = {},
+    hashtagPreferences: hashtagPreferencesOverrides = {},
     ...otherServices
   } = serviceOverrides;
 
@@ -203,6 +217,57 @@ function createController(options = {}) {
     getBlockedPubkeys: () => [],
   };
 
+  const hashtagStore = {
+    interests: new Set(),
+    disinterests: new Set(),
+  };
+
+  const baseHashtagPreferences = {
+    getInterests: () => Array.from(hashtagStore.interests).sort(),
+    getDisinterests: () => Array.from(hashtagStore.disinterests).sort(),
+    addInterest: (tag) => {
+      const normalized = normalizeTestTag(tag);
+      if (!normalized) {
+        return false;
+      }
+      const moved = hashtagStore.disinterests.delete(normalized);
+      const had = hashtagStore.interests.has(normalized);
+      hashtagStore.interests.add(normalized);
+      return !had || moved;
+    },
+    removeInterest: (tag) => {
+      const normalized = normalizeTestTag(tag);
+      if (!normalized) {
+        return false;
+      }
+      return hashtagStore.interests.delete(normalized);
+    },
+    addDisinterest: (tag) => {
+      const normalized = normalizeTestTag(tag);
+      if (!normalized) {
+        return false;
+      }
+      const moved = hashtagStore.interests.delete(normalized);
+      const had = hashtagStore.disinterests.has(normalized);
+      hashtagStore.disinterests.add(normalized);
+      return !had || moved;
+    },
+    removeDisinterest: (tag) => {
+      const normalized = normalizeTestTag(tag);
+      if (!normalized) {
+        return false;
+      }
+      return hashtagStore.disinterests.delete(normalized);
+    },
+    publish: async () => ({ ok: true }),
+    on: () => () => {},
+  };
+
+  const hashtagPreferences = {
+    ...baseHashtagPreferences,
+    ...hashtagPreferencesOverrides,
+  };
+
   const baseAccessControl = {
     ensureReady: async () => {},
     canEditAdminLists: () => false,
@@ -223,6 +288,15 @@ function createController(options = {}) {
     userBlocks: { ...baseUserBlocks, ...userBlocksOverrides },
     accessControl: { ...baseAccessControl, ...accessControlOverrides },
     nostrClient: { sessionActor: { pubkey: null }, ...nostrClientOverrides },
+    hashtagPreferences,
+    getHashtagPreferences: () => ({
+      interests: hashtagPreferences.getInterests(),
+      disinterests: hashtagPreferences.getDisinterests(),
+      eventId: null,
+      createdAt: null,
+      loaded: true,
+    }),
+    describeHashtagPreferencesError: () => '',
     onAccessControlUpdated: async () => {},
     describeAdminError: () => 'Unable to update moderation settings. Please try again.',
     describeNotificationError: () => '',
@@ -433,6 +507,69 @@ for (const _ of [0]) {
     });
   });
 
+  test('wallet URI input masks persisted values and restores on focus', async (t) => {
+    const controller = createController();
+    await controller.load();
+
+    controller.state.setActivePubkey('a'.repeat(64));
+
+    await controller.show('wallet');
+
+    const sampleUri =
+      'nostr+walletconnect://pub1?relay=wss://relay.example.com';
+    await controller.services.nwcSettings.updateActiveNwcSettings({
+      nwcUri: sampleUri,
+      defaultZap: 21,
+    });
+
+    controller.refreshWalletPaneState();
+
+    assert.ok(
+      controller.walletUriInput instanceof window.HTMLElement,
+      'wallet URI input should exist',
+    );
+    assert.equal(controller.walletUriInput.value, '*****');
+    assert.equal(controller.walletUriInput.dataset.secretValue, sampleUri);
+    assert.equal(
+      controller.walletDisconnectButton?.classList.contains('hidden'),
+      false,
+      'disconnect button should remain visible when a URI exists',
+    );
+
+    const formValues = controller.getWalletFormValues();
+    assert.equal(formValues.uri, sampleUri);
+
+    controller.walletUriInput.dispatchEvent(new window.Event('focus'));
+    assert.equal(controller.walletUriInput.value, sampleUri);
+
+    controller.walletUriInput.dispatchEvent(new window.Event('blur'));
+    assert.equal(controller.walletUriInput.value, '*****');
+
+    controller.walletUriInput.dispatchEvent(new window.Event('focus'));
+    const updatedUri = `${sampleUri}&name=bitvid`;
+    controller.walletUriInput.value = updatedUri;
+    controller.walletUriInput.dispatchEvent(new window.Event('input'));
+    controller.walletUriInput.dispatchEvent(new window.Event('blur'));
+
+    const updatedValues = controller.getWalletFormValues();
+    assert.equal(updatedValues.uri, updatedUri);
+    assert.equal(controller.walletUriInput.value, '*****');
+
+    controller.walletUriInput.dispatchEvent(new window.Event('focus'));
+    controller.walletUriInput.value = '';
+    controller.walletUriInput.dispatchEvent(new window.Event('input'));
+    controller.walletUriInput.dispatchEvent(new window.Event('blur'));
+
+    assert.equal(controller.walletUriInput.value, '');
+    assert.equal(controller.walletUriInput.dataset.secretValue, undefined);
+
+    t.after(() => {
+      try {
+        controller.hide({ silent: true });
+      } catch {}
+    });
+  });
+
   test('Profile modal uses abbreviated npub display', async () => {
     const sampleProfiles = [
       {
@@ -440,12 +577,16 @@ for (const _ of [0]) {
         npub: 'npub1abcdefghijkmnopqrstuvwxyz1234567890example',
         name: '',
         picture: '',
+        providerId: 'nip07',
+        authType: 'nip07',
       },
       {
         pubkey: 'b'.repeat(64),
         npub: 'npub1zyxwvutsrqponmlkjihgfedcba1234567890sample',
         name: '',
         picture: '',
+        providerId: 'nsec',
+        authType: 'nsec',
       },
     ];
 
@@ -469,6 +610,264 @@ for (const _ of [0]) {
     assert.ok(switcherNpubEl, 'switcher should render the secondary profile');
     const expectedSwitcher = formatShortNpub(sampleProfiles[1].npub);
     assert.equal(switcherNpubEl.textContent, expectedSwitcher);
+  });
+
+  test('renderSavedProfiles applies provider metadata', async () => {
+    const sampleProfiles = [
+      {
+        pubkey: defaultActorHex,
+        npub: 'npub1abcdefghijkmnopqrstuvwxyz1234567890example',
+        name: 'Primary Account',
+        picture: '',
+        providerId: 'nip07',
+        authType: 'nip07',
+      },
+      {
+        pubkey: 'b'.repeat(64),
+        npub: 'npub1zyxwvutsrqponmlkjihgfedcba1234567890sample',
+        name: 'Backup',
+        picture: '',
+        providerId: 'nsec',
+        authType: 'nsec',
+      },
+    ];
+
+    const controller = createController({
+      services: {
+        formatShortNpub,
+      },
+    });
+
+    await controller.load();
+
+    controller.state.setSavedProfiles(sampleProfiles);
+    controller.state.setActivePubkey(null);
+
+    controller.renderSavedProfiles();
+
+    const buttons = Array.from(
+      controller.switcherList.querySelectorAll('button[data-provider-id]'),
+    );
+
+    assert.equal(buttons.length, 2, 'expected two provider entries in the switcher');
+
+    const [extensionButton, directKeyButton] = buttons;
+
+    assert.equal(extensionButton.dataset.providerId, 'nip07');
+    const extensionLabel = extensionButton.querySelector('[data-provider-variant]');
+    assert.ok(extensionLabel, 'extension entry should include a provider badge');
+    assert.equal(extensionLabel.textContent, 'extension (nip-07)');
+    assert.equal(extensionLabel.dataset.providerVariant, 'info');
+    assert.equal(extensionButton.getAttribute('aria-pressed'), 'false');
+
+    assert.equal(directKeyButton.dataset.providerId, 'nsec');
+    const directKeyLabel = directKeyButton.querySelector('[data-provider-variant]');
+    assert.ok(directKeyLabel, 'direct key entry should include a provider badge');
+    assert.equal(
+      directKeyLabel.textContent,
+      'nsec or seed (direct private key)',
+    );
+    assert.equal(directKeyLabel.dataset.providerVariant, 'warning');
+    assert.equal(directKeyButton.getAttribute('aria-pressed'), 'false');
+  });
+
+  test('Hashtag pane shows empty states by default', async (t) => {
+    const controller = createController();
+    await controller.load();
+    applyDesignSystemAttributes(document);
+
+    let cleanupRan = false;
+    const cleanup = () => {
+      try {
+        controller.hide({ silent: true });
+      } catch {}
+      cleanupRan = true;
+    };
+
+    try {
+      await controller.show('hashtags');
+      await waitForAnimationFrame(window, 2);
+
+      const interestList = document.getElementById('profileHashtagInterestList');
+      const interestEmpty = document.getElementById('profileHashtagInterestEmpty');
+      const disinterestList = document.getElementById('profileHashtagDisinterestList');
+      const disinterestEmpty = document.getElementById(
+        'profileHashtagDisinterestEmpty',
+      );
+
+      assert.ok(interestList && interestEmpty && disinterestList && disinterestEmpty);
+      assert.equal(interestList?.classList.contains('hidden'), true);
+      assert.equal(interestEmpty?.classList.contains('hidden'), false);
+      assert.equal(disinterestList?.classList.contains('hidden'), true);
+      assert.equal(disinterestEmpty?.classList.contains('hidden'), false);
+    } finally {
+      cleanup();
+    }
+
+    t.after(() => {
+      if (!cleanupRan) {
+        cleanup();
+      }
+      resetRuntimeFlags();
+    });
+  });
+
+  test('Hashtag pane adds, moves, and removes tags', async (t) => {
+    const controller = createController();
+    await controller.load();
+    applyDesignSystemAttributes(document);
+
+    let cleanupRan = false;
+    const cleanup = () => {
+      try {
+        controller.hide({ silent: true });
+      } catch {}
+      cleanupRan = true;
+    };
+
+    try {
+      await controller.show('hashtags');
+      await waitForAnimationFrame(window, 2);
+
+      controller.hashtagInterestInput.value = '#nostr';
+      controller.addHashtagInterestButton.click();
+      await waitForAnimationFrame(window, 2);
+
+      const interestList = document.getElementById('profileHashtagInterestList');
+      assert.equal(interestList?.classList.contains('hidden'), false);
+      assert.equal(interestList?.querySelectorAll('li').length, 1);
+      const interestLabel = interestList?.querySelector('li span');
+      assert.equal(interestLabel?.textContent, '#nostr');
+
+      const disinterestList = document.getElementById('profileHashtagDisinterestList');
+      const disinterestEmpty = document.getElementById('profileHashtagDisinterestEmpty');
+      assert.equal(disinterestList?.classList.contains('hidden'), true);
+      assert.equal(disinterestEmpty?.classList.contains('hidden'), false);
+
+      controller.hashtagDisinterestInput.value = '#nostr';
+      controller.addHashtagDisinterestButton.click();
+      await waitForAnimationFrame(window, 2);
+
+      assert.equal(interestList?.querySelectorAll('li').length, 0);
+      const interestEmpty = document.getElementById('profileHashtagInterestEmpty');
+      assert.equal(interestEmpty?.classList.contains('hidden'), false);
+
+      assert.equal(disinterestList?.classList.contains('hidden'), false);
+      assert.equal(disinterestList?.querySelectorAll('li').length, 1);
+      const disinterestLabel = disinterestList?.querySelector('li span');
+      assert.equal(disinterestLabel?.textContent, '#nostr');
+
+      const removeButton = disinterestList?.querySelector(
+        'button.profile-hashtag-remove',
+      );
+      assert.ok(removeButton);
+      removeButton.click();
+      await waitForAnimationFrame(window, 2);
+
+      assert.equal(disinterestList?.querySelectorAll('li').length, 0);
+      assert.equal(disinterestEmpty?.classList.contains('hidden'), false);
+    } finally {
+      cleanup();
+    }
+
+    t.after(() => {
+      if (!cleanupRan) {
+        cleanup();
+      }
+      resetRuntimeFlags();
+    });
+  });
+
+  test('handleAddHashtagPreference publishes updates', async (t) => {
+    const publishCalls = [];
+    const controller = createController({
+      services: {
+        hashtagPreferences: {
+          publish: async (payload) => {
+            publishCalls.push(payload);
+            return { ok: true };
+          },
+        },
+      },
+    });
+    await controller.load();
+    applyDesignSystemAttributes(document);
+
+    controller.state.setActivePubkey(defaultActorHex);
+
+    let cleanupRan = false;
+    const cleanup = () => {
+      try {
+        controller.hide({ silent: true });
+      } catch {}
+      cleanupRan = true;
+    };
+
+    try {
+      await controller.show('hashtags');
+      await waitForAnimationFrame(window, 2);
+
+      controller.hashtagInterestInput.value = '#nostr';
+      const result = await controller.handleAddHashtagPreference('interest');
+
+      assert.equal(result.success, true);
+      assert.equal(publishCalls.length, 1);
+      assert.deepEqual(publishCalls[0], { pubkey: defaultActorHex });
+    } finally {
+      cleanup();
+    }
+
+    t.after(() => {
+      if (!cleanupRan) {
+        cleanup();
+      }
+      resetRuntimeFlags();
+    });
+  });
+
+  test('Hashtag pane resets after logout when service clears tags', async (t) => {
+    const controller = createController();
+    await controller.load();
+    applyDesignSystemAttributes(document);
+
+    let cleanupRan = false;
+    const cleanup = () => {
+      try {
+        controller.hide({ silent: true });
+      } catch {}
+      cleanupRan = true;
+    };
+
+    try {
+      await controller.show('hashtags');
+      await waitForAnimationFrame(window, 2);
+
+      controller.hashtagInterestInput.value = 'art';
+      controller.addHashtagInterestButton.click();
+      await waitForAnimationFrame(window, 2);
+
+      const interestList = document.getElementById('profileHashtagInterestList');
+      assert.equal(interestList?.querySelectorAll('li').length, 1);
+
+      controller.hashtagPreferencesService.removeInterest('art');
+      await controller.handleAuthLogout({});
+      await waitForAnimationFrame(window, 2);
+
+      const interestEmpty = document.getElementById('profileHashtagInterestEmpty');
+      const disinterestEmpty = document.getElementById('profileHashtagDisinterestEmpty');
+      assert.equal(interestList?.querySelectorAll('li').length, 0);
+      assert.equal(interestEmpty?.classList.contains('hidden'), false);
+      assert.equal(disinterestEmpty?.classList.contains('hidden'), false);
+    } finally {
+      cleanup();
+    }
+
+    t.after(() => {
+      if (!cleanupRan) {
+        cleanup();
+      }
+      resetRuntimeFlags();
+    });
   });
 }
 

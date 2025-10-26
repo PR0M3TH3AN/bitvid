@@ -1,4 +1,6 @@
 import {
+  DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+  DEFAULT_BLUR_THRESHOLD,
   DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
   DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
   getTrustedMuteHideThreshold,
@@ -11,6 +13,7 @@ import {
   removeUrlHealthFromStorage,
   writeUrlHealthToStorage,
 } from "../utils/storage.js";
+import createProfileSettingsStore from "./profileSettingsStore.js";
 
 const PROFILE_CACHE_STORAGE_KEY = "bitvid:profileCache:v1";
 const PROFILE_CACHE_VERSION = 1;
@@ -29,53 +32,85 @@ const HEX64_REGEX = /^[0-9a-f]{64}$/i;
 const MODERATION_OVERRIDE_STORAGE_KEY = "bitvid:moderationOverrides:v1";
 const MODERATION_OVERRIDE_STORAGE_VERSION = 1;
 const MODERATION_SETTINGS_STORAGE_KEY = "bitvid:moderationSettings:v1";
-const MODERATION_SETTINGS_STORAGE_VERSION = 1;
+const MODERATION_SETTINGS_STORAGE_VERSION = 2;
 
 function computeDefaultModerationSettings() {
-  let runtimeMuteHide = DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD;
-  let runtimeSpamHide = DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD;
+  const defaultBlur = sanitizeModerationThreshold(
+    DEFAULT_BLUR_THRESHOLD,
+    DEFAULT_BLUR_THRESHOLD,
+  );
+  const defaultAutoplay = sanitizeModerationThreshold(
+    DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+    DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+  );
+  const defaultTrustedMute = sanitizeModerationThreshold(
+    DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
+    DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
+  );
+  const defaultTrustedSpam = sanitizeModerationThreshold(
+    DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
+    DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
+  );
+
+  let runtimeMuteHide = defaultTrustedMute;
+  let runtimeSpamHide = defaultTrustedSpam;
 
   try {
     if (typeof getTrustedMuteHideThreshold === "function") {
-      runtimeMuteHide = getTrustedMuteHideThreshold();
+      runtimeMuteHide = sanitizeModerationThreshold(
+        getTrustedMuteHideThreshold(),
+        defaultTrustedMute,
+      );
     }
   } catch (error) {
     userLogger.warn(
       "[cache.computeDefaultModerationSettings] Failed to read runtime mute hide threshold:",
       error,
     );
+    runtimeMuteHide = defaultTrustedMute;
   }
 
   try {
     if (typeof getTrustedSpamHideThreshold === "function") {
-      runtimeSpamHide = getTrustedSpamHideThreshold();
+      runtimeSpamHide = sanitizeModerationThreshold(
+        getTrustedSpamHideThreshold(),
+        defaultTrustedSpam,
+      );
     }
   } catch (error) {
     userLogger.warn(
       "[cache.computeDefaultModerationSettings] Failed to read runtime spam hide threshold:",
       error,
     );
+    runtimeSpamHide = defaultTrustedSpam;
   }
 
   return {
-    blurThreshold: 3,
-    autoplayBlockThreshold: 2,
+    blurThreshold: defaultBlur,
+    autoplayBlockThreshold: defaultAutoplay,
     trustedMuteHideThreshold: sanitizeModerationThreshold(
       runtimeMuteHide,
-      DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
+      defaultTrustedMute,
     ),
     trustedSpamHideThreshold: sanitizeModerationThreshold(
       runtimeSpamHide,
-      DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
+      defaultTrustedSpam,
     ),
   };
 }
 
-const DEFAULT_MODERATION_SETTINGS = Object.freeze(computeDefaultModerationSettings());
-
 function createDefaultModerationSettings() {
   return { ...computeDefaultModerationSettings() };
 }
+
+const GLOBAL_MODERATION_PROFILE_KEY = "__global__";
+const moderationSettingsStore = createProfileSettingsStore({
+  clone: (value) => ({ ...value }),
+});
+moderationSettingsStore.set(
+  GLOBAL_MODERATION_PROFILE_KEY,
+  createDefaultModerationSettings(),
+);
 
 function sanitizeModerationThreshold(value, fallback) {
   if (value === null || value === undefined) {
@@ -111,7 +146,6 @@ const profileCache = new Map();
 const urlHealthCache = new Map();
 const urlHealthInFlight = new Map();
 const moderationOverrides = new Map();
-let moderationSettings = createDefaultModerationSettings();
 
 function hasSavedProfilesChanged(previousProfiles, nextProfiles) {
   if (previousProfiles === nextProfiles) {
@@ -228,6 +262,7 @@ export function setActiveProfilePubkey(pubkey, { persist = true } = {}) {
   }
 
   activeProfilePubkey = nextValue;
+  ensureModerationSettingsForKey(getActiveModerationStoreKey());
   if (persist) {
     persistSavedProfiles({ persistActive: true });
   }
@@ -360,7 +395,14 @@ export function persistSavedProfiles({ persistActive = true } = {}) {
         typeof entry.npub === "string" && entry.npub.trim() ? entry.npub.trim() : null,
       name: typeof entry.name === "string" ? entry.name : "",
       picture: typeof entry.picture === "string" ? entry.picture : "",
-      authType: entry.authType === "nsec" ? "nsec" : "nip07",
+      authType:
+        typeof entry.authType === "string" && entry.authType.trim()
+          ? entry.authType.trim()
+          : null,
+      providerId:
+        typeof entry.providerId === "string" && entry.providerId.trim()
+          ? entry.providerId.trim()
+          : null,
     })),
     activePubkey: activePubkeyToPersist,
   };
@@ -408,7 +450,43 @@ export function loadSavedProfilesFromStorage() {
         }
 
         seenPubkeys.add(normalizedPubkey);
-        const storedAuthType = candidate.authType === "nsec" ? "nsec" : "nip07";
+        const rawAuthType =
+          typeof candidate.authType === "string" ? candidate.authType : null;
+        let storedAuthType = null;
+        if (rawAuthType) {
+          const trimmedAuthType = rawAuthType.trim();
+          if (trimmedAuthType) {
+            storedAuthType = trimmedAuthType;
+            if (trimmedAuthType !== rawAuthType) {
+              needsRewrite = true;
+            }
+          }
+        }
+
+        if (!storedAuthType) {
+          storedAuthType = "nip07";
+          if (rawAuthType !== "nip07") {
+            needsRewrite = true;
+          }
+        }
+        const rawProviderId =
+          typeof candidate.providerId === "string" ? candidate.providerId : null;
+        let storedProviderId = null;
+        if (rawProviderId) {
+          const trimmedProviderId = rawProviderId.trim();
+          if (trimmedProviderId) {
+            storedProviderId = trimmedProviderId;
+            if (trimmedProviderId !== rawProviderId) {
+              needsRewrite = true;
+            }
+          }
+        }
+        if (!storedProviderId && storedAuthType) {
+          storedProviderId = storedAuthType;
+          if (rawProviderId !== storedProviderId) {
+            needsRewrite = true;
+          }
+        }
         const npub =
           typeof candidate.npub === "string" && candidate.npub.trim()
             ? candidate.npub.trim()
@@ -420,6 +498,7 @@ export function loadSavedProfilesFromStorage() {
           name: typeof candidate.name === "string" ? candidate.name : "",
           picture: typeof candidate.picture === "string" ? candidate.picture : "",
           authType: storedAuthType,
+          providerId: storedProviderId,
         };
 
         if (
@@ -765,68 +844,152 @@ function haveModerationSettingsChanged(previous, next) {
   );
 }
 
+function getModerationStoreKeyForPubkey(pubkey) {
+  const normalized = normalizeHexPubkey(pubkey);
+  return normalized || GLOBAL_MODERATION_PROFILE_KEY;
+}
+
+function getActiveModerationStoreKey() {
+  return getModerationStoreKeyForPubkey(activeProfilePubkey);
+}
+
+function ensureModerationSettingsForKey(key) {
+  const storeKey = key || GLOBAL_MODERATION_PROFILE_KEY;
+  if (!moderationSettingsStore.has(storeKey)) {
+    moderationSettingsStore.set(storeKey, createDefaultModerationSettings());
+  }
+  return moderationSettingsStore.get(storeKey);
+}
+
 export function getDefaultModerationSettings() {
   return createDefaultModerationSettings();
 }
 
+export function getModerationSettingsForPubkey(pubkey) {
+  const key = getModerationStoreKeyForPubkey(pubkey);
+  const settings = ensureModerationSettingsForKey(key);
+  return { ...settings };
+}
+
 export function getModerationSettings() {
-  return { ...moderationSettings };
+  return getModerationSettingsForPubkey(activeProfilePubkey);
 }
 
 export function loadModerationSettingsFromStorage() {
+  moderationSettingsStore.clear();
+  moderationSettingsStore.set(
+    GLOBAL_MODERATION_PROFILE_KEY,
+    createDefaultModerationSettings(),
+  );
+
   if (typeof localStorage === "undefined") {
-    moderationSettings = createDefaultModerationSettings();
     return getModerationSettings();
   }
 
   const raw = localStorage.getItem(MODERATION_SETTINGS_STORAGE_KEY);
   if (!raw) {
-    moderationSettings = createDefaultModerationSettings();
     return getModerationSettings();
   }
+
+  let shouldRewrite = false;
 
   try {
     const payload = JSON.parse(raw);
     if (!payload || typeof payload !== "object") {
-      moderationSettings = createDefaultModerationSettings();
-      return getModerationSettings();
+      shouldRewrite = true;
+    } else if (payload.version === 1) {
+      const defaults = createDefaultModerationSettings();
+      const overrides =
+        payload.overrides && typeof payload.overrides === "object"
+          ? payload.overrides
+          : {};
+
+      const legacySettings = {
+        blurThreshold: sanitizeModerationThreshold(
+          overrides.blurThreshold,
+          defaults.blurThreshold,
+        ),
+        autoplayBlockThreshold: sanitizeModerationThreshold(
+          overrides.autoplayBlockThreshold,
+          defaults.autoplayBlockThreshold,
+        ),
+        trustedMuteHideThreshold: sanitizeModerationThreshold(
+          overrides.trustedMuteHideThreshold,
+          defaults.trustedMuteHideThreshold,
+        ),
+        trustedSpamHideThreshold: sanitizeModerationThreshold(
+          overrides.trustedSpamHideThreshold,
+          defaults.trustedSpamHideThreshold,
+        ),
+      };
+
+      moderationSettingsStore.set(
+        GLOBAL_MODERATION_PROFILE_KEY,
+        legacySettings,
+      );
+      shouldRewrite = true;
+    } else if (payload.version === MODERATION_SETTINGS_STORAGE_VERSION) {
+      const defaults = createDefaultModerationSettings();
+      const entries =
+        payload.entries && typeof payload.entries === "object"
+          ? payload.entries
+          : {};
+
+      for (const [key, entry] of Object.entries(entries)) {
+        if (!entry || typeof entry !== "object") {
+          shouldRewrite = true;
+          continue;
+        }
+
+        const overrides =
+          entry.overrides && typeof entry.overrides === "object"
+            ? entry.overrides
+            : {};
+
+        const storeKey =
+          key === "default"
+            ? GLOBAL_MODERATION_PROFILE_KEY
+            : getModerationStoreKeyForPubkey(key);
+
+        if (!storeKey) {
+          shouldRewrite = true;
+          continue;
+        }
+
+        const settings = {
+          blurThreshold: sanitizeModerationThreshold(
+            overrides.blurThreshold,
+            defaults.blurThreshold,
+          ),
+          autoplayBlockThreshold: sanitizeModerationThreshold(
+            overrides.autoplayBlockThreshold,
+            defaults.autoplayBlockThreshold,
+          ),
+          trustedMuteHideThreshold: sanitizeModerationThreshold(
+            overrides.trustedMuteHideThreshold,
+            defaults.trustedMuteHideThreshold,
+          ),
+          trustedSpamHideThreshold: sanitizeModerationThreshold(
+            overrides.trustedSpamHideThreshold,
+            defaults.trustedSpamHideThreshold,
+          ),
+        };
+
+        moderationSettingsStore.set(storeKey, settings);
+      }
+    } else {
+      shouldRewrite = true;
     }
-
-    if (payload.version !== MODERATION_SETTINGS_STORAGE_VERSION) {
-      moderationSettings = createDefaultModerationSettings();
-      return getModerationSettings();
-    }
-
-    const defaults = createDefaultModerationSettings();
-    const overrides =
-      payload.overrides && typeof payload.overrides === "object"
-        ? payload.overrides
-        : {};
-
-    moderationSettings = {
-      blurThreshold: sanitizeModerationThreshold(
-        overrides.blurThreshold,
-        defaults.blurThreshold,
-      ),
-      autoplayBlockThreshold: sanitizeModerationThreshold(
-        overrides.autoplayBlockThreshold,
-        defaults.autoplayBlockThreshold,
-      ),
-      trustedMuteHideThreshold: sanitizeModerationThreshold(
-        overrides.trustedMuteHideThreshold,
-        defaults.trustedMuteHideThreshold,
-      ),
-      trustedSpamHideThreshold: sanitizeModerationThreshold(
-        overrides.trustedSpamHideThreshold,
-        defaults.trustedSpamHideThreshold,
-      ),
-    };
   } catch (error) {
-    moderationSettings = createDefaultModerationSettings();
     userLogger.warn(
       "[cache.loadModerationSettingsFromStorage] Failed to parse payload:",
       error,
     );
+    shouldRewrite = true;
+  }
+
+  if (shouldRewrite) {
+    persistModerationSettingsToStorage();
   }
 
   return getModerationSettings();
@@ -838,31 +1001,46 @@ function persistModerationSettingsToStorage() {
   }
 
   const defaults = createDefaultModerationSettings();
-  const overrides = {};
+  const entries = {};
 
-  if (moderationSettings.blurThreshold !== defaults.blurThreshold) {
-    overrides.blurThreshold = moderationSettings.blurThreshold;
+  for (const [key, value] of moderationSettingsStore.entries()) {
+    const settings =
+      value && typeof value === "object"
+        ? value
+        : createDefaultModerationSettings();
+
+    const overrides = {};
+
+    if (settings.blurThreshold !== defaults.blurThreshold) {
+      overrides.blurThreshold = settings.blurThreshold;
+    }
+
+    if (settings.autoplayBlockThreshold !== defaults.autoplayBlockThreshold) {
+      overrides.autoplayBlockThreshold = settings.autoplayBlockThreshold;
+    }
+
+    if (settings.trustedMuteHideThreshold !== defaults.trustedMuteHideThreshold) {
+      overrides.trustedMuteHideThreshold = settings.trustedMuteHideThreshold;
+    }
+
+    if (settings.trustedSpamHideThreshold !== defaults.trustedSpamHideThreshold) {
+      overrides.trustedSpamHideThreshold = settings.trustedSpamHideThreshold;
+    }
+
+    if (Object.keys(overrides).length === 0) {
+      continue;
+    }
+
+    const storageKey =
+      key === GLOBAL_MODERATION_PROFILE_KEY ? "default" : key;
+
+    entries[storageKey] = {
+      overrides,
+      savedAt: Date.now(),
+    };
   }
 
-  if (moderationSettings.autoplayBlockThreshold !== defaults.autoplayBlockThreshold) {
-    overrides.autoplayBlockThreshold = moderationSettings.autoplayBlockThreshold;
-  }
-
-  if (
-    moderationSettings.trustedMuteHideThreshold !==
-    defaults.trustedMuteHideThreshold
-  ) {
-    overrides.trustedMuteHideThreshold = moderationSettings.trustedMuteHideThreshold;
-  }
-
-  if (
-    moderationSettings.trustedSpamHideThreshold !==
-    defaults.trustedSpamHideThreshold
-  ) {
-    overrides.trustedSpamHideThreshold = moderationSettings.trustedSpamHideThreshold;
-  }
-
-  if (Object.keys(overrides).length === 0) {
+  if (Object.keys(entries).length === 0) {
     try {
       localStorage.removeItem(MODERATION_SETTINGS_STORAGE_KEY);
     } catch (error) {
@@ -876,7 +1054,7 @@ function persistModerationSettingsToStorage() {
 
   const payload = {
     version: MODERATION_SETTINGS_STORAGE_VERSION,
-    overrides,
+    entries,
     savedAt: Date.now(),
   };
 
@@ -894,8 +1072,10 @@ function persistModerationSettingsToStorage() {
 }
 
 export function setModerationSettings(partial = {}, { persist = true } = {}) {
+  const key = getActiveModerationStoreKey();
   const defaults = createDefaultModerationSettings();
-  const next = { ...moderationSettings };
+  const current = ensureModerationSettingsForKey(key);
+  const next = { ...current };
   let changed = false;
 
   if (Object.prototype.hasOwnProperty.call(partial, "blurThreshold")) {
@@ -950,33 +1130,35 @@ export function setModerationSettings(partial = {}, { persist = true } = {}) {
     if (persist) {
       persistModerationSettingsToStorage();
     }
-    return { ...moderationSettings };
+    return ensureModerationSettingsForKey(key);
   }
 
-  moderationSettings = next;
+  moderationSettingsStore.set(key, next);
 
   if (persist) {
     persistModerationSettingsToStorage();
   }
 
-  return { ...moderationSettings };
+  return ensureModerationSettingsForKey(key);
 }
 
 export function resetModerationSettings({ persist = true } = {}) {
-  const previous = moderationSettings;
-  moderationSettings = createDefaultModerationSettings();
+  const key = getActiveModerationStoreKey();
+  const previous = ensureModerationSettingsForKey(key);
+  const defaults = createDefaultModerationSettings();
+  moderationSettingsStore.set(key, defaults);
 
-  const changed = haveModerationSettingsChanged(previous, moderationSettings);
+  const changed = haveModerationSettingsChanged(previous, defaults);
 
   if (persist) {
     persistModerationSettingsToStorage();
   }
 
   if (!changed) {
-    return { ...moderationSettings };
+    return ensureModerationSettingsForKey(key);
   }
 
-  return { ...moderationSettings };
+  return ensureModerationSettingsForKey(key);
 }
 
 export function getModerationOverridesMap() {

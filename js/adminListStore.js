@@ -9,10 +9,8 @@ import {
   ADMIN_COMMUNITY_BLACKLIST_PREFIX,
   isDevMode,
 } from "./config.js";
-import {
-  nostrClient,
-  requestDefaultExtensionPermissions,
-} from "./nostr.js";
+import { getRegisteredNostrClient } from "./nostrClientRegistry.js";
+import { requestDefaultExtensionPermissions } from "./nostr/defaultClient.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import {
   buildAdminListEvent,
@@ -38,6 +36,17 @@ function createError(code, message, cause) {
     error.cause = cause;
   }
   return error;
+}
+
+function requireNostrClient() {
+  const client = getRegisteredNostrClient();
+  if (!client) {
+    throw createError(
+      "nostr-unavailable",
+      "Nostr relay pool is not initialized.",
+    );
+  }
+  return client;
 }
 
 function normalizeNpub(value) {
@@ -350,10 +359,12 @@ function clearLegacyStorageFor(listKey) {
 }
 
 function ensureNostrReady() {
-  if (!nostrClient || !nostrClient.pool) {
+  const nostrClient = requireNostrClient();
+
+  if (!nostrClient.pool) {
     throw createError(
       "nostr-unavailable",
-      "Nostr relay pool is not initialized."
+      "Nostr relay pool is not initialized.",
     );
   }
 
@@ -578,6 +589,7 @@ function extractNpubsFromEvent(event) {
 }
 
 async function fetchLatestListEvent(filter, contextLabel = "admin-list") {
+  const nostrClient = requireNostrClient();
   const relays = ensureNostrReady();
 
   const normalizedFilter = {};
@@ -876,6 +888,7 @@ function publishListWithFirstAcceptance(pool, relays, event, options = {}) {
 }
 
 async function persistNostrState(actorNpub, updates = {}) {
+  const nostrClient = requireNostrClient();
   ensureNostrReady();
   const permissionResult = await requestDefaultExtensionPermissions();
   if (!permissionResult.ok) {

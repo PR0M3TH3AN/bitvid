@@ -1,51 +1,24 @@
-export const DEFAULT_TRUST_SEED_NPUBS = Object.freeze([
-  // Rollout: trust seeds count as F1 contacts. Rollback: flip FEATURE_TRUST_SEEDS to false.
-  "npub1424242424242424242424242424242424242424242424242424qamrcaj",
-  "npub1hwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwasxw04hu",
-]);
+import {
+  DEFAULT_AUTOPLAY_BLOCK_THRESHOLD as CONFIG_DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+  DEFAULT_BLUR_THRESHOLD as CONFIG_DEFAULT_BLUR_THRESHOLD,
+  DEFAULT_TRUST_SEED_NPUBS as CONFIG_DEFAULT_TRUST_SEED_NPUBS,
+  DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD as CONFIG_DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
+  DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD as CONFIG_DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
+} from "./config.js";
 
-const DEFAULT_FLAGS = Object.freeze({
-  URL_FIRST_ENABLED: true, // try URL before magnet in the player
-  ACCEPT_LEGACY_V1: true, // accept v1 magnet-only notes
-  VIEW_FILTER_INCLUDE_LEGACY_VIDEO: false,
-  FEATURE_WATCH_HISTORY_V2: true,
-  FEATURE_PUBLISH_NIP71: false,
-  FEATURE_TRUST_SEEDS: true, // Rollback: disable to drop baseline trust seeds without code changes.
-  FEATURE_TRUSTED_HIDE_CONTROLS: true,
-  TRUSTED_MUTE_HIDE_THRESHOLD: 1,
-  TRUSTED_SPAM_HIDE_THRESHOLD: 3,
-  WSS_TRACKERS: Object.freeze([
-    "wss://tracker.openwebtorrent.com",
-    "wss://tracker.fastcast.nz",
-    "wss://tracker.webtorrent.dev",
-    "wss://tracker.sloppyta.co:443/announce",
-  ]),
-});
-
-const globalScope = typeof globalThis === "object" && globalThis ? globalThis : undefined;
-
-const runtimeFlags = (() => {
-  if (globalScope && typeof globalScope.__BITVID_RUNTIME_FLAGS__ === "object") {
-    return globalScope.__BITVID_RUNTIME_FLAGS__;
+function coerceNonNegativeInteger(value, fallback) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return fallback;
   }
-  const initial = {
-    URL_FIRST_ENABLED: DEFAULT_FLAGS.URL_FIRST_ENABLED,
-    ACCEPT_LEGACY_V1: DEFAULT_FLAGS.ACCEPT_LEGACY_V1,
-    VIEW_FILTER_INCLUDE_LEGACY_VIDEO:
-      DEFAULT_FLAGS.VIEW_FILTER_INCLUDE_LEGACY_VIDEO,
-    FEATURE_WATCH_HISTORY_V2: DEFAULT_FLAGS.FEATURE_WATCH_HISTORY_V2,
-    FEATURE_PUBLISH_NIP71: DEFAULT_FLAGS.FEATURE_PUBLISH_NIP71,
-    FEATURE_TRUST_SEEDS: DEFAULT_FLAGS.FEATURE_TRUST_SEEDS,
-    FEATURE_TRUSTED_HIDE_CONTROLS: DEFAULT_FLAGS.FEATURE_TRUSTED_HIDE_CONTROLS,
-    TRUSTED_MUTE_HIDE_THRESHOLD: DEFAULT_FLAGS.TRUSTED_MUTE_HIDE_THRESHOLD,
-    TRUSTED_SPAM_HIDE_THRESHOLD: DEFAULT_FLAGS.TRUSTED_SPAM_HIDE_THRESHOLD,
-    WSS_TRACKERS: [...DEFAULT_FLAGS.WSS_TRACKERS],
-  };
-  if (globalScope) {
-    globalScope.__BITVID_RUNTIME_FLAGS__ = initial;
+
+  const sanitized = Math.max(0, Math.floor(numeric));
+  if (!Number.isFinite(sanitized)) {
+    return fallback;
   }
-  return initial;
-})();
+
+  return sanitized;
+}
 
 function coerceBoolean(value, fallback) {
   if (typeof value === "boolean") {
@@ -69,8 +42,13 @@ function coerceBoolean(value, fallback) {
   return Boolean(value);
 }
 
-function sanitizeTrackerList(candidate) {
-  const input = Array.isArray(candidate) ? candidate : DEFAULT_FLAGS.WSS_TRACKERS;
+function freezeTrackers(list) {
+  return Object.freeze([...list]);
+}
+
+function sanitizeTrackerList(candidate, fallbackTrackers) {
+  const fallback = Array.isArray(fallbackTrackers) ? fallbackTrackers : [];
+  const input = Array.isArray(candidate) ? candidate : fallback;
   const seen = new Set();
   const sanitized = [];
 
@@ -94,29 +72,114 @@ function sanitizeTrackerList(candidate) {
   }
 
   if (!sanitized.length) {
-    return [...DEFAULT_FLAGS.WSS_TRACKERS];
+    return [...fallback];
   }
 
   return sanitized;
 }
 
-function freezeTrackers(list) {
-  return Object.freeze([...list]);
-}
-
-function coerceNonNegativeInteger(value, fallback) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) {
-    return fallback;
+function sanitizeTrustSeedList(candidate) {
+  if (!Array.isArray(candidate)) {
+    return [];
   }
 
-  const sanitized = Math.max(0, Math.floor(numeric));
-  if (!Number.isFinite(sanitized)) {
-    return fallback;
+  const seen = new Set();
+  const sanitized = [];
+
+  for (const npub of candidate) {
+    if (typeof npub !== "string") {
+      continue;
+    }
+    const trimmed = npub.trim();
+    if (!trimmed) {
+      continue;
+    }
+    if (seen.has(trimmed)) {
+      continue;
+    }
+    seen.add(trimmed);
+    sanitized.push(trimmed);
   }
 
   return sanitized;
 }
+
+const DEFAULT_WSS_TRACKERS = Object.freeze([
+  "wss://tracker.openwebtorrent.com",
+  "wss://tracker.fastcast.nz",
+  "wss://tracker.webtorrent.dev",
+  "wss://tracker.sloppyta.co:443/announce",
+]);
+
+const SANITIZED_DEFAULT_BLUR_THRESHOLD = coerceNonNegativeInteger(
+  CONFIG_DEFAULT_BLUR_THRESHOLD,
+  1,
+);
+const SANITIZED_DEFAULT_AUTOPLAY_BLOCK_THRESHOLD = coerceNonNegativeInteger(
+  CONFIG_DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+  1,
+);
+const SANITIZED_DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD = coerceNonNegativeInteger(
+  CONFIG_DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
+  1,
+);
+const SANITIZED_DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD = coerceNonNegativeInteger(
+  CONFIG_DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
+  3,
+);
+
+const SANITIZED_DEFAULT_TRUST_SEED_NPUBS = Object.freeze(
+  sanitizeTrustSeedList(CONFIG_DEFAULT_TRUST_SEED_NPUBS)
+);
+
+export const DEFAULT_BLUR_THRESHOLD = SANITIZED_DEFAULT_BLUR_THRESHOLD;
+export const DEFAULT_AUTOPLAY_BLOCK_THRESHOLD =
+  SANITIZED_DEFAULT_AUTOPLAY_BLOCK_THRESHOLD;
+export const DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD =
+  SANITIZED_DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD;
+export const DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD =
+  SANITIZED_DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD;
+export const DEFAULT_TRUST_SEED_NPUBS = SANITIZED_DEFAULT_TRUST_SEED_NPUBS;
+
+const DEFAULT_FLAGS = Object.freeze({
+  URL_FIRST_ENABLED: true, // try URL before magnet in the player
+  ACCEPT_LEGACY_V1: true, // accept v1 magnet-only notes
+  VIEW_FILTER_INCLUDE_LEGACY_VIDEO: false,
+  FEATURE_WATCH_HISTORY_V2: true,
+  FEATURE_PUBLISH_NIP71: false,
+  FEATURE_HASHTAG_PREFERENCES: false,
+  FEATURE_TRUST_SEEDS: true, // Rollback: disable to drop baseline trust seeds without code changes.
+  FEATURE_TRUSTED_HIDE_CONTROLS: true,
+  TRUSTED_MUTE_HIDE_THRESHOLD: DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
+  TRUSTED_SPAM_HIDE_THRESHOLD: DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
+  WSS_TRACKERS: DEFAULT_WSS_TRACKERS,
+});
+
+const globalScope = typeof globalThis === "object" && globalThis ? globalThis : undefined;
+
+const runtimeFlags = (() => {
+  if (globalScope && typeof globalScope.__BITVID_RUNTIME_FLAGS__ === "object") {
+    return globalScope.__BITVID_RUNTIME_FLAGS__;
+  }
+  const initial = {
+    URL_FIRST_ENABLED: DEFAULT_FLAGS.URL_FIRST_ENABLED,
+    ACCEPT_LEGACY_V1: DEFAULT_FLAGS.ACCEPT_LEGACY_V1,
+    VIEW_FILTER_INCLUDE_LEGACY_VIDEO:
+      DEFAULT_FLAGS.VIEW_FILTER_INCLUDE_LEGACY_VIDEO,
+    FEATURE_WATCH_HISTORY_V2: DEFAULT_FLAGS.FEATURE_WATCH_HISTORY_V2,
+    FEATURE_PUBLISH_NIP71: DEFAULT_FLAGS.FEATURE_PUBLISH_NIP71,
+    FEATURE_HASHTAG_PREFERENCES: DEFAULT_FLAGS.FEATURE_HASHTAG_PREFERENCES,
+    FEATURE_TRUST_SEEDS: DEFAULT_FLAGS.FEATURE_TRUST_SEEDS,
+    FEATURE_TRUSTED_HIDE_CONTROLS: DEFAULT_FLAGS.FEATURE_TRUSTED_HIDE_CONTROLS,
+    TRUSTED_MUTE_HIDE_THRESHOLD: DEFAULT_FLAGS.TRUSTED_MUTE_HIDE_THRESHOLD,
+    TRUSTED_SPAM_HIDE_THRESHOLD: DEFAULT_FLAGS.TRUSTED_SPAM_HIDE_THRESHOLD,
+    WSS_TRACKERS: [...DEFAULT_FLAGS.WSS_TRACKERS],
+  };
+  if (globalScope) {
+    globalScope.__BITVID_RUNTIME_FLAGS__ = initial;
+  }
+  return initial;
+})();
 
 export let URL_FIRST_ENABLED = coerceBoolean(
   runtimeFlags.URL_FIRST_ENABLED,
@@ -143,6 +206,11 @@ export let FEATURE_PUBLISH_NIP71 = coerceBoolean(
   DEFAULT_FLAGS.FEATURE_PUBLISH_NIP71
 );
 
+export let FEATURE_HASHTAG_PREFERENCES = coerceBoolean(
+  runtimeFlags.FEATURE_HASHTAG_PREFERENCES,
+  DEFAULT_FLAGS.FEATURE_HASHTAG_PREFERENCES
+);
+
 export let FEATURE_TRUST_SEEDS = coerceBoolean(
   runtimeFlags.FEATURE_TRUST_SEEDS,
   DEFAULT_FLAGS.FEATURE_TRUST_SEEDS
@@ -154,7 +222,7 @@ export let FEATURE_TRUSTED_HIDE_CONTROLS = coerceBoolean(
 );
 
 export let WSS_TRACKERS = freezeTrackers(
-  sanitizeTrackerList(runtimeFlags.WSS_TRACKERS)
+  sanitizeTrackerList(runtimeFlags.WSS_TRACKERS, DEFAULT_FLAGS.WSS_TRACKERS)
 );
 
 export let TRUSTED_MUTE_HIDE_THRESHOLD = coerceNonNegativeInteger(
@@ -166,12 +234,6 @@ export let TRUSTED_SPAM_HIDE_THRESHOLD = coerceNonNegativeInteger(
   runtimeFlags.TRUSTED_SPAM_HIDE_THRESHOLD,
   DEFAULT_FLAGS.TRUSTED_SPAM_HIDE_THRESHOLD
 );
-
-export const DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD =
-  DEFAULT_FLAGS.TRUSTED_MUTE_HIDE_THRESHOLD;
-
-export const DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD =
-  DEFAULT_FLAGS.TRUSTED_SPAM_HIDE_THRESHOLD;
 
 Object.defineProperty(runtimeFlags, "URL_FIRST_ENABLED", {
   configurable: true,
@@ -237,6 +299,20 @@ Object.defineProperty(runtimeFlags, "FEATURE_PUBLISH_NIP71", {
   },
 });
 
+Object.defineProperty(runtimeFlags, "FEATURE_HASHTAG_PREFERENCES", {
+  configurable: true,
+  enumerable: true,
+  get() {
+    return FEATURE_HASHTAG_PREFERENCES;
+  },
+  set(next) {
+    FEATURE_HASHTAG_PREFERENCES = coerceBoolean(
+      next,
+      DEFAULT_FLAGS.FEATURE_HASHTAG_PREFERENCES
+    );
+  },
+});
+
 Object.defineProperty(runtimeFlags, "FEATURE_TRUST_SEEDS", {
   configurable: true,
   enumerable: true,
@@ -272,7 +348,9 @@ Object.defineProperty(runtimeFlags, "WSS_TRACKERS", {
     return [...WSS_TRACKERS];
   },
   set(next) {
-    WSS_TRACKERS = freezeTrackers(sanitizeTrackerList(next));
+    WSS_TRACKERS = freezeTrackers(
+      sanitizeTrackerList(next, DEFAULT_FLAGS.WSS_TRACKERS)
+    );
   },
 });
 
@@ -310,6 +388,7 @@ runtimeFlags.ACCEPT_LEGACY_V1 = ACCEPT_LEGACY_V1;
 runtimeFlags.VIEW_FILTER_INCLUDE_LEGACY_VIDEO = VIEW_FILTER_INCLUDE_LEGACY_VIDEO;
 runtimeFlags.FEATURE_WATCH_HISTORY_V2 = FEATURE_WATCH_HISTORY_V2;
 runtimeFlags.FEATURE_PUBLISH_NIP71 = FEATURE_PUBLISH_NIP71;
+runtimeFlags.FEATURE_HASHTAG_PREFERENCES = FEATURE_HASHTAG_PREFERENCES;
 runtimeFlags.FEATURE_TRUST_SEEDS = FEATURE_TRUST_SEEDS;
 runtimeFlags.FEATURE_TRUSTED_HIDE_CONTROLS = FEATURE_TRUSTED_HIDE_CONTROLS;
 runtimeFlags.WSS_TRACKERS = WSS_TRACKERS;
@@ -350,6 +429,11 @@ export function setTrustedHideControlsEnabled(next) {
   return FEATURE_TRUSTED_HIDE_CONTROLS;
 }
 
+export function setHashtagPreferencesEnabled(next) {
+  runtimeFlags.FEATURE_HASHTAG_PREFERENCES = next;
+  return FEATURE_HASHTAG_PREFERENCES;
+}
+
 export function resetRuntimeFlags() {
   setUrlFirstEnabled(DEFAULT_FLAGS.URL_FIRST_ENABLED);
   setAcceptLegacyV1(DEFAULT_FLAGS.ACCEPT_LEGACY_V1);
@@ -357,6 +441,7 @@ export function resetRuntimeFlags() {
     DEFAULT_FLAGS.VIEW_FILTER_INCLUDE_LEGACY_VIDEO
   );
   setWatchHistoryV2Enabled(DEFAULT_FLAGS.FEATURE_WATCH_HISTORY_V2);
+  setHashtagPreferencesEnabled(DEFAULT_FLAGS.FEATURE_HASHTAG_PREFERENCES);
   setTrustSeedsEnabled(DEFAULT_FLAGS.FEATURE_TRUST_SEEDS);
   setTrustedHideControlsEnabled(DEFAULT_FLAGS.FEATURE_TRUSTED_HIDE_CONTROLS);
   setTrustedMuteHideThreshold(DEFAULT_FLAGS.TRUSTED_MUTE_HIDE_THRESHOLD);

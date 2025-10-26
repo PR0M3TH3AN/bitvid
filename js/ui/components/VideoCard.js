@@ -1,6 +1,12 @@
 import { normalizeDesignSystemContext } from "../../designSystem.js";
 import { updateVideoCardSourceVisibility } from "../../utils/cardSourceVisibility.js";
 import { userLogger } from "../../utils/logger.js";
+import {
+  applyModerationContextDatasets,
+  getModerationOverrideActionLabels,
+  normalizeVideoModerationContext,
+} from "../moderationUiHelpers.js";
+import { buildModerationBadgeText } from "../moderationCopy.js";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
@@ -20,6 +26,7 @@ export class VideoCard {
     helpers = {},
     assets = {},
     state = {},
+    variant = "default",
     ensureGlobalMoreMenuHandlers,
     onRequestCloseAllMenus,
     nsfwContext = null,
@@ -85,6 +92,12 @@ export class VideoCard {
 
     this.designSystem = normalizeDesignSystemContext(designSystem);
 
+    const normalizedVariant =
+      typeof variant === "string" && variant.trim().toLowerCase() === "compact"
+        ? "compact"
+        : "default";
+    this.variant = normalizedVariant;
+
     this.nsfwContext = {
       isNsfw: Boolean(nsfwContext?.isNsfw),
       allowNsfw: nsfwContext?.allowNsfw !== false,
@@ -107,15 +120,28 @@ export class VideoCard {
       onRequestSettingsMenu: null,
       onCloseSettingsMenu: null,
       onModerationOverride: null,
+      onModerationBlock: null,
+      onModerationHide: null,
     };
 
     this.moderationBadgeEl = null;
+    this.moderationBadgeLabelEl = null;
     this.moderationBadgeTextEl = null;
+    this.moderationBadgeIconWrapper = null;
+    this.moderationBadgeIconSvg = null;
     this.moderationActionButton = null;
+    this.moderationBlockButton = null;
+    this.moderationActionsContainer = null;
+    this.moderationActionButtonMode = "";
     this.moderationBadgeId = "";
     this.badgesContainerEl = null;
+    this.moderationBadgeSlot = null;
     this.hiddenSummaryEl = null;
     this.boundShowAnywayHandler = (event) => this.handleShowAnywayClick(event);
+    this.boundModerationBlockHandler = (event) =>
+      this.handleModerationBlockClick(event);
+    this.boundModerationHideHandler = (event) =>
+      this.handleModerationHideClick(event);
 
     this.root = null;
     this.anchorEl = null;
@@ -189,6 +215,16 @@ export class VideoCard {
 
   set onModerationOverride(fn) {
     this.callbacks.onModerationOverride = typeof fn === "function" ? fn : null;
+  }
+
+  set onModerationBlock(fn) {
+    this.callbacks.onModerationBlock =
+      typeof fn === "function" ? fn : null;
+  }
+
+  set onModerationHide(fn) {
+    this.callbacks.onModerationHide =
+      typeof fn === "function" ? fn : null;
   }
 
   set onMoreAction(fn) {
@@ -324,8 +360,14 @@ export class VideoCard {
   build() {
     const doc = this.document;
 
+    const isCompact = this.variant === "compact";
+    const cardClassNames = ["card"];
+    if (isCompact) {
+      cardClassNames.push("card--compact");
+    }
+
     const root = this.createElement("div", {
-      classNames: ["card"]
+      classNames: cardClassNames,
     });
 
     this.root = root;
@@ -343,15 +385,22 @@ export class VideoCard {
     this.applySourceDatasets();
     this.applyModerationDatasets();
 
+    const anchorClassNames = [
+      "block",
+      "cursor-pointer",
+      "relative",
+      "group",
+      "overflow-hidden",
+      "video-card__media",
+    ];
+    if (isCompact) {
+      anchorClassNames.push("rounded-lg", "flex-shrink-0");
+    } else {
+      anchorClassNames.push("rounded-t-lg");
+    }
+
     const anchor = this.createElement("a", {
-      classNames: [
-        "block",
-        "cursor-pointer",
-        "relative",
-        "group",
-        "rounded-t-lg",
-        "overflow-hidden"
-      ],
+      classNames: anchorClassNames,
       attrs: {
         href: this.shareUrl
       }
@@ -360,33 +409,48 @@ export class VideoCard {
     this.anchorEl = anchor;
 
     const ratio = this.createElement("div", {
-      classNames: ["ratio-16-9"]
+      classNames: ["ratio-16-9", "video-card__media-ratio"],
     });
     const thumbnail = this.buildThumbnail();
     ratio.appendChild(thumbnail);
     anchor.appendChild(ratio);
 
+    const contentClassNames = [
+      "video-card__content",
+      "p-md",
+      "bv-stack",
+      "bv-stack--tight",
+    ];
+    if (isCompact) {
+      contentClassNames.push("flex-1");
+    }
+
     const content = this.createElement("div", {
-      classNames: ["p-md", "bv-stack", "bv-stack--tight"]
+      classNames: contentClassNames,
     });
     this.contentEl = content;
 
+    const titleClassNames = [
+      "video-card__title",
+      isCompact ? "text-base" : "text-lg",
+      isCompact ? "font-semibold" : "font-bold",
+      "text-text",
+      "line-clamp-2",
+      "cursor-pointer",
+    ];
+    if (isCompact) {
+      titleClassNames.push("leading-snug");
+    }
+
     const title = this.createElement("h3", {
-      classNames: [
-        "video-card__title",
-        "text-lg",
-        "font-bold",
-        "text-text",
-        "line-clamp-2",
-        "cursor-pointer"
-      ],
+      classNames: titleClassNames,
       textContent: this.video.title
     });
     title.dataset.videoId = this.video.id;
     this.titleEl = title;
 
     const header = this.createElement("div", {
-      classNames: ["flex", "items-center", "justify-between"]
+      classNames: ["flex", "items-center", "justify-between"],
     });
 
     const authorSection = this.buildAuthorSection();
@@ -421,7 +485,15 @@ export class VideoCard {
       content.appendChild(warning);
     }
 
+    const moderationBadgeSlot = this.createElement("div", {
+      classNames: ["video-card__moderation-slot", "px-md", "pt-md"],
+    });
+    moderationBadgeSlot.hidden = true;
+    moderationBadgeSlot.setAttribute("aria-hidden", "true");
+    this.moderationBadgeSlot = moderationBadgeSlot;
+
     root.appendChild(anchor);
+    root.appendChild(moderationBadgeSlot);
     root.appendChild(content);
 
     this.applyPlaybackDatasets();
@@ -642,8 +714,13 @@ export class VideoCard {
   }
 
   buildAuthorSection() {
+    const isCompact = this.variant === "compact";
     const wrapper = this.createElement("div", {
-      classNames: ["flex", "items-center", "space-x-3"]
+      classNames: [
+        "flex",
+        "items-center",
+        isCompact ? "space-x-2" : "space-x-3",
+      ],
     });
 
     const avatarWrapper = this.createElement("div", {
@@ -683,8 +760,14 @@ export class VideoCard {
     const authorMeta = this.createElement("div", { classNames: ["min-w-0"] });
 
     const authorName = this.createElement("p", {
-      classNames: ["text-sm", "text-muted", "author-name", "cursor-pointer"],
-      textContent: "Loading name..."
+      classNames: [
+        isCompact ? "text-xs" : "text-sm",
+        "text-muted",
+        "author-name",
+        "cursor-pointer",
+        "video-card__author-name",
+      ],
+      textContent: "Loading name...",
     });
     if (this.video.pubkey) {
       authorName.dataset.pubkey = this.video.pubkey;
@@ -694,10 +777,11 @@ export class VideoCard {
       classNames: [
         "flex",
         "items-center",
-        "text-xs",
+        isCompact ? "gap-2" : "mt-1",
+        isCompact ? "text-2xs" : "text-xs",
         "text-muted-strong",
-        "mt-1"
-      ]
+        "video-card__meta",
+      ],
     });
 
     const timeEl = this.createElement("span", {
@@ -707,8 +791,13 @@ export class VideoCard {
     this.timestampEl = timeEl;
 
     if (this.pointerInfo && this.pointerInfo.key) {
+      const dotClassNames = ["text-muted-strong"];
+      if (!isCompact) {
+        dotClassNames.push("mx-1");
+      }
+
       const dot = this.createElement("span", {
-        classNames: ["mx-1", "text-muted-strong"],
+        classNames: dotClassNames,
         textContent: "•"
       });
       dot.setAttribute("aria-hidden", "true");
@@ -851,9 +940,10 @@ export class VideoCard {
   }
 
   buildBadgesContainer() {
+    const isCompact = this.variant === "compact";
     const pieces = [];
 
-    if (this.playbackUrl) {
+    if (!isCompact && this.playbackUrl) {
       const badge = this.createElement("span", {
         classNames: ["badge", "url-health-badge"]
       });
@@ -864,7 +954,7 @@ export class VideoCard {
       pieces.push(badge);
     }
 
-    if (this.magnetSupported && this.magnetProvided) {
+    if (!isCompact && this.magnetSupported && this.magnetProvided) {
       const badge = this.createElement("span", {
         classNames: ["badge", "torrent-health-badge"]
       });
@@ -876,11 +966,6 @@ export class VideoCard {
       );
       this.torrentHealthBadgeEl = badge;
       pieces.push(badge);
-    }
-
-    const moderationBadge = this.buildModerationBadge();
-    if (moderationBadge) {
-      pieces.push(moderationBadge);
     }
 
     if (!pieces.length) {
@@ -912,313 +997,118 @@ export class VideoCard {
   }
 
   getModerationContext() {
-    const moderation =
-      this.video?.moderation && typeof this.video.moderation === "object"
-        ? this.video.moderation
-        : null;
-
-    const summary =
-      moderation?.summary && typeof moderation.summary === "object"
-        ? moderation.summary
-        : null;
-
-    let reportType = "";
-    if (typeof moderation?.reportType === "string" && moderation.reportType.trim()) {
-      reportType = moderation.reportType.trim().toLowerCase();
-    }
-
-    if (!reportType && summary && summary.types && typeof summary.types === "object") {
-      for (const [type, stats] of Object.entries(summary.types)) {
-        if (stats && Number.isFinite(stats.trusted) && Math.floor(stats.trusted) > 0) {
-          reportType = String(type).toLowerCase();
-          break;
-        }
-      }
-    }
-
-    let trustedCount = Number.isFinite(moderation?.trustedCount)
-      ? Math.max(0, Math.floor(moderation.trustedCount))
-      : 0;
-
-    if (!trustedCount && summary && summary.types && typeof summary.types === "object") {
-      for (const stats of Object.values(summary.types)) {
-        if (stats && Number.isFinite(stats.trusted)) {
-          trustedCount = Math.max(trustedCount, Math.floor(stats.trusted));
-        }
-      }
-    }
-
-    const reporterDisplayNames = Array.isArray(moderation?.reporterDisplayNames)
-      ? moderation.reporterDisplayNames
-          .map((name) => (typeof name === "string" ? name.trim() : ""))
-          .filter(Boolean)
-      : [];
-
-    const trustedMuted = moderation?.trustedMuted === true;
-    let trustedMuteCount = Number.isFinite(moderation?.trustedMuteCount)
-      ? Math.max(0, Math.floor(moderation.trustedMuteCount))
-      : 0;
-
-    if (!trustedMuteCount && Array.isArray(moderation?.trustedMuters)) {
-      const muters = moderation.trustedMuters
-        .map((value) => (typeof value === "string" ? value.trim() : ""))
-        .filter(Boolean);
-      trustedMuteCount = muters.length;
-    }
-
-    const trustedMuteDisplayNames = Array.isArray(moderation?.trustedMuterDisplayNames)
-      ? moderation.trustedMuterDisplayNames
-          .map((name) => (typeof name === "string" ? name.trim() : ""))
-          .filter(Boolean)
-      : [];
-
-    const original =
-      moderation?.original && typeof moderation.original === "object"
-        ? moderation.original
-        : {};
-
-    const activeHidden = moderation?.hidden === true;
-    const originalHidden = original.hidden === true;
-    const hideReasonActive =
-      typeof moderation?.hideReason === "string" ? moderation.hideReason.trim() : "";
-    const hideBypassActive =
-      typeof moderation?.hideBypass === "string" ? moderation.hideBypass.trim() : "";
-    const originalHideReason =
-      typeof original.hideReason === "string" ? original.hideReason.trim() : "";
-    const originalHideBypass =
-      typeof original.hideBypass === "string" ? original.hideBypass.trim() : "";
-    const originalHideTriggered = original.hideTriggered === true;
-
-    const normalizeHideCounts = (input) => {
-      if (!input || typeof input !== "object") {
-        return null;
-      }
-      const normalized = {};
-      let hasValue = false;
-      if (Number.isFinite(input.trustedMuteCount)) {
-        normalized.trustedMuteCount = Math.max(0, Math.floor(input.trustedMuteCount));
-        hasValue = true;
-      }
-      if (Number.isFinite(input.trustedReportCount)) {
-        normalized.trustedReportCount = Math.max(0, Math.floor(input.trustedReportCount));
-        hasValue = true;
-      }
-      return hasValue ? normalized : null;
-    };
-
-    const baseHideCounts = {
-      trustedMuteCount,
-      trustedReportCount: trustedCount,
-    };
-
-    const activeHideCounts =
-      normalizeHideCounts(moderation?.hideCounts) ||
-      (activeHidden || hideReasonActive ? { ...baseHideCounts } : null);
-    const originalHideCounts =
-      normalizeHideCounts(original?.hideCounts) ||
-      (originalHideTriggered ? { ...baseHideCounts } : null);
-
-    const effectiveHideReason = hideReasonActive || originalHideReason;
-    const effectiveHideCounts = activeHideCounts || originalHideCounts;
-
-    const context = {
-      reportType,
-      friendlyType: reportType ? reportType.replace(/[_-]+/g, " ").trim() : "",
-      trustedCount,
-      reporterDisplayNames,
-      trustedMuted,
-      trustedMuteCount,
-      trustedMuteDisplayNames,
-      originalBlur: original.blurThumbnail === true,
-      originalBlockAutoplay: original.blockAutoplay === true,
-      activeBlur: moderation?.blurThumbnail === true,
-      activeBlockAutoplay: moderation?.blockAutoplay === true,
-      overrideActive: moderation?.viewerOverride?.showAnyway === true,
-      activeHidden,
-      originalHidden,
-      originalHideTriggered,
-      hideReason: hideReasonActive,
-      hideCounts: activeHideCounts,
-      hideBypass: hideBypassActive,
-      originalHideReason,
-      originalHideCounts,
-      originalHideBypass,
-      effectiveHideReason,
-      effectiveHideCounts,
-    };
-
-    context.shouldShow =
-      context.originalBlur ||
-      context.originalBlockAutoplay ||
-      context.trustedCount > 0 ||
-      context.trustedMuted ||
-      context.overrideActive ||
-      context.originalHidden ||
-      context.activeHidden ||
-      context.originalHideTriggered;
-
-    context.allowOverride =
-      context.originalBlur || context.originalBlockAutoplay || context.originalHidden;
-
-    return context;
-  }
-
-  buildModerationReasonText(context) {
-    if (!context) {
-      return "";
-    }
-
-    const reasons = [];
-
-    if (context.trustedMuted) {
-      const muteCount = Math.max(1, Number(context.trustedMuteCount) || 0);
-      const muteLabel = muteCount === 1 ? "trusted contact" : "trusted contacts";
-      reasons.push(`muted by ${muteCount === 1 ? "a" : muteCount} ${muteLabel}`);
-    }
-
-    const typeLabel = context.friendlyType || "this video";
-    const reportCount = Math.max(0, Number(context.trustedCount) || 0);
-    if (reportCount > 0) {
-      const friendLabel = reportCount === 1 ? "friend" : "friends";
-      reasons.push(`${reportCount} ${friendLabel} reported ${typeLabel}`);
-    } else if (!context.trustedMuted) {
-      reasons.push(context.friendlyType ? `reports of ${typeLabel}` : "reports");
-    }
-
-    if (!reasons.length) {
-      return "";
-    }
-
-    const combined = reasons.join(" · ");
-    return combined.charAt(0).toUpperCase() + combined.slice(1);
-  }
-
-  buildHiddenSummaryLabel(context) {
-    if (!context) {
-      return "";
-    }
-
-    const reason = context.effectiveHideReason;
-    if (!reason) {
-      return "";
-    }
-
-    const countsSource =
-      context.effectiveHideCounts || context.originalHideCounts || context.hideCounts || null;
-    const getCount = (key, fallback) => {
-      if (countsSource && Number.isFinite(countsSource[key])) {
-        return Math.max(0, Number(countsSource[key]));
-      }
-      if (Number.isFinite(context[key])) {
-        return Math.max(0, Number(context[key]));
-      }
-      return Math.max(0, Number(fallback) || 0);
-    };
-
-    if (reason === "trusted-mute-hide") {
-      const count = getCount("trustedMuteCount", context.trustedMuteCount || 0);
-      if (count > 0) {
-        const label = count === 1 ? "trusted mute" : "trusted mutes";
-        return `${count} ${label}`;
-      }
-      return "trusted mute";
-    }
-
-    if (reason === "trusted-report-hide") {
-      const count = getCount("trustedReportCount", context.trustedCount || 0);
-      const type = typeof context.friendlyType === "string" ? context.friendlyType.trim() : "";
-      const normalizedType = type ? type.toLowerCase() : "";
-      if (count > 0) {
-        const label = count === 1 ? "report" : "reports";
-        if (normalizedType) {
-          return `${count} trusted ${normalizedType} ${label}`;
-        }
-        const base = count === 1 ? "trusted report" : "trusted reports";
-        return `${count} ${base}`;
-      }
-      if (normalizedType) {
-        return `trusted ${normalizedType} reports`;
-      }
-      return "trusted reports";
-    }
-
-    return "";
-  }
-
-  buildModerationBadgeText(context) {
-    if (!context) {
-      return "";
-    }
-
-    const hiddenLabel = this.buildHiddenSummaryLabel(context);
-    const reason = this.buildModerationReasonText(context);
-    if (context.overrideActive) {
-      if (hiddenLabel) {
-        return `Showing despite ${hiddenLabel}`;
-      }
-      if (reason) {
-        return `Showing despite ${reason}`;
-      }
-      return "Showing despite reports";
-    }
-
-    if (context.activeHidden || (context.originalHidden && !context.overrideActive)) {
-      if (hiddenLabel) {
-        return `Hidden · ${hiddenLabel}`;
-      }
-      return "Hidden";
-    }
-
-    const parts = [];
-    if (context.originalBlur) {
-      parts.push("Blurred");
-    }
-    if (context.originalBlockAutoplay) {
-      parts.push("Autoplay blocked");
-    }
-    if (context.trustedMuted && !context.originalBlur && !context.originalBlockAutoplay) {
-      parts.push(reason || "Muted by trusted contacts");
-    } else if (reason) {
-      parts.push(reason);
-    }
-
-    return parts.join(" · ");
+    return normalizeVideoModerationContext(this.video?.moderation);
   }
 
   createModerationOverrideButton() {
+    const { text: label, ariaLabel } = getModerationOverrideActionLabels({
+      overrideActive: false,
+    });
     const button = this.createElement("button", {
-      classNames: [
-        "inline-flex",
-        "items-center",
-        "rounded-full",
-        "border",
-        "border-status-warning-border",
-        "px-3",
-        "py-1",
-        "text-2xs",
-        "font-semibold",
-        "uppercase",
-        "tracking-extra-wide",
-        "text-status-warning-on",
-        "bg-transparent",
-        "hover:bg-status-warning-surface",
-        "transition",
-        "duration-150",
-        "focus-visible:outline",
-        "focus-visible:outline-2",
-        "focus-visible:outline-offset-2",
-        "focus-visible:outline-status-warning-border",
-      ],
+      classNames: ["moderation-badge__action", "flex-shrink-0"],
       attrs: {
         type: "button",
         "data-moderation-action": "override",
         "aria-pressed": "false",
         "aria-describedby": this.getModerationBadgeId(),
+        "aria-label": ariaLabel,
       },
-      textContent: "Show anyway",
+      textContent: label,
     });
     button.addEventListener("click", this.boundShowAnywayHandler);
     return button;
+  }
+
+  createModerationHideButton() {
+    const { text: label, ariaLabel } = getModerationOverrideActionLabels({
+      overrideActive: true,
+    });
+    const button = this.createElement("button", {
+      classNames: ["moderation-badge__action", "flex-shrink-0"],
+      attrs: {
+        type: "button",
+        "data-moderation-action": "hide",
+        "aria-describedby": this.getModerationBadgeId(),
+        "aria-label": ariaLabel,
+      },
+      textContent: label,
+    });
+    button.addEventListener("click", this.boundModerationHideHandler);
+    return button;
+  }
+
+  createModerationBlockButton() {
+    const button = this.createElement("button", {
+      classNames: ["moderation-badge__action", "flex-shrink-0"],
+      attrs: {
+        type: "button",
+        "data-moderation-action": "block",
+        "aria-describedby": this.getModerationBadgeId(),
+      },
+      textContent: "Block",
+    });
+    button.addEventListener("click", this.boundModerationBlockHandler);
+    return button;
+  }
+
+  handleModerationBlockClick(event) {
+    if (event) {
+      if (typeof event.preventDefault === "function") {
+        event.preventDefault();
+      }
+      if (typeof event.stopPropagation === "function") {
+        event.stopPropagation();
+      }
+    }
+
+    const button = this.moderationBlockButton;
+    if (button) {
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+    }
+
+    if (!this.callbacks.onModerationBlock) {
+      if (button) {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+      }
+      return;
+    }
+
+    let result;
+    try {
+      result = this.callbacks.onModerationBlock({
+        event,
+        video: this.video,
+        card: this,
+      });
+    } catch (error) {
+      userLogger.warn("[VideoCard] onModerationBlock callback threw", error);
+      if (button) {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+      }
+      return;
+    }
+
+    Promise.resolve(result)
+      .then((handled) => {
+        if (handled === false) {
+          if (button) {
+            button.disabled = false;
+            button.removeAttribute("aria-busy");
+          }
+          return;
+        }
+        this.refreshModerationUi();
+      })
+      .catch((error) => {
+        userLogger.warn("[VideoCard] Moderation block failed", error);
+        if (button) {
+          button.disabled = false;
+          button.removeAttribute("aria-busy");
+        }
+      });
   }
 
   handleShowAnywayClick(event) {
@@ -1270,10 +1160,70 @@ export class VideoCard {
           }
           return;
         }
+      this.refreshModerationUi();
+    })
+    .catch((error) => {
+      userLogger.warn("[VideoCard] Moderation override failed", error);
+      if (button) {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+      }
+    });
+  }
+
+  handleModerationHideClick(event) {
+    if (event) {
+      if (typeof event.preventDefault === "function") {
+        event.preventDefault();
+      }
+      if (typeof event.stopPropagation === "function") {
+        event.stopPropagation();
+      }
+    }
+
+    const button = this.moderationActionButton;
+    if (button) {
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+    }
+
+    if (!this.callbacks.onModerationHide) {
+      if (button) {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+      }
+      return;
+    }
+
+    let result;
+    try {
+      result = this.callbacks.onModerationHide({
+        event,
+        video: this.video,
+        card: this,
+      });
+    } catch (error) {
+      userLogger.warn("[VideoCard] onModerationHide callback threw", error);
+      if (button) {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+      }
+      return;
+    }
+
+    Promise.resolve(result)
+      .then((handled) => {
+        if (handled === false) {
+          if (button) {
+            button.disabled = false;
+            button.removeAttribute("aria-busy");
+          }
+          return;
+        }
         this.refreshModerationUi();
       })
       .catch((error) => {
-        userLogger.warn("[VideoCard] Moderation override failed", error);
+        userLogger.warn("[VideoCard] Moderation hide failed", error);
         if (button) {
           button.disabled = false;
           button.removeAttribute("aria-busy");
@@ -1281,22 +1231,120 @@ export class VideoCard {
       });
   }
 
+  getModerationBadgeIconShape(state) {
+    if (state === "override") {
+      return {
+        d: "M10 18a8 8 0 100-16 8 8 0 000 16zm3.78-9.72a.75.75 0 00-1.06-1.06L9 11.94l-1.72-1.72a.75.75 0 10-1.06 1.06l2.25 2.25a.75.75 0 001.06 0l3.25-3.25z",
+        fillRule: "evenodd",
+        clipRule: "evenodd",
+      };
+    }
+
+    return {
+      d: "M10 18a8 8 0 100-16 8 8 0 000 16zm-.75-11.75a.75.75 0 011.5 0v4.5a.75.75 0 01-1.5 0v-4.5zm.75 8.5a1 1 0 100-2 1 1 0 000 2z",
+      fillRule: "evenodd",
+      clipRule: "evenodd",
+    };
+  }
+
+  updateModerationBadgeIcon(state) {
+    if (!this.moderationBadgeIconSvg) {
+      return;
+    }
+
+    this.moderationBadgeIconSvg.dataset.iconState = state;
+    const path = this.moderationBadgeIconSvg.firstElementChild;
+    if (!path) {
+      return;
+    }
+
+    const { d, fillRule, clipRule } = this.getModerationBadgeIconShape(state);
+    path.setAttribute("d", d);
+    if (fillRule) {
+      path.setAttribute("fill-rule", fillRule);
+    } else {
+      path.removeAttribute("fill-rule");
+    }
+    if (clipRule) {
+      path.setAttribute("clip-rule", clipRule);
+    } else {
+      path.removeAttribute("clip-rule");
+    }
+  }
+
+  createModerationBadgeIcon(state) {
+    const wrapper = this.createElement("span", {
+      classNames: ["moderation-badge__icon"],
+      attrs: { "aria-hidden": "true" },
+    });
+
+    const svg = this.document.createElementNS(SVG_NAMESPACE, "svg");
+    svg.setAttribute("viewBox", "0 0 20 20");
+    svg.setAttribute("focusable", "false");
+    svg.setAttribute("aria-hidden", "true");
+    svg.classList.add("moderation-badge__icon-mark");
+
+    const path = this.document.createElementNS(SVG_NAMESPACE, "path");
+    path.setAttribute("fill", "currentColor");
+    svg.appendChild(path);
+    wrapper.appendChild(svg);
+
+    this.moderationBadgeIconWrapper = wrapper;
+    this.moderationBadgeIconSvg = svg;
+    this.updateModerationBadgeIcon(state);
+
+    return wrapper;
+  }
+
+  shouldShowModerationBlockButton(context = this.getModerationContext()) {
+    if (!context || !context.trustedMuted) {
+      return false;
+    }
+    if (context.activeHidden && !context.overrideActive) {
+      return false;
+    }
+    return true;
+  }
+
   buildModerationBadge(context = this.getModerationContext()) {
     if (!context.shouldShow) {
       this.moderationBadgeEl = null;
+      this.moderationBadgeLabelEl = null;
       this.moderationBadgeTextEl = null;
+      this.moderationBadgeIconWrapper = null;
+      this.moderationBadgeIconSvg = null;
       if (this.moderationActionButton) {
-        this.moderationActionButton.removeEventListener(
-          "click",
-          this.boundShowAnywayHandler,
-        );
+        if (this.moderationActionButtonMode === "override") {
+          this.moderationActionButton.removeEventListener(
+            "click",
+            this.boundShowAnywayHandler,
+          );
+        } else if (this.moderationActionButtonMode === "hide") {
+          this.moderationActionButton.removeEventListener(
+            "click",
+            this.boundModerationHideHandler,
+          );
+        }
+        this.moderationActionButton.remove();
       }
       this.moderationActionButton = null;
+      this.moderationActionButtonMode = "";
+      if (this.moderationBlockButton) {
+        this.moderationBlockButton.removeEventListener(
+          "click",
+          this.boundModerationBlockHandler,
+        );
+      }
+      this.moderationBlockButton = null;
+      if (this.moderationActionsContainer) {
+        this.moderationActionsContainer.remove();
+        this.moderationActionsContainer = null;
+      }
       return null;
     }
 
     const badge = this.createElement("div", {
-      classNames: ["badge", "flex", "flex-wrap", "items-center", "gap-sm"],
+      classNames: ["moderation-badge"],
     });
     badge.dataset.variant = context.overrideActive ? "neutral" : "warning";
     badge.dataset.moderationBadge = "true";
@@ -1309,6 +1357,7 @@ export class VideoCard {
           ? "trusted-mute"
           : "blocked";
     badge.dataset.moderationState = state;
+    this.updateModerationBadgeIcon(state);
     if (hiddenActive && context.effectiveHideReason) {
       badge.dataset.moderationHideReason = context.effectiveHideReason;
     }
@@ -1319,11 +1368,26 @@ export class VideoCard {
     badge.setAttribute("aria-live", "polite");
     badge.setAttribute("aria-atomic", "true");
 
-    const text = this.createElement("span", {
-      classNames: ["whitespace-nowrap"],
-      textContent: this.buildModerationBadgeText(context),
+    const label = this.createElement("span", {
+      classNames: [
+        "moderation-badge__label",
+        "inline-flex",
+        "items-center",
+        "gap-xs",
+      ],
     });
-    badge.appendChild(text);
+
+    const icon = this.createModerationBadgeIcon(state);
+    if (icon) {
+      label.appendChild(icon);
+    }
+
+    const text = this.createElement("span", {
+      classNames: ["moderation-badge__text"],
+      textContent: buildModerationBadgeText(context, { variant: "card" }),
+    });
+    label.appendChild(text);
+    badge.appendChild(label);
 
     const muteNames = Array.isArray(context.trustedMuteDisplayNames)
       ? context.trustedMuteDisplayNames
@@ -1364,14 +1428,69 @@ export class VideoCard {
     }
 
     this.moderationBadgeEl = badge;
+    this.moderationBadgeLabelEl = label;
     this.moderationBadgeTextEl = text;
 
-    if (!context.overrideActive && context.allowOverride) {
-      const button = this.createModerationOverrideButton();
-      badge.appendChild(button);
-      this.moderationActionButton = button;
+    const actions = this.createElement("div", {
+      classNames: ["moderation-badge__actions"],
+    });
+    let hasActions = false;
+
+    if (context.allowOverride) {
+      if (context.overrideActive) {
+        const hideButton = this.createModerationHideButton();
+        actions.appendChild(hideButton);
+        this.moderationActionButton = hideButton;
+        this.moderationActionButtonMode = "hide";
+      } else {
+        const showButton = this.createModerationOverrideButton();
+        actions.appendChild(showButton);
+        this.moderationActionButton = showButton;
+        this.moderationActionButtonMode = "override";
+      }
+      hasActions = true;
     } else {
+      if (this.moderationActionButton) {
+        if (this.moderationActionButtonMode === "override") {
+          this.moderationActionButton.removeEventListener(
+            "click",
+            this.boundShowAnywayHandler,
+          );
+        } else if (this.moderationActionButtonMode === "hide") {
+          this.moderationActionButton.removeEventListener(
+            "click",
+            this.boundModerationHideHandler,
+          );
+        }
+        this.moderationActionButton.remove();
+      }
       this.moderationActionButton = null;
+      this.moderationActionButtonMode = "";
+    }
+
+    if (this.shouldShowModerationBlockButton(context)) {
+      const blockButton = this.createModerationBlockButton();
+      actions.appendChild(blockButton);
+      this.moderationBlockButton = blockButton;
+      this.moderationBlockButton.disabled = false;
+      this.moderationBlockButton.removeAttribute("aria-busy");
+      hasActions = true;
+    } else {
+      if (this.moderationBlockButton) {
+        this.moderationBlockButton.removeEventListener(
+          "click",
+          this.boundModerationBlockHandler,
+        );
+        this.moderationBlockButton.remove();
+      }
+      this.moderationBlockButton = null;
+    }
+
+    if (hasActions) {
+      badge.appendChild(actions);
+      this.moderationActionsContainer = actions;
+    } else {
+      this.moderationActionsContainer = null;
     }
 
     return badge;
@@ -1379,21 +1498,91 @@ export class VideoCard {
 
   updateModerationBadge(context = this.getModerationContext()) {
     const badge = this.moderationBadgeEl;
+    let slot = this.moderationBadgeSlot;
     const hiddenActive = context.activeHidden && !context.overrideActive;
+
+    if (!slot && this.root) {
+      slot = this.createElement("div", {
+        classNames: ["video-card__moderation-slot", "px-md", "pt-md"],
+      });
+      slot.hidden = true;
+      slot.setAttribute("aria-hidden", "true");
+      this.moderationBadgeSlot = slot;
+      if (this.anchorEl && this.anchorEl.parentElement === this.root) {
+        this.root.insertBefore(slot, this.anchorEl.nextSibling);
+      } else {
+        this.root.appendChild(slot);
+      }
+    }
+
+    if (badge) {
+      if (!this.moderationBadgeLabelEl) {
+        const label = badge.querySelector(".moderation-badge__label");
+        if (label) {
+          this.moderationBadgeLabelEl = label;
+        }
+      }
+      if (!this.moderationBadgeIconWrapper) {
+        const iconWrapper = badge.querySelector(".moderation-badge__icon");
+        if (iconWrapper) {
+          this.moderationBadgeIconWrapper = iconWrapper;
+        }
+      }
+      if (!this.moderationBadgeIconSvg) {
+        const iconSvg = badge.querySelector(".moderation-badge__icon svg");
+        if (iconSvg) {
+          this.moderationBadgeIconSvg = iconSvg;
+        }
+      }
+      if (!this.moderationBadgeTextEl) {
+        const textEl = badge.querySelector(".moderation-badge__text");
+        if (textEl) {
+          this.moderationBadgeTextEl = textEl;
+        }
+      }
+    }
 
     if (!context.shouldShow) {
       if (badge && badge.parentElement) {
         badge.parentElement.removeChild(badge);
       }
+      if (slot) {
+        slot.hidden = true;
+        slot.setAttribute("aria-hidden", "true");
+      }
       if (this.moderationActionButton) {
-        this.moderationActionButton.removeEventListener(
+        if (this.moderationActionButtonMode === "override") {
+          this.moderationActionButton.removeEventListener(
+            "click",
+            this.boundShowAnywayHandler,
+          );
+        } else if (this.moderationActionButtonMode === "hide") {
+          this.moderationActionButton.removeEventListener(
+            "click",
+            this.boundModerationHideHandler,
+          );
+        }
+        this.moderationActionButton.remove();
+      }
+      if (this.moderationBlockButton) {
+        this.moderationBlockButton.removeEventListener(
           "click",
-          this.boundShowAnywayHandler,
+          this.boundModerationBlockHandler,
         );
+        this.moderationBlockButton.remove();
+        this.moderationBlockButton = null;
       }
       this.moderationBadgeEl = null;
+      this.moderationBadgeLabelEl = null;
       this.moderationBadgeTextEl = null;
+      this.moderationBadgeIconWrapper = null;
+      this.moderationBadgeIconSvg = null;
       this.moderationActionButton = null;
+      this.moderationActionButtonMode = "";
+      if (this.moderationActionsContainer) {
+        this.moderationActionsContainer.remove();
+        this.moderationActionsContainer = null;
+      }
       if (this.hiddenSummaryEl && this.hiddenSummaryEl.parentElement === this.root) {
         this.hiddenSummaryEl.remove();
       }
@@ -1403,33 +1592,10 @@ export class VideoCard {
 
     if (!badge) {
       const nextBadge = this.buildModerationBadge(context);
-      if (nextBadge) {
-        if (hiddenActive) {
-          const container = this.ensureHiddenSummaryContainer();
-          if (container) {
-            container.appendChild(nextBadge);
-          }
-        } else {
-          if (!this.badgesContainerEl) {
-            this.badgesContainerEl = this.createElement("div", {
-              classNames: ["flex", "flex-wrap", "items-center", "gap-sm"],
-            });
-            if (this.contentEl) {
-              if (
-                this.discussionCountEl &&
-                this.discussionCountEl.parentElement === this.contentEl
-              ) {
-                this.contentEl.insertBefore(
-                  this.badgesContainerEl,
-                  this.discussionCountEl,
-                );
-              } else {
-                this.contentEl.appendChild(this.badgesContainerEl);
-              }
-            }
-          }
-          this.badgesContainerEl.appendChild(nextBadge);
-        }
+      if (nextBadge && slot) {
+        slot.appendChild(nextBadge);
+        slot.hidden = false;
+        slot.removeAttribute("aria-hidden");
       }
       this.updateModerationAria();
       return;
@@ -1444,13 +1610,14 @@ export class VideoCard {
           ? "trusted-mute"
           : "blocked";
     badge.dataset.moderationState = state;
+    this.updateModerationBadgeIcon(state);
     if (hiddenActive && context.effectiveHideReason) {
       badge.dataset.moderationHideReason = context.effectiveHideReason;
     } else if (badge.dataset.moderationHideReason) {
       delete badge.dataset.moderationHideReason;
     }
 
-    const textContent = this.buildModerationBadgeText(context);
+    const textContent = buildModerationBadgeText(context, { variant: "card" });
     if (this.moderationBadgeTextEl) {
       this.moderationBadgeTextEl.textContent = textContent;
     }
@@ -1493,49 +1660,145 @@ export class VideoCard {
       badge.setAttribute("aria-label", `${textContent}.`);
     }
 
-    if (hiddenActive) {
-      const container = this.ensureHiddenSummaryContainer();
-      if (container && badge.parentElement !== container) {
+    if (slot) {
+      slot.hidden = false;
+      slot.removeAttribute("aria-hidden");
+      if (badge.parentElement !== slot) {
         if (badge.parentElement) {
           badge.parentElement.removeChild(badge);
         }
-        container.appendChild(badge);
-      }
-    } else if (this.badgesContainerEl) {
-      if (!this.badgesContainerEl.parentElement && this.contentEl) {
-        if (
-          this.discussionCountEl &&
-          this.discussionCountEl.parentElement === this.contentEl
-        ) {
-          this.contentEl.insertBefore(this.badgesContainerEl, this.discussionCountEl);
-        } else {
-          this.contentEl.appendChild(this.badgesContainerEl);
-        }
-      }
-      if (badge.parentElement !== this.badgesContainerEl) {
-        if (badge.parentElement) {
-          badge.parentElement.removeChild(badge);
-        }
-        this.badgesContainerEl.appendChild(badge);
+        slot.appendChild(badge);
       }
     }
 
-    if (context.overrideActive || !context.allowOverride) {
+    let actions = this.moderationActionsContainer;
+    if ((!actions || !actions.isConnected) && badge) {
+      const existing = badge.querySelector(".moderation-badge__actions");
+      actions = existing || this.createElement("div", {
+        classNames: ["moderation-badge__actions"],
+      });
+      this.moderationActionsContainer = actions;
+    }
+
+    const badgeId = this.getModerationBadgeId();
+    let actionsAttached = false;
+
+    if (context.allowOverride) {
+      const desiredMode = context.overrideActive ? "hide" : "override";
+
+      if (!this.moderationActionButton) {
+        this.moderationActionButton =
+          desiredMode === "hide"
+            ? this.createModerationHideButton()
+            : this.createModerationOverrideButton();
+        this.moderationActionButtonMode = desiredMode;
+      } else if (this.moderationActionButtonMode !== desiredMode) {
+        if (this.moderationActionButtonMode === "override") {
+          this.moderationActionButton.removeEventListener(
+            "click",
+            this.boundShowAnywayHandler,
+          );
+        } else if (this.moderationActionButtonMode === "hide") {
+          this.moderationActionButton.removeEventListener(
+            "click",
+            this.boundModerationHideHandler,
+          );
+        }
+
+        if (desiredMode === "hide") {
+          const { text: label, ariaLabel } = getModerationOverrideActionLabels({
+            overrideActive: true,
+          });
+          this.moderationActionButton.textContent = label;
+          this.moderationActionButton.dataset.moderationAction = "hide";
+          this.moderationActionButton.removeAttribute("aria-pressed");
+          this.moderationActionButton.setAttribute("aria-label", ariaLabel);
+          this.moderationActionButton.addEventListener(
+            "click",
+            this.boundModerationHideHandler,
+          );
+        } else {
+          const { text: label, ariaLabel } = getModerationOverrideActionLabels({
+            overrideActive: false,
+          });
+          this.moderationActionButton.textContent = label;
+          this.moderationActionButton.dataset.moderationAction = "override";
+          this.moderationActionButton.setAttribute("aria-pressed", "false");
+          this.moderationActionButton.setAttribute("aria-label", ariaLabel);
+          this.moderationActionButton.addEventListener(
+            "click",
+            this.boundShowAnywayHandler,
+          );
+        }
+
+        this.moderationActionButtonMode = desiredMode;
+      }
+
       if (this.moderationActionButton) {
+        this.moderationActionButton.disabled = false;
+        this.moderationActionButton.removeAttribute("aria-busy");
+        if (badgeId) {
+          this.moderationActionButton.setAttribute("aria-describedby", badgeId);
+        } else {
+          this.moderationActionButton.removeAttribute("aria-describedby");
+        }
+        if (actions && this.moderationActionButton.parentElement !== actions) {
+          actions.appendChild(this.moderationActionButton);
+        }
+        actionsAttached = true;
+      }
+    } else if (this.moderationActionButton) {
+      if (this.moderationActionButtonMode === "override") {
         this.moderationActionButton.removeEventListener(
           "click",
           this.boundShowAnywayHandler,
         );
-        this.moderationActionButton.remove();
+      } else if (this.moderationActionButtonMode === "hide") {
+        this.moderationActionButton.removeEventListener(
+          "click",
+          this.boundModerationHideHandler,
+        );
       }
+      this.moderationActionButton.remove();
       this.moderationActionButton = null;
-    } else if (!this.moderationActionButton) {
-      const button = this.createModerationOverrideButton();
-      badge.appendChild(button);
-      this.moderationActionButton = button;
-    } else {
-      this.moderationActionButton.disabled = false;
-      this.moderationActionButton.removeAttribute("aria-busy");
+      this.moderationActionButtonMode = "";
+    }
+
+    if (this.shouldShowModerationBlockButton(context)) {
+      if (!this.moderationBlockButton) {
+        this.moderationBlockButton = this.createModerationBlockButton();
+      }
+      this.moderationBlockButton.disabled = false;
+      this.moderationBlockButton.removeAttribute("aria-busy");
+      if (badgeId) {
+        this.moderationBlockButton.setAttribute("aria-describedby", badgeId);
+      } else {
+        this.moderationBlockButton.removeAttribute("aria-describedby");
+      }
+      if (actions && this.moderationBlockButton.parentElement !== actions) {
+        actions.appendChild(this.moderationBlockButton);
+      }
+      actionsAttached = true;
+    } else if (this.moderationBlockButton) {
+      this.moderationBlockButton.removeEventListener(
+        "click",
+        this.boundModerationBlockHandler,
+      );
+      this.moderationBlockButton.remove();
+      this.moderationBlockButton = null;
+    }
+
+    if (actions) {
+      if (actionsAttached) {
+        if (badge && actions.parentElement !== badge) {
+          badge.appendChild(actions);
+        }
+      } else if (actions.parentElement) {
+        actions.parentElement.removeChild(actions);
+        this.moderationActionsContainer = null;
+      } else {
+        this.moderationActionsContainer = null;
+      }
     }
   }
 
@@ -1579,6 +1842,7 @@ export class VideoCard {
   updateHiddenState(context = this.getModerationContext()) {
     const hiddenActive = context.activeHidden && !context.overrideActive;
     const container = this.hiddenSummaryEl;
+    const badgeSlot = this.moderationBadgeSlot;
 
     if (hiddenActive) {
       if (this.anchorEl) {
@@ -1590,9 +1854,14 @@ export class VideoCard {
         this.contentEl.setAttribute("aria-hidden", "true");
       }
 
+      if (badgeSlot && this.moderationBadgeEl) {
+        badgeSlot.hidden = false;
+        badgeSlot.removeAttribute("aria-hidden");
+      }
+
       const summaryContainer = this.ensureHiddenSummaryContainer();
       if (summaryContainer) {
-        const description = this.buildModerationBadgeText(context);
+        const description = buildModerationBadgeText(context, { variant: "card" });
         if (description) {
           summaryContainer.setAttribute("aria-label", description);
         } else {
@@ -1607,6 +1876,10 @@ export class VideoCard {
       if (this.contentEl) {
         this.contentEl.removeAttribute("hidden");
         this.contentEl.removeAttribute("aria-hidden");
+      }
+      if (badgeSlot && !this.moderationBadgeEl) {
+        badgeSlot.hidden = true;
+        badgeSlot.setAttribute("aria-hidden", "true");
       }
       if (container) {
         container.hidden = true;
@@ -1904,6 +2177,10 @@ export class VideoCard {
   }
 
   buildDiscussionCount() {
+    if (this.variant === "compact") {
+      return null;
+    }
+
     if (this.video.enableComments === false) {
       return null;
     }
@@ -2094,106 +2371,12 @@ export class VideoCard {
   }
 
   applyModerationDatasets(context = this.getModerationContext()) {
-    if (!this.root) {
-      return;
-    }
-
-    if (context.originalBlockAutoplay && !context.overrideActive) {
-      this.root.dataset.autoplayPolicy = "blocked";
-    } else if (this.root.dataset.autoplayPolicy) {
-      delete this.root.dataset.autoplayPolicy;
-    }
-
-    if (context.overrideActive) {
-      this.root.dataset.moderationOverride = "show-anyway";
-    } else if (this.root.dataset.moderationOverride) {
-      delete this.root.dataset.moderationOverride;
-    }
-
-    if (this.thumbnailEl && !this.shouldMaskNsfwForOwner) {
-      if (context.activeBlur) {
-        this.thumbnailEl.dataset.thumbnailState = "blurred";
-      } else if (this.thumbnailEl.dataset.thumbnailState === "blurred") {
-        delete this.thumbnailEl.dataset.thumbnailState;
-      }
-    }
-
-    const reportCount = Math.max(0, Number(context.trustedCount) || 0);
-    if (reportCount > 0) {
-      this.root.dataset.moderationReportCount = String(reportCount);
-      if (context.reportType) {
-        this.root.dataset.moderationReportType = context.reportType;
-      } else if (this.root.dataset.moderationReportType) {
-        delete this.root.dataset.moderationReportType;
-      }
-    } else {
-      if (this.root.dataset.moderationReportType) {
-        delete this.root.dataset.moderationReportType;
-      }
-      if (this.root.dataset.moderationReportCount) {
-        delete this.root.dataset.moderationReportCount;
-      }
-    }
-
-    if (context.trustedMuted) {
-      this.root.dataset.moderationTrustedMute = "true";
-      const muteCount = Math.max(0, Number(context.trustedMuteCount) || 0);
-      if (muteCount > 0) {
-        this.root.dataset.moderationTrustedMuteCount = String(muteCount);
-      } else if (this.root.dataset.moderationTrustedMuteCount) {
-        delete this.root.dataset.moderationTrustedMuteCount;
-      }
-    } else {
-      if (this.root.dataset.moderationTrustedMute) {
-        delete this.root.dataset.moderationTrustedMute;
-      }
-      if (this.root.dataset.moderationTrustedMuteCount) {
-        delete this.root.dataset.moderationTrustedMuteCount;
-      }
-    }
-
-    if (context.activeHidden && !context.overrideActive) {
-      this.root.dataset.moderationHidden = "true";
-      const reason = context.effectiveHideReason || context.hideReason;
-      if (reason) {
-        this.root.dataset.moderationHideReason = reason;
-      } else if (this.root.dataset.moderationHideReason) {
-        delete this.root.dataset.moderationHideReason;
-      }
-
-      const counts = context.hideCounts || context.effectiveHideCounts || null;
-      const muteCount = counts && Number.isFinite(counts.trustedMuteCount)
-        ? Math.max(0, Number(counts.trustedMuteCount))
-        : null;
-      const reportCountHide = counts && Number.isFinite(counts.trustedReportCount)
-        ? Math.max(0, Number(counts.trustedReportCount))
-        : null;
-
-      if (muteCount !== null) {
-        this.root.dataset.moderationHideTrustedMuteCount = String(muteCount);
-      } else if (this.root.dataset.moderationHideTrustedMuteCount) {
-        delete this.root.dataset.moderationHideTrustedMuteCount;
-      }
-
-      if (reportCountHide !== null) {
-        this.root.dataset.moderationHideTrustedReportCount = String(reportCountHide);
-      } else if (this.root.dataset.moderationHideTrustedReportCount) {
-        delete this.root.dataset.moderationHideTrustedReportCount;
-      }
-    } else {
-      if (this.root.dataset.moderationHidden) {
-        delete this.root.dataset.moderationHidden;
-      }
-      if (this.root.dataset.moderationHideReason) {
-        delete this.root.dataset.moderationHideReason;
-      }
-      if (this.root.dataset.moderationHideTrustedMuteCount) {
-        delete this.root.dataset.moderationHideTrustedMuteCount;
-      }
-      if (this.root.dataset.moderationHideTrustedReportCount) {
-        delete this.root.dataset.moderationHideTrustedReportCount;
-      }
-    }
+    applyModerationContextDatasets(context, {
+      root: this.root,
+      thumbnail: this.thumbnailEl,
+      avatar: this.authorPicEl,
+      shouldMaskNsfwForOwner: this.shouldMaskNsfwForOwner,
+    });
   }
 
   applyPlaybackDatasets() {

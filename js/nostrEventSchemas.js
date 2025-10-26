@@ -16,10 +16,13 @@ export const NOTE_TYPES = Object.freeze({
   REPOST: "repost",
   RELAY_LIST: "relayList",
   VIEW_EVENT: "viewEvent",
+  VIDEO_REACTION: "videoReaction",
+  VIDEO_COMMENT: "videoComment",
   WATCH_HISTORY_INDEX: "watchHistoryIndex",
   WATCH_HISTORY_CHUNK: "watchHistoryChunk",
   SUBSCRIPTION_LIST: "subscriptionList",
   USER_BLOCK_LIST: "userBlockList",
+  HASHTAG_PREFERENCES: "hashtagPreferences",
   ADMIN_MODERATION_LIST: "adminModerationList",
   ADMIN_BLACKLIST: "adminBlacklist",
   ADMIN_WHITELIST: "adminWhitelist",
@@ -61,6 +64,33 @@ function ensureValidUtf8Content(value) {
     }
   } else {
     normalized = String(value);
+  }
+
+  if (normalized) {
+    const builder = [];
+    let mutated = false;
+    for (let index = 0; index < normalized.length; index += 1) {
+      const code = normalized.charCodeAt(index);
+      if (code >= 0xd800 && code <= 0xdbff) {
+        const nextCode = normalized.charCodeAt(index + 1);
+        if (nextCode >= 0xdc00 && nextCode <= 0xdfff) {
+          builder.push(normalized[index], normalized[index + 1]);
+          index += 1;
+        } else {
+          mutated = true;
+        }
+      } else if (code >= 0xdc00 && code <= 0xdfff) {
+        mutated = true;
+      } else {
+        builder.push(normalized[index]);
+      }
+    }
+    if (mutated) {
+      devLogger.warn(
+        "[nostrEventSchemas] Dropping unmatched surrogate characters from event content"
+      );
+      normalized = builder.join("");
+    }
   }
 
   if (!cachedUtf8Encoder && typeof TextEncoder !== "undefined") {
@@ -194,6 +224,31 @@ const BASE_SCHEMAS = {
       description: "Optional plaintext content used for diagnostics.",
     },
   },
+  [NOTE_TYPES.VIDEO_REACTION]: {
+    type: NOTE_TYPES.VIDEO_REACTION,
+    label: "Reaction event",
+    kind: 7,
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      format: "text",
+      description:
+        "Reaction payload for the referenced event (e.g., '+', '-', or emoji).",
+    },
+  },
+  [NOTE_TYPES.VIDEO_COMMENT]: {
+    type: NOTE_TYPES.VIDEO_COMMENT,
+    label: "Video comment",
+    kind: 1,
+    videoEventTagName: "e",
+    videoDefinitionTagName: "a",
+    parentCommentTagName: "e",
+    participantTagName: "p",
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      format: "text",
+      description: "Plain text comment body sanitized for UTF-8 compatibility.",
+    },
+  },
   [NOTE_TYPES.WATCH_HISTORY_INDEX]: {
     type: NOTE_TYPES.WATCH_HISTORY_INDEX,
     label: "Watch history index",
@@ -257,6 +312,21 @@ const BASE_SCHEMAS = {
     content: {
       format: "nip04-json",
       description: "Encrypted JSON: { blockedPubkeys: string[] }.",
+    },
+  },
+  [NOTE_TYPES.HASHTAG_PREFERENCES]: {
+    type: NOTE_TYPES.HASHTAG_PREFERENCES,
+    label: "Hashtag preferences",
+    kind: 30005,
+    identifierTag: {
+      name: "d",
+      value: "bitvid:tag-preferences",
+    },
+    appendTags: [["encrypted", "nip44_v2"]],
+    content: {
+      format: "nip44-json",
+      description:
+        "NIP-44 encrypted JSON: { version, interests: string[], disinterests: string[] }.",
     },
   },
   [NOTE_TYPES.ADMIN_MODERATION_LIST]: {
@@ -382,6 +452,41 @@ function appendSchemaTags(tags, schema) {
     }
   });
   return tags;
+}
+
+function collectPointerTags(schema, {
+  pointerValue,
+  pointerTag,
+  pointerTags = [],
+} = {}) {
+  const normalized = [];
+
+  const pointerTagName = schema?.pointerTagName;
+  if (pointerValue && pointerTagName) {
+    const normalizedValue =
+      typeof pointerValue === "string" ? pointerValue : String(pointerValue);
+    if (normalizedValue) {
+      normalized.push([pointerTagName, normalizedValue]);
+    }
+  }
+
+  if (Array.isArray(pointerTag) && pointerTag.length >= 2) {
+    normalized.push(
+      pointerTag.map((value) => (typeof value === "string" ? value : String(value)))
+    );
+  }
+
+  if (Array.isArray(pointerTags)) {
+    pointerTags.forEach((tag) => {
+      if (Array.isArray(tag) && tag.length >= 2) {
+        normalized.push(
+          tag.map((value) => (typeof value === "string" ? value : String(value)))
+        );
+      }
+    });
+  }
+
+  return normalized;
 }
 
 export function buildVideoPostEvent({
@@ -590,25 +695,11 @@ export function buildViewEvent({
     tags.push([schema.topicTag.name, schema.topicTag.value]);
   }
 
-  const pointerTagName = schema?.pointerTagName;
-  if (pointerValue && pointerTagName) {
-    tags.push([pointerTagName, pointerValue]);
-  }
-  const normalizedPointerTags = [];
-  if (Array.isArray(pointerTag) && pointerTag.length >= 2) {
-    normalizedPointerTags.push(
-      pointerTag.map((value) => (typeof value === "string" ? value : String(value)))
-    );
-  }
-  if (Array.isArray(pointerTags)) {
-    pointerTags.forEach((tag) => {
-      if (Array.isArray(tag) && tag.length >= 2) {
-        normalizedPointerTags.push(
-          tag.map((value) => (typeof value === "string" ? value : String(value)))
-        );
-      }
-    });
-  }
+  const normalizedPointerTags = collectPointerTags(schema, {
+    pointerValue,
+    pointerTag,
+    pointerTags,
+  });
   normalizedPointerTags.forEach((tag) => {
     tags.push(tag);
   });
@@ -643,6 +734,245 @@ export function buildViewEvent({
 
   return {
     kind: schema?.kind ?? WATCH_HISTORY_KIND,
+    pubkey,
+    created_at,
+    tags,
+    content: resolvedContent,
+  };
+}
+
+export function buildReactionEvent({
+  pubkey,
+  created_at,
+  pointerValue,
+  pointerTag,
+  pointerTags = [],
+  targetPointer = null,
+  targetAuthorPubkey = "",
+  additionalTags = [],
+  content = "",
+}) {
+  const schema = getNostrEventSchema(NOTE_TYPES.VIDEO_REACTION);
+  const tags = [];
+
+  const normalizedPointerTags = collectPointerTags(schema, {
+    pointerValue,
+    pointerTag,
+    pointerTags,
+  });
+  normalizedPointerTags.forEach((tag) => {
+    tags.push(tag);
+  });
+
+  const resolvePointerDetails = (pointerCandidate) => {
+    if (!pointerCandidate) {
+      return null;
+    }
+
+    if (Array.isArray(pointerCandidate) && pointerCandidate.length >= 2) {
+      const [type, value, relay] = pointerCandidate;
+      const normalizedType = type === "a" ? "a" : type === "e" ? "e" : "";
+      const normalizedValue = typeof value === "string" ? value.trim() : "";
+      if (!normalizedType || !normalizedValue) {
+        return null;
+      }
+      const normalizedRelay =
+        typeof relay === "string" && relay.trim() ? relay.trim() : "";
+      return { type: normalizedType, value: normalizedValue, relay: normalizedRelay };
+    }
+
+    if (pointerCandidate && typeof pointerCandidate === "object") {
+      const { type, value, relay } = pointerCandidate;
+      const normalizedType = type === "a" ? "a" : type === "e" ? "e" : "";
+      const normalizedValue = typeof value === "string" ? value.trim() : "";
+      if (!normalizedType || !normalizedValue) {
+        return null;
+      }
+      const normalizedRelay =
+        typeof relay === "string" && relay.trim() ? relay.trim() : "";
+      return { type: normalizedType, value: normalizedValue, relay: normalizedRelay };
+    }
+
+    return null;
+  };
+
+  const pointerDetails = (() => {
+    const explicitPointer = resolvePointerDetails(targetPointer);
+    if (explicitPointer) {
+      return explicitPointer;
+    }
+
+    const pointerTagEntry = normalizedPointerTags.find(
+      (tag) => Array.isArray(tag) && tag.length >= 2 && (tag[0] === "a" || tag[0] === "e")
+    );
+    if (!pointerTagEntry) {
+      return null;
+    }
+
+    return resolvePointerDetails(pointerTagEntry);
+  })();
+
+  const resolvedRelay = pointerDetails?.relay || "";
+
+  const normalizedAuthorPubkey = (() => {
+    if (typeof targetAuthorPubkey === "string" && targetAuthorPubkey.trim()) {
+      return targetAuthorPubkey.trim();
+    }
+
+    if (pointerDetails?.type === "a" && pointerDetails.value) {
+      const segments = pointerDetails.value.split(":");
+      if (segments.length >= 2) {
+        const candidate = segments[1]?.trim();
+        if (candidate) {
+          return candidate;
+        }
+      }
+    }
+
+    return "";
+  })();
+
+  if (normalizedAuthorPubkey) {
+    const existingAuthorTag = tags.find(
+      (tag) => Array.isArray(tag) && tag[0] === "p" && tag[1] === normalizedAuthorPubkey
+    );
+    if (!existingAuthorTag) {
+      if (resolvedRelay) {
+        tags.push(["p", normalizedAuthorPubkey, resolvedRelay]);
+      } else {
+        tags.push(["p", normalizedAuthorPubkey]);
+      }
+    } else if (resolvedRelay) {
+      if (existingAuthorTag.length < 3) {
+        existingAuthorTag.push(resolvedRelay);
+      } else if (existingAuthorTag[2] !== resolvedRelay) {
+        existingAuthorTag[2] = resolvedRelay;
+      }
+    }
+  }
+
+  if (Array.isArray(additionalTags)) {
+    additionalTags.forEach((tag) => {
+      if (Array.isArray(tag) && tag.length >= 2) {
+        tags.push(tag.map((value) => (typeof value === "string" ? value : String(value))));
+      }
+    });
+  }
+
+  appendSchemaTags(tags, schema);
+
+  const resolvedContent = ensureValidUtf8Content(content);
+
+  return {
+    kind: schema?.kind ?? 7,
+    pubkey,
+    created_at,
+    tags,
+    content: resolvedContent,
+  };
+}
+
+export function buildCommentEvent({
+  pubkey,
+  created_at,
+  videoEventId = "",
+  videoEventRelay = "",
+  videoDefinitionAddress = "",
+  videoDefinitionRelay = "",
+  parentCommentId = "",
+  parentCommentRelay = "",
+  threadParticipantPubkey = "",
+  threadParticipantRelay = "",
+  additionalTags = [],
+  content = "",
+}) {
+  const schema = getNostrEventSchema(NOTE_TYPES.VIDEO_COMMENT);
+  const tags = [];
+
+  const videoEventTagName = schema?.videoEventTagName || "e";
+  const normalizedVideoEventId =
+    typeof videoEventId === "string" ? videoEventId.trim() : "";
+  const normalizedVideoEventRelay =
+    typeof videoEventRelay === "string" ? videoEventRelay.trim() : "";
+  if (videoEventTagName && normalizedVideoEventId) {
+    if (normalizedVideoEventRelay) {
+      tags.push([videoEventTagName, normalizedVideoEventId, normalizedVideoEventRelay]);
+    } else {
+      tags.push([videoEventTagName, normalizedVideoEventId]);
+    }
+  }
+
+  const videoDefinitionTagName = schema?.videoDefinitionTagName || "a";
+  const normalizedVideoDefinitionAddress =
+    typeof videoDefinitionAddress === "string"
+      ? videoDefinitionAddress.trim()
+      : "";
+  const normalizedVideoDefinitionRelay =
+    typeof videoDefinitionRelay === "string" ? videoDefinitionRelay.trim() : "";
+  if (videoDefinitionTagName && normalizedVideoDefinitionAddress) {
+    if (normalizedVideoDefinitionRelay) {
+      tags.push([
+        videoDefinitionTagName,
+        normalizedVideoDefinitionAddress,
+        normalizedVideoDefinitionRelay,
+      ]);
+    } else {
+      tags.push([videoDefinitionTagName, normalizedVideoDefinitionAddress]);
+    }
+  }
+
+  const parentCommentTagName = schema?.parentCommentTagName || "e";
+  const normalizedParentCommentId =
+    typeof parentCommentId === "string" ? parentCommentId.trim() : "";
+  const normalizedParentCommentRelay =
+    typeof parentCommentRelay === "string" ? parentCommentRelay.trim() : "";
+  if (parentCommentTagName && normalizedParentCommentId) {
+    if (normalizedParentCommentRelay) {
+      tags.push([
+        parentCommentTagName,
+        normalizedParentCommentId,
+        normalizedParentCommentRelay,
+      ]);
+    } else {
+      tags.push([parentCommentTagName, normalizedParentCommentId]);
+    }
+  }
+
+  const participantTagName = schema?.participantTagName || "p";
+  const normalizedThreadParticipantPubkey =
+    typeof threadParticipantPubkey === "string"
+      ? threadParticipantPubkey.trim()
+      : "";
+  const normalizedThreadParticipantRelay =
+    typeof threadParticipantRelay === "string"
+      ? threadParticipantRelay.trim()
+      : "";
+  if (participantTagName && normalizedThreadParticipantPubkey) {
+    if (normalizedThreadParticipantRelay) {
+      tags.push([
+        participantTagName,
+        normalizedThreadParticipantPubkey,
+        normalizedThreadParticipantRelay,
+      ]);
+    } else {
+      tags.push([participantTagName, normalizedThreadParticipantPubkey]);
+    }
+  }
+
+  if (Array.isArray(additionalTags)) {
+    additionalTags.forEach((tag) => {
+      if (Array.isArray(tag) && tag.length >= 2) {
+        tags.push(tag.map((value) => (typeof value === "string" ? value : String(value))));
+      }
+    });
+  }
+
+  appendSchemaTags(tags, schema);
+
+  const resolvedContent = ensureValidUtf8Content(content);
+
+  return {
+    kind: schema?.kind ?? 1,
     pubkey,
     created_at,
     tags,
@@ -812,6 +1142,28 @@ export function buildBlockListEvent({
   appendSchemaTags(tags, schema);
   return {
     kind: schema?.kind ?? 30002,
+    pubkey,
+    created_at,
+    tags,
+    content: typeof content === "string" ? content : String(content ?? ""),
+  };
+}
+
+export function buildHashtagPreferenceEvent({
+  pubkey,
+  created_at,
+  content,
+}) {
+  const schema = getNostrEventSchema(NOTE_TYPES.HASHTAG_PREFERENCES);
+  const tags = [];
+  const identifierName = schema?.identifierTag?.name || "d";
+  const identifierValue = schema?.identifierTag?.value || "bitvid:tag-preferences";
+  if (identifierName && identifierValue) {
+    tags.push([identifierName, identifierValue]);
+  }
+  appendSchemaTags(tags, schema);
+  return {
+    kind: schema?.kind ?? 30005,
     pubkey,
     created_at,
     tags,

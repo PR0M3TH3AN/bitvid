@@ -17,15 +17,23 @@ import {
   VIEW_COUNT_DEDUPE_WINDOW_SECONDS,
 } from "./config.js";
 import { userLogger } from "./utils/logger.js";
+import { nostrClient } from "./nostrClientFacade.js";
 import {
-  countVideoViewEvents,
-  listVideoViewEvents,
-  subscribeVideoViewEvents,
-} from "./nostr.js";
+  countVideoViewEventsWithDefaultClient as countVideoViewEvents,
+  listVideoViewEventsWithDefaultClient as listVideoViewEvents,
+  subscribeVideoViewEventsWithDefaultClient as subscribeVideoViewEvents,
+} from "./nostrViewEventsFacade.js";
 
 const VIEW_COUNTER_STORAGE_KEY = "bitvid:view-counter:v1";
 const STORAGE_DEBOUNCE_MS = 500;
 const SECONDS_PER_DAY = 86_400;
+
+const listVideoViewEventsApi = (pointer, options) =>
+  listVideoViewEvents(pointer, options);
+const subscribeVideoViewEventsApi = (pointer, options) =>
+  subscribeVideoViewEvents(pointer, options);
+const countVideoViewEventsApi = (pointer, options) =>
+  countVideoViewEvents(pointer, options);
 
 /** @type {Map<string, ViewCounterState>} */
 const pointerStates = new Map();
@@ -33,7 +41,6 @@ const pointerStates = new Map();
 const pointerListeners = new Map();
 let persistTimer = null;
 let nextTokenId = 1;
-let nostrClientRef = null;
 
 restoreCacheSnapshot();
 
@@ -456,11 +463,11 @@ async function hydratePointer(key, listeners) {
   const options = listeners.options || {};
   setPointerStatus(key, "hydrating");
   const sinceSeconds = Math.floor(Date.now() / 1000) - VIEW_COUNT_BACKFILL_MAX_DAYS * SECONDS_PER_DAY;
-  const listPromise = listVideoViewEvents(pointer, {
+  const listPromise = listVideoViewEventsApi(pointer, {
     since: sinceSeconds,
     relays: options.relays,
   });
-  const countPromise = countVideoViewEvents(pointer, {
+  const countPromise = countVideoViewEventsApi(pointer, {
     relays: options.relays,
     signal: options.signal,
   });
@@ -535,7 +542,7 @@ function ensureLiveSubscription(key, listeners) {
   const options = listeners.options || {};
   try {
     const since = Math.floor(Date.now() / 1000) - Math.max(1, VIEW_COUNT_DEDUPE_WINDOW_SECONDS);
-    const unsubscribe = subscribeVideoViewEvents(pointer, {
+    const unsubscribe = subscribeVideoViewEventsApi(pointer, {
       relays: options.relays,
       since,
       onEvent: (event) => {
@@ -564,7 +571,10 @@ function ensureLiveSubscription(key, listeners) {
 }
 
 export function initViewCounter({ nostrClient } = {}) {
-  nostrClientRef = nostrClient || null;
+  if (nostrClient && typeof nostrClient === "object") {
+    // The singleton Nostr client is already registered inside js/nostr.js.
+    // This hook remains for backwards compatibility.
+  }
 }
 
 export function subscribeToVideoViewCount(pointerInput, handler, options = {}) {

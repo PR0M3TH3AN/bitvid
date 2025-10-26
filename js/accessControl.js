@@ -31,6 +31,27 @@ function dedupeNpubs(values) {
   );
 }
 
+function areSetsEqual(first, second) {
+  if (first === second) {
+    return true;
+  }
+
+  const a = first instanceof Set ? first : new Set();
+  const b = second instanceof Set ? second : new Set();
+
+  if (a.size !== b.size) {
+    return false;
+  }
+
+  for (const value of a) {
+    if (!b.has(value)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 function isValidNpub(npub) {
   if (typeof npub !== "string") {
     return false;
@@ -59,8 +80,27 @@ class AccessControl {
     this._isRefreshing = false;
     this._refreshPromise = Promise.resolve();
     this._hydratedFromCache = false;
+    this._whitelistListeners = new Set();
+    this._editorListeners = new Set();
 
-    this._hydrateFromCache();
+    this._scheduleHydrateFromCache();
+  }
+
+  _scheduleHydrateFromCache() {
+    const runHydrate = () => {
+      try {
+        this._hydrateFromCache();
+      } catch (error) {
+        userLogger.error("accessControl failed to hydrate from cache", error);
+      }
+    };
+
+    if (typeof queueMicrotask === "function") {
+      queueMicrotask(runHydrate);
+      return;
+    }
+
+    Promise.resolve().then(runHydrate);
   }
 
   _hydrateFromCache() {
@@ -78,11 +118,18 @@ class AccessControl {
     const whitelist = Array.isArray(state?.whitelist) ? state.whitelist : [];
     const blacklist = Array.isArray(state?.blacklist) ? state.blacklist : [];
 
+    const previousEditors =
+      this.editors instanceof Set ? new Set(this.editors) : new Set();
+    const previousWhitelist =
+      this.whitelist instanceof Set ? new Set(this.whitelist) : new Set();
+
     this.editors = new Set(
       dedupeNpubs([...ADMIN_EDITORS_NPUBS, ...editors])
     );
+    const editorsChanged = !areSetsEqual(previousEditors, this.editors);
     const normalizedWhitelist = dedupeNpubs(whitelist);
     this.whitelist = new Set(normalizedWhitelist);
+    const whitelistChanged = !areSetsEqual(previousWhitelist, this.whitelist);
 
     const blacklistDedupe = dedupeNpubs(blacklist);
     const whitelistSet = new Set(normalizedWhitelist.map(normalizeNpub));
@@ -111,6 +158,49 @@ class AccessControl {
     if (markLoaded) {
       this.hasLoaded = true;
       this._hydratedFromCache = false;
+    }
+
+    if (whitelistChanged) {
+      this._emitWhitelistChange(Array.from(this.whitelist));
+    }
+    if (editorsChanged) {
+      this._emitEditorsChange(Array.from(this.editors));
+    }
+  }
+
+  _emitWhitelistChange(whitelistValues) {
+    if (!this._whitelistListeners.size) {
+      return;
+    }
+
+    const snapshot = Array.isArray(whitelistValues)
+      ? [...whitelistValues]
+      : this.getWhitelist();
+
+    for (const listener of Array.from(this._whitelistListeners)) {
+      try {
+        listener(snapshot);
+      } catch (error) {
+        userLogger.error("accessControl whitelist listener failed", error);
+      }
+    }
+  }
+
+  _emitEditorsChange(editorsValues) {
+    if (!this._editorListeners.size) {
+      return;
+    }
+
+    const snapshot = Array.isArray(editorsValues)
+      ? [...editorsValues]
+      : this.getEditors();
+
+    for (const listener of Array.from(this._editorListeners)) {
+      try {
+        listener(snapshot);
+      } catch (error) {
+        userLogger.error("accessControl editors listener failed", error);
+      }
     }
   }
 
@@ -207,6 +297,30 @@ class AccessControl {
 
   getEditors() {
     return Array.from(this.editors);
+  }
+
+  onWhitelistChange(listener) {
+    if (typeof listener !== "function") {
+      return () => {};
+    }
+
+    this._whitelistListeners.add(listener);
+
+    return () => {
+      this._whitelistListeners.delete(listener);
+    };
+  }
+
+  onEditorsChange(listener) {
+    if (typeof listener !== "function") {
+      return () => {};
+    }
+
+    this._editorListeners.add(listener);
+
+    return () => {
+      this._editorListeners.delete(listener);
+    };
   }
 
   async addModerator(requestorNpub, moderatorNpub) {

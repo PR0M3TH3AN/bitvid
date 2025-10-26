@@ -191,3 +191,42 @@ test('ignores additional submissions while pending without spurious errors', asy
 
   modal.setSubmitState({ pending: false });
 });
+
+test('does not show missing video error after modal closes', async () => {
+  const errorMessages = [];
+  const modal = createModal({
+    showError: (message) => {
+      if (message) {
+        errorMessages.push(message);
+      }
+    },
+  });
+
+  await modal.load({ container });
+
+  const video = {
+    id: 'video2',
+    pubkey: 'pubkey2',
+    title: 'Another video',
+    url: 'https://example.com/another.mp4',
+  };
+
+  await modal.open(video);
+
+  modal.submit();
+
+  assert.equal(errorMessages.includes('No video selected for editing.'), false);
+
+  modal.setSubmitState({ pending: false });
+  modal.close();
+
+  assert.equal(modal.isVisible, false, 'modal should be hidden after close');
+
+  modal.submit();
+
+  assert.equal(
+    errorMessages.includes('No video selected for editing.'),
+    false,
+    'should not surface missing video error when closed',
+  );
+});

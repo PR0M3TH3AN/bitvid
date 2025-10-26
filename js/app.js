@@ -1,6 +1,7 @@
 // js/app.js
 
-import { nostrClient } from "./nostr.js";
+import { nostrClient } from "./nostrClientFacade.js";
+import { recordVideoView } from "./nostrViewEventsFacade.js";
 import { torrentClient } from "./webtorrent.js";
 import {
   isDevMode,
@@ -18,10 +19,15 @@ import {
   URL_FIRST_ENABLED,
   getTrustedMuteHideThreshold,
   getTrustedSpamHideThreshold,
+  DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+  DEFAULT_BLUR_THRESHOLD,
+  DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
+  DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
 } from "./constants.js";
 import { attachHealthBadges } from "./gridHealth.js";
 import { attachUrlHealthBadges } from "./urlHealthObserver.js";
 import { updateVideoCardSourceVisibility } from "./utils/cardSourceVisibility.js";
+import { collectVideoTags } from "./utils/videoTags.js";
 import { ADMIN_INITIAL_EVENT_BLACKLIST } from "./lists.js";
 import { userBlocks } from "./userBlocks.js";
 import { relayManager } from "./relayManager.js";
@@ -31,6 +37,7 @@ import {
   createBlacklistFilterStage,
   createDedupeByRootStage,
   createModerationStage,
+  createResolvePostedAtStage,
   createChronologicalSorter,
   createSubscriptionAuthorsSource,
   registerWatchHistoryFeed,
@@ -39,16 +46,26 @@ import watchHistoryService from "./watchHistoryService.js";
 import r2Service from "./services/r2Service.js";
 import PlaybackService from "./services/playbackService.js";
 import AuthService from "./services/authService.js";
+import getAuthProvider, {
+  providers as authProviders,
+} from "./services/authProviders/index.js";
 import NwcSettingsService from "./services/nwcSettingsService.js";
 import nostrService from "./services/nostrService.js";
 import DiscussionCountService from "./services/discussionCountService.js";
+import CommentThreadService from "./services/commentThreadService.js";
+import hashtagPreferences, {
+  HASHTAG_PREFERENCES_EVENTS,
+} from "./services/hashtagPreferencesService.js";
 import { initQuickR2Upload } from "./r2-quick.js";
 import { createWatchHistoryRenderer } from "./historyView.js";
 import WatchHistoryController from "./ui/watchHistoryController.js";
 import WatchHistoryTelemetry from "./services/watchHistoryTelemetry.js";
 import { getSidebarLoadingMarkup } from "./sidebarLoading.js";
 import { subscriptions } from "./subscriptions.js";
-import { refreshActiveChannelVideoGrid } from "./channelProfile.js";
+import {
+  refreshActiveChannelVideoGrid,
+  clearChannelVideoCardRegistry,
+} from "./channelProfile.js";
 import { isWatchHistoryDebugEnabled } from "./watchHistoryDebug.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import createPopover from "./ui/overlay/popoverEngine.js";
@@ -69,27 +86,35 @@ import {
   truncateMiddle,
   formatShortNpub,
 } from "./utils/formatters.js";
+import reactionCounter from "./reactionCounter.js";
 import {
   escapeHTML as escapeHtml,
   removeTrackingScripts,
 } from "./utils/domUtils.js";
 import { VideoModal } from "./ui/components/VideoModal.js";
-import { UploadModal } from "./ui/components/UploadModal.js";
-import { EditModal } from "./ui/components/EditModal.js";
 import { RevertModal } from "./ui/components/RevertModal.js";
-import { DeleteModal } from "./ui/components/DeleteModal.js";
 import {
   prepareStaticModal,
   openStaticModal,
   closeStaticModal,
 } from "./ui/components/staticModalAccessibility.js";
 import { VideoListView } from "./ui/views/VideoListView.js";
+import createTagPreferenceMenu, {
+  TAG_PREFERENCE_ACTIONS,
+  applyTagPreferenceMenuState,
+} from "./ui/components/tagPreferenceMenu.js";
 import MoreMenuController from "./ui/moreMenuController.js";
 import ProfileModalController from "./ui/profileModalController.js";
+import LoginModalController from "./ui/loginModalController.js";
 import ZapController from "./ui/zapController.js";
+import initUploadModal from "./ui/initUploadModal.js";
+import initEditModal from "./ui/initEditModal.js";
+import initDeleteModal from "./ui/initDeleteModal.js";
 import { MediaLoader } from "./utils/mediaLoader.js";
 import { pointerArrayToKey } from "./utils/pointer.js";
-import { resolveVideoPointer } from "./utils/videoPointer.js";
+import resolveVideoPointer, {
+  buildVideoAddressPointer,
+} from "./utils/videoPointer.js";
 import { isValidMagnetUri } from "./utils/magnetValidators.js";
 import { dedupeToNewestByRoot } from "./utils/videoDeduper.js";
 import { buildServiceWorkerFallbackStatus } from "./utils/serviceWorkerFallbackMessages.js";
@@ -123,6 +148,7 @@ import {
   getInFlightUrlProbe,
   getModerationOverride,
   setModerationOverride,
+  clearModerationOverride,
   loadModerationOverridesFromStorage,
   getModerationSettings,
   getDefaultModerationSettings,
@@ -132,6 +158,8 @@ import {
   URL_PROBE_TIMEOUT_MS,
   urlHealthConstants,
 } from "./state/cache.js";
+
+const recordVideoViewApi = (...args) => recordVideoView(nostrClient, ...args);
 
 const UNSUPPORTED_BTITH_MESSAGE =
   "This magnet link is missing a compatible BitTorrent v1 info hash.";
@@ -225,6 +253,12 @@ class Application {
     this.boundVideoModalCreatorHandler = null;
     this.boundVideoModalZapHandler = null;
     this.boundVideoModalZapWalletHandler = null;
+    this.boundVideoModalCommentSubmitHandler = null;
+    this.boundVideoModalCommentRetryHandler = null;
+    this.boundVideoModalCommentLoadMoreHandler = null;
+    this.boundVideoModalCommentLoginHandler = null;
+    this.boundVideoModalCommentMuteHandler = null;
+    this.boundVideoModalTagActivateHandler = null;
     this.pendingModalZapOpen = false;
     this.videoListViewPlaybackHandler = null;
     this.videoListViewEditHandler = null;
@@ -234,6 +268,16 @@ class Application {
     this.moreMenuController = null;
     this.latestFeedMetadata = null;
     this.lastModalTrigger = null;
+    this.modalCommentState = {
+      videoEventId: null,
+      videoDefinitionAddress: null,
+      parentCommentId: null,
+    };
+    this.modalCommentProfiles = new Map();
+    this.modalCommentLimit = 40;
+    this.modalCommentLoadPromise = null;
+    this.modalCommentPublishPromise = null;
+    this.pendingModeratedPlayback = null;
 
     this.nostrService = services.nostrService || nostrService;
     this.r2Service = services.r2Service || r2Service;
@@ -268,6 +312,37 @@ class Application {
         notifyError: (message) => this.showError(message),
         maxWalletDefaultZap: MAX_WALLET_DEFAULT_ZAP,
       });
+    this.hashtagPreferences =
+      services.hashtagPreferences || hashtagPreferences;
+    this.hashtagPreferencesSnapshot =
+      this.createHashtagPreferencesSnapshot();
+    this.hashtagPreferencesSnapshotSignature =
+      this.computeHashtagPreferencesSignature(
+        this.hashtagPreferencesSnapshot,
+      );
+    this.hashtagPreferencesPublishInFlight = false;
+    this.hashtagPreferencesPublishPromise = null;
+    this.boundHashtagPreferencesChangeHandler = null;
+    this.unsubscribeFromHashtagPreferencesChange = null;
+    if (
+      this.hashtagPreferences &&
+      typeof this.hashtagPreferences.on === "function"
+    ) {
+      this.boundHashtagPreferencesChangeHandler = (detail) =>
+        this.handleHashtagPreferencesChange(detail);
+      try {
+        this.unsubscribeFromHashtagPreferencesChange =
+          this.hashtagPreferences.on(
+            HASHTAG_PREFERENCES_EVENTS.CHANGE,
+            this.boundHashtagPreferencesChangeHandler,
+          );
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to subscribe to hashtag preferences changes:",
+          error,
+        );
+      }
+    }
     if (
       this.nwcSettingsService &&
       typeof this.nwcSettingsService.setActivePubkeyGetter === "function"
@@ -355,6 +430,8 @@ class Application {
         relayManager,
         logger: devLogger,
         accessControl,
+        authProviders,
+        getAuthProvider,
       });
     this.authEventUnsubscribes.push(
       this.authService.on("auth:login", (detail) => {
@@ -403,52 +480,85 @@ class Application {
       })
     );
 
+    this.commentThreadService =
+      services.commentThreadService ||
+      new CommentThreadService({
+        fetchVideoComments: (target, options) =>
+          nostrClient?.fetchVideoComments?.(target, options),
+        subscribeVideoComments: (target, options) =>
+          nostrClient?.subscribeVideoComments?.(target, options),
+        getProfileCacheEntry: (pubkey) => this.getProfileCacheEntry(pubkey),
+        batchFetchProfiles: (pubkeys) => this.batchFetchProfiles(pubkeys),
+        logger: {
+          warn: (...args) => devLogger.warn(...args),
+        },
+      });
+    this.boundCommentThreadReadyHandler = (snapshot) =>
+      this.handleCommentThreadReady(snapshot);
+    this.boundCommentThreadAppendHandler = (payload) =>
+      this.handleCommentThreadAppend(payload);
+    this.boundCommentThreadErrorHandler = (error) =>
+      this.handleCommentThreadError(error);
+    if (
+      this.commentThreadService &&
+      typeof this.commentThreadService.setCallbacks === "function"
+    ) {
+      this.commentThreadService.setCallbacks({
+        onThreadReady: this.boundCommentThreadReadyHandler,
+        onCommentsAppended: this.boundCommentThreadAppendHandler,
+        onError: this.boundCommentThreadErrorHandler,
+      });
+      if (this.commentThreadService.defaultLimit) {
+        this.modalCommentLimit = this.commentThreadService.defaultLimit;
+      }
+    }
+
+    // Profile and login modal controller state
+    this.profileController = null;
+    this.loginModalController = null;
+    this.currentUserNpub = null;
+
+    this.initializeLoginModalController({ logIfMissing: true });
+
     // Optional: a "profile" button or avatar (if used)
     this.profileButton = document.getElementById("profileButton") || null;
     this.profileAvatar = document.getElementById("profileAvatar") || null;
 
-    // Profile modal controller state
-    this.profileController = null;
-    this.currentUserNpub = null;
+    const modalContainer = document.getElementById("modalContainer") || null;
 
     // Upload modal component
     this.uploadButton = document.getElementById("uploadButton") || null;
-    const uploadModalEvents = new EventTarget();
-    this.uploadModal =
-      (typeof ui.uploadModal === "function"
-        ? ui.uploadModal({ app: this, eventTarget: uploadModalEvents })
-        : ui.uploadModal) ||
-      new UploadModal({
+    const uploadModalSetup = initUploadModal({
+      app: this,
+      uploadModalOverride: ui.uploadModal,
+      container: modalContainer,
+      services: {
         authService: this.authService,
         r2Service: this.r2Service,
-        publishVideoNote: (payload, options) =>
-          this.publishVideoNote(payload, options),
+      },
+      utilities: {
         removeTrackingScripts,
         setGlobalModalState,
+      },
+      callbacks: {
+        publishVideoNote: (payload, options) =>
+          this.publishVideoNote(payload, options),
         showError: (message) => this.showError(message),
         showSuccess: (message) => this.showSuccess(message),
         getCurrentPubkey: () => this.pubkey,
         safeEncodeNpub: (pubkey) => this.safeEncodeNpub(pubkey),
-        eventTarget: uploadModalEvents,
-        container: document.getElementById("modalContainer") || null,
-      });
-    this.boundUploadSubmitHandler = (event) => {
-      this.handleUploadSubmitEvent(event);
-    };
-    this.uploadModal.addEventListener(
-      "upload:submit",
-      this.boundUploadSubmitHandler
-    );
+        onSubmit: (event) => this.handleUploadSubmitEvent(event),
+      },
+    });
+    this.uploadModal = uploadModalSetup.modal;
+    this.uploadModalEvents = uploadModalSetup.events;
+    this.boundUploadSubmitHandler = uploadModalSetup.handlers.submit;
 
-    const editModalEvents = new EventTarget();
-    this.editModal =
-      (typeof ui.editModal === "function"
-        ? ui.editModal({ app: this, eventTarget: editModalEvents })
-        : ui.editModal) ||
-      new EditModal({
-        removeTrackingScripts,
-        setGlobalModalState,
-        showError: (message) => this.showError(message),
+    const editModalSetup = initEditModal({
+      app: this,
+      editModalOverride: ui.editModal,
+      container: modalContainer,
+      services: {
         getMode: () => (isDevMode ? "dev" : "live"),
         sanitizers: {
           text: (value) => (typeof value === "string" ? value.trim() : ""),
@@ -456,26 +566,23 @@ class Application {
           magnet: (value) => (typeof value === "string" ? value.trim() : ""),
           checkbox: (value) => !!value,
         },
+      },
+      utilities: {
+        removeTrackingScripts,
+        setGlobalModalState,
         escapeHtml: (value) => escapeHtml(value),
-        eventTarget: editModalEvents,
-        container: document.getElementById("modalContainer") || null,
-      });
+      },
+      callbacks: {
+        showError: (message) => this.showError(message),
+        onSubmit: (event) => this.handleEditModalSubmit(event),
+        onCancel: () => this.showError(""),
+      },
+    });
 
-    this.boundEditModalSubmitHandler = (event) => {
-      this.handleEditModalSubmit(event);
-    };
-    this.editModal.addEventListener(
-      "video:edit-submit",
-      this.boundEditModalSubmitHandler
-    );
-
-    this.boundEditModalCancelHandler = () => {
-      this.showError("");
-    };
-    this.editModal.addEventListener(
-      "video:edit-cancel",
-      this.boundEditModalCancelHandler
-    );
+    this.editModal = editModalSetup.modal;
+    this.editModalEvents = editModalSetup.events;
+    this.boundEditModalSubmitHandler = editModalSetup.handlers.submit;
+    this.boundEditModalCancelHandler = editModalSetup.handlers.cancel;
 
     this.revertModal =
       (typeof ui.revertModal === "function"
@@ -491,7 +598,7 @@ class Application {
         truncateMiddle,
         formatShortNpub: (value) => formatShortNpub(value),
         fallbackThumbnailSrc: FALLBACK_THUMBNAIL_SRC,
-        container: document.getElementById("modalContainer") || null,
+        container: modalContainer,
       });
 
     this.boundRevertConfirmHandler = (event) => {
@@ -502,34 +609,25 @@ class Application {
       this.boundRevertConfirmHandler
     );
 
-    const deleteModalEvents = new EventTarget();
-    this.deleteModal =
-      (typeof ui.deleteModal === "function"
-        ? ui.deleteModal({ app: this, eventTarget: deleteModalEvents })
-        : ui.deleteModal) ||
-      new DeleteModal({
+    const deleteModalSetup = initDeleteModal({
+      app: this,
+      deleteModalOverride: ui.deleteModal,
+      container: modalContainer,
+      utilities: {
         removeTrackingScripts,
         setGlobalModalState,
         truncateMiddle,
-        container: document.getElementById("modalContainer") || null,
-        eventTarget: deleteModalEvents,
-      });
+      },
+      callbacks: {
+        onConfirm: (event) => this.handleDeleteModalConfirm(event),
+        onCancel: () => this.showError(""),
+      },
+    });
 
-    this.boundDeleteConfirmHandler = (event) => {
-      this.handleDeleteModalConfirm(event);
-    };
-    this.deleteModal.addEventListener(
-      "video:delete-confirm",
-      this.boundDeleteConfirmHandler
-    );
-
-    this.boundDeleteCancelHandler = () => {
-      this.showError("");
-    };
-    this.deleteModal.addEventListener(
-      "video:delete-cancel",
-      this.boundDeleteCancelHandler
-    );
+    this.deleteModal = deleteModalSetup.modal;
+    this.deleteModalEvents = deleteModalSetup.events;
+    this.boundDeleteConfirmHandler = deleteModalSetup.handlers.confirm;
+    this.boundDeleteCancelHandler = deleteModalSetup.handlers.cancel;
 
     try {
       const profileModalContainer = document.getElementById("modalContainer") || null;
@@ -569,6 +667,16 @@ class Application {
           persistSavedProfiles: (options) => persistSavedProfiles(options),
           watchHistoryService,
           authService: this.authService,
+          requestAddProfileLogin: (options) =>
+            this.requestProfileAdditionLogin(options),
+          describeLoginError: (error, fallbackMessage) =>
+            this.describeLoginError(error, fallbackMessage),
+          hashtagPreferences: this.hashtagPreferences,
+          getHashtagPreferences: () => this.getHashtagPreferences(),
+          describeHashtagPreferencesError: (error, fallbackMessage) =>
+            this.describeHashtagPreferencesError(error, {
+              fallbackMessage,
+            }),
           log: (...args) => this.log(...args),
           closeAllMoreMenus: (options) => this.closeAllMoreMenus(options),
           clipboard:
@@ -597,7 +705,7 @@ class Application {
           onClose: () => this.handleProfileModalClosed(),
           onLogout: async () => this.requestLogout(),
           onChannelLink: (element) => this.handleProfileChannelLink(element),
-          onAddAccount: (controller) => this.handleAddProfile(controller),
+          onAddAccount: (payload) => this.handleAddProfile(payload),
           onRequestSwitchProfile: (payload) =>
             this.handleProfileSwitchRequest(payload),
           onRelayOperation: (payload) =>
@@ -674,7 +782,33 @@ class Application {
         logger: {
           log: (message, ...args) => this.log(message, ...args),
         },
+        mediaLoader: this.mediaLoader,
+        assets: {
+          fallbackThumbnailSrc: FALLBACK_THUMBNAIL_SRC,
+        },
+        state: {
+          loadedThumbnails: this.loadedThumbnails,
+        },
+        helpers: {
+          safeEncodeNpub: (pubkey) => this.safeEncodeNpub(pubkey),
+          formatShortNpub: (value) => formatShortNpub(value),
+        },
       });
+
+    if (
+      this.videoModal &&
+      typeof this.videoModal.setMediaLoader === "function"
+    ) {
+      this.videoModal.setMediaLoader(this.mediaLoader);
+    }
+    if (
+      this.videoModal &&
+      typeof this.videoModal.setTagPreferenceStateResolver === "function"
+    ) {
+      this.videoModal.setTagPreferenceStateResolver((tag) =>
+        this.getTagPreferenceState(tag),
+      );
+    }
     this.zapController = new ZapController({
       videoModal: this.videoModal,
       getCurrentVideo: () => this.currentVideo,
@@ -720,6 +854,209 @@ class Application {
     this.videoModal.addEventListener(
       "video:share",
       this.boundVideoModalShareHandler
+    );
+    this.boundVideoModalModerationOverrideHandler = (event) => {
+      const detail = event?.detail || {};
+      const targetVideo =
+        detail && typeof detail.video === "object"
+          ? detail.video
+          : this.currentVideo || null;
+      if (!targetVideo) {
+        const trigger = detail?.trigger;
+        if (trigger) {
+          trigger.disabled = false;
+          trigger.removeAttribute("aria-busy");
+        }
+        return;
+      }
+
+      const handled = this.handleModerationOverride({
+        video: targetVideo,
+        card: detail?.card || null,
+      });
+
+      if (handled === false) {
+        const trigger = detail?.trigger;
+        if (trigger) {
+          trigger.disabled = false;
+          trigger.removeAttribute("aria-busy");
+        }
+      }
+    };
+    this.videoModal.addEventListener(
+      "video:moderation-override",
+      this.boundVideoModalModerationOverrideHandler,
+    );
+    this.boundVideoModalModerationBlockHandler = (event) => {
+      const detail = event?.detail || {};
+      const targetVideo =
+        detail && typeof detail.video === "object"
+          ? detail.video
+          : this.currentVideo || null;
+      const trigger = detail?.trigger || null;
+
+      if (!targetVideo) {
+        if (trigger) {
+          trigger.disabled = false;
+          trigger.removeAttribute("aria-busy");
+        }
+        return;
+      }
+
+      Promise.resolve(
+        this.handleModerationBlock({
+          video: targetVideo,
+          card: detail?.card || null,
+        }),
+      )
+        .then((handled) => {
+          if (handled === false && trigger) {
+            trigger.disabled = false;
+            trigger.removeAttribute("aria-busy");
+          }
+        })
+        .catch((error) => {
+          devLogger.warn(
+            "[Application] Failed to handle modal moderation block:",
+            error,
+          );
+          if (trigger) {
+            trigger.disabled = false;
+            trigger.removeAttribute("aria-busy");
+          }
+        });
+    };
+    this.videoModal.addEventListener(
+      "video:moderation-block",
+      this.boundVideoModalModerationBlockHandler,
+    );
+    this.boundVideoModalModerationHideHandler = (event) => {
+      const detail = event?.detail || {};
+      const targetVideo =
+        detail && typeof detail.video === "object"
+          ? detail.video
+          : this.currentVideo || null;
+      const trigger = detail?.trigger || null;
+
+      if (!targetVideo) {
+        if (trigger) {
+          trigger.disabled = false;
+          trigger.removeAttribute("aria-busy");
+        }
+        return;
+      }
+
+      Promise.resolve(
+        this.handleModerationHide({
+          video: targetVideo,
+          card: detail?.card || null,
+        }),
+      )
+        .then((handled) => {
+          if (handled === false && trigger) {
+            trigger.disabled = false;
+            trigger.removeAttribute("aria-busy");
+          }
+        })
+        .catch((error) => {
+          devLogger.warn(
+            "[Application] Failed to handle modal moderation hide:",
+            error,
+          );
+          if (trigger) {
+            trigger.disabled = false;
+            trigger.removeAttribute("aria-busy");
+          }
+        });
+    };
+    this.videoModal.addEventListener(
+      "video:moderation-hide",
+      this.boundVideoModalModerationHideHandler,
+    );
+    this.boundVideoModalTagActivateHandler = (event) => {
+      const detail = event?.detail || {};
+      const nativeEvent = detail?.nativeEvent || null;
+      if (nativeEvent) {
+        nativeEvent.preventDefault?.();
+        nativeEvent.stopPropagation?.();
+      }
+
+      this.handleTagPreferenceActivation({
+        tag: detail?.tag,
+        trigger: detail?.trigger || null,
+        context: "modal",
+        video: detail?.video || this.currentVideo || null,
+        event: nativeEvent,
+      });
+    };
+    this.videoModal.addEventListener(
+      "tag:activate",
+      this.boundVideoModalTagActivateHandler,
+    );
+    this.boundVideoModalSimilarSelectHandler = (event) => {
+      const detail = event?.detail || {};
+      const selectedVideo =
+        detail && typeof detail.video === "object" ? detail.video : null;
+      const triggerCandidate =
+        detail?.event?.currentTarget ||
+        (detail?.card && typeof detail.card.getRoot === "function"
+          ? detail.card.getRoot()
+          : null);
+
+      this.setLastModalTrigger(triggerCandidate || null);
+
+      if (detail?.event) {
+        detail.event.preventDefault?.();
+        detail.event.stopPropagation?.();
+      }
+
+      if (!selectedVideo) {
+        return;
+      }
+
+      const playbackOptions = {
+        trigger: this.lastModalTrigger,
+      };
+
+      if (typeof selectedVideo.url === "string" && selectedVideo.url) {
+        playbackOptions.url = selectedVideo.url;
+      }
+      if (typeof selectedVideo.magnet === "string" && selectedVideo.magnet) {
+        playbackOptions.magnet = selectedVideo.magnet;
+      }
+
+      if (typeof selectedVideo.id === "string" && selectedVideo.id) {
+        Promise.resolve(
+          this.playVideoByEventId(selectedVideo.id, playbackOptions)
+        ).catch((error) => {
+          devLogger.error(
+            "[Application] Failed to play selected similar video:",
+            error
+          );
+        });
+        return;
+      }
+
+      Promise.resolve(this.playVideoWithFallback(playbackOptions)).catch(
+        (error) => {
+          devLogger.error(
+            "[Application] Failed to start playback for similar video:",
+            error
+          );
+        }
+      );
+    };
+    this.videoModal.addEventListener(
+      "similar:select",
+      this.boundVideoModalSimilarSelectHandler
+    );
+    this.boundVideoModalReactionHandler = (event) => {
+      const detail = event?.detail || {};
+      this.handleVideoReaction(detail);
+    };
+    this.videoModal.addEventListener(
+      "video:reaction",
+      this.boundVideoModalReactionHandler
     );
     this.boundVideoModalContextActionHandler = (event) => {
       const detail = event?.detail || {};
@@ -804,6 +1141,41 @@ class Application {
       "zap:wallet-link",
       this.boundVideoModalZapWalletHandler
     );
+    this.boundVideoModalCommentSubmitHandler = (event) => {
+      this.handleVideoModalCommentSubmit(event?.detail || {});
+    };
+    this.videoModal.addEventListener(
+      "comment:submit",
+      this.boundVideoModalCommentSubmitHandler
+    );
+    this.boundVideoModalCommentRetryHandler = (event) => {
+      this.handleVideoModalCommentRetry(event?.detail || {});
+    };
+    this.videoModal.addEventListener(
+      "comment:retry",
+      this.boundVideoModalCommentRetryHandler
+    );
+    this.boundVideoModalCommentLoadMoreHandler = (event) => {
+      this.handleVideoModalCommentLoadMore(event?.detail || {});
+    };
+    this.videoModal.addEventListener(
+      "comment:load-more",
+      this.boundVideoModalCommentLoadMoreHandler
+    );
+    this.boundVideoModalCommentLoginHandler = (event) => {
+      this.handleVideoModalCommentLoginRequired(event?.detail || {});
+    };
+    this.videoModal.addEventListener(
+      "comment:login-required",
+      this.boundVideoModalCommentLoginHandler
+    );
+    this.boundVideoModalCommentMuteHandler = (event) => {
+      this.handleVideoModalCommentMute(event?.detail || {});
+    };
+    this.videoModal.addEventListener(
+      "comment:mute-author",
+      this.boundVideoModalCommentMuteHandler
+    );
 
     this.moreMenuController = new MoreMenuController({
       document,
@@ -854,6 +1226,7 @@ class Application {
     });
     this.moreMenuController.setVideoModal(this.videoModal);
     this.videoSettingsPopovers = new Map();
+    this.tagPreferencePopovers = new Map();
 
     // Hide/Show Subscriptions Link
     this.subscriptionsLink = null;
@@ -867,6 +1240,8 @@ class Application {
     this.statusMessage =
       this.statusContainer?.querySelector("[data-status-message]") || null;
     this.statusAutoHideHandle = null;
+    this.lastExperimentalWarningKey = null;
+    this.lastExperimentalWarningAt = 0;
 
     // Auth state
     this.pubkey = null;
@@ -876,7 +1251,15 @@ class Application {
     this.currentVideoPointerKey = null;
     this.videoSubscription = this.nostrService.getVideoSubscription() || null;
     this.videoList = null;
+    this.videoListPopularTags = null;
     this.modalViewCountUnsub = null;
+    this.modalReactionUnsub = null;
+    this.modalReactionPointerKey = null;
+    this.modalReactionState = {
+      counts: { "+": 0, "-": 0 },
+      total: 0,
+      userReaction: "",
+    };
 
     // Videos stored as a Map (key=event.id)
     this.videosMap = this.nostrService.getVideosMap();
@@ -1015,6 +1398,24 @@ class Application {
         : ui.videoListView) ||
       new VideoListView(videoListViewConfig);
 
+    if (
+      this.videoListView &&
+      typeof this.videoListView.setTagPreferenceStateResolver === "function"
+    ) {
+      this.videoListView.setTagPreferenceStateResolver((tag) =>
+        this.getTagPreferenceState(tag),
+      );
+    }
+
+    if (
+      this.videoListView &&
+      typeof this.videoListView.setTagActivationHandler === "function"
+    ) {
+      this.videoListView.setTagActivationHandler((detail = {}) =>
+        this.handleTagPreferenceActivation(detail),
+      );
+    }
+
     this.videoListViewPlaybackHandler = ({
       videoId,
       url,
@@ -1076,6 +1477,12 @@ class Application {
 
     this.videoListView.setModerationOverrideHandler((detail = {}) =>
       this.handleModerationOverride(detail)
+    );
+    this.videoListView.setModerationBlockHandler((detail = {}) =>
+      this.handleModerationBlock(detail)
+    );
+    this.videoListView.setModerationHideHandler((detail = {}) =>
+      this.handleModerationHide(detail)
     );
 
     if (this.moreMenuController) {
@@ -1174,11 +1581,17 @@ class Application {
   }
 
   prepareForViewLoad() {
+    clearChannelVideoCardRegistry();
     if (this.videoListView) {
       this.videoListView.destroy();
     }
 
     this.videoList = null;
+    if (this.videoListPopularTags) {
+      this.videoListPopularTags.textContent = "";
+      this.videoListPopularTags.hidden = true;
+    }
+    this.videoListPopularTags = null;
 
     if (this.mediaLoader && typeof this.mediaLoader.disconnect === "function") {
       this.mediaLoader.disconnect();
@@ -1713,6 +2126,258 @@ class Application {
     });
   }
 
+  computeSimilarContentCandidates({ activeVideo = this.currentVideo, maxItems = 5 } = {}) {
+    const decorateCandidate = (video) => {
+      if (!video || typeof video !== "object") {
+        return video;
+      }
+      if (typeof this.decorateVideoModeration === "function") {
+        try {
+          const decorated = this.decorateVideoModeration(video);
+          if (decorated && typeof decorated === "object") {
+            return decorated;
+          }
+        } catch (error) {
+          devLogger.warn(
+            "[Application] Failed to decorate similar content candidate",
+            error,
+          );
+        }
+      }
+      return video;
+    };
+
+    const target = activeVideo && typeof activeVideo === "object" ? decorateCandidate(activeVideo) : null;
+    if (!target) {
+      return [];
+    }
+
+    const activeTagsSource = Array.isArray(target.displayTags) && target.displayTags.length
+      ? target.displayTags
+      : collectVideoTags(target);
+
+    const activeTagSet = new Set();
+    for (const tag of activeTagsSource) {
+      if (typeof tag !== "string") {
+        continue;
+      }
+      const normalized = tag.trim().toLowerCase();
+      if (normalized) {
+        activeTagSet.add(normalized);
+      }
+    }
+
+    if (activeTagSet.size === 0) {
+      return [];
+    }
+
+    const limit = Number.isFinite(maxItems) && maxItems > 0
+      ? Math.max(1, Math.floor(maxItems))
+      : 5;
+
+    let candidateSource = [];
+    if (Array.isArray(this.videoListView?.currentVideos) && this.videoListView.currentVideos.length) {
+      candidateSource = this.videoListView.currentVideos;
+    } else if (this.videosMap instanceof Map && this.videosMap.size) {
+      candidateSource = Array.from(this.videosMap.values());
+    } else if (nostrClient && typeof nostrClient.getActiveVideos === "function") {
+      try {
+        const activeVideos = nostrClient.getActiveVideos();
+        if (Array.isArray(activeVideos)) {
+          candidateSource = activeVideos;
+        }
+      } catch (error) {
+        devLogger.warn("[Application] Failed to read active videos for similar content:", error);
+      }
+    }
+
+    if (!Array.isArray(candidateSource) || candidateSource.length === 0) {
+      return [];
+    }
+
+    const activeId = typeof target.id === "string" ? target.id : "";
+    const activePointerKey = typeof target.pointerKey === "string" ? target.pointerKey : "";
+    const seenKeys = new Set();
+    if (activeId) {
+      const normalizedId = activeId.trim().toLowerCase();
+      if (normalizedId) {
+        seenKeys.add(normalizedId);
+      }
+    }
+    if (activePointerKey) {
+      const normalizedPointer = activePointerKey.trim().toLowerCase();
+      if (normalizedPointer) {
+        seenKeys.add(normalizedPointer);
+      }
+    }
+
+    const results = [];
+
+    for (const candidate of candidateSource) {
+      const decoratedCandidate = decorateCandidate(candidate);
+      if (!decoratedCandidate || typeof decoratedCandidate !== "object") {
+        continue;
+      }
+      if (decoratedCandidate === target) {
+        continue;
+      }
+
+      const candidateId = typeof decoratedCandidate.id === "string" ? decoratedCandidate.id : "";
+      if (candidateId && candidateId === activeId) {
+        continue;
+      }
+      if (decoratedCandidate.deleted === true) {
+        continue;
+      }
+      if (decoratedCandidate.isPrivate === true) {
+        continue;
+      }
+      if (decoratedCandidate.isNsfw === true && ALLOW_NSFW_CONTENT !== true) {
+        continue;
+      }
+
+      const candidatePubkey = typeof decoratedCandidate.pubkey === "string" ? decoratedCandidate.pubkey : "";
+      if (candidatePubkey && this.isAuthorBlocked(candidatePubkey)) {
+        continue;
+      }
+
+      const candidateTagsSource = Array.isArray(decoratedCandidate.displayTags) && decoratedCandidate.displayTags.length
+        ? decoratedCandidate.displayTags
+        : collectVideoTags(decoratedCandidate);
+      if (!Array.isArray(candidateTagsSource) || candidateTagsSource.length === 0) {
+        continue;
+      }
+
+      const candidateTagSet = new Set();
+      for (const tag of candidateTagsSource) {
+        if (typeof tag !== "string") {
+          continue;
+        }
+        const normalized = tag.trim().toLowerCase();
+        if (normalized) {
+          candidateTagSet.add(normalized);
+        }
+      }
+
+      if (candidateTagSet.size === 0) {
+        continue;
+      }
+
+      let sharedCount = 0;
+      for (const tag of candidateTagSet) {
+        if (activeTagSet.has(tag)) {
+          sharedCount += 1;
+        }
+      }
+
+      if (sharedCount === 0) {
+        continue;
+      }
+
+      const pointerInfo = this.deriveVideoPointerInfo(candidate);
+      const pointerKey = typeof candidate.pointerKey === "string" && candidate.pointerKey.trim()
+        ? candidate.pointerKey.trim()
+        : typeof pointerInfo?.key === "string" && pointerInfo.key
+          ? pointerInfo.key
+          : "";
+
+      const dedupeKeyRaw = (candidateId || pointerKey || "").trim();
+      if (dedupeKeyRaw) {
+        const dedupeKey = dedupeKeyRaw.toLowerCase();
+        if (seenKeys.has(dedupeKey)) {
+          continue;
+        }
+        seenKeys.add(dedupeKey);
+      }
+
+      if (!Array.isArray(candidate.displayTags) || candidate.displayTags.length === 0) {
+        candidate.displayTags = Array.isArray(candidateTagsSource)
+          ? candidateTagsSource.slice()
+          : [];
+      }
+
+      let postedAt = this.getKnownVideoPostedAt(decoratedCandidate);
+      if (!Number.isFinite(postedAt) && Number.isFinite(decoratedCandidate.rootCreatedAt)) {
+        postedAt = Math.floor(decoratedCandidate.rootCreatedAt);
+      }
+      if (!Number.isFinite(postedAt) && Number.isFinite(decoratedCandidate.created_at)) {
+        postedAt = Math.floor(decoratedCandidate.created_at);
+      }
+      if (!Number.isFinite(postedAt)) {
+        postedAt = null;
+      }
+
+      let shareUrl = "";
+      if (typeof decoratedCandidate.shareUrl === "string" && decoratedCandidate.shareUrl.trim()) {
+        shareUrl = decoratedCandidate.shareUrl.trim();
+      } else if (candidateId) {
+        shareUrl = this.buildShareUrlFromEventId(candidateId) || "";
+      }
+
+      results.push({
+        video: decoratedCandidate,
+        pointerInfo: pointerInfo || null,
+        shareUrl,
+        postedAt,
+        sharedTagCount: sharedCount,
+      });
+    }
+
+    if (results.length === 0) {
+      return [];
+    }
+
+    results.sort((a, b) => {
+      if (b.sharedTagCount !== a.sharedTagCount) {
+        return b.sharedTagCount - a.sharedTagCount;
+      }
+      const tsA = Number.isFinite(a.postedAt) ? a.postedAt : 0;
+      const tsB = Number.isFinite(b.postedAt) ? b.postedAt : 0;
+      return tsB - tsA;
+    });
+
+    return results.slice(0, limit).map((entry) => {
+      const normalizedPostedAt = Number.isFinite(entry.postedAt)
+        ? Math.floor(entry.postedAt)
+        : null;
+      const timeAgo = normalizedPostedAt !== null ? this.formatTimeAgo(normalizedPostedAt) : "";
+      return {
+        video: entry.video,
+        pointerInfo: entry.pointerInfo,
+        shareUrl: entry.shareUrl,
+        postedAt: normalizedPostedAt,
+        timeAgo,
+        sharedTagCount: entry.sharedTagCount,
+      };
+    });
+  }
+
+  updateModalSimilarContent({ activeVideo = this.currentVideo, maxItems } = {}) {
+    if (!this.videoModal) {
+      return;
+    }
+
+    const target = activeVideo && typeof activeVideo === "object" ? activeVideo : null;
+    if (!target) {
+      if (typeof this.videoModal.clearSimilarContent === "function") {
+        this.videoModal.clearSimilarContent();
+      }
+      return;
+    }
+
+    const matches = this.computeSimilarContentCandidates({ activeVideo: target, maxItems });
+    if (matches.length > 0) {
+      if (typeof this.videoModal.setSimilarContent === "function") {
+        this.videoModal.setSimilarContent(matches);
+      }
+      return;
+    }
+
+    if (typeof this.videoModal.clearSimilarContent === "function") {
+      this.videoModal.clearSimilarContent();
+    }
+  }
+
   formatViewCountLabel(total) {
     const value = Number.isFinite(total) ? Number(total) : 0;
     const label = value === 1 ? "view" : "views";
@@ -1743,6 +2408,650 @@ class Application {
     if (this.videoModal) {
       this.videoModal.updateViewCountLabel("– views");
       this.videoModal.setViewCountPointer(null);
+    }
+  }
+
+  resetModalReactionState() {
+    this.modalReactionState = {
+      counts: { "+": 0, "-": 0 },
+      total: 0,
+      userReaction: "",
+    };
+    if (this.videoModal?.updateReactionSummary) {
+      this.videoModal.updateReactionSummary({
+        total: 0,
+        counts: { "+": 0, "-": 0 },
+        userReaction: "",
+      });
+    }
+  }
+
+  teardownModalReactionSubscription() {
+    if (typeof this.modalReactionUnsub === "function") {
+      try {
+        this.modalReactionUnsub();
+      } catch (error) {
+        devLogger.warn(
+          "[reaction] Failed to tear down modal subscription:",
+          error,
+        );
+      }
+    }
+    this.modalReactionUnsub = null;
+    this.modalReactionPointerKey = null;
+    this.resetModalReactionState();
+  }
+
+  subscribeModalReactions(pointer, pointerKey) {
+    if (!this.videoModal?.updateReactionSummary) {
+      this.teardownModalReactionSubscription();
+      return;
+    }
+
+    this.teardownModalReactionSubscription();
+
+    if (!pointer || !pointerKey) {
+      return;
+    }
+
+    try {
+      const normalizedUser = this.normalizeHexPubkey(this.pubkey);
+      const unsubscribe = reactionCounter.subscribe(pointer, (snapshot) => {
+        const counts = { ...this.modalReactionState.counts };
+        if (snapshot?.counts && typeof snapshot.counts === "object") {
+          for (const [key, value] of Object.entries(snapshot.counts)) {
+            counts[key] = this.normalizeReactionCount(value);
+          }
+        }
+        if (!Object.prototype.hasOwnProperty.call(counts, "+")) {
+          counts["+"] = 0;
+        }
+        if (!Object.prototype.hasOwnProperty.call(counts, "-")) {
+          counts["-"] = 0;
+        }
+
+        let total = Number.isFinite(snapshot?.total)
+          ? Math.max(0, Number(snapshot.total))
+          : 0;
+        if (!Number.isFinite(total) || total === 0) {
+          total = 0;
+          for (const value of Object.values(counts)) {
+            total += this.normalizeReactionCount(value);
+          }
+        }
+
+        let userReaction = "";
+        if (normalizedUser && snapshot?.reactions) {
+          const record = snapshot.reactions[normalizedUser] || null;
+          if (record && typeof record.content === "string") {
+            userReaction =
+              record.content === "+"
+                ? "+"
+                : record.content === "-"
+                  ? "-"
+                  : "";
+          }
+        }
+
+        this.modalReactionState = {
+          counts,
+          total,
+          userReaction,
+        };
+        this.videoModal.updateReactionSummary({
+          total,
+          counts,
+          userReaction,
+        });
+      });
+
+      this.modalReactionPointerKey = pointerKey;
+      this.modalReactionUnsub = () => {
+        try {
+          unsubscribe?.();
+        } catch (error) {
+          devLogger.warn(
+            "[reaction] Failed to tear down modal subscription:",
+            error,
+          );
+        } finally {
+          this.modalReactionUnsub = null;
+          this.modalReactionPointerKey = null;
+        }
+      };
+    } catch (error) {
+      devLogger.warn(
+        "[reaction] Failed to subscribe modal reaction counter:",
+        error,
+      );
+      this.resetModalReactionState();
+    }
+  }
+
+  resetModalCommentState({ hide = true } = {}) {
+    if (!this.videoModal) {
+      return;
+    }
+
+    this.videoModal.clearComments?.();
+    this.videoModal.resetCommentComposer?.();
+    this.videoModal.setCommentComposerState?.({
+      disabled: true,
+      reason: "disabled",
+    });
+    if (hide) {
+      this.videoModal.setCommentsVisibility?.(false);
+    }
+    this.videoModal.setCommentStatus?.("");
+  }
+
+  teardownModalCommentSubscription({ resetUi = true } = {}) {
+    if (this.commentThreadService) {
+      try {
+        this.commentThreadService.teardown();
+      } catch (error) {
+        devLogger.warn("[comment] Failed to teardown modal comment thread:", error);
+      }
+    }
+    this.modalCommentLoadPromise = null;
+    this.modalCommentPublishPromise = null;
+    this.modalCommentState = {
+      videoEventId: null,
+      videoDefinitionAddress: null,
+      parentCommentId: null,
+    };
+    this.modalCommentProfiles = new Map();
+    if (resetUi) {
+      this.resetModalCommentState();
+    }
+    this.videoModal?.setCommentSectionCallbacks?.({ teardown: null });
+  }
+
+  subscribeModalComments(video) {
+    if (!this.videoModal) {
+      return;
+    }
+
+    if (!video) {
+      this.teardownModalCommentSubscription();
+      return;
+    }
+
+    this.videoModal.setCommentSectionCallbacks?.({
+      teardown: () => this.teardownModalCommentSubscription(),
+    });
+
+    if (!this.commentThreadService) {
+      this.resetModalCommentState();
+      return;
+    }
+
+    this.teardownModalCommentSubscription({ resetUi: false });
+
+    this.videoModal.hideCommentsDisabledMessage?.();
+
+    if (video.enableComments === false) {
+      this.resetModalCommentState();
+      this.videoModal.showCommentsDisabledMessage?.(
+        "Comments have been turned off for this video."
+      );
+      return;
+    }
+
+    const videoEventId =
+      typeof video.id === "string" && video.id.trim() ? video.id.trim() : "";
+    const videoDefinitionAddress = buildVideoAddressPointer(video);
+
+    if (!videoEventId || !videoDefinitionAddress) {
+      this.resetModalCommentState({ hide: false });
+      this.videoModal.setCommentStatus?.(
+        "Comments are unavailable for this video.",
+      );
+      return;
+    }
+
+    this.modalCommentState = {
+      videoEventId,
+      videoDefinitionAddress,
+      parentCommentId: null,
+    };
+    this.modalCommentProfiles = new Map();
+    if (this.commentThreadService.defaultLimit) {
+      this.modalCommentLimit = this.commentThreadService.defaultLimit;
+    }
+
+    this.videoModal.setCommentsVisibility?.(true);
+    this.videoModal.clearComments?.();
+    this.videoModal.resetCommentComposer?.();
+    this.videoModal.setCommentStatus?.("Loading comments…");
+    this.applyCommentComposerAuthState();
+
+    const loadPromise = this.commentThreadService.loadThread({
+      video,
+      parentCommentId: null,
+      limit: this.modalCommentLimit,
+    });
+
+    if (!loadPromise || typeof loadPromise.then !== "function") {
+      this.applyCommentComposerAuthState();
+      return;
+    }
+
+    this.modalCommentLoadPromise = loadPromise;
+    loadPromise
+      .then(() => {
+        if (this.modalCommentLoadPromise === loadPromise) {
+          this.modalCommentLoadPromise = null;
+        }
+        this.applyCommentComposerAuthState();
+      })
+      .catch((error) => {
+        if (this.modalCommentLoadPromise === loadPromise) {
+          this.modalCommentLoadPromise = null;
+        }
+        this.handleCommentThreadError(error);
+      });
+  }
+
+  applyCommentComposerAuthState() {
+    if (!this.videoModal) {
+      return;
+    }
+
+    if (!this.modalCommentState.videoEventId) {
+      return;
+    }
+
+    if (this.currentVideo?.enableComments === false) {
+      this.videoModal.showCommentsDisabledMessage?.(
+        "Comments have been turned off for this video."
+      );
+      this.videoModal.setCommentComposerState?.({
+        disabled: true,
+        reason: "disabled",
+      });
+      return;
+    }
+
+    this.videoModal.hideCommentsDisabledMessage?.();
+
+    if (!this.isUserLoggedIn()) {
+      this.videoModal.setCommentComposerState?.({
+        disabled: true,
+        reason: "login-required",
+      });
+      return;
+    }
+
+    this.videoModal.setCommentComposerState?.({
+      disabled: false,
+      reason: "",
+    });
+    this.videoModal.setCommentStatus?.("");
+  }
+
+  handleCommentThreadReady(snapshot) {
+    if (!snapshot || !this.videoModal) {
+      return;
+    }
+
+    if (snapshot.videoEventId !== this.modalCommentState.videoEventId) {
+      return;
+    }
+
+    this.modalCommentProfiles = this.createMapFromInput(snapshot.profiles);
+    this.modalCommentState.parentCommentId =
+      typeof snapshot.parentCommentId === "string" &&
+      snapshot.parentCommentId.trim()
+        ? snapshot.parentCommentId.trim()
+        : null;
+
+    const sanitizedSnapshot = this.buildModalCommentSnapshot(snapshot);
+    this.videoModal.renderComments?.(sanitizedSnapshot);
+    this.videoModal.setCommentStatus?.("");
+    this.applyCommentComposerAuthState();
+  }
+
+  handleCommentThreadAppend(payload) {
+    if (!payload || !this.videoModal) {
+      return;
+    }
+
+    if (payload.videoEventId !== this.modalCommentState.videoEventId) {
+      return;
+    }
+
+    const comments = this.createMapFromInput(payload.commentsById);
+    const profiles = this.createMapFromInput(payload.profiles);
+    profiles.forEach((profile, pubkey) => {
+      this.modalCommentProfiles.set(pubkey, profile);
+    });
+
+    const commentIds = Array.isArray(payload.commentIds)
+      ? payload.commentIds
+      : [];
+
+    commentIds.forEach((commentId) => {
+      if (!comments.has(commentId)) {
+        return;
+      }
+      const event = comments.get(commentId);
+      if (!event || this.shouldHideModalComment(event)) {
+        return;
+      }
+      const enriched = this.enrichCommentEvent(event);
+      this.videoModal.appendComment?.(enriched);
+    });
+  }
+
+  handleCommentThreadError(error) {
+    if (error) {
+      devLogger.warn("[comment]", error);
+    }
+    if (!this.videoModal) {
+      return;
+    }
+    this.videoModal.setCommentStatus?.(
+      "Failed to load comments. Please try again later.",
+    );
+    if (!this.isUserLoggedIn()) {
+      this.videoModal.setCommentComposerState?.({
+        disabled: true,
+        reason: "login-required",
+      });
+    }
+  }
+
+  createMapFromInput(input) {
+    if (input instanceof Map) {
+      return new Map(input);
+    }
+    const map = new Map();
+    if (Array.isArray(input)) {
+      input.forEach((entry) => {
+        if (Array.isArray(entry) && entry.length >= 2) {
+          map.set(entry[0], entry[1]);
+        }
+      });
+      return map;
+    }
+    if (input && typeof input === "object") {
+      Object.entries(input).forEach(([key, value]) => {
+        map.set(key, value);
+      });
+    }
+    return map;
+  }
+
+  createChildrenMapFromInput(input) {
+    const source = input instanceof Map ? input : this.createMapFromInput(input);
+    const result = new Map();
+    source.forEach((value, key) => {
+      const list = Array.isArray(value) ? value.filter(Boolean) : [];
+      result.set(key, list);
+    });
+    return result;
+  }
+
+  enrichCommentEvent(event) {
+    const cloned = { ...(event || {}) };
+    const normalized = this.normalizeHexPubkey(cloned.pubkey);
+    if (normalized && this.modalCommentProfiles.has(normalized)) {
+      cloned.profile = this.modalCommentProfiles.get(normalized);
+    }
+    return cloned;
+  }
+
+  buildModalCommentSnapshot(snapshot) {
+    const comments = this.createMapFromInput(snapshot?.commentsById);
+    const children = this.createChildrenMapFromInput(snapshot?.childrenByParent);
+    const sanitizedComments = new Map();
+
+    comments.forEach((event, key) => {
+      if (!event || this.shouldHideModalComment(event)) {
+        return;
+      }
+      sanitizedComments.set(key, this.enrichCommentEvent(event));
+    });
+
+    const sanitizedChildren = new Map();
+    children.forEach((ids, parentId) => {
+      const seen = new Set();
+      const filtered = [];
+      ids.forEach((id) => {
+        if (!sanitizedComments.has(id) || seen.has(id)) {
+          return;
+        }
+        seen.add(id);
+        filtered.push(id);
+      });
+      sanitizedChildren.set(parentId, filtered);
+    });
+
+    return {
+      videoEventId: snapshot.videoEventId,
+      parentCommentId: snapshot.parentCommentId || null,
+      commentsById: sanitizedComments,
+      childrenByParent: sanitizedChildren,
+      profiles: this.modalCommentProfiles,
+    };
+  }
+
+  shouldHideModalComment(event) {
+    const normalized = this.normalizeHexPubkey(event?.pubkey);
+    if (!normalized) {
+      return false;
+    }
+
+    if (userBlocks?.isBlocked?.(normalized)) {
+      return true;
+    }
+
+    try {
+      if (moderationService?.isAuthorMutedByViewer?.(normalized)) {
+        return true;
+      }
+    } catch (error) {
+      devLogger.warn("[comment] Failed to check viewer mute state:", error);
+    }
+
+    try {
+      if (moderationService?.isAuthorMutedByTrusted?.(normalized)) {
+        return true;
+      }
+    } catch (error) {
+      devLogger.warn("[comment] Failed to check trusted mute state:", error);
+    }
+
+    return false;
+  }
+
+  async handleVideoModalCommentSubmit(detail = {}) {
+    if (this.modalCommentPublishPromise) {
+      return;
+    }
+
+    const text =
+      typeof detail.text === "string" && detail.text.trim()
+        ? detail.text.trim()
+        : "";
+    if (!text) {
+      return;
+    }
+
+    if (!this.isUserLoggedIn()) {
+      this.videoModal.setCommentComposerState?.({
+        disabled: true,
+        reason: "login-required",
+      });
+      this.handleVideoModalCommentLoginRequired(detail);
+      return;
+    }
+
+    const video = this.currentVideo;
+    if (!video || video.enableComments === false) {
+      return;
+    }
+
+    const videoEventId =
+      typeof video.id === "string" && video.id.trim() ? video.id.trim() : "";
+    const videoDefinitionAddress = buildVideoAddressPointer(video);
+
+    if (!videoEventId || !videoDefinitionAddress) {
+      this.showError("Comments are unavailable for this video.");
+      return;
+    }
+
+    const parentCommentId =
+      typeof detail.parentId === "string" && detail.parentId.trim()
+        ? detail.parentId.trim()
+        : null;
+
+    this.videoModal.setCommentComposerState?.({
+      disabled: true,
+      reason: "submitting",
+    });
+
+    const publishPromise = Promise.resolve(
+      nostrClient.publishVideoComment(
+        {
+          videoEventId,
+          videoDefinitionAddress,
+          parentCommentId,
+        },
+        {
+          content: text,
+        },
+      ),
+    );
+
+    this.modalCommentPublishPromise = publishPromise;
+
+    try {
+      const result = await publishPromise;
+      if (!result?.ok || !result.event) {
+        throw result?.error || new Error("publish-failed");
+      }
+
+      const event = this.enrichCommentEvent(result.event);
+      if (this.commentThreadService) {
+        try {
+          this.commentThreadService.processIncomingEvent(event);
+        } catch (error) {
+          devLogger.warn(
+            "[comment] Failed to process optimistic comment event:",
+            error,
+          );
+          this.videoModal.appendComment?.(event);
+        }
+      } else {
+        this.videoModal.appendComment?.(event);
+      }
+
+      this.videoModal.resetCommentComposer?.();
+      this.applyCommentComposerAuthState();
+      this.videoModal.setCommentStatus?.("Comment posted.");
+    } catch (error) {
+      devLogger.warn("[comment] Failed to publish comment:", error);
+      this.videoModal.setCommentComposerState?.({
+        disabled: false,
+        reason: "error",
+      });
+      this.showError("Failed to post comment. Please try again.");
+    } finally {
+      if (this.modalCommentPublishPromise === publishPromise) {
+        this.modalCommentPublishPromise = null;
+      }
+    }
+  }
+
+  handleVideoModalCommentRetry(detail = {}) {
+    this.handleVideoModalCommentSubmit(detail);
+  }
+
+  handleVideoModalCommentLoadMore() {
+    if (!this.commentThreadService || !this.currentVideo) {
+      return;
+    }
+
+    if (this.modalCommentLoadPromise) {
+      return;
+    }
+
+    const increment = this.commentThreadService.defaultLimit || 40;
+    this.modalCommentLimit = (this.modalCommentLimit || increment) + increment;
+
+    const loadPromise = this.commentThreadService.loadThread({
+      video: this.currentVideo,
+      parentCommentId: this.modalCommentState.parentCommentId,
+      limit: this.modalCommentLimit,
+    });
+
+    if (!loadPromise || typeof loadPromise.then !== "function") {
+      return;
+    }
+
+    this.modalCommentLoadPromise = loadPromise;
+    loadPromise
+      .then(() => {
+        if (this.modalCommentLoadPromise === loadPromise) {
+          this.modalCommentLoadPromise = null;
+        }
+        this.applyCommentComposerAuthState();
+      })
+      .catch((error) => {
+        if (this.modalCommentLoadPromise === loadPromise) {
+          this.modalCommentLoadPromise = null;
+        }
+        devLogger.warn("[comment] Failed to load more comments:", error);
+        this.showError("Failed to load more comments. Please try again.");
+      });
+  }
+
+  handleVideoModalCommentLoginRequired(detail = {}) {
+    this.applyCommentComposerAuthState();
+    this.initializeLoginModalController({ logIfMissing: true });
+    const triggerElement = detail?.triggerElement || null;
+    try {
+      const opened = this.loginModalController?.openModal?.({ triggerElement });
+      if (opened) {
+        return;
+      }
+    } catch (error) {
+      devLogger.warn("[comment] Failed to open login modal:", error);
+    }
+
+    this.authService
+      .requestLogin({ allowAccountSelection: true })
+      .catch((error) => {
+        devLogger.warn("[comment] Login request failed:", error);
+      });
+  }
+
+  async handleVideoModalCommentMute(detail = {}) {
+    const pubkey =
+      typeof detail?.pubkey === "string" && detail.pubkey.trim()
+        ? detail.pubkey.trim()
+        : "";
+    if (!pubkey) {
+      return;
+    }
+
+    if (!this.isUserLoggedIn()) {
+      this.handleVideoModalCommentLoginRequired(detail);
+      return;
+    }
+
+    try {
+      await userBlocks.addBlock(pubkey, this.pubkey);
+      const snapshot = this.commentThreadService?.getSnapshot?.();
+      if (snapshot) {
+        this.handleCommentThreadReady(snapshot);
+      }
+      this.showStatus?.("Author muted.");
+    } catch (error) {
+      devLogger.warn("[comment] Failed to mute author:", error);
+      this.showError("Failed to mute this author. Please try again.");
     }
   }
 
@@ -1808,6 +3117,209 @@ class Application {
         this.videoModal.updateViewCountLabel("– views");
         this.videoModal.setViewCountPointer(null);
       }
+    }
+  }
+
+  applyModalReactionOptimisticUpdate(nextReaction) {
+    if (nextReaction !== "+" && nextReaction !== "-") {
+      return null;
+    }
+
+    const previousCounts = {
+      ...(this.modalReactionState?.counts || {}),
+    };
+    const previousTotalValue = Number.isFinite(this.modalReactionState?.total)
+      ? Math.max(0, Number(this.modalReactionState.total))
+      : null;
+    const previousReaction = this.modalReactionState?.userReaction || "";
+
+    const likeBefore = this.normalizeReactionCount(previousCounts["+"]);
+    const dislikeBefore = this.normalizeReactionCount(previousCounts["-"]);
+    const otherCounts = {};
+    for (const [key, value] of Object.entries(previousCounts)) {
+      if (key === "+" || key === "-") {
+        continue;
+      }
+      otherCounts[key] = this.normalizeReactionCount(value);
+    }
+
+    let likeCount = likeBefore;
+    let dislikeCount = dislikeBefore;
+
+    if (previousReaction === "+") {
+      likeCount = Math.max(0, likeCount - 1);
+    } else if (previousReaction === "-") {
+      dislikeCount = Math.max(0, dislikeCount - 1);
+    }
+
+    if (nextReaction === "+") {
+      likeCount += 1;
+    } else if (nextReaction === "-") {
+      dislikeCount += 1;
+    }
+
+    const updatedCounts = {
+      ...previousCounts,
+      "+": likeCount,
+      "-": dislikeCount,
+    };
+
+    let updatedTotal = likeCount + dislikeCount;
+    for (const value of Object.values(otherCounts)) {
+      updatedTotal += this.normalizeReactionCount(value);
+    }
+
+    this.modalReactionState = {
+      counts: updatedCounts,
+      total: updatedTotal,
+      userReaction: nextReaction,
+    };
+
+    if (this.videoModal?.updateReactionSummary) {
+      this.videoModal.updateReactionSummary({
+        total: updatedTotal,
+        counts: updatedCounts,
+        userReaction: nextReaction,
+      });
+    }
+
+    const fallbackPreviousTotal = Number.isFinite(previousTotalValue)
+      ? previousTotalValue
+      : likeBefore +
+        dislikeBefore +
+        Object.values(otherCounts).reduce(
+          (sum, value) => sum + this.normalizeReactionCount(value),
+          0
+        );
+
+    return {
+      counts: previousCounts,
+      total: fallbackPreviousTotal,
+      userReaction: previousReaction,
+    };
+  }
+
+  restoreModalReactionSnapshot(snapshot) {
+    if (!snapshot) {
+      return;
+    }
+
+    const countsInput =
+      snapshot.counts && typeof snapshot.counts === "object"
+        ? snapshot.counts
+        : {};
+    const counts = { ...countsInput };
+    for (const [key, value] of Object.entries(counts)) {
+      counts[key] = this.normalizeReactionCount(value);
+    }
+    if (!Object.prototype.hasOwnProperty.call(counts, "+")) {
+      counts["+"] = 0;
+    }
+    if (!Object.prototype.hasOwnProperty.call(counts, "-")) {
+      counts["-"] = 0;
+    }
+
+    let total = Number.isFinite(snapshot.total)
+      ? Math.max(0, Number(snapshot.total))
+      : 0;
+    if (!Number.isFinite(total) || total === 0) {
+      total = 0;
+      for (const value of Object.values(counts)) {
+        total += this.normalizeReactionCount(value);
+      }
+    }
+
+    const userReaction =
+      snapshot.userReaction === "+"
+        ? "+"
+        : snapshot.userReaction === "-"
+          ? "-"
+          : "";
+
+    this.modalReactionState = {
+      counts,
+      total,
+      userReaction,
+    };
+
+    if (this.videoModal?.updateReactionSummary) {
+      this.videoModal.updateReactionSummary({
+        total,
+        counts,
+        userReaction,
+      });
+    }
+  }
+
+  async handleVideoReaction(detail = {}) {
+    if (!this.videoModal) {
+      return;
+    }
+
+    const requestedReaction =
+      typeof detail.reaction === "string" ? detail.reaction : "";
+    const normalizedReaction =
+      requestedReaction === "+"
+        ? "+"
+        : requestedReaction === "-"
+          ? "-"
+          : "";
+
+    if (!normalizedReaction) {
+      return;
+    }
+
+    const previousReaction = this.modalReactionState?.userReaction || "";
+    const pointer = this.currentVideoPointer;
+    const pointerKey = this.currentVideoPointerKey || pointerArrayToKey(pointer);
+    if (!pointer || !pointerKey) {
+      if (this.videoModal) {
+        this.videoModal.setUserReaction(previousReaction);
+      }
+      devLogger.info(
+        "[reaction] Ignoring reaction request until modal pointer is available.",
+      );
+      return;
+    }
+    if (normalizedReaction === previousReaction) {
+      return;
+    }
+
+    if (!this.isUserLoggedIn()) {
+      this.showError("Please login to react to videos.");
+      this.videoModal.setUserReaction(previousReaction);
+      return;
+    }
+
+    let rollbackSnapshot = null;
+    try {
+      rollbackSnapshot = this.applyModalReactionOptimisticUpdate(
+        normalizedReaction
+      );
+    } catch (error) {
+      devLogger.warn("[reaction] Failed to apply optimistic reaction state:", error);
+    }
+
+    try {
+      const result = await reactionCounter.publish(pointer, {
+        content: normalizedReaction,
+        video: this.currentVideo,
+        currentVideoPubkey: this.currentVideo?.pubkey,
+        pointerKey,
+      });
+
+      if (!result?.ok) {
+        if (rollbackSnapshot) {
+          this.restoreModalReactionSnapshot(rollbackSnapshot);
+        }
+        this.showError("Failed to send reaction. Please try again.");
+      }
+    } catch (error) {
+      devLogger.warn("[reaction] Failed to publish reaction:", error);
+      if (rollbackSnapshot) {
+        this.restoreModalReactionSnapshot(rollbackSnapshot);
+      }
+      this.showError("Failed to send reaction. Please try again.");
     }
   }
 
@@ -1893,84 +3405,180 @@ class Application {
     }
   }
 
-  async handleAddProfile(controller) {
-    const button =
-      (controller && controller.addAccountButton) ||
-      this.profileController?.addAccountButton ||
-      null;
-    if (!(button instanceof HTMLElement)) {
-      return;
-    }
-    if (button.dataset.state === "loading") {
+  async handleLoginModalSuccess(payload = {}) {
+    const result =
+      payload && typeof payload === "object" ? payload.result || null : null;
+    const pubkey =
+      (result &&
+      typeof result === "object" &&
+      typeof result.pubkey === "string"
+        ? result.pubkey
+        : typeof result === "string"
+        ? result
+        : null) || null;
+
+    devLogger.log("[LoginModal] Login result returned pubkey:", pubkey);
+
+    if (!result || typeof result !== "object") {
       return;
     }
 
-    const titleEl = button.querySelector('[data-profile-add-title]');
-    const hintEl = button.querySelector('[data-profile-add-hint]');
-    const originalTitle = titleEl ? titleEl.textContent : "";
-    const originalHint = hintEl ? hintEl.textContent : "";
-    const originalAriaLabel = button.getAttribute("aria-label");
-    const originalDisabled = button.disabled;
+    const { detail } = result;
 
-    const setLoadingState = (isLoading) => {
-      button.disabled = isLoading ? true : originalDisabled;
-      if (isLoading) {
-        button.dataset.state = "loading";
-      } else {
-        delete button.dataset.state;
-      }
-      button.setAttribute("aria-busy", isLoading ? "true" : "false");
-      if (isLoading) {
-        button.setAttribute("aria-disabled", "true");
-      } else if (originalDisabled) {
-        button.setAttribute("aria-disabled", "true");
-      } else {
-        button.removeAttribute("aria-disabled");
-      }
-      if (isLoading) {
-        if (titleEl) {
-          titleEl.textContent = "Connecting...";
-        }
-        if (hintEl) {
-          hintEl.textContent = "Check your extension";
-        }
-        button.setAttribute(
-          "aria-label",
-          "Connecting to your Nostr extension",
+    if (
+      pubkey &&
+      detail &&
+      typeof detail === "object" &&
+      detail.__handled !== true
+    ) {
+      try {
+        await this.handleAuthLogin(detail);
+      } catch (error) {
+        devLogger.error(
+          "[LoginModal] handleAuthLogin fallback failed:",
+          error,
         );
-      } else {
-        if (titleEl) {
-          titleEl.textContent = originalTitle;
-        }
-        if (hintEl) {
-          hintEl.textContent = originalHint;
-        }
-        if (originalAriaLabel === null) {
-          button.removeAttribute("aria-label");
-        } else {
-          button.setAttribute("aria-label", originalAriaLabel);
-        }
       }
-    };
+    }
+  }
 
-    setLoadingState(true);
+  async handleLoginModalError(payload = {}) {
+    const message =
+      typeof payload?.message === "string" && payload.message.trim()
+        ? payload.message.trim()
+        : null;
+    const error = payload?.error || null;
+    const provider = payload?.provider || null;
+
+    const fallbackMessage =
+      message ||
+      this.describeLoginError(
+        error,
+        provider?.errorMessage || "Failed to login. Please try again.",
+      );
+
+    const normalizedMessage =
+      typeof fallbackMessage === "string" && fallbackMessage.trim()
+        ? fallbackMessage.trim()
+        : "Failed to login. Please try again.";
+
+    userLogger.warn(
+      provider && provider.id
+        ? `[LoginModal] Login failed for provider ${provider.id}.`
+        : "[LoginModal] Login failed for provider.",
+    );
+    this.showError(normalizedMessage);
+  }
+
+  async requestProfileAdditionLogin({ triggerElement } = {}) {
+    this.initializeLoginModalController();
+    if (
+      this.loginModalController &&
+      typeof this.loginModalController.requestAddProfileLogin === "function"
+    ) {
+      try {
+        return await this.loginModalController.requestAddProfileLogin({
+          triggerElement,
+          requestOptions: {
+            allowAccountSelection: true,
+            autoApply: false,
+          },
+        });
+      } catch (error) {
+        if (
+          error &&
+          (error.code === "login-cancelled" || error.code === "user-cancelled")
+        ) {
+          throw error;
+        }
+        if (
+          !error ||
+          (error.code !== "modal-unavailable" &&
+            error.code !== "modal-open-failed")
+        ) {
+          throw error;
+        }
+        devLogger.warn(
+          "[profileModal] Falling back to direct login for profile addition:",
+          error,
+        );
+      }
+    }
+
+    return this.authService.requestLogin({
+      allowAccountSelection: true,
+      autoApply: false,
+    });
+  }
+
+  async handleAddProfile(payload = {}) {
+    const loginResult =
+      payload && typeof payload === "object" ? payload.loginResult : null;
+
+    if (!loginResult) {
+      devLogger.warn(
+        "[profileModal] Ignoring add profile callback without an authentication result.",
+      );
+      return;
+    }
 
     try {
-      const { pubkey } = await this.authService.requestLogin({
-        allowAccountSelection: true,
-        autoApply: false,
-      });
+      const { pubkey, authType: loginAuthType, providerId } =
+        typeof loginResult === "object" && loginResult
+          ? loginResult
+          : { pubkey: loginResult };
+
+      const detailAuthType =
+        typeof loginResult?.detail?.authType === "string"
+          ? loginResult.detail.authType
+          : null;
+      const detailProviderId =
+        typeof loginResult?.detail?.providerId === "string"
+          ? loginResult.detail.providerId
+          : null;
+
+      const resolvedAuthType = (() => {
+        const candidates = [
+          detailAuthType,
+          loginAuthType,
+          detailProviderId,
+          providerId,
+        ];
+        for (const candidate of candidates) {
+          if (typeof candidate !== "string") {
+            continue;
+          }
+          const trimmed = candidate.trim();
+          if (trimmed) {
+            return trimmed;
+          }
+        }
+        return "nip07";
+      })();
+
+      const resolvedProviderId = (() => {
+        const candidates = [detailProviderId, providerId, resolvedAuthType];
+        for (const candidate of candidates) {
+          if (typeof candidate !== "string") {
+            continue;
+          }
+          const trimmed = candidate.trim();
+          if (trimmed) {
+            return trimmed;
+          }
+        }
+        return resolvedAuthType;
+      })();
 
       const normalizedPubkey = this.normalizeHexPubkey(pubkey);
       if (!normalizedPubkey) {
         throw new Error(
-          "Received an invalid public key from the Nostr extension.",
+          "Received an invalid public key from the authentication provider.",
         );
       }
 
       const alreadySaved = this.savedProfiles.some(
-        (entry) =>
-          this.normalizeHexPubkey(entry.pubkey) === normalizedPubkey,
+        (entry) => this.normalizeHexPubkey(entry.pubkey) === normalizedPubkey,
       );
       if (alreadySaved) {
         this.showSuccess("That profile is already saved on this device.");
@@ -1994,7 +3602,8 @@ class Application {
         npub,
         name,
         picture,
-        authType: "nip07",
+        authType: resolvedAuthType,
+        providerId: resolvedProviderId,
       });
 
       persistSavedProfiles({ persistActive: false });
@@ -2002,14 +3611,50 @@ class Application {
 
       this.showSuccess("Profile added. Select it when you're ready to switch.");
     } catch (error) {
-      devLogger.error("Failed to add profile via NIP-07:", error);
+      const cancellationCodes = new Set([
+        "login-cancelled",
+        "user-cancelled",
+        "modal-dismissed",
+      ]);
+      if (
+        error &&
+        typeof error === "object" &&
+        typeof error.code === "string" &&
+        cancellationCodes.has(error.code)
+      ) {
+        devLogger.log("[profileModal] Add profile flow cancelled.", error);
+        return;
+      }
+
+      devLogger.error(
+        "[profileModal] Failed to add profile via authentication provider:",
+        error,
+      );
+
       const message = this.describeLoginError(
         error,
         "Couldn't add that profile. Please try again.",
       );
-      this.showError(message);
-    } finally {
-      setLoadingState(false);
+
+      const rejectionError =
+        error instanceof Error
+          ? error
+          : new Error(message || "Couldn't add that profile. Please try again.");
+
+      if (message && rejectionError.message !== message) {
+        rejectionError.message = message;
+      }
+
+      if (
+        error &&
+        typeof error === "object" &&
+        error.code &&
+        !rejectionError.code
+      ) {
+        rejectionError.code = error.code;
+      }
+
+      throw rejectionError;
     }
   }
 
@@ -2030,6 +3675,115 @@ class Application {
     }
 
     return fallbackMessage;
+  }
+
+  initializeLoginModalController(options = {}) {
+    const { logIfMissing = false } =
+      options && typeof options === "object" ? options : {};
+
+    if (this.loginModalController) {
+      return true;
+    }
+
+    let loginModalElement = null;
+    try {
+      loginModalElement = document.getElementById("loginModal") || null;
+    } catch (error) {
+      devLogger.warn(
+        "[Application] Failed to look up login modal container:",
+        error,
+      );
+    }
+
+    if (!(loginModalElement instanceof HTMLElement)) {
+      if (logIfMissing) {
+        devLogger.warn(
+          "[Application] Login modal controller disabled: modal container not found.",
+        );
+      }
+      return false;
+    }
+
+    const preparedModal =
+      prepareStaticModal({ root: loginModalElement }) || loginModalElement;
+
+    loginModalElement = preparedModal;
+
+    const closeLoginModal = () => {
+      if (closeStaticModal(loginModalElement)) {
+        setGlobalModalState("login", false);
+      }
+    };
+
+    const openLoginModal = ({ modal, triggerElement } = {}) => {
+      const target =
+        modal instanceof HTMLElement ? modal : loginModalElement;
+      return openStaticModal(target, { triggerElement });
+    };
+
+    const prepareLoginModal = (modal) =>
+      prepareStaticModal({ root: modal || loginModalElement });
+
+    try {
+      this.loginModalController = new LoginModalController({
+        modalElement: loginModalElement,
+        providers: authProviders,
+        services: {
+          authService: this.authService,
+          nostrClient,
+        },
+        callbacks: {
+          onProviderSelected: (providerId) => {
+            devLogger.log(`[LoginModal] Provider selected: ${providerId}.`);
+            this.maybeShowExperimentalLoginWarning(providerId);
+          },
+          onLoginSuccess: (payload) => {
+            const maybePromise = this.handleLoginModalSuccess(payload);
+            if (maybePromise && typeof maybePromise.then === "function") {
+              maybePromise.catch((error) => {
+                devLogger.error(
+                  "[LoginModal] handleLoginModalSuccess threw:",
+                  error,
+                );
+              });
+            }
+          },
+          onLoginError: (payload) => {
+            const maybePromise = this.handleLoginModalError(payload);
+            if (maybePromise && typeof maybePromise.then === "function") {
+              maybePromise.catch((error) => {
+                devLogger.error(
+                  "[LoginModal] handleLoginModalError threw:",
+                  error,
+                );
+              });
+            }
+          },
+        },
+        helpers: {
+          closeModal: closeLoginModal,
+          openModal: ({ modal, triggerElement } = {}) =>
+            openLoginModal({ modal, triggerElement }),
+          prepareModal: (modal) => prepareLoginModal(modal),
+          setModalState: (_, isOpen) =>
+            setGlobalModalState("login", isOpen === undefined ? false : !!isOpen),
+          describeLoginError: (error, fallbackMessage) =>
+            this.describeLoginError(
+              error,
+              typeof fallbackMessage === "string" && fallbackMessage.trim()
+                ? fallbackMessage.trim()
+                : "Failed to login. Please try again.",
+            ),
+        },
+      });
+      return true;
+    } catch (error) {
+      devLogger.error(
+        "[Application] Failed to initialize login modal controller:",
+        error,
+      );
+      return false;
+    }
   }
 
   canCurrentUserManageBlacklist() {
@@ -2093,6 +3847,398 @@ class Application {
         return "";
       default:
         return "List updated, but the DM notification could not be sent.";
+    }
+  }
+
+  describeUserBlockActionError(error) {
+    const code =
+      error && typeof error.code === "string" ? error.code.trim().toLowerCase() : "";
+
+    switch (code) {
+      case "nip04-missing":
+        return "Your Nostr extension must support NIP-04 to manage private block lists.";
+      case "extension-permission-denied":
+        return "Permission to update your block list was denied by your Nostr extension.";
+      case "sign-event-missing":
+      case "signer-missing":
+        return "Connect a Nostr signer that can encrypt and sign updates before managing block lists.";
+      case "nostr-extension-missing":
+        return "Connect a Nostr extension before updating your block list.";
+      case "invalid":
+        return "Unable to block that account. Please try again.";
+      case "self":
+        return "You cannot block yourself.";
+      default:
+        return "";
+    }
+  }
+
+  describeHashtagPreferencesError(error, options = {}) {
+    const { operation = "update", fallbackMessage } =
+      options && typeof options === "object" ? options : {};
+    const code =
+      error && typeof error.code === "string" ? error.code.trim() : "";
+
+    if (code === "hashtag-preferences-empty") {
+      return "";
+    }
+
+    switch (code) {
+      case "hashtag-preferences-missing-pubkey":
+        return "Select a profile before managing hashtag preferences.";
+      case "hashtag-preferences-missing-signer":
+        return "Connect a Nostr signer that supports encryption before managing hashtag preferences.";
+      case "hashtag-preferences-extension-denied":
+        return "Permission to manage hashtag preferences was denied by your signer.";
+      case "hashtag-preferences-no-decryptors":
+        return "Unable to decrypt hashtag preferences with the active signer.";
+      case "hashtag-preferences-decrypt-failed":
+        return "Failed to decrypt hashtag preferences. Please try again.";
+      case "hashtag-preferences-no-encryptor":
+        return "No supported encryption methods are available to publish hashtag preferences.";
+      case "hashtag-preferences-encrypt-failed":
+        return "Failed to encrypt hashtag preferences. Please try again.";
+      case "hashtag-preferences-no-relays":
+        return "No relays are configured to publish hashtag preferences.";
+      default:
+        break;
+    }
+
+    const normalizedOperation =
+      typeof operation === "string" ? operation.trim().toLowerCase() : "";
+    const fallback =
+      typeof fallbackMessage === "string" && fallbackMessage.trim()
+        ? fallbackMessage.trim()
+        : normalizedOperation === "load"
+        ? "Failed to load hashtag preferences. Please try again."
+        : normalizedOperation === "reset"
+        ? "Failed to reset hashtag preferences."
+        : "Failed to update hashtag preferences. Please try again.";
+
+    return fallback;
+  }
+
+  normalizeHashtagPreferenceList(list) {
+    if (!Array.isArray(list)) {
+      return [];
+    }
+
+    const normalized = [];
+    const seen = new Set();
+
+    for (const entry of list) {
+      if (typeof entry !== "string") {
+        continue;
+      }
+      const trimmed = entry.trim();
+      if (!trimmed) {
+        continue;
+      }
+      const lowered = trimmed.toLowerCase();
+      if (seen.has(lowered)) {
+        continue;
+      }
+      seen.add(lowered);
+      normalized.push(lowered);
+    }
+
+    normalized.sort((a, b) => a.localeCompare(b));
+    return normalized;
+  }
+
+  normalizeTagPreferenceCandidate(tag) {
+    if (typeof tag !== "string") {
+      return "";
+    }
+
+    const trimmed = tag.trim().replace(/^#+/, "");
+    if (!trimmed) {
+      return "";
+    }
+
+    return trimmed.toLowerCase();
+  }
+
+  getTagPreferenceState(tag) {
+    const normalized = this.normalizeTagPreferenceCandidate(tag);
+    if (!normalized) {
+      return "neutral";
+    }
+
+    const { interests, disinterests } = this.getHashtagPreferences();
+    if (interests.includes(normalized)) {
+      return "interest";
+    }
+    if (disinterests.includes(normalized)) {
+      return "disinterest";
+    }
+    return "neutral";
+  }
+
+  getTagPreferenceMembership(tag) {
+    const state = this.getTagPreferenceState(tag);
+    return {
+      state,
+      interest: state === "interest",
+      disinterest: state === "disinterest",
+    };
+  }
+
+  createHashtagPreferencesSnapshot(detail = {}) {
+    const service = this.hashtagPreferences;
+    const sourceInterests = Array.isArray(detail?.interests)
+      ? detail.interests
+      : typeof service?.getInterests === "function"
+      ? service.getInterests()
+      : [];
+    const sourceDisinterests = Array.isArray(detail?.disinterests)
+      ? detail.disinterests
+      : typeof service?.getDisinterests === "function"
+      ? service.getDisinterests()
+      : [];
+
+    const rawEventId =
+      typeof detail?.eventId === "string" && detail.eventId.trim()
+        ? detail.eventId.trim()
+        : typeof service?.eventId === "string" && service.eventId.trim()
+        ? service.eventId.trim()
+        : "";
+
+    const createdAtSource =
+      detail?.createdAt ?? service?.eventCreatedAt ?? null;
+    const createdAtNumeric = Number(createdAtSource);
+    const createdAt = Number.isFinite(createdAtNumeric)
+      ? createdAtNumeric
+      : null;
+
+    const action =
+      typeof detail?.action === "string" ? detail.action.trim() : "";
+
+    const loaded =
+      detail?.loaded === true ||
+      (detail?.loaded === false
+        ? false
+        : Boolean(service && service.loaded));
+
+    return {
+      interests: this.normalizeHashtagPreferenceList(sourceInterests),
+      disinterests: this.normalizeHashtagPreferenceList(sourceDisinterests),
+      eventId: rawEventId || null,
+      createdAt,
+      loaded,
+      action,
+    };
+  }
+
+  computeHashtagPreferencesSignature(snapshot = {}) {
+    const interests = Array.isArray(snapshot.interests)
+      ? snapshot.interests.join(",")
+      : "";
+    const disinterests = Array.isArray(snapshot.disinterests)
+      ? snapshot.disinterests.join(",")
+      : "";
+    const eventId =
+      typeof snapshot.eventId === "string" && snapshot.eventId
+        ? snapshot.eventId
+        : "";
+    const createdAt = Number.isFinite(snapshot.createdAt)
+      ? Number(snapshot.createdAt)
+      : "";
+    const loaded = snapshot.loaded === true ? "1" : "0";
+
+    return [interests, disinterests, eventId, createdAt, loaded].join("|");
+  }
+
+  updateCachedHashtagPreferences(detail = {}) {
+    const snapshot = this.createHashtagPreferencesSnapshot(detail);
+    const signature = this.computeHashtagPreferencesSignature(snapshot);
+    const changed = signature !== this.hashtagPreferencesSnapshotSignature;
+
+    this.hashtagPreferencesSnapshot = {
+      interests: [...snapshot.interests],
+      disinterests: [...snapshot.disinterests],
+      eventId: snapshot.eventId,
+      createdAt: snapshot.createdAt,
+      loaded: snapshot.loaded,
+      action: snapshot.action,
+    };
+    this.hashtagPreferencesSnapshotSignature = signature;
+
+    return { snapshot: this.hashtagPreferencesSnapshot, changed };
+  }
+
+  handleHashtagPreferencesChange(detail = {}) {
+    const { changed } = this.updateCachedHashtagPreferences(detail);
+
+    this.refreshTagPreferenceUi();
+
+    if (
+      this.profileController &&
+      typeof this.profileController.handleHashtagPreferencesChange ===
+        "function"
+    ) {
+      try {
+        this.profileController.handleHashtagPreferencesChange({
+          action:
+            typeof detail?.action === "string" ? detail.action : "",
+          preferences: this.getHashtagPreferences(),
+        });
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to notify profile controller about hashtag preferences change:",
+          error,
+        );
+      }
+    }
+
+    if (!changed) {
+      return;
+    }
+
+    const action =
+      typeof detail?.action === "string" && detail.action.trim()
+        ? detail.action.trim()
+        : "";
+    const refreshReason = action
+      ? `hashtag-preferences-${action}`
+      : "hashtag-preferences-change";
+
+    Promise.resolve(
+      this.onVideosShouldRefresh({ reason: refreshReason }),
+    ).catch((error) => {
+      devLogger.warn(
+        "[Application] Failed to refresh videos after hashtag preference change:",
+        error,
+      );
+    });
+  }
+
+  getHashtagPreferences() {
+    const snapshot = this.hashtagPreferencesSnapshot || {};
+    return {
+      interests: Array.isArray(snapshot.interests)
+        ? [...snapshot.interests]
+        : [],
+      disinterests: Array.isArray(snapshot.disinterests)
+        ? [...snapshot.disinterests]
+        : [],
+      eventId:
+        typeof snapshot.eventId === "string" && snapshot.eventId
+          ? snapshot.eventId
+          : null,
+      createdAt: Number.isFinite(snapshot.createdAt)
+        ? Number(snapshot.createdAt)
+        : null,
+      loaded: snapshot.loaded === true,
+    };
+  }
+
+  refreshTagPreferenceUi() {
+    if (this.videoModal?.refreshTagPreferenceStates) {
+      try {
+        this.videoModal.refreshTagPreferenceStates();
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to refresh video modal tag preference states:",
+          error,
+        );
+      }
+    }
+
+    if (this.videoListView?.refreshTagPreferenceStates) {
+      try {
+        this.videoListView.refreshTagPreferenceStates();
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to refresh list view tag preference states:",
+          error,
+        );
+      }
+    }
+
+    this.refreshActiveTagPreferenceMenus();
+  }
+
+  refreshActiveTagPreferenceMenus() {
+    if (!this.tagPreferencePopovers) {
+      return;
+    }
+
+    const isLoggedIn = this.isUserLoggedIn();
+    this.tagPreferencePopovers.forEach((entry) => {
+      if (!entry) {
+        return;
+      }
+
+      const buttons = entry.buttons || {};
+      if (!buttons || Object.keys(buttons).length === 0) {
+        return;
+      }
+
+      try {
+        applyTagPreferenceMenuState({
+          buttons,
+          membership: this.getTagPreferenceMembership(entry.tag),
+          isLoggedIn,
+        });
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to refresh tag preference menu state:",
+          error,
+        );
+      }
+    });
+  }
+
+  async loadHashtagPreferencesForPubkey(pubkey) {
+    if (
+      !this.hashtagPreferences ||
+      typeof this.hashtagPreferences.load !== "function"
+    ) {
+      return null;
+    }
+
+    try {
+      await this.hashtagPreferences.load(pubkey);
+      return true;
+    } catch (error) {
+      devLogger.error(
+        "[Application] Failed to load hashtag preferences:",
+        error,
+      );
+      const message = this.describeHashtagPreferencesError(error, {
+        operation: "load",
+      });
+      if (message) {
+        this.showError(message);
+      }
+      return null;
+    }
+  }
+
+  resetHashtagPreferencesState() {
+    if (
+      !this.hashtagPreferences ||
+      typeof this.hashtagPreferences.reset !== "function"
+    ) {
+      return false;
+    }
+
+    try {
+      this.hashtagPreferences.reset();
+      return true;
+    } catch (error) {
+      devLogger.error(
+        "[Application] Failed to reset hashtag preferences:",
+        error,
+      );
+      const message = this.describeHashtagPreferencesError(error, {
+        operation: "reset",
+      });
+      if (message) {
+        this.showError(message);
+      }
+      return false;
     }
   }
 
@@ -2268,89 +4414,7 @@ class Application {
       });
     }
 
-    // 6) NIP-07 button inside the login modal => call the extension & login
-    const nip07Button = document.getElementById("loginNIP07");
-    if (nip07Button) {
-      const originalLabel = nip07Button.textContent;
-      let slowExtensionTimer = null;
-      const slowExtensionDelayMs = 8_000;
-
-      const clearSlowExtensionTimer = () => {
-        if (slowExtensionTimer) {
-          clearTimeout(slowExtensionTimer);
-          slowExtensionTimer = null;
-        }
-      };
-
-      const setLoadingState = (isLoading) => {
-        if (isLoading) {
-          nip07Button.disabled = true;
-          nip07Button.dataset.state = "loading";
-          nip07Button.setAttribute("aria-busy", "true");
-          nip07Button.textContent = "Connecting to NIP-07 extension...";
-
-          clearSlowExtensionTimer();
-          slowExtensionTimer = window.setTimeout(() => {
-            if (nip07Button.dataset.state === "loading") {
-              nip07Button.textContent = "Waiting for the extension prompt…";
-            }
-          }, slowExtensionDelayMs);
-        } else {
-          nip07Button.disabled = false;
-          delete nip07Button.dataset.state;
-          nip07Button.setAttribute("aria-busy", "false");
-          clearSlowExtensionTimer();
-          nip07Button.textContent = originalLabel;
-        }
-      };
-
-      nip07Button.addEventListener("click", async () => {
-        if (nip07Button.dataset.state === "loading") {
-          return;
-        }
-
-        setLoadingState(true);
-        devLogger.log(
-          "[app.js] loginNIP07 clicked! Attempting extension login..."
-        );
-        try {
-          const { pubkey, detail } = await this.authService.requestLogin();
-          devLogger.log("[NIP-07] login returned pubkey:", pubkey);
-
-          if (pubkey) {
-            if (
-              detail &&
-              typeof detail === "object" &&
-              detail.__handled !== true
-            ) {
-              try {
-                await this.handleAuthLogin(detail);
-              } catch (error) {
-                devLogger.error(
-                  "[NIP-07] handleAuthLogin fallback failed:",
-                  error,
-                );
-              }
-            }
-
-            if (closeStaticModal("loginModal")) {
-              setGlobalModalState("login", false);
-            }
-          }
-        } catch (err) {
-          devLogger.error("[NIP-07 login error]", err);
-          const message = this.describeLoginError(
-            err,
-            "Failed to login with NIP-07. Please try again.",
-          );
-          this.showError(message);
-        } finally {
-          setLoadingState(false);
-        }
-      });
-    }
-
-    // 7) Cleanup on page unload
+    // 6) Cleanup on page unload
     window.addEventListener("beforeunload", () => {
       this.flushWatchHistory("session-end", "beforeunload").catch((error) => {
         devLogger.warn("[beforeunload] Watch history flush failed:", error);
@@ -2373,13 +4437,13 @@ class Application {
       }
     });
 
-    // 8) Handle back/forward navigation => hide video modal
+    // 7) Handle back/forward navigation => hide video modal
     window.addEventListener("popstate", async () => {
       devLogger.log("[popstate] user navigated back/forward; cleaning modal...");
       await this.hideModal();
     });
 
-    // 9) Event delegation for the “Application Form” button inside the login modal
+    // 8) Event delegation for the “Application Form” button inside the login modal
     document.addEventListener("click", (event) => {
       if (event.target && event.target.id === "openApplicationModal") {
         // Hide the login modal
@@ -2405,6 +4469,11 @@ class Application {
 
     const target = container || document.getElementById("videoList");
     this.videoList = target || null;
+    const tagsRoot = document.getElementById("recentVideoTags");
+    this.videoListPopularTags = tagsRoot || null;
+    if (typeof this.videoListView.setPopularTagsContainer === "function") {
+      this.videoListView.setPopularTagsContainer(this.videoListPopularTags);
+    }
     this.videoListView.mount(this.videoList || null);
     return this.videoList;
   }
@@ -2436,6 +4505,11 @@ class Application {
         : "Refreshing videos…";
 
     this.videoList = isElement(container) ? container : null;
+    const tagsRoot = document.getElementById("recentVideoTags");
+    this.videoListPopularTags = isElement(tagsRoot) ? tagsRoot : null;
+    if (typeof this.videoListView.setPopularTagsContainer === "function") {
+      this.videoListView.setPopularTagsContainer(this.videoListPopularTags);
+    }
 
     if (this.videoList) {
       this.videoList.innerHTML = getSidebarLoadingMarkup(messageContext);
@@ -2466,20 +4540,171 @@ class Application {
   }
 
   updateProfileInDOM(pubkey, profile) {
+    const normalizedPubkey =
+      typeof pubkey === "string" && pubkey.trim() ? pubkey.trim() : "";
+    if (!normalizedPubkey) {
+      return;
+    }
+
+    const normalizedProfile =
+      profile && typeof profile === "object" ? profile : {};
+
+    const pictureUrl =
+      typeof normalizedProfile.picture === "string"
+        ? normalizedProfile.picture
+        : "";
+
+    const resolveProfileName = () => {
+      const candidates = [
+        normalizedProfile.name,
+        normalizedProfile.display_name,
+        normalizedProfile.displayName,
+      ];
+      for (const candidate of candidates) {
+        if (typeof candidate !== "string") {
+          continue;
+        }
+        const trimmed = candidate.trim();
+        if (trimmed) {
+          return trimmed;
+        }
+      }
+      return "";
+    };
+
+    const resolvedName = resolveProfileName();
+
+    const explicitNpub =
+      typeof normalizedProfile.npub === "string"
+        ? normalizedProfile.npub.trim()
+        : "";
+
+    const encodedPubkeyNpub = this.safeEncodeNpub(normalizedPubkey);
+    const resolvedNpub = explicitNpub || encodedPubkeyNpub || "";
+    const shortNpubLabel = resolvedNpub
+      ? formatShortNpub(resolvedNpub) || resolvedNpub
+      : "";
+
     // For any .author-pic[data-pubkey=...]
     const picEls = document.querySelectorAll(
-      `.author-pic[data-pubkey="${pubkey}"]`
+      `.author-pic[data-pubkey="${normalizedPubkey}"]`
     );
     picEls.forEach((el) => {
-      el.src = profile.picture;
+      if (!el) {
+        return;
+      }
+      el.src = pictureUrl;
     });
+
+    const nameLabel =
+      resolvedName || shortNpubLabel || resolvedNpub || "";
+
     // For any .author-name[data-pubkey=...]
     const nameEls = document.querySelectorAll(
-      `.author-name[data-pubkey="${pubkey}"]`
+      `.author-name[data-pubkey="${normalizedPubkey}"]`
     );
     nameEls.forEach((el) => {
-      el.textContent = profile.name;
+      if (!el) {
+        return;
+      }
+      el.textContent = nameLabel;
     });
+
+    const npubSelectors = new Set();
+    if (resolvedNpub) {
+      npubSelectors.add(`.author-npub[data-npub="${resolvedNpub}"]`);
+    }
+    npubSelectors.add(`.author-npub[data-pubkey="${normalizedPubkey}"]`);
+
+    const npubElements = new Set();
+    npubSelectors.forEach((selector) => {
+      document.querySelectorAll(selector).forEach((el) => {
+        if (el) {
+          npubElements.add(el);
+        }
+      });
+    });
+
+    const npubEls = Array.from(npubElements);
+
+    npubEls.forEach((el) => {
+      if (!el) {
+        return;
+      }
+
+      const displayNpub = resolvedNpub
+        ? shortNpubLabel || resolvedNpub
+        : "";
+      const hasDisplayNpub = Boolean(displayNpub);
+
+      if (hasDisplayNpub) {
+        el.textContent = displayNpub;
+        el.setAttribute("aria-hidden", "false");
+      } else {
+        el.textContent = "";
+        el.setAttribute("aria-hidden", "true");
+      }
+
+      if (resolvedNpub) {
+        el.setAttribute("title", resolvedNpub);
+        if (el.dataset) {
+          el.dataset.npub = resolvedNpub;
+        }
+      } else {
+        el.removeAttribute("title");
+        if (el.dataset && "npub" in el.dataset) {
+          delete el.dataset.npub;
+        }
+      }
+
+      if (el.dataset && normalizedPubkey) {
+        el.dataset.pubkey = normalizedPubkey;
+      }
+    });
+
+    if (!nameEls.length && !npubEls.length) {
+      return;
+    }
+
+    const cardInstances = new Set();
+    const collectCardInstance = (el) => {
+      if (!el || typeof el.closest !== "function") {
+        return;
+      }
+      const cardRoot = el.closest('[data-component="similar-content-card"]');
+      if (!cardRoot) {
+        return;
+      }
+      const instance = cardRoot.__bitvidSimilarContentCard;
+      if (instance && typeof instance.updateIdentity === "function") {
+        cardInstances.add(instance);
+      }
+    };
+
+    nameEls.forEach(collectCardInstance);
+    npubEls.forEach(collectCardInstance);
+
+    if (cardInstances.size) {
+      const identityPayload = {
+        name: resolvedName,
+        npub: resolvedNpub,
+        shortNpub: shortNpubLabel,
+        pubkey: normalizedPubkey,
+      };
+
+      cardInstances.forEach((card) => {
+        try {
+          card.updateIdentity(identityPayload);
+        } catch (error) {
+          if (devLogger?.warn) {
+            devLogger.warn(
+              "[app] Failed to update similar content card identity",
+              error
+            );
+          }
+        }
+      });
+    }
   }
 
   async publishVideoNote(payload, { onSuccess, suppressModalClose } = {}) {
@@ -2913,12 +5138,12 @@ class Application {
     }
   }
 
-  async handleProfileSwitchRequest({ pubkey } = {}) {
+  async handleProfileSwitchRequest({ pubkey, providerId } = {}) {
     if (!pubkey) {
       throw new Error("Missing pubkey for profile switch request.");
     }
 
-    const result = await this.authService.switchProfile(pubkey);
+    const result = await this.authService.switchProfile(pubkey, { providerId });
 
     if (result?.switched) {
       try {
@@ -3182,7 +5407,7 @@ class Application {
     return null;
   }
 
-  handleModerationSettingsChange({ settings } = {}) {
+  async handleModerationSettingsChange({ settings } = {}) {
     const normalized = this.normalizeModerationSettings(settings);
     this.moderationSettings = normalized;
 
@@ -3226,6 +5451,15 @@ class Application {
 
     if (this.currentVideo && typeof this.currentVideo === "object") {
       this.decorateVideoModeration(this.currentVideo);
+    }
+
+    try {
+      await this.onVideosShouldRefresh({ reason: "moderation-settings-change" });
+    } catch (error) {
+      devLogger.warn(
+        "[Application] Failed to refresh videos after moderation settings change:",
+        error,
+      );
     }
 
     return normalized;
@@ -3377,6 +5611,37 @@ class Application {
     }
   }
 
+  maybeShowExperimentalLoginWarning(provider) {
+    const normalizedProvider =
+      typeof provider === "string" ? provider.trim().toLowerCase() : "";
+
+    if (normalizedProvider !== "nsec" && normalizedProvider !== "nip46") {
+      return;
+    }
+
+    const now = Date.now();
+    if (
+      this.lastExperimentalWarningKey === normalizedProvider &&
+      typeof this.lastExperimentalWarningAt === "number" &&
+      now - this.lastExperimentalWarningAt < 2000
+    ) {
+      return;
+    }
+
+    this.lastExperimentalWarningKey = normalizedProvider;
+    this.lastExperimentalWarningAt = now;
+
+    const providerLabel =
+      normalizedProvider === "nsec"
+        ? "Direct nsec or seed"
+        : "NIP-46 remote signer";
+
+    this.showStatus(
+      `${providerLabel} logins are still in development and may not work well yet. We recommend using a NIP-07 browser extension for the most reliable experience.`,
+      { showSpinner: false, autoHideMs: 5000 },
+    );
+  }
+
   async handleAuthLogin(detail = {}) {
     const postLoginPromise =
       detail && typeof detail.postLoginPromise?.then === "function"
@@ -3396,12 +5661,30 @@ class Application {
     }
 
     this.applyAuthenticatedUiState();
+    this.applyCommentComposerAuthState();
+
+    const rawProviderId =
+      typeof detail?.providerId === "string" ? detail.providerId.trim() : "";
+    const rawAuthType =
+      typeof detail?.authType === "string" ? detail.authType.trim() : "";
+    const normalizedProvider =
+      (rawProviderId || rawAuthType).toLowerCase() || "";
+
+    this.maybeShowExperimentalLoginWarning(normalizedProvider);
 
     const loginContext = {
       pubkey: detail?.pubkey || this.pubkey,
       previousPubkey: detail?.previousPubkey,
       identityChanged: Boolean(detail?.identityChanged),
     };
+
+    if (loginContext.identityChanged) {
+      this.resetHashtagPreferencesState();
+    }
+
+    const hashtagPreferencesPromise = Promise.resolve(
+      this.loadHashtagPreferencesForPubkey(loginContext.pubkey),
+    );
 
     if (this.zapController) {
       try {
@@ -3489,6 +5772,7 @@ class Application {
     }
 
     await nwcPromise;
+    await hashtagPreferencesPromise;
 
     try {
       await accessControl.ensureReady();
@@ -3575,6 +5859,8 @@ class Application {
     this.resetViewLoggingState();
     this.pendingModalZapOpen = false;
 
+    this.resetHashtagPreferencesState();
+
     await this.nwcSettingsService.onLogout({
       pubkey: detail?.pubkey || this.pubkey,
       previousPubkey: detail?.previousPubkey,
@@ -3594,6 +5880,7 @@ class Application {
     }
 
     this.applyLoggedOutUiState();
+    this.applyCommentComposerAuthState();
 
     if (this.videoModal?.closeZapDialog) {
       try {
@@ -3712,6 +5999,7 @@ class Application {
           this.playbackService.cleanupWatchdog();
         }
         this.teardownModalViewCountSubscription();
+        this.teardownModalReactionSubscription();
 
         if (!preserveObservers && this.mediaLoader) {
           this.mediaLoader.disconnect();
@@ -4165,6 +6453,82 @@ class Application {
     }
   }
 
+  shouldDeferModeratedPlayback(video) {
+    if (!video || typeof video !== "object") {
+      return false;
+    }
+
+    const moderation =
+      video.moderation && typeof video.moderation === "object"
+        ? video.moderation
+        : null;
+
+    if (!moderation) {
+      return false;
+    }
+
+    if (moderation.viewerOverride?.showAnyway === true) {
+      return false;
+    }
+
+    const blurActive = moderation.blurThumbnail === true;
+    const hiddenActive = moderation.hidden === true;
+
+    return blurActive || hiddenActive;
+  }
+
+  resumePendingModeratedPlayback(video) {
+    const pending = this.pendingModeratedPlayback;
+    if (!pending) {
+      return;
+    }
+
+    const activeVideo = this.currentVideo || null;
+    const targetVideo = video && typeof video === "object" ? video : activeVideo;
+    if (!targetVideo) {
+      return;
+    }
+
+    const pendingId =
+      typeof pending.videoId === "string" && pending.videoId ? pending.videoId : "";
+    const targetId =
+      typeof targetVideo.id === "string" && targetVideo.id ? targetVideo.id : "";
+
+    const matchesId = pendingId && targetId && pendingId === targetId;
+    const matchesActive = !pendingId && !targetId && targetVideo === activeVideo;
+
+    if (!matchesId && !matchesActive) {
+      return;
+    }
+
+    this.pendingModeratedPlayback = null;
+
+    if (typeof this.playVideoWithFallback !== "function") {
+      return;
+    }
+
+    const playbackOptions = {
+      url: pending.url || "",
+      magnet: pending.magnet || "",
+    };
+
+    if (pending.triggerProvided) {
+      playbackOptions.trigger = Object.prototype.hasOwnProperty.call(pending, "trigger")
+        ? pending.trigger
+        : this.lastModalTrigger || null;
+    }
+
+    const playbackPromise = this.playVideoWithFallback(playbackOptions);
+    if (playbackPromise && typeof playbackPromise.catch === "function") {
+      playbackPromise.catch((error) => {
+        devLogger.error(
+          "[Application] Failed to resume moderated playback:",
+          error,
+        );
+      });
+    }
+  }
+
   buildShareUrlFromNevent(nevent) {
     if (!nevent) {
       return "";
@@ -4199,7 +6563,9 @@ class Application {
 
   autoplayModalVideo() {
     if (this.currentVideo?.moderation?.blockAutoplay) {
-      this.log("[moderation] Skipping autoplay due to trusted reports.");
+      this.log(
+        "[moderation] Skipping autoplay due to trusted reports or trusted mutes.",
+      );
       return;
     }
     if (!this.modalVideo) return;
@@ -4278,6 +6644,18 @@ class Application {
     this.cancelPendingViewLogging();
     this.clearActiveIntervals();
     this.teardownModalViewCountSubscription();
+    this.teardownModalReactionSubscription();
+    this.pendingModeratedPlayback = null;
+    if (
+      this.videoModal &&
+      typeof this.videoModal.clearSimilarContent === "function"
+    ) {
+      try {
+        this.videoModal.clearSimilarContent();
+      } catch (error) {
+        devLogger.warn("[hideModal] Failed to clear similar content:", error);
+      }
+    }
 
     // 2) Close the modal UI right away so the user gets instant feedback
     const modalVideoElement =
@@ -4354,10 +6732,34 @@ class Application {
     }
 
     try {
-      const thresholds = this.getActiveModerationThresholds();
+      const app = this;
+      const resolveThresholdFromApp = (key) => ({ runtimeValue, defaultValue }) => {
+        if (
+          Number.isFinite(runtimeValue) ||
+          runtimeValue === Number.POSITIVE_INFINITY
+        ) {
+          return runtimeValue;
+        }
+
+        if (app && typeof app.getActiveModerationThresholds === "function") {
+          const active = app.getActiveModerationThresholds();
+          const candidate = active && typeof active === "object" ? active[key] : undefined;
+          if (
+            Number.isFinite(candidate) ||
+            candidate === Number.POSITIVE_INFINITY
+          ) {
+            return candidate;
+          }
+        }
+
+        return defaultValue;
+      };
       return this.feedEngine.registerFeed("recent", {
         source: createActiveNostrSource({ service: this.nostrService }),
         stages: [
+          // TODO(tag-preferences): introduce a dedicated stage here to filter by
+          // viewer interests/disinterests once the runtime metadata is wired up
+          // to filtering helpers.
           createBlacklistFilterStage({
             shouldIncludeVideo: (video, options) =>
               this.nostrService.shouldIncludeVideo(video, options),
@@ -4367,13 +6769,20 @@ class Application {
           }),
           createModerationStage({
             getService: () => this.nostrService.getModerationService(),
-            autoplayThreshold: thresholds.autoplayBlockThreshold,
-            blurThreshold: thresholds.blurThreshold,
-            trustedMuteHideThreshold: thresholds.trustedMuteHideThreshold,
-            trustedReportHideThreshold: thresholds.trustedSpamHideThreshold,
+            autoplayThreshold: resolveThresholdFromApp("autoplayBlockThreshold"),
+            blurThreshold: resolveThresholdFromApp("blurThreshold"),
+            trustedMuteHideThreshold: resolveThresholdFromApp("trustedMuteHideThreshold"),
+            trustedReportHideThreshold: resolveThresholdFromApp("trustedSpamHideThreshold"),
           }),
+          createResolvePostedAtStage(),
         ],
         sorter: createChronologicalSorter(),
+        hooks: {
+          timestamps: {
+            getKnownVideoPostedAt: (video) => this.getKnownVideoPostedAt(video),
+            resolveVideoPostedAt: (video) => this.resolveVideoPostedAt(video),
+          },
+        },
       });
     } catch (error) {
       devLogger.warn("[Application] Failed to register recent feed:", error);
@@ -4395,10 +6804,33 @@ class Application {
     }
 
     try {
-      const thresholds = this.getActiveModerationThresholds();
+      const app = this;
+      const resolveThresholdFromApp = (key) => ({ runtimeValue, defaultValue }) => {
+        if (
+          Number.isFinite(runtimeValue) ||
+          runtimeValue === Number.POSITIVE_INFINITY
+        ) {
+          return runtimeValue;
+        }
+
+        if (app && typeof app.getActiveModerationThresholds === "function") {
+          const active = app.getActiveModerationThresholds();
+          const candidate = active && typeof active === "object" ? active[key] : undefined;
+          if (
+            Number.isFinite(candidate) ||
+            candidate === Number.POSITIVE_INFINITY
+          ) {
+            return candidate;
+          }
+        }
+
+        return defaultValue;
+      };
       return this.feedEngine.registerFeed("subscriptions", {
         source: createSubscriptionAuthorsSource({ service: this.nostrService }),
         stages: [
+          // TODO(tag-preferences): introduce preference-aware filtering ahead of
+          // the blacklist stage when tag-based ranking lands.
           createBlacklistFilterStage({
             shouldIncludeVideo: (video, options) =>
               this.nostrService.shouldIncludeVideo(video, options),
@@ -4408,16 +6840,21 @@ class Application {
           }),
           createModerationStage({
             getService: () => this.nostrService.getModerationService(),
-            autoplayThreshold: thresholds.autoplayBlockThreshold,
-            blurThreshold: thresholds.blurThreshold,
-            trustedMuteHideThreshold: thresholds.trustedMuteHideThreshold,
-            trustedReportHideThreshold: thresholds.trustedSpamHideThreshold,
+            autoplayThreshold: resolveThresholdFromApp("autoplayBlockThreshold"),
+            blurThreshold: resolveThresholdFromApp("blurThreshold"),
+            trustedMuteHideThreshold: resolveThresholdFromApp("trustedMuteHideThreshold"),
+            trustedReportHideThreshold: resolveThresholdFromApp("trustedSpamHideThreshold"),
           }),
+          createResolvePostedAtStage(),
         ],
         sorter: createChronologicalSorter(),
         hooks: {
           subscriptions: {
             resolveAuthors: () => subscriptions.getSubscribedAuthors(),
+          },
+          timestamps: {
+            getKnownVideoPostedAt: (video) => this.getKnownVideoPostedAt(video),
+            resolveVideoPostedAt: (video) => this.resolveVideoPostedAt(video),
           },
         },
       });
@@ -4457,9 +6894,23 @@ class Application {
         ? new Set(this.blacklistedEventIds)
         : new Set();
 
+    const preferenceSource =
+      typeof this.getHashtagPreferences === "function"
+        ? this.getHashtagPreferences()
+        : {};
+    const { interests = [], disinterests = [] } = preferenceSource || {};
+    const moderationThresholds = this.getActiveModerationThresholds();
+
     return {
       blacklistedEventIds: blacklist,
       isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
+      tagPreferences: {
+        interests: Array.isArray(interests) ? [...interests] : [],
+        disinterests: Array.isArray(disinterests) ? [...disinterests] : [],
+      },
+      moderationThresholds: moderationThresholds
+        ? { ...moderationThresholds }
+        : undefined,
     };
   }
 
@@ -4900,6 +7351,7 @@ class Application {
       : [];
 
     this.videoListView.render(decoratedVideos, metadata);
+    this.updateModalSimilarContent();
   }
 
   refreshVideoDiscussionCounts(videos = [], options = {}) {
@@ -5003,20 +7455,30 @@ class Application {
     const defaults = this.defaultModerationSettings || getDefaultModerationSettings();
     const defaultBlur = Number.isFinite(defaults?.blurThreshold)
       ? Math.max(0, Math.floor(defaults.blurThreshold))
-      : 3;
+      : DEFAULT_BLUR_THRESHOLD;
     const defaultAutoplay = Number.isFinite(defaults?.autoplayBlockThreshold)
       ? Math.max(0, Math.floor(defaults.autoplayBlockThreshold))
-      : 2;
+      : DEFAULT_AUTOPLAY_BLOCK_THRESHOLD;
+
+    const runtimeMuteSource = getTrustedMuteHideThreshold();
+    const runtimeTrustedMute = Number.isFinite(runtimeMuteSource)
+      ? Math.max(0, Math.floor(runtimeMuteSource))
+      : DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD;
     const defaultTrustedMuteHide = Number.isFinite(
       defaults?.trustedMuteHideThreshold,
     )
       ? Math.max(0, Math.floor(defaults.trustedMuteHideThreshold))
-      : getTrustedMuteHideThreshold();
+      : runtimeTrustedMute;
+
+    const runtimeSpamSource = getTrustedSpamHideThreshold();
+    const runtimeTrustedSpam = Number.isFinite(runtimeSpamSource)
+      ? Math.max(0, Math.floor(runtimeSpamSource))
+      : DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD;
     const defaultTrustedSpamHide = Number.isFinite(
       defaults?.trustedSpamHideThreshold,
     )
       ? Math.max(0, Math.floor(defaults.trustedSpamHideThreshold))
-      : getTrustedSpamHideThreshold();
+      : runtimeTrustedSpam;
 
     const blurSource = Number.isFinite(settings?.blurThreshold)
       ? Math.max(0, Math.floor(settings.blurThreshold))
@@ -5145,8 +7607,11 @@ class Application {
       : this.deriveModerationTrustedCount(summary, reportType);
 
     const thresholds = this.getActiveModerationThresholds();
-    const computedBlockAutoplay = trustedCount >= thresholds.autoplayBlockThreshold;
-    const computedBlurThumbnail = trustedCount >= thresholds.blurThreshold;
+    const computedBlockAutoplay =
+      trustedCount >= thresholds.autoplayBlockThreshold || trustedMuted;
+    const blurFromReports = trustedCount >= thresholds.blurThreshold;
+    let computedBlurThumbnail = blurFromReports;
+    let computedBlurReason = computedBlurThumbnail ? "trusted-report" : "";
 
     const muteHideThreshold = Number.isFinite(thresholds.trustedMuteHideThreshold)
       ? Math.max(0, Math.floor(thresholds.trustedMuteHideThreshold))
@@ -5182,6 +7647,23 @@ class Application {
       hideTriggered = true;
     }
 
+    if (!computedBlurThumbnail && (trustedMuted || hideTriggered)) {
+      computedBlurThumbnail = true;
+      if (hideTriggered) {
+        computedBlurReason = hideReason || "trusted-hide";
+      } else if (trustedMuted) {
+        computedBlurReason = "trusted-mute";
+      }
+    } else if (computedBlurThumbnail) {
+      if (hideTriggered) {
+        computedBlurReason = hideReason || "trusted-hide";
+      } else if (trustedMuted && !blurFromReports) {
+        computedBlurReason = "trusted-mute";
+      } else if (!computedBlurReason && blurFromReports) {
+        computedBlurReason = "trusted-report";
+      }
+    }
+
     const hideCounts = hideTriggered
       ? {
           trustedMuteCount,
@@ -5213,6 +7695,7 @@ class Application {
       hideCounts: originalHideCounts,
       hideBypass,
       hideTriggered,
+      blurReason: computedBlurThumbnail ? computedBlurReason : "",
     };
 
     const decoratedModeration = {
@@ -5226,6 +7709,7 @@ class Application {
       trustedMuters: rawTrustedMuters,
       trustedMuteCount,
       trustedMuterDisplayNames,
+      blurReason: computedBlurThumbnail ? computedBlurReason : "",
       original: {
         blockAutoplay: originalState.blockAutoplay,
         blurThumbnail: originalState.blurThumbnail,
@@ -5234,8 +7718,13 @@ class Application {
         hideCounts: originalState.hideCounts,
         hideBypass: originalState.hideBypass,
         hideTriggered: originalState.hideTriggered,
+        blurReason: originalState.blurReason,
       },
     };
+
+    if (!computedBlurThumbnail && decoratedModeration.blurReason) {
+      delete decoratedModeration.blurReason;
+    }
 
     if (overrideActive) {
       decoratedModeration.blockAutoplay = false;
@@ -5344,6 +7833,243 @@ class Application {
       }
     }
 
+    const doc =
+      (this.videoModal && this.videoModal.document) ||
+      (typeof document !== "undefined" ? document : null);
+    if (doc && typeof doc.dispatchEvent === "function") {
+      try {
+        doc.dispatchEvent(
+          new CustomEvent("video:moderation-override", {
+            detail: { video: target },
+          }),
+        );
+      } catch (eventError) {
+        devLogger.warn(
+          "[Application] Failed to dispatch moderation override event:",
+          eventError,
+        );
+      }
+    }
+
+    this.resumePendingModeratedPlayback(target);
+
+    return true;
+  }
+
+  async handleModerationBlock({ video, card }) {
+    if (!video || typeof video !== "object" || !video.id) {
+      return false;
+    }
+
+    if (!this.isUserLoggedIn()) {
+      this.showStatus("Log in to block accounts.", { showSpinner: false });
+      return false;
+    }
+
+    const viewerHex = this.normalizeHexPubkey(this.pubkey);
+    if (!viewerHex) {
+      this.showError("Select a profile before blocking accounts.");
+      return false;
+    }
+
+    const targetHex = this.normalizeHexPubkey(video?.pubkey);
+    if (!targetHex) {
+      this.showError("Unable to determine which account to block.");
+      return false;
+    }
+
+    if (viewerHex === targetHex) {
+      this.showError("You cannot block yourself.");
+      return false;
+    }
+
+    try {
+      await userBlocks.ensureLoaded(viewerHex);
+    } catch (error) {
+      devLogger.warn(
+        "[Application] Failed to load block list before blocking:",
+        error,
+      );
+      this.showError("Unable to load your block list. Please try again.");
+      return false;
+    }
+
+    let alreadyBlocked =
+      typeof userBlocks.isBlocked === "function" &&
+      userBlocks.isBlocked(targetHex);
+    let blockApplied = false;
+
+    if (!alreadyBlocked) {
+      try {
+        const result = await userBlocks.addBlock(targetHex, viewerHex);
+        alreadyBlocked = true;
+        blockApplied = result?.already !== true;
+      } catch (error) {
+        const message =
+          (typeof this.describeUserBlockActionError === "function"
+            ? this.describeUserBlockActionError(error)
+            : "") || "Failed to block this creator. Please try again.";
+        this.showError(message);
+        devLogger.warn("[Application] Failed to block creator:", error);
+        return false;
+      }
+    }
+
+    if (alreadyBlocked) {
+      const statusMessage = blockApplied
+        ? "Creator blocked. Their videos will disappear from your feed."
+        : "Creator already blocked. Their videos will disappear from your feed.";
+      this.showStatus(statusMessage, { showSpinner: false });
+    }
+
+    try {
+      clearModerationOverride(video.id);
+    } catch (error) {
+      devLogger.warn("[Application] Failed to clear moderation override:", error);
+    }
+
+    const storedVideo =
+      this.videosMap instanceof Map && video.id ? this.videosMap.get(video.id) : null;
+    const target = storedVideo || video;
+
+    const resetModerationState = (subject) => {
+      if (!subject || typeof subject !== "object") {
+        return;
+      }
+      const moderation =
+        subject.moderation && typeof subject.moderation === "object"
+          ? subject.moderation
+          : null;
+      if (!moderation) {
+        return;
+      }
+      if (moderation.viewerOverride) {
+        delete moderation.viewerOverride;
+      }
+      if (moderation.hideBypass) {
+        delete moderation.hideBypass;
+      }
+    };
+
+    if (target) {
+      resetModerationState(target);
+      this.decorateVideoModeration(target);
+    }
+
+    if (this.currentVideo && this.currentVideo.id === video.id) {
+      resetModerationState(this.currentVideo);
+      this.decorateVideoModeration(this.currentVideo);
+    }
+
+    if (card && typeof card.refreshModerationUi === "function") {
+      try {
+        card.refreshModerationUi();
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to refresh moderation UI after block:",
+          error,
+        );
+      }
+    }
+
+    const doc =
+      (this.videoModal && this.videoModal.document) ||
+      (typeof document !== "undefined" ? document : null);
+    if (doc && typeof doc.dispatchEvent === "function") {
+      try {
+        const detail = { video: target };
+        doc.dispatchEvent(new CustomEvent("video:moderation-block", { detail }));
+        doc.dispatchEvent(new CustomEvent("video:moderation-hide", { detail }));
+      } catch (eventError) {
+        devLogger.warn(
+          "[Application] Failed to dispatch moderation block event:",
+          eventError,
+        );
+      }
+    }
+
+    try {
+      await this.onVideosShouldRefresh({ reason: "user-block-update" });
+    } catch (error) {
+      devLogger.warn(
+        "[Application] Failed to refresh videos after block:",
+        error,
+      );
+    }
+
+    return true;
+  }
+
+  handleModerationHide({ video, card }) {
+    if (!video || typeof video !== "object" || !video.id) {
+      return false;
+    }
+
+    try {
+      clearModerationOverride(video.id);
+    } catch (error) {
+      devLogger.warn("[Application] Failed to clear moderation override:", error);
+    }
+
+    const storedVideo =
+      this.videosMap instanceof Map && video.id
+        ? this.videosMap.get(video.id)
+        : null;
+    const target = storedVideo || video;
+
+    const resetOverrideState = (subject) => {
+      if (!subject || typeof subject !== "object") {
+        return;
+      }
+      const moderation =
+        subject.moderation && typeof subject.moderation === "object"
+          ? subject.moderation
+          : null;
+      if (!moderation) {
+        return;
+      }
+      if (moderation.viewerOverride) {
+        delete moderation.viewerOverride;
+      }
+    };
+
+    if (target) {
+      resetOverrideState(target);
+      this.decorateVideoModeration(target);
+    }
+
+    if (this.currentVideo && this.currentVideo.id === video.id) {
+      resetOverrideState(this.currentVideo);
+      this.decorateVideoModeration(this.currentVideo);
+    }
+
+    if (card && typeof card.refreshModerationUi === "function") {
+      try {
+        card.refreshModerationUi();
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to refresh moderation UI after hide:",
+          error,
+        );
+      }
+    }
+
+    const doc =
+      (this.videoModal && this.videoModal.document) ||
+      (typeof document !== "undefined" ? document : null);
+    if (doc && typeof doc.dispatchEvent === "function") {
+      try {
+        doc.dispatchEvent(
+          new CustomEvent("video:moderation-hide", { detail: { video: target } }),
+        );
+      } catch (eventError) {
+        devLogger.warn(
+          "[Application] Failed to dispatch moderation hide event:",
+          eventError,
+        );
+      }
+    }
+
     return true;
   }
 
@@ -5355,41 +8081,7 @@ class Application {
       return this.discussionCountService.getVideoAddressPointer(video);
     }
 
-    if (!video || typeof video !== "object") {
-      return "";
-    }
-
-    const tags = Array.isArray(video.tags) ? video.tags : [];
-    const dTag = tags.find(
-      (tag) =>
-        Array.isArray(tag) &&
-        tag.length >= 2 &&
-        tag[0] === "d" &&
-        typeof tag[1] === "string" &&
-        tag[1].trim()
-    );
-
-    if (!dTag) {
-      return "";
-    }
-
-    const pubkey =
-      typeof video.pubkey === "string" ? video.pubkey.trim() : "";
-    if (!pubkey) {
-      return "";
-    }
-
-    const identifier = dTag[1].trim();
-    if (!identifier) {
-      return "";
-    }
-
-    const kind =
-      Number.isFinite(video.kind) && video.kind > 0
-        ? Math.floor(video.kind)
-        : VIDEO_EVENT_KIND;
-
-    return `${kind}:${pubkey}:${identifier}`;
+    return buildVideoAddressPointer(video, { defaultKind: VIDEO_EVENT_KIND });
   }
 
   bindThumbnailFallbacks(container) {
@@ -5486,6 +8178,7 @@ class Application {
     }
 
     this.closeVideoSettingsMenu({ restoreFocus: options?.restoreFocus !== false });
+    this.closeTagPreferenceMenus({ restoreFocus: options?.restoreFocus !== false });
   }
 
   attachMoreMenuHandlers(container) {
@@ -5677,6 +8370,300 @@ class Application {
       }
     });
     return closed;
+  }
+
+  ensureTagPreferencePopover(detail = {}) {
+    const triggerCandidate = detail?.trigger || null;
+    const trigger =
+      triggerCandidate && triggerCandidate.nodeType === 1 ? triggerCandidate : null;
+    const rawTag = typeof detail?.tag === "string" ? detail.tag : "";
+    const tag = rawTag.trim();
+
+    if (!trigger || !tag) {
+      return null;
+    }
+
+    let entry = this.tagPreferencePopovers.get(trigger);
+
+    const render = ({ document: documentRef, close }) => {
+      const menu = createTagPreferenceMenu({
+        document: documentRef,
+        tag: entry.tag,
+        isLoggedIn: this.isUserLoggedIn(),
+        membership: this.getTagPreferenceMembership(entry.tag),
+        designSystem: this.designSystemContext,
+        onAction: (action, actionDetail = {}) => {
+          void this.handleTagPreferenceMenuAction(action, {
+            tag: entry.tag,
+            trigger,
+            video: entry.video || null,
+            closePopover: close,
+            actionDetail,
+          });
+        },
+      });
+
+      if (!menu?.panel) {
+        return null;
+      }
+
+      entry.panel = menu.panel;
+      entry.buttons = menu.buttons;
+      return menu.panel;
+    };
+
+    if (!entry) {
+      entry = {
+        trigger,
+        tag,
+        context: detail.context || "",
+        video: detail.video || null,
+        panel: null,
+        buttons: null,
+        popover: null,
+      };
+
+      const ownerDocument =
+        trigger.ownerDocument || (typeof document !== "undefined" ? document : null);
+
+      const popover = createPopover(trigger, render, {
+        document: ownerDocument,
+        placement: "bottom-start",
+        restoreFocusOnClose: true,
+      });
+
+      if (!popover) {
+        return null;
+      }
+
+      const originalDestroy = popover.destroy?.bind(popover);
+      if (typeof originalDestroy === "function") {
+        popover.destroy = (...args) => {
+          originalDestroy(...args);
+          if (this.tagPreferencePopovers.get(trigger) === entry) {
+            this.tagPreferencePopovers.delete(trigger);
+          }
+        };
+      }
+
+      entry.popover = popover;
+      this.tagPreferencePopovers.set(trigger, entry);
+    } else {
+      entry.tag = tag;
+      entry.context = detail.context || entry.context || "";
+      entry.video = detail.video || entry.video || null;
+    }
+
+    return entry;
+  }
+
+  requestTagPreferenceMenu(detail = {}) {
+    const entry = this.ensureTagPreferencePopover(detail);
+    if (!entry?.popover) {
+      return;
+    }
+
+    const popover = entry.popover;
+    const restoreFocus = detail.restoreFocus !== false;
+
+    if (typeof popover.isOpen === "function" && popover.isOpen()) {
+      popover.close({ restoreFocus });
+      return;
+    }
+
+    this.closeTagPreferenceMenus({
+      restoreFocus: false,
+      skipTrigger: entry.trigger,
+    });
+    this.closeVideoSettingsMenu({ restoreFocus: false });
+    this.closeAllMoreMenus({
+      restoreFocus: false,
+      skipTrigger: entry.trigger,
+      skipView: true,
+    });
+
+    popover
+      .open()
+      .then(() => {
+        this.refreshActiveTagPreferenceMenus();
+      })
+      .catch((error) =>
+        userLogger.error("[TagPreferenceMenu] Failed to open popover:", error),
+      );
+  }
+
+  closeTagPreferenceMenus(detail = {}) {
+    const triggerCandidate = detail?.trigger || null;
+    const trigger =
+      triggerCandidate && triggerCandidate.nodeType === 1 ? triggerCandidate : null;
+    const restoreFocus = detail?.restoreFocus !== false;
+    const skipTrigger = detail?.skipTrigger || null;
+
+    if (trigger) {
+      const entry = this.tagPreferencePopovers.get(trigger);
+      if (entry?.popover && typeof entry.popover.close === "function") {
+        return entry.popover.close({ restoreFocus });
+      }
+      return false;
+    }
+
+    let closed = false;
+    this.tagPreferencePopovers.forEach((entry, key) => {
+      if (!entry?.popover || typeof entry.popover.close !== "function") {
+        return;
+      }
+      if (skipTrigger && key === skipTrigger) {
+        return;
+      }
+      const result = entry.popover.close({ restoreFocus });
+      closed = closed || result;
+    });
+    return closed;
+  }
+
+  async persistHashtagPreferencesFromMenu() {
+    const service = this.hashtagPreferences;
+    const publish =
+      service && typeof service.publish === "function" ? service.publish : null;
+
+    if (!publish) {
+      const message = this.describeHashtagPreferencesError(null, {
+        fallbackMessage: "Hashtag preferences are unavailable right now.",
+      });
+      if (message) {
+        this.showError(message);
+      }
+      const error = new Error(
+        message || "Hashtag preferences are unavailable right now.",
+      );
+      error.code = "service-unavailable";
+      throw error;
+    }
+
+    if (this.hashtagPreferencesPublishInFlight) {
+      return this.hashtagPreferencesPublishPromise;
+    }
+
+    const normalizedPubkey = this.normalizeHexPubkey(this.pubkey);
+    const payload = normalizedPubkey ? { pubkey: normalizedPubkey } : {};
+
+    this.hashtagPreferencesPublishInFlight = true;
+
+    const publishPromise = (async () => {
+      try {
+        return await publish.call(service, payload);
+      } catch (error) {
+        const failure =
+          error instanceof Error ? error : new Error(String(error || ""));
+        if (!failure.code) {
+          failure.code = "hashtag-preferences-publish-failed";
+        }
+        const message = this.describeHashtagPreferencesError(failure, {
+          operation: "update",
+        });
+        if (message) {
+          this.showError(message);
+        }
+        throw failure;
+      } finally {
+        this.hashtagPreferencesPublishInFlight = false;
+        this.hashtagPreferencesPublishPromise = null;
+      }
+    })();
+
+    this.hashtagPreferencesPublishPromise = publishPromise;
+    return publishPromise;
+  }
+
+  async handleTagPreferenceMenuAction(action, detail = {}) {
+    const tag = typeof detail?.tag === "string" ? detail.tag : "";
+    if (!tag) {
+      return;
+    }
+
+    const service = this.hashtagPreferences;
+    if (!service) {
+      return;
+    }
+
+    let result = false;
+    try {
+      switch (action) {
+        case TAG_PREFERENCE_ACTIONS.ADD_INTEREST:
+          result = service.addInterest(tag);
+          break;
+        case TAG_PREFERENCE_ACTIONS.REMOVE_INTEREST:
+          result = service.removeInterest(tag);
+          break;
+        case TAG_PREFERENCE_ACTIONS.ADD_DISINTEREST:
+          result = service.addDisinterest(tag);
+          break;
+        case TAG_PREFERENCE_ACTIONS.REMOVE_DISINTEREST:
+          result = service.removeDisinterest(tag);
+          break;
+        default:
+          userLogger.warn(`[TagPreferenceMenu] Unhandled action: ${action}`);
+          return;
+      }
+    } catch (error) {
+      devLogger.error(
+        "[Application] Failed to mutate hashtag preference via menu:",
+        error,
+      );
+      const message = this.describeHashtagPreferencesError(error, {
+        operation: "update",
+      });
+      if (message) {
+        this.showError(message);
+      }
+      return;
+    }
+
+    if (!result) {
+      return;
+    }
+
+    this.updateCachedHashtagPreferences();
+    this.refreshTagPreferenceUi();
+
+    try {
+      await this.persistHashtagPreferencesFromMenu();
+    } catch (error) {
+      return;
+    }
+
+    this.updateCachedHashtagPreferences();
+    this.refreshTagPreferenceUi();
+
+    if (typeof detail?.closePopover === "function") {
+      detail.closePopover({ restoreFocus: false });
+    }
+  }
+
+  handleTagPreferenceActivation(detail = {}) {
+    const tag = typeof detail?.tag === "string" ? detail.tag : "";
+    if (!tag) {
+      return;
+    }
+
+    const triggerCandidate = detail?.trigger || null;
+    const trigger =
+      triggerCandidate && triggerCandidate.nodeType === 1 ? triggerCandidate : null;
+    if (!trigger) {
+      return;
+    }
+
+    if (detail?.event) {
+      detail.event.preventDefault?.();
+      detail.event.stopPropagation?.();
+    }
+
+    this.requestTagPreferenceMenu({
+      trigger,
+      tag,
+      context: detail?.context || "",
+      video: detail?.video || null,
+    });
   }
 
   syncModalMoreMenuData() {
@@ -6838,6 +9825,7 @@ class Application {
 
       if (this.videoModal) {
         this.videoModal.updateStatus("Streaming via WebTorrent");
+        this.videoModal.setTorrentStatsVisibility?.(true);
       }
 
       const torrentInstance = await torrentClient.streamVideo(
@@ -6921,11 +9909,35 @@ class Application {
       magnet: trimmedMagnet,
     });
 
-    if (
+    const modalVideoIsConnected = (() => {
+      if (!this.modalVideo) {
+        return false;
+      }
+      if (typeof this.modalVideo.isConnected === "boolean") {
+        return this.modalVideo.isConnected;
+      }
+      const ownerDocument = this.modalVideo.ownerDocument ||
+        (typeof document !== "undefined" ? document : null);
+      if (ownerDocument?.contains) {
+        try {
+          return ownerDocument.contains(this.modalVideo);
+        } catch (error) {
+          devLogger.warn(
+            "[playVideoWithFallback] Failed to determine modal video connection state",
+            error,
+          );
+        }
+      }
+      return true;
+    })();
+
+    const shouldReuseActiveSession =
+      modalVideoIsConnected &&
       this.activePlaybackSession &&
       typeof this.activePlaybackSession.matchesRequestSignature === "function" &&
-      this.activePlaybackSession.matchesRequestSignature(requestSignature)
-    ) {
+      this.activePlaybackSession.matchesRequestSignature(requestSignature);
+
+    if (shouldReuseActiveSession) {
       this.log(
         "[playVideoWithFallback] Duplicate playback request detected; reusing active session."
       );
@@ -7103,6 +10115,10 @@ class Application {
 
     subscribe("sourcechange", ({ source } = {}) => {
       this.playSource = source || null;
+      const usingTorrent = source === "torrent";
+      if (this.videoModal) {
+        this.videoModal.setTorrentStatsVisibility?.(usingTorrent);
+      }
     });
 
     subscribe("error", ({ error, message } = {}) => {
@@ -7179,6 +10195,7 @@ class Application {
 
     this.currentVideoPointer = null;
     this.currentVideoPointerKey = null;
+    this.pendingModeratedPlayback = null;
 
     if (this.blacklistedEventIds.has(eventId)) {
       this.showError("This content has been removed or is not allowed.");
@@ -7274,6 +10291,10 @@ class Application {
 
     this.decorateVideoModeration(this.currentVideo);
 
+    const modalTags = collectVideoTags(this.currentVideo);
+    this.currentVideo.displayTags = modalTags;
+    this.updateModalSimilarContent({ activeVideo: this.currentVideo });
+
     if (Number.isFinite(knownPostedAt)) {
       this.cacheVideoRootCreatedAt(this.currentVideo, knownPostedAt);
     } else if (this.currentVideo.rootCreatedAt) {
@@ -7301,6 +10322,11 @@ class Application {
       this.currentVideoPointer,
       this.currentVideoPointerKey
     );
+    this.subscribeModalReactions(
+      this.currentVideoPointer,
+      this.currentVideoPointerKey
+    );
+    this.subscribeModalComments(this.currentVideo);
 
     this.syncModalMoreMenuData();
 
@@ -7330,11 +10356,28 @@ class Application {
 
     await this.showModalWithPoster(this.currentVideo);
 
-    const playbackPromise = this.playVideoWithFallback({
+    const playbackOptions = {
       url: trimmedUrl,
       magnet: magnetInput,
-      trigger: hasTrigger ? this.lastModalTrigger : null,
-    });
+    };
+    if (hasTrigger) {
+      playbackOptions.trigger = this.lastModalTrigger;
+    }
+
+    let playbackPromise = null;
+    if (this.shouldDeferModeratedPlayback(this.currentVideo)) {
+      const pendingVideoId =
+        (this.currentVideo && typeof this.currentVideo.id === "string" && this.currentVideo.id)
+          ? this.currentVideo.id
+          : eventId || null;
+      this.pendingModeratedPlayback = {
+        ...playbackOptions,
+        triggerProvided: hasTrigger,
+        videoId: pendingVideoId,
+      };
+    } else {
+      playbackPromise = this.playVideoWithFallback(playbackOptions);
+    }
 
     let lightningAddress = "";
     let creatorProfile = {
@@ -7373,6 +10416,7 @@ class Application {
         title: video.title || "Untitled",
         description: video.description || "No description available.",
         timestamps: timestampPayload,
+        tags: modalTags,
         creator: {
           name: creatorProfile.name,
           avatarUrl: creatorProfile.picture,
@@ -7584,7 +10628,11 @@ class Application {
       editedAt,
     });
 
-    this.videoModal.updateMetadata({ timestamps: payload });
+    const modalTags = collectVideoTags(video);
+    video.displayTags = modalTags;
+    this.updateModalSimilarContent({ activeVideo: video });
+
+    this.videoModal.updateMetadata({ timestamps: payload, tags: modalTags });
   }
 
   async playVideoWithoutEvent(options = {}) {
@@ -7594,6 +10642,7 @@ class Application {
       title = "Untitled",
       description = "",
       trigger,
+      tags: rawTags,
     } = options || {};
     const hasTrigger = Object.prototype.hasOwnProperty.call(
       options || {},
@@ -7607,6 +10656,9 @@ class Application {
     this.currentVideoPointer = null;
     this.currentVideoPointerKey = null;
     this.subscribeModalViewCount(null, null);
+    this.subscribeModalReactions(null, null);
+    this.subscribeModalComments(null);
+    this.pendingModeratedPlayback = null;
 
     const sanitizedUrl = typeof url === "string" ? url.trim() : "";
     const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
@@ -7614,6 +10666,10 @@ class Application {
     const usableMagnet = decodedMagnet || trimmedMagnet;
     const magnetSupported = isValidMagnetUri(usableMagnet);
     const sanitizedMagnet = magnetSupported ? usableMagnet : "";
+
+    const modalTags = collectVideoTags({
+      nip71: { hashtags: rawTags },
+    });
 
     this.zapController?.setVisibility(false);
     this.zapController?.resetState();
@@ -7637,9 +10693,11 @@ class Application {
       lightningAddress: null,
       pointer: null,
       pointerKey: null,
+      displayTags: modalTags,
     };
 
     this.decorateVideoModeration(this.currentVideo);
+    this.updateModalSimilarContent({ activeVideo: this.currentVideo });
 
     this.syncModalMoreMenuData();
 
@@ -7653,6 +10711,7 @@ class Application {
         title: title || "Untitled",
         description: description || "No description available.",
         timestamp: "",
+        tags: modalTags,
         creator: {
           name: "Unknown",
           avatarUrl: "assets/svg/default-profile.svg",
@@ -7719,6 +10778,14 @@ class Application {
     }
 
     return null;
+  }
+
+  normalizeReactionCount(value) {
+    if (Number.isFinite(value)) {
+      return Math.max(0, Math.round(Number(value)));
+    }
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed)) : 0;
   }
 
   normalizeHexPubkey(pubkey) {
@@ -8010,6 +11077,19 @@ class Application {
       this.watchHistoryTelemetry = null;
     }
 
+    if (typeof this.unsubscribeFromHashtagPreferencesChange === "function") {
+      try {
+        this.unsubscribeFromHashtagPreferencesChange();
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to unsubscribe hashtag preferences change listener:",
+          error,
+        );
+      }
+      this.unsubscribeFromHashtagPreferencesChange = null;
+    }
+    this.boundHashtagPreferencesChangeHandler = null;
+
     if (typeof this.unsubscribeFromPubkeyState === "function") {
       try {
         this.unsubscribeFromPubkeyState();
@@ -8147,6 +11227,7 @@ class Application {
     }
 
     if (this.videoModal) {
+      this.teardownModalCommentSubscription({ resetUi: false });
       if (this.boundVideoModalCloseHandler) {
         this.videoModal.removeEventListener(
           "modal:close",
@@ -8167,6 +11248,27 @@ class Application {
           this.boundVideoModalShareHandler
         );
         this.boundVideoModalShareHandler = null;
+      }
+      if (this.boundVideoModalModerationOverrideHandler) {
+        this.videoModal.removeEventListener(
+          "video:moderation-override",
+          this.boundVideoModalModerationOverrideHandler,
+        );
+        this.boundVideoModalModerationOverrideHandler = null;
+      }
+      if (this.boundVideoModalTagActivateHandler) {
+        this.videoModal.removeEventListener(
+          "tag:activate",
+          this.boundVideoModalTagActivateHandler,
+        );
+        this.boundVideoModalTagActivateHandler = null;
+      }
+      if (this.boundVideoModalSimilarSelectHandler) {
+        this.videoModal.removeEventListener(
+          "similar:select",
+          this.boundVideoModalSimilarSelectHandler
+        );
+        this.boundVideoModalSimilarSelectHandler = null;
       }
       if (this.boundVideoModalCreatorHandler) {
         this.videoModal.removeEventListener(
@@ -8217,6 +11319,41 @@ class Application {
         );
         this.boundVideoModalZapWalletHandler = null;
       }
+      if (this.boundVideoModalCommentSubmitHandler) {
+        this.videoModal.removeEventListener(
+          "comment:submit",
+          this.boundVideoModalCommentSubmitHandler
+        );
+        this.boundVideoModalCommentSubmitHandler = null;
+      }
+      if (this.boundVideoModalCommentRetryHandler) {
+        this.videoModal.removeEventListener(
+          "comment:retry",
+          this.boundVideoModalCommentRetryHandler
+        );
+        this.boundVideoModalCommentRetryHandler = null;
+      }
+      if (this.boundVideoModalCommentLoadMoreHandler) {
+        this.videoModal.removeEventListener(
+          "comment:load-more",
+          this.boundVideoModalCommentLoadMoreHandler
+        );
+        this.boundVideoModalCommentLoadMoreHandler = null;
+      }
+      if (this.boundVideoModalCommentLoginHandler) {
+        this.videoModal.removeEventListener(
+          "comment:login-required",
+          this.boundVideoModalCommentLoginHandler
+        );
+        this.boundVideoModalCommentLoginHandler = null;
+      }
+      if (this.boundVideoModalCommentMuteHandler) {
+        this.videoModal.removeEventListener(
+          "comment:mute-author",
+          this.boundVideoModalCommentMuteHandler
+        );
+        this.boundVideoModalCommentMuteHandler = null;
+      }
       if (typeof this.videoModal.destroy === "function") {
         try {
           this.videoModal.destroy();
@@ -8226,18 +11363,29 @@ class Application {
       }
     }
 
+    this.closeTagPreferenceMenus({ restoreFocus: false });
+    if (this.tagPreferencePopovers) {
+      this.tagPreferencePopovers.clear();
+    }
+
     if (this.videoListView) {
       if (this.moreMenuController) {
         this.moreMenuController.detachVideoListView();
       }
-      this.videoListView.setPlaybackHandler(null);
-      this.videoListView.setEditHandler(null);
-      this.videoListView.setRevertHandler(null);
-      this.videoListView.setDeleteHandler(null);
-      this.videoListViewPlaybackHandler = null;
-      this.videoListViewEditHandler = null;
-      this.videoListViewRevertHandler = null;
-      this.videoListViewDeleteHandler = null;
+    this.videoListView.setPlaybackHandler(null);
+    this.videoListView.setEditHandler(null);
+    this.videoListView.setRevertHandler(null);
+    this.videoListView.setDeleteHandler(null);
+    if (typeof this.videoListView.setTagPreferenceStateResolver === "function") {
+      this.videoListView.setTagPreferenceStateResolver(null);
+    }
+    if (typeof this.videoListView.setTagActivationHandler === "function") {
+      this.videoListView.setTagActivationHandler(null);
+    }
+    this.videoListViewPlaybackHandler = null;
+    this.videoListViewEditHandler = null;
+    this.videoListViewRevertHandler = null;
+    this.videoListViewDeleteHandler = null;
       try {
         this.videoListView.destroy();
       } catch (error) {
@@ -8266,7 +11414,45 @@ class Application {
       this.profileController = null;
     }
 
+    if (this.loginModalController) {
+      if (typeof this.loginModalController.destroy === "function") {
+        try {
+          this.loginModalController.destroy();
+        } catch (error) {
+          devLogger.warn(
+            "[Application] Failed to destroy login modal controller:",
+            error,
+          );
+        }
+      }
+      this.loginModalController = null;
+    }
+
+    if (this.commentThreadService?.setCallbacks) {
+      this.commentThreadService.setCallbacks({
+        onThreadReady: null,
+        onCommentsAppended: null,
+        onError: null,
+      });
+    }
+    if (this.commentThreadService) {
+      try {
+        this.commentThreadService.teardown();
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to destroy comment thread service:",
+          error,
+        );
+      }
+      this.commentThreadService = null;
+    }
+
     this.videoList = null;
+    if (this.videoListPopularTags) {
+      this.videoListPopularTags.textContent = "";
+      this.videoListPopularTags.hidden = true;
+    }
+    this.videoListPopularTags = null;
   }
 
   shareActiveVideo() {
@@ -8313,6 +11499,8 @@ class Application {
     }
   }
 }
+
+Application.recordVideoView = recordVideoViewApi;
 
 /**
  * Given an array of video objects,

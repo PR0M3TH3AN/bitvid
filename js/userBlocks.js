@@ -2,7 +2,8 @@
 import {
   nostrClient,
   requestDefaultExtensionPermissions,
-} from "./nostr.js";
+} from "./nostrClientFacade.js";
+import { getActiveSigner } from "./nostr/index.js";
 import { buildBlockListEvent, BLOCK_LIST_IDENTIFIER } from "./nostrEventSchemas.js";
 import { userLogger } from "./utils/logger.js";
 import {
@@ -245,6 +246,8 @@ class UserBlockListManager {
     this.blockEventId = null;
     this.blockEventCreatedAt = null;
     this.lastPublishedCreatedAt = null;
+    this.muteEventId = null;
+    this.muteEventCreatedAt = null;
     this.loaded = false;
     this.emitter = new TinyEventEmitter();
     this.seedStateCache = new Map();
@@ -255,6 +258,8 @@ class UserBlockListManager {
     this.blockEventId = null;
     this.blockEventCreatedAt = null;
     this.lastPublishedCreatedAt = null;
+    this.muteEventId = null;
+    this.muteEventCreatedAt = null;
     this.loaded = false;
   }
 
@@ -338,33 +343,53 @@ class UserBlockListManager {
       });
     };
 
-    const permissionResult = await requestDefaultExtensionPermissions();
-    if (!permissionResult.ok) {
-      userLogger.warn(
-        "[UserBlockList] Unable to load block list without extension permissions.",
-        permissionResult.error,
-      );
-      this.reset();
-      this.loaded = true;
-      const error =
-        permissionResult.error instanceof Error
-          ? permissionResult.error
-          : new Error("Extension permissions required to load block list.");
-      emitStatus({ status: "error", error });
-      emitStatus({ status: "settled" });
-      return;
+    const activeSigner = getActiveSigner();
+    const signerDecryptor =
+      activeSigner && typeof activeSigner.nip04Decrypt === "function"
+        ? activeSigner.nip04Decrypt
+        : null;
+
+    let extensionDecryptor =
+      typeof window?.nostr?.nip04?.decrypt === "function"
+        ? (pubkey, payload) => window.nostr.nip04.decrypt(pubkey, payload)
+        : null;
+
+    if (!signerDecryptor && !extensionDecryptor) {
+      const permissionResult = await requestDefaultExtensionPermissions();
+      if (!permissionResult.ok) {
+        userLogger.warn(
+          "[UserBlockList] Unable to load block list via extension decryptor; permissions denied.",
+          permissionResult.error,
+        );
+        this.reset();
+        this.loaded = true;
+        const error =
+          permissionResult.error instanceof Error
+            ? permissionResult.error
+            : new Error(
+                "Extension permissions are required to use the browser decryptor.",
+              );
+        emitStatus({ status: "error", error, decryptor: "extension" });
+        emitStatus({ status: "settled" });
+        return;
+      }
+
+      extensionDecryptor =
+        typeof window?.nostr?.nip04?.decrypt === "function"
+          ? (pubkey, payload) => window.nostr.nip04.decrypt(pubkey, payload)
+          : null;
     }
 
-    if (!window?.nostr?.nip04?.decrypt) {
+    if (!signerDecryptor && !extensionDecryptor) {
       userLogger.warn(
-        "[UserBlockList] nip04.decrypt is unavailable; treating block list as empty."
+        "[UserBlockList] No nip04 decryptor available; treating block list as empty.",
       );
       this.reset();
       this.loaded = true;
-      emitStatus({
-        status: "error",
-        error: new Error("nip04.decrypt is unavailable"),
-      });
+      const error = new Error(
+        "No NIP-04 decryptor is available to load the block list.",
+      );
+      emitStatus({ status: "error", error, decryptor: "unavailable" });
       emitStatus({ status: "settled" });
       return;
     }
@@ -549,17 +574,38 @@ class UserBlockListManager {
         }
 
         let decrypted = "";
+        const decryptPath = signerDecryptor
+          ? "active-signer"
+          : extensionDecryptor
+            ? "extension"
+            : "unavailable";
         try {
-          decrypted = await window.nostr.nip04.decrypt(normalized, newest.content);
+          if (signerDecryptor) {
+            decrypted = await signerDecryptor(normalized, newest.content);
+          } else if (extensionDecryptor) {
+            decrypted = await extensionDecryptor(normalized, newest.content);
+          } else {
+            throw new Error("nip04-unavailable");
+          }
         } catch (err) {
-          userLogger.error("[UserBlockList] Failed to decrypt block list:", err);
+          userLogger.error(
+            `[UserBlockList] Failed to decrypt block list via ${decryptPath}:`,
+            err,
+          );
           applyBlockedPubkeys([], {
             source,
             reason: "decrypt-error",
             event: newest,
             error: err,
+            decryptor: decryptPath,
           });
-          emitStatus({ status: "error", event: newest, error: err, source });
+          emitStatus({
+            status: "error",
+            event: newest,
+            error: err,
+            source,
+            decryptor: decryptPath,
+          });
           return;
         }
 
@@ -899,27 +945,169 @@ class UserBlockListManager {
     }
   }
 
+  async publishMuteListSnapshot({
+    signer,
+    ownerPubkey,
+    blockedPubkeys = [],
+    createdAt,
+    plaintext = "",
+    onStatus,
+  } = {}) {
+    const owner = normalizeHex(ownerPubkey);
+    if (!owner || !signer || typeof signer.signEvent !== "function") {
+      return null;
+    }
+
+    const tagSet = new Set();
+    const tags = [];
+
+    const iterateBlocked = (input) => {
+      if (Array.isArray(input)) {
+        return input;
+      }
+      if (input instanceof Set) {
+        return Array.from(input);
+      }
+      if (input && typeof input[Symbol.iterator] === "function") {
+        return Array.from(input);
+      }
+      return [];
+    };
+
+    for (const value of iterateBlocked(blockedPubkeys)) {
+      const normalized = normalizeHex(value);
+      if (!normalized || normalized === owner || tagSet.has(normalized)) {
+        continue;
+      }
+      tagSet.add(normalized);
+      tags.push(["p", normalized]);
+    }
+
+    const timestamp = Number.isFinite(createdAt)
+      ? Math.max(0, Math.floor(createdAt))
+      : Math.floor(Date.now() / 1000);
+
+    const event = {
+      kind: 10000,
+      pubkey: owner,
+      created_at: timestamp,
+      tags,
+      content: "",
+    };
+
+    const payloadText = typeof plaintext === "string" ? plaintext : "";
+    let encryptedContent = "";
+    let encryptionTagValue = "";
+
+    if (payloadText) {
+      const encryptionCandidates = [];
+
+      if (typeof signer.nip44Encrypt === "function") {
+        encryptionCandidates.push({ tag: "nip44_v2", encrypt: signer.nip44Encrypt });
+      }
+
+      if (typeof signer.nip04Encrypt === "function") {
+        encryptionCandidates.push({ tag: "nip04", encrypt: signer.nip04Encrypt });
+      }
+
+      for (const candidate of encryptionCandidates) {
+        try {
+          const encrypted = await candidate.encrypt(owner, payloadText);
+          if (typeof encrypted === "string" && encrypted) {
+            encryptedContent = encrypted;
+            encryptionTagValue = candidate.tag;
+            break;
+          }
+        } catch (error) {
+          // Ignore encryption failures and fall back to the next candidate.
+        }
+      }
+    }
+
+    if (encryptedContent) {
+      event.content = encryptedContent;
+      if (encryptionTagValue) {
+        event.tags.push(["encrypted", encryptionTagValue]);
+      }
+    }
+
+    onStatus?.({ status: "mute-publishing" });
+
+    let signedEvent;
+    try {
+      signedEvent = await signer.signEvent(event);
+    } catch (error) {
+      const wrapped =
+        error instanceof Error ? error : new Error(String(error || "mute-signature-failed"));
+      wrapped.code = wrapped.code || "mute-signature-failed";
+      throw wrapped;
+    }
+
+    const publishResults = await publishEventToRelays(
+      nostrClient.pool,
+      nostrClient.relays,
+      signedEvent,
+    );
+
+    const summary = assertAnyRelayAccepted(publishResults, { context: "mute list" });
+
+    if (summary.failed.length) {
+      summary.failed.forEach(({ url, error: relayError }) => {
+        const reason =
+          relayError instanceof Error
+            ? relayError.message
+            : relayError
+            ? String(relayError)
+            : "publish failed";
+        userLogger.warn(
+          `[UserBlockList] Mute list not accepted by ${url}: ${reason}`,
+          relayError,
+        );
+      });
+    }
+
+    this.muteEventId = signedEvent.id;
+    this.muteEventCreatedAt = Number.isFinite(signedEvent?.created_at)
+      ? signedEvent.created_at
+      : event.created_at;
+
+    onStatus?.({ status: "mute-published", event: signedEvent });
+
+    return signedEvent;
+  }
+
   async publishBlockList(userPubkey, options = {}) {
     const onStatus =
       options && typeof options.onStatus === "function" ? options.onStatus : null;
 
     onStatus?.({ status: "publishing" });
 
-    const permissionResult = await requestDefaultExtensionPermissions();
-    if (!permissionResult.ok) {
-      userLogger.warn(
-        "[UserBlockList] Extension permissions denied while updating the block list.",
-        permissionResult.error,
-      );
+    const signer = getActiveSigner();
+    if (!signer) {
       const err = new Error(
-        "The NIP-07 extension must allow encryption and signing before updating the block list.",
+        "An active signer is required to update the block list."
       );
-      err.code = "extension-permission-denied";
-      err.cause = permissionResult.error;
+      err.code = "signer-missing";
       throw err;
     }
 
-    if (!window?.nostr?.nip04?.encrypt) {
+    if (signer.type === "extension") {
+      const permissionResult = await requestDefaultExtensionPermissions();
+      if (!permissionResult.ok) {
+        userLogger.warn(
+          "[UserBlockList] Signer permissions denied while updating the block list.",
+          permissionResult.error,
+        );
+        const err = new Error(
+          "The active signer must allow encryption and signing before updating the block list.",
+        );
+        err.code = "extension-permission-denied";
+        err.cause = permissionResult.error;
+        throw err;
+      }
+    }
+
+    if (typeof signer.nip04Encrypt !== "function") {
       const err = new Error(
         "NIP-04 encryption is required to update the block list."
       );
@@ -927,9 +1115,9 @@ class UserBlockListManager {
       throw err;
     }
 
-    if (typeof window.nostr.signEvent !== "function") {
-      const err = new Error("Nostr extension missing signEvent support.");
-      err.code = "nip04-missing";
+    if (typeof signer.signEvent !== "function") {
+      const err = new Error("Active signer missing signEvent support.");
+      err.code = "sign-event-missing";
       throw err;
     }
 
@@ -947,7 +1135,7 @@ class UserBlockListManager {
 
     let cipherText = "";
     try {
-      cipherText = await window.nostr.nip04.encrypt(normalized, plaintext);
+      cipherText = await signer.nip04Encrypt(normalized, plaintext);
     } catch (error) {
       const err = new Error("Failed to encrypt block list.");
       err.code = "nip04-missing";
@@ -960,7 +1148,7 @@ class UserBlockListManager {
       content: cipherText,
     });
 
-    const signedEvent = await window.nostr.signEvent(event);
+    const signedEvent = await signer.signEvent(event);
 
     const publishResults = await publishEventToRelays(
       nostrClient.pool,
@@ -1008,6 +1196,19 @@ class UserBlockListManager {
       : event.created_at;
     this.lastPublishedCreatedAt = this.blockEventCreatedAt;
     onStatus?.({ status: "published", event: signedEvent });
+
+    try {
+      await this.publishMuteListSnapshot({
+        signer,
+        ownerPubkey: normalized,
+        blockedPubkeys: payload.blockedPubkeys,
+        createdAt: event.created_at,
+        plaintext,
+        onStatus,
+      });
+    } catch (muteError) {
+      userLogger.warn("[UserBlockList] Failed to publish mute list", muteError);
+    }
 
     try {
       await this.loadBlocks(normalized, {

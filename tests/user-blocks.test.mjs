@@ -2,7 +2,12 @@ import "./test-helpers/setup-localstorage.mjs";
 import assert from "node:assert/strict";
 
 const { userBlocks, USER_BLOCK_EVENTS } = await import("../js/userBlocks.js");
-const { nostrClient } = await import("../js/nostr.js");
+const {
+  nostrClient,
+  setActiveSigner,
+  clearActiveSigner,
+  getActiveSigner,
+} = await import("../js/nostr.js");
 
 if (typeof globalThis.window === "undefined") {
   globalThis.window = {};
@@ -27,6 +32,8 @@ await (async () => {
     : nostrClient.writeRelays;
   const originalBlocked = new Set(userBlocks.blockedPubkeys);
   const originalBlockEventId = userBlocks.blockEventId;
+  const originalMuteEventId = userBlocks.muteEventId;
+  const originalMuteEventCreatedAt = userBlocks.muteEventCreatedAt;
   const originalLoaded = userBlocks.loaded;
 
   const calls = [];
@@ -119,6 +126,8 @@ await (async () => {
   } finally {
     userBlocks.blockedPubkeys = originalBlocked;
     userBlocks.blockEventId = originalBlockEventId;
+    userBlocks.muteEventId = originalMuteEventId;
+    userBlocks.muteEventCreatedAt = originalMuteEventCreatedAt;
     userBlocks.loaded = originalLoaded;
     nostrClient.pool = originalPool;
     nostrClient.relays = originalRelays;
@@ -149,6 +158,8 @@ await (async () => {
   const originalBlocked = new Set(userBlocks.blockedPubkeys);
   const originalBlockEventId = userBlocks.blockEventId;
   const originalBlockEventCreatedAt = userBlocks.blockEventCreatedAt;
+  const originalMuteEventId = userBlocks.muteEventId;
+  const originalMuteEventCreatedAt = userBlocks.muteEventCreatedAt;
   const originalLoaded = userBlocks.loaded;
 
   const calls = [];
@@ -272,6 +283,8 @@ await (async () => {
     userBlocks.blockedPubkeys = originalBlocked;
     userBlocks.blockEventId = originalBlockEventId;
     userBlocks.blockEventCreatedAt = originalBlockEventCreatedAt;
+    userBlocks.muteEventId = originalMuteEventId;
+    userBlocks.muteEventCreatedAt = originalMuteEventCreatedAt;
     userBlocks.loaded = originalLoaded;
     nostrClient.pool = originalPool;
     nostrClient.relays = originalRelays;
@@ -293,6 +306,8 @@ await (async () => {
   const originalBlockEventId = userBlocks.blockEventId;
   const originalBlockEventCreatedAt = userBlocks.blockEventCreatedAt;
   const originalLastPublishedCreatedAt = userBlocks.lastPublishedCreatedAt;
+  const originalMuteEventId = userBlocks.muteEventId;
+  const originalMuteEventCreatedAt = userBlocks.muteEventCreatedAt;
   const originalLoaded = userBlocks.loaded;
   const originalSeedStateCache = userBlocks.seedStateCache;
   const originalNostrTools = window.NostrTools;
@@ -338,6 +353,8 @@ await (async () => {
   userBlocks.blockEventId = null;
   userBlocks.blockEventCreatedAt = null;
   userBlocks.lastPublishedCreatedAt = null;
+  userBlocks.muteEventId = null;
+  userBlocks.muteEventCreatedAt = null;
   userBlocks.loaded = false;
   userBlocks.seedStateCache = new Map();
 
@@ -430,9 +447,189 @@ await (async () => {
     userBlocks.blockEventId = originalBlockEventId;
     userBlocks.blockEventCreatedAt = originalBlockEventCreatedAt;
     userBlocks.lastPublishedCreatedAt = originalLastPublishedCreatedAt;
+    userBlocks.muteEventId = originalMuteEventId;
+    userBlocks.muteEventCreatedAt = originalMuteEventCreatedAt;
     userBlocks.loaded = originalLoaded;
     userBlocks.seedStateCache = originalSeedStateCache;
     window.NostrTools = originalNostrTools;
     localStorage.clear();
+  }
+})();
+
+await (async () => {
+  const actor = "4".repeat(64);
+  const target = "5".repeat(64);
+
+  const originalBlocked = new Set(userBlocks.blockedPubkeys);
+  const originalBlockEventId = userBlocks.blockEventId;
+  const originalBlockEventCreatedAt = userBlocks.blockEventCreatedAt;
+  const originalLastPublishedCreatedAt = userBlocks.lastPublishedCreatedAt;
+  const originalMuteEventId = userBlocks.muteEventId;
+  const originalMuteEventCreatedAt = userBlocks.muteEventCreatedAt;
+  const originalLoaded = userBlocks.loaded;
+  const originalPool = nostrClient.pool;
+  const originalRelays = Array.isArray(nostrClient.relays)
+    ? [...nostrClient.relays]
+    : nostrClient.relays;
+  const originalWriteRelays = Array.isArray(nostrClient.writeRelays)
+    ? [...nostrClient.writeRelays]
+    : nostrClient.writeRelays;
+  const originalEnsurePermissions = nostrClient.ensureExtensionPermissions;
+  const originalSignerState = getActiveSigner();
+  clearActiveSigner();
+  const originalNostr = window.nostr;
+
+  let permissionRequests = 0;
+  nostrClient.ensureExtensionPermissions = async () => {
+    permissionRequests += 1;
+    return { ok: true };
+  };
+
+  let eventCounter = 0;
+  let latestCiphertext = "cipher:[]";
+  let latestEventId = "event-initial";
+  let latestCreatedAt = 1_000;
+
+  const decryptPayloads = new Map([
+    [latestCiphertext, JSON.stringify({ blockedPubkeys: [] })],
+  ]);
+
+  const signedEvents = [];
+
+  nostrClient.relays = ["wss://direct-signer.example"];
+  nostrClient.writeRelays = nostrClient.relays;
+  nostrClient.pool = {
+    publish: (_targets, event) => {
+      latestCiphertext = event.content;
+      latestEventId = event.id || `event-${Date.now()}`;
+      latestCreatedAt = event.created_at || Math.floor(Date.now() / 1000);
+      return {
+        on(eventName, handler) {
+          if (eventName === "ok") {
+            setImmediate(handler);
+            return true;
+          }
+          return false;
+        },
+      };
+    },
+    list: async () => [
+      {
+        id: latestEventId,
+        created_at: latestCreatedAt,
+        pubkey: actor,
+        content: latestCiphertext,
+      },
+    ],
+  };
+
+  setActiveSigner({
+    type: "private-key",
+    pubkey: actor,
+    nip04Decrypt: async (pubkey, ciphertext) => {
+      assert.equal(pubkey, actor, "decrypt should target the actor pubkey");
+      if (!decryptPayloads.has(ciphertext)) {
+        throw new Error(`unexpected ciphertext ${ciphertext}`);
+      }
+      return decryptPayloads.get(ciphertext);
+    },
+    nip04Encrypt: async (pubkey, plaintext) => {
+      assert.equal(pubkey, actor, "encrypt should target the actor pubkey");
+      let parsed;
+      try {
+        parsed = JSON.parse(plaintext);
+      } catch (error) {
+        throw new Error(`unexpected payload ${plaintext}`);
+      }
+      const blocked = Array.isArray(parsed?.blockedPubkeys)
+        ? [...parsed.blockedPubkeys].sort()
+        : [];
+      const cipher = `cipher:${JSON.stringify(blocked)}`;
+      decryptPayloads.set(cipher, plaintext);
+      return cipher;
+    },
+    nip44Encrypt: async (pubkey, plaintext) => {
+      assert.equal(pubkey, actor, "nip44 encrypt should target the actor pubkey");
+      return `nip44:${plaintext}`;
+    },
+    signEvent: async (event) => {
+      eventCounter += 1;
+      const signed = {
+        ...event,
+        id: `event-${eventCounter}`,
+        created_at: event.created_at ?? Math.floor(Date.now() / 1000),
+      };
+      signedEvents.push(signed);
+      return signed;
+    },
+  });
+
+  userBlocks.blockedPubkeys = new Set();
+  userBlocks.blockEventId = null;
+  userBlocks.blockEventCreatedAt = null;
+  userBlocks.lastPublishedCreatedAt = null;
+  userBlocks.loaded = false;
+
+  try {
+    window.nostr = undefined;
+
+    await userBlocks.loadBlocks(actor);
+    assert.deepEqual(
+      userBlocks.getBlockedPubkeys(),
+      [],
+      "direct signer should load block list without extension decryptor",
+    );
+    assert.equal(
+      permissionRequests,
+      0,
+      "loadBlocks should not request extension permissions when signer decryptor exists",
+    );
+
+    const blockResult = await userBlocks.addBlock(target, actor);
+    assert.equal(blockResult?.ok, true, "addBlock should succeed with direct signer");
+    assert(userBlocks.blockedPubkeys.has(target), "target should be in the block list");
+
+    const unblockResult = await userBlocks.removeBlock(target, actor);
+    assert.equal(
+      unblockResult?.ok,
+      true,
+      "removeBlock should succeed with direct signer",
+    );
+    assert.equal(
+      userBlocks.blockedPubkeys.has(target),
+      false,
+      "target should be removed from the block list",
+    );
+
+    assert.equal(
+      permissionRequests,
+      0,
+      "direct signer flows should never trigger extension permission prompts",
+    );
+
+    const muteEvent = signedEvents.find((event) => event.kind === 10000);
+    assert(muteEvent, "block list updates should publish a kind 10000 mute list event");
+    assert(
+      Array.isArray(muteEvent.tags) &&
+        muteEvent.tags.some((tag) => Array.isArray(tag) && tag[0] === "p" && tag[1] === target),
+      "mute list event should include p-tags for blocked pubkeys",
+    );
+  } finally {
+    userBlocks.blockedPubkeys = originalBlocked;
+    userBlocks.blockEventId = originalBlockEventId;
+    userBlocks.blockEventCreatedAt = originalBlockEventCreatedAt;
+    userBlocks.lastPublishedCreatedAt = originalLastPublishedCreatedAt;
+    userBlocks.muteEventId = originalMuteEventId;
+    userBlocks.muteEventCreatedAt = originalMuteEventCreatedAt;
+    userBlocks.loaded = originalLoaded;
+    nostrClient.pool = originalPool;
+    nostrClient.relays = originalRelays;
+    nostrClient.writeRelays = originalWriteRelays;
+    nostrClient.ensureExtensionPermissions = originalEnsurePermissions;
+    window.nostr = originalNostr;
+    clearActiveSigner();
+    if (originalSignerState) {
+      setActiveSigner(originalSignerState);
+    }
   }
 })();
