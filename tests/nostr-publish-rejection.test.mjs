@@ -51,6 +51,8 @@ try {
   const { nostrClient, setActiveSigner, clearActiveSigner } = await import("../js/nostr.js");
   const { subscriptions } = await import("../js/subscriptions.js");
   const { userBlocks } = await import("../js/userBlocks.js");
+  const { Application } = await import("../js/app.js");
+  const { isDevMode } = await import("../js/config.js");
 
   setActiveSigner({
     type: "session",
@@ -283,6 +285,89 @@ try {
     }
   }
 
+  async function testPublishVideoNoteDefaultsToLiveModeInDev() {
+    assert.equal(isDevMode, true, "Test expects isDevMode to be true");
+
+    let capturedPayload = null;
+    let capturedPubkey = null;
+
+    const fakeApp = {
+      pubkey: "f".repeat(64),
+      nostrService: {
+        publishVideoNote: async (payload, pubkey) => {
+          capturedPayload = payload;
+          capturedPubkey = pubkey;
+        },
+      },
+      showError(message) {
+        throw new Error(`showError invoked: ${message}`);
+      },
+      showSuccess() {},
+      showStatus() {},
+      loadVideos: async () => {},
+      uploadModal: null,
+    };
+
+    const publishResult = await Application.prototype.publishVideoNote.call(
+      fakeApp,
+      {
+        legacyFormData: {
+          title: "Dev Mode Default",
+          url: "https://cdn.example/dev.mp4",
+        },
+      },
+    );
+
+    assert.equal(publishResult, true, "publishVideoNote should resolve truthy");
+    assert.equal(
+      capturedPubkey,
+      fakeApp.pubkey,
+      "publishVideoNote should forward the viewer pubkey",
+    );
+    assert.equal(
+      capturedPayload?.legacyFormData?.mode,
+      "live",
+      "publishVideoNote should default mode to live even in dev mode",
+    );
+  }
+
+  async function testPublishVideoNoteRespectsProvidedMode() {
+    let capturedPayload = null;
+
+    const fakeApp = {
+      pubkey: "f".repeat(64),
+      nostrService: {
+        publishVideoNote: async (payload) => {
+          capturedPayload = payload;
+        },
+      },
+      showError(message) {
+        throw new Error(`showError invoked: ${message}`);
+      },
+      showSuccess() {},
+      showStatus() {},
+      loadVideos: async () => {},
+      uploadModal: null,
+    };
+
+    await Application.prototype.publishVideoNote.call(
+      fakeApp,
+      {
+        legacyFormData: {
+          title: "Dev Mode Override",
+          url: "https://cdn.example/dev.mp4",
+          mode: "dev",
+        },
+      },
+    );
+
+    assert.equal(
+      capturedPayload?.legacyFormData?.mode,
+      "dev",
+      "publishVideoNote should respect an explicit dev mode value",
+    );
+  }
+
   async function testPublishVideoNormalizesPubkeyForNip71Metadata() {
     const uppercasePubkey = "AB".repeat(32);
     const originalSignAndPublish = nostrClient.signAndPublishEvent;
@@ -361,6 +446,8 @@ try {
   await testPublishVideoRejectsWhenAllRelaysFail();
   await testPublishSubscriptionListRejectsWhenAllRelaysFail();
   await testPublishBlockListRejectsWhenAllRelaysFail();
+  await testPublishVideoNoteDefaultsToLiveModeInDev();
+  await testPublishVideoNoteRespectsProvidedMode();
   await testPublishVideoNormalizesPubkeyForNip71Metadata();
 
   console.log("nostr publish rejection tests passed");

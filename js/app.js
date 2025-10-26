@@ -560,7 +560,11 @@ class Application {
       editModalOverride: ui.editModal,
       container: modalContainer,
       services: {
-        getMode: () => (isDevMode ? "dev" : "live"),
+        getMode: ({ video } = {}) => {
+          const candidate =
+            typeof video?.mode === "string" ? video.mode.trim().toLowerCase() : "";
+          return candidate === "dev" ? "dev" : "live";
+        },
         sanitizers: {
           text: (value) => (typeof value === "string" ? value.trim() : ""),
           url: (value) => (typeof value === "string" ? value.trim() : ""),
@@ -5001,6 +5005,9 @@ class Application {
     const description = normalizeString(legacyPayload?.description || "");
     const ws = normalizeString(legacyPayload?.ws || "");
     const xs = normalizeString(legacyPayload?.xs || "");
+    const rawMode = normalizeString(legacyPayload?.mode || "");
+    const normalizedMode =
+      rawMode && rawMode.toLowerCase() === "dev" ? "dev" : "live";
     const enableComments = normalizeBooleanFlag(
       legacyPayload?.enableComments,
       true
@@ -5017,7 +5024,7 @@ class Application {
       magnet,
       thumbnail,
       description,
-      mode: isDevMode ? "dev" : "live",
+      mode: normalizedMode,
       enableComments,
       isNsfw,
       isForKids,
