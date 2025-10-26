@@ -95,6 +95,8 @@ class AccessControl {
       }
     };
 
+    runHydrate();
+
     if (typeof queueMicrotask === "function") {
       queueMicrotask(runHydrate);
       return;
@@ -528,6 +530,10 @@ class AccessControl {
 
     if (this.isLockdownActive()) {
       return false;
+    }
+
+    if (!this.hasLoaded) {
+      return true;
     }
 
     if (this.whitelist.has(normalized)) {

@@ -3378,6 +3378,15 @@ export class NostrClient {
   async publishVideo(videoPayload, pubkey) {
     if (!pubkey) throw new Error("Not logged in to publish video.");
 
+    const normalizedPubkey =
+      typeof pubkey === "string" ? pubkey.trim() : "";
+
+    if (!normalizedPubkey) {
+      throw new Error("Not logged in to publish video.");
+    }
+
+    const userPubkeyLower = normalizedPubkey.toLowerCase();
+
     const { videoData, nip71Metadata } = extractVideoPublishPayload(videoPayload);
     const nip71EditedFlag =
       videoPayload && typeof videoPayload === "object"
@@ -3389,7 +3398,7 @@ export class NostrClient {
     // controllers and revert helpers so all paths stay in lockstep.
     devLogger.log("Publishing new video with data:", videoData);
     if (nip71Metadata) {
-    devLogger.log("Including NIP-71 metadata:", nip71Metadata);
+      devLogger.log("Including NIP-71 metadata:", nip71Metadata);
     }
 
     const rawMagnet = typeof videoData.magnet === "string" ? videoData.magnet : "";
@@ -3455,7 +3464,7 @@ export class NostrClient {
     );
 
     const event = buildVideoPostEvent({
-      pubkey,
+      pubkey: normalizedPubkey,
       created_at: createdAt,
       dTagValue,
       content: contentObject,
@@ -3463,7 +3472,7 @@ export class NostrClient {
     });
 
     devLogger.log("Publish event with brand-new root:", videoRootId);
-          devLogger.log("Event content:", event.content);
+    devLogger.log("Event content:", event.content);
 
     try {
       const { signedEvent } = await this.signAndPublishEvent(event, {
@@ -3496,7 +3505,7 @@ export class NostrClient {
         }
 
         const mirrorEvent = buildVideoMirrorEvent({
-          pubkey,
+          pubkey: normalizedPubkey,
           created_at: createdAt,
           tags: mirrorTags,
           content: altText,
@@ -3536,10 +3545,10 @@ export class NostrClient {
           description: contentObject.description,
           url: contentObject.url,
           magnet: contentObject.magnet,
-      thumbnail: contentObject.thumbnail,
-      mode: contentObject.mode,
-      isPrivate: wantPrivate,
-      isNsfw: contentObject.isNsfw,
+          thumbnail: contentObject.thumbnail,
+          mode: contentObject.mode,
+          isPrivate: wantPrivate,
+          isNsfw: contentObject.isNsfw,
           isForKids: contentObject.isForKids,
         };
 
@@ -3559,8 +3568,8 @@ export class NostrClient {
             },
             userPubkeyLower,
             {
-              videoRootId: oldRootId,
-              dTag: newD,
+              videoRootId,
+              dTag: dTagValue,
               eventId: signedEvent.id,
             }
           );

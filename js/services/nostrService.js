@@ -351,6 +351,10 @@ export class NostrService {
     }
 
     if (this.accessControl && typeof this.accessControl.canAccess === "function") {
+      if (viewerIsAuthor) {
+        return true;
+      }
+
       try {
         if (!this.accessControl.canAccess(video)) {
           return false;

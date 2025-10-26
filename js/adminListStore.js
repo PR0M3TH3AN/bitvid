@@ -26,8 +26,10 @@ const LEGACY_STORAGE_KEYS = {
   blacklistLegacy: "bitvid_blacklist",
 };
 
-const ADMIN_STATE_CACHE_VERSION = 1;
-const ADMIN_STATE_CACHE_KEY = `bitvid_admin_state_v${ADMIN_STATE_CACHE_VERSION}`;
+function getAdminStateCacheKey() {
+  const version = 1;
+  return `bitvid_admin_state_v${version}`;
+}
 
 function createError(code, message, cause) {
   const error = new Error(message);
@@ -283,7 +285,7 @@ export function readCachedAdminState() {
 
   let raw = null;
   try {
-    raw = localStorage.getItem(ADMIN_STATE_CACHE_KEY);
+    raw = localStorage.getItem(getAdminStateCacheKey());
   } catch (error) {
     devLogger.warn(
       "[adminListStore] Failed to read admin state cache:",
@@ -315,7 +317,7 @@ export function writeCachedAdminState(state) {
 
   try {
     const sanitized = sanitizeAdminState(state || {});
-    localStorage.setItem(ADMIN_STATE_CACHE_KEY, JSON.stringify(sanitized));
+    localStorage.setItem(getAdminStateCacheKey(), JSON.stringify(sanitized));
   } catch (error) {
     devLogger.warn(
       "[adminListStore] Failed to write admin state cache:",
