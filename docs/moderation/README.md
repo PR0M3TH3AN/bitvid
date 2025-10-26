@@ -32,7 +32,7 @@ bitvid is follow-centric. Your Home feed comes from people you follow (F1). Disc
 
 - Every moderation payload now includes a `blurReason` that records why a thumbnail was blurred (`trusted-report`, `trusted-mute`, or a hide reason such as `trusted-mute-hide`). This travels with both the metadata stage output and the decorated `video.moderation.original` snapshot so UI can explain the decision even after a viewer override.
 - When a trusted mute forces a blur (without a report threshold firing) the badge copy shortens to **"Muted by a trusted contact"** so we don't repeat the blur state in the label. Reports still surface as "Blurred · {reason}" until the viewer taps "Show anyway".
-- The moderation badge now renders as a dedicated yellow chip with an icon and "Show anyway" pill that matches the rest of the design system tokens. Override states flip to the neutral palette and swap the icon for a confirmation check so operators can tell the difference at a glance.
+- The moderation badge now renders as a dedicated yellow chip with an icon and "Show anyway" pill that matches the rest of the design system tokens. Override states flip to the neutral palette, expose a "Restore default moderation" pill, and swap the icon for a confirmation check so operators can tell the difference at a glance.
 - The badge tooltip and `aria-label` continue to list the specific trusted contacts who muted or reported the content when that metadata is available.
 - Viewers who override a trusted mute hide keep a **Block** pill on the same badge so they can block the creator without hunting through another menu.
 - Selecting **Block** immediately publishes an account block for the creator, clears any temporary overrides, and reloads the feed so the author disappears from subsequent fetches.
@@ -44,7 +44,7 @@ Thread new moderation behaviors through the same service → stage → app → U
 ## Defaults (policy)
 - Blur video thumbnails when trusted `nudity` reports meet `DEFAULT_BLUR_THRESHOLD`.
 - Disable autoplay preview when the trusted `nudity` report count reaches `DEFAULT_AUTOPLAY_BLOCK_THRESHOLD`.
-- Hide videos when `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD` trusted contacts mute the author. Cards render with `data-moderation-hidden="true"`, the badge reads `Hidden · {count} trusted mute(s)`, and a "Show anyway" button becomes available.
+- Hide videos when `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD` trusted contacts mute the author. Cards render with `data-moderation-hidden="true"`, the badge reads `Hidden · {count} trusted mute(s)`, and a "Show anyway" button becomes available alongside a "Restore default moderation" control once the override is active.
 - Hide videos when `DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD` trusted contacts file spam reports. The badge copy escalates to `Hidden · {count} trusted spam report(s)` and the card stays hidden until the viewer overrides it.
 - Downrank author when any F1 has them in mute list (10000).
 - Opt-in admin lists (30000 with `d=bitvid:admin:*`) can hard-hide content, but whitelist entries no longer bypass moderation gates—they only influence Discovery rankings when a viewer opts into that list.
@@ -59,7 +59,7 @@ Thread new moderation behaviors through the same service → stage → app → U
 - `TRUSTED_MUTE_HIDE_THRESHOLD` and `TRUSTED_SPAM_HIDE_THRESHOLD` determine when moderation metadata marks an item as hidden. Both feed the `original.hide*` fields that `VideoCard` inspects before deciding whether to render the hidden summary container.
 - `FEATURE_TRUSTED_HIDE_CONTROLS` shows the additional threshold inputs in the profile modal so operators can raise/lower the hide triggers client-side.
 - When any hide threshold fires we persist the active counts (`hideCounts.trustedMuteCount`, `hideCounts.trustedReportCount`) so analytics/debugging tools can show why an item disappeared.
-- Cards that arrive with `original.hidden === true` automatically expose the "Show anyway" chip so viewers can inspect hidden content. Activating the override clears blur/autoplay restrictions alongside the hidden state.
+- Cards that arrive with `original.hidden === true` automatically expose the "Show anyway" chip so viewers can inspect hidden content. Activating the override clears blur/autoplay restrictions alongside the hidden state and replaces the CTA with "Restore default moderation" for easy rollback.
 
 ## Community blacklist federation
 
