@@ -951,6 +951,7 @@ export class ProfileModalController {
       relays: null,
       wallet: null,
       hashtags: null,
+      friends: null,
       blocked: null,
       history: null,
       admin: null,
@@ -960,6 +961,7 @@ export class ProfileModalController {
       relays: null,
       wallet: null,
       hashtags: null,
+      friends: null,
       blocked: null,
       history: null,
       admin: null,
@@ -972,6 +974,10 @@ export class ProfileModalController {
     this.profileRelayInput = null;
     this.profileAddRelayBtn = null;
     this.profileRestoreRelaysBtn = null;
+    this.friendList = null;
+    this.friendListEmpty = null;
+    this.friendInput = null;
+    this.addFriendButton = null;
     this.blockList = null;
     this.blockListEmpty = null;
     this.blockListStatus = null;
@@ -1141,6 +1147,8 @@ export class ProfileModalController {
     this.navButtons.wallet = document.getElementById("profileNavWallet") || null;
     this.navButtons.hashtags =
       document.getElementById("profileNavHashtags") || null;
+    this.navButtons.friends =
+      document.getElementById("profileNavFriends") || null;
     this.navButtons.blocked =
       document.getElementById("profileNavBlocked") || null;
     this.navButtons.history =
@@ -1151,6 +1159,7 @@ export class ProfileModalController {
     this.panes.relays = document.getElementById("profilePaneRelays") || null;
     this.panes.wallet = document.getElementById("profilePaneWallet") || null;
     this.panes.hashtags = document.getElementById("profilePaneHashtags") || null;
+    this.panes.friends = document.getElementById("profilePaneFriends") || null;
     this.panes.blocked = document.getElementById("profilePaneBlocked") || null;
     this.panes.history = document.getElementById("profilePaneHistory") || null;
     this.panes.admin = document.getElementById("profilePaneAdmin") || null;
@@ -1160,6 +1169,11 @@ export class ProfileModalController {
     this.addRelayButton = document.getElementById("addRelayBtn") || null;
     this.restoreRelaysButton =
       document.getElementById("restoreRelaysBtn") || null;
+
+    this.friendList = document.getElementById("friendsList") || null;
+    this.friendListEmpty = document.getElementById("friendsEmpty") || null;
+    this.friendInput = document.getElementById("friendsInput") || null;
+    this.addFriendButton = document.getElementById("addFriendBtn") || null;
 
     this.blockList = document.getElementById("blockedList") || null;
     this.blockListEmpty = document.getElementById("blockedEmpty") || null;
@@ -1201,6 +1215,10 @@ export class ProfileModalController {
     this.profileRelayInput = this.relayInput;
     this.profileAddRelayBtn = this.addRelayButton;
     this.profileRestoreRelaysBtn = this.restoreRelaysButton;
+    this.profileFriendsList = this.friendList;
+    this.profileFriendsEmpty = this.friendListEmpty;
+    this.profileFriendsInput = this.friendInput;
+    this.profileAddFriendBtn = this.addFriendButton;
     this.profileBlockedList = this.blockList;
     this.profileBlockedEmpty = this.blockListEmpty;
     this.profileBlockedInput = this.blockInput;
