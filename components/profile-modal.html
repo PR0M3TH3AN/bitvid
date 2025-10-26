@@ -128,6 +128,15 @@
                 Blocked
               </button>
               <button
+                id="profileNavMessages"
+                type="button"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneMessages"
+                aria-selected="false"
+              >
+                Messages
+              </button>
+              <button
                 id="profileNavHistory"
                 type="button"
                 class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
@@ -646,6 +655,71 @@
                 You haven’t blocked any creators yet.
               </div>
               <ul id="blockedList" class="grid-stack" data-orientation="vertical"></ul>
+            </section>
+            <section
+              id="profilePaneMessages"
+              class="profile-pane hidden space-y-4"
+              role="tabpanel"
+              aria-labelledby="profileNavMessages"
+            >
+              <p class="text-sm text-muted">
+                View encrypted conversations sent with NIP-04 or NIP-44. bitvid keeps message data on this device only.
+              </p>
+              <div
+                id="profileMessagesStatus"
+                class="sr-only"
+                role="status"
+                aria-live="polite"
+              ></div>
+              <div
+                id="profileMessagesLoading"
+                class="hidden py-6"
+                role="status"
+                aria-live="polite"
+              >
+                <div class="sidebar-loading-wrapper">
+                  <div class="sidebar-loading-indicator">
+                    <span
+                      class="status-spinner status-spinner--inline"
+                      aria-hidden="true"
+                    ></span>
+                    <span class="sidebar-loading-text"
+                      >Fetching direct messages from relays…</span
+                    >
+                  </div>
+                </div>
+              </div>
+              <div
+                id="profileMessagesError"
+                class="card hidden border border-critical/40 bg-critical/10 px-4 py-3 text-sm text-critical"
+                role="alert"
+                aria-live="assertive"
+              ></div>
+              <div
+                id="profileMessagesEmpty"
+                class="card hidden border border-dashed border-border/60 p-6 text-center text-sm text-muted"
+                role="status"
+                aria-live="polite"
+              >
+                No direct messages yet.
+              </div>
+              <div class="flex items-center justify-end gap-2">
+                <button
+                  id="profileMessagesReload"
+                  type="button"
+                  class="btn-ghost focus-ring inline-flex items-center gap-2"
+                  data-size="sm"
+                >
+                  Refresh
+                </button>
+              </div>
+              <ul
+                id="profileMessagesList"
+                class="grid-stack hidden"
+                data-orientation="vertical"
+                aria-live="polite"
+                aria-label="Direct message threads"
+              ></ul>
             </section>
             <section
               id="profilePaneHistory"

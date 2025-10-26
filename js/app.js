@@ -669,6 +669,7 @@ class Application {
           relayManager,
           userBlocks,
           nostrClient,
+          nostrService: this.nostrService,
           subscriptions,
           accessControl,
           moderation: moderationService,
