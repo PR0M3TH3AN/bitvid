@@ -283,9 +283,85 @@ try {
     }
   }
 
+  async function testPublishVideoNormalizesPubkeyForNip71Metadata() {
+    const uppercasePubkey = "AB".repeat(32);
+    const originalSignAndPublish = nostrClient.signAndPublishEvent;
+    const originalPublishNip71 = nostrClient.publishNip71Video;
+
+    const publishedEvents = [];
+    const nip71Calls = [];
+
+    nostrClient.signAndPublishEvent = async (event, options = {}) => {
+      publishedEvents.push({ event, options });
+      const contextLabel =
+        typeof options?.context === "string" && options.context
+          ? options.context
+          : "event";
+      return {
+        signedEvent: {
+          ...event,
+          id: event?.id || `signed-${contextLabel}`,
+        },
+      };
+    };
+
+    nostrClient.publishNip71Video = async (payload, pubkey, pointerOptions) => {
+      nip71Calls.push({ payload, pubkey, pointerOptions });
+      return null;
+    };
+
+    try {
+      const result = await nostrClient.publishVideo(
+        {
+          legacyFormData: {
+            title: "Metadata Video",
+            description: "Video with metadata",
+            url: "https://cdn.example/video.mp4",
+            mode: "live",
+          },
+          nip71: {
+            title: "Metadata Video",
+            imeta: [{ url: "https://cdn.example/video.mp4", m: "video/mp4" }],
+          },
+        },
+        uppercasePubkey,
+      );
+
+      assert.equal(typeof result?.id, "string", "publishVideo should resolve with a signed event");
+      assert.ok(
+        publishedEvents.some((entry) => entry.options?.context === "video note"),
+        "publishVideo should sign the primary video note",
+      );
+      assert.equal(
+        nip71Calls.length,
+        1,
+        "publishVideo should invoke publishNip71Video when metadata is provided",
+      );
+      assert.equal(
+        nip71Calls[0]?.pubkey,
+        uppercasePubkey.toLowerCase(),
+        "publishVideo should normalize the pubkey passed to publishNip71Video",
+      );
+      assert.ok(
+        typeof nip71Calls[0]?.pointerOptions?.videoRootId === "string" &&
+          nip71Calls[0]?.pointerOptions?.videoRootId.length > 0,
+        "publishVideo should supply pointer metadata for the new video",
+      );
+      assert.ok(
+        typeof nip71Calls[0]?.pointerOptions?.dTag === "string" &&
+          nip71Calls[0]?.pointerOptions?.dTag.length > 0,
+        "publishVideo should provide the new d tag as a pointer",
+      );
+    } finally {
+      nostrClient.signAndPublishEvent = originalSignAndPublish;
+      nostrClient.publishNip71Video = originalPublishNip71;
+    }
+  }
+
   await testPublishVideoRejectsWhenAllRelaysFail();
   await testPublishSubscriptionListRejectsWhenAllRelaysFail();
   await testPublishBlockListRejectsWhenAllRelaysFail();
+  await testPublishVideoNormalizesPubkeyForNip71Metadata();
 
   console.log("nostr publish rejection tests passed");
 } finally {
