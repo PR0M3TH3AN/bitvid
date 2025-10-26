@@ -646,6 +646,7 @@ class Application {
           relayManager,
           userBlocks,
           nostrClient,
+          subscriptions,
           accessControl,
           getCurrentUserNpub: () => this.getCurrentUserNpub(),
           nwcSettings: this.nwcSettingsService,
