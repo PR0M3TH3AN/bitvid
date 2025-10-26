@@ -4314,6 +4314,14 @@ export async function renderChannelVideosFromList({
           })
         : false;
 
+    videoCard.onModerationHide = ({ video: hideVideo, card: hideCard }) =>
+      typeof app?.handleModerationHide === "function"
+        ? app.handleModerationHide({
+            video: hideVideo,
+            card: hideCard,
+          })
+        : false;
+
     videoCard.onEdit = ({ video: editVideo, index: editIndex }) => {
       app?.handleEditVideo?.({
         eventId: editVideo?.id || "",

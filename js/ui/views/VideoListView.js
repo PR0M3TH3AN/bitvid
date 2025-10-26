@@ -190,6 +190,7 @@ export class VideoListView {
       blacklist: null,
       moderationOverride: null,
       moderationBlock: null,
+      moderationHide: null,
       tagActivate: null,
     };
 
@@ -301,6 +302,11 @@ export class VideoListView {
 
   setModerationBlockHandler(handler) {
     this.handlers.moderationBlock =
+      typeof handler === "function" ? handler : null;
+  }
+
+  setModerationHideHandler(handler) {
+    this.handlers.moderationHide =
       typeof handler === "function" ? handler : null;
   }
 
@@ -615,6 +621,20 @@ export class VideoListView {
           blockEvent?.currentTarget || blockEvent?.target || null;
         return this.handlers.moderationBlock({
           event: blockEvent,
+          video,
+          card: videoCard,
+          trigger,
+        });
+      };
+
+      videoCard.onModerationHide = ({ event: hideEvent }) => {
+        if (!this.handlers.moderationHide) {
+          return false;
+        }
+        const trigger =
+          hideEvent?.currentTarget || hideEvent?.target || null;
+        return this.handlers.moderationHide({
+          event: hideEvent,
           video,
           card: videoCard,
           trigger,

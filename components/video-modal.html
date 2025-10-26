@@ -96,13 +96,19 @@
                         Content or user blocked by a trusted contact.
                       </span>
                     </span>
-                    <button
-                      type="button"
-                      class="moderation-badge__action flex-shrink-0"
-                      data-moderation-action="override"
+                    <div
+                      class="moderation-badge__actions"
+                      data-moderation-actions
                     >
-                      Show anyway
-                    </button>
+                      <button
+                        type="button"
+                        class="moderation-badge__action flex-shrink-0"
+                        data-moderation-action="override"
+                        aria-pressed="false"
+                      >
+                        Show anyway
+                      </button>
+                    </div>
                   </div>
                 </div>
                 <video
