@@ -5014,6 +5014,18 @@ class Application {
         }
       }
 
+      try {
+        await this.handleModerationSettingsChange({
+          settings: getModerationSettings(),
+          skipRefresh: true,
+        });
+      } catch (error) {
+        devLogger.warn(
+          "Failed to sync moderation settings after profile switch:",
+          error,
+        );
+      }
+
       let refreshPromise = null;
       if (
         this.lastIdentityRefreshPromise &&
@@ -5322,7 +5334,7 @@ class Application {
     return null;
   }
 
-  async handleModerationSettingsChange({ settings } = {}) {
+  async handleModerationSettingsChange({ settings, skipRefresh = false } = {}) {
     const normalized = this.normalizeModerationSettings(settings);
     this.moderationSettings = normalized;
 
@@ -5368,13 +5380,15 @@ class Application {
       this.decorateVideoModeration(this.currentVideo);
     }
 
-    try {
-      await this.onVideosShouldRefresh({ reason: "moderation-settings-change" });
-    } catch (error) {
-      devLogger.warn(
-        "[Application] Failed to refresh videos after moderation settings change:",
-        error,
-      );
+    if (!skipRefresh) {
+      try {
+        await this.onVideosShouldRefresh({ reason: "moderation-settings-change" });
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to refresh videos after moderation settings change:",
+          error,
+        );
+      }
     }
 
     return normalized;
@@ -5592,6 +5606,18 @@ class Application {
       previousPubkey: detail?.previousPubkey,
       identityChanged: Boolean(detail?.identityChanged),
     };
+
+    try {
+      await this.handleModerationSettingsChange({
+        settings: getModerationSettings(),
+        skipRefresh: true,
+      });
+    } catch (error) {
+      devLogger.warn(
+        "Failed to sync moderation settings after login:",
+        error,
+      );
+    }
 
     if (loginContext.identityChanged) {
       this.resetHashtagPreferencesState();
@@ -5811,6 +5837,18 @@ class Application {
 
     this.applyLoggedOutUiState();
     this.applyCommentComposerAuthState();
+
+    try {
+      await this.handleModerationSettingsChange({
+        settings: getModerationSettings(),
+        skipRefresh: true,
+      });
+    } catch (error) {
+      devLogger.warn(
+        "Failed to reset moderation settings after logout:",
+        error,
+      );
+    }
 
     if (this.videoModal?.closeZapDialog) {
       try {
