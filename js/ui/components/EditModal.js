@@ -19,7 +19,10 @@ export class EditModal {
       typeof setGlobalModalState === "function" ? setGlobalModalState : () => {};
     this.escapeHtml = typeof escapeHtml === "function" ? escapeHtml : (value) => `${value ?? ""}`;
     this.showError = typeof showError === "function" ? showError : () => {};
-    this.getMode = typeof getMode === "function" ? getMode : () => "live";
+    this.getMode =
+      typeof getMode === "function"
+        ? getMode
+        : () => (this.activeVideo?.mode ?? "live");
     this.eventTarget = eventTarget instanceof EventTarget ? eventTarget : new EventTarget();
     this.container = container || null;
 
@@ -310,6 +313,37 @@ export class EditModal {
     const isNsfw = flags?.isNsfw === true;
     const isForKids = flags?.isForKids === true && !isNsfw;
     return { isNsfw, isForKids };
+  }
+
+  normalizeMode(value) {
+    if (typeof value === "string") {
+      const normalized = value.trim().toLowerCase();
+      if (normalized === "dev") {
+        return "dev";
+      }
+    }
+    return "live";
+  }
+
+  resolveModeForSubmit() {
+    let candidate = null;
+    if (typeof this.getMode === "function") {
+      try {
+        candidate = this.getMode({ video: this.activeVideo });
+      } catch (_error) {
+        candidate = null;
+      }
+    }
+
+    if (typeof candidate === "string" && candidate.trim()) {
+      return this.normalizeMode(candidate);
+    }
+
+    if (this.activeVideo && typeof this.activeVideo.mode === "string") {
+      return this.normalizeMode(this.activeVideo.mode);
+    }
+
+    return "live";
   }
 
   reset() {
@@ -963,7 +997,7 @@ export class EditModal {
       url: finalUrl,
       thumbnail: finalThumbnail,
       description: finalDescription,
-      mode: this.getMode(),
+      mode: this.resolveModeForSubmit(),
       ws: finalWs,
       xs: finalXs,
       wsEdited: !shouldUseOriginalWs,
