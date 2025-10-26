@@ -455,7 +455,10 @@ export class VideoListView {
       return displayVideos;
     }
 
-    displayVideos.sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0));
+    displayVideos.sort(
+      (a, b) =>
+        this.getVideoPostedAtForSort(b) - this.getVideoPostedAtForSort(a),
+    );
     this.currentVideos = displayVideos.slice();
 
     const signaturePayload = displayVideos.map((video) => ({
@@ -463,6 +466,10 @@ export class VideoListView {
       createdAt: Number.isFinite(video?.created_at)
         ? video.created_at
         : Number(video?.created_at) || 0,
+      postedAt: (() => {
+        const timestamp = this.getVideoPostedAtForSort(video);
+        return Number.isFinite(timestamp) ? timestamp : 0;
+      })(),
       deleted: Boolean(video?.deleted),
       isPrivate: Boolean(video?.isPrivate),
       isNsfw: Boolean(video?.isNsfw),
@@ -530,9 +537,10 @@ export class VideoListView {
       const fallbackTimestamp =
         normalizedPostedAt !== null
           ? normalizedPostedAt
-          : Number.isFinite(video?.created_at)
-            ? Math.floor(video.created_at)
-            : null;
+          : (() => {
+              const sortTimestamp = this.getVideoPostedAtForSort(video);
+              return Number.isFinite(sortTimestamp) ? sortTimestamp : null;
+            })();
       const timeAgo =
         fallbackTimestamp !== null
           ? this.formatters.formatTimeAgo(fallbackTimestamp)
@@ -926,6 +934,31 @@ export class VideoListView {
     this.state.videosMap.set(videoId, next);
     this.render(this.currentVideos.slice(), this.state.feedMetadata);
     return next;
+  }
+
+  getVideoPostedAtForSort(video) {
+    if (!video || typeof video !== "object") {
+      return Number.NEGATIVE_INFINITY;
+    }
+
+    const known = this.utils.getKnownVideoPostedAt(video);
+    if (Number.isFinite(known)) {
+      return Math.floor(known);
+    }
+
+    if (Number.isFinite(video?.rootCreatedAt)) {
+      return Math.floor(video.rootCreatedAt);
+    }
+
+    if (Number.isFinite(video?.nip71Source?.created_at)) {
+      return Math.floor(video.nip71Source.created_at);
+    }
+
+    if (Number.isFinite(video?.created_at)) {
+      return Math.floor(video.created_at);
+    }
+
+    return Number.NEGATIVE_INFINITY;
   }
 
   computeShareBase() {
