@@ -204,34 +204,112 @@ export function createWatchHistorySuppressionStage({
 
 export function createModerationStage({
   stageName = "moderation",
-  autoplayThreshold = DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
-  blurThreshold = DEFAULT_BLUR_THRESHOLD,
+  autoplayThreshold,
+  blurThreshold,
   reportType = "nudity",
   service = null,
   getService,
-  trustedMuteHideThreshold = Number.POSITIVE_INFINITY,
-  trustedReportHideThreshold = Number.POSITIVE_INFINITY,
+  trustedMuteHideThreshold,
+  trustedReportHideThreshold,
 } = {}) {
-  const sanitizeThreshold = (value, fallback) => {
+  const sanitizeThreshold = (value, { fallback, allowInfinity = false } = {}) => {
     if (Number.isFinite(value)) {
       return Math.max(0, Math.floor(value));
+    }
+    if (allowInfinity && value === Number.POSITIVE_INFINITY) {
+      return Number.POSITIVE_INFINITY;
     }
     return fallback;
   };
 
-  const normalizedAutoplayThreshold = Number.isFinite(autoplayThreshold)
-    ? Math.max(0, Math.floor(autoplayThreshold))
-    : DEFAULT_AUTOPLAY_BLOCK_THRESHOLD;
-  const normalizedBlurThreshold = Number.isFinite(blurThreshold)
-    ? Math.max(0, Math.floor(blurThreshold))
-    : DEFAULT_BLUR_THRESHOLD;
-  const normalizedMuteHideThreshold = sanitizeThreshold(
+  const createThresholdResolver = (
+    candidate,
+    { runtimeKey, defaultValue, fallbackValue, allowInfinity = false },
+  ) => {
+    return (context) => {
+      const runtimeThresholds =
+        context?.runtime && typeof context.runtime === "object"
+          ? context.runtime.moderationThresholds
+          : null;
+
+      const runtimeValue =
+        runtimeThresholds && typeof runtimeThresholds === "object"
+          ? runtimeThresholds[runtimeKey]
+          : undefined;
+
+      const runtimeValid =
+        Number.isFinite(runtimeValue) ||
+        (allowInfinity && runtimeValue === Number.POSITIVE_INFINITY);
+
+      let value;
+
+      if (typeof candidate === "function") {
+        try {
+          value = candidate({
+            context,
+            runtimeThresholds,
+            runtimeValue,
+            defaultValue,
+          });
+        } catch (error) {
+          context?.log?.(
+            `[${stageName}] threshold resolver threw for ${runtimeKey}`,
+            error,
+          );
+          value = undefined;
+        }
+      } else if (Number.isFinite(candidate)) {
+        value = candidate;
+      } else if (allowInfinity && candidate === Number.POSITIVE_INFINITY) {
+        value = Number.POSITIVE_INFINITY;
+      }
+
+      const hasValidValue =
+        Number.isFinite(value) ||
+        (allowInfinity && value === Number.POSITIVE_INFINITY);
+
+      if (!hasValidValue) {
+        if (runtimeValid) {
+          value = runtimeValue;
+        } else {
+          value = defaultValue;
+        }
+      }
+
+      return sanitizeThreshold(value, {
+        fallback: fallbackValue,
+        allowInfinity,
+      });
+    };
+  };
+
+  const resolveAutoplayThreshold = createThresholdResolver(autoplayThreshold, {
+    runtimeKey: "autoplayBlockThreshold",
+    defaultValue: DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+    fallbackValue: DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+  });
+  const resolveBlurThreshold = createThresholdResolver(blurThreshold, {
+    runtimeKey: "blurThreshold",
+    defaultValue: DEFAULT_BLUR_THRESHOLD,
+    fallbackValue: DEFAULT_BLUR_THRESHOLD,
+  });
+  const resolveMuteHideThreshold = createThresholdResolver(
     trustedMuteHideThreshold,
-    Number.POSITIVE_INFINITY,
+    {
+      runtimeKey: "trustedMuteHideThreshold",
+      defaultValue: Number.POSITIVE_INFINITY,
+      fallbackValue: Number.POSITIVE_INFINITY,
+      allowInfinity: true,
+    },
   );
-  const normalizedReportHideThreshold = sanitizeThreshold(
+  const resolveReportHideThreshold = createThresholdResolver(
     trustedReportHideThreshold,
-    Number.POSITIVE_INFINITY,
+    {
+      runtimeKey: "trustedSpamHideThreshold",
+      defaultValue: Number.POSITIVE_INFINITY,
+      fallbackValue: Number.POSITIVE_INFINITY,
+      allowInfinity: true,
+    },
   );
   const normalizedReportType = typeof reportType === "string" ? reportType.trim().toLowerCase() : "nudity";
 
@@ -258,6 +336,11 @@ export function createModerationStage({
     } catch (error) {
       context?.log?.(`[${stageName}] Failed to refresh viewer context`, error);
     }
+
+    const normalizedAutoplayThreshold = resolveAutoplayThreshold(context);
+    const normalizedBlurThreshold = resolveBlurThreshold(context);
+    const normalizedMuteHideThreshold = resolveMuteHideThreshold(context);
+    const normalizedReportHideThreshold = resolveReportHideThreshold(context);
 
     const activeIds = new Set();
     for (const item of items) {
