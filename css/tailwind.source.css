@@ -3604,15 +3604,15 @@
   }
 
   #modalContainer > #loginModal {
-    z-index: var(--z-modal-top-root);
+    z-index: var(--z-modal-peak-root);
   }
 
   #modalContainer > #loginModal > .bv-modal-backdrop {
-    z-index: var(--z-modal-top-overlay);
+    z-index: var(--z-modal-peak-overlay);
   }
 
   #modalContainer > #loginModal .bv-modal__panel {
-    z-index: var(--z-modal-top-content);
+    z-index: var(--z-modal-peak-content);
   }
 
   #modalContainer > #playerModal {
