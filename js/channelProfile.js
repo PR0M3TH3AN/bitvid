@@ -16,6 +16,13 @@ import { createChannelProfileMenuPanel } from "./ui/components/videoMenuRenderer
 import { ALLOW_NSFW_CONTENT } from "./config.js";
 import { sanitizeProfileMediaUrl } from "./utils/profileMedia.js";
 import moderationService from "./services/moderationService.js";
+import { createModerationStage } from "./feedEngine/stages.js";
+import {
+  DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+  DEFAULT_BLUR_THRESHOLD,
+  DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
+  DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
+} from "./constants.js";
 import {
   applyModerationContextDatasets,
   normalizeVideoModerationContext,
@@ -132,6 +139,112 @@ function collectChannelVideos(pubkey, app = getApp()) {
   });
 
   return matches;
+}
+
+async function applyChannelModerationToVideos(videos = [], app = getApp()) {
+  if (!Array.isArray(videos) || videos.length === 0) {
+    return Array.isArray(videos) ? videos : [];
+  }
+
+  const resolvedApp = app || getApp();
+
+  const resolveThreshold = (value, fallback) => {
+    if (value === Number.POSITIVE_INFINITY) {
+      return Number.POSITIVE_INFINITY;
+    }
+    if (Number.isFinite(value)) {
+      return Math.max(0, Math.floor(value));
+    }
+    return fallback;
+  };
+
+  const thresholds =
+    typeof resolvedApp?.getActiveModerationThresholds === "function"
+      ? resolvedApp.getActiveModerationThresholds()
+      : null;
+
+  const stage = createModerationStage({
+    getService: () => {
+      try {
+        if (
+          resolvedApp?.nostrService &&
+          typeof resolvedApp.nostrService.getModerationService === "function"
+        ) {
+          return resolvedApp.nostrService.getModerationService();
+        }
+      } catch (error) {
+        devLogger.warn(
+          "[ChannelProfile] Failed to resolve channel moderation service",
+          error,
+        );
+      }
+      return null;
+    },
+    autoplayThreshold: resolveThreshold(
+      thresholds?.autoplayBlockThreshold,
+      DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+    ),
+    blurThreshold: resolveThreshold(
+      thresholds?.blurThreshold,
+      DEFAULT_BLUR_THRESHOLD,
+    ),
+    trustedMuteHideThreshold: resolveThreshold(
+      thresholds?.trustedMuteHideThreshold,
+      DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
+    ),
+    trustedReportHideThreshold: resolveThreshold(
+      thresholds?.trustedSpamHideThreshold,
+      DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
+    ),
+  });
+
+  let stageResult;
+  try {
+    const items = videos.map((video) => ({ video, metadata: {} }));
+    stageResult = await stage(items, { feedName: "channel-profile" });
+  } catch (error) {
+    devLogger.warn(
+      "[ChannelProfile] Failed to apply moderation stage to channel videos",
+      error,
+    );
+    return videos;
+  }
+
+  if (!Array.isArray(stageResult)) {
+    return videos;
+  }
+
+  const decoratedVideos = [];
+
+  for (const item of stageResult) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+
+    const video = item.video;
+    if (!video || typeof video !== "object") {
+      continue;
+    }
+
+    const metadataModeration =
+      item.metadata &&
+      typeof item.metadata === "object" &&
+      item.metadata.moderation &&
+      typeof item.metadata.moderation === "object"
+        ? item.metadata.moderation
+        : null;
+
+    if (metadataModeration) {
+      if (!video.moderation || typeof video.moderation !== "object") {
+        video.moderation = {};
+      }
+      Object.assign(video.moderation, metadataModeration);
+    }
+
+    decoratedVideos.push(decorateChannelVideo(video, resolvedApp) || video);
+  }
+
+  return decoratedVideos;
 }
 
 function buildChannelModerationFallback(pubkey) {
@@ -3819,7 +3932,7 @@ function buildRenderableChannelVideos({ events = [], app } = {}) {
   return videos;
 }
 
-export function renderChannelVideosFromList({
+export async function renderChannelVideosFromList({
   videos = [],
   container,
   app,
@@ -3831,6 +3944,34 @@ export function renderChannelVideosFromList({
   }
 
   if (!Array.isArray(videos) || videos.length === 0) {
+    if (allowEmptyMessage) {
+      container.dataset.hasChannelVideos = "false";
+      container.innerHTML = `<p class="text-muted-strong">No videos to display.</p>`;
+      return true;
+    }
+    return false;
+  }
+
+  let preparedVideos = videos;
+  try {
+    preparedVideos = await applyChannelModerationToVideos(videos, app);
+  } catch (error) {
+    devLogger.warn(
+      "[ChannelProfile] Failed to prepare channel videos for moderation",
+      error,
+    );
+    preparedVideos = videos;
+  }
+
+  if (loadToken !== currentVideoLoadToken) {
+    return false;
+  }
+
+  const moderationApplied =
+    Array.isArray(preparedVideos) && preparedVideos !== videos;
+  const renderableVideos = Array.isArray(preparedVideos) ? preparedVideos : videos;
+
+  if (!renderableVideos.length) {
     if (allowEmptyMessage) {
       container.dataset.hasChannelVideos = "false";
       container.innerHTML = `<p class="text-muted-strong">No videos to display.</p>`;
@@ -3950,13 +4091,15 @@ export function renderChannelVideosFromList({
 
   const allowNsfw = ALLOW_NSFW_CONTENT === true;
 
-  for (const originalVideo of videos) {
+  for (const originalVideo of renderableVideos) {
     if (!originalVideo || !originalVideo.id || !originalVideo.title) {
       continue;
     }
 
-    const decoratedVideo = decorateChannelVideo(originalVideo, app) || originalVideo;
-    const video = decoratedVideo;
+    const video =
+      moderationApplied
+        ? originalVideo
+        : decorateChannelVideo(originalVideo, app) || originalVideo;
 
     const normalizedVideoPubkey = normalizePubkey(video.pubkey);
     const canEdit =
@@ -4549,7 +4692,7 @@ async function loadUserVideos(pubkey) {
         app
       });
       if (cachedVideos.length) {
-        const rendered = renderChannelVideosFromList({
+        const rendered = await renderChannelVideosFromList({
           videos: cachedVideos,
           container,
           app,
@@ -4632,7 +4775,7 @@ async function loadUserVideos(pubkey) {
     }
 
     const videos = buildRenderableChannelVideos({ events, app });
-    const rendered = renderChannelVideosFromList({
+    const rendered = await renderChannelVideosFromList({
       videos,
       container,
       app,
