@@ -211,11 +211,38 @@ function attachNipMethodAliases(signer) {
   }
 }
 
+function hydrateExtensionSignerCapabilities(signer) {
+  if (!signer || typeof signer !== "object" || signer.type !== "extension") {
+    return;
+  }
+
+  const extension =
+    typeof window !== "undefined" && window && window.nostr ? window.nostr : null;
+  if (!extension) {
+    return;
+  }
+
+  if (typeof signer.signEvent !== "function" && extension.signEvent) {
+    if (typeof extension.signEvent === "function") {
+      signer.signEvent = extension.signEvent.bind(extension);
+    }
+  }
+
+  if (!signer.nip04 && extension.nip04) {
+    signer.nip04 = extension.nip04;
+  }
+
+  if (!signer.nip44 && extension.nip44) {
+    signer.nip44 = extension.nip44;
+  }
+}
+
 function setActiveSigner(signer) {
   if (!signer || typeof signer !== "object") {
     return;
   }
 
+  hydrateExtensionSignerCapabilities(signer);
   attachNipMethodAliases(signer);
 
   activeSigner = signer;
@@ -242,6 +269,7 @@ function resolveActiveSigner(pubkey) {
     const normalized = pubkey.trim().toLowerCase();
     const direct = activeSignerRegistry.get(normalized);
     if (direct) {
+      hydrateExtensionSignerCapabilities(direct);
       return direct;
     }
     if (
@@ -249,9 +277,11 @@ function resolveActiveSigner(pubkey) {
       typeof activeSigner.pubkey === "string" &&
       activeSigner.pubkey.trim().toLowerCase() === normalized
     ) {
+      hydrateExtensionSignerCapabilities(activeSigner);
       return activeSigner;
     }
   }
+  hydrateExtensionSignerCapabilities(activeSigner);
   return activeSigner;
 }
 
