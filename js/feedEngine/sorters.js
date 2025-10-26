@@ -1,9 +1,12 @@
 // js/feedEngine/sorters.js
 
-export function createChronologicalSorter({ direction = "desc" } = {}) {
+export function createChronologicalSorter({
+  direction = "desc",
+  postedAtResolver,
+} = {}) {
   const normalizedDirection = direction === "asc" ? "asc" : "desc";
 
-  return function chronologicalSorter(items = []) {
+  return function chronologicalSorter(items = [], context = {}) {
     if (!Array.isArray(items)) {
       return [];
     }
@@ -17,6 +20,56 @@ export function createChronologicalSorter({ direction = "desc" } = {}) {
       const video = entry.video;
       if (!video || typeof video !== "object") {
         return Number.NEGATIVE_INFINITY;
+      }
+
+      const resolvePostedAtHook = () => {
+        if (typeof postedAtResolver === "function") {
+          try {
+            const resolved = postedAtResolver({ entry, context, video });
+            if (Number.isFinite(resolved)) {
+              return Math.floor(resolved);
+            }
+          } catch (error) {
+            context?.log?.("[chronological-sorter] postedAtResolver threw", error);
+          }
+        }
+
+        const hook = context?.hooks?.timestamps;
+        if (!hook || typeof hook !== "object") {
+          return null;
+        }
+
+        const candidates = [
+          hook.getKnownVideoPostedAt,
+          hook.getKnownPostedAt,
+          hook.getVideoPostedAt,
+          hook.resolveVideoPostedAt,
+        ];
+
+        for (const candidate of candidates) {
+          if (typeof candidate !== "function") {
+            continue;
+          }
+
+          try {
+            const value = candidate(video, { entry, context });
+            if (Number.isFinite(value)) {
+              return Math.floor(value);
+            }
+          } catch (error) {
+            context?.log?.(
+              "[chronological-sorter] timestamps hook threw",
+              error,
+            );
+          }
+        }
+
+        return null;
+      };
+
+      const hookTimestamp = resolvePostedAtHook();
+      if (Number.isFinite(hookTimestamp)) {
+        return hookTimestamp;
       }
 
       const rootCreatedAt = Number(video.rootCreatedAt);

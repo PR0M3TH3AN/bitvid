@@ -113,6 +113,61 @@ async function testRootCreatedAtSorting() {
   );
 }
 
+async function testTimestampHookSorting() {
+  const engine = createFeedEngine();
+  const feedName = "timestamp-hook";
+
+  const editedVideo = {
+    id: "edited", // newest edit should not jump ahead of older roots
+    videoRootId: "root-hook-a",
+    created_at: 500,
+  };
+
+  const newerRoot = {
+    id: "new-root",
+    videoRootId: "root-hook-b",
+    created_at: 450,
+  };
+
+  engine.registerFeed(feedName, {
+    source: async () => [
+      { video: editedVideo },
+      { video: newerRoot },
+    ],
+    stages: [createDedupeByRootStage()],
+    sorter: createChronologicalSorter(),
+  });
+
+  const hookCalls = [];
+  const result = await engine.runFeed(feedName, {
+    hooks: {
+      timestamps: {
+        getKnownVideoPostedAt(video) {
+          hookCalls.push(video.id);
+          if (video.videoRootId === "root-hook-a") {
+            return 100;
+          }
+          if (video.videoRootId === "root-hook-b") {
+            return 300;
+          }
+          return null;
+        },
+      },
+    },
+  });
+
+  assert.deepEqual(
+    result.videos.map((video) => video.id),
+    ["new-root", "edited"],
+    "timestamp hook should drive chronological order",
+  );
+  assert.deepEqual(
+    new Set(hookCalls),
+    new Set(["edited", "new-root"]),
+    "timestamp hook should be invoked for each video",
+  );
+}
+
 async function testBlacklistFiltering() {
   const engine = createFeedEngine();
   const feedName = "blacklist";
@@ -284,6 +339,7 @@ async function testTrustedMuteDownrank() {
 
 await testDedupeOrdering();
 await testRootCreatedAtSorting();
+await testTimestampHookSorting();
 await testBlacklistFiltering();
 await testWatchHistoryHookIsolation();
 await testBlacklistOrderingWithRuntimeChanges();

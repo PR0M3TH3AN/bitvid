@@ -6732,6 +6732,11 @@ class Application {
           }),
         ],
         sorter: createChronologicalSorter(),
+        hooks: {
+          timestamps: {
+            getKnownVideoPostedAt: (video) => this.getKnownVideoPostedAt(video),
+          },
+        },
       });
     } catch (error) {
       devLogger.warn("[Application] Failed to register recent feed:", error);
@@ -6799,6 +6804,9 @@ class Application {
         hooks: {
           subscriptions: {
             resolveAuthors: () => subscriptions.getSubscribedAuthors(),
+          },
+          timestamps: {
+            getKnownVideoPostedAt: (video) => this.getKnownVideoPostedAt(video),
           },
         },
       });
