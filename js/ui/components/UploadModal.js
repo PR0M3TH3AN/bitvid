@@ -3,6 +3,11 @@
 import { createModalAccessibility } from "./modalAccessibility.js";
 import { Nip71FormManager } from "./nip71FormManager.js";
 import { userLogger } from "../../utils/logger.js";
+import {
+  getVideoNoteErrorMessage,
+  normalizeVideoNotePayload,
+  VIDEO_NOTE_ERROR_CODES,
+} from "../../services/videoNotePayload.js";
 
 export class UploadModal {
   constructor({
@@ -717,14 +722,15 @@ export class UploadModal {
       isNsfw: this.readCheckboxValue(this.customFormInputs.isNsfw, false),
       isForKids: this.readCheckboxValue(this.customFormInputs.isForKids, false)
     });
-    const payload = {
-      title: this.customFormInputs.title?.value?.trim() || "",
-      url: this.customFormInputs.url?.value?.trim() || "",
-      magnet: this.customFormInputs.magnet?.value?.trim() || "",
-      ws: this.customFormInputs.ws?.value?.trim() || "",
-      xs: this.customFormInputs.xs?.value?.trim() || "",
-      thumbnail: this.customFormInputs.thumbnail?.value?.trim() || "",
-      description: this.customFormInputs.description?.value?.trim() || "",
+
+    const rawPayload = {
+      title: this.customFormInputs.title?.value ?? "",
+      url: this.customFormInputs.url?.value ?? "",
+      magnet: this.customFormInputs.magnet?.value ?? "",
+      ws: this.customFormInputs.ws?.value ?? "",
+      xs: this.customFormInputs.xs?.value ?? "",
+      thumbnail: this.customFormInputs.thumbnail?.value ?? "",
+      description: this.customFormInputs.description?.value ?? "",
       enableComments: this.readCheckboxValue(
         this.customFormInputs.enableComments,
         true
@@ -733,7 +739,7 @@ export class UploadModal {
     };
 
     if (this.customFormInputs.isPrivate) {
-      payload.isPrivate = this.readCheckboxValue(
+      rawPayload.isPrivate = this.readCheckboxValue(
         this.customFormInputs.isPrivate,
         false
       );
@@ -741,7 +747,15 @@ export class UploadModal {
 
     const nip71Metadata = this.nip71FormManager.collectSection("custom");
     if (nip71Metadata) {
-      payload.nip71 = nip71Metadata;
+      rawPayload.nip71 = nip71Metadata;
+    }
+
+    const { payload, errors } = normalizeVideoNotePayload(rawPayload);
+
+    if (errors.length) {
+      const message = getVideoNoteErrorMessage(errors[0]);
+      this.showError(message);
+      return;
     }
 
     this.emit("upload:submit", { payload });
@@ -1028,18 +1042,28 @@ export class UploadModal {
       isForKids: this.readCheckboxValue(this.cloudflareIsForKidsInput, false)
     });
     const metadata = {
-      title: this.cloudflareTitleInput?.value?.trim() || "",
-      description: this.cloudflareDescriptionInput?.value?.trim() || "",
-      thumbnail: this.cloudflareThumbnailInput?.value?.trim() || "",
-      magnet: this.cloudflareMagnetInput?.value?.trim() || "",
-      ws: this.cloudflareWsInput?.value?.trim() || "",
-      xs: this.cloudflareXsInput?.value?.trim() || "",
+      title: this.cloudflareTitleInput?.value ?? "",
+      description: this.cloudflareDescriptionInput?.value ?? "",
+      thumbnail: this.cloudflareThumbnailInput?.value ?? "",
+      magnet: this.cloudflareMagnetInput?.value ?? "",
+      ws: this.cloudflareWsInput?.value ?? "",
+      xs: this.cloudflareXsInput?.value ?? "",
       enableComments: this.readCheckboxValue(
         this.cloudflareEnableCommentsInput,
         true
       ),
       ...audienceFlags
     };
+
+    metadata.title = metadata.title?.trim() || "";
+
+    if (!metadata.title) {
+      this.setCloudflareUploadStatus(
+        getVideoNoteErrorMessage(VIDEO_NOTE_ERROR_CODES.MISSING_TITLE),
+        "error"
+      );
+      return;
+    }
 
     const nip71Metadata = this.nip71FormManager.collectSection("cloudflare");
     if (nip71Metadata) {

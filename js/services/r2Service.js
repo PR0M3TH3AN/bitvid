@@ -22,6 +22,11 @@ import {
 } from "../storage/r2-s3.js";
 import { truncateMiddle } from "../utils/formatters.js";
 import { userLogger } from "../utils/logger.js";
+import {
+  getVideoNoteErrorMessage,
+  normalizeVideoNotePayload,
+  VIDEO_NOTE_ERROR_CODES,
+} from "./videoNotePayload.js";
 
 const STATUS_VARIANTS = new Set(["info", "success", "error", "warning"]);
 
@@ -654,9 +659,17 @@ class R2Service {
       return false;
     }
 
-    const title = String(metadata.title || "").trim();
+    const rawTitleCandidate =
+      metadata && typeof metadata === "object" ? metadata.title : metadata;
+    const title = typeof rawTitleCandidate === "string"
+      ? rawTitleCandidate.trim()
+      : String(rawTitleCandidate ?? "").trim();
+
     if (!title) {
-      this.setCloudflareUploadStatus("Title is required.", "error");
+      this.setCloudflareUploadStatus(
+        getVideoNoteErrorMessage(VIDEO_NOTE_ERROR_CODES.MISSING_TITLE),
+        "error",
+      );
       return false;
     }
 
@@ -667,18 +680,6 @@ class R2Service {
       );
       return false;
     }
-
-    const description = String(metadata.description || "").trim();
-    const thumbnail = String(metadata.thumbnail || "").trim();
-    const magnet = String(metadata.magnet || "").trim();
-    const ws = String(metadata.ws || "").trim();
-    const xs = String(metadata.xs || "").trim();
-    const enableComments = metadata.enableComments !== false;
-    const isNsfw = metadata.isNsfw === true;
-    const isForKids = metadata.isForKids === true && !isNsfw;
-
-    metadata.isNsfw = isNsfw;
-    metadata.isForKids = isForKids;
 
     const accountId = (this.cloudflareSettings?.accountId || "").trim();
     const accessKeyId = (this.cloudflareSettings?.accessKeyId || "").trim();
@@ -766,17 +767,17 @@ class R2Service {
         );
         publishOutcome = false;
       } else {
-        const payload = {
+        const rawVideoPayload = {
           title,
           url: publicUrl,
-          magnet,
-          thumbnail,
-          description,
-          ws,
-          xs,
-          enableComments,
-          isNsfw,
-          isForKids,
+          magnet: metadata?.magnet ?? "",
+          thumbnail: metadata?.thumbnail ?? "",
+          description: metadata?.description ?? "",
+          ws: metadata?.ws ?? "",
+          xs: metadata?.xs ?? "",
+          enableComments: metadata?.enableComments,
+          isNsfw: metadata?.isNsfw,
+          isForKids: metadata?.isForKids,
         };
 
         const mergedNip71 = this.buildNip71MetadataForUpload(metadata?.nip71, {
@@ -784,7 +785,15 @@ class R2Service {
           file,
         });
         if (mergedNip71 && Object.keys(mergedNip71).length) {
-          payload.nip71 = mergedNip71;
+          rawVideoPayload.nip71 = mergedNip71;
+        }
+
+        const { payload, errors } = normalizeVideoNotePayload(rawVideoPayload);
+
+        if (errors.length) {
+          const message = getVideoNoteErrorMessage(errors[0]);
+          this.setCloudflareUploadStatus(message, "error");
+          return false;
         }
 
         const published = await publishVideoNote(payload, {
