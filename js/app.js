@@ -37,6 +37,7 @@ import {
   createBlacklistFilterStage,
   createDedupeByRootStage,
   createModerationStage,
+  createResolvePostedAtStage,
   createChronologicalSorter,
   createSubscriptionAuthorsSource,
   registerWatchHistoryFeed,
@@ -6730,11 +6731,13 @@ class Application {
             trustedMuteHideThreshold: resolveThresholdFromApp("trustedMuteHideThreshold"),
             trustedReportHideThreshold: resolveThresholdFromApp("trustedSpamHideThreshold"),
           }),
+          createResolvePostedAtStage(),
         ],
         sorter: createChronologicalSorter(),
         hooks: {
           timestamps: {
             getKnownVideoPostedAt: (video) => this.getKnownVideoPostedAt(video),
+            resolveVideoPostedAt: (video) => this.resolveVideoPostedAt(video),
           },
         },
       });
@@ -6799,6 +6802,7 @@ class Application {
             trustedMuteHideThreshold: resolveThresholdFromApp("trustedMuteHideThreshold"),
             trustedReportHideThreshold: resolveThresholdFromApp("trustedSpamHideThreshold"),
           }),
+          createResolvePostedAtStage(),
         ],
         sorter: createChronologicalSorter(),
         hooks: {
@@ -6807,6 +6811,7 @@ class Application {
           },
           timestamps: {
             getKnownVideoPostedAt: (video) => this.getKnownVideoPostedAt(video),
+            resolveVideoPostedAt: (video) => this.resolveVideoPostedAt(video),
           },
         },
       });

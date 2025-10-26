@@ -33,6 +33,7 @@ const {
   createDedupeByRootStage,
   createBlacklistFilterStage,
   createWatchHistorySuppressionStage,
+  createResolvePostedAtStage,
   createChronologicalSorter,
 } = await import("../js/feedEngine/index.js");
 
@@ -165,6 +166,70 @@ async function testTimestampHookSorting() {
     new Set(hookCalls),
     new Set(["edited", "new-root"]),
     "timestamp hook should be invoked for each video",
+  );
+}
+
+async function testResolvePostedAtStageHydration() {
+  const engine = createFeedEngine();
+  const feedName = "resolve-stage";
+
+  const editedVideo = {
+    id: "edited-stage",
+    videoRootId: "root-stage-a",
+    created_at: 500,
+  };
+
+  const newerRoot = {
+    id: "new-root-stage",
+    videoRootId: "root-stage-b",
+    created_at: 450,
+  };
+
+  engine.registerFeed(feedName, {
+    source: async () => [
+      { video: editedVideo },
+      { video: newerRoot },
+    ],
+    stages: [createResolvePostedAtStage()],
+    sorter: createChronologicalSorter(),
+  });
+
+  const resolverCalls = [];
+  const result = await engine.runFeed(feedName, {
+    hooks: {
+      timestamps: {
+        async resolveVideoPostedAt(video) {
+          resolverCalls.push(video.id);
+          if (video.videoRootId === "root-stage-a") {
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            return 100;
+          }
+          if (video.videoRootId === "root-stage-b") {
+            return 300;
+          }
+          return null;
+        },
+      },
+    },
+  });
+
+  assert.deepEqual(
+    result.videos.map((video) => video.id),
+    ["new-root-stage", "edited-stage"],
+    "resolve stage should hydrate timestamps before sorting",
+  );
+
+  assert.equal(
+    editedVideo.rootCreatedAt,
+    100,
+    "resolve stage should stamp the original posted time on edited videos",
+  );
+  assert.equal(newerRoot.rootCreatedAt, 300);
+
+  assert.deepEqual(
+    new Set(resolverCalls),
+    new Set(["edited-stage", "new-root-stage"]),
+    "resolver should run for each video lacking a cached timestamp",
   );
 }
 
@@ -340,6 +405,7 @@ async function testTrustedMuteDownrank() {
 await testDedupeOrdering();
 await testRootCreatedAtSorting();
 await testTimestampHookSorting();
+await testResolvePostedAtStageHydration();
 await testBlacklistFiltering();
 await testWatchHistoryHookIsolation();
 await testBlacklistOrderingWithRuntimeChanges();
