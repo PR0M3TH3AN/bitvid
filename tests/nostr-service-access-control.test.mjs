@@ -127,3 +127,34 @@ test("shouldIncludeVideo rejects blacklisted authors provided as hex when npubEn
     globalThis.window.NostrTools.nip19.npubEncode = originalEncode;
   }
 });
+
+test("shouldIncludeVideo always returns true for the viewer's own video", () => {
+  const service = createServiceWithAccessControl();
+  const video = {
+    id: "viewer-owned-video",
+    kind: 30078,
+    pubkey: whitelistHex,
+  };
+
+  service.nostrClient = { pubkey: whitelistHex };
+
+  const blacklistedEventIds = new Set([video.id]);
+  assert.equal(
+    service.shouldIncludeVideo(video, { blacklistedEventIds }),
+    true,
+  );
+});
+
+test("shouldIncludeVideo allows access when access control would deny the author", () => {
+  const service = new NostrService();
+  service.accessControl = { canAccess: () => false };
+  service.nostrClient = { pubkey: whitelistHex };
+
+  const video = {
+    id: "access-control-denied-video",
+    kind: 30078,
+    pubkey: whitelistHex,
+  };
+
+  assert.equal(service.shouldIncludeVideo(video), true);
+});
