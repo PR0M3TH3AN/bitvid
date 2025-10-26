@@ -110,6 +110,15 @@
                 Hashtags
               </button>
               <button
+                id="profileNavFriends"
+                type="button"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneFriends"
+                aria-selected="false"
+              >
+                Friends
+              </button>
+              <button
                 id="profileNavBlocked"
                 type="button"
                 class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
@@ -564,6 +573,40 @@
                   data-orientation="horizontal"
                 ></ul>
               </div>
+            </section>
+
+            <section
+              id="profilePaneFriends"
+              class="profile-pane hidden space-y-4"
+              role="tabpanel"
+              aria-labelledby="profileNavFriends"
+            >
+              <p class="text-sm text-muted">
+                Add friends to spotlight creators you want to keep up with across bitvid.
+              </p>
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+                <label class="flex-1 text-sm text-muted-strong" for="friendsInput">
+                  <span class="mb-2 block font-medium">Creator npub</span>
+                  <input
+                    id="friendsInput"
+                    type="text"
+                    inputmode="text"
+                    autocomplete="off"
+                    class="input"
+                    placeholder="npub1..."
+                  />
+                </label>
+                <button id="addFriendBtn" type="button" class="btn focus-ring">
+                  Add friend
+                </button>
+              </div>
+              <div
+                id="friendsEmpty"
+                class="card border border-dashed border-border/60 p-6 text-center text-sm text-muted"
+              >
+                You haven’t added any friends yet.
+              </div>
+              <ul id="friendsList" class="grid-stack" data-orientation="vertical"></ul>
             </section>
 
             <section
