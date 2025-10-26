@@ -70,6 +70,49 @@ async function testDedupeOrdering() {
   assert.equal(dedupeReasons[0].rootId, "rootA");
 }
 
+async function testRootCreatedAtSorting() {
+  const engine = createFeedEngine();
+  const feedName = "root-created-sort";
+
+  const originalVideo = {
+    id: "video-original",
+    videoRootId: "root-1",
+    created_at: 100,
+    rootCreatedAt: 100,
+  };
+
+  const updatedVideo = {
+    id: "video-updated",
+    videoRootId: "root-1",
+    created_at: 400,
+    rootCreatedAt: 100,
+  };
+
+  const newerRootVideo = {
+    id: "video-newer-root",
+    videoRootId: "root-2",
+    created_at: 300,
+    rootCreatedAt: 300,
+  };
+
+  engine.registerFeed(feedName, {
+    source: async () => [
+      { video: originalVideo },
+      { video: updatedVideo },
+      { video: newerRootVideo },
+    ],
+    stages: [createDedupeByRootStage()],
+    sorter: createChronologicalSorter(),
+  });
+
+  const result = await engine.runFeed(feedName);
+  assert.deepEqual(
+    result.videos.map((video) => video.id),
+    ["video-newer-root", "video-updated"],
+    "videos should be sorted by original posting time, not last edit",
+  );
+}
+
 async function testBlacklistFiltering() {
   const engine = createFeedEngine();
   const feedName = "blacklist";
@@ -240,6 +283,7 @@ async function testTrustedMuteDownrank() {
 }
 
 await testDedupeOrdering();
+await testRootCreatedAtSorting();
 await testBlacklistFiltering();
 await testWatchHistoryHookIsolation();
 await testBlacklistOrderingWithRuntimeChanges();
