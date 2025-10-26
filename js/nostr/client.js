@@ -602,6 +602,91 @@ function cloneEventForCache(event) {
   return cloned;
 }
 
+const DM_DECRYPT_CACHE_LIMIT = 256;
+const DM_EVENT_KINDS = Object.freeze([4, 1059]);
+
+class SimpleLruCache {
+  constructor(limit = 100) {
+    const resolvedLimit = Number.isFinite(limit) && limit > 0 ? limit : 100;
+    this.limit = Math.floor(resolvedLimit);
+    this.map = new Map();
+  }
+
+  get(key) {
+    if (!this.map.has(key)) {
+      return undefined;
+    }
+
+    const value = this.map.get(key);
+    this.map.delete(key);
+    this.map.set(key, value);
+    return value;
+  }
+
+  set(key, value) {
+    if (key === undefined || key === null) {
+      return;
+    }
+
+    if (this.map.has(key)) {
+      this.map.delete(key);
+    }
+    this.map.set(key, value);
+
+    while (this.map.size > this.limit) {
+      const oldestKey = this.map.keys().next().value;
+      this.map.delete(oldestKey);
+    }
+  }
+
+  clear() {
+    this.map.clear();
+  }
+}
+
+function buildDmFilters(actorPubkey, { since, until, limit } = {}) {
+  const normalizedActor = normalizeActorKey(actorPubkey);
+  const filters = [];
+
+  const normalizedLimit = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : undefined;
+  const normalizedSince = Number.isFinite(since) ? Math.floor(since) : undefined;
+  const normalizedUntil = Number.isFinite(until) ? Math.floor(until) : undefined;
+
+  const baseFilterPayload = (kind) => {
+    const payload = { kinds: [kind] };
+    if (normalizedLimit !== undefined) {
+      payload.limit = normalizedLimit;
+    }
+    if (normalizedSince !== undefined) {
+      payload.since = normalizedSince;
+    }
+    if (normalizedUntil !== undefined) {
+      payload.until = normalizedUntil;
+    }
+    return payload;
+  };
+
+  if (normalizedActor) {
+    const authorFilter = baseFilterPayload(4);
+    authorFilter.authors = [normalizedActor];
+    filters.push(authorFilter);
+
+    const directFilter = baseFilterPayload(4);
+    directFilter["#p"] = [normalizedActor];
+    filters.push(directFilter);
+
+    const giftWrapFilter = baseFilterPayload(1059);
+    giftWrapFilter["#p"] = [normalizedActor];
+    filters.push(giftWrapFilter);
+  } else {
+    const fallbackFilter = baseFilterPayload(DM_EVENT_KINDS[0]);
+    fallbackFilter.kinds = DM_EVENT_KINDS.slice();
+    filters.push(fallbackFilter);
+  }
+
+  return filters;
+}
+
 
 const EXTENSION_MIME_MAP = {
   mp4: "video/mp4",
@@ -795,6 +880,11 @@ export class NostrClient {
         },
       },
     });
+    this.dmDecryptCache = new SimpleLruCache(DM_DECRYPT_CACHE_LIMIT);
+    this.dmDecryptor = null;
+    this.dmDecryptorPromise = null;
+    this.sessionActorCipherClosures = null;
+    this.sessionActorCipherClosuresPrivateKey = null;
     this.countUnsupportedRelays = new Set();
     this.nip46Client = null;
     this.remoteSignerListeners = new Set();
@@ -2472,6 +2562,8 @@ export class NostrClient {
     const cipherClosures = await createPrivateKeyCipherClosures(
       normalizedPrivateKey,
     );
+    this.sessionActorCipherClosures = cipherClosures || null;
+    this.sessionActorCipherClosuresPrivateKey = normalizedPrivateKey;
 
     setActiveSigner({
       type: "nsec",
@@ -2588,6 +2680,8 @@ export class NostrClient {
     const cipherClosures = await createPrivateKeyCipherClosures(
       normalizedPrivateKey,
     );
+    this.sessionActorCipherClosures = cipherClosures || null;
+    this.sessionActorCipherClosuresPrivateKey = normalizedPrivateKey;
 
     setActiveSigner({
       type: "nsec",
@@ -2631,6 +2725,8 @@ export class NostrClient {
 
     if (forceRenew) {
       this.sessionActor = null;
+      this.sessionActorCipherClosures = null;
+      this.sessionActorCipherClosuresPrivateKey = null;
       this.clearStoredSessionActor();
     } else if (
       this.sessionActor &&
@@ -2653,6 +2749,8 @@ export class NostrClient {
     const minted = this.mintSessionActor();
     if (minted) {
       this.sessionActor = minted;
+      this.sessionActorCipherClosures = null;
+      this.sessionActorCipherClosuresPrivateKey = null;
       this.persistSessionActor(minted);
       return minted.pubkey;
     }
@@ -3205,6 +3303,11 @@ export class NostrClient {
     clearActiveSigner();
     const previousSessionActor = this.sessionActor;
     this.sessionActor = null;
+    this.sessionActorCipherClosures = null;
+    this.sessionActorCipherClosuresPrivateKey = null;
+    this.clearDmDecryptCache();
+    this.dmDecryptor = null;
+    this.dmDecryptorPromise = null;
 
     if (this.nip46Client) {
       Promise.resolve()
@@ -3236,6 +3339,357 @@ export class NostrClient {
     }
     clearStoredNip07Permissions();
     devLogger.log("User logged out.");
+  }
+
+  getDmDecryptCacheLimit() {
+    return DM_DECRYPT_CACHE_LIMIT;
+  }
+
+  clearDmDecryptCache() {
+    if (this.dmDecryptCache) {
+      this.dmDecryptCache.clear();
+    }
+  }
+
+  async ensureDmDecryptor() {
+    if (this.dmDecryptor) {
+      return this.dmDecryptor;
+    }
+
+    if (!this.dmDecryptorPromise) {
+      this.dmDecryptorPromise = import("../dmDecryptor.js")
+        .then((module) => {
+          if (!module || typeof module.decryptDM !== "function") {
+            throw new Error("DM decryptor module is unavailable.");
+          }
+          this.dmDecryptor = module.decryptDM;
+          return this.dmDecryptor;
+        })
+        .catch((error) => {
+          this.dmDecryptorPromise = null;
+          throw error;
+        });
+    }
+
+    return this.dmDecryptorPromise;
+  }
+
+  async buildDmDecryptContext(actorPubkeyInput = null) {
+    let normalizedActor = normalizeActorKey(actorPubkeyInput);
+    if (!normalizedActor && typeof this.pubkey === "string" && this.pubkey) {
+      normalizedActor = normalizeActorKey(this.pubkey);
+    }
+    if (
+      !normalizedActor &&
+      this.sessionActor &&
+      typeof this.sessionActor.pubkey === "string"
+    ) {
+      normalizedActor = normalizeActorKey(this.sessionActor.pubkey);
+    }
+
+    const decryptors = [];
+    const seen = new Set();
+
+    const addCandidate = (scheme, decrypt, options = {}) => {
+      if (typeof decrypt !== "function") {
+        return;
+      }
+
+      const normalizedScheme = typeof scheme === "string" ? scheme : "";
+      const key = `${normalizedScheme}:${options.source || ""}`;
+      if (seen.has(key)) {
+        return;
+      }
+
+      decryptors.push({
+        scheme: normalizedScheme,
+        decrypt,
+        priority: Number.isFinite(options.priority) ? options.priority : 0,
+        source: options.source || "",
+        supportsGiftWrap: options.supportsGiftWrap === true,
+      });
+      seen.add(key);
+    };
+
+    let activeSigner = null;
+    if (normalizedActor) {
+      activeSigner = resolveActiveSigner(normalizedActor);
+    }
+    if (!activeSigner && this.pubkey) {
+      activeSigner = resolveActiveSigner(this.pubkey);
+    }
+    if (!activeSigner) {
+      activeSigner = getActiveSigner();
+    }
+
+    if (activeSigner) {
+      if (typeof activeSigner.nip44Decrypt === "function") {
+        addCandidate(
+          "nip44",
+          activeSigner.nip44Decrypt.bind(activeSigner),
+          {
+            priority: -20,
+            source: activeSigner.type || "signer",
+            supportsGiftWrap: true,
+          },
+        );
+      }
+      if (typeof activeSigner.nip04Decrypt === "function") {
+        addCandidate(
+          "nip04",
+          activeSigner.nip04Decrypt.bind(activeSigner),
+          {
+            priority: -10,
+            source: activeSigner.type || "signer",
+          },
+        );
+      }
+    }
+
+    const sessionActor = this.sessionActor;
+    if (
+      sessionActor &&
+      typeof sessionActor.privateKey === "string" &&
+      sessionActor.privateKey
+    ) {
+      if (
+        !this.sessionActorCipherClosures ||
+        this.sessionActorCipherClosuresPrivateKey !== sessionActor.privateKey
+      ) {
+        const closures = await createPrivateKeyCipherClosures(
+          sessionActor.privateKey,
+        );
+        this.sessionActorCipherClosures = closures || null;
+        this.sessionActorCipherClosuresPrivateKey = sessionActor.privateKey;
+      }
+
+      const closures = this.sessionActorCipherClosures || {};
+      if (typeof closures.nip44Decrypt === "function") {
+        addCandidate("nip44", closures.nip44Decrypt, {
+          priority: -5,
+          source: "session-actor",
+          supportsGiftWrap: true,
+        });
+      }
+      if (typeof closures.nip04Decrypt === "function") {
+        addCandidate("nip04", closures.nip04Decrypt, {
+          priority: 0,
+          source: "session-actor",
+        });
+      }
+    }
+
+    return { actorPubkey: normalizedActor, decryptors };
+  }
+
+  async decryptDirectMessageEvent(event, { actorPubkey } = {}) {
+    const eventId = typeof event?.id === "string" ? event.id : "";
+    if (eventId) {
+      const cached = this.dmDecryptCache.get(eventId);
+      if (cached) {
+        return cached;
+      }
+    }
+
+    const decryptDM = await this.ensureDmDecryptor();
+    const context = await this.buildDmDecryptContext(actorPubkey);
+
+    let result;
+    try {
+      result = await decryptDM(event, context);
+    } catch (error) {
+      devLogger.warn("[nostr] DM decryptor threw unexpectedly.", {
+        error,
+        eventId,
+      });
+      throw error;
+    }
+
+    if (result?.ok && eventId) {
+      this.dmDecryptCache.set(eventId, result);
+    }
+
+    return result;
+  }
+
+  async listDirectMessages(actorPubkeyInput = null, options = {}) {
+    if (!this.pool) {
+      await this.ensurePool();
+    }
+
+    const context = await this.buildDmDecryptContext(actorPubkeyInput);
+    if (!context.decryptors.length) {
+      throw new Error("DM decryption helpers are unavailable.");
+    }
+
+    const relayCandidates = Array.isArray(options.relays)
+      ? options.relays
+      : Array.isArray(this.readRelays) && this.readRelays.length
+      ? this.readRelays
+      : this.relays;
+    const relays = sanitizeRelayList(relayCandidates);
+    const relaysToUse = relays.length ? relays : Array.from(DEFAULT_RELAY_URLS);
+
+    const filters = buildDmFilters(
+      context.actorPubkey || actorPubkeyInput,
+      options,
+    );
+
+    let events = [];
+    try {
+      events = await this.pool.list(relaysToUse, filters);
+    } catch (error) {
+      devLogger.warn("[nostr] Failed to list DM events.", error);
+      throw error;
+    }
+
+    const deduped = new Map();
+    for (const event of Array.isArray(events) ? events : []) {
+      if (!event || typeof event !== "object") {
+        continue;
+      }
+      const key =
+        typeof event.id === "string" && event.id
+          ? event.id
+          : `${event.kind || ""}:${event.pubkey || ""}:${event.created_at || ""}`;
+      if (!deduped.has(key)) {
+        deduped.set(key, event);
+      }
+    }
+
+    const messages = [];
+    for (const event of deduped.values()) {
+      try {
+        const decrypted = await this.decryptDirectMessageEvent(event, {
+          actorPubkey: context.actorPubkey || actorPubkeyInput,
+        });
+        if (decrypted?.ok) {
+          messages.push(decrypted);
+        }
+      } catch (error) {
+        devLogger.warn("[nostr] Failed to decrypt DM event during list.", {
+          error,
+          id: event?.id || null,
+        });
+      }
+    }
+
+    messages.sort((a, b) => (b?.timestamp || 0) - (a?.timestamp || 0));
+    return messages;
+  }
+
+  subscribeDirectMessages(actorPubkeyInput = null, options = {}) {
+    if (!this.pool) {
+      throw new Error("nostr pool is not initialized");
+    }
+
+    const relayCandidates = Array.isArray(options.relays)
+      ? options.relays
+      : Array.isArray(this.readRelays) && this.readRelays.length
+      ? this.readRelays
+      : this.relays;
+    const relays = sanitizeRelayList(relayCandidates);
+    const relaysToUse = relays.length ? relays : Array.from(DEFAULT_RELAY_URLS);
+
+    const filters = buildDmFilters(actorPubkeyInput, options);
+    const subscription = this.pool.sub(relaysToUse, filters);
+    const seenIds = new Set();
+
+    const contextPromise = this.buildDmDecryptContext(actorPubkeyInput);
+
+    subscription.on("event", (event) => {
+      if (!event || typeof event !== "object") {
+        return;
+      }
+
+      const eventId = typeof event.id === "string" ? event.id : null;
+      if (eventId) {
+        if (seenIds.has(eventId)) {
+          return;
+        }
+        seenIds.add(eventId);
+      }
+
+      if (typeof options.onEvent === "function") {
+        try {
+          options.onEvent(event);
+        } catch (error) {
+          devLogger.warn("[nostr] DM onEvent handler threw.", error);
+        }
+      }
+
+      if (options.skipDecrypt === true) {
+        return;
+      }
+
+      contextPromise
+        .then((context) => {
+          if (!context.decryptors.length) {
+            if (typeof options.onFailure === "function") {
+              options.onFailure(
+                { ok: false, event },
+                { event, reason: "no-decryptors" },
+              );
+            }
+            return;
+          }
+
+          return this.decryptDirectMessageEvent(event, {
+            actorPubkey: context.actorPubkey || actorPubkeyInput,
+          })
+            .then((result) => {
+              if (result?.ok) {
+                if (typeof options.onMessage === "function") {
+                  options.onMessage(result, { event });
+                }
+              } else if (typeof options.onFailure === "function") {
+                options.onFailure(result, { event });
+              }
+            })
+            .catch((error) => {
+              if (typeof options.onError === "function") {
+                options.onError(error, { event });
+              } else {
+                devLogger.warn(
+                  "[nostr] Failed to decrypt DM event from subscription.",
+                  {
+                    error,
+                    id: eventId,
+                  },
+                );
+              }
+            });
+        })
+        .catch((error) => {
+          if (typeof options.onError === "function") {
+            options.onError(error, { event });
+          } else {
+            devLogger.warn("[nostr] Failed to prepare DM decrypt context.", error);
+          }
+        });
+    });
+
+    if (typeof options.onEose === "function") {
+      subscription.on("eose", () => {
+        try {
+          options.onEose();
+        } catch (error) {
+          devLogger.warn("[nostr] DM onEose handler threw.", error);
+        }
+      });
+    }
+
+    const originalUnsub =
+      typeof subscription.unsub === "function"
+        ? subscription.unsub.bind(subscription)
+        : () => {};
+
+    subscription.unsub = () => {
+      seenIds.clear();
+      return originalUnsub();
+    };
+
+    return subscription;
   }
 
   async sendDirectMessage(targetNpub, message, actorPubkeyOverride = null) {

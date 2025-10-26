@@ -118,6 +118,9 @@ export class NostrService {
     this.initialLoadPromise = null;
     this.initialLoadResolved = false;
     this.initialLoadResolve = null;
+    this.dmMessages = [];
+    this.dmMessageIndex = new Map();
+    this.dmSubscription = null;
     try {
       if (this.moderationService && typeof this.moderationService.setNostrClient === "function") {
         this.moderationService.setNostrClient(this.nostrClient);
@@ -178,6 +181,257 @@ export class NostrService {
 
   awaitInitialLoad() {
     return this.ensureInitialLoadDeferred();
+  }
+
+  resolveActiveDmActor() {
+    if (
+      this.nostrClient &&
+      typeof this.nostrClient.pubkey === "string" &&
+      this.nostrClient.pubkey
+    ) {
+      return this.nostrClient.pubkey;
+    }
+
+    if (
+      this.nostrClient?.sessionActor &&
+      typeof this.nostrClient.sessionActor.pubkey === "string"
+    ) {
+      return this.nostrClient.sessionActor.pubkey;
+    }
+
+    return "";
+  }
+
+  getDirectMessages() {
+    return Array.isArray(this.dmMessages) ? [...this.dmMessages] : [];
+  }
+
+  clearDirectMessages({ emit = true } = {}) {
+    this.dmMessages = [];
+    this.dmMessageIndex = new Map();
+    if (typeof this.nostrClient?.clearDmDecryptCache === "function") {
+      try {
+        this.nostrClient.clearDmDecryptCache();
+      } catch (error) {
+        userLogger.warn("[nostrService] Failed to clear DM decrypt cache", error);
+      }
+    }
+    if (emit) {
+      this.emit("directMessages:cleared", {});
+      this.emit("directMessages:updated", { messages: [] });
+    }
+  }
+
+  applyDirectMessage(message, { reason = "update", event = null } = {}) {
+    if (!message || message.ok !== true) {
+      return;
+    }
+
+    const eventId = message?.event?.id;
+    if (typeof eventId !== "string" || !eventId) {
+      return;
+    }
+
+    const normalized = {
+      ...message,
+      timestamp:
+        Number.isFinite(message?.timestamp)
+          ? message.timestamp
+          : Number.isFinite(message?.message?.created_at)
+          ? message.message.created_at
+          : Number.isFinite(message?.event?.created_at)
+          ? message.event.created_at
+          : Date.now() / 1000,
+    };
+
+    this.dmMessageIndex.set(eventId, normalized);
+    const existingIndex = this.dmMessages.findIndex(
+      (entry) => entry?.event?.id === eventId,
+    );
+    if (existingIndex >= 0) {
+      this.dmMessages[existingIndex] = normalized;
+    } else {
+      this.dmMessages.push(normalized);
+    }
+
+    this.dmMessages.sort((a, b) => (b?.timestamp || 0) - (a?.timestamp || 0));
+
+    this.emit("directMessages:message", { message: normalized, reason, event });
+    this.emit("directMessages:updated", {
+      messages: this.getDirectMessages(),
+      reason,
+    });
+  }
+
+  async loadDirectMessages({ actorPubkey, relays, ...options } = {}) {
+    const activeActor = actorPubkey || this.resolveActiveDmActor();
+    const normalizedActor = normalizeHexPubkey(activeActor);
+    if (!normalizedActor) {
+      return [];
+    }
+
+    let messages = [];
+    try {
+      messages = await this.nostrClient.listDirectMessages(normalizedActor, {
+        relays,
+        ...options,
+      });
+    } catch (error) {
+      userLogger.warn("[nostrService] Failed to load direct messages", error);
+      return [];
+    }
+
+    const collected = [];
+    const index = new Map();
+
+    for (const message of Array.isArray(messages) ? messages : []) {
+      if (!message || message.ok !== true) {
+        continue;
+      }
+
+      const eventId = message?.event?.id;
+      if (typeof eventId !== "string" || !eventId) {
+        continue;
+      }
+
+      const normalized = {
+        ...message,
+        timestamp:
+          Number.isFinite(message?.timestamp)
+            ? message.timestamp
+            : Number.isFinite(message?.message?.created_at)
+            ? message.message.created_at
+            : Number.isFinite(message?.event?.created_at)
+            ? message.event.created_at
+            : Date.now() / 1000,
+      };
+
+      index.set(eventId, normalized);
+      collected.push(normalized);
+    }
+
+    collected.sort((a, b) => (b?.timestamp || 0) - (a?.timestamp || 0));
+    this.dmMessageIndex = index;
+    this.dmMessages = collected;
+
+    const snapshot = this.getDirectMessages();
+
+    this.emit("directMessages:loaded", {
+      messages: snapshot,
+      actorPubkey: normalizedActor,
+    });
+    this.emit("directMessages:updated", {
+      messages: snapshot,
+      reason: "load",
+    });
+
+    return snapshot;
+  }
+
+  ensureDirectMessageSubscription({ actorPubkey, relays, ...handlers } = {}) {
+    if (this.dmSubscription) {
+      return this.dmSubscription;
+    }
+
+    const activeActor = actorPubkey || this.resolveActiveDmActor();
+    const normalizedActor = normalizeHexPubkey(activeActor);
+    if (!normalizedActor) {
+      return null;
+    }
+
+    try {
+      const subscription = this.nostrClient.subscribeDirectMessages(
+        normalizedActor,
+        {
+          relays,
+          onEvent: handlers.onEvent,
+          onMessage: (message, context = {}) => {
+            this.applyDirectMessage(message, {
+              reason: "subscription",
+              event: context.event || null,
+            });
+            if (typeof handlers.onMessage === "function") {
+              try {
+                handlers.onMessage(message, context);
+              } catch (error) {
+                userLogger.warn(
+                  "[nostrService] DM onMessage handler threw",
+                  error,
+                );
+              }
+            }
+          },
+          onFailure: (payload, context) => {
+            this.emit("directMessages:failure", { failure: payload, context });
+            if (typeof handlers.onFailure === "function") {
+              try {
+                handlers.onFailure(payload, context);
+              } catch (error) {
+                userLogger.warn(
+                  "[nostrService] DM onFailure handler threw",
+                  error,
+                );
+              }
+            }
+          },
+          onError: (error, context) => {
+            this.emit("directMessages:error", { error, context });
+            if (typeof handlers.onError === "function") {
+              try {
+                handlers.onError(error, context);
+              } catch (handlerError) {
+                userLogger.warn(
+                  "[nostrService] DM onError handler threw",
+                  handlerError,
+                );
+              }
+            } else {
+              userLogger.warn(
+                "[nostrService] Direct message subscription error",
+                error,
+              );
+            }
+          },
+          onEose: () => {
+            this.emit("directMessages:eose", { actorPubkey: normalizedActor });
+            if (typeof handlers.onEose === "function") {
+              try {
+                handlers.onEose();
+              } catch (error) {
+                userLogger.warn(
+                  "[nostrService] DM onEose handler threw",
+                  error,
+                );
+              }
+            }
+          },
+        },
+      );
+
+      this.dmSubscription = subscription;
+      this.emit("directMessages:subscribed", { subscription });
+      return subscription;
+    } catch (error) {
+      userLogger.warn(
+        "[nostrService] Failed to subscribe to direct messages",
+        error,
+      );
+      return null;
+    }
+  }
+
+  stopDirectMessageSubscription() {
+    if (this.dmSubscription && typeof this.dmSubscription.unsub === "function") {
+      try {
+        this.dmSubscription.unsub();
+      } catch (error) {
+        userLogger.warn(
+          "[nostrService] Failed to unsubscribe from direct messages",
+          error,
+        );
+      }
+    }
+    this.dmSubscription = null;
   }
 
   getModerationService() {
