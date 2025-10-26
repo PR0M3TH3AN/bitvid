@@ -3948,7 +3948,7 @@ export class ProfileModalController {
 
         if (hex && !usedModerationService) {
           const removeButton = this.createRemoveButton({
-            label: "Remove",
+            label: "Unfriend",
             onRemove: () => this.handleRemoveFriend(hex),
           });
           if (removeButton) {
