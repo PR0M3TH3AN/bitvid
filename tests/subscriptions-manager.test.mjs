@@ -540,6 +540,28 @@ test(
   },
 );
 
+test("ensureLoaded memoizes concurrent loads", async () => {
+  const SubscriptionsManager = subscriptions.constructor;
+  const manager = new SubscriptionsManager();
+
+  let loadCount = 0;
+  manager.loadSubscriptions = async () => {
+    loadCount += 1;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    manager.loaded = true;
+  };
+
+  const actorHex = "f".repeat(64);
+
+  await Promise.all([
+    manager.ensureLoaded(actorHex),
+    manager.ensureLoaded(actorHex),
+  ]);
+
+  assert.equal(loadCount, 1, "loadSubscriptions should only run once");
+  assert.equal(manager.loaded, true, "manager should be marked as loaded");
+});
+
 test(
   "publishSubscriptionList succeeds with direct signer without requesting extension permissions",
   async () => {

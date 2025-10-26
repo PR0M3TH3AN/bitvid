@@ -132,6 +132,7 @@ class SubscriptionsManager {
     this.subscribedPubkeys = new Set();
     this.subsEventId = null;
     this.loaded = false;
+    this.loadingPromise = null;
     this.subscriptionListView = null;
     this.lastRunOptions = null;
     this.lastResult = null;
@@ -297,6 +298,35 @@ class SubscriptionsManager {
     }
   }
 
+  async ensureLoaded(actorHex) {
+    if (this.loaded) {
+      return;
+    }
+
+    const normalizedActor = normalizeHexPubkey(actorHex) || actorHex;
+    if (!normalizedActor) {
+      return;
+    }
+
+    if (this.loadingPromise) {
+      try {
+        await this.loadingPromise;
+      } catch (error) {
+        throw error;
+      }
+      return;
+    }
+
+    const loader = this.loadSubscriptions(normalizedActor);
+    this.loadingPromise = loader;
+
+    try {
+      await loader;
+    } finally {
+      this.loadingPromise = null;
+    }
+  }
+
   isSubscribed(channelHex) {
     const normalized = normalizeHexPubkey(channelHex);
     if (!normalized) {
@@ -409,6 +439,7 @@ class SubscriptionsManager {
     if (!userPubkey) {
       throw new Error("No user pubkey => cannot addChannel.");
     }
+    await this.ensureLoaded(userPubkey);
     if (!normalizedChannel) {
       devLogger.warn("Attempted to subscribe to invalid pubkey", channelHex);
       return;
@@ -432,6 +463,7 @@ class SubscriptionsManager {
     if (!userPubkey) {
       throw new Error("No user pubkey => cannot removeChannel.");
     }
+    await this.ensureLoaded(userPubkey);
     if (!normalizedChannel) {
       devLogger.warn("Attempted to remove invalid pubkey from subscriptions", channelHex);
       return;
@@ -627,15 +659,13 @@ class SubscriptionsManager {
       return null;
     }
 
-    if (!this.loaded) {
-      try {
-        await this.loadSubscriptions(userPubkey);
-      } catch (error) {
-        userLogger.error(
-          "[SubscriptionsManager] Failed to load subscriptions while rendering feed:",
-          error,
-        );
-      }
+    try {
+      await this.ensureLoaded(userPubkey);
+    } catch (error) {
+      userLogger.error(
+        "[SubscriptionsManager] Failed to load subscriptions while rendering feed:",
+        error,
+      );
     }
 
     const channelHexes = this.getSubscribedAuthors();

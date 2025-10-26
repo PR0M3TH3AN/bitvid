@@ -3448,7 +3448,7 @@ export async function initChannelProfileView() {
   // 3) Load subscription state when logged in, but always render the toggle UI
   if (app?.pubkey) {
     subscriptionsTask = subscriptions
-      .loadSubscriptions(app.pubkey)
+      .ensureLoaded(app.pubkey)
       .catch((error) => {
         userLogger.error("Failed to load subscriptions for channel view:", error);
       })
@@ -3833,6 +3833,14 @@ function renderSubscribeButton(channelHex) {
         renderSubscribeButton(channelHex);
       } catch (err) {
         userLogger.error("Failed to update subscription:", err);
+        const permissionErrorCodes = new Set([
+          "extension-permission-denied",
+          "nip04-missing",
+        ]);
+        const message = permissionErrorCodes.has(err?.code)
+          ? "Your Nostr extension must support NIP-04 to manage private lists."
+          : "Failed to update your subscriptions. Please try again.";
+        currentApp?.showError?.(message);
       }
     });
   }
