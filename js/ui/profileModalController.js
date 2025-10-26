@@ -3676,6 +3676,315 @@ export class ProfileModalController {
     }
   }
 
+  async populateFriendsList(friends = null) {
+    if (
+      !(this.friendList instanceof HTMLElement) ||
+      !(this.friendListEmpty instanceof HTMLElement)
+    ) {
+      return;
+    }
+
+    const activeHex = this.normalizeHexPubkey(this.getActivePubkey());
+    if (!activeHex) {
+      this.clearFriendsList();
+      return;
+    }
+
+    try {
+      let sourceEntries = [];
+
+      if (Array.isArray(friends) && friends.length) {
+        sourceEntries = friends;
+      } else {
+        const service = this.subscriptionsService;
+
+        if (!service) {
+          this.clearFriendsList();
+          return;
+        }
+
+        if (typeof service.ensureLoaded === "function") {
+          try {
+            await service.ensureLoaded(activeHex);
+          } catch (error) {
+            devLogger.warn(
+              "[profileModal] Failed to ensure subscriptions before populating friends list:",
+              error,
+            );
+          }
+        }
+
+        if (typeof service.getSubscribedAuthors === "function") {
+          try {
+            sourceEntries = service.getSubscribedAuthors() || [];
+          } catch (error) {
+            devLogger.warn(
+              "[profileModal] Failed to resolve subscriptions for friends list:",
+              error,
+            );
+            sourceEntries = [];
+          }
+        } else if (service.subscribedPubkeys instanceof Set) {
+          sourceEntries = Array.from(service.subscribedPubkeys);
+        } else if (Array.isArray(service.subscribedPubkeys)) {
+          sourceEntries = service.subscribedPubkeys.slice();
+        }
+      }
+
+      const normalizedEntries = [];
+      const pushEntry = (hex, label) => {
+        if (!hex) {
+          return;
+        }
+        normalizedEntries.push({ hex, label });
+      };
+
+      sourceEntries.forEach((entry) => {
+        if (!entry) {
+          return;
+        }
+
+        if (typeof entry === "string") {
+          const trimmed = entry.trim();
+          if (!trimmed) {
+            return;
+          }
+
+          if (trimmed.startsWith("npub1")) {
+            const decoded = this.safeDecodeNpub(trimmed);
+            if (!decoded) {
+              return;
+            }
+            const label = this.safeEncodeNpub(decoded) || trimmed;
+            pushEntry(decoded, label);
+            return;
+          }
+
+          if (/^[0-9a-f]{64}$/i.test(trimmed)) {
+            const normalizedHex = trimmed.toLowerCase();
+            const label = this.safeEncodeNpub(normalizedHex) || normalizedHex;
+            pushEntry(normalizedHex, label);
+          }
+          return;
+        }
+
+        if (entry && typeof entry === "object") {
+          const candidateHex =
+            typeof entry.pubkey === "string" ? entry.pubkey.trim() : "";
+          const candidateNpub =
+            typeof entry.npub === "string" ? entry.npub.trim() : "";
+
+          if (candidateHex && /^[0-9a-f]{64}$/i.test(candidateHex)) {
+            const normalizedHex = candidateHex.toLowerCase();
+            const label =
+              candidateNpub && candidateNpub.startsWith("npub1")
+                ? candidateNpub
+                : this.safeEncodeNpub(normalizedHex) || normalizedHex;
+            pushEntry(normalizedHex, label);
+            return;
+          }
+
+          if (candidateNpub && candidateNpub.startsWith("npub1")) {
+            const decoded = this.safeDecodeNpub(candidateNpub);
+            if (!decoded) {
+              return;
+            }
+            pushEntry(decoded, candidateNpub);
+          }
+        }
+      });
+
+      const deduped = [];
+      const seenHex = new Set();
+      normalizedEntries.forEach((entry) => {
+        if (!seenHex.has(entry.hex)) {
+          seenHex.add(entry.hex);
+          deduped.push(entry);
+        }
+      });
+
+      this.friendList.innerHTML = "";
+
+      if (!deduped.length) {
+        this.friendListEmpty.classList.remove("hidden");
+        this.friendList.classList.add("hidden");
+        return;
+      }
+
+      this.friendListEmpty.classList.add("hidden");
+      this.friendList.classList.remove("hidden");
+
+      const formatNpub =
+        typeof this.formatShortNpub === "function"
+          ? (value) => this.formatShortNpub(value)
+          : (value) => (typeof value === "string" ? value : "");
+
+      const entriesNeedingFetch = new Set();
+
+      deduped.forEach(({ hex, label }) => {
+        const item = document.createElement("li");
+        item.className = "card flex items-center justify-between gap-4 p-4";
+
+        let cachedProfile = null;
+        if (hex && typeof this.services.getProfileCacheEntry === "function") {
+          const cacheEntry = this.services.getProfileCacheEntry(hex);
+          cachedProfile = cacheEntry?.profile || null;
+          if (!cacheEntry) {
+            entriesNeedingFetch.add(hex);
+          }
+        }
+
+        const encodedNpub =
+          hex && typeof this.safeEncodeNpub === "function"
+            ? this.safeEncodeNpub(hex)
+            : label;
+        const displayNpub = formatNpub(encodedNpub) || encodedNpub || label;
+        const displayName =
+          (cachedProfile?.name && cachedProfile.name.trim()) ||
+          (cachedProfile?.display_name &&
+            typeof cachedProfile.display_name === "string" &&
+            cachedProfile.display_name.trim()) ||
+          displayNpub ||
+          "Friend";
+        const avatarSrc = cachedProfile?.picture || FALLBACK_PROFILE_AVATAR;
+
+        const summary = this.createCompactProfileSummary({
+          displayName,
+          displayNpub,
+          avatarSrc,
+        });
+
+        const actions = document.createElement("div");
+        actions.className = "flex flex-wrap items-center justify-end gap-2";
+
+        const viewButton = this.createViewChannelButton({
+          targetNpub: encodedNpub,
+          displayNpub,
+        });
+        if (viewButton) {
+          actions.appendChild(viewButton);
+        }
+
+        const copyButton = this.createCopyNpubButton({
+          targetNpub: encodedNpub,
+          displayNpub,
+        });
+        if (copyButton) {
+          actions.appendChild(copyButton);
+        }
+
+        if (hex) {
+          const removeButton = this.createRemoveButton({
+            label: "Remove",
+            onRemove: () => this.handleRemoveFriend(hex),
+          });
+          if (removeButton) {
+            removeButton.dataset.friendHex = hex;
+            actions.appendChild(removeButton);
+          }
+        }
+
+        item.appendChild(summary);
+        if (actions.childElementCount > 0) {
+          item.appendChild(actions);
+        }
+
+        this.friendList.appendChild(item);
+      });
+
+      if (
+        entriesNeedingFetch.size &&
+        typeof this.services.batchFetchProfiles === "function"
+      ) {
+        try {
+          this.services.batchFetchProfiles(entriesNeedingFetch);
+        } catch (error) {
+          devLogger.warn(
+            "[profileModal] Failed to batch fetch profiles for friends list:",
+            error,
+          );
+        }
+      }
+    } catch (error) {
+      devLogger.warn("[profileModal] Failed to populate friends list:", error);
+    }
+  }
+
+  clearFriendsList() {
+    if (this.friendList instanceof HTMLElement) {
+      this.friendList.innerHTML = "";
+      this.friendList.classList.add("hidden");
+    }
+
+    if (this.friendListEmpty instanceof HTMLElement) {
+      this.friendListEmpty.classList.remove("hidden");
+    }
+  }
+
+  async handleRemoveFriend(candidate) {
+    const service = this.subscriptionsService;
+    if (!service || typeof service.removeChannel !== "function") {
+      this.showError("Friends list is unavailable right now.");
+      return { success: false, reason: "service-unavailable" };
+    }
+
+    const activeHex = this.normalizeHexPubkey(this.getActivePubkey());
+    if (!activeHex) {
+      this.showError("Please login to manage your friends list.");
+      return { success: false, reason: "no-active-pubkey" };
+    }
+
+    let targetHex = "";
+    if (typeof candidate === "string") {
+      const trimmed = candidate.trim();
+      if (trimmed.startsWith("npub1")) {
+        targetHex = this.safeDecodeNpub(trimmed) || "";
+      } else if (/^[0-9a-f]{64}$/i.test(trimmed)) {
+        targetHex = trimmed.toLowerCase();
+      }
+    } else if (candidate && typeof candidate === "object") {
+      const candidateHex =
+        typeof candidate.pubkey === "string" ? candidate.pubkey.trim() : "";
+      const candidateNpub =
+        typeof candidate.npub === "string" ? candidate.npub.trim() : "";
+
+      if (candidateHex && /^[0-9a-f]{64}$/i.test(candidateHex)) {
+        targetHex = candidateHex.toLowerCase();
+      } else if (candidateNpub && candidateNpub.startsWith("npub1")) {
+        targetHex = this.safeDecodeNpub(candidateNpub) || "";
+      }
+    }
+
+    if (!targetHex) {
+      devLogger.warn(
+        "[profileModal] No valid pubkey to remove from friends list:",
+        candidate,
+      );
+      return { success: false, reason: "invalid-target" };
+    }
+
+    try {
+      await service.removeChannel(targetHex, activeHex);
+    } catch (error) {
+      userLogger.error(
+        "[profileModal] Failed to remove creator from friends list:",
+        error,
+      );
+      const message =
+        error?.code === "extension-permission-denied"
+          ? "Your Nostr extension must allow encryption to manage subscriptions."
+          : error?.message || "Failed to update your friends list. Please try again.";
+      if (message) {
+        this.showError(message);
+      }
+      return { success: false, reason: error?.code || "service-error", error };
+    }
+
+    this.showSuccess("Creator removed from your friends list.");
+    await this.populateFriendsList();
+    return { success: true, reason: "removed" };
+  }
+
   async handleAddBlockedCreator() {
     const input = this.blockInput || null;
     const rawValue = typeof input?.value === "string" ? input.value : "";
@@ -6616,6 +6925,7 @@ export class ProfileModalController {
     }
 
     this.populateBlockedList();
+    void this.populateFriendsList();
     this.populateProfileRelays();
     this.refreshWalletPaneState();
     this.populateHashtagPreferences();
@@ -6623,6 +6933,7 @@ export class ProfileModalController {
     postLoginPromise
       .then(() => {
         this.populateBlockedList();
+        void this.populateFriendsList();
         this.populateProfileRelays();
         this.refreshWalletPaneState();
         this.populateHashtagPreferences();
@@ -6671,6 +6982,7 @@ export class ProfileModalController {
     }
 
     this.populateBlockedList();
+    this.clearFriendsList();
     this.populateProfileRelays();
     this.refreshWalletPaneState();
     this.populateHashtagPreferences();
