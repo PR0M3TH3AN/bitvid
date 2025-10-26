@@ -189,7 +189,7 @@ export class VideoListView {
       delete: null,
       blacklist: null,
       moderationOverride: null,
-      moderationHide: null,
+      moderationBlock: null,
       tagActivate: null,
     };
 
@@ -299,8 +299,9 @@ export class VideoListView {
     this.handlers.moderationOverride = typeof handler === "function" ? handler : null;
   }
 
-  setModerationHideHandler(handler) {
-    this.handlers.moderationHide = typeof handler === "function" ? handler : null;
+  setModerationBlockHandler(handler) {
+    this.handlers.moderationBlock =
+      typeof handler === "function" ? handler : null;
   }
 
   setTagActivationHandler(handler) {
@@ -606,13 +607,14 @@ export class VideoListView {
         });
       };
 
-      videoCard.onModerationHide = ({ event: hideEvent }) => {
-        if (!this.handlers.moderationHide) {
+      videoCard.onModerationBlock = ({ event: blockEvent }) => {
+        if (!this.handlers.moderationBlock) {
           return false;
         }
-        const trigger = hideEvent?.currentTarget || hideEvent?.target || null;
-        return this.handlers.moderationHide({
-          event: hideEvent,
+        const trigger =
+          blockEvent?.currentTarget || blockEvent?.target || null;
+        return this.handlers.moderationBlock({
+          event: blockEvent,
           video,
           card: videoCard,
           trigger,

@@ -1918,6 +1918,9 @@ async function testHistoryCardsUseDecryptedPlaybackMetadata() {
       overrideCalls.push(video);
       return true;
     },
+    handleModerationBlock() {
+      return true;
+    },
     handleModerationHide() {
       return true;
     },

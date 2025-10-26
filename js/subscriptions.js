@@ -1254,11 +1254,11 @@ class SubscriptionsManager {
       return app.handleModerationOverride(buildModerationPayload(detail));
     });
 
-    listView.setModerationHideHandler((detail = {}) => {
-      if (typeof app?.handleModerationHide !== "function") {
+    listView.setModerationBlockHandler((detail = {}) => {
+      if (typeof app?.handleModerationBlock !== "function") {
         return false;
       }
-      return app.handleModerationHide(buildModerationPayload(detail));
+      return app.handleModerationBlock(buildModerationPayload(detail));
     });
 
     listView.addEventListener("video:share", (event) => {

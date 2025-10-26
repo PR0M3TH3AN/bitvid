@@ -86,7 +86,7 @@ test("VideoModal blurs and restores playback when moderation overlay toggles", a
       delete video.moderation.viewerOverride;
       video.moderation.blurThumbnail = true;
 
-      const hideSignal = new window.CustomEvent("video:moderation-hide", {
+      const hideSignal = new window.CustomEvent("video:moderation-block", {
         detail: { video },
       });
       document.dispatchEvent(hideSignal);

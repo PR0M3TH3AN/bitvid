@@ -256,8 +256,10 @@ export class VideoModal {
       this.handleModerationOverrideClick.bind(this);
     this.handleGlobalModerationOverride =
       this.handleGlobalModerationOverride.bind(this);
-    this.handleGlobalModerationHide =
-      this.handleGlobalModerationHide.bind(this);
+    this.handleGlobalModerationBlock =
+      this.handleGlobalModerationBlock.bind(this);
+    this.handleGlobalModerationHide = (event) =>
+      this.handleGlobalModerationBlock(event);
 
     this.MODAL_LOADING_POSTER = "assets/gif/please-stand-by.gif";
     this.DEFAULT_PROFILE_AVATAR = "assets/svg/default-profile.svg";
@@ -270,8 +272,8 @@ export class VideoModal {
         this.handleGlobalModerationOverride,
       );
       this.document.addEventListener(
-        "video:moderation-hide",
-        this.handleGlobalModerationHide,
+        "video:moderation-block",
+        this.handleGlobalModerationBlock,
       );
     }
   }
@@ -2081,8 +2083,8 @@ export class VideoModal {
         this.handleGlobalModerationOverride,
       );
       this.document.removeEventListener(
-        "video:moderation-hide",
-        this.handleGlobalModerationHide,
+        "video:moderation-block",
+        this.handleGlobalModerationBlock,
       );
     }
 
@@ -4094,7 +4096,7 @@ export class VideoModal {
     this.refreshActiveVideoModeration({ video: this.activeVideo });
   }
 
-  handleGlobalModerationHide(event) {
+  handleGlobalModerationBlock(event) {
     const detail = event?.detail || {};
     const video = detail && typeof detail === "object" ? detail.video : null;
     if (!video || !video.id || !this.activeVideo || this.activeVideo.id !== video.id) {

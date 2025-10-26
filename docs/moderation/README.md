@@ -33,7 +33,8 @@ bitvid is follow-centric. Your Home feed comes from people you follow (F1). Disc
 - When a trusted mute forces a blur (without a report threshold firing) the badge copy shortens to **"Muted by a trusted contact"** so we don't repeat the blur state in the label. Reports still surface as "Blurred · {reason}" until the viewer taps "Show anyway".
 - The moderation badge now renders as a dedicated yellow chip with an icon and "Show anyway" pill that matches the rest of the design system tokens. Override states flip to the neutral palette and swap the icon for a confirmation check so operators can tell the difference at a glance.
 - The badge tooltip and `aria-label` continue to list the specific trusted contacts who muted or reported the content when that metadata is available.
-- Viewers who override a trusted mute hide keep a **Hide** pill on the same badge so they can re-hide the clip without hunting through another menu.
+- Viewers who override a trusted mute hide keep a **Block** pill on the same badge so they can block the creator without hunting through another menu.
+- Selecting **Block** immediately publishes an account block for the creator, clears any temporary overrides, and reloads the feed so the author disappears from subsequent fetches.
 - Trusted mute decisions now block autoplay even when report thresholds have not fired, and any associated avatars or channel banners adopt the blurred state alongside the primary thumbnail so the entire card reflects the moderation choice.
 
 ## Where to extend

@@ -388,7 +388,7 @@ function getHistoryCardModerationState(context) {
   return "blocked";
 }
 
-function shouldShowHistoryCardHideButton(context) {
+function shouldShowHistoryCardBlockButton(context) {
   if (!context || !context.trustedMuted) {
     return false;
   }
@@ -466,8 +466,8 @@ function cleanupHistoryCard(pointerKey) {
   if (ref.overrideButton && typeof ref.overrideButton.removeEventListener === "function" && typeof ref.boundOverride === "function") {
     ref.overrideButton.removeEventListener("click", ref.boundOverride);
   }
-  if (ref.hideButton && typeof ref.hideButton.removeEventListener === "function" && typeof ref.boundHide === "function") {
-    ref.hideButton.removeEventListener("click", ref.boundHide);
+  if (ref.blockButton && typeof ref.blockButton.removeEventListener === "function" && typeof ref.boundBlock === "function") {
+    ref.blockButton.removeEventListener("click", ref.boundBlock);
   }
   if (ref.badgeEl && ref.badgeEl.parentNode) {
     ref.badgeEl.parentNode.removeChild(ref.badgeEl);
@@ -587,8 +587,8 @@ function createHistoryCardBadge(ref, context) {
   if (typeof ref.boundOverride !== "function") {
     ref.boundOverride = (event) => handleHistoryCardModerationOverride(event, ref);
   }
-  if (typeof ref.boundHide !== "function") {
-    ref.boundHide = (event) => handleHistoryCardModerationHide(event, ref);
+  if (typeof ref.boundBlock !== "function") {
+    ref.boundBlock = (event) => handleHistoryCardModerationBlock(event, ref);
   }
   if (!ref.overrideButton) {
     const overrideButton = doc.createElement("button");
@@ -599,14 +599,14 @@ function createHistoryCardBadge(ref, context) {
     overrideButton.addEventListener("click", ref.boundOverride);
     ref.overrideButton = overrideButton;
   }
-  if (!ref.hideButton) {
-    const hideButton = doc.createElement("button");
-    hideButton.type = "button";
-    hideButton.className = "moderation-badge__action flex-shrink-0";
-    hideButton.dataset.moderationAction = "hide";
-    hideButton.textContent = "Hide";
-    hideButton.addEventListener("click", ref.boundHide);
-    ref.hideButton = hideButton;
+  if (!ref.blockButton) {
+    const blockButton = doc.createElement("button");
+    blockButton.type = "button";
+    blockButton.className = "moderation-badge__action flex-shrink-0";
+    blockButton.dataset.moderationAction = "block";
+    blockButton.textContent = "Block";
+    blockButton.addEventListener("click", ref.boundBlock);
+    ref.blockButton = blockButton;
   }
   return badge;
 }
@@ -617,8 +617,8 @@ function updateHistoryCardBadge(ref, context) {
     if (ref.overrideButton && typeof ref.overrideButton.removeEventListener === "function" && typeof ref.boundOverride === "function") {
       ref.overrideButton.removeEventListener("click", ref.boundOverride);
     }
-    if (ref.hideButton && typeof ref.hideButton.removeEventListener === "function" && typeof ref.boundHide === "function") {
-      ref.hideButton.removeEventListener("click", ref.boundHide);
+    if (ref.blockButton && typeof ref.blockButton.removeEventListener === "function" && typeof ref.boundBlock === "function") {
+      ref.blockButton.removeEventListener("click", ref.boundBlock);
     }
     if (ref.badgeEl && ref.badgeEl.parentNode) {
       ref.badgeEl.parentNode.removeChild(ref.badgeEl);
@@ -629,7 +629,7 @@ function updateHistoryCardBadge(ref, context) {
     ref.badgeIconSvg = null;
     ref.badgeIconWrapper = null;
     ref.overrideButton = null;
-    ref.hideButton = null;
+    ref.blockButton = null;
     return;
   }
 
@@ -723,14 +723,14 @@ function updateHistoryCardBadge(ref, context) {
     badge.removeChild(ref.overrideButton);
   }
 
-  if (shouldShowHistoryCardHideButton(context) && ref.hideButton) {
-    if (ref.hideButton.parentNode !== badge) {
-      badge.appendChild(ref.hideButton);
+  if (shouldShowHistoryCardBlockButton(context) && ref.blockButton) {
+    if (ref.blockButton.parentNode !== badge) {
+      badge.appendChild(ref.blockButton);
     }
-    ref.hideButton.disabled = false;
-    ref.hideButton.removeAttribute("aria-busy");
-  } else if (ref.hideButton && ref.hideButton.parentNode === badge) {
-    badge.removeChild(ref.hideButton);
+    ref.blockButton.disabled = false;
+    ref.blockButton.removeAttribute("aria-busy");
+  } else if (ref.blockButton && ref.blockButton.parentNode === badge) {
+    badge.removeChild(ref.blockButton);
   }
 }
 
@@ -782,11 +782,11 @@ function updateHistoryCardAria(ref) {
     }
   }
 
-  if (ref.hideButton) {
+  if (ref.blockButton) {
     if (badgeId) {
-      ref.hideButton.setAttribute("aria-describedby", badgeId);
+      ref.blockButton.setAttribute("aria-describedby", badgeId);
     } else {
-      ref.hideButton.removeAttribute("aria-describedby");
+      ref.blockButton.removeAttribute("aria-describedby");
     }
   }
 
@@ -889,7 +889,7 @@ function handleHistoryCardModerationOverride(event, ref) {
     });
 }
 
-function handleHistoryCardModerationHide(event, ref) {
+function handleHistoryCardModerationBlock(event, ref) {
   if (event) {
     if (typeof event.preventDefault === "function") {
       event.preventDefault();
@@ -899,7 +899,7 @@ function handleHistoryCardModerationHide(event, ref) {
     }
   }
 
-  const button = ref.hideButton;
+  const button = ref.blockButton;
   if (button) {
     button.disabled = true;
     button.setAttribute("aria-busy", "true");
@@ -917,12 +917,15 @@ function handleHistoryCardModerationHide(event, ref) {
   const app = getAppInstance();
   let result;
   try {
-    if (typeof app?.handleModerationHide === "function") {
-      result = app.handleModerationHide({ video });
+    if (typeof app?.handleModerationBlock === "function") {
+      result = app.handleModerationBlock({ video });
     } else {
       const doc = (ref.article && ref.article.ownerDocument) || (typeof document !== "undefined" ? document : null);
       if (doc && typeof doc.dispatchEvent === "function") {
         doc.dispatchEvent(
+          new CustomEvent("video:moderation-block", { detail: { video } })
+        );
+        document.dispatchEvent(
           new CustomEvent("video:moderation-hide", { detail: { video } })
         );
       }
@@ -934,7 +937,7 @@ function handleHistoryCardModerationHide(event, ref) {
       button.removeAttribute("aria-busy");
     }
     if (isDevEnv) {
-      userLogger.warn("[historyView] Moderation hide handler threw:", error);
+      userLogger.warn("[historyView] Moderation block handler threw:", error);
     }
     return;
   }
@@ -953,7 +956,7 @@ function handleHistoryCardModerationHide(event, ref) {
     })
     .catch((error) => {
       if (isDevEnv) {
-        userLogger.warn("[historyView] Moderation hide failed:", error);
+        userLogger.warn("[historyView] Moderation block failed:", error);
       }
       if (button) {
         button.disabled = false;
@@ -1228,10 +1231,10 @@ export function buildHistoryCard({ item, video, profile, metadataPreference }) {
     badgeIconSvg: null,
     badgeIconWrapper: null,
     overrideButton: null,
-    hideButton: null,
+    blockButton: null,
     badgeId: "",
     boundOverride: null,
-    boundHide: null
+    boundBlock: null
   };
 
   registerHistoryCard(item.pointerKey, cardRef);
@@ -1738,10 +1741,10 @@ export function createWatchHistoryRenderer(config = {}) {
       handleModerationUpdate(video);
     };
     document.addEventListener("video:moderation-override", handler);
-    document.addEventListener("video:moderation-hide", handler);
+    document.addEventListener("video:moderation-block", handler);
     subscriptions.add(() => {
       document.removeEventListener("video:moderation-override", handler);
-      document.removeEventListener("video:moderation-hide", handler);
+      document.removeEventListener("video:moderation-block", handler);
     });
   }
 

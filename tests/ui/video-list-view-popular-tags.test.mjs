@@ -108,14 +108,14 @@ test("VideoListView hides popular tags when no tags are available", () => {
   assert.equal(tagsRoot.childElementCount, 0);
 });
 
-test("VideoListView setModerationHideHandler stores callable", () => {
+test("VideoListView setModerationBlockHandler stores callable", () => {
   const { document } = createViewDom();
   const view = new VideoListView({ document });
 
   const handler = () => {};
-  view.setModerationHideHandler(handler);
-  assert.equal(view.handlers.moderationHide, handler);
+  view.setModerationBlockHandler(handler);
+  assert.equal(view.handlers.moderationBlock, handler);
 
-  view.setModerationHideHandler(null);
-  assert.equal(view.handlers.moderationHide, null);
+  view.setModerationBlockHandler(null);
+  assert.equal(view.handlers.moderationBlock, null);
 });

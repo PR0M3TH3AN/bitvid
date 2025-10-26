@@ -698,7 +698,7 @@ test(
     const manager = new SubscriptionsManager();
 
     const overrideCalls = [];
-    const hideCalls = [];
+    const blockCalls = [];
 
     const app = {
       videosMap: new Map(),
@@ -706,8 +706,8 @@ test(
         overrideCalls.push(detail);
         return true;
       },
-      handleModerationHide(detail) {
-        hideCalls.push(detail);
+      handleModerationBlock(detail) {
+        blockCalls.push(detail);
         return true;
       },
       ensureGlobalMoreMenuHandlers() {},
@@ -761,26 +761,26 @@ test(
     );
     assert.equal(overrideDetail.trigger, overrideButton);
 
-    const hideButton = container.querySelector('[data-moderation-action="hide"]');
-    assert.ok(hideButton, "hide button should render for moderated video");
+    const blockButton = container.querySelector('[data-moderation-action="block"]');
+    assert.ok(blockButton, "block button should render for moderated video");
 
-    hideButton.click();
+    blockButton.click();
     await Promise.resolve();
 
     assert.equal(
-      hideCalls.length,
+      blockCalls.length,
       1,
-      "app.handleModerationHide should receive one call",
+      "app.handleModerationBlock should receive one call",
     );
-    const hideDetail = hideCalls[0];
-    assert.equal(hideDetail.video, video);
-    assert.equal(hideDetail.card?.video, video);
+    const blockDetail = blockCalls[0];
+    assert.equal(blockDetail.video, video);
+    assert.equal(blockDetail.card?.video, video);
     assert.equal(
-      hideDetail.context,
+      blockDetail.context,
       "subscriptions",
-      "hide payload should include the subscriptions context",
+      "block payload should include the subscriptions context",
     );
-    assert.equal(hideDetail.trigger, hideButton);
+    assert.equal(blockDetail.trigger, blockButton);
 
     if (manager.subscriptionListView?.destroy) {
       manager.subscriptionListView.destroy();
