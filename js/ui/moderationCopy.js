@@ -92,6 +92,10 @@ export function buildModerationBadgeText(context, options = {}) {
   const variant = typeof options.variant === "string" ? options.variant : "card";
 
   if (variant === "modal") {
+    if (context.originalBlockAutoplay && context.trustedMuted) {
+      return "Content or user blocked by a trusted contact.";
+    }
+
     const blurSource = (context.originalBlurReason || context.blurReason || "")
       .toLowerCase()
       .trim();
@@ -133,6 +137,10 @@ export function buildModerationBadgeText(context, options = {}) {
       return `Hidden · ${hiddenLabel}`;
     }
     return "Hidden";
+  }
+
+  if (context.originalBlockAutoplay && context.trustedMuted) {
+    return "Content or user blocked by a trusted contact.";
   }
 
   const blurSource = (context.originalBlurReason || context.blurReason || "").toLowerCase();
