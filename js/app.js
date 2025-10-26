@@ -278,6 +278,7 @@ class Application {
     this.modalCommentLoadPromise = null;
     this.modalCommentPublishPromise = null;
     this.pendingModeratedPlayback = null;
+    this.lastIdentityRefreshPromise = null;
 
     this.nostrService = services.nostrService || nostrService;
     this.r2Service = services.r2Service || r2Service;
@@ -3716,9 +3717,20 @@ class Application {
       }
     };
 
+    const bringModalToFront = (modal) => {
+      if (!(modal instanceof HTMLElement)) {
+        return;
+      }
+      const parent = modal.parentElement;
+      if (parent && parent.lastElementChild !== modal) {
+        parent.appendChild(modal);
+      }
+    };
+
     const openLoginModal = ({ modal, triggerElement } = {}) => {
       const target =
         modal instanceof HTMLElement ? modal : loginModalElement;
+      bringModalToFront(target);
       return openStaticModal(target, { triggerElement });
     };
 
@@ -5147,10 +5159,73 @@ class Application {
     const result = await this.authService.switchProfile(pubkey, { providerId });
 
     if (result?.switched) {
-      try {
-        await this.loadVideos(true);
-      } catch (error) {
-        devLogger.error("Failed to refresh videos after switching profiles:", error);
+      const detail = result.detail || null;
+
+      if (
+        detail?.postLoginPromise &&
+        typeof detail.postLoginPromise.then === "function"
+      ) {
+        try {
+          await detail.postLoginPromise;
+        } catch (error) {
+          devLogger.warn(
+            "Failed to complete post-login hydration before continuing after profile switch:",
+            error,
+          );
+        }
+      }
+
+      let refreshPromise = null;
+      if (
+        this.lastIdentityRefreshPromise &&
+        typeof this.lastIdentityRefreshPromise.then === "function"
+      ) {
+        refreshPromise = this.lastIdentityRefreshPromise;
+      }
+
+      if (refreshPromise) {
+        try {
+          await refreshPromise;
+        } catch (error) {
+          devLogger.error(
+            "Failed to refresh UI after switching profiles:",
+            error,
+          );
+        }
+      } else {
+        try {
+          await this.refreshAllVideoGrids({
+            reason: "profile-switch",
+            forceMainReload: true,
+          });
+        } catch (error) {
+          devLogger.error(
+            "Failed to refresh video grids after switching profiles:",
+            error,
+          );
+        }
+      }
+
+      if (this.watchHistoryTelemetry?.resetPlaybackLoggingState) {
+        try {
+          this.watchHistoryTelemetry.resetPlaybackLoggingState();
+        } catch (error) {
+          devLogger.warn(
+            "Failed to reset watch history telemetry after profile switch:",
+            error,
+          );
+        }
+      }
+
+      if (this.watchHistoryTelemetry?.refreshPreferenceSettings) {
+        try {
+          this.watchHistoryTelemetry.refreshPreferenceSettings();
+        } catch (error) {
+          devLogger.warn(
+            "Failed to refresh watch history preferences after profile switch:",
+            error,
+          );
+        }
       }
     }
 
@@ -5681,6 +5756,15 @@ class Application {
 
     if (loginContext.identityChanged) {
       this.resetHashtagPreferencesState();
+      try {
+        this.watchHistoryTelemetry?.resetPlaybackLoggingState?.();
+        this.watchHistoryTelemetry?.refreshPreferenceSettings?.();
+      } catch (error) {
+        devLogger.warn(
+          "Failed to refresh watch history telemetry after identity change:",
+          error,
+        );
+      }
     }
 
     const hashtagPreferencesPromise = Promise.resolve(
@@ -5817,9 +5901,15 @@ class Application {
     }
 
     try {
-      await this.loadVideos(true);
+      this.lastIdentityRefreshPromise = this.refreshAllVideoGrids({
+        reason: "auth-login",
+        forceMainReload: true,
+      });
+      await this.lastIdentityRefreshPromise;
     } catch (error) {
-      devLogger.error("Failed to refresh videos after login:", error);
+      devLogger.error("Failed to refresh video grids after login:", error);
+    } finally {
+      this.lastIdentityRefreshPromise = null;
     }
 
     this.forceRefreshAllProfiles();
