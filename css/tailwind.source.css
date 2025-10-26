@@ -799,7 +799,11 @@
   }
 
   .moderation-badge {
-    @apply inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-semibold normal-case tracking-tight shadow-sm;
+    @apply inline-flex flex-col items-start gap-sm rounded-xl border px-3 py-1.5 text-xs font-semibold normal-case tracking-tight shadow-sm;
+  }
+
+  .moderation-badge__label {
+    @apply inline-flex items-center gap-xs whitespace-nowrap;
   }
 
   .moderation-badge[data-variant="warning"] {
@@ -813,12 +817,13 @@
   }
 
   .moderation-badge__icon {
-    @apply inline-flex h-5 w-5 items-center justify-center rounded-full;
+    @apply inline-flex h-5 w-5 items-center justify-center rounded-full bg-status-warning-surface text-status-warning-on;
     background-color: color-mix(in srgb, var(--status-warning) 18%, transparent);
     color: var(--status-warning-on);
   }
 
   .moderation-badge[data-variant="neutral"] .moderation-badge__icon {
+    @apply bg-status-neutral-surface text-status-neutral-on;
     background-color: color-mix(in srgb, var(--status-neutral) 18%, transparent);
     color: var(--status-neutral-on);
   }
@@ -828,11 +833,11 @@
   }
 
   .moderation-badge__text {
-    @apply text-xs font-semibold tracking-tight;
+    @apply text-xs font-semibold tracking-tight whitespace-nowrap;
   }
 
   .moderation-badge__action {
-    @apply inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold normal-case tracking-tight transition duration-150 ease-out;
+    @apply inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold normal-case tracking-tight transition duration-150 ease-out bg-status-warning-surface border-status-warning-border text-status-warning-on;
     background-color: color-mix(in srgb, var(--status-warning) 16%, transparent);
     border-color: color-mix(in srgb, var(--status-warning-border) 80%, transparent);
     color: var(--status-warning-on);
@@ -843,6 +848,7 @@
   }
 
   .moderation-badge[data-variant="neutral"] .moderation-badge__action {
+    @apply bg-status-neutral-surface border-status-neutral-border text-status-neutral-on;
     background-color: color-mix(in srgb, var(--status-neutral) 16%, transparent);
     border-color: color-mix(in srgb, var(--status-neutral-border) 80%, transparent);
     color: var(--status-neutral-on);
