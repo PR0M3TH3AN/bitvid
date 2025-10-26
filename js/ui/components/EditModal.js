@@ -791,12 +791,16 @@ export class EditModal {
       return;
     }
 
-    if (!this.activeVideo || !this.root) {
-      this.showError("No video selected for editing.");
+    const contextVideo = this.activeVideo || this.pendingSubmitVideo || null;
+
+    if (!contextVideo || !this.root) {
+      if (this.isVisible) {
+        this.showError("No video selected for editing.");
+      }
       return;
     }
 
-    this.setSubmitState({ pending: true, video: this.activeVideo });
+    this.setSubmitState({ pending: true, video: contextVideo });
 
     const fieldValue = (key) => {
       const input = this.fields[key];
