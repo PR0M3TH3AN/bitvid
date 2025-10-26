@@ -33,6 +33,7 @@ const {
   createDedupeByRootStage,
   createBlacklistFilterStage,
   createWatchHistorySuppressionStage,
+  createResolvePostedAtStage,
   createChronologicalSorter,
 } = await import("../js/feedEngine/index.js");
 
@@ -68,6 +69,168 @@ async function testDedupeOrdering() {
   assert.equal(dedupeReasons.length, 1, "dedupe stage should log one older-root reason");
   assert.equal(dedupeReasons[0].videoId, "a-old");
   assert.equal(dedupeReasons[0].rootId, "rootA");
+}
+
+async function testRootCreatedAtSorting() {
+  const engine = createFeedEngine();
+  const feedName = "root-created-sort";
+
+  const originalVideo = {
+    id: "video-original",
+    videoRootId: "root-1",
+    created_at: 100,
+    rootCreatedAt: 100,
+  };
+
+  const updatedVideo = {
+    id: "video-updated",
+    videoRootId: "root-1",
+    created_at: 400,
+    rootCreatedAt: 100,
+  };
+
+  const newerRootVideo = {
+    id: "video-newer-root",
+    videoRootId: "root-2",
+    created_at: 300,
+    rootCreatedAt: 300,
+  };
+
+  engine.registerFeed(feedName, {
+    source: async () => [
+      { video: originalVideo },
+      { video: updatedVideo },
+      { video: newerRootVideo },
+    ],
+    stages: [createDedupeByRootStage()],
+    sorter: createChronologicalSorter(),
+  });
+
+  const result = await engine.runFeed(feedName);
+  assert.deepEqual(
+    result.videos.map((video) => video.id),
+    ["video-newer-root", "video-updated"],
+    "videos should be sorted by original posting time, not last edit",
+  );
+}
+
+async function testTimestampHookSorting() {
+  const engine = createFeedEngine();
+  const feedName = "timestamp-hook";
+
+  const editedVideo = {
+    id: "edited", // newest edit should not jump ahead of older roots
+    videoRootId: "root-hook-a",
+    created_at: 500,
+  };
+
+  const newerRoot = {
+    id: "new-root",
+    videoRootId: "root-hook-b",
+    created_at: 450,
+  };
+
+  engine.registerFeed(feedName, {
+    source: async () => [
+      { video: editedVideo },
+      { video: newerRoot },
+    ],
+    stages: [createDedupeByRootStage()],
+    sorter: createChronologicalSorter(),
+  });
+
+  const hookCalls = [];
+  const result = await engine.runFeed(feedName, {
+    hooks: {
+      timestamps: {
+        getKnownVideoPostedAt(video) {
+          hookCalls.push(video.id);
+          if (video.videoRootId === "root-hook-a") {
+            return 100;
+          }
+          if (video.videoRootId === "root-hook-b") {
+            return 300;
+          }
+          return null;
+        },
+      },
+    },
+  });
+
+  assert.deepEqual(
+    result.videos.map((video) => video.id),
+    ["new-root", "edited"],
+    "timestamp hook should drive chronological order",
+  );
+  assert.deepEqual(
+    new Set(hookCalls),
+    new Set(["edited", "new-root"]),
+    "timestamp hook should be invoked for each video",
+  );
+}
+
+async function testResolvePostedAtStageHydration() {
+  const engine = createFeedEngine();
+  const feedName = "resolve-stage";
+
+  const editedVideo = {
+    id: "edited-stage",
+    videoRootId: "root-stage-a",
+    created_at: 500,
+  };
+
+  const newerRoot = {
+    id: "new-root-stage",
+    videoRootId: "root-stage-b",
+    created_at: 450,
+  };
+
+  engine.registerFeed(feedName, {
+    source: async () => [
+      { video: editedVideo },
+      { video: newerRoot },
+    ],
+    stages: [createResolvePostedAtStage()],
+    sorter: createChronologicalSorter(),
+  });
+
+  const resolverCalls = [];
+  const result = await engine.runFeed(feedName, {
+    hooks: {
+      timestamps: {
+        async resolveVideoPostedAt(video) {
+          resolverCalls.push(video.id);
+          if (video.videoRootId === "root-stage-a") {
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            return 100;
+          }
+          if (video.videoRootId === "root-stage-b") {
+            return 300;
+          }
+          return null;
+        },
+      },
+    },
+  });
+
+  assert.deepEqual(
+    result.videos.map((video) => video.id),
+    ["new-root-stage", "edited-stage"],
+    "resolve stage should hydrate timestamps before sorting",
+  );
+
+  assert.equal(
+    editedVideo.rootCreatedAt,
+    100,
+    "resolve stage should stamp the original posted time on edited videos",
+  );
+  assert.equal(newerRoot.rootCreatedAt, 300);
+
+  assert.deepEqual(
+    new Set(resolverCalls),
+    new Set(["edited-stage", "new-root-stage"]),
+    "resolver should run for each video lacking a cached timestamp",
+  );
 }
 
 async function testBlacklistFiltering() {
@@ -240,6 +403,9 @@ async function testTrustedMuteDownrank() {
 }
 
 await testDedupeOrdering();
+await testRootCreatedAtSorting();
+await testTimestampHookSorting();
+await testResolvePostedAtStageHydration();
 await testBlacklistFiltering();
 await testWatchHistoryHookIsolation();
 await testBlacklistOrderingWithRuntimeChanges();

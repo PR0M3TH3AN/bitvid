@@ -2,11 +2,13 @@
 
 import {
   nostrClient,
+  requestDefaultExtensionPermissions,
+} from "./nostrClientFacade.js";
+import {
   normalizePointerInput,
   pointerKey,
   normalizeActorKey,
-  requestDefaultExtensionPermissions,
-} from "./nostr.js";
+} from "./nostr/watchHistory.js";
 import {
   WATCH_HISTORY_CACHE_TTL_MS,
   WATCH_HISTORY_MAX_ITEMS,

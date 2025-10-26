@@ -1,10 +1,15 @@
 import { VideoCard } from "../components/VideoCard.js";
 import {
+  renderTagPillStrip,
+  applyTagPreferenceState,
+} from "../components/tagPillList.js";
+import {
   subscribeToVideoViewCount,
   unsubscribeFromVideoViewCount,
 } from "../../viewCounter.js";
 import { normalizeDesignSystemContext } from "../../designSystem.js";
 import { userLogger } from "../../utils/logger.js";
+import { collectVideoTags } from "../../utils/videoTags.js";
 
 const EMPTY_VIDEO_LIST_SIGNATURE = "__EMPTY__";
 
@@ -174,6 +179,8 @@ export class VideoListView {
     this.currentVideos = [];
     this.lastRenderedVideoSignature = null;
     this._lastRenderedVideoListElement = null;
+    this.popularTagsRoot = null;
+    this._popularTagStrip = null;
 
     this.handlers = {
       playback: null,
@@ -182,7 +189,12 @@ export class VideoListView {
       delete: null,
       blacklist: null,
       moderationOverride: null,
+      moderationBlock: null,
+      moderationHide: null,
+      tagActivate: null,
     };
+
+    this.tagPreferenceStateResolver = null;
 
     this.allowNsfw = allowNsfw !== false;
     this.designSystem = normalizeDesignSystemContext(designSystem);
@@ -256,6 +268,12 @@ export class VideoListView {
     this.currentVideos = [];
     this.lastRenderedVideoSignature = null;
     this._lastRenderedVideoListElement = null;
+    if (this.popularTagsRoot) {
+      this.popularTagsRoot.textContent = "";
+      this.popularTagsRoot.hidden = true;
+    }
+    this.popularTagsRoot = null;
+    this._popularTagStrip = null;
   }
 
   setPlaybackHandler(handler) {
@@ -280,6 +298,116 @@ export class VideoListView {
 
   setModerationOverrideHandler(handler) {
     this.handlers.moderationOverride = typeof handler === "function" ? handler : null;
+  }
+
+  setModerationBlockHandler(handler) {
+    this.handlers.moderationBlock =
+      typeof handler === "function" ? handler : null;
+  }
+
+  setModerationHideHandler(handler) {
+    this.handlers.moderationHide =
+      typeof handler === "function" ? handler : null;
+  }
+
+  setTagActivationHandler(handler) {
+    this.handlers.tagActivate = typeof handler === "function" ? handler : null;
+  }
+
+  setTagPreferenceStateResolver(resolver) {
+    this.tagPreferenceStateResolver =
+      typeof resolver === "function" ? resolver : null;
+  }
+
+  setPopularTagsContainer(container) {
+    if (this.popularTagsRoot && this.popularTagsRoot !== container) {
+      this.popularTagsRoot.textContent = "";
+      this.popularTagsRoot.hidden = true;
+    }
+
+    this.popularTagsRoot = container || null;
+    this._popularTagStrip = null;
+
+    if (this.popularTagsRoot) {
+      this.popularTagsRoot.textContent = "";
+      this.popularTagsRoot.hidden = true;
+    }
+  }
+
+  updatePopularTags(videos) {
+    const root = this.popularTagsRoot;
+    if (!root) {
+      return;
+    }
+
+    if (!Array.isArray(videos) || videos.length === 0) {
+      root.textContent = "";
+      root.hidden = true;
+      this._popularTagStrip = null;
+      return;
+    }
+
+    const counts = new Map();
+    const displayNames = new Map();
+
+    videos.forEach((video) => {
+      const tags = collectVideoTags(video);
+      tags.forEach((tag) => {
+        if (typeof tag !== "string" || !tag) {
+          return;
+        }
+        const lower = tag.toLowerCase();
+        counts.set(lower, (counts.get(lower) || 0) + 1);
+        if (!displayNames.has(lower)) {
+          displayNames.set(lower, tag);
+        }
+      });
+    });
+
+    if (!counts.size) {
+      root.textContent = "";
+      root.hidden = true;
+      this._popularTagStrip = null;
+      return;
+    }
+
+    const tagEntries = Array.from(counts.entries()).map(([lower, count]) => ({
+      count,
+      tag: displayNames.get(lower) || lower,
+    }));
+
+    tagEntries.sort((a, b) => {
+      if (b.count !== a.count) {
+        return b.count - a.count;
+      }
+      const lowerA = a.tag.toLowerCase();
+      const lowerB = b.tag.toLowerCase();
+      if (lowerA === lowerB) {
+        return a.tag.localeCompare(b.tag);
+      }
+      return lowerA.localeCompare(lowerB);
+    });
+
+    const tags = tagEntries.map((entry) => entry.tag);
+    const doc = this.document || root.ownerDocument || null;
+    if (!doc) {
+      root.textContent = "";
+      root.hidden = true;
+      this._popularTagStrip = null;
+      return;
+    }
+
+    const { root: strip } = renderTagPillStrip({
+      document: doc,
+      tags,
+      onTagActivate: (tag, detail = {}) =>
+        this.handlePopularTagActivate(tag, detail),
+      getTagState: (tag) => this.resolveTagPreferenceState(tag),
+    });
+    root.textContent = "";
+    root.appendChild(strip);
+    root.hidden = false;
+    this._popularTagStrip = strip;
   }
 
   render(videos, metadata = null) {
@@ -307,6 +435,8 @@ export class VideoListView {
       return canEdit || !isPrivate;
     });
 
+    this.updatePopularTags(displayVideos);
+
     this.syncViewCountSubscriptions(displayVideos);
     this.cleanupThumbnailCache(displayVideos);
     this.cleanupHealthCache(displayVideos);
@@ -325,7 +455,10 @@ export class VideoListView {
       return displayVideos;
     }
 
-    displayVideos.sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0));
+    displayVideos.sort(
+      (a, b) =>
+        this.getVideoPostedAtForSort(b) - this.getVideoPostedAtForSort(a),
+    );
     this.currentVideos = displayVideos.slice();
 
     const signaturePayload = displayVideos.map((video) => ({
@@ -333,6 +466,10 @@ export class VideoListView {
       createdAt: Number.isFinite(video?.created_at)
         ? video.created_at
         : Number(video?.created_at) || 0,
+      postedAt: (() => {
+        const timestamp = this.getVideoPostedAtForSort(video);
+        return Number.isFinite(timestamp) ? timestamp : 0;
+      })(),
       deleted: Boolean(video?.deleted),
       isPrivate: Boolean(video?.isPrivate),
       isNsfw: Boolean(video?.isNsfw),
@@ -400,9 +537,10 @@ export class VideoListView {
       const fallbackTimestamp =
         normalizedPostedAt !== null
           ? normalizedPostedAt
-          : Number.isFinite(video?.created_at)
-            ? Math.floor(video.created_at)
-            : null;
+          : (() => {
+              const sortTimestamp = this.getVideoPostedAtForSort(video);
+              return Number.isFinite(sortTimestamp) ? sortTimestamp : null;
+            })();
       const timeAgo =
         fallbackTimestamp !== null
           ? this.formatters.formatTimeAgo(fallbackTimestamp)
@@ -477,6 +615,34 @@ export class VideoListView {
           overrideEvent?.currentTarget || overrideEvent?.target || null;
         return this.handlers.moderationOverride({
           event: overrideEvent,
+          video,
+          card: videoCard,
+          trigger,
+        });
+      };
+
+      videoCard.onModerationBlock = ({ event: blockEvent }) => {
+        if (!this.handlers.moderationBlock) {
+          return false;
+        }
+        const trigger =
+          blockEvent?.currentTarget || blockEvent?.target || null;
+        return this.handlers.moderationBlock({
+          event: blockEvent,
+          video,
+          card: videoCard,
+          trigger,
+        });
+      };
+
+      videoCard.onModerationHide = ({ event: hideEvent }) => {
+        if (!this.handlers.moderationHide) {
+          return false;
+        }
+        const trigger =
+          hideEvent?.currentTarget || hideEvent?.target || null;
+        return this.handlers.moderationHide({
+          event: hideEvent,
           video,
           card: videoCard,
           trigger,
@@ -768,6 +934,31 @@ export class VideoListView {
     this.state.videosMap.set(videoId, next);
     this.render(this.currentVideos.slice(), this.state.feedMetadata);
     return next;
+  }
+
+  getVideoPostedAtForSort(video) {
+    if (!video || typeof video !== "object") {
+      return Number.NEGATIVE_INFINITY;
+    }
+
+    const known = this.utils.getKnownVideoPostedAt(video);
+    if (Number.isFinite(known)) {
+      return Math.floor(known);
+    }
+
+    if (Number.isFinite(video?.rootCreatedAt)) {
+      return Math.floor(video.rootCreatedAt);
+    }
+
+    if (Number.isFinite(video?.nip71Source?.created_at)) {
+      return Math.floor(video.nip71Source.created_at);
+    }
+
+    if (Number.isFinite(video?.created_at)) {
+      return Math.floor(video.created_at);
+    }
+
+    return Number.NEGATIVE_INFINITY;
   }
 
   computeShareBase() {
@@ -1125,5 +1316,63 @@ export class VideoListView {
 
     const detail = this.extractPlaybackDetail(trigger, null);
     this.emitSelected(detail);
+  }
+
+  resolveTagPreferenceState(tag) {
+    const resolver = this.tagPreferenceStateResolver;
+    if (typeof resolver !== "function") {
+      return "neutral";
+    }
+
+    try {
+      return resolver(tag);
+    } catch (error) {
+      userLogger.warn(
+        "[VideoListView] Failed to resolve tag preference state:",
+        error,
+      );
+      return "neutral";
+    }
+  }
+
+  refreshTagPreferenceStates() {
+    if (!this._popularTagStrip) {
+      return;
+    }
+
+    const buttons = this._popularTagStrip.querySelectorAll("button[data-tag]");
+    buttons.forEach((button) => {
+      const tag = button.dataset.tag || "";
+      const state = this.resolveTagPreferenceState(tag);
+      applyTagPreferenceState(button, state);
+    });
+  }
+
+  handlePopularTagActivate(tag, { event = null, button = null } = {}) {
+    const normalizedTag =
+      typeof tag === "string" && tag.trim() ? tag.trim() : String(tag ?? "");
+    if (!normalizedTag) {
+      return;
+    }
+
+    const detail = {
+      tag: normalizedTag,
+      event,
+      trigger: button,
+      context: "popular-tags",
+    };
+
+    if (typeof this.handlers.tagActivate === "function") {
+      try {
+        this.handlers.tagActivate(detail);
+      } catch (error) {
+        userLogger.warn(
+          "[VideoListView] Tag activation handler threw an error:",
+          error,
+        );
+      }
+    }
+
+    this.emit("tag:activate", detail);
   }
 }

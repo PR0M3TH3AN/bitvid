@@ -16,16 +16,16 @@ Snapshots publish two event types to the shared `WATCH_HISTORY_KIND` stream:
    `['encrypted','nip04']`. The first chunk is additionally marked as
    `['head','1']` and may append `"a"` tags that reference previous chunk
    addresses, allowing readers to reconstruct the full set even when relays
-   deduplicate aggressively.【F:js/nostrEventSchemas.js†L175-L189】【F:js/nostr.js†L2329-L2369】
+   deduplicate aggressively.【F:js/nostrEventSchemas.js†L175-L189】【F:js/nostr/watchHistory.js†L1343-L1400】
 2. **Pointer event** — After chunks are accepted, bitvid emits a compact index
    event containing the canonical list identifier (`['d', WATCH_HISTORY_LIST_IDENTIFIER]`),
    the `snapshot` label, the total chunk count, and an `a` tag for each chunk
-   address.【F:js/nostrEventSchemas.js†L157-L170】【F:js/nostr.js†L2425-L2441】
+   address.【F:js/nostrEventSchemas.js†L157-L170】【F:js/nostr/watchHistory.js†L1434-L1462】
 
 Chunk content is a NIP-04 encrypted JSON envelope of `{ version: 2, snapshot,
 chunkIndex, totalChunks, items[] }`. Items are pointer descriptors (`e` or `a`
 references plus optional relay hints) so that relays never learn which titles
-were played—only which events or addresses the client can dereference later.【F:js/nostr.js†L2337-L2364】
+were played—only which events or addresses the client can dereference later.【F:js/nostr/watchHistory.js†L1362-L1375】
 
 ## Batching configuration
 
@@ -34,7 +34,7 @@ optionally cap each response by defining `WATCH_HISTORY_BATCH_PAGE_SIZE` in
 `config/instance-config.js`. Leaving the page size unset returns the full
 `WATCH_HISTORY_MAX_ITEMS` window while still letting the UI paginate locally,
 but setting a positive integer keeps API payloads in lockstep with batched
-renderers like `historyView`.【F:config/instance-config.js†L101-L123】【F:js/nostr.js†L2987-L2998】【F:js/historyView.js†L1-L38】
+renderers like `historyView`.【F:config/instance-config.js†L101-L123】【F:js/nostr/watchHistory.js†L2218-L2256】【F:js/historyView.js†L1-L38】
 
 ## Snapshot cadence
 
@@ -52,7 +52,7 @@ When a snapshot publish fails but the response is retryable, the service stores
 the returned `snapshotId`, records the originating reason, and delegates to the
 Nostr client to retry with exponential backoff. Retries start after two seconds,
 double per attempt with 25% jitter, cap at five minutes, and stop after eight
-attempts unless a publish succeeds sooner.【F:js/watchHistoryService.js†L948-L985】【F:js/watchHistoryService.js†L723-L777】【F:js/nostr.js†L1988-L2087】
+attempts unless a publish succeeds sooner.【F:js/watchHistoryService.js†L948-L985】【F:js/watchHistoryService.js†L723-L777】【F:js/nostr/watchHistory.js†L929-L999】
 
 ## Legacy payload handling
 
@@ -60,7 +60,7 @@ Readers hydrate history by combining the pointer event, any encrypted chunks,
 and fallback metadata embedded in legacy watch-history lists. The resolver still
 accepts the `watch-history:v2:index` identifier, merges pointer tags from the
 index event, and falls back to plaintext content when decryption fails so older
-relays remain compatible.【F:config/instance-config.js†L60-L78】【F:js/nostr.js†L2704-L2779】【F:js/nostr.js†L5216-L5264】
+relays remain compatible.【F:config/instance-config.js†L60-L78】【F:js/nostr/watchHistory.js†L2120-L2170】【F:js/nostr/watchHistory.js†L660-L689】
 
 ## Local metadata toggles
 

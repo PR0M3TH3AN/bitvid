@@ -101,6 +101,15 @@
                 Wallet
               </button>
               <button
+                id="profileNavHashtags"
+                type="button"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneHashtags"
+                aria-selected="false"
+              >
+                Hashtags
+              </button>
+              <button
                 id="profileNavBlocked"
                 type="button"
                 class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
@@ -449,6 +458,111 @@
                   role="status"
                   aria-live="polite"
                 ></p>
+              </div>
+            </section>
+
+            <section
+              id="profilePaneHashtags"
+              class="profile-pane hidden space-y-6"
+              role="tabpanel"
+              aria-labelledby="profileNavHashtags"
+            >
+              <div class="space-y-3">
+                <p class="text-sm text-muted">
+                  Follow or mute hashtags to personalize the videos we show you.
+                </p>
+                <p
+                  id="profileHashtagStatus"
+                  class="text-sm text-muted"
+                  role="status"
+                  aria-live="polite"
+                ></p>
+              </div>
+
+              <div class="card space-y-4 p-5">
+                <div class="space-y-1">
+                  <h3 class="text-base font-semibold text-text">Interests</h3>
+                  <p class="text-sm text-muted">
+                    Videos tagged with these hashtags will be highlighted for you.
+                  </p>
+                </div>
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <label
+                    class="flex-1 text-sm text-muted-strong"
+                    for="profileHashtagInterestInput"
+                  >
+                    <span class="mb-2 block font-medium">Add a hashtag</span>
+                    <input
+                      id="profileHashtagInterestInput"
+                      type="text"
+                      inputmode="text"
+                      autocomplete="off"
+                      class="input"
+                      placeholder="nostr"
+                    />
+                  </label>
+                  <button
+                    id="profileAddHashtagInterestBtn"
+                    type="button"
+                    class="btn focus-ring"
+                  >
+                    Add interest
+                  </button>
+                </div>
+                <p
+                  id="profileHashtagInterestEmpty"
+                  class="card border border-dashed border-border/60 p-4 text-center text-sm text-muted"
+                >
+                  You haven’t added any interest hashtags yet.
+                </p>
+                <ul
+                  id="profileHashtagInterestList"
+                  class="profile-hashtag-list"
+                  data-orientation="horizontal"
+                ></ul>
+              </div>
+
+              <div class="card space-y-4 p-5">
+                <div class="space-y-1">
+                  <h3 class="text-base font-semibold text-text">Disinterests</h3>
+                  <p class="text-sm text-muted">
+                    We’ll de-emphasize or hide videos using these hashtags.
+                  </p>
+                </div>
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <label
+                    class="flex-1 text-sm text-muted-strong"
+                    for="profileHashtagDisinterestInput"
+                  >
+                    <span class="mb-2 block font-medium">Add a hashtag</span>
+                    <input
+                      id="profileHashtagDisinterestInput"
+                      type="text"
+                      inputmode="text"
+                      autocomplete="off"
+                      class="input"
+                      placeholder="spam"
+                    />
+                  </label>
+                  <button
+                    id="profileAddHashtagDisinterestBtn"
+                    type="button"
+                    class="btn focus-ring"
+                  >
+                    Add disinterest
+                  </button>
+                </div>
+                <p
+                  id="profileHashtagDisinterestEmpty"
+                  class="card border border-dashed border-border/60 p-4 text-center text-sm text-muted"
+                >
+                  You haven’t muted any hashtags yet.
+                </p>
+                <ul
+                  id="profileHashtagDisinterestList"
+                  class="profile-hashtag-list"
+                  data-orientation="horizontal"
+                ></ul>
               </div>
             </section>
 

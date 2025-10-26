@@ -1,11 +1,17 @@
 // js/subscriptions.js
 import {
-  getActiveSigner,
   nostrClient,
-  convertEventToVideo as sharedConvertEventToVideo,
   requestDefaultExtensionPermissions,
-  DEFAULT_RELAY_URLS,
-} from "./nostr.js";
+} from "./nostrClientFacade.js";
+import {
+  getActiveSigner,
+  convertEventToVideo as sharedConvertEventToVideo,
+} from "./nostr/index.js";
+import {
+  listVideoViewEvents,
+  subscribeVideoViewEvents,
+} from "./nostrViewEventsFacade.js";
+import { DEFAULT_RELAY_URLS } from "./nostr/toolkit.js";
 import {
   buildSubscriptionListEvent,
   SUBSCRIPTION_LIST_IDENTIFIER
@@ -109,6 +115,11 @@ function determineDecryptionOrder(event, availableSchemes) {
 }
 
 const getApp = () => getApplication();
+
+const listVideoViewEventsApi = (pointer, options) =>
+  listVideoViewEvents(nostrClient, pointer, options);
+const subscribeVideoViewEventsApi = (pointer, options) =>
+  subscribeVideoViewEvents(nostrClient, pointer, options);
 
 /**
  * Manages the user's subscription list (kind=30002) *privately*,
@@ -867,12 +878,33 @@ class SubscriptionsManager {
         ? Math.floor(limitCandidate)
         : null;
 
+    const preferenceSource =
+      typeof app?.getHashtagPreferences === "function"
+        ? app.getHashtagPreferences()
+        : {};
+
+    const moderationThresholds =
+      typeof app?.getActiveModerationThresholds === "function"
+        ? app.getActiveModerationThresholds()
+        : null;
+
     return {
       subscriptionAuthors: normalizedAuthors,
       authors: normalizedAuthors,
       blacklistedEventIds: blacklist,
       isAuthorBlocked,
-      limit: normalizedLimit
+      limit: normalizedLimit,
+      tagPreferences: {
+        interests: Array.isArray(preferenceSource?.interests)
+          ? [...preferenceSource.interests]
+          : [],
+        disinterests: Array.isArray(preferenceSource?.disinterests)
+          ? [...preferenceSource.disinterests]
+          : [],
+      },
+      moderationThresholds: moderationThresholds
+        ? { ...moderationThresholds }
+        : undefined,
     };
   }
 
@@ -1112,6 +1144,49 @@ class SubscriptionsManager {
     };
 
     const listView = new VideoListView(listViewConfig);
+    if (typeof listView.setPopularTagsContainer === "function") {
+      listView.setPopularTagsContainer(null);
+    }
+
+    const buildModerationPayload = (detail = {}) => {
+      const event = detail?.event || null;
+      const trigger =
+        detail?.trigger ||
+        (event && (event.currentTarget || event.target)) ||
+        null;
+      const card = detail?.card || null;
+      const video = detail?.video || null;
+      const datasetContext = (() => {
+        const detailContext =
+          typeof detail?.context === "string" ? detail.context.trim() : "";
+        if (detailContext) {
+          return detailContext;
+        }
+        const datasetSource =
+          (detail?.dataset && typeof detail.dataset === "object"
+            ? detail.dataset
+            : null) ||
+          (trigger && trigger.dataset) ||
+          (card && card.root && card.root.dataset) ||
+          null;
+        if (
+          datasetSource &&
+          typeof datasetSource.context === "string" &&
+          datasetSource.context.trim()
+        ) {
+          return datasetSource.context.trim();
+        }
+        return "";
+      })();
+
+      return {
+        ...detail,
+        video,
+        card,
+        trigger,
+        context: datasetContext || "subscriptions",
+      };
+    };
 
     listView.setPlaybackHandler((detail) => {
       if (!detail) {
@@ -1180,6 +1255,20 @@ class SubscriptionsManager {
       app?.handleMoreMenuAction?.("blacklist-author", detail);
     });
 
+    listView.setModerationOverrideHandler((detail = {}) => {
+      if (typeof app?.handleModerationOverride !== "function") {
+        return false;
+      }
+      return app.handleModerationOverride(buildModerationPayload(detail));
+    });
+
+    listView.setModerationBlockHandler((detail = {}) => {
+      if (typeof app?.handleModerationBlock !== "function") {
+        return false;
+      }
+      return app.handleModerationBlock(buildModerationPayload(detail));
+    });
+
     listView.addEventListener("video:share", (event) => {
       const detail = event?.detail || {};
       const dataset = {
@@ -1241,5 +1330,8 @@ class SubscriptionsManager {
     return sharedConvertEventToVideo(evt);
   }
 }
+
+SubscriptionsManager.listVideoViewEvents = listVideoViewEventsApi;
+SubscriptionsManager.subscribeVideoViewEvents = subscribeVideoViewEventsApi;
 
 export const subscriptions = new SubscriptionsManager();

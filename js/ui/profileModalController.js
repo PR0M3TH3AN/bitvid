@@ -7,8 +7,10 @@ import {
 } from "../config.js";
 import { normalizeDesignSystemContext } from "../designSystem.js";
 import {
-  getTrustedMuteHideThreshold,
-  getTrustedSpamHideThreshold,
+  DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+  DEFAULT_BLUR_THRESHOLD,
+  DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
+  DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
   RUNTIME_FLAGS,
 } from "../constants.js";
 import { getProviderMetadata } from "../services/authProviders/index.js";
@@ -24,6 +26,12 @@ const NWC_URI_SCHEME = "nostr+walletconnect://";
 const SECRET_PLACEHOLDER = "*****";
 const DEFAULT_MAX_WALLET_DEFAULT_ZAP = 100000000;
 const DEFAULT_SAVED_PROFILE_LABEL = "Saved profile";
+
+const ADD_PROFILE_CANCELLATION_CODES = new Set([
+  "login-cancelled",
+  "user-cancelled",
+  "modal-dismissed",
+]);
 
 const PROVIDER_BADGE_BASE_CLASS =
   "text-3xs font-semibold uppercase tracking-extra-wide";
@@ -59,10 +67,10 @@ function createInternalDefaultNwcSettings() {
 }
 
 const DEFAULT_INTERNAL_MODERATION_SETTINGS = Object.freeze({
-  blurThreshold: 1,
-  autoplayBlockThreshold: 1,
-  trustedMuteHideThreshold: getTrustedMuteHideThreshold(),
-  trustedSpamHideThreshold: getTrustedSpamHideThreshold(),
+  blurThreshold: DEFAULT_BLUR_THRESHOLD,
+  autoplayBlockThreshold: DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+  trustedMuteHideThreshold: DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
+  trustedSpamHideThreshold: DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
 });
 
 function createInternalDefaultModerationSettings() {
@@ -153,6 +161,75 @@ const SERVICE_CONTRACT = [
     description:
       "Formats npub strings for display using the canonical short representation (npubXXXX…XXXX).",
     fallback: () => (value) => (typeof value === "string" ? value : ""),
+  },
+  {
+    key: "requestAddProfileLogin",
+    type: "function",
+    description:
+      "Opens the login modal and resolves with the authentication result for the add-profile flow.",
+    fallback: () => async () => {
+      throw new Error("Login service unavailable.");
+    },
+  },
+  {
+    key: "describeLoginError",
+    type: "function",
+    description:
+      "Maps authentication errors to human-readable strings for add-profile messaging.",
+    fallback: () => (_, fallbackMessage) =>
+      typeof fallbackMessage === "string" && fallbackMessage.trim()
+        ? fallbackMessage.trim()
+        : "Failed to login. Please try again.",
+  },
+  {
+    key: "hashtagPreferences",
+    type: "object",
+    description:
+      "Service providing access to interest and disinterest hashtag collections.",
+    fallback: () => ({
+      getInterests: () => [],
+      getDisinterests: () => [],
+      addInterest: () => false,
+      removeInterest: () => false,
+      addDisinterest: () => false,
+      removeDisinterest: () => false,
+      publish: async () => false,
+      on: () => () => {},
+    }),
+  },
+  {
+    key: "getHashtagPreferences",
+    type: "function",
+    description:
+      "Returns the cached hashtag preferences snapshot (interests, disinterests, metadata).",
+    fallback: ({ resolved }) => () => {
+      const service = resolved.hashtagPreferences || {};
+      const interests =
+        typeof service.getInterests === "function"
+          ? service.getInterests()
+          : [];
+      const disinterests =
+        typeof service.getDisinterests === "function"
+          ? service.getDisinterests()
+          : [];
+      return {
+        interests,
+        disinterests,
+        eventId: null,
+        createdAt: null,
+        loaded: false,
+      };
+    },
+  },
+  {
+    key: "describeHashtagPreferencesError",
+    type: "function",
+    description:
+      "Maps hashtag preference errors to user-facing status messages for the modal.",
+    fallback: () => (_, fallbackMessage) =>
+      typeof fallbackMessage === "string" && fallbackMessage.trim()
+        ? fallbackMessage.trim()
+        : "Failed to update hashtag preferences. Please try again.",
   },
   {
     key: "getProfileCacheEntry",
@@ -766,6 +843,38 @@ export class ProfileModalController {
     this.describeAdminErrorService = this.services.describeAdminError;
     this.describeNotificationErrorService =
       this.services.describeNotificationError;
+    this.describeLoginErrorService = this.services.describeLoginError;
+    this.requestAddProfileLoginService = this.services.requestAddProfileLogin;
+    this.log =
+      typeof this.services.log === "function"
+        ? this.services.log
+        : (...args) => {
+            devLogger.log(...args);
+          };
+
+    this.hashtagPreferencesService = this.services.hashtagPreferences;
+    this.describeHashtagPreferencesErrorService =
+      this.services.describeHashtagPreferencesError;
+    this.getHashtagPreferencesSnapshotService =
+      this.services.getHashtagPreferences;
+    this.hashtagPreferencesPublishInFlight = false;
+    this.hashtagPreferencesPublishPromise = null;
+
+    if (
+      this.hashtagPreferencesService &&
+      typeof this.hashtagPreferencesService.on === "function"
+    ) {
+      this.hashtagPreferencesUnsubscribe = this.hashtagPreferencesService.on(
+        "change",
+        (detail) => {
+          this.handleHashtagPreferencesChange({
+            action:
+              typeof detail?.action === "string" ? detail.action : "change",
+            preferences: detail,
+          });
+        },
+      );
+    }
 
     this.callbacks = {
       onClose: callbacks.onClose || noop,
@@ -827,6 +936,7 @@ export class ProfileModalController {
       account: null,
       relays: null,
       wallet: null,
+      hashtags: null,
       blocked: null,
       history: null,
       admin: null,
@@ -835,6 +945,7 @@ export class ProfileModalController {
       account: null,
       relays: null,
       wallet: null,
+      hashtags: null,
       blocked: null,
       history: null,
       admin: null,
@@ -864,6 +975,15 @@ export class ProfileModalController {
     this.walletDisconnectButton = null;
     this.walletStatusText = null;
     this.profileWalletStatusText = null;
+    this.hashtagStatusText = null;
+    this.hashtagInterestList = null;
+    this.hashtagInterestEmpty = null;
+    this.hashtagInterestInput = null;
+    this.addHashtagInterestButton = null;
+    this.hashtagDisinterestList = null;
+    this.hashtagDisinterestEmpty = null;
+    this.hashtagDisinterestInput = null;
+    this.addHashtagDisinterestButton = null;
     this.moderationSettingsCard = null;
     this.moderationBlurInput = null;
     this.moderationAutoplayInput = null;
@@ -920,7 +1040,9 @@ export class ProfileModalController {
     this.lastMobileViewState = "menu";
     this.setActivePane(this.getActivePane());
     this.setWalletPaneBusy(this.isWalletBusy());
+    this.addAccountButtonState = null;
     this.adminEmptyMessages = new Map();
+    this.hashtagPreferencesUnsubscribe = null;
   }
 
   async load() {
@@ -955,6 +1077,7 @@ export class ProfileModalController {
     this.setupLayoutBreakpointObserver();
     this.applyModalStackingOverrides();
     this.registerEventListeners();
+    this.populateHashtagPreferences();
     this.refreshModerationSettingsUi();
     const preserveMenu = this.isMobileLayoutActive();
     this.selectPane(this.getActivePane(), { keepMenuView: preserveMenu });
@@ -1002,6 +1125,8 @@ export class ProfileModalController {
       document.getElementById("profileNavAccount") || null;
     this.navButtons.relays = document.getElementById("profileNavRelays") || null;
     this.navButtons.wallet = document.getElementById("profileNavWallet") || null;
+    this.navButtons.hashtags =
+      document.getElementById("profileNavHashtags") || null;
     this.navButtons.blocked =
       document.getElementById("profileNavBlocked") || null;
     this.navButtons.history =
@@ -1011,6 +1136,7 @@ export class ProfileModalController {
     this.panes.account = document.getElementById("profilePaneAccount") || null;
     this.panes.relays = document.getElementById("profilePaneRelays") || null;
     this.panes.wallet = document.getElementById("profilePaneWallet") || null;
+    this.panes.hashtags = document.getElementById("profilePaneHashtags") || null;
     this.panes.blocked = document.getElementById("profilePaneBlocked") || null;
     this.panes.history = document.getElementById("profilePaneHistory") || null;
     this.panes.admin = document.getElementById("profilePaneAdmin") || null;
@@ -1037,6 +1163,25 @@ export class ProfileModalController {
       document.getElementById("profileWalletDisconnect") || null;
     this.walletStatusText =
       document.getElementById("profileWalletStatus") || null;
+
+    this.hashtagStatusText =
+      document.getElementById("profileHashtagStatus") || null;
+    this.hashtagInterestList =
+      document.getElementById("profileHashtagInterestList") || null;
+    this.hashtagInterestEmpty =
+      document.getElementById("profileHashtagInterestEmpty") || null;
+    this.hashtagInterestInput =
+      document.getElementById("profileHashtagInterestInput") || null;
+    this.addHashtagInterestButton =
+      document.getElementById("profileAddHashtagInterestBtn") || null;
+    this.hashtagDisinterestList =
+      document.getElementById("profileHashtagDisinterestList") || null;
+    this.hashtagDisinterestEmpty =
+      document.getElementById("profileHashtagDisinterestEmpty") || null;
+    this.hashtagDisinterestInput =
+      document.getElementById("profileHashtagDisinterestInput") || null;
+    this.addHashtagDisinterestButton =
+      document.getElementById("profileAddHashtagDisinterestBtn") || null;
 
     this.profileRelayList = this.relayList;
     this.profileRelayInput = this.relayInput;
@@ -1223,7 +1368,7 @@ export class ProfileModalController {
 
     if (this.addAccountButton instanceof HTMLElement) {
       this.addAccountButton.addEventListener("click", () => {
-        this.callbacks.onAddAccount(this);
+        void this.handleAddAccountRequest();
       });
     }
 
@@ -1258,6 +1403,36 @@ export class ProfileModalController {
         if (event.key === "Enter") {
           event.preventDefault();
           void this.handleAddBlockedCreator();
+        }
+      });
+    }
+
+    if (this.addHashtagInterestButton instanceof HTMLElement) {
+      this.addHashtagInterestButton.addEventListener("click", () => {
+        void this.handleAddHashtagPreference("interest");
+      });
+    }
+
+    if (this.hashtagInterestInput instanceof HTMLElement) {
+      this.hashtagInterestInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          void this.handleAddHashtagPreference("interest");
+        }
+      });
+    }
+
+    if (this.addHashtagDisinterestButton instanceof HTMLElement) {
+      this.addHashtagDisinterestButton.addEventListener("click", () => {
+        void this.handleAddHashtagPreference("disinterest");
+      });
+    }
+
+    if (this.hashtagDisinterestInput instanceof HTMLElement) {
+      this.hashtagDisinterestInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          void this.handleAddHashtagPreference("disinterest");
         }
       });
     }
@@ -1379,6 +1554,246 @@ export class ProfileModalController {
           void this.handleAdminListMutation("blacklist", "add");
         }
       });
+    }
+  }
+
+  resolveAddAccountLoginError(error, fallbackMessage = "") {
+    const describe = this.describeLoginErrorService;
+    const fallback =
+      typeof fallbackMessage === "string" && fallbackMessage.trim()
+        ? fallbackMessage.trim()
+        : "Couldn't add that profile. Please try again.";
+
+    if (typeof describe === "function") {
+      try {
+        const message = describe(error, fallback);
+        if (typeof message === "string" && message.trim()) {
+          return message.trim();
+        }
+      } catch (describeError) {
+        devLogger.warn(
+          "[ProfileModalController] describeLoginError service threw:",
+          describeError,
+        );
+      }
+    }
+
+    return fallback;
+  }
+
+  describeHashtagPreferencesError(error, options = {}) {
+    const describe = this.describeHashtagPreferencesErrorService;
+    const { fallbackMessage, operation } =
+      options && typeof options === "object" ? options : {};
+    const normalizedOperation =
+      typeof operation === "string" && operation.trim()
+        ? operation.trim().toLowerCase()
+        : "update";
+
+    const fallback =
+      typeof fallbackMessage === "string" && fallbackMessage.trim()
+        ? fallbackMessage.trim()
+        : normalizedOperation === "load"
+        ? "Failed to load hashtag preferences. Please try again."
+        : normalizedOperation === "reset"
+        ? "Failed to reset hashtag preferences."
+        : "Failed to update hashtag preferences. Please try again.";
+
+    if (typeof describe === "function") {
+      try {
+        const message = describe(error, fallback);
+        if (typeof message === "string" && message.trim()) {
+          return message.trim();
+        }
+      } catch (describeError) {
+        devLogger.warn(
+          "[ProfileModalController] describeHashtagPreferencesError service threw:",
+          describeError,
+        );
+      }
+    }
+
+    return fallback;
+  }
+
+  setAddAccountLoading(isLoading) {
+    if (!(this.addAccountButton instanceof HTMLElement)) {
+      return;
+    }
+
+    const button = this.addAccountButton;
+    const titleEl = button.querySelector("[data-profile-add-title]");
+    const hintEl = button.querySelector("[data-profile-add-hint]");
+
+    if (isLoading) {
+      this.addAccountButtonState = {
+        originalDisabled: button.disabled,
+        originalAriaLabel: button.getAttribute("aria-label"),
+        titleElement: titleEl instanceof HTMLElement ? titleEl : null,
+        hintElement: hintEl instanceof HTMLElement ? hintEl : null,
+        originalTitle:
+          titleEl instanceof HTMLElement ? titleEl.textContent || "" : "",
+        originalHint:
+          hintEl instanceof HTMLElement ? hintEl.textContent || "" : "",
+      };
+
+      button.disabled = true;
+      button.dataset.state = "loading";
+      button.setAttribute("aria-busy", "true");
+      button.setAttribute("aria-disabled", "true");
+
+      if (this.addAccountButtonState.titleElement) {
+        this.addAccountButtonState.titleElement.textContent = "Connecting...";
+      }
+
+      if (this.addAccountButtonState.hintElement) {
+        this.addAccountButtonState.hintElement.textContent =
+          "Complete the login prompt from your provider.";
+      }
+
+      button.setAttribute(
+        "aria-label",
+        "Connecting to your Nostr account",
+      );
+
+      return;
+    }
+
+    const state = this.addAccountButtonState;
+
+    if (state) {
+      button.disabled = !!state.originalDisabled;
+      if (state.originalDisabled) {
+        button.setAttribute("aria-disabled", "true");
+      } else {
+        button.removeAttribute("aria-disabled");
+      }
+
+      if (state.titleElement) {
+        state.titleElement.textContent = state.originalTitle || "";
+      }
+
+      if (state.hintElement) {
+        state.hintElement.textContent = state.originalHint || "";
+      }
+
+      if (state.originalAriaLabel === null) {
+        button.removeAttribute("aria-label");
+      } else if (typeof state.originalAriaLabel === "string") {
+        button.setAttribute("aria-label", state.originalAriaLabel);
+      }
+    } else {
+      if (button.disabled) {
+        button.setAttribute("aria-disabled", "true");
+      } else {
+        button.removeAttribute("aria-disabled");
+      }
+    }
+
+    button.setAttribute("aria-busy", "false");
+    delete button.dataset.state;
+
+    this.addAccountButtonState = null;
+  }
+
+  isAddAccountCancellationError(error) {
+    if (!error || typeof error !== "object") {
+      return false;
+    }
+
+    const code =
+      typeof error.code === "string" && error.code.trim()
+        ? error.code.trim()
+        : "";
+
+    if (!code) {
+      return false;
+    }
+
+    return ADD_PROFILE_CANCELLATION_CODES.has(code);
+  }
+
+  async handleAddAccountRequest() {
+    if (!(this.addAccountButton instanceof HTMLElement)) {
+      return;
+    }
+
+    if (this.addAccountButton.dataset.state === "loading") {
+      return;
+    }
+
+    const requestLogin = this.requestAddProfileLoginService;
+    if (typeof requestLogin !== "function") {
+      devLogger.warn(
+        "[ProfileModalController] requestAddProfileLogin service unavailable.",
+      );
+      this.showError("Login is unavailable right now. Please try again later.");
+      return;
+    }
+
+    this.setAddAccountLoading(true);
+
+    try {
+      const loginResult = await requestLogin({
+        controller: this,
+        triggerElement: this.addAccountButton,
+      });
+
+      if (loginResult === undefined) {
+        return;
+      }
+
+      await this.invokeAddAccountCallback(loginResult);
+    } catch (error) {
+      if (this.isAddAccountCancellationError(error)) {
+        try {
+          this.log(
+            "[ProfileModalController] Add profile flow cancelled by user.",
+            error,
+          );
+        } catch (logError) {
+          devLogger.warn(
+            "[ProfileModalController] Failed to log cancellation event:",
+            logError,
+          );
+        }
+        return;
+      }
+
+      devLogger.error(
+        "[ProfileModalController] Failed to complete add profile authentication:",
+        error,
+      );
+
+      const message = this.resolveAddAccountLoginError(
+        error,
+        "Couldn't add that profile. Please try again.",
+      );
+
+      if (message) {
+        this.showError(message);
+      }
+    } finally {
+      this.setAddAccountLoading(false);
+    }
+  }
+
+  async invokeAddAccountCallback(loginResult) {
+    if (typeof this.callbacks.onAddAccount !== "function") {
+      return;
+    }
+
+    try {
+      await this.callbacks.onAddAccount({
+        controller: this,
+        loginResult,
+      });
+    } catch (error) {
+      devLogger.warn(
+        "[ProfileModalController] onAddAccount callback threw:",
+        error,
+      );
+      throw error;
     }
   }
 
@@ -2179,6 +2594,8 @@ export class ProfileModalController {
       void this.populateProfileWatchHistory();
     } else if (target === "wallet") {
       this.refreshWalletPaneState();
+    } else if (target === "hashtags") {
+      this.populateHashtagPreferences();
     } else if (target === "blocked") {
       this.populateBlockedList();
     }
@@ -2579,6 +2996,472 @@ export class ProfileModalController {
       statusEl.appendChild(text);
       statusEl.classList.remove("hidden");
     }
+  }
+
+  normalizeHashtagTag(value) {
+    if (typeof value !== "string") {
+      return "";
+    }
+
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return "";
+    }
+
+    return trimmed.replace(/^#+/, "").toLowerCase();
+  }
+
+  formatHashtagTag(value) {
+    const normalized = this.normalizeHashtagTag(value);
+    if (!normalized) {
+      return "";
+    }
+    return `#${normalized}`;
+  }
+
+  sanitizeHashtagList(list) {
+    if (!Array.isArray(list)) {
+      return [];
+    }
+
+    const seen = new Set();
+    const normalized = [];
+
+    list.forEach((entry) => {
+      if (typeof entry !== "string") {
+        return;
+      }
+      const tag = this.normalizeHashtagTag(entry);
+      if (!tag || seen.has(tag)) {
+        return;
+      }
+      seen.add(tag);
+      normalized.push(tag);
+    });
+
+    normalized.sort((a, b) => a.localeCompare(b));
+    return normalized;
+  }
+
+  getResolvedHashtagPreferences(preferences = null) {
+    const candidate =
+      preferences && typeof preferences === "object" ? preferences : null;
+
+    let snapshot = null;
+    if (candidate) {
+      snapshot = candidate;
+    } else if (typeof this.getHashtagPreferencesSnapshotService === "function") {
+      try {
+        const resolved = this.getHashtagPreferencesSnapshotService();
+        if (resolved && typeof resolved === "object") {
+          snapshot = resolved;
+        }
+      } catch (error) {
+        devLogger.warn(
+          "[ProfileModalController] Failed to read hashtag preferences snapshot:",
+          error,
+        );
+      }
+    }
+
+    const service = this.hashtagPreferencesService || {};
+
+    const interestsSource = Array.isArray(snapshot?.interests)
+      ? snapshot.interests
+      : typeof service.getInterests === "function"
+      ? service.getInterests()
+      : [];
+    const disinterestsSource = Array.isArray(snapshot?.disinterests)
+      ? snapshot.disinterests
+      : typeof service.getDisinterests === "function"
+      ? service.getDisinterests()
+      : [];
+
+    return {
+      interests: this.sanitizeHashtagList(interestsSource),
+      disinterests: this.sanitizeHashtagList(disinterestsSource),
+    };
+  }
+
+  setHashtagStatus(message = "", tone = "muted") {
+    if (!(this.hashtagStatusText instanceof HTMLElement)) {
+      return;
+    }
+
+    const classList = this.hashtagStatusText.classList;
+    classList.remove(
+      "text-status-success",
+      "text-status-warning",
+      "text-status-danger",
+      "text-status-info",
+      "text-muted",
+    );
+
+    const normalized =
+      typeof message === "string" && message.trim() ? message.trim() : "";
+
+    if (!normalized) {
+      this.hashtagStatusText.textContent = "";
+      this.hashtagStatusText.classList.add("text-muted", "hidden");
+      return;
+    }
+
+    this.hashtagStatusText.textContent = normalized;
+    this.hashtagStatusText.classList.remove("hidden");
+
+    switch (tone) {
+      case "success":
+        classList.add("text-status-success");
+        break;
+      case "warning":
+      case "error":
+        classList.add("text-status-warning");
+        break;
+      case "info":
+        classList.add("text-status-info");
+        break;
+      default:
+        classList.add("text-muted");
+        break;
+    }
+  }
+
+  clearHashtagInputs() {
+    if (this.hashtagInterestInput instanceof HTMLInputElement) {
+      this.hashtagInterestInput.value = "";
+    }
+    if (this.hashtagDisinterestInput instanceof HTMLInputElement) {
+      this.hashtagDisinterestInput.value = "";
+    }
+  }
+
+  populateHashtagPreferences(preferences = null) {
+    const snapshot = this.getResolvedHashtagPreferences(preferences);
+
+    this.renderHashtagList("interest", snapshot.interests);
+    this.renderHashtagList("disinterest", snapshot.disinterests);
+
+    if (!snapshot.interests.length && !snapshot.disinterests.length) {
+      this.setHashtagStatus("", "muted");
+    }
+  }
+
+  renderHashtagList(type, tags) {
+    const list =
+      type === "interest" ? this.hashtagInterestList : this.hashtagDisinterestList;
+    const empty =
+      type === "interest" ? this.hashtagInterestEmpty : this.hashtagDisinterestEmpty;
+
+    if (!(list instanceof HTMLElement) || !(empty instanceof HTMLElement)) {
+      return;
+    }
+
+    list.innerHTML = "";
+
+    const normalized = this.sanitizeHashtagList(tags);
+    if (!normalized.length) {
+      empty.classList.remove("hidden");
+      list.classList.add("hidden");
+      return;
+    }
+
+    empty.classList.add("hidden");
+    list.classList.remove("hidden");
+
+    normalized.forEach((tag) => {
+      const item = this.createHashtagListItem(type, tag);
+      if (item) {
+        list.appendChild(item);
+      }
+    });
+  }
+
+  createHashtagListItem(type, tag) {
+    const normalized = this.normalizeHashtagTag(tag);
+    if (!normalized) {
+      return null;
+    }
+
+    const item = document.createElement("li");
+    item.className = "profile-hashtag-item";
+    item.dataset.hashtagType = type;
+    item.dataset.tag = normalized;
+
+    const label = document.createElement("span");
+    label.textContent = this.formatHashtagTag(normalized);
+    item.appendChild(label);
+
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "profile-hashtag-remove focus-ring";
+    removeButton.dataset.hashtagType = type;
+    removeButton.dataset.tag = normalized;
+    removeButton.setAttribute(
+      "aria-label",
+      type === "interest"
+        ? `Remove ${this.formatHashtagTag(normalized)} from interests`
+        : `Remove ${this.formatHashtagTag(normalized)} from disinterests`,
+    );
+    removeButton.innerHTML = "<span aria-hidden=\"true\">&times;</span>";
+    removeButton.addEventListener("click", () => {
+      void this.handleRemoveHashtagPreference(type, normalized);
+    });
+
+    item.appendChild(removeButton);
+
+    return item;
+  }
+
+  async persistHashtagPreferences(options = {}) {
+    const service = this.hashtagPreferencesService;
+    const publish =
+      service && typeof service.publish === "function" ? service.publish : null;
+
+    if (!publish) {
+      const message = this.describeHashtagPreferencesError(null, {
+        fallbackMessage: "Hashtag preferences are unavailable right now.",
+      });
+      if (message) {
+        this.showError(message);
+        this.setHashtagStatus(message, "warning");
+      }
+      const error = new Error(
+        message || "Hashtag preferences are unavailable right now.",
+      );
+      error.code = "service-unavailable";
+      throw error;
+    }
+
+    if (this.hashtagPreferencesPublishInFlight) {
+      return this.hashtagPreferencesPublishPromise;
+    }
+
+    const { successMessage, pubkey, progressMessage } =
+      options && typeof options === "object" ? options : {};
+
+    const resolvedPubkeyCandidate =
+      typeof pubkey === "string" && pubkey.trim()
+        ? pubkey
+        : this.getActivePubkey();
+    const normalizedPubkey = this.normalizeHexPubkey(resolvedPubkeyCandidate);
+
+    const payload = normalizedPubkey ? { pubkey: normalizedPubkey } : {};
+
+    const pendingMessage =
+      typeof progressMessage === "string" && progressMessage.trim()
+        ? progressMessage.trim()
+        : "Saving hashtag preferences…";
+    const finalMessage =
+      typeof successMessage === "string" && successMessage.trim()
+        ? successMessage.trim()
+        : "Hashtag preferences saved.";
+
+    this.hashtagPreferencesPublishInFlight = true;
+    this.setHashtagStatus(pendingMessage, "info");
+
+    const publishPromise = (async () => {
+      try {
+        const result = await publish.call(service, payload);
+        this.setHashtagStatus(finalMessage, "success");
+        return result;
+      } catch (error) {
+        const failure =
+          error instanceof Error ? error : new Error(String(error || ""));
+        if (!failure.code) {
+          failure.code = "hashtag-preferences-publish-failed";
+        }
+        const message = this.describeHashtagPreferencesError(failure, {
+          fallbackMessage:
+            "Failed to update hashtag preferences. Please try again.",
+        });
+        if (message) {
+          this.showError(message);
+          this.setHashtagStatus(message, "warning");
+        }
+        throw failure;
+      } finally {
+        this.hashtagPreferencesPublishInFlight = false;
+        this.hashtagPreferencesPublishPromise = null;
+      }
+    })();
+
+    this.hashtagPreferencesPublishPromise = publishPromise;
+    return publishPromise;
+  }
+
+  async handleAddHashtagPreference(type) {
+    const isInterest = type === "interest";
+    const input = isInterest
+      ? this.hashtagInterestInput
+      : this.hashtagDisinterestInput;
+
+    const rawValue =
+      input instanceof HTMLInputElement ? input.value || "" : "";
+    const normalized = this.normalizeHashtagTag(rawValue);
+
+    if (!(input instanceof HTMLInputElement)) {
+      return { success: false, reason: "missing-input" };
+    }
+
+    if (!normalized) {
+      const message = "Enter a hashtag to add.";
+      this.showError(message);
+      this.setHashtagStatus(message, "warning");
+      return { success: false, reason: "empty" };
+    }
+
+    const service = this.hashtagPreferencesService;
+    const addMethod = isInterest
+      ? service?.addInterest
+      : service?.addDisinterest;
+
+    if (typeof addMethod !== "function") {
+      const message = "Hashtag preferences are unavailable right now.";
+      this.showError(message);
+      this.setHashtagStatus(message, "warning");
+      return { success: false, reason: "service-unavailable" };
+    }
+
+    const snapshot = this.getResolvedHashtagPreferences();
+    const alreadyInTarget = isInterest
+      ? snapshot.interests.includes(normalized)
+      : snapshot.disinterests.includes(normalized);
+    const inOpposite = isInterest
+      ? snapshot.disinterests.includes(normalized)
+      : snapshot.interests.includes(normalized);
+
+    let result = false;
+    try {
+      result = addMethod.call(service, normalized);
+    } catch (error) {
+      const message = this.describeHashtagPreferencesError(error, {
+        fallbackMessage: "Failed to update hashtag preferences. Please try again.",
+      });
+      if (message) {
+        this.showError(message);
+        this.setHashtagStatus(message, "warning");
+      }
+      return { success: false, reason: error?.code || "service-error", error };
+    } finally {
+      if (input) {
+        input.value = "";
+      }
+    }
+
+    if (result) {
+      const actionMessage = inOpposite
+        ? `${this.formatHashtagTag(normalized)} moved to ${
+            isInterest ? "interests" : "disinterests"
+          }.`
+        : `${this.formatHashtagTag(normalized)} added to ${
+            isInterest ? "interests" : "disinterests"
+          }.`;
+      this.populateHashtagPreferences();
+      try {
+        await this.persistHashtagPreferences({
+          successMessage: actionMessage,
+        });
+        this.showSuccess(actionMessage);
+        return { success: true, reason: inOpposite ? "moved" : "added" };
+      } catch (error) {
+        return {
+          success: false,
+          reason: error?.code || "publish-failed",
+          error,
+        };
+      } finally {
+        this.populateHashtagPreferences();
+      }
+    }
+
+    if (alreadyInTarget) {
+      const message = `${this.formatHashtagTag(normalized)} is already in your ${
+        isInterest ? "interests" : "disinterests"
+      }.`;
+      this.showStatus(message);
+      this.setHashtagStatus(message, "info");
+      this.populateHashtagPreferences();
+      return { success: false, reason: "duplicate" };
+    }
+
+    const fallbackMessage = this.describeHashtagPreferencesError(null, {
+      fallbackMessage: `Failed to add ${this.formatHashtagTag(normalized)}.`,
+    });
+    if (fallbackMessage) {
+      this.showError(fallbackMessage);
+      this.setHashtagStatus(fallbackMessage, "warning");
+    }
+    this.populateHashtagPreferences();
+    return { success: false, reason: "no-change" };
+  }
+
+  async handleRemoveHashtagPreference(type, candidate) {
+    const normalized = this.normalizeHashtagTag(candidate);
+    if (!normalized) {
+      return { success: false, reason: "invalid" };
+    }
+
+    const service = this.hashtagPreferencesService;
+    const removeMethod =
+      type === "interest"
+        ? service?.removeInterest
+        : service?.removeDisinterest;
+
+    if (typeof removeMethod !== "function") {
+      const message = "Hashtag preferences are unavailable right now.";
+      this.showError(message);
+      this.setHashtagStatus(message, "warning");
+      return { success: false, reason: "service-unavailable" };
+    }
+
+    let removed = false;
+    try {
+      removed = removeMethod.call(service, normalized);
+    } catch (error) {
+      const message = this.describeHashtagPreferencesError(error, {
+        fallbackMessage: `Failed to remove ${this.formatHashtagTag(normalized)}.`,
+      });
+      if (message) {
+        this.showError(message);
+        this.setHashtagStatus(message, "warning");
+      }
+      this.populateHashtagPreferences();
+      return { success: false, reason: error?.code || "service-error", error };
+    }
+
+    if (removed) {
+      const message = `${this.formatHashtagTag(normalized)} removed from ${
+        type === "interest" ? "interests" : "disinterests"
+      }.`;
+      this.populateHashtagPreferences();
+      try {
+        await this.persistHashtagPreferences({ successMessage: message });
+        this.showSuccess(message);
+      } catch (error) {
+        return {
+          success: false,
+          reason: error?.code || "publish-failed",
+          error,
+        };
+      } finally {
+        this.populateHashtagPreferences();
+      }
+    } else {
+      const message = `${this.formatHashtagTag(normalized)} is already removed.`;
+      this.showStatus(message);
+      this.setHashtagStatus(message, "info");
+    }
+
+    this.populateHashtagPreferences();
+    return { success: removed, reason: removed ? "removed" : "already-removed" };
+  }
+
+  handleHashtagPreferencesChange(detail = {}) {
+    const preferences =
+      detail && typeof detail.preferences === "object"
+        ? detail.preferences
+        : detail;
+    this.populateHashtagPreferences(preferences);
   }
 
   populateBlockedList(blocked = null) {
@@ -5703,12 +6586,14 @@ export class ProfileModalController {
     this.populateBlockedList();
     this.populateProfileRelays();
     this.refreshWalletPaneState();
+    this.populateHashtagPreferences();
 
     postLoginPromise
       .then(() => {
         this.populateBlockedList();
         this.populateProfileRelays();
         this.refreshWalletPaneState();
+        this.populateHashtagPreferences();
       })
       .catch((error) => {
         userLogger.warn(
@@ -5756,6 +6641,9 @@ export class ProfileModalController {
     this.populateBlockedList();
     this.populateProfileRelays();
     this.refreshWalletPaneState();
+    this.populateHashtagPreferences();
+    this.clearHashtagInputs();
+    this.setHashtagStatus("", "muted");
 
     return true;
   }
@@ -5811,7 +6699,8 @@ export class ProfileModalController {
   }
 
   async hydrateActiveWalletSettings(pubkey) {
-    const hydrate = this.services.nwcSettings?.hydrateNwcSettingsForPubkey;
+    const service = this.services.nwcSettings;
+    const hydrate = service?.hydrateNwcSettingsForPubkey;
     if (typeof hydrate !== "function") {
       return null;
     }
@@ -5824,7 +6713,7 @@ export class ProfileModalController {
     }
 
     try {
-      return await hydrate(normalized);
+      return await hydrate.call(service, normalized);
     } catch (error) {
       userLogger.warn(
         `[ProfileModalController] Failed to hydrate wallet settings for ${normalized}:`,

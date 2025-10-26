@@ -10,6 +10,7 @@ export {
   createBlacklistFilterStage,
   createWatchHistorySuppressionStage,
   createModerationStage,
+  createResolvePostedAtStage,
 } from "./stages.js";
 export { createChronologicalSorter } from "./sorters.js";
 export {

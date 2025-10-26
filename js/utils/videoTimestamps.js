@@ -1,3 +1,5 @@
+import { collectVideoTags } from "./videoTags.js";
+
 export function getVideoRootIdentifier(video) {
   if (!video || typeof video !== "object") {
     return "";
@@ -79,6 +81,8 @@ export function syncActiveVideoRootTimestamp({
   }
 
   activeVideo.rootCreatedAt = normalized;
+  const modalTags = collectVideoTags(activeVideo);
+  activeVideo.displayTags = modalTags;
 
   const editedAt = Number.isFinite(activeVideo.lastEditedAt)
     ? Math.floor(activeVideo.lastEditedAt)
@@ -95,7 +99,7 @@ export function syncActiveVideoRootTimestamp({
       postedAt: normalized,
       editedAt,
     });
-    videoModal.updateMetadata({ timestamps: payload });
+    videoModal.updateMetadata({ timestamps: payload, tags: modalTags });
   }
 
   return true;

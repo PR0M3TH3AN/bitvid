@@ -1,4 +1,6 @@
 import {
+  DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+  DEFAULT_BLUR_THRESHOLD,
   DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
   DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
   getTrustedMuteHideThreshold,
@@ -33,41 +35,66 @@ const MODERATION_SETTINGS_STORAGE_KEY = "bitvid:moderationSettings:v1";
 const MODERATION_SETTINGS_STORAGE_VERSION = 2;
 
 function computeDefaultModerationSettings() {
-  let runtimeMuteHide = DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD;
-  let runtimeSpamHide = DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD;
+  const defaultBlur = sanitizeModerationThreshold(
+    DEFAULT_BLUR_THRESHOLD,
+    DEFAULT_BLUR_THRESHOLD,
+  );
+  const defaultAutoplay = sanitizeModerationThreshold(
+    DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+    DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
+  );
+  const defaultTrustedMute = sanitizeModerationThreshold(
+    DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
+    DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
+  );
+  const defaultTrustedSpam = sanitizeModerationThreshold(
+    DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
+    DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
+  );
+
+  let runtimeMuteHide = defaultTrustedMute;
+  let runtimeSpamHide = defaultTrustedSpam;
 
   try {
     if (typeof getTrustedMuteHideThreshold === "function") {
-      runtimeMuteHide = getTrustedMuteHideThreshold();
+      runtimeMuteHide = sanitizeModerationThreshold(
+        getTrustedMuteHideThreshold(),
+        defaultTrustedMute,
+      );
     }
   } catch (error) {
     userLogger.warn(
       "[cache.computeDefaultModerationSettings] Failed to read runtime mute hide threshold:",
       error,
     );
+    runtimeMuteHide = defaultTrustedMute;
   }
 
   try {
     if (typeof getTrustedSpamHideThreshold === "function") {
-      runtimeSpamHide = getTrustedSpamHideThreshold();
+      runtimeSpamHide = sanitizeModerationThreshold(
+        getTrustedSpamHideThreshold(),
+        defaultTrustedSpam,
+      );
     }
   } catch (error) {
     userLogger.warn(
       "[cache.computeDefaultModerationSettings] Failed to read runtime spam hide threshold:",
       error,
     );
+    runtimeSpamHide = defaultTrustedSpam;
   }
 
   return {
-    blurThreshold: 1,
-    autoplayBlockThreshold: 1,
+    blurThreshold: defaultBlur,
+    autoplayBlockThreshold: defaultAutoplay,
     trustedMuteHideThreshold: sanitizeModerationThreshold(
       runtimeMuteHide,
-      DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
+      defaultTrustedMute,
     ),
     trustedSpamHideThreshold: sanitizeModerationThreshold(
       runtimeSpamHide,
-      DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
+      defaultTrustedSpam,
     ),
   };
 }

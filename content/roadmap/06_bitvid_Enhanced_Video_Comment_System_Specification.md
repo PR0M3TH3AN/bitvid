@@ -40,15 +40,18 @@ To implement a decentralized comment system for videos shared on a Nostr-based p
 Each component (comments, reactions, live chat) is represented as a Nostr event.
 
 ##### **Comment Event**:
+bitvid uses standard kind `1` text note replies so they interoperate with the moderation flows documented in [`docs/moderation/nips.md`](../../docs/moderation/nips.md). Each reply keeps both the video event ID and the root video definition tag so downstream services can resolve lineage.
+
 ```json
 {
-    "kind": 1311,
+    "kind": 1,
     "pubkey": "abcdef1234567890...",
     "created_at": 1675000000,
     "tags": [
-        ["e", "video-event-id"], // Reference to the video
-        ["e", "parent-comment-id"], // Reference to the parent comment (optional, for replies)
-        ["p", "commenter-pubkey"] // Optional: commenter pubkey
+        ["e", "video-event-id"], // Reference to the specific video event
+        ["a", "30078:video-author-pubkey:video-root-id"], // Reference to the video definition (kind 30078)
+        ["e", "parent-comment-id"], // Optional: reference to the parent comment for replies
+        ["p", "commenter-pubkey"] // Optional: commenter or video author pubkey for threading UX
     ],
     "content": "This is a great video!"
 }
@@ -86,13 +89,14 @@ Each component (comments, reactions, live chat) is represented as a Nostr event.
 Metadata tags are added to comments or live chat events as needed:
 ```json
 {
-    "kind": 1311,
+    "kind": 1,
     "pubkey": "abcdef1234567890...",
     "created_at": 1675000000,
     "tags": [
         ["e", "video-event-id"],
+        ["a", "30078:video-author-pubkey:video-root-id"],
         ["m", "featured-comment"], // Example metadata tag
-        ["a", "admin-tag"] // Administrative tag
+        ["m", "admin-tag"] // Administrative tag
     ],
     "content": "Highlighted comment for this video."
 }
@@ -104,19 +108,24 @@ Metadata tags are added to comments or live chat events as needed:
 
 #### **1. Posting a Comment**
 To post a comment:
-1. The client constructs a comment event using NIP-22 for `created_at` validation.
-2. The event includes references to the video (mandatory) and parent comments (optional).
+1. The client constructs a kind `1` comment event using NIP-22 for `created_at` validation.
+2. The event includes both the `['e', <videoEventId>]` and `['a', <30078:pubkey:videoRootId>]` tags (mandatory) plus parent comment references when replying. This mirrors the implementation in `js/services/discussionCountService.js` so reply counts and moderation filters remain aligned.
 3. The event is signed and published to relays.
 
 ##### API Example:
 ```javascript
-async function postComment(videoId, commentText, parentCommentId = null) {
+async function postComment(
+    { videoEventId, videoAuthorPubkey, videoRootId },
+    commentText,
+    parentCommentId = null
+) {
     const event = {
-        kind: 1311,
+        kind: 1,
         pubkey: userPubkey,
         created_at: Math.floor(Date.now() / 1000),
         tags: [
-            ['e', videoId],
+            ['e', videoEventId],
+            ['a', `30078:${videoAuthorPubkey}:${videoRootId}`],
             ...(parentCommentId ? [['e', parentCommentId]] : []),
         ],
         content: commentText
@@ -151,10 +160,11 @@ Comments are retrieved using `REQ` messages filtered by the `e` tag for the vide
 
 ##### API Example:
 ```javascript
-async function fetchComments(videoId) {
+async function fetchComments({ videoEventId, videoAuthorPubkey, videoRootId }) {
     const filter = {
-        kinds: [1311],
-        '#e': [videoId],
+        kinds: [1],
+        '#e': [videoEventId],
+        '#a': [`30078:${videoAuthorPubkey}:${videoRootId}`],
         limit: 100
     };
 
@@ -192,13 +202,15 @@ Use NIP-24 to attach metadata to events for administrative or user-specific tags
    - User creates a comment event.
    - Client signs and publishes the event to relays.
 2. **Fetching Comments**:
-   - Client requests comments for a video by filtering events with the `e` tag.
+   - Client requests comments for a video by filtering events with the combined `#e` and `#a` tags so both the specific video event and its root definition are represented.
 3. **Reacting to Comments**:
    - Users react to comments by posting reaction events.
 4. **Live Discussions**:
    - Live chat messages are sent and received in real-time using NIP-28.
 5. **Metadata Management**:
    - Metadata is attached during event creation or editing.
+
+> **Tagging Requirement:** Clients must keep the combined `#e`/`#a` tagging pattern shown above. `discussionCountService.buildDiscussionCountFilters` depends on those tags when querying relays so UI components can surface accurate comment totals.
 
 ---
 
@@ -219,6 +231,9 @@ Use NIP-24 to attach metadata to events for administrative or user-specific tags
 
 4. **Nested Threading**:
    - Indent replies to show comment hierarchy.
+
+5. **Comment Gate**:
+   - UI components such as `VideoCard.buildDiscussionCount` already hide comment affordances when `enableComments` is false. Future enhancements must honor the same feature flag so comment entry points remain consistent with existing gating.
 
 ---
 
