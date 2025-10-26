@@ -4,6 +4,15 @@ import { createVideoMoreMenuPanel } from "./videoMenuRenderers.js";
 import { attachAmbientBackground } from "../ambientBackground.js";
 import { applyDesignSystemAttributes } from "../../designSystem.js";
 import { devLogger } from "../../utils/logger.js";
+import { CommentsController } from "./video-modal/commentsController.js";
+import { ReactionsController } from "./video-modal/reactionsController.js";
+import { SimilarContentController } from "./video-modal/similarContentController.js";
+import { ModerationController } from "./video-modal/moderationController.js";
+import {
+  normalizeCommentAvatarKey as normalizeCommentAvatarKeyUtil,
+  resolveCommentAvatarAsset as resolveCommentAvatarAssetUtil,
+  registerCommentAvatarFailure as registerCommentAvatarFailureUtil,
+} from "./video-modal/utils/commentAvatar.js";
 import {
   renderTagPillStrip,
   applyTagPreferenceState,
@@ -187,6 +196,11 @@ export class VideoModal {
       playbackMagnet: "",
       canManageBlacklist: false,
     };
+
+    this.commentsController = new CommentsController({ modal: this });
+    this.reactionsController = new ReactionsController({ modal: this });
+    this.similarContentController = new SimilarContentController({ modal: this });
+    this.moderationController = new ModerationController({ modal: this });
 
     this.commentsRoot = null;
     this.commentsContainer = null;
@@ -479,6 +493,11 @@ export class VideoModal {
       );
     }
 
+    this.commentsController.destroy();
+    this.reactionsController.destroy();
+    this.similarContentController.destroy();
+    this.moderationController.destroy();
+
     this.clearSimilarContent({ preservePending: true });
 
     this.playerModal = playerModal;
@@ -486,7 +505,6 @@ export class VideoModal {
     this.modalBackdrop = playerModal.querySelector("[data-dismiss]") || null;
     this.scrollRegion = this.modalPanel || playerModal;
 
-    this.teardownSimilarContentMediaQuery();
     const nextVideoTagsRoot = playerModal.querySelector("#videoTags") || null;
     if (this.videoTagsRoot && this.videoTagsRoot !== nextVideoTagsRoot) {
       this.cleanupVideoTags(this.videoTagsRoot);
@@ -496,26 +514,8 @@ export class VideoModal {
       this.cleanupVideoTags(this.videoTagsRoot);
     }
 
-    const similarHeading =
-      playerModal.querySelector("#playerModalSimilarContentHeading") || null;
-    const similarList =
-      playerModal.querySelector("#playerModalSimilarContentList") || null;
-    const similarSection =
-      similarList?.closest(
-        "[aria-labelledby='playerModalSimilarContentHeading']"
-      ) || similarHeading?.closest(
-        "[aria-labelledby='playerModalSimilarContentHeading']"
-      ) || null;
-    const similarContainer =
-      similarList?.closest(".watch-container") ||
-      similarHeading?.closest(".watch-container") ||
-      similarSection?.closest(".watch-container") ||
-      similarSection ||
-      null;
-
-    this.similarContentHeading = similarHeading;
-    this.similarContentList = similarList;
-    this.similarContentContainer = similarContainer;
+    const { container: similarContainer } =
+      this.similarContentController.initialize({ playerModal }) || {};
 
     const statsContainerCandidate =
       playerModal.querySelector("[data-video-stats-container]") ||
@@ -540,65 +540,12 @@ export class VideoModal {
       statsContainer: statsContainerCandidate,
     });
 
-    this.setupSimilarContentMediaQuery();
-
-    if (similarList && similarList.children.length) {
-      this.toggleSimilarContentVisibility(true);
-    } else {
-      this.toggleSimilarContentVisibility(false);
-    }
-
     const previousTags = Array.isArray(this.videoTagsData)
       ? [...this.videoTagsData]
       : [];
     this.videoTagsData = null;
 
-    this.videoStage = playerModal.querySelector(".video-modal__video") || null;
-    this.moderationOverlay =
-      this.videoStage?.querySelector("[data-moderation-overlay]") || null;
-    this.moderationBadge =
-      this.moderationOverlay?.querySelector("[data-moderation-badge='true']") || null;
-    this.moderationBadgeText =
-      this.moderationOverlay?.querySelector("[data-moderation-text]") || null;
-    if (this.moderationPrimaryButton) {
-      if (this.moderationPrimaryMode === "override") {
-        this.moderationPrimaryButton.removeEventListener(
-          "click",
-          this.handleModerationOverrideClick,
-        );
-      } else if (this.moderationPrimaryMode === "hide") {
-        this.moderationPrimaryButton.removeEventListener(
-          "click",
-          this.handleModerationHideClick,
-        );
-      }
-    }
-    this.moderationActionsContainer =
-      this.moderationOverlay?.querySelector("[data-moderation-actions]") ||
-      this.moderationBadge?.querySelector(".moderation-badge__actions") ||
-      null;
-    const overrideButton =
-      this.moderationActionsContainer?.querySelector(
-        "[data-moderation-action='override']",
-      ) || null;
-    if (overrideButton) {
-      overrideButton.addEventListener(
-        "click",
-        this.handleModerationOverrideClick,
-      );
-      this.moderationPrimaryButton = overrideButton;
-      this.moderationPrimaryMode = "override";
-    } else {
-      this.moderationPrimaryButton = null;
-      this.moderationPrimaryMode = "";
-    }
-    if (this.moderationBlockButton) {
-      this.moderationBlockButton.removeEventListener(
-        "click",
-        this.handleModerationBlockClick,
-      );
-    }
-    this.moderationBlockButton = null;
+    this.moderationController.initialize({ playerModal });
 
     this.modalVideo = playerModal.querySelector("#modalVideo") || null;
     this.modalStatus = playerModal.querySelector("#modalStatus") || null;
@@ -635,22 +582,7 @@ export class VideoModal {
     this.shareBtn = playerModal.querySelector("#shareBtn") || null;
     this.modalZapBtn = playerModal.querySelector("#modalZapBtn") || null;
     this.modalMoreBtn = playerModal.querySelector("#modalMoreBtn") || null;
-    this.reactionButtons["+"] =
-      playerModal.querySelector("#modalLikeBtn") || null;
-    this.reactionButtons["-"] =
-      playerModal.querySelector("#modalDislikeBtn") || null;
-    this.reactionMeter =
-      playerModal.querySelector("[data-reaction-meter]") || null;
-    this.reactionMeterFill =
-      playerModal.querySelector("[data-reaction-meter-fill]") || null;
-    this.reactionMeterLabel =
-      playerModal.querySelector("[data-reaction-meter-label]") || null;
-    this.reactionMeterAssistive =
-      playerModal.querySelector("[data-reaction-meter-sr]") || null;
-    this.reactionCountLabels["+"] =
-      playerModal.querySelector("[data-reaction-like-count]") || null;
-    this.reactionCountLabels["-"] =
-      playerModal.querySelector("[data-reaction-dislike-count]") || null;
+    this.reactionsController.initialize({ playerModal });
 
     this.renderVideoTags(previousTags);
 
@@ -688,90 +620,7 @@ export class VideoModal {
 
     this.refreshActiveVideoModeration({ video: this.activeVideo });
 
-    this.detachCommentEventHandlers();
-
-    const commentsRoot =
-      playerModal.querySelector("[data-comments-root]") || null;
-    this.commentsRoot = commentsRoot;
-    this.commentsContainer = commentsRoot;
-    this.commentsCountLabel =
-      commentsRoot?.querySelector("[data-comments-count]") || null;
-    this.commentsEmptyState =
-      commentsRoot?.querySelector("[data-comments-empty]") || null;
-    this.commentsList =
-      commentsRoot?.querySelector("[data-comments-list]") || null;
-    this.commentsLoadMoreButton =
-      commentsRoot?.querySelector("[data-comments-load-more]") || null;
-    this.commentsDisabledPlaceholder =
-      playerModal.querySelector("[data-comments-disabled-placeholder]") ||
-      commentsRoot?.querySelector("[data-comments-disabled]") ||
-      null;
-    this.commentsComposer =
-      commentsRoot?.querySelector("[data-comments-composer]") || null;
-    this.commentsInput =
-      this.commentsComposer?.querySelector("[data-comments-input]") || null;
-    this.commentsSubmitButton =
-      this.commentsComposer?.querySelector("[data-comments-submit]") || null;
-    this.commentsStatusMessage =
-      this.commentsComposer?.querySelector("[data-comments-status]") ||
-      commentsRoot?.querySelector("[data-comments-status]") ||
-      null;
-    this.commentsCharCount =
-      this.commentsComposer?.querySelector("[data-comments-char-count]") ||
-      null;
-    this.commentComposerHint =
-      this.commentsComposer?.querySelector("#commentComposerHelp") ||
-      this.commentsComposer?.querySelector(".comment-composer__hint") ||
-      this.commentComposerHint ||
-      null;
-
-    if (this.commentComposerHint) {
-      const hintText = this.commentComposerHint.textContent || "";
-      if (hintText) {
-        this.commentComposerDefaultHint = hintText;
-      }
-    }
-    if (this.commentsCharCount) {
-      const countText = this.commentsCharCount.textContent || "";
-      if (countText) {
-        this.commentComposerDefaultCountText = countText;
-      }
-    }
-    if (this.commentsStatusMessage) {
-      const statusText = this.commentsStatusMessage.textContent || "";
-      if (statusText) {
-        this.commentStatusDefaultText = statusText;
-      }
-    }
-    if (this.commentsInput) {
-      const parsedMax = Number(this.commentsInput.maxLength);
-      if (Number.isFinite(parsedMax) && parsedMax > 0) {
-        this.commentComposerMaxLength = parsedMax;
-      }
-    }
-
-    if (this.commentsDisabledPlaceholder) {
-      const disabledText = this.commentsDisabledPlaceholder.textContent || "";
-      if (disabledText) {
-        this.commentsDisabledPlaceholderDefaultText = disabledText;
-      }
-      this.commentsDisabledPlaceholder.setAttribute("hidden", "");
-    }
-    if (this.commentsComposer) {
-      this.commentsComposer.removeAttribute("hidden");
-    }
-
-    this.clearComments();
-    this.resetCommentComposer();
-    this.attachCommentEventHandlers();
-
-    Object.values(this.reactionButtons).forEach((button) => {
-      if (button) {
-        button.addEventListener("click", this.handleReactionClick);
-      }
-    });
-    this.syncReactionButtons();
-    this.updateReactionMeterDisplay();
+    this.commentsController.initialize({ playerModal });
 
     const closeButton = playerModal.querySelector("#closeModal");
     if (closeButton) {
@@ -1773,80 +1622,25 @@ export class VideoModal {
   }
 
   resolveCommentAvatarAsset(pubkey, sanitizedPicture) {
-    const normalizedPubkey = this.normalizeCommentAvatarKey(pubkey);
-    const normalizedSource =
-      typeof sanitizedPicture === "string" && sanitizedPicture
-        ? sanitizedPicture
-        : "";
-
-    if (normalizedSource && this.commentAvatarFailures.has(normalizedSource)) {
-      return { url: this.DEFAULT_PROFILE_AVATAR, source: "" };
-    }
-
-    if (normalizedPubkey && this.commentAvatarCache.has(normalizedPubkey)) {
-      const cached = this.commentAvatarCache.get(normalizedPubkey);
-      if (cached) {
-        const cachedSource =
-          typeof cached.source === "string" ? cached.source : "";
-        const cachedUrl =
-          typeof cached.url === "string" && cached.url
-            ? cached.url
-            : this.DEFAULT_PROFILE_AVATAR;
-
-        if (!normalizedSource) {
-          return { url: cachedUrl, source: cachedSource };
-        }
-
-        if (cachedSource === normalizedSource) {
-          return { url: cachedUrl, source: cachedSource };
-        }
-      }
-    }
-
-    const resolvedUrl = normalizedSource || this.DEFAULT_PROFILE_AVATAR;
-    if (normalizedPubkey) {
-      this.commentAvatarCache.set(normalizedPubkey, {
-        url: resolvedUrl,
-        source: normalizedSource,
-      });
-    }
-
-    return { url: resolvedUrl, source: normalizedSource };
+    return resolveCommentAvatarAssetUtil({
+      cache: this.commentAvatarCache,
+      failures: this.commentAvatarFailures,
+      defaultAvatar: this.DEFAULT_PROFILE_AVATAR,
+      pubkey,
+      sanitizedPicture,
+    });
   }
 
   normalizeCommentAvatarKey(value) {
-    if (typeof value !== "string") {
-      return "";
-    }
-    const trimmed = value.trim();
-    if (!trimmed) {
-      return "";
-    }
-    return trimmed.toLowerCase();
+    return normalizeCommentAvatarKeyUtil(value);
   }
 
   registerCommentAvatarFailure(sourceUrl) {
-    if (typeof sourceUrl !== "string") {
-      return;
-    }
-    const trimmed = sourceUrl.trim();
-    if (!trimmed || trimmed === this.DEFAULT_PROFILE_AVATAR) {
-      return;
-    }
-
-    if (this.commentAvatarFailures.has(trimmed)) {
-      return;
-    }
-
-    this.commentAvatarFailures.add(trimmed);
-
-    this.commentAvatarCache.forEach((entry, key) => {
-      if (entry && entry.source === trimmed) {
-        this.commentAvatarCache.set(key, {
-          url: this.DEFAULT_PROFILE_AVATAR,
-          source: "",
-        });
-      }
+    registerCommentAvatarFailureUtil({
+      cache: this.commentAvatarCache,
+      failures: this.commentAvatarFailures,
+      defaultAvatar: this.DEFAULT_PROFILE_AVATAR,
+      sourceUrl,
     });
   }
 
@@ -2136,8 +1930,10 @@ export class VideoModal {
 
   destroy() {
     this.close();
-    this.detachCommentEventHandlers();
-    this.removeCommentRetryButton();
+    this.commentsController.destroy();
+    this.reactionsController.destroy();
+    this.similarContentController.destroy();
+    this.moderationController.destroy();
     this.invokeCommentTeardown();
 
     if (this.document) {
