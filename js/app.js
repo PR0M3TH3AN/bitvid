@@ -61,7 +61,10 @@ import WatchHistoryController from "./ui/watchHistoryController.js";
 import WatchHistoryTelemetry from "./services/watchHistoryTelemetry.js";
 import { getSidebarLoadingMarkup } from "./sidebarLoading.js";
 import { subscriptions } from "./subscriptions.js";
-import { refreshActiveChannelVideoGrid } from "./channelProfile.js";
+import {
+  refreshActiveChannelVideoGrid,
+  clearChannelVideoCardRegistry,
+} from "./channelProfile.js";
 import { isWatchHistoryDebugEnabled } from "./watchHistoryDebug.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import createPopover from "./ui/overlay/popoverEngine.js";
@@ -1486,6 +1489,7 @@ class Application {
   }
 
   prepareForViewLoad() {
+    clearChannelVideoCardRegistry();
     if (this.videoListView) {
       this.videoListView.destroy();
     }

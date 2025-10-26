@@ -82,6 +82,12 @@ const channelModerationBadgeState = {
   app: null,
 };
 
+const channelVideoCardsById = new Map();
+
+export function clearChannelVideoCardRegistry() {
+  channelVideoCardsById.clear();
+}
+
 let currentChannelHex = null;
 let currentChannelNpub = null;
 let currentChannelLightningAddress = "";
@@ -828,6 +834,64 @@ function handleTrustedMuteSignal() {
   updateChannelModerationVisuals({ pubkey: currentChannelHex });
 }
 
+function refreshChannelVideoCardModeration(
+  videoId,
+  { app = getApp(), fallbackVideo = null, decoratedVideo = null } = {},
+) {
+  if (typeof videoId !== "string" || !videoId) {
+    return false;
+  }
+
+  const resolvedApp = app || getApp();
+  const sourceMap =
+    resolvedApp?.videosMap instanceof Map ? resolvedApp.videosMap : null;
+  const card = channelVideoCardsById.get(videoId) || null;
+
+  let nextVideo =
+    decoratedVideo && typeof decoratedVideo === "object"
+      ? decoratedVideo
+      : null;
+
+  if (!nextVideo) {
+    const baseVideo =
+      (sourceMap && sourceMap.get(videoId)) ||
+      (fallbackVideo && typeof fallbackVideo === "object"
+        ? fallbackVideo
+        : null) ||
+      (card && typeof card.video === "object" ? card.video : null);
+
+    if (!baseVideo) {
+      return false;
+    }
+
+    nextVideo = decorateChannelVideo(baseVideo, resolvedApp) || baseVideo;
+  }
+
+  if (sourceMap && nextVideo) {
+    sourceMap.set(videoId, nextVideo);
+  }
+
+  if (!card || !nextVideo) {
+    return Boolean(nextVideo);
+  }
+
+  card.video = nextVideo;
+
+  if (typeof card.refreshModerationUi === "function") {
+    try {
+      card.refreshModerationUi();
+    } catch (error) {
+      devLogger.warn(
+        `[ChannelProfile] Failed to refresh moderation UI for video ${videoId}`,
+        error,
+      );
+    }
+  }
+
+  channelVideoCardsById.set(videoId, card);
+  return true;
+}
+
 function handleModerationSummarySignal(detail = {}) {
   if (!detail || typeof detail !== "object") {
     return;
@@ -854,7 +918,12 @@ function handleModerationSummarySignal(detail = {}) {
     return;
   }
 
-  decorateChannelVideo(video, app);
+  const decoratedVideo = decorateChannelVideo(video, app) || video;
+  refreshChannelVideoCardModeration(eventId, {
+    app,
+    fallbackVideo: decoratedVideo,
+    decoratedVideo,
+  });
   updateChannelModerationVisuals({
     pubkey: channelPubkey,
     app,
@@ -874,11 +943,22 @@ function handleVideoModerationEvent(event) {
     return;
   }
 
-  const app = getApp();
-  decorateChannelVideo(video, app);
-  if (app?.videosMap instanceof Map && typeof video.id === "string") {
-    app.videosMap.set(video.id, video);
+  const videoId = typeof video.id === "string" ? video.id : "";
+  if (!videoId) {
+    return;
   }
+
+  const app = getApp();
+  const decoratedVideo = decorateChannelVideo(video, app) || video;
+  if (app?.videosMap instanceof Map) {
+    app.videosMap.set(videoId, decoratedVideo);
+  }
+
+  refreshChannelVideoCardModeration(videoId, {
+    app,
+    fallbackVideo: decoratedVideo,
+    decoratedVideo,
+  });
   updateChannelModerationVisuals({
     pubkey: channelPubkey,
     app,
@@ -3939,9 +4019,18 @@ export async function renderChannelVideosFromList({
   loadToken,
   allowEmptyMessage = true
 } = {}) {
-  if (!container || loadToken !== currentVideoLoadToken) {
+  if (!container) {
+    if (loadToken === currentVideoLoadToken) {
+      clearChannelVideoCardRegistry();
+    }
     return false;
   }
+
+  if (loadToken !== currentVideoLoadToken) {
+    return false;
+  }
+
+  clearChannelVideoCardRegistry();
 
   if (!Array.isArray(videos) || videos.length === 0) {
     if (allowEmptyMessage) {
@@ -4193,6 +4282,8 @@ export async function renderChannelVideosFromList({
             : new Date(ts * 1000).toLocaleString()
       }
     });
+
+    channelVideoCardsById.set(video.id, videoCard);
 
     videoCard.onPlay = ({ event: domEvent, video: cardVideo }) => {
       const trigger = domEvent?.currentTarget || domEvent?.target;
