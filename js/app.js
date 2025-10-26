@@ -5628,6 +5628,24 @@ class Application {
     this.applyAuthenticatedUiState();
     this.applyCommentComposerAuthState();
 
+    const rawProviderId =
+      typeof detail?.providerId === "string" ? detail.providerId.trim() : "";
+    const rawAuthType =
+      typeof detail?.authType === "string" ? detail.authType.trim() : "";
+    const normalizedProvider =
+      (rawProviderId || rawAuthType).toLowerCase() || "";
+
+    if (normalizedProvider === "nsec" || normalizedProvider === "nip46") {
+      const providerLabel =
+        normalizedProvider === "nsec"
+          ? "Direct nsec or seed"
+          : "NIP-46 remote signer";
+      this.showStatus(
+        `${providerLabel} logins are still in development and may not work well yet. We recommend using a NIP-07 browser extension for the most reliable experience.`,
+        { showSpinner: false, autoHideMs: 15000 },
+      );
+    }
+
     const loginContext = {
       pubkey: detail?.pubkey || this.pubkey,
       previousPubkey: detail?.previousPubkey,
