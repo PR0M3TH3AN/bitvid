@@ -649,6 +649,7 @@ class Application {
           nostrClient,
           subscriptions,
           accessControl,
+          moderation: moderationService,
           getCurrentUserNpub: () => this.getCurrentUserNpub(),
           nwcSettings: this.nwcSettingsService,
           moderationSettings: {

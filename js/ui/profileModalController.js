@@ -283,6 +283,13 @@ const SERVICE_CONTRACT = [
       "Subscriptions manager used by the profile modal to inspect or refresh the viewer's channel subscriptions.",
   },
   {
+    key: "moderation",
+    type: "object",
+    optional: true,
+    description:
+      "Moderation service exposing the viewer's Nostr contacts and trust graph metadata.",
+  },
+  {
     key: "accessControl",
     type: "object",
     description:
@@ -865,6 +872,32 @@ export class ProfileModalController {
       typeof subscriptionsServiceCandidate === "object"
         ? subscriptionsServiceCandidate
         : null;
+
+    const moderationServiceCandidate = this.services.moderation;
+    this.moderationService =
+      moderationServiceCandidate &&
+      typeof moderationServiceCandidate === "object"
+        ? moderationServiceCandidate
+        : null;
+    this.unsubscribeModerationContacts = null;
+    if (
+      this.moderationService &&
+      typeof this.moderationService.on === "function"
+    ) {
+      try {
+        this.unsubscribeModerationContacts = this.moderationService.on(
+          "contacts",
+          () => {
+            void this.populateFriendsList();
+          },
+        );
+      } catch (error) {
+        devLogger.warn(
+          "[profileModal] Failed to subscribe to moderation contacts updates:",
+          error,
+        );
+      }
+    }
 
     this.hashtagPreferencesService = this.services.hashtagPreferences;
     this.describeHashtagPreferencesErrorService =
@@ -3692,42 +3725,82 @@ export class ProfileModalController {
 
     try {
       let sourceEntries = [];
+      let usedModerationService = false;
 
       if (Array.isArray(friends) && friends.length) {
         sourceEntries = friends;
       } else {
-        const service = this.subscriptionsService;
+        const moderationService = this.moderationService;
 
-        if (!service) {
-          this.clearFriendsList();
-          return;
-        }
+        if (moderationService) {
+          let contacts = [];
 
-        if (typeof service.ensureLoaded === "function") {
-          try {
-            await service.ensureLoaded(activeHex);
-          } catch (error) {
-            devLogger.warn(
-              "[profileModal] Failed to ensure subscriptions before populating friends list:",
-              error,
-            );
+          if (
+            typeof moderationService.ensureViewerContactsLoaded === "function"
+          ) {
+            try {
+              contacts =
+                (await moderationService.ensureViewerContactsLoaded(activeHex)) ||
+                [];
+            } catch (error) {
+              devLogger.warn(
+                "[profileModal] Failed to ensure viewer contacts before populating friends list:",
+                error,
+              );
+              contacts = [];
+            }
+          }
+
+          if (!Array.isArray(contacts) || !contacts) {
+            contacts = [];
+          }
+
+          if (!contacts.length) {
+            if (moderationService.viewerContacts instanceof Set) {
+              contacts = Array.from(moderationService.viewerContacts);
+            }
+          }
+
+          if (Array.isArray(contacts)) {
+            sourceEntries = contacts;
+            usedModerationService = true;
           }
         }
 
-        if (typeof service.getSubscribedAuthors === "function") {
-          try {
-            sourceEntries = service.getSubscribedAuthors() || [];
-          } catch (error) {
-            devLogger.warn(
-              "[profileModal] Failed to resolve subscriptions for friends list:",
-              error,
-            );
-            sourceEntries = [];
+        if (!usedModerationService) {
+          const service = this.subscriptionsService;
+
+          if (!service) {
+            this.clearFriendsList();
+            return;
           }
-        } else if (service.subscribedPubkeys instanceof Set) {
-          sourceEntries = Array.from(service.subscribedPubkeys);
-        } else if (Array.isArray(service.subscribedPubkeys)) {
-          sourceEntries = service.subscribedPubkeys.slice();
+
+          if (typeof service.ensureLoaded === "function") {
+            try {
+              await service.ensureLoaded(activeHex);
+            } catch (error) {
+              devLogger.warn(
+                "[profileModal] Failed to ensure subscriptions before populating friends list:",
+                error,
+              );
+            }
+          }
+
+          if (typeof service.getSubscribedAuthors === "function") {
+            try {
+              sourceEntries = service.getSubscribedAuthors() || [];
+            } catch (error) {
+              devLogger.warn(
+                "[profileModal] Failed to resolve subscriptions for friends list:",
+                error,
+              );
+              sourceEntries = [];
+            }
+          } else if (service.subscribedPubkeys instanceof Set) {
+            sourceEntries = Array.from(service.subscribedPubkeys);
+          } else if (Array.isArray(service.subscribedPubkeys)) {
+            sourceEntries = service.subscribedPubkeys.slice();
+          }
         }
       }
 
@@ -3873,7 +3946,7 @@ export class ProfileModalController {
           actions.appendChild(copyButton);
         }
 
-        if (hex) {
+        if (hex && !usedModerationService) {
           const removeButton = this.createRemoveButton({
             label: "Remove",
             onRemove: () => this.handleRemoveFriend(hex),
@@ -3922,6 +3995,20 @@ export class ProfileModalController {
   }
 
   async handleRemoveFriend(candidate) {
+    if (
+      this.moderationService &&
+      (!this.subscriptionsService ||
+        typeof this.subscriptionsService.removeChannel !== "function")
+    ) {
+      this.showError(
+        "Friends are synced with your Nostr follows. Update your follows in your Nostr client to make changes.",
+      );
+      return {
+        success: false,
+        reason: "nostr-friends-managed-externally",
+      };
+    }
+
     const service = this.subscriptionsService;
     if (!service || typeof service.removeChannel !== "function") {
       this.showError("Friends list is unavailable right now.");
