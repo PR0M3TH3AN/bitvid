@@ -2057,6 +2057,62 @@ export class NostrClient {
     };
   }
 
+  async ensureActiveSignerForPubkey(pubkey) {
+    const normalizedPubkey =
+      typeof pubkey === "string" && pubkey.trim()
+        ? pubkey.trim().toLowerCase()
+        : "";
+
+    const existingSigner = resolveActiveSigner(normalizedPubkey);
+    if (existingSigner && typeof existingSigner.signEvent === "function") {
+      return existingSigner;
+    }
+
+    const extension =
+      typeof window !== "undefined" && window && window.nostr ? window.nostr : null;
+    if (!extension) {
+      return existingSigner;
+    }
+
+    let extensionPubkey = normalizedPubkey;
+
+    if (typeof extension.getPublicKey === "function") {
+      try {
+        const retrieved = await runNip07WithRetry(
+          () => extension.getPublicKey(),
+          { label: "extension.getPublicKey" },
+        );
+        if (typeof retrieved === "string" && retrieved.trim()) {
+          extensionPubkey = retrieved.trim().toLowerCase();
+        }
+      } catch (error) {
+        devLogger.warn(
+          "[nostr] Failed to hydrate active signer from extension pubkey:",
+          error,
+        );
+        return existingSigner;
+      }
+    }
+
+    if (normalizedPubkey && extensionPubkey !== normalizedPubkey) {
+      return existingSigner;
+    }
+
+    if (typeof extension.signEvent !== "function") {
+      return existingSigner;
+    }
+
+    setActiveSigner({
+      type: "extension",
+      pubkey: extensionPubkey || normalizedPubkey,
+      signEvent: extension.signEvent.bind(extension),
+      nip04: extension.nip04,
+      nip44: extension.nip44,
+    });
+
+    return resolveActiveSigner(normalizedPubkey || extensionPubkey);
+  }
+
   applyRootCreatedAt(video) {
     if (!video || typeof video !== "object") {
       return null;
@@ -3809,6 +3865,8 @@ export class NostrClient {
     devLogger.log("Creating edited event with root ID:", oldRootId);
           devLogger.log("Event content:", event.content);
 
+    await this.ensureActiveSignerForPubkey(userPubkeyLower);
+
     const signer = resolveActiveSigner(userPubkeyLower);
     if (!signer || typeof signer.signEvent !== "function") {
       const error = new Error(
@@ -3977,6 +4035,8 @@ export class NostrClient {
       tags,
       content: JSON.stringify(contentObject),
     };
+
+    await this.ensureActiveSignerForPubkey(pubkey);
 
     const signer = resolveActiveSigner(pubkey);
     if (!signer || typeof signer.signEvent !== "function") {
@@ -4274,6 +4334,8 @@ export class NostrClient {
 
     const deleteSummaries = [];
     if (identifierRecords.length) {
+      await this.ensureActiveSignerForPubkey(pubkey);
+
       const signer = resolveActiveSigner(pubkey);
       if (!signer || typeof signer.signEvent !== "function") {
         const error = new Error(
