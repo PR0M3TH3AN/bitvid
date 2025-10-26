@@ -137,6 +137,141 @@ test("moderation stage hides videos when trusted reports exceed threshold", asyn
   assert.equal(hideWhy.hideBypass ?? null, null);
 });
 
+test("moderation stage respects runtime hide threshold changes", async () => {
+  const reporterHex = hex("4");
+  const mutedHex = hex("5");
+  const videoId = hex("6");
+
+  const service = {
+    async refreshViewerFromClient() {},
+    async setActiveEventIds() {},
+    getAdminListSnapshot() {
+      return { whitelist: new Set(), whitelistHex: new Set(), blacklist: new Set(), blacklistHex: new Set() };
+    },
+    getAccessControlStatus(identifier) {
+      return { hex: identifier, whitelisted: false, blacklisted: false };
+    },
+    getTrustedReportSummary() {
+      return null;
+    },
+    trustedReportCount() {
+      return 4;
+    },
+    getTrustedReporters() {
+      return [{ pubkey: reporterHex, latest: 1_700_000_000 }];
+    },
+    isAuthorMutedByTrusted(pubkey) {
+      return pubkey === mutedHex;
+    },
+    getTrustedMutersForAuthor(pubkey) {
+      return pubkey === mutedHex ? [reporterHex] : [];
+    },
+  };
+
+  const stage = createModerationStage({ service });
+
+  const strictContext = {
+    runtime: {
+      moderationThresholds: {
+        autoplayBlockThreshold: 1,
+        blurThreshold: 1,
+        trustedMuteHideThreshold: 1,
+        trustedSpamHideThreshold: 2,
+      },
+    },
+    addWhy() {},
+    log() {},
+  };
+
+  const relaxedContext = {
+    runtime: {
+      moderationThresholds: {
+        autoplayBlockThreshold: 10,
+        blurThreshold: 10,
+        trustedMuteHideThreshold: 10,
+        trustedSpamHideThreshold: 10,
+      },
+    },
+    addWhy() {},
+    log() {},
+  };
+
+  const hiddenItems = [{ video: { id: videoId, pubkey: mutedHex }, metadata: {} }];
+  const hiddenResult = await stage(hiddenItems, strictContext);
+
+  assert.equal(hiddenResult.length, 0);
+  assert.equal(hiddenItems[0].metadata.moderation.hidden, true);
+  assert.equal(hiddenItems[0].metadata.moderation.hideReason, "trusted-mute-hide");
+
+  const visibleItems = [{ video: { id: videoId, pubkey: mutedHex }, metadata: {} }];
+  const visibleResult = await stage(visibleItems, relaxedContext);
+
+  assert.equal(visibleResult.length, 1);
+  const moderation = visibleResult[0].metadata.moderation;
+  assert.equal(moderation.hidden, false);
+  assert.equal(moderation.hideReason ?? null, null);
+});
+
+test("moderation stage supports trusted mute hide resolver functions", async () => {
+  const muterHex = hex("7");
+  const mutedHex = hex("8");
+  const videoId = hex("9");
+
+  let muteHideSetting = Number.POSITIVE_INFINITY;
+
+  const service = {
+    async refreshViewerFromClient() {},
+    async setActiveEventIds() {},
+    getAdminListSnapshot() {
+      return { whitelist: new Set(), whitelistHex: new Set(), blacklist: new Set(), blacklistHex: new Set() };
+    },
+    getAccessControlStatus(identifier) {
+      return { hex: identifier, whitelisted: false, blacklisted: false };
+    },
+    getTrustedReportSummary() {
+      return null;
+    },
+    trustedReportCount() {
+      return 0;
+    },
+    getTrustedReporters() {
+      return [];
+    },
+    isAuthorMutedByTrusted(pubkey) {
+      return pubkey === mutedHex;
+    },
+    getTrustedMutersForAuthor(pubkey) {
+      return pubkey === mutedHex ? [muterHex] : [];
+    },
+  };
+
+  const stage = createModerationStage({
+    service,
+    trustedMuteHideThreshold: () => muteHideSetting,
+  });
+
+  const buildItem = () => ({ video: { id: videoId, pubkey: mutedHex }, metadata: {} });
+  const baseContext = { addWhy() {}, log() {} };
+
+  const relaxedItems = [buildItem()];
+  const relaxedResult = await stage(relaxedItems, baseContext);
+
+  assert.equal(relaxedResult.length, 1);
+  const relaxedModeration = relaxedResult[0].metadata.moderation;
+  assert.equal(relaxedModeration.hidden, false);
+  assert.equal(relaxedModeration.trustedMuted, true);
+
+  muteHideSetting = 1;
+
+  const strictItems = [buildItem()];
+  const strictResult = await stage(strictItems, baseContext);
+
+  assert.equal(strictResult.length, 0);
+  const strictMetadata = strictItems[0].metadata.moderation;
+  assert.equal(strictMetadata.hidden, true);
+  assert.equal(strictMetadata.hideReason, "trusted-mute-hide");
+});
+
 test("moderation stage bypasses hard hides on home feed", async () => {
   const videoId = hex("3");
 

@@ -5403,7 +5403,7 @@ class Application {
     return null;
   }
 
-  handleModerationSettingsChange({ settings } = {}) {
+  async handleModerationSettingsChange({ settings } = {}) {
     const normalized = this.normalizeModerationSettings(settings);
     this.moderationSettings = normalized;
 
@@ -5447,6 +5447,15 @@ class Application {
 
     if (this.currentVideo && typeof this.currentVideo === "object") {
       this.decorateVideoModeration(this.currentVideo);
+    }
+
+    try {
+      await this.onVideosShouldRefresh({ reason: "moderation-settings-change" });
+    } catch (error) {
+      devLogger.warn(
+        "[Application] Failed to refresh videos after moderation settings change:",
+        error,
+      );
     }
 
     return normalized;
@@ -6679,7 +6688,28 @@ class Application {
     }
 
     try {
-      const thresholds = this.getActiveModerationThresholds();
+      const app = this;
+      const resolveThresholdFromApp = (key) => ({ runtimeValue, defaultValue }) => {
+        if (
+          Number.isFinite(runtimeValue) ||
+          runtimeValue === Number.POSITIVE_INFINITY
+        ) {
+          return runtimeValue;
+        }
+
+        if (app && typeof app.getActiveModerationThresholds === "function") {
+          const active = app.getActiveModerationThresholds();
+          const candidate = active && typeof active === "object" ? active[key] : undefined;
+          if (
+            Number.isFinite(candidate) ||
+            candidate === Number.POSITIVE_INFINITY
+          ) {
+            return candidate;
+          }
+        }
+
+        return defaultValue;
+      };
       return this.feedEngine.registerFeed("recent", {
         source: createActiveNostrSource({ service: this.nostrService }),
         stages: [
@@ -6695,10 +6725,10 @@ class Application {
           }),
           createModerationStage({
             getService: () => this.nostrService.getModerationService(),
-            autoplayThreshold: thresholds.autoplayBlockThreshold,
-            blurThreshold: thresholds.blurThreshold,
-            trustedMuteHideThreshold: thresholds.trustedMuteHideThreshold,
-            trustedReportHideThreshold: thresholds.trustedSpamHideThreshold,
+            autoplayThreshold: resolveThresholdFromApp("autoplayBlockThreshold"),
+            blurThreshold: resolveThresholdFromApp("blurThreshold"),
+            trustedMuteHideThreshold: resolveThresholdFromApp("trustedMuteHideThreshold"),
+            trustedReportHideThreshold: resolveThresholdFromApp("trustedSpamHideThreshold"),
           }),
         ],
         sorter: createChronologicalSorter(),
@@ -6723,7 +6753,28 @@ class Application {
     }
 
     try {
-      const thresholds = this.getActiveModerationThresholds();
+      const app = this;
+      const resolveThresholdFromApp = (key) => ({ runtimeValue, defaultValue }) => {
+        if (
+          Number.isFinite(runtimeValue) ||
+          runtimeValue === Number.POSITIVE_INFINITY
+        ) {
+          return runtimeValue;
+        }
+
+        if (app && typeof app.getActiveModerationThresholds === "function") {
+          const active = app.getActiveModerationThresholds();
+          const candidate = active && typeof active === "object" ? active[key] : undefined;
+          if (
+            Number.isFinite(candidate) ||
+            candidate === Number.POSITIVE_INFINITY
+          ) {
+            return candidate;
+          }
+        }
+
+        return defaultValue;
+      };
       return this.feedEngine.registerFeed("subscriptions", {
         source: createSubscriptionAuthorsSource({ service: this.nostrService }),
         stages: [
@@ -6738,10 +6789,10 @@ class Application {
           }),
           createModerationStage({
             getService: () => this.nostrService.getModerationService(),
-            autoplayThreshold: thresholds.autoplayBlockThreshold,
-            blurThreshold: thresholds.blurThreshold,
-            trustedMuteHideThreshold: thresholds.trustedMuteHideThreshold,
-            trustedReportHideThreshold: thresholds.trustedSpamHideThreshold,
+            autoplayThreshold: resolveThresholdFromApp("autoplayBlockThreshold"),
+            blurThreshold: resolveThresholdFromApp("blurThreshold"),
+            trustedMuteHideThreshold: resolveThresholdFromApp("trustedMuteHideThreshold"),
+            trustedReportHideThreshold: resolveThresholdFromApp("trustedSpamHideThreshold"),
           }),
         ],
         sorter: createChronologicalSorter(),
@@ -6792,6 +6843,7 @@ class Application {
         ? this.getHashtagPreferences()
         : {};
     const { interests = [], disinterests = [] } = preferenceSource || {};
+    const moderationThresholds = this.getActiveModerationThresholds();
 
     return {
       blacklistedEventIds: blacklist,
@@ -6800,6 +6852,9 @@ class Application {
         interests: Array.isArray(interests) ? [...interests] : [],
         disinterests: Array.isArray(disinterests) ? [...disinterests] : [],
       },
+      moderationThresholds: moderationThresholds
+        ? { ...moderationThresholds }
+        : undefined,
     };
   }
 

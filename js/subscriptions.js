@@ -883,6 +883,11 @@ class SubscriptionsManager {
         ? app.getHashtagPreferences()
         : {};
 
+    const moderationThresholds =
+      typeof app?.getActiveModerationThresholds === "function"
+        ? app.getActiveModerationThresholds()
+        : null;
+
     return {
       subscriptionAuthors: normalizedAuthors,
       authors: normalizedAuthors,
@@ -897,6 +902,9 @@ class SubscriptionsManager {
           ? [...preferenceSource.disinterests]
           : [],
       },
+      moderationThresholds: moderationThresholds
+        ? { ...moderationThresholds }
+        : undefined,
     };
   }
 

@@ -24,6 +24,7 @@ bitvid is follow-centric. Your Home feed comes from people you follow (F1). Disc
 ## Runtime flow (blur, hide, override)
 - [`ModerationService`](../../js/services/moderationService.js) orchestrates ingest and scoring. Review the service for the trusted-report math and helper entry points.
 - [`createModerationStage`](../../js/feedEngine/stages.js) wires the service into the feed engine where moderation summaries decorate timeline items.
+- The moderation stage now resolves blur/autoplay/hide thresholds on every execution using `context.runtime.moderationThresholds` (when provided) or dynamic resolver functions, so feed refreshes immediately respect updated viewer settings.
 - [`bitvidApp.decorateVideoModeration`](../../js/app.js) connects stage output to the UI layer alongside feature-flag plumbing.
 - [`VideoCard.refreshModerationUi`](../../js/ui/components/VideoCard.js) applies badges, blur states, hide metadata (`data-moderation-hidden`), and the "show anyway" toggles.
 
