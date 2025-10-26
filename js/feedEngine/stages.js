@@ -768,6 +768,7 @@ export function createModerationStage({
       let trustedMuted = false;
       let trustedMuters = [];
       let trustedMuteCount = 0;
+      let viewerMuted = false;
       if (videoId) {
         try {
           if (typeof resolvedService.getTrustedReportSummary === "function") {
@@ -827,10 +828,14 @@ export function createModerationStage({
                 });
             }
           }
+          if (typeof resolvedService.isAuthorMutedByViewer === "function") {
+            viewerMuted = resolvedService.isAuthorMutedByViewer(authorHex) === true;
+          }
         } catch (error) {
-          context?.log?.(`[${stageName}] Failed to resolve trusted mute info`, error);
+          context?.log?.(`[${stageName}] Failed to resolve trusted/viewer mute info`, error);
           trustedMuted = false;
           trustedMuters = [];
+          viewerMuted = false;
         }
       }
 
@@ -850,7 +855,7 @@ export function createModerationStage({
       }
 
       const blockAutoplay =
-        trustedCount >= normalizedAutoplayThreshold || trustedMuted;
+        trustedCount >= normalizedAutoplayThreshold || trustedMuted || viewerMuted;
       const blurFromReports = trustedCount >= normalizedBlurThreshold;
       let blurThumbnail = blurFromReports;
       let blurReason = blurThumbnail ? "trusted-report" : "";
@@ -878,6 +883,7 @@ export function createModerationStage({
       metadataModeration.trustedMuted = trustedMuted;
       metadataModeration.trustedMuters = trustedMuters.slice();
       metadataModeration.trustedMuteCount = trustedMuteCount;
+      metadataModeration.viewerMuted = viewerMuted;
 
       if (!video.moderation || typeof video.moderation !== "object") {
         video.moderation = {};
@@ -900,6 +906,7 @@ export function createModerationStage({
           delete video.moderation.trustedMuteCount;
         }
       }
+      video.moderation.viewerMuted = viewerMuted;
       if (Array.isArray(trustedReporters) && trustedReporters.length) {
         video.moderation.trustedReporters = trustedReporters.slice();
       } else if (video.moderation.trustedReporters) {
@@ -980,16 +987,20 @@ export function createModerationStage({
         }
       }
 
-      if (!blurThumbnail && (trustedMuted || hideTriggered)) {
+      if (!blurThumbnail && (viewerMuted || trustedMuted || hideTriggered)) {
         blurThumbnail = true;
         if (hideTriggered) {
           blurReason = hideReason || "trusted-hide";
+        } else if (viewerMuted) {
+          blurReason = "viewer-mute";
         } else if (trustedMuted) {
           blurReason = "trusted-mute";
         }
       } else if (blurThumbnail) {
         if (hideTriggered) {
           blurReason = hideReason || "trusted-hide";
+        } else if (viewerMuted && !blurFromReports) {
+          blurReason = "viewer-mute";
         } else if (trustedMuted && !blurFromReports) {
           blurReason = "trusted-mute";
         } else if (!blurReason && blurFromReports) {
@@ -1045,6 +1056,16 @@ export function createModerationStage({
           videoId: videoId || null,
           pubkey: authorHex || authorPubkey || null,
           trustedMuteCount,
+        });
+      }
+
+      if (viewerMuted) {
+        context?.addWhy?.({
+          stage: stageName,
+          type: "moderation",
+          reason: "viewer-mute",
+          videoId: videoId || null,
+          pubkey: authorHex || authorPubkey || null,
         });
       }
 
