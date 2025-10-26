@@ -66,33 +66,35 @@
                   hidden
                 >
                   <div
-                    class="moderation-badge flex flex-wrap items-center gap-sm"
+                    class="moderation-badge"
                     data-moderation-badge="true"
                     data-variant="warning"
                     role="status"
                     aria-live="polite"
                     aria-atomic="true"
                   >
-                    <span class="moderation-badge__icon" aria-hidden="true">
-                      <svg
-                        class="moderation-badge__icon-mark"
-                        viewBox="0 0 20 20"
-                        focusable="false"
-                        aria-hidden="true"
+                    <span class="moderation-badge__label inline-flex items-center gap-xs">
+                      <span class="moderation-badge__icon" aria-hidden="true">
+                        <svg
+                          class="moderation-badge__icon-mark"
+                          viewBox="0 0 20 20"
+                          focusable="false"
+                          aria-hidden="true"
+                        >
+                          <path
+                            fill="currentColor"
+                            d="M10 18a8 8 0 100-16 8 8 0 000 16zm-.75-11.75a.75.75 0 011.5 0v4.5a.75.75 0 01-1.5 0v-4.5zm.75 8.5a1 1 0 100-2 1 1 0 000 2z"
+                            fill-rule="evenodd"
+                            clip-rule="evenodd"
+                          />
+                        </svg>
+                      </span>
+                      <span
+                        class="moderation-badge__text"
+                        data-moderation-text
                       >
-                        <path
-                          fill="currentColor"
-                          d="M10 18a8 8 0 100-16 8 8 0 000 16zm-.75-11.75a.75.75 0 011.5 0v4.5a.75.75 0 01-1.5 0v-4.5zm.75 8.5a1 1 0 100-2 1 1 0 000 2z"
-                          fill-rule="evenodd"
-                          clip-rule="evenodd"
-                        />
-                      </svg>
-                    </span>
-                    <span
-                      class="moderation-badge__text whitespace-nowrap"
-                      data-moderation-text
-                    >
-                      Content reported by trusted contacts
+                        Content reported by trusted contacts
+                      </span>
                     </span>
                     <button
                       type="button"

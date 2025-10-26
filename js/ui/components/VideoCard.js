@@ -123,6 +123,7 @@ export class VideoCard {
     };
 
     this.moderationBadgeEl = null;
+    this.moderationBadgeLabelEl = null;
     this.moderationBadgeTextEl = null;
     this.moderationBadgeIconWrapper = null;
     this.moderationBadgeIconSvg = null;
@@ -130,6 +131,7 @@ export class VideoCard {
     this.moderationHideButton = null;
     this.moderationBadgeId = "";
     this.badgesContainerEl = null;
+    this.moderationBadgeSlot = null;
     this.hiddenSummaryEl = null;
     this.boundShowAnywayHandler = (event) => this.handleShowAnywayClick(event);
     this.boundModerationHideHandler = (event) => this.handleModerationHideClick(event);
@@ -470,7 +472,15 @@ export class VideoCard {
       content.appendChild(warning);
     }
 
+    const moderationBadgeSlot = this.createElement("div", {
+      classNames: ["video-card__moderation-slot", "px-md", "pt-md"],
+    });
+    moderationBadgeSlot.hidden = true;
+    moderationBadgeSlot.setAttribute("aria-hidden", "true");
+    this.moderationBadgeSlot = moderationBadgeSlot;
+
     root.appendChild(anchor);
+    root.appendChild(moderationBadgeSlot);
     root.appendChild(content);
 
     this.applyPlaybackDatasets();
@@ -945,11 +955,6 @@ export class VideoCard {
       pieces.push(badge);
     }
 
-    const moderationBadge = this.buildModerationBadge();
-    if (moderationBadge) {
-      pieces.push(moderationBadge);
-    }
-
     if (!pieces.length) {
       return null;
     }
@@ -1209,6 +1214,7 @@ export class VideoCard {
   buildModerationBadge(context = this.getModerationContext()) {
     if (!context.shouldShow) {
       this.moderationBadgeEl = null;
+      this.moderationBadgeLabelEl = null;
       this.moderationBadgeTextEl = null;
       this.moderationBadgeIconWrapper = null;
       this.moderationBadgeIconSvg = null;
@@ -1230,7 +1236,7 @@ export class VideoCard {
     }
 
     const badge = this.createElement("div", {
-      classNames: ["moderation-badge", "flex", "flex-wrap", "items-center", "gap-sm"],
+      classNames: ["moderation-badge"],
     });
     badge.dataset.variant = context.overrideActive ? "neutral" : "warning";
     badge.dataset.moderationBadge = "true";
@@ -1254,16 +1260,26 @@ export class VideoCard {
     badge.setAttribute("aria-live", "polite");
     badge.setAttribute("aria-atomic", "true");
 
+    const label = this.createElement("span", {
+      classNames: [
+        "moderation-badge__label",
+        "inline-flex",
+        "items-center",
+        "gap-xs",
+      ],
+    });
+
     const icon = this.createModerationBadgeIcon(state);
     if (icon) {
-      badge.appendChild(icon);
+      label.appendChild(icon);
     }
 
     const text = this.createElement("span", {
-      classNames: ["moderation-badge__text", "whitespace-nowrap"],
+      classNames: ["moderation-badge__text"],
       textContent: buildModerationBadgeText(context, { variant: "card" }),
     });
-    badge.appendChild(text);
+    label.appendChild(text);
+    badge.appendChild(label);
 
     const muteNames = Array.isArray(context.trustedMuteDisplayNames)
       ? context.trustedMuteDisplayNames
@@ -1304,6 +1320,7 @@ export class VideoCard {
     }
 
     this.moderationBadgeEl = badge;
+    this.moderationBadgeLabelEl = label;
     this.moderationBadgeTextEl = text;
 
     if (!context.overrideActive && context.allowOverride) {
@@ -1337,9 +1354,30 @@ export class VideoCard {
 
   updateModerationBadge(context = this.getModerationContext()) {
     const badge = this.moderationBadgeEl;
+    let slot = this.moderationBadgeSlot;
     const hiddenActive = context.activeHidden && !context.overrideActive;
 
+    if (!slot && this.root) {
+      slot = this.createElement("div", {
+        classNames: ["video-card__moderation-slot", "px-md", "pt-md"],
+      });
+      slot.hidden = true;
+      slot.setAttribute("aria-hidden", "true");
+      this.moderationBadgeSlot = slot;
+      if (this.anchorEl && this.anchorEl.parentElement === this.root) {
+        this.root.insertBefore(slot, this.anchorEl.nextSibling);
+      } else {
+        this.root.appendChild(slot);
+      }
+    }
+
     if (badge) {
+      if (!this.moderationBadgeLabelEl) {
+        const label = badge.querySelector(".moderation-badge__label");
+        if (label) {
+          this.moderationBadgeLabelEl = label;
+        }
+      }
       if (!this.moderationBadgeIconWrapper) {
         const iconWrapper = badge.querySelector(".moderation-badge__icon");
         if (iconWrapper) {
@@ -1352,11 +1390,21 @@ export class VideoCard {
           this.moderationBadgeIconSvg = iconSvg;
         }
       }
+      if (!this.moderationBadgeTextEl) {
+        const textEl = badge.querySelector(".moderation-badge__text");
+        if (textEl) {
+          this.moderationBadgeTextEl = textEl;
+        }
+      }
     }
 
     if (!context.shouldShow) {
       if (badge && badge.parentElement) {
         badge.parentElement.removeChild(badge);
+      }
+      if (slot) {
+        slot.hidden = true;
+        slot.setAttribute("aria-hidden", "true");
       }
       if (this.moderationActionButton) {
         this.moderationActionButton.removeEventListener(
@@ -1372,6 +1420,7 @@ export class VideoCard {
         this.moderationHideButton = null;
       }
       this.moderationBadgeEl = null;
+      this.moderationBadgeLabelEl = null;
       this.moderationBadgeTextEl = null;
       this.moderationBadgeIconWrapper = null;
       this.moderationBadgeIconSvg = null;
@@ -1385,33 +1434,10 @@ export class VideoCard {
 
     if (!badge) {
       const nextBadge = this.buildModerationBadge(context);
-      if (nextBadge) {
-        if (hiddenActive) {
-          const container = this.ensureHiddenSummaryContainer();
-          if (container) {
-            container.appendChild(nextBadge);
-          }
-        } else {
-          if (!this.badgesContainerEl) {
-            this.badgesContainerEl = this.createElement("div", {
-              classNames: ["flex", "flex-wrap", "items-center", "gap-sm"],
-            });
-            if (this.contentEl) {
-              if (
-                this.discussionCountEl &&
-                this.discussionCountEl.parentElement === this.contentEl
-              ) {
-                this.contentEl.insertBefore(
-                  this.badgesContainerEl,
-                  this.discussionCountEl,
-                );
-              } else {
-                this.contentEl.appendChild(this.badgesContainerEl);
-              }
-            }
-          }
-          this.badgesContainerEl.appendChild(nextBadge);
-        }
+      if (nextBadge && slot) {
+        slot.appendChild(nextBadge);
+        slot.hidden = false;
+        slot.removeAttribute("aria-hidden");
       }
       this.updateModerationAria();
       return;
@@ -1426,6 +1452,7 @@ export class VideoCard {
           ? "trusted-mute"
           : "blocked";
     badge.dataset.moderationState = state;
+    this.updateModerationBadgeIcon(state);
     if (hiddenActive && context.effectiveHideReason) {
       badge.dataset.moderationHideReason = context.effectiveHideReason;
     } else if (badge.dataset.moderationHideReason) {
@@ -1475,30 +1502,14 @@ export class VideoCard {
       badge.setAttribute("aria-label", `${textContent}.`);
     }
 
-    if (hiddenActive) {
-      const container = this.ensureHiddenSummaryContainer();
-      if (container && badge.parentElement !== container) {
+    if (slot) {
+      slot.hidden = false;
+      slot.removeAttribute("aria-hidden");
+      if (badge.parentElement !== slot) {
         if (badge.parentElement) {
           badge.parentElement.removeChild(badge);
         }
-        container.appendChild(badge);
-      }
-    } else if (this.badgesContainerEl) {
-      if (!this.badgesContainerEl.parentElement && this.contentEl) {
-        if (
-          this.discussionCountEl &&
-          this.discussionCountEl.parentElement === this.contentEl
-        ) {
-          this.contentEl.insertBefore(this.badgesContainerEl, this.discussionCountEl);
-        } else {
-          this.contentEl.appendChild(this.badgesContainerEl);
-        }
-      }
-      if (badge.parentElement !== this.badgesContainerEl) {
-        if (badge.parentElement) {
-          badge.parentElement.removeChild(badge);
-        }
-        this.badgesContainerEl.appendChild(badge);
+        slot.appendChild(badge);
       }
     }
 
@@ -1579,6 +1590,7 @@ export class VideoCard {
   updateHiddenState(context = this.getModerationContext()) {
     const hiddenActive = context.activeHidden && !context.overrideActive;
     const container = this.hiddenSummaryEl;
+    const badgeSlot = this.moderationBadgeSlot;
 
     if (hiddenActive) {
       if (this.anchorEl) {
@@ -1588,6 +1600,11 @@ export class VideoCard {
       if (this.contentEl) {
         this.contentEl.setAttribute("hidden", "");
         this.contentEl.setAttribute("aria-hidden", "true");
+      }
+
+      if (badgeSlot && this.moderationBadgeEl) {
+        badgeSlot.hidden = false;
+        badgeSlot.removeAttribute("aria-hidden");
       }
 
       const summaryContainer = this.ensureHiddenSummaryContainer();
@@ -1607,6 +1624,10 @@ export class VideoCard {
       if (this.contentEl) {
         this.contentEl.removeAttribute("hidden");
         this.contentEl.removeAttribute("aria-hidden");
+      }
+      if (badgeSlot && !this.moderationBadgeEl) {
+        badgeSlot.hidden = true;
+        badgeSlot.setAttribute("aria-hidden", "true");
       }
       if (container) {
         container.hidden = true;

@@ -64,6 +64,7 @@ let currentChannelModerationSourceVideo = null;
 const channelModerationBadgeState = {
   container: null,
   badgeEl: null,
+  labelEl: null,
   textEl: null,
   iconSvg: null,
   iconWrapper: null,
@@ -316,14 +317,18 @@ function ensureChannelModerationBadgeResources(doc) {
 
   if (!channelModerationBadgeState.badgeEl) {
     const badge = doc.createElement("div");
-    badge.className = "moderation-badge flex flex-wrap items-center gap-sm";
+    badge.className = "moderation-badge";
     badge.dataset.moderationBadge = "true";
+    const label = doc.createElement("span");
+    label.className = "moderation-badge__label inline-flex items-center gap-xs";
     const { wrapper, svg } = createChannelModerationBadgeIcon(doc, "blocked");
-    badge.appendChild(wrapper);
+    label.appendChild(wrapper);
     const text = doc.createElement("span");
-    text.className = "moderation-badge__text whitespace-nowrap";
-    badge.appendChild(text);
+    text.className = "moderation-badge__text";
+    label.appendChild(text);
+    badge.appendChild(label);
     channelModerationBadgeState.badgeEl = badge;
+    channelModerationBadgeState.labelEl = label;
     channelModerationBadgeState.textEl = text;
     channelModerationBadgeState.iconWrapper = wrapper;
     channelModerationBadgeState.iconSvg = svg;
@@ -368,6 +373,7 @@ function teardownChannelModerationBadge() {
   if (ref.badgeEl && ref.badgeEl.parentNode) {
     ref.badgeEl.parentNode.removeChild(ref.badgeEl);
   }
+  ref.labelEl = null;
   if (ref.container) {
     ref.container.removeAttribute("data-moderation-active");
   }

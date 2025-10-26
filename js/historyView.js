@@ -569,14 +569,18 @@ function createHistoryCardBadge(ref, context) {
     return null;
   }
   const badge = doc.createElement("div");
-  badge.className = "moderation-badge flex flex-wrap items-center gap-sm";
+  badge.className = "moderation-badge";
   badge.dataset.moderationBadge = "true";
+  const label = doc.createElement("span");
+  label.className = "moderation-badge__label inline-flex items-center gap-xs";
   const { wrapper, svg } = createHistoryCardBadgeIcon(doc, getHistoryCardModerationState(context));
-  badge.appendChild(wrapper);
+  label.appendChild(wrapper);
   const text = doc.createElement("span");
-  text.className = "moderation-badge__text whitespace-nowrap";
-  badge.appendChild(text);
+  text.className = "moderation-badge__text";
+  label.appendChild(text);
+  badge.appendChild(label);
   ref.badgeEl = badge;
+  ref.badgeLabelEl = label;
   ref.badgeTextEl = text;
   ref.badgeIconSvg = svg;
   ref.badgeIconWrapper = wrapper;
@@ -620,6 +624,7 @@ function updateHistoryCardBadge(ref, context) {
       ref.badgeEl.parentNode.removeChild(ref.badgeEl);
     }
     ref.badgeEl = null;
+    ref.badgeLabelEl = null;
     ref.badgeTextEl = null;
     ref.badgeIconSvg = null;
     ref.badgeIconWrapper = null;
@@ -1218,6 +1223,7 @@ export function buildHistoryCard({ item, video, profile, metadataPreference }) {
     video: video || null,
     hiddenContainer: null,
     badgeEl: null,
+    badgeLabelEl: null,
     badgeTextEl: null,
     badgeIconSvg: null,
     badgeIconWrapper: null,
