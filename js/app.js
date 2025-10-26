@@ -1474,6 +1474,7 @@ class Application {
         eventId: video.id,
         index: Number.isFinite(index) ? index : null,
         triggerElement: trigger,
+        video,
       });
     };
     this.videoListView.setEditHandler(this.videoListViewEditHandler);
@@ -1486,6 +1487,7 @@ class Application {
         eventId: video.id,
         index: Number.isFinite(index) ? index : null,
         triggerElement: trigger,
+        video,
       });
     };
     this.videoListView.setRevertHandler(this.videoListViewRevertHandler);
@@ -1497,6 +1499,7 @@ class Application {
       this.handleFullDeleteVideo({
         eventId: video.id,
         index: Number.isFinite(index) ? index : null,
+        video,
       });
     };
     this.videoListView.setDeleteHandler(this.videoListViewDeleteHandler);
@@ -8755,8 +8758,9 @@ class Application {
     const isElement = (value) =>
       typeof Element !== "undefined" && value instanceof Element;
     let triggerElement = null;
+    let providedVideo = null;
     if (target && typeof target === "object") {
-      const eventId =
+      let eventId =
         typeof target.eventId === "string" ? target.eventId.trim() : "";
       let index = null;
       if (typeof target.index === "number" && Number.isInteger(target.index)) {
@@ -8767,18 +8771,29 @@ class Application {
         const parsed = Number.parseInt(target.index.trim(), 10);
         index = Number.isNaN(parsed) ? null : parsed;
       }
+      const targetVideo = target.video;
+      if (targetVideo && typeof targetVideo === "object") {
+        const candidateId =
+          typeof targetVideo.id === "string" ? targetVideo.id.trim() : "";
+        if (candidateId) {
+          providedVideo = targetVideo;
+          if (!eventId) {
+            eventId = candidateId;
+          }
+        }
+      }
       if (isElement(target.triggerElement)) {
         triggerElement = target.triggerElement;
       } else if (isElement(target.trigger)) {
         triggerElement = target.trigger;
       }
-      return { eventId, index, triggerElement };
+      return { eventId, index, triggerElement, video: providedVideo };
     }
 
     if (typeof target === "string") {
       const trimmed = target.trim();
       if (!trimmed) {
-        return { eventId: "", index: null, triggerElement };
+        return { eventId: "", index: null, triggerElement, video: null };
       }
       if (/^-?\d+$/.test(trimmed)) {
         const parsed = Number.parseInt(trimmed, 10);
@@ -8786,22 +8801,24 @@ class Application {
           eventId: "",
           index: Number.isNaN(parsed) ? null : parsed,
           triggerElement,
+          video: null,
         };
       }
-      return { eventId: trimmed, index: null, triggerElement };
+      return { eventId: trimmed, index: null, triggerElement, video: null };
     }
 
     if (typeof target === "number" && Number.isInteger(target)) {
-      return { eventId: "", index: target, triggerElement };
+      return { eventId: "", index: target, triggerElement, video: null };
     }
 
-    return { eventId: "", index: null, triggerElement };
+    return { eventId: "", index: null, triggerElement, video: null };
   }
 
   async resolveVideoActionTarget({
     eventId = "",
     index = null,
     preloadedList,
+    video: providedVideo = null,
   } = {}) {
     const trimmedEventId = typeof eventId === "string" ? eventId.trim() : "";
     const normalizedIndex =
@@ -8809,13 +8826,28 @@ class Application {
         ? index
         : null;
 
+    const initialVideo =
+      providedVideo && typeof providedVideo === "object" ? providedVideo : null;
+    const providedId =
+      initialVideo && typeof initialVideo.id === "string"
+        ? initialVideo.id.trim()
+        : "";
+    const targetEventId = trimmedEventId || providedId;
+
     const candidateLists = Array.isArray(preloadedList)
       ? [preloadedList]
       : [];
 
+    if (providedId) {
+      this.videosMap.set(providedId, initialVideo);
+      if (!trimmedEventId || providedId === trimmedEventId) {
+        return initialVideo;
+      }
+    }
+
     for (const list of candidateLists) {
-      if (trimmedEventId) {
-        const match = list.find((video) => video?.id === trimmedEventId);
+      if (targetEventId) {
+        const match = list.find((video) => video?.id === targetEventId);
         if (match) {
           this.videosMap.set(match.id, match);
           return match;
@@ -8834,26 +8866,26 @@ class Application {
       }
     }
 
-    if (trimmedEventId) {
-      const fromMap = this.videosMap.get(trimmedEventId);
+    if (targetEventId) {
+      const fromMap = this.videosMap.get(targetEventId);
       if (fromMap) {
         return fromMap;
       }
 
       const activeVideos = nostrClient.getActiveVideos();
-      const fromActive = activeVideos.find((video) => video.id === trimmedEventId);
+      const fromActive = activeVideos.find((video) => video.id === targetEventId);
       if (fromActive) {
         this.videosMap.set(fromActive.id, fromActive);
         return fromActive;
       }
 
-      const fromAll = nostrClient.allEvents.get(trimmedEventId);
+      const fromAll = nostrClient.allEvents.get(targetEventId);
       if (fromAll) {
         this.videosMap.set(fromAll.id, fromAll);
         return fromAll;
       }
 
-      const fetched = await nostrClient.getEventById(trimmedEventId);
+      const fetched = await nostrClient.getEventById(targetEventId);
       if (fetched) {
         this.videosMap.set(fetched.id, fetched);
         return fetched;
