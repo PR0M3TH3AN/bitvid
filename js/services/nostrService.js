@@ -582,7 +582,11 @@ export class NostrService {
 
     const viewerIsAuthor = this.isViewerVideoAuthor(video);
 
-    if (ALLOW_NSFW_CONTENT !== true && video.isNsfw === true && !viewerIsAuthor) {
+    if (viewerIsAuthor) {
+      return true;
+    }
+
+    if (ALLOW_NSFW_CONTENT !== true && video.isNsfw === true) {
       return false;
     }
 
@@ -600,7 +604,7 @@ export class NostrService {
       }
     }
 
-    if (video.isPrivate === true && !viewerIsAuthor) {
+    if (video.isPrivate === true) {
       return false;
     }
 
