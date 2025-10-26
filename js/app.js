@@ -71,6 +71,9 @@ import { devLogger, userLogger } from "./utils/logger.js";
 import createPopover from "./ui/overlay/popoverEngine.js";
 import { createVideoSettingsMenuPanel } from "./ui/components/videoMenuRenderers.js";
 import moderationService from "./services/moderationService.js";
+import AppChromeController from "./ui/appChromeController.js";
+import VideoListViewController from "./ui/videoListViewController.js";
+import ProfileIdentityController from "./ui/profileIdentityController.js";
 import {
   initViewCounter,
   subscribeToVideoViewCount,
@@ -279,6 +282,18 @@ class Application {
     this.modalCommentPublishPromise = null;
     this.pendingModeratedPlayback = null;
     this.lastIdentityRefreshPromise = null;
+    this.profileIdentityController = new ProfileIdentityController({
+      callbacks: {
+        safeEncodeNpub: (pubkey) => this.safeEncodeNpub(pubkey),
+        formatShortNpub: (value) => formatShortNpub(value),
+      },
+      logger: devLogger,
+    });
+    this.videoListViewController = new VideoListViewController({
+      getSidebarLoadingMarkup,
+      logger: devLogger,
+    });
+    this.appChromeController = null;
 
     this.nostrService = services.nostrService || nostrService;
     this.r2Service = services.r2Service || r2Service;
@@ -1499,6 +1514,51 @@ class Application {
     // NEW: reference to the login modal's close button
     this.closeLoginModalBtn =
       document.getElementById("closeLoginModal") || null;
+
+    this.appChromeController = new AppChromeController({
+      elements: {
+        logoutButton: this.logoutButton,
+        profileButton: this.profileButton,
+        uploadButton: this.uploadButton,
+        loginButton: this.loginButton,
+        closeLoginModalButton: this.closeLoginModalBtn,
+      },
+      callbacks: {
+        requestLogout: () => this.requestLogout(),
+        showError: (message) => this.showError(message),
+        showProfileModal: () =>
+          this.profileController &&
+          typeof this.profileController.show === "function"
+            ? this.profileController.show()
+            : null,
+        openUploadModal: ({ triggerElement }) => {
+          if (this.uploadModal) {
+            this.uploadModal.open({ triggerElement });
+          }
+        },
+        onLoginModalOpened: () => setGlobalModalState("login", true),
+        onLoginModalClosed: () => setGlobalModalState("login", false),
+        flushWatchHistory: (reason, context) =>
+          this.flushWatchHistory(reason, context),
+        cleanup: () => this.cleanup(),
+        hideModal: () => this.hideModal(),
+      },
+      utilities: {
+        prepareLoginModal: () =>
+          prepareStaticModal({ id: "loginModal" }) ||
+          document.getElementById("loginModal"),
+        prepareApplicationModal: () =>
+          prepareStaticModal({ id: "nostrFormModal" }) ||
+          document.getElementById("nostrFormModal"),
+        openModal: (modal, options) => openStaticModal(modal, options),
+        closeModal: (modalId) => closeStaticModal(modalId),
+      },
+      environment: {
+        document: typeof document !== "undefined" ? document : null,
+        window: typeof window !== "undefined" ? window : null,
+      },
+      logger: devLogger,
+    });
 
     // Build a set of blacklisted event IDs (hex) from nevent strings, skipping empties
     this.blacklistedEventIds = new Set();
@@ -4372,117 +4432,30 @@ class Application {
    * Setup general event listeners for logout, modals, etc.
    */
   setupEventListeners() {
-    // 1) Logout button
-    if (this.logoutButton) {
-      this.logoutButton.addEventListener("click", async () => {
-        try {
-          await this.requestLogout();
-        } catch (error) {
-          devLogger.error("Logout failed:", error);
-          this.showError("Failed to logout. Please try again.");
-        }
-      });
+    if (this.appChromeController) {
+      this.appChromeController.initialize();
+      return;
     }
 
-    // 2) Profile button
-    if (this.profileButton) {
-      this.profileButton.addEventListener("click", () => {
-        if (!this.profileController) {
-          return;
-        }
-
-        this.profileController
-          .show()
-          .catch((error) => {
-            devLogger.error("Failed to open profile modal:", error);
-          });
-      });
-    }
-
-    // 3) Upload button => show upload modal
-    if (this.uploadButton) {
-      this.uploadButton.addEventListener("click", (event) => {
-        if (this.uploadModal) {
-          const trigger = event?.currentTarget || event?.target || null;
-          this.uploadModal.open({ triggerElement: trigger });
-        }
-      });
-    }
-
-    // 4) Login button => show the login modal
-    if (this.loginButton) {
-      this.loginButton.addEventListener("click", (event) => {
-        devLogger.log("Login button clicked!");
-        const loginModal =
-          prepareStaticModal({ id: "loginModal" }) || document.getElementById("loginModal");
-        const trigger = event?.currentTarget || event?.target || null;
-        if (loginModal && openStaticModal(loginModal, { triggerElement: trigger })) {
-          setGlobalModalState("login", true);
-        }
-      });
-    }
-
-    // 5) Close login modal button => hide modal
-    if (this.closeLoginModalBtn) {
-      this.closeLoginModalBtn.addEventListener("click", () => {
-        devLogger.log("[app.js] closeLoginModal button clicked!");
-        if (closeStaticModal("loginModal")) {
-          setGlobalModalState("login", false);
-        }
-      });
-    }
-
-    // 6) Cleanup on page unload
-    window.addEventListener("beforeunload", () => {
-      this.flushWatchHistory("session-end", "beforeunload").catch((error) => {
-        devLogger.warn("[beforeunload] Watch history flush failed:", error);
-      });
-      this.cleanup().catch((err) => {
-        devLogger.error("Cleanup before unload failed:", err);
-      });
-    });
-
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "hidden") {
-        this.flushWatchHistory("session-end", "visibilitychange").catch(
-          (error) => {
-            devLogger.warn(
-              "[visibilitychange] Watch history flush failed:",
-              error
-            );
-          }
-        );
-      }
-    });
-
-    // 7) Handle back/forward navigation => hide video modal
-    window.addEventListener("popstate", async () => {
-      devLogger.log("[popstate] user navigated back/forward; cleaning modal...");
-      await this.hideModal();
-    });
-
-    // 8) Event delegation for the “Application Form” button inside the login modal
-    document.addEventListener("click", (event) => {
-      if (event.target && event.target.id === "openApplicationModal") {
-        // Hide the login modal
-        if (closeStaticModal("loginModal")) {
-          setGlobalModalState("login", false);
-        }
-        // Show the application modal
-        const appModal =
-          prepareStaticModal({ id: "nostrFormModal" }) ||
-          document.getElementById("nostrFormModal");
-        if (appModal) {
-          openStaticModal(appModal, { triggerElement: event.target });
-        }
-      }
-    });
-
+    devLogger.warn(
+      "[Application] AppChromeController missing; global UI events were not bound.",
+    );
   }
 
   mountVideoListView(container = null) {
     if (!this.videoListView) {
       return null;
+    }
+
+    if (this.videoListViewController) {
+      const { videoList, popularTags } = this.videoListViewController.mount({
+        container,
+        view: this.videoListView,
+        currentVideoList: this.videoList,
+      });
+      this.videoList = videoList || null;
+      this.videoListPopularTags = popularTags || null;
+      return this.videoList;
     }
 
     const target = container || document.getElementById("videoList");
@@ -4498,6 +4471,18 @@ class Application {
 
   reinitializeVideoListView({ reason, postLoginResult } = {}) {
     if (!this.videoListView) {
+      return;
+    }
+
+    if (this.videoListViewController) {
+      const { videoList, popularTags } = this.videoListViewController.reinitialize({
+        view: this.videoListView,
+        reason,
+        postLoginResult,
+        currentVideoList: this.videoList,
+      });
+      this.videoList = videoList || null;
+      this.videoListPopularTags = popularTags || null;
       return;
     }
 
@@ -4558,171 +4543,17 @@ class Application {
   }
 
   updateProfileInDOM(pubkey, profile) {
-    const normalizedPubkey =
-      typeof pubkey === "string" && pubkey.trim() ? pubkey.trim() : "";
-    if (!normalizedPubkey) {
+    if (this.profileIdentityController) {
+      this.profileIdentityController.updateProfileIdentity({
+        pubkey,
+        profile,
+      });
       return;
     }
 
-    const normalizedProfile =
-      profile && typeof profile === "object" ? profile : {};
-
-    const pictureUrl =
-      typeof normalizedProfile.picture === "string"
-        ? normalizedProfile.picture
-        : "";
-
-    const resolveProfileName = () => {
-      const candidates = [
-        normalizedProfile.name,
-        normalizedProfile.display_name,
-        normalizedProfile.displayName,
-      ];
-      for (const candidate of candidates) {
-        if (typeof candidate !== "string") {
-          continue;
-        }
-        const trimmed = candidate.trim();
-        if (trimmed) {
-          return trimmed;
-        }
-      }
-      return "";
-    };
-
-    const resolvedName = resolveProfileName();
-
-    const explicitNpub =
-      typeof normalizedProfile.npub === "string"
-        ? normalizedProfile.npub.trim()
-        : "";
-
-    const encodedPubkeyNpub = this.safeEncodeNpub(normalizedPubkey);
-    const resolvedNpub = explicitNpub || encodedPubkeyNpub || "";
-    const shortNpubLabel = resolvedNpub
-      ? formatShortNpub(resolvedNpub) || resolvedNpub
-      : "";
-
-    // For any .author-pic[data-pubkey=...]
-    const picEls = document.querySelectorAll(
-      `.author-pic[data-pubkey="${normalizedPubkey}"]`
+    devLogger.warn(
+      "[Application] ProfileIdentityController missing; profile identity was not refreshed in the DOM.",
     );
-    picEls.forEach((el) => {
-      if (!el) {
-        return;
-      }
-      el.src = pictureUrl;
-    });
-
-    const nameLabel =
-      resolvedName || shortNpubLabel || resolvedNpub || "";
-
-    // For any .author-name[data-pubkey=...]
-    const nameEls = document.querySelectorAll(
-      `.author-name[data-pubkey="${normalizedPubkey}"]`
-    );
-    nameEls.forEach((el) => {
-      if (!el) {
-        return;
-      }
-      el.textContent = nameLabel;
-    });
-
-    const npubSelectors = new Set();
-    if (resolvedNpub) {
-      npubSelectors.add(`.author-npub[data-npub="${resolvedNpub}"]`);
-    }
-    npubSelectors.add(`.author-npub[data-pubkey="${normalizedPubkey}"]`);
-
-    const npubElements = new Set();
-    npubSelectors.forEach((selector) => {
-      document.querySelectorAll(selector).forEach((el) => {
-        if (el) {
-          npubElements.add(el);
-        }
-      });
-    });
-
-    const npubEls = Array.from(npubElements);
-
-    npubEls.forEach((el) => {
-      if (!el) {
-        return;
-      }
-
-      const displayNpub = resolvedNpub
-        ? shortNpubLabel || resolvedNpub
-        : "";
-      const hasDisplayNpub = Boolean(displayNpub);
-
-      if (hasDisplayNpub) {
-        el.textContent = displayNpub;
-        el.setAttribute("aria-hidden", "false");
-      } else {
-        el.textContent = "";
-        el.setAttribute("aria-hidden", "true");
-      }
-
-      if (resolvedNpub) {
-        el.setAttribute("title", resolvedNpub);
-        if (el.dataset) {
-          el.dataset.npub = resolvedNpub;
-        }
-      } else {
-        el.removeAttribute("title");
-        if (el.dataset && "npub" in el.dataset) {
-          delete el.dataset.npub;
-        }
-      }
-
-      if (el.dataset && normalizedPubkey) {
-        el.dataset.pubkey = normalizedPubkey;
-      }
-    });
-
-    if (!nameEls.length && !npubEls.length) {
-      return;
-    }
-
-    const cardInstances = new Set();
-    const collectCardInstance = (el) => {
-      if (!el || typeof el.closest !== "function") {
-        return;
-      }
-      const cardRoot = el.closest('[data-component="similar-content-card"]');
-      if (!cardRoot) {
-        return;
-      }
-      const instance = cardRoot.__bitvidSimilarContentCard;
-      if (instance && typeof instance.updateIdentity === "function") {
-        cardInstances.add(instance);
-      }
-    };
-
-    nameEls.forEach(collectCardInstance);
-    npubEls.forEach(collectCardInstance);
-
-    if (cardInstances.size) {
-      const identityPayload = {
-        name: resolvedName,
-        npub: resolvedNpub,
-        shortNpub: shortNpubLabel,
-        pubkey: normalizedPubkey,
-      };
-
-      cardInstances.forEach((card) => {
-        try {
-          card.updateIdentity(identityPayload);
-        } catch (error) {
-          if (devLogger?.warn) {
-            devLogger.warn(
-              "[app] Failed to update similar content card identity",
-              error
-            );
-          }
-        }
-      });
-    }
   }
 
   async publishVideoNote(payload, { onSuccess, suppressModalClose } = {}) {
