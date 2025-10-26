@@ -802,6 +802,10 @@
     @apply inline-flex flex-col items-start gap-sm rounded-xl border px-3 py-1.5 text-xs font-semibold normal-case tracking-tight shadow-sm;
   }
 
+  .moderation-badge__actions {
+    @apply inline-flex flex-nowrap items-center gap-sm;
+  }
+
   .moderation-badge__label {
     @apply inline-flex items-center gap-xs whitespace-nowrap;
   }
@@ -1486,6 +1490,20 @@
   }
 
   #playerModal .video-modal__moderation-overlay .moderation-badge {
+    @apply pb-4;
+    pointer-events: auto;
+  }
+
+  #playerModal .video-modal__moderation-overlay[data-overlay-state="override"] {
+    align-items: flex-start;
+    justify-content: flex-start;
+    background: none;
+    pointer-events: none;
+  }
+
+  #playerModal
+    .video-modal__moderation-overlay[data-overlay-state="override"]
+    .moderation-badge {
     pointer-events: auto;
   }
 

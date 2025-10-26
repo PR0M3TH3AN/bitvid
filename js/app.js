@@ -886,6 +886,92 @@ class Application {
       "video:moderation-override",
       this.boundVideoModalModerationOverrideHandler,
     );
+    this.boundVideoModalModerationBlockHandler = (event) => {
+      const detail = event?.detail || {};
+      const targetVideo =
+        detail && typeof detail.video === "object"
+          ? detail.video
+          : this.currentVideo || null;
+      const trigger = detail?.trigger || null;
+
+      if (!targetVideo) {
+        if (trigger) {
+          trigger.disabled = false;
+          trigger.removeAttribute("aria-busy");
+        }
+        return;
+      }
+
+      Promise.resolve(
+        this.handleModerationBlock({
+          video: targetVideo,
+          card: detail?.card || null,
+        }),
+      )
+        .then((handled) => {
+          if (handled === false && trigger) {
+            trigger.disabled = false;
+            trigger.removeAttribute("aria-busy");
+          }
+        })
+        .catch((error) => {
+          devLogger.warn(
+            "[Application] Failed to handle modal moderation block:",
+            error,
+          );
+          if (trigger) {
+            trigger.disabled = false;
+            trigger.removeAttribute("aria-busy");
+          }
+        });
+    };
+    this.videoModal.addEventListener(
+      "video:moderation-block",
+      this.boundVideoModalModerationBlockHandler,
+    );
+    this.boundVideoModalModerationHideHandler = (event) => {
+      const detail = event?.detail || {};
+      const targetVideo =
+        detail && typeof detail.video === "object"
+          ? detail.video
+          : this.currentVideo || null;
+      const trigger = detail?.trigger || null;
+
+      if (!targetVideo) {
+        if (trigger) {
+          trigger.disabled = false;
+          trigger.removeAttribute("aria-busy");
+        }
+        return;
+      }
+
+      Promise.resolve(
+        this.handleModerationHide({
+          video: targetVideo,
+          card: detail?.card || null,
+        }),
+      )
+        .then((handled) => {
+          if (handled === false && trigger) {
+            trigger.disabled = false;
+            trigger.removeAttribute("aria-busy");
+          }
+        })
+        .catch((error) => {
+          devLogger.warn(
+            "[Application] Failed to handle modal moderation hide:",
+            error,
+          );
+          if (trigger) {
+            trigger.disabled = false;
+            trigger.removeAttribute("aria-busy");
+          }
+        });
+    };
+    this.videoModal.addEventListener(
+      "video:moderation-hide",
+      this.boundVideoModalModerationHideHandler,
+    );
     this.boundVideoModalTagActivateHandler = (event) => {
       const detail = event?.detail || {};
       const nativeEvent = detail?.nativeEvent || null;
@@ -1391,6 +1477,9 @@ class Application {
     );
     this.videoListView.setModerationBlockHandler((detail = {}) =>
       this.handleModerationBlock(detail)
+    );
+    this.videoListView.setModerationHideHandler((detail = {}) =>
+      this.handleModerationHide(detail)
     );
 
     if (this.moreMenuController) {
@@ -7800,8 +7889,77 @@ class Application {
     return true;
   }
 
-  handleModerationHide(detail) {
-    return this.handleModerationBlock(detail);
+  handleModerationHide({ video, card }) {
+    if (!video || typeof video !== "object" || !video.id) {
+      return false;
+    }
+
+    try {
+      clearModerationOverride(video.id);
+    } catch (error) {
+      devLogger.warn("[Application] Failed to clear moderation override:", error);
+    }
+
+    const storedVideo =
+      this.videosMap instanceof Map && video.id
+        ? this.videosMap.get(video.id)
+        : null;
+    const target = storedVideo || video;
+
+    const resetOverrideState = (subject) => {
+      if (!subject || typeof subject !== "object") {
+        return;
+      }
+      const moderation =
+        subject.moderation && typeof subject.moderation === "object"
+          ? subject.moderation
+          : null;
+      if (!moderation) {
+        return;
+      }
+      if (moderation.viewerOverride) {
+        delete moderation.viewerOverride;
+      }
+    };
+
+    if (target) {
+      resetOverrideState(target);
+      this.decorateVideoModeration(target);
+    }
+
+    if (this.currentVideo && this.currentVideo.id === video.id) {
+      resetOverrideState(this.currentVideo);
+      this.decorateVideoModeration(this.currentVideo);
+    }
+
+    if (card && typeof card.refreshModerationUi === "function") {
+      try {
+        card.refreshModerationUi();
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to refresh moderation UI after hide:",
+          error,
+        );
+      }
+    }
+
+    const doc =
+      (this.videoModal && this.videoModal.document) ||
+      (typeof document !== "undefined" ? document : null);
+    if (doc && typeof doc.dispatchEvent === "function") {
+      try {
+        doc.dispatchEvent(
+          new CustomEvent("video:moderation-hide", { detail: { video: target } }),
+        );
+      } catch (eventError) {
+        devLogger.warn(
+          "[Application] Failed to dispatch moderation hide event:",
+          eventError,
+        );
+      }
+    }
+
+    return true;
   }
 
   getVideoAddressPointer(video) {
