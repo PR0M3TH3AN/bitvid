@@ -7705,12 +7705,34 @@ class Application {
       ? Math.max(0, Math.floor(existingModeration.trustedCount))
       : this.deriveModerationTrustedCount(summary, reportType);
 
+    const viewerMuted = existingModeration.viewerMuted === true;
+    const existingBlockAutoplay = existingModeration.blockAutoplay === true;
+    const existingBlurThumbnail = existingModeration.blurThumbnail === true;
+    const existingBlurReason =
+      typeof existingModeration.blurReason === "string"
+        ? existingModeration.blurReason.trim()
+        : "";
+
     const thresholds = this.getActiveModerationThresholds();
-    const computedBlockAutoplay =
+    const computedBlockAutoplayBase =
       trustedCount >= thresholds.autoplayBlockThreshold || trustedMuted;
+    const computedBlockAutoplay =
+      computedBlockAutoplayBase || viewerMuted || existingBlockAutoplay;
+
     const blurFromReports = trustedCount >= thresholds.blurThreshold;
-    let computedBlurThumbnail = blurFromReports;
-    let computedBlurReason = computedBlurThumbnail ? "trusted-report" : "";
+    let computedBlurThumbnail =
+      blurFromReports || trustedMuted || viewerMuted || existingBlurThumbnail;
+    let computedBlurReason = "";
+
+    if (blurFromReports) {
+      computedBlurReason = "trusted-report";
+    } else if (trustedMuted) {
+      computedBlurReason = "trusted-mute";
+    } else if (viewerMuted) {
+      computedBlurReason = "viewer-mute";
+    } else if (existingBlurThumbnail && existingBlurReason) {
+      computedBlurReason = existingBlurReason;
+    }
 
     const muteHideThreshold = Number.isFinite(thresholds.trustedMuteHideThreshold)
       ? Math.max(0, Math.floor(thresholds.trustedMuteHideThreshold))
@@ -7746,21 +7768,29 @@ class Application {
       hideTriggered = true;
     }
 
-    if (!computedBlurThumbnail && (trustedMuted || hideTriggered)) {
+    if (!computedBlurThumbnail && (viewerMuted || trustedMuted || hideTriggered)) {
       computedBlurThumbnail = true;
       if (hideTriggered) {
         computedBlurReason = hideReason || "trusted-hide";
+      } else if (viewerMuted) {
+        computedBlurReason = "viewer-mute";
       } else if (trustedMuted) {
         computedBlurReason = "trusted-mute";
       }
     } else if (computedBlurThumbnail) {
       if (hideTriggered) {
         computedBlurReason = hideReason || "trusted-hide";
+      } else if (viewerMuted && !blurFromReports && !trustedMuted) {
+        computedBlurReason = "viewer-mute";
       } else if (trustedMuted && !blurFromReports) {
         computedBlurReason = "trusted-mute";
       } else if (!computedBlurReason && blurFromReports) {
         computedBlurReason = "trusted-report";
       }
+    }
+
+    if (computedBlurThumbnail && !computedBlurReason && existingBlurReason) {
+      computedBlurReason = existingBlurReason;
     }
 
     const hideCounts = hideTriggered

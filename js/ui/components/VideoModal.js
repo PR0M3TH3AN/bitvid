@@ -3989,11 +3989,11 @@ export class VideoModal {
     const badge = this.moderationBadge;
     const textEl = this.moderationBadgeText;
 
-    const shouldShow = Boolean(context?.shouldShow);
+    const showModeration = Boolean(context?.shouldShow);
     const shouldBlur = Boolean(context?.activeBlur && !context?.overrideActive);
     const hiddenActive = Boolean(context?.activeHidden && !context?.overrideActive);
 
-    if (!shouldShow) {
+    if (!showModeration) {
       if (stage && stage.dataset.visualState === "blurred") {
         delete stage.dataset.visualState;
       }
@@ -4031,7 +4031,11 @@ export class VideoModal {
     }
 
     if (overlay) {
-      overlay.removeAttribute("hidden");
+      if (showModeration && !context?.overrideActive) {
+        overlay.removeAttribute("hidden");
+      } else {
+        overlay.setAttribute("hidden", "");
+      }
       overlay.dataset.overlayState = context?.overrideActive ? "override" : "active";
     }
 
@@ -4129,7 +4133,12 @@ export class VideoModal {
     const actions = this.ensureModerationActionsContainer();
     let actionsAttached = false;
 
-    if (context?.allowOverride) {
+    const allowOverride =
+      context?.overrideActive === true ||
+      context?.allowOverride === true ||
+      (shouldBlur && !context?.overrideActive && context?.blurReason !== "viewer-mute");
+
+    if (allowOverride) {
       const mode = context.overrideActive ? "hide" : "override";
       const primaryButton = this.ensureModerationPrimaryButton(mode);
       if (primaryButton) {
