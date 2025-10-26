@@ -3344,7 +3344,7 @@
   }
 
   .watch-history-card__hidden {
-    @apply mt-md rounded-lg border border-dashed border-border bg-panel/70 text-sm text-text;
+    @apply mt-md rounded-lg border border-dashed border-border bg-overlay-panel-soft text-sm text-text;
   }
 
   .watch-history-card__hidden .moderation-badge {
