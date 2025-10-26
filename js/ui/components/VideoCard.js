@@ -119,7 +119,7 @@ export class VideoCard {
       onRequestSettingsMenu: null,
       onCloseSettingsMenu: null,
       onModerationOverride: null,
-      onModerationHide: null,
+      onModerationBlock: null,
     };
 
     this.moderationBadgeEl = null;
@@ -128,13 +128,14 @@ export class VideoCard {
     this.moderationBadgeIconWrapper = null;
     this.moderationBadgeIconSvg = null;
     this.moderationActionButton = null;
-    this.moderationHideButton = null;
+    this.moderationBlockButton = null;
     this.moderationBadgeId = "";
     this.badgesContainerEl = null;
     this.moderationBadgeSlot = null;
     this.hiddenSummaryEl = null;
     this.boundShowAnywayHandler = (event) => this.handleShowAnywayClick(event);
-    this.boundModerationHideHandler = (event) => this.handleModerationHideClick(event);
+    this.boundModerationBlockHandler = (event) =>
+      this.handleModerationBlockClick(event);
 
     this.root = null;
     this.anchorEl = null;
@@ -210,8 +211,9 @@ export class VideoCard {
     this.callbacks.onModerationOverride = typeof fn === "function" ? fn : null;
   }
 
-  set onModerationHide(fn) {
-    this.callbacks.onModerationHide = typeof fn === "function" ? fn : null;
+  set onModerationBlock(fn) {
+    this.callbacks.onModerationBlock =
+      typeof fn === "function" ? fn : null;
   }
 
   set onMoreAction(fn) {
@@ -1002,21 +1004,21 @@ export class VideoCard {
     return button;
   }
 
-  createModerationHideButton() {
+  createModerationBlockButton() {
     const button = this.createElement("button", {
       classNames: ["moderation-badge__action", "flex-shrink-0"],
       attrs: {
         type: "button",
-        "data-moderation-action": "hide",
+        "data-moderation-action": "block",
         "aria-describedby": this.getModerationBadgeId(),
       },
-      textContent: "Hide",
+      textContent: "Block",
     });
-    button.addEventListener("click", this.boundModerationHideHandler);
+    button.addEventListener("click", this.boundModerationBlockHandler);
     return button;
   }
 
-  handleModerationHideClick(event) {
+  handleModerationBlockClick(event) {
     if (event) {
       if (typeof event.preventDefault === "function") {
         event.preventDefault();
@@ -1026,13 +1028,13 @@ export class VideoCard {
       }
     }
 
-    const button = this.moderationHideButton;
+    const button = this.moderationBlockButton;
     if (button) {
       button.disabled = true;
       button.setAttribute("aria-busy", "true");
     }
 
-    if (!this.callbacks.onModerationHide) {
+    if (!this.callbacks.onModerationBlock) {
       if (button) {
         button.disabled = false;
         button.removeAttribute("aria-busy");
@@ -1042,13 +1044,13 @@ export class VideoCard {
 
     let result;
     try {
-      result = this.callbacks.onModerationHide({
+      result = this.callbacks.onModerationBlock({
         event,
         video: this.video,
         card: this,
       });
     } catch (error) {
-      userLogger.warn("[VideoCard] onModerationHide callback threw", error);
+      userLogger.warn("[VideoCard] onModerationBlock callback threw", error);
       if (button) {
         button.disabled = false;
         button.removeAttribute("aria-busy");
@@ -1068,7 +1070,7 @@ export class VideoCard {
         this.refreshModerationUi();
       })
       .catch((error) => {
-        userLogger.warn("[VideoCard] Moderation hide failed", error);
+        userLogger.warn("[VideoCard] Moderation block failed", error);
         if (button) {
           button.disabled = false;
           button.removeAttribute("aria-busy");
@@ -1201,7 +1203,7 @@ export class VideoCard {
     return wrapper;
   }
 
-  shouldShowModerationHideButton(context = this.getModerationContext()) {
+  shouldShowModerationBlockButton(context = this.getModerationContext()) {
     if (!context || !context.trustedMuted) {
       return false;
     }
@@ -1225,13 +1227,13 @@ export class VideoCard {
         );
       }
       this.moderationActionButton = null;
-      if (this.moderationHideButton) {
-        this.moderationHideButton.removeEventListener(
+      if (this.moderationBlockButton) {
+        this.moderationBlockButton.removeEventListener(
           "click",
-          this.boundModerationHideHandler,
+          this.boundModerationBlockHandler,
         );
       }
-      this.moderationHideButton = null;
+      this.moderationBlockButton = null;
       return null;
     }
 
@@ -1331,22 +1333,22 @@ export class VideoCard {
       this.moderationActionButton = null;
     }
 
-    if (this.shouldShowModerationHideButton(context)) {
-      if (!this.moderationHideButton) {
-        const hideButton = this.createModerationHideButton();
-        badge.appendChild(hideButton);
-        this.moderationHideButton = hideButton;
+    if (this.shouldShowModerationBlockButton(context)) {
+      if (!this.moderationBlockButton) {
+        const blockButton = this.createModerationBlockButton();
+        badge.appendChild(blockButton);
+        this.moderationBlockButton = blockButton;
       } else {
-        this.moderationHideButton.disabled = false;
-        this.moderationHideButton.removeAttribute("aria-busy");
+        this.moderationBlockButton.disabled = false;
+        this.moderationBlockButton.removeAttribute("aria-busy");
       }
-    } else if (this.moderationHideButton) {
-      this.moderationHideButton.removeEventListener(
+    } else if (this.moderationBlockButton) {
+      this.moderationBlockButton.removeEventListener(
         "click",
-        this.boundModerationHideHandler,
+        this.boundModerationBlockHandler,
       );
-      this.moderationHideButton.remove();
-      this.moderationHideButton = null;
+      this.moderationBlockButton.remove();
+      this.moderationBlockButton = null;
     }
 
     return badge;
@@ -1412,12 +1414,12 @@ export class VideoCard {
           this.boundShowAnywayHandler,
         );
       }
-      if (this.moderationHideButton) {
-        this.moderationHideButton.removeEventListener(
+      if (this.moderationBlockButton) {
+        this.moderationBlockButton.removeEventListener(
           "click",
-          this.boundModerationHideHandler,
+          this.boundModerationBlockHandler,
         );
-        this.moderationHideButton = null;
+        this.moderationBlockButton = null;
       }
       this.moderationBadgeEl = null;
       this.moderationBadgeLabelEl = null;
@@ -1531,22 +1533,22 @@ export class VideoCard {
       this.moderationActionButton.removeAttribute("aria-busy");
     }
 
-    if (this.shouldShowModerationHideButton(context)) {
-      if (!this.moderationHideButton) {
-        const hideButton = this.createModerationHideButton();
-        badge.appendChild(hideButton);
-        this.moderationHideButton = hideButton;
+    if (this.shouldShowModerationBlockButton(context)) {
+      if (!this.moderationBlockButton) {
+        const blockButton = this.createModerationBlockButton();
+        badge.appendChild(blockButton);
+        this.moderationBlockButton = blockButton;
       } else {
-        this.moderationHideButton.disabled = false;
-        this.moderationHideButton.removeAttribute("aria-busy");
+        this.moderationBlockButton.disabled = false;
+        this.moderationBlockButton.removeAttribute("aria-busy");
       }
-    } else if (this.moderationHideButton) {
-      this.moderationHideButton.removeEventListener(
+    } else if (this.moderationBlockButton) {
+      this.moderationBlockButton.removeEventListener(
         "click",
-        this.boundModerationHideHandler,
+        this.boundModerationBlockHandler,
       );
-      this.moderationHideButton.remove();
-      this.moderationHideButton = null;
+      this.moderationBlockButton.remove();
+      this.moderationBlockButton = null;
     }
   }
 

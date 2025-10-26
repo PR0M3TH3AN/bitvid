@@ -1389,8 +1389,8 @@ class Application {
     this.videoListView.setModerationOverrideHandler((detail = {}) =>
       this.handleModerationOverride(detail)
     );
-    this.videoListView.setModerationHideHandler((detail = {}) =>
-      this.handleModerationHide(detail)
+    this.videoListView.setModerationBlockHandler((detail = {}) =>
+      this.handleModerationBlock(detail)
     );
 
     if (this.moreMenuController) {
@@ -3754,6 +3754,29 @@ class Application {
         return "";
       default:
         return "List updated, but the DM notification could not be sent.";
+    }
+  }
+
+  describeUserBlockActionError(error) {
+    const code =
+      error && typeof error.code === "string" ? error.code.trim().toLowerCase() : "";
+
+    switch (code) {
+      case "nip04-missing":
+        return "Your Nostr extension must support NIP-04 to manage private block lists.";
+      case "extension-permission-denied":
+        return "Permission to update your block list was denied by your Nostr extension.";
+      case "sign-event-missing":
+      case "signer-missing":
+        return "Connect a Nostr signer that can encrypt and sign updates before managing block lists.";
+      case "nostr-extension-missing":
+        return "Connect a Nostr extension before updating your block list.";
+      case "invalid":
+        return "Unable to block that account. Please try again.";
+      case "self":
+        return "You cannot block yourself.";
+      default:
+        return "";
     }
   }
 
@@ -7633,9 +7656,70 @@ class Application {
     return true;
   }
 
-  handleModerationHide({ video, card }) {
+  async handleModerationBlock({ video, card }) {
     if (!video || typeof video !== "object" || !video.id) {
       return false;
+    }
+
+    if (!this.isUserLoggedIn()) {
+      this.showStatus("Log in to block accounts.", { showSpinner: false });
+      return false;
+    }
+
+    const viewerHex = this.normalizeHexPubkey(this.pubkey);
+    if (!viewerHex) {
+      this.showError("Select a profile before blocking accounts.");
+      return false;
+    }
+
+    const targetHex = this.normalizeHexPubkey(video?.pubkey);
+    if (!targetHex) {
+      this.showError("Unable to determine which account to block.");
+      return false;
+    }
+
+    if (viewerHex === targetHex) {
+      this.showError("You cannot block yourself.");
+      return false;
+    }
+
+    try {
+      await userBlocks.ensureLoaded(viewerHex);
+    } catch (error) {
+      devLogger.warn(
+        "[Application] Failed to load block list before blocking:",
+        error,
+      );
+      this.showError("Unable to load your block list. Please try again.");
+      return false;
+    }
+
+    let alreadyBlocked =
+      typeof userBlocks.isBlocked === "function" &&
+      userBlocks.isBlocked(targetHex);
+    let blockApplied = false;
+
+    if (!alreadyBlocked) {
+      try {
+        const result = await userBlocks.addBlock(targetHex, viewerHex);
+        alreadyBlocked = true;
+        blockApplied = result?.already !== true;
+      } catch (error) {
+        const message =
+          (typeof this.describeUserBlockActionError === "function"
+            ? this.describeUserBlockActionError(error)
+            : "") || "Failed to block this creator. Please try again.";
+        this.showError(message);
+        devLogger.warn("[Application] Failed to block creator:", error);
+        return false;
+      }
+    }
+
+    if (alreadyBlocked) {
+      const statusMessage = blockApplied
+        ? "Creator blocked. Their videos will disappear from your feed."
+        : "Creator already blocked. Their videos will disappear from your feed.";
+      this.showStatus(statusMessage, { showSpinner: false });
     }
 
     try {
@@ -7681,7 +7765,10 @@ class Application {
       try {
         card.refreshModerationUi();
       } catch (error) {
-        devLogger.warn("[Application] Failed to refresh moderation UI after hide:", error);
+        devLogger.warn(
+          "[Application] Failed to refresh moderation UI after block:",
+          error,
+        );
       }
     }
 
@@ -7690,20 +7777,31 @@ class Application {
       (typeof document !== "undefined" ? document : null);
     if (doc && typeof doc.dispatchEvent === "function") {
       try {
-        doc.dispatchEvent(
-          new CustomEvent("video:moderation-hide", {
-            detail: { video: target },
-          }),
-        );
+        const detail = { video: target };
+        doc.dispatchEvent(new CustomEvent("video:moderation-block", { detail }));
+        doc.dispatchEvent(new CustomEvent("video:moderation-hide", { detail }));
       } catch (eventError) {
         devLogger.warn(
-          "[Application] Failed to dispatch moderation hide event:",
+          "[Application] Failed to dispatch moderation block event:",
           eventError,
         );
       }
     }
 
+    try {
+      await this.onVideosShouldRefresh({ reason: "user-block-update" });
+    } catch (error) {
+      devLogger.warn(
+        "[Application] Failed to refresh videos after block:",
+        error,
+      );
+    }
+
     return true;
+  }
+
+  handleModerationHide(detail) {
+    return this.handleModerationBlock(detail);
   }
 
   getVideoAddressPointer(video) {

@@ -13,6 +13,7 @@ import {
   applyModerationContextDatasets,
   normalizeVideoModerationContext,
 } from "../../js/ui/moderationUiHelpers.js";
+import { userBlocks } from "../../js/userBlocks.js";
 
 function setupDom(t) {
   const dom = new JSDOM("<!DOCTYPE html><html><body></body></html>", {
@@ -327,14 +328,15 @@ test("VideoCard blurs thumbnails when trusted mute triggers without reports", as
     card.moderationBadgeTextEl.textContent,
     "Autoplay blocked · Muted by a trusted contact",
   );
-  assert.ok(card.moderationHideButton);
+  assert.ok(card.moderationBlockButton);
   assert.equal(
-    card.moderationHideButton?.dataset?.moderationAction,
-    "hide",
+    card.moderationBlockButton?.dataset?.moderationAction,
+    "block",
   );
+  assert.equal(card.moderationBlockButton.textContent, "Block");
 });
 
-test("VideoCard hide action restores trusted mute hide state after override", async (t) => {
+test("VideoCard block action restores trusted mute hide state after override", async (t) => {
   const { document } = setupDom(t);
   withMockedNostrTools(t);
 
@@ -344,6 +346,25 @@ test("VideoCard hide action restores trusted mute hide state after override", as
     blurThreshold: Number.POSITIVE_INFINITY,
     trustedMuteHideThreshold: 1,
     trustedSpamHideThreshold: Number.POSITIVE_INFINITY,
+  });
+  app.pubkey = "f".repeat(64);
+  app.isUserLoggedIn = () => true;
+  app.showStatus = () => {};
+  app.showError = () => {};
+  app.onVideosShouldRefresh = async () => {};
+
+  const originalEnsureLoaded = userBlocks.ensureLoaded;
+  const originalAddBlock = userBlocks.addBlock;
+  const originalIsBlocked = userBlocks.isBlocked;
+
+  userBlocks.ensureLoaded = async () => {};
+  userBlocks.addBlock = async () => ({ ok: true });
+  userBlocks.isBlocked = () => false;
+
+  t.after(() => {
+    userBlocks.ensureLoaded = originalEnsureLoaded;
+    userBlocks.addBlock = originalAddBlock;
+    userBlocks.isBlocked = originalIsBlocked;
   });
 
   const videoId = "d".repeat(64);
@@ -394,19 +415,19 @@ test("VideoCard hide action restores trusted mute hide state after override", as
   );
   assert.equal(contextAfterOverride.overrideActive, true);
   assert.equal(contextAfterOverride.activeHidden, false);
-  assert.ok(card.moderationHideButton);
+  assert.ok(card.moderationBlockButton);
 
-  card.onModerationHide = ({ video: targetVideo, card: targetCard }) =>
-    app.handleModerationHide({ video: targetVideo, card: targetCard });
+  card.onModerationBlock = ({ video: targetVideo, card: targetCard }) =>
+    app.handleModerationBlock({ video: targetVideo, card: targetCard });
 
-  card.moderationHideButton.click();
+  card.moderationBlockButton.click();
   await new Promise((resolve) => setTimeout(resolve, 0));
 
   const contextAfterHide = normalizeVideoModerationContext(card.video?.moderation);
   assert.equal(contextAfterHide.overrideActive, false);
   assert.equal(contextAfterHide.activeHidden, true);
   assert.equal(card.getRoot().dataset.moderationHidden, "true");
-  assert.equal(card.moderationHideButton, null);
+  assert.equal(card.moderationBlockButton, null);
 });
 
 test("applyModerationContextDatasets clears blur when overrides are active", (t) => {
