@@ -750,6 +750,7 @@ class AccessControl {
 }
 
 export const accessControl = new AccessControl();
+export default accessControl;
 export {
   AccessControl,
   ADMIN_WHITELIST_MODE_STORAGE_KEY,
