@@ -24,6 +24,8 @@
 - Add "add to watch later" option to edit button.
 - Fix autoplay broken on iPhone chrome.
 - Fix playback broken on Safari on iPhone.
+- **[14]** Get Watch History working reliably so the view stays in sync across devices and sessions.
+- **[15]** Fix Watch History bugs for various login methods to keep timelines aligned regardless of how users authenticate.
 - Update note spec v3 transition to include new fields that have been added like "has previous" or "videoRootID" or enentID if null.
 - Change "explore" view to "kids" view and add flag to all notes to see if they are for kids.
 - Add "seed" lists.
@@ -48,5 +50,8 @@
 - Add multi-language support for content and filtration. (v4?)
 - Create a settings menu for local account preferences, including relay, adult content, theme, and language.
 - Better integrate with other Nostr/torrent ecosystem. (NIP-35 + WebRTC Check Integration) [Click for more details](https://github.com/PR0M3TH3AN/bitvid/blob/main/content/roadmap/09_bitvid_Enhanced_NIP-35_%2B_WebRTC_Check_Integration.md)
+- **[16]** Add ability to write and send DMs so creators and viewers can coordinate privately.
+- **[17]** Add a "Live" live stream view (view only for now) that imports Zapstream notes and displays the live streams within the bitvid environment.
+- **[18]** Add ability to create and post livestreams to R2 storage so streamers can broadcast directly from bitvid.
 
 > ⚠️ **Note:** Your feedback helps us improve bitvid! Whether it’s a suggestion, a concern, or general thoughts on the platform, we’d love to hear from you. Please tell us what you think [with this form](https://bitvid.network/?modal=feedback).
