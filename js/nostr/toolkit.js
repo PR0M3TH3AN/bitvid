@@ -210,10 +210,14 @@ function isSimplePoolConstructor(candidate) {
     return false;
   }
 
-  return (
-    typeof prototype.sub === "function" &&
-    typeof prototype.close === "function"
-  );
+  const hasSubscribeMethod =
+    typeof prototype.sub === "function" ||
+    typeof prototype.subscribe === "function" ||
+    typeof prototype.subscribeMany === "function";
+
+  const hasCloseMethod = typeof prototype.close === "function";
+
+  return hasSubscribeMethod && hasCloseMethod;
 }
 
 function unwrapSimplePool(candidate) {
