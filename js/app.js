@@ -840,11 +840,12 @@ class Application {
       if (!video || typeof video !== "object") {
         return video;
       }
+      let decoratedVideo = video;
       if (typeof this.decorateVideoModeration === "function") {
         try {
           const decorated = this.decorateVideoModeration(video);
           if (decorated && typeof decorated === "object") {
-            return decorated;
+            decoratedVideo = decorated;
           }
         } catch (error) {
           devLogger.warn(
@@ -853,7 +854,22 @@ class Application {
           );
         }
       }
-      return video;
+      if (typeof this.decorateVideoCreatorIdentity === "function") {
+        try {
+          const identityDecorated = this.decorateVideoCreatorIdentity(
+            decoratedVideo,
+          );
+          if (identityDecorated && typeof identityDecorated === "object") {
+            decoratedVideo = identityDecorated;
+          }
+        } catch (error) {
+          devLogger.warn(
+            "[Application] Failed to decorate similar content identity",
+            error,
+          );
+        }
+      }
+      return decoratedVideo;
     };
 
     const target = activeVideo && typeof activeVideo === "object" ? decorateCandidate(activeVideo) : null;
@@ -2742,12 +2758,50 @@ class Application {
         pubkey,
         profile,
       });
+    } else {
+      devLogger.warn(
+        "[Application] ProfileIdentityController missing; profile identity was not refreshed in the DOM.",
+      );
+    }
+
+    const normalizedPubkey =
+      this.normalizeHexPubkey(pubkey) ||
+      (typeof pubkey === "string" ? pubkey.trim() : "");
+    if (!normalizedPubkey) {
       return;
     }
 
-    devLogger.warn(
-      "[Application] ProfileIdentityController missing; profile identity was not refreshed in the DOM.",
-    );
+    const maybeDecorateVideo = (video) => {
+      if (!video || typeof video !== "object") {
+        return;
+      }
+      const videoPubkey =
+        this.normalizeHexPubkey(video.pubkey) ||
+        (typeof video.pubkey === "string" ? video.pubkey.trim() : "");
+      if (videoPubkey !== normalizedPubkey) {
+        return;
+      }
+      this.decorateVideoCreatorIdentity(video);
+    };
+
+    if (this.videosMap instanceof Map) {
+      for (const video of this.videosMap.values()) {
+        maybeDecorateVideo(video);
+      }
+    }
+
+    if (
+      this.videoListView &&
+      Array.isArray(this.videoListView.currentVideos)
+    ) {
+      this.videoListView.currentVideos.forEach((video) => {
+        maybeDecorateVideo(video);
+      });
+    }
+
+    if (this.currentVideo) {
+      maybeDecorateVideo(this.currentVideo);
+    }
   }
 
   async publishVideoNote(payload, { onSuccess, suppressModalClose } = {}) {
@@ -5478,7 +5532,15 @@ class Application {
     }
 
     const decoratedVideos = Array.isArray(videos)
-      ? videos.map((video) => this.decorateVideoModeration(video))
+      ? videos.map((video) => {
+          const moderated = this.decorateVideoModeration(video);
+          const targetVideo =
+            moderated && typeof moderated === "object" ? moderated : video;
+          const withIdentity = this.decorateVideoCreatorIdentity(targetVideo);
+          return withIdentity && typeof withIdentity === "object"
+            ? withIdentity
+            : targetVideo;
+        })
       : [];
 
     this.videoListView.render(decoratedVideos, metadata);
@@ -7150,11 +7212,32 @@ class Application {
         ? index
         : null;
 
+    const ensureCreatorIdentity = (video) => {
+      if (
+        !video ||
+        typeof video !== "object" ||
+        typeof this.decorateVideoCreatorIdentity !== "function"
+      ) {
+        return video;
+      }
+      try {
+        const decorated = this.decorateVideoCreatorIdentity(video);
+        return decorated && typeof decorated === "object" ? decorated : video;
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to decorate video identity for action target:",
+          error,
+        );
+        return video;
+      }
+    };
+
     const initialVideo =
       providedVideo && typeof providedVideo === "object" ? providedVideo : null;
+    const preparedInitialVideo = ensureCreatorIdentity(initialVideo);
     const providedId =
-      initialVideo && typeof initialVideo.id === "string"
-        ? initialVideo.id.trim()
+      preparedInitialVideo && typeof preparedInitialVideo.id === "string"
+        ? preparedInitialVideo.id.trim()
         : "";
     const targetEventId = trimmedEventId || providedId;
 
@@ -7163,9 +7246,9 @@ class Application {
       : [];
 
     if (providedId) {
-      this.videosMap.set(providedId, initialVideo);
+      this.videosMap.set(providedId, preparedInitialVideo);
       if (!trimmedEventId || providedId === trimmedEventId) {
-        return initialVideo;
+        return preparedInitialVideo;
       }
     }
 
@@ -7173,8 +7256,9 @@ class Application {
       if (targetEventId) {
         const match = list.find((video) => video?.id === targetEventId);
         if (match) {
-          this.videosMap.set(match.id, match);
-          return match;
+          const preparedMatch = ensureCreatorIdentity(match);
+          this.videosMap.set(preparedMatch.id, preparedMatch);
+          return preparedMatch;
         }
       }
       if (
@@ -7184,8 +7268,9 @@ class Application {
       ) {
         const match = list[normalizedIndex];
         if (match) {
-          this.videosMap.set(match.id, match);
-          return match;
+          const preparedMatch = ensureCreatorIdentity(match);
+          this.videosMap.set(preparedMatch.id, preparedMatch);
+          return preparedMatch;
         }
       }
     }
@@ -7199,20 +7284,23 @@ class Application {
       const activeVideos = nostrClient.getActiveVideos();
       const fromActive = activeVideos.find((video) => video.id === targetEventId);
       if (fromActive) {
-        this.videosMap.set(fromActive.id, fromActive);
-        return fromActive;
+        const preparedActive = ensureCreatorIdentity(fromActive);
+        this.videosMap.set(preparedActive.id, preparedActive);
+        return preparedActive;
       }
 
       const fromAll = nostrClient.allEvents.get(targetEventId);
       if (fromAll) {
-        this.videosMap.set(fromAll.id, fromAll);
-        return fromAll;
+        const preparedFromAll = ensureCreatorIdentity(fromAll);
+        this.videosMap.set(preparedFromAll.id, preparedFromAll);
+        return preparedFromAll;
       }
 
       const fetched = await nostrClient.getEventById(targetEventId);
       if (fetched) {
-        this.videosMap.set(fetched.id, fetched);
-        return fetched;
+        const preparedFetched = ensureCreatorIdentity(fetched);
+        this.videosMap.set(preparedFetched.id, preparedFetched);
+        return preparedFetched;
       }
     }
 
@@ -7221,8 +7309,9 @@ class Application {
       if (normalizedIndex >= 0 && normalizedIndex < activeVideos.length) {
         const candidate = activeVideos[normalizedIndex];
         if (candidate) {
-          this.videosMap.set(candidate.id, candidate);
-          return candidate;
+          const preparedCandidate = ensureCreatorIdentity(candidate);
+          this.videosMap.set(preparedCandidate.id, preparedCandidate);
+          return preparedCandidate;
         }
       }
     }
@@ -8848,19 +8937,25 @@ class Application {
     return "";
   }
 
-  resolveModalCreatorProfile({
+  resolveCreatorProfileFromSources({
     video,
     pubkey,
     cachedProfile = null,
     fetchedProfile = null,
+    fallbackAvatar,
   } = {}) {
     const normalizedPubkey =
       typeof pubkey === "string" && pubkey.trim() ? pubkey.trim() : "";
-    const fallbackAvatarCandidate = normalizedPubkey
-      ? `https://robohash.org/${normalizedPubkey}`
-      : "assets/svg/default-profile.svg";
+    const fallbackAvatarCandidate =
+      typeof fallbackAvatar === "string" && fallbackAvatar.trim()
+        ? fallbackAvatar.trim()
+        : normalizedPubkey
+          ? `https://robohash.org/${normalizedPubkey}`
+          : "assets/svg/default-profile.svg";
     const defaultAvatar =
-      sanitizeProfileMediaUrl(fallbackAvatarCandidate) || fallbackAvatarCandidate;
+      sanitizeProfileMediaUrl(fallbackAvatarCandidate) ||
+      fallbackAvatarCandidate ||
+      "assets/svg/default-profile.svg";
 
     const nameCandidates = [];
     const pictureCandidates = [];
@@ -8869,7 +8964,12 @@ class Application {
       if (!source || typeof source !== "object") {
         return;
       }
-      const names = [source.display_name, source.name, source.username];
+      const names = [
+        source.display_name,
+        source.displayName,
+        source.name,
+        source.username,
+      ];
       names.forEach((value) => {
         if (typeof value === "string") {
           nameCandidates.push(value);
@@ -8902,13 +9002,122 @@ class Application {
         pictureCandidates.push(video.authorPicture);
       }
       collectFromSource(video.profile);
+      const extraNames = [
+        video.shortNpub,
+        video.creatorNpub,
+        video.npub,
+        video.authorNpub,
+      ];
+      extraNames.forEach((value) => {
+        if (typeof value === "string") {
+          nameCandidates.push(value);
+        }
+      });
     }
 
-    const resolvedName = this.selectPreferredCreatorName(nameCandidates) || "Unknown";
+    const resolvedName =
+      this.selectPreferredCreatorName(nameCandidates) || "Unknown";
     const resolvedPicture =
       this.selectPreferredCreatorPicture(pictureCandidates) || defaultAvatar;
 
     return { name: resolvedName, picture: resolvedPicture };
+  }
+
+  resolveModalCreatorProfile({
+    video,
+    pubkey,
+    cachedProfile = null,
+    fetchedProfile = null,
+  } = {}) {
+    return this.resolveCreatorProfileFromSources({
+      video,
+      pubkey,
+      cachedProfile,
+      fetchedProfile,
+    });
+  }
+
+  decorateVideoCreatorIdentity(video) {
+    if (!video || typeof video !== "object") {
+      return video;
+    }
+
+    const normalizedPubkey =
+      this.normalizeHexPubkey(video.pubkey) ||
+      (typeof video.pubkey === "string" ? video.pubkey.trim() : "");
+    if (!normalizedPubkey) {
+      return video;
+    }
+
+    let cachedProfile = null;
+    if (typeof this.getProfileCacheEntry === "function") {
+      const cacheEntry = this.getProfileCacheEntry(normalizedPubkey);
+      if (cacheEntry && typeof cacheEntry === "object") {
+        cachedProfile = cacheEntry.profile || null;
+      }
+    }
+
+    const resolvedProfile = this.resolveCreatorProfileFromSources({
+      video,
+      pubkey: normalizedPubkey,
+      cachedProfile,
+    });
+
+    if (!video.creator || typeof video.creator !== "object") {
+      video.creator = {};
+    }
+
+    if (!video.creator.pubkey) {
+      video.creator.pubkey = normalizedPubkey;
+    }
+
+    if (resolvedProfile.name) {
+      video.creator.name = resolvedProfile.name;
+      if (
+        typeof video.creatorName !== "string" ||
+        !video.creatorName.trim() ||
+        video.creatorName === "Unknown"
+      ) {
+        video.creatorName = resolvedProfile.name;
+      }
+      if (
+        typeof video.authorName !== "string" ||
+        !video.authorName.trim() ||
+        video.authorName === "Unknown"
+      ) {
+        video.authorName = resolvedProfile.name;
+      }
+    }
+
+    if (resolvedProfile.picture) {
+      video.creator.picture = resolvedProfile.picture;
+      video.creatorPicture = resolvedProfile.picture;
+      if (
+        typeof video.authorPicture !== "string" ||
+        !video.authorPicture.trim()
+      ) {
+        video.authorPicture = resolvedProfile.picture;
+      }
+    }
+
+    const encodedNpub = this.safeEncodeNpub(normalizedPubkey);
+    if (encodedNpub) {
+      const shortNpub = formatShortNpub(encodedNpub) || encodedNpub;
+      if (typeof video.npub !== "string" || !video.npub.trim()) {
+        video.npub = encodedNpub;
+      }
+      if (typeof video.shortNpub !== "string" || !video.shortNpub.trim()) {
+        video.shortNpub = shortNpub;
+      }
+      if (
+        typeof video.creatorNpub !== "string" ||
+        !video.creatorNpub.trim()
+      ) {
+        video.creatorNpub = shortNpub;
+      }
+    }
+
+    return video;
   }
 
   async fetchModalCreatorProfile({
