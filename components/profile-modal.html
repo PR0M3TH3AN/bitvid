@@ -110,6 +110,15 @@
                 Hashtags
               </button>
               <button
+                id="profileNavSubscriptions"
+                type="button"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneSubscriptions"
+                aria-selected="false"
+              >
+                Subscriptions
+              </button>
+              <button
                 id="profileNavFriends"
                 type="button"
                 class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
@@ -573,6 +582,24 @@
                   data-orientation="horizontal"
                 ></ul>
               </div>
+            </section>
+
+            <section
+              id="profilePaneSubscriptions"
+              class="profile-pane hidden space-y-4"
+              role="tabpanel"
+              aria-labelledby="profileNavSubscriptions"
+            >
+              <p class="text-sm text-muted">
+                These are the creators you’ve subscribed to directly in bitvid.
+              </p>
+              <div
+                id="subscriptionsEmpty"
+                class="card border border-dashed border-border/60 p-6 text-center text-sm text-muted"
+              >
+                You haven’t subscribed to any creators yet.
+              </div>
+              <ul id="subscriptionsList" class="grid-stack" data-orientation="vertical"></ul>
             </section>
 
             <section
