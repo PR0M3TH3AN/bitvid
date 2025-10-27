@@ -4426,6 +4426,20 @@ class Application {
     if (refreshTasks.length) {
       await Promise.allSettled(refreshTasks);
     }
+
+    if (typeof this.refreshVisibleModerationUi === "function") {
+      const refreshReason =
+        normalizedReason || (forceMainReload ? "refresh-all-video-grids" : "refresh");
+      try {
+        this.refreshVisibleModerationUi({ reason: refreshReason });
+      } catch (error) {
+        const contextMessage = refreshReason ? ` after ${refreshReason}` : "";
+        devLogger.warn(
+          `[Application] Failed to refresh moderation UI${contextMessage}:`,
+          error,
+        );
+      }
+    }
   }
 
   async onVideosShouldRefresh({ reason } = {}) {
@@ -7157,6 +7171,21 @@ class Application {
       : [];
 
     this.videoListView.render(decoratedVideos, metadata);
+
+    if (typeof this.refreshVisibleModerationUi === "function") {
+      const renderReason =
+        metadata && typeof metadata.reason === "string" && metadata.reason
+          ? `render-${metadata.reason}`
+          : "render-video-list";
+      try {
+        this.refreshVisibleModerationUi({ reason: renderReason });
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to refresh moderation UI after rendering video list:",
+          error,
+        );
+      }
+    }
     this.updateModalSimilarContent();
   }
 
