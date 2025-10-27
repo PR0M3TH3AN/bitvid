@@ -79,6 +79,7 @@ import {
   nostrToolsBootstrapFailure,
   readToolkitFromScope,
   resolveSimplePoolConstructor,
+  shimLegacySimplePoolMethods,
 } from "./toolkit.js";
 import { devLogger, userLogger } from "../utils/logger.js";
 import {
@@ -3123,6 +3124,7 @@ export class NostrClient {
 
     const creation = Promise.resolve().then(() => {
       const instance = new SimplePool();
+      shimLegacySimplePoolMethods(instance);
       this.pool = instance;
       return instance;
     });

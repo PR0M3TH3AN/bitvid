@@ -29,6 +29,7 @@ const {
   getCachedNostrTools,
   ensureNostrTools,
   resolveSimplePoolConstructor,
+  shimLegacySimplePoolMethods,
 } = toolkitModule;
 
 const baselineToolkit = getCachedNostrTools() || bootstrapToolkit;
@@ -163,5 +164,91 @@ test("resolveSimplePoolConstructor handles supported permutations", () => {
     resolveSimplePoolConstructor({}, {}),
     null,
     "returns null when no candidates are available"
+  );
+});
+
+test("shimLegacySimplePoolMethods adds legacy sub/list wrappers", async () => {
+  let capturedRequests = null;
+  let capturedParams = null;
+  const closeReasons = [];
+
+  const mockPool = {
+    subscribeMap(requests, params) {
+      capturedRequests = requests;
+      capturedParams = params;
+      return {
+        close(reason) {
+          closeReasons.push(reason);
+        },
+      };
+    },
+  };
+
+  shimLegacySimplePoolMethods(mockPool);
+
+  assert.strictEqual(typeof mockPool.sub, "function");
+  assert.strictEqual(typeof mockPool.list, "function");
+
+  const relays = ["wss://relay.one", "wss://relay.two"];
+  const filters = [{ kinds: [1] }, { authors: ["abc"] }];
+
+  const sub = mockPool.sub(relays, filters, {
+    alreadyHaveEvent(id) {
+      return id === "skip";
+    },
+  });
+
+  assert.ok(Array.isArray(capturedRequests));
+  assert.strictEqual(capturedRequests.length, relays.length * filters.length);
+  assert.ok(capturedRequests.every((entry) => entry && entry.url && entry.filter));
+  assert.ok(capturedParams);
+  assert.strictEqual(typeof capturedParams.onevent, "function");
+  assert.strictEqual(typeof capturedParams.oneose, "function");
+  assert.strictEqual(typeof capturedParams.onclose, "function");
+  assert.strictEqual(typeof capturedParams.alreadyHaveEvent, "function");
+
+  const receivedEvents = [];
+  const eosePromise = new Promise((resolve) => sub.on("eose", resolve));
+  const closePromise = new Promise((resolve) => sub.on("close", resolve));
+  sub.on("event", (event) => {
+    receivedEvents.push(event.id);
+  });
+
+  assert.strictEqual(capturedParams.alreadyHaveEvent("skip"), true);
+  assert.strictEqual(capturedParams.alreadyHaveEvent("id-1"), false);
+  assert.strictEqual(capturedParams.alreadyHaveEvent("id-1"), true);
+
+  capturedParams.onevent({ id: "id-1" });
+  capturedParams.onevent({ id: "id-2" });
+  capturedParams.oneose();
+  capturedParams.onclose(["done"]);
+
+  await eosePromise;
+  const closePayload = await closePromise;
+
+  assert.deepStrictEqual(receivedEvents, ["id-1", "id-2"]);
+  assert.deepStrictEqual(closePayload, ["done"]);
+
+  sub.unsub();
+
+  closeReasons.length = 0;
+  const immediateUnsub = mockPool.sub(["wss://relay.extra"], [{ kinds: [2] }]);
+  immediateUnsub.unsub();
+  assert.ok(closeReasons.includes("closed by caller"));
+
+  capturedParams = null;
+  capturedRequests = null;
+  closeReasons.length = 0;
+
+  const listPromise = mockPool.list(["wss://relay.example"], [{ kinds: [1] }]);
+  assert.ok(capturedParams);
+  capturedParams.onevent({ id: "evt-1" });
+  capturedParams.onevent({ id: "evt-2" });
+  capturedParams.oneose();
+
+  const listed = await listPromise;
+  assert.deepStrictEqual(
+    listed.map((event) => event.id),
+    ["evt-1", "evt-2"]
   );
 });

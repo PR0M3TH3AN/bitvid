@@ -584,19 +584,33 @@ export function bootstrapNostrTools() {
       return activeTools;
     };
 
-    try {
-      Object.defineProperty(scope, "NostrTools", {
-        configurable: true,
-        enumerable: true,
-        get() {
-          return activeTools;
-        },
-        set(value) {
-          applyActive(value);
-        },
-      });
-    } catch (error) {
-      userLogger.warn("[bitvid] Failed to install NostrTools guard.", error);
+    const existingDescriptor =
+      scope && typeof scope === "object"
+        ? Object.getOwnPropertyDescriptor(scope, "NostrTools")
+        : null;
+
+    const canInstallGuard =
+      !existingDescriptor || existingDescriptor.configurable === true;
+
+    if (canInstallGuard) {
+      try {
+        Object.defineProperty(scope, "NostrTools", {
+          configurable: true,
+          enumerable: true,
+          get() {
+            return activeTools;
+          },
+          set(value) {
+            applyActive(value);
+          },
+        });
+      } catch (error) {
+        userLogger.warn("[bitvid] Failed to install NostrTools guard.", error);
+      }
+    } else {
+      devLogger.info(
+        "[bitvid] Skipping NostrTools guard; existing property is non-configurable."
+      );
     }
 
     applyActive(existingGlobalTools);
