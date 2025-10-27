@@ -123,9 +123,10 @@ Tailwind utilities are generated from `css/tailwind.source.css` and themed via
 the shared tokens in `css/tokens.css`. Install dependencies once and lean on the
 package scripts to keep formatting, linting, and generated output consistent:
 
-- **Token imports:** `css/tokens.css` feeds `css/style.css`, which in turn seeds
-  `tailwind.config.cjs` so utilities inherit the same palette, spacing, and
-  typography primitives across the stack.
+- **Token imports:** `css/tailwind.source.css` imports `css/tokens.css`, and
+  Tailwind consumes that source file directly so utilities inherit the same
+  palette, spacing, and typography primitives across the stack—no
+  `css/style.css` intermediary.
 - **Core scripts:**
 
   ```bash
