@@ -1,5 +1,6 @@
 import {
   ENSURE_PRESENCE_REBROADCAST_COOLDOWN_SECONDS,
+  isVerboseDevMode,
 } from "../config.js";
 import {
   publishEventToRelays,
@@ -1023,7 +1024,9 @@ export async function rebroadcastEvent({ client, eventId, options = {} }) {
             })
           : null;
     } catch (error) {
-      devLogger.warn("[nostr] COUNT request for rebroadcast failed:", error);
+      if (isVerboseDevMode) {
+        devLogger.warn("[nostr] COUNT request for rebroadcast failed:", error);
+      }
     }
 
     if (countResult?.total && Number(countResult.total) > 0) {

@@ -1,6 +1,6 @@
 // js/nostr/client.js
 
-import { isDevMode } from "../config.js";
+import { isDevMode, isVerboseDevMode } from "../config.js";
 import { FEATURE_PUBLISH_NIP71 } from "../constants.js";
 import { accessControl } from "../accessControl.js";
 // 🔧 merged conflicting changes from codex/update-video-publishing-and-parsing-logic vs unstable
@@ -345,7 +345,9 @@ function withRequestTimeout(promise, timeoutMs, onTimeout, message = "Request ti
         try {
           onTimeout();
         } catch (cleanupError) {
-          devLogger.warn("[nostr] COUNT timeout cleanup failed:", cleanupError);
+          if (isVerboseDevMode) {
+            devLogger.warn("[nostr] COUNT timeout cleanup failed:", cleanupError);
+          }
         }
       }
       reject(new Error(message));
@@ -5744,10 +5746,12 @@ export class NostrClient {
             if (isUnsupported) {
               this.countUnsupportedRelays.add(url);
             } else {
-              devLogger.warn(
-                `[nostr] COUNT request failed on ${url}:`,
-                error,
-              );
+              if (isVerboseDevMode) {
+                devLogger.warn(
+                  `[nostr] COUNT request failed on ${url}:`,
+                  error,
+                );
+              }
             }
             return { url, ok: false, error, unsupported: isUnsupported };
           }

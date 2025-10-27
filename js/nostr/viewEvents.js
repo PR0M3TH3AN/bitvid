@@ -1,6 +1,7 @@
 import {
   VIEW_COUNT_DEDUPE_WINDOW_SECONDS,
   VIEW_COUNT_BACKFILL_MAX_DAYS,
+  isVerboseDevMode,
 } from "../config.js";
 import { VIEW_FILTER_INCLUDE_LEGACY_VIDEO } from "../constants.js";
 import {
@@ -590,7 +591,9 @@ export async function countVideoViewEvents(client, pointer, options = {}) {
     }
   } catch (error) {
     if (error?.code !== "count-unsupported") {
-      devLogger.warn("[nostr] COUNT view request failed:", error);
+      if (isVerboseDevMode) {
+        devLogger.warn("[nostr] COUNT view request failed:", error);
+      }
     }
   }
 

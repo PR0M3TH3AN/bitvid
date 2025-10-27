@@ -24,6 +24,15 @@
 export const IS_DEV_MODE = true;
 
 /**
+ * Whether development builds should surface extra verbose diagnostics.
+ *
+ * Set this to `true` to keep high-volume development warnings (like COUNT
+ * request failures) visible in the console. Flip it to `false` when you want
+ * a quieter dev mode without disabling other development helpers entirely.
+ */
+export const IS_VERBOSE_DEV_MODE = true;
+
+/**
  * Whether the current deployment should operate in lockdown mode.
  *
  * When `true`, bitvid restricts access to operator-approved functionality and
