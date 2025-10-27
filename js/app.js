@@ -3494,11 +3494,30 @@ class Application {
       return false;
     }
 
-    const sessionActorPubkey = this.normalizeHexPubkey(
-      nostrClient?.sessionActor?.pubkey,
-    );
-    if (sessionActorPubkey && sessionActorPubkey === normalizedPubkey) {
+    const clientPubkey = this.normalizeHexPubkey(nostrClient?.pubkey);
+    if (clientPubkey && clientPubkey !== normalizedPubkey) {
       return false;
+    }
+
+    const sessionActor = nostrClient?.sessionActor || null;
+    const sessionActorPubkey = this.normalizeHexPubkey(sessionActor?.pubkey);
+    if (sessionActorPubkey && sessionActorPubkey !== normalizedPubkey) {
+      const rawPrivateKey =
+        typeof sessionActor?.privateKey === "string"
+          ? sessionActor.privateKey.trim()
+          : "";
+      const hasEmbeddedPrivateKey =
+        rawPrivateKey.length > 0 && HEX64_REGEX.test(rawPrivateKey);
+
+      const declaredSource =
+        typeof sessionActor?.source === "string"
+          ? sessionActor.source.trim()
+          : "";
+      const isPersisted = sessionActor?.persisted === true;
+
+      if (!hasEmbeddedPrivateKey || declaredSource || isPersisted) {
+        return false;
+      }
     }
 
     return true;
@@ -3588,6 +3607,34 @@ class Application {
     }
   }
 
+  refreshChromeElements() {
+    const doc = typeof document !== "undefined" ? document : null;
+    const findElement = (id) => {
+      if (!doc || typeof doc.getElementById !== "function") {
+        return null;
+      }
+      const element = doc.getElementById(id);
+      if (!element || typeof element.addEventListener !== "function") {
+        return null;
+      }
+      return element;
+    };
+
+    this.loginButton = findElement("loginButton");
+    this.logoutButton = findElement("logoutButton");
+    this.uploadButton = findElement("uploadButton");
+    this.profileButton = findElement("profileButton");
+    this.closeLoginModalBtn = findElement("closeLoginModal");
+
+    return {
+      loginButton: this.loginButton,
+      logoutButton: this.logoutButton,
+      uploadButton: this.uploadButton,
+      profileButton: this.profileButton,
+      closeLoginModalButton: this.closeLoginModalBtn,
+    };
+  }
+
   resolveSubscriptionsLink() {
     if (this.subscriptionsLink instanceof HTMLElement) {
       return this.subscriptionsLink;
@@ -3604,7 +3651,20 @@ class Application {
   }
 
   hydrateSidebarNavigation() {
+    const chromeElements = this.refreshChromeElements();
     this.resolveSubscriptionsLink();
+
+    if (this.appChromeController) {
+      if (typeof this.appChromeController.setElements === "function") {
+        this.appChromeController.setElements(chromeElements);
+      } else {
+        if (this.appChromeController.elements) {
+          Object.assign(this.appChromeController.elements, chromeElements);
+        }
+        this.appChromeController.initialize();
+      }
+    }
+
     this.syncAuthUiState();
   }
 
