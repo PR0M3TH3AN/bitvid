@@ -38,6 +38,8 @@
 
 - Allow users to set custom relay settings, stored in local cache.
 - Add a "Publish" step in the video editing process.
+- Add a relay note search surface with filters for post date, hashtags, title keywords, view counts, and the publishing account.
+- Add a mobile search control with a floating icon that expands into a full search field on small screens.
 - Improve event spec for migration to new versions. [Click for more details](https://github.com/PR0M3TH3AN/bitvid/blob/main/content/roadmap/02_bitvid_Enhanced_Migration_of_Note_Spec_Logic.md)
 - Migrate event spec to v3 and add support for Audio/Podcast content. [Click for more details](https://github.com/PR0M3TH3AN/bitvid/blob/main/content/roadmap/03_bitvid_Enhanced_Nostr_Video_%26_Audio_Note_Specification_Version%203.md)
 - Add Block List, Subscription List, Playlist, and Reporting Specification. [Click for more details](https://github.com/PR0M3TH3AN/bitvid/blob/main/content/roadmap/05_bitvid_Enhanced_Block_Subscription_%26_Reporting_Specification.md)
