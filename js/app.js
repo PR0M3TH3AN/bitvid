@@ -283,6 +283,7 @@ class Application {
     this.modalCommentLimit = 40;
     this.modalCommentLoadPromise = null;
     this.modalCommentPublishPromise = null;
+    this.uploadSubmitPromise = null;
     this.pendingModeratedPlayback = null;
     this.lastIdentityRefreshPromise = null;
     this.profileIdentityController = new ProfileIdentityController({
@@ -4639,31 +4640,57 @@ class Application {
    * Actually handle the upload form submission.
    */
   async handleUploadSubmitEvent(event) {
+    if (this.uploadSubmitPromise) {
+      devLogger.warn(
+        "[Application] Ignoring upload submit while a publish is already in progress.",
+      );
+      this.showStatus(
+        "Please wait for your current video to finish publishing before sharing another.",
+        { autoHideMs: 6000, showSpinner: false },
+      );
+      if (this.uploadModal?.updateCustomSubmitButtonState) {
+        this.uploadModal.updateCustomSubmitButtonState();
+      }
+      return;
+    }
+
     const payload = event?.detail?.payload || {};
 
+    const submitPromise = (async () => {
+      try {
+        const publishResult = await this.authService.handleUploadSubmit(payload, {
+          publish: (data) =>
+            this.publishVideoNote(data, {
+              onSuccess: () => {
+                if (this.uploadModal?.resetCustomForm) {
+                  this.uploadModal.resetCustomForm();
+                }
+              },
+            }),
+        });
+        if (!publishResult && this.uploadModal?.cancelCustomSubmitCooldown) {
+          this.uploadModal.cancelCustomSubmitCooldown();
+        }
+      } catch (error) {
+        if (this.uploadModal?.cancelCustomSubmitCooldown) {
+          this.uploadModal.cancelCustomSubmitCooldown();
+        }
+        const message = this.describeLoginError(
+          error,
+          "Login required to publish videos.",
+        );
+        this.showError(message);
+      }
+    })();
+
+    this.uploadSubmitPromise = submitPromise;
+
     try {
-      const publishResult = await this.authService.handleUploadSubmit(payload, {
-        publish: (data) =>
-          this.publishVideoNote(data, {
-            onSuccess: () => {
-              if (this.uploadModal?.resetCustomForm) {
-                this.uploadModal.resetCustomForm();
-              }
-            },
-          }),
-      });
-      if (!publishResult && this.uploadModal?.cancelCustomSubmitCooldown) {
-        this.uploadModal.cancelCustomSubmitCooldown();
+      await submitPromise;
+    } finally {
+      if (this.uploadSubmitPromise === submitPromise) {
+        this.uploadSubmitPromise = null;
       }
-    } catch (error) {
-      if (this.uploadModal?.cancelCustomSubmitCooldown) {
-        this.uploadModal.cancelCustomSubmitCooldown();
-      }
-      const message = this.describeLoginError(
-        error,
-        "Login required to publish videos.",
-      );
-      this.showError(message);
     }
   }
 
@@ -5346,8 +5373,9 @@ class Application {
       this.profileButton.removeAttribute("hidden");
     }
 
-    if (this.subscriptionsLink) {
-      this.subscriptionsLink.classList.remove("hidden");
+    const subscriptionsLink = this.resolveSubscriptionsLink();
+    if (subscriptionsLink) {
+      subscriptionsLink.classList.remove("hidden");
     }
   }
 
@@ -5379,8 +5407,9 @@ class Application {
       this.profileButton.setAttribute("hidden", "");
     }
 
-    if (this.subscriptionsLink) {
-      this.subscriptionsLink.classList.add("hidden");
+    const subscriptionsLink = this.resolveSubscriptionsLink();
+    if (subscriptionsLink) {
+      subscriptionsLink.classList.add("hidden");
     }
   }
 
@@ -5390,6 +5419,26 @@ class Application {
     } else {
       this.applyLoggedOutUiState();
     }
+  }
+
+  resolveSubscriptionsLink() {
+    if (this.subscriptionsLink instanceof HTMLElement) {
+      return this.subscriptionsLink;
+    }
+
+    const linkCandidate = document.getElementById("subscriptionsLink");
+    if (linkCandidate instanceof HTMLElement) {
+      this.subscriptionsLink = linkCandidate;
+      return this.subscriptionsLink;
+    }
+
+    this.subscriptionsLink = null;
+    return null;
+  }
+
+  hydrateSidebarNavigation() {
+    this.resolveSubscriptionsLink();
+    this.syncAuthUiState();
   }
 
   maybeShowExperimentalLoginWarning(provider) {
