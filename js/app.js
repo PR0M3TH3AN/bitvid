@@ -5165,6 +5165,73 @@ class Application {
     return normalized;
   }
 
+  refreshVisibleModerationUi({ reason } = {}) {
+    const context = reason ? ` after ${reason}` : "";
+
+    const redecorateVideo = (video) => {
+      if (!video || typeof video !== "object") {
+        return;
+      }
+
+      try {
+        this.decorateVideoModeration(video);
+      } catch (error) {
+        devLogger.warn(
+          `[Application] Failed to decorate video moderation${context}:`,
+          error,
+        );
+      }
+    };
+
+    if (this.videosMap instanceof Map) {
+      for (const video of this.videosMap.values()) {
+        redecorateVideo(video);
+      }
+    }
+
+    if (this.videoListView && Array.isArray(this.videoListView.currentVideos)) {
+      for (const video of this.videoListView.currentVideos) {
+        redecorateVideo(video);
+      }
+    }
+
+    if (this.videoListView && Array.isArray(this.videoListView.videoCardInstances)) {
+      for (const card of this.videoListView.videoCardInstances) {
+        if (!card || typeof card !== "object") {
+          continue;
+        }
+
+        if (card.video && typeof card.video === "object") {
+          redecorateVideo(card.video);
+        }
+
+        if (typeof card.refreshModerationUi === "function") {
+          try {
+            card.refreshModerationUi();
+          } catch (error) {
+            devLogger.warn(
+              `[Application] Failed to refresh moderation UI on card${context}:`,
+              error,
+            );
+          }
+        }
+      }
+    }
+
+    if (this.currentVideo && typeof this.currentVideo === "object") {
+      redecorateVideo(this.currentVideo);
+
+      try {
+        this.videoModal?.refreshActiveVideoModeration?.({ video: this.currentVideo });
+      } catch (error) {
+        devLogger.warn(
+          `[Application] Failed to refresh video modal moderation UI${context}:`,
+          error,
+        );
+      }
+    }
+  }
+
   updateActiveProfileUI(pubkey, profile = {}) {
     if (this.profileController) {
       this.profileController.handleProfileUpdated({
