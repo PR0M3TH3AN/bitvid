@@ -3448,7 +3448,7 @@ export async function initChannelProfileView() {
   // 3) Load subscription state when logged in, but always render the toggle UI
   if (app?.pubkey) {
     subscriptionsTask = subscriptions
-      .loadSubscriptions(app.pubkey)
+      .ensureLoaded(app.pubkey)
       .catch((error) => {
         userLogger.error("Failed to load subscriptions for channel view:", error);
       })
@@ -3833,6 +3833,14 @@ function renderSubscribeButton(channelHex) {
         renderSubscribeButton(channelHex);
       } catch (err) {
         userLogger.error("Failed to update subscription:", err);
+        const permissionErrorCodes = new Set([
+          "extension-permission-denied",
+          "nip04-missing",
+        ]);
+        const message = permissionErrorCodes.has(err?.code)
+          ? "Your Nostr extension must support NIP-04 to manage private lists."
+          : "Failed to update your subscriptions. Please try again.";
+        currentApp?.showError?.(message);
       }
     });
   }
@@ -4428,21 +4436,24 @@ export async function renderChannelVideosFromList({
     videoCard.onEdit = ({ video: editVideo, index: editIndex }) => {
       app?.handleEditVideo?.({
         eventId: editVideo?.id || "",
-        index: Number.isFinite(editIndex) ? editIndex : null
+        index: Number.isFinite(editIndex) ? editIndex : null,
+        video: editVideo || null
       });
     };
 
     videoCard.onRevert = ({ video: revertVideo, index: revertIndex }) => {
       app?.handleRevertVideo?.({
         eventId: revertVideo?.id || "",
-        index: Number.isFinite(revertIndex) ? revertIndex : null
+        index: Number.isFinite(revertIndex) ? revertIndex : null,
+        video: revertVideo || null
       });
     };
 
     videoCard.onDelete = ({ video: deleteVideo, index: deleteIndex }) => {
       app?.handleFullDeleteVideo?.({
         eventId: deleteVideo?.id || "",
-        index: Number.isFinite(deleteIndex) ? deleteIndex : null
+        index: Number.isFinite(deleteIndex) ? deleteIndex : null,
+        video: deleteVideo || null
       });
     };
 

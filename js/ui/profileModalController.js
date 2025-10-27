@@ -182,6 +182,21 @@ const SERVICE_CONTRACT = [
         : "Failed to login. Please try again.",
   },
   {
+    key: "nostrService",
+    type: "object",
+    description:
+      "Provides encrypted direct message helpers for loading and subscribing to inbox updates.",
+    optional: true,
+    fallback: () => ({
+      getDirectMessages: () => [],
+      loadDirectMessages: async () => [],
+      ensureDirectMessageSubscription: () => null,
+      stopDirectMessageSubscription: () => {},
+      clearDirectMessages: () => {},
+      on: () => () => {},
+    }),
+  },
+  {
     key: "hashtagPreferences",
     type: "object",
     description:
@@ -274,6 +289,20 @@ const SERVICE_CONTRACT = [
     key: "nostrClient",
     type: "object",
     description: "Reference to the nostr client powering subscriptions and profile fetches.",
+  },
+  {
+    key: "subscriptions",
+    type: "object",
+    optional: true,
+    description:
+      "Subscriptions manager used by the profile modal to inspect or refresh the viewer's channel subscriptions.",
+  },
+  {
+    key: "moderation",
+    type: "object",
+    optional: true,
+    description:
+      "Moderation service exposing the viewer's Nostr contacts and trust graph metadata.",
   },
   {
     key: "accessControl",
@@ -852,6 +881,45 @@ export class ProfileModalController {
             devLogger.log(...args);
           };
 
+    this.nostrService =
+      this.services.nostrService &&
+      typeof this.services.nostrService === "object"
+        ? this.services.nostrService
+        : null;
+
+    const subscriptionsServiceCandidate = this.services.subscriptions;
+    this.subscriptionsService =
+      subscriptionsServiceCandidate &&
+      typeof subscriptionsServiceCandidate === "object"
+        ? subscriptionsServiceCandidate
+        : null;
+
+    const moderationServiceCandidate = this.services.moderation;
+    this.moderationService =
+      moderationServiceCandidate &&
+      typeof moderationServiceCandidate === "object"
+        ? moderationServiceCandidate
+        : null;
+    this.unsubscribeModerationContacts = null;
+    if (
+      this.moderationService &&
+      typeof this.moderationService.on === "function"
+    ) {
+      try {
+        this.unsubscribeModerationContacts = this.moderationService.on(
+          "contacts",
+          () => {
+            void this.populateFriendsList();
+          },
+        );
+      } catch (error) {
+        devLogger.warn(
+          "[profileModal] Failed to subscribe to moderation contacts updates:",
+          error,
+        );
+      }
+    }
+
     this.hashtagPreferencesService = this.services.hashtagPreferences;
     this.describeHashtagPreferencesErrorService =
       this.services.describeHashtagPreferencesError;
@@ -876,11 +944,14 @@ export class ProfileModalController {
       );
     }
 
+    this.initializeDirectMessagesService();
+
     this.callbacks = {
       onClose: callbacks.onClose || noop,
       onLogout: callbacks.onLogout || noop,
       onChannelLink: callbacks.onChannelLink || noop,
       onAddAccount: callbacks.onAddAccount || noop,
+      onRequestLogoutProfile: callbacks.onRequestLogoutProfile || noop,
       onSelectPane: callbacks.onSelectPane || noop,
       onPaneShown: callbacks.onPaneShown || noop,
       onAddRelay: callbacks.onAddRelay || noop,
@@ -937,7 +1008,10 @@ export class ProfileModalController {
       relays: null,
       wallet: null,
       hashtags: null,
+      subscriptions: null,
+      friends: null,
       blocked: null,
+      messages: null,
       history: null,
       admin: null,
     };
@@ -946,7 +1020,10 @@ export class ProfileModalController {
       relays: null,
       wallet: null,
       hashtags: null,
+      subscriptions: null,
+      friends: null,
       blocked: null,
+      messages: null,
       history: null,
       admin: null,
     };
@@ -958,6 +1035,12 @@ export class ProfileModalController {
     this.profileRelayInput = null;
     this.profileAddRelayBtn = null;
     this.profileRestoreRelaysBtn = null;
+    this.subscriptionList = null;
+    this.subscriptionListEmpty = null;
+    this.friendList = null;
+    this.friendListEmpty = null;
+    this.friendInput = null;
+    this.addFriendButton = null;
     this.blockList = null;
     this.blockListEmpty = null;
     this.blockListStatus = null;
@@ -968,6 +1051,13 @@ export class ProfileModalController {
     this.profileBlockedEmpty = null;
     this.profileBlockedInput = null;
     this.profileAddBlockedBtn = null;
+    this.profileMessagesList = null;
+    this.profileMessagesEmpty = null;
+    this.profileMessagesLoading = null;
+    this.profileMessagesError = null;
+    this.profileMessagesStatus = null;
+    this.profileMessagesReloadButton = null;
+    this.profileMessagesPane = null;
     this.walletUriInput = null;
     this.walletDefaultZapInput = null;
     this.walletSaveButton = null;
@@ -1023,6 +1113,17 @@ export class ProfileModalController {
     this.adminBlacklistList = null;
     this.adminAddBlacklistButton = null;
     this.adminBlacklistInput = null;
+
+    this.messagesLoadingState = "idle";
+    this.messagesInitialLoadPending = true;
+    this.messagesViewActive = false;
+    this.activeMessagesRequest = null;
+    this.directMessagesCache = [];
+    this.directMessagesLastActor = null;
+    this.directMessagesSubscription = null;
+    this.directMessagesUnsubscribes = [];
+    this.pendingMessagesRender = null;
+    this.messagesStatusClearTimeout = null;
 
     this.profileHistoryRenderer = null;
     this.profileHistoryRendererConfig = null;
@@ -1127,8 +1228,14 @@ export class ProfileModalController {
     this.navButtons.wallet = document.getElementById("profileNavWallet") || null;
     this.navButtons.hashtags =
       document.getElementById("profileNavHashtags") || null;
+    this.navButtons.subscriptions =
+      document.getElementById("profileNavSubscriptions") || null;
+    this.navButtons.friends =
+      document.getElementById("profileNavFriends") || null;
     this.navButtons.blocked =
       document.getElementById("profileNavBlocked") || null;
+    this.navButtons.messages =
+      document.getElementById("profileNavMessages") || null;
     this.navButtons.history =
       document.getElementById("profileNavHistory") || null;
     this.navButtons.admin = document.getElementById("profileNavAdmin") || null;
@@ -1137,7 +1244,11 @@ export class ProfileModalController {
     this.panes.relays = document.getElementById("profilePaneRelays") || null;
     this.panes.wallet = document.getElementById("profilePaneWallet") || null;
     this.panes.hashtags = document.getElementById("profilePaneHashtags") || null;
+    this.panes.subscriptions =
+      document.getElementById("profilePaneSubscriptions") || null;
+    this.panes.friends = document.getElementById("profilePaneFriends") || null;
     this.panes.blocked = document.getElementById("profilePaneBlocked") || null;
+    this.panes.messages = document.getElementById("profilePaneMessages") || null;
     this.panes.history = document.getElementById("profilePaneHistory") || null;
     this.panes.admin = document.getElementById("profilePaneAdmin") || null;
 
@@ -1147,10 +1258,60 @@ export class ProfileModalController {
     this.restoreRelaysButton =
       document.getElementById("restoreRelaysBtn") || null;
 
+    this.subscriptionList =
+      document.getElementById("subscriptionsList") || null;
+    this.subscriptionListEmpty =
+      document.getElementById("subscriptionsEmpty") || null;
+    this.friendList = document.getElementById("friendsList") || null;
+    this.friendListEmpty = document.getElementById("friendsEmpty") || null;
+    this.friendInput = document.getElementById("friendsInput") || null;
+    this.addFriendButton = document.getElementById("addFriendBtn") || null;
+
     this.blockList = document.getElementById("blockedList") || null;
     this.blockListEmpty = document.getElementById("blockedEmpty") || null;
     this.blockInput = document.getElementById("blockedInput") || null;
     this.addBlockedButton = document.getElementById("addBlockedBtn") || null;
+
+    this.profileMessagesPane =
+      document.getElementById("profilePaneMessages") || null;
+    this.profileMessagesList =
+      document.getElementById("profileMessagesList") || null;
+    this.profileMessagesEmpty =
+      document.getElementById("profileMessagesEmpty") || null;
+    this.profileMessagesLoading =
+      document.getElementById("profileMessagesLoading") || null;
+    this.profileMessagesError =
+      document.getElementById("profileMessagesError") || null;
+    this.profileMessagesStatus =
+      document.getElementById("profileMessagesStatus") || null;
+    this.profileMessagesReloadButton =
+      document.getElementById("profileMessagesReload") || null;
+
+    if (this.pendingMessagesRender) {
+      const { messages, actorPubkey } = this.pendingMessagesRender;
+      this.pendingMessagesRender = null;
+      void this.renderProfileMessages(messages, { actorPubkey }).catch((error) => {
+        devLogger.warn(
+          "[profileModal] Failed to render pending direct messages:",
+          error,
+        );
+      });
+    } else if (
+      this.profileMessagesList instanceof HTMLElement &&
+      Array.isArray(this.directMessagesCache) &&
+      this.directMessagesCache.length
+    ) {
+      void this.renderProfileMessages(this.directMessagesCache, {
+        actorPubkey: this.directMessagesLastActor,
+      }).catch((error) => {
+        devLogger.warn(
+          "[profileModal] Failed to render cached direct messages:",
+          error,
+        );
+      });
+    }
+
+    this.setMessagesLoadingState(this.messagesLoadingState || "idle");
 
     this.walletUriInput = document.getElementById("profileWalletUri") || null;
     this.walletDefaultZapInput =
@@ -1187,6 +1348,12 @@ export class ProfileModalController {
     this.profileRelayInput = this.relayInput;
     this.profileAddRelayBtn = this.addRelayButton;
     this.profileRestoreRelaysBtn = this.restoreRelaysButton;
+    this.profileSubscriptionsList = this.subscriptionList;
+    this.profileSubscriptionsEmpty = this.subscriptionListEmpty;
+    this.profileFriendsList = this.friendList;
+    this.profileFriendsEmpty = this.friendListEmpty;
+    this.profileFriendsInput = this.friendInput;
+    this.profileAddFriendBtn = this.addFriendButton;
     this.profileBlockedList = this.blockList;
     this.profileBlockedEmpty = this.blockListEmpty;
     this.profileBlockedInput = this.blockInput;
@@ -1335,6 +1502,941 @@ export class ProfileModalController {
     return this.profileHistoryRendererConfig;
   }
 
+  initializeDirectMessagesService() {
+    this.teardownDirectMessagesService();
+
+    if (!this.nostrService || typeof this.nostrService.on !== "function") {
+      return;
+    }
+
+    const unsubscribes = [];
+    const subscribe = (eventName, handler) => {
+      try {
+        const unsubscribe = this.nostrService.on(eventName, handler);
+        if (typeof unsubscribe === "function") {
+          unsubscribes.push(unsubscribe);
+        }
+      } catch (error) {
+        devLogger.warn(
+          `[profileModal] Failed to subscribe to ${eventName} direct message events:`,
+          error,
+        );
+      }
+    };
+
+    subscribe("directMessages:updated", (detail) => {
+      this.handleDirectMessagesUpdated(detail);
+    });
+    subscribe("directMessages:cleared", () => {
+      this.handleDirectMessagesCleared();
+    });
+    subscribe("directMessages:error", (detail) => {
+      this.handleDirectMessagesError(detail);
+    });
+    subscribe("directMessages:failure", (detail) => {
+      this.handleDirectMessagesError(detail);
+    });
+
+    this.directMessagesUnsubscribes = unsubscribes;
+
+    const actor = this.resolveActiveDmActor();
+    if (actor) {
+      this.directMessagesLastActor = actor;
+    }
+
+    if (
+      this.nostrService &&
+      typeof this.nostrService.hydrateDirectMessagesFromStore === "function"
+    ) {
+      void this.nostrService
+        .hydrateDirectMessagesFromStore({ emit: true })
+        .then((messages) => {
+          if (Array.isArray(messages)) {
+            this.directMessagesCache = messages;
+            const active = this.resolveActiveDmActor();
+            if (active) {
+              this.directMessagesLastActor = active;
+            }
+          }
+        })
+        .catch((error) => {
+          devLogger.warn(
+            "[profileModal] Failed to hydrate cached direct messages:",
+            error,
+          );
+        });
+    }
+  }
+
+  teardownDirectMessagesService() {
+    if (!Array.isArray(this.directMessagesUnsubscribes)) {
+      this.directMessagesUnsubscribes = [];
+      return;
+    }
+
+    while (this.directMessagesUnsubscribes.length) {
+      const unsubscribe = this.directMessagesUnsubscribes.pop();
+      if (typeof unsubscribe === "function") {
+        try {
+          unsubscribe();
+        } catch (error) {
+          devLogger.warn(
+            "[profileModal] Failed to remove direct message event listener:",
+            error,
+          );
+        }
+      }
+    }
+  }
+
+  resolveActiveDmActor() {
+    const active = this.normalizeHexPubkey(this.getActivePubkey());
+    if (active) {
+      return active;
+    }
+
+    const client = this.services.nostrClient || null;
+    if (client) {
+      if (typeof client.pubkey === "string" && client.pubkey.trim()) {
+        const normalizedClient = this.normalizeHexPubkey(client.pubkey);
+        if (normalizedClient) {
+          return normalizedClient;
+        }
+      }
+
+      if (
+        client.sessionActor &&
+        typeof client.sessionActor.pubkey === "string" &&
+        client.sessionActor.pubkey.trim()
+      ) {
+        const session = this.normalizeHexPubkey(client.sessionActor.pubkey);
+        if (session) {
+          return session;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  ensureDirectMessageSubscription(actorPubkey = null) {
+    if (
+      !this.nostrService ||
+      typeof this.nostrService.ensureDirectMessageSubscription !== "function"
+    ) {
+      return null;
+    }
+
+    const normalizedActor = actorPubkey
+      ? this.normalizeHexPubkey(actorPubkey)
+      : this.resolveActiveDmActor();
+
+    if (!normalizedActor) {
+      return null;
+    }
+
+    if (
+      this.directMessagesSubscription &&
+      this.directMessagesSubscription.actor === normalizedActor
+    ) {
+      return this.directMessagesSubscription.subscription || null;
+    }
+
+    if (
+      this.directMessagesSubscription &&
+      this.directMessagesSubscription.actor &&
+      this.directMessagesSubscription.actor !== normalizedActor
+    ) {
+      this.resetDirectMessageSubscription();
+    }
+
+    let subscription = null;
+    try {
+      subscription = this.nostrService.ensureDirectMessageSubscription({
+        actorPubkey: normalizedActor,
+      });
+    } catch (error) {
+      userLogger.warn(
+        "[profileModal] Failed to subscribe to direct messages:",
+        error,
+      );
+      return null;
+    }
+
+    this.directMessagesSubscription = {
+      actor: normalizedActor,
+      subscription,
+    };
+
+    return subscription;
+  }
+
+  resetDirectMessageSubscription() {
+    if (
+      this.directMessagesSubscription &&
+      this.nostrService &&
+      typeof this.nostrService.stopDirectMessageSubscription === "function"
+    ) {
+      try {
+        this.nostrService.stopDirectMessageSubscription();
+      } catch (error) {
+        devLogger.warn(
+          "[profileModal] Failed to stop direct message subscription:",
+          error,
+        );
+      }
+    }
+
+    this.directMessagesSubscription = null;
+  }
+
+  handleActiveDmIdentityChanged(actorPubkey = null) {
+    const normalized = actorPubkey
+      ? this.normalizeHexPubkey(actorPubkey)
+      : this.resolveActiveDmActor();
+
+    if (
+      this.directMessagesSubscription &&
+      this.directMessagesSubscription.actor &&
+      normalized !== this.directMessagesSubscription.actor
+    ) {
+      this.resetDirectMessageSubscription();
+    }
+
+    this.directMessagesLastActor = normalized || null;
+    this.directMessagesCache = [];
+    this.messagesInitialLoadPending = true;
+    this.pendingMessagesRender = null;
+
+    if (this.profileMessagesList instanceof HTMLElement) {
+      this.profileMessagesList.innerHTML = "";
+      this.profileMessagesList.classList.add("hidden");
+      this.profileMessagesList.setAttribute("hidden", "");
+    }
+
+    if (!normalized) {
+      this.setMessagesLoadingState("unauthenticated");
+      this.updateMessagesReloadState();
+      return;
+    }
+
+    this.setMessagesLoadingState("loading");
+    this.ensureDirectMessageSubscription(normalized);
+    this.updateMessagesReloadState();
+
+    if (this.getActivePane() === "messages") {
+      void this.populateProfileMessages({
+        force: true,
+        reason: "identity-change",
+      });
+    }
+  }
+
+  setMessagesLoadingState(state, options = {}) {
+    const normalized = typeof state === "string" ? state : "idle";
+    const defaults = {
+      idle: "",
+      loading: "Fetching direct messages from relays…",
+      ready: "",
+      empty: "No direct messages yet.",
+      unauthenticated: "Sign in to view your direct messages.",
+      error: "Failed to load direct messages. Try again later.",
+    };
+
+    const providedMessage =
+      typeof options.message === "string" && options.message.trim()
+        ? options.message.trim()
+        : "";
+    const message = providedMessage || defaults[normalized] || "";
+
+    this.messagesLoadingState = normalized;
+
+    if (this.profileMessagesPane instanceof HTMLElement) {
+      this.profileMessagesPane.setAttribute("data-messages-state", normalized);
+    }
+
+    const toggleVisibility = (element, shouldShow) => {
+      if (!(element instanceof HTMLElement)) {
+        return;
+      }
+      if (shouldShow) {
+        element.classList.remove("hidden");
+        element.removeAttribute("hidden");
+      } else {
+        element.classList.add("hidden");
+        element.setAttribute("hidden", "");
+      }
+    };
+
+    toggleVisibility(
+      this.profileMessagesLoading,
+      normalized === "loading",
+    );
+
+    if (this.profileMessagesError instanceof HTMLElement) {
+      if (normalized === "error") {
+        this.profileMessagesError.textContent = message;
+        toggleVisibility(this.profileMessagesError, true);
+      } else {
+        this.profileMessagesError.textContent = "";
+        toggleVisibility(this.profileMessagesError, false);
+      }
+    }
+
+    if (this.profileMessagesEmpty instanceof HTMLElement) {
+      if (normalized === "empty" || normalized === "unauthenticated") {
+        this.profileMessagesEmpty.textContent = message || defaults[normalized];
+        toggleVisibility(this.profileMessagesEmpty, true);
+      } else {
+        toggleVisibility(this.profileMessagesEmpty, false);
+      }
+    }
+
+    const hasMessages =
+      Array.isArray(this.directMessagesCache) &&
+      this.directMessagesCache.length > 0;
+
+    if (this.profileMessagesList instanceof HTMLElement) {
+      if (normalized === "loading" || normalized === "unauthenticated") {
+        toggleVisibility(this.profileMessagesList, false);
+      } else if (hasMessages) {
+        toggleVisibility(this.profileMessagesList, true);
+      }
+    }
+
+    if (this.profileMessagesStatus instanceof HTMLElement) {
+      if (message && normalized !== "error") {
+        this.profileMessagesStatus.textContent = message;
+      } else if (normalized === "error") {
+        this.profileMessagesStatus.textContent = "";
+      } else if (providedMessage) {
+        this.profileMessagesStatus.textContent = providedMessage;
+      } else {
+        this.profileMessagesStatus.textContent = "";
+      }
+    }
+
+    this.updateMessagesReloadState();
+  }
+
+  updateMessagesReloadState() {
+    const button = this.profileMessagesReloadButton;
+    if (!(button instanceof HTMLElement)) {
+      return;
+    }
+
+    const actor = this.resolveActiveDmActor();
+    const disabled =
+      !actor ||
+      this.messagesLoadingState === "loading" ||
+      this.activeMessagesRequest !== null;
+
+    if ("disabled" in button) {
+      button.disabled = disabled;
+    }
+
+    if (disabled) {
+      button.setAttribute("aria-disabled", "true");
+    } else {
+      button.removeAttribute("aria-disabled");
+    }
+  }
+
+  setMessagesAnnouncement(message) {
+    if (!(this.profileMessagesStatus instanceof HTMLElement)) {
+      return;
+    }
+
+    const content = typeof message === "string" ? message.trim() : "";
+    if (!content) {
+      this.profileMessagesStatus.textContent = "";
+      if (this.messagesStatusClearTimeout) {
+        clearTimeout(this.messagesStatusClearTimeout);
+        this.messagesStatusClearTimeout = null;
+      }
+      return;
+    }
+
+    this.profileMessagesStatus.textContent = content;
+
+    if (typeof window !== "undefined" && window && window.setTimeout) {
+      if (this.messagesStatusClearTimeout) {
+        clearTimeout(this.messagesStatusClearTimeout);
+      }
+      this.messagesStatusClearTimeout = window.setTimeout(() => {
+        if (this.profileMessagesStatus) {
+          this.profileMessagesStatus.textContent = "";
+        }
+        this.messagesStatusClearTimeout = null;
+      }, 2500);
+    }
+  }
+
+  clearProfileMessages({ message } = {}) {
+    this.directMessagesCache = [];
+    this.directMessagesLastActor = this.resolveActiveDmActor();
+    this.messagesInitialLoadPending = true;
+
+    if (this.profileMessagesList instanceof HTMLElement) {
+      this.profileMessagesList.innerHTML = "";
+      this.profileMessagesList.classList.add("hidden");
+      this.profileMessagesList.setAttribute("hidden", "");
+    }
+
+    const actor = this.directMessagesLastActor;
+    this.setMessagesLoadingState(actor ? "empty" : "unauthenticated", {
+      message,
+    });
+  }
+
+  extractDirectMessagePreview(entry) {
+    if (!entry || typeof entry !== "object") {
+      return "";
+    }
+
+    const candidates = [];
+    if (typeof entry.plaintext === "string") {
+      candidates.push(entry.plaintext);
+    }
+    if (typeof entry.preview === "string") {
+      candidates.push(entry.preview);
+    }
+    if (
+      entry.snapshot &&
+      typeof entry.snapshot.preview === "string" &&
+      entry.snapshot.preview.trim()
+    ) {
+      candidates.push(entry.snapshot.preview);
+    }
+    if (entry.message && typeof entry.message.content === "string") {
+      candidates.push(entry.message.content);
+    }
+
+    const preview = candidates.find((value) => value && value.trim());
+    return preview ? preview.trim() : "";
+  }
+
+  resolveProfileSummaryForPubkey(pubkey) {
+    const normalized = this.normalizeHexPubkey(pubkey);
+    const fallbackNpub =
+      normalized && typeof this.safeEncodeNpub === "function"
+        ? this.safeEncodeNpub(normalized)
+        : null;
+    const formattedNpub =
+      typeof this.formatShortNpub === "function"
+        ? this.formatShortNpub(fallbackNpub)
+        : fallbackNpub;
+
+    let displayName = formattedNpub || fallbackNpub || "Unknown profile";
+    let avatarSrc = FALLBACK_PROFILE_AVATAR;
+
+    if (normalized && typeof this.services.getProfileCacheEntry === "function") {
+      const cacheEntry = this.services.getProfileCacheEntry(normalized);
+      const profile = cacheEntry?.profile || null;
+      if (profile) {
+        if (typeof profile.display_name === "string" && profile.display_name.trim()) {
+          displayName = profile.display_name.trim();
+        } else if (typeof profile.name === "string" && profile.name.trim()) {
+          displayName = profile.name.trim();
+        }
+
+        if (typeof profile.picture === "string" && profile.picture.trim()) {
+          avatarSrc = profile.picture.trim();
+        }
+      }
+    }
+
+    return {
+      displayName,
+      displayNpub: formattedNpub || fallbackNpub || "npub unavailable",
+      avatarSrc,
+    };
+  }
+
+  formatMessageTimestamp(timestamp) {
+    const numeric = Number(timestamp);
+    if (!Number.isFinite(numeric) || numeric <= 0) {
+      return { display: "", iso: "" };
+    }
+
+    try {
+      const date = new Date(numeric * 1000);
+      return {
+        display: date.toLocaleString(undefined, {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+        }),
+        iso: date.toISOString(),
+      };
+    } catch (error) {
+      return { display: "", iso: "" };
+    }
+  }
+
+  groupDirectMessages(messages, actorPubkey) {
+    const normalizedActor = actorPubkey
+      ? this.normalizeHexPubkey(actorPubkey)
+      : this.resolveActiveDmActor();
+
+    const threadMap = new Map();
+    for (const entry of Array.isArray(messages) ? messages : []) {
+      if (!entry || entry.ok !== true) {
+        continue;
+      }
+
+      const remoteHex = this.resolveDirectMessageRemote(entry, normalizedActor);
+      if (!remoteHex) {
+        continue;
+      }
+
+      const thread = threadMap.get(remoteHex) || {
+        remoteHex,
+        messages: [],
+        latestTimestamp: 0,
+        latestMessage: null,
+      };
+
+      thread.messages.push(entry);
+
+      const ts = Number(entry.timestamp) || 0;
+      if (!thread.latestMessage || ts > thread.latestTimestamp) {
+        thread.latestTimestamp = ts;
+        thread.latestMessage = entry;
+      }
+
+      threadMap.set(remoteHex, thread);
+    }
+
+    const threads = Array.from(threadMap.values());
+    threads.sort((a, b) => (b.latestTimestamp || 0) - (a.latestTimestamp || 0));
+    return threads;
+  }
+
+  resolveDirectMessageRemote(entry, actorPubkey = null) {
+    if (!entry || entry.ok !== true) {
+      return null;
+    }
+
+    const normalizedActor = actorPubkey
+      ? this.normalizeHexPubkey(actorPubkey)
+      : this.resolveActiveDmActor();
+
+    if (typeof entry.remotePubkey === "string") {
+      const directRemote = this.normalizeHexPubkey(entry.remotePubkey);
+      if (directRemote && directRemote !== normalizedActor) {
+        return directRemote;
+      }
+    }
+
+    if (entry.snapshot && typeof entry.snapshot.remotePubkey === "string") {
+      const snapshotRemote = this.normalizeHexPubkey(entry.snapshot.remotePubkey);
+      if (snapshotRemote && snapshotRemote !== normalizedActor) {
+        return snapshotRemote;
+      }
+    }
+
+    const direction =
+      typeof entry.direction === "string" ? entry.direction.toLowerCase() : "";
+
+    const senderHex =
+      entry.sender && typeof entry.sender.pubkey === "string"
+        ? this.normalizeHexPubkey(entry.sender.pubkey)
+        : null;
+
+    if (direction === "incoming" && senderHex && senderHex !== normalizedActor) {
+      return senderHex;
+    }
+
+    if (Array.isArray(entry.recipients)) {
+      for (const recipient of entry.recipients) {
+        const candidate =
+          recipient && typeof recipient.pubkey === "string"
+            ? this.normalizeHexPubkey(recipient.pubkey)
+            : null;
+        if (candidate && candidate !== normalizedActor) {
+          return candidate;
+        }
+      }
+    }
+
+    if (direction === "outgoing" && senderHex && senderHex !== normalizedActor) {
+      return senderHex;
+    }
+
+    if (entry.message && typeof entry.message.pubkey === "string") {
+      const messagePubkey = this.normalizeHexPubkey(entry.message.pubkey);
+      if (messagePubkey && messagePubkey !== normalizedActor) {
+        return messagePubkey;
+      }
+    }
+
+    if (entry.event && typeof entry.event.pubkey === "string") {
+      const eventPubkey = this.normalizeHexPubkey(entry.event.pubkey);
+      if (eventPubkey && eventPubkey !== normalizedActor) {
+        return eventPubkey;
+      }
+    }
+
+    if (senderHex && senderHex !== normalizedActor) {
+      return senderHex;
+    }
+
+    return null;
+  }
+
+  createDirectMessageThreadItem(thread) {
+    if (!thread || !thread.remoteHex) {
+      return null;
+    }
+
+    const item = document.createElement("li");
+    item.className = "card flex flex-col gap-3 p-4";
+    item.setAttribute("data-remote-pubkey", thread.remoteHex);
+
+    const header = document.createElement("div");
+    header.className = "flex items-start justify-between gap-3";
+
+    const summary = this.resolveProfileSummaryForPubkey(thread.remoteHex);
+    const summaryNode = this.createCompactProfileSummary({
+      displayName: summary.displayName,
+      displayNpub: summary.displayNpub,
+      avatarSrc: summary.avatarSrc,
+      size: "sm",
+    });
+    header.appendChild(summaryNode);
+
+    const timestampMeta = this.formatMessageTimestamp(thread.latestTimestamp);
+    if (timestampMeta.display) {
+      const timeEl = document.createElement("time");
+      timeEl.className =
+        "text-3xs font-semibold uppercase tracking-extra-wide text-muted";
+      if (timestampMeta.iso) {
+        timeEl.setAttribute("datetime", timestampMeta.iso);
+      }
+      timeEl.textContent = timestampMeta.display;
+      header.appendChild(timeEl);
+    }
+
+    item.appendChild(header);
+
+    const previewText = this.extractDirectMessagePreview(thread.latestMessage);
+    const previewEl = document.createElement("p");
+    previewEl.className = "text-sm text-text whitespace-pre-line";
+    previewEl.textContent = previewText || "Encrypted message";
+    item.appendChild(previewEl);
+
+    const meta = document.createElement("div");
+    meta.className = "flex flex-wrap items-center gap-2";
+
+    const direction =
+      typeof thread.latestMessage?.direction === "string"
+        ? thread.latestMessage.direction.toLowerCase()
+        : "";
+    if (direction) {
+      const directionPill = document.createElement("span");
+      directionPill.className = "pill";
+      directionPill.dataset.variant = direction === "incoming" ? "info" : "muted";
+      directionPill.textContent =
+        direction === "incoming"
+          ? "Incoming message"
+          : direction === "outgoing"
+          ? "Sent message"
+          : "Message";
+      meta.appendChild(directionPill);
+    }
+
+    const countPill = document.createElement("span");
+    countPill.className = "pill";
+    countPill.dataset.variant = "muted";
+    const messageCount = Array.isArray(thread.messages)
+      ? thread.messages.length
+      : 0;
+    countPill.textContent =
+      messageCount === 1 ? "1 message" : `${messageCount} messages`;
+    meta.appendChild(countPill);
+
+    const scheme =
+      typeof thread.latestMessage?.scheme === "string"
+        ? thread.latestMessage.scheme.toUpperCase()
+        : "";
+    if (scheme) {
+      const schemePill = document.createElement("span");
+      schemePill.className = "pill";
+      schemePill.dataset.variant = "muted";
+      schemePill.textContent = scheme;
+      meta.appendChild(schemePill);
+    }
+
+    item.appendChild(meta);
+
+    return item;
+  }
+
+  async renderProfileMessages(messages, { actorPubkey = null } = {}) {
+    if (!(this.profileMessagesList instanceof HTMLElement)) {
+      this.pendingMessagesRender = {
+        messages: Array.isArray(messages) ? messages : [],
+        actorPubkey,
+      };
+      return;
+    }
+
+    this.pendingMessagesRender = null;
+
+    const normalizedActor = actorPubkey
+      ? this.normalizeHexPubkey(actorPubkey)
+      : this.resolveActiveDmActor();
+
+    const threads = this.groupDirectMessages(messages, normalizedActor);
+    const remoteKeys = new Set();
+    for (const thread of threads) {
+      if (thread.remoteHex) {
+        remoteKeys.add(thread.remoteHex);
+      }
+    }
+
+    if (
+      remoteKeys.size &&
+      this.services.batchFetchProfiles &&
+      typeof this.services.batchFetchProfiles === "function"
+    ) {
+      try {
+        await this.services.batchFetchProfiles(remoteKeys);
+      } catch (error) {
+        devLogger.warn(
+          "[profileModal] Failed to fetch DM profile metadata:",
+          error,
+        );
+      }
+    }
+
+    this.profileMessagesList.innerHTML = "";
+
+    if (!threads.length) {
+      this.profileMessagesList.classList.add("hidden");
+      this.profileMessagesList.setAttribute("hidden", "");
+      return;
+    }
+
+    for (const thread of threads) {
+      const item = this.createDirectMessageThreadItem(thread);
+      if (item) {
+        this.profileMessagesList.appendChild(item);
+      }
+    }
+
+    this.profileMessagesList.classList.remove("hidden");
+    this.profileMessagesList.removeAttribute("hidden");
+  }
+
+  async populateProfileMessages(options = {}) {
+    const settings =
+      options && typeof options === "object" ? options : { force: false };
+    const { force = false } = settings;
+
+    const actor = this.resolveActiveDmActor();
+    if (!actor) {
+      this.clearProfileMessages();
+      return;
+    }
+
+    if (
+      !this.nostrService ||
+      typeof this.nostrService.loadDirectMessages !== "function"
+    ) {
+      this.setMessagesLoadingState("error", {
+        message: "Direct message service unavailable.",
+      });
+      return;
+    }
+
+    if (
+      !force &&
+      !this.messagesInitialLoadPending &&
+      Array.isArray(this.directMessagesCache) &&
+      this.directMessagesCache.length
+    ) {
+      await this.renderProfileMessages(this.directMessagesCache, {
+        actorPubkey: actor,
+      });
+      this.setMessagesLoadingState("ready");
+      return;
+    }
+
+    const requestId = Symbol("messagesLoad");
+    this.activeMessagesRequest = requestId;
+    this.messagesInitialLoadPending = false;
+    this.setMessagesLoadingState("loading");
+
+    if (
+      this.directMessagesLastActor &&
+      this.directMessagesLastActor !== actor
+    ) {
+      this.resetDirectMessageSubscription();
+      if (
+        typeof this.nostrService.clearDirectMessages === "function"
+      ) {
+        try {
+          this.nostrService.clearDirectMessages({ emit: true });
+        } catch (error) {
+          devLogger.warn(
+            "[profileModal] Failed to clear direct messages cache before reload:",
+            error,
+          );
+        }
+      }
+    }
+
+    try {
+      let snapshot = await this.nostrService.loadDirectMessages({
+        actorPubkey: actor,
+      });
+      if (!Array.isArray(snapshot)) {
+        snapshot = [];
+      }
+
+      if (this.activeMessagesRequest !== requestId) {
+        return;
+      }
+
+      this.directMessagesCache = snapshot;
+      this.directMessagesLastActor = actor;
+
+      await this.renderProfileMessages(snapshot, { actorPubkey: actor });
+
+      if (!snapshot.length) {
+        this.setMessagesLoadingState("empty");
+      } else {
+        this.setMessagesLoadingState("ready", {
+          message:
+            snapshot.length === 1
+              ? "1 direct message thread loaded."
+              : `${snapshot.length} direct message threads loaded.`,
+        });
+      }
+    } catch (error) {
+      if (this.activeMessagesRequest === requestId) {
+        userLogger.error(
+          "[profileModal] Failed to load direct messages:",
+          error,
+        );
+        this.setMessagesLoadingState("error", {
+          message: "Failed to load direct messages. Try again later.",
+        });
+        this.messagesInitialLoadPending = true;
+      }
+      return;
+    } finally {
+      if (this.activeMessagesRequest === requestId) {
+        this.activeMessagesRequest = null;
+        this.updateMessagesReloadState();
+      }
+    }
+
+    this.ensureDirectMessageSubscription(actor);
+  }
+
+  resumeProfileMessages() {
+    this.messagesViewActive = true;
+    this.updateMessagesReloadState();
+  }
+
+  pauseProfileMessages() {
+    this.messagesViewActive = false;
+    this.updateMessagesReloadState();
+  }
+
+  handleDirectMessagesUpdated(detail = {}) {
+    if (this.activeMessagesRequest) {
+      return;
+    }
+
+    const messages = Array.isArray(detail?.messages)
+      ? detail.messages
+      : [];
+    this.directMessagesCache = messages;
+
+    const actor = this.resolveActiveDmActor();
+    if (!actor) {
+      this.setMessagesLoadingState("unauthenticated");
+      return;
+    }
+
+    this.directMessagesLastActor = actor;
+
+    void this.renderProfileMessages(messages, { actorPubkey: actor })
+      .then(() => {
+        if (!messages.length) {
+          this.setMessagesLoadingState("empty");
+        } else {
+          this.setMessagesLoadingState("ready");
+        }
+
+        const reason =
+          typeof detail?.reason === "string" ? detail.reason : "";
+        if (reason === "subscription") {
+          this.setMessagesAnnouncement("New direct message received.");
+        } else if (reason === "load") {
+          this.setMessagesAnnouncement(
+            messages.length === 1
+              ? "1 direct message thread synced."
+              : `${messages.length} direct message threads synced.`,
+          );
+        }
+      })
+      .catch((error) => {
+        devLogger.warn(
+          "[profileModal] Failed to render direct messages after update:",
+          error,
+        );
+      });
+  }
+
+  handleDirectMessagesCleared() {
+    if (this.activeMessagesRequest) {
+      return;
+    }
+
+    this.directMessagesCache = [];
+    if (this.profileMessagesList instanceof HTMLElement) {
+      this.profileMessagesList.innerHTML = "";
+      this.profileMessagesList.classList.add("hidden");
+      this.profileMessagesList.setAttribute("hidden", "");
+    }
+
+    const actor = this.resolveActiveDmActor();
+    if (!actor) {
+      this.setMessagesLoadingState("unauthenticated");
+    } else {
+      this.setMessagesLoadingState("empty");
+    }
+  }
+
+  handleDirectMessagesError(detail = {}) {
+    const error = detail?.error || detail?.failure || detail;
+    userLogger.warn(
+      "[profileModal] Direct message sync issue detected:",
+      error,
+    );
+
+    if (this.activeMessagesRequest) {
+      return;
+    }
+
+    if (!this.directMessagesCache.length) {
+      this.setMessagesLoadingState("error", {
+        message: "Unable to sync direct messages right now.",
+      });
+      return;
+    }
+
+    this.setMessagesAnnouncement("Unable to sync direct messages right now.");
+    this.updateMessagesReloadState();
+  }
+
   registerEventListeners() {
     if (this.closeButton instanceof HTMLElement) {
       this.closeButton.addEventListener("click", () => {
@@ -1434,6 +2536,12 @@ export class ProfileModalController {
           event.preventDefault();
           void this.handleAddHashtagPreference("disinterest");
         }
+      });
+    }
+
+    if (this.profileMessagesReloadButton instanceof HTMLElement) {
+      this.profileMessagesReloadButton.addEventListener("click", () => {
+        void this.populateProfileMessages({ force: true, reason: "manual" });
       });
     }
 
@@ -1555,6 +2663,8 @@ export class ProfileModalController {
         }
       });
     }
+
+    this.updateMessagesReloadState();
   }
 
   resolveAddAccountLoginError(error, fallbackMessage = "") {
@@ -2004,7 +3114,8 @@ export class ProfileModalController {
           metaSpan.className = "flex min-w-0 flex-1 flex-col gap-2";
 
           const topLine = document.createElement("div");
-          topLine.className = "flex flex-wrap items-center gap-3";
+          topLine.className =
+            "flex flex-wrap items-center justify-between gap-3";
 
           const providerId = this.getEntryProviderId(entry);
           const providerInfo = this.resolveEntryProviderMetadata(entry);
@@ -2013,6 +3124,9 @@ export class ProfileModalController {
           const badgeVariant = resolveProviderBadgeClass(
             providerInfo && providerInfo.badgeVariant,
           );
+
+          const resolvedProviderId =
+            providerId || (providerInfo && providerInfo.id) || "";
 
           const label = document.createElement("span");
           label.className = `${PROVIDER_BADGE_BASE_CLASS} ${badgeVariant}`;
@@ -2025,12 +3139,27 @@ export class ProfileModalController {
             label.dataset.providerId = providerInfo.id;
           }
 
+          const actionGroup = document.createElement("div");
+          actionGroup.className = "flex flex-wrap items-center gap-2";
+
           const action = document.createElement("span");
           action.className = "text-xs font-medium text-muted";
           action.setAttribute("aria-hidden", "true");
           action.textContent = isSelected ? "Selected" : "Switch";
 
-          topLine.append(label, action);
+          actionGroup.appendChild(action);
+
+          const logoutButton = this.createSavedProfileLogoutButton({
+            entry,
+            providerId: resolvedProviderId || null,
+            cardButton: button,
+            displayName: cardDisplayName,
+          });
+          if (logoutButton) {
+            actionGroup.appendChild(logoutButton);
+          }
+
+          topLine.append(label, actionGroup);
 
           const nameSpan = document.createElement("span");
           nameSpan.className = "truncate text-sm font-semibold text-primary";
@@ -2053,11 +3182,8 @@ export class ProfileModalController {
             : `Switch to ${cardDisplayName}`;
           button.setAttribute("aria-label", ariaLabel);
 
-          const datasetProviderId =
-            providerId || (providerInfo && providerInfo.id) || "";
-
-          if (datasetProviderId) {
-            button.dataset.providerId = datasetProviderId;
+          if (resolvedProviderId) {
+            button.dataset.providerId = resolvedProviderId;
           } else {
             delete button.dataset.providerId;
           }
@@ -2114,6 +3240,117 @@ export class ProfileModalController {
     if (entriesNeedingFetch.size) {
       this.services.batchFetchProfiles(entriesNeedingFetch);
     }
+  }
+
+  async handleSavedProfileLogout({
+    entry,
+    providerId,
+    triggerButton,
+    cardButton,
+    displayName,
+  } = {}) {
+    if (!entry || typeof entry !== "object") {
+      this.showError("Failed to logout this account. Please try again.");
+      return { loggedOut: false, reason: "invalid-entry" };
+    }
+
+    const targetPubkey =
+      typeof entry.pubkey === "string" && entry.pubkey.trim()
+        ? entry.pubkey.trim()
+        : "";
+    if (!targetPubkey) {
+      this.showError("Failed to logout this account. Please try again.");
+      return { loggedOut: false, reason: "invalid-pubkey" };
+    }
+
+    if (
+      !this.callbacks.onRequestLogoutProfile ||
+      this.callbacks.onRequestLogoutProfile === noop
+    ) {
+      this.showError("Account logout is not available right now.");
+      return { loggedOut: false, reason: "logout-unavailable" };
+    }
+
+    const revertUiState = () => {
+      if (triggerButton instanceof HTMLElement) {
+        triggerButton.disabled = false;
+        triggerButton.removeAttribute("aria-busy");
+        delete triggerButton.dataset.state;
+      }
+
+      if (cardButton instanceof HTMLElement) {
+        cardButton.disabled = false;
+        cardButton.removeAttribute("aria-busy");
+        delete cardButton.dataset.loading;
+      }
+    };
+
+    if (triggerButton instanceof HTMLElement) {
+      triggerButton.dataset.state = "loading";
+      triggerButton.disabled = true;
+      triggerButton.setAttribute("aria-busy", "true");
+    }
+
+    if (cardButton instanceof HTMLElement) {
+      cardButton.dataset.loading = "true";
+      cardButton.disabled = true;
+      cardButton.setAttribute("aria-busy", "true");
+    }
+
+    let result;
+    try {
+      result = await this.callbacks.onRequestLogoutProfile({
+        controller: this,
+        pubkey: targetPubkey,
+        entry,
+        providerId: this.normalizeProviderId(providerId) || null,
+      });
+    } catch (error) {
+      this.showError("Failed to logout this account. Please try again.");
+      result = { loggedOut: false, error, reason: "logout-error" };
+    } finally {
+      revertUiState();
+    }
+
+    if (!result || typeof result !== "object") {
+      this.showError("Failed to logout this account. Please try again.");
+      return { loggedOut: false, reason: "unknown" };
+    }
+
+    if (result.loggedOut || result.removed) {
+      const successName =
+        typeof displayName === "string" && displayName.trim()
+          ? displayName.trim()
+          : null;
+      const message = successName
+        ? `${successName} logged out.`
+        : "Account logged out.";
+
+      this.profileSwitcherSelectionPubkey = null;
+      this.showSuccess(message);
+      this.renderSavedProfiles();
+
+      return { ...result, loggedOut: true };
+    }
+
+    if (result.reason === "not-found") {
+      this.profileSwitcherSelectionPubkey = null;
+      this.showStatus("This account is no longer connected.");
+      this.renderSavedProfiles();
+      return result;
+    }
+
+    if (result.reason === "active-profile") {
+      return result;
+    }
+
+    if (result.error) {
+      this.showError("Failed to logout this account. Please try again.");
+      return result;
+    }
+
+    this.showError("Failed to logout this account. Please try again.");
+    return result;
   }
 
   createCompactProfileSummary({
@@ -2234,6 +3471,54 @@ export class ProfileModalController {
 
     button.addEventListener("click", () => {
       void handleCopy();
+    });
+
+    return button;
+  }
+
+  createSavedProfileLogoutButton({
+    entry,
+    cardButton,
+    providerId,
+    displayName,
+  } = {}) {
+    if (this.callbacks.onRequestLogoutProfile === noop) {
+      return null;
+    }
+
+    if (!entry || typeof entry !== "object" || !entry.pubkey) {
+      return null;
+    }
+
+    const safeName =
+      typeof displayName === "string" && displayName.trim()
+        ? displayName.trim()
+        : "this account";
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "btn-ghost focus-ring text-2xs";
+    button.dataset.variant = "critical";
+    button.dataset.role = "logout";
+    button.textContent = "Logout";
+    button.setAttribute("aria-label", `Log out ${safeName}`);
+    button.title = `Log out ${safeName}`;
+
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (button.dataset.state === "loading") {
+        return;
+      }
+
+      void this.handleSavedProfileLogout({
+        entry,
+        providerId,
+        triggerButton: button,
+        cardButton,
+        displayName: safeName,
+      });
     });
 
     return button;
@@ -2563,6 +3848,10 @@ export class ProfileModalController {
       }
     }
 
+    if (previous === "messages" && target !== "messages") {
+      this.pauseProfileMessages();
+    }
+
     Object.entries(this.panes).forEach(([key, pane]) => {
       if (!(pane instanceof HTMLElement)) {
         return;
@@ -2592,10 +3881,15 @@ export class ProfileModalController {
 
     if (target === "history") {
       void this.populateProfileWatchHistory();
+    } else if (target === "messages") {
+      this.resumeProfileMessages();
+      void this.populateProfileMessages({ reason: "pane-select" });
     } else if (target === "wallet") {
       this.refreshWalletPaneState();
     } else if (target === "hashtags") {
       this.populateHashtagPreferences();
+    } else if (target === "subscriptions") {
+      void this.populateSubscriptionsList();
     } else if (target === "blocked") {
       this.populateBlockedList();
     }
@@ -3642,6 +4936,670 @@ export class ProfileModalController {
     ) {
       this.services.batchFetchProfiles(entriesNeedingFetch);
     }
+  }
+
+  async populateSubscriptionsList(subscriptions = null) {
+    if (
+      !(this.subscriptionList instanceof HTMLElement) ||
+      !(this.subscriptionListEmpty instanceof HTMLElement)
+    ) {
+      return;
+    }
+
+    const service = this.subscriptionsService;
+    if (!service) {
+      this.clearSubscriptionsList();
+      return;
+    }
+
+    const activeHex = this.normalizeHexPubkey(this.getActivePubkey());
+    if (!activeHex) {
+      this.clearSubscriptionsList();
+      return;
+    }
+
+    try {
+      let sourceEntries = [];
+
+      if (Array.isArray(subscriptions) && subscriptions.length) {
+        sourceEntries = subscriptions;
+      } else {
+        if (typeof service.ensureLoaded === "function") {
+          try {
+            await service.ensureLoaded(activeHex);
+          } catch (error) {
+            devLogger.warn(
+              "[profileModal] Failed to ensure subscriptions before populating subscriptions list:",
+              error,
+            );
+          }
+        }
+
+        if (typeof service.getSubscribedAuthors === "function") {
+          try {
+            sourceEntries = service.getSubscribedAuthors() || [];
+          } catch (error) {
+            devLogger.warn(
+              "[profileModal] Failed to resolve subscriptions for subscriptions list:",
+              error,
+            );
+            sourceEntries = [];
+          }
+        } else if (service.subscribedPubkeys instanceof Set) {
+          sourceEntries = Array.from(service.subscribedPubkeys);
+        } else if (Array.isArray(service.subscribedPubkeys)) {
+          sourceEntries = service.subscribedPubkeys.slice();
+        }
+      }
+
+      const normalizedEntries = [];
+      const pushEntry = (hex, label) => {
+        if (!hex) {
+          return;
+        }
+        normalizedEntries.push({ hex, label });
+      };
+
+      sourceEntries.forEach((entry) => {
+        if (!entry) {
+          return;
+        }
+
+        if (typeof entry === "string") {
+          const trimmed = entry.trim();
+          if (!trimmed) {
+            return;
+          }
+
+          if (trimmed.startsWith("npub1")) {
+            const decoded = this.safeDecodeNpub(trimmed);
+            if (!decoded) {
+              return;
+            }
+            const label = this.safeEncodeNpub(decoded) || trimmed;
+            pushEntry(decoded, label);
+            return;
+          }
+
+          if (/^[0-9a-f]{64}$/i.test(trimmed)) {
+            pushEntry(trimmed.toLowerCase(), trimmed);
+          }
+          return;
+        }
+
+        if (typeof entry !== "object") {
+          return;
+        }
+
+        const candidateHex =
+          typeof entry.pubkey === "string" ? entry.pubkey.trim() : "";
+        if (candidateHex && /^[0-9a-f]{64}$/i.test(candidateHex)) {
+          pushEntry(candidateHex.toLowerCase(), candidateHex);
+          return;
+        }
+
+        const candidateNpub =
+          typeof entry.npub === "string" ? entry.npub.trim() : "";
+        if (candidateNpub && candidateNpub.startsWith("npub1")) {
+          const decoded = this.safeDecodeNpub(candidateNpub);
+          if (!decoded) {
+            return;
+          }
+          const label = this.safeEncodeNpub(decoded) || candidateNpub;
+          pushEntry(decoded, label);
+        }
+      });
+
+      const deduped = [];
+      const seenHex = new Set();
+      normalizedEntries.forEach((entry) => {
+        if (!seenHex.has(entry.hex)) {
+          seenHex.add(entry.hex);
+          deduped.push(entry);
+        }
+      });
+
+      this.subscriptionList.innerHTML = "";
+
+      if (!deduped.length) {
+        this.subscriptionListEmpty.classList.remove("hidden");
+        this.subscriptionList.classList.add("hidden");
+        return;
+      }
+
+      this.subscriptionListEmpty.classList.add("hidden");
+      this.subscriptionList.classList.remove("hidden");
+
+      const formatNpub =
+        typeof this.formatShortNpub === "function"
+          ? (value) => this.formatShortNpub(value)
+          : (value) => (typeof value === "string" ? value : "");
+      const entriesNeedingFetch = new Set();
+
+      deduped.forEach(({ hex, label }) => {
+        const item = document.createElement("li");
+        item.className = "card flex items-center justify-between gap-4 p-4";
+
+        let cachedProfile = null;
+        if (hex && typeof this.services.getProfileCacheEntry === "function") {
+          const cacheEntry = this.services.getProfileCacheEntry(hex);
+          cachedProfile = cacheEntry?.profile || null;
+          if (!cacheEntry) {
+            entriesNeedingFetch.add(hex);
+          }
+        }
+
+        const encodedNpub =
+          hex && typeof this.safeEncodeNpub === "function"
+            ? this.safeEncodeNpub(hex)
+            : label;
+        const displayNpub = formatNpub(encodedNpub) || encodedNpub || label;
+        const displayName =
+          (cachedProfile?.name && cachedProfile.name.trim()) ||
+          (cachedProfile?.display_name &&
+            typeof cachedProfile.display_name === "string" &&
+            cachedProfile.display_name.trim()) ||
+          displayNpub ||
+          "Subscription";
+        const avatarSrc = cachedProfile?.picture || FALLBACK_PROFILE_AVATAR;
+
+        const summary = this.createCompactProfileSummary({
+          displayName,
+          displayNpub,
+          avatarSrc,
+        });
+
+        const actions = document.createElement("div");
+        actions.className = "flex flex-wrap items-center justify-end gap-2";
+
+        const viewButton = this.createViewChannelButton({
+          targetNpub: encodedNpub,
+          displayNpub,
+        });
+        if (viewButton) {
+          actions.appendChild(viewButton);
+        }
+
+        const copyButton = this.createCopyNpubButton({
+          targetNpub: encodedNpub,
+          displayNpub,
+        });
+        if (copyButton) {
+          actions.appendChild(copyButton);
+        }
+
+        if (hex) {
+          const unsubscribeButton = this.createRemoveButton({
+            label: "Unsubscribe",
+            onRemove: () => this.handleUnsubscribeFromCreator(hex),
+          });
+          if (unsubscribeButton) {
+            unsubscribeButton.dataset.subscriptionHex = hex;
+            actions.appendChild(unsubscribeButton);
+          }
+        }
+
+        item.appendChild(summary);
+        if (actions.childElementCount > 0) {
+          item.appendChild(actions);
+        }
+
+        this.subscriptionList.appendChild(item);
+      });
+
+      if (
+        entriesNeedingFetch.size &&
+        typeof this.services.batchFetchProfiles === "function"
+      ) {
+        try {
+          this.services.batchFetchProfiles(entriesNeedingFetch);
+        } catch (error) {
+          devLogger.warn(
+            "[profileModal] Failed to batch fetch profiles for subscriptions list:",
+            error,
+          );
+        }
+      }
+    } catch (error) {
+      devLogger.warn("[profileModal] Failed to populate subscriptions list:", error);
+    }
+  }
+
+  clearSubscriptionsList() {
+    if (this.subscriptionList instanceof HTMLElement) {
+      this.subscriptionList.innerHTML = "";
+      this.subscriptionList.classList.add("hidden");
+    }
+
+    if (this.subscriptionListEmpty instanceof HTMLElement) {
+      this.subscriptionListEmpty.classList.remove("hidden");
+    }
+  }
+
+  async handleUnsubscribeFromCreator(candidate) {
+    const refresh = async () => {
+      try {
+        await this.populateSubscriptionsList();
+      } catch (error) {
+        devLogger.warn(
+          "[profileModal] Failed to refresh subscriptions list after unsubscribe:",
+          error,
+        );
+      }
+
+      try {
+        await this.populateFriendsList();
+      } catch (error) {
+        devLogger.warn(
+          "[profileModal] Failed to refresh friends list after unsubscribe:",
+          error,
+        );
+      }
+    };
+
+    return this.handleRemoveFriend(candidate, {
+      successMessage: "You unsubscribed from this creator.",
+      refresh,
+      successReason: "unsubscribed",
+    });
+  }
+
+  async populateFriendsList(friends = null) {
+    if (
+      !(this.friendList instanceof HTMLElement) ||
+      !(this.friendListEmpty instanceof HTMLElement)
+    ) {
+      return;
+    }
+
+    const activeHex = this.normalizeHexPubkey(this.getActivePubkey());
+    if (!activeHex) {
+      this.clearFriendsList();
+      return;
+    }
+
+    try {
+      let sourceEntries = [];
+      let usedModerationService = false;
+
+      if (Array.isArray(friends) && friends.length) {
+        sourceEntries = friends;
+      } else {
+        const moderationService = this.moderationService;
+
+        if (moderationService) {
+          let contacts = [];
+
+          if (
+            typeof moderationService.ensureViewerContactsLoaded === "function"
+          ) {
+            try {
+              contacts =
+                (await moderationService.ensureViewerContactsLoaded(activeHex)) ||
+                [];
+            } catch (error) {
+              devLogger.warn(
+                "[profileModal] Failed to ensure viewer contacts before populating friends list:",
+                error,
+              );
+              contacts = [];
+            }
+          }
+
+          if (!Array.isArray(contacts) || !contacts) {
+            contacts = [];
+          }
+
+          if (!contacts.length) {
+            if (moderationService.viewerContacts instanceof Set) {
+              contacts = Array.from(moderationService.viewerContacts);
+            }
+          }
+
+          if (Array.isArray(contacts)) {
+            sourceEntries = contacts;
+            usedModerationService = true;
+          }
+        }
+
+        if (!usedModerationService) {
+          const service = this.subscriptionsService;
+
+          if (!service) {
+            this.clearFriendsList();
+            return;
+          }
+
+          if (typeof service.ensureLoaded === "function") {
+            try {
+              await service.ensureLoaded(activeHex);
+            } catch (error) {
+              devLogger.warn(
+                "[profileModal] Failed to ensure subscriptions before populating friends list:",
+                error,
+              );
+            }
+          }
+
+          if (typeof service.getSubscribedAuthors === "function") {
+            try {
+              sourceEntries = service.getSubscribedAuthors() || [];
+            } catch (error) {
+              devLogger.warn(
+                "[profileModal] Failed to resolve subscriptions for friends list:",
+                error,
+              );
+              sourceEntries = [];
+            }
+          } else if (service.subscribedPubkeys instanceof Set) {
+            sourceEntries = Array.from(service.subscribedPubkeys);
+          } else if (Array.isArray(service.subscribedPubkeys)) {
+            sourceEntries = service.subscribedPubkeys.slice();
+          }
+        }
+      }
+
+      const normalizedEntries = [];
+      const pushEntry = (hex, label) => {
+        if (!hex) {
+          return;
+        }
+        normalizedEntries.push({ hex, label });
+      };
+
+      sourceEntries.forEach((entry) => {
+        if (!entry) {
+          return;
+        }
+
+        if (typeof entry === "string") {
+          const trimmed = entry.trim();
+          if (!trimmed) {
+            return;
+          }
+
+          if (trimmed.startsWith("npub1")) {
+            const decoded = this.safeDecodeNpub(trimmed);
+            if (!decoded) {
+              return;
+            }
+            const label = this.safeEncodeNpub(decoded) || trimmed;
+            pushEntry(decoded, label);
+            return;
+          }
+
+          if (/^[0-9a-f]{64}$/i.test(trimmed)) {
+            const normalizedHex = trimmed.toLowerCase();
+            const label = this.safeEncodeNpub(normalizedHex) || normalizedHex;
+            pushEntry(normalizedHex, label);
+          }
+          return;
+        }
+
+        if (entry && typeof entry === "object") {
+          const candidateHex =
+            typeof entry.pubkey === "string" ? entry.pubkey.trim() : "";
+          const candidateNpub =
+            typeof entry.npub === "string" ? entry.npub.trim() : "";
+
+          if (candidateHex && /^[0-9a-f]{64}$/i.test(candidateHex)) {
+            const normalizedHex = candidateHex.toLowerCase();
+            const label =
+              candidateNpub && candidateNpub.startsWith("npub1")
+                ? candidateNpub
+                : this.safeEncodeNpub(normalizedHex) || normalizedHex;
+            pushEntry(normalizedHex, label);
+            return;
+          }
+
+          if (candidateNpub && candidateNpub.startsWith("npub1")) {
+            const decoded = this.safeDecodeNpub(candidateNpub);
+            if (!decoded) {
+              return;
+            }
+            pushEntry(decoded, candidateNpub);
+          }
+        }
+      });
+
+      const deduped = [];
+      const seenHex = new Set();
+      normalizedEntries.forEach((entry) => {
+        if (!seenHex.has(entry.hex)) {
+          seenHex.add(entry.hex);
+          deduped.push(entry);
+        }
+      });
+
+      this.friendList.innerHTML = "";
+
+      if (!deduped.length) {
+        this.friendListEmpty.classList.remove("hidden");
+        this.friendList.classList.add("hidden");
+        return;
+      }
+
+      this.friendListEmpty.classList.add("hidden");
+      this.friendList.classList.remove("hidden");
+
+      const formatNpub =
+        typeof this.formatShortNpub === "function"
+          ? (value) => this.formatShortNpub(value)
+          : (value) => (typeof value === "string" ? value : "");
+
+      const entriesNeedingFetch = new Set();
+      const canRemoveFriends = this.canManageFriendsList();
+
+      deduped.forEach(({ hex, label }) => {
+        const item = document.createElement("li");
+        item.className = "card flex items-center justify-between gap-4 p-4";
+
+        let cachedProfile = null;
+        if (hex && typeof this.services.getProfileCacheEntry === "function") {
+          const cacheEntry = this.services.getProfileCacheEntry(hex);
+          cachedProfile = cacheEntry?.profile || null;
+          if (!cacheEntry) {
+            entriesNeedingFetch.add(hex);
+          }
+        }
+
+        const encodedNpub =
+          hex && typeof this.safeEncodeNpub === "function"
+            ? this.safeEncodeNpub(hex)
+            : label;
+        const displayNpub = formatNpub(encodedNpub) || encodedNpub || label;
+        const displayName =
+          (cachedProfile?.name && cachedProfile.name.trim()) ||
+          (cachedProfile?.display_name &&
+            typeof cachedProfile.display_name === "string" &&
+            cachedProfile.display_name.trim()) ||
+          displayNpub ||
+          "Friend";
+        const avatarSrc = cachedProfile?.picture || FALLBACK_PROFILE_AVATAR;
+
+        const summary = this.createCompactProfileSummary({
+          displayName,
+          displayNpub,
+          avatarSrc,
+        });
+
+        const actions = document.createElement("div");
+        actions.className = "flex flex-wrap items-center justify-end gap-2";
+
+        const viewButton = this.createViewChannelButton({
+          targetNpub: encodedNpub,
+          displayNpub,
+        });
+        if (viewButton) {
+          actions.appendChild(viewButton);
+        }
+
+        const copyButton = this.createCopyNpubButton({
+          targetNpub: encodedNpub,
+          displayNpub,
+        });
+        if (copyButton) {
+          actions.appendChild(copyButton);
+        }
+
+        if (hex && canRemoveFriends) {
+          const removeButton = this.createRemoveButton({
+            label: "Unfriend",
+            onRemove: () => this.handleRemoveFriend(hex),
+          });
+          if (removeButton) {
+            removeButton.dataset.friendHex = hex;
+            actions.appendChild(removeButton);
+          }
+        }
+
+        item.appendChild(summary);
+        if (actions.childElementCount > 0) {
+          item.appendChild(actions);
+        }
+
+        this.friendList.appendChild(item);
+      });
+
+      if (
+        entriesNeedingFetch.size &&
+        typeof this.services.batchFetchProfiles === "function"
+      ) {
+        try {
+          this.services.batchFetchProfiles(entriesNeedingFetch);
+        } catch (error) {
+          devLogger.warn(
+            "[profileModal] Failed to batch fetch profiles for friends list:",
+            error,
+          );
+        }
+      }
+    } catch (error) {
+      devLogger.warn("[profileModal] Failed to populate friends list:", error);
+    }
+  }
+
+  canManageFriendsList() {
+    if (
+      this.moderationService &&
+      (!this.subscriptionsService ||
+        typeof this.subscriptionsService.removeChannel !== "function")
+    ) {
+      return false;
+    }
+
+    return (
+      this.subscriptionsService &&
+      typeof this.subscriptionsService.removeChannel === "function"
+    );
+  }
+
+  clearFriendsList() {
+    if (this.friendList instanceof HTMLElement) {
+      this.friendList.innerHTML = "";
+      this.friendList.classList.add("hidden");
+    }
+
+    if (this.friendListEmpty instanceof HTMLElement) {
+      this.friendListEmpty.classList.remove("hidden");
+    }
+  }
+
+  async handleRemoveFriend(candidate, options = {}) {
+    if (
+      this.moderationService &&
+      (!this.subscriptionsService ||
+        typeof this.subscriptionsService.removeChannel !== "function")
+    ) {
+      this.showError(
+        "Friends are synced with your Nostr follows. Update your follows in your Nostr client to make changes.",
+      );
+      return {
+        success: false,
+        reason: "nostr-friends-managed-externally",
+      };
+    }
+
+    const service = this.subscriptionsService;
+    if (!service || typeof service.removeChannel !== "function") {
+      this.showError("Friends list is unavailable right now.");
+      return { success: false, reason: "service-unavailable" };
+    }
+
+    const activeHex = this.normalizeHexPubkey(this.getActivePubkey());
+    if (!activeHex) {
+      this.showError("Please login to manage your friends list.");
+      return { success: false, reason: "no-active-pubkey" };
+    }
+
+    const {
+      successMessage = "Creator removed from your friends list.",
+      refresh = async () => {
+        await this.populateFriendsList();
+      },
+      successReason = "removed",
+    } = typeof options === "object" && options ? options : {};
+
+    let targetHex = "";
+    if (typeof candidate === "string") {
+      const trimmed = candidate.trim();
+      if (trimmed.startsWith("npub1")) {
+        targetHex = this.safeDecodeNpub(trimmed) || "";
+      } else if (/^[0-9a-f]{64}$/i.test(trimmed)) {
+        targetHex = trimmed.toLowerCase();
+      }
+    } else if (candidate && typeof candidate === "object") {
+      const candidateHex =
+        typeof candidate.pubkey === "string" ? candidate.pubkey.trim() : "";
+      const candidateNpub =
+        typeof candidate.npub === "string" ? candidate.npub.trim() : "";
+
+      if (candidateHex && /^[0-9a-f]{64}$/i.test(candidateHex)) {
+        targetHex = candidateHex.toLowerCase();
+      } else if (candidateNpub && candidateNpub.startsWith("npub1")) {
+        targetHex = this.safeDecodeNpub(candidateNpub) || "";
+      }
+    }
+
+    if (!targetHex) {
+      devLogger.warn(
+        "[profileModal] No valid pubkey to remove from friends list:",
+        candidate,
+      );
+      return { success: false, reason: "invalid-target" };
+    }
+
+    try {
+      await service.removeChannel(targetHex, activeHex);
+    } catch (error) {
+      userLogger.error(
+        "[profileModal] Failed to remove creator from friends list:",
+        error,
+      );
+      const message =
+        error?.code === "extension-permission-denied"
+          ? "Your Nostr extension must allow encryption to manage subscriptions."
+          : error?.message || "Failed to update your friends list. Please try again.";
+      if (message) {
+        this.showError(message);
+      }
+      return { success: false, reason: error?.code || "service-error", error };
+    }
+
+    this.showSuccess(successMessage);
+
+    if (typeof refresh === "function") {
+      try {
+        await refresh();
+      } catch (error) {
+        devLogger.warn(
+          "[profileModal] Failed to refresh lists after removing friend:",
+          error,
+        );
+      }
+    }
+
+    return { success: true, reason: successReason };
   }
 
   async handleAddBlockedCreator() {
@@ -6451,6 +8409,8 @@ export class ProfileModalController {
     const { silent = false } =
       options && typeof options === "object" ? options : {};
 
+    this.pauseProfileMessages();
+
     const modalElement =
       this.profileModalRoot instanceof HTMLElement
         ? this.profileModalRoot
@@ -6584,13 +8544,18 @@ export class ProfileModalController {
     }
 
     this.populateBlockedList();
+    void this.populateSubscriptionsList();
+    void this.populateFriendsList();
     this.populateProfileRelays();
     this.refreshWalletPaneState();
     this.populateHashtagPreferences();
+    this.handleActiveDmIdentityChanged(activePubkey);
 
     postLoginPromise
       .then(() => {
         this.populateBlockedList();
+        void this.populateSubscriptionsList();
+        void this.populateFriendsList();
         this.populateProfileRelays();
         this.refreshWalletPaneState();
         this.populateHashtagPreferences();
@@ -6639,16 +8604,21 @@ export class ProfileModalController {
     }
 
     this.populateBlockedList();
+    this.clearSubscriptionsList();
+    this.clearFriendsList();
     this.populateProfileRelays();
     this.refreshWalletPaneState();
     this.populateHashtagPreferences();
     this.clearHashtagInputs();
     this.setHashtagStatus("", "muted");
+    this.handleActiveDmIdentityChanged(null);
 
     return true;
   }
 
   handleProfileUpdated(detail = {}) {
+    const previousActive = this.normalizeHexPubkey(this.getActivePubkey());
+
     if (Array.isArray(detail?.savedProfiles)) {
       try {
         this.setSavedProfiles(detail.savedProfiles, {
@@ -6670,6 +8640,12 @@ export class ProfileModalController {
     }
 
     this.renderSavedProfiles();
+    void this.populateSubscriptionsList();
+
+    const nextActive = this.normalizeHexPubkey(this.getActivePubkey());
+    if (previousActive !== nextActive) {
+      this.handleActiveDmIdentityChanged(nextActive);
+    }
   }
 
   removeSavedProfile(pubkey) {

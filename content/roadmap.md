@@ -6,6 +6,7 @@
 - **Watch History view** – A dedicated watch history page ships with privacy messaging, pagination, relay sync, and local cache controls.
 - **Zap controls** – Channel profiles manage zap visibility, login gating, retry flows, and receipt rendering via the Lightning controller on the page.
 - **Source visibility filtering** – Lists now hide cards whose hosted URLs are offline unless their WebTorrent fallback is healthy, reusing the shared guard in `js/utils/cardSourceVisibility.js`.
+- **Video modal comments** – The video modal now surfaces in-context comment threads so viewers can follow discussions without leaving the player.
 
 ## Bug Fixes
 
@@ -23,10 +24,8 @@
 - Update note spec v3 transition to include new fields that have been added like "has previous" or "videoRootID" or enentID if null.
 - Change "explore" view to "kids" view and add flag to all notes to see if they are for kids.
 - Add "seed" lists.
-- Fix issue where page refreshes when pulling up a video in the video modal.
 - Fix sidebar media query settings on medium-sized screens. (tablet/laptops)
 - Fix various "text wrap" issues causing scroll left and right on profile and modal pages.
-- Add comments to video modal pages.
 
 ## Feature Additions
 
@@ -38,7 +37,6 @@
 - Improve event spec for migration to new versions. [Click for more details](https://github.com/PR0M3TH3AN/bitvid/blob/main/content/roadmap/02_bitvid_Enhanced_Migration_of_Note_Spec_Logic.md)
 - Migrate event spec to v3 and add support for Audio/Podcast content. [Click for more details](https://github.com/PR0M3TH3AN/bitvid/blob/main/content/roadmap/03_bitvid_Enhanced_Nostr_Video_%26_Audio_Note_Specification_Version%203.md)
 - Add Block List, Subscription List, Playlist, and Reporting Specification. [Click for more details](https://github.com/PR0M3TH3AN/bitvid/blob/main/content/roadmap/05_bitvid_Enhanced_Block_Subscription_%26_Reporting_Specification.md)
-- Add comments to the video modal. [Click for more details](https://github.com/PR0M3TH3AN/bitvid/blob/main/content/roadmap/06_bitvid_Enhanced_Video_Comment_System_Specification.md)
 - Implement an "Adult Content" flag for note submissions.
 - Enable custom hashtags in the submission spec and form. (Use with future search system)
 - Allow multiple video resolutions with a selector in the video player. (v3 event spec needed)

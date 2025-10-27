@@ -110,6 +110,24 @@
                 Hashtags
               </button>
               <button
+                id="profileNavSubscriptions"
+                type="button"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneSubscriptions"
+                aria-selected="false"
+              >
+                Subscriptions
+              </button>
+              <button
+                id="profileNavFriends"
+                type="button"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneFriends"
+                aria-selected="false"
+              >
+                Friends
+              </button>
+              <button
                 id="profileNavBlocked"
                 type="button"
                 class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
@@ -117,6 +135,15 @@
                 aria-selected="false"
               >
                 Blocked
+              </button>
+              <button
+                id="profileNavMessages"
+                type="button"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneMessages"
+                aria-selected="false"
+              >
+                Messages
               </button>
               <button
                 id="profileNavHistory"
@@ -567,6 +594,58 @@
             </section>
 
             <section
+              id="profilePaneSubscriptions"
+              class="profile-pane hidden space-y-4"
+              role="tabpanel"
+              aria-labelledby="profileNavSubscriptions"
+            >
+              <p class="text-sm text-muted">
+                These are the creators you’ve subscribed to directly in bitvid.
+              </p>
+              <div
+                id="subscriptionsEmpty"
+                class="card border border-dashed border-border/60 p-6 text-center text-sm text-muted"
+              >
+                You haven’t subscribed to any creators yet.
+              </div>
+              <ul id="subscriptionsList" class="grid-stack" data-orientation="vertical"></ul>
+            </section>
+
+            <section
+              id="profilePaneFriends"
+              class="profile-pane hidden space-y-4"
+              role="tabpanel"
+              aria-labelledby="profileNavFriends"
+            >
+              <p class="text-sm text-muted">
+                Add friends to spotlight creators you want to keep up with across bitvid.
+              </p>
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+                <label class="flex-1 text-sm text-muted-strong" for="friendsInput">
+                  <span class="mb-2 block font-medium">Creator npub</span>
+                  <input
+                    id="friendsInput"
+                    type="text"
+                    inputmode="text"
+                    autocomplete="off"
+                    class="input"
+                    placeholder="npub1..."
+                  />
+                </label>
+                <button id="addFriendBtn" type="button" class="btn focus-ring">
+                  Add friend
+                </button>
+              </div>
+              <div
+                id="friendsEmpty"
+                class="card border border-dashed border-border/60 p-6 text-center text-sm text-muted"
+              >
+                You haven’t added any friends yet.
+              </div>
+              <ul id="friendsList" class="grid-stack" data-orientation="vertical"></ul>
+            </section>
+
+            <section
               id="profilePaneBlocked"
               class="profile-pane hidden space-y-4"
               role="tabpanel"
@@ -603,6 +682,71 @@
                 You haven’t blocked any creators yet.
               </div>
               <ul id="blockedList" class="grid-stack" data-orientation="vertical"></ul>
+            </section>
+            <section
+              id="profilePaneMessages"
+              class="profile-pane hidden space-y-4"
+              role="tabpanel"
+              aria-labelledby="profileNavMessages"
+            >
+              <p class="text-sm text-muted">
+                View encrypted conversations sent with NIP-04 or NIP-44. bitvid keeps message data on this device only.
+              </p>
+              <div
+                id="profileMessagesStatus"
+                class="sr-only"
+                role="status"
+                aria-live="polite"
+              ></div>
+              <div
+                id="profileMessagesLoading"
+                class="hidden py-6"
+                role="status"
+                aria-live="polite"
+              >
+                <div class="sidebar-loading-wrapper">
+                  <div class="sidebar-loading-indicator">
+                    <span
+                      class="status-spinner status-spinner--inline"
+                      aria-hidden="true"
+                    ></span>
+                    <span class="sidebar-loading-text"
+                      >Fetching direct messages from relays…</span
+                    >
+                  </div>
+                </div>
+              </div>
+              <div
+                id="profileMessagesError"
+                class="card hidden border border-critical/40 bg-critical/10 px-4 py-3 text-sm text-critical"
+                role="alert"
+                aria-live="assertive"
+              ></div>
+              <div
+                id="profileMessagesEmpty"
+                class="card hidden border border-dashed border-border/60 p-6 text-center text-sm text-muted"
+                role="status"
+                aria-live="polite"
+              >
+                No direct messages yet.
+              </div>
+              <div class="flex items-center justify-end gap-2">
+                <button
+                  id="profileMessagesReload"
+                  type="button"
+                  class="btn-ghost focus-ring inline-flex items-center gap-2"
+                  data-size="sm"
+                >
+                  Refresh
+                </button>
+              </div>
+              <ul
+                id="profileMessagesList"
+                class="grid-stack hidden"
+                data-orientation="vertical"
+                aria-live="polite"
+                aria-label="Direct message threads"
+              ></ul>
             </section>
             <section
               id="profilePaneHistory"

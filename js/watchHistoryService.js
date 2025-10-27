@@ -901,6 +901,55 @@ function clearQueue(actorKey) {
   notifyQueueChange(actorKey);
 }
 
+function pruneQueueAfterSnapshot(actorKey, queue, keysToClear, snapshotStart) {
+  if (!actorKey || !queue) {
+    return;
+  }
+
+  const keySet = new Set(keysToClear || []);
+  const normalizedStart = Number(snapshotStart);
+  const cutoff = Number.isFinite(normalizedStart) ? normalizedStart : Date.now();
+
+  let mutated = false;
+
+  if (keySet.size > 0) {
+    for (const key of keySet) {
+      const entry = queue.items.get(key);
+      if (!entry) {
+        continue;
+      }
+      const updatedAt = Number(entry?.updatedAt);
+      const addedAt = Number(entry?.addedAt);
+      const referenceTime = Number.isFinite(updatedAt)
+        ? updatedAt
+        : Number.isFinite(addedAt)
+          ? addedAt
+          : 0;
+      if (referenceTime > cutoff) {
+        continue;
+      }
+      queue.items.delete(key);
+      queue.throttle.delete(key);
+      mutated = true;
+    }
+  }
+
+  if (queue.pendingSnapshotId) {
+    queue.pendingSnapshotId = null;
+    mutated = true;
+  }
+
+  if (queue.republishScheduled) {
+    queue.republishScheduled = false;
+    mutated = true;
+  }
+
+  if (mutated) {
+    persistQueueState();
+    notifyQueueChange(actorKey);
+  }
+}
+
 function resolveWatchedAt(...candidates) {
   for (const candidate of candidates) {
     if (!Number.isFinite(candidate)) {
@@ -1252,6 +1301,14 @@ async function snapshot(items, options = {}) {
   }
 
   const queue = ensureQueue(actorKey);
+  const queuePayloadKeys =
+    !items && queue && payloadItems.length
+      ? new Set(
+          payloadItems
+            .map((pointer) => pointerKey(pointer))
+            .filter((keyValue) => typeof keyValue === "string" && keyValue)
+        )
+      : new Set();
 
   if (!items) {
     const cachedItems = getCachedSnapshotItems(actorKey);
@@ -1271,6 +1328,7 @@ async function snapshot(items, options = {}) {
   );
 
   const run = (async () => {
+    const snapshotStartTime = Date.now();
     emit("snapshot-start", { actor: actorKey, reason, items: payloadItems });
     const publishResult = await nostrClient.publishWatchHistorySnapshot(
       payloadItems,
@@ -1308,7 +1366,7 @@ async function snapshot(items, options = {}) {
     }
 
     if (!items) {
-      clearQueue(actorKey);
+      pruneQueueAfterSnapshot(actorKey, queue, queuePayloadKeys, snapshotStartTime);
     } else if (queue) {
       queue.pendingSnapshotId = null;
       queue.republishScheduled = false;
