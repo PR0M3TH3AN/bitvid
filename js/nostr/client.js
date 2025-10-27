@@ -62,6 +62,7 @@ import {
   logCountTimeoutCleanupFailure,
   logRelayCountFailure,
 } from "./countDiagnostics.js";
+import "./maxListenerDiagnostics.js";
 import {
   publishEventToRelay,
   publishEventToRelays,

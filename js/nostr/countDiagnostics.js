@@ -1,14 +1,14 @@
 // js/nostr/countDiagnostics.js
-// Centralized helpers for gating high-volume COUNT diagnostics behind
-// verbose dev mode and deduplicating repeated warnings so the console stays
-// readable during normal development sessions.
+// Centralized helpers for gating high-volume COUNT diagnostics (and other
+// verbose nostr warnings) behind verbose dev mode while deduplicating repeated
+// messages so the console stays readable during normal development sessions.
 
 import { devLogger } from "../utils/logger.js";
 import { isVerboseDevMode } from "../config.js";
 
 const seenWarningKeys = new Set();
 
-function isVerboseCountLoggingEnabled() {
+export function isVerboseDiagnosticsEnabled() {
   if (typeof window !== "undefined" && window) {
     const runtimeFlag = window.__BITVID_VERBOSE_DEV_MODE__;
     if (typeof runtimeFlag === "boolean") {
@@ -19,7 +19,7 @@ function isVerboseCountLoggingEnabled() {
 }
 
 function logCountWarning(message, args = [], { key, throttle = true } = {}) {
-  if (!isVerboseCountLoggingEnabled()) {
+  if (!isVerboseDiagnosticsEnabled()) {
     return;
   }
 
