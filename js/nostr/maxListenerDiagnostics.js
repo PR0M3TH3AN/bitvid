@@ -1,9 +1,10 @@
 // js/nostr/maxListenerDiagnostics.js
 // Suppresses noisy MaxListenersExceededWarning diagnostics unless verbose
-// dev mode is enabled by filtering console.warn output. Node's EventEmitter
-// polyfill emits these warnings via console.warn in browser bundles, so we
-// intercept the console instead of importing the `events` module or
-// patching process APIs that might vary across environments.
+// dev mode is enabled by shimming `process.emitWarning`. The EventEmitter
+// polyfill used by nostr-tools surfaces listener leaks through
+// `process.emitWarning`, so we intercept that hook instead of importing the
+// Node `events` module (which breaks browser bundlers) or rewriting
+// console.warn globally.
 
 import { isVerboseDiagnosticsEnabled } from "./countDiagnostics.js";
 
@@ -12,70 +13,89 @@ const MAX_LISTENER_SNIPPETS = [
   "Possible EventEmitter memory leak detected",
 ];
 
-let originalConsoleWarn;
-let isPatched = false;
+const MAX_LISTENER_CODES = new Set(["MaxListenersExceededWarning"]);
 
-function extractCandidateStrings(value) {
-  if (typeof value === "string") {
-    return [value];
-  }
+function collectCandidateStrings(value) {
+  const candidates = [];
 
-  if (value && typeof value === "object") {
-    const candidates = [];
-    if (typeof value.name === "string") {
-      candidates.push(value.name);
-    }
-    if (typeof value.message === "string") {
-      candidates.push(value.message);
-    }
+  if (!value) {
     return candidates;
   }
 
-  return [];
+  if (typeof value === "string") {
+    candidates.push(value);
+    return candidates;
+  }
+
+  if (typeof value === "object") {
+    const fields = ["name", "message", "code", "type"];
+    for (const field of fields) {
+      const fieldValue = value[field];
+      if (typeof fieldValue === "string") {
+        candidates.push(fieldValue);
+      }
+    }
+  }
+
+  return candidates;
 }
 
-function shouldSuppressArgs(args) {
+function shouldSuppressWarning(...args) {
   if (isVerboseDiagnosticsEnabled()) {
     return false;
   }
 
+  const candidates = [];
   for (const arg of args) {
-    const candidates = extractCandidateStrings(arg);
-    for (const candidate of candidates) {
-      if (MAX_LISTENER_SNIPPETS.some((snippet) => candidate.includes(snippet))) {
-        return true;
-      }
+    candidates.push(...collectCandidateStrings(arg));
+  }
+
+  for (const candidate of candidates) {
+    if (MAX_LISTENER_CODES.has(candidate)) {
+      return true;
+    }
+    if (MAX_LISTENER_SNIPPETS.some((snippet) => candidate.includes(snippet))) {
+      return true;
     }
   }
 
   return false;
 }
 
-function applyMaxListenerWarningFilter() {
-  if (isPatched) {
+function patchProcessEmitWarning() {
+  const processRef =
+    typeof globalThis !== "undefined" && globalThis
+      ? globalThis.process
+      : typeof process !== "undefined"
+        ? process
+        : undefined;
+
+  if (!processRef || typeof processRef.emitWarning !== "function") {
     return;
   }
 
-  const consoleRef = typeof console !== "undefined" ? console : null;
-  if (!consoleRef || typeof consoleRef.warn !== "function") {
+  const originalEmitWarning = processRef.emitWarning.bind(processRef);
+
+  if (processRef.emitWarning.__BITVID_MAX_LISTENER_PATCHED__) {
     return;
   }
 
-  originalConsoleWarn = consoleRef.warn.bind(consoleRef);
-  consoleRef.warn = function patchedConsoleWarn(...args) {
-    if (shouldSuppressArgs(args)) {
+  function patchedEmitWarning(warning, ...rest) {
+    if (shouldSuppressWarning(warning, ...rest)) {
       return;
     }
 
-    return originalConsoleWarn(...args);
-  };
+    return originalEmitWarning(warning, ...rest);
+  }
 
-  isPatched = true;
+  patchedEmitWarning.__BITVID_MAX_LISTENER_PATCHED__ = true;
+  processRef.emitWarning = patchedEmitWarning;
 }
 
-applyMaxListenerWarningFilter();
+patchProcessEmitWarning();
 
 export function refreshMaxListenerPreference() {
-  // No-op for now; retained for API parity in case verbose mode toggles at
-  // runtime and we need to evolve this helper later.
+  // The shim dynamically checks the verbose flag on each invocation, so there
+  // is nothing else to refresh right now. This placeholder remains for API
+  // parity if runtime toggling ever requires additional work.
 }
