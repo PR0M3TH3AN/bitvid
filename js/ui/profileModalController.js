@@ -3893,6 +3893,7 @@ export class ProfileModalController {
           : (value) => (typeof value === "string" ? value : "");
 
       const entriesNeedingFetch = new Set();
+      const canRemoveFriends = this.canManageFriendsList();
 
       deduped.forEach(({ hex, label }) => {
         const item = document.createElement("li");
@@ -3946,7 +3947,7 @@ export class ProfileModalController {
           actions.appendChild(copyButton);
         }
 
-        if (hex && !usedModerationService) {
+        if (hex && canRemoveFriends) {
           const removeButton = this.createRemoveButton({
             label: "Unfriend",
             onRemove: () => this.handleRemoveFriend(hex),
@@ -3981,6 +3982,21 @@ export class ProfileModalController {
     } catch (error) {
       devLogger.warn("[profileModal] Failed to populate friends list:", error);
     }
+  }
+
+  canManageFriendsList() {
+    if (
+      this.moderationService &&
+      (!this.subscriptionsService ||
+        typeof this.subscriptionsService.removeChannel !== "function")
+    ) {
+      return false;
+    }
+
+    return (
+      this.subscriptionsService &&
+      typeof this.subscriptionsService.removeChannel === "function"
+    );
   }
 
   clearFriendsList() {
