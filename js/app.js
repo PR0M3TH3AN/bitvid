@@ -732,6 +732,8 @@ class Application {
           onLogout: async () => this.requestLogout(),
           onChannelLink: (element) => this.handleProfileChannelLink(element),
           onAddAccount: (payload) => this.handleAddProfile(payload),
+          onRequestLogoutProfile: (payload) =>
+            this.handleProfileLogoutRequest(payload),
           onRequestSwitchProfile: (payload) =>
             this.handleProfileSwitchRequest(payload),
           onRelayOperation: (payload) =>
@@ -4687,35 +4689,14 @@ class Application {
         );
       }
 
-      let refreshPromise = null;
-      if (
-        this.lastIdentityRefreshPromise &&
-        typeof this.lastIdentityRefreshPromise.then === "function"
-      ) {
-        refreshPromise = this.lastIdentityRefreshPromise;
-      }
+      const refreshCompleted = await this.waitForIdentityRefresh({
+        reason: "profile-switch",
+      });
 
-      if (refreshPromise) {
-        try {
-          await refreshPromise;
-        } catch (error) {
-          devLogger.error(
-            "Failed to refresh UI after switching profiles:",
-            error,
-          );
-        }
-      } else {
-        try {
-          await this.refreshAllVideoGrids({
-            reason: "profile-switch",
-            forceMainReload: true,
-          });
-        } catch (error) {
-          devLogger.error(
-            "Failed to refresh video grids after switching profiles:",
-            error,
-          );
-        }
+      if (!refreshCompleted) {
+        devLogger.warn(
+          "[Application] Fallback identity refresh was required after switching profiles.",
+        );
       }
 
       if (this.watchHistoryTelemetry?.resetPlaybackLoggingState) {
@@ -4742,6 +4723,135 @@ class Application {
     }
 
     return result;
+  }
+
+  async waitForIdentityRefresh({
+    reason = "identity-refresh",
+    attempts = 6,
+  } = {}) {
+    const maxAttempts = Number.isFinite(attempts)
+      ? Math.max(1, Math.floor(attempts))
+      : 6;
+    const waitForTick = () =>
+      new Promise((resolve) => {
+        if (typeof queueMicrotask === "function") {
+          queueMicrotask(resolve);
+        } else if (typeof setTimeout === "function") {
+          setTimeout(resolve, 0);
+        } else {
+          resolve();
+        }
+      });
+
+    let promise = null;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const candidate = this.lastIdentityRefreshPromise;
+      if (candidate && typeof candidate.then === "function") {
+        promise = candidate;
+        break;
+      }
+      // Yield to allow the auth login flow to schedule the refresh promise.
+      // eslint-disable-next-line no-await-in-loop
+      await waitForTick();
+    }
+
+    if (promise && typeof promise.then === "function") {
+      try {
+        await promise;
+        return true;
+      } catch (error) {
+        devLogger.error(
+          "[Application] Identity refresh promise rejected:",
+          error,
+        );
+      }
+    }
+
+    try {
+      await this.refreshAllVideoGrids({
+        reason,
+        forceMainReload: true,
+      });
+    } catch (error) {
+      devLogger.error(
+        "[Application] Failed to refresh video grids after waiting for identity refresh:",
+        error,
+      );
+    }
+
+    return false;
+  }
+
+  async handleProfileLogoutRequest({ pubkey, entry } = {}) {
+    const candidatePubkey =
+      typeof pubkey === "string" && pubkey.trim()
+        ? pubkey.trim()
+        : typeof entry?.pubkey === "string" && entry.pubkey.trim()
+          ? entry.pubkey.trim()
+          : "";
+
+    if (!candidatePubkey) {
+      return { loggedOut: false, reason: "invalid-pubkey" };
+    }
+
+    const normalizedTarget =
+      this.normalizeHexPubkey(candidatePubkey) || candidatePubkey;
+    if (!normalizedTarget) {
+      return { loggedOut: false, reason: "invalid-pubkey" };
+    }
+
+    const activeNormalized = this.normalizeHexPubkey(getActiveProfilePubkey());
+    if (activeNormalized && activeNormalized === normalizedTarget) {
+      const detail = await this.requestLogout();
+      return {
+        loggedOut: true,
+        reason: "active-profile",
+        active: true,
+        detail,
+      };
+    }
+
+    let removalResult;
+    try {
+      removalResult = this.authService.removeSavedProfile(candidatePubkey);
+    } catch (error) {
+      devLogger.error(
+        "[Application] Failed to remove saved profile during logout request:",
+        error,
+      );
+      return { loggedOut: false, reason: "remove-failed", error };
+    }
+
+    if (!removalResult?.removed) {
+      if (removalResult?.error) {
+        devLogger.warn(
+          "[Application] removeSavedProfile returned an error during logout request:",
+          removalResult.error,
+        );
+      }
+      return { loggedOut: false, reason: "not-found" };
+    }
+
+    if (
+      this.nwcSettingsService &&
+      typeof this.nwcSettingsService.clearStoredNwcSettings === "function"
+    ) {
+      try {
+        await this.nwcSettingsService.clearStoredNwcSettings(normalizedTarget, {
+          silent: true,
+        });
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to clear wallet settings for logged-out profile:",
+          error,
+        );
+      }
+    }
+
+    this.renderSavedProfiles();
+
+    return { loggedOut: true, removed: true };
   }
 
   async handleProfileRelayOperation({

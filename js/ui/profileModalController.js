@@ -951,6 +951,7 @@ export class ProfileModalController {
       onLogout: callbacks.onLogout || noop,
       onChannelLink: callbacks.onChannelLink || noop,
       onAddAccount: callbacks.onAddAccount || noop,
+      onRequestLogoutProfile: callbacks.onRequestLogoutProfile || noop,
       onSelectPane: callbacks.onSelectPane || noop,
       onPaneShown: callbacks.onPaneShown || noop,
       onAddRelay: callbacks.onAddRelay || noop,
@@ -3066,7 +3067,8 @@ export class ProfileModalController {
           metaSpan.className = "flex min-w-0 flex-1 flex-col gap-2";
 
           const topLine = document.createElement("div");
-          topLine.className = "flex flex-wrap items-center gap-3";
+          topLine.className =
+            "flex flex-wrap items-center justify-between gap-3";
 
           const providerId = this.getEntryProviderId(entry);
           const providerInfo = this.resolveEntryProviderMetadata(entry);
@@ -3075,6 +3077,9 @@ export class ProfileModalController {
           const badgeVariant = resolveProviderBadgeClass(
             providerInfo && providerInfo.badgeVariant,
           );
+
+          const resolvedProviderId =
+            providerId || (providerInfo && providerInfo.id) || "";
 
           const label = document.createElement("span");
           label.className = `${PROVIDER_BADGE_BASE_CLASS} ${badgeVariant}`;
@@ -3087,12 +3092,27 @@ export class ProfileModalController {
             label.dataset.providerId = providerInfo.id;
           }
 
+          const actionGroup = document.createElement("div");
+          actionGroup.className = "flex flex-wrap items-center gap-2";
+
           const action = document.createElement("span");
           action.className = "text-xs font-medium text-muted";
           action.setAttribute("aria-hidden", "true");
           action.textContent = isSelected ? "Selected" : "Switch";
 
-          topLine.append(label, action);
+          actionGroup.appendChild(action);
+
+          const logoutButton = this.createSavedProfileLogoutButton({
+            entry,
+            providerId: resolvedProviderId || null,
+            cardButton: button,
+            displayName: cardDisplayName,
+          });
+          if (logoutButton) {
+            actionGroup.appendChild(logoutButton);
+          }
+
+          topLine.append(label, actionGroup);
 
           const nameSpan = document.createElement("span");
           nameSpan.className = "truncate text-sm font-semibold text-primary";
@@ -3115,11 +3135,8 @@ export class ProfileModalController {
             : `Switch to ${cardDisplayName}`;
           button.setAttribute("aria-label", ariaLabel);
 
-          const datasetProviderId =
-            providerId || (providerInfo && providerInfo.id) || "";
-
-          if (datasetProviderId) {
-            button.dataset.providerId = datasetProviderId;
+          if (resolvedProviderId) {
+            button.dataset.providerId = resolvedProviderId;
           } else {
             delete button.dataset.providerId;
           }
@@ -3176,6 +3193,117 @@ export class ProfileModalController {
     if (entriesNeedingFetch.size) {
       this.services.batchFetchProfiles(entriesNeedingFetch);
     }
+  }
+
+  async handleSavedProfileLogout({
+    entry,
+    providerId,
+    triggerButton,
+    cardButton,
+    displayName,
+  } = {}) {
+    if (!entry || typeof entry !== "object") {
+      this.showError("Failed to logout this account. Please try again.");
+      return { loggedOut: false, reason: "invalid-entry" };
+    }
+
+    const targetPubkey =
+      typeof entry.pubkey === "string" && entry.pubkey.trim()
+        ? entry.pubkey.trim()
+        : "";
+    if (!targetPubkey) {
+      this.showError("Failed to logout this account. Please try again.");
+      return { loggedOut: false, reason: "invalid-pubkey" };
+    }
+
+    if (
+      !this.callbacks.onRequestLogoutProfile ||
+      this.callbacks.onRequestLogoutProfile === noop
+    ) {
+      this.showError("Account logout is not available right now.");
+      return { loggedOut: false, reason: "logout-unavailable" };
+    }
+
+    const revertUiState = () => {
+      if (triggerButton instanceof HTMLElement) {
+        triggerButton.disabled = false;
+        triggerButton.removeAttribute("aria-busy");
+        delete triggerButton.dataset.state;
+      }
+
+      if (cardButton instanceof HTMLElement) {
+        cardButton.disabled = false;
+        cardButton.removeAttribute("aria-busy");
+        delete cardButton.dataset.loading;
+      }
+    };
+
+    if (triggerButton instanceof HTMLElement) {
+      triggerButton.dataset.state = "loading";
+      triggerButton.disabled = true;
+      triggerButton.setAttribute("aria-busy", "true");
+    }
+
+    if (cardButton instanceof HTMLElement) {
+      cardButton.dataset.loading = "true";
+      cardButton.disabled = true;
+      cardButton.setAttribute("aria-busy", "true");
+    }
+
+    let result;
+    try {
+      result = await this.callbacks.onRequestLogoutProfile({
+        controller: this,
+        pubkey: targetPubkey,
+        entry,
+        providerId: this.normalizeProviderId(providerId) || null,
+      });
+    } catch (error) {
+      this.showError("Failed to logout this account. Please try again.");
+      result = { loggedOut: false, error, reason: "logout-error" };
+    } finally {
+      revertUiState();
+    }
+
+    if (!result || typeof result !== "object") {
+      this.showError("Failed to logout this account. Please try again.");
+      return { loggedOut: false, reason: "unknown" };
+    }
+
+    if (result.loggedOut || result.removed) {
+      const successName =
+        typeof displayName === "string" && displayName.trim()
+          ? displayName.trim()
+          : null;
+      const message = successName
+        ? `${successName} logged out.`
+        : "Account logged out.";
+
+      this.profileSwitcherSelectionPubkey = null;
+      this.showSuccess(message);
+      this.renderSavedProfiles();
+
+      return { ...result, loggedOut: true };
+    }
+
+    if (result.reason === "not-found") {
+      this.profileSwitcherSelectionPubkey = null;
+      this.showStatus("This account is no longer connected.");
+      this.renderSavedProfiles();
+      return result;
+    }
+
+    if (result.reason === "active-profile") {
+      return result;
+    }
+
+    if (result.error) {
+      this.showError("Failed to logout this account. Please try again.");
+      return result;
+    }
+
+    this.showError("Failed to logout this account. Please try again.");
+    return result;
   }
 
   createCompactProfileSummary({
@@ -3296,6 +3424,54 @@ export class ProfileModalController {
 
     button.addEventListener("click", () => {
       void handleCopy();
+    });
+
+    return button;
+  }
+
+  createSavedProfileLogoutButton({
+    entry,
+    cardButton,
+    providerId,
+    displayName,
+  } = {}) {
+    if (this.callbacks.onRequestLogoutProfile === noop) {
+      return null;
+    }
+
+    if (!entry || typeof entry !== "object" || !entry.pubkey) {
+      return null;
+    }
+
+    const safeName =
+      typeof displayName === "string" && displayName.trim()
+        ? displayName.trim()
+        : "this account";
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "btn-ghost focus-ring text-2xs";
+    button.dataset.variant = "critical";
+    button.dataset.role = "logout";
+    button.textContent = "Logout";
+    button.setAttribute("aria-label", `Log out ${safeName}`);
+    button.title = `Log out ${safeName}`;
+
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (button.dataset.state === "loading") {
+        return;
+      }
+
+      void this.handleSavedProfileLogout({
+        entry,
+        providerId,
+        triggerButton: button,
+        cardButton,
+        displayName: safeName,
+      });
     });
 
     return button;
