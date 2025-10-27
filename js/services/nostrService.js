@@ -5,6 +5,11 @@ import { ALLOW_NSFW_CONTENT } from "../config.js";
 import { userLogger } from "../utils/logger.js";
 import moderationService from "./moderationService.js";
 import {
+  loadDirectMessageSnapshot,
+  saveDirectMessageSnapshot,
+  clearDirectMessageSnapshot,
+} from "../directMessagesStore.js";
+import {
   getVideosMap as getStoredVideosMap,
   setVideosMap as setStoredVideosMap,
   getVideoSubscription as getStoredVideoSubscription,
@@ -99,6 +104,218 @@ function normalizeUntil(timestamp) {
   return seconds > 0 ? seconds : 0;
 }
 
+function sanitizeSnapshotTimestamp(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return 0;
+  }
+
+  const floored = Math.floor(numeric);
+  if (!Number.isFinite(floored) || floored <= 0) {
+    return 0;
+  }
+
+  return floored;
+}
+
+const SNAPSHOT_PREVIEW_LIMIT = 160;
+
+function sanitizeSnapshotPreview(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  let preview = value.replace(/\s+/g, " ").trim();
+  if (!preview) {
+    return "";
+  }
+
+  if (preview.length > SNAPSHOT_PREVIEW_LIMIT) {
+    preview = `${preview.slice(0, SNAPSHOT_PREVIEW_LIMIT).trimEnd()}\u2026`;
+  }
+
+  return preview;
+}
+
+function extractSnapshotPreview(message) {
+  if (!message || typeof message !== "object") {
+    return "";
+  }
+
+  const candidates = [];
+  if (typeof message.plaintext === "string") {
+    candidates.push(message.plaintext);
+  }
+  if (typeof message.preview === "string") {
+    candidates.push(message.preview);
+  }
+  if (message.message && typeof message.message.content === "string") {
+    candidates.push(message.message.content);
+  }
+
+  const selected = candidates.find((candidate) => candidate && candidate.trim());
+  return sanitizeSnapshotPreview(selected || "");
+}
+
+function resolveDirectMessageRemotePubkey(message, actorPubkey = "") {
+  const normalizedActor = normalizeHexPubkey(actorPubkey);
+
+  const directRemote =
+    typeof message?.remotePubkey === "string"
+      ? normalizeHexPubkey(message.remotePubkey)
+      : "";
+  if (directRemote && directRemote !== normalizedActor) {
+    return directRemote;
+  }
+
+  const snapshotRemote =
+    typeof message?.snapshot?.remotePubkey === "string"
+      ? normalizeHexPubkey(message.snapshot.remotePubkey)
+      : "";
+  if (snapshotRemote && snapshotRemote !== normalizedActor) {
+    return snapshotRemote;
+  }
+
+  const direction =
+    typeof message?.direction === "string"
+      ? message.direction.toLowerCase()
+      : "";
+
+  const senderHex =
+    typeof message?.sender?.pubkey === "string"
+      ? normalizeHexPubkey(message.sender.pubkey)
+      : "";
+
+  if (direction === "incoming" && senderHex && senderHex !== normalizedActor) {
+    return senderHex;
+  }
+
+  if (Array.isArray(message?.recipients)) {
+    for (const recipient of message.recipients) {
+      const candidate =
+        recipient && typeof recipient.pubkey === "string"
+          ? normalizeHexPubkey(recipient.pubkey)
+          : "";
+      if (candidate && candidate !== normalizedActor) {
+        return candidate;
+      }
+    }
+  }
+
+  if (direction === "outgoing" && senderHex && senderHex !== normalizedActor) {
+    return senderHex;
+  }
+
+  const messagePubkey =
+    typeof message?.message?.pubkey === "string"
+      ? normalizeHexPubkey(message.message.pubkey)
+      : "";
+  if (messagePubkey && messagePubkey !== normalizedActor) {
+    return messagePubkey;
+  }
+
+  const eventPubkey =
+    typeof message?.event?.pubkey === "string"
+      ? normalizeHexPubkey(message.event.pubkey)
+      : "";
+  if (eventPubkey && eventPubkey !== normalizedActor) {
+    return eventPubkey;
+  }
+
+  if (senderHex && senderHex !== normalizedActor) {
+    return senderHex;
+  }
+
+  return "";
+}
+
+function buildSnapshotFromMessages(messages, actorPubkey = "") {
+  const normalizedActor = normalizeHexPubkey(actorPubkey);
+  const threadMap = new Map();
+
+  for (const message of Array.isArray(messages) ? messages : []) {
+    if (!message || message.ok !== true) {
+      continue;
+    }
+
+    const remote = resolveDirectMessageRemotePubkey(message, normalizedActor);
+    if (!remote) {
+      continue;
+    }
+
+    const timestamp = sanitizeSnapshotTimestamp(message.timestamp);
+    const preview = extractSnapshotPreview(message);
+
+    const existing = threadMap.get(remote);
+    if (!existing || timestamp > existing.latestTimestamp) {
+      threadMap.set(remote, {
+        remotePubkey: remote,
+        latestTimestamp: timestamp,
+        preview,
+      });
+    }
+  }
+
+  return Array.from(threadMap.values()).sort(
+    (a, b) => (b.latestTimestamp || 0) - (a.latestTimestamp || 0),
+  );
+}
+
+function hydrateMessagesFromSnapshot(snapshot, actorPubkey = "") {
+  const normalizedActor = normalizeHexPubkey(actorPubkey);
+  const hydrated = [];
+
+  const entries = Array.isArray(snapshot) ? snapshot : [];
+  entries.sort(
+    (a, b) => (b?.latestTimestamp || 0) - (a?.latestTimestamp || 0),
+  );
+
+  entries.forEach((entry, index) => {
+    const remote = normalizeHexPubkey(entry?.remotePubkey || entry?.remote);
+    if (!remote) {
+      return;
+    }
+
+    const timestamp = sanitizeSnapshotTimestamp(entry?.latestTimestamp);
+    const preview = sanitizeSnapshotPreview(entry?.preview || "");
+
+    hydrated.push({
+      ok: true,
+      timestamp,
+      plaintext: preview || null,
+      preview: preview || "",
+      actorPubkey: normalizedActor,
+      remotePubkey: remote,
+      sender: remote
+        ? {
+            pubkey: remote,
+            relayHints: [],
+            role: "snapshot",
+          }
+        : null,
+      recipients: [],
+      direction: "unknown",
+      scheme: "",
+      decryptor: { scheme: "", source: "snapshot" },
+      event: {
+        id: `dm-snapshot:${normalizedActor || "actor"}:${remote}:${timestamp}:${index}`,
+      },
+      message: preview
+        ? {
+            content: preview,
+          }
+        : null,
+      snapshot: {
+        remotePubkey: remote,
+        timestamp,
+        preview,
+      },
+    });
+  });
+
+  return hydrated;
+}
+
 export class NostrService {
   constructor({ logger } = {}) {
     this.nostrClient = nostrClient;
@@ -118,6 +335,11 @@ export class NostrService {
     this.initialLoadPromise = null;
     this.initialLoadResolved = false;
     this.initialLoadResolve = null;
+    this.dmMessages = [];
+    this.dmMessageIndex = new Map();
+    this.dmSubscription = null;
+    this.dmActorPubkey = null;
+    this.dmHydratedFromSnapshot = false;
     try {
       if (this.moderationService && typeof this.moderationService.setNostrClient === "function") {
         this.moderationService.setNostrClient(this.nostrClient);
@@ -178,6 +400,400 @@ export class NostrService {
 
   awaitInitialLoad() {
     return this.ensureInitialLoadDeferred();
+  }
+
+  resolveActiveDmActor() {
+    if (
+      this.nostrClient &&
+      typeof this.nostrClient.pubkey === "string" &&
+      this.nostrClient.pubkey
+    ) {
+      return this.nostrClient.pubkey;
+    }
+
+    if (
+      this.nostrClient?.sessionActor &&
+      typeof this.nostrClient.sessionActor.pubkey === "string"
+    ) {
+      return this.nostrClient.sessionActor.pubkey;
+    }
+
+    return "";
+  }
+
+  getDirectMessages() {
+    return Array.isArray(this.dmMessages) ? [...this.dmMessages] : [];
+  }
+
+  clearDirectMessages({ actorPubkey = null, emit = true } = {}) {
+    this.dmMessages = [];
+    this.dmMessageIndex = new Map();
+    this.dmHydratedFromSnapshot = false;
+    const activeActor = normalizeHexPubkey(
+      typeof actorPubkey === "string" && actorPubkey
+        ? actorPubkey
+        : this.dmActorPubkey || this.resolveActiveDmActor(),
+    );
+    if (activeActor) {
+      clearDirectMessageSnapshot(activeActor).catch((error) => {
+        userLogger.warn("[nostrService] Failed to clear DM snapshot", error);
+      });
+    }
+    this.dmActorPubkey = null;
+    if (typeof this.nostrClient?.clearDmDecryptCache === "function") {
+      try {
+        this.nostrClient.clearDmDecryptCache();
+      } catch (error) {
+        userLogger.warn("[nostrService] Failed to clear DM decrypt cache", error);
+      }
+    }
+    if (emit) {
+      this.emit("directMessages:cleared", {});
+      this.emit("directMessages:updated", { messages: [] });
+    }
+  }
+
+  applyDirectMessage(message, { reason = "update", event = null } = {}) {
+    if (!message || message.ok !== true) {
+      return;
+    }
+
+    const eventId = message?.event?.id;
+    if (typeof eventId !== "string" || !eventId) {
+      return;
+    }
+
+    const normalized = {
+      ...message,
+      timestamp:
+        Number.isFinite(message?.timestamp)
+          ? message.timestamp
+          : Number.isFinite(message?.message?.created_at)
+          ? message.message.created_at
+          : Number.isFinite(message?.event?.created_at)
+          ? message.event.created_at
+          : Date.now() / 1000,
+    };
+
+    this.dmMessageIndex.set(eventId, normalized);
+
+    const actor = normalizeHexPubkey(
+      normalized?.actorPubkey || this.dmActorPubkey || this.resolveActiveDmActor(),
+    );
+    const remote = resolveDirectMessageRemotePubkey(normalized, actor);
+
+    if (remote) {
+      this.dmMessages = this.dmMessages.filter(
+        (entry) =>
+          !entry?.snapshot || entry.snapshot.remotePubkey !== remote,
+      );
+    }
+
+    const existingIndex = this.dmMessages.findIndex(
+      (entry) => entry?.event?.id === eventId,
+    );
+    if (existingIndex >= 0) {
+      this.dmMessages[existingIndex] = normalized;
+    } else {
+      this.dmMessages.push(normalized);
+    }
+
+    this.dmMessages.sort((a, b) => (b?.timestamp || 0) - (a?.timestamp || 0));
+    if (actor) {
+      this.dmActorPubkey = actor;
+    }
+    this.dmHydratedFromSnapshot = false;
+
+    this.emit("directMessages:message", { message: normalized, reason, event });
+    this.emit("directMessages:updated", {
+      messages: this.getDirectMessages(),
+      reason,
+    });
+
+    if (actor) {
+      this.persistDirectMessageSnapshot(actor).catch((error) => {
+        userLogger.warn(
+          "[nostrService] Failed to persist DM snapshot after update",
+          error,
+        );
+      });
+    }
+  }
+
+  async hydrateDirectMessagesFromStore({
+    actorPubkey = null,
+    emit = false,
+    force = false,
+  } = {}) {
+    const activeActor = normalizeHexPubkey(
+      typeof actorPubkey === "string" && actorPubkey
+        ? actorPubkey
+        : this.resolveActiveDmActor(),
+    );
+
+    if (!activeActor) {
+      return [];
+    }
+
+    let stored = [];
+    try {
+      stored = await loadDirectMessageSnapshot(activeActor);
+    } catch (error) {
+      userLogger.warn("[nostrService] Failed to load DM snapshot", error);
+      return [];
+    }
+
+    const hydrated = hydrateMessagesFromSnapshot(stored, activeActor);
+
+    const shouldReplace =
+      force ||
+      !Array.isArray(this.dmMessages) ||
+      !this.dmMessages.length ||
+      this.dmHydratedFromSnapshot;
+
+    this.dmActorPubkey = activeActor;
+
+    if (!shouldReplace) {
+      return this.getDirectMessages();
+    }
+
+    this.dmMessages = hydrated;
+    this.dmMessageIndex = new Map();
+    this.dmHydratedFromSnapshot = hydrated.length > 0;
+
+    const snapshot = this.getDirectMessages();
+
+    if (emit) {
+      this.emit("directMessages:hydrated", {
+        messages: snapshot,
+        actorPubkey: activeActor,
+      });
+      this.emit("directMessages:updated", {
+        messages: snapshot,
+        reason: "snapshot",
+      });
+    }
+
+    return snapshot;
+  }
+
+  async loadDirectMessages({ actorPubkey, relays, ...options } = {}) {
+    const activeActor = actorPubkey || this.resolveActiveDmActor();
+    const normalizedActor = normalizeHexPubkey(activeActor);
+    if (!normalizedActor) {
+      return [];
+    }
+
+    const forceHydration =
+      this.dmActorPubkey && this.dmActorPubkey !== normalizedActor;
+
+    await this.hydrateDirectMessagesFromStore({
+      actorPubkey: normalizedActor,
+      emit: true,
+      force: forceHydration,
+    });
+
+    this.dmActorPubkey = normalizedActor;
+
+    let messages = [];
+    try {
+      messages = await this.nostrClient.listDirectMessages(normalizedActor, {
+        relays,
+        ...options,
+      });
+    } catch (error) {
+      userLogger.warn("[nostrService] Failed to load direct messages", error);
+      return this.getDirectMessages();
+    }
+
+    const collected = [];
+    const index = new Map();
+
+    for (const message of Array.isArray(messages) ? messages : []) {
+      if (!message || message.ok !== true) {
+        continue;
+      }
+
+      const eventId = message?.event?.id;
+      if (typeof eventId !== "string" || !eventId) {
+        continue;
+      }
+
+      const normalized = {
+        ...message,
+        timestamp:
+          Number.isFinite(message?.timestamp)
+            ? message.timestamp
+            : Number.isFinite(message?.message?.created_at)
+            ? message.message.created_at
+            : Number.isFinite(message?.event?.created_at)
+            ? message.event.created_at
+            : Date.now() / 1000,
+      };
+
+      index.set(eventId, normalized);
+      collected.push(normalized);
+    }
+
+    collected.sort((a, b) => (b?.timestamp || 0) - (a?.timestamp || 0));
+    this.dmMessageIndex = index;
+    this.dmMessages = collected;
+
+    const snapshot = this.getDirectMessages();
+
+    this.dmHydratedFromSnapshot = false;
+
+    this.emit("directMessages:loaded", {
+      messages: snapshot,
+      actorPubkey: normalizedActor,
+    });
+    this.emit("directMessages:updated", {
+      messages: snapshot,
+      reason: "load",
+    });
+
+    try {
+      await this.persistDirectMessageSnapshot(normalizedActor, snapshot);
+    } catch (error) {
+      userLogger.warn(
+        "[nostrService] Failed to persist DM snapshot after load",
+        error,
+      );
+    }
+
+    return snapshot;
+  }
+
+  ensureDirectMessageSubscription({ actorPubkey, relays, ...handlers } = {}) {
+    if (this.dmSubscription) {
+      return this.dmSubscription;
+    }
+
+    const activeActor = actorPubkey || this.resolveActiveDmActor();
+    const normalizedActor = normalizeHexPubkey(activeActor);
+    if (!normalizedActor) {
+      return null;
+    }
+
+    try {
+      const subscription = this.nostrClient.subscribeDirectMessages(
+        normalizedActor,
+        {
+          relays,
+          onEvent: handlers.onEvent,
+          onMessage: (message, context = {}) => {
+            this.applyDirectMessage(message, {
+              reason: "subscription",
+              event: context.event || null,
+            });
+            if (typeof handlers.onMessage === "function") {
+              try {
+                handlers.onMessage(message, context);
+              } catch (error) {
+                userLogger.warn(
+                  "[nostrService] DM onMessage handler threw",
+                  error,
+                );
+              }
+            }
+          },
+          onFailure: (payload, context) => {
+            this.emit("directMessages:failure", { failure: payload, context });
+            if (typeof handlers.onFailure === "function") {
+              try {
+                handlers.onFailure(payload, context);
+              } catch (error) {
+                userLogger.warn(
+                  "[nostrService] DM onFailure handler threw",
+                  error,
+                );
+              }
+            }
+          },
+          onError: (error, context) => {
+            this.emit("directMessages:error", { error, context });
+            if (typeof handlers.onError === "function") {
+              try {
+                handlers.onError(error, context);
+              } catch (handlerError) {
+                userLogger.warn(
+                  "[nostrService] DM onError handler threw",
+                  handlerError,
+                );
+              }
+            } else {
+              userLogger.warn(
+                "[nostrService] Direct message subscription error",
+                error,
+              );
+            }
+          },
+          onEose: () => {
+            this.emit("directMessages:eose", { actorPubkey: normalizedActor });
+            if (typeof handlers.onEose === "function") {
+              try {
+                handlers.onEose();
+              } catch (error) {
+                userLogger.warn(
+                  "[nostrService] DM onEose handler threw",
+                  error,
+                );
+              }
+            }
+          },
+        },
+      );
+
+      this.dmSubscription = subscription;
+      this.dmActorPubkey = normalizedActor;
+      this.emit("directMessages:subscribed", { subscription });
+      return subscription;
+    } catch (error) {
+      userLogger.warn(
+        "[nostrService] Failed to subscribe to direct messages",
+        error,
+      );
+      return null;
+    }
+  }
+
+  stopDirectMessageSubscription() {
+    if (this.dmSubscription && typeof this.dmSubscription.unsub === "function") {
+      try {
+        this.dmSubscription.unsub();
+      } catch (error) {
+        userLogger.warn(
+          "[nostrService] Failed to unsubscribe from direct messages",
+          error,
+        );
+      }
+    }
+    this.dmSubscription = null;
+  }
+
+  async persistDirectMessageSnapshot(actorPubkey = null, messages = null) {
+    const normalizedActor = normalizeHexPubkey(
+      typeof actorPubkey === "string" && actorPubkey
+        ? actorPubkey
+        : this.dmActorPubkey || this.resolveActiveDmActor(),
+    );
+
+    if (!normalizedActor) {
+      return [];
+    }
+
+    const sourceMessages = Array.isArray(messages) ? messages : this.dmMessages;
+    const snapshotPayload = buildSnapshotFromMessages(
+      sourceMessages,
+      normalizedActor,
+    );
+
+    if (!snapshotPayload.length) {
+      await clearDirectMessageSnapshot(normalizedActor);
+      return snapshotPayload;
+    }
+
+    return saveDirectMessageSnapshot(normalizedActor, snapshotPayload);
   }
 
   getModerationService() {
@@ -328,7 +944,11 @@ export class NostrService {
 
     const viewerIsAuthor = this.isViewerVideoAuthor(video);
 
-    if (ALLOW_NSFW_CONTENT !== true && video.isNsfw === true && !viewerIsAuthor) {
+    if (viewerIsAuthor) {
+      return true;
+    }
+
+    if (ALLOW_NSFW_CONTENT !== true && video.isNsfw === true) {
       return false;
     }
 
@@ -346,7 +966,7 @@ export class NostrService {
       }
     }
 
-    if (video.isPrivate === true && !viewerIsAuthor) {
+    if (video.isPrivate === true) {
       return false;
     }
 

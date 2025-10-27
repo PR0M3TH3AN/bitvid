@@ -271,6 +271,58 @@ test(
   },
 );
 
+test("VideoCard blurs viewer-muted creators", async (t) => {
+  const { document } = setupDom(t);
+  withMockedNostrTools(t);
+
+  const app = await createModerationAppHarness();
+  const videoId = "d".repeat(64);
+
+  const video = {
+    id: videoId,
+    title: "Muted Creator Clip",
+    pubkey: "e".repeat(64),
+    moderation: {
+      viewerMuted: true,
+      blockAutoplay: true,
+      blurThumbnail: true,
+      blurReason: "viewer-mute",
+      trustedCount: 0,
+      trustedMuted: false,
+      trustedReporters: [],
+    },
+  };
+
+  app.videosMap.set(video.id, video);
+  app.currentVideo = video;
+  app.decorateVideoModeration(video);
+
+  const card = new VideoCard({
+    document,
+    video,
+    formatters: {
+      formatTimeAgo: () => "moments ago",
+    },
+    helpers: {
+      isMagnetSupported: () => false,
+    },
+  });
+
+  document.body.appendChild(card.getRoot());
+
+  assert.equal(card.getRoot().dataset.autoplayPolicy, "blocked");
+  assert.equal(card.thumbnailEl.dataset.thumbnailState, "blurred");
+
+  const context = normalizeVideoModerationContext(card.video?.moderation);
+  assert.equal(context.blurReason, "viewer-mute");
+  assert.equal(context.activeBlur, true);
+  assert.equal(context.activeBlockAutoplay, true);
+  assert.equal(context.trustedCount, 0);
+  assert.equal(card.getRoot().dataset.moderationReportCount, undefined);
+  assert.ok(card.moderationBadgeEl);
+  assert.equal(card.moderationBadgeEl.dataset.moderationState, "blocked");
+});
+
 test("VideoCard blurs thumbnails when trusted mute triggers without reports", async (t) => {
   const { document } = setupDom(t);
   withMockedNostrTools(t);

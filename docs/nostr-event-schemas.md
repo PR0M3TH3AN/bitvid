@@ -152,6 +152,16 @@ import { updateWatchHistoryListWithDefaultClient } from "./nostrWatchHistoryFaca
 | Admin blacklist (`NOTE_TYPES.ADMIN_BLACKLIST`) | `30000` | `['d', 'bitvid:admin:blacklist']`, repeated `['p', <pubkey>]` entries | Empty content |
 | Admin whitelist (`NOTE_TYPES.ADMIN_WHITELIST`) | `30000` | `['d', 'bitvid:admin:whitelist']`, repeated `['p', <pubkey>]` entries | Empty content |
 
+### Direct messages
+
+bitvid now consumes both legacy direct messages (kind `4`) and modern gift-wrap envelopes (kind `1059`). The `js/dmDecryptor.js` helper unwraps these events by:
+
+* checking `['encrypted']` hints on kind `4` events to prioritize `nip44` ciphertext before falling back to `nip04`
+* unwrapping kind `1059` gift wraps with nested `nip44` decrypt operations until the inner rumor payload is available
+* returning a normalized payload that carries sender metadata, recipient relay hints, the decrypted plaintext, and derived timestamps for sorting
+
+`NostrClient` exposes `listDirectMessages()` and `subscribeDirectMessages()` APIs that hydrate decryptors lazily (preferring extension-provided helpers) and cache results in an LRU keyed by event id. `NostrService` mirrors the normalized messages via `getDirectMessages()` and emits updates as new events arrive so the UI can render private conversations without reimplementing the unwrap logic.
+
 The `isPrivate` flag in Content Schema v3 marks cards that should stay off shared or public grids. Clients should suppress these events for everyone except the owner, even though the payload stays in clear text for compatibility.
 
 If you introduce a new Nostr feature, add its schema to

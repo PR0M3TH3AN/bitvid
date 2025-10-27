@@ -94,7 +94,12 @@ async handleSubmit(e) {
     magnet: document.getElementById("magnet")?.value.trim() || "",
     thumbnail: document.getElementById("thumbnail")?.value.trim() || "",
     description: document.getElementById("description")?.value.trim() || "",
-    mode: isDevMode ? "dev" : "live",
+    mode:
+      (document.getElementById("mode")?.value || "")
+        .trim()
+        .toLowerCase() === "dev"
+        ? "dev"
+        : "live",
     isPrivate: this.isPrivateCheckbox.checked
   };
 

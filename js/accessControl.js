@@ -13,10 +13,43 @@ import {
   persistAdminState,
   readCachedAdminState,
 } from "./adminListStore.js";
+import { ensureNostrTools } from "./nostr/toolkit.js";
 import { userLogger } from "./utils/logger.js";
+
+const HEX_KEY_PATTERN = /^[0-9a-f]{64}$/i;
 
 function normalizeNpub(value) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeHexKey(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const trimmed = value.trim().toLowerCase();
+  return HEX_KEY_PATTERN.test(trimmed) ? trimmed : "";
+}
+
+function bytesToHex(bytes) {
+  if (!bytes || typeof bytes !== "object") {
+    return "";
+  }
+
+  if (typeof bytes.length !== "number") {
+    return "";
+  }
+
+  let hex = "";
+  for (const byte of Array.from(bytes)) {
+    const normalized = Number(byte);
+    if (!Number.isInteger(normalized) || normalized < 0 || normalized > 255) {
+      return "";
+    }
+    hex += normalized.toString(16).padStart(2, "0");
+  }
+
+  return normalizeHexKey(hex);
 }
 
 function dedupeNpubs(values) {
@@ -73,7 +106,9 @@ class AccessControl {
   constructor() {
     this.editors = new Set();
     this.whitelist = new Set();
+    this.whitelistPubkeys = new Set();
     this.blacklist = new Set();
+    this.blacklistPubkeys = new Set();
     this.whitelistEnabled = getWhitelistMode();
     this.hasLoaded = false;
     this.lastError = null;
@@ -110,6 +145,85 @@ class AccessControl {
       this._applyState(cachedState, { markLoaded: false });
       this._hydratedFromCache = true;
     }
+  }
+
+  _rebuildHexSets(
+    whitelistValues = [],
+    blacklistValues = [],
+    toolkitCandidate = null
+  ) {
+    const whitelistHex = new Set();
+    const blacklistHex = new Set();
+
+    const decodeSources = [];
+    const addDecodeSource = (candidate) => {
+      if (
+        candidate &&
+        typeof candidate === "object" &&
+        candidate.nip19 &&
+        typeof candidate.nip19.decode === "function" &&
+        !decodeSources.includes(candidate.nip19)
+      ) {
+        decodeSources.push(candidate.nip19);
+      }
+    };
+
+    addDecodeSource(toolkitCandidate);
+
+    const scopeTools =
+      (typeof window !== "undefined" ? window?.NostrTools : null) ||
+      (typeof globalThis !== "undefined" ? globalThis?.NostrTools : null) ||
+      null;
+    addDecodeSource(scopeTools);
+
+    const decodeNpubToHex = (npub) => {
+      const normalized = normalizeNpub(npub);
+      if (!normalized) {
+        return "";
+      }
+
+      for (const nip19 of decodeSources) {
+        try {
+          const decoded = nip19.decode(normalized);
+          if (!decoded || decoded.type !== "npub") {
+            continue;
+          }
+          const data = decoded.data;
+          if (typeof data === "string") {
+            const normalizedHex = normalizeHexKey(data);
+            if (normalizedHex) {
+              return normalizedHex;
+            }
+          } else {
+            const converted = bytesToHex(data);
+            if (converted) {
+              return converted;
+            }
+          }
+        } catch (error) {
+          continue;
+        }
+      }
+
+      return "";
+    };
+
+    for (const entry of whitelistValues) {
+      const decodedHex = decodeNpubToHex(entry);
+      if (decodedHex) {
+        whitelistHex.add(decodedHex);
+      }
+    }
+
+    for (const entry of blacklistValues) {
+      const decodedHex = decodeNpubToHex(entry);
+      if (decodedHex) {
+        blacklistHex.add(decodedHex);
+      }
+    }
+
+    this.whitelistPubkeys = whitelistHex;
+    this.blacklistPubkeys = blacklistHex;
   }
 
   _applyState(state, options = {}) {
@@ -151,6 +265,37 @@ class AccessControl {
       return true;
     });
     this.blacklist = new Set(sanitizedBlacklist);
+
+    const toolkitCandidate =
+      (typeof window !== "undefined" ? window?.NostrTools : null) ||
+      (typeof globalThis !== "undefined" ? globalThis?.NostrTools : null);
+    this._rebuildHexSets(normalizedWhitelist, sanitizedBlacklist, toolkitCandidate);
+
+    try {
+      const ensured = ensureNostrTools();
+      if (ensured && typeof ensured.then === "function") {
+        ensured
+          .then((tools) => {
+            if (!tools) {
+              return;
+            }
+            this._rebuildHexSets(
+              Array.from(this.whitelist),
+              Array.from(this.blacklist),
+              tools
+            );
+          })
+          .catch(() => {});
+      } else if (ensured) {
+        this._rebuildHexSets(
+          Array.from(this.whitelist),
+          Array.from(this.blacklist),
+          ensured
+        );
+      }
+    } catch (error) {
+      // ignore toolkit errors; we'll attempt to hydrate again on the next refresh
+    }
 
     this.whitelistEnabled = getWhitelistMode();
     this.lastError = null;
@@ -220,7 +365,9 @@ class AccessControl {
         if (!this.hasLoaded && !this._hydratedFromCache) {
           this.editors.clear();
           this.whitelist.clear();
+          this.whitelistPubkeys.clear();
           this.blacklist.clear();
+          this.blacklistPubkeys.clear();
         }
         throw error;
       } finally {
@@ -497,29 +644,72 @@ class AccessControl {
     if (this.whitelist.has(normalized)) {
       return false;
     }
+
+    const normalizedHexCandidate = normalizeHexKey(normalized);
+    if (normalizedHexCandidate) {
+      if (this.whitelistPubkeys.has(normalizedHexCandidate)) {
+        return false;
+      }
+      return this.blacklistPubkeys.has(normalizedHexCandidate);
+    }
+
     return this.blacklist.has(normalized);
   }
 
   canAccess(candidate) {
     let npub = "";
+    let hex = "";
+
+    const considerHexCandidate = (value) => {
+      const normalizedHex = normalizeHexKey(value);
+      if (!normalizedHex) {
+        return false;
+      }
+      hex = normalizedHex;
+      return true;
+    };
 
     if (typeof candidate === "string") {
-      npub = candidate;
+      if (!considerHexCandidate(candidate)) {
+        npub = candidate;
+      }
     } else if (candidate && typeof candidate === "object") {
       if (typeof candidate.npub === "string") {
         npub = candidate.npub;
       } else if (typeof candidate.pubkey === "string") {
-        try {
-          npub = window.NostrTools.nip19.npubEncode(candidate.pubkey);
-        } catch (error) {
-          npub = candidate.pubkey;
+        if (!considerHexCandidate(candidate.pubkey)) {
+          try {
+            npub = window.NostrTools.nip19.npubEncode(candidate.pubkey);
+          } catch (error) {
+            npub = candidate.pubkey;
+          }
         }
       }
     }
 
     const normalized = normalizeNpub(npub);
     if (!normalized) {
-      return false;
+      if (!hex) {
+        return false;
+      }
+
+      if (this.isLockdownActive()) {
+        return false;
+      }
+
+      if (this.whitelistPubkeys.has(hex)) {
+        return true;
+      }
+
+      if (this.blacklistPubkeys.has(hex)) {
+        return false;
+      }
+
+      if (this.whitelistEnabled && !this.whitelistPubkeys.has(hex)) {
+        return false;
+      }
+
+      return true;
     }
 
     if (this.isAdminEditor(normalized)) {
@@ -528,6 +718,15 @@ class AccessControl {
 
     if (this.isLockdownActive()) {
       return false;
+    }
+
+    if (hex) {
+      if (this.whitelistPubkeys.has(hex)) {
+        return true;
+      }
+      if (this.blacklistPubkeys.has(hex)) {
+        return false;
+      }
     }
 
     if (this.whitelist.has(normalized)) {

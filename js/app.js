@@ -13,7 +13,6 @@ import {
 } from "./config.js";
 import { accessControl } from "./accessControl.js";
 import { safeDecodeMagnet } from "./magnetUtils.js";
-import { extractMagnetHints, normalizeAndAugmentMagnet } from "./magnet.js";
 import { deriveTorrentPlaybackConfig } from "./playbackUtils.js";
 import {
   URL_FIRST_ENABLED,
@@ -46,6 +45,10 @@ import watchHistoryService from "./watchHistoryService.js";
 import r2Service from "./services/r2Service.js";
 import PlaybackService from "./services/playbackService.js";
 import AuthService from "./services/authService.js";
+import {
+  getVideoNoteErrorMessage,
+  normalizeVideoNotePayload,
+} from "./services/videoNotePayload.js";
 import getAuthProvider, {
   providers as authProviders,
 } from "./services/authProviders/index.js";
@@ -71,6 +74,9 @@ import { devLogger, userLogger } from "./utils/logger.js";
 import createPopover from "./ui/overlay/popoverEngine.js";
 import { createVideoSettingsMenuPanel } from "./ui/components/videoMenuRenderers.js";
 import moderationService from "./services/moderationService.js";
+import AppChromeController from "./ui/appChromeController.js";
+import VideoListViewController from "./ui/videoListViewController.js";
+import ProfileIdentityController from "./ui/profileIdentityController.js";
 import {
   initViewCounter,
   subscribeToVideoViewCount,
@@ -278,6 +284,19 @@ class Application {
     this.modalCommentLoadPromise = null;
     this.modalCommentPublishPromise = null;
     this.pendingModeratedPlayback = null;
+    this.lastIdentityRefreshPromise = null;
+    this.profileIdentityController = new ProfileIdentityController({
+      callbacks: {
+        safeEncodeNpub: (pubkey) => this.safeEncodeNpub(pubkey),
+        formatShortNpub: (value) => formatShortNpub(value),
+      },
+      logger: devLogger,
+    });
+    this.videoListViewController = new VideoListViewController({
+      getSidebarLoadingMarkup,
+      logger: devLogger,
+    });
+    this.appChromeController = null;
 
     this.nostrService = services.nostrService || nostrService;
     this.r2Service = services.r2Service || r2Service;
@@ -559,7 +578,11 @@ class Application {
       editModalOverride: ui.editModal,
       container: modalContainer,
       services: {
-        getMode: () => (isDevMode ? "dev" : "live"),
+        getMode: ({ video } = {}) => {
+          const candidate =
+            typeof video?.mode === "string" ? video.mode.trim().toLowerCase() : "";
+          return candidate === "dev" ? "dev" : "live";
+        },
         sanitizers: {
           text: (value) => (typeof value === "string" ? value.trim() : ""),
           url: (value) => (typeof value === "string" ? value.trim() : ""),
@@ -646,7 +669,10 @@ class Application {
           relayManager,
           userBlocks,
           nostrClient,
+          nostrService: this.nostrService,
+          subscriptions,
           accessControl,
+          moderation: moderationService,
           getCurrentUserNpub: () => this.getCurrentUserNpub(),
           nwcSettings: this.nwcSettingsService,
           moderationSettings: {
@@ -706,6 +732,8 @@ class Application {
           onLogout: async () => this.requestLogout(),
           onChannelLink: (element) => this.handleProfileChannelLink(element),
           onAddAccount: (payload) => this.handleAddProfile(payload),
+          onRequestLogoutProfile: (payload) =>
+            this.handleProfileLogoutRequest(payload),
           onRequestSwitchProfile: (payload) =>
             this.handleProfileSwitchRequest(payload),
           onRelayOperation: (payload) =>
@@ -1448,6 +1476,7 @@ class Application {
         eventId: video.id,
         index: Number.isFinite(index) ? index : null,
         triggerElement: trigger,
+        video,
       });
     };
     this.videoListView.setEditHandler(this.videoListViewEditHandler);
@@ -1460,6 +1489,7 @@ class Application {
         eventId: video.id,
         index: Number.isFinite(index) ? index : null,
         triggerElement: trigger,
+        video,
       });
     };
     this.videoListView.setRevertHandler(this.videoListViewRevertHandler);
@@ -1471,6 +1501,7 @@ class Application {
       this.handleFullDeleteVideo({
         eventId: video.id,
         index: Number.isFinite(index) ? index : null,
+        video,
       });
     };
     this.videoListView.setDeleteHandler(this.videoListViewDeleteHandler);
@@ -1492,6 +1523,51 @@ class Application {
     // NEW: reference to the login modal's close button
     this.closeLoginModalBtn =
       document.getElementById("closeLoginModal") || null;
+
+    this.appChromeController = new AppChromeController({
+      elements: {
+        logoutButton: this.logoutButton,
+        profileButton: this.profileButton,
+        uploadButton: this.uploadButton,
+        loginButton: this.loginButton,
+        closeLoginModalButton: this.closeLoginModalBtn,
+      },
+      callbacks: {
+        requestLogout: () => this.requestLogout(),
+        showError: (message) => this.showError(message),
+        showProfileModal: () =>
+          this.profileController &&
+          typeof this.profileController.show === "function"
+            ? this.profileController.show()
+            : null,
+        openUploadModal: ({ triggerElement }) => {
+          if (this.uploadModal) {
+            this.uploadModal.open({ triggerElement });
+          }
+        },
+        onLoginModalOpened: () => setGlobalModalState("login", true),
+        onLoginModalClosed: () => setGlobalModalState("login", false),
+        flushWatchHistory: (reason, context) =>
+          this.flushWatchHistory(reason, context),
+        cleanup: () => this.cleanup(),
+        hideModal: () => this.hideModal(),
+      },
+      utilities: {
+        prepareLoginModal: () =>
+          prepareStaticModal({ id: "loginModal" }) ||
+          document.getElementById("loginModal"),
+        prepareApplicationModal: () =>
+          prepareStaticModal({ id: "nostrFormModal" }) ||
+          document.getElementById("nostrFormModal"),
+        openModal: (modal, options) => openStaticModal(modal, options),
+        closeModal: (modalId) => closeStaticModal(modalId),
+      },
+      environment: {
+        document: typeof document !== "undefined" ? document : null,
+        window: typeof window !== "undefined" ? window : null,
+      },
+      logger: devLogger,
+    });
 
     // Build a set of blacklisted event IDs (hex) from nevent strings, skipping empties
     this.blacklistedEventIds = new Set();
@@ -3715,9 +3791,20 @@ class Application {
       }
     };
 
+    const bringModalToFront = (modal) => {
+      if (!(modal instanceof HTMLElement)) {
+        return;
+      }
+      const parent = modal.parentElement;
+      if (parent && parent.lastElementChild !== modal) {
+        parent.appendChild(modal);
+      }
+    };
+
     const openLoginModal = ({ modal, triggerElement } = {}) => {
       const target =
         modal instanceof HTMLElement ? modal : loginModalElement;
+      bringModalToFront(target);
       return openStaticModal(target, { triggerElement });
     };
 
@@ -4339,6 +4426,20 @@ class Application {
     if (refreshTasks.length) {
       await Promise.allSettled(refreshTasks);
     }
+
+    if (typeof this.refreshVisibleModerationUi === "function") {
+      const refreshReason =
+        normalizedReason || (forceMainReload ? "refresh-all-video-grids" : "refresh");
+      try {
+        this.refreshVisibleModerationUi({ reason: refreshReason });
+      } catch (error) {
+        const contextMessage = refreshReason ? ` after ${refreshReason}` : "";
+        devLogger.warn(
+          `[Application] Failed to refresh moderation UI${contextMessage}:`,
+          error,
+        );
+      }
+    }
   }
 
   async onVideosShouldRefresh({ reason } = {}) {
@@ -4354,117 +4455,30 @@ class Application {
    * Setup general event listeners for logout, modals, etc.
    */
   setupEventListeners() {
-    // 1) Logout button
-    if (this.logoutButton) {
-      this.logoutButton.addEventListener("click", async () => {
-        try {
-          await this.requestLogout();
-        } catch (error) {
-          devLogger.error("Logout failed:", error);
-          this.showError("Failed to logout. Please try again.");
-        }
-      });
+    if (this.appChromeController) {
+      this.appChromeController.initialize();
+      return;
     }
 
-    // 2) Profile button
-    if (this.profileButton) {
-      this.profileButton.addEventListener("click", () => {
-        if (!this.profileController) {
-          return;
-        }
-
-        this.profileController
-          .show()
-          .catch((error) => {
-            devLogger.error("Failed to open profile modal:", error);
-          });
-      });
-    }
-
-    // 3) Upload button => show upload modal
-    if (this.uploadButton) {
-      this.uploadButton.addEventListener("click", (event) => {
-        if (this.uploadModal) {
-          const trigger = event?.currentTarget || event?.target || null;
-          this.uploadModal.open({ triggerElement: trigger });
-        }
-      });
-    }
-
-    // 4) Login button => show the login modal
-    if (this.loginButton) {
-      this.loginButton.addEventListener("click", (event) => {
-        devLogger.log("Login button clicked!");
-        const loginModal =
-          prepareStaticModal({ id: "loginModal" }) || document.getElementById("loginModal");
-        const trigger = event?.currentTarget || event?.target || null;
-        if (loginModal && openStaticModal(loginModal, { triggerElement: trigger })) {
-          setGlobalModalState("login", true);
-        }
-      });
-    }
-
-    // 5) Close login modal button => hide modal
-    if (this.closeLoginModalBtn) {
-      this.closeLoginModalBtn.addEventListener("click", () => {
-        devLogger.log("[app.js] closeLoginModal button clicked!");
-        if (closeStaticModal("loginModal")) {
-          setGlobalModalState("login", false);
-        }
-      });
-    }
-
-    // 6) Cleanup on page unload
-    window.addEventListener("beforeunload", () => {
-      this.flushWatchHistory("session-end", "beforeunload").catch((error) => {
-        devLogger.warn("[beforeunload] Watch history flush failed:", error);
-      });
-      this.cleanup().catch((err) => {
-        devLogger.error("Cleanup before unload failed:", err);
-      });
-    });
-
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "hidden") {
-        this.flushWatchHistory("session-end", "visibilitychange").catch(
-          (error) => {
-            devLogger.warn(
-              "[visibilitychange] Watch history flush failed:",
-              error
-            );
-          }
-        );
-      }
-    });
-
-    // 7) Handle back/forward navigation => hide video modal
-    window.addEventListener("popstate", async () => {
-      devLogger.log("[popstate] user navigated back/forward; cleaning modal...");
-      await this.hideModal();
-    });
-
-    // 8) Event delegation for the “Application Form” button inside the login modal
-    document.addEventListener("click", (event) => {
-      if (event.target && event.target.id === "openApplicationModal") {
-        // Hide the login modal
-        if (closeStaticModal("loginModal")) {
-          setGlobalModalState("login", false);
-        }
-        // Show the application modal
-        const appModal =
-          prepareStaticModal({ id: "nostrFormModal" }) ||
-          document.getElementById("nostrFormModal");
-        if (appModal) {
-          openStaticModal(appModal, { triggerElement: event.target });
-        }
-      }
-    });
-
+    devLogger.warn(
+      "[Application] AppChromeController missing; global UI events were not bound.",
+    );
   }
 
   mountVideoListView(container = null) {
     if (!this.videoListView) {
       return null;
+    }
+
+    if (this.videoListViewController) {
+      const { videoList, popularTags } = this.videoListViewController.mount({
+        container,
+        view: this.videoListView,
+        currentVideoList: this.videoList,
+      });
+      this.videoList = videoList || null;
+      this.videoListPopularTags = popularTags || null;
+      return this.videoList;
     }
 
     const target = container || document.getElementById("videoList");
@@ -4480,6 +4494,18 @@ class Application {
 
   reinitializeVideoListView({ reason, postLoginResult } = {}) {
     if (!this.videoListView) {
+      return;
+    }
+
+    if (this.videoListViewController) {
+      const { videoList, popularTags } = this.videoListViewController.reinitialize({
+        view: this.videoListView,
+        reason,
+        postLoginResult,
+        currentVideoList: this.videoList,
+      });
+      this.videoList = videoList || null;
+      this.videoListPopularTags = popularTags || null;
       return;
     }
 
@@ -4540,171 +4566,17 @@ class Application {
   }
 
   updateProfileInDOM(pubkey, profile) {
-    const normalizedPubkey =
-      typeof pubkey === "string" && pubkey.trim() ? pubkey.trim() : "";
-    if (!normalizedPubkey) {
+    if (this.profileIdentityController) {
+      this.profileIdentityController.updateProfileIdentity({
+        pubkey,
+        profile,
+      });
       return;
     }
 
-    const normalizedProfile =
-      profile && typeof profile === "object" ? profile : {};
-
-    const pictureUrl =
-      typeof normalizedProfile.picture === "string"
-        ? normalizedProfile.picture
-        : "";
-
-    const resolveProfileName = () => {
-      const candidates = [
-        normalizedProfile.name,
-        normalizedProfile.display_name,
-        normalizedProfile.displayName,
-      ];
-      for (const candidate of candidates) {
-        if (typeof candidate !== "string") {
-          continue;
-        }
-        const trimmed = candidate.trim();
-        if (trimmed) {
-          return trimmed;
-        }
-      }
-      return "";
-    };
-
-    const resolvedName = resolveProfileName();
-
-    const explicitNpub =
-      typeof normalizedProfile.npub === "string"
-        ? normalizedProfile.npub.trim()
-        : "";
-
-    const encodedPubkeyNpub = this.safeEncodeNpub(normalizedPubkey);
-    const resolvedNpub = explicitNpub || encodedPubkeyNpub || "";
-    const shortNpubLabel = resolvedNpub
-      ? formatShortNpub(resolvedNpub) || resolvedNpub
-      : "";
-
-    // For any .author-pic[data-pubkey=...]
-    const picEls = document.querySelectorAll(
-      `.author-pic[data-pubkey="${normalizedPubkey}"]`
+    devLogger.warn(
+      "[Application] ProfileIdentityController missing; profile identity was not refreshed in the DOM.",
     );
-    picEls.forEach((el) => {
-      if (!el) {
-        return;
-      }
-      el.src = pictureUrl;
-    });
-
-    const nameLabel =
-      resolvedName || shortNpubLabel || resolvedNpub || "";
-
-    // For any .author-name[data-pubkey=...]
-    const nameEls = document.querySelectorAll(
-      `.author-name[data-pubkey="${normalizedPubkey}"]`
-    );
-    nameEls.forEach((el) => {
-      if (!el) {
-        return;
-      }
-      el.textContent = nameLabel;
-    });
-
-    const npubSelectors = new Set();
-    if (resolvedNpub) {
-      npubSelectors.add(`.author-npub[data-npub="${resolvedNpub}"]`);
-    }
-    npubSelectors.add(`.author-npub[data-pubkey="${normalizedPubkey}"]`);
-
-    const npubElements = new Set();
-    npubSelectors.forEach((selector) => {
-      document.querySelectorAll(selector).forEach((el) => {
-        if (el) {
-          npubElements.add(el);
-        }
-      });
-    });
-
-    const npubEls = Array.from(npubElements);
-
-    npubEls.forEach((el) => {
-      if (!el) {
-        return;
-      }
-
-      const displayNpub = resolvedNpub
-        ? shortNpubLabel || resolvedNpub
-        : "";
-      const hasDisplayNpub = Boolean(displayNpub);
-
-      if (hasDisplayNpub) {
-        el.textContent = displayNpub;
-        el.setAttribute("aria-hidden", "false");
-      } else {
-        el.textContent = "";
-        el.setAttribute("aria-hidden", "true");
-      }
-
-      if (resolvedNpub) {
-        el.setAttribute("title", resolvedNpub);
-        if (el.dataset) {
-          el.dataset.npub = resolvedNpub;
-        }
-      } else {
-        el.removeAttribute("title");
-        if (el.dataset && "npub" in el.dataset) {
-          delete el.dataset.npub;
-        }
-      }
-
-      if (el.dataset && normalizedPubkey) {
-        el.dataset.pubkey = normalizedPubkey;
-      }
-    });
-
-    if (!nameEls.length && !npubEls.length) {
-      return;
-    }
-
-    const cardInstances = new Set();
-    const collectCardInstance = (el) => {
-      if (!el || typeof el.closest !== "function") {
-        return;
-      }
-      const cardRoot = el.closest('[data-component="similar-content-card"]');
-      if (!cardRoot) {
-        return;
-      }
-      const instance = cardRoot.__bitvidSimilarContentCard;
-      if (instance && typeof instance.updateIdentity === "function") {
-        cardInstances.add(instance);
-      }
-    };
-
-    nameEls.forEach(collectCardInstance);
-    npubEls.forEach(collectCardInstance);
-
-    if (cardInstances.size) {
-      const identityPayload = {
-        name: resolvedName,
-        npub: resolvedNpub,
-        shortNpub: shortNpubLabel,
-        pubkey: normalizedPubkey,
-      };
-
-      cardInstances.forEach((card) => {
-        try {
-          card.updateIdentity(identityPayload);
-        } catch (error) {
-          if (devLogger?.warn) {
-            devLogger.warn(
-              "[app] Failed to update similar content card identity",
-              error
-            );
-          }
-        }
-      });
-    }
   }
 
   async publishVideoNote(payload, { onSuccess, suppressModalClose } = {}) {
@@ -4713,357 +4585,14 @@ class Application {
       return false;
     }
 
-    const normalizeString = (value) => {
-      if (typeof value === "string") {
-        return value.trim();
-      }
-      if (typeof value === "number") {
-        return Number.isFinite(value) ? String(value).trim() : "";
-      }
-      return String(value ?? "").trim();
-    };
-
-    const parseNumberOrNull = (value) => {
-      if (value === null || value === undefined || value === "") {
-        return null;
-      }
-      const parsed = Number(value);
-      return Number.isFinite(parsed) ? parsed : null;
-    };
-
-    const parseUnixSeconds = (value) => {
-      if (value === null || value === undefined || value === "") {
-        return null;
-      }
-      if (typeof value === "number" && Number.isFinite(value)) {
-        const normalized = value > 1e12 ? value / 1000 : value;
-        return Math.floor(normalized);
-      }
-      const trimmed = normalizeString(value);
-      if (!trimmed) {
-        return null;
-      }
-      const numeric = Number(trimmed);
-      if (Number.isFinite(numeric)) {
-        const normalized = numeric > 1e12 ? numeric / 1000 : numeric;
-        return Math.floor(normalized);
-      }
-      const timestamp = Date.parse(trimmed);
-      if (!Number.isNaN(timestamp)) {
-        return Math.floor(timestamp / 1000);
-      }
-      return null;
-    };
-
-    const normalizeStringArray = (input) => {
-      if (!Array.isArray(input)) {
-        return [];
-      }
-      return input
-        .map((entry) => normalizeString(entry))
-        .filter((entry) => Boolean(entry));
-    };
-
-    const normalizeBooleanFlag = (value, defaultValue = false) => {
-      if (value === true) {
-        return true;
-      }
-      if (value === false) {
-        return false;
-      }
-      return Boolean(defaultValue);
-    };
-
-    const normalizeImetaVariant = (variant) => {
-      if (!variant || typeof variant !== "object") {
-        return null;
-      }
-      const normalized = {};
-      const m = normalizeString(variant.m);
-      if (m) normalized.m = m;
-      const dim = normalizeString(variant.dim);
-      if (dim) normalized.dim = dim;
-      const url = normalizeString(variant.url);
-      if (url) normalized.url = url;
-      const x = normalizeString(variant.x);
-      if (x) normalized.x = x;
-      const image = normalizeStringArray(variant.image);
-      if (image.length) normalized.image = image;
-      const fallback = normalizeStringArray(variant.fallback);
-      if (fallback.length) normalized.fallback = fallback;
-      const service = normalizeStringArray(variant.service);
-      if (service.length) normalized.service = service;
-      if (variant.autoGenerated === true) {
-        normalized.autoGenerated = true;
-      }
-
-      return Object.keys(normalized).length ? normalized : null;
-    };
-
-    const normalizeSegments = (segments) => {
-      if (!Array.isArray(segments)) {
-        return [];
-      }
-      return segments
-        .map((segment) => {
-          if (!segment || typeof segment !== "object") {
-            return null;
-          }
-          const startRaw = segment.start;
-          const endRaw = segment.end;
-          const start = parseNumberOrNull(startRaw);
-          const end = parseNumberOrNull(endRaw);
-          const normalizedSegment = {};
-          if (start !== null) {
-            normalizedSegment.start = start;
-          } else {
-            const startString = normalizeString(startRaw);
-            if (startString) {
-              normalizedSegment.start = startString;
-            }
-          }
-          if (end !== null) {
-            normalizedSegment.end = end;
-          } else {
-            const endString = normalizeString(endRaw);
-            if (endString) {
-              normalizedSegment.end = endString;
-            }
-          }
-          const title = normalizeString(segment.title);
-          if (title) {
-            normalizedSegment.title = title;
-          }
-          const thumbnail = normalizeString(segment.thumbnail);
-          if (thumbnail) {
-            normalizedSegment.thumbnail = thumbnail;
-          }
-          return Object.keys(normalizedSegment).length ? normalizedSegment : null;
-        })
-        .filter(Boolean);
-    };
-
-    const normalizeTextTracks = (tracks) => {
-      if (!Array.isArray(tracks)) {
-        return [];
-      }
-      return tracks
-        .map((track) => {
-          if (!track || typeof track !== "object") {
-            return null;
-          }
-          const normalizedTrack = {};
-          const url = normalizeString(track.url);
-          if (url) normalizedTrack.url = url;
-          const type = normalizeString(track.type);
-          if (type) normalizedTrack.type = type;
-          const language = normalizeString(track.language);
-          if (language) normalizedTrack.language = language;
-          return Object.keys(normalizedTrack).length ? normalizedTrack : null;
-        })
-        .filter(Boolean);
-    };
-
-    const normalizeParticipants = (participants) => {
-      if (!Array.isArray(participants)) {
-        return [];
-      }
-      return participants
-        .map((participant) => {
-          if (!participant || typeof participant !== "object") {
-            return null;
-          }
-          const normalizedParticipant = {};
-          const pubkey = normalizeString(participant.pubkey);
-          if (pubkey) normalizedParticipant.pubkey = pubkey;
-          const relay = normalizeString(participant.relay);
-          if (relay) normalizedParticipant.relay = relay;
-          return Object.keys(normalizedParticipant).length
-            ? normalizedParticipant
-            : null;
-        })
-        .filter(Boolean);
-    };
-
-    const normalizeNip71Metadata = (rawMetadata) => {
-      if (!rawMetadata || typeof rawMetadata !== "object") {
-        return null;
-      }
-
-      const normalized = {};
-
-      if (rawMetadata.kind !== undefined) {
-        const kindNumber = parseNumberOrNull(rawMetadata.kind);
-        if (kindNumber !== null) {
-          normalized.kind = kindNumber;
-        } else {
-          const kindString = normalizeString(rawMetadata.kind);
-          if (kindString) {
-            normalized.kind = kindString;
-          }
-        }
-      }
-
-      const summary = normalizeString(rawMetadata.summary);
-      if (summary) {
-        normalized.summary = summary;
-      }
-
-      const publishedAt = parseUnixSeconds(rawMetadata.publishedAt);
-      if (publishedAt !== null) {
-        normalized.publishedAt = publishedAt;
-      }
-
-      const alt = normalizeString(rawMetadata.alt);
-      if (alt) {
-        normalized.alt = alt;
-      }
-
-      const duration = parseNumberOrNull(rawMetadata.duration);
-      if (duration !== null) {
-        normalized.duration = duration;
-      }
-
-      const contentWarning = normalizeString(rawMetadata.contentWarning);
-      if (contentWarning) {
-        normalized.contentWarning = contentWarning;
-      }
-
-      const imeta = Array.isArray(rawMetadata.imeta)
-        ? rawMetadata.imeta
-            .map((variant) => normalizeImetaVariant(variant))
-            .filter(Boolean)
-        : [];
-      if (imeta.length) {
-        normalized.imeta = imeta;
-      }
-
-      const textTracks = normalizeTextTracks(rawMetadata.textTracks);
-      if (textTracks.length) {
-        normalized.textTracks = textTracks;
-      }
-
-      const segments = normalizeSegments(rawMetadata.segments);
-      if (segments.length) {
-        normalized.segments = segments;
-      }
-
-      const hashtags = normalizeStringArray(rawMetadata.hashtags);
-      if (hashtags.length) {
-        normalized.hashtags = hashtags;
-      }
-
-      const participants = normalizeParticipants(rawMetadata.participants);
-      if (participants.length) {
-        normalized.participants = participants;
-      }
-
-      const references = normalizeStringArray(rawMetadata.references);
-      if (references.length) {
-        normalized.references = references;
-      }
-
-      return Object.keys(normalized).length ? normalized : null;
-    };
-
-    const rawPayload = payload && typeof payload === "object" ? payload : {};
-    const legacyPayload =
-      rawPayload.legacyFormData &&
-      typeof rawPayload.legacyFormData === "object"
-        ? rawPayload.legacyFormData
-        : rawPayload;
-
-    const rawNip71 =
-      (rawPayload.nip71 && typeof rawPayload.nip71 === "object"
-        ? rawPayload.nip71
-        : null) ||
-      (legacyPayload.nip71 && typeof legacyPayload.nip71 === "object"
-        ? legacyPayload.nip71
-        : null);
-
-    const title = normalizeString(legacyPayload?.title || "");
-    const url = normalizeString(legacyPayload?.url || "");
-    const magnet = normalizeString(legacyPayload?.magnet || "");
-    const thumbnail = normalizeString(legacyPayload?.thumbnail || "");
-    const description = normalizeString(legacyPayload?.description || "");
-    const ws = normalizeString(legacyPayload?.ws || "");
-    const xs = normalizeString(legacyPayload?.xs || "");
-    const enableComments = normalizeBooleanFlag(
-      legacyPayload?.enableComments,
-      true
-    );
-    const rawIsNsfw = normalizeBooleanFlag(legacyPayload?.isNsfw, false);
-    const rawIsForKids = normalizeBooleanFlag(legacyPayload?.isForKids, false);
-    const isNsfw = rawIsNsfw;
-    const isForKids = rawIsNsfw ? false : rawIsForKids;
-
-    const legacyFormData = {
-      version: 3,
-      title,
-      url,
-      magnet,
-      thumbnail,
-      description,
-      mode: isDevMode ? "dev" : "live",
-      enableComments,
-      isNsfw,
-      isForKids,
-    };
-
-    const normalizedNip71 = normalizeNip71Metadata(rawNip71);
-
-    const hasLegacySource = Boolean(legacyFormData.url || legacyFormData.magnet);
-    const hasImetaVariant = Boolean(
-      normalizedNip71?.imeta?.some((variant) =>
-        Boolean(
-          (variant.url && variant.url.length) ||
-            (variant.m && variant.m.length) ||
-            (variant.x && variant.x.length) ||
-            (variant.dim && variant.dim.length) ||
-            (Array.isArray(variant.image) && variant.image.length > 0) ||
-            (Array.isArray(variant.fallback) && variant.fallback.length > 0) ||
-            (Array.isArray(variant.service) && variant.service.length > 0)
-        )
-      )
+    const { payload: publishPayload, errors } = normalizeVideoNotePayload(
+      payload,
     );
 
-    if (!legacyFormData.title) {
-      this.showError("Title is required.");
+    if (errors.length) {
+      const message = getVideoNoteErrorMessage(errors[0]);
+      this.showError(message);
       return false;
-    }
-
-    if (!hasLegacySource && !hasImetaVariant) {
-      this.showError(
-        "Provide a hosted URL, magnet link, or an imeta variant before publishing."
-      );
-      return false;
-    }
-
-    if (legacyFormData.url && !/^https:\/\//i.test(legacyFormData.url)) {
-      this.showError("Hosted video URLs must use HTTPS.");
-      return false;
-    }
-
-    if (legacyFormData.magnet) {
-      const normalizedMagnet = normalizeAndAugmentMagnet(legacyFormData.magnet, {
-        ws,
-        xs,
-      });
-      legacyFormData.magnet = normalizedMagnet;
-      const hints = extractMagnetHints(normalizedMagnet);
-      legacyFormData.ws = hints.ws;
-      legacyFormData.xs = hints.xs;
-    } else {
-      legacyFormData.ws = "";
-      legacyFormData.xs = "";
-    }
-
-    const publishPayload = {
-      legacyFormData,
-    };
-
-    if (normalizedNip71) {
-      publishPayload.nip71 = normalizedNip71;
     }
 
     try {
@@ -5146,14 +4675,197 @@ class Application {
     const result = await this.authService.switchProfile(pubkey, { providerId });
 
     if (result?.switched) {
+      const detail = result.detail || null;
+
+      if (
+        detail?.postLoginPromise &&
+        typeof detail.postLoginPromise.then === "function"
+      ) {
+        try {
+          await detail.postLoginPromise;
+        } catch (error) {
+          devLogger.warn(
+            "Failed to complete post-login hydration before continuing after profile switch:",
+            error,
+          );
+        }
+      }
+
       try {
-        await this.loadVideos(true);
+        await this.handleModerationSettingsChange({
+          settings: getModerationSettings(),
+          skipRefresh: true,
+        });
       } catch (error) {
-        devLogger.error("Failed to refresh videos after switching profiles:", error);
+        devLogger.warn(
+          "Failed to sync moderation settings after profile switch:",
+          error,
+        );
+      }
+
+      const refreshCompleted = await this.waitForIdentityRefresh({
+        reason: "profile-switch",
+      });
+
+      if (!refreshCompleted) {
+        devLogger.warn(
+          "[Application] Fallback identity refresh was required after switching profiles.",
+        );
+      }
+
+      if (this.watchHistoryTelemetry?.resetPlaybackLoggingState) {
+        try {
+          this.watchHistoryTelemetry.resetPlaybackLoggingState();
+        } catch (error) {
+          devLogger.warn(
+            "Failed to reset watch history telemetry after profile switch:",
+            error,
+          );
+        }
+      }
+
+      if (this.watchHistoryTelemetry?.refreshPreferenceSettings) {
+        try {
+          this.watchHistoryTelemetry.refreshPreferenceSettings();
+        } catch (error) {
+          devLogger.warn(
+            "Failed to refresh watch history preferences after profile switch:",
+            error,
+          );
+        }
       }
     }
 
     return result;
+  }
+
+  async waitForIdentityRefresh({
+    reason = "identity-refresh",
+    attempts = 6,
+  } = {}) {
+    const maxAttempts = Number.isFinite(attempts)
+      ? Math.max(1, Math.floor(attempts))
+      : 6;
+    const waitForTick = () =>
+      new Promise((resolve) => {
+        if (typeof queueMicrotask === "function") {
+          queueMicrotask(resolve);
+        } else if (typeof setTimeout === "function") {
+          setTimeout(resolve, 0);
+        } else {
+          resolve();
+        }
+      });
+
+    let promise = null;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const candidate = this.lastIdentityRefreshPromise;
+      if (candidate && typeof candidate.then === "function") {
+        promise = candidate;
+        break;
+      }
+      // Yield to allow the auth login flow to schedule the refresh promise.
+      // eslint-disable-next-line no-await-in-loop
+      await waitForTick();
+    }
+
+    if (promise && typeof promise.then === "function") {
+      try {
+        await promise;
+        return true;
+      } catch (error) {
+        devLogger.error(
+          "[Application] Identity refresh promise rejected:",
+          error,
+        );
+      }
+    }
+
+    try {
+      await this.refreshAllVideoGrids({
+        reason,
+        forceMainReload: true,
+      });
+    } catch (error) {
+      devLogger.error(
+        "[Application] Failed to refresh video grids after waiting for identity refresh:",
+        error,
+      );
+    }
+
+    return false;
+  }
+
+  async handleProfileLogoutRequest({ pubkey, entry } = {}) {
+    const candidatePubkey =
+      typeof pubkey === "string" && pubkey.trim()
+        ? pubkey.trim()
+        : typeof entry?.pubkey === "string" && entry.pubkey.trim()
+          ? entry.pubkey.trim()
+          : "";
+
+    if (!candidatePubkey) {
+      return { loggedOut: false, reason: "invalid-pubkey" };
+    }
+
+    const normalizedTarget =
+      this.normalizeHexPubkey(candidatePubkey) || candidatePubkey;
+    if (!normalizedTarget) {
+      return { loggedOut: false, reason: "invalid-pubkey" };
+    }
+
+    const activeNormalized = this.normalizeHexPubkey(getActiveProfilePubkey());
+    if (activeNormalized && activeNormalized === normalizedTarget) {
+      const detail = await this.requestLogout();
+      return {
+        loggedOut: true,
+        reason: "active-profile",
+        active: true,
+        detail,
+      };
+    }
+
+    let removalResult;
+    try {
+      removalResult = this.authService.removeSavedProfile(candidatePubkey);
+    } catch (error) {
+      devLogger.error(
+        "[Application] Failed to remove saved profile during logout request:",
+        error,
+      );
+      return { loggedOut: false, reason: "remove-failed", error };
+    }
+
+    if (!removalResult?.removed) {
+      if (removalResult?.error) {
+        devLogger.warn(
+          "[Application] removeSavedProfile returned an error during logout request:",
+          removalResult.error,
+        );
+      }
+      return { loggedOut: false, reason: "not-found" };
+    }
+
+    if (
+      this.nwcSettingsService &&
+      typeof this.nwcSettingsService.clearStoredNwcSettings === "function"
+    ) {
+      try {
+        await this.nwcSettingsService.clearStoredNwcSettings(normalizedTarget, {
+          silent: true,
+        });
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to clear wallet settings for logged-out profile:",
+          error,
+        );
+      }
+    }
+
+    this.renderSavedProfiles();
+
+    return { loggedOut: true, removed: true };
   }
 
   async handleProfileRelayOperation({
@@ -5407,7 +5119,7 @@ class Application {
     return null;
   }
 
-  async handleModerationSettingsChange({ settings } = {}) {
+  async handleModerationSettingsChange({ settings, skipRefresh = false } = {}) {
     const normalized = this.normalizeModerationSettings(settings);
     this.moderationSettings = normalized;
 
@@ -5453,16 +5165,85 @@ class Application {
       this.decorateVideoModeration(this.currentVideo);
     }
 
-    try {
-      await this.onVideosShouldRefresh({ reason: "moderation-settings-change" });
-    } catch (error) {
-      devLogger.warn(
-        "[Application] Failed to refresh videos after moderation settings change:",
-        error,
-      );
+    if (!skipRefresh) {
+      try {
+        await this.onVideosShouldRefresh({ reason: "moderation-settings-change" });
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to refresh videos after moderation settings change:",
+          error,
+        );
+      }
     }
 
     return normalized;
+  }
+
+  refreshVisibleModerationUi({ reason } = {}) {
+    const context = reason ? ` after ${reason}` : "";
+
+    const redecorateVideo = (video) => {
+      if (!video || typeof video !== "object") {
+        return;
+      }
+
+      try {
+        this.decorateVideoModeration(video);
+      } catch (error) {
+        devLogger.warn(
+          `[Application] Failed to decorate video moderation${context}:`,
+          error,
+        );
+      }
+    };
+
+    if (this.videosMap instanceof Map) {
+      for (const video of this.videosMap.values()) {
+        redecorateVideo(video);
+      }
+    }
+
+    if (this.videoListView && Array.isArray(this.videoListView.currentVideos)) {
+      for (const video of this.videoListView.currentVideos) {
+        redecorateVideo(video);
+      }
+    }
+
+    if (this.videoListView && Array.isArray(this.videoListView.videoCardInstances)) {
+      for (const card of this.videoListView.videoCardInstances) {
+        if (!card || typeof card !== "object") {
+          continue;
+        }
+
+        if (card.video && typeof card.video === "object") {
+          redecorateVideo(card.video);
+        }
+
+        if (typeof card.refreshModerationUi === "function") {
+          try {
+            card.refreshModerationUi();
+          } catch (error) {
+            devLogger.warn(
+              `[Application] Failed to refresh moderation UI on card${context}:`,
+              error,
+            );
+          }
+        }
+      }
+    }
+
+    if (this.currentVideo && typeof this.currentVideo === "object") {
+      redecorateVideo(this.currentVideo);
+
+      try {
+        this.videoModal?.refreshActiveVideoModeration?.({ video: this.currentVideo });
+      } catch (error) {
+        devLogger.warn(
+          `[Application] Failed to refresh video modal moderation UI${context}:`,
+          error,
+        );
+      }
+    }
   }
 
   updateActiveProfileUI(pubkey, profile = {}) {
@@ -5678,8 +5459,29 @@ class Application {
       identityChanged: Boolean(detail?.identityChanged),
     };
 
+    try {
+      await this.handleModerationSettingsChange({
+        settings: getModerationSettings(),
+        skipRefresh: true,
+      });
+    } catch (error) {
+      devLogger.warn(
+        "Failed to sync moderation settings after login:",
+        error,
+      );
+    }
+
     if (loginContext.identityChanged) {
       this.resetHashtagPreferencesState();
+      try {
+        this.watchHistoryTelemetry?.resetPlaybackLoggingState?.();
+        this.watchHistoryTelemetry?.refreshPreferenceSettings?.();
+      } catch (error) {
+        devLogger.warn(
+          "Failed to refresh watch history telemetry after identity change:",
+          error,
+        );
+      }
     }
 
     const hashtagPreferencesPromise = Promise.resolve(
@@ -5816,9 +5618,15 @@ class Application {
     }
 
     try {
-      await this.loadVideos(true);
+      this.lastIdentityRefreshPromise = this.refreshAllVideoGrids({
+        reason: "auth-login",
+        forceMainReload: true,
+      });
+      await this.lastIdentityRefreshPromise;
     } catch (error) {
-      devLogger.error("Failed to refresh videos after login:", error);
+      devLogger.error("Failed to refresh video grids after login:", error);
+    } finally {
+      this.lastIdentityRefreshPromise = null;
     }
 
     this.forceRefreshAllProfiles();
@@ -5881,6 +5689,18 @@ class Application {
 
     this.applyLoggedOutUiState();
     this.applyCommentComposerAuthState();
+
+    try {
+      await this.handleModerationSettingsChange({
+        settings: getModerationSettings(),
+        skipRefresh: true,
+      });
+    } catch (error) {
+      devLogger.warn(
+        "Failed to reset moderation settings after logout:",
+        error,
+      );
+    }
 
     if (this.videoModal?.closeZapDialog) {
       try {
@@ -7351,6 +7171,21 @@ class Application {
       : [];
 
     this.videoListView.render(decoratedVideos, metadata);
+
+    if (typeof this.refreshVisibleModerationUi === "function") {
+      const renderReason =
+        metadata && typeof metadata.reason === "string" && metadata.reason
+          ? `render-${metadata.reason}`
+          : "render-video-list";
+      try {
+        this.refreshVisibleModerationUi({ reason: renderReason });
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to refresh moderation UI after rendering video list:",
+          error,
+        );
+      }
+    }
     this.updateModalSimilarContent();
   }
 
@@ -7606,12 +7441,34 @@ class Application {
       ? Math.max(0, Math.floor(existingModeration.trustedCount))
       : this.deriveModerationTrustedCount(summary, reportType);
 
+    const viewerMuted = existingModeration.viewerMuted === true;
+    const existingBlockAutoplay = existingModeration.blockAutoplay === true;
+    const existingBlurThumbnail = existingModeration.blurThumbnail === true;
+    const existingBlurReason =
+      typeof existingModeration.blurReason === "string"
+        ? existingModeration.blurReason.trim()
+        : "";
+
     const thresholds = this.getActiveModerationThresholds();
-    const computedBlockAutoplay =
+    const computedBlockAutoplayBase =
       trustedCount >= thresholds.autoplayBlockThreshold || trustedMuted;
+    const computedBlockAutoplay =
+      computedBlockAutoplayBase || viewerMuted || existingBlockAutoplay;
+
     const blurFromReports = trustedCount >= thresholds.blurThreshold;
-    let computedBlurThumbnail = blurFromReports;
-    let computedBlurReason = computedBlurThumbnail ? "trusted-report" : "";
+    let computedBlurThumbnail =
+      blurFromReports || trustedMuted || viewerMuted || existingBlurThumbnail;
+    let computedBlurReason = "";
+
+    if (blurFromReports) {
+      computedBlurReason = "trusted-report";
+    } else if (trustedMuted) {
+      computedBlurReason = "trusted-mute";
+    } else if (viewerMuted) {
+      computedBlurReason = "viewer-mute";
+    } else if (existingBlurThumbnail && existingBlurReason) {
+      computedBlurReason = existingBlurReason;
+    }
 
     const muteHideThreshold = Number.isFinite(thresholds.trustedMuteHideThreshold)
       ? Math.max(0, Math.floor(thresholds.trustedMuteHideThreshold))
@@ -7647,21 +7504,29 @@ class Application {
       hideTriggered = true;
     }
 
-    if (!computedBlurThumbnail && (trustedMuted || hideTriggered)) {
+    if (!computedBlurThumbnail && (viewerMuted || trustedMuted || hideTriggered)) {
       computedBlurThumbnail = true;
       if (hideTriggered) {
         computedBlurReason = hideReason || "trusted-hide";
+      } else if (viewerMuted) {
+        computedBlurReason = "viewer-mute";
       } else if (trustedMuted) {
         computedBlurReason = "trusted-mute";
       }
     } else if (computedBlurThumbnail) {
       if (hideTriggered) {
         computedBlurReason = hideReason || "trusted-hide";
+      } else if (viewerMuted && !blurFromReports && !trustedMuted) {
+        computedBlurReason = "viewer-mute";
       } else if (trustedMuted && !blurFromReports) {
         computedBlurReason = "trusted-mute";
       } else if (!computedBlurReason && blurFromReports) {
         computedBlurReason = "trusted-report";
       }
+    }
+
+    if (computedBlurThumbnail && !computedBlurReason && existingBlurReason) {
+      computedBlurReason = existingBlurReason;
     }
 
     const hideCounts = hideTriggered
@@ -9099,8 +8964,9 @@ class Application {
     const isElement = (value) =>
       typeof Element !== "undefined" && value instanceof Element;
     let triggerElement = null;
+    let providedVideo = null;
     if (target && typeof target === "object") {
-      const eventId =
+      let eventId =
         typeof target.eventId === "string" ? target.eventId.trim() : "";
       let index = null;
       if (typeof target.index === "number" && Number.isInteger(target.index)) {
@@ -9111,18 +8977,29 @@ class Application {
         const parsed = Number.parseInt(target.index.trim(), 10);
         index = Number.isNaN(parsed) ? null : parsed;
       }
+      const targetVideo = target.video;
+      if (targetVideo && typeof targetVideo === "object") {
+        const candidateId =
+          typeof targetVideo.id === "string" ? targetVideo.id.trim() : "";
+        if (candidateId) {
+          providedVideo = targetVideo;
+          if (!eventId) {
+            eventId = candidateId;
+          }
+        }
+      }
       if (isElement(target.triggerElement)) {
         triggerElement = target.triggerElement;
       } else if (isElement(target.trigger)) {
         triggerElement = target.trigger;
       }
-      return { eventId, index, triggerElement };
+      return { eventId, index, triggerElement, video: providedVideo };
     }
 
     if (typeof target === "string") {
       const trimmed = target.trim();
       if (!trimmed) {
-        return { eventId: "", index: null, triggerElement };
+        return { eventId: "", index: null, triggerElement, video: null };
       }
       if (/^-?\d+$/.test(trimmed)) {
         const parsed = Number.parseInt(trimmed, 10);
@@ -9130,22 +9007,24 @@ class Application {
           eventId: "",
           index: Number.isNaN(parsed) ? null : parsed,
           triggerElement,
+          video: null,
         };
       }
-      return { eventId: trimmed, index: null, triggerElement };
+      return { eventId: trimmed, index: null, triggerElement, video: null };
     }
 
     if (typeof target === "number" && Number.isInteger(target)) {
-      return { eventId: "", index: target, triggerElement };
+      return { eventId: "", index: target, triggerElement, video: null };
     }
 
-    return { eventId: "", index: null, triggerElement };
+    return { eventId: "", index: null, triggerElement, video: null };
   }
 
   async resolveVideoActionTarget({
     eventId = "",
     index = null,
     preloadedList,
+    video: providedVideo = null,
   } = {}) {
     const trimmedEventId = typeof eventId === "string" ? eventId.trim() : "";
     const normalizedIndex =
@@ -9153,13 +9032,28 @@ class Application {
         ? index
         : null;
 
+    const initialVideo =
+      providedVideo && typeof providedVideo === "object" ? providedVideo : null;
+    const providedId =
+      initialVideo && typeof initialVideo.id === "string"
+        ? initialVideo.id.trim()
+        : "";
+    const targetEventId = trimmedEventId || providedId;
+
     const candidateLists = Array.isArray(preloadedList)
       ? [preloadedList]
       : [];
 
+    if (providedId) {
+      this.videosMap.set(providedId, initialVideo);
+      if (!trimmedEventId || providedId === trimmedEventId) {
+        return initialVideo;
+      }
+    }
+
     for (const list of candidateLists) {
-      if (trimmedEventId) {
-        const match = list.find((video) => video?.id === trimmedEventId);
+      if (targetEventId) {
+        const match = list.find((video) => video?.id === targetEventId);
         if (match) {
           this.videosMap.set(match.id, match);
           return match;
@@ -9178,26 +9072,26 @@ class Application {
       }
     }
 
-    if (trimmedEventId) {
-      const fromMap = this.videosMap.get(trimmedEventId);
+    if (targetEventId) {
+      const fromMap = this.videosMap.get(targetEventId);
       if (fromMap) {
         return fromMap;
       }
 
       const activeVideos = nostrClient.getActiveVideos();
-      const fromActive = activeVideos.find((video) => video.id === trimmedEventId);
+      const fromActive = activeVideos.find((video) => video.id === targetEventId);
       if (fromActive) {
         this.videosMap.set(fromActive.id, fromActive);
         return fromActive;
       }
 
-      const fromAll = nostrClient.allEvents.get(trimmedEventId);
+      const fromAll = nostrClient.allEvents.get(targetEventId);
       if (fromAll) {
         this.videosMap.set(fromAll.id, fromAll);
         return fromAll;
       }
 
-      const fetched = await nostrClient.getEventById(trimmedEventId);
+      const fetched = await nostrClient.getEventById(targetEventId);
       if (fetched) {
         this.videosMap.set(fetched.id, fetched);
         return fetched;

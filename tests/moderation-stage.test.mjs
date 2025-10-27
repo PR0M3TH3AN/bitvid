@@ -496,6 +496,76 @@ test("moderation stage propagates whitelist, muters, and threshold updates", asy
   assert.equal(updatedMuted.video.moderation.blurReason, undefined);
 });
 
+test("moderation stage blurs viewer-muted authors", async () => {
+  const mutedHex = "f".repeat(64);
+
+  const service = {
+    async refreshViewerFromClient() {},
+    async setActiveEventIds() {},
+    getAdminListSnapshot() {
+      return { whitelist: new Set(), whitelistHex: new Set(), blacklist: new Set(), blacklistHex: new Set() };
+    },
+    getAccessControlStatus(identifier) {
+      return { hex: identifier, whitelisted: false, blacklisted: false };
+    },
+    getTrustedReportSummary() {
+      return null;
+    },
+    trustedReportCount() {
+      return 0;
+    },
+    getTrustedReporters() {
+      return [];
+    },
+    isAuthorMutedByTrusted() {
+      return false;
+    },
+    isAuthorMutedByViewer(pubkey) {
+      return pubkey === mutedHex;
+    },
+  };
+
+  const stage = createModerationStage({
+    service,
+    autoplayThreshold: Number.POSITIVE_INFINITY,
+    blurThreshold: Number.POSITIVE_INFINITY,
+    trustedMuteHideThreshold: Number.POSITIVE_INFINITY,
+    trustedReportHideThreshold: Number.POSITIVE_INFINITY,
+  });
+
+  const items = [{ video: { id: "viewer-muted", pubkey: mutedHex }, metadata: {} }];
+
+  const reasons = [];
+  const context = {
+    addWhy(detail) {
+      reasons.push(detail);
+      return detail;
+    },
+    log() {},
+  };
+
+  const result = await stage(items, context);
+
+  assert.equal(result.length, 1);
+  const entry = result[0];
+
+  assert.equal(entry.video.moderation.viewerMuted, true);
+  assert.equal(entry.metadata.moderation.viewerMuted, true);
+  assert.equal(entry.video.moderation.blockAutoplay, true);
+  assert.equal(entry.video.moderation.blurThumbnail, true);
+  assert.equal(entry.video.moderation.blurReason, "viewer-mute");
+  assert.equal(entry.metadata.moderation.blurReason, "viewer-mute");
+  assert.equal(entry.video.moderation.hidden, false);
+  assert.equal(entry.metadata.moderation.hidden, false);
+  assert.equal(entry.video.moderation.hideReason, undefined);
+  assert.equal(entry.metadata.moderation.hideReason, undefined);
+  assert.equal(entry.metadata.moderation.hideCounts, undefined);
+
+  const reasonSet = new Set(reasons.map((detail) => detail.reason));
+  assert(reasonSet.has("blur"));
+  assert(reasonSet.has("viewer-mute"));
+});
+
 test("moderation stage clears cached reporters and muters after service signals", async () => {
   const reporterHex = "d".repeat(64);
   const muterHex = "e".repeat(64);

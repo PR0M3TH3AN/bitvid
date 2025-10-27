@@ -25,12 +25,113 @@ const globalScope =
     ? globalThis
     : null;
 
+const SIMPLE_POOL_SHIM_KEY = Symbol.for("__bitvidSimplePoolShimApplied__");
+
+const noop = () => {};
+
+function normalizeRelayList(relays) {
+  if (!Array.isArray(relays)) {
+    if (typeof relays === "string" && relays.trim()) {
+      return [relays.trim()];
+    }
+    return [];
+  }
+  return relays
+    .map((relay) => (typeof relay === "string" ? relay.trim() : ""))
+    .filter((relay) => relay);
+}
+
+function normalizeFilterList(filters) {
+  if (!filters) {
+    return [];
+  }
+  if (!Array.isArray(filters)) {
+    if (typeof filters === "object" && filters !== null) {
+      return [filters];
+    }
+    return [];
+  }
+  return filters.filter((candidate) => candidate && typeof candidate === "object");
+}
+
+function safeInvoke(handler, args, contextLabel) {
+  if (typeof handler !== "function") {
+    return;
+  }
+  try {
+    handler(...args);
+  } catch (error) {
+    devLogger.warn(
+      `[nostr] Legacy SimplePool ${contextLabel} handler threw:`,
+      error
+    );
+  }
+}
+
+function createLegacySubscriptionContext(relays, filters) {
+  const relayList = normalizeRelayList(relays);
+  const filterList = normalizeFilterList(filters);
+
+  const requests = [];
+  if (relayList.length && filterList.length) {
+    relayList.forEach((url) => {
+      filterList.forEach((filter) => {
+        requests.push({ url, filter });
+      });
+    });
+  }
+
+  return { relayList, filterList, requests };
+}
+
 const nostrToolsReadySource =
   globalScope &&
   globalScope.nostrToolsReady &&
   typeof globalScope.nostrToolsReady.then === "function"
     ? globalScope.nostrToolsReady
     : nostrToolsReady;
+
+function ensureCanonicalCrypto(candidate, scope = globalScope) {
+  if (!candidate || typeof candidate !== "object") {
+    return candidate;
+  }
+
+  const canonical =
+    scope && typeof scope === "object"
+      ? scope.__BITVID_CANONICAL_NOSTR_TOOLS__ || null
+      : null;
+
+  if (!canonical || typeof canonical !== "object") {
+    return candidate;
+  }
+
+  const needsNip04 = !candidate.nip04 && canonical.nip04;
+  const needsNip44 = !candidate.nip44 && canonical.nip44;
+
+  if (!needsNip04 && !needsNip44) {
+    return candidate;
+  }
+
+  if (Object.isFrozen(candidate)) {
+    const augmented = { ...candidate };
+    if (needsNip04) {
+      augmented.nip04 = canonical.nip04;
+    }
+    if (needsNip44) {
+      augmented.nip44 = canonical.nip44;
+    }
+    return Object.freeze(augmented);
+  }
+
+  if (needsNip04) {
+    candidate.nip04 = canonical.nip04;
+  }
+  if (needsNip44) {
+    candidate.nip44 = canonical.nip44;
+  }
+
+  return candidate;
+}
 
 export function normalizeToolkitCandidate(candidate) {
   if (
@@ -39,7 +140,7 @@ export function normalizeToolkitCandidate(candidate) {
     candidate.ok !== false &&
     typeof candidate.then !== "function"
   ) {
-    return candidate;
+    return ensureCanonicalCrypto(candidate);
   }
   return null;
 }
@@ -168,10 +269,14 @@ function isSimplePoolConstructor(candidate) {
     return false;
   }
 
-  return (
-    typeof prototype.sub === "function" &&
-    typeof prototype.close === "function"
-  );
+  const hasSubscribeMethod =
+    typeof prototype.sub === "function" ||
+    typeof prototype.subscribe === "function" ||
+    typeof prototype.subscribeMany === "function";
+
+  const hasCloseMethod = typeof prototype.close === "function";
+
+  return hasSubscribeMethod && hasCloseMethod;
 }
 
 function unwrapSimplePool(candidate) {
@@ -232,3 +337,251 @@ export function resolveSimplePoolConstructor(tools, scope = globalScope) {
 }
 
 export { isSimplePoolConstructor, unwrapSimplePool };
+
+export function shimLegacySimplePoolMethods(pool) {
+  if (!pool || typeof pool !== "object" || pool[SIMPLE_POOL_SHIM_KEY]) {
+    return pool || null;
+  }
+
+  const subscribeMap =
+    typeof pool.subscribeMap === "function" ? pool.subscribeMap.bind(pool) : null;
+  const subscribeMany =
+    typeof pool.subscribeMany === "function" ? pool.subscribeMany.bind(pool) : null;
+  const subscribeSingle =
+    typeof pool.subscribe === "function" ? pool.subscribe.bind(pool) : null;
+
+  const canSubscribe = subscribeMap || subscribeMany || subscribeSingle;
+
+  if (canSubscribe && typeof pool.sub !== "function") {
+    pool.sub = function legacySub(relays, filters, opts = {}) {
+      const { relayList, filterList, requests } =
+        createLegacySubscriptionContext(relays, filters);
+
+      const listeners = {
+        event: new Set(),
+        eose: new Set(),
+        close: new Set(),
+      };
+
+      if (!requests.length) {
+        const stub = {
+          sub() {
+            return stub;
+          },
+          on() {
+            return stub;
+          },
+          off() {
+            return stub;
+          },
+          unsub: noop,
+        };
+
+        queueMicrotask(() => {
+          listeners.eose.forEach((listener) => safeInvoke(listener, [], "eose listener"));
+          listeners.close.forEach((listener) =>
+            safeInvoke(listener, [["no-filters"]], "close listener")
+          );
+        });
+
+        return stub;
+      }
+
+      const seenIds = new Set();
+
+      const subscribeParams = { ...opts };
+      const originalOnevent = subscribeParams.onevent;
+      const originalOneose = subscribeParams.oneose;
+      const originalOnclose = subscribeParams.onclose;
+      const originalAlreadyHaveEvent = subscribeParams.alreadyHaveEvent;
+      delete subscribeParams.onevent;
+      delete subscribeParams.oneose;
+      delete subscribeParams.onclose;
+      delete subscribeParams.alreadyHaveEvent;
+
+      subscribeParams.alreadyHaveEvent = (id) => {
+        if (!id) {
+          return false;
+        }
+        if (seenIds.has(id)) {
+          return true;
+        }
+        let skip = false;
+        if (typeof originalAlreadyHaveEvent === "function") {
+          try {
+            skip = originalAlreadyHaveEvent(id) === true;
+          } catch (error) {
+            devLogger.warn(
+              "[nostr] Legacy SimplePool alreadyHaveEvent hook threw:",
+              error
+            );
+          }
+        }
+        if (skip) {
+          return true;
+        }
+        seenIds.add(id);
+        return false;
+      };
+
+      let closed = false;
+
+      const invokeEventListeners = (event) => {
+        if (closed) {
+          return;
+        }
+        if (event && typeof event === "object" && event.id) {
+          seenIds.add(event.id);
+        }
+        safeInvoke(originalOnevent, [event], "options.onevent");
+        listeners.event.forEach((listener) =>
+          safeInvoke(listener, [event], "event listener")
+        );
+      };
+
+      const invokeEoseListeners = () => {
+        if (closed) {
+          return;
+        }
+        safeInvoke(originalOneose, [], "options.oneose");
+        listeners.eose.forEach((listener) => safeInvoke(listener, [], "eose listener"));
+      };
+
+      const invokeCloseListeners = (reasons) => {
+        if (closed) {
+          return;
+        }
+        closed = true;
+        safeInvoke(originalOnclose, [reasons], "options.onclose");
+        listeners.close.forEach((listener) =>
+          safeInvoke(listener, [reasons], "close listener")
+        );
+      };
+
+      subscribeParams.onevent = (event) => {
+        invokeEventListeners(event);
+      };
+
+      subscribeParams.oneose = () => {
+        invokeEoseListeners();
+      };
+
+      subscribeParams.onclose = (reasons) => {
+        invokeCloseListeners(reasons);
+      };
+
+      let closer;
+
+      try {
+        if (subscribeMap) {
+          closer = subscribeMap(requests, subscribeParams);
+        } else if (subscribeMany) {
+          // subscribeMany only accepts a single filter, so reuse subscribeMap-style batching
+          // by issuing one subscription per filter.
+          const subs = filterList.map((filter) =>
+            subscribeMany(relayList, filter, subscribeParams)
+          );
+          closer = {
+            close: (reason) => {
+              subs.forEach((sub) => {
+                try {
+                  sub?.close?.(reason);
+                } catch (error) {
+                  devLogger.warn("[nostr] Failed to close SimplePool subscription.", error);
+                }
+              });
+            },
+          };
+        } else if (subscribeSingle && filterList.length) {
+          closer = subscribeSingle(relayList, filterList[0], subscribeParams);
+        }
+      } catch (error) {
+        devLogger.warn("[nostr] Failed to open SimplePool subscription.", error);
+        throw error;
+      }
+
+      const legacySub = {
+        sub() {
+          devLogger.warn("[nostr] legacy sub.sub() is unsupported with the new SimplePool API.");
+          return legacySub;
+        },
+        on(type, handler) {
+          if (typeof handler !== "function") {
+            return legacySub;
+          }
+          if (type === "event") {
+            listeners.event.add(handler);
+          } else if (type === "eose") {
+            listeners.eose.add(handler);
+          } else if (type === "close" || type === "closed") {
+            listeners.close.add(handler);
+          }
+          return legacySub;
+        },
+        off(type, handler) {
+          if (typeof handler !== "function") {
+            return legacySub;
+          }
+          if (type === "event") {
+            listeners.event.delete(handler);
+          } else if (type === "eose") {
+            listeners.eose.delete(handler);
+          } else if (type === "close" || type === "closed") {
+            listeners.close.delete(handler);
+          }
+          return legacySub;
+        },
+        unsub() {
+          if (closed) {
+            return;
+          }
+          closed = true;
+          try {
+            closer?.close?.("closed by caller");
+          } catch (error) {
+            devLogger.warn("[nostr] Failed to close SimplePool subscription.", error);
+          }
+        },
+      };
+
+      return legacySub;
+    };
+  }
+
+  if (typeof pool.list !== "function") {
+    pool.list = async function legacyList(relays, filters, opts = {}) {
+      const events = [];
+      let subscription;
+      try {
+        subscription = this.sub(relays, filters, opts);
+      } catch (error) {
+        throw error;
+      }
+
+      return new Promise((resolve) => {
+        if (!subscription || typeof subscription.on !== "function") {
+          resolve(events);
+          return;
+        }
+
+        subscription.on("event", (event) => {
+          events.push(event);
+        });
+        subscription.on("eose", () => {
+          try {
+            subscription.unsub?.();
+          } catch (error) {
+            devLogger.warn("[nostr] Failed to unsubscribe after list EOSE.", error);
+          }
+          resolve(events);
+        });
+        subscription.on("close", () => {
+          resolve(events);
+        });
+      });
+    };
+  }
+
+  pool[SIMPLE_POOL_SHIM_KEY] = true;
+  return pool;
+}

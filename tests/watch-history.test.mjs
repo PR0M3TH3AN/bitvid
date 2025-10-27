@@ -1325,6 +1325,118 @@ async function testWatchHistoryPartialRelayRetry() {
   }
 }
 
+async function testWatchHistorySnapshotRetainsNewQueueEntriesDuringPublish() {
+  console.log("Running watch history snapshot inflight queue retention test...");
+
+  const actor = "npub-snapshot-inflight";
+  const originalPublishSnapshot = nostrClient.publishWatchHistorySnapshot;
+  const originalRecordView = nostrClient.recordVideoView;
+  const originalEnsure = nostrClient.ensureSessionActor;
+  const originalSession = nostrClient.sessionActor;
+  const originalPub = nostrClient.pubkey;
+
+  try {
+    localStorage.clear();
+    watchHistoryService.resetProgress();
+    nostrClient.pubkey = actor;
+    nostrClient.sessionActor = { pubkey: actor, privateKey: "snapshot-priv" };
+    nostrClient.ensureSessionActor = async () => actor;
+    nostrClient.watchHistoryLastCreatedAt = 0;
+
+    let createdAt = 1_700_200_000;
+    nostrClient.recordVideoView = async (_pointer, options = {}) => ({
+      ok: true,
+      event: {
+        id: `view-${options.created_at || createdAt}`,
+        pubkey: actor,
+        created_at: options.created_at || createdAt,
+      },
+    });
+
+    await watchHistoryService.publishView(
+      { type: "e", value: "inflight-initial" },
+      createdAt,
+      { actor },
+    );
+
+    const queuedBefore = watchHistoryService.getQueuedPointers(actor);
+    assert.equal(
+      queuedBefore.length,
+      1,
+      "queue should contain the initial pointer before snapshot",
+    );
+
+    let publishCalled = false;
+    let publishItems = [];
+    let releasePublish;
+    const publishGate = new Promise((resolve) => {
+      releasePublish = resolve;
+    });
+
+    nostrClient.publishWatchHistorySnapshot = async (items, options = {}) => {
+      publishCalled = true;
+      publishItems = Array.isArray(items) ? items.map((item) => ({ ...item })) : [];
+      await publishGate;
+      return { ok: true, items, snapshotId: "inflight-snapshot" };
+    };
+
+    const snapshotPromise = watchHistoryService.snapshot(null, {
+      actor,
+      reason: "inflight-test",
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(
+      publishCalled,
+      true,
+      "snapshot should invoke publish before resolving",
+    );
+
+    createdAt += 60;
+    await watchHistoryService.publishView(
+      { type: "e", value: "inflight-new" },
+      createdAt,
+      { actor },
+    );
+
+    const queuedDuring = watchHistoryService.getQueuedPointers(actor);
+    assert.equal(
+      queuedDuring.some((entry) => entry?.value === "inflight-new"),
+      true,
+      "queue should include the new pointer while snapshot is pending",
+    );
+
+    assert.equal(
+      publishItems.some((entry) => entry?.value === "inflight-new"),
+      false,
+      "inflight publish should not include pointers queued after the snapshot started",
+    );
+
+    releasePublish();
+    const snapshotResult = await snapshotPromise;
+    assert.ok(snapshotResult?.ok, "snapshot should resolve successfully");
+
+    const queuedAfter = watchHistoryService.getQueuedPointers(actor);
+    assert.equal(
+      queuedAfter.length,
+      1,
+      "queue should retain only the pointer added during the inflight snapshot",
+    );
+    assert.equal(
+      queuedAfter[0]?.value,
+      "inflight-new",
+      "new pointer should remain queued for the next snapshot",
+    );
+  } finally {
+    nostrClient.publishWatchHistorySnapshot = originalPublishSnapshot;
+    nostrClient.recordVideoView = originalRecordView;
+    nostrClient.ensureSessionActor = originalEnsure;
+    nostrClient.sessionActor = originalSession;
+    nostrClient.pubkey = originalPub;
+    watchHistoryService.resetProgress();
+  }
+}
+
 async function testResolveWatchHistoryBatchingWindow() {
   const actor = "b".repeat(64);
   const originalEnsure = nostrClient.ensureSessionActor;
@@ -2345,6 +2457,7 @@ await testEnsureExtensionPermissionCaching();
 await testFetchWatchHistoryExtensionDecryptsHexAndNpub();
 await testPublishSnapshotFailureRetry();
 await testWatchHistoryPartialRelayRetry();
+await testWatchHistorySnapshotRetainsNewQueueEntriesDuringPublish();
 await testResolveWatchHistoryBatchingWindow();
 await testWatchHistoryServiceIntegration();
 await testWatchHistorySnapshotMergesQueuedWithCachedItems();

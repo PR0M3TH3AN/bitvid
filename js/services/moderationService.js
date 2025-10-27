@@ -567,6 +567,72 @@ export class ModerationService {
     this.reconcileTrustedMuteSubscriptions(previousContacts, seededNext);
   }
 
+  getViewerContactsSnapshot({ includeViewer = false } = {}) {
+    const contacts =
+      this.viewerContacts instanceof Set ? this.viewerContacts : new Set();
+    const viewer = normalizeHex(this.viewerPubkey);
+    const list = [];
+
+    for (const value of contacts) {
+      const normalized = normalizeHex(value);
+      if (!normalized) {
+        continue;
+      }
+      if (!includeViewer && viewer && normalized === viewer) {
+        continue;
+      }
+      list.push({
+        pubkey: normalized,
+        npub: encodeToNpub(normalized) || "",
+      });
+    }
+
+    return list;
+  }
+
+  async ensureViewerContactsLoaded(pubkey = null) {
+    const target = normalizeHex(pubkey);
+    const viewer = normalizeHex(this.viewerPubkey);
+
+    if (target && target !== viewer) {
+      try {
+        await this.setViewerPubkey(target);
+      } catch (error) {
+        this.log(
+          "[moderationService] failed to set viewer pubkey while ensuring contacts",
+          error,
+        );
+      }
+      return this.getViewerContactsSnapshot();
+    }
+
+    if (this.contactListPromise) {
+      try {
+        await this.contactListPromise;
+      } catch (error) {
+        this.log(
+          "[moderationService] contact hydration failed while ensuring contacts",
+          error,
+        );
+      }
+    } else if (viewer) {
+      const hasContacts =
+        this.viewerContacts instanceof Set && this.viewerContacts.size > 0;
+      if (!hasContacts) {
+        try {
+          await this.fetchTrustedContacts(viewer);
+        } catch (error) {
+          this.log(
+            "[moderationService] failed to fetch viewer contacts while ensuring contacts",
+            error,
+          );
+        }
+      }
+    }
+
+    return this.getViewerContactsSnapshot();
+  }
+
   setTrustedSeeds(seeds = []) {
     const sanitizedSeeds = new Set();
 
