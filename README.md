@@ -143,7 +143,7 @@ package scripts to keep formatting, linting, and generated output consistent:
 ```bash
 npm install               # install Prettier, Stylelint, and Tailwind toolchain
 npm run format            # format CSS/HTML/JS/MD with Prettier + tailwindcss plugin
-npm run lint              # run CSS, hex color, and inline-style guards in one pass
+npm run lint              # run CSS, hex color, inline-style, design-token, and Tailwind color/bracket guards in one pass
 npm run lint:css          # enforce token usage and forbid raw hex colors
 npm run lint:inline-styles # fail CI if inline style attributes or element.style usage slip in
 npm run build:css         # rebuild css/tailwind.generated.css from tailwind.source.css
@@ -316,7 +316,7 @@ placeholder at “—” and development builds log a warning—so mixed deploym
 
 ### Contribution Guidelines
 
-- Follow the [MIT License](https://opensource.org/licenses/MIT).
+- Follow the [GPL-3.0-or-later License](LICENSE).
 - Use clear, concise commit messages.
 - Respect the existing coding style and architecture.
 - Run the manual QA script (see below) and note results in PR descriptions for changes that affect upload or playback.
