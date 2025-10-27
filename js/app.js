@@ -9189,8 +9189,12 @@ class Application {
       return;
     }
 
+    const parsedLud16 =
+      typeof parsed?.lud16 === "string" ? parsed.lud16.trim() : "";
+    const parsedLud06 =
+      typeof parsed?.lud06 === "string" ? parsed.lud06.trim() : "";
     const lightningAddressCandidate = (() => {
-      const fields = [parsed?.lud16, parsed?.lud06];
+      const fields = [parsedLud16, parsedLud06];
       for (const field of fields) {
         if (typeof field !== "string") {
           continue;
@@ -9229,6 +9233,10 @@ class Application {
     }
 
     const nextLightning = lightningAddressCandidate || "";
+    const previousLightning =
+      typeof this.currentVideo?.lightningAddress === "string"
+        ? this.currentVideo.lightningAddress
+        : "";
 
     if (this.currentVideo) {
       this.currentVideo.lightningAddress = nextLightning ? nextLightning : null;
@@ -9241,12 +9249,14 @@ class Application {
           name: resolvedProfile.name,
           picture: resolvedProfile.picture,
           pubkey: normalized,
+          lightningAddress: nextLightning ? nextLightning : null,
         };
       } else {
         this.currentVideo.creator = {
           name: resolvedProfile.name,
           picture: resolvedProfile.picture,
           pubkey: normalized,
+          lightningAddress: nextLightning ? nextLightning : null,
         };
       }
     }
@@ -9272,14 +9282,38 @@ class Application {
       parsed?.username,
     ]);
 
-    if (fetchedNameCandidate || sanitizedFetchedPicture) {
+    const cachedLightning =
+      typeof cachedProfile?.lightningAddress === "string"
+        ? cachedProfile.lightningAddress.trim()
+        : "";
+    const shouldUpdateCache =
+      Boolean(fetchedNameCandidate) ||
+      Boolean(sanitizedFetchedPicture) ||
+      cachedLightning !== nextLightning ||
+      previousLightning !== nextLightning;
+
+    if (shouldUpdateCache) {
       try {
+        const profileForCache = {
+          name: fetchedNameCandidate || resolvedProfile.name,
+          picture: sanitizedFetchedPicture || resolvedProfile.picture,
+        };
+
+        if (parsedLud16) {
+          profileForCache.lud16 = parsedLud16;
+        }
+
+        if (parsedLud06) {
+          profileForCache.lud06 = parsedLud06;
+        }
+
+        if (nextLightning) {
+          profileForCache.lightningAddress = nextLightning;
+        }
+
         this.setProfileCacheEntry(
           normalized,
-          {
-            name: fetchedNameCandidate || resolvedProfile.name,
-            picture: sanitizedFetchedPicture || resolvedProfile.picture,
-          },
+          profileForCache,
           { persist: false, reason: "modal-profile-fetch" },
         );
       } catch (error) {
