@@ -10,12 +10,15 @@
 
 ## Features
 
-- **Decentralized Sharing**: Video sharing without central servers.
-- **Cloudflare R2 Uploads**: Publish directly from the Upload modal's Cloudflare flow with progress tracking and credential helpers.
+- **Decentralized Sharing**: Publish and browse videos without a centralized server.
+- **Channel profile pages**: The [channel view](views/channel-profile.html) and `js/channelProfile.js` render banners, playlists, links, and follow stats so every creator has a branded landing page.
+- **Audience flags**: The [Upload](components/upload-modal.html) and [Edit Video](components/edit-video-modal.html) modals expose **NSFW** and **For Kids** toggles that map straight to note metadata for safer discovery.
+- **Richer metadata repeaters**: Configure variants, captions, segments, participants, references, and hashtags directly in the Upload modal so posts ship with structured context.
+- **Cloudflare R2 Uploads**: Publish through the modal’s Cloudflare flow with progress tracking and credential helpers.
 - **Encrypted Watch History**: Sync viewing activity privately through the NIP-04 encrypted pipeline with local fallbacks.
 - **Live View Counters**: Subscribe to view events and see totals update in real time on video cards and the video modal.
 - **Lightning Zaps**: Tip creators with Lightning payments via the Zap controls in the video modal.
-- **Private Video Listings**: Hide cards from shared grids by flipping the visibility switch in the [Edit Video modal](components/edit-video-modal.html) after publishing.
+- **Private Video Listings**: Hide cards from shared grids by flipping the visibility switch in the Edit Video modal after publishing.
 - **Nostr Integration**: Use Nostr keys for login and interaction.
 - **WebTorrent Streaming**: Stream videos directly through torrent technology.
 - **Developer-Friendly**: Open source and customizable for your needs.
