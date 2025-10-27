@@ -130,6 +130,13 @@ class AccessControl {
       }
     };
 
+    // Attempt a synchronous hydration so downstream consumers (like
+    // bootstrapTrustedSeeds) have immediate access to any cached admin
+    // state before they trigger refresh logic. This avoids a race where the
+    // async microtask hydration hasn't executed yet when those consumers
+    // call into `refresh()` and encounter an empty cache.
+    runHydrate();
+
     if (typeof queueMicrotask === "function") {
       queueMicrotask(runHydrate);
       return;
