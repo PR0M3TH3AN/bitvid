@@ -1543,6 +1543,29 @@ export class ProfileModalController {
     if (actor) {
       this.directMessagesLastActor = actor;
     }
+
+    if (
+      this.nostrService &&
+      typeof this.nostrService.hydrateDirectMessagesFromStore === "function"
+    ) {
+      void this.nostrService
+        .hydrateDirectMessagesFromStore({ emit: true })
+        .then((messages) => {
+          if (Array.isArray(messages)) {
+            this.directMessagesCache = messages;
+            const active = this.resolveActiveDmActor();
+            if (active) {
+              this.directMessagesLastActor = active;
+            }
+          }
+        })
+        .catch((error) => {
+          devLogger.warn(
+            "[profileModal] Failed to hydrate cached direct messages:",
+            error,
+          );
+        });
+    }
   }
 
   teardownDirectMessagesService() {
@@ -1875,6 +1898,16 @@ export class ProfileModalController {
     if (typeof entry.plaintext === "string") {
       candidates.push(entry.plaintext);
     }
+    if (typeof entry.preview === "string") {
+      candidates.push(entry.preview);
+    }
+    if (
+      entry.snapshot &&
+      typeof entry.snapshot.preview === "string" &&
+      entry.snapshot.preview.trim()
+    ) {
+      candidates.push(entry.snapshot.preview);
+    }
     if (entry.message && typeof entry.message.content === "string") {
       candidates.push(entry.message.content);
     }
@@ -1990,6 +2023,20 @@ export class ProfileModalController {
     const normalizedActor = actorPubkey
       ? this.normalizeHexPubkey(actorPubkey)
       : this.resolveActiveDmActor();
+
+    if (typeof entry.remotePubkey === "string") {
+      const directRemote = this.normalizeHexPubkey(entry.remotePubkey);
+      if (directRemote && directRemote !== normalizedActor) {
+        return directRemote;
+      }
+    }
+
+    if (entry.snapshot && typeof entry.snapshot.remotePubkey === "string") {
+      const snapshotRemote = this.normalizeHexPubkey(entry.snapshot.remotePubkey);
+      if (snapshotRemote && snapshotRemote !== normalizedActor) {
+        return snapshotRemote;
+      }
+    }
 
     const direction =
       typeof entry.direction === "string" ? entry.direction.toLowerCase() : "";
