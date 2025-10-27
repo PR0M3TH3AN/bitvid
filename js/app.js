@@ -4685,35 +4685,14 @@ class Application {
         );
       }
 
-      let refreshPromise = null;
-      if (
-        this.lastIdentityRefreshPromise &&
-        typeof this.lastIdentityRefreshPromise.then === "function"
-      ) {
-        refreshPromise = this.lastIdentityRefreshPromise;
-      }
+      const refreshCompleted = await this.waitForIdentityRefresh({
+        reason: "profile-switch",
+      });
 
-      if (refreshPromise) {
-        try {
-          await refreshPromise;
-        } catch (error) {
-          devLogger.error(
-            "Failed to refresh UI after switching profiles:",
-            error,
-          );
-        }
-      } else {
-        try {
-          await this.refreshAllVideoGrids({
-            reason: "profile-switch",
-            forceMainReload: true,
-          });
-        } catch (error) {
-          devLogger.error(
-            "Failed to refresh video grids after switching profiles:",
-            error,
-          );
-        }
+      if (!refreshCompleted) {
+        devLogger.warn(
+          "[Application] Fallback identity refresh was required after switching profiles.",
+        );
       }
 
       if (this.watchHistoryTelemetry?.resetPlaybackLoggingState) {
@@ -4740,6 +4719,64 @@ class Application {
     }
 
     return result;
+  }
+
+  async waitForIdentityRefresh({
+    reason = "identity-refresh",
+    attempts = 6,
+  } = {}) {
+    const maxAttempts = Number.isFinite(attempts)
+      ? Math.max(1, Math.floor(attempts))
+      : 6;
+    const waitForTick = () =>
+      new Promise((resolve) => {
+        if (typeof queueMicrotask === "function") {
+          queueMicrotask(resolve);
+        } else if (typeof setTimeout === "function") {
+          setTimeout(resolve, 0);
+        } else {
+          resolve();
+        }
+      });
+
+    let promise = null;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const candidate = this.lastIdentityRefreshPromise;
+      if (candidate && typeof candidate.then === "function") {
+        promise = candidate;
+        break;
+      }
+      // Yield to allow the auth login flow to schedule the refresh promise.
+      // eslint-disable-next-line no-await-in-loop
+      await waitForTick();
+    }
+
+    if (promise && typeof promise.then === "function") {
+      try {
+        await promise;
+        return true;
+      } catch (error) {
+        devLogger.error(
+          "[Application] Identity refresh promise rejected:",
+          error,
+        );
+      }
+    }
+
+    try {
+      await this.refreshAllVideoGrids({
+        reason,
+        forceMainReload: true,
+      });
+    } catch (error) {
+      devLogger.error(
+        "[Application] Failed to refresh video grids after waiting for identity refresh:",
+        error,
+      );
+    }
+
+    return false;
   }
 
   async handleProfileLogoutRequest({ pubkey, entry } = {}) {
