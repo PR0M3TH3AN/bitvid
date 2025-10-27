@@ -4426,6 +4426,20 @@ class Application {
     if (refreshTasks.length) {
       await Promise.allSettled(refreshTasks);
     }
+
+    if (typeof this.refreshVisibleModerationUi === "function") {
+      const refreshReason =
+        normalizedReason || (forceMainReload ? "refresh-all-video-grids" : "refresh");
+      try {
+        this.refreshVisibleModerationUi({ reason: refreshReason });
+      } catch (error) {
+        const contextMessage = refreshReason ? ` after ${refreshReason}` : "";
+        devLogger.warn(
+          `[Application] Failed to refresh moderation UI${contextMessage}:`,
+          error,
+        );
+      }
+    }
   }
 
   async onVideosShouldRefresh({ reason } = {}) {
@@ -5163,6 +5177,73 @@ class Application {
     }
 
     return normalized;
+  }
+
+  refreshVisibleModerationUi({ reason } = {}) {
+    const context = reason ? ` after ${reason}` : "";
+
+    const redecorateVideo = (video) => {
+      if (!video || typeof video !== "object") {
+        return;
+      }
+
+      try {
+        this.decorateVideoModeration(video);
+      } catch (error) {
+        devLogger.warn(
+          `[Application] Failed to decorate video moderation${context}:`,
+          error,
+        );
+      }
+    };
+
+    if (this.videosMap instanceof Map) {
+      for (const video of this.videosMap.values()) {
+        redecorateVideo(video);
+      }
+    }
+
+    if (this.videoListView && Array.isArray(this.videoListView.currentVideos)) {
+      for (const video of this.videoListView.currentVideos) {
+        redecorateVideo(video);
+      }
+    }
+
+    if (this.videoListView && Array.isArray(this.videoListView.videoCardInstances)) {
+      for (const card of this.videoListView.videoCardInstances) {
+        if (!card || typeof card !== "object") {
+          continue;
+        }
+
+        if (card.video && typeof card.video === "object") {
+          redecorateVideo(card.video);
+        }
+
+        if (typeof card.refreshModerationUi === "function") {
+          try {
+            card.refreshModerationUi();
+          } catch (error) {
+            devLogger.warn(
+              `[Application] Failed to refresh moderation UI on card${context}:`,
+              error,
+            );
+          }
+        }
+      }
+    }
+
+    if (this.currentVideo && typeof this.currentVideo === "object") {
+      redecorateVideo(this.currentVideo);
+
+      try {
+        this.videoModal?.refreshActiveVideoModeration?.({ video: this.currentVideo });
+      } catch (error) {
+        devLogger.warn(
+          `[Application] Failed to refresh video modal moderation UI${context}:`,
+          error,
+        );
+      }
+    }
   }
 
   updateActiveProfileUI(pubkey, profile = {}) {
@@ -7090,6 +7171,21 @@ class Application {
       : [];
 
     this.videoListView.render(decoratedVideos, metadata);
+
+    if (typeof this.refreshVisibleModerationUi === "function") {
+      const renderReason =
+        metadata && typeof metadata.reason === "string" && metadata.reason
+          ? `render-${metadata.reason}`
+          : "render-video-list";
+      try {
+        this.refreshVisibleModerationUi({ reason: renderReason });
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to refresh moderation UI after rendering video list:",
+          error,
+        );
+      }
+    }
     this.updateModalSimilarContent();
   }
 

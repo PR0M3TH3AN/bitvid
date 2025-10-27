@@ -380,6 +380,83 @@ function startApplication() {
   return startupPromise;
 }
 
+function wasBackForwardNavigation(event) {
+  if (event?.persisted) {
+    return true;
+  }
+
+  if (typeof window === "undefined" || !window.performance) {
+    return false;
+  }
+
+  if (typeof window.performance.getEntriesByType === "function") {
+    try {
+      const navigationEntries = window.performance.getEntriesByType("navigation");
+      if (Array.isArray(navigationEntries) && navigationEntries.length) {
+        const latestEntry = navigationEntries[navigationEntries.length - 1];
+        if (latestEntry && latestEntry.type === "back_forward") {
+          return true;
+        }
+      }
+    } catch (error) {
+      devLogger.warn("[pageshow] Failed to inspect navigation entries:", error);
+    }
+  }
+
+  const navigation = window.performance.navigation;
+  if (!navigation || typeof navigation.type !== "number") {
+    return false;
+  }
+
+  const backForwardType =
+    typeof navigation.TYPE_BACK_FORWARD === "number"
+      ? navigation.TYPE_BACK_FORWARD
+      : 2;
+
+  return navigation.type === backForwardType;
+}
+
+function handlePageShow(event) {
+  if (!wasBackForwardNavigation(event)) {
+    return;
+  }
+
+  if (!application) {
+    return;
+  }
+
+  Promise.resolve(applicationReadyPromise)
+    .catch(() => {})
+    .then(() => {
+      if (!application) {
+        return null;
+      }
+
+      try {
+        application.refreshVisibleModerationUi?.({ reason: "pageshow" });
+      } catch (error) {
+        devLogger.warn("[pageshow] Failed to refresh moderation UI after resume:", error);
+      }
+
+      if (typeof application.refreshAllVideoGrids !== "function") {
+        return null;
+      }
+
+      return application
+        .refreshAllVideoGrids({ reason: "pageshow", forceMainReload: true })
+        .catch((error) => {
+          devLogger.warn("[pageshow] Failed to refresh video grids after resume:", error);
+        });
+    })
+    .catch((error) => {
+      devLogger.warn("[pageshow] Failed to process resume refresh:", error);
+    });
+}
+
+if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+  window.addEventListener("pageshow", handlePageShow);
+}
+
 const INTERFACE_FADE_IN_ANIMATION = "interface-fade-in";
 const VIDEO_THUMBNAIL_FADE_IN_ANIMATION = "video-thumbnail-fade-in";
 
