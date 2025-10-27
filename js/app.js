@@ -27,6 +27,7 @@ import { attachHealthBadges } from "./gridHealth.js";
 import { attachUrlHealthBadges } from "./urlHealthObserver.js";
 import { updateVideoCardSourceVisibility } from "./utils/cardSourceVisibility.js";
 import { collectVideoTags } from "./utils/videoTags.js";
+import { sanitizeProfileMediaUrl } from "./utils/profileMedia.js";
 import { ADMIN_INITIAL_EVENT_BLACKLIST } from "./lists.js";
 import { userBlocks } from "./userBlocks.js";
 import { relayManager } from "./relayManager.js";
@@ -214,6 +215,8 @@ class Application {
 
     const { modalManager } = this.bootstrapper.initialize();
     this.modalManager = modalManager;
+
+    this.modalCreatorProfileRequestToken = null;
 
     this.commentController = null;
     this.initializeCommentController();
@@ -8286,6 +8289,22 @@ class Application {
       ? Math.floor(video.created_at)
       : null;
 
+    const normalizedCreatorPubkey =
+      this.normalizeHexPubkey(video.pubkey) || video.pubkey;
+    const cachedCreatorProfileEntry =
+      normalizedCreatorPubkey && typeof this.getProfileCacheEntry === "function"
+        ? this.getProfileCacheEntry(normalizedCreatorPubkey)
+        : null;
+    const cachedCreatorProfile =
+      cachedCreatorProfileEntry &&
+      typeof cachedCreatorProfileEntry === "object"
+        ? cachedCreatorProfileEntry.profile || null
+        : null;
+    const initialLightningAddress =
+      typeof video.lightningAddress === "string"
+        ? video.lightningAddress.trim()
+        : "";
+
     this.currentVideo = {
       ...video,
       url: trimmedUrl,
@@ -8294,7 +8313,7 @@ class Application {
         magnetCandidate || fallbackMagnetForCandidate || legacyInfoHash || "",
       torrentSupported: magnetSupported,
       legacyInfoHash: video.legacyInfoHash || legacyInfoHash,
-      lightningAddress: null,
+      lightningAddress: initialLightningAddress || null,
       lastEditedAt: normalizedEditedAt,
     };
 
@@ -8302,6 +8321,30 @@ class Application {
 
     const modalTags = collectVideoTags(this.currentVideo);
     this.currentVideo.displayTags = modalTags;
+    const creatorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
+    const displayNpub = formatShortNpub(creatorNpub) || creatorNpub;
+    const initialCreatorProfile = this.resolveModalCreatorProfile({
+      video: this.currentVideo,
+      pubkey: normalizedCreatorPubkey,
+      cachedProfile: cachedCreatorProfile,
+    });
+    this.currentVideo.creatorName = initialCreatorProfile.name;
+    this.currentVideo.creatorPicture = initialCreatorProfile.picture;
+    this.currentVideo.creatorNpub = displayNpub;
+    if (this.currentVideo.creator && typeof this.currentVideo.creator === "object") {
+      this.currentVideo.creator = {
+        ...this.currentVideo.creator,
+        name: initialCreatorProfile.name,
+        picture: initialCreatorProfile.picture,
+        pubkey: normalizedCreatorPubkey,
+      };
+    } else {
+      this.currentVideo.creator = {
+        name: initialCreatorProfile.name,
+        picture: initialCreatorProfile.picture,
+        pubkey: normalizedCreatorPubkey,
+      };
+    }
     this.updateModalSimilarContent({ activeVideo: this.currentVideo });
 
     if (Number.isFinite(knownPostedAt)) {
@@ -8352,8 +8395,8 @@ class Application {
       )}`;
     window.history.pushState({}, "", pushUrl);
 
-    this.zapController?.setVisibility(false);
     this.zapController?.resetState();
+    this.zapController?.setVisibility(Boolean(this.currentVideo.lightningAddress));
 
     const magnetInput =
       sanitizedMagnet ||
@@ -8388,51 +8431,37 @@ class Application {
       playbackPromise = this.playVideoWithFallback(playbackOptions);
     }
 
-    let lightningAddress = "";
-    let creatorProfile = {
-      name: "Unknown",
-      picture: `https://robohash.org/${video.pubkey}`,
-    };
-    try {
-      const userEvents = await nostrClient.pool.list(nostrClient.relays, [
-        { kinds: [0], authors: [video.pubkey], limit: 1 },
-      ]);
-      if (userEvents.length > 0 && userEvents[0]?.content) {
-        const data = JSON.parse(userEvents[0].content);
-        lightningAddress = (data.lud16 || data.lud06 || "").trim();
-        creatorProfile = {
-          name: data.name || data.display_name || "Unknown",
-          picture: data.picture || `https://robohash.org/${video.pubkey}`,
-        };
-      }
-    } catch (error) {
-      this.log("Error fetching creator profile:", error);
-    }
-
-    this.zapController?.setVisibility(!!lightningAddress);
-    if (this.currentVideo) {
-      this.currentVideo.lightningAddress = lightningAddress || null;
-    }
-
-    const creatorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
     if (this.videoModal) {
       const timestampPayload = this.buildModalTimestampPayload({
         postedAt: this.currentVideo?.rootCreatedAt ?? null,
         editedAt: normalizedEditedAt,
       });
-      const displayNpub = formatShortNpub(creatorNpub);
       this.videoModal.updateMetadata({
         title: video.title || "Untitled",
         description: video.description || "No description available.",
         timestamps: timestampPayload,
         tags: modalTags,
         creator: {
-          name: creatorProfile.name,
-          avatarUrl: creatorProfile.picture,
+          name: initialCreatorProfile.name,
+          avatarUrl: initialCreatorProfile.picture,
           npub: displayNpub,
         },
       });
     }
+
+    const profileRequestToken = Symbol("modal-profile-request");
+    this.modalCreatorProfileRequestToken = profileRequestToken;
+    this.fetchModalCreatorProfile({
+      pubkey: normalizedCreatorPubkey,
+      displayNpub,
+      cachedProfile: cachedCreatorProfile,
+      requestToken: profileRequestToken,
+    }).catch((error) => {
+      devLogger.error(
+        "[Application] Failed to fetch creator profile for modal:",
+        error,
+      );
+    });
 
     this.ensureModalPostedTimestamp(this.currentVideo);
 
@@ -8787,6 +8816,274 @@ class Application {
     }
 
     return null;
+  }
+
+  selectPreferredCreatorName(candidates = []) {
+    for (const candidate of candidates) {
+      if (typeof candidate !== "string") {
+        continue;
+      }
+      const trimmed = candidate.trim();
+      if (!trimmed) {
+        continue;
+      }
+      if (HEX64_REGEX.test(trimmed)) {
+        continue;
+      }
+      return trimmed;
+    }
+    return "";
+  }
+
+  selectPreferredCreatorPicture(candidates = []) {
+    for (const candidate of candidates) {
+      if (typeof candidate !== "string") {
+        continue;
+      }
+      const sanitized = sanitizeProfileMediaUrl(candidate);
+      if (sanitized) {
+        return sanitized;
+      }
+    }
+    return "";
+  }
+
+  resolveModalCreatorProfile({
+    video,
+    pubkey,
+    cachedProfile = null,
+    fetchedProfile = null,
+  } = {}) {
+    const normalizedPubkey =
+      typeof pubkey === "string" && pubkey.trim() ? pubkey.trim() : "";
+    const fallbackAvatarCandidate = normalizedPubkey
+      ? `https://robohash.org/${normalizedPubkey}`
+      : "assets/svg/default-profile.svg";
+    const defaultAvatar =
+      sanitizeProfileMediaUrl(fallbackAvatarCandidate) || fallbackAvatarCandidate;
+
+    const nameCandidates = [];
+    const pictureCandidates = [];
+
+    const collectFromSource = (source) => {
+      if (!source || typeof source !== "object") {
+        return;
+      }
+      const names = [source.display_name, source.name, source.username];
+      names.forEach((value) => {
+        if (typeof value === "string") {
+          nameCandidates.push(value);
+        }
+      });
+      const pictures = [source.picture, source.image, source.photo];
+      pictures.forEach((value) => {
+        if (typeof value === "string") {
+          pictureCandidates.push(value);
+        }
+      });
+    };
+
+    collectFromSource(fetchedProfile);
+    collectFromSource(cachedProfile);
+
+    if (video && typeof video === "object") {
+      collectFromSource(video.creator);
+      if (typeof video.creatorName === "string") {
+        nameCandidates.push(video.creatorName);
+      }
+      if (typeof video.creatorPicture === "string") {
+        pictureCandidates.push(video.creatorPicture);
+      }
+      collectFromSource(video.author);
+      if (typeof video.authorName === "string") {
+        nameCandidates.push(video.authorName);
+      }
+      if (typeof video.authorPicture === "string") {
+        pictureCandidates.push(video.authorPicture);
+      }
+      collectFromSource(video.profile);
+    }
+
+    const resolvedName = this.selectPreferredCreatorName(nameCandidates) || "Unknown";
+    const resolvedPicture =
+      this.selectPreferredCreatorPicture(pictureCandidates) || defaultAvatar;
+
+    return { name: resolvedName, picture: resolvedPicture };
+  }
+
+  async fetchModalCreatorProfile({
+    pubkey,
+    displayNpub = "",
+    cachedProfile = null,
+    requestToken = null,
+  } = {}) {
+    const normalized = this.normalizeHexPubkey(pubkey);
+    if (!normalized) {
+      return;
+    }
+
+    const relayList =
+      Array.isArray(nostrClient?.relays) && nostrClient.relays.length
+        ? nostrClient.relays
+        : null;
+    if (!relayList || !nostrClient?.pool || typeof nostrClient.pool.list !== "function") {
+      return;
+    }
+
+    const events = await nostrClient.pool.list(relayList, [
+      { kinds: [0], authors: [normalized], limit: 1 },
+    ]);
+
+    if (this.modalCreatorProfileRequestToken !== requestToken) {
+      return;
+    }
+
+    const newest = Array.isArray(events)
+      ? events.reduce((latest, event) => {
+          if (!event || typeof event !== "object") {
+            return latest;
+          }
+          const eventPubkey = this.normalizeHexPubkey(event.pubkey);
+          if (eventPubkey && eventPubkey !== normalized) {
+            return latest;
+          }
+          const createdAt = Number.isFinite(event.created_at) ? event.created_at : 0;
+          if (!latest || createdAt > latest.createdAt) {
+            return { createdAt, event };
+          }
+          return latest;
+        }, null)
+      : null;
+
+    if (!newest || !newest.event) {
+      if (this.modalCreatorProfileRequestToken === requestToken) {
+        this.modalCreatorProfileRequestToken = null;
+      }
+      return;
+    }
+
+    let parsed = null;
+    try {
+      parsed = newest.event.content ? JSON.parse(newest.event.content) : null;
+    } catch (error) {
+      devLogger.warn(
+        `[Application] Failed to parse creator profile content for ${normalized}:`,
+        error,
+      );
+      if (this.modalCreatorProfileRequestToken === requestToken) {
+        this.modalCreatorProfileRequestToken = null;
+      }
+      return;
+    }
+
+    if (this.modalCreatorProfileRequestToken !== requestToken) {
+      return;
+    }
+
+    const lightningAddressCandidate = (() => {
+      const fields = [parsed?.lud16, parsed?.lud06];
+      for (const field of fields) {
+        if (typeof field !== "string") {
+          continue;
+        }
+        const trimmed = field.trim();
+        if (trimmed) {
+          return trimmed;
+        }
+      }
+      return "";
+    })();
+
+    const fetchedProfile = {
+      display_name: parsed?.display_name,
+      name: parsed?.name,
+      username: parsed?.username,
+      picture: parsed?.picture,
+      image: parsed?.image,
+      photo: parsed?.photo,
+    };
+
+    const resolvedProfile = this.resolveModalCreatorProfile({
+      video: this.currentVideo,
+      pubkey: normalized,
+      cachedProfile,
+      fetchedProfile,
+    });
+
+    if (this.modalCreatorProfileRequestToken !== requestToken) {
+      return;
+    }
+
+    const activeVideoPubkey = this.normalizeHexPubkey(this.currentVideo?.pubkey);
+    if (activeVideoPubkey && activeVideoPubkey !== normalized) {
+      return;
+    }
+
+    const nextLightning = lightningAddressCandidate || this.currentVideo?.lightningAddress || "";
+
+    if (this.currentVideo) {
+      this.currentVideo.lightningAddress = nextLightning ? nextLightning : null;
+      this.currentVideo.creatorName = resolvedProfile.name;
+      this.currentVideo.creatorPicture = resolvedProfile.picture;
+      this.currentVideo.creatorNpub = displayNpub;
+      if (this.currentVideo.creator && typeof this.currentVideo.creator === "object") {
+        this.currentVideo.creator = {
+          ...this.currentVideo.creator,
+          name: resolvedProfile.name,
+          picture: resolvedProfile.picture,
+          pubkey: normalized,
+        };
+      } else {
+        this.currentVideo.creator = {
+          name: resolvedProfile.name,
+          picture: resolvedProfile.picture,
+          pubkey: normalized,
+        };
+      }
+    }
+
+    if (this.videoModal) {
+      this.videoModal.updateMetadata({
+        creator: {
+          name: resolvedProfile.name,
+          avatarUrl: resolvedProfile.picture,
+          npub: displayNpub,
+        },
+      });
+    }
+
+    this.zapController?.setVisibility(Boolean(this.currentVideo?.lightningAddress));
+
+    const sanitizedFetchedPicture = sanitizeProfileMediaUrl(
+      parsed?.picture || parsed?.image || parsed?.photo || "",
+    );
+    const fetchedNameCandidate = this.selectPreferredCreatorName([
+      parsed?.display_name,
+      parsed?.name,
+      parsed?.username,
+    ]);
+
+    if (fetchedNameCandidate || sanitizedFetchedPicture) {
+      try {
+        this.setProfileCacheEntry(
+          normalized,
+          {
+            name: fetchedNameCandidate || resolvedProfile.name,
+            picture: sanitizedFetchedPicture || resolvedProfile.picture,
+          },
+          { persist: false, reason: "modal-profile-fetch" },
+        );
+      } catch (error) {
+        devLogger.warn(
+          `[Application] Failed to update profile cache for ${normalized}:`,
+          error,
+        );
+      }
+    }
+
+    if (this.modalCreatorProfileRequestToken === requestToken) {
+      this.modalCreatorProfileRequestToken = null;
+    }
   }
 
   normalizeReactionCount(value) {
