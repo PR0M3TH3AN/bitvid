@@ -54,7 +54,8 @@ import { getPlatformLightningAddress } from "./payments/platformAddress.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import {
   ensureWallet,
-  sendPayment as sendWalletPayment
+  sendPayment as sendWalletPayment,
+  resetWalletClient
 } from "./payments/nwcClient.js";
 import {
   prepareStaticModal,
@@ -2577,6 +2578,19 @@ function createZapDependencies({
               address,
               error
             });
+          }
+          if (
+            typeof error?.message === "string" &&
+            error.message.toLowerCase().includes("timed out")
+          ) {
+            try {
+              resetWalletClient();
+            } catch (resetError) {
+              devLogger?.warn?.(
+                "[zap] Failed to reset wallet client after timeout",
+                resetError
+              );
+            }
           }
           logZapError(
             "wallet.sendPayment",

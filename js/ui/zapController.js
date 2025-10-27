@@ -23,6 +23,7 @@ import { devLogger, userLogger } from "../utils/logger.js";
 import {
   ensureWallet as ensureWalletDefault,
   sendPayment as sendPaymentDefault,
+  resetWalletClient as resetWalletClientDefault,
 } from "../payments/nwcClient.js";
 
 const DEFAULT_SPLIT_SUMMARY = "Enter an amount to view the split.";
@@ -474,6 +475,10 @@ export default class ZapController {
       typeof this.payments?.sendPayment === "function"
         ? (bolt11, params) => this.payments.sendPayment(bolt11, params)
         : (bolt11, params) => sendPaymentDefault(bolt11, params);
+    const resetWalletClientFn =
+      typeof this.payments?.resetWalletClient === "function"
+        ? () => this.payments.resetWalletClient()
+        : () => resetWalletClientDefault();
 
     let activeShare = null;
 
@@ -543,18 +548,18 @@ export default class ZapController {
           }
         },
         sendPayment: async (bolt11, params) => {
+          const shareType = activeShare || "unknown";
+          const amount =
+            shareType === "platform"
+              ? shares.platformShare
+              : shares.creatorShare;
+          const address =
+            shareType === "platform"
+              ? platformEntry?.address || getCachedPlatformLightningAddress()
+              : creatorEntry?.address || lightningAddress;
           try {
             const payment = await sendPaymentFn(bolt11, params);
             if (Array.isArray(shareTracker)) {
-              const shareType = activeShare || "unknown";
-              const amount =
-                shareType === "platform"
-                  ? shares.platformShare
-                  : shares.creatorShare;
-              const address =
-                shareType === "platform"
-                  ? platformEntry?.address || getCachedPlatformLightningAddress()
-                  : creatorEntry?.address || lightningAddress;
               shareTracker.push({
                 type: shareType,
                 status: "success",
@@ -566,15 +571,6 @@ export default class ZapController {
             return payment;
           } catch (error) {
             if (Array.isArray(shareTracker)) {
-              const shareType = activeShare || "unknown";
-              const amount =
-                shareType === "platform"
-                  ? shares.platformShare
-                  : shares.creatorShare;
-              const address =
-                shareType === "platform"
-                  ? platformEntry?.address || getCachedPlatformLightningAddress()
-                  : creatorEntry?.address || lightningAddress;
               shareTracker.push({
                 type: shareType,
                 status: "error",
@@ -583,10 +579,23 @@ export default class ZapController {
                 error,
               });
             }
+            if (
+              typeof error?.message === "string" &&
+              error.message.toLowerCase().includes("timed out")
+            ) {
+              try {
+                resetWalletClientFn();
+              } catch (resetError) {
+                devLogger.warn(
+                  "[zap] Failed to reset wallet client after timeout",
+                  resetError
+                );
+              }
+            }
             logZapError(
               "wallet.sendPayment",
               {
-                shareType: activeShare || "unknown",
+                shareType,
                 amount,
                 address,
                 tracker: shareTracker,
