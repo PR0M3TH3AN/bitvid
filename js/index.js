@@ -620,6 +620,14 @@ async function bootstrapInterface() {
   await loadSidebar("components/sidebar.html", "sidebarContainer");
   devLogger.log("Sidebar loaded.");
 
+  if (application && typeof application.hydrateSidebarNavigation === "function") {
+    try {
+      application.hydrateSidebarNavigation();
+    } catch (error) {
+      devLogger.warn("[Interface] Failed to hydrate sidebar navigation:", error);
+    }
+  }
+
   bindOptionalExternalLink({
     selector: "[data-blog-link]",
     url: BLOG_URL,
