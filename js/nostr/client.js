@@ -1,6 +1,6 @@
 // js/nostr/client.js
 
-import { isDevMode, isVerboseDevMode } from "../config.js";
+import { isDevMode } from "../config.js";
 import { FEATURE_PUBLISH_NIP71 } from "../constants.js";
 import { accessControl } from "../accessControl.js";
 // 🔧 merged conflicting changes from codex/update-video-publishing-and-parsing-logic vs unstable
@@ -58,6 +58,10 @@ import {
   listVideoComments as listVideoCommentsForClient,
   subscribeVideoComments as subscribeVideoCommentsForClient,
 } from "./commentEvents.js";
+import {
+  logCountTimeoutCleanupFailure,
+  logRelayCountFailure,
+} from "./countDiagnostics.js";
 import {
   publishEventToRelay,
   publishEventToRelays,
@@ -345,9 +349,7 @@ function withRequestTimeout(promise, timeoutMs, onTimeout, message = "Request ti
         try {
           onTimeout();
         } catch (cleanupError) {
-          if (isVerboseDevMode) {
-            devLogger.warn("[nostr] COUNT timeout cleanup failed:", cleanupError);
-          }
+          logCountTimeoutCleanupFailure(cleanupError);
         }
       }
       reject(new Error(message));
@@ -5741,20 +5743,15 @@ export class NostrClient {
           });
           const count = this.extractCountValue(frame?.[2]);
           return { url, ok: true, frame, count };
-          } catch (error) {
-            const isUnsupported = error?.code === "count-unsupported";
-            if (isUnsupported) {
-              this.countUnsupportedRelays.add(url);
-            } else {
-              if (isVerboseDevMode) {
-                devLogger.warn(
-                  `[nostr] COUNT request failed on ${url}:`,
-                  error,
-                );
-              }
-            }
-            return { url, ok: false, error, unsupported: isUnsupported };
+        } catch (error) {
+          const isUnsupported = error?.code === "count-unsupported";
+          if (isUnsupported) {
+            this.countUnsupportedRelays.add(url);
+          } else {
+            logRelayCountFailure(url, error);
           }
+          return { url, ok: false, error, unsupported: isUnsupported };
+        }
       })
     );
 

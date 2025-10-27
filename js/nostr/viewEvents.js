@@ -1,7 +1,6 @@
 import {
   VIEW_COUNT_DEDUPE_WINDOW_SECONDS,
   VIEW_COUNT_BACKFILL_MAX_DAYS,
-  isVerboseDevMode,
 } from "../config.js";
 import { VIEW_FILTER_INCLUDE_LEGACY_VIDEO } from "../constants.js";
 import {
@@ -13,6 +12,7 @@ import { publishEventToRelay } from "../nostrPublish.js";
 import { RELAY_URLS } from "./toolkit.js";
 import { normalizePointerInput } from "./watchHistory.js";
 import { devLogger, userLogger } from "../utils/logger.js";
+import { logViewCountFailure } from "./countDiagnostics.js";
 
 const VIEW_EVENT_GUARD_PREFIX = "bitvid:viewed";
 
@@ -591,9 +591,7 @@ export async function countVideoViewEvents(client, pointer, options = {}) {
     }
   } catch (error) {
     if (error?.code !== "count-unsupported") {
-      if (isVerboseDevMode) {
-        devLogger.warn("[nostr] COUNT view request failed:", error);
-      }
+      logViewCountFailure(error);
     }
   }
 

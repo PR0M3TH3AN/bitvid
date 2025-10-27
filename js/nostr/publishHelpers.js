@@ -1,7 +1,4 @@
-import {
-  ENSURE_PRESENCE_REBROADCAST_COOLDOWN_SECONDS,
-  isVerboseDevMode,
-} from "../config.js";
+import { ENSURE_PRESENCE_REBROADCAST_COOLDOWN_SECONDS } from "../config.js";
 import {
   publishEventToRelays,
   assertAnyRelayAccepted,
@@ -17,6 +14,7 @@ import {
 } from "./toolkit.js";
 import { DEFAULT_NIP07_PERMISSION_METHODS } from "./nip07Permissions.js";
 import { devLogger, userLogger } from "../utils/logger.js";
+import { logRebroadcastCountFailure } from "./countDiagnostics.js";
 
 const REBROADCAST_GUARD_PREFIX = "bitvid:rebroadcast:v1";
 const rebroadcastAttemptMemory = new Map();
@@ -1024,9 +1022,7 @@ export async function rebroadcastEvent({ client, eventId, options = {} }) {
             })
           : null;
     } catch (error) {
-      if (isVerboseDevMode) {
-        devLogger.warn("[nostr] COUNT request for rebroadcast failed:", error);
-      }
+      logRebroadcastCountFailure(error);
     }
 
     if (countResult?.total && Number(countResult.total) > 0) {
