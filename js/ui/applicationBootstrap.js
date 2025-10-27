@@ -102,6 +102,7 @@ export default class ApplicationBootstrap {
     app.logoutButton = doc?.getElementById("logoutButton") || null;
     app.userStatus = doc?.getElementById("userStatus") || null;
     app.userPubKey = doc?.getElementById("userPubKey") || null;
+    app.uploadButton = doc?.getElementById("uploadButton") || null;
 
     const mediaLoaderFactory =
       typeof this.helpers.mediaLoaderFactory === "function"
