@@ -410,6 +410,8 @@ export function bootstrapNostrTools() {
       }
     });
 
+    const needsAdditionalCrypto = !resolvedNip04 || !resolvedNip44;
+
     const allDynamicTimedOut =
       attempts.length > 0 &&
       attempts.every(
@@ -422,7 +424,8 @@ export function bootstrapNostrTools() {
       );
 
     const shouldAttemptScriptFallback =
-      !!scope.document && (resolvedModules.length === 0 || allDynamicTimedOut);
+      !!scope.document &&
+      (resolvedModules.length === 0 || allDynamicTimedOut || needsAdditionalCrypto);
 
     if (shouldAttemptScriptFallback) {
       const scriptSources = [
