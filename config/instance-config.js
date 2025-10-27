@@ -30,7 +30,7 @@ export const IS_DEV_MODE = true;
  * request failures) visible in the console. Flip it to `false` when you want
  * a quieter dev mode without disabling other development helpers entirely.
  */
-export const IS_VERBOSE_DEV_MODE = true;
+export const IS_VERBOSE_DEV_MODE = false;
 
 /**
  * Whether the current deployment should operate in lockdown mode.
