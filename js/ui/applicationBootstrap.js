@@ -22,7 +22,7 @@ import { ALLOW_NSFW_CONTENT } from "../config.js";
 import { relayManager } from "../relayManager.js";
 import { userBlocks } from "../userBlocks.js";
 import { subscriptions } from "../subscriptions.js";
-import accessControl from "../accessControl.js";
+import { accessControl } from "../accessControl.js";
 import moderationService from "../services/moderationService.js";
 import ProfileIdentityController from "./profileIdentityController.js";
 import VideoListViewController from "./videoListViewController.js";
