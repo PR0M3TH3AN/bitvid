@@ -7,13 +7,16 @@
 - **Zap controls** – Channel profiles manage zap visibility, login gating, retry flows, and receipt rendering via the Lightning controller on the page.
 - **Source visibility filtering** – Lists now hide cards whose hosted URLs are offline unless their WebTorrent fallback is healthy, reusing the shared guard in `js/utils/cardSourceVisibility.js`.
 - **Video modal comments** – The video modal now surfaces in-context comment threads so viewers can follow discussions without leaving the player.
+- **Channel profile views** – `views/channel-profile.html` and `js/channelProfile.js` render dedicated channel landing pages with banners, follow stats, playlists, and contact links.
+- **Audience targeting toggles** – The [Upload modal](components/upload-modal.html) and [Edit Video modal](components/edit-video-modal.html) ship **NSFW** and **For Kids** toggles that map to the note’s moderation flags.
+- **Hashtag metadata repeater** – Upload metadata repeaters now support hashtag sets so creators can publish discovery tags alongside variants, captions, and participants.
+- **Dev/Live publishing fix** – Publishing honors the selected mode, preventing Dev-mode uploads from leaking into Live feeds.
 
 ## Bug Fixes
 
 > ⚠️ **Note:** If you find a new bug thats not listed here. Please submit a [Bug Report](https://bitvid.network/?modal=bug).
 
 - Speed up loading in subscriptions. Save to local cache?
-- Fix "Dev Mode" publishing "Live Mode" notes—add a flag for dev mode posts.
 - Fix slow back button issues on Firefox.
 - Add Amber login support for mobile.
 - Add support for "Playlist" lists and other custom lists (named whatever) and also a "Watch Later" list.
@@ -33,12 +36,9 @@
 
 - Allow users to set custom relay settings, stored in local cache.
 - Add a "Publish" step in the video editing process.
-- Add Profile/Channel Views. [Click for more details](https://github.com/PR0M3TH3AN/bitvid/blob/main/content/roadmap/04_bitvid_Enhanced_Profile_Channel_Views_Specification.md)
 - Improve event spec for migration to new versions. [Click for more details](https://github.com/PR0M3TH3AN/bitvid/blob/main/content/roadmap/02_bitvid_Enhanced_Migration_of_Note_Spec_Logic.md)
 - Migrate event spec to v3 and add support for Audio/Podcast content. [Click for more details](https://github.com/PR0M3TH3AN/bitvid/blob/main/content/roadmap/03_bitvid_Enhanced_Nostr_Video_%26_Audio_Note_Specification_Version%203.md)
 - Add Block List, Subscription List, Playlist, and Reporting Specification. [Click for more details](https://github.com/PR0M3TH3AN/bitvid/blob/main/content/roadmap/05_bitvid_Enhanced_Block_Subscription_%26_Reporting_Specification.md)
-- Implement an "Adult Content" flag for note submissions.
-- Enable custom hashtags in the submission spec and form. (Use with future search system)
 - Allow multiple video resolutions with a selector in the video player. (v3 event spec needed)
 - Introduce a subscription mechanism with notifications.
 - Add zaps to videos, profiles, and comments.
