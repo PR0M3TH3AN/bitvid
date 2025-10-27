@@ -5373,8 +5373,9 @@ class Application {
       this.profileButton.removeAttribute("hidden");
     }
 
-    if (this.subscriptionsLink) {
-      this.subscriptionsLink.classList.remove("hidden");
+    const subscriptionsLink = this.resolveSubscriptionsLink();
+    if (subscriptionsLink) {
+      subscriptionsLink.classList.remove("hidden");
     }
   }
 
@@ -5406,8 +5407,9 @@ class Application {
       this.profileButton.setAttribute("hidden", "");
     }
 
-    if (this.subscriptionsLink) {
-      this.subscriptionsLink.classList.add("hidden");
+    const subscriptionsLink = this.resolveSubscriptionsLink();
+    if (subscriptionsLink) {
+      subscriptionsLink.classList.add("hidden");
     }
   }
 
@@ -5417,6 +5419,26 @@ class Application {
     } else {
       this.applyLoggedOutUiState();
     }
+  }
+
+  resolveSubscriptionsLink() {
+    if (this.subscriptionsLink instanceof HTMLElement) {
+      return this.subscriptionsLink;
+    }
+
+    const linkCandidate = document.getElementById("subscriptionsLink");
+    if (linkCandidate instanceof HTMLElement) {
+      this.subscriptionsLink = linkCandidate;
+      return this.subscriptionsLink;
+    }
+
+    this.subscriptionsLink = null;
+    return null;
+  }
+
+  hydrateSidebarNavigation() {
+    this.resolveSubscriptionsLink();
+    this.syncAuthUiState();
   }
 
   maybeShowExperimentalLoginWarning(provider) {
