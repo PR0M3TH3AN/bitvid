@@ -1,5 +1,7 @@
 // js/ui/ambientBackground.js
 
+import { devLogger as defaultLogger } from "../utils/logger.js";
+
 const DEFAULT_THROTTLE_MS = 66;
 
 function getGlobalFromCanvas(canvas) {
@@ -100,14 +102,29 @@ export function attachAmbientBackground(videoElement, canvasElement, options = {
     return () => {};
   }
 
-  const ctx = canvasElement.getContext("2d", { alpha: false });
+  const normalizedOptions =
+    options && typeof options === "object" ? options : {};
+  const logger = normalizedOptions.logger || defaultLogger;
+
+  let ctx = null;
+  try {
+    ctx = canvasElement.getContext("2d", { alpha: false });
+  } catch (error) {
+    if (logger && typeof logger.warn === "function") {
+      logger.warn("[ambientBackground] Canvas context unavailable:", error);
+    }
+    return () => {};
+  }
   if (!ctx) {
+    if (logger && typeof logger.warn === "function") {
+      logger.warn("[ambientBackground] Canvas context unavailable.");
+    }
     return () => {};
   }
 
   const { doc, win } = getGlobalFromCanvas(canvasElement);
-  const throttleMs = Number.isFinite(options.throttleMs)
-    ? Math.max(0, options.throttleMs)
+  const throttleMs = Number.isFinite(normalizedOptions.throttleMs)
+    ? Math.max(0, normalizedOptions.throttleMs)
     : DEFAULT_THROTTLE_MS;
 
   const requestFrame = win?.requestAnimationFrame?.bind(win) || ((cb) => setTimeout(() => cb(Date.now()), throttleMs));

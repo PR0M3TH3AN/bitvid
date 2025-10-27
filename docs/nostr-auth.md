@@ -50,10 +50,11 @@ Notes:
 
 `authType` describes how the profile authenticated:
 
-- `"nip07"` – Browser extension flow (current default).
-- `"nsec"` – Reserved for future direct key import or signer integrations. New
-  auth strategies should pick a distinct string and document how migration works
-  alongside any recovery tooling.
+1. `"nip07"` – Browser extension flow that delegates signing to a NIP-07 compatible provider embedded in the browser.
+2. `"nsec"` – Direct key import where the private key stays in the client and bitvid signs locally without an external signer.
+3. `"nip46"` – Remote signer flow that relies on a NIP-46 capable relay or service to authorize requests on behalf of the user.
+
+When introducing additional providers, choose a unique string value and extend this section (plus any related migration notes) to explain how the new strategy authenticates and how existing data should transition.
 
 When the app reads stored entries it normalises unknown values back to
 `"nip07"` but keeps recognised alternatives intact.

@@ -8,6 +8,11 @@
 export function dedupeToNewestByRoot(videos) {
   const map = new Map();
 
+  const normalizeTimestamp = (value) => {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : -Infinity;
+  };
+
   for (const vid of videos || []) {
     if (!vid) {
       continue;
@@ -18,7 +23,10 @@ export function dedupeToNewestByRoot(videos) {
     }
 
     const existing = map.get(rootId);
-    if (!existing || vid.created_at > existing.created_at) {
+    if (
+      !existing ||
+      normalizeTimestamp(vid.created_at) > normalizeTimestamp(existing.created_at)
+    ) {
       map.set(rootId, vid);
     }
   }

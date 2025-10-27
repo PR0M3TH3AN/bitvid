@@ -16,6 +16,9 @@ function sanitizeVideoMetadata(video) {
     return null;
   }
 
+  // Transport identifiers (URL, magnet, hashes) are intentionally omitted so
+  // watch history storage never persists playback endpoints. Only surface the
+  // minimal fields needed to render the saved entry.
   const createdAtCandidates = [
     video.rootCreatedAt,
     video.created_at,
@@ -37,11 +40,6 @@ function sanitizeVideoMetadata(video) {
     thumbnail: typeof video.thumbnail === "string" ? video.thumbnail : "",
     pubkey: typeof video.pubkey === "string" ? video.pubkey : "",
     created_at: createdAt,
-    url: typeof video.url === "string" ? video.url : "",
-    magnet: typeof video.magnet === "string" ? video.magnet : "",
-    infoHash: typeof video.infoHash === "string" ? video.infoHash : "",
-    legacyInfoHash:
-      typeof video.legacyInfoHash === "string" ? video.legacyInfoHash : "",
   };
 }
 
@@ -192,6 +190,8 @@ export default class WatchHistoryTelemetry {
     }
 
     const metadata = {
+      // Persist only sanitized metadata so local history never stores playback
+      // transports or magnet fingerprints.
       video: sanitizeVideoMetadata(video),
     };
 
