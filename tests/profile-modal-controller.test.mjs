@@ -458,6 +458,17 @@ for (const _ of [0]) {
           profileModalRoot?.querySelector('.bv-modal__panel') || profileModalRoot;
         assert.ok(panel?.hasAttribute('inert'));
 
+        assert.equal(
+          profileModalRoot?.style.visibility,
+          'hidden',
+          'profile modal should hide visually while login modal is active',
+        );
+        assert.equal(
+          profileModalRoot?.style.pointerEvents,
+          'none',
+          'profile modal should not intercept pointer events while login modal is active',
+        );
+
         assert.strictEqual(
           container.lastElementChild,
           loginModal,
@@ -480,6 +491,16 @@ for (const _ of [0]) {
           'profile modal should restore aria-hidden',
         );
         assert.equal(panel?.hasAttribute('inert'), false);
+        assert.equal(
+          profileModalRoot?.style.visibility ?? '',
+          '',
+          'profile modal visibility should restore after login',
+        );
+        assert.equal(
+          profileModalRoot?.style.pointerEvents ?? '',
+          '',
+          'profile modal pointer events should restore after login',
+        );
       } finally {
         cleanup();
       }

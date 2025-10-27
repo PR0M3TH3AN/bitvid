@@ -1135,6 +1135,8 @@ export class ProfileModalController {
     this.focusTrapSuspended = false;
     this.focusTrapSuspendCount = 0;
     this.focusTrapAriaHiddenBeforeSuspend = null;
+    this.focusTrapPointerEventsBeforeSuspend = null;
+    this.focusTrapVisibilityBeforeSuspend = null;
     this.profileSwitcherSelectionPubkey = null;
     this.previouslyFocusedElement = null;
     this.largeLayoutQuery = null;
@@ -8281,10 +8283,25 @@ export class ProfileModalController {
       this.focusTrapAriaHiddenBeforeSuspend = modalRoot.getAttribute(
         "aria-hidden",
       );
+      this.focusTrapPointerEventsBeforeSuspend =
+        typeof modalRoot.style.pointerEvents === "string" &&
+        modalRoot.style.pointerEvents
+          ? modalRoot.style.pointerEvents
+          : null;
+      this.focusTrapVisibilityBeforeSuspend =
+        typeof modalRoot.style.visibility === "string" &&
+        modalRoot.style.visibility
+          ? modalRoot.style.visibility
+          : null;
+
       modalRoot.dataset.nestedModalActive = "true";
       modalRoot.setAttribute("aria-hidden", "true");
+      modalRoot.style.setProperty("pointer-events", "none");
+      modalRoot.style.setProperty("visibility", "hidden");
     } else {
       this.focusTrapAriaHiddenBeforeSuspend = null;
+      this.focusTrapPointerEventsBeforeSuspend = null;
+      this.focusTrapVisibilityBeforeSuspend = null;
     }
 
     const panel = this.getModalPanelElement();
@@ -8324,6 +8341,32 @@ export class ProfileModalController {
           );
         }
       }
+
+      if (
+        this.focusTrapPointerEventsBeforeSuspend === null ||
+        this.focusTrapPointerEventsBeforeSuspend === undefined ||
+        this.focusTrapPointerEventsBeforeSuspend === ""
+      ) {
+        modalRoot.style.removeProperty("pointer-events");
+      } else {
+        modalRoot.style.setProperty(
+          "pointer-events",
+          this.focusTrapPointerEventsBeforeSuspend,
+        );
+      }
+
+      if (
+        this.focusTrapVisibilityBeforeSuspend === null ||
+        this.focusTrapVisibilityBeforeSuspend === undefined ||
+        this.focusTrapVisibilityBeforeSuspend === ""
+      ) {
+        modalRoot.style.removeProperty("visibility");
+      } else {
+        modalRoot.style.setProperty(
+          "visibility",
+          this.focusTrapVisibilityBeforeSuspend,
+        );
+      }
     }
 
     const panel = this.getModalPanelElement();
@@ -8332,6 +8375,8 @@ export class ProfileModalController {
     }
 
     this.focusTrapAriaHiddenBeforeSuspend = null;
+    this.focusTrapPointerEventsBeforeSuspend = null;
+    this.focusTrapVisibilityBeforeSuspend = null;
 
     this.updateFocusTrap();
 
@@ -8591,6 +8636,8 @@ export class ProfileModalController {
       modalElement.classList.add("hidden");
       modalElement.setAttribute("aria-hidden", "true");
       delete modalElement.dataset.nestedModalActive;
+      modalElement.style.removeProperty("pointer-events");
+      modalElement.style.removeProperty("visibility");
       this.setGlobalModalState("profile", false);
       this.setMobileView("menu", { skipFocusTrap: true });
 
@@ -8616,6 +8663,8 @@ export class ProfileModalController {
     this.focusTrapSuspendCount = 0;
     this.focusTrapSuspended = false;
     this.focusTrapAriaHiddenBeforeSuspend = null;
+    this.focusTrapPointerEventsBeforeSuspend = null;
+    this.focusTrapVisibilityBeforeSuspend = null;
 
     if (
       this.boundProfileHistoryVisibility &&
