@@ -415,11 +415,58 @@ export default class ModalManager {
         return;
       }
 
-      app.openVideoModal({
-        video: selectedVideo,
-        triggerElement: triggerCandidate || null,
-        source: detail?.source || "modal",
-      });
+      const playbackOptions = {
+        trigger: triggerCandidate || null,
+      };
+
+      const rawUrl =
+        typeof selectedVideo.url === "string" ? selectedVideo.url.trim() : "";
+      if (rawUrl) {
+        playbackOptions.url = rawUrl;
+      }
+
+      const rawMagnet =
+        typeof selectedVideo.magnet === "string"
+          ? selectedVideo.magnet.trim()
+          : "";
+      if (rawMagnet) {
+        playbackOptions.magnet = rawMagnet;
+      }
+
+      const hasPlayById = typeof app.playVideoByEventId === "function";
+      const hasFallbackPlayback =
+        typeof app.playVideoWithFallback === "function";
+
+      const selectedId =
+        typeof selectedVideo.id === "string" ? selectedVideo.id : "";
+
+      if (selectedId && hasPlayById) {
+        Promise.resolve(app.playVideoByEventId(selectedId, playbackOptions)).catch(
+          (error) => {
+            devLogger.error(
+              "[ModalManager] Failed to play selected similar video:",
+              error,
+            );
+          },
+        );
+        return;
+      }
+
+      if (!hasFallbackPlayback) {
+        devLogger.warn(
+          "[ModalManager] Unable to start playback for similar video; no playback handler is available.",
+        );
+        return;
+      }
+
+      Promise.resolve(app.playVideoWithFallback(playbackOptions)).catch(
+        (error) => {
+          devLogger.error(
+            "[ModalManager] Failed to start playback for similar video:",
+            error,
+          );
+        },
+      );
     };
     this.videoModal.addEventListener(
       "similar:select",
