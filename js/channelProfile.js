@@ -4436,21 +4436,24 @@ export async function renderChannelVideosFromList({
     videoCard.onEdit = ({ video: editVideo, index: editIndex }) => {
       app?.handleEditVideo?.({
         eventId: editVideo?.id || "",
-        index: Number.isFinite(editIndex) ? editIndex : null
+        index: Number.isFinite(editIndex) ? editIndex : null,
+        video: editVideo || null
       });
     };
 
     videoCard.onRevert = ({ video: revertVideo, index: revertIndex }) => {
       app?.handleRevertVideo?.({
         eventId: revertVideo?.id || "",
-        index: Number.isFinite(revertIndex) ? revertIndex : null
+        index: Number.isFinite(revertIndex) ? revertIndex : null,
+        video: revertVideo || null
       });
     };
 
     videoCard.onDelete = ({ video: deleteVideo, index: deleteIndex }) => {
       app?.handleFullDeleteVideo?.({
         eventId: deleteVideo?.id || "",
-        index: Number.isFinite(deleteIndex) ? deleteIndex : null
+        index: Number.isFinite(deleteIndex) ? deleteIndex : null,
+        video: deleteVideo || null
       });
     };
 

@@ -1252,7 +1252,8 @@ class SubscriptionsManager {
       }
       app?.handleEditVideo?.({
         eventId: video.id,
-        index: Number.isFinite(index) ? index : null
+        index: Number.isFinite(index) ? index : null,
+        video
       });
     });
 
@@ -1262,7 +1263,8 @@ class SubscriptionsManager {
       }
       app?.handleRevertVideo?.({
         eventId: video.id,
-        index: Number.isFinite(index) ? index : null
+        index: Number.isFinite(index) ? index : null,
+        video
       });
     });
 
@@ -1272,7 +1274,8 @@ class SubscriptionsManager {
       }
       app?.handleFullDeleteVideo?.({
         eventId: video.id,
-        index: Number.isFinite(index) ? index : null
+        index: Number.isFinite(index) ? index : null,
+        video
       });
     });
 
