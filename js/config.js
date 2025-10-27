@@ -14,6 +14,7 @@ import {
   GITHUB_URL,
   BETA_URL,
   DNS_URL,
+  TIP_JAR_URL,
   MAX_WALLET_DEFAULT_ZAP,
   PLATFORM_FEE_PERCENT,
   PLATFORM_LUD16_OVERRIDE,
@@ -70,6 +71,7 @@ export { NOSTR_URL };
 export { GITHUB_URL };
 export { BETA_URL };
 export { DNS_URL };
+export { TIP_JAR_URL };
 export { MAX_WALLET_DEFAULT_ZAP };
 export { PLATFORM_FEE_PERCENT };
 export { PLATFORM_LUD16_OVERRIDE };

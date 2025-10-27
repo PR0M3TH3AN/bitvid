@@ -120,6 +120,17 @@ export const BETA_URL = "https://beta.bitvid.network/";
 export const DNS_URL = "https://bitvid.network/";
 
 /**
+ * Optional external destination for the Tip Jar menu link.
+ *
+ * Configure this with the Lightning tipping experience you want to surface in
+ * the sidebar dropup. When left empty (null or an empty string) the Tip Jar
+ * entry is removed entirely so operators that do not collect donations are not
+ * forced to show the control.
+ */
+export const TIP_JAR_URL =
+  "https://nostrtipjar.netlify.app/?n=npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe";
+
+/**
  * Default image included in automated moderation DMs.
  *
  * bitvid embeds this media asset at the top of notification messages so the

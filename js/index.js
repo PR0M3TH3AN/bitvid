@@ -26,6 +26,7 @@ import {
   GITHUB_URL,
   BETA_URL,
   DNS_URL,
+  TIP_JAR_URL,
   isLockdownMode,
 } from "./config.js";
 import AuthService from "./services/authService.js";
@@ -662,6 +663,12 @@ async function bootstrapInterface() {
     selector: "[data-dns-link]",
     url: DNS_URL,
     label: "Sidebar DNS link",
+  });
+
+  bindOptionalExternalLink({
+    selector: "[data-tip-jar-link]",
+    url: TIP_JAR_URL,
+    label: "Sidebar Tip Jar link",
   });
 
   const headerSearchForm = document.getElementById("headerSearchForm");
