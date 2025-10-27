@@ -26,6 +26,20 @@ async function waitForAnimationFrame(window, cycles = 1) {
   }
 }
 
+function createDeferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return {
+    promise,
+    resolve,
+    reject,
+  };
+}
+
 function createMatchMediaList(query, initialMatches = false) {
   let matches = Boolean(initialMatches);
   const listeners = new Set();
@@ -373,6 +387,122 @@ for (const _ of [0]) {
       } finally {
         cleanup();
         cleanupRan = true;
+      }
+
+      t.after(() => {
+        if (!cleanupRan) {
+          cleanup();
+        }
+        resetRuntimeFlags();
+      });
+    },
+  );
+
+  test(
+    'Add profile request suspends focus trap and elevates login modal',
+    async (t) => {
+      const loginDeferred = createDeferred();
+      const loginModal = document.createElement('div');
+      loginModal.id = 'loginModal';
+      loginModal.className = 'bv-modal hidden';
+      container.appendChild(loginModal);
+
+      const controller = createController({
+        services: {
+          requestAddProfileLogin: async ({ triggerElement }) => {
+            assert.strictEqual(triggerElement, controller.addAccountButton);
+            assert.equal(controller.focusTrapSuspended, true);
+            return loginDeferred.promise;
+          },
+        },
+        callbacks: {
+          onAddAccount: async () => {},
+        },
+      });
+
+      let cleanupRan = false;
+      const cleanup = () => {
+        try {
+          loginModal.remove();
+        } catch {}
+        try {
+          controller.hide({ silent: true });
+        } catch {}
+        cleanupRan = true;
+      };
+
+      try {
+        await controller.load();
+        applyDesignSystemAttributes(document);
+        await controller.show('account');
+        await waitForAnimationFrame(window, 1);
+
+        const loginPromise = controller.handleAddAccountRequest();
+        await Promise.resolve();
+
+        const profileModalRoot =
+          document.getElementById('profileModal') || controller.profileModal;
+        assert.ok(profileModalRoot, 'profile modal root should exist');
+        assert.equal(
+          profileModalRoot?.dataset.nestedModalActive,
+          'true',
+          'profile modal should mark nested modal state',
+        );
+        assert.equal(
+          profileModalRoot?.getAttribute('aria-hidden'),
+          'true',
+          'profile modal should be hidden from assistive tech',
+        );
+
+        const panel =
+          profileModalRoot?.querySelector('.bv-modal__panel') || profileModalRoot;
+        assert.ok(panel?.hasAttribute('inert'));
+
+        assert.equal(
+          profileModalRoot?.style.visibility,
+          'hidden',
+          'profile modal should hide visually while login modal is active',
+        );
+        assert.equal(
+          profileModalRoot?.style.pointerEvents,
+          'none',
+          'profile modal should not intercept pointer events while login modal is active',
+        );
+
+        assert.strictEqual(
+          container.lastElementChild,
+          loginModal,
+          'login modal should be last in the container',
+        );
+
+        loginDeferred.resolve({ provider: 'test' });
+        await loginPromise;
+        await waitForAnimationFrame(window, 1);
+
+        assert.equal(controller.focusTrapSuspended, false);
+        assert.equal(
+          profileModalRoot?.dataset.nestedModalActive,
+          undefined,
+          'profile modal nested state should clear after login',
+        );
+        assert.equal(
+          profileModalRoot?.getAttribute('aria-hidden'),
+          'false',
+          'profile modal should restore aria-hidden',
+        );
+        assert.equal(panel?.hasAttribute('inert'), false);
+        assert.equal(
+          profileModalRoot?.style.visibility ?? '',
+          '',
+          'profile modal visibility should restore after login',
+        );
+        assert.equal(
+          profileModalRoot?.style.pointerEvents ?? '',
+          '',
+          'profile modal pointer events should restore after login',
+        );
+      } finally {
+        cleanup();
       }
 
       t.after(() => {
