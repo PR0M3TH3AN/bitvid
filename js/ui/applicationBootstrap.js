@@ -17,10 +17,8 @@ import nostrService from "../services/nostrService.js";
 import watchHistoryService from "../watchHistoryService.js";
 import r2Service from "../services/r2Service.js";
 import { createFeedEngine } from "../feedEngine/index.js";
-import {
-  URL_FIRST_ENABLED,
-  ALLOW_NSFW_CONTENT,
-} from "../constants.js";
+import { URL_FIRST_ENABLED } from "../constants.js";
+import { ALLOW_NSFW_CONTENT } from "../config.js";
 import { relayManager } from "../relayManager.js";
 import { userBlocks } from "../userBlocks.js";
 import { subscriptions } from "../subscriptions.js";
