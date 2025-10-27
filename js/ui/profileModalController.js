@@ -1007,6 +1007,7 @@ export class ProfileModalController {
       relays: null,
       wallet: null,
       hashtags: null,
+      subscriptions: null,
       friends: null,
       blocked: null,
       messages: null,
@@ -1018,6 +1019,7 @@ export class ProfileModalController {
       relays: null,
       wallet: null,
       hashtags: null,
+      subscriptions: null,
       friends: null,
       blocked: null,
       messages: null,
@@ -1032,6 +1034,8 @@ export class ProfileModalController {
     this.profileRelayInput = null;
     this.profileAddRelayBtn = null;
     this.profileRestoreRelaysBtn = null;
+    this.subscriptionList = null;
+    this.subscriptionListEmpty = null;
     this.friendList = null;
     this.friendListEmpty = null;
     this.friendInput = null;
@@ -1223,6 +1227,8 @@ export class ProfileModalController {
     this.navButtons.wallet = document.getElementById("profileNavWallet") || null;
     this.navButtons.hashtags =
       document.getElementById("profileNavHashtags") || null;
+    this.navButtons.subscriptions =
+      document.getElementById("profileNavSubscriptions") || null;
     this.navButtons.friends =
       document.getElementById("profileNavFriends") || null;
     this.navButtons.blocked =
@@ -1237,6 +1243,8 @@ export class ProfileModalController {
     this.panes.relays = document.getElementById("profilePaneRelays") || null;
     this.panes.wallet = document.getElementById("profilePaneWallet") || null;
     this.panes.hashtags = document.getElementById("profilePaneHashtags") || null;
+    this.panes.subscriptions =
+      document.getElementById("profilePaneSubscriptions") || null;
     this.panes.friends = document.getElementById("profilePaneFriends") || null;
     this.panes.blocked = document.getElementById("profilePaneBlocked") || null;
     this.panes.messages = document.getElementById("profilePaneMessages") || null;
@@ -1249,6 +1257,10 @@ export class ProfileModalController {
     this.restoreRelaysButton =
       document.getElementById("restoreRelaysBtn") || null;
 
+    this.subscriptionList =
+      document.getElementById("subscriptionsList") || null;
+    this.subscriptionListEmpty =
+      document.getElementById("subscriptionsEmpty") || null;
     this.friendList = document.getElementById("friendsList") || null;
     this.friendListEmpty = document.getElementById("friendsEmpty") || null;
     this.friendInput = document.getElementById("friendsInput") || null;
@@ -1335,6 +1347,8 @@ export class ProfileModalController {
     this.profileRelayInput = this.relayInput;
     this.profileAddRelayBtn = this.addRelayButton;
     this.profileRestoreRelaysBtn = this.restoreRelaysButton;
+    this.profileSubscriptionsList = this.subscriptionList;
+    this.profileSubscriptionsEmpty = this.subscriptionListEmpty;
     this.profileFriendsList = this.friendList;
     this.profileFriendsEmpty = this.friendListEmpty;
     this.profileFriendsInput = this.friendInput;
@@ -3651,6 +3665,8 @@ export class ProfileModalController {
       this.refreshWalletPaneState();
     } else if (target === "hashtags") {
       this.populateHashtagPreferences();
+    } else if (target === "subscriptions") {
+      void this.populateSubscriptionsList();
     } else if (target === "blocked") {
       this.populateBlockedList();
     }
@@ -4699,6 +4715,272 @@ export class ProfileModalController {
     }
   }
 
+  async populateSubscriptionsList(subscriptions = null) {
+    if (
+      !(this.subscriptionList instanceof HTMLElement) ||
+      !(this.subscriptionListEmpty instanceof HTMLElement)
+    ) {
+      return;
+    }
+
+    const service = this.subscriptionsService;
+    if (!service) {
+      this.clearSubscriptionsList();
+      return;
+    }
+
+    const activeHex = this.normalizeHexPubkey(this.getActivePubkey());
+    if (!activeHex) {
+      this.clearSubscriptionsList();
+      return;
+    }
+
+    try {
+      let sourceEntries = [];
+
+      if (Array.isArray(subscriptions) && subscriptions.length) {
+        sourceEntries = subscriptions;
+      } else {
+        if (typeof service.ensureLoaded === "function") {
+          try {
+            await service.ensureLoaded(activeHex);
+          } catch (error) {
+            devLogger.warn(
+              "[profileModal] Failed to ensure subscriptions before populating subscriptions list:",
+              error,
+            );
+          }
+        }
+
+        if (typeof service.getSubscribedAuthors === "function") {
+          try {
+            sourceEntries = service.getSubscribedAuthors() || [];
+          } catch (error) {
+            devLogger.warn(
+              "[profileModal] Failed to resolve subscriptions for subscriptions list:",
+              error,
+            );
+            sourceEntries = [];
+          }
+        } else if (service.subscribedPubkeys instanceof Set) {
+          sourceEntries = Array.from(service.subscribedPubkeys);
+        } else if (Array.isArray(service.subscribedPubkeys)) {
+          sourceEntries = service.subscribedPubkeys.slice();
+        }
+      }
+
+      const normalizedEntries = [];
+      const pushEntry = (hex, label) => {
+        if (!hex) {
+          return;
+        }
+        normalizedEntries.push({ hex, label });
+      };
+
+      sourceEntries.forEach((entry) => {
+        if (!entry) {
+          return;
+        }
+
+        if (typeof entry === "string") {
+          const trimmed = entry.trim();
+          if (!trimmed) {
+            return;
+          }
+
+          if (trimmed.startsWith("npub1")) {
+            const decoded = this.safeDecodeNpub(trimmed);
+            if (!decoded) {
+              return;
+            }
+            const label = this.safeEncodeNpub(decoded) || trimmed;
+            pushEntry(decoded, label);
+            return;
+          }
+
+          if (/^[0-9a-f]{64}$/i.test(trimmed)) {
+            pushEntry(trimmed.toLowerCase(), trimmed);
+          }
+          return;
+        }
+
+        if (typeof entry !== "object") {
+          return;
+        }
+
+        const candidateHex =
+          typeof entry.pubkey === "string" ? entry.pubkey.trim() : "";
+        if (candidateHex && /^[0-9a-f]{64}$/i.test(candidateHex)) {
+          pushEntry(candidateHex.toLowerCase(), candidateHex);
+          return;
+        }
+
+        const candidateNpub =
+          typeof entry.npub === "string" ? entry.npub.trim() : "";
+        if (candidateNpub && candidateNpub.startsWith("npub1")) {
+          const decoded = this.safeDecodeNpub(candidateNpub);
+          if (!decoded) {
+            return;
+          }
+          const label = this.safeEncodeNpub(decoded) || candidateNpub;
+          pushEntry(decoded, label);
+        }
+      });
+
+      const deduped = [];
+      const seenHex = new Set();
+      normalizedEntries.forEach((entry) => {
+        if (!seenHex.has(entry.hex)) {
+          seenHex.add(entry.hex);
+          deduped.push(entry);
+        }
+      });
+
+      this.subscriptionList.innerHTML = "";
+
+      if (!deduped.length) {
+        this.subscriptionListEmpty.classList.remove("hidden");
+        this.subscriptionList.classList.add("hidden");
+        return;
+      }
+
+      this.subscriptionListEmpty.classList.add("hidden");
+      this.subscriptionList.classList.remove("hidden");
+
+      const formatNpub =
+        typeof this.formatShortNpub === "function"
+          ? (value) => this.formatShortNpub(value)
+          : (value) => (typeof value === "string" ? value : "");
+      const entriesNeedingFetch = new Set();
+
+      deduped.forEach(({ hex, label }) => {
+        const item = document.createElement("li");
+        item.className = "card flex items-center justify-between gap-4 p-4";
+
+        let cachedProfile = null;
+        if (hex && typeof this.services.getProfileCacheEntry === "function") {
+          const cacheEntry = this.services.getProfileCacheEntry(hex);
+          cachedProfile = cacheEntry?.profile || null;
+          if (!cacheEntry) {
+            entriesNeedingFetch.add(hex);
+          }
+        }
+
+        const encodedNpub =
+          hex && typeof this.safeEncodeNpub === "function"
+            ? this.safeEncodeNpub(hex)
+            : label;
+        const displayNpub = formatNpub(encodedNpub) || encodedNpub || label;
+        const displayName =
+          (cachedProfile?.name && cachedProfile.name.trim()) ||
+          (cachedProfile?.display_name &&
+            typeof cachedProfile.display_name === "string" &&
+            cachedProfile.display_name.trim()) ||
+          displayNpub ||
+          "Subscription";
+        const avatarSrc = cachedProfile?.picture || FALLBACK_PROFILE_AVATAR;
+
+        const summary = this.createCompactProfileSummary({
+          displayName,
+          displayNpub,
+          avatarSrc,
+        });
+
+        const actions = document.createElement("div");
+        actions.className = "flex flex-wrap items-center justify-end gap-2";
+
+        const viewButton = this.createViewChannelButton({
+          targetNpub: encodedNpub,
+          displayNpub,
+        });
+        if (viewButton) {
+          actions.appendChild(viewButton);
+        }
+
+        const copyButton = this.createCopyNpubButton({
+          targetNpub: encodedNpub,
+          displayNpub,
+        });
+        if (copyButton) {
+          actions.appendChild(copyButton);
+        }
+
+        if (hex) {
+          const unsubscribeButton = this.createRemoveButton({
+            label: "Unsubscribe",
+            onRemove: () => this.handleUnsubscribeFromCreator(hex),
+          });
+          if (unsubscribeButton) {
+            unsubscribeButton.dataset.subscriptionHex = hex;
+            actions.appendChild(unsubscribeButton);
+          }
+        }
+
+        item.appendChild(summary);
+        if (actions.childElementCount > 0) {
+          item.appendChild(actions);
+        }
+
+        this.subscriptionList.appendChild(item);
+      });
+
+      if (
+        entriesNeedingFetch.size &&
+        typeof this.services.batchFetchProfiles === "function"
+      ) {
+        try {
+          this.services.batchFetchProfiles(entriesNeedingFetch);
+        } catch (error) {
+          devLogger.warn(
+            "[profileModal] Failed to batch fetch profiles for subscriptions list:",
+            error,
+          );
+        }
+      }
+    } catch (error) {
+      devLogger.warn("[profileModal] Failed to populate subscriptions list:", error);
+    }
+  }
+
+  clearSubscriptionsList() {
+    if (this.subscriptionList instanceof HTMLElement) {
+      this.subscriptionList.innerHTML = "";
+      this.subscriptionList.classList.add("hidden");
+    }
+
+    if (this.subscriptionListEmpty instanceof HTMLElement) {
+      this.subscriptionListEmpty.classList.remove("hidden");
+    }
+  }
+
+  async handleUnsubscribeFromCreator(candidate) {
+    const refresh = async () => {
+      try {
+        await this.populateSubscriptionsList();
+      } catch (error) {
+        devLogger.warn(
+          "[profileModal] Failed to refresh subscriptions list after unsubscribe:",
+          error,
+        );
+      }
+
+      try {
+        await this.populateFriendsList();
+      } catch (error) {
+        devLogger.warn(
+          "[profileModal] Failed to refresh friends list after unsubscribe:",
+          error,
+        );
+      }
+    };
+
+    return this.handleRemoveFriend(candidate, {
+      successMessage: "You unsubscribed from this creator.",
+      refresh,
+      successReason: "unsubscribed",
+    });
+  }
+
   async populateFriendsList(friends = null) {
     if (
       !(this.friendList instanceof HTMLElement) ||
@@ -5000,7 +5282,7 @@ export class ProfileModalController {
     }
   }
 
-  async handleRemoveFriend(candidate) {
+  async handleRemoveFriend(candidate, options = {}) {
     if (
       this.moderationService &&
       (!this.subscriptionsService ||
@@ -5026,6 +5308,14 @@ export class ProfileModalController {
       this.showError("Please login to manage your friends list.");
       return { success: false, reason: "no-active-pubkey" };
     }
+
+    const {
+      successMessage = "Creator removed from your friends list.",
+      refresh = async () => {
+        await this.populateFriendsList();
+      },
+      successReason = "removed",
+    } = typeof options === "object" && options ? options : {};
 
     let targetHex = "";
     if (typeof candidate === "string") {
@@ -5073,9 +5363,20 @@ export class ProfileModalController {
       return { success: false, reason: error?.code || "service-error", error };
     }
 
-    this.showSuccess("Creator removed from your friends list.");
-    await this.populateFriendsList();
-    return { success: true, reason: "removed" };
+    this.showSuccess(successMessage);
+
+    if (typeof refresh === "function") {
+      try {
+        await refresh();
+      } catch (error) {
+        devLogger.warn(
+          "[profileModal] Failed to refresh lists after removing friend:",
+          error,
+        );
+      }
+    }
+
+    return { success: true, reason: successReason };
   }
 
   async handleAddBlockedCreator() {
@@ -8020,6 +8321,7 @@ export class ProfileModalController {
     }
 
     this.populateBlockedList();
+    void this.populateSubscriptionsList();
     void this.populateFriendsList();
     this.populateProfileRelays();
     this.refreshWalletPaneState();
@@ -8029,6 +8331,7 @@ export class ProfileModalController {
     postLoginPromise
       .then(() => {
         this.populateBlockedList();
+        void this.populateSubscriptionsList();
         void this.populateFriendsList();
         this.populateProfileRelays();
         this.refreshWalletPaneState();
@@ -8078,6 +8381,7 @@ export class ProfileModalController {
     }
 
     this.populateBlockedList();
+    this.clearSubscriptionsList();
     this.clearFriendsList();
     this.populateProfileRelays();
     this.refreshWalletPaneState();
@@ -8113,6 +8417,7 @@ export class ProfileModalController {
     }
 
     this.renderSavedProfiles();
+    void this.populateSubscriptionsList();
 
     const nextActive = this.normalizeHexPubkey(this.getActivePubkey());
     if (previousActive !== nextActive) {
