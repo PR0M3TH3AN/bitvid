@@ -142,6 +142,7 @@ import {
 } from "./state/cache.js";
 import ApplicationBootstrap from "./ui/applicationBootstrap.js";
 import VideoModalCommentController from "./ui/videoModalCommentController.js";
+import ModerationActionController from "./services/moderationActionController.js";
 
 const recordVideoViewApi = (...args) => recordVideoView(nostrClient, ...args);
 
@@ -234,6 +235,8 @@ class Application {
         }
       }
     );
+
+    this.initializeModerationActionController();
   }
 
   get modalVideo() {
@@ -5881,306 +5884,113 @@ class Application {
     return video;
   }
 
-  handleModerationOverride({ video, card }) {
-    if (!video || typeof video !== "object" || !video.id) {
-      return false;
+  initializeModerationActionController() {
+    if (this.moderationActionController) {
+      return this.moderationActionController;
     }
 
-    try {
-      setModerationOverride(video.id, {
-        showAnyway: true,
-        updatedAt: Date.now(),
-      });
-    } catch (error) {
-      devLogger.warn("[Application] Failed to persist moderation override:", error);
-    }
+    this.moderationActionController = new ModerationActionController({
+      services: {
+        setModerationOverride,
+        clearModerationOverride,
+        userBlocks,
+      },
+      selectors: {
+        getVideoById: (id) =>
+          this.videosMap instanceof Map && id ? this.videosMap.get(id) : null,
+        getCurrentVideo: () => this.currentVideo,
+      },
+      actions: {
+        decorateVideoModeration: (video) => this.decorateVideoModeration(video),
+        resumePlayback: (video) => this.resumePendingModeratedPlayback(video),
+        refreshVideos: (payload) => this.onVideosShouldRefresh(payload),
+        showStatus: (message, options) => this.showStatus(message, options),
+        showError: (message) => this.showError(message),
+        describeBlockError: (error) => this.describeUserBlockActionError(error),
+      },
+      auth: {
+        isLoggedIn: () => this.isUserLoggedIn(),
+        getViewerPubkey: () => this.pubkey,
+        normalizePubkey: (value) => this.normalizeHexPubkey(value),
+      },
+      ui: {
+        refreshCardModerationUi: (card, options) =>
+          this.refreshCardModerationUi(card, options),
+        dispatchModerationEvent: (eventName, detail) =>
+          this.dispatchModerationEvent(eventName, detail),
+      },
+    });
 
-    const storedVideo =
-      this.videosMap instanceof Map && video.id ? this.videosMap.get(video.id) : null;
-    const target = storedVideo || video;
-
-    if (target) {
-      if (target.moderation && typeof target.moderation === "object") {
-        if (target.moderation.hidden) {
-          delete target.moderation.hidden;
-        }
-        if (target.moderation.hideReason) {
-          delete target.moderation.hideReason;
-        }
-        if (target.moderation.hideCounts) {
-          delete target.moderation.hideCounts;
-        }
-        if (target.moderation.hideBypass) {
-          delete target.moderation.hideBypass;
-        }
-      }
-      this.decorateVideoModeration(target);
-    }
-
-    if (this.currentVideo && this.currentVideo.id === video.id) {
-      if (this.currentVideo.moderation && typeof this.currentVideo.moderation === "object") {
-        if (this.currentVideo.moderation.hidden) {
-          delete this.currentVideo.moderation.hidden;
-        }
-        if (this.currentVideo.moderation.hideReason) {
-          delete this.currentVideo.moderation.hideReason;
-        }
-        if (this.currentVideo.moderation.hideCounts) {
-          delete this.currentVideo.moderation.hideCounts;
-        }
-        if (this.currentVideo.moderation.hideBypass) {
-          delete this.currentVideo.moderation.hideBypass;
-        }
-      }
-      this.decorateVideoModeration(this.currentVideo);
-    }
-
-    if (card && typeof card.refreshModerationUi === "function") {
-      try {
-        card.refreshModerationUi();
-      } catch (error) {
-        devLogger.warn("[Application] Failed to refresh moderation UI:", error);
-      }
-    }
-
-    const doc =
-      (this.videoModal && this.videoModal.document) ||
-      (typeof document !== "undefined" ? document : null);
-    if (doc && typeof doc.dispatchEvent === "function") {
-      try {
-        doc.dispatchEvent(
-          new CustomEvent("video:moderation-override", {
-            detail: { video: target },
-          }),
-        );
-      } catch (eventError) {
-        devLogger.warn(
-          "[Application] Failed to dispatch moderation override event:",
-          eventError,
-        );
-      }
-    }
-
-    this.resumePendingModeratedPlayback(target);
-
-    return true;
+    return this.moderationActionController;
   }
 
-  async handleModerationBlock({ video, card }) {
-    if (!video || typeof video !== "object" || !video.id) {
-      return false;
-    }
-
-    if (!this.isUserLoggedIn()) {
-      this.showStatus("Log in to block accounts.", { showSpinner: false });
-      return false;
-    }
-
-    const viewerHex = this.normalizeHexPubkey(this.pubkey);
-    if (!viewerHex) {
-      this.showError("Select a profile before blocking accounts.");
-      return false;
-    }
-
-    const targetHex = this.normalizeHexPubkey(video?.pubkey);
-    if (!targetHex) {
-      this.showError("Unable to determine which account to block.");
-      return false;
-    }
-
-    if (viewerHex === targetHex) {
-      this.showError("You cannot block yourself.");
+  refreshCardModerationUi(card, { reason } = {}) {
+    if (!card || typeof card.refreshModerationUi !== "function") {
       return false;
     }
 
     try {
-      await userBlocks.ensureLoaded(viewerHex);
+      card.refreshModerationUi();
+      return true;
     } catch (error) {
+      const suffix = reason ? ` ${reason}` : "";
       devLogger.warn(
-        "[Application] Failed to load block list before blocking:",
+        `[Application] Failed to refresh moderation UI${suffix}:`,
         error,
       );
-      this.showError("Unable to load your block list. Please try again.");
       return false;
     }
-
-    let alreadyBlocked =
-      typeof userBlocks.isBlocked === "function" &&
-      userBlocks.isBlocked(targetHex);
-    let blockApplied = false;
-
-    if (!alreadyBlocked) {
-      try {
-        const result = await userBlocks.addBlock(targetHex, viewerHex);
-        alreadyBlocked = true;
-        blockApplied = result?.already !== true;
-      } catch (error) {
-        const message =
-          (typeof this.describeUserBlockActionError === "function"
-            ? this.describeUserBlockActionError(error)
-            : "") || "Failed to block this creator. Please try again.";
-        this.showError(message);
-        devLogger.warn("[Application] Failed to block creator:", error);
-        return false;
-      }
-    }
-
-    if (alreadyBlocked) {
-      const statusMessage = blockApplied
-        ? "Creator blocked. Their videos will disappear from your feed."
-        : "Creator already blocked. Their videos will disappear from your feed.";
-      this.showStatus(statusMessage, { showSpinner: false });
-    }
-
-    try {
-      clearModerationOverride(video.id);
-    } catch (error) {
-      devLogger.warn("[Application] Failed to clear moderation override:", error);
-    }
-
-    const storedVideo =
-      this.videosMap instanceof Map && video.id ? this.videosMap.get(video.id) : null;
-    const target = storedVideo || video;
-
-    const resetModerationState = (subject) => {
-      if (!subject || typeof subject !== "object") {
-        return;
-      }
-      const moderation =
-        subject.moderation && typeof subject.moderation === "object"
-          ? subject.moderation
-          : null;
-      if (!moderation) {
-        return;
-      }
-      if (moderation.viewerOverride) {
-        delete moderation.viewerOverride;
-      }
-      if (moderation.hideBypass) {
-        delete moderation.hideBypass;
-      }
-    };
-
-    if (target) {
-      resetModerationState(target);
-      this.decorateVideoModeration(target);
-    }
-
-    if (this.currentVideo && this.currentVideo.id === video.id) {
-      resetModerationState(this.currentVideo);
-      this.decorateVideoModeration(this.currentVideo);
-    }
-
-    if (card && typeof card.refreshModerationUi === "function") {
-      try {
-        card.refreshModerationUi();
-      } catch (error) {
-        devLogger.warn(
-          "[Application] Failed to refresh moderation UI after block:",
-          error,
-        );
-      }
-    }
-
-    const doc =
-      (this.videoModal && this.videoModal.document) ||
-      (typeof document !== "undefined" ? document : null);
-    if (doc && typeof doc.dispatchEvent === "function") {
-      try {
-        const detail = { video: target };
-        doc.dispatchEvent(new CustomEvent("video:moderation-block", { detail }));
-        doc.dispatchEvent(new CustomEvent("video:moderation-hide", { detail }));
-      } catch (eventError) {
-        devLogger.warn(
-          "[Application] Failed to dispatch moderation block event:",
-          eventError,
-        );
-      }
-    }
-
-    try {
-      await this.onVideosShouldRefresh({ reason: "user-block-update" });
-    } catch (error) {
-      devLogger.warn(
-        "[Application] Failed to refresh videos after block:",
-        error,
-      );
-    }
-
-    return true;
   }
 
-  handleModerationHide({ video, card }) {
-    if (!video || typeof video !== "object" || !video.id) {
+  dispatchModerationEvent(eventName, detail = {}) {
+    const doc =
+      (this.videoModal && this.videoModal.document) ||
+      (typeof document !== "undefined" ? document : null);
+
+    if (!doc || typeof doc.dispatchEvent !== "function") {
       return false;
     }
 
     try {
-      clearModerationOverride(video.id);
+      doc.dispatchEvent(new CustomEvent(eventName, { detail }));
+      return true;
     } catch (error) {
-      devLogger.warn("[Application] Failed to clear moderation override:", error);
+      const eventLabels = {
+        "video:moderation-override": "moderation override event",
+        "video:moderation-block": "moderation block event",
+        "video:moderation-hide": "moderation hide event",
+      };
+      const label = eventLabels[eventName] || eventName;
+      devLogger.warn(`[Application] Failed to dispatch ${label}:`, error);
+      return false;
+    }
+  }
+
+  handleModerationOverride(payload = {}) {
+    const controller = this.initializeModerationActionController();
+    if (!controller) {
+      return false;
     }
 
-    const storedVideo =
-      this.videosMap instanceof Map && video.id
-        ? this.videosMap.get(video.id)
-        : null;
-    const target = storedVideo || video;
+    return controller.handleOverride(payload);
+  }
 
-    const resetOverrideState = (subject) => {
-      if (!subject || typeof subject !== "object") {
-        return;
-      }
-      const moderation =
-        subject.moderation && typeof subject.moderation === "object"
-          ? subject.moderation
-          : null;
-      if (!moderation) {
-        return;
-      }
-      if (moderation.viewerOverride) {
-        delete moderation.viewerOverride;
-      }
-    };
-
-    if (target) {
-      resetOverrideState(target);
-      this.decorateVideoModeration(target);
+  async handleModerationBlock(payload = {}) {
+    const controller = this.initializeModerationActionController();
+    if (!controller) {
+      return false;
     }
 
-    if (this.currentVideo && this.currentVideo.id === video.id) {
-      resetOverrideState(this.currentVideo);
-      this.decorateVideoModeration(this.currentVideo);
+    return controller.handleBlock(payload);
+  }
+
+  handleModerationHide(payload = {}) {
+    const controller = this.initializeModerationActionController();
+    if (!controller) {
+      return false;
     }
 
-    if (card && typeof card.refreshModerationUi === "function") {
-      try {
-        card.refreshModerationUi();
-      } catch (error) {
-        devLogger.warn(
-          "[Application] Failed to refresh moderation UI after hide:",
-          error,
-        );
-      }
-    }
-
-    const doc =
-      (this.videoModal && this.videoModal.document) ||
-      (typeof document !== "undefined" ? document : null);
-    if (doc && typeof doc.dispatchEvent === "function") {
-      try {
-        doc.dispatchEvent(
-          new CustomEvent("video:moderation-hide", { detail: { video: target } }),
-        );
-      } catch (eventError) {
-        devLogger.warn(
-          "[Application] Failed to dispatch moderation hide event:",
-          eventError,
-        );
-      }
-    }
-
-    return true;
+    return controller.handleHide(payload);
   }
 
   getVideoAddressPointer(video) {
@@ -9187,6 +8997,18 @@ class Application {
     this.clearActiveIntervals();
     this.teardownModalViewCountSubscription();
     this.videoModalReadyPromise = null;
+
+    if (this.moderationActionController) {
+      try {
+        this.moderationActionController.destroy();
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to destroy moderation action controller:",
+          error,
+        );
+      }
+      this.moderationActionController = null;
+    }
 
     if (this.statusAutoHideHandle) {
       const ownerDocument =
