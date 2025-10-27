@@ -283,6 +283,7 @@ class Application {
     this.modalCommentLimit = 40;
     this.modalCommentLoadPromise = null;
     this.modalCommentPublishPromise = null;
+    this.uploadSubmitPromise = null;
     this.pendingModeratedPlayback = null;
     this.lastIdentityRefreshPromise = null;
     this.profileIdentityController = new ProfileIdentityController({
@@ -4639,31 +4640,57 @@ class Application {
    * Actually handle the upload form submission.
    */
   async handleUploadSubmitEvent(event) {
+    if (this.uploadSubmitPromise) {
+      devLogger.warn(
+        "[Application] Ignoring upload submit while a publish is already in progress.",
+      );
+      this.showStatus(
+        "Please wait for your current video to finish publishing before sharing another.",
+        { autoHideMs: 6000, showSpinner: false },
+      );
+      if (this.uploadModal?.updateCustomSubmitButtonState) {
+        this.uploadModal.updateCustomSubmitButtonState();
+      }
+      return;
+    }
+
     const payload = event?.detail?.payload || {};
 
+    const submitPromise = (async () => {
+      try {
+        const publishResult = await this.authService.handleUploadSubmit(payload, {
+          publish: (data) =>
+            this.publishVideoNote(data, {
+              onSuccess: () => {
+                if (this.uploadModal?.resetCustomForm) {
+                  this.uploadModal.resetCustomForm();
+                }
+              },
+            }),
+        });
+        if (!publishResult && this.uploadModal?.cancelCustomSubmitCooldown) {
+          this.uploadModal.cancelCustomSubmitCooldown();
+        }
+      } catch (error) {
+        if (this.uploadModal?.cancelCustomSubmitCooldown) {
+          this.uploadModal.cancelCustomSubmitCooldown();
+        }
+        const message = this.describeLoginError(
+          error,
+          "Login required to publish videos.",
+        );
+        this.showError(message);
+      }
+    })();
+
+    this.uploadSubmitPromise = submitPromise;
+
     try {
-      const publishResult = await this.authService.handleUploadSubmit(payload, {
-        publish: (data) =>
-          this.publishVideoNote(data, {
-            onSuccess: () => {
-              if (this.uploadModal?.resetCustomForm) {
-                this.uploadModal.resetCustomForm();
-              }
-            },
-          }),
-      });
-      if (!publishResult && this.uploadModal?.cancelCustomSubmitCooldown) {
-        this.uploadModal.cancelCustomSubmitCooldown();
+      await submitPromise;
+    } finally {
+      if (this.uploadSubmitPromise === submitPromise) {
+        this.uploadSubmitPromise = null;
       }
-    } catch (error) {
-      if (this.uploadModal?.cancelCustomSubmitCooldown) {
-        this.uploadModal.cancelCustomSubmitCooldown();
-      }
-      const message = this.describeLoginError(
-        error,
-        "Login required to publish videos.",
-      );
-      this.showError(message);
     }
   }
 
