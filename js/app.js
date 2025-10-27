@@ -4454,10 +4454,18 @@ class Application {
 
   /**
    * Cleanup resources on unload or modal close.
+   *
+   * When `preserveModals` is true the modal infrastructure is kept alive so the
+   * next playback session can reuse the existing controllers without
+   * reinitializing DOM bindings.
    */
-  async cleanup({ preserveSubscriptions = false, preserveObservers = false } = {}) {
+  async cleanup({
+    preserveSubscriptions = false,
+    preserveObservers = false,
+    preserveModals = false,
+  } = {}) {
     this.log(
-      `[cleanup] Requested (preserveSubscriptions=${preserveSubscriptions}, preserveObservers=${preserveObservers})`
+      `[cleanup] Requested (preserveSubscriptions=${preserveSubscriptions}, preserveObservers=${preserveObservers}, preserveModals=${preserveModals})`
     );
     // Serialise teardown so overlapping calls (e.g. close button spam) don't
     // race each other and clobber a fresh playback setup.
@@ -4472,7 +4480,7 @@ class Application {
 
     const runCleanup = async () => {
       this.log(
-        `[cleanup] Begin (preserveSubscriptions=${preserveSubscriptions}, preserveObservers=${preserveObservers})`
+        `[cleanup] Begin (preserveSubscriptions=${preserveSubscriptions}, preserveObservers=${preserveObservers}, preserveModals=${preserveModals})`
       );
       try {
         this.cancelPendingViewLogging();
@@ -4547,20 +4555,22 @@ class Application {
 
         this.teardownModalCommentSubscription({ resetUi: false });
 
-        if (this.modalManager) {
-          try {
-            this.modalManager.teardown();
-          } catch (error) {
-            devLogger.warn("[cleanup] Modal teardown failed:", error);
+        if (!preserveModals) {
+          if (this.modalManager) {
+            try {
+              this.modalManager.teardown();
+            } catch (error) {
+              devLogger.warn("[cleanup] Modal teardown failed:", error);
+            }
+            this.modalManager = null;
           }
-          this.modalManager = null;
-        }
 
-        if (this.bootstrapper) {
-          try {
-            this.bootstrapper.teardown();
-          } catch (error) {
-            devLogger.warn("[cleanup] Bootstrap teardown failed:", error);
+          if (this.bootstrapper) {
+            try {
+              this.bootstrapper.teardown();
+            } catch (error) {
+              devLogger.warn("[cleanup] Bootstrap teardown failed:", error);
+            }
           }
         }
 
@@ -5211,6 +5221,7 @@ class Application {
       await this.cleanup({
         preserveSubscriptions: true,
         preserveObservers: true,
+        preserveModals: true,
       });
     };
 
