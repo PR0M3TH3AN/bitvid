@@ -387,26 +387,6 @@ export default class ApplicationBootstrap {
           warn: (...args) => devLogger.warn(...args),
         },
       });
-    app.boundCommentThreadReadyHandler = (snapshot) =>
-      app.handleCommentThreadReady(snapshot);
-    app.boundCommentThreadAppendHandler = (payload) =>
-      app.handleCommentThreadAppend(payload);
-    app.boundCommentThreadErrorHandler = (error) =>
-      app.handleCommentThreadError(error);
-    if (
-      app.commentThreadService &&
-      typeof app.commentThreadService.setCallbacks === "function"
-    ) {
-      app.commentThreadService.setCallbacks({
-        onThreadReady: app.boundCommentThreadReadyHandler,
-        onCommentsAppended: app.boundCommentThreadAppendHandler,
-        onError: app.boundCommentThreadErrorHandler,
-      });
-      if (app.commentThreadService.defaultLimit) {
-        app.modalCommentLimit = app.commentThreadService.defaultLimit;
-      }
-    }
-
     app.profileController = null;
     app.loginModalController = null;
     app.currentUserNpub = null;
