@@ -397,7 +397,6 @@ export class UploadModal {
           this.updateCustomSubmitButtonState();
           return;
         }
-        this.startCustomSubmitCooldown();
         this.handleCustomSubmit();
       });
     }
@@ -758,6 +757,7 @@ export class UploadModal {
       return;
     }
 
+    this.startCustomSubmitCooldown();
     this.emit("upload:submit", { payload });
   }
 
