@@ -3499,6 +3499,13 @@ class Application {
       return false;
     }
 
+    const sessionActorPubkey = this.normalizeHexPubkey(
+      nostrClient?.sessionActor?.pubkey,
+    );
+    if (sessionActorPubkey && sessionActorPubkey !== normalizedPubkey) {
+      return false;
+    }
+
     return true;
   }
 

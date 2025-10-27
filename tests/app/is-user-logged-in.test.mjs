@@ -89,3 +89,22 @@ test("isUserLoggedIn guards against mismatched nostrClient state", () => {
     nostrClient.sessionActor = previousSessionActor;
   }
 });
+
+test("isUserLoggedIn rejects mismatched session actor pubkeys", () => {
+  const previousPubkey = nostrClient.pubkey;
+  const previousSessionActor = nostrClient.sessionActor;
+
+  try {
+    const pubkey = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    nostrClient.pubkey = pubkey;
+    nostrClient.sessionActor = {
+      pubkey: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    };
+
+    const app = createTestApp(pubkey);
+    assert.equal(app.isUserLoggedIn(), false);
+  } finally {
+    nostrClient.pubkey = previousPubkey;
+    nostrClient.sessionActor = previousSessionActor;
+  }
+});
