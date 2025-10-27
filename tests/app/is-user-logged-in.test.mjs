@@ -78,8 +78,8 @@ test("isUserLoggedIn guards against mismatched nostrClient state", () => {
   const previousSessionActor = nostrClient.sessionActor;
 
   try {
-    const pubkey = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-    nostrClient.pubkey = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    const pubkey = "a".repeat(64);
+    nostrClient.pubkey = "b".repeat(64);
     nostrClient.sessionActor = { pubkey };
 
     const app = createTestApp(pubkey);
@@ -90,15 +90,37 @@ test("isUserLoggedIn guards against mismatched nostrClient state", () => {
   }
 });
 
-test("isUserLoggedIn rejects mismatched session actor pubkeys", () => {
+test("isUserLoggedIn ignores anonymous session actor mismatches", () => {
   const previousPubkey = nostrClient.pubkey;
   const previousSessionActor = nostrClient.sessionActor;
 
   try {
-    const pubkey = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const pubkey = "c".repeat(64);
     nostrClient.pubkey = pubkey;
     nostrClient.sessionActor = {
-      pubkey: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      pubkey: "d".repeat(64),
+      privateKey: "e".repeat(64),
+      createdAt: Date.now(),
+    };
+
+    const app = createTestApp(pubkey);
+    assert.equal(app.isUserLoggedIn(), true);
+  } finally {
+    nostrClient.pubkey = previousPubkey;
+    nostrClient.sessionActor = previousSessionActor;
+  }
+});
+
+test("isUserLoggedIn rejects mismatched managed session actors", () => {
+  const previousPubkey = nostrClient.pubkey;
+  const previousSessionActor = nostrClient.sessionActor;
+
+  try {
+    const pubkey = "f".repeat(64);
+    nostrClient.pubkey = pubkey;
+    nostrClient.sessionActor = {
+      pubkey: "0".repeat(64),
+      source: "nsec",
     };
 
     const app = createTestApp(pubkey);

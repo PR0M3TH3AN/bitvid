@@ -3499,11 +3499,25 @@ class Application {
       return false;
     }
 
-    const sessionActorPubkey = this.normalizeHexPubkey(
-      nostrClient?.sessionActor?.pubkey,
-    );
+    const sessionActor = nostrClient?.sessionActor || null;
+    const sessionActorPubkey = this.normalizeHexPubkey(sessionActor?.pubkey);
     if (sessionActorPubkey && sessionActorPubkey !== normalizedPubkey) {
-      return false;
+      const rawPrivateKey =
+        typeof sessionActor?.privateKey === "string"
+          ? sessionActor.privateKey.trim()
+          : "";
+      const hasEmbeddedPrivateKey =
+        rawPrivateKey.length > 0 && HEX64_REGEX.test(rawPrivateKey);
+
+      const declaredSource =
+        typeof sessionActor?.source === "string"
+          ? sessionActor.source.trim()
+          : "";
+      const isPersisted = sessionActor?.persisted === true;
+
+      if (!hasEmbeddedPrivateKey || declaredSource || isPersisted) {
+        return false;
+      }
     }
 
     return true;
