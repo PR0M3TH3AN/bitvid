@@ -1,36 +1,83 @@
 // js/nostr/maxListenerDiagnostics.js
-// Applies verbose-dev-mode-aware defaults to EventEmitter listener limits so
-// high-volume MaxListeners warnings stay hidden unless explicitly requested.
-
-import EventEmitter from "events";
+// Suppresses noisy MaxListenersExceededWarning diagnostics unless verbose
+// dev mode is enabled. We hook into process.emitWarning because Node's
+// EventEmitter implementation routes listener-limit warnings through that
+// API, even in the browser bundles pulled in by WebTorrent.
 
 import { isVerboseDiagnosticsEnabled } from "./countDiagnostics.js";
 
-const DEFAULT_WARNING_THRESHOLD = 10;
+let originalEmitWarning;
+let isPatched = false;
 
-function getTargetMaxListeners() {
-  return isVerboseDiagnosticsEnabled() ? DEFAULT_WARNING_THRESHOLD : 0;
+function extractWarningName(warning, rest) {
+  if (warning && typeof warning === "object" && typeof warning.name === "string") {
+    return warning.name;
+  }
+
+  if (typeof warning === "string") {
+    return rest && rest.length > 0 && typeof rest[0] === "string"
+      ? rest[0]
+      : undefined;
+  }
+
+  if (rest && rest.length > 0) {
+    const [firstArg] = rest;
+    if (typeof firstArg === "string") {
+      return firstArg;
+    }
+    if (firstArg && typeof firstArg === "object" && typeof firstArg.name === "string") {
+      return firstArg.name;
+    }
+  }
+
+  return undefined;
 }
 
-function applyMaxListenerPreference() {
-  try {
-    const targetLimit = getTargetMaxListeners();
-    if (typeof EventEmitter.defaultMaxListeners === "number") {
-      if (EventEmitter.defaultMaxListeners !== targetLimit) {
-        EventEmitter.defaultMaxListeners = targetLimit;
-      }
+function shouldSuppressWarning(warning, rest) {
+  if (isVerboseDiagnosticsEnabled()) {
+    return false;
+  }
+
+  const warningName = extractWarningName(warning, rest);
+  if (warningName === "MaxListenersExceededWarning") {
+    return true;
+  }
+
+  if (typeof warning === "string") {
+    return warning.includes("MaxListenersExceededWarning");
+  }
+
+  if (warning && typeof warning.message === "string") {
+    return warning.message.includes("MaxListenersExceededWarning");
+  }
+
+  return false;
+}
+
+function applyMaxListenerWarningFilter() {
+  if (isPatched) {
+    return;
+  }
+
+  const processRef = typeof process !== "undefined" ? process : undefined;
+  if (!processRef || typeof processRef.emitWarning !== "function") {
+    return;
+  }
+
+  originalEmitWarning = processRef.emitWarning.bind(processRef);
+  processRef.emitWarning = function patchedEmitWarning(warning, ...rest) {
+    if (shouldSuppressWarning(warning, rest)) {
       return;
     }
+    return originalEmitWarning(warning, ...rest);
+  };
 
-    EventEmitter.defaultMaxListeners = targetLimit;
-  } catch (error) {
-    // Swallow errors silently — diagnostics are best-effort and shouldn't
-    // interfere with runtime behavior if the events shim is unavailable.
-  }
+  isPatched = true;
 }
 
-applyMaxListenerPreference();
+applyMaxListenerWarningFilter();
 
 export function refreshMaxListenerPreference() {
-  applyMaxListenerPreference();
+  // No-op for now; retained for API parity in case verbose mode toggles at
+  // runtime and we need to evolve this helper later.
 }
