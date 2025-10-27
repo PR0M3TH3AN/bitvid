@@ -12,6 +12,7 @@ import { publishEventToRelay } from "../nostrPublish.js";
 import { RELAY_URLS } from "./toolkit.js";
 import { normalizePointerInput } from "./watchHistory.js";
 import { devLogger, userLogger } from "../utils/logger.js";
+import { logViewCountFailure } from "./countDiagnostics.js";
 
 const VIEW_EVENT_GUARD_PREFIX = "bitvid:viewed";
 
@@ -590,7 +591,7 @@ export async function countVideoViewEvents(client, pointer, options = {}) {
     }
   } catch (error) {
     if (error?.code !== "count-unsupported") {
-      devLogger.warn("[nostr] COUNT view request failed:", error);
+      logViewCountFailure(error);
     }
   }
 

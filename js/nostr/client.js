@@ -59,6 +59,11 @@ import {
   subscribeVideoComments as subscribeVideoCommentsForClient,
 } from "./commentEvents.js";
 import {
+  logCountTimeoutCleanupFailure,
+  logRelayCountFailure,
+} from "./countDiagnostics.js";
+import "./maxListenerDiagnostics.js";
+import {
   publishEventToRelay,
   publishEventToRelays,
   assertAnyRelayAccepted,
@@ -345,7 +350,7 @@ function withRequestTimeout(promise, timeoutMs, onTimeout, message = "Request ti
         try {
           onTimeout();
         } catch (cleanupError) {
-          devLogger.warn("[nostr] COUNT timeout cleanup failed:", cleanupError);
+          logCountTimeoutCleanupFailure(cleanupError);
         }
       }
       reject(new Error(message));
@@ -5739,18 +5744,15 @@ export class NostrClient {
           });
           const count = this.extractCountValue(frame?.[2]);
           return { url, ok: true, frame, count };
-          } catch (error) {
-            const isUnsupported = error?.code === "count-unsupported";
-            if (isUnsupported) {
-              this.countUnsupportedRelays.add(url);
-            } else {
-              devLogger.warn(
-                `[nostr] COUNT request failed on ${url}:`,
-                error,
-              );
-            }
-            return { url, ok: false, error, unsupported: isUnsupported };
+        } catch (error) {
+          const isUnsupported = error?.code === "count-unsupported";
+          if (isUnsupported) {
+            this.countUnsupportedRelays.add(url);
+          } else {
+            logRelayCountFailure(url, error);
           }
+          return { url, ok: false, error, unsupported: isUnsupported };
+        }
       })
     );
 
