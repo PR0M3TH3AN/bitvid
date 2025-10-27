@@ -574,7 +574,7 @@ export default class ModalManager {
     );
 
     this.videoModalHandlers.commentSubmit = (event) => {
-      app.handleVideoModalCommentSubmit(event?.detail || {});
+      app.commentController?.submit(event?.detail || {});
     };
     this.videoModal.addEventListener(
       "comment:submit",
@@ -582,15 +582,15 @@ export default class ModalManager {
     );
 
     this.videoModalHandlers.commentRetry = (event) => {
-      app.handleVideoModalCommentRetry(event?.detail || {});
+      app.commentController?.retry(event?.detail || {});
     };
     this.videoModal.addEventListener(
       "comment:retry",
       this.videoModalHandlers.commentRetry,
     );
 
-    this.videoModalHandlers.commentLoadMore = (event) => {
-      app.handleVideoModalCommentLoadMore(event?.detail || {});
+    this.videoModalHandlers.commentLoadMore = () => {
+      app.commentController?.loadMore();
     };
     this.videoModal.addEventListener(
       "comment:load-more",
@@ -598,7 +598,7 @@ export default class ModalManager {
     );
 
     this.videoModalHandlers.commentLogin = (event) => {
-      app.handleVideoModalCommentLoginRequired(event?.detail || {});
+      app.commentController?.handleLoginRequired(event?.detail || {});
     };
     this.videoModal.addEventListener(
       "comment:login-required",
@@ -606,7 +606,7 @@ export default class ModalManager {
     );
 
     this.videoModalHandlers.commentMute = (event) => {
-      app.handleVideoModalCommentMute(event?.detail || {});
+      app.commentController?.muteAuthor(event?.detail || {});
     };
     this.videoModal.addEventListener(
       "comment:mute-author",
