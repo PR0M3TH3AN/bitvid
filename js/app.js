@@ -9228,7 +9228,7 @@ class Application {
       return;
     }
 
-    const nextLightning = lightningAddressCandidate || this.currentVideo?.lightningAddress || "";
+    const nextLightning = lightningAddressCandidate || "";
 
     if (this.currentVideo) {
       this.currentVideo.lightningAddress = nextLightning ? nextLightning : null;
