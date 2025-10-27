@@ -326,6 +326,13 @@ Tailwind now exposes matching utilities for layouts that opt into the design sys
 
 Iconography and motion helpers rely on fresh tokens as well: `--icon-size-sm`, `--icon-size-md`, and `--icon-size-lg` standardise glyph sizing across nav links, collapse toggles, and dropup triggers, while `--space-sidebar-nav-translate` powers the translate offsets used when collapsing the rail. Thin overlays inherit `--scrollbar-thin-width` so modal and sidebar scroll containers feel identical.
 
+### Search surfaces backlog
+
+Discovery work is queued behind two search affordances that will need close coordination with the navigation shell tokens:
+
+- **Relay note search filters** — Stand up a dedicated search surface that can index relay-published notes and expose filter chips for posted date ranges, hashtags, title keywords, view-count ranges, and the publishing account. Reuse `.menu`, `.input`, and `.chip` primitives for the filter controls so the surface stays aligned with existing command panels, and plan on routing results through the popover/filter pipeline described above.
+- **Mobile floating search** — Introduce a floating search icon on small breakpoints that expands into a full-width search field when tapped. The trigger should inherit the circular icon tokens used by sidebar toggles, snap to the `z-overlay-nav` layer, and collapse back to the icon state once the user blurs or submits the field.
+
 ### Menus
 
 `.menu` normalises list-based command menus with consistent padding. Pair it with `.menu__heading` for optional section labels, `.menu__separator` for dividers, and `.menu__item` for actionable rows. Each item supports hover, active (`data-state="active"`), and critical (`data-variant="critical"`) palettes plus disabled fallbacks through either `disabled` or `aria-disabled="true"`.
