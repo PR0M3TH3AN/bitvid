@@ -10,12 +10,15 @@
 
 ## Features
 
-- **Decentralized Sharing**: Video sharing without central servers.
-- **Cloudflare R2 Uploads**: Publish directly from the Upload modal's Cloudflare flow with progress tracking and credential helpers.
+- **Decentralized Sharing**: Publish and browse videos without a centralized server.
+- **Channel profile pages**: The [channel view](views/channel-profile.html) and `js/channelProfile.js` render banners, playlists, links, and follow stats so every creator has a branded landing page.
+- **Audience flags**: The [Upload](components/upload-modal.html) and [Edit Video](components/edit-video-modal.html) modals expose **NSFW** and **For Kids** toggles that map straight to note metadata for safer discovery.
+- **Richer metadata repeaters**: Configure variants, captions, segments, participants, references, and hashtags directly in the Upload modal so posts ship with structured context.
+- **Cloudflare R2 Uploads**: Publish through the modal’s Cloudflare flow with progress tracking and credential helpers.
 - **Encrypted Watch History**: Sync viewing activity privately through the NIP-04 encrypted pipeline with local fallbacks.
 - **Live View Counters**: Subscribe to view events and see totals update in real time on video cards and the video modal.
 - **Lightning Zaps**: Tip creators with Lightning payments via the Zap controls in the video modal.
-- **Private Video Listings**: Hide cards from shared grids by flipping the visibility switch in the [Edit Video modal](components/edit-video-modal.html) after publishing.
+- **Private Video Listings**: Hide cards from shared grids by flipping the visibility switch in the Edit Video modal after publishing.
 - **Nostr Integration**: Use Nostr keys for login and interaction.
 - **WebTorrent Streaming**: Stream videos directly through torrent technology.
 - **Developer-Friendly**: Open source and customizable for your needs.
@@ -120,9 +123,10 @@ Tailwind utilities are generated from `css/tailwind.source.css` and themed via
 the shared tokens in `css/tokens.css`. Install dependencies once and lean on the
 package scripts to keep formatting, linting, and generated output consistent:
 
-- **Token imports:** `css/tokens.css` feeds `css/style.css`, which in turn seeds
-  `tailwind.config.cjs` so utilities inherit the same palette, spacing, and
-  typography primitives across the stack.
+- **Token imports:** `css/tailwind.source.css` imports `css/tokens.css`, and
+  Tailwind consumes that source file directly so utilities inherit the same
+  palette, spacing, and typography primitives across the stack—no
+  `css/style.css` intermediary.
 - **Core scripts:**
 
   ```bash
@@ -140,7 +144,7 @@ package scripts to keep formatting, linting, and generated output consistent:
 ```bash
 npm install               # install Prettier, Stylelint, and Tailwind toolchain
 npm run format            # format CSS/HTML/JS/MD with Prettier + tailwindcss plugin
-npm run lint              # run CSS, hex color, and inline-style guards in one pass
+npm run lint              # run CSS, hex color, inline-style, design-token, and Tailwind color/bracket guards in one pass
 npm run lint:css          # enforce token usage and forbid raw hex colors
 npm run lint:inline-styles # fail CI if inline style attributes or element.style usage slip in
 npm run build:css         # rebuild css/tailwind.generated.css from tailwind.source.css
@@ -313,7 +317,7 @@ placeholder at “—” and development builds log a warning—so mixed deploym
 
 ### Contribution Guidelines
 
-- Follow the [MIT License](https://opensource.org/licenses/MIT).
+- Follow the [GPL-3.0-or-later License](LICENSE).
 - Use clear, concise commit messages.
 - Respect the existing coding style and architecture.
 - Run the manual QA script (see below) and note results in PR descriptions for changes that affect upload or playback.
