@@ -1,54 +1,51 @@
 // js/nostr/maxListenerDiagnostics.js
 // Suppresses noisy MaxListenersExceededWarning diagnostics unless verbose
-// dev mode is enabled. We hook into process.emitWarning because Node's
-// EventEmitter implementation routes listener-limit warnings through that
-// API, even in the browser bundles pulled in by WebTorrent.
+// dev mode is enabled by filtering console.warn output. Node's EventEmitter
+// polyfill emits these warnings via console.warn in browser bundles, so we
+// intercept the console instead of importing the `events` module or
+// patching process APIs that might vary across environments.
 
 import { isVerboseDiagnosticsEnabled } from "./countDiagnostics.js";
 
-let originalEmitWarning;
+const MAX_LISTENER_SNIPPETS = [
+  "MaxListenersExceededWarning",
+  "Possible EventEmitter memory leak detected",
+];
+
+let originalConsoleWarn;
 let isPatched = false;
 
-function extractWarningName(warning, rest) {
-  if (warning && typeof warning === "object" && typeof warning.name === "string") {
-    return warning.name;
+function extractCandidateStrings(value) {
+  if (typeof value === "string") {
+    return [value];
   }
 
-  if (typeof warning === "string") {
-    return rest && rest.length > 0 && typeof rest[0] === "string"
-      ? rest[0]
-      : undefined;
-  }
-
-  if (rest && rest.length > 0) {
-    const [firstArg] = rest;
-    if (typeof firstArg === "string") {
-      return firstArg;
+  if (value && typeof value === "object") {
+    const candidates = [];
+    if (typeof value.name === "string") {
+      candidates.push(value.name);
     }
-    if (firstArg && typeof firstArg === "object" && typeof firstArg.name === "string") {
-      return firstArg.name;
+    if (typeof value.message === "string") {
+      candidates.push(value.message);
     }
+    return candidates;
   }
 
-  return undefined;
+  return [];
 }
 
-function shouldSuppressWarning(warning, rest) {
+function shouldSuppressArgs(args) {
   if (isVerboseDiagnosticsEnabled()) {
     return false;
   }
 
-  const warningName = extractWarningName(warning, rest);
-  if (warningName === "MaxListenersExceededWarning") {
-    return true;
-  }
-
-  if (typeof warning === "string") {
-    return warning.includes("MaxListenersExceededWarning");
-  }
-
-  if (warning && typeof warning.message === "string") {
-    return warning.message.includes("MaxListenersExceededWarning");
+  for (const arg of args) {
+    const candidates = extractCandidateStrings(arg);
+    for (const candidate of candidates) {
+      if (MAX_LISTENER_SNIPPETS.some((snippet) => candidate.includes(snippet))) {
+        return true;
+      }
+    }
   }
 
   return false;
@@ -59,17 +56,18 @@ function applyMaxListenerWarningFilter() {
     return;
   }
 
-  const processRef = typeof process !== "undefined" ? process : undefined;
-  if (!processRef || typeof processRef.emitWarning !== "function") {
+  const consoleRef = typeof console !== "undefined" ? console : null;
+  if (!consoleRef || typeof consoleRef.warn !== "function") {
     return;
   }
 
-  originalEmitWarning = processRef.emitWarning.bind(processRef);
-  processRef.emitWarning = function patchedEmitWarning(warning, ...rest) {
-    if (shouldSuppressWarning(warning, rest)) {
+  originalConsoleWarn = consoleRef.warn.bind(consoleRef);
+  consoleRef.warn = function patchedConsoleWarn(...args) {
+    if (shouldSuppressArgs(args)) {
       return;
     }
-    return originalEmitWarning(warning, ...rest);
+
+    return originalConsoleWarn(...args);
   };
 
   isPatched = true;
