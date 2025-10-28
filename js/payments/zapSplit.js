@@ -367,22 +367,42 @@ async function processShare({
     zapRequest,
   });
 
-  const payment = await deps.wallet.sendPayment(invoice.invoice, {
-    amountSats,
-    zapRequest,
-    lnurl: resolved.url,
-  });
+  try {
+    const payment = await deps.wallet.sendPayment(invoice.invoice, {
+      amountSats,
+      zapRequest,
+      lnurl: resolved.url,
+    });
 
-  return {
-    recipientType,
-    address,
-    amount: amountSats,
-    lnurl: resolved,
-    metadata,
-    invoice,
-    payment,
-    zapRequest,
-  };
+    return {
+      recipientType,
+      address,
+      amount: amountSats,
+      lnurl: resolved,
+      metadata,
+      invoice,
+      payment,
+      zapRequest,
+      status: "ok",
+    };
+  } catch (error) {
+    userLogger.warn(
+      `[zapSplit] Failed to send ${recipientType} zap share.`,
+      error
+    );
+    return {
+      recipientType,
+      address,
+      amount: amountSats,
+      lnurl: resolved,
+      metadata,
+      invoice,
+      payment: null,
+      zapRequest,
+      status: "error",
+      error,
+    };
+  }
 }
 
 export async function splitAndZap(

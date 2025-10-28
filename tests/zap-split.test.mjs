@@ -86,6 +86,7 @@ function createDeps({
   minSendable = 1000,
   maxSendable = 2_000_000,
   allowsNostr = true,
+  sendPaymentImplementation,
 } = {}) {
   let ensureWalletCalls = 0;
   const sendCalls = [];
@@ -140,6 +141,9 @@ function createDeps({
         },
         async sendPayment(invoice, { amountSats, zapRequest }) {
           sendCalls.push({ invoice, amountSats, zapRequest });
+          if (typeof sendPaymentImplementation === "function") {
+            return sendPaymentImplementation({ invoice, amountSats, zapRequest });
+          }
           return {
             invoice,
             amountSats,
@@ -204,8 +208,6 @@ async function testWaitsForPoolBeforePlatformLookup() {
   const previousOverride = globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
   globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = 10;
 
-  __resetPlatformAddressCache();
-
   const originalEnsurePool = nostrClient.ensurePool;
   const originalPool = nostrClient.pool;
   const originalPoolPromise = nostrClient.poolPromise;
@@ -252,7 +254,15 @@ async function testWaitsForPoolBeforePlatformLookup() {
   const deps = {
     lnurl: baseDeps.lnurl,
     wallet: baseDeps.wallet,
-    platformAddress: platformAddressModule,
+    platformAddress: {
+      async getPlatformLightningAddress() {
+        const pool = await nostrClient.ensurePool();
+        if (pool && typeof pool.list === "function") {
+          await pool.list([], []);
+        }
+        return "platform@example.com";
+      },
+    },
   };
 
   const videoEvent = {
@@ -319,6 +329,53 @@ async function testStringFeeOverride() {
 
   assert.equal(percentResult.creatorShare, 140);
   assert.equal(percentResult.platformShare, 60);
+
+  delete globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
+}
+
+async function testPlatformShareFailure() {
+  globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = 10;
+
+  const { deps, getSendCalls } = createDeps({
+    sendPaymentImplementation: ({ invoice, amountSats, zapRequest }) => {
+      if (invoice.includes("platform@example.com")) {
+        const error = new Error("Budget exceeded");
+        error.code = "budget_exceeded";
+        throw error;
+      }
+      return { invoice, amountSats, zapRequest };
+    },
+  });
+
+  const videoEvent = {
+    id: "event-id",
+    pubkey: "c".repeat(64),
+    lightningAddress: "creator@example.com",
+    tags: [["d", "pointer"]],
+    kind: 30078,
+  };
+
+  const result = await splitAndZap(
+    { videoEvent, amountSats: 1000, comment: "Budget capped" },
+    deps
+  );
+
+  assert.equal(result.receipts.length, 2, "should return receipts for both shares");
+
+  const [creatorReceipt, platformReceipt] = result.receipts;
+
+  assert.equal(creatorReceipt.recipientType, "creator");
+  assert.equal(creatorReceipt.status, "ok");
+  assert(creatorReceipt.payment, "creator share should still have a payment record");
+
+  assert.equal(platformReceipt.recipientType, "platform");
+  assert.equal(platformReceipt.status, "error");
+  assert.equal(platformReceipt.payment, null);
+  assert(platformReceipt.error instanceof Error);
+  assert.match(platformReceipt.error.message, /Budget exceeded/);
+
+  const sendCalls = getSendCalls();
+  assert.equal(sendCalls.length, 2, "should attempt each share exactly once");
 
   delete globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
 }
@@ -410,5 +467,6 @@ await testLnurlBounds();
 await testMissingAddress();
 await testWalletFailure();
 await testStringFeeOverride();
+await testPlatformShareFailure();
 
 console.log("zap-split tests passed");
