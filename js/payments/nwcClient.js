@@ -627,7 +627,8 @@ async function ensureEncryption(context) {
     }
   }
 
-  const { schemes: walletSchemes } = getWalletSupportedEncryption(infoEvent);
+  const { schemes: walletSchemes, explicit: walletSchemesExplicit } =
+    getWalletSupportedEncryption(infoEvent);
   const candidates = getEncryptionCandidates(context).filter((candidate) => {
     return !state.unsupported.has(candidate.scheme);
   });
@@ -635,6 +636,19 @@ async function ensureEncryption(context) {
   const compatibleCandidates = walletSchemes.length
     ? candidates.filter((candidate) => walletSchemes.includes(candidate.scheme))
     : candidates;
+
+  if (
+    compatibleCandidates.length > 1 &&
+    (!walletSchemesExplicit || !walletSchemes.includes("nip44_v2"))
+  ) {
+    const nip04Index = compatibleCandidates.findIndex(
+      (candidate) => candidate.scheme === "nip04"
+    );
+    if (nip04Index > 0) {
+      const [nip04Candidate] = compatibleCandidates.splice(nip04Index, 1);
+      compatibleCandidates.unshift(nip04Candidate);
+    }
+  }
 
   if (compatibleCandidates.length) {
     const selected = compatibleCandidates[0];

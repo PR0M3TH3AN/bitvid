@@ -65,6 +65,14 @@ await (async () => {
         },
       },
     },
+    nip04: {
+      async encrypt() {
+        return "nip04";
+      },
+      async decrypt() {
+        return "nip04";
+      },
+    },
   };
 
   const walletPubkey = "b".repeat(64);
@@ -101,6 +109,107 @@ await (async () => {
   assert.equal(encryption.scheme, "nip44_v2");
   const encrypted = await encryption.encrypt("payload");
   assert.match(encrypted, /^nip44:key-b{64}-/);
+
+  resetWalletClient();
+})();
+
+await (async () => {
+  resetWalletClient();
+
+  window.NostrTools = {
+    getPublicKey() {
+      return "c".repeat(64);
+    },
+    nip44: {
+      v2: {
+        async encrypt(plaintext, key) {
+          return `nip44:${key}:${plaintext}`;
+        },
+        async decrypt(ciphertext, key) {
+          return `nip44:${key}:${ciphertext}`;
+        },
+        utils: {
+          getConversationKey(secretBytes, pubkey) {
+            return `key-${pubkey}-${secretBytes.length}`;
+          },
+        },
+      },
+    },
+    nip04: {
+      async encrypt() {
+        return "nip04";
+      },
+      async decrypt() {
+        return "nip04";
+      },
+    },
+  };
+
+  const walletPubkey = "b".repeat(64);
+  const secretKey = "a".repeat(64);
+  const relays = ["wss://relay.one.example"];
+  const uri =
+    `nostr+walletconnect://${walletPubkey}` +
+    `?relay=${encodeURIComponent(relays[0])}` +
+    `&secret=${secretKey}`;
+
+  const context = ensureActiveState({ nwcUri: uri });
+  context.infoEvent = { kind: 13194, tags: [] };
+
+  const encryption = await __TESTING__.ensureEncryptionForContext(context);
+  assert.equal(encryption.scheme, "nip04");
+
+  resetWalletClient();
+})();
+
+await (async () => {
+  resetWalletClient();
+
+  window.NostrTools = {
+    getPublicKey() {
+      return "c".repeat(64);
+    },
+    nip44: {
+      v2: {
+        async encrypt(plaintext, key) {
+          return `nip44:${key}:${plaintext}`;
+        },
+        async decrypt(ciphertext, key) {
+          return `nip44:${key}:${ciphertext}`;
+        },
+        utils: {
+          getConversationKey(secretBytes, pubkey) {
+            return `key-${pubkey}-${secretBytes.length}`;
+          },
+        },
+      },
+    },
+    nip04: {
+      async encrypt() {
+        return "nip04";
+      },
+      async decrypt() {
+        return "nip04";
+      },
+    },
+  };
+
+  const walletPubkey = "b".repeat(64);
+  const secretKey = "a".repeat(64);
+  const relays = ["wss://relay.one.example"];
+  const uri =
+    `nostr+walletconnect://${walletPubkey}` +
+    `?relay=${encodeURIComponent(relays[0])}` +
+    `&secret=${secretKey}`;
+
+  const context = ensureActiveState({ nwcUri: uri });
+  context.infoEvent = {
+    kind: 13194,
+    tags: [["encryption", "nip04"]],
+  };
+
+  const encryption = await __TESTING__.ensureEncryptionForContext(context);
+  assert.equal(encryption.scheme, "nip04");
 
   resetWalletClient();
 })();
