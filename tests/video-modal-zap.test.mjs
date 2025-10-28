@@ -543,4 +543,78 @@ await (async () => {
   app.destroy();
 })();
 
+await (async () => {
+  // Test: allowance exhaustion surfaces guidance and skips retry queue
+  const { app, modalStub, creatorAddress, platformAddress } = await createApp({
+    splitAndZap: async () => ({ receipts: [] }),
+  });
+
+  const shareError = new Error("Budget exceeded");
+  const tracker = [
+    {
+      type: "creator",
+      status: "success",
+      amount: 900,
+      address: creatorAddress,
+      payment: { preimage: "aa".repeat(16) },
+    },
+    {
+      type: "platform",
+      status: "error",
+      amount: 100,
+      address: platformAddress,
+      error: shareError,
+    },
+  ];
+
+  const walletError = new Error("Budget exceeded");
+  walletError.__zapShareTracker = tracker;
+
+  modalStub.statusMessages = [];
+  modalStub.retryState = undefined;
+
+  app.zapController.handleZapError({
+    error: walletError,
+    amount: 1000,
+    comment: "",
+    walletSettings: { nwcUri: "nostr+walletconnect://example" },
+  });
+
+  const lastStatus =
+    modalStub.statusMessages[modalStub.statusMessages.length - 1];
+  assert.ok(lastStatus, "status message should be recorded");
+  assert.equal(
+    lastStatus.tone,
+    "warning",
+    "partial allowance exhaustion should produce a warning tone",
+  );
+  assert.ok(
+    /zap allowance/i.test(lastStatus.message),
+    "status message should mention zap allowance exhaustion",
+  );
+  assert.ok(
+    /increase your wallet zap limit or reduce the platform split/i.test(
+      lastStatus.message,
+    ),
+    "status message should advise adjusting allowance or platform split",
+  );
+  assert.equal(
+    lastStatus.message.includes("Press Send again"),
+    false,
+    "allowance exhaustion should not prompt a retry",
+  );
+  assert.equal(
+    app.zapController.modalZapRetryState,
+    null,
+    "controller should clear retry state when allowance exhausted",
+  );
+  assert.equal(
+    modalStub.retryState?.pending,
+    false,
+    "modal should not mark retry pending when allowance exhausted",
+  );
+
+  app.destroy();
+})();
+
 process.exit(0);

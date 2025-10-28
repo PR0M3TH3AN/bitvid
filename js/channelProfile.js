@@ -37,10 +37,12 @@ import {
   getCachedLightningEntry,
   getCachedMetadataByUrl,
   getCachedPlatformLightningAddress,
+  isZapAllowanceExhaustedError,
   isMetadataEntryFresh,
   normalizeLightningAddressKey,
   rememberLightningMetadata,
   setCachedPlatformLightningAddress,
+  buildZapAllowanceExhaustedMessage,
   validateInvoiceAmount
 } from "./payments/zapSharedState.js";
 import { splitAndZap } from "./payments/zapSplit.js";
@@ -2570,13 +2572,18 @@ function createZapDependencies({
           }
           return payment;
         } catch (error) {
+          const allowanceExhausted = isZapAllowanceExhaustedError(error);
+          if (allowanceExhausted) {
+            error.__zapAllowanceExhausted = true;
+          }
           if (Array.isArray(shareTracker)) {
             shareTracker.push({
               type: shareType,
               status: "error",
               amount: shareAmount,
               address,
-              error
+              error,
+              allowanceExhausted
             });
           }
           if (
@@ -2993,23 +3000,54 @@ async function handleZapSend(event) {
     const failureShares = tracker.filter(
       (entry) => entry && entry.status !== "success" && entry.amount > 0
     );
+    const allowanceExhausted =
+      isZapAllowanceExhaustedError(error) ||
+      failureShares.some((share) =>
+        isZapAllowanceExhaustedError(share?.error)
+      );
+    if (allowanceExhausted) {
+      resetZapRetryState();
+    }
+
     if (failureShares.length) {
-      markZapRetryPending(failureShares);
-      const summary = failureShares
-        .map((share) => `${describeShareType(share.type)} ${share.amount} sats`)
-        .join(", ");
-      const tone = tracker.length > failureShares.length ? "warning" : "error";
-      const statusMessage =
-        tracker.length > failureShares.length
-          ? `Partial zap failure. Press Send again to retry: ${summary}.`
-          : `Zap failed. Press Send again to retry: ${summary}.`;
-      setZapStatus(statusMessage, tone);
-      app?.showError?.(error?.message || statusMessage);
+      if (allowanceExhausted) {
+        const allowanceShare = failureShares.find((share) =>
+          isZapAllowanceExhaustedError(share?.error)
+        );
+        const allowanceMessage = buildZapAllowanceExhaustedMessage(
+          isZapAllowanceExhaustedError(error) ? error : allowanceShare?.error
+        );
+        const partialSuccess = tracker.length > failureShares.length;
+        const tone = partialSuccess ? "warning" : "error";
+        const statusMessage = partialSuccess
+          ? `Some zap shares succeeded before your wallet allowance was exhausted. ${allowanceMessage}`
+          : allowanceMessage;
+        setZapStatus(statusMessage, tone);
+        app?.showError?.(statusMessage);
+      } else {
+        markZapRetryPending(failureShares);
+        const summary = failureShares
+          .map((share) => `${describeShareType(share.type)} ${share.amount} sats`)
+          .join(", ");
+        const tone = tracker.length > failureShares.length ? "warning" : "error";
+        const statusMessage =
+          tracker.length > failureShares.length
+            ? `Partial zap failure. Press Send again to retry: ${summary}.`
+            : `Zap failed. Press Send again to retry: ${summary}.`;
+        setZapStatus(statusMessage, tone);
+        app?.showError?.(error?.message || statusMessage);
+      }
     } else {
       resetZapRetryState();
-      const message = error?.message || "Zap failed. Please try again.";
-      setZapStatus(message, "error");
-      app?.showError?.(message);
+      if (allowanceExhausted) {
+        const allowanceMessage = buildZapAllowanceExhaustedMessage(error);
+        setZapStatus(allowanceMessage, "error");
+        app?.showError?.(allowanceMessage);
+      } else {
+        const message = error?.message || "Zap failed. Please try again.";
+        setZapStatus(message, "error");
+        app?.showError?.(message);
+      }
     }
   } finally {
     zapInFlight = false;

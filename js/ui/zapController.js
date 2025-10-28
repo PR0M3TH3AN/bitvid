@@ -7,10 +7,12 @@ import {
   getCachedLightningEntry,
   getCachedMetadataByUrl,
   getCachedPlatformLightningAddress,
+  isZapAllowanceExhaustedError,
   isMetadataEntryFresh,
   normalizeLightningAddressKey,
   rememberLightningMetadata,
   setCachedPlatformLightningAddress,
+  buildZapAllowanceExhaustedMessage,
   validateInvoiceAmount,
 } from "../payments/zapSharedState.js";
 import {
@@ -557,31 +559,36 @@ export default class ZapController {
             shareType === "platform"
               ? platformEntry?.address || getCachedPlatformLightningAddress()
               : creatorEntry?.address || lightningAddress;
-          try {
-            const payment = await sendPaymentFn(bolt11, params);
-            if (Array.isArray(shareTracker)) {
-              shareTracker.push({
-                type: shareType,
+        try {
+          const payment = await sendPaymentFn(bolt11, params);
+          if (Array.isArray(shareTracker)) {
+            shareTracker.push({
+              type: shareType,
                 status: "success",
                 amount,
                 address,
                 payment,
-              });
-            }
-            return payment;
-          } catch (error) {
-            if (Array.isArray(shareTracker)) {
-              shareTracker.push({
-                type: shareType,
-                status: "error",
-                amount,
-                address,
-                error,
-              });
-            }
-            if (
-              typeof error?.message === "string" &&
-              error.message.toLowerCase().includes("timed out")
+            });
+          }
+          return payment;
+        } catch (error) {
+          const allowanceExhausted = isZapAllowanceExhaustedError(error);
+          if (allowanceExhausted) {
+            error.__zapAllowanceExhausted = true;
+          }
+          if (Array.isArray(shareTracker)) {
+            shareTracker.push({
+              type: shareType,
+              status: "error",
+              amount,
+              address,
+              error,
+              allowanceExhausted,
+            });
+          }
+          if (
+            typeof error?.message === "string" &&
+            error.message.toLowerCase().includes("timed out")
             ) {
               try {
                 resetWalletClientFn();
@@ -982,31 +989,65 @@ export default class ZapController {
     const failureShares = tracker.filter(
       (entry) => entry && entry.status !== "success" && entry.amount > 0
     );
+    const allowanceExhausted =
+      isZapAllowanceExhaustedError(error) ||
+      failureShares.some((share) =>
+        isZapAllowanceExhaustedError(share?.error)
+      );
+    if (allowanceExhausted) {
+      this.resetRetryState();
+    }
+
     if (failureShares.length) {
-      this.markRetryPending(failureShares, comment);
-      const summary = failureShares
-        .map((share) => {
-          const label =
-            share.type === "platform"
-              ? "Platform"
-              : share.type === "creator"
-              ? "Creator"
-              : "Lightning";
-          return `${label} ${share.amount} sats`;
-        })
-        .join(", ");
-      const tone = tracker.length > failureShares.length ? "warning" : "error";
-      const statusMessage =
-        tracker.length > failureShares.length
-          ? `Partial zap failure. Press Send again to retry: ${summary}.`
-          : `Zap failed. Press Send again to retry: ${summary}.`;
-      this.videoModal?.setZapStatus(statusMessage, tone);
-      this.notifyError(error?.message || statusMessage);
+      if (allowanceExhausted) {
+        const allowanceShare = failureShares.find((share) =>
+          isZapAllowanceExhaustedError(share?.error)
+        );
+        const allowanceSource = isZapAllowanceExhaustedError(error)
+          ? error
+          : allowanceShare?.error;
+        const allowanceMessage = buildZapAllowanceExhaustedMessage(
+          allowanceSource
+        );
+        const partialSuccess = tracker.length > failureShares.length;
+        const tone = partialSuccess ? "warning" : "error";
+        const statusMessage = partialSuccess
+          ? `Some zap shares succeeded before your wallet allowance was exhausted. ${allowanceMessage}`
+          : allowanceMessage;
+        this.videoModal?.setZapStatus(statusMessage, tone);
+        this.notifyError(statusMessage);
+      } else {
+        this.markRetryPending(failureShares, comment);
+        const summary = failureShares
+          .map((share) => {
+            const label =
+              share.type === "platform"
+                ? "Platform"
+                : share.type === "creator"
+                ? "Creator"
+                : "Lightning";
+            return `${label} ${share.amount} sats`;
+          })
+          .join(", ");
+        const tone = tracker.length > failureShares.length ? "warning" : "error";
+        const statusMessage =
+          tracker.length > failureShares.length
+            ? `Partial zap failure. Press Send again to retry: ${summary}.`
+            : `Zap failed. Press Send again to retry: ${summary}.`;
+        this.videoModal?.setZapStatus(statusMessage, tone);
+        this.notifyError(error?.message || statusMessage);
+      }
     } else {
       this.resetRetryState();
-      const message = error?.message || "Zap failed. Please try again.";
-      this.videoModal?.setZapStatus(message, "error");
-      this.notifyError(message);
+      if (allowanceExhausted) {
+        const allowanceMessage = buildZapAllowanceExhaustedMessage(error);
+        this.videoModal?.setZapStatus(allowanceMessage, "error");
+        this.notifyError(allowanceMessage);
+      } else {
+        const message = error?.message || "Zap failed. Please try again.";
+        this.videoModal?.setZapStatus(message, "error");
+        this.notifyError(message);
+      }
     }
   }
 
