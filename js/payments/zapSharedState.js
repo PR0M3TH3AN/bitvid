@@ -162,3 +162,97 @@ export function clearZapCaches() {
 }
 
 export { validateInvoiceAmount };
+
+function extractErrorMessage(error) {
+  if (!error) {
+    return "";
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+  if (typeof error?.message === "string") {
+    return error.message;
+  }
+  if (typeof error?.reason === "string") {
+    return error.reason;
+  }
+  if (typeof error?.error?.message === "string") {
+    return error.error.message;
+  }
+  if (typeof error?.data?.error === "string") {
+    return error.data.error;
+  }
+  if (typeof error?.data?.error?.message === "string") {
+    return error.data.error.message;
+  }
+  return "";
+}
+
+const ALLOWANCE_ERROR_PATTERNS = [
+  "budget exceeded",
+  "allowance exceeded",
+  "allowance exhausted",
+  "allowance spent",
+  "allowance depleted",
+  "allowance limit reached",
+  "spending allowance exceeded",
+  "spending allowance reached",
+  "spending limit reached",
+  "quota exceeded",
+];
+
+export function isZapAllowanceExhaustedError(error) {
+  const message = extractErrorMessage(error);
+  if (!message) {
+    return false;
+  }
+  const normalized = message.toLowerCase();
+  if (ALLOWANCE_ERROR_PATTERNS.some((pattern) => normalized.includes(pattern))) {
+    return true;
+  }
+  if (normalized.includes("allowance") && normalized.includes("zap")) {
+    if (
+      normalized.includes("exceed") ||
+      normalized.includes("exhaust") ||
+      normalized.includes("spent") ||
+      normalized.includes("deplet")
+    ) {
+      return true;
+    }
+  }
+  if (normalized.includes("budget") && normalized.includes("zap")) {
+    if (
+      normalized.includes("exceed") ||
+      normalized.includes("spent") ||
+      normalized.includes("deplet")
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+const ALLOWANCE_GUIDANCE_SUFFIX =
+  "Increase your wallet zap limit or reduce the platform split to continue.";
+const DEFAULT_ALLOWANCE_MESSAGE =
+  "Your wallet's zap allowance has been exhausted. " + ALLOWANCE_GUIDANCE_SUFFIX;
+
+export function buildZapAllowanceExhaustedMessage(error) {
+  const baseMessage = extractErrorMessage(error).trim();
+  if (!baseMessage) {
+    return DEFAULT_ALLOWANCE_MESSAGE;
+  }
+  const normalized = baseMessage.toLowerCase();
+  const punctuation = /[.!?]$/.test(baseMessage) ? "" : ".";
+  if (
+    normalized.includes("zap allowance") &&
+    normalized.includes("increase") &&
+    normalized.includes("platform split")
+  ) {
+    return baseMessage;
+  }
+  if (normalized.includes("zap") && normalized.includes("allowance")) {
+    return `${baseMessage}${punctuation} ${ALLOWANCE_GUIDANCE_SUFFIX}`;
+  }
+  return `${baseMessage}${punctuation} ${DEFAULT_ALLOWANCE_MESSAGE}`;
+}
