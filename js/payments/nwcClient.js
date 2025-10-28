@@ -627,7 +627,8 @@ async function ensureEncryption(context) {
     }
   }
 
-  const { schemes: walletSchemes } = getWalletSupportedEncryption(infoEvent);
+  const { schemes: walletSchemes, explicit: walletSchemesExplicit } =
+    getWalletSupportedEncryption(infoEvent);
   const candidates = getEncryptionCandidates(context).filter((candidate) => {
     return !state.unsupported.has(candidate.scheme);
   });
@@ -635,6 +636,19 @@ async function ensureEncryption(context) {
   const compatibleCandidates = walletSchemes.length
     ? candidates.filter((candidate) => walletSchemes.includes(candidate.scheme))
     : candidates;
+
+  if (
+    compatibleCandidates.length > 1 &&
+    (!walletSchemesExplicit || !walletSchemes.includes("nip44_v2"))
+  ) {
+    const nip04Index = compatibleCandidates.findIndex(
+      (candidate) => candidate.scheme === "nip04"
+    );
+    if (nip04Index > 0) {
+      const [nip04Candidate] = compatibleCandidates.splice(nip04Index, 1);
+      compatibleCandidates.unshift(nip04Candidate);
+    }
+  }
 
   if (compatibleCandidates.length) {
     const selected = compatibleCandidates[0];
@@ -657,6 +671,45 @@ async function ensureEncryption(context) {
   }
 
   throw new Error("No compatible wallet encryption scheme available.");
+}
+
+function shouldRetryWithFallback(context, error, encryption, { hasRetried }) {
+  if (!context || !encryption || hasRetried) {
+    return false;
+  }
+
+  const code = typeof error?.code === "string" ? error.code : "";
+  const message = typeof error?.message === "string" ? error.message : "";
+
+  if (code === "UNSUPPORTED_ENCRYPTION" || code === "unsupported_encryption") {
+    return true;
+  }
+
+  const isTimeout =
+    message === "Wallet request timed out." ||
+    code === "timeout" ||
+    code === "TIMEOUT";
+
+  if (!isTimeout || encryption.scheme !== "nip44_v2") {
+    return false;
+  }
+
+  const state = ensureEncryptionState(context);
+  if (state.unsupported.has("nip04")) {
+    return false;
+  }
+
+  const { schemes, explicit } = getWalletSupportedEncryption(context.infoEvent);
+  if (explicit && schemes.includes("nip44_v2") && !schemes.includes("nip04")) {
+    return false;
+  }
+
+  return getEncryptionCandidates(context).some((candidate) => {
+    if (candidate.scheme !== "nip04") {
+      return false;
+    }
+    return !state.unsupported.has(candidate.scheme);
+  });
 }
 
 function finalizePendingRequest(entry) {
@@ -1053,11 +1106,9 @@ async function sendWalletRequest(context, payload, { timeoutMs, __internalRetry 
   } catch (error) {
     const encryption = context?.encryption || null;
     if (
-      !__internalRetry &&
-      encryption &&
-      error &&
-      typeof error === "object" &&
-      (error.code === "UNSUPPORTED_ENCRYPTION" || error.code === "unsupported_encryption")
+      shouldRetryWithFallback(context, error, encryption, {
+        hasRetried: __internalRetry === true,
+      })
     ) {
       rememberUnsupportedEncryption(context, encryption.scheme);
       context.encryption = null;
