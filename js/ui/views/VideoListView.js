@@ -556,6 +556,34 @@ export class VideoListView {
         this.utils.persistWatchHistoryMetadata(video, pointerInfo);
       }
 
+      const identity = {
+        name:
+          typeof video.creatorName === "string" && video.creatorName
+            ? video.creatorName
+            : typeof video.authorName === "string"
+              ? video.authorName
+              : "",
+        picture:
+          typeof video.creatorPicture === "string" && video.creatorPicture
+            ? video.creatorPicture
+            : typeof video.authorPicture === "string"
+              ? video.authorPicture
+              : "",
+        pubkey: typeof video.pubkey === "string" ? video.pubkey : "",
+        npub:
+          typeof video.npub === "string" && video.npub
+            ? video.npub
+            : typeof video.authorNpub === "string"
+              ? video.authorNpub
+              : "",
+        shortNpub:
+          typeof video.shortNpub === "string" && video.shortNpub
+            ? video.shortNpub
+            : typeof video.creatorNpub === "string"
+              ? video.creatorNpub
+              : "",
+      };
+
       const videoCard = new VideoCard({
         document: this.document,
         video,
@@ -566,6 +594,7 @@ export class VideoListView {
         postedAt: normalizedPostedAt,
         cardState,
         motionState,
+        identity,
         nsfwContext: {
           isNsfw: video?.isNsfw === true,
           allowNsfw: this.allowNsfw,

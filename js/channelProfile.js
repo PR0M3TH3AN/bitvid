@@ -54,7 +54,8 @@ import { getPlatformLightningAddress } from "./payments/platformAddress.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import {
   ensureWallet,
-  sendPayment as sendWalletPayment
+  sendPayment as sendWalletPayment,
+  resetWalletClient
 } from "./payments/nwcClient.js";
 import {
   prepareStaticModal,
@@ -110,11 +111,13 @@ function decorateChannelVideo(video, app = getApp()) {
     return null;
   }
 
+  let decoratedVideo = video;
+
   if (typeof app?.decorateVideoModeration === "function") {
     try {
       const decorated = app.decorateVideoModeration(video);
       if (decorated && typeof decorated === "object") {
-        return decorated;
+        decoratedVideo = decorated;
       }
     } catch (error) {
       devLogger.warn(
@@ -124,7 +127,21 @@ function decorateChannelVideo(video, app = getApp()) {
     }
   }
 
-  return video;
+  if (typeof app?.decorateVideoCreatorIdentity === "function") {
+    try {
+      const identityDecorated = app.decorateVideoCreatorIdentity(decoratedVideo);
+      if (identityDecorated && typeof identityDecorated === "object") {
+        decoratedVideo = identityDecorated;
+      }
+    } catch (error) {
+      devLogger.warn(
+        "[ChannelProfile] Failed to decorate channel video identity",
+        error,
+      );
+    }
+  }
+
+  return decoratedVideo;
 }
 
 function collectChannelVideos(pubkey, app = getApp()) {
@@ -2562,6 +2579,19 @@ function createZapDependencies({
               error
             });
           }
+          if (
+            typeof error?.message === "string" &&
+            error.message.toLowerCase().includes("timed out")
+          ) {
+            try {
+              resetWalletClient();
+            } catch (resetError) {
+              devLogger?.warn?.(
+                "[zap] Failed to reset wallet client after timeout",
+                resetError
+              );
+            }
+          }
           logZapError(
             "wallet.sendPayment",
             {
@@ -4357,6 +4387,34 @@ export async function renderChannelVideosFromList({
       cardState = "critical";
     }
 
+    const identity = {
+      name:
+        typeof video.creatorName === "string" && video.creatorName
+          ? video.creatorName
+          : typeof video.authorName === "string"
+            ? video.authorName
+            : "",
+      picture:
+        typeof video.creatorPicture === "string" && video.creatorPicture
+          ? video.creatorPicture
+          : typeof video.authorPicture === "string"
+            ? video.authorPicture
+            : "",
+      pubkey: typeof video.pubkey === "string" ? video.pubkey : "",
+      npub:
+        typeof video.npub === "string" && video.npub
+          ? video.npub
+          : typeof video.authorNpub === "string"
+            ? video.authorNpub
+            : "",
+      shortNpub:
+        typeof video.shortNpub === "string" && video.shortNpub
+          ? video.shortNpub
+          : typeof video.creatorNpub === "string"
+            ? video.creatorNpub
+            : "",
+    };
+
     const videoCard = new VideoCard({
       document,
       video,
@@ -4365,6 +4423,7 @@ export async function renderChannelVideosFromList({
       pointerInfo,
       timeAgo,
       cardState,
+      identity,
       capabilities: {
         canEdit,
         canDelete: canEdit,

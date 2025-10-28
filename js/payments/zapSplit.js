@@ -370,6 +370,7 @@ async function processShare({
   const payment = await deps.wallet.sendPayment(invoice.invoice, {
     amountSats,
     zapRequest,
+    lnurl: resolved.url,
   });
 
   return {

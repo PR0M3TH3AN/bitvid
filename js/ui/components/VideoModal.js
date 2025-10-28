@@ -5063,10 +5063,28 @@ export class VideoModal {
         continue;
       }
       const trimmed = candidate.trim();
-      if (trimmed) {
-        picture = trimmed;
+      if (!trimmed) {
+        continue;
+      }
+      const sanitized = sanitizeProfileMediaUrl(trimmed);
+      if (sanitized) {
+        picture = sanitized;
         break;
       }
+    }
+
+    if (!picture && pubkey) {
+      const robohash = `https://robohash.org/${pubkey}`;
+      picture = sanitizeProfileMediaUrl(robohash) || robohash;
+    }
+
+    if (!picture) {
+      const fallbackAvatar =
+        typeof this.DEFAULT_PROFILE_AVATAR === "string" &&
+        this.DEFAULT_PROFILE_AVATAR.trim()
+          ? this.DEFAULT_PROFILE_AVATAR.trim()
+          : "assets/svg/default-profile.svg";
+      picture = sanitizeProfileMediaUrl(fallbackAvatar) || fallbackAvatar;
     }
 
     return {

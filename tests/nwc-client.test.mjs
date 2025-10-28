@@ -13,11 +13,13 @@ await (async () => {
     invoice: "bolt11-invoice",
     amountSats: 123,
     zapRequest: "zap-request-json",
+    lnurl: " https://pay.example/lnurlp/test ",
   });
 
   assert.equal(params.invoice, "bolt11-invoice");
   assert.equal(params.amount, 123_000);
   assert.equal(params.zap_request, "zap-request-json");
+  assert.equal(params.lnurl, "https://pay.example/lnurlp/test");
 })();
 
 await (async () => {
