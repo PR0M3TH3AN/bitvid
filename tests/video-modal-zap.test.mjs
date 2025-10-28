@@ -303,6 +303,23 @@ async function createApp({ splitAndZap }) {
     },
   });
 
+  app.boundVideoModalZapOpenHandler = (event = {}) => {
+    const requiresLogin = Boolean(event?.detail?.requiresLogin);
+    app.pendingModalZapOpen = requiresLogin;
+
+    const openResult = app.zapController?.open({ requiresLogin });
+    if (!openResult) {
+      event?.preventDefault?.();
+      if (!requiresLogin) {
+        app.pendingModalZapOpen = false;
+      }
+      modalStub.closeZapDialog?.({ silent: true, restoreFocus: false });
+      return;
+    }
+
+    app.pendingModalZapOpen = false;
+  };
+
   const creatorAddress = "creator@example.com";
   const platformAddress = "platform@example.com";
   setCachedPlatformLightningAddress(platformAddress);
@@ -420,6 +437,9 @@ await (async () => {
   nostrClient.sessionActor = { pubkey: sessionPubkey, privateKey: "priv" };
 
   app.pubkey = sessionPubkey;
+  app.isUserLoggedIn = () => false;
+  app.zapController.isUserLoggedIn = () => false;
+  app.zapController.hasSessionActor = () => true;
 
   modalStub.zapVisibilityCalls = [];
   app.zapController.setVisibility(true);
@@ -539,6 +559,119 @@ await (async () => {
   assert.equal(lastStatus.tone, "success");
   assert.equal(modalStub.resetForms.length > 0, true, "form should reset after success");
   assert.equal(modalStub.currentComment, "");
+
+  app.destroy();
+})();
+
+await (async () => {
+  // Test: platform receipt failure keeps retry state active and surfaces warning
+  const platformError = new Error("Budget exceeded");
+  const receipts = [
+    {
+      recipientType: "creator",
+      status: "success",
+      amount: 900,
+      address: "creator@example.com",
+      payment: { result: { preimage: "cc".repeat(16) } },
+    },
+    {
+      recipientType: "platform",
+      status: "error",
+      amount: 100,
+      address: "platform@example.com",
+      error: platformError,
+    },
+  ];
+
+  const { app, modalStub, creatorAddress, platformAddress } = await createApp({
+    splitAndZap: async () => ({ receipts }),
+  });
+
+  const pubkeyHex = "c".repeat(64);
+  app.pubkey = pubkeyHex;
+  const normalized = app.normalizeHexPubkey(pubkeyHex);
+  app.nwcSettingsService.cache.set(normalized, {
+    nwcUri: "nostr+walletconnect://example",
+    defaultZap: null,
+    lastChecked: null,
+    version: "",
+  });
+
+  app.currentVideo = {
+    id: "event789",
+    pubkey: pubkeyHex,
+    tags: [["d", "video789"]],
+    content: "",
+    created_at: 1_700_000_100,
+    lightningAddress: creatorAddress,
+  };
+
+  const initialResetCount = modalStub.resetForms.length;
+  const initialCompletedCount = modalStub.completedStates.length;
+
+  await app.zapController.sendZap({ amount: 1000, comment: "Nice work" });
+
+  const lastReceiptEntry = modalStub.receipts[modalStub.receipts.length - 1];
+  assert.equal(
+    lastReceiptEntry.options?.partial,
+    true,
+    "should render zap receipts in partial mode when failures occur",
+  );
+
+  assert.equal(
+    app.zapController.modalZapRetryState?.shares?.length,
+    1,
+    "controller should queue failing receipt for retry",
+  );
+  assert.equal(
+    modalStub.retryState?.pending,
+    true,
+    "modal should display retry pending state for failed share",
+  );
+
+  const lastStatus = modalStub.statusMessages[modalStub.statusMessages.length - 1];
+  assert.equal(lastStatus.tone, "warning", "warning tone should be emitted for receipt failure");
+  assert.ok(
+    /increase your wallet zap limit or reduce the platform fee/i.test(lastStatus.message),
+    "status message should translate budget exceeded guidance",
+  );
+  assert.ok(
+    /Remaining share\(s\): Platform 100 sats\./.test(lastStatus.message),
+    "status message should summarize remaining platform share",
+  );
+
+  assert.equal(
+    modalStub.resetForms.length,
+    initialResetCount,
+    "zap form should not reset while a share remains unpaid",
+  );
+  assert.equal(
+    modalStub.completedStates.length,
+    initialCompletedCount + 1,
+    "zap completion calls should only reflect the in-flight attempt",
+  );
+  assert.equal(
+    modalStub.completedStates[modalStub.completedStates.length - 1],
+    false,
+    "zap modal should not mark zap as completed on partial failure",
+  );
+  assert.equal(
+    app.zapController.modalZapCommentValue,
+    "Nice work",
+    "zap controller should retain comment value for retry",
+  );
+
+  // Ensure platform retry summary references the expected address context
+  assert.equal(
+    app.zapController.modalZapRetryState?.shares?.[0]?.type,
+    "platform",
+    "retry state should track platform share type",
+  );
+  assert.equal(
+    app.zapController.modalZapRetryState?.shares?.[0]?.amount,
+    100,
+    "retry state should preserve remaining platform amount",
+  );
 
   app.destroy();
 })();

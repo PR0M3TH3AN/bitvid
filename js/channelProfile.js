@@ -2965,6 +2965,79 @@ async function handleZapSend(event) {
 
     const { context, result } = attempt;
     const receipts = Array.isArray(result?.receipts) ? result.receipts : [];
+
+    const failureReceipts = receipts.filter((receipt) => {
+      if (!receipt || typeof receipt !== "object") {
+        return false;
+      }
+      if (typeof receipt.status === "string" && receipt.status !== "success") {
+        return true;
+      }
+      return Boolean(receipt.error);
+    });
+
+    if (failureReceipts.length) {
+      renderZapReceipts(receipts, { partial: true });
+
+      const failureShares = failureReceipts
+        .map((receipt) => {
+          const amount = Math.max(0, Math.round(Number(receipt.amount) || 0));
+          return {
+            type: receipt.recipientType || receipt.type || "creator",
+            amount,
+            address:
+              typeof receipt.address === "string" && receipt.address
+                ? receipt.address
+                : undefined,
+            error: receipt.error
+          };
+        })
+        .filter((share) => share.amount > 0);
+
+      if (failureShares.length) {
+        markZapRetryPending(failureShares);
+      }
+
+      const shareSummary = failureShares
+        .map((share) => `${describeShareType(share.type)} ${share.amount} sats`)
+        .join(", ");
+
+      const failureMessage = failureReceipts
+        .map((receipt) => {
+          if (typeof receipt?.error?.message === "string") {
+            return receipt.error.message;
+          }
+          if (typeof receipt?.error === "string") {
+            return receipt.error;
+          }
+          return "";
+        })
+        .find((message) => message);
+
+      const isBudgetExceeded =
+        typeof failureMessage === "string" && /budget exceeded/i.test(failureMessage);
+
+      let warningMessage;
+      if (isBudgetExceeded) {
+        warningMessage =
+          "Budget exceeded. Increase your wallet zap limit or reduce the platform fee, then retry the remaining shares.";
+      } else if (failureMessage) {
+        warningMessage = failureMessage;
+      } else {
+        warningMessage =
+          "Some zap shares failed. Press Send again to retry the remaining shares.";
+      }
+
+      if (shareSummary) {
+        const normalized = warningMessage.replace(/\.*$/, "");
+        warningMessage = `${normalized}. Remaining share(s): ${shareSummary}.`;
+      }
+
+      setZapStatus(warningMessage, "warning");
+      app?.showError?.(warningMessage);
+      return;
+    }
+
     renderZapReceipts(receipts, { partial: false });
 
     const creatorShare = context.shares.creatorShare;
