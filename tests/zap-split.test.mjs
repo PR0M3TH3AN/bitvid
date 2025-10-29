@@ -78,6 +78,12 @@ globalThis.fetch = async () => {
 const { splitAndZap } = await import("../js/payments/zapSplit.js");
 const platformAddressModule = await import("../js/payments/platformAddress.js");
 const { __resetPlatformAddressCache } = platformAddressModule;
+const lnurlModule = await import("../js/payments/lnurl.js");
+const {
+  encodeLnurlBech32,
+  resolveLightningAddress: baseResolveLightningAddress,
+} = lnurlModule;
+const { decodeLnurlBech32 } = lnurlModule.__TESTING__;
 const { nostrClient } = await import("../js/nostr.js");
 
 const DEFAULT_WALLET_RELAYS = [
@@ -102,11 +108,10 @@ function createDeps({
     deps: {
       lnurl: {
         resolveLightningAddress(address) {
-          return {
-            type: address.includes("platform") ? "platform" : "creator",
-            url: `https://lnurl.test/${address}`,
-            address,
-          };
+          return { ...baseResolveLightningAddress(address) };
+        },
+        encodeLnurlBech32(url) {
+          return encodeLnurlBech32(url);
         },
         async fetchPayServiceData(url) {
           const isPlatform = url.includes("platform");
@@ -193,6 +198,9 @@ async function testSplitMath() {
     deps
   );
 
+  const creatorResolved = baseResolveLightningAddress(videoEvent.lightningAddress);
+  const platformResolved = baseResolveLightningAddress("platform@example.com");
+
   assert.equal(result.totalAmount, 1000);
   assert.equal(result.creatorShare, 900);
   assert.equal(result.platformShare, 100);
@@ -227,11 +235,103 @@ async function testSplitMath() {
     "relays tag should match wallet relay list"
   );
 
+  const creatorLnurlTag = parsedZap.tags.find(
+    (tag) => Array.isArray(tag) && tag[0] === "lnurl"
+  );
+  assert(creatorLnurlTag, "creator zap should include lnurl tag");
+  assert.equal(creatorLnurlTag[1], creatorLnurlTag[1].toLowerCase());
+  assert(creatorLnurlTag[1].startsWith("lnurl"));
+  assert.equal(
+    decodeLnurlBech32(creatorLnurlTag[1]),
+    creatorResolved.url
+  );
+
   const platformReceipt = result.receipts[1];
   assert.equal(platformReceipt.recipientType, "platform");
   assert.equal(platformReceipt.status, "success");
 
+  const platformZap = JSON.parse(platformReceipt.zapRequest);
+  const platformLnurlTag = platformZap.tags.find(
+    (tag) => Array.isArray(tag) && tag[0] === "lnurl"
+  );
+  assert(platformLnurlTag, "platform zap should include lnurl tag");
+  assert.equal(platformLnurlTag[1], platformLnurlTag[1].toLowerCase());
+  assert(platformLnurlTag[1].startsWith("lnurl"));
+  assert.equal(
+    decodeLnurlBech32(platformLnurlTag[1]),
+    platformResolved.url
+  );
+
   delete globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
+}
+
+async function testBech32LightningAddressZapTag() {
+  const previousOverride = globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
+  globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = 0;
+
+  const { deps } = createDeps();
+  const callbackUrl = "https://lnurl.example/api/callback";
+  const bech32Address = encodeLnurlBech32(callbackUrl);
+
+  const videoEvent = {
+    id: "event-id",
+    pubkey: "c".repeat(64),
+    lightningAddress: bech32Address,
+    tags: [["d", "pointer"]],
+    kind: 30078,
+  };
+
+  const result = await splitAndZap({ videoEvent, amountSats: 500, comment: "Bech32" }, deps);
+
+  assert.equal(result.platformShare, 0);
+  assert.equal(result.receipts.length, 1);
+
+  const parsedZap = JSON.parse(result.receipts[0].zapRequest);
+  const lnurlTag = parsedZap.tags.find((tag) => Array.isArray(tag) && tag[0] === "lnurl");
+  assert(lnurlTag, "bech32 address zap should include lnurl tag");
+  assert.equal(lnurlTag[1], lnurlTag[1].toLowerCase());
+  assert.equal(lnurlTag[1], bech32Address.toLowerCase());
+  assert.equal(decodeLnurlBech32(lnurlTag[1]), callbackUrl);
+
+  if (previousOverride === undefined) {
+    delete globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
+  } else {
+    globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = previousOverride;
+  }
+}
+
+async function testUrlLightningAddressZapTag() {
+  const previousOverride = globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
+  globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = 0;
+
+  const { deps } = createDeps();
+  const directUrl = "https://direct-lnurl.example/api/pay";
+
+  const videoEvent = {
+    id: "event-id",
+    pubkey: "c".repeat(64),
+    lightningAddress: directUrl,
+    tags: [["d", "pointer"]],
+    kind: 30078,
+  };
+
+  const result = await splitAndZap({ videoEvent, amountSats: 800, comment: "Direct" }, deps);
+
+  assert.equal(result.platformShare, 0);
+  assert.equal(result.receipts.length, 1);
+
+  const parsedZap = JSON.parse(result.receipts[0].zapRequest);
+  const lnurlTag = parsedZap.tags.find((tag) => Array.isArray(tag) && tag[0] === "lnurl");
+  assert(lnurlTag, "direct url zap should include lnurl tag");
+  assert.equal(lnurlTag[1], lnurlTag[1].toLowerCase());
+  assert(lnurlTag[1].startsWith("lnurl"));
+  assert.equal(decodeLnurlBech32(lnurlTag[1]), directUrl);
+
+  if (previousOverride === undefined) {
+    delete globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
+  } else {
+    globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = previousOverride;
+  }
 }
 
 async function testWaitsForPoolBeforePlatformLookup() {
@@ -366,9 +466,13 @@ async function testStringFeeOverride() {
 async function testPlatformShareFailure() {
   globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = 10;
 
+  const platformCallbackMarker = `${
+    baseResolveLightningAddress("platform@example.com").url
+  }/callback`;
+
   const { deps, getSendCalls } = createDeps({
     sendPaymentImplementation: ({ invoice, amountSats, zapRequest }) => {
-      if (invoice.includes("platform@example.com")) {
+      if (invoice.includes(platformCallbackMarker)) {
         const error = new Error("Budget exceeded");
         error.code = "budget_exceeded";
         throw error;
@@ -492,6 +596,8 @@ async function testWalletFailure() {
 }
 
 await testSplitMath();
+await testBech32LightningAddressZapTag();
+await testUrlLightningAddressZapTag();
 await testWaitsForPoolBeforePlatformLookup();
 await testLnurlBounds();
 await testMissingAddress();
