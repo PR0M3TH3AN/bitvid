@@ -131,17 +131,18 @@ test("publishComment prefers active signer when available", async () => {
   assert.equal(signerCalls.length, 1, "active signer should sign the event once");
 
   const eventTags = buildCommentEventTags(signerCalls[0]);
-  const eTags = eventTags.filter((tag) => Array.isArray(tag) && tag[0] === "e");
-  const aTags = eventTags.filter((tag) => Array.isArray(tag) && tag[0] === "a");
   assert.deepEqual(
-    eTags,
-    [["e", "parent-comment-id"]],
-    "comment event should include parent pointer but omit the addressable video id",
-  );
-  assert.deepEqual(
-    aTags,
-    [["a", "30078:deadbeef:clip", "wss://definition-relay"]],
-    "comment event should target the video definition via #a tag",
+    eventTags,
+    [
+      ["A", "30078:deadbeef:clip", "wss://definition-relay"],
+      ["K", "30078"],
+      ["P", "deadbeef", "wss://definition-relay"],
+      ["a", "30078:deadbeef:clip", "wss://definition-relay"],
+      ["e", "parent-comment-id", "thread-participant"],
+      ["k", String(COMMENT_EVENT_KIND)],
+      ["p", "thread-participant"],
+    ],
+    "comment event should include NIP-22 root tags while preserving fallback markers",
   );
 });
 
@@ -216,18 +217,17 @@ test("publishComment accepts legacy targets with only an event id", async () => 
 
   const publishedEvent = publishCalls[0]?.event;
   const tags = buildCommentEventTags(publishedEvent);
-  const eTags = tags.filter((tag) => Array.isArray(tag) && tag[0] === "e");
-  const aTags = tags.filter((tag) => Array.isArray(tag) && tag[0] === "a");
-
   assert.deepEqual(
-    eTags,
+    tags,
     [
+      ["E", "legacy-event-id"],
+      ["K", String(COMMENT_EVENT_KIND)],
       ["e", "legacy-event-id"],
       ["e", "parent-legacy"],
+      ["k", String(COMMENT_EVENT_KIND)],
     ],
-    "legacy publish should target the video event id and parent comment",
+    "legacy publish should emit uppercase root metadata with lowercase fallbacks",
   );
-  assert.deepEqual(aTags, [], "no address tag should be emitted when unavailable");
 });
 
 test("publishComment emits only video event #e tag when address and parent are absent", async () => {
@@ -254,15 +254,14 @@ test("publishComment emits only video event #e tag when address and parent are a
 
   const publishedEvent = publishCalls[0]?.event;
   const tags = buildCommentEventTags(publishedEvent);
-  const eTags = tags.filter((tag) => Array.isArray(tag) && tag[0] === "e");
-  const aTags = tags.filter((tag) => Array.isArray(tag) && tag[0] === "a");
-
   assert.deepEqual(
-    eTags,
-    [["e", "video-only"]],
-    "event should carry the video pointer via #e",
+    tags,
+    [
+      ["E", "video-only"],
+      ["e", "video-only"],
+    ],
+    "event should include an uppercase root pointer along with the legacy #e tag",
   );
-  assert.deepEqual(aTags, [], "event should omit #a tags when no address is provided");
 });
 
 test("listVideoComments builds filters with #e primary and #a secondary", async () => {

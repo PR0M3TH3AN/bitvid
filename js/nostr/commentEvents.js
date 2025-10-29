@@ -242,6 +242,140 @@ function normalizeCommentTarget(targetInput = {}, overrides = {}) {
       ? threadParticipantRelay.trim()
       : "";
 
+  const rootIdentifier = pickString(
+    options.rootIdentifier,
+    target.rootIdentifier,
+    options.rootPointer,
+    target.rootPointer,
+  );
+  const rootIdentifierRelay = pickString(
+    options.rootIdentifierRelay,
+    target.rootIdentifierRelay,
+  );
+
+  const parentIdentifier = pickString(
+    options.parentIdentifier,
+    target.parentIdentifier,
+  );
+  const parentIdentifierRelay = pickString(
+    options.parentIdentifierRelay,
+    target.parentIdentifierRelay,
+  );
+
+  const normalizedRootIdentifier =
+    typeof rootIdentifier === "string" ? rootIdentifier.trim() : "";
+  const normalizedRootIdentifierRelay =
+    typeof rootIdentifierRelay === "string" ? rootIdentifierRelay.trim() : "";
+  const normalizedParentIdentifier =
+    typeof parentIdentifier === "string" ? parentIdentifier.trim() : "";
+  const normalizedParentIdentifierRelay =
+    typeof parentIdentifierRelay === "string"
+      ? parentIdentifierRelay.trim()
+      : "";
+
+  const definitionSegments = normalizedVideoDefinitionAddress
+    ? normalizedVideoDefinitionAddress.split(":")
+    : [];
+  const derivedDefinitionKind = definitionSegments[0] || "";
+  const derivedDefinitionPubkey = definitionSegments[1] || "";
+
+  const rootKindCandidate = pickString(
+    options.rootKind,
+    target.rootKind,
+    options.videoKind,
+    target.videoKind,
+    derivedDefinitionKind,
+  );
+  let normalizedRootKind =
+    typeof rootKindCandidate === "string" ? rootKindCandidate.trim() : "";
+
+  const parentKindCandidate = pickString(
+    options.parentKind,
+    target.parentKind,
+  );
+  let normalizedParentKind =
+    typeof parentKindCandidate === "string" ? parentKindCandidate.trim() : "";
+
+  if (!normalizedParentKind) {
+    if (normalizedParentCommentId) {
+      normalizedParentKind = String(COMMENT_EVENT_KIND);
+    } else if (normalizedRootKind) {
+      normalizedParentKind = normalizedRootKind;
+    } else if (derivedDefinitionKind) {
+      normalizedParentKind = derivedDefinitionKind;
+    }
+  }
+
+  if (!normalizedRootKind) {
+    normalizedRootKind = normalizedParentKind;
+  }
+
+  const rootAuthorCandidate = pickString(
+    options.rootAuthorPubkey,
+    target.rootAuthorPubkey,
+    derivedDefinitionPubkey,
+  );
+  let normalizedRootAuthorPubkey =
+    typeof rootAuthorCandidate === "string" ? rootAuthorCandidate.trim() : "";
+
+  const parentAuthorCandidate = pickString(
+    options.parentAuthorPubkey,
+    target.parentAuthorPubkey,
+  );
+  let normalizedParentAuthorPubkey =
+    typeof parentAuthorCandidate === "string"
+      ? parentAuthorCandidate.trim()
+      : "";
+  if (!normalizedParentAuthorPubkey) {
+    normalizedParentAuthorPubkey = normalizedThreadParticipantPubkey;
+  }
+
+  if (!normalizedRootAuthorPubkey) {
+    if (!normalizedParentCommentId && normalizedParentAuthorPubkey) {
+      normalizedRootAuthorPubkey = normalizedParentAuthorPubkey;
+    }
+  }
+
+  const rootAuthorRelayCandidate = pickString(
+    options.rootAuthorRelay,
+    target.rootAuthorRelay,
+  );
+  let normalizedRootAuthorRelay =
+    typeof rootAuthorRelayCandidate === "string"
+      ? rootAuthorRelayCandidate.trim()
+      : "";
+  if (!normalizedRootAuthorRelay && normalizedVideoDefinitionRelay) {
+    normalizedRootAuthorRelay = normalizedVideoDefinitionRelay;
+  }
+
+  const parentAuthorRelayCandidate = pickString(
+    options.parentAuthorRelay,
+    target.parentAuthorRelay,
+  );
+  let normalizedParentAuthorRelay =
+    typeof parentAuthorRelayCandidate === "string"
+      ? parentAuthorRelayCandidate.trim()
+      : "";
+  if (!normalizedParentAuthorRelay) {
+    normalizedParentAuthorRelay = normalizedThreadParticipantRelay;
+  }
+
+  if (!normalizedRootAuthorRelay && !normalizedParentCommentId) {
+    normalizedRootAuthorRelay = normalizedParentAuthorRelay;
+  }
+
+  if (!normalizedRootAuthorPubkey && derivedDefinitionPubkey) {
+    normalizedRootAuthorPubkey = derivedDefinitionPubkey;
+  }
+
+  if (!normalizedParentAuthorPubkey && !normalizedParentCommentId) {
+    normalizedParentAuthorPubkey = normalizedRootAuthorPubkey;
+  }
+
+  if (!normalizedParentAuthorRelay && !normalizedParentCommentId) {
+    normalizedParentAuthorRelay = normalizedRootAuthorRelay;
+  }
+
   if (!normalizedVideoEventId) {
     return null;
   }
@@ -255,6 +389,16 @@ function normalizeCommentTarget(targetInput = {}, overrides = {}) {
     parentCommentRelay: normalizedParentCommentRelay,
     threadParticipantPubkey: normalizedThreadParticipantPubkey,
     threadParticipantRelay: normalizedThreadParticipantRelay,
+    rootIdentifier: normalizedRootIdentifier,
+    rootIdentifierRelay: normalizedRootIdentifierRelay,
+    parentIdentifier: normalizedParentIdentifier,
+    parentIdentifierRelay: normalizedParentIdentifierRelay,
+    rootKind: normalizedRootKind,
+    rootAuthorPubkey: normalizedRootAuthorPubkey,
+    rootAuthorRelay: normalizedRootAuthorRelay,
+    parentKind: normalizedParentKind,
+    parentAuthorPubkey: normalizedParentAuthorPubkey,
+    parentAuthorRelay: normalizedParentAuthorRelay,
   };
 }
 
@@ -453,10 +597,20 @@ export async function publishComment(
     videoEventRelay: descriptor.videoEventRelay,
     videoDefinitionAddress: descriptor.videoDefinitionAddress,
     videoDefinitionRelay: descriptor.videoDefinitionRelay,
+    rootIdentifier: descriptor.rootIdentifier,
+    rootIdentifierRelay: descriptor.rootIdentifierRelay,
     parentCommentId: descriptor.parentCommentId,
     parentCommentRelay: descriptor.parentCommentRelay,
     threadParticipantPubkey: descriptor.threadParticipantPubkey,
     threadParticipantRelay: descriptor.threadParticipantRelay,
+    rootKind: descriptor.rootKind,
+    rootAuthorPubkey: descriptor.rootAuthorPubkey,
+    rootAuthorRelay: descriptor.rootAuthorRelay,
+    parentKind: descriptor.parentKind,
+    parentAuthorPubkey: descriptor.parentAuthorPubkey,
+    parentAuthorRelay: descriptor.parentAuthorRelay,
+    parentIdentifier: descriptor.parentIdentifier,
+    parentIdentifierRelay: descriptor.parentIdentifierRelay,
     additionalTags,
     content,
   });

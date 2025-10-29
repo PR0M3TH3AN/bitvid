@@ -10,29 +10,29 @@ import {
 const VIDEO_COMMENT_KIND =
   getNostrEventSchema(NOTE_TYPES.VIDEO_COMMENT)?.kind ?? 1111;
 
-test("buildCommentEvent references the video definition when available", () => {
+test("buildCommentEvent emits NIP-22 root metadata while keeping legacy fallbacks", () => {
   const event = buildCommentEvent({
     pubkey: "commenter",
     created_at: 1700000200,
     videoEventId: "video-event-id",
-    videoEventRelay: "wss://relay.example",
     videoDefinitionAddress: "30078:deadbeefcafebabe:clip-1",
     threadParticipantPubkey: "deadbeefcafebabe",
     content: "Great \ud800video!",
   });
 
   assert.equal(event.kind, VIDEO_COMMENT_KIND);
-
-  const addressTags = event.tags.filter((tag) => Array.isArray(tag) && tag[0] === "a");
-  assert.deepEqual(addressTags, [["a", "30078:deadbeefcafebabe:clip-1"]]);
-
-  const participantTags = event.tags.filter((tag) => Array.isArray(tag) && tag[0] === "p");
-  assert.deepEqual(participantTags, [["p", "deadbeefcafebabe"]]);
-
+  assert.deepStrictEqual(event.tags, [
+    ["A", "30078:deadbeefcafebabe:clip-1"],
+    ["K", "30078"],
+    ["P", "deadbeefcafebabe"],
+    ["a", "30078:deadbeefcafebabe:clip-1"],
+    ["k", "30078"],
+    ["p", "deadbeefcafebabe"],
+  ]);
   assert.equal(event.content, "Great video!");
 });
 
-test("buildCommentEvent includes parent pointers for threaded replies", () => {
+test("buildCommentEvent includes parent pointers, kinds, and authors for replies", () => {
   const event = buildCommentEvent({
     pubkey: "commenter",
     created_at: 1700000201,
@@ -44,18 +44,18 @@ test("buildCommentEvent includes parent pointers for threaded replies", () => {
   });
 
   assert.equal(event.kind, VIDEO_COMMENT_KIND);
-
-  const eventTags = event.tags.filter((tag) => Array.isArray(tag) && tag[0] === "e");
-  assert.deepEqual(eventTags, [["e", "parent-comment-id"]]);
-
-  const addressTags = event.tags.filter((tag) => Array.isArray(tag) && tag[0] === "a");
-  assert.deepEqual(addressTags, [["a", "30078:deadbeefcafebabe:clip-1"]]);
-
-  const participantTags = event.tags.filter((tag) => Array.isArray(tag) && tag[0] === "p");
-  assert.deepEqual(participantTags, [["p", "parent-author"]]);
+  assert.deepStrictEqual(event.tags, [
+    ["A", "30078:deadbeefcafebabe:clip-1"],
+    ["K", "30078"],
+    ["P", "deadbeefcafebabe"],
+    ["a", "30078:deadbeefcafebabe:clip-1"],
+    ["e", "parent-comment-id", "parent-author"],
+    ["k", String(VIDEO_COMMENT_KIND)],
+    ["p", "parent-author"],
+  ]);
 });
 
-test("buildCommentEvent normalizes optional relays and preserves additional tags", () => {
+test("buildCommentEvent normalizes relays and preserves explicit overrides", () => {
   const event = buildCommentEvent({
     pubkey: "author",
     created_at: 1700000300,
@@ -73,8 +73,12 @@ test("buildCommentEvent normalizes optional relays and preserves additional tags
 
   assert.equal(event.kind, VIDEO_COMMENT_KIND);
   assert.deepStrictEqual(event.tags, [
+    ["A", "30078:deadbeefcafebabe:clip-2", "wss://video.def"],
+    ["K", "30078"],
+    ["P", "deadbeefcafebabe", "wss://video.def"],
     ["a", "30078:deadbeefcafebabe:clip-2", "wss://video.def"],
-    ["e", "root-comment", "wss://parent"],
+    ["e", "root-comment", "wss://parent", "cafecafe"],
+    ["k", String(VIDEO_COMMENT_KIND)],
     ["p", "cafecafe", "wss://profile"],
     ["client", "bitvid"],
     ["p", "cafecafe", "wss://override"],
@@ -82,21 +86,50 @@ test("buildCommentEvent normalizes optional relays and preserves additional tags
   assert.equal(event.content, " Appreciated! ");
 });
 
-test("buildCommentEvent falls back to the video event when no definition address is provided", () => {
+test("buildCommentEvent falls back to event pointers when no address is supplied", () => {
   const event = buildCommentEvent({
     pubkey: "commenter",
     created_at: 1700000400,
-    videoEventId: "legacy-event", 
-    videoEventRelay: "wss://legacy.example", 
+    videoEventId: "legacy-event",
+    videoEventRelay: "wss://legacy.example",
     threadParticipantPubkey: "legacy-pubkey",
+    rootKind: "1063",
+    rootAuthorPubkey: "legacy-author",
     content: "Legacy thread support",
   });
 
   assert.equal(event.kind, VIDEO_COMMENT_KIND);
+  assert.deepStrictEqual(event.tags, [
+    ["E", "legacy-event", "wss://legacy.example", "legacy-author"],
+    ["K", "1063"],
+    ["P", "legacy-author"],
+    ["e", "legacy-event", "wss://legacy.example"],
+    ["k", "1063"],
+    ["p", "legacy-pubkey"],
+  ]);
+});
 
-  const eventTags = event.tags.filter((tag) => Array.isArray(tag) && tag[0] === "e");
-  assert.deepEqual(eventTags, [["e", "legacy-event", "wss://legacy.example"]]);
+test("buildCommentEvent accepts partial metadata for parent overrides", () => {
+  const event = buildCommentEvent({
+    pubkey: "reply-author",
+    created_at: 1700000500,
+    videoEventId: "file-event",
+    rootKind: "1063",
+    parentCommentId: "parent-comment",
+    parentCommentRelay: "wss://parent",
+    parentKind: "1111",
+    parentAuthorPubkey: "parent-only",
+    parentAuthorRelay: "wss://parent-author",
+    content: "Reply with sparse data",
+  });
 
-  const participantTags = event.tags.filter((tag) => Array.isArray(tag) && tag[0] === "p");
-  assert.deepEqual(participantTags, [["p", "legacy-pubkey"]]);
+  assert.equal(event.kind, VIDEO_COMMENT_KIND);
+  assert.deepStrictEqual(event.tags, [
+    ["E", "file-event"],
+    ["K", "1063"],
+    ["e", "file-event"],
+    ["e", "parent-comment", "wss://parent", "parent-only"],
+    ["k", "1111"],
+    ["p", "parent-only", "wss://parent-author"],
+  ]);
 });
