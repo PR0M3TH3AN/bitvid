@@ -569,6 +569,84 @@ await (async () => {
 })();
 
 await (async () => {
+  // Test: validation skipped receipts do not trigger warnings
+  const receipts = [
+    {
+      recipientType: "creator",
+      status: "success",
+      amount: 600,
+      address: "creator@example.com",
+      payment: { result: { preimage: "dd".repeat(16) } },
+      validation: {
+        status: "skipped",
+        reason: "Zap request unavailable",
+      },
+    },
+    {
+      recipientType: "platform",
+      status: "success",
+      amount: 100,
+      address: "platform@example.com",
+      validation: {
+        status: "skipped",
+        reason: "Zap request unavailable",
+      },
+    },
+  ];
+
+  const { app, modalStub, creatorAddress } = await createApp({
+    splitAndZap: async () => ({ receipts }),
+  });
+
+  const pubkeyHex = "d".repeat(64);
+  app.pubkey = pubkeyHex;
+  const normalized = app.normalizeHexPubkey(pubkeyHex);
+  app.nwcSettingsService.cache.set(normalized, {
+    nwcUri: "nostr+walletconnect://example",
+    defaultZap: null,
+    lastChecked: null,
+    version: "",
+  });
+
+  app.currentVideo = {
+    id: "event901",
+    pubkey: pubkeyHex,
+    tags: [["d", "video901"]],
+    content: "",
+    created_at: 1_700_000_150,
+    lightningAddress: creatorAddress,
+  };
+
+  const initialWarningCount = modalStub.statusMessages.filter(
+    (entry) => entry.tone === "warning"
+  ).length;
+
+  await app.zapController.sendZap({ amount: 700, comment: "No receipt support" });
+
+  const warningsAfter = modalStub.statusMessages.filter(
+    (entry) => entry.tone === "warning"
+  ).length;
+  assert.equal(
+    warningsAfter,
+    initialWarningCount,
+    "skipped validation should not emit new warnings",
+  );
+
+  const lastStatus = modalStub.statusMessages[modalStub.statusMessages.length - 1];
+  assert.equal(lastStatus.tone, "success", "zap should report success when validation skipped");
+  assert(!/awaiting validated zap receipt/i.test(lastStatus.message));
+
+  const lastReceiptEntry = modalStub.receipts[modalStub.receipts.length - 1];
+  assert.equal(
+    lastReceiptEntry?.options?.partial,
+    false,
+    "receipt rendering should complete when validation is skipped",
+  );
+
+  app.destroy();
+})();
+
+await (async () => {
   // Test: platform receipt failure keeps retry state active and surfaces warning
   const platformError = new Error("Budget exceeded");
   const receipts = [

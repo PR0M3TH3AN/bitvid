@@ -3532,7 +3532,14 @@ export class VideoModal {
       if (status !== "success" && status !== "") {
         return false;
       }
-      return receipt?.validation?.status !== "passed";
+      const validationStatus =
+        typeof receipt.validation?.status === "string"
+          ? receipt.validation.status.toLowerCase()
+          : "";
+      if (!validationStatus || validationStatus === "skipped") {
+        return false;
+      }
+      return validationStatus !== "passed";
     });
 
     const renderReceiptItem = ({ receipt, tone }) => {

@@ -341,9 +341,12 @@ export default class ZapController {
         if (status !== "success" && status !== "") {
           return false;
         }
-        const validationStatus = receipt.validation?.status;
-        if (!validationStatus) {
-          return true;
+        const validationStatus =
+          typeof receipt.validation?.status === "string"
+            ? receipt.validation.status.toLowerCase()
+            : "";
+        if (!validationStatus || validationStatus === "skipped") {
+          return false;
         }
         return validationStatus !== "passed";
       });
