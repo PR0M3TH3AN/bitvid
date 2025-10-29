@@ -332,6 +332,60 @@ export default class ZapController {
         return;
       }
 
+      const unvalidatedReceipts = receipts.filter((receipt) => {
+        if (!receipt || typeof receipt !== "object") {
+          return false;
+        }
+        const status =
+          typeof receipt.status === "string" ? receipt.status.toLowerCase() : "success";
+        if (status !== "success" && status !== "") {
+          return false;
+        }
+        const validationStatus =
+          typeof receipt.validation?.status === "string"
+            ? receipt.validation.status.toLowerCase()
+            : "";
+        if (!validationStatus || validationStatus === "skipped") {
+          return false;
+        }
+        return validationStatus !== "passed";
+      });
+
+      if (unvalidatedReceipts.length) {
+        this.videoModal?.renderZapReceipts(receipts, { partial: true });
+
+        const warningSummary = unvalidatedReceipts
+          .map((receipt) => {
+            const type = receipt.recipientType || receipt.type || "creator";
+            const label =
+              type === "platform" ? "Platform" : type === "creator" ? "Creator" : "Lightning";
+            const address =
+              typeof receipt.address === "string" && receipt.address
+                ? ` (${receipt.address})`
+                : "";
+            const reason =
+              typeof receipt.validation?.reason === "string" && receipt.validation.reason
+                ? ` — ${receipt.validation.reason}`
+                : " — Awaiting compliant receipt.";
+            return `${label}${address}${reason}`;
+          })
+          .join(" ");
+
+        const warningMessage = warningSummary
+          ? `Awaiting validated zap receipt. ${warningSummary}`
+          : "Awaiting validated zap receipt from the recipient.";
+
+        this.videoModal?.setZapStatus(warningMessage, "warning");
+        this.notifyError(warningMessage);
+
+        this.resetRetryState();
+        this.modalZapCommentValue = "";
+        this.videoModal?.resetZapForm({ amount: "", comment: "" });
+        this.videoModal?.setZapCompleted(true);
+        this.applyDefaultAmount();
+        return;
+      }
+
       this.videoModal?.renderZapReceipts(receipts, { partial: false });
 
       const creatorShare = context.shares.creatorShare;

@@ -13,6 +13,7 @@ import { ensureWallet, sendPayment } from "./nwcClient.js";
 import { getPlatformLightningAddress } from "./platformAddress.js";
 import { RELAY_URLS } from "../nostr/toolkit.js";
 import { userLogger } from "../utils/logger.js";
+import { validateZapReceipt } from "./zapReceiptValidator.js";
 import {
   clampPercent,
   parsePercentValue,
@@ -31,6 +32,7 @@ const DEFAULT_DEPS = Object.freeze({
   }),
   wallet: Object.freeze({ ensureWallet, sendPayment }),
   platformAddress: Object.freeze({ getPlatformLightningAddress }),
+  validator: Object.freeze({ validateZapReceipt }),
 });
 
 const globalScope =
@@ -209,7 +211,17 @@ function mergeDependencies(overrides = {}) {
     ...(overrides.platformAddress || {}),
   };
 
-  return { lnurl: lnurlDeps, wallet: walletDeps, platformAddress: platformDeps };
+  const validatorDeps = {
+    ...DEFAULT_DEPS.validator,
+    ...(overrides.validator || {}),
+  };
+
+  return {
+    lnurl: lnurlDeps,
+    wallet: walletDeps,
+    platformAddress: platformDeps,
+    validator: validatorDeps,
+  };
 }
 
 function getNostrTools() {
@@ -443,7 +455,35 @@ async function processShare({
       lnurl: lnurlTag,
     });
 
-    return {
+    let validation = null;
+    if (typeof deps.validator.validateZapReceipt === "function") {
+      try {
+        validation = await deps.validator.validateZapReceipt(
+          {
+            zapRequest,
+            amountSats,
+            metadata,
+            invoice,
+            payment,
+            lnurl: resolved,
+            recipientType,
+            address,
+          }
+        );
+      } catch (validationError) {
+        userLogger.warn(
+          `[zapSplit] Zap receipt validation threw for ${recipientType} share.`,
+          validationError
+        );
+        validation = {
+          status: "failed",
+          reason: "Zap receipt validation encountered an unexpected error.",
+          event: null,
+        };
+      }
+    }
+
+    const receipt = {
       recipientType,
       address,
       amount: amountSats,
@@ -454,6 +494,17 @@ async function processShare({
       zapRequest,
       status: "success",
     };
+
+    if (validation && typeof validation === "object") {
+      receipt.validation = validation;
+      if (validation.status === "passed" && validation.event) {
+        receipt.validatedEvent = validation.event;
+      } else if (validation.status === "failed") {
+        receipt.validationFailed = true;
+      }
+    }
+
+    return receipt;
   } catch (error) {
     userLogger.warn(
       `[zapSplit] Failed to send ${recipientType} zap share.`,
