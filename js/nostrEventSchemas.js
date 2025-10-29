@@ -242,7 +242,13 @@ const BASE_SCHEMAS = {
     videoEventTagName: "e",
     videoDefinitionTagName: "a",
     parentCommentTagName: "e",
-    participantTagName: "p",
+    parentAuthorTagName: "p",
+    rootEventPointerTagName: "E",
+    rootDefinitionPointerTagName: "A",
+    rootIdentifierPointerTagName: "I",
+    rootKindTagName: "K",
+    rootAuthorTagName: "P",
+    parentKindTagName: "k",
     appendTags: DEFAULT_APPEND_TAGS,
     content: {
       format: "text",
@@ -879,88 +885,212 @@ export function buildCommentEvent({
   videoEventRelay = "",
   videoDefinitionAddress = "",
   videoDefinitionRelay = "",
+  rootIdentifier = "",
+  rootIdentifierRelay = "",
   parentCommentId = "",
   parentCommentRelay = "",
   threadParticipantPubkey = "",
   threadParticipantRelay = "",
+  rootKind,
+  rootAuthorPubkey = "",
+  rootAuthorRelay = "",
+  parentKind,
+  parentAuthorPubkey = "",
+  parentAuthorRelay = "",
+  parentIdentifier = "",
+  parentIdentifierRelay = "",
   additionalTags = [],
   content = "",
 }) {
   const schema = getNostrEventSchema(NOTE_TYPES.VIDEO_COMMENT);
   const tags = [];
 
-  const normalizedVideoEventId =
-    typeof videoEventId === "string" ? videoEventId.trim() : "";
-  const normalizedVideoEventRelay =
-    typeof videoEventRelay === "string" ? videoEventRelay.trim() : "";
+  const normalizeString = (value) =>
+    typeof value === "string" ? value.trim() : "";
+
+  const normalizedVideoEventId = normalizeString(videoEventId);
+  const normalizedVideoEventRelay = normalizeString(videoEventRelay);
+  const normalizedVideoDefinitionAddress = normalizeString(videoDefinitionAddress);
+  const normalizedVideoDefinitionRelay = normalizeString(videoDefinitionRelay);
+  const normalizedRootIdentifier = normalizeString(rootIdentifier);
+  const normalizedRootIdentifierRelay = normalizeString(rootIdentifierRelay);
+  const normalizedParentCommentId = normalizeString(parentCommentId);
+  const normalizedParentCommentRelay = normalizeString(parentCommentRelay);
+  const normalizedParentIdentifier = normalizeString(parentIdentifier);
+  const normalizedParentIdentifierRelay = normalizeString(parentIdentifierRelay);
+  const normalizedThreadParticipantPubkey = normalizeString(
+    threadParticipantPubkey,
+  );
+  const normalizedThreadParticipantRelay = normalizeString(
+    threadParticipantRelay,
+  );
+
+  let resolvedRootKind = normalizeString(rootKind);
+  let resolvedRootAuthorPubkey = normalizeString(rootAuthorPubkey);
+  let resolvedRootAuthorRelay = normalizeString(rootAuthorRelay);
+
+  if (normalizedVideoDefinitionAddress) {
+    const definitionSegments = normalizedVideoDefinitionAddress.split(":");
+    if (!resolvedRootKind && definitionSegments[0]) {
+      resolvedRootKind = definitionSegments[0];
+    }
+    if (!resolvedRootAuthorPubkey && definitionSegments[1]) {
+      resolvedRootAuthorPubkey = definitionSegments[1];
+    }
+    if (!resolvedRootAuthorRelay && normalizedVideoDefinitionRelay) {
+      resolvedRootAuthorRelay = normalizedVideoDefinitionRelay;
+    }
+  }
+
+  let resolvedParentAuthorPubkey = normalizeString(parentAuthorPubkey);
+  if (!resolvedParentAuthorPubkey) {
+    resolvedParentAuthorPubkey = normalizedThreadParticipantPubkey;
+  }
+
+  let resolvedParentAuthorRelay = normalizeString(parentAuthorRelay);
+  if (!resolvedParentAuthorRelay) {
+    resolvedParentAuthorRelay = normalizedThreadParticipantRelay;
+  }
+
+  if (!resolvedRootAuthorPubkey && !normalizedParentCommentId) {
+    resolvedRootAuthorPubkey = resolvedParentAuthorPubkey;
+  }
+  if (!resolvedRootAuthorRelay && !normalizedParentCommentId) {
+    resolvedRootAuthorRelay = resolvedParentAuthorRelay;
+  }
+
+  if (!resolvedParentAuthorPubkey && !normalizedParentCommentId) {
+    resolvedParentAuthorPubkey = resolvedRootAuthorPubkey;
+  }
+  if (!resolvedParentAuthorRelay && !normalizedParentCommentId) {
+    resolvedParentAuthorRelay = resolvedRootAuthorRelay;
+  }
+
+  let resolvedParentKind = normalizeString(parentKind);
+  if (!resolvedParentKind) {
+    if (normalizedParentCommentId) {
+      resolvedParentKind = String(schema?.kind ?? 1111);
+    } else if (resolvedRootKind) {
+      resolvedParentKind = resolvedRootKind;
+    }
+  }
+
+  if (!resolvedRootKind) {
+    resolvedRootKind = resolvedParentKind;
+  }
+
+  const rootDefinitionPointerTagName = schema?.rootDefinitionPointerTagName || "A";
+  const rootEventPointerTagName = schema?.rootEventPointerTagName || "E";
+  const rootIdentifierPointerTagName = schema?.rootIdentifierPointerTagName || "I";
+  const rootKindTagName = schema?.rootKindTagName || "K";
+  const rootAuthorTagName = schema?.rootAuthorTagName || "P";
   const videoDefinitionTagName = schema?.videoDefinitionTagName || "a";
-  const normalizedVideoDefinitionAddress =
-    typeof videoDefinitionAddress === "string"
-      ? videoDefinitionAddress.trim()
-      : "";
-  const normalizedVideoDefinitionRelay =
-    typeof videoDefinitionRelay === "string" ? videoDefinitionRelay.trim() : "";
+  const videoEventTagName = schema?.videoEventTagName || "e";
+  const parentCommentTagName = schema?.parentCommentTagName || "e";
+  const parentAuthorTagName = schema?.parentAuthorTagName || "p";
+  const parentKindTagName = schema?.parentKindTagName || "k";
+
+  const appendPointerTag = (tagName, value, relay, authorHint) => {
+    if (!tagName || !value) {
+      return;
+    }
+    const tag = [tagName, value];
+    if (relay) {
+      tag.push(relay);
+    }
+    if (authorHint) {
+      tag.push(authorHint);
+    }
+    tags.push(tag);
+  };
+
+  if (normalizedRootIdentifier) {
+    appendPointerTag(
+      rootIdentifierPointerTagName,
+      normalizedRootIdentifier,
+      normalizedRootIdentifierRelay,
+    );
+  } else if (normalizedVideoDefinitionAddress) {
+    appendPointerTag(
+      rootDefinitionPointerTagName,
+      normalizedVideoDefinitionAddress,
+      normalizedVideoDefinitionRelay,
+    );
+  } else if (normalizedVideoEventId) {
+    appendPointerTag(
+      rootEventPointerTagName,
+      normalizedVideoEventId,
+      normalizedVideoEventRelay,
+      resolvedRootAuthorPubkey,
+    );
+  }
+
+  if (rootKindTagName && resolvedRootKind) {
+    tags.push([rootKindTagName, resolvedRootKind]);
+  }
+
+  if (rootAuthorTagName && resolvedRootAuthorPubkey) {
+    if (resolvedRootAuthorRelay) {
+      tags.push([rootAuthorTagName, resolvedRootAuthorPubkey, resolvedRootAuthorRelay]);
+    } else {
+      tags.push([rootAuthorTagName, resolvedRootAuthorPubkey]);
+    }
+  }
+
   const includeVideoEventTag =
     !normalizedVideoDefinitionAddress &&
-    Boolean(schema?.videoEventTagName || "e") &&
+    Boolean(videoEventTagName) &&
     Boolean(normalizedVideoEventId);
 
   if (includeVideoEventTag) {
-    const videoEventTagName = schema?.videoEventTagName || "e";
-    if (normalizedVideoEventRelay) {
-      tags.push([videoEventTagName, normalizedVideoEventId, normalizedVideoEventRelay]);
-    } else {
-      tags.push([videoEventTagName, normalizedVideoEventId]);
-    }
+    appendPointerTag(
+      videoEventTagName,
+      normalizedVideoEventId,
+      normalizedVideoEventRelay,
+    );
   }
 
   if (videoDefinitionTagName && normalizedVideoDefinitionAddress) {
-    if (normalizedVideoDefinitionRelay) {
-      tags.push([
-        videoDefinitionTagName,
-        normalizedVideoDefinitionAddress,
-        normalizedVideoDefinitionRelay,
-      ]);
-    } else {
-      tags.push([videoDefinitionTagName, normalizedVideoDefinitionAddress]);
-    }
+    appendPointerTag(
+      videoDefinitionTagName,
+      normalizedVideoDefinitionAddress,
+      normalizedVideoDefinitionRelay,
+    );
   }
 
-  const parentCommentTagName = schema?.parentCommentTagName || "e";
-  const normalizedParentCommentId =
-    typeof parentCommentId === "string" ? parentCommentId.trim() : "";
-  const normalizedParentCommentRelay =
-    typeof parentCommentRelay === "string" ? parentCommentRelay.trim() : "";
+  if (normalizedParentIdentifier) {
+    appendPointerTag("i", normalizedParentIdentifier, normalizedParentIdentifierRelay);
+  }
+
   if (parentCommentTagName && normalizedParentCommentId) {
-    if (normalizedParentCommentRelay) {
-      tags.push([
-        parentCommentTagName,
-        normalizedParentCommentId,
-        normalizedParentCommentRelay,
-      ]);
-    } else {
-      tags.push([parentCommentTagName, normalizedParentCommentId]);
-    }
+    appendPointerTag(
+      parentCommentTagName,
+      normalizedParentCommentId,
+      normalizedParentCommentRelay,
+      resolvedParentAuthorPubkey,
+    );
   }
 
-  const participantTagName = schema?.participantTagName || "p";
-  const normalizedThreadParticipantPubkey =
-    typeof threadParticipantPubkey === "string"
-      ? threadParticipantPubkey.trim()
-      : "";
-  const normalizedThreadParticipantRelay =
-    typeof threadParticipantRelay === "string"
-      ? threadParticipantRelay.trim()
-      : "";
-  if (participantTagName && normalizedThreadParticipantPubkey) {
-    if (normalizedThreadParticipantRelay) {
-      tags.push([
-        participantTagName,
-        normalizedThreadParticipantPubkey,
-        normalizedThreadParticipantRelay,
-      ]);
-    } else {
-      tags.push([participantTagName, normalizedThreadParticipantPubkey]);
+  if (parentKindTagName && resolvedParentKind) {
+    tags.push([parentKindTagName, resolvedParentKind]);
+  }
+
+  if (parentAuthorTagName && resolvedParentAuthorPubkey) {
+    const existingParentAuthorTag = tags.find(
+      (tag) => Array.isArray(tag) && tag[0] === parentAuthorTagName && tag[1] === resolvedParentAuthorPubkey,
+    );
+    if (!existingParentAuthorTag) {
+      if (resolvedParentAuthorRelay) {
+        tags.push([parentAuthorTagName, resolvedParentAuthorPubkey, resolvedParentAuthorRelay]);
+      } else {
+        tags.push([parentAuthorTagName, resolvedParentAuthorPubkey]);
+      }
+    } else if (resolvedParentAuthorRelay) {
+      if (existingParentAuthorTag.length < 3) {
+        existingParentAuthorTag.push(resolvedParentAuthorRelay);
+      } else if (existingParentAuthorTag[2] !== resolvedParentAuthorRelay) {
+        existingParentAuthorTag[2] = resolvedParentAuthorRelay;
+      }
     }
   }
 
