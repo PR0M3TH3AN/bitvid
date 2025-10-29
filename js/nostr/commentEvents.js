@@ -11,7 +11,7 @@ import { devLogger, userLogger } from "../utils/logger.js";
 const COMMENT_EVENT_SCHEMA = getNostrEventSchema(NOTE_TYPES.VIDEO_COMMENT);
 export const COMMENT_EVENT_KIND = Number.isFinite(COMMENT_EVENT_SCHEMA?.kind)
   ? COMMENT_EVENT_SCHEMA.kind
-  : 1;
+  : 1111;
 
 function sanitizeRelayList(primary, fallback) {
   if (Array.isArray(primary) && primary.length) {
@@ -239,41 +239,77 @@ function normalizeCommentTarget(targetInput = {}, overrides = {}) {
   };
 }
 
-function createVideoCommentFilters(targetInput, options = {}) {
-  const descriptor = normalizeCommentTarget(targetInput, options);
-  if (!descriptor) {
-    throw new Error("Invalid video comment target supplied.");
+function applyFilterOptions(filter, options = {}) {
+  if (!filter || typeof filter !== "object") {
+    return filter;
   }
 
-  const filter = {
-    kinds: [COMMENT_EVENT_KIND],
-    "#e": [descriptor.videoEventId],
-    "#a": [descriptor.videoDefinitionAddress],
-  };
-
-  if (descriptor.parentCommentId) {
-    if (!filter["#e"].includes(descriptor.parentCommentId)) {
-      filter["#e"].push(descriptor.parentCommentId);
-    }
-  }
+  const result = { ...filter };
 
   if (
     typeof options.limit === "number" &&
     Number.isFinite(options.limit) &&
     options.limit > 0
   ) {
-    filter.limit = Math.floor(options.limit);
+    result.limit = Math.floor(options.limit);
   }
 
   if (typeof options.since === "number" && Number.isFinite(options.since)) {
-    filter.since = Math.floor(options.since);
+    result.since = Math.floor(options.since);
   }
 
   if (typeof options.until === "number" && Number.isFinite(options.until)) {
-    filter.until = Math.floor(options.until);
+    result.until = Math.floor(options.until);
   }
 
-  return { descriptor, filters: [filter] };
+  return result;
+}
+
+function createVideoCommentFilters(targetInput, options = {}) {
+  const descriptor = normalizeCommentTarget(targetInput, options);
+  if (!descriptor) {
+    throw new Error("Invalid video comment target supplied.");
+  }
+
+  const filters = [];
+  const baseFilter = { kinds: [COMMENT_EVENT_KIND] };
+
+  if (descriptor.videoDefinitionAddress) {
+    baseFilter["#a"] = [descriptor.videoDefinitionAddress];
+  }
+
+  if (descriptor.parentCommentId) {
+    baseFilter["#e"] = [descriptor.parentCommentId];
+  }
+
+  if (!descriptor.videoDefinitionAddress && descriptor.videoEventId) {
+    baseFilter["#e"] = baseFilter["#e"] || [];
+    if (!baseFilter["#e"].includes(descriptor.videoEventId)) {
+      baseFilter["#e"].push(descriptor.videoEventId);
+    }
+  }
+
+  filters.push(applyFilterOptions(baseFilter, options));
+
+  const shouldIncludeLegacyFilter =
+    Boolean(descriptor.videoDefinitionAddress) && Boolean(descriptor.videoEventId);
+
+  if (shouldIncludeLegacyFilter) {
+    const legacyFilter = {
+      kinds: [COMMENT_EVENT_KIND],
+      "#e": [descriptor.videoEventId],
+    };
+
+    if (descriptor.parentCommentId) {
+      if (!legacyFilter["#e"].includes(descriptor.parentCommentId)) {
+        legacyFilter["#e"].push(descriptor.parentCommentId);
+      }
+    }
+
+    filters.push(applyFilterOptions(legacyFilter, options));
+  }
+
+  return { descriptor, filters };
 }
 
 function flattenListResults(input) {
@@ -306,9 +342,13 @@ function isVideoCommentEvent(event, descriptor) {
   }
 
   const tags = Array.isArray(event.tags) ? event.tags : [];
-  let hasEventTag = false;
-  let hasDefinitionTag = false;
-  let hasParentTag = !descriptor.parentCommentId;
+  const requiresParentTag = Boolean(descriptor.parentCommentId);
+  const requiresAddressMatch = Boolean(descriptor.videoDefinitionAddress);
+  const requiresEventMatch = !requiresAddressMatch && Boolean(descriptor.videoEventId);
+
+  let hasEventTag = !requiresEventMatch;
+  let hasDefinitionTag = !requiresAddressMatch;
+  let hasParentTag = !requiresParentTag;
 
   for (const tag of tags) {
     if (!Array.isArray(tag) || tag.length < 2) {

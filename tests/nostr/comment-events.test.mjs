@@ -135,11 +135,8 @@ test("publishComment prefers active signer when available", async () => {
   const aTags = eventTags.filter((tag) => Array.isArray(tag) && tag[0] === "a");
   assert.deepEqual(
     eTags,
-    [
-      ["e", "video-event-id", "wss://video-relay"],
-      ["e", "parent-comment-id"],
-    ],
-    "comment event should include both video and parent pointers",
+    [["e", "parent-comment-id"]],
+    "comment event should include parent pointer but omit the addressable video id",
   );
   assert.deepEqual(
     aTags,
@@ -189,13 +186,12 @@ test("publishComment falls back to session signer when active signer is missing"
   assert.equal(publishCalls.length, 1, "publish should still occur once");
 });
 
-test("listVideoComments builds filters with both #e and #a tags", async () => {
+test("listVideoComments builds filters that prefer #a pointers", async () => {
   const matchingEventLatest = {
     id: "comment-2",
     kind: COMMENT_EVENT_KIND,
     created_at: 1700000200,
     tags: [
-      ["e", "video-1"],
       ["a", "30078:author:clip"],
       ["e", "parent-1"],
     ],
@@ -206,7 +202,6 @@ test("listVideoComments builds filters with both #e and #a tags", async () => {
     kind: COMMENT_EVENT_KIND,
     created_at: 1690000000,
     tags: [
-      ["e", "video-1"],
       ["a", "30078:author:clip"],
       ["e", "parent-1"],
     ],
@@ -216,7 +211,7 @@ test("listVideoComments builds filters with both #e and #a tags", async () => {
     id: "comment-3",
     kind: COMMENT_EVENT_KIND,
     created_at: 1700000100,
-    tags: [["e", "video-1"]],
+    tags: [["a", "30078:author:clip"]],
   };
 
   const {
@@ -250,21 +245,38 @@ test("listVideoComments builds filters with both #e and #a tags", async () => {
     ["wss://history"],
     "list should use caller provided relays",
   );
-  assert.equal(receivedFilters.filters.length, 1, "exactly one filter should be emitted");
-  const [filter] = receivedFilters.filters;
-  assert.equal(filter.kinds[0], COMMENT_EVENT_KIND, "filter should target comment kind");
-  assert.deepEqual(
-    filter["#e"],
-    ["video-1", "parent-1"],
-    "filter should bind the video and parent ids via #e",
+  assert.equal(receivedFilters.filters.length, 2, "legacy and preferred filters should be emitted");
+  const [primaryFilter, legacyFilter] = receivedFilters.filters;
+  assert.equal(
+    primaryFilter.kinds[0],
+    COMMENT_EVENT_KIND,
+    "primary filter should target comment kind",
   );
   assert.deepEqual(
-    filter["#a"],
+    primaryFilter["#a"],
     ["30078:author:clip"],
-    "filter should bind the video definition via #a",
+    "primary filter should bind the video definition via #a",
   );
-  assert.equal(filter.since, 1700000000, "since option should propagate to filter");
-  assert.equal(filter.limit, 10, "limit option should propagate to filter");
+  assert.deepEqual(
+    primaryFilter["#e"],
+    ["parent-1"],
+    "primary filter should include the parent pointer via #e",
+  );
+  assert.equal(primaryFilter.since, 1700000000, "since option should propagate to primary filter");
+  assert.equal(primaryFilter.limit, 10, "limit option should propagate to primary filter");
+
+  assert.equal(
+    legacyFilter.kinds[0],
+    COMMENT_EVENT_KIND,
+    "legacy filter should target comment kind",
+  );
+  assert.deepEqual(
+    legacyFilter["#e"],
+    ["video-1", "parent-1"],
+    "legacy filter should target the video id for backward compatibility",
+  );
+  assert.equal(legacyFilter.since, 1700000000, "since option should propagate to legacy filter");
+  assert.equal(legacyFilter.limit, 10, "limit option should propagate to legacy filter");
 });
 
 test("subscribeVideoComments forwards matching events and cleans up unsubscribe", async () => {
@@ -317,24 +329,26 @@ test("subscribeVideoComments forwards matching events and cleans up unsubscribe"
     ["wss://live"],
     "subscription should use caller provided relays",
   );
-  assert.equal(subscriptionArgs.filters.length, 1, "subscription should emit a single filter");
-  const [subFilter] = subscriptionArgs.filters;
   assert.deepEqual(
-    subFilter["#e"],
-    ["video-1", "parent-1"],
-    "subscription filter should bind video and parent ids",
-  );
-  assert.deepEqual(
-    subFilter["#a"],
-    ["30078:author:clip"],
-    "subscription filter should bind the video definition",
+    subscriptionArgs.filters,
+    [
+      {
+        kinds: [COMMENT_EVENT_KIND],
+        "#a": ["30078:author:clip"],
+        "#e": ["parent-1"],
+      },
+      {
+        kinds: [COMMENT_EVENT_KIND],
+        "#e": ["video-1", "parent-1"],
+      },
+    ],
+    "subscription should emit preferred and legacy filters",
   );
 
   handler({
     id: "comment-accepted",
     kind: COMMENT_EVENT_KIND,
     tags: [
-      ["e", "video-1"],
       ["a", "30078:author:clip"],
       ["e", "parent-1"],
     ],
