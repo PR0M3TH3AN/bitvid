@@ -2,6 +2,7 @@
 
 import { devLogger } from "../utils/logger.js";
 import { buildVideoAddressPointer } from "../utils/videoPointer.js";
+import { COMMENT_EVENT_KIND } from "../nostr/commentEvents.js";
 
 const ROOT_PARENT_KEY = "__root__";
 const DEFAULT_INITIAL_LIMIT = 40;
@@ -22,6 +23,16 @@ function normalizeString(value) {
 function normalizePubkey(pubkey) {
   const normalized = normalizeString(pubkey);
   return normalized ? normalized.toLowerCase() : "";
+}
+
+function normalizeKind(value) {
+  if (Number.isFinite(value)) {
+    return String(Math.floor(value));
+  }
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
+  }
+  return "";
 }
 
 function toParentKey(parentId) {
@@ -112,7 +123,11 @@ export default class CommentThreadService {
     this.subscriptionCleanup = null;
     this.videoEventId = "";
     this.videoAddressPointer = "";
+    this.videoKind = "";
+    this.videoAuthorPubkey = "";
     this.parentCommentId = "";
+    this.parentCommentKind = "";
+    this.parentCommentPubkey = "";
     this.activeRelays = null;
   }
 
@@ -138,7 +153,11 @@ export default class CommentThreadService {
 
     this.videoEventId = normalizeString(video?.id);
     this.videoAddressPointer = buildVideoAddressPointer(video);
+    this.videoKind = normalizeKind(video?.kind);
+    this.videoAuthorPubkey = normalizePubkey(video?.pubkey);
     this.parentCommentId = normalizeString(parentCommentId);
+    this.parentCommentKind = this.parentCommentId ? String(COMMENT_EVENT_KIND) : "";
+    this.parentCommentPubkey = "";
     this.activeRelays = Array.isArray(relays) ? [...relays] : null;
 
     if (!this.videoEventId) {
@@ -163,6 +182,20 @@ export default class CommentThreadService {
 
     if (this.videoAddressPointer) {
       target.videoDefinitionAddress = this.videoAddressPointer;
+    }
+    if (this.videoKind) {
+      target.videoKind = this.videoKind;
+    }
+    if (this.videoAuthorPubkey) {
+      target.videoAuthorPubkey = this.videoAuthorPubkey;
+    }
+    if (this.parentCommentId) {
+      if (this.parentCommentKind) {
+        target.parentCommentKind = this.parentCommentKind;
+      }
+      if (this.parentCommentPubkey) {
+        target.parentCommentPubkey = this.parentCommentPubkey;
+      }
     }
 
     let events = [];
@@ -255,6 +288,15 @@ export default class CommentThreadService {
     const parentKey = toParentKey(parentId);
     const createdAt = Number.isFinite(event.created_at) ? event.created_at : 0;
     const pubkey = normalizePubkey(event.pubkey);
+    if (this.parentCommentId && eventId === this.parentCommentId) {
+      const kindValue = normalizeKind(event.kind);
+      if (kindValue) {
+        this.parentCommentKind = kindValue;
+      }
+      if (pubkey) {
+        this.parentCommentPubkey = pubkey;
+      }
+    }
 
     const existingMeta = this.metaById.get(eventId);
     this.eventsById.set(eventId, event);
@@ -458,6 +500,11 @@ export default class CommentThreadService {
     const payload = {
       videoEventId: this.videoEventId,
       parentCommentId: this.parentCommentId || null,
+      videoDefinitionAddress: this.videoAddressPointer || null,
+      videoKind: this.videoKind || null,
+      videoAuthorPubkey: this.videoAuthorPubkey || null,
+      parentCommentKind: this.parentCommentKind || null,
+      parentCommentPubkey: this.parentCommentPubkey || null,
       topLevelIds: this.getCommentIdsForParent(null),
       commentsById: this.cloneCommentsMap(),
       childrenByParent: this.cloneTreeMap(),
@@ -470,6 +517,11 @@ export default class CommentThreadService {
     const payload = {
       videoEventId: this.videoEventId,
       parentCommentId: parentId || null,
+      videoDefinitionAddress: this.videoAddressPointer || null,
+      videoKind: this.videoKind || null,
+      videoAuthorPubkey: this.videoAuthorPubkey || null,
+      parentCommentKind: this.parentCommentKind || null,
+      parentCommentPubkey: this.parentCommentPubkey || null,
       commentIds: [eventId],
       commentsById: this.cloneCommentsMap(),
       childrenByParent: this.cloneTreeMap(),
@@ -489,6 +541,11 @@ export default class CommentThreadService {
     return {
       videoEventId: this.videoEventId,
       parentCommentId: this.parentCommentId || null,
+      videoDefinitionAddress: this.videoAddressPointer || null,
+      videoKind: this.videoKind || null,
+      videoAuthorPubkey: this.videoAuthorPubkey || null,
+      parentCommentKind: this.parentCommentKind || null,
+      parentCommentPubkey: this.parentCommentPubkey || null,
       commentsById: this.cloneCommentsMap(),
       childrenByParent: this.cloneTreeMap(),
       profiles: this.getProfilesSnapshot(),
@@ -534,6 +591,14 @@ export default class CommentThreadService {
     const key = toParentKey(normalizeString(parentId));
     const list = this.childrenByParent.get(key);
     return Array.isArray(list) ? [...list] : [];
+  }
+
+  getCommentEvent(commentId) {
+    const normalized = normalizeString(commentId);
+    if (!normalized) {
+      return null;
+    }
+    return this.eventsById.get(normalized) || null;
   }
 
   waitForProfileHydration() {
