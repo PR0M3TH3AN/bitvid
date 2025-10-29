@@ -331,7 +331,7 @@ function truncateComment(comment, limit) {
 
 export async function requestInvoice(
   metadata,
-  { amountSats, amountMsats, comment, zapRequest, fetcher } = {}
+  { amountSats, amountMsats, comment, zapRequest, lnurl, fetcher } = {}
 ) {
   if (!metadata || typeof metadata !== "object") {
     throw new Error("LNURL metadata is required to request an invoice.");
@@ -354,6 +354,11 @@ export async function requestInvoice(
 
   if (zapRequest) {
     callbackUrl.searchParams.set("nostr", zapRequest);
+  }
+
+  const originalLnurl = typeof lnurl === "string" ? lnurl.trim() : "";
+  if (originalLnurl) {
+    callbackUrl.searchParams.set("lnurl", originalLnurl);
   }
 
   const response = await fetchFn(callbackUrl.toString(), {

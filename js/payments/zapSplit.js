@@ -433,6 +433,7 @@ async function processShare({
     amountMsats,
     comment,
     zapRequest,
+    lnurl: lnurlTag,
   });
 
   try {
