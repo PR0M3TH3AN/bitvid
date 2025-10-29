@@ -80,6 +80,12 @@ const platformAddressModule = await import("../js/payments/platformAddress.js");
 const { __resetPlatformAddressCache } = platformAddressModule;
 const { nostrClient } = await import("../js/nostr.js");
 
+const DEFAULT_WALLET_RELAYS = [
+  "wss://wallet.primary.example",
+  "wss://wallet.secondary.example",
+  "wss://wallet.primary.example",
+];
+
 function createDeps({
   commentAllowed = 120,
   platformAddress = "platform@example.com",
@@ -87,6 +93,7 @@ function createDeps({
   maxSendable = 2_000_000,
   allowsNostr = true,
   sendPaymentImplementation,
+  walletRelays = DEFAULT_WALLET_RELAYS,
 } = {}) {
   let ensureWalletCalls = 0;
   const sendCalls = [];
@@ -137,6 +144,9 @@ function createDeps({
           return {
             clientPubkey: "c".repeat(64),
             secretKey: "1".repeat(64),
+            relayUrl: walletRelays[0] || null,
+            relayUrls: walletRelays.slice(),
+            relays: walletRelays.slice(),
           };
         },
         async sendPayment(invoice, { amountSats, zapRequest }) {
@@ -201,6 +211,21 @@ async function testSplitMath() {
   const parsedZap = JSON.parse(creatorReceipt.zapRequest);
   assert.equal(parsedZap.kind, 9734);
   assert(parsedZap.tags.some((tag) => tag[0] === "amount" && tag[1] === "900000"));
+
+  const relaysTag = parsedZap.tags.find((tag) => Array.isArray(tag) && tag[0] === "relays");
+  assert(relaysTag, "relays tag should be present in zap request");
+  const expectedRelays = Array.from(
+    new Set(
+      DEFAULT_WALLET_RELAYS.map((relay) =>
+        typeof relay === "string" ? relay.trim() : ""
+      ).filter((relay) => relay)
+    )
+  );
+  assert.deepEqual(
+    relaysTag.slice(1),
+    expectedRelays,
+    "relays tag should match wallet relay list"
+  );
 
   const platformReceipt = result.receipts[1];
   assert.equal(platformReceipt.recipientType, "platform");

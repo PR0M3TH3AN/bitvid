@@ -10,6 +10,7 @@ import {
 } from "./lnurl.js";
 import { ensureWallet, sendPayment } from "./nwcClient.js";
 import { getPlatformLightningAddress } from "./platformAddress.js";
+import { RELAY_URLS } from "../nostr/toolkit.js";
 import { userLogger } from "../utils/logger.js";
 import {
   clampPercent,
@@ -271,6 +272,40 @@ function derivePointerTag(videoEvent) {
   return ["a", value];
 }
 
+function resolveRelayUrls(wallet) {
+  const normalized = [];
+  const seen = new Set();
+
+  const addCandidate = (candidate) => {
+    if (!candidate) {
+      return;
+    }
+    if (Array.isArray(candidate)) {
+      candidate.forEach(addCandidate);
+      return;
+    }
+    if (typeof candidate === "string") {
+      const trimmed = candidate.trim();
+      if (trimmed && !seen.has(trimmed)) {
+        seen.add(trimmed);
+        normalized.push(trimmed);
+      }
+    }
+  };
+
+  if (wallet && typeof wallet === "object") {
+    addCandidate(wallet.relayUrls);
+    addCandidate(wallet.relays);
+    addCandidate(wallet.relayUrl);
+  }
+
+  if (!normalized.length) {
+    addCandidate(Array.isArray(RELAY_URLS) ? RELAY_URLS : []);
+  }
+
+  return normalized;
+}
+
 function buildZapRequest({
   wallet,
   recipientPubkey,
@@ -300,6 +335,11 @@ function buildZapRequest({
   }
   if (Number.isFinite(amountSats)) {
     tags.push(["amount", String(Math.max(0, Math.round(amountSats)) * 1000)]);
+  }
+
+  const relayUrls = resolveRelayUrls(wallet);
+  if (relayUrls.length) {
+    tags.push(["relays", ...relayUrls]);
   }
 
   const event = {
