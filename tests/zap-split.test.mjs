@@ -196,10 +196,15 @@ async function testSplitMath() {
 
   const creatorReceipt = result.receipts[0];
   assert.equal(creatorReceipt.recipientType, "creator");
+  assert.equal(creatorReceipt.status, "success");
   assert(creatorReceipt.zapRequest, "creator zap request should be present");
   const parsedZap = JSON.parse(creatorReceipt.zapRequest);
   assert.equal(parsedZap.kind, 9734);
   assert(parsedZap.tags.some((tag) => tag[0] === "amount" && tag[1] === "900000"));
+
+  const platformReceipt = result.receipts[1];
+  assert.equal(platformReceipt.recipientType, "platform");
+  assert.equal(platformReceipt.status, "success");
 
   delete globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
 }
@@ -365,7 +370,7 @@ async function testPlatformShareFailure() {
   const [creatorReceipt, platformReceipt] = result.receipts;
 
   assert.equal(creatorReceipt.recipientType, "creator");
-  assert.equal(creatorReceipt.status, "ok");
+  assert.equal(creatorReceipt.status, "success");
   assert(creatorReceipt.payment, "creator share should still have a payment record");
 
   assert.equal(platformReceipt.recipientType, "platform");
