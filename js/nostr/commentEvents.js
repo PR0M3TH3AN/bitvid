@@ -223,7 +223,7 @@ function normalizeCommentTarget(targetInput = {}, overrides = {}) {
     target.participantRelay,
   );
 
-  if (!videoEventId || !videoDefinitionAddress) {
+  if (!videoEventId) {
     return null;
   }
 

@@ -186,6 +186,50 @@ test("publishComment falls back to session signer when active signer is missing"
   assert.equal(publishCalls.length, 1, "publish should still occur once");
 });
 
+test("publishComment accepts legacy targets with only an event id", async () => {
+  const { client, publishCalls } = createMockClient();
+
+  let signCalls = 0;
+  const signEventWithPrivateKey = (event) => {
+    signCalls += 1;
+    return { ...event, id: `signed-${signCalls}` };
+  };
+
+  const result = await publishComment(
+    client,
+    {
+      videoEventId: "legacy-event-id",
+      parentCommentId: "parent-legacy",
+    },
+    { content: "Legacy comment" },
+    {
+      resolveActiveSigner: () => null,
+      shouldRequestExtensionPermissions: () => false,
+      signEventWithPrivateKey,
+      DEFAULT_NIP07_PERMISSION_METHODS: [],
+    },
+  );
+
+  assert.equal(result.ok, true, "publishing should succeed without a definition address");
+  assert.equal(signCalls, 1, "session signer should be used to sign the event");
+  assert.equal(publishCalls.length, 1, "event should be published exactly once");
+
+  const publishedEvent = publishCalls[0]?.event;
+  const tags = buildCommentEventTags(publishedEvent);
+  const eTags = tags.filter((tag) => Array.isArray(tag) && tag[0] === "e");
+  const aTags = tags.filter((tag) => Array.isArray(tag) && tag[0] === "a");
+
+  assert.deepEqual(
+    eTags,
+    [
+      ["e", "legacy-event-id"],
+      ["e", "parent-legacy"],
+    ],
+    "legacy publish should target the video event id and parent comment",
+  );
+  assert.deepEqual(aTags, [], "no address tag should be emitted when unavailable");
+});
+
 test("listVideoComments builds filters that prefer #a pointers", async () => {
   const matchingEventLatest = {
     id: "comment-2",
@@ -277,6 +321,45 @@ test("listVideoComments builds filters that prefer #a pointers", async () => {
   );
   assert.equal(legacyFilter.since, 1700000000, "since option should propagate to legacy filter");
   assert.equal(legacyFilter.limit, 10, "limit option should propagate to legacy filter");
+});
+
+test("listVideoComments supports legacy targets without a definition address", async () => {
+  const legacyEvent = {
+    id: "legacy-comment",
+    kind: COMMENT_EVENT_KIND,
+    tags: [["e", "legacy-video"], ["e", "legacy-parent"]],
+  };
+
+  const { client, pool } = createMockClient();
+
+  let receivedFilters = null;
+  pool.list = async (relays, filters) => {
+    receivedFilters = { relays, filters };
+    return [[legacyEvent]];
+  };
+
+  const events = await listVideoComments(client, { videoEventId: "legacy-video" });
+
+  assert.ok(Array.isArray(events), "listing should still return an array");
+  assert.equal(events.length, 1, "legacy matching comment should be returned");
+  assert.equal(events[0].id, "legacy-comment", "returned event should match the pool payload");
+
+  assert.ok(receivedFilters, "pool.list should be invoked with filters");
+  assert.deepEqual(
+    receivedFilters.relays,
+    client.relays,
+    "legacy listing should fall back to client relays when none are provided",
+  );
+  assert.deepEqual(
+    receivedFilters.filters,
+    [
+      {
+        kinds: [COMMENT_EVENT_KIND],
+        "#e": ["legacy-video"],
+      },
+    ],
+    "legacy listing should target the video event id via #e",
+  );
 });
 
 test("subscribeVideoComments forwards matching events and cleans up unsubscribe", async () => {

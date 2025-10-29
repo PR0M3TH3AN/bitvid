@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { setupModal } from "./video-modal-accessibility.test.mjs";
+import VideoModalCommentController from "../js/ui/videoModalCommentController.js";
 
 const FOCUSABLE_SELECTOR = [
   "a[href]",
@@ -173,6 +174,101 @@ test("VideoModal comment composer updates messaging and dispatches events", asyn
   assert.equal(submitDetail.text, "New comment");
   assert.strictEqual(submitDetail.triggerElement, modal.commentsSubmitButton);
 });
+
+test(
+  "VideoModalCommentController publishes comment using event id fallback",
+  async () => {
+    const publishCalls = [];
+    const statusMessages = [];
+    let resetCalled = false;
+    const composerStates = [];
+    const appendedEvents = [];
+
+    const videoModal = {
+      setCommentComposerState: (state) => {
+        composerStates.push({ ...state });
+      },
+      resetCommentComposer: () => {
+        resetCalled = true;
+      },
+      setCommentStatus: (message) => {
+        statusMessages.push(message);
+      },
+      appendComment: (event) => {
+        appendedEvents.push(event);
+      },
+    };
+
+    const processedEvents = [];
+
+    const controller = new VideoModalCommentController({
+      commentThreadService: {
+        setCallbacks: () => {},
+        processIncomingEvent: (event) => {
+          processedEvents.push(event);
+        },
+      },
+      videoModal,
+      auth: {
+        isLoggedIn: () => true,
+      },
+      services: {
+        publishComment: async (payload, eventData) => {
+          publishCalls.push([payload, eventData]);
+          return {
+            ok: true,
+            event: {
+              id: "legacy-comment",
+              pubkey: "pk1",
+              content: eventData.content,
+              tags: [],
+            },
+          };
+        },
+      },
+      utils: {
+        normalizeHexPubkey: (value) => value?.toLowerCase?.() || value,
+      },
+    });
+
+    controller.currentVideo = {
+      id: "legacy-video",
+      pubkey: "AUTHORPK",
+      enableComments: true,
+      kind: 30078,
+      tags: [],
+    };
+    controller.modalCommentState.videoEventId = "legacy-video";
+
+    await controller.handleVideoModalCommentSubmit({ text: "Legacy support" });
+
+    assert.equal(publishCalls.length, 1, "publishComment should be invoked");
+    const [payload, eventData] = publishCalls[0];
+    assert.deepStrictEqual(payload, {
+      videoEventId: "legacy-video",
+      parentCommentId: null,
+    });
+    assert.equal(
+      "videoDefinitionAddress" in payload,
+      false,
+      "payload should omit videoDefinitionAddress when unavailable",
+    );
+    assert.equal(eventData.content, "Legacy support");
+
+    assert.equal(processedEvents.length, 1, "event should be processed optimistically");
+    assert.equal(resetCalled, true, "composer should reset after publishing");
+    assert.ok(
+      statusMessages.includes("Comment posted."),
+      "success message should be surfaced",
+    );
+    assert.equal(
+      composerStates[composerStates.length - 1]?.disabled,
+      false,
+      "composer should be re-enabled after publishing",
+    );
+    assert.equal(appendedEvents.length, 0, "optimistic insert should avoid duplicate append");
+  },
+);
 
 test("VideoModal comment section exposes aria landmarks and participates in focus trap", async (t) => {
   const { window, document, modal, playerModal, trigger, cleanup } = await setupModal();

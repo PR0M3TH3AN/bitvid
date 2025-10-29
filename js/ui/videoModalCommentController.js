@@ -132,7 +132,7 @@ export default class VideoModalCommentController {
     const videoEventId = normalizeString(video.id);
     const videoDefinitionAddress = buildVideoAddressPointer(video);
 
-    if (!videoEventId || !videoDefinitionAddress) {
+    if (!videoEventId) {
       this.resetModalCommentState({ hide: false });
       this.videoModal.setCommentStatus?.(
         "Comments are unavailable for this video.",
@@ -142,7 +142,7 @@ export default class VideoModalCommentController {
 
     this.modalCommentState = {
       videoEventId,
-      videoDefinitionAddress,
+      videoDefinitionAddress: videoDefinitionAddress || null,
       parentCommentId: null,
     };
     this.modalCommentProfiles = new Map();
@@ -487,7 +487,7 @@ export default class VideoModalCommentController {
     const videoEventId = normalizeString(video.id);
     const videoDefinitionAddress = buildVideoAddressPointer(video);
 
-    if (!videoEventId || !videoDefinitionAddress) {
+    if (!videoEventId) {
       this.callbacks.showError("Comments are unavailable for this video.");
       return;
     }
@@ -499,13 +499,18 @@ export default class VideoModalCommentController {
       reason: "submitting",
     });
 
+    const publishPayload = {
+      videoEventId,
+      parentCommentId,
+    };
+
+    if (videoDefinitionAddress) {
+      publishPayload.videoDefinitionAddress = videoDefinitionAddress;
+    }
+
     const publishPromise = Promise.resolve(
       this.services.publishComment(
-        {
-          videoEventId,
-          videoDefinitionAddress,
-          parentCommentId,
-        },
+        publishPayload,
         {
           content: text,
         },

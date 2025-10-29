@@ -141,7 +141,7 @@ export default class CommentThreadService {
     this.parentCommentId = normalizeString(parentCommentId);
     this.activeRelays = Array.isArray(relays) ? [...relays] : null;
 
-    if (!this.videoEventId || !this.videoAddressPointer) {
+    if (!this.videoEventId) {
       this.emitError(
         new Error("Unable to resolve video pointer for comment thread."),
       );
@@ -158,9 +158,12 @@ export default class CommentThreadService {
     const fetchLimit = toPositiveInteger(limit, this.defaultLimit);
     const target = {
       videoEventId: this.videoEventId,
-      videoDefinitionAddress: this.videoAddressPointer,
       parentCommentId: this.parentCommentId,
     };
+
+    if (this.videoAddressPointer) {
+      target.videoDefinitionAddress = this.videoAddressPointer;
+    }
 
     let events = [];
     try {
