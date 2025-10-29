@@ -303,9 +303,13 @@ export default class ZapController {
           })
           .find((message) => message);
 
+        const budgetReceipt = failureReceipts.find((receipt) =>
+          isZapAllowanceExhaustedError(receipt?.error)
+        );
         const isBudgetExceeded =
-          typeof failureMessage === "string" &&
-          /budget exceeded/i.test(failureMessage);
+          Boolean(budgetReceipt) ||
+          (typeof failureMessage === "string" &&
+            /budget exceeded/i.test(failureMessage));
 
         let warningMessage;
         if (isBudgetExceeded) {

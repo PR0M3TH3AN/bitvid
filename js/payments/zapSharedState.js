@@ -188,6 +188,19 @@ function extractErrorMessage(error) {
   return "";
 }
 
+const ALLOWANCE_ERROR_CODES = new Set([
+  "allowance_exceeded",
+  "allowance_exhausted",
+  "budget_exceeded",
+  "budget_exhausted",
+  "budget_limit_reached",
+  "budget_spent",
+  "quota_exceeded",
+  "spending_allowance_exceeded",
+  "spending_limit_reached",
+  "nwc_budget_exhausted",
+]);
+
 const ALLOWANCE_ERROR_PATTERNS = [
   "budget exceeded",
   "allowance exceeded",
@@ -202,6 +215,14 @@ const ALLOWANCE_ERROR_PATTERNS = [
 ];
 
 export function isZapAllowanceExhaustedError(error) {
+  const code =
+    typeof error?.code === "string"
+      ? error.code.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_")
+      : "";
+  if (code && ALLOWANCE_ERROR_CODES.has(code)) {
+    return true;
+  }
+
   const message = extractErrorMessage(error);
   if (!message) {
     return false;

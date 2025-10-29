@@ -2,6 +2,7 @@
 
 import { nostrToolsReady } from "../nostrToolsBootstrap.js";
 import { userLogger } from "../utils/logger.js";
+import { isZapAllowanceExhaustedError } from "./zapSharedState.js";
 
 const HEX64_REGEX = /^[0-9a-f]{64}$/i;
 const URI_SCHEMES = [
@@ -330,15 +331,23 @@ function parseNwcUri(uri) {
 
   const queryParams = {};
   for (const [key, values] of additionalParams.entries()) {
-    if (!values || !values.length) {
+    if (!Array.isArray(values) || !values.length) {
       continue;
     }
-    if (values.length === 1) {
-      queryParams[key] = values[0];
+    const sanitizedValues = values
+      .map((value) => sanitizeQueryValue(value))
+      .filter(Boolean);
+    if (!sanitizedValues.length) {
+      continue;
+    }
+    if (sanitizedValues.length === 1) {
+      queryParams[key] = sanitizedValues[0];
     } else {
-      queryParams[key] = values.slice();
+      queryParams[key] = sanitizedValues.slice();
     }
   }
+
+  const budgetMetadata = deriveBudgetMetadata(additionalParams);
 
   return {
     normalizedUri: `nostr+walletconnect://${walletPubkey}?${normalizedParams.toString()}`,
@@ -347,6 +356,7 @@ function parseNwcUri(uri) {
     secretKey,
     clientPubkey,
     queryParams,
+    budget: budgetMetadata,
   };
 }
 
@@ -358,6 +368,238 @@ function normalizeSpaceSeparatedValues(value) {
     .split(/\s+/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function sanitizeQueryValue(value) {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : null;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+  if (typeof value === "bigint") {
+    return value >= 0n ? value.toString() : null;
+  }
+  return null;
+}
+
+function coercePositiveBigInt(value) {
+  if (typeof value === "bigint") {
+    return value >= 0n ? value : null;
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      return null;
+    }
+    const rounded = Math.round(value);
+    return rounded >= 0 ? BigInt(rounded) : null;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+    const normalized = trimmed.replace(/_/g, "");
+    if (!/^-?\d+$/.test(normalized)) {
+      return null;
+    }
+    try {
+      const big = BigInt(normalized);
+      return big >= 0n ? big : null;
+    } catch (error) {
+      return null;
+    }
+  }
+  return null;
+}
+
+function getFirstQueryValue(map, keys) {
+  if (!map || !keys || !keys.length) {
+    return null;
+  }
+  for (const key of keys) {
+    const values = map.get(key);
+    if (!Array.isArray(values) || !values.length) {
+      continue;
+    }
+    for (const candidate of values) {
+      const sanitized = sanitizeQueryValue(candidate);
+      if (sanitized) {
+        return sanitized;
+      }
+    }
+  }
+  return null;
+}
+
+const BUDGET_RENEWAL_FIELD_ALIASES = {
+  "": "interval",
+  value: "interval",
+  interval: "interval",
+  period: "interval",
+  frequency: "frequency",
+  every: "every",
+  each: "every",
+  unit: "unit",
+  units: "unit",
+  ms: "milliseconds",
+  millis: "milliseconds",
+  milliseconds: "milliseconds",
+  second: "seconds",
+  seconds: "seconds",
+  sec: "seconds",
+  start: "startAt",
+  at: "startAt",
+  time: "startAt",
+  timestamp: "startAt",
+  date: "startAt",
+};
+
+function deriveBudgetRenewalMetadata(normalizedLookup) {
+  if (!normalizedLookup || !normalizedLookup.size) {
+    return null;
+  }
+
+  const renewal = {};
+
+  for (const [rawKey, values] of normalizedLookup.entries()) {
+    if (
+      !rawKey.startsWith("budget_renewal") &&
+      !rawKey.startsWith("budgetrenewal")
+    ) {
+      continue;
+    }
+    if (!Array.isArray(values) || !values.length) {
+      continue;
+    }
+    const candidate = values.find((value) => sanitizeQueryValue(value));
+    if (!candidate) {
+      continue;
+    }
+
+    const normalizedKey = rawKey
+      .replace(/^budget_renewal_?/, "")
+      .replace(/^budgetrenewal_?/, "");
+    const alias = BUDGET_RENEWAL_FIELD_ALIASES[normalizedKey];
+    const field = alias || (normalizedKey || "interval");
+
+    if (!(field in renewal)) {
+      renewal[field] = sanitizeQueryValue(candidate);
+    }
+  }
+
+  return Object.keys(renewal).length ? renewal : null;
+}
+
+function deriveBudgetMetadata(additionalParams) {
+  if (!additionalParams || !(additionalParams instanceof Map)) {
+    return null;
+  }
+
+  const normalizedLookup = new Map();
+
+  for (const [key, values] of additionalParams.entries()) {
+    if (!Array.isArray(values) || !values.length) {
+      continue;
+    }
+    const normalizedValues = values
+      .map((value) => sanitizeQueryValue(value))
+      .filter(Boolean);
+    if (!normalizedValues.length) {
+      continue;
+    }
+    const lowerKey = typeof key === "string" ? key.toLowerCase() : "";
+    if (!lowerKey) {
+      continue;
+    }
+    if (!normalizedLookup.has(lowerKey)) {
+      normalizedLookup.set(lowerKey, []);
+    }
+    normalizedLookup.get(lowerKey).push(...normalizedValues);
+  }
+
+  const budgetValue = getFirstQueryValue(normalizedLookup, [
+    "budget",
+    "budget_msat",
+    "budgetmsat",
+    "budget_msats",
+    "budgetmsats",
+  ]);
+  const totalMsats = coercePositiveBigInt(budgetValue);
+  const renewal = deriveBudgetRenewalMetadata(normalizedLookup);
+
+  if (totalMsats !== null && totalMsats !== undefined) {
+    return {
+      totalMsats,
+      renewal,
+      raw: { budget: budgetValue },
+    };
+  }
+
+  if (renewal) {
+    return {
+      totalMsats: null,
+      renewal,
+      raw: { budget: budgetValue },
+    };
+  }
+
+  return null;
+}
+
+function createBudgetTracker(budgetMetadata) {
+  if (!budgetMetadata || typeof budgetMetadata !== "object") {
+    return null;
+  }
+
+  const total = coercePositiveBigInt(budgetMetadata.totalMsats);
+  if (total === null || total === undefined) {
+    return null;
+  }
+
+  const tracker = {
+    totalMsats: total,
+    spentMsats: 0n,
+    renewal: budgetMetadata.renewal || null,
+    exhausted: false,
+  };
+
+  if (tracker.totalMsats === 0n) {
+    tracker.exhausted = true;
+  }
+
+  return tracker;
+}
+
+function getBudgetRemainingMsats(tracker) {
+  if (!tracker) {
+    return null;
+  }
+  const remaining = tracker.totalMsats - tracker.spentMsats;
+  return remaining > 0n ? remaining : 0n;
+}
+
+function incrementBudgetSpend(tracker, amountMsats) {
+  if (!tracker || typeof amountMsats !== "bigint") {
+    return;
+  }
+  const next = tracker.spentMsats + (amountMsats >= 0n ? amountMsats : 0n);
+  tracker.spentMsats = next;
+  if (tracker.spentMsats >= tracker.totalMsats) {
+    tracker.spentMsats = tracker.totalMsats;
+    tracker.exhausted = true;
+  }
+}
+
+function markBudgetTrackerExhausted(tracker) {
+  if (!tracker) {
+    return;
+  }
+  tracker.exhausted = true;
+  if (tracker.spentMsats > tracker.totalMsats) {
+    tracker.spentMsats = tracker.totalMsats;
+  }
 }
 
 function hexToBytesCompat(hex) {
@@ -992,6 +1234,13 @@ function ensureActiveState(settings) {
       activeState.context.relayUrls = parsed.relays.slice();
       activeState.context.relays = parsed.relays.slice();
       activeState.context.queryParams = parsed.queryParams;
+      activeState.context.budget = parsed.budget || null;
+      if (!activeState.context.budgetTracker && parsed.budget) {
+        activeState.context.budgetTracker = createBudgetTracker(parsed.budget);
+      } else if (activeState.context.budgetTracker) {
+        activeState.context.budgetTracker.renewal =
+          parsed.budget?.renewal || null;
+      }
     }
     return activeState.context;
   }
@@ -1010,6 +1259,8 @@ function ensureActiveState(settings) {
       clientPubkey: parsed.clientPubkey,
       uri: parsed.normalizedUri,
       queryParams: parsed.queryParams,
+      budget: parsed.budget || null,
+      budgetTracker: createBudgetTracker(parsed.budget),
       infoEvent: null,
       encryption: null,
       encryptionState: { unsupported: new Set() },
@@ -1134,6 +1385,173 @@ function sanitizeAmount(amount) {
   return Math.max(0, rounded);
 }
 
+const WALLET_BUDGET_ERROR_CODES = new Set([
+  "allowance_exceeded",
+  "allowance_exhausted",
+  "budget_exceeded",
+  "budget_exhausted",
+  "budget_limit_reached",
+  "budget_spent",
+  "quota_exceeded",
+  "spending_allowance_exceeded",
+  "spending_limit_reached",
+  "nwc_budget_exhausted",
+]);
+
+const BOLT11_PICO_MULTIPLIERS = {
+  "": 12n,
+  m: 9n,
+  u: 6n,
+  n: 3n,
+  p: 0n,
+};
+
+function normalizeErrorCode(code) {
+  if (typeof code !== "string") {
+    return "";
+  }
+  return code
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_");
+}
+
+function toMsatsFromSats(amount) {
+  if (!Number.isFinite(amount)) {
+    return null;
+  }
+  const rounded = Math.round(amount);
+  const clamped = Math.max(0, rounded);
+  return BigInt(clamped) * 1000n;
+}
+
+function toMsatsFromValue(amount) {
+  if (typeof amount === "bigint") {
+    return amount >= 0n ? amount : 0n;
+  }
+  if (typeof amount === "number") {
+    if (!Number.isFinite(amount)) {
+      return null;
+    }
+    const rounded = Math.round(amount);
+    const clamped = Math.max(0, rounded);
+    return BigInt(clamped);
+  }
+  if (typeof amount === "string") {
+    const big = coercePositiveBigInt(amount);
+    if (big === null) {
+      return null;
+    }
+    return big;
+  }
+  return null;
+}
+
+function decodeBolt11AmountMsats(invoice) {
+  if (typeof invoice !== "string") {
+    return null;
+  }
+  const trimmed = invoice.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const lower = trimmed.toLowerCase();
+  if (!lower.startsWith("ln")) {
+    return null;
+  }
+
+  let index = 2;
+  while (index < lower.length && /[a-z]/.test(lower[index])) {
+    index += 1;
+  }
+
+  const digitsStart = index;
+  while (index < lower.length && /[0-9]/.test(lower[index])) {
+    index += 1;
+  }
+
+  const digits = lower.slice(digitsStart, index);
+  if (!digits) {
+    return null;
+  }
+
+  const unitChar = index < lower.length && /[munp]/.test(lower[index]) ? lower[index] : "";
+  if (unitChar) {
+    index += 1;
+  }
+
+  try {
+    const base = BigInt(digits);
+    const exponent = BOLT11_PICO_MULTIPLIERS[unitChar];
+    if (typeof exponent === "undefined") {
+      return null;
+    }
+    const pico = base * 10n ** exponent;
+    if (pico % 10n !== 0n) {
+      return null;
+    }
+    return pico / 10n;
+  } catch (error) {
+    return null;
+  }
+}
+
+function resolvePaymentAmountMsats({ invoice, params, amountSats }) {
+  const fromSats = Number.isFinite(amountSats) ? toMsatsFromSats(amountSats) : null;
+  if (fromSats !== null) {
+    return { msats: fromSats, source: "amountSats" };
+  }
+
+  const paramAmount = params && typeof params === "object" ? params.amount : null;
+  const fromParams = toMsatsFromValue(paramAmount);
+  if (fromParams !== null) {
+    return { msats: fromParams, source: "params.amount" };
+  }
+
+  const decoded = decodeBolt11AmountMsats(invoice);
+  if (decoded !== null) {
+    return { msats: decoded, source: "invoice" };
+  }
+
+  return { msats: null, source: null };
+}
+
+function isBudgetOrAllowanceError(error) {
+  const normalizedCode = normalizeErrorCode(error?.code);
+  if (normalizedCode && WALLET_BUDGET_ERROR_CODES.has(normalizedCode)) {
+    return true;
+  }
+  return isZapAllowanceExhaustedError(error);
+}
+
+function createBudgetExceededError(tracker, chargeMsats, { remainingMsats }) {
+  const message =
+    "Budget exceeded. Increase your wallet zap limit or reduce the platform fee, then try again.";
+  const error = new Error(message);
+  error.code = "NWC_BUDGET_EXHAUSTED";
+
+  if (typeof chargeMsats === "bigint") {
+    error.requestedMsats = chargeMsats;
+  }
+
+  if (tracker) {
+    error.budgetMsats = tracker.totalMsats;
+    if (typeof remainingMsats === "bigint") {
+      error.remainingMsats = remainingMsats >= 0n ? remainingMsats : 0n;
+    } else {
+      const remaining = getBudgetRemainingMsats(tracker);
+      if (typeof remaining === "bigint") {
+        error.remainingMsats = remaining;
+      }
+    }
+    if (tracker.renewal) {
+      error.budgetRenewal = tracker.renewal;
+    }
+  }
+
+  return error;
+}
+
 function buildPayInvoiceParams({ invoice, amountSats, zapRequest, lnurl }) {
   const params = { invoice };
 
@@ -1163,14 +1581,51 @@ export async function sendPayment(
   const context = await ensureWallet({ settings });
   const invoice = sanitizeInvoice(bolt11);
   const params = buildPayInvoiceParams({ invoice, amountSats, zapRequest, lnurl });
+  const amountInfo = resolvePaymentAmountMsats({
+    invoice,
+    params,
+    amountSats,
+  });
+  const chargeMsats = amountInfo.msats;
+  const tracker = context?.budgetTracker || null;
+
+  if (tracker) {
+    const remaining = getBudgetRemainingMsats(tracker);
+    const exhausted = tracker.exhausted || (typeof remaining === "bigint" && remaining === 0n);
+    const exceedsBudget =
+      typeof chargeMsats === "bigint" && typeof remaining === "bigint"
+        ? chargeMsats > remaining
+        : false;
+
+    if (exhausted || exceedsBudget) {
+      const error = createBudgetExceededError(tracker, chargeMsats, {
+        remainingMsats: typeof remaining === "bigint" ? remaining : null,
+      });
+      if (exhausted || (typeof remaining === "bigint" && remaining === 0n)) {
+        markBudgetTrackerExhausted(tracker);
+      }
+      throw error;
+    }
+  }
+
   const payload = {
     id: `req-${Date.now()}-${++requestCounter}`,
     method: "pay_invoice",
     params,
   };
 
-  const response = await sendWalletRequest(context, payload, { timeoutMs });
-  return response;
+  try {
+    const response = await sendWalletRequest(context, payload, { timeoutMs });
+    if (tracker && typeof chargeMsats === "bigint" && chargeMsats > 0n) {
+      incrementBudgetSpend(tracker, chargeMsats);
+    }
+    return response;
+  } catch (error) {
+    if (tracker && isBudgetOrAllowanceError(error)) {
+      markBudgetTrackerExhausted(tracker);
+    }
+    throw error;
+  }
 }
 
 export function getActiveWalletContext() {
