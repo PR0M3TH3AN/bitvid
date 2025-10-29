@@ -3,9 +3,7 @@
 import { nostrToolsReady } from "../nostrToolsBootstrap.js";
 import { normalizeToolkitCandidate, readToolkitFromScope } from "../nostr/toolkit.js";
 import { userLogger } from "../utils/logger.js";
-import { bech32 } from "@scure/base";
-import { sha256 } from "@noble/hashes/sha256";
-import { bytesToHex } from "@noble/hashes/utils";
+import { bech32, bytesToHex, sha256 } from "../../vendor/crypto-helpers.bundle.min.js";
 
 const ZAP_RECEIPT_KIND = 9735;
 const BOLT11_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
