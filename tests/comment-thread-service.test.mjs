@@ -206,6 +206,72 @@ test(
 );
 
 test(
+  "CommentThreadService loadThread falls back to event id when address is missing",
+  async () => {
+    const video = {
+      ...createBaseVideo(),
+      tags: [["alt", "ignored"]],
+    };
+
+    const fetchTargets = [];
+    const fetchOptions = [];
+    const subscribeTargets = [];
+    const subscribeOptions = [];
+    const errors = [];
+
+    const service = new CommentThreadService({
+      fetchVideoComments: async (target, options) => {
+        fetchTargets.push(target);
+        fetchOptions.push(options);
+        return [];
+      },
+      subscribeVideoComments: (target, options = {}) => {
+        subscribeTargets.push(target);
+        subscribeOptions.push(options);
+        return () => {};
+      },
+    });
+
+    service.setCallbacks({
+      onError: (error) => errors.push(error),
+    });
+
+    const snapshot = await service.loadThread({ video });
+
+    assert.equal(fetchTargets.length, 1, "fetch should run even without an address");
+    assert.deepStrictEqual(fetchTargets[0], {
+      videoEventId: "video123",
+      parentCommentId: "",
+    });
+    assert.equal(
+      "videoDefinitionAddress" in fetchTargets[0],
+      false,
+      "videoDefinitionAddress should be omitted when unavailable",
+    );
+
+    assert.deepStrictEqual(fetchOptions[0], {
+      limit: service.defaultLimit,
+      relays: null,
+    });
+
+    assert.equal(
+      subscribeTargets.length,
+      1,
+      "subscribe should run even without an address",
+    );
+    assert.deepStrictEqual(subscribeTargets[0], fetchTargets[0]);
+    assert.equal(
+      typeof subscribeOptions[0]?.onEvent,
+      "function",
+      "subscription handler should be provided",
+    );
+
+    assert.equal(errors.length, 0, "missing address should not emit errors");
+    assert.equal(snapshot.videoEventId, "video123");
+  },
+);
+
+test(
   "CommentThreadService teardown cancels hydration timers",
   async () => {
     const video = createBaseVideo();
