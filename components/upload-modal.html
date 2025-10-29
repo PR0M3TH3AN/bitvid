@@ -193,12 +193,13 @@
                     type="number"
                     id="nip71Duration"
                     min="0"
-                    step="1"
+                    step="0.001"
                     data-nip71-input="duration"
                     class="input"
                   />
                   <p class="text-xs text-muted">
-                    Provide the runtime in whole seconds for timeline scrubbing.
+                    Optional legacy fallback in seconds (fractions allowed) for clients that
+                    expect a top-level duration.
                   </p>
                 </div>
                 <div class="space-y-2">
@@ -412,22 +413,54 @@
                           HTTPS variant URL shared across clients.
                         </p>
                       </div>
-                      <div class="space-y-2">
-                        <label class="block text-xs font-medium text-muted-strong">
-                          Magnet (<code>x</code>)
-                        </label>
-                        <input
-                          type="text"
-                          data-nip71-field="x"
-                          placeholder="magnet:?xt=urn:btih:..."
-                          class="input"
-                        />
-                        <p class="text-3xs text-muted">
-                          Optional magnet pointer if the variant is seeded via
-                          P2P.
-                        </p>
-                      </div>
+                    <div class="space-y-2">
+                      <label class="block text-xs font-medium text-muted-strong">
+                        Magnet (<code>x</code>)
+                      </label>
+                      <input
+                        type="text"
+                        data-nip71-field="x"
+                        placeholder="magnet:?xt=urn:btih:..."
+                        class="input"
+                      />
+                      <p class="text-3xs text-muted">
+                        Optional magnet pointer if the variant is seeded via
+                        P2P.
+                      </p>
                     </div>
+                    <div class="space-y-2">
+                      <label class="block text-xs font-medium text-muted-strong">
+                        Duration seconds (<code>duration</code>)
+                      </label>
+                      <input
+                        type="number"
+                        data-nip71-field="duration"
+                        min="0"
+                        step="0.001"
+                        placeholder="29.97"
+                        class="input"
+                      />
+                      <p class="text-3xs text-muted">
+                        Fractional seconds supported; clients use this for precise timelines.
+                      </p>
+                    </div>
+                    <div class="space-y-2">
+                      <label class="block text-xs font-medium text-muted-strong">
+                        Bitrate bps (<code>bitrate</code>)
+                      </label>
+                      <input
+                        type="number"
+                        data-nip71-field="bitrate"
+                        min="0"
+                        step="1"
+                        placeholder="3500000"
+                        class="input"
+                      />
+                      <p class="text-3xs text-muted">
+                        Average bits per second for this variant.
+                      </p>
+                    </div>
+                  </div>
 
                     <div class="space-y-3" data-nip71-nested="image">
                       <div class="flex items-center justify-between">
