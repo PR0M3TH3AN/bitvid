@@ -1,9 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildCommentEvent } from "../js/nostrEventSchemas.js";
+import {
+  buildCommentEvent,
+  getNostrEventSchema,
+  NOTE_TYPES,
+} from "../js/nostrEventSchemas.js";
 
-test("buildCommentEvent produces required tags for top-level comments", () => {
+const VIDEO_COMMENT_KIND =
+  getNostrEventSchema(NOTE_TYPES.VIDEO_COMMENT)?.kind ?? 1111;
+
+test("buildCommentEvent references the video definition when available", () => {
   const event = buildCommentEvent({
     pubkey: "commenter",
     created_at: 1700000200,
@@ -14,10 +21,7 @@ test("buildCommentEvent produces required tags for top-level comments", () => {
     content: "Great \ud800video!",
   });
 
-  assert.equal(event.kind, 1);
-
-  const eventTags = event.tags.filter((tag) => Array.isArray(tag) && tag[0] === "e");
-  assert.deepEqual(eventTags, [["e", "video-event-id", "wss://relay.example"]]);
+  assert.equal(event.kind, VIDEO_COMMENT_KIND);
 
   const addressTags = event.tags.filter((tag) => Array.isArray(tag) && tag[0] === "a");
   assert.deepEqual(addressTags, [["a", "30078:deadbeefcafebabe:clip-1"]]);
@@ -39,13 +43,10 @@ test("buildCommentEvent includes parent pointers for threaded replies", () => {
     content: "Replying now",
   });
 
-  assert.equal(event.kind, 1);
+  assert.equal(event.kind, VIDEO_COMMENT_KIND);
 
   const eventTags = event.tags.filter((tag) => Array.isArray(tag) && tag[0] === "e");
-  assert.deepEqual(eventTags, [
-    ["e", "video-event-id"],
-    ["e", "parent-comment-id"],
-  ]);
+  assert.deepEqual(eventTags, [["e", "parent-comment-id"]]);
 
   const addressTags = event.tags.filter((tag) => Array.isArray(tag) && tag[0] === "a");
   assert.deepEqual(addressTags, [["a", "30078:deadbeefcafebabe:clip-1"]]);
@@ -70,9 +71,8 @@ test("buildCommentEvent normalizes optional relays and preserves additional tags
     content: " Appreciated! \ud800",
   });
 
-  assert.equal(event.kind, 1);
+  assert.equal(event.kind, VIDEO_COMMENT_KIND);
   assert.deepStrictEqual(event.tags, [
-    ["e", "event123", "wss://comments.main"],
     ["a", "30078:deadbeefcafebabe:clip-2", "wss://video.def"],
     ["e", "root-comment", "wss://parent"],
     ["p", "cafecafe", "wss://profile"],
@@ -80,4 +80,23 @@ test("buildCommentEvent normalizes optional relays and preserves additional tags
     ["p", "cafecafe", "wss://override"],
   ]);
   assert.equal(event.content, " Appreciated! ");
+});
+
+test("buildCommentEvent falls back to the video event when no definition address is provided", () => {
+  const event = buildCommentEvent({
+    pubkey: "commenter",
+    created_at: 1700000400,
+    videoEventId: "legacy-event", 
+    videoEventRelay: "wss://legacy.example", 
+    threadParticipantPubkey: "legacy-pubkey",
+    content: "Legacy thread support",
+  });
+
+  assert.equal(event.kind, VIDEO_COMMENT_KIND);
+
+  const eventTags = event.tags.filter((tag) => Array.isArray(tag) && tag[0] === "e");
+  assert.deepEqual(eventTags, [["e", "legacy-event", "wss://legacy.example"]]);
+
+  const participantTags = event.tags.filter((tag) => Array.isArray(tag) && tag[0] === "p");
+  assert.deepEqual(participantTags, [["p", "legacy-pubkey"]]);
 });
