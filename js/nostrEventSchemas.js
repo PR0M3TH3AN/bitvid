@@ -238,7 +238,7 @@ const BASE_SCHEMAS = {
   [NOTE_TYPES.VIDEO_COMMENT]: {
     type: NOTE_TYPES.VIDEO_COMMENT,
     label: "Video comment",
-    kind: 1,
+    kind: 1111,
     videoEventTagName: "e",
     videoDefinitionTagName: "a",
     parentCommentTagName: "e",
@@ -889,19 +889,10 @@ export function buildCommentEvent({
   const schema = getNostrEventSchema(NOTE_TYPES.VIDEO_COMMENT);
   const tags = [];
 
-  const videoEventTagName = schema?.videoEventTagName || "e";
   const normalizedVideoEventId =
     typeof videoEventId === "string" ? videoEventId.trim() : "";
   const normalizedVideoEventRelay =
     typeof videoEventRelay === "string" ? videoEventRelay.trim() : "";
-  if (videoEventTagName && normalizedVideoEventId) {
-    if (normalizedVideoEventRelay) {
-      tags.push([videoEventTagName, normalizedVideoEventId, normalizedVideoEventRelay]);
-    } else {
-      tags.push([videoEventTagName, normalizedVideoEventId]);
-    }
-  }
-
   const videoDefinitionTagName = schema?.videoDefinitionTagName || "a";
   const normalizedVideoDefinitionAddress =
     typeof videoDefinitionAddress === "string"
@@ -909,6 +900,20 @@ export function buildCommentEvent({
       : "";
   const normalizedVideoDefinitionRelay =
     typeof videoDefinitionRelay === "string" ? videoDefinitionRelay.trim() : "";
+  const includeVideoEventTag =
+    !normalizedVideoDefinitionAddress &&
+    Boolean(schema?.videoEventTagName || "e") &&
+    Boolean(normalizedVideoEventId);
+
+  if (includeVideoEventTag) {
+    const videoEventTagName = schema?.videoEventTagName || "e";
+    if (normalizedVideoEventRelay) {
+      tags.push([videoEventTagName, normalizedVideoEventId, normalizedVideoEventRelay]);
+    } else {
+      tags.push([videoEventTagName, normalizedVideoEventId]);
+    }
+  }
+
   if (videoDefinitionTagName && normalizedVideoDefinitionAddress) {
     if (normalizedVideoDefinitionRelay) {
       tags.push([
@@ -972,7 +977,7 @@ export function buildCommentEvent({
   const resolvedContent = ensureValidUtf8Content(content);
 
   return {
-    kind: schema?.kind ?? 1,
+    kind: schema?.kind ?? 1111,
     pubkey,
     created_at,
     tags,

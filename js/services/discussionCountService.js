@@ -1,5 +1,6 @@
 import { devLogger } from "../utils/logger.js";
 import { buildVideoAddressPointer } from "../utils/videoPointer.js";
+import { COMMENT_EVENT_KIND } from "../nostr/commentEvents.js";
 
 const DEFAULT_MAX_DISCUSSION_COUNT_VIDEOS = 24;
 const COUNT_UNSUPPORTED_TITLE = "Relay does not support NIP-45 COUNT queries.";
@@ -130,12 +131,12 @@ export default class DiscussionCountService {
     const filters = [];
     const eventId = typeof video.id === "string" ? video.id.trim() : "";
     if (eventId) {
-      filters.push({ kinds: [1], "#e": [eventId] });
+      filters.push({ kinds: [COMMENT_EVENT_KIND], "#e": [eventId] });
     }
 
     const address = buildVideoAddressPointer(video);
     if (address) {
-      filters.push({ kinds: [1], "#a": [address] });
+      filters.push({ kinds: [COMMENT_EVENT_KIND], "#a": [address] });
     }
 
     return filters;
