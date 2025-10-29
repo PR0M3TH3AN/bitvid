@@ -135,6 +135,51 @@ export default class DiscussionCountService {
     }
 
     const address = buildVideoAddressPointer(video);
+    const rootIdentifier =
+      typeof video.videoRootId === "string" ? video.videoRootId.trim() : "";
+
+    const uppercaseFilter = { kinds: [COMMENT_EVENT_KIND] };
+    let hasUppercasePointer = false;
+
+    if (rootIdentifier) {
+      uppercaseFilter["#I"] = [rootIdentifier];
+      hasUppercasePointer = true;
+    } else if (address) {
+      uppercaseFilter["#A"] = [address];
+      hasUppercasePointer = true;
+    } else if (eventId) {
+      uppercaseFilter["#E"] = [eventId];
+      hasUppercasePointer = true;
+    }
+
+    const rootKind = (() => {
+      if (Number.isFinite(video.kind)) {
+        return String(Math.floor(video.kind));
+      }
+      if (typeof video.kind === "string" && video.kind.trim()) {
+        const parsed = Number(video.kind);
+        if (Number.isFinite(parsed)) {
+          return String(Math.floor(parsed));
+        }
+        return video.kind.trim();
+      }
+      return "";
+    })();
+
+    if (rootKind) {
+      uppercaseFilter["#K"] = [rootKind];
+    }
+
+    const rootAuthor =
+      typeof video.pubkey === "string" ? video.pubkey.trim() : "";
+    if (rootAuthor) {
+      uppercaseFilter["#P"] = [rootAuthor];
+    }
+
+    if (hasUppercasePointer) {
+      filters.push(uppercaseFilter);
+    }
+
     if (address) {
       filters.push({ kinds: [COMMENT_EVENT_KIND], "#a": [address] });
     }

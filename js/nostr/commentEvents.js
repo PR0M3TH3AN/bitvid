@@ -750,6 +750,48 @@ function createVideoCommentFilters(targetInput, options = {}) {
   };
   filters.push(applyFilterOptions(eventFilter, options));
 
+  const uppercaseFilter = { kinds: [COMMENT_EVENT_KIND] };
+  let hasUppercasePointer = false;
+
+  if (typeof descriptor.rootIdentifier === "string" && descriptor.rootIdentifier) {
+    uppercaseFilter["#I"] = [descriptor.rootIdentifier];
+    hasUppercasePointer = true;
+  } else if (
+    typeof descriptor.videoDefinitionAddress === "string" &&
+    descriptor.videoDefinitionAddress
+  ) {
+    uppercaseFilter["#A"] = [descriptor.videoDefinitionAddress];
+    hasUppercasePointer = true;
+  } else if (
+    typeof descriptor.videoEventId === "string" &&
+    descriptor.videoEventId
+  ) {
+    uppercaseFilter["#E"] = [descriptor.videoEventId];
+    hasUppercasePointer = true;
+  }
+
+  const normalizedRootKind =
+    typeof descriptor.rootKind === "string"
+      ? descriptor.rootKind
+      : Number.isFinite(descriptor.rootKind)
+      ? String(Math.floor(descriptor.rootKind))
+      : "";
+  if (normalizedRootKind) {
+    uppercaseFilter["#K"] = [normalizedRootKind];
+  }
+
+  const normalizedRootAuthor =
+    typeof descriptor.rootAuthorPubkey === "string"
+      ? descriptor.rootAuthorPubkey.trim()
+      : "";
+  if (normalizedRootAuthor) {
+    uppercaseFilter["#P"] = [normalizedRootAuthor];
+  }
+
+  if (hasUppercasePointer) {
+    filters.push(applyFilterOptions(uppercaseFilter, options));
+  }
+
   if (
     descriptor.parentCommentId &&
     descriptor.parentCommentId !== descriptor.videoEventId
@@ -810,21 +852,99 @@ function isVideoCommentEvent(event, descriptor) {
     descriptor && typeof descriptor === "object" ? descriptor : {};
 
   const tags = Array.isArray(event.tags) ? event.tags : [];
-  const requiresParentTag = Boolean(targetDescriptor.parentCommentId);
-  const requiresAddressMatch = Boolean(targetDescriptor.videoDefinitionAddress);
+  const requiresRootIdentifierMatch = Boolean(targetDescriptor.rootIdentifier);
+  const requiresAddressMatch =
+    !requiresRootIdentifierMatch && Boolean(targetDescriptor.videoDefinitionAddress);
   const requiresEventMatch =
-    !requiresAddressMatch && Boolean(targetDescriptor.videoEventId);
+    !requiresRootIdentifierMatch && !requiresAddressMatch &&
+    Boolean(targetDescriptor.videoEventId);
+  const requiresParentTag = Boolean(targetDescriptor.parentCommentId);
 
-  let hasEventTag = !requiresEventMatch;
+  let hasIdentifierTag = !requiresRootIdentifierMatch;
   let hasDefinitionTag = !requiresAddressMatch;
+  let hasEventTag = !requiresEventMatch;
   let hasParentTag = !requiresParentTag;
+
+  const expectedRootKind = (() => {
+    if (typeof targetDescriptor.rootKind === "string") {
+      return targetDescriptor.rootKind;
+    }
+    if (Number.isFinite(targetDescriptor.rootKind)) {
+      return String(Math.floor(targetDescriptor.rootKind));
+    }
+    if (typeof targetDescriptor.videoKind === "string") {
+      return targetDescriptor.videoKind;
+    }
+    if (Number.isFinite(targetDescriptor.videoKind)) {
+      return String(Math.floor(targetDescriptor.videoKind));
+    }
+    return "";
+  })();
+
+  const expectedRootAuthor =
+    typeof targetDescriptor.rootAuthorPubkey === "string"
+      ? targetDescriptor.rootAuthorPubkey
+      : typeof targetDescriptor.videoAuthorPubkey === "string"
+      ? targetDescriptor.videoAuthorPubkey
+      : "";
+
+  const expectedParentKind = (() => {
+    if (typeof targetDescriptor.parentKind === "string") {
+      return targetDescriptor.parentKind;
+    }
+    if (Number.isFinite(targetDescriptor.parentKind)) {
+      return String(Math.floor(targetDescriptor.parentKind));
+    }
+    return "";
+  })();
+
+  const expectedParentAuthor =
+    typeof targetDescriptor.parentAuthorPubkey === "string"
+      ? targetDescriptor.parentAuthorPubkey
+      : "";
+
+  let sawRootKindTag = false;
+  let rootKindMatches = !expectedRootKind;
+  let rootKindMismatch = false;
+
+  let sawRootAuthorTag = false;
+  let rootAuthorMatches = !expectedRootAuthor;
+  let rootAuthorMismatch = false;
+
+  let sawParentKindTag = false;
+  let parentKindMatches = !expectedParentKind;
+  let parentKindMismatch = false;
+
+  let sawParentAuthorTag = false;
+  let parentAuthorMatches = !expectedParentAuthor;
+  let parentAuthorMismatch = false;
 
   for (const tag of tags) {
     if (!Array.isArray(tag) || tag.length < 2) {
       continue;
     }
     const [name, value] = tag;
-    if (name === "e" && typeof value === "string") {
+    if (typeof value !== "string") {
+      continue;
+    }
+
+    if (name === "I") {
+      if (value === targetDescriptor.rootIdentifier) {
+        hasIdentifierTag = true;
+      }
+    } else if (name === "A") {
+      if (value === targetDescriptor.videoDefinitionAddress) {
+        hasDefinitionTag = true;
+      }
+    } else if (name === "a") {
+      if (value === targetDescriptor.videoDefinitionAddress) {
+        hasDefinitionTag = true;
+      }
+    } else if (name === "E") {
+      if (value === targetDescriptor.videoEventId) {
+        hasEventTag = true;
+      }
+    } else if (name === "e") {
       if (value === targetDescriptor.videoEventId) {
         hasEventTag = true;
       }
@@ -834,14 +954,66 @@ function isVideoCommentEvent(event, descriptor) {
       ) {
         hasParentTag = true;
       }
-    } else if (name === "a" && typeof value === "string") {
-      if (value === targetDescriptor.videoDefinitionAddress) {
-        hasDefinitionTag = true;
+    } else if (name === "K") {
+      sawRootKindTag = true;
+      if (!expectedRootKind || value === expectedRootKind) {
+        rootKindMatches = true;
+      } else {
+        rootKindMismatch = true;
+      }
+    } else if (name === "P") {
+      sawRootAuthorTag = true;
+      if (!expectedRootAuthor || value === expectedRootAuthor) {
+        rootAuthorMatches = true;
+      } else {
+        rootAuthorMismatch = true;
+      }
+    } else if (name === "k") {
+      sawParentKindTag = true;
+      if (!expectedParentKind || value === expectedParentKind) {
+        parentKindMatches = true;
+      } else {
+        parentKindMismatch = true;
+      }
+    } else if (name === "p") {
+      sawParentAuthorTag = true;
+      if (!expectedParentAuthor || value === expectedParentAuthor) {
+        parentAuthorMatches = true;
+      } else {
+        parentAuthorMismatch = true;
       }
     }
   }
 
-  return hasEventTag && hasDefinitionTag && hasParentTag;
+  if (!hasIdentifierTag || !hasDefinitionTag || !hasEventTag || !hasParentTag) {
+    return false;
+  }
+
+  if ((sawRootKindTag && rootKindMismatch) || (sawRootAuthorTag && rootAuthorMismatch)) {
+    return false;
+  }
+
+  if ((sawParentKindTag && parentKindMismatch) || (sawParentAuthorTag && parentAuthorMismatch)) {
+    return false;
+  }
+
+  if (sawRootKindTag && expectedRootKind && !rootKindMatches) {
+    return false;
+  }
+
+  if (sawRootAuthorTag && expectedRootAuthor && !rootAuthorMatches) {
+    return false;
+  }
+
+  if (sawParentKindTag && expectedParentKind && !parentKindMatches) {
+    return false;
+  }
+
+  if (sawParentAuthorTag && expectedParentAuthor && !parentAuthorMatches) {
+    return false;
+  }
+
+  return true;
 }
 
 export async function publishComment(

@@ -308,14 +308,18 @@ test("publishComment emits only video event #e tag when address and parent are a
   );
 });
 
-test("listVideoComments builds filters with #e primary and #a secondary", async () => {
+test("listVideoComments builds filters with uppercase roots plus legacy fallbacks", async () => {
   const matchingEventLatest = {
     id: "comment-2",
     kind: COMMENT_EVENT_KIND,
     created_at: 1700000200,
     tags: [
-      ["a", "30078:author:clip"],
+      ["A", "30078:author:clip"],
+      ["K", "30078"],
+      ["P", "author"],
       ["e", "parent-1"],
+      ["k", String(COMMENT_EVENT_KIND)],
+      ["p", "thread-participant"],
     ],
   };
 
@@ -353,6 +357,8 @@ test("listVideoComments builds filters with #e primary and #a secondary", async 
       videoEventId: "video-1",
       videoDefinitionAddress: "30078:author:clip",
       parentCommentId: "parent-1",
+      parentKind: COMMENT_EVENT_KIND,
+      parentAuthorPubkey: "thread-participant",
     },
     { relays: ["wss://history"], since: 1700000000, limit: 10 },
   );
@@ -369,10 +375,11 @@ test("listVideoComments builds filters with #e primary and #a secondary", async 
   );
   assert.equal(
     receivedFilters.filters.length,
-    3,
-    "event, parent, and address filters should be emitted",
+    4,
+    "event, uppercase, parent, and address filters should be emitted",
   );
-  const [eventFilter, parentFilter, definitionFilter] = receivedFilters.filters;
+  const [eventFilter, uppercaseFilter, parentFilter, definitionFilter] =
+    receivedFilters.filters;
   assert.equal(
     eventFilter.kinds[0],
     COMMENT_EVENT_KIND,
@@ -382,6 +389,36 @@ test("listVideoComments builds filters with #e primary and #a secondary", async 
     eventFilter["#e"],
     ["video-1"],
     "event filter should target the video via #e",
+  );
+  assert.equal(
+    uppercaseFilter.kinds[0],
+    COMMENT_EVENT_KIND,
+    "uppercase filter should target comment kind",
+  );
+  assert.deepEqual(
+    uppercaseFilter["#A"],
+    ["30078:author:clip"],
+    "uppercase filter should target the video definition via #A",
+  );
+  assert.deepEqual(
+    uppercaseFilter["#K"],
+    ["30078"],
+    "uppercase filter should scope the root kind via #K",
+  );
+  assert.deepEqual(
+    uppercaseFilter["#P"],
+    ["author"],
+    "uppercase filter should scope the root author via #P",
+  );
+  assert.equal(
+    uppercaseFilter.since,
+    1700000000,
+    "since option should propagate to uppercase filter",
+  );
+  assert.equal(
+    uppercaseFilter.limit,
+    10,
+    "limit option should propagate to uppercase filter",
   );
   assert.deepEqual(
     parentFilter,
@@ -465,8 +502,12 @@ test("listVideoComments supports legacy targets without a definition address", a
         kinds: [COMMENT_EVENT_KIND],
         "#e": ["legacy-video"],
       },
+      {
+        kinds: [COMMENT_EVENT_KIND],
+        "#E": ["legacy-video"],
+      },
     ],
-    "legacy listing should target the video event id via #e",
+    "legacy listing should target the video event id via #e/#E",
   );
 });
 
@@ -503,6 +544,8 @@ test("subscribeVideoComments forwards matching events and cleans up unsubscribe"
       videoEventId: "video-1",
       videoDefinitionAddress: "30078:author:clip",
       parentCommentId: "parent-1",
+      parentKind: COMMENT_EVENT_KIND,
+      parentAuthorPubkey: "thread-participant",
     },
     {
       relays: ["wss://live"],
@@ -529,6 +572,12 @@ test("subscribeVideoComments forwards matching events and cleans up unsubscribe"
       },
       {
         kinds: [COMMENT_EVENT_KIND],
+        "#A": ["30078:author:clip"],
+        "#K": ["30078"],
+        "#P": ["author"],
+      },
+      {
+        kinds: [COMMENT_EVENT_KIND],
         "#e": ["parent-1"],
       },
       {
@@ -544,8 +593,12 @@ test("subscribeVideoComments forwards matching events and cleans up unsubscribe"
     id: "comment-accepted",
     kind: COMMENT_EVENT_KIND,
     tags: [
-      ["a", "30078:author:clip"],
+      ["A", "30078:author:clip"],
+      ["K", "30078"],
+      ["P", "author"],
       ["e", "parent-1"],
+      ["k", String(COMMENT_EVENT_KIND)],
+      ["p", "thread-participant"],
     ],
   });
 
@@ -600,8 +653,12 @@ test("subscribeVideoComments supports video targets without a definition address
         kinds: [COMMENT_EVENT_KIND],
         "#e": ["legacy-video"],
       },
+      {
+        kinds: [COMMENT_EVENT_KIND],
+        "#E": ["legacy-video"],
+      },
     ],
-    "subscription should emit only the video #e filter when address is absent",
+    "subscription should emit both legacy and uppercase video filters when address is absent",
   );
 
   assert.ok(handler, "event handler should be registered");
