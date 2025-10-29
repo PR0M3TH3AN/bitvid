@@ -383,7 +383,7 @@ async function processShare({
       invoice,
       payment,
       zapRequest,
-      status: "ok",
+      status: "success",
     };
   } catch (error) {
     userLogger.warn(
