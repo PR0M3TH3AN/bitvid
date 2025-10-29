@@ -7,6 +7,7 @@ import {
   fetchPayServiceData,
   validateInvoiceAmount,
   requestInvoice,
+  encodeLnurlBech32,
 } from "./lnurl.js";
 import { ensureWallet, sendPayment } from "./nwcClient.js";
 import { getPlatformLightningAddress } from "./platformAddress.js";
@@ -26,6 +27,7 @@ const DEFAULT_DEPS = Object.freeze({
     fetchPayServiceData,
     validateInvoiceAmount,
     requestInvoice,
+    encodeLnurlBech32,
   }),
   wallet: Object.freeze({ ensureWallet, sendPayment }),
   platformAddress: Object.freeze({ getPlatformLightningAddress }),
@@ -306,6 +308,24 @@ function resolveRelayUrls(wallet) {
   return normalized;
 }
 
+function resolveBech32Lnurl(resolved, encodeFn) {
+  const candidate = typeof resolved?.address === "string" ? resolved.address.trim() : "";
+  if (candidate && candidate.toLowerCase().startsWith("lnurl")) {
+    return candidate.toLowerCase();
+  }
+
+  const callbackUrl = typeof resolved?.url === "string" ? resolved.url.trim() : "";
+  if (!callbackUrl) {
+    return "";
+  }
+
+  if (typeof encodeFn !== "function") {
+    throw new Error("LNURL encoder is unavailable.");
+  }
+
+  return encodeFn(callbackUrl);
+}
+
 function buildZapRequest({
   wallet,
   recipientPubkey,
@@ -330,8 +350,11 @@ function buildZapRequest({
   if (pointerTag) {
     tags.push(pointerTag);
   }
-  if (lnurl) {
-    tags.push(["lnurl", lnurl]);
+  if (typeof lnurl === "string") {
+    const normalizedLnurl = lnurl.trim();
+    if (normalizedLnurl) {
+      tags.push(["lnurl", normalizedLnurl]);
+    }
   }
   if (Number.isFinite(amountSats)) {
     tags.push(["amount", String(Math.max(0, Math.round(amountSats)) * 1000)]);
@@ -382,6 +405,11 @@ async function processShare({
   const metadata = await deps.lnurl.fetchPayServiceData(resolved.url);
   const { amountMsats } = deps.lnurl.validateInvoiceAmount(metadata, amountSats);
 
+  const lnurlTag = resolveBech32Lnurl(resolved, deps.lnurl.encodeLnurlBech32);
+  if (!lnurlTag) {
+    throw new Error("Unable to resolve LNURL for zap request.");
+  }
+
   let zapRequest = null;
   if (metadata.allowsNostr === true || metadata.nostrPubkey) {
     const recipientPubkey = determineRecipientPubkey({
@@ -396,7 +424,7 @@ async function processShare({
         videoEvent,
         amountSats,
         comment,
-        lnurl: resolved.url,
+        lnurl: lnurlTag,
       });
     }
   }
@@ -411,7 +439,7 @@ async function processShare({
     const payment = await deps.wallet.sendPayment(invoice.invoice, {
       amountSats,
       zapRequest,
-      lnurl: resolved.url,
+      lnurl: lnurlTag,
     });
 
     return {
