@@ -82,6 +82,7 @@ const lnurlModule = await import("../js/payments/lnurl.js");
 const {
   encodeLnurlBech32,
   resolveLightningAddress: baseResolveLightningAddress,
+  requestInvoice,
 } = lnurlModule;
 const { decodeLnurlBech32 } = lnurlModule.__TESTING__;
 const { nostrClient } = await import("../js/nostr.js");
@@ -134,11 +135,11 @@ function createDeps({
           }
           return { amountMsats: amount * 1000 };
         },
-        async requestInvoice(metadata, { amountMsats, comment, zapRequest }) {
+        async requestInvoice(metadata, { amountMsats, comment, zapRequest, lnurl }) {
           return {
             invoice: `bolt11-${metadata.callback}-${amountMsats}-${comment}-${Boolean(
               zapRequest
-            )}`,
+            )}-${lnurl || ""}`,
             raw: {},
           };
         },
@@ -154,15 +155,21 @@ function createDeps({
             relays: walletRelays.slice(),
           };
         },
-        async sendPayment(invoice, { amountSats, zapRequest }) {
-          sendCalls.push({ invoice, amountSats, zapRequest });
+        async sendPayment(invoice, { amountSats, zapRequest, lnurl }) {
+          sendCalls.push({ invoice, amountSats, zapRequest, lnurl });
           if (typeof sendPaymentImplementation === "function") {
-            return sendPaymentImplementation({ invoice, amountSats, zapRequest });
+            return sendPaymentImplementation({
+              invoice,
+              amountSats,
+              zapRequest,
+              lnurl,
+            });
           }
           return {
             invoice,
             amountSats,
             zapRequest,
+            lnurl,
           };
         },
       },
@@ -332,6 +339,45 @@ async function testUrlLightningAddressZapTag() {
   } else {
     globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = previousOverride;
   }
+}
+
+async function testRequestInvoiceIncludesLnurlParam() {
+  const callback = "https://callback-lnurl.example/api/pay";
+  const lnurlValue = encodeLnurlBech32(callback);
+  const zapRequest = JSON.stringify({ kind: 9734, content: "zap" });
+  const requestedUrls = [];
+
+  const metadata = {
+    callback,
+    commentAllowed: 0,
+  };
+
+  const fetcher = async (url) => {
+    requestedUrls.push(url);
+    return {
+      ok: true,
+      async json() {
+        return { pr: "bolt11-invoice" };
+      },
+    };
+  };
+
+  const result = await requestInvoice(metadata, {
+    amountMsats: 123_000,
+    zapRequest,
+    lnurl: lnurlValue,
+    fetcher,
+  });
+
+  assert.equal(result.invoice, "bolt11-invoice");
+  assert.equal(requestedUrls.length, 1, "should call fetcher once");
+
+  const [url] = requestedUrls;
+  const parsed = new URL(url);
+
+  assert.equal(parsed.searchParams.get("amount"), "123000");
+  assert.equal(parsed.searchParams.get("nostr"), zapRequest);
+  assert.equal(parsed.searchParams.get("lnurl"), lnurlValue);
 }
 
 async function testWaitsForPoolBeforePlatformLookup() {
@@ -598,6 +644,7 @@ async function testWalletFailure() {
 await testSplitMath();
 await testBech32LightningAddressZapTag();
 await testUrlLightningAddressZapTag();
+await testRequestInvoiceIncludesLnurlParam();
 await testWaitsForPoolBeforePlatformLookup();
 await testLnurlBounds();
 await testMissingAddress();
