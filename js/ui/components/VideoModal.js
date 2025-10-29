@@ -3506,7 +3506,36 @@ export class VideoModal {
       return;
     }
 
-    receipts.forEach((receipt) => {
+    const normalized = receipts.filter(
+      (receipt) => receipt && typeof receipt === "object"
+    );
+
+    const validatedReceipts = normalized.filter(
+      (receipt) => receipt?.validation?.status === "passed" && receipt.validation.event
+    );
+
+    const paymentFailures = normalized.filter((receipt) => {
+      if (!receipt) {
+        return false;
+      }
+      const status =
+        typeof receipt.status === "string" ? receipt.status.toLowerCase() : "";
+      return status && status !== "success";
+    });
+
+    const unvalidatedReceipts = normalized.filter((receipt) => {
+      if (!receipt) {
+        return false;
+      }
+      const status =
+        typeof receipt.status === "string" ? receipt.status.toLowerCase() : "success";
+      if (status !== "success" && status !== "") {
+        return false;
+      }
+      return receipt?.validation?.status !== "passed";
+    });
+
+    const renderReceiptItem = ({ receipt, tone }) => {
       const li = this.document.createElement("li");
       li.className = "rounded border border-border p-3 bg-overlay-panel-soft";
 
@@ -3528,11 +3557,16 @@ export class VideoModal {
       )} sats`;
 
       const status = this.document.createElement("span");
-      const isSuccess = receipt.status
-        ? receipt.status === "success"
-        : !receipt.error;
-      status.textContent = isSuccess ? "Success" : "Failed";
-      status.className = isSuccess ? "text-info" : "text-critical";
+      if (tone === "validated") {
+        status.textContent = "Validated";
+        status.className = "text-info";
+      } else if (tone === "failed") {
+        status.textContent = "Failed";
+        status.className = "text-critical";
+      } else {
+        status.textContent = "Pending";
+        status.className = "text-muted";
+      }
 
       header.appendChild(shareLabel);
       header.appendChild(status);
@@ -3547,7 +3581,14 @@ export class VideoModal {
 
       const detail = this.document.createElement("p");
       detail.className = "mt-2 text-xs text-muted";
-      if (isSuccess) {
+      if (tone === "failed") {
+        const errorMessage =
+          (receipt.error && receipt.error.message) ||
+          (typeof receipt.error === "string"
+            ? receipt.error
+            : "Payment failed.");
+        detail.textContent = errorMessage;
+      } else {
         let detailMessage = "Invoice settled.";
         const preimage = receipt.payment?.result?.preimage;
         if (typeof preimage === "string" && preimage) {
@@ -3556,18 +3597,59 @@ export class VideoModal {
           }`;
         }
         detail.textContent = detailMessage;
-      } else {
-        const errorMessage =
-          (receipt.error && receipt.error.message) ||
-          (typeof receipt.error === "string"
-            ? receipt.error
-            : "Payment failed.");
-        detail.textContent = errorMessage;
       }
       li.appendChild(detail);
 
       this.modalZapReceipts.appendChild(li);
+    };
+
+    validatedReceipts.forEach((receipt) => {
+      renderReceiptItem({ receipt, tone: "validated" });
     });
+
+    paymentFailures.forEach((receipt) => {
+      renderReceiptItem({ receipt, tone: "failed" });
+    });
+
+    if (!validatedReceipts.length && !paymentFailures.length && !unvalidatedReceipts.length) {
+      const empty = this.document.createElement("li");
+      empty.className = "text-sm text-text";
+      empty.textContent = partial
+        ? "No zap receipts available."
+        : "No zap receipts published yet.";
+      this.modalZapReceipts.appendChild(empty);
+      return;
+    }
+
+    if (unvalidatedReceipts.length) {
+      const warning = this.document.createElement("li");
+      warning.className =
+        "rounded border border-border p-3 bg-overlay-panel-soft text-xs text-warning-strong";
+      const summaries = unvalidatedReceipts.map((receipt) => {
+        const shareType = receipt.recipientType || receipt.type || "creator";
+        const label =
+          shareType === "platform"
+            ? "Platform"
+            : shareType === "creator"
+              ? "Creator"
+              : "Lightning";
+        const address =
+          typeof receipt.address === "string" && receipt.address
+            ? ` (${receipt.address})`
+            : "";
+        const reason =
+          typeof receipt.validation?.reason === "string" && receipt.validation.reason
+            ? ` — ${receipt.validation.reason}`
+            : " — Awaiting compliant receipt.";
+        return `${label}${address}${reason}`;
+      });
+
+      const intro = validatedReceipts.length
+        ? "Awaiting validated zap receipt for remaining share(s)."
+        : "No validated zap receipts yet.";
+      warning.textContent = `${intro} ${summaries.join(" ")}`.trim();
+      this.modalZapReceipts.appendChild(warning);
+    }
   }
 
   setZapPending(pending) {

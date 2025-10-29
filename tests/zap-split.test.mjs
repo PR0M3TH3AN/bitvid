@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { bech32 } from "@scure/base";
 
 if (typeof globalThis.window === "undefined") {
   globalThis.window = {};
@@ -76,6 +77,10 @@ globalThis.fetch = async () => {
 };
 
 const { splitAndZap } = await import("../js/payments/zapSplit.js");
+const {
+  validateZapReceipt,
+  __TESTING__: validatorTesting,
+} = await import("../js/payments/zapReceiptValidator.js");
 const platformAddressModule = await import("../js/payments/platformAddress.js");
 const { __resetPlatformAddressCache } = platformAddressModule;
 const lnurlModule = await import("../js/payments/lnurl.js");
@@ -93,6 +98,8 @@ const DEFAULT_WALLET_RELAYS = [
   "wss://wallet.primary.example",
 ];
 
+const BOLT11_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
+
 function createDeps({
   commentAllowed = 120,
   platformAddress = "platform@example.com",
@@ -101,9 +108,11 @@ function createDeps({
   allowsNostr = true,
   sendPaymentImplementation,
   walletRelays = DEFAULT_WALLET_RELAYS,
+  validatorImplementation,
 } = {}) {
   let ensureWalletCalls = 0;
   const sendCalls = [];
+  const validatorCalls = [];
 
   return {
     deps: {
@@ -178,6 +187,18 @@ function createDeps({
           return platformAddress;
         },
       },
+      validator: {
+        async validateZapReceipt(payload) {
+          validatorCalls.push(payload);
+          if (typeof validatorImplementation === "function") {
+            return validatorImplementation(payload);
+          }
+          return {
+            status: "skipped",
+            reason: "Zap receipt validation is disabled in tests.",
+          };
+        },
+      },
     },
     getEnsureWalletCalls() {
       return ensureWalletCalls;
@@ -185,12 +206,50 @@ function createDeps({
     getSendCalls() {
       return sendCalls;
     },
+    getValidatorCalls() {
+      return validatorCalls;
+    },
   };
+}
+
+function buildTestBolt11Invoice({ amountCode = "10u", descriptionHashHex }) {
+  const hrp = `lnbc${amountCode}`;
+  const timestamp = 1_700_000_000;
+
+  const timestampWords = [];
+  let remaining = timestamp;
+  for (let i = 0; i < 7; i += 1) {
+    timestampWords.unshift(remaining & 31);
+    remaining >>= 5;
+  }
+
+  const words = [...timestampWords];
+
+  const pushTag = (tag, dataWords) => {
+    const code = BOLT11_CHARSET.indexOf(tag);
+    words.push(code);
+    const length = dataWords.length;
+    words.push((length >> 5) & 31);
+    words.push(length & 31);
+    words.push(...dataWords);
+  };
+
+  const paymentHashHex = "11".repeat(32);
+  pushTag("p", bech32.toWords(Buffer.from(paymentHashHex, "hex")));
+
+  if (descriptionHashHex) {
+    pushTag("h", bech32.toWords(Buffer.from(descriptionHashHex, "hex")));
+  }
+
+  const signatureWords = new Array(104).fill(0);
+  const data = [...words, ...signatureWords];
+
+  return bech32.encode(hrp, data, 2000);
 }
 
 async function testSplitMath() {
   globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = 10;
-  const { deps, getSendCalls, getEnsureWalletCalls } = createDeps();
+  const { deps, getSendCalls, getEnsureWalletCalls, getValidatorCalls } = createDeps();
 
   const videoEvent = {
     id: "event-id",
@@ -213,6 +272,7 @@ async function testSplitMath() {
   assert.equal(result.platformShare, 100);
   assert.equal(result.receipts.length, 2);
   assert.equal(getEnsureWalletCalls(), 1);
+  assert.equal(getValidatorCalls().length, 2, "validator should run for each share");
 
   const sendCalls = getSendCalls();
   assert.equal(sendCalls.length, 2, "should send two payments");
@@ -222,6 +282,7 @@ async function testSplitMath() {
   const creatorReceipt = result.receipts[0];
   assert.equal(creatorReceipt.recipientType, "creator");
   assert.equal(creatorReceipt.status, "success");
+  assert.equal(creatorReceipt.validation?.status, "skipped");
   assert(creatorReceipt.zapRequest, "creator zap request should be present");
   const parsedZap = JSON.parse(creatorReceipt.zapRequest);
   assert.equal(parsedZap.kind, 9734);
@@ -256,6 +317,7 @@ async function testSplitMath() {
   const platformReceipt = result.receipts[1];
   assert.equal(platformReceipt.recipientType, "platform");
   assert.equal(platformReceipt.status, "success");
+  assert.equal(platformReceipt.validation?.status, "skipped");
 
   const platformZap = JSON.parse(platformReceipt.zapRequest);
   const platformLnurlTag = platformZap.tags.find(
@@ -641,6 +703,126 @@ async function testWalletFailure() {
   );
 }
 
+async function testValidateZapReceiptSuccess() {
+  const relays = ["wss://relay.validation"];
+  const zapRequestEvent = {
+    kind: 9734,
+    pubkey: "f".repeat(64),
+    content: "",
+    created_at: 1_700_000_000,
+    tags: [
+      ["p", "a".repeat(64)],
+      ["amount", String(900_000)],
+      ["relays", ...relays],
+    ],
+  };
+  const zapRequestString = JSON.stringify(zapRequestEvent);
+  const descriptionHash = validatorTesting.computeZapRequestHash(zapRequestString);
+  const bolt11 = buildTestBolt11Invoice({ amountCode: "9u", descriptionHashHex: descriptionHash });
+
+  const receiptEvent = {
+    kind: 9735,
+    pubkey: "b".repeat(64),
+    tags: [
+      ["bolt11", bolt11],
+      ["description", zapRequestString],
+    ],
+  };
+
+  const nostrTools = {
+    validateEvent: () => true,
+    verifyEvent: () => true,
+    SimplePool: class {
+      async list(requestedRelays, filters) {
+        assert.deepEqual(requestedRelays, relays);
+        assert.equal(filters[0]["#bolt11"][0], bolt11.toLowerCase());
+        return [receiptEvent];
+      }
+      close() {}
+    },
+  };
+
+  const result = await validateZapReceipt(
+    {
+      zapRequest: zapRequestString,
+      amountSats: 900,
+      metadata: { nostrPubkey: receiptEvent.pubkey },
+      invoice: { invoice: bolt11 },
+      payment: { invoice: bolt11 },
+    },
+    {
+      nostrTools,
+      getAmountFromBolt11: () => 900,
+    }
+  );
+
+  assert.equal(result.status, "passed");
+  assert.equal(result.event, receiptEvent);
+  assert.deepEqual(result.checkedRelays, relays);
+}
+
+async function testValidateZapReceiptRejectsMismatchedDescriptionHash() {
+  const relays = ["wss://relay.validation"];
+  const zapRequestEvent = {
+    kind: 9734,
+    pubkey: "f".repeat(64),
+    content: "",
+    created_at: 1_700_000_000,
+    tags: [
+      ["p", "a".repeat(64)],
+      ["amount", String(1_000_000)],
+      ["relays", ...relays],
+    ],
+  };
+  const zapRequestString = JSON.stringify(zapRequestEvent);
+  const mismatchHash = "aa".repeat(32);
+  const bolt11 = buildTestBolt11Invoice({ amountCode: "10u", descriptionHashHex: mismatchHash });
+
+  const receiptEvent = {
+    kind: 9735,
+    pubkey: "b".repeat(64),
+    tags: [
+      ["bolt11", bolt11],
+      ["description", zapRequestString],
+    ],
+  };
+
+  const nostrTools = {
+    validateEvent: () => true,
+    verifyEvent: () => true,
+    SimplePool: class {
+      async list() {
+        return [receiptEvent];
+      }
+      close() {}
+    },
+  };
+
+  const result = await validateZapReceipt(
+    {
+      zapRequest: zapRequestString,
+      amountSats: 1_000,
+      metadata: { nostrPubkey: receiptEvent.pubkey },
+      invoice: { invoice: bolt11 },
+      payment: { invoice: bolt11 },
+    },
+    {
+      nostrTools,
+      getAmountFromBolt11: () => 1_000,
+    }
+  );
+
+  assert.equal(result.status, "failed");
+  assert.match(result.reason || "", /description hash/i);
+}
+
+function testExtractDescriptionHashFromBolt11() {
+  const descriptionHashHex = "bb".repeat(32);
+  const invoice = buildTestBolt11Invoice({ amountCode: "1m", descriptionHashHex });
+  const extracted = validatorTesting.extractDescriptionHashFromBolt11(invoice);
+  assert.equal(extracted, descriptionHashHex);
+}
+
 await testSplitMath();
 await testBech32LightningAddressZapTag();
 await testUrlLightningAddressZapTag();
@@ -651,5 +833,8 @@ await testMissingAddress();
 await testWalletFailure();
 await testStringFeeOverride();
 await testPlatformShareFailure();
+await testValidateZapReceiptSuccess();
+await testValidateZapReceiptRejectsMismatchedDescriptionHash();
+testExtractDescriptionHashFromBolt11();
 
 console.log("zap-split tests passed");

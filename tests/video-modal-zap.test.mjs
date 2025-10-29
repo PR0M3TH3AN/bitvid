@@ -505,9 +505,14 @@ await (async () => {
       receipts: [
         {
           recipientType: "creator",
+          status: "success",
           amount: payload.amountSats,
           address: payload.videoEvent.lightningAddress,
           payment: { result: { preimage: "ff".repeat(16) } },
+          validation: {
+            status: "passed",
+            event: { kind: 9735, id: "creator-receipt" },
+          },
         },
       ],
     };
@@ -573,6 +578,10 @@ await (async () => {
       amount: 900,
       address: "creator@example.com",
       payment: { result: { preimage: "cc".repeat(16) } },
+      validation: {
+        status: "passed",
+        event: { kind: 9735, id: "creator-receipt" },
+      },
     },
     {
       recipientType: "platform",
@@ -677,6 +686,84 @@ await (async () => {
 })();
 
 await (async () => {
+  // Test: validation failure surfaces warning and resets form
+  const validationReceipts = [
+    {
+      recipientType: "creator",
+      status: "success",
+      amount: 750,
+      address: "creator@example.com",
+      payment: { result: { preimage: "dd".repeat(16) } },
+      validation: {
+        status: "failed",
+        reason: "No compliant receipt published",
+      },
+    },
+  ];
+
+  const { app, modalStub, creatorAddress } = await createApp({
+    splitAndZap: async () => ({ receipts: validationReceipts }),
+  });
+
+  const pubkeyHex = "d".repeat(64);
+  app.pubkey = pubkeyHex;
+  const normalized = app.normalizeHexPubkey(pubkeyHex);
+  app.nwcSettingsService.cache.set(normalized, {
+    nwcUri: "nostr+walletconnect://example",
+    defaultZap: null,
+    lastChecked: null,
+    version: "",
+  });
+
+  app.currentVideo = {
+    id: "event990",
+    pubkey: pubkeyHex,
+    tags: [["d", "video990"]],
+    content: "",
+    created_at: 1_700_000_200,
+    lightningAddress: creatorAddress,
+  };
+
+  const initialResetCount = modalStub.resetForms.length;
+  const initialCompleted = modalStub.completedStates.length;
+
+  await app.zapController.sendZap({ amount: 750, comment: "Pending receipt" });
+
+  const lastReceiptEntry = modalStub.receipts[modalStub.receipts.length - 1];
+  assert.equal(
+    lastReceiptEntry.options?.partial,
+    true,
+    "should render zap receipts in partial mode for validation issues",
+  );
+
+  const lastStatus = modalStub.statusMessages[modalStub.statusMessages.length - 1];
+  assert.equal(lastStatus.tone, "warning", "validation failure should emit warning status");
+  assert.match(
+    lastStatus.message,
+    /awaiting validated zap receipt/i,
+    "status message should highlight missing validated receipt",
+  );
+
+  assert.equal(
+    modalStub.resetForms.length,
+    initialResetCount + 1,
+    "zap form should reset after validation warning",
+  );
+  assert.equal(
+    modalStub.completedStates.length,
+    initialCompleted + 1,
+    "completion state should record the validation attempt",
+  );
+  assert.equal(
+    modalStub.completedStates[modalStub.completedStates.length - 1],
+    true,
+    "validation warning should mark zap attempt as completed",
+  );
+
+  app.destroy();
+})();
+
+await (async () => {
   // Test: allowance exhaustion surfaces guidance and skips retry queue
   const { app, modalStub, creatorAddress, platformAddress } = await createApp({
     splitAndZap: async () => ({ receipts: [] }),
@@ -690,6 +777,10 @@ await (async () => {
       amount: 900,
       address: creatorAddress,
       payment: { preimage: "aa".repeat(16) },
+      validation: {
+        status: "passed",
+        event: { kind: 9735, id: "creator-receipt" },
+      },
     },
     {
       type: "platform",
@@ -748,6 +839,65 @@ await (async () => {
   );
 
   app.destroy();
+})();
+
+const { VideoModal } = await import("../js/ui/components/VideoModal.js");
+
+(() => {
+  const modal = new VideoModal({ document: documentStub, setGlobalModalState: noop });
+  modal.modalZapReceipts = new DummyElement();
+
+  const receipts = [
+    {
+      recipientType: "creator",
+      amount: 600,
+      address: "creator@example.com",
+      payment: { result: { preimage: "aa".repeat(16) } },
+      validation: {
+        status: "passed",
+        event: { kind: 9735, id: "validated" },
+      },
+    },
+  ];
+
+  modal.renderZapReceipts(receipts, { partial: false });
+
+  assert.equal(modal.modalZapReceipts.children.length, 1, "validated receipt should render one entry");
+  const entry = modal.modalZapReceipts.children[0];
+  const header = entry.children[0];
+  assert.equal(header.children[1].textContent, "Validated", "validated receipt should flag status");
+})();
+
+(() => {
+  const modal = new VideoModal({ document: documentStub, setGlobalModalState: noop });
+  modal.modalZapReceipts = new DummyElement();
+
+  const receipts = [
+    {
+      recipientType: "creator",
+      amount: 450,
+      address: "creator@example.com",
+      payment: { result: { preimage: "bb".repeat(16) } },
+      validation: {
+        status: "failed",
+        reason: "No compliant receipt",
+      },
+    },
+  ];
+
+  modal.renderZapReceipts(receipts, { partial: true });
+
+  assert.equal(
+    modal.modalZapReceipts.children.length,
+    1,
+    "validation failure should render a single warning entry",
+  );
+  const warning = modal.modalZapReceipts.children[0];
+  assert.match(
+    warning.textContent,
+    /no validated zap receipts yet/i,
+    "warning message should note missing validated receipts",
+  );
 })();
 
 process.exit(0);
