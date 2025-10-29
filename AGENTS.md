@@ -2,6 +2,8 @@
 
 This guide tells AI agents how to keep bitvid aligned with the current product direction. Follow it whenever you touch code, content, or documentation inside this repository.
 
+For any nostr related work, please review the nip documentation located in /docs/nips before begining work. 
+
 ---
 
 ## 1. Release Channels: Main vs. Unstable
