@@ -113,6 +113,8 @@ test(
     assert.deepStrictEqual(lastFetchTarget, {
       videoEventId: "video123",
       videoDefinitionAddress: "30078:authorpk:video-root",
+      videoKind: "30078",
+      videoAuthorPubkey: "authorpk",
       parentCommentId: "",
     });
     assert.deepStrictEqual(lastFetchOptions, {
@@ -129,6 +131,11 @@ test(
 
     const initialSnapshot = initialPayloads[0];
     assert.ok(initialSnapshot.childrenByParent instanceof Map);
+    assert.equal(initialSnapshot.videoDefinitionAddress, "30078:authorpk:video-root");
+    assert.equal(initialSnapshot.videoKind, "30078");
+    assert.equal(initialSnapshot.videoAuthorPubkey, "authorpk");
+    assert.equal(initialSnapshot.parentCommentKind, null);
+    assert.equal(initialSnapshot.parentCommentPubkey, null);
     assert.deepStrictEqual(initialSnapshot.topLevelIds, [
       "comment-2",
       "comment-1",
@@ -241,6 +248,8 @@ test(
     assert.equal(fetchTargets.length, 1, "fetch should run even without an address");
     assert.deepStrictEqual(fetchTargets[0], {
       videoEventId: "video123",
+      videoKind: "30078",
+      videoAuthorPubkey: "authorpk",
       parentCommentId: "",
     });
     assert.equal(
@@ -268,6 +277,9 @@ test(
 
     assert.equal(errors.length, 0, "missing address should not emit errors");
     assert.equal(snapshot.videoEventId, "video123");
+    assert.equal(snapshot.videoKind, "30078");
+    assert.equal(snapshot.videoAuthorPubkey, "authorpk");
+    assert.equal(snapshot.videoDefinitionAddress, null);
   },
 );
 

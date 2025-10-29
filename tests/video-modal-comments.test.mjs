@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import { setupModal } from "./video-modal-accessibility.test.mjs";
 import VideoModalCommentController from "../js/ui/videoModalCommentController.js";
+import { COMMENT_EVENT_KIND } from "../js/nostr/commentEvents.js";
 
 const FOCUSABLE_SELECTOR = [
   "a[href]",
@@ -247,6 +248,10 @@ test(
     assert.deepStrictEqual(payload, {
       videoEventId: "legacy-video",
       parentCommentId: null,
+      videoKind: "30078",
+      videoAuthorPubkey: "AUTHORPK",
+      rootKind: "30078",
+      rootAuthorPubkey: "AUTHORPK",
     });
     assert.equal(
       "videoDefinitionAddress" in payload,
@@ -267,6 +272,78 @@ test(
       "composer should be re-enabled after publishing",
     );
     assert.equal(appendedEvents.length, 0, "optimistic insert should avoid duplicate append");
+  },
+);
+
+test(
+  "VideoModalCommentController includes parent metadata when replying",
+  async () => {
+    const publishCalls = [];
+
+    const parentEvent = {
+      id: "parent-1",
+      kind: COMMENT_EVENT_KIND,
+      pubkey: "parentpk",
+      tags: [],
+    };
+
+    const controller = new VideoModalCommentController({
+      commentThreadService: {
+        setCallbacks: () => {},
+        getCommentEvent: (id) => (id === "parent-1" ? parentEvent : null),
+        processIncomingEvent: () => {},
+      },
+      videoModal: {
+        setCommentComposerState: () => {},
+        setCommentStatus: () => {},
+        resetCommentComposer: () => {},
+        appendComment: () => {},
+      },
+      auth: {
+        isLoggedIn: () => true,
+      },
+      services: {
+        publishComment: async (payload) => {
+          publishCalls.push(payload);
+          return { ok: true, event: { id: "reply", tags: [] } };
+        },
+      },
+      utils: {
+        normalizeHexPubkey: (value) => value?.toLowerCase?.() || value,
+      },
+    });
+
+    controller.currentVideo = {
+      id: "video123",
+      pubkey: "AUTHORPK",
+      enableComments: true,
+      kind: 30078,
+    };
+    controller.modalCommentState = {
+      videoEventId: "video123",
+      videoDefinitionAddress: null,
+      videoKind: "30078",
+      videoAuthorPubkey: "AUTHORPK",
+      parentCommentId: "parent-1",
+      parentCommentKind: String(COMMENT_EVENT_KIND),
+      parentCommentPubkey: null,
+    };
+
+    await controller.handleVideoModalCommentSubmit({
+      text: "Replying",
+      parentId: "parent-1",
+    });
+
+    assert.equal(publishCalls.length, 1, "reply should trigger publish call");
+    const payload = publishCalls[0];
+    assert.equal(payload.videoEventId, "video123");
+    assert.equal(payload.videoKind, "30078");
+    assert.equal(payload.videoAuthorPubkey, "AUTHORPK");
+    assert.equal(payload.parentCommentId, "parent-1");
+    assert.equal(payload.parentCommentKind, String(COMMENT_EVENT_KIND));
+    assert.equal(payload.parentCommentPubkey, "parentpk");
+    assert.equal(payload.parentAuthorPubkey, "parentpk");
+    assert.equal(payload.rootAuthorPubkey, "AUTHORPK");
   },
 );
 

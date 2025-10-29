@@ -1,10 +1,21 @@
 import { devLogger } from "../utils/logger.js";
 import { buildVideoAddressPointer } from "../utils/videoPointer.js";
+import { COMMENT_EVENT_KIND } from "../nostr/commentEvents.js";
 
 const DEFAULT_LIMIT = 40;
 
 function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeKind(value) {
+  if (Number.isFinite(value)) {
+    return String(Math.floor(value));
+  }
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
+  }
+  return "";
 }
 
 export default class VideoModalCommentController {
@@ -73,7 +84,11 @@ export default class VideoModalCommentController {
     this.modalCommentState = {
       videoEventId: null,
       videoDefinitionAddress: null,
+      videoKind: null,
+      videoAuthorPubkey: null,
       parentCommentId: null,
+      parentCommentKind: null,
+      parentCommentPubkey: null,
     };
     this.modalCommentProfiles = new Map();
     this.modalCommentLimit = this.commentThreadService?.defaultLimit || DEFAULT_LIMIT;
@@ -131,6 +146,8 @@ export default class VideoModalCommentController {
 
     const videoEventId = normalizeString(video.id);
     const videoDefinitionAddress = buildVideoAddressPointer(video);
+    const videoKind = normalizeKind(video.kind);
+    const videoAuthorPubkey = normalizeString(video.pubkey);
 
     if (!videoEventId) {
       this.resetModalCommentState({ hide: false });
@@ -143,7 +160,11 @@ export default class VideoModalCommentController {
     this.modalCommentState = {
       videoEventId,
       videoDefinitionAddress: videoDefinitionAddress || null,
+      videoKind: videoKind || null,
+      videoAuthorPubkey: videoAuthorPubkey || null,
       parentCommentId: null,
+      parentCommentKind: null,
+      parentCommentPubkey: null,
     };
     this.modalCommentProfiles = new Map();
     if (this.commentThreadService?.defaultLimit) {
@@ -221,7 +242,11 @@ export default class VideoModalCommentController {
     this.modalCommentState = {
       videoEventId: null,
       videoDefinitionAddress: null,
+      videoKind: null,
+      videoAuthorPubkey: null,
       parentCommentId: null,
+      parentCommentKind: null,
+      parentCommentPubkey: null,
     };
     this.modalCommentProfiles = new Map();
     if (resetUi) {
@@ -311,6 +336,28 @@ export default class VideoModalCommentController {
     this.modalCommentState.parentCommentId = normalizeString(
       snapshot.parentCommentId,
     ) || null;
+    if (typeof snapshot.videoDefinitionAddress === "string") {
+      const pointer = normalizeString(snapshot.videoDefinitionAddress);
+      if (pointer) {
+        this.modalCommentState.videoDefinitionAddress = pointer;
+      }
+    }
+    const snapshotVideoKind = normalizeKind(snapshot.videoKind);
+    if (snapshotVideoKind) {
+      this.modalCommentState.videoKind = snapshotVideoKind;
+    }
+    const snapshotVideoAuthor = normalizeString(snapshot.videoAuthorPubkey);
+    if (snapshotVideoAuthor) {
+      this.modalCommentState.videoAuthorPubkey = snapshotVideoAuthor;
+    }
+    const snapshotParentKind = normalizeKind(snapshot.parentCommentKind);
+    if (snapshotParentKind) {
+      this.modalCommentState.parentCommentKind = snapshotParentKind;
+    }
+    const snapshotParentPubkey = normalizeString(snapshot.parentCommentPubkey);
+    if (snapshotParentPubkey) {
+      this.modalCommentState.parentCommentPubkey = snapshotParentPubkey;
+    }
 
     const sanitizedSnapshot = this.buildModalCommentSnapshot(snapshot);
     this.videoModal.renderComments?.(sanitizedSnapshot);
@@ -346,6 +393,19 @@ export default class VideoModalCommentController {
         return;
       }
       const enriched = this.enrichCommentEvent(event);
+      if (
+        this.modalCommentState.parentCommentId &&
+        commentId === this.modalCommentState.parentCommentId
+      ) {
+        const eventKind = normalizeKind(event.kind);
+        if (eventKind) {
+          this.modalCommentState.parentCommentKind = eventKind;
+        }
+        const eventPubkey = normalizeString(event.pubkey);
+        if (eventPubkey) {
+          this.modalCommentState.parentCommentPubkey = eventPubkey;
+        }
+      }
       this.videoModal.appendComment?.(enriched);
     });
   }
@@ -486,6 +546,10 @@ export default class VideoModalCommentController {
 
     const videoEventId = normalizeString(video.id);
     const videoDefinitionAddress = buildVideoAddressPointer(video);
+    const videoKind =
+      this.modalCommentState.videoKind || normalizeKind(video.kind);
+    const videoAuthorPubkey =
+      this.modalCommentState.videoAuthorPubkey || normalizeString(video.pubkey);
 
     if (!videoEventId) {
       this.callbacks.showError("Comments are unavailable for this video.");
@@ -493,6 +557,34 @@ export default class VideoModalCommentController {
     }
 
     const parentCommentId = normalizeString(detail.parentId) || null;
+    let parentCommentKind = this.modalCommentState.parentCommentKind
+      ? normalizeKind(this.modalCommentState.parentCommentKind)
+      : "";
+    let parentCommentPubkey = this.modalCommentState.parentCommentPubkey
+      ? normalizeString(this.modalCommentState.parentCommentPubkey)
+      : "";
+
+    if (parentCommentId && typeof this.commentThreadService?.getCommentEvent === "function") {
+      const parentEvent = this.commentThreadService.getCommentEvent(
+        parentCommentId,
+      );
+      if (parentEvent) {
+        const eventKind = normalizeKind(parentEvent.kind);
+        if (eventKind) {
+          parentCommentKind = eventKind;
+          this.modalCommentState.parentCommentKind = eventKind;
+        }
+        const eventPubkey = normalizeString(parentEvent.pubkey);
+        if (eventPubkey) {
+          parentCommentPubkey = eventPubkey;
+          this.modalCommentState.parentCommentPubkey = eventPubkey;
+        }
+      }
+    }
+
+    if (!parentCommentKind && parentCommentId) {
+      parentCommentKind = String(COMMENT_EVENT_KIND);
+    }
 
     this.videoModal.setCommentComposerState?.({
       disabled: true,
@@ -506,6 +598,21 @@ export default class VideoModalCommentController {
 
     if (videoDefinitionAddress) {
       publishPayload.videoDefinitionAddress = videoDefinitionAddress;
+    }
+    if (videoKind) {
+      publishPayload.videoKind = videoKind;
+      publishPayload.rootKind = videoKind;
+    }
+    if (videoAuthorPubkey) {
+      publishPayload.videoAuthorPubkey = videoAuthorPubkey;
+      publishPayload.rootAuthorPubkey = videoAuthorPubkey;
+    }
+    if (parentCommentKind) {
+      publishPayload.parentCommentKind = parentCommentKind;
+    }
+    if (parentCommentPubkey) {
+      publishPayload.parentCommentPubkey = parentCommentPubkey;
+      publishPayload.parentAuthorPubkey = parentCommentPubkey;
     }
 
     const publishPromise = Promise.resolve(

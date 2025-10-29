@@ -230,6 +230,50 @@ test("publishComment accepts legacy targets with only an event id", async () => 
   );
 });
 
+test("publishComment derives root and parent metadata from parent comment tags", async () => {
+  const { client } = createMockClient();
+
+  const parentEvent = {
+    id: "parent-comment",
+    kind: COMMENT_EVENT_KIND,
+    pubkey: "parentpk",
+    tags: [
+      ["E", "video-event", "wss://root", "videopk"],
+      ["K", "30078"],
+      ["P", "videopk", "wss://author"],
+      ["A", "30078:videopk:root", "wss://definition"],
+      ["e", "video-event", "wss://root"],
+      ["e", "parent-comment", "wss://parent", "parentpk"],
+      ["k", String(COMMENT_EVENT_KIND)],
+      ["p", "parentpk", "wss://parent"],
+    ],
+  };
+
+  const result = await publishComment(
+    client,
+    { parentComment: parentEvent },
+    { content: "Reply" },
+    {
+      resolveActiveSigner: () => null,
+      shouldRequestExtensionPermissions: () => false,
+      signEventWithPrivateKey: (event) => ({ ...event, id: "signed" }),
+      DEFAULT_NIP07_PERMISSION_METHODS: [],
+    },
+  );
+
+  assert.equal(result.ok, true, "publish should succeed when deriving metadata");
+  const tags = buildCommentEventTags(result.event);
+  assert.deepEqual(tags, [
+    ["A", "30078:videopk:root", "wss://definition"],
+    ["K", "30078"],
+    ["P", "videopk", "wss://author"],
+    ["a", "30078:videopk:root", "wss://definition"],
+    ["e", "parent-comment", "wss://parent", "parentpk"],
+    ["k", String(COMMENT_EVENT_KIND)],
+    ["p", "parentpk", "wss://parent"],
+  ]);
+});
+
 test("publishComment emits only video event #e tag when address and parent are absent", async () => {
   const { client, publishCalls } = createMockClient();
 
