@@ -230,7 +230,42 @@ test("publishComment accepts legacy targets with only an event id", async () => 
   assert.deepEqual(aTags, [], "no address tag should be emitted when unavailable");
 });
 
-test("listVideoComments builds filters that prefer #a pointers", async () => {
+test("publishComment emits only video event #e tag when address and parent are absent", async () => {
+  const { client, publishCalls } = createMockClient();
+
+  const signEventWithPrivateKey = (event) => ({ ...event, id: "solo" });
+
+  const result = await publishComment(
+    client,
+    {
+      videoEventId: "video-only",
+    },
+    { content: "Solo" },
+    {
+      resolveActiveSigner: () => null,
+      shouldRequestExtensionPermissions: () => false,
+      signEventWithPrivateKey,
+      DEFAULT_NIP07_PERMISSION_METHODS: [],
+    },
+  );
+
+  assert.equal(result.ok, true, "publishing should succeed with only a video id");
+  assert.equal(publishCalls.length, 1, "comment should be published once");
+
+  const publishedEvent = publishCalls[0]?.event;
+  const tags = buildCommentEventTags(publishedEvent);
+  const eTags = tags.filter((tag) => Array.isArray(tag) && tag[0] === "e");
+  const aTags = tags.filter((tag) => Array.isArray(tag) && tag[0] === "a");
+
+  assert.deepEqual(
+    eTags,
+    [["e", "video-only"]],
+    "event should carry the video pointer via #e",
+  );
+  assert.deepEqual(aTags, [], "event should omit #a tags when no address is provided");
+});
+
+test("listVideoComments builds filters with #e primary and #a secondary", async () => {
   const matchingEventLatest = {
     id: "comment-2",
     kind: COMMENT_EVENT_KIND,
@@ -289,45 +324,75 @@ test("listVideoComments builds filters that prefer #a pointers", async () => {
     ["wss://history"],
     "list should use caller provided relays",
   );
-  assert.equal(receivedFilters.filters.length, 2, "legacy and preferred filters should be emitted");
-  const [primaryFilter, legacyFilter] = receivedFilters.filters;
   assert.equal(
-    primaryFilter.kinds[0],
+    receivedFilters.filters.length,
+    3,
+    "event, parent, and address filters should be emitted",
+  );
+  const [eventFilter, parentFilter, definitionFilter] = receivedFilters.filters;
+  assert.equal(
+    eventFilter.kinds[0],
     COMMENT_EVENT_KIND,
-    "primary filter should target comment kind",
+    "event filter should target comment kind",
   );
   assert.deepEqual(
-    primaryFilter["#a"],
-    ["30078:author:clip"],
-    "primary filter should bind the video definition via #a",
+    eventFilter["#e"],
+    ["video-1"],
+    "event filter should target the video via #e",
   );
   assert.deepEqual(
-    primaryFilter["#e"],
-    ["parent-1"],
-    "primary filter should include the parent pointer via #e",
+    parentFilter,
+    {
+      kinds: [COMMENT_EVENT_KIND],
+      "#e": ["parent-1"],
+      since: 1700000000,
+      limit: 10,
+    },
+    "parent filter should scope the thread via #e",
   );
-  assert.equal(primaryFilter.since, 1700000000, "since option should propagate to primary filter");
-  assert.equal(primaryFilter.limit, 10, "limit option should propagate to primary filter");
+  assert.equal(
+    eventFilter.since,
+    1700000000,
+    "since option should propagate to event filter",
+  );
+  assert.equal(
+    eventFilter.limit,
+    10,
+    "limit option should propagate to event filter",
+  );
 
   assert.equal(
-    legacyFilter.kinds[0],
+    definitionFilter.kinds[0],
     COMMENT_EVENT_KIND,
-    "legacy filter should target comment kind",
+    "definition filter should target comment kind",
   );
   assert.deepEqual(
-    legacyFilter["#e"],
-    ["video-1", "parent-1"],
-    "legacy filter should target the video id for backward compatibility",
+    definitionFilter["#a"],
+    ["30078:author:clip"],
+    "definition filter should bind the video definition via #a",
   );
-  assert.equal(legacyFilter.since, 1700000000, "since option should propagate to legacy filter");
-  assert.equal(legacyFilter.limit, 10, "limit option should propagate to legacy filter");
+  assert.deepEqual(
+    definitionFilter["#e"],
+    ["parent-1"],
+    "definition filter should continue scoping to the parent comment",
+  );
+  assert.equal(
+    definitionFilter.since,
+    1700000000,
+    "since option should propagate to definition filter",
+  );
+  assert.equal(
+    definitionFilter.limit,
+    10,
+    "limit option should propagate to definition filter",
+  );
 });
 
 test("listVideoComments supports legacy targets without a definition address", async () => {
   const legacyEvent = {
     id: "legacy-comment",
     kind: COMMENT_EVENT_KIND,
-    tags: [["e", "legacy-video"], ["e", "legacy-parent"]],
+    tags: [["e", "legacy-video"]],
   };
 
   const { client, pool } = createMockClient();
@@ -417,15 +482,19 @@ test("subscribeVideoComments forwards matching events and cleans up unsubscribe"
     [
       {
         kinds: [COMMENT_EVENT_KIND],
-        "#a": ["30078:author:clip"],
+        "#e": ["video-1"],
+      },
+      {
+        kinds: [COMMENT_EVENT_KIND],
         "#e": ["parent-1"],
       },
       {
         kinds: [COMMENT_EVENT_KIND],
-        "#e": ["video-1", "parent-1"],
+        "#a": ["30078:author:clip"],
+        "#e": ["parent-1"],
       },
     ],
-    "subscription should emit preferred and legacy filters",
+    "subscription should emit event, parent, and address filters",
   );
 
   handler({
@@ -450,4 +519,56 @@ test("subscribeVideoComments forwards matching events and cleans up unsubscribe"
   unsubscribe();
 
   assert.equal(unsubCalls, 1, "underlying unsubscribe should only run once");
+});
+
+test("subscribeVideoComments supports video targets without a definition address", async () => {
+  const { client, pool } = createMockClient();
+
+  let handler = null;
+  let subscriptionArgs = null;
+  pool.sub = (relays, filters) => {
+    subscriptionArgs = { relays, filters };
+    return {
+      on(name, cb) {
+        if (name === "event") {
+          handler = cb;
+        }
+      },
+      unsub() {},
+    };
+  };
+
+  const receivedEvents = [];
+  subscribeVideoComments(
+    client,
+    { videoEventId: "legacy-video" },
+    {
+      onEvent: (event) => {
+        receivedEvents.push(event);
+      },
+    },
+  );
+
+  assert.ok(subscriptionArgs, "subscription should capture filters");
+  assert.deepEqual(
+    subscriptionArgs.filters,
+    [
+      {
+        kinds: [COMMENT_EVENT_KIND],
+        "#e": ["legacy-video"],
+      },
+    ],
+    "subscription should emit only the video #e filter when address is absent",
+  );
+
+  assert.ok(handler, "event handler should be registered");
+
+  handler({
+    id: "legacy-comment",
+    kind: COMMENT_EVENT_KIND,
+    tags: [["e", "legacy-video"]],
+  });
+
+  assert.equal(receivedEvents.length, 1, "legacy comment should be forwarded");
+  assert.equal(receivedEvents[0].id, "legacy-comment", "comment payload should be delivered");
 });

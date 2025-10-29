@@ -223,19 +223,38 @@ function normalizeCommentTarget(targetInput = {}, overrides = {}) {
     target.participantRelay,
   );
 
-  if (!videoEventId) {
+  const normalizedVideoEventId =
+    typeof videoEventId === "string" ? videoEventId.trim() : "";
+  const normalizedVideoDefinitionAddress =
+    typeof videoDefinitionAddress === "string" ? videoDefinitionAddress.trim() : "";
+  const normalizedVideoEventRelay =
+    typeof videoEventRelay === "string" ? videoEventRelay.trim() : "";
+  const normalizedVideoDefinitionRelay =
+    typeof videoDefinitionRelay === "string" ? videoDefinitionRelay.trim() : "";
+  const normalizedParentCommentId =
+    typeof parentCommentId === "string" ? parentCommentId.trim() : "";
+  const normalizedParentCommentRelay =
+    typeof parentCommentRelay === "string" ? parentCommentRelay.trim() : "";
+  const normalizedThreadParticipantPubkey =
+    typeof threadParticipantPubkey === "string" ? threadParticipantPubkey.trim() : "";
+  const normalizedThreadParticipantRelay =
+    typeof threadParticipantRelay === "string"
+      ? threadParticipantRelay.trim()
+      : "";
+
+  if (!normalizedVideoEventId) {
     return null;
   }
 
   return {
-    videoEventId,
-    videoEventRelay,
-    videoDefinitionAddress,
-    videoDefinitionRelay,
-    parentCommentId,
-    parentCommentRelay,
-    threadParticipantPubkey,
-    threadParticipantRelay,
+    videoEventId: normalizedVideoEventId,
+    videoEventRelay: normalizedVideoEventRelay,
+    videoDefinitionAddress: normalizedVideoDefinitionAddress,
+    videoDefinitionRelay: normalizedVideoDefinitionRelay,
+    parentCommentId: normalizedParentCommentId,
+    parentCommentRelay: normalizedParentCommentRelay,
+    threadParticipantPubkey: normalizedThreadParticipantPubkey,
+    threadParticipantRelay: normalizedThreadParticipantRelay,
   };
 }
 
@@ -272,41 +291,35 @@ function createVideoCommentFilters(targetInput, options = {}) {
   }
 
   const filters = [];
-  const baseFilter = { kinds: [COMMENT_EVENT_KIND] };
+
+  const eventFilter = {
+    kinds: [COMMENT_EVENT_KIND],
+    "#e": [descriptor.videoEventId],
+  };
+  filters.push(applyFilterOptions(eventFilter, options));
+
+  if (
+    descriptor.parentCommentId &&
+    descriptor.parentCommentId !== descriptor.videoEventId
+  ) {
+    const parentFilter = {
+      kinds: [COMMENT_EVENT_KIND],
+      "#e": [descriptor.parentCommentId],
+    };
+    filters.push(applyFilterOptions(parentFilter, options));
+  }
 
   if (descriptor.videoDefinitionAddress) {
-    baseFilter["#a"] = [descriptor.videoDefinitionAddress];
-  }
-
-  if (descriptor.parentCommentId) {
-    baseFilter["#e"] = [descriptor.parentCommentId];
-  }
-
-  if (!descriptor.videoDefinitionAddress && descriptor.videoEventId) {
-    baseFilter["#e"] = baseFilter["#e"] || [];
-    if (!baseFilter["#e"].includes(descriptor.videoEventId)) {
-      baseFilter["#e"].push(descriptor.videoEventId);
-    }
-  }
-
-  filters.push(applyFilterOptions(baseFilter, options));
-
-  const shouldIncludeLegacyFilter =
-    Boolean(descriptor.videoDefinitionAddress) && Boolean(descriptor.videoEventId);
-
-  if (shouldIncludeLegacyFilter) {
-    const legacyFilter = {
+    const definitionFilter = {
       kinds: [COMMENT_EVENT_KIND],
-      "#e": [descriptor.videoEventId],
+      "#a": [descriptor.videoDefinitionAddress],
     };
 
     if (descriptor.parentCommentId) {
-      if (!legacyFilter["#e"].includes(descriptor.parentCommentId)) {
-        legacyFilter["#e"].push(descriptor.parentCommentId);
-      }
+      definitionFilter["#e"] = [descriptor.parentCommentId];
     }
 
-    filters.push(applyFilterOptions(legacyFilter, options));
+    filters.push(applyFilterOptions(definitionFilter, options));
   }
 
   return { descriptor, filters };
@@ -341,10 +354,14 @@ function isVideoCommentEvent(event, descriptor) {
     return false;
   }
 
+  const targetDescriptor =
+    descriptor && typeof descriptor === "object" ? descriptor : {};
+
   const tags = Array.isArray(event.tags) ? event.tags : [];
-  const requiresParentTag = Boolean(descriptor.parentCommentId);
-  const requiresAddressMatch = Boolean(descriptor.videoDefinitionAddress);
-  const requiresEventMatch = !requiresAddressMatch && Boolean(descriptor.videoEventId);
+  const requiresParentTag = Boolean(targetDescriptor.parentCommentId);
+  const requiresAddressMatch = Boolean(targetDescriptor.videoDefinitionAddress);
+  const requiresEventMatch =
+    !requiresAddressMatch && Boolean(targetDescriptor.videoEventId);
 
   let hasEventTag = !requiresEventMatch;
   let hasDefinitionTag = !requiresAddressMatch;
@@ -356,14 +373,17 @@ function isVideoCommentEvent(event, descriptor) {
     }
     const [name, value] = tag;
     if (name === "e" && typeof value === "string") {
-      if (value === descriptor.videoEventId) {
+      if (value === targetDescriptor.videoEventId) {
         hasEventTag = true;
       }
-      if (descriptor.parentCommentId && value === descriptor.parentCommentId) {
+      if (
+        targetDescriptor.parentCommentId &&
+        value === targetDescriptor.parentCommentId
+      ) {
         hasParentTag = true;
       }
     } else if (name === "a" && typeof value === "string") {
-      if (value === descriptor.videoDefinitionAddress) {
+      if (value === targetDescriptor.videoDefinitionAddress) {
         hasDefinitionTag = true;
       }
     }
