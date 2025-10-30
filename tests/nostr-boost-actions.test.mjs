@@ -67,6 +67,10 @@ function createPublishClient({ actorPubkey = "", sessionPubkey = "", failPublish
     ensurePool: async () => pool,
     ensureSessionActor: async () => sessionPubkey,
     ensureExtensionPermissions: async () => ({ ok: true }),
+    fetchRawEventById: async (id, { relays: requestedRelays } = {}) => {
+      void requestedRelays;
+      return client.rawEvents.get(id) || null;
+    },
     countEventsAcrossRelays: async () => ({ total: 0, perRelay: [] }),
   };
 
@@ -100,20 +104,20 @@ function createPublishClient({ actorPubkey = "", sessionPubkey = "", failPublish
   assert.deepEqual(event.tags[2], ["p", "deadbeef"]);
 })();
 
-(function testBuildRepostEventFallsBackToPublishRelay() {
+(function testBuildRepostEventRequiresRelay() {
   const createdAt = 1_700_000_001;
-  const event = buildRepostEvent({
-    pubkey: "actorpubkey",
-    created_at: createdAt,
-    eventId: "event456",
-    publishRelay: "wss://relay.example",
-    authorPubkey: "cafebabe",
-    targetKind: 30078,
-  });
 
-  assert.equal(event.kind, 16);
-  assert.deepEqual(event.tags[0], ["e", "event456", "wss://relay.example"]);
-  assert.deepEqual(event.tags[1], ["p", "cafebabe"]);
+  assert.throws(
+    () =>
+      buildRepostEvent({
+        pubkey: "actorpubkey",
+        created_at: createdAt,
+        eventId: "event456",
+        authorPubkey: "cafebabe",
+        targetKind: 30078,
+      }),
+    /missing-event-relay/,
+  );
 })();
 
 await (async function testRepostEventUsesSessionActorAndDerivesAddress() {
@@ -122,7 +126,11 @@ await (async function testRepostEventUsesSessionActorAndDerivesAddress() {
   const sessionPubkey = "a".repeat(64);
   const { client } = createPublishClient({ sessionPubkey });
 
-  client.rawEvents.set(eventId, { id: eventId, pubkey: authorPubkey });
+  client.rawEvents.set(eventId, {
+    id: eventId,
+    pubkey: authorPubkey,
+    relays: ["wss://relay.example"],
+  });
   client.allEvents.set(eventId, {
     id: eventId,
     pubkey: authorPubkey,
@@ -192,6 +200,32 @@ await (async function testRepostEventHandlesPublishFailure() {
   assert.equal(result.ok, false);
   assert.equal(result.error, "publish-rejected");
   assert.ok(result.details instanceof Error);
+})();
+
+await (async function testRepostEventFailsWhenRelayMissing() {
+  const eventId = "repost-no-relay";
+  const authorPubkey = "c".repeat(64);
+  const sessionPubkey = "e".repeat(64);
+  const { client } = createPublishClient({ sessionPubkey });
+
+  client.fetchRawEventById = async () => null;
+
+  const result = await repostEvent({
+    client,
+    eventId,
+    options: {
+      pointer: ["e", eventId],
+      authorPubkey,
+    },
+    resolveActiveSigner: resolveActiveSignerStub,
+    shouldRequestExtensionPermissions: shouldRequestExtensionPermissionsStub,
+    signEventWithPrivateKey: signEventWithPrivateKeyStub,
+    eventToAddressPointer: eventToAddressPointerStub,
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error, "missing-event-relay");
+  assert.ok(Array.isArray(result.details?.relays));
 })();
 
 await (async function testMirrorEventIncludesHostedMetadata() {
