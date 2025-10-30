@@ -302,22 +302,24 @@ const BASE_SCHEMAS = {
     },
     appendTags: DEFAULT_APPEND_TAGS,
     content: {
-      format: "nip04-json",
-      description: "Encrypted JSON: { subPubkeys: string[] }.",
+      format: "encrypted-tag-list",
+      description:
+        "NIP-04/NIP-44 encrypted JSON array of NIP-51 tag tuples (e.g., [['p', <hex>], …]).",
     },
   },
   [NOTE_TYPES.USER_BLOCK_LIST]: {
     type: NOTE_TYPES.USER_BLOCK_LIST,
     label: "User block list",
-    kind: 30002,
+    kind: 10000,
     identifierTag: {
       name: "d",
       value: BLOCK_LIST_IDENTIFIER,
     },
     appendTags: DEFAULT_APPEND_TAGS,
     content: {
-      format: "nip04-json",
-      description: "Encrypted JSON: { blockedPubkeys: string[] }.",
+      format: "encrypted-tag-list",
+      description:
+        "NIP-04/NIP-44 encrypted JSON array of mute tags per NIP-51 (e.g., [['p', <hex>], …]).",
     },
   },
   [NOTE_TYPES.HASHTAG_PREFERENCES]: {
@@ -1390,8 +1392,10 @@ export function buildSubscriptionListEvent({
   if (identifierName && identifierValue) {
     tags.push([identifierName, identifierValue]);
   }
-  if (typeof encryption === "string" && encryption) {
-    tags.push(["encrypted", encryption]);
+  const normalizedEncryption =
+    typeof encryption === "string" ? encryption.trim() : "";
+  if (normalizedEncryption) {
+    tags.push(["encrypted", normalizedEncryption]);
   }
   appendSchemaTags(tags, schema);
   return {
@@ -1416,12 +1420,14 @@ export function buildBlockListEvent({
   if (identifierName && identifierValue) {
     tags.push([identifierName, identifierValue]);
   }
-  if (typeof encryption === "string" && encryption) {
-    tags.push(["encrypted", encryption]);
+  const normalizedEncryption =
+    typeof encryption === "string" ? encryption.trim() : "";
+  if (normalizedEncryption) {
+    tags.push(["encrypted", normalizedEncryption]);
   }
   appendSchemaTags(tags, schema);
   return {
-    kind: schema?.kind ?? 30002,
+    kind: schema?.kind ?? 10000,
     pubkey,
     created_at,
     tags,

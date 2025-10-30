@@ -490,9 +490,7 @@ await (async () => {
   let latestEventId = "event-initial";
   let latestCreatedAt = 1_000;
 
-  const decryptPayloads = new Map([
-    [latestCiphertext, JSON.stringify({ blockedPubkeys: [] })],
-  ]);
+  const decryptPayloads = new Map([[latestCiphertext, JSON.stringify([])]]);
 
   const signedEvents = [];
 
@@ -541,9 +539,18 @@ await (async () => {
       } catch (error) {
         throw new Error(`unexpected payload ${plaintext}`);
       }
-      const blocked = Array.isArray(parsed?.blockedPubkeys)
-        ? [...parsed.blockedPubkeys].sort()
-        : [];
+      let blocked;
+      if (Array.isArray(parsed)) {
+        blocked = parsed
+          .filter((tag) => Array.isArray(tag) && tag.length >= 2 && tag[0] === "p")
+          .map((tag) => tag[1])
+          .filter((value) => typeof value === "string")
+          .sort();
+      } else if (Array.isArray(parsed?.blockedPubkeys)) {
+        blocked = [...parsed.blockedPubkeys].sort();
+      } else {
+        blocked = [];
+      }
       const cipher = `cipher:${JSON.stringify(blocked)}`;
       decryptPayloads.set(cipher, plaintext);
       return cipher;
@@ -607,11 +614,15 @@ await (async () => {
       "direct signer flows should never trigger extension permission prompts",
     );
 
-    const muteEvent = signedEvents.find((event) => event.kind === 10000);
+    const muteEvent = signedEvents.find(
+      (event) =>
+        event.kind === 10000 &&
+        Array.isArray(event.tags) &&
+        event.tags.some((tag) => Array.isArray(tag) && tag[0] === "p"),
+    );
     assert(muteEvent, "block list updates should publish a kind 10000 mute list event");
     assert(
-      Array.isArray(muteEvent.tags) &&
-        muteEvent.tags.some((tag) => Array.isArray(tag) && tag[0] === "p" && tag[1] === target),
+      muteEvent.tags.some((tag) => Array.isArray(tag) && tag[0] === "p" && tag[1] === target),
       "mute list event should include p-tags for blocked pubkeys",
     );
   } finally {
@@ -677,7 +688,7 @@ await (async () => {
       assert.equal(pubkey, actor);
       assert.equal(
         plaintext,
-        JSON.stringify({ blockedPubkeys: [blocked] }),
+        JSON.stringify([["p", blocked]]),
       );
       return "cipher-nip44";
     },
@@ -763,7 +774,7 @@ await (async () => {
       assert.equal(pubkey, actor);
       assert.equal(
         plaintext,
-        JSON.stringify({ blockedPubkeys: [blocked] }),
+        JSON.stringify([["p", blocked]]),
       );
       return "cipher-nip04";
     },
@@ -787,10 +798,10 @@ await (async () => {
     );
     assert.equal(encryptCalls.nip04, 1, "nip04Encrypt should handle fallback");
     const encryptedTags = signedEvents[0].tags.filter((tag) => tag[0] === "encrypted");
-    assert.equal(
-      encryptedTags.length,
-      0,
-      "fallback nip04 encryption should not advertise a nip44 tag",
+    assert.deepEqual(
+      encryptedTags,
+      [["encrypted", "nip04"]],
+      "fallback nip04 encryption should advertise nip04",
     );
     assert.equal(publishCalls.length, 1, "event should publish to the available relay");
   } finally {
@@ -834,7 +845,7 @@ await (async () => {
       v2: {
         async decrypt(_pubkey, ciphertext) {
           decryptCalls.nip44 += 1;
-          return JSON.stringify({ blockedPubkeys: [blocked], hint: ciphertext });
+          return JSON.stringify([["p", blocked, ciphertext]]);
         },
       },
     },
