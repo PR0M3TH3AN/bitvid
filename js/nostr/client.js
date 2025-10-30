@@ -694,23 +694,30 @@ function buildDmFilters(actorPubkey, { since, until, limit } = {}) {
 }
 
 
-const EXTENSION_MIME_MAP = {
-  mp4: "video/mp4",
-  m4v: "video/x-m4v",
-  webm: "video/webm",
-  mkv: "video/x-matroska",
-  mov: "video/quicktime",
-  avi: "video/x-msvideo",
-  ogv: "video/ogg",
-  ogg: "video/ogg",
-  m3u8: "application/x-mpegURL",
-  mpd: "application/dash+xml",
-  ts: "video/mp2t",
-  mpg: "video/mpeg",
-  mpeg: "video/mpeg",
-  flv: "video/x-flv",
-  "3gp": "video/3gpp",
-};
+const EXTENSION_MIME_MAP = Object.freeze(
+  Object.fromEntries(
+    Object.entries({
+      mp4: "video/mp4",
+      m4v: "video/x-m4v",
+      webm: "video/webm",
+      mkv: "video/x-matroska",
+      mov: "video/quicktime",
+      avi: "video/x-msvideo",
+      ogv: "video/ogg",
+      ogg: "video/ogg",
+      m3u8: "application/x-mpegurl",
+      mpd: "application/dash+xml",
+      ts: "video/mp2t",
+      mpg: "video/mpeg",
+      mpeg: "video/mpeg",
+      flv: "video/x-flv",
+      "3gp": "video/3gpp",
+    }).map(([extension, mimeType]) => [
+      extension,
+      typeof mimeType === "string" ? mimeType.toLowerCase() : "",
+    ]),
+  ),
+);
 
 function inferMimeTypeFromUrl(url) {
   if (!url || typeof url !== "string") {
@@ -733,7 +740,8 @@ function inferMimeTypeFromUrl(url) {
   }
 
   const extension = match[1].toLowerCase();
-  return EXTENSION_MIME_MAP[extension] || "";
+  const mimeType = EXTENSION_MIME_MAP[extension];
+  return typeof mimeType === "string" ? mimeType : "";
 }
 
 function getActiveKey(video) {
@@ -3932,7 +3940,7 @@ export class NostrClient {
       typeof videoData.title === "string" ? videoData.title.trim() : "";
     const providedMimeType =
       typeof videoData.mimeType === "string"
-        ? videoData.mimeType.trim()
+        ? videoData.mimeType.trim().toLowerCase()
         : "";
 
     const createdAt = Math.floor(Date.now() / 1000);
@@ -4000,8 +4008,11 @@ export class NostrClient {
 
       if (finalUrl) {
         const inferredMimeType = inferMimeTypeFromUrl(finalUrl);
-        const mimeType =
-          providedMimeType || inferredMimeType || "application/octet-stream";
+        const mimeTypeSource =
+          providedMimeType ||
+          inferredMimeType ||
+          "application/octet-stream";
+        const mimeType = mimeTypeSource.toLowerCase();
 
         const mirrorTags = [
           ["url", finalUrl],
