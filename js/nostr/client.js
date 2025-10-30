@@ -4229,8 +4229,9 @@ export class NostrClient {
   }
 
   /**
-   * Edits a video by creating a *new event* with a brand-new d tag,
-   * but reuses the same videoRootId as the original.
+   * Edits a video by creating a new event that reuses the existing d tag
+   * so subsequent publishes overwrite the same NIP-33 addressable record
+   * while keeping the original videoRootId.
    *
    * This version forces version=2 for the original note and uses
    * lowercase comparison for public keys.
@@ -4322,8 +4323,16 @@ export class NostrClient {
     const oldRootId = baseEvent.videoRootId || baseEvent.id;
 
     const preservedDTag = this.resolveEventDTag(baseEvent, originalEventStub);
+    const fallbackDTag =
+      (typeof baseEvent.id === "string" && baseEvent.id.trim()) ||
+      (typeof originalEventStub?.id === "string" && originalEventStub.id.trim()) ||
+      "";
     const finalDTagValue =
-      preservedDTag || `${Date.now()}-edit-${Math.random().toString(36).slice(2)}`;
+      (typeof preservedDTag === "string" && preservedDTag.trim()) || fallbackDTag;
+
+    if (!finalDTagValue) {
+      throw new Error("Unable to determine a stable d tag for this edit.");
+    }
 
     // Build the updated content object
     const contentObject = {
