@@ -85,7 +85,7 @@ function normalizeImetaVariant(variant) {
   }
   const normalized = {};
   const m = normalizeString(variant.m);
-  if (m) normalized.m = m;
+  if (m) normalized.m = m.toLowerCase();
   const dim = normalizeString(variant.dim);
   if (dim) normalized.dim = dim;
   const url = normalizeString(variant.url);

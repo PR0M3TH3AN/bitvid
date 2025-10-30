@@ -92,7 +92,7 @@ test("buildNip71MetadataTags normalizes structured fields", () => {
     tags.some(
       (tag) =>
         tag[0] === "p" &&
-        tag[1] === "A".repeat(64) &&
+        tag[1] === "a".repeat(64) &&
         tag[2] === "wss://relay.example",
     ),
   );

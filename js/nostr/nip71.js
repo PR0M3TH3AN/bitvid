@@ -177,7 +177,8 @@ function buildImetaTags(variants) {
     const dim = stringFromInput(variant.dim);
     const url = stringFromInput(variant.url);
     const x = stringFromInput(variant.x);
-    const mime = stringFromInput(variant.m);
+    const rawMime = stringFromInput(variant.m);
+    const mime = rawMime ? rawMime.toLowerCase() : "";
     const duration = formatNonNegativeNumber(variant.duration, {
       allowFloat: true,
     });
