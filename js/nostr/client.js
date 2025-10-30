@@ -4642,6 +4642,8 @@ export class NostrClient {
     }
 
     const existingD = this.resolveEventDTag(baseEvent, originalEvent) || null;
+    const stableDTag =
+      existingD || baseEvent?.id || originalEvent?.id || null;
 
     let oldContent = {};
     try {
@@ -4656,7 +4658,7 @@ export class NostrClient {
       oldContent.videoRootId ||
       (existingD
         ? `LEGACY:${baseEvent.pubkey}:${existingD}`
-        : baseEvent.id);
+        : stableDTag || baseEvent?.id || originalEvent?.id || "");
 
     const oldIsNsfw = oldContent.isNsfw === true;
     const oldIsForKids = oldContent.isForKids === true && !oldIsNsfw;
@@ -4677,8 +4679,11 @@ export class NostrClient {
     };
 
     const tags = [["t", "video"]];
-    if (existingD) {
-      tags.push(["d", existingD]);
+    if (stableDTag) {
+      // NIP-78 requires replaceable events to publish a stable "d" tag.
+      // Legacy videos may not carry one, so reuse the prior event id to
+      // guarantee the revert stays addressable.
+      tags.push(["d", stableDTag]);
     }
 
     const event = {
