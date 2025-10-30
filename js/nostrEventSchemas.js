@@ -495,6 +495,99 @@ function collectPointerTags(schema, {
   return normalized;
 }
 
+function mergePointerTags(pointerTags = []) {
+  if (!Array.isArray(pointerTags) || pointerTags.length === 0) {
+    return [];
+  }
+
+  const merged = [];
+  const pointerIndexByKey = new Map();
+
+  const toTrimmedString = (value) => {
+    if (typeof value === "string") {
+      return value.trim();
+    }
+    if (value === undefined || value === null) {
+      return "";
+    }
+    return String(value).trim();
+  };
+
+  pointerTags.forEach((tag) => {
+    if (!Array.isArray(tag) || tag.length < 2) {
+      return;
+    }
+
+    const normalizedType = toTrimmedString(tag[0]);
+    if (!normalizedType) {
+      return;
+    }
+
+    const canonicalType =
+      normalizedType === "a" ? "a" : normalizedType === "e" ? "e" : normalizedType;
+
+    const normalizedValue = toTrimmedString(tag[1]);
+    if (!normalizedValue) {
+      return;
+    }
+
+    const sanitizedTag = [canonicalType, normalizedValue];
+    for (let index = 2; index < tag.length; index += 1) {
+      const extra = toTrimmedString(tag[index]);
+      if (extra) {
+        sanitizedTag.push(extra);
+      }
+    }
+
+    if (canonicalType !== "a" && canonicalType !== "e") {
+      merged.push(sanitizedTag);
+      return;
+    }
+
+    const dedupeKey = `${canonicalType}:${normalizedValue.toLowerCase()}`;
+    const relayHint =
+      sanitizedTag.length > 2 && typeof sanitizedTag[2] === "string"
+        ? sanitizedTag[2].trim()
+        : "";
+
+    if (!pointerIndexByKey.has(dedupeKey)) {
+      if (relayHint && sanitizedTag.length > 2) {
+        sanitizedTag[2] = relayHint;
+      }
+      const index = merged.length;
+      merged.push(sanitizedTag);
+      pointerIndexByKey.set(dedupeKey, { index, relay: relayHint });
+      return;
+    }
+
+    const existingEntry = pointerIndexByKey.get(dedupeKey);
+    const existingTag = merged[existingEntry.index];
+    const existingRelay =
+      existingTag.length > 2 && typeof existingTag[2] === "string"
+        ? existingTag[2].trim()
+        : "";
+    const hasExistingRelay = Boolean(existingRelay);
+    const hasNewRelay = Boolean(relayHint);
+
+    if (
+      (!hasExistingRelay && hasNewRelay) ||
+      (hasExistingRelay && hasNewRelay && existingRelay !== relayHint)
+    ) {
+      const replacement = sanitizedTag.slice();
+      if (relayHint && replacement.length > 2) {
+        replacement[2] = relayHint;
+      }
+      merged[existingEntry.index] = replacement;
+      pointerIndexByKey.set(dedupeKey, {
+        index: existingEntry.index,
+        relay: relayHint,
+      });
+    }
+  });
+
+  return merged;
+}
+
 export function buildVideoPostEvent({
   pubkey,
   created_at,
@@ -766,8 +859,11 @@ export function buildReactionEvent({
     pointerTag,
     pointerTags,
   });
-  normalizedPointerTags.forEach((tag) => {
-    tags.push(tag);
+  const mergedPointerTags = mergePointerTags(normalizedPointerTags);
+  mergedPointerTags.forEach((tag) => {
+    if (Array.isArray(tag) && tag.length >= 2) {
+      tags.push(tag);
+    }
   });
 
   const resolvePointerDetails = (pointerCandidate) => {
@@ -808,7 +904,7 @@ export function buildReactionEvent({
       return explicitPointer;
     }
 
-    const pointerTagEntry = normalizedPointerTags.find(
+    const pointerTagEntry = mergedPointerTags.find(
       (tag) => Array.isArray(tag) && tag.length >= 2 && (tag[0] === "a" || tag[0] === "e")
     );
     if (!pointerTagEntry) {
