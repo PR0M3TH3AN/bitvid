@@ -2217,6 +2217,44 @@ export class NostrClient {
     return resolveActiveSigner(normalizedPubkey || extensionPubkey);
   }
 
+  resolveEventDTag(event, fallbackEvent = null) {
+    const immediate = getDTagValueFromTags(event?.tags);
+    if (immediate) {
+      return immediate;
+    }
+
+    const fallbackTag = getDTagValueFromTags(fallbackEvent?.tags);
+    if (fallbackTag) {
+      return fallbackTag;
+    }
+
+    const candidateIds = [];
+    const pushCandidate = (candidate) => {
+      if (typeof candidate === "string" && candidate.trim()) {
+        const normalized = candidate.trim();
+        if (!candidateIds.includes(normalized)) {
+          candidateIds.push(normalized);
+        }
+      }
+    };
+
+    pushCandidate(event?.id);
+    pushCandidate(fallbackEvent?.id);
+
+    for (const candidateId of candidateIds) {
+      const rawEvent = this.rawEvents?.get?.(candidateId);
+      if (!rawEvent) {
+        continue;
+      }
+      const rawTag = getDTagValueFromTags(rawEvent.tags);
+      if (rawTag) {
+        return rawTag;
+      }
+    }
+
+    return "";
+  }
+
   applyRootCreatedAt(video) {
     if (!video || typeof video !== "object") {
       return null;
@@ -4283,8 +4321,9 @@ export class NostrClient {
     // Use the existing videoRootId (or fall back to the base event's ID)
     const oldRootId = baseEvent.videoRootId || baseEvent.id;
 
-    // Generate a new d-tag so that the edit gets its own share link
-    const newD = `${Date.now()}-edit-${Math.random().toString(36).slice(2)}`;
+    const preservedDTag = this.resolveEventDTag(baseEvent, originalEventStub);
+    const finalDTagValue =
+      preservedDTag || `${Date.now()}-edit-${Math.random().toString(36).slice(2)}`;
 
     // Build the updated content object
     const contentObject = {
@@ -4329,13 +4368,13 @@ export class NostrClient {
     const event = buildVideoPostEvent({
       pubkey: userPubkeyLower,
       created_at: Math.floor(Date.now() / 1000),
-      dTagValue: newD,
+      dTagValue: finalDTagValue,
       content: contentObject,
       additionalTags: nip71Tags,
     });
 
     devLogger.log("Creating edited event with root ID:", oldRootId);
-          devLogger.log("Event content:", event.content);
+    devLogger.log("Event content:", event.content);
 
     await this.ensureActiveSignerForPubkey(userPubkeyLower);
 
@@ -4458,9 +4497,7 @@ export class NostrClient {
       };
     }
 
-    const safeTags = Array.isArray(baseEvent.tags) ? baseEvent.tags : [];
-    const dTag = safeTags.find((t) => t[0] === "d");
-    const existingD = dTag ? dTag[1] : null;
+    const existingD = this.resolveEventDTag(baseEvent, originalEvent) || null;
 
     let oldContent = {};
     try {
@@ -4626,7 +4663,7 @@ export class NostrClient {
       (targetVideo && typeof targetVideo.videoRootId === "string"
         ? targetVideo.videoRootId.trim()
         : "");
-    const targetDTag = targetVideo ? getDTagValueFromTags(targetVideo.tags) : "";
+    const targetDTag = this.resolveEventDTag(targetVideo);
 
     if (targetVideo) {
       try {
@@ -4656,7 +4693,7 @@ export class NostrClient {
 
       const candidateRoot =
         typeof candidate.videoRootId === "string" ? candidate.videoRootId : "";
-      const candidateDTag = getDTagValueFromTags(candidate.tags);
+      const candidateDTag = this.resolveEventDTag(candidate);
       const sameRoot = inferredRoot && candidateRoot === inferredRoot;
       const sameD = targetDTag && candidateDTag === targetDTag;
       const legacyMatch =
@@ -5843,7 +5880,7 @@ export class NostrClient {
     const targetRoot = typeof video.videoRootId === "string" ? video.videoRootId : "";
     const targetPubkey = typeof video.pubkey === "string" ? video.pubkey.toLowerCase() : "";
 
-    const targetDTag = getDTagValueFromTags(video.tags);
+    const targetDTag = this.resolveEventDTag(video);
 
     const collectLocalMatches = () => {
       const seen = new Set();
@@ -5863,7 +5900,7 @@ export class NostrClient {
 
         const candidateRoot =
           typeof candidate.videoRootId === "string" ? candidate.videoRootId : "";
-        const candidateDTag = getDTagValueFromTags(candidate.tags);
+        const candidateDTag = this.resolveEventDTag(candidate, video);
 
         const sameRoot = targetRoot && candidateRoot === targetRoot;
         const sameD = targetDTag && candidateDTag === targetDTag;
