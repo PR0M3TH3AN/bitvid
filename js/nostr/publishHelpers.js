@@ -626,6 +626,7 @@ export async function repostEvent({
       : client?.relays,
   );
   const relays = relaysOverride.length ? relaysOverride : Array.from(RELAY_URLS);
+  const chosenPublishRelay = relays.length ? relays[0] : "";
 
   let actorPubkey =
     typeof options.actorPubkey === "string" && options.actorPubkey.trim()
@@ -671,15 +672,23 @@ export async function repostEvent({
     ? options.additionalTags.filter((tag) => Array.isArray(tag) && tag.length >= 2)
     : [];
 
+  const repostKind =
+    Number.isFinite(targetKind) && targetKind !== 1
+      ? 16
+      : 6;
+
   const repostEventPayload = buildRepostEvent({
     pubkey: actorPubkey,
     created_at: createdAt,
     eventId: normalizedId,
     eventRelay,
+    publishRelay: chosenPublishRelay,
     address,
     addressRelay,
     authorPubkey,
     additionalTags,
+    repostKind,
+    targetKind,
   });
 
   try {
