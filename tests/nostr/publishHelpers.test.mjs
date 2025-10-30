@@ -110,42 +110,34 @@ test("mirrorVideoEvent lowercases inferred MIME types", async () => {
   assert.equal(mTag[1], "video/webm");
 });
 
-test("repostEvent adds a target kind tag for quote reposts", async () => {
-  const eventId = "quote-repost";
+test("mirrorVideoEvent includes hash tags when provided", async () => {
+  const eventId = "hash-tags";
   const actorPubkey = "3".repeat(64);
-  const authorPubkey = "4".repeat(64);
   const { client } = createPublishClient({ actorPubkey });
+  const fileHash = "a".repeat(64);
+  const originalHash = "b".repeat(64);
 
-  client.allEvents.set(eventId, {
-    kind: 30078,
-    pubkey: authorPubkey,
-    videoRootId: "video-root",
-  });
-  client.rawEvents.set(eventId, {
-    kind: 30078,
-    pubkey: authorPubkey,
-    tags: [["d", "video-root"]],
-  });
-
-  const result = await repostEvent({
+  const result = await mirrorVideoEvent({
     client,
     eventId,
     options: {
-      actorPubkey,
-      authorPubkey,
-      kind: 30078,
+      url: "https://videos.example/demo.mp4",
+      fileSha256: fileHash.toUpperCase(),
+      originalFileSha256: originalHash,
     },
     resolveActiveSigner: resolveActiveSignerStub,
     shouldRequestExtensionPermissions: shouldRequestExtensionPermissionsStub,
     signEventWithPrivateKey: signEventWithPrivateKeyStub,
-    eventToAddressPointer: () => "",
+    inferMimeTypeFromUrl: () => "video/mp4",
   });
 
   assert.equal(result.ok, true);
-  assert.equal(result.event?.kind, 16);
-  const kTag = result.event?.tags?.find(
-    (tag) => Array.isArray(tag) && tag[0] === "k",
+  const xTag = result.event?.tags?.find(
+    (tag) => Array.isArray(tag) && tag[0] === "x",
   );
-  assert.ok(kTag, "repost events must include a target kind tag");
-  assert.equal(kTag[1], "30078");
+  const oxTag = result.event?.tags?.find(
+    (tag) => Array.isArray(tag) && tag[0] === "ox",
+  );
+  assert.deepEqual(xTag, ["x", fileHash]);
+  assert.deepEqual(oxTag, ["ox", originalHash]);
 });

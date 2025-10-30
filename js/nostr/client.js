@@ -3,6 +3,7 @@
 import { isDevMode } from "../config.js";
 import { FEATURE_PUBLISH_NIP71 } from "../constants.js";
 import { accessControl } from "../accessControl.js";
+import { bytesToHex, sha256 } from "../../vendor/crypto-helpers.bundle.min.js";
 // 🔧 merged conflicting changes from codex/update-video-publishing-and-parsing-logic vs unstable
 import {
   buildNip71MetadataTags,
@@ -38,7 +39,6 @@ import {
 } from "./watchHistory.js";
 import {
   buildVideoPostEvent,
-  buildVideoMirrorEvent,
   buildRepostEvent,
   buildWatchHistoryIndexEvent,
   buildWatchHistoryChunkEvent,
@@ -411,6 +411,85 @@ function extractVideoPublishPayload(rawPayload) {
     videoData.isForKids === true && !isNsfw;
 
   return { videoData: normalizedVideoData, nip71Metadata };
+}
+
+function normalizeHexHash(candidate) {
+  if (candidate === undefined || candidate === null) {
+    return "";
+  }
+  const stringValue =
+    typeof candidate === "string" ? candidate : String(candidate);
+  const trimmed = stringValue.trim().toLowerCase();
+  if (!trimmed) {
+    return "";
+  }
+  return HEX64_REGEX.test(trimmed) ? trimmed : "";
+}
+
+const BlobConstructor = typeof Blob !== "undefined" ? Blob : null;
+let sharedTextEncoder = null;
+
+function getSharedTextEncoder() {
+  if (!sharedTextEncoder && typeof TextEncoder !== "undefined") {
+    sharedTextEncoder = new TextEncoder();
+  }
+  return sharedTextEncoder;
+}
+
+async function valueToUint8Array(value) {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    if (
+      BlobConstructor &&
+      value instanceof BlobConstructor &&
+      typeof value.arrayBuffer === "function"
+    ) {
+      const buffer = await value.arrayBuffer();
+      return new Uint8Array(buffer);
+    }
+  } catch (error) {
+    devLogger.warn("[nostr] Failed to read Blob while computing hash:", error);
+    return null;
+  }
+
+  if (typeof ArrayBuffer !== "undefined") {
+    if (value instanceof ArrayBuffer) {
+      return new Uint8Array(value);
+    }
+    if (ArrayBuffer.isView?.(value)) {
+      return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+    }
+  }
+
+  if (typeof Buffer !== "undefined" && Buffer.isBuffer?.(value)) {
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  }
+
+  if (typeof value === "string") {
+    const encoder = getSharedTextEncoder();
+    return encoder ? encoder.encode(value) : null;
+  }
+
+  return null;
+}
+
+async function computeSha256HexFromValue(value) {
+  const data = await valueToUint8Array(value);
+  if (!data) {
+    return "";
+  }
+
+  try {
+    const digest = sha256(data);
+    const hex = typeof digest === "string" ? digest : bytesToHex(digest);
+    return hex ? hex.toLowerCase() : "";
+  } catch (error) {
+    devLogger.warn("[nostr] Failed to compute SHA-256 for mirror payload:", error);
+    return "";
+  }
 }
 
 function eventToAddressPointer(event) {
@@ -4052,49 +4131,105 @@ export class NostrClient {
           "application/octet-stream";
         const mimeType = mimeTypeSource.toLowerCase();
 
-        const mirrorTags = [
-          ["url", finalUrl],
-          ["m", mimeType],
+        const fileHashCandidates = [
+          videoData.fileSha256,
+          videoData.uploadedFileSha256,
+          videoPayload?.legacyFormData?.fileSha256,
+          videoPayload?.fileSha256,
         ];
-
-        if (finalThumbnail) {
-          mirrorTags.push(["thumb", finalThumbnail]);
+        let fileSha256 = "";
+        for (const candidate of fileHashCandidates) {
+          const normalized = normalizeHexHash(candidate);
+          if (normalized) {
+            fileSha256 = normalized;
+            break;
+          }
         }
 
-        const altText = finalDescription || finalTitle || "";
-        if (altText) {
-          mirrorTags.push(["alt", altText]);
+        const originalHashCandidates = [
+          videoData.originalFileSha256,
+          videoPayload?.legacyFormData?.originalFileSha256,
+          videoPayload?.originalFileSha256,
+        ];
+        let originalFileSha256 = "";
+        for (const candidate of originalHashCandidates) {
+          const normalized = normalizeHexHash(candidate);
+          if (normalized) {
+            originalFileSha256 = normalized;
+            break;
+          }
         }
 
-        if (!contentObject.isPrivate && finalMagnet) {
-          mirrorTags.push(["magnet", finalMagnet]);
+        const uploadedFile =
+          videoData?.uploadedFile ||
+          videoData?.file ||
+          videoPayload?.legacyFormData?.uploadedFile ||
+          videoPayload?.legacyFormData?.file ||
+          videoPayload?.uploadedFile ||
+          videoPayload?.file ||
+          null;
+
+        const originalFile =
+          videoData?.originalFile ||
+          videoPayload?.legacyFormData?.originalFile ||
+          videoPayload?.originalFile ||
+          uploadedFile;
+
+        if (!fileSha256 && uploadedFile) {
+          fileSha256 = await computeSha256HexFromValue(uploadedFile);
         }
 
-        const mirrorEvent = buildVideoMirrorEvent({
-          pubkey: normalizedPubkey,
+        if (!originalFileSha256 && originalFile) {
+          originalFileSha256 = await computeSha256HexFromValue(originalFile);
+        }
+
+        if (!originalFileSha256 && fileSha256) {
+          originalFileSha256 = fileSha256;
+        }
+
+        const mirrorOptions = {
+          url: finalUrl,
+          magnet: finalMagnet,
+          thumbnail: finalThumbnail,
+          description: finalDescription,
+          title: finalTitle,
+          mimeType,
+          isPrivate: contentObject.isPrivate,
+          actorPubkey: normalizedPubkey,
           created_at: createdAt,
-          tags: mirrorTags,
-          content: altText,
-        });
+        };
 
-        devLogger.log("Prepared NIP-94 mirror event:", mirrorEvent);
+        if (fileSha256) {
+          mirrorOptions.fileSha256 = fileSha256;
+        }
+
+        if (originalFileSha256) {
+          mirrorOptions.originalFileSha256 = originalFileSha256;
+        }
 
         try {
-          await this.signAndPublishEvent(mirrorEvent, {
-            context: "NIP-94 mirror",
-            logName: "NIP-94 mirror",
-            devLogLabel: "NIP-94 mirror",
-            rejectionLogLevel: "warn",
-          });
-
-          devLogger.log(
-            "NIP-94 mirror dispatched for hosted URL:",
-            finalUrl
+          const mirrorResult = await this.mirrorVideoEvent(
+            signedEvent.id,
+            mirrorOptions,
           );
+
+          if (mirrorResult?.ok) {
+            devLogger.log("Prepared NIP-94 mirror event:", mirrorResult.event);
+            devLogger.log(
+              "NIP-94 mirror dispatched for hosted URL:",
+              finalUrl,
+            );
+          } else if (mirrorResult) {
+            devLogger.warn(
+              "[nostr] NIP-94 mirror rejected:",
+              mirrorResult.error || "mirror-failed",
+              mirrorResult.details || null,
+            );
+          }
         } catch (mirrorError) {
           devLogger.warn(
-            "[nostr] NIP-94 mirror rejected by all relays:",
-            mirrorError
+            "[nostr] Failed to publish NIP-94 mirror:",
+            mirrorError,
           );
         }
       } else devLogger.log("Skipping NIP-94 mirror: no hosted URL provided.");
