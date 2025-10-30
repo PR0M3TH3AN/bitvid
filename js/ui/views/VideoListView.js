@@ -2,6 +2,7 @@ import { VideoCard } from "../components/VideoCard.js";
 import {
   renderTagPillStrip,
   applyTagPreferenceState,
+  trimTagPillStripToFit,
 } from "../components/tagPillList.js";
 import {
   subscribeToVideoViewCount,
@@ -181,6 +182,18 @@ export class VideoListView {
     this._lastRenderedVideoListElement = null;
     this.popularTagsRoot = null;
     this._popularTagStrip = null;
+    this._popularTagsSortedList = [];
+    this._popularTagResizeObserver = null;
+    this._popularTagResizeHandler = null;
+    this._popularTagResizeCancel = null;
+    this._popularTagResizeScheduled = false;
+    this._isApplyingPopularTagTrim = false;
+    this._handlePopularTagResize = () => {
+      if (this._isApplyingPopularTagTrim) {
+        return;
+      }
+      this.renderPopularTagStrip();
+    };
 
     this.handlers = {
       playback: null,
@@ -268,12 +281,14 @@ export class VideoListView {
     this.currentVideos = [];
     this.lastRenderedVideoSignature = null;
     this._lastRenderedVideoListElement = null;
+    this._teardownPopularTagResizeObserver();
     if (this.popularTagsRoot) {
       this.popularTagsRoot.textContent = "";
       this.popularTagsRoot.hidden = true;
     }
     this.popularTagsRoot = null;
     this._popularTagStrip = null;
+    this._popularTagsSortedList = [];
   }
 
   setPlaybackHandler(handler) {
@@ -320,6 +335,7 @@ export class VideoListView {
   }
 
   setPopularTagsContainer(container) {
+    this._teardownPopularTagResizeObserver();
     if (this.popularTagsRoot && this.popularTagsRoot !== container) {
       this.popularTagsRoot.textContent = "";
       this.popularTagsRoot.hidden = true;
@@ -331,6 +347,10 @@ export class VideoListView {
     if (this.popularTagsRoot) {
       this.popularTagsRoot.textContent = "";
       this.popularTagsRoot.hidden = true;
+      if (this._popularTagsSortedList.length) {
+        this.renderPopularTagStrip();
+        this._ensurePopularTagResizeObserver();
+      }
     }
   }
 
@@ -341,9 +361,9 @@ export class VideoListView {
     }
 
     if (!Array.isArray(videos) || videos.length === 0) {
-      root.textContent = "";
-      root.hidden = true;
-      this._popularTagStrip = null;
+      this._popularTagsSortedList = [];
+      this.renderPopularTagStrip();
+      this._teardownPopularTagResizeObserver();
       return;
     }
 
@@ -365,9 +385,9 @@ export class VideoListView {
     });
 
     if (!counts.size) {
-      root.textContent = "";
-      root.hidden = true;
-      this._popularTagStrip = null;
+      this._popularTagsSortedList = [];
+      this.renderPopularTagStrip();
+      this._teardownPopularTagResizeObserver();
       return;
     }
 
@@ -388,26 +408,150 @@ export class VideoListView {
       return lowerA.localeCompare(lowerB);
     });
 
-    const tags = tagEntries.map((entry) => entry.tag);
-    const doc = this.document || root.ownerDocument || null;
-    if (!doc) {
-      root.textContent = "";
-      root.hidden = true;
-      this._popularTagStrip = null;
+    this._popularTagsSortedList = tagEntries.map((entry) => entry.tag);
+    this.renderPopularTagStrip();
+    if (this._popularTagsSortedList.length) {
+      this._ensurePopularTagResizeObserver();
+    } else {
+      this._teardownPopularTagResizeObserver();
+    }
+  }
+
+  renderPopularTagStrip() {
+    const root = this.popularTagsRoot;
+    if (!root) {
       return;
     }
 
-    const { root: strip } = renderTagPillStrip({
-      document: doc,
-      tags,
-      onTagActivate: (tag, detail = {}) =>
-        this.handlePopularTagActivate(tag, detail),
-      getTagState: (tag) => this.resolveTagPreferenceState(tag),
-    });
-    root.textContent = "";
-    root.appendChild(strip);
-    root.hidden = false;
-    this._popularTagStrip = strip;
+    const tags = Array.isArray(this._popularTagsSortedList)
+      ? [...this._popularTagsSortedList]
+      : [];
+
+    this._isApplyingPopularTagTrim = true;
+
+      try {
+        root.textContent = "";
+        this._popularTagStrip = null;
+
+        if (!tags.length) {
+          root.hidden = true;
+          return;
+        }
+
+        const doc = this.document || root.ownerDocument || null;
+        if (!doc) {
+          root.hidden = true;
+          this._teardownPopularTagResizeObserver();
+          return;
+        }
+
+      const { root: strip } = renderTagPillStrip({
+        document: doc,
+        tags,
+        onTagActivate: (tag, detail = {}) =>
+          this.handlePopularTagActivate(tag, detail),
+        getTagState: (tag) => this.resolveTagPreferenceState(tag),
+      });
+
+      root.appendChild(strip);
+      this._popularTagStrip = strip;
+      trimTagPillStripToFit({ strip, container: root });
+      root.hidden = strip.childElementCount === 0;
+    } finally {
+      this._isApplyingPopularTagTrim = false;
+    }
+  }
+
+  _ensurePopularTagResizeObserver() {
+    const root = this.popularTagsRoot;
+    if (!root || this._popularTagResizeObserver || this._popularTagResizeHandler) {
+      return;
+    }
+
+    const resizeObserverCtor =
+      (this.window && this.window.ResizeObserver) ||
+      (typeof globalThis !== "undefined" ? globalThis.ResizeObserver : null);
+
+    if (typeof resizeObserverCtor === "function") {
+      this._popularTagResizeObserver = new resizeObserverCtor(() => {
+        this._handlePopularTagResize();
+      });
+      this._popularTagResizeObserver.observe(root);
+      return;
+    }
+
+    if (!this.window) {
+      return;
+    }
+
+    const schedule = (callback) => {
+      if (this._popularTagResizeScheduled) {
+        return;
+      }
+      this._popularTagResizeScheduled = true;
+
+      if (typeof this.window.requestAnimationFrame === "function") {
+        const frameId = this.window.requestAnimationFrame(() => {
+          this._popularTagResizeScheduled = false;
+          this._popularTagResizeCancel = null;
+          callback();
+        });
+        this._popularTagResizeCancel = () => {
+          this.window.cancelAnimationFrame(frameId);
+          this._popularTagResizeCancel = null;
+          this._popularTagResizeScheduled = false;
+        };
+      } else {
+        const timeoutId = this.window.setTimeout(() => {
+          this._popularTagResizeScheduled = false;
+          this._popularTagResizeCancel = null;
+          callback();
+        }, 50);
+        this._popularTagResizeCancel = () => {
+          this.window.clearTimeout(timeoutId);
+          this._popularTagResizeCancel = null;
+          this._popularTagResizeScheduled = false;
+        };
+      }
+    };
+
+    const handler = () => {
+      schedule(() => {
+        if (!this.popularTagsRoot) {
+          return;
+        }
+        this._handlePopularTagResize();
+      });
+    };
+
+    this.window.addEventListener("resize", handler);
+    this._popularTagResizeHandler = handler;
+  }
+
+  _teardownPopularTagResizeObserver() {
+    if (this._popularTagResizeObserver) {
+      try {
+        this._popularTagResizeObserver.disconnect();
+      } catch (error) {
+        // Ignore disconnect errors.
+      }
+    }
+    this._popularTagResizeObserver = null;
+
+    if (this._popularTagResizeHandler && this.window) {
+      this.window.removeEventListener("resize", this._popularTagResizeHandler);
+    }
+    this._popularTagResizeHandler = null;
+
+    if (typeof this._popularTagResizeCancel === "function") {
+      try {
+        this._popularTagResizeCancel();
+      } catch (error) {
+        // Ignore cancellation errors.
+      }
+    }
+    this._popularTagResizeCancel = null;
+    this._popularTagResizeScheduled = false;
   }
 
   render(videos, metadata = null) {

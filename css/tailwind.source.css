@@ -2400,6 +2400,14 @@
     );
   }
 
+  .video-tag-strip {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: var(--space-xs);
+    overflow: hidden;
+  }
+
   .video-tag-pill {
     @apply inline-flex items-center gap-2 rounded-full border border-status-neutral-border bg-status-neutral-surface px-3 py-1 text-2xs font-medium text-status-neutral-on;
     @apply relative justify-center whitespace-nowrap transition;
