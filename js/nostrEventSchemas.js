@@ -716,6 +716,10 @@ export function buildRepostEvent({
     return schema?.kind ?? 6;
   })();
 
+  if (resolvedKind === 16 && normalizedTargetKind !== null) {
+    tags.push(["k", String(normalizedTargetKind)]);
+  }
+
   return {
     kind: resolvedKind,
     pubkey,

@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-const { mirrorVideoEvent } = await import("../../js/nostr/publishHelpers.js");
+const { mirrorVideoEvent, repostEvent } = await import(
+  "../../js/nostr/publishHelpers.js",
+);
 
 const resolveActiveSignerStub = () => ({
   signEvent: async (event) => ({
