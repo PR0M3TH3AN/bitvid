@@ -173,17 +173,6 @@ export async function publishVideoReaction(
       ? pointer.relay.trim()
       : optionRelay;
 
-  const pointerTag =
-    pointer.type === "a"
-      ? pointerRelay
-        ? ["a", pointer.value, pointerRelay]
-        : ["a", pointer.value]
-      : pointerRelay
-      ? ["e", pointer.value, pointerRelay]
-      : ["e", pointer.value];
-
-  const pointerTags = [pointerTag];
-
   let pointerEventId = normalizeString(pointer.type === "e" ? pointer.value : "");
   if (!pointerEventId) {
     pointerEventId = extractEventIdFromPointerInput(pointerInput);
@@ -219,12 +208,33 @@ export async function publishVideoReaction(
     pointerEventRelay = pointerRelay;
   }
 
-  if (pointerEventId) {
-    if (pointerEventRelay) {
-      pointerTags.push(["e", pointerEventId, pointerEventRelay]);
-    } else {
-      pointerTags.push(["e", pointerEventId]);
-    }
+  if (!pointerEventId) {
+    const errorDetails = pointer.type === "a"
+      ? "Unable to resolve event id for address reaction target."
+      : "Unable to resolve event id for reaction target.";
+    devLogger.warn("[nostr] " + errorDetails, pointerInput);
+    return { ok: false, error: "missing-pointer-event-id", details: errorDetails };
+  }
+
+  const pointerTags = [];
+  let pointerTag = null;
+
+  if (pointer.type === "a") {
+    const addressTag = pointerRelay
+      ? ["a", pointer.value, pointerRelay]
+      : ["a", pointer.value];
+    pointerTags.push(addressTag);
+    pointerTag = addressTag;
+  }
+
+  const eventTag = pointerEventRelay
+    ? ["e", pointerEventId, pointerEventRelay]
+    : ["e", pointerEventId];
+
+  pointerTags.push(eventTag);
+
+  if (!pointerTag) {
+    pointerTag = eventTag;
   }
 
   const normalizedPointer = {
