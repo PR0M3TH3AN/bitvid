@@ -10,9 +10,9 @@ import {
 
 function createMockClient({
   actorPubkey = "actor-pubkey",
-  sessionPrivateKey = "session-private",
   relays = ["wss://primary"],
   publishResults = [],
+  extensionPermissions = { ok: true },
 } = {}) {
   const publishCalls = [];
   const pool = {
@@ -34,29 +34,14 @@ function createMockClient({
     sub: () => ({ on() {}, unsub() {} }),
   };
 
-  const ensureSessionActorCalls = [];
   const client = {
     pool,
     relays,
     pubkey: actorPubkey,
-    sessionActor: {
-      pubkey: actorPubkey,
-      privateKey: sessionPrivateKey,
-    },
-    ensureSessionActor: async (forceRefresh = false) => {
-      ensureSessionActorCalls.push(forceRefresh);
-      if (forceRefresh && !client.sessionActor) {
-        client.sessionActor = {
-          pubkey: actorPubkey,
-          privateKey: sessionPrivateKey,
-        };
-      }
-      return actorPubkey;
-    },
-    ensureExtensionPermissions: async () => ({ ok: true }),
+    ensureExtensionPermissions: async () => extensionPermissions,
   };
 
-  return { client, pool, publishCalls, ensureSessionActorCalls };
+  return { client, pool, publishCalls };
 }
 
 function buildCommentEventTags(event) {
@@ -83,8 +68,6 @@ test("publishComment prefers active signer when available", async () => {
     },
   };
 
-  let privateKeySignCalls = 0;
-
   const result = await publishComment(
     client,
     {
@@ -102,10 +85,6 @@ test("publishComment prefers active signer when available", async () => {
     {
       resolveActiveSigner: () => signer,
       shouldRequestExtensionPermissions: () => true,
-      signEventWithPrivateKey: () => {
-        privateKeySignCalls += 1;
-        return null;
-      },
       DEFAULT_NIP07_PERMISSION_METHODS: ["signEvent"],
     },
   );
@@ -127,7 +106,6 @@ test("publishComment prefers active signer when available", async () => {
     "publish should target the caller supplied relays",
   );
 
-  assert.equal(privateKeySignCalls, 0, "session key signing should be skipped when active signer succeeds");
   assert.equal(signerCalls.length, 1, "active signer should sign the event once");
 
   const eventTags = buildCommentEventTags(signerCalls[0]);
@@ -146,20 +124,12 @@ test("publishComment prefers active signer when available", async () => {
   );
 });
 
-test("publishComment falls back to session signer when active signer is missing", async () => {
-  const {
-    client,
-    publishCalls,
-    ensureSessionActorCalls,
-  } = createMockClient();
+test("publishComment rejects when active signer is unavailable", async () => {
+  const { client, publishCalls } = createMockClient();
 
-  client.sessionActor = null;
-
-  let privateKeySignCalls = 0;
-  const signEventWithPrivateKey = (event, key) => {
-    privateKeySignCalls += 1;
-    assert.equal(key, "session-private", "session key should be used when rehydrated");
-    return { ...event, id: "signed-by-session" };
+  client.sessionActor = {
+    pubkey: client.pubkey,
+    privateKey: "session-private",
   };
 
   const result = await publishComment(
@@ -172,28 +142,26 @@ test("publishComment falls back to session signer when active signer is missing"
     {
       resolveActiveSigner: () => null,
       shouldRequestExtensionPermissions: () => false,
-      signEventWithPrivateKey,
       DEFAULT_NIP07_PERMISSION_METHODS: [],
     },
   );
 
-  assert.equal(result.ok, true, "publish should succeed with session signer");
-  assert.equal(privateKeySignCalls, 1, "session signing should occur exactly once");
-  assert.equal(
-    ensureSessionActorCalls.includes(true),
-    true,
-    "ensureSessionActor should be invoked with force refresh",
-  );
-  assert.equal(publishCalls.length, 1, "publish should still occur once");
+  assert.equal(result.ok, false, "publish should fail without an active signer");
+  assert.equal(result.error, "auth-required", "missing signer should yield auth-required");
+  assert.equal(publishCalls.length, 0, "publish should not be attempted without a signer");
 });
 
 test("publishComment accepts legacy targets with only an event id", async () => {
   const { client, publishCalls } = createMockClient();
 
   let signCalls = 0;
-  const signEventWithPrivateKey = (event) => {
-    signCalls += 1;
-    return { ...event, id: `signed-${signCalls}` };
+  const signer = {
+    type: "extension",
+    pubkey: client.pubkey,
+    signEvent: (event) => {
+      signCalls += 1;
+      return { ...event, id: `signed-${signCalls}` };
+    },
   };
 
   const result = await publishComment(
@@ -204,15 +172,14 @@ test("publishComment accepts legacy targets with only an event id", async () => 
     },
     { content: "Legacy comment" },
     {
-      resolveActiveSigner: () => null,
+      resolveActiveSigner: () => signer,
       shouldRequestExtensionPermissions: () => false,
-      signEventWithPrivateKey,
       DEFAULT_NIP07_PERMISSION_METHODS: [],
     },
   );
 
   assert.equal(result.ok, true, "publishing should succeed without a definition address");
-  assert.equal(signCalls, 1, "session signer should be used to sign the event");
+  assert.equal(signCalls, 1, "active signer should be used to sign the event");
   assert.equal(publishCalls.length, 1, "event should be published exactly once");
 
   const publishedEvent = publishCalls[0]?.event;
@@ -249,14 +216,19 @@ test("publishComment derives root and parent metadata from parent comment tags",
     ],
   };
 
+  const signer = {
+    type: "extension",
+    pubkey: client.pubkey,
+    signEvent: (event) => ({ ...event, id: "signed" }),
+  };
+
   const result = await publishComment(
     client,
     { parentComment: parentEvent },
     { content: "Reply" },
     {
-      resolveActiveSigner: () => null,
+      resolveActiveSigner: () => signer,
       shouldRequestExtensionPermissions: () => false,
-      signEventWithPrivateKey: (event) => ({ ...event, id: "signed" }),
       DEFAULT_NIP07_PERMISSION_METHODS: [],
     },
   );
@@ -277,7 +249,11 @@ test("publishComment derives root and parent metadata from parent comment tags",
 test("publishComment emits only video event #e tag when address and parent are absent", async () => {
   const { client, publishCalls } = createMockClient();
 
-  const signEventWithPrivateKey = (event) => ({ ...event, id: "solo" });
+  const signer = {
+    type: "extension",
+    pubkey: client.pubkey,
+    signEvent: (event) => ({ ...event, id: "solo" }),
+  };
 
   const result = await publishComment(
     client,
@@ -286,9 +262,8 @@ test("publishComment emits only video event #e tag when address and parent are a
     },
     { content: "Solo" },
     {
-      resolveActiveSigner: () => null,
+      resolveActiveSigner: () => signer,
       shouldRequestExtensionPermissions: () => false,
-      signEventWithPrivateKey,
       DEFAULT_NIP07_PERMISSION_METHODS: [],
     },
   );

@@ -332,6 +332,107 @@ test(
 );
 
 test(
+  "VideoModalCommentController prompts login when publish requires authentication",
+  async () => {
+    const composerStates = [];
+    const loginLifecycle = [];
+    const errorMessages = [];
+
+    const loginModal = {
+      openModal: ({ triggerElement } = {}) => {
+        loginLifecycle.push({ type: "openModal", triggerElement });
+        return true;
+      },
+    };
+
+    const controller = new VideoModalCommentController({
+      commentThreadService: {
+        setCallbacks: () => {},
+        processIncomingEvent: () => {},
+      },
+      videoModal: {
+        setCommentComposerState: (state) => {
+          composerStates.push({ ...state });
+        },
+        resetCommentComposer: () => {
+          throw new Error("composer should not reset when auth is required");
+        },
+        setCommentStatus: () => {},
+        appendComment: () => {},
+      },
+      auth: {
+        isLoggedIn: () => true,
+        initializeLoginModalController: ({ logIfMissing }) => {
+          loginLifecycle.push({ type: "initialize", logIfMissing });
+        },
+        getLoginModalController: () => loginModal,
+        requestLogin: ({ allowAccountSelection }) => {
+          loginLifecycle.push({ type: "request", allowAccountSelection });
+          return Promise.resolve(true);
+        },
+      },
+      callbacks: {
+        showError: (message) => {
+          errorMessages.push(message);
+        },
+        showStatus: () => {},
+        muteAuthor: () => Promise.resolve(),
+        shouldHideAuthor: () => false,
+      },
+      services: {
+        publishComment: async () => ({ ok: false, error: "auth-required" }),
+      },
+      utils: {
+        normalizeHexPubkey: (value) => value?.toLowerCase?.() || value,
+      },
+    });
+
+    controller.currentVideo = {
+      id: "video-auth",
+      pubkey: "AUTHORPK",
+      enableComments: true,
+      kind: 30078,
+      tags: [],
+    };
+    controller.modalCommentState.videoEventId = "video-auth";
+    controller.modalCommentState.videoKind = "30078";
+    controller.modalCommentState.videoAuthorPubkey = "AUTHORPK";
+
+    const triggerElement = { id: "comment-trigger" };
+
+    await controller.handleVideoModalCommentSubmit({
+      text: "Needs auth",
+      triggerElement,
+    });
+
+    const lastComposerState = composerStates[composerStates.length - 1];
+    assert.deepStrictEqual(
+      lastComposerState,
+      { disabled: true, reason: "login-required" },
+      "composer should remain disabled while prompting for login",
+    );
+    assert.equal(errorMessages.length, 0, "auth-required should not surface as an error");
+
+    assert.equal(
+      loginLifecycle.some((step) => step.type === "initialize"),
+      true,
+      "login modal controller should be initialized",
+    );
+    assert.equal(
+      loginLifecycle.some((step) => step.type === "openModal"),
+      true,
+      "login modal should attempt to open",
+    );
+    const modalOpen = loginLifecycle.find((step) => step.type === "openModal");
+    assert.equal(
+      modalOpen?.triggerElement,
+      triggerElement,
+      "trigger element should propagate to login modal",
+    );
+  },
+);
+
+test(
   "VideoModalCommentController includes parent metadata when replying",
   async () => {
     const publishCalls = [];

@@ -1023,7 +1023,6 @@ export async function publishComment(
   {
     resolveActiveSigner,
     shouldRequestExtensionPermissions,
-    signEventWithPrivateKey,
     DEFAULT_NIP07_PERMISSION_METHODS,
   } = {},
 ) {
@@ -1036,9 +1035,12 @@ export async function publishComment(
     return { ok: false, error: "invalid-target" };
   }
 
-  const actorPubkey = await client.ensureSessionActor();
+  const actorPubkey =
+    typeof client?.pubkey === "string" && client.pubkey.trim()
+      ? client.pubkey.trim()
+      : "";
   if (!actorPubkey) {
-    return { ok: false, error: "missing-actor" };
+    return { ok: false, error: "auth-required" };
   }
 
   const createdAt =
@@ -1097,71 +1099,46 @@ export async function publishComment(
 
   let signedEvent = null;
 
-  const normalizedActor =
-    typeof actorPubkey === "string" ? actorPubkey.toLowerCase() : "";
-  const normalizedLogged =
-    typeof client.pubkey === "string" ? client.pubkey.toLowerCase() : "";
-
   const resolveSignerFn =
     typeof resolveActiveSigner === "function" ? resolveActiveSigner : null;
   const signer = resolveSignerFn ? resolveSignerFn(actorPubkey) : null;
 
-  const canUseActiveSigner =
-    normalizedActor &&
-    normalizedActor === normalizedLogged &&
-    signer &&
-    typeof signer.signEvent === "function";
-
-  if (canUseActiveSigner) {
-    let permissionResult = { ok: true };
-    const shouldRequestPermissions =
-      typeof shouldRequestExtensionPermissions === "function"
-        ? shouldRequestExtensionPermissions(signer)
-        : false;
-
-    if (shouldRequestPermissions) {
-      permissionResult = await client.ensureExtensionPermissions(
-        DEFAULT_NIP07_PERMISSION_METHODS,
-      );
-    }
-
-    if (permissionResult.ok) {
-      try {
-        signedEvent = await signer.signEvent(event);
-      } catch (error) {
-        userLogger.warn(
-          "[nostr] Failed to sign comment event with active signer:",
-          error,
-        );
-        return { ok: false, error: "signing-failed", details: error };
-      }
-    } else {
-      userLogger.warn(
-        "[nostr] Active signer permissions missing; signing comment with session key.",
-        permissionResult.error,
-      );
-    }
+  if (!signer || typeof signer.signEvent !== "function") {
+    return { ok: false, error: "auth-required" };
   }
 
-  if (!signedEvent) {
-    if (typeof signEventWithPrivateKey !== "function") {
-      return { ok: false, error: "signing-unavailable" };
-    }
-    try {
-      if (!client.sessionActor || client.sessionActor.pubkey !== actorPubkey) {
-        await client.ensureSessionActor(true);
-      }
-      if (!client.sessionActor || client.sessionActor.pubkey !== actorPubkey) {
-        throw new Error("session-actor-mismatch");
-      }
-      signedEvent = signEventWithPrivateKey(
-        event,
-        client.sessionActor.privateKey,
-      );
-    } catch (error) {
-      userLogger.warn("[nostr] Failed to sign comment event with session key:", error);
-      return { ok: false, error: "signing-failed", details: error };
-    }
+  let permissionResult = { ok: true };
+  const shouldRequestPermissions =
+    typeof shouldRequestExtensionPermissions === "function"
+      ? shouldRequestExtensionPermissions(signer)
+      : false;
+
+  if (shouldRequestPermissions) {
+    permissionResult = await client.ensureExtensionPermissions(
+      DEFAULT_NIP07_PERMISSION_METHODS,
+    );
+  }
+
+  if (!permissionResult.ok) {
+    userLogger.warn(
+      "[nostr] Active signer permissions missing; comment publish requires login.",
+      permissionResult.error,
+    );
+    return {
+      ok: false,
+      error: "auth-required",
+      details: permissionResult,
+    };
+  }
+
+  try {
+    signedEvent = await signer.signEvent(event);
+  } catch (error) {
+    userLogger.warn(
+      "[nostr] Failed to sign comment event with active signer:",
+      error,
+    );
+    return { ok: false, error: "signing-failed", details: error };
   }
 
   const relayList = sanitizeRelayList(options.relays, client.relays);

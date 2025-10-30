@@ -628,7 +628,7 @@ export default class VideoModalCommentController {
     try {
       const result = await publishPromise;
       if (!result?.ok || !result.event) {
-        throw result?.error || new Error("publish-failed");
+        throw result || { error: "publish-failed" };
       }
 
       const event = this.enrichCommentEvent(result.event);
@@ -650,6 +650,23 @@ export default class VideoModalCommentController {
       this.applyCommentComposerAuthState();
       this.videoModal.setCommentStatus?.("Comment posted.");
     } catch (error) {
+      const authRequired =
+        (error && typeof error === "object" && error.error === "auth-required") ||
+        error === "auth-required";
+
+      if (authRequired) {
+        this.videoModal.setCommentComposerState?.({
+          disabled: true,
+          reason: "login-required",
+        });
+        this.handleVideoModalCommentLoginRequired(detail);
+        this.videoModal.setCommentComposerState?.({
+          disabled: true,
+          reason: "login-required",
+        });
+        return;
+      }
+
       devLogger.warn("[comment] Failed to publish comment:", error);
       this.videoModal.setCommentComposerState?.({
         disabled: false,
