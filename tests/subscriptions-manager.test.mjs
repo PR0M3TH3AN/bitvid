@@ -311,6 +311,88 @@ test("loadSubscriptions handles nip44.v2 decryptors", async () => {
   }
 });
 
+test("loadSubscriptions prefers nip44 decryptors when both are available", async () => {
+  const SubscriptionsManager = subscriptions.constructor;
+  const manager = new SubscriptionsManager();
+
+  const originalRelays = Array.isArray(nostrClient.relays)
+    ? [...nostrClient.relays]
+    : nostrClient.relays;
+  const originalWriteRelays = Array.isArray(nostrClient.writeRelays)
+    ? [...nostrClient.writeRelays]
+    : nostrClient.writeRelays;
+  const originalPool = nostrClient.pool;
+  const originalEnsurePermissions = nostrClient.ensureExtensionPermissions;
+
+  const hadWindow = typeof globalThis.window !== "undefined";
+  if (!hadWindow) {
+    globalThis.window = {};
+  }
+  const originalWindowNostr = globalThis.window.nostr;
+
+  const relayUrls = ["wss://relay-nip44-pref.example"];
+  nostrClient.relays = relayUrls;
+  nostrClient.writeRelays = relayUrls;
+
+  const event = {
+    id: "event-nip44-pref",
+    created_at: 700,
+    content: "cipher-nip44-pref",
+    tags: [["encrypted", "nip44_v2"]],
+  };
+
+  nostrClient.pool = {
+    list() {
+      return Promise.resolve([event]);
+    },
+  };
+
+  nostrClient.ensureExtensionPermissions = async () => ({ ok: true });
+
+  const decryptCalls = { nip04: 0, nip44: 0 };
+  globalThis.window.nostr = {
+    nip04: {
+      async decrypt() {
+        decryptCalls.nip04 += 1;
+        return JSON.stringify({ subPubkeys: ["pub-nip04"] });
+      },
+    },
+    nip44: {
+      v2: {
+        async decrypt(_pubkey, ciphertext) {
+          decryptCalls.nip44 += 1;
+          return JSON.stringify({ subPubkeys: ["pub-nip44-pref"], hint: ciphertext });
+        },
+      },
+    },
+  };
+
+  try {
+    await manager.loadSubscriptions("user-pubkey-123");
+
+    assert.deepEqual(
+      Array.from(manager.subscribedPubkeys),
+      ["pub-nip44-pref"],
+      "nip44 decrypted subscriptions should populate the set",
+    );
+    assert.equal(decryptCalls.nip44, 1, "nip44 decryptor should be used");
+    assert.equal(decryptCalls.nip04, 0, "nip04 decryptor should be skipped");
+  } finally {
+    nostrClient.relays = originalRelays;
+    nostrClient.writeRelays = originalWriteRelays;
+    nostrClient.pool = originalPool;
+    nostrClient.ensureExtensionPermissions = originalEnsurePermissions;
+    if (typeof originalWindowNostr === "undefined") {
+      delete globalThis.window.nostr;
+    } else {
+      globalThis.window.nostr = originalWindowNostr;
+    }
+    if (!hadWindow) {
+      delete globalThis.window;
+    }
+  }
+});
+
 test(
   "loadSubscriptions uses active signer decryptors without requesting extension permissions",
   async () => {
@@ -650,6 +732,183 @@ test(
     }
   },
 );
+
+test("publishSubscriptionList prefers nip44 encryption when available", async () => {
+  const SubscriptionsManager = subscriptions.constructor;
+  const manager = new SubscriptionsManager();
+
+  const originalRelays = Array.isArray(nostrClient.relays)
+    ? [...nostrClient.relays]
+    : nostrClient.relays;
+  const originalWriteRelays = Array.isArray(nostrClient.writeRelays)
+    ? [...nostrClient.writeRelays]
+    : nostrClient.writeRelays;
+  const originalPool = nostrClient.pool;
+  const originalEnsurePermissions = nostrClient.ensureExtensionPermissions;
+  const originalSigner = getActiveSigner();
+
+  const relayUrls = ["wss://relay-prefer-nip44.example"];
+  nostrClient.relays = relayUrls;
+  nostrClient.writeRelays = relayUrls;
+
+  let permissionCalls = 0;
+  nostrClient.ensureExtensionPermissions = async () => {
+    permissionCalls += 1;
+    return { ok: true };
+  };
+
+  const publishCalls = [];
+  nostrClient.pool = {
+    publish(urls, event) {
+      publishCalls.push({ urls, event });
+      return {
+        on(eventName, handler) {
+          if (eventName === "ok") {
+            handler();
+          }
+          return true;
+        },
+      };
+    },
+  };
+
+  const encryptCalls = { nip44: 0, nip04: 0 };
+  const signedEvents = [];
+  setActiveSigner({
+    type: "nsec",
+    pubkey: "user-pubkey-123",
+    async nip44Encrypt(pubkey, plaintext) {
+      encryptCalls.nip44 += 1;
+      assert.equal(pubkey, "user-pubkey-123");
+      assert.equal(
+        plaintext,
+        JSON.stringify({ subPubkeys: ["pub-one", "pub-two"] }),
+      );
+      return "cipher-nip44";
+    },
+    async nip04Encrypt() {
+      encryptCalls.nip04 += 1;
+      throw new Error("nip04 should not be used when nip44 is available");
+    },
+    async signEvent(event) {
+      signedEvents.push(event);
+      return { ...event, id: "signed-nip44-event" };
+    },
+  });
+
+  manager.subscribedPubkeys = new Set(["pub-one", "pub-two"]);
+
+  try {
+    await manager.publishSubscriptionList("user-pubkey-123");
+
+    assert.equal(permissionCalls, 0, "should not request extension permissions");
+    assert.equal(encryptCalls.nip44, 1, "nip44Encrypt should be used once");
+    assert.equal(encryptCalls.nip04, 0, "nip04Encrypt should not be invoked");
+    assert.equal(signedEvents.length, 1, "signEvent should be called once");
+    const signedEvent = signedEvents[0];
+    const encryptedTags = signedEvent.tags.filter((tag) => tag[0] === "encrypted");
+    assert.deepEqual(
+      encryptedTags,
+      [["encrypted", "nip44_v2"]],
+      "signed event should advertise nip44_v2 encryption",
+    );
+    assert.equal(publishCalls.length, relayUrls.length, "event should publish to relays");
+    assert.equal(manager.subsEventId, "signed-nip44-event");
+  } finally {
+    nostrClient.relays = originalRelays;
+    nostrClient.writeRelays = originalWriteRelays;
+    nostrClient.pool = originalPool;
+    nostrClient.ensureExtensionPermissions = originalEnsurePermissions;
+    setActiveSigner(originalSigner);
+  }
+});
+
+test("publishSubscriptionList falls back to nip04 when nip44 fails", async () => {
+  const SubscriptionsManager = subscriptions.constructor;
+  const manager = new SubscriptionsManager();
+
+  const originalRelays = Array.isArray(nostrClient.relays)
+    ? [...nostrClient.relays]
+    : nostrClient.relays;
+  const originalWriteRelays = Array.isArray(nostrClient.writeRelays)
+    ? [...nostrClient.writeRelays]
+    : nostrClient.writeRelays;
+  const originalPool = nostrClient.pool;
+  const originalEnsurePermissions = nostrClient.ensureExtensionPermissions;
+  const originalSigner = getActiveSigner();
+
+  const relayUrls = ["wss://relay-fallback-nip04.example"];
+  nostrClient.relays = relayUrls;
+  nostrClient.writeRelays = relayUrls;
+
+  nostrClient.ensureExtensionPermissions = async () => ({ ok: true });
+
+  const publishCalls = [];
+  nostrClient.pool = {
+    publish(urls, event) {
+      publishCalls.push({ urls, event });
+      return {
+        on(eventName, handler) {
+          if (eventName === "ok") {
+            handler();
+          }
+          return true;
+        },
+      };
+    },
+  };
+
+  const encryptCalls = { nip44: 0, nip04: 0 };
+  const signedEvents = [];
+  setActiveSigner({
+    type: "nsec",
+    pubkey: "user-pubkey-123",
+    async nip44Encrypt() {
+      encryptCalls.nip44 += 1;
+      throw new Error("simulated nip44 failure");
+    },
+    async nip04Encrypt(pubkey, plaintext) {
+      encryptCalls.nip04 += 1;
+      assert.equal(pubkey, "user-pubkey-123");
+      assert.equal(
+        plaintext,
+        JSON.stringify({ subPubkeys: ["pub-three"] }),
+      );
+      return "cipher-nip04";
+    },
+    async signEvent(event) {
+      signedEvents.push(event);
+      return { ...event, id: "signed-nip04-event" };
+    },
+  });
+
+  manager.subscribedPubkeys = new Set(["pub-three"]);
+
+  try {
+    await manager.publishSubscriptionList("user-pubkey-123");
+
+    assert.ok(
+      encryptCalls.nip44 >= 1,
+      "nip44Encrypt should be attempted before falling back",
+    );
+    assert.equal(encryptCalls.nip04, 1, "nip04Encrypt should handle fallback");
+    const signedEvent = signedEvents[0];
+    const encryptedTags = signedEvent.tags.filter((tag) => tag[0] === "encrypted");
+    assert.equal(
+      encryptedTags.length,
+      0,
+      "fallback nip04 encryption should not advertise a nip44 tag",
+    );
+    assert.equal(publishCalls.length, relayUrls.length, "event should publish to relays");
+    assert.equal(manager.subsEventId, "signed-nip04-event");
+  } finally {
+    nostrClient.relays = originalRelays;
+    nostrClient.writeRelays = originalWriteRelays;
+    nostrClient.pool = originalPool;
+    nostrClient.ensureExtensionPermissions = originalEnsurePermissions;
+    setActiveSigner(originalSigner);
+  }
+});
 
 test("renderSameGridStyle shows empty state message", async () => {
   const SubscriptionsManager = subscriptions.constructor;
