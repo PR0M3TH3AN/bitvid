@@ -145,7 +145,7 @@ test("buildNip71VideoEvent assembles rich metadata", () => {
   assert.deepEqual(imetaTags[1], [
     "imeta",
     "url https://cdn.example/video-hls.m3u8",
-    "m application/x-mpegURL",
+    "m application/x-mpegurl",
     "duration 45.789",
     "bitrate 2200000",
   ]);
