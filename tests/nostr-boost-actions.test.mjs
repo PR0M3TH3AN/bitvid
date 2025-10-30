@@ -84,9 +84,11 @@ function createPublishClient({ actorPubkey = "", sessionPubkey = "", failPublish
     created_at: createdAt,
     eventId: "event123",
     eventRelay: "wss://origin",
+    publishRelay: "wss://relay.example",
     address: "30078:deadbeef:identifier",
     addressRelay: "wss://address",
     authorPubkey: "deadbeef",
+    targetKind: 1,
   });
 
   assert.equal(event.kind, 6);
@@ -96,6 +98,22 @@ function createPublishClient({ actorPubkey = "", sessionPubkey = "", failPublish
   assert.deepEqual(event.tags[0], ["e", "event123", "wss://origin"]);
   assert.deepEqual(event.tags[1], ["a", "30078:deadbeef:identifier", "wss://address"]);
   assert.deepEqual(event.tags[2], ["p", "deadbeef"]);
+})();
+
+(function testBuildRepostEventFallsBackToPublishRelay() {
+  const createdAt = 1_700_000_001;
+  const event = buildRepostEvent({
+    pubkey: "actorpubkey",
+    created_at: createdAt,
+    eventId: "event456",
+    publishRelay: "wss://relay.example",
+    authorPubkey: "cafebabe",
+    targetKind: 30078,
+  });
+
+  assert.equal(event.kind, 16);
+  assert.deepEqual(event.tags[0], ["e", "event456", "wss://relay.example"]);
+  assert.deepEqual(event.tags[1], ["p", "cafebabe"]);
 })();
 
 await (async function testRepostEventUsesSessionActorAndDerivesAddress() {
@@ -117,7 +135,7 @@ await (async function testRepostEventUsesSessionActorAndDerivesAddress() {
     client,
     eventId,
     options: {
-      pointer: ["e", eventId, "wss://origin"],
+      pointer: ["e", eventId],
       authorPubkey,
     },
     resolveActiveSigner: () => null,
@@ -129,9 +147,10 @@ await (async function testRepostEventUsesSessionActorAndDerivesAddress() {
   assert.equal(result.ok, true);
   assert.equal(result.sessionActor, true);
   assert.equal(result.signerPubkey, sessionPubkey);
+  assert.equal(result.event?.kind, 16);
   const tags = result.event?.tags || [];
   assert.ok(Array.isArray(tags), "Repost event should include tags");
-  assert.deepEqual(tags[0], ["e", eventId, "wss://origin"]);
+  assert.deepEqual(tags[0], ["e", eventId, "wss://relay.example"]);
   assert.equal(
     tags.some((tag) => Array.isArray(tag) && tag[0] === "a" && tag[1].startsWith("30078:")),
     true,

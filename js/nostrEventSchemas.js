@@ -651,22 +651,25 @@ export function buildRepostEvent({
   created_at,
   eventId = "",
   eventRelay = "",
+  publishRelay = "",
   address = "",
   addressRelay = "",
   authorPubkey = "",
   additionalTags = [],
+  repostKind,
+  targetKind,
 }) {
   const schema = getNostrEventSchema(NOTE_TYPES.REPOST);
   const tags = [];
 
   const normalizedEventId = typeof eventId === "string" ? eventId.trim() : "";
-  const normalizedEventRelay = typeof eventRelay === "string" ? eventRelay.trim() : "";
-  if (normalizedEventId) {
-    if (normalizedEventRelay) {
-      tags.push(["e", normalizedEventId, normalizedEventRelay]);
-    } else {
-      tags.push(["e", normalizedEventId]);
-    }
+  const normalizedEventRelay =
+    typeof eventRelay === "string" ? eventRelay.trim() : "";
+  const normalizedPublishRelay =
+    typeof publishRelay === "string" ? publishRelay.trim() : "";
+  const resolvedEventRelay = normalizedEventRelay || normalizedPublishRelay;
+  if (normalizedEventId && resolvedEventRelay) {
+    tags.push(["e", normalizedEventId, resolvedEventRelay]);
   }
 
   const normalizedAddress = typeof address === "string" ? address.trim() : "";
@@ -695,8 +698,26 @@ export function buildRepostEvent({
     });
   }
 
+  const normalizedRepostKind =
+    Number.isFinite(repostKind) && repostKind !== null
+      ? Math.floor(repostKind)
+      : null;
+  const normalizedTargetKind =
+    Number.isFinite(targetKind) && targetKind !== null
+      ? Math.floor(targetKind)
+      : null;
+  const resolvedKind = (() => {
+    if (normalizedRepostKind) {
+      return normalizedRepostKind;
+    }
+    if (normalizedTargetKind !== null) {
+      return normalizedTargetKind === 1 ? schema?.kind ?? 6 : 16;
+    }
+    return schema?.kind ?? 6;
+  })();
+
   return {
-    kind: schema?.kind ?? 6,
+    kind: resolvedKind,
     pubkey,
     created_at,
     tags,
