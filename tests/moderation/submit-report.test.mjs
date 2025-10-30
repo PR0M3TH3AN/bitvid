@@ -66,7 +66,11 @@ test("submitReport emits NIP-56 compliant report tags", async (t) => {
   assert.equal(ok, true, "submitReport should resolve with ok: true");
 
   const eTag = event.tags.find((tag) => Array.isArray(tag) && tag[0] === "e");
-  assert.deepEqual(eTag, ["e", eventId, relayHint, "malware"], "e tag should include relay hint before type");
+  assert.deepEqual(
+    eTag,
+    ["e", eventId, "malware", relayHint],
+    "e tag should include type before relay hint",
+  );
 
   const pTag = event.tags.find((tag) => Array.isArray(tag) && tag[0] === "p");
   assert.deepEqual(pTag, ["p", targetPubkey, "malware"], "p tag should include reported author and type");
@@ -88,7 +92,7 @@ test("submitReport emits NIP-56 compliant report tags", async (t) => {
   assert.deepEqual(
     followupETag,
     ["e", followupId, "spam"],
-    "e tag without relay hint should collapse to type as third entry",
+    "e tag without relay hint should place type as third entry",
   );
 
   assert.ok(publishCalls.length >= 2, "submitReport should publish each report");

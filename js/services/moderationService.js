@@ -2153,11 +2153,10 @@ export class ModerationService {
     const sanitizedRelayHint =
       typeof relayHint === "string" ? relayHint.trim() : "";
 
-    const eventTag = ["e", normalizedEventId];
+    const eventTag = ["e", normalizedEventId, normalizedType];
     if (sanitizedRelayHint) {
       eventTag.push(sanitizedRelayHint);
     }
-    eventTag.push(normalizedType);
 
     const tags = [
       eventTag,
