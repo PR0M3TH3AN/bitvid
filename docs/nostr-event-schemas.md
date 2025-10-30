@@ -210,10 +210,13 @@ Active identifiers include the default `WATCH_HISTORY_LIST_IDENTIFIER`
 `WATCH_HISTORY_LEGACY_LIST_IDENTIFIERS`. Chunk events derive their `d` tag from
 `<snapshotId>:<index>`, advertise `['snapshot', <id>]`, and carry `['chunk', <index>, <total>]`
 plus an optional leading `['head','1']` marker so relays can prioritize the first
-ciphertext. All chunk content is encrypted with NIP-04 and stores only pointer
-entries; richer metadata remains on-device via the
-[`WatchHistoryService`](../js/watchHistoryService.js) APIs, which default to
-pointer-only writes and local-only metadata caches.【F:config/instance-config.js†L60-L78】【F:js/nostrEventSchemas.js†L157-L189】【F:js/nostr/watchHistory.js†L1343-L1400】【F:js/watchHistoryService.js†L331-L376】
+ciphertext. Chunk content is encrypted with the strongest mutually supported
+scheme: clients probe for NIP-44 v2 first, fall back to NIP-44, and finally use
+NIP-04 for legacy compatibility. The negotiated value is written back to the
+`['encrypted', ...]` tag so other readers can attempt the same scheme before
+falling back. All payloads store only pointer entries; richer metadata remains
+on-device via the [`WatchHistoryService`](../js/watchHistoryService.js) APIs,
+which default to pointer-only writes and local-only metadata caches.【F:config/instance-config.js†L60-L78】【F:js/nostrEventSchemas.js†L157-L189】【F:js/nostr/watchHistory.js†L1380-L1549】【F:js/watchHistoryService.js†L331-L376】
 
 Refer to the [`WatchHistoryService`](../js/watchHistoryService.js) for queue
 management hooks, manual snapshot helpers, and metadata toggle controls that
