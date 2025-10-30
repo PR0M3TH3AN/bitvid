@@ -2,6 +2,7 @@ import { ACCEPT_LEGACY_V1 } from "../constants.js";
 import { deriveTitleFromEvent, magnetFromText } from "../videoEventUtils.js";
 import { extractMagnetHints } from "../magnet.js";
 import { devLogger } from "../utils/logger.js";
+import { getCachedNostrTools } from "./toolkit.js";
 
 function stringFromInput(value) {
   if (value === null || value === undefined) {
@@ -14,6 +15,50 @@ function stringFromInput(value) {
     return Number.isFinite(value) ? String(value) : "";
   }
   return String(value).trim();
+}
+
+const HEX_32_BYTE_REGEX = /^[0-9a-f]{64}$/i;
+
+function decodeNpubToHex(candidate) {
+  const globalDecoder =
+    typeof window !== "undefined" ? window?.NostrTools?.nip19?.decode : null;
+  const toolkit = getCachedNostrTools();
+  const toolkitDecoder = toolkit?.nip19?.decode;
+  const decoder =
+    typeof globalDecoder === "function" ? globalDecoder : toolkitDecoder;
+  if (typeof decoder !== "function") {
+    return null;
+  }
+  try {
+    const decoded = decoder(candidate);
+    if (decoded?.type === "npub" && typeof decoded.data === "string") {
+      return decoded.data.toLowerCase();
+    }
+    if (decoded?.type === "npub" && typeof decoded.data?.pubkey === "string") {
+      return decoded.data.pubkey.toLowerCase();
+    }
+  } catch (error) {
+    devLogger.warn("[nostr] Failed to decode npub participant pubkey", error);
+  }
+  return null;
+}
+
+function normalizeNostrPubkey(candidate) {
+  const value = stringFromInput(candidate);
+  if (!value) {
+    return null;
+  }
+  if (HEX_32_BYTE_REGEX.test(value)) {
+    return value.toLowerCase();
+  }
+  if (value.toLowerCase().startsWith("npub1")) {
+    const decoded = decodeNpubToHex(value);
+    if (decoded && HEX_32_BYTE_REGEX.test(decoded)) {
+      return decoded;
+    }
+    return null;
+  }
+  return null;
 }
 
 function normalizeUnixSeconds(value) {
@@ -224,11 +269,20 @@ function buildParticipantTag(participant) {
   if (!participant || typeof participant !== "object") {
     return null;
   }
-  const pubkey = stringFromInput(participant.pubkey);
+  const rawPubkey = participant.pubkey;
+  const pubkey = normalizeNostrPubkey(rawPubkey);
   if (!pubkey) {
+    const candidate = stringFromInput(rawPubkey);
+    if (candidate) {
+      devLogger.warn(
+        "[nostr] Dropping NIP-71 participant tag with invalid pubkey",
+        { pubkey: candidate }
+      );
+    }
     return null;
   }
   const relay = stringFromInput(participant.relay);
+  // NIP-71 "Other tags" mandates 32-byte hex participant pubkeys.
   const values = ["p", pubkey];
   if (relay) {
     values.push(relay);

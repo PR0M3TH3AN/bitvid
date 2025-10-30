@@ -6,6 +6,47 @@ import {
   extractNip71MetadataFromTags,
 } from "../js/nostr.js";
 
+const participantNpub = "npub1bitvidparticipantfixture";
+const participantHexFromNpub = "c".repeat(64);
+
+const hadWindow = typeof globalThis.window !== "undefined";
+const windowRef = hadWindow ? globalThis.window : {};
+if (!hadWindow) {
+  globalThis.window = windowRef;
+}
+const hadNostrTools = typeof windowRef.NostrTools !== "undefined";
+const nostrToolsRef = hadNostrTools ? windowRef.NostrTools : {};
+if (!hadNostrTools) {
+  windowRef.NostrTools = nostrToolsRef;
+}
+const previousNip19 = nostrToolsRef.nip19;
+nostrToolsRef.nip19 = {
+  ...previousNip19,
+  decode: (value) => {
+    if (value === participantNpub) {
+      return { type: "npub", data: participantHexFromNpub };
+    }
+    if (typeof previousNip19?.decode === "function") {
+      return previousNip19.decode(value);
+    }
+    throw new Error("Unsupported npub fixture");
+  },
+};
+
+test.after(() => {
+  if (previousNip19) {
+    nostrToolsRef.nip19 = previousNip19;
+  } else {
+    delete nostrToolsRef.nip19;
+  }
+  if (!hadNostrTools) {
+    delete windowRef.NostrTools;
+  }
+  if (!hadWindow) {
+    delete globalThis.window;
+  }
+});
+
 test("buildNip71VideoEvent assembles rich metadata", () => {
   const metadata = {
     kind: 21,
@@ -53,8 +94,8 @@ test("buildNip71VideoEvent assembles rich metadata", () => {
     ],
     hashtags: ["bitvid", "nostr"],
     participants: [
-      { pubkey: "a".repeat(64), relay: "wss://relay.example" },
-      { pubkey: "b".repeat(64) },
+      { pubkey: "A".repeat(64), relay: "wss://relay.example" },
+      { pubkey: `  ${participantNpub}  ` },
     ],
     references: [
       "https://example.com/info",
@@ -135,7 +176,7 @@ test("buildNip71VideoEvent assembles rich metadata", () => {
   const participantTags = event.tags.filter((tag) => tag[0] === "p");
   assert.deepEqual(participantTags, [
     ["p", "a".repeat(64), "wss://relay.example"],
-    ["p", "b".repeat(64)],
+    ["p", participantHexFromNpub],
   ]);
 
   const referenceTags = event.tags.filter((tag) => tag[0] === "r");
