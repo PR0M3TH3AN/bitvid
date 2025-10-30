@@ -1174,23 +1174,30 @@ export async function populateNip71MetadataForVideos(videos = [], {
   });
 }
 
-const EXTENSION_MIME_MAP = {
-  mp4: "video/mp4",
-  m4v: "video/x-m4v",
-  webm: "video/webm",
-  mkv: "video/x-matroska",
-  mov: "video/quicktime",
-  avi: "video/x-msvideo",
-  ogv: "video/ogg",
-  ogg: "video/ogg",
-  m3u8: "application/x-mpegURL",
-  mpd: "application/dash+xml",
-  ts: "video/mp2t",
-  mpg: "video/mpeg",
-  mpeg: "video/mpeg",
-  flv: "video/x-flv",
-  "3gp": "video/3gpp",
-};
+const EXTENSION_MIME_MAP = Object.freeze(
+  Object.fromEntries(
+    Object.entries({
+      mp4: "video/mp4",
+      m4v: "video/x-m4v",
+      webm: "video/webm",
+      mkv: "video/x-matroska",
+      mov: "video/quicktime",
+      avi: "video/x-msvideo",
+      ogv: "video/ogg",
+      ogg: "video/ogg",
+      m3u8: "application/x-mpegurl",
+      mpd: "application/dash+xml",
+      ts: "video/mp2t",
+      mpg: "video/mpeg",
+      mpeg: "video/mpeg",
+      flv: "video/x-flv",
+      "3gp": "video/3gpp",
+    }).map(([extension, mimeType]) => [
+      extension,
+      typeof mimeType === "string" ? mimeType.toLowerCase() : "",
+    ]),
+  ),
+);
 
 function inferMimeTypeFromUrl(url) {
   if (!url || typeof url !== "string") {
@@ -1213,7 +1220,8 @@ function inferMimeTypeFromUrl(url) {
   }
 
   const extension = match[1].toLowerCase();
-  return EXTENSION_MIME_MAP[extension] || "";
+  const mimeType = EXTENSION_MIME_MAP[extension];
+  return typeof mimeType === "string" ? mimeType : "";
 }
 
 export function convertEventToVideo(event = {}) {

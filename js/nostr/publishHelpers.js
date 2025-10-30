@@ -791,10 +791,20 @@ export async function mirrorVideoEvent({
   }
 
   const providedMimeType = sanitize(options.mimeType);
+  const normalizedProvidedMimeType = providedMimeType
+    ? providedMimeType.toLowerCase()
+    : "";
   const inferredMimeType = inferMimeTypeFromUrl
     ? inferMimeTypeFromUrl(url)
     : "";
-  const mimeType = providedMimeType || inferredMimeType || "application/octet-stream";
+  const normalizedInferredMimeType = inferredMimeType
+    ? inferredMimeType.toLowerCase()
+    : "";
+  const mimeTypeSource =
+    normalizedProvidedMimeType ||
+    normalizedInferredMimeType ||
+    "application/octet-stream";
+  const mimeType = mimeTypeSource.toLowerCase();
 
   const explicitAlt = sanitize(options.altText);
   const altText = explicitAlt || description || title || "";

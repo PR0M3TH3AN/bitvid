@@ -152,6 +152,8 @@ import { updateWatchHistoryListWithDefaultClient } from "./nostrWatchHistoryFaca
 | Admin blacklist (`NOTE_TYPES.ADMIN_BLACKLIST`) | `30000` | `['d', 'bitvid:admin:blacklist']`, repeated `['p', <pubkey>]` entries | Empty content |
 | Admin whitelist (`NOTE_TYPES.ADMIN_WHITELIST`) | `30000` | `['d', 'bitvid:admin:whitelist']`, repeated `['p', <pubkey>]` entries | Empty content |
 
+NIP-94 compliance: mirror events now normalize the `['m', <mime>]` tag to lowercase—covering both user input and inferred values—so they satisfy [NIP-94's lowercase MIME requirement](./nips/94.md). Related helpers reuse the same normalization to keep future publishers aligned.
+
 ### Direct messages
 
 bitvid now consumes both legacy direct messages (kind `4`) and modern gift-wrap envelopes (kind `1059`). The `js/dmDecryptor.js` helper unwraps these events by:
