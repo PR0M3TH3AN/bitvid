@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-const { mirrorVideoEvent } = await import("../../js/nostr/publishHelpers.js");
+const { mirrorVideoEvent, repostEvent } = await import(
+  "../../js/nostr/publishHelpers.js",
+);
 
 const resolveActiveSignerStub = () => ({
   signEvent: async (event) => ({
@@ -106,4 +108,44 @@ test("mirrorVideoEvent lowercases inferred MIME types", async () => {
   );
   assert.ok(mTag, "mirror events must include a MIME tag");
   assert.equal(mTag[1], "video/webm");
+});
+
+test("repostEvent adds a target kind tag for quote reposts", async () => {
+  const eventId = "quote-repost";
+  const actorPubkey = "3".repeat(64);
+  const authorPubkey = "4".repeat(64);
+  const { client } = createPublishClient({ actorPubkey });
+
+  client.allEvents.set(eventId, {
+    kind: 30078,
+    pubkey: authorPubkey,
+    videoRootId: "video-root",
+  });
+  client.rawEvents.set(eventId, {
+    kind: 30078,
+    pubkey: authorPubkey,
+    tags: [["d", "video-root"]],
+  });
+
+  const result = await repostEvent({
+    client,
+    eventId,
+    options: {
+      actorPubkey,
+      authorPubkey,
+      kind: 30078,
+    },
+    resolveActiveSigner: resolveActiveSignerStub,
+    shouldRequestExtensionPermissions: shouldRequestExtensionPermissionsStub,
+    signEventWithPrivateKey: signEventWithPrivateKeyStub,
+    eventToAddressPointer: () => "",
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.event?.kind, 16);
+  const kTag = result.event?.tags?.find(
+    (tag) => Array.isArray(tag) && tag[0] === "k",
+  );
+  assert.ok(kTag, "repost events must include a target kind tag");
+  assert.equal(kTag[1], "30078");
 });
