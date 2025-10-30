@@ -1361,6 +1361,7 @@ export function buildSubscriptionListEvent({
   pubkey,
   created_at,
   content,
+  encryption,
 }) {
   const schema = getNostrEventSchema(NOTE_TYPES.SUBSCRIPTION_LIST);
   const tags = [];
@@ -1368,6 +1369,9 @@ export function buildSubscriptionListEvent({
   const identifierValue = schema?.identifierTag?.value || SUBSCRIPTION_LIST_IDENTIFIER;
   if (identifierName && identifierValue) {
     tags.push([identifierName, identifierValue]);
+  }
+  if (typeof encryption === "string" && encryption) {
+    tags.push(["encrypted", encryption]);
   }
   appendSchemaTags(tags, schema);
   return {
@@ -1383,6 +1387,7 @@ export function buildBlockListEvent({
   pubkey,
   created_at,
   content,
+  encryption,
 }) {
   const schema = getNostrEventSchema(NOTE_TYPES.USER_BLOCK_LIST);
   const tags = [];
@@ -1390,6 +1395,9 @@ export function buildBlockListEvent({
   const identifierValue = schema?.identifierTag?.value || BLOCK_LIST_IDENTIFIER;
   if (identifierName && identifierValue) {
     tags.push([identifierName, identifierValue]);
+  }
+  if (typeof encryption === "string" && encryption) {
+    tags.push(["encrypted", encryption]);
   }
   appendSchemaTags(tags, schema);
   return {

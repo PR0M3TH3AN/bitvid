@@ -68,6 +68,97 @@ const BLOCKLIST_STORAGE_PREFIX = "bitvid:user-blocks";
 const BLOCKLIST_SEEDED_KEY_PREFIX = `${BLOCKLIST_STORAGE_PREFIX}:seeded:v1`;
 const BLOCKLIST_REMOVALS_KEY_PREFIX = `${BLOCKLIST_STORAGE_PREFIX}:removals:v1`;
 
+function normalizeEncryptionToken(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function extractEncryptionHints(event) {
+  if (!event || typeof event !== "object") {
+    return [];
+  }
+
+  const tags = Array.isArray(event.tags) ? event.tags : [];
+  const hints = [];
+
+  const pushUnique = (scheme) => {
+    if (!scheme || hints.includes(scheme)) {
+      return;
+    }
+    hints.push(scheme);
+  };
+
+  for (const tag of tags) {
+    if (!Array.isArray(tag) || tag.length < 2) {
+      continue;
+    }
+    const name = typeof tag[0] === "string" ? tag[0].trim().toLowerCase() : "";
+    if (name !== "encrypted" && name !== "encryption") {
+      continue;
+    }
+    const rawValue = typeof tag[1] === "string" ? tag[1] : "";
+    if (!rawValue) {
+      continue;
+    }
+    const parts = rawValue
+      .split(/[\s,]+/)
+      .map((part) => normalizeEncryptionToken(part))
+      .filter(Boolean);
+
+    for (const part of parts) {
+      if (part === "nip44v2" || part === "nip44v02") {
+        pushUnique("nip44_v2");
+        continue;
+      }
+      if (part === "nip44") {
+        pushUnique("nip44");
+        continue;
+      }
+      if (part === "nip04" || part === "nip4") {
+        pushUnique("nip04");
+      }
+    }
+  }
+
+  return hints;
+}
+
+function determineDecryptionOrder(event, availableSchemes) {
+  const available = Array.isArray(availableSchemes) ? availableSchemes : [];
+  const availableSet = new Set(available);
+  const prioritized = [];
+
+  const hints = extractEncryptionHints(event);
+  const aliasMap = {
+    nip04: ["nip04"],
+    nip44: ["nip44", "nip44_v2"],
+    nip44_v2: ["nip44_v2", "nip44"],
+  };
+
+  for (const hint of hints) {
+    const candidates = Array.isArray(aliasMap[hint]) ? aliasMap[hint] : [hint];
+    for (const candidate of candidates) {
+      if (availableSet.has(candidate) && !prioritized.includes(candidate)) {
+        prioritized.push(candidate);
+        break;
+      }
+    }
+  }
+
+  for (const fallback of ["nip44_v2", "nip44", "nip04"]) {
+    if (availableSet.has(fallback) && !prioritized.includes(fallback)) {
+      prioritized.push(fallback);
+    }
+  }
+
+  return prioritized.length ? prioritized : available;
+}
+
 function decodeNpubToHex(npub) {
   if (typeof npub !== "string") {
     return null;
@@ -343,56 +434,109 @@ class UserBlockListManager {
       });
     };
 
-    const activeSigner = getActiveSigner();
-    const signerDecryptor =
-      activeSigner && typeof activeSigner.nip04Decrypt === "function"
-        ? activeSigner.nip04Decrypt
-        : null;
+    const resolveDecryptors = async (event) => {
+      const signer = getActiveSigner();
+      const signerHasNip04 = typeof signer?.nip04Decrypt === "function";
+      const signerHasNip44 = typeof signer?.nip44Decrypt === "function";
 
-    let extensionDecryptor =
-      typeof window?.nostr?.nip04?.decrypt === "function"
-        ? (pubkey, payload) => window.nostr.nip04.decrypt(pubkey, payload)
-        : null;
+      const hints = extractEncryptionHints(event);
+      const requiresNip44 = hints.includes("nip44") || hints.includes("nip44_v2");
+      const requiresNip04 = !hints.length || hints.includes("nip04");
 
-    if (!signerDecryptor && !extensionDecryptor) {
-      const permissionResult = await requestDefaultExtensionPermissions();
-      if (!permissionResult.ok) {
-        userLogger.warn(
-          "[UserBlockList] Unable to load block list via extension decryptor; permissions denied.",
-          permissionResult.error,
-        );
-        this.reset();
-        this.loaded = true;
-        const error =
-          permissionResult.error instanceof Error
-            ? permissionResult.error
-            : new Error(
-                "Extension permissions are required to use the browser decryptor.",
-              );
-        emitStatus({ status: "error", error, decryptor: "extension" });
-        emitStatus({ status: "settled" });
-        return;
+      let permissionError = null;
+      if ((!signerHasNip44 && requiresNip44) || (!signerHasNip04 && requiresNip04)) {
+        try {
+          const permissionResult = await requestDefaultExtensionPermissions();
+          if (!permissionResult?.ok) {
+            permissionError =
+              permissionResult?.error instanceof Error
+                ? permissionResult.error
+                : new Error(
+                    "Extension permissions are required to use the browser decryptor.",
+                  );
+          }
+        } catch (error) {
+          permissionError = error instanceof Error ? error : new Error(String(error));
+        }
       }
 
-      extensionDecryptor =
-        typeof window?.nostr?.nip04?.decrypt === "function"
-          ? (pubkey, payload) => window.nostr.nip04.decrypt(pubkey, payload)
-          : null;
-    }
+      const decryptors = new Map();
+      const sources = new Map();
+      const registerDecryptor = (scheme, handler, source) => {
+        if (!scheme || typeof handler !== "function" || decryptors.has(scheme)) {
+          return;
+        }
+        decryptors.set(scheme, handler);
+        sources.set(scheme, source || "unknown");
+      };
 
-    if (!signerDecryptor && !extensionDecryptor) {
-      userLogger.warn(
-        "[UserBlockList] No nip04 decryptor available; treating block list as empty.",
-      );
-      this.reset();
-      this.loaded = true;
-      const error = new Error(
-        "No NIP-04 decryptor is available to load the block list.",
-      );
-      emitStatus({ status: "error", error, decryptor: "unavailable" });
-      emitStatus({ status: "settled" });
-      return;
-    }
+      if (signerHasNip44) {
+        registerDecryptor(
+          "nip44",
+          (payload) => signer.nip44Decrypt(normalized, payload),
+          "active-signer",
+        );
+        registerDecryptor(
+          "nip44_v2",
+          (payload) => signer.nip44Decrypt(normalized, payload),
+          "active-signer",
+        );
+      }
+
+      if (signerHasNip04) {
+        registerDecryptor(
+          "nip04",
+          (payload) => signer.nip04Decrypt(normalized, payload),
+          "active-signer",
+        );
+      }
+
+      const nostrApi = typeof window !== "undefined" ? window?.nostr : null;
+      if (nostrApi) {
+        if (typeof nostrApi.nip04?.decrypt === "function") {
+          registerDecryptor(
+            "nip04",
+            (payload) => nostrApi.nip04.decrypt(normalized, payload),
+            "extension",
+          );
+        }
+
+        const nip44 =
+          nostrApi.nip44 && typeof nostrApi.nip44 === "object" ? nostrApi.nip44 : null;
+        if (nip44) {
+          if (typeof nip44.decrypt === "function") {
+            registerDecryptor(
+              "nip44",
+              (payload) => nip44.decrypt(normalized, payload),
+              "extension",
+            );
+          }
+
+          const nip44v2 = nip44.v2 && typeof nip44.v2 === "object" ? nip44.v2 : null;
+          if (nip44v2 && typeof nip44v2.decrypt === "function") {
+            registerDecryptor(
+              "nip44_v2",
+              (payload) => nip44v2.decrypt(normalized, payload),
+              "extension",
+            );
+            if (!decryptors.has("nip44")) {
+              registerDecryptor(
+                "nip44",
+                (payload) => nip44v2.decrypt(normalized, payload),
+                "extension",
+              );
+            }
+          }
+        }
+      }
+
+      return {
+        decryptors,
+        sources,
+        permissionError,
+        order: determineDecryptionOrder(event, Array.from(decryptors.keys())),
+      };
+    };
 
     try {
       const filter = {
@@ -573,36 +717,92 @@ class UserBlockListManager {
           return;
         }
 
-        let decrypted = "";
-        const decryptPath = signerDecryptor
-          ? "active-signer"
-          : extensionDecryptor
-            ? "extension"
-            : "unavailable";
-        try {
-          if (signerDecryptor) {
-            decrypted = await signerDecryptor(normalized, newest.content);
-          } else if (extensionDecryptor) {
-            decrypted = await extensionDecryptor(normalized, newest.content);
-          } else {
-            throw new Error("nip04-unavailable");
+        const {
+          decryptors,
+          order,
+          sources,
+          permissionError,
+        } = await resolveDecryptors(newest);
+
+        if (!decryptors.size) {
+          if (permissionError) {
+            userLogger.warn(
+              "[UserBlockList] Unable to load block list via extension decryptor; permissions denied.",
+              permissionError,
+            );
+            this.reset();
+            this.loaded = true;
+            emitStatus({ status: "error", error: permissionError, decryptor: "extension" });
+            emitStatus({ status: "settled" });
+            return;
           }
-        } catch (err) {
+
+          userLogger.warn(
+            "[UserBlockList] No decryptors available; treating block list as empty.",
+          );
+          this.reset();
+          this.loaded = true;
+          const error = new Error(
+            "No decryptors are available to load the block list.",
+          );
+          emitStatus({ status: "error", error, decryptor: "unavailable" });
+          emitStatus({ status: "settled" });
+          return;
+        }
+
+        let decrypted = "";
+        let schemeUsed = "";
+        let schemeSource = "unavailable";
+        const attemptErrors = [];
+
+        for (const scheme of order) {
+          const handler = decryptors.get(scheme);
+          if (typeof handler !== "function") {
+            continue;
+          }
+          const sourceLabel = sources.get(scheme) || "unknown";
+          try {
+            const plaintext = await handler(newest.content);
+            if (typeof plaintext !== "string") {
+              throw new Error("Decryption returned a non-string payload.");
+            }
+            decrypted = plaintext;
+            schemeUsed = scheme;
+            schemeSource = sourceLabel;
+            break;
+          } catch (error) {
+            attemptErrors.push({ scheme, source: sourceLabel, error });
+          }
+        }
+
+        if (!decrypted) {
+          const error = new Error(
+            "Failed to decrypt block list with available schemes.",
+          );
+          error.code = "block-list-decrypt-failed";
+          if (attemptErrors.length) {
+            error.cause = attemptErrors;
+          }
+          const lastAttempt = attemptErrors.length
+            ? attemptErrors[attemptErrors.length - 1]
+            : null;
+          const decryptPath = lastAttempt?.source || "unavailable";
           userLogger.error(
-            `[UserBlockList] Failed to decrypt block list via ${decryptPath}:`,
-            err,
+            `[UserBlockList] Failed to decrypt block list via available schemes (last: ${decryptPath}).`,
+            error,
           );
           applyBlockedPubkeys([], {
             source,
             reason: "decrypt-error",
             event: newest,
-            error: err,
+            error,
             decryptor: decryptPath,
+            errors: attemptErrors,
           });
           emitStatus({
             status: "error",
             event: newest,
-            error: err,
+            error,
             source,
             decryptor: decryptPath,
           });
@@ -629,12 +829,16 @@ class UserBlockListManager {
             source,
             reason: "applied",
             event: newest,
+            scheme: schemeUsed,
+            decryptor: schemeSource,
           });
           emitStatus({
             status: "applied",
             event: newest,
             blockedPubkeys: Array.from(this.blockedPubkeys),
             source,
+            scheme: schemeUsed,
+            decryptor: schemeSource,
           });
         } catch (err) {
           userLogger.error("[UserBlockList] Failed to parse block list:", err);
@@ -643,8 +847,17 @@ class UserBlockListManager {
             reason: "parse-error",
             event: newest,
             error: err,
+            decryptor: schemeSource,
+            scheme: schemeUsed,
           });
-          emitStatus({ status: "error", event: newest, error: err, source });
+          emitStatus({
+            status: "error",
+            event: newest,
+            error: err,
+            source,
+            decryptor: schemeSource,
+            scheme: schemeUsed,
+          });
         }
       };
 
@@ -1107,14 +1320,6 @@ class UserBlockListManager {
       }
     }
 
-    if (typeof signer.nip04Encrypt !== "function") {
-      const err = new Error(
-        "NIP-04 encryption is required to update the block list."
-      );
-      err.code = "nip04-missing";
-      throw err;
-    }
-
     if (typeof signer.signEvent !== "function") {
       const err = new Error("Active signer missing signEvent support.");
       err.code = "sign-event-missing";
@@ -1133,19 +1338,72 @@ class UserBlockListManager {
     };
     const plaintext = JSON.stringify(payload);
 
-    let cipherText = "";
-    try {
-      cipherText = await signer.nip04Encrypt(normalized, plaintext);
-    } catch (error) {
-      const err = new Error("Failed to encrypt block list.");
-      err.code = "nip04-missing";
+    const encryptors = [];
+    const registerEncryptor = (scheme, handler) => {
+      if (!scheme || typeof handler !== "function") {
+        return;
+      }
+      encryptors.push({ scheme, handler });
+    };
+
+    if (typeof signer.nip44Encrypt === "function") {
+      registerEncryptor("nip44_v2", (value) => signer.nip44Encrypt(normalized, value));
+      registerEncryptor("nip44", (value) => signer.nip44Encrypt(normalized, value));
+    }
+
+    if (typeof signer.nip04Encrypt === "function") {
+      registerEncryptor("nip04", (value) => signer.nip04Encrypt(normalized, value));
+    }
+
+    if (!encryptors.length) {
+      const err = new Error(
+        "An encryption-capable signer is required to update the block list."
+      );
+      err.code = "block-list-missing-encryptor";
       throw err;
     }
+
+    let cipherText = "";
+    let encryptionScheme = "";
+    const seenSchemes = new Set();
+    const encryptionErrors = [];
+
+    for (const candidate of encryptors) {
+      if (seenSchemes.has(candidate.scheme)) {
+        continue;
+      }
+      seenSchemes.add(candidate.scheme);
+      try {
+        const encrypted = await candidate.handler(plaintext);
+        if (typeof encrypted === "string" && encrypted) {
+          cipherText = encrypted;
+          encryptionScheme = candidate.scheme;
+          break;
+        }
+      } catch (error) {
+        encryptionErrors.push({ scheme: candidate.scheme, error });
+      }
+    }
+
+    if (!cipherText) {
+      const err = new Error("Failed to encrypt block list.");
+      err.code = "block-list-encrypt-failed";
+      err.cause = encryptionErrors;
+      throw err;
+    }
+
+    const encryptionTagValue =
+      encryptionScheme === "nip44_v2"
+        ? "nip44_v2"
+        : encryptionScheme === "nip44"
+          ? "nip44"
+          : undefined;
 
     const event = buildBlockListEvent({
       pubkey: normalized,
       created_at: Math.floor(Date.now() / 1000),
       content: cipherText,
+      encryption: encryptionTagValue,
     });
 
     const signedEvent = await signer.signEvent(event);

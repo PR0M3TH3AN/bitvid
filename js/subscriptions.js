@@ -36,6 +36,16 @@ function normalizeHexPubkey(value) {
   return trimmed ? trimmed.toLowerCase() : "";
 }
 
+function normalizeEncryptionToken(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
 function extractEncryptionHints(event) {
   if (!event || typeof event !== "object") {
     return [];
@@ -65,16 +75,18 @@ function extractEncryptionHints(event) {
     }
     const parts = rawValue
       .split(/[\s,]+/)
-      .map((part) => part.trim().toLowerCase())
+      .map((part) => normalizeEncryptionToken(part))
       .filter(Boolean);
     for (const part of parts) {
-      if (part.startsWith("nip44")) {
-        if (/^nip44(?:[_-]?v2|v2)/.test(part)) {
-          pushUnique("nip44_v2");
-        } else {
-          pushUnique("nip44");
-        }
-      } else if (part === "nip04" || part === "nip-04") {
+      if (part === "nip44v2" || part === "nip44v02") {
+        pushUnique("nip44_v2");
+        continue;
+      }
+      if (part === "nip44") {
+        pushUnique("nip44");
+        continue;
+      }
+      if (part === "nip04" || part === "nip4") {
         pushUnique("nip04");
       }
     }
@@ -105,7 +117,7 @@ function determineDecryptionOrder(event, availableSchemes) {
     }
   }
 
-  for (const fallback of ["nip04", "nip44", "nip44_v2"]) {
+  for (const fallback of ["nip44_v2", "nip44", "nip04"]) {
     if (availableSet.has(fallback) && !prioritized.includes(fallback)) {
       prioritized.push(fallback);
     }
@@ -516,12 +528,6 @@ class SubscriptionsManager {
       }
     }
 
-    if (typeof signer.nip04Encrypt !== "function") {
-      const error = new Error("NIP-04 encryption is required to update subscriptions.");
-      error.code = "nip04-missing";
-      throw error;
-    }
-
     if (typeof signer.signEvent !== "function") {
       const error = new Error("Active signer missing signEvent support.");
       error.code = "sign-event-missing";
@@ -531,8 +537,33 @@ class SubscriptionsManager {
     const plainObj = { subPubkeys: Array.from(this.subscribedPubkeys) };
     const plainStr = JSON.stringify(plainObj);
 
+    const encryptors = [];
+    const registerEncryptor = (scheme, handler) => {
+      if (!scheme || typeof handler !== "function") {
+        return;
+      }
+      encryptors.push({ scheme, handler });
+    };
+
+    if (typeof signer.nip44Encrypt === "function") {
+      registerEncryptor("nip44_v2", (value) => signer.nip44Encrypt(userPubkey, value));
+      registerEncryptor("nip44", (value) => signer.nip44Encrypt(userPubkey, value));
+    }
+
+    if (typeof signer.nip04Encrypt === "function") {
+      registerEncryptor("nip04", (value) => signer.nip04Encrypt(userPubkey, value));
+    }
+
+    if (!encryptors.length) {
+      const error = new Error(
+        "An encryption-capable signer is required to update subscriptions.",
+      );
+      error.code = "subscriptions-missing-encryptor";
+      throw error;
+    }
+
     /*
-     * The subscription list is stored as a NIP-04 message to self, so both
+     * The subscription list is stored as an encrypted message to self, so both
      * encryption and decryption intentionally use the user's own pubkey.
      * Extensions are expected to support this encrypt-to-self flow; altering
      * the target would break loadSubscriptions, which decrypts with the same
@@ -540,17 +571,46 @@ class SubscriptionsManager {
      * need a parallel read path and should not overwrite this behavior.
      */
     let cipherText = "";
-    try {
-      cipherText = await signer.nip04Encrypt(userPubkey, plainStr);
-    } catch (err) {
-      userLogger.error("Encryption failed:", err);
-      throw err;
+    let encryptionScheme = "";
+    const seenSchemes = new Set();
+    const encryptionErrors = [];
+
+    for (const candidate of encryptors) {
+      if (seenSchemes.has(candidate.scheme)) {
+        continue;
+      }
+      seenSchemes.add(candidate.scheme);
+      try {
+        const encrypted = await candidate.handler(plainStr);
+        if (typeof encrypted === "string" && encrypted) {
+          cipherText = encrypted;
+          encryptionScheme = candidate.scheme;
+          break;
+        }
+      } catch (error) {
+        encryptionErrors.push({ scheme: candidate.scheme, error });
+      }
     }
+
+    if (!cipherText) {
+      const error = new Error("Failed to encrypt subscription list payload.");
+      error.code = "subscriptions-encrypt-failed";
+      error.cause = encryptionErrors;
+      throw error;
+    }
+
+    const encryptionTagValue =
+      encryptionScheme === "nip44_v2"
+        ? "nip44_v2"
+        : encryptionScheme === "nip44"
+          ? "nip44"
+          : undefined;
 
     const evt = buildSubscriptionListEvent({
       pubkey: userPubkey,
       created_at: Math.floor(Date.now() / 1000),
-      content: cipherText
+      content: cipherText,
+      encryption: encryptionTagValue,
     });
 
     let signedEvent;
