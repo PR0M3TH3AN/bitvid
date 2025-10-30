@@ -121,6 +121,7 @@ export default class VideoModalCommentController {
       return;
     }
 
+    this.dispose({ resetUi: false });
     this.currentVideo = video;
 
     this.videoModal.setCommentSectionCallbacks?.({
@@ -131,8 +132,6 @@ export default class VideoModalCommentController {
       this.resetModalCommentState();
       return;
     }
-
-    this.dispose({ resetUi: false });
 
     this.videoModal.hideCommentsDisabledMessage?.();
 

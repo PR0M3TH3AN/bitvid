@@ -177,6 +177,62 @@ test("VideoModal comment composer updates messaging and dispatches events", asyn
 });
 
 test(
+  "VideoModalCommentController load preserves current video for submissions",
+  async () => {
+    const publishCalls = [];
+
+    const controller = new VideoModalCommentController({
+      commentThreadService: {
+        setCallbacks: () => {},
+        teardown: () => {},
+        defaultLimit: 10,
+        loadThread: () => Promise.resolve(),
+        processIncomingEvent: () => {},
+      },
+      videoModal: {
+        setCommentSectionCallbacks: () => {},
+        hideCommentsDisabledMessage: () => {},
+        showCommentsDisabledMessage: () => {},
+        setCommentsVisibility: () => {},
+        clearComments: () => {},
+        resetCommentComposer: () => {},
+        setCommentStatus: () => {},
+        setCommentComposerState: () => {},
+      },
+      auth: {
+        isLoggedIn: () => true,
+      },
+      services: {
+        publishComment: async (payload) => {
+          publishCalls.push(payload);
+          return { ok: true, event: { id: "comment", tags: [] } };
+        },
+      },
+      utils: {
+        normalizeHexPubkey: (value) => value,
+      },
+    });
+
+    const video = {
+      id: "video123",
+      pubkey: "AUTHORPK",
+      enableComments: true,
+      kind: 30078,
+    };
+
+    controller.load(video);
+    controller.submit({ text: "Nice" });
+
+    await controller.modalCommentPublishPromise;
+
+    assert.equal(publishCalls.length, 1, "publishComment should be called once");
+    const payload = publishCalls[0];
+    assert.equal(payload.videoEventId, "video123");
+    assert.equal(payload.videoAuthorPubkey, "AUTHORPK");
+  },
+);
+
+test(
   "VideoModalCommentController publishes comment using event id fallback",
   async () => {
     const publishCalls = [];
