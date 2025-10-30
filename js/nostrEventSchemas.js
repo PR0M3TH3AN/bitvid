@@ -280,14 +280,14 @@ const BASE_SCHEMAS = {
     identifierTag: {
       name: "d",
     },
-    encryptionTag: { name: "encrypted", value: "nip04" },
+    encryptionTag: { name: "encrypted", values: ["nip44_v2", "nip44", "nip04"] },
     snapshotTagName: "snapshot",
     chunkTagName: "chunk",
     headTag: { name: "head", value: "1" },
     headTagIndex: 2,
     appendTags: DEFAULT_APPEND_TAGS,
     content: {
-      format: "nip04-json",
+      format: "encrypted-json",
       description:
         "Encrypted JSON payload containing chunked watch history entries.",
     },
@@ -1309,6 +1309,7 @@ export function buildWatchHistoryChunkEvent({
   pointerTags = [],
   chunkAddresses = [],
   content,
+  encryption,
 }) {
   const schema = getNostrEventSchema(NOTE_TYPES.WATCH_HISTORY_CHUNK);
   const tags = [];
@@ -1317,8 +1318,23 @@ export function buildWatchHistoryChunkEvent({
   if (identifierName && identifierValue) {
     tags.push([identifierName, identifierValue]);
   }
-  if (schema?.encryptionTag?.name && schema?.encryptionTag?.value) {
-    tags.push([schema.encryptionTag.name, schema.encryptionTag.value]);
+  const encryptionTagName = schema?.encryptionTag?.name;
+  const normalizedOptions = Array.isArray(schema?.encryptionTag?.values)
+    ? schema.encryptionTag.values
+        .map((value) => (typeof value === "string" ? value.trim() : ""))
+        .filter(Boolean)
+    : [];
+  const normalizedRequested = typeof encryption === "string" ? encryption.trim() : "";
+  let resolvedEncryptionTag = "";
+  if (normalizedRequested) {
+    resolvedEncryptionTag = normalizedRequested;
+  } else if (typeof schema?.encryptionTag?.value === "string") {
+    resolvedEncryptionTag = schema.encryptionTag.value;
+  } else if (normalizedOptions.length) {
+    [resolvedEncryptionTag] = normalizedOptions;
+  }
+  if (encryptionTagName && resolvedEncryptionTag) {
+    tags.push([encryptionTagName, resolvedEncryptionTag]);
   }
   const snapshotTagName = schema?.snapshotTagName;
   if (snapshotTagName && snapshotId) {

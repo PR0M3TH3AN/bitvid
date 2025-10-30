@@ -316,6 +316,32 @@ async function installSessionCrypto({ privateKey }) {
   const { createHash, randomBytes } = await import("node:crypto");
   const deriveHex = (input) =>
     createHash("sha256").update(String(input ?? ""), "utf8").digest("hex");
+  const keyToHex = (value) => {
+    if (typeof value === "string") {
+      return value;
+    }
+    if (value instanceof Uint8Array || Array.isArray(value)) {
+      return Buffer.from(value).toString("hex");
+    }
+    if (value && typeof value === "object" && typeof value.length === "number") {
+      return Buffer.from(value).toString("hex");
+    }
+    return deriveHex(value);
+  };
+  const encodePayload = (prefix, conversationKey, plaintext) => {
+    const keySegment = keyToHex(conversationKey);
+    const payload = Buffer.from(plaintext, "utf8").toString("base64");
+    return `${prefix}:${keySegment}:${payload}`;
+  };
+  const decodePayload = (prefix, conversationKey, ciphertext) => {
+    const keySegment = keyToHex(conversationKey);
+    const expected = `${prefix}:${keySegment}:`;
+    if (!ciphertext.startsWith(expected)) {
+      throw new Error("invalid-session-ciphertext");
+    }
+    const encoded = ciphertext.slice(expected.length);
+    return Buffer.from(encoded, "base64").toString("utf8");
+  };
   const previousEnsure =
     nostrClient.watchHistory?.deps?.ensureNostrTools || null;
   const previousGetCached =
@@ -350,6 +376,40 @@ async function installSessionCrypto({ privateKey }) {
         return Buffer.from(encoded, "base64").toString("utf8");
       },
     },
+    nip44: {
+      ...(original.nip44 || {}),
+      encrypt: (plaintext, conversationKey) => {
+        encryptCalls += 1;
+        return encodePayload("session44-legacy", conversationKey, plaintext);
+      },
+      decrypt: (ciphertext, conversationKey) => {
+        decryptCalls += 1;
+        return decodePayload("session44-legacy", conversationKey, ciphertext);
+      },
+      getConversationKey: (privBytes, target) =>
+        `${keyToHex(privBytes)}:${target}:legacy`,
+      utils: {
+        ...(original.nip44?.utils || {}),
+        getConversationKey: (privBytes, target) =>
+          `${keyToHex(privBytes)}:${target}:legacy-utils`,
+      },
+      v2: {
+        ...(original.nip44?.v2 || {}),
+        encrypt: (plaintext, conversationKey) => {
+          encryptCalls += 1;
+          return encodePayload("session44", conversationKey, plaintext);
+        },
+        decrypt: (ciphertext, conversationKey) => {
+          decryptCalls += 1;
+          return decodePayload("session44", conversationKey, ciphertext);
+        },
+        utils: {
+          ...(original.nip44?.v2?.utils || {}),
+          getConversationKey: (privBytes, target) =>
+            `${keyToHex(privBytes)}:${target}:v2`,
+        },
+      },
+    },
   };
   rememberNostrTools(window.NostrTools);
   globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__ = window.NostrTools;
@@ -376,10 +436,11 @@ async function installSessionCrypto({ privateKey }) {
     },
     getEncryptCalls: () => encryptCalls,
     getDecryptCalls: () => decryptCalls,
+    getPrivateKey: () => privateKey,
   };
 }
 
-function installExtensionCrypto({ actor }) {
+function installExtensionCrypto({ actor, supportsNip44 = true }) {
   const originalNostr = window.nostr;
   const originalTools = window.NostrTools || {};
   let extensionEncrypts = 0;
@@ -387,6 +448,18 @@ function installExtensionCrypto({ actor }) {
   let fallbackEncrypts = 0;
   const enableCalls = [];
   const decryptCalls = [];
+  const encodePayload = (prefix, target, plaintext) => {
+    const payload = Buffer.from(plaintext, "utf8").toString("base64");
+    return `${prefix}:${target}:${payload}`;
+  };
+  const decodePayload = (prefix, target, ciphertext) => {
+    const expected = `${prefix}:${target}:`;
+    if (!ciphertext.startsWith(expected)) {
+      throw new Error("invalid-extension-ciphertext");
+    }
+    const encoded = ciphertext.slice(expected.length);
+    return Buffer.from(encoded, "base64").toString("utf8");
+  };
   window.nostr = {
     enable: async (options) => {
       enableCalls.push(options || null);
@@ -400,21 +473,28 @@ function installExtensionCrypto({ actor }) {
     nip04: {
       encrypt: async (target, plaintext) => {
         extensionEncrypts += 1;
-        const payload = Buffer.from(plaintext, "utf8").toString("base64");
-        return `extension:${target}:${payload}`;
+        return encodePayload("extension", target, plaintext);
       },
       decrypt: async (target, ciphertext) => {
         extensionDecrypts += 1;
-        decryptCalls.push({ target, ciphertext });
-        const prefix = `extension:${target}:`;
-        if (!ciphertext.startsWith(prefix)) {
-          throw new Error("invalid-extension-ciphertext");
-        }
-        const encoded = ciphertext.slice(prefix.length);
-        return Buffer.from(encoded, "base64").toString("utf8");
+        decryptCalls.push({ scheme: "nip04", target, ciphertext });
+        return decodePayload("extension", target, ciphertext);
       },
     },
   };
+  if (supportsNip44) {
+    window.nostr.nip44 = {
+      encrypt: async (target, plaintext) => {
+        extensionEncrypts += 1;
+        return encodePayload("extension44", target, plaintext);
+      },
+      decrypt: async (target, ciphertext) => {
+        extensionDecrypts += 1;
+        decryptCalls.push({ scheme: "nip44", target, ciphertext });
+        return decodePayload("extension44", target, ciphertext);
+      },
+    };
+  }
   window.NostrTools = {
     ...originalTools,
     nip04: {
@@ -423,27 +503,24 @@ function installExtensionCrypto({ actor }) {
         fallbackEncrypts += 1;
         throw new Error("fallback-encrypt-used");
       },
-      decrypt: async (secret, pub, ciphertext) => {
-        const prefix = `session:${secret}:${pub}:`;
-        if (!ciphertext.startsWith(prefix)) {
-          throw new Error("invalid-session-ciphertext");
-        }
-        const encoded = ciphertext.slice(prefix.length);
-        return Buffer.from(encoded, "base64").toString("utf8");
-      },
     },
   };
   rememberNostrTools(window.NostrTools);
   globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__ = window.NostrTools;
   globalThis.nostrToolsReady = Promise.resolve(window.NostrTools);
   const previousSigner = getActiveSigner();
-  setActiveSigner({
+  const signer = {
     type: "extension",
     pubkey: actor,
     signEvent: window.nostr.signEvent,
     nip04Encrypt: window.nostr.nip04.encrypt,
     nip04Decrypt: window.nostr.nip04.decrypt,
-  });
+  };
+  if (supportsNip44) {
+    signer.nip44Encrypt = window.nostr.nip44.encrypt;
+    signer.nip44Decrypt = window.nostr.nip44.decrypt;
+  }
+  setActiveSigner(signer);
   return {
     restore() {
       if (previousSigner) {
@@ -611,49 +688,19 @@ async function testFetchWatchHistoryExtensionDecryptsHexAndNpub() {
   const fallbackTag = ["e", "fallback-pointer"];
   const fallbackItem = { type: "e", value: "fallback-pointer", watchedAt: 1_700_800_000 };
   const chunkItem = { type: "e", value: "chunk-pointer", watchedAt: 1_700_800_100 };
+  const chunkLegacyItem = {
+    type: "e",
+    value: "legacy-pointer",
+    watchedAt: 1_700_800_120,
+  };
 
   const chunkPayload = JSON.stringify({
-    version: 1,
+    version: 2,
     items: [chunkItem],
     snapshot: snapshotId,
     chunkIndex: 0,
-    totalChunks: 1,
+    totalChunks: 2,
   });
-  const chunkCiphertext = `extension:${actorHex}:${Buffer.from(chunkPayload, "utf8").toString("base64")}`;
-
-  const pointerEvent = {
-    id: "pointer-extension",
-    kind: WATCH_HISTORY_KIND,
-    pubkey: actorHex,
-    created_at: 1_700_800_000,
-    content: JSON.stringify({
-      version: 1,
-      items: [fallbackItem],
-      snapshot: snapshotId,
-      chunkIndex: 0,
-      totalChunks: 1,
-    }),
-    tags: [
-      ["d", WATCH_HISTORY_LIST_IDENTIFIER],
-      ["snapshot", snapshotId],
-      ["encrypted", "nip04"],
-      ["a", `${WATCH_HISTORY_KIND}:${actorHex}:${chunkIdentifier}`],
-      fallbackTag,
-    ],
-  };
-
-  const chunkEvent = {
-    id: "chunk-extension",
-    kind: WATCH_HISTORY_KIND,
-    pubkey: actorHex,
-    created_at: 1_700_800_060,
-    content: chunkCiphertext,
-    tags: [
-      ["d", chunkIdentifier],
-      ["snapshot", snapshotId],
-      ["encrypted", "nip04"],
-    ],
-  };
 
   if (!window.NostrTools || typeof window.NostrTools !== "object") {
     window.NostrTools = {};
@@ -686,19 +733,84 @@ async function testFetchWatchHistoryExtensionDecryptsHexAndNpub() {
   nostrClient.watchHistoryCache = new Map();
   nostrClient.watchHistoryStorage = { version: 2, actors: {} };
 
-  const publishEvents = async () => {
+  const runVariant = async (label, actorInput, pubkeyInput) => {
+    const sessionCrypto = await installSessionCrypto({ privateKey: `session-${label}` });
+
+    const sessionTools = window.NostrTools;
+    const legacyPayload = JSON.stringify({
+      version: 2,
+      items: [chunkLegacyItem],
+      snapshot: snapshotId,
+      chunkIndex: 1,
+      totalChunks: 2,
+    });
+    const legacyCiphertext = await sessionTools.nip04.encrypt(
+      sessionCrypto.getPrivateKey(),
+      actorHex,
+      legacyPayload,
+    );
+
+    const extensionCrypto = installExtensionCrypto({ actor: actorHex });
+
     poolHarness.reset();
     poolHarness.setResolver(() => ({ ok: true }));
+
+    const nip44Ciphertext = await window.nostr.nip44.encrypt(actorHex, chunkPayload);
+
+    const pointerEvent = {
+      id: `pointer-${label}`,
+      kind: WATCH_HISTORY_KIND,
+      pubkey: actorHex,
+      created_at: 1_700_800_000,
+      content: JSON.stringify({
+        version: 2,
+        items: [fallbackItem],
+        snapshot: snapshotId,
+        chunkIndex: 0,
+        totalChunks: 2,
+      }),
+      tags: [
+        ["d", WATCH_HISTORY_LIST_IDENTIFIER],
+        ["snapshot", snapshotId],
+        ["encrypted", "nip44_v2"],
+        ["a", `${WATCH_HISTORY_KIND}:${actorHex}:${chunkIdentifier}`],
+        ["a", `${WATCH_HISTORY_KIND}:${actorHex}:${chunkIdentifier}-legacy`],
+        fallbackTag,
+      ],
+    };
+
+    const chunkEvent = {
+      id: `chunk-extension-${label}`,
+      kind: WATCH_HISTORY_KIND,
+      pubkey: actorHex,
+      created_at: 1_700_800_060,
+      content: nip44Ciphertext,
+      tags: [
+        ["d", chunkIdentifier],
+        ["snapshot", snapshotId],
+        ["chunk", "0", "2"],
+        ["encrypted", "nip44_v2"],
+      ],
+    };
+
+    const chunkLegacyEvent = {
+      id: `chunk-legacy-${label}`,
+      kind: WATCH_HISTORY_KIND,
+      pubkey: actorHex,
+      created_at: 1_700_800_120,
+      content: legacyCiphertext,
+      tags: [
+        ["d", `${chunkIdentifier}-legacy`],
+        ["snapshot", snapshotId],
+        ["chunk", "1", "2"],
+        ["encrypted", "nip04"],
+      ],
+    };
+
     poolHarness.publish(["wss://relay.test"], pointerEvent);
     poolHarness.publish(["wss://relay.test"], chunkEvent);
+    poolHarness.publish(["wss://relay.test"], chunkLegacyEvent);
     await new Promise((resolve) => setTimeout(resolve, 0));
-  };
-
-  const runVariant = async (label, actorInput, pubkeyInput) => {
-    await publishEvents();
-
-    const sessionCrypto = await installSessionCrypto({ privateKey: `session-${label}` });
-    const extensionCrypto = installExtensionCrypto({ actor: actorHex });
 
     const previousEnsure = nostrClient.ensureSessionActor;
     const previousSession = nostrClient.sessionActor;
@@ -707,10 +819,11 @@ async function testFetchWatchHistoryExtensionDecryptsHexAndNpub() {
 
     try {
       nostrClient.pubkey = pubkeyInput;
-      nostrClient.sessionActor = null;
-      nostrClient.ensureSessionActor = async () => {
-        throw new Error(`session fallback should not run for ${label}`);
+      nostrClient.sessionActor = {
+        pubkey: actorHex,
+        privateKey: sessionCrypto.getPrivateKey(),
       };
+      nostrClient.ensureSessionActor = async () => actorHex;
       nostrClient.watchHistoryCache.clear();
       nostrClient.watchHistoryStorage = { version: 2, actors: {} };
 
@@ -720,31 +833,46 @@ async function testFetchWatchHistoryExtensionDecryptsHexAndNpub() {
 
       assert.equal(
         extensionCrypto.getExtensionDecrypts(),
-        1,
-        `${label} actor should use extension decrypt`,
+        2,
+        `${label} actor should attempt extension decrypt for each encrypted chunk`,
       );
       assert.equal(
         sessionCrypto.getDecryptCalls(),
-        0,
-        `${label} actor should not trigger session decrypt fallback`,
+        1,
+        `${label} actor should invoke session decrypt for nip04 fallback chunks`,
       );
       const decryptCalls = extensionCrypto.getDecryptCalls();
       assert.equal(
         decryptCalls.length,
-        1,
-        `${label} actor should invoke extension decrypt exactly once`,
+        2,
+        `${label} actor should attempt extension decrypt for both chunk schemes`,
       );
       assert.equal(
         decryptCalls[0]?.target,
         actorHex,
         `${label} actor should normalize npub inputs to hex for decrypt`,
       );
-
-      assert.equal(result.items.length, 1, `${label} actor should return chunk item`);
       assert.equal(
-        result.items[0]?.value,
-        chunkItem.value,
-        `${label} actor should surface decrypted pointer value`,
+        decryptCalls[0]?.scheme,
+        "nip44",
+        `${label} actor should use nip44 for the first chunk`,
+      );
+      assert.equal(
+        decryptCalls[1]?.scheme,
+        "nip04",
+        `${label} actor should attempt nip04 via the extension before falling back`,
+      );
+
+      assert.equal(
+        result.items.length,
+        2,
+        `${label} actor should merge decrypted items from both chunks`,
+      );
+      const values = result.items.map((item) => item?.value);
+      assert(values.includes(chunkItem.value), `${label} actor should include nip44 chunk item`);
+      assert(
+        values.includes(chunkLegacyItem.value),
+        `${label} actor should include nip04 chunk item`,
       );
     } finally {
       extensionCrypto.restore();
@@ -973,14 +1101,23 @@ async function testPublishSnapshotUsesExtensionCrypto() {
     );
     assert(extension.getExtensionEncrypts() > 0, "extension encrypt should be invoked");
 
-    const decrypt = window.nostr?.nip04?.decrypt;
+    const chunkEvent = result.chunkEvents[0];
+    const schemeTag = Array.isArray(chunkEvent?.tags)
+      ? chunkEvent.tags.find((tag) => Array.isArray(tag) && tag[0] === "encrypted")
+      : null;
+    const encryptionScheme = typeof schemeTag?.[1] === "string" ? schemeTag[1] : "";
+    assert.equal(encryptionScheme, "nip44_v2", "chunk should advertise nip44_v2 encryption");
+    const decrypt =
+      encryptionScheme === "nip44_v2" || encryptionScheme === "nip44"
+        ? window.nostr?.nip44?.decrypt
+        : window.nostr?.nip04?.decrypt;
     assert.equal(
       typeof decrypt,
       "function",
       "extension decrypt helper should be available",
     );
 
-    const decrypted = await decrypt(actor, result.chunkEvents[0].content);
+    const decrypted = await decrypt(actor, chunkEvent.content);
     const payload = JSON.parse(decrypted);
     assert.equal(payload.snapshot, "extension");
     assert.equal(
@@ -988,10 +1125,77 @@ async function testPublishSnapshotUsesExtensionCrypto() {
       result.items.length,
       "decrypted payload should match canonical item count",
     );
+    const decryptCalls = extension.getDecryptCalls();
+    assert.equal(
+      decryptCalls[0]?.scheme,
+      "nip44",
+      "extension decrypt should prefer nip44 before falling back",
+    );
     assert.equal(
       extension.getEnableCalls().length,
       1,
       "extension permissions should be requested once before encrypting",
+    );
+  } finally {
+    extension.restore();
+    sessionRestore.restore();
+    nostrClient.ensureSessionActor = originalEnsure;
+    nostrClient.sessionActor = originalSession;
+    nostrClient.pubkey = originalPub;
+  }
+}
+
+async function testPublishSnapshotFallsBackToNip04WhenNip44Unavailable() {
+  poolHarness.reset();
+  poolHarness.setResolver(() => ({ ok: true }));
+
+  const actor = "ext-fallback-pubkey";
+  const sessionRestore = await installSessionCrypto({ privateKey: "fallback-priv" });
+  const extension = installExtensionCrypto({ actor, supportsNip44: false });
+  const originalEnsure = nostrClient.ensureSessionActor;
+  const originalSession = nostrClient.sessionActor;
+  const originalPub = nostrClient.pubkey;
+
+  try {
+    nostrClient.pubkey = actor;
+    nostrClient.sessionActor = null;
+    nostrClient.ensureSessionActor = async () => actor;
+
+    const result = await nostrClient.publishWatchHistorySnapshot(
+      [
+        { type: "e", value: "fallback-pointer-1", watchedAt: 90 },
+        { type: "e", value: "fallback-pointer-2", watchedAt: 60 },
+      ],
+      { actorPubkey: actor, snapshotId: "extension-nip04" },
+    );
+
+    assert.ok(result.ok, "snapshot should succeed when extension lacks nip44");
+    const chunkEvent = result.chunkEvents[0];
+    const schemeTag = Array.isArray(chunkEvent?.tags)
+      ? chunkEvent.tags.find((tag) => Array.isArray(tag) && tag[0] === "encrypted")
+      : null;
+    assert.equal(
+      schemeTag?.[1],
+      "nip04",
+      "chunk should advertise nip04 when nip44 is unavailable",
+    );
+
+    const decrypt = window.nostr?.nip04?.decrypt;
+    assert.equal(typeof decrypt, "function", "nip04 decrypt helper should be available");
+    const decrypted = await decrypt(actor, chunkEvent.content);
+    const payload = JSON.parse(decrypted);
+    assert.equal(payload.snapshot, "extension-nip04");
+    const decryptCalls = extension.getDecryptCalls();
+    assert.equal(decryptCalls.length, 1, "nip04 fallback should invoke a single decrypt attempt");
+    assert.equal(
+      decryptCalls[0]?.scheme,
+      "nip04",
+      "extension decrypt should use nip04 when nip44 is unavailable",
+    );
+    assert.equal(
+      extension.getExtensionDecrypts(),
+      1,
+      "extension nip04 decrypt should be invoked exactly once",
     );
   } finally {
     extension.restore();
@@ -2453,6 +2657,7 @@ async function testWatchHistoryAppLoginFallback() {
 
 await testPublishSnapshotCanonicalizationAndChunking();
 await testPublishSnapshotUsesExtensionCrypto();
+await testPublishSnapshotFallsBackToNip04WhenNip44Unavailable();
 await testEnsureExtensionPermissionCaching();
 await testFetchWatchHistoryExtensionDecryptsHexAndNpub();
 await testPublishSnapshotFailureRetry();
