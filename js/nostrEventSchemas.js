@@ -651,7 +651,6 @@ export function buildRepostEvent({
   created_at,
   eventId = "",
   eventRelay = "",
-  publishRelay = "",
   address = "",
   addressRelay = "",
   authorPubkey = "",
@@ -665,11 +664,12 @@ export function buildRepostEvent({
   const normalizedEventId = typeof eventId === "string" ? eventId.trim() : "";
   const normalizedEventRelay =
     typeof eventRelay === "string" ? eventRelay.trim() : "";
-  const normalizedPublishRelay =
-    typeof publishRelay === "string" ? publishRelay.trim() : "";
-  const resolvedEventRelay = normalizedEventRelay || normalizedPublishRelay;
-  if (normalizedEventId && resolvedEventRelay) {
-    tags.push(["e", normalizedEventId, resolvedEventRelay]);
+
+  if (normalizedEventId) {
+    if (!normalizedEventRelay) {
+      throw new Error("missing-event-relay");
+    }
+    tags.push(["e", normalizedEventId, normalizedEventRelay]);
   }
 
   const normalizedAddress = typeof address === "string" ? address.trim() : "";

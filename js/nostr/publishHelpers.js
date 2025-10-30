@@ -520,6 +520,7 @@ export async function repostEvent({
 
   const cachedVideo = client?.allEvents?.get(normalizedId) || null;
   const cachedRaw = client?.rawEvents?.get(normalizedId) || null;
+  let resolvedRawEvent = cachedRaw;
 
   let authorPubkey =
     typeof options.authorPubkey === "string" && options.authorPubkey.trim()
@@ -544,10 +545,126 @@ export async function repostEvent({
     addressRelay = pointer.relay;
   }
 
+  const relayCandidates = new Set();
+
+  const rememberRelayCandidate = (value) => {
+    if (typeof value !== "string") {
+      return;
+    }
+    const normalized = value.trim();
+    if (!normalized) {
+      return;
+    }
+    relayCandidates.add(normalized);
+  };
+
+  const rememberPointerRelay = (pointerCandidate) => {
+    const normalizedPointer = normalizePointerInput(pointerCandidate);
+    if (normalizedPointer?.relay) {
+      rememberRelayCandidate(normalizedPointer.relay);
+    }
+  };
+
+  const rememberRelayHintsFromObject = (candidate, depth = 0) => {
+    if (!candidate || typeof candidate !== "object" || depth > 3) {
+      return;
+    }
+
+    const directKeys = [
+      "relay",
+      "relayUrl",
+      "eventRelay",
+      "pointerRelay",
+      "sourceRelay",
+      "originRelay",
+      "addressRelay",
+    ];
+    directKeys.forEach((key) => {
+      if (typeof candidate[key] === "string") {
+        rememberRelayCandidate(candidate[key]);
+      }
+    });
+
+    if (Array.isArray(candidate.relays)) {
+      candidate.relays.forEach((value) => {
+        rememberRelayCandidate(value);
+      });
+    }
+
+    if (candidate.pointer) {
+      rememberPointerRelay(candidate.pointer);
+    }
+    if (candidate.eventPointer) {
+      rememberPointerRelay(candidate.eventPointer);
+    }
+
+    if (candidate.pointerInfo && depth <= 3) {
+      rememberRelayHintsFromObject(candidate.pointerInfo, depth + 1);
+    }
+
+    if (Array.isArray(candidate.pointers)) {
+      candidate.pointers.forEach((pointerCandidate) => {
+        rememberPointerRelay(pointerCandidate);
+      });
+    }
+
+    if (candidate.video && depth <= 3) {
+      rememberRelayHintsFromObject(candidate.video, depth + 1);
+    }
+  };
+
   let eventRelay =
     typeof options.eventRelay === "string" ? options.eventRelay.trim() : "";
-  if (!eventRelay && pointer?.type === "e" && pointer.relay) {
-    eventRelay = pointer.relay;
+  if (eventRelay) {
+    rememberRelayCandidate(eventRelay);
+  }
+
+  if (pointer) {
+    rememberPointerRelay(pointer);
+    if (!eventRelay && pointer.type === "e" && pointer.relay) {
+      eventRelay = pointer.relay;
+    }
+  }
+
+  rememberRelayHintsFromObject(options);
+  rememberRelayHintsFromObject(pointer);
+  rememberRelayHintsFromObject(cachedVideo);
+  rememberRelayHintsFromObject(cachedVideo?.pointerInfo);
+  rememberRelayHintsFromObject(cachedRaw);
+
+  if (addressRelay) {
+    rememberRelayCandidate(addressRelay);
+  }
+
+  const deriveRelayFromRawEvent = (event) => {
+    if (!event || typeof event !== "object") {
+      return "";
+    }
+    const directRelay =
+      typeof event.relay === "string" ? event.relay.trim() : "";
+    if (directRelay) {
+      return directRelay;
+    }
+    const relayCollections = [event.relays, event.seenOn, event.seen_on];
+    for (const collection of relayCollections) {
+      if (!Array.isArray(collection)) {
+        continue;
+      }
+      for (const entry of collection) {
+        if (typeof entry === "string" && entry.trim()) {
+          return entry.trim();
+        }
+      }
+    }
+    return "";
+  };
+
+  const cachedRawRelay = deriveRelayFromRawEvent(cachedRaw);
+  if (cachedRawRelay) {
+    rememberRelayCandidate(cachedRawRelay);
+    if (!eventRelay) {
+      eventRelay = cachedRawRelay;
+    }
   }
 
   let targetKind = Number.isFinite(options.kind)
@@ -642,7 +759,79 @@ export async function repostEvent({
       : client?.relays,
   );
   const relays = relaysOverride.length ? relaysOverride : Array.from(RELAY_URLS);
-  const chosenPublishRelay = relays.length ? relays[0] : "";
+  const probeRelays = (() => {
+    const order = [];
+    if (eventRelay) {
+      order.push(eventRelay);
+    }
+    relayCandidates.forEach((relayUrl) => {
+      if (relayUrl && !order.includes(relayUrl)) {
+        order.push(relayUrl);
+      }
+    });
+    relays.forEach((relayUrl) => {
+      if (relayUrl && !order.includes(relayUrl)) {
+        order.push(relayUrl);
+      }
+    });
+    return order;
+  })();
+
+  if ((!eventRelay || !resolvedRawEvent) && typeof client?.fetchRawEventById === "function") {
+    for (const relayUrl of probeRelays) {
+      if (!relayUrl) {
+        continue;
+      }
+      if (!resolvedRawEvent) {
+        try {
+          const fetched = await client.fetchRawEventById(normalizedId, {
+            relays: [relayUrl],
+          });
+          if (fetched) {
+            resolvedRawEvent = fetched;
+          }
+        } catch (error) {
+          devLogger.warn(
+            `[nostr] Failed to fetch ${normalizedId} from ${relayUrl} while preparing repost`,
+            error,
+          );
+        }
+      }
+
+      if (!eventRelay && resolvedRawEvent) {
+        eventRelay = relayUrl;
+        rememberRelayCandidate(relayUrl);
+      }
+
+      if (eventRelay && resolvedRawEvent) {
+        break;
+      }
+    }
+  }
+
+  if (resolvedRawEvent && !eventRelay) {
+    const rawRelay = deriveRelayFromRawEvent(resolvedRawEvent);
+    if (rawRelay) {
+      eventRelay = rawRelay;
+      rememberRelayCandidate(rawRelay);
+    }
+  }
+
+  if (!eventRelay) {
+    devLogger.warn(
+      `[nostr] Repost aborted: missing source relay for ${normalizedId}`,
+      { candidates: probeRelays },
+    );
+    return {
+      ok: false,
+      error: "missing-event-relay",
+      details: { relays: probeRelays },
+    };
+  }
+
+  devLogger.log(
+    `[nostr] Resolved repost target relay ${eventRelay} for ${normalizedId}`,
+  );
 
   let actorPubkey =
     typeof options.actorPubkey === "string" && options.actorPubkey.trim()
@@ -698,7 +887,6 @@ export async function repostEvent({
     created_at: createdAt,
     eventId: normalizedId,
     eventRelay,
-    publishRelay: chosenPublishRelay,
     address,
     addressRelay,
     authorPubkey,
