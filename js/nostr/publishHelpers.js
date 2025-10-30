@@ -20,6 +20,22 @@ const REBROADCAST_GUARD_PREFIX = "bitvid:rebroadcast:v1";
 const rebroadcastAttemptMemory = new Map();
 
 const HEX_PRIVATE_KEY_REGEX = /^[0-9a-f]{64}$/i;
+const HEX64_REGEX = /^[0-9a-f]{64}$/i;
+
+function normalizeSha256TagValue(value) {
+  if (value === undefined || value === null) {
+    return "";
+  }
+  const stringValue = typeof value === "string" ? value : String(value);
+  const trimmed = stringValue.trim().toLowerCase();
+  if (!trimmed) {
+    return "";
+  }
+  if (!HEX64_REGEX.test(trimmed)) {
+    return null;
+  }
+  return trimmed;
+}
 
 export function signEventWithPrivateKey(event, privateKey) {
   const tools = getCachedNostrTools();
@@ -818,6 +834,18 @@ export async function mirrorVideoEvent({
   const explicitAlt = sanitize(options.altText);
   const altText = explicitAlt || description || title || "";
 
+  const fileSha256 = normalizeSha256TagValue(options.fileSha256);
+  if (fileSha256 === null) {
+    return { ok: false, error: "invalid-file-sha" };
+  }
+
+  const originalFileSha256 = normalizeSha256TagValue(
+    options.originalFileSha256,
+  );
+  if (originalFileSha256 === null) {
+    return { ok: false, error: "invalid-original-file-sha" };
+  }
+
   const tags = [];
   tags.push(["url", url]);
   if (mimeType) {
@@ -831,6 +859,12 @@ export async function mirrorVideoEvent({
   }
   if (!isPrivate && magnet) {
     tags.push(["magnet", magnet]);
+  }
+  if (fileSha256) {
+    tags.push(["x", fileSha256]);
+  }
+  if (originalFileSha256) {
+    tags.push(["ox", originalFileSha256]);
   }
 
   const additionalTags = Array.isArray(options.additionalTags)

@@ -107,3 +107,35 @@ test("mirrorVideoEvent lowercases inferred MIME types", async () => {
   assert.ok(mTag, "mirror events must include a MIME tag");
   assert.equal(mTag[1], "video/webm");
 });
+
+test("mirrorVideoEvent includes hash tags when provided", async () => {
+  const eventId = "hash-tags";
+  const actorPubkey = "3".repeat(64);
+  const { client } = createPublishClient({ actorPubkey });
+  const fileHash = "a".repeat(64);
+  const originalHash = "b".repeat(64);
+
+  const result = await mirrorVideoEvent({
+    client,
+    eventId,
+    options: {
+      url: "https://videos.example/demo.mp4",
+      fileSha256: fileHash.toUpperCase(),
+      originalFileSha256: originalHash,
+    },
+    resolveActiveSigner: resolveActiveSignerStub,
+    shouldRequestExtensionPermissions: shouldRequestExtensionPermissionsStub,
+    signEventWithPrivateKey: signEventWithPrivateKeyStub,
+    inferMimeTypeFromUrl: () => "video/mp4",
+  });
+
+  assert.equal(result.ok, true);
+  const xTag = result.event?.tags?.find(
+    (tag) => Array.isArray(tag) && tag[0] === "x",
+  );
+  const oxTag = result.event?.tags?.find(
+    (tag) => Array.isArray(tag) && tag[0] === "ox",
+  );
+  assert.deepEqual(xTag, ["x", fileHash]);
+  assert.deepEqual(oxTag, ["ox", originalHash]);
+});
