@@ -159,6 +159,111 @@ function determineDecryptionOrder(event, availableSchemes) {
   return prioritized.length ? prioritized : available;
 }
 
+function serializeBlockListTagMatrix(values, ownerPubkey) {
+  const tags = [];
+  const seen = new Set();
+  const owner = normalizeHex(ownerPubkey);
+  const iterable = Array.isArray(values)
+    ? values
+    : values instanceof Set
+    ? Array.from(values)
+    : values && typeof values[Symbol.iterator] === "function"
+    ? Array.from(values)
+    : [];
+
+  for (const candidate of iterable) {
+    const normalized = normalizeHex(candidate);
+    if (!normalized || normalized === owner || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    tags.push(["p", normalized]);
+  }
+
+  return JSON.stringify(tags);
+}
+
+function parseBlockListPlaintext(plaintext, ownerPubkey) {
+  if (typeof plaintext !== "string" || !plaintext) {
+    return [];
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(plaintext);
+  } catch (error) {
+    userLogger.warn(
+      "[UserBlockList] Failed to parse block list ciphertext as JSON; treating as empty.",
+      error,
+    );
+    return [];
+  }
+
+  const owner = normalizeHex(ownerPubkey);
+
+  const extractFromTags = (tags) => {
+    const collected = [];
+    const seen = new Set();
+    for (const entry of tags) {
+      if (!Array.isArray(entry) || entry.length < 2) {
+        continue;
+      }
+      const label = typeof entry[0] === "string" ? entry[0].trim().toLowerCase() : "";
+      if (label !== "p") {
+        continue;
+      }
+      const normalized = normalizeHex(entry[1]);
+      if (!normalized || normalized === owner || seen.has(normalized)) {
+        continue;
+      }
+      seen.add(normalized);
+      collected.push(normalized);
+    }
+    return collected;
+  };
+
+  if (Array.isArray(parsed)) {
+    return extractFromTags(parsed);
+  }
+
+  if (parsed && typeof parsed === "object") {
+    if (Array.isArray(parsed.tags) && parsed.tags.length) {
+      return extractFromTags(parsed.tags);
+    }
+
+    const legacy = Array.isArray(parsed.blockedPubkeys) ? parsed.blockedPubkeys : [];
+    return legacy
+      .map((value) => normalizeHex(value))
+      .filter((value) => value && value !== owner);
+  }
+
+  return [];
+}
+
+function isUserBlockListEvent(event) {
+  if (!event || typeof event.kind !== "number") {
+    return false;
+  }
+
+  if (event.kind === 10000) {
+    return true;
+  }
+
+  if (event.kind === 30002) {
+    const tags = Array.isArray(event.tags) ? event.tags : [];
+    return tags.some(
+      (tag) =>
+        Array.isArray(tag) &&
+        typeof tag[0] === "string" &&
+        tag[0].trim().toLowerCase() === "d" &&
+        typeof tag[1] === "string" &&
+        tag[1].trim() === BLOCK_LIST_IDENTIFIER,
+    );
+  }
+
+  return false;
+}
+
 function decodeNpubToHex(npub) {
   if (typeof npub !== "string") {
     return null;
@@ -540,10 +645,9 @@ class UserBlockListManager {
 
     try {
       const filter = {
-        kinds: [30002],
+        kinds: [10000, 30002],
         authors: [normalized],
-        "#d": [BLOCK_LIST_IDENTIFIER],
-        limit: 1,
+        limit: 2,
       };
 
       if (since !== null) {
@@ -603,7 +707,10 @@ class UserBlockListManager {
               settled = true;
               clearTimeout(timer);
               const events = Array.isArray(result)
-                ? result.filter((event) => event && event.pubkey === normalized)
+                ? result.filter(
+                    (event) =>
+                      event && event.pubkey === normalized && isUserBlockListEvent(event),
+                  )
                 : [];
               if (requireEvent && !events.length) {
                 const emptyError = new Error(
@@ -656,7 +763,10 @@ class UserBlockListManager {
         }
 
         const sorted = events
-          .filter((event) => event && event.pubkey === normalized)
+          .filter(
+            (event) =>
+              event && event.pubkey === normalized && isUserBlockListEvent(event),
+          )
           .sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0));
 
         if (!sorted.length) {
@@ -810,21 +920,7 @@ class UserBlockListManager {
         }
 
         try {
-          const parsed = JSON.parse(decrypted);
-          const list = Array.isArray(parsed?.blockedPubkeys)
-            ? parsed.blockedPubkeys
-            : [];
-          const sanitized = list
-            .map((entry) => normalizeHex(entry))
-            .filter((candidate) => {
-              if (!candidate) {
-                return false;
-              }
-              if (candidate === normalized) {
-                return false;
-              }
-              return true;
-            });
+          const sanitized = parseBlockListPlaintext(decrypted, normalized);
           applyBlockedPubkeys(sanitized, {
             source,
             reason: "applied",
@@ -1336,7 +1432,7 @@ class UserBlockListManager {
         (candidate) => candidate && candidate !== normalized
       ),
     };
-    const plaintext = JSON.stringify(payload);
+    const plaintext = serializeBlockListTagMatrix(payload.blockedPubkeys, normalized);
 
     const encryptors = [];
     const registerEncryptor = (scheme, handler) => {
@@ -1397,7 +1493,9 @@ class UserBlockListManager {
         ? "nip44_v2"
         : encryptionScheme === "nip44"
           ? "nip44"
-          : undefined;
+          : encryptionScheme === "nip04"
+            ? "nip04"
+            : undefined;
 
     const event = buildBlockListEvent({
       pubkey: normalized,

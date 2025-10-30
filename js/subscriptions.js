@@ -126,6 +126,82 @@ function determineDecryptionOrder(event, availableSchemes) {
   return prioritized.length ? prioritized : available;
 }
 
+function serializeSubscriptionTagMatrix(values) {
+  const tags = [];
+  const seen = new Set();
+  if (!values) {
+    return JSON.stringify(tags);
+  }
+  const iterable = Array.isArray(values)
+    ? values
+    : values instanceof Set
+    ? Array.from(values)
+    : [];
+  for (const candidate of iterable) {
+    const normalized = normalizeHexPubkey(candidate);
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    tags.push(["p", normalized]);
+  }
+  return JSON.stringify(tags);
+}
+
+function parseSubscriptionPlaintext(plaintext) {
+  if (typeof plaintext !== "string" || !plaintext) {
+    return [];
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(plaintext);
+  } catch (error) {
+    devLogger.warn(
+      "[SubscriptionsManager] Failed to parse subscription ciphertext as JSON; treating as empty.",
+      error,
+    );
+    return [];
+  }
+
+  if (Array.isArray(parsed)) {
+    const collected = [];
+    const seen = new Set();
+    for (const entry of parsed) {
+      if (!Array.isArray(entry) || entry.length < 2) {
+        continue;
+      }
+      const marker = typeof entry[0] === "string" ? entry[0].trim().toLowerCase() : "";
+      if (marker !== "p") {
+        continue;
+      }
+      const normalized = normalizeHexPubkey(entry[1]);
+      if (!normalized || seen.has(normalized)) {
+        continue;
+      }
+      seen.add(normalized);
+      collected.push(normalized);
+    }
+    return collected;
+  }
+
+  if (parsed && typeof parsed === "object") {
+    const tagArray = Array.isArray(parsed.tags) ? parsed.tags : [];
+    if (tagArray.length) {
+      try {
+        return parseSubscriptionPlaintext(JSON.stringify(tagArray));
+      } catch {
+        // fall through to legacy handling
+      }
+    }
+
+    const legacy = Array.isArray(parsed.subPubkeys) ? parsed.subPubkeys : [];
+    return legacy.map((value) => normalizeHexPubkey(value)).filter(Boolean);
+  }
+
+  return [];
+}
+
 const getApp = () => getApplication();
 
 const listVideoViewEventsApi = (pointer, options) =>
@@ -135,7 +211,7 @@ const subscribeVideoViewEventsApi = (pointer, options) =>
 
 /**
  * Manages the user's subscription list (kind=30002) *privately*,
- * using NIP-04 encryption for the content field.
+ * using encrypted NIP-51 tag arrays (NIP-04/NIP-44) for the content field.
  * Also handles fetching and rendering subscribed channels' videos
  * in the same card style as your home page.
  */
@@ -295,13 +371,7 @@ class SubscriptionsManager {
 
       const decryptedStr = decryptResult.plaintext;
 
-      const parsed = JSON.parse(decryptedStr);
-      const subArray = Array.isArray(parsed.subPubkeys)
-        ? parsed.subPubkeys
-        : [];
-      const normalized = subArray
-        .map((value) => normalizeHexPubkey(value))
-        .filter((value) => Boolean(value));
+      const normalized = parseSubscriptionPlaintext(decryptedStr);
       this.subscribedPubkeys = new Set(normalized);
 
       this.loaded = true;
@@ -534,8 +604,7 @@ class SubscriptionsManager {
       throw error;
     }
 
-    const plainObj = { subPubkeys: Array.from(this.subscribedPubkeys) };
-    const plainStr = JSON.stringify(plainObj);
+    const plainStr = serializeSubscriptionTagMatrix(this.subscribedPubkeys);
 
     const encryptors = [];
     const registerEncryptor = (scheme, handler) => {
@@ -604,7 +673,9 @@ class SubscriptionsManager {
         ? "nip44_v2"
         : encryptionScheme === "nip44"
           ? "nip44"
-          : undefined;
+          : encryptionScheme === "nip04"
+            ? "nip04"
+            : undefined;
 
     const evt = buildSubscriptionListEvent({
       pubkey: userPubkey,

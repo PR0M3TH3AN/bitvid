@@ -73,7 +73,7 @@ test("loadSubscriptions aggregates relay results when one rejects", async () => 
       async decrypt(_pubkey, ciphertext) {
         decryptCalls.push(ciphertext);
         if (ciphertext === "cipher-new") {
-          return JSON.stringify({ subPubkeys: ["pub-new"] });
+          return JSON.stringify([["p", "pub-new"]]);
         }
         return JSON.stringify({ subPubkeys: ["pub-old"] });
       },
@@ -179,7 +179,7 @@ test("loadSubscriptions falls back to nip44 when hinted", async () => {
     nip44: {
       async decrypt(_pubkey, ciphertext) {
         decryptCalls.nip44 += 1;
-        return JSON.stringify({ subPubkeys: ["pub-nip44"], hint: ciphertext });
+        return JSON.stringify([["p", "pub-nip44", ciphertext]]);
       },
     },
   };
@@ -264,7 +264,7 @@ test("loadSubscriptions handles nip44.v2 decryptors", async () => {
       v2: {
         async decrypt(_pubkey, ciphertext) {
           decryptCalls.nip44_v2 += 1;
-          return JSON.stringify({ subPubkeys: ["pub-nip44-v2"], hint: ciphertext });
+        return JSON.stringify([["p", "pub-nip44-v2"], ["t", ciphertext]]);
         },
       },
     },
@@ -354,14 +354,14 @@ test("loadSubscriptions prefers nip44 decryptors when both are available", async
     nip04: {
       async decrypt() {
         decryptCalls.nip04 += 1;
-        return JSON.stringify({ subPubkeys: ["pub-nip04"] });
+        return JSON.stringify([["p", "pub-nip04"]]);
       },
     },
     nip44: {
       v2: {
         async decrypt(_pubkey, ciphertext) {
           decryptCalls.nip44 += 1;
-          return JSON.stringify({ subPubkeys: ["pub-nip44-pref"], hint: ciphertext });
+          return JSON.stringify([["p", "pub-nip44-pref", ciphertext]]);
         },
       },
     },
@@ -443,7 +443,7 @@ test(
       pubkey: "user-pubkey-123",
       async nip04Decrypt(pubkey, ciphertext) {
         decryptCalls.push({ pubkey, ciphertext });
-        return JSON.stringify({ subPubkeys: ["pub-direct"] });
+        return JSON.stringify([["p", "pub-direct"]]);
       },
     });
 
@@ -712,7 +712,7 @@ test(
         encryptCalls[0],
         {
           pubkey: "user-pubkey-123",
-          plaintext: JSON.stringify({ subPubkeys: ["pub-direct"] }),
+          plaintext: JSON.stringify([["p", "pub-direct"]]),
         },
         "nip04Encrypt should receive the serialized subscription list",
       );
@@ -782,7 +782,7 @@ test("publishSubscriptionList prefers nip44 encryption when available", async ()
       assert.equal(pubkey, "user-pubkey-123");
       assert.equal(
         plaintext,
-        JSON.stringify({ subPubkeys: ["pub-one", "pub-two"] }),
+        JSON.stringify([["p", "pub-one"], ["p", "pub-two"]]),
       );
       return "cipher-nip44";
     },
@@ -871,8 +871,8 @@ test("publishSubscriptionList falls back to nip04 when nip44 fails", async () =>
       encryptCalls.nip04 += 1;
       assert.equal(pubkey, "user-pubkey-123");
       assert.equal(
-        plaintext,
-        JSON.stringify({ subPubkeys: ["pub-three"] }),
+      plaintext,
+      JSON.stringify([["p", "pub-three"]]),
       );
       return "cipher-nip04";
     },
@@ -894,10 +894,10 @@ test("publishSubscriptionList falls back to nip04 when nip44 fails", async () =>
     assert.equal(encryptCalls.nip04, 1, "nip04Encrypt should handle fallback");
     const signedEvent = signedEvents[0];
     const encryptedTags = signedEvent.tags.filter((tag) => tag[0] === "encrypted");
-    assert.equal(
-      encryptedTags.length,
-      0,
-      "fallback nip04 encryption should not advertise a nip44 tag",
+    assert.deepEqual(
+      encryptedTags,
+      [["encrypted", "nip04"]],
+      "fallback nip04 encryption should advertise nip04",
     );
     assert.equal(publishCalls.length, relayUrls.length, "event should publish to relays");
     assert.equal(manager.subsEventId, "signed-nip04-event");
