@@ -2095,7 +2095,13 @@ export class ModerationService {
     return Number.isFinite(entry.trusted) ? entry.trusted : 0;
   }
 
-  async submitReport({ eventId, type, targetPubkey = "", content = "" } = {}) {
+  async submitReport({
+    eventId,
+    type,
+    targetPubkey = "",
+    relayHint = "",
+    content = "",
+  } = {}) {
     const normalizedEventId = normalizeEventId(eventId);
     if (!normalizedEventId) {
       const error = new Error("invalid-event-id");
@@ -2114,6 +2120,13 @@ export class ModerationService {
     if (!reporterPubkey) {
       const error = new Error("viewer-not-logged-in");
       error.code = "viewer-not-logged-in";
+      throw error;
+    }
+
+    const normalizedTarget = normalizeHex(targetPubkey);
+    if (!normalizedTarget) {
+      const error = new Error("invalid-target-pubkey");
+      error.code = "invalid-target-pubkey";
       throw error;
     }
 
@@ -2137,16 +2150,20 @@ export class ModerationService {
       }
     }
 
+    const sanitizedRelayHint =
+      typeof relayHint === "string" ? relayHint.trim() : "";
+
+    const eventTag = ["e", normalizedEventId];
+    if (sanitizedRelayHint) {
+      eventTag.push(sanitizedRelayHint);
+    }
+    eventTag.push(normalizedType);
+
     const tags = [
-      ["e", normalizedEventId, "", normalizedType],
-      ["report", normalizedType],
+      eventTag,
+      ["p", normalizedTarget, normalizedType],
       ["t", normalizedType],
     ];
-
-    const normalizedTarget = normalizeHex(targetPubkey);
-    if (normalizedTarget) {
-      tags.push(["p", normalizedTarget]);
-    }
 
     const event = {
       kind: 1984,

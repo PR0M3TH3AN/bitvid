@@ -3,6 +3,7 @@ import { ModerationService } from "../../js/services/moderationService.js";
 import { getDefaultModerationSettings } from "../../js/state/cache.js";
 
 const DEFAULT_CONTACT_OWNER = "f".repeat(64);
+const DEFAULT_REPORT_TARGET = "e".repeat(64);
 
 export function withMockedNostrTools(t) {
   const hadWindow = typeof globalThis.window !== "undefined";
@@ -99,6 +100,8 @@ export function createReportEvent({
   id,
   reporter,
   eventId,
+  targetPubkey = DEFAULT_REPORT_TARGET,
+  relayHint = "",
   createdAt = Math.floor(Date.now() / 1000),
   type = "nudity",
 } = {}) {
@@ -108,7 +111,19 @@ export function createReportEvent({
       : `${Math.random().toString(16).slice(2)}${"0".repeat(64)}`.slice(0, 64);
   const reporterPubkey = typeof reporter === "string" && reporter ? reporter : "";
   const targetEventId = typeof eventId === "string" && eventId ? eventId : "";
+  const targetAuthor =
+    typeof targetPubkey === "string" && targetPubkey
+      ? targetPubkey
+      : DEFAULT_REPORT_TARGET;
   const normalizedType = typeof type === "string" && type ? type : "nudity";
+  const normalizedRelayHint =
+    typeof relayHint === "string" && relayHint ? relayHint : "";
+
+  const eventTag = ["e", targetEventId];
+  if (normalizedRelayHint) {
+    eventTag.push(normalizedRelayHint);
+  }
+  eventTag.push(normalizedType);
 
   return {
     kind: 1984,
@@ -116,8 +131,9 @@ export function createReportEvent({
     pubkey: reporterPubkey,
     created_at: Number.isFinite(createdAt) ? Math.floor(createdAt) : Math.floor(Date.now() / 1000),
     tags: [
-      ["e", targetEventId],
-      ["report", normalizedType],
+      eventTag,
+      ["p", targetAuthor, normalizedType],
+      ["t", normalizedType],
     ],
     content: "fixture report",
   };
