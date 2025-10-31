@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import CommentThreadService from "../js/services/commentThreadService.js";
+import { listVideoComments } from "../js/nostr/commentEvents.js";
+import { buildCommentEvent } from "../js/nostrEventSchemas.js";
 
 function createBaseVideo() {
   return {
@@ -34,6 +36,93 @@ function createComment({
 }
 
 const tick = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms));
+
+test(
+  "listVideoComments accepts builder events without parent ids and filters replies",
+  async () => {
+    const relayUrl = "wss://relay.example";
+    const videoEventId = "video123";
+    const videoDefinitionAddress = "30078:authorpk:video-root";
+    const topLevelCommentId = "comment-root";
+    const replyCommentId = "comment-reply";
+
+    const topLevelEvent = {
+      id: topLevelCommentId,
+      ...buildCommentEvent({
+        pubkey: "commenterpk",
+        created_at: 1700000000,
+        videoEventId,
+        videoEventRelay: relayUrl,
+        videoDefinitionAddress,
+        videoDefinitionRelay: relayUrl,
+        rootIdentifier: "video-root",
+        rootIdentifierRelay: relayUrl,
+        rootKind: "30078",
+        rootAuthorPubkey: "authorpk",
+      }),
+    };
+
+    const replyEvent = {
+      id: replyCommentId,
+      ...buildCommentEvent({
+        pubkey: "replypk",
+        created_at: 1700000300,
+        videoEventId,
+        videoEventRelay: relayUrl,
+        videoDefinitionAddress,
+        videoDefinitionRelay: relayUrl,
+        rootIdentifier: "video-root",
+        rootIdentifierRelay: relayUrl,
+        rootKind: "30078",
+        rootAuthorPubkey: "authorpk",
+        parentCommentId: topLevelCommentId,
+        parentCommentRelay: relayUrl,
+        parentAuthorPubkey: "commenterpk",
+      }),
+    };
+
+    const listCalls = [];
+    const client = {
+      relays: [relayUrl],
+      pool: {
+        list: async (relays, filters) => {
+          listCalls.push({ relays, filters });
+          return [[topLevelEvent, replyEvent]];
+        },
+      },
+    };
+
+    const baseTarget = {
+      videoEventId,
+      videoDefinitionAddress,
+      videoEventRelay: relayUrl,
+      videoDefinitionRelay: relayUrl,
+      rootIdentifier: "video-root",
+    };
+
+    const topLevelResults = await listVideoComments(client, baseTarget, {
+      relays: [relayUrl],
+    });
+    assert.equal(
+      topLevelResults.some((event) => event.id === topLevelCommentId),
+      true,
+      "top-level builder comment should be returned when no parent is specified",
+    );
+
+    const replyResults = await listVideoComments(
+      client,
+      { ...baseTarget, parentCommentId: topLevelCommentId },
+      { relays: [relayUrl] },
+    );
+    assert.deepStrictEqual(
+      replyResults.map((event) => event.id),
+      [replyCommentId],
+      "reply queries should filter to child events when parent id is provided",
+    );
+
+    assert.equal(listCalls.length, 2, "pool.list should be invoked for each query");
+  },
+);
 
 test(
   "CommentThreadService hydrates, subscribes, and dedupes incoming comment events",
