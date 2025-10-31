@@ -16,6 +16,7 @@ import {
 import {
   renderTagPillStrip,
   applyTagPreferenceState,
+  trimTagPillStripToFit,
 } from "./tagPillList.js";
 import { SimilarContentCard } from "./SimilarContentCard.js";
 import {
@@ -129,6 +130,10 @@ export class VideoModal {
     this.videoViewCountEl = null;
     this.videoTagsRoot = null;
     this.videoTagsData = Object.freeze([]);
+    this.videoTagsSourceData = this.videoTagsData;
+    this.videoTagsResizeObserver = null;
+    this.videoTagsLastObservedWidth = 0;
+    this.handleVideoTagsResize = this.handleVideoTagsResize.bind(this);
     this.creatorAvatar = null;
     this.creatorName = null;
     this.creatorNpub = null;
@@ -390,6 +395,7 @@ export class VideoModal {
       } else {
         this.loaded = false;
         this.cleanupVideoTags();
+        this.teardownVideoTagsResizeObserver();
         this.videoTagsRoot = null;
         this.playerModal = null;
       }
@@ -509,6 +515,7 @@ export class VideoModal {
     if (this.videoTagsRoot && this.videoTagsRoot !== nextVideoTagsRoot) {
       this.cleanupVideoTags(this.videoTagsRoot);
     }
+    this.teardownVideoTagsResizeObserver();
     this.videoTagsRoot = nextVideoTagsRoot;
     if (this.videoTagsRoot) {
       this.cleanupVideoTags(this.videoTagsRoot);
@@ -540,10 +547,11 @@ export class VideoModal {
       statsContainer: statsContainerCandidate,
     });
 
-    const previousTags = Array.isArray(this.videoTagsData)
-      ? [...this.videoTagsData]
+    const previousTags = Array.isArray(this.videoTagsSourceData)
+      ? [...this.videoTagsSourceData]
       : [];
     this.videoTagsData = null;
+    this.videoTagsSourceData = Object.freeze([]);
 
     this.moderationController.initialize({ playerModal });
 
@@ -1930,6 +1938,7 @@ export class VideoModal {
 
   destroy() {
     this.close();
+    this.teardownVideoTagsResizeObserver();
     this.commentsController.destroy();
     this.reactionsController.destroy();
     this.similarContentController.destroy();
@@ -2795,21 +2804,29 @@ export class VideoModal {
     return true;
   }
 
-  renderVideoTags(tags = []) {
+  renderVideoTags(tags = [], options = {}) {
+    const { force = false } = options || {};
     const normalized = this.normalizeVideoTags(tags);
-    const hasTags = normalized.length > 0;
     const root = this.videoTagsRoot;
 
     if (root) {
-      if (this.areVideoTagsEqual(normalized, this.videoTagsData)) {
-        this.toggleVideoTagsVisibility(hasTags);
-        this.refreshTagPreferenceStates();
+      if (!force && this.areVideoTagsEqual(normalized, this.videoTagsData)) {
+        const hasVisibleButtons =
+          root.querySelector("button[data-tag]") !== null;
+        this.toggleVideoTagsVisibility(hasVisibleButtons);
+        if (hasVisibleButtons) {
+          this.ensureVideoTagsResizeObserver();
+          this.refreshTagPreferenceStates();
+        } else {
+          this.teardownVideoTagsResizeObserver();
+        }
         return;
       }
 
       this.cleanupVideoTags(root);
 
-      if (hasTags) {
+      let hasVisibleButtons = false;
+      if (normalized.length > 0) {
         const { root: strip } = renderTagPillStrip({
           document: root.ownerDocument || this.document,
           tags: normalized,
@@ -2819,13 +2836,119 @@ export class VideoModal {
 
         if (strip) {
           root.appendChild(strip);
+          trimTagPillStripToFit({ strip, container: root });
+
+          if (strip.querySelector("button[data-tag]")) {
+            hasVisibleButtons = true;
+          } else if (strip.parentNode === root) {
+            root.removeChild(strip);
+          }
         }
       }
 
-      this.toggleVideoTagsVisibility(hasTags);
+      this.toggleVideoTagsVisibility(hasVisibleButtons);
+      if (hasVisibleButtons) {
+        this.ensureVideoTagsResizeObserver();
+        this.refreshTagPreferenceStates();
+      } else {
+        this.teardownVideoTagsResizeObserver();
+      }
+    } else {
+      this.teardownVideoTagsResizeObserver();
     }
 
-    this.videoTagsData = Object.freeze([...normalized]);
+    const stored = Object.freeze([...normalized]);
+    this.videoTagsData = stored;
+    this.videoTagsSourceData = stored;
+  }
+
+  reflowVideoTags() {
+    if (!Array.isArray(this.videoTagsSourceData)) {
+      return;
+    }
+
+    if (this.videoTagsSourceData.length === 0) {
+      return;
+    }
+
+    this.renderVideoTags([...this.videoTagsSourceData], { force: true });
+  }
+
+  ensureVideoTagsResizeObserver() {
+    const root = this.videoTagsRoot;
+    if (!root) {
+      return;
+    }
+
+    const ResizeObserverCtor =
+      (this.window && this.window.ResizeObserver) ||
+      globalThis.ResizeObserver ||
+      null;
+    if (typeof ResizeObserverCtor !== "function") {
+      return;
+    }
+
+    if (!this.videoTagsResizeObserver) {
+      this.videoTagsResizeObserver = new ResizeObserverCtor(
+        this.handleVideoTagsResize,
+      );
+    } else if (typeof this.videoTagsResizeObserver.disconnect === "function") {
+      this.videoTagsResizeObserver.disconnect();
+    }
+
+    try {
+      this.videoTagsResizeObserver.observe(root);
+    } catch (error) {
+      // Ignore observer errors (e.g., observing a detached node).
+    }
+  }
+
+  teardownVideoTagsResizeObserver() {
+    if (this.videoTagsResizeObserver) {
+      try {
+        this.videoTagsResizeObserver.disconnect();
+      } catch (error) {
+        // Ignore teardown errors.
+      }
+    }
+    this.videoTagsResizeObserver = null;
+    this.videoTagsLastObservedWidth = 0;
+  }
+
+  handleVideoTagsResize(entries = []) {
+    if (!this.videoTagsRoot) {
+      return;
+    }
+
+    const entry =
+      Array.isArray(entries) && entries.length > 0
+        ? entries.find((item) => item?.target === this.videoTagsRoot) ||
+          entries[0]
+        : null;
+
+    const measuredWidthRaw = entry
+      ? entry.contentRect && typeof entry.contentRect.width === "number"
+        ? entry.contentRect.width
+        : typeof entry.contentBoxSize?.[0]?.inlineSize === "number"
+          ? entry.contentBoxSize[0].inlineSize
+          : this.videoTagsRoot.clientWidth || 0
+      : this.videoTagsRoot.clientWidth || 0;
+
+    const measuredWidth = Number.isFinite(measuredWidthRaw)
+      ? Math.max(0, Math.round(measuredWidthRaw))
+      : 0;
+
+    if (measuredWidth <= 0) {
+      this.videoTagsLastObservedWidth = 0;
+      return;
+    }
+
+    if (this.videoTagsLastObservedWidth === measuredWidth) {
+      return;
+    }
+
+    this.videoTagsLastObservedWidth = measuredWidth;
+    this.reflowVideoTags();
   }
 
   handleVideoTagActivate(tag, { event, button } = {}) {
