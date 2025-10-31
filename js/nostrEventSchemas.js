@@ -295,7 +295,7 @@ const BASE_SCHEMAS = {
   [NOTE_TYPES.SUBSCRIPTION_LIST]: {
     type: NOTE_TYPES.SUBSCRIPTION_LIST,
     label: "Subscription list",
-    kind: 30002,
+    kind: 30000,
     identifierTag: {
       name: "d",
       value: SUBSCRIPTION_LIST_IDENTIFIER,
@@ -1399,7 +1399,7 @@ export function buildSubscriptionListEvent({
   }
   appendSchemaTags(tags, schema);
   return {
-    kind: schema?.kind ?? 30002,
+    kind: schema?.kind ?? 30000,
     pubkey,
     created_at,
     tags,
