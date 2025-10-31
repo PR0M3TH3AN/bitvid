@@ -2354,9 +2354,7 @@
 
   /* Video modal tag strip */
   .video-modal__tags {
-    @apply -mx-1 flex gap-2 overflow-x-auto px-1;
-    scrollbar-gutter: stable both-edges;
-    overscroll-behavior-x: contain;
+    @apply -mx-1 flex gap-2 px-1;
   }
 
   .video-modal__similar .video-modal__tags {
