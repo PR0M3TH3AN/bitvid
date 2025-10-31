@@ -863,7 +863,7 @@ function isVideoCommentEvent(event, descriptor) {
   let hasIdentifierTag = !requiresRootIdentifierMatch;
   let hasDefinitionTag = !requiresAddressMatch;
   let hasEventTag = !requiresEventMatch;
-  let hasParentTag = !requiresParentTag;
+  let hasParentTag = false;
 
   const expectedRootKind = (() => {
     if (typeof targetDescriptor.rootKind === "string") {
@@ -985,7 +985,11 @@ function isVideoCommentEvent(event, descriptor) {
     }
   }
 
-  if (!hasIdentifierTag || !hasDefinitionTag || !hasEventTag || !hasParentTag) {
+  if (!hasIdentifierTag || !hasDefinitionTag || !hasEventTag) {
+    return false;
+  }
+
+  if (requiresParentTag && !hasParentTag) {
     return false;
   }
 
