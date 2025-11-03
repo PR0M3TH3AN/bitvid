@@ -48,6 +48,7 @@ export default class VideoModalCommentController {
     };
 
     this.callbacks = {
+async loadComments(retryCount = 0) {\n    if (!FEATURE_IMPROVED_COMMENT_FETCHING) {\n      // Fallback to existing sub-only\n      this.subscription = subscribeVideoComments(this.client, this.videoTarget, {\n        onEvent: (event) => this.addComment(event),\n      });\n      return;\n    }\n\n    try {\n      const options = { since: 0, limit: 100 };  // Full history, cap for perf\n      const comments = await listVideoComments(this.client, this.videoTarget, options);\n      devLogger.info(`Loaded ${comments.length} comments for video; filters applied.`, options);\n      this.renderCommentThread(comments);\n\n      // Subscribe for live updates\n      this.subscription = subscribeVideoComments(this.client, this.videoTarget, {\n        onEvent: (event) => this.addComment(event),\n      });\n\n      // Retry if low count (e.g., async propagation)\n      if (comments.length < 5 && retryCount < 3) {  // Threshold heuristic\n        setTimeout(() => this.loadComments(retryCount + 1), 2000);\n      }\n    } catch (error) {\n      devLogger.warn('[comments] Failed to load comments:', error);\n      // Fallback sub\n      this.subscription = subscribeVideoComments(this.client, this.videoTarget, { onEvent: (event) => this.addComment(event) });\n    }\n  }
       showError:
         typeof callbacks.showError === "function"
           ? (message) => callbacks.showError(message)
