@@ -659,6 +659,8 @@ export function buildRepostEvent({
   additionalTags = [],
   repostKind,
   targetKind,
+  targetEvent = null,
+  serializedEvent = "",
 }) {
   const schema = getNostrEventSchema(NOTE_TYPES.REPOST);
   const tags = [];
@@ -722,12 +724,45 @@ export function buildRepostEvent({
     tags.push(["k", String(normalizedTargetKind)]);
   }
 
+  const normalizedSerializedEvent =
+    typeof serializedEvent === "string" ? serializedEvent : "";
+  let normalizedTargetEvent =
+    targetEvent && typeof targetEvent === "object" ? targetEvent : null;
+
+  if (!normalizedTargetEvent && normalizedSerializedEvent) {
+    try {
+      normalizedTargetEvent = JSON.parse(normalizedSerializedEvent);
+    } catch (error) {
+      void error;
+    }
+  }
+
+  const hasProtectedTag = Array.isArray(normalizedTargetEvent?.tags)
+    ? normalizedTargetEvent.tags.some(
+        (tag) => Array.isArray(tag) && tag.length && tag[0] === "-",
+      )
+    : false;
+
+  let content = "";
+
+  if (!hasProtectedTag) {
+    if (normalizedSerializedEvent) {
+      content = normalizedSerializedEvent;
+    } else if (normalizedTargetEvent) {
+      try {
+        content = JSON.stringify(normalizedTargetEvent);
+      } catch (error) {
+        void error;
+      }
+    }
+  }
+
   return {
     kind: resolvedKind,
     pubkey,
     created_at,
     tags,
-    content: "",
+    content,
   };
 }
 

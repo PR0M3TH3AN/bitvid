@@ -521,6 +521,21 @@ export async function repostEvent({
   const cachedVideo = client?.allEvents?.get(normalizedId) || null;
   const cachedRaw = client?.rawEvents?.get(normalizedId) || null;
   let resolvedRawEvent = cachedRaw;
+  const serializeEvent = (event) => {
+    if (!event || typeof event !== "object") {
+      return "";
+    }
+    try {
+      return JSON.stringify(event);
+    } catch (error) {
+      devLogger.warn(
+        `[nostr] Failed to serialize repost target ${normalizedId}`,
+        error,
+      );
+      return "";
+    }
+  };
+  let serializedSourceEvent = serializeEvent(resolvedRawEvent);
 
   let authorPubkey =
     typeof options.authorPubkey === "string" && options.authorPubkey.trim()
@@ -789,6 +804,7 @@ export async function repostEvent({
           });
           if (fetched) {
             resolvedRawEvent = fetched;
+            serializedSourceEvent = serializeEvent(fetched);
           }
         } catch (error) {
           devLogger.warn(
@@ -807,6 +823,10 @@ export async function repostEvent({
         break;
       }
     }
+  }
+
+  if (resolvedRawEvent && !serializedSourceEvent) {
+    serializedSourceEvent = serializeEvent(resolvedRawEvent);
   }
 
   if (resolvedRawEvent && !eventRelay) {
@@ -893,6 +913,8 @@ export async function repostEvent({
     additionalTags,
     repostKind,
     targetKind,
+    targetEvent: resolvedRawEvent,
+    serializedEvent: serializedSourceEvent,
   });
 
   try {
@@ -924,6 +946,10 @@ export async function repostEvent({
       normalizedSigner !== normalizedLogged &&
       normalizedSigner === sessionPubkey;
 
+    const sourceInfo = serializedSourceEvent
+      ? { raw: resolvedRawEvent, serialized: serializedSourceEvent }
+      : null;
+
     return {
       ok: true,
       event: signedEvent,
@@ -931,6 +957,7 @@ export async function repostEvent({
       relays,
       sessionActor: usedSessionActor,
       signerPubkey,
+      source: sourceInfo,
     };
   } catch (error) {
     devLogger.warn("[nostr] Repost publish failed:", error);
