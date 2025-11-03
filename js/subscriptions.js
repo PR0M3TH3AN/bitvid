@@ -14,7 +14,9 @@ import {
 import { DEFAULT_RELAY_URLS } from "./nostr/toolkit.js";
 import {
   buildSubscriptionListEvent,
-  SUBSCRIPTION_LIST_IDENTIFIER
+  SUBSCRIPTION_LIST_IDENTIFIER,
+  getNostrEventSchema,
+  NOTE_TYPES,
 } from "./nostrEventSchemas.js";
 import { getSidebarLoadingMarkup } from "./sidebarLoading.js";
 import {
@@ -27,6 +29,10 @@ import { ALLOW_NSFW_CONTENT } from "./config.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import moderationService from "./services/moderationService.js";
 import nostrService from "./services/nostrService.js";
+
+const SUBSCRIPTION_SET_KIND =
+  getNostrEventSchema(NOTE_TYPES.SUBSCRIPTION_LIST)?.kind ?? 30000;
+const LEGACY_SUBSCRIPTION_SET_KIND = 30002;
 
 function normalizeHexPubkey(value) {
   if (typeof value !== "string") {
@@ -210,7 +216,7 @@ const subscribeVideoViewEventsApi = (pointer, options) =>
   subscribeVideoViewEvents(nostrClient, pointer, options);
 
 /**
- * Manages the user's subscription list (kind=30002) *privately*,
+ * Manages the user's subscription list (kind=30000 follow set) *privately*,
  * using encrypted NIP-51 tag arrays (NIP-04/NIP-44) for the content field.
  * Also handles fetching and rendering subscribed channels' videos
  * in the same card style as your home page.
@@ -234,7 +240,7 @@ class SubscriptionsManager {
   }
 
   /**
-   * Decrypt the subscription list from kind=30002 (d="subscriptions").
+   * Decrypt the subscription list from kind=30000 (d="subscriptions").
    */
   async loadSubscriptions(userPubkey) {
     if (!userPubkey) {
@@ -260,8 +266,13 @@ class SubscriptionsManager {
         authors.push(userPubkey);
       }
 
+      const subscriptionKinds = [SUBSCRIPTION_SET_KIND];
+      if (!subscriptionKinds.includes(LEGACY_SUBSCRIPTION_SET_KIND)) {
+        subscriptionKinds.push(LEGACY_SUBSCRIPTION_SET_KIND);
+      }
+
       const filter = {
-        kinds: [30002],
+        kinds: subscriptionKinds,
         authors,
         "#d": [SUBSCRIPTION_LIST_IDENTIFIER],
         limit: 1
@@ -566,7 +577,7 @@ class SubscriptionsManager {
 
   /**
    * Encrypt (NIP-04) + publish the updated subscription set
-   * as kind=30002 with ["d", "subscriptions"] to be replaceable.
+   * as kind=30000 with ["d", "subscriptions"] to be replaceable.
    */
   async publishSubscriptionList(userPubkey) {
     if (!userPubkey) {

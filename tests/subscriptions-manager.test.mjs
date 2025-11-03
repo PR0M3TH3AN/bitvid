@@ -8,6 +8,7 @@ import { subscriptions } from "../js/subscriptions.js";
 import { setApplication } from "../js/applicationContext.js";
 import nostrService from "../js/services/nostrService.js";
 import moderationService from "../js/services/moderationService.js";
+import { getNostrEventSchema, NOTE_TYPES } from "../js/nostrEventSchemas.js";
 
 test("loadSubscriptions aggregates relay results when one rejects", async () => {
   const SubscriptionsManager = subscriptions.constructor;
@@ -55,7 +56,7 @@ test("loadSubscriptions aggregates relay results when one rejects", async () => 
 
   const listCalls = [];
   nostrClient.pool = {
-    list(urls) {
+    list(urls, _filters) {
       const url = Array.isArray(urls) ? urls[0] : urls;
       listCalls.push(url);
       if (url === "wss://relay-b.example") {
@@ -112,6 +113,83 @@ test("loadSubscriptions aggregates relay results when one rejects", async () => 
       assert.ok(
         listCalls.includes(url),
         `loadSubscriptions should query relay ${url}`,
+      );
+    }
+  } finally {
+    nostrClient.relays = originalRelays;
+    nostrClient.writeRelays = originalWriteRelays;
+    nostrClient.pool = originalPool;
+    nostrClient.ensureExtensionPermissions = originalEnsurePermissions;
+    if (typeof originalWindowNostr === "undefined") {
+      delete globalThis.window.nostr;
+    } else {
+      globalThis.window.nostr = originalWindowNostr;
+    }
+    if (!hadWindow) {
+      delete globalThis.window;
+    }
+  }
+});
+
+test("loadSubscriptions queries legacy kind fallback for pre-migration events", async () => {
+  const SubscriptionsManager = subscriptions.constructor;
+  const manager = new SubscriptionsManager();
+
+  const originalRelays = Array.isArray(nostrClient.relays)
+    ? [...nostrClient.relays]
+    : nostrClient.relays;
+  const originalWriteRelays = Array.isArray(nostrClient.writeRelays)
+    ? [...nostrClient.writeRelays]
+    : nostrClient.writeRelays;
+  const originalPool = nostrClient.pool;
+  const originalEnsurePermissions = nostrClient.ensureExtensionPermissions;
+
+  const hadWindow = typeof globalThis.window !== "undefined";
+  if (!hadWindow) {
+    globalThis.window = {};
+  }
+  const originalWindowNostr = globalThis.window.nostr;
+
+  const relayUrls = ["wss://relay-legacy.example"];
+  nostrClient.relays = relayUrls;
+  nostrClient.writeRelays = relayUrls;
+
+  const capturedFilters = [];
+  nostrClient.pool = {
+    list(urls, filters) {
+      const filterArray = Array.isArray(filters) ? filters : [];
+      if (filterArray.length) {
+        capturedFilters.push(filterArray[0]);
+      }
+      return Promise.resolve([]);
+    },
+  };
+
+  nostrClient.ensureExtensionPermissions = async () => ({ ok: true });
+
+  try {
+    await manager.loadSubscriptions("user-pubkey-legacy");
+
+    assert.ok(
+      capturedFilters.length > 0,
+      "loadSubscriptions should pass subscription filters to pool.list",
+    );
+
+    const schemaKind =
+      getNostrEventSchema(NOTE_TYPES.SUBSCRIPTION_LIST)?.kind ?? 30000;
+
+    for (const filter of capturedFilters) {
+      const kinds = Array.isArray(filter?.kinds) ? filter.kinds : [];
+      assert.ok(kinds.includes(schemaKind), "filter should include the active follow-set kind");
+      assert.ok(
+        kinds.includes(30002),
+        "filter should include the legacy kind for backwards compatibility",
+      );
+      const uniqueKinds = Array.from(new Set(kinds));
+      assert.equal(
+        kinds.length,
+        uniqueKinds.length,
+        "filter kinds should not contain duplicate entries",
       );
     }
   } finally {
