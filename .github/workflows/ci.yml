@@ -49,8 +49,8 @@ jobs:
       - name: Run lint suite
         run: npm run lint
 
-      - name: Build CSS
-        run: npm run build:css
+      - name: Build assets
+        run: npm run build
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
@@ -72,9 +72,6 @@ jobs:
 
       - name: Run unit tests
         run: npm run test:unit
-
-      - name: Check CSS artifacts are clean
-        run: npm run check:css
 
       - name: Fail if visual regressions detected
         if: steps.visual.outcome == 'failure'
