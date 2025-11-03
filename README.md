@@ -132,8 +132,7 @@ package scripts to keep formatting, linting, and generated output consistent:
   ```bash
   npm run format    # normalize CSS/HTML/JS/MD sources with Prettier + tailwindcss plugin
   npm run lint:css  # enforce design token usage and guard against raw hex colors
-  npm run build:css # rebuild css/tailwind.generated.css from tailwind.source.css
-  npm run check:css # fail CI if tailwind.generated.css is out of date
+  npm run build     # rebuild css/tailwind.generated.css from tailwind.source.css
   ```
 
 - **No hard-coded colors:** Follow the token-first rules in `AGENTS.md`—reach
@@ -147,10 +146,9 @@ npm run format            # format CSS/HTML/JS/MD with Prettier + tailwindcss pl
 npm run lint              # run CSS, hex color, inline-style, design-token, and Tailwind color/bracket guards in one pass
 npm run lint:css          # enforce token usage and forbid raw hex colors
 npm run lint:inline-styles # fail CI if inline style attributes or element.style usage slip in
-npm run build:css         # rebuild css/tailwind.generated.css from tailwind.source.css
+npm run build             # rebuild css/tailwind.generated.css from tailwind.source.css
 npm run build:beacon      # bundle torrent/dist assets and re-run the inline-style guard
 npm run build:beacon:bundle # bundle beacon assets without running the guard (rarely needed)
-npm run check:css         # CI-friendly guard that fails if tailwind.generated.css is dirty
 ```
 
 #### Admin runbook: regenerate Tailwind styles
@@ -164,20 +162,16 @@ Run these commands from the repo root:
    npm install
    ```
 
-2. Rebuild the Tailwind bundle:
+2. Rebuild the Tailwind bundle (the output is gitignored and regenerated
+   automatically in CI/deploys):
 
    ```bash
-   npm run build:css
+   npm run build
    ```
 
-3. Optional: confirm the generated file is committed and up to date.
-
-   ```bash
-   npm run check:css
-   ```
-
-4. Commit the updated `css/tailwind.generated.css` alongside any HTML/JS edits
-   that rely on the new utilities so deploys pick up the refreshed styles.
+Commit only the source changes (e.g., updates in `css/tailwind.source.css` or
+token files); the generated stylesheet is produced on demand during local
+development and by CI/deploy automation.
 
 Inline styles are intentionally blocked. `npm run lint:inline-styles` scans HTML
 and scripts for `style=` attributes, `element.style`, or `style.cssText` usage
@@ -327,8 +321,9 @@ placeholder at “—” and development builds log a warning—so mixed deploym
 ## Testing
 
 Continuous integration runs CSS linting/builds, the Playwright kitchen-sink snapshots, and the Node-based unit tests on every push.
-Before pushing, run `npm run check:css` locally so `css/tailwind.generated.css` stays clean. Pair that with `npm run test:unit` for
-application logic changes and `npm run test:visual` for presentation updates to mirror the CI surface area.
+Before pushing, run `npm run build` locally so the Tailwind bundle regenerates.
+Pair that with `npm run test:unit` for application logic changes and
+`npm run test:visual` for presentation updates to mirror the CI surface area.
 
 ### Manual QA checklist
 

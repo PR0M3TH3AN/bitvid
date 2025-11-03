@@ -4,6 +4,7 @@
   "type": "module",
   "version": "1.0.0",
   "scripts": {
+    "build": "npm run build:css",
     "build:css": "npx tailwindcss -c tailwind.config.cjs -i css/tailwind.source.css -o css/tailwind.generated.css --minify",
     "build:beacon:bundle": "node scripts/build-beacon.mjs",
     "build:beacon": "npm run build:beacon:bundle && npm run lint:inline-styles",
@@ -16,9 +17,9 @@
     "lint:tokens": "node scripts/check-design-tokens.mjs --check=tokens",
     "lint:tailwind-brackets": "node scripts/check-design-tokens.mjs --check=brackets",
     "lint:tailwind-colors": "node scripts/check-tailwind-colors.mjs",
-    "check:css": "npm run build:css && git diff --exit-code -- css/tailwind.generated.css",
-    "test:visual": "npm run build:css && npx playwright test",
-    "test:visual:update": "npm run build:css && cross-env UPDATE_VISUAL_BASELINES=1 npx playwright test",
+    "check:css": "npm run build:css",
+    "test:visual": "npm run build && npx playwright test",
+    "test:visual:update": "npm run build && cross-env UPDATE_VISUAL_BASELINES=1 npx playwright test",
     "test:unit": "node scripts/run-unit-tests.mjs"
   },
   "devDependencies": {
