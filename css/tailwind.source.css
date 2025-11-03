@@ -2340,12 +2340,19 @@
   @media (min-width: theme("screens.lg")) {
     .video-modal__video {
       position: sticky;
-      top: calc(var(--space-2xl) + var(--space-xl));
+      top: calc(var(--space-2xl) + var(--space-3xl));
+      z-index: 1;
     }
 
     .video-modal__status {
       flex-basis: clamp(var(--space-xl), 25%, var(--space-3xl));
       max-width: clamp(var(--space-xl), 25%, var(--space-3xl));
+    }
+
+    .video-modal__details {
+      position: relative;
+      z-index: 2;
+      margin-top: var(--space-lg);
     }
   }
 
