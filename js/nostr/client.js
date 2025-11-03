@@ -3727,8 +3727,6 @@ export class NostrClient {
     const subscription = this.pool.sub(relaysToUse, filters);
     const seenIds = new Set();
 
-    const contextPromise = this.buildDmDecryptContext(actorPubkeyInput);
-
     subscription.on("event", (event) => {
       if (!event || typeof event !== "object") {
         return;
@@ -3754,9 +3752,14 @@ export class NostrClient {
         return;
       }
 
-      contextPromise
-        .then((context) => {
+      (async () => {
+        try {
+          const contextPromise = this.getCurrentDmDecryptContextPromise(actorPubkeyInput);
+          const context = await contextPromise;
+
           if (!context.decryptors.length) {
+            this.refreshDmDecryptContext(actorPubkeyInput);
+
             if (typeof options.onFailure === "function") {
               options.onFailure(
                 { ok: false, event },
@@ -3766,39 +3769,31 @@ export class NostrClient {
             return;
           }
 
-          return this.decryptDirectMessageEvent(event, {
+          const result = await this.decryptDirectMessageEvent(event, {
             actorPubkey: context.actorPubkey || actorPubkeyInput,
-          })
-            .then((result) => {
-              if (result?.ok) {
-                if (typeof options.onMessage === "function") {
-                  options.onMessage(result, { event });
-                }
-              } else if (typeof options.onFailure === "function") {
-                options.onFailure(result, { event });
-              }
-            })
-            .catch((error) => {
-              if (typeof options.onError === "function") {
-                options.onError(error, { event });
-              } else {
-                devLogger.warn(
-                  "[nostr] Failed to decrypt DM event from subscription.",
-                  {
-                    error,
-                    id: eventId,
-                  },
-                );
-              }
-            });
-        })
-        .catch((error) => {
+          });
+
+          if (result?.ok) {
+            if (typeof options.onMessage === "function") {
+              options.onMessage(result, { event });
+            }
+          } else if (typeof options.onFailure === "function") {
+            options.onFailure(result, { event });
+          }
+        } catch (error) {
           if (typeof options.onError === "function") {
             options.onError(error, { event });
           } else {
-            devLogger.warn("[nostr] Failed to prepare DM decrypt context.", error);
+            devLogger.warn(
+              "[nostr] Failed to decrypt DM event from subscription.",
+              {
+                error,
+                id: eventId,
+              },
+            );
           }
-        });
+        }
+      })();
     });
 
     if (typeof options.onEose === "function") {
@@ -3822,6 +3817,41 @@ export class NostrClient {
     };
 
     return subscription;
+  }
+
+  getCurrentDmDecryptContextPromise(actorPubkeyInput = null) {
+    const normalizedActor = normalizeActorKey(actorPubkeyInput);
+    const cacheKey = normalizedActor || 'default';
+
+    if (!this.dmDecryptContextCache) {
+      this.dmDecryptContextCache = new Map();
+    }
+
+    let promise = this.dmDecryptContextCache.get(cacheKey);
+    if (!promise) {
+      promise = this.buildDmDecryptContext(actorPubkeyInput);
+      this.dmDecryptContextCache.set(cacheKey, promise);
+    }
+
+    return promise;
+  }
+
+  refreshDmDecryptContext(actorPubkeyInput = null) {
+    const normalizedActor = normalizeActorKey(actorPubkeyInput);
+    const cacheKey = normalizedActor || 'default';
+
+    if (!this.dmDecryptContextCache) {
+      this.dmDecryptContextCache = new Map();
+    }
+
+    if (this.dmDecryptContextCache.has(cacheKey)) {
+      this.dmDecryptContextCache.delete(cacheKey);
+    }
+
+    const newPromise = this.buildDmDecryptContext(actorPubkeyInput);
+    this.dmDecryptContextCache.set(cacheKey, newPromise);
+
+    return newPromise;
   }
 
   async sendDirectMessage(targetNpub, message, actorPubkeyOverride = null) {
