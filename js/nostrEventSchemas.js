@@ -1161,14 +1161,7 @@ export function buildCommentEvent({
   }
 
   const shouldAppendVideoEventTag =
-    Boolean(videoEventTagName) &&
-    Boolean(normalizedVideoEventId) &&
-    !tags.some(
-      (tag) =>
-        Array.isArray(tag) &&
-        tag[0] === videoEventTagName &&
-        tag[1] === normalizedVideoEventId,
-    );
+    Boolean(videoEventTagName) && Boolean(normalizedVideoEventId);
 
   if (shouldAppendVideoEventTag) {
     appendPointerTag(
