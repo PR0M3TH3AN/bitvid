@@ -2334,6 +2334,11 @@
       position: sticky;
       top: calc(var(--space-2xl) + var(--space-xl));
     }
+
+    .video-modal__status {
+      flex-basis: clamp(var(--space-xl), 25%, var(--space-3xl));
+      max-width: clamp(var(--space-xl), 25%, var(--space-3xl));
+    }
   }
 
   #playerModal .video-modal__video video {
