@@ -228,6 +228,92 @@ await (async function testRepostEventFailsWhenRelayMissing() {
   assert.ok(Array.isArray(result.details?.relays));
 })();
 
+await (async function testRepostEventSerializesKindOneTargetsWhenSourceAvailable() {
+  const eventId = "repost-kind1-content";
+  const authorPubkey = "d".repeat(64);
+  const sessionPubkey = "f".repeat(64);
+  const { client } = createPublishClient({ sessionPubkey });
+
+  const rawEvent = {
+    id: eventId,
+    pubkey: authorPubkey,
+    created_at: 1_700_000_100,
+    kind: 1,
+    tags: [],
+    content: "hello from kind1",
+  };
+
+  client.rawEvents.set(eventId, rawEvent);
+
+  const result = await repostEvent({
+    client,
+    eventId,
+    options: {
+      pointer: ["e", eventId, "wss://origin"],
+      authorPubkey,
+    },
+    resolveActiveSigner: resolveActiveSignerStub,
+    shouldRequestExtensionPermissions: shouldRequestExtensionPermissionsStub,
+    signEventWithPrivateKey: signEventWithPrivateKeyStub,
+    eventToAddressPointer: eventToAddressPointerStub,
+  });
+
+  assert.equal(result.ok, true);
+  const expectedContent = JSON.stringify(rawEvent);
+  assert.equal(result.event?.kind, 6);
+  assert.equal(result.event?.content, expectedContent);
+  assert.equal(result.source?.serialized, expectedContent);
+  assert.equal(result.source?.raw, rawEvent);
+})();
+
+await (async function testRepostEventSerializesGenericTargetsWhenSourceAvailable() {
+  const eventId = "repost-kind30078-content";
+  const authorPubkey = "e".repeat(64);
+  const sessionPubkey = "g".repeat(64);
+  const { client } = createPublishClient({ sessionPubkey });
+
+  const identifier = "video-identifier";
+  const rawEvent = {
+    id: eventId,
+    pubkey: authorPubkey,
+    created_at: 1_700_000_200,
+    kind: 30078,
+    tags: [["d", identifier]],
+    content: JSON.stringify({ version: 3, title: "Demo" }),
+  };
+
+  client.rawEvents.set(eventId, rawEvent);
+
+  const address = `30078:${authorPubkey}:${identifier}`;
+
+  const result = await repostEvent({
+    client,
+    eventId,
+    options: {
+      pointer: ["e", eventId, "wss://origin"],
+      authorPubkey,
+      address,
+      addressRelay: "wss://origin",
+    },
+    resolveActiveSigner: resolveActiveSignerStub,
+    shouldRequestExtensionPermissions: shouldRequestExtensionPermissionsStub,
+    signEventWithPrivateKey: signEventWithPrivateKeyStub,
+    eventToAddressPointer: eventToAddressPointerStub,
+  });
+
+  assert.equal(result.ok, true);
+  const expectedContent = JSON.stringify(rawEvent);
+  assert.equal(result.event?.kind, 16);
+  assert.equal(result.event?.content, expectedContent);
+  assert.equal(result.source?.serialized, expectedContent);
+  assert.equal(result.source?.raw, rawEvent);
+
+  const kTag = result.event?.tags?.find(
+    (tag) => Array.isArray(tag) && tag[0] === "k",
+  );
+  assert.deepEqual(kTag, ["k", String(rawEvent.kind)]);
+})();
+
 await (async function testMirrorEventIncludesHostedMetadata() {
   const eventId = "mirror-event";
   const actorPubkey = "1".repeat(64);
