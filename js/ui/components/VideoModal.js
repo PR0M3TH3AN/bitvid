@@ -2594,6 +2594,19 @@ export class VideoModal {
       return;
     }
 
+    // Ensure title element reference is available
+    if (!this.videoTitle) {
+      this.videoTitle = this.playerModal.querySelector("#videoTitle") || null;
+    }
+    // Set title immediately when opening if video has a title
+    if (this.videoTitle && video && typeof video.title === "string" && video.title.trim()) {
+      this.videoTitle.textContent = video.title.trim();
+      this.videoTitle.hidden = false;
+    } else if (this.videoTitle) {
+      this.videoTitle.textContent = "Untitled";
+      this.videoTitle.hidden = false;
+    }
+
     this.resetReactions();
 
     this.playerModal.classList.remove("hidden");
@@ -3927,8 +3940,35 @@ export class VideoModal {
     creator,
     tags,
   } = {}) {
-    if (this.videoTitle && title !== undefined) {
-      this.videoTitle.textContent = title || "Untitled";
+    if (title !== undefined) {
+      // Try to find the title element if not already cached
+      if (!this.videoTitle) {
+        if (this.playerModal) {
+          this.videoTitle = this.playerModal.querySelector("#videoTitle") || null;
+        }
+        // Fallback: try document query if playerModal query failed
+        if (!this.videoTitle) {
+          this.videoTitle = this.document.getElementById("videoTitle") || null;
+        }
+      }
+      if (this.videoTitle) {
+        const titleText =
+          typeof title === "string" && title.trim()
+            ? title.trim()
+            : "Untitled";
+        this.videoTitle.textContent = titleText;
+        // Ensure element is visible
+        this.videoTitle.hidden = false;
+        if (this.videoTitle.style) {
+          this.videoTitle.style.display = "";
+        }
+      } else {
+        // Log for debugging if element cannot be found
+        this.logger?.log?.(
+          "[VideoModal] Could not find #videoTitle element to set title:",
+          title
+        );
+      }
     }
     if (this.videoDescription && description !== undefined) {
       this.renderVideoDescription(description);

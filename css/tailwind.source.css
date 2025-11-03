@@ -1625,6 +1625,16 @@
     font-weight: 600;
     line-height: 1.3;
     color: var(--color-text);
+    min-width: 0;
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
+
+  @media (min-width: theme("screens.lg")) {
+    .video-modal__headline .video-modal__title {
+      flex: 1 1 0%;
+      min-width: 0;
+    }
   }
 
   #playerModal .modal-meta {
