@@ -246,6 +246,69 @@ test(
 );
 
 test(
+  "VideoModalCommentController falls back to thread pointer when video tags are absent",
+  async () => {
+    const publishCalls = [];
+
+    const controller = new VideoModalCommentController({
+      commentThreadService: {
+        setCallbacks: () => {},
+        teardown: () => {},
+        defaultLimit: 10,
+        loadThread: () => Promise.resolve(),
+        processIncomingEvent: () => {},
+      },
+      videoModal: {
+        setCommentSectionCallbacks: () => {},
+        hideCommentsDisabledMessage: () => {},
+        showCommentsDisabledMessage: () => {},
+        setCommentsVisibility: () => {},
+        clearComments: () => {},
+        resetCommentComposer: () => {},
+        setCommentStatus: () => {},
+        setCommentComposerState: () => {},
+      },
+      auth: {
+        isLoggedIn: () => true,
+      },
+      services: {
+        publishComment: async (payload) => {
+          publishCalls.push(payload);
+          return { ok: true, event: { id: "comment", tags: [] } };
+        },
+      },
+      utils: {
+        normalizeHexPubkey: (value) => value,
+      },
+    });
+
+    const video = {
+      id: "video456",
+      pubkey: "AUTHORPK",
+      enableComments: true,
+      kind: 30078,
+      // No tags provided; buildVideoAddressPointer should return an empty string.
+    };
+
+    controller.load(video);
+    controller.modalCommentState.videoDefinitionAddress =
+      " 30078:AUTHORPK:video-root ";
+
+    controller.submit({ text: "Fallback pointer" });
+
+    await controller.modalCommentPublishPromise;
+
+    assert.equal(publishCalls.length, 1);
+    const payload = publishCalls[0];
+    assert.equal(
+      payload.videoDefinitionAddress,
+      "30078:AUTHORPK:video-root",
+      "publish payload should reuse pointer from the loaded thread",
+    );
+  },
+);
+
+test(
   "VideoModalCommentController publishes comment using event id fallback",
   async () => {
     const publishCalls = [];

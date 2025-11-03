@@ -144,7 +144,12 @@ export default class VideoModalCommentController {
     }
 
     const videoEventId = normalizeString(video.id);
-    const videoDefinitionAddress = buildVideoAddressPointer(video);
+    let videoDefinitionAddress = buildVideoAddressPointer(video);
+    if (!videoDefinitionAddress && this.modalCommentState.videoDefinitionAddress) {
+      videoDefinitionAddress = normalizeString(
+        this.modalCommentState.videoDefinitionAddress,
+      );
+    }
     const videoKind = normalizeKind(video.kind);
     const videoAuthorPubkey = normalizeString(video.pubkey);
 
@@ -544,7 +549,12 @@ export default class VideoModalCommentController {
     }
 
     const videoEventId = normalizeString(video.id);
-    const videoDefinitionAddress = buildVideoAddressPointer(video);
+    let videoDefinitionAddress = buildVideoAddressPointer(video);
+    if (!videoDefinitionAddress && this.modalCommentState.videoDefinitionAddress) {
+      videoDefinitionAddress = normalizeString(
+        this.modalCommentState.videoDefinitionAddress,
+      );
+    }
     const videoKind =
       this.modalCommentState.videoKind || normalizeKind(video.kind);
     const videoAuthorPubkey =
