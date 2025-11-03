@@ -1632,7 +1632,15 @@
 
   @media (min-width: theme("screens.lg")) {
     .video-modal__headline #videoTitle.video-modal__title {
-      flex: 1 1 auto;
+      flex: 1 1 0%;
+      min-width: 0;
+      max-width: calc(100% - var(--space-3xl) - var(--space-md));
+    }
+
+    .video-modal__headline .video-modal__status {
+      flex: 0 0 auto;
+      max-width: clamp(var(--space-xl), 25%, var(--space-3xl));
+      margin-left: auto;
     }
   }
 
