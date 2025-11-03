@@ -62,6 +62,24 @@ test(
       }),
     };
 
+    assert.ok(
+      topLevelEvent.tags.some(
+        (tag) =>
+          Array.isArray(tag) &&
+          tag[0] === "e" &&
+          tag[1] === videoEventId &&
+          tag[2] === relayUrl,
+      ),
+      "builder should retain legacy #e tag for the root event when address pointer is present",
+    );
+    assert.ok(
+      topLevelEvent.tags.some(
+        (tag) =>
+          Array.isArray(tag) && tag[0] === "a" && tag[1] === videoDefinitionAddress,
+      ),
+      "builder should include #a pointer for the scoped video definition",
+    );
+
     const replyEvent = {
       id: replyCommentId,
       ...buildCommentEvent({
@@ -80,6 +98,24 @@ test(
         parentAuthorPubkey: "commenterpk",
       }),
     };
+
+    assert.ok(
+      replyEvent.tags.some(
+        (tag) =>
+          Array.isArray(tag) &&
+          tag[0] === "e" &&
+          tag[1] === videoEventId &&
+          tag[2] === relayUrl,
+      ),
+      "reply builder should include root #e tag alongside #a pointer",
+    );
+    assert.ok(
+      replyEvent.tags.some(
+        (tag) =>
+          Array.isArray(tag) && tag[0] === "a" && tag[1] === videoDefinitionAddress,
+      ),
+      "reply builder should preserve #a pointer",
+    );
 
     const listCalls = [];
     const client = {
