@@ -1632,7 +1632,7 @@
 
   @media (min-width: theme("screens.lg")) {
     .video-modal__headline .video-modal__title {
-      flex: 1 1 0%;
+      flex: 1 1 auto;
       min-width: 0;
     }
   }
