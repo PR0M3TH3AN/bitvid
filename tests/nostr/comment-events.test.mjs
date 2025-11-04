@@ -6,7 +6,10 @@ import {
   publishComment,
   listVideoComments,
   subscribeVideoComments,
+  __testExports,
 } from "../../js/nostr/commentEvents.js";
+
+const { normalizeCommentTarget, isVideoCommentEvent } = __testExports;
 
 function createMockClient({
   actorPubkey = "actor-pubkey",
@@ -279,6 +282,39 @@ test("listVideoComments matches comments even when tag casing and whitespace dif
     isVideoCommentEvent(mismatchedEvent, normalizedDescriptor),
     true,
     "isVideoCommentEvent should treat tag casing and whitespace as insignificant",
+  );
+});
+
+test("listVideoComments matches uppercase definition addresses without lowering", async () => {
+  const uppercasePointer = "30078:AUTHOR:Clip42";
+  const matchingEvent = {
+    id: "uppercase-comment",
+    kind: COMMENT_EVENT_KIND,
+    created_at: 1700000400,
+    tags: [
+      ["A", uppercasePointer],
+      ["e", "video-1"],
+    ],
+  };
+
+  const { client, pool } = createMockClient();
+  pool.list = async () => [[matchingEvent]];
+
+  const descriptorInput = {
+    videoEventId: "video-1",
+    videoDefinitionAddress: uppercasePointer,
+  };
+
+  const events = await listVideoComments(client, descriptorInput);
+  assert.equal(events.length, 1, "uppercase pointer should still match");
+  assert.equal(events[0].id, "uppercase-comment", "matched event should be returned");
+
+  const normalizedDescriptor = normalizeCommentTarget(descriptorInput);
+  assert.ok(normalizedDescriptor, "normalizeCommentTarget should produce a descriptor");
+  assert.equal(
+    isVideoCommentEvent(matchingEvent, normalizedDescriptor),
+    true,
+    "isVideoCommentEvent should respect descriptor casing for definition pointers",
   );
 });
 test("listVideoComments matches comments even when tag casing and whitespace differ", async () => {
