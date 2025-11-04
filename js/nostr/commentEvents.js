@@ -118,6 +118,25 @@ function normalizePointerCandidate(candidate, expectedType) {
       };
     }
     if (
+      expectedType === "a" &&
+      typeof candidate.address === "string" &&
+      candidate.address.trim()
+    ) {
+      return {
+        value: candidate.address.trim(),
+        relay: normalizeRelay(candidate),
+      };
+    }
+    if (candidate.tag) {
+      return normalizePointerCandidate(candidate.tag, expectedType);
+    }
+    if (candidate.pointer) {
+      return normalizePointerCandidate(candidate.pointer, expectedType);
+    }
+  }
+
+  return null;
+}
 
 function normalizeTagName(name) {
   return typeof name === "string" ? name.trim().toLowerCase() : "";
@@ -161,26 +180,6 @@ function normalizeDescriptorRelay(value) {
   return "";
 }
 
-
-      expectedType === "a" &&
-      typeof candidate.address === "string" &&
-      candidate.address.trim()
-    ) {
-      return {
-        value: candidate.address.trim(),
-        relay: normalizeRelay(candidate),
-      };
-    }
-    if (candidate.tag) {
-      return normalizePointerCandidate(candidate.tag, expectedType);
-    }
-    if (candidate.pointer) {
-      return normalizePointerCandidate(candidate.pointer, expectedType);
-    }
-  }
-
-  return null;
-}
 
 function pickString(...candidates) {
   for (const candidate of candidates) {
