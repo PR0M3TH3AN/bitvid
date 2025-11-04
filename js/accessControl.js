@@ -147,7 +147,15 @@ class AccessControl {
 
   _hydrateFromCache() {
     this._hydratedFromCache = false;
-    const cachedState = readCachedAdminState();
+    let cachedState = null;
+    try {
+      cachedState = readCachedAdminState();
+    } catch (error) {
+      if (error && error.name === "ReferenceError") {
+        return;
+      }
+      throw error;
+    }
     if (cachedState) {
       this._applyState(cachedState, { markLoaded: false });
       this._hydratedFromCache = true;

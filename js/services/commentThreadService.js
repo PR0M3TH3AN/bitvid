@@ -3,10 +3,13 @@
 import { devLogger } from "../utils/logger.js";
 import { buildVideoAddressPointer } from "../utils/videoPointer.js";
 import { COMMENT_EVENT_KIND } from "../nostr/commentEvents.js";
+import { FEATURE_IMPROVED_COMMENT_FETCHING } from "../constants.js";
 
 const ROOT_PARENT_KEY = "__root__";
 const DEFAULT_INITIAL_LIMIT = 40;
 const DEFAULT_HYDRATION_DEBOUNCE_MS = 25;
+const COMMENT_CACHE_PREFIX = "bitvid:comments:";
+const COMMENT_CACHE_TTL_MS = 5 * 60 * 1000;
 
 function toPositiveInteger(value, fallback) {
   const numeric = Number(value);
@@ -200,7 +203,7 @@ export default class CommentThreadService {
 
     let events = [];
     try {
-      events = await this.fetchVideoComments(target, {
+      events = await this.fetchThread(target, {
         limit: fetchLimit,
         relays: this.activeRelays,
       });
@@ -228,6 +231,235 @@ export default class CommentThreadService {
     }
 
     return this.getSnapshot();
+  }
+
+  async fetchThread(target, options = {}) {
+    const fallbackFetch = async (overrideOptions = options) => {
+      if (typeof this.fetchVideoComments !== "function") {
+        return [];
+      }
+      return await this.fetchVideoComments(target, overrideOptions);
+    };
+
+    if (!FEATURE_IMPROVED_COMMENT_FETCHING) {
+      return fallbackFetch(options);
+    }
+
+    const targetCandidate =
+      target && typeof target === "object" ? target : {};
+    const videoEventId = normalizeString(
+      targetCandidate.videoEventId || targetCandidate.eventId,
+    );
+
+    if (!videoEventId) {
+      return fallbackFetch(options);
+    }
+
+    const cached = this.getCachedComments(videoEventId);
+    if (Array.isArray(cached)) {
+      return cached;
+    }
+
+    const fetchOptions = {
+      ...options,
+      since: 0,
+    };
+
+    if (Number.isFinite(options?.limit)) {
+      fetchOptions.limit = Math.max(
+        toPositiveInteger(options.limit, this.defaultLimit),
+        this.defaultLimit,
+      );
+    } else if (!Number.isFinite(fetchOptions.limit)) {
+      fetchOptions.limit = Math.max(this.defaultLimit, 100);
+    }
+
+    const comments = await fallbackFetch(fetchOptions);
+    this.cacheComments(videoEventId, comments);
+    return comments;
+  }
+
+  getCommentCacheKey(videoEventId) {
+    const normalized = normalizeString(videoEventId);
+    return normalized ? `${COMMENT_CACHE_PREFIX}${normalized}` : "";
+  }
+
+  getCachedComments(videoEventId) {
+    if (
+      !FEATURE_IMPROVED_COMMENT_FETCHING ||
+      typeof localStorage === "undefined"
+    ) {
+      return null;
+    }
+
+    const cacheKey = this.getCommentCacheKey(videoEventId);
+    if (!cacheKey) {
+      return null;
+    }
+
+    let raw = null;
+    try {
+      raw = localStorage.getItem(cacheKey);
+    } catch (error) {
+      if (this.logger?.warn) {
+        this.logger.warn(
+          `[commentThread] Failed to read cached comments for ${videoEventId}:`,
+          error,
+        );
+      }
+      return null;
+    }
+
+    if (raw === null) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") {
+        this.removeCommentCache(cacheKey);
+        return null;
+      }
+
+      const comments = Array.isArray(parsed.comments)
+        ? parsed.comments
+        : null;
+      const timestamp = Number(parsed.timestamp);
+
+      if (
+        Array.isArray(comments) &&
+        Number.isFinite(timestamp) &&
+        Date.now() - timestamp <= COMMENT_CACHE_TTL_MS
+      ) {
+        if (devLogger?.info) {
+          devLogger.info(
+            `[commentThread] Loaded ${comments.length} cached comments for ${videoEventId}.`,
+          );
+        }
+        return comments;
+      }
+
+      this.removeCommentCache(cacheKey);
+    } catch (error) {
+      if (this.logger?.warn) {
+        this.logger.warn(
+          `[commentThread] Failed to parse cached comments for ${videoEventId}:`,
+          error,
+        );
+      }
+      this.removeCommentCache(cacheKey);
+    }
+
+    return null;
+  }
+
+  cacheComments(videoEventId, comments) {
+    if (
+      !FEATURE_IMPROVED_COMMENT_FETCHING ||
+      typeof localStorage === "undefined" ||
+      !Array.isArray(comments)
+    ) {
+      return;
+    }
+
+    const cacheKey = this.getCommentCacheKey(videoEventId);
+    if (!cacheKey) {
+      return;
+    }
+
+    try {
+      localStorage.setItem(
+        cacheKey,
+        JSON.stringify({ comments, timestamp: Date.now() }),
+      );
+      if (devLogger?.info) {
+        devLogger.info(
+          `[commentThread] Cached ${comments.length} comments for ${videoEventId}.`,
+        );
+      }
+    } catch (error) {
+      if (this.logger?.warn) {
+        this.logger.warn(
+          `[commentThread] Failed to cache comments for ${videoEventId}:`,
+          error,
+        );
+      }
+    }
+  }
+
+  removeCommentCache(cacheKey) {
+    if (!cacheKey || typeof localStorage === "undefined") {
+      return;
+    }
+
+    try {
+      localStorage.removeItem(cacheKey);
+    } catch (error) {
+      if (this.logger?.warn) {
+        this.logger.warn(
+          `[commentThread] Failed to clear cached comments for ${cacheKey}:`,
+          error,
+        );
+      }
+    }
+  }
+
+  clearCommentCache(videoEventId = null) {
+    if (!FEATURE_IMPROVED_COMMENT_FETCHING || typeof localStorage === "undefined") {
+      return;
+    }
+
+    if (videoEventId) {
+      this.removeCommentCache(this.getCommentCacheKey(videoEventId));
+      return;
+    }
+
+    try {
+      const keys = Object.keys(localStorage);
+      keys
+        .filter((key) => key.startsWith(COMMENT_CACHE_PREFIX))
+        .forEach((key) => this.removeCommentCache(key));
+    } catch (error) {
+      if (this.logger?.warn) {
+        this.logger.warn(
+          "[commentThread] Failed to clear comment cache:",
+          error,
+        );
+      }
+    }
+  }
+
+  persistCommentCache() {
+    if (!FEATURE_IMPROVED_COMMENT_FETCHING || !this.videoEventId) {
+      return;
+    }
+
+    const comments = this.serializeCommentsForCache();
+    this.cacheComments(this.videoEventId, comments);
+  }
+
+  serializeCommentsForCache() {
+    const events = Array.from(this.eventsById.values());
+    return events.sort((a, b) => {
+      const aTime = Number.isFinite(a?.created_at) ? a.created_at : 0;
+      const bTime = Number.isFinite(b?.created_at) ? b.created_at : 0;
+      if (aTime !== bTime) {
+        return aTime - bTime;
+      }
+
+      const aId = normalizeString(a?.id);
+      const bId = normalizeString(b?.id);
+      if (aId && bId) {
+        return aId.localeCompare(bId);
+      }
+      if (aId) {
+        return -1;
+      }
+      if (bId) {
+        return 1;
+      }
+      return 0;
+    });
   }
 
   startSubscription(target) {
@@ -271,6 +503,11 @@ export default class CommentThreadService {
 
     if (!isInitial && result.type === "insert") {
       this.emitAppend(result);
+      return;
+    }
+
+    if (!isInitial && result.type === "update") {
+      this.persistCommentCache();
     }
   }
 
@@ -511,6 +748,7 @@ export default class CommentThreadService {
       profiles: this.getProfilesSnapshot(),
     };
     safeCall(this.callbacks.onThreadReady, payload);
+    this.persistCommentCache();
   }
 
   emitAppend({ parentId, eventId }) {
@@ -528,6 +766,7 @@ export default class CommentThreadService {
       profiles: this.getProfilesSnapshot(),
     };
     safeCall(this.callbacks.onCommentsAppended, payload);
+    this.persistCommentCache();
   }
 
   emitError(error) {
@@ -630,4 +869,3 @@ export default class CommentThreadService {
     this.resetInternalState();
   }
 }
-// New fetchThread with caching for improved persistence\n  async fetchThread(target, options = {}) {\n    if (!FEATURE_IMPROVED_COMMENT_FETCHING) {\n      return await this.fetchVideoComments(target, options);\n    }\n\n    const videoEventId = target.videoEventId || target.eventId;\n    if (!videoEventId) return [];\n\n    let comments = this.getCachedComments(videoEventId);\n    if (!comments) {\n      comments = await this.fetchVideoComments(target, { ...options, since: 0 });\n      this.cacheComments(videoEventId, comments);\n    }\n\n    devLogger.info(`Fetched ${comments.length} comments for ${videoEventId} (cached: ${!!this.getCachedComments(videoEventId)})`);\n    return comments;\n  }\n\n  getCachedComments(videoEventId) {\n    const cacheKey = `comments:${videoEventId}`;\n    const cached = localStorage.getItem(cacheKey);\n    if (!cached) return null;\n    try {\n      const { comments, timestamp } = JSON.parse(cached);\n      if (Date.now() - timestamp < 300000) {  // 5min TTL\n        devLogger.info(`Loaded cached comments for ${videoEventId}`);\n        return comments;\n      } else {\n        localStorage.removeItem(cacheKey);\n        devLogger.info(`Expired cache for ${videoEventId}`);\n      }\n    } catch (error) {\n      devLogger.warn('[cache] Invalid cached comments:', error);\n      localStorage.removeItem(cacheKey);\n    }\n    return null;\n  }\n\n  cacheComments(videoEventId, comments) {\n    const cacheKey = `comments:${videoEventId}`;\n    try {\n      localStorage.setItem(cacheKey, JSON.stringify({\n        comments,\n        timestamp: Date.now(),\n      }));\n      devLogger.info(`Cached ${comments.length} comments for ${videoEventId}`);\n    } catch (error) {\n      devLogger.warn('[cache] Failed to cache comments:', error);\n    }\n  }\n\n  // Flush cache on teardown (optional, for privacy)\n  clearCommentCache(videoEventId) {\n    if (videoEventId) {\n      localStorage.removeItem(`comments:${videoEventId}`);\n    } else {\n      Object.keys(localStorage).filter(key => key.startsWith('comments:')).forEach(key => localStorage.removeItem(key));\n    }\n    devLogger.info('Cleared comment cache');\n  }
