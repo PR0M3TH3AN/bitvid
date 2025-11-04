@@ -37,6 +37,56 @@ function createComment({
 
 const tick = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const originalLocalStorage = globalThis.localStorage;
+const originalWindowLocalStorage = globalThis.window?.localStorage;
+
+function createIsolatedLocalStorage() {
+  const store = new Map();
+  return {
+    getItem(key) {
+      return store.has(key) ? store.get(key) : null;
+    },
+    setItem(key, value) {
+      store.set(String(key), String(value));
+    },
+    removeItem(key) {
+      store.delete(String(key));
+    },
+    clear() {
+      store.clear();
+    },
+    key(index) {
+      return Array.from(store.keys())[index] ?? null;
+    },
+    get length() {
+      return store.size;
+    },
+  };
+}
+
+test.beforeEach(() => {
+  const stub = createIsolatedLocalStorage();
+  globalThis.localStorage = stub;
+  if (globalThis.window) {
+    globalThis.window.localStorage = stub;
+  }
+});
+
+test.after(() => {
+  if (originalLocalStorage) {
+    globalThis.localStorage = originalLocalStorage;
+  } else {
+    delete globalThis.localStorage;
+  }
+  if (globalThis.window) {
+    if (originalWindowLocalStorage) {
+      globalThis.window.localStorage = originalWindowLocalStorage;
+    } else {
+      delete globalThis.window.localStorage;
+    }
+  }
+});
+
 test(
   "listVideoComments accepts builder events without parent ids and filters replies",
   async () => {
@@ -242,10 +292,9 @@ test(
       videoAuthorPubkey: "authorpk",
       parentCommentId: "",
     });
-    assert.deepStrictEqual(lastFetchOptions, {
-      limit: service.defaultLimit,
-      relays: ["wss://relay.example"],
-    });
+    assert.equal(lastFetchOptions.limit, service.defaultLimit);
+    assert.deepStrictEqual(lastFetchOptions.relays, ["wss://relay.example"]);
+    assert.equal(lastFetchOptions.since, 0);
 
     assert.equal(subscribeCalls, 1, "subscribeVideoComments should be invoked");
     assert.deepStrictEqual(subscriptionTarget, lastFetchTarget);
@@ -383,10 +432,10 @@ test(
       "videoDefinitionAddress should be omitted when unavailable",
     );
 
-    assert.deepStrictEqual(fetchOptions[0], {
-      limit: service.defaultLimit,
-      relays: null,
-    });
+    const [firstFetchOptions] = fetchOptions;
+    assert.equal(firstFetchOptions.limit, service.defaultLimit);
+    assert.equal(firstFetchOptions.relays, null);
+    assert.equal(firstFetchOptions.since, 0);
 
     assert.equal(
       subscribeTargets.length,
@@ -405,6 +454,93 @@ test(
     assert.equal(snapshot.videoKind, "30078");
     assert.equal(snapshot.videoAuthorPubkey, "authorpk");
     assert.equal(snapshot.videoDefinitionAddress, null);
+  },
+);
+
+test(
+  "CommentThreadService preserves raw video author pubkeys during hydration fetches",
+  async () => {
+    const video = {
+      id: "video-upper",
+      pubkey: "AUTHORPK",
+      kind: 30078,
+      tags: [["d", "video-root-upper"]],
+    };
+
+    const videoDefinitionAddress = "30078:AUTHORPK:video-root-upper";
+    const pendingComment = {
+      id: "upper-comment-1",
+      ...buildCommentEvent({
+        pubkey: "commenter-upper",
+        created_at: 1700001200,
+        videoEventId: video.id,
+        videoDefinitionAddress,
+        rootIdentifier: "video-root-upper",
+        rootKind: "30078",
+        rootAuthorPubkey: video.pubkey,
+        content: "Uppercase hydration check",
+      }),
+    };
+
+    const fetchTargets = [];
+    let resolveFetch = () => {};
+    const fetchBlocker = new Promise((resolve) => {
+      resolveFetch = resolve;
+    });
+    const fetchVideoComments = async (target) => {
+      fetchTargets.push(target);
+      await fetchBlocker;
+      if (target.videoAuthorPubkey === video.pubkey) {
+        return [pendingComment];
+      }
+      return [];
+    };
+
+    const subscribeTargets = [];
+    const service = new CommentThreadService({
+      fetchVideoComments,
+      subscribeVideoComments: (target, _options = {}) => {
+        subscribeTargets.push(target);
+        return () => {};
+      },
+      hydrationDebounceMs: 0,
+    });
+
+    const loadPromise = service.loadThread({ video });
+    await tick();
+
+    assert.equal(fetchTargets.length, 1, "hydration fetch should start immediately");
+
+    service.processIncomingEvent(pendingComment);
+    resolveFetch();
+
+    const snapshot = await loadPromise;
+
+    assert.equal(
+      fetchTargets[0].videoAuthorPubkey,
+      video.pubkey,
+      "fetch target should prefer the raw video author pubkey",
+    );
+    assert.equal(
+      snapshot.videoAuthorPubkey,
+      video.pubkey,
+      "snapshot should retain the raw video author pubkey",
+    );
+    assert.equal(
+      snapshot.commentsById.has(pendingComment.id),
+      true,
+      "hydration should include comments published before fetch completion",
+    );
+    assert.equal(
+      subscribeTargets.length,
+      1,
+      "subscription should begin after hydration completes",
+    );
+    assert.equal(
+      subscribeTargets[0].videoAuthorPubkey,
+      video.pubkey,
+      "subscription target should also retain the raw pubkey",
+    );
   },
 );
 
