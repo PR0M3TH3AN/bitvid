@@ -458,8 +458,24 @@ export default class VideoModalCommentController {
       input instanceof Map ? input : this.createMapFromInput(input);
     const result = new Map();
     source.forEach((value, key) => {
+      let normalizedKey = key;
+      if (normalizedKey === null || normalizedKey === undefined) {
+        normalizedKey = null;
+      } else if (typeof normalizedKey === "string") {
+        const trimmed = normalizedKey.trim();
+        if (
+          !trimmed ||
+          trimmed === "null" ||
+          trimmed === "undefined" ||
+          trimmed === "__root__"
+        ) {
+          normalizedKey = null;
+        } else {
+          normalizedKey = trimmed;
+        }
+      }
       const list = Array.isArray(value) ? value.filter(Boolean) : [];
-      result.set(key, list);
+      result.set(normalizedKey, list);
     });
     return result;
   }
