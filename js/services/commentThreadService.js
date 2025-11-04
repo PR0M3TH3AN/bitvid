@@ -127,6 +127,7 @@ export default class CommentThreadService {
     this.videoEventId = "";
     this.videoAddressPointer = "";
     this.videoKind = "";
+    this.videoAuthorPubkeyRaw = "";
     this.videoAuthorPubkey = "";
     this.parentCommentId = "";
     this.parentCommentKind = "";
@@ -154,10 +155,13 @@ export default class CommentThreadService {
   } = {}) {
     this.teardown();
 
+    const rawVideoAuthorPubkey = normalizeString(video?.pubkey);
+
     this.videoEventId = normalizeString(video?.id);
     this.videoAddressPointer = buildVideoAddressPointer(video);
     this.videoKind = normalizeKind(video?.kind);
-    this.videoAuthorPubkey = normalizePubkey(video?.pubkey);
+    this.videoAuthorPubkeyRaw = rawVideoAuthorPubkey;
+    this.videoAuthorPubkey = normalizePubkey(rawVideoAuthorPubkey);
     this.parentCommentId = normalizeString(parentCommentId);
     this.parentCommentKind = this.parentCommentId ? String(COMMENT_EVENT_KIND) : "";
     this.parentCommentPubkey = "";
@@ -189,8 +193,9 @@ export default class CommentThreadService {
     if (this.videoKind) {
       target.videoKind = this.videoKind;
     }
-    if (this.videoAuthorPubkey) {
-      target.videoAuthorPubkey = this.videoAuthorPubkey;
+    const targetVideoAuthorPubkey = this.videoAuthorPubkeyRaw || this.videoAuthorPubkey;
+    if (targetVideoAuthorPubkey) {
+      target.videoAuthorPubkey = targetVideoAuthorPubkey;
     }
     if (this.parentCommentId) {
       if (this.parentCommentKind) {
@@ -739,7 +744,8 @@ export default class CommentThreadService {
       parentCommentId: this.parentCommentId || null,
       videoDefinitionAddress: this.videoAddressPointer || null,
       videoKind: this.videoKind || null,
-      videoAuthorPubkey: this.videoAuthorPubkey || null,
+      videoAuthorPubkey:
+        this.videoAuthorPubkeyRaw || this.videoAuthorPubkey || null,
       parentCommentKind: this.parentCommentKind || null,
       parentCommentPubkey: this.parentCommentPubkey || null,
       topLevelIds: this.getCommentIdsForParent(null),
@@ -757,7 +763,8 @@ export default class CommentThreadService {
       parentCommentId: parentId || null,
       videoDefinitionAddress: this.videoAddressPointer || null,
       videoKind: this.videoKind || null,
-      videoAuthorPubkey: this.videoAuthorPubkey || null,
+      videoAuthorPubkey:
+        this.videoAuthorPubkeyRaw || this.videoAuthorPubkey || null,
       parentCommentKind: this.parentCommentKind || null,
       parentCommentPubkey: this.parentCommentPubkey || null,
       commentIds: [eventId],
@@ -782,7 +789,8 @@ export default class CommentThreadService {
       parentCommentId: this.parentCommentId || null,
       videoDefinitionAddress: this.videoAddressPointer || null,
       videoKind: this.videoKind || null,
-      videoAuthorPubkey: this.videoAuthorPubkey || null,
+      videoAuthorPubkey:
+        this.videoAuthorPubkeyRaw || this.videoAuthorPubkey || null,
       parentCommentKind: this.parentCommentKind || null,
       parentCommentPubkey: this.parentCommentPubkey || null,
       commentsById: this.cloneCommentsMap(),
