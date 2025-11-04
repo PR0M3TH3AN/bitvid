@@ -1815,7 +1815,12 @@ export class VideoModal {
     }
     if (typeof value === "string") {
       const trimmed = value.trim();
-      if (!trimmed || trimmed === "null" || trimmed === "undefined") {
+      if (
+        !trimmed ||
+        trimmed === "null" ||
+        trimmed === "undefined" ||
+        trimmed === "__root__"
+      ) {
         return null;
       }
       return trimmed;
