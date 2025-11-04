@@ -1223,7 +1223,7 @@ class SubscriptionsManager {
     };
 
     const assets = baseView?.assets || {
-      fallbackThumbnailSrc: "assets/jpg/video-thumbnail-fallback.jpg",
+      fallbackThumbnailSrc: "/assets/jpg/video-thumbnail-fallback.jpg",
       unsupportedBtihMessage:
         "This magnet link is missing a compatible BitTorrent v1 info hash."
     };
