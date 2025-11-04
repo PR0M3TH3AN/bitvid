@@ -795,6 +795,12 @@ function createVideoCommentFilters(targetInput, options = {}) {
   };
   filters.push(applyFilterOptions(eventFilter, options));
 
+  const uppercaseEventFilter = {
+    kinds: [COMMENT_EVENT_KIND],
+    "#E": [descriptor.videoEventId],
+  };
+  filters.push(applyFilterOptions(uppercaseEventFilter, options));
+
   const uppercaseFilter = { kinds: [COMMENT_EVENT_KIND] };
   let hasUppercasePointer = false;
 
@@ -842,6 +848,12 @@ function createVideoCommentFilters(targetInput, options = {}) {
       "#e": [descriptor.parentCommentId],
     };
     filters.push(applyFilterOptions(parentFilter, options));
+
+    const parentUppercaseFilter = {
+      kinds: [COMMENT_EVENT_KIND],
+      "#E": [descriptor.parentCommentId],
+    };
+    filters.push(applyFilterOptions(parentUppercaseFilter, options));
   }
 
   if (descriptor.videoDefinitionAddress) {
@@ -855,6 +867,17 @@ function createVideoCommentFilters(targetInput, options = {}) {
     }
 
     filters.push(applyFilterOptions(definitionFilter, options));
+
+    const definitionUppercaseFilter = {
+      kinds: [COMMENT_EVENT_KIND],
+      "#A": [descriptor.videoDefinitionAddress],
+    };
+
+    if (descriptor.parentCommentId) {
+      definitionUppercaseFilter["#E"] = [descriptor.parentCommentId];
+    }
+
+    filters.push(applyFilterOptions(definitionUppercaseFilter, options));
   }
 
   return { descriptor, filters };
@@ -961,7 +984,6 @@ function isVideoCommentEvent(event, descriptor) {
         hasEventTag = true;
       }
       if (
-        trimmedName === lowerName &&
         targetDescriptor.parentCommentId &&
         normalizedValue === targetDescriptor.parentCommentId
       ) {
