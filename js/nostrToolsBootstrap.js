@@ -319,7 +319,7 @@ export function bootstrapNostrTools() {
       withTimeout(
         () =>
           import(
-            "https://esm.sh/nostr-tools@2.17.0?target=es2022&exports=nip44"
+            "https://esm.sh/nostr-tools@2.17.0/nip44?target=es2022"
           ),
         REMOTE_IMPORT_TIMEOUT,
         "esm-nip44"
