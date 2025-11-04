@@ -916,13 +916,27 @@ function isVideoCommentEvent(event, descriptor) {
     descriptor && typeof descriptor === "object" ? descriptor : {};
 
   const tags = Array.isArray(event.tags) ? event.tags : [];
-  const requiresRootIdentifierMatch = Boolean(targetDescriptor.rootIdentifier);
+  const normalizedRootIdentifier = normalizeTagValue(
+    targetDescriptor.rootIdentifier,
+  );
+  const normalizedVideoDefinitionAddress = normalizeTagValue(
+    targetDescriptor.videoDefinitionAddress,
+  );
+  const normalizedVideoEventId = normalizeTagValue(
+    targetDescriptor.videoEventId,
+  );
+  const normalizedParentCommentId = normalizeTagValue(
+    targetDescriptor.parentCommentId,
+  );
+
+  const requiresRootIdentifierMatch = Boolean(normalizedRootIdentifier);
   const requiresAddressMatch =
-    !requiresRootIdentifierMatch && Boolean(targetDescriptor.videoDefinitionAddress);
+    !requiresRootIdentifierMatch && Boolean(normalizedVideoDefinitionAddress);
   const requiresEventMatch =
-    !requiresRootIdentifierMatch && !requiresAddressMatch &&
-    Boolean(targetDescriptor.videoEventId);
-  const requiresParentTag = Boolean(targetDescriptor.parentCommentId);
+    !requiresRootIdentifierMatch &&
+    !requiresAddressMatch &&
+    Boolean(normalizedVideoEventId);
+  const requiresParentTag = Boolean(normalizedParentCommentId);
 
   let hasIdentifierTag = !requiresRootIdentifierMatch;
   let hasDefinitionTag = !requiresAddressMatch;
@@ -972,20 +986,29 @@ function isVideoCommentEvent(event, descriptor) {
     }
 
     if (lowerName === "i") {
-      if (normalizedValue === targetDescriptor.rootIdentifier) {
+      if (
+        normalizedRootIdentifier &&
+        normalizedValue === normalizedRootIdentifier
+      ) {
         hasIdentifierTag = true;
       }
     } else if (lowerName === "a") {
-      if (normalizedValue === targetDescriptor.videoDefinitionAddress) {
+      if (
+        normalizedVideoDefinitionAddress &&
+        normalizedValue === normalizedVideoDefinitionAddress
+      ) {
         hasDefinitionTag = true;
       }
     } else if (lowerName === "e") {
-      if (normalizedValue === targetDescriptor.videoEventId) {
+      if (
+        normalizedVideoEventId &&
+        normalizedValue === normalizedVideoEventId
+      ) {
         hasEventTag = true;
       }
       if (
-        targetDescriptor.parentCommentId &&
-        normalizedValue === targetDescriptor.parentCommentId
+        normalizedParentCommentId &&
+        normalizedValue === normalizedParentCommentId
       ) {
         hasParentTag = true;
       }
