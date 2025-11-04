@@ -193,7 +193,7 @@ export default class CommentThreadService {
     if (this.videoKind) {
       target.videoKind = this.videoKind;
     }
-    const targetVideoAuthorPubkey = this.videoAuthorPubkeyRaw || this.videoAuthorPubkey;
+    const targetVideoAuthorPubkey = this.getVideoAuthorPubkeyForOutput();
     if (targetVideoAuthorPubkey) {
       target.videoAuthorPubkey = targetVideoAuthorPubkey;
     }
@@ -738,14 +738,17 @@ export default class CommentThreadService {
     await hydrationPromise;
   }
 
+  getVideoAuthorPubkeyForOutput() {
+    return this.videoAuthorPubkeyRaw || this.videoAuthorPubkey || "";
+  }
+
   emitThreadReady() {
     const payload = {
       videoEventId: this.videoEventId,
       parentCommentId: this.parentCommentId || null,
       videoDefinitionAddress: this.videoAddressPointer || null,
       videoKind: this.videoKind || null,
-      videoAuthorPubkey:
-        this.videoAuthorPubkeyRaw || this.videoAuthorPubkey || null,
+      videoAuthorPubkey: this.getVideoAuthorPubkeyForOutput() || null,
       parentCommentKind: this.parentCommentKind || null,
       parentCommentPubkey: this.parentCommentPubkey || null,
       topLevelIds: this.getCommentIdsForParent(null),
@@ -763,8 +766,7 @@ export default class CommentThreadService {
       parentCommentId: parentId || null,
       videoDefinitionAddress: this.videoAddressPointer || null,
       videoKind: this.videoKind || null,
-      videoAuthorPubkey:
-        this.videoAuthorPubkeyRaw || this.videoAuthorPubkey || null,
+      videoAuthorPubkey: this.getVideoAuthorPubkeyForOutput() || null,
       parentCommentKind: this.parentCommentKind || null,
       parentCommentPubkey: this.parentCommentPubkey || null,
       commentIds: [eventId],
@@ -789,8 +791,7 @@ export default class CommentThreadService {
       parentCommentId: this.parentCommentId || null,
       videoDefinitionAddress: this.videoAddressPointer || null,
       videoKind: this.videoKind || null,
-      videoAuthorPubkey:
-        this.videoAuthorPubkeyRaw || this.videoAuthorPubkey || null,
+      videoAuthorPubkey: this.getVideoAuthorPubkeyForOutput() || null,
       parentCommentKind: this.parentCommentKind || null,
       parentCommentPubkey: this.parentCommentPubkey || null,
       commentsById: this.cloneCommentsMap(),
