@@ -232,9 +232,6 @@ test("publishComment derives root and parent metadata from parent comment tags",
       shouldRequestExtensionPermissions: () => false,
       DEFAULT_NIP07_PERMISSION_METHODS: [],
     },
-  );
-
-  assert.equal(result.ok, true, "publish should succeed when deriving metadata");
   const tags = buildCommentEventTags(result.event);
   assert.deepEqual(tags, [
     ["A", "30078:videopk:root", "wss://definition"],
@@ -244,6 +241,83 @@ test("publishComment derives root and parent metadata from parent comment tags",
     ["a", "30078:videopk:root", "wss://definition"],
     ["e", "parent-comment", "wss://parent", "parentpk"],
     ["k", String(COMMENT_EVENT_KIND)],
+    ["p", "parentpk", "wss://parent"],
+  ]);
+});
+
+test("listVideoComments matches comments even when tag casing and whitespace differ", async () => {
+  const mismatchedEvent = {
+    id: "case-comment",
+    kind: COMMENT_EVENT_KIND,
+    created_at: 1700000300,
+    tags: [
+      [" A ", " 30078:AUTHOR:CLIP ", " WSS://Definition "],
+      ["e", " VIDEO-1 "],
+      [" E ", " VIDEO-1 "],
+      ["e", " PARENT-1 "],
+      ["k", String(COMMENT_EVENT_KIND)],
+      ["p", " THREAD-PARTICIPANT "],
+    ],
+  };
+
+  const { client, pool } = createMockClient();
+  pool.list = async () => [[mismatchedEvent]];
+
+  const descriptorInput = {
+    videoEventId: " video-1 ",
+    videoDefinitionAddress: " 30078:author:clip ",
+    parentCommentId: " parent-1 ",
+  };
+
+  const events = await listVideoComments(client, descriptorInput);
+  assert.equal(events.length, 1, "case-insensitive descriptor should match comment");
+  assert.equal(events[0].id, "case-comment", "matched event should be returned");
+
+  const normalizedDescriptor = normalizeCommentTarget(descriptorInput);
+  assert.ok(normalizedDescriptor, "normalizeCommentTarget should produce a descriptor");
+  assert.equal(
+    isVideoCommentEvent(mismatchedEvent, normalizedDescriptor),
+    true,
+    "isVideoCommentEvent should treat tag casing and whitespace as insignificant",
+  );
+});
+test("listVideoComments matches comments even when tag casing and whitespace differ", async () => {
+  const mismatchedEvent = {
+    id: "case-comment",
+    kind: COMMENT_EVENT_KIND,
+    created_at: 1700000300,
+    tags: [
+      [" A ", " 30078:AUTHOR:CLIP ", " WSS://Definition "],
+      ["e", " VIDEO-1 "],
+      [" E ", " VIDEO-1 "],
+      ["e", " PARENT-1 "],
+      ["k", String(COMMENT_EVENT_KIND)],
+      ["p", " THREAD-PARTICIPANT "],
+    ],
+  };
+
+  const { client, pool } = createMockClient();
+  pool.list = async () => [[mismatchedEvent]];
+
+  const descriptorInput = {
+    videoEventId: " video-1 ",
+    videoDefinitionAddress: " 30078:author:clip ",
+    parentCommentId: " parent-1 ",
+  };
+
+  const events = await listVideoComments(client, descriptorInput);
+  assert.equal(events.length, 1, "case-insensitive descriptor should match comment");
+  assert.equal(events[0].id, "case-comment", "matched event should be returned");
+
+  const normalizedDescriptor = normalizeCommentTarget(descriptorInput);
+  assert.ok(normalizedDescriptor, "normalizeCommentTarget should produce a descriptor");
+  assert.equal(
+    isVideoCommentEvent(mismatchedEvent, normalizedDescriptor),
+    true,
+    "isVideoCommentEvent should treat tag casing and whitespace as insignificant",
+  );
+});
+
     ["p", "parentpk", "wss://parent"],
   ]);
 });

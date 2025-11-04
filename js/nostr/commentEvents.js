@@ -118,6 +118,50 @@ function normalizePointerCandidate(candidate, expectedType) {
       };
     }
     if (
+
+function normalizeTagName(name) {
+  return typeof name === "string" ? name.trim().toLowerCase() : "";
+}
+
+function normalizeTagValue(value) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  if (Number.isFinite(value)) {
+    return String(Math.floor(value));
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed ? trimmed.toLowerCase() : "";
+  }
+  return "";
+}
+
+function normalizeDescriptorString(value) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  if (Number.isFinite(value)) {
+    return String(Math.floor(value));
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed ? trimmed.toLowerCase() : "";
+  }
+  if (typeof value === "object" && typeof value.value !== "undefined") {
+    return normalizeDescriptorString(value.value);
+  }
+  return "";
+}
+
+function normalizeDescriptorRelay(value) {
+  if (typeof value === "string") {
+    return value.trim();
+  }
+  return "";
+}
+
+
       expectedType === "a" &&
       typeof candidate.address === "string" &&
       candidate.address.trim()
@@ -195,7 +239,7 @@ function collectTagsFromEvent(event) {
 function findTagByName(tags, ...names) {
   const normalizedNames = names
     .flat()
-    .map((name) => (typeof name === "string" ? name.trim() : ""))
+    .map((name) => normalizeTagName(name))
     .filter(Boolean);
   if (!normalizedNames.length) {
     return null;
@@ -208,7 +252,7 @@ function findTagByName(tags, ...names) {
     if (typeof name !== "string") {
       continue;
     }
-    if (normalizedNames.includes(name.trim())) {
+    if (normalizedNames.includes(normalizeTagName(name))) {
       return tag;
     }
   }
@@ -682,32 +726,34 @@ function normalizeCommentTarget(targetInput = {}, overrides = {}) {
     normalizedParentAuthorRelay = normalizedRootAuthorRelay;
   }
 
-  if (!normalizedVideoEventId) {
+  const descriptor = {
+    videoEventId: normalizeDescriptorString(normalizedVideoEventId),
+    videoEventRelay: normalizeDescriptorRelay(normalizedVideoEventRelay),
+    videoDefinitionAddress: normalizeDescriptorString(normalizedVideoDefinitionAddress),
+    videoDefinitionRelay: normalizeDescriptorRelay(normalizedVideoDefinitionRelay),
+    videoKind: normalizeDescriptorString(normalizedVideoKind),
+    videoAuthorPubkey: normalizeDescriptorString(normalizedVideoAuthorPubkey),
+    parentCommentId: normalizeDescriptorString(normalizedParentCommentId),
+    parentCommentRelay: normalizeDescriptorRelay(normalizedParentCommentRelay),
+    threadParticipantPubkey: normalizeDescriptorString(normalizedThreadParticipantPubkey),
+    threadParticipantRelay: normalizeDescriptorRelay(normalizedThreadParticipantRelay),
+    rootIdentifier: normalizeDescriptorString(normalizedRootIdentifier),
+    rootIdentifierRelay: normalizeDescriptorRelay(normalizedRootIdentifierRelay),
+    parentIdentifier: normalizeDescriptorString(normalizedParentIdentifier),
+    parentIdentifierRelay: normalizeDescriptorRelay(normalizedParentIdentifierRelay),
+    rootKind: normalizeDescriptorString(normalizedRootKind),
+    rootAuthorPubkey: normalizeDescriptorString(normalizedRootAuthorPubkey),
+    rootAuthorRelay: normalizeDescriptorRelay(normalizedRootAuthorRelay),
+    parentKind: normalizeDescriptorString(normalizedParentKind),
+    parentAuthorPubkey: normalizeDescriptorString(normalizedParentAuthorPubkey),
+    parentAuthorRelay: normalizeDescriptorRelay(normalizedParentAuthorRelay),
+  };
+
+  if (!descriptor.videoEventId) {
     return null;
   }
 
-  return {
-    videoEventId: normalizedVideoEventId,
-    videoEventRelay: normalizedVideoEventRelay,
-    videoDefinitionAddress: normalizedVideoDefinitionAddress,
-    videoDefinitionRelay: normalizedVideoDefinitionRelay,
-    videoKind: normalizedVideoKind,
-    videoAuthorPubkey: normalizedVideoAuthorPubkey,
-    parentCommentId: normalizedParentCommentId,
-    parentCommentRelay: normalizedParentCommentRelay,
-    threadParticipantPubkey: normalizedThreadParticipantPubkey,
-    threadParticipantRelay: normalizedThreadParticipantRelay,
-    rootIdentifier: normalizedRootIdentifier,
-    rootIdentifierRelay: normalizedRootIdentifierRelay,
-    parentIdentifier: normalizedParentIdentifier,
-    parentIdentifierRelay: normalizedParentIdentifierRelay,
-    rootKind: normalizedRootKind,
-    rootAuthorPubkey: normalizedRootAuthorPubkey,
-    rootAuthorRelay: normalizedRootAuthorRelay,
-    parentKind: normalizedParentKind,
-    parentAuthorPubkey: normalizedParentAuthorPubkey,
-    parentAuthorRelay: normalizedParentAuthorRelay,
-  };
+  return descriptor;
 }
 
 function applyFilterOptions(filter, options = {}) {
@@ -770,20 +816,16 @@ function createVideoCommentFilters(targetInput, options = {}) {
     hasUppercasePointer = true;
   }
 
-  const normalizedRootKind =
-    typeof descriptor.rootKind === "string"
-      ? descriptor.rootKind
-      : Number.isFinite(descriptor.rootKind)
-      ? String(Math.floor(descriptor.rootKind))
-      : "";
+  const normalizedRootKind = normalizeDescriptorString(
+    descriptor.rootKind || descriptor.videoKind,
+  );
   if (normalizedRootKind) {
     uppercaseFilter["#K"] = [normalizedRootKind];
   }
 
-  const normalizedRootAuthor =
-    typeof descriptor.rootAuthorPubkey === "string"
-      ? descriptor.rootAuthorPubkey.trim()
-      : "";
+  const normalizedRootAuthor = normalizeDescriptorString(
+    descriptor.rootAuthorPubkey || descriptor.videoAuthorPubkey,
+  );
   if (normalizedRootAuthor) {
     uppercaseFilter["#P"] = [normalizedRootAuthor];
   }
@@ -865,43 +907,19 @@ function isVideoCommentEvent(event, descriptor) {
   let hasEventTag = !requiresEventMatch;
   let hasParentTag = false;
 
-  const expectedRootKind = (() => {
-    if (typeof targetDescriptor.rootKind === "string") {
-      return targetDescriptor.rootKind;
-    }
-    if (Number.isFinite(targetDescriptor.rootKind)) {
-      return String(Math.floor(targetDescriptor.rootKind));
-    }
-    if (typeof targetDescriptor.videoKind === "string") {
-      return targetDescriptor.videoKind;
-    }
-    if (Number.isFinite(targetDescriptor.videoKind)) {
-      return String(Math.floor(targetDescriptor.videoKind));
-    }
-    return "";
-  })();
+  const expectedRootKind = normalizeDescriptorString(
+    targetDescriptor.rootKind || targetDescriptor.videoKind,
+  );
 
-  const expectedRootAuthor =
-    typeof targetDescriptor.rootAuthorPubkey === "string"
-      ? targetDescriptor.rootAuthorPubkey
-      : typeof targetDescriptor.videoAuthorPubkey === "string"
-      ? targetDescriptor.videoAuthorPubkey
-      : "";
+  const expectedRootAuthor = normalizeDescriptorString(
+    targetDescriptor.rootAuthorPubkey || targetDescriptor.videoAuthorPubkey,
+  );
 
-  const expectedParentKind = (() => {
-    if (typeof targetDescriptor.parentKind === "string") {
-      return targetDescriptor.parentKind;
-    }
-    if (Number.isFinite(targetDescriptor.parentKind)) {
-      return String(Math.floor(targetDescriptor.parentKind));
-    }
-    return "";
-  })();
+  const expectedParentKind = normalizeDescriptorString(targetDescriptor.parentKind);
 
-  const expectedParentAuthor =
-    typeof targetDescriptor.parentAuthorPubkey === "string"
-      ? targetDescriptor.parentAuthorPubkey
-      : "";
+  const expectedParentAuthor = normalizeDescriptorString(
+    targetDescriptor.parentAuthorPubkey,
+  );
 
   let sawRootKindTag = false;
   let rootKindMatches = !expectedRootKind;
@@ -923,61 +941,57 @@ function isVideoCommentEvent(event, descriptor) {
     if (!Array.isArray(tag) || tag.length < 2) {
       continue;
     }
-    const [name, value] = tag;
-    if (typeof value !== "string") {
+    const [rawName, rawValue] = tag;
+    const trimmedName = typeof rawName === "string" ? rawName.trim() : "";
+    const lowerName = trimmedName.toLowerCase();
+    const normalizedValue = normalizeTagValue(rawValue);
+    if (!lowerName || !normalizedValue) {
       continue;
     }
 
-    if (name === "I") {
-      if (value === targetDescriptor.rootIdentifier) {
+    if (lowerName === "i") {
+      if (normalizedValue === targetDescriptor.rootIdentifier) {
         hasIdentifierTag = true;
       }
-    } else if (name === "A") {
-      if (value === targetDescriptor.videoDefinitionAddress) {
+    } else if (lowerName === "a") {
+      if (normalizedValue === targetDescriptor.videoDefinitionAddress) {
         hasDefinitionTag = true;
       }
-    } else if (name === "a") {
-      if (value === targetDescriptor.videoDefinitionAddress) {
-        hasDefinitionTag = true;
-      }
-    } else if (name === "E") {
-      if (value === targetDescriptor.videoEventId) {
-        hasEventTag = true;
-      }
-    } else if (name === "e") {
-      if (value === targetDescriptor.videoEventId) {
+    } else if (lowerName === "e") {
+      if (normalizedValue === targetDescriptor.videoEventId) {
         hasEventTag = true;
       }
       if (
+        trimmedName === lowerName &&
         targetDescriptor.parentCommentId &&
-        value === targetDescriptor.parentCommentId
+        normalizedValue === targetDescriptor.parentCommentId
       ) {
         hasParentTag = true;
       }
-    } else if (name === "K") {
+    } else if (trimmedName === "K") {
       sawRootKindTag = true;
-      if (!expectedRootKind || value === expectedRootKind) {
+      if (!expectedRootKind || normalizedValue === expectedRootKind) {
         rootKindMatches = true;
       } else {
         rootKindMismatch = true;
       }
-    } else if (name === "P") {
+    } else if (trimmedName === "P") {
       sawRootAuthorTag = true;
-      if (!expectedRootAuthor || value === expectedRootAuthor) {
+      if (!expectedRootAuthor || normalizedValue === expectedRootAuthor) {
         rootAuthorMatches = true;
       } else {
         rootAuthorMismatch = true;
       }
-    } else if (name === "k") {
+    } else if (trimmedName === "k") {
       sawParentKindTag = true;
-      if (!expectedParentKind || value === expectedParentKind) {
+      if (!expectedParentKind || normalizedValue === expectedParentKind) {
         parentKindMatches = true;
       } else {
         parentKindMismatch = true;
       }
-    } else if (name === "p") {
+    } else if (trimmedName === "p") {
       sawParentAuthorTag = true;
-      if (!expectedParentAuthor || value === expectedParentAuthor) {
+      if (!expectedParentAuthor || normalizedValue === expectedParentAuthor) {
         parentAuthorMatches = true;
       } else {
         parentAuthorMismatch = true;
