@@ -150,7 +150,7 @@ const recordVideoViewApi = (...args) => recordVideoView(nostrClient, ...args);
 const UNSUPPORTED_BTITH_MESSAGE =
   "This magnet link is missing a compatible BitTorrent v1 info hash.";
 
-const FALLBACK_THUMBNAIL_SRC = "assets/jpg/video-thumbnail-fallback.jpg";
+const FALLBACK_THUMBNAIL_SRC = "/assets/jpg/video-thumbnail-fallback.jpg";
 const VIDEO_EVENT_KIND = 30078;
 const HEX64_REGEX = /^[0-9a-f]{64}$/i;
 /**

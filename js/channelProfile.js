@@ -4560,7 +4560,7 @@ export async function renderChannelVideosFromList({
           typeof value === "number" ? value.toLocaleString() : value
       },
       assets: {
-        fallbackThumbnailSrc: "assets/jpg/video-thumbnail-fallback.jpg",
+        fallbackThumbnailSrc: "/assets/jpg/video-thumbnail-fallback.jpg",
         unsupportedBtihMessage
       },
       state: { loadedThumbnails },
