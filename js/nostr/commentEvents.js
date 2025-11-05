@@ -1067,7 +1067,24 @@ function isVideoCommentEvent(event, descriptor) {
   }
 
   if (!hasIdentifierTag || !hasDefinitionTag || !hasEventTag) {
-    return false;
+    if (matchedEventPointer && (!requiresParentTag || hasParentTag)) {
+      devLogger.debug(
+        "[nostr] Comment accepted via legacy pointer fallback",
+        {
+          eventId: event?.id,
+          hasIdentifierTag,
+          hasDefinitionTag,
+          hasEventTag,
+          requiresParentTag,
+          hasParentTag,
+        },
+      );
+      hasIdentifierTag = true;
+      hasDefinitionTag = true;
+      hasEventTag = true;
+    } else {
+      return false;
+    }
   }
 
   if (requiresParentTag && !hasParentTag) {
