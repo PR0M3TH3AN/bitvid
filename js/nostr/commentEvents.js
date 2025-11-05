@@ -1052,6 +1052,20 @@ function isVideoCommentEvent(event, descriptor) {
     hasDefinitionTag = true;
   }
 
+  if (!hasIdentifierTag && requiresRootIdentifierMatch) {
+    if (matchedDefinitionPointer || matchedEventPointer) {
+      devLogger.debug(
+        "[nostr] Comment accepted without explicit identifier tag due to pointer match",
+        {
+          eventId: event?.id,
+          matchedDefinitionPointer,
+          matchedEventPointer,
+        },
+      );
+      hasIdentifierTag = true;
+    }
+  }
+
   if (!hasIdentifierTag || !hasDefinitionTag || !hasEventTag) {
     return false;
   }
