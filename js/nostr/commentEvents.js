@@ -943,6 +943,9 @@ function isVideoCommentEvent(event, descriptor) {
   let hasEventTag = !requiresEventMatch;
   let hasParentTag = false;
 
+  let matchedDefinitionPointer = false;
+  let matchedEventPointer = false;
+
   const expectedRootKind = normalizeDescriptorString(
     targetDescriptor.rootKind || targetDescriptor.videoKind,
   );
@@ -998,6 +1001,7 @@ function isVideoCommentEvent(event, descriptor) {
         normalizedValue === normalizedVideoDefinitionAddress
       ) {
         hasDefinitionTag = true;
+        matchedDefinitionPointer = true;
       }
     } else if (lowerName === "e") {
       if (
@@ -1005,6 +1009,7 @@ function isVideoCommentEvent(event, descriptor) {
         normalizedValue === normalizedVideoEventId
       ) {
         hasEventTag = true;
+        matchedEventPointer = true;
       }
       if (
         normalizedParentCommentId &&
@@ -1041,6 +1046,10 @@ function isVideoCommentEvent(event, descriptor) {
         parentAuthorMismatch = true;
       }
     }
+  }
+
+  if (!hasDefinitionTag && requiresAddressMatch && matchedEventPointer) {
+    hasDefinitionTag = true;
   }
 
   if (!hasIdentifierTag || !hasDefinitionTag || !hasEventTag) {
