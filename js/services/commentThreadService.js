@@ -10,6 +10,7 @@ const DEFAULT_INITIAL_LIMIT = 40;
 const DEFAULT_HYDRATION_DEBOUNCE_MS = 25;
 const COMMENT_CACHE_PREFIX = "bitvid:comments:";
 const COMMENT_CACHE_TTL_MS = 5 * 60 * 1000;
+const COMMENT_CACHE_VERSION = 2;
 
 function toPositiveInteger(value, fallback) {
   const numeric = Number(value);
@@ -326,6 +327,15 @@ export default class CommentThreadService {
         return null;
       }
 
+      const cacheVersion = Number.isFinite(parsed.version)
+        ? Number(parsed.version)
+        : null;
+
+      if (cacheVersion !== COMMENT_CACHE_VERSION) {
+        this.removeCommentCache(cacheKey);
+        return null;
+      }
+
       const comments = Array.isArray(parsed.comments)
         ? parsed.comments
         : null;
@@ -375,7 +385,11 @@ export default class CommentThreadService {
     try {
       localStorage.setItem(
         cacheKey,
-        JSON.stringify({ comments, timestamp: Date.now() }),
+        JSON.stringify({
+          version: COMMENT_CACHE_VERSION,
+          comments,
+          timestamp: Date.now(),
+        }),
       );
       if (devLogger?.info) {
         devLogger.info(
