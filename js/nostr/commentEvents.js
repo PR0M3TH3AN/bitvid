@@ -1282,10 +1282,27 @@ export async function publishComment(
 }
 
 export async function listVideoComments(client, targetInput, options = {}) {
-  const pool = client?.pool;
-  const canQueryPool = pool && typeof pool.list === "function";
+  let pool = client?.pool;
+  const ensurePool =
+    typeof client?.ensurePool === "function"
+      ? client.ensurePool.bind(client)
+      : null;
 
-  if (!canQueryPool) {
+  if (!pool || typeof pool.list !== "function") {
+    if (ensurePool) {
+      try {
+        pool = await ensurePool();
+      } catch (error) {
+        devLogger.warn(
+          "[nostr] Unable to list video comments: pool init failed.",
+          error,
+        );
+        return [];
+      }
+    }
+  }
+
+  if (!pool || typeof pool.list !== "function") {
     devLogger.warn("[nostr] Unable to list video comments: pool missing.");
     return [];
   }
@@ -1359,13 +1376,43 @@ export async function listVideoComments(client, targetInput, options = {}) {
 }
 
 export function subscribeVideoComments(client, targetInput, options = {}) {
-  const pool = client?.pool;
-  const canSubscribe = pool && typeof pool.sub === "function";
+  let pool = client?.pool;
+  const ensurePool =
+    typeof client?.ensurePool === "function"
+      ? client.ensurePool.bind(client)
+      : null;
 
-  if (!canSubscribe) {
-    devLogger.warn("[nostr] Unable to subscribe to video comments: pool missing.");
-    return () => {};
-  }
+  const resolvePool = async () => {
+    if (pool && typeof pool.sub === "function") {
+      return pool;
+    }
+    if (!ensurePool) {
+      return null;
+    }
+    try {
+      pool = await ensurePool();
+    } catch (error) {
+      devLogger.warn(
+        "[nostr] Unable to subscribe to video comments: pool init failed.",
+        error,
+      );
+      return null;
+    }
+    return pool && typeof pool.sub === "function" ? pool : null;
+  };
+
+  const ensureSubscriptionPool = () => {
+    if (pool && typeof pool.sub === "function") {
+      return Promise.resolve(pool);
+    }
+    if (!ensurePool) {
+      devLogger.warn(
+        "[nostr] Unable to subscribe to video comments: pool missing.",
+      );
+      return Promise.resolve(null);
+    }
+    return resolvePool();
+  };
 
   let descriptor;
   let filters;
@@ -1380,46 +1427,81 @@ export function subscribeVideoComments(client, targetInput, options = {}) {
   const onEvent = typeof options.onEvent === "function" ? options.onEvent : null;
 
   let subscription;
-  try {
-    subscription = pool.sub(relayList, filters);
-  } catch (error) {
-    devLogger.warn("[nostr] Failed to open video comment subscription:", error);
-    return () => {};
-  }
+  let closed = false;
 
-  if (onEvent && subscription && typeof subscription.on === "function") {
+  const subscribe = async () => {
+    const activePool = await ensureSubscriptionPool();
+    if (!activePool || closed) {
+      return null;
+    }
     try {
-      subscription.on("event", (event) => {
+      subscription = activePool.sub(relayList, filters);
+      return subscription;
+    } catch (error) {
+      devLogger.warn("[nostr] Failed to open video comment subscription:", error);
+      return null;
+    }
+  };
+
+  const subscriptionPromise = subscribe();
+
+  const attachHandlers = (activeSub) => {
+    if (!activeSub || !onEvent || typeof activeSub.on !== "function") {
+      return;
+    }
+    try {
+      activeSub.on("event", (event) => {
         if (isVideoCommentEvent(event, descriptor)) {
           try {
             onEvent(event);
           } catch (handlerError) {
-            devLogger.warn("[nostr] Comment subscription handler threw:", handlerError);
+            devLogger.warn(
+              "[nostr] Comment subscription handler threw:",
+              handlerError,
+            );
           }
         }
       });
     } catch (error) {
-      devLogger.warn("[nostr] Failed to attach comment subscription handler:", error);
+      devLogger.warn(
+        "[nostr] Failed to attach comment subscription handler:",
+        error,
+      );
     }
-  }
+  };
 
-  const originalUnsub =
-    subscription && typeof subscription.unsub === "function"
-      ? subscription.unsub.bind(subscription)
-      : null;
-
-  let unsubscribed = false;
-  return () => {
-    if (unsubscribed) {
+  subscriptionPromise.then((activeSub) => {
+    if (closed || !activeSub) {
       return;
     }
-    unsubscribed = true;
-    if (originalUnsub) {
+    attachHandlers(activeSub);
+  });
+
+  const originalUnsub = () => {
+    if (closed) {
+      return;
+    }
+    closed = true;
+    if (subscription && typeof subscription.unsub === "function") {
       try {
-        originalUnsub();
+        subscription.unsub();
       } catch (error) {
-        devLogger.warn("[nostr] Failed to unsubscribe from video comments:", error);
+        devLogger.warn(
+          "[nostr] Failed to unsubscribe from video comments:",
+          error,
+        );
       }
+    }
+  };
+
+  return () => {
+    closed = true;
+    if (subscription) {
+      originalUnsub();
+    } else {
+      subscriptionPromise.finally(() => {
+        originalUnsub();
+      });
     }
   };
 }
