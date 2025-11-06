@@ -2086,6 +2086,7 @@ class Application {
         return "You do not have permission to perform that action.";
       case "nostr-unavailable":
         return "Unable to reach the configured Nostr relays. Please retry once your connection is restored.";
+
       case "nostr-extension-missing":
         return "Connect a Nostr extension before editing moderation lists.";
       case "signature-failed":
@@ -8467,8 +8468,6 @@ class Application {
       this.currentVideoPointer,
       this.currentVideoPointerKey
     );
-    this.commentController?.load(this.currentVideo);
-
     this.syncModalMoreMenuData();
 
     this.currentMagnetUri = sanitizedMagnet || null;
@@ -8496,6 +8495,8 @@ class Application {
       "";
 
     await this.showModalWithPoster(this.currentVideo);
+
+    this.commentController?.load(this.currentVideo);
 
     const playbackOptions = {
       url: trimmedUrl,
@@ -8784,9 +8785,7 @@ class Application {
     this.currentVideoPointerKey = null;
     this.subscribeModalViewCount(null, null);
     this.subscribeModalReactions(null, null);
-    this.commentController?.load(null);
     this.pendingModeratedPlayback = null;
-
     const sanitizedUrl = typeof url === "string" ? url.trim() : "";
     const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
     const decodedMagnet = safeDecodeMagnet(trimmedMagnet);
@@ -8849,7 +8848,9 @@ class Application {
 
     await this.showModalWithPoster(this.currentVideo, hasTrigger ? { trigger } : {});
 
-    const urlObj = new URL(window.location.href);
+    this.commentController?.load(null);
+
+    const shareUrl = this.buildShareUrlFromEventId(this.currentVideo.id);
     urlObj.searchParams.delete("v");
     const cleaned = `${urlObj.pathname}${urlObj.search}${urlObj.hash}`;
     window.history.replaceState({}, "", cleaned);
