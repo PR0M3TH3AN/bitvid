@@ -71,21 +71,23 @@ export default class CommentThreadService {
     logger = devLogger,
   } = {}) {
     this.nostrClient = nostrClient;
-    this.app = app;
-    this.fetchVideoComments =
-      typeof fetchVideoComments === "function"
-        ? fetchVideoComments
-        : this.nostrClient &&
-            typeof this.nostrClient.fetchVideoComments === "function"
-          ? (...args) => this.nostrClient.fetchVideoComments(...args)
-          : null;
-    this.subscribeVideoComments =
-      typeof subscribeVideoComments === "function"
-        ? subscribeVideoComments
-        : this.nostrClient &&
-            typeof this.nostrClient.subscribeVideoComments === "function"
-          ? (...args) => this.nostrClient.subscribeVideoComments(...args)
-          : null;
+    this.fetchVideoComments = fetchVideoComments;
+    this.subscribeVideoComments = subscribeVideoComments;
+
+    if (!this.fetchVideoComments && this.nostrClient) {
+      const clientFetcher = this.nostrClient.fetchVideoComments;
+      if (typeof clientFetcher === "function") {
+        this.fetchVideoComments = (...args) => clientFetcher.apply(this.nostrClient, args);
+      }
+    }
+
+    if (!this.subscribeVideoComments && this.nostrClient) {
+      const clientSubscriber = this.nostrClient.subscribeVideoComments;
+      if (typeof clientSubscriber === "function") {
+        this.subscribeVideoComments = (...args) => clientSubscriber.apply(this.nostrClient, args);
+      }
+    }
+
     this.getProfileCacheEntry =
       typeof getProfileCacheEntry === "function"
         ? getProfileCacheEntry
@@ -155,6 +157,17 @@ export default class CommentThreadService {
     relays = null,
   } = {}) {
     this.teardown();
+
+    if (typeof this.nostrClient?.ensurePool === "function") {
+      try {
+        await this.nostrClient.ensurePool();
+      } catch (error) {
+        this.emitError(
+          new Error("Unable to initialize Nostr pool before loading comments."),
+        );
+        return { success: false, error };
+      }
+    }
 
     const rawVideoAuthorPubkey = normalizeString(video?.pubkey);
 
