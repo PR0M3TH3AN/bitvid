@@ -158,6 +158,7 @@ export default class CommentThreadService {
   } = {}) {
     this.teardown();
 
+    // Always ensure the pool is ready before proceeding
     if (typeof this.nostrClient?.ensurePool === "function") {
       try {
         await this.nostrClient.ensurePool();
@@ -167,6 +168,11 @@ export default class CommentThreadService {
         );
         return { success: false, error };
       }
+    } else {
+      this.emitError(
+        new Error("Nostr client missing ensurePool implementation."),
+      );
+      return { success: false };
     }
 
     const rawVideoAuthorPubkey = normalizeString(video?.pubkey);
