@@ -2,10 +2,15 @@
 
 import { devLogger } from "../utils/logger.js";
 import { buildVideoAddressPointer } from "../utils/videoPointer.js";
+import { COMMENT_EVENT_KIND } from "../nostr/commentEvents.js";
+import { FEATURE_IMPROVED_COMMENT_FETCHING } from "../constants.js";
 
 const ROOT_PARENT_KEY = "__root__";
 const DEFAULT_INITIAL_LIMIT = 40;
 const DEFAULT_HYDRATION_DEBOUNCE_MS = 25;
+const COMMENT_CACHE_PREFIX = "bitvid:comments:";
+const COMMENT_CACHE_TTL_MS = 5 * 60 * 1000;
+const COMMENT_CACHE_VERSION = 2;
 
 function toPositiveInteger(value, fallback) {
   const numeric = Number(value);
@@ -22,6 +27,16 @@ function normalizeString(value) {
 function normalizePubkey(pubkey) {
   const normalized = normalizeString(pubkey);
   return normalized ? normalized.toLowerCase() : "";
+}
+
+function normalizeKind(value) {
+  if (Number.isFinite(value)) {
+    return String(Math.floor(value));
+  }
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
+  }
+  return "";
 }
 
 function toParentKey(parentId) {
@@ -56,21 +71,23 @@ export default class CommentThreadService {
     logger = devLogger,
   } = {}) {
     this.nostrClient = nostrClient;
-    this.app = app;
-    this.fetchVideoComments =
-      typeof fetchVideoComments === "function"
-        ? fetchVideoComments
-        : this.nostrClient &&
-            typeof this.nostrClient.fetchVideoComments === "function"
-          ? (...args) => this.nostrClient.fetchVideoComments(...args)
-          : null;
-    this.subscribeVideoComments =
-      typeof subscribeVideoComments === "function"
-        ? subscribeVideoComments
-        : this.nostrClient &&
-            typeof this.nostrClient.subscribeVideoComments === "function"
-          ? (...args) => this.nostrClient.subscribeVideoComments(...args)
-          : null;
+    this.fetchVideoComments = fetchVideoComments;
+    this.subscribeVideoComments = subscribeVideoComments;
+
+    if (!this.fetchVideoComments && this.nostrClient) {
+      const clientFetcher = this.nostrClient.fetchVideoComments;
+      if (typeof clientFetcher === "function") {
+        this.fetchVideoComments = (...args) => clientFetcher.apply(this.nostrClient, args);
+      }
+    }
+
+    if (!this.subscribeVideoComments && this.nostrClient) {
+      const clientSubscriber = this.nostrClient.subscribeVideoComments;
+      if (typeof clientSubscriber === "function") {
+        this.subscribeVideoComments = (...args) => clientSubscriber.apply(this.nostrClient, args);
+      }
+    }
+
     this.getProfileCacheEntry =
       typeof getProfileCacheEntry === "function"
         ? getProfileCacheEntry
@@ -112,7 +129,12 @@ export default class CommentThreadService {
     this.subscriptionCleanup = null;
     this.videoEventId = "";
     this.videoAddressPointer = "";
+    this.videoKind = "";
+    this.videoAuthorPubkeyRaw = "";
+    this.videoAuthorPubkey = "";
     this.parentCommentId = "";
+    this.parentCommentKind = "";
+    this.parentCommentPubkey = "";
     this.activeRelays = null;
   }
 
@@ -136,12 +158,36 @@ export default class CommentThreadService {
   } = {}) {
     this.teardown();
 
+    // Always ensure the pool is ready before proceeding
+    if (typeof this.nostrClient?.ensurePool === "function") {
+      try {
+        await this.nostrClient.ensurePool();
+      } catch (error) {
+        this.emitError(
+          new Error("Unable to initialize Nostr pool before loading comments."),
+        );
+        return { success: false, error };
+      }
+    } else {
+      this.emitError(
+        new Error("Nostr client missing ensurePool implementation."),
+      );
+      return { success: false };
+    }
+
+    const rawVideoAuthorPubkey = normalizeString(video?.pubkey);
+
     this.videoEventId = normalizeString(video?.id);
     this.videoAddressPointer = buildVideoAddressPointer(video);
+    this.videoKind = normalizeKind(video?.kind);
+    this.videoAuthorPubkeyRaw = rawVideoAuthorPubkey;
+    this.videoAuthorPubkey = normalizePubkey(rawVideoAuthorPubkey);
     this.parentCommentId = normalizeString(parentCommentId);
+    this.parentCommentKind = this.parentCommentId ? String(COMMENT_EVENT_KIND) : "";
+    this.parentCommentPubkey = "";
     this.activeRelays = Array.isArray(relays) ? [...relays] : null;
 
-    if (!this.videoEventId || !this.videoAddressPointer) {
+    if (!this.videoEventId) {
       this.emitError(
         new Error("Unable to resolve video pointer for comment thread."),
       );
@@ -158,13 +204,31 @@ export default class CommentThreadService {
     const fetchLimit = toPositiveInteger(limit, this.defaultLimit);
     const target = {
       videoEventId: this.videoEventId,
-      videoDefinitionAddress: this.videoAddressPointer,
       parentCommentId: this.parentCommentId,
     };
 
+    if (this.videoAddressPointer) {
+      target.videoDefinitionAddress = this.videoAddressPointer;
+    }
+    if (this.videoKind) {
+      target.videoKind = this.videoKind;
+    }
+    const targetVideoAuthorPubkey = this.getVideoAuthorPubkeyForOutput();
+    if (targetVideoAuthorPubkey) {
+      target.videoAuthorPubkey = targetVideoAuthorPubkey;
+    }
+    if (this.parentCommentId) {
+      if (this.parentCommentKind) {
+        target.parentCommentKind = this.parentCommentKind;
+      }
+      if (this.parentCommentPubkey) {
+        target.parentCommentPubkey = this.parentCommentPubkey;
+      }
+    }
+
     let events = [];
     try {
-      events = await this.fetchVideoComments(target, {
+      events = await this.fetchThread(target, {
         limit: fetchLimit,
         relays: this.activeRelays,
       });
@@ -192,6 +256,248 @@ export default class CommentThreadService {
     }
 
     return this.getSnapshot();
+  }
+
+  async fetchThread(target, options = {}) {
+    const fallbackFetch = async (overrideOptions = options) => {
+      if (typeof this.fetchVideoComments !== "function") {
+        return [];
+      }
+      return await this.fetchVideoComments(target, overrideOptions);
+    };
+
+    if (!FEATURE_IMPROVED_COMMENT_FETCHING) {
+      return fallbackFetch(options);
+    }
+
+    const targetCandidate =
+      target && typeof target === "object" ? target : {};
+    const videoEventId = normalizeString(
+      targetCandidate.videoEventId || targetCandidate.eventId,
+    );
+
+    if (!videoEventId) {
+      return fallbackFetch(options);
+    }
+
+    const cached = this.getCachedComments(videoEventId);
+    if (Array.isArray(cached)) {
+      return cached;
+    }
+
+    const fetchOptions = {
+      ...options,
+      since: 0,
+    };
+
+    if (Number.isFinite(options?.limit)) {
+      fetchOptions.limit = Math.max(
+        toPositiveInteger(options.limit, this.defaultLimit),
+        this.defaultLimit,
+      );
+    } else if (!Number.isFinite(fetchOptions.limit)) {
+      fetchOptions.limit = Math.max(this.defaultLimit, 100);
+    }
+
+    const comments = await fallbackFetch(fetchOptions);
+    this.cacheComments(videoEventId, comments);
+    return comments;
+  }
+
+  getCommentCacheKey(videoEventId) {
+    const normalized = normalizeString(videoEventId);
+    return normalized ? `${COMMENT_CACHE_PREFIX}${normalized}` : "";
+  }
+
+  getCachedComments(videoEventId) {
+    if (
+      !FEATURE_IMPROVED_COMMENT_FETCHING ||
+      typeof localStorage === "undefined"
+    ) {
+      return null;
+    }
+
+    const cacheKey = this.getCommentCacheKey(videoEventId);
+    if (!cacheKey) {
+      return null;
+    }
+
+    let raw = null;
+    try {
+      raw = localStorage.getItem(cacheKey);
+    } catch (error) {
+      if (this.logger?.warn) {
+        this.logger.warn(
+          `[commentThread] Failed to read cached comments for ${videoEventId}:`,
+          error,
+        );
+      }
+      return null;
+    }
+
+    if (raw === null) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") {
+        this.removeCommentCache(cacheKey);
+        return null;
+      }
+
+      const cacheVersion = Number.isFinite(parsed.version)
+        ? Number(parsed.version)
+        : null;
+
+      if (cacheVersion !== COMMENT_CACHE_VERSION) {
+        this.removeCommentCache(cacheKey);
+        return null;
+      }
+
+      const comments = Array.isArray(parsed.comments)
+        ? parsed.comments
+        : null;
+      const timestamp = Number(parsed.timestamp);
+
+      if (
+        Array.isArray(comments) &&
+        Number.isFinite(timestamp) &&
+        Date.now() - timestamp <= COMMENT_CACHE_TTL_MS
+      ) {
+        if (devLogger?.info) {
+          devLogger.info(
+            `[commentThread] Loaded ${comments.length} cached comments for ${videoEventId}.`,
+          );
+        }
+        return comments;
+      }
+
+      this.removeCommentCache(cacheKey);
+    } catch (error) {
+      if (this.logger?.warn) {
+        this.logger.warn(
+          `[commentThread] Failed to parse cached comments for ${videoEventId}:`,
+          error,
+        );
+      }
+      this.removeCommentCache(cacheKey);
+    }
+
+    return null;
+  }
+
+  cacheComments(videoEventId, comments) {
+    if (
+      !FEATURE_IMPROVED_COMMENT_FETCHING ||
+      typeof localStorage === "undefined" ||
+      !Array.isArray(comments)
+    ) {
+      return;
+    }
+
+    const cacheKey = this.getCommentCacheKey(videoEventId);
+    if (!cacheKey) {
+      return;
+    }
+
+    try {
+      localStorage.setItem(
+        cacheKey,
+        JSON.stringify({
+          version: COMMENT_CACHE_VERSION,
+          comments,
+          timestamp: Date.now(),
+        }),
+      );
+      if (devLogger?.info) {
+        devLogger.info(
+          `[commentThread] Cached ${comments.length} comments for ${videoEventId}.`,
+        );
+      }
+    } catch (error) {
+      if (this.logger?.warn) {
+        this.logger.warn(
+          `[commentThread] Failed to cache comments for ${videoEventId}:`,
+          error,
+        );
+      }
+    }
+  }
+
+  removeCommentCache(cacheKey) {
+    if (!cacheKey || typeof localStorage === "undefined") {
+      return;
+    }
+
+    try {
+      localStorage.removeItem(cacheKey);
+    } catch (error) {
+      if (this.logger?.warn) {
+        this.logger.warn(
+          `[commentThread] Failed to clear cached comments for ${cacheKey}:`,
+          error,
+        );
+      }
+    }
+  }
+
+  clearCommentCache(videoEventId = null) {
+    if (!FEATURE_IMPROVED_COMMENT_FETCHING || typeof localStorage === "undefined") {
+      return;
+    }
+
+    if (videoEventId) {
+      this.removeCommentCache(this.getCommentCacheKey(videoEventId));
+      return;
+    }
+
+    try {
+      const keys = Object.keys(localStorage);
+      keys
+        .filter((key) => key.startsWith(COMMENT_CACHE_PREFIX))
+        .forEach((key) => this.removeCommentCache(key));
+    } catch (error) {
+      if (this.logger?.warn) {
+        this.logger.warn(
+          "[commentThread] Failed to clear comment cache:",
+          error,
+        );
+      }
+    }
+  }
+
+  persistCommentCache() {
+    if (!FEATURE_IMPROVED_COMMENT_FETCHING || !this.videoEventId) {
+      return;
+    }
+
+    const comments = this.serializeCommentsForCache();
+    this.cacheComments(this.videoEventId, comments);
+  }
+
+  serializeCommentsForCache() {
+    const events = Array.from(this.eventsById.values());
+    return events.sort((a, b) => {
+      const aTime = Number.isFinite(a?.created_at) ? a.created_at : 0;
+      const bTime = Number.isFinite(b?.created_at) ? b.created_at : 0;
+      if (aTime !== bTime) {
+        return aTime - bTime;
+      }
+
+      const aId = normalizeString(a?.id);
+      const bId = normalizeString(b?.id);
+      if (aId && bId) {
+        return aId.localeCompare(bId);
+      }
+      if (aId) {
+        return -1;
+      }
+      if (bId) {
+        return 1;
+      }
+      return 0;
+    });
   }
 
   startSubscription(target) {
@@ -235,6 +541,11 @@ export default class CommentThreadService {
 
     if (!isInitial && result.type === "insert") {
       this.emitAppend(result);
+      return;
+    }
+
+    if (!isInitial && result.type === "update") {
+      this.persistCommentCache();
     }
   }
 
@@ -252,6 +563,15 @@ export default class CommentThreadService {
     const parentKey = toParentKey(parentId);
     const createdAt = Number.isFinite(event.created_at) ? event.created_at : 0;
     const pubkey = normalizePubkey(event.pubkey);
+    if (this.parentCommentId && eventId === this.parentCommentId) {
+      const kindValue = normalizeKind(event.kind);
+      if (kindValue) {
+        this.parentCommentKind = kindValue;
+      }
+      if (pubkey) {
+        this.parentCommentPubkey = pubkey;
+      }
+    }
 
     const existingMeta = this.metaById.get(eventId);
     this.eventsById.set(eventId, event);
@@ -451,28 +771,44 @@ export default class CommentThreadService {
     await hydrationPromise;
   }
 
+  getVideoAuthorPubkeyForOutput() {
+    return this.videoAuthorPubkeyRaw || this.videoAuthorPubkey || "";
+  }
+
   emitThreadReady() {
     const payload = {
       videoEventId: this.videoEventId,
       parentCommentId: this.parentCommentId || null,
+      videoDefinitionAddress: this.videoAddressPointer || null,
+      videoKind: this.videoKind || null,
+      videoAuthorPubkey: this.getVideoAuthorPubkeyForOutput() || null,
+      parentCommentKind: this.parentCommentKind || null,
+      parentCommentPubkey: this.parentCommentPubkey || null,
       topLevelIds: this.getCommentIdsForParent(null),
       commentsById: this.cloneCommentsMap(),
       childrenByParent: this.cloneTreeMap(),
       profiles: this.getProfilesSnapshot(),
     };
     safeCall(this.callbacks.onThreadReady, payload);
+    this.persistCommentCache();
   }
 
   emitAppend({ parentId, eventId }) {
     const payload = {
       videoEventId: this.videoEventId,
       parentCommentId: parentId || null,
+      videoDefinitionAddress: this.videoAddressPointer || null,
+      videoKind: this.videoKind || null,
+      videoAuthorPubkey: this.getVideoAuthorPubkeyForOutput() || null,
+      parentCommentKind: this.parentCommentKind || null,
+      parentCommentPubkey: this.parentCommentPubkey || null,
       commentIds: [eventId],
       commentsById: this.cloneCommentsMap(),
       childrenByParent: this.cloneTreeMap(),
       profiles: this.getProfilesSnapshot(),
     };
     safeCall(this.callbacks.onCommentsAppended, payload);
+    this.persistCommentCache();
   }
 
   emitError(error) {
@@ -486,6 +822,11 @@ export default class CommentThreadService {
     return {
       videoEventId: this.videoEventId,
       parentCommentId: this.parentCommentId || null,
+      videoDefinitionAddress: this.videoAddressPointer || null,
+      videoKind: this.videoKind || null,
+      videoAuthorPubkey: this.getVideoAuthorPubkeyForOutput() || null,
+      parentCommentKind: this.parentCommentKind || null,
+      parentCommentPubkey: this.parentCommentPubkey || null,
       commentsById: this.cloneCommentsMap(),
       childrenByParent: this.cloneTreeMap(),
       profiles: this.getProfilesSnapshot(),
@@ -531,6 +872,14 @@ export default class CommentThreadService {
     const key = toParentKey(normalizeString(parentId));
     const list = this.childrenByParent.get(key);
     return Array.isArray(list) ? [...list] : [];
+  }
+
+  getCommentEvent(commentId) {
+    const normalized = normalizeString(commentId);
+    if (!normalized) {
+      return null;
+    }
+    return this.eventsById.get(normalized) || null;
   }
 
   waitForProfileHydration() {

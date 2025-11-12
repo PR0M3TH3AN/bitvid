@@ -37,10 +37,12 @@ import {
   getCachedLightningEntry,
   getCachedMetadataByUrl,
   getCachedPlatformLightningAddress,
+  isZapAllowanceExhaustedError,
   isMetadataEntryFresh,
   normalizeLightningAddressKey,
   rememberLightningMetadata,
   setCachedPlatformLightningAddress,
+  buildZapAllowanceExhaustedMessage,
   validateInvoiceAmount
 } from "./payments/zapSharedState.js";
 import { splitAndZap } from "./payments/zapSplit.js";
@@ -54,7 +56,8 @@ import { getPlatformLightningAddress } from "./payments/platformAddress.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import {
   ensureWallet,
-  sendPayment as sendWalletPayment
+  sendPayment as sendWalletPayment,
+  resetWalletClient
 } from "./payments/nwcClient.js";
 import {
   prepareStaticModal,
@@ -110,11 +113,13 @@ function decorateChannelVideo(video, app = getApp()) {
     return null;
   }
 
+  let decoratedVideo = video;
+
   if (typeof app?.decorateVideoModeration === "function") {
     try {
       const decorated = app.decorateVideoModeration(video);
       if (decorated && typeof decorated === "object") {
-        return decorated;
+        decoratedVideo = decorated;
       }
     } catch (error) {
       devLogger.warn(
@@ -124,7 +129,21 @@ function decorateChannelVideo(video, app = getApp()) {
     }
   }
 
-  return video;
+  if (typeof app?.decorateVideoCreatorIdentity === "function") {
+    try {
+      const identityDecorated = app.decorateVideoCreatorIdentity(decoratedVideo);
+      if (identityDecorated && typeof identityDecorated === "object") {
+        decoratedVideo = identityDecorated;
+      }
+    } catch (error) {
+      devLogger.warn(
+        "[ChannelProfile] Failed to decorate channel video identity",
+        error,
+      );
+    }
+  }
+
+  return decoratedVideo;
 }
 
 function collectChannelVideos(pubkey, app = getApp()) {
@@ -2553,14 +2572,32 @@ function createZapDependencies({
           }
           return payment;
         } catch (error) {
+          const allowanceExhausted = isZapAllowanceExhaustedError(error);
+          if (allowanceExhausted) {
+            error.__zapAllowanceExhausted = true;
+          }
           if (Array.isArray(shareTracker)) {
             shareTracker.push({
               type: shareType,
               status: "error",
               amount: shareAmount,
               address,
-              error
+              error,
+              allowanceExhausted
             });
+          }
+          if (
+            typeof error?.message === "string" &&
+            error.message.toLowerCase().includes("timed out")
+          ) {
+            try {
+              resetWalletClient();
+            } catch (resetError) {
+              devLogger?.warn?.(
+                "[zap] Failed to reset wallet client after timeout",
+                resetError
+              );
+            }
           }
           logZapError(
             "wallet.sendPayment",
@@ -2928,6 +2965,83 @@ async function handleZapSend(event) {
 
     const { context, result } = attempt;
     const receipts = Array.isArray(result?.receipts) ? result.receipts : [];
+
+    const failureReceipts = receipts.filter((receipt) => {
+      if (!receipt || typeof receipt !== "object") {
+        return false;
+      }
+      if (typeof receipt.status === "string" && receipt.status !== "success") {
+        return true;
+      }
+      return Boolean(receipt.error);
+    });
+
+    if (failureReceipts.length) {
+      renderZapReceipts(receipts, { partial: true });
+
+      const failureShares = failureReceipts
+        .map((receipt) => {
+          const amount = Math.max(0, Math.round(Number(receipt.amount) || 0));
+          return {
+            type: receipt.recipientType || receipt.type || "creator",
+            amount,
+            address:
+              typeof receipt.address === "string" && receipt.address
+                ? receipt.address
+                : undefined,
+            error: receipt.error
+          };
+        })
+        .filter((share) => share.amount > 0);
+
+      if (failureShares.length) {
+        markZapRetryPending(failureShares);
+      }
+
+      const shareSummary = failureShares
+        .map((share) => `${describeShareType(share.type)} ${share.amount} sats`)
+        .join(", ");
+
+      const failureMessage = failureReceipts
+        .map((receipt) => {
+          if (typeof receipt?.error?.message === "string") {
+            return receipt.error.message;
+          }
+          if (typeof receipt?.error === "string") {
+            return receipt.error;
+          }
+          return "";
+        })
+        .find((message) => message);
+
+      const budgetReceipt = failureReceipts.find((receipt) =>
+        isZapAllowanceExhaustedError(receipt?.error)
+      );
+      const isBudgetExceeded =
+        Boolean(budgetReceipt) ||
+        (typeof failureMessage === "string" && /budget exceeded/i.test(failureMessage));
+
+      let warningMessage;
+      if (isBudgetExceeded) {
+        warningMessage =
+          "Budget exceeded. Increase your wallet zap limit or reduce the platform fee, then retry the remaining shares.";
+      } else if (failureMessage) {
+        warningMessage = failureMessage;
+      } else {
+        warningMessage =
+          "Some zap shares failed. Press Send again to retry the remaining shares.";
+      }
+
+      if (shareSummary) {
+        const normalized = warningMessage.replace(/\.*$/, "");
+        warningMessage = `${normalized}. Remaining share(s): ${shareSummary}.`;
+      }
+
+      setZapStatus(warningMessage, "warning");
+      app?.showError?.(warningMessage);
+      return;
+    }
+
     renderZapReceipts(receipts, { partial: false });
 
     const creatorShare = context.shares.creatorShare;
@@ -2963,23 +3077,54 @@ async function handleZapSend(event) {
     const failureShares = tracker.filter(
       (entry) => entry && entry.status !== "success" && entry.amount > 0
     );
+    const allowanceExhausted =
+      isZapAllowanceExhaustedError(error) ||
+      failureShares.some((share) =>
+        isZapAllowanceExhaustedError(share?.error)
+      );
+    if (allowanceExhausted) {
+      resetZapRetryState();
+    }
+
     if (failureShares.length) {
-      markZapRetryPending(failureShares);
-      const summary = failureShares
-        .map((share) => `${describeShareType(share.type)} ${share.amount} sats`)
-        .join(", ");
-      const tone = tracker.length > failureShares.length ? "warning" : "error";
-      const statusMessage =
-        tracker.length > failureShares.length
-          ? `Partial zap failure. Press Send again to retry: ${summary}.`
-          : `Zap failed. Press Send again to retry: ${summary}.`;
-      setZapStatus(statusMessage, tone);
-      app?.showError?.(error?.message || statusMessage);
+      if (allowanceExhausted) {
+        const allowanceShare = failureShares.find((share) =>
+          isZapAllowanceExhaustedError(share?.error)
+        );
+        const allowanceMessage = buildZapAllowanceExhaustedMessage(
+          isZapAllowanceExhaustedError(error) ? error : allowanceShare?.error
+        );
+        const partialSuccess = tracker.length > failureShares.length;
+        const tone = partialSuccess ? "warning" : "error";
+        const statusMessage = partialSuccess
+          ? `Some zap shares succeeded before your wallet allowance was exhausted. ${allowanceMessage}`
+          : allowanceMessage;
+        setZapStatus(statusMessage, tone);
+        app?.showError?.(statusMessage);
+      } else {
+        markZapRetryPending(failureShares);
+        const summary = failureShares
+          .map((share) => `${describeShareType(share.type)} ${share.amount} sats`)
+          .join(", ");
+        const tone = tracker.length > failureShares.length ? "warning" : "error";
+        const statusMessage =
+          tracker.length > failureShares.length
+            ? `Partial zap failure. Press Send again to retry: ${summary}.`
+            : `Zap failed. Press Send again to retry: ${summary}.`;
+        setZapStatus(statusMessage, tone);
+        app?.showError?.(error?.message || statusMessage);
+      }
     } else {
       resetZapRetryState();
-      const message = error?.message || "Zap failed. Please try again.";
-      setZapStatus(message, "error");
-      app?.showError?.(message);
+      if (allowanceExhausted) {
+        const allowanceMessage = buildZapAllowanceExhaustedMessage(error);
+        setZapStatus(allowanceMessage, "error");
+        app?.showError?.(allowanceMessage);
+      } else {
+        const message = error?.message || "Zap failed. Please try again.";
+        setZapStatus(message, "error");
+        app?.showError?.(message);
+      }
     }
   } finally {
     zapInFlight = false;
@@ -4357,6 +4502,34 @@ export async function renderChannelVideosFromList({
       cardState = "critical";
     }
 
+    const identity = {
+      name:
+        typeof video.creatorName === "string" && video.creatorName
+          ? video.creatorName
+          : typeof video.authorName === "string"
+            ? video.authorName
+            : "",
+      picture:
+        typeof video.creatorPicture === "string" && video.creatorPicture
+          ? video.creatorPicture
+          : typeof video.authorPicture === "string"
+            ? video.authorPicture
+            : "",
+      pubkey: typeof video.pubkey === "string" ? video.pubkey : "",
+      npub:
+        typeof video.npub === "string" && video.npub
+          ? video.npub
+          : typeof video.authorNpub === "string"
+            ? video.authorNpub
+            : "",
+      shortNpub:
+        typeof video.shortNpub === "string" && video.shortNpub
+          ? video.shortNpub
+          : typeof video.creatorNpub === "string"
+            ? video.creatorNpub
+            : "",
+    };
+
     const videoCard = new VideoCard({
       document,
       video,
@@ -4365,6 +4538,7 @@ export async function renderChannelVideosFromList({
       pointerInfo,
       timeAgo,
       cardState,
+      identity,
       capabilities: {
         canEdit,
         canDelete: canEdit,
@@ -4386,7 +4560,7 @@ export async function renderChannelVideosFromList({
           typeof value === "number" ? value.toLocaleString() : value
       },
       assets: {
-        fallbackThumbnailSrc: "assets/jpg/video-thumbnail-fallback.jpg",
+        fallbackThumbnailSrc: "/assets/jpg/video-thumbnail-fallback.jpg",
         unsupportedBtihMessage
       },
       state: { loadedThumbnails },

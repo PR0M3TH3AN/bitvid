@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { setupModal } from "./video-modal-accessibility.test.mjs";
+import VideoModalCommentController from "../js/ui/videoModalCommentController.js";
+import { COMMENT_EVENT_KIND } from "../js/nostr/commentEvents.js";
 
 const FOCUSABLE_SELECTOR = [
   "a[href]",
@@ -24,6 +26,17 @@ function createCommentEvent({ id, pubkey, content, createdAt, parentId = null })
   if (parentId) {
     tags.push(["e", parentId]);
   }
+  assert.ok(
+    tags.some((tag) => Array.isArray(tag) && tag[0] === "e" && tag[1] === "video123"),
+    "comment fixture should include root #e tag",
+  );
+  assert.ok(
+    tags.some(
+      (tag) =>
+        Array.isArray(tag) && tag[0] === "a" && tag[1] === "30078:authorpk:video-root",
+    ),
+    "comment fixture should include root #a tag",
+  );
   return {
     id,
     pubkey,
@@ -173,6 +186,399 @@ test("VideoModal comment composer updates messaging and dispatches events", asyn
   assert.equal(submitDetail.text, "New comment");
   assert.strictEqual(submitDetail.triggerElement, modal.commentsSubmitButton);
 });
+
+test(
+  "VideoModalCommentController load preserves current video for submissions",
+  async () => {
+    const publishCalls = [];
+
+    const controller = new VideoModalCommentController({
+      commentThreadService: {
+        setCallbacks: () => {},
+        teardown: () => {},
+        defaultLimit: 10,
+        loadThread: () => Promise.resolve(),
+        processIncomingEvent: () => {},
+      },
+      videoModal: {
+        setCommentSectionCallbacks: () => {},
+        hideCommentsDisabledMessage: () => {},
+        showCommentsDisabledMessage: () => {},
+        setCommentsVisibility: () => {},
+        clearComments: () => {},
+        resetCommentComposer: () => {},
+        setCommentStatus: () => {},
+        setCommentComposerState: () => {},
+      },
+      auth: {
+        isLoggedIn: () => true,
+      },
+      services: {
+        publishComment: async (payload) => {
+          publishCalls.push(payload);
+          return { ok: true, event: { id: "comment", tags: [] } };
+        },
+      },
+      utils: {
+        normalizeHexPubkey: (value) => value,
+      },
+    });
+
+  const video = {
+    id: "video123",
+    pubkey: "AUTHORPK",
+    enableComments: true,
+    kind: 30078,
+    tags: [["d", "video-root"]],
+  };
+
+    controller.load(video);
+    controller.submit({ text: "Nice" });
+
+    await controller.modalCommentPublishPromise;
+
+    assert.equal(publishCalls.length, 1, "publishComment should be called once");
+    const payload = publishCalls[0];
+    assert.equal(payload.videoEventId, "video123");
+    assert.equal(payload.videoAuthorPubkey, "AUTHORPK");
+    assert.equal(payload.videoDefinitionAddress, "30078:AUTHORPK:video-root");
+  },
+);
+
+test(
+  "VideoModalCommentController falls back to thread pointer when video tags are absent",
+  async () => {
+    const publishCalls = [];
+
+    const controller = new VideoModalCommentController({
+      commentThreadService: {
+        setCallbacks: () => {},
+        teardown: () => {},
+        defaultLimit: 10,
+        loadThread: () => Promise.resolve(),
+        processIncomingEvent: () => {},
+      },
+      videoModal: {
+        setCommentSectionCallbacks: () => {},
+        hideCommentsDisabledMessage: () => {},
+        showCommentsDisabledMessage: () => {},
+        setCommentsVisibility: () => {},
+        clearComments: () => {},
+        resetCommentComposer: () => {},
+        setCommentStatus: () => {},
+        setCommentComposerState: () => {},
+      },
+      auth: {
+        isLoggedIn: () => true,
+      },
+      services: {
+        publishComment: async (payload) => {
+          publishCalls.push(payload);
+          return { ok: true, event: { id: "comment", tags: [] } };
+        },
+      },
+      utils: {
+        normalizeHexPubkey: (value) => value,
+      },
+    });
+
+    const video = {
+      id: "video456",
+      pubkey: "AUTHORPK",
+      enableComments: true,
+      kind: 30078,
+      // No tags provided; buildVideoAddressPointer should return an empty string.
+    };
+
+    controller.load(video);
+    controller.modalCommentState.videoDefinitionAddress =
+      " 30078:AUTHORPK:video-root ";
+
+    controller.submit({ text: "Fallback pointer" });
+
+    await controller.modalCommentPublishPromise;
+
+    assert.equal(publishCalls.length, 1);
+    const payload = publishCalls[0];
+    assert.equal(
+      payload.videoDefinitionAddress,
+      "30078:AUTHORPK:video-root",
+      "publish payload should reuse pointer from the loaded thread",
+    );
+  },
+);
+
+test(
+  "VideoModalCommentController publishes comment using event id fallback",
+  async () => {
+    const publishCalls = [];
+    const statusMessages = [];
+    let resetCalled = false;
+    const composerStates = [];
+    const appendedEvents = [];
+
+    const videoModal = {
+      setCommentComposerState: (state) => {
+        composerStates.push({ ...state });
+      },
+      resetCommentComposer: () => {
+        resetCalled = true;
+      },
+      setCommentStatus: (message) => {
+        statusMessages.push(message);
+      },
+      appendComment: (event) => {
+        appendedEvents.push(event);
+      },
+    };
+
+    const processedEvents = [];
+
+    const controller = new VideoModalCommentController({
+      commentThreadService: {
+        setCallbacks: () => {},
+        processIncomingEvent: (event) => {
+          processedEvents.push(event);
+        },
+      },
+      videoModal,
+      auth: {
+        isLoggedIn: () => true,
+      },
+      services: {
+        publishComment: async (payload, eventData) => {
+          publishCalls.push([payload, eventData]);
+          return {
+            ok: true,
+            event: {
+              id: "legacy-comment",
+              pubkey: "pk1",
+              content: eventData.content,
+              tags: [],
+            },
+          };
+        },
+      },
+      utils: {
+        normalizeHexPubkey: (value) => value?.toLowerCase?.() || value,
+      },
+    });
+
+    controller.currentVideo = {
+      id: "legacy-video",
+      pubkey: "AUTHORPK",
+      enableComments: true,
+      kind: 30078,
+      tags: [],
+    };
+    controller.modalCommentState.videoEventId = "legacy-video";
+
+    await controller.handleVideoModalCommentSubmit({ text: "Legacy support" });
+
+    assert.equal(publishCalls.length, 1, "publishComment should be invoked");
+    const [payload, eventData] = publishCalls[0];
+    assert.deepStrictEqual(payload, {
+      videoEventId: "legacy-video",
+      parentCommentId: null,
+      videoKind: "30078",
+      videoAuthorPubkey: "AUTHORPK",
+      rootKind: "30078",
+      rootAuthorPubkey: "AUTHORPK",
+    });
+    assert.equal(
+      "videoDefinitionAddress" in payload,
+      false,
+      "payload should omit videoDefinitionAddress when unavailable",
+    );
+    assert.equal(eventData.content, "Legacy support");
+
+    assert.equal(processedEvents.length, 1, "event should be processed optimistically");
+    assert.equal(resetCalled, true, "composer should reset after publishing");
+    assert.ok(
+      statusMessages.includes("Comment posted."),
+      "success message should be surfaced",
+    );
+    assert.equal(
+      composerStates[composerStates.length - 1]?.disabled,
+      false,
+      "composer should be re-enabled after publishing",
+    );
+    assert.equal(appendedEvents.length, 0, "optimistic insert should avoid duplicate append");
+  },
+);
+
+test(
+  "VideoModalCommentController prompts login when publish requires authentication",
+  async () => {
+    const composerStates = [];
+    const loginLifecycle = [];
+    const errorMessages = [];
+
+    const loginModal = {
+      openModal: ({ triggerElement } = {}) => {
+        loginLifecycle.push({ type: "openModal", triggerElement });
+        return true;
+      },
+    };
+
+    const controller = new VideoModalCommentController({
+      commentThreadService: {
+        setCallbacks: () => {},
+        processIncomingEvent: () => {},
+      },
+      videoModal: {
+        setCommentComposerState: (state) => {
+          composerStates.push({ ...state });
+        },
+        resetCommentComposer: () => {
+          throw new Error("composer should not reset when auth is required");
+        },
+        setCommentStatus: () => {},
+        appendComment: () => {},
+      },
+      auth: {
+        isLoggedIn: () => true,
+        initializeLoginModalController: ({ logIfMissing }) => {
+          loginLifecycle.push({ type: "initialize", logIfMissing });
+        },
+        getLoginModalController: () => loginModal,
+        requestLogin: ({ allowAccountSelection }) => {
+          loginLifecycle.push({ type: "request", allowAccountSelection });
+          return Promise.resolve(true);
+        },
+      },
+      callbacks: {
+        showError: (message) => {
+          errorMessages.push(message);
+        },
+        showStatus: () => {},
+        muteAuthor: () => Promise.resolve(),
+        shouldHideAuthor: () => false,
+      },
+      services: {
+        publishComment: async () => ({ ok: false, error: "auth-required" }),
+      },
+      utils: {
+        normalizeHexPubkey: (value) => value?.toLowerCase?.() || value,
+      },
+    });
+
+    controller.currentVideo = {
+      id: "video-auth",
+      pubkey: "AUTHORPK",
+      enableComments: true,
+      kind: 30078,
+      tags: [],
+    };
+    controller.modalCommentState.videoEventId = "video-auth";
+    controller.modalCommentState.videoKind = "30078";
+    controller.modalCommentState.videoAuthorPubkey = "AUTHORPK";
+
+    const triggerElement = { id: "comment-trigger" };
+
+    await controller.handleVideoModalCommentSubmit({
+      text: "Needs auth",
+      triggerElement,
+    });
+
+    const lastComposerState = composerStates[composerStates.length - 1];
+    assert.deepStrictEqual(
+      lastComposerState,
+      { disabled: true, reason: "login-required" },
+      "composer should remain disabled while prompting for login",
+    );
+    assert.equal(errorMessages.length, 0, "auth-required should not surface as an error");
+
+    assert.equal(
+      loginLifecycle.some((step) => step.type === "initialize"),
+      true,
+      "login modal controller should be initialized",
+    );
+    assert.equal(
+      loginLifecycle.some((step) => step.type === "openModal"),
+      true,
+      "login modal should attempt to open",
+    );
+    const modalOpen = loginLifecycle.find((step) => step.type === "openModal");
+    assert.equal(
+      modalOpen?.triggerElement,
+      triggerElement,
+      "trigger element should propagate to login modal",
+    );
+  },
+);
+
+test(
+  "VideoModalCommentController includes parent metadata when replying",
+  async () => {
+    const publishCalls = [];
+
+    const parentEvent = {
+      id: "parent-1",
+      kind: COMMENT_EVENT_KIND,
+      pubkey: "parentpk",
+      tags: [],
+    };
+
+    const controller = new VideoModalCommentController({
+      commentThreadService: {
+        setCallbacks: () => {},
+        getCommentEvent: (id) => (id === "parent-1" ? parentEvent : null),
+        processIncomingEvent: () => {},
+      },
+      videoModal: {
+        setCommentComposerState: () => {},
+        setCommentStatus: () => {},
+        resetCommentComposer: () => {},
+        appendComment: () => {},
+      },
+      auth: {
+        isLoggedIn: () => true,
+      },
+      services: {
+        publishComment: async (payload) => {
+          publishCalls.push(payload);
+          return { ok: true, event: { id: "reply", tags: [] } };
+        },
+      },
+      utils: {
+        normalizeHexPubkey: (value) => value?.toLowerCase?.() || value,
+      },
+    });
+
+    controller.currentVideo = {
+      id: "video123",
+      pubkey: "AUTHORPK",
+      enableComments: true,
+      kind: 30078,
+    };
+    controller.modalCommentState = {
+      videoEventId: "video123",
+      videoDefinitionAddress: null,
+      videoKind: "30078",
+      videoAuthorPubkey: "AUTHORPK",
+      parentCommentId: "parent-1",
+      parentCommentKind: String(COMMENT_EVENT_KIND),
+      parentCommentPubkey: null,
+    };
+
+    await controller.handleVideoModalCommentSubmit({
+      text: "Replying",
+      parentId: "parent-1",
+    });
+
+    assert.equal(publishCalls.length, 1, "reply should trigger publish call");
+    const payload = publishCalls[0];
+    assert.equal(payload.videoEventId, "video123");
+    assert.equal(payload.videoKind, "30078");
+    assert.equal(payload.videoAuthorPubkey, "AUTHORPK");
+    assert.equal(payload.parentCommentId, "parent-1");
+    assert.equal(payload.parentCommentKind, String(COMMENT_EVENT_KIND));
+    assert.equal(payload.parentCommentPubkey, "parentpk");
+    assert.equal(payload.parentAuthorPubkey, "parentpk");
+    assert.equal(payload.rootAuthorPubkey, "AUTHORPK");
+  },
+);
 
 test("VideoModal comment section exposes aria landmarks and participates in focus trap", async (t) => {
   const { window, document, modal, playerModal, trigger, cleanup } = await setupModal();

@@ -891,11 +891,29 @@ export class EditModal {
 
     const finalTitle = titleWasEdited ? newTitle : original.title || "";
     const finalUrl = urlWasEdited ? newUrl : original.url || "";
-    const shouldUseOriginalWs = wsInput ? wsInput.readOnly !== false : true;
-    const shouldUseOriginalXs = xsInput ? xsInput.readOnly !== false : true;
-    let finalWs = shouldUseOriginalWs ? original.ws || "" : newWs;
-    let finalXs = shouldUseOriginalXs ? original.xs || "" : newXs;
-    let finalMagnet = magnetWasEdited ? newMagnet : original.magnet || "";
+    const originalMagnetValue =
+      typeof original.magnet === "string" ? original.magnet.trim() : "";
+    const originalWsValue =
+      typeof original.ws === "string" ? original.ws.trim() : "";
+    const originalXsValue =
+      typeof original.xs === "string" ? original.xs.trim() : "";
+
+    const wsWasManuallyEdited = wsInput ? wsInput.readOnly === false : false;
+    const xsWasManuallyEdited = xsInput ? xsInput.readOnly === false : false;
+
+    let finalMagnet = magnetWasEdited ? newMagnet : originalMagnetValue;
+    let finalWs = wsWasManuallyEdited ? newWs : originalWsValue;
+    let finalXs = xsWasManuallyEdited ? newXs : originalXsValue;
+
+    if (magnetWasEdited) {
+      const magnetHintCandidates = extractMagnetHints(finalMagnet);
+      if (!wsWasManuallyEdited) {
+        finalWs = magnetHintCandidates.ws || "";
+      }
+      if (!xsWasManuallyEdited) {
+        finalXs = magnetHintCandidates.xs || "";
+      }
+    }
     const finalThumbnail = isEditing(thumbnailInput)
       ? newThumbnail
       : original.thumbnail || "";
@@ -990,6 +1008,10 @@ export class EditModal {
       finalXs = "";
     }
 
+    const magnetChanged = magnetWasEdited && finalMagnet !== originalMagnetValue;
+    const wsEditedFlag = wsWasManuallyEdited || magnetChanged;
+    const xsEditedFlag = xsWasManuallyEdited || magnetChanged;
+
     const updatedData = {
       version: original.version || 2,
       title: finalTitle,
@@ -1000,8 +1022,8 @@ export class EditModal {
       mode: this.resolveModeForSubmit(),
       ws: finalWs,
       xs: finalXs,
-      wsEdited: !shouldUseOriginalWs,
-      xsEdited: !shouldUseOriginalXs,
+      wsEdited: wsEditedFlag,
+      xsEdited: xsEditedFlag,
       urlEdited: urlWasEdited,
       magnetEdited: magnetWasEdited,
       enableComments: finalEnableComments,

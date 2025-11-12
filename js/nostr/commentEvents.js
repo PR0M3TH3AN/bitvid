@@ -2,17 +2,26 @@ import {
   buildCommentEvent,
   getNostrEventSchema,
   NOTE_TYPES,
+  sanitizeAdditionalTags,
 } from "../nostrEventSchemas.js";
 import { publishEventToRelay } from "../nostrPublish.js";
 import { RELAY_URLS } from "./toolkit.js";
 import { normalizePointerInput } from "./watchHistory.js";
 import { devLogger, userLogger } from "../utils/logger.js";
-
 const COMMENT_EVENT_SCHEMA = getNostrEventSchema(NOTE_TYPES.VIDEO_COMMENT);
 export const COMMENT_EVENT_KIND = Number.isFinite(COMMENT_EVENT_SCHEMA?.kind)
   ? COMMENT_EVENT_SCHEMA.kind
-  : 1;
+  : 1111;
+export const LEGACY_COMMENT_KIND = 1;
+const ALLOWED_COMMENT_KINDS = Object.freeze(
+  COMMENT_EVENT_KIND === LEGACY_COMMENT_KIND
+    ? [COMMENT_EVENT_KIND]
+    : [COMMENT_EVENT_KIND, LEGACY_COMMENT_KIND]
+);
 
+function getAllowedCommentKinds() {
+  return ALLOWED_COMMENT_KINDS.slice();
+}
 function sanitizeRelayList(primary, fallback) {
   if (Array.isArray(primary) && primary.length) {
     return primary;
@@ -63,8 +72,10 @@ function normalizePointerCandidate(candidate, expectedType) {
   }
 
   if (Array.isArray(candidate)) {
+    const tagName =
+      typeof candidate[0] === "string" ? candidate[0].trim().toLowerCase() : "";
     if (
-      candidate[0] === expectedType &&
+      tagName === expectedType &&
       typeof candidate[1] === "string" &&
       candidate[1].trim()
     ) {
@@ -96,7 +107,7 @@ function normalizePointerCandidate(candidate, expectedType) {
   if (candidate && typeof candidate === "object") {
     if (
       typeof candidate.type === "string" &&
-      candidate.type === expectedType &&
+      candidate.type.toLowerCase() === expectedType &&
       typeof candidate.value === "string" &&
       candidate.value.trim()
     ) {
@@ -136,6 +147,49 @@ function normalizePointerCandidate(candidate, expectedType) {
   return null;
 }
 
+function normalizeTagName(name) {
+  return typeof name === "string" ? name.trim().toLowerCase() : "";
+}
+
+function normalizeTagValue(value) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  if (Number.isFinite(value)) {
+    return String(Math.floor(value));
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed ? trimmed.toLowerCase() : "";
+  }
+  return "";
+}
+
+function normalizeDescriptorString(value) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  if (Number.isFinite(value)) {
+    return String(Math.floor(value));
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed ? trimmed.toLowerCase() : "";
+  }
+  if (typeof value === "object" && typeof value.value !== "undefined") {
+    return normalizeDescriptorString(value.value);
+  }
+  return "";
+}
+
+function normalizeDescriptorRelay(value) {
+  if (typeof value === "string") {
+    return value.trim();
+  }
+  return "";
+}
+
+
 function pickString(...candidates) {
   for (const candidate of candidates) {
     if (typeof candidate === "string" && candidate.trim()) {
@@ -143,6 +197,74 @@ function pickString(...candidates) {
     }
   }
   return "";
+}
+
+function pickKind(...candidates) {
+  for (const candidate of candidates) {
+    if (Number.isFinite(candidate)) {
+      return String(Math.floor(candidate));
+    }
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+  return "";
+}
+
+function isEventCandidate(candidate) {
+  if (!candidate || typeof candidate !== "object") {
+    return false;
+  }
+  if (Array.isArray(candidate.tags)) {
+    return true;
+  }
+  if (typeof candidate.id === "string" && candidate.id.trim()) {
+    return true;
+  }
+  if (typeof candidate.pubkey === "string" && candidate.pubkey.trim()) {
+    return true;
+  }
+  return false;
+}
+
+function resolveEventCandidate(...candidates) {
+  for (const candidate of candidates) {
+    if (isEventCandidate(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function collectTagsFromEvent(event) {
+  if (!event || typeof event !== "object") {
+    return [];
+  }
+  const tags = Array.isArray(event.tags) ? event.tags : [];
+  return tags.filter((tag) => Array.isArray(tag) && tag.length >= 2);
+}
+
+function findTagByName(tags, ...names) {
+  const normalizedNames = names
+    .flat()
+    .map((name) => normalizeTagName(name))
+    .filter(Boolean);
+  if (!normalizedNames.length) {
+    return null;
+  }
+  for (const tag of tags) {
+    if (!Array.isArray(tag) || tag.length < 2) {
+      continue;
+    }
+    const [name] = tag;
+    if (typeof name !== "string") {
+      continue;
+    }
+    if (normalizedNames.includes(normalizeTagName(name))) {
+      return tag;
+    }
+  }
+  return null;
 }
 
 function normalizeCommentTarget(targetInput = {}, overrides = {}) {
@@ -165,6 +287,18 @@ function normalizeCommentTarget(targetInput = {}, overrides = {}) {
     normalizePointerCandidate(target.definitionPointer, "a") ||
     normalizePointerCandidate(target.definition, "a");
 
+  const rootDefinitionPointer =
+    normalizePointerCandidate(options.rootDefinitionPointer, "a") ||
+    normalizePointerCandidate(options.rootPointer, "a") ||
+    normalizePointerCandidate(target.rootDefinitionPointer, "a") ||
+    normalizePointerCandidate(target.rootPointer, "a");
+
+  const rootEventPointer =
+    normalizePointerCandidate(options.rootEventPointer, "e") ||
+    normalizePointerCandidate(options.rootPointer, "e") ||
+    normalizePointerCandidate(target.rootEventPointer, "e") ||
+    normalizePointerCandidate(target.rootPointer, "e");
+
   const parentCommentPointer =
     normalizePointerCandidate(options.parentCommentPointer, "e") ||
     normalizePointerCandidate(options.parentComment, "e") ||
@@ -172,17 +306,41 @@ function normalizeCommentTarget(targetInput = {}, overrides = {}) {
     normalizePointerCandidate(target.parentComment, "e") ||
     normalizePointerCandidate(target.parentPointer, "e");
 
+  const videoEventObject = resolveEventCandidate(
+    options.videoEvent,
+    options.rootEvent,
+    target.videoEvent,
+    target.rootEvent,
+  );
+
+  const parentCommentEvent = resolveEventCandidate(
+    options.parentCommentEvent,
+    options.parentComment,
+    target.parentCommentEvent,
+    target.parentComment,
+  );
+
+  const rootEventTags = collectTagsFromEvent(videoEventObject);
+  const parentEventTags = collectTagsFromEvent(parentCommentEvent);
+  const combinedTags = [...parentEventTags, ...rootEventTags];
+  const getTagField = (tag, index) =>
+    Array.isArray(tag) && typeof tag[index] === "string"
+      ? tag[index].trim()
+      : "";
+
   const videoEventId = pickString(
     options.videoEventId,
     target.videoEventId,
     target.eventId,
     videoEventPointer?.value,
+    rootEventPointer?.value,
   );
   const videoEventRelay = pickString(
     options.videoEventRelay,
     target.videoEventRelay,
     target.eventRelay,
     videoEventPointer?.relay,
+    rootEventPointer?.relay,
   );
 
   const videoDefinitionAddress = pickString(
@@ -190,12 +348,14 @@ function normalizeCommentTarget(targetInput = {}, overrides = {}) {
     target.videoDefinitionAddress,
     target.definitionAddress,
     videoDefinitionPointer?.value,
+    rootDefinitionPointer?.value,
   );
   const videoDefinitionRelay = pickString(
     options.videoDefinitionRelay,
     target.videoDefinitionRelay,
     target.definitionRelay,
     videoDefinitionPointer?.relay,
+    rootDefinitionPointer?.relay,
   );
 
   const parentCommentId = pickString(
@@ -223,20 +383,411 @@ function normalizeCommentTarget(targetInput = {}, overrides = {}) {
     target.participantRelay,
   );
 
-  if (!videoEventId || !videoDefinitionAddress) {
+  let normalizedVideoEventId =
+    typeof videoEventId === "string" ? videoEventId.trim() : "";
+  let normalizedVideoDefinitionAddress =
+    typeof videoDefinitionAddress === "string" ? videoDefinitionAddress.trim() : "";
+  let normalizedVideoEventRelay =
+    typeof videoEventRelay === "string" ? videoEventRelay.trim() : "";
+  let normalizedVideoDefinitionRelay =
+    typeof videoDefinitionRelay === "string" ? videoDefinitionRelay.trim() : "";
+  let normalizedParentCommentId =
+    typeof parentCommentId === "string" ? parentCommentId.trim() : "";
+  let normalizedParentCommentRelay =
+    typeof parentCommentRelay === "string" ? parentCommentRelay.trim() : "";
+  const normalizedThreadParticipantPubkey =
+    typeof threadParticipantPubkey === "string" ? threadParticipantPubkey.trim() : "";
+  const normalizedThreadParticipantRelay =
+    typeof threadParticipantRelay === "string"
+      ? threadParticipantRelay.trim()
+      : "";
+
+  const rootIdentifier = pickString(
+    options.rootIdentifier,
+    target.rootIdentifier,
+    options.rootPointer,
+    target.rootPointer,
+  );
+  const rootIdentifierRelay = pickString(
+    options.rootIdentifierRelay,
+    target.rootIdentifierRelay,
+  );
+
+  const parentIdentifier = pickString(
+    options.parentIdentifier,
+    target.parentIdentifier,
+  );
+  const parentIdentifierRelay = pickString(
+    options.parentIdentifierRelay,
+    target.parentIdentifierRelay,
+  );
+
+  const normalizedRootIdentifier =
+    typeof rootIdentifier === "string" ? rootIdentifier.trim() : "";
+  let normalizedRootIdentifierRelay =
+    typeof rootIdentifierRelay === "string" ? rootIdentifierRelay.trim() : "";
+  const normalizedParentIdentifier =
+    typeof parentIdentifier === "string" ? parentIdentifier.trim() : "";
+  let normalizedParentIdentifierRelay =
+    typeof parentIdentifierRelay === "string"
+      ? parentIdentifierRelay.trim()
+      : "";
+
+  let normalizedVideoKind = pickKind(
+    options.videoKind,
+    target.videoKind,
+    videoEventObject?.kind,
+  );
+
+  let normalizedVideoAuthorPubkey = pickString(
+    options.videoAuthorPubkey,
+    target.videoAuthorPubkey,
+    videoEventObject?.pubkey,
+  );
+
+  const definitionSegments = normalizedVideoDefinitionAddress
+    ? normalizedVideoDefinitionAddress.split(":")
+    : [];
+  const derivedDefinitionKind = definitionSegments[0] || "";
+  const derivedDefinitionPubkey = definitionSegments[1] || "";
+
+  const rootKindCandidate = pickString(
+    options.rootKind,
+    target.rootKind,
+    options.videoKind,
+    target.videoKind,
+    normalizedVideoKind,
+    derivedDefinitionKind,
+  );
+  let normalizedRootKind =
+    typeof rootKindCandidate === "string" ? rootKindCandidate.trim() : "";
+
+  const parentKindCandidate = pickString(
+    options.parentKind,
+    target.parentKind,
+    options.parentCommentKind,
+    target.parentCommentKind,
+  );
+  let normalizedParentKind =
+    typeof parentKindCandidate === "string" ? parentKindCandidate.trim() : "";
+
+  let normalizedRootAuthorPubkey = pickString(
+    options.rootAuthorPubkey,
+    target.rootAuthorPubkey,
+    options.videoAuthorPubkey,
+    target.videoAuthorPubkey,
+    normalizedVideoAuthorPubkey,
+    derivedDefinitionPubkey,
+  );
+  normalizedRootAuthorPubkey =
+    typeof normalizedRootAuthorPubkey === "string"
+      ? normalizedRootAuthorPubkey.trim()
+      : "";
+
+  let normalizedParentAuthorPubkey = pickString(
+    options.parentAuthorPubkey,
+    target.parentAuthorPubkey,
+    options.parentCommentPubkey,
+    target.parentCommentPubkey,
+  );
+  normalizedParentAuthorPubkey =
+    typeof normalizedParentAuthorPubkey === "string"
+      ? normalizedParentAuthorPubkey.trim()
+      : "";
+
+  let normalizedRootAuthorRelay = pickString(
+    options.rootAuthorRelay,
+    target.rootAuthorRelay,
+  );
+  normalizedRootAuthorRelay =
+    typeof normalizedRootAuthorRelay === "string"
+      ? normalizedRootAuthorRelay.trim()
+      : "";
+
+  let normalizedParentAuthorRelay = pickString(
+    options.parentAuthorRelay,
+    target.parentAuthorRelay,
+  );
+  normalizedParentAuthorRelay =
+    typeof normalizedParentAuthorRelay === "string"
+      ? normalizedParentAuthorRelay.trim()
+      : "";
+
+  if (!normalizedRootIdentifier) {
+    const tag = findTagByName(combinedTags, "I");
+    const value = getTagField(tag, 1);
+    if (value) {
+      normalizedRootIdentifier = value;
+      const relay = getTagField(tag, 2);
+      if (relay) {
+        normalizedRootIdentifierRelay = relay;
+      }
+    }
+  } else if (!normalizedRootIdentifierRelay) {
+    const tag = findTagByName(combinedTags, "I");
+    const relay = getTagField(tag, 2);
+    if (relay) {
+      normalizedRootIdentifierRelay = relay;
+    }
+  }
+
+  if (!normalizedVideoDefinitionAddress) {
+    const tag = findTagByName(combinedTags, "A", "a");
+    const value = getTagField(tag, 1);
+    if (value) {
+      normalizedVideoDefinitionAddress = value;
+      const relay = getTagField(tag, 2);
+      if (relay) {
+        normalizedVideoDefinitionRelay = relay;
+      }
+    }
+  } else if (!normalizedVideoDefinitionRelay) {
+    const tag = findTagByName(combinedTags, "A", "a");
+    const relay = getTagField(tag, 2);
+    if (relay) {
+      normalizedVideoDefinitionRelay = relay;
+    }
+  }
+
+  const rootEventTag = findTagByName(combinedTags, "E");
+  if (rootEventTag) {
+    const value = getTagField(rootEventTag, 1);
+    if (value && !normalizedVideoEventId) {
+      normalizedVideoEventId = value;
+    }
+    const relay = getTagField(rootEventTag, 2);
+    if (relay && !normalizedVideoEventRelay) {
+      normalizedVideoEventRelay = relay;
+    }
+    const authorHint = getTagField(rootEventTag, 3);
+    if (authorHint && !normalizedRootAuthorPubkey) {
+      normalizedRootAuthorPubkey = authorHint;
+    }
+  }
+
+  if (!normalizedVideoEventId || !normalizedParentCommentId) {
+    const eventValues = [];
+    for (const tag of combinedTags) {
+      if (!Array.isArray(tag) || tag.length < 2) {
+        continue;
+      }
+      if (typeof tag[0] === "string" && tag[0].trim().toLowerCase() === "e") {
+        const value = getTagField(tag, 1);
+        if (value) {
+          eventValues.push({ tag, value });
+        }
+      }
+    }
+    if (!normalizedVideoEventId && eventValues.length) {
+      normalizedVideoEventId = eventValues[0].value;
+      const relay = getTagField(eventValues[0].tag, 2);
+      if (relay && !normalizedVideoEventRelay) {
+        normalizedVideoEventRelay = relay;
+      }
+    }
+    if (!normalizedParentCommentId && eventValues.length) {
+      for (let index = eventValues.length - 1; index >= 0; index -= 1) {
+        const candidate = eventValues[index];
+        if (
+          candidate.value &&
+          candidate.value !== normalizedVideoEventId
+        ) {
+          normalizedParentCommentId = candidate.value;
+          const relay = getTagField(candidate.tag, 2);
+          if (relay) {
+            normalizedParentCommentRelay = relay;
+          }
+          const authorHint = getTagField(candidate.tag, 3);
+          if (authorHint && !normalizedParentAuthorPubkey) {
+            normalizedParentAuthorPubkey = authorHint;
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  if (normalizedParentCommentId && !normalizedParentCommentRelay) {
+    const parentTag = parentEventTags.find(
+      (tag) =>
+        Array.isArray(tag) &&
+        tag.length >= 2 &&
+        typeof tag[0] === "string" &&
+        tag[0].trim().toLowerCase() === "e" &&
+        getTagField(tag, 1) === normalizedParentCommentId,
+    );
+    if (parentTag) {
+      const relay = getTagField(parentTag, 2);
+      if (relay) {
+        normalizedParentCommentRelay = relay;
+      }
+      const authorHint = getTagField(parentTag, 3);
+      if (authorHint && !normalizedParentAuthorPubkey) {
+        normalizedParentAuthorPubkey = authorHint;
+      }
+    }
+  }
+
+  if (!normalizedParentIdentifierRelay) {
+    const tag = findTagByName(parentEventTags, "i");
+    const relay = getTagField(tag, 2);
+    if (relay) {
+      normalizedParentIdentifierRelay = relay;
+    }
+  }
+
+  if (!normalizedRootKind) {
+    const tag = findTagByName(combinedTags, "K");
+    const value = getTagField(tag, 1);
+    if (value) {
+      normalizedRootKind = value;
+    }
+  }
+  if (!normalizedVideoKind && normalizedRootKind) {
+    normalizedVideoKind = normalizedRootKind;
+  }
+
+  if (!normalizedRootAuthorPubkey || !normalizedRootAuthorRelay) {
+    const tag = findTagByName(combinedTags, "P");
+    if (tag) {
+      const value = getTagField(tag, 1);
+      if (value && !normalizedRootAuthorPubkey) {
+        normalizedRootAuthorPubkey = value;
+      }
+      const relay = getTagField(tag, 2);
+      if (relay && !normalizedRootAuthorRelay) {
+        normalizedRootAuthorRelay = relay;
+      }
+    }
+  }
+  if (!normalizedVideoAuthorPubkey && normalizedRootAuthorPubkey) {
+    normalizedVideoAuthorPubkey = normalizedRootAuthorPubkey;
+  }
+
+  if (!normalizedParentKind) {
+    const tag = findTagByName(parentEventTags, "k");
+    const value = getTagField(tag, 1);
+    if (value) {
+      normalizedParentKind = value;
+    }
+  }
+
+  if (!normalizedParentAuthorPubkey || !normalizedParentAuthorRelay) {
+    const tag = findTagByName(parentEventTags, "p");
+    if (tag) {
+      const value = getTagField(tag, 1);
+      if (value && !normalizedParentAuthorPubkey) {
+        normalizedParentAuthorPubkey = value;
+      }
+      const relay = getTagField(tag, 2);
+      if (relay && !normalizedParentAuthorRelay) {
+        normalizedParentAuthorRelay = relay;
+      }
+    }
+  }
+
+  if (!normalizedParentKind) {
+    if (normalizedParentCommentId) {
+      normalizedParentKind = String(COMMENT_EVENT_KIND);
+    } else if (normalizedRootKind) {
+      normalizedParentKind = normalizedRootKind;
+    } else if (derivedDefinitionKind) {
+      normalizedParentKind = derivedDefinitionKind;
+    }
+  }
+
+  if (!normalizedRootKind) {
+    normalizedRootKind = normalizedParentKind;
+  }
+
+  if (!normalizedParentAuthorPubkey) {
+    normalizedParentAuthorPubkey = normalizedThreadParticipantPubkey;
+  }
+
+  if (!normalizedRootAuthorPubkey) {
+    if (!normalizedParentCommentId && normalizedParentAuthorPubkey) {
+      normalizedRootAuthorPubkey = normalizedParentAuthorPubkey;
+    }
+  }
+
+  if (!normalizedRootAuthorRelay && normalizedVideoDefinitionRelay) {
+    normalizedRootAuthorRelay = normalizedVideoDefinitionRelay;
+  }
+
+  if (!normalizedParentAuthorRelay) {
+    normalizedParentAuthorRelay = normalizedThreadParticipantRelay;
+  }
+
+  if (!normalizedRootAuthorRelay && !normalizedParentCommentId) {
+    normalizedRootAuthorRelay = normalizedParentAuthorRelay;
+  }
+
+  if (!normalizedRootAuthorPubkey && derivedDefinitionPubkey) {
+    normalizedRootAuthorPubkey = derivedDefinitionPubkey;
+  }
+
+  if (!normalizedParentAuthorPubkey && !normalizedParentCommentId) {
+    normalizedParentAuthorPubkey = normalizedRootAuthorPubkey;
+  }
+
+  if (!normalizedParentAuthorRelay && !normalizedParentCommentId) {
+    normalizedParentAuthorRelay = normalizedRootAuthorRelay;
+  }
+
+  const descriptor = {
+    videoEventId: normalizeDescriptorString(normalizedVideoEventId),
+    videoEventRelay: normalizeDescriptorRelay(normalizedVideoEventRelay),
+    videoDefinitionAddress: normalizeDescriptorString(normalizedVideoDefinitionAddress),
+    videoDefinitionRelay: normalizeDescriptorRelay(normalizedVideoDefinitionRelay),
+    videoKind: normalizeDescriptorString(normalizedVideoKind),
+    videoAuthorPubkey: normalizeDescriptorString(normalizedVideoAuthorPubkey),
+    parentCommentId: normalizeDescriptorString(normalizedParentCommentId),
+    parentCommentRelay: normalizeDescriptorRelay(normalizedParentCommentRelay),
+    threadParticipantPubkey: normalizeDescriptorString(normalizedThreadParticipantPubkey),
+    threadParticipantRelay: normalizeDescriptorRelay(normalizedThreadParticipantRelay),
+    rootIdentifier: normalizeDescriptorString(normalizedRootIdentifier),
+    rootIdentifierRelay: normalizeDescriptorRelay(normalizedRootIdentifierRelay),
+    parentIdentifier: normalizeDescriptorString(normalizedParentIdentifier),
+    parentIdentifierRelay: normalizeDescriptorRelay(normalizedParentIdentifierRelay),
+    rootKind: normalizeDescriptorString(normalizedRootKind),
+    rootAuthorPubkey: normalizeDescriptorString(normalizedRootAuthorPubkey),
+    rootAuthorRelay: normalizeDescriptorRelay(normalizedRootAuthorRelay),
+    parentKind: normalizeDescriptorString(normalizedParentKind),
+    parentAuthorPubkey: normalizeDescriptorString(normalizedParentAuthorPubkey),
+    parentAuthorRelay: normalizeDescriptorRelay(normalizedParentAuthorRelay),
+  };
+
+  if (!descriptor.videoEventId) {
     return null;
   }
 
-  return {
-    videoEventId,
-    videoEventRelay,
-    videoDefinitionAddress,
-    videoDefinitionRelay,
-    parentCommentId,
-    parentCommentRelay,
-    threadParticipantPubkey,
-    threadParticipantRelay,
-  };
+  return descriptor;
+}
+
+function applyFilterOptions(filter, options = {}) {
+  if (!filter || typeof filter !== "object") {
+    return filter;
+  }
+
+  const result = { ...filter };
+
+  if (
+    typeof options.limit === "number" &&
+    Number.isFinite(options.limit) &&
+    options.limit > 0
+  ) {
+    result.limit = Math.floor(options.limit);
+  }
+
+  if (typeof options.since === "number" && Number.isFinite(options.since)) {
+    result.since = Math.floor(options.since);
+  }
+
+  if (typeof options.until === "number" && Number.isFinite(options.until)) {
+    result.until = Math.floor(options.until);
+  }
+
+  return result;
 }
 
 function createVideoCommentFilters(targetInput, options = {}) {
@@ -245,35 +796,100 @@ function createVideoCommentFilters(targetInput, options = {}) {
     throw new Error("Invalid video comment target supplied.");
   }
 
-  const filter = {
-    kinds: [COMMENT_EVENT_KIND],
-    "#e": [descriptor.videoEventId],
-    "#a": [descriptor.videoDefinitionAddress],
-  };
+  const filters = [];
 
-  if (descriptor.parentCommentId) {
-    if (!filter["#e"].includes(descriptor.parentCommentId)) {
-      filter["#e"].push(descriptor.parentCommentId);
-    }
+  const eventFilter = {
+    kinds: getAllowedCommentKinds(),
+    "#e": [descriptor.videoEventId],
+  };
+  filters.push(applyFilterOptions(eventFilter, options));
+
+  const uppercaseEventFilter = {
+    kinds: getAllowedCommentKinds(),
+    "#E": [descriptor.videoEventId],
+  };
+  filters.push(applyFilterOptions(uppercaseEventFilter, options));
+
+  const uppercaseFilter = { kinds: getAllowedCommentKinds() };
+  let hasUppercasePointer = false;
+
+  if (typeof descriptor.rootIdentifier === "string" && descriptor.rootIdentifier) {
+    uppercaseFilter["#I"] = [descriptor.rootIdentifier];
+    hasUppercasePointer = true;
+  } else if (
+    typeof descriptor.videoDefinitionAddress === "string" &&
+    descriptor.videoDefinitionAddress
+  ) {
+    uppercaseFilter["#A"] = [descriptor.videoDefinitionAddress];
+    hasUppercasePointer = true;
+  } else if (
+    typeof descriptor.videoEventId === "string" &&
+    descriptor.videoEventId
+  ) {
+    uppercaseFilter["#E"] = [descriptor.videoEventId];
+    hasUppercasePointer = true;
+  }
+
+  const normalizedRootKind = normalizeDescriptorString(
+    descriptor.rootKind || descriptor.videoKind,
+  );
+  if (normalizedRootKind) {
+    uppercaseFilter["#K"] = [normalizedRootKind];
+  }
+
+  const normalizedRootAuthor = normalizeDescriptorString(
+    descriptor.rootAuthorPubkey || descriptor.videoAuthorPubkey,
+  );
+  if (normalizedRootAuthor) {
+    uppercaseFilter["#P"] = [normalizedRootAuthor];
+  }
+
+  if (hasUppercasePointer) {
+    filters.push(applyFilterOptions(uppercaseFilter, options));
   }
 
   if (
-    typeof options.limit === "number" &&
-    Number.isFinite(options.limit) &&
-    options.limit > 0
+    descriptor.parentCommentId &&
+    descriptor.parentCommentId !== descriptor.videoEventId
   ) {
-    filter.limit = Math.floor(options.limit);
+    const parentFilter = {
+      kinds: getAllowedCommentKinds(),
+      "#e": [descriptor.parentCommentId],
+    };
+    filters.push(applyFilterOptions(parentFilter, options));
+
+    const parentUppercaseFilter = {
+      kinds: getAllowedCommentKinds(),
+      "#E": [descriptor.parentCommentId],
+    };
+    filters.push(applyFilterOptions(parentUppercaseFilter, options));
   }
 
-  if (typeof options.since === "number" && Number.isFinite(options.since)) {
-    filter.since = Math.floor(options.since);
+  if (descriptor.videoDefinitionAddress) {
+    const definitionFilter = {
+      kinds: getAllowedCommentKinds(),
+      "#a": [descriptor.videoDefinitionAddress],
+    };
+
+    if (descriptor.parentCommentId) {
+      definitionFilter["#e"] = [descriptor.parentCommentId];
+    }
+
+    filters.push(applyFilterOptions(definitionFilter, options));
+
+    const definitionUppercaseFilter = {
+      kinds: getAllowedCommentKinds(),
+      "#A": [descriptor.videoDefinitionAddress],
+    };
+
+    if (descriptor.parentCommentId) {
+      definitionUppercaseFilter["#E"] = [descriptor.parentCommentId];
+    }
+
+    filters.push(applyFilterOptions(definitionUppercaseFilter, options));
   }
 
-  if (typeof options.until === "number" && Number.isFinite(options.until)) {
-    filter.until = Math.floor(options.until);
-  }
-
-  return { descriptor, filters: [filter] };
+  return { descriptor, filters };
 }
 
 function flattenListResults(input) {
@@ -301,35 +917,214 @@ function isVideoCommentEvent(event, descriptor) {
     return false;
   }
 
-  if (Number(event.kind) !== COMMENT_EVENT_KIND) {
+  if (!getAllowedCommentKinds().includes(Number(event.kind))) {
     return false;
   }
 
+  const targetDescriptor =
+    descriptor && typeof descriptor === "object" ? descriptor : {};
+
   const tags = Array.isArray(event.tags) ? event.tags : [];
-  let hasEventTag = false;
-  let hasDefinitionTag = false;
-  let hasParentTag = !descriptor.parentCommentId;
+  const normalizedRootIdentifier = normalizeTagValue(
+    targetDescriptor.rootIdentifier,
+  );
+  const normalizedVideoDefinitionAddress = normalizeTagValue(
+    targetDescriptor.videoDefinitionAddress,
+  );
+  const normalizedVideoEventId = normalizeTagValue(
+    targetDescriptor.videoEventId,
+  );
+  const normalizedParentCommentId = normalizeTagValue(
+    targetDescriptor.parentCommentId,
+  );
+
+  const requiresRootIdentifierMatch = Boolean(normalizedRootIdentifier);
+  const requiresAddressMatch =
+    !requiresRootIdentifierMatch && Boolean(normalizedVideoDefinitionAddress);
+  const requiresEventMatch =
+    !requiresRootIdentifierMatch &&
+    !requiresAddressMatch &&
+    Boolean(normalizedVideoEventId);
+  const requiresParentTag = Boolean(normalizedParentCommentId);
+
+  let hasIdentifierTag = !requiresRootIdentifierMatch;
+  let hasDefinitionTag = !requiresAddressMatch;
+  let hasEventTag = !requiresEventMatch;
+  let hasParentTag = false;
+
+  let matchedDefinitionPointer = false;
+  let matchedEventPointer = false;
+
+  const expectedRootKind = normalizeDescriptorString(
+    targetDescriptor.rootKind || targetDescriptor.videoKind,
+  );
+
+  const expectedRootAuthor = normalizeDescriptorString(
+    targetDescriptor.rootAuthorPubkey || targetDescriptor.videoAuthorPubkey,
+  );
+
+  const expectedParentKind = normalizeDescriptorString(targetDescriptor.parentKind);
+
+  const expectedParentAuthor = normalizeDescriptorString(
+    targetDescriptor.parentAuthorPubkey,
+  );
+
+  let sawRootKindTag = false;
+  let rootKindMatches = !expectedRootKind;
+  let rootKindMismatch = false;
+
+  let sawRootAuthorTag = false;
+  let rootAuthorMatches = !expectedRootAuthor;
+  let rootAuthorMismatch = false;
+
+  let sawParentKindTag = false;
+  let parentKindMatches = !expectedParentKind;
+  let parentKindMismatch = false;
+
+  let sawParentAuthorTag = false;
+  let parentAuthorMatches = !expectedParentAuthor;
+  let parentAuthorMismatch = false;
 
   for (const tag of tags) {
     if (!Array.isArray(tag) || tag.length < 2) {
       continue;
     }
-    const [name, value] = tag;
-    if (name === "e" && typeof value === "string") {
-      if (value === descriptor.videoEventId) {
-        hasEventTag = true;
+    const [rawName, rawValue] = tag;
+    const trimmedName = typeof rawName === "string" ? rawName.trim() : "";
+    const lowerName = trimmedName.toLowerCase();
+    const normalizedValue = normalizeTagValue(rawValue);
+    if (!lowerName || !normalizedValue) {
+      continue;
+    }
+
+    if (lowerName === "i") {
+      if (
+        normalizedRootIdentifier &&
+        normalizedValue === normalizedRootIdentifier
+      ) {
+        hasIdentifierTag = true;
       }
-      if (descriptor.parentCommentId && value === descriptor.parentCommentId) {
+    } else if (lowerName === "a") {
+      if (
+        normalizedVideoDefinitionAddress &&
+        normalizedValue === normalizedVideoDefinitionAddress
+      ) {
+        hasDefinitionTag = true;
+        matchedDefinitionPointer = true;
+      }
+    } else if (lowerName === "e") {
+      if (
+        normalizedVideoEventId &&
+        normalizedValue === normalizedVideoEventId
+      ) {
+        hasEventTag = true;
+        matchedEventPointer = true;
+      }
+      if (
+        normalizedParentCommentId &&
+        normalizedValue === normalizedParentCommentId
+      ) {
         hasParentTag = true;
       }
-    } else if (name === "a" && typeof value === "string") {
-      if (value === descriptor.videoDefinitionAddress) {
-        hasDefinitionTag = true;
+    } else if (trimmedName === "K") {
+      sawRootKindTag = true;
+      if (!expectedRootKind || normalizedValue === expectedRootKind) {
+        rootKindMatches = true;
+      } else {
+        rootKindMismatch = true;
+      }
+    } else if (trimmedName === "P") {
+      sawRootAuthorTag = true;
+      if (!expectedRootAuthor || normalizedValue === expectedRootAuthor) {
+        rootAuthorMatches = true;
+      } else {
+        rootAuthorMismatch = true;
+      }
+    } else if (trimmedName === "k") {
+      sawParentKindTag = true;
+      if (!expectedParentKind || normalizedValue === expectedParentKind) {
+        parentKindMatches = true;
+      } else {
+        parentKindMismatch = true;
+      }
+    } else if (trimmedName === "p") {
+      sawParentAuthorTag = true;
+      if (!expectedParentAuthor || normalizedValue === expectedParentAuthor) {
+        parentAuthorMatches = true;
+      } else {
+        parentAuthorMismatch = true;
       }
     }
   }
 
-  return hasEventTag && hasDefinitionTag && hasParentTag;
+  if (!hasDefinitionTag && requiresAddressMatch && matchedEventPointer) {
+    hasDefinitionTag = true;
+  }
+
+  if (!hasIdentifierTag && requiresRootIdentifierMatch) {
+    if (matchedDefinitionPointer || matchedEventPointer) {
+      devLogger.debug(
+        "[nostr] Comment accepted without explicit identifier tag due to pointer match",
+        {
+          eventId: event?.id,
+          matchedDefinitionPointer,
+          matchedEventPointer,
+        },
+      );
+      hasIdentifierTag = true;
+    }
+  }
+
+  if (!hasIdentifierTag || !hasDefinitionTag || !hasEventTag) {
+    if (matchedEventPointer && (!requiresParentTag || hasParentTag)) {
+      devLogger.debug(
+        "[nostr] Comment accepted via legacy pointer fallback",
+        {
+          eventId: event?.id,
+          hasIdentifierTag,
+          hasDefinitionTag,
+          hasEventTag,
+          requiresParentTag,
+          hasParentTag,
+        },
+      );
+      hasIdentifierTag = true;
+      hasDefinitionTag = true;
+      hasEventTag = true;
+    } else {
+      return false;
+    }
+  }
+
+  if (requiresParentTag && !hasParentTag) {
+    return false;
+  }
+
+  if ((sawRootKindTag && rootKindMismatch) || (sawRootAuthorTag && rootAuthorMismatch)) {
+    return false;
+  }
+
+  if ((sawParentKindTag && parentKindMismatch) || (sawParentAuthorTag && parentAuthorMismatch)) {
+    return false;
+  }
+
+  if (sawRootKindTag && expectedRootKind && !rootKindMatches) {
+    return false;
+  }
+
+  if (sawRootAuthorTag && expectedRootAuthor && !rootAuthorMatches) {
+    return false;
+  }
+
+  if (sawParentKindTag && expectedParentKind && !parentKindMatches) {
+    return false;
+  }
+
+  if (sawParentAuthorTag && expectedParentAuthor && !parentAuthorMatches) {
+    return false;
+  }
+
+  return true;
 }
 
 export async function publishComment(
@@ -339,7 +1134,6 @@ export async function publishComment(
   {
     resolveActiveSigner,
     shouldRequestExtensionPermissions,
-    signEventWithPrivateKey,
     DEFAULT_NIP07_PERMISSION_METHODS,
   } = {},
 ) {
@@ -352,9 +1146,12 @@ export async function publishComment(
     return { ok: false, error: "invalid-target" };
   }
 
-  const actorPubkey = await client.ensureSessionActor();
+  const actorPubkey =
+    typeof client?.pubkey === "string" && client.pubkey.trim()
+      ? client.pubkey.trim()
+      : "";
   if (!actorPubkey) {
-    return { ok: false, error: "missing-actor" };
+    return { ok: false, error: "auth-required" };
   }
 
   const createdAt =
@@ -362,11 +1159,7 @@ export async function publishComment(
       ? Math.floor(options.created_at)
       : Math.floor(Date.now() / 1000);
 
-  const additionalTags = Array.isArray(options.additionalTags)
-    ? options.additionalTags.filter(
-        (tag) => Array.isArray(tag) && typeof tag[0] === "string",
-      )
-    : [];
+  const additionalTags = sanitizeAdditionalTags(options.additionalTags);
 
   let content = "";
   if (typeof options.content === "string") {
@@ -393,81 +1186,66 @@ export async function publishComment(
     videoEventRelay: descriptor.videoEventRelay,
     videoDefinitionAddress: descriptor.videoDefinitionAddress,
     videoDefinitionRelay: descriptor.videoDefinitionRelay,
+    rootIdentifier: descriptor.rootIdentifier,
+    rootIdentifierRelay: descriptor.rootIdentifierRelay,
     parentCommentId: descriptor.parentCommentId,
     parentCommentRelay: descriptor.parentCommentRelay,
     threadParticipantPubkey: descriptor.threadParticipantPubkey,
     threadParticipantRelay: descriptor.threadParticipantRelay,
+    rootKind: descriptor.rootKind,
+    rootAuthorPubkey: descriptor.rootAuthorPubkey,
+    rootAuthorRelay: descriptor.rootAuthorRelay,
+    parentKind: descriptor.parentKind,
+    parentAuthorPubkey: descriptor.parentAuthorPubkey,
+    parentAuthorRelay: descriptor.parentAuthorRelay,
+    parentIdentifier: descriptor.parentIdentifier,
+    parentIdentifierRelay: descriptor.parentIdentifierRelay,
     additionalTags,
     content,
   });
 
   let signedEvent = null;
 
-  const normalizedActor =
-    typeof actorPubkey === "string" ? actorPubkey.toLowerCase() : "";
-  const normalizedLogged =
-    typeof client.pubkey === "string" ? client.pubkey.toLowerCase() : "";
-
   const resolveSignerFn =
     typeof resolveActiveSigner === "function" ? resolveActiveSigner : null;
   const signer = resolveSignerFn ? resolveSignerFn(actorPubkey) : null;
 
-  const canUseActiveSigner =
-    normalizedActor &&
-    normalizedActor === normalizedLogged &&
-    signer &&
-    typeof signer.signEvent === "function";
-
-  if (canUseActiveSigner) {
-    let permissionResult = { ok: true };
-    const shouldRequestPermissions =
-      typeof shouldRequestExtensionPermissions === "function"
-        ? shouldRequestExtensionPermissions(signer)
-        : false;
-
-    if (shouldRequestPermissions) {
-      permissionResult = await client.ensureExtensionPermissions(
-        DEFAULT_NIP07_PERMISSION_METHODS,
-      );
-    }
-
-    if (permissionResult.ok) {
-      try {
-        signedEvent = await signer.signEvent(event);
-      } catch (error) {
-        userLogger.warn(
-          "[nostr] Failed to sign comment event with active signer:",
-          error,
-        );
-        return { ok: false, error: "signing-failed", details: error };
-      }
-    } else {
-      userLogger.warn(
-        "[nostr] Active signer permissions missing; signing comment with session key.",
-        permissionResult.error,
-      );
-    }
+  if (!signer || typeof signer.signEvent !== "function") {
+    return { ok: false, error: "auth-required" };
   }
 
-  if (!signedEvent) {
-    if (typeof signEventWithPrivateKey !== "function") {
-      return { ok: false, error: "signing-unavailable" };
-    }
-    try {
-      if (!client.sessionActor || client.sessionActor.pubkey !== actorPubkey) {
-        await client.ensureSessionActor(true);
-      }
-      if (!client.sessionActor || client.sessionActor.pubkey !== actorPubkey) {
-        throw new Error("session-actor-mismatch");
-      }
-      signedEvent = signEventWithPrivateKey(
-        event,
-        client.sessionActor.privateKey,
-      );
-    } catch (error) {
-      userLogger.warn("[nostr] Failed to sign comment event with session key:", error);
-      return { ok: false, error: "signing-failed", details: error };
-    }
+  let permissionResult = { ok: true };
+  const shouldRequestPermissions =
+    typeof shouldRequestExtensionPermissions === "function"
+      ? shouldRequestExtensionPermissions(signer)
+      : false;
+
+  if (shouldRequestPermissions) {
+    permissionResult = await client.ensureExtensionPermissions(
+      DEFAULT_NIP07_PERMISSION_METHODS,
+    );
+  }
+
+  if (!permissionResult.ok) {
+    userLogger.warn(
+      "[nostr] Active signer permissions missing; comment publish requires login.",
+      permissionResult.error,
+    );
+    return {
+      ok: false,
+      error: "auth-required",
+      details: permissionResult,
+    };
+  }
+
+  try {
+    signedEvent = await signer.signEvent(event);
+  } catch (error) {
+    userLogger.warn(
+      "[nostr] Failed to sign comment event with active signer:",
+      error,
+    );
+    return { ok: false, error: "signing-failed", details: error };
   }
 
   const relayList = sanitizeRelayList(options.relays, client.relays);
@@ -501,10 +1279,27 @@ export async function publishComment(
 }
 
 export async function listVideoComments(client, targetInput, options = {}) {
-  const pool = client?.pool;
-  const canQueryPool = pool && typeof pool.list === "function";
+  let pool = client?.pool;
+  const ensurePool =
+    typeof client?.ensurePool === "function"
+      ? client.ensurePool.bind(client)
+      : null;
 
-  if (!canQueryPool) {
+  if (!pool || typeof pool.list !== "function") {
+    if (ensurePool) {
+      try {
+        pool = await ensurePool();
+      } catch (error) {
+        devLogger.warn(
+          "[nostr] Unable to list video comments: pool init failed.",
+          error,
+        );
+        return [];
+      }
+    }
+  }
+
+  if (!pool || typeof pool.list !== "function") {
     devLogger.warn("[nostr] Unable to list video comments: pool missing.");
     return [];
   }
@@ -578,13 +1373,10 @@ export async function listVideoComments(client, targetInput, options = {}) {
 }
 
 export function subscribeVideoComments(client, targetInput, options = {}) {
-  const pool = client?.pool;
-  const canSubscribe = pool && typeof pool.sub === "function";
-
-  if (!canSubscribe) {
-    devLogger.warn("[nostr] Unable to subscribe to video comments: pool missing.");
-    return () => {};
-  }
+  const ensurePool =
+    typeof client?.ensurePool === "function"
+      ? client.ensurePool.bind(client)
+      : null;
 
   let descriptor;
   let filters;
@@ -598,47 +1390,109 @@ export function subscribeVideoComments(client, targetInput, options = {}) {
   const relayList = sanitizeRelayList(options.relays, client.relays);
   const onEvent = typeof options.onEvent === "function" ? options.onEvent : null;
 
-  let subscription;
-  try {
-    subscription = pool.sub(relayList, filters);
-  } catch (error) {
-    devLogger.warn("[nostr] Failed to open video comment subscription:", error);
-    return () => {};
-  }
-
-  if (onEvent && subscription && typeof subscription.on === "function") {
-    try {
-      subscription.on("event", (event) => {
-        if (isVideoCommentEvent(event, descriptor)) {
-          try {
-            onEvent(event);
-          } catch (handlerError) {
-            devLogger.warn("[nostr] Comment subscription handler threw:", handlerError);
-          }
-        }
-      });
-    } catch (error) {
-      devLogger.warn("[nostr] Failed to attach comment subscription handler:", error);
-    }
-  }
-
-  const originalUnsub =
-    subscription && typeof subscription.unsub === "function"
-      ? subscription.unsub.bind(subscription)
-      : null;
-
+  let activeSubscription = null;
   let unsubscribed = false;
+
+  const ensureSubscription = async () => {
+    let pool = client?.pool;
+    if (!pool || typeof pool.sub !== "function") {
+      if (!ensurePool) {
+        devLogger.warn(
+          "[nostr] Unable to subscribe to video comments: pool missing.",
+        );
+        return null;
+      }
+      try {
+        pool = await ensurePool();
+      } catch (error) {
+        devLogger.warn(
+          "[nostr] Unable to subscribe to video comments: pool init failed.",
+          error,
+        );
+        return null;
+      }
+    }
+
+    if (!pool || typeof pool.sub !== "function") {
+      devLogger.warn(
+        "[nostr] Unable to subscribe to video comments: pool missing.",
+      );
+      return null;
+    }
+
+    try {
+      const subscription = pool.sub(relayList, filters);
+      if (unsubscribed) {
+        try {
+          subscription?.unsub?.();
+        } catch (error) {
+          devLogger.warn(
+            "[nostr] Failed to unsubscribe from video comments:",
+            error,
+          );
+        }
+        return null;
+      }
+
+      if (onEvent && subscription && typeof subscription.on === "function") {
+        try {
+          subscription.on("event", (event) => {
+            if (isVideoCommentEvent(event, descriptor)) {
+              try {
+                onEvent(event);
+              } catch (handlerError) {
+                devLogger.warn(
+                  "[nostr] Comment subscription handler threw:",
+                  handlerError,
+                );
+              }
+            }
+          });
+        } catch (error) {
+          devLogger.warn(
+            "[nostr] Failed to attach comment subscription handler:",
+            error,
+          );
+        }
+      }
+
+      return subscription;
+    } catch (error) {
+      devLogger.warn("[nostr] Failed to open video comment subscription:", error);
+      return null;
+    }
+  };
+
+  const subscriptionPromise = ensureSubscription().then((subscription) => {
+    activeSubscription = subscription;
+    return subscription;
+  });
+
   return () => {
     if (unsubscribed) {
       return;
     }
     unsubscribed = true;
-    if (originalUnsub) {
-      try {
-        originalUnsub();
-      } catch (error) {
-        devLogger.warn("[nostr] Failed to unsubscribe from video comments:", error);
+
+    const teardown = (subscription) => {
+      if (subscription && typeof subscription.unsub === "function") {
+        try {
+          subscription.unsub();
+        } catch (error) {
+          devLogger.warn(
+            "[nostr] Failed to unsubscribe from video comments:",
+            error,
+          );
+        }
       }
+    };
+
+    if (activeSubscription) {
+      teardown(activeSubscription);
+    } else {
+      subscriptionPromise.finally(() => {
+        teardown(activeSubscription);
+      });
     }
   };
 }

@@ -14,7 +14,9 @@ import {
 import { DEFAULT_RELAY_URLS } from "./nostr/toolkit.js";
 import {
   buildSubscriptionListEvent,
-  SUBSCRIPTION_LIST_IDENTIFIER
+  SUBSCRIPTION_LIST_IDENTIFIER,
+  getNostrEventSchema,
+  NOTE_TYPES,
 } from "./nostrEventSchemas.js";
 import { getSidebarLoadingMarkup } from "./sidebarLoading.js";
 import {
@@ -28,12 +30,26 @@ import { devLogger, userLogger } from "./utils/logger.js";
 import moderationService from "./services/moderationService.js";
 import nostrService from "./services/nostrService.js";
 
+const SUBSCRIPTION_SET_KIND =
+  getNostrEventSchema(NOTE_TYPES.SUBSCRIPTION_LIST)?.kind ?? 30000;
+const LEGACY_SUBSCRIPTION_SET_KIND = 30002;
+
 function normalizeHexPubkey(value) {
   if (typeof value !== "string") {
     return "";
   }
   const trimmed = value.trim();
   return trimmed ? trimmed.toLowerCase() : "";
+}
+
+function normalizeEncryptionToken(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
 }
 
 function extractEncryptionHints(event) {
@@ -65,16 +81,18 @@ function extractEncryptionHints(event) {
     }
     const parts = rawValue
       .split(/[\s,]+/)
-      .map((part) => part.trim().toLowerCase())
+      .map((part) => normalizeEncryptionToken(part))
       .filter(Boolean);
     for (const part of parts) {
-      if (part.startsWith("nip44")) {
-        if (/^nip44(?:[_-]?v2|v2)/.test(part)) {
-          pushUnique("nip44_v2");
-        } else {
-          pushUnique("nip44");
-        }
-      } else if (part === "nip04" || part === "nip-04") {
+      if (part === "nip44v2" || part === "nip44v02") {
+        pushUnique("nip44_v2");
+        continue;
+      }
+      if (part === "nip44") {
+        pushUnique("nip44");
+        continue;
+      }
+      if (part === "nip04" || part === "nip4") {
         pushUnique("nip04");
       }
     }
@@ -105,13 +123,89 @@ function determineDecryptionOrder(event, availableSchemes) {
     }
   }
 
-  for (const fallback of ["nip04", "nip44", "nip44_v2"]) {
+  for (const fallback of ["nip44_v2", "nip44", "nip04"]) {
     if (availableSet.has(fallback) && !prioritized.includes(fallback)) {
       prioritized.push(fallback);
     }
   }
 
   return prioritized.length ? prioritized : available;
+}
+
+function serializeSubscriptionTagMatrix(values) {
+  const tags = [];
+  const seen = new Set();
+  if (!values) {
+    return JSON.stringify(tags);
+  }
+  const iterable = Array.isArray(values)
+    ? values
+    : values instanceof Set
+    ? Array.from(values)
+    : [];
+  for (const candidate of iterable) {
+    const normalized = normalizeHexPubkey(candidate);
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    tags.push(["p", normalized]);
+  }
+  return JSON.stringify(tags);
+}
+
+function parseSubscriptionPlaintext(plaintext) {
+  if (typeof plaintext !== "string" || !plaintext) {
+    return [];
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(plaintext);
+  } catch (error) {
+    devLogger.warn(
+      "[SubscriptionsManager] Failed to parse subscription ciphertext as JSON; treating as empty.",
+      error,
+    );
+    return [];
+  }
+
+  if (Array.isArray(parsed)) {
+    const collected = [];
+    const seen = new Set();
+    for (const entry of parsed) {
+      if (!Array.isArray(entry) || entry.length < 2) {
+        continue;
+      }
+      const marker = typeof entry[0] === "string" ? entry[0].trim().toLowerCase() : "";
+      if (marker !== "p") {
+        continue;
+      }
+      const normalized = normalizeHexPubkey(entry[1]);
+      if (!normalized || seen.has(normalized)) {
+        continue;
+      }
+      seen.add(normalized);
+      collected.push(normalized);
+    }
+    return collected;
+  }
+
+  if (parsed && typeof parsed === "object") {
+    const tagArray = Array.isArray(parsed.tags) ? parsed.tags : [];
+    if (tagArray.length) {
+      try {
+        return parseSubscriptionPlaintext(JSON.stringify(tagArray));
+      } catch {
+        // fall through to legacy handling
+      }
+    }
+
+    const legacy = Array.isArray(parsed.subPubkeys) ? parsed.subPubkeys : [];
+    return legacy.map((value) => normalizeHexPubkey(value)).filter(Boolean);
+  }
+
+  return [];
 }
 
 const getApp = () => getApplication();
@@ -122,8 +216,8 @@ const subscribeVideoViewEventsApi = (pointer, options) =>
   subscribeVideoViewEvents(nostrClient, pointer, options);
 
 /**
- * Manages the user's subscription list (kind=30002) *privately*,
- * using NIP-04 encryption for the content field.
+ * Manages the user's subscription list (kind=30000 follow set) *privately*,
+ * using encrypted NIP-51 tag arrays (NIP-04/NIP-44) for the content field.
  * Also handles fetching and rendering subscribed channels' videos
  * in the same card style as your home page.
  */
@@ -146,7 +240,7 @@ class SubscriptionsManager {
   }
 
   /**
-   * Decrypt the subscription list from kind=30002 (d="subscriptions").
+   * Decrypt the subscription list from kind=30000 (d="subscriptions").
    */
   async loadSubscriptions(userPubkey) {
     if (!userPubkey) {
@@ -172,8 +266,13 @@ class SubscriptionsManager {
         authors.push(userPubkey);
       }
 
+      const subscriptionKinds = [SUBSCRIPTION_SET_KIND];
+      if (!subscriptionKinds.includes(LEGACY_SUBSCRIPTION_SET_KIND)) {
+        subscriptionKinds.push(LEGACY_SUBSCRIPTION_SET_KIND);
+      }
+
       const filter = {
-        kinds: [30002],
+        kinds: subscriptionKinds,
         authors,
         "#d": [SUBSCRIPTION_LIST_IDENTIFIER],
         limit: 1
@@ -283,13 +382,7 @@ class SubscriptionsManager {
 
       const decryptedStr = decryptResult.plaintext;
 
-      const parsed = JSON.parse(decryptedStr);
-      const subArray = Array.isArray(parsed.subPubkeys)
-        ? parsed.subPubkeys
-        : [];
-      const normalized = subArray
-        .map((value) => normalizeHexPubkey(value))
-        .filter((value) => Boolean(value));
+      const normalized = parseSubscriptionPlaintext(decryptedStr);
       this.subscribedPubkeys = new Set(normalized);
 
       this.loaded = true;
@@ -484,7 +577,7 @@ class SubscriptionsManager {
 
   /**
    * Encrypt (NIP-04) + publish the updated subscription set
-   * as kind=30002 with ["d", "subscriptions"] to be replaceable.
+   * as kind=30000 with ["d", "subscriptions"] to be replaceable.
    */
   async publishSubscriptionList(userPubkey) {
     if (!userPubkey) {
@@ -516,23 +609,41 @@ class SubscriptionsManager {
       }
     }
 
-    if (typeof signer.nip04Encrypt !== "function") {
-      const error = new Error("NIP-04 encryption is required to update subscriptions.");
-      error.code = "nip04-missing";
-      throw error;
-    }
-
     if (typeof signer.signEvent !== "function") {
       const error = new Error("Active signer missing signEvent support.");
       error.code = "sign-event-missing";
       throw error;
     }
 
-    const plainObj = { subPubkeys: Array.from(this.subscribedPubkeys) };
-    const plainStr = JSON.stringify(plainObj);
+    const plainStr = serializeSubscriptionTagMatrix(this.subscribedPubkeys);
+
+    const encryptors = [];
+    const registerEncryptor = (scheme, handler) => {
+      if (!scheme || typeof handler !== "function") {
+        return;
+      }
+      encryptors.push({ scheme, handler });
+    };
+
+    if (typeof signer.nip44Encrypt === "function") {
+      registerEncryptor("nip44_v2", (value) => signer.nip44Encrypt(userPubkey, value));
+      registerEncryptor("nip44", (value) => signer.nip44Encrypt(userPubkey, value));
+    }
+
+    if (typeof signer.nip04Encrypt === "function") {
+      registerEncryptor("nip04", (value) => signer.nip04Encrypt(userPubkey, value));
+    }
+
+    if (!encryptors.length) {
+      const error = new Error(
+        "An encryption-capable signer is required to update subscriptions.",
+      );
+      error.code = "subscriptions-missing-encryptor";
+      throw error;
+    }
 
     /*
-     * The subscription list is stored as a NIP-04 message to self, so both
+     * The subscription list is stored as an encrypted message to self, so both
      * encryption and decryption intentionally use the user's own pubkey.
      * Extensions are expected to support this encrypt-to-self flow; altering
      * the target would break loadSubscriptions, which decrypts with the same
@@ -540,17 +651,48 @@ class SubscriptionsManager {
      * need a parallel read path and should not overwrite this behavior.
      */
     let cipherText = "";
-    try {
-      cipherText = await signer.nip04Encrypt(userPubkey, plainStr);
-    } catch (err) {
-      userLogger.error("Encryption failed:", err);
-      throw err;
+    let encryptionScheme = "";
+    const seenSchemes = new Set();
+    const encryptionErrors = [];
+
+    for (const candidate of encryptors) {
+      if (seenSchemes.has(candidate.scheme)) {
+        continue;
+      }
+      seenSchemes.add(candidate.scheme);
+      try {
+        const encrypted = await candidate.handler(plainStr);
+        if (typeof encrypted === "string" && encrypted) {
+          cipherText = encrypted;
+          encryptionScheme = candidate.scheme;
+          break;
+        }
+      } catch (error) {
+        encryptionErrors.push({ scheme: candidate.scheme, error });
+      }
     }
+
+    if (!cipherText) {
+      const error = new Error("Failed to encrypt subscription list payload.");
+      error.code = "subscriptions-encrypt-failed";
+      error.cause = encryptionErrors;
+      throw error;
+    }
+
+    const encryptionTagValue =
+      encryptionScheme === "nip44_v2"
+        ? "nip44_v2"
+        : encryptionScheme === "nip44"
+          ? "nip44"
+          : encryptionScheme === "nip04"
+            ? "nip04"
+            : undefined;
 
     const evt = buildSubscriptionListEvent({
       pubkey: userPubkey,
       created_at: Math.floor(Date.now() / 1000),
-      content: cipherText
+      content: cipherText,
+      encryption: encryptionTagValue,
     });
 
     let signedEvent;
@@ -1081,7 +1223,7 @@ class SubscriptionsManager {
     };
 
     const assets = baseView?.assets || {
-      fallbackThumbnailSrc: "assets/jpg/video-thumbnail-fallback.jpg",
+      fallbackThumbnailSrc: "/assets/jpg/video-thumbnail-fallback.jpg",
       unsupportedBtihMessage:
         "This magnet link is missing a compatible BitTorrent v1 info hash."
     };

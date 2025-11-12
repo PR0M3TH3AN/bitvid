@@ -199,6 +199,8 @@ export class Nip71FormManager {
       this.setFieldValue(entry, "dim", value.dim);
       this.setFieldValue(entry, "url", value.url);
       this.setFieldValue(entry, "x", value.x);
+      this.setFieldValue(entry, "duration", value.duration);
+      this.setFieldValue(entry, "bitrate", value.bitrate);
       this.hydrateNested(entry, "image", value.image);
       this.hydrateNested(entry, "fallback", value.fallback);
       this.hydrateNested(entry, "service", value.service);
@@ -302,6 +304,26 @@ export class Nip71FormManager {
         service: this.collectNestedValues(entry, "service"),
       };
 
+      const durationValue = this.getFieldValue(entry, "duration");
+      if (durationValue !== "") {
+        const parsed = this.normalizeNumber(durationValue);
+        if (parsed != null && parsed >= 0) {
+          variant.duration = parsed;
+        } else {
+          variant.duration = durationValue;
+        }
+      }
+
+      const bitrateValue = this.getFieldValue(entry, "bitrate");
+      if (bitrateValue !== "") {
+        const parsed = this.normalizeNumber(bitrateValue);
+        if (parsed != null && parsed >= 0) {
+          variant.bitrate = parsed;
+        } else {
+          variant.bitrate = bitrateValue;
+        }
+      }
+
       const hasContent =
         variant.m ||
         variant.dim ||
@@ -309,7 +331,9 @@ export class Nip71FormManager {
         variant.x ||
         variant.image.length > 0 ||
         variant.fallback.length > 0 ||
-        variant.service.length > 0;
+        variant.service.length > 0 ||
+        variant.duration !== undefined ||
+        variant.bitrate !== undefined;
 
       return hasContent ? variant : null;
     });

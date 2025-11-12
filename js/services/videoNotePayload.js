@@ -85,13 +85,31 @@ function normalizeImetaVariant(variant) {
   }
   const normalized = {};
   const m = normalizeString(variant.m);
-  if (m) normalized.m = m;
+  if (m) normalized.m = m.toLowerCase();
   const dim = normalizeString(variant.dim);
   if (dim) normalized.dim = dim;
   const url = normalizeString(variant.url);
   if (url) normalized.url = url;
   const x = normalizeString(variant.x);
   if (x) normalized.x = x;
+  const durationValue = parseNumberOrNull(variant.duration);
+  if (durationValue !== null && durationValue >= 0) {
+    normalized.duration = durationValue;
+  } else {
+    const durationString = normalizeString(variant.duration);
+    if (durationString) {
+      normalized.duration = durationString;
+    }
+  }
+  const bitrateValue = parseNumberOrNull(variant.bitrate);
+  if (bitrateValue !== null && bitrateValue >= 0) {
+    normalized.bitrate = bitrateValue;
+  } else {
+    const bitrateString = normalizeString(variant.bitrate);
+    if (bitrateString) {
+      normalized.bitrate = bitrateString;
+    }
+  }
   const image = normalizeStringArray(variant.image);
   if (image.length) normalized.image = image;
   const fallback = normalizeStringArray(variant.fallback);
@@ -241,6 +259,14 @@ function normalizeNip71Metadata(rawMetadata) {
     : [];
   if (imeta.length) {
     normalized.imeta = imeta;
+    if (normalized.duration === undefined) {
+      const variantDurations = imeta
+        .map((variant) => parseNumberOrNull(variant.duration))
+        .filter((value) => value !== null && value >= 0);
+      if (variantDurations.length) {
+        normalized.duration = Math.max(...variantDurations);
+      }
+    }
   }
 
   const textTracks = normalizeTextTracks(rawMetadata.textTracks);
@@ -331,7 +357,9 @@ export function normalizeVideoNotePayload(input) {
           (variant.dim && variant.dim.length) ||
           (Array.isArray(variant.image) && variant.image.length > 0) ||
           (Array.isArray(variant.fallback) && variant.fallback.length > 0) ||
-          (Array.isArray(variant.service) && variant.service.length > 0),
+          (Array.isArray(variant.service) && variant.service.length > 0) ||
+          (variant.duration !== undefined && variant.duration !== null && variant.duration !== "") ||
+          (variant.bitrate !== undefined && variant.bitrate !== null && variant.bitrate !== ""),
       ),
     ),
   );

@@ -304,14 +304,14 @@ export function bootstrapNostrTools() {
 
     const remoteImports = [
       withTimeout(
-        () => import("https://esm.sh/nostr-tools@1.8.3"),
+        () => import("https://esm.sh/nostr-tools@2.17.0"),
         REMOTE_IMPORT_TIMEOUT,
         "esm-main"
       ),
       withTimeout(
         () =>
           import(
-            "https://esm.sh/nostr-tools@1.8.3?target=es2022&exports=nip04"
+            "https://esm.sh/nostr-tools@2.17.0?target=es2022&exports=nip04"
           ),
         REMOTE_IMPORT_TIMEOUT,
         "esm-nip04"
@@ -319,7 +319,7 @@ export function bootstrapNostrTools() {
       withTimeout(
         () =>
           import(
-            "https://esm.sh/nostr-tools@1.8.3?target=es2022&exports=nip44"
+            "https://esm.sh/nostr-tools@2.17.0/nip44?target=es2022"
           ),
         REMOTE_IMPORT_TIMEOUT,
         "esm-nip44"

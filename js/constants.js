@@ -106,9 +106,11 @@ function sanitizeTrustSeedList(candidate) {
 
 const DEFAULT_WSS_TRACKERS = Object.freeze([
   "wss://tracker.openwebtorrent.com",
-  "wss://tracker.fastcast.nz",
-  "wss://tracker.webtorrent.dev",
-  "wss://tracker.sloppyta.co:443/announce",
+  "wss://tracker.ghostchu-services.top:443/announce",
+  "wss://tracker.files.fm:7073/announce",
+  "wss://tracker.dler.org:443/announce",
+  "wss://tracker.btorrent.xyz",
+  "wss://tracker.novage.com.ua:443/announce",
 ]);
 
 const SANITIZED_DEFAULT_BLUR_THRESHOLD = coerceNonNegativeInteger(
@@ -150,6 +152,7 @@ const DEFAULT_FLAGS = Object.freeze({
   FEATURE_HASHTAG_PREFERENCES: false,
   FEATURE_TRUST_SEEDS: true, // Rollback: disable to drop baseline trust seeds without code changes.
   FEATURE_TRUSTED_HIDE_CONTROLS: true,
+  FEATURE_IMPROVED_COMMENT_FETCHING: true, // Default true for comment persistence fixes
   TRUSTED_MUTE_HIDE_THRESHOLD: DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
   TRUSTED_SPAM_HIDE_THRESHOLD: DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
   WSS_TRACKERS: DEFAULT_WSS_TRACKERS,
@@ -171,6 +174,8 @@ const runtimeFlags = (() => {
     FEATURE_HASHTAG_PREFERENCES: DEFAULT_FLAGS.FEATURE_HASHTAG_PREFERENCES,
     FEATURE_TRUST_SEEDS: DEFAULT_FLAGS.FEATURE_TRUST_SEEDS,
     FEATURE_TRUSTED_HIDE_CONTROLS: DEFAULT_FLAGS.FEATURE_TRUSTED_HIDE_CONTROLS,
+    FEATURE_IMPROVED_COMMENT_FETCHING:
+      DEFAULT_FLAGS.FEATURE_IMPROVED_COMMENT_FETCHING,
     TRUSTED_MUTE_HIDE_THRESHOLD: DEFAULT_FLAGS.TRUSTED_MUTE_HIDE_THRESHOLD,
     TRUSTED_SPAM_HIDE_THRESHOLD: DEFAULT_FLAGS.TRUSTED_SPAM_HIDE_THRESHOLD,
     WSS_TRACKERS: [...DEFAULT_FLAGS.WSS_TRACKERS],
@@ -219,6 +224,11 @@ export let FEATURE_TRUST_SEEDS = coerceBoolean(
 export let FEATURE_TRUSTED_HIDE_CONTROLS = coerceBoolean(
   runtimeFlags.FEATURE_TRUSTED_HIDE_CONTROLS,
   DEFAULT_FLAGS.FEATURE_TRUSTED_HIDE_CONTROLS
+);
+
+export let FEATURE_IMPROVED_COMMENT_FETCHING = coerceBoolean(
+  runtimeFlags.FEATURE_IMPROVED_COMMENT_FETCHING,
+  DEFAULT_FLAGS.FEATURE_IMPROVED_COMMENT_FETCHING
 );
 
 export let WSS_TRACKERS = freezeTrackers(
@@ -341,6 +351,20 @@ Object.defineProperty(runtimeFlags, "FEATURE_TRUSTED_HIDE_CONTROLS", {
   },
 });
 
+Object.defineProperty(runtimeFlags, "FEATURE_IMPROVED_COMMENT_FETCHING", {
+  configurable: true,
+  enumerable: true,
+  get() {
+    return FEATURE_IMPROVED_COMMENT_FETCHING;
+  },
+  set(next) {
+    FEATURE_IMPROVED_COMMENT_FETCHING = coerceBoolean(
+      next,
+      DEFAULT_FLAGS.FEATURE_IMPROVED_COMMENT_FETCHING
+    );
+  },
+});
+
 Object.defineProperty(runtimeFlags, "WSS_TRACKERS", {
   configurable: true,
   enumerable: true,
@@ -391,6 +415,8 @@ runtimeFlags.FEATURE_PUBLISH_NIP71 = FEATURE_PUBLISH_NIP71;
 runtimeFlags.FEATURE_HASHTAG_PREFERENCES = FEATURE_HASHTAG_PREFERENCES;
 runtimeFlags.FEATURE_TRUST_SEEDS = FEATURE_TRUST_SEEDS;
 runtimeFlags.FEATURE_TRUSTED_HIDE_CONTROLS = FEATURE_TRUSTED_HIDE_CONTROLS;
+runtimeFlags.FEATURE_IMPROVED_COMMENT_FETCHING =
+  FEATURE_IMPROVED_COMMENT_FETCHING;
 runtimeFlags.WSS_TRACKERS = WSS_TRACKERS;
 runtimeFlags.TRUSTED_MUTE_HIDE_THRESHOLD = TRUSTED_MUTE_HIDE_THRESHOLD;
 runtimeFlags.TRUSTED_SPAM_HIDE_THRESHOLD = TRUSTED_SPAM_HIDE_THRESHOLD;
@@ -429,6 +455,11 @@ export function setTrustedHideControlsEnabled(next) {
   return FEATURE_TRUSTED_HIDE_CONTROLS;
 }
 
+export function setImprovedCommentFetchingEnabled(next) {
+  runtimeFlags.FEATURE_IMPROVED_COMMENT_FETCHING = next;
+  return FEATURE_IMPROVED_COMMENT_FETCHING;
+}
+
 export function setHashtagPreferencesEnabled(next) {
   runtimeFlags.FEATURE_HASHTAG_PREFERENCES = next;
   return FEATURE_HASHTAG_PREFERENCES;
@@ -444,6 +475,9 @@ export function resetRuntimeFlags() {
   setHashtagPreferencesEnabled(DEFAULT_FLAGS.FEATURE_HASHTAG_PREFERENCES);
   setTrustSeedsEnabled(DEFAULT_FLAGS.FEATURE_TRUST_SEEDS);
   setTrustedHideControlsEnabled(DEFAULT_FLAGS.FEATURE_TRUSTED_HIDE_CONTROLS);
+  setImprovedCommentFetchingEnabled(
+    DEFAULT_FLAGS.FEATURE_IMPROVED_COMMENT_FETCHING
+  );
   setTrustedMuteHideThreshold(DEFAULT_FLAGS.TRUSTED_MUTE_HIDE_THRESHOLD);
   setTrustedSpamHideThreshold(DEFAULT_FLAGS.TRUSTED_SPAM_HIDE_THRESHOLD);
   setWssTrackers(DEFAULT_FLAGS.WSS_TRACKERS);

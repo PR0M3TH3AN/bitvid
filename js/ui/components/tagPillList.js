@@ -115,15 +115,97 @@ function createTagButton({ doc, tag, onTagActivate, getTagState }) {
   return button;
 }
 
+function cleanupButtonHandler(button) {
+  if (!button || typeof button !== "object" || button.nodeType !== 1) {
+    return;
+  }
+
+  const handler = button.__tagPillClickHandler;
+  if (handler) {
+    button.removeEventListener("click", handler);
+    delete button.__tagPillClickHandler;
+  }
+}
+
+function removeTagButton(button) {
+  if (!button || typeof button !== "object" || button.nodeType !== 1) {
+    return;
+  }
+
+  cleanupButtonHandler(button);
+
+  if (typeof button.remove === "function") {
+    button.remove();
+  } else if (button.parentNode) {
+    button.parentNode.removeChild(button);
+  }
+}
+
 function cleanupExistingButtons(root) {
   for (const button of root.querySelectorAll("button")) {
-    const handler = button.__tagPillClickHandler;
-    if (handler) {
-      button.removeEventListener("click", handler);
-      delete button.__tagPillClickHandler;
-    }
+    cleanupButtonHandler(button);
   }
   root.textContent = "";
+}
+
+function getAvailableContainerWidth(container) {
+  if (!container || container.nodeType !== 1) {
+    return 0;
+  }
+
+  const clientWidth = Number(container.clientWidth || 0);
+  if (Number.isFinite(clientWidth) && clientWidth > 0) {
+    return clientWidth;
+  }
+
+  if (typeof container.getBoundingClientRect === "function") {
+    try {
+      const rect = container.getBoundingClientRect();
+      if (rect && typeof rect.width === "number" && rect.width > 0) {
+        return rect.width;
+      }
+    } catch (error) {
+      // Ignore measurement errors and fall through to return 0.
+    }
+  }
+
+  return 0;
+}
+
+export function trimTagPillStripToFit({ strip, container } = {}) {
+  if (!strip || typeof strip !== "object" || strip.nodeType !== 1) {
+    return { removedButtons: [] };
+  }
+
+  const host =
+    container && typeof container === "object" && container.nodeType === 1
+      ? container
+      : strip.parentElement;
+
+  const availableWidth = Math.max(0, getAvailableContainerWidth(host));
+  const removedButtons = [];
+
+  const buttons = Array.from(strip.querySelectorAll("button"));
+  if (!buttons.length) {
+    return { removedButtons };
+  }
+
+  if (availableWidth <= 0) {
+    return { removedButtons };
+  }
+
+  let currentButtons = buttons.length;
+  while (currentButtons > 0 && strip.scrollWidth > availableWidth) {
+    const button = buttons[currentButtons - 1];
+    if (!button) {
+      break;
+    }
+    removeTagButton(button);
+    removedButtons.push(button);
+    currentButtons -= 1;
+  }
+
+  return { removedButtons };
 }
 
 export function renderTagPillStrip({

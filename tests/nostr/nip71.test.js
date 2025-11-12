@@ -21,12 +21,13 @@ test("buildNip71MetadataTags normalizes structured fields", () => {
       {
         dim: " 1920x1080 ",
         url: " https://cdn.example/thumb.jpg ",
+        duration: " 29.5 ",
+        bitrate: " 3000000 ",
         image: [" https://cdn.example/fallback-1.jpg ", ""],
         fallback: [" https://cdn.example/fallback-2.jpg "],
         service: [" thumb "],
       },
     ],
-    duration: " 123 ",
     textTracks: [
       {
         url: " https://cdn.example/captions.vtt ",
@@ -54,12 +55,14 @@ test("buildNip71MetadataTags normalizes structured fields", () => {
         tag[0] === "imeta" &&
         tag.includes("dim 1920x1080") &&
         tag.includes("url https://cdn.example/thumb.jpg") &&
+        tag.includes("duration 29.5") &&
+        tag.includes("bitrate 3000000") &&
         tag.includes("image https://cdn.example/fallback-1.jpg") &&
         tag.includes("fallback https://cdn.example/fallback-2.jpg") &&
         tag.includes("service thumb"),
     ),
   );
-  assert.ok(tags.some((tag) => tag[0] === "duration" && tag[1] === "123"));
+  assert.ok(!tags.some((tag) => tag[0] === "duration"));
   assert.ok(
     tags.some(
       (tag) =>
@@ -89,7 +92,7 @@ test("buildNip71MetadataTags normalizes structured fields", () => {
     tags.some(
       (tag) =>
         tag[0] === "p" &&
-        tag[1] === "A".repeat(64) &&
+        tag[1] === "a".repeat(64) &&
         tag[2] === "wss://relay.example",
     ),
   );

@@ -1,4 +1,4 @@
-import { buildReactionEvent } from "../nostrEventSchemas.js";
+import { buildReactionEvent, sanitizeAdditionalTags } from "../nostrEventSchemas.js";
 import { publishEventToRelay } from "../nostrPublish.js";
 import { RELAY_URLS } from "./toolkit.js";
 import { normalizePointerInput } from "./watchHistory.js";
@@ -12,6 +12,119 @@ function sanitizeRelayList(primary, fallback) {
     return fallback;
   }
   return RELAY_URLS;
+}
+
+function normalizeString(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function extractEventIdFromPointerInput(pointerInput) {
+  if (!pointerInput) {
+    return "";
+  }
+
+  if (Array.isArray(pointerInput)) {
+    if (
+      pointerInput.length >= 2 &&
+      pointerInput[0] === "e" &&
+      typeof pointerInput[1] === "string"
+    ) {
+      const candidate = pointerInput[1].trim();
+      if (candidate) {
+        return candidate;
+      }
+    }
+    return "";
+  }
+
+  if (typeof pointerInput !== "object") {
+    return "";
+  }
+
+  const candidateKeys = ["eventId", "pointerEventId", "id"];
+  for (const key of candidateKeys) {
+    const candidate = normalizeString(pointerInput[key]);
+    if (candidate) {
+      return candidate;
+    }
+  }
+
+  const normalizedType = normalizeString(pointerInput.type);
+  if (normalizedType === "e") {
+    const candidate = normalizeString(pointerInput.value);
+    if (candidate) {
+      return candidate;
+    }
+  }
+
+  if (pointerInput.pointer) {
+    const nested = extractEventIdFromPointerInput(pointerInput.pointer);
+    if (nested) {
+      return nested;
+    }
+  }
+
+  if (pointerInput.tag) {
+    const nested = extractEventIdFromPointerInput(pointerInput.tag);
+    if (nested) {
+      return nested;
+    }
+  }
+
+  return "";
+}
+
+function extractEventRelayFromPointerInput(pointerInput) {
+  if (!pointerInput) {
+    return "";
+  }
+
+  if (Array.isArray(pointerInput)) {
+    if (
+      pointerInput.length >= 3 &&
+      pointerInput[0] === "e" &&
+      typeof pointerInput[2] === "string"
+    ) {
+      const candidate = pointerInput[2].trim();
+      if (candidate) {
+        return candidate;
+      }
+    }
+    return "";
+  }
+
+  if (typeof pointerInput !== "object") {
+    return "";
+  }
+
+  const candidateRelay = normalizeString(pointerInput.eventRelay);
+  if (candidateRelay) {
+    return candidateRelay;
+  }
+
+  const normalizedType = normalizeString(pointerInput.type);
+  if (normalizedType === "e") {
+    const relayCandidate = normalizeString(pointerInput.relay);
+    if (relayCandidate) {
+      return relayCandidate;
+    }
+  }
+
+  if (pointerInput.pointer) {
+    const nested = extractEventRelayFromPointerInput(pointerInput.pointer);
+    if (nested) {
+      return nested;
+    }
+  }
+
+  if (pointerInput.tag) {
+    const nested = extractEventRelayFromPointerInput(pointerInput.tag);
+    if (nested) {
+      return nested;
+    }
+  }
+
+  return "";
 }
 
 export async function publishVideoReaction(
@@ -44,11 +157,7 @@ export async function publishVideoReaction(
       ? Math.floor(options.created_at)
       : Math.floor(Date.now() / 1000);
 
-  const additionalTags = Array.isArray(options.additionalTags)
-    ? options.additionalTags.filter(
-        (tag) => Array.isArray(tag) && typeof tag[0] === "string"
-      )
-    : [];
+  const additionalTags = sanitizeAdditionalTags(options.additionalTags);
 
   const optionRelay =
     typeof options.pointerRelay === "string" && options.pointerRelay.trim()
@@ -60,14 +169,69 @@ export async function publishVideoReaction(
       ? pointer.relay.trim()
       : optionRelay;
 
-  const pointerTag =
-    pointer.type === "a"
-      ? pointerRelay
-        ? ["a", pointer.value, pointerRelay]
-        : ["a", pointer.value]
-      : pointerRelay
-      ? ["e", pointer.value, pointerRelay]
-      : ["e", pointer.value];
+  let pointerEventId = normalizeString(pointer.type === "e" ? pointer.value : "");
+  if (!pointerEventId) {
+    pointerEventId = extractEventIdFromPointerInput(pointerInput);
+  }
+  if (!pointerEventId) {
+    pointerEventId = normalizeString(options.pointerEventId);
+  }
+  if (!pointerEventId && options.video) {
+    pointerEventId =
+      extractEventIdFromPointerInput(options.video.pointerInfo) ||
+      normalizeString(options.video.pointerEventId) ||
+      normalizeString(options.video.eventId) ||
+      normalizeString(options.video.id);
+  }
+
+  let pointerEventRelay = normalizeString(
+    pointer.type === "e" ? pointer.relay : ""
+  );
+  if (!pointerEventRelay) {
+    pointerEventRelay = extractEventRelayFromPointerInput(pointerInput);
+  }
+  if (!pointerEventRelay) {
+    pointerEventRelay = normalizeString(options.pointerEventRelay);
+  }
+  if (!pointerEventRelay && options.video) {
+    pointerEventRelay =
+      normalizeString(options.video.pointerInfo?.eventRelay) ||
+      extractEventRelayFromPointerInput(options.video.pointerInfo) ||
+      normalizeString(options.video.eventRelay) ||
+      normalizeString(options.video.relay);
+  }
+  if (!pointerEventRelay && pointerRelay) {
+    pointerEventRelay = pointerRelay;
+  }
+
+  if (!pointerEventId) {
+    const errorDetails = pointer.type === "a"
+      ? "Unable to resolve event id for address reaction target."
+      : "Unable to resolve event id for reaction target.";
+    devLogger.warn("[nostr] " + errorDetails, pointerInput);
+    return { ok: false, error: "missing-pointer-event-id", details: errorDetails };
+  }
+
+  const pointerTags = [];
+  let pointerTag = null;
+
+  if (pointer.type === "a") {
+    const addressTag = pointerRelay
+      ? ["a", pointer.value, pointerRelay]
+      : ["a", pointer.value];
+    pointerTags.push(addressTag);
+    pointerTag = addressTag;
+  }
+
+  const eventTag = pointerEventRelay
+    ? ["e", pointerEventId, pointerEventRelay]
+    : ["e", pointerEventId];
+
+  pointerTags.push(eventTag);
+
+  if (!pointerTag) {
+    pointerTag = eventTag;
+  }
 
   const normalizedPointer = {
     type: pointer.type,
@@ -105,6 +269,7 @@ export async function publishVideoReaction(
     created_at: createdAt,
     pointerValue: pointer.value,
     pointerTag,
+    pointerTags,
     targetPointer: normalizedPointer,
     targetAuthorPubkey: explicitTargetAuthor,
     additionalTags,

@@ -8,10 +8,10 @@ To implement a decentralized comment system for videos shared on a Nostr-based p
 ### **Features**
 1. **Post Comments**:
    - Users can post comments on videos.
-   - Comments are associated with a specific video event using the `e` tag.
+   - Comments scope to the video definition or root event with NIP-22 uppercase tags (`A`/`E`/`I`, `K`, `P`) while still emitting lowercase fallbacks for legacy clients.
 
 2. **Structured Threading**:
-   - Comments support threading by referencing parent comments using NIP-27 conventions.
+   - Comments support threading by referencing parent comments with the lowercase NIP-22 set (`a`/`e`/`i`, `k`, `p`).
    - Threaded replies are visually nested.
 
 3. **Reactions**:
@@ -40,18 +40,21 @@ To implement a decentralized comment system for videos shared on a Nostr-based p
 Each component (comments, reactions, live chat) is represented as a Nostr event.
 
 ##### **Comment Event**:
-bitvid uses standard kind `1` text note replies so they interoperate with the moderation flows documented in [`docs/moderation/nips.md`](../../docs/moderation/nips.md). Each reply keeps both the video event ID and the root video definition tag so downstream services can resolve lineage.
+bitvid publishes kind `1111` comments following [NIP-22](https://github.com/nostr-protocol/nips/blob/master/22.md). Each event declares its root scope with uppercase tags and keeps the lowercase fallbacks so legacy clients continue to render threads.
 
 ```json
 {
-    "kind": 1,
+    "kind": 1111,
     "pubkey": "abcdef1234567890...",
     "created_at": 1675000000,
     "tags": [
-        ["e", "video-event-id"], // Reference to the specific video event
-        ["a", "30078:video-author-pubkey:video-root-id"], // Reference to the video definition (kind 30078)
-        ["e", "parent-comment-id"], // Optional: reference to the parent comment for replies
-        ["p", "commenter-pubkey"] // Optional: commenter or video author pubkey for threading UX
+        ["A", "30078:video-author-pubkey:video-root-id", "wss://video.example"],
+        ["K", "30078"],
+        ["P", "video-author-pubkey", "wss://video.example"],
+        ["a", "30078:video-author-pubkey:video-root-id", "wss://video.example"],
+        ["e", "parent-comment-id", "parent-author-pubkey"],
+        ["k", "1111"],
+        ["p", "parent-author-pubkey"]
     ],
     "content": "This is a great video!"
 }
@@ -89,7 +92,7 @@ bitvid uses standard kind `1` text note replies so they interoperate with the mo
 Metadata tags are added to comments or live chat events as needed:
 ```json
 {
-    "kind": 1,
+    "kind": 1111,
     "pubkey": "abcdef1234567890...",
     "created_at": 1675000000,
     "tags": [
@@ -108,8 +111,8 @@ Metadata tags are added to comments or live chat events as needed:
 
 #### **1. Posting a Comment**
 To post a comment:
-1. The client constructs a kind `1` comment event using NIP-22 for `created_at` validation.
-2. The event includes both the `['e', <videoEventId>]` and `['a', <30078:pubkey:videoRootId>]` tags (mandatory) plus parent comment references when replying. This mirrors the implementation in `js/services/discussionCountService.js` so reply counts and moderation filters remain aligned.
+1. The client constructs a kind `1111` comment event following NIP-22 threading semantics.
+2. The event includes uppercase root scope tags (`['A'\|`E`\|`I`, <pointer>], `['K', <root kind>]`, `['P', <root author>]`) and carries lowercase fallbacks (`['a', ...]`, `['e', ...]`, `['k', ...]`, `['p', ...]`) for older relays and clients. Parent references append `['e', <parent id>, <relay?>?, <author?>]`, `['k', <parent kind>]`, and `['p', <parent author>]` when available.
 3. The event is signed and published to relays.
 
 ##### API Example:
@@ -120,13 +123,21 @@ async function postComment(
     parentCommentId = null
 ) {
     const event = {
-        kind: 1,
+        kind: 1111,
         pubkey: userPubkey,
         created_at: Math.floor(Date.now() / 1000),
         tags: [
-            ['e', videoEventId],
+            ['A', `30078:${videoAuthorPubkey}:${videoRootId}`],
+            ['K', '30078'],
+            ['P', videoAuthorPubkey],
             ['a', `30078:${videoAuthorPubkey}:${videoRootId}`],
-            ...(parentCommentId ? [['e', parentCommentId]] : []),
+            ...(parentCommentId
+              ? [
+                  ['e', parentCommentId, videoAuthorPubkey],
+                  ['k', '1111'],
+                  ['p', videoAuthorPubkey],
+                ]
+              : [['k', '30078'], ['p', videoAuthorPubkey]]),
         ],
         content: commentText
     };
@@ -162,7 +173,7 @@ Comments are retrieved using `REQ` messages filtered by the `e` tag for the vide
 ```javascript
 async function fetchComments({ videoEventId, videoAuthorPubkey, videoRootId }) {
     const filter = {
-        kinds: [1],
+        kinds: [1111],
         '#e': [videoEventId],
         '#a': [`30078:${videoAuthorPubkey}:${videoRootId}`],
         limit: 100

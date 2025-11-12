@@ -1,5 +1,6 @@
 import { devLogger } from "../utils/logger.js";
 import { buildVideoAddressPointer } from "../utils/videoPointer.js";
+import { COMMENT_EVENT_KIND } from "../nostr/commentEvents.js";
 
 const DEFAULT_MAX_DISCUSSION_COUNT_VIDEOS = 24;
 const COUNT_UNSUPPORTED_TITLE = "Relay does not support NIP-45 COUNT queries.";
@@ -130,12 +131,57 @@ export default class DiscussionCountService {
     const filters = [];
     const eventId = typeof video.id === "string" ? video.id.trim() : "";
     if (eventId) {
-      filters.push({ kinds: [1], "#e": [eventId] });
+      filters.push({ kinds: [COMMENT_EVENT_KIND], "#e": [eventId] });
     }
 
     const address = buildVideoAddressPointer(video);
+    const rootIdentifier =
+      typeof video.videoRootId === "string" ? video.videoRootId.trim() : "";
+
+    const uppercaseFilter = { kinds: [COMMENT_EVENT_KIND] };
+    let hasUppercasePointer = false;
+
+    if (rootIdentifier) {
+      uppercaseFilter["#I"] = [rootIdentifier];
+      hasUppercasePointer = true;
+    } else if (address) {
+      uppercaseFilter["#A"] = [address];
+      hasUppercasePointer = true;
+    } else if (eventId) {
+      uppercaseFilter["#E"] = [eventId];
+      hasUppercasePointer = true;
+    }
+
+    const rootKind = (() => {
+      if (Number.isFinite(video.kind)) {
+        return String(Math.floor(video.kind));
+      }
+      if (typeof video.kind === "string" && video.kind.trim()) {
+        const parsed = Number(video.kind);
+        if (Number.isFinite(parsed)) {
+          return String(Math.floor(parsed));
+        }
+        return video.kind.trim();
+      }
+      return "";
+    })();
+
+    if (rootKind) {
+      uppercaseFilter["#K"] = [rootKind];
+    }
+
+    const rootAuthor =
+      typeof video.pubkey === "string" ? video.pubkey.trim() : "";
+    if (rootAuthor) {
+      uppercaseFilter["#P"] = [rootAuthor];
+    }
+
+    if (hasUppercasePointer) {
+      filters.push(uppercaseFilter);
+    }
+
     if (address) {
-      filters.push({ kinds: [1], "#a": [address] });
+      filters.push({ kinds: [COMMENT_EVENT_KIND], "#a": [address] });
     }
 
     return filters;
