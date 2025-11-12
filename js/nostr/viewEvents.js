@@ -7,6 +7,7 @@ import {
   buildViewEvent,
   getNostrEventSchema,
   NOTE_TYPES,
+  sanitizeAdditionalTags,
 } from "../nostrEventSchemas.js";
 import { publishEventToRelay } from "../nostrPublish.js";
 import { RELAY_URLS } from "./toolkit.js";
@@ -710,11 +711,7 @@ export async function publishViewEvent(
   const usingSessionActor =
     normalizedActor && normalizedActor !== normalizedLogged;
 
-  const additionalTags = Array.isArray(options.additionalTags)
-    ? options.additionalTags.filter(
-        (tag) => Array.isArray(tag) && typeof tag[0] === "string"
-      )
-    : [];
+  const additionalTags = sanitizeAdditionalTags(options.additionalTags);
 
   const pointerTag =
     pointer.type === "a"

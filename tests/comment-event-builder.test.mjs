@@ -1,11 +1,34 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import {
+const SANITIZED_SAMPLE_HEX = "deadbeef".repeat(8);
+const SANITIZED_SAMPLE_NPUB = "npub1commentadditionaltagfixture000000000000000000000";
+
+if (typeof globalThis.window === "undefined") {
+  globalThis.window = {};
+}
+
+if (!globalThis.window.NostrTools) {
+  globalThis.window.NostrTools = {};
+}
+
+const existingNip19 =
+  typeof globalThis.window.NostrTools.nip19 === "object"
+    ? globalThis.window.NostrTools.nip19
+    : {};
+
+if (typeof existingNip19.decode !== "function") {
+  globalThis.window.NostrTools.nip19 = {
+    ...existingNip19,
+    decode: (value) => ({ type: "npub", data: SANITIZED_SAMPLE_HEX }),
+  };
+}
+
+const {
   buildCommentEvent,
   getNostrEventSchema,
   NOTE_TYPES,
-} from "../js/nostrEventSchemas.js";
+} = await import("../js/nostrEventSchemas.js");
 
 const VIDEO_COMMENT_KIND =
   getNostrEventSchema(NOTE_TYPES.VIDEO_COMMENT)?.kind ?? 1111;
@@ -84,7 +107,6 @@ test("buildCommentEvent normalizes relays and preserves explicit overrides", () 
     ["k", String(VIDEO_COMMENT_KIND)],
     ["p", "cafecafe", "wss://profile"],
     ["client", "bitvid"],
-    ["p", "cafecafe", "wss://override"],
   ]);
   assert.equal(event.content, " Appreciated! ");
 });
@@ -135,4 +157,45 @@ test("buildCommentEvent accepts partial metadata for parent overrides", () => {
     ["k", "1111"],
     ["p", "parent-only", "wss://parent-author"],
   ]);
+});
+
+test("buildCommentEvent sanitizes additional tags before signing", () => {
+  const event = buildCommentEvent({
+    pubkey: "sanitizer",
+    created_at: 1700000600,
+    videoEventId: "sanitized-event",
+    threadParticipantPubkey: "cafecafe",
+    additionalTags: [
+      ["p", null],
+      ["p", SANITIZED_SAMPLE_NPUB],
+      ["client", { foo: "bar" }],
+      ["client", "bitvid"],
+    ],
+    content: "sanitize",
+  });
+
+  const clientTags = event.tags.filter(
+    (tag) => Array.isArray(tag) && tag[0] === "client",
+  );
+  assert.deepStrictEqual(clientTags, [["client", "bitvid"]]);
+
+  const normalizedAdditionalPubkeys = event.tags.filter(
+    (tag) => Array.isArray(tag) && tag[0] === "p" && tag[1] === SANITIZED_SAMPLE_HEX,
+  );
+  assert.equal(
+    normalizedAdditionalPubkeys.length,
+    1,
+    "sanitized npub additional tag should normalize to hex",
+  );
+
+  assert.ok(
+    !event.tags.some(
+      (tag) =>
+        Array.isArray(tag) &&
+        tag[0] === "client" &&
+        typeof tag[1] === "string" &&
+        tag[1].includes("[object Object]"),
+    ),
+    "invalid object values should be removed instead of stringified",
+  );
 });

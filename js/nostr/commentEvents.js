@@ -2,6 +2,7 @@ import {
   buildCommentEvent,
   getNostrEventSchema,
   NOTE_TYPES,
+  sanitizeAdditionalTags,
 } from "../nostrEventSchemas.js";
 import { publishEventToRelay } from "../nostrPublish.js";
 import { RELAY_URLS } from "./toolkit.js";
@@ -1158,11 +1159,7 @@ export async function publishComment(
       ? Math.floor(options.created_at)
       : Math.floor(Date.now() / 1000);
 
-  const additionalTags = Array.isArray(options.additionalTags)
-    ? options.additionalTags.filter(
-        (tag) => Array.isArray(tag) && typeof tag[0] === "string",
-      )
-    : [];
+  const additionalTags = sanitizeAdditionalTags(options.additionalTags);
 
   let content = "";
   if (typeof options.content === "string") {
