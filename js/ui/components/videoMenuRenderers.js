@@ -288,7 +288,11 @@ export function createVideoMoreMenuPanel({
   appendMenuAction(doc, list, {
     text: "Report",
     action: "report",
-    dataset: { eventId: metadata.id },
+    dataset: {
+      eventId: metadata.id,
+      author: metadata.pubkey,
+      pointerRelay: pointer && pointer.relay ? pointer.relay : "",
+    },
   });
 
   return panel;

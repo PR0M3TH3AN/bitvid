@@ -2,6 +2,7 @@ import { ACCEPT_LEGACY_V1 } from "../constants.js";
 import { deriveTitleFromEvent, magnetFromText } from "../videoEventUtils.js";
 import { extractMagnetHints } from "../magnet.js";
 import { devLogger } from "../utils/logger.js";
+import { getCachedNostrTools } from "./toolkit.js";
 
 function stringFromInput(value) {
   if (value === null || value === undefined) {
@@ -14,6 +15,50 @@ function stringFromInput(value) {
     return Number.isFinite(value) ? String(value) : "";
   }
   return String(value).trim();
+}
+
+const HEX_32_BYTE_REGEX = /^[0-9a-f]{64}$/i;
+
+function decodeNpubToHex(candidate) {
+  const globalDecoder =
+    typeof window !== "undefined" ? window?.NostrTools?.nip19?.decode : null;
+  const toolkit = getCachedNostrTools();
+  const toolkitDecoder = toolkit?.nip19?.decode;
+  const decoder =
+    typeof globalDecoder === "function" ? globalDecoder : toolkitDecoder;
+  if (typeof decoder !== "function") {
+    return null;
+  }
+  try {
+    const decoded = decoder(candidate);
+    if (decoded?.type === "npub" && typeof decoded.data === "string") {
+      return decoded.data.toLowerCase();
+    }
+    if (decoded?.type === "npub" && typeof decoded.data?.pubkey === "string") {
+      return decoded.data.pubkey.toLowerCase();
+    }
+  } catch (error) {
+    devLogger.warn("[nostr] Failed to decode npub participant pubkey", error);
+  }
+  return null;
+}
+
+function normalizeNostrPubkey(candidate) {
+  const value = stringFromInput(candidate);
+  if (!value) {
+    return null;
+  }
+  if (HEX_32_BYTE_REGEX.test(value)) {
+    return value.toLowerCase();
+  }
+  if (value.toLowerCase().startsWith("npub1")) {
+    const decoded = decodeNpubToHex(value);
+    if (decoded && HEX_32_BYTE_REGEX.test(decoded)) {
+      return decoded;
+    }
+    return null;
+  }
+  return null;
 }
 
 function normalizeUnixSeconds(value) {
@@ -42,23 +87,60 @@ function normalizeUnixSeconds(value) {
   return "";
 }
 
-function normalizeDurationSeconds(value) {
+function parseNonNegativeNumber(value, { allowFloat = false } = {}) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    if (!allowFloat && !Number.isInteger(value)) {
+      return null;
+    }
+    return value >= 0 ? value : null;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+    const numeric = Number(trimmed);
+    if (!Number.isFinite(numeric)) {
+      return null;
+    }
+    if (!allowFloat && !Number.isInteger(numeric)) {
+      return null;
+    }
+    return numeric >= 0 ? numeric : null;
+  }
+  return null;
+}
+
+function formatNonNegativeNumber(value, { allowFloat = false } = {}) {
   if (value === null || value === undefined || value === "") {
     return "";
   }
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return String(Math.max(0, Math.floor(value)));
-  }
+
   if (typeof value === "string") {
     const trimmed = value.trim();
     if (!trimmed) {
       return "";
     }
     const numeric = Number(trimmed);
-    if (Number.isFinite(numeric)) {
-      return String(Math.max(0, Math.floor(numeric)));
+    if (!Number.isFinite(numeric) || numeric < 0) {
+      return "";
     }
+    if (!allowFloat && !Number.isInteger(numeric)) {
+      return "";
+    }
+    if (/^\d+(?:\.\d+)?$/.test(trimmed)) {
+      return trimmed;
+    }
+    return allowFloat ? String(numeric) : String(Math.trunc(numeric));
   }
+
+  if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+    if (!allowFloat && !Number.isInteger(value)) {
+      return "";
+    }
+    return String(value);
+  }
+
   return "";
 }
 
@@ -95,7 +177,14 @@ function buildImetaTags(variants) {
     const dim = stringFromInput(variant.dim);
     const url = stringFromInput(variant.url);
     const x = stringFromInput(variant.x);
-    const mime = stringFromInput(variant.m);
+    const rawMime = stringFromInput(variant.m);
+    const mime = rawMime ? rawMime.toLowerCase() : "";
+    const duration = formatNonNegativeNumber(variant.duration, {
+      allowFloat: true,
+    });
+    const bitrate = formatNonNegativeNumber(variant.bitrate, {
+      allowFloat: false,
+    });
     const image = Array.isArray(variant.image)
       ? variant.image.map(stringFromInput).filter(Boolean)
       : [];
@@ -106,7 +195,17 @@ function buildImetaTags(variants) {
       ? variant.service.map(stringFromInput).filter(Boolean)
       : [];
 
-    if (!dim && !url && !x && !mime && !image.length && !fallback.length && !service.length) {
+    if (
+      !dim &&
+      !url &&
+      !x &&
+      !mime &&
+      !duration &&
+      !bitrate &&
+      !image.length &&
+      !fallback.length &&
+      !service.length
+    ) {
       continue;
     }
 
@@ -122,6 +221,12 @@ function buildImetaTags(variants) {
     }
     if (mime) {
       entries.push(`m ${mime}`);
+    }
+    if (duration) {
+      entries.push(`duration ${duration}`);
+    }
+    if (bitrate) {
+      entries.push(`bitrate ${bitrate}`);
     }
     image.forEach((value) => entries.push(`image ${value}`));
     fallback.forEach((value) => entries.push(`fallback ${value}`));
@@ -165,11 +270,20 @@ function buildParticipantTag(participant) {
   if (!participant || typeof participant !== "object") {
     return null;
   }
-  const pubkey = stringFromInput(participant.pubkey);
+  const rawPubkey = participant.pubkey;
+  const pubkey = normalizeNostrPubkey(rawPubkey);
   if (!pubkey) {
+    const candidate = stringFromInput(rawPubkey);
+    if (candidate) {
+      devLogger.warn(
+        "[nostr] Dropping NIP-71 participant tag with invalid pubkey",
+        { pubkey: candidate }
+      );
+    }
     return null;
   }
   const relay = stringFromInput(participant.relay);
+  // NIP-71 "Other tags" mandates 32-byte hex participant pubkeys.
   const values = ["p", pubkey];
   if (relay) {
     values.push(relay);
@@ -202,11 +316,6 @@ export function buildNip71MetadataTags(metadata) {
   const imetaTags = buildImetaTags(metadata.imeta);
   if (imetaTags.length) {
     tags.push(...imetaTags);
-  }
-
-  const duration = normalizeDurationSeconds(metadata.duration);
-  if (duration) {
-    tags.push(["duration", duration]);
   }
 
   if (Array.isArray(metadata.textTracks)) {
@@ -312,6 +421,18 @@ function parseImetaTag(tag) {
       case "m":
         variant.m = parsed.value;
         break;
+      case "duration": {
+        const numeric = parseNonNegativeNumber(parsed.value, {
+          allowFloat: true,
+        });
+        variant.duration = numeric ?? parsed.value;
+        break;
+      }
+      case "bitrate": {
+        const numeric = parseNonNegativeNumber(parsed.value);
+        variant.bitrate = numeric ?? parsed.value;
+        break;
+      }
       case "image":
         variant.image.push(parsed.value);
         break;
@@ -331,6 +452,8 @@ function parseImetaTag(tag) {
     Boolean(variant.url) ||
     Boolean(variant.x) ||
     Boolean(variant.m) ||
+    (variant.duration !== undefined && variant.duration !== null && variant.duration !== "") ||
+    (variant.bitrate !== undefined && variant.bitrate !== null && variant.bitrate !== "") ||
     variant.image.length > 0 ||
     variant.fallback.length > 0 ||
     variant.service.length > 0;
@@ -347,6 +470,12 @@ function parseImetaTag(tag) {
   }
   if (!variant.service.length) {
     delete variant.service;
+  }
+  if (variant.duration === "" || variant.duration === undefined) {
+    delete variant.duration;
+  }
+  if (variant.bitrate === "" || variant.bitrate === undefined) {
+    delete variant.bitrate;
   }
 
   return variant;
@@ -595,6 +724,22 @@ export function extractNip71MetadataFromTags(event) {
 
   if (imeta.length) {
     metadata.imeta = imeta;
+
+    const legacyDuration = parseNonNegativeNumber(metadata.duration, {
+      allowFloat: true,
+    });
+
+    if (legacyDuration !== null) {
+      metadata.duration = legacyDuration;
+    } else {
+      const variantDurations = imeta
+        .map((variant) => parseNonNegativeNumber(variant?.duration, { allowFloat: true }))
+        .filter((value) => value !== null);
+
+      if (variantDurations.length) {
+        metadata.duration = Math.max(...variantDurations);
+      }
+    }
   }
   if (textTracks.length) {
     metadata.textTracks = textTracks;
@@ -1084,23 +1229,30 @@ export async function populateNip71MetadataForVideos(videos = [], {
   });
 }
 
-const EXTENSION_MIME_MAP = {
-  mp4: "video/mp4",
-  m4v: "video/x-m4v",
-  webm: "video/webm",
-  mkv: "video/x-matroska",
-  mov: "video/quicktime",
-  avi: "video/x-msvideo",
-  ogv: "video/ogg",
-  ogg: "video/ogg",
-  m3u8: "application/x-mpegURL",
-  mpd: "application/dash+xml",
-  ts: "video/mp2t",
-  mpg: "video/mpeg",
-  mpeg: "video/mpeg",
-  flv: "video/x-flv",
-  "3gp": "video/3gpp",
-};
+const EXTENSION_MIME_MAP = Object.freeze(
+  Object.fromEntries(
+    Object.entries({
+      mp4: "video/mp4",
+      m4v: "video/x-m4v",
+      webm: "video/webm",
+      mkv: "video/x-matroska",
+      mov: "video/quicktime",
+      avi: "video/x-msvideo",
+      ogv: "video/ogg",
+      ogg: "video/ogg",
+      m3u8: "application/x-mpegurl",
+      mpd: "application/dash+xml",
+      ts: "video/mp2t",
+      mpg: "video/mpeg",
+      mpeg: "video/mpeg",
+      flv: "video/x-flv",
+      "3gp": "video/3gpp",
+    }).map(([extension, mimeType]) => [
+      extension,
+      typeof mimeType === "string" ? mimeType.toLowerCase() : "",
+    ]),
+  ),
+);
 
 function inferMimeTypeFromUrl(url) {
   if (!url || typeof url !== "string") {
@@ -1123,7 +1275,8 @@ function inferMimeTypeFromUrl(url) {
   }
 
   const extension = match[1].toLowerCase();
-  return EXTENSION_MIME_MAP[extension] || "";
+  const mimeType = EXTENSION_MIME_MAP[extension];
+  return typeof mimeType === "string" ? mimeType : "";
 }
 
 export function convertEventToVideo(event = {}) {

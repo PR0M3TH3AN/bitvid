@@ -130,6 +130,13 @@ class AccessControl {
       }
     };
 
+    // Attempt a synchronous hydration so downstream consumers (like
+    // bootstrapTrustedSeeds) have immediate access to any cached admin
+    // state before they trigger refresh logic. This avoids a race where the
+    // async microtask hydration hasn't executed yet when those consumers
+    // call into `refresh()` and encounter an empty cache.
+    runHydrate();
+
     if (typeof queueMicrotask === "function") {
       queueMicrotask(runHydrate);
       return;
@@ -140,7 +147,15 @@ class AccessControl {
 
   _hydrateFromCache() {
     this._hydratedFromCache = false;
-    const cachedState = readCachedAdminState();
+    let cachedState = null;
+    try {
+      cachedState = readCachedAdminState();
+    } catch (error) {
+      if (error && error.name === "ReferenceError") {
+        return;
+      }
+      throw error;
+    }
     if (cachedState) {
       this._applyState(cachedState, { markLoaded: false });
       this._hydratedFromCache = true;
@@ -750,6 +765,7 @@ class AccessControl {
 }
 
 export const accessControl = new AccessControl();
+export default accessControl;
 export {
   AccessControl,
   ADMIN_WHITELIST_MODE_STORAGE_KEY,

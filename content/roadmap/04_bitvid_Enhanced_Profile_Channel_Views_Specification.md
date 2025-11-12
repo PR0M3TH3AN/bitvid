@@ -100,7 +100,7 @@ Add placeholders for different views in `index.html`:
 - Fetch videos (`kind 30078`) filtered by the user's `npub`.
 
 ### **Subscriptions**
-- Use `kind 30002` to manage the subscription list:
+- Use `kind 30000` to manage the subscription follow set:
   - Subscribe: Add user to the list.
   - Unsubscribe: Remove user.
 

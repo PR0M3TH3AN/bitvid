@@ -112,6 +112,36 @@ function convertWords(words, fromBits, toBits, { pad = true } = {}) {
   return result;
 }
 
+function createChecksum(hrp, data) {
+  const values = [...hrpExpand(hrp), ...data, 0, 0, 0, 0, 0, 0];
+  const mod = polymod(values) ^ 1;
+  const checksum = [];
+  for (let i = 0; i < 6; i += 1) {
+    checksum.push((mod >> ((5 - i) * 5)) & 31);
+  }
+  return checksum;
+}
+
+function bech32Encode(hrp, data) {
+  const checksum = createChecksum(hrp, data);
+  const combined = [...data, ...checksum];
+  const encodedData = combined.map((value) => {
+    if (value < 0 || value >= CHARSET.length) {
+      throw new Error("Invalid bech32 word value.");
+    }
+    return CHARSET[value];
+  });
+  return `${hrp}1${encodedData.join("")}`;
+}
+
+export function encodeLnurlBech32(url) {
+  const sanitized = sanitizeUrl(url);
+  const encoder = new TextEncoder();
+  const bytes = Array.from(encoder.encode(sanitized));
+  const words = convertWords(bytes, 8, 5, { pad: true });
+  return bech32Encode("lnurl", words).toLowerCase();
+}
+
 function decodeLnurlBech32(encoded) {
   const { prefix, words } = bech32Decode(encoded);
   if (prefix !== "lnurl") {
@@ -301,7 +331,7 @@ function truncateComment(comment, limit) {
 
 export async function requestInvoice(
   metadata,
-  { amountSats, amountMsats, comment, zapRequest, fetcher } = {}
+  { amountSats, amountMsats, comment, zapRequest, lnurl, fetcher } = {}
 ) {
   if (!metadata || typeof metadata !== "object") {
     throw new Error("LNURL metadata is required to request an invoice.");
@@ -324,6 +354,11 @@ export async function requestInvoice(
 
   if (zapRequest) {
     callbackUrl.searchParams.set("nostr", zapRequest);
+  }
+
+  const originalLnurl = typeof lnurl === "string" ? lnurl.trim() : "";
+  if (originalLnurl) {
+    callbackUrl.searchParams.set("lnurl", originalLnurl);
   }
 
   const response = await fetchFn(callbackUrl.toString(), {
@@ -366,7 +401,9 @@ export async function requestInvoice(
 }
 
 export const __TESTING__ = Object.freeze({
+  bech32Encode,
   bech32Decode,
   decodeLnurlBech32,
   convertWords,
+  createChecksum,
 });

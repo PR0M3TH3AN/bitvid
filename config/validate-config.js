@@ -14,6 +14,7 @@ import {
   GITHUB_URL,
   BETA_URL,
   DNS_URL,
+  TIP_JAR_URL,
 } from "./instance-config.js";
 
 function assertSuperAdminConfigured(value) {
@@ -123,6 +124,7 @@ function resolveConfig(overrides = {}) {
     githubUrl: overrides.GITHUB_URL ?? GITHUB_URL,
     betaUrl: overrides.BETA_URL ?? BETA_URL,
     dnsUrl: overrides.DNS_URL ?? DNS_URL,
+    tipJarUrl: overrides.TIP_JAR_URL ?? TIP_JAR_URL,
   };
 }
 
@@ -178,4 +180,5 @@ export function validateInstanceConfig(overrides) {
   assertOptionalHttpUrl(config.githubUrl, "GITHUB_URL");
   assertOptionalHttpUrl(config.betaUrl, "BETA_URL");
   assertOptionalHttpUrl(config.dnsUrl, "DNS_URL");
+  assertOptionalHttpUrl(config.tipJarUrl, "TIP_JAR_URL");
 }

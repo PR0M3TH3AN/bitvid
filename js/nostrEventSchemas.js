@@ -1,4 +1,5 @@
 import { devLogger } from "./utils/logger.js";
+import { decodeNpubToHex } from "./nostr/nip46Client.js";
 import {
   ADMIN_LIST_NAMESPACE,
   ADMIN_COMMUNITY_BLACKLIST_SOURCES,
@@ -44,6 +45,101 @@ export { ADMIN_COMMUNITY_BLACKLIST_PREFIX };
 const DEFAULT_APPEND_TAGS = [];
 
 let cachedUtf8Encoder = null;
+
+const ADDITIONAL_POINTER_TAGS = new Set(["p", "e"]);
+const HEX_32_BYTE_REGEX = /^[0-9a-f]{64}$/i;
+
+function normalizePointerIdentifier(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  if (HEX_32_BYTE_REGEX.test(trimmed)) {
+    return trimmed.toLowerCase();
+  }
+
+  const decoded = decodeNpubToHex(trimmed);
+  if (decoded && HEX_32_BYTE_REGEX.test(decoded)) {
+    return decoded.toLowerCase();
+  }
+
+  return "";
+}
+
+function normalizeTagSlotValue(value) {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed;
+  }
+
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      return "";
+    }
+    return String(value);
+  }
+
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  return "";
+}
+
+export function sanitizeAdditionalTags(additionalTags) {
+  if (!Array.isArray(additionalTags) || !additionalTags.length) {
+    return [];
+  }
+
+  const sanitized = [];
+
+  additionalTags.forEach((tag) => {
+    if (!Array.isArray(tag) || tag.length < 2) {
+      return;
+    }
+
+    const rawName = tag[0];
+    if (typeof rawName !== "string") {
+      return;
+    }
+
+    const tagName = rawName.trim();
+    if (!tagName) {
+      return;
+    }
+
+    const lowerName = tagName.toLowerCase();
+    let primaryValue = "";
+
+    if (ADDITIONAL_POINTER_TAGS.has(lowerName)) {
+      primaryValue = normalizePointerIdentifier(tag[1]);
+    } else {
+      primaryValue = normalizeTagSlotValue(tag[1]);
+    }
+
+    if (!primaryValue) {
+      return;
+    }
+
+    const sanitizedTag = [tagName, primaryValue];
+
+    for (let index = 2; index < tag.length; index += 1) {
+      const extraValue = normalizeTagSlotValue(tag[index]);
+      if (extraValue) {
+        sanitizedTag.push(extraValue);
+      }
+    }
+
+    sanitized.push(sanitizedTag);
+  });
+
+  return sanitized;
+}
 
 function ensureValidUtf8Content(value) {
   let normalized = "";
@@ -238,11 +334,17 @@ const BASE_SCHEMAS = {
   [NOTE_TYPES.VIDEO_COMMENT]: {
     type: NOTE_TYPES.VIDEO_COMMENT,
     label: "Video comment",
-    kind: 1,
+    kind: 1111,
     videoEventTagName: "e",
     videoDefinitionTagName: "a",
     parentCommentTagName: "e",
-    participantTagName: "p",
+    parentAuthorTagName: "p",
+    rootEventPointerTagName: "E",
+    rootDefinitionPointerTagName: "A",
+    rootIdentifierPointerTagName: "I",
+    rootKindTagName: "K",
+    rootAuthorTagName: "P",
+    parentKindTagName: "k",
     appendTags: DEFAULT_APPEND_TAGS,
     content: {
       format: "text",
@@ -274,14 +376,14 @@ const BASE_SCHEMAS = {
     identifierTag: {
       name: "d",
     },
-    encryptionTag: { name: "encrypted", value: "nip04" },
+    encryptionTag: { name: "encrypted", values: ["nip44_v2", "nip44", "nip04"] },
     snapshotTagName: "snapshot",
     chunkTagName: "chunk",
     headTag: { name: "head", value: "1" },
     headTagIndex: 2,
     appendTags: DEFAULT_APPEND_TAGS,
     content: {
-      format: "nip04-json",
+      format: "encrypted-json",
       description:
         "Encrypted JSON payload containing chunked watch history entries.",
     },
@@ -289,29 +391,31 @@ const BASE_SCHEMAS = {
   [NOTE_TYPES.SUBSCRIPTION_LIST]: {
     type: NOTE_TYPES.SUBSCRIPTION_LIST,
     label: "Subscription list",
-    kind: 30002,
+    kind: 30000,
     identifierTag: {
       name: "d",
       value: SUBSCRIPTION_LIST_IDENTIFIER,
     },
     appendTags: DEFAULT_APPEND_TAGS,
     content: {
-      format: "nip04-json",
-      description: "Encrypted JSON: { subPubkeys: string[] }.",
+      format: "encrypted-tag-list",
+      description:
+        "NIP-04/NIP-44 encrypted JSON array of NIP-51 tag tuples (e.g., [['p', <hex>], …]).",
     },
   },
   [NOTE_TYPES.USER_BLOCK_LIST]: {
     type: NOTE_TYPES.USER_BLOCK_LIST,
     label: "User block list",
-    kind: 30002,
+    kind: 10000,
     identifierTag: {
       name: "d",
       value: BLOCK_LIST_IDENTIFIER,
     },
     appendTags: DEFAULT_APPEND_TAGS,
     content: {
-      format: "nip04-json",
-      description: "Encrypted JSON: { blockedPubkeys: string[] }.",
+      format: "encrypted-tag-list",
+      description:
+        "NIP-04/NIP-44 encrypted JSON array of mute tags per NIP-51 (e.g., [['p', <hex>], …]).",
     },
   },
   [NOTE_TYPES.HASHTAG_PREFERENCES]: {
@@ -489,6 +593,99 @@ function collectPointerTags(schema, {
   return normalized;
 }
 
+function mergePointerTags(pointerTags = []) {
+  if (!Array.isArray(pointerTags) || pointerTags.length === 0) {
+    return [];
+  }
+
+  const merged = [];
+  const pointerIndexByKey = new Map();
+
+  const toTrimmedString = (value) => {
+    if (typeof value === "string") {
+      return value.trim();
+    }
+    if (value === undefined || value === null) {
+      return "";
+    }
+    return String(value).trim();
+  };
+
+  pointerTags.forEach((tag) => {
+    if (!Array.isArray(tag) || tag.length < 2) {
+      return;
+    }
+
+    const normalizedType = toTrimmedString(tag[0]);
+    if (!normalizedType) {
+      return;
+    }
+
+    const canonicalType =
+      normalizedType === "a" ? "a" : normalizedType === "e" ? "e" : normalizedType;
+
+    const normalizedValue = toTrimmedString(tag[1]);
+    if (!normalizedValue) {
+      return;
+    }
+
+    const sanitizedTag = [canonicalType, normalizedValue];
+    for (let index = 2; index < tag.length; index += 1) {
+      const extra = toTrimmedString(tag[index]);
+      if (extra) {
+        sanitizedTag.push(extra);
+      }
+    }
+
+    if (canonicalType !== "a" && canonicalType !== "e") {
+      merged.push(sanitizedTag);
+      return;
+    }
+
+    const dedupeKey = `${canonicalType}:${normalizedValue.toLowerCase()}`;
+    const relayHint =
+      sanitizedTag.length > 2 && typeof sanitizedTag[2] === "string"
+        ? sanitizedTag[2].trim()
+        : "";
+
+    if (!pointerIndexByKey.has(dedupeKey)) {
+      if (relayHint && sanitizedTag.length > 2) {
+        sanitizedTag[2] = relayHint;
+      }
+      const index = merged.length;
+      merged.push(sanitizedTag);
+      pointerIndexByKey.set(dedupeKey, { index, relay: relayHint });
+      return;
+    }
+
+    const existingEntry = pointerIndexByKey.get(dedupeKey);
+    const existingTag = merged[existingEntry.index];
+    const existingRelay =
+      existingTag.length > 2 && typeof existingTag[2] === "string"
+        ? existingTag[2].trim()
+        : "";
+    const hasExistingRelay = Boolean(existingRelay);
+    const hasNewRelay = Boolean(relayHint);
+
+    if (
+      (!hasExistingRelay && hasNewRelay) ||
+      (hasExistingRelay && hasNewRelay && existingRelay !== relayHint)
+    ) {
+      const replacement = sanitizedTag.slice();
+      if (relayHint && replacement.length > 2) {
+        replacement[2] = relayHint;
+      }
+      merged[existingEntry.index] = replacement;
+      pointerIndexByKey.set(dedupeKey, {
+        index: existingEntry.index,
+        relay: relayHint,
+      });
+    }
+  });
+
+  return merged;
+}
+
 export function buildVideoPostEvent({
   pubkey,
   created_at,
@@ -505,12 +702,9 @@ export function buildVideoPostEvent({
     tags.push([schema.identifierTag.name, dTagValue]);
   }
   appendSchemaTags(tags, schema);
-  if (Array.isArray(additionalTags)) {
-    additionalTags.forEach((tag) => {
-      if (Array.isArray(tag) && tag.length >= 2) {
-        tags.push(tag.map((value) => (typeof value === "string" ? value : String(value))));
-      }
-    });
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
   }
 
   return {
@@ -556,18 +750,23 @@ export function buildRepostEvent({
   addressRelay = "",
   authorPubkey = "",
   additionalTags = [],
+  repostKind,
+  targetKind,
+  targetEvent = null,
+  serializedEvent = "",
 }) {
   const schema = getNostrEventSchema(NOTE_TYPES.REPOST);
   const tags = [];
 
   const normalizedEventId = typeof eventId === "string" ? eventId.trim() : "";
-  const normalizedEventRelay = typeof eventRelay === "string" ? eventRelay.trim() : "";
+  const normalizedEventRelay =
+    typeof eventRelay === "string" ? eventRelay.trim() : "";
+
   if (normalizedEventId) {
-    if (normalizedEventRelay) {
-      tags.push(["e", normalizedEventId, normalizedEventRelay]);
-    } else {
-      tags.push(["e", normalizedEventId]);
+    if (!normalizedEventRelay) {
+      throw new Error("missing-event-relay");
     }
+    tags.push(["e", normalizedEventId, normalizedEventRelay]);
   }
 
   const normalizedAddress = typeof address === "string" ? address.trim() : "";
@@ -587,21 +786,72 @@ export function buildRepostEvent({
   }
 
   appendSchemaTags(tags, schema);
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
+  }
 
-  if (Array.isArray(additionalTags)) {
-    additionalTags.forEach((tag) => {
-      if (Array.isArray(tag) && tag.length >= 2) {
-        tags.push(tag.map((value) => (typeof value === "string" ? value : String(value))));
+  const normalizedRepostKind =
+    Number.isFinite(repostKind) && repostKind !== null
+      ? Math.floor(repostKind)
+      : null;
+  const normalizedTargetKind =
+    Number.isFinite(targetKind) && targetKind !== null
+      ? Math.floor(targetKind)
+      : null;
+  const resolvedKind = (() => {
+    if (normalizedRepostKind) {
+      return normalizedRepostKind;
+    }
+    if (normalizedTargetKind !== null) {
+      return normalizedTargetKind === 1 ? schema?.kind ?? 6 : 16;
+    }
+    return schema?.kind ?? 6;
+  })();
+
+  if (resolvedKind === 16 && normalizedTargetKind !== null) {
+    tags.push(["k", String(normalizedTargetKind)]);
+  }
+
+  const normalizedSerializedEvent =
+    typeof serializedEvent === "string" ? serializedEvent : "";
+  let normalizedTargetEvent =
+    targetEvent && typeof targetEvent === "object" ? targetEvent : null;
+
+  if (!normalizedTargetEvent && normalizedSerializedEvent) {
+    try {
+      normalizedTargetEvent = JSON.parse(normalizedSerializedEvent);
+    } catch (error) {
+      void error;
+    }
+  }
+
+  const hasProtectedTag = Array.isArray(normalizedTargetEvent?.tags)
+    ? normalizedTargetEvent.tags.some(
+        (tag) => Array.isArray(tag) && tag.length && tag[0] === "-",
+      )
+    : false;
+
+  let content = "";
+
+  if (!hasProtectedTag) {
+    if (normalizedSerializedEvent) {
+      content = normalizedSerializedEvent;
+    } else if (normalizedTargetEvent) {
+      try {
+        content = JSON.stringify(normalizedTargetEvent);
+      } catch (error) {
+        void error;
       }
-    });
+    }
   }
 
   return {
-    kind: schema?.kind ?? 6,
+    kind: resolvedKind,
     pubkey,
     created_at,
     tags,
-    content: "",
+    content,
   };
 }
 
@@ -661,12 +911,9 @@ export function buildRelayListEvent({
 
   appendSchemaTags(tags, schema);
 
-  if (Array.isArray(additionalTags)) {
-    additionalTags.forEach((tag) => {
-      if (Array.isArray(tag) && tag.length >= 2) {
-        tags.push(tag.map((value) => (typeof value === "string" ? value : String(value))));
-      }
-    });
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
   }
 
   return {
@@ -703,12 +950,9 @@ export function buildViewEvent({
   normalizedPointerTags.forEach((tag) => {
     tags.push(tag);
   });
-  if (Array.isArray(additionalTags)) {
-    additionalTags.forEach((tag) => {
-      if (Array.isArray(tag) && tag.length >= 2) {
-        tags.push(tag.map((value) => (typeof value === "string" ? value : String(value))));
-      }
-    });
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
   }
 
   if (dedupeTag && schema?.identifierTag?.name) {
@@ -760,8 +1004,11 @@ export function buildReactionEvent({
     pointerTag,
     pointerTags,
   });
-  normalizedPointerTags.forEach((tag) => {
-    tags.push(tag);
+  const mergedPointerTags = mergePointerTags(normalizedPointerTags);
+  mergedPointerTags.forEach((tag) => {
+    if (Array.isArray(tag) && tag.length >= 2) {
+      tags.push(tag);
+    }
   });
 
   const resolvePointerDetails = (pointerCandidate) => {
@@ -802,7 +1049,7 @@ export function buildReactionEvent({
       return explicitPointer;
     }
 
-    const pointerTagEntry = normalizedPointerTags.find(
+    const pointerTagEntry = mergedPointerTags.find(
       (tag) => Array.isArray(tag) && tag.length >= 2 && (tag[0] === "a" || tag[0] === "e")
     );
     if (!pointerTagEntry) {
@@ -851,12 +1098,9 @@ export function buildReactionEvent({
     }
   }
 
-  if (Array.isArray(additionalTags)) {
-    additionalTags.forEach((tag) => {
-      if (Array.isArray(tag) && tag.length >= 2) {
-        tags.push(tag.map((value) => (typeof value === "string" ? value : String(value))));
-      }
-    });
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
   }
 
   appendSchemaTags(tags, schema);
@@ -879,92 +1123,216 @@ export function buildCommentEvent({
   videoEventRelay = "",
   videoDefinitionAddress = "",
   videoDefinitionRelay = "",
+  rootIdentifier = "",
+  rootIdentifierRelay = "",
   parentCommentId = "",
   parentCommentRelay = "",
   threadParticipantPubkey = "",
   threadParticipantRelay = "",
+  rootKind,
+  rootAuthorPubkey = "",
+  rootAuthorRelay = "",
+  parentKind,
+  parentAuthorPubkey = "",
+  parentAuthorRelay = "",
+  parentIdentifier = "",
+  parentIdentifierRelay = "",
   additionalTags = [],
   content = "",
 }) {
   const schema = getNostrEventSchema(NOTE_TYPES.VIDEO_COMMENT);
   const tags = [];
 
-  const videoEventTagName = schema?.videoEventTagName || "e";
-  const normalizedVideoEventId =
-    typeof videoEventId === "string" ? videoEventId.trim() : "";
-  const normalizedVideoEventRelay =
-    typeof videoEventRelay === "string" ? videoEventRelay.trim() : "";
-  if (videoEventTagName && normalizedVideoEventId) {
-    if (normalizedVideoEventRelay) {
-      tags.push([videoEventTagName, normalizedVideoEventId, normalizedVideoEventRelay]);
-    } else {
-      tags.push([videoEventTagName, normalizedVideoEventId]);
+  const normalizeString = (value) =>
+    typeof value === "string" ? value.trim() : "";
+
+  const normalizedVideoEventId = normalizeString(videoEventId);
+  const normalizedVideoEventRelay = normalizeString(videoEventRelay);
+  const normalizedVideoDefinitionAddress = normalizeString(videoDefinitionAddress);
+  const normalizedVideoDefinitionRelay = normalizeString(videoDefinitionRelay);
+  const normalizedRootIdentifier = normalizeString(rootIdentifier);
+  const normalizedRootIdentifierRelay = normalizeString(rootIdentifierRelay);
+  const normalizedParentCommentId = normalizeString(parentCommentId);
+  const normalizedParentCommentRelay = normalizeString(parentCommentRelay);
+  const normalizedParentIdentifier = normalizeString(parentIdentifier);
+  const normalizedParentIdentifierRelay = normalizeString(parentIdentifierRelay);
+  const normalizedThreadParticipantPubkey = normalizeString(
+    threadParticipantPubkey,
+  );
+  const normalizedThreadParticipantRelay = normalizeString(
+    threadParticipantRelay,
+  );
+
+  let resolvedRootKind = normalizeString(rootKind);
+  let resolvedRootAuthorPubkey = normalizeString(rootAuthorPubkey);
+  let resolvedRootAuthorRelay = normalizeString(rootAuthorRelay);
+
+  if (normalizedVideoDefinitionAddress) {
+    const definitionSegments = normalizedVideoDefinitionAddress.split(":");
+    if (!resolvedRootKind && definitionSegments[0]) {
+      resolvedRootKind = definitionSegments[0];
+    }
+    if (!resolvedRootAuthorPubkey && definitionSegments[1]) {
+      resolvedRootAuthorPubkey = definitionSegments[1];
+    }
+    if (!resolvedRootAuthorRelay && normalizedVideoDefinitionRelay) {
+      resolvedRootAuthorRelay = normalizedVideoDefinitionRelay;
     }
   }
 
+  let resolvedParentAuthorPubkey = normalizeString(parentAuthorPubkey);
+  if (!resolvedParentAuthorPubkey) {
+    resolvedParentAuthorPubkey = normalizedThreadParticipantPubkey;
+  }
+
+  let resolvedParentAuthorRelay = normalizeString(parentAuthorRelay);
+  if (!resolvedParentAuthorRelay) {
+    resolvedParentAuthorRelay = normalizedThreadParticipantRelay;
+  }
+
+  if (!resolvedRootAuthorPubkey && !normalizedParentCommentId) {
+    resolvedRootAuthorPubkey = resolvedParentAuthorPubkey;
+  }
+  if (!resolvedRootAuthorRelay && !normalizedParentCommentId) {
+    resolvedRootAuthorRelay = resolvedParentAuthorRelay;
+  }
+
+  if (!resolvedParentAuthorPubkey && !normalizedParentCommentId) {
+    resolvedParentAuthorPubkey = resolvedRootAuthorPubkey;
+  }
+  if (!resolvedParentAuthorRelay && !normalizedParentCommentId) {
+    resolvedParentAuthorRelay = resolvedRootAuthorRelay;
+  }
+
+  let resolvedParentKind = normalizeString(parentKind);
+  if (!resolvedParentKind) {
+    if (normalizedParentCommentId) {
+      resolvedParentKind = String(schema?.kind ?? 1111);
+    } else if (resolvedRootKind) {
+      resolvedParentKind = resolvedRootKind;
+    }
+  }
+
+  if (!resolvedRootKind) {
+    resolvedRootKind = resolvedParentKind;
+  }
+
+  const rootDefinitionPointerTagName = schema?.rootDefinitionPointerTagName || "A";
+  const rootEventPointerTagName = schema?.rootEventPointerTagName || "E";
+  const rootIdentifierPointerTagName = schema?.rootIdentifierPointerTagName || "I";
+  const rootKindTagName = schema?.rootKindTagName || "K";
+  const rootAuthorTagName = schema?.rootAuthorTagName || "P";
   const videoDefinitionTagName = schema?.videoDefinitionTagName || "a";
-  const normalizedVideoDefinitionAddress =
-    typeof videoDefinitionAddress === "string"
-      ? videoDefinitionAddress.trim()
-      : "";
-  const normalizedVideoDefinitionRelay =
-    typeof videoDefinitionRelay === "string" ? videoDefinitionRelay.trim() : "";
-  if (videoDefinitionTagName && normalizedVideoDefinitionAddress) {
-    if (normalizedVideoDefinitionRelay) {
-      tags.push([
-        videoDefinitionTagName,
-        normalizedVideoDefinitionAddress,
-        normalizedVideoDefinitionRelay,
-      ]);
-    } else {
-      tags.push([videoDefinitionTagName, normalizedVideoDefinitionAddress]);
-    }
-  }
-
+  const videoEventTagName = schema?.videoEventTagName || "e";
   const parentCommentTagName = schema?.parentCommentTagName || "e";
-  const normalizedParentCommentId =
-    typeof parentCommentId === "string" ? parentCommentId.trim() : "";
-  const normalizedParentCommentRelay =
-    typeof parentCommentRelay === "string" ? parentCommentRelay.trim() : "";
+  const parentAuthorTagName = schema?.parentAuthorTagName || "p";
+  const parentKindTagName = schema?.parentKindTagName || "k";
+
+  const appendPointerTag = (tagName, value, relay, authorHint) => {
+    if (!tagName || !value) {
+      return;
+    }
+    const tag = [tagName, value];
+    if (relay) {
+      tag.push(relay);
+    }
+    if (authorHint) {
+      tag.push(authorHint);
+    }
+    tags.push(tag);
+  };
+
+  if (normalizedRootIdentifier) {
+    appendPointerTag(
+      rootIdentifierPointerTagName,
+      normalizedRootIdentifier,
+      normalizedRootIdentifierRelay,
+    );
+  } else if (normalizedVideoDefinitionAddress) {
+    appendPointerTag(
+      rootDefinitionPointerTagName,
+      normalizedVideoDefinitionAddress,
+      normalizedVideoDefinitionRelay,
+    );
+  } else if (normalizedVideoEventId) {
+    appendPointerTag(
+      rootEventPointerTagName,
+      normalizedVideoEventId,
+      normalizedVideoEventRelay,
+      resolvedRootAuthorPubkey,
+    );
+  }
+
+  if (rootKindTagName && resolvedRootKind) {
+    tags.push([rootKindTagName, resolvedRootKind]);
+  }
+
+  if (rootAuthorTagName && resolvedRootAuthorPubkey) {
+    if (resolvedRootAuthorRelay) {
+      tags.push([rootAuthorTagName, resolvedRootAuthorPubkey, resolvedRootAuthorRelay]);
+    } else {
+      tags.push([rootAuthorTagName, resolvedRootAuthorPubkey]);
+    }
+  }
+
+  const shouldAppendVideoEventTag =
+    Boolean(videoEventTagName) && Boolean(normalizedVideoEventId);
+
+  if (shouldAppendVideoEventTag) {
+    appendPointerTag(
+      videoEventTagName,
+      normalizedVideoEventId,
+      normalizedVideoEventRelay,
+    );
+  }
+
+  if (videoDefinitionTagName && normalizedVideoDefinitionAddress) {
+    appendPointerTag(
+      videoDefinitionTagName,
+      normalizedVideoDefinitionAddress,
+      normalizedVideoDefinitionRelay,
+    );
+  }
+
+  if (normalizedParentIdentifier) {
+    appendPointerTag("i", normalizedParentIdentifier, normalizedParentIdentifierRelay);
+  }
+
   if (parentCommentTagName && normalizedParentCommentId) {
-    if (normalizedParentCommentRelay) {
-      tags.push([
-        parentCommentTagName,
-        normalizedParentCommentId,
-        normalizedParentCommentRelay,
-      ]);
-    } else {
-      tags.push([parentCommentTagName, normalizedParentCommentId]);
-    }
+    appendPointerTag(
+      parentCommentTagName,
+      normalizedParentCommentId,
+      normalizedParentCommentRelay,
+      resolvedParentAuthorPubkey,
+    );
   }
 
-  const participantTagName = schema?.participantTagName || "p";
-  const normalizedThreadParticipantPubkey =
-    typeof threadParticipantPubkey === "string"
-      ? threadParticipantPubkey.trim()
-      : "";
-  const normalizedThreadParticipantRelay =
-    typeof threadParticipantRelay === "string"
-      ? threadParticipantRelay.trim()
-      : "";
-  if (participantTagName && normalizedThreadParticipantPubkey) {
-    if (normalizedThreadParticipantRelay) {
-      tags.push([
-        participantTagName,
-        normalizedThreadParticipantPubkey,
-        normalizedThreadParticipantRelay,
-      ]);
-    } else {
-      tags.push([participantTagName, normalizedThreadParticipantPubkey]);
-    }
+  if (parentKindTagName && resolvedParentKind) {
+    tags.push([parentKindTagName, resolvedParentKind]);
   }
 
-  if (Array.isArray(additionalTags)) {
-    additionalTags.forEach((tag) => {
-      if (Array.isArray(tag) && tag.length >= 2) {
-        tags.push(tag.map((value) => (typeof value === "string" ? value : String(value))));
+  if (parentAuthorTagName && resolvedParentAuthorPubkey) {
+    const existingParentAuthorTag = tags.find(
+      (tag) => Array.isArray(tag) && tag[0] === parentAuthorTagName && tag[1] === resolvedParentAuthorPubkey,
+    );
+    if (!existingParentAuthorTag) {
+      if (resolvedParentAuthorRelay) {
+        tags.push([parentAuthorTagName, resolvedParentAuthorPubkey, resolvedParentAuthorRelay]);
+      } else {
+        tags.push([parentAuthorTagName, resolvedParentAuthorPubkey]);
       }
-    });
+    } else if (resolvedParentAuthorRelay) {
+      if (existingParentAuthorTag.length < 3) {
+        existingParentAuthorTag.push(resolvedParentAuthorRelay);
+      } else if (existingParentAuthorTag[2] !== resolvedParentAuthorRelay) {
+        existingParentAuthorTag[2] = resolvedParentAuthorRelay;
+      }
+    }
+  }
+
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
   }
 
   appendSchemaTags(tags, schema);
@@ -972,7 +1340,7 @@ export function buildCommentEvent({
   const resolvedContent = ensureValidUtf8Content(content);
 
   return {
-    kind: schema?.kind ?? 1,
+    kind: schema?.kind ?? 1111,
     pubkey,
     created_at,
     tags,
@@ -1012,13 +1380,9 @@ export function buildWatchHistoryIndexEvent({
   });
 
   appendSchemaTags(tags, schema);
-
-  if (Array.isArray(additionalTags)) {
-    additionalTags.forEach((tag) => {
-      if (Array.isArray(tag) && tag.length >= 2) {
-        tags.push(tag.map((value) => (typeof value === "string" ? value : String(value))));
-      }
-    });
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
   }
 
   let resolvedContent = content;
@@ -1057,6 +1421,7 @@ export function buildWatchHistoryChunkEvent({
   pointerTags = [],
   chunkAddresses = [],
   content,
+  encryption,
 }) {
   const schema = getNostrEventSchema(NOTE_TYPES.WATCH_HISTORY_CHUNK);
   const tags = [];
@@ -1065,8 +1430,23 @@ export function buildWatchHistoryChunkEvent({
   if (identifierName && identifierValue) {
     tags.push([identifierName, identifierValue]);
   }
-  if (schema?.encryptionTag?.name && schema?.encryptionTag?.value) {
-    tags.push([schema.encryptionTag.name, schema.encryptionTag.value]);
+  const encryptionTagName = schema?.encryptionTag?.name;
+  const normalizedOptions = Array.isArray(schema?.encryptionTag?.values)
+    ? schema.encryptionTag.values
+        .map((value) => (typeof value === "string" ? value.trim() : ""))
+        .filter(Boolean)
+    : [];
+  const normalizedRequested = typeof encryption === "string" ? encryption.trim() : "";
+  let resolvedEncryptionTag = "";
+  if (normalizedRequested) {
+    resolvedEncryptionTag = normalizedRequested;
+  } else if (typeof schema?.encryptionTag?.value === "string") {
+    resolvedEncryptionTag = schema.encryptionTag.value;
+  } else if (normalizedOptions.length) {
+    [resolvedEncryptionTag] = normalizedOptions;
+  }
+  if (encryptionTagName && resolvedEncryptionTag) {
+    tags.push([encryptionTagName, resolvedEncryptionTag]);
   }
   const snapshotTagName = schema?.snapshotTagName;
   if (snapshotTagName && snapshotId) {
@@ -1109,6 +1489,7 @@ export function buildSubscriptionListEvent({
   pubkey,
   created_at,
   content,
+  encryption,
 }) {
   const schema = getNostrEventSchema(NOTE_TYPES.SUBSCRIPTION_LIST);
   const tags = [];
@@ -1117,9 +1498,14 @@ export function buildSubscriptionListEvent({
   if (identifierName && identifierValue) {
     tags.push([identifierName, identifierValue]);
   }
+  const normalizedEncryption =
+    typeof encryption === "string" ? encryption.trim() : "";
+  if (normalizedEncryption) {
+    tags.push(["encrypted", normalizedEncryption]);
+  }
   appendSchemaTags(tags, schema);
   return {
-    kind: schema?.kind ?? 30002,
+    kind: schema?.kind ?? 30000,
     pubkey,
     created_at,
     tags,
@@ -1131,6 +1517,7 @@ export function buildBlockListEvent({
   pubkey,
   created_at,
   content,
+  encryption,
 }) {
   const schema = getNostrEventSchema(NOTE_TYPES.USER_BLOCK_LIST);
   const tags = [];
@@ -1139,9 +1526,14 @@ export function buildBlockListEvent({
   if (identifierName && identifierValue) {
     tags.push([identifierName, identifierValue]);
   }
+  const normalizedEncryption =
+    typeof encryption === "string" ? encryption.trim() : "";
+  if (normalizedEncryption) {
+    tags.push(["encrypted", normalizedEncryption]);
+  }
   appendSchemaTags(tags, schema);
   return {
-    kind: schema?.kind ?? 30002,
+    kind: schema?.kind ?? 10000,
     pubkey,
     created_at,
     tags,

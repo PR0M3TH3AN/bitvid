@@ -102,6 +102,16 @@ function normalizeTag(input) {
   return trimmed.toLowerCase();
 }
 
+function normalizeEncryptionToken(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
 function extractEncryptionHints(event) {
   if (!event || typeof event !== "object") {
     return [];
@@ -131,16 +141,18 @@ function extractEncryptionHints(event) {
     }
     const parts = rawValue
       .split(/[\s,]+/)
-      .map((part) => part.trim().toLowerCase())
+      .map((part) => normalizeEncryptionToken(part))
       .filter(Boolean);
     for (const part of parts) {
-      if (part.startsWith("nip44")) {
-        if (/^nip44(?:[_-]?v2|v2)/.test(part)) {
-          pushUnique("nip44_v2");
-        } else {
-          pushUnique("nip44");
-        }
-      } else if (part === "nip04" || part === "nip-04") {
+      if (part === "nip44v2" || part === "nip44v02") {
+        pushUnique("nip44_v2");
+        continue;
+      }
+      if (part === "nip44") {
+        pushUnique("nip44");
+        continue;
+      }
+      if (part === "nip04" || part === "nip4") {
         pushUnique("nip04");
       }
     }
@@ -171,7 +183,7 @@ function determineDecryptionOrder(event, availableSchemes) {
     }
   }
 
-  for (const fallback of ["nip04", "nip44", "nip44_v2"]) {
+  for (const fallback of ["nip44_v2", "nip44", "nip04"]) {
     if (availableSet.has(fallback) && !prioritized.includes(fallback)) {
       prioritized.push(fallback);
     }

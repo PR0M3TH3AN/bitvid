@@ -3,6 +3,7 @@
 import { userLogger } from "./utils/logger.js";
 import {
   IS_DEV_MODE,
+  IS_VERBOSE_DEV_MODE,
   IS_LOCKDOWN_MODE,
   ADMIN_SUPER_NPUB,
   ADMIN_DM_IMAGE_URL,
@@ -13,6 +14,7 @@ import {
   GITHUB_URL,
   BETA_URL,
   DNS_URL,
+  TIP_JAR_URL,
   MAX_WALLET_DEFAULT_ZAP,
   PLATFORM_FEE_PERCENT,
   PLATFORM_LUD16_OVERRIDE,
@@ -43,11 +45,15 @@ import {
 export const isDevMode = Boolean(IS_DEV_MODE);
 export { IS_DEV_MODE };
 
+export const isVerboseDevMode = Boolean(IS_VERBOSE_DEV_MODE);
+export { IS_VERBOSE_DEV_MODE };
+
 export const isLockdownMode = Boolean(IS_LOCKDOWN_MODE);
 export { IS_LOCKDOWN_MODE };
 
 if (typeof window !== "undefined") {
   window.__BITVID_DEV_MODE__ = isDevMode;
+  window.__BITVID_VERBOSE_DEV_MODE__ = isVerboseDevMode;
   window.__BITVID_LOCKDOWN_MODE__ = isLockdownMode;
 }
 
@@ -65,6 +71,7 @@ export { NOSTR_URL };
 export { GITHUB_URL };
 export { BETA_URL };
 export { DNS_URL };
+export { TIP_JAR_URL };
 export { MAX_WALLET_DEFAULT_ZAP };
 export { PLATFORM_FEE_PERCENT };
 export { PLATFORM_LUD16_OVERRIDE };

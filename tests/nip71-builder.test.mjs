@@ -6,13 +6,54 @@ import {
   extractNip71MetadataFromTags,
 } from "../js/nostr.js";
 
+const participantNpub = "npub1bitvidparticipantfixture";
+const participantHexFromNpub = "c".repeat(64);
+
+const hadWindow = typeof globalThis.window !== "undefined";
+const windowRef = hadWindow ? globalThis.window : {};
+if (!hadWindow) {
+  globalThis.window = windowRef;
+}
+const hadNostrTools = typeof windowRef.NostrTools !== "undefined";
+const nostrToolsRef = hadNostrTools ? windowRef.NostrTools : {};
+if (!hadNostrTools) {
+  windowRef.NostrTools = nostrToolsRef;
+}
+const previousNip19 = nostrToolsRef.nip19;
+nostrToolsRef.nip19 = {
+  ...previousNip19,
+  decode: (value) => {
+    if (value === participantNpub) {
+      return { type: "npub", data: participantHexFromNpub };
+    }
+    if (typeof previousNip19?.decode === "function") {
+      return previousNip19.decode(value);
+    }
+    throw new Error("Unsupported npub fixture");
+  },
+};
+
+test.after(() => {
+  if (previousNip19) {
+    nostrToolsRef.nip19 = previousNip19;
+  } else {
+    delete nostrToolsRef.nip19;
+  }
+  if (!hadNostrTools) {
+    delete windowRef.NostrTools;
+  }
+  if (!hadWindow) {
+    delete globalThis.window;
+  }
+});
+
 test("buildNip71VideoEvent assembles rich metadata", () => {
   const metadata = {
     kind: 21,
     summary: "Custom summary",
     publishedAt: "1700000000",
     alt: "Alt text for accessibility",
-    duration: 123,
+    duration: 123.456,
     contentWarning: "Flashing lights",
     imeta: [
       {
@@ -20,6 +61,8 @@ test("buildNip71VideoEvent assembles rich metadata", () => {
         url: "https://cdn.example/video-1080.mp4",
         x: "abc123",
         m: "video/mp4",
+        duration: 123.456,
+        bitrate: 4500000,
         image: [
           "https://cdn.example/video-1080.jpg",
           "https://backup.example/video-1080.jpg",
@@ -30,6 +73,8 @@ test("buildNip71VideoEvent assembles rich metadata", () => {
       {
         url: "https://cdn.example/video-hls.m3u8",
         m: "application/x-mpegURL",
+        duration: "45.789",
+        bitrate: "2200000",
       },
     ],
     textTracks: [
@@ -49,8 +94,8 @@ test("buildNip71VideoEvent assembles rich metadata", () => {
     ],
     hashtags: ["bitvid", "nostr"],
     participants: [
-      { pubkey: "a".repeat(64), relay: "wss://relay.example" },
-      { pubkey: "b".repeat(64) },
+      { pubkey: "A".repeat(64), relay: "wss://relay.example" },
+      { pubkey: `  ${participantNpub}  ` },
     ],
     references: [
       "https://example.com/info",
@@ -76,7 +121,7 @@ test("buildNip71VideoEvent assembles rich metadata", () => {
   assert.deepEqual(tags.get("title"), ["title", "Test Video"]);
   assert.deepEqual(tags.get("published_at"), ["published_at", "1700000000"]);
   assert.deepEqual(tags.get("alt"), ["alt", "Alt text for accessibility"]);
-  assert.deepEqual(tags.get("duration"), ["duration", "123"]);
+  assert.ok(!tags.has("duration"), "duration should no longer be emitted as a top-level tag");
   assert.deepEqual(tags.get("content-warning"), [
     "content-warning",
     "Flashing lights",
@@ -90,6 +135,8 @@ test("buildNip71VideoEvent assembles rich metadata", () => {
     "url https://cdn.example/video-1080.mp4",
     "x abc123",
     "m video/mp4",
+    "duration 123.456",
+    "bitrate 4500000",
     "image https://cdn.example/video-1080.jpg",
     "image https://backup.example/video-1080.jpg",
     "fallback https://fallback.example/video-1080.mp4",
@@ -98,7 +145,9 @@ test("buildNip71VideoEvent assembles rich metadata", () => {
   assert.deepEqual(imetaTags[1], [
     "imeta",
     "url https://cdn.example/video-hls.m3u8",
-    "m application/x-mpegURL",
+    "m application/x-mpegurl",
+    "duration 45.789",
+    "bitrate 2200000",
   ]);
 
   const textTrackTags = event.tags.filter((tag) => tag[0] === "text-track");
@@ -127,7 +176,7 @@ test("buildNip71VideoEvent assembles rich metadata", () => {
   const participantTags = event.tags.filter((tag) => tag[0] === "p");
   assert.deepEqual(participantTags, [
     ["p", "a".repeat(64), "wss://relay.example"],
-    ["p", "b".repeat(64)],
+    ["p", participantHexFromNpub],
   ]);
 
   const referenceTags = event.tags.filter((tag) => tag[0] === "r");
@@ -209,9 +258,14 @@ test("extractNip71MetadataFromTags parses metadata and pointers", () => {
       ["title", "Metadata Title"],
       ["published_at", "1700000100"],
       ["alt", "alt text"],
-      ["duration", "321"],
       ["content-warning", "Bright lights"],
-      ["imeta", "url https://cdn.example/video.mp4", "m video/mp4"],
+      [
+        "imeta",
+        "url https://cdn.example/video.mp4",
+        "m video/mp4",
+        "duration 321.125",
+        "bitrate 2500000",
+      ],
       ["text-track", "https://cdn.example/captions.vtt", "captions", "en"],
       ["segment", "00:00", "00:10", "Intro", "https://cdn.example/thumb.jpg"],
       ["t", "nostr"],
@@ -228,13 +282,15 @@ test("extractNip71MetadataFromTags parses metadata and pointers", () => {
   assert.ok(parsed, "parser should produce a result");
   assert.deepEqual(parsed.metadata.title, "Metadata Title");
   assert.deepEqual(parsed.metadata.summary, "Summary text");
-  assert.equal(parsed.metadata.duration, 321);
+  assert.equal(parsed.metadata.duration, 321.125);
   assert.equal(parsed.metadata.alt, "alt text");
   assert.equal(parsed.metadata.contentWarning, "Bright lights");
   assert.deepEqual(parsed.metadata.hashtags, ["nostr"]);
   assert.deepEqual(parsed.metadata.references, ["https://example.com/info"]);
   assert.equal(parsed.metadata.textTracks.length, 1);
   assert.equal(parsed.metadata.imeta.length, 1);
+  assert.equal(parsed.metadata.imeta[0].duration, 321.125);
+  assert.equal(parsed.metadata.imeta[0].bitrate, 2500000);
   assert(parsed.pointers.videoRootIds.has("root-123"));
   assert(parsed.pointers.videoEventIds.has("event-456"));
   assert(parsed.pointers.dTags.has("d-pointer"));

@@ -2,7 +2,7 @@
 
 This inventory captures the selectors that mattered in `torrent/dist/beacon.vendor.css` and how they now map to design-system driven rules. The goal is to keep future tweaks aligned with shared tokens rather than re-introducing ad-hoc styles or vendor bundles.
 
-> **Contributor note:** Beacon CSS updates must follow the [“Styling & Theming Rules (token-first)” guidance in `AGENTS.md`](../../AGENTS.md#styling--theming-rules-token-first) and the [README CSS build pipeline](../../README.md#css-build-pipeline). Run the relevant scripts before committing changes—at minimum `npm run lint:css`, `npm run build:css`, `npm run check:css`, and `npm run build:beacon` to ensure the Tailwind output and bundled assets stay in sync with token rules.
+> **Contributor note:** Beacon CSS updates must follow the [“Styling & Theming Rules (token-first)” guidance in `AGENTS.md`](../../AGENTS.md#styling--theming-rules-token-first) and the [README CSS build pipeline](../../README.md#css-build-pipeline). Run the relevant scripts before committing changes—at minimum `npm run lint:css`, `npm run build`, and `npm run build:beacon` to ensure the Tailwind output and bundled assets stay in sync with token rules.
 
 ## Angular UI Grid
 

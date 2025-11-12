@@ -42,7 +42,18 @@ export function resolveVideoPointer({
   for (const pointer of pointerCandidates) {
     const key = pointerArrayToKey(pointer);
     if (key) {
-      return { pointer, key };
+      const pointerEventId =
+        pointer[0] === "e" && typeof pointer[1] === "string"
+          ? pointer[1].trim()
+          : fallbackId;
+      return {
+        pointer,
+        key,
+        eventId:
+          typeof pointerEventId === "string" && pointerEventId
+            ? pointerEventId
+            : "",
+      };
     }
   }
 

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { bech32 } from "@scure/base";
 
 if (typeof globalThis.window === "undefined") {
   globalThis.window = {};
@@ -76,9 +77,28 @@ globalThis.fetch = async () => {
 };
 
 const { splitAndZap } = await import("../js/payments/zapSplit.js");
+const {
+  validateZapReceipt,
+  __TESTING__: validatorTesting,
+} = await import("../js/payments/zapReceiptValidator.js");
 const platformAddressModule = await import("../js/payments/platformAddress.js");
 const { __resetPlatformAddressCache } = platformAddressModule;
+const lnurlModule = await import("../js/payments/lnurl.js");
+const {
+  encodeLnurlBech32,
+  resolveLightningAddress: baseResolveLightningAddress,
+  requestInvoice,
+} = lnurlModule;
+const { decodeLnurlBech32 } = lnurlModule.__TESTING__;
 const { nostrClient } = await import("../js/nostr.js");
+
+const DEFAULT_WALLET_RELAYS = [
+  "wss://wallet.primary.example",
+  "wss://wallet.secondary.example",
+  "wss://wallet.primary.example",
+];
+
+const BOLT11_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
 
 function createDeps({
   commentAllowed = 120,
@@ -86,19 +106,22 @@ function createDeps({
   minSendable = 1000,
   maxSendable = 2_000_000,
   allowsNostr = true,
+  sendPaymentImplementation,
+  walletRelays = DEFAULT_WALLET_RELAYS,
+  validatorImplementation,
 } = {}) {
   let ensureWalletCalls = 0;
   const sendCalls = [];
+  const validatorCalls = [];
 
   return {
     deps: {
       lnurl: {
         resolveLightningAddress(address) {
-          return {
-            type: address.includes("platform") ? "platform" : "creator",
-            url: `https://lnurl.test/${address}`,
-            address,
-          };
+          return { ...baseResolveLightningAddress(address) };
+        },
+        encodeLnurlBech32(url) {
+          return encodeLnurlBech32(url);
         },
         async fetchPayServiceData(url) {
           const isPlatform = url.includes("platform");
@@ -121,11 +144,11 @@ function createDeps({
           }
           return { amountMsats: amount * 1000 };
         },
-        async requestInvoice(metadata, { amountMsats, comment, zapRequest }) {
+        async requestInvoice(metadata, { amountMsats, comment, zapRequest, lnurl }) {
           return {
             invoice: `bolt11-${metadata.callback}-${amountMsats}-${comment}-${Boolean(
               zapRequest
-            )}`,
+            )}-${lnurl || ""}`,
             raw: {},
           };
         },
@@ -136,20 +159,44 @@ function createDeps({
           return {
             clientPubkey: "c".repeat(64),
             secretKey: "1".repeat(64),
+            relayUrl: walletRelays[0] || null,
+            relayUrls: walletRelays.slice(),
+            relays: walletRelays.slice(),
           };
         },
-        async sendPayment(invoice, { amountSats, zapRequest }) {
-          sendCalls.push({ invoice, amountSats, zapRequest });
+        async sendPayment(invoice, { amountSats, zapRequest, lnurl }) {
+          sendCalls.push({ invoice, amountSats, zapRequest, lnurl });
+          if (typeof sendPaymentImplementation === "function") {
+            return sendPaymentImplementation({
+              invoice,
+              amountSats,
+              zapRequest,
+              lnurl,
+            });
+          }
           return {
             invoice,
             amountSats,
             zapRequest,
+            lnurl,
           };
         },
       },
       platformAddress: {
         async getPlatformLightningAddress() {
           return platformAddress;
+        },
+      },
+      validator: {
+        async validateZapReceipt(payload) {
+          validatorCalls.push(payload);
+          if (typeof validatorImplementation === "function") {
+            return validatorImplementation(payload);
+          }
+          return {
+            status: "skipped",
+            reason: "Zap receipt validation is disabled in tests.",
+          };
         },
       },
     },
@@ -159,12 +206,50 @@ function createDeps({
     getSendCalls() {
       return sendCalls;
     },
+    getValidatorCalls() {
+      return validatorCalls;
+    },
   };
+}
+
+function buildTestBolt11Invoice({ amountCode = "10u", descriptionHashHex }) {
+  const hrp = `lnbc${amountCode}`;
+  const timestamp = 1_700_000_000;
+
+  const timestampWords = [];
+  let remaining = timestamp;
+  for (let i = 0; i < 7; i += 1) {
+    timestampWords.unshift(remaining & 31);
+    remaining >>= 5;
+  }
+
+  const words = [...timestampWords];
+
+  const pushTag = (tag, dataWords) => {
+    const code = BOLT11_CHARSET.indexOf(tag);
+    words.push(code);
+    const length = dataWords.length;
+    words.push((length >> 5) & 31);
+    words.push(length & 31);
+    words.push(...dataWords);
+  };
+
+  const paymentHashHex = "11".repeat(32);
+  pushTag("p", bech32.toWords(Buffer.from(paymentHashHex, "hex")));
+
+  if (descriptionHashHex) {
+    pushTag("h", bech32.toWords(Buffer.from(descriptionHashHex, "hex")));
+  }
+
+  const signatureWords = new Array(104).fill(0);
+  const data = [...words, ...signatureWords];
+
+  return bech32.encode(hrp, data, 2000);
 }
 
 async function testSplitMath() {
   globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = 10;
-  const { deps, getSendCalls, getEnsureWalletCalls } = createDeps();
+  const { deps, getSendCalls, getEnsureWalletCalls, getValidatorCalls } = createDeps();
 
   const videoEvent = {
     id: "event-id",
@@ -179,11 +264,15 @@ async function testSplitMath() {
     deps
   );
 
+  const creatorResolved = baseResolveLightningAddress(videoEvent.lightningAddress);
+  const platformResolved = baseResolveLightningAddress("platform@example.com");
+
   assert.equal(result.totalAmount, 1000);
   assert.equal(result.creatorShare, 900);
   assert.equal(result.platformShare, 100);
   assert.equal(result.receipts.length, 2);
   assert.equal(getEnsureWalletCalls(), 1);
+  assert.equal(getValidatorCalls().length, 2, "validator should run for each share");
 
   const sendCalls = getSendCalls();
   assert.equal(sendCalls.length, 2, "should send two payments");
@@ -192,19 +281,170 @@ async function testSplitMath() {
 
   const creatorReceipt = result.receipts[0];
   assert.equal(creatorReceipt.recipientType, "creator");
+  assert.equal(creatorReceipt.status, "success");
+  assert.equal(creatorReceipt.validation?.status, "skipped");
   assert(creatorReceipt.zapRequest, "creator zap request should be present");
   const parsedZap = JSON.parse(creatorReceipt.zapRequest);
   assert.equal(parsedZap.kind, 9734);
   assert(parsedZap.tags.some((tag) => tag[0] === "amount" && tag[1] === "900000"));
 
+  const relaysTag = parsedZap.tags.find((tag) => Array.isArray(tag) && tag[0] === "relays");
+  assert(relaysTag, "relays tag should be present in zap request");
+  const expectedRelays = Array.from(
+    new Set(
+      DEFAULT_WALLET_RELAYS.map((relay) =>
+        typeof relay === "string" ? relay.trim() : ""
+      ).filter((relay) => relay)
+    )
+  );
+  assert.deepEqual(
+    relaysTag.slice(1),
+    expectedRelays,
+    "relays tag should match wallet relay list"
+  );
+
+  const creatorLnurlTag = parsedZap.tags.find(
+    (tag) => Array.isArray(tag) && tag[0] === "lnurl"
+  );
+  assert(creatorLnurlTag, "creator zap should include lnurl tag");
+  assert.equal(creatorLnurlTag[1], creatorLnurlTag[1].toLowerCase());
+  assert(creatorLnurlTag[1].startsWith("lnurl"));
+  assert.equal(
+    decodeLnurlBech32(creatorLnurlTag[1]),
+    creatorResolved.url
+  );
+
+  const platformReceipt = result.receipts[1];
+  assert.equal(platformReceipt.recipientType, "platform");
+  assert.equal(platformReceipt.status, "success");
+  assert.equal(platformReceipt.validation?.status, "skipped");
+
+  const platformZap = JSON.parse(platformReceipt.zapRequest);
+  const platformLnurlTag = platformZap.tags.find(
+    (tag) => Array.isArray(tag) && tag[0] === "lnurl"
+  );
+  assert(platformLnurlTag, "platform zap should include lnurl tag");
+  assert.equal(platformLnurlTag[1], platformLnurlTag[1].toLowerCase());
+  assert(platformLnurlTag[1].startsWith("lnurl"));
+  assert.equal(
+    decodeLnurlBech32(platformLnurlTag[1]),
+    platformResolved.url
+  );
+
   delete globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
+}
+
+async function testBech32LightningAddressZapTag() {
+  const previousOverride = globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
+  globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = 0;
+
+  const { deps } = createDeps();
+  const callbackUrl = "https://lnurl.example/api/callback";
+  const bech32Address = encodeLnurlBech32(callbackUrl);
+
+  const videoEvent = {
+    id: "event-id",
+    pubkey: "c".repeat(64),
+    lightningAddress: bech32Address,
+    tags: [["d", "pointer"]],
+    kind: 30078,
+  };
+
+  const result = await splitAndZap({ videoEvent, amountSats: 500, comment: "Bech32" }, deps);
+
+  assert.equal(result.platformShare, 0);
+  assert.equal(result.receipts.length, 1);
+
+  const parsedZap = JSON.parse(result.receipts[0].zapRequest);
+  const lnurlTag = parsedZap.tags.find((tag) => Array.isArray(tag) && tag[0] === "lnurl");
+  assert(lnurlTag, "bech32 address zap should include lnurl tag");
+  assert.equal(lnurlTag[1], lnurlTag[1].toLowerCase());
+  assert.equal(lnurlTag[1], bech32Address.toLowerCase());
+  assert.equal(decodeLnurlBech32(lnurlTag[1]), callbackUrl);
+
+  if (previousOverride === undefined) {
+    delete globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
+  } else {
+    globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = previousOverride;
+  }
+}
+
+async function testUrlLightningAddressZapTag() {
+  const previousOverride = globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
+  globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = 0;
+
+  const { deps } = createDeps();
+  const directUrl = "https://direct-lnurl.example/api/pay";
+
+  const videoEvent = {
+    id: "event-id",
+    pubkey: "c".repeat(64),
+    lightningAddress: directUrl,
+    tags: [["d", "pointer"]],
+    kind: 30078,
+  };
+
+  const result = await splitAndZap({ videoEvent, amountSats: 800, comment: "Direct" }, deps);
+
+  assert.equal(result.platformShare, 0);
+  assert.equal(result.receipts.length, 1);
+
+  const parsedZap = JSON.parse(result.receipts[0].zapRequest);
+  const lnurlTag = parsedZap.tags.find((tag) => Array.isArray(tag) && tag[0] === "lnurl");
+  assert(lnurlTag, "direct url zap should include lnurl tag");
+  assert.equal(lnurlTag[1], lnurlTag[1].toLowerCase());
+  assert(lnurlTag[1].startsWith("lnurl"));
+  assert.equal(decodeLnurlBech32(lnurlTag[1]), directUrl);
+
+  if (previousOverride === undefined) {
+    delete globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
+  } else {
+    globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = previousOverride;
+  }
+}
+
+async function testRequestInvoiceIncludesLnurlParam() {
+  const callback = "https://callback-lnurl.example/api/pay";
+  const lnurlValue = encodeLnurlBech32(callback);
+  const zapRequest = JSON.stringify({ kind: 9734, content: "zap" });
+  const requestedUrls = [];
+
+  const metadata = {
+    callback,
+    commentAllowed: 0,
+  };
+
+  const fetcher = async (url) => {
+    requestedUrls.push(url);
+    return {
+      ok: true,
+      async json() {
+        return { pr: "bolt11-invoice" };
+      },
+    };
+  };
+
+  const result = await requestInvoice(metadata, {
+    amountMsats: 123_000,
+    zapRequest,
+    lnurl: lnurlValue,
+    fetcher,
+  });
+
+  assert.equal(result.invoice, "bolt11-invoice");
+  assert.equal(requestedUrls.length, 1, "should call fetcher once");
+
+  const [url] = requestedUrls;
+  const parsed = new URL(url);
+
+  assert.equal(parsed.searchParams.get("amount"), "123000");
+  assert.equal(parsed.searchParams.get("nostr"), zapRequest);
+  assert.equal(parsed.searchParams.get("lnurl"), lnurlValue);
 }
 
 async function testWaitsForPoolBeforePlatformLookup() {
   const previousOverride = globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
   globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = 10;
-
-  __resetPlatformAddressCache();
 
   const originalEnsurePool = nostrClient.ensurePool;
   const originalPool = nostrClient.pool;
@@ -252,7 +492,15 @@ async function testWaitsForPoolBeforePlatformLookup() {
   const deps = {
     lnurl: baseDeps.lnurl,
     wallet: baseDeps.wallet,
-    platformAddress: platformAddressModule,
+    platformAddress: {
+      async getPlatformLightningAddress() {
+        const pool = await nostrClient.ensurePool();
+        if (pool && typeof pool.list === "function") {
+          await pool.list([], []);
+        }
+        return "platform@example.com";
+      },
+    },
   };
 
   const videoEvent = {
@@ -319,6 +567,57 @@ async function testStringFeeOverride() {
 
   assert.equal(percentResult.creatorShare, 140);
   assert.equal(percentResult.platformShare, 60);
+
+  delete globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
+}
+
+async function testPlatformShareFailure() {
+  globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = 10;
+
+  const platformCallbackMarker = `${
+    baseResolveLightningAddress("platform@example.com").url
+  }/callback`;
+
+  const { deps, getSendCalls } = createDeps({
+    sendPaymentImplementation: ({ invoice, amountSats, zapRequest }) => {
+      if (invoice.includes(platformCallbackMarker)) {
+        const error = new Error("Budget exceeded");
+        error.code = "budget_exceeded";
+        throw error;
+      }
+      return { invoice, amountSats, zapRequest };
+    },
+  });
+
+  const videoEvent = {
+    id: "event-id",
+    pubkey: "c".repeat(64),
+    lightningAddress: "creator@example.com",
+    tags: [["d", "pointer"]],
+    kind: 30078,
+  };
+
+  const result = await splitAndZap(
+    { videoEvent, amountSats: 1000, comment: "Budget capped" },
+    deps
+  );
+
+  assert.equal(result.receipts.length, 2, "should return receipts for both shares");
+
+  const [creatorReceipt, platformReceipt] = result.receipts;
+
+  assert.equal(creatorReceipt.recipientType, "creator");
+  assert.equal(creatorReceipt.status, "success");
+  assert(creatorReceipt.payment, "creator share should still have a payment record");
+
+  assert.equal(platformReceipt.recipientType, "platform");
+  assert.equal(platformReceipt.status, "error");
+  assert.equal(platformReceipt.payment, null);
+  assert(platformReceipt.error instanceof Error);
+  assert.match(platformReceipt.error.message, /Budget exceeded/);
+
+  const sendCalls = getSendCalls();
+  assert.equal(sendCalls.length, 2, "should attempt each share exactly once");
 
   delete globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
 }
@@ -404,11 +703,138 @@ async function testWalletFailure() {
   );
 }
 
+async function testValidateZapReceiptSuccess() {
+  const relays = ["wss://relay.validation"];
+  const zapRequestEvent = {
+    kind: 9734,
+    pubkey: "f".repeat(64),
+    content: "",
+    created_at: 1_700_000_000,
+    tags: [
+      ["p", "a".repeat(64)],
+      ["amount", String(900_000)],
+      ["relays", ...relays],
+    ],
+  };
+  const zapRequestString = JSON.stringify(zapRequestEvent);
+  const descriptionHash = validatorTesting.computeZapRequestHash(zapRequestString);
+  const bolt11 = buildTestBolt11Invoice({ amountCode: "9u", descriptionHashHex: descriptionHash });
+
+  const receiptEvent = {
+    kind: 9735,
+    pubkey: "b".repeat(64),
+    tags: [
+      ["bolt11", bolt11],
+      ["description", zapRequestString],
+    ],
+  };
+
+  const nostrTools = {
+    validateEvent: () => true,
+    verifyEvent: () => true,
+    SimplePool: class {
+      async list(requestedRelays, filters) {
+        assert.deepEqual(requestedRelays, relays);
+        assert.equal(filters[0]["#bolt11"][0], bolt11.toLowerCase());
+        return [receiptEvent];
+      }
+      close() {}
+    },
+  };
+
+  const result = await validateZapReceipt(
+    {
+      zapRequest: zapRequestString,
+      amountSats: 900,
+      metadata: { nostrPubkey: receiptEvent.pubkey },
+      invoice: { invoice: bolt11 },
+      payment: { invoice: bolt11 },
+    },
+    {
+      nostrTools,
+      getAmountFromBolt11: () => 900,
+    }
+  );
+
+  assert.equal(result.status, "passed");
+  assert.equal(result.event, receiptEvent);
+  assert.deepEqual(result.checkedRelays, relays);
+}
+
+async function testValidateZapReceiptRejectsMismatchedDescriptionHash() {
+  const relays = ["wss://relay.validation"];
+  const zapRequestEvent = {
+    kind: 9734,
+    pubkey: "f".repeat(64),
+    content: "",
+    created_at: 1_700_000_000,
+    tags: [
+      ["p", "a".repeat(64)],
+      ["amount", String(1_000_000)],
+      ["relays", ...relays],
+    ],
+  };
+  const zapRequestString = JSON.stringify(zapRequestEvent);
+  const mismatchHash = "aa".repeat(32);
+  const bolt11 = buildTestBolt11Invoice({ amountCode: "10u", descriptionHashHex: mismatchHash });
+
+  const receiptEvent = {
+    kind: 9735,
+    pubkey: "b".repeat(64),
+    tags: [
+      ["bolt11", bolt11],
+      ["description", zapRequestString],
+    ],
+  };
+
+  const nostrTools = {
+    validateEvent: () => true,
+    verifyEvent: () => true,
+    SimplePool: class {
+      async list() {
+        return [receiptEvent];
+      }
+      close() {}
+    },
+  };
+
+  const result = await validateZapReceipt(
+    {
+      zapRequest: zapRequestString,
+      amountSats: 1_000,
+      metadata: { nostrPubkey: receiptEvent.pubkey },
+      invoice: { invoice: bolt11 },
+      payment: { invoice: bolt11 },
+    },
+    {
+      nostrTools,
+      getAmountFromBolt11: () => 1_000,
+    }
+  );
+
+  assert.equal(result.status, "failed");
+  assert.match(result.reason || "", /description hash/i);
+}
+
+function testExtractDescriptionHashFromBolt11() {
+  const descriptionHashHex = "bb".repeat(32);
+  const invoice = buildTestBolt11Invoice({ amountCode: "1m", descriptionHashHex });
+  const extracted = validatorTesting.extractDescriptionHashFromBolt11(invoice);
+  assert.equal(extracted, descriptionHashHex);
+}
+
 await testSplitMath();
+await testBech32LightningAddressZapTag();
+await testUrlLightningAddressZapTag();
+await testRequestInvoiceIncludesLnurlParam();
 await testWaitsForPoolBeforePlatformLookup();
 await testLnurlBounds();
 await testMissingAddress();
 await testWalletFailure();
 await testStringFeeOverride();
+await testPlatformShareFailure();
+await testValidateZapReceiptSuccess();
+await testValidateZapReceiptRejectsMismatchedDescriptionHash();
+testExtractDescriptionHashFromBolt11();
 
 console.log("zap-split tests passed");

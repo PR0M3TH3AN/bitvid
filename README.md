@@ -132,8 +132,7 @@ package scripts to keep formatting, linting, and generated output consistent:
   ```bash
   npm run format    # normalize CSS/HTML/JS/MD sources with Prettier + tailwindcss plugin
   npm run lint:css  # enforce design token usage and guard against raw hex colors
-  npm run build:css # rebuild css/tailwind.generated.css from tailwind.source.css
-  npm run check:css # fail CI if tailwind.generated.css is out of date
+  npm run build     # run the Tailwind build locally (output remains gitignored)
   ```
 
 - **No hard-coded colors:** Follow the token-first rules in `AGENTS.md`—reach
@@ -147,16 +146,15 @@ npm run format            # format CSS/HTML/JS/MD with Prettier + tailwindcss pl
 npm run lint              # run CSS, hex color, inline-style, design-token, and Tailwind color/bracket guards in one pass
 npm run lint:css          # enforce token usage and forbid raw hex colors
 npm run lint:inline-styles # fail CI if inline style attributes or element.style usage slip in
-npm run build:css         # rebuild css/tailwind.generated.css from tailwind.source.css
+npm run build             # run the Tailwind build (delegates to npm run build:css)
 npm run build:beacon      # bundle torrent/dist assets and re-run the inline-style guard
 npm run build:beacon:bundle # bundle beacon assets without running the guard (rarely needed)
-npm run check:css         # CI-friendly guard that fails if tailwind.generated.css is dirty
 ```
 
 #### Admin runbook: regenerate Tailwind styles
 
-Need to refresh `css/tailwind.generated.css` after token or template changes?
-Run these commands from the repo root:
+Need to confirm Tailwind picks up token or template changes? Run these
+commands from the repo root:
 
 1. Install dependencies (only required after cloning or when packages change):
 
@@ -164,20 +162,16 @@ Run these commands from the repo root:
    npm install
    ```
 
-2. Rebuild the Tailwind bundle:
+2. Rebuild the Tailwind bundle for local verification (the output stays
+   gitignored and CI/Netlify handle deploy-time generation):
 
    ```bash
    npm run build:css
    ```
 
-3. Optional: confirm the generated file is committed and up to date.
-
-   ```bash
-   npm run check:css
-   ```
-
-4. Commit the updated `css/tailwind.generated.css` alongside any HTML/JS edits
-   that rely on the new utilities so deploys pick up the refreshed styles.
+The generated `css/tailwind.generated.css` artifact is ignored in git. CI
+workflows and Netlify deploys run `npm run build` to produce the compiled
+stylesheet during deployment, so source changes are all you need to commit.
 
 Inline styles are intentionally blocked. `npm run lint:inline-styles` scans HTML
 and scripts for `style=` attributes, `element.style`, or `style.cssText` usage
@@ -218,11 +212,11 @@ calls over to the facades above so upgrades stay painless.
 
 The build command compiles Tailwind with `tailwind.config.cjs`, runs it through
 the PostCSS pipeline defined in `postcss.config.cjs` (for autoprefixing), and
-emits the purged, minified stylesheet at `css/tailwind.generated.css`. Commit the
-regenerated file alongside any template changes so deployments pick up the
-latest styles. This generated bundle is the only stylesheet we ship—reference
-`css/tailwind.generated.css` everywhere and avoid vendoring older `tailwind.min.css`
-artifacts.
+emits the purged, minified stylesheet at `css/tailwind.generated.css`. That
+bundle is generated automatically during CI/Netlify deploys and remains
+gitignored locally; reference `css/tailwind.generated.css` in templates, but do
+not commit the compiled file. Avoid vendoring legacy `tailwind.min.css`
+artifacts now that the deploy pipeline owns the build step.
 
 ### Logo usage
 
@@ -327,8 +321,9 @@ placeholder at “—” and development builds log a warning—so mixed deploym
 ## Testing
 
 Continuous integration runs CSS linting/builds, the Playwright kitchen-sink snapshots, and the Node-based unit tests on every push.
-Before pushing, run `npm run check:css` locally so `css/tailwind.generated.css` stays clean. Pair that with `npm run test:unit` for
-application logic changes and `npm run test:visual` for presentation updates to mirror the CI surface area.
+Before pushing, run `npm run build` locally so the Tailwind bundle regenerates.
+Pair that with `npm run test:unit` for application logic changes and
+`npm run test:visual` for presentation updates to mirror the CI surface area.
 
 ### Manual QA checklist
 

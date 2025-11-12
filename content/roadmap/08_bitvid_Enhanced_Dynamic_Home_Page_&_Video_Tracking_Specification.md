@@ -87,7 +87,7 @@ Rather than measuring active peers, bitvid now counts views by logging them as N
    - Compare the count of new views against a previous period, or calculate the rate of increase.
 
 3. **For You**  
-   - Look at what the user watched or subscribed to (via kind `30002` subscription lists).  
+   - Look at what the user watched or subscribed to (via kind `30000` subscription follow sets).
    - Track the user’s or session’s recent view tags, then recommend videos with overlapping tags or from the same channels.
 
 ---
@@ -124,7 +124,7 @@ Your `index.html` might include placeholders for each section:
 
 1. **Fetch Data**  
    - Pull video metadata from kind `30078` events that contain video info or from your existing approach.  
-   - Pull subscription data (kind `30002`).  
+   - Pull subscription data (kind `30000`).
    - Pull view events (kind `30078` with `"t", "view"`).  
 
 2. **Process Rankings**  

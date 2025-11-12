@@ -10,10 +10,6 @@ const {
   VIEW_COUNT_CACHE_TTL_MS,
 } = await import("../js/config.js");
 
-const { buildViewEvent, setNostrEventSchemaOverrides } = await import(
-  "../js/nostrEventSchemas.js"
-);
-
 const VIEW_COUNTER_STORAGE_KEY = "bitvid:view-counter:v1";
 const CACHE_TTL_TEST_POINTER = { type: "e", value: "view-counter-cache-ttl" };
 
@@ -47,6 +43,19 @@ if (!globalThis.window.NostrTools) {
   globalThis.window.NostrTools = {};
 }
 
+const VIEW_SANITIZED_SAMPLE_HEX = "deadbeef".repeat(8);
+const existingNip19Decoder =
+  typeof globalThis.window.NostrTools.nip19 === "object"
+    ? globalThis.window.NostrTools.nip19
+    : {};
+
+if (typeof existingNip19Decoder.decode !== "function") {
+  globalThis.window.NostrTools.nip19 = {
+    ...existingNip19Decoder,
+    decode: () => ({ type: "npub", data: VIEW_SANITIZED_SAMPLE_HEX }),
+  };
+}
+
 if (typeof globalThis.window.NostrTools.getEventHash !== "function") {
   globalThis.window.NostrTools.getEventHash = () => "test-event-hash";
 }
@@ -54,6 +63,10 @@ if (typeof globalThis.window.NostrTools.getEventHash !== "function") {
 if (typeof globalThis.window.NostrTools.signEvent !== "function") {
   globalThis.window.NostrTools.signEvent = () => "test-event-sig";
 }
+
+const { buildViewEvent, setNostrEventSchemaOverrides } = await import(
+  "../js/nostrEventSchemas.js"
+);
 
 setNostrEventSchemaOverrides({});
 
@@ -91,6 +104,42 @@ assert.deepEqual(
     ["session", "true"],
   ],
   "view event should append the session tag when requested"
+);
+
+const sanitizedViewEvent = buildViewEvent({
+  pubkey: "actor-sanitize",
+  created_at: 3000,
+  pointerValue: "event-sanitize",
+  pointerTag: ["e", "event-sanitize"],
+  additionalTags: [
+    ["p", null],
+    ["p", "npub1viewadditionaltagfixture000000000000000000000"],
+    ["client", { foo: "bar" }],
+    ["client", "bitvid"],
+  ],
+});
+
+assert.ok(
+  sanitizedViewEvent.tags.some(
+    (tag) => Array.isArray(tag) && tag[0] === "p" && tag[1] === VIEW_SANITIZED_SAMPLE_HEX
+  ),
+  "view event should normalize npub additional tags to hex"
+);
+
+const sanitizedClientTags = sanitizedViewEvent.tags.filter(
+  (tag) => Array.isArray(tag) && tag[0] === "client"
+);
+assert.deepEqual(sanitizedClientTags, [["client", "bitvid"]]);
+
+assert.ok(
+  !sanitizedViewEvent.tags.some(
+    (tag) =>
+      Array.isArray(tag) &&
+      tag[0] === "client" &&
+      typeof tag[1] === "string" &&
+      tag[1].includes("[object Object]")
+  ),
+  "invalid additional tag values should not be coerced to object strings"
 );
 
 const { nostrClient } = await import("../js/nostr.js");

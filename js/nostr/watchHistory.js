@@ -34,6 +34,11 @@ const WATCH_HISTORY_REPUBLISH_BASE_DELAY_MS = 2000;
 const WATCH_HISTORY_REPUBLISH_MAX_DELAY_MS = 5 * 60 * 1000;
 const WATCH_HISTORY_REPUBLISH_MAX_ATTEMPTS = 8;
 const WATCH_HISTORY_REPUBLISH_JITTER = 0.25;
+const WATCH_HISTORY_ENCRYPTION_FALLBACK_ORDER = Object.freeze([
+  "nip44_v2",
+  "nip44",
+  "nip04",
+]);
 
 function cloneVideoMetadata(video) {
   if (!video || typeof video !== "object") {
@@ -657,6 +662,239 @@ function looksLikeJsonStructure(content) {
   return first === "{" || first === "[";
 }
 
+function hexToBytesCompat(hex, tools = null) {
+  if (typeof hex !== "string") {
+    throw new Error("Invalid hex input.");
+  }
+  const trimmed = hex.trim();
+  if (!trimmed || trimmed.length % 2 !== 0) {
+    throw new Error("Invalid hex input.");
+  }
+  if (tools?.utils && typeof tools.utils.hexToBytes === "function") {
+    return tools.utils.hexToBytes(trimmed);
+  }
+  const bytes = new Uint8Array(trimmed.length / 2);
+  for (let index = 0; index < trimmed.length; index += 2) {
+    const byte = Number.parseInt(trimmed.slice(index, index + 2), 16);
+    if (Number.isNaN(byte)) {
+      throw new Error("Invalid hex input.");
+    }
+    bytes[index / 2] = byte;
+  }
+  return bytes;
+}
+
+function createNip44CipherSuite(tools, privateKeyHex, targetPubkeyHex) {
+  if (!tools || !privateKeyHex || !targetPubkeyHex) {
+    return null;
+  }
+  const normalizedPrivateKey =
+    typeof privateKeyHex === "string" && privateKeyHex.trim()
+      ? privateKeyHex.trim().toLowerCase()
+      : "";
+  const normalizedTarget =
+    typeof targetPubkeyHex === "string" && targetPubkeyHex.trim()
+      ? targetPubkeyHex.trim().toLowerCase()
+      : "";
+  if (!normalizedPrivateKey || !normalizedTarget) {
+    return null;
+  }
+
+  let privateKeyBytes;
+  try {
+    privateKeyBytes = hexToBytesCompat(normalizedPrivateKey, tools);
+  } catch (_) {
+    return null;
+  }
+
+  const nip44 = tools?.nip44 && typeof tools.nip44 === "object" ? tools.nip44 : null;
+  const suite = {};
+
+  const nip44v2 = nip44?.v2 && typeof nip44.v2 === "object" ? nip44.v2 : null;
+  if (
+    nip44v2 &&
+    typeof nip44v2.encrypt === "function" &&
+    typeof nip44v2.decrypt === "function" &&
+    typeof nip44v2?.utils?.getConversationKey === "function"
+  ) {
+    let cachedKey = null;
+    const ensureKey = () => {
+      if (!cachedKey) {
+        cachedKey = nip44v2.utils.getConversationKey(privateKeyBytes, normalizedTarget);
+      }
+      return cachedKey;
+    };
+    suite.v2 = {
+      encrypt: (plaintext) => nip44v2.encrypt(plaintext, ensureKey()),
+      decrypt: (ciphertext) => nip44v2.decrypt(ciphertext, ensureKey()),
+    };
+  }
+
+  const legacyGetConversationKey = (() => {
+    if (typeof nip44?.getConversationKey === "function") {
+      return nip44.getConversationKey.bind(nip44);
+    }
+    if (typeof nip44?.utils?.getConversationKey === "function") {
+      return nip44.utils.getConversationKey.bind(nip44.utils);
+    }
+    return null;
+  })();
+
+  if (
+    typeof nip44?.encrypt === "function" &&
+    typeof nip44?.decrypt === "function" &&
+    typeof legacyGetConversationKey === "function"
+  ) {
+    let cachedKey = null;
+    const ensureLegacyKey = () => {
+      if (!cachedKey) {
+        cachedKey = legacyGetConversationKey(privateKeyBytes, normalizedTarget);
+      }
+      return cachedKey;
+    };
+    suite.legacy = {
+      encrypt: (plaintext) => nip44.encrypt(plaintext, ensureLegacyKey()),
+      decrypt: (ciphertext) => nip44.decrypt(ciphertext, ensureLegacyKey()),
+    };
+  }
+
+  if (!suite.v2 && !suite.legacy) {
+    return null;
+  }
+
+  return suite;
+}
+
+function normalizeEncryptionTagValue(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+  const normalized = value.trim().toLowerCase();
+  switch (normalized) {
+    case "nip04":
+    case "nip-04":
+    case "nip4":
+      return "nip04";
+    case "nip44_v2":
+    case "nip44-v2":
+    case "nip44v2":
+      return "nip44_v2";
+    case "nip44_v1":
+    case "nip44-v1":
+    case "nip44v1":
+    case "nip44":
+      return "nip44";
+    default:
+      return "";
+  }
+}
+
+function extractWatchHistoryEncryptionHints(event, ciphertext) {
+  const hints = [];
+  const pushUnique = (hint) => {
+    if (hint && !hints.includes(hint)) {
+      hints.push(hint);
+    }
+  };
+
+  const tags = Array.isArray(event?.tags) ? event.tags : [];
+  for (const tag of tags) {
+    if (!Array.isArray(tag) || tag.length < 2) {
+      continue;
+    }
+    const label = typeof tag[0] === "string" ? tag[0].trim().toLowerCase() : "";
+    if (label !== "encrypted") {
+      continue;
+    }
+    const normalizedValue = normalizeEncryptionTagValue(tag[1]);
+    if (normalizedValue) {
+      pushUnique(normalizedValue);
+    }
+  }
+
+  if (!hints.length && isNip04EncryptedWatchHistoryEvent(event, ciphertext)) {
+    pushUnique("nip04");
+  }
+
+  return hints;
+}
+
+function determineWatchHistoryDecryptionOrder(
+  event,
+  ciphertext,
+  availableSchemes = [],
+) {
+  const available = Array.isArray(availableSchemes) ? availableSchemes : [];
+  const availableSet = new Set(available);
+  const prioritized = [];
+  const hints = extractWatchHistoryEncryptionHints(event, ciphertext);
+  const aliasMap = {
+    nip04: ["nip04"],
+    nip44: ["nip44", "nip44_v2"],
+    nip44_v2: ["nip44_v2", "nip44"],
+  };
+
+  for (const hint of hints) {
+    const candidates = Array.isArray(aliasMap[hint]) ? aliasMap[hint] : [hint];
+    for (const candidate of candidates) {
+      if (availableSet.has(candidate) && !prioritized.includes(candidate)) {
+        prioritized.push(candidate);
+        break;
+      }
+    }
+  }
+
+  for (const fallback of WATCH_HISTORY_ENCRYPTION_FALLBACK_ORDER) {
+    if (availableSet.has(fallback) && !prioritized.includes(fallback)) {
+      prioritized.push(fallback);
+    }
+  }
+
+  return prioritized.length ? prioritized : available;
+}
+
+async function resolveNostrToolkit(deps = {}, cacheRef = null) {
+  if (cacheRef?.current) {
+    return cacheRef.current;
+  }
+
+  const ensureToolkit =
+    typeof deps.ensureNostrTools === "function" ? deps.ensureNostrTools : ensureNostrTools;
+  if (ensureToolkit) {
+    try {
+      const ensured = await ensureToolkit();
+      if (ensured) {
+        if (cacheRef) {
+          cacheRef.current = ensured;
+        }
+        return ensured;
+      }
+    } catch (error) {
+      devLogger.warn("[nostr] Failed to resolve nostr-tools for watch history:", error);
+    }
+  }
+
+  const readCachedToolkit =
+    typeof deps.getCachedNostrTools === "function"
+      ? deps.getCachedNostrTools
+      : getCachedNostrTools;
+  if (readCachedToolkit) {
+    try {
+      const cached = await readCachedToolkit();
+      if (cached) {
+        if (cacheRef) {
+          cacheRef.current = cached;
+        }
+        return cached;
+      }
+    } catch (error) {
+      devLogger.warn("[nostr] Failed to read cached nostr-tools for watch history:", error);
+    }
+  }
+
+  return cacheRef?.current || null;
+}
+
 function mergeWatchHistoryItemsWithFallback(parsed, fallbackItems) {
   if (!parsed || typeof parsed !== "object") {
     return {
@@ -716,8 +954,11 @@ export function isNip04EncryptedWatchHistoryEvent(pointerEvent, ciphertext) {
     return false;
   }
   const ivIndex = normalizedCiphertext.indexOf("?iv=");
-  const baseSegment = ivIndex >= 0 ? normalizedCiphertext.slice(0, ivIndex) : normalizedCiphertext;
-  const ivSegment = ivIndex >= 0 ? normalizedCiphertext.slice(ivIndex + 4) : "";
+  if (ivIndex < 0) {
+    return false;
+  }
+  const baseSegment = normalizedCiphertext.slice(0, ivIndex);
+  const ivSegment = normalizedCiphertext.slice(ivIndex + 4);
   const base64Regex = /^[A-Za-z0-9+/]+={0,2}$/;
   if (!baseSegment || !base64Regex.test(baseSegment)) {
     return false;
@@ -1149,12 +1390,14 @@ class WatchHistoryManager {
       normalizedLogged === actorKey &&
       signer &&
       typeof signer.signEvent === "function";
-    const useActiveSignerEncrypt =
-      canUseActiveSignerSign && signer && typeof signer.nip04Encrypt === "function";
+    const signerSupportsEncryption =
+      canUseActiveSignerSign &&
+      signer &&
+      (typeof signer.nip04Encrypt === "function" || typeof signer.nip44Encrypt === "function");
     const activeSigner = canUseActiveSignerSign ? signer : null;
-    const encryptionSigner = useActiveSignerEncrypt ? signer : null;
+    const encryptionSigner = signerSupportsEncryption ? signer : null;
     if (
-      (canUseActiveSignerSign || useActiveSignerEncrypt) &&
+      (canUseActiveSignerSign || signerSupportsEncryption) &&
       this.deps.shouldRequestExtensionPermissions?.(signer)
     ) {
       await this.deps.ensureExtensionPermissions?.(DEFAULT_NIP07_PERMISSION_METHODS);
@@ -1225,67 +1468,161 @@ class WatchHistoryManager {
       source: options.source || "unknown",
     });
     const createdAtBase = Math.max(Math.floor(Date.now() / 1000), this.lastCreatedAt + 1);
-    let cachedNip04Tools = null;
-    const ensureNip04Tools = async () => {
-      if (cachedNip04Tools) {
-        return cachedNip04Tools;
+    const toolkitCache = { current: null };
+    const encryptionCandidates = [];
+    const registerEncryptor = (scheme, handler, source) => {
+      if (!scheme || typeof handler !== "function") {
+        return;
       }
-
-      const ensureToolkit =
-        typeof this.deps.ensureNostrTools === "function"
-          ? this.deps.ensureNostrTools
-          : ensureNostrTools;
-      if (ensureToolkit) {
-        try {
-          const ensured = await ensureToolkit();
-          if (
-            ensured?.nip04 &&
-            typeof ensured.nip04.encrypt === "function"
-          ) {
-            cachedNip04Tools = ensured;
-            return cachedNip04Tools;
-          }
-        } catch (error) {
-          devLogger.warn(
-            "[nostr] Failed to resolve nostr-tools for watch history:",
-            error,
-          );
-        }
-      }
-
-      const readCachedToolkit =
-        typeof this.deps.getCachedNostrTools === "function"
-          ? this.deps.getCachedNostrTools
-          : getCachedNostrTools;
-      if (readCachedToolkit) {
-        try {
-          const cached = await readCachedToolkit();
-          if (
-            cached?.nip04 &&
-            typeof cached.nip04.encrypt === "function"
-          ) {
-            cachedNip04Tools = cached;
-            return cachedNip04Tools;
-          }
-        } catch (error) {
-          devLogger.warn(
-            "[nostr] Failed to read cached nostr-tools for watch history:",
-            error,
-          );
-        }
-      }
-
-      return null;
+      encryptionCandidates.push({
+        scheme,
+        handler,
+        source: source || "unknown",
+      });
     };
-    const encryptChunk = async (plaintext) => {
-      if (encryptionSigner) {
-        return encryptionSigner.nip04Encrypt(actorPubkey, plaintext);
+
+    if (encryptionSigner) {
+      if (typeof encryptionSigner.nip44Encrypt === "function") {
+        registerEncryptor(
+          "nip44_v2",
+          (plaintext) => encryptionSigner.nip44Encrypt(actorPubkey, plaintext),
+          "active-signer",
+        );
+        registerEncryptor(
+          "nip44",
+          (plaintext) => encryptionSigner.nip44Encrypt(actorPubkey, plaintext),
+          "active-signer",
+        );
       }
-      const tools = await ensureNip04Tools();
-      if (!tools?.nip04 || typeof tools.nip04.encrypt !== "function") {
-        throw new Error("nip04-unavailable");
+      if (typeof encryptionSigner.nip04Encrypt === "function") {
+        registerEncryptor(
+          "nip04",
+          (plaintext) => encryptionSigner.nip04Encrypt(actorPubkey, plaintext),
+          "active-signer",
+        );
       }
-      return tools.nip04.encrypt(privateKey, actorPubkey, plaintext);
+    }
+
+    const ensureSessionEncryptors = async () => {
+      if (!privateKey) {
+        return;
+      }
+      const tools = await resolveNostrToolkit(this.deps, toolkitCache);
+      if (!tools) {
+        return;
+      }
+      const suite = createNip44CipherSuite(tools, privateKey, actorKey);
+      if (suite?.v2?.encrypt) {
+        registerEncryptor(
+          "nip44_v2",
+          (plaintext) => suite.v2.encrypt(plaintext),
+          "session-nip44_v2",
+        );
+        registerEncryptor(
+          "nip44",
+          (plaintext) => suite.v2.encrypt(plaintext),
+          "session-nip44_v2",
+        );
+      }
+      if (suite?.legacy?.encrypt) {
+        registerEncryptor(
+          "nip44",
+          (plaintext) => suite.legacy.encrypt(plaintext),
+          "session-nip44",
+        );
+      }
+      if (tools?.nip04 && typeof tools.nip04.encrypt === "function") {
+        registerEncryptor(
+          "nip04",
+          (plaintext) => tools.nip04.encrypt(privateKey, actorPubkey, plaintext),
+          "session-nip04",
+        );
+      }
+    };
+
+    await ensureSessionEncryptors();
+
+    if (!encryptionCandidates.length) {
+      userLogger.warn(
+        "[nostr] No encryption strategies available to publish watch history.",
+        {
+          actor: actorKey,
+          snapshotId,
+        },
+      );
+      return { ok: false, error: "encryption-unavailable", retryable: false };
+    }
+
+    const candidateIdentity = (candidate) =>
+      `${candidate.scheme}:${candidate.source || "unknown"}`;
+    const failedEncryptionCandidates = new Set();
+    const encryptionAttemptErrors = [];
+    let selectedEncryptor = null;
+
+    const tryEncryptWithCandidate = async (candidate, plaintext, context = {}) => {
+      const details = {
+        actor: actorKey,
+        snapshotId,
+        chunkIndex: context.chunkIndex ?? null,
+        chunkIdentifier: context.chunkIdentifier ?? null,
+        scheme: candidate.scheme,
+        source: candidate.source,
+      };
+      try {
+        devLogger.info("[nostr] Attempting to encrypt watch history chunk.", details);
+        const encrypted = await candidate.handler(plaintext);
+        if (typeof encrypted !== "string" || !encrypted) {
+          throw new Error("empty-ciphertext");
+        }
+        devLogger.info("[nostr] Encrypted watch history chunk.", details);
+        return { ciphertext: encrypted, scheme: candidate.scheme, candidate };
+      } catch (error) {
+        devLogger.warn("[nostr] Failed to encrypt watch history chunk with candidate.", {
+          ...details,
+          error: error?.message || error,
+        });
+        failedEncryptionCandidates.add(candidateIdentity(candidate));
+        encryptionAttemptErrors.push({
+          scheme: candidate.scheme,
+          source: candidate.source,
+          error,
+          context: {
+            snapshotId,
+            chunkIndex: context.chunkIndex ?? null,
+            chunkIdentifier: context.chunkIdentifier ?? null,
+          },
+        });
+        return null;
+      }
+    };
+
+    const encryptChunkPayload = async (plaintext, context = {}) => {
+      if (
+        selectedEncryptor &&
+        !failedEncryptionCandidates.has(candidateIdentity(selectedEncryptor))
+      ) {
+        const reuseResult = await tryEncryptWithCandidate(
+          selectedEncryptor,
+          plaintext,
+          context,
+        );
+        if (reuseResult) {
+          return reuseResult;
+        }
+        selectedEncryptor = null;
+      }
+      for (const candidate of encryptionCandidates) {
+        const identity = candidateIdentity(candidate);
+        if (failedEncryptionCandidates.has(identity)) {
+          continue;
+        }
+        const result = await tryEncryptWithCandidate(candidate, plaintext, context);
+        if (result) {
+          selectedEncryptor = candidate;
+          return result;
+        }
+      }
+      throw new Error("encryption-unavailable");
     };
     const signEvent = async (event) => {
       if (activeSigner) {
@@ -1366,14 +1703,41 @@ class WatchHistoryManager {
         totalChunks: chunks.length,
         items: chunkItems,
       });
+      const chunkIdentifier = `${snapshotId}:${index}`;
       let ciphertext = "";
+      let encryptionScheme = "";
       try {
-        ciphertext = await encryptChunk(plaintext);
+        const encryptionResult = await encryptChunkPayload(plaintext, {
+          chunkIndex: index,
+          chunkIdentifier,
+        });
+        ciphertext = encryptionResult?.ciphertext || "";
+        encryptionScheme = encryptionResult?.scheme || "";
       } catch (error) {
-        userLogger.warn("[nostr] Failed to encrypt watch history chunk:", error);
+        userLogger.warn("[nostr] Failed to encrypt watch history chunk:", {
+          actor: actorKey,
+          snapshotId,
+          chunkIndex: index,
+          chunkIdentifier,
+          error: error?.message || error,
+          attempts: encryptionAttemptErrors.map((entry) => ({
+            scheme: entry.scheme,
+            source: entry.source,
+            error: entry.error?.message || entry.error,
+          })),
+        });
         return { ok: false, error: "encryption-failed", retryable: false };
       }
-      const chunkIdentifier = `${snapshotId}:${index}`;
+      if (!ciphertext) {
+        userLogger.warn("[nostr] Encryption produced an empty payload for watch history chunk.", {
+          actor: actorKey,
+          snapshotId,
+          chunkIndex: index,
+          chunkIdentifier,
+          scheme: encryptionScheme || null,
+        });
+        return { ok: false, error: "encryption-failed", retryable: false };
+      }
       const event = buildWatchHistoryChunkEvent({
         pubkey: actorPubkey,
         created_at: createdAtCursor,
@@ -1383,6 +1747,7 @@ class WatchHistoryManager {
         totalChunks: chunks.length,
         pointerTags,
         content: ciphertext,
+        encryption: encryptionScheme,
       });
       createdAtCursor += 1;
       let signedEvent;
@@ -1735,7 +2100,7 @@ class WatchHistoryManager {
       normalizedLogged &&
       normalizedLogged === actorKey &&
       signer &&
-      typeof signer.nip04Decrypt === "function";
+      (typeof signer.nip04Decrypt === "function" || typeof signer.nip44Decrypt === "function");
     const decryptSigner = canUseActiveSignerDecrypt ? signer : null;
     if (decryptSigner && this.deps.shouldRequestExtensionPermissions?.(decryptSigner)) {
       await this.deps.ensureExtensionPermissions?.(DEFAULT_NIP07_PERMISSION_METHODS);
@@ -1976,79 +2341,95 @@ class WatchHistoryManager {
     }
     const decryptErrors = [];
     const collectedItems = [];
-    const ensureDecryptTools = async () => {
-      const tools = await ensureNostrTools();
-      if (tools?.nip04 && typeof tools.nip04.decrypt === "function") {
-        devLogger.info("[nostr] Loaded nostr-tools nip04 helpers for watch history decryption.");
-        return tools;
+    const toolkitCache = { current: null };
+    const decryptorCandidates = new Map();
+    const registerDecryptor = (scheme, handler, source) => {
+      if (!scheme || typeof handler !== "function") {
+        return;
       }
-      userLogger.warn(
-        "[nostr] Unable to load nostr-tools nip04 helpers for watch history decryption.",
-      );
-      return null;
+      const existing = decryptorCandidates.get(scheme) || [];
+      existing.push({ handler, source: source || "unknown" });
+      decryptorCandidates.set(scheme, existing);
     };
-    const decryptChunk = async (ciphertext, context = {}) => {
-      if (decryptSigner) {
-        devLogger.info("[nostr] Using active signer to decrypt watch history chunk.", {
-          actorKey,
-          chunkIdentifier: context.chunkIdentifier ?? null,
-          eventId: context.eventId ?? null,
-        });
-        const plaintext = await decryptSigner.nip04Decrypt(actorKey, ciphertext);
-        devLogger.info("[nostr] Successfully decrypted watch history chunk via active signer.", {
-          actorKey,
-          chunkIdentifier: context.chunkIdentifier ?? null,
-          eventId: context.eventId ?? null,
-        });
-        return plaintext;
-      }
-      const session = this.deps.getSessionActor?.();
-      if (!session || session.pubkey !== actorKey) {
-        devLogger.info(
-          "[nostr] Session actor mismatch while decrypting watch history chunk. Ensuring session actor matches requested key.",
+
+    if (decryptSigner) {
+      if (typeof decryptSigner.nip44Decrypt === "function") {
+        registerDecryptor(
+          "nip44_v2",
+          (payload) => decryptSigner.nip44Decrypt(actorKey, payload),
+          "active-signer",
         );
-        const ensured = await this.deps.ensureSessionActor?.();
-        if (normalizeActorKey(ensured) !== actorKey) {
-          throw new Error("session-actor-mismatch");
+        registerDecryptor(
+          "nip44",
+          (payload) => decryptSigner.nip44Decrypt(actorKey, payload),
+          "active-signer",
+        );
+      }
+      if (typeof decryptSigner.nip04Decrypt === "function") {
+        registerDecryptor(
+          "nip04",
+          (payload) => decryptSigner.nip04Decrypt(actorKey, payload),
+          "active-signer",
+        );
+      }
+    }
+
+    const ensureSessionDecryptors = async () => {
+      try {
+        let session = this.deps.getSessionActor?.();
+        if (!session || session.pubkey !== actorKey || !session.privateKey) {
+          const ensured = await this.deps.ensureSessionActor?.();
+          if (normalizeActorKey(ensured) !== actorKey) {
+            throw new Error("session-actor-mismatch");
+          }
+          session = this.deps.getSessionActor?.();
         }
-      }
-      const refreshedSession = this.deps.getSessionActor?.();
-      if (!refreshedSession || refreshedSession.pubkey !== actorKey) {
-        throw new Error("session-actor-missing");
-      }
-      const tools = await ensureDecryptTools();
-      if (!tools?.nip04 || typeof tools.nip04.decrypt !== "function") {
-        userLogger.warn(
-          "[nostr] Unable to decrypt watch history chunk because nip04 helpers are unavailable.",
-          {
-            actorKey,
-            chunkIdentifier: context.chunkIdentifier ?? null,
-            eventId: context.eventId ?? null,
-          },
-        );
-        throw new Error("nip04-unavailable");
-      }
-      devLogger.info(
-        "[nostr] Using session actor private key to decrypt watch history chunk.",
-        {
+        if (!session || session.pubkey !== actorKey) {
+          throw new Error("session-actor-missing");
+        }
+        if (!session.privateKey) {
+          throw new Error("missing-session-key");
+        }
+        const tools = await resolveNostrToolkit(this.deps, toolkitCache);
+        if (!tools) {
+          throw new Error("nostr-tools-missing");
+        }
+        const suite = createNip44CipherSuite(tools, session.privateKey, actorKey);
+        if (suite?.v2?.decrypt) {
+          registerDecryptor(
+            "nip44_v2",
+            async (payload) => suite.v2.decrypt(payload),
+            "session-nip44_v2",
+          );
+          registerDecryptor(
+            "nip44",
+            async (payload) => suite.v2.decrypt(payload),
+            "session-nip44_v2",
+          );
+        }
+        if (suite?.legacy?.decrypt) {
+          registerDecryptor(
+            "nip44",
+            async (payload) => suite.legacy.decrypt(payload),
+            "session-nip44",
+          );
+        }
+        if (tools?.nip04 && typeof tools.nip04.decrypt === "function") {
+          registerDecryptor(
+            "nip04",
+            async (payload) => tools.nip04.decrypt(session.privateKey, actorKey, payload),
+            "session-nip04",
+          );
+        }
+      } catch (error) {
+        devLogger.warn("[nostr] Unable to register session decryptors for watch history.", {
           actorKey,
-          chunkIdentifier: context.chunkIdentifier ?? null,
-          eventId: context.eventId ?? null,
-          sessionActor: refreshedSession.pubkey ?? null,
-        },
-      );
-      const plaintext = await tools.nip04.decrypt(
-        refreshedSession.privateKey,
-        actorKey,
-        ciphertext,
-      );
-      devLogger.info("[nostr] Successfully decrypted watch history chunk via session actor key.", {
-        actorKey,
-        chunkIdentifier: context.chunkIdentifier ?? null,
-        eventId: context.eventId ?? null,
-      });
-      return plaintext;
+          error: error?.message || error,
+        });
+      }
     };
+
+    await ensureSessionDecryptors();
     const chunkCount = latestChunks.size || chunkIdentifiers.length || 0;
     const chunkKeys = chunkIdentifiers.length
       ? chunkIdentifiers
@@ -2061,65 +2442,119 @@ class WatchHistoryManager {
       const fallbackPointers = extractPointerItemsFromEvent(event);
       const ciphertext = typeof event.content === "string" ? event.content : "";
       const ciphertextPreview = ciphertext.slice(0, 32);
-      let payload;
       const chunkContext = {
         chunkIdentifier: identifier,
         eventId: event.id ?? null,
       };
-      if (isNip04EncryptedWatchHistoryEvent(event, ciphertext)) {
-        devLogger.info("[nostr] Watch history chunk is marked as NIP-04 encrypted. Beginning decrypt flow.", {
-          actorKey,
-          ...chunkContext,
-        });
-        try {
-          const plaintext = await decryptChunk(ciphertext, chunkContext);
-          devLogger.info("[nostr] Decrypted watch history chunk. Parsing plaintext payload.", {
-            actorKey,
-            ...chunkContext,
-            plaintextPreview: typeof plaintext === "string" ? plaintext.slice(0, 64) : null,
-            expectedPlaintextFormat:
-              "JSON string with { version, items, snapshot, chunkIndex, totalChunks }",
-          });
-          payload = parseWatchHistoryContentWithFallback(
-            plaintext,
-            fallbackPointers,
-            {
-              version: 0,
-              items: fallbackPointers,
-              snapshot: snapshotId,
-              chunkIndex: 0,
-              totalChunks: chunkCount || 1,
-            },
-          );
-        } catch (error) {
-          decryptErrors.push(error);
-          userLogger.error(
-            "[nostr] Decrypt failed for watch history chunk. Falling back to pointer items.",
-            {
+      const availableSchemes = Array.from(decryptorCandidates.keys());
+      const decryptOrder = determineWatchHistoryDecryptionOrder(
+        event,
+        ciphertext,
+        availableSchemes,
+      );
+      let plaintext = null;
+      let usedScheme = "";
+      let usedSource = "";
+      const attemptFailures = [];
+
+      if (decryptOrder.length) {
+        outer: for (const scheme of decryptOrder) {
+          const candidates = decryptorCandidates.get(scheme) || [];
+          for (const candidate of candidates) {
+            const details = {
               actorKey,
               ...chunkContext,
-              error: error?.message || error,
-              ciphertextPreview,
-              fallbackPointerCount: Array.isArray(fallbackPointers)
-                ? fallbackPointers.length
-                : 0,
-              expectedPlaintextFormat:
-                "JSON string with { version, items, snapshot, chunkIndex, totalChunks }",
-            },
-          );
-          payload = {
-            version: 0,
-            items: fallbackPointers,
-          };
+              scheme,
+              source: candidate.source,
+            };
+            try {
+              devLogger.info("[nostr] Attempting to decrypt watch history chunk.", details);
+              const result = await candidate.handler(ciphertext, chunkContext);
+              if (typeof result !== "string") {
+                throw new Error("invalid-plaintext");
+              }
+              devLogger.info("[nostr] Successfully decrypted watch history chunk.", details);
+              plaintext = result;
+              usedScheme = scheme;
+              usedSource = candidate.source || "";
+              break outer;
+            } catch (error) {
+              devLogger.warn("[nostr] Failed to decrypt watch history chunk with candidate.", {
+                ...details,
+                error: error?.message || error,
+              });
+              attemptFailures.push({ scheme, source: candidate.source, error });
+            }
+          }
         }
-      } else {
-        devLogger.info("[nostr] Watch history chunk is plaintext. Attempting to parse expected payload format.", {
+      }
+
+      const encryptionHints = extractWatchHistoryEncryptionHints(event, ciphertext);
+      const isEncryptedChunk =
+        encryptionHints.length > 0 ||
+        (!looksLikeJsonStructure(ciphertext) && Boolean(ciphertext.trim()));
+
+      let payload;
+      if (plaintext !== null) {
+        devLogger.info("[nostr] Decrypted watch history chunk. Parsing plaintext payload.", {
           actorKey,
           ...chunkContext,
-          ciphertextPreview,
+          scheme: usedScheme || null,
+          source: usedSource || null,
+          plaintextPreview: typeof plaintext === "string" ? plaintext.slice(0, 64) : null,
           expectedPlaintextFormat:
             "JSON string with { version, items, snapshot, chunkIndex, totalChunks }",
         });
+        payload = parseWatchHistoryContentWithFallback(
+          plaintext,
+          fallbackPointers,
+          {
+            version: 0,
+            items: fallbackPointers,
+            snapshot: snapshotId,
+            chunkIndex: 0,
+            totalChunks: chunkCount || 1,
+          },
+        );
+      } else if (isEncryptedChunk) {
+        decryptErrors.push({
+          chunkIdentifier: identifier,
+          eventId: event.id ?? null,
+          attempts: attemptFailures,
+        });
+        userLogger.error(
+          "[nostr] Decrypt failed for watch history chunk. Falling back to pointer items.",
+          {
+            actorKey,
+            ...chunkContext,
+            attempts: attemptFailures.map((entry) => ({
+              scheme: entry.scheme,
+              source: entry.source,
+              error: entry.error?.message || entry.error,
+            })),
+            ciphertextPreview,
+            fallbackPointerCount: Array.isArray(fallbackPointers)
+              ? fallbackPointers.length
+              : 0,
+            expectedPlaintextFormat:
+              "JSON string with { version, items, snapshot, chunkIndex, totalChunks }",
+          },
+        );
+        payload = {
+          version: 0,
+          items: fallbackPointers,
+        };
+      } else {
+        devLogger.info(
+          "[nostr] Watch history chunk is plaintext. Attempting to parse expected payload format.",
+          {
+            actorKey,
+            ...chunkContext,
+            ciphertextPreview,
+            expectedPlaintextFormat:
+              "JSON string with { version, items, snapshot, chunkIndex, totalChunks }",
+          },
+        );
         payload = parseWatchHistoryContentWithFallback(
           ciphertext,
           fallbackPointers,
@@ -2132,6 +2567,7 @@ class WatchHistoryManager {
           },
         );
       }
+
       if (Array.isArray(payload?.items)) {
         collectedItems.push(...payload.items);
       }

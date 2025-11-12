@@ -1,5 +1,6 @@
 import { normalizeDesignSystemContext } from "../../designSystem.js";
 import { formatShortNpub } from "../../utils/formatters.js";
+import { sanitizeProfileMediaUrl } from "../../utils/profileMedia.js";
 
 const DEFAULT_PROFILE_AVATAR = "assets/svg/default-profile.svg";
 
@@ -213,15 +214,26 @@ export class SimilarContentCard {
           continue;
         }
         const trimmed = entry.trim();
-        if (trimmed) {
-          return trimmed;
+        if (!trimmed) {
+          continue;
+        }
+        const sanitized = sanitizeProfileMediaUrl(trimmed);
+        if (sanitized) {
+          return sanitized;
         }
       }
 
-      return "";
+      const fallback =
+        typeof baseline.picture === "string" && baseline.picture.trim()
+          ? sanitizeProfileMediaUrl(baseline.picture) || baseline.picture.trim()
+          : "";
+
+      return fallback;
     })();
 
-    return { name, npub, shortNpub, pubkey, picture };
+    const resolvedPicture = picture || DEFAULT_PROFILE_AVATAR;
+
+    return { name, npub, shortNpub, pubkey, picture: resolvedPicture };
   }
 
   applyIdentityToElements() {

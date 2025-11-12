@@ -86,3 +86,21 @@ test("30078 events carry nip71 metadata tags and hydrate fallback metadata", () 
   assert.deepEqual(video.nip71.references, ["https://example.com/info"]);
   assert.equal(video.nip71Source?.eventId, "event-123");
 });
+
+test("imeta tags lower-case mime values", () => {
+  const metadataInput = {
+    imeta: [
+      { m: "VIDEO/MP4", url: "https://cdn.example/video.mp4" },
+      { m: "APPLICATION/DASH+XML" },
+    ],
+  };
+
+  const tags = buildNip71MetadataTags(metadataInput);
+  const mimeEntries = tags
+    .filter((tag) => tag[0] === "imeta")
+    .map((tag) => tag.find((value) => typeof value === "string" && value.startsWith("m ")))
+    .filter(Boolean)
+    .map((entry) => entry.slice(2));
+
+  assert.deepEqual(mimeEntries, ["video/mp4", "application/dash+xml"]);
+});

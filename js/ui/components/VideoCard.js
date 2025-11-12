@@ -1,5 +1,6 @@
 import { normalizeDesignSystemContext } from "../../designSystem.js";
 import { updateVideoCardSourceVisibility } from "../../utils/cardSourceVisibility.js";
+import { sanitizeProfileMediaUrl } from "../../utils/profileMedia.js";
 import { userLogger } from "../../utils/logger.js";
 import {
   applyModerationContextDatasets,
@@ -9,6 +10,8 @@ import {
 import { buildModerationBadgeText } from "../moderationCopy.js";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+const DEFAULT_PROFILE_AVATAR = "assets/svg/default-profile.svg";
+const HEX64_REGEX = /^[0-9a-f]{64}$/i;
 
 export class VideoCard {
   constructor({
@@ -27,6 +30,7 @@ export class VideoCard {
     assets = {},
     state = {},
     variant = "default",
+    identity = null,
     ensureGlobalMoreMenuHandlers,
     onRequestCloseAllMenus,
     nsfwContext = null,
@@ -91,6 +95,7 @@ export class VideoCard {
         : null;
 
     this.designSystem = normalizeDesignSystemContext(designSystem);
+    this.identity = this.normalizeIdentity(identity);
 
     const normalizedVariant =
       typeof variant === "string" && variant.trim().toLowerCase() === "compact"
@@ -461,6 +466,8 @@ export class VideoCard {
       header.appendChild(controls);
     }
 
+    this.applyIdentityToAuthorElements();
+
     content.appendChild(title);
     content.appendChild(header);
 
@@ -499,6 +506,135 @@ export class VideoCard {
     this.applyPlaybackDatasets();
     this.bindEvents();
     this.refreshModerationUi();
+  }
+
+  normalizeIdentity(nextIdentity = {}, fallback = null) {
+    const baseline = fallback && typeof fallback === "object" ? fallback : {};
+    const candidate =
+      nextIdentity && typeof nextIdentity === "object" ? nextIdentity : {};
+    const video = this.video && typeof this.video === "object" ? this.video : {};
+
+    const pickFirstString = (
+      entries = [],
+      { allowHex = true, sanitizer = (value) => value } = {},
+    ) => {
+      for (const entry of entries) {
+        if (typeof entry !== "string") {
+          continue;
+        }
+        const trimmed = entry.trim();
+        if (!trimmed) {
+          continue;
+        }
+        if (!allowHex && HEX64_REGEX.test(trimmed)) {
+          continue;
+        }
+        const sanitized = sanitizer(trimmed);
+        if (!sanitized) {
+          continue;
+        }
+        return sanitized;
+      }
+      return "";
+    };
+
+    const pubkey = pickFirstString([
+      candidate.pubkey,
+      baseline.pubkey,
+      video.pubkey,
+      video.author?.pubkey,
+      video.creator?.pubkey,
+      video.profile?.pubkey,
+    ]);
+
+    const npub = pickFirstString([
+      candidate.npub,
+      baseline.npub,
+      video.npub,
+      video.authorNpub,
+      video.profile?.npub,
+    ]);
+
+    const shortNpub = pickFirstString([
+      candidate.shortNpub,
+      baseline.shortNpub,
+      video.shortNpub,
+      video.creatorNpub,
+    ]);
+
+    const name = pickFirstString(
+      [
+        candidate.name,
+        candidate.display_name,
+        candidate.displayName,
+        candidate.username,
+        baseline.name,
+        baseline.display_name,
+        baseline.displayName,
+        baseline.username,
+        video.creatorName,
+        video.authorName,
+        video.creator?.name,
+        video.author?.name,
+        video.profile?.display_name,
+        video.profile?.name,
+        video.profile?.username,
+      ],
+      { allowHex: false },
+    );
+
+    const picture = pickFirstString(
+      [
+        candidate.picture,
+        candidate.image,
+        candidate.photo,
+        baseline.picture,
+        baseline.image,
+        baseline.photo,
+        video.creatorPicture,
+        video.authorPicture,
+        video.creator?.picture,
+        video.author?.picture,
+        video.profile?.picture,
+        video.profile?.image,
+        video.profile?.photo,
+      ],
+      { sanitizer: (value) => sanitizeProfileMediaUrl(value) },
+    );
+
+    const resolvedName = name || shortNpub || npub || pubkey || "";
+    const resolvedPicture = picture || DEFAULT_PROFILE_AVATAR;
+
+    return {
+      name: resolvedName,
+      npub,
+      shortNpub,
+      pubkey,
+      picture: resolvedPicture,
+    };
+  }
+
+  updateIdentity(nextIdentity = {}) {
+    this.identity = this.normalizeIdentity(nextIdentity, this.identity);
+    this.applyIdentityToAuthorElements();
+  }
+
+  applyIdentityToAuthorElements() {
+    const nameLabel = this.identity?.name || "Unknown";
+    if (this.authorNameEl) {
+      this.authorNameEl.textContent = nameLabel || "Unknown";
+    }
+
+    if (this.authorPicEl) {
+      const picture = this.identity?.picture || DEFAULT_PROFILE_AVATAR;
+      if (this.authorPicEl.getAttribute("src") !== picture) {
+        this.authorPicEl.src = picture;
+      }
+
+      const altFallback =
+        nameLabel || this.identity?.shortNpub || this.identity?.npub || "Channel";
+      this.authorPicEl.alt = `${altFallback}'s avatar`;
+    }
   }
 
   setCardBackdropImage(src) {

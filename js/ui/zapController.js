@@ -7,10 +7,12 @@ import {
   getCachedLightningEntry,
   getCachedMetadataByUrl,
   getCachedPlatformLightningAddress,
+  isZapAllowanceExhaustedError,
   isMetadataEntryFresh,
   normalizeLightningAddressKey,
   rememberLightningMetadata,
   setCachedPlatformLightningAddress,
+  buildZapAllowanceExhaustedMessage,
   validateInvoiceAmount,
 } from "../payments/zapSharedState.js";
 import {
@@ -23,6 +25,7 @@ import { devLogger, userLogger } from "../utils/logger.js";
 import {
   ensureWallet as ensureWalletDefault,
   sendPayment as sendPaymentDefault,
+  resetWalletClient as resetWalletClientDefault,
 } from "../payments/nwcClient.js";
 
 const DEFAULT_SPLIT_SUMMARY = "Enter an amount to view the split.";
@@ -243,6 +246,146 @@ export default class ZapController {
 
       const { context, result } = attempt;
       const receipts = Array.isArray(result?.receipts) ? result.receipts : [];
+
+      const failureReceipts = receipts.filter((receipt) => {
+        if (!receipt || typeof receipt !== "object") {
+          return false;
+        }
+        if (typeof receipt.status === "string" && receipt.status !== "success") {
+          return true;
+        }
+        return Boolean(receipt.error);
+      });
+
+      if (failureReceipts.length) {
+        this.videoModal?.renderZapReceipts(receipts, { partial: true });
+
+        const failureShares = failureReceipts
+          .map((receipt) => {
+            const amount = Math.max(0, Math.round(Number(receipt.amount) || 0));
+            return {
+              type: receipt.recipientType || receipt.type || "creator",
+              amount,
+              address:
+                typeof receipt.address === "string" && receipt.address
+                  ? receipt.address
+                  : undefined,
+              error: receipt.error,
+            };
+          })
+          .filter((share) => share.amount > 0);
+
+        if (failureShares.length) {
+          this.markRetryPending(failureShares, trimmedComment);
+        }
+
+        const shareSummary = failureShares
+          .map((share) => {
+            const label =
+              share.type === "platform"
+                ? "Platform"
+                : share.type === "creator"
+                ? "Creator"
+                : "Lightning";
+            return `${label} ${share.amount} sats`;
+          })
+          .join(", ");
+
+        const failureMessage = failureReceipts
+          .map((receipt) => {
+            if (typeof receipt?.error?.message === "string") {
+              return receipt.error.message;
+            }
+            if (typeof receipt?.error === "string") {
+              return receipt.error;
+            }
+            return "";
+          })
+          .find((message) => message);
+
+        const budgetReceipt = failureReceipts.find((receipt) =>
+          isZapAllowanceExhaustedError(receipt?.error)
+        );
+        const isBudgetExceeded =
+          Boolean(budgetReceipt) ||
+          (typeof failureMessage === "string" &&
+            /budget exceeded/i.test(failureMessage));
+
+        let warningMessage;
+        if (isBudgetExceeded) {
+          warningMessage =
+            "Budget exceeded. Increase your wallet zap limit or reduce the platform fee, then retry the remaining shares.";
+        } else if (failureMessage) {
+          warningMessage = failureMessage;
+        } else {
+          warningMessage =
+            "Some zap shares failed. Press Send again to retry the remaining shares.";
+        }
+
+        if (shareSummary) {
+          const normalized = warningMessage.replace(/\.*$/, "");
+          warningMessage = `${normalized}. Remaining share(s): ${shareSummary}.`;
+        }
+
+        this.videoModal?.setZapStatus(warningMessage, "warning");
+        this.notifyError(warningMessage);
+        return;
+      }
+
+      const unvalidatedReceipts = receipts.filter((receipt) => {
+        if (!receipt || typeof receipt !== "object") {
+          return false;
+        }
+        const status =
+          typeof receipt.status === "string" ? receipt.status.toLowerCase() : "success";
+        if (status !== "success" && status !== "") {
+          return false;
+        }
+        const validationStatus =
+          typeof receipt.validation?.status === "string"
+            ? receipt.validation.status.toLowerCase()
+            : "";
+        if (!validationStatus || validationStatus === "skipped") {
+          return false;
+        }
+        return validationStatus !== "passed";
+      });
+
+      if (unvalidatedReceipts.length) {
+        this.videoModal?.renderZapReceipts(receipts, { partial: true });
+
+        const warningSummary = unvalidatedReceipts
+          .map((receipt) => {
+            const type = receipt.recipientType || receipt.type || "creator";
+            const label =
+              type === "platform" ? "Platform" : type === "creator" ? "Creator" : "Lightning";
+            const address =
+              typeof receipt.address === "string" && receipt.address
+                ? ` (${receipt.address})`
+                : "";
+            const reason =
+              typeof receipt.validation?.reason === "string" && receipt.validation.reason
+                ? ` — ${receipt.validation.reason}`
+                : " — Awaiting compliant receipt.";
+            return `${label}${address}${reason}`;
+          })
+          .join(" ");
+
+        const warningMessage = warningSummary
+          ? `Awaiting validated zap receipt. ${warningSummary}`
+          : "Awaiting validated zap receipt from the recipient.";
+
+        this.videoModal?.setZapStatus(warningMessage, "warning");
+        this.notifyError(warningMessage);
+
+        this.resetRetryState();
+        this.modalZapCommentValue = "";
+        this.videoModal?.resetZapForm({ amount: "", comment: "" });
+        this.videoModal?.setZapCompleted(true);
+        this.applyDefaultAmount();
+        return;
+      }
+
       this.videoModal?.renderZapReceipts(receipts, { partial: false });
 
       const creatorShare = context.shares.creatorShare;
@@ -474,6 +617,10 @@ export default class ZapController {
       typeof this.payments?.sendPayment === "function"
         ? (bolt11, params) => this.payments.sendPayment(bolt11, params)
         : (bolt11, params) => sendPaymentDefault(bolt11, params);
+    const resetWalletClientFn =
+      typeof this.payments?.resetWalletClient === "function"
+        ? () => this.payments.resetWalletClient()
+        : () => resetWalletClientDefault();
 
     let activeShare = null;
 
@@ -543,50 +690,59 @@ export default class ZapController {
           }
         },
         sendPayment: async (bolt11, params) => {
-          try {
-            const payment = await sendPaymentFn(bolt11, params);
-            if (Array.isArray(shareTracker)) {
-              const shareType = activeShare || "unknown";
-              const amount =
-                shareType === "platform"
-                  ? shares.platformShare
-                  : shares.creatorShare;
-              const address =
-                shareType === "platform"
-                  ? platformEntry?.address || getCachedPlatformLightningAddress()
-                  : creatorEntry?.address || lightningAddress;
-              shareTracker.push({
-                type: shareType,
+          const shareType = activeShare || "unknown";
+          const amount =
+            shareType === "platform"
+              ? shares.platformShare
+              : shares.creatorShare;
+          const address =
+            shareType === "platform"
+              ? platformEntry?.address || getCachedPlatformLightningAddress()
+              : creatorEntry?.address || lightningAddress;
+        try {
+          const payment = await sendPaymentFn(bolt11, params);
+          if (Array.isArray(shareTracker)) {
+            shareTracker.push({
+              type: shareType,
                 status: "success",
                 amount,
                 address,
                 payment,
-              });
-            }
-            return payment;
-          } catch (error) {
-            if (Array.isArray(shareTracker)) {
-              const shareType = activeShare || "unknown";
-              const amount =
-                shareType === "platform"
-                  ? shares.platformShare
-                  : shares.creatorShare;
-              const address =
-                shareType === "platform"
-                  ? platformEntry?.address || getCachedPlatformLightningAddress()
-                  : creatorEntry?.address || lightningAddress;
-              shareTracker.push({
-                type: shareType,
-                status: "error",
-                amount,
-                address,
-                error,
-              });
+            });
+          }
+          return payment;
+        } catch (error) {
+          const allowanceExhausted = isZapAllowanceExhaustedError(error);
+          if (allowanceExhausted) {
+            error.__zapAllowanceExhausted = true;
+          }
+          if (Array.isArray(shareTracker)) {
+            shareTracker.push({
+              type: shareType,
+              status: "error",
+              amount,
+              address,
+              error,
+              allowanceExhausted,
+            });
+          }
+          if (
+            typeof error?.message === "string" &&
+            error.message.toLowerCase().includes("timed out")
+            ) {
+              try {
+                resetWalletClientFn();
+              } catch (resetError) {
+                devLogger.warn(
+                  "[zap] Failed to reset wallet client after timeout",
+                  resetError
+                );
+              }
             }
             logZapError(
               "wallet.sendPayment",
               {
-                shareType: activeShare || "unknown",
+                shareType,
                 amount,
                 address,
                 tracker: shareTracker,
@@ -973,31 +1129,65 @@ export default class ZapController {
     const failureShares = tracker.filter(
       (entry) => entry && entry.status !== "success" && entry.amount > 0
     );
+    const allowanceExhausted =
+      isZapAllowanceExhaustedError(error) ||
+      failureShares.some((share) =>
+        isZapAllowanceExhaustedError(share?.error)
+      );
+    if (allowanceExhausted) {
+      this.resetRetryState();
+    }
+
     if (failureShares.length) {
-      this.markRetryPending(failureShares, comment);
-      const summary = failureShares
-        .map((share) => {
-          const label =
-            share.type === "platform"
-              ? "Platform"
-              : share.type === "creator"
-              ? "Creator"
-              : "Lightning";
-          return `${label} ${share.amount} sats`;
-        })
-        .join(", ");
-      const tone = tracker.length > failureShares.length ? "warning" : "error";
-      const statusMessage =
-        tracker.length > failureShares.length
-          ? `Partial zap failure. Press Send again to retry: ${summary}.`
-          : `Zap failed. Press Send again to retry: ${summary}.`;
-      this.videoModal?.setZapStatus(statusMessage, tone);
-      this.notifyError(error?.message || statusMessage);
+      if (allowanceExhausted) {
+        const allowanceShare = failureShares.find((share) =>
+          isZapAllowanceExhaustedError(share?.error)
+        );
+        const allowanceSource = isZapAllowanceExhaustedError(error)
+          ? error
+          : allowanceShare?.error;
+        const allowanceMessage = buildZapAllowanceExhaustedMessage(
+          allowanceSource
+        );
+        const partialSuccess = tracker.length > failureShares.length;
+        const tone = partialSuccess ? "warning" : "error";
+        const statusMessage = partialSuccess
+          ? `Some zap shares succeeded before your wallet allowance was exhausted. ${allowanceMessage}`
+          : allowanceMessage;
+        this.videoModal?.setZapStatus(statusMessage, tone);
+        this.notifyError(statusMessage);
+      } else {
+        this.markRetryPending(failureShares, comment);
+        const summary = failureShares
+          .map((share) => {
+            const label =
+              share.type === "platform"
+                ? "Platform"
+                : share.type === "creator"
+                ? "Creator"
+                : "Lightning";
+            return `${label} ${share.amount} sats`;
+          })
+          .join(", ");
+        const tone = tracker.length > failureShares.length ? "warning" : "error";
+        const statusMessage =
+          tracker.length > failureShares.length
+            ? `Partial zap failure. Press Send again to retry: ${summary}.`
+            : `Zap failed. Press Send again to retry: ${summary}.`;
+        this.videoModal?.setZapStatus(statusMessage, tone);
+        this.notifyError(error?.message || statusMessage);
+      }
     } else {
       this.resetRetryState();
-      const message = error?.message || "Zap failed. Please try again.";
-      this.videoModal?.setZapStatus(message, "error");
-      this.notifyError(message);
+      if (allowanceExhausted) {
+        const allowanceMessage = buildZapAllowanceExhaustedMessage(error);
+        this.videoModal?.setZapStatus(allowanceMessage, "error");
+        this.notifyError(allowanceMessage);
+      } else {
+        const message = error?.message || "Zap failed. Please try again.";
+        this.videoModal?.setZapStatus(message, "error");
+        this.notifyError(message);
+      }
     }
   }
 

@@ -81,6 +81,8 @@ test("normalizes nip71 metadata collections", () => {
       imeta: [
         {
           url: " https://cdn.example.com/hls/playlist.m3u8 ",
+          duration: " 120.5 ",
+          bitrate: " 2100000 ",
           service: [" wss://relay.example.com "],
         },
       ],
@@ -144,6 +146,26 @@ test("normalizes nip71 metadata collections", () => {
   ]);
   assert.equal(nip71.imeta[0].url, "https://cdn.example.com/hls/playlist.m3u8");
   assert.deepEqual(nip71.imeta[0].service, ["wss://relay.example.com"]);
+  assert.equal(nip71.imeta[0].duration, 120.5);
+  assert.equal(nip71.imeta[0].bitrate, 2100000);
+});
+
+test("derives legacy duration fallback from imeta variants", () => {
+  const { payload, errors } = normalizeVideoNotePayload({
+    title: "Duration Fallback",
+    nip71: {
+      imeta: [
+        { url: "https://cdn.example.com/a.mp4", duration: 12.5 },
+        { url: "https://cdn.example.com/b.mp4", duration: "45.75" },
+      ],
+    },
+  });
+
+  assert.deepEqual(errors, []);
+  assert.ok(payload.nip71, "Expected nip71 payload");
+  assert.equal(payload.nip71.duration, 45.75);
+  assert.equal(payload.nip71.imeta[0].duration, 12.5);
+  assert.equal(payload.nip71.imeta[1].duration, 45.75);
 });
 
 test("reports validation errors for missing fields", () => {

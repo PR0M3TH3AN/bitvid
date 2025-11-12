@@ -24,6 +24,15 @@
 export const IS_DEV_MODE = true;
 
 /**
+ * Whether development builds should surface extra verbose diagnostics.
+ *
+ * Set this to `true` to keep high-volume development warnings (like COUNT
+ * request failures) visible in the console. Flip it to `false` when you want
+ * a quieter dev mode without disabling other development helpers entirely.
+ */
+export const IS_VERBOSE_DEV_MODE = false;
+
+/**
  * Whether the current deployment should operate in lockdown mode.
  *
  * When `true`, bitvid restricts access to operator-approved functionality and
@@ -109,6 +118,17 @@ export const BETA_URL = "https://beta.bitvid.network/";
  * (null or an empty string) to hide the DNS entry from the sidebar.
  */
 export const DNS_URL = "https://bitvid.network/";
+
+/**
+ * Optional external destination for the Tip Jar menu link.
+ *
+ * Configure this with the Lightning tipping experience you want to surface in
+ * the sidebar dropup. When left empty (null or an empty string) the Tip Jar
+ * entry is removed entirely so operators that do not collect donations are not
+ * forced to show the control.
+ */
+export const TIP_JAR_URL =
+  "https://nostrtipjar.netlify.app/?n=npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe";
 
 /**
  * Default image included in automated moderation DMs.

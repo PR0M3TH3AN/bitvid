@@ -3,6 +3,7 @@
 import { isDevMode } from "../config.js";
 import { FEATURE_PUBLISH_NIP71 } from "../constants.js";
 import { accessControl } from "../accessControl.js";
+import { bytesToHex, sha256 } from "../../vendor/crypto-helpers.bundle.min.js";
 // 🔧 merged conflicting changes from codex/update-video-publishing-and-parsing-logic vs unstable
 import {
   buildNip71MetadataTags,
@@ -38,7 +39,6 @@ import {
 } from "./watchHistory.js";
 import {
   buildVideoPostEvent,
-  buildVideoMirrorEvent,
   buildRepostEvent,
   buildWatchHistoryIndexEvent,
   buildWatchHistoryChunkEvent,
@@ -58,6 +58,11 @@ import {
   listVideoComments as listVideoCommentsForClient,
   subscribeVideoComments as subscribeVideoCommentsForClient,
 } from "./commentEvents.js";
+import {
+  logCountTimeoutCleanupFailure,
+  logRelayCountFailure,
+} from "./countDiagnostics.js";
+import "./maxListenerDiagnostics.js";
 import {
   publishEventToRelay,
   publishEventToRelays,
@@ -345,7 +350,7 @@ function withRequestTimeout(promise, timeoutMs, onTimeout, message = "Request ti
         try {
           onTimeout();
         } catch (cleanupError) {
-          devLogger.warn("[nostr] COUNT timeout cleanup failed:", cleanupError);
+          logCountTimeoutCleanupFailure(cleanupError);
         }
       }
       reject(new Error(message));
@@ -406,6 +411,85 @@ function extractVideoPublishPayload(rawPayload) {
     videoData.isForKids === true && !isNsfw;
 
   return { videoData: normalizedVideoData, nip71Metadata };
+}
+
+function normalizeHexHash(candidate) {
+  if (candidate === undefined || candidate === null) {
+    return "";
+  }
+  const stringValue =
+    typeof candidate === "string" ? candidate : String(candidate);
+  const trimmed = stringValue.trim().toLowerCase();
+  if (!trimmed) {
+    return "";
+  }
+  return HEX64_REGEX.test(trimmed) ? trimmed : "";
+}
+
+const BlobConstructor = typeof Blob !== "undefined" ? Blob : null;
+let sharedTextEncoder = null;
+
+function getSharedTextEncoder() {
+  if (!sharedTextEncoder && typeof TextEncoder !== "undefined") {
+    sharedTextEncoder = new TextEncoder();
+  }
+  return sharedTextEncoder;
+}
+
+async function valueToUint8Array(value) {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    if (
+      BlobConstructor &&
+      value instanceof BlobConstructor &&
+      typeof value.arrayBuffer === "function"
+    ) {
+      const buffer = await value.arrayBuffer();
+      return new Uint8Array(buffer);
+    }
+  } catch (error) {
+    devLogger.warn("[nostr] Failed to read Blob while computing hash:", error);
+    return null;
+  }
+
+  if (typeof ArrayBuffer !== "undefined") {
+    if (value instanceof ArrayBuffer) {
+      return new Uint8Array(value);
+    }
+    if (ArrayBuffer.isView?.(value)) {
+      return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+    }
+  }
+
+  if (typeof Buffer !== "undefined" && Buffer.isBuffer?.(value)) {
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  }
+
+  if (typeof value === "string") {
+    const encoder = getSharedTextEncoder();
+    return encoder ? encoder.encode(value) : null;
+  }
+
+  return null;
+}
+
+async function computeSha256HexFromValue(value) {
+  const data = await valueToUint8Array(value);
+  if (!data) {
+    return "";
+  }
+
+  try {
+    const digest = sha256(data);
+    const hex = typeof digest === "string" ? digest : bytesToHex(digest);
+    return hex ? hex.toLowerCase() : "";
+  } catch (error) {
+    devLogger.warn("[nostr] Failed to compute SHA-256 for mirror payload:", error);
+    return "";
+  }
 }
 
 function eventToAddressPointer(event) {
@@ -689,23 +773,30 @@ function buildDmFilters(actorPubkey, { since, until, limit } = {}) {
 }
 
 
-const EXTENSION_MIME_MAP = {
-  mp4: "video/mp4",
-  m4v: "video/x-m4v",
-  webm: "video/webm",
-  mkv: "video/x-matroska",
-  mov: "video/quicktime",
-  avi: "video/x-msvideo",
-  ogv: "video/ogg",
-  ogg: "video/ogg",
-  m3u8: "application/x-mpegURL",
-  mpd: "application/dash+xml",
-  ts: "video/mp2t",
-  mpg: "video/mpeg",
-  mpeg: "video/mpeg",
-  flv: "video/x-flv",
-  "3gp": "video/3gpp",
-};
+const EXTENSION_MIME_MAP = Object.freeze(
+  Object.fromEntries(
+    Object.entries({
+      mp4: "video/mp4",
+      m4v: "video/x-m4v",
+      webm: "video/webm",
+      mkv: "video/x-matroska",
+      mov: "video/quicktime",
+      avi: "video/x-msvideo",
+      ogv: "video/ogg",
+      ogg: "video/ogg",
+      m3u8: "application/x-mpegurl",
+      mpd: "application/dash+xml",
+      ts: "video/mp2t",
+      mpg: "video/mpeg",
+      mpeg: "video/mpeg",
+      flv: "video/x-flv",
+      "3gp": "video/3gpp",
+    }).map(([extension, mimeType]) => [
+      extension,
+      typeof mimeType === "string" ? mimeType.toLowerCase() : "",
+    ]),
+  ),
+);
 
 function inferMimeTypeFromUrl(url) {
   if (!url || typeof url !== "string") {
@@ -728,7 +819,8 @@ function inferMimeTypeFromUrl(url) {
   }
 
   const extension = match[1].toLowerCase();
-  return EXTENSION_MIME_MAP[extension] || "";
+  const mimeType = EXTENSION_MIME_MAP[extension];
+  return typeof mimeType === "string" ? mimeType : "";
 }
 
 function getActiveKey(video) {
@@ -2204,6 +2296,44 @@ export class NostrClient {
     return resolveActiveSigner(normalizedPubkey || extensionPubkey);
   }
 
+  resolveEventDTag(event, fallbackEvent = null) {
+    const immediate = getDTagValueFromTags(event?.tags);
+    if (immediate) {
+      return immediate;
+    }
+
+    const fallbackTag = getDTagValueFromTags(fallbackEvent?.tags);
+    if (fallbackTag) {
+      return fallbackTag;
+    }
+
+    const candidateIds = [];
+    const pushCandidate = (candidate) => {
+      if (typeof candidate === "string" && candidate.trim()) {
+        const normalized = candidate.trim();
+        if (!candidateIds.includes(normalized)) {
+          candidateIds.push(normalized);
+        }
+      }
+    };
+
+    pushCandidate(event?.id);
+    pushCandidate(fallbackEvent?.id);
+
+    for (const candidateId of candidateIds) {
+      const rawEvent = this.rawEvents?.get?.(candidateId);
+      if (!rawEvent) {
+        continue;
+      }
+      const rawTag = getDTagValueFromTags(rawEvent.tags);
+      if (rawTag) {
+        return rawTag;
+      }
+    }
+
+    return "";
+  }
+
   applyRootCreatedAt(video) {
     if (!video || typeof video !== "object") {
       return null;
@@ -3597,8 +3727,6 @@ export class NostrClient {
     const subscription = this.pool.sub(relaysToUse, filters);
     const seenIds = new Set();
 
-    const contextPromise = this.buildDmDecryptContext(actorPubkeyInput);
-
     subscription.on("event", (event) => {
       if (!event || typeof event !== "object") {
         return;
@@ -3624,9 +3752,14 @@ export class NostrClient {
         return;
       }
 
-      contextPromise
-        .then((context) => {
+      (async () => {
+        try {
+          const contextPromise = this.getCurrentDmDecryptContextPromise(actorPubkeyInput);
+          const context = await contextPromise;
+
           if (!context.decryptors.length) {
+            this.refreshDmDecryptContext(actorPubkeyInput);
+
             if (typeof options.onFailure === "function") {
               options.onFailure(
                 { ok: false, event },
@@ -3636,39 +3769,31 @@ export class NostrClient {
             return;
           }
 
-          return this.decryptDirectMessageEvent(event, {
+          const result = await this.decryptDirectMessageEvent(event, {
             actorPubkey: context.actorPubkey || actorPubkeyInput,
-          })
-            .then((result) => {
-              if (result?.ok) {
-                if (typeof options.onMessage === "function") {
-                  options.onMessage(result, { event });
-                }
-              } else if (typeof options.onFailure === "function") {
-                options.onFailure(result, { event });
-              }
-            })
-            .catch((error) => {
-              if (typeof options.onError === "function") {
-                options.onError(error, { event });
-              } else {
-                devLogger.warn(
-                  "[nostr] Failed to decrypt DM event from subscription.",
-                  {
-                    error,
-                    id: eventId,
-                  },
-                );
-              }
-            });
-        })
-        .catch((error) => {
+          });
+
+          if (result?.ok) {
+            if (typeof options.onMessage === "function") {
+              options.onMessage(result, { event });
+            }
+          } else if (typeof options.onFailure === "function") {
+            options.onFailure(result, { event });
+          }
+        } catch (error) {
           if (typeof options.onError === "function") {
             options.onError(error, { event });
           } else {
-            devLogger.warn("[nostr] Failed to prepare DM decrypt context.", error);
+            devLogger.warn(
+              "[nostr] Failed to decrypt DM event from subscription.",
+              {
+                error,
+                id: eventId,
+              },
+            );
           }
-        });
+        }
+      })();
     });
 
     if (typeof options.onEose === "function") {
@@ -3692,6 +3817,41 @@ export class NostrClient {
     };
 
     return subscription;
+  }
+
+  getCurrentDmDecryptContextPromise(actorPubkeyInput = null) {
+    const normalizedActor = normalizeActorKey(actorPubkeyInput);
+    const cacheKey = normalizedActor || 'default';
+
+    if (!this.dmDecryptContextCache) {
+      this.dmDecryptContextCache = new Map();
+    }
+
+    let promise = this.dmDecryptContextCache.get(cacheKey);
+    if (!promise) {
+      promise = this.buildDmDecryptContext(actorPubkeyInput);
+      this.dmDecryptContextCache.set(cacheKey, promise);
+    }
+
+    return promise;
+  }
+
+  refreshDmDecryptContext(actorPubkeyInput = null) {
+    const normalizedActor = normalizeActorKey(actorPubkeyInput);
+    const cacheKey = normalizedActor || 'default';
+
+    if (!this.dmDecryptContextCache) {
+      this.dmDecryptContextCache = new Map();
+    }
+
+    if (this.dmDecryptContextCache.has(cacheKey)) {
+      this.dmDecryptContextCache.delete(cacheKey);
+    }
+
+    const newPromise = this.buildDmDecryptContext(actorPubkeyInput);
+    this.dmDecryptContextCache.set(cacheKey, newPromise);
+
+    return newPromise;
   }
 
   async sendDirectMessage(targetNpub, message, actorPubkeyOverride = null) {
@@ -3927,7 +4087,7 @@ export class NostrClient {
       typeof videoData.title === "string" ? videoData.title.trim() : "";
     const providedMimeType =
       typeof videoData.mimeType === "string"
-        ? videoData.mimeType.trim()
+        ? videoData.mimeType.trim().toLowerCase()
         : "";
 
     const createdAt = Math.floor(Date.now() / 1000);
@@ -3995,52 +4155,111 @@ export class NostrClient {
 
       if (finalUrl) {
         const inferredMimeType = inferMimeTypeFromUrl(finalUrl);
-        const mimeType =
-          providedMimeType || inferredMimeType || "application/octet-stream";
+        const mimeTypeSource =
+          providedMimeType ||
+          inferredMimeType ||
+          "application/octet-stream";
+        const mimeType = mimeTypeSource.toLowerCase();
 
-        const mirrorTags = [
-          ["url", finalUrl],
-          ["m", mimeType],
+        const fileHashCandidates = [
+          videoData.fileSha256,
+          videoData.uploadedFileSha256,
+          videoPayload?.legacyFormData?.fileSha256,
+          videoPayload?.fileSha256,
         ];
-
-        if (finalThumbnail) {
-          mirrorTags.push(["thumb", finalThumbnail]);
+        let fileSha256 = "";
+        for (const candidate of fileHashCandidates) {
+          const normalized = normalizeHexHash(candidate);
+          if (normalized) {
+            fileSha256 = normalized;
+            break;
+          }
         }
 
-        const altText = finalDescription || finalTitle || "";
-        if (altText) {
-          mirrorTags.push(["alt", altText]);
+        const originalHashCandidates = [
+          videoData.originalFileSha256,
+          videoPayload?.legacyFormData?.originalFileSha256,
+          videoPayload?.originalFileSha256,
+        ];
+        let originalFileSha256 = "";
+        for (const candidate of originalHashCandidates) {
+          const normalized = normalizeHexHash(candidate);
+          if (normalized) {
+            originalFileSha256 = normalized;
+            break;
+          }
         }
 
-        if (!contentObject.isPrivate && finalMagnet) {
-          mirrorTags.push(["magnet", finalMagnet]);
+        const uploadedFile =
+          videoData?.uploadedFile ||
+          videoData?.file ||
+          videoPayload?.legacyFormData?.uploadedFile ||
+          videoPayload?.legacyFormData?.file ||
+          videoPayload?.uploadedFile ||
+          videoPayload?.file ||
+          null;
+
+        const originalFile =
+          videoData?.originalFile ||
+          videoPayload?.legacyFormData?.originalFile ||
+          videoPayload?.originalFile ||
+          uploadedFile;
+
+        if (!fileSha256 && uploadedFile) {
+          fileSha256 = await computeSha256HexFromValue(uploadedFile);
         }
 
-        const mirrorEvent = buildVideoMirrorEvent({
-          pubkey: normalizedPubkey,
+        if (!originalFileSha256 && originalFile) {
+          originalFileSha256 = await computeSha256HexFromValue(originalFile);
+        }
+
+        if (!originalFileSha256 && fileSha256) {
+          originalFileSha256 = fileSha256;
+        }
+
+        const mirrorOptions = {
+          url: finalUrl,
+          magnet: finalMagnet,
+          thumbnail: finalThumbnail,
+          description: finalDescription,
+          title: finalTitle,
+          mimeType,
+          isPrivate: contentObject.isPrivate,
+          actorPubkey: normalizedPubkey,
           created_at: createdAt,
-          tags: mirrorTags,
-          content: altText,
-        });
+        };
 
-        devLogger.log("Prepared NIP-94 mirror event:", mirrorEvent);
+        if (fileSha256) {
+          mirrorOptions.fileSha256 = fileSha256;
+        }
+
+        if (originalFileSha256) {
+          mirrorOptions.originalFileSha256 = originalFileSha256;
+        }
 
         try {
-          await this.signAndPublishEvent(mirrorEvent, {
-            context: "NIP-94 mirror",
-            logName: "NIP-94 mirror",
-            devLogLabel: "NIP-94 mirror",
-            rejectionLogLevel: "warn",
-          });
-
-          devLogger.log(
-            "NIP-94 mirror dispatched for hosted URL:",
-            finalUrl
+          const mirrorResult = await this.mirrorVideoEvent(
+            signedEvent.id,
+            mirrorOptions,
           );
+
+          if (mirrorResult?.ok) {
+            devLogger.log("Prepared NIP-94 mirror event:", mirrorResult.event);
+            devLogger.log(
+              "NIP-94 mirror dispatched for hosted URL:",
+              finalUrl,
+            );
+          } else if (mirrorResult) {
+            devLogger.warn(
+              "[nostr] NIP-94 mirror rejected:",
+              mirrorResult.error || "mirror-failed",
+              mirrorResult.details || null,
+            );
+          }
         } catch (mirrorError) {
           devLogger.warn(
-            "[nostr] NIP-94 mirror rejected by all relays:",
-            mirrorError
+            "[nostr] Failed to publish NIP-94 mirror:",
+            mirrorError,
           );
         }
       } else devLogger.log("Skipping NIP-94 mirror: no hosted URL provided.");
@@ -4175,8 +4394,9 @@ export class NostrClient {
   }
 
   /**
-   * Edits a video by creating a *new event* with a brand-new d tag,
-   * but reuses the same videoRootId as the original.
+   * Edits a video by creating a new event that reuses the existing d tag
+   * so subsequent publishes overwrite the same NIP-33 addressable record
+   * while keeping the original videoRootId.
    *
    * This version forces version=2 for the original note and uses
    * lowercase comparison for public keys.
@@ -4267,8 +4487,17 @@ export class NostrClient {
     // Use the existing videoRootId (or fall back to the base event's ID)
     const oldRootId = baseEvent.videoRootId || baseEvent.id;
 
-    // Generate a new d-tag so that the edit gets its own share link
-    const newD = `${Date.now()}-edit-${Math.random().toString(36).slice(2)}`;
+    const preservedDTag = this.resolveEventDTag(baseEvent, originalEventStub);
+    const fallbackDTag =
+      (typeof baseEvent.id === "string" && baseEvent.id.trim()) ||
+      (typeof originalEventStub?.id === "string" && originalEventStub.id.trim()) ||
+      "";
+    const finalDTagValue =
+      (typeof preservedDTag === "string" && preservedDTag.trim()) || fallbackDTag;
+
+    if (!finalDTagValue) {
+      throw new Error("Unable to determine a stable d tag for this edit.");
+    }
 
     // Build the updated content object
     const contentObject = {
@@ -4313,13 +4542,13 @@ export class NostrClient {
     const event = buildVideoPostEvent({
       pubkey: userPubkeyLower,
       created_at: Math.floor(Date.now() / 1000),
-      dTagValue: newD,
+      dTagValue: finalDTagValue,
       content: contentObject,
       additionalTags: nip71Tags,
     });
 
     devLogger.log("Creating edited event with root ID:", oldRootId);
-          devLogger.log("Event content:", event.content);
+    devLogger.log("Event content:", event.content);
 
     await this.ensureActiveSignerForPubkey(userPubkeyLower);
 
@@ -4442,9 +4671,9 @@ export class NostrClient {
       };
     }
 
-    const safeTags = Array.isArray(baseEvent.tags) ? baseEvent.tags : [];
-    const dTag = safeTags.find((t) => t[0] === "d");
-    const existingD = dTag ? dTag[1] : null;
+    const existingD = this.resolveEventDTag(baseEvent, originalEvent) || null;
+    const stableDTag =
+      existingD || baseEvent?.id || originalEvent?.id || null;
 
     let oldContent = {};
     try {
@@ -4459,7 +4688,7 @@ export class NostrClient {
       oldContent.videoRootId ||
       (existingD
         ? `LEGACY:${baseEvent.pubkey}:${existingD}`
-        : baseEvent.id);
+        : stableDTag || baseEvent?.id || originalEvent?.id || "");
 
     const oldIsNsfw = oldContent.isNsfw === true;
     const oldIsForKids = oldContent.isForKids === true && !oldIsNsfw;
@@ -4480,8 +4709,11 @@ export class NostrClient {
     };
 
     const tags = [["t", "video"]];
-    if (existingD) {
-      tags.push(["d", existingD]);
+    if (stableDTag) {
+      // NIP-78 requires replaceable events to publish a stable "d" tag.
+      // Legacy videos may not carry one, so reuse the prior event id to
+      // guarantee the revert stays addressable.
+      tags.push(["d", stableDTag]);
     }
 
     const event = {
@@ -4610,7 +4842,7 @@ export class NostrClient {
       (targetVideo && typeof targetVideo.videoRootId === "string"
         ? targetVideo.videoRootId.trim()
         : "");
-    const targetDTag = targetVideo ? getDTagValueFromTags(targetVideo.tags) : "";
+    const targetDTag = this.resolveEventDTag(targetVideo);
 
     if (targetVideo) {
       try {
@@ -4640,7 +4872,7 @@ export class NostrClient {
 
       const candidateRoot =
         typeof candidate.videoRootId === "string" ? candidate.videoRootId : "";
-      const candidateDTag = getDTagValueFromTags(candidate.tags);
+      const candidateDTag = this.resolveEventDTag(candidate);
       const sameRoot = inferredRoot && candidateRoot === inferredRoot;
       const sameD = targetDTag && candidateDTag === targetDTag;
       const legacyMatch =
@@ -5739,18 +5971,15 @@ export class NostrClient {
           });
           const count = this.extractCountValue(frame?.[2]);
           return { url, ok: true, frame, count };
-          } catch (error) {
-            const isUnsupported = error?.code === "count-unsupported";
-            if (isUnsupported) {
-              this.countUnsupportedRelays.add(url);
-            } else {
-              devLogger.warn(
-                `[nostr] COUNT request failed on ${url}:`,
-                error,
-              );
-            }
-            return { url, ok: false, error, unsupported: isUnsupported };
+        } catch (error) {
+          const isUnsupported = error?.code === "count-unsupported";
+          if (isUnsupported) {
+            this.countUnsupportedRelays.add(url);
+          } else {
+            logRelayCountFailure(url, error);
           }
+          return { url, ok: false, error, unsupported: isUnsupported };
+        }
       })
     );
 
@@ -5830,7 +6059,7 @@ export class NostrClient {
     const targetRoot = typeof video.videoRootId === "string" ? video.videoRootId : "";
     const targetPubkey = typeof video.pubkey === "string" ? video.pubkey.toLowerCase() : "";
 
-    const targetDTag = getDTagValueFromTags(video.tags);
+    const targetDTag = this.resolveEventDTag(video);
 
     const collectLocalMatches = () => {
       const seen = new Set();
@@ -5850,7 +6079,7 @@ export class NostrClient {
 
         const candidateRoot =
           typeof candidate.videoRootId === "string" ? candidate.videoRootId : "";
-        const candidateDTag = getDTagValueFromTags(candidate.tags);
+        const candidateDTag = this.resolveEventDTag(candidate, video);
 
         const sameRoot = targetRoot && candidateRoot === targetRoot;
         const sameD = targetDTag && candidateDTag === targetDTag;

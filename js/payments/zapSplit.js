@@ -7,10 +7,13 @@ import {
   fetchPayServiceData,
   validateInvoiceAmount,
   requestInvoice,
+  encodeLnurlBech32,
 } from "./lnurl.js";
 import { ensureWallet, sendPayment } from "./nwcClient.js";
 import { getPlatformLightningAddress } from "./platformAddress.js";
+import { RELAY_URLS } from "../nostr/toolkit.js";
 import { userLogger } from "../utils/logger.js";
+import { validateZapReceipt } from "./zapReceiptValidator.js";
 import {
   clampPercent,
   parsePercentValue,
@@ -25,9 +28,11 @@ const DEFAULT_DEPS = Object.freeze({
     fetchPayServiceData,
     validateInvoiceAmount,
     requestInvoice,
+    encodeLnurlBech32,
   }),
   wallet: Object.freeze({ ensureWallet, sendPayment }),
   platformAddress: Object.freeze({ getPlatformLightningAddress }),
+  validator: Object.freeze({ validateZapReceipt }),
 });
 
 const globalScope =
@@ -206,7 +211,17 @@ function mergeDependencies(overrides = {}) {
     ...(overrides.platformAddress || {}),
   };
 
-  return { lnurl: lnurlDeps, wallet: walletDeps, platformAddress: platformDeps };
+  const validatorDeps = {
+    ...DEFAULT_DEPS.validator,
+    ...(overrides.validator || {}),
+  };
+
+  return {
+    lnurl: lnurlDeps,
+    wallet: walletDeps,
+    platformAddress: platformDeps,
+    validator: validatorDeps,
+  };
 }
 
 function getNostrTools() {
@@ -271,6 +286,58 @@ function derivePointerTag(videoEvent) {
   return ["a", value];
 }
 
+function resolveRelayUrls(wallet) {
+  const normalized = [];
+  const seen = new Set();
+
+  const addCandidate = (candidate) => {
+    if (!candidate) {
+      return;
+    }
+    if (Array.isArray(candidate)) {
+      candidate.forEach(addCandidate);
+      return;
+    }
+    if (typeof candidate === "string") {
+      const trimmed = candidate.trim();
+      if (trimmed && !seen.has(trimmed)) {
+        seen.add(trimmed);
+        normalized.push(trimmed);
+      }
+    }
+  };
+
+  if (wallet && typeof wallet === "object") {
+    addCandidate(wallet.relayUrls);
+    addCandidate(wallet.relays);
+    addCandidate(wallet.relayUrl);
+  }
+
+  if (!normalized.length) {
+    addCandidate(Array.isArray(RELAY_URLS) ? RELAY_URLS : []);
+  }
+
+  return normalized;
+}
+
+function resolveBech32Lnurl(resolved, encodeFn) {
+  const candidate = typeof resolved?.address === "string" ? resolved.address.trim() : "";
+  if (candidate && candidate.toLowerCase().startsWith("lnurl")) {
+    return candidate.toLowerCase();
+  }
+
+  const callbackUrl = typeof resolved?.url === "string" ? resolved.url.trim() : "";
+  if (!callbackUrl) {
+    return "";
+  }
+
+  if (typeof encodeFn !== "function") {
+    throw new Error("LNURL encoder is unavailable.");
+  }
+
+  return encodeFn(callbackUrl);
+}
+
 function buildZapRequest({
   wallet,
   recipientPubkey,
@@ -295,11 +362,19 @@ function buildZapRequest({
   if (pointerTag) {
     tags.push(pointerTag);
   }
-  if (lnurl) {
-    tags.push(["lnurl", lnurl]);
+  if (typeof lnurl === "string") {
+    const normalizedLnurl = lnurl.trim();
+    if (normalizedLnurl) {
+      tags.push(["lnurl", normalizedLnurl]);
+    }
   }
   if (Number.isFinite(amountSats)) {
     tags.push(["amount", String(Math.max(0, Math.round(amountSats)) * 1000)]);
+  }
+
+  const relayUrls = resolveRelayUrls(wallet);
+  if (relayUrls.length) {
+    tags.push(["relays", ...relayUrls]);
   }
 
   const event = {
@@ -342,6 +417,11 @@ async function processShare({
   const metadata = await deps.lnurl.fetchPayServiceData(resolved.url);
   const { amountMsats } = deps.lnurl.validateInvoiceAmount(metadata, amountSats);
 
+  const lnurlTag = resolveBech32Lnurl(resolved, deps.lnurl.encodeLnurlBech32);
+  if (!lnurlTag) {
+    throw new Error("Unable to resolve LNURL for zap request.");
+  }
+
   let zapRequest = null;
   if (metadata.allowsNostr === true || metadata.nostrPubkey) {
     const recipientPubkey = determineRecipientPubkey({
@@ -356,7 +436,7 @@ async function processShare({
         videoEvent,
         amountSats,
         comment,
-        lnurl: resolved.url,
+        lnurl: lnurlTag,
       });
     }
   }
@@ -365,23 +445,84 @@ async function processShare({
     amountMsats,
     comment,
     zapRequest,
+    lnurl: lnurlTag,
   });
 
-  const payment = await deps.wallet.sendPayment(invoice.invoice, {
-    amountSats,
-    zapRequest,
-  });
+  try {
+    const payment = await deps.wallet.sendPayment(invoice.invoice, {
+      amountSats,
+      zapRequest,
+      lnurl: lnurlTag,
+    });
 
-  return {
-    recipientType,
-    address,
-    amount: amountSats,
-    lnurl: resolved,
-    metadata,
-    invoice,
-    payment,
-    zapRequest,
-  };
+    let validation = null;
+    if (typeof deps.validator.validateZapReceipt === "function") {
+      try {
+        validation = await deps.validator.validateZapReceipt(
+          {
+            zapRequest,
+            amountSats,
+            metadata,
+            invoice,
+            payment,
+            lnurl: resolved,
+            recipientType,
+            address,
+          }
+        );
+      } catch (validationError) {
+        userLogger.warn(
+          `[zapSplit] Zap receipt validation threw for ${recipientType} share.`,
+          validationError
+        );
+        validation = {
+          status: "failed",
+          reason: "Zap receipt validation encountered an unexpected error.",
+          event: null,
+        };
+      }
+    }
+
+    const receipt = {
+      recipientType,
+      address,
+      amount: amountSats,
+      lnurl: resolved,
+      metadata,
+      invoice,
+      payment,
+      zapRequest,
+      status: "success",
+    };
+
+    if (validation && typeof validation === "object") {
+      receipt.validation = validation;
+      if (validation.status === "passed" && validation.event) {
+        receipt.validatedEvent = validation.event;
+      } else if (validation.status === "failed") {
+        receipt.validationFailed = true;
+      }
+    }
+
+    return receipt;
+  } catch (error) {
+    userLogger.warn(
+      `[zapSplit] Failed to send ${recipientType} zap share.`,
+      error
+    );
+    return {
+      recipientType,
+      address,
+      amount: amountSats,
+      lnurl: resolved,
+      metadata,
+      invoice,
+      payment: null,
+      zapRequest,
+      status: "error",
+      error,
+    };
+  }
 }
 
 export async function splitAndZap(

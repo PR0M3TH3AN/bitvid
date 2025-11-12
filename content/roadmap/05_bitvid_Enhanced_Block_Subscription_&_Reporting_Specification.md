@@ -47,8 +47,8 @@ This document describes how to implement **Block Lists**, **Subscription Lists**
 A **Subscription List** lets users follow video creators independently of their main “following” list on Nostr. It supports categorization and can be made private via encryption.
 
 ### Event Kind
-- **Kind**: `30002`  
-- **Description**: “Video Subscription List” (inspired by NIP-51 but for custom lists)
+- **Kind**: `30000`
+- **Description**: “Video Subscription Follow Set” aligned with [NIP-51 follow sets](../../docs/nips/51.md#sets)
 
 ### JSON Structure
 **Public Tags**  
@@ -64,7 +64,7 @@ A **Subscription List** lets users follow video creators independently of their 
 ### Example
 ```json
 {
-  "kind": 30002,
+  "kind": 30000,
   "tags": [
     ["d", "favorite-creators"],
     ["p", "npub1creator1pubkey"],
@@ -208,7 +208,7 @@ The `p` tag references a pubkey, and the `e` tag references a note. The third el
 ## Implementation Details
 
 ### Replaceable Events
-- **Subscription Lists** (`30002`) and **Block Lists** (`10001`) can be implemented as replaceable events by using a deterministic `d` tag.  
+- **Subscription Lists** (`30000`) and **Block Lists** (`10001`) can be implemented as replaceable events by using a deterministic `d` tag.
 - For example, `["d","my-blocklist"]` ensures older events with the same `d` are replaced when new ones arrive.
 
 ### Encryption
@@ -220,7 +220,7 @@ The `p` tag references a pubkey, and the `e` tag references a note. The third el
    - Query each relay for events matching:
      ```jsonc
      {
-       "kinds": [10001, 30002],
+      "kinds": [10001, 30000],
        "authors": [<user-pubkey>]
      }
      ```
@@ -275,7 +275,7 @@ The `p` tag references a pubkey, and the `e` tag references a note. The third el
 
 ## Future Considerations
 1. **Paid Subscriptions**  
-   - Could layer subscription tiers on top of `30002` events.
+- Could layer subscription tiers on top of `30000` events.
 2. **Global Block Lists**  
    - Let users publish or subscribe to a curated blocklist (or share one in a group).
 3. **Web of Trust**  
@@ -284,4 +284,4 @@ The `p` tag references a pubkey, and the `e` tag references a note. The third el
 ---
 
 ### Summary
-By leveraging Nostr event kinds (`30002` for subscriptions, `10001` for blocks, and `1984` for reports), bitvid can maintain a decentralized, user-controlled moderation system. Users can sync their lists across devices through relays, while administrators can choose how to handle flagged content on a platform level. This approach keeps moderation flexible and transparent.
+By leveraging Nostr event kinds (`30000` for subscriptions, `10001` for blocks, and `1984` for reports), bitvid can maintain a decentralized, user-controlled moderation system. Users can sync their lists across devices through relays, while administrators can choose how to handle flagged content on a platform level. This approach keeps moderation flexible and transparent.

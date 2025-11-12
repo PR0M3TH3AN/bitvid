@@ -2,7 +2,7 @@
 
 bitvid's visual language is now powered by Tailwind utilities backed by our design tokens. This document lists the primitives available via `css/tailwind.source.css`, how they behave across states, and when to mix them with Tailwind utilities.
 
-All templates and embeds must load `css/tailwind.generated.css`; that compiled bundle is the only stylesheet shipped with the app. Remove any lingering references to legacy `tailwind.min.css` assets when porting surfaces into the design system.
+All templates and embeds must load `css/tailwind.generated.css`; that compiled bundle is the only stylesheet shipped with the app. The file is generated during CI/Netlify deploys (and remains gitignored locally), so commit only the source styles that feed the build. Remove any lingering references to legacy `tailwind.min.css` assets when porting surfaces into the design system.
 
 > **UI Styling:** For day-to-day decisions, start with the [Styling & Theming Rules](../AGENTS.md#styling--theming-rules-token-first) in `AGENTS.md` and the [CSS build pipeline overview](../README.md#css-build-pipeline). Run `npm run lint:css` before committing so design-token regressions are caught early.
 

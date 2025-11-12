@@ -192,6 +192,86 @@ test('ignores additional submissions while pending without spurious errors', asy
   modal.setSubmitState({ pending: false });
 });
 
+test('editing the magnet refreshes torrent hints when ws/xs remain locked', async () => {
+  const modal = createModal();
+  await modal.load({ container });
+
+  const originalMagnet =
+    'magnet:?xt=urn:btih:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&ws=https://old.example/video.mp4&xs=https://old.example/video.torrent';
+  const video = {
+    id: 'video-magnet-locked',
+    pubkey: 'pubkey-magnet-locked',
+    title: 'Locked hints example',
+    url: 'https://example.com/locked.mp4',
+    magnet: originalMagnet,
+    ws: 'https://old.example/video.mp4',
+    xs: 'https://old.example/video.torrent',
+  };
+
+  await modal.open(video);
+
+  const submissions = [];
+  modal.addEventListener('video:edit-submit', (event) => {
+    submissions.push(event.detail);
+  });
+
+  const magnetButton = modal.root.querySelector(
+    '[data-edit-target="editVideoMagnet"]',
+  );
+  assert.ok(magnetButton, 'expected magnet unlock button to exist');
+  magnetButton.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+
+  const magnetInput = modal.fields.magnet;
+  assert.ok(magnetInput, 'expected magnet input to exist');
+  magnetInput.value =
+    'magnet:?xt=urn:btih:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&ws=https://new.example/video.mp4&xs=https://new.example/video.torrent';
+
+  modal.submit();
+
+  assert.equal(submissions.length, 1, 'should emit a single submission payload');
+  const submission = submissions[0];
+  assert.ok(submission, 'expected edit submission detail');
+
+  assert.equal(
+    submission.updatedData.wsEdited,
+    true,
+    'ws should be marked as edited when magnet changes',
+  );
+  assert.equal(
+    submission.updatedData.xsEdited,
+    true,
+    'xs should be marked as edited when magnet changes',
+  );
+  assert.equal(
+    submission.updatedData.ws,
+    'https://new.example/video.mp4',
+    'ws hint should refresh to the new magnet hint',
+  );
+  assert.equal(
+    submission.updatedData.xs,
+    'https://new.example/video.torrent',
+    'xs hint should refresh to the new magnet hint',
+  );
+  assert.ok(
+    submission.updatedData.magnet.includes(
+      'urn:btih:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    ),
+    'normalized magnet should contain the updated info hash',
+  );
+  assert.ok(
+    submission.updatedData.magnet.includes('ws=https://new.example/video.mp4'),
+    'normalized magnet should include the refreshed ws hint',
+  );
+  assert.ok(
+    submission.updatedData.magnet.includes(
+      'xs=https://new.example/video.torrent',
+    ),
+    'normalized magnet should include the refreshed xs hint',
+  );
+
+  modal.setSubmitState({ pending: false });
+});
+
 test('does not show missing video error after modal closes', async () => {
   const errorMessages = [];
   const modal = createModal({

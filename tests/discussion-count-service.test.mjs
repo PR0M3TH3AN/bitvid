@@ -6,6 +6,7 @@ import { JSDOM } from "jsdom";
 import DiscussionCountService, {
   COUNT_UNSUPPORTED_TITLE,
 } from "../js/services/discussionCountService.js";
+import { COMMENT_EVENT_KIND } from "../js/nostr/commentEvents.js";
 
 function createDomWithCountElement(videoId) {
   const dom = new JSDOM(`
@@ -35,7 +36,22 @@ async function testRefreshCountsCachesResults() {
   const nostrClient = {
     pool: {},
     countEventsAcrossRelays: async (filters) => {
-      assert.equal(filters.length, 2, "should request both id and address filters");
+      assert.equal(filters.length, 3, "should request id, uppercase, and address filters");
+      const [eventFilter, uppercaseFilter, addressFilter] = filters;
+      assert.deepEqual(eventFilter, {
+        kinds: [COMMENT_EVENT_KIND],
+        "#e": ["count-video-1"],
+      });
+      assert.deepEqual(uppercaseFilter, {
+        kinds: [COMMENT_EVENT_KIND],
+        "#A": ["30078:pubkey-1:identifier-1"],
+        "#K": ["30078"],
+        "#P": ["pubkey-1"],
+      });
+      assert.deepEqual(addressFilter, {
+        kinds: [COMMENT_EVENT_KIND],
+        "#a": ["30078:pubkey-1:identifier-1"],
+      });
       return {
         total: 5,
         perRelay: [{ ok: true }],
@@ -102,10 +118,28 @@ async function testUnsupportedRelaysUpdateDomState() {
   const service = new DiscussionCountService();
   const nostrClient = {
     pool: {},
-    countEventsAcrossRelays: async () => ({
-      total: 7,
-      perRelay: [{ ok: false }],
-    }),
+    countEventsAcrossRelays: async (filters) => {
+      assert.equal(filters.length, 3, "unsupported relays should still receive all filters");
+      const [eventFilter, uppercaseFilter, addressFilter] = filters;
+      assert.deepEqual(eventFilter, {
+        kinds: [COMMENT_EVENT_KIND],
+        "#e": ["unsupported-video"],
+      });
+      assert.deepEqual(uppercaseFilter, {
+        kinds: [COMMENT_EVENT_KIND],
+        "#A": ["30078:pubkey-2:identifier-2"],
+        "#K": ["30078"],
+        "#P": ["pubkey-2"],
+      });
+      assert.deepEqual(addressFilter, {
+        kinds: [COMMENT_EVENT_KIND],
+        "#a": ["30078:pubkey-2:identifier-2"],
+      });
+      return {
+        total: 7,
+        perRelay: [{ ok: false }],
+      };
+    },
   };
 
   service.refreshCounts([video], {

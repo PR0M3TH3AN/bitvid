@@ -16,6 +16,7 @@ import {
 import {
   renderTagPillStrip,
   applyTagPreferenceState,
+  trimTagPillStripToFit,
 } from "./tagPillList.js";
 import { SimilarContentCard } from "./SimilarContentCard.js";
 import {
@@ -129,6 +130,10 @@ export class VideoModal {
     this.videoViewCountEl = null;
     this.videoTagsRoot = null;
     this.videoTagsData = Object.freeze([]);
+    this.videoTagsSourceData = this.videoTagsData;
+    this.videoTagsResizeObserver = null;
+    this.videoTagsLastObservedWidth = 0;
+    this.handleVideoTagsResize = this.handleVideoTagsResize.bind(this);
     this.creatorAvatar = null;
     this.creatorName = null;
     this.creatorNpub = null;
@@ -390,6 +395,7 @@ export class VideoModal {
       } else {
         this.loaded = false;
         this.cleanupVideoTags();
+        this.teardownVideoTagsResizeObserver();
         this.videoTagsRoot = null;
         this.playerModal = null;
       }
@@ -509,6 +515,7 @@ export class VideoModal {
     if (this.videoTagsRoot && this.videoTagsRoot !== nextVideoTagsRoot) {
       this.cleanupVideoTags(this.videoTagsRoot);
     }
+    this.teardownVideoTagsResizeObserver();
     this.videoTagsRoot = nextVideoTagsRoot;
     if (this.videoTagsRoot) {
       this.cleanupVideoTags(this.videoTagsRoot);
@@ -540,10 +547,11 @@ export class VideoModal {
       statsContainer: statsContainerCandidate,
     });
 
-    const previousTags = Array.isArray(this.videoTagsData)
-      ? [...this.videoTagsData]
+    const previousTags = Array.isArray(this.videoTagsSourceData)
+      ? [...this.videoTagsSourceData]
       : [];
     this.videoTagsData = null;
+    this.videoTagsSourceData = Object.freeze([]);
 
     this.moderationController.initialize({ playerModal });
 
@@ -1807,7 +1815,12 @@ export class VideoModal {
     }
     if (typeof value === "string") {
       const trimmed = value.trim();
-      if (!trimmed || trimmed === "null" || trimmed === "undefined") {
+      if (
+        !trimmed ||
+        trimmed === "null" ||
+        trimmed === "undefined" ||
+        trimmed === "__root__"
+      ) {
         return null;
       }
       return trimmed;
@@ -1930,6 +1943,7 @@ export class VideoModal {
 
   destroy() {
     this.close();
+    this.teardownVideoTagsResizeObserver();
     this.commentsController.destroy();
     this.reactionsController.destroy();
     this.similarContentController.destroy();
@@ -2585,6 +2599,19 @@ export class VideoModal {
       return;
     }
 
+    // Ensure title element reference is available
+    if (!this.videoTitle) {
+      this.videoTitle = this.playerModal.querySelector("#videoTitle") || null;
+    }
+    // Set title immediately when opening if video has a title
+    if (this.videoTitle && video && typeof video.title === "string" && video.title.trim()) {
+      this.videoTitle.textContent = video.title.trim();
+      this.videoTitle.hidden = false;
+    } else if (this.videoTitle) {
+      this.videoTitle.textContent = "Untitled";
+      this.videoTitle.hidden = false;
+    }
+
     this.resetReactions();
 
     this.playerModal.classList.remove("hidden");
@@ -2795,21 +2822,29 @@ export class VideoModal {
     return true;
   }
 
-  renderVideoTags(tags = []) {
+  renderVideoTags(tags = [], options = {}) {
+    const { force = false } = options || {};
     const normalized = this.normalizeVideoTags(tags);
-    const hasTags = normalized.length > 0;
     const root = this.videoTagsRoot;
 
     if (root) {
-      if (this.areVideoTagsEqual(normalized, this.videoTagsData)) {
-        this.toggleVideoTagsVisibility(hasTags);
-        this.refreshTagPreferenceStates();
+      if (!force && this.areVideoTagsEqual(normalized, this.videoTagsData)) {
+        const hasVisibleButtons =
+          root.querySelector("button[data-tag]") !== null;
+        this.toggleVideoTagsVisibility(hasVisibleButtons);
+        if (hasVisibleButtons) {
+          this.ensureVideoTagsResizeObserver();
+          this.refreshTagPreferenceStates();
+        } else {
+          this.teardownVideoTagsResizeObserver();
+        }
         return;
       }
 
       this.cleanupVideoTags(root);
 
-      if (hasTags) {
+      let hasVisibleButtons = false;
+      if (normalized.length > 0) {
         const { root: strip } = renderTagPillStrip({
           document: root.ownerDocument || this.document,
           tags: normalized,
@@ -2819,13 +2854,119 @@ export class VideoModal {
 
         if (strip) {
           root.appendChild(strip);
+          trimTagPillStripToFit({ strip, container: root });
+
+          if (strip.querySelector("button[data-tag]")) {
+            hasVisibleButtons = true;
+          } else if (strip.parentNode === root) {
+            root.removeChild(strip);
+          }
         }
       }
 
-      this.toggleVideoTagsVisibility(hasTags);
+      this.toggleVideoTagsVisibility(hasVisibleButtons);
+      if (hasVisibleButtons) {
+        this.ensureVideoTagsResizeObserver();
+        this.refreshTagPreferenceStates();
+      } else {
+        this.teardownVideoTagsResizeObserver();
+      }
+    } else {
+      this.teardownVideoTagsResizeObserver();
     }
 
-    this.videoTagsData = Object.freeze([...normalized]);
+    const stored = Object.freeze([...normalized]);
+    this.videoTagsData = stored;
+    this.videoTagsSourceData = stored;
+  }
+
+  reflowVideoTags() {
+    if (!Array.isArray(this.videoTagsSourceData)) {
+      return;
+    }
+
+    if (this.videoTagsSourceData.length === 0) {
+      return;
+    }
+
+    this.renderVideoTags([...this.videoTagsSourceData], { force: true });
+  }
+
+  ensureVideoTagsResizeObserver() {
+    const root = this.videoTagsRoot;
+    if (!root) {
+      return;
+    }
+
+    const ResizeObserverCtor =
+      (this.window && this.window.ResizeObserver) ||
+      globalThis.ResizeObserver ||
+      null;
+    if (typeof ResizeObserverCtor !== "function") {
+      return;
+    }
+
+    if (!this.videoTagsResizeObserver) {
+      this.videoTagsResizeObserver = new ResizeObserverCtor(
+        this.handleVideoTagsResize,
+      );
+    } else if (typeof this.videoTagsResizeObserver.disconnect === "function") {
+      this.videoTagsResizeObserver.disconnect();
+    }
+
+    try {
+      this.videoTagsResizeObserver.observe(root);
+    } catch (error) {
+      // Ignore observer errors (e.g., observing a detached node).
+    }
+  }
+
+  teardownVideoTagsResizeObserver() {
+    if (this.videoTagsResizeObserver) {
+      try {
+        this.videoTagsResizeObserver.disconnect();
+      } catch (error) {
+        // Ignore teardown errors.
+      }
+    }
+    this.videoTagsResizeObserver = null;
+    this.videoTagsLastObservedWidth = 0;
+  }
+
+  handleVideoTagsResize(entries = []) {
+    if (!this.videoTagsRoot) {
+      return;
+    }
+
+    const entry =
+      Array.isArray(entries) && entries.length > 0
+        ? entries.find((item) => item?.target === this.videoTagsRoot) ||
+          entries[0]
+        : null;
+
+    const measuredWidthRaw = entry
+      ? entry.contentRect && typeof entry.contentRect.width === "number"
+        ? entry.contentRect.width
+        : typeof entry.contentBoxSize?.[0]?.inlineSize === "number"
+          ? entry.contentBoxSize[0].inlineSize
+          : this.videoTagsRoot.clientWidth || 0
+      : this.videoTagsRoot.clientWidth || 0;
+
+    const measuredWidth = Number.isFinite(measuredWidthRaw)
+      ? Math.max(0, Math.round(measuredWidthRaw))
+      : 0;
+
+    if (measuredWidth <= 0) {
+      this.videoTagsLastObservedWidth = 0;
+      return;
+    }
+
+    if (this.videoTagsLastObservedWidth === measuredWidth) {
+      return;
+    }
+
+    this.videoTagsLastObservedWidth = measuredWidth;
+    this.reflowVideoTags();
   }
 
   handleVideoTagActivate(tag, { event, button } = {}) {
@@ -3506,7 +3647,43 @@ export class VideoModal {
       return;
     }
 
-    receipts.forEach((receipt) => {
+    const normalized = receipts.filter(
+      (receipt) => receipt && typeof receipt === "object"
+    );
+
+    const validatedReceipts = normalized.filter(
+      (receipt) => receipt?.validation?.status === "passed" && receipt.validation.event
+    );
+
+    const paymentFailures = normalized.filter((receipt) => {
+      if (!receipt) {
+        return false;
+      }
+      const status =
+        typeof receipt.status === "string" ? receipt.status.toLowerCase() : "";
+      return status && status !== "success";
+    });
+
+    const unvalidatedReceipts = normalized.filter((receipt) => {
+      if (!receipt) {
+        return false;
+      }
+      const status =
+        typeof receipt.status === "string" ? receipt.status.toLowerCase() : "success";
+      if (status !== "success" && status !== "") {
+        return false;
+      }
+      const validationStatus =
+        typeof receipt.validation?.status === "string"
+          ? receipt.validation.status.toLowerCase()
+          : "";
+      if (!validationStatus || validationStatus === "skipped") {
+        return false;
+      }
+      return validationStatus !== "passed";
+    });
+
+    const renderReceiptItem = ({ receipt, tone }) => {
       const li = this.document.createElement("li");
       li.className = "rounded border border-border p-3 bg-overlay-panel-soft";
 
@@ -3528,11 +3705,16 @@ export class VideoModal {
       )} sats`;
 
       const status = this.document.createElement("span");
-      const isSuccess = receipt.status
-        ? receipt.status === "success"
-        : !receipt.error;
-      status.textContent = isSuccess ? "Success" : "Failed";
-      status.className = isSuccess ? "text-info" : "text-critical";
+      if (tone === "validated") {
+        status.textContent = "Validated";
+        status.className = "text-info";
+      } else if (tone === "failed") {
+        status.textContent = "Failed";
+        status.className = "text-critical";
+      } else {
+        status.textContent = "Pending";
+        status.className = "text-muted";
+      }
 
       header.appendChild(shareLabel);
       header.appendChild(status);
@@ -3547,7 +3729,14 @@ export class VideoModal {
 
       const detail = this.document.createElement("p");
       detail.className = "mt-2 text-xs text-muted";
-      if (isSuccess) {
+      if (tone === "failed") {
+        const errorMessage =
+          (receipt.error && receipt.error.message) ||
+          (typeof receipt.error === "string"
+            ? receipt.error
+            : "Payment failed.");
+        detail.textContent = errorMessage;
+      } else {
         let detailMessage = "Invoice settled.";
         const preimage = receipt.payment?.result?.preimage;
         if (typeof preimage === "string" && preimage) {
@@ -3556,18 +3745,59 @@ export class VideoModal {
           }`;
         }
         detail.textContent = detailMessage;
-      } else {
-        const errorMessage =
-          (receipt.error && receipt.error.message) ||
-          (typeof receipt.error === "string"
-            ? receipt.error
-            : "Payment failed.");
-        detail.textContent = errorMessage;
       }
       li.appendChild(detail);
 
       this.modalZapReceipts.appendChild(li);
+    };
+
+    validatedReceipts.forEach((receipt) => {
+      renderReceiptItem({ receipt, tone: "validated" });
     });
+
+    paymentFailures.forEach((receipt) => {
+      renderReceiptItem({ receipt, tone: "failed" });
+    });
+
+    if (!validatedReceipts.length && !paymentFailures.length && !unvalidatedReceipts.length) {
+      const empty = this.document.createElement("li");
+      empty.className = "text-sm text-text";
+      empty.textContent = partial
+        ? "No zap receipts available."
+        : "No zap receipts published yet.";
+      this.modalZapReceipts.appendChild(empty);
+      return;
+    }
+
+    if (unvalidatedReceipts.length) {
+      const warning = this.document.createElement("li");
+      warning.className =
+        "rounded border border-border p-3 bg-overlay-panel-soft text-xs text-warning-strong";
+      const summaries = unvalidatedReceipts.map((receipt) => {
+        const shareType = receipt.recipientType || receipt.type || "creator";
+        const label =
+          shareType === "platform"
+            ? "Platform"
+            : shareType === "creator"
+              ? "Creator"
+              : "Lightning";
+        const address =
+          typeof receipt.address === "string" && receipt.address
+            ? ` (${receipt.address})`
+            : "";
+        const reason =
+          typeof receipt.validation?.reason === "string" && receipt.validation.reason
+            ? ` — ${receipt.validation.reason}`
+            : " — Awaiting compliant receipt.";
+        return `${label}${address}${reason}`;
+      });
+
+      const intro = validatedReceipts.length
+        ? "Awaiting validated zap receipt for remaining share(s)."
+        : "No validated zap receipts yet.";
+      warning.textContent = `${intro} ${summaries.join(" ")}`.trim();
+      this.modalZapReceipts.appendChild(warning);
+    }
   }
 
   setZapPending(pending) {
@@ -3715,8 +3945,35 @@ export class VideoModal {
     creator,
     tags,
   } = {}) {
-    if (this.videoTitle && title !== undefined) {
-      this.videoTitle.textContent = title || "Untitled";
+    if (title !== undefined) {
+      // Try to find the title element if not already cached
+      if (!this.videoTitle) {
+        if (this.playerModal) {
+          this.videoTitle = this.playerModal.querySelector("#videoTitle") || null;
+        }
+        // Fallback: try document query if playerModal query failed
+        if (!this.videoTitle) {
+          this.videoTitle = this.document.getElementById("videoTitle") || null;
+        }
+      }
+      if (this.videoTitle) {
+        const titleText =
+          typeof title === "string" && title.trim()
+            ? title.trim()
+            : "Untitled";
+        this.videoTitle.textContent = titleText;
+        // Ensure element is visible
+        this.videoTitle.hidden = false;
+        if (this.videoTitle.style) {
+          this.videoTitle.style.display = "";
+        }
+      } else {
+        // Log for debugging if element cannot be found
+        this.logger?.log?.(
+          "[VideoModal] Could not find #videoTitle element to set title:",
+          title
+        );
+      }
     }
     if (this.videoDescription && description !== undefined) {
       this.renderVideoDescription(description);
@@ -5063,10 +5320,28 @@ export class VideoModal {
         continue;
       }
       const trimmed = candidate.trim();
-      if (trimmed) {
-        picture = trimmed;
+      if (!trimmed) {
+        continue;
+      }
+      const sanitized = sanitizeProfileMediaUrl(trimmed);
+      if (sanitized) {
+        picture = sanitized;
         break;
       }
+    }
+
+    if (!picture && pubkey) {
+      const robohash = `https://robohash.org/${pubkey}`;
+      picture = sanitizeProfileMediaUrl(robohash) || robohash;
+    }
+
+    if (!picture) {
+      const fallbackAvatar =
+        typeof this.DEFAULT_PROFILE_AVATAR === "string" &&
+        this.DEFAULT_PROFILE_AVATAR.trim()
+          ? this.DEFAULT_PROFILE_AVATAR.trim()
+          : "assets/svg/default-profile.svg";
+      picture = sanitizeProfileMediaUrl(fallbackAvatar) || fallbackAvatar;
     }
 
     return {

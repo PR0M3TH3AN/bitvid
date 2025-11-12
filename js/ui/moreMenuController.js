@@ -348,7 +348,12 @@ export default class MoreMenuController {
     return modal;
   }
 
-  openReportModal({ eventId, authorPubkey = "", trigger = null } = {}) {
+  openReportModal({
+    eventId,
+    authorPubkey = "",
+    relayHint = "",
+    trigger = null,
+  } = {}) {
     const modal = this.ensureReportModal();
     if (!modal) {
       this.callbacks.showError(
@@ -357,9 +362,17 @@ export default class MoreMenuController {
       return false;
     }
 
+    const normalizedEventId =
+      typeof eventId === "string" ? eventId.trim() : "";
+    const normalizedAuthor =
+      typeof authorPubkey === "string" ? authorPubkey.trim() : "";
+    const normalizedRelayHint =
+      typeof relayHint === "string" ? relayHint.trim() : "";
+
     this.activeReportContext = {
-      eventId: typeof eventId === "string" ? eventId : "",
-      authorPubkey: typeof authorPubkey === "string" ? authorPubkey : "",
+      eventId: normalizedEventId,
+      authorPubkey: normalizedAuthor,
+      relayHint: normalizedRelayHint,
     };
     this.isReportSubmitting = false;
     this.setReportModalBusy(false);
@@ -496,6 +509,15 @@ export default class MoreMenuController {
       return;
     }
 
+    const targetPubkey =
+      typeof context.authorPubkey === "string"
+        ? context.authorPubkey.trim()
+        : "";
+    if (!targetPubkey) {
+      this.showReportError("Unable to determine which creator to report.");
+      return;
+    }
+
     const viewerPubkey = this.callbacks.getCurrentUserPubkey?.();
     if (!viewerPubkey) {
       this.closeReportModal();
@@ -518,7 +540,11 @@ export default class MoreMenuController {
       await service.submitReport({
         eventId,
         type: category,
-        targetPubkey: context.authorPubkey || "",
+        targetPubkey,
+        relayHint:
+          typeof context.relayHint === "string"
+            ? context.relayHint.trim()
+            : "",
       });
 
       this.callbacks.showSuccess(
@@ -537,6 +563,8 @@ export default class MoreMenuController {
         message = "Connect a Nostr account before reporting videos.";
       } else if (code === "service-unavailable") {
         message = "Reporting is unavailable right now. Please try again later.";
+      } else if (code === "invalid-target-pubkey") {
+        message = "Unable to determine which creator to report.";
       }
 
       this.showReportError(message);
@@ -1505,11 +1533,14 @@ export default class MoreMenuController {
         }
 
         const eventId =
-          dataset.eventId ||
-          (context === "modal" ? currentVideo?.id : "") ||
-          currentVideo?.id || "";
+          (typeof dataset.eventId === "string" ? dataset.eventId : "") ||
+          (context === "modal" && typeof currentVideo?.id === "string"
+            ? currentVideo.id
+            : "") ||
+          (typeof currentVideo?.id === "string" ? currentVideo.id : "");
 
-        if (!eventId) {
+        const normalizedEventId = eventId ? eventId.trim() : "";
+        if (!normalizedEventId) {
           this.callbacks.showError(
             "Unable to determine which video to report.",
           );
@@ -1517,15 +1548,41 @@ export default class MoreMenuController {
         }
 
         const authorPubkey =
-          dataset.author ||
-          (context === "modal" && currentVideo?.pubkey
+          (typeof dataset.author === "string" ? dataset.author : "") ||
+          (context === "modal" && typeof currentVideo?.pubkey === "string"
             ? currentVideo.pubkey
             : "") ||
-          currentVideo?.pubkey || "";
+          (typeof currentVideo?.pubkey === "string" ? currentVideo.pubkey : "");
+
+        const normalizedAuthor = authorPubkey ? authorPubkey.trim() : "";
+        if (!normalizedAuthor) {
+          this.callbacks.showError(
+            "Unable to determine which creator to report.",
+          );
+          break;
+        }
+
+        let relayHint =
+          (typeof dataset.pointerRelay === "string"
+            ? dataset.pointerRelay
+            : "") || "";
+        if (relayHint) {
+          relayHint = relayHint.trim();
+        }
+        if (!relayHint && context === "modal") {
+          const pointer = Array.isArray(currentVideo?.pointer)
+            ? currentVideo.pointer
+            : null;
+          const hintCandidate = pointer && pointer.length > 2 ? pointer[2] : "";
+          if (typeof hintCandidate === "string" && hintCandidate.trim()) {
+            relayHint = hintCandidate.trim();
+          }
+        }
 
         this.openReportModal({
-          eventId,
-          authorPubkey,
+          eventId: normalizedEventId,
+          authorPubkey: normalizedAuthor,
+          relayHint,
           trigger: dataset.triggerElement || null,
         });
         break;

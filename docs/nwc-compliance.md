@@ -8,13 +8,15 @@ specification so we can quickly spot regressions or missing features.
 * `parseNwcUri()` accepts all aliases we see in the wild (`nostr+walletconnect://`, `walletconnect://`, and `nwc://`)
   and rejects unknown schemes before continuing. It extracts the wallet pubkey, all relay query parameters, and the
   32-byte secret required for signing. The helper lowercases the secret, reserializes the URI in canonical form, and
-  derives the client public key from the secret so downstream calls can sign events without leaking user keys.
+  derives the client public key from the secret so downstream calls can sign events without leaking user keys. It also
+  surfaces any connection `budget` (in msats) plus renewal metadata from the query parameters so callers can enforce
+  wallet allowances consistently.
 
 ## Connection lifecycle
 
 * `ensureActiveState()` caches the parsed connection and keeps WebSocket state so repeated actions reuse the same
-  subscription. When a new URI is supplied we tear down the previous socket, update the relay list, and reset
-  encryption state before reconnecting.
+  subscription. When a new URI is supplied we tear down the previous socket, update the relay list, reset encryption
+  state, and initialize a per-connection budget tracker (spent vs. total) before reconnecting.
 * `connectSocket()` opens a WebSocket to the relay, subscribes to kind `23195` responses authored by the wallet and
   addressed to the client pubkey, and hooks message/error/close callbacks so we can retry or surface failures.
 
@@ -26,7 +28,10 @@ specification so we can quickly spot regressions or missing features.
   Nostr event with kind `23194`, `pubkey` set to the client key, a `p` tag pointing at the wallet, and an
   `encryption` tag mirroring the algorithm that was used. Events are signed with the secret from the connection URI
   so relays will accept them.
-* `sendPayment()` constructs the `pay_invoice` request, attaches a unique `id`, and dispatches it over the relay.
+* `sendPayment()` resolves the msat amount that will be charged (from explicit params or by decoding the invoice),
+  compares it against the remaining budget, and short-circuits with a `NWC_BUDGET_EXHAUSTED` error when the new spend would
+  exceed the allowance. Successful payments increment the tracked spend, and wallet responses that report allowance
+  exhaustion mark the tracker as depleted so follow-up requests fail fast.
 
 ## Response flow
 

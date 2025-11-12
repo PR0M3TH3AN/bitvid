@@ -276,7 +276,7 @@ function loadLegacyAdminState() {
   return hasAnyEntries(sanitized) ? sanitized : null;
 }
 
-export function readCachedAdminState() {
+export const readCachedAdminState = () => {
   if (typeof localStorage === "undefined") {
     return null;
   }
@@ -306,9 +306,9 @@ export function readCachedAdminState() {
     );
     return null;
   }
-}
+};
 
-export function writeCachedAdminState(state) {
+export const writeCachedAdminState = (state) => {
   if (typeof localStorage === "undefined") {
     return;
   }
@@ -322,7 +322,7 @@ export function writeCachedAdminState(state) {
       error,
     );
   }
-}
+};
 
 function clearLegacyStorageFor(listKey) {
   if (typeof localStorage === "undefined") {
