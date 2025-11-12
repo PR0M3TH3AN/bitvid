@@ -1,4 +1,5 @@
 import { devLogger } from "./utils/logger.js";
+import { decodeNpubToHex } from "./nostr/nip46Client.js";
 import {
   ADMIN_LIST_NAMESPACE,
   ADMIN_COMMUNITY_BLACKLIST_SOURCES,
@@ -44,6 +45,101 @@ export { ADMIN_COMMUNITY_BLACKLIST_PREFIX };
 const DEFAULT_APPEND_TAGS = [];
 
 let cachedUtf8Encoder = null;
+
+const ADDITIONAL_POINTER_TAGS = new Set(["p", "e"]);
+const HEX_32_BYTE_REGEX = /^[0-9a-f]{64}$/i;
+
+function normalizePointerIdentifier(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  if (HEX_32_BYTE_REGEX.test(trimmed)) {
+    return trimmed.toLowerCase();
+  }
+
+  const decoded = decodeNpubToHex(trimmed);
+  if (decoded && HEX_32_BYTE_REGEX.test(decoded)) {
+    return decoded.toLowerCase();
+  }
+
+  return "";
+}
+
+function normalizeTagSlotValue(value) {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed;
+  }
+
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      return "";
+    }
+    return String(value);
+  }
+
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  return "";
+}
+
+export function sanitizeAdditionalTags(additionalTags) {
+  if (!Array.isArray(additionalTags) || !additionalTags.length) {
+    return [];
+  }
+
+  const sanitized = [];
+
+  additionalTags.forEach((tag) => {
+    if (!Array.isArray(tag) || tag.length < 2) {
+      return;
+    }
+
+    const rawName = tag[0];
+    if (typeof rawName !== "string") {
+      return;
+    }
+
+    const tagName = rawName.trim();
+    if (!tagName) {
+      return;
+    }
+
+    const lowerName = tagName.toLowerCase();
+    let primaryValue = "";
+
+    if (ADDITIONAL_POINTER_TAGS.has(lowerName)) {
+      primaryValue = normalizePointerIdentifier(tag[1]);
+    } else {
+      primaryValue = normalizeTagSlotValue(tag[1]);
+    }
+
+    if (!primaryValue) {
+      return;
+    }
+
+    const sanitizedTag = [tagName, primaryValue];
+
+    for (let index = 2; index < tag.length; index += 1) {
+      const extraValue = normalizeTagSlotValue(tag[index]);
+      if (extraValue) {
+        sanitizedTag.push(extraValue);
+      }
+    }
+
+    sanitized.push(sanitizedTag);
+  });
+
+  return sanitized;
+}
 
 function ensureValidUtf8Content(value) {
   let normalized = "";
@@ -606,12 +702,9 @@ export function buildVideoPostEvent({
     tags.push([schema.identifierTag.name, dTagValue]);
   }
   appendSchemaTags(tags, schema);
-  if (Array.isArray(additionalTags)) {
-    additionalTags.forEach((tag) => {
-      if (Array.isArray(tag) && tag.length >= 2) {
-        tags.push(tag.map((value) => (typeof value === "string" ? value : String(value))));
-      }
-    });
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
   }
 
   return {
@@ -693,13 +786,9 @@ export function buildRepostEvent({
   }
 
   appendSchemaTags(tags, schema);
-
-  if (Array.isArray(additionalTags)) {
-    additionalTags.forEach((tag) => {
-      if (Array.isArray(tag) && tag.length >= 2) {
-        tags.push(tag.map((value) => (typeof value === "string" ? value : String(value))));
-      }
-    });
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
   }
 
   const normalizedRepostKind =
@@ -822,12 +911,9 @@ export function buildRelayListEvent({
 
   appendSchemaTags(tags, schema);
 
-  if (Array.isArray(additionalTags)) {
-    additionalTags.forEach((tag) => {
-      if (Array.isArray(tag) && tag.length >= 2) {
-        tags.push(tag.map((value) => (typeof value === "string" ? value : String(value))));
-      }
-    });
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
   }
 
   return {
@@ -864,12 +950,9 @@ export function buildViewEvent({
   normalizedPointerTags.forEach((tag) => {
     tags.push(tag);
   });
-  if (Array.isArray(additionalTags)) {
-    additionalTags.forEach((tag) => {
-      if (Array.isArray(tag) && tag.length >= 2) {
-        tags.push(tag.map((value) => (typeof value === "string" ? value : String(value))));
-      }
-    });
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
   }
 
   if (dedupeTag && schema?.identifierTag?.name) {
@@ -1015,12 +1098,9 @@ export function buildReactionEvent({
     }
   }
 
-  if (Array.isArray(additionalTags)) {
-    additionalTags.forEach((tag) => {
-      if (Array.isArray(tag) && tag.length >= 2) {
-        tags.push(tag.map((value) => (typeof value === "string" ? value : String(value))));
-      }
-    });
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
   }
 
   appendSchemaTags(tags, schema);
@@ -1250,12 +1330,9 @@ export function buildCommentEvent({
     }
   }
 
-  if (Array.isArray(additionalTags)) {
-    additionalTags.forEach((tag) => {
-      if (Array.isArray(tag) && tag.length >= 2) {
-        tags.push(tag.map((value) => (typeof value === "string" ? value : String(value))));
-      }
-    });
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
   }
 
   appendSchemaTags(tags, schema);
@@ -1303,13 +1380,9 @@ export function buildWatchHistoryIndexEvent({
   });
 
   appendSchemaTags(tags, schema);
-
-  if (Array.isArray(additionalTags)) {
-    additionalTags.forEach((tag) => {
-      if (Array.isArray(tag) && tag.length >= 2) {
-        tags.push(tag.map((value) => (typeof value === "string" ? value : String(value))));
-      }
-    });
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
   }
 
   let resolvedContent = content;

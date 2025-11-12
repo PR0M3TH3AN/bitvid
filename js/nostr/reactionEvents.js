@@ -1,4 +1,4 @@
-import { buildReactionEvent } from "../nostrEventSchemas.js";
+import { buildReactionEvent, sanitizeAdditionalTags } from "../nostrEventSchemas.js";
 import { publishEventToRelay } from "../nostrPublish.js";
 import { RELAY_URLS } from "./toolkit.js";
 import { normalizePointerInput } from "./watchHistory.js";
@@ -157,11 +157,7 @@ export async function publishVideoReaction(
       ? Math.floor(options.created_at)
       : Math.floor(Date.now() / 1000);
 
-  const additionalTags = Array.isArray(options.additionalTags)
-    ? options.additionalTags.filter(
-        (tag) => Array.isArray(tag) && typeof tag[0] === "string"
-      )
-    : [];
+  const additionalTags = sanitizeAdditionalTags(options.additionalTags);
 
   const optionRelay =
     typeof options.pointerRelay === "string" && options.pointerRelay.trim()

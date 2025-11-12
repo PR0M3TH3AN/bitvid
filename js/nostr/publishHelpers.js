@@ -4,7 +4,11 @@ import {
   assertAnyRelayAccepted,
   summarizePublishResults,
 } from "../nostrPublish.js";
-import { buildRepostEvent, buildVideoMirrorEvent } from "../nostrEventSchemas.js";
+import {
+  buildRepostEvent,
+  buildVideoMirrorEvent,
+  sanitizeAdditionalTags,
+} from "../nostrEventSchemas.js";
 import { normalizePointerInput } from "./watchHistory.js";
 import { sanitizeRelayList } from "./nip46Client.js";
 import {
@@ -893,9 +897,7 @@ export async function repostEvent({
       ? Math.max(0, Math.floor(options.created_at))
       : Math.floor(Date.now() / 1000);
 
-  const additionalTags = Array.isArray(options.additionalTags)
-    ? options.additionalTags.filter((tag) => Array.isArray(tag) && tag.length >= 2)
-    : [];
+  const additionalTags = sanitizeAdditionalTags(options.additionalTags);
 
   const repostKind =
     Number.isFinite(targetKind) && targetKind !== 1
@@ -1082,10 +1084,10 @@ export async function mirrorVideoEvent({
     tags.push(["ox", originalFileSha256]);
   }
 
-  const additionalTags = Array.isArray(options.additionalTags)
-    ? options.additionalTags.filter((tag) => Array.isArray(tag) && tag.length >= 2)
-    : [];
-  tags.push(...additionalTags);
+  const additionalTags = sanitizeAdditionalTags(options.additionalTags);
+  if (additionalTags.length) {
+    tags.push(...additionalTags.map((tag) => tag.slice()));
+  }
 
   let actorPubkey =
     typeof options.actorPubkey === "string" && options.actorPubkey.trim()
