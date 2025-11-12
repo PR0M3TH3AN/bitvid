@@ -91,6 +91,7 @@ await (async () => {
       [relays[0]]: [
         {
           id: "event-old",
+          kind: 10000,
           created_at: 1700,
           pubkey: actor,
           content: "ciphertext-old",
@@ -99,6 +100,7 @@ await (async () => {
       [relays[1]]: [
         {
           id: "event-new",
+          kind: 10000,
           created_at: 1800,
           pubkey: actor,
           content: "ciphertext-new",
@@ -241,6 +243,7 @@ await (async () => {
     backgroundResolver.resolve([
       {
         id: "background-event",
+        kind: 10000,
         pubkey: actor,
         created_at: 2_000,
         content: "ciphertext-background",
@@ -514,6 +517,7 @@ await (async () => {
     list: async () => [
       {
         id: latestEventId,
+        kind: 10000,
         created_at: latestCreatedAt,
         pubkey: actor,
         content: latestCiphertext,
@@ -856,6 +860,7 @@ await (async () => {
       return Promise.resolve([
         {
           id: "event-nip44-read",
+          kind: 10000,
           created_at: 9_000,
           pubkey: actor,
           content: "cipher-nip44-read",
@@ -875,6 +880,163 @@ await (async () => {
     nostrClient.relays = originalRelays;
     nostrClient.pool = originalPool;
     nostrClient.ensureExtensionPermissions = originalEnsurePermissions;
+    if (originalSigner) {
+      setActiveSigner(originalSigner);
+    } else {
+      clearActiveSigner();
+    }
+  }
+})();
+
+await (async () => {
+  const actor = "7".repeat(64);
+  const validOne = "8".repeat(64);
+  const validTwoUpper = "ABCDEF01".repeat(8);
+  const validTwo = validTwoUpper.toLowerCase();
+
+  const UserBlockListManager = userBlocks.constructor;
+  const manager = new UserBlockListManager();
+
+  const originalRelays = Array.isArray(nostrClient.relays)
+    ? [...nostrClient.relays]
+    : nostrClient.relays;
+  const originalPool = nostrClient.pool;
+  const originalSigner = getActiveSigner();
+  const originalStderrWrite = process.stderr.write.bind(process.stderr);
+
+  const publishCalls = [];
+  const encryptionCalls = [];
+  const signedEvents = [];
+  const stderrChunks = [];
+
+  process.stderr.write = (chunk, encoding, callback) => {
+    const text =
+      typeof chunk === "string"
+        ? chunk
+        : Buffer.from(chunk, typeof encoding === "string" ? encoding : undefined).toString();
+    stderrChunks.push(text);
+    if (typeof callback === "function") {
+      callback();
+    }
+    return true;
+  };
+
+  nostrClient.relays = ["wss://sanitize-blocks.example"];
+  nostrClient.pool = {
+    publish(urls, event) {
+      publishCalls.push({ urls, event });
+      return {
+        on(eventName, handler) {
+          if (eventName === "ok") {
+            handler();
+            return true;
+          }
+          return false;
+        },
+      };
+    },
+  };
+
+  setActiveSigner({
+    type: "nsec",
+    pubkey: actor,
+    async nip44Encrypt(pubkey, plaintext) {
+      encryptionCalls.push({ pubkey, plaintext });
+      return `cipher-${encryptionCalls.length}`;
+    },
+    async signEvent(event) {
+      signedEvents.push(event);
+      return { ...event, id: `signed-${signedEvents.length}`, created_at: event.created_at };
+    },
+  });
+
+  manager.blockedPubkeys = new Set([
+    validOne,
+    validTwoUpper,
+    actor,
+    ["p", `  ${validTwoUpper}  `],
+    ["p"],
+    ["p", null],
+    "",
+    ["e", validOne],
+    null,
+  ]);
+  manager.loadBlocks = async () => {};
+
+  try {
+    await manager.publishBlockList(actor);
+
+    assert.equal(publishCalls.length, 2, "block and mute events should publish");
+    assert.equal(encryptionCalls.length, 2, "both block and mute payloads should encrypt");
+
+    const [blockPayload, mutePayload] = encryptionCalls;
+    assert.equal(blockPayload.pubkey, actor, "block payload should encrypt for the actor");
+    assert.equal(mutePayload.pubkey, actor, "mute payload should encrypt for the actor");
+
+    const matrix = JSON.parse(blockPayload.plaintext);
+    assert.deepEqual(
+      matrix,
+      [
+        ["p", validOne],
+        ["p", validTwo],
+      ],
+      "block payload should serialize only sanitized mute tags",
+    );
+    assert.equal(
+      mutePayload.plaintext,
+      blockPayload.plaintext,
+      "mute payload should reuse the sanitized block payload",
+    );
+
+    const muteEvent = signedEvents.find((event) =>
+      Array.isArray(event?.tags) && event.tags.some((tag) => Array.isArray(tag) && tag[0] === "p"),
+    );
+    assert(muteEvent, "mute list snapshot should include public p tags");
+    const muteTags = muteEvent.tags.filter((tag) => Array.isArray(tag) && tag[0] === "p");
+    assert.deepEqual(
+      muteTags,
+      matrix,
+      "mute list snapshot should publish sanitized p tags",
+    );
+
+    const expectedReasons = [
+      "self-target",
+      "duplicate",
+      "invalid-tuple",
+      "invalid-target",
+      "invalid-string",
+      "unsupported-tag",
+      "unsupported-entry",
+    ].sort();
+
+    const warningLines = stderrChunks
+      .join("")
+      .split(/\n+/)
+      .filter((line) => line.includes("[UserBlockList] Discarded block entry"));
+
+    assert.equal(
+      warningLines.length,
+      expectedReasons.length,
+      "every malformed entry should trigger a warning",
+    );
+
+    const actualReasons = warningLines
+      .map((line) => {
+        const match = line.match(/\(([^)]+)\)/);
+        return match ? match[1] : null;
+      })
+      .filter(Boolean)
+      .sort();
+
+    assert.deepEqual(
+      actualReasons,
+      expectedReasons,
+      "discarded entries should log their discard reasons",
+    );
+  } finally {
+    process.stderr.write = originalStderrWrite;
+    nostrClient.relays = originalRelays;
+    nostrClient.pool = originalPool;
     if (originalSigner) {
       setActiveSigner(originalSigner);
     } else {

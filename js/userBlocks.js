@@ -159,10 +159,44 @@ function determineDecryptionOrder(event, availableSchemes) {
   return prioritized.length ? prioritized : available;
 }
 
-function serializeBlockListTagMatrix(values, ownerPubkey) {
-  const tags = [];
-  const seen = new Set();
+function describeDiscardedEntry(entry) {
+  if (typeof entry === "string") {
+    return entry.trim();
+  }
+
+  if (entry === null) {
+    return "null";
+  }
+
+  if (typeof entry === "undefined") {
+    return "undefined";
+  }
+
+  if (Array.isArray(entry)) {
+    try {
+      return JSON.stringify(entry);
+    } catch (_error) {
+      return String(entry);
+    }
+  }
+
+  if (typeof entry === "object") {
+    try {
+      return JSON.stringify(entry);
+    } catch (_error) {
+      return String(entry);
+    }
+  }
+
+  return String(entry);
+}
+
+function sanitizeMuteTags(values, ownerPubkey, options = {}) {
+  const logDiscarded = options?.logDiscarded !== false;
   const owner = normalizeHex(ownerPubkey);
+  const sanitized = [];
+  const seen = new Set();
+
   const iterable = Array.isArray(values)
     ? values
     : values instanceof Set
@@ -171,15 +205,84 @@ function serializeBlockListTagMatrix(values, ownerPubkey) {
     ? Array.from(values)
     : [];
 
-  for (const candidate of iterable) {
-    const normalized = normalizeHex(candidate);
-    if (!normalized || normalized === owner || seen.has(normalized)) {
+  const logDiscard = (entry, reason, extra) => {
+    if (!logDiscarded) {
+      return;
+    }
+    const detail = describeDiscardedEntry(entry);
+    if (extra) {
+      userLogger.warn(
+        `[UserBlockList] Discarded block entry (${reason}).`,
+        detail,
+        extra,
+      );
+      return;
+    }
+    userLogger.warn(`[UserBlockList] Discarded block entry (${reason}).`, detail);
+  };
+
+  for (const entry of iterable) {
+    let targetHex = null;
+
+    if (Array.isArray(entry)) {
+      if (entry.length < 2) {
+        logDiscard(entry, "invalid-tuple");
+        continue;
+      }
+
+      const label =
+        typeof entry[0] === "string" ? entry[0].trim().toLowerCase() : "";
+      if (label !== "p") {
+        logDiscard(entry, "unsupported-tag");
+        continue;
+      }
+
+      targetHex = normalizeHex(entry[1]);
+      if (!targetHex) {
+        logDiscard(entry, "invalid-target");
+        continue;
+      }
+    } else if (typeof entry === "string") {
+      targetHex = normalizeHex(entry);
+      if (!targetHex) {
+        logDiscard(entry, "invalid-string");
+        continue;
+      }
+    } else if (entry && typeof entry === "object") {
+      if (typeof entry.pubkey === "string") {
+        targetHex = normalizeHex(entry.pubkey);
+        if (!targetHex) {
+          logDiscard(entry, "invalid-object-pubkey");
+          continue;
+        }
+      } else {
+        logDiscard(entry, "unsupported-entry");
+        continue;
+      }
+    } else {
+      logDiscard(entry, "unsupported-entry");
       continue;
     }
-    seen.add(normalized);
-    tags.push(["p", normalized]);
+
+    if (owner && targetHex === owner) {
+      logDiscard(entry, "self-target");
+      continue;
+    }
+
+    if (seen.has(targetHex)) {
+      logDiscard(entry, "duplicate", targetHex);
+      continue;
+    }
+
+    seen.add(targetHex);
+    sanitized.push(["p", targetHex]);
   }
 
+  return sanitized;
+}
+
+function serializeBlockListTagMatrix(values, ownerPubkey, options = {}) {
+  const tags = sanitizeMuteTags(values, ownerPubkey, options);
   return JSON.stringify(tags);
 }
 
@@ -1267,30 +1370,7 @@ class UserBlockListManager {
       return null;
     }
 
-    const tagSet = new Set();
-    const tags = [];
-
-    const iterateBlocked = (input) => {
-      if (Array.isArray(input)) {
-        return input;
-      }
-      if (input instanceof Set) {
-        return Array.from(input);
-      }
-      if (input && typeof input[Symbol.iterator] === "function") {
-        return Array.from(input);
-      }
-      return [];
-    };
-
-    for (const value of iterateBlocked(blockedPubkeys)) {
-      const normalized = normalizeHex(value);
-      if (!normalized || normalized === owner || tagSet.has(normalized)) {
-        continue;
-      }
-      tagSet.add(normalized);
-      tags.push(["p", normalized]);
-    }
+    const tags = sanitizeMuteTags(blockedPubkeys, owner);
 
     const timestamp = Number.isFinite(createdAt)
       ? Math.max(0, Math.floor(createdAt))
@@ -1427,12 +1507,13 @@ class UserBlockListManager {
       throw new Error("Invalid user pubkey.");
     }
 
+    const sanitizedTags = sanitizeMuteTags(this.blockedPubkeys, normalized);
     const payload = {
-      blockedPubkeys: Array.from(this.blockedPubkeys).filter(
-        (candidate) => candidate && candidate !== normalized
-      ),
+      blockedPubkeys: sanitizedTags.map(([, target]) => target),
     };
-    const plaintext = serializeBlockListTagMatrix(payload.blockedPubkeys, normalized);
+    const plaintext = serializeBlockListTagMatrix(sanitizedTags, normalized, {
+      logDiscarded: false,
+    });
 
     const encryptors = [];
     const registerEncryptor = (scheme, handler) => {
