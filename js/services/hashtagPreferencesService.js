@@ -4,7 +4,11 @@ import {
   requestDefaultExtensionPermissions,
 } from "../nostrClientFacade.js";
 import { getActiveSigner } from "../nostr/index.js";
-import { buildHashtagPreferenceEvent } from "../nostrEventSchemas.js";
+import {
+  buildHashtagPreferenceEvent,
+  getNostrEventSchema,
+  NOTE_TYPES,
+} from "../nostrEventSchemas.js";
 import {
   publishEventToRelays,
   assertAnyRelayAccepted,
@@ -331,8 +335,9 @@ class HashtagPreferencesService {
       return;
     }
 
+    const schema = getNostrEventSchema(NOTE_TYPES.HASHTAG_PREFERENCES);
     const filter = {
-      kinds: [30005],
+      kinds: [schema?.kind ?? 30015],
       authors: [normalized],
       "#d": [HASHTAG_IDENTIFIER],
       limit: 50,
