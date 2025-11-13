@@ -656,8 +656,9 @@ export default class CommentThreadService {
       if (!Array.isArray(tag) || tag.length < 2) {
         continue;
       }
-      const name = typeof tag[0] === "string" ? tag[0].trim() : "";
-      if (name !== "I") {
+      const name =
+        typeof tag[0] === "string" ? tag[0].trim().toLowerCase() : "";
+      if (name !== "i") {
         continue;
       }
       const value = normalizeString(tag[1]);

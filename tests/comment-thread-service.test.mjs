@@ -481,7 +481,7 @@ test(
       pubkey: "commenter",
       created_at: 1700000000,
       content: "Root scoped",
-      tags: [["I", "root-only"], ["p", "rootpk"]],
+      tags: [["i", "root-only"], ["p", "rootpk"]],
     };
 
     let fetchTarget = null;
