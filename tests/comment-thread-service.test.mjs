@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import CommentThreadService from "../js/services/commentThreadService.js";
-import { listVideoComments } from "../js/nostr/commentEvents.js";
+import { COMMENT_EVENT_KIND, listVideoComments } from "../js/nostr/commentEvents.js";
 import { buildCommentEvent } from "../js/nostrEventSchemas.js";
 
 function createBaseVideo() {
@@ -11,6 +11,7 @@ function createBaseVideo() {
     pubkey: "authorpk",
     kind: 30078,
     tags: [["d", "video-root"], ["alt", "ignored"]],
+    videoRootId: "video-root",
   };
 }
 
@@ -256,6 +257,7 @@ test(
     const hydrationRequests = [];
 
     const service = new CommentThreadService({
+      nostrClient: { ensurePool: async () => {} },
       fetchVideoComments,
       subscribeVideoComments,
       getProfileCacheEntry: (pubkey) =>
@@ -290,6 +292,7 @@ test(
       videoDefinitionAddress: "30078:authorpk:video-root",
       videoKind: "30078",
       videoAuthorPubkey: "authorpk",
+      rootIdentifier: "video-root",
       parentCommentId: "",
     });
     assert.equal(lastFetchOptions.limit, service.defaultLimit);
@@ -308,6 +311,7 @@ test(
     assert.equal(initialSnapshot.videoDefinitionAddress, "30078:authorpk:video-root");
     assert.equal(initialSnapshot.videoKind, "30078");
     assert.equal(initialSnapshot.videoAuthorPubkey, "authorpk");
+    assert.equal(initialSnapshot.rootIdentifier, "video-root");
     assert.equal(initialSnapshot.parentCommentKind, null);
     assert.equal(initialSnapshot.parentCommentPubkey, null);
     assert.deepStrictEqual(initialSnapshot.topLevelIds, [
@@ -358,6 +362,7 @@ test(
     assert.equal(appendPayload.parentCommentId, "comment-2");
     assert.deepStrictEqual(appendPayload.commentIds, ["reply-2"]);
     assert.ok(appendPayload.commentsById instanceof Map);
+    assert.equal(appendPayload.rootIdentifier, "video-root");
     assert.ok(
       appendPayload.commentsById.has("reply-2"),
       "appended payload should contain the new reply",
@@ -401,6 +406,7 @@ test(
     const errors = [];
 
     const service = new CommentThreadService({
+      nostrClient: { ensurePool: async () => {} },
       fetchVideoComments: async (target, options) => {
         fetchTargets.push(target);
         fetchOptions.push(options);
@@ -424,6 +430,7 @@ test(
       videoEventId: "video123",
       videoKind: "30078",
       videoAuthorPubkey: "authorpk",
+      rootIdentifier: "video-root",
       parentCommentId: "",
     });
     assert.equal(
@@ -454,6 +461,51 @@ test(
     assert.equal(snapshot.videoKind, "30078");
     assert.equal(snapshot.videoAuthorPubkey, "authorpk");
     assert.equal(snapshot.videoDefinitionAddress, null);
+  },
+);
+
+test(
+  "CommentThreadService requests and snapshots comments by root identifier",
+  async () => {
+    const video = {
+      id: "root-only-video",
+      pubkey: "rootpk",
+      kind: 30078,
+      videoRootId: "root-only",
+      tags: [],
+    };
+
+    const rootOnlyComment = {
+      id: "comment-root",
+      kind: COMMENT_EVENT_KIND,
+      pubkey: "commenter",
+      created_at: 1700000000,
+      content: "Root scoped",
+      tags: [["i", "root-only"], ["p", "rootpk"]],
+    };
+
+    let fetchTarget = null;
+    const service = new CommentThreadService({
+      nostrClient: { ensurePool: async () => {} },
+      fetchVideoComments: async (target) => {
+        fetchTarget = target;
+        return [rootOnlyComment];
+      },
+      subscribeVideoComments: () => () => {},
+    });
+
+    const threadReadyPayloads = [];
+    service.setCallbacks({
+      onThreadReady: (payload) => threadReadyPayloads.push(payload),
+    });
+
+    const snapshot = await service.loadThread({ video });
+
+    assert.ok(fetchTarget, "fetch should run when only root id is provided");
+    assert.equal(fetchTarget.rootIdentifier, "root-only");
+    assert.equal(snapshot.rootIdentifier, "root-only");
+    assert.equal(snapshot.commentsById.get("comment-root").content, "Root scoped");
+    assert.equal(threadReadyPayloads[0].rootIdentifier, "root-only");
   },
 );
 
@@ -498,6 +550,7 @@ test(
 
     const subscribeTargets = [];
     const service = new CommentThreadService({
+      nostrClient: { ensurePool: async () => {} },
       fetchVideoComments,
       subscribeVideoComments: (target, _options = {}) => {
         subscribeTargets.push(target);
@@ -555,6 +608,7 @@ test(
     let subscriptionHandler = null;
 
     const service = new CommentThreadService({
+      nostrClient: { ensurePool: async () => {} },
       fetchVideoComments: async () => [],
       subscribeVideoComments: (_target, options = {}) => {
         subscriptionHandler = typeof options.onEvent === "function" ? options.onEvent : null;

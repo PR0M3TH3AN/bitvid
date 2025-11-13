@@ -555,6 +555,107 @@ test("listVideoComments builds filters with uppercase roots plus legacy fallback
   );
 });
 
+test("listVideoComments adds lowercase root filters when only the identifier is known", async () => {
+  const matchingEvent = {
+    id: "comment-root",
+    kind: COMMENT_EVENT_KIND,
+    tags: [
+      ["I", "root-only"],
+      ["P", "root-author"],
+      ["e", "video-rooted"],
+    ],
+  };
+
+  const { client, pool } = createMockClient();
+
+  let receivedFilters = null;
+  pool.list = async (relays, filters) => {
+    receivedFilters = { relays, filters };
+    return [[matchingEvent]];
+  };
+
+  const events = await listVideoComments(
+    client,
+    {
+      videoEventId: "video-rooted",
+      videoKind: COMMENT_EVENT_KIND,
+      videoAuthorPubkey: "root-author",
+      rootIdentifier: "root-only",
+    },
+    { since: 1700000000, limit: 5 },
+  );
+
+  assert.equal(events.length, 1, "matching comment should be returned");
+  assert.ok(receivedFilters, "pool.list should receive filters");
+  assert.equal(
+    receivedFilters.filters.length,
+    4,
+    "root identifier requests should include lowercase fallbacks",
+  );
+
+  const [eventFilter, uppercaseEventFilter, lowercaseRootFilter, uppercaseRootFilter] =
+    receivedFilters.filters;
+
+  assert.deepEqual(
+    eventFilter,
+    {
+      kinds: [COMMENT_EVENT_KIND],
+      "#e": ["video-rooted"],
+      since: 1700000000,
+      limit: 5,
+    },
+    "event filter should continue targeting the video event id",
+  );
+
+  assert.deepEqual(
+    uppercaseEventFilter,
+    {
+      kinds: [COMMENT_EVENT_KIND],
+      "#E": ["video-rooted"],
+      since: 1700000000,
+      limit: 5,
+    },
+    "uppercase event filter should continue targeting legacy #E pointers",
+  );
+
+  assert.deepEqual(
+    lowercaseRootFilter,
+    {
+      kinds: [COMMENT_EVENT_KIND],
+      "#i": ["root-only"],
+      since: 1700000000,
+      limit: 5,
+    },
+    "root identifier filter should include lowercase #i tag queries",
+  );
+
+  assert.equal(
+    uppercaseRootFilter.kinds[0],
+    COMMENT_EVENT_KIND,
+    "uppercase root filter should continue targeting comment kind",
+  );
+  assert.deepEqual(
+    uppercaseRootFilter["#I"],
+    ["root-only"],
+    "uppercase root filter should continue binding the root identifier via #I",
+  );
+  assert.deepEqual(
+    uppercaseRootFilter["#P"],
+    ["root-author"],
+    "uppercase root filter should scope by author when available",
+  );
+  assert.equal(
+    uppercaseRootFilter.since,
+    1700000000,
+    "since option should propagate to uppercase root filter",
+  );
+  assert.equal(
+    uppercaseRootFilter.limit,
+    5,
+    "limit option should propagate to uppercase root filter",
+  );
+});
+
 test("listVideoComments supports legacy targets without a definition address", async () => {
   const legacyEvent = {
     id: "legacy-comment",

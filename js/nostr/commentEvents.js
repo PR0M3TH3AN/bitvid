@@ -816,6 +816,13 @@ function createVideoCommentFilters(targetInput, options = {}) {
   if (typeof descriptor.rootIdentifier === "string" && descriptor.rootIdentifier) {
     uppercaseFilter["#I"] = [descriptor.rootIdentifier];
     hasUppercasePointer = true;
+
+    const lowercaseRootFilter = {
+      kinds: getAllowedCommentKinds(),
+      "#i": [descriptor.rootIdentifier],
+    };
+
+    filters.push(applyFilterOptions(lowercaseRootFilter, options));
   } else if (
     typeof descriptor.videoDefinitionAddress === "string" &&
     descriptor.videoDefinitionAddress
