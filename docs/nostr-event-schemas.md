@@ -151,7 +151,7 @@ import { updateWatchHistoryListWithDefaultClient } from "./nostrWatchHistoryFaca
 | Watch history chunk (`NOTE_TYPES.WATCH_HISTORY_CHUNK`) | `WATCH_HISTORY_KIND` (default `30079`, clients also read legacy `30078`) | `['d', <snapshotId:index>]`, `['encrypted','nip04']`, `['snapshot', <id>]`, `['chunk', <index>, <total>]`, optional leading `['head','1']` on the first chunk, pointer tags for each item, plus schema append tags | NIP-04 encrypted JSON chunk (`{ version, snapshot, chunkIndex, totalChunks, items[] }`) |
 | Subscription list (`NOTE_TYPES.SUBSCRIPTION_LIST`) | `30000` (clients also read legacy `30002`) | `['d', 'subscriptions']` | NIP-04/NIP-44 encrypted JSON array of NIP-51 follow-set tuples (e.g., `[['p', <hex>], …]`) |
 | User block list (`NOTE_TYPES.USER_BLOCK_LIST`) | `10000` | `['d', 'user-blocks']` | NIP-04/NIP-44 encrypted JSON `{ blockedPubkeys: string[] }` |
-| Hashtag preferences (`NOTE_TYPES.HASHTAG_PREFERENCES`) | `30005` | `['d', 'bitvid:tag-preferences']` plus schema-appended `['encrypted','nip44_v2']` | NIP-44 encrypted JSON `{ version, interests: string[], disinterests: string[] }` |
+| Hashtag preferences (`NOTE_TYPES.HASHTAG_PREFERENCES`) | `30015` (reads legacy `30005`) | `['d', 'bitvid:tag-preferences']` plus schema-appended `['encrypted','nip44_v2']` | NIP-44 encrypted JSON `{ version, interests: string[], disinterests: string[] }` |
 | Admin moderation list (`NOTE_TYPES.ADMIN_MODERATION_LIST`) | `30000` | `['d', 'bitvid:admin:editors']`, repeated `['p', <pubkey>]` entries | Empty content |
 | Admin blacklist (`NOTE_TYPES.ADMIN_BLACKLIST`) | `30000` | `['d', 'bitvid:admin:blacklist']`, repeated `['p', <pubkey>]` entries | Empty content |
 | Admin whitelist (`NOTE_TYPES.ADMIN_WHITELIST`) | `30000` | `['d', 'bitvid:admin:whitelist']`, repeated `['p', <pubkey>]` entries | Empty content |
@@ -183,14 +183,22 @@ builders inherit the same debugging knobs.
 
 ### Hashtag preference lists
 
-Hashtag preference events (`NOTE_TYPES.HASHTAG_PREFERENCES`) live on a
-replaceable `30005` list with a stable identifier tag of
+Hashtag preference events (`NOTE_TYPES.HASHTAG_PREFERENCES`) now publish as a
+replaceable `30015` list with a stable identifier tag of
 `['d','bitvid:tag-preferences']`. The builder appends `['encrypted','nip44_v2']`
 so downstream clients can detect that the payload is encrypted. The `content`
 field must be a NIP-44 ciphertext representing the JSON shape
 `{ version, interests: string[], disinterests: string[] }`, allowing clients to
 share their preferred and muted hashtags without exposing the raw preferences on
-relays.
+relays. Readers continue to accept legacy `30005` payloads so previously
+published preferences remain visible.
+
+When migrating, no manual republish is required. Loading routines fetch both
+`30015` and `30005` events, preferring the canonical kind when timestamps tie.
+Any save from the profile modal reissues the preferences as `30015`, so the data
+converges automatically as viewers update their lists. Operators who need faster
+convergence can instruct affected accounts to re-save (e.g., toggle a tag) to
+force a new publish cycle.
 
 When decrypting, the client inspects both `['encrypted', ...]` and
 `['encryption', ...]` hints on the event to prioritize NIP-44 v2 payloads,
