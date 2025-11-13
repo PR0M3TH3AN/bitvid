@@ -421,7 +421,7 @@ const BASE_SCHEMAS = {
   [NOTE_TYPES.HASHTAG_PREFERENCES]: {
     type: NOTE_TYPES.HASHTAG_PREFERENCES,
     label: "Hashtag preferences",
-    kind: 30005,
+    kind: 30015,
     identifierTag: {
       name: "d",
       value: "bitvid:tag-preferences",
@@ -1555,7 +1555,7 @@ export function buildHashtagPreferenceEvent({
   }
   appendSchemaTags(tags, schema);
   return {
-    kind: schema?.kind ?? 30005,
+    kind: schema?.kind ?? 30015,
     pubkey,
     created_at,
     tags,
