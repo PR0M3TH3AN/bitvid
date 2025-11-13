@@ -8,6 +8,13 @@ function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function normalizeRelay(value) {
+  if (typeof value === "string") {
+    return value.trim();
+  }
+  return "";
+}
+
 function normalizeKind(value) {
   if (Number.isFinite(value)) {
     return String(Math.floor(value));
@@ -86,6 +93,8 @@ export default class VideoModalCommentController {
       videoDefinitionAddress: null,
       videoKind: null,
       videoAuthorPubkey: null,
+      videoRootId: null,
+      videoRootRelay: null,
       parentCommentId: null,
       parentCommentKind: null,
       parentCommentPubkey: null,
@@ -152,6 +161,10 @@ export default class VideoModalCommentController {
     }
     const videoKind = normalizeKind(video.kind);
     const videoAuthorPubkey = normalizeString(video.pubkey);
+    const videoRootId = normalizeString(video.videoRootId);
+    const videoRootRelay = normalizeRelay(
+      video.videoRootRelay || video.rootIdentifierRelay,
+    );
 
     if (!videoEventId) {
       this.resetModalCommentState({ hide: false });
@@ -166,6 +179,8 @@ export default class VideoModalCommentController {
       videoDefinitionAddress: videoDefinitionAddress || null,
       videoKind: videoKind || null,
       videoAuthorPubkey: videoAuthorPubkey || null,
+      videoRootId: videoRootId || null,
+      videoRootRelay: videoRootRelay || null,
       parentCommentId: null,
       parentCommentKind: null,
       parentCommentPubkey: null,
@@ -248,6 +263,8 @@ export default class VideoModalCommentController {
       videoDefinitionAddress: null,
       videoKind: null,
       videoAuthorPubkey: null,
+      videoRootId: null,
+      videoRootRelay: null,
       parentCommentId: null,
       parentCommentKind: null,
       parentCommentPubkey: null,
@@ -354,6 +371,14 @@ export default class VideoModalCommentController {
     if (snapshotVideoAuthor) {
       this.modalCommentState.videoAuthorPubkey = snapshotVideoAuthor;
     }
+    const snapshotRootIdentifier = normalizeString(snapshot.rootIdentifier);
+    if (snapshotRootIdentifier) {
+      this.modalCommentState.videoRootId = snapshotRootIdentifier;
+    }
+    const snapshotRootRelay = normalizeRelay(snapshot.rootIdentifierRelay);
+    if (snapshotRootRelay) {
+      this.modalCommentState.videoRootRelay = snapshotRootRelay;
+    }
     const snapshotParentKind = normalizeKind(snapshot.parentCommentKind);
     if (snapshotParentKind) {
       this.modalCommentState.parentCommentKind = snapshotParentKind;
@@ -383,6 +408,15 @@ export default class VideoModalCommentController {
     profiles.forEach((profile, pubkey) => {
       this.modalCommentProfiles.set(pubkey, profile);
     });
+
+    const payloadRootIdentifier = normalizeString(payload.rootIdentifier);
+    if (payloadRootIdentifier) {
+      this.modalCommentState.videoRootId = payloadRootIdentifier;
+    }
+    const payloadRootRelay = normalizeRelay(payload.rootIdentifierRelay);
+    if (payloadRootRelay) {
+      this.modalCommentState.videoRootRelay = payloadRootRelay;
+    }
 
     const commentIds = Array.isArray(payload.commentIds)
       ? payload.commentIds
@@ -520,6 +554,8 @@ export default class VideoModalCommentController {
     return {
       videoEventId: snapshot.videoEventId,
       parentCommentId: snapshot.parentCommentId || null,
+      rootIdentifier: snapshot.rootIdentifier || null,
+      rootIdentifierRelay: snapshot.rootIdentifierRelay || null,
       commentsById: sanitizedComments,
       childrenByParent: sanitizedChildren,
       profiles: this.modalCommentProfiles,
@@ -575,6 +611,11 @@ export default class VideoModalCommentController {
       this.modalCommentState.videoKind || normalizeKind(video.kind);
     const videoAuthorPubkey =
       this.modalCommentState.videoAuthorPubkey || normalizeString(video.pubkey);
+    const videoRootId =
+      this.modalCommentState.videoRootId || normalizeString(video.videoRootId);
+    const videoRootRelay =
+      this.modalCommentState.videoRootRelay ||
+      normalizeRelay(video.videoRootRelay || video.rootIdentifierRelay);
 
     if (!videoEventId) {
       this.callbacks.showError("Comments are unavailable for this video.");
@@ -631,6 +672,12 @@ export default class VideoModalCommentController {
     if (videoAuthorPubkey) {
       publishPayload.videoAuthorPubkey = videoAuthorPubkey;
       publishPayload.rootAuthorPubkey = videoAuthorPubkey;
+    }
+    if (videoRootId) {
+      publishPayload.rootIdentifier = videoRootId;
+    }
+    if (videoRootRelay) {
+      publishPayload.rootIdentifierRelay = videoRootRelay;
     }
     if (parentCommentKind) {
       publishPayload.parentCommentKind = parentCommentKind;

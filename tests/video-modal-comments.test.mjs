@@ -230,6 +230,8 @@ test(
     enableComments: true,
     kind: 30078,
     tags: [["d", "video-root"]],
+    videoRootId: "video-root",
+    videoRootRelay: "wss://root.example",
   };
 
     controller.load(video);
@@ -242,6 +244,8 @@ test(
     assert.equal(payload.videoEventId, "video123");
     assert.equal(payload.videoAuthorPubkey, "AUTHORPK");
     assert.equal(payload.videoDefinitionAddress, "30078:AUTHORPK:video-root");
+    assert.equal(payload.rootIdentifier, "video-root");
+    assert.equal(payload.rootIdentifierRelay, "wss://root.example");
   },
 );
 
@@ -287,12 +291,16 @@ test(
       pubkey: "AUTHORPK",
       enableComments: true,
       kind: 30078,
+      videoRootId: "video-root",
+      videoRootRelay: "wss://root.example",
       // No tags provided; buildVideoAddressPointer should return an empty string.
     };
 
     controller.load(video);
     controller.modalCommentState.videoDefinitionAddress =
       " 30078:AUTHORPK:video-root ";
+    controller.modalCommentState.videoRootId = " video-root ";
+    controller.modalCommentState.videoRootRelay = " wss://root.example ";
 
     controller.submit({ text: "Fallback pointer" });
 
@@ -305,6 +313,97 @@ test(
       "30078:AUTHORPK:video-root",
       "publish payload should reuse pointer from the loaded thread",
     );
+    assert.equal(payload.rootIdentifier, "video-root");
+    assert.equal(payload.rootIdentifierRelay, "wss://root.example");
+  },
+);
+
+test(
+  "VideoModalCommentController preserves videoRootId when only root pointer is provided",
+  async () => {
+    const publishCalls = [];
+    const loadTargets = [];
+
+    const controller = new VideoModalCommentController({
+      commentThreadService: {
+        setCallbacks: ({ onThreadReady }) => {
+          controller.commentThreadServiceReady = onThreadReady;
+        },
+        teardown: () => {},
+        defaultLimit: 10,
+        loadThread: async (target) => {
+          loadTargets.push(target);
+          return {};
+        },
+        processIncomingEvent: () => {},
+      },
+      videoModal: {
+        setCommentSectionCallbacks: () => {},
+        hideCommentsDisabledMessage: () => {},
+        showCommentsDisabledMessage: () => {},
+        setCommentsVisibility: () => {},
+        clearComments: () => {},
+        resetCommentComposer: () => {},
+        setCommentStatus: () => {},
+        setCommentComposerState: () => {},
+        renderComments: () => {},
+      },
+      auth: {
+        isLoggedIn: () => true,
+      },
+      services: {
+        publishComment: async (payload) => {
+          publishCalls.push(payload);
+          return { ok: true, event: { id: "comment", tags: [] } };
+        },
+      },
+      utils: {
+        normalizeHexPubkey: (value) => value,
+      },
+    });
+
+    const video = {
+      id: "video789",
+      pubkey: "AUTHORPK",
+      enableComments: true,
+      kind: 30078,
+      videoRootId: "root-only",
+      videoRootRelay: "wss://root-only",
+      tags: [],
+    };
+
+    controller.load(video);
+    await Promise.resolve();
+
+    assert.equal(loadTargets.length, 1, "loadThread should be invoked once");
+    assert.equal(loadTargets[0].rootIdentifier, "root-only");
+    assert.equal(loadTargets[0].rootIdentifierRelay, "wss://root-only");
+
+    const commentEvent = {
+      id: "comment-root",
+      pubkey: "commenter",
+      kind: COMMENT_EVENT_KIND,
+      content: "Root pointer only",
+      tags: [["I", "root-only"], ["p", "AUTHORPK"]],
+    };
+
+    controller.handleCommentThreadReady({
+      videoEventId: "video789",
+      parentCommentId: null,
+      rootIdentifier: "root-only",
+      rootIdentifierRelay: "wss://root-only",
+      commentsById: new Map([["comment-root", commentEvent]]),
+      childrenByParent: new Map([[null, ["comment-root"]]]),
+      profiles: new Map(),
+    });
+
+    controller.submit({ text: "Posting" });
+    await controller.modalCommentPublishPromise;
+
+    assert.equal(publishCalls.length, 1, "publishComment should use root pointer");
+    const payload = publishCalls[0];
+    assert.equal(payload.rootIdentifier, "root-only");
+    assert.equal(payload.rootIdentifierRelay, "wss://root-only");
   },
 );
 
@@ -557,6 +656,8 @@ test(
       videoDefinitionAddress: null,
       videoKind: "30078",
       videoAuthorPubkey: "AUTHORPK",
+      videoRootId: null,
+      videoRootRelay: null,
       parentCommentId: "parent-1",
       parentCommentKind: String(COMMENT_EVENT_KIND),
       parentCommentPubkey: null,
