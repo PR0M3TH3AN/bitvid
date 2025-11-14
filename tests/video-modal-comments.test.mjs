@@ -408,6 +408,73 @@ test(
 );
 
 test(
+  "VideoModalCommentController uses pointerIdentifiers root id fallback",
+  async () => {
+    const publishCalls = [];
+    const loadTargets = [];
+
+    const controller = new VideoModalCommentController({
+      commentThreadService: {
+        setCallbacks: () => {},
+        teardown: () => {},
+        defaultLimit: 10,
+        loadThread: async (target) => {
+          loadTargets.push(target);
+          return {};
+        },
+        processIncomingEvent: () => {},
+      },
+      videoModal: {
+        setCommentSectionCallbacks: () => {},
+        hideCommentsDisabledMessage: () => {},
+        showCommentsDisabledMessage: () => {},
+        setCommentsVisibility: () => {},
+        clearComments: () => {},
+        resetCommentComposer: () => {},
+        setCommentStatus: () => {},
+        setCommentComposerState: () => {},
+        renderComments: () => {},
+      },
+      auth: {
+        isLoggedIn: () => true,
+      },
+      services: {
+        publishComment: async (payload) => {
+          publishCalls.push(payload);
+          return { ok: true, event: { id: "comment", tags: [] } };
+        },
+      },
+      utils: {
+        normalizeHexPubkey: (value) => value,
+      },
+    });
+
+    const video = {
+      id: "pointer-video",
+      pubkey: "AUTHORPK",
+      enableComments: true,
+      kind: 30078,
+      pointerIdentifiers: {
+        videoRootId: "pointer-root",
+      },
+    };
+
+    controller.load(video);
+    await Promise.resolve();
+
+    assert.equal(loadTargets.length, 1, "loadThread should capture pointer target");
+    assert.equal(loadTargets[0].rootIdentifier, "pointer-root");
+
+    controller.submit({ text: "Pointer fallback" });
+    await controller.modalCommentPublishPromise;
+
+    assert.equal(publishCalls.length, 1, "publishComment should run once");
+    const payload = publishCalls[0];
+    assert.equal(payload.rootIdentifier, "pointer-root");
+  },
+);
+
+test(
   "VideoModalCommentController publishes comment using event id fallback",
   async () => {
     const publishCalls = [];

@@ -510,6 +510,46 @@ test(
 );
 
 test(
+  "CommentThreadService falls back to pointerIdentifiers root id",
+  async () => {
+    const video = {
+      id: "pointer-video",
+      pubkey: "rootpk",
+      kind: 30078,
+      tags: [],
+      pointerIdentifiers: {
+        videoRootId: "pointer-root",
+      },
+    };
+
+    const pointerComment = {
+      id: "comment-pointer",
+      kind: COMMENT_EVENT_KIND,
+      pubkey: "commenter",
+      created_at: 1700000001,
+      content: "Pointer scoped",
+      tags: [["i", "pointer-root"], ["p", "rootpk"]],
+    };
+
+    let fetchTarget = null;
+    const service = new CommentThreadService({
+      nostrClient: { ensurePool: async () => {} },
+      fetchVideoComments: async (target) => {
+        fetchTarget = target;
+        return [pointerComment];
+      },
+      subscribeVideoComments: () => () => {},
+    });
+
+    const snapshot = await service.loadThread({ video });
+
+    assert.ok(fetchTarget, "fetch should run when pointer identifiers are provided");
+    assert.equal(fetchTarget.rootIdentifier, "pointer-root");
+    assert.equal(snapshot.rootIdentifier, "pointer-root");
+  },
+);
+
+test(
   "CommentThreadService preserves raw video author pubkeys during hydration fetches",
   async () => {
     const video = {

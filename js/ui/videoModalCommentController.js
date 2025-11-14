@@ -161,7 +161,10 @@ export default class VideoModalCommentController {
     }
     const videoKind = normalizeKind(video.kind);
     const videoAuthorPubkey = normalizeString(video.pubkey);
-    const videoRootId = normalizeString(video.videoRootId);
+    const pointerRootId = normalizeString(
+      video.pointerIdentifiers?.videoRootId,
+    );
+    const videoRootId = normalizeString(video.videoRootId) || pointerRootId;
     const videoRootRelay = normalizeRelay(
       video.videoRootRelay || video.rootIdentifierRelay,
     );
@@ -611,8 +614,13 @@ export default class VideoModalCommentController {
       this.modalCommentState.videoKind || normalizeKind(video.kind);
     const videoAuthorPubkey =
       this.modalCommentState.videoAuthorPubkey || normalizeString(video.pubkey);
+    const fallbackPointerRootId = normalizeString(
+      video.pointerIdentifiers?.videoRootId,
+    );
     const videoRootId =
-      this.modalCommentState.videoRootId || normalizeString(video.videoRootId);
+      this.modalCommentState.videoRootId ||
+      normalizeString(video.videoRootId) ||
+      fallbackPointerRootId;
     const videoRootRelay =
       this.modalCommentState.videoRootRelay ||
       normalizeRelay(video.videoRootRelay || video.rootIdentifierRelay);
