@@ -186,7 +186,11 @@ export default class CommentThreadService {
     this.videoKind = normalizeKind(video?.kind);
     this.videoAuthorPubkeyRaw = rawVideoAuthorPubkey;
     this.videoAuthorPubkey = normalizePubkey(rawVideoAuthorPubkey);
-    this.videoRootIdentifier = normalizeString(video?.videoRootId);
+    const pointerRootIdentifier = normalizeString(
+      video?.pointerIdentifiers?.videoRootId,
+    );
+    this.videoRootIdentifier =
+      normalizeString(video?.videoRootId) || pointerRootIdentifier;
     this.videoRootRelay = normalizeRelay(
       video?.videoRootRelay || video?.rootIdentifierRelay,
     );
