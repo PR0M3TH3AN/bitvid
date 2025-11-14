@@ -193,12 +193,40 @@ share their preferred and muted hashtags without exposing the raw preferences on
 relays. Readers continue to accept legacy `30005` payloads so previously
 published preferences remain visible.
 
-When migrating, no manual republish is required. Loading routines fetch both
-`30015` and `30005` events, preferring the canonical kind when timestamps tie.
-Any save from the profile modal reissues the preferences as `30015`, so the data
-converges automatically as viewers update their lists. Operators who need faster
-convergence can instruct affected accounts to re-save (e.g., toggle a tag) to
-force a new publish cycle.
+### Migration approach: auto-republish on next user change
+
+We are **not** shipping a one-off migration helper. Instead, the existing
+`HashtagPreferencesService.publish()` flow reissues preferences as kind `30015`
+the next time a user saves their interests from the profile modal. That publish
+path already:
+
+* rehydrates the signer via `getActiveSigner()` and aborts when no signer is
+  available, so background jobs cannot emit preferences without user consent;
+* encrypts the normalized payload once per save using the strongest available
+  NIP-44/NIP-04 scheme before calling `buildHashtagPreferenceEvent()`; and
+* writes a single replaceable event per account thanks to the stable
+  `['d','bitvid:tag-preferences']` tag, avoiding duplicate relay load because
+  later publishes overwrite the previous value.【F:js/services/hashtagPreferencesService.js†L604-L788】
+
+To prevent relay spikes, we only invoke `publish()` when the local interests or
+disinterests change—UI handlers short-circuit if a user toggles a tag back to
+its prior state. The method fans out to the configured write relays via
+`publishEventToRelays`, and `assertAnyRelayAccepted` ensures at least one relay
+acknowledges the update before treating the migration as complete.【F:js/services/hashtagPreferencesService.js†L761-L784】
+
+### Operator checklist
+
+Operators should monitor the rollout as follows:
+
+1. After deploying this change, review relay dashboards or logs for accounts
+   saving preferences to confirm new `30015` writes are accepted (look for the
+   `bitvid:tag-preferences` `d` tag).
+2. Spot-check a few migrated accounts by fetching both `30015` and legacy
+   `30005` events; the canonical kind should present the newest `created_at`
+   timestamp once a user saves.
+3. If relays reject events, correlate the warnings emitted by
+   `HashtagPreferencesService.publish()` in operator consoles to identify relay
+   outages or permission errors.
 
 When decrypting, the client inspects both `['encrypted', ...]` and
 `['encryption', ...]` hints on the event to prioritize NIP-44 v2 payloads,
