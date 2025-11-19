@@ -1211,7 +1211,7 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
     queue.throttle.set(key, now);
     persistQueueState();
     notifyQueueChange(actorKey);
-    devLogger.info(
+    devLogger.debug(
       "[watchHistoryService] Updated existing watch list entry.",
       {
       actor: actorKey,
@@ -1224,7 +1224,7 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
 
   if (throttled) {
     queue.throttle.set(key, now);
-    devLogger.info(
+    devLogger.debug(
     `[watchHistoryService] Throttled pointer ${key} for actor ${actorKey}.`
     );
     return viewResult;
@@ -1249,7 +1249,7 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
   );
 
   if (!remoteEnabled) {
-    devLogger.info(
+    devLogger.debug(
       "[watchHistoryService] Watch history sync unavailable for this actor; retaining pointer in local session queue only.",
       {
         actor: actorKey,
@@ -1270,7 +1270,7 @@ async function snapshot(items, options = {}) {
   }
 
   if (!isFeatureEnabled(actorKey)) {
-    devLogger.info(
+    devLogger.debug(
       "[watchHistoryService] Snapshot skipped because watch history sync is unavailable for this actor.",
       {
       actor: actorKey,
@@ -1338,7 +1338,7 @@ async function snapshot(items, options = {}) {
       }
     );
 
-    devLogger.info(
+    devLogger.debug(
       "[watchHistoryService] Watch list snapshot publish completed.",
       {
       actor: actorKey,
@@ -1375,7 +1375,7 @@ async function snapshot(items, options = {}) {
 
     await updateFingerprintCache(actorKey, publishResult.items || payloadItems);
     emit("snapshot-complete", { actor: actorKey, reason, result: publishResult });
-    devLogger.info(
+    devLogger.debug(
       "[watchHistoryService] Watch list snapshot processed and fingerprint cache updated.",
       {
       actor: actorKey,
@@ -1462,7 +1462,7 @@ async function loadLatest(actorInput, options = {}) {
       restoreQueueState();
     }
     const items = collectQueueItems(actorKey);
-    devLogger.info(
+    devLogger.debug(
       "[watchHistoryService] loadLatest returning local-only watch history queue.",
       {
       actor: actorKey,
@@ -1489,7 +1489,7 @@ async function loadLatest(actorInput, options = {}) {
     cacheEntry.expiresAt > now;
 
   if (cacheIsFresh) {
-    devLogger.info(
+    devLogger.debug(
       "[watchHistoryService] Returning cached watch list items.",
       {
       actor: actorKey,
@@ -1500,14 +1500,14 @@ async function loadLatest(actorInput, options = {}) {
   }
 
   if (cacheEntry?.promise) {
-    devLogger.info(
+    devLogger.debug(
       "[watchHistoryService] Awaiting in-flight watch list refresh.",
       {
       actor: actorKey,
       }
     );
     if (allowStale && hasCachedItems) {
-      devLogger.info(
+      devLogger.debug(
         "[watchHistoryService] Returning stale watch list items while refresh completes.",
         {
         actor: actorKey,

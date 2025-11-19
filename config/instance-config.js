@@ -21,7 +21,7 @@
  * `false` before deploying to production so that end users receive the stable
  * experience. Downstream modules read this flag via `js/config.js`.
  */
-export const IS_DEV_MODE = true;
+export const IS_DEV_MODE = false;
 
 /**
  * Whether development builds should surface extra verbose diagnostics.
@@ -301,7 +301,7 @@ export const THEME_ACCENT_OVERRIDES = Object.freeze({
  * example, a NIP-51 collection) can flip this number so long as their relays
  * accept the chosen kind.
  */
-export const WATCH_HISTORY_KIND = 30079;
+export const WATCH_HISTORY_KIND = 30078;
 
 /**
  * Identifier applied to the watch-history list when storing it on relays.
