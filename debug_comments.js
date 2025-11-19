@@ -1,12 +1,9 @@
 
-import { __testExports, normalizeCommentTarget } from "./js/nostr/commentEvents.js";
-const { isVideoCommentEvent } = __testExports;
+import { __testExports } from "./js/nostr/commentEvents.js";
+const { isVideoCommentEvent, normalizeCommentTarget } = __testExports;
 import { devLogger, userLogger } from "./js/utils/logger.js";
 
-// Mock loggers to see output
-devLogger.debug = (...args) => console.log("[DEBUG]", ...args);
-devLogger.warn = (...args) => console.log("[WARN]", ...args);
-userLogger.warn = (...args) => console.log("[USER WARN]", ...args);
+// Logger mocking removed
 
 const videoEventId = "0000000000000000000000000000000000000000000000000000000000000001";
 const rootKind = "30078";
