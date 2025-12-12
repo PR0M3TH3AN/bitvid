@@ -947,6 +947,14 @@ export default class CommentThreadService {
   }
 
   teardown() {
+    try {
+      this.persistCommentCache();
+    } catch (error) {
+      if (this.logger?.warn) {
+        this.logger.warn("[commentThread] Failed to persist comment cache:", error);
+      }
+    }
+
     if (this.subscriptionCleanup) {
       try {
         this.subscriptionCleanup();
