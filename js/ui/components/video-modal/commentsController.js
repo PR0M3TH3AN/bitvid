@@ -4,6 +4,7 @@ export class CommentsController {
   constructor({ modal } = {}) {
     this.modal = modal;
     this.root = null;
+    this.playerModal = null;
   }
 
   initialize({ playerModal } = {}) {
@@ -11,6 +12,7 @@ export class CommentsController {
       return;
     }
 
+    this.playerModal = playerModal || null;
     const root = playerModal?.querySelector("[data-comments-root]") || null;
     const commentsDisabledPlaceholder =
       playerModal?.querySelector("[data-comments-disabled-placeholder]") ||
@@ -33,10 +35,11 @@ export class CommentsController {
       logger.user.warn(
         "[VideoModal:comments] Missing [data-comments-root]; disabling comments UI"
       );
-      this.modal.showCommentsDisabledMessage(
-        this.modal.commentsDisabledPlaceholderDefaultText ||
-          "Comments are unavailable right now."
-      );
+      this.disableComments({
+        reason: "missing-root",
+        message: this.modal.commentsDisabledPlaceholderDefaultText ||
+          "Comments are unavailable right now.",
+      });
       return;
     }
 
@@ -89,11 +92,17 @@ export class CommentsController {
       logger.user.warn(
         `[VideoModal:comments] Missing required selectors: ${missingSelectors.join(", ")}; disabling comments UI`
       );
-      this.modal.showCommentsDisabledMessage(
-        this.modal.commentsDisabledPlaceholderDefaultText ||
-          "Comments are unavailable right now."
-      );
+      this.disableComments({
+        reason: "missing-selectors",
+        message: this.modal.commentsDisabledPlaceholderDefaultText ||
+          "Comments are unavailable right now.",
+      });
       return;
+    }
+
+    if (this.playerModal) {
+      this.playerModal.removeAttribute("data-comments-disabled");
+      this.playerModal.classList?.remove("comments-disabled");
     }
 
     if (this.modal.commentComposerHint) {
@@ -135,6 +144,35 @@ export class CommentsController {
     this.modal.clearComments();
     this.modal.resetCommentComposer();
     this.modal.attachCommentEventHandlers();
+  }
+
+  disableComments({ message = "", reason = "" } = {}) {
+    if (this.playerModal) {
+      this.playerModal.setAttribute("data-comments-disabled", "true");
+      this.playerModal.classList?.add("comments-disabled");
+    }
+
+    if (this.modal.commentsList) {
+      this.modal.commentsList.setAttribute("hidden", "");
+      this.modal.commentsList.classList?.add("hidden");
+    }
+
+    if (this.modal.commentsComposer) {
+      this.modal.commentsComposer.setAttribute("hidden", "");
+      this.modal.commentsComposer.classList?.add("hidden");
+    }
+
+    const nextMessage =
+      typeof message === "string" && message.trim()
+        ? message.trim()
+        : this.modal.commentsDisabledPlaceholderDefaultText ||
+          "Comments are unavailable right now.";
+
+    this.modal.showCommentsDisabledMessage(nextMessage);
+    logger.dev?.info?.(
+      "[VideoModal:comments] Disabled comments handling",
+      { reason: reason || "unknown" }
+    );
   }
 
   update(action = {}) {
@@ -182,6 +220,10 @@ export class CommentsController {
     this.modal.commentsStatusMessage = null;
     this.modal.commentsCharCount = null;
     this.modal.commentComposerHint = null;
+    if (this.playerModal) {
+      this.playerModal.removeAttribute("data-comments-disabled");
+      this.playerModal.classList?.remove("comments-disabled");
+    }
     this.root = null;
   }
 }
