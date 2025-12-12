@@ -17,6 +17,7 @@ export class CommentsController {
     const commentsDisabledPlaceholder =
       playerModal?.querySelector("[data-comments-disabled-placeholder]") ||
       root?.querySelector("[data-comments-disabled]") ||
+      this.ensureCommentsDisabledPlaceholder({ root }) ||
       null;
 
     this.root = root;
@@ -147,6 +148,17 @@ export class CommentsController {
   }
 
   disableComments({ message = "", reason = "" } = {}) {
+    const placeholder =
+      this.modal.commentsDisabledPlaceholder ||
+      this.ensureCommentsDisabledPlaceholder({ root: this.root }) ||
+      null;
+    if (!this.modal.commentsDisabledPlaceholder && placeholder) {
+      this.modal.commentsDisabledPlaceholder = placeholder;
+      if (placeholder.textContent) {
+        this.modal.commentsDisabledPlaceholderDefaultText = placeholder.textContent;
+      }
+    }
+
     if (this.playerModal) {
       this.playerModal.setAttribute("data-comments-disabled", "true");
       this.playerModal.classList?.add("comments-disabled");
@@ -225,6 +237,55 @@ export class CommentsController {
       this.playerModal.classList?.remove("comments-disabled");
     }
     this.root = null;
+  }
+
+  getDocument() {
+    if (this.modal?.document) {
+      return this.modal.document;
+    }
+    if (this.playerModal?.ownerDocument) {
+      return this.playerModal.ownerDocument;
+    }
+    if (typeof document !== "undefined") {
+      return document;
+    }
+    return null;
+  }
+
+  ensureCommentsDisabledPlaceholder({ root } = {}) {
+    const existing =
+      this.modal?.commentsDisabledPlaceholder ||
+      root?.querySelector?.("[data-comments-disabled-placeholder]") ||
+      this.playerModal?.querySelector?.("[data-comments-disabled-placeholder]");
+    if (existing) {
+      return existing;
+    }
+
+    const doc = this.getDocument();
+    const container = root?.parentElement || this.playerModal || null;
+    if (!doc || !container) {
+      return null;
+    }
+
+    const placeholder = doc.createElement("div");
+    placeholder.setAttribute("data-comments-disabled-placeholder", "");
+    placeholder.setAttribute("role", "status");
+    placeholder.setAttribute("aria-live", "polite");
+    placeholder.setAttribute("hidden", "");
+    placeholder.classList.add("comment-thread__disabled");
+
+    const defaultText =
+      this.modal?.commentsDisabledPlaceholderDefaultText ||
+      "Comments are unavailable right now.";
+    placeholder.textContent = defaultText;
+
+    if (root?.parentElement) {
+      root.parentElement.insertBefore(placeholder, root);
+    } else {
+      container.insertBefore(placeholder, container.firstChild);
+    }
+
+    return placeholder;
   }
 }
 
