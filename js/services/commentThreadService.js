@@ -1,6 +1,6 @@
 // js/services/commentThreadService.js
 
-import { devLogger } from "../utils/logger.js";
+import logger, { devLogger, userLogger } from "../utils/logger.js";
 import { buildVideoAddressPointer } from "../utils/videoPointer.js";
 import { COMMENT_EVENT_KIND } from "../nostr/commentEvents.js";
 import { FEATURE_IMPROVED_COMMENT_FETCHING } from "../constants.js";
@@ -70,6 +70,34 @@ function safeCall(handler, payload) {
   }
 }
 
+function normalizeLogger(loggerCandidate) {
+  const normalized =
+    loggerCandidate && typeof loggerCandidate === "object"
+      ? loggerCandidate
+      : null;
+
+  const devChannel =
+    normalized?.dev && typeof normalized.dev.warn === "function"
+      ? normalized.dev
+      : devLogger;
+
+  const userChannel =
+    normalized?.user && typeof normalized.user.warn === "function"
+      ? normalized.user
+      : userLogger;
+
+  const warn =
+    typeof normalized?.warn === "function"
+      ? (...args) => normalized.warn(...args)
+      : (...args) => devChannel.warn(...args);
+
+  return {
+    warn,
+    dev: devChannel,
+    user: userChannel,
+  };
+}
+
 export default class CommentThreadService {
   constructor({
     nostrClient = null,
@@ -80,7 +108,7 @@ export default class CommentThreadService {
     batchFetchProfiles = null,
     limit = DEFAULT_INITIAL_LIMIT,
     hydrationDebounceMs = DEFAULT_HYDRATION_DEBOUNCE_MS,
-    logger = devLogger,
+    logger: loggerCandidate = logger,
   } = {}) {
     this.nostrClient = nostrClient;
     this.fetchVideoComments = fetchVideoComments;
@@ -117,8 +145,7 @@ export default class CommentThreadService {
       0,
       toPositiveInteger(hydrationDebounceMs, DEFAULT_HYDRATION_DEBOUNCE_MS)
     );
-    this.logger =
-      logger && typeof logger.warn === "function" ? logger : devLogger;
+    this.logger = normalizeLogger(loggerCandidate);
 
     this.callbacks = {
       onThreadReady: null,
@@ -150,6 +177,7 @@ export default class CommentThreadService {
     this.parentCommentKind = "";
     this.parentCommentPubkey = "";
     this.activeRelays = null;
+    this.commentCacheDiagnostics = { storageUnavailable: false };
   }
 
   setCallbacks({
@@ -336,6 +364,28 @@ export default class CommentThreadService {
     return `${COMMENT_CACHE_PREFIX}${normalized.toLowerCase()}`;
   }
 
+  handleCommentCacheError(context, videoEventId, error) {
+    this.commentCacheDiagnostics = {
+      ...this.commentCacheDiagnostics,
+      storageUnavailable: true,
+    };
+
+    const message =
+      typeof videoEventId === "string" && videoEventId.trim()
+        ? `[commentThread] Failed to ${context} comment cache for ${videoEventId}.`
+        : `[commentThread] Failed to ${context} comment cache.`;
+
+    if (this.logger?.user?.warn) {
+      this.logger.user.warn(message, error);
+    } else if (this.logger?.warn) {
+      this.logger.warn(message, error);
+    }
+
+    if (this.logger?.dev?.warn && this.logger.dev !== this.logger.user) {
+      this.logger.dev.warn(message, error);
+    }
+  }
+
   getCachedComments(videoEventId) {
     if (
       !FEATURE_IMPROVED_COMMENT_FETCHING ||
@@ -353,12 +403,7 @@ export default class CommentThreadService {
     try {
       raw = localStorage.getItem(cacheKey);
     } catch (error) {
-      if (this.logger?.warn) {
-        this.logger.warn(
-          `[commentThread] Failed to read cached comments for ${videoEventId}:`,
-          error,
-        );
-      }
+      this.handleCommentCacheError("read", videoEventId, error);
       return null;
     }
 
@@ -443,12 +488,7 @@ export default class CommentThreadService {
         );
       }
     } catch (error) {
-      if (this.logger?.warn) {
-        this.logger.warn(
-          `[commentThread] Failed to cache comments for ${videoEventId}:`,
-          error,
-        );
-      }
+      this.handleCommentCacheError("write", videoEventId, error);
     }
   }
 
@@ -849,6 +889,7 @@ export default class CommentThreadService {
       commentsById: this.cloneCommentsMap(),
       childrenByParent: this.cloneTreeMap(),
       profiles: this.getProfilesSnapshot(),
+      commentCacheDiagnostics: { ...this.commentCacheDiagnostics },
     };
     safeCall(this.callbacks.onThreadReady, payload);
     this.persistCommentCache();
@@ -869,6 +910,7 @@ export default class CommentThreadService {
       commentsById: this.cloneCommentsMap(),
       childrenByParent: this.cloneTreeMap(),
       profiles: this.getProfilesSnapshot(),
+      commentCacheDiagnostics: { ...this.commentCacheDiagnostics },
     };
     safeCall(this.callbacks.onCommentsAppended, payload);
     this.persistCommentCache();
@@ -895,6 +937,7 @@ export default class CommentThreadService {
       commentsById: this.cloneCommentsMap(),
       childrenByParent: this.cloneTreeMap(),
       profiles: this.getProfilesSnapshot(),
+      commentCacheDiagnostics: { ...this.commentCacheDiagnostics },
     };
   }
 
