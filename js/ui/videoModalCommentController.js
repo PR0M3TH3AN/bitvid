@@ -356,7 +356,9 @@ export default class VideoModalCommentController {
       return;
     }
 
-    this.modalCommentProfiles = this.createMapFromInput(snapshot.profiles);
+    this.modalCommentProfiles = this.createMapFromInput(snapshot.profiles, {
+      normalizeKey: this.utils.normalizeHexPubkey,
+    });
     this.modalCommentState.parentCommentId = normalizeString(
       snapshot.parentCommentId,
     ) || null;
@@ -407,7 +409,9 @@ export default class VideoModalCommentController {
     }
 
     const comments = this.createMapFromInput(payload.commentsById);
-    const profiles = this.createMapFromInput(payload.profiles);
+    const profiles = this.createMapFromInput(payload.profiles, {
+      normalizeKey: this.utils.normalizeHexPubkey,
+    });
     profiles.forEach((profile, pubkey) => {
       this.modalCommentProfiles.set(pubkey, profile);
     });
@@ -469,22 +473,41 @@ export default class VideoModalCommentController {
     }
   }
 
-  createMapFromInput(input) {
-    if (input instanceof Map) {
-      return new Map(input);
-    }
+  createMapFromInput(input, { normalizeKey = null } = {}) {
     const map = new Map();
+    const applyKey = (key) => {
+      if (!normalizeKey) {
+        return key;
+      }
+      const normalized = normalizeKey(key);
+      return normalized === null || normalized === undefined ? null : normalized;
+    };
+
+    const setEntry = (key, value) => {
+      const normalizedKey = applyKey(key);
+      if (normalizedKey === null || normalizedKey === undefined) {
+        return;
+      }
+      map.set(normalizedKey, value);
+    };
+
+    if (input instanceof Map) {
+      input.forEach((value, key) => {
+        setEntry(key, value);
+      });
+      return map;
+    }
     if (Array.isArray(input)) {
       input.forEach((entry) => {
         if (Array.isArray(entry) && entry.length >= 2) {
-          map.set(entry[0], entry[1]);
+          setEntry(entry[0], entry[1]);
         }
       });
       return map;
     }
     if (input && typeof input === "object") {
       Object.entries(input).forEach(([key, value]) => {
-        map.set(key, value);
+        setEntry(key, value);
       });
     }
     return map;
