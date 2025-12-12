@@ -8,6 +8,10 @@ function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function normalizeVideoEventId(value) {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
 function normalizeRelay(value) {
   if (typeof value === "string") {
     return value.trim();
@@ -352,7 +356,12 @@ export default class VideoModalCommentController {
       return;
     }
 
-    if (snapshot.videoEventId !== this.modalCommentState.videoEventId) {
+    const snapshotVideoEventId = normalizeVideoEventId(snapshot.videoEventId);
+    const modalVideoEventId = normalizeVideoEventId(
+      this.modalCommentState.videoEventId,
+    );
+
+    if (!snapshotVideoEventId || snapshotVideoEventId !== modalVideoEventId) {
       return;
     }
 
@@ -404,7 +413,12 @@ export default class VideoModalCommentController {
       return;
     }
 
-    if (payload.videoEventId !== this.modalCommentState.videoEventId) {
+    const payloadVideoEventId = normalizeVideoEventId(payload.videoEventId);
+    const modalVideoEventId = normalizeVideoEventId(
+      this.modalCommentState.videoEventId,
+    );
+
+    if (!payloadVideoEventId || payloadVideoEventId !== modalVideoEventId) {
       return;
     }
 

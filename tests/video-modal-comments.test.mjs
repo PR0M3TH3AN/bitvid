@@ -177,6 +177,87 @@ test(
   },
 );
 
+test(
+  "VideoModalCommentController accepts mixed-case videoEventIds for snapshots",
+  async () => {
+    const renderedSnapshots = [];
+    const appended = [];
+
+    const controller = new VideoModalCommentController({
+      commentThreadService: {
+        setCallbacks: () => {},
+        teardown: () => {},
+        loadThread: () => Promise.resolve(),
+        processIncomingEvent: () => {},
+      },
+      videoModal: {
+        setCommentSectionCallbacks: () => {},
+        hideCommentsDisabledMessage: () => {},
+        showCommentsDisabledMessage: () => {},
+        setCommentsVisibility: () => {},
+        clearComments: () => {},
+        resetCommentComposer: () => {},
+        setCommentStatus: () => {},
+        setCommentComposerState: () => {},
+        renderComments: (snapshot) => renderedSnapshots.push(snapshot),
+        appendComment: (comment) => appended.push(comment),
+      },
+      auth: {
+        isLoggedIn: () => true,
+      },
+      utils: {
+        normalizeHexPubkey: (value) => value,
+      },
+    });
+
+    controller.modalCommentState.videoEventId = "VideoCaseMixed";
+
+    const snapshot = {
+      videoEventId: "videocasemixed",
+      parentCommentId: null,
+      commentsById: new Map([
+        [
+          "comment-1",
+          {
+            id: "comment-1",
+            pubkey: "pk1",
+            kind: COMMENT_EVENT_KIND,
+            content: "First!",
+            tags: [],
+          },
+        ],
+      ]),
+      childrenByParent: new Map([[null, ["comment-1"]]]),
+      profiles: new Map(),
+    };
+
+    controller.handleCommentThreadReady(snapshot);
+
+    const payload = {
+      videoEventId: "  VIDEOCASEMIXED  ",
+      commentsById: new Map([
+        [
+          "comment-2",
+          {
+            id: "comment-2",
+            pubkey: "pk2",
+            kind: COMMENT_EVENT_KIND,
+            content: "Second!",
+            tags: [],
+          },
+        ],
+      ]),
+      commentIds: ["comment-2"],
+      profiles: new Map(),
+    };
+
+    controller.handleCommentThreadAppend(payload);
+
+    assert.equal(renderedSnapshots.length, 1, "snapshot should render despite casing");
+    assert.equal(appended.length, 1, "append should accept trimmed, mixed-case IDs");
+  },
+);
+
 test("VideoModal comment composer updates messaging and dispatches events", async (t) => {
   const { window, document, modal, cleanup } = await setupModal();
   t.after(cleanup);
