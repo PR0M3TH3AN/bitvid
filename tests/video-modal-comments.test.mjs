@@ -120,6 +120,63 @@ test("VideoModal comment section toggles visibility and renders hydrated comment
   assert.equal(modal.commentsList.getAttribute("data-empty"), null);
 });
 
+test(
+  "VideoModalCommentController attaches profiles using normalized pubkeys",
+  async () => {
+    const appended = [];
+
+    const controller = new VideoModalCommentController({
+      commentThreadService: {
+        setCallbacks: () => {},
+        teardown: () => {},
+        loadThread: () => Promise.resolve(),
+      },
+      videoModal: {
+        setCommentSectionCallbacks: () => {},
+        hideCommentsDisabledMessage: () => {},
+        showCommentsDisabledMessage: () => {},
+        setCommentsVisibility: () => {},
+        clearComments: () => {},
+        resetCommentComposer: () => {},
+        setCommentStatus: () => {},
+        setCommentComposerState: () => {},
+        appendComment: (comment) => appended.push(comment),
+      },
+      auth: {
+        isLoggedIn: () => true,
+      },
+      utils: {
+        normalizeHexPubkey: (value) =>
+          typeof value === "string" ? value.toLowerCase() : null,
+      },
+    });
+
+    controller.load({ id: "VideoCase", enableComments: true });
+    await Promise.resolve();
+
+    controller.handleCommentThreadAppend({
+      videoEventId: "VideoCase",
+      commentsById: new Map([
+        [
+          "c1",
+          {
+            id: "c1",
+            pubkey: "AbCd",
+            kind: COMMENT_EVENT_KIND,
+            content: "Hi",
+            tags: [],
+          },
+        ],
+      ]),
+      commentIds: ["c1"],
+      profiles: new Map([["ABCD", { name: "Mixed Case" }]]),
+    });
+
+    assert.equal(appended.length, 1);
+    assert.deepEqual(appended[0].profile, { name: "Mixed Case" });
+  },
+);
+
 test("VideoModal comment composer updates messaging and dispatches events", async (t) => {
   const { window, document, modal, cleanup } = await setupModal();
   t.after(cleanup);
