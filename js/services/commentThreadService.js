@@ -324,7 +324,11 @@ export default class CommentThreadService {
 
   getCommentCacheKey(videoEventId) {
     const normalized = normalizeString(videoEventId);
-    return normalized ? `${COMMENT_CACHE_PREFIX}${normalized}` : "";
+    if (!normalized) {
+      return "";
+    }
+
+    return `${COMMENT_CACHE_PREFIX}${normalized.toLowerCase()}`;
   }
 
   getCachedComments(videoEventId) {

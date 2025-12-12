@@ -88,6 +88,41 @@ test.after(() => {
   }
 });
 
+test("CommentThreadService caches mixed-case video ids consistently", () => {
+  const videoEventId = "VideoMixed123";
+  const service = new CommentThreadService();
+
+  const comments = [
+    {
+      id: "comment-1",
+      pubkey: "authorpk",
+      content: "Cached comment",
+      created_at: 1700000000,
+      tags: [],
+    },
+  ];
+
+  service.cacheComments(videoEventId, comments);
+
+  const cachedKeys = [];
+  for (let index = 0; index < localStorage.length; index += 1) {
+    cachedKeys.push(localStorage.key(index));
+  }
+
+  assert.deepEqual(
+    cachedKeys,
+    ["bitvid:comments:videomixed123"],
+    "cache key should normalize mixed-case ids",
+  );
+
+  const cached = service.getCachedComments(videoEventId.toLowerCase());
+  assert.deepEqual(
+    cached,
+    comments,
+    "mixed-case ids should retrieve cached entries",
+  );
+});
+
 test(
   "listVideoComments accepts builder events without parent ids and filters replies",
   async () => {
