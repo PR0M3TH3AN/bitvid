@@ -2,7 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import CommentThreadService from "../js/services/commentThreadService.js";
-import { COMMENT_EVENT_KIND, listVideoComments } from "../js/nostr/commentEvents.js";
+import {
+  COMMENT_EVENT_KIND,
+  listVideoComments,
+} from "../js/nostr/commentEvents.js";
+import {
+  FEATURE_IMPROVED_COMMENT_FETCHING,
+  setImprovedCommentFetchingEnabled,
+} from "../js/constants.js";
 import { buildCommentEvent } from "../js/nostrEventSchemas.js";
 
 function createBaseVideo() {
@@ -178,6 +185,106 @@ test("CommentThreadService surfaces cache write failures", () => {
     true,
     "user warnings should be emitted when cache writes fail",
   );
+});
+
+test("CommentThreadService logs cache usage and fallback decisions", async () => {
+  const initialFlag = FEATURE_IMPROVED_COMMENT_FETCHING;
+  const devLogs = [];
+  const fetchCalls = [];
+  const logger = {
+    warn: () => {},
+    dev: {
+      log: () => {},
+      info: (...args) => devLogs.push(args.join(" ")),
+      debug: () => {},
+      warn: (...args) => devLogs.push(args.join(" ")),
+      error: () => {},
+    },
+    user: { warn: () => {} },
+  };
+
+  const fetchVideoComments = async (...args) => {
+    fetchCalls.push(args);
+    return [
+      {
+        id: "remote-1",
+        pubkey: "remote",
+        content: "Fresh comment",
+        created_at: 2,
+        tags: [],
+      },
+    ];
+  };
+
+  const service = new CommentThreadService({
+    fetchVideoComments,
+    logger,
+  });
+
+  try {
+    setImprovedCommentFetchingEnabled(true);
+    const cachedComments = [
+      {
+        id: "cached-1",
+        pubkey: "cached",
+        content: "Cached comment",
+        created_at: 1,
+        tags: [],
+      },
+    ];
+
+    service.cacheComments("video123", cachedComments);
+    devLogs.length = 0;
+    fetchCalls.length = 0;
+
+    const cachedResult = await service.fetchThread({ videoEventId: "video123" });
+
+    assert.deepEqual(
+      cachedResult,
+      cachedComments,
+      "feature flag on should return cached comments",
+    );
+    assert.equal(
+      fetchCalls.length,
+      0,
+      "cache hits should avoid fallback fetch",
+    );
+    assert.equal(
+      devLogs.some((entry) =>
+        entry.includes("Loaded 1 cached comments for video123"),
+      ),
+      true,
+      "dev logs should note cache usage when enabled",
+    );
+
+    setImprovedCommentFetchingEnabled(false);
+    devLogs.length = 0;
+    fetchCalls.length = 0;
+
+    const fallbackResult = await service.fetchThread({
+      videoEventId: "video123",
+    });
+
+    assert.equal(
+      fetchCalls.length,
+      1,
+      "feature flag off should invoke fallback fetch",
+    );
+    assert.equal(
+      devLogs.some((entry) =>
+        entry.includes("Improved fetching fallback: feature disabled"),
+      ),
+      true,
+      "dev logs should note fallback when feature is disabled",
+    );
+    assert.deepEqual(
+      fallbackResult.map((comment) => comment.id),
+      ["remote-1"],
+      "fallback path should return freshly fetched comments",
+    );
+  } finally {
+    setImprovedCommentFetchingEnabled(initialFlag);
+  }
 });
 
 test("CommentThreadService normalizes mixed-case event ids in thread state", async () => {

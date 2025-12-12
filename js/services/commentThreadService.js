@@ -59,6 +59,12 @@ function fromParentKey(parentKey) {
   return parentKey === ROOT_PARENT_KEY ? null : parentKey;
 }
 
+function logDev(loggerCandidate, ...args) {
+  if (loggerCandidate?.info) {
+    loggerCandidate.info(...args);
+  }
+}
+
 function safeCall(handler, payload) {
   if (typeof handler !== "function") {
     return;
@@ -318,6 +324,10 @@ export default class CommentThreadService {
     };
 
     if (!FEATURE_IMPROVED_COMMENT_FETCHING) {
+      logDev(
+        this.logger?.dev,
+        "[commentThread] Improved fetching fallback: feature disabled.",
+      );
       return fallbackFetch(options);
     }
 
@@ -328,6 +338,10 @@ export default class CommentThreadService {
     );
 
     if (!videoEventId) {
+      logDev(
+        this.logger?.dev,
+        "[commentThread] Improved fetching fallback: missing video event id.",
+      );
       return fallbackFetch(options);
     }
 
@@ -335,6 +349,11 @@ export default class CommentThreadService {
     if (Array.isArray(cached)) {
       return cached;
     }
+
+    logDev(
+      this.logger?.dev,
+      `[commentThread] Comment cache miss for ${videoEventId}, fetching fresh thread.`,
+    );
 
     const fetchOptions = {
       ...options,
@@ -396,6 +415,10 @@ export default class CommentThreadService {
 
     const cacheKey = this.getCommentCacheKey(videoEventId);
     if (!cacheKey) {
+      logDev(
+        this.logger?.dev,
+        "[commentThread] Comment cache skipped: invalid video id.",
+      );
       return null;
     }
 
@@ -408,12 +431,20 @@ export default class CommentThreadService {
     }
 
     if (raw === null) {
+      logDev(
+        this.logger?.dev,
+        `[commentThread] Comment cache miss for ${videoEventId}: no entry present.`,
+      );
       return null;
     }
 
     try {
       const parsed = JSON.parse(raw);
       if (!parsed || typeof parsed !== "object") {
+        logDev(
+          this.logger?.dev,
+          `[commentThread] Comment cache rejected for ${videoEventId}: malformed payload.`,
+        );
         this.removeCommentCache(cacheKey);
         return null;
       }
@@ -423,6 +454,10 @@ export default class CommentThreadService {
         : null;
 
       if (cacheVersion !== COMMENT_CACHE_VERSION) {
+        logDev(
+          this.logger?.dev,
+          `[commentThread] Comment cache rejected for ${videoEventId}: version ${cacheVersion} != ${COMMENT_CACHE_VERSION}.`,
+        );
         this.removeCommentCache(cacheKey);
         return null;
       }
@@ -437,14 +472,17 @@ export default class CommentThreadService {
         Number.isFinite(timestamp) &&
         Date.now() - timestamp <= COMMENT_CACHE_TTL_MS
       ) {
-        if (devLogger?.info) {
-          devLogger.info(
-            `[commentThread] Loaded ${comments.length} cached comments for ${videoEventId}.`,
-          );
-        }
+        logDev(
+          this.logger?.dev,
+          `[commentThread] Loaded ${comments.length} cached comments for ${videoEventId}.`,
+        );
         return comments;
       }
 
+      logDev(
+        this.logger?.dev,
+        `[commentThread] Comment cache rejected for ${videoEventId}: entry expired.`,
+      );
       this.removeCommentCache(cacheKey);
     } catch (error) {
       if (this.logger?.warn) {
@@ -453,6 +491,10 @@ export default class CommentThreadService {
           error,
         );
       }
+      logDev(
+        this.logger?.dev,
+        `[commentThread] Comment cache rejected for ${videoEventId}: parse error.`,
+      );
       this.removeCommentCache(cacheKey);
     }
 
@@ -482,11 +524,10 @@ export default class CommentThreadService {
           timestamp: Date.now(),
         }),
       );
-      if (devLogger?.info) {
-        devLogger.info(
-          `[commentThread] Cached ${comments.length} comments for ${videoEventId}.`,
-        );
-      }
+      logDev(
+        this.logger?.dev,
+        `[commentThread] Cached ${comments.length} comments for ${videoEventId}.`,
+      );
     } catch (error) {
       this.handleCommentCacheError("write", videoEventId, error);
     }
