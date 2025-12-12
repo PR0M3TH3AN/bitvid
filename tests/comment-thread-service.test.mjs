@@ -387,6 +387,35 @@ test("CommentThreadService normalizes mixed-case event ids in thread state", asy
   );
 });
 
+test("CommentThreadService normalizes mixed-case pubkeys during hydration", async () => {
+  const video = createBaseVideo();
+  const mixedPubkey = "PuBkEy-Upper";
+
+  const fetchVideoComments = async () => [
+    createComment({ id: "c-hydrate", pubkey: mixedPubkey, createdAt: 1700000200 }),
+  ];
+
+  const hydrationRequests = [];
+  const service = new CommentThreadService({
+    nostrClient: { ensurePool: async () => {} },
+    fetchVideoComments,
+    subscribeVideoComments: () => () => {},
+    batchFetchProfiles: async (pubkeys) => {
+      hydrationRequests.push([...pubkeys]);
+      return [];
+    },
+    hydrationDebounceMs: 0,
+  });
+
+  await service.loadThread({ video });
+
+  assert.deepEqual(
+    hydrationRequests,
+    [[mixedPubkey.toLowerCase()]],
+    "hydration should request normalized pubkeys",
+  );
+});
+
 test(
   "listVideoComments accepts builder events without parent ids and filters replies",
   async () => {

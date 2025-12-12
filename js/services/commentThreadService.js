@@ -1,6 +1,7 @@
 // js/services/commentThreadService.js
 
 import logger, { devLogger, userLogger } from "../utils/logger.js";
+import { normalizeHexId, normalizeHexPubkey } from "../utils/hex.js";
 import { buildVideoAddressPointer } from "../utils/videoPointer.js";
 import { COMMENT_EVENT_KIND } from "../nostr/commentEvents.js";
 import { FEATURE_IMPROVED_COMMENT_FETCHING } from "../constants.js";
@@ -24,11 +25,6 @@ function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function normalizeHexId(value) {
-  const normalized = normalizeString(value);
-  return normalized ? normalized.toLowerCase() : "";
-}
-
 function normalizeRelay(value) {
   if (typeof value === "string") {
     return value.trim();
@@ -36,10 +32,7 @@ function normalizeRelay(value) {
   return "";
 }
 
-function normalizePubkey(pubkey) {
-  const normalized = normalizeString(pubkey);
-  return normalized ? normalized.toLowerCase() : "";
-}
+const normalizePubkey = normalizeHexPubkey;
 
 function normalizeKind(value) {
   if (Number.isFinite(value)) {
@@ -225,11 +218,11 @@ export default class CommentThreadService {
     this.videoKind = normalizeKind(video?.kind);
     this.videoAuthorPubkeyRaw = rawVideoAuthorPubkey;
     this.videoAuthorPubkey = normalizePubkey(rawVideoAuthorPubkey);
-    const pointerRootIdentifier = normalizeString(
+    const pointerRootIdentifier = normalizeHexId(
       video?.pointerIdentifiers?.videoRootId,
     );
     this.videoRootIdentifier =
-      normalizeString(video?.videoRootId) || pointerRootIdentifier;
+      normalizeHexId(video?.videoRootId) || pointerRootIdentifier;
     this.videoRootRelay = normalizeRelay(
       video?.videoRootRelay || video?.rootIdentifierRelay,
     );

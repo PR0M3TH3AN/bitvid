@@ -145,10 +145,6 @@ test(
       auth: {
         isLoggedIn: () => true,
       },
-      utils: {
-        normalizeHexPubkey: (value) =>
-          typeof value === "string" ? value.toLowerCase() : null,
-      },
     });
 
     controller.load({ id: "VideoCase", enableComments: true });
@@ -357,9 +353,6 @@ test(
           return { ok: true, event: { id: "comment", tags: [] } };
         },
       },
-      utils: {
-        normalizeHexPubkey: (value) => value,
-      },
     });
 
   const video = {
@@ -380,8 +373,8 @@ test(
     assert.equal(publishCalls.length, 1, "publishComment should be called once");
     const payload = publishCalls[0];
     assert.equal(payload.videoEventId, "video123");
-    assert.equal(payload.videoAuthorPubkey, "AUTHORPK");
-    assert.equal(payload.videoDefinitionAddress, "30078:AUTHORPK:video-root");
+    assert.equal(payload.videoAuthorPubkey, "authorpk");
+    assert.equal(payload.videoDefinitionAddress, "30078:authorpk:video-root");
     assert.equal(payload.rootIdentifier, "video-root");
     assert.equal(payload.rootIdentifierRelay, "wss://root.example");
   },
@@ -419,9 +412,6 @@ test(
           return { ok: true, event: { id: "comment", tags: [] } };
         },
       },
-      utils: {
-        normalizeHexPubkey: (value) => value,
-      },
     });
 
     const video = {
@@ -436,7 +426,7 @@ test(
 
     controller.load(video);
     controller.modalCommentState.videoDefinitionAddress =
-      " 30078:AUTHORPK:video-root ";
+      " 30078:authorpk:video-root ";
     controller.modalCommentState.videoRootId = " video-root ";
     controller.modalCommentState.videoRootRelay = " wss://root.example ";
 
@@ -448,7 +438,7 @@ test(
     const payload = publishCalls[0];
     assert.equal(
       payload.videoDefinitionAddress,
-      "30078:AUTHORPK:video-root",
+      "30078:authorpk:video-root",
       "publish payload should reuse pointer from the loaded thread",
     );
     assert.equal(payload.rootIdentifier, "video-root");
@@ -461,11 +451,12 @@ test(
   async () => {
     const publishCalls = [];
     const loadTargets = [];
+    let threadReady = null;
 
     const controller = new VideoModalCommentController({
       commentThreadService: {
         setCallbacks: ({ onThreadReady }) => {
-          controller.commentThreadServiceReady = onThreadReady;
+          threadReady = onThreadReady;
         },
         teardown: () => {},
         defaultLimit: 10,
@@ -495,10 +486,9 @@ test(
           return { ok: true, event: { id: "comment", tags: [] } };
         },
       },
-      utils: {
-        normalizeHexPubkey: (value) => value,
-      },
     });
+
+    controller.commentThreadServiceReady = threadReady;
 
     const video = {
       id: "video789",
@@ -514,8 +504,8 @@ test(
     await Promise.resolve();
 
     assert.equal(loadTargets.length, 1, "loadThread should be invoked once");
-    assert.equal(loadTargets[0].rootIdentifier, "root-only");
-    assert.equal(loadTargets[0].rootIdentifierRelay, "wss://root-only");
+    assert.equal(loadTargets[0]?.video?.videoRootId, "root-only");
+    assert.equal(loadTargets[0]?.video?.videoRootRelay, "wss://root-only");
 
     const commentEvent = {
       id: "comment-root",
@@ -582,9 +572,6 @@ test(
           return { ok: true, event: { id: "comment", tags: [] } };
         },
       },
-      utils: {
-        normalizeHexPubkey: (value) => value,
-      },
     });
 
     const video = {
@@ -601,7 +588,11 @@ test(
     await Promise.resolve();
 
     assert.equal(loadTargets.length, 1, "loadThread should capture pointer target");
-    assert.equal(loadTargets[0].rootIdentifier, "pointer-root");
+    assert.equal(
+      loadTargets[0]?.video?.pointerIdentifiers?.videoRootId,
+      "pointer-root",
+      "pointerIdentifiers should carry the normalized root id",
+    );
 
     controller.submit({ text: "Pointer fallback" });
     await controller.modalCommentPublishPromise;
@@ -663,9 +654,6 @@ test(
           };
         },
       },
-      utils: {
-        normalizeHexPubkey: (value) => value?.toLowerCase?.() || value,
-      },
     });
 
     controller.currentVideo = {
@@ -685,9 +673,9 @@ test(
       videoEventId: "legacy-video",
       parentCommentId: null,
       videoKind: "30078",
-      videoAuthorPubkey: "AUTHORPK",
+      videoAuthorPubkey: "authorpk",
       rootKind: "30078",
-      rootAuthorPubkey: "AUTHORPK",
+      rootAuthorPubkey: "authorpk",
     });
     assert.equal(
       "videoDefinitionAddress" in payload,
@@ -845,9 +833,6 @@ test(
           return { ok: true, event: { id: "reply", tags: [] } };
         },
       },
-      utils: {
-        normalizeHexPubkey: (value) => value?.toLowerCase?.() || value,
-      },
     });
 
     controller.currentVideo = {
@@ -877,12 +862,12 @@ test(
     const payload = publishCalls[0];
     assert.equal(payload.videoEventId, "video123");
     assert.equal(payload.videoKind, "30078");
-    assert.equal(payload.videoAuthorPubkey, "AUTHORPK");
+    assert.equal(payload.videoAuthorPubkey, "authorpk");
     assert.equal(payload.parentCommentId, "parent-1");
     assert.equal(payload.parentCommentKind, String(COMMENT_EVENT_KIND));
     assert.equal(payload.parentCommentPubkey, "parentpk");
     assert.equal(payload.parentAuthorPubkey, "parentpk");
-    assert.equal(payload.rootAuthorPubkey, "AUTHORPK");
+    assert.equal(payload.rootAuthorPubkey, "authorpk");
   },
 );
 
