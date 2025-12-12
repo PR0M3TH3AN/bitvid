@@ -123,6 +123,106 @@ test("CommentThreadService caches mixed-case video ids consistently", () => {
   );
 });
 
+test("CommentThreadService normalizes mixed-case event ids in thread state", async () => {
+  const video = { ...createBaseVideo(), id: "VideoMixed123" };
+  const topLevelId = "CoMmEnT-Root";
+  const replyId = "RePlY-Child";
+
+  const topLevelEvent = {
+    id: topLevelId,
+    kind: 1,
+    pubkey: "commenterpk",
+    created_at: 1700000000,
+    content: "Top level",
+    tags: [
+      ["e", video.id],
+      ["a", "30078:authorpk:video-root"],
+    ],
+  };
+
+  const replyEvent = {
+    id: replyId,
+    kind: 1,
+    pubkey: "replypk",
+    created_at: 1700000100,
+    content: "Reply",
+    tags: [
+      ["e", video.id.toUpperCase()],
+      ["a", "30078:authorpk:video-root"],
+      ["e", topLevelId.toUpperCase()],
+    ],
+  };
+
+  const fetchVideoComments = async () => [topLevelEvent];
+  let triggerAppend = null;
+  const subscribeVideoComments = (target, options) => {
+    triggerAppend = options?.onEvent;
+    return () => {};
+  };
+
+  const service = new CommentThreadService({
+    fetchVideoComments,
+    subscribeVideoComments,
+  });
+
+  let threadReadyPayload = null;
+  let appendPayload = null;
+  service.setCallbacks({
+    onThreadReady: (payload) => {
+      threadReadyPayload = payload;
+    },
+    onCommentsAppended: (payload) => {
+      appendPayload = payload;
+    },
+  });
+
+  await service.loadThread({ video });
+
+  assert.equal(
+    threadReadyPayload.videoEventId,
+    video.id.toLowerCase(),
+    "video ids should normalize to lowercase in the thread payload",
+  );
+  assert.deepEqual(
+    threadReadyPayload.topLevelIds,
+    [topLevelId.toLowerCase()],
+    "top-level ids should be normalized",
+  );
+  assert.equal(
+    threadReadyPayload.childrenByParent.get(null)[0],
+    topLevelId.toLowerCase(),
+    "root children should reference normalized ids",
+  );
+  assert.equal(
+    threadReadyPayload.commentsById.has(topLevelId.toLowerCase()),
+    true,
+    "comment map should key by normalized ids",
+  );
+  assert.ok(
+    service.getCommentEvent(topLevelId.toUpperCase()),
+    "comment lookups should be case-insensitive",
+  );
+
+  assert.equal(typeof triggerAppend, "function", "subscription should be active");
+  triggerAppend(replyEvent);
+
+  assert.deepEqual(
+    appendPayload.commentIds,
+    [replyId.toLowerCase()],
+    "append payload should emit normalized comment ids",
+  );
+  assert.equal(
+    appendPayload.parentCommentId,
+    topLevelId.toLowerCase(),
+    "append payload should carry normalized parent ids",
+  );
+  assert.deepEqual(
+    appendPayload.childrenByParent.get(topLevelId.toLowerCase()),
+    [replyId.toLowerCase()],
+    "children map should store normalized ids for replies",
+  );
+});
+
 test(
   "listVideoComments accepts builder events without parent ids and filters replies",
   async () => {

@@ -24,6 +24,11 @@ function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function normalizeHexId(value) {
+  const normalized = normalizeString(value);
+  return normalized ? normalized.toLowerCase() : "";
+}
+
 function normalizeRelay(value) {
   if (typeof value === "string") {
     return value.trim();
@@ -181,7 +186,7 @@ export default class CommentThreadService {
 
     const rawVideoAuthorPubkey = normalizeString(video?.pubkey);
 
-    this.videoEventId = normalizeString(video?.id);
+    this.videoEventId = normalizeHexId(video?.id);
     this.videoAddressPointer = buildVideoAddressPointer(video);
     this.videoKind = normalizeKind(video?.kind);
     this.videoAuthorPubkeyRaw = rawVideoAuthorPubkey;
@@ -194,7 +199,7 @@ export default class CommentThreadService {
     this.videoRootRelay = normalizeRelay(
       video?.videoRootRelay || video?.rootIdentifierRelay,
     );
-    this.parentCommentId = normalizeString(parentCommentId);
+    this.parentCommentId = normalizeHexId(parentCommentId);
     this.parentCommentKind = this.parentCommentId ? String(COMMENT_EVENT_KIND) : "";
     this.parentCommentPubkey = "";
     this.activeRelays = Array.isArray(relays) ? [...relays] : null;
@@ -290,7 +295,7 @@ export default class CommentThreadService {
 
     const targetCandidate =
       target && typeof target === "object" ? target : {};
-    const videoEventId = normalizeString(
+    const videoEventId = normalizeHexId(
       targetCandidate.videoEventId || targetCandidate.eventId,
     );
 
@@ -323,7 +328,7 @@ export default class CommentThreadService {
   }
 
   getCommentCacheKey(videoEventId) {
-    const normalized = normalizeString(videoEventId);
+    const normalized = normalizeHexId(videoEventId);
     if (!normalized) {
       return "";
     }
@@ -507,8 +512,8 @@ export default class CommentThreadService {
         return aTime - bTime;
       }
 
-      const aId = normalizeString(a?.id);
-      const bId = normalizeString(b?.id);
+      const aId = normalizeHexId(a?.id);
+      const bId = normalizeHexId(b?.id);
       if (aId && bId) {
         return aId.localeCompare(bId);
       }
@@ -576,7 +581,7 @@ export default class CommentThreadService {
       return null;
     }
 
-    const eventId = normalizeString(event.id);
+    const eventId = normalizeHexId(event.id);
     if (!eventId) {
       return null;
     }
@@ -640,7 +645,7 @@ export default class CommentThreadService {
       if (name !== "e") {
         continue;
       }
-      const normalizedValue = normalizeString(value);
+      const normalizedValue = normalizeHexId(value);
       if (!normalizedValue) {
         continue;
       }
@@ -929,13 +934,13 @@ export default class CommentThreadService {
   }
 
   getCommentIdsForParent(parentId) {
-    const key = toParentKey(normalizeString(parentId));
+    const key = toParentKey(normalizeHexId(parentId));
     const list = this.childrenByParent.get(key);
     return Array.isArray(list) ? [...list] : [];
   }
 
   getCommentEvent(commentId) {
-    const normalized = normalizeString(commentId);
+    const normalized = normalizeHexId(commentId);
     if (!normalized) {
       return null;
     }
