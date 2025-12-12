@@ -123,6 +123,63 @@ test("CommentThreadService caches mixed-case video ids consistently", () => {
   );
 });
 
+test("CommentThreadService surfaces cache read failures", () => {
+  const warnings = [];
+  const service = new CommentThreadService({
+    logger: {
+      warn: (...args) => warnings.push({ channel: "root", args }),
+      dev: { warn: (...args) => warnings.push({ channel: "dev", args }) },
+      user: { warn: (...args) => warnings.push({ channel: "user", args }) },
+    },
+  });
+
+  globalThis.localStorage.getItem = () => {
+    throw new Error("quota exceeded");
+  };
+
+  const cached = service.getCachedComments("video123");
+
+  assert.equal(cached, null, "cache read errors should fall back to null");
+  assert.equal(
+    service.getSnapshot().commentCacheDiagnostics.storageUnavailable,
+    true,
+    "comment cache diagnostics should flag storage errors",
+  );
+  assert.equal(
+    warnings.some((entry) => entry.channel === "user"),
+    true,
+    "user warnings should be emitted when cache reads fail",
+  );
+});
+
+test("CommentThreadService surfaces cache write failures", () => {
+  const warnings = [];
+  const service = new CommentThreadService({
+    logger: {
+      warn: (...args) => warnings.push({ channel: "root", args }),
+      dev: { warn: (...args) => warnings.push({ channel: "dev", args }) },
+      user: { warn: (...args) => warnings.push({ channel: "user", args }) },
+    },
+  });
+
+  globalThis.localStorage.setItem = () => {
+    throw new Error("private mode");
+  };
+
+  service.cacheComments("video123", []);
+
+  assert.equal(
+    service.getSnapshot().commentCacheDiagnostics.storageUnavailable,
+    true,
+    "comment cache diagnostics should flag write failures",
+  );
+  assert.equal(
+    warnings.some((entry) => entry.channel === "user"),
+    true,
+    "user warnings should be emitted when cache writes fail",
+  );
+});
+
 test("CommentThreadService normalizes mixed-case event ids in thread state", async () => {
   const video = { ...createBaseVideo(), id: "VideoMixed123" };
   const topLevelId = "CoMmEnT-Root";
