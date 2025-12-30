@@ -9,6 +9,8 @@ import { FEATURE_IMPROVED_COMMENT_FETCHING } from "../constants.js";
 const ROOT_PARENT_KEY = "__root__";
 const DEFAULT_INITIAL_LIMIT = 40;
 const DEFAULT_HYDRATION_DEBOUNCE_MS = 25;
+const PROFILE_FETCH_MAX_ATTEMPTS = 3;
+const PROFILE_FETCH_BACKOFF_MS = 50;
 const COMMENT_CACHE_PREFIX = "bitvid:comments:";
 const COMMENT_CACHE_TTL_MS = 5 * 60 * 1000;
 const COMMENT_CACHE_VERSION = 2;
@@ -874,31 +876,66 @@ export default class CommentThreadService {
       return;
     }
 
-    const hydrationPromise = Promise.resolve(
-      this.batchFetchProfiles(pubkeys),
-    )
-      .catch((error) => {
-        if (this.logger?.warn) {
-          this.logger.warn(
-            "[commentThread] Profile hydration failed:",
-            error,
-          );
-        }
-        this.emitError(error);
-      })
-      .then(() => {
-        pubkeys.forEach((pubkey) => {
-          const profile = this.getProfileFromCache(pubkey);
-          if (profile) {
-            this.profileCache.set(pubkey, profile);
+    const pubkeyListLog = pubkeys.join(", ") || "(empty profile batch)";
+    const hydrationPromise = (async () => {
+      try {
+        let attempt = 0;
+        let lastError = null;
+
+        while (attempt < PROFILE_FETCH_MAX_ATTEMPTS) {
+          try {
+            await Promise.resolve(this.batchFetchProfiles(pubkeys));
+            break;
+          } catch (error) {
+            lastError = error;
+            const attemptLabel = `${attempt + 1}/${PROFILE_FETCH_MAX_ATTEMPTS}`;
+            if (this.logger?.dev?.warn) {
+              this.logger.dev.warn(
+                `[commentThread] Profile hydration attempt ${attemptLabel} failed for pubkeys: ${pubkeyListLog}.`,
+                error,
+              );
+            }
+
+            attempt += 1;
+            if (attempt >= PROFILE_FETCH_MAX_ATTEMPTS) {
+              throw lastError;
+            }
+
+            const backoffMs = PROFILE_FETCH_BACKOFF_MS * attempt;
+            logDev(
+              this.logger?.dev,
+              `[commentThread] Retrying profile hydration in ${backoffMs}ms for pubkeys: ${pubkeyListLog}.`,
+            );
+            await new Promise((resolve) => setTimeout(resolve, backoffMs));
           }
-        });
-      })
-      .finally(() => {
-        if (this.profileHydrationPromise === hydrationPromise) {
-          this.profileHydrationPromise = null;
+        }
+      } catch (error) {
+        const errorMessage = `[commentThread] Profile hydration failed for pubkeys: ${pubkeyListLog}.`;
+        if (this.logger?.user?.warn) {
+          this.logger.user.warn(errorMessage, error);
+        } else if (this.logger?.warn) {
+          this.logger.warn(errorMessage, error);
+        }
+
+        if (this.logger?.dev?.warn && this.logger.dev !== this.logger.user) {
+          this.logger.dev.warn(errorMessage, error);
+        }
+
+        this.emitError(error);
+        return;
+      }
+
+      pubkeys.forEach((pubkey) => {
+        const profile = this.getProfileFromCache(pubkey);
+        if (profile) {
+          this.profileCache.set(pubkey, profile);
         }
       });
+    })().finally(() => {
+      if (this.profileHydrationPromise === hydrationPromise) {
+        this.profileHydrationPromise = null;
+      }
+    });
 
     this.profileHydrationPromise = hydrationPromise;
     await hydrationPromise;
