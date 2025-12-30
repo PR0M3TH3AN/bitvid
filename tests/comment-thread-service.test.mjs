@@ -187,6 +187,39 @@ test("CommentThreadService surfaces cache write failures", () => {
   );
 });
 
+test("CommentThreadService persists caches safely during teardown failures", async () => {
+  const warnings = [];
+  const service = new CommentThreadService({
+    fetchVideoComments: async () => [
+      createComment({ id: "persist-me", pubkey: "pk-cache", createdAt: 1 }),
+    ],
+    subscribeVideoComments: () => () => {},
+    logger: {
+      warn: (...args) => warnings.push(args),
+      dev: { warn: (...args) => warnings.push(args) },
+      user: { warn: (...args) => warnings.push(args) },
+    },
+  });
+
+  await service.loadThread({ video: createBaseVideo() });
+
+  globalThis.localStorage.setItem = () => {
+    throw new Error("storage blocked");
+  };
+
+  assert.doesNotThrow(() => service.teardown());
+  assert.equal(
+    warnings.some((args) =>
+      args.some?.((value) =>
+        typeof value === "string" &&
+        value.includes("Failed to write comment cache for video123"),
+      ),
+    ),
+    true,
+    "teardown should warn when persistence fails but still reset state",
+  );
+});
+
 test("CommentThreadService logs cache usage and fallback decisions", async () => {
   const initialFlag = FEATURE_IMPROVED_COMMENT_FETCHING;
   const devLogs = [];
@@ -413,6 +446,51 @@ test("CommentThreadService normalizes mixed-case pubkeys during hydration", asyn
     hydrationRequests,
     [[mixedPubkey.toLowerCase()]],
     "hydration should request normalized pubkeys",
+  );
+});
+
+test("CommentThreadService deduplicates mixed-case event ids and pubkeys", async () => {
+  const hydrationRequests = [];
+  const service = new CommentThreadService({
+    fetchVideoComments: async () => [],
+    subscribeVideoComments: () => () => {},
+    batchFetchProfiles: async (pubkeys) => {
+      hydrationRequests.push([...pubkeys]);
+    },
+    hydrationDebounceMs: 0,
+  });
+
+  await service.loadThread({ video: createBaseVideo() });
+
+  const mixedCaseEvent = createComment({
+    id: "CoMmEnT-123", // intentionally mixed case
+    pubkey: "PuBkEy-123",
+    createdAt: 10,
+  });
+  const lowerCaseEvent = createComment({
+    id: "comment-123",
+    pubkey: "pubkey-123",
+    createdAt: 20,
+  });
+
+  service.processIncomingEvent(mixedCaseEvent);
+  service.processIncomingEvent(lowerCaseEvent);
+  await service.flushProfileQueue();
+
+  assert.deepEqual(
+    service.getCommentIdsForParent(null),
+    ["comment-123"],
+    "mixed-case duplicates should collapse to a single normalized id",
+  );
+  assert.equal(
+    service.getCommentEvent("COMMENT-123")?.created_at,
+    20,
+    "newer updates should replace existing mixed-case entries",
+  );
+  assert.deepEqual(
+    hydrationRequests,
+    [["pubkey-123"]],
+    "hydration should only request the normalized pubkey once",
   );
 });
 

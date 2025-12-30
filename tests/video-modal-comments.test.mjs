@@ -700,6 +700,113 @@ test(
 );
 
 test(
+  "VideoModalCommentController disposes safely during in-flight comment loads",
+  async () => {
+    const renderCalls = [];
+    const appendCalls = [];
+    const teardownCalls = [];
+    const setCallbacksCalls = [];
+    let onThreadReady = null;
+    let onCommentsAppended = null;
+    let resolveLoadThread;
+
+    const commentThreadService = {
+      defaultLimit: 5,
+      setCallbacks: ({ onThreadReady: ready, onCommentsAppended: appended }) => {
+        onThreadReady = ready;
+        onCommentsAppended = appended;
+      },
+      loadThread: () =>
+        new Promise((resolve) => {
+          resolveLoadThread = resolve;
+        }),
+      teardown: () => {
+        teardownCalls.push("teardown");
+      },
+      processIncomingEvent: () => {},
+    };
+
+    const videoModal = {
+      setCommentSectionCallbacks: (callbacks) => {
+        setCallbacksCalls.push(callbacks);
+      },
+      setCommentsVisibility: () => {},
+      hideCommentsDisabledMessage: () => {},
+      showCommentsDisabledMessage: () => {},
+      clearComments: () => {},
+      resetCommentComposer: () => {},
+      setCommentStatus: () => {},
+      setCommentComposerState: () => {},
+      renderComments: (payload) => renderCalls.push(payload),
+      appendComment: (payload) => appendCalls.push(payload),
+    };
+
+    const controller = new VideoModalCommentController({
+      commentThreadService,
+      videoModal,
+      auth: { isLoggedIn: () => true },
+      callbacks: {
+        showError: () => {},
+        showStatus: () => {},
+        muteAuthor: () => Promise.resolve(),
+        shouldHideAuthor: () => false,
+      },
+      services: {
+        publishComment: async () => ({ ok: true, event: { id: "event", tags: [] } }),
+      },
+    });
+
+    controller.load({
+      id: "video-inflight",
+      pubkey: "AUTHORPK",
+      enableComments: true,
+      kind: 30078,
+      tags: [],
+    });
+
+    await Promise.resolve();
+    teardownCalls.length = 0; // ignore the initial dispose inside load
+
+    controller.dispose();
+
+    assert.equal(teardownCalls.length, 1, "dispose should teardown the active thread");
+    assert.equal(
+      setCallbacksCalls.length > 0,
+      true,
+      "comment callbacks should be registered even before load resolves",
+    );
+
+    resolveLoadThread?.();
+    await Promise.resolve();
+
+    onThreadReady?.({
+      videoEventId: "video-inflight",
+      parentCommentId: null,
+      commentsById: new Map([["event-1", { id: "event-1", pubkey: "pk1" }]]),
+      childrenByParent: new Map([[null, ["event-1"]]]),
+      profiles: new Map(),
+    });
+
+    assert.equal(renderCalls.length, 0, "stale thread payloads should be ignored after dispose");
+
+    onCommentsAppended?.({
+      videoEventId: "video-inflight",
+      parentCommentId: null,
+      commentIds: ["event-1"],
+      commentsById: new Map([["event-1", { id: "event-1", pubkey: "pk1" }]]),
+      childrenByParent: new Map([[null, ["event-1"]]]),
+      profiles: new Map(),
+    });
+
+    assert.equal(
+      appendCalls.length,
+      0,
+      "stale appends should not render duplicate comments after dispose",
+    );
+  },
+);
+
+test(
   "VideoModalCommentController prompts login when publish requires authentication",
   async () => {
     const composerStates = [];
