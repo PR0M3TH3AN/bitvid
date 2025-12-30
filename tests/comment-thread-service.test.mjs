@@ -416,6 +416,91 @@ test("CommentThreadService normalizes mixed-case pubkeys during hydration", asyn
   );
 });
 
+test("CommentThreadService retries profile hydration before succeeding", async () => {
+  const profiles = new Map();
+  const hydrationCalls = [];
+  let attempts = 0;
+
+  const service = new CommentThreadService({
+    getProfileCacheEntry: (pubkey) => profiles.get(pubkey),
+    batchFetchProfiles: async (pubkeys) => {
+      hydrationCalls.push([...pubkeys]);
+      attempts += 1;
+      if (attempts === 1) {
+        throw new Error("temporary hydration failure");
+      }
+      pubkeys.forEach((pubkey) =>
+        profiles.set(pubkey, { name: `Profile ${pubkey}` }),
+      );
+    },
+    hydrationDebounceMs: 0,
+  });
+
+  service.queueProfileForHydration("pk-retry-1");
+  service.queueProfileForHydration("pk-retry-2");
+
+  for (let attempt = 0; attempt < 5 && !service.profileHydrationPromise; attempt += 1) {
+    await tick(10);
+  }
+  await service.waitForProfileHydration();
+
+  assert.equal(attempts, 2, "hydration should retry failed batches once");
+  assert.deepEqual(
+    hydrationCalls,
+    [
+      ["pk-retry-1", "pk-retry-2"],
+      ["pk-retry-1", "pk-retry-2"],
+    ],
+    "hydration should reuse the same batch across retries",
+  );
+  assert.ok(service.getProfile("pk-retry-1"));
+  assert.ok(service.getProfile("pk-retry-2"));
+});
+
+test(
+  "CommentThreadService surfaces profile hydration failures after retries",
+  async () => {
+    const errors = [];
+    const userWarnings = [];
+    const devWarnings = [];
+    let attempts = 0;
+
+    const service = new CommentThreadService({
+      batchFetchProfiles: async (pubkeys) => {
+        attempts += 1;
+        throw new Error(`hydration failed attempt ${attempts}`);
+      },
+      logger: {
+        warn: (...args) => userWarnings.push(args),
+        dev: { warn: (...args) => devWarnings.push(args) },
+        user: { warn: (...args) => userWarnings.push(args) },
+      },
+      hydrationDebounceMs: 0,
+    });
+
+    service.setCallbacks({ onError: (error) => errors.push(error) });
+    service.queueProfileForHydration("pk-retry-fail");
+
+    await tick(200);
+    await service.waitForProfileHydration();
+
+    assert.equal(attempts, 3, "hydration should respect the retry limit");
+    assert.equal(errors.length, 1, "final failures should emit an error");
+    assert.ok(
+      userWarnings.some(([message]) =>
+        typeof message === "string" && message.includes("pk-retry-fail"),
+      ),
+      "user-visible warnings should include the failed pubkeys",
+    );
+    assert.ok(
+      devWarnings.some(([message]) =>
+        typeof message === "string" && message.includes("attempt 1/3")
+      ),
+      "dev warnings should log the retry attempts",
+    );
+  },
+);
+
 test(
   "listVideoComments accepts builder events without parent ids and filters replies",
   async () => {
