@@ -4022,7 +4022,18 @@ class Application {
     }
 
     this.applyLoggedOutUiState();
-    this.commentController?.refreshAuthState?.();
+
+    const activeModalVideo =
+      typeof this.videoModal?.getCurrentVideo === "function"
+        ? this.videoModal.getCurrentVideo()
+        : this.commentController?.currentVideo || null;
+
+    if (this.commentController && activeModalVideo) {
+      // Regression guard: ensure logout refreshes the modal thread so comments stay visible without reopening.
+      this.commentController.load(activeModalVideo);
+    } else {
+      this.commentController?.refreshAuthState?.();
+    }
 
     try {
       await this.handleModerationSettingsChange({
