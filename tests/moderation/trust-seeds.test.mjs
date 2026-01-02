@@ -87,6 +87,37 @@ test("trusted seeds contribute to trusted report counts", (t) => {
   assert.deepEqual(reporters.map((entry) => entry.pubkey), [seedHex]);
 });
 
+test("trusted seed updates recompute guest report summaries", (t) => {
+  withMockedNostrTools(t);
+
+  const eventId = "a".repeat(64);
+  const reporterHex = "b".repeat(64);
+  const reporterNpub = `npub${reporterHex}`;
+
+  const { service } = createModerationServiceHarness(t);
+
+  const report = createReportEvent({
+    id: "c".repeat(64),
+    reporter: reporterHex,
+    eventId,
+    createdAt: 1_700_000_999,
+    type: "spam",
+  });
+
+  service.ingestReportEvent(report);
+
+  const preSeedSummary = service.getTrustedReportSummary(eventId);
+  assert.equal(preSeedSummary.totalTrusted, 0);
+  assert.equal(preSeedSummary.types.spam?.trusted ?? 0, 0);
+
+  service.setTrustedSeeds([reporterNpub]);
+
+  const postSeedSummary = service.getTrustedReportSummary(eventId);
+  assert.equal(postSeedSummary.totalTrusted, 1);
+  assert.equal(postSeedSummary.types.spam.trusted, 1);
+  assert.equal(service.trustedReportCount(eventId, "spam"), 1);
+});
+
 test("moderator seeds populate trusted contacts", (t) => {
   withMockedNostrTools(t);
 
@@ -150,6 +181,7 @@ test("bootstrap seeds track editor roster and ignore whitelist-only changes", as
   };
 
   const setTrustedSeedsCalls = [];
+  const recomputeCalls = [];
   const moderationServiceMock = {
     setTrustedSeeds: (seeds) => {
       const snapshot = [];
@@ -160,12 +192,16 @@ test("bootstrap seeds track editor roster and ignore whitelist-only changes", as
       }
       setTrustedSeedsCalls.push(snapshot);
     },
+    recomputeAllSummaries: () => {
+      recomputeCalls.push(true);
+    },
   };
 
   globalThis.__bootstrapAccessControlMock = accessControlMock;
   globalThis.__bootstrapModerationServiceMock = moderationServiceMock;
 
-  await import("../../js/bootstrap.js");
+  const bootstrapModule = await import("../../js/bootstrap.js");
+  await bootstrapModule.trustedSeedsReadyPromise;
 
   assert.equal(ensureReadyCalls, 1);
   assert.ok(
@@ -174,6 +210,7 @@ test("bootstrap seeds track editor roster and ignore whitelist-only changes", as
   );
 
   assert.equal(setTrustedSeedsCalls.length, 1);
+  assert.equal(recomputeCalls.length, 1, "summaries should recompute after trusted seeds apply");
   const [initialSeeds] = setTrustedSeedsCalls;
   assert.ok(
     initialSeeds.includes(ADMIN_SUPER_NPUB),
