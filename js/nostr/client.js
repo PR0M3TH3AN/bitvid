@@ -301,6 +301,8 @@ function shouldRequestExtensionPermissions(signer) {
 const EVENTS_CACHE_STORAGE_KEY = "bitvid:eventsCache:v1";
 const LEGACY_EVENTS_STORAGE_KEY = "bitvidEvents";
 const EVENTS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const DEFAULT_VIDEO_REQUEST_LIMIT = 150;
+const MAX_VIDEO_REQUEST_LIMIT = 500;
 
 // To limit error spam
 let errorLogCount = 0;
@@ -5148,18 +5150,78 @@ export class NostrClient {
     }
   }
 
+  clampVideoRequestLimit(limit, fallback = DEFAULT_VIDEO_REQUEST_LIMIT) {
+    const normalizedFallback =
+      Number.isFinite(fallback) && fallback > 0
+        ? Math.floor(fallback)
+        : DEFAULT_VIDEO_REQUEST_LIMIT;
+
+    if (!Number.isFinite(limit) || limit <= 0) {
+      return normalizedFallback;
+    }
+
+    const floored = Math.floor(limit);
+    const clamped = Math.min(MAX_VIDEO_REQUEST_LIMIT, Math.max(1, floored));
+
+    if (clamped !== floored && isDevMode) {
+      devLogger.log(
+        `[nostr] Clamped video request limit from ${floored} to ${clamped}`,
+      );
+    }
+
+    return clamped;
+  }
+
+  getLatestCachedCreatedAt() {
+    let latest = 0;
+
+    for (const video of this.allEvents.values()) {
+      const createdAt = Number.isFinite(video?.created_at)
+        ? Math.floor(video.created_at)
+        : 0;
+      if (createdAt > latest) {
+        latest = createdAt;
+      }
+    }
+
+    return latest;
+  }
+
   /**
    * Subscribe to *all* videos (old and new) with a single subscription,
    * buffering incoming events to avoid excessive DOM updates.
+   *
+   * @param {Function} onVideo
+   * @param {{ since?: number, until?: number, limit?: number }} [options]
+   *        `since` defaults to the latest cached created_at to avoid replaying
+   *        the full history on every load. `limit` is clamped to
+   *        MAX_VIDEO_REQUEST_LIMIT.
    */
-  subscribeVideos(onVideo) {
+  subscribeVideos(onVideo, options = {}) {
+    const { since, until, limit } = options;
+    const latestCachedCreatedAt = this.getLatestCachedCreatedAt();
+
+    const resolvedLimit = this.clampVideoRequestLimit(limit);
+    const resolvedSince = Number.isFinite(since)
+      ? Math.floor(since)
+      : latestCachedCreatedAt > 0
+        ? latestCachedCreatedAt
+        : undefined;
+    const resolvedUntil = Number.isFinite(until) ? Math.floor(until) : undefined;
+
     const filter = {
       kinds: [30078],
       "#t": ["video"],
-      // Adjust limit/time as desired
-      limit: 500,
-      since: 0,
+      limit: resolvedLimit,
     };
+
+    if (resolvedSince !== undefined) {
+      filter.since = resolvedSince;
+    }
+
+    if (resolvedUntil !== undefined) {
+      filter.until = resolvedUntil;
+    }
 
     devLogger.log("[subscribeVideos] Subscribing with filter:", filter);
 
