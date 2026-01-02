@@ -201,29 +201,40 @@ export default class VideoModalCommentController {
     this.videoModal.clearComments?.();
     this.videoModal.resetCommentComposer?.();
     this.videoModal.setCommentStatus?.("Loading comments…");
-    this.applyCommentComposerAuthState();
 
-    const loadPromise = this.commentThreadService.loadThread({
+    const loadResult = this.commentThreadService.loadThread({
       video,
       parentCommentId: null,
       limit: this.modalCommentLimit,
     });
 
-    if (!loadPromise || typeof loadPromise.then !== "function") {
+    if (!loadResult) {
       this.applyCommentComposerAuthState();
       return;
     }
 
-    this.modalCommentLoadPromise = loadPromise;
-    loadPromise
-      .then(() => {
-        if (this.modalCommentLoadPromise === loadPromise) {
+    if (typeof loadResult.then !== "function") {
+      const didRenderSnapshot = this.handleCommentThreadReady(loadResult);
+      if (didRenderSnapshot === false) {
+        this.applyCommentComposerAuthState();
+      }
+      return;
+    }
+
+    this.modalCommentLoadPromise = loadResult;
+    loadResult
+      .then((snapshot) => {
+        if (this.modalCommentLoadPromise === loadResult) {
           this.modalCommentLoadPromise = null;
         }
-        this.applyCommentComposerAuthState();
+
+        const didRenderSnapshot = this.handleCommentThreadReady(snapshot);
+        if (didRenderSnapshot === false) {
+          this.applyCommentComposerAuthState();
+        }
       })
       .catch((error) => {
-        if (this.modalCommentLoadPromise === loadPromise) {
+        if (this.modalCommentLoadPromise === loadResult) {
           this.modalCommentLoadPromise = null;
         }
         this.handleCommentThreadError(error);
@@ -355,14 +366,14 @@ export default class VideoModalCommentController {
 
   handleCommentThreadReady(snapshot) {
     if (!snapshot || !this.videoModal) {
-      return;
+      return false;
     }
 
     const snapshotVideoEventId = normalizeHexId(snapshot.videoEventId);
     const modalVideoEventId = normalizeHexId(this.modalCommentState.videoEventId);
 
     if (!snapshotVideoEventId || snapshotVideoEventId !== modalVideoEventId) {
-      return;
+      return false;
     }
 
     this.modalCommentProfiles = this.createMapFromInput(snapshot.profiles, {
@@ -402,9 +413,11 @@ export default class VideoModalCommentController {
     }
 
     const sanitizedSnapshot = this.buildModalCommentSnapshot(snapshot);
+    this.videoModal.setCommentsVisibility?.(true);
     this.videoModal.renderComments?.(sanitizedSnapshot);
     this.videoModal.setCommentStatus?.("");
     this.applyCommentComposerAuthState();
+    return true;
   }
 
   handleCommentThreadAppend(payload) {
