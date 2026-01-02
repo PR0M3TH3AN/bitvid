@@ -341,6 +341,8 @@ export default class VideoModalCommentController {
         disabled: true,
         reason: "login-required",
       });
+      this.videoModal.setCommentsVisibility?.(true);
+      this.videoModal.setCommentStatus?.("");
       return;
     }
 
