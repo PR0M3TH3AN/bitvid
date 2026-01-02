@@ -121,6 +121,72 @@ test("VideoModal comment section toggles visibility and renders hydrated comment
 });
 
 test(
+  "Unauthenticated users can read comments while the composer stays disabled",
+  async (t) => {
+    const { document, modal, cleanup } = await setupModal();
+    t.after(cleanup);
+
+    const controller = new VideoModalCommentController({
+      commentThreadService: {
+        defaultLimit: 2,
+        setCallbacks: () => {},
+        teardown: () => {},
+        loadThread: () => Promise.resolve(),
+        processIncomingEvent: () => {},
+      },
+      videoModal: modal,
+      auth: {
+        isLoggedIn: () => false,
+      },
+    });
+
+    controller.load({ id: "video-login-required", enableComments: true });
+    await Promise.resolve();
+
+    controller.handleCommentThreadReady({
+      videoEventId: "video-login-required",
+      parentCommentId: null,
+      commentsById: new Map([
+        [
+          "guest-comment",
+          createCommentEvent({
+            id: "guest-comment",
+            pubkey: "pk-guest",
+            content: "Looking forward to more uploads",
+            createdAt: 1700000010,
+          }),
+        ],
+      ]),
+      childrenByParent: new Map([[null, ["guest-comment"]]]),
+      profiles: new Map([["pk-guest", { name: "Guest" }]]),
+    });
+
+    const commentsRoot = document.querySelector("[data-comments-root]");
+    assert.equal(commentsRoot.hasAttribute("hidden"), false);
+    assert.equal(commentsRoot.classList.contains("hidden"), false);
+
+    const renderedComments = Array.from(
+      modal.commentsList.querySelectorAll("[data-comment-id]") || [],
+    );
+    assert.equal(renderedComments.length, 1);
+    assert.equal(renderedComments[0].dataset.commentId, "guest-comment");
+
+    assert.equal(modal.commentComposerState.reason, "login-required");
+    assert.equal(modal.commentsInput?.disabled, true);
+    assert.equal(modal.commentsSubmitButton?.disabled, true);
+
+    const disabledPlaceholder = document.querySelector(
+      "[data-comments-disabled-placeholder]",
+    );
+    assert.equal(disabledPlaceholder.hasAttribute("hidden"), true);
+    assert.equal(
+      disabledPlaceholder.textContent.trim(),
+      "Comments have been turned off for this video.",
+    );
+  },
+);
+
+test(
   "VideoModalCommentController attaches profiles using normalized pubkeys",
   async () => {
     const appended = [];

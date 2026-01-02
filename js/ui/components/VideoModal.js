@@ -969,6 +969,7 @@ export class VideoModal {
     if (normalizedReason === "login-required") {
       this.setCommentHintText("Log in to add a comment.");
       this.setCommentStatus("");
+      this.setCommentsVisibility(true);
     } else if (normalizedReason === "submitting") {
       this.setCommentHintText(this.commentComposerDefaultHint);
       this.setCommentStatus("Posting comment…");
