@@ -144,18 +144,27 @@ async function bootstrapTrustedSeeds() {
     }
   };
 
-  let hydrateResult = await hydrate();
+  const hydrateResult = await hydrate();
 
-  if (!hydrateResult?.ok && attempts < 2) {
+  const runAsyncRetry = async () => {
+    if (hydrateResult?.ok || attempts >= 2) {
+      return;
+    }
+
     const relaysReady = await waitForRelaysReady();
     if (relaysReady) {
-      hydrateResult = await hydrate();
+      await hydrate();
     } else {
       devLogger.warn(
         "[bootstrap] Skipping trusted seed retry because relays were not ready in time.",
       );
+      applySeeds();
     }
-  }
+  };
+
+  runAsyncRetry().catch((error) => {
+    userLogger.warn("[bootstrap] Trusted seed retry failed", error);
+  });
 
   if (!hydrateResult?.ok) {
     applySeeds();
