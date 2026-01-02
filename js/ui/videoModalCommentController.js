@@ -413,6 +413,7 @@ export default class VideoModalCommentController {
     }
 
     const sanitizedSnapshot = this.buildModalCommentSnapshot(snapshot);
+    this.videoModal.setCommentsVisibility?.(true);
     this.videoModal.renderComments?.(sanitizedSnapshot);
     this.videoModal.setCommentStatus?.("");
     this.applyCommentComposerAuthState();

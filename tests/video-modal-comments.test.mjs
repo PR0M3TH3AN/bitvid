@@ -241,6 +241,66 @@ test(
 );
 
 test(
+  "Thread ready snapshots force comments visible before composer gating",
+  async (t) => {
+    const { modal, cleanup } = await setupModal();
+    t.after(cleanup);
+
+    const visibilityCalls = [];
+    const instrumentedModal = {
+      ...modal,
+      setCommentsVisibility: (isVisible) => {
+        visibilityCalls.push(isVisible);
+        modal.setCommentsVisibility(isVisible);
+      },
+    };
+
+    const snapshot = {
+      videoEventId: "video-visibility-snapshot",
+      parentCommentId: null,
+      commentsById: new Map([
+        [
+          "visible-comment",
+          createCommentEvent({
+            id: "visible-comment",
+            pubkey: "pk-visible",
+            content: "Rendered as soon as thread is ready",
+            createdAt: 1700000300,
+          }),
+        ],
+      ]),
+      childrenByParent: new Map([[null, ["visible-comment"]]]),
+      profiles: new Map([["pk-visible", { name: "Visible" }]]),
+    };
+
+    const controller = new VideoModalCommentController({
+      commentThreadService: {
+        defaultLimit: 1,
+        setCallbacks: () => {},
+        teardown: () => {},
+        loadThread: () => Promise.resolve(snapshot),
+      },
+      videoModal: instrumentedModal,
+      auth: {
+        isLoggedIn: () => false,
+      },
+    });
+
+    controller.load({ id: "video-visibility-snapshot", enableComments: true });
+    await controller.modalCommentLoadPromise;
+
+    assert.ok(visibilityCalls.length >= 2);
+    assert.equal(visibilityCalls.pop(), true);
+
+    const renderedComments = Array.from(
+      modal.commentsList.querySelectorAll("[data-comment-id]") || [],
+    );
+    assert.equal(renderedComments.length, 1);
+    assert.equal(renderedComments[0].dataset.commentId, "visible-comment");
+  },
+);
+
+test(
   "Controller renders synchronous loadThread snapshots immediately",
   async (t) => {
     const { modal, cleanup } = await setupModal();
