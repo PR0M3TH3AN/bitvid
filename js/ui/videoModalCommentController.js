@@ -202,21 +202,29 @@ export default class VideoModalCommentController {
     this.videoModal.resetCommentComposer?.();
     this.videoModal.setCommentStatus?.("Loading comments…");
 
-    const loadPromise = this.commentThreadService.loadThread({
+    const loadResult = this.commentThreadService.loadThread({
       video,
       parentCommentId: null,
       limit: this.modalCommentLimit,
     });
 
-    if (!loadPromise || typeof loadPromise.then !== "function") {
+    if (!loadResult) {
       this.applyCommentComposerAuthState();
       return;
     }
 
-    this.modalCommentLoadPromise = loadPromise;
-    loadPromise
+    if (typeof loadResult.then !== "function") {
+      const didRenderSnapshot = this.handleCommentThreadReady(loadResult);
+      if (didRenderSnapshot === false) {
+        this.applyCommentComposerAuthState();
+      }
+      return;
+    }
+
+    this.modalCommentLoadPromise = loadResult;
+    loadResult
       .then((snapshot) => {
-        if (this.modalCommentLoadPromise === loadPromise) {
+        if (this.modalCommentLoadPromise === loadResult) {
           this.modalCommentLoadPromise = null;
         }
 
@@ -226,7 +234,7 @@ export default class VideoModalCommentController {
         }
       })
       .catch((error) => {
-        if (this.modalCommentLoadPromise === loadPromise) {
+        if (this.modalCommentLoadPromise === loadResult) {
           this.modalCommentLoadPromise = null;
         }
         this.handleCommentThreadError(error);

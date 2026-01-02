@@ -241,6 +241,60 @@ test(
 );
 
 test(
+  "Controller renders synchronous loadThread snapshots immediately",
+  async (t) => {
+    const { modal, cleanup } = await setupModal();
+    t.after(cleanup);
+
+    const snapshot = {
+      videoEventId: "video-sync-snapshot",
+      parentCommentId: null,
+      commentsById: new Map([
+        [
+          "sync-comment",
+          createCommentEvent({
+            id: "sync-comment",
+            pubkey: "pk-sync",
+            content: "Snapshot delivered instantly",
+            createdAt: 1700000200,
+          }),
+        ],
+      ]),
+      childrenByParent: new Map([[null, ["sync-comment"]]]),
+      profiles: new Map([["pk-sync", { name: "Synchronous" }]]),
+    };
+
+    const controller = new VideoModalCommentController({
+      commentThreadService: {
+        defaultLimit: 1,
+        setCallbacks: () => {},
+        teardown: () => {},
+        loadThread: () => snapshot,
+      },
+      videoModal: modal,
+      auth: {
+        isLoggedIn: () => false,
+      },
+    });
+
+    controller.load({ id: "video-sync-snapshot", enableComments: true });
+    await Promise.resolve();
+
+    const renderedComments = Array.from(
+      modal.commentsList.querySelectorAll("[data-comment-id]") || [],
+    );
+    assert.equal(renderedComments.length, 1);
+    assert.equal(renderedComments[0].dataset.commentId, "sync-comment");
+
+    const statusText =
+      modal.commentsStatusMessage?.textContent.trim().replace(/\s+/g, " ") ||
+      "";
+    assert.equal(statusText, "");
+    assert.equal(modal.commentComposerState.reason, "login-required");
+  },
+);
+
+test(
   "VideoModalCommentController attaches profiles using normalized pubkeys",
   async () => {
     const appended = [];
