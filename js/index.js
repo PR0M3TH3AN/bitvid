@@ -3,7 +3,6 @@
 import { validateInstanceConfig } from "../config/validate-config.js";
 import { ASSET_VERSION } from "../config/asset-version.js";
 import "./bufferPolyfill.js";
-import Application from "./app.js";
 import { setApplication, setApplicationReady } from "./applicationContext.js";
 import nostrService from "./services/nostrService.js";
 import r2Service from "./services/r2Service.js";
@@ -37,6 +36,7 @@ import { accessControl } from "./accessControl.js";
 import { nostrClient } from "./nostrClientFacade.js";
 import { userBlocks } from "./userBlocks.js";
 import { relayManager } from "./relayManager.js";
+import createApplication from "./bootstrap.js";
 
 validateInstanceConfig();
 
@@ -354,17 +354,17 @@ function startApplication() {
     return applicationReadyPromise;
   }
 
-  application = new Application({
-    services: {
-      nostrService,
-      r2Service,
-    },
-    loadView,
-  });
-
-  setApplication(application);
-
   const startupPromise = (async () => {
+    application = await createApplication({
+      services: {
+        nostrService,
+        r2Service,
+      },
+      loadView,
+    });
+
+    setApplication(application);
+
     await application.init();
     if (typeof application.start === "function") {
       await application.start();
