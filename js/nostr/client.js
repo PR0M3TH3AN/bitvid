@@ -301,8 +301,269 @@ function shouldRequestExtensionPermissions(signer) {
 const EVENTS_CACHE_STORAGE_KEY = "bitvid:eventsCache:v1";
 const LEGACY_EVENTS_STORAGE_KEY = "bitvidEvents";
 const EVENTS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const EVENTS_CACHE_DB_NAME = "bitvid-events-cache";
+const EVENTS_CACHE_DB_VERSION = 1;
+const EVENTS_CACHE_PERSIST_DELAY_MS = 450;
+const EVENTS_CACHE_IDLE_TIMEOUT_MS = 1500;
 const DEFAULT_VIDEO_REQUEST_LIMIT = 150;
 const MAX_VIDEO_REQUEST_LIMIT = 500;
+
+function scheduleIdleTask(callback, timeout = EVENTS_CACHE_IDLE_TIMEOUT_MS) {
+  if (typeof requestIdleCallback === "function") {
+    return requestIdleCallback(callback, { timeout });
+  }
+  return setTimeout(callback, timeout);
+}
+
+function wrapIdbRequest(request) {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("IndexedDB request failed"));
+  });
+}
+
+function waitForTransaction(tx) {
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error || new Error("IndexedDB transaction failed"));
+    tx.onabort = () => reject(tx.error || new Error("IndexedDB transaction aborted"));
+  });
+}
+
+class EventsCacheStore {
+  constructor() {
+    this.dbPromise = null;
+    this.persistedEventFingerprints = new Map();
+    this.persistedTombstoneFingerprints = new Map();
+    this.hasLoadedFingerprints = false;
+  }
+
+  isSupported() {
+    return typeof indexedDB !== "undefined";
+  }
+
+  async getDb() {
+    if (!this.isSupported()) {
+      return null;
+    }
+
+    if (this.dbPromise) {
+      return this.dbPromise;
+    }
+
+    this.dbPromise = new Promise((resolve, reject) => {
+      const request = indexedDB.open(EVENTS_CACHE_DB_NAME, EVENTS_CACHE_DB_VERSION);
+
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains("events")) {
+          db.createObjectStore("events", { keyPath: "id" });
+        }
+        if (!db.objectStoreNames.contains("tombstones")) {
+          db.createObjectStore("tombstones", { keyPath: "key" });
+        }
+        if (!db.objectStoreNames.contains("meta")) {
+          db.createObjectStore("meta", { keyPath: "key" });
+        }
+      };
+
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error("Failed to open events cache database"));
+    });
+
+    return this.dbPromise;
+  }
+
+  computeEventFingerprint(video) {
+    try {
+      return JSON.stringify(video);
+    } catch (error) {
+      devLogger.warn("[nostr] Failed to fingerprint cached event", error);
+      return String(Date.now());
+    }
+  }
+
+  computeTombstoneFingerprint(timestamp) {
+    return `ts:${timestamp}`;
+  }
+
+  async ensureFingerprintsLoaded(db) {
+    if (this.hasLoadedFingerprints || !db) {
+      return;
+    }
+    const tx = db.transaction(["events", "tombstones"], "readonly");
+    const eventsStore = tx.objectStore("events");
+    const tombstoneStore = tx.objectStore("tombstones");
+
+    const [events, tombstones] = await Promise.all([
+      wrapIdbRequest(eventsStore.getAll()),
+      wrapIdbRequest(tombstoneStore.getAll()),
+      waitForTransaction(tx),
+    ]);
+
+    for (const entry of Array.isArray(events) ? events : []) {
+      if (entry && entry.id && entry.fingerprint) {
+        this.persistedEventFingerprints.set(entry.id, entry.fingerprint);
+      }
+    }
+
+    for (const entry of Array.isArray(tombstones) ? tombstones : []) {
+      if (entry && entry.key) {
+        const fingerprint = entry.fingerprint || this.computeTombstoneFingerprint(entry.timestamp);
+        this.persistedTombstoneFingerprints.set(entry.key, fingerprint);
+      }
+    }
+
+    this.hasLoadedFingerprints = true;
+  }
+
+  async readMeta(db) {
+    const tx = db.transaction(["meta"], "readonly");
+    const metaStore = tx.objectStore("meta");
+    const meta = await wrapIdbRequest(metaStore.get("meta"));
+    await waitForTransaction(tx);
+    return meta;
+  }
+
+  async restoreSnapshot() {
+    const db = await this.getDb();
+    if (!db) {
+      return null;
+    }
+
+    const meta = await this.readMeta(db);
+    if (!meta || meta.version !== 1 || !meta.savedAt) {
+      return null;
+    }
+
+    const now = Date.now();
+    if (now - meta.savedAt > EVENTS_CACHE_TTL_MS) {
+      const tx = db.transaction(["events", "tombstones", "meta"], "readwrite");
+      tx.objectStore("events").clear();
+      tx.objectStore("tombstones").clear();
+      tx.objectStore("meta").clear();
+      await waitForTransaction(tx);
+      return null;
+    }
+
+    const tx = db.transaction(["events", "tombstones"], "readonly");
+    const eventsStore = tx.objectStore("events");
+    const tombstoneStore = tx.objectStore("tombstones");
+
+    const [events, tombstones] = await Promise.all([
+      wrapIdbRequest(eventsStore.getAll()),
+      wrapIdbRequest(tombstoneStore.getAll()),
+      waitForTransaction(tx),
+    ]);
+
+    const eventsMap = new Map();
+    const tombstoneMap = new Map();
+
+    for (const entry of Array.isArray(events) ? events : []) {
+      if (entry && entry.id && entry.video) {
+        eventsMap.set(entry.id, entry.video);
+        if (entry.fingerprint) {
+          this.persistedEventFingerprints.set(entry.id, entry.fingerprint);
+        }
+      }
+    }
+
+    for (const entry of Array.isArray(tombstones) ? tombstones : []) {
+      if (entry && entry.key && Number.isFinite(entry.timestamp)) {
+        tombstoneMap.set(entry.key, entry.timestamp);
+        const fingerprint = entry.fingerprint || this.computeTombstoneFingerprint(entry.timestamp);
+        this.persistedTombstoneFingerprints.set(entry.key, fingerprint);
+      }
+    }
+
+    this.hasLoadedFingerprints = true;
+
+    return {
+      version: 1,
+      savedAt: meta.savedAt,
+      events: eventsMap,
+      tombstones: tombstoneMap,
+    };
+  }
+
+  async persistSnapshot(payload) {
+    const db = await this.getDb();
+    if (!db) {
+      return { persisted: false };
+    }
+
+    await this.ensureFingerprintsLoaded(db);
+
+    const tx = db.transaction(["events", "tombstones", "meta"], "readwrite");
+    const eventsStore = tx.objectStore("events");
+    const tombstoneStore = tx.objectStore("tombstones");
+    const metaStore = tx.objectStore("meta");
+
+    const { events, tombstones, savedAt } = payload;
+    let eventWrites = 0;
+    let eventDeletes = 0;
+    let tombstoneWrites = 0;
+    let tombstoneDeletes = 0;
+
+    for (const [id, video] of events.entries()) {
+      if (!id) {
+        continue;
+      }
+      const fingerprint = this.computeEventFingerprint(video);
+      const prevFingerprint = this.persistedEventFingerprints.get(id);
+      if (prevFingerprint === fingerprint) {
+        continue;
+      }
+      eventsStore.put({ id, video, fingerprint });
+      this.persistedEventFingerprints.set(id, fingerprint);
+      eventWrites++;
+    }
+
+    for (const persistedId of Array.from(this.persistedEventFingerprints.keys())) {
+      if (events.has(persistedId)) {
+        continue;
+      }
+      eventsStore.delete(persistedId);
+      this.persistedEventFingerprints.delete(persistedId);
+      eventDeletes++;
+    }
+
+    for (const [key, timestamp] of tombstones.entries()) {
+      if (!key) {
+        continue;
+      }
+      const fingerprint = this.computeTombstoneFingerprint(timestamp);
+      const prevFingerprint = this.persistedTombstoneFingerprints.get(key);
+      if (prevFingerprint === fingerprint) {
+        continue;
+      }
+      tombstoneStore.put({ key, timestamp, fingerprint });
+      this.persistedTombstoneFingerprints.set(key, fingerprint);
+      tombstoneWrites++;
+    }
+
+    for (const persistedKey of Array.from(this.persistedTombstoneFingerprints.keys())) {
+      if (tombstones.has(persistedKey)) {
+        continue;
+      }
+      tombstoneStore.delete(persistedKey);
+      this.persistedTombstoneFingerprints.delete(persistedKey);
+      tombstoneDeletes++;
+    }
+
+    metaStore.put({ key: "meta", savedAt, version: 1 });
+
+    await waitForTransaction(tx);
+
+    return {
+      persisted: true,
+      eventWrites,
+      eventDeletes,
+      tombstoneWrites,
+      tombstoneDeletes,
+    };
+  }
+}
 
 // To limit error spam
 let errorLogCount = 0;
@@ -868,6 +1129,11 @@ export class NostrClient {
     this.rootCreatedAtByRoot = new Map();
 
     this.hasRestoredLocalData = false;
+    this.eventsCacheStore = new EventsCacheStore();
+    this.cachePersistTimerId = null;
+    this.cachePersistIdleId = null;
+    this.cachePersistInFlight = null;
+    this.cachePersistReason = null;
 
     this.sessionActor = null;
     this.lockedSessionActor = null;
@@ -2909,13 +3175,113 @@ export class NostrClient {
     return error;
   }
 
-  restoreLocalData() {
+  applyCachedPayload(payload, sourceLabel) {
+    if (!payload || payload.version !== 1) {
+      return false;
+    }
+
+    const now = Date.now();
+    if (
+      typeof payload.savedAt !== "number" ||
+      payload.savedAt <= 0 ||
+      now - payload.savedAt > EVENTS_CACHE_TTL_MS
+    ) {
+      return false;
+    }
+
+    const events = payload.events;
+    if (!events || (typeof events !== "object" && !(events instanceof Map))) {
+      return false;
+    }
+
+    this.allEvents.clear();
+    this.rawEvents.clear();
+    this.activeMap.clear();
+    this.rootCreatedAtByRoot.clear();
+    this.tombstones.clear();
+
+    const tombstoneEntries =
+      events instanceof Map && payload.tombstones instanceof Map
+        ? payload.tombstones.entries()
+        : Array.isArray(payload.tombstones)
+          ? payload.tombstones
+          : [];
+
+    for (const entry of tombstoneEntries) {
+      const [key, value] = Array.isArray(entry) ? entry : [entry.key, entry.timestamp];
+      const normalizedKey = typeof key === "string" ? key.trim() : "";
+      const timestamp = Number.isFinite(value) ? Math.floor(value) : 0;
+      if (normalizedKey && timestamp > 0) {
+        this.tombstones.set(normalizedKey, timestamp);
+      }
+    }
+
+    const eventEntries =
+      events instanceof Map ? events.entries() : Object.entries(events);
+
+    for (const [id, video] of eventEntries) {
+      if (!id || !video || typeof video !== "object") {
+        continue;
+      }
+
+      this.applyRootCreatedAt(video);
+      const activeKey = getActiveKey(video);
+
+      if (video.deleted) {
+        this.recordTombstone(activeKey, video.created_at);
+      } else {
+        this.applyTombstoneGuard(video);
+      }
+
+      this.allEvents.set(id, video);
+      if (video.deleted) {
+        continue;
+      }
+
+      const existing = this.activeMap.get(activeKey);
+      if (!existing || video.created_at > existing.created_at) {
+        this.activeMap.set(activeKey, video);
+      }
+    }
+
+    if (this.allEvents.size > 0 && isDevMode) {
+      devLogger.log(
+        `[nostr] Restored ${this.allEvents.size} cached events from ${sourceLabel}`,
+      );
+    }
+
+    return this.allEvents.size > 0;
+  }
+
+  async restoreLocalData() {
     if (this.hasRestoredLocalData) {
       return this.allEvents.size > 0;
     }
 
     this.hasRestoredLocalData = true;
 
+    const restoredFromIndexedDb = await this.restoreFromIndexedDb();
+    if (restoredFromIndexedDb) {
+      return true;
+    }
+
+    return this.restoreFromLocalStorage();
+  }
+
+  async restoreFromIndexedDb() {
+    try {
+      const payload = await this.eventsCacheStore.restoreSnapshot();
+      if (!payload) {
+        return false;
+      }
+      return this.applyCachedPayload(payload, "IndexedDB");
+    } catch (error) {
+      devLogger.warn("[nostr] Failed to restore IndexedDB cache:", error);
+      return false;
+    }
+  }
+
+  restoreFromLocalStorage() {
     if (typeof localStorage === "undefined") {
       return false;
     }
@@ -2957,74 +3323,17 @@ export class NostrClient {
       }
     }
 
-    if (!payload || payload.version !== 1) {
-      return false;
-    }
+    const applied = this.applyCachedPayload(payload, "localStorage");
 
-    if (
-      typeof payload.savedAt !== "number" ||
-      payload.savedAt <= 0 ||
-      now - payload.savedAt > EVENTS_CACHE_TTL_MS
-    ) {
+    if (!applied && payload) {
       try {
         localStorage.removeItem(EVENTS_CACHE_STORAGE_KEY);
       } catch (err) {
         devLogger.warn("[nostr] Failed to clear expired cache:", err);
       }
-      return false;
     }
 
-    const events = payload.events;
-    if (!events || typeof events !== "object") {
-      return false;
-    }
-
-    this.allEvents.clear();
-    this.rawEvents.clear();
-    this.activeMap.clear();
-    this.rootCreatedAtByRoot.clear();
-    this.tombstones.clear();
-
-    if (Array.isArray(payload.tombstones)) {
-      for (const entry of payload.tombstones) {
-        if (!Array.isArray(entry) || entry.length < 2) {
-          continue;
-        }
-        const [key, value] = entry;
-        const normalizedKey = typeof key === "string" ? key.trim() : "";
-        const timestamp = Number.isFinite(value) ? Math.floor(value) : 0;
-        if (normalizedKey && timestamp > 0) {
-          this.tombstones.set(normalizedKey, timestamp);
-        }
-      }
-    }
-
-    for (const [id, video] of Object.entries(events)) {
-      if (!id || !video || typeof video !== "object") {
-        continue;
-      }
-
-      this.applyRootCreatedAt(video);
-      const activeKey = getActiveKey(video);
-
-      if (video.deleted) {
-        this.recordTombstone(activeKey, video.created_at);
-      } else {
-        this.applyTombstoneGuard(video);
-      }
-
-      this.allEvents.set(id, video);
-      if (video.deleted) {
-        continue;
-      }
-
-      const existing = this.activeMap.get(activeKey);
-      if (!existing || video.created_at > existing.created_at) {
-        this.activeMap.set(activeKey, video);
-      }
-    }
-
-    return this.allEvents.size > 0;
+    return applied;
   }
 
   applyRelayPreferences(preferences = {}) {
@@ -3186,7 +3495,7 @@ export class NostrClient {
   async init() {
     devLogger.log("Connecting to relays...");
 
-    this.restoreLocalData();
+    await this.restoreLocalData();
 
     try {
       this.scheduleStoredRemoteSignerRestore();
@@ -5115,7 +5424,7 @@ export class NostrClient {
       }
     }
 
-    this.saveLocalData();
+    this.saveLocalData("delete-events", { immediate: true });
 
     return {
       reverts: revertSummaries,
@@ -5123,27 +5432,115 @@ export class NostrClient {
     };
   }
 
-  /**
- * Saves all known events to localStorage (or a different storage if you prefer).
- */
-  saveLocalData() {
+  clearCachePersistHandles() {
+    if (this.cachePersistTimerId) {
+      clearTimeout(this.cachePersistTimerId);
+      this.cachePersistTimerId = null;
+    }
+
+    if (this.cachePersistIdleId) {
+      if (typeof cancelIdleCallback === "function") {
+        try {
+          cancelIdleCallback(this.cachePersistIdleId);
+        } catch (error) {
+          devLogger.warn("[nostr] Failed to cancel cache idle callback:", error);
+        }
+      } else {
+        clearTimeout(this.cachePersistIdleId);
+      }
+      this.cachePersistIdleId = null;
+    }
+  }
+
+  buildCachePayload() {
+    return {
+      version: 1,
+      savedAt: Date.now(),
+      events: new Map(this.allEvents),
+      tombstones: new Map(this.tombstones),
+    };
+  }
+
+  saveLocalData(reason = "unspecified", options = {}) {
+    const { immediate = false } = options;
+
+    if (immediate) {
+      this.clearCachePersistHandles();
+      this.cachePersistInFlight = this.persistLocalData(reason).finally(() => {
+        this.cachePersistInFlight = null;
+      });
+      return this.cachePersistInFlight;
+    }
+
+    if (this.cachePersistTimerId || this.cachePersistIdleId || this.cachePersistInFlight) {
+      return this.cachePersistInFlight;
+    }
+
+    this.cachePersistReason = reason;
+    devLogger.log(
+      `[nostr] Scheduling cached events persist (${reason}) with debounce ${EVENTS_CACHE_PERSIST_DELAY_MS}ms`,
+    );
+    this.cachePersistTimerId = setTimeout(() => {
+      this.cachePersistTimerId = null;
+      this.cachePersistIdleId = scheduleIdleTask(() => {
+        this.cachePersistIdleId = null;
+        this.cachePersistInFlight = this.persistLocalData(reason).finally(() => {
+          this.cachePersistInFlight = null;
+        });
+      });
+    }, EVENTS_CACHE_PERSIST_DELAY_MS);
+
+    return this.cachePersistInFlight;
+  }
+
+  async persistLocalData(reason = "unspecified") {
+    const payload = this.buildCachePayload();
+    const startedAt = Date.now();
+    let summary = null;
+    let target = "localStorage";
+
+    try {
+      summary = await this.eventsCacheStore.persistSnapshot(payload);
+      if (summary?.persisted) {
+        target = "IndexedDB";
+      }
+    } catch (error) {
+      devLogger.warn("[nostr] Failed to persist events cache to IndexedDB:", error);
+    }
+
+    if (!summary?.persisted) {
+      this.persistCacheToLocalStorage(payload);
+    }
+
+    const durationMs = Date.now() - startedAt;
+    devLogger.log(
+      `[nostr] Cached events persisted via ${target} (reason=${reason}, duration=${durationMs}ms, events+${summary?.eventWrites ?? 0}/-${summary?.eventDeletes ?? 0}, tombstones+${summary?.tombstoneWrites ?? 0}/-${summary?.tombstoneDeletes ?? 0})`,
+    );
+
+    return summary?.persisted;
+  }
+
+  persistCacheToLocalStorage(payload) {
     if (typeof localStorage === "undefined") {
       return;
     }
 
-    const payload = {
-      version: 1,
-      savedAt: Date.now(),
-      events: {},
-      tombstones: Array.from(this.tombstones.entries()),
-    };
-
-    for (const [id, vid] of this.allEvents.entries()) {
-      payload.events[id] = vid;
+    const serializedEvents = {};
+    for (const [id, vid] of payload.events.entries()) {
+      serializedEvents[id] = vid;
     }
 
+    const serializedPayload = {
+      ...payload,
+      events: serializedEvents,
+      tombstones: Array.from(payload.tombstones.entries()),
+    };
+
     try {
-      localStorage.setItem(EVENTS_CACHE_STORAGE_KEY, JSON.stringify(payload));
+      localStorage.setItem(
+        EVENTS_CACHE_STORAGE_KEY,
+        JSON.stringify(serializedPayload),
+      );
       localStorage.removeItem(LEGACY_EVENTS_STORAGE_KEY);
     } catch (err) {
       devLogger.warn("[nostr] Failed to persist events cache:", err);
@@ -5305,7 +5702,7 @@ export class NostrClient {
       }
 
       // Persist processed events after each flush so reloads warm quickly.
-      this.saveLocalData();
+      this.saveLocalData("subscribeVideos:flush");
     };
 
     const scheduleFlush = (immediate = false) => {
