@@ -1122,10 +1122,19 @@ export class NostrService {
       this.resolveInitialLoad({ videos: initial, reason: "cache" });
 
       if (!getStoredVideoSubscription()) {
-        const subscription = this.nostrClient.subscribeVideos(() => {
-          const updated = this.nostrClient.getActiveVideos();
-          applyAndNotify(updated, "subscription");
-        });
+        const subscriptionOptions = {
+          // Start from the freshest cached timestamp to avoid replaying the full history;
+          // use loadOlderVideos when the user scrolls for backfill.
+          since: this.nostrClient.getLatestCachedCreatedAt() || undefined,
+          limit: this.nostrClient.clampVideoRequestLimit(200),
+        };
+        const subscription = this.nostrClient.subscribeVideos(
+          () => {
+            const updated = this.nostrClient.getActiveVideos();
+            applyAndNotify(updated, "subscription");
+          },
+          subscriptionOptions,
+        );
         this.setVideoSubscription(subscription);
         this.emit("subscription:started", { subscription });
       }
@@ -1160,11 +1169,14 @@ export class NostrService {
       return [];
     }
 
+    const clampedLimit =
+      this.nostrClient?.clampVideoRequestLimit(limit) ?? limit ?? 0;
+
     const filter = {
       kinds: [VIDEO_KIND],
       "#t": ["video"],
       until,
-      limit,
+      limit: clampedLimit,
     };
 
     const collected = new Map();
