@@ -22,7 +22,7 @@ import {
   createWatchHistoryManager,
   normalizePointerInput,
   pointerKey,
-  chunkWatchHistoryPayloadItems,
+  buildWatchHistoryPayload,
   normalizeActorKey,
   getWatchHistoryCacheTtlMs as getWatchHistoryCacheTtlMsFromManager,
   getWatchHistoryStorage as getWatchHistoryStorageFromManager,

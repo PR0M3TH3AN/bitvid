@@ -84,7 +84,7 @@ export {
 export {
   normalizePointerInput,
   pointerKey,
-  chunkWatchHistoryPayloadItems,
+  buildWatchHistoryPayload,
   normalizeActorKey,
   parseWatchHistoryContentWithFallback,
   isNip04EncryptedWatchHistoryEvent,
