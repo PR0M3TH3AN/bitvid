@@ -358,104 +358,86 @@ function parseWatchHistoryPayload(plaintext) {
     };
   }
 }
+const WATCH_HISTORY_MONTH_PATTERN = /^(\d{4})-(0[1-9]|1[0-2])$/;
 
-export function chunkWatchHistoryPayloadItems(payloadItems, snapshotId, maxBytes) {
-  const items = Array.isArray(payloadItems) ? payloadItems : [];
-  const safeMax = Math.max(128, Math.floor(maxBytes || 0));
-  const measurementLimit = Math.max(64, safeMax - 32);
-  const normalizedSnapshot = typeof snapshotId === "string" ? snapshotId : "";
+function normalizeWatchHistoryPayloadItem(entry, watchedAtMap) {
+  const pointer = normalizePointerInput(entry);
+  if (!pointer) {
+    return null;
+  }
+  const key = pointerKey(pointer);
+  if (!key) {
+    return null;
+  }
 
-  const chunks = [];
+  const watchedAtSource =
+    watchedAtMap instanceof Map
+      ? watchedAtMap.get(key)
+      : watchedAtMap && typeof watchedAtMap === "object"
+        ? watchedAtMap[key]
+        : null;
+
+  const watchedAt = Number.isFinite(watchedAtSource)
+    ? Math.max(0, Math.floor(watchedAtSource))
+    : Number.isFinite(pointer.watchedAt)
+      ? Math.max(0, Math.floor(pointer.watchedAt))
+      : undefined;
+
+  return {
+    pointer,
+    id: pointer.value,
+    watchedAt,
+  };
+}
+
+export function buildWatchHistoryPayload(monthString, events, watchedAtMap, maxBytes) {
+  const normalizedMonth = typeof monthString === "string" ? monthString.trim() : "";
+  const validMonth = WATCH_HISTORY_MONTH_PATTERN.test(normalizedMonth);
+  const safeMax = Math.max(128, Math.floor(maxBytes || WATCH_HISTORY_PAYLOAD_MAX_BYTES || 0));
+  const payload = {
+    version: 2,
+    month: normalizedMonth,
+    items: [],
+    watchedAt: {},
+  };
+
   const skipped = [];
-  let current = [];
+  const included = [];
+  if (!validMonth) {
+    skipped.push(...(Array.isArray(events) ? events.filter(Boolean) : []));
+    return { payload: null, included, skipped };
+  }
 
-  const estimateLength = (chunkItems, chunkIndex, totalGuess) =>
-    JSON.stringify({
-      version: 2,
-      snapshot: normalizedSnapshot,
-      chunkIndex,
-      totalChunks: totalGuess,
-      items: chunkItems,
-    }).length;
-
-  for (const item of items) {
-    if (!item || typeof item !== "object") {
+  for (const entry of Array.isArray(events) ? events : []) {
+    const normalized = normalizeWatchHistoryPayloadItem(entry, watchedAtMap);
+    if (!normalized) {
       continue;
     }
 
-    if (!current.length) {
-      const candidate = [item];
-      const size = estimateLength(candidate, chunks.length, chunks.length + 1);
-      if (size <= measurementLimit) {
-        current = candidate;
-        continue;
-      }
-      skipped.push(item);
+    const nextItems = [...payload.items, normalized.id];
+    const nextWatchedAt = { ...payload.watchedAt };
+    if (Number.isFinite(normalized.watchedAt)) {
+      nextWatchedAt[normalized.id] = normalized.watchedAt;
+    }
+    const candidate = {
+      version: payload.version,
+      month: payload.month,
+      items: nextItems,
+      watchedAt: nextWatchedAt,
+    };
+
+    const payloadSize = JSON.stringify(candidate).length;
+    if (payloadSize > safeMax) {
+      skipped.push(normalized.pointer);
       continue;
     }
 
-    const next = [...current, item];
-    const nextSize = estimateLength(next, chunks.length, chunks.length + 1);
-    if (nextSize <= measurementLimit) {
-      current = next;
-      continue;
-    }
-
-    chunks.push(current);
-    current = [item];
+    payload.items = nextItems;
+    payload.watchedAt = nextWatchedAt;
+    included.push(normalized.pointer);
   }
 
-  if (current.length) {
-    chunks.push(current);
-  }
-
-  let needsRebalance = true;
-  while (needsRebalance) {
-    needsRebalance = false;
-    for (let index = 0; index < chunks.length; index += 1) {
-      let chunkItems = chunks[index];
-      if (!Array.isArray(chunkItems)) {
-        chunks[index] = [];
-        chunkItems = chunks[index];
-      }
-      let payloadSize = JSON.stringify({
-        version: 2,
-        snapshot: normalizedSnapshot,
-        chunkIndex: index,
-        totalChunks: chunks.length,
-        items: chunkItems,
-      }).length;
-      while (chunkItems.length && payloadSize > safeMax) {
-        const overflow = chunkItems.pop();
-        if (!overflow) {
-          break;
-        }
-        if (!chunks[index + 1]) {
-          chunks[index + 1] = [];
-        }
-        chunks[index + 1].unshift(overflow);
-        needsRebalance = true;
-        chunkItems = chunks[index];
-        payloadSize = JSON.stringify({
-          version: 2,
-          snapshot: normalizedSnapshot,
-          chunkIndex: index,
-          totalChunks: chunks.length,
-          items: chunkItems,
-        }).length;
-      }
-    }
-  }
-
-  while (chunks.length > 1 && chunks[chunks.length - 1].length === 0) {
-    chunks.pop();
-  }
-
-  if (!chunks.length) {
-    chunks.push([]);
-  }
-
-  return { chunks, skipped };
+  return { payload, included, skipped };
 }
 
 export function normalizeActorKey(actor) {
@@ -1423,15 +1405,31 @@ class WatchHistoryManager {
       Array.isArray(rawItems) ? rawItems : [],
       WATCH_HISTORY_MAX_ITEMS,
     );
+    const monthIdentifier = (() => {
+      const requestedMonth =
+        typeof options.monthIdentifier === "string" ? options.monthIdentifier.trim() : "";
+      if (WATCH_HISTORY_MONTH_PATTERN.test(requestedMonth)) {
+        return requestedMonth;
+      }
+      const now = new Date();
+      const month = String(now.getUTCMonth() + 1).padStart(2, "0");
+      return `${now.getUTCFullYear()}-${month}`;
+    })();
     const snapshotId =
-      typeof options.snapshotId === "string" && options.snapshotId.trim()
-        ? options.snapshotId.trim()
-        : `snapshot-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
-    const { chunks, skipped } = chunkWatchHistoryPayloadItems(
+      (typeof options.snapshotId === "string" && options.snapshotId.trim()) || monthIdentifier;
+    const { payload, included, skipped } = buildWatchHistoryPayload(
+      monthIdentifier,
       canonicalItems,
-      snapshotId,
+      options.watchedAtMap || null,
       WATCH_HISTORY_PAYLOAD_MAX_BYTES,
     );
+    if (!payload) {
+      devLogger.warn("[nostr] Unable to build watch history payload for month.", {
+        actor: actorKey,
+        monthIdentifier,
+      });
+      return { ok: false, error: "invalid-month", retryable: false };
+    }
     if (skipped.length) {
       devLogger.warn(
         `[nostr] Watch history snapshot skipped ${skipped.length} oversize ${skipped.length === 1 ? "entry" : "entries"
@@ -1460,8 +1458,9 @@ class WatchHistoryManager {
     devLogger.info("[nostr] Preparing to publish watch history snapshot.", {
       actor: actorKey,
       snapshotId,
+      monthIdentifier,
       itemCount: canonicalItems.length,
-      chunkCount: chunks.length,
+      payloadCount: Array.isArray(payload.items) ? payload.items.length : 0,
       relaysRequested: relays,
       attempt: options.attempt || 0,
       source: options.source || "unknown",
@@ -1676,130 +1675,116 @@ class WatchHistoryManager {
       }
       return statuses;
     };
-    for (let index = 0; index < chunks.length; index += 1) {
-      const chunkItems = Array.isArray(chunks[index]) ? chunks[index] : [];
-      const pointerTags = chunkItems.map((pointer) => {
-        const tag = [pointer.type === "a" ? "a" : "e", pointer.value];
-        if (pointer.relay) {
-          tag.push(pointer.relay);
-        }
-        return tag;
-      });
-      devLogger.info(
-        "[nostr] Publishing watch history chunk.",
-        {
-          actor: actorKey,
-          snapshotId,
-          chunkIndex: index,
-          chunkSize: chunkItems.length,
-          relays,
-        },
-      );
-      const plaintext = JSON.stringify({
-        version: 2,
-        snapshot: snapshotId,
-        chunkIndex: index,
-        totalChunks: chunks.length,
-        items: chunkItems,
-      });
-      const chunkIdentifier = `${snapshotId}:${index}`;
-      let ciphertext = "";
-      let encryptionScheme = "";
-      try {
-        const encryptionResult = await encryptChunkPayload(plaintext, {
-          chunkIndex: index,
-          chunkIdentifier,
-        });
-        ciphertext = encryptionResult?.ciphertext || "";
-        encryptionScheme = encryptionResult?.scheme || "";
-      } catch (error) {
-        devLogger.warn("[nostr] Failed to encrypt watch history chunk:", {
-          actor: actorKey,
-          snapshotId,
-          chunkIndex: index,
-          chunkIdentifier,
-          error: error?.message || error,
-          attempts: encryptionAttemptErrors.map((entry) => ({
-            scheme: entry.scheme,
-            source: entry.source,
-            error: entry.error?.message || entry.error,
-          })),
-        });
-        return { ok: false, error: "encryption-failed", retryable: false };
+    const pointerTags = included.map((pointer) => {
+      const tag = [pointer.type === "a" ? "a" : "e", pointer.value];
+      if (pointer.relay) {
+        tag.push(pointer.relay);
       }
-      if (!ciphertext) {
-        devLogger.warn("[nostr] Encryption produced an empty payload for watch history chunk.", {
-          actor: actorKey,
-          snapshotId,
-          chunkIndex: index,
-          chunkIdentifier,
-          scheme: encryptionScheme || null,
-        });
-        return { ok: false, error: "encryption-failed", retryable: false };
-      }
-      const event = buildWatchHistoryChunkEvent({
-        pubkey: actorPubkey,
-        created_at: createdAtCursor,
-        chunkIdentifier,
+      return tag;
+    });
+    devLogger.info(
+      "[nostr] Publishing watch history chunk.",
+      {
+        actor: actorKey,
         snapshotId,
-        chunkIndex: index,
-        totalChunks: chunks.length,
-        pointerTags,
-        content: ciphertext,
-        encryption: encryptionScheme,
-      });
-      createdAtCursor += 1;
-      let signedEvent;
-      try {
-        signedEvent = await signEvent(event);
-      } catch (error) {
-        devLogger.warn("[nostr] Failed to sign watch history chunk:", error);
-        return { ok: false, error: "signing-failed", retryable: false };
-      }
-      const publishResults = await publishEventToRelays(
-        pool,
+        monthIdentifier,
+        chunkIndex: 0,
+        chunkSize: pointerTags.length,
         relays,
-        signedEvent,
-      );
-      const relayStatus = formatRelayStatus(publishResults);
-      const acceptedCount = relayStatus.filter((entry) => entry.success).length;
-      if (acceptedCount === 0) {
-        anyChunkRejected = true;
-        devLogger.warn(
-          `[nostr] Watch history chunk ${index} rejected by all relays:`,
-          publishResults,
+      },
+    );
+    const plaintext = JSON.stringify(payload);
+    const chunkIdentifier = `${snapshotId}:0`;
+    let ciphertext = "";
+    let encryptionScheme = "";
+    try {
+      const encryptionResult = await encryptChunkPayload(plaintext, {
+        chunkIndex: 0,
+        chunkIdentifier,
+      });
+      ciphertext = encryptionResult?.ciphertext || "";
+      encryptionScheme = encryptionResult?.scheme || "";
+    } catch (error) {
+      devLogger.warn("[nostr] Failed to encrypt watch history chunk:", {
+        actor: actorKey,
+        snapshotId,
+        chunkIndex: 0,
+        chunkIdentifier,
+        error: error?.message || error,
+        attempts: encryptionAttemptErrors.map((entry) => ({
+          scheme: entry.scheme,
+          source: entry.source,
+          error: entry.error?.message || entry.error,
+        })),
+      });
+      return { ok: false, error: "encryption-failed", retryable: false };
+    }
+    if (!ciphertext) {
+      devLogger.warn("[nostr] Encryption produced an empty payload for watch history chunk.", {
+        actor: actorKey,
+        snapshotId,
+        chunkIndex: 0,
+        chunkIdentifier,
+        scheme: encryptionScheme || null,
+      });
+      return { ok: false, error: "encryption-failed", retryable: false };
+    }
+    const event = buildWatchHistoryChunkEvent({
+      pubkey: actorPubkey,
+      created_at: createdAtCursor,
+      chunkIdentifier,
+      snapshotId,
+      monthIdentifier,
+      chunkIndex: 0,
+      totalChunks: 1,
+      pointerTags,
+      content: ciphertext,
+      encryption: encryptionScheme,
+    });
+    createdAtCursor += 1;
+    let signedEvent;
+    try {
+      signedEvent = await signEvent(event);
+    } catch (error) {
+      devLogger.warn("[nostr] Failed to sign watch history chunk:", error);
+      return { ok: false, error: "signing-failed", retryable: false };
+    }
+    const publishResults = await publishEventToRelays(pool, relays, signedEvent);
+    const relayStatus = formatRelayStatus(publishResults);
+    const acceptedCount = relayStatus.filter((entry) => entry.success).length;
+    if (acceptedCount === 0) {
+      anyChunkRejected = true;
+      devLogger.warn("[nostr] Watch history chunk rejected by all relays:", publishResults);
+    } else {
+      const logMessage = acceptedCount === relays.length ? "accepted" : "partially accepted";
+      if (acceptedCount === relays.length) {
+        devLogger.info(
+          `[nostr] Watch history chunk accepted by ${acceptedCount}/${relays.length} relay(s).`,
         );
       } else {
-        const logMessage =
-          acceptedCount === relays.length ? "accepted" : "partially accepted";
-        if (acceptedCount === relays.length) {
-          devLogger.info(
-            `[nostr] Watch history chunk ${index} accepted by ${acceptedCount}/${relays.length} relay(s).`,
-          );
-        } else {
-          anyChunkPartial = true;
-          devLogger.warn(
-            `[nostr] Watch history chunk ${index} ${logMessage} by ${acceptedCount}/${relays.length} relay(s).`,
-            publishResults,
-          );
-        }
+        anyChunkPartial = true;
+        devLogger.warn(
+          `[nostr] Watch history chunk ${logMessage} by ${acceptedCount}/${relays.length} relay(s).`,
+          publishResults,
+        );
       }
-      const address = this.deps.eventToAddressPointer?.(signedEvent);
-      if (address) {
-        chunkAddresses.push(address);
-      }
-      chunkResults.push({
-        event: signedEvent,
-        publishResults,
-        acceptedCount,
-        relayStatus,
-      });
     }
+    const address = this.deps.eventToAddressPointer?.(signedEvent);
+    if (address) {
+      chunkAddresses.push(address);
+    }
+    chunkResults.push({
+      event: signedEvent,
+      publishResults,
+      acceptedCount,
+      relayStatus,
+    });
     const pointerEvent = buildWatchHistoryIndexEvent({
       pubkey: actorPubkey,
       created_at: createdAtCursor,
       snapshotId,
-      totalChunks: chunks.length,
+      monthIdentifier,
+      totalChunks: 1,
       chunkAddresses,
     });
     createdAtCursor += 1;

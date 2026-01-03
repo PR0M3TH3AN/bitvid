@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  chunkWatchHistoryPayloadItems,
+  buildWatchHistoryPayload,
   createWatchHistoryManager,
   fetchWatchHistory,
   getWatchHistoryCacheTtlMs,
@@ -23,8 +23,8 @@ test.beforeEach(() => {
   ensureLocalStorageCleared();
 });
 
-test("chunkWatchHistoryPayloadItems enforces byte limits and records skipped entries", () => {
-  const snapshotId = "snapshot-chunk";
+test("buildWatchHistoryPayload enforces byte limits and records skipped entries", () => {
+  const month = "2025-01";
   const maxBytes = 256;
   const oversizedPointer = {
     type: "e",
@@ -39,9 +39,10 @@ test("chunkWatchHistoryPayloadItems enforces byte limits and records skipped ent
   }));
   const payloadItems = [oversizedPointer, ...smallPointers];
 
-  const { chunks, skipped } = chunkWatchHistoryPayloadItems(
+  const { payload, skipped, included } = buildWatchHistoryPayload(
+    month,
     payloadItems,
-    snapshotId,
+    null,
     maxBytes,
   );
 
@@ -52,27 +53,28 @@ test("chunkWatchHistoryPayloadItems enforces byte limits and records skipped ent
     "skipped list should capture the oversized pointer",
   );
 
-  const flattened = chunks.flat();
+  assert.equal(payload.month, month, "payload should record the requested month");
+  assert.equal(payload.version, 2, "payload should record the expected version");
   assert.deepStrictEqual(
-    flattened.map((item) => item.value),
+    payload.items,
     smallPointers.map((item) => item.value),
-    "all remaining pointers should be included across chunks",
+    "all remaining pointers should be included in the payload",
   );
-  assert(chunks.length > 1, "payload should be split across multiple chunks");
-
-  chunks.forEach((chunkItems, index) => {
-    const serializedLength = JSON.stringify({
-      version: 2,
-      snapshot: snapshotId,
-      chunkIndex: index,
-      totalChunks: chunks.length,
-      items: chunkItems,
-    }).length;
-    assert(
-      serializedLength <= maxBytes,
-      `chunk ${index} should respect the configured max bytes (observed ${serializedLength})`,
-    );
-  });
+  assert.deepStrictEqual(
+    payload.watchedAt,
+    smallPointers.reduce((acc, pointer) => ({ ...acc, [pointer.value]: pointer.watchedAt }), {}),
+    "watchedAt map should mirror included timestamps",
+  );
+  assert.equal(
+    included.length,
+    smallPointers.length,
+    "included pointers should mirror the payload items",
+  );
+  const serializedLength = JSON.stringify(payload).length;
+  assert(
+    serializedLength <= maxBytes,
+    `payload should respect the configured max bytes (observed ${serializedLength})`,
+  );
 });
 
 test("getWatchHistoryStorage prunes entries that exceed the configured TTL", () => {
