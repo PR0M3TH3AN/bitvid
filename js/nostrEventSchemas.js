@@ -353,39 +353,37 @@ const BASE_SCHEMAS = {
   },
   [NOTE_TYPES.WATCH_HISTORY_INDEX]: {
     type: NOTE_TYPES.WATCH_HISTORY_INDEX,
-    label: "Watch history index",
+    label: "Watch history month index",
     kind: WATCH_HISTORY_KIND,
     identifierTag: {
       name: "d",
-      value: WATCH_HISTORY_LIST_IDENTIFIER,
     },
-    snapshotTagName: "snapshot",
-    totalTagName: "chunks",
-    chunkPointerTagName: "a",
+    monthTagName: "month",
+    headTag: { name: "head", value: "month" },
+    monthPointerTagName: "a",
     appendTags: DEFAULT_APPEND_TAGS,
     content: {
       format: "json",
       description:
-        "JSON payload describing the active snapshot and chunk count.",
+        "JSON payload listing watched event identifiers for a given YYYY-MM month; entries may include optional watchedAt metadata.",
     },
   },
   [NOTE_TYPES.WATCH_HISTORY_CHUNK]: {
     type: NOTE_TYPES.WATCH_HISTORY_CHUNK,
-    label: "Watch history snapshot",
+    label: "Watch history month payload",
     kind: WATCH_HISTORY_KIND,
     identifierTag: {
       name: "d",
     },
     encryptionTag: { name: "encrypted", values: ["nip44_v2", "nip44", "nip04"] },
-    snapshotTagName: "snapshot",
-    chunkTagName: "chunk",
-    headTag: { name: "head", value: "1" },
+    monthTagName: "month",
+    headTag: { name: "head", value: "month" },
     headTagIndex: 2,
     appendTags: DEFAULT_APPEND_TAGS,
     content: {
       format: "encrypted-json",
       description:
-        "Encrypted JSON payload containing chunked watch history entries.",
+        "Encrypted JSON payload containing a month's watched event identifiers with optional watchedAt metadata.",
     },
   },
   [NOTE_TYPES.SUBSCRIPTION_LIST]: {
@@ -1351,8 +1349,10 @@ export function buildCommentEvent({
 export function buildWatchHistoryIndexEvent({
   pubkey,
   created_at,
+  monthIdentifier,
   snapshotId,
-  totalChunks,
+  isHead = false,
+  monthAddresses = [],
   chunkAddresses = [],
   additionalTags = [],
   content,
@@ -1360,24 +1360,31 @@ export function buildWatchHistoryIndexEvent({
   const schema = getNostrEventSchema(NOTE_TYPES.WATCH_HISTORY_INDEX);
   const tags = [];
   const identifierName = schema?.identifierTag?.name || "d";
-  const identifierValue = schema?.identifierTag?.value || WATCH_HISTORY_LIST_IDENTIFIER;
+  const identifierValue =
+    (typeof monthIdentifier === "string" && monthIdentifier.trim()) ||
+    (typeof snapshotId === "string" && snapshotId.trim()) ||
+    schema?.identifierTag?.value ||
+    WATCH_HISTORY_LIST_IDENTIFIER;
   if (identifierName && identifierValue) {
     tags.push([identifierName, identifierValue]);
   }
-  const snapshotTagName = schema?.snapshotTagName || "snapshot";
-  if (snapshotTagName && snapshotId) {
-    tags.push([snapshotTagName, snapshotId]);
+  const monthTagName = schema?.monthTagName || "month";
+  if (monthTagName && identifierValue) {
+    tags.push([monthTagName, identifierValue]);
   }
-  const totalTagName = schema?.totalTagName || "chunks";
-  if (totalTagName && Number.isFinite(totalChunks)) {
-    tags.push([totalTagName, String(Math.max(0, Math.floor(totalChunks)))]);
-  }
-  const pointerTagName = schema?.chunkPointerTagName || "a";
-  chunkAddresses.forEach((address) => {
+  const pointerTagName = schema?.monthPointerTagName || schema?.chunkPointerTagName || "a";
+  const resolvedMonthAddresses = Array.isArray(monthAddresses) && monthAddresses.length
+    ? monthAddresses
+    : chunkAddresses;
+  resolvedMonthAddresses?.forEach((address) => {
     if (typeof address === "string" && address) {
       tags.push([pointerTagName, address]);
     }
   });
+
+  if (isHead && schema?.headTag?.name && schema?.headTag?.value) {
+    tags.unshift([schema.headTag.name, schema.headTag.value]);
+  }
 
   appendSchemaTags(tags, schema);
   const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
@@ -1387,12 +1394,12 @@ export function buildWatchHistoryIndexEvent({
 
   let resolvedContent = content;
   if (resolvedContent === undefined) {
-    const payload = {};
-    if (snapshotId) {
-      payload.snapshot = snapshotId;
-    }
-    if (Number.isFinite(totalChunks)) {
-      payload.totalChunks = Math.max(0, Math.floor(totalChunks));
+    const payload = {
+      month: identifierValue || "",
+      items: [],
+    };
+    if (isHead) {
+      payload.head = true;
     }
     resolvedContent = JSON.stringify(payload);
   } else if (typeof resolvedContent !== "string") {
@@ -1414,19 +1421,21 @@ export function buildWatchHistoryIndexEvent({
 export function buildWatchHistoryChunkEvent({
   pubkey,
   created_at,
-  chunkIdentifier,
+  monthIdentifier,
   snapshotId,
-  chunkIndex,
-  totalChunks,
   pointerTags = [],
-  chunkAddresses = [],
+  isHead = false,
+  chunkIndex,
   content,
   encryption,
 }) {
   const schema = getNostrEventSchema(NOTE_TYPES.WATCH_HISTORY_CHUNK);
   const tags = [];
   const identifierName = schema?.identifierTag?.name || "d";
-  const identifierValue = chunkIdentifier || schema?.identifierTag?.value;
+  const identifierValue =
+    (typeof monthIdentifier === "string" && monthIdentifier.trim()) ||
+    (typeof snapshotId === "string" && snapshotId.trim()) ||
+    schema?.identifierTag?.value;
   if (identifierName && identifierValue) {
     tags.push([identifierName, identifierValue]);
   }
@@ -1448,13 +1457,9 @@ export function buildWatchHistoryChunkEvent({
   if (encryptionTagName && resolvedEncryptionTag) {
     tags.push([encryptionTagName, resolvedEncryptionTag]);
   }
-  const snapshotTagName = schema?.snapshotTagName;
-  if (snapshotTagName && snapshotId) {
-    tags.push([snapshotTagName, snapshotId]);
-  }
-  const chunkTagName = schema?.chunkTagName;
-  if (chunkTagName && typeof chunkIndex === "number" && typeof totalChunks === "number") {
-    tags.push([chunkTagName, String(chunkIndex), String(totalChunks)]);
+  const monthTagName = schema?.monthTagName || "month";
+  if (monthTagName && identifierValue) {
+    tags.push([monthTagName, identifierValue]);
   }
   pointerTags.forEach((tag) => {
     if (Array.isArray(tag) && tag.length >= 2) {
@@ -1462,16 +1467,12 @@ export function buildWatchHistoryChunkEvent({
     }
   });
 
-  if (chunkIndex === 0 && schema?.headTag?.name && schema?.headTag?.value) {
+  const shouldMarkHead = isHead === true || chunkIndex === 0;
+  if (shouldMarkHead && schema?.headTag?.name && schema?.headTag?.value) {
     const insertionIndex = Number.isInteger(schema?.headTagIndex)
       ? Math.max(0, Math.min(tags.length, schema.headTagIndex))
       : Math.min(tags.length, 2);
     tags.splice(insertionIndex, 0, [schema.headTag.name, schema.headTag.value]);
-    chunkAddresses.forEach((address) => {
-      if (typeof address === "string" && address) {
-        tags.push(["a", address]);
-      }
-    });
   }
 
   appendSchemaTags(tags, schema);
