@@ -72,7 +72,7 @@ export default class WatchHistoryTelemetry {
       ? Math.max(0, viewThresholdSeconds)
       : DEFAULT_VIEW_THRESHOLD_SECONDS;
 
-    this.watchHistoryMetadataEnabled = null;
+    this.watchHistoryMetadataEnabled = false;
     this.watchHistoryPreferenceUnsubscribe = null;
     this.playbackTelemetryState = null;
     this.loggedViewPointerKeys = new Set();
@@ -81,98 +81,21 @@ export default class WatchHistoryTelemetry {
   destroy() {
     this.resetPlaybackLoggingState();
     this._clearPreferenceSubscription();
-    this.watchHistoryMetadataEnabled = null;
+    this.watchHistoryMetadataEnabled = false;
   }
 
   async initPreferenceSync() {
-    if (!this.watchHistoryService?.isEnabled?.()) {
-      this.watchHistoryMetadataEnabled = false;
-      return null;
-    }
-
-    this.refreshPreferenceSettings();
-
-    if (
-      typeof this.watchHistoryService.subscribe === "function" &&
-      !this.watchHistoryPreferenceUnsubscribe
-    ) {
-      try {
-        const unsubscribe = this.watchHistoryService.subscribe(
-          "metadata-preference",
-          (payload) => {
-            const previous = this.watchHistoryMetadataEnabled;
-            const enabled = payload?.enabled !== false;
-            this.watchHistoryMetadataEnabled = enabled;
-            if (previous === true && enabled === false) {
-              try {
-                this.watchHistoryService?.clearLocalMetadata?.();
-              } catch (error) {
-                devLogger.warn(
-                  "[watchHistoryTelemetry] Failed to clear cached metadata after toggle off:",
-                  error,
-                );
-              }
-            }
-          },
-        );
-        if (typeof unsubscribe === "function") {
-          this.watchHistoryPreferenceUnsubscribe = unsubscribe;
-        }
-      } catch (error) {
-        devLogger.warn(
-          "[watchHistoryTelemetry] Failed to subscribe to metadata preference changes:",
-          error,
-        );
-      }
-    }
-
-    return this.watchHistoryPreferenceUnsubscribe || null;
+    this.watchHistoryMetadataEnabled = false;
+    return null;
   }
 
   refreshPreferenceSettings() {
-    if (!this.watchHistoryService?.isEnabled?.()) {
-      this.watchHistoryMetadataEnabled = false;
-      return this.watchHistoryMetadataEnabled;
-    }
-
-    const previous = this.watchHistoryMetadataEnabled;
-    let enabled = true;
-
-    try {
-      if (typeof this.watchHistoryService.getSettings === "function") {
-        const settings = this.watchHistoryService.getSettings();
-        enabled = settings?.metadata?.storeLocally !== false;
-      } else if (
-        typeof this.watchHistoryService.shouldStoreMetadata === "function"
-      ) {
-        enabled = this.watchHistoryService.shouldStoreMetadata() !== false;
-      }
-    } catch (error) {
-      devLogger.warn(
-        "[watchHistoryTelemetry] Failed to read metadata settings:",
-        error,
-      );
-      enabled = true;
-    }
-
-    this.watchHistoryMetadataEnabled = enabled;
-
-    if (enabled === false && previous !== false) {
-      try {
-        this.watchHistoryService?.clearLocalMetadata?.();
-      } catch (error) {
-        devLogger.warn(
-          "[watchHistoryTelemetry] Failed to purge metadata cache while preference disabled:",
-          error,
-        );
-      }
-    }
-
+    this.watchHistoryMetadataEnabled = false;
     return this.watchHistoryMetadataEnabled;
   }
 
   isMetadataPreferenceEnabled() {
-    return this.watchHistoryMetadataEnabled !== false;
+    return false;
   }
 
   persistMetadataForVideo(video, pointerInfo) {

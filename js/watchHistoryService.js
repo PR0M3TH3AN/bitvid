@@ -24,21 +24,12 @@ import { devLogger, userLogger } from "./utils/logger.js";
 const SESSION_STORAGE_KEY = "bitvid:watch-history:session:v1";
 const SESSION_STORAGE_VERSION = 1;
 const POINTER_THROTTLE_MS = 60 * 1000;
-const METADATA_STORAGE_KEY = "bitvid:watch-history:metadata-cache:v1";
-const METADATA_STORAGE_VERSION = 1;
-const METADATA_PREFERENCE_KEY = "bitvid:watch-history:metadata:store-locally";
-
 const state = {
   restored: false,
   queues: new Map(),
   inflightSnapshots: new Map(),
   fingerprintCache: new Map(),
   listeners: new Map(),
-  metadata: {
-    restored: false,
-    cache: new Map(),
-    preference: null,
-  },
 };
 
 function resolveFlagEnabled() {
@@ -232,345 +223,6 @@ function getLocalStorage() {
     devLogger.warn("[watchHistoryService] localStorage unavailable:", error);
   }
   return null;
-}
-
-function ensureMetadataPreference() {
-  if (typeof state.metadata.preference === "boolean") {
-    return state.metadata.preference;
-  }
-  const storage = getLocalStorage();
-  if (!storage) {
-    state.metadata.preference = true;
-    return state.metadata.preference;
-  }
-  try {
-    const stored = storage.getItem(METADATA_PREFERENCE_KEY);
-    if (stored === null) {
-      state.metadata.preference = true;
-    } else {
-      state.metadata.preference = stored === "true";
-    }
-  } catch (error) {
-    devLogger.warn(
-      "[watchHistoryService] Failed to read metadata preference:",
-      error,
-    );
-    state.metadata.preference = true;
-  }
-  return state.metadata.preference;
-}
-
-function persistMetadataPreference(value) {
-  const storage = getLocalStorage();
-  if (!storage) {
-    return;
-  }
-  try {
-    if (value === true) {
-      storage.setItem(METADATA_PREFERENCE_KEY, "true");
-    } else {
-      storage.setItem(METADATA_PREFERENCE_KEY, "false");
-    }
-  } catch (error) {
-    devLogger.warn(
-      "[watchHistoryService] Failed to persist metadata preference:",
-      error,
-    );
-  }
-}
-
-function sanitizeVideoForStorage(video) {
-  if (!video || typeof video !== "object") {
-    return null;
-  }
-  const createdAt = Number.isFinite(video.created_at)
-    ? Math.floor(Number(video.created_at))
-    : null;
-  return {
-    id: typeof video.id === "string" ? video.id : "",
-    title: typeof video.title === "string" ? video.title : "",
-    thumbnail: typeof video.thumbnail === "string" ? video.thumbnail : "",
-    url: typeof video.url === "string" ? video.url : "",
-    magnet: typeof video.magnet === "string" ? video.magnet : "",
-    pubkey: typeof video.pubkey === "string" ? video.pubkey : "",
-    created_at: createdAt,
-    infoHash: typeof video.infoHash === "string" ? video.infoHash : "",
-    legacyInfoHash:
-      typeof video.legacyInfoHash === "string" ? video.legacyInfoHash : "",
-    mode: typeof video.mode === "string" ? video.mode : "",
-    isPrivate: video?.isPrivate === true,
-    description:
-      typeof video.description === "string" ? video.description : "",
-  };
-}
-
-function sanitizeVideoForHistory(video) {
-  const sanitized = sanitizeVideoForStorage(video);
-  if (!sanitized) {
-    return null;
-  }
-
-  return {
-    id: sanitized.id,
-    title: sanitized.title,
-    thumbnail: sanitized.thumbnail,
-    pubkey: sanitized.pubkey,
-    created_at: sanitized.created_at,
-    url: sanitized.url,
-    magnet: sanitized.magnet,
-    infoHash: sanitized.infoHash,
-    legacyInfoHash:
-      typeof video?.legacyInfoHash === "string"
-        ? video.legacyInfoHash
-        : typeof sanitized.legacyInfoHash === "string"
-        ? sanitized.legacyInfoHash
-        : "",
-  };
-}
-
-function sanitizeProfileForStorage(profile) {
-  if (!profile || typeof profile !== "object") {
-    return null;
-  }
-  return {
-    pubkey: typeof profile.pubkey === "string" ? profile.pubkey : "",
-    name: typeof profile.name === "string" ? profile.name : "",
-    display_name:
-      typeof profile.display_name === "string" ? profile.display_name : "",
-    picture: typeof profile.picture === "string" ? profile.picture : "",
-    nip05: typeof profile.nip05 === "string" ? profile.nip05 : "",
-  };
-}
-
-function restoreMetadataCache() {
-  if (state.metadata.restored) {
-    return;
-  }
-  state.metadata.restored = true;
-
-  const storage = getLocalStorage();
-  if (!storage) {
-    return;
-  }
-
-  let raw = null;
-  try {
-    raw = storage.getItem(METADATA_STORAGE_KEY);
-  } catch (error) {
-    devLogger.warn(
-      "[watchHistoryService] Failed to read metadata cache:",
-      error,
-    );
-    return;
-  }
-
-  if (!raw || typeof raw !== "string") {
-    return;
-  }
-
-  let parsed = null;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (error) {
-    devLogger.warn(
-      "[watchHistoryService] Failed to parse metadata cache:",
-      error,
-    );
-    try {
-      storage.removeItem(METADATA_STORAGE_KEY);
-    } catch (cleanupError) {
-      devLogger.warn(
-        "[watchHistoryService] Failed to clear corrupt metadata cache:",
-        cleanupError,
-      );
-    }
-    return;
-  }
-
-  if (!parsed || parsed.version !== METADATA_STORAGE_VERSION) {
-    try {
-      storage.removeItem(METADATA_STORAGE_KEY);
-    } catch (cleanupError) {
-      devLogger.warn(
-        "[watchHistoryService] Failed to clear outdated metadata cache:",
-        cleanupError,
-      );
-    }
-    return;
-  }
-
-  state.metadata.cache.clear();
-  const entries = parsed.entries && typeof parsed.entries === "object"
-    ? parsed.entries
-    : {};
-  for (const [key, entry] of Object.entries(entries)) {
-    if (typeof key !== "string" || !key) {
-      continue;
-    }
-    const sanitizedVideo = sanitizeVideoForStorage(entry?.video);
-    const sanitizedProfile = sanitizeProfileForStorage(entry?.profile);
-    state.metadata.cache.set(key, {
-      video: sanitizedVideo,
-      profile: sanitizedProfile,
-      storedAt: Number.isFinite(entry?.storedAt) ? entry.storedAt : Date.now(),
-    });
-  }
-}
-
-function sanitizePointerMetadata(metadata) {
-  if (!metadata || typeof metadata !== "object") {
-    return null;
-  }
-
-  const pointerMetadata = {};
-  const video = sanitizeVideoForHistory(metadata.video);
-  if (video) {
-    pointerMetadata.video = video;
-  }
-
-  const profile = sanitizeProfileForStorage(metadata.profile);
-  if (profile) {
-    pointerMetadata.profile = profile;
-  }
-
-  const resumeCandidates = [
-    metadata.resumeAt,
-    metadata.resume,
-    metadata.resumeSeconds,
-  ];
-  for (const candidate of resumeCandidates) {
-    if (Number.isFinite(candidate)) {
-      pointerMetadata.resumeAt = Math.max(0, Math.floor(candidate));
-      break;
-    }
-  }
-
-  if (metadata.completed === true) {
-    pointerMetadata.completed = true;
-  }
-
-  return Object.keys(pointerMetadata).length ? pointerMetadata : null;
-}
-
-function persistMetadataCache() {
-  const storage = getLocalStorage();
-  if (!storage) {
-    return;
-  }
-  const shouldStore = shouldStoreMetadataLocally();
-  if (!shouldStore || !state.metadata.cache.size) {
-    try {
-      storage.removeItem(METADATA_STORAGE_KEY);
-    } catch (error) {
-      devLogger.warn(
-        "[watchHistoryService] Failed to clear metadata cache:",
-        error,
-      );
-    }
-    return;
-  }
-
-  const payload = { version: METADATA_STORAGE_VERSION, entries: {} };
-  for (const [key, entry] of state.metadata.cache.entries()) {
-    payload.entries[key] = {
-      video: sanitizeVideoForStorage(entry?.video) || null,
-      profile: sanitizeProfileForStorage(entry?.profile) || null,
-      storedAt: Number.isFinite(entry?.storedAt) ? entry.storedAt : Date.now(),
-    };
-  }
-  try {
-    storage.setItem(METADATA_STORAGE_KEY, JSON.stringify(payload));
-  } catch (error) {
-    devLogger.warn(
-      "[watchHistoryService] Failed to persist metadata cache:",
-      error,
-    );
-  }
-}
-
-function shouldStoreMetadataLocally() {
-  return ensureMetadataPreference() === true;
-}
-
-function setMetadataPreference(enabled) {
-  const normalized = enabled === false ? false : true;
-  const previous = ensureMetadataPreference();
-  state.metadata.preference = normalized;
-  persistMetadataPreference(normalized);
-  if (!normalized) {
-    state.metadata.cache.clear();
-    persistMetadataCache();
-  } else {
-    persistMetadataCache();
-  }
-  if (previous !== normalized) {
-    emit("metadata-preference", { enabled: normalized });
-  }
-}
-
-function getMetadataPreference() {
-  return ensureMetadataPreference();
-}
-
-function getLocalMetadata(pointerKeyValue) {
-  restoreMetadataCache();
-  const key = typeof pointerKeyValue === "string" ? pointerKeyValue : "";
-  if (!key) {
-    return null;
-  }
-  const stored = state.metadata.cache.get(key);
-  if (!stored) {
-    return null;
-  }
-  return {
-    video: stored.video ? { ...stored.video } : null,
-    profile: stored.profile ? { ...stored.profile } : null,
-    storedAt: stored.storedAt,
-  };
-}
-
-function setLocalMetadata(pointerKeyValue, metadata) {
-  if (!shouldStoreMetadataLocally()) {
-    return;
-  }
-  const key = typeof pointerKeyValue === "string" ? pointerKeyValue : "";
-  if (!key) {
-    return;
-  }
-  restoreMetadataCache();
-  if (!metadata || typeof metadata !== "object") {
-    state.metadata.cache.delete(key);
-    persistMetadataCache();
-    return;
-  }
-  const video = sanitizeVideoForStorage(metadata.video);
-  const profile = sanitizeProfileForStorage(metadata.profile);
-  state.metadata.cache.set(key, {
-    video,
-    profile,
-    storedAt: Date.now(),
-  });
-  persistMetadataCache();
-}
-
-function removeLocalMetadata(pointerKeyValue) {
-  const key = typeof pointerKeyValue === "string" ? pointerKeyValue : "";
-  if (!key) {
-    return;
-  }
-  restoreMetadataCache();
-  if (state.metadata.cache.delete(key)) {
-    persistMetadataCache();
-  }
-}
-
-function clearLocalMetadata() {
-  restoreMetadataCache();
-  if (!state.metadata.cache.size) {
-    return;
-  }
-  state.metadata.cache.clear();
-  persistMetadataCache();
 }
 
 function emit(eventName, payload) {
@@ -1133,32 +785,11 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
     viewResult?.event?.created_at
   );
 
-  const pointerMetadata = sanitizePointerMetadata(metadata);
-  if (pointerMetadata) {
-    const existingMetadata =
-      typeof normalizedPointer.metadata === "object"
-        ? normalizedPointer.metadata
-        : {};
-    normalizedPointer.metadata = { ...existingMetadata, ...pointerMetadata };
-    if (pointerMetadata.video) {
-      normalizedPointer.video = pointerMetadata.video;
-    }
-    if (pointerMetadata.profile) {
-      normalizedPointer.profile = pointerMetadata.profile;
-    }
-    if (
-      Number.isFinite(pointerMetadata.resumeAt) &&
-      !Number.isFinite(normalizedPointer.resumeAt)
-    ) {
-      normalizedPointer.resumeAt = Math.max(
-        0,
-        Math.floor(pointerMetadata.resumeAt),
-      );
-    }
-    if (pointerMetadata.completed === true) {
-      normalizedPointer.completed = true;
-    }
-  }
+  delete normalizedPointer.metadata;
+  delete normalizedPointer.video;
+  delete normalizedPointer.profile;
+  delete normalizedPointer.resumeAt;
+  delete normalizedPointer.completed;
 
   const key = pointerKey(normalizedPointer);
   devLogger.info(
@@ -1608,17 +1239,6 @@ function getAllQueues() {
   return summary;
 }
 
-function getSettings() {
-  const preference = getMetadataPreference();
-  return {
-    metadata: {
-      preference,
-      storeLocally: preference === true,
-      cacheSize: state.metadata.cache.size,
-    },
-  };
-}
-
 const watchHistoryService = {
   isEnabled: isFeatureEnabled,
   supportsLocalHistory,
@@ -1630,14 +1250,6 @@ const watchHistoryService = {
   resetProgress,
   getQueuedPointers,
   getAllQueues,
-  getMetadataPreference,
-  setMetadataPreference,
-  shouldStoreMetadata: shouldStoreMetadataLocally,
-  getLocalMetadata,
-  setLocalMetadata,
-  removeLocalMetadata,
-  clearLocalMetadata,
-  getSettings,
   subscribe,
 };
 
