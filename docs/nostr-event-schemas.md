@@ -122,10 +122,10 @@ For analytics, route through the
 import { recordVideoView } from "./nostrViewEventsFacade.js";
 ```
 
-Watch-history list management layers
-[NIP-51](https://github.com/nostr-protocol/nips/blob/master/51.md) semantics on
-encrypted snapshots—import from `nostrWatchHistoryFacade.js` to stay aligned
-with the chunk/index lifecycle:
+Watch-history list management layers a replaceable,
+[NIP-51](https://github.com/nostr-protocol/nips/blob/master/51.md)-style list
+of monthly records. Import from `nostrWatchHistoryFacade.js` to stay aligned
+with the simplified month-by-month lifecycle:
 
 ```js
 import { updateWatchHistoryListWithDefaultClient } from "./nostrWatchHistoryFacade.js";
@@ -147,8 +147,7 @@ import { updateWatchHistoryListWithDefaultClient } from "./nostrWatchHistoryFaca
 | NIP-71 short video (`NOTE_TYPES.NIP71_SHORT_VIDEO`) | `22` | Same as `NOTE_TYPES.NIP71_VIDEO`; the kind differentiates short-form presentations. | Plain text summary; gated by `FEATURE_PUBLISH_NIP71`. |
 | Relay list (`NOTE_TYPES.RELAY_LIST`) | `10002` | Repeating `['r', <relay url>]` tags, optionally with a marker of `'read'` or `'write'` to scope the relay; marker omitted for read/write relays | Empty content |
 | View counter (`NOTE_TYPES.VIEW_EVENT`) | `WATCH_HISTORY_KIND` (default `30079`, clients also read legacy `30078`) | Canonical tag set: `['t','view']`, a pointer tag (`['e', <eventId>]` or `['a', <address>]`), and a stable dedupe tag `['d', <view identifier>]`, with optional `['session','true']` when a session actor signs; schema overrides may append extra tags. `['video', ...]` is supported for legacy overrides only. | Optional plaintext message |
-| Watch history index (`NOTE_TYPES.WATCH_HISTORY_INDEX`) | `WATCH_HISTORY_KIND` (default `30079`, clients also read legacy `30078`) | `['d', WATCH_HISTORY_LIST_IDENTIFIER]`, `['snapshot', <id>]`, `['chunks', <total>]`, repeated `['a', <chunk address>]` pointers plus schema append tags | JSON payload `{ snapshot, totalChunks }` (may be empty when using tags only) |
-| Watch history chunk (`NOTE_TYPES.WATCH_HISTORY_CHUNK`) | `WATCH_HISTORY_KIND` (default `30079`, clients also read legacy `30078`) | `['d', <snapshotId:index>]`, `['encrypted','nip04']`, `['snapshot', <id>]`, `['chunk', <index>, <total>]`, optional leading `['head','1']` on the first chunk, pointer tags for each item, plus schema append tags | NIP-04 encrypted JSON chunk (`{ version, snapshot, chunkIndex, totalChunks, items[] }`) |
+| Watch history month (`NOTE_TYPES.WATCH_HISTORY_INDEX`) | `WATCH_HISTORY_KIND` (default `30079`, clients also read legacy `30078`) | Replaceable list tag `['d', `${WATCH_HISTORY_LIST_IDENTIFIER}:<YYYY-MM>`]` with optional `['month', <YYYY-MM>]` marker plus schema append tags; no chunk pointers required. | JSON payload `{ version, month: 'YYYY-MM', items: [{ id: <eventId\|address>, watched_at?: <unix seconds> }] }` |
 | Subscription list (`NOTE_TYPES.SUBSCRIPTION_LIST`) | `30000` (clients also read legacy `30002`) | `['d', 'subscriptions']` | NIP-04/NIP-44 encrypted JSON array of NIP-51 follow-set tuples (e.g., `[['p', <hex>], …]`) |
 | User block list (`NOTE_TYPES.USER_BLOCK_LIST`) | `10000` | `['d', 'user-blocks']` | NIP-04/NIP-44 encrypted JSON `{ blockedPubkeys: string[] }` |
 | Hashtag preferences (`NOTE_TYPES.HASHTAG_PREFERENCES`) | `30015` (reads legacy `30005`) | `['d', 'bitvid:tag-preferences']` plus schema-appended `['encrypted','nip44_v2']` | NIP-44 encrypted JSON `{ version, interests: string[], disinterests: string[] }` |
@@ -247,24 +246,36 @@ experimentation.
 
 ### Watch history identifiers
 
-The encrypted watch history pipeline is gated by the `FEATURE_WATCH_HISTORY_V2`
-runtime flag. When the flag is disabled, clients continue emitting view events
-but skip publishing snapshots; the UI still resolves legacy `watch-history:v2:index`
-lists so operators can stage the rollout per deployment.【F:config/instance-config.js†L69-L94】【F:js/watchHistoryService.js†L82-L140】【F:js/watchHistoryService.js†L948-L985】
+The watch history pipeline is gated by the `FEATURE_WATCH_HISTORY_V2` runtime
+flag. When the flag is disabled, clients continue emitting view events but skip
+publishing monthly records; the UI still resolves legacy
+`watch-history:v2:index` lists so operators can stage the rollout per
+deployment.【F:config/instance-config.js†L69-L94】【F:js/watchHistoryService.js†L82-L140】【F:js/watchHistoryService.js†L948-L985】
 
 Active identifiers include the default `WATCH_HISTORY_LIST_IDENTIFIER`
 (`"watch-history"`) and the legacy aliases enumerated in
-`WATCH_HISTORY_LEGACY_LIST_IDENTIFIERS`. Chunk events derive their `d` tag from
-`<snapshotId>:<index>`, advertise `['snapshot', <id>]`, and carry `['chunk', <index>, <total>]`
-plus an optional leading `['head','1']` marker so relays can prioritize the first
-ciphertext. Chunk content is encrypted with the strongest mutually supported
-scheme: clients probe for NIP-44 v2 first, fall back to NIP-44, and finally use
-NIP-04 for legacy compatibility. The negotiated value is written back to the
-`['encrypted', ...]` tag so other readers can attempt the same scheme before
-falling back. All payloads store only pointer entries; richer metadata remains
-on-device via the [`WatchHistoryService`](../js/watchHistoryService.js) APIs,
-which default to pointer-only writes and local-only metadata caches.【F:config/instance-config.js†L60-L78】【F:js/nostrEventSchemas.js†L157-L189】【F:js/nostr/watchHistory.js†L1380-L1549】【F:js/watchHistoryService.js†L331-L376】
+`WATCH_HISTORY_LEGACY_LIST_IDENTIFIERS`. Each month publishes as a replaceable
+record keyed by `['d', `${identifier}:${YYYY-MM}`]`, optionally echoed in a
+`['month', <YYYY-MM>]` tag for readability. The content carries a compact JSON
+body such as:
+
+```json
+{
+  "version": 2,
+  "month": "2025-01",
+  "items": [
+    { "id": "<event id>", "watched_at": 1735689600 },
+    { "id": "30078:<pubkey>:video-123", "watched_at": 1735776000 }
+  ]
+}
+```
+
+Entries store only the watched event identifier (an event id or address string)
+and an optional `watched_at` timestamp so relays never receive per-playback
+device metadata. Additional playback context (duration, progress, playback
+device, etc.) should remain on-device via the
+[`WatchHistoryService`](../js/watchHistoryService.js) APIs.【F:config/instance-config.js†L60-L78】【F:js/nostrEventSchemas.js†L157-L189】【F:js/watchHistoryService.js†L331-L376】
 
 Refer to the [`WatchHistoryService`](../js/watchHistoryService.js) for queue
-management hooks, manual snapshot helpers, and metadata toggle controls that
-complement these schema definitions.【F:js/watchHistoryService.js†L695-L776】【F:js/watchHistoryService.js†L1040-L1093】
+management hooks and metadata toggle controls that complement these schema
+definitions.【F:js/watchHistoryService.js†L695-L776】【F:js/watchHistoryService.js†L1040-L1093】
