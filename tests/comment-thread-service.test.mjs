@@ -2,7 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import CommentThreadService from "../js/services/commentThreadService.js";
-import { listVideoComments } from "../js/nostr/commentEvents.js";
+import {
+  COMMENT_EVENT_KIND,
+  listVideoComments,
+} from "../js/nostr/commentEvents.js";
+import {
+  FEATURE_IMPROVED_COMMENT_FETCHING,
+  setImprovedCommentFetchingEnabled,
+} from "../js/constants.js";
 import { buildCommentEvent } from "../js/nostrEventSchemas.js";
 
 function createBaseVideo() {
@@ -11,6 +18,7 @@ function createBaseVideo() {
     pubkey: "authorpk",
     kind: 30078,
     tags: [["d", "video-root"], ["alt", "ignored"]],
+    videoRootId: "video-root",
   };
 }
 
@@ -86,6 +94,490 @@ test.after(() => {
     }
   }
 });
+
+test("CommentThreadService caches mixed-case video ids consistently", () => {
+  const videoEventId = "VideoMixed123";
+  const service = new CommentThreadService();
+
+  const comments = [
+    {
+      id: "comment-1",
+      pubkey: "authorpk",
+      content: "Cached comment",
+      created_at: 1700000000,
+      tags: [],
+    },
+  ];
+
+  service.cacheComments(videoEventId, comments);
+
+  const cachedKeys = [];
+  for (let index = 0; index < localStorage.length; index += 1) {
+    cachedKeys.push(localStorage.key(index));
+  }
+
+  assert.deepEqual(
+    cachedKeys,
+    ["bitvid:comments:videomixed123"],
+    "cache key should normalize mixed-case ids",
+  );
+
+  const cached = service.getCachedComments(videoEventId.toLowerCase());
+  assert.deepEqual(
+    cached,
+    comments,
+    "mixed-case ids should retrieve cached entries",
+  );
+});
+
+test("CommentThreadService surfaces cache read failures", () => {
+  const warnings = [];
+  const service = new CommentThreadService({
+    logger: {
+      warn: (...args) => warnings.push({ channel: "root", args }),
+      dev: { warn: (...args) => warnings.push({ channel: "dev", args }) },
+      user: { warn: (...args) => warnings.push({ channel: "user", args }) },
+    },
+  });
+
+  globalThis.localStorage.getItem = () => {
+    throw new Error("quota exceeded");
+  };
+
+  const cached = service.getCachedComments("video123");
+
+  assert.equal(cached, null, "cache read errors should fall back to null");
+  assert.equal(
+    service.getSnapshot().commentCacheDiagnostics.storageUnavailable,
+    true,
+    "comment cache diagnostics should flag storage errors",
+  );
+  assert.equal(
+    warnings.some((entry) => entry.channel === "user"),
+    true,
+    "user warnings should be emitted when cache reads fail",
+  );
+});
+
+test("CommentThreadService surfaces cache write failures", () => {
+  const warnings = [];
+  const service = new CommentThreadService({
+    logger: {
+      warn: (...args) => warnings.push({ channel: "root", args }),
+      dev: { warn: (...args) => warnings.push({ channel: "dev", args }) },
+      user: { warn: (...args) => warnings.push({ channel: "user", args }) },
+    },
+  });
+
+  globalThis.localStorage.setItem = () => {
+    throw new Error("private mode");
+  };
+
+  service.cacheComments("video123", []);
+
+  assert.equal(
+    service.getSnapshot().commentCacheDiagnostics.storageUnavailable,
+    true,
+    "comment cache diagnostics should flag write failures",
+  );
+  assert.equal(
+    warnings.some((entry) => entry.channel === "user"),
+    true,
+    "user warnings should be emitted when cache writes fail",
+  );
+});
+
+test("CommentThreadService persists caches safely during teardown failures", async () => {
+  const warnings = [];
+  const service = new CommentThreadService({
+    fetchVideoComments: async () => [
+      createComment({ id: "persist-me", pubkey: "pk-cache", createdAt: 1 }),
+    ],
+    subscribeVideoComments: () => () => {},
+    logger: {
+      warn: (...args) => warnings.push(args),
+      dev: { warn: (...args) => warnings.push(args) },
+      user: { warn: (...args) => warnings.push(args) },
+    },
+  });
+
+  await service.loadThread({ video: createBaseVideo() });
+
+  globalThis.localStorage.setItem = () => {
+    throw new Error("storage blocked");
+  };
+
+  assert.doesNotThrow(() => service.teardown());
+  assert.equal(
+    warnings.some((args) =>
+      args.some?.((value) =>
+        typeof value === "string" &&
+        value.includes("Failed to write comment cache for video123"),
+      ),
+    ),
+    true,
+    "teardown should warn when persistence fails but still reset state",
+  );
+});
+
+test("CommentThreadService logs cache usage and fallback decisions", async () => {
+  const initialFlag = FEATURE_IMPROVED_COMMENT_FETCHING;
+  const devLogs = [];
+  const fetchCalls = [];
+  const logger = {
+    warn: () => {},
+    dev: {
+      log: () => {},
+      info: (...args) => devLogs.push(args.join(" ")),
+      debug: () => {},
+      warn: (...args) => devLogs.push(args.join(" ")),
+      error: () => {},
+    },
+    user: { warn: () => {} },
+  };
+
+  const fetchVideoComments = async (...args) => {
+    fetchCalls.push(args);
+    return [
+      {
+        id: "remote-1",
+        pubkey: "remote",
+        content: "Fresh comment",
+        created_at: 2,
+        tags: [],
+      },
+    ];
+  };
+
+  const service = new CommentThreadService({
+    fetchVideoComments,
+    logger,
+  });
+
+  try {
+    setImprovedCommentFetchingEnabled(true);
+    const cachedComments = [
+      {
+        id: "cached-1",
+        pubkey: "cached",
+        content: "Cached comment",
+        created_at: 1,
+        tags: [],
+      },
+    ];
+
+    service.cacheComments("video123", cachedComments);
+    devLogs.length = 0;
+    fetchCalls.length = 0;
+
+    const cachedResult = await service.fetchThread({ videoEventId: "video123" });
+
+    assert.deepEqual(
+      cachedResult,
+      cachedComments,
+      "feature flag on should return cached comments",
+    );
+    assert.equal(
+      fetchCalls.length,
+      0,
+      "cache hits should avoid fallback fetch",
+    );
+    assert.equal(
+      devLogs.some((entry) =>
+        entry.includes("Loaded 1 cached comments for video123"),
+      ),
+      true,
+      "dev logs should note cache usage when enabled",
+    );
+
+    setImprovedCommentFetchingEnabled(false);
+    devLogs.length = 0;
+    fetchCalls.length = 0;
+
+    const fallbackResult = await service.fetchThread({
+      videoEventId: "video123",
+    });
+
+    assert.equal(
+      fetchCalls.length,
+      1,
+      "feature flag off should invoke fallback fetch",
+    );
+    assert.equal(
+      devLogs.some((entry) =>
+        entry.includes("Improved fetching fallback: feature disabled"),
+      ),
+      true,
+      "dev logs should note fallback when feature is disabled",
+    );
+    assert.deepEqual(
+      fallbackResult.map((comment) => comment.id),
+      ["remote-1"],
+      "fallback path should return freshly fetched comments",
+    );
+  } finally {
+    setImprovedCommentFetchingEnabled(initialFlag);
+  }
+});
+
+test("CommentThreadService normalizes mixed-case event ids in thread state", async () => {
+  const video = { ...createBaseVideo(), id: "VideoMixed123" };
+  const topLevelId = "CoMmEnT-Root";
+  const replyId = "RePlY-Child";
+
+  const topLevelEvent = {
+    id: topLevelId,
+    kind: 1,
+    pubkey: "commenterpk",
+    created_at: 1700000000,
+    content: "Top level",
+    tags: [
+      ["e", video.id],
+      ["a", "30078:authorpk:video-root"],
+    ],
+  };
+
+  const replyEvent = {
+    id: replyId,
+    kind: 1,
+    pubkey: "replypk",
+    created_at: 1700000100,
+    content: "Reply",
+    tags: [
+      ["e", video.id.toUpperCase()],
+      ["a", "30078:authorpk:video-root"],
+      ["e", topLevelId.toUpperCase()],
+    ],
+  };
+
+  const fetchVideoComments = async () => [topLevelEvent];
+  let triggerAppend = null;
+  const subscribeVideoComments = (target, options) => {
+    triggerAppend = options?.onEvent;
+    return () => {};
+  };
+
+  const service = new CommentThreadService({
+    fetchVideoComments,
+    subscribeVideoComments,
+  });
+
+  let threadReadyPayload = null;
+  let appendPayload = null;
+  service.setCallbacks({
+    onThreadReady: (payload) => {
+      threadReadyPayload = payload;
+    },
+    onCommentsAppended: (payload) => {
+      appendPayload = payload;
+    },
+  });
+
+  await service.loadThread({ video });
+
+  assert.equal(
+    threadReadyPayload.videoEventId,
+    video.id.toLowerCase(),
+    "video ids should normalize to lowercase in the thread payload",
+  );
+  assert.deepEqual(
+    threadReadyPayload.topLevelIds,
+    [topLevelId.toLowerCase()],
+    "top-level ids should be normalized",
+  );
+  assert.equal(
+    threadReadyPayload.childrenByParent.get(null)[0],
+    topLevelId.toLowerCase(),
+    "root children should reference normalized ids",
+  );
+  assert.equal(
+    threadReadyPayload.commentsById.has(topLevelId.toLowerCase()),
+    true,
+    "comment map should key by normalized ids",
+  );
+  assert.ok(
+    service.getCommentEvent(topLevelId.toUpperCase()),
+    "comment lookups should be case-insensitive",
+  );
+
+  assert.equal(typeof triggerAppend, "function", "subscription should be active");
+  triggerAppend(replyEvent);
+
+  assert.deepEqual(
+    appendPayload.commentIds,
+    [replyId.toLowerCase()],
+    "append payload should emit normalized comment ids",
+  );
+  assert.equal(
+    appendPayload.parentCommentId,
+    topLevelId.toLowerCase(),
+    "append payload should carry normalized parent ids",
+  );
+  assert.deepEqual(
+    appendPayload.childrenByParent.get(topLevelId.toLowerCase()),
+    [replyId.toLowerCase()],
+    "children map should store normalized ids for replies",
+  );
+});
+
+test("CommentThreadService normalizes mixed-case pubkeys during hydration", async () => {
+  const video = createBaseVideo();
+  const mixedPubkey = "PuBkEy-Upper";
+
+  const fetchVideoComments = async () => [
+    createComment({ id: "c-hydrate", pubkey: mixedPubkey, createdAt: 1700000200 }),
+  ];
+
+  const hydrationRequests = [];
+  const service = new CommentThreadService({
+    nostrClient: { ensurePool: async () => {} },
+    fetchVideoComments,
+    subscribeVideoComments: () => () => {},
+    batchFetchProfiles: async (pubkeys) => {
+      hydrationRequests.push([...pubkeys]);
+      return [];
+    },
+    hydrationDebounceMs: 0,
+  });
+
+  await service.loadThread({ video });
+
+  assert.deepEqual(
+    hydrationRequests,
+    [[mixedPubkey.toLowerCase()]],
+    "hydration should request normalized pubkeys",
+  );
+});
+
+test("CommentThreadService deduplicates mixed-case event ids and pubkeys", async () => {
+  const hydrationRequests = [];
+  const service = new CommentThreadService({
+    fetchVideoComments: async () => [],
+    subscribeVideoComments: () => () => {},
+    batchFetchProfiles: async (pubkeys) => {
+      hydrationRequests.push([...pubkeys]);
+    },
+    hydrationDebounceMs: 0,
+  });
+
+  await service.loadThread({ video: createBaseVideo() });
+
+  const mixedCaseEvent = createComment({
+    id: "CoMmEnT-123", // intentionally mixed case
+    pubkey: "PuBkEy-123",
+    createdAt: 10,
+  });
+  const lowerCaseEvent = createComment({
+    id: "comment-123",
+    pubkey: "pubkey-123",
+    createdAt: 20,
+  });
+
+  service.processIncomingEvent(mixedCaseEvent);
+  service.processIncomingEvent(lowerCaseEvent);
+  await service.flushProfileQueue();
+
+  assert.deepEqual(
+    service.getCommentIdsForParent(null),
+    ["comment-123"],
+    "mixed-case duplicates should collapse to a single normalized id",
+  );
+  assert.equal(
+    service.getCommentEvent("COMMENT-123")?.created_at,
+    20,
+    "newer updates should replace existing mixed-case entries",
+  );
+  assert.deepEqual(
+    hydrationRequests,
+    [["pubkey-123"]],
+    "hydration should only request the normalized pubkey once",
+  );
+});
+
+test("CommentThreadService retries profile hydration before succeeding", async () => {
+  const profiles = new Map();
+  const hydrationCalls = [];
+  let attempts = 0;
+
+  const service = new CommentThreadService({
+    getProfileCacheEntry: (pubkey) => profiles.get(pubkey),
+    batchFetchProfiles: async (pubkeys) => {
+      hydrationCalls.push([...pubkeys]);
+      attempts += 1;
+      if (attempts === 1) {
+        throw new Error("temporary hydration failure");
+      }
+      pubkeys.forEach((pubkey) =>
+        profiles.set(pubkey, { name: `Profile ${pubkey}` }),
+      );
+    },
+    hydrationDebounceMs: 0,
+  });
+
+  service.queueProfileForHydration("pk-retry-1");
+  service.queueProfileForHydration("pk-retry-2");
+
+  for (let attempt = 0; attempt < 5 && !service.profileHydrationPromise; attempt += 1) {
+    await tick(10);
+  }
+  await service.waitForProfileHydration();
+
+  assert.equal(attempts, 2, "hydration should retry failed batches once");
+  assert.deepEqual(
+    hydrationCalls,
+    [
+      ["pk-retry-1", "pk-retry-2"],
+      ["pk-retry-1", "pk-retry-2"],
+    ],
+    "hydration should reuse the same batch across retries",
+  );
+  assert.ok(service.getProfile("pk-retry-1"));
+  assert.ok(service.getProfile("pk-retry-2"));
+});
+
+test(
+  "CommentThreadService surfaces profile hydration failures after retries",
+  async () => {
+    const errors = [];
+    const userWarnings = [];
+    const devWarnings = [];
+    let attempts = 0;
+
+    const service = new CommentThreadService({
+      batchFetchProfiles: async (pubkeys) => {
+        attempts += 1;
+        throw new Error(`hydration failed attempt ${attempts}`);
+      },
+      logger: {
+        warn: (...args) => userWarnings.push(args),
+        dev: { warn: (...args) => devWarnings.push(args) },
+        user: { warn: (...args) => userWarnings.push(args) },
+      },
+      hydrationDebounceMs: 0,
+    });
+
+    service.setCallbacks({ onError: (error) => errors.push(error) });
+    service.queueProfileForHydration("pk-retry-fail");
+
+    await tick(200);
+    await service.waitForProfileHydration();
+
+    assert.equal(attempts, 3, "hydration should respect the retry limit");
+    assert.equal(errors.length, 1, "final failures should emit an error");
+    assert.ok(
+      userWarnings.some(([message]) =>
+        typeof message === "string" && message.includes("pk-retry-fail"),
+      ),
+      "user-visible warnings should include the failed pubkeys",
+    );
+    assert.ok(
+      devWarnings.some(([message]) =>
+        typeof message === "string" && message.includes("attempt 1/3")
+      ),
+      "dev warnings should log the retry attempts",
+    );
+  },
+);
 
 test(
   "listVideoComments accepts builder events without parent ids and filters replies",
@@ -256,6 +748,7 @@ test(
     const hydrationRequests = [];
 
     const service = new CommentThreadService({
+      nostrClient: { ensurePool: async () => {} },
       fetchVideoComments,
       subscribeVideoComments,
       getProfileCacheEntry: (pubkey) =>
@@ -290,6 +783,7 @@ test(
       videoDefinitionAddress: "30078:authorpk:video-root",
       videoKind: "30078",
       videoAuthorPubkey: "authorpk",
+      rootIdentifier: "video-root",
       parentCommentId: "",
     });
     assert.equal(lastFetchOptions.limit, service.defaultLimit);
@@ -308,6 +802,7 @@ test(
     assert.equal(initialSnapshot.videoDefinitionAddress, "30078:authorpk:video-root");
     assert.equal(initialSnapshot.videoKind, "30078");
     assert.equal(initialSnapshot.videoAuthorPubkey, "authorpk");
+    assert.equal(initialSnapshot.rootIdentifier, "video-root");
     assert.equal(initialSnapshot.parentCommentKind, null);
     assert.equal(initialSnapshot.parentCommentPubkey, null);
     assert.deepStrictEqual(initialSnapshot.topLevelIds, [
@@ -358,6 +853,7 @@ test(
     assert.equal(appendPayload.parentCommentId, "comment-2");
     assert.deepStrictEqual(appendPayload.commentIds, ["reply-2"]);
     assert.ok(appendPayload.commentsById instanceof Map);
+    assert.equal(appendPayload.rootIdentifier, "video-root");
     assert.ok(
       appendPayload.commentsById.has("reply-2"),
       "appended payload should contain the new reply",
@@ -401,6 +897,7 @@ test(
     const errors = [];
 
     const service = new CommentThreadService({
+      nostrClient: { ensurePool: async () => {} },
       fetchVideoComments: async (target, options) => {
         fetchTargets.push(target);
         fetchOptions.push(options);
@@ -424,6 +921,7 @@ test(
       videoEventId: "video123",
       videoKind: "30078",
       videoAuthorPubkey: "authorpk",
+      rootIdentifier: "video-root",
       parentCommentId: "",
     });
     assert.equal(
@@ -454,6 +952,91 @@ test(
     assert.equal(snapshot.videoKind, "30078");
     assert.equal(snapshot.videoAuthorPubkey, "authorpk");
     assert.equal(snapshot.videoDefinitionAddress, null);
+  },
+);
+
+test(
+  "CommentThreadService requests and snapshots comments by root identifier",
+  async () => {
+    const video = {
+      id: "root-only-video",
+      pubkey: "rootpk",
+      kind: 30078,
+      videoRootId: "root-only",
+      tags: [],
+    };
+
+    const rootOnlyComment = {
+      id: "comment-root",
+      kind: COMMENT_EVENT_KIND,
+      pubkey: "commenter",
+      created_at: 1700000000,
+      content: "Root scoped",
+      tags: [["i", "root-only"], ["p", "rootpk"]],
+    };
+
+    let fetchTarget = null;
+    const service = new CommentThreadService({
+      nostrClient: { ensurePool: async () => {} },
+      fetchVideoComments: async (target) => {
+        fetchTarget = target;
+        return [rootOnlyComment];
+      },
+      subscribeVideoComments: () => () => {},
+    });
+
+    const threadReadyPayloads = [];
+    service.setCallbacks({
+      onThreadReady: (payload) => threadReadyPayloads.push(payload),
+    });
+
+    const snapshot = await service.loadThread({ video });
+
+    assert.ok(fetchTarget, "fetch should run when only root id is provided");
+    assert.equal(fetchTarget.rootIdentifier, "root-only");
+    assert.equal(snapshot.rootIdentifier, "root-only");
+    assert.equal(snapshot.commentsById.get("comment-root").content, "Root scoped");
+    assert.equal(threadReadyPayloads[0].rootIdentifier, "root-only");
+  },
+);
+
+test(
+  "CommentThreadService falls back to pointerIdentifiers root id",
+  async () => {
+    const video = {
+      id: "pointer-video",
+      pubkey: "rootpk",
+      kind: 30078,
+      tags: [],
+      pointerIdentifiers: {
+        videoRootId: "pointer-root",
+      },
+    };
+
+    const pointerComment = {
+      id: "comment-pointer",
+      kind: COMMENT_EVENT_KIND,
+      pubkey: "commenter",
+      created_at: 1700000001,
+      content: "Pointer scoped",
+      tags: [["i", "pointer-root"], ["p", "rootpk"]],
+    };
+
+    let fetchTarget = null;
+    const service = new CommentThreadService({
+      nostrClient: { ensurePool: async () => {} },
+      fetchVideoComments: async (target) => {
+        fetchTarget = target;
+        return [pointerComment];
+      },
+      subscribeVideoComments: () => () => {},
+    });
+
+    const snapshot = await service.loadThread({ video });
+
+    assert.ok(fetchTarget, "fetch should run when pointer identifiers are provided");
+    assert.equal(fetchTarget.rootIdentifier, "pointer-root");
+    assert.equal(snapshot.rootIdentifier, "pointer-root");
   },
 );
 
@@ -498,6 +1081,7 @@ test(
 
     const subscribeTargets = [];
     const service = new CommentThreadService({
+      nostrClient: { ensurePool: async () => {} },
       fetchVideoComments,
       subscribeVideoComments: (target, _options = {}) => {
         subscribeTargets.push(target);
@@ -555,6 +1139,7 @@ test(
     let subscriptionHandler = null;
 
     const service = new CommentThreadService({
+      nostrClient: { ensurePool: async () => {} },
       fetchVideoComments: async () => [],
       subscribeVideoComments: (_target, options = {}) => {
         subscriptionHandler = typeof options.onEvent === "function" ? options.onEvent : null;

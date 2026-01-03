@@ -1248,8 +1248,8 @@ class WatchHistoryManager {
       typeof actorInput === "string" && actorInput.trim()
         ? actorInput.trim()
         : typeof this.deps.getActivePubkey === "function"
-        ? this.deps.getActivePubkey()
-        : "";
+          ? this.deps.getActivePubkey()
+          : "";
     const actorKey = normalizeActorKey(resolvedActor);
     if (!actorKey) {
       return "";
@@ -1257,11 +1257,11 @@ class WatchHistoryManager {
     const items = Array.isArray(itemsOverride)
       ? canonicalizeWatchHistoryItems(itemsOverride, WATCH_HISTORY_MAX_ITEMS)
       : (() => {
-          const cacheEntry = this.cache.get(actorKey) || this.getStorage().actors?.[actorKey];
-          return Array.isArray(cacheEntry?.items)
-            ? canonicalizeWatchHistoryItems(cacheEntry.items, WATCH_HISTORY_MAX_ITEMS)
-            : [];
-        })();
+        const cacheEntry = this.cache.get(actorKey) || this.getStorage().actors?.[actorKey];
+        return Array.isArray(cacheEntry?.items)
+          ? canonicalizeWatchHistoryItems(cacheEntry.items, WATCH_HISTORY_MAX_ITEMS)
+          : [];
+      })();
     const fingerprint = await computeWatchHistoryFingerprintForItems(items);
     const previous = this.fingerprints.get(actorKey);
     if (previous && previous !== fingerprint) {
@@ -1276,8 +1276,8 @@ class WatchHistoryManager {
       typeof actorInput === "string" && actorInput.trim()
         ? actorInput.trim()
         : typeof this.deps.getActivePubkey === "function"
-        ? this.deps.getActivePubkey()
-        : this.deps.getSessionActor?.()?.pubkey || "";
+          ? this.deps.getActivePubkey()
+          : this.deps.getSessionActor?.()?.pubkey || "";
     const actorKey = normalizeActorKey(resolvedActor);
     if (!actorKey) {
       return Promise.resolve({ pointerEvent: null, items: [], snapshotId: "" });
@@ -1433,9 +1433,8 @@ class WatchHistoryManager {
       WATCH_HISTORY_PAYLOAD_MAX_BYTES,
     );
     if (skipped.length) {
-      userLogger.warn(
-        `[nostr] Watch history snapshot skipped ${skipped.length} oversize ${
-          skipped.length === 1 ? "entry" : "entries"
+      devLogger.warn(
+        `[nostr] Watch history snapshot skipped ${skipped.length} oversize ${skipped.length === 1 ? "entry" : "entries"
         }.`,
       );
     }
@@ -1543,7 +1542,7 @@ class WatchHistoryManager {
     await ensureSessionEncryptors();
 
     if (!encryptionCandidates.length) {
-      userLogger.warn(
+      devLogger.warn(
         "[nostr] No encryption strategies available to publish watch history.",
         {
           actor: actorKey,
@@ -1714,7 +1713,7 @@ class WatchHistoryManager {
         ciphertext = encryptionResult?.ciphertext || "";
         encryptionScheme = encryptionResult?.scheme || "";
       } catch (error) {
-        userLogger.warn("[nostr] Failed to encrypt watch history chunk:", {
+        devLogger.warn("[nostr] Failed to encrypt watch history chunk:", {
           actor: actorKey,
           snapshotId,
           chunkIndex: index,
@@ -1729,7 +1728,7 @@ class WatchHistoryManager {
         return { ok: false, error: "encryption-failed", retryable: false };
       }
       if (!ciphertext) {
-        userLogger.warn("[nostr] Encryption produced an empty payload for watch history chunk.", {
+        devLogger.warn("[nostr] Encryption produced an empty payload for watch history chunk.", {
           actor: actorKey,
           snapshotId,
           chunkIndex: index,
@@ -1754,7 +1753,7 @@ class WatchHistoryManager {
       try {
         signedEvent = await signEvent(event);
       } catch (error) {
-        userLogger.warn("[nostr] Failed to sign watch history chunk:", error);
+        devLogger.warn("[nostr] Failed to sign watch history chunk:", error);
         return { ok: false, error: "signing-failed", retryable: false };
       }
       const publishResults = await publishEventToRelays(
@@ -1766,7 +1765,7 @@ class WatchHistoryManager {
       const acceptedCount = relayStatus.filter((entry) => entry.success).length;
       if (acceptedCount === 0) {
         anyChunkRejected = true;
-        userLogger.warn(
+        devLogger.warn(
           `[nostr] Watch history chunk ${index} rejected by all relays:`,
           publishResults,
         );
@@ -1779,7 +1778,7 @@ class WatchHistoryManager {
           );
         } else {
           anyChunkPartial = true;
-          userLogger.warn(
+          devLogger.warn(
             `[nostr] Watch history chunk ${index} ${logMessage} by ${acceptedCount}/${relays.length} relay(s).`,
             publishResults,
           );
@@ -1808,7 +1807,7 @@ class WatchHistoryManager {
     try {
       signedPointerEvent = await signEvent(pointerEvent);
     } catch (error) {
-      userLogger.warn("[nostr] Failed to sign watch history pointer event:", error);
+      devLogger.warn("[nostr] Failed to sign watch history pointer event:", error);
       return { ok: false, error: "signing-failed", retryable: false };
     }
     devLogger.info(
@@ -1832,12 +1831,12 @@ class WatchHistoryManager {
         `[nostr] Watch history pointer accepted by ${pointerAcceptedCount}/${relays.length} relay(s).`,
       );
     } else if (pointerAccepted) {
-      userLogger.warn(
+      devLogger.warn(
         `[nostr] Watch history pointer partially accepted by ${pointerAcceptedCount}/${relays.length} relay(s).`,
         pointerResults,
       );
     } else {
-      userLogger.warn(
+      devLogger.warn(
         "[nostr] Watch history pointer rejected by all relays:",
         pointerResults,
       );
@@ -2137,7 +2136,7 @@ class WatchHistoryManager {
       return { pointerEvent: null, items, snapshotId: entry.snapshotId };
     };
     if (!actorKeyIsHex) {
-      userLogger.warn(
+      devLogger.warn(
         `[nostr] Cannot normalize watch history actor key to hex. Aborting relay fetch for ${resolvedActor}.`,
       );
       if (
@@ -2173,7 +2172,7 @@ class WatchHistoryManager {
     }
     const pool = typeof this.deps.getPool === "function" ? this.deps.getPool() : null;
     if (!pool) {
-      userLogger.warn(
+      devLogger.warn(
         "[nostr] Cannot fetch watch history because relay pool is unavailable. Returning cached values.",
       );
       return {
@@ -2218,8 +2217,8 @@ class WatchHistoryManager {
       const results = await pool.list(readRelays, filters);
       pointerEvents = Array.isArray(results)
         ? results
-            .flat()
-            .filter((event) => event && typeof event === "object")
+          .flat()
+          .filter((event) => event && typeof event === "object")
         : [];
     } catch (error) {
       devLogger.warn("[nostr] Failed to fetch watch history pointer:", error);
@@ -2311,8 +2310,8 @@ class WatchHistoryManager {
         const chunkResults = await pool.list(readRelays, chunkFilters);
         chunkEvents = Array.isArray(chunkResults)
           ? chunkResults
-              .flat()
-              .filter((event) => event && typeof event === "object")
+            .flat()
+            .filter((event) => event && typeof event === "object")
           : [];
       } catch (error) {
         devLogger.warn("[nostr] Failed to fetch watch history chunks:", error);
@@ -2522,7 +2521,7 @@ class WatchHistoryManager {
           eventId: event.id ?? null,
           attempts: attemptFailures,
         });
-        userLogger.error(
+        devLogger.warn(
           "[nostr] Decrypt failed for watch history chunk. Falling back to pointer items.",
           {
             actorKey,
@@ -2573,7 +2572,7 @@ class WatchHistoryManager {
       }
     }
     if (decryptErrors.length) {
-      userLogger.warn(
+      devLogger.warn(
         `[nostr] Failed to decrypt ${decryptErrors.length} watch history chunk(s) for ${actorKey}. Using fallback pointers.`,
       );
     }
@@ -2632,9 +2631,9 @@ class WatchHistoryManager {
     const storage = this.getStorage();
     const fallbackItems = Array.isArray(storage.actors?.[actorKey]?.items)
       ? canonicalizeWatchHistoryItems(
-          storage.actors[actorKey].items,
-          WATCH_HISTORY_MAX_ITEMS,
-        )
+        storage.actors[actorKey].items,
+        WATCH_HISTORY_MAX_ITEMS,
+      )
       : [];
     const fetchResult = await this.fetch(resolvedActor, {
       forceRefresh: options.forceRefresh || false,

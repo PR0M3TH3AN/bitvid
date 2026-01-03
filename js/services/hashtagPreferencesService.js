@@ -4,7 +4,11 @@ import {
   requestDefaultExtensionPermissions,
 } from "../nostrClientFacade.js";
 import { getActiveSigner } from "../nostr/index.js";
-import { buildHashtagPreferenceEvent } from "../nostrEventSchemas.js";
+import {
+  buildHashtagPreferenceEvent,
+  getNostrEventSchema,
+  NOTE_TYPES,
+} from "../nostrEventSchemas.js";
 import {
   publishEventToRelays,
   assertAnyRelayAccepted,
@@ -112,6 +116,44 @@ function normalizeEncryptionToken(value) {
     .replace(/[^a-z0-9]/g, "");
 }
 
+function normalizePreferencesPayload(payload) {
+  const versionCandidate = Number(payload?.version);
+  const version = Number.isFinite(versionCandidate) && versionCandidate > 0
+    ? versionCandidate
+    : DEFAULT_VERSION;
+
+  const rawInterests = Array.isArray(payload?.interests)
+    ? payload.interests
+    : [];
+  const rawDisinterests = Array.isArray(payload?.disinterests)
+    ? payload.disinterests
+    : [];
+
+  const interests = new Set();
+  for (const tag of rawInterests) {
+    const normalizedTag = normalizeTag(tag);
+    if (normalizedTag) {
+      interests.add(normalizedTag);
+    }
+  }
+
+  const disinterests = new Set();
+  for (const tag of rawDisinterests) {
+    const normalizedTag = normalizeTag(tag);
+    if (!normalizedTag) {
+      continue;
+    }
+    disinterests.add(normalizedTag);
+    interests.delete(normalizedTag);
+  }
+
+  return {
+    version,
+    interests,
+    disinterests,
+  };
+}
+
 function extractEncryptionHints(event) {
   if (!event || typeof event !== "object") {
     return [];
@@ -201,6 +243,7 @@ class HashtagPreferencesService {
     this.eventId = null;
     this.eventCreatedAt = null;
     this.loaded = false;
+    this.preferencesVersion = DEFAULT_VERSION;
   }
 
   on(eventName, handler) {
@@ -213,6 +256,7 @@ class HashtagPreferencesService {
     this.eventId = null;
     this.eventCreatedAt = null;
     this.loaded = false;
+    this.preferencesVersion = DEFAULT_VERSION;
     this.emitChange("reset");
   }
 
@@ -290,6 +334,7 @@ class HashtagPreferencesService {
         disinterests: this.getDisinterests(),
         eventId: this.eventId,
         createdAt: this.eventCreatedAt,
+        version: this.preferencesVersion,
         ...detail,
       });
     } catch (error) {
@@ -331,8 +376,14 @@ class HashtagPreferencesService {
       return;
     }
 
+    const schema = getNostrEventSchema(NOTE_TYPES.HASHTAG_PREFERENCES);
+    const canonicalKind = schema?.kind ?? 30015;
+    const legacyKind = 30005;
+    const filterKinds = canonicalKind === legacyKind
+      ? [canonicalKind]
+      : [canonicalKind, legacyKind];
     const filter = {
-      kinds: [30005],
+      kinds: filterKinds,
       authors: [normalized],
       "#d": [HASHTAG_IDENTIFIER],
       limit: 50,
@@ -358,6 +409,15 @@ class HashtagPreferencesService {
       return;
     }
 
+    // Prefer the newest event, breaking timestamp ties by prioritizing the
+    // canonical kind (30015) before falling back to the legacy 30005 payload.
+    const preferredKinds = filterKinds;
+    const getKindPriority = (event) => {
+      const kindValue = Number(event?.kind);
+      const index = preferredKinds.indexOf(kindValue);
+      return index === -1 ? preferredKinds.length : index;
+    };
+
     const latest = events.reduce((current, candidate) => {
       if (!candidate) {
         return current;
@@ -368,6 +428,11 @@ class HashtagPreferencesService {
       const candidateTs = Number(candidate.created_at) || 0;
       const currentTs = Number(current.created_at) || 0;
       if (candidateTs === currentTs) {
+        const candidatePriority = getKindPriority(candidate);
+        const currentPriority = getKindPriority(current);
+        if (candidatePriority !== currentPriority) {
+          return candidatePriority < currentPriority ? candidate : current;
+        }
         return candidate.id > current.id ? candidate : current;
       }
       return candidateTs > currentTs ? candidate : current;
@@ -392,33 +457,13 @@ class HashtagPreferencesService {
 
     try {
       const payload = JSON.parse(decryptResult.plaintext);
-      const rawInterests = Array.isArray(payload?.interests)
-        ? payload.interests
-        : [];
-      const rawDisinterests = Array.isArray(payload?.disinterests)
-        ? payload.disinterests
-        : [];
+      // Normalize whichever source kind we decrypted into the canonical
+      // preferences payload so downstream consumers receive a single shape.
+      const normalizedPayload = normalizePreferencesPayload(payload);
 
-      const nextInterests = new Set();
-      for (const tag of rawInterests) {
-        const normalizedTag = normalizeTag(tag);
-        if (normalizedTag) {
-          nextInterests.add(normalizedTag);
-        }
-      }
-
-      const nextDisinterests = new Set();
-      for (const tag of rawDisinterests) {
-        const normalizedTag = normalizeTag(tag);
-        if (!normalizedTag) {
-          continue;
-        }
-        nextDisinterests.add(normalizedTag);
-        nextInterests.delete(normalizedTag);
-      }
-
-      this.interests = nextInterests;
-      this.disinterests = nextDisinterests;
+      this.preferencesVersion = normalizedPayload.version;
+      this.interests = normalizedPayload.interests;
+      this.disinterests = normalizedPayload.disinterests;
       this.eventId = latest.id || null;
       this.eventCreatedAt = Number.isFinite(latest?.created_at)
         ? latest.created_at

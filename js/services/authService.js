@@ -20,6 +20,7 @@ import {
   persistProfileCacheToStorage as persistProfileCacheState,
   getProfileCacheEntry as getCachedProfileEntry,
   setProfileCacheEntry as setCachedProfileEntry,
+  resetModerationSettings,
 } from "../state/cache.js";
 import getDefaultAuthProvider, {
   providers as defaultAuthProviders,
@@ -741,6 +742,15 @@ export default class AuthService {
     setPubkey(null);
     setCurrentUserNpub(null);
     setActiveProfilePubkey(null, { persist: true });
+
+    try {
+      resetModerationSettings({ persist: true });
+    } catch (error) {
+      this.log(
+        "[AuthService] Failed to reset moderation settings on logout",
+        error,
+      );
+    }
 
     if (this.userBlocks && typeof this.userBlocks.reset === "function") {
       try {

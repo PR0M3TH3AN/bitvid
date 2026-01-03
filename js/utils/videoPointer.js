@@ -2,6 +2,7 @@
 
 import { pointerArrayToKey } from "./pointer.js";
 import { devLogger } from "./logger.js";
+import { normalizeHexPubkey } from "./hex.js";
 
 const DEFAULT_VIDEO_KIND = 30078;
 
@@ -84,7 +85,7 @@ export function buildVideoAddressPointer(
     return "";
   }
 
-  const pubkey = typeof video.pubkey === "string" ? video.pubkey.trim() : "";
+  const pubkey = normalizeHexPubkey(video.pubkey);
   if (!pubkey) {
     return "";
   }

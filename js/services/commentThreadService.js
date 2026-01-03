@@ -1,6 +1,7 @@
 // js/services/commentThreadService.js
 
-import { devLogger } from "../utils/logger.js";
+import logger, { devLogger, userLogger } from "../utils/logger.js";
+import { normalizeHexId, normalizeHexPubkey } from "../utils/hex.js";
 import { buildVideoAddressPointer } from "../utils/videoPointer.js";
 import { COMMENT_EVENT_KIND } from "../nostr/commentEvents.js";
 import { FEATURE_IMPROVED_COMMENT_FETCHING } from "../constants.js";
@@ -8,6 +9,8 @@ import { FEATURE_IMPROVED_COMMENT_FETCHING } from "../constants.js";
 const ROOT_PARENT_KEY = "__root__";
 const DEFAULT_INITIAL_LIMIT = 40;
 const DEFAULT_HYDRATION_DEBOUNCE_MS = 25;
+const PROFILE_FETCH_MAX_ATTEMPTS = 3;
+const PROFILE_FETCH_BACKOFF_MS = 50;
 const COMMENT_CACHE_PREFIX = "bitvid:comments:";
 const COMMENT_CACHE_TTL_MS = 5 * 60 * 1000;
 const COMMENT_CACHE_VERSION = 2;
@@ -24,10 +27,14 @@ function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function normalizePubkey(pubkey) {
-  const normalized = normalizeString(pubkey);
-  return normalized ? normalized.toLowerCase() : "";
+function normalizeRelay(value) {
+  if (typeof value === "string") {
+    return value.trim();
+  }
+  return "";
 }
+
+const normalizePubkey = normalizeHexPubkey;
 
 function normalizeKind(value) {
   if (Number.isFinite(value)) {
@@ -47,6 +54,12 @@ function fromParentKey(parentKey) {
   return parentKey === ROOT_PARENT_KEY ? null : parentKey;
 }
 
+function logDev(loggerCandidate, ...args) {
+  if (loggerCandidate?.info) {
+    loggerCandidate.info(...args);
+  }
+}
+
 function safeCall(handler, payload) {
   if (typeof handler !== "function") {
     return;
@@ -56,6 +69,34 @@ function safeCall(handler, payload) {
   } catch (error) {
     devLogger.warn("[commentThread] callback threw", error);
   }
+}
+
+function normalizeLogger(loggerCandidate) {
+  const normalized =
+    loggerCandidate && typeof loggerCandidate === "object"
+      ? loggerCandidate
+      : null;
+
+  const devChannel =
+    normalized?.dev && typeof normalized.dev.warn === "function"
+      ? normalized.dev
+      : devLogger;
+
+  const userChannel =
+    normalized?.user && typeof normalized.user.warn === "function"
+      ? normalized.user
+      : userLogger;
+
+  const warn =
+    typeof normalized?.warn === "function"
+      ? (...args) => normalized.warn(...args)
+      : (...args) => devChannel.warn(...args);
+
+  return {
+    warn,
+    dev: devChannel,
+    user: userChannel,
+  };
 }
 
 export default class CommentThreadService {
@@ -68,7 +109,7 @@ export default class CommentThreadService {
     batchFetchProfiles = null,
     limit = DEFAULT_INITIAL_LIMIT,
     hydrationDebounceMs = DEFAULT_HYDRATION_DEBOUNCE_MS,
-    logger = devLogger,
+    logger: loggerCandidate = logger,
   } = {}) {
     this.nostrClient = nostrClient;
     this.fetchVideoComments = fetchVideoComments;
@@ -105,8 +146,7 @@ export default class CommentThreadService {
       0,
       toPositiveInteger(hydrationDebounceMs, DEFAULT_HYDRATION_DEBOUNCE_MS)
     );
-    this.logger =
-      logger && typeof logger.warn === "function" ? logger : devLogger;
+    this.logger = normalizeLogger(loggerCandidate);
 
     this.callbacks = {
       onThreadReady: null,
@@ -132,10 +172,13 @@ export default class CommentThreadService {
     this.videoKind = "";
     this.videoAuthorPubkeyRaw = "";
     this.videoAuthorPubkey = "";
+    this.videoRootIdentifier = "";
+    this.videoRootRelay = "";
     this.parentCommentId = "";
     this.parentCommentKind = "";
     this.parentCommentPubkey = "";
     this.activeRelays = null;
+    this.commentCacheDiagnostics = { storageUnavailable: false };
   }
 
   setCallbacks({
@@ -158,7 +201,7 @@ export default class CommentThreadService {
   } = {}) {
     this.teardown();
 
-    // Always ensure the pool is ready before proceeding
+    // Always ensure the pool is ready before proceeding when supported.
     if (typeof this.nostrClient?.ensurePool === "function") {
       try {
         await this.nostrClient.ensurePool();
@@ -168,21 +211,24 @@ export default class CommentThreadService {
         );
         return { success: false, error };
       }
-    } else {
-      this.emitError(
-        new Error("Nostr client missing ensurePool implementation."),
-      );
-      return { success: false };
     }
 
     const rawVideoAuthorPubkey = normalizeString(video?.pubkey);
 
-    this.videoEventId = normalizeString(video?.id);
+    this.videoEventId = normalizeHexId(video?.id);
     this.videoAddressPointer = buildVideoAddressPointer(video);
     this.videoKind = normalizeKind(video?.kind);
     this.videoAuthorPubkeyRaw = rawVideoAuthorPubkey;
     this.videoAuthorPubkey = normalizePubkey(rawVideoAuthorPubkey);
-    this.parentCommentId = normalizeString(parentCommentId);
+    const pointerRootIdentifier = normalizeHexId(
+      video?.pointerIdentifiers?.videoRootId,
+    );
+    this.videoRootIdentifier =
+      normalizeHexId(video?.videoRootId) || pointerRootIdentifier;
+    this.videoRootRelay = normalizeRelay(
+      video?.videoRootRelay || video?.rootIdentifierRelay,
+    );
+    this.parentCommentId = normalizeHexId(parentCommentId);
     this.parentCommentKind = this.parentCommentId ? String(COMMENT_EVENT_KIND) : "";
     this.parentCommentPubkey = "";
     this.activeRelays = Array.isArray(relays) ? [...relays] : null;
@@ -212,6 +258,12 @@ export default class CommentThreadService {
     }
     if (this.videoKind) {
       target.videoKind = this.videoKind;
+    }
+    if (this.videoRootIdentifier) {
+      target.rootIdentifier = this.videoRootIdentifier;
+    }
+    if (this.videoRootRelay) {
+      target.rootIdentifierRelay = this.videoRootRelay;
     }
     const targetVideoAuthorPubkey = this.getVideoAuthorPubkeyForOutput();
     if (targetVideoAuthorPubkey) {
@@ -267,16 +319,24 @@ export default class CommentThreadService {
     };
 
     if (!FEATURE_IMPROVED_COMMENT_FETCHING) {
+      logDev(
+        this.logger?.dev,
+        "[commentThread] Improved fetching fallback: feature disabled.",
+      );
       return fallbackFetch(options);
     }
 
     const targetCandidate =
       target && typeof target === "object" ? target : {};
-    const videoEventId = normalizeString(
+    const videoEventId = normalizeHexId(
       targetCandidate.videoEventId || targetCandidate.eventId,
     );
 
     if (!videoEventId) {
+      logDev(
+        this.logger?.dev,
+        "[commentThread] Improved fetching fallback: missing video event id.",
+      );
       return fallbackFetch(options);
     }
 
@@ -284,6 +344,11 @@ export default class CommentThreadService {
     if (Array.isArray(cached)) {
       return cached;
     }
+
+    logDev(
+      this.logger?.dev,
+      `[commentThread] Comment cache miss for ${videoEventId}, fetching fresh thread.`,
+    );
 
     const fetchOptions = {
       ...options,
@@ -305,8 +370,34 @@ export default class CommentThreadService {
   }
 
   getCommentCacheKey(videoEventId) {
-    const normalized = normalizeString(videoEventId);
-    return normalized ? `${COMMENT_CACHE_PREFIX}${normalized}` : "";
+    const normalized = normalizeHexId(videoEventId);
+    if (!normalized) {
+      return "";
+    }
+
+    return `${COMMENT_CACHE_PREFIX}${normalized.toLowerCase()}`;
+  }
+
+  handleCommentCacheError(context, videoEventId, error) {
+    this.commentCacheDiagnostics = {
+      ...this.commentCacheDiagnostics,
+      storageUnavailable: true,
+    };
+
+    const message =
+      typeof videoEventId === "string" && videoEventId.trim()
+        ? `[commentThread] Failed to ${context} comment cache for ${videoEventId}.`
+        : `[commentThread] Failed to ${context} comment cache.`;
+
+    if (this.logger?.user?.warn) {
+      this.logger.user.warn(message, error);
+    } else if (this.logger?.warn) {
+      this.logger.warn(message, error);
+    }
+
+    if (this.logger?.dev?.warn && this.logger.dev !== this.logger.user) {
+      this.logger.dev.warn(message, error);
+    }
   }
 
   getCachedComments(videoEventId) {
@@ -319,6 +410,10 @@ export default class CommentThreadService {
 
     const cacheKey = this.getCommentCacheKey(videoEventId);
     if (!cacheKey) {
+      logDev(
+        this.logger?.dev,
+        "[commentThread] Comment cache skipped: invalid video id.",
+      );
       return null;
     }
 
@@ -326,22 +421,25 @@ export default class CommentThreadService {
     try {
       raw = localStorage.getItem(cacheKey);
     } catch (error) {
-      if (this.logger?.warn) {
-        this.logger.warn(
-          `[commentThread] Failed to read cached comments for ${videoEventId}:`,
-          error,
-        );
-      }
+      this.handleCommentCacheError("read", videoEventId, error);
       return null;
     }
 
     if (raw === null) {
+      logDev(
+        this.logger?.dev,
+        `[commentThread] Comment cache miss for ${videoEventId}: no entry present.`,
+      );
       return null;
     }
 
     try {
       const parsed = JSON.parse(raw);
       if (!parsed || typeof parsed !== "object") {
+        logDev(
+          this.logger?.dev,
+          `[commentThread] Comment cache rejected for ${videoEventId}: malformed payload.`,
+        );
         this.removeCommentCache(cacheKey);
         return null;
       }
@@ -351,6 +449,10 @@ export default class CommentThreadService {
         : null;
 
       if (cacheVersion !== COMMENT_CACHE_VERSION) {
+        logDev(
+          this.logger?.dev,
+          `[commentThread] Comment cache rejected for ${videoEventId}: version ${cacheVersion} != ${COMMENT_CACHE_VERSION}.`,
+        );
         this.removeCommentCache(cacheKey);
         return null;
       }
@@ -365,14 +467,17 @@ export default class CommentThreadService {
         Number.isFinite(timestamp) &&
         Date.now() - timestamp <= COMMENT_CACHE_TTL_MS
       ) {
-        if (devLogger?.info) {
-          devLogger.info(
-            `[commentThread] Loaded ${comments.length} cached comments for ${videoEventId}.`,
-          );
-        }
+        logDev(
+          this.logger?.dev,
+          `[commentThread] Loaded ${comments.length} cached comments for ${videoEventId}.`,
+        );
         return comments;
       }
 
+      logDev(
+        this.logger?.dev,
+        `[commentThread] Comment cache rejected for ${videoEventId}: entry expired.`,
+      );
       this.removeCommentCache(cacheKey);
     } catch (error) {
       if (this.logger?.warn) {
@@ -381,6 +486,10 @@ export default class CommentThreadService {
           error,
         );
       }
+      logDev(
+        this.logger?.dev,
+        `[commentThread] Comment cache rejected for ${videoEventId}: parse error.`,
+      );
       this.removeCommentCache(cacheKey);
     }
 
@@ -410,18 +519,12 @@ export default class CommentThreadService {
           timestamp: Date.now(),
         }),
       );
-      if (devLogger?.info) {
-        devLogger.info(
-          `[commentThread] Cached ${comments.length} comments for ${videoEventId}.`,
-        );
-      }
+      logDev(
+        this.logger?.dev,
+        `[commentThread] Cached ${comments.length} comments for ${videoEventId}.`,
+      );
     } catch (error) {
-      if (this.logger?.warn) {
-        this.logger.warn(
-          `[commentThread] Failed to cache comments for ${videoEventId}:`,
-          error,
-        );
-      }
+      this.handleCommentCacheError("write", videoEventId, error);
     }
   }
 
@@ -485,8 +588,8 @@ export default class CommentThreadService {
         return aTime - bTime;
       }
 
-      const aId = normalizeString(a?.id);
-      const bId = normalizeString(b?.id);
+      const aId = normalizeHexId(a?.id);
+      const bId = normalizeHexId(b?.id);
       if (aId && bId) {
         return aId.localeCompare(bId);
       }
@@ -554,7 +657,7 @@ export default class CommentThreadService {
       return null;
     }
 
-    const eventId = normalizeString(event.id);
+    const eventId = normalizeHexId(event.id);
     if (!eventId) {
       return null;
     }
@@ -563,6 +666,14 @@ export default class CommentThreadService {
     const parentKey = toParentKey(parentId);
     const createdAt = Number.isFinite(event.created_at) ? event.created_at : 0;
     const pubkey = normalizePubkey(event.pubkey);
+    const { identifier: rootIdentifier, relay: rootRelay } =
+      this.extractRootIdentifier(event);
+    if (rootIdentifier) {
+      this.videoRootIdentifier = rootIdentifier;
+      if (rootRelay) {
+        this.videoRootRelay = rootRelay;
+      }
+    }
     if (this.parentCommentId && eventId === this.parentCommentId) {
       const kindValue = normalizeKind(event.kind);
       if (kindValue) {
@@ -610,7 +721,7 @@ export default class CommentThreadService {
       if (name !== "e") {
         continue;
       }
-      const normalizedValue = normalizeString(value);
+      const normalizedValue = normalizeHexId(value);
       if (!normalizedValue) {
         continue;
       }
@@ -625,6 +736,30 @@ export default class CommentThreadService {
     }
 
     return "";
+  }
+
+  extractRootIdentifier(event) {
+    const tags = Array.isArray(event?.tags) ? event.tags : [];
+    for (let index = tags.length - 1; index >= 0; index -= 1) {
+      const tag = tags[index];
+      if (!Array.isArray(tag) || tag.length < 2) {
+        continue;
+      }
+      const name =
+        typeof tag[0] === "string" ? tag[0].trim().toLowerCase() : "";
+      if (name !== "i") {
+        continue;
+      }
+      const value = normalizeString(tag[1]);
+      if (!value) {
+        continue;
+      }
+      return {
+        identifier: value,
+        relay: normalizeRelay(tag[2]),
+      };
+    }
+    return { identifier: "", relay: "" };
   }
 
   insertIntoParentList(parentKey, eventId, createdAt) {
@@ -741,31 +876,66 @@ export default class CommentThreadService {
       return;
     }
 
-    const hydrationPromise = Promise.resolve(
-      this.batchFetchProfiles(pubkeys),
-    )
-      .catch((error) => {
-        if (this.logger?.warn) {
-          this.logger.warn(
-            "[commentThread] Profile hydration failed:",
-            error,
-          );
-        }
-        this.emitError(error);
-      })
-      .then(() => {
-        pubkeys.forEach((pubkey) => {
-          const profile = this.getProfileFromCache(pubkey);
-          if (profile) {
-            this.profileCache.set(pubkey, profile);
+    const pubkeyListLog = pubkeys.join(", ") || "(empty profile batch)";
+    const hydrationPromise = (async () => {
+      try {
+        let attempt = 0;
+        let lastError = null;
+
+        while (attempt < PROFILE_FETCH_MAX_ATTEMPTS) {
+          try {
+            await Promise.resolve(this.batchFetchProfiles(pubkeys));
+            break;
+          } catch (error) {
+            lastError = error;
+            const attemptLabel = `${attempt + 1}/${PROFILE_FETCH_MAX_ATTEMPTS}`;
+            if (this.logger?.dev?.warn) {
+              this.logger.dev.warn(
+                `[commentThread] Profile hydration attempt ${attemptLabel} failed for pubkeys: ${pubkeyListLog}.`,
+                error,
+              );
+            }
+
+            attempt += 1;
+            if (attempt >= PROFILE_FETCH_MAX_ATTEMPTS) {
+              throw lastError;
+            }
+
+            const backoffMs = PROFILE_FETCH_BACKOFF_MS * attempt;
+            logDev(
+              this.logger?.dev,
+              `[commentThread] Retrying profile hydration in ${backoffMs}ms for pubkeys: ${pubkeyListLog}.`,
+            );
+            await new Promise((resolve) => setTimeout(resolve, backoffMs));
           }
-        });
-      })
-      .finally(() => {
-        if (this.profileHydrationPromise === hydrationPromise) {
-          this.profileHydrationPromise = null;
+        }
+      } catch (error) {
+        const errorMessage = `[commentThread] Profile hydration failed for pubkeys: ${pubkeyListLog}.`;
+        if (this.logger?.user?.warn) {
+          this.logger.user.warn(errorMessage, error);
+        } else if (this.logger?.warn) {
+          this.logger.warn(errorMessage, error);
+        }
+
+        if (this.logger?.dev?.warn && this.logger.dev !== this.logger.user) {
+          this.logger.dev.warn(errorMessage, error);
+        }
+
+        this.emitError(error);
+        return;
+      }
+
+      pubkeys.forEach((pubkey) => {
+        const profile = this.getProfileFromCache(pubkey);
+        if (profile) {
+          this.profileCache.set(pubkey, profile);
         }
       });
+    })().finally(() => {
+      if (this.profileHydrationPromise === hydrationPromise) {
+        this.profileHydrationPromise = null;
+      }
+    });
 
     this.profileHydrationPromise = hydrationPromise;
     await hydrationPromise;
@@ -782,12 +952,15 @@ export default class CommentThreadService {
       videoDefinitionAddress: this.videoAddressPointer || null,
       videoKind: this.videoKind || null,
       videoAuthorPubkey: this.getVideoAuthorPubkeyForOutput() || null,
+      rootIdentifier: this.videoRootIdentifier || null,
+      rootIdentifierRelay: this.videoRootRelay || null,
       parentCommentKind: this.parentCommentKind || null,
       parentCommentPubkey: this.parentCommentPubkey || null,
       topLevelIds: this.getCommentIdsForParent(null),
       commentsById: this.cloneCommentsMap(),
       childrenByParent: this.cloneTreeMap(),
       profiles: this.getProfilesSnapshot(),
+      commentCacheDiagnostics: { ...this.commentCacheDiagnostics },
     };
     safeCall(this.callbacks.onThreadReady, payload);
     this.persistCommentCache();
@@ -800,12 +973,15 @@ export default class CommentThreadService {
       videoDefinitionAddress: this.videoAddressPointer || null,
       videoKind: this.videoKind || null,
       videoAuthorPubkey: this.getVideoAuthorPubkeyForOutput() || null,
+      rootIdentifier: this.videoRootIdentifier || null,
+      rootIdentifierRelay: this.videoRootRelay || null,
       parentCommentKind: this.parentCommentKind || null,
       parentCommentPubkey: this.parentCommentPubkey || null,
       commentIds: [eventId],
       commentsById: this.cloneCommentsMap(),
       childrenByParent: this.cloneTreeMap(),
       profiles: this.getProfilesSnapshot(),
+      commentCacheDiagnostics: { ...this.commentCacheDiagnostics },
     };
     safeCall(this.callbacks.onCommentsAppended, payload);
     this.persistCommentCache();
@@ -825,11 +1001,14 @@ export default class CommentThreadService {
       videoDefinitionAddress: this.videoAddressPointer || null,
       videoKind: this.videoKind || null,
       videoAuthorPubkey: this.getVideoAuthorPubkeyForOutput() || null,
+      rootIdentifier: this.videoRootIdentifier || null,
+      rootIdentifierRelay: this.videoRootRelay || null,
       parentCommentKind: this.parentCommentKind || null,
       parentCommentPubkey: this.parentCommentPubkey || null,
       commentsById: this.cloneCommentsMap(),
       childrenByParent: this.cloneTreeMap(),
       profiles: this.getProfilesSnapshot(),
+      commentCacheDiagnostics: { ...this.commentCacheDiagnostics },
     };
   }
 
@@ -869,13 +1048,13 @@ export default class CommentThreadService {
   }
 
   getCommentIdsForParent(parentId) {
-    const key = toParentKey(normalizeString(parentId));
+    const key = toParentKey(normalizeHexId(parentId));
     const list = this.childrenByParent.get(key);
     return Array.isArray(list) ? [...list] : [];
   }
 
   getCommentEvent(commentId) {
-    const normalized = normalizeString(commentId);
+    const normalized = normalizeHexId(commentId);
     if (!normalized) {
       return null;
     }
@@ -887,6 +1066,14 @@ export default class CommentThreadService {
   }
 
   teardown() {
+    try {
+      this.persistCommentCache();
+    } catch (error) {
+      if (this.logger?.warn) {
+        this.logger.warn("[commentThread] Failed to persist comment cache:", error);
+      }
+    }
+
     if (this.subscriptionCleanup) {
       try {
         this.subscriptionCleanup();

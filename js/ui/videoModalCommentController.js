@@ -1,11 +1,21 @@
 import { devLogger } from "../utils/logger.js";
 import { buildVideoAddressPointer } from "../utils/videoPointer.js";
 import { COMMENT_EVENT_KIND } from "../nostr/commentEvents.js";
+import { normalizeHexString, normalizeHexPubkey } from "../utils/hex.js";
 
 const DEFAULT_LIMIT = 40;
 
 function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+const normalizeHexId = normalizeHexString;
+
+function normalizeRelay(value) {
+  if (typeof value === "string") {
+    return value.trim();
+  }
+  return "";
 }
 
 function normalizeKind(value) {
@@ -77,7 +87,7 @@ export default class VideoModalCommentController {
       normalizeHexPubkey:
         typeof utils.normalizeHexPubkey === "function"
           ? (value) => utils.normalizeHexPubkey(value)
-          : () => null,
+          : (value) => normalizeHexPubkey(value) || null,
     };
 
     this.currentVideo = null;
@@ -86,6 +96,8 @@ export default class VideoModalCommentController {
       videoDefinitionAddress: null,
       videoKind: null,
       videoAuthorPubkey: null,
+      videoRootId: null,
+      videoRootRelay: null,
       parentCommentId: null,
       parentCommentKind: null,
       parentCommentPubkey: null,
@@ -143,15 +155,23 @@ export default class VideoModalCommentController {
       return;
     }
 
-    const videoEventId = normalizeString(video.id);
+    const videoEventId = normalizeHexId(video.id);
     let videoDefinitionAddress = buildVideoAddressPointer(video);
     if (!videoDefinitionAddress && this.modalCommentState.videoDefinitionAddress) {
       videoDefinitionAddress = normalizeString(
         this.modalCommentState.videoDefinitionAddress,
       );
     }
+    if (videoDefinitionAddress) {
+      videoDefinitionAddress = videoDefinitionAddress.trim().toLowerCase();
+    }
     const videoKind = normalizeKind(video.kind);
-    const videoAuthorPubkey = normalizeString(video.pubkey);
+    const videoAuthorPubkey = normalizeHexPubkey(video.pubkey);
+    const pointerRootId = normalizeHexId(video.pointerIdentifiers?.videoRootId);
+    const videoRootId = normalizeHexId(video.videoRootId) || pointerRootId;
+    const videoRootRelay = normalizeRelay(
+      video.videoRootRelay || video.rootIdentifierRelay,
+    );
 
     if (!videoEventId) {
       this.resetModalCommentState({ hide: false });
@@ -166,6 +186,8 @@ export default class VideoModalCommentController {
       videoDefinitionAddress: videoDefinitionAddress || null,
       videoKind: videoKind || null,
       videoAuthorPubkey: videoAuthorPubkey || null,
+      videoRootId: videoRootId || null,
+      videoRootRelay: videoRootRelay || null,
       parentCommentId: null,
       parentCommentKind: null,
       parentCommentPubkey: null,
@@ -179,29 +201,40 @@ export default class VideoModalCommentController {
     this.videoModal.clearComments?.();
     this.videoModal.resetCommentComposer?.();
     this.videoModal.setCommentStatus?.("Loading comments…");
-    this.applyCommentComposerAuthState();
 
-    const loadPromise = this.commentThreadService.loadThread({
+    const loadResult = this.commentThreadService.loadThread({
       video,
       parentCommentId: null,
       limit: this.modalCommentLimit,
     });
 
-    if (!loadPromise || typeof loadPromise.then !== "function") {
+    if (!loadResult) {
       this.applyCommentComposerAuthState();
       return;
     }
 
-    this.modalCommentLoadPromise = loadPromise;
-    loadPromise
-      .then(() => {
-        if (this.modalCommentLoadPromise === loadPromise) {
+    if (typeof loadResult.then !== "function") {
+      const didRenderSnapshot = this.handleCommentThreadReady(loadResult);
+      if (didRenderSnapshot === false) {
+        this.applyCommentComposerAuthState();
+      }
+      return;
+    }
+
+    this.modalCommentLoadPromise = loadResult;
+    loadResult
+      .then((snapshot) => {
+        if (this.modalCommentLoadPromise === loadResult) {
           this.modalCommentLoadPromise = null;
         }
-        this.applyCommentComposerAuthState();
+
+        const didRenderSnapshot = this.handleCommentThreadReady(snapshot);
+        if (didRenderSnapshot === false) {
+          this.applyCommentComposerAuthState();
+        }
       })
       .catch((error) => {
-        if (this.modalCommentLoadPromise === loadPromise) {
+        if (this.modalCommentLoadPromise === loadResult) {
           this.modalCommentLoadPromise = null;
         }
         this.handleCommentThreadError(error);
@@ -248,6 +281,8 @@ export default class VideoModalCommentController {
       videoDefinitionAddress: null,
       videoKind: null,
       videoAuthorPubkey: null,
+      videoRootId: null,
+      videoRootRelay: null,
       parentCommentId: null,
       parentCommentKind: null,
       parentCommentPubkey: null,
@@ -317,6 +352,8 @@ export default class VideoModalCommentController {
         disabled: true,
         reason: "login-required",
       });
+      this.videoModal.setCommentsVisibility?.(true);
+      this.videoModal.setCommentStatus?.("");
       return;
     }
 
@@ -329,17 +366,21 @@ export default class VideoModalCommentController {
 
   handleCommentThreadReady(snapshot) {
     if (!snapshot || !this.videoModal) {
-      return;
+      return false;
     }
 
-    if (snapshot.videoEventId !== this.modalCommentState.videoEventId) {
-      return;
+    const snapshotVideoEventId = normalizeHexId(snapshot.videoEventId);
+    const modalVideoEventId = normalizeHexId(this.modalCommentState.videoEventId);
+
+    if (!snapshotVideoEventId || snapshotVideoEventId !== modalVideoEventId) {
+      return false;
     }
 
-    this.modalCommentProfiles = this.createMapFromInput(snapshot.profiles);
-    this.modalCommentState.parentCommentId = normalizeString(
-      snapshot.parentCommentId,
-    ) || null;
+    this.modalCommentProfiles = this.createMapFromInput(snapshot.profiles, {
+      normalizeKey: this.utils.normalizeHexPubkey,
+    });
+    this.modalCommentState.parentCommentId =
+      normalizeHexId(snapshot.parentCommentId) || null;
     if (typeof snapshot.videoDefinitionAddress === "string") {
       const pointer = normalizeString(snapshot.videoDefinitionAddress);
       if (pointer) {
@@ -350,23 +391,33 @@ export default class VideoModalCommentController {
     if (snapshotVideoKind) {
       this.modalCommentState.videoKind = snapshotVideoKind;
     }
-    const snapshotVideoAuthor = normalizeString(snapshot.videoAuthorPubkey);
+    const snapshotVideoAuthor = normalizeHexPubkey(snapshot.videoAuthorPubkey);
     if (snapshotVideoAuthor) {
       this.modalCommentState.videoAuthorPubkey = snapshotVideoAuthor;
+    }
+    const snapshotRootIdentifier = normalizeHexId(snapshot.rootIdentifier);
+    if (snapshotRootIdentifier) {
+      this.modalCommentState.videoRootId = snapshotRootIdentifier;
+    }
+    const snapshotRootRelay = normalizeRelay(snapshot.rootIdentifierRelay);
+    if (snapshotRootRelay) {
+      this.modalCommentState.videoRootRelay = snapshotRootRelay;
     }
     const snapshotParentKind = normalizeKind(snapshot.parentCommentKind);
     if (snapshotParentKind) {
       this.modalCommentState.parentCommentKind = snapshotParentKind;
     }
-    const snapshotParentPubkey = normalizeString(snapshot.parentCommentPubkey);
+    const snapshotParentPubkey = normalizeHexPubkey(snapshot.parentCommentPubkey);
     if (snapshotParentPubkey) {
       this.modalCommentState.parentCommentPubkey = snapshotParentPubkey;
     }
 
     const sanitizedSnapshot = this.buildModalCommentSnapshot(snapshot);
+    this.videoModal.setCommentsVisibility?.(true);
     this.videoModal.renderComments?.(sanitizedSnapshot);
     this.videoModal.setCommentStatus?.("");
     this.applyCommentComposerAuthState();
+    return true;
   }
 
   handleCommentThreadAppend(payload) {
@@ -374,15 +425,29 @@ export default class VideoModalCommentController {
       return;
     }
 
-    if (payload.videoEventId !== this.modalCommentState.videoEventId) {
+    const payloadVideoEventId = normalizeHexId(payload.videoEventId);
+    const modalVideoEventId = normalizeHexId(this.modalCommentState.videoEventId);
+
+    if (!payloadVideoEventId || payloadVideoEventId !== modalVideoEventId) {
       return;
     }
 
     const comments = this.createMapFromInput(payload.commentsById);
-    const profiles = this.createMapFromInput(payload.profiles);
+    const profiles = this.createMapFromInput(payload.profiles, {
+      normalizeKey: this.utils.normalizeHexPubkey,
+    });
     profiles.forEach((profile, pubkey) => {
       this.modalCommentProfiles.set(pubkey, profile);
     });
+
+    const payloadRootIdentifier = normalizeHexId(payload.rootIdentifier);
+    if (payloadRootIdentifier) {
+      this.modalCommentState.videoRootId = payloadRootIdentifier;
+    }
+    const payloadRootRelay = normalizeRelay(payload.rootIdentifierRelay);
+    if (payloadRootRelay) {
+      this.modalCommentState.videoRootRelay = payloadRootRelay;
+    }
 
     const commentIds = Array.isArray(payload.commentIds)
       ? payload.commentIds
@@ -405,7 +470,7 @@ export default class VideoModalCommentController {
         if (eventKind) {
           this.modalCommentState.parentCommentKind = eventKind;
         }
-        const eventPubkey = normalizeString(event.pubkey);
+        const eventPubkey = normalizeHexPubkey(event.pubkey);
         if (eventPubkey) {
           this.modalCommentState.parentCommentPubkey = eventPubkey;
         }
@@ -432,22 +497,41 @@ export default class VideoModalCommentController {
     }
   }
 
-  createMapFromInput(input) {
-    if (input instanceof Map) {
-      return new Map(input);
-    }
+  createMapFromInput(input, { normalizeKey = null } = {}) {
     const map = new Map();
+    const applyKey = (key) => {
+      if (!normalizeKey) {
+        return key;
+      }
+      const normalized = normalizeKey(key);
+      return normalized === null || normalized === undefined ? null : normalized;
+    };
+
+    const setEntry = (key, value) => {
+      const normalizedKey = applyKey(key);
+      if (normalizedKey === null || normalizedKey === undefined) {
+        return;
+      }
+      map.set(normalizedKey, value);
+    };
+
+    if (input instanceof Map) {
+      input.forEach((value, key) => {
+        setEntry(key, value);
+      });
+      return map;
+    }
     if (Array.isArray(input)) {
       input.forEach((entry) => {
         if (Array.isArray(entry) && entry.length >= 2) {
-          map.set(entry[0], entry[1]);
+          setEntry(entry[0], entry[1]);
         }
       });
       return map;
     }
     if (input && typeof input === "object") {
       Object.entries(input).forEach(([key, value]) => {
-        map.set(key, value);
+        setEntry(key, value);
       });
     }
     return map;
@@ -471,7 +555,7 @@ export default class VideoModalCommentController {
         ) {
           normalizedKey = null;
         } else {
-          normalizedKey = trimmed;
+          normalizedKey = normalizeHexId(trimmed) || trimmed;
         }
       }
       const list = Array.isArray(value) ? value.filter(Boolean) : [];
@@ -518,8 +602,10 @@ export default class VideoModalCommentController {
     });
 
     return {
-      videoEventId: snapshot.videoEventId,
-      parentCommentId: snapshot.parentCommentId || null,
+      videoEventId: normalizeHexId(snapshot.videoEventId),
+      parentCommentId: normalizeHexId(snapshot.parentCommentId) || null,
+      rootIdentifier: normalizeHexId(snapshot.rootIdentifier) || null,
+      rootIdentifierRelay: snapshot.rootIdentifierRelay || null,
       commentsById: sanitizedComments,
       childrenByParent: sanitizedChildren,
       profiles: this.modalCommentProfiles,
@@ -564,7 +650,7 @@ export default class VideoModalCommentController {
       return;
     }
 
-    const videoEventId = normalizeString(video.id);
+    const videoEventId = normalizeHexId(video.id);
     let videoDefinitionAddress = buildVideoAddressPointer(video);
     if (!videoDefinitionAddress && this.modalCommentState.videoDefinitionAddress) {
       videoDefinitionAddress = normalizeString(
@@ -572,21 +658,30 @@ export default class VideoModalCommentController {
       );
     }
     const videoKind =
-      this.modalCommentState.videoKind || normalizeKind(video.kind);
+      normalizeKind(this.modalCommentState.videoKind) || normalizeKind(video.kind);
     const videoAuthorPubkey =
-      this.modalCommentState.videoAuthorPubkey || normalizeString(video.pubkey);
+      normalizeHexPubkey(this.modalCommentState.videoAuthorPubkey) ||
+      normalizeHexPubkey(video.pubkey);
+    const fallbackPointerRootId = normalizeHexId(video.pointerIdentifiers?.videoRootId);
+    const videoRootId =
+      normalizeHexId(this.modalCommentState.videoRootId) ||
+      normalizeHexId(video.videoRootId) ||
+      fallbackPointerRootId;
+    const videoRootRelay =
+      normalizeRelay(this.modalCommentState.videoRootRelay) ||
+      normalizeRelay(video.videoRootRelay || video.rootIdentifierRelay);
 
     if (!videoEventId) {
       this.callbacks.showError("Comments are unavailable for this video.");
       return;
     }
 
-    const parentCommentId = normalizeString(detail.parentId) || null;
+    const parentCommentId = normalizeHexId(detail.parentId) || null;
     let parentCommentKind = this.modalCommentState.parentCommentKind
       ? normalizeKind(this.modalCommentState.parentCommentKind)
       : "";
     let parentCommentPubkey = this.modalCommentState.parentCommentPubkey
-      ? normalizeString(this.modalCommentState.parentCommentPubkey)
+      ? normalizeHexPubkey(this.modalCommentState.parentCommentPubkey)
       : "";
 
     if (parentCommentId && typeof this.commentThreadService?.getCommentEvent === "function") {
@@ -599,7 +694,7 @@ export default class VideoModalCommentController {
           parentCommentKind = eventKind;
           this.modalCommentState.parentCommentKind = eventKind;
         }
-        const eventPubkey = normalizeString(parentEvent.pubkey);
+        const eventPubkey = normalizeHexPubkey(parentEvent.pubkey);
         if (eventPubkey) {
           parentCommentPubkey = eventPubkey;
           this.modalCommentState.parentCommentPubkey = eventPubkey;
@@ -631,6 +726,12 @@ export default class VideoModalCommentController {
     if (videoAuthorPubkey) {
       publishPayload.videoAuthorPubkey = videoAuthorPubkey;
       publishPayload.rootAuthorPubkey = videoAuthorPubkey;
+    }
+    if (videoRootId) {
+      publishPayload.rootIdentifier = videoRootId;
+    }
+    if (videoRootRelay) {
+      publishPayload.rootIdentifierRelay = videoRootRelay;
     }
     if (parentCommentKind) {
       publishPayload.parentCommentKind = parentCommentKind;
@@ -782,7 +883,7 @@ export default class VideoModalCommentController {
   }
 
   async handleVideoModalCommentMute(detail = {}) {
-    const pubkey = normalizeString(detail?.pubkey);
+    const pubkey = normalizeHexPubkey(detail?.pubkey);
     if (!pubkey) {
       return;
     }

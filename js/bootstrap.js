@@ -12,6 +12,9 @@ import nostrService from "./services/nostrService.js";
 import r2Service from "./services/r2Service.js";
 import { loadView } from "./viewManager.js";
 import hashtagPreferences from "./services/hashtagPreferencesService.js";
+import { devLogger, userLogger } from "./utils/logger.js";
+
+const TRUST_SEED_READY_TIMEOUT_MS = 3500;
 
 function normalizeNpub(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -44,6 +47,53 @@ function buildTrustedSeeds({ superAdmin, editors, fallbackSeeds }) {
   return seeds;
 }
 
+function delay(ms = 0) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForRelaysReady({ timeoutMs = TRUST_SEED_READY_TIMEOUT_MS } = {}) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (
+      nostrService?.nostrClient?.relays &&
+      Array.isArray(nostrService.nostrClient.relays) &&
+      nostrService.nostrClient.relays.length > 0
+    ) {
+      return true;
+    }
+    await delay(125);
+  }
+  return false;
+}
+
+async function waitForAccessControl({ timeoutMs = TRUST_SEED_READY_TIMEOUT_MS } = {}) {
+  if (!accessControl || typeof accessControl.ensureReady !== "function") {
+    return { ok: true, timedOut: false };
+  }
+
+  let timedOut = false;
+  const timeoutPromise = new Promise((_, reject) => {
+    setTimeout(() => {
+      timedOut = true;
+      reject(new Error("accessControl ensureReady timed out"));
+    }, timeoutMs);
+  });
+
+  try {
+    await Promise.race([accessControl.ensureReady(), timeoutPromise]);
+    return { ok: true, timedOut: false };
+  } catch (error) {
+    if (timedOut) {
+      devLogger.warn(
+        "[bootstrap] access control hydration timed out; falling back to default trust seeds.",
+        error,
+      );
+      return { ok: true, timedOut: true };
+    }
+    throw error;
+  }
+}
+
 async function bootstrapTrustedSeeds() {
   if (
     !(
@@ -67,20 +117,58 @@ async function bootstrapTrustedSeeds() {
         fallbackSeeds: DEFAULT_TRUST_SEED_NPUBS,
       });
       moderationService.setTrustedSeeds(seeds);
-    } catch {
-      // Swallow bootstrap errors so login flow can continue; flag enables quick rollback.
+      if (
+        moderationService &&
+        typeof moderationService.recomputeAllSummaries === "function"
+      ) {
+        moderationService.recomputeAllSummaries();
+      }
+    } catch (error) {
+      userLogger.warn("[bootstrap] Failed to apply trusted seeds", error);
     }
   };
 
-  try {
-    if (accessControl && typeof accessControl.ensureReady === "function") {
-      await accessControl.ensureReady();
+  let attempts = 0;
+  const hydrate = async () => {
+    attempts += 1;
+    try {
+      const result = await waitForAccessControl();
+      applySeeds();
+      return result;
+    } catch (error) {
+      userLogger.warn(
+        "[bootstrap] Failed to hydrate admin lists for trusted seeds",
+        error,
+      );
+      return { ok: false, timedOut: false, error };
     }
-  } catch {
-    // Swallow bootstrap errors so login flow can continue; flag enables quick rollback.
-  }
+  };
 
-  applySeeds();
+  const hydrateResult = await hydrate();
+
+  const runAsyncRetry = async () => {
+    if (hydrateResult?.ok || attempts >= 2) {
+      return;
+    }
+
+    const relaysReady = await waitForRelaysReady();
+    if (relaysReady) {
+      await hydrate();
+    } else {
+      devLogger.warn(
+        "[bootstrap] Skipping trusted seed retry because relays were not ready in time.",
+      );
+      applySeeds();
+    }
+  };
+
+  runAsyncRetry().catch((error) => {
+    userLogger.warn("[bootstrap] Trusted seed retry failed", error);
+  });
+
+  if (!hydrateResult?.ok) {
+    applySeeds();
+  }
 
   const applyOnChange = () => {
     applySeeds();
@@ -95,7 +183,7 @@ async function bootstrapTrustedSeeds() {
   }
 }
 
-bootstrapTrustedSeeds();
+export const trustedSeedsReadyPromise = bootstrapTrustedSeeds();
 
 function mergeServices(overrides = {}) {
   const merged = { nostrService, r2Service, hashtagPreferences };
@@ -115,7 +203,16 @@ function mergeServices(overrides = {}) {
   return merged;
 }
 
-export function createApplication({ services, loadView: loadViewOverride } = {}) {
+export async function createApplication({ services, loadView: loadViewOverride } = {}) {
+  try {
+    await trustedSeedsReadyPromise;
+  } catch (error) {
+    userLogger.warn(
+      "[bootstrap] Failed to await trusted seed hydration before creating application",
+      error,
+    );
+  }
+
   return new Application({
     services: mergeServices(services),
     loadView: typeof loadViewOverride === "function" ? loadViewOverride : loadView,

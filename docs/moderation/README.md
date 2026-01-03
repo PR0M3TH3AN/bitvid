@@ -81,7 +81,8 @@ The profile modal now exposes blur, autoplay, and hide thresholds so operators c
 
 - The Profile modal’s Hashtags tab is wired to [`HashtagPreferencesService`](../../js/services/hashtagPreferencesService.js), which maintains a local snapshot of the viewer’s interests and disinterests, normalizes every tag, and guarantees that the two sets stay mutually exclusive before broadcasting UI change events.【F:js/services/hashtagPreferencesService.js†L206-L276】【F:js/services/hashtagPreferencesService.js†L304-L324】
 - `bitvidApp` resolves the active pubkey’s preferences at login, listens for `CHANGE` events, and forwards the normalized snapshot to controllers so moderation and discovery logic can react without querying relays again.【F:js/app.js†L3811-L3906】【F:js/app.js†L3940-L4050】
-- Publishing writes a replaceable `kind 30005` list with `d=bitvid:tag-preferences`, encrypting the `{ version, interests, disinterests }` payload via the best available NIP-44/NIP-04 scheme before hitting every configured write relay.【F:docs/nostr-event-schemas.md†L150-L168】【F:js/services/hashtagPreferencesService.js†L520-L711】
+- Publishing writes a replaceable `kind 30015` list (legacy `30005` remains readable) with `d=bitvid:tag-preferences`, encrypting the `{ version, interests, disinterests }` payload via the best available NIP-44/NIP-04 scheme before hitting every configured write relay.【F:docs/nostr-event-schemas.md†L150-L201】【F:js/services/hashtagPreferencesService.js†L520-L711】
+- Legacy `30005` events are still fetched and decrypted; saving or toggling a tag republishes them as `30015`, so operators only need to prompt a re-save if they want faster convergence than organic edits provide.【F:js/services/hashtagPreferencesService.js†L360-L470】【F:docs/nostr-event-schemas.md†L196-L201】
 
 ### Runtime flags
 
