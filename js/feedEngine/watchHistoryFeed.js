@@ -210,10 +210,7 @@ function createWatchHistoryHydratorStage({
   const resolver = metadataResolver || createWatchHistoryMetadataResolver();
 
   return async function watchHistoryHydratorStage(items = [], context = {}) {
-    const shouldStoreMetadata =
-      typeof service?.shouldStoreMetadata === "function"
-        ? service.shouldStoreMetadata() !== false
-        : true;
+    const shouldStoreMetadata = false;
 
     const results = [];
 

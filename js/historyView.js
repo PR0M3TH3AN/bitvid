@@ -1450,10 +1450,7 @@ export function createWatchHistoryRenderer(config = {}) {
     privacyDismissed: false,
     metadataCache: new Map(),
     feedMetadata: null,
-    metadataStorageEnabled:
-      typeof watchHistoryService.shouldStoreMetadata === "function"
-        ? watchHistoryService.shouldStoreMetadata() !== false
-        : true,
+    metadataStorageEnabled: false,
     sessionFallbackActive: false,
     syncEnabled,
     localSupported,
@@ -1681,20 +1678,8 @@ export function createWatchHistoryRenderer(config = {}) {
   }
 
   function subscribeToMetadataPreference() {
-    if (typeof watchHistoryService.subscribe !== "function") {
-      return;
-    }
-    const unsubscribe = watchHistoryService.subscribe(
-      "metadata-preference",
-      (payload) => {
-        const enabled = payload?.enabled !== false;
-        state.metadataStorageEnabled = enabled;
-        updateMetadataToggle();
-      }
-    );
-    if (typeof unsubscribe === "function") {
-      subscriptions.add(unsubscribe);
-    }
+    state.metadataStorageEnabled = false;
+    updateMetadataToggle();
   }
 
   function subscribeToRepublishEvents() {
@@ -2489,23 +2474,7 @@ export function createWatchHistoryRenderer(config = {}) {
     }
     boundMetadataToggleHandler = (event) => {
       event.preventDefault();
-      const nextValue = !state.metadataStorageEnabled;
-      try {
-        if (typeof watchHistoryService.setMetadataPreference === "function") {
-          watchHistoryService.setMetadataPreference(nextValue);
-        }
-      } catch (error) {
-        if (isDevEnv) {
-          userLogger.warn(
-            "[historyView] Failed to set metadata preference:",
-            error
-          );
-        }
-      }
-      state.metadataStorageEnabled =
-        typeof watchHistoryService.shouldStoreMetadata === "function"
-          ? watchHistoryService.shouldStoreMetadata() !== false
-          : nextValue;
+      state.metadataStorageEnabled = false;
       updateMetadataToggle();
       if (!state.metadataStorageEnabled) {
         try {
@@ -2675,10 +2644,7 @@ export function createWatchHistoryRenderer(config = {}) {
       subscribeToFingerprintUpdates();
       subscribeToModerationEvents();
       updateInfoCallout();
-      state.metadataStorageEnabled =
-        typeof watchHistoryService.shouldStoreMetadata === "function"
-          ? watchHistoryService.shouldStoreMetadata() !== false
-          : true;
+      state.metadataStorageEnabled = false;
       updateMetadataToggle();
       const storedPreference = readPreference(
         WATCH_HISTORY_METADATA_PREF_KEY,
@@ -2718,10 +2684,7 @@ export function createWatchHistoryRenderer(config = {}) {
         return;
       }
       bindMetadataToggle();
-      state.metadataStorageEnabled =
-        typeof watchHistoryService.shouldStoreMetadata === "function"
-          ? watchHistoryService.shouldStoreMetadata() !== false
-          : true;
+      state.metadataStorageEnabled = false;
       updateMetadataToggle();
     },
     async refresh(options = {}) {
