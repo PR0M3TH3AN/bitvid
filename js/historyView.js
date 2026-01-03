@@ -1842,7 +1842,7 @@ export function createWatchHistoryRenderer(config = {}) {
     }
     if (elements.privacyMessage) {
       elements.privacyMessage.textContent =
-        "Your encrypted history is private to this device. Titles and thumbnails hydrate when relays provide them.";
+        "Watch history only stores the event IDs of videos you've played. Titles and thumbnails reload from relays when available.";
     }
     if (elements.privacyToggle) {
       setHidden(elements.privacyToggle, true);
@@ -1855,7 +1855,7 @@ export function createWatchHistoryRenderer(config = {}) {
       return;
     }
     const message =
-      "Thumbnails and titles hydrate from your encrypted history or relays when available. Nothing is published from this view.";
+      "Watch history keeps a lean list of event IDs and reloads details from relays or your session on demand. Nothing is published from this view.";
     elements.info.textContent = message;
   }
 
