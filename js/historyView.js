@@ -25,8 +25,6 @@ export const WATCH_HISTORY_EMPTY_COPY =
 export const WATCH_HISTORY_DISABLED_COPY =
   "Watch history sync is unavailable. Connect a NIP-07 extension or log in to enable encrypted syncing.";
 
-const WATCH_HISTORY_METADATA_PREF_KEY =
-  "bitvid:watch-history:metadata-preference";
 const WATCH_HISTORY_PRIVACY_DISMISSED_KEY =
   "bitvid:watch-history:privacy-banner-dismissed";
 const DEFAULT_WATCH_HISTORY_BATCH_SIZE = 12;
@@ -1104,7 +1102,7 @@ function refreshRegisteredHistoryCards(video, context, pointerKeys = null) {
   });
 }
 
-export function buildHistoryCard({ item, video, profile, metadataPreference }) {
+export function buildHistoryCard({ item, video, profile }) {
   const article = document.createElement("article");
   article.className = "watch-history-card";
   article.dataset.pointerKey = item.pointerKey;
@@ -1315,13 +1313,6 @@ export function buildHistoryCard({ item, video, profile, metadataPreference }) {
 
   meta.appendChild(actions);
 
-  if (metadataPreference === "relay-opt-in") {
-    const hint = document.createElement("p");
-    hint.className = "text-xs text-info";
-    hint.textContent = "Metadata is shared with relays for this entry.";
-    meta.appendChild(hint);
-  }
-
   article.appendChild(primary);
   article.appendChild(meta);
 
@@ -1402,12 +1393,7 @@ export function createWatchHistoryRenderer(config = {}) {
     errorBannerSelector = "#watchHistoryError",
     scrollContainerSelector = null,
     featureBannerSelector = "#profileHistoryFeatureBanner",
-    toastRegionSelector = "#profileHistoryToastRegion",
     sessionWarningSelector = "#profileHistorySessionWarning",
-    metadataToggleSelector = "#profileHistoryMetadataToggle",
-    metadataThumbSelector = "#profileHistoryMetadataThumb",
-    metadataLabelSelector = "#profileHistoryMetadataLabel",
-    metadataDescriptionSelector = "#profileHistoryMetadataDescription",
     emptyCopy = WATCH_HISTORY_EMPTY_COPY,
     disabledCopy = WATCH_HISTORY_DISABLED_COPY,
     batchSize = WATCH_HISTORY_BATCH_SIZE,
@@ -1446,11 +1432,8 @@ export function createWatchHistoryRenderer(config = {}) {
     lastError: null,
     observer: null,
     observerAttached: false,
-    metadataPreference: "encrypted-only",
     privacyDismissed: false,
-    metadataCache: new Map(),
     feedMetadata: null,
-    metadataStorageEnabled: false,
     sessionFallbackActive: false,
     syncEnabled,
     localSupported,
@@ -1482,24 +1465,16 @@ export function createWatchHistoryRenderer(config = {}) {
     errorBanner: null,
     scrollContainer: null,
     featureBanner: null,
-    toastRegion: null,
-    sessionWarning: null,
-    metadataToggle: null,
-    metadataThumb: null,
-    metadataLabel: null,
-    metadataDescription: null
+    sessionWarning: null
   };
 
   let boundGridClickHandler = null;
   let boundLoadMoreHandler = null;
   let boundClearHandler = null;
   let boundRepublishHandler = null;
-  let boundPrivacyToggleHandler = null;
   let boundPrivacyDismissHandler = null;
-  let boundMetadataToggleHandler = null;
 
   const subscriptions = new Set();
-  const toastTimers = new Set();
 
   function refreshElements() {
     elements = {
@@ -1520,12 +1495,7 @@ export function createWatchHistoryRenderer(config = {}) {
       errorBanner: resolveElement(errorBannerSelector),
       scrollContainer: resolveElement(scrollContainerSelector),
       featureBanner: resolveElement(featureBannerSelector),
-      toastRegion: resolveElement(toastRegionSelector),
-      sessionWarning: resolveElement(sessionWarningSelector),
-      metadataToggle: resolveElement(metadataToggleSelector),
-      metadataThumb: resolveElement(metadataThumbSelector),
-      metadataLabel: resolveElement(metadataLabelSelector),
-      metadataDescription: resolveElement(metadataDescriptionSelector)
+      sessionWarning: resolveElement(sessionWarningSelector)
     };
   }
 
@@ -1544,54 +1514,6 @@ export function createWatchHistoryRenderer(config = {}) {
     }
     subscriptions.clear();
     fingerprintRefreshQueued = false;
-  }
-
-  function clearToasts() {
-    for (const timer of toastTimers) {
-      clearTimeout(timer);
-    }
-    toastTimers.clear();
-    if (elements.toastRegion instanceof HTMLElement) {
-      elements.toastRegion.innerHTML = "";
-    }
-  }
-
-  function pushToast({ message, variant = "info", duration = 8000 }) {
-    if (!(elements.toastRegion instanceof HTMLElement)) {
-      return;
-    }
-    const text = typeof message === "string" ? message.trim() : "";
-    if (!text) {
-      return;
-    }
-    const variantClass =
-      {
-        info: "border-info/40 bg-info/10 text-info",
-        warning: "border-warning-strong bg-warning-surface text-warning-strong",
-        error: "border-critical/40 bg-critical/10 text-critical"
-      }[variant] || "border-border bg-overlay-panel-soft text-text";
-
-    if (elements.toastRegion.childElementCount >= 3) {
-      const firstChild = elements.toastRegion.firstElementChild;
-      if (firstChild instanceof HTMLElement) {
-        firstChild.remove();
-      }
-    }
-
-    const toast = document.createElement("div");
-    toast.className = `rounded-md border px-4 py-2 text-sm ${variantClass}`;
-    toast.setAttribute("role", "status");
-    toast.textContent = text;
-    elements.toastRegion.appendChild(toast);
-
-    const timeout = Number.isFinite(duration) ? Math.max(0, duration) : 8000;
-    if (timeout > 0) {
-      const timer = setTimeout(() => {
-        toast.remove();
-        toastTimers.delete(timer);
-      }, timeout);
-      toastTimers.add(timer);
-    }
   }
 
   function updateFeatureBanner() {
@@ -1636,30 +1558,6 @@ export function createWatchHistoryRenderer(config = {}) {
     setHidden(elements.featureBanner, false);
   }
 
-  function updateMetadataToggle() {
-    if (!(elements.metadataToggle instanceof HTMLElement)) {
-      return;
-    }
-    const enabled = state.metadataStorageEnabled;
-    elements.metadataToggle.setAttribute(
-      "aria-checked",
-      enabled ? "true" : "false"
-    );
-    elements.metadataToggle.setAttribute(
-      "data-enabled",
-      enabled ? "true" : "false"
-    );
-    elements.metadataToggle.dataset.state = enabled ? "on" : "off";
-    elements.metadataToggle.classList.toggle("bg-info", enabled);
-    elements.metadataToggle.classList.toggle("border-info", enabled);
-    elements.metadataToggle.classList.toggle("bg-panel", !enabled);
-    elements.metadataToggle.classList.toggle("border-border", !enabled);
-    if (elements.metadataThumb instanceof HTMLElement) {
-      elements.metadataThumb.classList.toggle("translate-x-5", enabled);
-      elements.metadataThumb.classList.toggle("translate-x-1", !enabled);
-    }
-  }
-
   function updateSessionFallbackWarning() {
     if (!(elements.sessionWarning instanceof HTMLElement)) {
       return;
@@ -1675,41 +1573,6 @@ export function createWatchHistoryRenderer(config = {}) {
       !nip07Pubkey && sessionPubkey && sessionPubkey === activeActor;
     state.sessionFallbackActive = Boolean(fallbackActive);
     setHidden(elements.sessionWarning, !fallbackActive);
-  }
-
-  function subscribeToMetadataPreference() {
-    state.metadataStorageEnabled = false;
-    updateMetadataToggle();
-  }
-
-  function subscribeToRepublishEvents() {
-    if (typeof watchHistoryService.subscribe !== "function") {
-      return;
-    }
-    const unsubscribe = watchHistoryService.subscribe(
-      "republish-scheduled",
-      (payload) => {
-        if (!payload) {
-          return;
-        }
-        if (payload.actor && state.actor && payload.actor !== state.actor) {
-          return;
-        }
-        let message = "Republish retry scheduled.";
-        const delayMs = Number.isFinite(payload.delayMs)
-          ? Math.max(0, Math.floor(payload.delayMs))
-          : null;
-        if (delayMs != null) {
-          const seconds = Math.max(1, Math.round(delayMs / 1000));
-          const suffix = seconds === 1 ? "" : "s";
-          message = `Republish retry scheduled in about ${seconds} second${suffix}.`;
-        }
-        pushToast({ message, variant: "warning" });
-      }
-    );
-    if (typeof unsubscribe === "function") {
-      subscriptions.add(unsubscribe);
-    }
   }
 
   function queueFingerprintRefresh() {
@@ -1803,27 +1666,6 @@ export function createWatchHistoryRenderer(config = {}) {
         entry.metadata.video = workingVideo;
         entry.video = workingVideo;
         if (entry.pointerKey) {
-          const cached = state.metadataCache.get(entry.pointerKey) || {};
-          state.metadataCache.set(entry.pointerKey, {
-            ...cached,
-            video: workingVideo
-          });
-          if (state.metadataStorageEnabled) {
-            try {
-              watchHistoryService.setLocalMetadata?.(entry.pointerKey, {
-                ...cached,
-                video: workingVideo
-              });
-            } catch (error) {
-              if (isDevEnv) {
-                userLogger.warn(
-                  "[historyView] Failed to persist moderation metadata for pointer:",
-                  entry.pointerKey,
-                  error
-                );
-              }
-            }
-          }
           affectedPointers.push(entry.pointerKey);
         }
       }
@@ -1993,25 +1835,17 @@ export function createWatchHistoryRenderer(config = {}) {
     if (!(elements.privacyBanner instanceof HTMLElement)) {
       return;
     }
-    const preference = state.metadataPreference;
     const dismissed = state.privacyDismissed;
-    if (dismissed && preference !== "relay-opt-in") {
+    if (dismissed) {
       setHidden(elements.privacyBanner, true);
       return;
     }
-    let message =
-      "Your history stays encrypted. Share metadata with relays to sync thumbnails across devices?";
-    let toggleLabel = "Share metadata";
-    if (preference === "relay-opt-in") {
-      message =
-        "You are sharing metadata with relays so your thumbnails and titles stay in sync.";
-      toggleLabel = "Keep encrypted only";
-    }
     if (elements.privacyMessage) {
-      elements.privacyMessage.textContent = message;
+      elements.privacyMessage.textContent =
+        "Your encrypted history is private to this device. Titles and thumbnails hydrate when relays provide them.";
     }
     if (elements.privacyToggle) {
-      elements.privacyToggle.textContent = toggleLabel;
+      setHidden(elements.privacyToggle, true);
     }
     setHidden(elements.privacyBanner, false);
   }
@@ -2021,7 +1855,7 @@ export function createWatchHistoryRenderer(config = {}) {
       return;
     }
     const message =
-      "Thumbnails and titles are hydrated locally from your device caches. Nothing is published unless you opt in.";
+      "Thumbnails and titles hydrate from your encrypted history or relays when available. Nothing is published from this view.";
     elements.info.textContent = message;
   }
 
@@ -2055,7 +1889,6 @@ export function createWatchHistoryRenderer(config = {}) {
         continue;
       }
 
-      const pointerKeyValue = item.pointerKey || null;
       const baseMetadata =
         item &&
         typeof item === "object" &&
@@ -2064,40 +1897,10 @@ export function createWatchHistoryRenderer(config = {}) {
           ? { ...item.metadata }
           : {};
 
-      let cached = pointerKeyValue
-        ? state.metadataCache.get(pointerKeyValue)
-        : null;
-      if (
-        !cached &&
-        pointerKeyValue &&
-        typeof watchHistoryService.getLocalMetadata === "function"
-      ) {
-        try {
-          cached =
-            watchHistoryService.getLocalMetadata(pointerKeyValue) || null;
-        } catch (error) {
-          if (isDevEnv) {
-            userLogger.warn(
-              "[historyView] Failed to read stored metadata for pointer:",
-              pointerKeyValue,
-              error
-            );
-          }
-        }
-      }
-
-      let video = item.video || baseMetadata.video || null;
-      let profile = baseMetadata.profile || null;
-
-      if (cached) {
-        video = video || cached.video || null;
-        profile = profile || cached.profile || null;
-      }
-
       const metadata = {
         ...baseMetadata,
-        video: video || null,
-        profile: profile || null
+        video: item.video || baseMetadata.video || null,
+        profile: baseMetadata.profile || null
       };
 
       if (metadata.video && typeof metadata.video === "object") {
@@ -2112,45 +1915,6 @@ export function createWatchHistoryRenderer(config = {}) {
             if (isDevEnv) {
               userLogger.warn(
                 "[historyView] Failed to decorate video moderation:",
-                error
-              );
-            }
-          }
-        }
-      }
-
-      video = metadata.video || null;
-
-      if (pointerKeyValue) {
-        state.metadataCache.set(pointerKeyValue, {
-          video: metadata.video,
-          profile: metadata.profile
-        });
-        if (state.metadataStorageEnabled) {
-          try {
-            watchHistoryService.setLocalMetadata?.(pointerKeyValue, {
-              video: metadata.video,
-              profile: metadata.profile
-            });
-          } catch (error) {
-            if (isDevEnv) {
-              userLogger.warn(
-                "[historyView] Failed to persist metadata for pointer:",
-                pointerKeyValue,
-                error
-              );
-            }
-          }
-        } else if (
-          typeof watchHistoryService.removeLocalMetadata === "function"
-        ) {
-          try {
-            watchHistoryService.removeLocalMetadata(pointerKeyValue);
-          } catch (error) {
-            if (isDevEnv) {
-              userLogger.warn(
-                "[historyView] Failed to remove cached metadata for pointer:",
-                pointerKeyValue,
                 error
               );
             }
@@ -2238,8 +2002,7 @@ export function createWatchHistoryRenderer(config = {}) {
       const card = buildHistoryCard({
         item: entry,
         video: entry.metadata?.video || null,
-        profile: entry.metadata?.profile || null,
-        metadataPreference: state.metadataPreference
+        profile: entry.metadata?.profile || null
       });
       container.list.appendChild(card);
     });
@@ -2357,17 +2120,6 @@ export function createWatchHistoryRenderer(config = {}) {
           state.items = [];
           state.cursor = 0;
           state.hasMore = false;
-          state.metadataCache.clear();
-          try {
-            watchHistoryService.clearLocalMetadata?.();
-          } catch (error) {
-            if (isDevEnv) {
-              userLogger.warn(
-                "[historyView] Failed to clear stored metadata while resetting progress:",
-                error
-              );
-            }
-          }
           showEmptyState();
           const app = getAppInstance();
           app?.showSuccess?.("Local watch history cache cleared.");
@@ -2415,31 +2167,7 @@ export function createWatchHistoryRenderer(config = {}) {
 
   function bindPrivacyControls() {
     if (elements.privacyToggle) {
-      if (boundPrivacyToggleHandler) {
-        elements.privacyToggle.removeEventListener(
-          "click",
-          boundPrivacyToggleHandler
-        );
-      }
-      boundPrivacyToggleHandler = (event) => {
-        event.preventDefault();
-        if (state.metadataPreference === "relay-opt-in") {
-          state.metadataPreference = "encrypted-only";
-        } else {
-          state.metadataPreference = "relay-opt-in";
-          state.privacyDismissed = false;
-        }
-        writePreference(
-          WATCH_HISTORY_METADATA_PREF_KEY,
-          state.metadataPreference
-        );
-        updatePrivacyBanner();
-        renderer.render();
-      };
-      elements.privacyToggle.addEventListener(
-        "click",
-        boundPrivacyToggleHandler
-      );
+      setHidden(elements.privacyToggle, true);
     }
 
     if (elements.privacyDismiss) {
@@ -2460,41 +2188,6 @@ export function createWatchHistoryRenderer(config = {}) {
         boundPrivacyDismissHandler
       );
     }
-  }
-
-  function bindMetadataToggle() {
-    if (!(elements.metadataToggle instanceof HTMLElement)) {
-      return;
-    }
-    if (boundMetadataToggleHandler) {
-      elements.metadataToggle.removeEventListener(
-        "click",
-        boundMetadataToggleHandler
-      );
-    }
-    boundMetadataToggleHandler = (event) => {
-      event.preventDefault();
-      state.metadataStorageEnabled = false;
-      updateMetadataToggle();
-      if (!state.metadataStorageEnabled) {
-        try {
-          watchHistoryService.clearLocalMetadata?.();
-        } catch (error) {
-          if (isDevEnv) {
-            userLogger.warn(
-              "[historyView] Failed to clear stored metadata after disabling preference:",
-              error
-            );
-          }
-        }
-        state.metadataCache.clear();
-        void renderer.render();
-      }
-    };
-    elements.metadataToggle.addEventListener(
-      "click",
-      boundMetadataToggleHandler
-    );
   }
 
   async function loadHistory({ force = false, actorOverride } = {}) {
@@ -2541,7 +2234,6 @@ export function createWatchHistoryRenderer(config = {}) {
     }
     const feedItems = Array.isArray(result?.items) ? result.items : [];
     const normalized = [];
-    state.metadataCache.clear();
     for (const entry of feedItems) {
       const pointer = normalizePointerInput(entry?.pointer || entry);
       if (!pointer) {
@@ -2578,10 +2270,6 @@ export function createWatchHistoryRenderer(config = {}) {
         video: video || null,
         profile: profile || null
       };
-      state.metadataCache.set(pointerKeyValue, {
-        video: metadata.video,
-        profile: metadata.profile
-      });
       normalized.push({
         pointer,
         pointerKey: pointerKeyValue,
@@ -2630,7 +2318,6 @@ export function createWatchHistoryRenderer(config = {}) {
         return;
       }
       clearSubscriptions();
-      clearToasts();
       refreshElements();
       updateFeatureBanner();
       ensureObserver();
@@ -2638,20 +2325,9 @@ export function createWatchHistoryRenderer(config = {}) {
       bindLoadMore();
       bindActions();
       bindPrivacyControls();
-      bindMetadataToggle();
-      subscribeToMetadataPreference();
-      subscribeToRepublishEvents();
       subscribeToFingerprintUpdates();
       subscribeToModerationEvents();
       updateInfoCallout();
-      state.metadataStorageEnabled = false;
-      updateMetadataToggle();
-      const storedPreference = readPreference(
-        WATCH_HISTORY_METADATA_PREF_KEY,
-        "encrypted-only"
-      );
-      state.metadataPreference =
-        storedPreference === "relay-opt-in" ? "relay-opt-in" : "encrypted-only";
       state.privacyDismissed =
         readPreference(WATCH_HISTORY_PRIVACY_DISMISSED_KEY, "false") === "true";
       updatePrivacyBanner();
@@ -2683,9 +2359,6 @@ export function createWatchHistoryRenderer(config = {}) {
         showFeatureDisabledState();
         return;
       }
-      bindMetadataToggle();
-      state.metadataStorageEnabled = false;
-      updateMetadataToggle();
     },
     async refresh(options = {}) {
       updateFeatureBanner();
@@ -2750,13 +2423,6 @@ export function createWatchHistoryRenderer(config = {}) {
         );
         boundRepublishHandler = null;
       }
-      if (elements.privacyToggle && boundPrivacyToggleHandler) {
-        elements.privacyToggle.removeEventListener(
-          "click",
-          boundPrivacyToggleHandler
-        );
-        boundPrivacyToggleHandler = null;
-      }
       if (elements.privacyDismiss && boundPrivacyDismissHandler) {
         elements.privacyDismiss.removeEventListener(
           "click",
@@ -2764,15 +2430,7 @@ export function createWatchHistoryRenderer(config = {}) {
         );
         boundPrivacyDismissHandler = null;
       }
-      if (elements.metadataToggle && boundMetadataToggleHandler) {
-        elements.metadataToggle.removeEventListener(
-          "click",
-          boundMetadataToggleHandler
-        );
-        boundMetadataToggleHandler = null;
-      }
       clearSubscriptions();
-      clearToasts();
       if (elements.grid) {
         elements.grid.innerHTML = "";
       }
@@ -2781,7 +2439,6 @@ export function createWatchHistoryRenderer(config = {}) {
       state.items = [];
       state.cursor = 0;
       state.hasMore = false;
-      state.metadataCache.clear();
       rendererRef = null;
       fingerprintRefreshQueued = false;
     },
@@ -2806,18 +2463,6 @@ export function createWatchHistoryRenderer(config = {}) {
       cleanupHistoryCard(pointerKeyValue);
       if (card) {
         card.remove();
-      }
-      state.metadataCache.delete(pointerKeyValue);
-      try {
-        watchHistoryService.removeLocalMetadata?.(pointerKeyValue);
-      } catch (error) {
-        if (isDevEnv) {
-          userLogger.warn(
-            "[historyView] Failed to drop cached metadata for pointer:",
-            pointerKeyValue,
-            error
-          );
-        }
       }
       removeEmptyDayContainers(elements.grid);
       if (!state.items.length) {

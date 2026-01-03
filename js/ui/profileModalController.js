@@ -1489,12 +1489,7 @@ export class ProfileModalController {
       clearButtonSelector: "#profileHistoryClear",
       republishButtonSelector: "#profileHistoryRepublish",
       featureBannerSelector: "#profileHistoryFeatureBanner",
-      toastRegionSelector: "#profileHistoryToastRegion",
       sessionWarningSelector: "#profileHistorySessionWarning",
-      metadataToggleSelector: "#profileHistoryMetadataToggle",
-      metadataThumbSelector: "#profileHistoryMetadataThumb",
-      metadataLabelSelector: "#profileHistoryMetadataLabel",
-      metadataDescriptionSelector: "#profileHistoryMetadataDescription",
       emptyCopy: "You haven’t watched any videos yet.",
       remove: (payload) =>
         this.callbacks.onHistoryReady({
