@@ -316,11 +316,16 @@ function normalizePointersFromPayload(payload) {
   return normalized;
 }
 
+const WATCH_HISTORY_MONTH_PATTERN = /^(\d{4})-(0[1-9]|1[0-2])$/;
+
 function parseWatchHistoryPayload(plaintext) {
   if (typeof plaintext !== "string") {
     return {
       version: 0,
+      month: "",
       items: [],
+      events: [],
+      watchedAt: {},
       snapshot: "",
     };
   }
@@ -329,24 +334,39 @@ function parseWatchHistoryPayload(plaintext) {
     if (!parsed || typeof parsed !== "object") {
       return {
         version: 0,
+        month: "",
         items: [],
+        events: [],
+        watchedAt: {},
         snapshot: "",
       };
     }
     const version = Number.isFinite(parsed.version) ? parsed.version : 0;
+    const month =
+      typeof parsed.month === "string" && WATCH_HISTORY_MONTH_PATTERN.test(parsed.month)
+        ? parsed.month
+        : "";
     const items = normalizePointersFromPayload(parsed);
     const snapshot = typeof parsed.snapshot === "string" ? parsed.snapshot : "";
-    return { version, items, snapshot };
+    const events = Array.isArray(parsed.events)
+      ? parsed.events.filter((id) => typeof id === "string" && id.trim())
+      : [];
+    const watchedAt =
+      parsed.watchedAt && typeof parsed.watchedAt === "object" ? parsed.watchedAt : {};
+
+    return { version, month, items, events, watchedAt, snapshot };
   } catch (error) {
     devLogger.warn("[nostr] Failed to parse watch history payload:", error);
     return {
       version: 0,
+      month: "",
       items: [],
+      events: [],
+      watchedAt: {},
       snapshot: "",
     };
   }
 }
-const WATCH_HISTORY_MONTH_PATTERN = /^(\d{4})-(0[1-9]|1[0-2])$/;
 
 function normalizeWatchHistoryPayloadItem(entry, watchedAtMap) {
   const pointer = normalizePointerInput(entry);
@@ -385,7 +405,7 @@ export function buildWatchHistoryPayload(monthString, events, watchedAtMap, maxB
   const payload = {
     version: 2,
     month: normalizedMonth,
-    items: [],
+    events: [],
     watchedAt: {},
   };
 
@@ -406,7 +426,7 @@ export function buildWatchHistoryPayload(monthString, events, watchedAtMap, maxB
       continue;
     }
 
-    const nextItems = [...payload.items, normalized.id];
+    const nextEvents = [...payload.events, normalized.id];
     const nextWatchedAt = { ...payload.watchedAt };
     if (Number.isFinite(normalized.watchedAt)) {
       nextWatchedAt[normalized.id] = normalized.watchedAt;
@@ -414,7 +434,7 @@ export function buildWatchHistoryPayload(monthString, events, watchedAtMap, maxB
     const candidate = {
       version: payload.version,
       month: payload.month,
-      items: nextItems,
+      events: nextEvents,
       watchedAt: nextWatchedAt,
     };
 
@@ -428,7 +448,7 @@ export function buildWatchHistoryPayload(monthString, events, watchedAtMap, maxB
       continue;
     }
 
-    payload.items = nextItems;
+    payload.events = nextEvents;
     payload.watchedAt = nextWatchedAt;
     included.push(normalized.pointer);
   }
@@ -877,10 +897,38 @@ function mergeWatchHistoryItemsWithFallback(parsed, fallbackItems) {
   if (!parsed || typeof parsed !== "object") {
     return {
       version: 0,
+      month: "",
       items: fallbackItems,
       snapshot: "",
-      chunkIndex: 0,
-      totalChunks: 1,
+    };
+  }
+  if (Array.isArray(parsed.events) && parsed.events.length) {
+    const fallbackMap = new Map();
+    for (const item of Array.isArray(fallbackItems) ? fallbackItems : []) {
+      const key = pointerKey(item);
+      if (key) {
+        fallbackMap.set(item.value, item);
+      }
+    }
+    const merged = [];
+    const watchedAtMap = parsed.watchedAt || {};
+    for (const id of parsed.events) {
+      const fallback = fallbackMap.get(id);
+      const pointer = fallback ? clonePointerItem(fallback) : normalizePointerInput(id);
+      if (!pointer) {
+        continue;
+      }
+      const watchedAt = watchedAtMap[id];
+      if (Number.isFinite(watchedAt)) {
+        pointer.watchedAt = Math.max(0, Math.floor(watchedAt));
+      }
+      merged.push(pointer);
+    }
+    return {
+      version: parsed.version,
+      month: parsed.month,
+      items: merged,
+      snapshot: parsed.snapshot,
     };
   }
   if (Array.isArray(parsed.items) && parsed.items.length) {
@@ -2533,10 +2581,6 @@ class WatchHistoryManager {
         version: 2,
         items: fetchResult.items || [],
         snapshot: fetchResult.snapshotId || "",
-        chunkIndex: 0,
-        totalChunks: Array.isArray(fetchResult.items)
-          ? fetchResult.items.length
-          : 0,
       },
       fallbackItems,
     );
