@@ -976,8 +976,8 @@ async function testPublishSnapshotCanonicalizationAndChunking() {
 
     assert.equal(
       firstResult.chunkEvents.length,
-      2,
-      "large payload should be chunked across two encrypted events",
+      1,
+      "payload should be published as a single encrypted event",
     );
 
     const decrypt = window.NostrTools?.nip04?.decrypt;
@@ -991,7 +991,7 @@ async function testPublishSnapshotCanonicalizationAndChunking() {
       assert.notEqual(
         chunkEvent.content.trim()[0],
         "{",
-        "chunk content must remain encrypted and avoid plaintext fallbacks",
+        "event content must remain encrypted and avoid plaintext fallbacks",
       );
       const plaintext = await decrypt(
         "session-priv",
@@ -1000,26 +1000,16 @@ async function testPublishSnapshotCanonicalizationAndChunking() {
       );
       const payload = JSON.parse(plaintext);
       assert.equal(payload.snapshot, "session-snapshot");
-      assert(Array.isArray(payload.items), "chunk payload should include items");
+      assert(Array.isArray(payload.items), "payload should include items");
       const serializedLength = plaintext.length;
       assert(
         serializedLength <= WATCH_HISTORY_PAYLOAD_MAX_BYTES,
-        `chunk payload should respect WATCH_HISTORY_PAYLOAD_MAX_BYTES (observed ${serializedLength})`,
+        `payload should respect WATCH_HISTORY_PAYLOAD_MAX_BYTES (observed ${serializedLength})`,
       );
     }
 
-    const pointerAddresses = firstResult.pointerEvent.tags.filter(
-      (tag) => Array.isArray(tag) && tag[0] === "a",
-    );
-    assert.equal(
-      pointerAddresses.length,
-      2,
-      "pointer event should reference each published chunk",
-    );
-
     const firstCreatedMax = maxCreatedAt([
       ...firstResult.chunkEvents,
-      firstResult.pointerEvent,
     ]);
 
     const fingerprintOne = await nostrClient.getWatchHistoryFingerprint(
@@ -1043,7 +1033,6 @@ async function testPublishSnapshotCanonicalizationAndChunking() {
     );
     const secondCreatedMin = maxCreatedAt([
       ...secondResult.chunkEvents,
-      secondResult.pointerEvent,
     ]);
     assert(
       secondCreatedMin > firstCreatedMax,
