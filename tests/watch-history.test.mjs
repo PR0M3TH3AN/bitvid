@@ -1001,7 +1001,7 @@ async function testPublishSnapshotCanonicalizationAndChunking() {
     );
     const payload = JSON.parse(plaintext);
     assert.equal(payload.snapshot, "session-snapshot");
-    assert(Array.isArray(payload.items), "payload should include items");
+    assert(Array.isArray(payload.events), "payload should include events");
     const serializedLength = plaintext.length;
     assert(
       serializedLength <= WATCH_HISTORY_PAYLOAD_MAX_BYTES,
@@ -1106,7 +1106,7 @@ async function testPublishSnapshotUsesExtensionCrypto() {
     const payload = JSON.parse(decrypted);
     assert.equal(payload.snapshot, "extension");
     assert.equal(
-      payload.items.length,
+      payload.events.length,
       result.items.length,
       "decrypted payload should match canonical item count",
     );
