@@ -41,7 +41,7 @@ import {
   buildVideoPostEvent,
   buildRepostEvent,
   buildWatchHistoryIndexEvent,
-  buildWatchHistoryChunkEvent,
+  buildWatchHistoryEvent,
   getNostrEventSchema,
   NOTE_TYPES,
 } from "../nostrEventSchemas.js";
