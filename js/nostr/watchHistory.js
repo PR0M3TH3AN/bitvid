@@ -322,8 +322,6 @@ function parseWatchHistoryPayload(plaintext) {
       version: 0,
       items: [],
       snapshot: "",
-      chunkIndex: 0,
-      totalChunks: 1,
     };
   }
   try {
@@ -333,28 +331,18 @@ function parseWatchHistoryPayload(plaintext) {
         version: 0,
         items: [],
         snapshot: "",
-        chunkIndex: 0,
-        totalChunks: 1,
       };
     }
     const version = Number.isFinite(parsed.version) ? parsed.version : 0;
     const items = normalizePointersFromPayload(parsed);
     const snapshot = typeof parsed.snapshot === "string" ? parsed.snapshot : "";
-    const chunkIndex = Number.isFinite(parsed.chunkIndex)
-      ? Math.max(0, Math.floor(parsed.chunkIndex))
-      : 0;
-    const totalChunks = Number.isFinite(parsed.totalChunks)
-      ? Math.max(1, Math.floor(parsed.totalChunks))
-      : 1;
-    return { version, items, snapshot, chunkIndex, totalChunks };
+    return { version, items, snapshot };
   } catch (error) {
     devLogger.warn("[nostr] Failed to parse watch history payload:", error);
     return {
       version: 0,
       items: [],
       snapshot: "",
-      chunkIndex: 0,
-      totalChunks: 1,
     };
   }
 }
@@ -1594,7 +1582,7 @@ class WatchHistoryManager {
       }
     };
 
-    const encryptChunkPayload = async (plaintext, context = {}) => {
+    const encryptPayload = async (plaintext, context = {}) => {
       if (
         selectedEncryptor &&
         !failedEncryptionCandidates.has(candidateIdentity(selectedEncryptor))
@@ -1629,10 +1617,6 @@ class WatchHistoryManager {
       return this.deps.signEventWithPrivateKey(event, privateKey);
     };
     let createdAtCursor = createdAtBase;
-    const chunkResults = [];
-    const chunkAddresses = [];
-    let anyChunkRejected = false;
-    let anyChunkPartial = false;
     const formatRelayStatus = (results = []) => {
       const normalized = Array.isArray(results) ? results : [];
       const statuses = [];
@@ -1683,33 +1667,28 @@ class WatchHistoryManager {
       return tag;
     });
     devLogger.info(
-      "[nostr] Publishing watch history chunk.",
+      "[nostr] Publishing watch history payload.",
       {
         actor: actorKey,
         snapshotId,
         monthIdentifier,
-        chunkIndex: 0,
-        chunkSize: pointerTags.length,
+        itemCount: pointerTags.length,
         relays,
       },
     );
     const plaintext = JSON.stringify(payload);
-    const chunkIdentifier = `${snapshotId}:0`;
     let ciphertext = "";
     let encryptionScheme = "";
     try {
-      const encryptionResult = await encryptChunkPayload(plaintext, {
-        chunkIndex: 0,
-        chunkIdentifier,
+      const encryptionResult = await encryptPayload(plaintext, {
+        snapshotId,
       });
       ciphertext = encryptionResult?.ciphertext || "";
       encryptionScheme = encryptionResult?.scheme || "";
     } catch (error) {
-      devLogger.warn("[nostr] Failed to encrypt watch history chunk:", {
+      devLogger.warn("[nostr] Failed to encrypt watch history payload:", {
         actor: actorKey,
         snapshotId,
-        chunkIndex: 0,
-        chunkIdentifier,
         error: error?.message || error,
         attempts: encryptionAttemptErrors.map((entry) => ({
           scheme: entry.scheme,
@@ -1720,11 +1699,9 @@ class WatchHistoryManager {
       return { ok: false, error: "encryption-failed", retryable: false };
     }
     if (!ciphertext) {
-      devLogger.warn("[nostr] Encryption produced an empty payload for watch history chunk.", {
+      devLogger.warn("[nostr] Encryption produced an empty payload for watch history.", {
         actor: actorKey,
         snapshotId,
-        chunkIndex: 0,
-        chunkIdentifier,
         scheme: encryptionScheme || null,
       });
       return { ok: false, error: "encryption-failed", retryable: false };
@@ -1732,126 +1709,53 @@ class WatchHistoryManager {
     const event = buildWatchHistoryChunkEvent({
       pubkey: actorPubkey,
       created_at: createdAtCursor,
-      chunkIdentifier,
+      chunkIdentifier: snapshotId,
       snapshotId,
       monthIdentifier,
-      chunkIndex: 0,
-      totalChunks: 1,
       pointerTags,
       content: ciphertext,
       encryption: encryptionScheme,
+      isHead: true,
     });
     createdAtCursor += 1;
     let signedEvent;
     try {
       signedEvent = await signEvent(event);
     } catch (error) {
-      devLogger.warn("[nostr] Failed to sign watch history chunk:", error);
+      devLogger.warn("[nostr] Failed to sign watch history event:", error);
       return { ok: false, error: "signing-failed", retryable: false };
     }
     const publishResults = await publishEventToRelays(pool, relays, signedEvent);
     const relayStatus = formatRelayStatus(publishResults);
     const acceptedCount = relayStatus.filter((entry) => entry.success).length;
+    let anyRejected = false;
+    let anyPartial = false;
     if (acceptedCount === 0) {
-      anyChunkRejected = true;
-      devLogger.warn("[nostr] Watch history chunk rejected by all relays:", publishResults);
+      anyRejected = true;
+      devLogger.warn("[nostr] Watch history event rejected by all relays:", publishResults);
     } else {
       const logMessage = acceptedCount === relays.length ? "accepted" : "partially accepted";
       if (acceptedCount === relays.length) {
         devLogger.info(
-          `[nostr] Watch history chunk accepted by ${acceptedCount}/${relays.length} relay(s).`,
+          `[nostr] Watch history event accepted by ${acceptedCount}/${relays.length} relay(s).`,
         );
       } else {
-        anyChunkPartial = true;
+        anyPartial = true;
         devLogger.warn(
-          `[nostr] Watch history chunk ${logMessage} by ${acceptedCount}/${relays.length} relay(s).`,
+          `[nostr] Watch history event ${logMessage} by ${acceptedCount}/${relays.length} relay(s).`,
           publishResults,
         );
       }
     }
-    const address = this.deps.eventToAddressPointer?.(signedEvent);
-    if (address) {
-      chunkAddresses.push(address);
-    }
-    chunkResults.push({
-      event: signedEvent,
-      publishResults,
-      acceptedCount,
-      relayStatus,
-    });
-    const pointerEvent = buildWatchHistoryIndexEvent({
-      pubkey: actorPubkey,
-      created_at: createdAtCursor,
-      snapshotId,
-      monthIdentifier,
-      totalChunks: 1,
-      chunkAddresses,
-    });
-    createdAtCursor += 1;
-    let signedPointerEvent;
-    try {
-      signedPointerEvent = await signEvent(pointerEvent);
-    } catch (error) {
-      devLogger.warn("[nostr] Failed to sign watch history pointer event:", error);
-      return { ok: false, error: "signing-failed", retryable: false };
-    }
-    devLogger.info(
-      "[nostr] Publishing watch history pointer event.",
-      {
-        actor: actorKey,
-        snapshotId,
-        relays,
-      },
-    );
-    const pointerResults = await publishEventToRelays(
-      pool,
-      relays,
-      signedPointerEvent,
-    );
-    const pointerRelayStatus = formatRelayStatus(pointerResults);
-    const pointerAcceptedCount = pointerRelayStatus.filter((entry) => entry.success).length;
-    const pointerAccepted = pointerAcceptedCount > 0;
-    if (pointerAcceptedCount === relays.length) {
-      devLogger.info(
-        `[nostr] Watch history pointer accepted by ${pointerAcceptedCount}/${relays.length} relay(s).`,
-      );
-    } else if (pointerAccepted) {
-      devLogger.warn(
-        `[nostr] Watch history pointer partially accepted by ${pointerAcceptedCount}/${relays.length} relay(s).`,
-        pointerResults,
-      );
-    } else {
-      devLogger.warn(
-        "[nostr] Watch history pointer rejected by all relays:",
-        pointerResults,
-      );
-    }
     this.lastCreatedAt = createdAtCursor;
-    const chunkStatuses = chunkResults.map((entry) => entry.relayStatus);
-    const chunkAcceptedEverywhere = chunkResults.every(
-      (entry) => entry.acceptedCount === relays.length,
-    );
-    const chunkRejectedEverywhere = chunkResults.some((entry) => entry.acceptedCount === 0);
-    const pointerRejectedEverywhere = pointerAcceptedCount === 0;
-    const pointerPartial = pointerAccepted && pointerAcceptedCount < relays.length;
-    const partialAcceptance = pointerPartial || anyChunkPartial;
-    const success =
-      !pointerRejectedEverywhere &&
-      pointerAcceptedCount === relays.length &&
-      chunkAcceptedEverywhere &&
-      !anyChunkRejected;
+    const partialAcceptance = anyPartial;
+    const success = acceptedCount === relays.length && !anyRejected;
     let errorCode = null;
     if (!success) {
-      if (pointerRejectedEverywhere && chunkRejectedEverywhere) {
-        errorCode = "pointer-and-chunk-rejected";
-      } else if (pointerRejectedEverywhere) {
-        errorCode = "pointer-rejected";
-      } else if (chunkRejectedEverywhere || anyChunkRejected) {
-        errorCode = "chunk-rejected";
+      if (anyRejected) {
+        errorCode = "publish-rejected";
       } else if (partialAcceptance) {
         errorCode = "partial-relay-acceptance";
-      } else {
-        errorCode = "publish-rejected";
       }
     }
     const result = {
@@ -1860,14 +1764,14 @@ class WatchHistoryManager {
       actor: actorPubkey,
       snapshotId,
       items: canonicalItems,
-      pointerEvent: signedPointerEvent,
-      chunkEvents: chunkResults.map((entry) => entry.event),
+      pointerEvent: signedEvent,
+      chunkEvents: [signedEvent],
       publishResults: {
-        pointer: pointerResults,
-        chunks: chunkResults.map((entry) => entry.publishResults),
+        pointer: publishResults,
+        chunks: [publishResults],
         relayStatus: {
-          pointer: pointerRelayStatus,
-          chunks: chunkStatuses,
+          pointer: relayStatus,
+          chunks: [relayStatus],
         },
       },
       skippedCount: skipped.length,
@@ -1879,7 +1783,7 @@ class WatchHistoryManager {
     }
 
     const shouldPersistLocally =
-      pointerAcceptedCount > 0 && !chunkRejectedEverywhere;
+      acceptedCount > 0 && !anyRejected;
 
     if (shouldPersistLocally) {
       const storage = this.getStorage();
@@ -1917,8 +1821,7 @@ class WatchHistoryManager {
       success,
       partialAcceptance,
       error: result.error || null,
-      pointerAcceptedCount,
-      chunkAcceptedCounts: chunkResults.map((entry) => entry.acceptedCount),
+      acceptedCount,
     });
     return result;
   }
@@ -2208,7 +2111,7 @@ class WatchHistoryManager {
     } catch (error) {
       devLogger.warn("[nostr] Failed to fetch watch history pointer:", error);
     }
-    const pointerEvent = pointerEvents.reduce((latest, current) => {
+    const latestEvent = pointerEvents.reduce((latest, current) => {
       if (!current || typeof current !== "object") {
         return latest;
       }
@@ -2223,29 +2126,27 @@ class WatchHistoryManager {
       }
       return latest;
     }, null);
-    if (!pointerEvent) {
+    if (!latestEvent) {
       devLogger.info(
-        "[nostr] No watch history pointer event found on relays. Falling back to storage.",
+        "[nostr] No watch history event found on relays. Falling back to storage.",
         {
           actor: resolvedActor,
         },
       );
       return await loadFromStorage();
     }
-    const fallbackItems = extractPointerItemsFromEvent(pointerEvent);
+    const fallbackItems = extractPointerItemsFromEvent(latestEvent);
     const pointerPayload = parseWatchHistoryContentWithFallback(
-      pointerEvent.content,
+      latestEvent.content,
       fallbackItems,
       {
         version: 0,
         items: fallbackItems,
         snapshot: "",
-        chunkIndex: 0,
-        totalChunks: 1,
       },
     );
     const snapshotId = (() => {
-      const tags = Array.isArray(pointerEvent.tags) ? pointerEvent.tags : [];
+      const tags = Array.isArray(latestEvent.tags) ? latestEvent.tags : [];
       for (const tag of tags) {
         if (Array.isArray(tag) && tag[0] === "snapshot" && typeof tag[1] === "string") {
           return tag[1];
@@ -2253,8 +2154,28 @@ class WatchHistoryManager {
       }
       return pointerPayload.snapshot || "";
     })();
+
+    const isLegacyIndexEvent = (() => {
+      const tags = Array.isArray(latestEvent.tags) ? latestEvent.tags : [];
+      for (const tag of tags) {
+        if (Array.isArray(tag) && tag[0] === "d" && typeof tag[1] === "string") {
+          const value = tag[1];
+          if (
+            value === WATCH_HISTORY_LIST_IDENTIFIER ||
+            WATCH_HISTORY_LEGACY_LIST_IDENTIFIERS.includes(value)
+          ) {
+            return true;
+          }
+        }
+      }
+      return false;
+    })();
+
     const chunkAddresses = (() => {
-      const tags = Array.isArray(pointerEvent.tags) ? pointerEvent.tags : [];
+      if (!isLegacyIndexEvent) {
+        return [];
+      }
+      const tags = Array.isArray(latestEvent.tags) ? latestEvent.tags : [];
       const addresses = [];
       for (const tag of tags) {
         if (Array.isArray(tag) && tag[0] === "a" && typeof tag[1] === "string" && tag[1]) {
@@ -2282,47 +2203,57 @@ class WatchHistoryManager {
         limit: Math.max(chunkIdentifiers.length * 2, limit),
       });
     } else if (snapshotId) {
-      chunkFilters.push({
-        kinds: [WATCH_HISTORY_KIND],
-        authors: [actorKey],
-        "#snapshot": [snapshotId],
-        limit,
-      });
+      // Legacy fallback: attempt to find chunks by snapshot ID if specific pointers are missing
+      // (only relevant for legacy index events)
+      if (isLegacyIndexEvent) {
+         chunkFilters.push({
+          kinds: [WATCH_HISTORY_KIND],
+          authors: [actorKey],
+          "#snapshot": [snapshotId],
+          limit,
+        });
+      }
     }
-    let chunkEvents = [];
-    if (chunkFilters.length) {
-      try {
+
+    let chunkEvents = [latestEvent];
+    if (isLegacyIndexEvent && chunkFilters.length) {
+       try {
         const chunkResults = await pool.list(readRelays, chunkFilters);
-        chunkEvents = Array.isArray(chunkResults)
+        const fetchedChunks = Array.isArray(chunkResults)
           ? chunkResults
             .flat()
             .filter((event) => event && typeof event === "object")
           : [];
+         chunkEvents = fetchedChunks;
       } catch (error) {
         devLogger.warn("[nostr] Failed to fetch watch history chunks:", error);
       }
     }
+
     const latestChunks = new Map();
-    for (const event of chunkEvents) {
-      const identifier = (() => {
-        const tags = Array.isArray(event.tags) ? event.tags : [];
-        for (const tag of tags) {
-          if (Array.isArray(tag) && tag[0] === "d" && typeof tag[1] === "string") {
-            return tag[1];
-          }
-        }
-        return null;
-      })();
-      if (!identifier) {
-        continue;
-      }
-      const existing = latestChunks.get(identifier);
-      const createdAt = Number.isFinite(event?.created_at) ? event.created_at : 0;
-      const existingCreated = Number.isFinite(existing?.created_at) ? existing.created_at : 0;
-      if (!existing || createdAt > existingCreated) {
-        latestChunks.set(identifier, event);
-      }
+    if (!isLegacyIndexEvent) {
+        latestChunks.set(snapshotId, latestEvent);
     }
+    for (const event of chunkEvents) {
+        const identifier = (() => {
+            const tags = Array.isArray(event.tags) ? event.tags : [];
+            for (const tag of tags) {
+            if (Array.isArray(tag) && tag[0] === "d" && typeof tag[1] === "string") {
+                return tag[1];
+            }
+            }
+            return null;
+        })();
+        if (identifier) {
+             const existing = latestChunks.get(identifier);
+             const createdAt = Number.isFinite(event?.created_at) ? event.created_at : 0;
+             const existingCreated = Number.isFinite(existing?.created_at) ? existing.created_at : 0;
+             if (!existing || createdAt > existingCreated) {
+                latestChunks.set(identifier, event);
+             }
+        }
+    }
+
     const decryptErrors = [];
     const collectedItems = [];
     const toolkitCache = { current: null };
@@ -2414,7 +2345,6 @@ class WatchHistoryManager {
     };
 
     await ensureSessionDecryptors();
-    const chunkCount = latestChunks.size || chunkIdentifiers.length || 0;
     const chunkKeys = chunkIdentifiers.length
       ? chunkIdentifiers
       : Array.from(latestChunks.keys());
@@ -2452,18 +2382,18 @@ class WatchHistoryManager {
               source: candidate.source,
             };
             try {
-              devLogger.info("[nostr] Attempting to decrypt watch history chunk.", details);
+              devLogger.info("[nostr] Attempting to decrypt watch history event.", details);
               const result = await candidate.handler(ciphertext, chunkContext);
               if (typeof result !== "string") {
                 throw new Error("invalid-plaintext");
               }
-              devLogger.info("[nostr] Successfully decrypted watch history chunk.", details);
+              devLogger.info("[nostr] Successfully decrypted watch history event.", details);
               plaintext = result;
               usedScheme = scheme;
               usedSource = candidate.source || "";
               break outer;
             } catch (error) {
-              devLogger.warn("[nostr] Failed to decrypt watch history chunk with candidate.", {
+              devLogger.warn("[nostr] Failed to decrypt watch history event with candidate.", {
                 ...details,
                 error: error?.message || error,
               });
@@ -2480,14 +2410,14 @@ class WatchHistoryManager {
 
       let payload;
       if (plaintext !== null) {
-        devLogger.info("[nostr] Decrypted watch history chunk. Parsing plaintext payload.", {
+        devLogger.info("[nostr] Decrypted watch history event. Parsing plaintext payload.", {
           actorKey,
           ...chunkContext,
           scheme: usedScheme || null,
           source: usedSource || null,
           plaintextPreview: typeof plaintext === "string" ? plaintext.slice(0, 64) : null,
           expectedPlaintextFormat:
-            "JSON string with { version, items, snapshot, chunkIndex, totalChunks }",
+            "JSON string with { version, items, snapshot }",
         });
         payload = parseWatchHistoryContentWithFallback(
           plaintext,
@@ -2496,8 +2426,6 @@ class WatchHistoryManager {
             version: 0,
             items: fallbackPointers,
             snapshot: snapshotId,
-            chunkIndex: 0,
-            totalChunks: chunkCount || 1,
           },
         );
       } else if (isEncryptedChunk) {
@@ -2507,7 +2435,7 @@ class WatchHistoryManager {
           attempts: attemptFailures,
         });
         devLogger.warn(
-          "[nostr] Decrypt failed for watch history chunk. Falling back to pointer items.",
+          "[nostr] Decrypt failed for watch history event. Falling back to pointer items.",
           {
             actorKey,
             ...chunkContext,
@@ -2521,7 +2449,7 @@ class WatchHistoryManager {
               ? fallbackPointers.length
               : 0,
             expectedPlaintextFormat:
-              "JSON string with { version, items, snapshot, chunkIndex, totalChunks }",
+              "JSON string with { version, items, snapshot }",
           },
         );
         payload = {
@@ -2530,13 +2458,13 @@ class WatchHistoryManager {
         };
       } else {
         devLogger.info(
-          "[nostr] Watch history chunk is plaintext. Attempting to parse expected payload format.",
+          "[nostr] Watch history event is plaintext. Attempting to parse expected payload format.",
           {
             actorKey,
             ...chunkContext,
             ciphertextPreview,
             expectedPlaintextFormat:
-              "JSON string with { version, items, snapshot, chunkIndex, totalChunks }",
+              "JSON string with { version, items, snapshot }",
           },
         );
         payload = parseWatchHistoryContentWithFallback(
@@ -2546,8 +2474,6 @@ class WatchHistoryManager {
             version: 0,
             items: fallbackPointers,
             snapshot: snapshotId,
-            chunkIndex: 0,
-            totalChunks: chunkCount || 1,
           },
         );
       }
