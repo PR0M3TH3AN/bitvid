@@ -10,7 +10,7 @@ import {
   WATCH_HISTORY_CACHE_TTL_MS,
 } from "../config.js";
 import {
-  buildWatchHistoryChunkEvent,
+  buildWatchHistoryEvent,
   buildWatchHistoryIndexEvent,
 } from "../nostrEventSchemas.js";
 import { publishEventToRelays } from "../nostrPublish.js";
@@ -378,7 +378,7 @@ function normalizeWatchHistoryPayloadItem(entry, watchedAtMap) {
   };
 }
 
-export function buildWatchHistoryPayload(monthString, events, watchedAtMap, maxBytes) {
+export function buildWatchHistoryPayload(monthString, events, watchedAtMap, maxBytes, snapshotId) {
   const normalizedMonth = typeof monthString === "string" ? monthString.trim() : "";
   const validMonth = WATCH_HISTORY_MONTH_PATTERN.test(normalizedMonth);
   const safeMax = Math.max(128, Math.floor(maxBytes || WATCH_HISTORY_PAYLOAD_MAX_BYTES || 0));
@@ -388,6 +388,10 @@ export function buildWatchHistoryPayload(monthString, events, watchedAtMap, maxB
     items: [],
     watchedAt: {},
   };
+
+  if (typeof snapshotId === "string" && snapshotId.trim()) {
+    payload.snapshot = snapshotId.trim();
+  }
 
   const skipped = [];
   const included = [];
@@ -413,6 +417,10 @@ export function buildWatchHistoryPayload(monthString, events, watchedAtMap, maxB
       items: nextItems,
       watchedAt: nextWatchedAt,
     };
+
+    if (payload.snapshot) {
+      candidate.snapshot = payload.snapshot;
+    }
 
     const payloadSize = JSON.stringify(candidate).length;
     if (payloadSize > safeMax) {
@@ -1284,7 +1292,7 @@ class WatchHistoryManager {
         items,
         snapshotId: publishResult.snapshotId || storageEntry?.snapshotId || "",
         pointerEvent: publishResult.pointerEvent || null,
-        chunkEvents: publishResult.chunkEvents || [],
+        chunkEvents: [],
         savedAt: Date.now(),
         fingerprint,
         metadata,
@@ -1410,6 +1418,7 @@ class WatchHistoryManager {
       canonicalItems,
       options.watchedAtMap || null,
       WATCH_HISTORY_PAYLOAD_MAX_BYTES,
+      snapshotId
     );
     if (!payload) {
       devLogger.warn("[nostr] Unable to build watch history payload for month.", {
@@ -1549,21 +1558,21 @@ class WatchHistoryManager {
       const details = {
         actor: actorKey,
         snapshotId,
-        chunkIndex: context.chunkIndex ?? null,
-        chunkIdentifier: context.chunkIdentifier ?? null,
+        monthIdentifier,
+        payloadSize: plaintext.length,
         scheme: candidate.scheme,
         source: candidate.source,
       };
       try {
-        devLogger.info("[nostr] Attempting to encrypt watch history chunk.", details);
+        devLogger.info("[nostr] Attempting to encrypt watch history payload.", details);
         const encrypted = await candidate.handler(plaintext);
         if (typeof encrypted !== "string" || !encrypted) {
           throw new Error("empty-ciphertext");
         }
-        devLogger.info("[nostr] Encrypted watch history chunk.", details);
+        devLogger.info("[nostr] Encrypted watch history payload.", details);
         return { ciphertext: encrypted, scheme: candidate.scheme, candidate };
       } catch (error) {
-        devLogger.warn("[nostr] Failed to encrypt watch history chunk with candidate.", {
+        devLogger.warn("[nostr] Failed to encrypt watch history payload with candidate.", {
           ...details,
           error: error?.message || error,
         });
@@ -1574,8 +1583,7 @@ class WatchHistoryManager {
           error,
           context: {
             snapshotId,
-            chunkIndex: context.chunkIndex ?? null,
-            chunkIdentifier: context.chunkIdentifier ?? null,
+            monthIdentifier,
           },
         });
         return null;
@@ -1706,16 +1714,14 @@ class WatchHistoryManager {
       });
       return { ok: false, error: "encryption-failed", retryable: false };
     }
-    const event = buildWatchHistoryChunkEvent({
+    const event = buildWatchHistoryEvent({
       pubkey: actorPubkey,
       created_at: createdAtCursor,
-      chunkIdentifier: snapshotId,
       snapshotId,
       monthIdentifier,
       pointerTags,
       content: ciphertext,
       encryption: encryptionScheme,
-      isHead: true,
     });
     createdAtCursor += 1;
     let signedEvent;
@@ -1765,13 +1771,10 @@ class WatchHistoryManager {
       snapshotId,
       items: canonicalItems,
       pointerEvent: signedEvent,
-      chunkEvents: [signedEvent],
       publishResults: {
         pointer: publishResults,
-        chunks: [publishResults],
         relayStatus: {
           pointer: relayStatus,
-          chunks: [relayStatus],
         },
       },
       skippedCount: skipped.length,
@@ -1805,7 +1808,6 @@ class WatchHistoryManager {
         items: canonicalItems,
         snapshotId,
         pointerEvent: result.pointerEvent,
-        chunkEvents: result.chunkEvents,
         savedAt: Date.now(),
         fingerprint: await this.getFingerprint(actorPubkey, canonicalItems),
         metadata,
@@ -1890,7 +1892,6 @@ class WatchHistoryManager {
       items: canonicalItems,
       snapshotId: publishResult.snapshotId || cachedEntry.snapshotId || "",
       pointerEvent: publishResult.pointerEvent || cachedEntry.pointerEvent || null,
-      chunkEvents: publishResult.chunkEvents || cachedEntry.chunkEvents || [],
       savedAt: Date.now(),
       fingerprint,
       metadata,
@@ -2014,7 +2015,6 @@ class WatchHistoryManager {
           ? storageEntry.snapshotId
           : "",
         pointerEvent: null,
-        chunkEvents: [],
         savedAt: now,
         fingerprint,
         metadata: sanitizeWatchHistoryMetadata(storageEntry?.metadata),
@@ -2171,41 +2171,40 @@ class WatchHistoryManager {
       return false;
     })();
 
-    const chunkAddresses = (() => {
-      if (!isLegacyIndexEvent) {
-        return [];
-      }
+    let eventToProcess = latestEvent;
+
+    // Legacy fallback: if this is an index event, attempt to fetch linked chunks.
+    // Otherwise, treat the latest event as the single monthly payload.
+    if (isLegacyIndexEvent) {
       const tags = Array.isArray(latestEvent.tags) ? latestEvent.tags : [];
-      const addresses = [];
+      const chunkIdentifiers = [];
+      const chunkAddresses = [];
+
       for (const tag of tags) {
         if (Array.isArray(tag) && tag[0] === "a" && typeof tag[1] === "string" && tag[1]) {
-          addresses.push(tag[1]);
+          chunkAddresses.push(tag[1]);
         }
       }
-      return addresses;
-    })();
-    const chunkIdentifiers = [];
-    for (const address of chunkAddresses) {
-      const parts = address.split(":");
-      if (parts.length >= 3) {
-        const identifier = parts.slice(2).join(":");
-        if (identifier) {
-          chunkIdentifiers.push(identifier);
+
+      for (const address of chunkAddresses) {
+        const parts = address.split(":");
+        if (parts.length >= 3) {
+          const identifier = parts.slice(2).join(":");
+          if (identifier) {
+            chunkIdentifiers.push(identifier);
+          }
         }
       }
-    }
-    const chunkFilters = [];
-    if (chunkIdentifiers.length) {
-      chunkFilters.push({
-        kinds: [WATCH_HISTORY_KIND],
-        authors: [actorKey],
-        "#d": chunkIdentifiers,
-        limit: Math.max(chunkIdentifiers.length * 2, limit),
-      });
-    } else if (snapshotId) {
-      // Legacy fallback: attempt to find chunks by snapshot ID if specific pointers are missing
-      // (only relevant for legacy index events)
-      if (isLegacyIndexEvent) {
+
+      const chunkFilters = [];
+      if (chunkIdentifiers.length) {
+        chunkFilters.push({
+          kinds: [WATCH_HISTORY_KIND],
+          authors: [actorKey],
+          "#d": chunkIdentifiers,
+          limit: Math.max(chunkIdentifiers.length * 2, limit),
+        });
+      } else if (snapshotId) {
          chunkFilters.push({
           kinds: [WATCH_HISTORY_KIND],
           authors: [actorKey],
@@ -2213,47 +2212,30 @@ class WatchHistoryManager {
           limit,
         });
       }
-    }
 
-    let chunkEvents = [latestEvent];
-    if (isLegacyIndexEvent && chunkFilters.length) {
-       try {
-        const chunkResults = await pool.list(readRelays, chunkFilters);
-        const fetchedChunks = Array.isArray(chunkResults)
-          ? chunkResults
-            .flat()
-            .filter((event) => event && typeof event === "object")
-          : [];
-         chunkEvents = fetchedChunks;
-      } catch (error) {
-        devLogger.warn("[nostr] Failed to fetch watch history chunks:", error);
-      }
-    }
+      if (chunkFilters.length) {
+         try {
+          const chunkResults = await pool.list(readRelays, chunkFilters);
+          const fetchedChunks = Array.isArray(chunkResults)
+            ? chunkResults
+              .flat()
+              .filter((event) => event && typeof event === "object")
+            : [];
 
-    const latestChunks = new Map();
-    if (!isLegacyIndexEvent) {
-        latestChunks.set(snapshotId, latestEvent);
-    }
-    for (const event of chunkEvents) {
-        const identifier = (() => {
-            const tags = Array.isArray(event.tags) ? event.tags : [];
-            for (const tag of tags) {
-            if (Array.isArray(tag) && tag[0] === "d" && typeof tag[1] === "string") {
-                return tag[1];
-            }
-            }
-            return null;
-        })();
-        if (identifier) {
-             const existing = latestChunks.get(identifier);
-             const createdAt = Number.isFinite(event?.created_at) ? event.created_at : 0;
-             const existingCreated = Number.isFinite(existing?.created_at) ? existing.created_at : 0;
-             if (!existing || createdAt > existingCreated) {
-                latestChunks.set(identifier, event);
-             }
+           // We will process all fetched events + the latestEvent
+           eventToProcess = [latestEvent, ...fetchedChunks];
+        } catch (error) {
+          devLogger.warn("[nostr] Failed to fetch legacy watch history chunks:", error);
+          eventToProcess = [latestEvent];
         }
+      } else {
+          eventToProcess = [latestEvent];
+      }
+    } else {
+        eventToProcess = [latestEvent];
     }
 
+    const eventsToDecrypt = Array.isArray(eventToProcess) ? eventToProcess : [eventToProcess];
     const decryptErrors = [];
     const collectedItems = [];
     const toolkitCache = { current: null };
@@ -2345,19 +2327,18 @@ class WatchHistoryManager {
     };
 
     await ensureSessionDecryptors();
-    const chunkKeys = chunkIdentifiers.length
-      ? chunkIdentifiers
-      : Array.from(latestChunks.keys());
-    for (const identifier of chunkKeys) {
-      const event = latestChunks.get(identifier);
-      if (!event) {
-        continue;
-      }
+
+    // Deduplicate events by ID
+    const uniqueEvents = new Map();
+    for (const ev of eventsToDecrypt) {
+        if (ev && ev.id) uniqueEvents.set(ev.id, ev);
+    }
+
+    for (const event of uniqueEvents.values()) {
       const fallbackPointers = extractPointerItemsFromEvent(event);
       const ciphertext = typeof event.content === "string" ? event.content : "";
       const ciphertextPreview = ciphertext.slice(0, 32);
       const chunkContext = {
-        chunkIdentifier: identifier,
         eventId: event.id ?? null,
       };
       const availableSchemes = Array.from(decryptorCandidates.keys());
@@ -2430,7 +2411,6 @@ class WatchHistoryManager {
         );
       } else if (isEncryptedChunk) {
         decryptErrors.push({
-          chunkIdentifier: identifier,
           eventId: event.id ?? null,
           attempts: attemptFailures,
         });
@@ -2484,7 +2464,7 @@ class WatchHistoryManager {
     }
     if (decryptErrors.length) {
       devLogger.warn(
-        `[nostr] Failed to decrypt ${decryptErrors.length} watch history chunk(s) for ${actorKey}. Using fallback pointers.`,
+        `[nostr] Failed to decrypt ${decryptErrors.length} watch history event(s) for ${actorKey}. Using fallback pointers.`,
       );
     }
     const mergedItems = collectedItems.length ? collectedItems : pointerPayload.items;
@@ -2505,15 +2485,14 @@ class WatchHistoryManager {
       actor: resolvedActor,
       items: canonicalItems,
       snapshotId,
-      pointerEvent,
-      chunkEvents: Array.from(latestChunks.values()),
+      pointerEvent: latestEvent,
       savedAt: now,
       fingerprint,
       metadata,
     };
     this.cache.set(actorKey, entry);
     this.persistEntry(actorKey, entry);
-    return { pointerEvent, items: canonicalItems, snapshotId };
+    return { pointerEvent: latestEvent, items: canonicalItems, snapshotId };
   }
 
   async resolve(actorInput, options = {}) {
@@ -2592,7 +2571,6 @@ class WatchHistoryManager {
       items: canonicalItems,
       snapshotId: fetchResult.snapshotId || storage.actors?.[actorKey]?.snapshotId || "",
       pointerEvent: fetchResult.pointerEvent || null,
-      chunkEvents: [],
       savedAt: Date.now(),
       fingerprint,
       metadata: sanitizeWatchHistoryMetadata(storage.actors?.[actorKey]?.metadata),
@@ -2701,4 +2679,3 @@ export const watchHistoryHelpers = {
   computeWatchHistoryFingerprintForItems,
   extractPointerItemsFromEvent,
 };
-

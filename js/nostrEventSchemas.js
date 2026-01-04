@@ -377,8 +377,6 @@ const BASE_SCHEMAS = {
     },
     encryptionTag: { name: "encrypted", values: ["nip44_v2", "nip44", "nip04"] },
     monthTagName: "month",
-    headTag: { name: "head", value: "month" },
-    headTagIndex: 2,
     appendTags: DEFAULT_APPEND_TAGS,
     content: {
       format: "encrypted-json",
@@ -1418,14 +1416,12 @@ export function buildWatchHistoryIndexEvent({
   };
 }
 
-export function buildWatchHistoryChunkEvent({
+export function buildWatchHistoryEvent({
   pubkey,
   created_at,
   monthIdentifier,
   snapshotId,
   pointerTags = [],
-  isHead = false,
-  chunkIndex,
   content,
   encryption,
 }) {
@@ -1466,14 +1462,6 @@ export function buildWatchHistoryChunkEvent({
       tags.push(tag.map((value) => (typeof value === "string" ? value : String(value))));
     }
   });
-
-  const shouldMarkHead = isHead === true || chunkIndex === 0;
-  if (shouldMarkHead && schema?.headTag?.name && schema?.headTag?.value) {
-    const insertionIndex = Number.isInteger(schema?.headTagIndex)
-      ? Math.max(0, Math.min(tags.length, schema.headTagIndex))
-      : Math.min(tags.length, 2);
-    tags.splice(insertionIndex, 0, [schema.headTag.name, schema.headTag.value]);
-  }
 
   appendSchemaTags(tags, schema);
 
