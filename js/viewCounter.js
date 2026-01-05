@@ -236,12 +236,6 @@ function restoreCacheSnapshot() {
     if (!payload || payload.version !== 1) {
       return;
     }
-    const savedAt = Number(payload.savedAt) || 0;
-    const now = Date.now();
-    if (!savedAt || now - savedAt > VIEW_COUNT_CACHE_TTL_MS) {
-      localStorage.removeItem(VIEW_COUNTER_STORAGE_KEY);
-      return;
-    }
     const entries = Array.isArray(payload.entries) ? payload.entries : [];
     for (const entry of entries) {
       if (!Array.isArray(entry) || entry.length !== 2) {
