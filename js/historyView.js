@@ -23,7 +23,7 @@ export const WATCH_HISTORY_EMPTY_COPY =
   "Your watch history is empty. Watch some videos to populate this list.";
 
 export const WATCH_HISTORY_DISABLED_COPY =
-  "Watch history sync is unavailable. Connect a NIP-07 extension or log in to enable encrypted syncing.";
+  "Watch history sync is unavailable. Connect a NIP-07 extension or log in to enable syncing.";
 
 const WATCH_HISTORY_PRIVACY_DISMISSED_KEY =
   "bitvid:watch-history:privacy-banner-dismissed";
@@ -1302,10 +1302,10 @@ export function buildHistoryCard({ item, video, profile }) {
   }
   removeButton.setAttribute(
     "aria-label",
-    "Remove this encrypted history entry (sync may take a moment)."
+    "Remove this history entry (sync may take a moment)."
   );
   removeButton.title =
-    "Removes this entry from encrypted history. Relay sync may take a moment.";
+    "Removes this entry from history. Relay sync may take a moment.";
 
   actions.appendChild(playButton);
   actions.appendChild(channelButton);
@@ -1855,7 +1855,7 @@ export function createWatchHistoryRenderer(config = {}) {
       return;
     }
     const message =
-      "Watch history keeps a lean list of event IDs and reloads details from relays or your session on demand. Nothing is published from this view.";
+      "Watch history keeps a lean list of event IDs. Details load on demand from relays when you open this page. Nothing is published from this view.";
     elements.info.textContent = message;
   }
 
@@ -2122,12 +2122,12 @@ export function createWatchHistoryRenderer(config = {}) {
           state.hasMore = false;
           showEmptyState();
           const app = getAppInstance();
-          app?.showSuccess?.("Local watch history cache cleared.");
+          app?.showSuccess?.("Local watch history reset.");
         } catch (error) {
           const message =
             error && typeof error.message === "string"
               ? error.message
-              : "Failed to clear local watch history cache.";
+              : "Failed to reset local watch history.";
           const app = getAppInstance();
           app?.showError?.(message);
         }
