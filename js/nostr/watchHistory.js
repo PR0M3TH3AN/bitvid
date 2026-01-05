@@ -28,7 +28,7 @@ import { devLogger, userLogger } from "../utils/logger.js";
  * relay publishing, fetch/decrypt flows, and exposes a manager factory that is
  * dependency-injected with the nostr client hooks it needs.
  */
-const WATCH_HISTORY_STORAGE_KEY = "bitvid:watch-history:v2";
+const WATCH_HISTORY_STORAGE_KEY = "bitvid:watch-history:v3";
 const WATCH_HISTORY_STORAGE_VERSION = 3;
 const WATCH_HISTORY_REPUBLISH_BASE_DELAY_MS = 2000;
 const WATCH_HISTORY_REPUBLISH_MAX_DELAY_MS = 5 * 60 * 1000;
@@ -1227,8 +1227,8 @@ class WatchHistoryManager {
     }
   }
 
-  cancelRepublish(snapshotId = null) {
-    if (!snapshotId) {
+  cancelRepublish(taskId = null) {
+    if (!taskId) {
       for (const entry of this.republishTimers.values()) {
         if (entry && typeof entry.timer === "number") {
           clearTimeout(entry.timer);
@@ -1241,7 +1241,7 @@ class WatchHistoryManager {
       this.republishTimers.clear();
       return;
     }
-    const key = typeof snapshotId === "string" ? snapshotId.trim() : "";
+    const key = typeof taskId === "string" ? taskId.trim() : "";
     if (!key) {
       return;
     }
@@ -1256,8 +1256,8 @@ class WatchHistoryManager {
     this.republishTimers.delete(key);
   }
 
-  scheduleRepublish(snapshotId, operation, options = {}) {
-    const key = typeof snapshotId === "string" ? snapshotId.trim() : "";
+  scheduleRepublish(taskId, operation, options = {}) {
+    const key = typeof taskId === "string" ? taskId.trim() : "";
     if (!key || typeof operation !== "function") {
       return;
     }
@@ -1288,7 +1288,7 @@ class WatchHistoryManager {
     );
     if (onSchedule) {
       try {
-        onSchedule({ snapshotId: key, attempt: attempt + 1, delay });
+        onSchedule({ taskId: key, attempt: attempt + 1, delay });
       } catch (error) {
         devLogger.warn(
           `[nostr] Failed to notify watch history republish schedule for ${key}:`,
@@ -1476,7 +1476,7 @@ class WatchHistoryManager {
          ok: allOk,
          retryable: anyRetryable,
          results,
-         snapshotId: months.join(','), // Fake snapshot ID representing the batch
+         snapshotId: "", // No single snapshot ID
          // Return last event as pointerEvent? Or null?
          pointerEvent: results.length > 0 ? results[results.length-1].pointerEvent : null
      };
@@ -1567,7 +1567,6 @@ class WatchHistoryManager {
     // They should already be sorted by canonicalize, but ensure it.
     items.sort((a, b) => (b.watchedAt || 0) - (a.watchedAt || 0));
 
-    const snapshotId = monthIdentifier;
     const { payload, included, skipped } = buildWatchHistoryPayload(
       monthIdentifier,
       items,
@@ -1871,7 +1870,6 @@ class WatchHistoryManager {
     const event = buildWatchHistoryEvent({
       pubkey: actorPubkey,
       created_at: createdAtCursor,
-      snapshotId,
       monthIdentifier,
       pointerTags,
       content: ciphertext,
@@ -1922,7 +1920,7 @@ class WatchHistoryManager {
       ok: success,
       retryable: !success,
       actor: actorPubkey,
-      snapshotId,
+      monthIdentifier,
       items: items, // Return items for this month
       pointerEvent: signedEvent,
       publishResults: {
@@ -2716,17 +2714,17 @@ export function persistWatchHistoryEntry(manager, actorInput, entry) {
   return manager.persistEntry(actorInput, entry);
 }
 
-export function cancelWatchHistoryRepublish(manager, snapshotId = null) {
-  return manager.cancelRepublish(snapshotId);
+export function cancelWatchHistoryRepublish(manager, taskId = null) {
+  return manager.cancelRepublish(taskId);
 }
 
 export function scheduleWatchHistoryRepublish(
   manager,
-  snapshotId,
+  taskId,
   operation,
   options = {},
 ) {
-  return manager.scheduleRepublish(snapshotId, operation, options);
+  return manager.scheduleRepublish(taskId, operation, options);
 }
 
 export function getWatchHistoryFingerprint(

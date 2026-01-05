@@ -3377,14 +3377,14 @@ export class NostrClient {
     persistWatchHistoryEntryToManager(this.watchHistory, actorInput, entry);
   }
 
-  cancelWatchHistoryRepublish(snapshotId = null) {
-    cancelWatchHistoryRepublishForManager(this.watchHistory, snapshotId);
+  cancelWatchHistoryRepublish(taskId = null) {
+    cancelWatchHistoryRepublishForManager(this.watchHistory, taskId);
   }
 
-  scheduleWatchHistoryRepublish(snapshotId, operation, options = {}) {
+  scheduleWatchHistoryRepublish(taskId, operation, options = {}) {
     return scheduleWatchHistoryRepublishForManager(
       this.watchHistory,
-      snapshotId,
+      taskId,
       operation,
       options,
     );

@@ -1358,22 +1358,29 @@ export function buildWatchHistoryIndexEvent({
   const schema = getNostrEventSchema(NOTE_TYPES.WATCH_HISTORY_INDEX);
   const tags = [];
   const identifierName = schema?.identifierTag?.name || "d";
+
+  // Prioritize monthIdentifier, fallback to snapshotId (legacy)
   const identifierValue =
     (typeof monthIdentifier === "string" && monthIdentifier.trim()) ||
     (typeof snapshotId === "string" && snapshotId.trim()) ||
     schema?.identifierTag?.value ||
     WATCH_HISTORY_LIST_IDENTIFIER;
+
   if (identifierName && identifierValue) {
     tags.push([identifierName, identifierValue]);
   }
+
+  // Ensure "month" tag is present if we have an identifier (assuming it's a month)
   const monthTagName = schema?.monthTagName || "month";
   if (monthTagName && identifierValue) {
     tags.push([monthTagName, identifierValue]);
   }
+
   const pointerTagName = schema?.monthPointerTagName || schema?.chunkPointerTagName || "a";
   const resolvedMonthAddresses = Array.isArray(monthAddresses) && monthAddresses.length
     ? monthAddresses
     : chunkAddresses;
+
   resolvedMonthAddresses?.forEach((address) => {
     if (typeof address === "string" && address) {
       tags.push([pointerTagName, address]);
@@ -1428,7 +1435,8 @@ export function buildWatchHistoryEvent({
   const schema = getNostrEventSchema(NOTE_TYPES.WATCH_HISTORY_CHUNK);
   const tags = [];
   const identifierName = schema?.identifierTag?.name || "d";
-  // Prioritize monthIdentifier, fallback to snapshotId (which should now be the month), or schema default
+
+  // Prioritize monthIdentifier, fallback to snapshotId
   const identifierValue =
     (typeof monthIdentifier === "string" && monthIdentifier.trim()) ||
     (typeof snapshotId === "string" && snapshotId.trim()) ||
