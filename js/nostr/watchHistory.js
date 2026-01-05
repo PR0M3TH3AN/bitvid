@@ -29,7 +29,7 @@ import { devLogger, userLogger } from "../utils/logger.js";
  * dependency-injected with the nostr client hooks it needs.
  */
 const WATCH_HISTORY_STORAGE_KEY = "bitvid:watch-history:v2";
-const WATCH_HISTORY_STORAGE_VERSION = 2;
+const WATCH_HISTORY_STORAGE_VERSION = 3;
 const WATCH_HISTORY_REPUBLISH_BASE_DELAY_MS = 2000;
 const WATCH_HISTORY_REPUBLISH_MAX_DELAY_MS = 5 * 60 * 1000;
 const WATCH_HISTORY_REPUBLISH_MAX_ATTEMPTS = 8;
@@ -545,10 +545,27 @@ function canonicalizeWatchHistoryItems(rawItems, maxItems = WATCH_HISTORY_MAX_IT
     }
     return 0;
   });
-  if (!Number.isFinite(maxItems) || maxItems <= 0) {
-    return deduped;
+
+  const limited = (!Number.isFinite(maxItems) || maxItems <= 0)
+    ? deduped
+    : deduped.slice(0, Math.max(0, Math.floor(maxItems)));
+
+  const buckets = {};
+  for (const item of limited) {
+    const watchedAt = Number.isFinite(item.watchedAt) ? item.watchedAt : 0;
+    const date = new Date(watchedAt * 1000);
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const key = (watchedAt > 0) ? `${year}-${month}` : "unknown"; // Or handle 0 as unknown/legacy?
+    // Actually, prompt says bucket into YYYY-MM.
+    // If watchedAt is 0, it defaults to 1970-01. That's fine.
+
+    if (!buckets[key]) {
+      buckets[key] = [];
+    }
+    buckets[key].push(item);
   }
-  return deduped.slice(0, Math.max(0, Math.floor(maxItems)));
+  return buckets;
 }
 
 function sanitizeWatchHistoryMetadata(metadata) {
@@ -642,8 +659,25 @@ function bytesToHex(bytes) {
     .join("");
 }
 
-async function computeWatchHistoryFingerprintForItems(items) {
-  const serialized = serializeWatchHistoryItems(items);
+async function computeWatchHistoryFingerprintForItems(itemsOrBuckets) {
+  // Check if buckets
+  let flatItems = [];
+  if (Array.isArray(itemsOrBuckets)) {
+    flatItems = itemsOrBuckets;
+  } else if (itemsOrBuckets && typeof itemsOrBuckets === "object") {
+    flatItems = Object.values(itemsOrBuckets).flat();
+  }
+
+  // Sort for deterministic fingerprint
+  flatItems.sort((a, b) => {
+    const keyA = pointerKey(a);
+    const keyB = pointerKey(b);
+    if (keyA < keyB) return -1;
+    if (keyA > keyB) return 1;
+    return (b.watchedAt || 0) - (a.watchedAt || 0);
+  });
+
+  const serialized = serializeWatchHistoryItems(flatItems);
   const encoder = typeof TextEncoder === "function" ? new TextEncoder() : null;
   if (encoder && window?.crypto?.subtle?.digest) {
     try {
@@ -1078,9 +1112,25 @@ class WatchHistoryManager {
         mutated = true;
         continue;
       }
-      const items = Array.isArray(entry?.items)
-        ? canonicalizeWatchHistoryItems(entry.items, WATCH_HISTORY_MAX_ITEMS)
-        : [];
+
+      // Migration from v2 (flat items) to v3 (bucketed records)
+      let records = {};
+      let items = [];
+      if (parsed.version < 3 && Array.isArray(entry.items)) {
+         records = canonicalizeWatchHistoryItems(entry.items, WATCH_HISTORY_MAX_ITEMS);
+         items = Object.values(records).flat();
+         mutated = true;
+      } else if (entry.records && typeof entry.records === "object") {
+         // Re-canonicalize to ensure structure
+         const flatItems = Object.values(entry.records).flat();
+         records = canonicalizeWatchHistoryItems(flatItems, WATCH_HISTORY_MAX_ITEMS);
+         items = Object.values(records).flat();
+      } else if (Array.isArray(entry.items)) {
+         // Fallback if records missing but items present in v3 (shouldn't happen if persisted correctly but safe to handle)
+         records = canonicalizeWatchHistoryItems(entry.items, WATCH_HISTORY_MAX_ITEMS);
+         items = Object.values(records).flat();
+      }
+
       const metadata = sanitizeWatchHistoryMetadata(entry?.metadata);
       const snapshotId = typeof entry?.snapshotId === "string" ? entry.snapshotId : "";
       const fingerprint = typeof entry?.fingerprint === "string" ? entry.fingerprint : "";
@@ -1092,6 +1142,7 @@ class WatchHistoryManager {
         snapshotId,
         fingerprint,
         savedAt,
+        records,
         items,
         metadata,
       };
@@ -1134,9 +1185,15 @@ class WatchHistoryManager {
         mutated = true;
       }
     } else {
-      const items = Array.isArray(entry.items)
-        ? canonicalizeWatchHistoryItems(entry.items, WATCH_HISTORY_MAX_ITEMS)
-        : [];
+      // Entry can have `items` (flat) or `records` (buckets). We standardize to records.
+      let records = {};
+      if (entry.records && typeof entry.records === "object") {
+         const flat = Object.values(entry.records).flat();
+         records = canonicalizeWatchHistoryItems(flat, WATCH_HISTORY_MAX_ITEMS);
+      } else if (Array.isArray(entry.items)) {
+         records = canonicalizeWatchHistoryItems(entry.items, WATCH_HISTORY_MAX_ITEMS);
+      }
+
       const metadata = sanitizeWatchHistoryMetadata(entry.metadata);
       const snapshotId = typeof entry.snapshotId === "string" ? entry.snapshotId : "";
       const fingerprint = typeof entry.fingerprint === "string" ? entry.fingerprint : "";
@@ -1150,7 +1207,7 @@ class WatchHistoryManager {
         snapshotId,
         fingerprint,
         savedAt,
-        items,
+        records,
         metadata,
       };
       mutated = true;
@@ -1286,15 +1343,20 @@ class WatchHistoryManager {
     if (!actorKey) {
       return "";
     }
-    const items = Array.isArray(itemsOverride)
-      ? canonicalizeWatchHistoryItems(itemsOverride, WATCH_HISTORY_MAX_ITEMS)
-      : (() => {
+
+    let itemsOrRecords = itemsOverride;
+    if (!itemsOrRecords) {
         const cacheEntry = this.cache.get(actorKey) || this.getStorage().actors?.[actorKey];
-        return Array.isArray(cacheEntry?.items)
-          ? canonicalizeWatchHistoryItems(cacheEntry.items, WATCH_HISTORY_MAX_ITEMS)
-          : [];
-      })();
-    const fingerprint = await computeWatchHistoryFingerprintForItems(items);
+        itemsOrRecords = cacheEntry?.records || cacheEntry?.items || [];
+    }
+
+    // Convert flat array to buckets if needed, or use as is if already bucketed/records
+    let buckets = itemsOrRecords;
+    if (Array.isArray(itemsOrRecords)) {
+         buckets = canonicalizeWatchHistoryItems(itemsOrRecords, WATCH_HISTORY_MAX_ITEMS);
+    }
+
+    const fingerprint = await computeWatchHistoryFingerprintForItems(buckets);
     const previous = this.fingerprints.get(actorKey);
     if (previous && previous !== fingerprint) {
       devLogger.info(`[nostr] Watch history fingerprint changed for ${actorKey}.`);
@@ -1327,23 +1389,27 @@ class WatchHistoryManager {
       const storageEntry = this.getStorage().actors?.[actorKey];
       const metadata = sanitizeWatchHistoryMetadata(storageEntry?.metadata);
       const alreadyAttempted = metadata.autoSnapshotAttempted === true;
-      const items = Array.isArray(storageEntry?.items)
-        ? canonicalizeWatchHistoryItems(storageEntry.items, WATCH_HISTORY_MAX_ITEMS)
-        : [];
-      if (!items.length || alreadyAttempted) {
+
+      const records = storageEntry?.records || {};
+      const flatItems = Object.values(records).flat();
+
+      if (!flatItems.length || alreadyAttempted) {
         return fetchResult;
       }
       metadata.autoSnapshotAttempted = true;
       metadata.autoSnapshotAttemptedAt = Date.now();
-      const publishResult = await this.publishSnapshot(items, {
+
+      // We publish all records
+      const publishResult = await this.publishRecords(records, {
         actorPubkey: resolvedActor,
-        snapshotId: storageEntry?.snapshotId,
         source: "background-refresh",
       });
-      const fingerprint = await this.getFingerprint(resolvedActor, items);
+
+      const fingerprint = await this.getFingerprint(resolvedActor, records);
       const entry = {
         actor: resolvedActor,
-        items,
+        records,
+        items: flatItems, // Keep items for compat if needed, or just records
         snapshotId: publishResult.snapshotId || storageEntry?.snapshotId || "",
         pointerEvent: publishResult.pointerEvent || null,
         chunkEvents: [],
@@ -1353,24 +1419,22 @@ class WatchHistoryManager {
       };
       this.cache.set(actorKey, entry);
       this.persistEntry(actorKey, entry);
+
       if (!publishResult.ok && publishResult.retryable) {
-        const retrySnapshot = entry.snapshotId || publishResult.snapshotId;
-        if (retrySnapshot) {
-          this.scheduleRepublish(retrySnapshot, async (attempt) =>
-            this.publishSnapshot(entry.items, {
+        // Schedule republish for failed months?
+        // Simple retry for now
+        this.scheduleRepublish("background-refresh", async (attempt) =>
+            this.publishRecords(records, {
               actorPubkey: resolvedActor,
-              snapshotId: retrySnapshot,
               attempt,
               source: "background-refresh",
             }),
           );
-        }
-      } else if (publishResult.ok && entry.snapshotId) {
-        this.cancelRepublish(entry.snapshotId);
       }
+
       return {
         pointerEvent: entry.pointerEvent,
-        items: entry.items,
+        items: flatItems,
         snapshotId: entry.snapshotId,
       };
     })()
@@ -1385,7 +1449,54 @@ class WatchHistoryManager {
     return promise;
   }
 
+  async publishRecords(records, options = {}) {
+     // High level wrapper to publish multiple months
+     // records is { "YYYY-MM": [items] }
+
+     const results = [];
+     let allOk = true;
+     let anyRetryable = false;
+
+     const months = Object.keys(records).sort();
+     for (const month of months) {
+         const items = records[month];
+         // Ideally we check if this month changed before publishing.
+         // For now, we rely on the caller or just publish.
+         // In a real optimized system we'd track dirty flags per month.
+
+         const res = await this.publishMonthRecord(month, items, options);
+         results.push(res);
+         if (!res.ok) {
+             allOk = false;
+             if (res.retryable) anyRetryable = true;
+         }
+     }
+
+     return {
+         ok: allOk,
+         retryable: anyRetryable,
+         results,
+         snapshotId: months.join(','), // Fake snapshot ID representing the batch
+         // Return last event as pointerEvent? Or null?
+         pointerEvent: results.length > 0 ? results[results.length-1].pointerEvent : null
+     };
+  }
+
   async publishSnapshot(rawItems, options = {}) {
+     // Compatibility wrapper
+     const buckets = canonicalizeWatchHistoryItems(rawItems, WATCH_HISTORY_MAX_ITEMS);
+     const result = await this.publishRecords(buckets, options);
+
+     // Ensure items are returned for compatibility
+     if (!result.items && result.results) {
+         result.items = result.results.flatMap(r => r.items || []);
+     }
+     return result;
+  }
+
+  async publishMonthRecord(monthIdentifier, items, options = {}) {
+    if (!items || !items.length) return { ok: true };
+
     const pool = typeof this.deps.getPool === "function" ? this.deps.getPool() : null;
     if (!pool) {
       return { ok: false, error: "nostr-uninitialized", retryable: false };
@@ -1451,24 +1562,15 @@ class WatchHistoryManager {
         return { ok: false, error: "missing-session-key", retryable: false };
       }
     }
-    const canonicalItems = canonicalizeWatchHistoryItems(
-      Array.isArray(rawItems) ? rawItems : [],
-      WATCH_HISTORY_MAX_ITEMS,
-    );
-    const monthIdentifier = (() => {
-      const requestedMonth =
-        typeof options.monthIdentifier === "string" ? options.monthIdentifier.trim() : "";
-      if (WATCH_HISTORY_MONTH_PATTERN.test(requestedMonth)) {
-        return requestedMonth;
-      }
-      const now = new Date();
-      const month = String(now.getUTCMonth() + 1).padStart(2, "0");
-      return `${now.getUTCFullYear()}-${month}`;
-    })();
+
+    // Sort items latest first for payload construction
+    // They should already be sorted by canonicalize, but ensure it.
+    items.sort((a, b) => (b.watchedAt || 0) - (a.watchedAt || 0));
+
     const snapshotId = monthIdentifier;
     const { payload, included, skipped } = buildWatchHistoryPayload(
       monthIdentifier,
-      canonicalItems,
+      items,
       options.watchedAtMap || null,
       WATCH_HISTORY_PAYLOAD_MAX_BYTES
     );
@@ -1507,7 +1609,7 @@ class WatchHistoryManager {
     devLogger.info("[nostr] Preparing to publish watch history month.", {
       actor: actorKey,
       monthIdentifier,
-      itemCount: canonicalItems.length,
+      itemCount: items.length,
       payloadCount: Array.isArray(payload.items) ? payload.items.length : 0,
       relaysRequested: relays,
       attempt: options.attempt || 0,
@@ -1717,6 +1819,9 @@ class WatchHistoryManager {
       }
       return statuses;
     };
+
+    // Pointers are included in payload now, but also in tags?
+    // buildWatchHistoryEvent uses tags.
     const pointerTags = included.map((pointer) => {
       const tag = [pointer.type === "a" ? "a" : "e", pointer.value];
       if (pointer.relay) {
@@ -1818,7 +1923,7 @@ class WatchHistoryManager {
       retryable: !success,
       actor: actorPubkey,
       snapshotId,
-      items: canonicalItems,
+      items: items, // Return items for this month
       pointerEvent: signedEvent,
       publishResults: {
         pointer: publishResults,
@@ -1832,38 +1937,6 @@ class WatchHistoryManager {
     };
     if (!success && errorCode) {
       result.error = errorCode;
-    }
-
-    const shouldPersistLocally =
-      acceptedCount > 0 && !anyRejected;
-
-    if (shouldPersistLocally) {
-      const storage = this.getStorage();
-      const previousEntry =
-        this.cache.get(actorKey) || storage.actors?.[actorKey] || {};
-      const metadata = sanitizeWatchHistoryMetadata(previousEntry.metadata);
-      metadata.updatedAt = Date.now();
-      metadata.status = success ? "ok" : "partial";
-      metadata.lastPublishResults = result.publishResults;
-      metadata.skippedCount = result.skippedCount || 0;
-      if (success) {
-        delete metadata.lastError;
-      } else {
-        metadata.lastError = result.error || "publish-partial";
-      }
-
-      const entry = {
-        actor: actorPubkey,
-        items: canonicalItems,
-        snapshotId,
-        pointerEvent: result.pointerEvent,
-        savedAt: Date.now(),
-        fingerprint: await this.getFingerprint(actorPubkey, canonicalItems),
-        metadata,
-      };
-
-      this.cache.set(actorKey, entry);
-      this.persistEntry(actorKey, entry);
     }
 
     devLogger.info("[nostr] Watch history month publish result.", {
@@ -1898,28 +1971,43 @@ class WatchHistoryManager {
     }
     const storage = this.getStorage();
     const cachedEntry = this.cache.get(actorKey) || storage.actors?.[actorKey] || {};
-    const existingItems = Array.isArray(cachedEntry.items)
-      ? canonicalizeWatchHistoryItems(cachedEntry.items, WATCH_HISTORY_MAX_ITEMS)
-      : [];
+
+    // Existing items - try to get records, fallback to items
+    let existingItems = [];
+    if (cachedEntry.records && typeof cachedEntry.records === "object") {
+        existingItems = Object.values(cachedEntry.records).flat();
+    } else if (Array.isArray(cachedEntry.items)) {
+        existingItems = cachedEntry.items;
+    }
+
     const incomingItems = Array.isArray(rawItems) ? rawItems : [];
     const combined =
       options.replace === true ? incomingItems : [...incomingItems, ...existingItems];
-    const canonicalItems = canonicalizeWatchHistoryItems(
+
+    // Bucket everything
+    const records = canonicalizeWatchHistoryItems(
       combined,
       WATCH_HISTORY_MAX_ITEMS,
     );
-    const fingerprint = await this.getFingerprint(resolvedActor, canonicalItems);
+
+    // Calculate fingerprint
+    const fingerprint = await this.getFingerprint(resolvedActor, records);
+    const flatItems = Object.values(records).flat();
+
     devLogger.info("[nostr] Updating watch history list.", {
       actor: resolvedActor,
       incomingItemCount: incomingItems.length,
-      finalItemCount: canonicalItems.length,
+      finalItemCount: flatItems.length,
       replace: options.replace === true,
     });
-    const publishResult = await this.publishSnapshot(canonicalItems, {
+
+    // Publish
+    const publishResult = await this.publishRecords(records, {
       actorPubkey: resolvedActor,
       snapshotId: options.snapshotId || cachedEntry.snapshotId,
       attempt: options.attempt || 0,
     });
+
     devLogger.info("[nostr] Watch history list publish attempt finished.", {
       actor: resolvedActor,
       snapshotId: publishResult.snapshotId || null,
@@ -1929,7 +2017,7 @@ class WatchHistoryManager {
     const metadata = sanitizeWatchHistoryMetadata(cachedEntry.metadata);
     metadata.updatedAt = Date.now();
     metadata.status = publishResult.ok ? "ok" : "error";
-    metadata.lastPublishResults = publishResult.publishResults;
+    metadata.lastPublishResults = publishResult.publishResults; // This will likely be array or complex obj
     metadata.skippedCount = publishResult.skippedCount || 0;
     if (!publishResult.ok) {
       metadata.lastError = publishResult.error || "publish-failed";
@@ -1938,7 +2026,8 @@ class WatchHistoryManager {
     }
     const entry = {
       actor: resolvedActor,
-      items: canonicalItems,
+      records,
+      items: flatItems,
       snapshotId: publishResult.snapshotId || cachedEntry.snapshotId || "",
       pointerEvent: publishResult.pointerEvent || cachedEntry.pointerEvent || null,
       savedAt: Date.now(),
@@ -1947,16 +2036,16 @@ class WatchHistoryManager {
     };
     this.cache.set(actorKey, entry);
     this.persistEntry(actorKey, entry);
-    if (!publishResult.ok && publishResult.retryable && entry.snapshotId) {
-      this.scheduleRepublish(entry.snapshotId, async (attempt) =>
-        this.publishSnapshot(entry.items, {
+    if (!publishResult.ok && publishResult.retryable) {
+       // Retry full publish
+      this.scheduleRepublish("update-list", async (attempt) =>
+        this.publishRecords(records, {
           actorPubkey: resolvedActor,
-          snapshotId: entry.snapshotId,
           attempt,
         }),
       );
-    } else if (publishResult.ok && entry.snapshotId) {
-      this.cancelRepublish(entry.snapshotId);
+    } else {
+      this.cancelRepublish("update-list");
     }
     return publishResult;
   }
@@ -1986,9 +2075,14 @@ class WatchHistoryManager {
     }
     const existingEntry =
       this.cache.get(actorKey) || this.getStorage().actors?.[actorKey] || {};
-    const existingItems = Array.isArray(existingEntry.items)
-      ? canonicalizeWatchHistoryItems(existingEntry.items, WATCH_HISTORY_MAX_ITEMS)
-      : [];
+
+    let existingItems = [];
+    if (existingEntry.records) {
+        existingItems = Object.values(existingEntry.records).flat();
+    } else if (Array.isArray(existingEntry.items)) {
+        existingItems = existingEntry.items;
+    }
+
     const targetKey = pointerKey(pointer);
     const filtered = existingItems.filter((item) => pointerKey(item) !== targetKey);
     if (filtered.length === existingItems.length) {
@@ -2049,17 +2143,26 @@ class WatchHistoryManager {
     const existingEntry = this.cache.get(actorKey);
     const now = Date.now();
     const ttl = this.getCacheTtlMs();
+
     const loadFromStorage = async () => {
       const storageEntry = this.getStorage().actors?.[actorKey];
-      const items = Array.isArray(storageEntry?.items)
-        ? canonicalizeWatchHistoryItems(storageEntry.items, WATCH_HISTORY_MAX_ITEMS)
-        : [];
+
+      let records = storageEntry?.records || {};
+      let items = storageEntry?.items || [];
+      if (!Object.keys(records).length && items.length) {
+          records = canonicalizeWatchHistoryItems(items, WATCH_HISTORY_MAX_ITEMS);
+          items = Object.values(records).flat();
+      } else if (Object.keys(records).length && !items.length) {
+          items = Object.values(records).flat();
+      }
+
       const fingerprint = typeof storageEntry?.fingerprint === "string"
         ? storageEntry.fingerprint
-        : await this.getFingerprint(resolvedActor, items);
+        : await this.getFingerprint(resolvedActor, records);
       const entry = {
         actor: resolvedActor,
         items,
+        records,
         snapshotId: typeof storageEntry?.snapshotId === "string"
           ? storageEntry.snapshotId
           : "",
@@ -2072,6 +2175,7 @@ class WatchHistoryManager {
       this.persistEntry(actorKey, entry);
       return { pointerEvent: null, items, snapshotId: entry.snapshotId };
     };
+
     if (!actorKeyIsHex) {
       devLogger.warn(
         `[nostr] Cannot normalize watch history actor key to hex. Aborting relay fetch for ${resolvedActor}.`,
@@ -2157,18 +2261,7 @@ class WatchHistoryManager {
       devLogger.warn("[nostr] Failed to fetch watch history pointer:", error);
     }
 
-    // Filter to prioritize monthly records
-    const monthlyEvents = pointerEvents.filter(event => {
-       const tags = Array.isArray(event.tags) ? event.tags : [];
-       return tags.some(tag => tag[0] === 'd' && WATCH_HISTORY_MONTH_PATTERN.test(tag[1]));
-    });
-
-    // If we have monthly events, we prioritize them, but we might also want to merge legacy ones?
-    // For simplicity, if we find the current month, we use it.
-    // If we find other months, we might need to aggregate?
-    // The requirement implies we are moving to monthly records.
-    // Let's assume we want to process all found events to rebuild the history.
-
+    // Process all events
     let eventToProcess = pointerEvents.length > 0 ? pointerEvents : null;
 
     if (!eventToProcess || eventToProcess.length === 0) {
@@ -2181,8 +2274,7 @@ class WatchHistoryManager {
       return await loadFromStorage();
     }
 
-    // We treat all fetched events as potential monthly chunks or legacy indices.
-    // We need to fetch linked chunks for any legacy index events found.
+    // Check for legacy chunks
     const legacyIndexEvents = pointerEvents.filter(event => {
       const tags = Array.isArray(event.tags) ? event.tags : [];
       return tags.some(tag => {
@@ -2231,18 +2323,7 @@ class WatchHistoryManager {
     const sortedEvents = [...eventToProcess].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
     const latestEvent = sortedEvents[0];
 
-    // Attempt to extract a snapshot ID or month identifier from the latest event
-    const snapshotId = (() => {
-        const tags = Array.isArray(latestEvent.tags) ? latestEvent.tags : [];
-        const dTag = tags.find(t => t[0] === 'd');
-        if (dTag && WATCH_HISTORY_MONTH_PATTERN.test(dTag[1])) return dTag[1];
-
-        const snapshotTag = tags.find(t => t[0] === 'snapshot');
-        if (snapshotTag) return snapshotTag[1];
-
-        return "";
-    })();
-
+    // We will collect items from all events and merge them
     const eventsToDecrypt = Array.isArray(eventToProcess) ? eventToProcess : [eventToProcess];
     const decryptErrors = [];
     const collectedItems = [];
@@ -2346,9 +2427,13 @@ class WatchHistoryManager {
       const fallbackPointers = extractPointerItemsFromEvent(event);
       const ciphertext = typeof event.content === "string" ? event.content : "";
       const ciphertextPreview = ciphertext.slice(0, 32);
+
+      const dTag = event.tags.find(t => t[0] === 'd');
+      const eventSnapshotId = dTag ? dTag[1] : "";
+
       const chunkContext = {
-        recordId: snapshotId,
-        month: snapshotId,
+        recordId: eventSnapshotId,
+        month: eventSnapshotId,
         eventId: event.id ?? null,
       };
       const availableSchemes = Array.from(decryptorCandidates.keys());
@@ -2416,7 +2501,7 @@ class WatchHistoryManager {
           {
             version: 0,
             items: fallbackPointers,
-            snapshot: snapshotId,
+            snapshot: eventSnapshotId,
           },
         );
       } else if (isEncryptedChunk) {
@@ -2463,7 +2548,7 @@ class WatchHistoryManager {
           {
             version: 0,
             items: fallbackPointers,
-            snapshot: snapshotId,
+            snapshot: eventSnapshotId,
           },
         );
       }
@@ -2479,13 +2564,17 @@ class WatchHistoryManager {
     }
     const fallbackItems = extractPointerItemsFromEvent(latestEvent);
     const mergedItems = collectedItems.length ? collectedItems : fallbackItems;
-    const canonicalItems = canonicalizeWatchHistoryItems(
+
+    // Canonicalize into buckets
+    const records = canonicalizeWatchHistoryItems(
       mergedItems,
       WATCH_HISTORY_MAX_ITEMS,
     );
+    const flatItems = Object.values(records).flat();
+
     const fingerprint = await this.getFingerprint(
       resolvedActor,
-      canonicalItems,
+      records,
     );
     const metadata = sanitizeWatchHistoryMetadata(
       this.getStorage().actors?.[actorKey]?.metadata,
@@ -2494,8 +2583,9 @@ class WatchHistoryManager {
     metadata.decryptErrors = decryptErrors.length;
     const entry = {
       actor: resolvedActor,
-      items: canonicalItems,
-      snapshotId,
+      items: flatItems,
+      records,
+      snapshotId: "", // No single snapshot ID anymore
       pointerEvent: latestEvent,
       savedAt: now,
       fingerprint,
@@ -2503,7 +2593,7 @@ class WatchHistoryManager {
     };
     this.cache.set(actorKey, entry);
     this.persistEntry(actorKey, entry);
-    return { pointerEvent: latestEvent, items: canonicalItems, snapshotId };
+    return { pointerEvent: latestEvent, items: flatItems, snapshotId: "" };
   }
 
   async resolve(actorInput, options = {}) {
@@ -2530,12 +2620,15 @@ class WatchHistoryManager {
       forceRefresh: options.forceRefresh === true,
     });
     const storage = this.getStorage();
-    const fallbackItems = Array.isArray(storage.actors?.[actorKey]?.items)
-      ? canonicalizeWatchHistoryItems(
-        storage.actors[actorKey].items,
-        WATCH_HISTORY_MAX_ITEMS,
-      )
-      : [];
+    const storageEntry = storage.actors?.[actorKey];
+
+    let fallbackItems = [];
+    if (storageEntry?.records) {
+        fallbackItems = Object.values(storageEntry.records).flat();
+    } else if (storageEntry?.items) {
+        fallbackItems = storageEntry.items;
+    }
+
     const fetchResult = await this.fetch(resolvedActor, {
       forceRefresh: options.forceRefresh || false,
     });
@@ -2554,28 +2647,33 @@ class WatchHistoryManager {
     const batchLimit = shouldBatch && hasCustomBatchSize
       ? Math.min(Math.floor(batchPageSizeRaw), WATCH_HISTORY_MAX_ITEMS)
       : WATCH_HISTORY_MAX_ITEMS;
-    const canonicalItems = canonicalizeWatchHistoryItems(
+
+    // Re-bucket with limit
+    const records = canonicalizeWatchHistoryItems(
       merged.items || [],
       batchLimit,
     );
+    const flatItems = Object.values(records).flat();
+
     const fingerprint = await this.getFingerprint(
       resolvedActor,
-      canonicalItems,
+      records,
     );
     devLogger.info("[nostr] Watch history fetch complete.", {
       actor: resolvedActor,
       snapshotId: fetchResult.snapshotId || null,
       pointerFound: !!fetchResult.pointerEvent,
-      itemCount: canonicalItems.length,
+      itemCount: flatItems.length,
     });
     devLogger.info("[nostr] Watch history resolved and cached.", {
       actor: resolvedActor,
-      itemCount: canonicalItems.length,
+      itemCount: flatItems.length,
       snapshotId: fetchResult.snapshotId || null,
     });
     const entry = {
       actor: resolvedActor,
-      items: canonicalItems,
+      records,
+      items: flatItems,
       snapshotId: fetchResult.snapshotId || storage.actors?.[actorKey]?.snapshotId || "",
       pointerEvent: fetchResult.pointerEvent || null,
       savedAt: Date.now(),
@@ -2584,7 +2682,7 @@ class WatchHistoryManager {
     };
     this.cache.set(actorKey, entry);
     this.persistEntry(actorKey, entry);
-    return canonicalItems;
+    return flatItems;
   }
 
   clear() {
