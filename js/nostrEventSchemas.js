@@ -357,13 +357,12 @@ const BASE_SCHEMAS = {
     identifierTag: {
       name: "d",
     },
-    encryptionTag: { name: "encrypted", values: ["nip44_v2", "nip44", "nip04"] },
     monthTagName: "month",
     appendTags: DEFAULT_APPEND_TAGS,
     content: {
-      format: "encrypted-json",
+      format: "json",
       description:
-        "Encrypted JSON payload containing a month's watched event identifiers with optional watchedAt metadata.",
+        "JSON payload containing a month's watched event identifiers with optional watchedAt metadata.",
     },
   },
   [NOTE_TYPES.SUBSCRIPTION_LIST]: {
@@ -1330,41 +1329,19 @@ export function buildWatchHistoryEvent({
   pubkey,
   created_at,
   monthIdentifier,
-  snapshotId,
   pointerTags = [],
   content,
-  encryption,
 }) {
   const schema = getNostrEventSchema(NOTE_TYPES.WATCH_HISTORY);
   const tags = [];
   const identifierName = schema?.identifierTag?.name || "d";
 
-  // Prioritize monthIdentifier, fallback to snapshotId (for legacy compat in signature)
   const identifierValue =
     (typeof monthIdentifier === "string" && monthIdentifier.trim()) ||
-    (typeof snapshotId === "string" && snapshotId.trim()) ||
     schema?.identifierTag?.value;
 
   if (identifierName && identifierValue) {
     tags.push([identifierName, identifierValue]);
-  }
-  const encryptionTagName = schema?.encryptionTag?.name;
-  const normalizedOptions = Array.isArray(schema?.encryptionTag?.values)
-    ? schema.encryptionTag.values
-        .map((value) => (typeof value === "string" ? value.trim() : ""))
-        .filter(Boolean)
-    : [];
-  const normalizedRequested = typeof encryption === "string" ? encryption.trim() : "";
-  let resolvedEncryptionTag = "";
-  if (normalizedRequested) {
-    resolvedEncryptionTag = normalizedRequested;
-  } else if (typeof schema?.encryptionTag?.value === "string") {
-    resolvedEncryptionTag = schema.encryptionTag.value;
-  } else if (normalizedOptions.length) {
-    [resolvedEncryptionTag] = normalizedOptions;
-  }
-  if (encryptionTagName && resolvedEncryptionTag) {
-    tags.push([encryptionTagName, resolvedEncryptionTag]);
   }
   const monthTagName = schema?.monthTagName || "month";
   if (monthTagName && identifierValue) {
@@ -1381,7 +1358,7 @@ export function buildWatchHistoryEvent({
   return {
     kind: schema?.kind ?? WATCH_HISTORY_KIND,
     pubkey,
-    created_at,
+    created_at: Number.isFinite(created_at) ? created_at : Math.floor(Date.now() / 1000),
     tags,
     content: typeof content === "string" ? content : String(content ?? ""),
   };

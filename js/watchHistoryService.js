@@ -650,14 +650,13 @@ function scheduleRepublishForQueue(actorKey) {
         latestItems,
         {
           actorPubkey: actorKey,
-          snapshotId,
+          snapshotId, // kept for signature compatibility but unused
           attempt,
           source: `${queue.lastSnapshotReason || "session"}-retry`,
         }
       );
-      if (publishResult?.snapshotId) {
-        queue.pendingSnapshotId = publishResult.snapshotId;
-      }
+      // snapshotId is no longer single-valued, so we don't update pendingSnapshotId with it
+
       if (publishResult?.ok) {
         queue.pendingSnapshotId = null;
         queue.republishScheduled = false;
@@ -670,8 +669,8 @@ function scheduleRepublishForQueue(actorKey) {
         persistQueueState();
         notifyQueueChange(actorKey);
       } else if (!publishResult?.retryable) {
-        queue.pendingSnapshotId =
-          publishResult?.snapshotId || queue.pendingSnapshotId;
+        // If not retryable, we clear the pending state
+        queue.pendingSnapshotId = null;
         queue.republishScheduled = false;
         persistQueueState();
       }
@@ -975,15 +974,15 @@ async function snapshot(items, options = {}) {
       actor: actorKey,
       reason,
       success: !!publishResult?.ok,
-      snapshotId: publishResult?.snapshotId || null,
       retryable: !!publishResult?.retryable,
       }
     );
 
     if (!publishResult?.ok) {
-      if (publishResult?.retryable && publishResult?.snapshotId) {
+      if (publishResult?.retryable) {
         if (queue) {
-          queue.pendingSnapshotId = publishResult.snapshotId;
+          // Use a dummy ID or just a flag since we don't track single snapshot IDs anymore
+          queue.pendingSnapshotId = "pending-retry";
           queue.lastSnapshotReason = reason;
           queue.republishScheduled = false;
           persistQueueState();
