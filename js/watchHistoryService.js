@@ -126,7 +126,7 @@ async function ensureWatchHistoryExtensionPermissions(actorKey) {
   }
 
   const message =
-    "Approve your NIP-07 extension to decrypt encrypted watch history.";
+    "Approve your NIP-07 extension to sync watch history.";
   const error = new Error(message);
   error.code = "watch-history-extension-permission-denied";
   error.cause = permissionResult.error;
