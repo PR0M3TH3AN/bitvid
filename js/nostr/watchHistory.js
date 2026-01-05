@@ -300,19 +300,36 @@ function normalizePointersFromPayload(payload) {
   if (!payload || typeof payload !== "object") {
     return normalized;
   }
-  const source = Array.isArray(payload.items) ? payload.items : [];
-  for (const candidate of source) {
+  const watchedAt =
+    payload.watchedAt && typeof payload.watchedAt === "object" ? payload.watchedAt : {};
+
+  const processCandidate = (candidate) => {
     const pointer = normalizePointerInput(candidate);
     if (!pointer) {
-      continue;
+      return;
     }
     const key = pointerKey(pointer);
     if (!key || seen.has(key)) {
-      continue;
+      return;
+    }
+    const mapValue = watchedAt[pointer.value];
+    if (Number.isFinite(mapValue)) {
+      pointer.watchedAt = Math.max(0, Math.floor(mapValue));
     }
     seen.add(key);
     normalized.push(pointer);
+  };
+
+  const sourceItems = Array.isArray(payload.items) ? payload.items : [];
+  for (const candidate of sourceItems) {
+    processCandidate(candidate);
   }
+
+  const sourceEvents = Array.isArray(payload.events) ? payload.events : [];
+  for (const candidate of sourceEvents) {
+    processCandidate(candidate);
+  }
+
   return normalized;
 }
 
@@ -902,42 +919,39 @@ function mergeWatchHistoryItemsWithFallback(parsed, fallbackItems) {
       snapshot: "",
     };
   }
-  if (Array.isArray(parsed.events) && parsed.events.length) {
-    const fallbackMap = new Map();
-    for (const item of Array.isArray(fallbackItems) ? fallbackItems : []) {
-      const key = pointerKey(item);
-      if (key) {
-        fallbackMap.set(item.value, item);
-      }
+
+  const fallbackMap = new Map();
+  for (const item of Array.isArray(fallbackItems) ? fallbackItems : []) {
+    const key = pointerKey(item);
+    if (key) {
+      fallbackMap.set(item.value, item);
     }
-    const merged = [];
-    const watchedAtMap = parsed.watchedAt || {};
-    for (const id of parsed.events) {
-      const fallback = fallbackMap.get(id);
-      const pointer = fallback ? clonePointerItem(fallback) : normalizePointerInput(id);
-      if (!pointer) {
-        continue;
-      }
-      const watchedAt = watchedAtMap[id];
-      if (Number.isFinite(watchedAt)) {
-        pointer.watchedAt = Math.max(0, Math.floor(watchedAt));
-      }
-      merged.push(pointer);
+  }
+
+  const merged = [];
+  const sourceItems = Array.isArray(parsed.items) ? parsed.items : [];
+
+  for (const item of sourceItems) {
+    const fallback = fallbackMap.get(item.value);
+    const pointer = fallback ? clonePointerItem(fallback) : item;
+
+    if (fallback) {
+      mergePointerDetails(pointer, item);
     }
-    return {
-      version: parsed.version,
-      month: parsed.month,
-      items: merged,
-      snapshot: parsed.snapshot,
-    };
+
+    merged.push(pointer);
   }
-  if (Array.isArray(parsed.items) && parsed.items.length) {
-    return parsed;
+
+  if (merged.length === 0 && Array.isArray(fallbackItems) && fallbackItems.length > 0) {
+    return { ...parsed, items: fallbackItems };
   }
-  if (!Array.isArray(fallbackItems) || fallbackItems.length === 0) {
-    return parsed;
-  }
-  return { ...parsed, items: fallbackItems };
+
+  return {
+    version: parsed.version,
+    month: parsed.month,
+    items: merged,
+    snapshot: parsed.snapshot,
+  };
 }
 
 export function parseWatchHistoryContentWithFallback(content, fallbackItems, fallbackPayload) {
