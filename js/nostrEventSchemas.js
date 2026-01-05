@@ -19,8 +19,7 @@ export const NOTE_TYPES = Object.freeze({
   VIEW_EVENT: "viewEvent",
   VIDEO_REACTION: "videoReaction",
   VIDEO_COMMENT: "videoComment",
-  WATCH_HISTORY_INDEX: "watchHistoryIndex",
-  WATCH_HISTORY_CHUNK: "watchHistoryChunk",
+  WATCH_HISTORY: "watchHistory",
   SUBSCRIPTION_LIST: "subscriptionList",
   USER_BLOCK_LIST: "userBlockList",
   HASHTAG_PREFERENCES: "hashtagPreferences",
@@ -351,26 +350,9 @@ const BASE_SCHEMAS = {
       description: "Plain text comment body sanitized for UTF-8 compatibility.",
     },
   },
-  [NOTE_TYPES.WATCH_HISTORY_INDEX]: {
-    type: NOTE_TYPES.WATCH_HISTORY_INDEX,
-    label: "Watch history month index",
-    kind: WATCH_HISTORY_KIND,
-    identifierTag: {
-      name: "d",
-    },
-    monthTagName: "month",
-    headTag: { name: "head", value: "month" },
-    monthPointerTagName: "a",
-    appendTags: DEFAULT_APPEND_TAGS,
-    content: {
-      format: "json",
-      description:
-        "JSON payload listing watched event identifiers for a given YYYY-MM month; entries may include optional watchedAt metadata.",
-    },
-  },
-  [NOTE_TYPES.WATCH_HISTORY_CHUNK]: {
-    type: NOTE_TYPES.WATCH_HISTORY_CHUNK,
-    label: "Watch history monthly payload",
+  [NOTE_TYPES.WATCH_HISTORY]: {
+    type: NOTE_TYPES.WATCH_HISTORY,
+    label: "Watch history month",
     kind: WATCH_HISTORY_KIND,
     identifierTag: {
       name: "d",
@@ -1344,85 +1326,6 @@ export function buildCommentEvent({
   };
 }
 
-export function buildWatchHistoryIndexEvent({
-  pubkey,
-  created_at,
-  monthIdentifier,
-  snapshotId,
-  isHead = false,
-  monthAddresses = [],
-  chunkAddresses = [],
-  additionalTags = [],
-  content,
-}) {
-  const schema = getNostrEventSchema(NOTE_TYPES.WATCH_HISTORY_INDEX);
-  const tags = [];
-  const identifierName = schema?.identifierTag?.name || "d";
-
-  // Prioritize monthIdentifier, fallback to snapshotId (legacy)
-  const identifierValue =
-    (typeof monthIdentifier === "string" && monthIdentifier.trim()) ||
-    (typeof snapshotId === "string" && snapshotId.trim()) ||
-    schema?.identifierTag?.value ||
-    WATCH_HISTORY_LIST_IDENTIFIER;
-
-  if (identifierName && identifierValue) {
-    tags.push([identifierName, identifierValue]);
-  }
-
-  // Ensure "month" tag is present if we have an identifier (assuming it's a month)
-  const monthTagName = schema?.monthTagName || "month";
-  if (monthTagName && identifierValue) {
-    tags.push([monthTagName, identifierValue]);
-  }
-
-  const pointerTagName = schema?.monthPointerTagName || schema?.chunkPointerTagName || "a";
-  const resolvedMonthAddresses = Array.isArray(monthAddresses) && monthAddresses.length
-    ? monthAddresses
-    : chunkAddresses;
-
-  resolvedMonthAddresses?.forEach((address) => {
-    if (typeof address === "string" && address) {
-      tags.push([pointerTagName, address]);
-    }
-  });
-
-  if (isHead && schema?.headTag?.name && schema?.headTag?.value) {
-    tags.unshift([schema.headTag.name, schema.headTag.value]);
-  }
-
-  appendSchemaTags(tags, schema);
-  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
-  if (sanitizedAdditionalTags.length) {
-    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
-  }
-
-  let resolvedContent = content;
-  if (resolvedContent === undefined) {
-    const payload = {
-      month: identifierValue || "",
-      items: [],
-    };
-    if (isHead) {
-      payload.head = true;
-    }
-    resolvedContent = JSON.stringify(payload);
-  } else if (typeof resolvedContent !== "string") {
-    resolvedContent = JSON.stringify(resolvedContent ?? {});
-  }
-
-  return {
-    kind: schema?.kind ?? WATCH_HISTORY_KIND,
-    pubkey,
-    created_at,
-    tags,
-    content:
-      typeof resolvedContent === "string"
-        ? resolvedContent
-        : String(resolvedContent ?? ""),
-  };
-}
-
 export function buildWatchHistoryEvent({
   pubkey,
   created_at,
@@ -1432,11 +1335,11 @@ export function buildWatchHistoryEvent({
   content,
   encryption,
 }) {
-  const schema = getNostrEventSchema(NOTE_TYPES.WATCH_HISTORY_CHUNK);
+  const schema = getNostrEventSchema(NOTE_TYPES.WATCH_HISTORY);
   const tags = [];
   const identifierName = schema?.identifierTag?.name || "d";
 
-  // Prioritize monthIdentifier, fallback to snapshotId
+  // Prioritize monthIdentifier, fallback to snapshotId (for legacy compat in signature)
   const identifierValue =
     (typeof monthIdentifier === "string" && monthIdentifier.trim()) ||
     (typeof snapshotId === "string" && snapshotId.trim()) ||

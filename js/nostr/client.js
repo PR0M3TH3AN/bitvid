@@ -40,7 +40,6 @@ import {
 import {
   buildVideoPostEvent,
   buildRepostEvent,
-  buildWatchHistoryIndexEvent,
   buildWatchHistoryEvent,
   getNostrEventSchema,
   NOTE_TYPES,
