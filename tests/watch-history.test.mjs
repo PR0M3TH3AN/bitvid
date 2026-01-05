@@ -23,10 +23,14 @@ const { nostrClient, setActiveSigner, getActiveSigner, clearActiveSigner } = awa
 const { rememberNostrTools } = await import("../js/nostr/toolkit.js");
 const { normalizeActorKey } = await import("../js/nostr/watchHistory.js");
 const { watchHistoryService } = await import("../js/watchHistoryService.js");
-const { buildHistoryCard } = await import("../js/historyView.js");
+const { buildHistoryCard, createWatchHistoryRenderer } = await import("../js/historyView.js");
 const { getApplication, setApplication } = await import(
   "../js/applicationContext.js"
 );
+const { createWatchHistoryFeedDefinition } = await import(
+  "../js/feedEngine/watchHistoryFeed.js"
+);
+const { createFeedEngine } = await import("../js/feedEngine/engine.js");
 
 if (typeof globalThis.window === "undefined") {
   globalThis.window = {};
@@ -2514,6 +2518,102 @@ async function testWatchHistoryAppLoginFallback() {
   }
 }
 
+async function testWatchHistoryFeedHydration() {
+  console.log("Running watch history feed hydration test...");
+
+  poolHarness.reset();
+  watchHistoryService.resetProgress();
+
+  const actor = "feed-hydration-actor";
+  const videoId = "hydration-video-id";
+  const videoTitle = "Hydrated Video Title";
+  const videoEvent = {
+    id: videoId,
+    kind: 30078,
+    pubkey: "video-author",
+    created_at: Math.floor(Date.now() / 1000) - 100,
+    tags: [["d", "hydration-d-tag"], ["t", "video"]],
+    content: JSON.stringify({
+      title: videoTitle,
+      videoRootId: "root-id",
+      version: 2
+    })
+  };
+
+  const originalPoolList = nostrClient.pool.list;
+  const originalApp = getApplication();
+  const originalPubkey = nostrClient.pubkey;
+
+  try {
+    nostrClient.pubkey = actor;
+    const engine = createFeedEngine();
+    engine.registerFeed("watch-history", createWatchHistoryFeedDefinition({ service: watchHistoryService }));
+
+    setApplication({
+      feedEngine: { run: (name, opts) => engine.runFeed(name, opts) },
+      isAuthorBlocked: () => false,
+      getHashtagPreferences: () => ({ interests: [], disinterests: [] })
+    });
+
+    // Mock pool.list to return the video event when requested by ID
+    nostrClient.pool.list = async (relays, filters) => {
+      const results = [];
+      for (const filter of filters) {
+        if (filter.ids && filter.ids.includes(videoId)) {
+          results.push(videoEvent);
+        }
+
+        if (filter.kinds && filter.kinds.includes(WATCH_HISTORY_KIND)) {
+           results.push({
+               id: "history-event-id",
+               kind: WATCH_HISTORY_KIND,
+               pubkey: actor,
+               created_at: Math.floor(Date.now() / 1000),
+               tags: [["d", "2023-11"]],
+               content: JSON.stringify({
+                   version: 2,
+                   events: [videoId],
+                   watchedAt: { [videoId]: Math.floor(Date.now() / 1000) }
+               })
+           });
+        }
+      }
+      return results;
+    };
+
+    // Simulate renderer fetching via feed engine
+    const renderer = createWatchHistoryRenderer({
+      fetchHistory: async (actorInput, { cursor = 0 } = {}) => {
+        const runtime = {
+          watchHistory: { actor: actorInput, cursor },
+          blacklistedEventIds: new Set(),
+          isAuthorBlocked: () => false
+        };
+        return engine.run("watch-history", { runtime });
+      },
+      getActor: async () => actor
+    });
+
+    await renderer.init({ actor, force: true });
+    const state = renderer.getState();
+
+    assert.equal(state.items.length, 1, "Should have 1 item");
+    const item = state.items[0];
+
+    // Check if hydration worked
+    assert.ok(item.video, "Item should have video object populated");
+    assert.equal(item.video.title, videoTitle, "Video title should be hydrated from relay event");
+    assert.equal(item.video.id, videoId, "Video ID should match");
+
+  } finally {
+    nostrClient.pubkey = originalPubkey;
+    nostrClient.pool.list = originalPoolList;
+    setApplication(originalApp);
+    watchHistoryService.resetProgress();
+  }
+}
+
+await testWatchHistoryFeedHydration();
 await testPublishSnapshotCanonicalizationAndChunking();
 await testPublishSnapshotUsesPlaintext();
 // await testPublishSnapshotFallsBackToNip04WhenNip44Unavailable(); // Obsolete with plaintext
