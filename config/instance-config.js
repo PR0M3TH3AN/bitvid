@@ -21,7 +21,7 @@
  * `false` before deploying to production so that end users receive the stable
  * experience. Downstream modules read this flag via `js/config.js`.
  */
-export const IS_DEV_MODE = false;
+export const IS_DEV_MODE = true;
 
 /**
  * Whether development builds should surface extra verbose diagnostics.
@@ -30,7 +30,7 @@ export const IS_DEV_MODE = false;
  * request failures) visible in the console. Flip it to `false` when you want
  * a quieter dev mode without disabling other development helpers entirely.
  */
-export const IS_VERBOSE_DEV_MODE = false;
+export const IS_VERBOSE_DEV_MODE = true;
 
 /**
  * Whether the current deployment should operate in lockdown mode.
