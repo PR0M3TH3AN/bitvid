@@ -1486,6 +1486,7 @@ class WatchHistoryManager {
       devLogger.warn("[nostr] Unable to build watch history payload for month.", {
         actor: actorKey,
         monthIdentifier,
+        recordId: snapshotId,
       });
       return { ok: false, error: "invalid-month", retryable: false };
     }
@@ -1516,7 +1517,7 @@ class WatchHistoryManager {
     }
     devLogger.info("[nostr] Preparing to publish watch history snapshot.", {
       actor: actorKey,
-      snapshotId,
+      recordId: snapshotId,
       monthIdentifier,
       itemCount: canonicalItems.length,
       payloadCount: Array.isArray(payload.items) ? payload.items.length : 0,
@@ -1619,7 +1620,7 @@ class WatchHistoryManager {
     const tryEncryptWithCandidate = async (candidate, plaintext, context = {}) => {
       const details = {
         actor: actorKey,
-        snapshotId,
+        recordId: snapshotId,
         monthIdentifier,
         payloadSize: plaintext.length,
         scheme: candidate.scheme,
@@ -2401,6 +2402,8 @@ class WatchHistoryManager {
       const ciphertext = typeof event.content === "string" ? event.content : "";
       const ciphertextPreview = ciphertext.slice(0, 32);
       const chunkContext = {
+        recordId: snapshotId,
+        month: snapshotId,
         eventId: event.id ?? null,
       };
       const availableSchemes = Array.from(decryptorCandidates.keys());
