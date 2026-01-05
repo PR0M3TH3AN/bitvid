@@ -370,7 +370,7 @@ const BASE_SCHEMAS = {
   },
   [NOTE_TYPES.WATCH_HISTORY_CHUNK]: {
     type: NOTE_TYPES.WATCH_HISTORY_CHUNK,
-    label: "Watch history month payload",
+    label: "Watch history monthly payload",
     kind: WATCH_HISTORY_KIND,
     identifierTag: {
       name: "d",
