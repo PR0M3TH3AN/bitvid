@@ -72,7 +72,6 @@ export default class WatchHistoryTelemetry {
       ? Math.max(0, viewThresholdSeconds)
       : DEFAULT_VIEW_THRESHOLD_SECONDS;
 
-    this.watchHistoryMetadataEnabled = false;
     this.watchHistoryPreferenceUnsubscribe = null;
     this.playbackTelemetryState = null;
     this.loggedViewPointerKeys = new Set();
@@ -81,17 +80,14 @@ export default class WatchHistoryTelemetry {
   destroy() {
     this.resetPlaybackLoggingState();
     this._clearPreferenceSubscription();
-    this.watchHistoryMetadataEnabled = false;
   }
 
   async initPreferenceSync() {
-    this.watchHistoryMetadataEnabled = false;
     return null;
   }
 
   refreshPreferenceSettings() {
-    this.watchHistoryMetadataEnabled = false;
-    return this.watchHistoryMetadataEnabled;
+    return false;
   }
 
   isMetadataPreferenceEnabled() {
@@ -99,54 +95,11 @@ export default class WatchHistoryTelemetry {
   }
 
   persistMetadataForVideo(video, pointerInfo) {
-    if (
-      !this.watchHistoryMetadataEnabled ||
-      !pointerInfo ||
-      !pointerInfo.key ||
-      typeof this.watchHistoryService?.setLocalMetadata !== "function"
-    ) {
-      return;
-    }
-
-    if (!video || typeof video !== "object") {
-      return;
-    }
-
-    const metadata = {
-      // Persist only sanitized metadata so local history never stores playback
-      // transports or magnet fingerprints.
-      video: sanitizeVideoMetadata(video),
-    };
-
-    try {
-      this.watchHistoryService.setLocalMetadata(pointerInfo.key, metadata);
-    } catch (error) {
-      devLogger.warn(
-        "[watchHistoryTelemetry] Failed to persist local metadata for pointer:",
-        pointerInfo.key,
-        error,
-      );
-    }
+    // Deprecated
   }
 
   dropMetadata(pointerKey) {
-    if (!pointerKey || typeof pointerKey !== "string") {
-      return;
-    }
-
-    if (typeof this.watchHistoryService?.removeLocalMetadata !== "function") {
-      return;
-    }
-
-    try {
-      this.watchHistoryService.removeLocalMetadata(pointerKey);
-    } catch (error) {
-      devLogger.warn(
-        "[watchHistoryTelemetry] Failed to remove cached metadata for pointer:",
-        pointerKey,
-        error,
-      );
-    }
+    // Deprecated
   }
 
   async handleRemoval(payload = {}) {
@@ -272,58 +225,11 @@ export default class WatchHistoryTelemetry {
         try {
           const canUseWatchHistoryService =
             typeof this.watchHistoryService?.publishView === "function";
-          const resolveWatchActor = () => {
-            const normalizedUser = this.normalizeHexPubkey(
-              this.getActiveUserPubkey(),
-            );
-            if (normalizedUser) {
-              return normalizedUser;
-            }
-
-            const normalizedClient = this.normalizeHexPubkey(
-              this.nostrClient?.pubkey,
-            );
-            if (normalizedClient) {
-              return normalizedClient;
-            }
-
-            const normalizedSession = this.normalizeHexPubkey(
-              this.nostrClient?.sessionActor?.pubkey,
-            );
-            if (normalizedSession) {
-              return normalizedSession;
-            }
-
-            if (normalizeString(this.nostrClient?.pubkey)) {
-              return normalizeString(this.nostrClient.pubkey).toLowerCase();
-            }
-
-            if (normalizeString(this.nostrClient?.sessionActor?.pubkey)) {
-              return normalizeString(
-                this.nostrClient.sessionActor.pubkey,
-              ).toLowerCase();
-            }
-
-            return "";
-          };
-
-          const activeWatchActor = resolveWatchActor();
-          const watchMetadata = {};
-          if (activeWatchActor) {
-            watchMetadata.actor = activeWatchActor;
-          }
-          if (state.videoMetadata) {
-            watchMetadata.video = state.videoMetadata;
-          }
-          const metadataPayload = Object.keys(watchMetadata).length
-            ? watchMetadata
-            : undefined;
 
           if (canUseWatchHistoryService) {
             viewResult = await this.watchHistoryService.publishView(
               thresholdPointer,
               undefined,
-              metadataPayload,
             );
           } else if (typeof this.nostrClient?.recordVideoView === "function") {
             viewResult = await this.nostrClient.recordVideoView(

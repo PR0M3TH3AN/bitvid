@@ -1160,7 +1160,6 @@ async function testWatchHistoryPartialRelayRetry() {
     await watchHistoryService.publishView(
       { type: "e", value: "partial-pointer" },
       Math.floor(Date.now() / 1000),
-      { actor },
     );
 
     const queuedBefore = watchHistoryService.getQueuedPointers(actor);
@@ -1359,7 +1358,6 @@ async function testWatchHistorySnapshotRetainsNewQueueEntriesDuringPublish() {
     await watchHistoryService.publishView(
       { type: "e", value: "inflight-initial" },
       createdAt,
-      { actor },
     );
 
     const queuedBefore = watchHistoryService.getQueuedPointers(actor);
@@ -1401,7 +1399,6 @@ async function testWatchHistorySnapshotRetainsNewQueueEntriesDuringPublish() {
     await watchHistoryService.publishView(
       { type: "e", value: "inflight-new" },
       createdAt,
-      { actor },
     );
 
     const queuedDuring = watchHistoryService.getQueuedPointers(actor);
@@ -1566,19 +1563,16 @@ async function testWatchHistoryServiceIntegration() {
     await watchHistoryService.publishView(
       { type: "e", value: "video-one" },
       viewCreatedAt,
-      { actor, video: pointerVideo },
     );
     viewCreatedAt += 60;
     await watchHistoryService.publishView(
       { type: "e", value: "video-one" },
       viewCreatedAt,
-      { actor, video: pointerVideo },
     );
     viewCreatedAt += 30;
     await watchHistoryService.publishView(
       { type: "a", value: "30023:pub:episode" },
       viewCreatedAt,
-      { actor },
     );
 
     const queued = watchHistoryService.getQueuedPointers(actor);
@@ -1823,7 +1817,6 @@ async function testWatchHistorySnapshotMergesQueuedWithCachedItems() {
     await watchHistoryService.publishView(
       { type: "e", value: "fresh-entry" },
       1_700_000_200,
-      { actor },
     );
 
     const mergeResult = await watchHistoryService.snapshot(null, {
@@ -2366,7 +2359,6 @@ async function testWatchHistoryLocalFallbackWhenDisabled() {
     await watchHistoryService.publishView(
       { type: "e", value: "local-pointer" },
       createdAt,
-      { actor },
     );
 
     const queued = watchHistoryService.getQueuedPointers(actor);

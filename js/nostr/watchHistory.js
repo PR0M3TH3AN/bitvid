@@ -39,42 +39,6 @@ const WATCH_HISTORY_ENCRYPTION_FALLBACK_ORDER = Object.freeze([
   "nip04",
 ]);
 
-function cloneVideoMetadata(video) {
-  if (!video || typeof video !== "object") {
-    return null;
-  }
-  try {
-    return JSON.parse(JSON.stringify(video));
-  } catch (error) {
-    devLogger.warn("[nostr] Failed to clone watch history video metadata", error);
-    return { ...video };
-  }
-}
-
-function cloneProfileMetadata(profile) {
-  if (!profile || typeof profile !== "object") {
-    return null;
-  }
-  try {
-    return JSON.parse(JSON.stringify(profile));
-  } catch (error) {
-    devLogger.warn("[nostr] Failed to clone watch history profile metadata", error);
-    return { ...profile };
-  }
-}
-
-function clonePointerMetadata(metadata) {
-  if (!metadata || typeof metadata !== "object") {
-    return null;
-  }
-  try {
-    return JSON.parse(JSON.stringify(metadata));
-  } catch (error) {
-    devLogger.warn("[nostr] Failed to clone watch history pointer metadata", error);
-    return { ...metadata };
-  }
-}
-
 function mergePointerDetails(target, source) {
   if (!target || typeof target !== "object" || !source || typeof source !== "object") {
     return target;
@@ -95,19 +59,6 @@ function mergePointerDetails(target, source) {
     if (!target.relay || !target.relay.trim()) {
       target.relay = source.relay.trim();
     }
-  }
-  if (!target.metadata && source.metadata && typeof source.metadata === "object") {
-    target.metadata = clonePointerMetadata(source.metadata);
-  } else if (target.metadata && source.metadata) {
-    const merged = clonePointerMetadata(target.metadata) || {};
-    const additional = clonePointerMetadata(source.metadata) || {};
-    target.metadata = { ...merged, ...additional };
-  }
-  if (!target.video && source.video) {
-    target.video = cloneVideoMetadata(source.video);
-  }
-  if (!target.profile && source.profile) {
-    target.profile = cloneProfileMetadata(source.profile);
   }
   return target;
 }
@@ -144,29 +95,6 @@ function clonePointerItem(pointer) {
 
   if (pointer.session === true) {
     cloned.session = true;
-  }
-
-  const metadata = clonePointerMetadata(pointer.metadata);
-  if (metadata) {
-    cloned.metadata = metadata;
-  }
-
-  const video = cloneVideoMetadata(pointer.video) || metadata?.video || null;
-  if (video) {
-    cloned.video = video;
-  }
-
-  const profile = cloneProfileMetadata(pointer.profile) || metadata?.profile || null;
-  if (profile) {
-    cloned.profile = profile;
-  }
-
-  if (pointer.completed === true || metadata?.completed === true) {
-    cloned.completed = true;
-  }
-
-  if (!Number.isFinite(cloned.resumeAt) && Number.isFinite(metadata?.resumeAt)) {
-    cloned.resumeAt = metadata.resumeAt;
   }
 
   return cloned;
@@ -544,15 +472,7 @@ function canonicalizeWatchHistoryItems(rawItems, maxItems = WATCH_HISTORY_MAX_IT
 }
 
 function sanitizeWatchHistoryMetadata(metadata) {
-  if (!metadata || typeof metadata !== "object") {
-    return {};
-  }
-  try {
-    return JSON.parse(JSON.stringify(metadata));
-  } catch (error) {
-    devLogger.warn("[nostr] Failed to sanitize watch history metadata:", error);
-    return {};
-  }
+  return {};
 }
 
 function serializeWatchHistoryItems(items) {
@@ -580,47 +500,14 @@ function serializeWatchHistoryItems(items) {
       if (watchedAt !== undefined) {
         payload.watchedAt = watchedAt;
       }
-      const metadata = clonePointerMetadata(item?.metadata);
-      if (metadata) {
-        payload.metadata = metadata;
-      }
-      const video = metadata?.video || cloneVideoMetadata(item?.video);
-      if (video) {
-        if (payload.metadata) {
-          payload.metadata.video = payload.metadata.video || video;
-        } else {
-          payload.video = video;
-        }
-      }
-      const profile = metadata?.profile || cloneProfileMetadata(item?.profile);
-      if (profile) {
-        if (payload.metadata) {
-          payload.metadata.profile = payload.metadata.profile || profile;
-        } else {
-          payload.profile = profile;
-        }
-      }
       const resumeAt = Number.isFinite(item?.resumeAt)
         ? Math.max(0, Math.floor(item.resumeAt))
         : undefined;
       if (resumeAt !== undefined) {
-        if (payload.metadata) {
-          if (!Number.isFinite(payload.metadata.resumeAt)) {
-            payload.metadata.resumeAt = resumeAt;
-          }
-        } else {
-          payload.resumeAt = resumeAt;
-        }
+        payload.resumeAt = resumeAt;
       }
       if (item?.completed === true) {
-        if (payload.metadata) {
-          payload.metadata.completed = true;
-        } else {
-          payload.completed = true;
-        }
-      }
-      if (payload.metadata && !Object.keys(payload.metadata).length) {
-        delete payload.metadata;
+        payload.completed = true;
       }
       return payload;
     })
@@ -1106,7 +993,6 @@ class WatchHistoryManager {
          items = Object.values(records).flat();
       }
 
-      const metadata = sanitizeWatchHistoryMetadata(entry?.metadata);
       const snapshotId = typeof entry?.snapshotId === "string" ? entry.snapshotId : "";
       const fingerprint = typeof entry?.fingerprint === "string" ? entry.fingerprint : "";
       sanitizedActors[actorKey] = {
@@ -1119,7 +1005,7 @@ class WatchHistoryManager {
         savedAt,
         records,
         items,
-        metadata,
+        metadata: {},
       };
     }
     const storage = {
@@ -1169,7 +1055,6 @@ class WatchHistoryManager {
          records = canonicalizeWatchHistoryItems(entry.items, WATCH_HISTORY_MAX_ITEMS);
       }
 
-      const metadata = sanitizeWatchHistoryMetadata(entry.metadata);
       const snapshotId = typeof entry.snapshotId === "string" ? entry.snapshotId : "";
       const fingerprint = typeof entry.fingerprint === "string" ? entry.fingerprint : "";
       const savedAt = Number.isFinite(entry.savedAt) && entry.savedAt > 0 ? entry.savedAt : now;
@@ -1183,7 +1068,7 @@ class WatchHistoryManager {
         fingerprint,
         savedAt,
         records,
-        metadata,
+        metadata: {},
       };
       mutated = true;
     }
@@ -1362,17 +1247,13 @@ class WatchHistoryManager {
         return fetchResult;
       }
       const storageEntry = this.getStorage().actors?.[actorKey];
-      const metadata = sanitizeWatchHistoryMetadata(storageEntry?.metadata);
-      const alreadyAttempted = metadata.autoSnapshotAttempted === true;
 
       const records = storageEntry?.records || {};
       const flatItems = Object.values(records).flat();
 
-      if (!flatItems.length || alreadyAttempted) {
+      if (!flatItems.length) {
         return fetchResult;
       }
-      metadata.autoSnapshotAttempted = true;
-      metadata.autoSnapshotAttemptedAt = Date.now();
 
       // We publish all records
       const publishResult = await this.publishRecords(records, {
@@ -1390,7 +1271,7 @@ class WatchHistoryManager {
         chunkEvents: [],
         savedAt: Date.now(),
         fingerprint,
-        metadata,
+        metadata: {},
       };
       this.cache.set(actorKey, entry);
       this.persistEntry(actorKey, entry);
@@ -1776,16 +1657,6 @@ class WatchHistoryManager {
       success: !!publishResult.ok,
       retryable: !!publishResult.retryable,
     });
-    const metadata = sanitizeWatchHistoryMetadata(cachedEntry.metadata);
-    metadata.updatedAt = Date.now();
-    metadata.status = publishResult.ok ? "ok" : "error";
-    metadata.lastPublishResults = publishResult.publishResults; // This will likely be array or complex obj
-    metadata.skippedCount = publishResult.skippedCount || 0;
-    if (!publishResult.ok) {
-      metadata.lastError = publishResult.error || "publish-failed";
-    } else {
-      delete metadata.lastError;
-    }
     const entry = {
       actor: resolvedActor,
       records,
@@ -1794,7 +1665,7 @@ class WatchHistoryManager {
       pointerEvent: publishResult.pointerEvent || cachedEntry.pointerEvent || null,
       savedAt: Date.now(),
       fingerprint,
-      metadata,
+      metadata: {},
     };
     this.cache.set(actorKey, entry);
     this.persistEntry(actorKey, entry);
@@ -1938,7 +1809,7 @@ class WatchHistoryManager {
         pointerEvent: null,
         savedAt: now,
         fingerprint,
-        metadata: sanitizeWatchHistoryMetadata(storageEntry?.metadata),
+        metadata: {},
       };
       this.cache.set(actorKey, entry);
       this.persistEntry(actorKey, entry);
@@ -2094,10 +1965,6 @@ class WatchHistoryManager {
       resolvedActor,
       records,
     );
-    const metadata = sanitizeWatchHistoryMetadata(
-      this.getStorage().actors?.[actorKey]?.metadata,
-    );
-    metadata.lastFetchedAt = now;
 
     const entry = {
       actor: resolvedActor,
@@ -2107,7 +1974,7 @@ class WatchHistoryManager {
       pointerEvent: latestEvent,
       savedAt: now,
       fingerprint,
-      metadata,
+      metadata: {},
     };
     this.cache.set(actorKey, entry);
     this.persistEntry(actorKey, entry);
@@ -2196,7 +2063,7 @@ class WatchHistoryManager {
       pointerEvent: fetchResult.pointerEvent || null,
       savedAt: Date.now(),
       fingerprint,
-      metadata: sanitizeWatchHistoryMetadata(storage.actors?.[actorKey]?.metadata),
+      metadata: {},
     };
     this.cache.set(actorKey, entry);
     this.persistEntry(actorKey, entry);
