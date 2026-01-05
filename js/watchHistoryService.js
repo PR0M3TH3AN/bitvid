@@ -698,21 +698,10 @@ async function updateFingerprintCache(actorKey, items) {
   return fingerprint;
 }
 
-async function publishView(pointerInput, createdAt, metadata = {}) {
+async function publishView(pointerInput, createdAt) {
   const recordOptions = {};
   if (Number.isFinite(createdAt)) {
     recordOptions.created_at = createdAt;
-  }
-  if (metadata && typeof metadata === "object") {
-    if (Array.isArray(metadata.additionalTags)) {
-      recordOptions.additionalTags = metadata.additionalTags;
-    }
-    if (Array.isArray(metadata.relays)) {
-      recordOptions.relays = metadata.relays;
-    }
-    if (metadata.content != null) {
-      recordOptions.content = metadata.content;
-    }
   }
 
   const viewResult = await nostrClient.recordVideoView(pointerInput, recordOptions);
@@ -722,7 +711,6 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
     {
     pointer: pointerInput,
     createdAt,
-    hasMetadata: !!metadata,
     }
   );
 
@@ -736,7 +724,6 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
   }
 
   const actorCandidate =
-    (typeof metadata.actor === "string" && metadata.actor.trim()) ||
     viewResult?.event?.pubkey ||
     nostrClient?.pubkey ||
     nostrClient?.sessionActor?.pubkey ||
@@ -775,7 +762,6 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
     viewResult?.event?.created_at
   );
 
-  delete normalizedPointer.metadata;
   delete normalizedPointer.video;
   delete normalizedPointer.profile;
   delete normalizedPointer.resumeAt;

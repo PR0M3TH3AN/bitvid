@@ -83,39 +83,10 @@ async function flushAsyncOperations() {
 }
 
 async function testMetadataPreferenceSync() {
-  let subscribeTopic = null;
-  let subscribeHandler = null;
-  let cleared = false;
-
-  const { telemetry } = createTelemetry({
-    serviceOverrides: {
-      subscribe: (topic, handler) => {
-        subscribeTopic = topic;
-        subscribeHandler = handler;
-        return () => {};
-      },
-      clearLocalMetadata: () => {
-        cleared = true;
-      },
-      getSettings: () => ({ metadata: { storeLocally: true } }),
-    },
-    options: {
-      getActiveUserPubkey: () => null,
-    },
-  });
-
+  const { telemetry } = createTelemetry();
   const unsubscribe = await telemetry.initPreferenceSync();
-  assert.equal(subscribeTopic, "metadata-preference");
-  assert.equal(typeof unsubscribe, "function");
-  assert.equal(telemetry.isMetadataPreferenceEnabled(), true);
-
-  subscribeHandler({ enabled: false });
+  assert.equal(unsubscribe, null, "initPreferenceSync should no-op");
   assert.equal(telemetry.isMetadataPreferenceEnabled(), false);
-  assert.equal(cleared, true);
-
-  subscribeHandler({ enabled: true });
-  assert.equal(telemetry.isMetadataPreferenceEnabled(), true);
-
 }
 
 async function testPreparePlaybackLoggingPublishesOnce() {
@@ -127,8 +98,8 @@ async function testPreparePlaybackLoggingPublishesOnce() {
 
   const { telemetry } = createTelemetry({
     serviceOverrides: {
-      publishView: async (ptr, _relay, metadata) => {
-        publishCalls.push({ ptr, metadata });
+      publishView: async (ptr, _relay) => {
+        publishCalls.push({ ptr });
         return {
           ok: true,
           event: { pubkey: hexPubkey },
@@ -174,7 +145,7 @@ async function testPreparePlaybackLoggingPublishesOnce() {
   );
 }
 
-async function testPreparePlaybackLoggingIncludesVideoMetadata() {
+async function testPreparePlaybackLoggingIgnoresMetadata() {
   const publishCalls = [];
 
   const pointer = { type: "e", value: "event-id" };
@@ -182,8 +153,8 @@ async function testPreparePlaybackLoggingIncludesVideoMetadata() {
 
   const { telemetry } = createTelemetry({
     serviceOverrides: {
-      publishView: async (ptr, _relay, metadata) => {
-        publishCalls.push({ ptr, metadata });
+      publishView: async (ptr, _relay) => {
+        publishCalls.push({ ptr });
         return {
           ok: true,
           event: { pubkey: hexPubkey },
@@ -216,14 +187,7 @@ async function testPreparePlaybackLoggingIncludesVideoMetadata() {
 
   assert.equal(publishCalls.length, 1, "publishView should be invoked once");
   assert.equal(publishCalls[0].ptr, pointer);
-  assert.ok(publishCalls[0].metadata, "metadata payload should exist");
-  assert.deepEqual(publishCalls[0].metadata.video, {
-    id: "evt1",
-    title: "Example Video",
-    thumbnail: "https://example.com/thumb.jpg",
-    pubkey: hexPubkey,
-    created_at: 1_700_000_000,
-  });
+  assert.equal(publishCalls[0].metadata, undefined, "metadata should NOT be passed");
 }
 
 async function testCancelPlaybackLoggingFlushes() {
@@ -254,7 +218,7 @@ async function testCancelPlaybackLoggingFlushes() {
 
 await testMetadataPreferenceSync();
 await testPreparePlaybackLoggingPublishesOnce();
-await testPreparePlaybackLoggingIncludesVideoMetadata();
+await testPreparePlaybackLoggingIgnoresMetadata();
 await testCancelPlaybackLoggingFlushes();
 
 console.log("watch-history-telemetry tests passed");
