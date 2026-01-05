@@ -1428,10 +1428,12 @@ export function buildWatchHistoryEvent({
   const schema = getNostrEventSchema(NOTE_TYPES.WATCH_HISTORY_CHUNK);
   const tags = [];
   const identifierName = schema?.identifierTag?.name || "d";
+  // Prioritize monthIdentifier, fallback to snapshotId (which should now be the month), or schema default
   const identifierValue =
     (typeof monthIdentifier === "string" && monthIdentifier.trim()) ||
     (typeof snapshotId === "string" && snapshotId.trim()) ||
     schema?.identifierTag?.value;
+
   if (identifierName && identifierValue) {
     tags.push([identifierName, identifierValue]);
   }
