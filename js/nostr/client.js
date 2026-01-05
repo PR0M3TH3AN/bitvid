@@ -1420,6 +1420,8 @@ export class NostrClient {
       let generated = null;
       if (typeof tools.generateSecretKey === "function") {
         generated = tools.generateSecretKey();
+      } else if (typeof tools.generatePrivateKey === "function") {
+        generated = tools.generatePrivateKey();
       }
 
       if (generated instanceof Uint8Array) {
@@ -1447,7 +1449,27 @@ export class NostrClient {
       if (!tools || typeof tools.getPublicKey !== "function") {
         throw new Error("Public key derivation is unavailable for remote signing.");
       }
-      publicKey = tools.getPublicKey(privateKey);
+      try {
+        publicKey = tools.getPublicKey(privateKey);
+      } catch (error) {
+        // Retry with bytes if string input failed (likely nostr-tools v2)
+        const hexToBytes =
+          typeof tools.utils?.hexToBytes === "function"
+            ? tools.utils.hexToBytes
+            : (hex) => {
+                if (typeof hex !== "string") return null;
+                const bytes = new Uint8Array(hex.length / 2);
+                for (let i = 0; i < hex.length; i += 2)
+                  bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
+                return bytes;
+              };
+        const bytes = hexToBytes(privateKey);
+        if (bytes) {
+          publicKey = tools.getPublicKey(bytes);
+        } else {
+          throw error;
+        }
+      }
     }
 
     if (!publicKey || !HEX64_REGEX.test(publicKey)) {
@@ -2777,7 +2799,12 @@ export class NostrClient {
 
     let privateKey = "";
     try {
-      if (typeof tools.generatePrivateKey === "function") {
+      if (typeof tools.generateSecretKey === "function") {
+        const secret = tools.generateSecretKey();
+        if (secret instanceof Uint8Array) {
+          privateKey = bytesToHex(secret);
+        }
+      } else if (typeof tools.generatePrivateKey === "function") {
         privateKey = tools.generatePrivateKey();
       } else if (window?.crypto?.getRandomValues) {
         const randomBytes = new Uint8Array(32);
@@ -2804,8 +2831,28 @@ export class NostrClient {
     try {
       pubkey = getPublicKey(normalizedPrivateKey);
     } catch (error) {
-      devLogger.warn("[nostr] Failed to derive session pubkey:", error);
-      return null;
+      // Retry with bytes if string input failed (likely nostr-tools v2)
+      try {
+        const hexToBytes =
+          typeof tools.utils?.hexToBytes === "function"
+            ? tools.utils.hexToBytes
+            : (hex) => {
+                if (typeof hex !== "string") return null;
+                const bytes = new Uint8Array(hex.length / 2);
+                for (let i = 0; i < hex.length; i += 2)
+                  bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
+                return bytes;
+              };
+        const bytes = hexToBytes(normalizedPrivateKey);
+        if (bytes) {
+          pubkey = getPublicKey(bytes);
+        } else {
+          throw error;
+        }
+      } catch (retryError) {
+        devLogger.warn("[nostr] Failed to derive session pubkey:", error);
+        return null;
+      }
     }
 
     const normalizedPubkey =
