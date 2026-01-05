@@ -1129,13 +1129,24 @@ async function testWatchHistoryPartialRelayRetry() {
 
     let attemptIndex = 0;
     let currentAttempt = 0;
-    nostrClient.publishWatchHistorySnapshot = async function publishWithTracking(
+    const trackingWrapper = async function publishWithTracking(
       ...args
     ) {
       attemptIndex += 1;
       currentAttempt = attemptIndex;
+      // We must call the original method because it contains the logic that uses poolHarness
+      // However, we need to ensure we call the method that the service actually uses.
+      // Since service now calls updateWatchHistoryList, we should ideally wrap that.
+      // But updateWatchHistoryList calls publishRecords -> publishMonthRecord.
+      // If we wrap publishWatchHistorySnapshot, it might be bypassed if service calls updateWatchHistoryList directly.
+      // The service code I wrote calls updateWatchHistoryList.
+      // But wait, the previous code called updateWatchHistoryList.
+      // Let's hook into updateWatchHistoryList instead.
       return originalPublishSnapshot.apply(this, args);
     };
+
+    nostrClient.publishWatchHistorySnapshot = trackingWrapper;
+    nostrClient.updateWatchHistoryList = trackingWrapper;
 
     nostrClient.recordVideoView = async () => ({
       ok: true,
@@ -1365,12 +1376,14 @@ async function testWatchHistorySnapshotRetainsNewQueueEntriesDuringPublish() {
       releasePublish = resolve;
     });
 
-    nostrClient.publishWatchHistorySnapshot = async (items, options = {}) => {
+    const publishMock = async (items, options = {}) => {
       publishCalled = true;
       publishItems = Array.isArray(items) ? items.map((item) => ({ ...item })) : [];
       await publishGate;
       return { ok: true, items, snapshotId: "inflight-snapshot" };
     };
+    nostrClient.publishWatchHistorySnapshot = publishMock;
+    nostrClient.updateWatchHistoryList = publishMock;
 
     const snapshotPromise = watchHistoryService.snapshot(null, {
       actor,
@@ -1768,7 +1781,7 @@ async function testWatchHistorySnapshotMergesQueuedWithCachedItems() {
     });
 
     const publishedPayloads = [];
-    nostrClient.publishWatchHistorySnapshot = async (items, options = {}) => {
+    const payloadMock = async (items, options = {}) => {
       const clonedItems = Array.isArray(items)
         ? items.map((entry) => ({ ...entry }))
         : [];
@@ -1783,6 +1796,8 @@ async function testWatchHistorySnapshotMergesQueuedWithCachedItems() {
         publishResults: {},
       };
     };
+    nostrClient.publishWatchHistorySnapshot = payloadMock;
+    nostrClient.updateWatchHistoryList = payloadMock;
 
     nostrClient.getWatchHistoryFingerprint = async (_actor, items = []) =>
       `fingerprint-${Array.isArray(items) ? items.length : 0}-${Date.now()}`;
