@@ -27,8 +27,8 @@ import { devLogger, userLogger } from "../utils/logger.js";
  * relay publishing, fetch/decrypt flows, and exposes a manager factory that is
  * dependency-injected with the nostr client hooks it needs.
  */
-const WATCH_HISTORY_STORAGE_KEY = "bitvid:watch-history:v3";
-const WATCH_HISTORY_STORAGE_VERSION = 3;
+const WATCH_HISTORY_STORAGE_KEY = "bitvid:watch-history:v4";
+const WATCH_HISTORY_STORAGE_VERSION = 4;
 const WATCH_HISTORY_REPUBLISH_BASE_DELAY_MS = 2000;
 const WATCH_HISTORY_REPUBLISH_MAX_DELAY_MS = 5 * 60 * 1000;
 const WATCH_HISTORY_REPUBLISH_MAX_ATTEMPTS = 8;
@@ -414,23 +414,17 @@ function normalizeWatchHistoryPayloadItem(entry, watchedAtMap) {
   };
 }
 
-export function buildWatchHistoryPayload(monthString, events, watchedAtMap, maxBytes) {
+export function buildWatchHistoryPayload(monthString, events, watchedAtMap) {
   const normalizedMonth = typeof monthString === "string" ? monthString.trim() : "";
-  const validMonth = WATCH_HISTORY_MONTH_PATTERN.test(normalizedMonth);
-  const safeMax = Math.max(128, Math.floor(maxBytes || WATCH_HISTORY_PAYLOAD_MAX_BYTES || 0));
+  // We don't enforce MAX_BYTES here as we trust the monthly bucket is reasonable.
+
   const payload = {
-    version: 2,
-    month: normalizedMonth,
     events: [],
     watchedAt: {},
   };
 
-  const skipped = [];
   const included = [];
-  if (!validMonth) {
-    skipped.push(...(Array.isArray(events) ? events.filter(Boolean) : []));
-    return { payload: null, included, skipped };
-  }
+  const skipped = []; // Not used but kept for interface compat if needed
 
   for (const entry of Array.isArray(events) ? events : []) {
     const normalized = normalizeWatchHistoryPayloadItem(entry, watchedAtMap);
@@ -438,26 +432,10 @@ export function buildWatchHistoryPayload(monthString, events, watchedAtMap, maxB
       continue;
     }
 
-    const nextEvents = [...payload.events, normalized.id];
-    const nextWatchedAt = { ...payload.watchedAt };
+    payload.events.push(normalized.id);
     if (Number.isFinite(normalized.watchedAt)) {
-      nextWatchedAt[normalized.id] = normalized.watchedAt;
+      payload.watchedAt[normalized.id] = normalized.watchedAt;
     }
-    const candidate = {
-      version: payload.version,
-      month: payload.month,
-      events: nextEvents,
-      watchedAt: nextWatchedAt,
-    };
-
-    const payloadSize = JSON.stringify(candidate).length;
-    if (payloadSize > safeMax) {
-      skipped.push(normalized.pointer);
-      continue;
-    }
-
-    payload.events = nextEvents;
-    payload.watchedAt = nextWatchedAt;
     included.push(normalized.pointer);
   }
 
@@ -555,9 +533,7 @@ function canonicalizeWatchHistoryItems(rawItems, maxItems = WATCH_HISTORY_MAX_IT
     const date = new Date(watchedAt * 1000);
     const year = date.getUTCFullYear();
     const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-    const key = (watchedAt > 0) ? `${year}-${month}` : "unknown"; // Or handle 0 as unknown/legacy?
-    // Actually, prompt says bucket into YYYY-MM.
-    // If watchedAt is 0, it defaults to 1970-01. That's fine.
+    const key = (watchedAt > 0) ? `${year}-${month}` : "1970-01";
 
     if (!buckets[key]) {
       buckets[key] = [];
@@ -1532,18 +1508,9 @@ class WatchHistoryManager {
       normalizedLogged === actorKey &&
       signer &&
       typeof signer.signEvent === "function";
-    const signerSupportsEncryption =
-      canUseActiveSignerSign &&
-      signer &&
-      (typeof signer.nip04Encrypt === "function" || typeof signer.nip44Encrypt === "function");
+
     const activeSigner = canUseActiveSignerSign ? signer : null;
-    const encryptionSigner = signerSupportsEncryption ? signer : null;
-    if (
-      (canUseActiveSignerSign || signerSupportsEncryption) &&
-      this.deps.shouldRequestExtensionPermissions?.(signer)
-    ) {
-      await this.deps.ensureExtensionPermissions?.(DEFAULT_NIP07_PERMISSION_METHODS);
-    }
+
     let privateKey = "";
     if (!canUseActiveSignerSign) {
       if (!sessionActor || sessionActor.pubkey !== actorKey) {
@@ -1563,28 +1530,14 @@ class WatchHistoryManager {
     }
 
     // Sort items latest first for payload construction
-    // They should already be sorted by canonicalize, but ensure it.
     items.sort((a, b) => (b.watchedAt || 0) - (a.watchedAt || 0));
 
     const { payload, included, skipped } = buildWatchHistoryPayload(
       monthIdentifier,
       items,
-      options.watchedAtMap || null,
-      WATCH_HISTORY_PAYLOAD_MAX_BYTES
+      options.watchedAtMap || null
     );
-    if (!payload) {
-      devLogger.warn("[nostr] Unable to build watch history payload for month.", {
-        actor: actorKey,
-        monthIdentifier,
-      });
-      return { ok: false, error: "invalid-month", retryable: false };
-    }
-    if (skipped.length) {
-      devLogger.warn(
-        `[nostr] Watch history month skipped ${skipped.length} oversize ${skipped.length === 1 ? "entry" : "entries"
-        }.`,
-      );
-    }
+
     const relayCandidates = [];
     if (Array.isArray(options.relays) && options.relays.length) {
       relayCandidates.push(...options.relays);
@@ -1604,170 +1557,19 @@ class WatchHistoryManager {
     if (!relays.length) {
       relays = Array.from(RELAY_URLS);
     }
+
     devLogger.info("[nostr] Preparing to publish watch history month.", {
       actor: actorKey,
       monthIdentifier,
       itemCount: items.length,
-      payloadCount: Array.isArray(payload.items) ? payload.items.length : 0,
+      payloadCount: Array.isArray(payload.events) ? payload.events.length : 0,
       relaysRequested: relays,
       attempt: options.attempt || 0,
       source: options.source || "unknown",
     });
+
     const createdAtBase = Math.max(Math.floor(Date.now() / 1000), this.lastCreatedAt + 1);
-    const toolkitCache = { current: null };
-    const encryptionCandidates = [];
-    const registerEncryptor = (scheme, handler, source) => {
-      if (!scheme || typeof handler !== "function") {
-        return;
-      }
-      encryptionCandidates.push({
-        scheme,
-        handler,
-        source: source || "unknown",
-      });
-    };
 
-    if (encryptionSigner) {
-      if (typeof encryptionSigner.nip44Encrypt === "function") {
-        registerEncryptor(
-          "nip44_v2",
-          (plaintext) => encryptionSigner.nip44Encrypt(actorPubkey, plaintext),
-          "active-signer",
-        );
-        registerEncryptor(
-          "nip44",
-          (plaintext) => encryptionSigner.nip44Encrypt(actorPubkey, plaintext),
-          "active-signer",
-        );
-      }
-      if (typeof encryptionSigner.nip04Encrypt === "function") {
-        registerEncryptor(
-          "nip04",
-          (plaintext) => encryptionSigner.nip04Encrypt(actorPubkey, plaintext),
-          "active-signer",
-        );
-      }
-    }
-
-    const ensureSessionEncryptors = async () => {
-      if (!privateKey) {
-        return;
-      }
-      const tools = await resolveNostrToolkit(this.deps, toolkitCache);
-      if (!tools) {
-        return;
-      }
-      const suite = createNip44CipherSuite(tools, privateKey, actorKey);
-      if (suite?.v2?.encrypt) {
-        registerEncryptor(
-          "nip44_v2",
-          (plaintext) => suite.v2.encrypt(plaintext),
-          "session-nip44_v2",
-        );
-        registerEncryptor(
-          "nip44",
-          (plaintext) => suite.v2.encrypt(plaintext),
-          "session-nip44_v2",
-        );
-      }
-      if (suite?.legacy?.encrypt) {
-        registerEncryptor(
-          "nip44",
-          (plaintext) => suite.legacy.encrypt(plaintext),
-          "session-nip44",
-        );
-      }
-      if (tools?.nip04 && typeof tools.nip04.encrypt === "function") {
-        registerEncryptor(
-          "nip04",
-          (plaintext) => tools.nip04.encrypt(privateKey, actorPubkey, plaintext),
-          "session-nip04",
-        );
-      }
-    };
-
-    await ensureSessionEncryptors();
-
-    if (!encryptionCandidates.length) {
-      devLogger.warn(
-        "[nostr] No encryption strategies available to publish watch history.",
-        {
-          actor: actorKey,
-          snapshotId,
-        },
-      );
-      return { ok: false, error: "encryption-unavailable", retryable: false };
-    }
-
-    const candidateIdentity = (candidate) =>
-      `${candidate.scheme}:${candidate.source || "unknown"}`;
-    const failedEncryptionCandidates = new Set();
-    const encryptionAttemptErrors = [];
-    let selectedEncryptor = null;
-
-    const tryEncryptWithCandidate = async (candidate, plaintext, context = {}) => {
-      const details = {
-        actor: actorKey,
-        monthIdentifier,
-        payloadSize: plaintext.length,
-        scheme: candidate.scheme,
-        source: candidate.source,
-      };
-      try {
-        devLogger.info("[nostr] Attempting to encrypt watch history payload.", details);
-        const encrypted = await candidate.handler(plaintext);
-        if (typeof encrypted !== "string" || !encrypted) {
-          throw new Error("empty-ciphertext");
-        }
-        devLogger.info("[nostr] Encrypted watch history payload.", details);
-        return { ciphertext: encrypted, scheme: candidate.scheme, candidate };
-      } catch (error) {
-        devLogger.warn("[nostr] Failed to encrypt watch history payload with candidate.", {
-          ...details,
-          error: error?.message || error,
-        });
-        failedEncryptionCandidates.add(candidateIdentity(candidate));
-        encryptionAttemptErrors.push({
-          scheme: candidate.scheme,
-          source: candidate.source,
-          error,
-          context: {
-            snapshotId,
-            monthIdentifier,
-          },
-        });
-        return null;
-      }
-    };
-
-    const encryptPayload = async (plaintext, context = {}) => {
-      if (
-        selectedEncryptor &&
-        !failedEncryptionCandidates.has(candidateIdentity(selectedEncryptor))
-      ) {
-        const reuseResult = await tryEncryptWithCandidate(
-          selectedEncryptor,
-          plaintext,
-          context,
-        );
-        if (reuseResult) {
-          return reuseResult;
-        }
-        selectedEncryptor = null;
-      }
-      for (const candidate of encryptionCandidates) {
-        const identity = candidateIdentity(candidate);
-        if (failedEncryptionCandidates.has(identity)) {
-          continue;
-        }
-        const result = await tryEncryptWithCandidate(candidate, plaintext, context);
-        if (result) {
-          selectedEncryptor = candidate;
-          return result;
-        }
-      }
-      throw new Error("encryption-unavailable");
-    };
     const signEvent = async (event) => {
       if (activeSigner) {
         return activeSigner.signEvent(event);
@@ -1775,6 +1577,7 @@ class WatchHistoryManager {
       return this.deps.signEventWithPrivateKey(event, privateKey);
     };
     let createdAtCursor = createdAtBase;
+
     const formatRelayStatus = (results = []) => {
       const normalized = Array.isArray(results) ? results : [];
       const statuses = [];
@@ -1818,8 +1621,6 @@ class WatchHistoryManager {
       return statuses;
     };
 
-    // Pointers are included in payload now, but also in tags?
-    // buildWatchHistoryEvent uses tags.
     const pointerTags = included.map((pointer) => {
       const tag = [pointer.type === "a" ? "a" : "e", pointer.value];
       if (pointer.relay) {
@@ -1827,52 +1628,15 @@ class WatchHistoryManager {
       }
       return tag;
     });
-    devLogger.info(
-      "[nostr] Publishing watch history payload.",
-      {
-        actor: actorKey,
-        monthIdentifier,
-        itemCount: pointerTags.length,
-        relays,
-      },
-    );
+
     const plaintext = JSON.stringify(payload);
-    let ciphertext = "";
-    let encryptionScheme = "";
-    try {
-      const encryptionResult = await encryptPayload(plaintext, {
-        monthIdentifier,
-      });
-      ciphertext = encryptionResult?.ciphertext || "";
-      encryptionScheme = encryptionResult?.scheme || "";
-    } catch (error) {
-      devLogger.warn("[nostr] Failed to encrypt watch history payload:", {
-        actor: actorKey,
-        monthIdentifier,
-        error: error?.message || error,
-        attempts: encryptionAttemptErrors.map((entry) => ({
-          scheme: entry.scheme,
-          source: entry.source,
-          error: entry.error?.message || entry.error,
-        })),
-      });
-      return { ok: false, error: "encryption-failed", retryable: false };
-    }
-    if (!ciphertext) {
-      devLogger.warn("[nostr] Encryption produced an empty payload for watch history.", {
-        actor: actorKey,
-        monthIdentifier,
-        scheme: encryptionScheme || null,
-      });
-      return { ok: false, error: "encryption-failed", retryable: false };
-    }
+
     const event = buildWatchHistoryEvent({
       pubkey: actorPubkey,
       created_at: createdAtCursor,
       monthIdentifier,
       pointerTags,
-      content: ciphertext,
-      encryption: encryptionScheme,
+      content: plaintext,
     });
     createdAtCursor += 1;
     let signedEvent;
@@ -1920,7 +1684,7 @@ class WatchHistoryManager {
       retryable: !success,
       actor: actorPubkey,
       monthIdentifier,
-      items: items, // Return items for this month
+      items: items,
       pointerEvent: signedEvent,
       publishResults: {
         pointer: publishResults,
@@ -2120,19 +1884,26 @@ class WatchHistoryManager {
       return { pointerEvent: null, items: [], snapshotId: "" };
     }
     const actorKeyIsHex = /^[0-9a-f]{64}$/.test(actorKey);
-    const normalizedLogged = normalizeActorKey(
-      typeof this.deps.getActivePubkey === "function" ? this.deps.getActivePubkey() : "",
-    );
-    const signer = this.deps.resolveActiveSigner?.(actorKey) || null;
+
+    const activePubkey = typeof this.deps.getActivePubkey === "function" ? this.deps.getActivePubkey() : "";
+    const normalizedLogged = normalizeActorKey(activePubkey);
+
+    let signer = this.deps.resolveActiveSigner?.(actorKey) || null;
+    if (!signer && activePubkey && normalizedLogged === actorKey) {
+        signer = this.deps.resolveActiveSigner?.(activePubkey);
+    }
+
     const canUseActiveSignerDecrypt =
       normalizedLogged &&
       normalizedLogged === actorKey &&
       signer &&
       (typeof signer.nip04Decrypt === "function" || typeof signer.nip44Decrypt === "function");
     const decryptSigner = canUseActiveSignerDecrypt ? signer : null;
+
     if (decryptSigner && this.deps.shouldRequestExtensionPermissions?.(decryptSigner)) {
       await this.deps.ensureExtensionPermissions?.(DEFAULT_NIP07_PERMISSION_METHODS);
     }
+
     devLogger.info("[nostr] Fetching watch history from relays.", {
       actor: resolvedActor,
       forceRefresh: options.forceRefresh === true,
@@ -2271,294 +2042,43 @@ class WatchHistoryManager {
       return await loadFromStorage();
     }
 
-    // Check for legacy chunks
-    const legacyIndexEvents = pointerEvents.filter(event => {
-      const tags = Array.isArray(event.tags) ? event.tags : [];
-      return tags.some(tag => {
-        if (tag[0] !== 'd') return false;
-        const val = tag[1];
-        return val === WATCH_HISTORY_LIST_IDENTIFIER || WATCH_HISTORY_LEGACY_LIST_IDENTIFIERS.includes(val);
-      });
-    });
-
-    const additionalChunksToFetch = [];
-    for (const legacyEvent of legacyIndexEvents) {
-      const tags = Array.isArray(legacyEvent.tags) ? legacyEvent.tags : [];
-      for (const tag of tags) {
-        if (tag[0] === 'a' && typeof tag[1] === 'string') {
-           // address pointer: kind:pubkey:identifier
-           const parts = tag[1].split(':');
-           if (parts.length >= 3) {
-             const identifier = parts.slice(2).join(':');
-             if (identifier) additionalChunksToFetch.push(identifier);
-           }
-        }
-      }
-    }
-
-    if (additionalChunksToFetch.length > 0) {
-      try {
-          const chunkFilters = [{
-            kinds: [WATCH_HISTORY_KIND],
-            authors: [actorKey],
-            "#d": additionalChunksToFetch,
-            limit: additionalChunksToFetch.length * 2,
-          }];
-          const chunkResults = await pool.list(readRelays, chunkFilters);
-          const fetchedChunks = Array.isArray(chunkResults)
-            ? chunkResults.flat().filter(e => e && typeof e === 'object')
-            : [];
-
-          // Add to our list of events to process
-          eventToProcess = [...eventToProcess, ...fetchedChunks];
-      } catch (error) {
-          devLogger.warn("[nostr] Failed to fetch legacy watch history chunks:", error);
-      }
-    }
-
     // Determine snapshotId from the latest event (prioritizing monthly)
     const sortedEvents = [...eventToProcess].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
     const latestEvent = sortedEvents[0];
 
     // We will collect items from all events and merge them
-    const eventsToDecrypt = Array.isArray(eventToProcess) ? eventToProcess : [eventToProcess];
-    const decryptErrors = [];
+    const eventsToProcess = Array.isArray(eventToProcess) ? eventToProcess : [eventToProcess];
     const collectedItems = [];
-    const toolkitCache = { current: null };
-    const decryptorCandidates = new Map();
-    const registerDecryptor = (scheme, handler, source) => {
-      if (!scheme || typeof handler !== "function") {
-        return;
-      }
-      const existing = decryptorCandidates.get(scheme) || [];
-      existing.push({ handler, source: source || "unknown" });
-      decryptorCandidates.set(scheme, existing);
-    };
-
-    if (decryptSigner) {
-      if (typeof decryptSigner.nip44Decrypt === "function") {
-        registerDecryptor(
-          "nip44_v2",
-          (payload) => decryptSigner.nip44Decrypt(actorKey, payload),
-          "active-signer",
-        );
-        registerDecryptor(
-          "nip44",
-          (payload) => decryptSigner.nip44Decrypt(actorKey, payload),
-          "active-signer",
-        );
-      }
-      if (typeof decryptSigner.nip04Decrypt === "function") {
-        registerDecryptor(
-          "nip04",
-          (payload) => decryptSigner.nip04Decrypt(actorKey, payload),
-          "active-signer",
-        );
-      }
-    }
-
-    const ensureSessionDecryptors = async () => {
-      try {
-        let session = this.deps.getSessionActor?.();
-        if (!session || session.pubkey !== actorKey || !session.privateKey) {
-          const ensured = await this.deps.ensureSessionActor?.();
-          if (normalizeActorKey(ensured) !== actorKey) {
-            throw new Error("session-actor-mismatch");
-          }
-          session = this.deps.getSessionActor?.();
-        }
-        if (!session || session.pubkey !== actorKey) {
-          throw new Error("session-actor-missing");
-        }
-        if (!session.privateKey) {
-          throw new Error("missing-session-key");
-        }
-        const tools = await resolveNostrToolkit(this.deps, toolkitCache);
-        if (!tools) {
-          throw new Error("nostr-tools-missing");
-        }
-        const suite = createNip44CipherSuite(tools, session.privateKey, actorKey);
-        if (suite?.v2?.decrypt) {
-          registerDecryptor(
-            "nip44_v2",
-            async (payload) => suite.v2.decrypt(payload),
-            "session-nip44_v2",
-          );
-          registerDecryptor(
-            "nip44",
-            async (payload) => suite.v2.decrypt(payload),
-            "session-nip44_v2",
-          );
-        }
-        if (suite?.legacy?.decrypt) {
-          registerDecryptor(
-            "nip44",
-            async (payload) => suite.legacy.decrypt(payload),
-            "session-nip44",
-          );
-        }
-        if (tools?.nip04 && typeof tools.nip04.decrypt === "function") {
-          registerDecryptor(
-            "nip04",
-            async (payload) => tools.nip04.decrypt(session.privateKey, actorKey, payload),
-            "session-nip04",
-          );
-        }
-      } catch (error) {
-        devLogger.warn("[nostr] Unable to register session decryptors for watch history.", {
-          actorKey,
-          error: error?.message || error,
-        });
-      }
-    };
-
-    await ensureSessionDecryptors();
 
     // Deduplicate events by ID
     const uniqueEvents = new Map();
-    for (const ev of eventsToDecrypt) {
+    for (const ev of eventsToProcess) {
         if (ev && ev.id) uniqueEvents.set(ev.id, ev);
     }
 
     for (const event of uniqueEvents.values()) {
       const fallbackPointers = extractPointerItemsFromEvent(event);
       const ciphertext = typeof event.content === "string" ? event.content : "";
-      const ciphertextPreview = ciphertext.slice(0, 32);
 
       const dTag = event.tags.find(t => t[0] === 'd');
       const eventSnapshotId = dTag ? dTag[1] : "";
 
-      const chunkContext = {
-        recordId: eventSnapshotId,
-        month: eventSnapshotId,
-        eventId: event.id ?? null,
-      };
-      const availableSchemes = Array.from(decryptorCandidates.keys());
-      const decryptOrder = determineWatchHistoryDecryptionOrder(
-        event,
-        ciphertext,
-        availableSchemes,
-      );
-      let plaintext = null;
-      let usedScheme = "";
-      let usedSource = "";
-      const attemptFailures = [];
-
-      if (decryptOrder.length) {
-        outer: for (const scheme of decryptOrder) {
-          const candidates = decryptorCandidates.get(scheme) || [];
-          for (const candidate of candidates) {
-            const details = {
-              actorKey,
-              ...chunkContext,
-              scheme,
-              source: candidate.source,
-            };
-            try {
-              devLogger.info("[nostr] Attempting to decrypt watch history event.", details);
-              const result = await candidate.handler(ciphertext, chunkContext);
-              if (typeof result !== "string") {
-                throw new Error("invalid-plaintext");
-              }
-              devLogger.info("[nostr] Successfully decrypted watch history event.", details);
-              plaintext = result;
-              usedScheme = scheme;
-              usedSource = candidate.source || "";
-              break outer;
-            } catch (error) {
-              devLogger.warn("[nostr] Failed to decrypt watch history event with candidate.", {
-                ...details,
-                error: error?.message || error,
-              });
-              attemptFailures.push({ scheme, source: candidate.source, error });
-            }
-          }
-        }
-      }
-
-      const encryptionHints = extractWatchHistoryEncryptionHints(event, ciphertext);
-      const isEncryptedChunk =
-        encryptionHints.length > 0 ||
-        (!looksLikeJsonStructure(ciphertext) && Boolean(ciphertext.trim()));
-
-      let payload;
-      if (plaintext !== null) {
-        devLogger.info("[nostr] Decrypted watch history event. Parsing plaintext payload.", {
-          actorKey,
-          ...chunkContext,
-          scheme: usedScheme || null,
-          source: usedSource || null,
-          plaintextPreview: typeof plaintext === "string" ? plaintext.slice(0, 64) : null,
-          expectedPlaintextFormat:
-            "JSON string with { version, items, snapshot }",
-        });
-        payload = parseWatchHistoryContentWithFallback(
-          plaintext,
-          fallbackPointers,
-          {
-            version: 0,
-            items: fallbackPointers,
-            snapshot: eventSnapshotId,
-          },
-        );
-      } else if (isEncryptedChunk) {
-        decryptErrors.push({
-          eventId: event.id ?? null,
-          attempts: attemptFailures,
-        });
-        devLogger.warn(
-          "[nostr] Decrypt failed for watch history event. Falling back to pointer items.",
-          {
-            actorKey,
-            ...chunkContext,
-            attempts: attemptFailures.map((entry) => ({
-              scheme: entry.scheme,
-              source: entry.source,
-              error: entry.error?.message || entry.error,
-            })),
-            ciphertextPreview,
-            fallbackPointerCount: Array.isArray(fallbackPointers)
-              ? fallbackPointers.length
-              : 0,
-            expectedPlaintextFormat:
-              "JSON string with { version, items, snapshot }",
-          },
-        );
-        payload = {
-          version: 0,
-          items: fallbackPointers,
-        };
-      } else {
-        devLogger.info(
-          "[nostr] Watch history event is plaintext. Attempting to parse expected payload format.",
-          {
-            actorKey,
-            ...chunkContext,
-            ciphertextPreview,
-            expectedPlaintextFormat:
-              "JSON string with { version, items, snapshot }",
-          },
-        );
-        payload = parseWatchHistoryContentWithFallback(
+      // Try parsing as plaintext first
+      const payload = parseWatchHistoryContentWithFallback(
           ciphertext,
           fallbackPointers,
           {
             version: 0,
             items: fallbackPointers,
             snapshot: eventSnapshotId,
-          },
-        );
-      }
+          }
+      );
 
       if (Array.isArray(payload?.items)) {
         collectedItems.push(...payload.items);
       }
     }
-    if (decryptErrors.length) {
-      devLogger.warn(
-        `[nostr] Failed to decrypt ${decryptErrors.length} watch history event(s) for ${actorKey}. Using fallback pointers.`,
-      );
-    }
+
     const fallbackItems = extractPointerItemsFromEvent(latestEvent);
     const mergedItems = collectedItems.length ? collectedItems : fallbackItems;
 
@@ -2577,7 +2097,7 @@ class WatchHistoryManager {
       this.getStorage().actors?.[actorKey]?.metadata,
     );
     metadata.lastFetchedAt = now;
-    metadata.decryptErrors = decryptErrors.length;
+
     const entry = {
       actor: resolvedActor,
       items: flatItems,
