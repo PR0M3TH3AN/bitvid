@@ -62,6 +62,10 @@ export function sanitizeProfileMediaUrl(value) {
     return trimmed;
   }
 
+  if (/^images\//i.test(trimmed)) {
+    return trimmed;
+  }
+
   if (!/^https?:\/\//i.test(trimmed)) {
     if (LOCALHOST_PATTERN.test(trimmed)) {
       trimmed = `http://${trimmed}`;
