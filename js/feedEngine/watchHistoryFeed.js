@@ -1,8 +1,10 @@
 // js/feedEngine/watchHistoryFeed.js
 
 import { pointerKey, normalizePointerInput } from "../nostr/watchHistory.js";
+import { convertEventToVideo } from "../nostr/index.js";
 import watchHistoryService from "../watchHistoryService.js";
 import nostrService from "../services/nostrService.js";
+import { nostrClient } from "../nostrClientFacade.js";
 import {
   isWatchHistoryDebugEnabled,
   logWatchHistoryDebug,
@@ -202,6 +204,73 @@ function createWatchHistorySource({ service = watchHistoryService } = {}) {
   };
 }
 
+function createWatchHistoryHydrationStage() {
+  return async function watchHistoryHydrationStage(items = [], context = {}) {
+    const missing = [];
+    const idMap = new Map();
+
+    for (const item of items) {
+      if (item.video) {
+        continue;
+      }
+      const pointer = item.pointer;
+      if (pointer?.type === "e" && pointer.value) {
+        missing.push(pointer.value);
+        if (!idMap.has(pointer.value)) {
+          idMap.set(pointer.value, []);
+        }
+        idMap.get(pointer.value).push(item);
+      }
+    }
+
+    if (!missing.length) {
+      return items;
+    }
+
+    const uniqueIds = Array.from(new Set(missing));
+    const relays =
+      Array.isArray(nostrClient?.relays) && nostrClient.relays.length
+        ? nostrClient.relays
+        : null;
+
+    if (!relays || !nostrClient?.pool) {
+      return items;
+    }
+
+    try {
+      const events = await nostrClient.pool.list(relays, [
+        { ids: uniqueIds },
+      ]);
+
+      for (const event of events) {
+        if (!event || !event.id) {
+          continue;
+        }
+        try {
+          const video = convertEventToVideo(event);
+          if (video && !video.invalid) {
+            const targets = idMap.get(event.id);
+            if (targets) {
+              for (const target of targets) {
+                target.video = video;
+                if (target.metadata) {
+                  target.metadata.video = video;
+                }
+              }
+            }
+          }
+        } catch (err) {
+          debugWarn(`[watchHistoryFeed] Failed to convert event ${event.id}:`, err);
+        }
+      }
+    } catch (error) {
+      debugWarn("[watchHistoryFeed] Hydration fetch failed:", error);
+    }
+
+    return items;
+  };
+}
+
 function createWatchHistoryHydratorStage({ service = watchHistoryService } = {}) {
   return async function watchHistoryHydratorStage(items = [], context = {}) {
     const results = [];
@@ -281,6 +350,7 @@ export function createWatchHistoryFeedDefinition({
     source: createWatchHistorySource({ service }),
     stages: [
       createWatchHistoryHydratorStage({ service }),
+      createWatchHistoryHydrationStage(),
       blacklistStage,
       createWatchHistorySuppressionStage(),
     ],
