@@ -144,6 +144,7 @@ import {
 import ApplicationBootstrap from "./ui/applicationBootstrap.js";
 import VideoModalCommentController from "./ui/videoModalCommentController.js";
 import ModerationActionController from "./services/moderationActionController.js";
+import { bootstrapTrustedSeeds } from "./services/trustBootstrap.js";
 
 const recordVideoViewApi = (...args) => recordVideoView(nostrClient, ...args);
 
@@ -420,6 +421,12 @@ class Application {
       const nostrInitPromise = nostrClient.init();
 
       await Promise.all([modalBootstrapPromise, nostrInitPromise]);
+
+      try {
+        await bootstrapTrustedSeeds();
+      } catch (error) {
+        devLogger.warn("[app.init()] Trusted seed bootstrap failed:", error);
+      }
 
       try {
         initViewCounter({ nostrClient });
