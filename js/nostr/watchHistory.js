@@ -1451,6 +1451,7 @@ class WatchHistoryManager {
          ok: allOk,
          retryable: anyRetryable,
          results,
+         items: results.flatMap(r => r.items || []),
          snapshotId: "", // No single snapshot ID
          // Return last event as pointerEvent? Or null?
          pointerEvent: results.length > 0 ? results[results.length-1].pointerEvent : null

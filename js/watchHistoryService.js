@@ -291,7 +291,6 @@ function getOrCreateQueue(actorKey) {
     queue = {
       items: new Map(),
       throttle: new Map(),
-      pendingSnapshotId: null,
       lastSnapshotReason: null,
       republishScheduled: false,
     };
@@ -382,11 +381,6 @@ function restoreQueueState() {
       });
     }
 
-    if (typeof entry?.pendingSnapshotId === "string" && entry.pendingSnapshotId) {
-      queue.pendingSnapshotId = entry.pendingSnapshotId;
-    } else {
-      queue.pendingSnapshotId = null;
-    }
     if (
       typeof entry?.lastSnapshotReason === "string" &&
       entry.lastSnapshotReason
@@ -396,7 +390,8 @@ function restoreQueueState() {
       queue.lastSnapshotReason = null;
     }
 
-    if (queue.pendingSnapshotId && isFeatureEnabled(actorKey)) {
+    // If there are items in the queue, schedule a sync
+    if (queue.items.size > 0 && isFeatureEnabled(actorKey)) {
       scheduleRepublishForQueue(actorKey);
     }
   }
@@ -423,12 +418,11 @@ function persistQueueState() {
 
   for (const [actorKey, queue] of state.queues.entries()) {
     const items = collectQueueItems(actorKey);
-    if (!items.length && !queue.pendingSnapshotId) {
+    if (!items.length) {
       continue;
     }
     payload.actors[actorKey] = {
       items,
-      pendingSnapshotId: queue.pendingSnapshotId,
       lastSnapshotReason: queue.lastSnapshotReason,
     };
     hasEntries = true;
@@ -547,7 +541,6 @@ function clearQueue(actorKey) {
   }
   queue.items.clear();
   queue.throttle.clear();
-  queue.pendingSnapshotId = null;
   queue.republishScheduled = false;
   persistQueueState();
   notifyQueueChange(actorKey);
@@ -586,11 +579,6 @@ function pruneQueueAfterSnapshot(actorKey, queue, keysToClear, snapshotStart) {
     }
   }
 
-  if (queue.pendingSnapshotId) {
-    queue.pendingSnapshotId = null;
-    mutated = true;
-  }
-
   if (queue.republishScheduled) {
     queue.republishScheduled = false;
     mutated = true;
@@ -626,51 +614,55 @@ function scheduleRepublishForQueue(actorKey) {
     return;
   }
   const queue = state.queues.get(actorKey);
-  if (!queue || !queue.pendingSnapshotId || queue.republishScheduled) {
+  if (!queue || !queue.items.size || queue.republishScheduled) {
     return;
   }
-  const snapshotId = queue.pendingSnapshotId;
+
+  const taskId = `watch-history-sync:${actorKey}`;
   queue.republishScheduled = true;
+
   nostrClient.scheduleWatchHistoryRepublish(
-    snapshotId,
+    taskId,
     async (attempt) => {
       const latestItems = collectQueueItems(actorKey);
       if (!latestItems.length) {
-        queue.pendingSnapshotId = null;
         queue.republishScheduled = false;
         persistQueueState();
         return {
           ok: true,
           skipped: true,
           actor: actorKey,
-          snapshotId,
         };
       }
-      const publishResult = await nostrClient.publishWatchHistorySnapshot(
+
+      const snapshotStartTime = Date.now();
+      const keysToClear = new Set(
+        latestItems
+          .map((pointer) => pointerKey(pointer))
+          .filter((keyValue) => typeof keyValue === "string" && keyValue)
+      );
+
+      const publishResult = await nostrClient.updateWatchHistoryList(
         latestItems,
         {
           actorPubkey: actorKey,
-          snapshotId, // kept for signature compatibility but unused
           attempt,
-          source: `${queue.lastSnapshotReason || "session"}-retry`,
         }
       );
-      // snapshotId is no longer single-valued, so we don't update pendingSnapshotId with it
 
       if (publishResult?.ok) {
-        queue.pendingSnapshotId = null;
-        queue.republishScheduled = false;
-        queue.items.clear();
-        queue.throttle.clear();
+        pruneQueueAfterSnapshot(
+          actorKey,
+          queue,
+          keysToClear,
+          snapshotStartTime
+        );
         await updateFingerprintCache(
           actorKey,
           publishResult.items || latestItems,
         );
-        persistQueueState();
-        notifyQueueChange(actorKey);
       } else if (!publishResult?.retryable) {
-        // If not retryable, we clear the pending state
-        queue.pendingSnapshotId = null;
+        // If not retryable, we clear the scheduled flag to allow new attempts later
         queue.republishScheduled = false;
         persistQueueState();
       }
@@ -680,7 +672,6 @@ function scheduleRepublishForQueue(actorKey) {
       onSchedule: ({ delay }) => {
         emit("republish-scheduled", {
           actor: actorKey,
-          snapshotId,
           delayMs: Number.isFinite(delay) ? delay : null,
         });
       },
@@ -887,6 +878,9 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
         watchedAt: normalizedPointer.watchedAt,
       }
     );
+  } else {
+    // Automatically schedule a republish if enabled
+    scheduleRepublishForQueue(actorKey);
   }
 
   return viewResult;
@@ -960,11 +954,10 @@ async function snapshot(items, options = {}) {
   const run = (async () => {
     const snapshotStartTime = Date.now();
     emit("snapshot-start", { actor: actorKey, reason, items: payloadItems });
-    const publishResult = await nostrClient.publishWatchHistorySnapshot(
+    const publishResult = await nostrClient.updateWatchHistoryList(
       payloadItems,
       {
         actorPubkey: actorKey,
-        source: reason,
       }
     );
 
@@ -981,8 +974,6 @@ async function snapshot(items, options = {}) {
     if (!publishResult?.ok) {
       if (publishResult?.retryable) {
         if (queue) {
-          // Use a dummy ID or just a flag since we don't track single snapshot IDs anymore
-          queue.pendingSnapshotId = "pending-retry";
           queue.lastSnapshotReason = reason;
           queue.republishScheduled = false;
           persistQueueState();
@@ -995,12 +986,13 @@ async function snapshot(items, options = {}) {
       throw error;
     }
 
-    if (!items) {
-      pruneQueueAfterSnapshot(actorKey, queue, queuePayloadKeys, snapshotStartTime);
-    } else if (queue) {
-      queue.pendingSnapshotId = null;
-      queue.republishScheduled = false;
-      persistQueueState();
+    if (publishResult?.ok) {
+      if (!items) {
+        pruneQueueAfterSnapshot(actorKey, queue, queuePayloadKeys, snapshotStartTime);
+      } else if (queue) {
+        queue.republishScheduled = false;
+        persistQueueState();
+      }
     }
 
     await updateFingerprintCache(actorKey, publishResult.items || payloadItems);
