@@ -11,7 +11,6 @@ import {
 } from "../config.js";
 import {
   buildWatchHistoryEvent,
-  buildWatchHistoryIndexEvent,
 } from "../nostrEventSchemas.js";
 import { publishEventToRelays } from "../nostrPublish.js";
 import {
