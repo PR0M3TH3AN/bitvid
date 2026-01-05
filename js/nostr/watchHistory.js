@@ -415,7 +415,7 @@ function normalizeWatchHistoryPayloadItem(entry, watchedAtMap) {
   };
 }
 
-export function buildWatchHistoryPayload(monthString, events, watchedAtMap, maxBytes, snapshotId) {
+export function buildWatchHistoryPayload(monthString, events, watchedAtMap, maxBytes) {
   const normalizedMonth = typeof monthString === "string" ? monthString.trim() : "";
   const validMonth = WATCH_HISTORY_MONTH_PATTERN.test(normalizedMonth);
   const safeMax = Math.max(128, Math.floor(maxBytes || WATCH_HISTORY_PAYLOAD_MAX_BYTES || 0));
@@ -425,10 +425,6 @@ export function buildWatchHistoryPayload(monthString, events, watchedAtMap, maxB
     events: [],
     watchedAt: {},
   };
-
-  if (typeof snapshotId === "string" && snapshotId.trim()) {
-    payload.snapshot = snapshotId.trim();
-  }
 
   const skipped = [];
   const included = [];
@@ -454,10 +450,6 @@ export function buildWatchHistoryPayload(monthString, events, watchedAtMap, maxB
       events: nextEvents,
       watchedAt: nextWatchedAt,
     };
-
-    if (payload.snapshot) {
-      candidate.snapshot = payload.snapshot;
-    }
 
     const payloadSize = JSON.stringify(candidate).length;
     if (payloadSize > safeMax) {
@@ -1473,26 +1465,23 @@ class WatchHistoryManager {
       const month = String(now.getUTCMonth() + 1).padStart(2, "0");
       return `${now.getUTCFullYear()}-${month}`;
     })();
-    const snapshotId =
-      (typeof options.snapshotId === "string" && options.snapshotId.trim()) || monthIdentifier;
+    const snapshotId = monthIdentifier;
     const { payload, included, skipped } = buildWatchHistoryPayload(
       monthIdentifier,
       canonicalItems,
       options.watchedAtMap || null,
-      WATCH_HISTORY_PAYLOAD_MAX_BYTES,
-      snapshotId
+      WATCH_HISTORY_PAYLOAD_MAX_BYTES
     );
     if (!payload) {
       devLogger.warn("[nostr] Unable to build watch history payload for month.", {
         actor: actorKey,
         monthIdentifier,
-        recordId: snapshotId,
       });
       return { ok: false, error: "invalid-month", retryable: false };
     }
     if (skipped.length) {
       devLogger.warn(
-        `[nostr] Watch history snapshot skipped ${skipped.length} oversize ${skipped.length === 1 ? "entry" : "entries"
+        `[nostr] Watch history month skipped ${skipped.length} oversize ${skipped.length === 1 ? "entry" : "entries"
         }.`,
       );
     }
@@ -1515,9 +1504,8 @@ class WatchHistoryManager {
     if (!relays.length) {
       relays = Array.from(RELAY_URLS);
     }
-    devLogger.info("[nostr] Preparing to publish watch history snapshot.", {
+    devLogger.info("[nostr] Preparing to publish watch history month.", {
       actor: actorKey,
-      recordId: snapshotId,
       monthIdentifier,
       itemCount: canonicalItems.length,
       payloadCount: Array.isArray(payload.items) ? payload.items.length : 0,
@@ -1620,7 +1608,6 @@ class WatchHistoryManager {
     const tryEncryptWithCandidate = async (candidate, plaintext, context = {}) => {
       const details = {
         actor: actorKey,
-        recordId: snapshotId,
         monthIdentifier,
         payloadSize: plaintext.length,
         scheme: candidate.scheme,
@@ -1741,7 +1728,6 @@ class WatchHistoryManager {
       "[nostr] Publishing watch history payload.",
       {
         actor: actorKey,
-        snapshotId,
         monthIdentifier,
         itemCount: pointerTags.length,
         relays,
@@ -1752,14 +1738,14 @@ class WatchHistoryManager {
     let encryptionScheme = "";
     try {
       const encryptionResult = await encryptPayload(plaintext, {
-        snapshotId,
+        monthIdentifier,
       });
       ciphertext = encryptionResult?.ciphertext || "";
       encryptionScheme = encryptionResult?.scheme || "";
     } catch (error) {
       devLogger.warn("[nostr] Failed to encrypt watch history payload:", {
         actor: actorKey,
-        snapshotId,
+        monthIdentifier,
         error: error?.message || error,
         attempts: encryptionAttemptErrors.map((entry) => ({
           scheme: entry.scheme,
@@ -1772,7 +1758,7 @@ class WatchHistoryManager {
     if (!ciphertext) {
       devLogger.warn("[nostr] Encryption produced an empty payload for watch history.", {
         actor: actorKey,
-        snapshotId,
+        monthIdentifier,
         scheme: encryptionScheme || null,
       });
       return { ok: false, error: "encryption-failed", retryable: false };
@@ -1880,9 +1866,9 @@ class WatchHistoryManager {
       this.persistEntry(actorKey, entry);
     }
 
-    devLogger.info("[nostr] Watch history snapshot publish result.", {
+    devLogger.info("[nostr] Watch history month publish result.", {
       actor: actorKey,
-      snapshotId,
+      monthIdentifier,
       success,
       partialAcceptance,
       error: result.error || null,
@@ -2132,13 +2118,9 @@ class WatchHistoryManager {
         snapshotId: existingEntry?.snapshotId || "",
       };
     }
-    const identifiers = [
-      WATCH_HISTORY_LIST_IDENTIFIER,
-      ...WATCH_HISTORY_LEGACY_LIST_IDENTIFIERS,
-    ];
     const limitRaw = Number(WATCH_HISTORY_FETCH_EVENT_LIMIT);
     const limit =
-      Number.isFinite(limitRaw) && limitRaw > 0 ? Math.floor(limitRaw) : 20;
+      Number.isFinite(limitRaw) && limitRaw > 0 ? Math.floor(limitRaw) : 50;
     let readRelays = [];
     if (typeof this.deps.getReadRelays === "function") {
       const read = this.deps.getReadRelays();
@@ -2161,7 +2143,7 @@ class WatchHistoryManager {
         {
           kinds: [WATCH_HISTORY_KIND],
           authors: [actorKey],
-          "#d": identifiers,
+          // Fetch all parameterized replaceables of this kind to get history across all months
           limit,
         },
       ];
@@ -2174,22 +2156,22 @@ class WatchHistoryManager {
     } catch (error) {
       devLogger.warn("[nostr] Failed to fetch watch history pointer:", error);
     }
-    const latestEvent = pointerEvents.reduce((latest, current) => {
-      if (!current || typeof current !== "object") {
-        return latest;
-      }
-      const currentCreated = Number.isFinite(current.created_at)
-        ? current.created_at
-        : 0;
-      const latestCreated = Number.isFinite(latest?.created_at)
-        ? latest.created_at
-        : 0;
-      if (currentCreated > latestCreated) {
-        return current;
-      }
-      return latest;
-    }, null);
-    if (!latestEvent) {
+
+    // Filter to prioritize monthly records
+    const monthlyEvents = pointerEvents.filter(event => {
+       const tags = Array.isArray(event.tags) ? event.tags : [];
+       return tags.some(tag => tag[0] === 'd' && WATCH_HISTORY_MONTH_PATTERN.test(tag[1]));
+    });
+
+    // If we have monthly events, we prioritize them, but we might also want to merge legacy ones?
+    // For simplicity, if we find the current month, we use it.
+    // If we find other months, we might need to aggregate?
+    // The requirement implies we are moving to monthly records.
+    // Let's assume we want to process all found events to rebuild the history.
+
+    let eventToProcess = pointerEvents.length > 0 ? pointerEvents : null;
+
+    if (!eventToProcess || eventToProcess.length === 0) {
       devLogger.info(
         "[nostr] No watch history event found on relays. Falling back to storage.",
         {
@@ -2198,105 +2180,68 @@ class WatchHistoryManager {
       );
       return await loadFromStorage();
     }
-    const fallbackItems = extractPointerItemsFromEvent(latestEvent);
-    const pointerPayload = parseWatchHistoryContentWithFallback(
-      latestEvent.content,
-      fallbackItems,
-      {
-        version: 0,
-        items: fallbackItems,
-        snapshot: "",
-      },
-    );
-    const snapshotId = (() => {
-      const tags = Array.isArray(latestEvent.tags) ? latestEvent.tags : [];
+
+    // We treat all fetched events as potential monthly chunks or legacy indices.
+    // We need to fetch linked chunks for any legacy index events found.
+    const legacyIndexEvents = pointerEvents.filter(event => {
+      const tags = Array.isArray(event.tags) ? event.tags : [];
+      return tags.some(tag => {
+        if (tag[0] !== 'd') return false;
+        const val = tag[1];
+        return val === WATCH_HISTORY_LIST_IDENTIFIER || WATCH_HISTORY_LEGACY_LIST_IDENTIFIERS.includes(val);
+      });
+    });
+
+    const additionalChunksToFetch = [];
+    for (const legacyEvent of legacyIndexEvents) {
+      const tags = Array.isArray(legacyEvent.tags) ? legacyEvent.tags : [];
       for (const tag of tags) {
-        if (Array.isArray(tag) && tag[0] === "snapshot" && typeof tag[1] === "string") {
-          return tag[1];
+        if (tag[0] === 'a' && typeof tag[1] === 'string') {
+           // address pointer: kind:pubkey:identifier
+           const parts = tag[1].split(':');
+           if (parts.length >= 3) {
+             const identifier = parts.slice(2).join(':');
+             if (identifier) additionalChunksToFetch.push(identifier);
+           }
         }
       }
-      return pointerPayload.snapshot || "";
-    })();
+    }
 
-    const isLegacyIndexEvent = (() => {
-      const tags = Array.isArray(latestEvent.tags) ? latestEvent.tags : [];
-      for (const tag of tags) {
-        if (Array.isArray(tag) && tag[0] === "d" && typeof tag[1] === "string") {
-          const value = tag[1];
-          if (
-            value === WATCH_HISTORY_LIST_IDENTIFIER ||
-            WATCH_HISTORY_LEGACY_LIST_IDENTIFIERS.includes(value)
-          ) {
-            return true;
-          }
-        }
-      }
-      return false;
-    })();
-
-    let eventToProcess = latestEvent;
-
-    // Legacy fallback: if this is an index event, attempt to fetch linked chunks.
-    // Otherwise, treat the latest event as the single monthly payload.
-    if (isLegacyIndexEvent) {
-      const tags = Array.isArray(latestEvent.tags) ? latestEvent.tags : [];
-      const chunkIdentifiers = [];
-      const chunkAddresses = [];
-
-      for (const tag of tags) {
-        if (Array.isArray(tag) && tag[0] === "a" && typeof tag[1] === "string" && tag[1]) {
-          chunkAddresses.push(tag[1]);
-        }
-      }
-
-      for (const address of chunkAddresses) {
-        const parts = address.split(":");
-        if (parts.length >= 3) {
-          const identifier = parts.slice(2).join(":");
-          if (identifier) {
-            chunkIdentifiers.push(identifier);
-          }
-        }
-      }
-
-      const chunkFilters = [];
-      if (chunkIdentifiers.length) {
-        chunkFilters.push({
-          kinds: [WATCH_HISTORY_KIND],
-          authors: [actorKey],
-          "#d": chunkIdentifiers,
-          limit: Math.max(chunkIdentifiers.length * 2, limit),
-        });
-      } else if (snapshotId) {
-         chunkFilters.push({
-          kinds: [WATCH_HISTORY_KIND],
-          authors: [actorKey],
-          "#snapshot": [snapshotId],
-          limit,
-        });
-      }
-
-      if (chunkFilters.length) {
-         try {
+    if (additionalChunksToFetch.length > 0) {
+      try {
+          const chunkFilters = [{
+            kinds: [WATCH_HISTORY_KIND],
+            authors: [actorKey],
+            "#d": additionalChunksToFetch,
+            limit: additionalChunksToFetch.length * 2,
+          }];
           const chunkResults = await pool.list(readRelays, chunkFilters);
           const fetchedChunks = Array.isArray(chunkResults)
-            ? chunkResults
-              .flat()
-              .filter((event) => event && typeof event === "object")
+            ? chunkResults.flat().filter(e => e && typeof e === 'object')
             : [];
 
-           // We will process all fetched events + the latestEvent
-           eventToProcess = [latestEvent, ...fetchedChunks];
-        } catch (error) {
+          // Add to our list of events to process
+          eventToProcess = [...eventToProcess, ...fetchedChunks];
+      } catch (error) {
           devLogger.warn("[nostr] Failed to fetch legacy watch history chunks:", error);
-          eventToProcess = [latestEvent];
-        }
-      } else {
-          eventToProcess = [latestEvent];
       }
-    } else {
-        eventToProcess = [latestEvent];
     }
+
+    // Determine snapshotId from the latest event (prioritizing monthly)
+    const sortedEvents = [...eventToProcess].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+    const latestEvent = sortedEvents[0];
+
+    // Attempt to extract a snapshot ID or month identifier from the latest event
+    const snapshotId = (() => {
+        const tags = Array.isArray(latestEvent.tags) ? latestEvent.tags : [];
+        const dTag = tags.find(t => t[0] === 'd');
+        if (dTag && WATCH_HISTORY_MONTH_PATTERN.test(dTag[1])) return dTag[1];
+
+        const snapshotTag = tags.find(t => t[0] === 'snapshot');
+        if (snapshotTag) return snapshotTag[1];
+
+        return "";
+    })();
 
     const eventsToDecrypt = Array.isArray(eventToProcess) ? eventToProcess : [eventToProcess];
     const decryptErrors = [];
@@ -2532,7 +2477,8 @@ class WatchHistoryManager {
         `[nostr] Failed to decrypt ${decryptErrors.length} watch history event(s) for ${actorKey}. Using fallback pointers.`,
       );
     }
-    const mergedItems = collectedItems.length ? collectedItems : pointerPayload.items;
+    const fallbackItems = extractPointerItemsFromEvent(latestEvent);
+    const mergedItems = collectedItems.length ? collectedItems : fallbackItems;
     const canonicalItems = canonicalizeWatchHistoryItems(
       mergedItems,
       WATCH_HISTORY_MAX_ITEMS,
