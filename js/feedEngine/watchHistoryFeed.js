@@ -9,6 +9,7 @@ import {
   isWatchHistoryDebugEnabled,
   logWatchHistoryDebug,
 } from "../watchHistoryDebug.js";
+import { devLogger } from "../utils/logger.js";
 import {
   createBlacklistFilterStage,
   createWatchHistorySuppressionStage,
@@ -18,11 +19,11 @@ import { isPlainObject } from "./utils.js";
 const WATCH_HISTORY_FEED_LOG_NAMESPACE = "watchHistoryFeed";
 
 function debugInfo(message, details) {
-  logWatchHistoryDebug(WATCH_HISTORY_FEED_LOG_NAMESPACE, "info", message, details);
+  devLogger.info(`[${WATCH_HISTORY_FEED_LOG_NAMESPACE}] ${message}`, details || "");
 }
 
 function debugWarn(message, details) {
-  logWatchHistoryDebug(WATCH_HISTORY_FEED_LOG_NAMESPACE, "warn", message, details);
+  devLogger.warn(`[${WATCH_HISTORY_FEED_LOG_NAMESPACE}] ${message}`, details || "");
 }
 
 function normalizeActorCandidate(...values) {
@@ -249,11 +250,13 @@ function checkLocalCacheForVideo(pointer) {
 
 function createWatchHistoryHydrationStage() {
   return async function watchHistoryHydrationStage(items = [], context = {}) {
+    debugInfo(`Starting hydration stage for ${items.length} items.`);
     const missing = [];
     const missingAddresses = [];
     const idMap = new Map();
 
     const itemsToHydrate = items.filter(item => !item.video && item.pointer);
+    debugInfo(`Items needing hydration: ${itemsToHydrate.length}`);
     let addressScanNeeded = false;
 
     // First pass: try to resolve from cache for IDs, and collect addresses
@@ -312,18 +315,43 @@ function createWatchHistoryHydrationStage() {
     }
 
     if (!missing.length && !missingAddresses.length) {
+      debugInfo("No missing items to fetch from relays.");
       return items;
     }
 
     const uniqueIds = Array.from(new Set(missing));
     const uniqueAddresses = Array.from(new Set(missingAddresses));
 
-    const relays =
+    debugInfo(`Fetching from relays. Missing IDs: ${uniqueIds.length}, Missing Addresses: ${uniqueAddresses.length}`);
+
+    const readRelays =
+      Array.isArray(nostrClient?.readRelays) && nostrClient.readRelays.length
+        ? nostrClient.readRelays
+        : null;
+
+    const fallbackRelays =
       Array.isArray(nostrClient?.relays) && nostrClient.relays.length
         ? nostrClient.relays
         : null;
 
-    if (!relays || !nostrClient?.pool) {
+    const baseRelays = readRelays || fallbackRelays || [];
+    const relayHints = new Set();
+
+    for (const item of itemsToHydrate) {
+      if (item.pointer && typeof item.pointer.relay === "string") {
+        const hint = item.pointer.relay.trim();
+        if (hint) {
+          relayHints.add(hint);
+        }
+      }
+    }
+
+    const mergedRelays = Array.from(new Set([...baseRelays, ...relayHints]));
+
+    debugInfo("Selected relays for hydration:", mergedRelays);
+
+    if (!mergedRelays.length || !nostrClient?.pool) {
+      debugWarn("Aborting hydration: No relays or pool available.");
       return items;
     }
 
@@ -354,9 +382,13 @@ function createWatchHistoryHydrationStage() {
       }
     }
 
-    try {
-      const events = await nostrClient.pool.list(relays, filters);
+    debugInfo("Generated filters:", JSON.stringify(filters));
 
+    try {
+      const events = await nostrClient.pool.list(mergedRelays, filters);
+      debugInfo(`Hydration fetch returned ${events.length} events.`);
+
+      let matchCount = 0;
       for (const event of events) {
         if (!event) {
           continue;
@@ -373,6 +405,7 @@ function createWatchHistoryHydrationStage() {
                   if (target.metadata) {
                     target.metadata.video = video;
                   }
+                  matchCount++;
                 }
               }
             }
@@ -388,6 +421,7 @@ function createWatchHistoryHydrationStage() {
                   if (target.metadata) {
                     target.metadata.video = video;
                   }
+                  matchCount++;
                 }
               }
             }
@@ -396,6 +430,7 @@ function createWatchHistoryHydrationStage() {
           debugWarn(`[watchHistoryFeed] Failed to convert event ${event.id}:`, err);
         }
       }
+      debugInfo(`Hydrated ${matchCount} items from fetched events.`);
     } catch (error) {
       debugWarn("[watchHistoryFeed] Hydration fetch failed:", error);
     }
