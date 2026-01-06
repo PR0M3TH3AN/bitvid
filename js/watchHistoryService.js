@@ -108,11 +108,11 @@ function shouldUseExtensionForHistory(actorKey) {
   }
 
   const extension = window.nostr;
-  if (!extension || !extension.nip04) {
+  if (!extension) {
     return false;
   }
 
-  return typeof extension.nip04.decrypt === "function";
+  return typeof extension.signEvent === "function";
 }
 
 async function ensureWatchHistoryExtensionPermissions(actorKey) {
