@@ -131,7 +131,7 @@ export default class DiscussionCountService {
     const filters = [];
     const eventId = typeof video.id === "string" ? video.id.trim() : "";
     if (eventId) {
-      filters.push({ kinds: [COMMENT_EVENT_KIND], "#e": [eventId] });
+      filters.push({ kinds: [COMMENT_EVENT_KIND], "#E": [eventId] });
     }
 
     const address = buildVideoAddressPointer(video);
@@ -181,7 +181,7 @@ export default class DiscussionCountService {
     }
 
     if (address) {
-      filters.push({ kinds: [COMMENT_EVENT_KIND], "#a": [address] });
+      filters.push({ kinds: [COMMENT_EVENT_KIND], "#A": [address] });
     }
 
     return filters;

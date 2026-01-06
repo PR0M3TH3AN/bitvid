@@ -800,15 +800,9 @@ function createVideoCommentFilters(targetInput, options = {}) {
 
   const eventFilter = {
     kinds: getAllowedCommentKinds(),
-    "#e": [descriptor.videoEventId],
-  };
-  filters.push(applyFilterOptions(eventFilter, options));
-
-  const uppercaseEventFilter = {
-    kinds: getAllowedCommentKinds(),
     "#E": [descriptor.videoEventId],
   };
-  filters.push(applyFilterOptions(uppercaseEventFilter, options));
+  filters.push(applyFilterOptions(eventFilter, options));
 
   const uppercaseFilter = { kinds: getAllowedCommentKinds() };
   let hasUppercasePointer = false;
@@ -817,12 +811,6 @@ function createVideoCommentFilters(targetInput, options = {}) {
     uppercaseFilter["#I"] = [descriptor.rootIdentifier];
     hasUppercasePointer = true;
 
-    const lowercaseRootFilter = {
-      kinds: getAllowedCommentKinds(),
-      "#i": [descriptor.rootIdentifier],
-    };
-
-    filters.push(applyFilterOptions(lowercaseRootFilter, options));
   } else if (
     typeof descriptor.videoDefinitionAddress === "string" &&
     descriptor.videoDefinitionAddress
@@ -859,12 +847,6 @@ function createVideoCommentFilters(targetInput, options = {}) {
     descriptor.parentCommentId &&
     descriptor.parentCommentId !== descriptor.videoEventId
   ) {
-    const parentFilter = {
-      kinds: getAllowedCommentKinds(),
-      "#e": [descriptor.parentCommentId],
-    };
-    filters.push(applyFilterOptions(parentFilter, options));
-
     const parentUppercaseFilter = {
       kinds: getAllowedCommentKinds(),
       "#E": [descriptor.parentCommentId],
@@ -873,17 +855,6 @@ function createVideoCommentFilters(targetInput, options = {}) {
   }
 
   if (descriptor.videoDefinitionAddress) {
-    const definitionFilter = {
-      kinds: getAllowedCommentKinds(),
-      "#a": [descriptor.videoDefinitionAddress],
-    };
-
-    if (descriptor.parentCommentId) {
-      definitionFilter["#e"] = [descriptor.parentCommentId];
-    }
-
-    filters.push(applyFilterOptions(definitionFilter, options));
-
     const definitionUppercaseFilter = {
       kinds: getAllowedCommentKinds(),
       "#A": [descriptor.videoDefinitionAddress],
@@ -976,21 +947,8 @@ function isVideoCommentEvent(event, descriptor) {
     targetDescriptor.parentAuthorPubkey,
   );
 
-  let sawRootKindTag = false;
-  let rootKindMatches = !expectedRootKind;
-  let rootKindMismatch = false;
-
-  let sawRootAuthorTag = false;
-  let rootAuthorMatches = !expectedRootAuthor;
-  let rootAuthorMismatch = false;
-
-  let sawParentKindTag = false;
-  let parentKindMatches = !expectedParentKind;
-  let parentKindMismatch = false;
-
-  let sawParentAuthorTag = false;
-  let parentAuthorMatches = !expectedParentAuthor;
-  let parentAuthorMismatch = false;
+  const kindTagValues = [];
+  const authorTagValues = [];
 
   for (const tag of tags) {
     if (!Array.isArray(tag) || tag.length < 2) {
@@ -998,20 +956,20 @@ function isVideoCommentEvent(event, descriptor) {
     }
     const [rawName, rawValue] = tag;
     const trimmedName = typeof rawName === "string" ? rawName.trim() : "";
-    const lowerName = trimmedName.toLowerCase();
+    const upperName = trimmedName.toUpperCase();
     const normalizedValue = normalizeTagValue(rawValue);
-    if (!lowerName || !normalizedValue) {
+    if (!upperName || !normalizedValue) {
       continue;
     }
 
-    if (lowerName === "i") {
+    if (upperName === "I") {
       if (
         normalizedRootIdentifier &&
         normalizedValue === normalizedRootIdentifier
       ) {
         hasIdentifierTag = true;
       }
-    } else if (lowerName === "a") {
+    } else if (upperName === "A") {
       if (
         normalizedVideoDefinitionAddress &&
         normalizedValue === normalizedVideoDefinitionAddress
@@ -1019,7 +977,7 @@ function isVideoCommentEvent(event, descriptor) {
         hasDefinitionTag = true;
         matchedDefinitionPointer = true;
       }
-    } else if (lowerName === "e") {
+    } else if (upperName === "E") {
       if (
         normalizedVideoEventId &&
         normalizedValue === normalizedVideoEventId
@@ -1033,36 +991,27 @@ function isVideoCommentEvent(event, descriptor) {
       ) {
         hasParentTag = true;
       }
-    } else if (trimmedName === "K") {
-      sawRootKindTag = true;
-      if (!expectedRootKind || normalizedValue === expectedRootKind) {
-        rootKindMatches = true;
-      } else {
-        rootKindMismatch = true;
-      }
-    } else if (trimmedName === "P") {
-      sawRootAuthorTag = true;
-      if (!expectedRootAuthor || normalizedValue === expectedRootAuthor) {
-        rootAuthorMatches = true;
-      } else {
-        rootAuthorMismatch = true;
-      }
-    } else if (trimmedName === "k") {
-      sawParentKindTag = true;
-      if (!expectedParentKind || normalizedValue === expectedParentKind) {
-        parentKindMatches = true;
-      } else {
-        parentKindMismatch = true;
-      }
-    } else if (trimmedName === "p") {
-      sawParentAuthorTag = true;
-      if (!expectedParentAuthor || normalizedValue === expectedParentAuthor) {
-        parentAuthorMatches = true;
-      } else {
-        parentAuthorMismatch = true;
-      }
+    } else if (upperName === "K") {
+      kindTagValues.push(normalizedValue);
+    } else if (upperName === "P") {
+      authorTagValues.push(normalizedValue);
     }
   }
+
+  const sawRootKindTag = kindTagValues.length > 0 && Boolean(expectedRootKind);
+  const sawRootAuthorTag = authorTagValues.length > 0 && Boolean(expectedRootAuthor);
+  const sawParentKindTag = kindTagValues.length > 0 && Boolean(expectedParentKind);
+  const sawParentAuthorTag =
+    authorTagValues.length > 0 && Boolean(expectedParentAuthor);
+
+  const rootKindMatches =
+    !expectedRootKind || kindTagValues.includes(expectedRootKind);
+  const rootAuthorMatches =
+    !expectedRootAuthor || authorTagValues.includes(expectedRootAuthor);
+  const parentKindMatches =
+    !expectedParentKind || kindTagValues.includes(expectedParentKind);
+  const parentAuthorMatches =
+    !expectedParentAuthor || authorTagValues.includes(expectedParentAuthor);
 
   if (!hasDefinitionTag && requiresAddressMatch && matchedEventPointer) {
     hasDefinitionTag = true;
@@ -1104,14 +1053,6 @@ function isVideoCommentEvent(event, descriptor) {
   }
 
   if (requiresParentTag && !hasParentTag) {
-    return false;
-  }
-
-  if ((sawRootKindTag && rootKindMismatch) || (sawRootAuthorTag && rootAuthorMismatch)) {
-    return false;
-  }
-
-  if ((sawParentKindTag && parentKindMismatch) || (sawParentAuthorTag && parentAuthorMismatch)) {
     return false;
   }
 

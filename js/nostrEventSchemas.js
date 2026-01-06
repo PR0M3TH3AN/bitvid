@@ -334,16 +334,16 @@ const BASE_SCHEMAS = {
     type: NOTE_TYPES.VIDEO_COMMENT,
     label: "Video comment",
     kind: 1111,
-    videoEventTagName: "e",
-    videoDefinitionTagName: "a",
-    parentCommentTagName: "e",
-    parentAuthorTagName: "p",
+    videoEventTagName: "E",
+    videoDefinitionTagName: "A",
+    parentCommentTagName: "E",
+    parentAuthorTagName: "P",
     rootEventPointerTagName: "E",
     rootDefinitionPointerTagName: "A",
     rootIdentifierPointerTagName: "I",
     rootKindTagName: "K",
     rootAuthorTagName: "P",
-    parentKindTagName: "k",
+    parentKindTagName: "K",
     appendTags: DEFAULT_APPEND_TAGS,
     content: {
       format: "text",
@@ -1199,11 +1199,12 @@ export function buildCommentEvent({
   const rootIdentifierPointerTagName = schema?.rootIdentifierPointerTagName || "I";
   const rootKindTagName = schema?.rootKindTagName || "K";
   const rootAuthorTagName = schema?.rootAuthorTagName || "P";
-  const videoDefinitionTagName = schema?.videoDefinitionTagName || "a";
-  const videoEventTagName = schema?.videoEventTagName || "e";
-  const parentCommentTagName = schema?.parentCommentTagName || "e";
-  const parentAuthorTagName = schema?.parentAuthorTagName || "p";
-  const parentKindTagName = schema?.parentKindTagName || "k";
+  const parentIdentifierTagName = schema?.parentIdentifierTagName || "I";
+  const videoDefinitionTagName = schema?.videoDefinitionTagName || "A";
+  const videoEventTagName = schema?.videoEventTagName || "E";
+  const parentCommentTagName = schema?.parentCommentTagName || "E";
+  const parentAuthorTagName = schema?.parentAuthorTagName || "P";
+  const parentKindTagName = schema?.parentKindTagName || "K";
 
   const appendPointerTag = (tagName, value, relay, authorHint) => {
     if (!tagName || !value) {
@@ -1272,7 +1273,11 @@ export function buildCommentEvent({
   }
 
   if (normalizedParentIdentifier) {
-    appendPointerTag("i", normalizedParentIdentifier, normalizedParentIdentifierRelay);
+    appendPointerTag(
+      parentIdentifierTagName,
+      normalizedParentIdentifier,
+      normalizedParentIdentifierRelay,
+    );
   }
 
   if (parentCommentTagName && normalizedParentCommentId) {

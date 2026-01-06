@@ -608,18 +608,18 @@ test(
       topLevelEvent.tags.some(
         (tag) =>
           Array.isArray(tag) &&
-          tag[0] === "e" &&
+          tag[0] === "E" &&
           tag[1] === videoEventId &&
           tag[2] === relayUrl,
       ),
-      "builder should retain legacy #e tag for the root event when address pointer is present",
+      "builder should retain uppercase #E tag for the root event when address pointer is present",
     );
     assert.ok(
       topLevelEvent.tags.some(
         (tag) =>
-          Array.isArray(tag) && tag[0] === "a" && tag[1] === videoDefinitionAddress,
+          Array.isArray(tag) && tag[0] === "A" && tag[1] === videoDefinitionAddress,
       ),
-      "builder should include #a pointer for the scoped video definition",
+      "builder should include #A pointer for the scoped video definition",
     );
 
     const replyEvent = {
@@ -645,18 +645,18 @@ test(
       replyEvent.tags.some(
         (tag) =>
           Array.isArray(tag) &&
-          tag[0] === "e" &&
+          tag[0] === "E" &&
           tag[1] === videoEventId &&
           tag[2] === relayUrl,
       ),
-      "reply builder should include root #e tag alongside #a pointer",
+      "reply builder should include root #E tag alongside #A pointer",
     );
     assert.ok(
       replyEvent.tags.some(
         (tag) =>
-          Array.isArray(tag) && tag[0] === "a" && tag[1] === videoDefinitionAddress,
+          Array.isArray(tag) && tag[0] === "A" && tag[1] === videoDefinitionAddress,
       ),
-      "reply builder should preserve #a pointer",
+      "reply builder should preserve #A pointer",
     );
 
     const listCalls = [];
