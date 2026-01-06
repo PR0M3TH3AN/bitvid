@@ -149,7 +149,7 @@ import { updateWatchHistoryListWithDefaultClient } from "./nostrWatchHistoryFaca
 | Watch history month (`NOTE_TYPES.WATCH_HISTORY_INDEX`) | `WATCH_HISTORY_KIND` (default `30079`, clients also read legacy `30078`) | Replaceable list tag `['d', `${WATCH_HISTORY_LIST_IDENTIFIER}:<YYYY-MM>`]` with optional `['month', <YYYY-MM>]` marker plus schema append tags; no chunk pointers required. | JSON payload `{ version, month: 'YYYY-MM', items: [{ id: <eventId\|address>, watched_at?: <unix seconds> }] }` |
 | Subscription list (`NOTE_TYPES.SUBSCRIPTION_LIST`) | `30000` | `['d', 'subscriptions']` | NIP-04/NIP-44 encrypted JSON array of NIP-51 follow-set tuples (e.g., `[['p', <hex>], …]`) |
 | User block list (`NOTE_TYPES.USER_BLOCK_LIST`) | `10000` | `['d', 'user-blocks']` | NIP-04/NIP-44 encrypted JSON `{ blockedPubkeys: string[] }` |
-| Hashtag preferences (`NOTE_TYPES.HASHTAG_PREFERENCES`) | `30015` (reads legacy `30005`) | `['d', 'bitvid:tag-preferences']` plus schema-appended `['encrypted','nip44_v2']` | NIP-44 encrypted JSON `{ version, interests: string[], disinterests: string[] }` |
+| Hashtag preferences (`NOTE_TYPES.HASHTAG_PREFERENCES`) | `30015` | `['d', 'bitvid:tag-preferences']` plus schema-appended `['encrypted','nip44_v2']` | NIP-44 encrypted JSON `{ version, interests: string[], disinterests: string[] }` |
 | Admin moderation list (`NOTE_TYPES.ADMIN_MODERATION_LIST`) | `30000` | `['d', 'bitvid:admin:editors']`, repeated `['p', <pubkey>]` entries | Empty content |
 | Admin blacklist (`NOTE_TYPES.ADMIN_BLACKLIST`) | `30000` | `['d', 'bitvid:admin:blacklist']`, repeated `['p', <pubkey>]` entries | Empty content |
 | Admin whitelist (`NOTE_TYPES.ADMIN_WHITELIST`) | `30000` | `['d', 'bitvid:admin:whitelist']`, repeated `['p', <pubkey>]` entries | Empty content |
@@ -187,15 +187,16 @@ so downstream clients can detect that the payload is encrypted. The `content`
 field must be a NIP-44 ciphertext representing the JSON shape
 `{ version, interests: string[], disinterests: string[] }`, allowing clients to
 share their preferred and muted hashtags without exposing the raw preferences on
-relays. Readers continue to accept legacy `30005` payloads so previously
-published preferences remain visible.
+relays.
 
 ### Migration approach: auto-republish on next user change
 
 We are **not** shipping a one-off migration helper. Instead, the existing
 `HashtagPreferencesService.publish()` flow reissues preferences as kind `30015`
-the next time a user saves their interests from the profile modal. That publish
-path already:
+the next time a user saves their interests from the profile modal. Legacy
+`30005` payloads are no longer read, so users with only legacy events must
+resave their preferences to publish the canonical kind. That publish path
+already:
 
 * rehydrates the signer via `getActiveSigner()` and aborts when no signer is
   available, so background jobs cannot emit preferences without user consent;
@@ -218,9 +219,8 @@ Operators should monitor the rollout as follows:
 1. After deploying this change, review relay dashboards or logs for accounts
    saving preferences to confirm new `30015` writes are accepted (look for the
    `bitvid:tag-preferences` `d` tag).
-2. Spot-check a few migrated accounts by fetching both `30015` and legacy
-   `30005` events; the canonical kind should present the newest `created_at`
-   timestamp once a user saves.
+2. Spot-check a few migrated accounts by fetching `30015` events; the canonical
+   kind should present the newest `created_at` timestamp once a user saves.
 3. If relays reject events, correlate the warnings emitted by
    `HashtagPreferencesService.publish()` in operator consoles to identify relay
    outages or permission errors.
