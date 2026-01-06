@@ -2,7 +2,6 @@ import {
   VIEW_COUNT_DEDUPE_WINDOW_SECONDS,
   VIEW_COUNT_BACKFILL_MAX_DAYS,
 } from "../config.js";
-import { VIEW_FILTER_INCLUDE_LEGACY_VIDEO } from "../constants.js";
 import {
   buildViewEvent,
   getNostrEventSchema,
@@ -78,14 +77,6 @@ export function createVideoViewEventFilters(pointer) {
   }
 
   const filters = [pointerFilter];
-
-  if (VIEW_FILTER_INCLUDE_LEGACY_VIDEO) {
-    filters.push({
-      kinds: [VIEW_EVENT_KIND],
-      "#t": ["view"],
-      "#video": [resolved.value],
-    });
-  }
 
   return { pointer: resolved, filters };
 }
@@ -298,13 +289,6 @@ function isVideoViewEvent(event, pointer) {
       continue;
     }
 
-    if (
-      VIEW_FILTER_INCLUDE_LEGACY_VIDEO &&
-      tagName === "video" &&
-      tagValue === pointerValueLower
-    ) {
-      matchesPointer = true;
-    }
   }
 
   return hasViewTag && matchesPointer;
