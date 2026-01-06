@@ -230,32 +230,84 @@ function resolveEventAddress(event) {
   return "";
 }
 
+function checkLocalCacheForVideo(pointer) {
+  if (!pointer || typeof pointer !== "object" || !nostrClient?.allEvents) {
+    return null;
+  }
+
+  if (pointer.type === "e" && pointer.value) {
+    const cached = nostrClient.allEvents.get(pointer.value);
+    if (cached) {
+      return cached;
+    }
+  }
+
+  // Address lookup requires scanning if not using 'e'
+  // We handle this in batch inside the hydration stage to avoid repeated scanning
+  return null;
+}
+
 function createWatchHistoryHydrationStage() {
   return async function watchHistoryHydrationStage(items = [], context = {}) {
     const missing = [];
     const missingAddresses = [];
     const idMap = new Map();
 
-    for (const item of items) {
-      if (item.video) {
-        continue;
-      }
+    const itemsToHydrate = items.filter(item => !item.video && item.pointer);
+    let addressScanNeeded = false;
+
+    // First pass: try to resolve from cache for IDs, and collect addresses
+    for (const item of itemsToHydrate) {
       const pointer = item.pointer;
+
       if (pointer?.type === "e" && pointer.value) {
+        const cached = checkLocalCacheForVideo(pointer);
+        if (cached) {
+          item.video = cached;
+          if (item.metadata) item.metadata.video = cached;
+          continue;
+        }
+
         missing.push(pointer.value);
         if (!idMap.has(pointer.value)) {
           idMap.set(pointer.value, []);
         }
         idMap.get(pointer.value).push(item);
       } else if (pointer?.type === "a" && pointer.value) {
-        missingAddresses.push(pointer.value);
+        addressScanNeeded = true;
+        // Don't add to missingAddresses yet, check cache first
+      }
+    }
 
-        // Use normalized key for matching to handle mixed-case pubkeys in pointers
-        const key = normalizeAddressKey(pointer.value);
-        if (!idMap.has(key)) {
-          idMap.set(key, []);
+    // Second pass: Scan cache for addresses if needed
+    if (addressScanNeeded && nostrClient?.allEvents) {
+      // Create a temporary index of cached videos by address
+      // Only iterate once
+      const cacheByAddress = new Map();
+      for (const video of nostrClient.allEvents.values()) {
+        const address = resolveEventAddress(video);
+        if (address) {
+          cacheByAddress.set(normalizeAddressKey(address), video);
         }
-        idMap.get(key).push(item);
+      }
+
+      for (const item of itemsToHydrate) {
+        const pointer = item.pointer;
+        if (pointer?.type === "a" && pointer.value) {
+          const key = normalizeAddressKey(pointer.value);
+          const cached = cacheByAddress.get(key);
+          if (cached) {
+            item.video = cached;
+            if (item.metadata) item.metadata.video = cached;
+            continue;
+          }
+
+          missingAddresses.push(pointer.value);
+          if (!idMap.has(key)) {
+            idMap.set(key, []);
+          }
+          idMap.get(key).push(item);
+        }
       }
     }
 
