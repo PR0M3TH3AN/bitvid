@@ -204,9 +204,26 @@ function createWatchHistorySource({ service = watchHistoryService } = {}) {
   };
 }
 
+function resolveEventAddress(event) {
+  if (!event || typeof event !== "object") {
+    return "";
+  }
+  const kind = Number(event.kind);
+  const pubkey = typeof event.pubkey === "string" ? event.pubkey : "";
+  if (!Number.isFinite(kind) || !pubkey) {
+    return "";
+  }
+  const dTag = event.tags?.find((t) => t[0] === "d" && t[1]);
+  if (dTag) {
+    return `${kind}:${pubkey}:${dTag[1]}`;
+  }
+  return "";
+}
+
 function createWatchHistoryHydrationStage() {
   return async function watchHistoryHydrationStage(items = [], context = {}) {
     const missing = [];
+    const missingAddresses = [];
     const idMap = new Map();
 
     for (const item of items) {
@@ -220,14 +237,22 @@ function createWatchHistoryHydrationStage() {
           idMap.set(pointer.value, []);
         }
         idMap.get(pointer.value).push(item);
+      } else if (pointer?.type === "a" && pointer.value) {
+        missingAddresses.push(pointer.value);
+        if (!idMap.has(pointer.value)) {
+          idMap.set(pointer.value, []);
+        }
+        idMap.get(pointer.value).push(item);
       }
     }
 
-    if (!missing.length) {
+    if (!missing.length && !missingAddresses.length) {
       return items;
     }
 
     const uniqueIds = Array.from(new Set(missing));
+    const uniqueAddresses = Array.from(new Set(missingAddresses));
+
     const relays =
       Array.isArray(nostrClient?.relays) && nostrClient.relays.length
         ? nostrClient.relays
@@ -237,24 +262,65 @@ function createWatchHistoryHydrationStage() {
       return items;
     }
 
+    const filters = [];
+    if (uniqueIds.length) {
+      filters.push({ ids: uniqueIds });
+    }
+
+    if (uniqueAddresses.length) {
+      const addressFilters = new Map();
+      for (const address of uniqueAddresses) {
+        const parts = address.split(":");
+        if (parts.length !== 3) continue;
+        const kind = Number(parts[0]);
+        const pubkey = parts[1];
+        const dTag = parts[2];
+
+        const key = `${kind}:${pubkey}`;
+        if (!addressFilters.has(key)) {
+          addressFilters.set(key, { kinds: [kind], authors: [pubkey], "#d": [] });
+        }
+        addressFilters.get(key)["#d"].push(dTag);
+      }
+
+      for (const filter of addressFilters.values()) {
+        filters.push(filter);
+      }
+    }
+
     try {
-      const events = await nostrClient.pool.list(relays, [
-        { ids: uniqueIds },
-      ]);
+      const events = await nostrClient.pool.list(relays, filters);
 
       for (const event of events) {
-        if (!event || !event.id) {
+        if (!event) {
           continue;
         }
         try {
           const video = convertEventToVideo(event);
           if (video && !video.invalid) {
-            const targets = idMap.get(event.id);
-            if (targets) {
-              for (const target of targets) {
-                target.video = video;
-                if (target.metadata) {
-                  target.metadata.video = video;
+            // Match by ID
+            if (event.id) {
+              const targets = idMap.get(event.id);
+              if (targets) {
+                for (const target of targets) {
+                  target.video = video;
+                  if (target.metadata) {
+                    target.metadata.video = video;
+                  }
+                }
+              }
+            }
+
+            // Match by Address
+            const address = resolveEventAddress(event);
+            if (address) {
+              const targets = idMap.get(address);
+              if (targets) {
+                for (const target of targets) {
+                  target.video = video;
+                  if (target.metadata) {
+                    target.metadata.video = video;
+                  }
                 }
               }
             }
@@ -369,4 +435,3 @@ export function registerWatchHistoryFeed(engine, options = {}) {
   const definition = createWatchHistoryFeedDefinition(options);
   return engine.registerFeed("watch-history", definition);
 }
-
