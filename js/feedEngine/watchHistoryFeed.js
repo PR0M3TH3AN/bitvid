@@ -334,11 +334,23 @@ function createWatchHistoryHydrationStage() {
         ? nostrClient.relays
         : null;
 
-    const relays = readRelays || fallbackRelays;
+    const baseRelays = readRelays || fallbackRelays || [];
+    const relayHints = new Set();
 
-    debugInfo("Selected relays for hydration:", relays);
+    for (const item of itemsToHydrate) {
+      if (item.pointer && typeof item.pointer.relay === "string") {
+        const hint = item.pointer.relay.trim();
+        if (hint) {
+          relayHints.add(hint);
+        }
+      }
+    }
 
-    if (!relays || !nostrClient?.pool) {
+    const mergedRelays = Array.from(new Set([...baseRelays, ...relayHints]));
+
+    debugInfo("Selected relays for hydration:", mergedRelays);
+
+    if (!mergedRelays.length || !nostrClient?.pool) {
       debugWarn("Aborting hydration: No relays or pool available.");
       return items;
     }
@@ -370,10 +382,10 @@ function createWatchHistoryHydrationStage() {
       }
     }
 
-    debugInfo("Generated filters:", filters);
+    debugInfo("Generated filters:", JSON.stringify(filters));
 
     try {
-      const events = await nostrClient.pool.list(relays, filters);
+      const events = await nostrClient.pool.list(mergedRelays, filters);
       debugInfo(`Hydration fetch returned ${events.length} events.`);
 
       let matchCount = 0;
