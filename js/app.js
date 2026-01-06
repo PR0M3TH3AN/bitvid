@@ -4260,6 +4260,14 @@ class Application {
         // Tell webtorrent to cleanup
         await torrentClient.cleanup();
         this.log("[cleanup] WebTorrent cleanup resolved.");
+
+        try {
+          if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+            await fetch("/webtorrent/cancel/", { mode: "no-cors" });
+          }
+        } catch (err) {
+          // Ignore errors when cancelling the service worker stream; it may not be active.
+        }
       } catch (err) {
         devLogger.error("Cleanup error:", err);
       } finally {
@@ -4895,7 +4903,9 @@ class Application {
     // user-visible UI is already closed.
     const performCleanup = async () => {
       try {
-        await fetch("/webtorrent/cancel/", { mode: "no-cors" });
+        if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+          await fetch("/webtorrent/cancel/", { mode: "no-cors" });
+        }
       } catch (err) {
         devLogger.warn("[hideModal] webtorrent cancel fetch failed:", err);
       }
