@@ -476,22 +476,7 @@ export function shimLegacySimplePoolMethods(pool) {
         if (subscribeMap) {
           closer = subscribeMap(requests, subscribeParams);
         } else if (subscribeMany) {
-          // subscribeMany only accepts a single filter, so reuse subscribeMap-style batching
-          // by issuing one subscription per filter.
-          const subs = filterList.map((filter) =>
-            subscribeMany(relayList, filter, subscribeParams)
-          );
-          closer = {
-            close: (reason) => {
-              subs.forEach((sub) => {
-                try {
-                  sub?.close?.(reason);
-                } catch (error) {
-                  devLogger.warn("[nostr] Failed to close SimplePool subscription.", error);
-                }
-              });
-            },
-          };
+          closer = subscribeMany(relayList, filterList, subscribeParams);
         } else if (subscribeSingle && filterList.length) {
           closer = subscribeSingle(relayList, filterList[0], subscribeParams);
         }
