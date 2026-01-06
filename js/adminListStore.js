@@ -18,14 +18,6 @@ import {
 } from "./nostrEventSchemas.js";
 import { publishEventToRelay } from "./nostrPublish.js";
 
-const LEGACY_STORAGE_KEYS = {
-  editors: "bitvid_admin_editors",
-  whitelist: "bitvid_admin_whitelist",
-  whitelistLegacy: "bitvid_whitelist",
-  blacklist: "bitvid_admin_blacklist",
-  blacklistLegacy: "bitvid_blacklist",
-};
-
 const ADMIN_STATE_CACHE_VERSION = 1;
 const ADMIN_STATE_CACHE_KEY = `bitvid_admin_state_v${ADMIN_STATE_CACHE_VERSION}`;
 
@@ -240,42 +232,6 @@ function hasAnyEntries(state = {}) {
   );
 }
 
-function readJsonListFromStorage(key) {
-  if (typeof localStorage === "undefined") {
-    return null;
-  }
-
-  try {
-    const raw = localStorage.getItem(key);
-    if (raw === null) {
-      return null;
-    }
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : null;
-  } catch (error) {
-    devLogger.warn(
-      `[adminListStore] Failed to parse legacy list for ${key}:`,
-      error,
-    );
-    return null;
-  }
-}
-
-function loadLegacyAdminState() {
-  const editors = readJsonListFromStorage(LEGACY_STORAGE_KEYS.editors) || [];
-  const whitelist =
-    readJsonListFromStorage(LEGACY_STORAGE_KEYS.whitelist) ||
-    readJsonListFromStorage(LEGACY_STORAGE_KEYS.whitelistLegacy) ||
-    [];
-  const blacklist =
-    readJsonListFromStorage(LEGACY_STORAGE_KEYS.blacklist) ||
-    readJsonListFromStorage(LEGACY_STORAGE_KEYS.blacklistLegacy) ||
-    [];
-
-  const sanitized = sanitizeAdminState({ editors, whitelist, blacklist });
-  return hasAnyEntries(sanitized) ? sanitized : null;
-}
-
 export const readCachedAdminState = () => {
   if (typeof localStorage === "undefined") {
     return null;
@@ -323,40 +279,6 @@ export const writeCachedAdminState = (state) => {
     );
   }
 };
-
-function clearLegacyStorageFor(listKey) {
-  if (typeof localStorage === "undefined") {
-    return;
-  }
-
-  const keyGroups = {
-    editors: [LEGACY_STORAGE_KEYS.editors],
-    whitelist: [
-      LEGACY_STORAGE_KEYS.whitelist,
-      LEGACY_STORAGE_KEYS.whitelistLegacy,
-    ],
-    blacklist: [
-      LEGACY_STORAGE_KEYS.blacklist,
-      LEGACY_STORAGE_KEYS.blacklistLegacy,
-    ],
-  };
-
-  const keys = keyGroups[listKey];
-  if (!Array.isArray(keys)) {
-    return;
-  }
-
-  for (const key of keys) {
-    try {
-      localStorage.removeItem(key);
-    } catch (error) {
-      devLogger.warn(
-        `[adminListStore] Failed to clear legacy storage for ${key}:`,
-        error,
-      );
-    }
-  }
-}
 
 function ensureNostrReady() {
   const nostrClient = requireNostrClient();
@@ -1010,8 +932,6 @@ async function persistNostrState(actorNpub, updates = {}) {
         loggingError,
       );
     });
-
-    clearLegacyStorageFor(listKey);
   }
 }
 
@@ -1079,16 +999,6 @@ export async function loadAdminState() {
       return cachedState;
     } else {
       writeCachedAdminState(mergedState);
-    }
-  }
-
-  if (!hasAnyEntries(mergedState)) {
-    const legacy = loadLegacyAdminState();
-    if (legacy && isDevMode) {
-      userLogger.warn(
-        "[adminListStore] Ignoring legacy admin lists because remote mode is enforced. Publish them to Nostr to retain access.",
-        legacy
-      );
     }
   }
 

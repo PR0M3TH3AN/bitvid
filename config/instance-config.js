@@ -302,7 +302,6 @@ export const THEME_ACCENT_OVERRIDES = Object.freeze({
  * accept the chosen kind.
  */
 export const WATCH_HISTORY_KIND = 30003;
-export const WATCH_HISTORY_LEGACY_KIND = 30078;
 
 /**
  * Identifier applied to the watch-history list when storing it on relays.
@@ -313,14 +312,6 @@ export const WATCH_HISTORY_LEGACY_KIND = 30078;
  * syncing history.
  */
 export const WATCH_HISTORY_LIST_IDENTIFIER = "watch-history";
-
-/**
- * Legacy identifiers that bitvid clients should continue honoring when
- * fetching historical watch-history snapshots.
- */
-export const WATCH_HISTORY_LEGACY_LIST_IDENTIFIERS = Object.freeze([
-  "watch-history:v2:index",
-]);
 
 /**
  * Whether to enable the V2 encrypted watch-history service.

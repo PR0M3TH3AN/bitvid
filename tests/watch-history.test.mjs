@@ -11,7 +11,6 @@ const {
   WATCH_HISTORY_BATCH_PAGE_SIZE,
   WATCH_HISTORY_LIST_IDENTIFIER,
   WATCH_HISTORY_KIND,
-  WATCH_HISTORY_LEGACY_KIND,
 } =
   await import("../js/config.js");
 const {
@@ -2564,7 +2563,7 @@ async function testWatchHistoryFeedHydration() {
           results.push(videoEvent);
         }
 
-        if (filter.kinds && (filter.kinds.includes(WATCH_HISTORY_KIND) || filter.kinds.includes(WATCH_HISTORY_LEGACY_KIND))) {
+        if (filter.kinds && (filter.kinds.includes(WATCH_HISTORY_KIND))) {
            results.push({
                id: "history-event-id",
                kind: WATCH_HISTORY_KIND,
