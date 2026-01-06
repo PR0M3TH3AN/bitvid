@@ -378,12 +378,8 @@ class HashtagPreferencesService {
 
     const schema = getNostrEventSchema(NOTE_TYPES.HASHTAG_PREFERENCES);
     const canonicalKind = schema?.kind ?? 30015;
-    const legacyKind = 30005;
-    const filterKinds = canonicalKind === legacyKind
-      ? [canonicalKind]
-      : [canonicalKind, legacyKind];
     const filter = {
-      kinds: filterKinds,
+      kinds: [canonicalKind],
       authors: [normalized],
       "#d": [HASHTAG_IDENTIFIER],
       limit: 50,
@@ -409,15 +405,6 @@ class HashtagPreferencesService {
       return;
     }
 
-    // Prefer the newest event, breaking timestamp ties by prioritizing the
-    // canonical kind (30015) before falling back to the legacy 30005 payload.
-    const preferredKinds = filterKinds;
-    const getKindPriority = (event) => {
-      const kindValue = Number(event?.kind);
-      const index = preferredKinds.indexOf(kindValue);
-      return index === -1 ? preferredKinds.length : index;
-    };
-
     const latest = events.reduce((current, candidate) => {
       if (!candidate) {
         return current;
@@ -428,11 +415,6 @@ class HashtagPreferencesService {
       const candidateTs = Number(candidate.created_at) || 0;
       const currentTs = Number(current.created_at) || 0;
       if (candidateTs === currentTs) {
-        const candidatePriority = getKindPriority(candidate);
-        const currentPriority = getKindPriority(current);
-        if (candidatePriority !== currentPriority) {
-          return candidatePriority < currentPriority ? candidate : current;
-        }
         return candidate.id > current.id ? candidate : current;
       }
       return candidateTs > currentTs ? candidate : current;
@@ -457,8 +439,8 @@ class HashtagPreferencesService {
 
     try {
       const payload = JSON.parse(decryptResult.plaintext);
-      // Normalize whichever source kind we decrypted into the canonical
-      // preferences payload so downstream consumers receive a single shape.
+      // Normalize the decrypted payload into the canonical preferences shape so
+      // downstream consumers receive a single structure.
       const normalizedPayload = normalizePreferencesPayload(payload);
 
       this.preferencesVersion = normalizedPayload.version;
