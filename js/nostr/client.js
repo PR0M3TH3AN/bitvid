@@ -2777,14 +2777,23 @@ export class NostrClient {
 
     let privateKey = "";
     try {
-      if (typeof tools.generatePrivateKey === "function") {
-        privateKey = tools.generatePrivateKey();
-      } else if (window?.crypto?.getRandomValues) {
-        const randomBytes = new Uint8Array(32);
-        window.crypto.getRandomValues(randomBytes);
-        privateKey = Array.from(randomBytes)
-          .map((byte) => byte.toString(16).padStart(2, "0"))
-          .join("");
+      if (typeof tools.generateSecretKey === "function") {
+        const secret = tools.generateSecretKey();
+        if (secret instanceof Uint8Array) {
+          privateKey = bytesToHex(secret);
+        }
+      }
+
+      if (!privateKey) {
+        if (typeof tools.generatePrivateKey === "function") {
+          privateKey = tools.generatePrivateKey();
+        } else if (window?.crypto?.getRandomValues) {
+          const randomBytes = new Uint8Array(32);
+          window.crypto.getRandomValues(randomBytes);
+          privateKey = Array.from(randomBytes)
+            .map((byte) => byte.toString(16).padStart(2, "0"))
+            .join("");
+        }
       }
     } catch (error) {
       devLogger.warn("[nostr] Failed to mint session private key:", error);
@@ -2804,8 +2813,27 @@ export class NostrClient {
     try {
       pubkey = getPublicKey(normalizedPrivateKey);
     } catch (error) {
-      devLogger.warn("[nostr] Failed to derive session pubkey:", error);
-      return null;
+      let retrySuccess = false;
+      try {
+        if (HEX64_REGEX.test(normalizedPrivateKey)) {
+          const bytes = new Uint8Array(normalizedPrivateKey.length / 2);
+          for (let i = 0; i < normalizedPrivateKey.length; i += 2) {
+            bytes[i / 2] = parseInt(
+              normalizedPrivateKey.substring(i, i + 2),
+              16
+            );
+          }
+          pubkey = getPublicKey(bytes);
+          retrySuccess = true;
+        }
+      } catch (retryError) {
+        // Fall through to original error logging
+      }
+
+      if (!retrySuccess) {
+        devLogger.warn("[nostr] Failed to derive session pubkey:", error);
+        return null;
+      }
     }
 
     const normalizedPubkey =
@@ -3143,6 +3171,8 @@ export class NostrClient {
         return restored.pubkey;
       }
     }
+
+    await ensureNostrTools();
 
     const minted = this.mintSessionActor();
     if (minted) {
