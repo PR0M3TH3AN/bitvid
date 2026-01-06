@@ -204,30 +204,120 @@ function createWatchHistorySource({ service = watchHistoryService } = {}) {
   };
 }
 
+function normalizeAddressKey(address) {
+  if (typeof address !== "string") return "";
+  const parts = address.split(":");
+  if (parts.length < 3) return address;
+  const kind = parts[0];
+  const pubkey = parts[1].toLowerCase();
+  const dTag = parts.slice(2).join(":"); // Preserve d-tag case
+  return `${kind}:${pubkey}:${dTag}`;
+}
+
+function resolveEventAddress(event) {
+  if (!event || typeof event !== "object") {
+    return "";
+  }
+  const kind = Number(event.kind);
+  const pubkey = typeof event.pubkey === "string" ? event.pubkey.toLowerCase() : "";
+  if (!Number.isFinite(kind) || !pubkey) {
+    return "";
+  }
+  const dTag = event.tags?.find((t) => t[0] === "d" && t[1]);
+  if (dTag) {
+    return `${kind}:${pubkey}:${dTag[1]}`;
+  }
+  return "";
+}
+
+function checkLocalCacheForVideo(pointer) {
+  if (!pointer || typeof pointer !== "object" || !nostrClient?.allEvents) {
+    return null;
+  }
+
+  if (pointer.type === "e" && pointer.value) {
+    const cached = nostrClient.allEvents.get(pointer.value);
+    if (cached) {
+      return cached;
+    }
+  }
+
+  // Address lookup requires scanning if not using 'e'
+  // We handle this in batch inside the hydration stage to avoid repeated scanning
+  return null;
+}
+
 function createWatchHistoryHydrationStage() {
   return async function watchHistoryHydrationStage(items = [], context = {}) {
     const missing = [];
+    const missingAddresses = [];
     const idMap = new Map();
 
-    for (const item of items) {
-      if (item.video) {
-        continue;
-      }
+    const itemsToHydrate = items.filter(item => !item.video && item.pointer);
+    let addressScanNeeded = false;
+
+    // First pass: try to resolve from cache for IDs, and collect addresses
+    for (const item of itemsToHydrate) {
       const pointer = item.pointer;
+
       if (pointer?.type === "e" && pointer.value) {
+        const cached = checkLocalCacheForVideo(pointer);
+        if (cached) {
+          item.video = cached;
+          if (item.metadata) item.metadata.video = cached;
+          continue;
+        }
+
         missing.push(pointer.value);
         if (!idMap.has(pointer.value)) {
           idMap.set(pointer.value, []);
         }
         idMap.get(pointer.value).push(item);
+      } else if (pointer?.type === "a" && pointer.value) {
+        addressScanNeeded = true;
+        // Don't add to missingAddresses yet, check cache first
       }
     }
 
-    if (!missing.length) {
+    // Second pass: Scan cache for addresses if needed
+    if (addressScanNeeded && nostrClient?.allEvents) {
+      // Create a temporary index of cached videos by address
+      // Only iterate once
+      const cacheByAddress = new Map();
+      for (const video of nostrClient.allEvents.values()) {
+        const address = resolveEventAddress(video);
+        if (address) {
+          cacheByAddress.set(normalizeAddressKey(address), video);
+        }
+      }
+
+      for (const item of itemsToHydrate) {
+        const pointer = item.pointer;
+        if (pointer?.type === "a" && pointer.value) {
+          const key = normalizeAddressKey(pointer.value);
+          const cached = cacheByAddress.get(key);
+          if (cached) {
+            item.video = cached;
+            if (item.metadata) item.metadata.video = cached;
+            continue;
+          }
+
+          missingAddresses.push(pointer.value);
+          if (!idMap.has(key)) {
+            idMap.set(key, []);
+          }
+          idMap.get(key).push(item);
+        }
+      }
+    }
+
+    if (!missing.length && !missingAddresses.length) {
       return items;
     }
 
     const uniqueIds = Array.from(new Set(missing));
+    const uniqueAddresses = Array.from(new Set(missingAddresses));
+
     const relays =
       Array.isArray(nostrClient?.relays) && nostrClient.relays.length
         ? nostrClient.relays
@@ -237,24 +327,67 @@ function createWatchHistoryHydrationStage() {
       return items;
     }
 
+    const filters = [];
+    if (uniqueIds.length) {
+      filters.push({ ids: uniqueIds });
+    }
+
+    if (uniqueAddresses.length) {
+      const addressFilters = new Map();
+      for (const address of uniqueAddresses) {
+        const parts = address.split(":");
+        if (parts.length < 3) continue;
+        const kind = Number(parts[0]);
+        const pubkey = parts[1];
+        const normalizedPubkey = pubkey.toLowerCase();
+        const dTag = parts.slice(2).join(":");
+
+        const key = `${kind}:${normalizedPubkey}`;
+        if (!addressFilters.has(key)) {
+          addressFilters.set(key, { kinds: [kind], authors: [normalizedPubkey], "#d": [] });
+        }
+        addressFilters.get(key)["#d"].push(dTag);
+      }
+
+      for (const filter of addressFilters.values()) {
+        filters.push(filter);
+      }
+    }
+
     try {
-      const events = await nostrClient.pool.list(relays, [
-        { ids: uniqueIds },
-      ]);
+      const events = await nostrClient.pool.list(relays, filters);
 
       for (const event of events) {
-        if (!event || !event.id) {
+        if (!event) {
           continue;
         }
         try {
           const video = convertEventToVideo(event);
           if (video && !video.invalid) {
-            const targets = idMap.get(event.id);
-            if (targets) {
-              for (const target of targets) {
-                target.video = video;
-                if (target.metadata) {
-                  target.metadata.video = video;
+            // Match by ID
+            if (event.id) {
+              const targets = idMap.get(event.id);
+              if (targets) {
+                for (const target of targets) {
+                  target.video = video;
+                  if (target.metadata) {
+                    target.metadata.video = video;
+                  }
+                }
+              }
+            }
+
+            // Match by Address
+            const address = resolveEventAddress(event);
+            if (address) {
+              const key = normalizeAddressKey(address);
+              const targets = idMap.get(key);
+              if (targets) {
+                for (const target of targets) {
+                  target.video = video;
+                  if (target.metadata) {
+                    target.metadata.video = video;
+                  }
                 }
               }
             }
@@ -369,4 +502,3 @@ export function registerWatchHistoryFeed(engine, options = {}) {
   const definition = createWatchHistoryFeedDefinition(options);
   return engine.registerFeed("watch-history", definition);
 }
-
