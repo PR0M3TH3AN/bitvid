@@ -13,10 +13,6 @@ const {
   WATCH_HISTORY_KIND,
 } =
   await import("../js/config.js");
-const {
-  getWatchHistoryV2Enabled,
-  setWatchHistoryV2Enabled,
-} = await import("../js/constants.js");
 const [{ nostrClient }, { setActiveSigner, getActiveSigner, clearActiveSigner }] =
   await Promise.all([
     import("../js/nostrClientFacade.js"),
@@ -42,9 +38,6 @@ if (!window.crypto || !window.crypto.subtle) {
   const { webcrypto } = await import("node:crypto");
   window.crypto = webcrypto;
 }
-
-const originalFlag = getWatchHistoryV2Enabled();
-setWatchHistoryV2Enabled(true);
 
 const originalWindowNostr = window.nostr;
 const originalNostrTools = window.NostrTools || {};
@@ -2323,7 +2316,6 @@ async function testWatchHistoryLocalFallbackWhenDisabled() {
   const originalSession = nostrClient.sessionActor;
 
   try {
-    setWatchHistoryV2Enabled(false);
     localStorage.clear();
     watchHistoryService.resetProgress();
     nostrClient.pubkey = "";
@@ -2358,7 +2350,7 @@ async function testWatchHistoryLocalFallbackWhenDisabled() {
     assert.equal(
       enabled,
       false,
-      "sync should be disabled for session actors when feature flag is off",
+      "sync should be disabled for session actors",
     );
 
     const createdAt = 1_700_500_000;
@@ -2387,7 +2379,6 @@ async function testWatchHistoryLocalFallbackWhenDisabled() {
       "local fallback entries should carry watchedAt timestamps",
     );
   } finally {
-    setWatchHistoryV2Enabled(true);
     watchHistoryService.resetProgress();
     nostrClient.recordVideoView = originalRecordView;
     nostrClient.pubkey = originalPub;
@@ -2405,7 +2396,6 @@ async function testWatchHistorySyncEnabledForLoggedInUsers() {
   const originalFingerprint = nostrClient.getWatchHistoryFingerprint;
 
   try {
-    setWatchHistoryV2Enabled(false);
     localStorage.clear();
     watchHistoryService.resetProgress();
     nostrClient.pubkey = actor;
@@ -2452,7 +2442,7 @@ async function testWatchHistorySyncEnabledForLoggedInUsers() {
     assert.equal(
       enabled,
       true,
-      "sync should remain enabled for logged-in actors even when the flag is disabled",
+      "sync should remain enabled for logged-in actors",
     );
 
     const items = await watchHistoryService.loadLatest(actor);
@@ -2469,7 +2459,6 @@ async function testWatchHistorySyncEnabledForLoggedInUsers() {
       "fingerprint cache should update for logged-in actors",
     );
   } finally {
-    setWatchHistoryV2Enabled(true);
     watchHistoryService.resetProgress();
     nostrClient.resolveWatchHistory = originalResolve;
     nostrClient.getWatchHistoryFingerprint = originalFingerprint;
@@ -2487,7 +2476,6 @@ async function testWatchHistoryAppLoginFallback() {
   const originalApp = getApplication();
 
   try {
-    setWatchHistoryV2Enabled(false);
     localStorage.clear();
     watchHistoryService.resetProgress();
     nostrClient.pubkey = "";
@@ -2512,7 +2500,6 @@ async function testWatchHistoryAppLoginFallback() {
       "sync should be enabled when the app reports a logged-in pubkey",
     );
   } finally {
-    setWatchHistoryV2Enabled(true);
     watchHistoryService.resetProgress();
     nostrClient.pubkey = originalPub;
     nostrClient.sessionActor = originalSession;
@@ -2681,8 +2668,4 @@ if (originalExtensionPermissionSnapshot.length) {
   writeStoredExtensionPermissions(originalExtensionPermissionSnapshot);
 } else {
   clearStoredExtensionPermissions();
-}
-
-if (!originalFlag) {
-  setWatchHistoryV2Enabled(false);
 }

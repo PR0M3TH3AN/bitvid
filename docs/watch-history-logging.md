@@ -38,11 +38,11 @@ renderers like `historyView`.【F:config/instance-config.js†L101-L123】【F:j
 
 ## Snapshot cadence
 
-`WatchHistoryService.publishView` queues pointer entries while the feature flag
-is enabled, merging repeats with a one-minute throttle and persisting the queue
-in `sessionStorage`. Snapshots run when `watchHistoryService.snapshot()` is
-invoked (e.g., on `beforeunload`, `visibilitychange`, or manual sync actions in
-the history UI) and clear the queue on success.【F:js/watchHistoryService.js†L872-L917】【F:js/app.js†L6041-L6081】【F:js/app.js†L7467-L7484】
+`WatchHistoryService.publishView` queues pointer entries, merging repeats with a
+one-minute throttle and persisting the queue in `sessionStorage`. Snapshots run
+when `watchHistoryService.snapshot()` is invoked (e.g., on `beforeunload`,
+`visibilitychange`, or manual sync actions in the history UI) and clear the
+queue on success.【F:js/watchHistoryService.js†L872-L917】【F:js/app.js†L6041-L6081】【F:js/app.js†L7467-L7484】
 If no items are pending, the snapshot resolves with an empty result so UI calls
 remain idempotent.【F:js/watchHistoryService.js†L932-L944】
 
@@ -53,14 +53,6 @@ the returned `snapshotId`, records the originating reason, and delegates to the
 Nostr client to retry with exponential backoff. Retries start after two seconds,
 double per attempt with 25% jitter, cap at five minutes, and stop after eight
 attempts unless a publish succeeds sooner.【F:js/watchHistoryService.js†L948-L985】【F:js/watchHistoryService.js†L723-L777】【F:js/nostr/watchHistory.js†L929-L999】
-
-## Legacy payload handling
-
-Readers hydrate history by combining the pointer event, any encrypted chunks,
-and fallback metadata embedded in legacy watch-history lists. The resolver still
-accepts the `watch-history:v2:index` identifier, merges pointer tags from the
-index event, and falls back to plaintext content when decryption fails so older
-relays remain compatible.【F:config/instance-config.js†L60-L78】【F:js/nostr/watchHistory.js†L2120-L2170】【F:js/nostr/watchHistory.js†L660-L689】
 
 ## Local metadata toggles
 
