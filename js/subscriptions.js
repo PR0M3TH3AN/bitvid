@@ -32,7 +32,6 @@ import nostrService from "./services/nostrService.js";
 
 const SUBSCRIPTION_SET_KIND =
   getNostrEventSchema(NOTE_TYPES.SUBSCRIPTION_LIST)?.kind ?? 30000;
-const LEGACY_SUBSCRIPTION_SET_KIND = 30002;
 
 function normalizeHexPubkey(value) {
   if (typeof value !== "string") {
@@ -266,13 +265,8 @@ class SubscriptionsManager {
         authors.push(userPubkey);
       }
 
-      const subscriptionKinds = [SUBSCRIPTION_SET_KIND];
-      if (!subscriptionKinds.includes(LEGACY_SUBSCRIPTION_SET_KIND)) {
-        subscriptionKinds.push(LEGACY_SUBSCRIPTION_SET_KIND);
-      }
-
       const filter = {
-        kinds: subscriptionKinds,
+        kinds: [SUBSCRIPTION_SET_KIND],
         authors,
         "#d": [SUBSCRIPTION_LIST_IDENTIFIER],
         limit: 1
