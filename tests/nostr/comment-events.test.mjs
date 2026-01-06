@@ -118,13 +118,13 @@ test("publishComment prefers active signer when available", async () => {
       ["A", "30078:deadbeef:clip", "wss://definition-relay"],
       ["K", "30078"],
       ["P", "deadbeef", "wss://definition-relay"],
-      ["e", "video-event-id", "wss://video-relay"],
-      ["a", "30078:deadbeef:clip", "wss://definition-relay"],
-      ["e", "parent-comment-id", "thread-participant"],
-      ["k", String(COMMENT_EVENT_KIND)],
-      ["p", "thread-participant"],
+      ["E", "video-event-id", "wss://video-relay"],
+      ["A", "30078:deadbeef:clip", "wss://definition-relay"],
+      ["E", "parent-comment-id", "thread-participant"],
+      ["K", String(COMMENT_EVENT_KIND)],
+      ["P", "thread-participant"],
     ],
-    "comment event should include NIP-22 root tags while preserving fallback markers",
+    "comment event should include uppercase pointers and participant metadata",
   );
 });
 
@@ -193,9 +193,9 @@ test("publishComment accepts legacy targets with only an event id", async () => 
     [
       ["E", "legacy-event-id"],
       ["K", String(COMMENT_EVENT_KIND)],
-      ["e", "legacy-event-id"],
-      ["e", "parent-legacy"],
-      ["k", String(COMMENT_EVENT_KIND)],
+      ["E", "legacy-event-id"],
+      ["E", "parent-legacy"],
+      ["K", String(COMMENT_EVENT_KIND)],
     ],
     "legacy publish should emit uppercase root metadata with lowercase fallbacks",
   );
@@ -213,10 +213,10 @@ test("publishComment derives root and parent metadata from parent comment tags",
       ["K", "30078"],
       ["P", "videopk", "wss://author"],
       ["A", "30078:videopk:root", "wss://definition"],
-      ["e", "video-event", "wss://root"],
-      ["e", "parent-comment", "wss://parent", "parentpk"],
-      ["k", String(COMMENT_EVENT_KIND)],
-      ["p", "parentpk", "wss://parent"],
+      ["E", "video-event", "wss://root"],
+      ["E", "parent-comment", "wss://parent", "parentpk"],
+      ["K", String(COMMENT_EVENT_KIND)],
+      ["P", "parentpk", "wss://parent"],
     ],
   };
 
@@ -240,11 +240,11 @@ test("publishComment derives root and parent metadata from parent comment tags",
     ["A", "30078:videopk:root", "wss://definition"],
     ["K", "30078"],
     ["P", "videopk", "wss://author"],
-    ["e", "video-event", "wss://root"],
-    ["a", "30078:videopk:root", "wss://definition"],
-    ["e", "parent-comment", "wss://parent", "parentpk"],
-    ["k", String(COMMENT_EVENT_KIND)],
-    ["p", "parentpk", "wss://parent"],
+    ["E", "video-event", "wss://root"],
+    ["A", "30078:videopk:root", "wss://definition"],
+    ["E", "parent-comment", "wss://parent", "parentpk"],
+    ["K", String(COMMENT_EVENT_KIND)],
+    ["P", "parentpk", "wss://parent"],
   ]);
 });
 
@@ -255,11 +255,11 @@ test("listVideoComments matches comments even when tag casing and whitespace dif
     created_at: 1700000300,
     tags: [
       [" A ", " 30078:AUTHOR:CLIP ", " WSS://Definition "],
-      ["e", " VIDEO-1 "],
+      ["E", " VIDEO-1 "],
       [" E ", " VIDEO-1 "],
-      ["e", " PARENT-1 "],
-      ["k", String(COMMENT_EVENT_KIND)],
-      ["p", " THREAD-PARTICIPANT "],
+      ["E", " PARENT-1 "],
+      ["K", String(COMMENT_EVENT_KIND)],
+      ["P", " THREAD-PARTICIPANT "],
     ],
   };
 
@@ -293,7 +293,7 @@ test("listVideoComments matches uppercase definition addresses without lowering"
     created_at: 1700000400,
     tags: [
       ["A", uppercasePointer],
-      ["e", "video-1"],
+      ["E", "video-1"],
     ],
   };
 
@@ -324,11 +324,11 @@ test("listVideoComments matches comments even when tag casing and whitespace dif
     created_at: 1700000300,
     tags: [
       [" A ", " 30078:AUTHOR:CLIP ", " WSS://Definition "],
-      ["e", " VIDEO-1 "],
+      ["E", " VIDEO-1 "],
       [" E ", " VIDEO-1 "],
-      ["e", " PARENT-1 "],
-      ["k", String(COMMENT_EVENT_KIND)],
-      ["p", " THREAD-PARTICIPANT "],
+      ["E", " PARENT-1 "],
+      ["K", String(COMMENT_EVENT_KIND)],
+      ["P", " THREAD-PARTICIPANT "],
     ],
   };
 
@@ -354,11 +354,11 @@ test("listVideoComments matches comments even when tag casing and whitespace dif
   );
 });
 
-    ["p", "parentpk", "wss://parent"],
+    ["P", "parentpk", "wss://parent"],
   ]);
 });
 
-test("publishComment emits only video event #e tag when address and parent are absent", async () => {
+test("publishComment emits only uppercase video event pointer when address and parent are absent", async () => {
   const { client, publishCalls } = createMockClient();
 
   const signer = {
@@ -389,9 +389,8 @@ test("publishComment emits only video event #e tag when address and parent are a
     tags,
     [
       ["E", "video-only"],
-      ["e", "video-only"],
     ],
-    "event should include an uppercase root pointer along with the legacy #e tag",
+    "event should include a single uppercase pointer",
   );
 });
 
@@ -404,9 +403,9 @@ test("listVideoComments builds filters with uppercase roots plus legacy fallback
       ["A", "30078:author:clip"],
       ["K", "30078"],
       ["P", "author"],
-      ["e", "parent-1"],
-      ["k", String(COMMENT_EVENT_KIND)],
-      ["p", "thread-participant"],
+      ["E", "parent-1"],
+      ["K", String(COMMENT_EVENT_KIND)],
+      ["P", "thread-participant"],
     ],
   };
 
@@ -415,8 +414,8 @@ test("listVideoComments builds filters with uppercase roots plus legacy fallback
     kind: COMMENT_EVENT_KIND,
     created_at: 1690000000,
     tags: [
-      ["a", "30078:author:clip"],
-      ["e", "parent-1"],
+      ["A", "30078:author:clip"],
+      ["E", "parent-1"],
     ],
   };
 
@@ -424,7 +423,7 @@ test("listVideoComments builds filters with uppercase roots plus legacy fallback
     id: "comment-3",
     kind: COMMENT_EVENT_KIND,
     created_at: 1700000100,
-    tags: [["a", "30078:author:clip"]],
+    tags: [["A", "30078:author:clip"]],
   };
 
   const {
@@ -473,9 +472,9 @@ test("listVideoComments builds filters with uppercase roots plus legacy fallback
     "event filter should target comment kind",
   );
   assert.deepEqual(
-    eventFilter["#e"],
+    eventFilter["#E"],
     ["video-1"],
-    "event filter should target the video via #e",
+    "event filter should target the video via #E",
   );
   assert.equal(
     uppercaseFilter.kinds[0],
@@ -511,11 +510,11 @@ test("listVideoComments builds filters with uppercase roots plus legacy fallback
     parentFilter,
     {
       kinds: [COMMENT_EVENT_KIND],
-      "#e": ["parent-1"],
+      "#E": ["parent-1"],
       since: 1700000000,
       limit: 10,
     },
-    "parent filter should scope the thread via #e",
+    "parent filter should scope the thread via #E",
   );
   assert.equal(
     eventFilter.since,
@@ -534,12 +533,12 @@ test("listVideoComments builds filters with uppercase roots plus legacy fallback
     "definition filter should target comment kind",
   );
   assert.deepEqual(
-    definitionFilter["#a"],
+    definitionFilter["#A"],
     ["30078:author:clip"],
-    "definition filter should bind the video definition via #a",
+    "definition filter should bind the video definition via #A",
   );
   assert.deepEqual(
-    definitionFilter["#e"],
+    definitionFilter["#E"],
     ["parent-1"],
     "definition filter should continue scoping to the parent comment",
   );
@@ -555,14 +554,14 @@ test("listVideoComments builds filters with uppercase roots plus legacy fallback
   );
 });
 
-test("listVideoComments adds lowercase root filters when only the identifier is known", async () => {
+test("listVideoComments emits uppercase root filters when only the identifier is known", async () => {
   const matchingEvent = {
     id: "comment-root",
     kind: COMMENT_EVENT_KIND,
     tags: [
       ["I", "root-only"],
       ["P", "root-author"],
-      ["e", "video-rooted"],
+      ["E", "video-rooted"],
     ],
   };
 
@@ -589,44 +588,21 @@ test("listVideoComments adds lowercase root filters when only the identifier is 
   assert.ok(receivedFilters, "pool.list should receive filters");
   assert.equal(
     receivedFilters.filters.length,
-    4,
-    "root identifier requests should include lowercase fallbacks",
+    2,
+    "root identifier requests should emit uppercase filters only",
   );
 
-  const [eventFilter, uppercaseEventFilter, lowercaseRootFilter, uppercaseRootFilter] =
-    receivedFilters.filters;
+  const [eventFilter, uppercaseRootFilter] = receivedFilters.filters;
 
   assert.deepEqual(
     eventFilter,
-    {
-      kinds: [COMMENT_EVENT_KIND],
-      "#e": ["video-rooted"],
-      since: 1700000000,
-      limit: 5,
-    },
-    "event filter should continue targeting the video event id",
-  );
-
-  assert.deepEqual(
-    uppercaseEventFilter,
     {
       kinds: [COMMENT_EVENT_KIND],
       "#E": ["video-rooted"],
       since: 1700000000,
       limit: 5,
     },
-    "uppercase event filter should continue targeting legacy #E pointers",
-  );
-
-  assert.deepEqual(
-    lowercaseRootFilter,
-    {
-      kinds: [COMMENT_EVENT_KIND],
-      "#i": ["root-only"],
-      since: 1700000000,
-      limit: 5,
-    },
-    "root identifier filter should include lowercase #i tag queries",
+    "event filter should target the video event id via #E",
   );
 
   assert.equal(
@@ -660,7 +636,7 @@ test("listVideoComments supports legacy targets without a definition address", a
   const legacyEvent = {
     id: "legacy-comment",
     kind: COMMENT_EVENT_KIND,
-    tags: [["e", "legacy-video"]],
+    tags: [["E", "legacy-video"]],
   };
 
   const { client, pool } = createMockClient();
@@ -688,14 +664,14 @@ test("listVideoComments supports legacy targets without a definition address", a
     [
       {
         kinds: [COMMENT_EVENT_KIND],
-        "#e": ["legacy-video"],
+        "#E": ["legacy-video"],
       },
       {
         kinds: [COMMENT_EVENT_KIND],
         "#E": ["legacy-video"],
       },
     ],
-    "legacy listing should target the video event id via #e/#E",
+    "legacy listing should target the video event id via #E",
   );
 });
 
@@ -756,7 +732,7 @@ test("subscribeVideoComments forwards matching events and cleans up unsubscribe"
     [
       {
         kinds: [COMMENT_EVENT_KIND],
-        "#e": ["video-1"],
+        "#E": ["video-1"],
       },
       {
         kinds: [COMMENT_EVENT_KIND],
@@ -766,12 +742,12 @@ test("subscribeVideoComments forwards matching events and cleans up unsubscribe"
       },
       {
         kinds: [COMMENT_EVENT_KIND],
-        "#e": ["parent-1"],
+        "#E": ["parent-1"],
       },
       {
         kinds: [COMMENT_EVENT_KIND],
         "#a": ["30078:author:clip"],
-        "#e": ["parent-1"],
+        "#E": ["parent-1"],
       },
     ],
     "subscription should emit event, parent, and address filters",
@@ -784,16 +760,16 @@ test("subscribeVideoComments forwards matching events and cleans up unsubscribe"
       ["A", "30078:author:clip"],
       ["K", "30078"],
       ["P", "author"],
-      ["e", "parent-1"],
-      ["k", String(COMMENT_EVENT_KIND)],
-      ["p", "thread-participant"],
+      ["E", "parent-1"],
+      ["K", String(COMMENT_EVENT_KIND)],
+      ["P", "thread-participant"],
     ],
   });
 
   handler({
     id: "comment-rejected",
     kind: COMMENT_EVENT_KIND,
-    tags: [["e", "video-1"]],
+    tags: [["E", "video-1"]],
   });
 
   assert.equal(receivedEvents.length, 1, "only matching events should reach the callback");
@@ -839,7 +815,7 @@ test("subscribeVideoComments supports video targets without a definition address
     [
       {
         kinds: [COMMENT_EVENT_KIND],
-        "#e": ["legacy-video"],
+        "#E": ["legacy-video"],
       },
       {
         kinds: [COMMENT_EVENT_KIND],
@@ -854,7 +830,7 @@ test("subscribeVideoComments supports video targets without a definition address
   handler({
     id: "legacy-comment",
     kind: COMMENT_EVENT_KIND,
-    tags: [["e", "legacy-video"]],
+    tags: [["E", "legacy-video"]],
   });
 
   assert.equal(receivedEvents.length, 1, "legacy comment should be forwarded");

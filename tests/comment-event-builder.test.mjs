@@ -48,10 +48,9 @@ test("buildCommentEvent emits NIP-22 root metadata while keeping legacy fallback
     ["A", "30078:deadbeefcafebabe:clip-1"],
     ["K", "30078"],
     ["P", "deadbeefcafebabe"],
-    ["e", "video-event-id"],
-    ["a", "30078:deadbeefcafebabe:clip-1"],
-    ["k", "30078"],
-    ["p", "deadbeefcafebabe"],
+    ["E", "video-event-id"],
+    ["A", "30078:deadbeefcafebabe:clip-1"],
+    ["K", "30078"],
   ]);
   assert.equal(event.content, "Great video!");
 });
@@ -72,11 +71,11 @@ test("buildCommentEvent includes parent pointers, kinds, and authors for replies
     ["A", "30078:deadbeefcafebabe:clip-1"],
     ["K", "30078"],
     ["P", "deadbeefcafebabe"],
-    ["e", "video-event-id"],
-    ["a", "30078:deadbeefcafebabe:clip-1"],
-    ["e", "parent-comment-id", "parent-author"],
-    ["k", String(VIDEO_COMMENT_KIND)],
-    ["p", "parent-author"],
+    ["E", "video-event-id"],
+    ["A", "30078:deadbeefcafebabe:clip-1"],
+    ["E", "parent-comment-id", "parent-author"],
+    ["K", String(VIDEO_COMMENT_KIND)],
+    ["P", "parent-author"],
   ]);
 });
 
@@ -101,11 +100,11 @@ test("buildCommentEvent normalizes relays and preserves explicit overrides", () 
     ["A", "30078:deadbeefcafebabe:clip-2", "wss://video.def"],
     ["K", "30078"],
     ["P", "deadbeefcafebabe", "wss://video.def"],
-    ["e", "event123", "wss://comments.main"],
-    ["a", "30078:deadbeefcafebabe:clip-2", "wss://video.def"],
-    ["e", "root-comment", "wss://parent", "cafecafe"],
-    ["k", String(VIDEO_COMMENT_KIND)],
-    ["p", "cafecafe", "wss://profile"],
+    ["E", "event123", "wss://comments.main"],
+    ["A", "30078:deadbeefcafebabe:clip-2", "wss://video.def"],
+    ["E", "root-comment", "wss://parent", "cafecafe"],
+    ["K", String(VIDEO_COMMENT_KIND)],
+    ["P", "cafecafe", "wss://profile"],
     ["client", "bitvid"],
   ]);
   assert.equal(event.content, " Appreciated! ");
@@ -128,9 +127,9 @@ test("buildCommentEvent falls back to event pointers when no address is supplied
     ["E", "legacy-event", "wss://legacy.example", "legacy-author"],
     ["K", "1063"],
     ["P", "legacy-author"],
-    ["e", "legacy-event", "wss://legacy.example"],
-    ["k", "1063"],
-    ["p", "legacy-pubkey"],
+    ["E", "legacy-event", "wss://legacy.example"],
+    ["K", "1063"],
+    ["P", "legacy-pubkey"],
   ]);
 });
 
@@ -152,10 +151,10 @@ test("buildCommentEvent accepts partial metadata for parent overrides", () => {
   assert.deepStrictEqual(event.tags, [
     ["E", "file-event"],
     ["K", "1063"],
-    ["e", "file-event"],
-    ["e", "parent-comment", "wss://parent", "parent-only"],
-    ["k", "1111"],
-    ["p", "parent-only", "wss://parent-author"],
+    ["E", "file-event"],
+    ["E", "parent-comment", "wss://parent", "parent-only"],
+    ["K", "1111"],
+    ["P", "parent-only", "wss://parent-author"],
   ]);
 });
 
