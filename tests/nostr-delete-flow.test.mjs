@@ -1,6 +1,6 @@
 import "./test-helpers/setup-localstorage.mjs";
 import assert from "node:assert/strict";
-import { NostrClient } from "../js/nostr.js";
+import { NostrClient } from "../js/nostr/client.js";
 import { NostrService } from "../js/services/nostrService.js";
 
 await (async function testDeleteFlowPublishesDeletionFlag() {

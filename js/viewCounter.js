@@ -566,8 +566,9 @@ function ensureLiveSubscription(key, listeners) {
 
 export function initViewCounter({ nostrClient } = {}) {
   if (nostrClient && typeof nostrClient === "object") {
-    // The singleton Nostr client is already registered inside js/nostr.js.
-    // This hook remains for backwards compatibility.
+    // The singleton Nostr client is already registered inside
+    // js/nostr/defaultClient.js. This hook remains for backwards
+    // compatibility.
   }
 }
 

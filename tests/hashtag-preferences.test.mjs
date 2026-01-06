@@ -5,11 +5,11 @@ const hashtagPreferencesModule = await import(
   "../js/services/hashtagPreferencesService.js"
 );
 const hashtagPreferences = hashtagPreferencesModule.default;
-const {
-  nostrClient,
-  setActiveSigner,
-  clearActiveSigner,
-} = await import("../js/nostr.js");
+const [{ nostrClient }, { setActiveSigner, clearActiveSigner }] =
+  await Promise.all([
+    import("../js/nostrClientFacade.js"),
+    import("../js/nostr/client.js"),
+  ]);
 
 if (typeof globalThis.window === "undefined") {
   globalThis.window = {};

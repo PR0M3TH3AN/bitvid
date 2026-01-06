@@ -1,4 +1,3 @@
-import { publishVideoReaction } from "./nostr.js";
 import { nostrClient } from "./nostrClientFacade.js";
 import { normalizePointerInput, pointerKey } from "./nostr/watchHistory.js";
 import { devLogger, userLogger } from "./utils/logger.js";
@@ -749,7 +748,10 @@ export const reactionCounter = {
         }
       }
 
-      const result = await publishVideoReaction(enrichedPointer, publishOptions);
+      const result = await nostrClient.publishVideoReaction(
+        enrichedPointer,
+        publishOptions,
+      );
       if (!result || !result.ok) {
         userLogger.warn(
           "[reactionCounter] Reaction publish rejected by relays:",

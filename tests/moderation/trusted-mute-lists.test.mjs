@@ -11,7 +11,9 @@ import { withMockedNostrTools, createModerationServiceHarness } from "../helpers
 
 const { userBlocks } = await import("../../js/userBlocks.js");
 const { nostrClient } = await import("../../js/nostrClientFacade.js");
-const { setActiveSigner, clearActiveSigner } = await import("../../js/nostr.js");
+const { setActiveSigner, clearActiveSigner } = await import(
+  "../../js/nostr/client.js"
+);
 
 test("trusted mute lists from seeds hide authors for anonymous viewers", async (t) => {
   withMockedNostrTools(t);

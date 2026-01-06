@@ -12,9 +12,7 @@ if (!globalThis.window.NostrTools) {
 }
 
 const { VIEW_COUNT_BACKFILL_MAX_DAYS } = await import("../js/config.js");
-const { nostrClient } = await import("../js/nostr.js");
-
-const NostrClient = nostrClient.constructor;
+const { NostrClient } = await import("../js/nostr/client.js");
 
 async function withFrozenTime(timestampSeconds, callback) {
   const originalNow = Date.now;

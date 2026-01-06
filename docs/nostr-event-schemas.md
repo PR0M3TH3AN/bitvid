@@ -110,9 +110,8 @@ through the dedicated facade when you need to run a NIP-07 handshake:
 import { nostrClient, requestDefaultExtensionPermissions } from "./nostrClientFacade.js";
 ```
 
-`js/nostr.js` remains as a compatibility shim while downstream packages migrate;
-it forwards to the new facades but is slated for removal once legacy imports
-are retired.【F:js/nostr/defaultClient.js†L1-L25】【F:js/nostr.js†L1-L92】
+The compatibility shim has been removed; import from the facades above to avoid
+broken references.【F:js/nostr/defaultClient.js†L1-L25】
 
 For analytics, route through the
 [NIP-71](https://github.com/nostr-protocol/nips/blob/master/71.md) helpers in

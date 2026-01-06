@@ -1,7 +1,7 @@
 import "./test-helpers/setup-localstorage.mjs";
 import assert from "node:assert/strict";
 import { parseVideoEventPayload } from "../js/videoEventUtils.js";
-import { convertEventToVideo } from "../js/nostr.js";
+import { convertEventToVideo } from "../js/nostr/nip71.js";
 import { deriveTorrentPlaybackConfig } from "../js/playbackUtils.js";
 
 const LEGACY_INFO_HASH = "0123456789abcdef0123456789abcdef01234567";
