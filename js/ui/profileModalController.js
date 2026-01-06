@@ -1124,7 +1124,6 @@ export class ProfileModalController {
     this.directMessagesUnsubscribes = [];
     this.pendingMessagesRender = null;
     this.messagesStatusClearTimeout = null;
-    this.lastDirectMessageErrorTime = 0;
 
     this.profileHistoryRenderer = null;
     this.profileHistoryRendererConfig = null;
@@ -2418,14 +2417,10 @@ export class ProfileModalController {
 
   handleDirectMessagesError(detail = {}) {
     const error = detail?.error || detail?.failure || detail;
-    const now = Date.now();
-    if (now - this.lastDirectMessageErrorTime > 5000) {
-      userLogger.warn(
-        "[profileModal] Direct message sync issue detected:",
-        error,
-      );
-      this.lastDirectMessageErrorTime = now;
-    }
+    userLogger.warn(
+      "[profileModal] Direct message sync issue detected:",
+      error,
+    );
 
     if (this.activeMessagesRequest) {
       return;
