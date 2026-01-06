@@ -318,10 +318,17 @@ function createWatchHistoryHydrationStage() {
     const uniqueIds = Array.from(new Set(missing));
     const uniqueAddresses = Array.from(new Set(missingAddresses));
 
-    const relays =
+    const readRelays =
+      Array.isArray(nostrClient?.readRelays) && nostrClient.readRelays.length
+        ? nostrClient.readRelays
+        : null;
+
+    const fallbackRelays =
       Array.isArray(nostrClient?.relays) && nostrClient.relays.length
         ? nostrClient.relays
         : null;
+
+    const relays = readRelays || fallbackRelays;
 
     if (!relays || !nostrClient?.pool) {
       return items;
