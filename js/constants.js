@@ -145,7 +145,6 @@ export const DEFAULT_TRUST_SEED_NPUBS = SANITIZED_DEFAULT_TRUST_SEED_NPUBS;
 
 const DEFAULT_FLAGS = Object.freeze({
   URL_FIRST_ENABLED: true, // try URL before magnet in the player
-  ACCEPT_LEGACY_V1: true, // accept v1 magnet-only notes
   FEATURE_WATCH_HISTORY_V2: true,
   FEATURE_PUBLISH_NIP71: false,
   FEATURE_HASHTAG_PREFERENCES: false,
@@ -165,7 +164,6 @@ const runtimeFlags = (() => {
   }
   const initial = {
     URL_FIRST_ENABLED: DEFAULT_FLAGS.URL_FIRST_ENABLED,
-    ACCEPT_LEGACY_V1: DEFAULT_FLAGS.ACCEPT_LEGACY_V1,
     FEATURE_WATCH_HISTORY_V2: DEFAULT_FLAGS.FEATURE_WATCH_HISTORY_V2,
     FEATURE_PUBLISH_NIP71: DEFAULT_FLAGS.FEATURE_PUBLISH_NIP71,
     FEATURE_HASHTAG_PREFERENCES: DEFAULT_FLAGS.FEATURE_HASHTAG_PREFERENCES,
@@ -186,11 +184,6 @@ const runtimeFlags = (() => {
 export let URL_FIRST_ENABLED = coerceBoolean(
   runtimeFlags.URL_FIRST_ENABLED,
   DEFAULT_FLAGS.URL_FIRST_ENABLED
-);
-
-export let ACCEPT_LEGACY_V1 = coerceBoolean(
-  runtimeFlags.ACCEPT_LEGACY_V1,
-  DEFAULT_FLAGS.ACCEPT_LEGACY_V1
 );
 
 export let FEATURE_WATCH_HISTORY_V2 = coerceBoolean(
@@ -245,17 +238,6 @@ Object.defineProperty(runtimeFlags, "URL_FIRST_ENABLED", {
   },
   set(next) {
     URL_FIRST_ENABLED = coerceBoolean(next, DEFAULT_FLAGS.URL_FIRST_ENABLED);
-  },
-});
-
-Object.defineProperty(runtimeFlags, "ACCEPT_LEGACY_V1", {
-  configurable: true,
-  enumerable: true,
-  get() {
-    return ACCEPT_LEGACY_V1;
-  },
-  set(next) {
-    ACCEPT_LEGACY_V1 = coerceBoolean(next, DEFAULT_FLAGS.ACCEPT_LEGACY_V1);
   },
 });
 
@@ -386,7 +368,6 @@ Object.defineProperty(runtimeFlags, "TRUSTED_SPAM_HIDE_THRESHOLD", {
 
 // Ensure the runtime object reflects the sanitized defaults immediately.
 runtimeFlags.URL_FIRST_ENABLED = URL_FIRST_ENABLED;
-runtimeFlags.ACCEPT_LEGACY_V1 = ACCEPT_LEGACY_V1;
 runtimeFlags.FEATURE_WATCH_HISTORY_V2 = FEATURE_WATCH_HISTORY_V2;
 runtimeFlags.FEATURE_PUBLISH_NIP71 = FEATURE_PUBLISH_NIP71;
 runtimeFlags.FEATURE_HASHTAG_PREFERENCES = FEATURE_HASHTAG_PREFERENCES;
@@ -401,11 +382,6 @@ runtimeFlags.TRUSTED_SPAM_HIDE_THRESHOLD = TRUSTED_SPAM_HIDE_THRESHOLD;
 export function setUrlFirstEnabled(next) {
   runtimeFlags.URL_FIRST_ENABLED = next;
   return URL_FIRST_ENABLED;
-}
-
-export function setAcceptLegacyV1(next) {
-  runtimeFlags.ACCEPT_LEGACY_V1 = next;
-  return ACCEPT_LEGACY_V1;
 }
 
 export function getWatchHistoryV2Enabled() {
@@ -439,7 +415,6 @@ export function setHashtagPreferencesEnabled(next) {
 
 export function resetRuntimeFlags() {
   setUrlFirstEnabled(DEFAULT_FLAGS.URL_FIRST_ENABLED);
-  setAcceptLegacyV1(DEFAULT_FLAGS.ACCEPT_LEGACY_V1);
   setWatchHistoryV2Enabled(DEFAULT_FLAGS.FEATURE_WATCH_HISTORY_V2);
   setHashtagPreferencesEnabled(DEFAULT_FLAGS.FEATURE_HASHTAG_PREFERENCES);
   setTrustSeedsEnabled(DEFAULT_FLAGS.FEATURE_TRUST_SEEDS);
