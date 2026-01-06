@@ -298,7 +298,6 @@ function shouldRequestExtensionPermissions(signer) {
 }
 
 const EVENTS_CACHE_STORAGE_KEY = "bitvid:eventsCache:v1";
-const LEGACY_EVENTS_STORAGE_KEY = "bitvidEvents";
 const EVENTS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const EVENTS_CACHE_DB_NAME = "bitvid-events-cache";
 const EVENTS_CACHE_DB_VERSION = 1;
@@ -3333,25 +3332,6 @@ export class NostrClient {
 
     let payload = parsePayload(localStorage.getItem(EVENTS_CACHE_STORAGE_KEY));
 
-    if (!payload) {
-      const legacyRaw = localStorage.getItem(LEGACY_EVENTS_STORAGE_KEY);
-      const legacyParsed = parsePayload(legacyRaw);
-      if (legacyParsed) {
-        payload = {
-          version: 1,
-          savedAt: now,
-          events: legacyParsed,
-        };
-      }
-      if (legacyRaw) {
-        try {
-          localStorage.removeItem(LEGACY_EVENTS_STORAGE_KEY);
-        } catch (err) {
-          devLogger.warn("[nostr] Failed to remove legacy cache:", err);
-        }
-      }
-    }
-
     const applied = this.applyCachedPayload(payload, "localStorage");
 
     if (!applied && payload) {
@@ -5570,7 +5550,6 @@ export class NostrClient {
         EVENTS_CACHE_STORAGE_KEY,
         JSON.stringify(serializedPayload),
       );
-      localStorage.removeItem(LEGACY_EVENTS_STORAGE_KEY);
     } catch (err) {
       devLogger.warn("[nostr] Failed to persist events cache:", err);
     }
