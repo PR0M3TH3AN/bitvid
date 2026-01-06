@@ -24,16 +24,16 @@ export function resolveVideoPointer({
   const pointerCandidates = [];
   const normalizedRelay = normalizeString(relay);
 
-  const rootId = normalizeString(videoRootId);
-  if (rootId && normalizedPubkey) {
-    const ptr = ["a", `${normalizedKind}:${normalizedPubkey}:${rootId}`];
+  const normalizedDTag = normalizeString(dTag);
+  if (normalizedDTag && normalizedPubkey) {
+    const ptr = ["a", `${normalizedKind}:${normalizedPubkey}:${normalizedDTag}`];
     if (normalizedRelay) ptr.push(normalizedRelay);
     pointerCandidates.push(ptr);
   }
 
-  const normalizedDTag = normalizeString(dTag);
-  if (normalizedDTag && normalizedPubkey) {
-    const ptr = ["a", `${normalizedKind}:${normalizedPubkey}:${normalizedDTag}`];
+  const rootId = normalizeString(videoRootId);
+  if (rootId && normalizedPubkey) {
+    const ptr = ["a", `${normalizedKind}:${normalizedPubkey}:${rootId}`];
     if (normalizedRelay) ptr.push(normalizedRelay);
     pointerCandidates.push(ptr);
   }
