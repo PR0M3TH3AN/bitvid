@@ -170,6 +170,16 @@ When moving a feature to a controller, follow these steps:
 
 ---
 
+## 9. Nostr Addressing & NIP-33 (Lessons Learned)
+
+* **Addressing Rule:** NIP-33 events (e.g., videos, long-form content) are uniquely identified by the combination of `kind`, `pubkey`, and the `d` tag.
+* **The `d` tag is King:** When creating pointers for these events, **always use the `d` tag** as the identifier.
+* **Avoid Logical IDs:** Do not confuse logical identifiers (like `videoRootId`) with the network identifier (`d` tag). While they might often be the same, they are not guaranteed to be.
+* **Hydration Pitfall:** If you create a pointer using a logical ID that differs from the `d` tag, relays will fail to find the event during hydration because the index relies on the `d` tag.
+* **Fix Pattern:** When resolving a pointer from an event, prioritize checking `tags.find(t => t[0] === 'd')?.[1]` over any other ID field.
+
+---
+
 ## Next
 
 Please read these documents next.
