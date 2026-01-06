@@ -204,12 +204,22 @@ function createWatchHistorySource({ service = watchHistoryService } = {}) {
   };
 }
 
+function normalizeAddressKey(address) {
+  if (typeof address !== "string") return "";
+  const parts = address.split(":");
+  if (parts.length < 3) return address;
+  const kind = parts[0];
+  const pubkey = parts[1].toLowerCase();
+  const dTag = parts.slice(2).join(":"); // Preserve d-tag case
+  return `${kind}:${pubkey}:${dTag}`;
+}
+
 function resolveEventAddress(event) {
   if (!event || typeof event !== "object") {
     return "";
   }
   const kind = Number(event.kind);
-  const pubkey = typeof event.pubkey === "string" ? event.pubkey : "";
+  const pubkey = typeof event.pubkey === "string" ? event.pubkey.toLowerCase() : "";
   if (!Number.isFinite(kind) || !pubkey) {
     return "";
   }
@@ -239,10 +249,13 @@ function createWatchHistoryHydrationStage() {
         idMap.get(pointer.value).push(item);
       } else if (pointer?.type === "a" && pointer.value) {
         missingAddresses.push(pointer.value);
-        if (!idMap.has(pointer.value)) {
-          idMap.set(pointer.value, []);
+
+        // Use normalized key for matching to handle mixed-case pubkeys in pointers
+        const key = normalizeAddressKey(pointer.value);
+        if (!idMap.has(key)) {
+          idMap.set(key, []);
         }
-        idMap.get(pointer.value).push(item);
+        idMap.get(key).push(item);
       }
     }
 
@@ -273,12 +286,16 @@ function createWatchHistoryHydrationStage() {
         const parts = address.split(":");
         if (parts.length !== 3) continue;
         const kind = Number(parts[0]);
-        const pubkey = parts[1];
+        const pubkey = parts[1]; // Keep original case for filter? No, fetch should be robust.
+        // Actually, Nostr pubkeys are lowercase hex.
+        // If the pointer has Uppercase pubkey, we should lowercase it for the filter
+        // because the relay will likely index it as lowercase or hex.
+        const normalizedPubkey = pubkey.toLowerCase();
         const dTag = parts[2];
 
-        const key = `${kind}:${pubkey}`;
+        const key = `${kind}:${normalizedPubkey}`;
         if (!addressFilters.has(key)) {
-          addressFilters.set(key, { kinds: [kind], authors: [pubkey], "#d": [] });
+          addressFilters.set(key, { kinds: [kind], authors: [normalizedPubkey], "#d": [] });
         }
         addressFilters.get(key)["#d"].push(dTag);
       }
@@ -314,7 +331,8 @@ function createWatchHistoryHydrationStage() {
             // Match by Address
             const address = resolveEventAddress(event);
             if (address) {
-              const targets = idMap.get(address);
+              const key = normalizeAddressKey(address);
+              const targets = idMap.get(key);
               if (targets) {
                 for (const target of targets) {
                   target.video = video;
