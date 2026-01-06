@@ -1,5 +1,6 @@
 import {
   WATCH_HISTORY_KIND,
+  WATCH_HISTORY_LEGACY_KIND,
   WATCH_HISTORY_LIST_IDENTIFIER,
   WATCH_HISTORY_LEGACY_LIST_IDENTIFIERS,
   WATCH_HISTORY_MAX_ITEMS,
@@ -1883,9 +1884,17 @@ class WatchHistoryManager {
     }
     let pointerEvents = [];
     try {
+      const kinds = [WATCH_HISTORY_KIND];
+      if (
+        Number.isFinite(WATCH_HISTORY_LEGACY_KIND) &&
+        WATCH_HISTORY_LEGACY_KIND > 0 &&
+        WATCH_HISTORY_LEGACY_KIND !== WATCH_HISTORY_KIND
+      ) {
+        kinds.push(WATCH_HISTORY_LEGACY_KIND);
+      }
       const filters = [
         {
-          kinds: [WATCH_HISTORY_KIND],
+          kinds,
           authors: [actorKey],
           // Fetch all parameterized replaceables of this kind to get history across all months
           limit,

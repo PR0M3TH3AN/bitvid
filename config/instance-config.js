@@ -301,7 +301,8 @@ export const THEME_ACCENT_OVERRIDES = Object.freeze({
  * example, a NIP-51 collection) can flip this number so long as their relays
  * accept the chosen kind.
  */
-export const WATCH_HISTORY_KIND = 30078;
+export const WATCH_HISTORY_KIND = 30003;
+export const WATCH_HISTORY_LEGACY_KIND = 30078;
 
 /**
  * Identifier applied to the watch-history list when storing it on relays.
