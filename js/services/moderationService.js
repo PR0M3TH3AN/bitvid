@@ -1,4 +1,4 @@
-import { nostrClient } from "../nostr.js";
+import { nostrClient } from "../nostrClientFacade.js";
 import { publishEventToRelays, assertAnyRelayAccepted } from "../nostrPublish.js";
 import { accessControl } from "../accessControl.js";
 import { userBlocks, USER_BLOCK_EVENTS } from "../userBlocks.js";

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { nostrClient } from "../js/nostr.js";
+import { nostrClient } from "../js/nostrClientFacade.js";
 import { batchFetchProfilesFromRelays } from "../js/utils/profileBatchFetcher.js";
 
 const FAST_RELAY = "wss://fast.example";

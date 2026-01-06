@@ -142,7 +142,7 @@ assert.ok(
   "invalid additional tag values should not be coerced to object strings"
 );
 
-const { nostrClient } = await import("../js/nostr.js");
+const { nostrClient } = await import("../js/nostrClientFacade.js");
 
 function createMockNostrHarness() {
   const storedEvents = new Map();

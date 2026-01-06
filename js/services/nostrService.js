@@ -1,4 +1,4 @@
-import { nostrClient } from "../nostr.js";
+import { nostrClient } from "../nostrClientFacade.js";
 import { convertEventToVideo } from "../nostr/index.js";
 import { accessControl } from "../accessControl.js";
 import { ALLOW_NSFW_CONTENT } from "../config.js";

@@ -17,9 +17,11 @@ const {
   getWatchHistoryV2Enabled,
   setWatchHistoryV2Enabled,
 } = await import("../js/constants.js");
-const { nostrClient, setActiveSigner, getActiveSigner, clearActiveSigner } = await import(
-  "../js/nostr.js",
-);
+const [{ nostrClient }, { setActiveSigner, getActiveSigner, clearActiveSigner }] =
+  await Promise.all([
+    import("../js/nostrClientFacade.js"),
+    import("../js/nostr/client.js"),
+  ]);
 const { rememberNostrTools } = await import("../js/nostr/toolkit.js");
 const { normalizeActorKey } = await import("../js/nostr/watchHistory.js");
 const { watchHistoryService } = await import("../js/watchHistoryService.js");

@@ -431,7 +431,7 @@ await (async () => {
     splitAndZap: async () => ({ receipts: [] }),
   });
 
-  const { nostrClient } = await import("../js/nostr.js");
+  const { nostrClient } = await import("../js/nostrClientFacade.js");
   const originalSessionActor = nostrClient.sessionActor;
   const sessionPubkey = "a".repeat(64);
   nostrClient.sessionActor = { pubkey: sessionPubkey, privateKey: "priv" };

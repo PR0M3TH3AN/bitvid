@@ -32,7 +32,7 @@ When wiring moderation or playback toggles into view analytics, import helpers f
 import { recordVideoView, subscribeVideoViewEvents } from "../nostrViewEventsFacade.js";
 ```
 
-The facade wraps [`js/nostr/viewEventBindings.js`](../js/nostr/viewEventBindings.js) so feature flags, relay discovery, and COUNT/LIST fallbacks all run through the same guard clauses that enforce the NIP-71/NIP-78 schemas. `js/nostr.js` still exports shimmed versions for legacy bundles, but new code should migrate to the facades to keep the eventual removal painless. Modules that need to no-op when relays disable optional methods can rely on the binding’s "unavailable" errors to short-circuit cleanly.
+The facade wraps [`js/nostr/viewEventBindings.js`](../js/nostr/viewEventBindings.js) so feature flags, relay discovery, and COUNT/LIST fallbacks all run through the same guard clauses that enforce the NIP-71/NIP-78 schemas. Modules that need to no-op when relays disable optional methods can rely on the binding’s "unavailable" errors to short-circuit cleanly.
 
 ### Hydration, COUNT, and UI sync
 

@@ -4,10 +4,10 @@ import assert from "node:assert/strict";
 const { userBlocks, USER_BLOCK_EVENTS } = await import("../js/userBlocks.js");
 const {
   nostrClient,
-  setActiveSigner,
-  clearActiveSigner,
-  getActiveSigner,
-} = await import("../js/nostr.js");
+} = await import("../js/nostrClientFacade.js");
+const { setActiveSigner, clearActiveSigner, getActiveSigner } = await import(
+  "../js/nostr/client.js"
+);
 
 if (typeof globalThis.window === "undefined") {
   globalThis.window = {};

@@ -12,8 +12,8 @@ import {
 
 const {
   nostrClient,
-  clearActiveSigner,
-} = await import("../../js/nostr.js");
+} = await import("../../js/nostrClientFacade.js");
+const { clearActiveSigner } = await import("../../js/nostr/client.js");
 const { accessControl } = await import("../../js/accessControl.js");
 const { WATCH_HISTORY_KIND } = await import("../../js/config.js");
 const { normalizeActorKey } = await import("../../js/nostr/watchHistory.js");

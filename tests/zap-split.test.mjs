@@ -90,7 +90,7 @@ const {
   requestInvoice,
 } = lnurlModule;
 const { decodeLnurlBech32 } = lnurlModule.__TESTING__;
-const { nostrClient } = await import("../js/nostr.js");
+const { nostrClient } = await import("../js/nostrClientFacade.js");
 
 const DEFAULT_WALLET_RELAYS = [
   "wss://wallet.primary.example",

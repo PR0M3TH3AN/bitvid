@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 
 import { JSDOM } from "jsdom";
 
-import { nostrClient, getActiveSigner, setActiveSigner } from "../js/nostr.js";
+import { nostrClient } from "../js/nostrClientFacade.js";
+import { getActiveSigner, setActiveSigner } from "../js/nostr/client.js";
 import { subscriptions } from "../js/subscriptions.js";
 import { setApplication } from "../js/applicationContext.js";
 import nostrService from "../js/services/nostrService.js";
