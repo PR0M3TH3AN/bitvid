@@ -180,6 +180,14 @@ When moving a feature to a controller, follow these steps:
 
 ---
 
+## 10. Direct Messages (NIP-04 vs NIP-44)
+
+* **Dual Support:** We must support both legacy NIP-04 and newer NIP-44 Direct Messages.
+* **Reasoning:** A significant portion of the user base still relies on NIP-04 DMs. While NIP-44 offers better security, we cannot drop NIP-04 support until adoption of the new standard is nearly universal.
+* **Implementation:** When working on DM features, ensure code paths exist for both encryption/decryption methods. Do not deprecate or remove NIP-04 handling logic. Other legacy methods can be considered for removal, but NIP-04 is critical.
+
+---
+
 ## Next
 
 Please read these documents next.
