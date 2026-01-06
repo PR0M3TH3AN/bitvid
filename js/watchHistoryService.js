@@ -13,11 +13,6 @@ import {
   WATCH_HISTORY_CACHE_TTL_MS,
   WATCH_HISTORY_MAX_ITEMS,
 } from "./config.js";
-import {
-  FEATURE_WATCH_HISTORY_V2,
-  getWatchHistoryV2Enabled,
-} from "./constants.js";
-import { isDevMode } from "./config.js";
 import { getApplication } from "./applicationContext.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 
@@ -31,20 +26,6 @@ const state = {
   fingerprintCache: new Map(),
   listeners: new Map(),
 };
-
-function resolveFlagEnabled() {
-  try {
-    if (typeof getWatchHistoryV2Enabled === "function") {
-      return getWatchHistoryV2Enabled() === true;
-    }
-  } catch (error) {
-    devLogger.warn(
-      "[watchHistoryService] Failed to read FEATURE_WATCH_HISTORY_V2 flag:",
-      error,
-    );
-  }
-  return FEATURE_WATCH_HISTORY_V2 === true;
-}
 
 function getLoggedInActorKey() {
   const direct = normalizeActorKey(nostrClient?.pubkey);
@@ -162,29 +143,12 @@ function resolveEffectiveActorKey(actorInput) {
 }
 
 function isFeatureEnabled(actorInput) {
-  const baseEnabled = resolveFlagEnabled();
   const actorKey = resolveEffectiveActorKey(actorInput);
-  const logged = getLoggedInActorKey();
   const session = getSessionActorKey();
-
-  if (actorKey && logged && actorKey === logged) {
-    return true;
-  }
-
   if (actorKey && session && actorKey === session) {
     return false;
   }
-
-  if (!actorKey) {
-    if (logged) {
-      return true;
-    }
-    if (session) {
-      return false;
-    }
-  }
-
-  return baseEnabled;
+  return true;
 }
 
 function isLocalOnly(actorInput) {
@@ -881,14 +845,14 @@ async function snapshot(items, options = {}) {
 
   if (!isFeatureEnabled(actorKey)) {
     devLogger.debug(
-      "[watchHistoryService] Snapshot skipped because watch history sync is unavailable for this actor.",
+      "[watchHistoryService] Snapshot skipped because this actor is limited to local watch history.",
       {
       actor: actorKey,
       requestedItems: Array.isArray(items) ? items.length : 0,
       reason,
       }
     );
-    return { ok: true, skipped: true, reason: "feature-disabled" };
+    return { ok: true, skipped: true, reason: "local-only" };
   }
 
   if (state.inflightSnapshots.has(actorKey)) {
