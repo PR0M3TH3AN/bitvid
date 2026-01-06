@@ -839,6 +839,7 @@ class Application {
       videoRootId: video.videoRootId,
       dTag: dTagValue,
       fallbackEventId: video.id,
+      relay: video.relay,
     });
   }
 
@@ -7625,16 +7626,20 @@ class Application {
       const decoded = window.NostrTools.nip19.decode(maybeNevent);
       if (decoded.type === "nevent" && decoded.data.id) {
         const eventId = decoded.data.id;
+        const relay =
+          Array.isArray(decoded.data.relays) && decoded.data.relays.length
+            ? decoded.data.relays[0]
+            : null;
         // 1) check local map
         let localMatch = this.videosMap.get(eventId);
         if (localMatch) {
-          this.playVideoByEventId(eventId);
+          this.playVideoByEventId(eventId, { relay });
         } else {
           // 2) fallback => getOldEventById
           this.getOldEventById(eventId)
             .then((video) => {
               if (video) {
-                this.playVideoByEventId(eventId);
+                this.playVideoByEventId(eventId, { relay });
               } else {
                 this.showError("No matching video found for that link.");
               }
@@ -8468,6 +8473,7 @@ class Application {
       videoRootId: video.videoRootId,
       dTag: dTagValue,
       fallbackEventId: video.id || eventId,
+      relay: hint.relay || video.relay,
     });
 
     this.currentVideoPointer = pointerInfo?.pointer || null;
