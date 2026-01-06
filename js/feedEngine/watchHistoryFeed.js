@@ -284,14 +284,11 @@ function createWatchHistoryHydrationStage() {
       const addressFilters = new Map();
       for (const address of uniqueAddresses) {
         const parts = address.split(":");
-        if (parts.length !== 3) continue;
+        if (parts.length < 3) continue;
         const kind = Number(parts[0]);
-        const pubkey = parts[1]; // Keep original case for filter? No, fetch should be robust.
-        // Actually, Nostr pubkeys are lowercase hex.
-        // If the pointer has Uppercase pubkey, we should lowercase it for the filter
-        // because the relay will likely index it as lowercase or hex.
+        const pubkey = parts[1];
         const normalizedPubkey = pubkey.toLowerCase();
-        const dTag = parts[2];
+        const dTag = parts.slice(2).join(":");
 
         const key = `${kind}:${normalizedPubkey}`;
         if (!addressFilters.has(key)) {
