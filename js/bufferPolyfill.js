@@ -1,4 +1,4 @@
-import { Buffer } from "https://esm.sh/buffer@6.0.3?bundle";
+import { Buffer } from "https://cdn.jsdelivr.net/npm/buffer@6.0.3/+esm";
 
 const globalScope = typeof globalThis !== "undefined" ? globalThis : window;
 
