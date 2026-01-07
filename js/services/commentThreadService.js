@@ -278,6 +278,17 @@ export default class CommentThreadService {
       }
     }
 
+    this.startSubscription(target);
+
+    const cached = this.getCachedComments(this.videoEventId);
+    if (Array.isArray(cached)) {
+      cached.forEach((event) => {
+        this.processIncomingEvent(event, { isInitial: true });
+      });
+    }
+
+    this.emitThreadReady();
+
     let events = [];
     try {
       events = await this.fetchThread(target, {
@@ -291,12 +302,11 @@ export default class CommentThreadService {
 
     if (Array.isArray(events)) {
       events.forEach((event) => {
-        this.processIncomingEvent(event, { isInitial: true });
+        this.processIncomingEvent(event, { emitReorder: true });
       });
     }
 
     this.emitThreadReady();
-    this.startSubscription(target);
 
     if (this.profileHydrationTimer) {
       clearTimeout(this.profileHydrationTimer);
@@ -611,7 +621,7 @@ export default class CommentThreadService {
     const subOptions = {
       ...options,
       relays: this.activeRelays,
-      onEvent: (event) => this.processIncomingEvent(event),
+      onEvent: (event) => this.processIncomingEvent(event, { isInitial: false }),
     };
 
     try {
@@ -637,7 +647,10 @@ export default class CommentThreadService {
     }
   }
 
-  processIncomingEvent(event, { isInitial = false } = {}) {
+  processIncomingEvent(
+    event,
+    { isInitial = false, emitReorder = false } = {},
+  ) {
     const result = this.applyEvent(event);
     if (!result) {
       return;
@@ -650,6 +663,9 @@ export default class CommentThreadService {
 
     if (!isInitial && result.type === "update") {
       this.persistCommentCache();
+      if (emitReorder && result.changed) {
+        this.emitThreadReady();
+      }
     }
   }
 
@@ -697,10 +713,14 @@ export default class CommentThreadService {
       return { type: "insert", parentId, parentKey, eventId, event };
     }
 
+    let changed = false;
+
     if (existingMeta.parentKey !== parentKey) {
+      changed = true;
       this.removeFromParentList(existingMeta.parentKey, eventId);
       this.insertIntoParentList(parentKey, eventId, createdAt);
     } else if (existingMeta.createdAt !== createdAt) {
+      changed = true;
       this.reorderParentList(parentKey, eventId, createdAt);
     }
 
@@ -708,7 +728,7 @@ export default class CommentThreadService {
       this.queueProfileForHydration(pubkey);
     }
 
-    return { type: "update", parentId, parentKey, eventId, event };
+    return { type: "update", parentId, parentKey, eventId, event, changed };
   }
 
   extractParentId(event) {
