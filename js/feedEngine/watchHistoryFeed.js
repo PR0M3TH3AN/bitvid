@@ -174,13 +174,19 @@ function createWatchHistorySource({ service = watchHistoryService } = {}) {
       context?.runtime?.actor,
     );
 
+    const forceRefresh =
+      context?.runtime?.watchHistory?.forceRefresh === true ||
+      context?.runtime?.forceRefresh === true;
+
     if (!service || typeof service.loadLatest !== "function") {
       return [];
     }
 
     let items = [];
     try {
-      items = await Promise.resolve(service.loadLatest(actor || undefined));
+      items = await Promise.resolve(
+        service.loadLatest(actor || undefined, { forceRefresh })
+      );
     } catch (error) {
       context?.log?.("[watch-history-feed] Failed to load history", error);
       items = [];

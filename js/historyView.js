@@ -85,7 +85,11 @@ function getAppInstance() {
   return getApplication();
 }
 
-function buildWatchHistoryFeedRuntime({ actor, cursor = 0 } = {}) {
+function buildWatchHistoryFeedRuntime({
+  actor,
+  cursor = 0,
+  forceRefresh = false,
+} = {}) {
   const app = getAppInstance();
   const normalizedActor =
     typeof actor === "string" && actor.trim() ? actor.trim() : "";
@@ -103,8 +107,9 @@ function buildWatchHistoryFeedRuntime({ actor, cursor = 0 } = {}) {
       false,
     watchHistory: {
       actor: normalizedActor,
-      cursor: Number.isFinite(cursor) ? cursor : 0
-    }
+      cursor: Number.isFinite(cursor) ? cursor : 0,
+      forceRefresh: forceRefresh === true,
+    },
   };
 
   const preferenceSource =
@@ -1367,18 +1372,23 @@ export function buildHistoryCard({ item, video, profile }) {
 
 export function createWatchHistoryRenderer(config = {}) {
   const {
-    fetchHistory = async (actorInput, { cursor = 0 } = {}) => {
+    fetchHistory = async (
+      actorInput,
+      { cursor = 0, forceRefresh = false } = {}
+    ) => {
       const app = getAppInstance();
       const engine = app?.feedEngine;
       if (engine && typeof engine.run === "function") {
         const runtime = buildWatchHistoryFeedRuntime({
           actor: actorInput,
-          cursor
+          cursor,
+          forceRefresh,
         });
         return engine.run("watch-history", { runtime });
       }
       const items = await watchHistoryService.loadLatest(actorInput, {
-        allowStale: true
+        allowStale: !forceRefresh,
+        forceRefresh,
       });
       const normalized = normalizeHistoryItems(items);
       return { items: normalized, metadata: { engine: "service-fallback" } };
@@ -1394,6 +1404,7 @@ export function createWatchHistoryRenderer(config = {}) {
     loadMoreSelector = "#watchHistoryLoadMore",
     clearButtonSelector = '[data-history-action="clear-cache"]',
     republishButtonSelector = '[data-history-action="republish"]',
+    refreshButtonSelector = '[data-history-action="refresh"]',
     privacyBannerSelector = "#watchHistoryPrivacyBanner",
     privacyMessageSelector = "#watchHistoryPrivacyMessage",
     privacyToggleSelector = "#watchHistoryPrivacyToggle",
@@ -1466,6 +1477,7 @@ export function createWatchHistoryRenderer(config = {}) {
     loadMore: null,
     clearButton: null,
     republishButton: null,
+    refreshButton: null,
     privacyBanner: null,
     privacyMessage: null,
     privacyToggle: null,
@@ -1481,6 +1493,7 @@ export function createWatchHistoryRenderer(config = {}) {
   let boundLoadMoreHandler = null;
   let boundClearHandler = null;
   let boundRepublishHandler = null;
+  let boundRefreshHandler = null;
   let boundPrivacyDismissHandler = null;
 
   const subscriptions = new Set();
@@ -1496,6 +1509,7 @@ export function createWatchHistoryRenderer(config = {}) {
       loadMore: resolveElement(loadMoreSelector),
       clearButton: resolveElement(clearButtonSelector),
       republishButton: resolveElement(republishButtonSelector),
+      refreshButton: resolveElement(refreshButtonSelector),
       privacyBanner: resolveElement(privacyBannerSelector),
       privacyMessage: resolveElement(privacyMessageSelector),
       privacyToggle: resolveElement(privacyToggleSelector),
@@ -2123,6 +2137,7 @@ export function createWatchHistoryRenderer(config = {}) {
       }
       boundClearHandler = async (event) => {
         event.preventDefault();
+        userLogger.info("[historyView] 'Clear local history' clicked.");
         const actor = await resolveActorKey();
         try {
           await watchHistoryService.resetProgress(actor);
@@ -2131,14 +2146,22 @@ export function createWatchHistoryRenderer(config = {}) {
           state.hasMore = false;
           showEmptyState();
           const app = getAppInstance();
-          app?.showSuccess?.("Local watch history reset.");
+          if (typeof app?.showSuccess === "function") {
+            app.showSuccess("Local watch history reset.");
+          } else {
+            console.log("Local watch history reset.");
+          }
         } catch (error) {
           const message =
             error && typeof error.message === "string"
               ? error.message
               : "Failed to reset local watch history.";
           const app = getAppInstance();
-          app?.showError?.(message);
+          if (typeof app?.showError === "function") {
+            app.showError(message);
+          } else {
+            console.error(message);
+          }
         }
       };
       elements.clearButton.addEventListener("click", boundClearHandler);
@@ -2153,24 +2176,47 @@ export function createWatchHistoryRenderer(config = {}) {
       }
       boundRepublishHandler = async (event) => {
         event.preventDefault();
+        userLogger.info("[historyView] 'Republish now' clicked.");
         const actor = await resolveActorKey();
         try {
           const payload = state.items.map((entry) => ({
             ...entry.pointer,
-            watchedAt: entry.watchedAt
+            watchedAt: entry.watchedAt,
           }));
           await snapshot(payload, { actor, reason: "manual-republish" });
           const app = getAppInstance();
-          app?.showSuccess?.("Watch history snapshot queued for publish.");
+          if (typeof app?.showSuccess === "function") {
+            app.showSuccess("Watch history snapshot queued for publish.");
+          } else {
+            console.log("Watch history snapshot queued for publish.");
+          }
         } catch (error) {
           const app = getAppInstance();
-          app?.showError?.("Failed to publish watch history. Try again later.");
-          if (isDevEnv) {
-            userLogger.warn("[historyView] Republish failed:", error);
+          if (typeof app?.showError === "function") {
+            app.showError("Failed to publish watch history. Try again later.");
+          } else {
+            console.error("Failed to publish watch history.");
           }
+          userLogger.warn("[historyView] Republish failed:", error);
         }
       };
       elements.republishButton.addEventListener("click", boundRepublishHandler);
+    }
+
+    if (elements.refreshButton) {
+      if (boundRefreshHandler) {
+        elements.refreshButton.removeEventListener("click", boundRefreshHandler);
+      }
+      boundRefreshHandler = async (event) => {
+        event.preventDefault();
+        userLogger.info("[historyView] 'Refresh' clicked.");
+        await renderer.refresh({ force: true });
+        const app = getAppInstance();
+        if (typeof app?.showSuccess === "function") {
+          app.showSuccess("Watch history refreshed from relays.");
+        }
+      };
+      elements.refreshButton.addEventListener("click", boundRefreshHandler);
     }
   }
 
@@ -2223,7 +2269,10 @@ export function createWatchHistoryRenderer(config = {}) {
     updateSessionFallbackWarning();
     let result = null;
     try {
-      result = await fetchHistory(actor, { cursor: 0 });
+      result = await fetchHistory(actor, {
+        cursor: 0,
+        forceRefresh: force === true,
+      });
       state.lastError = null;
       hideErrorBanner();
     } catch (error) {
@@ -2431,6 +2480,10 @@ export function createWatchHistoryRenderer(config = {}) {
           boundRepublishHandler
         );
         boundRepublishHandler = null;
+      }
+      if (elements.refreshButton && boundRefreshHandler) {
+        elements.refreshButton.removeEventListener("click", boundRefreshHandler);
+        boundRefreshHandler = null;
       }
       if (elements.privacyDismiss && boundPrivacyDismissHandler) {
         elements.privacyDismiss.removeEventListener(

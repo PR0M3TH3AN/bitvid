@@ -2569,9 +2569,9 @@ async function testWatchHistoryFeedHydration() {
 
     // Simulate renderer fetching via feed engine
     const renderer = createWatchHistoryRenderer({
-      fetchHistory: async (actorInput, { cursor = 0 } = {}) => {
+      fetchHistory: async (actorInput, { cursor = 0, forceRefresh = false } = {}) => {
         const runtime = {
-          watchHistory: { actor: actorInput, cursor },
+          watchHistory: { actor: actorInput, cursor, forceRefresh },
           blacklistedEventIds: new Set(),
           isAuthorBlocked: () => false
         };

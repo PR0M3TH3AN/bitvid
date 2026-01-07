@@ -1032,6 +1032,7 @@ async function loadLatest(actorInput, options = {}) {
   // stale cache reads; everyone else waits for the fresh list so they do not
   // miss entries.
   const allowStale = normalizedOptions.allowStale === true;
+  const forceRefresh = normalizedOptions.forceRefresh === true;
 
   if (!isFeatureEnabled(actorKey)) {
     const items = collectQueueItems(actorKey);
@@ -1053,6 +1054,7 @@ async function loadLatest(actorInput, options = {}) {
     actor: actorKey,
     cacheHasItems: Array.isArray(cacheEntry?.items),
     cacheExpiresAt: cacheEntry?.expiresAt || null,
+    forceRefresh,
     }
   );
   const hasCachedItems = Array.isArray(cacheEntry?.items);
@@ -1061,7 +1063,7 @@ async function loadLatest(actorInput, options = {}) {
     cacheEntry?.expiresAt &&
     cacheEntry.expiresAt > now;
 
-  if (cacheIsFresh) {
+  if (cacheIsFresh && !forceRefresh) {
     devLogger.debug(
       "[watchHistoryService] Returning cached watch list items.",
       {
