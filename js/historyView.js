@@ -240,6 +240,15 @@ function normalizeHistoryItems(rawItems) {
     if (a.watchedAt !== b.watchedAt) {
       return b.watchedAt - a.watchedAt;
     }
+    const createdA = Number.isFinite(a?.video?.created_at)
+      ? a.video.created_at
+      : 0;
+    const createdB = Number.isFinite(b?.video?.created_at)
+      ? b.video.created_at
+      : 0;
+    if (createdA !== createdB) {
+      return createdB - createdA;
+    }
     return a.pointerKey.localeCompare(b.pointerKey);
   });
   return normalized;

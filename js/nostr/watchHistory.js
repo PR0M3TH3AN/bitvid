@@ -526,7 +526,11 @@ async function computeWatchHistoryFingerprintForItems(itemsOrBuckets) {
   if (Array.isArray(itemsOrBuckets)) {
     flatItems = itemsOrBuckets;
   } else if (itemsOrBuckets && typeof itemsOrBuckets === "object") {
-    flatItems = Object.values(itemsOrBuckets).flat();
+    flatItems = Object.keys(itemsOrBuckets)
+      .sort()
+      .reverse()
+      .map((k) => itemsOrBuckets[k])
+      .flat();
   }
 
   // Sort for deterministic fingerprint
@@ -1617,7 +1621,11 @@ class WatchHistoryManager {
     // Existing items - try to get records, fallback to items
     let existingItems = [];
     if (cachedEntry.records && typeof cachedEntry.records === "object") {
-        existingItems = Object.values(cachedEntry.records).flat();
+      existingItems = Object.keys(cachedEntry.records)
+        .sort()
+        .reverse()
+        .map((k) => cachedEntry.records[k])
+        .flat();
     } else if (Array.isArray(cachedEntry.items)) {
         existingItems = cachedEntry.items;
     }
@@ -1959,7 +1967,11 @@ class WatchHistoryManager {
       mergedItems,
       WATCH_HISTORY_MAX_ITEMS,
     );
-    const flatItems = Object.values(records).flat();
+    const flatItems = Object.keys(records)
+      .sort()
+      .reverse()
+      .map((k) => records[k])
+      .flat();
 
     const fingerprint = await this.getFingerprint(
       resolvedActor,
@@ -2038,7 +2050,11 @@ class WatchHistoryManager {
       merged.items || [],
       batchLimit,
     );
-    const flatItems = Object.values(records).flat();
+    const flatItems = Object.keys(records)
+      .sort()
+      .reverse()
+      .map((k) => records[k])
+      .flat();
 
     const fingerprint = await this.getFingerprint(
       resolvedActor,
