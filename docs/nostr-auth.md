@@ -61,14 +61,4 @@ When the app reads stored entries it normalises unknown values back to
 
 ## Migration notes
 
-Earlier builds only persisted a single `userPubKey` string. During startup the
-app now:
-
-1. Attempts to read `bitvid:savedProfiles:v1` and validate the payload.
-2. If the key is missing (or malformed) but a legacy `userPubKey` entry exists,
-   it seeds `savedProfiles` with that value and writes the new structure.
-3. Once the JSON payload is written successfully, the legacy `userPubKey` entry
-   is removed.
-
-Future migrations should follow the same pattern: validate, normalise, write the
-new format, then clean up legacy keys to avoid data loss.
+`bitvid:savedProfiles:v1` is the sole supported auth cache in localStorage.

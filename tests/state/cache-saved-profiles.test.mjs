@@ -149,3 +149,14 @@ test("loadSavedProfilesFromStorage trims stored authType values", () => {
   assert.equal(stored.entries[0].authType, "extension-provider");
   assert.equal(stored.entries[0].providerId, "extension-provider");
 });
+
+test("loadSavedProfilesFromStorage ignores legacy userPubKey entries", () => {
+  resetSavedProfilesState();
+
+  localStorage.setItem("userPubKey", SAMPLE_PUBKEY);
+
+  const { profiles, activePubkey } = loadSavedProfilesFromStorage();
+  assert.equal(profiles.length, 0);
+  assert.equal(activePubkey, null);
+  assert.equal(localStorage.getItem(STORAGE_KEY), null);
+});
