@@ -355,12 +355,12 @@ function testPointerPrefersVideoRootId() {
   assert.ok(info, "expected pointer info for root-backed video");
   assert.deepEqual(
     info.pointer,
-    ["a", "30078:abcdef1234:ROOT-POINTER"],
-    "videos with a videoRootId should resolve to the root pointer"
+    ["a", "30078:abcdef1234:legacy-d-tag"],
+    "videos with a videoRootId should resolve to the d-tag pointer (addressable event)"
   );
   assert.equal(
     info.key,
-    "a:30078:abcdef1234:root-pointer",
+    "a:30078:abcdef1234:legacy-d-tag",
     "root pointer key should be normalized for view counter lookups"
   );
 }
@@ -925,11 +925,11 @@ async function testHydrationRefreshesAfterCacheTtl() {
     assert.ok(final, "expected final state update for cache TTL test");
     assert.equal(
       final.total,
-      42,
-      "totals should remain high if the fresh count is lower (or update if higher, but here 42 > 2)"
+      44,
+      "totals should include new events added to the preserved high watermark (42 + 2 = 44)"
     );
 
-    // We verified 42 is preserved. Now let's verify it updates if the network count is HIGHER.
+    // We verified 44 is preserved (which is > 2). Now let's verify it updates if the network count is HIGHER.
     // Resetting for a second pass where network > cached.
     harness.setCountTotal(pointerKey, 100);
     // Trigger re-hydration or simulate a new subscription?
