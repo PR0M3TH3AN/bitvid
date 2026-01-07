@@ -15,6 +15,7 @@ import {
   createWatchHistorySuppressionStage,
 } from "./stages.js";
 import { isPlainObject } from "./utils.js";
+import { getProfileCacheEntry, setProfileCacheEntry } from "../state/cache.js";
 
 const WATCH_HISTORY_FEED_LOG_NAMESPACE = "watchHistoryFeed";
 
@@ -456,6 +457,107 @@ function createWatchHistoryHydrationStage() {
   };
 }
 
+function createWatchHistoryProfileHydrationStage() {
+  return async function watchHistoryProfileHydrationStage(items = [], context = {}) {
+    const missing = new Set();
+    const itemsToHydrate = [];
+
+    // First pass: check cache for profiles
+    for (const item of items) {
+      const pubkey =
+        item.video?.pubkey ||
+        item.metadata?.video?.pubkey ||
+        item.metadata?.profile?.pubkey; // In case profile stub exists but no details
+
+      if (!pubkey || typeof pubkey !== "string") {
+        continue;
+      }
+
+      const normalizedPubkey = pubkey.toLowerCase();
+      const cacheEntry = getProfileCacheEntry(normalizedPubkey);
+
+      if (cacheEntry && cacheEntry.profile) {
+        if (!item.metadata) item.metadata = {};
+        item.metadata.profile = cacheEntry.profile;
+      } else {
+        missing.add(normalizedPubkey);
+        itemsToHydrate.push({ item, pubkey: normalizedPubkey });
+      }
+    }
+
+    if (missing.size === 0) {
+      return items;
+    }
+
+    const missingPubkeys = Array.from(missing);
+    debugInfo(`Fetching profiles for ${missingPubkeys.length} authors.`);
+
+    const readRelays =
+      Array.isArray(nostrClient?.readRelays) && nostrClient.readRelays.length
+        ? nostrClient.readRelays
+        : null;
+
+    const fallbackRelays =
+      Array.isArray(nostrClient?.relays) && nostrClient.relays.length
+        ? nostrClient.relays
+        : null;
+
+    const relays = readRelays || fallbackRelays || [];
+
+    if (!relays.length || !nostrClient?.pool) {
+      debugWarn("Aborting profile hydration: No relays or pool available.");
+      return items;
+    }
+
+    try {
+      const filter = { kinds: [0], authors: missingPubkeys };
+      const events = await nostrClient.pool.list(relays, [filter]);
+
+      // Process fetched events: update cache and items
+      const fetchedProfiles = new Map();
+
+      // Sort by created_at to use newest profile
+      events.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+
+      for (const event of events) {
+        if (!event || !event.content || fetchedProfiles.has(event.pubkey)) {
+          continue;
+        }
+
+        try {
+          const data = JSON.parse(event.content);
+          const profile = {
+            name: data.display_name || data.name || "Unknown",
+            picture: data.picture || "assets/svg/default-profile.svg",
+            pubkey: event.pubkey,
+          };
+
+          // Update cache
+          setProfileCacheEntry(event.pubkey, profile, { persist: true });
+          fetchedProfiles.set(event.pubkey, profile);
+        } catch (err) {
+          debugWarn(`Failed to parse profile for ${event.pubkey}:`, err);
+        }
+      }
+
+      // Apply fetched profiles to items
+      for (const { item, pubkey } of itemsToHydrate) {
+        const profile = fetchedProfiles.get(pubkey);
+        if (profile) {
+          if (!item.metadata) item.metadata = {};
+          item.metadata.profile = profile;
+        }
+      }
+
+      debugInfo(`Hydrated ${fetchedProfiles.size} profiles.`);
+    } catch (error) {
+      debugWarn("[watchHistoryFeed] Profile hydration failed:", error);
+    }
+
+    return items;
+  };
+}
+
 function createWatchHistoryHydratorStage({ service = watchHistoryService } = {}) {
   return async function watchHistoryHydratorStage(items = [], context = {}) {
     const results = [];
@@ -547,6 +649,7 @@ export function createWatchHistoryFeedDefinition({
     stages: [
       createWatchHistoryHydratorStage({ service }),
       createWatchHistoryHydrationStage(),
+      createWatchHistoryProfileHydrationStage(),
       blacklistStage,
       createWatchHistorySuppressionStage(),
     ],
