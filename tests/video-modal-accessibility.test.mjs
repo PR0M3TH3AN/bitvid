@@ -37,6 +37,12 @@ export async function setupModal({ lazyLoad = false } = {}) {
     configurable: true,
     writable: true,
   });
+  if (globalThis.navigator && !globalThis.navigator.clipboard) {
+    globalThis.navigator.clipboard = {
+      writeText: () => Promise.resolve(),
+      readText: () => Promise.resolve(""),
+    };
+  }
   globalThis.location = window.location;
   globalThis.KeyboardEvent = window.KeyboardEvent;
   globalThis.MouseEvent = window.MouseEvent;
