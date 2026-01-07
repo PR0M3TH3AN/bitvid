@@ -51,12 +51,13 @@ function escapeSelector(value) {
   return value.replace(/([^a-zA-Z0-9_-])/g, "\\$1");
 }
 
-function resolveElement(selector) {
+function resolveElement(selector, root = document) {
   if (!selector || typeof selector !== "string") {
     return null;
   }
+  const scope = root && typeof root.querySelector === "function" ? root : document;
   try {
-    return document.querySelector(selector);
+    return scope.querySelector(selector);
   } catch (error) {
     userLogger.warn("[historyView] Failed to query selector:", selector, error);
     return null;
@@ -1373,6 +1374,7 @@ export function buildHistoryCard({ item, video, profile }) {
 
 export function createWatchHistoryRenderer(config = {}) {
   const {
+    container = typeof document !== "undefined" ? document : null,
     fetchHistory = async (
       actorInput,
       { cursor = 0, forceRefresh = false } = {}
@@ -1500,26 +1502,27 @@ export function createWatchHistoryRenderer(config = {}) {
   const subscriptions = new Set();
 
   function refreshElements() {
+    const scope = container || document;
     elements = {
-      view: resolveElement(viewSelector),
-      grid: resolveElement(gridSelector),
-      loading: resolveElement(loadingSelector),
-      status: resolveElement(statusSelector),
-      empty: resolveElement(emptySelector),
-      sentinel: resolveElement(sentinelSelector),
-      loadMore: resolveElement(loadMoreSelector),
-      clearButton: resolveElement(clearButtonSelector),
-      republishButton: resolveElement(republishButtonSelector),
-      refreshButton: resolveElement(refreshButtonSelector),
-      privacyBanner: resolveElement(privacyBannerSelector),
-      privacyMessage: resolveElement(privacyMessageSelector),
-      privacyToggle: resolveElement(privacyToggleSelector),
-      privacyDismiss: resolveElement(privacyDismissSelector),
-      info: resolveElement(infoSelector),
-      errorBanner: resolveElement(errorBannerSelector),
-      scrollContainer: resolveElement(scrollContainerSelector),
-      featureBanner: resolveElement(featureBannerSelector),
-      sessionWarning: resolveElement(sessionWarningSelector)
+      view: resolveElement(viewSelector, scope),
+      grid: resolveElement(gridSelector, scope),
+      loading: resolveElement(loadingSelector, scope),
+      status: resolveElement(statusSelector, scope),
+      empty: resolveElement(emptySelector, scope),
+      sentinel: resolveElement(sentinelSelector, scope),
+      loadMore: resolveElement(loadMoreSelector, scope),
+      clearButton: resolveElement(clearButtonSelector, scope),
+      republishButton: resolveElement(republishButtonSelector, scope),
+      refreshButton: resolveElement(refreshButtonSelector, scope),
+      privacyBanner: resolveElement(privacyBannerSelector, scope),
+      privacyMessage: resolveElement(privacyMessageSelector, scope),
+      privacyToggle: resolveElement(privacyToggleSelector, scope),
+      privacyDismiss: resolveElement(privacyDismissSelector, scope),
+      info: resolveElement(infoSelector, scope),
+      errorBanner: resolveElement(errorBannerSelector, scope),
+      scrollContainer: resolveElement(scrollContainerSelector, scope),
+      featureBanner: resolveElement(featureBannerSelector, scope),
+      sessionWarning: resolveElement(sessionWarningSelector, scope)
     };
   }
 
