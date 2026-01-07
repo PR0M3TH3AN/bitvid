@@ -195,8 +195,19 @@ function createWatchHistorySource({ service = watchHistoryService } = {}) {
     }
 
     results.sort((a, b) => {
-      if (a.watchedAt !== b.watchedAt) {
-        return b.watchedAt - a.watchedAt;
+      const watchedA = a?.watchedAt || 0;
+      const watchedB = b?.watchedAt || 0;
+      if (watchedA !== watchedB) {
+        return watchedB - watchedA;
+      }
+      const createdA = Number.isFinite(a?.video?.created_at)
+        ? a.video.created_at
+        : 0;
+      const createdB = Number.isFinite(b?.video?.created_at)
+        ? b.video.created_at
+        : 0;
+      if (createdA !== createdB) {
+        return createdB - createdA;
       }
       return a.pointerKey.localeCompare(b.pointerKey);
     });
@@ -488,8 +499,19 @@ function createWatchHistorySorter() {
     }
     const copy = [...items];
     copy.sort((a, b) => {
-      if (a?.watchedAt !== b?.watchedAt) {
-        return (b?.watchedAt || 0) - (a?.watchedAt || 0);
+      const watchedA = a?.watchedAt || 0;
+      const watchedB = b?.watchedAt || 0;
+      if (watchedA !== watchedB) {
+        return watchedB - watchedA;
+      }
+      const createdA = Number.isFinite(a?.video?.created_at)
+        ? a.video.created_at
+        : 0;
+      const createdB = Number.isFinite(b?.video?.created_at)
+        ? b.video.created_at
+        : 0;
+      if (createdA !== createdB) {
+        return createdB - createdA;
       }
       const aKey = typeof a?.pointerKey === "string" ? a.pointerKey : "";
       const bKey = typeof b?.pointerKey === "string" ? b.pointerKey : "";
