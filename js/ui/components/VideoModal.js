@@ -1104,9 +1104,34 @@ export class VideoModal {
       return;
     }
 
-    container.appendChild(node);
+    this.insertCommentNodeSorted(container, node);
     this.updateCommentCount(this.commentNodes.size);
     this.toggleCommentEmptyState(this.commentNodes.size === 0);
+  }
+
+  insertCommentNodeSorted(container, node) {
+    if (!container || !node) {
+      return;
+    }
+
+    const timestamp = Number(node.dataset.timestamp || 0);
+    let inserted = false;
+
+    const children = container.children;
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i];
+      const childTimestamp = Number(child.dataset.timestamp || 0);
+
+      if (childTimestamp > timestamp) {
+        container.insertBefore(node, child);
+        inserted = true;
+        break;
+      }
+    }
+
+    if (!inserted) {
+      container.appendChild(node);
+    }
   }
 
   buildCommentTree(commentId, commentsMap, childrenMap, depth = 0) {
@@ -1172,6 +1197,9 @@ export class VideoModal {
     listItem.classList.add("comment-thread__item");
     listItem.dataset.commentId = commentId;
     listItem.dataset.commentDepth = String(Math.max(0, depth));
+    listItem.dataset.timestamp = String(
+      Number.isFinite(event.created_at) ? event.created_at : 0
+    );
     if (typeof event.pubkey === "string" && event.pubkey.trim()) {
       listItem.dataset.commentAuthor = event.pubkey.trim();
     }

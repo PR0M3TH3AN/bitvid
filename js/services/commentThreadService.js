@@ -603,18 +603,19 @@ export default class CommentThreadService {
     });
   }
 
-  startSubscription(target) {
+  startSubscription(target, options = {}) {
     if (typeof this.subscribeVideoComments !== "function") {
       return;
     }
 
-    const options = {
+    const subOptions = {
+      ...options,
       relays: this.activeRelays,
       onEvent: (event) => this.processIncomingEvent(event),
     };
 
     try {
-      const cleanup = this.subscribeVideoComments(target, options);
+      const cleanup = this.subscribeVideoComments(target, subOptions);
       if (typeof cleanup === "function") {
         this.subscriptionCleanup = () => {
           try {
