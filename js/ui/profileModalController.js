@@ -1501,7 +1501,7 @@ export class ProfileModalController {
       statusSelector: "#profileHistoryStatus",
       emptySelector: "#profileHistoryEmpty",
       sentinelSelector: "#profileHistorySentinel",
-      scrollContainerSelector: "#profileHistoryScroll",
+      scrollContainerSelector: "#profileModalPanes",
       errorBannerSelector: "#profileHistoryError",
       clearButtonSelector: "#profileHistoryClear",
       republishButtonSelector: "#profileHistoryRepublish",
