@@ -13,11 +13,8 @@ const {
   WATCH_HISTORY_KIND,
 } =
   await import("../js/config.js");
-const [{ nostrClient }, { setActiveSigner, getActiveSigner, clearActiveSigner }] =
-  await Promise.all([
-    import("../js/nostrClientFacade.js"),
-    import("../js/nostr/client.js"),
-  ]);
+const { nostrClient } = await import("../js/nostrClientFacade.js");
+const { setActiveSigner, getActiveSigner, clearActiveSigner } = await import("../js/nostr/client.js");
 const { rememberNostrTools } = await import("../js/nostr/toolkit.js");
 const { normalizeActorKey } = await import("../js/nostr/watchHistory.js");
 const { watchHistoryService } = await import("../js/watchHistoryService.js");

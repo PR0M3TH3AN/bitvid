@@ -16,7 +16,7 @@ import {
 import { getApplication } from "./applicationContext.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 
-const SESSION_STORAGE_KEY = "bitvid:watch-history:session:v1";
+const LOCAL_STORAGE_QUEUE_KEY = "bitvid:watch-history:queue:v1";
 const SESSION_STORAGE_VERSION = 1;
 const POINTER_THROTTLE_MS = 60 * 1000;
 const state = {
@@ -167,13 +167,13 @@ function supportsLocalHistory(actorInput) {
   return isLocalOnly(actorInput);
 }
 
-function getSessionStorage() {
+function getQueueStorage() {
   try {
-    if (typeof window !== "undefined" && window.sessionStorage) {
-      return window.sessionStorage;
+    if (typeof window !== "undefined" && window.localStorage) {
+      return window.localStorage;
     }
   } catch (error) {
-    devLogger.warn("[watchHistoryService] sessionStorage unavailable:", error);
+    devLogger.warn("[watchHistoryService] localStorage unavailable for queue:", error);
   }
   return null;
 }
@@ -269,16 +269,16 @@ function restoreQueueState() {
   }
   state.restored = true;
 
-  const storage = getSessionStorage();
+  const storage = getQueueStorage();
   if (!storage) {
     return;
   }
 
   let raw = null;
   try {
-    raw = storage.getItem(SESSION_STORAGE_KEY);
+    raw = storage.getItem(LOCAL_STORAGE_QUEUE_KEY);
   } catch (error) {
-    devLogger.warn("[watchHistoryService] Failed to read session cache:", error);
+    devLogger.warn("[watchHistoryService] Failed to read queue storage:", error);
     return;
   }
 
@@ -290,12 +290,12 @@ function restoreQueueState() {
   try {
     parsed = JSON.parse(raw);
   } catch (error) {
-    devLogger.warn("[watchHistoryService] Failed to parse session cache:", error);
+    devLogger.warn("[watchHistoryService] Failed to parse queue storage:", error);
     try {
-      storage.removeItem(SESSION_STORAGE_KEY);
+      storage.removeItem(LOCAL_STORAGE_QUEUE_KEY);
     } catch (cleanupError) {
       devLogger.warn(
-        "[watchHistoryService] Failed to clear corrupt session cache:",
+        "[watchHistoryService] Failed to clear corrupt queue storage:",
         cleanupError
       );
     }
@@ -304,10 +304,10 @@ function restoreQueueState() {
 
   if (!parsed || parsed.version !== SESSION_STORAGE_VERSION) {
     try {
-      storage.removeItem(SESSION_STORAGE_KEY);
+      storage.removeItem(LOCAL_STORAGE_QUEUE_KEY);
     } catch (cleanupError) {
       devLogger.warn(
-        "[watchHistoryService] Failed to clear outdated session cache:",
+        "[watchHistoryService] Failed to clear outdated queue storage:",
         cleanupError
       );
     }
@@ -372,7 +372,7 @@ function ensureQueue(actorKey) {
 }
 
 function persistQueueState() {
-  const storage = getSessionStorage();
+  const storage = getQueueStorage();
   if (!storage) {
     return;
   }
@@ -394,10 +394,10 @@ function persistQueueState() {
 
   if (!hasEntries) {
     try {
-      storage.removeItem(SESSION_STORAGE_KEY);
+      storage.removeItem(LOCAL_STORAGE_QUEUE_KEY);
     } catch (error) {
       devLogger.warn(
-        "[watchHistoryService] Failed to clear empty session cache:",
+        "[watchHistoryService] Failed to clear empty queue storage:",
         error
       );
     }
@@ -405,9 +405,9 @@ function persistQueueState() {
   }
 
   try {
-    storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(payload));
+    storage.setItem(LOCAL_STORAGE_QUEUE_KEY, JSON.stringify(payload));
   } catch (error) {
-    devLogger.warn("[watchHistoryService] Failed to persist session cache:", error);
+    devLogger.warn("[watchHistoryService] Failed to persist queue storage:", error);
   }
 }
 
@@ -1022,6 +1022,10 @@ async function loadLatest(actorInput, options = {}) {
     return [];
   }
 
+  if (!state.restored) {
+    restoreQueueState();
+  }
+
   const normalizedOptions =
     options && typeof options === "object" ? options : {};
   // Only callers that can react to a later fingerprint update should opt into
@@ -1030,9 +1034,6 @@ async function loadLatest(actorInput, options = {}) {
   const allowStale = normalizedOptions.allowStale === true;
 
   if (!isFeatureEnabled(actorKey)) {
-    if (!state.restored) {
-      restoreQueueState();
-    }
     const items = collectQueueItems(actorKey);
     devLogger.debug(
       "[watchHistoryService] loadLatest returning local-only watch history queue.",
