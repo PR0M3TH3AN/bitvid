@@ -544,8 +544,18 @@ export function shimLegacySimplePoolMethods(pool) {
       }
 
       return new Promise((resolve) => {
-        if (!subscription || typeof subscription.on !== "function") {
+        let timer = null;
+
+        const finish = () => {
+          if (timer) {
+            clearTimeout(timer);
+            timer = null;
+          }
           resolve(events);
+        };
+
+        if (!subscription || typeof subscription.on !== "function") {
+          finish();
           return;
         }
 
@@ -558,11 +568,27 @@ export function shimLegacySimplePoolMethods(pool) {
           } catch (error) {
             devLogger.warn("[nostr] Failed to unsubscribe after list EOSE.", error);
           }
-          resolve(events);
+          finish();
         });
         subscription.on("close", () => {
-          resolve(events);
+          finish();
         });
+
+        // Prevent hanging indefinitely if relays fail to EOSE
+        const timeoutMs =
+          Number.isFinite(opts.timeout) && opts.timeout > 0
+            ? opts.timeout
+            : 7000;
+
+        timer = setTimeout(() => {
+          timer = null;
+          try {
+            subscription.unsub?.();
+          } catch (error) {
+            // ignore
+          }
+          finish();
+        }, timeoutMs);
       });
     };
   }
