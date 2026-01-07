@@ -433,6 +433,9 @@ export default class VideoModalCommentController {
     }
 
     const comments = this.createMapFromInput(payload.commentsById);
+    const childrenByParent = this.createChildrenMapFromInput(
+      payload.childrenByParent,
+    );
     const profiles = this.createMapFromInput(payload.profiles, {
       normalizeKey: this.utils.normalizeHexPubkey,
     });
@@ -452,6 +455,57 @@ export default class VideoModalCommentController {
     const commentIds = Array.isArray(payload.commentIds)
       ? payload.commentIds
       : [];
+
+    if (
+      this.modalCommentState.parentCommentId &&
+      comments.has(this.modalCommentState.parentCommentId)
+    ) {
+      const parentEvent = comments.get(this.modalCommentState.parentCommentId);
+      const eventKind = normalizeKind(parentEvent?.kind);
+      if (eventKind) {
+        this.modalCommentState.parentCommentKind = eventKind;
+      }
+      const eventPubkey = normalizeHexPubkey(parentEvent?.pubkey);
+      if (eventPubkey) {
+        this.modalCommentState.parentCommentPubkey = eventPubkey;
+      }
+    }
+
+    const parentByChild = new Map();
+    childrenByParent.forEach((ids, parentId) => {
+      ids.forEach((id) => {
+        if (!parentByChild.has(id)) {
+          parentByChild.set(id, parentId);
+        }
+      });
+    });
+
+    let requiresFullRender = false;
+    for (const commentId of commentIds) {
+      if (!comments.has(commentId)) {
+        requiresFullRender = true;
+        break;
+      }
+      if (!parentByChild.has(commentId)) {
+        requiresFullRender = true;
+        break;
+      }
+      const parentId = parentByChild.get(commentId);
+      if (parentId) {
+        requiresFullRender = true;
+        break;
+      }
+    }
+
+    if (requiresFullRender) {
+      const snapshot = this.buildModalCommentSnapshot({
+        ...payload,
+        commentsById: comments,
+        childrenByParent,
+      });
+      this.videoModal.renderComments?.(snapshot);
+      return;
+    }
 
     commentIds.forEach((commentId) => {
       if (!comments.has(commentId)) {
