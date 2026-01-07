@@ -786,8 +786,41 @@
                     >
                       Republish now
                     </button>
+                    <button
+                      id="profileHistoryRefresh"
+                      type="button"
+                      class="btn-ghost focus-ring inline-flex items-center gap-2"
+                      data-size="sm"
+                    >
+                      Refresh
+                    </button>
                   </div>
                 </div>
+                <div
+                  id="profileHistoryPrivacyBanner"
+                  class="card hidden border border-status-info-border bg-status-info-surface px-4 py-3 text-sm text-status-info-on"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <p id="profileHistoryPrivacyMessage" class="mb-2"></p>
+                  <div class="flex flex-wrap items-center gap-2">
+                    <button
+                      id="profileHistoryPrivacyDismiss"
+                      type="button"
+                      class="btn-ghost focus-ring text-xs"
+                    >
+                      Dismiss
+                    </button>
+                    <button
+                      id="profileHistoryPrivacyToggle"
+                      type="button"
+                      class="btn-ghost focus-ring text-xs hidden"
+                    >
+                      Change settings
+                    </button>
+                  </div>
+                </div>
+                <p id="profileHistoryInfo" class="text-xs text-muted"></p>
                 <div
                   id="profileHistorySessionWarning"
                   class="hidden pill"
