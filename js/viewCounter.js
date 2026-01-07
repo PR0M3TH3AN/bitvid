@@ -495,8 +495,7 @@ async function hydratePointer(key, listeners) {
 
   if (bestCount !== null) {
     const state = ensurePointerState(key);
-    const shouldUpdate =
-      !countResult?.fallback || bestCount >= state.total || state.total === 0;
+    const shouldUpdate = bestCount > state.total || state.total === 0;
     if (shouldUpdate && state.total !== bestCount) {
       state.total = bestCount;
       state.lastSyncedAt = Date.now();
