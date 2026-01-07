@@ -32,7 +32,11 @@ export async function setupModal({ lazyLoad = false } = {}) {
   globalThis.Event = window.Event;
   globalThis.Node = window.Node;
   globalThis.EventTarget = window.EventTarget;
-  globalThis.navigator = window.navigator;
+  Object.defineProperty(globalThis, "navigator", {
+    value: window.navigator,
+    configurable: true,
+    writable: true,
+  });
   globalThis.location = window.location;
   globalThis.KeyboardEvent = window.KeyboardEvent;
   globalThis.MouseEvent = window.MouseEvent;

@@ -2604,6 +2604,16 @@ export class VideoModal {
     if (!this.videoTitle) {
       this.videoTitle = this.playerModal.querySelector("#videoTitle") || null;
     }
+
+    // Ensure comments controller is initialized if elements are missing
+    if (
+      this.commentsController &&
+      (!this.commentsList || !this.commentsList.isConnected)
+    ) {
+      this.commentsController.destroy();
+      this.commentsController.initialize({ playerModal: this.playerModal });
+    }
+
     // Set title immediately when opening if video has a title
     if (this.videoTitle && video && typeof video.title === "string" && video.title.trim()) {
       this.videoTitle.textContent = video.title.trim();
