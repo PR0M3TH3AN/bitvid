@@ -5833,10 +5833,6 @@ export class ProfileModalController {
 
     try {
       await renderer.ensureInitialLoad({ actor: primaryActor });
-      await renderer.refresh({
-        actor: primaryActor,
-        force: true,
-      });
 
       if (!this.boundProfileHistoryVisibility) {
         this.boundProfileHistoryVisibility = () => {

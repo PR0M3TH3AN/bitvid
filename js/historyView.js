@@ -2400,7 +2400,9 @@ export function createWatchHistoryRenderer(config = {}) {
         showFeatureDisabledState();
         return;
       }
-      await this.refresh({ ...options, force: true });
+      // Use cached data immediately if available (force: false) unless overridden
+      const force = options.force === true;
+      await this.refresh({ ...options, force });
     },
     async ensureInitialLoad(options = {}) {
       if (!state.initialized) {

@@ -1640,6 +1640,16 @@ class WatchHistoryManager {
       WATCH_HISTORY_MAX_ITEMS,
     );
 
+    // Ensure empty months are preserved so they get cleared on relays
+    if (cachedEntry.records && typeof cachedEntry.records === "object") {
+      const oldKeys = Object.keys(cachedEntry.records);
+      for (const oldKey of oldKeys) {
+        if (!records[oldKey]) {
+          records[oldKey] = [];
+        }
+      }
+    }
+
     // Calculate fingerprint
     const fingerprint = await this.getFingerprint(resolvedActor, records);
     const flatItems = Object.values(records).flat();
