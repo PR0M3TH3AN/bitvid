@@ -1471,7 +1471,11 @@ class UserBlockListManager {
 
     onStatus?.({ status: "publishing" });
 
-    const signer = getActiveSigner();
+    let signer = getActiveSigner();
+    if (!signer) {
+      signer = await nostrClient.ensureActiveSignerForPubkey(userPubkey);
+    }
+
     if (!signer) {
       const err = new Error(
         "An active signer is required to update the block list."

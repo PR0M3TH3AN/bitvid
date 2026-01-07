@@ -593,7 +593,11 @@ class HashtagPreferencesService {
       throw error;
     }
 
-    const signer = getActiveSigner();
+    let signer = getActiveSigner();
+    if (!signer) {
+      signer = await nostrClient.ensureActiveSignerForPubkey(targetPubkey);
+    }
+
     if (!signer || typeof signer.signEvent !== "function") {
       const error = new Error("An active signer is required to publish preferences.");
       error.code = "hashtag-preferences-missing-signer";

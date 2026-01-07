@@ -590,7 +590,11 @@ class SubscriptionsManager {
       throw new Error("No pubkey => cannot publish subscription list.");
     }
 
-    const signer = getActiveSigner();
+    let signer = getActiveSigner();
+    if (!signer) {
+      signer = await nostrClient.ensureActiveSignerForPubkey(userPubkey);
+    }
+
     if (!signer) {
       const error = new Error(
         "An active signer is required to update subscriptions."
