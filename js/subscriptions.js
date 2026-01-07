@@ -224,6 +224,7 @@ class SubscriptionsManager {
   constructor() {
     this.subscribedPubkeys = new Set();
     this.subsEventId = null;
+    this.currentUserPubkey = null;
     this.loaded = false;
     this.loadingPromise = null;
     this.subscriptionListView = null;
@@ -379,19 +380,30 @@ class SubscriptionsManager {
       const normalized = parseSubscriptionPlaintext(decryptedStr);
       this.subscribedPubkeys = new Set(normalized);
 
+      this.currentUserPubkey = normalizedUserPubkey;
       this.loaded = true;
     } catch (err) {
       userLogger.error("[SubscriptionsManager] Failed to load subs:", err);
     }
   }
 
+  reset() {
+    this.subscribedPubkeys.clear();
+    this.subsEventId = null;
+    this.currentUserPubkey = null;
+    this.loaded = false;
+    this.lastRunOptions = null;
+    this.lastResult = null;
+    this.hasRenderedOnce = false;
+  }
+
   async ensureLoaded(actorHex) {
-    if (this.loaded) {
+    const normalizedActor = normalizeHexPubkey(actorHex) || actorHex;
+    if (!normalizedActor) {
       return;
     }
 
-    const normalizedActor = normalizeHexPubkey(actorHex) || actorHex;
-    if (!normalizedActor) {
+    if (this.loaded && this.currentUserPubkey === normalizedActor) {
       return;
     }
 

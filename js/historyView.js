@@ -2409,6 +2409,10 @@ export function createWatchHistoryRenderer(config = {}) {
         await this.init(options);
         return;
       }
+      if (options.actor !== state.actor) {
+        await this.refresh(options);
+        return;
+      }
       refreshElements();
       updateFeatureBanner();
       if (!state.featureEnabled) {

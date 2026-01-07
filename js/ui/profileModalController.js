@@ -8828,6 +8828,20 @@ export class ProfileModalController {
       userLogger.warn("Failed to refresh admin pane after logout:", error);
     }
 
+    if (
+      this.subscriptionsService &&
+      typeof this.subscriptionsService.reset === "function"
+    ) {
+      try {
+        this.subscriptionsService.reset();
+      } catch (error) {
+        devLogger.warn(
+          "[profileModal] Failed to reset subscriptions service on logout:",
+          error,
+        );
+      }
+    }
+
     this.populateBlockedList();
     this.clearSubscriptionsList();
     this.clearFriendsList();
