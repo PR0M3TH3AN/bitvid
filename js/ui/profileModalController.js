@@ -1156,6 +1156,20 @@ export class ProfileModalController {
       throw new Error("profile modal container missing");
     }
 
+    // Invalidate any stale renderer reference so it is recreated
+    // with the freshly loaded DOM elements.
+    if (this.profileHistoryRenderer) {
+      try {
+        if (typeof this.profileHistoryRenderer.destroy === "function") {
+          this.profileHistoryRenderer.destroy();
+        }
+      } catch (err) {
+        devLogger.warn("[profileModal] Failed to destroy stale history renderer:", err);
+      }
+      this.profileHistoryRenderer = null;
+      this.profileHistoryRendererConfig = null;
+    }
+
     const response = await fetch("components/profile-modal.html");
     if (!response.ok) {
       throw new Error(`Failed to load profile modal HTML (${response.status})`);
@@ -1460,7 +1474,10 @@ export class ProfileModalController {
     const config = this.getProfileHistoryRendererConfig();
 
     try {
-      this.profileHistoryRenderer = this.createWatchHistoryRenderer(config);
+      this.profileHistoryRenderer = this.createWatchHistoryRenderer({
+        ...config,
+        container: this.profileModalPanel || this.profileModalRoot,
+      });
     } catch (error) {
       userLogger.error(
         "[profileModal] Failed to create watch history renderer:",
@@ -8826,6 +8843,20 @@ export class ProfileModalController {
       await this.refreshAdminPaneState();
     } catch (error) {
       userLogger.warn("Failed to refresh admin pane after logout:", error);
+    }
+
+    if (
+      this.subscriptionsService &&
+      typeof this.subscriptionsService.reset === "function"
+    ) {
+      try {
+        this.subscriptionsService.reset();
+      } catch (error) {
+        devLogger.warn(
+          "[profileModal] Failed to reset subscriptions service on logout:",
+          error,
+        );
+      }
     }
 
     this.populateBlockedList();
