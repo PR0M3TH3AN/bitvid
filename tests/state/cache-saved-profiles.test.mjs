@@ -1,3 +1,4 @@
+import "../test-helpers/setup-localstorage.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 
@@ -148,4 +149,15 @@ test("loadSavedProfilesFromStorage trims stored authType values", () => {
   const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
   assert.equal(stored.entries[0].authType, "extension-provider");
   assert.equal(stored.entries[0].providerId, "extension-provider");
+});
+
+test("loadSavedProfilesFromStorage ignores legacy userPubKey", () => {
+  resetSavedProfilesState();
+
+  localStorage.setItem("userPubKey", SAMPLE_PUBKEY);
+  // Ensure the modern key is missing/empty
+  localStorage.removeItem(STORAGE_KEY);
+
+  const { profiles } = loadSavedProfilesFromStorage();
+  assert.equal(profiles.length, 0, "Expected no profiles to be loaded from legacy key");
 });
