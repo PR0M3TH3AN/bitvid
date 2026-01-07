@@ -18,6 +18,7 @@ import {
   getModerationOverrideActionLabels,
 } from "./ui/moderationUiHelpers.js";
 import { buildModerationBadgeText } from "./ui/moderationCopy.js";
+import { formatShortNpub } from "./utils/formatters.js";
 
 export const WATCH_HISTORY_EMPTY_COPY =
   "Your watch history is empty. Watch some videos to populate this list.";
@@ -1253,7 +1254,7 @@ export function buildHistoryCard({ item, video, profile }) {
     profile?.display_name || profile?.name || profile?.username || "Unknown";
   if ((!creatorLabel || creatorLabel === "Unknown") && video?.pubkey) {
     const encoded = app?.safeEncodeNpub?.(video.pubkey) || "";
-    creatorLabel = encoded || video.pubkey.slice(0, 8).concat("…");
+    creatorLabel = formatShortNpub(encoded) || encoded || video.pubkey.slice(0, 8).concat("…");
   }
   creatorNameButton.textContent = creatorLabel;
 
