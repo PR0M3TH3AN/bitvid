@@ -41,12 +41,13 @@ await (async () => {
 
   window.nostr = {
     ...(originalNostr || {}),
-    nip04: {
-      ...((originalNostr && originalNostr.nip04) || {}),
-      decrypt: async () =>
-        JSON.stringify({
-          blockedPubkeys: [blocked],
-        }),
+    nip44: {
+      v2: {
+        decrypt: async () =>
+          JSON.stringify({
+            blockedPubkeys: [blocked],
+          }),
+      },
     },
   };
 
@@ -95,6 +96,7 @@ await (async () => {
           created_at: 1700,
           pubkey: actor,
           content: "ciphertext-old",
+          tags: [["encrypted", "nip44_v2"]],
         },
       ],
       [relays[1]]: [
@@ -104,6 +106,7 @@ await (async () => {
           created_at: 1800,
           pubkey: actor,
           content: "ciphertext-new",
+          tags: [["encrypted", "nip44_v2"]],
         },
       ],
       [relays[2]]: [],
@@ -169,12 +172,13 @@ await (async () => {
 
   window.nostr = {
     ...(originalNostr || {}),
-    nip04: {
-      ...((originalNostr && originalNostr.nip04) || {}),
-      decrypt: async () =>
-        JSON.stringify({
-          blockedPubkeys: [backgroundBlocked],
-        }),
+    nip44: {
+      v2: {
+        decrypt: async () =>
+          JSON.stringify({
+            blockedPubkeys: [backgroundBlocked],
+          }),
+      },
     },
   };
 
@@ -247,6 +251,7 @@ await (async () => {
         pubkey: actor,
         created_at: 2_000,
         content: "ciphertext-background",
+        tags: [["encrypted", "nip44_v2"]],
       },
     ]);
 
@@ -521,6 +526,7 @@ await (async () => {
         created_at: latestCreatedAt,
         pubkey: actor,
         content: latestCiphertext,
+        tags: [["encrypted", "nip44_v2"]],
       },
     ],
   };
@@ -528,14 +534,14 @@ await (async () => {
   setActiveSigner({
     type: "private-key",
     pubkey: actor,
-    nip04Decrypt: async (pubkey, ciphertext) => {
+    nip44Decrypt: async (pubkey, ciphertext) => {
       assert.equal(pubkey, actor, "decrypt should target the actor pubkey");
       if (!decryptPayloads.has(ciphertext)) {
         throw new Error(`unexpected ciphertext ${ciphertext}`);
       }
       return decryptPayloads.get(ciphertext);
     },
-    nip04Encrypt: async (pubkey, plaintext) => {
+    nip44Encrypt: async (pubkey, plaintext) => {
       assert.equal(pubkey, actor, "encrypt should target the actor pubkey");
       let parsed;
       try {
@@ -558,10 +564,6 @@ await (async () => {
       const cipher = `cipher:${JSON.stringify(blocked)}`;
       decryptPayloads.set(cipher, plaintext);
       return cipher;
-    },
-    nip44Encrypt: async (pubkey, plaintext) => {
-      assert.equal(pubkey, actor, "nip44 encrypt should target the actor pubkey");
-      return `nip44:${plaintext}`;
     },
     signEvent: async (event) => {
       eventCounter += 1;
@@ -749,23 +751,7 @@ await (async () => {
   nostrClient.relays = ["wss://relay-nip04-fallback.example"];
   nostrClient.ensureExtensionPermissions = async () => ({ ok: true });
 
-  const publishCalls = [];
-  nostrClient.pool = {
-    publish(urls, event) {
-      publishCalls.push({ urls, event });
-      return {
-        on(eventName, handler) {
-          if (eventName === "ok") {
-            handler();
-          }
-          return true;
-        },
-      };
-    },
-  };
-
   const encryptCalls = { nip44: 0, nip04: 0 };
-  const signedEvents = [];
   setActiveSigner({
     type: "nsec",
     pubkey: actor,
@@ -773,18 +759,8 @@ await (async () => {
       encryptCalls.nip44 += 1;
       throw new Error("simulated nip44 failure");
     },
-    async nip04Encrypt(pubkey, plaintext) {
-      encryptCalls.nip04 += 1;
-      assert.equal(pubkey, actor);
-      assert.equal(
-        plaintext,
-        JSON.stringify([["p", blocked]]),
-      );
-      return "cipher-nip04";
-    },
     async signEvent(event) {
-      signedEvents.push(event);
-      return { ...event, id: "signed-nip04-block-event" };
+      return { ...event, id: "signed-block-event" };
     },
   });
 
@@ -793,21 +769,10 @@ await (async () => {
   manager.loadBlocks = async () => {};
 
   try {
-    const result = await manager.publishBlockList(actor);
-
-    assert.equal(result.id, "signed-nip04-block-event");
-    assert.ok(
-      encryptCalls.nip44 >= 1,
-      "nip44Encrypt should be attempted before falling back",
-    );
-    assert.equal(encryptCalls.nip04, 1, "nip04Encrypt should handle fallback");
-    const encryptedTags = signedEvents[0].tags.filter((tag) => tag[0] === "encrypted");
-    assert.deepEqual(
-      encryptedTags,
-      [["encrypted", "nip04"]],
-      "fallback nip04 encryption should advertise nip04",
-    );
-    assert.equal(publishCalls.length, 1, "event should publish to the available relay");
+    await manager.publishBlockList(actor);
+    assert.fail("Should have thrown");
+  } catch (error) {
+    assert.equal(error.code, "block-list-encrypt-failed");
   } finally {
     nostrClient.relays = originalRelays;
     nostrClient.pool = originalPool;

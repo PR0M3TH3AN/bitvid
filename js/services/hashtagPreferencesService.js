@@ -194,9 +194,6 @@ function extractEncryptionHints(event) {
         pushUnique("nip44");
         continue;
       }
-      if (part === "nip04" || part === "nip4") {
-        pushUnique("nip04");
-      }
     }
   }
 
@@ -210,7 +207,6 @@ function determineDecryptionOrder(event, availableSchemes) {
 
   const hints = extractEncryptionHints(event);
   const aliasMap = {
-    nip04: ["nip04"],
     nip44: ["nip44", "nip44_v2"],
     nip44_v2: ["nip44_v2", "nip44"],
   };
@@ -225,7 +221,7 @@ function determineDecryptionOrder(event, availableSchemes) {
     }
   }
 
-  for (const fallback of ["nip44_v2", "nip44", "nip04"]) {
+  for (const fallback of ["nip44_v2", "nip44"]) {
     if (availableSet.has(fallback) && !prioritized.includes(fallback)) {
       prioritized.push(fallback);
     }
@@ -471,17 +467,12 @@ class HashtagPreferencesService {
     }
 
     const signer = getActiveSigner();
-    const signerHasNip04 = typeof signer?.nip04Decrypt === "function";
     const signerHasNip44 = typeof signer?.nip44Decrypt === "function";
 
     const hints = extractEncryptionHints(event);
     const requiresNip44 = hints.includes("nip44") || hints.includes("nip44_v2");
-    const requiresNip04 = !hints.length || hints.includes("nip04");
 
-    if (
-      (!signerHasNip44 && requiresNip44) ||
-      (!signerHasNip04 && requiresNip04)
-    ) {
+    if (!signerHasNip44 && requiresNip44) {
       try {
         await requestDefaultExtensionPermissions();
       } catch (error) {
@@ -507,21 +498,9 @@ class HashtagPreferencesService {
       );
     }
 
-    if (signerHasNip04) {
-      registerDecryptor("nip04", (payload) => signer.nip04Decrypt(userPubkey, payload));
-    }
-
     const nostrApi =
       typeof window !== "undefined" && window && window.nostr ? window.nostr : null;
     if (nostrApi) {
-      const nip04 =
-        nostrApi.nip04 && typeof nostrApi.nip04.decrypt === "function"
-          ? nostrApi.nip04
-          : null;
-      if (nip04 && !decryptors.has("nip04")) {
-        registerDecryptor("nip04", (payload) => nip04.decrypt(userPubkey, payload));
-      }
-
       const nip44 =
         nostrApi.nip44 && typeof nostrApi.nip44 === "object"
           ? nostrApi.nip44
@@ -637,10 +616,6 @@ class HashtagPreferencesService {
       registerEncryptor("nip44", (value) => signer.nip44Encrypt(targetPubkey, value));
     }
 
-    if (typeof signer.nip04Encrypt === "function") {
-      registerEncryptor("nip04", (value) => signer.nip04Encrypt(targetPubkey, value));
-    }
-
     const nostrApi =
       typeof window !== "undefined" && window && window.nostr ? window.nostr : null;
     if (nostrApi) {
@@ -659,15 +634,10 @@ class HashtagPreferencesService {
           );
         }
       }
-      if (typeof nostrApi.nip04?.encrypt === "function") {
-        registerEncryptor("nip04", (value) =>
-          nostrApi.nip04.encrypt(targetPubkey, value),
-        );
-      }
     }
 
     if (!encryptors.length) {
-      const error = new Error("No encryptors available to publish preferences.");
+      const error = new Error("No encryptors (NIP-44) available to publish preferences.");
       error.code = "hashtag-preferences-no-encryptor";
       throw error;
     }

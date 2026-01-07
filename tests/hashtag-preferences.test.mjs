@@ -69,7 +69,7 @@ test(
       async list(relays, filters) {
         assert.deepEqual(relays, ["wss://relay.one"]);
         assert.equal(filters.length, 1);
-        assert.deepEqual(filters[0].kinds, [30015, 30005]);
+        assert.deepEqual(filters[0].kinds, [30015]);
         assert.equal(filters[0]["#d"][0], "bitvid:tag-preferences");
         return [
           {
@@ -95,7 +95,7 @@ test(
 );
 
 test(
-  "load falls back to nip04 decryption",
+  "load ignores nip04 decryption",
   { concurrency: false },
   async () => {
     const pubkey = "b".repeat(64);
@@ -128,7 +128,7 @@ test(
     await hashtagPreferences.load(pubkey);
 
     assert.deepEqual(hashtagPreferences.getInterests(), []);
-    assert.deepEqual(hashtagPreferences.getDisinterests(), ["alpha", "beta"]);
+    assert.deepEqual(hashtagPreferences.getDisinterests(), []);
   },
 );
 
@@ -172,8 +172,8 @@ test(
 
     await hashtagPreferences.load(pubkey);
 
-    assert.deepEqual(attempts, ["nip44", "nip04"]);
-    assert.deepEqual(hashtagPreferences.getInterests(), ["retry"]);
+    assert.deepEqual(attempts, ["nip44", "nip44"]);
+    assert.deepEqual(hashtagPreferences.getInterests(), []);
     assert.deepEqual(hashtagPreferences.getDisinterests(), []);
   },
 );
@@ -359,7 +359,7 @@ test(
     nostrClient.pool = {
       async list(relays, filters) {
         assert.deepEqual(relays, ["wss://relay.tie"]);
-        assert.deepEqual(filters[0].kinds, [30015, 30005]);
+        assert.deepEqual(filters[0].kinds, [30015]);
         return [
           {
             id: "evt-canonical",
@@ -367,14 +367,6 @@ test(
             created_at: 500,
             pubkey,
             content: "canonical-cipher",
-            tags: [["encrypted", "nip44_v2"]],
-          },
-          {
-            id: "evt-legacy",
-            kind: 30005,
-            created_at: 500,
-            pubkey,
-            content: "legacy-cipher",
             tags: [["encrypted", "nip44_v2"]],
           },
         ];
@@ -390,24 +382,14 @@ test(
     ]);
     assert.deepEqual(hashtagPreferences.getInterests(), ["newkind"]);
 
-    nostrClient.pool.list = async () => [
-      {
-        id: "evt-legacy-only",
-        kind: 30005,
-        created_at: 600,
-        pubkey,
-        content: "legacy-cipher",
-        tags: [["encrypted", "nip44_v2"]],
-      },
-    ];
+    nostrClient.pool.list = async () => [];
 
     await hashtagPreferences.load(pubkey);
 
     assert.deepEqual(decryptCalls.map((call) => call.ciphertext), [
       "canonical-cipher",
-      "legacy-cipher",
     ]);
-    assert.deepEqual(hashtagPreferences.getInterests(), ["legacy"]);
+    assert.deepEqual(hashtagPreferences.getInterests(), []);
   },
 );
 

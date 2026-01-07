@@ -44,6 +44,7 @@ test("loadSubscriptions aggregates relay results when one rejects", async () => 
         id: "event-old",
         created_at: 100,
         content: "cipher-old",
+        tags: [["encrypted", "nip44_v2"]],
       },
     ],
     "wss://relay-c.example": [
@@ -51,6 +52,7 @@ test("loadSubscriptions aggregates relay results when one rejects", async () => 
         id: "event-new",
         created_at: 200,
         content: "cipher-new",
+        tags: [["encrypted", "nip44_v2"]],
       },
     ],
   };
@@ -71,13 +73,15 @@ test("loadSubscriptions aggregates relay results when one rejects", async () => 
 
   const decryptCalls = [];
   globalThis.window.nostr = {
-    nip04: {
-      async decrypt(_pubkey, ciphertext) {
-        decryptCalls.push(ciphertext);
-        if (ciphertext === "cipher-new") {
-          return JSON.stringify([["p", "pub-new"]]);
-        }
-        return JSON.stringify({ subPubkeys: ["pub-old"] });
+    nip44: {
+      v2: {
+        async decrypt(_pubkey, ciphertext) {
+          decryptCalls.push(ciphertext);
+          if (ciphertext === "cipher-new") {
+            return JSON.stringify([["p", "pub-new"]]);
+          }
+          return JSON.stringify([["p", "pub-old"]]);
+        },
       },
     },
   };
@@ -503,6 +507,7 @@ test(
       id: "event-direct",
       created_at: 600,
       content: "cipher-direct",
+      tags: [["encrypted", "nip44_v2"]],
     };
 
     nostrClient.pool = {
@@ -520,7 +525,7 @@ test(
     const decryptCalls = [];
     setActiveSigner({
       pubkey: "user-pubkey-123",
-      async nip04Decrypt(pubkey, ciphertext) {
+      async nip44Decrypt(pubkey, ciphertext) {
         decryptCalls.push({ pubkey, ciphertext });
         return JSON.stringify([["p", "pub-direct"]]);
       },
@@ -769,7 +774,7 @@ test(
     setActiveSigner({
       type: "nsec",
       pubkey: "user-pubkey-123",
-      async nip04Encrypt(pubkey, plaintext) {
+      async nip44Encrypt(pubkey, plaintext) {
         encryptCalls.push({ pubkey, plaintext });
         return "cipher-direct";
       },
@@ -793,7 +798,7 @@ test(
           pubkey: "user-pubkey-123",
           plaintext: JSON.stringify([["p", "pub-direct"]]),
         },
-        "nip04Encrypt should receive the serialized subscription list",
+        "nip44Encrypt should receive the serialized subscription list",
       );
       assert.equal(
         signCalls[0].content,
@@ -902,7 +907,7 @@ test("publishSubscriptionList prefers nip44 encryption when available", async ()
   }
 });
 
-test("publishSubscriptionList falls back to nip04 when nip44 fails", async () => {
+test("publishSubscriptionList fails when nip44 fails", async () => {
   const SubscriptionsManager = subscriptions.constructor;
   const manager = new SubscriptionsManager();
 
@@ -922,42 +927,14 @@ test("publishSubscriptionList falls back to nip04 when nip44 fails", async () =>
 
   nostrClient.ensureExtensionPermissions = async () => ({ ok: true });
 
-  const publishCalls = [];
-  nostrClient.pool = {
-    publish(urls, event) {
-      publishCalls.push({ urls, event });
-      return {
-        on(eventName, handler) {
-          if (eventName === "ok") {
-            handler();
-          }
-          return true;
-        },
-      };
-    },
-  };
-
-  const encryptCalls = { nip44: 0, nip04: 0 };
-  const signedEvents = [];
   setActiveSigner({
     type: "nsec",
     pubkey: "user-pubkey-123",
     async nip44Encrypt() {
-      encryptCalls.nip44 += 1;
       throw new Error("simulated nip44 failure");
     },
-    async nip04Encrypt(pubkey, plaintext) {
-      encryptCalls.nip04 += 1;
-      assert.equal(pubkey, "user-pubkey-123");
-      assert.equal(
-      plaintext,
-      JSON.stringify([["p", "pub-three"]]),
-      );
-      return "cipher-nip04";
-    },
     async signEvent(event) {
-      signedEvents.push(event);
-      return { ...event, id: "signed-nip04-event" };
+      return { ...event, id: "signed-event" };
     },
   });
 
@@ -965,21 +942,9 @@ test("publishSubscriptionList falls back to nip04 when nip44 fails", async () =>
 
   try {
     await manager.publishSubscriptionList("user-pubkey-123");
-
-    assert.ok(
-      encryptCalls.nip44 >= 1,
-      "nip44Encrypt should be attempted before falling back",
-    );
-    assert.equal(encryptCalls.nip04, 1, "nip04Encrypt should handle fallback");
-    const signedEvent = signedEvents[0];
-    const encryptedTags = signedEvent.tags.filter((tag) => tag[0] === "encrypted");
-    assert.deepEqual(
-      encryptedTags,
-      [["encrypted", "nip04"]],
-      "fallback nip04 encryption should advertise nip04",
-    );
-    assert.equal(publishCalls.length, relayUrls.length, "event should publish to relays");
-    assert.equal(manager.subsEventId, "signed-nip04-event");
+    assert.fail("Should have thrown");
+  } catch (error) {
+    assert.equal(error.code, "subscriptions-encrypt-failed");
   } finally {
     nostrClient.relays = originalRelays;
     nostrClient.writeRelays = originalWriteRelays;

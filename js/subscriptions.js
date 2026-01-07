@@ -91,9 +91,6 @@ function extractEncryptionHints(event) {
         pushUnique("nip44");
         continue;
       }
-      if (part === "nip04" || part === "nip4") {
-        pushUnique("nip04");
-      }
     }
   }
 
@@ -107,7 +104,6 @@ function determineDecryptionOrder(event, availableSchemes) {
 
   const hints = extractEncryptionHints(event);
   const aliasMap = {
-    nip04: ["nip04"],
     nip44: ["nip44", "nip44_v2"],
     nip44_v2: ["nip44_v2", "nip44"],
   };
@@ -122,7 +118,7 @@ function determineDecryptionOrder(event, availableSchemes) {
     }
   }
 
-  for (const fallback of ["nip44_v2", "nip44", "nip04"]) {
+  for (const fallback of ["nip44_v2", "nip44"]) {
     if (availableSet.has(fallback) && !prioritized.includes(fallback)) {
       prioritized.push(fallback);
     }
@@ -336,16 +332,15 @@ class SubscriptionsManager {
       this.subsEventId = newest.id;
 
       const signer = getActiveSigner();
-      const signerHasNip04 = typeof signer?.nip04Decrypt === "function";
       const signerHasNip44 = typeof signer?.nip44Decrypt === "function";
       const hints = extractEncryptionHints(newest);
       const requiresNip44 = hints.includes("nip44") || hints.includes("nip44_v2");
-      const requiresNip04 =
-        !hints.length || hints.includes("nip04") || !requiresNip44;
 
       let permissionResult = { ok: true };
-      const signerCoversRequiredSchemes =
-        (!requiresNip04 || signerHasNip04) && (!requiresNip44 || signerHasNip44);
+      // Since we only support NIP-44, we only check if the signer has NIP-44 capabilities.
+      // If the event doesn't require NIP-44 (e.g. legacy NIP-04), we can't decrypt it anyway,
+      // so we don't ask for permissions.
+      const signerCoversRequiredSchemes = !requiresNip44 || signerHasNip44;
 
       if (!signerCoversRequiredSchemes) {
         permissionResult = await requestDefaultExtensionPermissions();
@@ -443,12 +438,7 @@ class SubscriptionsManager {
     };
 
     const signer = getActiveSigner();
-    const signerHasNip04 = typeof signer?.nip04Decrypt === "function";
     const signerHasNip44 = typeof signer?.nip44Decrypt === "function";
-
-    if (signerHasNip04) {
-      registerDecryptor("nip04", (payload) => signer.nip04Decrypt(userPubkey, payload));
-    }
 
     if (signerHasNip44) {
       registerDecryptor("nip44", (payload) => signer.nip44Decrypt(userPubkey, payload));
@@ -457,12 +447,6 @@ class SubscriptionsManager {
     const nostrApi =
       typeof window !== "undefined" && window && window.nostr ? window.nostr : null;
     if (nostrApi) {
-      if (!signerHasNip04 && nostrApi.nip04 && typeof nostrApi.nip04.decrypt === "function") {
-        registerDecryptor("nip04", (payload) =>
-          nostrApi.nip04.decrypt(userPubkey, payload)
-        );
-      }
-
       const nip44 =
         nostrApi.nip44 && typeof nostrApi.nip44 === "object" ? nostrApi.nip44 : null;
       if (nip44) {
@@ -624,13 +608,9 @@ class SubscriptionsManager {
       registerEncryptor("nip44", (value) => signer.nip44Encrypt(userPubkey, value));
     }
 
-    if (typeof signer.nip04Encrypt === "function") {
-      registerEncryptor("nip04", (value) => signer.nip04Encrypt(userPubkey, value));
-    }
-
     if (!encryptors.length) {
       const error = new Error(
-        "An encryption-capable signer is required to update subscriptions.",
+        "An encryption-capable signer (NIP-44) is required to update subscriptions.",
       );
       error.code = "subscriptions-missing-encryptor";
       throw error;
@@ -678,9 +658,7 @@ class SubscriptionsManager {
         ? "nip44_v2"
         : encryptionScheme === "nip44"
           ? "nip44"
-          : encryptionScheme === "nip04"
-            ? "nip04"
-            : undefined;
+          : undefined;
 
     const evt = buildSubscriptionListEvent({
       pubkey: userPubkey,

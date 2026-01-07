@@ -119,9 +119,6 @@ function extractEncryptionHints(event) {
         pushUnique("nip44");
         continue;
       }
-      if (part === "nip04" || part === "nip4") {
-        pushUnique("nip04");
-      }
     }
   }
 
@@ -135,7 +132,6 @@ function determineDecryptionOrder(event, availableSchemes) {
 
   const hints = extractEncryptionHints(event);
   const aliasMap = {
-    nip04: ["nip04"],
     nip44: ["nip44", "nip44_v2"],
     nip44_v2: ["nip44_v2", "nip44"],
   };
@@ -150,7 +146,7 @@ function determineDecryptionOrder(event, availableSchemes) {
     }
   }
 
-  for (const fallback of ["nip44_v2", "nip44", "nip04"]) {
+  for (const fallback of ["nip44_v2", "nip44"]) {
     if (availableSet.has(fallback) && !prioritized.includes(fallback)) {
       prioritized.push(fallback);
     }
@@ -644,15 +640,15 @@ class UserBlockListManager {
 
     const resolveDecryptors = async (event) => {
       const signer = getActiveSigner();
-      const signerHasNip04 = typeof signer?.nip04Decrypt === "function";
       const signerHasNip44 = typeof signer?.nip44Decrypt === "function";
 
       const hints = extractEncryptionHints(event);
       const requiresNip44 = hints.includes("nip44") || hints.includes("nip44_v2");
-      const requiresNip04 = !hints.length || hints.includes("nip04");
 
       let permissionError = null;
-      if ((!signerHasNip44 && requiresNip44) || (!signerHasNip04 && requiresNip04)) {
+      // If event requires NIP-44 and we don't have it, request permissions.
+      // If event requires other schemes (legacy), we ignore it as we only support NIP-44.
+      if (!signerHasNip44 && requiresNip44) {
         try {
           const permissionResult = await requestDefaultExtensionPermissions();
           if (!permissionResult?.ok) {
@@ -691,24 +687,8 @@ class UserBlockListManager {
         );
       }
 
-      if (signerHasNip04) {
-        registerDecryptor(
-          "nip04",
-          (payload) => signer.nip04Decrypt(normalized, payload),
-          "active-signer",
-        );
-      }
-
       const nostrApi = typeof window !== "undefined" ? window?.nostr : null;
       if (nostrApi) {
-        if (typeof nostrApi.nip04?.decrypt === "function") {
-          registerDecryptor(
-            "nip04",
-            (payload) => nostrApi.nip04.decrypt(normalized, payload),
-            "extension",
-          );
-        }
-
         const nip44 =
           nostrApi.nip44 && typeof nostrApi.nip44 === "object" ? nostrApi.nip44 : null;
         if (nip44) {
@@ -1395,10 +1375,6 @@ class UserBlockListManager {
         encryptionCandidates.push({ tag: "nip44_v2", encrypt: signer.nip44Encrypt });
       }
 
-      if (typeof signer.nip04Encrypt === "function") {
-        encryptionCandidates.push({ tag: "nip04", encrypt: signer.nip04Encrypt });
-      }
-
       for (const candidate of encryptionCandidates) {
         try {
           const encrypted = await candidate.encrypt(owner, payloadText);
@@ -1528,13 +1504,9 @@ class UserBlockListManager {
       registerEncryptor("nip44", (value) => signer.nip44Encrypt(normalized, value));
     }
 
-    if (typeof signer.nip04Encrypt === "function") {
-      registerEncryptor("nip04", (value) => signer.nip04Encrypt(normalized, value));
-    }
-
     if (!encryptors.length) {
       const err = new Error(
-        "An encryption-capable signer is required to update the block list."
+        "An encryption-capable signer (NIP-44) is required to update the block list."
       );
       err.code = "block-list-missing-encryptor";
       throw err;
@@ -1574,9 +1546,7 @@ class UserBlockListManager {
         ? "nip44_v2"
         : encryptionScheme === "nip44"
           ? "nip44"
-          : encryptionScheme === "nip04"
-            ? "nip04"
-            : undefined;
+          : undefined;
 
     const event = buildBlockListEvent({
       pubkey: normalized,
