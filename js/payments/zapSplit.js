@@ -221,6 +221,7 @@ function mergeDependencies(overrides = {}) {
     wallet: walletDeps,
     platformAddress: platformDeps,
     validator: validatorDeps,
+    signer: overrides.signer || null,
   };
 }
 
@@ -338,13 +339,14 @@ function resolveBech32Lnurl(resolved, encodeFn) {
   return encodeFn(callbackUrl);
 }
 
-function buildZapRequest({
+async function buildZapRequest({
   wallet,
   recipientPubkey,
   videoEvent,
   amountSats,
   comment,
   lnurl,
+  signer,
 }) {
   const tools = getNostrTools();
   if (!tools?.getEventHash || !tools?.signEvent) {
@@ -377,15 +379,26 @@ function buildZapRequest({
     tags.push(["relays", ...relayUrls]);
   }
 
+  const pubkey =
+    signer && typeof signer.getPubkey === "function"
+      ? signer.getPubkey()
+      : wallet?.clientPubkey || "";
+
   const event = {
     kind: ZAP_KIND,
     content: comment || "",
     created_at: Math.floor(Date.now() / 1000),
     tags,
-    pubkey: wallet?.clientPubkey || "",
+    pubkey,
   };
 
   event.id = tools.getEventHash(event);
+
+  if (signer && typeof signer.signEvent === "function") {
+    const signed = await signer.signEvent(event);
+    return JSON.stringify(signed);
+  }
+
   event.sig = tools.signEvent(event, wallet?.secretKey);
 
   return JSON.stringify(event);
@@ -430,13 +443,14 @@ async function processShare({
       videoEvent,
     });
     if (recipientPubkey) {
-      zapRequest = buildZapRequest({
+      zapRequest = await buildZapRequest({
         wallet,
         recipientPubkey,
         videoEvent,
         amountSats,
         comment,
         lnurl: lnurlTag,
+        signer: deps.signer,
       });
     }
   }

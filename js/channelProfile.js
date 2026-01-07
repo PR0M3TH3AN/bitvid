@@ -2465,6 +2465,19 @@ function createZapDependencies({
   shareTracker,
   walletSettings
 }) {
+  const signer = {
+    getPubkey: () => {
+      return nostrClient.pubkey || "";
+    },
+    signEvent: async (event) => {
+      const activeSigner = await nostrClient.ensureActiveSignerForPubkey(nostrClient.pubkey);
+      if (!activeSigner || typeof activeSigner.signEvent !== "function") {
+        throw new Error("No active signer available to sign zap request.");
+      }
+      return activeSigner.signEvent(event);
+    }
+  };
+
   const creatorKey = normalizeLightningAddressKey(
     creatorEntry?.address || currentChannelLightningAddress
   );
@@ -2475,6 +2488,7 @@ function createZapDependencies({
   let activeShare = null;
 
   return {
+    signer,
     lnurl: {
       resolveLightningAddress: (value) => {
         const normalized = normalizeLightningAddressKey(value);
