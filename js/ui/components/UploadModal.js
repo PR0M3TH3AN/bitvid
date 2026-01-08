@@ -66,6 +66,9 @@ export class UploadModal {
     this.customSubmitCooldownTimer = null;
     this.customSubmitCooldownMs = 60000;
 
+    this.customAdvancedToggle = null;
+    this.customAdvancedFields = null;
+
     this.cloudflareSettingsForm = null;
     this.cloudflareClearSettingsButton = null;
     this.cloudflareSettingsStatus = null;
@@ -89,6 +92,8 @@ export class UploadModal {
     this.cloudflareAdvancedToggleLabel = null;
     this.cloudflareAdvancedToggleIcon = null;
     this.cloudflareAdvancedFields = null;
+    this.cloudflareUploadAdvancedToggle = null;
+    this.cloudflareUploadAdvancedFields = null;
     this.r2AccountIdInput = null;
     this.r2AccessKeyIdInput = null;
     this.r2SecretAccessKeyInput = null;
@@ -103,6 +108,12 @@ export class UploadModal {
     this.modalPanel = null;
     this.loadPromise = null;
     this.eventsBound = false;
+
+    // Automation State
+    this.customSummaryLocked = true;
+    this.cloudflareSummaryLocked = true;
+    this.customWsDirty = false;
+    this.cloudflareWsDirty = false;
   }
 
   addEventListener(type, listener, options) {
@@ -241,8 +252,15 @@ export class UploadModal {
       enableComments: context.querySelector("#uploadEnableComments") || null,
       isNsfw: context.querySelector("#uploadIsNsfw") || null,
       isForKids: context.querySelector("#uploadIsForKids") || null,
-      isPrivate: context.querySelector("#uploadIsPrivate") || null
+      isPrivate: context.querySelector("#uploadIsPrivate") || null,
+      // NIP-71 specific inputs located by form manager usually, but we need direct access for automation
+      summary: this.customSection?.querySelector("#nip71Summary") || null,
+      summaryUnlock: this.customSection?.querySelector("#nip71SummaryUnlock") || null,
+      contentWarning: this.customSection?.querySelector("#nip71ContentWarning") || null,
     };
+
+    this.customAdvancedToggle = this.customSection?.querySelector("#customAdvancedToggle") || null;
+    this.customAdvancedFields = this.customSection?.querySelector("#customAdvancedFields") || null;
 
     this.customSubmitButton =
       this.customForm?.querySelector?.('button[type="submit"]') || null;
@@ -290,6 +308,13 @@ export class UploadModal {
       context.querySelector("#cloudflareIsNsfw") || null;
     this.cloudflareIsForKidsInput =
       context.querySelector("#cloudflareIsForKids") || null;
+    this.cloudflareSummaryInput =
+        this.cloudflareSection?.querySelector("#cloudflareNip71Summary") || null;
+    this.cloudflareSummaryUnlock =
+        this.cloudflareSection?.querySelector("#cloudflareNip71SummaryUnlock") || null;
+    this.cloudflareContentWarningInput =
+        this.cloudflareSection?.querySelector("#cloudflareNip71ContentWarning") || null;
+
     this.cloudflareAdvancedToggle =
       context.querySelector("#cloudflareAdvancedToggle") || null;
     this.cloudflareAdvancedToggleLabel =
@@ -298,6 +323,12 @@ export class UploadModal {
       context.querySelector("#cloudflareAdvancedToggleIcon") || null;
     this.cloudflareAdvancedFields =
       context.querySelector("#cloudflareAdvancedFields") || null;
+
+    this.cloudflareUploadAdvancedToggle =
+      context.querySelector("#cloudflareUploadAdvancedToggle") || null;
+    this.cloudflareUploadAdvancedFields =
+      context.querySelector("#cloudflareUploadAdvancedFields") || null;
+
     this.r2AccountIdInput = context.querySelector("#r2AccountId") || null;
     this.r2AccessKeyIdInput = context.querySelector("#r2AccessKeyId") || null;
     this.r2SecretAccessKeyInput =
@@ -361,6 +392,104 @@ export class UploadModal {
       firstInput.removeEventListener("change", handleFirstChange);
       secondInput.removeEventListener("change", handleSecondChange);
     });
+  }
+
+  // New Automation Helpers
+  setupDescriptionToSummaryMirror(descriptionInput, summaryInput, unlockCheckbox, isCustom) {
+      if (!descriptionInput || !summaryInput) return;
+
+      const handleDescriptionInput = () => {
+          const locked = isCustom ? this.customSummaryLocked : this.cloudflareSummaryLocked;
+          if (locked) {
+              summaryInput.value = descriptionInput.value;
+          }
+      };
+
+      descriptionInput.addEventListener('input', handleDescriptionInput);
+      this.cleanupHandlers.push(() => descriptionInput.removeEventListener('input', handleDescriptionInput));
+
+      if (unlockCheckbox) {
+          unlockCheckbox.addEventListener('change', () => {
+             const unlocked = unlockCheckbox.checked;
+             if (isCustom) {
+                 this.customSummaryLocked = !unlocked;
+             } else {
+                 this.cloudflareSummaryLocked = !unlocked;
+             }
+
+             summaryInput.readOnly = !unlocked;
+             if (unlocked) {
+                 summaryInput.classList.remove('text-muted-strong');
+                 summaryInput.classList.remove('bg-surface-alt'); // if applicable
+             } else {
+                 summaryInput.classList.add('text-muted-strong');
+                 // re-sync if locking back
+                 summaryInput.value = descriptionInput.value;
+             }
+          });
+      }
+  }
+
+  setupUrlToWsMirror(urlInput, wsInput, isCustom) {
+      if (!urlInput || !wsInput) return;
+
+      const handleUrlInput = () => {
+          const dirty = isCustom ? this.customWsDirty : this.cloudflareWsDirty;
+          if (!dirty) {
+              wsInput.value = urlInput.value;
+          }
+      };
+
+      const handleWsInput = () => {
+          if (isCustom) this.customWsDirty = true;
+          else this.cloudflareWsDirty = true;
+      };
+
+      urlInput.addEventListener('input', handleUrlInput);
+      wsInput.addEventListener('input', handleWsInput);
+
+      this.cleanupHandlers.push(() => {
+          urlInput.removeEventListener('input', handleUrlInput);
+          wsInput.removeEventListener('input', handleWsInput);
+      });
+  }
+
+  setupNsfwToContentWarning(nsfwInput, contentWarningInput) {
+      if (!nsfwInput || !contentWarningInput) return;
+
+      const handleNsfwChange = () => {
+          if (nsfwInput.checked) {
+              if (!contentWarningInput.value.trim()) {
+                  contentWarningInput.value = "NSFW";
+              }
+          } else {
+              if (contentWarningInput.value.trim().toUpperCase() === "NSFW") {
+                  contentWarningInput.value = "";
+              }
+          }
+      };
+
+      nsfwInput.addEventListener('change', handleNsfwChange);
+      this.cleanupHandlers.push(() => nsfwInput.removeEventListener('change', handleNsfwChange));
+  }
+
+  setupAdvancedToggle(toggleButton, container, icon) {
+      if (!toggleButton || !container) return;
+
+      toggleButton.addEventListener('click', () => {
+         const isHidden = container.classList.contains('hidden');
+         if (isHidden) {
+             container.classList.remove('hidden');
+             toggleButton.setAttribute('aria-expanded', 'true');
+             if (toggleButton.querySelector('span')) toggleButton.querySelector('span').textContent = "Hide advanced options";
+             if (icon) icon.classList.add('rotate-90');
+         } else {
+             container.classList.add('hidden');
+             toggleButton.setAttribute('aria-expanded', 'false');
+             if (toggleButton.querySelector('span')) toggleButton.querySelector('span').textContent = "Show advanced options";
+             if (icon) icon.classList.remove('rotate-90');
+         }
+      });
   }
 
   buildAutoGeneratedImetaVariant(file) {
@@ -460,6 +589,59 @@ export class UploadModal {
         this.cloudflareIsForKidsInput
       );
     }
+
+    // Bind Automation Logic - Custom
+    this.setupDescriptionToSummaryMirror(
+        this.customFormInputs.description,
+        this.customFormInputs.summary,
+        this.customFormInputs.summaryUnlock,
+        true
+    );
+    this.setupUrlToWsMirror(
+        this.customFormInputs.url,
+        this.customFormInputs.ws,
+        true
+    );
+    this.setupNsfwToContentWarning(
+        this.customFormInputs.isNsfw,
+        this.customFormInputs.contentWarning
+    );
+    this.setupAdvancedToggle(
+        this.customAdvancedToggle,
+        this.customAdvancedFields,
+        this.customSection?.querySelector("#customAdvancedToggleIcon")
+    );
+
+    // Bind Automation Logic - Cloudflare
+    this.setupDescriptionToSummaryMirror(
+        this.cloudflareDescriptionInput,
+        this.cloudflareSummaryInput,
+        this.cloudflareSummaryUnlock,
+        false
+    );
+    // Cloudflare WS is mainly for manual entry or populated via upload logic,
+    // but if user types a URL (unlikely in CF mode as it uploads), we could mirror.
+    // However, in CF mode the URL is usually auto-filled after upload.
+    // If user manually types it, we can mirror.
+    // Actually, Cloudflare form doesn't have a "Hosted URL" input that the user types before upload?
+    // Wait, let's check HTML.
+    // The "Cloudflare" form has a file input. It does NOT have a "Hosted video URL" input for the user to type.
+    // The "Hosted URL" in IMETA is auto-filled.
+    // So setupUrlToWsMirror is irrelevant for Cloudflare mode's main flow,
+    // BUT there is a `cloudflareWs` input in advanced settings.
+    // If the user *manually* fills the WS, they can. But there's no source URL input to mirror *from*.
+    // So we skip setupUrlToWsMirror for Cloudflare mode.
+
+    this.setupNsfwToContentWarning(
+        this.cloudflareIsNsfwInput,
+        this.cloudflareContentWarningInput
+    );
+    this.setupAdvancedToggle(
+        this.cloudflareUploadAdvancedToggle,
+        this.cloudflareUploadAdvancedFields,
+        this.cloudflareSection?.querySelector("#cloudflareUploadAdvancedToggleIcon")
+    );
+
 
     this.nip71FormManager.bindSection("custom");
     this.nip71FormManager.bindSection("cloudflare");
@@ -974,6 +1156,20 @@ export class UploadModal {
     if (this.cloudflareIsForKidsInput)
       this.resetCheckbox(this.cloudflareIsForKidsInput, false);
     if (this.cloudflareFileInput) this.cloudflareFileInput.value = "";
+
+    // Reset Automation State
+    this.cloudflareSummaryLocked = true;
+    this.cloudflareWsDirty = false;
+
+    // Reset inputs we automated or tracked
+    if (this.cloudflareSummaryInput) {
+        this.cloudflareSummaryInput.value = "";
+        this.cloudflareSummaryInput.readOnly = true;
+        this.cloudflareSummaryInput.classList.add('text-muted-strong');
+    }
+    if (this.cloudflareSummaryUnlock) this.cloudflareSummaryUnlock.checked = false;
+    if (this.cloudflareContentWarningInput) this.cloudflareContentWarningInput.value = "";
+
     this.nip71FormManager.resetSection("cloudflare");
     this.updateCloudflareProgress(Number.NaN);
   }
@@ -996,6 +1192,20 @@ export class UploadModal {
       this.resetCheckbox(this.customFormInputs.isForKids, false);
     if (this.customFormInputs.isPrivate)
       this.resetCheckbox(this.customFormInputs.isPrivate, false);
+
+    // Reset Automation State
+    this.customSummaryLocked = true;
+    this.customWsDirty = false;
+
+    // Reset automated inputs
+    if (this.customFormInputs.summary) {
+        this.customFormInputs.summary.value = "";
+        this.customFormInputs.summary.readOnly = true;
+        this.customFormInputs.summary.classList.add('text-muted-strong');
+    }
+    if (this.customFormInputs.summaryUnlock) this.customFormInputs.summaryUnlock.checked = false;
+    if (this.customFormInputs.contentWarning) this.customFormInputs.contentWarning.value = "";
+
     this.nip71FormManager.resetSection("custom");
   }
 
