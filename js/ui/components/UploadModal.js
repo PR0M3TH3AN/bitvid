@@ -744,10 +744,16 @@ export class UploadModal {
       );
     }
 
+    const nip71Metadata = this.nip71FormManager.collectSection("custom");
+    if (nip71Metadata) {
+      rawPayload.nip71 = nip71Metadata;
+    }
+
     const hasDirectUrl = typeof rawPayload.url === "string" && rawPayload.url.trim().length > 0;
     const hasMagnet = typeof rawPayload.magnet === "string" && rawPayload.magnet.trim().length > 0;
+    const hasImetaUrl = nip71Metadata?.imeta?.some((v) => v.url && v.url.trim().length > 0);
 
-    if (!hasDirectUrl && hasMagnet) {
+    if (!hasDirectUrl && !hasImetaUrl && hasMagnet) {
       const confirmed = typeof window !== "undefined" && window.confirm
         ? window.confirm("You are uploading with a magnet link only.\n\nSince this video is not hosted on a server, it will only be playable as long as you (or others) continue seeding it.\n\nDo you want to proceed?")
         : true;
@@ -756,11 +762,6 @@ export class UploadModal {
         this.updateCustomSubmitButtonState();
         return;
       }
-    }
-
-    const nip71Metadata = this.nip71FormManager.collectSection("custom");
-    if (nip71Metadata) {
-      rawPayload.nip71 = nip71Metadata;
     }
 
     const { payload, errors } = normalizeVideoNotePayload(rawPayload);
