@@ -245,6 +245,8 @@ artifacts now that the deploy pipeline owns the build step.
   - Central place for instance-specific values like the Super Admin npub and the
     default whitelist-only mode setting. Update the documented exports here when
     preparing a new deployment.
+  - See [`docs/instance-config.md`](docs/instance-config.md) for a full
+    reference of every setting and how to tune it.
   - Flip `IS_DEV_MODE` to `false` before shipping production builds. The flag
     flows into `js/config.js` as `isDevMode`, seeds the
     `window.__BITVID_DEV_MODE__` global for inline scripts, and gates whether the
