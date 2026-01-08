@@ -1159,6 +1159,144 @@ export class NostrService {
     }
   }
 
+  async fetchVideosByAuthors(authors, options = {}) {
+    const authorList = Array.isArray(authors) ? authors : [];
+    if (!authorList.length) {
+      return [];
+    }
+
+    const requestedLimit = Number(options?.limit);
+    const resolvedLimit = this.nostrClient.clampVideoRequestLimit(
+      requestedLimit,
+      DEFAULT_VIDEO_REQUEST_LIMIT
+    );
+
+    const filter = {
+      kinds: [VIDEO_KIND],
+      "#t": ["video"],
+      authors: authorList,
+      limit: resolvedLimit,
+    };
+
+    const localAll = new Map();
+    // Track invalid
+    const invalidNotes = [];
+
+    try {
+      await Promise.all(
+        this.nostrClient.relays.map(async (url) => {
+          const events = await this.nostrClient.pool.list([url], [filter]);
+          for (const evt of events) {
+            if (evt && evt.id) {
+              this.nostrClient.rawEvents.set(evt.id, evt);
+            }
+            const vid = convertEventToVideo(evt);
+            if (vid.invalid) {
+              invalidNotes.push({ id: vid.id, reason: vid.reason });
+            } else {
+              if (
+                this.nostrClient &&
+                typeof this.nostrClient.applyRootCreatedAt === "function"
+              ) {
+                this.nostrClient.applyRootCreatedAt(vid);
+              }
+              const activeKey = getActiveKey(vid);
+              if (vid.deleted) {
+                this.recordTombstone(activeKey, vid.created_at);
+              } else {
+                this.applyTombstoneGuard(vid);
+              }
+              localAll.set(evt.id, vid);
+            }
+          }
+        })
+      );
+
+      // Merge into allEvents
+      for (const [id, vid] of localAll.entries()) {
+        this.nostrClient.allEvents.set(id, vid);
+        if (
+          this.nostrClient &&
+          typeof this.nostrClient.applyRootCreatedAt === "function"
+        ) {
+          this.nostrClient.applyRootCreatedAt(vid);
+        }
+      }
+
+      // Update activeMap for affected keys
+      for (const [id, video] of localAll.entries()) {
+        if (video.deleted) continue;
+        const activeKey = getActiveKey(video);
+        const existing = this.nostrClient.activeMap.get(activeKey);
+
+        if (!existing || video.created_at > existing.created_at) {
+          this.nostrClient.activeMap.set(activeKey, video);
+          if (
+            this.nostrClient &&
+            typeof this.nostrClient.applyRootCreatedAt === "function"
+          ) {
+            this.nostrClient.applyRootCreatedAt(video);
+          }
+        }
+      }
+
+      // Re-populate cache indexing
+      this.ensureVideosMap();
+      this.markAuthorIndexDirty();
+
+      // Collect the actual videos for the requested authors
+      const collected = [];
+      const seen = new Set();
+      // We look at localAll to ensure we only return what we fetched (or fresh stuff)
+      // Actually, we should probably return the "best" active videos for these authors
+      // now that we've refreshed the cache.
+      const index = this.ensureVideosByAuthorIndex();
+
+      for (const author of authorList) {
+        const entries = index.get(author);
+        if (Array.isArray(entries)) {
+          for (const video of entries) {
+            if (video && video.id && !seen.has(video.id)) {
+              seen.add(video.id);
+              collected.push(video);
+            }
+          }
+        }
+      }
+
+      const filtered = this.filterVideos(collected, options);
+
+      // Sort newest first
+      filtered.sort((a, b) => {
+        const createdA = Number(a?.created_at) || 0;
+        const createdB = Number(b?.created_at) || 0;
+        return createdB - createdA;
+      });
+
+      const finalLimit = resolvedLimit || filtered.length;
+      const limited = filtered.slice(0, finalLimit);
+
+      // Trigger metadata hydration
+      await this.nostrClient.populateNip71MetadataForVideos(limited);
+      limited.forEach((video) => {
+        if (
+          this.nostrClient &&
+          typeof this.nostrClient.applyRootCreatedAt === "function"
+        ) {
+          this.nostrClient.applyRootCreatedAt(video);
+        }
+      });
+
+      this.cacheVideos(limited);
+      this.emit("videos:fetched", { videos: limited, context: "authors" });
+
+      return limited;
+    } catch (err) {
+      userLogger.error("[nostrService] fetchVideosByAuthors error:", err);
+      return [];
+    }
+  }
+
   async loadOlderVideos(lastTimestamp, {
     blacklistedEventIds,
     isAuthorBlocked,

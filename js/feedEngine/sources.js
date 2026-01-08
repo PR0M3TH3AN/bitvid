@@ -118,6 +118,13 @@ export function createSubscriptionAuthorsSource({ service } = {}) {
         videos = await Promise.resolve(
           resolvedService.getActiveVideosByAuthors(authorList, options)
         );
+
+        if (!videos.length && typeof resolvedService.fetchVideosByAuthors === "function") {
+          const fetched = await resolvedService.fetchVideosByAuthors(authorList, options);
+          if (Array.isArray(fetched) && fetched.length > 0) {
+            videos = fetched;
+          }
+        }
       } else {
         videos = await Promise.resolve(
           resolvedService.getFilteredActiveVideos(options)

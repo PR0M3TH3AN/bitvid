@@ -420,7 +420,19 @@ class SubscriptionsManager {
     this.loadingPromise = loader;
 
     try {
-      await loader;
+      // Race against a timeout so the UI doesn't hang indefinitely if relays stall.
+      const timeoutMs = 6000;
+      await Promise.race([
+        loader,
+        new Promise((_, reject) =>
+          setTimeout(
+            () => reject(new Error("Timeout loading subscriptions")),
+            timeoutMs
+          )
+        ),
+      ]);
+    } catch (error) {
+      userLogger.warn("[SubscriptionsManager] ensureLoaded timed out or failed:", error);
     } finally {
       this.loadingPromise = null;
     }
