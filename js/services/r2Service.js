@@ -831,6 +831,37 @@ class R2Service {
   async uploadVideo(params = {}) {
     return this.handleCloudflareUploadSubmit(params);
   }
+
+  async uploadFile({
+    file,
+    accountId,
+    accessKeyId,
+    secretAccessKey,
+    bucket,
+    key,
+    onProgress,
+  } = {}) {
+    if (!file || !bucket || !key || !accountId || !accessKeyId || !secretAccessKey) {
+      throw new Error("Missing required parameters for uploadFile");
+    }
+
+    const s3 = makeR2Client({ accountId, accessKeyId, secretAccessKey });
+
+    await multipartUpload({
+      s3,
+      bucket,
+      key,
+      file,
+      contentType: file.type || "application/octet-stream",
+      onProgress: (fraction) => {
+        if (typeof onProgress === "function") {
+          onProgress(fraction);
+        }
+      },
+    });
+
+    return { bucket, key };
+  }
 }
 
 const r2Service = new R2Service();

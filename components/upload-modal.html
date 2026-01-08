@@ -1383,6 +1383,33 @@
                     Large files are supported.
                   </p>
                 </div>
+
+        <div class="mb-6 border-t border-surface-subtle pt-4">
+          <label class="inline-flex items-start cursor-pointer">
+            <input type="checkbox" id="cloudflareCreateTorrent" class="form-checkbox mt-0.5 bg-surface-alt border-surface-subtle text-accent rounded focus:ring-accent" />
+            <div class="ml-2 flex flex-col">
+              <span class="text-sm font-medium text-foreground">Create torrent & seed in browser (Experimental)</span>
+              <span class="text-xs text-muted leading-relaxed">Recommended for files under 2GB. Keeps seeding while tab is open.</span>
+            </div>
+          </label>
+          <div id="cloudflareTorrentStatusContainer" class="hidden mt-3 space-y-2">
+             <div class="flex justify-between text-xs text-muted">
+               <span id="cloudflareTorrentStatusText">Generating torrent...</span>
+               <span id="cloudflareTorrentStatusPercent">0%</span>
+             </div>
+             <div class="w-full bg-surface-alt rounded-full h-1.5" role="progressbar" aria-valuemin="0" aria-valuemax="100">
+               <div id="cloudflareTorrentProgressBar" class="bg-warning h-1.5 rounded-full transition-all duration-300 w-0"></div>
+             </div>
+          </div>
+        </div>
+
+        <div class="mb-6 pt-2">
+            <label class="inline-flex items-center cursor-pointer">
+                <input type="checkbox" id="cloudflareRightsConfirmed" class="form-checkbox bg-surface-alt border-surface-subtle text-accent rounded focus:ring-accent" />
+                <span class="ml-2 text-sm text-muted">I confirm I have the legal right to upload and distribute this content.</span>
+            </label>
+        </div>
+
                 <div
                   class="bg-black/40 rounded-md border border-border/70 p-3 text-xs text-muted"
                 >
@@ -1782,6 +1809,7 @@
                   type="submit"
                   id="cloudflareUploadButton"
                   class="btn w-full text-sm"
+                  disabled
                 >
                   Upload to R2 &amp; publish
                 </button>
