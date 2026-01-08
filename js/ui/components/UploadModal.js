@@ -2,7 +2,7 @@
 
 import { createModalAccessibility } from "./modalAccessibility.js";
 import { Nip71FormManager } from "./nip71FormManager.js";
-import { userLogger } from "../../utils/logger.js";
+import logger, { userLogger } from "../../utils/logger.js";
 import {
   getVideoNoteErrorMessage,
   normalizeVideoNotePayload,
@@ -485,6 +485,11 @@ export class UploadModal {
       if (!toggleButton || !container) return;
 
       const handleToggle = () => {
+         logger.dev.info("[UploadModal] toggle advanced", {
+             toggleId: toggleButton.id || null,
+             containerId: container.id || null,
+             isHidden: container.classList.contains('hidden')
+         });
          const isHidden = container.classList.contains('hidden');
          if (isHidden) {
              container.classList.remove('hidden');
@@ -524,6 +529,13 @@ export class UploadModal {
   }
 
   bindEvents() {
+    logger.dev.info("[UploadModal] bindEvents", {
+      rootConnected: Boolean(this.root?.isConnected),
+      customAdvancedToggle: Boolean(this.customAdvancedToggle),
+      cloudflareUploadAdvancedToggle: Boolean(this.cloudflareUploadAdvancedToggle),
+      cloudflareAdvancedToggle: Boolean(this.cloudflareAdvancedToggle)
+    });
+
     if (this.closeButton) {
       this.closeButton.addEventListener("click", () => {
         this.close();
