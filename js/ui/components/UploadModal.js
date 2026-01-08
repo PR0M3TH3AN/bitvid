@@ -143,7 +143,11 @@ export class UploadModal {
 
   async load({ container } = {}) {
     if (this.root) {
-      return this.root;
+      if (this.root.isConnected) {
+        return this.root;
+      }
+      this.root = null;
+      this.eventsBound = false;
     }
 
     if (this.loadPromise) {
@@ -192,8 +196,12 @@ export class UploadModal {
         throw new Error("Upload modal markup missing after load.");
       }
 
+      const previousRoot = this.root;
       this.container = targetContainer;
       this.root = modal;
+      if (previousRoot && previousRoot !== modal) {
+        this.eventsBound = false;
+      }
 
       this.cacheElements(modal);
       this.setupModalAccessibility();
