@@ -485,13 +485,13 @@ export class UploadModal {
       if (!toggleButton || !container) return;
 
       const handleToggle = () => {
-         logger.dev.info("[UploadModal] toggle advanced", {
+         const wasHidden = container.classList.contains('hidden');
+         logger.dev.info("[UploadModal] toggle advanced (before)", {
              toggleId: toggleButton.id || null,
              containerId: container.id || null,
-             isHidden: container.classList.contains('hidden')
+             isHidden: wasHidden
          });
-         const isHidden = container.classList.contains('hidden');
-         if (isHidden) {
+         if (wasHidden) {
              container.classList.remove('hidden');
              toggleButton.setAttribute('aria-expanded', 'true');
              if (toggleButton.querySelector('span')) toggleButton.querySelector('span').textContent = "Hide advanced options";
@@ -502,6 +502,17 @@ export class UploadModal {
              if (toggleButton.querySelector('span')) toggleButton.querySelector('span').textContent = "Show advanced options";
              if (icon) icon.classList.remove('rotate-90');
          }
+         const computedDisplay =
+           typeof window !== "undefined" && window.getComputedStyle
+             ? window.getComputedStyle(container).display
+             : null;
+         logger.dev.info("[UploadModal] toggle advanced (after)", {
+             toggleId: toggleButton.id || null,
+             containerId: container.id || null,
+             isHidden: container.classList.contains('hidden'),
+             computedDisplay,
+             offsetParent: container.offsetParent ? "visible" : "hidden"
+         });
       };
 
       toggleButton.addEventListener('click', handleToggle);
