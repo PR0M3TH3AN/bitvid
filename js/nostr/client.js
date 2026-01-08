@@ -5856,11 +5856,14 @@ export class NostrClient {
   /**
    * fetchVideos => old approach
    */
-  async fetchVideos() {
+  async fetchVideos(options = {}) {
+    const requestedLimit = Number(options?.limit);
+    const resolvedLimit = this.clampVideoRequestLimit(requestedLimit, DEFAULT_VIDEO_REQUEST_LIMIT);
+
     const filter = {
       kinds: [30078],
       "#t": ["video"],
-      limit: 300,
+      limit: resolvedLimit,
       since: 0,
     };
 
