@@ -42,7 +42,7 @@ Both upload modes expose metadata repeaters for **variants**, **captions/text tr
 
 Pick the flow that matches your source material:
 
-- **Custom (hosted URL or magnet)**: Provide a title plus an HTTPS video URL and/or a WebTorrent magnet. The form requires at least one transport, validates `ws=`/`xs=` hints, keeps magnets raw by decoding them with `safeDecodeMagnet()` before publish, and applies whatever metadata repeaters you configured.
+- **Custom (hosted URL or magnet)**: Provide a title plus an HTTPS video URL and/or a WebTorrent magnet. The form requires at least one transport, validates `ws=`/`xs=` hints, keeps magnets raw by decoding them with `safeDecodeMagnet()` before publish, and applies whatever metadata repeaters you configured. If you submit a magnet without a hosted URL, the modal warns that availability depends on peers seeding the torrent.
 - **Cloudflare (R2 direct upload)**: Enter your Cloudflare credentials in the guided form, optionally expand the **Advanced settings** accordion to override pathing or access controls, then drop media files for bitvid to upload through the R2 API. The modal tracks progress, applies your metadata selections, auto-fills the primary `imeta` variant once the upload completes, and publishes the resulting R2 URL back into the note automatically.
 
 Hosted URLs remain the preferred playback path, and you can still add a magnet or supplemental web seeds when using either mode. Use the **Private** toggle to keep the resulting card visible only to you, and lean on the repeaters whenever you want to surface richer context or alternate assets as outlined in the event schema reference.
@@ -211,6 +211,15 @@ the entry point that matches their feature set:
 The legacy `js/nostr.js` shim has been removed. Update any remaining
 `import { ... } from './nostr.js';` calls to use the facades above so upgrades
 stay painless.
+
+### Nostr video fetch limits
+
+`nostrClient.fetchVideos(options)` now accepts an optional `options.limit` to
+control how many video events are requested per relay. The request size defaults
+to `DEFAULT_VIDEO_REQUEST_LIMIT` (150) and is clamped to
+`MAX_VIDEO_REQUEST_LIMIT` (500) to avoid accidental firehose requests as the
+network grows. Use a smaller limit for lightweight surfaces or a larger value
+when running batch jobs that can tolerate additional load.
 
 The build command compiles Tailwind with `tailwind.config.cjs`, runs it through
 the PostCSS pipeline defined in `postcss.config.cjs` (for autoprefixing), and
