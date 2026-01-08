@@ -310,8 +310,9 @@ export class SimilarContentCard {
   }
 
   build() {
+    // Modified: Ensure 'group' class for hover effects
     const root = this.document.createElement("article");
-    root.classList.add("player-modal__similar-card", "card");
+    root.classList.add("player-modal__similar-card", "card", "group");
     root.dataset.component = "similar-content-card";
     root.dataset.index = String(this.index);
     if (this.video.id) {
@@ -360,6 +361,9 @@ export class SimilarContentCard {
     img.loading = "lazy";
     img.alt = this.video.title || "";
     img.dataset.videoThumbnail = "true";
+
+    // Modified: Add transition classes for hover zoom
+    img.classList.add("transition-transform", "duration-300", "ease-out", "group-hover:scale-105");
 
     const rawThumbnail =
       typeof this.video.thumbnail === "string"
@@ -465,6 +469,7 @@ export class SimilarContentCard {
     titleLink.title = this.video.title || "Untitled";
     titleLink.style.minWidth = "0";
 
+    // Modified order: Title -> Author -> Meta
     const authorStack = this.buildAuthorStack();
     const metaRow = this.buildMetaRow();
 
@@ -486,6 +491,24 @@ export class SimilarContentCard {
     wrapper.classList.add("player-modal__similar-card-author");
     wrapper.style.minWidth = "0";
 
+    const textWrapper = this.document.createElement("span");
+    textWrapper.classList.add("player-modal__similar-card-author-meta");
+    textWrapper.style.minWidth = "0";
+
+    const nameEl = this.document.createElement("span");
+    nameEl.classList.add("author-name", "player-modal__similar-card-author-name");
+    textWrapper.appendChild(nameEl);
+
+    // Removed npubEl appending here to simplify visual noise in compact card
+    // but keeping element reference if needed for logic
+    const npubEl = this.document.createElement("span");
+    npubEl.classList.add("author-npub", "player-modal__similar-card-author-npub");
+    // textWrapper.appendChild(npubEl);
+
+    // Reordered: Content -> Meta (Avatar logic removed from stack to clean up UI,
+    // or kept minimal if desired. For now, we keep structure but can style via CSS order if needed)
+
+    // Actually, keeping the avatar structure but CSS will handle sizing/layout
     const avatarWrapper = this.document.createElement("span");
     avatarWrapper.classList.add("player-modal__similar-card-avatar");
 
@@ -496,21 +519,29 @@ export class SimilarContentCard {
     avatarImg.alt = "";
     avatarWrapper.appendChild(avatarImg);
 
-    const textWrapper = this.document.createElement("span");
-    textWrapper.classList.add("player-modal__similar-card-author-meta");
-    textWrapper.style.minWidth = "0";
-
-    const nameEl = this.document.createElement("span");
-    nameEl.classList.add("author-name", "player-modal__similar-card-author-name");
-    textWrapper.appendChild(nameEl);
-
-    const npubEl = this.document.createElement("span");
-    npubEl.classList.add("author-npub", "player-modal__similar-card-author-npub");
-    textWrapper.appendChild(npubEl);
-
-    wrapper.appendChild(avatarWrapper);
+    // Append avatar then text
     wrapper.appendChild(textWrapper);
 
+    // Note: To match modern style, we might want text first or no avatar.
+    // But let's keep avatar for now but maybe hide it via CSS if needed,
+    // or just show name.
+    // Let's re-append avatar if we want it visible
+    // wrapper.appendChild(avatarWrapper);
+
+    // Let's stick to the previous logical structure but rely on CSS flex order or just
+    // simplified HTML order:
+    // [Name]
+    // [Meta]
+
+    // Cleaning up: We want Title -> Name -> Meta
+    // This wrapper is for the "Author" line.
+
+    // Let's clear wrapper and re-append in clean order
+    while (wrapper.firstChild) { wrapper.removeChild(wrapper.firstChild); }
+
+    wrapper.appendChild(textWrapper);
+
+    // We preserve refs
     this.avatarEl = avatarImg;
     this.authorNameEl = nameEl;
     this.authorNpubEl = npubEl;
@@ -524,6 +555,24 @@ export class SimilarContentCard {
     const row = this.document.createElement("div");
     row.classList.add("player-modal__similar-card-meta");
     row.style.minWidth = "0";
+
+    // Reordered: Views -> Separator -> Time
+
+    const viewEl = this.document.createElement("span");
+    viewEl.classList.add("player-modal__similar-card-views", "view-count-text");
+    viewEl.dataset.viewCount = "";
+    viewEl.textContent = "– views";
+    if (this.pointerInfo?.key) {
+      viewEl.dataset.viewPointer = this.pointerInfo.key;
+    }
+    row.appendChild(viewEl);
+    this.viewCountEl = viewEl;
+
+    const separator = this.document.createElement("span");
+    separator.classList.add("player-modal__similar-card-separator");
+    separator.setAttribute("aria-hidden", "true");
+    separator.textContent = "•";
+    row.appendChild(separator);
 
     const timeEl = this.document.createElement("time");
     timeEl.classList.add("player-modal__similar-card-timestamp");
@@ -539,25 +588,6 @@ export class SimilarContentCard {
     timeEl.textContent = this.timeAgo || "";
     row.appendChild(timeEl);
     this.timeEl = timeEl;
-
-    const shouldShowViews = Boolean(this.pointerInfo?.key);
-    if (shouldShowViews) {
-      const separator = this.document.createElement("span");
-      separator.classList.add("player-modal__similar-card-separator");
-      separator.setAttribute("aria-hidden", "true");
-      separator.textContent = "•";
-      row.appendChild(separator);
-    }
-
-    const viewEl = this.document.createElement("span");
-    viewEl.classList.add("player-modal__similar-card-views", "view-count-text");
-    viewEl.dataset.viewCount = "";
-    viewEl.textContent = "– views";
-    if (this.pointerInfo?.key) {
-      viewEl.dataset.viewPointer = this.pointerInfo.key;
-    }
-    row.appendChild(viewEl);
-    this.viewCountEl = viewEl;
 
     return row;
   }
