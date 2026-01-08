@@ -2,7 +2,7 @@
 
 import { createModalAccessibility } from "./modalAccessibility.js";
 import { Nip71FormManager } from "./nip71FormManager.js";
-import { userLogger } from "../../utils/logger.js";
+import logger, { userLogger } from "../../utils/logger.js";
 import {
   getVideoNoteErrorMessage,
   normalizeVideoNotePayload,
@@ -143,7 +143,11 @@ export class UploadModal {
 
   async load({ container } = {}) {
     if (this.root) {
-      return this.root;
+      if (this.root.isConnected) {
+        return this.root;
+      }
+      this.root = null;
+      this.eventsBound = false;
     }
 
     if (this.loadPromise) {
@@ -192,8 +196,12 @@ export class UploadModal {
         throw new Error("Upload modal markup missing after load.");
       }
 
+      const previousRoot = this.root;
       this.container = targetContainer;
       this.root = modal;
+      if (previousRoot && previousRoot !== modal) {
+        this.eventsBound = false;
+      }
 
       this.cacheElements(modal);
       this.setupModalAccessibility();
@@ -477,8 +485,13 @@ export class UploadModal {
       if (!toggleButton || !container) return;
 
       const handleToggle = () => {
-         const isHidden = container.classList.contains('hidden');
-         if (isHidden) {
+         const wasHidden = container.classList.contains('hidden');
+         logger.dev.info("[UploadModal] toggle advanced (before)", {
+             toggleId: toggleButton.id || null,
+             containerId: container.id || null,
+             isHidden: wasHidden
+         });
+         if (wasHidden) {
              container.classList.remove('hidden');
              toggleButton.setAttribute('aria-expanded', 'true');
              if (toggleButton.querySelector('span')) toggleButton.querySelector('span').textContent = "Hide advanced options";
@@ -489,6 +502,17 @@ export class UploadModal {
              if (toggleButton.querySelector('span')) toggleButton.querySelector('span').textContent = "Show advanced options";
              if (icon) icon.classList.remove('rotate-90');
          }
+         const computedDisplay =
+           typeof window !== "undefined" && window.getComputedStyle
+             ? window.getComputedStyle(container).display
+             : null;
+         logger.dev.info("[UploadModal] toggle advanced (after)", {
+             toggleId: toggleButton.id || null,
+             containerId: container.id || null,
+             isHidden: container.classList.contains('hidden'),
+             computedDisplay,
+             offsetParent: container.offsetParent ? "visible" : "hidden"
+         });
       };
 
       toggleButton.addEventListener('click', handleToggle);
@@ -516,6 +540,13 @@ export class UploadModal {
   }
 
   bindEvents() {
+    logger.dev.info("[UploadModal] bindEvents", {
+      rootConnected: Boolean(this.root?.isConnected),
+      customAdvancedToggle: Boolean(this.customAdvancedToggle),
+      cloudflareUploadAdvancedToggle: Boolean(this.cloudflareUploadAdvancedToggle),
+      cloudflareAdvancedToggle: Boolean(this.cloudflareAdvancedToggle)
+    });
+
     if (this.closeButton) {
       this.closeButton.addEventListener("click", () => {
         this.close();
