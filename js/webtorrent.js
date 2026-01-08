@@ -144,6 +144,32 @@ export class TorrentClient {
     this.TIMEOUT_DURATION = 60000;
   }
 
+  /**
+   * Seeding helper for client-side creation.
+   */
+  async seed(input, options = {}) {
+    const initResult = await this.init();
+    if (!initResult?.serviceWorkerReady && !this.serviceWorkerDisabled) {
+      this.log("[seed] Service worker not ready, proceeding anyway (best effort).");
+    }
+
+    const announce = Array.isArray(options.announce)
+      ? options.announce
+      : [...TorrentClient.PROBE_TRACKERS];
+
+    return new Promise((resolve, reject) => {
+      try {
+        this.client.seed(input, { ...options, announce }, (torrent) => {
+          this.log(`[seed] Torrent created: ${torrent.infoHash}`);
+          resolve(torrent);
+        });
+      } catch (err) {
+        this.log("[seed] Error creating torrent:", err);
+        reject(err);
+      }
+    });
+  }
+
   ensureClientForProbe() {
     if (!this.probeClient) {
       this.probeClient = new this.WebTorrentClass();

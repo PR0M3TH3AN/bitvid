@@ -759,6 +759,32 @@ class R2Service {
         },
       });
 
+      let processedMetadata = {};
+      if (typeof processAfterUpload === "function") {
+        try {
+          const result = await processAfterUpload({
+            file,
+            publicUrl,
+            accountId,
+            accessKeyId,
+            secretAccessKey,
+            bucket: bucketEntry.bucket,
+            key,
+          });
+          if (result && typeof result === "object") {
+            processedMetadata = result;
+          }
+        } catch (processErr) {
+          userLogger.error("Post-upload processing failed:", processErr);
+          // We don't abort publication if optional post-processing fails,
+          // but we might want to warn the user.
+          this.setCloudflareUploadStatus(
+            "Upload successful, but torrent creation failed. Publishing anyway...",
+            "warning"
+          );
+        }
+      }
+
       let publishOutcome = true;
 
       if (typeof publishVideoNote !== "function") {
@@ -770,11 +796,11 @@ class R2Service {
         const rawVideoPayload = {
           title,
           url: publicUrl,
-          magnet: metadata?.magnet ?? "",
-          thumbnail: metadata?.thumbnail ?? "",
-          description: metadata?.description ?? "",
-          ws: metadata?.ws ?? "",
-          xs: metadata?.xs ?? "",
+          magnet: processedMetadata.magnet || metadata?.magnet || "",
+          thumbnail: metadata?.thumbnail || "",
+          description: metadata?.description || "",
+          ws: processedMetadata.ws || metadata?.ws || "",
+          xs: processedMetadata.xs || metadata?.xs || "",
           enableComments: metadata?.enableComments,
           isNsfw: metadata?.isNsfw,
           isForKids: metadata?.isForKids,

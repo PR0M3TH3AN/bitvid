@@ -8,6 +8,10 @@ import {
   normalizeVideoNotePayload,
   VIDEO_NOTE_ERROR_CODES,
 } from "../../services/videoNotePayload.js";
+import { torrentClient } from "../../webtorrent.js";
+import { buildR2Key } from "../../r2.js";
+
+const MAX_CLIENT_TORRENT_SIZE = 2 * 1024 * 1024 * 1024; // 2GB
 
 export class UploadModal {
   constructor({
@@ -95,6 +99,11 @@ export class UploadModal {
     this.r2ApiTokenInput = null;
     this.r2ZoneIdInput = null;
     this.r2BaseDomainInput = null;
+
+    this.cloudflareCreateTorrentInput = null;
+    this.cloudflareTorrentProgressRoot = null;
+    this.cloudflareTorrentProgress = null;
+    this.cloudflareTorrentStatus = null;
 
     this.nip71FormManager = new Nip71FormManager();
     this.cleanupHandlers = [];
@@ -305,6 +314,15 @@ export class UploadModal {
     this.r2ApiTokenInput = context.querySelector("#r2ApiToken") || null;
     this.r2ZoneIdInput = context.querySelector("#r2ZoneId") || null;
     this.r2BaseDomainInput = context.querySelector("#r2BaseDomain") || null;
+
+    this.cloudflareCreateTorrentInput =
+      context.querySelector("#cloudflareCreateTorrent") || null;
+    this.cloudflareTorrentProgressRoot =
+      context.querySelector("#cloudflareTorrentProgressRoot") || null;
+    this.cloudflareTorrentProgress =
+      context.querySelector("#cloudflareTorrentProgress") || null;
+    this.cloudflareTorrentStatus =
+      context.querySelector("#cloudflareTorrentStatus") || null;
 
     this.nip71FormManager.registerSection("custom", this.customSection);
     this.nip71FormManager.registerSection("cloudflare", this.cloudflareSection);
@@ -973,9 +991,40 @@ export class UploadModal {
       this.resetCheckbox(this.cloudflareIsNsfwInput, false);
     if (this.cloudflareIsForKidsInput)
       this.resetCheckbox(this.cloudflareIsForKidsInput, false);
+    if (this.cloudflareCreateTorrentInput)
+      this.resetCheckbox(this.cloudflareCreateTorrentInput, false);
     if (this.cloudflareFileInput) this.cloudflareFileInput.value = "";
     this.nip71FormManager.resetSection("cloudflare");
     this.updateCloudflareProgress(Number.NaN);
+    this.resetCloudflareTorrentProgress();
+  }
+
+  resetCloudflareTorrentProgress() {
+    if (this.cloudflareTorrentProgressRoot) {
+      this.cloudflareTorrentProgressRoot.classList.add("hidden");
+    }
+    if (this.cloudflareTorrentProgress) {
+      this.cloudflareTorrentProgress.removeAttribute("value");
+    }
+    if (this.cloudflareTorrentStatus) {
+      this.cloudflareTorrentStatus.textContent = "";
+    }
+  }
+
+  updateCloudflareTorrentProgress(status, percent = null) {
+    if (this.cloudflareTorrentProgressRoot) {
+      this.cloudflareTorrentProgressRoot.classList.remove("hidden");
+    }
+    if (this.cloudflareTorrentStatus) {
+      this.cloudflareTorrentStatus.textContent = status || "Processing…";
+    }
+    if (this.cloudflareTorrentProgress) {
+      if (Number.isFinite(percent)) {
+        this.cloudflareTorrentProgress.value = Math.max(0, Math.min(100, percent));
+      } else {
+        this.cloudflareTorrentProgress.removeAttribute("value");
+      }
+    }
   }
 
   resetCustomForm() {
@@ -1105,7 +1154,92 @@ export class UploadModal {
           this.publishVideoNote
             ? this.publishVideoNote(payload, options)
             : null,
-        onReset: () => this.resetCloudflareUploadForm()
+        onReset: () => this.resetCloudflareUploadForm(),
+        processAfterUpload: async ({
+          file: uploadedFile,
+          publicUrl,
+          bucket,
+          accountId,
+          accessKeyId,
+          secretAccessKey,
+          key: originalKey,
+        }) => {
+          const createTorrent = this.readCheckboxValue(
+            this.cloudflareCreateTorrentInput,
+            false
+          );
+
+          if (!createTorrent || !uploadedFile) {
+            return {};
+          }
+
+          if (uploadedFile.size > MAX_CLIENT_TORRENT_SIZE) {
+            userLogger.warn(
+              `File too large for client-side torrent creation (${uploadedFile.size} bytes). Skipping.`
+            );
+            return {};
+          }
+
+          this.updateCloudflareTorrentProgress("Hashing video for torrent…", null);
+
+          try {
+            const torrent = await torrentClient.seed(uploadedFile, {
+              urlList: [publicUrl],
+              announce: [], // Will use defaults from TorrentClient
+            });
+
+            this.updateCloudflareTorrentProgress("Torrent created. Uploading .torrent file…", 100);
+
+            const magnet = torrent.magnetURI;
+            let xsUrl = "";
+
+            if (torrent.torrentFile) {
+              try {
+                const torrentBlob = new Blob([torrent.torrentFile], {
+                  type: "application/x-bittorrent",
+                });
+                const torrentKey = `${originalKey}.torrent`;
+
+                await this.r2Service.uploadFile({
+                  file: torrentBlob,
+                  key: torrentKey,
+                  bucket,
+                  accountId,
+                  accessKeyId,
+                  secretAccessKey,
+                });
+
+                // Reconstruct the xs URL based on the video URL pattern
+                // Assuming publicUrl ends with the key, we can replace it or append .torrent
+                // But safer to assume publicUrl is the video file
+                xsUrl = `${publicUrl}.torrent`;
+              } catch (xsErr) {
+                userLogger.warn("Failed to upload .torrent file:", xsErr);
+              }
+            }
+
+            if (this.cloudflareMagnetInput) {
+              this.cloudflareMagnetInput.value = magnet;
+            }
+            if (this.cloudflareWsInput) {
+              this.cloudflareWsInput.value = publicUrl;
+            }
+            if (this.cloudflareXsInput) {
+              this.cloudflareXsInput.value = xsUrl;
+            }
+
+            this.updateCloudflareTorrentProgress("Done!", 100);
+
+            return {
+              magnet,
+              ws: publicUrl,
+              xs: xsUrl,
+            };
+          } catch (err) {
+            this.updateCloudflareTorrentProgress("Torrent creation failed.", 0);
+            throw err;
+          }
+        },
       });
     } catch (error) {
       userLogger.error("[UploadModal] Cloudflare upload failed", error);

@@ -2080,6 +2080,56 @@
                     role="status"
                   ></p>
                 </div>
+                <div class="space-y-2">
+                  <div
+                    class="form-control"
+                    role="group"
+                    aria-labelledby="cloudflareCreateTorrentLabel"
+                  >
+                    <label
+                      class="menu__item gap-3 px-0 py-0 text-left"
+                      for="cloudflareCreateTorrent"
+                    >
+                      <input
+                        type="checkbox"
+                        id="cloudflareCreateTorrent"
+                        class="checkbox"
+                        data-default-checked="false"
+                      />
+                      <span class="flex flex-col gap-1">
+                        <span
+                          id="cloudflareCreateTorrentLabel"
+                          class="text-sm font-medium text-text"
+                        >
+                          Create WebTorrent magnet &amp; seed
+                        </span>
+                        <span class="text-xs text-muted">
+                          Uses your browser to create a torrent and seed it
+                          while this tab is open. Recommended for P2P resilience.
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+                  <div
+                    id="cloudflareTorrentProgressRoot"
+                    class="hidden space-y-1 rounded border border-border/50 bg-surface/30 p-2"
+                  >
+                    <div class="flex items-center justify-between text-xs">
+                      <span
+                        id="cloudflareTorrentStatus"
+                        class="font-medium text-text"
+                      ></span>
+                      <span class="text-muted" id="cloudflareTorrentDetails"></span>
+                    </div>
+                    <progress
+                      id="cloudflareTorrentProgress"
+                      class="progress progress--info h-1.5 w-full"
+                      max="100"
+                      value="0"
+                    ></progress>
+                  </div>
+                </div>
+
                 <button
                   type="submit"
                   id="cloudflareUploadButton"
