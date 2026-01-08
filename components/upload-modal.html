@@ -11,8 +11,8 @@
   <div class="bv-modal-backdrop" data-dismiss></div>
 
   <!-- Modal Container -->
-  <div class="modal-sheet max-h-modal-shell overflow-hidden flex flex-col" tabindex="-1">
-      <!-- Top Bar (similar to video-modal) -->
+  <div class="modal-sheet max-h-modal-shell overflow-hidden flex flex-col w-full max-w-2xl" tabindex="-1">
+      <!-- Top Bar -->
       <div class="modal-header transition-transform duration-150">
         <h2 id="uploadModalTitle" class="text-xl font-bold text-text">
           Share a Video
@@ -23,7 +23,6 @@
           type="button"
           aria-label="Close upload modal"
         >
-          <!-- X or arrow icon -->
           <svg
             xmlns="http://www.w3.org/2000/svg"
             class="h-6 w-6"
@@ -41,1783 +40,318 @@
         </button>
       </div>
 
-      <!-- Form Content -->
-      <div class="modal-body space-y-6 overflow-y-auto flex-1 min-h-0">
-        <div class="flex justify-center">
+      <!-- Main Scrollable Body -->
+      <div class="modal-body space-y-6 overflow-y-auto flex-1 min-h-0 custom-scrollbar p-6">
+
+        <!-- Source Selector -->
+        <div class="flex justify-center mb-2">
           <div
-            class="inline-flex items-center rounded-full bg-panel/80 p-1 text-sm"
+            class="inline-flex items-center rounded-full bg-surface-alt p-1 text-sm shadow-inner"
             role="group"
-            aria-label="Upload mode selector"
+            aria-label="Upload source selector"
           >
             <button
               type="button"
-              class="upload-mode-toggle btn-ghost flex-1"
-              data-upload-mode="custom"
+              id="btn-mode-upload"
+              class="rounded-full px-6 py-1.5 font-medium transition-colors text-text bg-surface shadow-sm"
               aria-pressed="true"
             >
-              Custom
+              Upload File
             </button>
             <button
               type="button"
-              class="upload-mode-toggle btn-ghost flex-1"
-              data-upload-mode="cloudflare"
+              id="btn-mode-external"
+              class="rounded-full px-6 py-1.5 font-medium transition-colors text-muted hover:text-text"
               aria-pressed="false"
             >
-              Cloudflare
+              External Link
             </button>
           </div>
         </div>
 
-        <div id="customUploadSection">
-          <form id="uploadForm" class="space-y-6">
-            <p id="uploadModalDescription" class="text-sm text-muted">
-              Share a title plus either a hosted video URL or a magnet link.
-              Providing both helps bitvid fall back gracefully.
-            </p>
+        <form id="unifiedUploadForm" class="space-y-6">
 
-            <div class="space-y-2">
-              <label
-                for="uploadTitle"
-                class="block text-sm font-medium text-text"
-                >Title</label
-              >
-              <input type="text" id="uploadTitle" required class="input" />
-            </div>
-
-            <!-- Hosted video URL -->
-            <div class="form-group space-y-2">
-              <label
-                for="uploadUrl"
-                class="block text-sm font-medium text-text"
-                >Hosted video URL (https)</label
-              >
-              <input
-                id="uploadUrl"
-                type="url"
-                class="input"
-                placeholder="https://cdn.example.com/video.mp4"
-              />
-              <small class="block text-xs text-muted"
-                >Optional but preferred. We will play this first and fall back
-                to P2P.</small
-              >
-            </div>
-
-            <div class="space-y-2">
-              <label
-                for="uploadMagnet"
-                class="block text-sm font-medium text-text"
-                >Magnet link (optional if URL provided)</label
-              >
-              <input
-                type="text"
-                id="uploadMagnet"
-                placeholder="magnet:?xt=urn:btih:..."
-                class="input"
-              />
-              <p class="text-xs text-muted">
-                Provide a hosted URL for instant playback. Add a magnet for P2P
-                cost control.
-              </p>
-            </div>
-
-            <div class="space-y-2">
-              <label
-                for="uploadThumbnail"
-                class="block text-sm font-medium text-text"
-                >Thumbnail URL (optional)</label
-              >
-              <input type="url" id="uploadThumbnail" class="input" />
-            </div>
-
-            <div class="space-y-2">
-              <label
-                for="uploadDescription"
-                class="block text-sm font-medium text-text"
-                >Video description</label
-              >
-              <textarea
-                id="uploadDescription"
-                rows="3"
-                class="textarea"
-              ></textarea>
-              <p class="text-xs text-muted">
-                 Description of your video.
-              </p>
-            </div>
-
-            <!-- Hashtags (Visible) -->
-            <section
-                class="space-y-4 rounded-lg border border-border/70 bg-surface/30 p-4"
-                aria-labelledby="nip71HashtagsLabel"
-                data-nip71-repeater="t"
-              >
-                <div class="flex items-center justify-between">
-                  <h3
-                    id="nip71HashtagsLabel"
-                    class="text-sm font-medium text-text"
-                  >
-                    Hashtags
-                  </h3>
-                  <button
-                    type="button"
-                    class="btn-ghost px-3 py-1 text-xs"
-                    data-nip71-add="t"
-                  >
-                    Add hashtag
-                  </button>
+            <!-- Source: Upload File -->
+            <div id="section-source-upload" class="space-y-4">
+                <div class="relative">
+                    <label
+                        for="input-file"
+                        class="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer bg-surface/30 border-border hover:bg-surface/50 transition-colors"
+                    >
+                        <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                            <svg class="w-8 h-8 mb-3 text-muted" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 20 16">
+                                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 13h3a3 3 0 0 0 0-6h-.025A5.56 5.56 0 0 0 16 6.5 5.5 5.5 0 0 0 5.207 5.021C5.137 5.017 5.071 5 5 5a4 4 0 0 0 0 8h2.167M10 15V6m0 0L8 8m2-2 2 2"/>
+                            </svg>
+                            <p class="mb-2 text-sm text-text"><span class="font-semibold">Click to upload</span> or drag and drop</p>
+                            <p class="text-xs text-muted">MP4, WebM, MKV, MOV (Max 2GB recommended)</p>
+                        </div>
+                        <input id="input-file" type="file" class="hidden" accept="video/*,.m3u8,.ts,.mp4,.webm,.mov,.mkv,.mpg,.mpeg" />
+                    </label>
                 </div>
-                <div
-                  id="nip71HashtagList"
-                  class="space-y-2"
-                  data-nip71-list="t"
-                ></div>
-                <template id="nip71HashtagTemplate" data-nip71-template="t">
-                  <div class="flex items-center gap-2" data-nip71-entry="t">
-                    <input
-                      type="text"
-                      data-nip71-field="value"
-                      placeholder="#nostr"
-                      class="input flex-1"
-                    />
+
+                <!-- Upload Progress (Hidden by default) -->
+                 <div id="upload-progress-container" class="space-y-2 hidden">
+                    <div class="flex justify-between text-xs">
+                        <span id="upload-status-text" class="text-text font-medium">Uploading...</span>
+                        <span id="upload-percent-text" class="text-muted">0%</span>
+                    </div>
+                    <progress
+                        id="input-progress"
+                        class="progress progress--surface w-full"
+                        max="100"
+                        value="0"
+                    ></progress>
+                </div>
+
+                <!-- Storage Configuration Toggle -->
+                <div class="border-t border-border/50 pt-2">
                     <button
-                      type="button"
-                      class="btn-ghost px-2 py-1 text-3xs" data-variant="critical"
-                      data-nip71-remove="t"
-                      aria-label="Remove hashtag"
+                        type="button"
+                        id="btn-storage-settings"
+                        class="flex items-center gap-2 text-xs text-muted hover:text-text transition-colors"
+                        aria-expanded="false"
                     >
-                      Remove
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        <span>Configure R2 Storage</span>
                     </button>
-                  </div>
-                </template>
-            </section>
 
-            <div
-              class="form-control"
-              role="group"
-              aria-labelledby="uploadEnableCommentsLabel"
-            >
-              <label
-                class="menu__item gap-3 px-0 py-0 text-left"
-                for="uploadEnableComments"
-              >
-                <input
-                  type="checkbox"
-                  id="uploadEnableComments"
-                  class="checkbox"
-                  checked
-                  data-default-checked="true"
-                />
-                <span class="flex flex-col gap-1">
-                  <span
-                    id="uploadEnableCommentsLabel"
-                    class="text-sm font-medium text-text"
-                  >
-                    Enable comments
-                  </span>
-                  <span class="text-xs text-muted">
-                    Keep this on to let viewers discuss the video.
-                  </span>
-                </span>
-              </label>
+                    <!-- Storage Settings Form -->
+                    <div id="section-storage-settings" class="hidden mt-3 space-y-4 bg-surface-alt/50 p-4 rounded-lg border border-border/50">
+                        <div class="flex items-center justify-between">
+                            <h4 class="text-sm font-semibold text-text">Cloudflare R2 Credentials</h4>
+                            <span id="storage-status" class="text-xs text-muted">Stored locally</span>
+                        </div>
+                        <p class="text-xs text-muted">Required for direct file uploads.</p>
+
+                        <div class="grid gap-3 md:grid-cols-2">
+                            <div class="space-y-1">
+                                <label for="input-r2-account" class="text-xs font-medium text-text">Account ID</label>
+                                <input id="input-r2-account" type="text" class="input text-xs" placeholder="xxxxxxxx..." />
+                            </div>
+                            <div class="space-y-1">
+                                <label for="input-r2-key" class="text-xs font-medium text-text">Access Key ID</label>
+                                <input id="input-r2-key" type="text" class="input text-xs" placeholder="AKIA..." />
+                            </div>
+                        </div>
+                        <div class="space-y-1">
+                            <label for="input-r2-secret" class="text-xs font-medium text-text">Secret Access Key</label>
+                            <input id="input-r2-secret" type="password" class="input text-xs" />
+                        </div>
+
+                         <!-- R2 Advanced -->
+                         <div class="space-y-2 pt-2">
+                             <button type="button" id="btn-r2-advanced" class="text-xs text-muted-strong hover:text-text underline">Advanced R2 Options</button>
+                             <div id="section-r2-advanced" class="hidden space-y-3 pt-2">
+                                <div class="space-y-1">
+                                    <label for="input-r2-token" class="text-xs font-medium text-text">API Token (Optional)</label>
+                                    <input id="input-r2-token" type="password" class="input text-xs" placeholder="Worker Token..." />
+                                </div>
+                                <div class="grid gap-3 md:grid-cols-2">
+                                     <div class="space-y-1">
+                                        <label for="input-r2-zone" class="text-xs font-medium text-text">Zone ID</label>
+                                        <input id="input-r2-zone" type="text" class="input text-xs" />
+                                    </div>
+                                    <div class="space-y-1">
+                                        <label for="input-r2-domain" class="text-xs font-medium text-text">Base Domain</label>
+                                        <input id="input-r2-domain" type="text" class="input text-xs" placeholder="cdn.example.com" />
+                                    </div>
+                                </div>
+                             </div>
+                         </div>
+
+                         <div class="flex justify-end gap-2 pt-2">
+                             <button type="button" id="btn-save-settings" class="btn btn-sm">Save Credentials</button>
+                         </div>
+                    </div>
+                </div>
             </div>
 
-            <div class="grid gap-3 md:grid-cols-2">
-              <div
-                class="form-control"
-                role="group"
-                aria-labelledby="uploadIsNsfwLabel"
-              >
-                <label
-                  class="menu__item gap-3 px-0 py-0 text-left"
-                  for="uploadIsNsfw"
-                >
-                  <input
-                    type="checkbox"
-                    id="uploadIsNsfw"
-                    class="checkbox"
-                    data-default-checked="false"
-                  />
-                  <span class="flex flex-col gap-1">
-                    <span
-                      id="uploadIsNsfwLabel"
-                      class="text-sm font-medium text-text"
-                    >
-                      Is this content NSFW?
-                    </span>
-                    <span class="text-xs text-muted">
-                      Flag mature or explicit uploads.
-                    </span>
-                  </span>
-                </label>
-              </div>
-              <div
-                class="form-control"
-                role="group"
-                aria-labelledby="uploadIsForKidsLabel"
-              >
-                <label
-                  class="menu__item gap-3 px-0 py-0 text-left"
-                  for="uploadIsForKids"
-                >
-                  <input
-                    type="checkbox"
-                    id="uploadIsForKids"
-                    class="checkbox"
-                    data-default-checked="false"
-                  />
-                  <span class="flex flex-col gap-1">
-                    <span
-                      id="uploadIsForKidsLabel"
-                      class="text-sm font-medium text-text"
-                    >
-                      Is this content created for Kids?
-                    </span>
-                    <span class="text-xs text-muted">
-                      Mark clearly kid-friendly videos.
-                    </span>
-                  </span>
-                </label>
-              </div>
+            <!-- Source: External Link -->
+            <div id="section-source-external" class="space-y-4 hidden">
+                 <div class="space-y-2">
+                    <label for="input-url" class="block text-sm font-medium text-text">Video URL</label>
+                    <input id="input-url" type="url" class="input" placeholder="https://example.com/video.mp4" />
+                    <p class="text-xs text-muted">Direct link to a hosted video file.</p>
+                </div>
+                 <div class="space-y-2">
+                    <label for="input-magnet" class="block text-sm font-medium text-text">Magnet Link</label>
+                    <input id="input-magnet" type="text" class="input" placeholder="magnet:?xt=urn:btih:..." />
+                    <p class="text-xs text-muted">Optional P2P fallback or primary source.</p>
+                </div>
             </div>
 
-            <!-- Advanced Toggle -->
-            <div class="border-t border-border/70 pt-4">
+            <hr class="border-border/50" />
+
+            <!-- Metadata -->
+            <div class="space-y-4">
+                <div class="space-y-2">
+                    <label for="input-title" class="block text-sm font-medium text-text">Title</label>
+                    <input id="input-title" type="text" required class="input" placeholder="Give your video a title" />
+                </div>
+
+                <div class="space-y-2">
+                    <label for="input-description" class="block text-sm font-medium text-text">Description</label>
+                    <textarea id="input-description" rows="4" class="textarea" placeholder="Tell viewers about your video"></textarea>
+                </div>
+
+                <div class="space-y-2">
+                    <label for="input-thumbnail" class="block text-sm font-medium text-text">Thumbnail URL</label>
+                    <input id="input-thumbnail" type="url" class="input" placeholder="https://example.com/thumbnail.jpg" />
+                </div>
+
+                 <!-- Hashtags -->
+                <div class="space-y-2">
+                     <label class="block text-sm font-medium text-text">Hashtags</label>
+                     <div
+                        class="rounded-lg border border-border/70 bg-surface/30 p-3 space-y-3"
+                        data-nip71-repeater="t"
+                      >
+                        <div id="hashtag-list" class="flex flex-wrap gap-2" data-nip71-list="t"></div>
+                        <div class="flex gap-2">
+                             <button
+                                type="button"
+                                class="btn-ghost px-3 py-1.5 text-xs bg-surface border border-border/50"
+                                data-nip71-add="t"
+                              >
+                                + Add Tag
+                              </button>
+                        </div>
+                        <template data-nip71-template="t">
+                           <div class="inline-flex items-center bg-surface-alt rounded-full px-1 border border-border/50" data-nip71-entry="t">
+                                <span class="text-muted pl-2 text-sm">#</span>
+                                <input
+                                  type="text"
+                                  data-nip71-field="value"
+                                  placeholder="nostr"
+                                  class="bg-transparent border-none text-sm text-text focus:ring-0 p-1 w-24"
+                                />
+                                <button
+                                  type="button"
+                                  class="text-muted hover:text-critical p-1 rounded-full"
+                                  data-nip71-remove="t"
+                                  aria-label="Remove hashtag"
+                                >
+                                  &times;
+                                </button>
+                           </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Flags / Toggles -->
+            <div class="flex flex-wrap gap-4 py-2">
+                 <label class="flex items-center gap-2 cursor-pointer select-none">
+                    <input type="checkbox" id="check-comments" class="checkbox" checked />
+                    <span class="text-sm text-text">Enable Comments</span>
+                </label>
+                 <label class="flex items-center gap-2 cursor-pointer select-none">
+                    <input type="checkbox" id="check-nsfw" class="checkbox" />
+                    <span class="text-sm text-text">NSFW</span>
+                </label>
+                 <label class="flex items-center gap-2 cursor-pointer select-none">
+                    <input type="checkbox" id="check-kids" class="checkbox" />
+                    <span class="text-sm text-text">For Kids</span>
+                </label>
+            </div>
+
+            <!-- Advanced Options -->
+             <div class="border-t border-border/70 pt-4">
                <button
                   type="button"
-                  id="customAdvancedToggle"
-                  class="btn-ghost justify-start gap-2 text-sm text-muted-strong"
+                  id="btn-advanced-toggle"
+                  class="flex items-center gap-2 text-sm font-medium text-text hover:text-accent transition-colors w-full"
                   aria-expanded="false"
-                  aria-controls="customAdvancedFields"
                 >
                   <svg
-                    id="customAdvancedToggleIcon"
+                    id="icon-advanced-toggle"
                     xmlns="http://www.w3.org/2000/svg"
-                    class="h-4 w-4 transform text-muted-strong transition-transform duration-150"
+                    class="h-4 w-4 transform text-muted transition-transform duration-150"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
                     stroke-width="2"
                   >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      d="M9 5l7 7-7 7"
-                    />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
                   </svg>
-                  <span id="customAdvancedToggleLabel">Show advanced options</span>
+                  <span>Advanced Options</span>
                 </button>
+
+                <div id="section-advanced" class="hidden mt-4 space-y-6 pl-2 border-l-2 border-border/30">
+
+                     <!-- NIP-71 Technical -->
+                     <div class="grid gap-4 md:grid-cols-2">
+                        <div class="space-y-2">
+                            <label class="block text-xs font-medium text-muted-strong">Content Warning</label>
+                            <input id="input-content-warning" type="text" data-nip71-input="content-warning" class="input text-sm" placeholder="e.g. Nudity" />
+                        </div>
+                        <div class="space-y-2">
+                            <label class="block text-xs font-medium text-muted-strong">Duration (sec)</label>
+                            <input id="input-duration" type="number" step="1" data-nip71-input="duration" class="input text-sm" />
+                        </div>
+                     </div>
+
+                     <div class="space-y-2">
+                        <div class="flex items-center justify-between">
+                             <label class="block text-xs font-medium text-muted-strong">Summary (NIP-71 Content)</label>
+                             <label class="flex items-center gap-2 text-xs text-muted cursor-pointer">
+                                <input type="checkbox" id="check-summary-unlock" class="checkbox h-3 w-3" />
+                                Customize
+                             </label>
+                        </div>
+                        <textarea id="input-summary" rows="2" data-nip71-input="summary" class="textarea text-sm text-muted" readonly></textarea>
+                     </div>
+
+                     <!-- IMETA Editor -->
+                     <div class="space-y-3" data-nip71-repeater="imeta">
+                         <div class="flex items-center justify-between">
+                            <h4 class="text-sm font-semibold text-text">Video Variants (IMETA)</h4>
+                            <button type="button" class="btn-ghost px-2 py-1 text-xs" data-nip71-add="imeta">Add Variant</button>
+                         </div>
+                         <div id="imeta-list" class="space-y-4" data-nip71-list="imeta"></div>
+
+                         <!-- IMETA Template -->
+                         <template data-nip71-template="imeta">
+                             <article class="rounded-md border border-border/70 bg-surface/50 p-3 space-y-3" data-nip71-entry="imeta">
+                                 <div class="grid gap-2 md:grid-cols-2 text-xs">
+                                     <input type="text" data-nip71-field="m" placeholder="MIME (video/mp4)" class="input" />
+                                     <input type="text" data-nip71-field="dim" placeholder="Dimensions (1920x1080)" class="input" />
+                                     <input type="url" data-nip71-field="url" placeholder="URL" class="input md:col-span-2" />
+                                     <input type="text" data-nip71-field="x" placeholder="Magnet" class="input md:col-span-2" />
+                                 </div>
+                                 <div class="flex justify-end">
+                                     <button type="button" class="text-xs text-critical hover:underline" data-nip71-remove="imeta">Remove Variant</button>
+                                 </div>
+                             </article>
+                         </template>
+                     </div>
+
+                     <!-- Additional Technical Sections (Web Seeds, etc) -->
+                     <div class="grid gap-3 md:grid-cols-2">
+                         <div class="space-y-2">
+                             <label class="block text-xs font-medium text-muted-strong">Web Seed (ws)</label>
+                             <input id="input-ws" type="url" class="input text-sm" placeholder="https://..." />
+                         </div>
+                          <div class="space-y-2">
+                             <label class="block text-xs font-medium text-muted-strong">Torrent File (xs)</label>
+                             <input id="input-xs" type="url" class="input text-sm" placeholder="https://..." />
+                         </div>
+                     </div>
+                </div>
             </div>
 
-            <!-- Advanced Container -->
-            <div id="customAdvancedFields" class="hidden space-y-6 rounded-lg border border-border/70 bg-surface/30 p-4">
-                 <!-- Web Seeds -->
-                 <div class="grid grid-cols-1 gap-3 text-xs">
-                  <input
-                    id="uploadWs"
-                    type="url"
-                    class="input text-xs"
-                    placeholder="Web seed (ws=) e.g., https://cdn.example.com/video.mp4"
-                  />
-                  <input
-                    id="uploadXs"
-                    type="url"
-                    class="input text-xs"
-                    placeholder=".torrent URL (xs=) e.g., https://cdn.example.com/video.torrent"
-                  />
-                  <p class="text-xs text-muted">Advanced P2P seeding options.</p>
-                </div>
-
-                <div
-                  id="nip71EventDetails"
-                  class="space-y-4"
-                  data-nip71-section="event-details"
-                >
-                  <fieldset
-                    id="nip71KindFieldset"
-                    class="space-y-2"
-                    data-nip71-fieldset="kind"
-                  >
-                    <legend class="text-sm font-semibold text-text">
-                      NIP-71 event type
-                    </legend>
-                    <div
-                      class="form-control"
-                      role="radiogroup"
-                      aria-labelledby="nip71KindFieldset"
-                    >
-                      <div
-                        class="menu sm:flex-row sm:flex-wrap sm:py-0"
-                        role="presentation"
-                      >
-                        <label
-                          class="menu__item gap-3 px-0 py-0"
-                          for="nip71KindLong"
-                        >
-                          <input
-                            type="radio"
-                            name="nip71Kind"
-                            id="nip71KindLong"
-                            value="21"
-                            checked
-                            data-nip71-input="kind"
-                            class="h-4 w-4 border-border bg-panel text-info focus:ring-info"
-                          />
-                          <span class="text-sm text-text"
-                            >Normal video (kind 21)</span
-                          >
-                        </label>
-                        <label
-                          class="menu__item gap-3 px-0 py-0"
-                          for="nip71KindShort"
-                        >
-                          <input
-                            type="radio"
-                            name="nip71Kind"
-                            id="nip71KindShort"
-                            value="22"
-                            data-nip71-input="kind"
-                            class="h-4 w-4 border-border bg-panel text-info focus:ring-info"
-                          />
-                          <span class="text-sm text-text"
-                            >Short video (kind 22)</span
-                          >
-                        </label>
-                      </div>
-                    </div>
-                  </fieldset>
-
-                  <div class="grid gap-4 md:grid-cols-2" data-nip71-grid="metadata">
-                    <div class="space-y-2">
-                      <label
-                        for="nip71PublishedAt"
-                        class="block text-sm font-medium text-text"
-                        >Published at</label
-                      >
-                      <input
-                        type="datetime-local"
-                        id="nip71PublishedAt"
-                        data-nip71-input="published_at"
-                        class="input"
-                      />
-                    </div>
-                    <div class="space-y-2">
-                      <label
-                        for="nip71AltText"
-                        class="block text-sm font-medium text-text"
-                        >Alt text</label
-                      >
-                      <input
-                        type="text"
-                        id="nip71AltText"
-                        data-nip71-input="alt"
-                        placeholder="Describe the visuals for screen readers"
-                        class="input"
-                      />
-                    </div>
-                    <div class="space-y-2">
-                      <label
-                        for="nip71Duration"
-                        class="block text-sm font-medium text-text"
-                        >Duration (seconds)</label
-                      >
-                      <input
-                        type="number"
-                        id="nip71Duration"
-                        min="0"
-                        step="0.001"
-                        data-nip71-input="duration"
-                        class="input"
-                      />
-                    </div>
-                    <div class="space-y-2">
-                      <label
-                        for="nip71ContentWarning"
-                        class="block text-sm font-medium text-text"
-                        >Content warning</label
-                      >
-                      <input
-                        type="text"
-                        id="nip71ContentWarning"
-                        data-nip71-input="content-warning"
-                        placeholder="e.g., Flashing lights"
-                        class="input"
-                      />
-                    </div>
-                  </div>
-
-                  <div class="space-y-2">
-                    <div class="flex items-center justify-between">
-                        <label
-                        for="nip71Summary"
-                        class="block text-sm font-medium text-text"
-                        >Summary</label
-                        >
-                        <label class="flex items-center gap-2 text-xs text-muted cursor-pointer select-none">
-                          <input type="checkbox" id="nip71SummaryUnlock" class="checkbox h-3 w-3 rounded-sm border-muted" />
-                          Customize
-                        </label>
-                    </div>
-
-                    <textarea
-                      id="nip71Summary"
-                      rows="3"
-                      data-nip71-input="summary"
-                      class="textarea text-muted-strong"
-                      placeholder="Short synopsis used as the Nostr content field"
-                      readonly
-                    ></textarea>
-                    <p class="text-xs text-muted">
-                      This becomes the event content. By default it mirrors the description.
-                    </p>
-                  </div>
-                </div>
-
-                <fieldset
-                  id="nip71TagsFieldset"
-                  class="space-y-6 pt-4"
-                  data-nip71-section="tags"
-                >
-                  <legend class="relative text-sm font-semibold text-text pb-2 border-b border-border/50 w-full mb-4">
-                     Advanced Tags (IMETA, Tracks, Segments)
-                  </legend>
-
-                  <section
-                    class="space-y-4"
-                    aria-labelledby="nip71ImetaLabel"
-                    data-nip71-repeater="imeta"
-                  >
-                    <div class="flex items-center justify-between">
-                      <h3
-                        id="nip71ImetaLabel"
-                        class="text-sm font-medium text-text"
-                      >
-                        Image metadata (imeta)
-                      </h3>
-                      <button
-                        type="button"
-                        class="btn-ghost px-3 py-1 text-xs"
-                        data-nip71-add="imeta"
-                        aria-describedby="nip71ImetaHelp"
-                      >
-                        Add variant
-                      </button>
-                    </div>
-                    <p id="nip71ImetaHelp" class="text-xs text-muted">
-                      Provide dimensions, MIME type, and resource links for each
-                      variant.
-                    </p>
-                    <div
-                      id="nip71ImetaList"
-                      class="space-y-4"
-                      data-nip71-list="imeta"
-                    ></div>
-                    <template id="nip71ImetaTemplate" data-nip71-template="imeta">
-                      <article
-                        class="space-y-3 rounded-md border border-border/70 bg-surface/60 p-4"
-                        data-nip71-entry="imeta"
-                      >
-                        <div class="grid gap-3 md:grid-cols-2">
-                          <div class="space-y-2">
-                            <label class="block text-xs font-medium text-muted-strong">
-                              MIME type (<code>m</code>)
-                            </label>
-                            <input
-                              type="text"
-                              data-nip71-field="m"
-                              placeholder="video/mp4"
-                              class="input"
-                            />
-                          </div>
-                          <div class="space-y-2">
-                            <label class="block text-xs font-medium text-muted-strong">
-                              Pixel dimensions (<code>dim</code>)
-                            </label>
-                            <input
-                              type="text"
-                              data-nip71-field="dim"
-                              placeholder="1920x1080"
-                              class="input"
-                            />
-                          </div>
-                          <div class="space-y-2">
-                            <label class="block text-xs font-medium text-muted-strong">
-                              Streaming URL (<code>url</code>)
-                            </label>
-                            <input
-                              type="url"
-                              data-nip71-field="url"
-                              placeholder="https://cdn.example.com/variant.m3u8"
-                              class="input"
-                            />
-                          </div>
-                        <div class="space-y-2">
-                          <label class="block text-xs font-medium text-muted-strong">
-                            Magnet (<code>x</code>)
-                          </label>
-                          <input
-                            type="text"
-                            data-nip71-field="x"
-                            placeholder="magnet:?xt=urn:btih:..."
-                            class="input"
-                          />
-                        </div>
-                        <div class="space-y-2">
-                          <label class="block text-xs font-medium text-muted-strong">
-                            Duration seconds (<code>duration</code>)
-                          </label>
-                          <input
-                            type="number"
-                            data-nip71-field="duration"
-                            min="0"
-                            step="0.001"
-                            placeholder="29.97"
-                            class="input"
-                          />
-                        </div>
-                        <div class="space-y-2">
-                          <label class="block text-xs font-medium text-muted-strong">
-                            Bitrate bps (<code>bitrate</code>)
-                          </label>
-                          <input
-                            type="number"
-                            data-nip71-field="bitrate"
-                            min="0"
-                            step="1"
-                            placeholder="3500000"
-                            class="input"
-                          />
-                        </div>
-                      </div>
-
-                        <div class="space-y-3" data-nip71-nested="image">
-                          <div class="flex items-center justify-between">
-                            <h4
-                              class="text-xs font-semibold uppercase tracking-wide text-muted"
-                            >
-                              Image values
-                            </h4>
-                            <button
-                              type="button"
-                              class="btn-ghost px-2 py-1 text-3xs"
-                              data-nip71-nested-add="image"
-                            >
-                              Add image URL
-                            </button>
-                          </div>
-                          <div
-                            class="space-y-2"
-                            data-nip71-nested-list="image"
-                          ></div>
-                          <template data-nip71-nested-template="image">
-                            <div
-                              class="flex items-center gap-2"
-                              data-nip71-nested-entry="image"
-                            >
-                              <input
-                                type="url"
-                                placeholder="https://cdn.example.com/poster.jpg"
-                                data-nip71-nested-field="image"
-                                class="input flex-1"
-                              />
-                              <button
-                                type="button"
-                                class="btn-ghost px-2 py-1 text-3xs text-muted-strong"
-                                data-nip71-remove="nested"
-                                aria-label="Remove image URL"
-                              >
-                                Remove
-                              </button>
-                            </div>
-                          </template>
-                        </div>
-
-                        <div class="space-y-3" data-nip71-nested="fallback">
-                          <div class="flex items-center justify-between">
-                            <h4
-                              class="text-xs font-semibold uppercase tracking-wide text-muted"
-                            >
-                              Fallback URLs
-                            </h4>
-                            <button
-                              type="button"
-                              class="btn-ghost px-2 py-1 text-3xs"
-                              data-nip71-nested-add="fallback"
-                            >
-                              Add fallback
-                            </button>
-                          </div>
-                          <div
-                            class="space-y-2"
-                            data-nip71-nested-list="fallback"
-                          ></div>
-                          <template data-nip71-nested-template="fallback">
-                            <div
-                              class="flex items-center gap-2"
-                              data-nip71-nested-entry="fallback"
-                            >
-                              <input
-                                type="url"
-                                placeholder="https://cdn.backup.net/video.mp4"
-                                data-nip71-nested-field="fallback"
-                                class="input flex-1"
-                              />
-                              <button
-                                type="button"
-                                class="btn-ghost px-2 py-1 text-3xs text-muted-strong"
-                                data-nip71-remove="nested"
-                                aria-label="Remove fallback URL"
-                              >
-                                Remove
-                              </button>
-                            </div>
-                          </template>
-                        </div>
-
-                        <div class="space-y-3" data-nip71-nested="service">
-                          <div class="flex items-center justify-between">
-                            <h4
-                              class="text-xs font-semibold uppercase tracking-wide text-muted"
-                            >
-                              Services
-                            </h4>
-                            <button
-                              type="button"
-                              class="btn-ghost px-2 py-1 text-3xs"
-                              data-nip71-nested-add="service"
-                            >
-                              Add service hint
-                            </button>
-                          </div>
-                          <div
-                            class="space-y-2"
-                            data-nip71-nested-list="service"
-                          ></div>
-                          <template data-nip71-nested-template="service">
-                            <div
-                              class="flex items-center gap-2"
-                              data-nip71-nested-entry="service"
-                            >
-                              <input
-                                type="text"
-                                placeholder="streaming-provider-id"
-                                data-nip71-nested-field="service"
-                                class="input flex-1"
-                              />
-                              <button
-                                type="button"
-                                class="btn-ghost px-2 py-1 text-3xs text-muted-strong"
-                                data-nip71-remove="nested"
-                                aria-label="Remove service hint"
-                              >
-                                Remove
-                              </button>
-                            </div>
-                          </template>
-                        </div>
-
-                        <button
-                          type="button"
-                          class="btn-ghost px-3 py-1 text-xs" data-variant="critical"
-                          data-nip71-remove="imeta"
-                        >
-                          Remove variant
-                        </button>
-                      </article>
-                    </template>
-                  </section>
-
-                  <section
-                    class="space-y-4"
-                    aria-labelledby="nip71TextTracksLabel"
-                    data-nip71-repeater="text-track"
-                  >
-                    <div class="flex items-center justify-between">
-                      <h3
-                        id="nip71TextTracksLabel"
-                        class="text-sm font-medium text-text"
-                      >
-                        Caption &amp; subtitle tracks (text-track)
-                      </h3>
-                      <button
-                        type="button"
-                        class="btn-ghost px-3 py-1 text-xs"
-                        data-nip71-add="text-track"
-                        aria-describedby="nip71TextTracksHelp"
-                      >
-                        Add track
-                      </button>
-                    </div>
-                    <div
-                      id="nip71TextTrackList"
-                      class="space-y-4"
-                      data-nip71-list="text-track"
-                    ></div>
-                    <template
-                      id="nip71TextTrackTemplate"
-                      data-nip71-template="text-track"
-                    >
-                      <article
-                        class="space-y-3 rounded-md border border-border/70 bg-surface/60 p-4"
-                        data-nip71-entry="text-track"
-                      >
-                        <div class="grid gap-3 md:grid-cols-3">
-                          <div class="space-y-2">
-                            <label class="block text-xs font-medium text-muted-strong"
-                              >Resource URL</label
-                            >
-                            <input
-                              type="url"
-                              data-nip71-field="url"
-                              placeholder="https://cdn.example.com/captions.en.vtt"
-                              class="input"
-                            />
-                          </div>
-                          <div class="space-y-2">
-                            <label class="block text-xs font-medium text-muted-strong"
-                              >Track type</label
-                            >
-                            <input
-                              type="text"
-                              data-nip71-field="type"
-                              placeholder="subtitles"
-                              class="input"
-                            />
-                          </div>
-                          <div class="space-y-2">
-                            <label class="block text-xs font-medium text-muted-strong"
-                              >Language (optional)</label
-                            >
-                            <input
-                              type="text"
-                              data-nip71-field="language"
-                              placeholder="en-US"
-                              class="input"
-                            />
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          class="btn-ghost px-3 py-1 text-xs" data-variant="critical"
-                          data-nip71-remove="text-track"
-                        >
-                          Remove track
-                        </button>
-                      </article>
-                    </template>
-                  </section>
-
-                  <section
-                    class="space-y-4"
-                    aria-labelledby="nip71SegmentsLabel"
-                    data-nip71-repeater="segment"
-                  >
-                    <div class="flex items-center justify-between">
-                      <h3
-                        id="nip71SegmentsLabel"
-                        class="text-sm font-medium text-text"
-                      >
-                        Chapters &amp; segments (segment)
-                      </h3>
-                      <button
-                        type="button"
-                        class="btn-ghost px-3 py-1 text-xs"
-                        data-nip71-add="segment"
-                        aria-describedby="nip71SegmentsHelp"
-                      >
-                        Add segment
-                      </button>
-                    </div>
-                    <div
-                      id="nip71SegmentList"
-                      class="space-y-4"
-                      data-nip71-list="segment"
-                    ></div>
-                    <template
-                      id="nip71SegmentTemplate"
-                      data-nip71-template="segment"
-                    >
-                      <article
-                        class="space-y-3 rounded-md border border-border/70 bg-surface/60 p-4"
-                        data-nip71-entry="segment"
-                      >
-                        <div class="grid gap-3 md:grid-cols-4">
-                          <div class="space-y-2">
-                            <label class="block text-xs font-medium text-muted-strong"
-                              >Start</label
-                            >
-                            <input
-                              type="text"
-                              data-nip71-field="start"
-                              placeholder="00:00:00"
-                              class="input"
-                            />
-                          </div>
-                          <div class="space-y-2">
-                            <label class="block text-xs font-medium text-muted-strong"
-                              >End</label
-                            >
-                            <input
-                              type="text"
-                              data-nip71-field="end"
-                              placeholder="00:03:30"
-                              class="input"
-                            />
-                          </div>
-                          <div class="space-y-2 md:col-span-2">
-                            <label class="block text-xs font-medium text-muted-strong"
-                              >Chapter title</label
-                            >
-                            <input
-                              type="text"
-                              data-nip71-field="title"
-                              placeholder="Introduction"
-                              class="input"
-                            />
-                          </div>
-                          <div class="space-y-2 md:col-span-2">
-                            <label class="block text-xs font-medium text-muted-strong"
-                              >Thumbnail URL</label
-                            >
-                            <input
-                              type="url"
-                              data-nip71-field="thumbnail"
-                              placeholder="https://cdn.example.com/segment.jpg"
-                              class="input"
-                            />
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          class="btn-ghost px-3 py-1 text-xs" data-variant="critical"
-                          data-nip71-remove="segment"
-                        >
-                          Remove segment
-                        </button>
-                      </article>
-                    </template>
-                  </section>
-
-                  <section
-                    class="space-y-4"
-                    aria-labelledby="nip71ParticipantsLabel"
-                    data-nip71-repeater="p"
-                  >
-                    <div class="flex items-center justify-between">
-                      <h3
-                        id="nip71ParticipantsLabel"
-                        class="text-sm font-medium text-text"
-                      >
-                        Participants (<code>p</code>)
-                      </h3>
-                      <button
-                        type="button"
-                        class="btn-ghost px-3 py-1 text-xs"
-                        data-nip71-add="p"
-                      >
-                        Add participant
-                      </button>
-                    </div>
-                    <div
-                      id="nip71ParticipantList"
-                      class="space-y-3"
-                      data-nip71-list="p"
-                    ></div>
-                    <template id="nip71ParticipantTemplate" data-nip71-template="p">
-                      <article
-                        class="space-y-3 rounded-md border border-border/70 bg-surface/60 p-4"
-                        data-nip71-entry="p"
-                      >
-                        <div class="grid gap-3 md:grid-cols-2">
-                          <div class="space-y-2">
-                            <label class="block text-xs font-medium text-muted-strong"
-                              >Pubkey</label
-                            >
-                            <input
-                              type="text"
-                              data-nip71-field="pubkey"
-                              placeholder="npub1..."
-                              class="input"
-                            />
-                          </div>
-                          <div class="space-y-2">
-                            <label class="block text-xs font-medium text-muted-strong"
-                              >Relay URL (optional)</label
-                            >
-                            <input
-                              type="url"
-                              data-nip71-field="relay"
-                              placeholder="wss://relay.example.com"
-                              class="input"
-                            />
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          class="btn-ghost px-3 py-1 text-xs" data-variant="critical"
-                          data-nip71-remove="p"
-                        >
-                          Remove participant
-                        </button>
-                      </article>
-                    </template>
-                  </section>
-
-                  <section
-                    class="space-y-4"
-                    aria-labelledby="nip71ReferencesLabel"
-                    data-nip71-repeater="r"
-                  >
-                    <div class="flex items-center justify-between">
-                      <h3
-                        id="nip71ReferencesLabel"
-                        class="text-sm font-medium text-text"
-                      >
-                        Reference links (<code>r</code>)
-                      </h3>
-                      <button
-                        type="button"
-                        class="btn-ghost px-3 py-1 text-xs"
-                        data-nip71-add="r"
-                      >
-                        Add reference
-                      </button>
-                    </div>
-                    <div
-                      id="nip71ReferenceList"
-                      class="space-y-2"
-                      data-nip71-list="r"
-                    ></div>
-                    <template id="nip71ReferenceTemplate" data-nip71-template="r">
-                      <div class="flex items-center gap-2" data-nip71-entry="r">
-                        <input
-                          type="url"
-                          data-nip71-field="url"
-                          placeholder="https://example.com/article"
-                          class="input flex-1"
-                        />
-                        <button
-                          type="button"
-                          class="btn-ghost px-2 py-1 text-3xs" data-variant="critical"
-                          data-nip71-remove="r"
-                          aria-label="Remove reference"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    </template>
-                  </section>
-                </fieldset>
-            </div>
-            <!-- End Custom Advanced -->
-
-            <button
-              type="submit"
-              class="btn"
-            >
-              Publish
-            </button>
-          </form>
-        </div>
-
-        <!-- CLOUDFLARE SECTION -->
-        <div id="cloudflareUploadSection" class="hidden">
-          <div class="space-y-8">
-            <p
-              class="rounded-md border border-status-warning-border bg-status-warning-surface p-3 text-sm text-status-warning-on"
-            >
-              This feature is experimental and may not be working correctly.
-            </p>
-            <section
-              class="rounded-lg border border-border/70 bg-surface/60 p-5"
-            >
-              <div class="mb-4 flex items-center justify-between">
-                <h3 class="text-lg font-semibold text-text">
-                  Cloudflare R2 credentials
-                </h3>
-                <span class="text-xs uppercase tracking-wide text-muted">
-                  stored locally
-                </span>
-              </div>
-              <p class="mb-4 text-sm text-muted">
-                Paste your Cloudflare R2 API credentials. We keep them in your
-                browser so uploads happen client-side.
-              </p>
-              <form id="cloudflareSettingsForm" class="space-y-4">
-                <div class="grid gap-3 md:grid-cols-2">
-                  <div class="space-y-2">
-                    <label
-                      for="r2AccountId"
-                      class="block text-sm font-medium text-text"
-                      >Account ID</label
-                    >
-                    <input
-                      id="r2AccountId"
-                      type="text"
-                      autocomplete="off"
-                      class="input"
-                      placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                      required
-                    />
-                  </div>
-                  <div class="space-y-2">
-                    <label
-                      for="r2AccessKeyId"
-                      class="block text-sm font-medium text-text"
-                      >S3 Access Key ID</label
-                    >
-                    <input
-                      id="r2AccessKeyId"
-                      type="text"
-                      autocomplete="off"
-                      class="input"
-                      placeholder="AKIA..."
-                      required
-                    />
-                  </div>
-                </div>
-                <div class="space-y-2">
-                  <label
-                    for="r2SecretAccessKey"
-                    class="block text-sm font-medium text-text"
-                    >S3 Secret Access Key</label
-                  >
-                  <input
-                    id="r2SecretAccessKey"
-                    type="password"
-                    autocomplete="off"
-                    class="input"
-                    required
-                  />
-                </div>
-                <div class="border-t border-border/70 pt-4">
-                  <button
-                    type="button"
-                    id="cloudflareAdvancedToggle"
-                    class="btn-ghost justify-start gap-2 text-sm text-muted-strong"
-                    aria-expanded="false"
-                    aria-controls="cloudflareAdvancedFields"
-                  >
-                    <svg
-                      id="cloudflareAdvancedToggleIcon"
-                      xmlns="http://www.w3.org/2000/svg"
-                      class="h-4 w-4 transform text-muted-strong transition-transform duration-150"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      stroke-width="2"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="M9 5l7 7-7 7"
-                      />
-                    </svg>
-                    <span id="cloudflareAdvancedToggleLabel"
-                      >Show advanced options</span
-                    >
-                  </button>
-                  <div
-                    id="cloudflareAdvancedFields"
-                    class="mt-3 hidden space-y-4"
-                  >
-                    <div class="space-y-2">
-                      <label
-                        for="r2ApiToken"
-                        class="block text-sm font-medium text-text"
-                        >Cloudflare API Token (optional)</label
-                      >
-                      <input
-                        id="r2ApiToken"
-                        type="password"
-                        autocomplete="off"
-                        class="input"
-                        placeholder="Token with Workers R2 Storage Write"
-                      />
-                      <p class="text-xs text-muted">
-                        Used to create buckets, configure CORS, and attach
-                        domains automatically.
-                      </p>
-                    </div>
-                    <div class="grid gap-3 md:grid-cols-2">
-                      <div class="space-y-2">
-                        <label
-                          for="r2ZoneId"
-                          class="block text-sm font-medium text-text"
-                          >Zone ID (optional)</label
-                        >
-                        <input
-                          id="r2ZoneId"
-                          type="text"
-                          autocomplete="off"
-                          class="input"
-                          placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                        />
-                        <p class="text-xs text-muted">
-                          Required when you want us to attach a custom domain on
-                          your behalf.
-                        </p>
-                      </div>
-                      <div class="space-y-2">
-                        <label
-                          for="r2BaseDomain"
-                          class="block text-sm font-medium text-text"
-                          >Base domain (optional)</label
-                        >
-                        <input
-                          id="r2BaseDomain"
-                          type="text"
-                          autocomplete="off"
-                          class="input"
-                          placeholder="cdn.example.com"
-                        />
-                        <p class="text-xs text-muted">
-                          We'll attach
-                          <code class="rounded bg-panel px-1 py-0.5"
-                            >npub.&lt;baseDomain&gt;</code
-                          >. Leave blank to use the managed
-                          <code class="rounded bg-panel px-1 py-0.5"
-                            >*.r2.dev</code
-                          >
-                          domain.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div class="flex flex-wrap items-center gap-3">
-                  <button
-                    type="submit"
-                    class="btn text-sm"
-                  >
-                    Save settings
-                  </button>
-                  <button
-                    type="button"
-                    id="cloudflareClearSettings"
-                    class="btn-ghost text-sm"
-                  >
-                    Clear
-                  </button>
-                  <span
-                    id="cloudflareSettingsStatus"
-                    class="text-xs text-muted"
-                    role="status"
-                  ></span>
-                </div>
-              </form>
-            </section>
-
-            <section
-              class="rounded-lg border border-border/70 bg-surface/60 p-5"
-            >
-              <div class="mb-4">
-                <h3 class="text-lg font-semibold text-text">
-                  Upload &amp; publish
-                </h3>
-                <p class="text-sm text-muted">
-                  Choose a file, we will upload it to R2, fill the hosted URL,
-                  and publish your note automatically.
-                </p>
-              </div>
-              <form id="cloudflareUploadForm" class="space-y-4">
-                <div class="space-y-2">
-                  <label
-                    for="cloudflareTitle"
-                    class="block text-sm font-medium text-text"
-                    >Title</label
-                  >
-                  <input
-                    id="cloudflareTitle"
-                    type="text"
-                    required
-                    class="input"
-                  />
-                </div>
-
-                 <div class="space-y-2">
-                  <label
-                    for="cloudflareDescription"
-                    class="block text-sm font-medium text-text"
-                    >Video description</label
-                  >
-                  <textarea
-                    id="cloudflareDescription"
-                    rows="3"
-                    class="input"
-                  ></textarea>
-                </div>
-
-                <!-- Hashtags Visible -->
-                <section
-                    class="space-y-4 rounded-lg border border-border/70 bg-surface/30 p-4"
-                    aria-labelledby="cloudflareNip71HashtagsLabel"
-                    data-nip71-repeater="t"
-                  >
-                    <div class="flex items-center justify-between">
-                      <h3
-                        id="cloudflareNip71HashtagsLabel"
-                        class="text-sm font-medium text-text"
-                      >
-                        Hashtags
-                      </h3>
-                      <button
-                        type="button"
-                        class="btn-ghost px-3 py-1 text-xs"
-                        data-nip71-add="t"
-                        aria-describedby="cloudflareNip71HashtagsHelp"
-                      >
-                        Add hashtag
-                      </button>
-                    </div>
-                    <div
-                      id="cloudflareNip71HashtagList"
-                      class="space-y-2"
-                      data-nip71-list="t"
-                    ></div>
-                </section>
-
-                <div
-                  class="form-control"
-                  role="group"
-                  aria-labelledby="cloudflareEnableCommentsLabel"
-                >
-                  <label
-                    class="menu__item gap-3 px-0 py-0 text-left"
-                    for="cloudflareEnableComments"
-                  >
-                    <input
-                      type="checkbox"
-                      id="cloudflareEnableComments"
-                      class="checkbox"
-                      checked
-                      data-default-checked="true"
-                    />
-                    <span class="flex flex-col gap-1">
-                      <span
-                        id="cloudflareEnableCommentsLabel"
-                        class="text-sm font-medium text-text"
-                      >
-                        Enable comments
-                      </span>
-                      <span class="text-xs text-muted">
-                        Publish with comments switched on.
-                      </span>
-                    </span>
-                  </label>
-                </div>
-
-                <div class="grid gap-3 md:grid-cols-2">
-                  <div
-                    class="form-control"
-                    role="group"
-                    aria-labelledby="cloudflareIsNsfwLabel"
-                  >
-                    <label
-                      class="menu__item gap-3 px-0 py-0 text-left"
-                      for="cloudflareIsNsfw"
-                    >
-                      <input
-                        type="checkbox"
-                        id="cloudflareIsNsfw"
-                        class="checkbox"
-                        data-default-checked="false"
-                      />
-                      <span class="flex flex-col gap-1">
-                        <span
-                          id="cloudflareIsNsfwLabel"
-                          class="text-sm font-medium text-text"
-                        >
-                          Is this content NSFW?
-                        </span>
-                        <span class="text-xs text-muted">
-                          Turn this on to signal mature or explicit material.
-                        </span>
-                      </span>
-                    </label>
-                  </div>
-                  <div
-                    class="form-control"
-                    role="group"
-                    aria-labelledby="cloudflareIsForKidsLabel"
-                  >
-                    <label
-                      class="menu__item gap-3 px-0 py-0 text-left"
-                      for="cloudflareIsForKids"
-                    >
-                      <input
-                        type="checkbox"
-                        id="cloudflareIsForKids"
-                        class="checkbox"
-                        data-default-checked="false"
-                      />
-                      <span class="flex flex-col gap-1">
-                        <span
-                          id="cloudflareIsForKidsLabel"
-                          class="text-sm font-medium text-text"
-                        >
-                          Is this content created for Kids?
-                        </span>
-                        <span class="text-xs text-muted">
-                          Highlight family-safe uploads.
-                        </span>
-                      </span>
-                    </label>
-                  </div>
-                </div>
-
-                <div class="space-y-2">
-                  <label
-                    for="cloudflareFile"
-                    class="block text-sm font-medium text-text"
-                    >Video or HLS file</label
-                  >
-                  <input
-                    id="cloudflareFile"
-                    type="file"
-                    accept="video/*,.m3u8,.ts,.mp4,.webm,.mov,.mkv,.mpg,.mpeg"
-                    class="input border-dashed bg-surface px-3 py-4 text-muted-strong"
-                    required
-                  />
-                  <p class="text-xs text-muted">
-                    Large files are supported.
-                  </p>
-                </div>
-
-        <div class="mb-6 border-t border-surface-subtle pt-4">
-          <label class="inline-flex items-start cursor-pointer">
-            <input type="checkbox" id="cloudflareCreateTorrent" class="form-checkbox mt-0.5 bg-surface-alt border-surface-subtle text-accent rounded focus:ring-accent" />
-            <div class="ml-2 flex flex-col">
-              <span class="text-sm font-medium text-foreground">Create torrent & seed in browser (Experimental)</span>
-              <span class="text-xs text-muted leading-relaxed">Recommended for files under 2GB. Keeps seeding while tab is open.</span>
-            </div>
-          </label>
-          <div id="cloudflareTorrentStatusContainer" class="hidden mt-3 space-y-2">
-             <div class="flex justify-between text-xs text-muted">
-               <span id="cloudflareTorrentStatusText">Generating torrent...</span>
-               <span id="cloudflareTorrentStatusPercent">0%</span>
-             </div>
-             <div class="w-full bg-surface-alt rounded-full h-1.5" role="progressbar" aria-valuemin="0" aria-valuemax="100">
-               <div id="cloudflareTorrentProgressBar" class="bg-warning h-1.5 rounded-full transition-all duration-300 w-0"></div>
-             </div>
-          </div>
-        </div>
-
-        <div class="mb-6 pt-2">
-            <label class="inline-flex items-center cursor-pointer">
-                <input type="checkbox" id="cloudflareRightsConfirmed" class="form-checkbox bg-surface-alt border-surface-subtle text-accent rounded focus:ring-accent" />
-                <span class="ml-2 text-sm text-muted">I confirm I have the legal right to upload and distribute this content.</span>
-            </label>
-        </div>
-
-                <div
-                  class="bg-black/40 rounded-md border border-border/70 p-3 text-xs text-muted"
-                >
-                  <p>
-                    <strong class="text-text">Bucket preview:</strong>
-                    <span id="cloudflareBucketPreview" class="ml-1"
-                      >We'll show your bucket and public domain after
-                      setup.</span
-                    >
-                  </p>
-                </div>
-
-                 <div class="grid gap-3 md:grid-cols-2">
-                  <div class="space-y-2">
-                    <label
-                      for="cloudflareThumbnail"
-                      class="block text-sm font-medium text-text"
-                      >Thumbnail URL (optional)</label
-                    >
-                    <input id="cloudflareThumbnail" type="url" class="input" />
-                  </div>
-                  <div class="space-y-2">
-                    <label
-                      for="cloudflareMagnet"
-                      class="block text-sm font-medium text-text"
-                      >Magnet link (optional)</label
-                    >
-                    <input
-                      id="cloudflareMagnet"
-                      type="text"
-                      placeholder="magnet:?xt=urn:btih:..."
-                      class="input"
-                    />
-                  </div>
-                </div>
-
-                <div class="space-y-2">
-                  <progress
-                    id="cloudflareProgress"
-                    class="progress progress--surface"
-                    max="100"
-                    value="0"
-                    data-variant="surface"
-                    aria-label="Cloudflare upload progress"
-                    hidden
-                  ></progress>
-                  <p
-                    id="cloudflareProgressStatus"
-                    class="sr-only"
-                    role="status"
-                    aria-live="polite"
-                  ></p>
-                  <p
-                    id="cloudflareUploadStatus"
-                    class="text-xs text-muted"
-                    role="status"
-                  ></p>
-                </div>
-
-                <!-- Cloudflare Advanced Toggle -->
-                <div class="border-t border-border/70 pt-4">
-                  <button
-                    type="button"
-                    id="cloudflareUploadAdvancedToggle"
-                    class="btn-ghost justify-start gap-2 text-sm text-muted-strong"
-                    aria-expanded="false"
-                    aria-controls="cloudflareUploadAdvancedFields"
-                  >
-                    <svg
-                      id="cloudflareUploadAdvancedToggleIcon"
-                      xmlns="http://www.w3.org/2000/svg"
-                      class="h-4 w-4 transform text-muted-strong transition-transform duration-150"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      stroke-width="2"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="M9 5l7 7-7 7"
-                      />
-                    </svg>
-                    <span id="cloudflareUploadAdvancedToggleLabel"
-                      >Show advanced options</span
-                    >
-                  </button>
-                </div>
-
-                <div
-                    id="cloudflareUploadAdvancedFields"
-                    class="hidden space-y-6 rounded-lg border border-border/70 bg-surface/30 p-4"
-                >
-                    <div class="grid gap-3 md:grid-cols-2">
-                      <input
-                        id="cloudflareWs"
-                        type="url"
-                        placeholder="Web seed (ws=)"
-                        class="input"
-                      />
-                      <input
-                        id="cloudflareXs"
-                        type="url"
-                        placeholder=".torrent URL (xs=)"
-                        class="input"
-                      />
-                    </div>
-
-                    <div
-                      class="space-y-4"
-                      id="cloudflareNip71EventDetails"
-                      data-nip71-section="event-details"
-                    >
-                      <fieldset
-                        id="cloudflareNip71KindFieldset"
-                        class="space-y-2"
-                        data-nip71-fieldset="kind"
-                      >
-                        <legend class="text-sm font-semibold text-text">
-                          NIP-71 event type
-                        </legend>
-                        <div
-                          class="form-control"
-                          role="radiogroup"
-                          aria-labelledby="cloudflareNip71KindFieldset"
-                        >
-                          <div
-                            class="menu sm:flex-row sm:flex-wrap sm:py-0"
-                            role="presentation"
-                          >
-                            <label
-                              class="menu__item gap-3 px-0 py-0"
-                              for="cloudflareNip71KindLong"
-                            >
-                              <input
-                                type="radio"
-                                name="cloudflareNip71Kind"
-                                id="cloudflareNip71KindLong"
-                                value="21"
-                                checked
-                                data-nip71-input="kind"
-                                class="h-4 w-4 border-border bg-panel text-info focus:ring-info"
-                              />
-                              <span class="text-sm text-text"
-                                >Normal video (kind 21)</span
-                              >
-                            </label>
-                            <label
-                              class="menu__item gap-3 px-0 py-0"
-                              for="cloudflareNip71KindShort"
-                            >
-                              <input
-                                type="radio"
-                                name="cloudflareNip71Kind"
-                                id="cloudflareNip71KindShort"
-                                value="22"
-                                data-nip71-input="kind"
-                                class="h-4 w-4 border-border bg-panel text-info focus:ring-info"
-                              />
-                              <span class="text-sm text-text"
-                                >Short video (kind 22)</span
-                              >
-                            </label>
-                          </div>
-                        </div>
-                      </fieldset>
-
-                      <div
-                        class="grid gap-4 md:grid-cols-2"
-                        data-nip71-grid="metadata"
-                      >
-                        <div class="space-y-2">
-                          <label
-                            for="cloudflareNip71PublishedAt"
-                            class="block text-sm font-medium text-text"
-                          >
-                            Published at
-                          </label>
-                          <input
-                            type="datetime-local"
-                            id="cloudflareNip71PublishedAt"
-                            data-nip71-input="published_at"
-                            class="input"
-                          />
-                        </div>
-                        <div class="space-y-2">
-                          <label
-                            for="cloudflareNip71AltText"
-                            class="block text-sm font-medium text-text"
-                            >Alt text</label
-                          >
-                          <input
-                            type="text"
-                            id="cloudflareNip71AltText"
-                            data-nip71-input="alt"
-                            placeholder="Describe the visuals for screen readers"
-                            class="input"
-                          />
-                        </div>
-                        <div class="space-y-2">
-                          <label
-                            for="cloudflareNip71Duration"
-                            class="block text-sm font-medium text-text"
-                          >
-                            Duration (seconds)
-                          </label>
-                          <input
-                            type="number"
-                            id="cloudflareNip71Duration"
-                            min="0"
-                            step="1"
-                            data-nip71-input="duration"
-                            class="input"
-                          />
-                        </div>
-                        <div class="space-y-2">
-                          <label
-                            for="cloudflareNip71ContentWarning"
-                            class="block text-sm font-medium text-text"
-                          >
-                            Content warning
-                          </label>
-                          <input
-                            type="text"
-                            id="cloudflareNip71ContentWarning"
-                            data-nip71-input="content-warning"
-                            placeholder="e.g., Flashing lights"
-                            class="input"
-                          />
-                        </div>
-                      </div>
-
-                      <div class="space-y-2">
-                        <div class="flex items-center justify-between">
-                            <label
-                            for="cloudflareNip71Summary"
-                            class="block text-sm font-medium text-text"
-                            >Summary</label
-                            >
-                            <label class="flex items-center gap-2 text-xs text-muted cursor-pointer select-none">
-                              <input type="checkbox" id="cloudflareNip71SummaryUnlock" class="checkbox h-3 w-3 rounded-sm border-muted" />
-                              Customize
-                            </label>
-                        </div>
-                        <textarea
-                          id="cloudflareNip71Summary"
-                          rows="3"
-                          data-nip71-input="summary"
-                          class="textarea text-muted-strong"
-                          placeholder="Short synopsis used as the Nostr content field"
-                          readonly
-                        ></textarea>
-                         <p class="text-xs text-muted">
-                          This becomes the event content. By default it mirrors the description.
-                        </p>
-                      </div>
-                    </div>
-
-                    <fieldset
-                      id="cloudflareNip71TagsFieldset"
-                      class="space-y-6 pt-4"
-                      data-nip71-section="tags"
-                    >
-                      <legend class="relative text-sm font-semibold text-text pb-2 border-b border-border/50 w-full mb-4">
-                        Advanced Tags (IMETA, Tracks, Segments)
-                      </legend>
-
-                      <section
-                        class="space-y-4"
-                        aria-labelledby="cloudflareNip71ImetaLabel"
-                        data-nip71-repeater="imeta"
-                      >
-                        <div class="flex items-center justify-between">
-                          <h3
-                            id="cloudflareNip71ImetaLabel"
-                            class="text-sm font-medium text-text"
-                          >
-                            Image metadata (imeta)
-                          </h3>
-                          <button
-                            type="button"
-                            class="btn-ghost px-3 py-1 text-xs"
-                            data-nip71-add="imeta"
-                            aria-describedby="cloudflareNip71ImetaHelp"
-                          >
-                            Add variant
-                          </button>
-                        </div>
-                        <div
-                          id="cloudflareNip71ImetaList"
-                          class="space-y-4"
-                          data-nip71-list="imeta"
-                        >
-                          <!-- Primary variant automatically added by JS, keeping template structure here -->
-                          <article
-                            class="space-y-3 rounded-md border border-border/70 bg-surface/60 p-4"
-                            data-nip71-entry="imeta"
-                            data-nip71-primary="true"
-                          >
-                           <!-- Content mirrored from original but simplified for brevity in this plan as it's standard -->
-                            <div class="grid gap-3 md:grid-cols-2">
-                              <div class="space-y-2">
-                                <label class="block text-xs font-medium text-muted-strong">MIME type (<code>m</code>)</label>
-                                <input type="text" data-nip71-field="m" placeholder="Auto-filled" class="input" />
-                              </div>
-                              <div class="space-y-2">
-                                <label class="block text-xs font-medium text-muted-strong">Pixel dimensions (<code>dim</code>)</label>
-                                <input type="text" data-nip71-field="dim" placeholder="Auto-filled" class="input" />
-                              </div>
-                              <div class="space-y-2">
-                                <label class="block text-xs font-medium text-muted-strong">Streaming URL (<code>url</code>)</label>
-                                <input type="url" data-nip71-field="url" placeholder="Auto-filled" class="input" />
-                              </div>
-                              <div class="space-y-2">
-                                <label class="block text-xs font-medium text-muted-strong">Magnet (<code>x</code>)</label>
-                                <input type="text" data-nip71-field="x" placeholder="Optional" class="input" />
-                              </div>
-                            </div>
-                            <div class="space-y-3" data-nip71-nested="image">
-                                <div class="flex items-center justify-between">
-                                    <h4 class="text-xs font-semibold uppercase tracking-wide text-muted">Image values</h4>
-                                    <button type="button" class="btn-ghost px-2 py-1 text-3xs" data-nip71-nested-add="image">Add image</button>
-                                </div>
-                                <div class="space-y-2" data-nip71-nested-list="image"></div>
-                            </div>
-                            <div class="space-y-3" data-nip71-nested="fallback">
-                                <div class="flex items-center justify-between">
-                                    <h4 class="text-xs font-semibold uppercase tracking-wide text-muted">Fallback URLs</h4>
-                                    <button type="button" class="btn-ghost px-2 py-1 text-3xs" data-nip71-nested-add="fallback">Add fallback</button>
-                                </div>
-                                <div class="space-y-2" data-nip71-nested-list="fallback"></div>
-                            </div>
-                             <div class="space-y-3" data-nip71-nested="service">
-                                <div class="flex items-center justify-between">
-                                    <h4 class="text-xs font-semibold uppercase tracking-wide text-muted">Services</h4>
-                                    <button type="button" class="btn-ghost px-2 py-1 text-3xs" data-nip71-nested-add="service">Add service</button>
-                                </div>
-                                <div class="space-y-2" data-nip71-nested-list="service"></div>
-                            </div>
-
-                             <button type="button" class="btn-ghost px-3 py-1 text-xs" data-variant="critical" data-nip71-remove="imeta">Remove variant</button>
-                          </article>
-                        </div>
-                      </section>
-
-                      <section
-                        class="space-y-4"
-                        aria-labelledby="cloudflareNip71TextTracksLabel"
-                        data-nip71-repeater="text-track"
-                      >
-                         <div class="flex items-center justify-between">
-                          <h3 id="cloudflareNip71TextTracksLabel" class="text-sm font-medium text-text">Caption &amp; subtitle tracks</h3>
-                          <button type="button" class="btn-ghost px-3 py-1 text-xs" data-nip71-add="text-track">Add track</button>
-                        </div>
-                        <div id="cloudflareNip71TextTrackList" class="space-y-4" data-nip71-list="text-track"></div>
-                      </section>
-
-                      <section
-                        class="space-y-4"
-                        aria-labelledby="cloudflareNip71SegmentsLabel"
-                        data-nip71-repeater="segment"
-                      >
-                        <div class="flex items-center justify-between">
-                          <h3 id="cloudflareNip71SegmentsLabel" class="text-sm font-medium text-text">Timeline segments</h3>
-                          <button type="button" class="btn-ghost px-3 py-1 text-xs" data-nip71-add="segment">Add chapter</button>
-                        </div>
-                        <div id="cloudflareNip71SegmentList" class="space-y-4" data-nip71-list="segment"></div>
-                      </section>
-
-                      <section
-                        class="space-y-4"
-                        aria-labelledby="cloudflareNip71ParticipantsLabel"
-                        data-nip71-repeater="p"
-                      >
-                         <div class="flex items-center justify-between">
-                          <h3 id="cloudflareNip71ParticipantsLabel" class="text-sm font-medium text-text">Participants</h3>
-                          <button type="button" class="btn-ghost px-3 py-1 text-xs" data-nip71-add="p">Add participant</button>
-                        </div>
-                        <div id="cloudflareNip71ParticipantList" class="space-y-3" data-nip71-list="p"></div>
-                      </section>
-
-                      <section
-                        class="space-y-4"
-                        aria-labelledby="cloudflareNip71ReferencesLabel"
-                        data-nip71-repeater="r"
-                      >
-                         <div class="flex items-center justify-between">
-                          <h3 id="cloudflareNip71ReferencesLabel" class="text-sm font-medium text-text">References</h3>
-                          <button type="button" class="btn-ghost px-3 py-1 text-xs" data-nip71-add="r">Add reference</button>
-                        </div>
-                        <div id="cloudflareNip71ReferenceList" class="space-y-2" data-nip71-list="r"></div>
-                      </section>
-
-                    </fieldset>
-                </div>
-                <button
-                  type="submit"
-                  id="cloudflareUploadButton"
-                  class="btn w-full text-sm"
-                  disabled
-                >
-                  Upload to R2 &amp; publish
+            <!-- Submit -->
+            <div class="pt-4">
+                <button type="submit" id="btn-submit" class="btn w-full py-3 text-base font-semibold shadow-md">
+                    Publish Video
                 </button>
-              </form>
-            </section>
-          </div>
-        </div>
+                <p id="submit-status" class="text-center text-xs text-muted mt-2"></p>
+            </div>
+
+        </form>
       </div>
-    </div>
   </div>
 </div>
