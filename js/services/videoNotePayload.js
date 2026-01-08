@@ -379,8 +379,16 @@ export function normalizeVideoNotePayload(input) {
   }
 
   if (legacyFormData.magnet) {
+    const wsList = [];
+    if (ws) {
+      wsList.push(ws);
+    }
+    if (legacyFormData.url && /^https?:\/\//i.test(legacyFormData.url)) {
+      wsList.push(legacyFormData.url);
+    }
+
     const normalizedMagnet = normalizeAndAugmentMagnet(legacyFormData.magnet, {
-      ws,
+      ws: wsList,
       xs,
     });
     legacyFormData.magnet = normalizedMagnet;

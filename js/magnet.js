@@ -36,11 +36,20 @@ export function normalizeAndAugmentMagnet(rawValue, { ws = "", xs = "" } = {}) {
     ensureTorrentHint(params, normalizedXs, { requireHttp: false });
   }
 
-  const rawWs = typeof ws === "string" ? ws.trim() : "";
-  if (rawWs) {
-    const formattedWs = formatAbsoluteUrl(rawWs);
+  const wsList = Array.isArray(ws)
+    ? ws
+    : typeof ws === "string"
+      ? [ws]
+      : [];
+
+  if (wsList.length > 0) {
     const allowHttpSeed = resolveAppProtocol() === "http:";
-    ensureWebSeeds(params, formattedWs, {
+    const formattedList = wsList
+      .map((item) => (typeof item === "string" ? item.trim() : ""))
+      .filter((item) => item)
+      .map((item) => formatAbsoluteUrl(item));
+
+    ensureWebSeeds(params, formattedList, {
       allowHttp: allowHttpSeed,
       allowUnparsed: true,
     });
