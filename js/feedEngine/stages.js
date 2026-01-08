@@ -10,7 +10,7 @@ import nostrService from "../services/nostrService.js";
 import moderationService from "../services/moderationService.js";
 import logger from "../utils/logger.js";
 import { dedupeToNewestByRoot } from "../utils/videoDeduper.js";
-import { isPlainObject, toSet } from "./utils.js";
+import { isPlainObject, toSet, hasDisinterestedTag } from "./utils.js";
 
 const FEED_HIDE_BYPASS_NAMES = new Set(["home", "recent"]);
 
@@ -276,9 +276,9 @@ export function createBlacklistFilterStage({
 
     const options = { blacklistedEventIds: blacklist, isAuthorBlocked };
 
-    // TODO(tag-preferences): incorporate context.runtime.tagPreferences once the
-    // filtering helpers are in place so this stage can drop disinterested tags
-    // without disturbing existing blacklist logic.
+    const tagPreferences = context?.runtime?.tagPreferences;
+    const disinterests = toSet(tagPreferences?.disinterests);
+    const hasTagPreferences = disinterests.size > 0;
 
     const results = [];
 
@@ -286,6 +286,17 @@ export function createBlacklistFilterStage({
       const video = item?.video;
       if (!video || typeof video !== "object") {
         results.push(item);
+        continue;
+      }
+
+      if (hasTagPreferences && hasDisinterestedTag(video, disinterests)) {
+        context?.addWhy?.({
+          stage: stageName,
+          type: "filter",
+          reason: "disinterested-tag",
+          videoId: typeof video.id === "string" ? video.id : null,
+          pubkey: typeof video.pubkey === "string" ? video.pubkey : null,
+        });
         continue;
       }
 

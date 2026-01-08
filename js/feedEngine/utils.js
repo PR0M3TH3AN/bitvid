@@ -27,3 +27,31 @@ export function toArray(value) {
   }
   return [value];
 }
+
+export function hasDisinterestedTag(video, disinterestsSet) {
+  if (!video || !disinterestsSet || !(disinterestsSet instanceof Set) || disinterestsSet.size === 0) {
+    return false;
+  }
+
+  // Check raw tags
+  if (Array.isArray(video.tags)) {
+    for (const tag of video.tags) {
+      if (Array.isArray(tag) && tag[0] === "t" && typeof tag[1] === "string") {
+        if (disinterestsSet.has(tag[1].toLowerCase())) {
+          return true;
+        }
+      }
+    }
+  }
+
+  // Check NIP-71 metadata hashtags if available
+  if (video.nip71 && Array.isArray(video.nip71.hashtags)) {
+    for (const tag of video.nip71.hashtags) {
+      if (typeof tag === "string" && disinterestsSet.has(tag.toLowerCase())) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
