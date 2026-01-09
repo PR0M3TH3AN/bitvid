@@ -426,7 +426,7 @@ class R2Service {
 
       if (!publicBaseUrl) {
         throw new Error(
-          "No public bucket domain configured. Add an API token or configure the domain manually."
+          "No public bucket domain configured. Please add a Cloudflare API token to automate domain setup."
         );
       }
 
