@@ -199,7 +199,18 @@
 
                 <div class="space-y-2">
                     <label for="input-thumbnail" class="block text-sm font-medium text-text">Thumbnail URL</label>
-                    <input id="input-thumbnail" type="url" class="input" placeholder="https://example.com/thumbnail.jpg" />
+                    <div class="flex gap-2">
+                         <input id="input-thumbnail" type="url" class="input flex-1" placeholder="https://example.com/thumbnail.jpg" />
+                         <input id="input-thumbnail-file" type="file" class="hidden" accept="image/*" />
+                         <button
+                            type="button"
+                            id="btn-thumbnail-file"
+                            class="btn-secondary px-3 text-sm whitespace-nowrap"
+                            aria-label="Upload thumbnail image"
+                          >
+                             Browse...
+                          </button>
+                    </div>
                 </div>
 
                  <!-- Hashtags -->

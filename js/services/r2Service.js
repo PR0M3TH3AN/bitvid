@@ -636,6 +636,7 @@ class R2Service {
   async handleCloudflareUploadSubmit({
     npub = "",
     file = null,
+    thumbnailFile = null,
     metadata = {},
     settingsInput = null,
     publishVideoNote,
@@ -747,6 +748,33 @@ class R2Service {
 
     try {
       const s3 = makeR2Client({ accountId, accessKeyId, secretAccessKey });
+
+      if (thumbnailFile) {
+        this.setCloudflareUploadStatus("Uploading thumbnail...", "info");
+        const thumbExt = thumbnailFile.name.split('.').pop() || 'jpg';
+        const thumbKey = key.replace(/\.[^/.]+$/, "") + `.thumb.${thumbExt}`;
+
+        try {
+            await multipartUpload({
+                s3,
+                bucket: bucketEntry.bucket,
+                key: thumbKey,
+                file: thumbnailFile,
+                contentType: thumbnailFile.type || "image/jpeg",
+            });
+            const thumbUrl = buildPublicUrl(bucketEntry.publicBaseUrl, thumbKey);
+            if (typeof metadata === "object") {
+                metadata.thumbnail = thumbUrl;
+            }
+        } catch (err) {
+            userLogger.warn("Thumbnail upload failed, continuing with video...", err);
+        }
+      }
+
+      this.setCloudflareUploadStatus(
+        statusMessage,
+        bucketResult?.usedManagedFallback ? "warning" : "info"
+      );
 
       await multipartUpload({
         s3,
