@@ -4473,6 +4473,35 @@ export class NostrClient {
         devLogLabel: "video note",
       });
 
+      try {
+        if (signedEvent && signedEvent.id) {
+          this.rawEvents.set(signedEvent.id, signedEvent);
+          const video = convertEventToVideo(signedEvent);
+          if (!video.invalid) {
+            this.mergeNip71MetadataIntoVideo(video);
+            this.applyRootCreatedAt(video);
+
+            const activeKey = getActiveKey(video);
+            this.applyTombstoneGuard(video);
+
+            this.allEvents.set(signedEvent.id, video);
+
+            if (!video.deleted) {
+              const existing = this.activeMap.get(activeKey);
+              if (!existing || video.created_at > existing.created_at) {
+                this.activeMap.set(activeKey, video);
+                this.saveLocalData("publishVideo:local-cache");
+              }
+            }
+          }
+        }
+      } catch (err) {
+        devLogger.warn(
+          "[nostr] Failed to update local cache after publish:",
+          err,
+        );
+      }
+
       if (finalUrl) {
         const inferredMimeType = inferMimeTypeFromUrl(finalUrl);
         const mimeTypeSource =
@@ -5579,6 +5608,7 @@ export class NostrClient {
 
   getLatestCachedCreatedAt() {
     let latest = 0;
+    const now = Math.floor(Date.now() / 1000);
 
     for (const video of this.allEvents.values()) {
       const createdAt = Number.isFinite(video?.created_at)
@@ -5587,6 +5617,15 @@ export class NostrClient {
       if (createdAt > latest) {
         latest = createdAt;
       }
+    }
+
+    if (latest > now) {
+      if (isDevMode) {
+        devLogger.warn(
+          `[nostr] Clamping future cached timestamp ${latest} to now (${now})`,
+        );
+      }
+      return now;
     }
 
     return latest;
