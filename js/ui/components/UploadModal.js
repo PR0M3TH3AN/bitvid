@@ -146,6 +146,7 @@ export class UploadModal {
         title: $("#input-title"),
         description: $("#input-description"),
         thumbnail: $("#input-thumbnail"),
+        thumbnailFile: $("#input-thumbnail-file"),
         file: $("#input-file"),
         url: $("#input-url"),
         magnet: $("#input-magnet"),
@@ -180,6 +181,7 @@ export class UploadModal {
         storageSettings: $("#btn-storage-settings"),
         r2Advanced: $("#btn-r2-advanced"),
         saveSettings: $("#btn-save-settings"),
+        browseThumbnail: $("#btn-thumbnail-file"),
     };
 
     // Status text
@@ -217,6 +219,7 @@ export class UploadModal {
     this.setupDescriptionMirror();
     this.setupMutuallyExclusiveCheckboxes(this.toggles.nsfw, this.toggles.kids);
     this.setupNsfwToContentWarning();
+    this.setupThumbnailInput();
 
     // Close
     this.closeButton.addEventListener("click", () => this.close());
@@ -255,9 +258,17 @@ export class UploadModal {
         if (!this.hasValidR2Settings() && this.sourceSections.settings.classList.contains("hidden")) {
             this.toggles.storageSettings.click(); // Expand
         }
+
+        if (this.toggles.browseThumbnail) {
+            this.toggles.browseThumbnail.classList.remove("hidden");
+        }
     } else {
         this.sourceSections.upload.classList.add("hidden");
         this.sourceSections.external.classList.remove("hidden");
+
+        if (this.toggles.browseThumbnail) {
+            this.toggles.browseThumbnail.classList.add("hidden");
+        }
     }
 
     // Update Button Text
@@ -325,6 +336,27 @@ export class UploadModal {
               contentWarning.value = "NSFW";
           } else if (!nsfw.checked && contentWarning.value === "NSFW") {
               contentWarning.value = "";
+          }
+      });
+  }
+
+  setupThumbnailInput() {
+      const { thumbnailFile, thumbnail } = this.inputs;
+      const { browseThumbnail } = this.toggles;
+
+      if (!thumbnailFile || !browseThumbnail) return;
+
+      browseThumbnail.addEventListener("click", () => thumbnailFile.click());
+
+      thumbnailFile.addEventListener("change", () => {
+          const file = thumbnailFile.files?.[0];
+          if (file) {
+              thumbnail.value = ""; // Clear explicit URL
+              thumbnail.placeholder = `Selected: ${file.name}`;
+              thumbnail.disabled = true;
+          } else {
+              thumbnail.placeholder = "https://example.com/thumbnail.jpg";
+              thumbnail.disabled = false;
           }
       });
   }
@@ -481,6 +513,8 @@ export class UploadModal {
       const file = this.inputs.file?.files?.[0];
       if (!file) throw new Error("Please select a video file to upload.");
 
+      const thumbnailFile = this.inputs.thumbnailFile?.files?.[0];
+
       if (!this.hasValidR2Settings()) throw new Error("Please configure R2 storage credentials.");
 
       const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
@@ -491,6 +525,7 @@ export class UploadModal {
       await this.r2Service.uploadVideo({
           npub,
           file,
+          thumbnailFile,
           metadata,
           settingsInput: this.collectSettingsForm(),
           publishVideoNote: this.publishVideoNote,
@@ -546,6 +581,15 @@ export class UploadModal {
       this.toggles.nsfw.checked = false;
       this.toggles.kids.checked = false;
       this.updateProgress(null);
+
+      // Reset thumbnail UI
+      if (this.inputs.thumbnail) {
+          this.inputs.thumbnail.disabled = false;
+          this.inputs.thumbnail.placeholder = "https://example.com/thumbnail.jpg";
+      }
+      if (this.inputs.thumbnailFile) {
+          this.inputs.thumbnailFile.value = "";
+      }
   }
 
   // --- Modal Control ---
