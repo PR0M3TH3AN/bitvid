@@ -258,9 +258,17 @@ export class UploadModal {
         if (!this.hasValidR2Settings() && this.sourceSections.settings.classList.contains("hidden")) {
             this.toggles.storageSettings.click(); // Expand
         }
+
+        if (this.toggles.browseThumbnail) {
+            this.toggles.browseThumbnail.classList.remove("hidden");
+        }
     } else {
         this.sourceSections.upload.classList.add("hidden");
         this.sourceSections.external.classList.remove("hidden");
+
+        if (this.toggles.browseThumbnail) {
+            this.toggles.browseThumbnail.classList.add("hidden");
+        }
     }
 
     // Update Button Text
