@@ -1032,6 +1032,159 @@ function scheduleWatchHistoryRefresh(actorKey, cacheEntry = {}) {
   return promise;
 }
 
+function resolveEntryPointer(entry) {
+  if (!entry) {
+    return null;
+  }
+  const candidate = entry.pointer || entry;
+  return normalizePointerInput(candidate);
+}
+
+function resolveEntryWatchedAt(entry, pointer) {
+  const watchedAtRaw = Number.isFinite(entry?.watchedAt)
+    ? entry.watchedAt
+    : Number.isFinite(entry?.pointer?.watchedAt)
+      ? entry.pointer.watchedAt
+      : Number.isFinite(entry?.timestamp)
+        ? entry.timestamp
+        : Number.isFinite(pointer?.watchedAt)
+          ? pointer.watchedAt
+          : 0;
+  return Math.max(0, Math.floor(Number(watchedAtRaw) || 0));
+}
+
+function getLatestWatchedAt(items) {
+  if (!Array.isArray(items) || !items.length) {
+    return 0;
+  }
+  let latest = 0;
+  for (const entry of items) {
+    const pointer = resolveEntryPointer(entry);
+    if (!pointer) {
+      continue;
+    }
+    const watchedAt = resolveEntryWatchedAt(entry, pointer);
+    if (watchedAt > latest) {
+      latest = watchedAt;
+    }
+  }
+  return latest;
+}
+
+function buildMergedEntry(entry, pointer, watchedAt) {
+  const normalizedPointer = pointer ? { ...pointer } : null;
+  if (normalizedPointer) {
+    normalizedPointer.watchedAt = watchedAt;
+    if (pointer?.session === true) {
+      normalizedPointer.session = true;
+    }
+  }
+
+  if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+    const next = { ...entry };
+    if (entry.pointer && typeof entry.pointer === "object") {
+      next.pointer = {
+        ...(entry.pointer || {}),
+        ...(normalizedPointer || {}),
+        watchedAt,
+      };
+    } else if (normalizedPointer) {
+      Object.assign(next, normalizedPointer);
+      next.watchedAt = watchedAt;
+    } else {
+      next.watchedAt = watchedAt;
+    }
+    if (normalizedPointer?.session === true) {
+      if (next.pointer) {
+        next.pointer.session = true;
+      } else {
+        next.session = true;
+      }
+    }
+    return next;
+  }
+
+  if (normalizedPointer) {
+    return normalizedPointer;
+  }
+
+  return entry;
+}
+
+function mergeWatchHistoryItems(baseItems, queueItems) {
+  const merged = new Map();
+
+  const ingest = (entry, pointer, watchedAt) => {
+    const key = pointerKey(pointer);
+    if (!key) {
+      return;
+    }
+    merged.set(key, {
+      entry,
+      watchedAt,
+      key,
+    });
+  };
+
+  for (const entry of Array.isArray(baseItems) ? baseItems : []) {
+    const pointer = resolveEntryPointer(entry);
+    if (!pointer) {
+      continue;
+    }
+    const watchedAt = resolveEntryWatchedAt(entry, pointer);
+    ingest(entry, pointer, watchedAt);
+  }
+
+  for (const entry of Array.isArray(queueItems) ? queueItems : []) {
+    const pointer = resolveEntryPointer(entry);
+    if (!pointer) {
+      continue;
+    }
+    const watchedAt = resolveEntryWatchedAt(entry, pointer);
+    const key = pointerKey(pointer);
+    if (!key) {
+      continue;
+    }
+    const existing = merged.get(key);
+    if (!existing || watchedAt > existing.watchedAt) {
+      const mergedEntry = buildMergedEntry(existing?.entry || entry, pointer, watchedAt);
+      merged.set(key, {
+        entry: mergedEntry,
+        watchedAt,
+        key,
+      });
+    }
+  }
+
+  const ordered = Array.from(merged.values());
+  ordered.sort((a, b) => {
+    if (a.watchedAt !== b.watchedAt) {
+      return b.watchedAt - a.watchedAt;
+    }
+    return a.key.localeCompare(b.key);
+  });
+
+  return ordered.map((entry) => entry.entry);
+}
+
+function mergeQueuedItemsIfNeeded(actorKey, items) {
+  const queueItems = collectQueueItems(actorKey);
+  if (!queueItems.length) {
+    return items;
+  }
+
+  const snapshotInflight = state.inflightSnapshots.has(actorKey);
+  if (!snapshotInflight) {
+    const latestQueue = getLatestWatchedAt(queueItems);
+    const latestBase = getLatestWatchedAt(items);
+    if (latestQueue <= latestBase) {
+      return items;
+    }
+  }
+
+  return mergeWatchHistoryItems(items, queueItems);
+}
+
 async function loadLatest(actorInput, options = {}) {
   const actorKey = resolveActorKey(actorInput);
   if (!actorKey) {
@@ -1087,7 +1240,7 @@ async function loadLatest(actorInput, options = {}) {
       itemCount: cacheEntry.items.length,
       }
     );
-    return cacheEntry.items;
+    return mergeQueuedItemsIfNeeded(actorKey, cacheEntry.items);
   }
 
   if (cacheEntry?.promise) {
@@ -1105,13 +1258,15 @@ async function loadLatest(actorInput, options = {}) {
         itemCount: cacheEntry.items.length,
         }
       );
-      return cacheEntry.items;
+      return mergeQueuedItemsIfNeeded(actorKey, cacheEntry.items);
     }
-    return cacheEntry.promise;
+    const resolved = await cacheEntry.promise;
+    return mergeQueuedItemsIfNeeded(actorKey, resolved);
   }
 
   if (!allowStale || !hasCachedItems) {
-    return scheduleWatchHistoryRefresh(actorKey, cacheEntry);
+    const resolved = await scheduleWatchHistoryRefresh(actorKey, cacheEntry);
+    return mergeQueuedItemsIfNeeded(actorKey, resolved);
   }
 
   const refreshPromise = scheduleWatchHistoryRefresh(actorKey, cacheEntry);
@@ -1125,7 +1280,7 @@ async function loadLatest(actorInput, options = {}) {
     }
   );
 
-  return cacheEntry.items || [];
+  return mergeQueuedItemsIfNeeded(actorKey, cacheEntry.items || []);
 }
 
 async function getFingerprint(actorInput) {
