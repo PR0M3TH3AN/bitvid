@@ -182,6 +182,7 @@ export class UploadModal {
         r2Advanced: $("#btn-r2-advanced"),
         saveSettings: $("#btn-save-settings"),
         browseThumbnail: $("#btn-thumbnail-file"),
+        r2HelpLink: $("#link-r2-help"),
     };
 
     // Status text
@@ -214,6 +215,13 @@ export class UploadModal {
     this.toggles.saveSettings.addEventListener("click", async () => {
         await this.handleSaveSettings();
     });
+
+    // Help Link
+    if (this.toggles.r2HelpLink) {
+        this.toggles.r2HelpLink.addEventListener("click", () => {
+            this.close();
+        });
+    }
 
     // Automation
     this.setupDescriptionMirror();
