@@ -1,8 +1,8 @@
 import { nostrClient } from "../nostrClientFacade.js";
 import { convertEventToVideo } from "../nostr/index.js";
 import { accessControl } from "../accessControl.js";
-import { ALLOW_NSFW_CONTENT } from "../config.js";
-import { userLogger } from "../utils/logger.js";
+import { ALLOW_NSFW_CONTENT, isDevMode } from "../config.js";
+import { userLogger, devLogger } from "../utils/logger.js";
 import moderationService from "./moderationService.js";
 import {
   loadDirectMessageSnapshot,
@@ -949,16 +949,29 @@ export class NostrService {
     }
 
     if (ALLOW_NSFW_CONTENT !== true && video.isNsfw === true) {
+      if (isDevMode) {
+        devLogger.log(`[nostrService] Video ${video.id} filtered: NSFW content`);
+      }
       return false;
     }
 
     if (blacklistedEventIds.has(video.id)) {
+      if (isDevMode) {
+        devLogger.log(
+          `[nostrService] Video ${video.id} filtered: blacklisted event`,
+        );
+      }
       return false;
     }
 
     if (typeof video.pubkey === "string" && video.pubkey) {
       try {
         if (isAuthorBlocked(video.pubkey)) {
+          if (isDevMode) {
+            devLogger.log(
+              `[nostrService] Video ${video.id} filtered: author blocked`,
+            );
+          }
           return false;
         }
       } catch (error) {
@@ -967,12 +980,23 @@ export class NostrService {
     }
 
     if (video.isPrivate === true) {
+      if (isDevMode) {
+        devLogger.log(`[nostrService] Video ${video.id} filtered: private`);
+      }
       return false;
     }
 
-    if (this.accessControl && typeof this.accessControl.canAccess === "function") {
+    if (
+      this.accessControl &&
+      typeof this.accessControl.canAccess === "function"
+    ) {
       try {
         if (!this.accessControl.canAccess(video)) {
+          if (isDevMode) {
+            devLogger.log(
+              `[nostrService] Video ${video.id} filtered: access control`,
+            );
+          }
           return false;
         }
       } catch (error) {

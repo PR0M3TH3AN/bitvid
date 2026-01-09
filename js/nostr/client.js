@@ -4477,7 +4477,13 @@ export class NostrClient {
         if (signedEvent && signedEvent.id) {
           this.rawEvents.set(signedEvent.id, signedEvent);
           const video = convertEventToVideo(signedEvent);
-          if (!video.invalid) {
+          if (video.invalid) {
+            if (isDevMode) {
+              devLogger.warn(
+                `[nostr] Optimistic cache update skipped for invalid video: ${video.reason}`,
+              );
+            }
+          } else {
             this.mergeNip71MetadataIntoVideo(video);
             this.applyRootCreatedAt(video);
 
@@ -4486,11 +4492,31 @@ export class NostrClient {
 
             this.allEvents.set(signedEvent.id, video);
 
-            if (!video.deleted) {
+            if (video.deleted) {
+              if (isDevMode) {
+                devLogger.log(
+                  "[nostr] Optimistic cache update: video is deleted/tombstoned",
+                );
+              }
+            } else {
               const existing = this.activeMap.get(activeKey);
-              if (!existing || video.created_at > existing.created_at) {
+              if (
+                !existing ||
+                video.created_at > existing.created_at ||
+                (video.created_at === existing.created_at &&
+                  video.id !== existing.id)
+              ) {
                 this.activeMap.set(activeKey, video);
                 this.saveLocalData("publishVideo:local-cache");
+                if (isDevMode) {
+                  devLogger.log(
+                    `[nostr] Optimistic cache update applied for ${activeKey}`,
+                  );
+                }
+              } else if (isDevMode) {
+                devLogger.log(
+                  `[nostr] Optimistic cache update skipped (existing is newer) for ${activeKey}`,
+                );
               }
             }
           }
