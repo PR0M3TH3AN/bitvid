@@ -687,18 +687,34 @@ async function publishView(pointerInput, createdAt) {
     return viewResult;
   }
 
-  const actorCandidate =
+  let actorCandidate =
     viewResult?.event?.pubkey ||
     nostrClient?.pubkey ||
     nostrClient?.sessionActor?.pubkey ||
     "";
-  const actorKey = normalizeActorKey(actorCandidate);
+  let actorKey = normalizeActorKey(actorCandidate);
+  let usedSessionFallback = false;
+  if (!actorKey && typeof nostrClient?.ensureSessionActor === "function") {
+    await nostrClient.ensureSessionActor();
+    const sessionActorKey = normalizeActorKey(nostrClient?.sessionActor?.pubkey);
+    if (sessionActorKey) {
+      actorKey = sessionActorKey;
+      actorCandidate = nostrClient?.sessionActor?.pubkey || "";
+      usedSessionFallback = true;
+    }
+  }
   if (!actorKey) {
     userLogger.warn(
       "[watchHistoryService] Unable to resolve actor for watch list update.",
       { actorCandidate }
     );
     return viewResult;
+  }
+  if (usedSessionFallback) {
+    devLogger.info(
+      "[watchHistoryService] Using session actor fallback for watch history update.",
+      { actor: actorKey }
+    );
   }
 
   const queue = ensureQueue(actorKey);
