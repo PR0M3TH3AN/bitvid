@@ -178,4 +178,8 @@ export async function bootstrapTrustedSeeds() {
   if (accessControl && typeof accessControl.onEditorsChange === "function") {
     accessControl.onEditorsChange(applyOnChange);
   }
+
+  if (accessControl && typeof accessControl.onBlacklistChange === "function") {
+    accessControl.onBlacklistChange(applyOnChange);
+  }
 }

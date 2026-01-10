@@ -117,6 +117,7 @@ class AccessControl {
     this._hydratedFromCache = false;
     this._whitelistListeners = new Set();
     this._editorListeners = new Set();
+    this._blacklistListeners = new Set();
 
     this._scheduleHydrateFromCache();
   }
@@ -251,6 +252,8 @@ class AccessControl {
       this.editors instanceof Set ? new Set(this.editors) : new Set();
     const previousWhitelist =
       this.whitelist instanceof Set ? new Set(this.whitelist) : new Set();
+    const previousBlacklist =
+      this.blacklist instanceof Set ? new Set(this.blacklist) : new Set();
 
     this.editors = new Set(
       dedupeNpubs([...ADMIN_EDITORS_NPUBS, ...editors])
@@ -280,6 +283,7 @@ class AccessControl {
       return true;
     });
     this.blacklist = new Set(sanitizedBlacklist);
+    const blacklistChanged = !areSetsEqual(previousBlacklist, this.blacklist);
 
     const toolkitCandidate =
       (typeof window !== "undefined" ? window?.NostrTools : null) ||
@@ -326,6 +330,9 @@ class AccessControl {
     if (editorsChanged) {
       this._emitEditorsChange(Array.from(this.editors));
     }
+    if (blacklistChanged) {
+      this._emitBlacklistChange(Array.from(this.blacklist));
+    }
   }
 
   _emitWhitelistChange(whitelistValues) {
@@ -342,6 +349,24 @@ class AccessControl {
         listener(snapshot);
       } catch (error) {
         userLogger.error("accessControl whitelist listener failed", error);
+      }
+    }
+  }
+
+  _emitBlacklistChange(blacklistValues) {
+    if (!this._blacklistListeners.size) {
+      return;
+    }
+
+    const snapshot = Array.isArray(blacklistValues)
+      ? [...blacklistValues]
+      : this.getBlacklist();
+
+    for (const listener of Array.from(this._blacklistListeners)) {
+      try {
+        listener(snapshot);
+      } catch (error) {
+        userLogger.error("accessControl blacklist listener failed", error);
       }
     }
   }
@@ -482,6 +507,18 @@ class AccessControl {
 
     return () => {
       this._editorListeners.delete(listener);
+    };
+  }
+
+  onBlacklistChange(listener) {
+    if (typeof listener !== "function") {
+      return () => {};
+    }
+
+    this._blacklistListeners.add(listener);
+
+    return () => {
+      this._blacklistListeners.delete(listener);
     };
   }
 

@@ -520,9 +520,11 @@ export class ModerationService {
     }
 
     if (this.trustedSeedContacts instanceof Set) {
+      const adminSnapshot = this.getAdminListSnapshot();
+      const blacklistHex = adminSnapshot.blacklistHex;
       for (const seed of this.trustedSeedContacts) {
         const normalized = normalizeHex(seed);
-        if (normalized) {
+        if (normalized && (!blacklistHex || !blacklistHex.has(normalized))) {
           merged.add(normalized);
         }
       }
@@ -635,18 +637,20 @@ export class ModerationService {
 
   setTrustedSeeds(seeds = []) {
     const sanitizedSeeds = new Set();
+    const adminSnapshot = this.getAdminListSnapshot();
+    const blacklistHex = adminSnapshot.blacklistHex;
 
     if (seeds instanceof Set || Array.isArray(seeds)) {
       for (const candidate of seeds) {
         const normalized = normalizeToHex(candidate);
-        if (normalized) {
+        if (normalized && (!blacklistHex || !blacklistHex.has(normalized))) {
           sanitizedSeeds.add(normalized);
         }
       }
     } else if (seeds && typeof seeds[Symbol.iterator] === "function") {
       for (const candidate of seeds) {
         const normalized = normalizeToHex(candidate);
-        if (normalized) {
+        if (normalized && (!blacklistHex || !blacklistHex.has(normalized))) {
           sanitizedSeeds.add(normalized);
         }
       }
@@ -845,7 +849,7 @@ export class ModerationService {
 
     this.emit("trusted-mutes", { total: 0 });
 
-    this.rebuildTrustedContacts(new Set(), { previous });
+    this.rebuildTrustedContacts(new Set(), { previous: new Set() });
   }
 
   isTrustedMuteOwner(pubkey) {
