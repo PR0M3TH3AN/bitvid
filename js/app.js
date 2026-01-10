@@ -482,6 +482,21 @@ class Application {
 
       await Promise.all([accessControlPromise, adminPanePromise]);
 
+      if (!this.pubkey && nostrClient.sessionActor?.pubkey) {
+        const blacklist = accessControl.getBlacklist();
+        try {
+          await userBlocks.seedLocalBaseline(
+            nostrClient.sessionActor.pubkey,
+            Array.from(blacklist || []),
+          );
+        } catch (error) {
+          devLogger.warn(
+            "[app.init()] Failed to seed local baseline for session actor:",
+            error,
+          );
+        }
+      }
+
       // Grab the "Subscriptions" link by its id in the sidebar
       this.subscriptionsLink = document.getElementById("subscriptionsLink");
 
