@@ -520,9 +520,11 @@ export class ModerationService {
     }
 
     if (this.trustedSeedContacts instanceof Set) {
+      const adminSnapshot = this.getAdminListSnapshot();
+      const blacklistHex = adminSnapshot.blacklistHex;
       for (const seed of this.trustedSeedContacts) {
         const normalized = normalizeHex(seed);
-        if (normalized) {
+        if (normalized && (!blacklistHex || !blacklistHex.has(normalized))) {
           merged.add(normalized);
         }
       }
@@ -634,19 +636,22 @@ export class ModerationService {
   }
 
   setTrustedSeeds(seeds = []) {
+    this.log("[moderationService] setTrustedSeeds called", { count: seeds?.length || seeds?.size || 0 });
     const sanitizedSeeds = new Set();
+    const adminSnapshot = this.getAdminListSnapshot();
+    const blacklistHex = adminSnapshot.blacklistHex;
 
     if (seeds instanceof Set || Array.isArray(seeds)) {
       for (const candidate of seeds) {
         const normalized = normalizeToHex(candidate);
-        if (normalized) {
+        if (normalized && (!blacklistHex || !blacklistHex.has(normalized))) {
           sanitizedSeeds.add(normalized);
         }
       }
     } else if (seeds && typeof seeds[Symbol.iterator] === "function") {
       for (const candidate of seeds) {
         const normalized = normalizeToHex(candidate);
-        if (normalized) {
+        if (normalized && (!blacklistHex || !blacklistHex.has(normalized))) {
           sanitizedSeeds.add(normalized);
         }
       }
@@ -845,7 +850,7 @@ export class ModerationService {
 
     this.emit("trusted-mutes", { total: 0 });
 
-    this.rebuildTrustedContacts(new Set(), { previous });
+    this.rebuildTrustedContacts(new Set(), { previous: new Set() });
   }
 
   isTrustedMuteOwner(pubkey) {
@@ -863,6 +868,11 @@ export class ModerationService {
     const previous = previousSet instanceof Set ? new Set(previousSet) : new Set();
     const next = nextSet instanceof Set ? new Set(nextSet) : new Set();
 
+    this.log("[moderationService] reconcileTrustedMuteSubscriptions", {
+      previous: previous.size,
+      next: next.size,
+    });
+
     if (this.viewerPubkey) {
       if (this.trustedMuteSubscriptions.has(this.viewerPubkey)) {
         previous.add(this.viewerPubkey);
@@ -877,14 +887,12 @@ export class ModerationService {
     }
 
     for (const value of next) {
-      if (!previous.has(value)) {
-        this.subscribeToTrustedMuteList(value).catch((error) => {
-          this.log(
-            `(moderationService) failed to subscribe to trusted mute list for ${value}`,
-            error,
-          );
-        });
-      }
+      this.subscribeToTrustedMuteList(value).catch((error) => {
+        this.log(
+          `(moderationService) failed to subscribe to trusted mute list for ${value}`,
+          error,
+        );
+      });
     }
   }
 
@@ -923,8 +931,11 @@ export class ModerationService {
       }
       return;
     } else if (typeof record.unsub === "function") {
+      this.log(`[moderationService] already subscribed to ${normalized}`);
       return;
     }
+
+    this.log(`[moderationService] subscribing to trusted mute list for ${normalized}`);
 
     record.promise = (async () => {
       try {
@@ -943,6 +954,7 @@ export class ModerationService {
 
       const relays = resolveRelayList(this.nostrClient);
       if (!relays.length) {
+        this.log(`[moderationService] no relays available for ${normalized}`);
         return;
       }
 
@@ -987,6 +999,7 @@ export class ModerationService {
         });
         sub.on("eose", () => {});
         record.unsub = typeof sub.unsub === "function" ? () => sub.unsub() : null;
+        this.log(`[moderationService] subscribed to trusted mute list for ${normalized}`);
       } catch (error) {
         this.log(
           `(moderationService) failed to subscribe to trusted mute list for ${normalized}`,
@@ -1149,6 +1162,7 @@ export class ModerationService {
       return;
     }
 
+    this.log(`[moderationService] ingesting trusted mute event from ${owner} (${event.id})`);
     this.applyTrustedMuteEvent(owner, event);
   }
 
