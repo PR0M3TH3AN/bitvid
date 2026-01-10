@@ -66,6 +66,7 @@ const BACKGROUND_BLOCKLIST_TIMEOUT_MS = 6000;
 
 const BLOCKLIST_STORAGE_PREFIX = "bitvid:user-blocks";
 const BLOCKLIST_SEEDED_KEY_PREFIX = `${BLOCKLIST_STORAGE_PREFIX}:seeded:v1`;
+const BLOCKLIST_LOCAL_SEEDED_KEY_PREFIX = `${BLOCKLIST_STORAGE_PREFIX}:seeded-local:v1`;
 const BLOCKLIST_REMOVALS_KEY_PREFIX = `${BLOCKLIST_STORAGE_PREFIX}:removals:v1`;
 
 function normalizeEncryptionToken(value) {
@@ -429,6 +430,29 @@ function readSeededFlag(actorHex) {
   }
 }
 
+function readLocalSeededFlag(actorHex) {
+  if (typeof actorHex !== "string" || !actorHex) {
+    return false;
+  }
+
+  if (typeof localStorage === "undefined") {
+    return false;
+  }
+
+  const key = `${BLOCKLIST_LOCAL_SEEDED_KEY_PREFIX}:${actorHex}`;
+
+  try {
+    const value = localStorage.getItem(key);
+    return value === "1";
+  } catch (error) {
+    userLogger.warn(
+      `[UserBlockList] Failed to read local seed baseline state for ${actorHex}:`,
+      error,
+    );
+    return false;
+  }
+}
+
 function writeSeededFlag(actorHex, seeded) {
   if (typeof actorHex !== "string" || !actorHex) {
     return;
@@ -449,6 +473,31 @@ function writeSeededFlag(actorHex, seeded) {
   } catch (error) {
     userLogger.warn(
       `[UserBlockList] Failed to persist seeded baseline state for ${actorHex}:`,
+      error,
+    );
+  }
+}
+
+function writeLocalSeededFlag(actorHex, seeded) {
+  if (typeof actorHex !== "string" || !actorHex) {
+    return;
+  }
+
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+
+  const key = `${BLOCKLIST_LOCAL_SEEDED_KEY_PREFIX}:${actorHex}`;
+
+  try {
+    if (seeded) {
+      localStorage.setItem(key, "1");
+    } else {
+      localStorage.removeItem(key);
+    }
+  } catch (error) {
+    userLogger.warn(
+      `[UserBlockList] Failed to persist local baseline state for ${actorHex}:`,
       error,
     );
   }
@@ -1161,7 +1210,7 @@ class UserBlockListManager {
   _getSeedState(actorHex) {
     const normalized = normalizeHex(actorHex);
     if (!normalized) {
-      return { seeded: false, removals: new Set() };
+      return { seeded: false, localSeeded: false, removals: new Set() };
     }
 
     if (this.seedStateCache.has(normalized)) {
@@ -1169,8 +1218,9 @@ class UserBlockListManager {
     }
 
     const seeded = readSeededFlag(normalized);
+    const localSeeded = readLocalSeededFlag(normalized);
     const removals = readRemovalSet(normalized);
-    const state = { seeded, removals };
+    const state = { seeded, localSeeded, removals };
     this.seedStateCache.set(normalized, state);
     return state;
   }
@@ -1184,6 +1234,17 @@ class UserBlockListManager {
     const state = this._getSeedState(normalized);
     state.seeded = Boolean(seeded);
     writeSeededFlag(normalized, state.seeded);
+  }
+
+  _setLocalSeeded(actorHex, seeded) {
+    const normalized = normalizeHex(actorHex);
+    if (!normalized) {
+      return;
+    }
+
+    const state = this._getSeedState(normalized);
+    state.localSeeded = Boolean(seeded);
+    writeLocalSeededFlag(normalized, state.localSeeded);
   }
 
   _addSeedRemoval(actorHex, targetHex) {
@@ -1274,6 +1335,64 @@ class UserBlockListManager {
       });
     } catch (error) {
       userLogger.warn("[UserBlockList] Failed to emit seed change event:", error);
+    }
+
+    return { ok: true, seeded: true, addedPubkeys: Array.from(additions) };
+  }
+
+  async seedLocalBaseline(userPubkey, candidateNpubs = []) {
+    const actorHex = normalizeHex(userPubkey);
+    if (!actorHex) {
+      return { ok: false, seeded: false, reason: "invalid-user" };
+    }
+
+    const state = this._getSeedState(actorHex);
+    if (state.localSeeded) {
+      return { ok: true, seeded: false, reason: "already-seeded" };
+    }
+
+    const removals = state.removals;
+    const additions = new Set();
+
+    const candidates = Array.isArray(candidateNpubs) ? candidateNpubs : [];
+    for (const candidate of candidates) {
+      const candidateHex = normalizeHex(candidate);
+      if (!candidateHex) {
+        continue;
+      }
+      if (candidateHex === actorHex) {
+        continue;
+      }
+      if (this.blockedPubkeys.has(candidateHex)) {
+        continue;
+      }
+      if (removals.has(candidateHex)) {
+        continue;
+      }
+      additions.add(candidateHex);
+    }
+
+    if (!additions.size) {
+      return { ok: true, seeded: false, reason: "no-candidates" };
+    }
+
+    additions.forEach((hex) => this.blockedPubkeys.add(hex));
+
+    this._setLocalSeeded(actorHex, true);
+    additions.forEach((hex) => this._clearSeedRemoval(actorHex, hex));
+
+    try {
+      this.emitter.emit(USER_BLOCK_EVENTS.CHANGE, {
+        action: "local-seed",
+        actorPubkey: actorHex,
+        blockedPubkeys: Array.from(this.blockedPubkeys),
+        addedPubkeys: Array.from(additions),
+      });
+    } catch (error) {
+      userLogger.warn(
+        "[UserBlockList] Failed to emit local seed change event:",
+        error,
+      );
     }
 
     return { ok: true, seeded: true, addedPubkeys: Array.from(additions) };

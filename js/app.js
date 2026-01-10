@@ -467,6 +467,22 @@ class Application {
 
       await Promise.all([accessControlPromise, adminPanePromise]);
 
+      try {
+        const clientPubkey = this.normalizeHexPubkey(nostrClient?.pubkey);
+        const sessionActorPubkey = this.normalizeHexPubkey(
+          nostrClient?.sessionActor?.pubkey,
+        );
+        if (!clientPubkey && sessionActorPubkey) {
+          const aggregatedBlacklist = accessControl.getBlacklist();
+          await userBlocks.seedLocalBaseline(
+            sessionActorPubkey,
+            Array.isArray(aggregatedBlacklist) ? aggregatedBlacklist : [],
+          );
+        }
+      } catch (error) {
+        devLogger.warn("[app.init()] Local baseline block seed failed:", error);
+      }
+
       // Grab the "Subscriptions" link by its id in the sidebar
       this.subscriptionsLink = document.getElementById("subscriptionsLink");
 
