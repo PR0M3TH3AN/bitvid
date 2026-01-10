@@ -639,19 +639,20 @@ export class ModerationService {
     this.log("[moderationService] setTrustedSeeds called", { count: seeds?.length || seeds?.size || 0 });
     const sanitizedSeeds = new Set();
     const adminSnapshot = this.getAdminListSnapshot();
-    const blacklistHex = adminSnapshot.blacklistHex;
 
     if (seeds instanceof Set || Array.isArray(seeds)) {
       for (const candidate of seeds) {
         const normalized = normalizeToHex(candidate);
-        if (normalized && (!blacklistHex || !blacklistHex.has(normalized))) {
+        const status = this.getAccessControlStatus(candidate, adminSnapshot);
+        if (normalized && !status.blacklisted) {
           sanitizedSeeds.add(normalized);
         }
       }
     } else if (seeds && typeof seeds[Symbol.iterator] === "function") {
       for (const candidate of seeds) {
         const normalized = normalizeToHex(candidate);
-        if (normalized && (!blacklistHex || !blacklistHex.has(normalized))) {
+        const status = this.getAccessControlStatus(candidate, adminSnapshot);
+        if (normalized && !status.blacklisted) {
           sanitizedSeeds.add(normalized);
         }
       }
