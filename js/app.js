@@ -2651,6 +2651,18 @@ class Application {
    * Setup general event listeners for logout, modals, etc.
    */
   setupEventListeners() {
+    if (moderationService && typeof moderationService.on === "function") {
+      moderationService.on("trusted-mutes", () => {
+        this.refreshVisibleModerationUi({ reason: "trusted-mutes" });
+      });
+      moderationService.on("user-blocks", () => {
+        this.refreshVisibleModerationUi({ reason: "user-blocks" });
+      });
+      moderationService.on("summary", () => {
+        this.refreshVisibleModerationUi({ reason: "moderation-summary" });
+      });
+    }
+
     if (this.appChromeController) {
       this.appChromeController.initialize();
       return;
