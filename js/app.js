@@ -328,7 +328,22 @@ class Application {
   isAuthorBlocked(pubkey) {
     try {
       if (userBlocks && typeof userBlocks.isBlocked === "function") {
-        return userBlocks.isBlocked(pubkey);
+        if (userBlocks.isBlocked(pubkey)) {
+          return true;
+        }
+      }
+
+      if (!this.isUserLoggedIn()) {
+        const normalized = this.normalizeHexPubkey(pubkey);
+        if (
+          normalized &&
+          moderationService &&
+          typeof moderationService.isAuthorMutedByTrusted === "function"
+        ) {
+          if (moderationService.isAuthorMutedByTrusted(normalized)) {
+            return true;
+          }
+        }
       }
     } catch (error) {
       devLogger.warn("[Application] Failed to evaluate block status:", error);
@@ -2653,7 +2668,11 @@ class Application {
   setupEventListeners() {
     if (moderationService && typeof moderationService.on === "function") {
       moderationService.on("trusted-mutes", () => {
-        this.refreshVisibleModerationUi({ reason: "trusted-mutes" });
+        if (!this.isUserLoggedIn()) {
+          this.refreshAllVideoGrids({ reason: "trusted-mutes" });
+        } else {
+          this.refreshVisibleModerationUi({ reason: "trusted-mutes" });
+        }
       });
       moderationService.on("user-blocks", () => {
         this.refreshVisibleModerationUi({ reason: "user-blocks" });
