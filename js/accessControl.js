@@ -243,6 +243,7 @@ class AccessControl {
   }
 
   _applyState(state, options = {}) {
+    userLogger.info("[accessControl] _applyState called", { state, options });
     const markLoaded = options.markLoaded !== false;
     const editors = Array.isArray(state?.editors) ? state.editors : [];
     const whitelist = Array.isArray(state?.whitelist) ? state.whitelist : [];
@@ -421,9 +422,11 @@ class AccessControl {
 
   refresh() {
     if (this._isRefreshing) {
+      userLogger.info("[accessControl] refresh ignored (already refreshing)");
       return this._refreshPromise;
     }
 
+    userLogger.info("[accessControl] refresh started");
     const operation = this._performRefresh();
     const tracked = operation.catch((error) => {
       userLogger.error("Failed to refresh admin lists:", error);
@@ -440,8 +443,10 @@ class AccessControl {
 
     try {
       await this._refreshPromise;
+      userLogger.info("[accessControl] ensureReady resolved");
     } catch (error) {
       if (!this.hasLoaded) {
+        userLogger.warn("[accessControl] ensureReady retry");
         await this.refresh();
         await this._refreshPromise;
       } else {
