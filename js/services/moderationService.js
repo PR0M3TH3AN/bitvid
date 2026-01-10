@@ -817,12 +817,7 @@ export class ModerationService {
   }
 
   clearTrustedMuteTracking({ previousContacts = null } = {}) {
-    const previous =
-      previousContacts instanceof Set
-        ? new Set(previousContacts)
-        : this.trustedContacts instanceof Set
-        ? new Set(this.trustedContacts)
-        : new Set();
+    void previousContacts;
 
     for (const [pubkey, entry] of this.trustedMuteSubscriptions.entries()) {
       if (entry && typeof entry.unsub === "function") {
@@ -850,7 +845,8 @@ export class ModerationService {
 
     this.emit("trusted-mutes", { total: 0 });
 
-    this.rebuildTrustedContacts(new Set(), { previous: new Set() });
+    const emptyPrevious = new Set();
+    this.rebuildTrustedContacts(new Set(), { previous: emptyPrevious });
   }
 
   isTrustedMuteOwner(pubkey) {
