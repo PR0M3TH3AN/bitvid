@@ -241,6 +241,9 @@ class Application {
     );
 
     this.initializeModerationActionController();
+    this.moderationEventUnsubscribes = [];
+    this.moderationRefreshTimeout = null;
+    this.pendingModerationRefresh = null;
   }
 
   get modalVideo() {
@@ -491,6 +494,7 @@ class Application {
 
       // 5. Setup general event listeners
       this.setupEventListeners();
+      this.setupModerationEventListeners();
 
       const watchHistoryInitPromise =
         this.watchHistoryTelemetry?.initPreferenceSync?.().catch((error) => {
@@ -2659,6 +2663,110 @@ class Application {
     devLogger.warn(
       "[Application] AppChromeController missing; global UI events were not bound.",
     );
+  }
+
+  setupModerationEventListeners() {
+    this.teardownModerationEventListeners();
+
+    if (!moderationService || typeof moderationService.on !== "function") {
+      return;
+    }
+
+    const register = (eventName, handler) => {
+      try {
+        const unsubscribe = moderationService.on(eventName, handler);
+        if (typeof unsubscribe === "function") {
+          this.moderationEventUnsubscribes.push(unsubscribe);
+        }
+      } catch (error) {
+        devLogger.warn(
+          `[Application] Failed to subscribe to moderation service "${eventName}" event:`,
+          error,
+        );
+      }
+    };
+
+    register("trusted-mutes", () => {
+      this.queueModerationRefresh({ reason: "trusted-mutes", refreshVideos: true });
+    });
+
+    register("summary", () => {
+      this.queueModerationRefresh({ reason: "summary" });
+    });
+  }
+
+  teardownModerationEventListeners() {
+    if (this.moderationRefreshTimeout) {
+      clearTimeout(this.moderationRefreshTimeout);
+      this.moderationRefreshTimeout = null;
+    }
+    this.pendingModerationRefresh = null;
+
+    if (!Array.isArray(this.moderationEventUnsubscribes)) {
+      this.moderationEventUnsubscribes = [];
+      return;
+    }
+
+    while (this.moderationEventUnsubscribes.length) {
+      const unsubscribe = this.moderationEventUnsubscribes.pop();
+      if (typeof unsubscribe === "function") {
+        try {
+          unsubscribe();
+        } catch (error) {
+          devLogger.warn(
+            "[Application] Failed to unsubscribe moderation service listener:",
+            error,
+          );
+        }
+      }
+    }
+  }
+
+  queueModerationRefresh({ reason, refreshVideos = false } = {}) {
+    const normalizedReason =
+      typeof reason === "string" && reason.trim()
+        ? reason.trim()
+        : "moderation-refresh";
+
+    const pending = this.pendingModerationRefresh || {
+      reason: normalizedReason,
+      refreshVideos: false,
+    };
+    pending.reason = normalizedReason;
+    pending.refreshVideos = pending.refreshVideos || refreshVideos;
+    this.pendingModerationRefresh = pending;
+
+    if (this.moderationRefreshTimeout) {
+      return;
+    }
+
+    this.moderationRefreshTimeout = setTimeout(() => {
+      const snapshot = this.pendingModerationRefresh || {
+        reason: normalizedReason,
+        refreshVideos: false,
+      };
+
+      this.pendingModerationRefresh = null;
+      this.moderationRefreshTimeout = null;
+
+      try {
+        this.refreshVisibleModerationUi({ reason: snapshot.reason });
+      } catch (error) {
+        devLogger.warn(
+          `[Application] Failed to refresh moderation UI after ${snapshot.reason}:`,
+          error,
+        );
+      }
+
+      if (snapshot.refreshVideos) {
+        this.onVideosShouldRefresh({ reason: snapshot.reason }).catch((error) => {
+          devLogger.warn(
+            `[Application] Failed to refresh videos after ${snapshot.reason}:`,
+            error,
+          );
+        });
+      }
+    }, 200);
   }
 
   mountVideoListView(container = null) {
@@ -9632,6 +9740,7 @@ class Application {
     this.clearActiveIntervals();
     this.teardownModalViewCountSubscription();
     this.videoModalReadyPromise = null;
+    this.teardownModerationEventListeners();
 
     if (this.moderationActionController) {
       try {
