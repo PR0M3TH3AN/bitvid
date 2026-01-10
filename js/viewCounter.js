@@ -49,7 +49,7 @@ restoreCacheSnapshot();
  * @property {number} total
  * @property {Map<string, number>} dedupeBuckets
  * @property {number} lastSyncedAt
- * @property {"idle"|"hydrating"|"live"} status
+ * @property {"idle"|"hydrating"|"live"|"stale"} status
  */
 
 /**
@@ -482,7 +482,8 @@ async function hydratePointer(key, listeners) {
     }
   }
   let mutated = false;
-  if (Array.isArray(listResult)) {
+  const hasListEvents = Array.isArray(listResult) && listResult.length > 0;
+  if (hasListEvents) {
     for (const event of listResult) {
       mutated = applyEventToState(key, event) || mutated;
     }
@@ -502,6 +503,13 @@ async function hydratePointer(key, listeners) {
       mutated = true;
     }
   }
+  if (!hasListEvents && bestCount === null) {
+    const state = ensurePointerState(key);
+    state.status = "stale";
+    schedulePersist();
+    notifyHandlers(key);
+    return;
+  }
   if (mutated) {
     schedulePersist();
     notifyHandlers(key);
@@ -518,8 +526,11 @@ function ensureHydration(key, listeners) {
   if (!listeners.hydrationPromise) {
     listeners.hydrationPromise = hydratePointer(key, listeners).finally(() => {
       listeners.hydrationPromise = null;
+      const state = ensurePointerState(key);
       if (listeners.liveUnsub) {
         setPointerStatus(key, "live");
+      } else if (state.status === "stale") {
+        setPointerStatus(key, "stale");
       } else {
         setPointerStatus(key, "idle");
       }
