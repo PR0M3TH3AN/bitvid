@@ -446,6 +446,19 @@ function ensureNumber(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function resolveStorage() {
+  if (typeof localStorage !== "undefined") {
+    return localStorage;
+  }
+  if (typeof window !== "undefined" && window.localStorage) {
+    return window.localStorage;
+  }
+  if (typeof globalThis !== "undefined" && globalThis.localStorage) {
+    return globalThis.localStorage;
+  }
+  return null;
+}
+
 export class ModerationService {
   constructor({
     nostrClient: client = null,
@@ -459,6 +472,7 @@ export class ModerationService {
     this.userLogger = normalizeUserLogger(userChannel);
 
     this.viewerPubkey = "";
+    this.viewerIsSessionActor = false;
     this.trustedContacts = new Set();
     this.trustedSeedContacts = new Set();
     this.viewerContacts = new Set();
@@ -1175,6 +1189,85 @@ export class ModerationService {
     return this.viewerMuteList.has(normalized);
   }
 
+  loadLocalMutes(pubkey) {
+    const normalized = normalizeHex(pubkey);
+    if (!normalized) {
+      return;
+    }
+
+    const storage = resolveStorage();
+    if (!storage) {
+      return;
+    }
+
+    const key = `bitvid:user-mutes:local:v1:${normalized}`;
+    let loaded = [];
+
+    try {
+      const raw = storage.getItem(key);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          loaded = parsed;
+        }
+      }
+    } catch (error) {
+      this.log(
+        `[moderationService] failed to load local mutes for ${normalized}`,
+        error,
+      );
+    }
+
+    const mutes = new Set();
+    for (const item of loaded) {
+      const target = normalizeHex(item);
+      if (target && target !== normalized) {
+        mutes.add(target);
+      }
+    }
+
+    this.replaceTrustedMuteList(normalized, mutes, {
+      createdAt: Date.now() / 1000,
+      eventId: `local-${Date.now()}`,
+    });
+  }
+
+  saveLocalMutes(pubkey, muteSet) {
+    const normalized = normalizeHex(pubkey);
+    if (!normalized) {
+      return;
+    }
+
+    const storage = resolveStorage();
+    if (!storage) {
+      return;
+    }
+
+    const list = [];
+    if (muteSet instanceof Set || Array.isArray(muteSet)) {
+      for (const item of muteSet) {
+        const target = normalizeHex(item);
+        if (target && target !== normalized) {
+          list.push(target);
+        }
+      }
+    }
+
+    const key = `bitvid:user-mutes:local:v1:${normalized}`;
+    try {
+      if (!list.length) {
+        storage.removeItem(key);
+      } else {
+        storage.setItem(key, JSON.stringify(list));
+      }
+    } catch (error) {
+      this.log(
+        `[moderationService] failed to save local mutes for ${normalized}`,
+        error,
+      );
+    }
+  }
+
   async ensureViewerMuteListLoaded(pubkey = this.viewerPubkey) {
     const normalized = normalizeHex(pubkey);
     if (!normalized) {
@@ -1185,6 +1278,11 @@ export class ModerationService {
     }
 
     if (this.trustedMuteLists.has(normalized)) {
+      return;
+    }
+
+    if (this.viewerIsSessionActor && normalized === this.viewerPubkey) {
+      this.loadLocalMutes(normalized);
       return;
     }
 
@@ -1219,6 +1317,15 @@ export class ModerationService {
       const error = new Error("viewer-not-logged-in");
       error.code = "viewer-not-logged-in";
       throw error;
+    }
+
+    if (this.viewerIsSessionActor && viewer === this.viewerPubkey) {
+      this.saveLocalMutes(viewer, muted);
+      this.replaceTrustedMuteList(viewer, muted, {
+        createdAt: Date.now() / 1000,
+        eventId: `local-${Date.now()}`,
+      });
+      return { ok: true, event: null, results: [] };
     }
 
     await this.ensurePool();
@@ -1527,7 +1634,9 @@ export class ModerationService {
   }
 
   async refreshViewerFromClient() {
-    const clientPubkey = normalizeHex(this.nostrClient?.pubkey);
+    const clientPubkey = normalizeHex(
+      this.nostrClient?.pubkey || this.nostrClient?.sessionActor?.pubkey,
+    );
     if (clientPubkey === this.viewerPubkey) {
       if (this.contactListPromise) {
         try {
@@ -1557,6 +1666,13 @@ export class ModerationService {
       this.trustedContacts instanceof Set ? new Set(this.trustedContacts) : new Set();
 
     this.viewerPubkey = normalized;
+
+    const loggedInPubkey = normalizeHex(this.nostrClient?.pubkey);
+    const sessionPubkey = normalizeHex(this.nostrClient?.sessionActor?.pubkey);
+
+    this.viewerIsSessionActor =
+      !!normalized && !loggedInPubkey && normalized === sessionPubkey;
+
     this.clearTrustedMuteTracking({ previousContacts });
 
     if (this.contactSubscription && typeof this.contactSubscription.unsub === "function") {
@@ -2127,7 +2243,10 @@ export class ModerationService {
       throw error;
     }
 
-    const reporterPubkey = normalizeHex(this.nostrClient?.pubkey);
+    const reporterPubkey = normalizeHex(
+      this.nostrClient?.pubkey || this.nostrClient?.sessionActor?.pubkey,
+    );
+
     if (!reporterPubkey) {
       const error = new Error("viewer-not-logged-in");
       error.code = "viewer-not-logged-in";
@@ -2141,14 +2260,19 @@ export class ModerationService {
       throw error;
     }
 
-    const extension = typeof window !== "undefined" ? window.nostr : null;
-    if (!extension) {
-      const error = new Error("nostr-extension-missing");
-      error.code = "nostr-extension-missing";
+    const signer = await this.nostrClient.ensureActiveSignerForPubkey(
+      reporterPubkey,
+    );
+    if (!signer || typeof signer.signEvent !== "function") {
+      const error = new Error("signer-unavailable");
+      error.code = "signer-unavailable";
       throw error;
     }
 
-    if (typeof this.nostrClient?.ensureExtensionPermissions === "function") {
+    if (
+      signer.type === "extension" &&
+      typeof this.nostrClient?.ensureExtensionPermissions === "function"
+    ) {
       const permissionResult = await this.nostrClient.ensureExtensionPermissions([
         "sign_event",
         "get_public_key",
@@ -2185,7 +2309,7 @@ export class ModerationService {
 
     let signedEvent;
     try {
-      signedEvent = await extension.signEvent(event);
+      signedEvent = await signer.signEvent(event);
     } catch (error) {
       const wrapped = new Error("signature-failed");
       wrapped.code = "signature-failed";

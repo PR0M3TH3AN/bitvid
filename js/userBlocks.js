@@ -69,6 +69,19 @@ const BLOCKLIST_SEEDED_KEY_PREFIX = `${BLOCKLIST_STORAGE_PREFIX}:seeded:v1`;
 const BLOCKLIST_REMOVALS_KEY_PREFIX = `${BLOCKLIST_STORAGE_PREFIX}:removals:v1`;
 const BLOCKLIST_LOCAL_KEY_PREFIX = `${BLOCKLIST_STORAGE_PREFIX}:local:v1`;
 
+function resolveStorage() {
+  if (typeof localStorage !== "undefined") {
+    return localStorage;
+  }
+  if (typeof window !== "undefined" && window.localStorage) {
+    return window.localStorage;
+  }
+  if (typeof globalThis !== "undefined" && globalThis.localStorage) {
+    return globalThis.localStorage;
+  }
+  return null;
+}
+
 function normalizeEncryptionToken(value) {
   if (typeof value !== "string") {
     return "";
@@ -498,7 +511,8 @@ function writeRemovalSet(actorHex, removals) {
     return;
   }
 
-  if (typeof localStorage === "undefined") {
+  const storage = resolveStorage();
+  if (!storage) {
     return;
   }
 
@@ -538,19 +552,6 @@ function normalizeHex(pubkey) {
     return decoded;
   }
 
-  return null;
-}
-
-function resolveStorage() {
-  if (typeof localStorage !== "undefined") {
-    return localStorage;
-  }
-  if (typeof window !== "undefined" && window.localStorage) {
-    return window.localStorage;
-  }
-  if (typeof globalThis !== "undefined" && globalThis.localStorage) {
-    return globalThis.localStorage;
-  }
   return null;
 }
 
@@ -598,7 +599,8 @@ function writeLocalBlocks(actorHex, blocks) {
     return;
   }
 
-  if (typeof localStorage === "undefined") {
+  const storage = resolveStorage();
+  if (!storage) {
     return;
   }
 
@@ -1469,6 +1471,22 @@ class UserBlockListManager {
     const snapshot = new Set(this.blockedPubkeys);
     this.blockedPubkeys.add(targetHex);
 
+    const loggedInPubkey = normalizeHex(nostrClient?.pubkey);
+    const sessionPubkey = normalizeHex(nostrClient?.sessionActor?.pubkey);
+    const isSessionActor =
+      !!actorHex && !loggedInPubkey && actorHex === sessionPubkey;
+
+    if (isSessionActor) {
+      this._saveLocal(actorHex);
+      this.emitter.emit(USER_BLOCK_EVENTS.CHANGE, {
+        action: "block",
+        targetPubkey: targetHex,
+        actorPubkey: actorHex,
+      });
+      this._clearSeedRemoval(actorHex, targetHex);
+      return { ok: true };
+    }
+
     try {
       await this.publishBlockList(actorHex);
       this.emitter.emit(USER_BLOCK_EVENTS.CHANGE, {
@@ -1503,6 +1521,22 @@ class UserBlockListManager {
 
     const snapshot = new Set(this.blockedPubkeys);
     this.blockedPubkeys.delete(targetHex);
+
+    const loggedInPubkey = normalizeHex(nostrClient?.pubkey);
+    const sessionPubkey = normalizeHex(nostrClient?.sessionActor?.pubkey);
+    const isSessionActor =
+      !!actorHex && !loggedInPubkey && actorHex === sessionPubkey;
+
+    if (isSessionActor) {
+      this._saveLocal(actorHex);
+      this.emitter.emit(USER_BLOCK_EVENTS.CHANGE, {
+        action: "unblock",
+        targetPubkey: targetHex,
+        actorPubkey: actorHex,
+      });
+      this._addSeedRemoval(actorHex, targetHex);
+      return { ok: true };
+    }
 
     try {
       await this.publishBlockList(actorHex);
