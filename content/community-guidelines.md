@@ -88,7 +88,7 @@ You can manage moderation directly from the client using the existing menus rend
 
 ### **5.5 Safety & Moderation thresholds**
 
-- Open your profile avatar → **Profile** → **Safety & Moderation** to adjust blur and autoplay thresholds. Leave a field blank to return to the defaults exported from [`config/instance-config.js`](../config/instance-config.js) (`DEFAULT_BLUR_THRESHOLD`, `DEFAULT_AUTOPLAY_BLOCK_THRESHOLD`, `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD`, `DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD`). The upstream repo ships example values of 3 trusted reports for blur, 2 for autoplay blocking, 1 trusted mute to hide authors, and 3 trusted spam reports to hide videos—tune the config file before deployment if your community needs different baselines.
+- Open your profile avatar → **Profile** → **Safety & Moderation** to adjust blur and autoplay thresholds. Leave a field blank to return to the defaults exported from [`config/instance-config.js`](../config/instance-config.js) (`DEFAULT_BLUR_THRESHOLD`, `DEFAULT_AUTOPLAY_BLOCK_THRESHOLD`, `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD`, `DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD`). The upstream repo ships example values of 1 trusted report for blur, 1 for autoplay blocking, 20 trusted mutes to hide authors, and 1 trusted spam report to hide videos—tune the config file before deployment if your community needs different baselines.
 - These controls update immediately and sync with the moderation overlays applied by `moreMenuController` and `VideoCard` components. Operators can edit the config file to change the baseline before deploying their own instance.
 
 ## **6. Appeals and Feedback**

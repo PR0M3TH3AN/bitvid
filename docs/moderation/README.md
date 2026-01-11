@@ -50,7 +50,7 @@ Thread new moderation behaviors through the same service → stage → app → U
 - Opt-in admin lists (30000 with `d=bitvid:admin:*`) can hard-hide content, but whitelist entries no longer bypass moderation gates—they only influence Discovery rankings when a viewer opts into that list.
 - Trust seeds now come from the Super Admin plus every active moderator, so their reports shape anonymous/default visitor filters automatically. The `DEFAULT_TRUST_SEED_NPUBS` export only activates as an emergency fallback when those live lists cannot be loaded (toggle via `FEATURE_TRUST_SEEDS`).
 
-> Default thresholds now come directly from [`config/instance-config.js`](../../config/instance-config.js). Look for the exports `DEFAULT_BLUR_THRESHOLD`, `DEFAULT_AUTOPLAY_BLOCK_THRESHOLD`, `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD`, and `DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD` to adjust the instance-wide behavior before deploying. The upstream repo currently publishes example values of 3 trusted reports for blur, 2 for autoplay blocking, 1 trusted mute to hide authors, and 3 trusted spam reports to hide videos.
+> Default thresholds now come directly from [`config/instance-config.js`](../../config/instance-config.js). Look for the exports `DEFAULT_BLUR_THRESHOLD`, `DEFAULT_AUTOPLAY_BLOCK_THRESHOLD`, `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD`, and `DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD` to adjust the instance-wide behavior before deploying. The upstream repo currently publishes example values of 1 trusted report for blur, 1 for autoplay blocking, 20 trusted mutes to hide authors, and 1 trusted spam report to hide videos.
 
 > Operators can still override these thresholds on a per-viewer basis in **Settings → Safety & Moderation**; leaving the UI fields blank restores the config-driven defaults. Update [`config/instance-config.js`](../../config/instance-config.js) to change what new viewers receive out of the box.
 
@@ -86,8 +86,8 @@ The profile modal now exposes blur, autoplay, and hide thresholds so operators c
 
 ### Runtime flags
 
-- `TRUSTED_MUTE_HIDE_THRESHOLD` — numeric default for the trusted mute hide control. Initialized from `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD` in [`config/instance-config.js`](../../config/instance-config.js); the upstream config sets this to `1`, but adjust the export to match your policy.
-- `TRUSTED_SPAM_HIDE_THRESHOLD` — numeric default for the trusted spam hide control. Initialized from `DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD` in [`config/instance-config.js`](../../config/instance-config.js); the upstream config example is `3`.
+- `TRUSTED_MUTE_HIDE_THRESHOLD` — numeric default for the trusted mute hide control. Initialized from `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD` in [`config/instance-config.js`](../../config/instance-config.js); the upstream config sets this to `20`, but adjust the export to match your policy.
+- `TRUSTED_SPAM_HIDE_THRESHOLD` — numeric default for the trusted spam hide control. Initialized from `DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD` in [`config/instance-config.js`](../../config/instance-config.js); the upstream config example is `1`.
 - `FEATURE_TRUSTED_HIDE_CONTROLS` — boolean toggle to hide/show the new trusted hide controls in the UI (default `true`).
 
 ## Files in this folder

@@ -150,7 +150,7 @@ test("trusted mute lists from seeds hide authors for anonymous viewers", async (
     service,
     autoplayThreshold: DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
     blurThreshold: DEFAULT_BLUR_THRESHOLD,
-    trustedMuteHideThreshold: DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
+    trustedMuteHideThreshold: 1, // Override to ensure hiding triggers with a single mute
     reportType: "nudity",
   });
 
