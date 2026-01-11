@@ -482,19 +482,38 @@ class Application {
 
       await Promise.all([accessControlPromise, adminPanePromise]);
 
-      if (!this.pubkey && nostrClient.sessionActor?.pubkey) {
+      const syncSessionActorBlacklist = async (trigger) => {
+        if (this.pubkey) {
+          return;
+        }
+
+        const sessionActorPubkey = nostrClient.sessionActor?.pubkey;
+        if (!sessionActorPubkey) {
+          return;
+        }
+
         const blacklist = accessControl.getBlacklist();
         try {
-          await userBlocks.seedLocalBaseline(
-            nostrClient.sessionActor.pubkey,
+          await userBlocks.seedBaselineDelta(
+            sessionActorPubkey,
             Array.from(blacklist || []),
           );
         } catch (error) {
           devLogger.warn(
-            "[app.init()] Failed to seed local baseline for session actor:",
+            `[app.init()] Failed to sync session actor blacklist${
+              trigger ? ` (${trigger})` : ""
+            }:`,
             error,
           );
         }
+      };
+
+      await syncSessionActorBlacklist("post-refresh");
+
+      if (typeof accessControl.onBlacklistChange === "function") {
+        accessControl.onBlacklistChange(() => {
+          syncSessionActorBlacklist("blacklist-change");
+        });
       }
 
       // Grab the "Subscriptions" link by its id in the sidebar
