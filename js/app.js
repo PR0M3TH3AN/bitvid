@@ -508,6 +508,53 @@ class Application {
         }
       };
 
+      const handleSessionActorReady = async ({ pubkey, reason } = {}) => {
+        if (this.pubkey) {
+          return;
+        }
+
+        const normalizedPubkey = this.normalizeHexPubkey(pubkey);
+        if (!normalizedPubkey) {
+          return;
+        }
+
+        const triggerLabel = reason ? `session-actor-${reason}` : "session-actor";
+        await syncSessionActorBlacklist(triggerLabel);
+
+        const refreshReason = "session-actor-ready";
+        if (typeof this.refreshVisibleModerationUi === "function") {
+          try {
+            this.refreshVisibleModerationUi({ reason: refreshReason });
+          } catch (error) {
+            devLogger.warn(
+              "[app.init()] Failed to refresh moderation UI after session actor:",
+              error,
+            );
+          }
+        } else {
+          this.refreshAllVideoGrids({
+            reason: refreshReason,
+            forceMainReload: true,
+          }).catch((error) => {
+            devLogger.warn(
+              "[app.init()] Failed to refresh video grids after session actor:",
+              error,
+            );
+          });
+        }
+      };
+
+      if (typeof nostrClient.onSessionActorChange === "function") {
+        nostrClient.onSessionActorChange((detail) => {
+          handleSessionActorReady(detail).catch((error) => {
+            devLogger.warn(
+              "[app.init()] Failed to process session actor change:",
+              error,
+            );
+          });
+        });
+      }
+
       await syncSessionActorBlacklist("post-refresh");
 
       if (typeof accessControl.onBlacklistChange === "function") {
