@@ -386,6 +386,21 @@ function isUserBlockListEvent(event) {
   return false;
 }
 
+function isTaggedBlockListEvent(event) {
+  if (!event || !Array.isArray(event.tags)) {
+    return false;
+  }
+  return event.tags.some(
+    (tag) =>
+      Array.isArray(tag) &&
+      tag.length >= 2 &&
+      typeof tag[0] === "string" &&
+      tag[0].trim().toLowerCase() === "d" &&
+      typeof tag[1] === "string" &&
+      tag[1].trim() === BLOCK_LIST_IDENTIFIER,
+  );
+}
+
 const BECH32_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
 const BECH32_CHARSET_MAP = (() => {
   const map = new Map();
@@ -1164,14 +1179,24 @@ class UserBlockListManager {
         }
 
         // Separate by kind to merge distinct lists (Block vs Mute)
-        const muteEvents = validEvents
-          .filter((e) => e.kind === 10000)
+        const muteEvents = validEvents.filter((e) => e.kind === 10000);
+
+        // Prioritize tagged mute lists (Bitvid) over plain ones (others)
+        const taggedMutes = muteEvents
+          .filter((e) => isTaggedBlockListEvent(e))
           .sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0));
+
+        const plainMutes = muteEvents
+          .filter((e) => !isTaggedBlockListEvent(e))
+          .sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0));
+
+        const newestMute =
+          taggedMutes.length > 0 ? taggedMutes[0] : plainMutes[0] || null;
+
         const blockEvents = validEvents
           .filter((e) => e.kind === 30002)
           .sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0));
 
-        const newestMute = muteEvents[0] || null;
         const newestBlock = blockEvents[0] || null;
 
         const newestMuteTime = Number.isFinite(newestMute?.created_at)

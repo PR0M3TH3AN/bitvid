@@ -1179,3 +1179,62 @@ await (async () => {
       nostrClient.pool = originalPool;
     }
   })();
+
+await (async () => {
+  // Test: Prioritize 'd=user-blocks' tagged lists over newer plain lists
+  const actor = "a".repeat(64);
+  const taggedBlocked = "b".repeat(64);
+  const plainBlocked = "c".repeat(64);
+
+  const originalRelays = nostrClient.relays;
+  const originalPool = nostrClient.pool;
+  const originalNostr = window.nostr;
+
+  nostrClient.relays = ["wss://repro.example"];
+
+  window.nostr = {
+    nip04: {
+      decrypt: async (_pubkey, ciphertext) => {
+        if (ciphertext === "encrypted-tagged") {
+          return JSON.stringify({ blockedPubkeys: [taggedBlocked] });
+        }
+        return "{}";
+      }
+    }
+  };
+
+  nostrClient.pool = {
+    list: async () => [
+      {
+        id: "event-tagged",
+        kind: 10000,
+        created_at: 1000,
+        pubkey: actor,
+        content: "encrypted-tagged",
+        tags: [["d", "user-blocks"]],
+      },
+      {
+        id: "event-plain",
+        kind: 10000,
+        created_at: 2000, // Newer!
+        pubkey: actor,
+        content: "",
+        tags: [["p", plainBlocked]],
+      }
+    ]
+  };
+
+  userBlocks.reset();
+
+  try {
+    await userBlocks.loadBlocks(actor);
+
+    const blocked = userBlocks.getBlockedPubkeys();
+    assert.ok(blocked.includes(taggedBlocked), "Should include pubkey from tagged list");
+    assert.ok(!blocked.includes(plainBlocked), "Should NOT include pubkey from plain list (fallback ignored)");
+  } finally {
+    nostrClient.relays = originalRelays;
+    nostrClient.pool = originalPool;
+    window.nostr = originalNostr;
+  }
+})();
