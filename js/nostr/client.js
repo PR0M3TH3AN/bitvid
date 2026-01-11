@@ -1247,6 +1247,7 @@ export class NostrClient {
     this.countUnsupportedRelays = new Set();
     this.nip46Client = null;
     this.remoteSignerListeners = new Set();
+    this.sessionActorListeners = new Set();
     const storedRemoteSigner = this.getStoredNip46Metadata();
     this.remoteSignerStatus = {
       state: storedRemoteSigner.hasSession ? "stored" : "idle",
@@ -1395,6 +1396,53 @@ export class NostrClient {
     this.remoteSignerListeners.add(listener);
     return () => {
       this.remoteSignerListeners.delete(listener);
+    };
+  }
+
+  emitSessionActorChange(actor, context = {}) {
+    const resolvedActor =
+      actor && typeof actor === "object" ? actor : this.sessionActor;
+    const pubkey =
+      typeof resolvedActor?.pubkey === "string" ? resolvedActor.pubkey.trim() : "";
+    if (!pubkey) {
+      return null;
+    }
+
+    const reason =
+      typeof context.reason === "string" && context.reason.trim()
+        ? context.reason.trim()
+        : "";
+    const createdAt = Number.isFinite(resolvedActor?.createdAt)
+      ? resolvedActor.createdAt
+      : null;
+    const snapshot = {
+      pubkey,
+      source:
+        typeof resolvedActor?.source === "string" ? resolvedActor.source : "",
+      persisted: resolvedActor?.persisted === true,
+      createdAt,
+      reason,
+    };
+
+    for (const listener of Array.from(this.sessionActorListeners)) {
+      try {
+        listener(snapshot);
+      } catch (error) {
+        devLogger.warn("[nostr] Session actor listener threw:", error);
+      }
+    }
+
+    return snapshot;
+  }
+
+  onSessionActorChange(listener) {
+    if (typeof listener !== "function") {
+      return () => {};
+    }
+
+    this.sessionActorListeners.add(listener);
+    return () => {
+      this.sessionActorListeners.delete(listener);
     };
   }
 
@@ -3167,6 +3215,7 @@ export class NostrClient {
       const restored = this.restoreSessionActorFromStorage();
       if (restored) {
         this.sessionActor = restored;
+        this.emitSessionActorChange(restored, { reason: "restored" });
         return restored.pubkey;
       }
     }
@@ -3179,6 +3228,7 @@ export class NostrClient {
       this.sessionActorCipherClosures = null;
       this.sessionActorCipherClosuresPrivateKey = null;
       this.persistSessionActor(minted);
+      this.emitSessionActorChange(minted, { reason: "minted" });
       return minted.pubkey;
     }
 
