@@ -673,6 +673,11 @@ export class ModerationService {
       }
     }
 
+    try {
+      // Explicit console logging for verification
+      console.log(`[moderationService] Applying ${sanitizedSeeds.size} verified trusted seeds`, Array.from(sanitizedSeeds));
+    } catch (e) { /* ignore */ }
+
     const previousContacts =
       this.trustedContacts instanceof Set ? new Set(this.trustedContacts) : new Set();
 
@@ -1097,17 +1102,19 @@ export class ModerationService {
       this.viewerMuteUpdatedAt = normalizedCreatedAt;
     }
 
-    if (IS_DEV_MODE) {
+    // Always log mute list updates to console for verification
+    try {
       const adminSnapshot = this.getAdminListSnapshot();
       for (const author of sanitizedAuthors) {
         const status = this.getAccessControlStatus(author, adminSnapshot);
         if (status.whitelisted) {
-          this.log(
-            `[moderationService] Whitelisted author ${author} is muted by trusted seed ${owner}. Mute list should apply.`,
+          console.warn(
+            `[moderationService] WARNING: Whitelisted author ${author} found in mute list of trusted seed ${owner}. Blur/Hide should apply.`,
           );
         }
       }
-    }
+      console.log(`[moderationService] Mute list updated for seed ${owner}. Count: ${sanitizedAuthors.size}. Authors:`, Array.from(sanitizedAuthors));
+    } catch (e) { /* ignore */ }
 
     if (!sanitizedAuthors.size) {
       this.trustedMuteLists.delete(owner);
@@ -1484,10 +1491,13 @@ export class ModerationService {
       const adminSnapshot = this.getAdminListSnapshot();
       const status = this.getAccessControlStatus(normalized, adminSnapshot);
       if (status.whitelisted) {
-        this.log(
-          `[moderationService] isAuthorMutedByTrusted returning false for whitelisted author ${normalized}. Entry:`,
-          entry,
-        );
+        // Use safe logger for high-frequency checks
+        try {
+          this.log(
+            `[moderationService] isAuthorMutedByTrusted returning false for whitelisted author ${normalized}. Entry:`,
+            entry,
+          );
+        } catch (e) { /* ignore */ }
       }
     }
 
