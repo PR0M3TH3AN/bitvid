@@ -193,7 +193,6 @@ function sanitizeNpubList(values) {
 function sanitizeAdminState(state = {}) {
   const sanitizedEditors = sanitizeNpubList(state.editors || []);
   const sanitizedWhitelist = sanitizeNpubList(state.whitelist || []);
-  const whitelistSet = new Set(sanitizedWhitelist.map(normalizeNpub));
 
   const adminGuardSet = new Set([
     normalizeNpub(ADMIN_SUPER_NPUB),
@@ -205,9 +204,6 @@ function sanitizeAdminState(state = {}) {
     (npub) => {
       const normalized = normalizeNpub(npub);
       if (!normalized) {
-        return false;
-      }
-      if (whitelistSet.has(normalized)) {
         return false;
       }
       if (adminGuardSet.has(normalized)) {
@@ -848,9 +844,6 @@ async function persistNostrState(actorNpub, updates = {}) {
   }
 
   if (Array.isArray(updates.blacklist)) {
-    const whitelistSet = new Set(
-      (sanitizedUpdates.whitelist || []).map(normalizeNpub)
-    );
     const editorGuard = new Set([
       normalizeNpub(ADMIN_SUPER_NPUB),
       ...ADMIN_EDITORS_NPUBS.map(normalizeNpub),
@@ -865,9 +858,6 @@ async function persistNostrState(actorNpub, updates = {}) {
       (npub) => {
         const normalized = normalizeNpub(npub);
         if (!normalized) {
-          return false;
-        }
-        if (whitelistSet.has(normalized)) {
           return false;
         }
         if (editorGuard.has(normalized)) {

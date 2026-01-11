@@ -581,9 +581,7 @@ class AccessControl {
     }
 
     const nextWhitelist = dedupeNpubs([...this.getWhitelist(), normalized]);
-    const nextBlacklist = this.getBlacklist().filter(
-      (value) => value !== normalized
-    );
+    const nextBlacklist = this.getBlacklist();
 
     try {
       await persistAdminState(actorNpub, {
@@ -642,9 +640,7 @@ class AccessControl {
     }
 
     const nextBlacklist = dedupeNpubs([...this.getBlacklist(), normalized]);
-    const nextWhitelist = this.getWhitelist().filter(
-      (value) => value !== normalized
-    );
+    const nextWhitelist = this.getWhitelist();
 
     try {
       await persistAdminState(actorNpub, {

@@ -7033,8 +7033,14 @@ export class ProfileModalController {
       return;
     }
 
-    const { onRemove, removeLabel = "Remove", confirmMessage, removable = true } =
-      options;
+    const {
+      onRemove,
+      removeLabel = "Remove",
+      confirmMessage,
+      removable = true,
+      overlapSet,
+      overlapLabel,
+    } = options;
 
     const formatNpub =
       typeof this.formatShortNpub === "function"
@@ -7076,6 +7082,8 @@ export class ProfileModalController {
         "card flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between";
 
       const normalizedNpub = typeof npub === "string" ? npub.trim() : "";
+      const comparableNpub =
+        this.normalizeNpubValue(normalizedNpub) || normalizedNpub;
       const decodedHex =
         normalizedNpub && normalizedNpub.startsWith("npub1")
           ? this.safeDecodeNpub(normalizedNpub)
@@ -7109,6 +7117,20 @@ export class ProfileModalController {
         displayNpub,
         avatarSrc,
       });
+
+      if (
+        summary &&
+        overlapLabel &&
+        overlapSet instanceof Set &&
+        comparableNpub &&
+        overlapSet.has(comparableNpub)
+      ) {
+        const overlapBadge = document.createElement("span");
+        overlapBadge.className = "badge whitespace-nowrap";
+        overlapBadge.dataset.variant = "warning";
+        overlapBadge.textContent = overlapLabel;
+        summary.appendChild(overlapBadge);
+      }
 
       const actions = document.createElement("div");
       actions.className =
@@ -7175,6 +7197,15 @@ export class ProfileModalController {
     const blacklist = this.normalizeAdminListEntries(
       this.services.accessControl.getBlacklist(),
     );
+    const normalizeForCompare = (value) =>
+      this.normalizeNpubValue(value) ||
+      (typeof value === "string" ? value.trim() : "");
+    const whitelistCompare = new Set(
+      whitelist.map(normalizeForCompare).filter(Boolean),
+    );
+    const blacklistCompare = new Set(
+      blacklist.map(normalizeForCompare).filter(Boolean),
+    );
 
     this.renderAdminList(
       this.adminModeratorList,
@@ -7199,6 +7230,8 @@ export class ProfileModalController {
         removeLabel: "Remove",
         confirmMessage: "Remove {npub} from the whitelist?",
         removable: true,
+        overlapSet: blacklistCompare,
+        overlapLabel: "Also blacklisted",
       },
     );
 
@@ -7212,6 +7245,8 @@ export class ProfileModalController {
         removeLabel: "Unblock",
         confirmMessage: "Remove {npub} from the blacklist?",
         removable: true,
+        overlapSet: whitelistCompare,
+        overlapLabel: "Also whitelisted",
       },
     );
   }
