@@ -1443,6 +1443,63 @@ class UserBlockListManager {
     return { ok: true, seeded: true, addedPubkeys: Array.from(additions) };
   }
 
+  async seedBaselineDelta(userPubkey, candidateNpubs = []) {
+    const actorHex = normalizeHex(userPubkey);
+    if (!actorHex) {
+      return { ok: false, seeded: false, reason: "invalid-user" };
+    }
+
+    await this.ensureLoaded(actorHex);
+
+    const state = this._getSeedState(actorHex);
+    const removals = state.removals;
+    const additions = new Set();
+
+    const candidates = Array.isArray(candidateNpubs) ? candidateNpubs : [];
+    for (const candidate of candidates) {
+      const candidateHex = normalizeHex(candidate);
+      if (!candidateHex) {
+        continue;
+      }
+      if (candidateHex === actorHex) {
+        continue;
+      }
+      if (this.blockedPubkeys.has(candidateHex)) {
+        continue;
+      }
+      if (removals.has(candidateHex)) {
+        continue;
+      }
+      additions.add(candidateHex);
+    }
+
+    if (!additions.size) {
+      if (!state.seeded) {
+        this._setSeeded(actorHex, true);
+      }
+      return { ok: true, seeded: state.seeded, reason: "no-candidates" };
+    }
+
+    additions.forEach((hex) => this.blockedPubkeys.add(hex));
+
+    this._setSeeded(actorHex, true);
+    this._saveLocal(actorHex);
+
+    try {
+      this.emitter.emit(USER_BLOCK_EVENTS.CHANGE, {
+        action: "seed-delta",
+        actorPubkey: actorHex,
+        blockedPubkeys: Array.from(this.blockedPubkeys),
+        addedPubkeys: Array.from(additions),
+        localOnly: true,
+      });
+    } catch (error) {
+      userLogger.warn("[UserBlockList] Failed to emit delta seed change event:", error);
+    }
+
+    return { ok: true, seeded: true, addedPubkeys: Array.from(additions) };
+  }
+
   async addBlock(targetPubkey, userPubkey) {
     const actorHex = normalizeHex(userPubkey);
     if (!actorHex) {
