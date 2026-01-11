@@ -1178,8 +1178,7 @@ export class NostrService {
 
     const requestedLimit = Number(options?.limit);
     const resolvedLimit = this.nostrClient.clampVideoRequestLimit(
-      requestedLimit,
-      DEFAULT_VIDEO_REQUEST_LIMIT
+      requestedLimit
     );
 
     const filter = {
@@ -1222,7 +1221,7 @@ export class NostrService {
               }
             }
           } catch (relayErr) {
-            // ignore relay failures
+            this.log(`[nostrService] Relay ${url} failed:`, relayErr);
           }
         })
       );
