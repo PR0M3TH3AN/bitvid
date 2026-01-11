@@ -13,6 +13,17 @@ if (typeof globalThis.window === "undefined") {
   globalThis.window = {};
 }
 
+// Fix environment for NostrTools
+if (typeof globalThis.NostrTools === "undefined") {
+  // Polyfill enough of NostrTools for the tests to function if actual library missing or failing bootstrap
+  // The test below overwrites window.NostrTools later, but we need globalThis.NostrTools to exist for js/userBlocks.js module scope checks
+  globalThis.NostrTools = {
+     nip19: {
+        decode: () => { throw new Error("Mock not implemented"); }
+     }
+  };
+}
+
 await (async () => {
   const actor = "f".repeat(64);
   const blocked = "e".repeat(64);
@@ -87,6 +98,16 @@ await (async () => {
       "loadBlocks should initiate queries for all relays concurrently"
     );
 
+    // Reverting to original test data:
+    // relay-one (fast): OLD event
+    // relay-two (fast): NEW event
+    // This ensures that even if fast relay returns old data, eventual consistency (or Promise.any randomness?) picks it up.
+    // Wait, Promise.any picks the FIRST resolved.
+    // The test resolves them in order: relay-one (old), relay-two (new).
+    // So 'fast' path gets 'event-old'.
+    // Background path (Promise.allSettled) gets BOTH.
+    // Background path merges and finds 'event-new'.
+    // So if the code correctly implements eventual consistency, userBlocks.blockEventId will settle on 'event-new'.
     const responses = {
       [relays[0]]: [
         {
@@ -313,7 +334,7 @@ await (async () => {
   const originalMuteEventCreatedAt = userBlocks.muteEventCreatedAt;
   const originalLoaded = userBlocks.loaded;
   const originalSeedStateCache = userBlocks.seedStateCache;
-  const originalNostrTools = window.NostrTools;
+  const originalNostrTools = globalThis.NostrTools;
 
   const publishCalls = [];
 
@@ -324,7 +345,8 @@ await (async () => {
     [seedTwoNpub, seedTwoHex],
   ]);
 
-  window.NostrTools = {
+  // Patch both globalThis and window to ensure userBlocks sees it
+  globalThis.NostrTools = {
     ...(originalNostrTools || {}),
     nip19: {
       ...((originalNostrTools && originalNostrTools.nip19) || {}),
@@ -336,6 +358,7 @@ await (async () => {
       },
     },
   };
+  window.NostrTools = globalThis.NostrTools;
 
   userBlocks.ensureLoaded = async () => {
     userBlocks.loaded = true;
@@ -454,7 +477,7 @@ await (async () => {
     userBlocks.muteEventCreatedAt = originalMuteEventCreatedAt;
     userBlocks.loaded = originalLoaded;
     userBlocks.seedStateCache = originalSeedStateCache;
-    window.NostrTools = originalNostrTools;
+    globalThis.NostrTools = originalNostrTools;
     localStorage.clear();
   }
 })();
@@ -492,6 +515,8 @@ await (async () => {
   let latestCiphertext = "cipher:[]";
   let latestEventId = "event-initial";
   let latestCreatedAt = 1_000;
+  // Capture tags for faithful mock
+  let latestTags = [];
 
   const decryptPayloads = new Map([[latestCiphertext, JSON.stringify([])]]);
 
@@ -502,6 +527,7 @@ await (async () => {
   nostrClient.pool = {
     publish: (_targets, event) => {
       latestCiphertext = event.content;
+      latestTags = event.tags; // Store tags
       latestEventId = event.id || `event-${Date.now()}`;
       latestCreatedAt = event.created_at || Math.floor(Date.now() / 1000);
       return {
@@ -521,6 +547,7 @@ await (async () => {
         created_at: latestCreatedAt,
         pubkey: actor,
         content: latestCiphertext,
+        tags: latestTags || [], // Return tags so encryption hints work
       },
     ],
   };
@@ -1044,3 +1071,111 @@ await (async () => {
     }
   }
 })();
+
+await (async () => {
+    // Test for tag-only Kind 10000 events (Primal-style)
+    const actor = "f".repeat(64);
+    const blockedHex = "a".repeat(64);
+
+    const UserBlockListManager = userBlocks.constructor;
+    const manager = new UserBlockListManager();
+
+    const originalRelays = Array.isArray(nostrClient.relays) ? [...nostrClient.relays] : nostrClient.relays;
+    const originalPool = nostrClient.pool;
+
+    nostrClient.relays = ["wss://tag-only.example"];
+    nostrClient.pool = {
+      list: async () => [
+        {
+          id: "event-tag-only",
+          kind: 10000,
+          created_at: 10_000,
+          pubkey: actor,
+          content: "", // Empty content
+          tags: [["p", blockedHex]],
+        },
+      ],
+    };
+
+    try {
+      await manager.loadBlocks(actor);
+
+      assert(manager.blockedPubkeys.has(blockedHex), "should load blocked pubkeys from p-tags when content is empty");
+      assert.equal(manager.blockedPubkeys.size, 1, "should have exactly one blocked pubkey");
+      assert.equal(manager.blockEventId, "event-tag-only", "should track the correct event ID");
+    } finally {
+      nostrClient.relays = originalRelays;
+      nostrClient.pool = originalPool;
+    }
+  })();
+
+  await (async () => {
+    // Test for tag-only Kind 10000 events with whitespace content
+    const actor = "f".repeat(64);
+    const blockedHex = "b".repeat(64);
+
+    const UserBlockListManager = userBlocks.constructor;
+    const manager = new UserBlockListManager();
+
+    const originalRelays = Array.isArray(nostrClient.relays) ? [...nostrClient.relays] : nostrClient.relays;
+    const originalPool = nostrClient.pool;
+
+    nostrClient.relays = ["wss://tag-only-whitespace.example"];
+    nostrClient.pool = {
+      list: async () => [
+        {
+          id: "event-tag-only-space",
+          kind: 10000,
+          created_at: 11_000,
+          pubkey: actor,
+          content: "   ", // Whitespace content
+          tags: [["p", blockedHex]],
+        },
+      ],
+    };
+
+    try {
+      await manager.loadBlocks(actor);
+
+      assert(manager.blockedPubkeys.has(blockedHex), "should load blocked pubkeys from p-tags when content is whitespace");
+    } finally {
+      nostrClient.relays = originalRelays;
+      nostrClient.pool = originalPool;
+    }
+  })();
+
+  await (async () => {
+    // Test for empty content AND no tags -> should clear
+    const actor = "f".repeat(64);
+    const previouslyBlocked = "c".repeat(64);
+
+    const UserBlockListManager = userBlocks.constructor;
+    const manager = new UserBlockListManager();
+    manager.blockedPubkeys.add(previouslyBlocked);
+
+    const originalRelays = Array.isArray(nostrClient.relays) ? [...nostrClient.relays] : nostrClient.relays;
+    const originalPool = nostrClient.pool;
+
+    nostrClient.relays = ["wss://empty-clear.example"];
+    nostrClient.pool = {
+      list: async () => [
+        {
+          id: "event-empty",
+          kind: 10000,
+          created_at: 12_000,
+          pubkey: actor,
+          content: "",
+          tags: [], // No p tags
+        },
+      ],
+    };
+
+    try {
+      await manager.loadBlocks(actor);
+
+      assert.equal(manager.blockedPubkeys.size, 0, "should clear block list when content and tags are empty");
+    } finally {
+      nostrClient.relays = originalRelays;
+      nostrClient.pool = originalPool;
+    }
+  })();

@@ -300,6 +300,32 @@ function serializeBlockListTagMatrix(values, ownerPubkey, options = {}) {
   return JSON.stringify(tags);
 }
 
+function extractPubkeysFromTags(tags, ownerPubkey = null) {
+  if (!Array.isArray(tags)) {
+    return [];
+  }
+  const collected = [];
+  const seen = new Set();
+  const owner = ownerPubkey ? normalizeHex(ownerPubkey) : null;
+
+  for (const entry of tags) {
+    if (!Array.isArray(entry) || entry.length < 2) {
+      continue;
+    }
+    const label = typeof entry[0] === "string" ? entry[0].trim().toLowerCase() : "";
+    if (label !== "p") {
+      continue;
+    }
+    const normalized = normalizeHex(entry[1]);
+    if (!normalized || (owner && normalized === owner) || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    collected.push(normalized);
+  }
+  return collected;
+}
+
 function parseBlockListPlaintext(plaintext, ownerPubkey) {
   if (typeof plaintext !== "string" || !plaintext) {
     return [];
@@ -318,34 +344,13 @@ function parseBlockListPlaintext(plaintext, ownerPubkey) {
 
   const owner = normalizeHex(ownerPubkey);
 
-  const extractFromTags = (tags) => {
-    const collected = [];
-    const seen = new Set();
-    for (const entry of tags) {
-      if (!Array.isArray(entry) || entry.length < 2) {
-        continue;
-      }
-      const label = typeof entry[0] === "string" ? entry[0].trim().toLowerCase() : "";
-      if (label !== "p") {
-        continue;
-      }
-      const normalized = normalizeHex(entry[1]);
-      if (!normalized || normalized === owner || seen.has(normalized)) {
-        continue;
-      }
-      seen.add(normalized);
-      collected.push(normalized);
-    }
-    return collected;
-  };
-
   if (Array.isArray(parsed)) {
-    return extractFromTags(parsed);
+    return extractPubkeysFromTags(parsed, owner);
   }
 
   if (parsed && typeof parsed === "object") {
     if (Array.isArray(parsed.tags) && parsed.tags.length) {
-      return extractFromTags(parsed.tags);
+      return extractPubkeysFromTags(parsed.tags, owner);
     }
 
     const legacy = Array.isArray(parsed.blockedPubkeys) ? parsed.blockedPubkeys : [];
@@ -1216,27 +1221,28 @@ class UserBlockListManager {
           return;
         }
 
+        if (newestOverall?.id && newestOverall.id === this.blockEventId) {
+          // Already applied this event. Idempotency check.
+          return;
+        }
+
         // We accept this state.
         this.blockEventId = newestOverall?.id || null;
         this.blockEventCreatedAt = newestCreatedAt;
 
-        // If both empty/missing content, clear
-        if (
-          (!newestMute || !newestMute.content) &&
-          (!newestBlock || !newestBlock.content)
-        ) {
-          applyBlockedPubkeys([], {
-            source,
-            reason: "empty-events",
-            event: newestOverall,
-          });
-          emitStatus({ status: "applied-empty", event: newestOverall, source });
-          return;
-        }
-
         // Helper to decrypt a single event
         const decryptEvent = async (ev) => {
-          if (!ev || !ev.content) return [];
+          if (!ev) return [];
+          const isContentEmpty = !ev.content || !ev.content.trim();
+
+          if (isContentEmpty) {
+            // Handle tag-only lists (e.g. Kind 10000 with empty content but populated p tags)
+            if (Array.isArray(ev.tags) && ev.tags.length) {
+              return extractPubkeysFromTags(ev.tags, normalized);
+            }
+            return [];
+          }
+
           const { decryptors, order, sources, permissionError } =
             await resolveDecryptors(ev);
 
@@ -1303,62 +1309,38 @@ class UserBlockListManager {
           return;
         }
 
+        const hasMute = Boolean(newestMute);
+        const hasBlock = Boolean(newestBlock);
+
+        // Check if we should log "empty-events" reason
+        // Effectively empty means: missing content AND missing valid tags
+        const isMuteEffectiveEmpty = !newestMute || ((!newestMute.content || !newestMute.content.trim()) && (!newestMute.tags || !extractPubkeysFromTags(newestMute.tags, normalized).length));
+        const isBlockEffectiveEmpty = !newestBlock || ((!newestBlock.content || !newestBlock.content.trim()) && (!newestBlock.tags || !extractPubkeysFromTags(newestBlock.tags, normalized).length));
+
+        const effectiveReason = (isMuteEffectiveEmpty && isBlockEffectiveEmpty)
+            ? "empty-events"
+            : "applied-merge";
+
         applyBlockedPubkeys(Array.from(mergedPubkeys), {
           source,
-          reason: "applied-merge",
+          reason: effectiveReason,
           events: [newestMute?.id, newestBlock?.id].filter(Boolean),
         });
 
-        emitStatus({
-          status: "applied",
-          event: newestOverall,
-          blockedPubkeys: Array.from(this.blockedPubkeys),
-          source,
-        });
+        if (effectiveReason === "empty-events") {
+           emitStatus({ status: "applied-empty", event: newestOverall, source });
+        } else {
+           emitStatus({
+             status: "applied",
+             event: newestOverall,
+             blockedPubkeys: Array.from(this.blockedPubkeys),
+             source,
+           });
+        }
       };
 
-      const background = Promise.allSettled([
-        ...fastPromises,
-        ...backgroundPromises,
-      ])
-        .then(async (outcomes) => {
-          const aggregated = [];
-          for (const outcome of outcomes) {
-            if (outcome.status === "fulfilled") {
-              const events = Array.isArray(outcome.value?.events)
-                ? outcome.value.events
-                : [];
-              if (events.length) {
-                aggregated.push(...events);
-              }
-            } else {
-              const reason = outcome.reason;
-              if (reason?.code === "timeout") {
-                userLogger.warn(
-                  `[UserBlockList] Relay ${reason.relay} timed out while loading block list (${reason.timeoutMs}ms)`
-                );
-              } else {
-                const relay = reason?.relay || reason?.relayUrl;
-                userLogger.error(
-                  `[UserBlockList] Relay error at ${relay}:`,
-                  reason?.error ?? reason
-                );
-              }
-            }
-          }
-
-          if (!aggregated.length) {
-            return { foundEvents: false };
-          }
-
-          await applyEvents(aggregated, { skipIfEmpty: true, source: "background" });
-          return { foundEvents: true };
-        })
-        .catch((error) => {
-          userLogger.error("[UserBlockList] background block list refresh failed:", error);
-          return { foundEvents: false, error };
-        });
-
+      // Sequential promise handling to avoid race conditions but preserve background updates.
+      // 1. Try fast path.
       let fastResult = null;
       if (fastPromises.length) {
         try {
@@ -1380,29 +1362,54 @@ class UserBlockListManager {
 
       if (fastResult?.events?.length) {
         await applyEvents(fastResult.events, { source: "fast" });
-        background.catch(() => {});
-        return;
+        // NOTE: We do NOT return here. We allow background relays to potentially provide newer data.
       }
 
-      if (backgroundRelays.length || fastPromises.length) {
+      // 2. Wait for background (and failed fast relays).
+      if (backgroundRelays.length || (!fastResult?.events?.length && fastPromises.length)) {
         emitStatus({
           status: "awaiting-background",
           relays: backgroundRelays.length ? backgroundRelays : fastRelays,
         });
       }
 
-      const backgroundOutcome = await background;
+      const allPromises = [...fastPromises, ...backgroundPromises];
+      const outcomes = await Promise.allSettled(allPromises);
 
-      if (backgroundOutcome?.foundEvents) {
+      const aggregated = [];
+      for (const outcome of outcomes) {
+        if (outcome.status === "fulfilled") {
+          const events = Array.isArray(outcome.value?.events)
+            ? outcome.value.events
+            : [];
+          if (events.length) {
+            aggregated.push(...events);
+          }
+        } else {
+          const reason = outcome.reason;
+          if (reason?.code === "timeout") {
+            userLogger.warn(
+              `[UserBlockList] Relay ${reason.relay} timed out while loading block list (${reason.timeoutMs}ms)`
+            );
+          } else {
+            const relay = reason?.relay || reason?.relayUrl;
+            userLogger.error(
+              `[UserBlockList] Relay error at ${relay}:`,
+              reason?.error ?? reason
+            );
+          }
+        }
+      }
+
+      if (!aggregated.length) {
+        // Only apply empty if fast path also found nothing (already handled by logic inside applyEvents,
+        // but explicit call ensures we settle state if everything failed).
+        await applyEvents([], { source: "background" });
         return;
       }
 
-      if (backgroundOutcome?.error) {
-        emitStatus({ status: "error", error: backgroundOutcome.error, source: "background" });
-        return;
-      }
+      await applyEvents(aggregated, { skipIfEmpty: true, source: "background" });
 
-      await applyEvents([], { source: "background" });
     } catch (error) {
       userLogger.error("[UserBlockList] loadBlocks failed:", error);
       applyBlockedPubkeys([], { source: "fast", reason: "load-error", error });
