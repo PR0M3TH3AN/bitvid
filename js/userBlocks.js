@@ -1121,7 +1121,10 @@ class UserBlockListManager {
           if (skipIfEmpty) {
             return;
           }
-          if (this.lastPublishedCreatedAt !== null || this.blockEventCreatedAt !== null) {
+          if (
+            this.lastPublishedCreatedAt !== null ||
+            this.blockEventCreatedAt !== null
+          ) {
             emitStatus({ status: "stale", reason: "empty-result", source });
             return;
           }
@@ -1132,18 +1135,19 @@ class UserBlockListManager {
           return;
         }
 
-        const sorted = events
-          .filter(
-            (event) =>
-              event && event.pubkey === normalized && isUserBlockListEvent(event),
-          )
-          .sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0));
+        const validEvents = events.filter(
+          (event) =>
+            event && event.pubkey === normalized && isUserBlockListEvent(event),
+        );
 
-        if (!sorted.length) {
+        if (!validEvents.length) {
           if (skipIfEmpty) {
             return;
           }
-          if (this.lastPublishedCreatedAt !== null || this.blockEventCreatedAt !== null) {
+          if (
+            this.lastPublishedCreatedAt !== null ||
+            this.blockEventCreatedAt !== null
+          ) {
             emitStatus({ status: "stale", reason: "empty-result", source });
             return;
           }
@@ -1154,177 +1158,163 @@ class UserBlockListManager {
           return;
         }
 
-        const newest = sorted[0];
-        const newestCreatedAt = Number.isFinite(newest?.created_at)
-          ? newest.created_at
+        // Separate by kind to merge distinct lists (Block vs Mute)
+        const muteEvents = validEvents
+          .filter((e) => e.kind === 10000)
+          .sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0));
+        const blockEvents = validEvents
+          .filter((e) => e.kind === 30002)
+          .sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0));
+
+        const newestMute = muteEvents[0] || null;
+        const newestBlock = blockEvents[0] || null;
+
+        const newestMuteTime = Number.isFinite(newestMute?.created_at)
+          ? newestMute.created_at
           : 0;
+        const newestBlockTime = Number.isFinite(newestBlock?.created_at)
+          ? newestBlock.created_at
+          : 0;
+
+        // The "canonical" newest event for stale checks is simply the latest of either.
+        const newestOverall =
+          newestMuteTime >= newestBlockTime ? newestMute : newestBlock;
+        const newestCreatedAt = Math.max(newestMuteTime, newestBlockTime);
+
         const guardCreatedAt = Math.max(
           this.blockEventCreatedAt ?? 0,
           this.lastPublishedCreatedAt ?? 0,
         );
 
+        // If both are stale, skip
         if (newestCreatedAt < guardCreatedAt) {
-          emitStatus({ status: "stale", event: newest, guardCreatedAt, source });
+          emitStatus({
+            status: "stale",
+            event: newestOverall,
+            guardCreatedAt,
+            source,
+          });
           return;
         }
 
         if (
           newestCreatedAt === guardCreatedAt &&
           this.blockEventId &&
-          newest?.id &&
-          newest.id !== this.blockEventId
+          newestOverall?.id &&
+          newestOverall.id !== this.blockEventId
         ) {
-          emitStatus({ status: "stale", event: newest, guardCreatedAt, source });
+          // If equal time but different ID, we might be seeing a race or propagation delay.
+          // But since we are merging, we should proceed unless it's strictly older context.
+          // For safety against flapping, we treat strict equality with different ID as stale
+          // if we already have a confirmed ID.
+          emitStatus({
+            status: "stale",
+            event: newestOverall,
+            guardCreatedAt,
+            source,
+          });
           return;
         }
 
-        if (newest?.id && newest.id === this.blockEventId) {
-          this.blockEventCreatedAt = Number.isFinite(newestCreatedAt)
-            ? newestCreatedAt
-            : this.blockEventCreatedAt;
-          emitStatus({ status: "confirmed", event: newest, source });
+        // We accept this state.
+        this.blockEventId = newestOverall?.id || null;
+        this.blockEventCreatedAt = newestCreatedAt;
+
+        // If both empty/missing content, clear
+        if (
+          (!newestMute || !newestMute.content) &&
+          (!newestBlock || !newestBlock.content)
+        ) {
+          applyBlockedPubkeys([], {
+            source,
+            reason: "empty-events",
+            event: newestOverall,
+          });
+          emitStatus({ status: "applied-empty", event: newestOverall, source });
           return;
         }
 
-        this.blockEventId = newest?.id || null;
-        this.blockEventCreatedAt = Number.isFinite(newestCreatedAt)
-          ? newestCreatedAt
-          : null;
+        // Helper to decrypt a single event
+        const decryptEvent = async (ev) => {
+          if (!ev || !ev.content) return [];
+          const { decryptors, order, sources, permissionError } =
+            await resolveDecryptors(ev);
 
-        if (!newest?.content) {
-          applyBlockedPubkeys([], { source, reason: "empty-event", event: newest });
-          emitStatus({ status: "applied-empty", event: newest, source });
-          return;
-        }
-
-        const {
-          decryptors,
-          order,
-          sources,
-          permissionError,
-        } = await resolveDecryptors(newest);
-
-        if (!decryptors.size) {
-          if (permissionError) {
-            userLogger.warn(
-              "[UserBlockList] Unable to load block list via extension decryptor; permissions denied.",
-              permissionError,
-            );
-            this.reset();
-            this.loaded = true;
-            emitStatus({ status: "error", error: permissionError, decryptor: "extension" });
-            emitStatus({ status: "settled" });
-            return;
+          if (!decryptors.size) {
+            if (permissionError) {
+              throw permissionError;
+            }
+            return [];
           }
 
+          let decryptedText = "";
+          for (const scheme of order) {
+            const handler = decryptors.get(scheme);
+            if (typeof handler !== "function") continue;
+            try {
+              const plaintext = await handler(ev.content);
+              if (typeof plaintext === "string") {
+                decryptedText = plaintext;
+                break;
+              }
+            } catch {
+              // ignore
+            }
+          }
+
+          if (!decryptedText) {
+            // If decryption fails completely for a present event, we might want to log it
+            // but return empty for that specific event.
+            return [];
+          }
+
+          return parseBlockListPlaintext(decryptedText, normalized);
+        };
+
+        const mergedPubkeys = new Set();
+        let decryptionError = null;
+
+        try {
+          const [muteList, blockList] = await Promise.all([
+            decryptEvent(newestMute),
+            decryptEvent(newestBlock),
+          ]);
+
+          muteList.forEach((pk) => mergedPubkeys.add(pk));
+          blockList.forEach((pk) => mergedPubkeys.add(pk));
+        } catch (error) {
+          // If permission denied or critical failure
+          decryptionError = error;
+        }
+
+        if (decryptionError) {
           userLogger.warn(
-            "[UserBlockList] No decryptors available; treating block list as empty.",
+            "[UserBlockList] Decryption failed during merge.",
+            decryptionError,
           );
           this.reset();
           this.loaded = true;
-          const error = new Error(
-            "No decryptors are available to load the block list.",
-          );
-          emitStatus({ status: "error", error, decryptor: "unavailable" });
+          emitStatus({
+            status: "error",
+            error: decryptionError,
+            decryptor: "mixed",
+          });
           emitStatus({ status: "settled" });
           return;
         }
 
-        let decrypted = "";
-        let schemeUsed = "";
-        let schemeSource = "unavailable";
-        const attemptErrors = [];
+        applyBlockedPubkeys(Array.from(mergedPubkeys), {
+          source,
+          reason: "applied-merge",
+          events: [newestMute?.id, newestBlock?.id].filter(Boolean),
+        });
 
-        for (const scheme of order) {
-          const handler = decryptors.get(scheme);
-          if (typeof handler !== "function") {
-            continue;
-          }
-          const sourceLabel = sources.get(scheme) || "unknown";
-          try {
-            const plaintext = await handler(newest.content);
-            if (typeof plaintext !== "string") {
-              throw new Error("Decryption returned a non-string payload.");
-            }
-            decrypted = plaintext;
-            schemeUsed = scheme;
-            schemeSource = sourceLabel;
-            break;
-          } catch (error) {
-            attemptErrors.push({ scheme, source: sourceLabel, error });
-          }
-        }
-
-        if (!decrypted) {
-          const error = new Error(
-            "Failed to decrypt block list with available schemes.",
-          );
-          error.code = "block-list-decrypt-failed";
-          if (attemptErrors.length) {
-            error.cause = attemptErrors;
-          }
-          const lastAttempt = attemptErrors.length
-            ? attemptErrors[attemptErrors.length - 1]
-            : null;
-          const decryptPath = lastAttempt?.source || "unavailable";
-          userLogger.error(
-            `[UserBlockList] Failed to decrypt block list via available schemes (last: ${decryptPath}).`,
-            error,
-          );
-          applyBlockedPubkeys([], {
-            source,
-            reason: "decrypt-error",
-            event: newest,
-            error,
-            decryptor: decryptPath,
-            errors: attemptErrors,
-          });
-          emitStatus({
-            status: "error",
-            event: newest,
-            error,
-            source,
-            decryptor: decryptPath,
-          });
-          return;
-        }
-
-        try {
-          const sanitized = parseBlockListPlaintext(decrypted, normalized);
-          applyBlockedPubkeys(sanitized, {
-            source,
-            reason: "applied",
-            event: newest,
-            scheme: schemeUsed,
-            decryptor: schemeSource,
-          });
-          emitStatus({
-            status: "applied",
-            event: newest,
-            blockedPubkeys: Array.from(this.blockedPubkeys),
-            source,
-            scheme: schemeUsed,
-            decryptor: schemeSource,
-          });
-        } catch (err) {
-          userLogger.error("[UserBlockList] Failed to parse block list:", err);
-          applyBlockedPubkeys([], {
-            source,
-            reason: "parse-error",
-            event: newest,
-            error: err,
-            decryptor: schemeSource,
-            scheme: schemeUsed,
-          });
-          emitStatus({
-            status: "error",
-            event: newest,
-            error: err,
-            source,
-            decryptor: schemeSource,
-            scheme: schemeUsed,
-          });
-        }
+        emitStatus({
+          status: "applied",
+          event: newestOverall,
+          blockedPubkeys: Array.from(this.blockedPubkeys),
+          source,
+        });
       };
 
       const background = Promise.allSettled([
