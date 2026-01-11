@@ -868,9 +868,19 @@ export function createModerationStage({
       const blockAutoplay =
         trustedCount >= normalizedAutoplayThreshold || trustedMuted || viewerMuted;
       const blurFromReports = trustedCount >= normalizedBlurThreshold;
-      let blurThumbnail = blurFromReports;
-      let blurReason = blurThumbnail ? "trusted-report" : "";
+      // Force blur if trustedMuted is true, regardless of whitelist status.
+      let blurThumbnail = blurFromReports || trustedMuted;
+      let blurReason = "";
+      if (trustedMuted) {
+        blurReason = "trusted-mute";
+      } else if (blurFromReports) {
+        blurReason = "trusted-report";
+      }
+
       const adminWhitelist = adminStatus?.whitelisted === true;
+      if (adminWhitelist && trustedMuted) {
+        context?.log?.(`[${stageName}] Whitelisted author ${authorHex} is muted by trusted seed. Forcing blur.`);
+      }
       const adminWhitelistBypass = false;
 
       if (!item.metadata || typeof item.metadata !== "object") {

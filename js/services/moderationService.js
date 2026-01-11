@@ -3,6 +3,7 @@ import { publishEventToRelays, assertAnyRelayAccepted } from "../nostrPublish.js
 import { accessControl } from "../accessControl.js";
 import { userBlocks, USER_BLOCK_EVENTS } from "../userBlocks.js";
 import logger from "../utils/logger.js";
+import { IS_DEV_MODE } from "../config.js";
 
 const AUTOPLAY_TRUST_THRESHOLD = 1;
 const BLUR_TRUST_THRESHOLD = 1;
@@ -1096,6 +1097,18 @@ export class ModerationService {
       this.viewerMuteUpdatedAt = normalizedCreatedAt;
     }
 
+    if (IS_DEV_MODE) {
+      const adminSnapshot = this.getAdminListSnapshot();
+      for (const author of sanitizedAuthors) {
+        const status = this.getAccessControlStatus(author, adminSnapshot);
+        if (status.whitelisted) {
+          this.log(
+            `[moderationService] Whitelisted author ${author} is muted by trusted seed ${owner}. Mute list should apply.`,
+          );
+        }
+      }
+    }
+
     if (!sanitizedAuthors.size) {
       this.trustedMuteLists.delete(owner);
     } else {
@@ -1465,7 +1478,20 @@ export class ModerationService {
       return false;
     }
     const entry = this.trustedMutedAuthors.get(normalized);
-    return Boolean(entry && entry.muters instanceof Set && entry.muters.size > 0);
+    const result = Boolean(entry && entry.muters instanceof Set && entry.muters.size > 0);
+
+    if (!result && IS_DEV_MODE) {
+      const adminSnapshot = this.getAdminListSnapshot();
+      const status = this.getAccessControlStatus(normalized, adminSnapshot);
+      if (status.whitelisted) {
+        this.log(
+          `[moderationService] isAuthorMutedByTrusted returning false for whitelisted author ${normalized}. Entry:`,
+          entry,
+        );
+      }
+    }
+
+    return result;
   }
 
   getTrustedMutersForAuthor(pubkey) {
