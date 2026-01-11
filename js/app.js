@@ -513,6 +513,31 @@ class Application {
       if (typeof accessControl.onBlacklistChange === "function") {
         accessControl.onBlacklistChange(() => {
           syncSessionActorBlacklist("blacklist-change");
+          if (this.isUserLoggedIn()) {
+            return;
+          }
+
+          const refreshReason = "admin-blacklist-change";
+          this.refreshAllVideoGrids({
+            reason: refreshReason,
+            forceMainReload: true,
+          }).catch((error) => {
+            devLogger.warn(
+              "[app.init()] Failed to refresh video grids after admin blacklist change:",
+              error,
+            );
+          });
+
+          if (typeof this.refreshVisibleModerationUi === "function") {
+            try {
+              this.refreshVisibleModerationUi({ reason: refreshReason });
+            } catch (error) {
+              devLogger.warn(
+                "[app.init()] Failed to refresh moderation UI after admin blacklist change:",
+                error,
+              );
+            }
+          }
         });
       }
 
