@@ -265,7 +265,6 @@ class AccessControl {
     const whitelistChanged = !areSetsEqual(previousWhitelist, this.whitelist);
 
     const blacklistDedupe = dedupeNpubs(blacklist);
-    const whitelistSet = new Set(normalizedWhitelist.map(normalizeNpub));
     const adminGuardSet = new Set([
       normalizeNpub(ADMIN_SUPER_NPUB),
       ...Array.from(this.editors),
@@ -273,9 +272,6 @@ class AccessControl {
     const sanitizedBlacklist = blacklistDedupe.filter((npub) => {
       const normalized = normalizeNpub(npub);
       if (!normalized) {
-        return false;
-      }
-      if (whitelistSet.has(normalized)) {
         return false;
       }
       if (adminGuardSet.has(normalized)) {
@@ -698,15 +694,9 @@ class AccessControl {
     if (!normalized) {
       return false;
     }
-    if (this.whitelist.has(normalized)) {
-      return false;
-    }
 
     const normalizedHexCandidate = normalizeHexKey(normalized);
     if (normalizedHexCandidate) {
-      if (this.whitelistPubkeys.has(normalizedHexCandidate)) {
-        return false;
-      }
       return this.blacklistPubkeys.has(normalizedHexCandidate);
     }
 
@@ -754,12 +744,12 @@ class AccessControl {
         return false;
       }
 
-      if (this.whitelistPubkeys.has(hex)) {
-        return true;
-      }
-
       if (this.blacklistPubkeys.has(hex)) {
         return false;
+      }
+
+      if (this.whitelistPubkeys.has(hex)) {
+        return true;
       }
 
       if (this.whitelistEnabled && !this.whitelistPubkeys.has(hex)) {
@@ -778,20 +768,20 @@ class AccessControl {
     }
 
     if (hex) {
-      if (this.whitelistPubkeys.has(hex)) {
-        return true;
-      }
       if (this.blacklistPubkeys.has(hex)) {
         return false;
       }
-    }
-
-    if (this.whitelist.has(normalized)) {
-      return true;
+      if (this.whitelistPubkeys.has(hex)) {
+        return true;
+      }
     }
 
     if (this.blacklist.has(normalized)) {
       return false;
+    }
+
+    if (this.whitelist.has(normalized)) {
+      return true;
     }
 
     if (this.whitelistEnabled && !this.whitelist.has(normalized)) {
