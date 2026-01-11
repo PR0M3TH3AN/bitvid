@@ -338,9 +338,11 @@ class Application {
         if (
           normalized &&
           moderationService &&
-          typeof moderationService.isAuthorMutedByTrusted === "function"
+          typeof moderationService.getTrustedMutersForAuthor === "function"
         ) {
-          if (moderationService.isAuthorMutedByTrusted(normalized)) {
+          const muters = moderationService.getTrustedMutersForAuthor(normalized);
+          const threshold = getTrustedMuteHideThreshold();
+          if (Array.isArray(muters) && muters.length >= threshold) {
             return true;
           }
         }
