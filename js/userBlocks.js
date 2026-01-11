@@ -5,7 +5,7 @@ import {
 } from "./nostrClientFacade.js";
 import { getActiveSigner } from "./nostr/index.js";
 import { buildBlockListEvent, BLOCK_LIST_IDENTIFIER } from "./nostrEventSchemas.js";
-import { userLogger } from "./utils/logger.js";
+import { devLogger, userLogger } from "./utils/logger.js";
 import {
   publishEventToRelays,
   assertAnyRelayAccepted,
@@ -381,6 +381,163 @@ function isUserBlockListEvent(event) {
   return false;
 }
 
+const BECH32_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
+const BECH32_CHARSET_MAP = (() => {
+  const map = new Map();
+  for (let index = 0; index < BECH32_CHARSET.length; index += 1) {
+    map.set(BECH32_CHARSET[index], index);
+  }
+  return map;
+})();
+
+function bytesToHex(bytes) {
+  if (!bytes || typeof bytes.length !== "number") {
+    return "";
+  }
+
+  let hex = "";
+  for (let index = 0; index < bytes.length; index += 1) {
+    const value = bytes[index];
+    if (typeof value !== "number") {
+      return "";
+    }
+    const normalized = value & 0xff;
+    hex += normalized.toString(16).padStart(2, "0");
+  }
+  return hex;
+}
+
+function bech32Polymod(values) {
+  let chk = 1;
+  const generators = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
+
+  for (const value of values) {
+    const top = chk >>> 25;
+    chk = ((chk & 0x1ffffff) << 5) ^ value;
+    for (let bit = 0; bit < generators.length; bit += 1) {
+      if ((top >>> bit) & 1) {
+        chk ^= generators[bit];
+      }
+    }
+  }
+
+  return chk;
+}
+
+function bech32HrpExpand(hrp) {
+  const expanded = [];
+  for (let index = 0; index < hrp.length; index += 1) {
+    const code = hrp.charCodeAt(index);
+    expanded.push(code >>> 5);
+  }
+  expanded.push(0);
+  for (let index = 0; index < hrp.length; index += 1) {
+    const code = hrp.charCodeAt(index);
+    expanded.push(code & 31);
+  }
+  return expanded;
+}
+
+function bech32VerifyChecksum(hrp, data) {
+  return bech32Polymod(bech32HrpExpand(hrp).concat(data)) === 1;
+}
+
+function bech32Decode(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const lower = trimmed.toLowerCase();
+  const upper = trimmed.toUpperCase();
+  if (trimmed !== lower && trimmed !== upper) {
+    return null;
+  }
+
+  const normalized = lower;
+  const separatorIndex = normalized.lastIndexOf("1");
+  if (separatorIndex < 1 || separatorIndex + 7 > normalized.length) {
+    return null;
+  }
+
+  const hrp = normalized.slice(0, separatorIndex);
+  const data = [];
+  for (let index = separatorIndex + 1; index < normalized.length; index += 1) {
+    const char = normalized[index];
+    if (!BECH32_CHARSET_MAP.has(char)) {
+      return null;
+    }
+    data.push(BECH32_CHARSET_MAP.get(char));
+  }
+
+  if (!bech32VerifyChecksum(hrp, data)) {
+    return null;
+  }
+
+  return { hrp, words: data.slice(0, -6) };
+}
+
+function convertBits(data, fromBits, toBits, pad = true) {
+  const result = [];
+  let acc = 0;
+  let bits = 0;
+  const maxv = (1 << toBits) - 1;
+  const maxAcc = (1 << (fromBits + toBits - 1)) - 1;
+
+  for (const value of data) {
+    if (value < 0 || value >> fromBits) {
+      return null;
+    }
+    acc = ((acc << fromBits) | value) & maxAcc;
+    bits += fromBits;
+    while (bits >= toBits) {
+      bits -= toBits;
+      result.push((acc >>> bits) & maxv);
+    }
+  }
+
+  if (pad) {
+    if (bits) {
+      result.push((acc << (toBits - bits)) & maxv);
+    }
+  } else if (bits >= fromBits || ((acc << (toBits - bits)) & maxv)) {
+    return null;
+  }
+
+  return result;
+}
+
+function fallbackDecodeNpubToHex(value) {
+  const decoded = bech32Decode(value);
+  if (!decoded || decoded.hrp !== "npub") {
+    return "";
+  }
+
+  const bytes = convertBits(decoded.words, 5, 8, false);
+  if (!bytes || !bytes.length) {
+    return "";
+  }
+
+  return bytesToHex(bytes);
+}
+
+function normalizeDecodedHex(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!/^[0-9a-f]{64}$/i.test(trimmed)) {
+    return null;
+  }
+
+  return trimmed.toLowerCase();
+}
+
 function decodeNpubToHex(npub) {
   if (typeof npub !== "string") {
     return null;
@@ -401,23 +558,23 @@ function decodeNpubToHex(npub) {
 
   const tools = window?.NostrTools;
   const decoder = tools?.nip19?.decode;
-  if (typeof decoder !== "function") {
-    return null;
-  }
-
-  try {
-    const decoded = decoder(trimmed);
-    if (decoded?.type === "npub" && typeof decoded.data === "string") {
-      const hex = decoded.data.trim();
-      if (/^[0-9a-f]{64}$/i.test(hex)) {
-        return hex.toLowerCase();
+  if (typeof decoder === "function") {
+    try {
+      const decoded = decoder(trimmed);
+      if (!decoded || decoded.type !== "npub") {
+        return normalizeDecodedHex(fallbackDecodeNpubToHex(trimmed));
       }
+      if (typeof decoded.data === "string") {
+        const normalized = normalizeDecodedHex(decoded.data);
+        return normalized || normalizeDecodedHex(fallbackDecodeNpubToHex(trimmed));
+      }
+      return normalizeDecodedHex(bytesToHex(decoded.data));
+    } catch (error) {
+      return normalizeDecodedHex(fallbackDecodeNpubToHex(trimmed));
     }
-  } catch (error) {
-    return null;
   }
 
-  return null;
+  return normalizeDecodedHex(fallbackDecodeNpubToHex(trimmed));
 }
 
 function readSeededFlag(actorHex) {
@@ -1352,6 +1509,17 @@ class UserBlockListManager {
     }
 
     if (!additions.size) {
+      if (candidates.length) {
+        devLogger.info(
+          "[UserBlockList] Seed candidates resolved to zero additions.",
+          {
+            actorPubkey: actorHex,
+            candidateCount: candidates.length,
+            blockedCount: this.blockedPubkeys.size,
+            removalCount: removals.size,
+          },
+        );
+      }
       return { ok: true, seeded: false, reason: "no-candidates" };
     }
 
@@ -1419,6 +1587,16 @@ class UserBlockListManager {
     }
 
     if (!additions.size) {
+      if (candidates.length) {
+        devLogger.info(
+          "[UserBlockList] Local seed candidates resolved to zero additions.",
+          {
+            actorPubkey: actorHex,
+            candidateCount: candidates.length,
+            removalCount: removals.size,
+          },
+        );
+      }
       this._setSeeded(actorHex, true);
       return { ok: true, seeded: true, addedPubkeys: [] };
     }
@@ -1474,6 +1652,17 @@ class UserBlockListManager {
     }
 
     if (!additions.size) {
+      if (candidates.length) {
+        devLogger.info(
+          "[UserBlockList] Baseline delta candidates resolved to zero additions.",
+          {
+            actorPubkey: actorHex,
+            candidateCount: candidates.length,
+            blockedCount: this.blockedPubkeys.size,
+            removalCount: removals.size,
+          },
+        );
+      }
       if (!state.seeded) {
         this._setSeeded(actorHex, true);
       }
