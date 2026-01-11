@@ -139,7 +139,7 @@ an operator might change it.
 
 - **`DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD`**
   - **What it does:** Trusted mute count required to hide a creator globally.
-  - **Why change it:** Lower for stricter enforcement, higher for more leniency.
+  - **Why change it:** Lower for stricter enforcement, higher for more leniency. The upstream default is 20, allowing most content to blur before hiding.
 
 - **`DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD`**
   - **What it does:** Trusted spam/report count required to hide a video
