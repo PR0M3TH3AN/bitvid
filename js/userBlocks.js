@@ -538,12 +538,30 @@ function normalizeDecodedHex(value) {
   return trimmed.toLowerCase();
 }
 
+function normalizeNpubInput(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith("nostr:")) {
+    return trimmed.slice(6).trim();
+  }
+
+  return trimmed;
+}
+
 function decodeNpubToHex(npub) {
   if (typeof npub !== "string") {
     return null;
   }
 
-  const trimmed = npub.trim();
+  const trimmed = normalizeNpubInput(npub);
   if (!trimmed) {
     return null;
   }
@@ -552,11 +570,7 @@ function decodeNpubToHex(npub) {
     return trimmed.toLowerCase();
   }
 
-  if (!trimmed.toLowerCase().startsWith("npub1")) {
-    return null;
-  }
-
-  const tools = window?.NostrTools;
+  const tools = typeof globalThis !== "undefined" ? globalThis?.NostrTools : null;
   const decoder = tools?.nip19?.decode;
   if (typeof decoder === "function") {
     try {
@@ -1489,11 +1503,13 @@ class UserBlockListManager {
 
     const removals = state.removals;
     const additions = new Set();
+    let invalidCount = 0;
 
     const candidates = Array.isArray(candidateNpubs) ? candidateNpubs : [];
     for (const candidate of candidates) {
       const candidateHex = normalizeHex(candidate);
       if (!candidateHex) {
+        invalidCount += 1;
         continue;
       }
       if (candidateHex === actorHex) {
@@ -1515,6 +1531,7 @@ class UserBlockListManager {
           {
             actorPubkey: actorHex,
             candidateCount: candidates.length,
+            invalidCount,
             blockedCount: this.blockedPubkeys.size,
             removalCount: removals.size,
           },
@@ -1570,11 +1587,13 @@ class UserBlockListManager {
 
     const removals = state.removals;
     const additions = new Set();
+    let invalidCount = 0;
 
     const candidates = Array.isArray(candidateNpubs) ? candidateNpubs : [];
     for (const candidate of candidates) {
       const candidateHex = normalizeHex(candidate);
       if (!candidateHex) {
+        invalidCount += 1;
         continue;
       }
       if (candidateHex === actorHex) {
@@ -1593,6 +1612,7 @@ class UserBlockListManager {
           {
             actorPubkey: actorHex,
             candidateCount: candidates.length,
+            invalidCount,
             removalCount: removals.size,
           },
         );
@@ -1632,11 +1652,13 @@ class UserBlockListManager {
     const state = this._getSeedState(actorHex);
     const removals = state.removals;
     const additions = new Set();
+    let invalidCount = 0;
 
     const candidates = Array.isArray(candidateNpubs) ? candidateNpubs : [];
     for (const candidate of candidates) {
       const candidateHex = normalizeHex(candidate);
       if (!candidateHex) {
+        invalidCount += 1;
         continue;
       }
       if (candidateHex === actorHex) {
@@ -1658,6 +1680,7 @@ class UserBlockListManager {
           {
             actorPubkey: actorHex,
             candidateCount: candidates.length,
+            invalidCount,
             blockedCount: this.blockedPubkeys.size,
             removalCount: removals.size,
           },
