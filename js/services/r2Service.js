@@ -19,6 +19,7 @@ import {
   makeR2Client,
   multipartUpload,
   ensureBucketCors,
+  ensureBucketExists,
 } from "../storage/r2-s3.js";
 import { truncateMiddle } from "../utils/formatters.js";
 import { userLogger } from "../utils/logger.js";
@@ -336,22 +337,34 @@ class R2Service {
     // We assume the user has created the bucket with the correct name and configured the public domain.
     const bucketName = sanitizeBucketName(npub);
 
-    // We attempt to ensure CORS is set up using the S3 keys if possible.
-    if (accessKeyId && secretAccessKey && corsOrigins.length > 0) {
+    // We attempt to ensure the bucket exists and CORS is set up using the S3 keys if possible.
+    if (accessKeyId && secretAccessKey) {
         try {
           const s3 = makeR2Client({
             accountId,
             accessKeyId,
             secretAccessKey,
           });
-          await ensureBucketCors({
-            s3,
-            bucket: bucketName,
-            origins: corsOrigins,
-          });
+
+          // Attempt to auto-create the bucket (requires Admin keys, but harmless if fails)
+          try {
+             await ensureBucketExists({ s3, bucket: bucketName });
+          } catch (createErr) {
+             // 403 Forbidden is expected if keys are "Object Read & Write" only.
+             // We proceed assuming the user might have created it manually.
+             userLogger.debug("Auto-creation of bucket failed (likely permission issue), proceeding...", createErr);
+          }
+
+          if (corsOrigins.length > 0) {
+             await ensureBucketCors({
+                s3,
+                bucket: bucketName,
+                origins: corsOrigins,
+             });
+          }
         } catch (corsErr) {
           userLogger.warn(
-            "Failed to ensure R2 CORS rules via access keys. Ensure the bucket exists and you have permissions.",
+            "Failed to ensure R2 bucket/CORS configuration via access keys. Ensure the bucket exists and you have permissions.",
             corsErr
           );
         }
