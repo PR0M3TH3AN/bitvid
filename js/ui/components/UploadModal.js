@@ -170,6 +170,17 @@ export class UploadModal {
         progress: $("#input-progress"),
     };
 
+    // Wizard Containers
+    this.wizard = {
+        step1: $("#step-credentials"),
+        step2: $("#step-verification"),
+        nextBtn: $("#btn-next-step"),
+        backBtn: $("#btn-back-step"),
+        errorContainer: $("#container-verification-error"),
+        errorText: $("#text-verification-error"),
+        guideLink: $("#link-cloudflare-guide"),
+    };
+
     // Toggles/Buttons
     this.toggles = {
         nsfw: $("#check-nsfw"),
@@ -179,7 +190,7 @@ export class UploadModal {
 
         advanced: $("#btn-advanced-toggle"),
         storageSettings: $("#btn-storage-settings"),
-        saveSettings: $("#btn-save-settings"),
+        saveSettings: $("#btn-save-settings"), // Verify & Save
         browseThumbnail: $("#btn-thumbnail-file"),
         r2HelpLink: $("#link-r2-help"),
         copyBucket: $("#btn-copy-bucket"),
@@ -210,9 +221,19 @@ export class UploadModal {
         this.handleSubmit();
     });
 
-    // Settings Save
+    // Wizard: Step 1 Next
+    if (this.wizard.nextBtn) {
+        this.wizard.nextBtn.addEventListener("click", () => this.goToVerificationStep());
+    }
+
+    // Wizard: Step 2 Back
+    if (this.wizard.backBtn) {
+        this.wizard.backBtn.addEventListener("click", () => this.goToCredentialsStep());
+    }
+
+    // Settings Save (Verify & Save)
     this.toggles.saveSettings.addEventListener("click", async () => {
-        await this.handleSaveSettings();
+        await this.handleVerifyAndSave();
     });
 
     // Help Link
@@ -427,22 +448,99 @@ export class UploadModal {
       };
   }
 
-  async handleSaveSettings() {
-      const settings = this.collectSettingsForm();
-      await this.r2Service.saveSettings(settings);
-      this.cloudflareSettings = settings;
-      this.updateStorageStatus(this.hasValidR2Settings());
+  goToVerificationStep() {
+      // Validate Step 1
+      const accountId = this.inputs.r2Account?.value?.trim();
+      const keyId = this.inputs.r2Key?.value?.trim();
+      const secret = this.inputs.r2Secret?.value?.trim();
 
-      // Visual feedback
+      if (!accountId || !keyId || !secret) {
+          alert("Please fill in Account ID, Access Key ID, and Secret Access Key.");
+          return;
+      }
+
+      // Transition
+      this.wizard.step1.classList.add("hidden");
+      this.wizard.step2.classList.remove("hidden");
+
+      // Auto-focus URL if empty
+      if (!this.inputs.r2Domain.value) {
+          this.inputs.r2Domain.focus();
+      }
+  }
+
+  goToCredentialsStep() {
+      this.wizard.step2.classList.add("hidden");
+      this.wizard.step1.classList.remove("hidden");
+      this.wizard.errorContainer.classList.add("hidden");
+  }
+
+  async handleVerifyAndSave() {
       const btn = this.toggles.saveSettings;
       const originalText = btn.textContent;
-      btn.textContent = "Saved!";
-      setTimeout(() => btn.textContent = originalText, 2000);
 
-      // Collapse if valid
-      if (this.hasValidR2Settings()) {
-           this.sourceSections.settings.classList.add("hidden");
-           this.toggles.storageSettings.setAttribute("aria-expanded", "false");
+      // Clear previous error
+      this.wizard.errorContainer.classList.add("hidden");
+
+      const settings = this.collectSettingsForm();
+      const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
+      const npub = pubkey ? this.safeEncodeNpub(pubkey) : null;
+
+      if (!settings.baseDomain) {
+           this.wizard.errorText.textContent = "Public Bucket URL is required.";
+           this.wizard.errorContainer.classList.remove("hidden");
+           return;
+      }
+
+      // 1. Verify
+      btn.disabled = true;
+      btn.textContent = "Verifying...";
+
+      try {
+          const verification = await this.r2Service.verifyPublicAccess({ settings, npub });
+
+          if (!verification.success) {
+              btn.disabled = false;
+              btn.textContent = originalText;
+
+              this.wizard.errorText.textContent = verification.error || "Verification failed.";
+              this.wizard.errorContainer.classList.remove("hidden");
+
+              // Dynamic Cloudflare Link
+              // https://dash.cloudflare.com/?to=/:account/r2/default/buckets/:bucket/settings
+              if (settings.accountId && npub) {
+                  const bucketName = this.inputs.r2BucketName?.value || "";
+                  const cfLink = `https://dash.cloudflare.com/?to=/${settings.accountId}/r2/default/buckets/${bucketName}/settings`;
+                  this.wizard.guideLink.href = cfLink;
+              } else {
+                  this.wizard.guideLink.href = "https://dash.cloudflare.com";
+              }
+              return;
+          }
+
+          // 2. Save on Success
+          btn.textContent = "Saving...";
+          await this.r2Service.saveSettings(settings);
+          this.cloudflareSettings = settings;
+          this.updateStorageStatus(true);
+
+          btn.disabled = false;
+          btn.textContent = "Saved & Ready!";
+
+          setTimeout(() => {
+              btn.textContent = originalText;
+              // Collapse
+              this.sourceSections.settings.classList.add("hidden");
+              this.toggles.storageSettings.setAttribute("aria-expanded", "false");
+              // Reset wizard to start for next edit
+              this.goToCredentialsStep();
+          }, 1500);
+      } catch (err) {
+          userLogger.error("Verification crashed:", err);
+          btn.disabled = false;
+          btn.textContent = originalText;
+          this.wizard.errorText.textContent = "Unexpected error during verification.";
+          this.wizard.errorContainer.classList.remove("hidden");
       }
   }
 
