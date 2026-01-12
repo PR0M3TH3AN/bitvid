@@ -35,9 +35,7 @@ function createDefaultSettings() {
     accountId: "",
     accessKeyId: "",
     secretAccessKey: "",
-    apiToken: "",
-    zoneId: "",
-    baseDomain: "",
+    baseDomain: "", // Now interpreted as the public URL base
     buckets: {},
   };
 }
@@ -46,7 +44,6 @@ class R2Service {
   constructor() {
     this.listeners = new Map();
     this.cloudflareSettings = null;
-    this.cloudflareAdvancedVisible = false;
   }
 
   on(event, handler) {
@@ -87,19 +84,6 @@ class R2Service {
   setSettings(settings) {
     this.cloudflareSettings = settings ? { ...settings } : null;
     this.emit("settingsChanged", { settings: this.getSettings() });
-  }
-
-  getCloudflareAdvancedVisibility() {
-    return Boolean(this.cloudflareAdvancedVisible);
-  }
-
-  setCloudflareAdvancedVisibility(visible) {
-    const isVisible = Boolean(visible);
-    if (this.cloudflareAdvancedVisible === isVisible) {
-      return;
-    }
-    this.cloudflareAdvancedVisible = isVisible;
-    this.emit("advancedVisibilityChange", { visible: isVisible });
   }
 
   normalizeStatusVariant(variant) {
@@ -203,22 +187,8 @@ class R2Service {
       accountId: settings?.accountId || "",
       accessKeyId: settings?.accessKeyId || "",
       secretAccessKey: settings?.secretAccessKey || "",
-      apiToken: settings?.apiToken || "",
-      zoneId: settings?.zoneId || "",
       baseDomain: settings?.baseDomain || "",
     };
-
-    const hasAdvancedValues = Boolean(
-      (data.apiToken && data.apiToken.length > 0) ||
-        (data.zoneId && data.zoneId.length > 0) ||
-        (data.baseDomain && data.baseDomain.length > 0)
-    );
-
-    if (hasAdvancedValues) {
-      this.setCloudflareAdvancedVisibility(true);
-    } else if (!this.cloudflareAdvancedVisible) {
-      this.setCloudflareAdvancedVisibility(false);
-    }
 
     this.setCloudflareSettingsStatus("");
     this.emit("settingsPopulated", { settings: data });
@@ -246,9 +216,7 @@ class R2Service {
     const accountId = String(formValues.accountId || "").trim();
     const accessKeyId = String(formValues.accessKeyId || "").trim();
     const secretAccessKey = String(formValues.secretAccessKey || "").trim();
-    const apiToken = String(formValues.apiToken || "").trim();
-    const zoneId = String(formValues.zoneId || "").trim();
-    const baseDomain = sanitizeBaseDomain(formValues.baseDomain || "");
+    const baseDomain = sanitizeBaseDomain(formValues.baseDomain || ""); // This is the Public Bucket URL
 
     if (!accountId || !accessKeyId || !secretAccessKey) {
       if (!quiet) {
@@ -260,14 +228,23 @@ class R2Service {
       return false;
     }
 
+    if (!baseDomain) {
+      if (!quiet) {
+         this.setCloudflareSettingsStatus(
+             "Public Bucket URL is required (e.g., https://pub-xxx.r2.dev).",
+             "error"
+         );
+      }
+      return false;
+    }
+
     let buckets = { ...(this.getSettings().buckets || {}) };
     const previousAccount = this.getSettings().accountId || "";
     const previousBaseDomain = this.getSettings().baseDomain || "";
-    const previousZoneId = this.getSettings().zoneId || "";
+
     if (
       previousAccount !== accountId ||
-      previousBaseDomain !== baseDomain ||
-      previousZoneId !== zoneId
+      previousBaseDomain !== baseDomain
     ) {
       buckets = {};
     }
@@ -276,8 +253,6 @@ class R2Service {
       accountId,
       accessKeyId,
       secretAccessKey,
-      apiToken,
-      zoneId,
       baseDomain,
       buckets,
     };
@@ -312,7 +287,6 @@ class R2Service {
       const refreshed = await loadR2Settings();
       this.setSettings(refreshed);
       this.populateCloudflareSettingsInputs(refreshed);
-      this.setCloudflareAdvancedVisibility(false);
       this.setCloudflareSettingsStatus("Settings cleared.", "success");
       return true;
     } catch (err) {
@@ -340,104 +314,30 @@ class R2Service {
     return Array.from(origins);
   }
 
-  deriveSubdomainForNpub(npub) {
-    try {
-      return deriveShortSubdomain(npub);
-    } catch (err) {
-      userLogger.warn("Failed to derive short subdomain, falling back:", err);
-    }
-
-    const base = String(npub || "user")
-      .toLowerCase()
-      .replace(/[^a-z0-9-]/g, "")
-      .replace(/^-+|[-]+$/g, "");
-    return base.slice(0, 32) || "user";
-  }
-
   async ensureBucketConfigForNpub(npub) {
     if (!npub || !this.cloudflareSettings) {
       return null;
     }
 
     const accountId = (this.cloudflareSettings.accountId || "").trim();
-    const apiToken = (this.cloudflareSettings.apiToken || "").trim();
-    const zoneId = (this.cloudflareSettings.zoneId || "").trim();
     const accessKeyId = (this.cloudflareSettings.accessKeyId || "").trim();
     const secretAccessKey = (this.cloudflareSettings.secretAccessKey || "").trim();
-    const corsOrigins = this.getCorsOrigins();
     const baseDomain = this.cloudflareSettings.baseDomain || "";
+    const corsOrigins = this.getCorsOrigins();
 
     if (!accountId) {
       throw new Error("Cloudflare account ID is missing.");
     }
-
-    let entry = this.cloudflareSettings.buckets?.[npub] || null;
-
-    if (entry && entry.publicBaseUrl) {
-      if (apiToken) {
-        try {
-          await ensureBucket({
-            accountId,
-            bucket: entry.bucket,
-            token: apiToken,
-          });
-          await putCors({
-            accountId,
-            bucket: entry.bucket,
-            token: apiToken,
-            origins: corsOrigins,
-          });
-        } catch (err) {
-          userLogger.warn("Failed to refresh bucket configuration:", err);
-        }
-      } else if (accessKeyId && secretAccessKey && corsOrigins.length > 0) {
-        try {
-          const s3 = makeR2Client({
-            accountId,
-            accessKeyId,
-            secretAccessKey,
-          });
-          await ensureBucketCors({
-            s3,
-            bucket: entry.bucket,
-            origins: corsOrigins,
-          });
-        } catch (err) {
-          userLogger.warn("Failed to refresh bucket CORS via access keys:", err);
-        }
-      }
-      return {
-        entry,
-        usedManagedFallback: entry.domainType !== "custom",
-        customDomainStatus: entry.domainType === "custom" ? "active" : "skipped",
-      };
+    if (!baseDomain) {
+      throw new Error("Public Bucket URL is missing.");
     }
 
-    if (!apiToken) {
-      const bucketName = entry?.bucket || sanitizeBucketName(npub);
-      const manualCustomDomain = baseDomain
-        ? `https://${this.deriveSubdomainForNpub(npub)}.${baseDomain}`
-        : "";
+    // We no longer support automated bucket creation or domain management via API token.
+    // We assume the user has created the bucket with the correct name and configured the public domain.
+    const bucketName = sanitizeBucketName(npub);
 
-      let publicBaseUrl = entry?.publicBaseUrl || manualCustomDomain;
-      if (!publicBaseUrl) {
-        publicBaseUrl = `https://${bucketName}.${accountId}.r2.dev`;
-      }
-
-      if (!publicBaseUrl) {
-        throw new Error(
-          "No public bucket domain configured. Please add a Cloudflare API token to automate domain setup."
-        );
-      }
-
-      const manualEntry = {
-        bucket: bucketName,
-        publicBaseUrl,
-        domainType: publicBaseUrl.includes(".r2.dev") ? "managed" : "custom",
-        lastUpdated: Date.now(),
-      };
-
-      if (accessKeyId && secretAccessKey && corsOrigins.length > 0) {
+    // We attempt to ensure CORS is set up using the S3 keys if possible.
+    if (accessKeyId && secretAccessKey && corsOrigins.length > 0) {
         try {
           const s3 = makeR2Client({
             accountId,
@@ -451,186 +351,48 @@ class R2Service {
           });
         } catch (corsErr) {
           userLogger.warn(
-            "Failed to ensure R2 CORS rules via access keys. Configure the bucket's CORS policy manually if uploads continue to fail.",
+            "Failed to ensure R2 CORS rules via access keys. Ensure the bucket exists and you have permissions.",
             corsErr
           );
         }
-      }
+    }
 
-      let savedEntry = entry;
-      if (
+    // Use the user-provided baseDomain as the public URL root.
+    // Clean up trailing slash if present.
+    const cleanBaseUrl = baseDomain.replace(/\/+$/, "");
+
+    const manualEntry = {
+        bucket: bucketName,
+        publicBaseUrl: cleanBaseUrl,
+        domainType: "manual",
+        lastUpdated: Date.now(),
+    };
+
+    let entry = this.cloudflareSettings.buckets?.[npub];
+    let savedEntry = entry;
+
+    if (
         !entry ||
         entry.bucket !== manualEntry.bucket ||
-        entry.publicBaseUrl !== manualEntry.publicBaseUrl ||
-        entry.domainType !== manualEntry.domainType
-      ) {
+        entry.publicBaseUrl !== manualEntry.publicBaseUrl
+    ) {
         const updatedSettings = await saveR2Settings(
           mergeBucketEntry(this.getSettings(), npub, manualEntry)
         );
         this.setSettings(updatedSettings);
         savedEntry = updatedSettings.buckets?.[npub] || manualEntry;
-      }
+    }
 
-      return {
+    return {
         entry: savedEntry,
-        usedManagedFallback: manualEntry.domainType !== "custom",
-        customDomainStatus:
-          manualEntry.domainType === "custom" ? "manual" : "managed",
-      };
-    }
-
-    const bucketName = entry?.bucket || sanitizeBucketName(npub);
-
-    await ensureBucket({ accountId, bucket: bucketName, token: apiToken });
-
-    try {
-      await putCors({
-        accountId,
-        bucket: bucketName,
-        token: apiToken,
-        origins: corsOrigins,
-      });
-    } catch (err) {
-      userLogger.warn("Failed to apply R2 CORS rules:", err);
-    }
-
-    let publicBaseUrl = entry?.publicBaseUrl || "";
-    let domainType = entry?.domainType || "managed";
-    let usedManagedFallback = false;
-    let customDomainStatus = "skipped";
-
-    if (baseDomain && zoneId) {
-      const domain = `${this.deriveSubdomainForNpub(npub)}.${baseDomain}`;
-      try {
-        const custom = await attachCustomDomainAndWait({
-          accountId,
-          bucket: bucketName,
-          token: apiToken,
-          zoneId,
-          domain,
-          pollInterval: 2500,
-          timeoutMs: 120000,
-        });
-        customDomainStatus = custom?.status || "unknown";
-        if (custom?.active && custom?.url) {
-          publicBaseUrl = custom.url;
-          domainType = "custom";
-          try {
-            await setManagedDomain({
-              accountId,
-              bucket: bucketName,
-              token: apiToken,
-              enabled: false,
-            });
-          } catch (disableErr) {
-            userLogger.warn("Failed to disable managed domain:", disableErr);
-          }
-        } else {
-          usedManagedFallback = true;
-        }
-      } catch (err) {
-        if (/already exists/i.test(err.message || "")) {
-          publicBaseUrl = `https://${domain}`;
-          domainType = "custom";
-          customDomainStatus = "active";
-          try {
-            await setManagedDomain({
-              accountId,
-              bucket: bucketName,
-              token: apiToken,
-              enabled: false,
-            });
-          } catch (disableErr) {
-            userLogger.warn("Failed to disable managed domain:", disableErr);
-          }
-        } else {
-          userLogger.warn("Failed to attach custom domain, falling back:", err);
-          usedManagedFallback = true;
-          customDomainStatus = "error";
-        }
-      }
-    }
-
-    if (!publicBaseUrl) {
-      const managed = await setManagedDomain({
-        accountId,
-        bucket: bucketName,
-        token: apiToken,
-        enabled: true,
-      });
-      publicBaseUrl = managed?.url || `https://${bucketName}.${accountId}.r2.dev`;
-      domainType = "managed";
-      usedManagedFallback = true;
-      customDomainStatus =
-        customDomainStatus === "skipped" ? "managed" : customDomainStatus;
-    }
-
-    const mergedEntry = {
-      bucket: bucketName,
-      publicBaseUrl,
-      domainType,
-      lastUpdated: Date.now(),
+        usedManagedFallback: false,
+        customDomainStatus: "manual",
     };
-    const updatedSettings = await saveR2Settings(
-      mergeBucketEntry(this.getSettings(), npub, mergedEntry)
-    );
-    this.setSettings(updatedSettings);
-    return { entry: mergedEntry, usedManagedFallback, customDomainStatus };
   }
 
   async updateCloudflareBucketPreview({ hasPubkey = false, npub = "" } = {}) {
-    if (!this.cloudflareSettings) {
-      const detail = {
-        text: "Save your credentials to configure R2.",
-        title: "",
-      };
-      this.emit("bucketPreview", detail);
-      return detail;
-    }
-
-    if (!hasPubkey) {
-      const detail = { text: "Login to preview your R2 bucket.", title: "" };
-      this.emit("bucketPreview", detail);
-      return detail;
-    }
-
-    if (!npub) {
-      const detail = { text: "Unable to encode npub.", title: "" };
-      this.emit("bucketPreview", detail);
-      return detail;
-    }
-
-    const entry = this.cloudflareSettings.buckets?.[npub];
-    if (!entry || !entry.publicBaseUrl) {
-      const detail = {
-        text: "Bucket will be auto-created on your next upload.",
-        title: "",
-      };
-      this.emit("bucketPreview", detail);
-      return detail;
-    }
-
-    const sampleKey = buildR2Key(npub, { name: "sample.mp4" });
-    const publicUrl = buildPublicUrl(entry.publicBaseUrl, sampleKey);
-    const fullPreview = `${entry.bucket} • ${publicUrl}`;
-
-    let displayHostAndPath = truncateMiddle(publicUrl, 72);
-    try {
-      const parsed = new URL(publicUrl);
-      const cleanPath = parsed.pathname.replace(/^\//, "");
-      const truncatedPath = truncateMiddle(cleanPath || sampleKey, 32);
-      displayHostAndPath = `${truncateMiddle(parsed.host, 32)}/${truncatedPath}`;
-    } catch (err) {
-      // ignore URL parse issues and fall back to the raw string
-    }
-
-    const truncatedBucket = truncateMiddle(entry.bucket, 28);
-    const detail = {
-      text: `${truncatedBucket} • ${displayHostAndPath}`,
-      title: fullPreview,
-    };
-    this.emit("bucketPreview", detail);
-    return detail;
+     // No-op for now or just simplified text, since we rely on user input mostly.
+     return;
   }
 
   async handleCloudflareUploadSubmit({
@@ -638,6 +400,7 @@ class R2Service {
     file = null,
     thumbnailFile = null,
     metadata = {},
+    infoHash = "",
     settingsInput = null,
     publishVideoNote,
     onReset,
@@ -717,7 +480,7 @@ class R2Service {
 
     if (!bucketEntry || !bucketEntry.publicBaseUrl) {
       this.setCloudflareUploadStatus(
-        "Bucket is missing a public domain. Check your Cloudflare settings.",
+        "Bucket is missing a public URL. Check your settings.",
         "error"
       );
       this.setCloudflareUploading(false);
@@ -726,22 +489,7 @@ class R2Service {
     }
 
     let statusMessage = `Uploading to ${bucketEntry.bucket}…`;
-    if (bucketResult?.usedManagedFallback) {
-      const baseDomain = this.cloudflareSettings?.baseDomain || "";
-      if (baseDomain) {
-        const customStatus = bucketResult?.customDomainStatus
-          ? ` (custom domain status: ${bucketResult.customDomainStatus})`
-          : "";
-        statusMessage = `Using managed r2.dev domain for ${bucketEntry.bucket}. Verify your Cloudflare zone${customStatus}. Uploading…`;
-      } else {
-        statusMessage = `Using managed r2.dev domain for ${bucketEntry.bucket}. Uploading…`;
-      }
-    }
-
-    this.setCloudflareUploadStatus(
-      statusMessage,
-      bucketResult?.usedManagedFallback ? "warning" : "info"
-    );
+    this.setCloudflareUploadStatus(statusMessage, "info");
 
     const key = buildR2Key(npub, file);
     const publicUrl = buildPublicUrl(bucketEntry.publicBaseUrl, key);
@@ -771,10 +519,7 @@ class R2Service {
         }
       }
 
-      this.setCloudflareUploadStatus(
-        statusMessage,
-        bucketResult?.usedManagedFallback ? "warning" : "info"
-      );
+      this.setCloudflareUploadStatus(statusMessage, "info");
 
       await multipartUpload({
         s3,
@@ -795,13 +540,25 @@ class R2Service {
         );
         publishOutcome = false;
       } else {
+        // Construct the Magnet Link
+        // magnet:?xt=urn:btih:<infoHash>&dn=<filename>&ws=<publicUrl>
+        let generatedMagnet = "";
+        let generatedWs = "";
+
+        if (infoHash) {
+             const encodedDn = encodeURIComponent(file.name);
+             const encodedWs = encodeURIComponent(publicUrl);
+             generatedMagnet = `magnet:?xt=urn:btih:${infoHash}&dn=${encodedDn}&ws=${encodedWs}`;
+             generatedWs = publicUrl;
+        }
+
         const rawVideoPayload = {
           title,
-          url: publicUrl,
-          magnet: metadata?.magnet ?? "",
+          url: publicUrl, // Primary URL
+          magnet: generatedMagnet || (metadata?.magnet ?? ""),
           thumbnail: metadata?.thumbnail ?? "",
           description: metadata?.description ?? "",
-          ws: metadata?.ws ?? "",
+          ws: generatedWs || (metadata?.ws ?? ""),
           xs: metadata?.xs ?? "",
           enableComments: metadata?.enableComments,
           isNsfw: metadata?.isNsfw,

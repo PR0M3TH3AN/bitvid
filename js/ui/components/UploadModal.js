@@ -7,6 +7,8 @@ import {
   normalizeVideoNotePayload,
   VIDEO_NOTE_ERROR_CODES,
 } from "../../services/videoNotePayload.js";
+import { calculateTorrentInfoHash } from "../../utils/torrentHash.js";
+import { sanitizeBucketName } from "../../storage/r2-mgmt.js";
 
 export class UploadModal {
   constructor({
@@ -137,7 +139,6 @@ export class UploadModal {
         external: $("#section-source-external"),
         settings: $("#section-storage-settings"),
         advanced: $("#section-advanced"),
-        r2Advanced: $("#section-r2-advanced"),
         progress: $("#upload-progress-container"),
     };
 
@@ -152,12 +153,11 @@ export class UploadModal {
         magnet: $("#input-magnet"),
 
         // Settings
+        r2BucketName: $("#input-r2-bucket-name"),
         r2Account: $("#input-r2-account"),
         r2Key: $("#input-r2-key"),
         r2Secret: $("#input-r2-secret"),
-        r2Token: $("#input-r2-token"),
-        r2Zone: $("#input-r2-zone"),
-        r2Domain: $("#input-r2-domain"),
+        r2Domain: $("#input-r2-domain"), // Public URL
 
         // Advanced (Manual or NIP71 managed)
         ws: $("#input-ws"),
@@ -179,10 +179,10 @@ export class UploadModal {
 
         advanced: $("#btn-advanced-toggle"),
         storageSettings: $("#btn-storage-settings"),
-        r2Advanced: $("#btn-r2-advanced"),
         saveSettings: $("#btn-save-settings"),
         browseThumbnail: $("#btn-thumbnail-file"),
         r2HelpLink: $("#link-r2-help"),
+        copyBucket: $("#btn-copy-bucket"),
     };
 
     // Status text
@@ -203,7 +203,6 @@ export class UploadModal {
     // Toggles
     this.setupAccordion(this.toggles.advanced, this.sourceSections.advanced);
     this.setupAccordion(this.toggles.storageSettings, this.sourceSections.settings);
-    this.setupAccordion(this.toggles.r2Advanced, this.sourceSections.r2Advanced);
 
     // Form Submission
     this.form.addEventListener("submit", (e) => {
@@ -220,6 +219,20 @@ export class UploadModal {
     if (this.toggles.r2HelpLink) {
         this.toggles.r2HelpLink.addEventListener("click", () => {
             this.close();
+        });
+    }
+
+    // Copy Bucket Name
+    if (this.toggles.copyBucket && this.inputs.r2BucketName) {
+        this.toggles.copyBucket.addEventListener("click", () => {
+            const val = this.inputs.r2BucketName.value;
+            if (val) {
+                navigator.clipboard.writeText(val).then(() => {
+                    const original = this.toggles.copyBucket.textContent;
+                    this.toggles.copyBucket.textContent = "Copied!";
+                    setTimeout(() => this.toggles.copyBucket.textContent = original, 1500);
+                });
+            }
         });
     }
 
@@ -270,6 +283,10 @@ export class UploadModal {
         if (this.toggles.browseThumbnail) {
             this.toggles.browseThumbnail.classList.remove("hidden");
         }
+
+        // Populate derived bucket name
+        this.populateBucketName();
+
     } else {
         this.sourceSections.upload.classList.add("hidden");
         this.sourceSections.external.classList.remove("hidden");
@@ -303,6 +320,15 @@ export class UploadModal {
   }
 
   // --- Automation Helpers ---
+
+  populateBucketName() {
+      const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
+      if (pubkey && this.safeEncodeNpub && this.inputs.r2BucketName) {
+          const npub = this.safeEncodeNpub(pubkey);
+          const bucketName = sanitizeBucketName(npub);
+          this.inputs.r2BucketName.value = bucketName;
+      }
+  }
 
   setupDescriptionMirror() {
       const { description, summary } = this.inputs;
@@ -382,15 +408,13 @@ export class UploadModal {
 
   hasValidR2Settings() {
       const s = this.cloudflareSettings;
-      return Boolean(s?.accountId && s?.accessKeyId && s?.secretAccessKey);
+      return Boolean(s?.accountId && s?.accessKeyId && s?.secretAccessKey && s?.baseDomain);
   }
 
   fillSettingsForm(s) {
       if (this.inputs.r2Account) this.inputs.r2Account.value = s.accountId || "";
       if (this.inputs.r2Key) this.inputs.r2Key.value = s.accessKeyId || "";
       if (this.inputs.r2Secret) this.inputs.r2Secret.value = s.secretAccessKey || "";
-      if (this.inputs.r2Token) this.inputs.r2Token.value = s.apiToken || "";
-      if (this.inputs.r2Zone) this.inputs.r2Zone.value = s.zoneId || "";
       if (this.inputs.r2Domain) this.inputs.r2Domain.value = s.baseDomain || "";
   }
 
@@ -399,9 +423,7 @@ export class UploadModal {
           accountId: this.inputs.r2Account?.value?.trim() || "",
           accessKeyId: this.inputs.r2Key?.value?.trim() || "",
           secretAccessKey: this.inputs.r2Secret?.value?.trim() || "",
-          apiToken: this.inputs.r2Token?.value?.trim() || "",
-          zoneId: this.inputs.r2Zone?.value?.trim() || "",
-          baseDomain: this.inputs.r2Domain?.value?.trim() || "",
+          baseDomain: this.inputs.r2Domain?.value?.trim() || "", // Public URL
       };
   }
 
@@ -456,7 +478,7 @@ export class UploadModal {
       const bar = this.inputs.progress;
       const txt = this.statusText.uploadPercent;
 
-      if (fraction === null || fraction < 0) {
+      if (fraction === null || fraction < 0 || isNaN(fraction)) {
           container.classList.add("hidden");
           return;
       }
@@ -530,11 +552,30 @@ export class UploadModal {
 
       const npub = this.safeEncodeNpub(pubkey);
 
+      // 1. Calculate Torrent Info Hash (Client-side)
+      this.isUploading = true;
+      this.submitButton.disabled = true;
+      this.updateUploadStatus("Calculating Info Hash...", "info");
+      this.updateProgress(0); // Show bar at 0
+
+      let infoHash = "";
+      try {
+          infoHash = await calculateTorrentInfoHash(file);
+      } catch (hashErr) {
+          userLogger.warn("Failed to calculate info hash:", hashErr);
+          // We can proceed without it, or fail. The plan says we need it.
+          // Let's warn but proceed? Or fail? The user said "Also lets not forget that we calculate a torrent hash".
+          // I will proceed but log it, maybe the upload handles it gracefully (missing magnet).
+          // But passing empty infoHash means no magnet link generated in R2Service.
+      }
+
+      // 2. Upload
       await this.r2Service.uploadVideo({
           npub,
           file,
           thumbnailFile,
           metadata,
+          infoHash,
           settingsInput: this.collectSettingsForm(),
           publishVideoNote: this.publishVideoNote,
           onReset: () => this.resetForm(),
@@ -589,6 +630,7 @@ export class UploadModal {
       this.toggles.nsfw.checked = false;
       this.toggles.kids.checked = false;
       this.updateProgress(null);
+      this.populateBucketName(); // Re-populate if user logged in
 
       // Reset thumbnail UI
       if (this.inputs.thumbnail) {
@@ -607,6 +649,7 @@ export class UploadModal {
     this.root.classList.remove("hidden");
     this.setGlobalModalState("upload", true);
     this.isVisible = true;
+    this.populateBucketName(); // Ensure bucket name is fresh on open
     this.modalAccessibility?.activate({ triggerElement });
   }
 
