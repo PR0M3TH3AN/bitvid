@@ -581,6 +581,7 @@ export function shimLegacySimplePoolMethods(pool) {
             : 7000;
 
         timer = setTimeout(() => {
+          devLogger.warn(`[toolkit] pool.list timed out after ${timeoutMs}ms.`);
           timer = null;
           try {
             subscription.unsub?.();
