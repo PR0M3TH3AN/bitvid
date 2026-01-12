@@ -129,7 +129,7 @@ export function makeR2Client({ accountId, accessKeyId, secretAccessKey }) {
   });
 }
 
-async function ensureBucketExists({ s3, bucket }) {
+export async function ensureBucketExists({ s3, bucket }) {
   const { CreateBucketCommand, HeadBucketCommand } = requireAwsSdk();
 
   try {
