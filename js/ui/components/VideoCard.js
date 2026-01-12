@@ -956,9 +956,15 @@ export class VideoCard {
       Number.isFinite(this.video?.created_at) &&
       this.video.created_at > this.postedAt + 60
     ) {
+      const separator = this.createElement("span", {
+        classNames: ["text-muted-strong", isCompact ? "" : "mx-1"],
+        textContent: "•",
+      });
+      separator.setAttribute("aria-hidden", "true");
+      metadata.appendChild(separator);
+
       const edited = this.createElement("span", {
-        classNames: ["ml-1"],
-        textContent: "(edited)",
+        textContent: "Edited",
       });
       metadata.appendChild(edited);
     }

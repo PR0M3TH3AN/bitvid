@@ -8762,9 +8762,9 @@ class Application {
       (normalizedPostedAt === null || normalizedEditedAt - normalizedPostedAt >= 60);
 
     if (shouldShowEdited) {
-      payload.edited = `Last Edited: ${formatAbsoluteDateWithOrdinalUtil(
-        normalizedEditedAt
-      )}`;
+      const abs = formatAbsoluteDateWithOrdinalUtil(normalizedEditedAt);
+      const rel = this.formatTimeAgo(normalizedEditedAt);
+      payload.edited = `Last edited: ${abs} (${rel})`;
     }
 
     return payload;
