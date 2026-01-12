@@ -3959,8 +3959,17 @@ export class VideoModal {
   }
 
   updateViewCountLabel(text) {
-    if (this.videoViewCountEl) {
-      this.videoViewCountEl.textContent = text || "";
+    if (!this.videoViewCountEl) {
+      return;
+    }
+    const textEl = this.videoViewCountEl.querySelector(
+      "[data-view-count-text]"
+    );
+    if (textEl) {
+      textEl.textContent = text || "–";
+    } else {
+      // Fallback if span is missing
+      this.videoViewCountEl.textContent = text || "–";
     }
   }
 
@@ -5438,15 +5447,14 @@ export class VideoModal {
       return this.formatViewCountLabel(Number(total));
     }
     if (status === "hydrating") {
-      return "Loading views…";
+      return "Loading…";
     }
-    return "– views";
+    return "–";
   }
 
   formatViewCountLabel(total) {
     const numeric = Number.isFinite(total) ? Math.max(0, Number(total)) : 0;
-    const label = numeric === 1 ? "view" : "views";
-    return `${formatViewCount(numeric)} ${label}`;
+    return formatViewCount(numeric);
   }
 
   syncMoreMenuData({ currentVideo, canManageBlacklist }) {
