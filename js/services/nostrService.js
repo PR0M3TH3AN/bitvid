@@ -1176,6 +1176,8 @@ export class NostrService {
       return [];
     }
 
+    this.log(`[nostrService] fetchVideosByAuthors START. Authors: ${authorList.length}`);
+
     const requestedLimit = Number(options?.limit);
     const resolvedLimit = this.nostrClient.clampVideoRequestLimit(
       requestedLimit
@@ -1193,10 +1195,13 @@ export class NostrService {
     const invalidNotes = [];
 
     try {
+      this.log(`[nostrService] Querying ${this.nostrClient.relays.length} relays...`);
       await Promise.all(
         this.nostrClient.relays.map(async (url) => {
           try {
+            this.log(`[nostrService] Querying relay: ${url}`);
             const events = await this.nostrClient.pool.list([url], [filter]);
+            this.log(`[nostrService] Relay ${url} returned ${events.length} events.`);
             for (const evt of events) {
               if (evt && evt.id) {
                 this.nostrClient.rawEvents.set(evt.id, evt);
