@@ -860,7 +860,9 @@ class SubscriptionsManager {
       return this.lastResult;
     }
 
-    container.innerHTML = getSidebarLoadingMarkup("Fetching subscriptions…");
+    if (!this.hasRenderedOnce) {
+      container.innerHTML = getSidebarLoadingMarkup("Fetching subscriptions…");
+    }
 
     this.lastRunOptions = {
       actorPubkey: userPubkey,
