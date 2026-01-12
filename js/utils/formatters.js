@@ -90,3 +90,37 @@ export function formatTimeAgo(timestamp) {
   }
   return "just now";
 }
+
+/**
+ * Formats a timestamp (in seconds) to a long absolute date with ordinal day
+ * (e.g. "January 6th, 2026").
+ */
+export function formatAbsoluteDateWithOrdinal(timestamp) {
+  if (!Number.isFinite(timestamp)) {
+    return "";
+  }
+
+  const date = new Date(timestamp * 1000);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  // Helper for English ordinal suffixes
+  const getOrdinal = (n) => {
+    const s = ["th", "st", "nd", "rd"];
+    const v = n % 100;
+    return s[(v - 20) % 10] || s[v] || s[0];
+  };
+
+  try {
+    const month = date.toLocaleString("en-US", { month: "long" });
+    const day = date.getDate();
+    const year = date.getFullYear();
+    const suffix = getOrdinal(day);
+
+    return `${month} ${day}${suffix}, ${year}`;
+  } catch (err) {
+    // Fallback if locale fails
+    return date.toDateString();
+  }
+}

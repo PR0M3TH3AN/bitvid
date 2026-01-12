@@ -951,6 +951,24 @@ export class VideoCard {
       this.viewCountEl = view;
     }
 
+    if (
+      this.postedAt !== null &&
+      Number.isFinite(this.video?.created_at) &&
+      this.video.created_at > this.postedAt + 60
+    ) {
+      const separator = this.createElement("span", {
+        classNames: ["text-muted-strong", isCompact ? "" : "mx-1"],
+        textContent: "•",
+      });
+      separator.setAttribute("aria-hidden", "true");
+      metadata.appendChild(separator);
+
+      const edited = this.createElement("span", {
+        textContent: "Edited",
+      });
+      metadata.appendChild(edited);
+    }
+
     authorMeta.appendChild(authorName);
     authorMeta.appendChild(metadata);
 

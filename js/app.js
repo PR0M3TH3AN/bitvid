@@ -76,6 +76,7 @@ import {
 import { splitAndZap as splitAndZapDefault } from "./payments/zapSplit.js";
 import {
   formatAbsoluteTimestamp as formatAbsoluteTimestampUtil,
+  formatAbsoluteDateWithOrdinal as formatAbsoluteDateWithOrdinalUtil,
   formatTimeAgo as formatTimeAgoUtil,
   truncateMiddle,
   formatShortNpub,
@@ -8761,7 +8762,9 @@ class Application {
       (normalizedPostedAt === null || normalizedEditedAt - normalizedPostedAt >= 60);
 
     if (shouldShowEdited) {
-      payload.edited = `Last edited ${this.formatTimeAgo(normalizedEditedAt)}`;
+      const abs = formatAbsoluteDateWithOrdinalUtil(normalizedEditedAt);
+      const rel = this.formatTimeAgo(normalizedEditedAt);
+      payload.edited = `Last edited: ${abs} (${rel})`;
     }
 
     return payload;
@@ -8844,6 +8847,21 @@ class Application {
   async resolveVideoPostedAt(video) {
     if (!video || typeof video !== "object") {
       return null;
+    }
+
+    // Prioritize NIP-71 published_at metadata if available
+    const rawNip71PublishedAt =
+      video?.nip71?.publishedAt ||
+      video?.nip71?.published_at ||
+      video?.nip71?.["published-at"];
+    const parsedNip71PublishedAt = Number(rawNip71PublishedAt);
+    const nip71PublishedAt = Number.isFinite(parsedNip71PublishedAt)
+      ? Math.floor(parsedNip71PublishedAt)
+      : null;
+
+    if (nip71PublishedAt !== null) {
+      this.cacheVideoRootCreatedAt(video, nip71PublishedAt);
+      return nip71PublishedAt;
     }
 
     const cached = this.getKnownVideoPostedAt(video);
