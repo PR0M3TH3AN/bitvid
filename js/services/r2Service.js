@@ -20,6 +20,7 @@ import {
   multipartUpload,
   ensureBucketCors,
   ensureBucketExists,
+  deleteObject,
 } from "../storage/r2-s3.js";
 import { truncateMiddle } from "../utils/formatters.js";
 import { userLogger } from "../utils/logger.js";
@@ -401,6 +402,80 @@ class R2Service {
         usedManagedFallback: false,
         customDomainStatus: "manual",
     };
+  }
+
+  async verifyPublicAccess({ settings, npub }) {
+    if (!settings || !npub) {
+      return { success: false, error: "Missing settings or npub." };
+    }
+
+    const { accountId, accessKeyId, secretAccessKey, baseDomain } = settings;
+    if (!accountId || !accessKeyId || !secretAccessKey || !baseDomain) {
+      return { success: false, error: "Incomplete credentials or missing public URL." };
+    }
+
+    const bucketName = sanitizeBucketName(npub);
+    const verifyKey = `.verify-${Date.now()}-${Math.random().toString(36).substring(7)}.txt`;
+    const verifyContent = "bitvid-verification";
+    const publicUrl = buildPublicUrl(baseDomain, verifyKey);
+
+    try {
+      // 1. Initialize S3
+      const s3 = makeR2Client({ accountId, accessKeyId, secretAccessKey });
+
+      // 2. Ensure bucket/cors (best effort)
+      try {
+        await ensureBucketExists({ s3, bucket: bucketName });
+        const corsOrigins = this.getCorsOrigins();
+        if (corsOrigins.length > 0) {
+          await ensureBucketCors({ s3, bucket: bucketName, origins: corsOrigins });
+        }
+      } catch (setupErr) {
+        userLogger.warn("Bucket setup warning during verification:", setupErr);
+        // Continue, assuming bucket might already exist and be configured
+      }
+
+      // 3. Upload Test File
+      const file = new File([verifyContent], "verify.txt", { type: "text/plain" });
+      await multipartUpload({
+        s3,
+        bucket: bucketName,
+        key: verifyKey,
+        file,
+        contentType: "text/plain",
+      });
+
+      // 4. Verify Public Access (Fetch)
+      // Wait a moment for propagation (R2 is usually instant-ish but helpful to wait)
+      await new Promise((r) => setTimeout(r, 500));
+
+      const response = await fetch(publicUrl, { method: "GET", cache: "no-cache" });
+
+      if (!response.ok) {
+        // Cleanup attempt
+        try { await deleteObject({ s3, bucket: bucketName, key: verifyKey }); } catch (e) {}
+
+        if (response.status === 404) {
+           return { success: false, error: "File not found. Check your Public Bucket URL." };
+        }
+        return { success: false, error: `Public access failed (HTTP ${response.status}). Is the bucket public?` };
+      }
+
+      const text = await response.text();
+
+      // Cleanup
+      try { await deleteObject({ s3, bucket: bucketName, key: verifyKey }); } catch (e) {}
+
+      if (text.trim() !== verifyContent) {
+        return { success: false, error: "Content mismatch. URL might be pointing elsewhere." };
+      }
+
+      return { success: true };
+
+    } catch (err) {
+      userLogger.error("Verification failed:", err);
+      return { success: false, error: err.message || "Unknown error during verification." };
+    }
   }
 
   async updateCloudflareBucketPreview({ hasPubkey = false, npub = "" } = {}) {

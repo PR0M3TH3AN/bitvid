@@ -25,6 +25,7 @@ function assignAwsSdk(module) {
     AbortMultipartUploadCommand: module.AbortMultipartUploadCommand,
     HeadBucketCommand: module.HeadBucketCommand,
     PutBucketCorsCommand: module.PutBucketCorsCommand,
+    DeleteObjectCommand: module.DeleteObjectCommand,
   };
 }
 
@@ -197,6 +198,30 @@ export async function ensureBucketCors({ s3, bucket, origins }) {
   });
 
   await s3.send(command);
+}
+
+export async function deleteObject({ s3, bucket, key }) {
+  if (!s3 || !bucket || !key) {
+    throw new Error("Missing required parameters for deleteObject");
+  }
+
+  const { DeleteObjectCommand } = requireAwsSdk();
+
+  try {
+    await s3.send(
+      new DeleteObjectCommand({
+        Bucket: bucket,
+        Key: key,
+      })
+    );
+  } catch (error) {
+    // We treat 404 (NoSuchKey) as success since the object is gone.
+    const status = error?.$metadata?.httpStatusCode || 0;
+    const code = error?.name || error?.Code || "";
+    if (status !== 404 && code !== "NoSuchKey") {
+      throw error;
+    }
+  }
 }
 
 export async function multipartUpload({
