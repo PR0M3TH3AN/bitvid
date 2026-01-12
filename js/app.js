@@ -8850,12 +8850,13 @@ class Application {
     }
 
     // Prioritize NIP-71 published_at metadata if available
-    const nip71PublishedAt = Number.isFinite(video?.nip71?.publishedAt)
-      ? Math.floor(video.nip71.publishedAt)
-      : Number.isFinite(video?.nip71?.published_at)
-      ? Math.floor(video.nip71.published_at)
-      : Number.isFinite(video?.nip71?.["published-at"])
-      ? Math.floor(video.nip71["published-at"])
+    const rawNip71PublishedAt =
+      video?.nip71?.publishedAt ||
+      video?.nip71?.published_at ||
+      video?.nip71?.["published-at"];
+    const parsedNip71PublishedAt = Number(rawNip71PublishedAt);
+    const nip71PublishedAt = Number.isFinite(parsedNip71PublishedAt)
+      ? Math.floor(parsedNip71PublishedAt)
       : null;
 
     if (nip71PublishedAt !== null) {
