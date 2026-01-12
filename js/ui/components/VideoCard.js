@@ -951,6 +951,18 @@ export class VideoCard {
       this.viewCountEl = view;
     }
 
+    if (
+      this.postedAt !== null &&
+      Number.isFinite(this.video?.created_at) &&
+      this.video.created_at > this.postedAt + 60
+    ) {
+      const edited = this.createElement("span", {
+        classNames: ["ml-1"],
+        textContent: "(edited)",
+      });
+      metadata.appendChild(edited);
+    }
+
     authorMeta.appendChild(authorName);
     authorMeta.appendChild(metadata);
 
