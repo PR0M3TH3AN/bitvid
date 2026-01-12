@@ -2,6 +2,7 @@ import { normalizeDesignSystemContext } from "../../designSystem.js";
 import { formatShortNpub } from "../../utils/formatters.js";
 import { sanitizeProfileMediaUrl } from "../../utils/profileMedia.js";
 
+const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const DEFAULT_PROFILE_AVATAR = "assets/svg/default-profile.svg";
 
 export class SimilarContentCard {
@@ -66,6 +67,7 @@ export class SimilarContentCard {
     this.authorNpubEl = null;
     this.timeEl = null;
     this.viewCountEl = null;
+    this.discussionCountEl = null;
 
     this.build();
   }
@@ -80,6 +82,10 @@ export class SimilarContentCard {
 
   getViewCountElement() {
     return this.viewCountEl;
+  }
+
+  getDiscussionCountElement() {
+    return this.discussionCountEl;
   }
 
   closeMoreMenu() {}
@@ -469,9 +475,9 @@ export class SimilarContentCard {
     titleLink.title = this.video.title || "Untitled";
     titleLink.style.minWidth = "0";
 
-    // Modified order: Title -> Author -> Meta
     const authorStack = this.buildAuthorStack();
     const metaRow = this.buildMetaRow();
+    const engagement = this.buildEngagementSection();
 
     content.appendChild(titleLink);
     if (authorStack) {
@@ -479,6 +485,9 @@ export class SimilarContentCard {
     }
     if (metaRow) {
       content.appendChild(metaRow);
+    }
+    if (engagement) {
+      content.appendChild(engagement);
     }
 
     this.contentEl = content;
@@ -556,24 +565,6 @@ export class SimilarContentCard {
     row.classList.add("player-modal__similar-card-meta");
     row.style.minWidth = "0";
 
-    // Reordered: Views -> Separator -> Time
-
-    const viewEl = this.document.createElement("span");
-    viewEl.classList.add("player-modal__similar-card-views", "view-count-text");
-    viewEl.dataset.viewCount = "";
-    viewEl.textContent = "– views";
-    if (this.pointerInfo?.key) {
-      viewEl.dataset.viewPointer = this.pointerInfo.key;
-    }
-    row.appendChild(viewEl);
-    this.viewCountEl = viewEl;
-
-    const separator = this.document.createElement("span");
-    separator.classList.add("player-modal__similar-card-separator");
-    separator.setAttribute("aria-hidden", "true");
-    separator.textContent = "•";
-    row.appendChild(separator);
-
     const timeEl = this.document.createElement("time");
     timeEl.classList.add("player-modal__similar-card-timestamp");
     if (this.postedAt !== null) {
@@ -590,6 +581,146 @@ export class SimilarContentCard {
     this.timeEl = timeEl;
 
     return row;
+  }
+
+  createEyeIcon(classNames = []) {
+    const svg = this.document.createElementNS(SVG_NAMESPACE, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("focusable", "false");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "2");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+
+    classNames.forEach((className) => {
+      if (className) {
+        svg.classList.add(className);
+      }
+    });
+
+    const path = this.document.createElementNS(SVG_NAMESPACE, "path");
+    path.setAttribute("d", "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z");
+    svg.appendChild(path);
+
+    const circle = this.document.createElementNS(SVG_NAMESPACE, "circle");
+    circle.setAttribute("cx", "12");
+    circle.setAttribute("cy", "12");
+    circle.setAttribute("r", "3");
+    svg.appendChild(circle);
+
+    return svg;
+  }
+
+  createMessageIcon(classNames = []) {
+    const svg = this.document.createElementNS(SVG_NAMESPACE, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("focusable", "false");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "2");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+
+    classNames.forEach((className) => {
+      if (className) {
+        svg.classList.add(className);
+      }
+    });
+
+    const path = this.document.createElementNS(SVG_NAMESPACE, "path");
+    path.setAttribute(
+      "d",
+      "M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"
+    );
+    svg.appendChild(path);
+
+    return svg;
+  }
+
+  buildEngagementSection() {
+    const hasPointer = this.pointerInfo && this.pointerInfo.key;
+    const hasDiscussion =
+      this.video.enableComments !== false &&
+      (typeof this.video.discussionCount === "number" ||
+        (typeof this.video.discussionCount === "string" &&
+          this.video.discussionCount.trim()));
+
+    if (!hasPointer && !hasDiscussion) {
+      return null;
+    }
+
+    const container = this.document.createElement("div");
+    container.classList.add(
+      "flex",
+      "items-center",
+      "gap-4",
+      "text-xs",
+      "text-muted-strong",
+      "mt-1.5",
+      "video-card__engagement" // Reuse this class for consistent styling if global, otherwise it's just a marker
+    );
+    // Add specific class for scoping if needed, but Tailwind classes usually suffice.
+
+    // Views
+    if (hasPointer) {
+      const wrapper = this.document.createElement("div");
+      wrapper.classList.add("flex", "items-center", "gap-1.5");
+      wrapper.setAttribute("title", "Views");
+
+      const icon = this.createEyeIcon(["w-3.5", "h-3.5"]);
+      wrapper.appendChild(icon);
+
+      const view = this.document.createElement("span");
+      view.classList.add("view-count-text");
+      view.textContent = "–";
+      view.dataset.viewCount = "";
+      view.dataset.viewPointer = this.pointerInfo.key;
+
+      wrapper.appendChild(view);
+      container.appendChild(wrapper);
+
+      this.viewCountEl = view;
+    }
+
+    // Discussion
+    if (hasDiscussion) {
+      let initialCount = 0;
+      if (typeof this.video.discussionCount === "number") {
+        initialCount = this.video.discussionCount;
+      } else if (typeof this.video.discussionCount === "string") {
+        const parsed = Number.parseInt(this.video.discussionCount.trim(), 10);
+        if (Number.isFinite(parsed)) {
+          initialCount = parsed;
+        }
+      }
+
+      if (Number.isFinite(initialCount) && initialCount >= 0) {
+        const wrapper = this.document.createElement("div");
+        wrapper.classList.add("flex", "items-center", "gap-1.5");
+        wrapper.dataset.discussionCount = this.video.id;
+        wrapper.dataset.countState = "ready";
+        wrapper.setAttribute("title", "Comments");
+
+        const icon = this.createMessageIcon(["w-3.5", "h-3.5"]);
+        wrapper.appendChild(icon);
+
+        const displayValue = initialCount.toLocaleString();
+
+        const valueEl = this.document.createElement("span");
+        valueEl.textContent = displayValue;
+        valueEl.dataset.discussionCountValue = "";
+
+        wrapper.appendChild(valueEl);
+        container.appendChild(wrapper);
+
+        this.discussionCountEl = wrapper;
+      }
+    }
+
+    return container;
   }
 
   applyPointerDatasets() {
