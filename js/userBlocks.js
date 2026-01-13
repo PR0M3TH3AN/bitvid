@@ -5,7 +5,7 @@ import {
 } from "./nostrClientFacade.js";
 import { getActiveSigner } from "./nostr/index.js";
 import { buildBlockListEvent, BLOCK_LIST_IDENTIFIER } from "./nostrEventSchemas.js";
-import { userLogger } from "./utils/logger.js";
+import { devLogger, userLogger } from "./utils/logger.js";
 import {
   publishEventToRelays,
   assertAnyRelayAccepted,
@@ -67,6 +67,20 @@ const BACKGROUND_BLOCKLIST_TIMEOUT_MS = 6000;
 const BLOCKLIST_STORAGE_PREFIX = "bitvid:user-blocks";
 const BLOCKLIST_SEEDED_KEY_PREFIX = `${BLOCKLIST_STORAGE_PREFIX}:seeded:v1`;
 const BLOCKLIST_REMOVALS_KEY_PREFIX = `${BLOCKLIST_STORAGE_PREFIX}:removals:v1`;
+const BLOCKLIST_LOCAL_KEY_PREFIX = `${BLOCKLIST_STORAGE_PREFIX}:local:v1`;
+
+function resolveStorage() {
+  if (typeof localStorage !== "undefined") {
+    return localStorage;
+  }
+  if (typeof window !== "undefined" && window.localStorage) {
+    return window.localStorage;
+  }
+  if (typeof globalThis !== "undefined" && globalThis.localStorage) {
+    return globalThis.localStorage;
+  }
+  return null;
+}
 
 function normalizeEncryptionToken(value) {
   if (typeof value !== "string") {
@@ -286,6 +300,32 @@ function serializeBlockListTagMatrix(values, ownerPubkey, options = {}) {
   return JSON.stringify(tags);
 }
 
+function extractPubkeysFromTags(tags, ownerPubkey = null) {
+  if (!Array.isArray(tags)) {
+    return [];
+  }
+  const collected = [];
+  const seen = new Set();
+  const owner = ownerPubkey ? normalizeHex(ownerPubkey) : null;
+
+  for (const entry of tags) {
+    if (!Array.isArray(entry) || entry.length < 2) {
+      continue;
+    }
+    const label = typeof entry[0] === "string" ? entry[0].trim().toLowerCase() : "";
+    if (label !== "p") {
+      continue;
+    }
+    const normalized = normalizeHex(entry[1]);
+    if (!normalized || (owner && normalized === owner) || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    collected.push(normalized);
+  }
+  return collected;
+}
+
 function parseBlockListPlaintext(plaintext, ownerPubkey) {
   if (typeof plaintext !== "string" || !plaintext) {
     return [];
@@ -304,34 +344,13 @@ function parseBlockListPlaintext(plaintext, ownerPubkey) {
 
   const owner = normalizeHex(ownerPubkey);
 
-  const extractFromTags = (tags) => {
-    const collected = [];
-    const seen = new Set();
-    for (const entry of tags) {
-      if (!Array.isArray(entry) || entry.length < 2) {
-        continue;
-      }
-      const label = typeof entry[0] === "string" ? entry[0].trim().toLowerCase() : "";
-      if (label !== "p") {
-        continue;
-      }
-      const normalized = normalizeHex(entry[1]);
-      if (!normalized || normalized === owner || seen.has(normalized)) {
-        continue;
-      }
-      seen.add(normalized);
-      collected.push(normalized);
-    }
-    return collected;
-  };
-
   if (Array.isArray(parsed)) {
-    return extractFromTags(parsed);
+    return extractPubkeysFromTags(parsed, owner);
   }
 
   if (parsed && typeof parsed === "object") {
     if (Array.isArray(parsed.tags) && parsed.tags.length) {
-      return extractFromTags(parsed.tags);
+      return extractPubkeysFromTags(parsed.tags, owner);
     }
 
     const legacy = Array.isArray(parsed.blockedPubkeys) ? parsed.blockedPubkeys : [];
@@ -367,12 +386,202 @@ function isUserBlockListEvent(event) {
   return false;
 }
 
+function isTaggedBlockListEvent(event) {
+  if (!event || !Array.isArray(event.tags)) {
+    return false;
+  }
+  return event.tags.some(
+    (tag) =>
+      Array.isArray(tag) &&
+      tag.length >= 2 &&
+      typeof tag[0] === "string" &&
+      tag[0].trim().toLowerCase() === "d" &&
+      typeof tag[1] === "string" &&
+      tag[1].trim() === BLOCK_LIST_IDENTIFIER,
+  );
+}
+
+const BECH32_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
+const BECH32_CHARSET_MAP = (() => {
+  const map = new Map();
+  for (let index = 0; index < BECH32_CHARSET.length; index += 1) {
+    map.set(BECH32_CHARSET[index], index);
+  }
+  return map;
+})();
+
+function bytesToHex(bytes) {
+  if (!bytes || typeof bytes.length !== "number") {
+    return "";
+  }
+
+  let hex = "";
+  for (let index = 0; index < bytes.length; index += 1) {
+    const value = bytes[index];
+    if (typeof value !== "number") {
+      return "";
+    }
+    const normalized = value & 0xff;
+    hex += normalized.toString(16).padStart(2, "0");
+  }
+  return hex;
+}
+
+function bech32Polymod(values) {
+  let chk = 1;
+  const generators = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
+
+  for (const value of values) {
+    const top = chk >>> 25;
+    chk = ((chk & 0x1ffffff) << 5) ^ value;
+    for (let bit = 0; bit < generators.length; bit += 1) {
+      if ((top >>> bit) & 1) {
+        chk ^= generators[bit];
+      }
+    }
+  }
+
+  return chk;
+}
+
+function bech32HrpExpand(hrp) {
+  const expanded = [];
+  for (let index = 0; index < hrp.length; index += 1) {
+    const code = hrp.charCodeAt(index);
+    expanded.push(code >>> 5);
+  }
+  expanded.push(0);
+  for (let index = 0; index < hrp.length; index += 1) {
+    const code = hrp.charCodeAt(index);
+    expanded.push(code & 31);
+  }
+  return expanded;
+}
+
+function bech32VerifyChecksum(hrp, data) {
+  return bech32Polymod(bech32HrpExpand(hrp).concat(data)) === 1;
+}
+
+function bech32Decode(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const lower = trimmed.toLowerCase();
+  const upper = trimmed.toUpperCase();
+  if (trimmed !== lower && trimmed !== upper) {
+    return null;
+  }
+
+  const normalized = lower;
+  const separatorIndex = normalized.lastIndexOf("1");
+  if (separatorIndex < 1 || separatorIndex + 7 > normalized.length) {
+    return null;
+  }
+
+  const hrp = normalized.slice(0, separatorIndex);
+  const data = [];
+  for (let index = separatorIndex + 1; index < normalized.length; index += 1) {
+    const char = normalized[index];
+    if (!BECH32_CHARSET_MAP.has(char)) {
+      return null;
+    }
+    data.push(BECH32_CHARSET_MAP.get(char));
+  }
+
+  if (!bech32VerifyChecksum(hrp, data)) {
+    return null;
+  }
+
+  return { hrp, words: data.slice(0, -6) };
+}
+
+function convertBits(data, fromBits, toBits, pad = true) {
+  const result = [];
+  let acc = 0;
+  let bits = 0;
+  const maxv = (1 << toBits) - 1;
+  const maxAcc = (1 << (fromBits + toBits - 1)) - 1;
+
+  for (const value of data) {
+    if (value < 0 || value >> fromBits) {
+      return null;
+    }
+    acc = ((acc << fromBits) | value) & maxAcc;
+    bits += fromBits;
+    while (bits >= toBits) {
+      bits -= toBits;
+      result.push((acc >>> bits) & maxv);
+    }
+  }
+
+  if (pad) {
+    if (bits) {
+      result.push((acc << (toBits - bits)) & maxv);
+    }
+  } else if (bits >= fromBits || ((acc << (toBits - bits)) & maxv)) {
+    return null;
+  }
+
+  return result;
+}
+
+function fallbackDecodeNpubToHex(value) {
+  const decoded = bech32Decode(value);
+  if (!decoded || decoded.hrp !== "npub") {
+    return "";
+  }
+
+  const bytes = convertBits(decoded.words, 5, 8, false);
+  if (!bytes || !bytes.length) {
+    return "";
+  }
+
+  return bytesToHex(bytes);
+}
+
+function normalizeDecodedHex(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!/^[0-9a-f]{64}$/i.test(trimmed)) {
+    return null;
+  }
+
+  return trimmed.toLowerCase();
+}
+
+function normalizeNpubInput(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith("nostr:")) {
+    return trimmed.slice(6).trim();
+  }
+
+  return trimmed;
+}
+
 function decodeNpubToHex(npub) {
   if (typeof npub !== "string") {
     return null;
   }
 
-  const trimmed = npub.trim();
+  const trimmed = normalizeNpubInput(npub);
   if (!trimmed) {
     return null;
   }
@@ -381,29 +590,25 @@ function decodeNpubToHex(npub) {
     return trimmed.toLowerCase();
   }
 
-  if (!trimmed.toLowerCase().startsWith("npub1")) {
-    return null;
-  }
-
-  const tools = window?.NostrTools;
+  const tools = typeof globalThis !== "undefined" ? globalThis?.NostrTools : null;
   const decoder = tools?.nip19?.decode;
-  if (typeof decoder !== "function") {
-    return null;
-  }
-
-  try {
-    const decoded = decoder(trimmed);
-    if (decoded?.type === "npub" && typeof decoded.data === "string") {
-      const hex = decoded.data.trim();
-      if (/^[0-9a-f]{64}$/i.test(hex)) {
-        return hex.toLowerCase();
+  if (typeof decoder === "function") {
+    try {
+      const decoded = decoder(trimmed);
+      if (!decoded || decoded.type !== "npub") {
+        return normalizeDecodedHex(fallbackDecodeNpubToHex(trimmed));
       }
+      if (typeof decoded.data === "string") {
+        const normalized = normalizeDecodedHex(decoded.data);
+        return normalized || normalizeDecodedHex(fallbackDecodeNpubToHex(trimmed));
+      }
+      return normalizeDecodedHex(bytesToHex(decoded.data));
+    } catch (error) {
+      return normalizeDecodedHex(fallbackDecodeNpubToHex(trimmed));
     }
-  } catch (error) {
-    return null;
   }
 
-  return null;
+  return normalizeDecodedHex(fallbackDecodeNpubToHex(trimmed));
 }
 
 function readSeededFlag(actorHex) {
@@ -434,7 +639,8 @@ function writeSeededFlag(actorHex, seeded) {
     return;
   }
 
-  if (typeof localStorage === "undefined") {
+  const storage = resolveStorage();
+  if (!storage) {
     return;
   }
 
@@ -496,7 +702,8 @@ function writeRemovalSet(actorHex, removals) {
     return;
   }
 
-  if (typeof localStorage === "undefined") {
+  const storage = resolveStorage();
+  if (!storage) {
     return;
   }
 
@@ -537,6 +744,73 @@ function normalizeHex(pubkey) {
   }
 
   return null;
+}
+
+function readLocalBlocks(actorHex) {
+  if (typeof actorHex !== "string" || !actorHex) {
+    return null;
+  }
+
+  const storage = resolveStorage();
+  if (!storage) {
+    return null;
+  }
+
+  const key = `${BLOCKLIST_LOCAL_KEY_PREFIX}:${actorHex}`;
+
+  try {
+    const raw = storage.getItem(key);
+    if (raw === null) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return new Set();
+    }
+
+    const normalized = parsed
+      .map((entry) =>
+        typeof entry === "string" ? entry.trim().toLowerCase() : "",
+      )
+      .filter((entry) => /^[0-9a-f]{64}$/.test(entry));
+
+    return new Set(normalized);
+  } catch (error) {
+    userLogger.warn(
+      `[UserBlockList] Failed to read local blocks for ${actorHex}:`,
+      error,
+    );
+    return null;
+  }
+}
+
+function writeLocalBlocks(actorHex, blocks) {
+  if (typeof actorHex !== "string" || !actorHex) {
+    return;
+  }
+
+  const storage = resolveStorage();
+  if (!storage) {
+    return;
+  }
+
+  const key = `${BLOCKLIST_LOCAL_KEY_PREFIX}:${actorHex}`;
+
+  try {
+    if (!blocks || !blocks.size) {
+      // We persist empty sets as [] to distinguish from "not found" (null)
+      storage.setItem(key, "[]");
+      return;
+    }
+
+    storage.setItem(key, JSON.stringify(Array.from(blocks)));
+  } catch (error) {
+    userLogger.warn(
+      `[UserBlockList] Failed to persist local blocks for ${actorHex}:`,
+      error,
+    );
+  }
 }
 
 class UserBlockListManager {
@@ -630,6 +904,19 @@ class UserBlockListManager {
     };
 
     emitStatus({ status: "loading", relays: Array.from(nostrClient.relays || []) });
+
+    const localBlocks = this._loadLocal(normalized);
+    if (localBlocks) {
+      this.blockedPubkeys = localBlocks;
+      this.loaded = true;
+      this.emitter.emit(USER_BLOCK_EVENTS.CHANGE, {
+        action: "sync",
+        blockedPubkeys: Array.from(this.blockedPubkeys),
+        source: "local",
+      });
+      emitStatus({ status: "settled" });
+      return;
+    }
 
     const applyBlockedPubkeys = (nextValues, meta = {}) => {
       const nextSet = new Set(Array.isArray(nextValues) ? nextValues : []);
@@ -854,7 +1141,10 @@ class UserBlockListManager {
           if (skipIfEmpty) {
             return;
           }
-          if (this.lastPublishedCreatedAt !== null || this.blockEventCreatedAt !== null) {
+          if (
+            this.lastPublishedCreatedAt !== null ||
+            this.blockEventCreatedAt !== null
+          ) {
             emitStatus({ status: "stale", reason: "empty-result", source });
             return;
           }
@@ -865,18 +1155,19 @@ class UserBlockListManager {
           return;
         }
 
-        const sorted = events
-          .filter(
-            (event) =>
-              event && event.pubkey === normalized && isUserBlockListEvent(event),
-          )
-          .sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0));
+        const validEvents = events.filter(
+          (event) =>
+            event && event.pubkey === normalized && isUserBlockListEvent(event),
+        );
 
-        if (!sorted.length) {
+        if (!validEvents.length) {
           if (skipIfEmpty) {
             return;
           }
-          if (this.lastPublishedCreatedAt !== null || this.blockEventCreatedAt !== null) {
+          if (
+            this.lastPublishedCreatedAt !== null ||
+            this.blockEventCreatedAt !== null
+          ) {
             emitStatus({ status: "stale", reason: "empty-result", source });
             return;
           }
@@ -887,221 +1178,194 @@ class UserBlockListManager {
           return;
         }
 
-        const newest = sorted[0];
-        const newestCreatedAt = Number.isFinite(newest?.created_at)
-          ? newest.created_at
+        // Separate by kind to merge distinct lists (Block vs Mute)
+        const muteEvents = validEvents.filter((e) => e.kind === 10000);
+
+        // Prioritize tagged mute lists (Bitvid) over plain ones (others)
+        const taggedMutes = muteEvents
+          .filter((e) => isTaggedBlockListEvent(e))
+          .sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0));
+
+        const plainMutes = muteEvents
+          .filter((e) => !isTaggedBlockListEvent(e))
+          .sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0));
+
+        const newestMute =
+          taggedMutes.length > 0 ? taggedMutes[0] : plainMutes[0] || null;
+
+        const blockEvents = validEvents
+          .filter((e) => e.kind === 30002)
+          .sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0));
+
+        const newestBlock = blockEvents[0] || null;
+
+        const newestMuteTime = Number.isFinite(newestMute?.created_at)
+          ? newestMute.created_at
           : 0;
+        const newestBlockTime = Number.isFinite(newestBlock?.created_at)
+          ? newestBlock.created_at
+          : 0;
+
+        // The "canonical" newest event for stale checks is simply the latest of either.
+        const newestOverall =
+          newestMuteTime >= newestBlockTime ? newestMute : newestBlock;
+        const newestCreatedAt = Math.max(newestMuteTime, newestBlockTime);
+
         const guardCreatedAt = Math.max(
           this.blockEventCreatedAt ?? 0,
           this.lastPublishedCreatedAt ?? 0,
         );
 
+        // If both are stale, skip
         if (newestCreatedAt < guardCreatedAt) {
-          emitStatus({ status: "stale", event: newest, guardCreatedAt, source });
+          emitStatus({
+            status: "stale",
+            event: newestOverall,
+            guardCreatedAt,
+            source,
+          });
           return;
         }
 
         if (
           newestCreatedAt === guardCreatedAt &&
           this.blockEventId &&
-          newest?.id &&
-          newest.id !== this.blockEventId
+          newestOverall?.id &&
+          newestOverall.id !== this.blockEventId
         ) {
-          emitStatus({ status: "stale", event: newest, guardCreatedAt, source });
+          // If equal time but different ID, we might be seeing a race or propagation delay.
+          // But since we are merging, we should proceed unless it's strictly older context.
+          // For safety against flapping, we treat strict equality with different ID as stale
+          // if we already have a confirmed ID.
+          emitStatus({
+            status: "stale",
+            event: newestOverall,
+            guardCreatedAt,
+            source,
+          });
           return;
         }
 
-        if (newest?.id && newest.id === this.blockEventId) {
-          this.blockEventCreatedAt = Number.isFinite(newestCreatedAt)
-            ? newestCreatedAt
-            : this.blockEventCreatedAt;
-          emitStatus({ status: "confirmed", event: newest, source });
+        if (newestOverall?.id && newestOverall.id === this.blockEventId) {
+          // Already applied this event. Idempotency check.
           return;
         }
 
-        this.blockEventId = newest?.id || null;
-        this.blockEventCreatedAt = Number.isFinite(newestCreatedAt)
-          ? newestCreatedAt
-          : null;
+        // We accept this state.
+        this.blockEventId = newestOverall?.id || null;
+        this.blockEventCreatedAt = newestCreatedAt;
 
-        if (!newest?.content) {
-          applyBlockedPubkeys([], { source, reason: "empty-event", event: newest });
-          emitStatus({ status: "applied-empty", event: newest, source });
-          return;
-        }
+        // Helper to decrypt a single event
+        const decryptEvent = async (ev) => {
+          if (!ev) return [];
+          const isContentEmpty = !ev.content || !ev.content.trim();
 
-        const {
-          decryptors,
-          order,
-          sources,
-          permissionError,
-        } = await resolveDecryptors(newest);
-
-        if (!decryptors.size) {
-          if (permissionError) {
-            userLogger.warn(
-              "[UserBlockList] Unable to load block list via extension decryptor; permissions denied.",
-              permissionError,
-            );
-            this.reset();
-            this.loaded = true;
-            emitStatus({ status: "error", error: permissionError, decryptor: "extension" });
-            emitStatus({ status: "settled" });
-            return;
+          if (isContentEmpty) {
+            // Handle tag-only lists (e.g. Kind 10000 with empty content but populated p tags)
+            if (Array.isArray(ev.tags) && ev.tags.length) {
+              return extractPubkeysFromTags(ev.tags, normalized);
+            }
+            return [];
           }
 
+          const { decryptors, order, sources, permissionError } =
+            await resolveDecryptors(ev);
+
+          if (!decryptors.size) {
+            if (permissionError) {
+              throw permissionError;
+            }
+            return [];
+          }
+
+          let decryptedText = "";
+          for (const scheme of order) {
+            const handler = decryptors.get(scheme);
+            if (typeof handler !== "function") continue;
+            try {
+              const plaintext = await handler(ev.content);
+              if (typeof plaintext === "string") {
+                decryptedText = plaintext;
+                break;
+              }
+            } catch {
+              // ignore
+            }
+          }
+
+          if (!decryptedText) {
+            // If decryption fails completely for a present event, we might want to log it
+            // but return empty for that specific event.
+            return [];
+          }
+
+          return parseBlockListPlaintext(decryptedText, normalized);
+        };
+
+        const mergedPubkeys = new Set();
+        let decryptionError = null;
+
+        try {
+          const [muteList, blockList] = await Promise.all([
+            decryptEvent(newestMute),
+            decryptEvent(newestBlock),
+          ]);
+
+          muteList.forEach((pk) => mergedPubkeys.add(pk));
+          blockList.forEach((pk) => mergedPubkeys.add(pk));
+        } catch (error) {
+          // If permission denied or critical failure
+          decryptionError = error;
+        }
+
+        if (decryptionError) {
           userLogger.warn(
-            "[UserBlockList] No decryptors available; treating block list as empty.",
+            "[UserBlockList] Decryption failed during merge.",
+            decryptionError,
           );
           this.reset();
           this.loaded = true;
-          const error = new Error(
-            "No decryptors are available to load the block list.",
-          );
-          emitStatus({ status: "error", error, decryptor: "unavailable" });
+          emitStatus({
+            status: "error",
+            error: decryptionError,
+            decryptor: "mixed",
+          });
           emitStatus({ status: "settled" });
           return;
         }
 
-        let decrypted = "";
-        let schemeUsed = "";
-        let schemeSource = "unavailable";
-        const attemptErrors = [];
+        const hasMute = Boolean(newestMute);
+        const hasBlock = Boolean(newestBlock);
 
-        for (const scheme of order) {
-          const handler = decryptors.get(scheme);
-          if (typeof handler !== "function") {
-            continue;
-          }
-          const sourceLabel = sources.get(scheme) || "unknown";
-          try {
-            const plaintext = await handler(newest.content);
-            if (typeof plaintext !== "string") {
-              throw new Error("Decryption returned a non-string payload.");
-            }
-            decrypted = plaintext;
-            schemeUsed = scheme;
-            schemeSource = sourceLabel;
-            break;
-          } catch (error) {
-            attemptErrors.push({ scheme, source: sourceLabel, error });
-          }
-        }
+        // Check if we should log "empty-events" reason
+        // Effectively empty means: missing content AND missing valid tags
+        const isMuteEffectiveEmpty = !newestMute || ((!newestMute.content || !newestMute.content.trim()) && (!newestMute.tags || !extractPubkeysFromTags(newestMute.tags, normalized).length));
+        const isBlockEffectiveEmpty = !newestBlock || ((!newestBlock.content || !newestBlock.content.trim()) && (!newestBlock.tags || !extractPubkeysFromTags(newestBlock.tags, normalized).length));
 
-        if (!decrypted) {
-          const error = new Error(
-            "Failed to decrypt block list with available schemes.",
-          );
-          error.code = "block-list-decrypt-failed";
-          if (attemptErrors.length) {
-            error.cause = attemptErrors;
-          }
-          const lastAttempt = attemptErrors.length
-            ? attemptErrors[attemptErrors.length - 1]
-            : null;
-          const decryptPath = lastAttempt?.source || "unavailable";
-          userLogger.error(
-            `[UserBlockList] Failed to decrypt block list via available schemes (last: ${decryptPath}).`,
-            error,
-          );
-          applyBlockedPubkeys([], {
-            source,
-            reason: "decrypt-error",
-            event: newest,
-            error,
-            decryptor: decryptPath,
-            errors: attemptErrors,
-          });
-          emitStatus({
-            status: "error",
-            event: newest,
-            error,
-            source,
-            decryptor: decryptPath,
-          });
-          return;
-        }
+        const effectiveReason = (isMuteEffectiveEmpty && isBlockEffectiveEmpty)
+            ? "empty-events"
+            : "applied-merge";
 
-        try {
-          const sanitized = parseBlockListPlaintext(decrypted, normalized);
-          applyBlockedPubkeys(sanitized, {
-            source,
-            reason: "applied",
-            event: newest,
-            scheme: schemeUsed,
-            decryptor: schemeSource,
-          });
-          emitStatus({
-            status: "applied",
-            event: newest,
-            blockedPubkeys: Array.from(this.blockedPubkeys),
-            source,
-            scheme: schemeUsed,
-            decryptor: schemeSource,
-          });
-        } catch (err) {
-          userLogger.error("[UserBlockList] Failed to parse block list:", err);
-          applyBlockedPubkeys([], {
-            source,
-            reason: "parse-error",
-            event: newest,
-            error: err,
-            decryptor: schemeSource,
-            scheme: schemeUsed,
-          });
-          emitStatus({
-            status: "error",
-            event: newest,
-            error: err,
-            source,
-            decryptor: schemeSource,
-            scheme: schemeUsed,
-          });
+        applyBlockedPubkeys(Array.from(mergedPubkeys), {
+          source,
+          reason: effectiveReason,
+          events: [newestMute?.id, newestBlock?.id].filter(Boolean),
+        });
+
+        if (effectiveReason === "empty-events") {
+           emitStatus({ status: "applied-empty", event: newestOverall, source });
+        } else {
+           emitStatus({
+             status: "applied",
+             event: newestOverall,
+             blockedPubkeys: Array.from(this.blockedPubkeys),
+             source,
+           });
         }
       };
 
-      const background = Promise.allSettled([
-        ...fastPromises,
-        ...backgroundPromises,
-      ])
-        .then(async (outcomes) => {
-          const aggregated = [];
-          for (const outcome of outcomes) {
-            if (outcome.status === "fulfilled") {
-              const events = Array.isArray(outcome.value?.events)
-                ? outcome.value.events
-                : [];
-              if (events.length) {
-                aggregated.push(...events);
-              }
-            } else {
-              const reason = outcome.reason;
-              if (reason?.code === "timeout") {
-                userLogger.warn(
-                  `[UserBlockList] Relay ${reason.relay} timed out while loading block list (${reason.timeoutMs}ms)`
-                );
-              } else {
-                const relay = reason?.relay || reason?.relayUrl;
-                userLogger.error(
-                  `[UserBlockList] Relay error at ${relay}:`,
-                  reason?.error ?? reason
-                );
-              }
-            }
-          }
-
-          if (!aggregated.length) {
-            return { foundEvents: false };
-          }
-
-          await applyEvents(aggregated, { skipIfEmpty: true, source: "background" });
-          return { foundEvents: true };
-        })
-        .catch((error) => {
-          userLogger.error("[UserBlockList] background block list refresh failed:", error);
-          return { foundEvents: false, error };
-        });
-
+      // Sequential promise handling to avoid race conditions but preserve background updates.
+      // 1. Try fast path.
       let fastResult = null;
       if (fastPromises.length) {
         try {
@@ -1123,29 +1387,54 @@ class UserBlockListManager {
 
       if (fastResult?.events?.length) {
         await applyEvents(fastResult.events, { source: "fast" });
-        background.catch(() => {});
-        return;
+        // NOTE: We do NOT return here. We allow background relays to potentially provide newer data.
       }
 
-      if (backgroundRelays.length || fastPromises.length) {
+      // 2. Wait for background (and failed fast relays).
+      if (backgroundRelays.length || (!fastResult?.events?.length && fastPromises.length)) {
         emitStatus({
           status: "awaiting-background",
           relays: backgroundRelays.length ? backgroundRelays : fastRelays,
         });
       }
 
-      const backgroundOutcome = await background;
+      const allPromises = [...fastPromises, ...backgroundPromises];
+      const outcomes = await Promise.allSettled(allPromises);
 
-      if (backgroundOutcome?.foundEvents) {
+      const aggregated = [];
+      for (const outcome of outcomes) {
+        if (outcome.status === "fulfilled") {
+          const events = Array.isArray(outcome.value?.events)
+            ? outcome.value.events
+            : [];
+          if (events.length) {
+            aggregated.push(...events);
+          }
+        } else {
+          const reason = outcome.reason;
+          if (reason?.code === "timeout") {
+            userLogger.warn(
+              `[UserBlockList] Relay ${reason.relay} timed out while loading block list (${reason.timeoutMs}ms)`
+            );
+          } else {
+            const relay = reason?.relay || reason?.relayUrl;
+            userLogger.error(
+              `[UserBlockList] Relay error at ${relay}:`,
+              reason?.error ?? reason
+            );
+          }
+        }
+      }
+
+      if (!aggregated.length) {
+        // Only apply empty if fast path also found nothing (already handled by logic inside applyEvents,
+        // but explicit call ensures we settle state if everything failed).
+        await applyEvents([], { source: "background" });
         return;
       }
 
-      if (backgroundOutcome?.error) {
-        emitStatus({ status: "error", error: backgroundOutcome.error, source: "background" });
-        return;
-      }
+      await applyEvents(aggregated, { skipIfEmpty: true, source: "background" });
 
-      await applyEvents([], { source: "background" });
     } catch (error) {
       userLogger.error("[UserBlockList] loadBlocks failed:", error);
       applyBlockedPubkeys([], { source: "fast", reason: "load-error", error });
@@ -1156,6 +1445,14 @@ class UserBlockListManager {
       this.loaded = true;
       emitStatus({ status: "settled" });
     }
+  }
+
+  _loadLocal(actorHex) {
+    return readLocalBlocks(actorHex);
+  }
+
+  _saveLocal(actorHex) {
+    writeLocalBlocks(actorHex, this.blockedPubkeys);
   }
 
   _getSeedState(actorHex) {
@@ -1226,20 +1523,21 @@ class UserBlockListManager {
       return { ok: true, seeded: false, reason: "already-seeded" };
     }
 
-    if (this.blockedPubkeys.size > 0) {
-      return { ok: true, seeded: false, reason: "non-empty" };
-    }
-
     const removals = state.removals;
     const additions = new Set();
+    let invalidCount = 0;
 
     const candidates = Array.isArray(candidateNpubs) ? candidateNpubs : [];
     for (const candidate of candidates) {
       const candidateHex = normalizeHex(candidate);
       if (!candidateHex) {
+        invalidCount += 1;
         continue;
       }
       if (candidateHex === actorHex) {
+        continue;
+      }
+      if (this.blockedPubkeys.has(candidateHex)) {
         continue;
       }
       if (removals.has(candidateHex)) {
@@ -1249,6 +1547,18 @@ class UserBlockListManager {
     }
 
     if (!additions.size) {
+      if (candidates.length) {
+        devLogger.info(
+          "[UserBlockList] Seed candidates resolved to zero additions.",
+          {
+            actorPubkey: actorHex,
+            candidateCount: candidates.length,
+            invalidCount,
+            blockedCount: this.blockedPubkeys.size,
+            removalCount: removals.size,
+          },
+        );
+      }
       return { ok: true, seeded: false, reason: "no-candidates" };
     }
 
@@ -1264,6 +1574,7 @@ class UserBlockListManager {
 
     this._setSeeded(actorHex, true);
     additions.forEach((hex) => this._clearSeedRemoval(actorHex, hex));
+    this._saveLocal(actorHex);
 
     try {
       this.emitter.emit(USER_BLOCK_EVENTS.CHANGE, {
@@ -1274,6 +1585,150 @@ class UserBlockListManager {
       });
     } catch (error) {
       userLogger.warn("[UserBlockList] Failed to emit seed change event:", error);
+    }
+
+    return { ok: true, seeded: true, addedPubkeys: Array.from(additions) };
+  }
+
+  async seedLocalBaseline(userPubkey, candidateNpubs = []) {
+    const actorHex = normalizeHex(userPubkey);
+    if (!actorHex) {
+      return { ok: false, seeded: false, reason: "invalid-user" };
+    }
+
+    await this.ensureLoaded(actorHex);
+
+    const state = this._getSeedState(actorHex);
+    if (state.seeded) {
+      return { ok: true, seeded: false, reason: "already-seeded" };
+    }
+
+    if (this.blockedPubkeys.size > 0) {
+      return { ok: true, seeded: false, reason: "non-empty" };
+    }
+
+    const removals = state.removals;
+    const additions = new Set();
+    let invalidCount = 0;
+
+    const candidates = Array.isArray(candidateNpubs) ? candidateNpubs : [];
+    for (const candidate of candidates) {
+      const candidateHex = normalizeHex(candidate);
+      if (!candidateHex) {
+        invalidCount += 1;
+        continue;
+      }
+      if (candidateHex === actorHex) {
+        continue;
+      }
+      if (removals.has(candidateHex)) {
+        continue;
+      }
+      additions.add(candidateHex);
+    }
+
+    if (!additions.size) {
+      if (candidates.length) {
+        devLogger.info(
+          "[UserBlockList] Local seed candidates resolved to zero additions.",
+          {
+            actorPubkey: actorHex,
+            candidateCount: candidates.length,
+            invalidCount,
+            removalCount: removals.size,
+          },
+        );
+      }
+      this._setSeeded(actorHex, true);
+      return { ok: true, seeded: true, addedPubkeys: [] };
+    }
+
+    additions.forEach((hex) => this.blockedPubkeys.add(hex));
+
+    this._setSeeded(actorHex, true);
+    additions.forEach((hex) => this._clearSeedRemoval(actorHex, hex));
+
+    try {
+      this.emitter.emit(USER_BLOCK_EVENTS.CHANGE, {
+        action: "seed",
+        actorPubkey: actorHex,
+        blockedPubkeys: Array.from(this.blockedPubkeys),
+        addedPubkeys: Array.from(additions),
+        localOnly: true,
+      });
+    } catch (error) {
+      userLogger.warn("[UserBlockList] Failed to emit local seed change event:", error);
+    }
+
+    return { ok: true, seeded: true, addedPubkeys: Array.from(additions) };
+  }
+
+  async seedBaselineDelta(userPubkey, candidateNpubs = []) {
+    const actorHex = normalizeHex(userPubkey);
+    if (!actorHex) {
+      return { ok: false, seeded: false, reason: "invalid-user" };
+    }
+
+    await this.ensureLoaded(actorHex);
+
+    const state = this._getSeedState(actorHex);
+    const removals = state.removals;
+    const additions = new Set();
+    let invalidCount = 0;
+
+    const candidates = Array.isArray(candidateNpubs) ? candidateNpubs : [];
+    for (const candidate of candidates) {
+      const candidateHex = normalizeHex(candidate);
+      if (!candidateHex) {
+        invalidCount += 1;
+        continue;
+      }
+      if (candidateHex === actorHex) {
+        continue;
+      }
+      if (this.blockedPubkeys.has(candidateHex)) {
+        continue;
+      }
+      if (removals.has(candidateHex)) {
+        continue;
+      }
+      additions.add(candidateHex);
+    }
+
+    if (!additions.size) {
+      if (candidates.length) {
+        devLogger.info(
+          "[UserBlockList] Baseline delta candidates resolved to zero additions.",
+          {
+            actorPubkey: actorHex,
+            candidateCount: candidates.length,
+            invalidCount,
+            blockedCount: this.blockedPubkeys.size,
+            removalCount: removals.size,
+          },
+        );
+      }
+      if (!state.seeded) {
+        this._setSeeded(actorHex, true);
+      }
+      return { ok: true, seeded: state.seeded, reason: "no-candidates" };
+    }
+
+    additions.forEach((hex) => this.blockedPubkeys.add(hex));
+
+    this._setSeeded(actorHex, true);
+    this._saveLocal(actorHex);
+
+    try {
+      this.emitter.emit(USER_BLOCK_EVENTS.CHANGE, {
+        action: "seed-delta",
+        actorPubkey: actorHex,
+        blockedPubkeys: Array.from(this.blockedPubkeys),
+        addedPubkeys: Array.from(additions),
+        localOnly: true,
+      });
+    } catch (error) {
+      userLogger.warn("[UserBlockList] Failed to emit delta seed change event:", error);
     }
 
     return { ok: true, seeded: true, addedPubkeys: Array.from(additions) };
@@ -1306,6 +1761,22 @@ class UserBlockListManager {
 
     const snapshot = new Set(this.blockedPubkeys);
     this.blockedPubkeys.add(targetHex);
+
+    const loggedInPubkey = normalizeHex(nostrClient?.pubkey);
+    const sessionPubkey = normalizeHex(nostrClient?.sessionActor?.pubkey);
+    const isSessionActor =
+      !!actorHex && !loggedInPubkey && actorHex === sessionPubkey;
+
+    if (isSessionActor) {
+      this._saveLocal(actorHex);
+      this.emitter.emit(USER_BLOCK_EVENTS.CHANGE, {
+        action: "block",
+        targetPubkey: targetHex,
+        actorPubkey: actorHex,
+      });
+      this._clearSeedRemoval(actorHex, targetHex);
+      return { ok: true };
+    }
 
     try {
       await this.publishBlockList(actorHex);
@@ -1341,6 +1812,22 @@ class UserBlockListManager {
 
     const snapshot = new Set(this.blockedPubkeys);
     this.blockedPubkeys.delete(targetHex);
+
+    const loggedInPubkey = normalizeHex(nostrClient?.pubkey);
+    const sessionPubkey = normalizeHex(nostrClient?.sessionActor?.pubkey);
+    const isSessionActor =
+      !!actorHex && !loggedInPubkey && actorHex === sessionPubkey;
+
+    if (isSessionActor) {
+      this._saveLocal(actorHex);
+      this.emitter.emit(USER_BLOCK_EVENTS.CHANGE, {
+        action: "unblock",
+        targetPubkey: targetHex,
+        actorPubkey: actorHex,
+      });
+      this._addSeedRemoval(actorHex, targetHex);
+      return { ok: true };
+    }
 
     try {
       await this.publishBlockList(actorHex);

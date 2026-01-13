@@ -54,8 +54,8 @@ list. Blocking still follows the precedence rules above.
 - A video has 3 `nudity` reports from those seed accounts.
 
 Result:
-- Thumbnail is blurred if `DEFAULT_BLUR_THRESHOLD` is 3.
-- Autoplay is blocked if `DEFAULT_AUTOPLAY_BLOCK_THRESHOLD` is 2.
+- Thumbnail is blurred if `DEFAULT_BLUR_THRESHOLD` is 1 (met).
+- Autoplay is blocked if `DEFAULT_AUTOPLAY_BLOCK_THRESHOLD` is 1 (met).
 - No hard hide unless trusted mute/spam thresholds are met.
 
 ### Example 2: Logged-in viewer with personal blocks
@@ -81,13 +81,13 @@ Result:
 
 ### Example 4: Trusted mute hide
 
-- Viewer follows `npub_a`, `npub_b`, and `npub_c`.
-- Both `npub_a` and `npub_b` have muted `npub_author_y`.
-- `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD` is 1.
+- Viewer follows 25 accounts.
+- 20 of them have muted `npub_author_y`.
+- `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD` is 20.
 
 Result:
-- The author is hidden (trusted mute count ≥ 1).
-- The badge reads: `Hidden · 2 trusted mutes` and a “Show anyway” override is
+- The author is hidden (trusted mute count ≥ 20).
+- The badge reads: `Hidden · 20 trusted mutes` and a “Show anyway” override is
   available.
 
 ### Example 5: Mixed nudity + spam reports

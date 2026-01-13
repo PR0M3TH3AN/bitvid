@@ -476,9 +476,9 @@ export class VideoCard {
       content.appendChild(badgesContainer);
     }
 
-    const discussion = this.buildDiscussionCount();
-    if (discussion) {
-      content.appendChild(discussion);
+    const engagement = this.buildEngagementSection();
+    if (engagement) {
+      content.appendChild(engagement);
     }
 
     if (this.showUnsupportedTorrentBadge) {
@@ -926,29 +926,24 @@ export class VideoCard {
     metadata.appendChild(timeEl);
     this.timestampEl = timeEl;
 
-    if (this.pointerInfo && this.pointerInfo.key) {
-      const dotClassNames = ["text-muted-strong"];
-      if (!isCompact) {
-        dotClassNames.push("mx-1");
-      }
+    // (View count moved to engagement section)
 
-      const dot = this.createElement("span", {
-        classNames: dotClassNames,
-        textContent: "•"
+    if (
+      this.postedAt !== null &&
+      Number.isFinite(this.video?.created_at) &&
+      this.video.created_at > this.postedAt + 60
+    ) {
+      const separator = this.createElement("span", {
+        classNames: ["text-muted-strong", isCompact ? "" : "mx-1"],
+        textContent: "•",
       });
-      dot.setAttribute("aria-hidden", "true");
+      separator.setAttribute("aria-hidden", "true");
+      metadata.appendChild(separator);
 
-      const view = this.createElement("span", {
-        classNames: ["view-count-text"],
-        textContent: "– views"
+      const edited = this.createElement("span", {
+        textContent: "Edited",
       });
-      view.dataset.viewCount = "";
-      view.dataset.viewPointer = this.pointerInfo.key;
-
-      metadata.appendChild(dot);
-      metadata.appendChild(view);
-
-      this.viewCountEl = view;
+      metadata.appendChild(edited);
     }
 
     authorMeta.appendChild(authorName);
@@ -2312,61 +2307,151 @@ export class VideoCard {
     }
   }
 
-  buildDiscussionCount() {
-    if (this.variant === "compact") {
+  createEyeIcon(classNames = []) {
+    const svg = this.document.createElementNS(SVG_NAMESPACE, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("focusable", "false");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "2");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+
+    classNames.forEach((className) => {
+      if (className) {
+        svg.classList.add(className);
+      }
+    });
+
+    const path = this.document.createElementNS(SVG_NAMESPACE, "path");
+    path.setAttribute("d", "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z");
+    svg.appendChild(path);
+
+    const circle = this.document.createElementNS(SVG_NAMESPACE, "circle");
+    circle.setAttribute("cx", "12");
+    circle.setAttribute("cy", "12");
+    circle.setAttribute("r", "3");
+    svg.appendChild(circle);
+
+    return svg;
+  }
+
+  createMessageIcon(classNames = []) {
+    const svg = this.document.createElementNS(SVG_NAMESPACE, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("focusable", "false");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "2");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+
+    classNames.forEach((className) => {
+      if (className) {
+        svg.classList.add(className);
+      }
+    });
+
+    const path = this.document.createElementNS(SVG_NAMESPACE, "path");
+    path.setAttribute(
+      "d",
+      "M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"
+    );
+    svg.appendChild(path);
+
+    return svg;
+  }
+
+  buildEngagementSection() {
+    // Check availability
+    const hasPointer = this.pointerInfo && this.pointerInfo.key;
+    const hasDiscussion =
+      this.variant !== "compact" &&
+      this.video.enableComments !== false &&
+      (typeof this.video.discussionCount === "number" ||
+        (typeof this.video.discussionCount === "string" &&
+          this.video.discussionCount.trim()));
+
+    if (!hasPointer && !hasDiscussion) {
       return null;
     }
 
-    if (this.video.enableComments === false) {
-      return null;
+    const container = this.createElement("div", {
+      classNames: [
+        "flex",
+        "items-center",
+        "gap-4",
+        "text-xs",
+        "text-muted-strong",
+        "mt-3",
+        "video-card__engagement",
+      ],
+    });
+
+    // Views
+    if (hasPointer) {
+      const wrapper = this.createElement("div", {
+        classNames: ["flex", "items-center", "gap-1.5"],
+      });
+      wrapper.setAttribute("title", "Views");
+
+      const icon = this.createEyeIcon(["w-4", "h-4"]);
+      wrapper.appendChild(icon);
+
+      const view = this.createElement("span", {
+        classNames: ["view-count-text"],
+        textContent: "–",
+      });
+      view.dataset.viewCount = "";
+      view.dataset.viewPointer = this.pointerInfo.key;
+
+      wrapper.appendChild(view);
+      container.appendChild(wrapper);
+
+      this.viewCountEl = view;
     }
 
-    let initialCount = null;
-    if (typeof this.video.discussionCount === "number") {
-      initialCount = this.video.discussionCount;
-    } else if (typeof this.video.discussionCount === "string") {
-      const trimmed = this.video.discussionCount.trim();
-      if (trimmed) {
-        const parsed = Number.parseInt(trimmed, 10);
+    // Discussion
+    if (hasDiscussion) {
+      let initialCount = 0;
+      if (typeof this.video.discussionCount === "number") {
+        initialCount = this.video.discussionCount;
+      } else if (typeof this.video.discussionCount === "string") {
+        const parsed = Number.parseInt(this.video.discussionCount.trim(), 10);
         if (Number.isFinite(parsed)) {
           initialCount = parsed;
         }
       }
+
+      if (Number.isFinite(initialCount) && initialCount >= 0) {
+        const wrapper = this.createElement("div", {
+          classNames: ["flex", "items-center", "gap-1.5"],
+        });
+        wrapper.dataset.discussionCount = this.video.id;
+        wrapper.dataset.countState = "ready";
+        wrapper.setAttribute("title", "Comments");
+
+        const icon = this.createMessageIcon(["w-4", "h-4"]);
+        wrapper.appendChild(icon);
+
+        const safeCount = Math.floor(initialCount);
+        const displayValue = this.helpers.toLocaleString
+          ? this.helpers.toLocaleString(safeCount)
+          : safeCount.toLocaleString();
+
+        const valueEl = this.createElement("span", {
+          textContent: displayValue,
+        });
+        valueEl.dataset.discussionCountValue = "";
+
+        wrapper.appendChild(valueEl);
+        container.appendChild(wrapper);
+
+        this.discussionCountEl = wrapper;
+      }
     }
-
-    if (
-      initialCount === null ||
-      !Number.isFinite(initialCount) ||
-      initialCount < 0
-    ) {
-      return null;
-    }
-
-    const safeCount = Math.floor(initialCount);
-    const displayValue = this.helpers.toLocaleString
-      ? this.helpers.toLocaleString(safeCount)
-      : safeCount.toLocaleString();
-
-    const container = this.createElement("div", {
-      classNames: ["flex", "items-center", "text-xs", "text-muted-strong"]
-    });
-    container.dataset.discussionCount = this.video.id;
-    container.dataset.countState = "ready";
-
-    const valueEl = this.createElement("span", {
-      textContent: displayValue
-    });
-    valueEl.dataset.discussionCountValue = "";
-
-    const labelEl = this.createElement("span", {
-      classNames: ["ml-1"],
-      textContent: "notes"
-    });
-
-    container.appendChild(valueEl);
-    container.appendChild(labelEl);
-
-    this.discussionCountEl = container;
 
     return container;
   }

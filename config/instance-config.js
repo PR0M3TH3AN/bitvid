@@ -256,7 +256,7 @@ export const DEFAULT_AUTOPLAY_BLOCK_THRESHOLD = 1;
  * enforce community standards or raise it to tolerate more reports before
  * hiding.
  */
-export const DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD = 1;
+export const DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD = 20;
 
 /**
  * Trusted spam/report threshold that hides videos globally.

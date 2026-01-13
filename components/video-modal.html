@@ -175,7 +175,13 @@
                     <div class="video-modal__meta-info flex flex-wrap items-center gap-3">
                       <span id="videoTimestamp" class="modal-meta">Posted just now</span>
                       <span id="videoEditedTimestamp" class="modal-meta hidden">Last edited just now</span>
-                      <span id="videoViewCount" class="modal-meta modal-view-count">– views</span>
+                      <span id="videoViewCount" class="modal-meta modal-view-count flex items-center gap-1.5" title="Views">
+                        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4">
+                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                          <circle cx="12" cy="12" r="3"></circle>
+                        </svg>
+                        <span data-view-count-text>–</span>
+                      </span>
                     </div>
                   </div>
 

@@ -398,17 +398,20 @@ class SubscriptionsManager {
   }
 
   async ensureLoaded(actorHex) {
+    devLogger.log("[SubscriptionsManager] ensureLoaded start", actorHex);
     const normalizedActor = normalizeHexPubkey(actorHex) || actorHex;
     if (!normalizedActor) {
       return;
     }
 
     if (this.loaded && this.currentUserPubkey === normalizedActor) {
+      devLogger.log("[SubscriptionsManager] ensureLoaded already loaded");
       return;
     }
 
     if (this.loadingPromise) {
       try {
+        devLogger.log("[SubscriptionsManager] ensureLoaded awaiting existing promise");
         await this.loadingPromise;
       } catch (error) {
         throw error;
@@ -431,6 +434,7 @@ class SubscriptionsManager {
           )
         ),
       ]);
+      devLogger.log("[SubscriptionsManager] ensureLoaded success");
     } catch (error) {
       userLogger.warn("[SubscriptionsManager] ensureLoaded timed out or failed:", error);
     } finally {
@@ -856,7 +860,9 @@ class SubscriptionsManager {
       return this.lastResult;
     }
 
-    container.innerHTML = getSidebarLoadingMarkup("Fetching subscriptions…");
+    if (!this.hasRenderedOnce) {
+      container.innerHTML = getSidebarLoadingMarkup("Fetching subscriptions…");
+    }
 
     this.lastRunOptions = {
       actorPubkey: userPubkey,
@@ -870,7 +876,9 @@ class SubscriptionsManager {
 
     if (typeof nostrService?.awaitInitialLoad === "function") {
       try {
+        devLogger.log("[SubscriptionsManager] awaiting nostrService initial load...");
         await nostrService.awaitInitialLoad();
+        devLogger.log("[SubscriptionsManager] nostrService initial load done.");
       } catch (error) {
         devLogger.warn(
           "[SubscriptionsManager] Failed to await nostrService initial load:",
@@ -906,7 +914,9 @@ class SubscriptionsManager {
 
     try {
       this.isRunningFeed = true;
+      devLogger.log("[SubscriptionsManager] Calling engine.run('subscriptions')...");
       const result = await engine.run("subscriptions", runOptions);
+      devLogger.log("[SubscriptionsManager] engine.run complete. Items:", result?.items?.length);
 
       const videos = Array.isArray(result?.items)
         ? result.items.map((item) => item?.video).filter(Boolean)

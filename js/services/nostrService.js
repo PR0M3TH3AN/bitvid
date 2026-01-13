@@ -157,6 +157,17 @@ function extractSnapshotPreview(message) {
   return sanitizeSnapshotPreview(selected || "");
 }
 
+function getActiveKey(video) {
+  if (video.videoRootId) {
+    return `ROOT:${video.videoRootId}`;
+  }
+  const dTag = video.tags?.find((t) => Array.isArray(t) && t[0] === "d");
+  if (dTag && typeof dTag[1] === "string") {
+    return `${video.pubkey}:${dTag[1]}`;
+  }
+  return `LEGACY:${video.id}`;
+}
+
 function resolveDirectMessageRemotePubkey(message, actorPubkey = "") {
   const normalizedActor = normalizeHexPubkey(actorPubkey);
 
@@ -1165,10 +1176,11 @@ export class NostrService {
       return [];
     }
 
+    this.log(`[nostrService] fetchVideosByAuthors START. Authors: ${authorList.length}`);
+
     const requestedLimit = Number(options?.limit);
     const resolvedLimit = this.nostrClient.clampVideoRequestLimit(
-      requestedLimit,
-      DEFAULT_VIDEO_REQUEST_LIMIT
+      requestedLimit
     );
 
     const filter = {
@@ -1183,31 +1195,38 @@ export class NostrService {
     const invalidNotes = [];
 
     try {
+      this.log(`[nostrService] Querying ${this.nostrClient.relays.length} relays...`);
       await Promise.all(
         this.nostrClient.relays.map(async (url) => {
-          const events = await this.nostrClient.pool.list([url], [filter]);
-          for (const evt of events) {
-            if (evt && evt.id) {
-              this.nostrClient.rawEvents.set(evt.id, evt);
-            }
-            const vid = convertEventToVideo(evt);
-            if (vid.invalid) {
-              invalidNotes.push({ id: vid.id, reason: vid.reason });
-            } else {
-              if (
-                this.nostrClient &&
-                typeof this.nostrClient.applyRootCreatedAt === "function"
-              ) {
-                this.nostrClient.applyRootCreatedAt(vid);
+          try {
+            this.log(`[nostrService] Querying relay: ${url}`);
+            const events = await this.nostrClient.pool.list([url], [filter]);
+            this.log(`[nostrService] Relay ${url} returned ${events.length} events.`);
+            for (const evt of events) {
+              if (evt && evt.id) {
+                this.nostrClient.rawEvents.set(evt.id, evt);
               }
-              const activeKey = getActiveKey(vid);
-              if (vid.deleted) {
-                this.recordTombstone(activeKey, vid.created_at);
+              const vid = convertEventToVideo(evt);
+              if (vid.invalid) {
+                invalidNotes.push({ id: vid.id, reason: vid.reason });
               } else {
-                this.applyTombstoneGuard(vid);
+                if (
+                  this.nostrClient &&
+                  typeof this.nostrClient.applyRootCreatedAt === "function"
+                ) {
+                  this.nostrClient.applyRootCreatedAt(vid);
+                }
+                const activeKey = getActiveKey(vid);
+                if (vid.deleted) {
+                  this.nostrClient.recordTombstone(activeKey, vid.created_at);
+                } else {
+                  this.nostrClient.applyTombstoneGuard(vid);
+                }
+                localAll.set(evt.id, vid);
               }
-              localAll.set(evt.id, vid);
             }
+          } catch (relayErr) {
+            this.log(`[nostrService] Relay ${url} failed:`, relayErr);
           }
         })
       );

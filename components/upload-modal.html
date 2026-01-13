@@ -89,7 +89,7 @@
                     </label>
                 </div>
 
-                <!-- Upload Progress (Hidden by default) -->
+                <!-- Upload Progress -->
                  <div id="upload-progress-container" class="space-y-2 hidden">
                     <div class="flex justify-between text-xs">
                         <span id="upload-status-text" class="text-text font-medium">Uploading...</span>
@@ -133,45 +133,73 @@
                             </p>
                         </div>
 
-                        <div class="grid gap-3 md:grid-cols-2">
+                         <!-- Target Bucket Display -->
+                        <div class="space-y-1">
+                            <label for="input-r2-bucket-name" class="text-xs font-medium text-text">Target Bucket Name (Required)</label>
+                            <div class="flex gap-2">
+                                <input
+                                    id="input-r2-bucket-name"
+                                    type="text"
+                                    class="input text-xs bg-surface-alt text-muted cursor-text select-all"
+                                    readonly
+                                    placeholder="Log in to see your bucket name"
+                                />
+                                <button
+                                    type="button"
+                                    id="btn-copy-bucket"
+                                    class="btn-ghost px-2 text-xs border border-border/30"
+                                    aria-label="Copy bucket name"
+                                >
+                                    Copy
+                                </button>
+                            </div>
+                            <p class="text-[10px] text-muted">Create a bucket with this exact name in Cloudflare R2.</p>
+                        </div>
+
+                        <!-- Step 1: Credentials -->
+                        <div id="step-credentials" class="space-y-3">
                             <div class="space-y-1">
                                 <label for="input-r2-account" class="text-xs font-medium text-text">Account ID</label>
                                 <input id="input-r2-account" type="text" class="input text-xs" placeholder="xxxxxxxx..." />
                             </div>
-                            <div class="space-y-1">
-                                <label for="input-r2-key" class="text-xs font-medium text-text">Access Key ID</label>
-                                <input id="input-r2-key" type="text" class="input text-xs" placeholder="AKIA..." />
+                            <div class="grid gap-3 md:grid-cols-2">
+                                 <div class="space-y-1">
+                                    <label for="input-r2-key" class="text-xs font-medium text-text">Access Key ID</label>
+                                    <input id="input-r2-key" type="text" class="input text-xs" placeholder="AKIA..." />
+                                </div>
+                                <div class="space-y-1">
+                                    <label for="input-r2-secret" class="text-xs font-medium text-text">Secret Access Key</label>
+                                    <input id="input-r2-secret" type="password" class="input text-xs" />
+                                </div>
+                            </div>
+                            <div class="flex justify-end gap-2 pt-2">
+                                <button type="button" id="btn-next-step" class="btn btn-sm">Next</button>
                             </div>
                         </div>
-                        <div class="space-y-1">
-                            <label for="input-r2-secret" class="text-xs font-medium text-text">Secret Access Key</label>
-                            <input id="input-r2-secret" type="password" class="input text-xs" />
+
+                        <!-- Step 2: Verification -->
+                        <div id="step-verification" class="hidden space-y-3 pt-2 border-t border-border/30">
+                            <div class="space-y-1">
+                                <label for="input-r2-domain" class="text-xs font-medium text-text">Public Bucket URL</label>
+                                <input id="input-r2-domain" type="text" class="input text-xs" placeholder="https://pub-xxx.r2.dev" />
+                                <p class="text-[10px] text-muted leading-tight">
+                                    Enable <strong>Public Access</strong> in the Cloudflare dashboard to get your r2.dev URL.
+                                </p>
+                            </div>
+
+                            <!-- Error Container for Verification Failures -->
+                            <div id="container-verification-error" class="hidden bg-critical/10 border border-critical/30 rounded p-3 text-xs text-critical space-y-2">
+                                <p id="text-verification-error" class="font-medium">Verification Failed</p>
+                                <a id="link-cloudflare-guide" href="#" target="_blank" class="block text-center bg-critical/10 hover:bg-critical/20 py-1.5 rounded font-medium transition-colors">
+                                    Open Cloudflare Dashboard &rarr;
+                                </a>
+                            </div>
+
+                            <div class="flex justify-end gap-2 pt-2">
+                                <button type="button" id="btn-back-step" class="btn-ghost px-2 text-xs">Back</button>
+                                <button type="button" id="btn-save-settings" class="btn btn-sm">Verify & Save</button>
+                            </div>
                         </div>
-
-                         <!-- R2 Advanced -->
-                         <div class="space-y-2 pt-2">
-                             <button type="button" id="btn-r2-advanced" class="text-xs text-muted-strong hover:text-text underline">Advanced R2 Options</button>
-                             <div id="section-r2-advanced" class="hidden space-y-3 pt-2">
-                                <div class="space-y-1">
-                                    <label for="input-r2-token" class="text-xs font-medium text-text">API Token (Optional)</label>
-                                    <input id="input-r2-token" type="password" class="input text-xs" placeholder="Worker Token..." />
-                                </div>
-                                <div class="grid gap-3 md:grid-cols-2">
-                                     <div class="space-y-1">
-                                        <label for="input-r2-zone" class="text-xs font-medium text-text">Zone ID</label>
-                                        <input id="input-r2-zone" type="text" class="input text-xs" />
-                                    </div>
-                                    <div class="space-y-1">
-                                        <label for="input-r2-domain" class="text-xs font-medium text-text">Base Domain</label>
-                                        <input id="input-r2-domain" type="text" class="input text-xs" placeholder="cdn.example.com" />
-                                    </div>
-                                </div>
-                             </div>
-                         </div>
-
-                         <div class="flex justify-end gap-2 pt-2">
-                             <button type="button" id="btn-save-settings" class="btn btn-sm">Save Credentials</button>
-                         </div>
                     </div>
                 </div>
             </div>

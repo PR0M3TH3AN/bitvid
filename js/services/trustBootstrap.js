@@ -92,6 +92,7 @@ async function waitForAccessControl({ timeoutMs = TRUST_SEED_READY_TIMEOUT_MS } 
 }
 
 export async function bootstrapTrustedSeeds() {
+  devLogger.info("[trustBootstrap] bootstrapTrustedSeeds called");
   if (
     !(
       FEATURE_TRUST_SEEDS &&
@@ -99,6 +100,7 @@ export async function bootstrapTrustedSeeds() {
       typeof moderationService.setTrustedSeeds === "function"
     )
   ) {
+    devLogger.warn("[trustBootstrap] Trust seeds feature disabled or service missing");
     return;
   }
 
@@ -113,6 +115,7 @@ export async function bootstrapTrustedSeeds() {
         editors,
         fallbackSeeds: DEFAULT_TRUST_SEED_NPUBS,
       });
+      devLogger.info(`[trustBootstrap] Applying ${seeds.size} trusted seeds`, Array.from(seeds));
       moderationService.setTrustedSeeds(seeds);
       if (
         moderationService &&
@@ -130,6 +133,7 @@ export async function bootstrapTrustedSeeds() {
     attempts += 1;
     try {
       const result = await waitForAccessControl();
+      devLogger.info("[trustBootstrap] waitForAccessControl result", result);
       applySeeds();
       return result;
     } catch (error) {
@@ -177,5 +181,9 @@ export async function bootstrapTrustedSeeds() {
 
   if (accessControl && typeof accessControl.onEditorsChange === "function") {
     accessControl.onEditorsChange(applyOnChange);
+  }
+
+  if (accessControl && typeof accessControl.onBlacklistChange === "function") {
+    accessControl.onBlacklistChange(applyOnChange);
   }
 }

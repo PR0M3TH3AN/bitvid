@@ -446,6 +446,19 @@ function ensureNumber(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function resolveStorage() {
+  if (typeof localStorage !== "undefined") {
+    return localStorage;
+  }
+  if (typeof window !== "undefined" && window.localStorage) {
+    return window.localStorage;
+  }
+  if (typeof globalThis !== "undefined" && globalThis.localStorage) {
+    return globalThis.localStorage;
+  }
+  return null;
+}
+
 export class ModerationService {
   constructor({
     nostrClient: client = null,
@@ -459,6 +472,7 @@ export class ModerationService {
     this.userLogger = normalizeUserLogger(userChannel);
 
     this.viewerPubkey = "";
+    this.viewerIsSessionActor = false;
     this.trustedContacts = new Set();
     this.trustedSeedContacts = new Set();
     this.viewerContacts = new Set();
@@ -520,9 +534,11 @@ export class ModerationService {
     }
 
     if (this.trustedSeedContacts instanceof Set) {
+      const adminSnapshot = this.getAdminListSnapshot();
+      const blacklistHex = adminSnapshot.blacklistHex;
       for (const seed of this.trustedSeedContacts) {
         const normalized = normalizeHex(seed);
-        if (normalized) {
+        if (normalized && (!blacklistHex || !blacklistHex.has(normalized))) {
           merged.add(normalized);
         }
       }
@@ -634,19 +650,23 @@ export class ModerationService {
   }
 
   setTrustedSeeds(seeds = []) {
+    this.log("[moderationService] setTrustedSeeds called", { count: seeds?.length || seeds?.size || 0 });
     const sanitizedSeeds = new Set();
+    const adminSnapshot = this.getAdminListSnapshot();
 
     if (seeds instanceof Set || Array.isArray(seeds)) {
       for (const candidate of seeds) {
         const normalized = normalizeToHex(candidate);
-        if (normalized) {
+        const status = this.getAccessControlStatus(candidate, adminSnapshot);
+        if (normalized && !status.blacklisted) {
           sanitizedSeeds.add(normalized);
         }
       }
     } else if (seeds && typeof seeds[Symbol.iterator] === "function") {
       for (const candidate of seeds) {
         const normalized = normalizeToHex(candidate);
-        if (normalized) {
+        const status = this.getAccessControlStatus(candidate, adminSnapshot);
+        if (normalized && !status.blacklisted) {
           sanitizedSeeds.add(normalized);
         }
       }
@@ -812,12 +832,7 @@ export class ModerationService {
   }
 
   clearTrustedMuteTracking({ previousContacts = null } = {}) {
-    const previous =
-      previousContacts instanceof Set
-        ? new Set(previousContacts)
-        : this.trustedContacts instanceof Set
-        ? new Set(this.trustedContacts)
-        : new Set();
+    void previousContacts;
 
     for (const [pubkey, entry] of this.trustedMuteSubscriptions.entries()) {
       if (entry && typeof entry.unsub === "function") {
@@ -845,7 +860,8 @@ export class ModerationService {
 
     this.emit("trusted-mutes", { total: 0 });
 
-    this.rebuildTrustedContacts(new Set(), { previous });
+    const emptyPrevious = new Set();
+    this.rebuildTrustedContacts(new Set(), { previous: emptyPrevious });
   }
 
   isTrustedMuteOwner(pubkey) {
@@ -863,6 +879,11 @@ export class ModerationService {
     const previous = previousSet instanceof Set ? new Set(previousSet) : new Set();
     const next = nextSet instanceof Set ? new Set(nextSet) : new Set();
 
+    this.log("[moderationService] reconcileTrustedMuteSubscriptions", {
+      previous: previous.size,
+      next: next.size,
+    });
+
     if (this.viewerPubkey) {
       if (this.trustedMuteSubscriptions.has(this.viewerPubkey)) {
         previous.add(this.viewerPubkey);
@@ -877,14 +898,12 @@ export class ModerationService {
     }
 
     for (const value of next) {
-      if (!previous.has(value)) {
-        this.subscribeToTrustedMuteList(value).catch((error) => {
-          this.log(
-            `(moderationService) failed to subscribe to trusted mute list for ${value}`,
-            error,
-          );
-        });
-      }
+      this.subscribeToTrustedMuteList(value).catch((error) => {
+        this.log(
+          `(moderationService) failed to subscribe to trusted mute list for ${value}`,
+          error,
+        );
+      });
     }
   }
 
@@ -923,8 +942,11 @@ export class ModerationService {
       }
       return;
     } else if (typeof record.unsub === "function") {
+      this.log(`[moderationService] already subscribed to ${normalized}`);
       return;
     }
+
+    this.log(`[moderationService] subscribing to trusted mute list for ${normalized}`);
 
     record.promise = (async () => {
       try {
@@ -943,6 +965,7 @@ export class ModerationService {
 
       const relays = resolveRelayList(this.nostrClient);
       if (!relays.length) {
+        this.log(`[moderationService] no relays available for ${normalized}`);
         return;
       }
 
@@ -987,6 +1010,7 @@ export class ModerationService {
         });
         sub.on("eose", () => {});
         record.unsub = typeof sub.unsub === "function" ? () => sub.unsub() : null;
+        this.log(`[moderationService] subscribed to trusted mute list for ${normalized}`);
       } catch (error) {
         this.log(
           `(moderationService) failed to subscribe to trusted mute list for ${normalized}`,
@@ -1149,6 +1173,7 @@ export class ModerationService {
       return;
     }
 
+    this.log(`[moderationService] ingesting trusted mute event from ${owner} (${event.id})`);
     this.applyTrustedMuteEvent(owner, event);
   }
 
@@ -1164,6 +1189,85 @@ export class ModerationService {
     return this.viewerMuteList.has(normalized);
   }
 
+  loadLocalMutes(pubkey) {
+    const normalized = normalizeHex(pubkey);
+    if (!normalized) {
+      return;
+    }
+
+    const storage = resolveStorage();
+    if (!storage) {
+      return;
+    }
+
+    const key = `bitvid:user-mutes:local:v1:${normalized}`;
+    let loaded = [];
+
+    try {
+      const raw = storage.getItem(key);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          loaded = parsed;
+        }
+      }
+    } catch (error) {
+      this.log(
+        `[moderationService] failed to load local mutes for ${normalized}`,
+        error,
+      );
+    }
+
+    const mutes = new Set();
+    for (const item of loaded) {
+      const target = normalizeHex(item);
+      if (target && target !== normalized) {
+        mutes.add(target);
+      }
+    }
+
+    this.replaceTrustedMuteList(normalized, mutes, {
+      createdAt: Date.now() / 1000,
+      eventId: `local-${Date.now()}`,
+    });
+  }
+
+  saveLocalMutes(pubkey, muteSet) {
+    const normalized = normalizeHex(pubkey);
+    if (!normalized) {
+      return;
+    }
+
+    const storage = resolveStorage();
+    if (!storage) {
+      return;
+    }
+
+    const list = [];
+    if (muteSet instanceof Set || Array.isArray(muteSet)) {
+      for (const item of muteSet) {
+        const target = normalizeHex(item);
+        if (target && target !== normalized) {
+          list.push(target);
+        }
+      }
+    }
+
+    const key = `bitvid:user-mutes:local:v1:${normalized}`;
+    try {
+      if (!list.length) {
+        storage.removeItem(key);
+      } else {
+        storage.setItem(key, JSON.stringify(list));
+      }
+    } catch (error) {
+      this.log(
+        `[moderationService] failed to save local mutes for ${normalized}`,
+        error,
+      );
+    }
+  }
+
   async ensureViewerMuteListLoaded(pubkey = this.viewerPubkey) {
     const normalized = normalizeHex(pubkey);
     if (!normalized) {
@@ -1174,6 +1278,11 @@ export class ModerationService {
     }
 
     if (this.trustedMuteLists.has(normalized)) {
+      return;
+    }
+
+    if (this.viewerIsSessionActor && normalized === this.viewerPubkey) {
+      this.loadLocalMutes(normalized);
       return;
     }
 
@@ -1208,6 +1317,15 @@ export class ModerationService {
       const error = new Error("viewer-not-logged-in");
       error.code = "viewer-not-logged-in";
       throw error;
+    }
+
+    if (this.viewerIsSessionActor && viewer === this.viewerPubkey) {
+      this.saveLocalMutes(viewer, muted);
+      this.replaceTrustedMuteList(viewer, muted, {
+        createdAt: Date.now() / 1000,
+        eventId: `local-${Date.now()}`,
+      });
+      return { ok: true, event: null, results: [] };
     }
 
     await this.ensurePool();
@@ -1516,7 +1634,9 @@ export class ModerationService {
   }
 
   async refreshViewerFromClient() {
-    const clientPubkey = normalizeHex(this.nostrClient?.pubkey);
+    const clientPubkey = normalizeHex(
+      this.nostrClient?.pubkey || this.nostrClient?.sessionActor?.pubkey,
+    );
     if (clientPubkey === this.viewerPubkey) {
       if (this.contactListPromise) {
         try {
@@ -1546,6 +1666,13 @@ export class ModerationService {
       this.trustedContacts instanceof Set ? new Set(this.trustedContacts) : new Set();
 
     this.viewerPubkey = normalized;
+
+    const loggedInPubkey = normalizeHex(this.nostrClient?.pubkey);
+    const sessionPubkey = normalizeHex(this.nostrClient?.sessionActor?.pubkey);
+
+    this.viewerIsSessionActor =
+      !!normalized && !loggedInPubkey && normalized === sessionPubkey;
+
     this.clearTrustedMuteTracking({ previousContacts });
 
     if (this.contactSubscription && typeof this.contactSubscription.unsub === "function") {
@@ -2116,7 +2243,10 @@ export class ModerationService {
       throw error;
     }
 
-    const reporterPubkey = normalizeHex(this.nostrClient?.pubkey);
+    const reporterPubkey = normalizeHex(
+      this.nostrClient?.pubkey || this.nostrClient?.sessionActor?.pubkey,
+    );
+
     if (!reporterPubkey) {
       const error = new Error("viewer-not-logged-in");
       error.code = "viewer-not-logged-in";
@@ -2130,14 +2260,19 @@ export class ModerationService {
       throw error;
     }
 
-    const extension = typeof window !== "undefined" ? window.nostr : null;
-    if (!extension) {
-      const error = new Error("nostr-extension-missing");
-      error.code = "nostr-extension-missing";
+    const signer = await this.nostrClient.ensureActiveSignerForPubkey(
+      reporterPubkey,
+    );
+    if (!signer || typeof signer.signEvent !== "function") {
+      const error = new Error("signer-unavailable");
+      error.code = "signer-unavailable";
       throw error;
     }
 
-    if (typeof this.nostrClient?.ensureExtensionPermissions === "function") {
+    if (
+      signer.type === "extension" &&
+      typeof this.nostrClient?.ensureExtensionPermissions === "function"
+    ) {
       const permissionResult = await this.nostrClient.ensureExtensionPermissions([
         "sign_event",
         "get_public_key",
@@ -2174,7 +2309,7 @@ export class ModerationService {
 
     let signedEvent;
     try {
-      signedEvent = await extension.signEvent(event);
+      signedEvent = await signer.signEvent(event);
     } catch (error) {
       const wrapped = new Error("signature-failed");
       wrapped.code = "signature-failed";

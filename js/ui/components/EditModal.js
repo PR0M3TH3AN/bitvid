@@ -438,9 +438,38 @@ export class EditModal {
 
     this.applyVideoToForm(editContext);
     this.nip71FormManager.resetSection(this.nip71SectionKey);
-    if (video.nip71 && typeof video.nip71 === "object") {
-      this.nip71FormManager.hydrateSection(this.nip71SectionKey, video.nip71);
+
+    let nip71Data = video.nip71 && typeof video.nip71 === "object" ? { ...video.nip71 } : {};
+
+    // Backfill published_at if missing, using the original root creation time
+    if (
+      !nip71Data.publishedAt &&
+      !nip71Data.published_at &&
+      !nip71Data["published-at"]
+    ) {
+      const rootCreated = video.rootCreatedAt || video.created_at;
+      if (rootCreated) {
+        nip71Data.publishedAt = rootCreated;
+      }
     }
+
+    // Format publishedAt for datetime-local input (YYYY-MM-DDThh:mm)
+    const rawPublishedAt =
+      nip71Data.publishedAt || nip71Data.published_at || nip71Data["published-at"];
+    if (rawPublishedAt) {
+      const numeric = Number(rawPublishedAt);
+      if (Number.isFinite(numeric)) {
+        const dt = new Date(numeric * 1000);
+        const pad = (n) => String(n).padStart(2, "0");
+        const formatted = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(
+          dt.getDate()
+        )}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+        nip71Data.publishedAt = formatted;
+      }
+    }
+
+    this.nip71FormManager.hydrateSection(this.nip71SectionKey, nip71Data);
+
     const initialNip71 = this.nip71FormManager.collectSection(this.nip71SectionKey);
     this.originalNip71Metadata = this.cloneNip71Metadata(initialNip71);
     this.originalNip71MetadataJson = JSON.stringify(this.originalNip71Metadata);
@@ -926,9 +955,23 @@ export class EditModal {
     const originalIsNsfw = original.isNsfw === true;
     const originalIsForKids = original.isForKids === true;
 
-    const currentNip71 = this.cloneNip71Metadata(
-      this.nip71FormManager.collectSection(this.nip71SectionKey)
-    );
+    const rawNip71 = this.nip71FormManager.collectSection(this.nip71SectionKey);
+    const currentNip71 = this.cloneNip71Metadata(rawNip71);
+
+    // Convert publishedAt back to Unix timestamp (seconds)
+    if (currentNip71 && typeof currentNip71.publishedAt === "string") {
+      const dateStr = currentNip71.publishedAt;
+      if (dateStr) {
+        const dt = new Date(dateStr);
+        if (!isNaN(dt.getTime())) {
+          currentNip71.publishedAt = Math.floor(dt.getTime() / 1000);
+        } else {
+          delete currentNip71.publishedAt;
+        }
+      } else {
+        delete currentNip71.publishedAt;
+      }
+    }
     const hasImetaSource = Array.isArray(currentNip71?.imeta)
       ? currentNip71.imeta.some((variant) => {
           if (!variant || typeof variant !== "object") {

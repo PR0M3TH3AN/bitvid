@@ -66,6 +66,7 @@ export function createSubscriptionAuthorsSource({ service } = {}) {
   const resolvedService = resolveService(service, nostrService);
 
   return async function subscriptionAuthorsSource(context = {}) {
+    context?.log?.("[subscriptions-source] START");
     const runtimeAuthors = toArray(
       context?.runtime?.subscriptionAuthors || context?.runtime?.authors
     ).map(normalizeAuthor);
@@ -87,6 +88,8 @@ export function createSubscriptionAuthorsSource({ service } = {}) {
     const authors = new Set(
       [...runtimeAuthors, ...configAuthors, ...hookAuthors].filter(Boolean)
     );
+
+    context?.log?.(`[subscriptions-source] Resolved ${authors.size} authors.`);
 
     if (!authors.size) {
       return [];
@@ -115,12 +118,16 @@ export function createSubscriptionAuthorsSource({ service } = {}) {
     let videos = [];
     try {
       if (hasTargetedLookup) {
+        context?.log?.("[subscriptions-source] Calling getActiveVideosByAuthors...");
         videos = await Promise.resolve(
           resolvedService.getActiveVideosByAuthors(authorList, options)
         );
+        context?.log?.(`[subscriptions-source] getActiveVideosByAuthors returned ${videos.length} videos.`);
 
         if (!videos.length && typeof resolvedService.fetchVideosByAuthors === "function") {
+          context?.log?.("[subscriptions-source] Cache empty. Calling fetchVideosByAuthors...");
           const fetched = await resolvedService.fetchVideosByAuthors(authorList, options);
+          context?.log?.(`[subscriptions-source] fetchVideosByAuthors returned ${fetched ? fetched.length : 0} videos.`);
           if (Array.isArray(fetched) && fetched.length > 0) {
             videos = fetched;
           }

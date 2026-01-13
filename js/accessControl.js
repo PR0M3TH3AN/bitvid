@@ -117,6 +117,7 @@ class AccessControl {
     this._hydratedFromCache = false;
     this._whitelistListeners = new Set();
     this._editorListeners = new Set();
+    this._blacklistListeners = new Set();
 
     this._scheduleHydrateFromCache();
   }
@@ -242,6 +243,7 @@ class AccessControl {
   }
 
   _applyState(state, options = {}) {
+    userLogger.info("[accessControl] _applyState called", { state, options });
     const markLoaded = options.markLoaded !== false;
     const editors = Array.isArray(state?.editors) ? state.editors : [];
     const whitelist = Array.isArray(state?.whitelist) ? state.whitelist : [];
@@ -251,6 +253,8 @@ class AccessControl {
       this.editors instanceof Set ? new Set(this.editors) : new Set();
     const previousWhitelist =
       this.whitelist instanceof Set ? new Set(this.whitelist) : new Set();
+    const previousBlacklist =
+      this.blacklist instanceof Set ? new Set(this.blacklist) : new Set();
 
     this.editors = new Set(
       dedupeNpubs([...ADMIN_EDITORS_NPUBS, ...editors])
@@ -261,7 +265,6 @@ class AccessControl {
     const whitelistChanged = !areSetsEqual(previousWhitelist, this.whitelist);
 
     const blacklistDedupe = dedupeNpubs(blacklist);
-    const whitelistSet = new Set(normalizedWhitelist.map(normalizeNpub));
     const adminGuardSet = new Set([
       normalizeNpub(ADMIN_SUPER_NPUB),
       ...Array.from(this.editors),
@@ -271,15 +274,13 @@ class AccessControl {
       if (!normalized) {
         return false;
       }
-      if (whitelistSet.has(normalized)) {
-        return false;
-      }
       if (adminGuardSet.has(normalized)) {
         return false;
       }
       return true;
     });
     this.blacklist = new Set(sanitizedBlacklist);
+    const blacklistChanged = !areSetsEqual(previousBlacklist, this.blacklist);
 
     const toolkitCandidate =
       (typeof window !== "undefined" ? window?.NostrTools : null) ||
@@ -326,6 +327,9 @@ class AccessControl {
     if (editorsChanged) {
       this._emitEditorsChange(Array.from(this.editors));
     }
+    if (blacklistChanged) {
+      this._emitBlacklistChange(Array.from(this.blacklist));
+    }
   }
 
   _emitWhitelistChange(whitelistValues) {
@@ -342,6 +346,24 @@ class AccessControl {
         listener(snapshot);
       } catch (error) {
         userLogger.error("accessControl whitelist listener failed", error);
+      }
+    }
+  }
+
+  _emitBlacklistChange(blacklistValues) {
+    if (!this._blacklistListeners.size) {
+      return;
+    }
+
+    const snapshot = Array.isArray(blacklistValues)
+      ? [...blacklistValues]
+      : this.getBlacklist();
+
+    for (const listener of Array.from(this._blacklistListeners)) {
+      try {
+        listener(snapshot);
+      } catch (error) {
+        userLogger.error("accessControl blacklist listener failed", error);
       }
     }
   }
@@ -396,9 +418,11 @@ class AccessControl {
 
   refresh() {
     if (this._isRefreshing) {
+      userLogger.info("[accessControl] refresh ignored (already refreshing)");
       return this._refreshPromise;
     }
 
+    userLogger.info("[accessControl] refresh started");
     const operation = this._performRefresh();
     const tracked = operation.catch((error) => {
       userLogger.error("Failed to refresh admin lists:", error);
@@ -415,8 +439,10 @@ class AccessControl {
 
     try {
       await this._refreshPromise;
+      userLogger.info("[accessControl] ensureReady resolved");
     } catch (error) {
       if (!this.hasLoaded) {
+        userLogger.warn("[accessControl] ensureReady retry");
         await this.refresh();
         await this._refreshPromise;
       } else {
@@ -485,6 +511,18 @@ class AccessControl {
     };
   }
 
+  onBlacklistChange(listener) {
+    if (typeof listener !== "function") {
+      return () => {};
+    }
+
+    this._blacklistListeners.add(listener);
+
+    return () => {
+      this._blacklistListeners.delete(listener);
+    };
+  }
+
   async addModerator(requestorNpub, moderatorNpub) {
     if (!this.isSuperAdmin(requestorNpub)) {
       return { ok: false, error: "forbidden" };
@@ -543,9 +581,7 @@ class AccessControl {
     }
 
     const nextWhitelist = dedupeNpubs([...this.getWhitelist(), normalized]);
-    const nextBlacklist = this.getBlacklist().filter(
-      (value) => value !== normalized
-    );
+    const nextBlacklist = this.getBlacklist();
 
     try {
       await persistAdminState(actorNpub, {
@@ -604,9 +640,7 @@ class AccessControl {
     }
 
     const nextBlacklist = dedupeNpubs([...this.getBlacklist(), normalized]);
-    const nextWhitelist = this.getWhitelist().filter(
-      (value) => value !== normalized
-    );
+    const nextWhitelist = this.getWhitelist();
 
     try {
       await persistAdminState(actorNpub, {
@@ -656,15 +690,9 @@ class AccessControl {
     if (!normalized) {
       return false;
     }
-    if (this.whitelist.has(normalized)) {
-      return false;
-    }
 
     const normalizedHexCandidate = normalizeHexKey(normalized);
     if (normalizedHexCandidate) {
-      if (this.whitelistPubkeys.has(normalizedHexCandidate)) {
-        return false;
-      }
       return this.blacklistPubkeys.has(normalizedHexCandidate);
     }
 
@@ -712,12 +740,12 @@ class AccessControl {
         return false;
       }
 
-      if (this.whitelistPubkeys.has(hex)) {
-        return true;
-      }
-
       if (this.blacklistPubkeys.has(hex)) {
         return false;
+      }
+
+      if (this.whitelistPubkeys.has(hex)) {
+        return true;
       }
 
       if (this.whitelistEnabled && !this.whitelistPubkeys.has(hex)) {
@@ -736,20 +764,20 @@ class AccessControl {
     }
 
     if (hex) {
-      if (this.whitelistPubkeys.has(hex)) {
-        return true;
-      }
       if (this.blacklistPubkeys.has(hex)) {
         return false;
       }
-    }
-
-    if (this.whitelist.has(normalized)) {
-      return true;
+      if (this.whitelistPubkeys.has(hex)) {
+        return true;
+      }
     }
 
     if (this.blacklist.has(normalized)) {
       return false;
+    }
+
+    if (this.whitelist.has(normalized)) {
+      return true;
     }
 
     if (this.whitelistEnabled && !this.whitelist.has(normalized)) {

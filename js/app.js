@@ -76,6 +76,7 @@ import {
 import { splitAndZap as splitAndZapDefault } from "./payments/zapSplit.js";
 import {
   formatAbsoluteTimestamp as formatAbsoluteTimestampUtil,
+  formatAbsoluteDateWithOrdinal as formatAbsoluteDateWithOrdinalUtil,
   formatTimeAgo as formatTimeAgoUtil,
   truncateMiddle,
   formatShortNpub,
@@ -328,7 +329,24 @@ class Application {
   isAuthorBlocked(pubkey) {
     try {
       if (userBlocks && typeof userBlocks.isBlocked === "function") {
-        return userBlocks.isBlocked(pubkey);
+        if (userBlocks.isBlocked(pubkey)) {
+          return true;
+        }
+      }
+
+      if (!this.isUserLoggedIn()) {
+        const normalized = this.normalizeHexPubkey(pubkey);
+        if (
+          normalized &&
+          moderationService &&
+          typeof moderationService.getTrustedMutersForAuthor === "function"
+        ) {
+          const muters = moderationService.getTrustedMutersForAuthor(normalized);
+          const threshold = getTrustedMuteHideThreshold();
+          if (Array.isArray(muters) && muters.length >= threshold) {
+            return true;
+          }
+        }
       }
     } catch (error) {
       devLogger.warn("[Application] Failed to evaluate block status:", error);
@@ -466,6 +484,112 @@ class Application {
         : Promise.resolve(null);
 
       await Promise.all([accessControlPromise, adminPanePromise]);
+
+      const syncSessionActorBlacklist = async (trigger) => {
+        if (this.pubkey) {
+          return;
+        }
+
+        const sessionActorPubkey = nostrClient.sessionActor?.pubkey;
+        if (!sessionActorPubkey) {
+          return;
+        }
+
+        const blacklist = accessControl.getBlacklist();
+        try {
+          await userBlocks.seedBaselineDelta(
+            sessionActorPubkey,
+            Array.from(blacklist || []),
+          );
+        } catch (error) {
+          devLogger.warn(
+            `[app.init()] Failed to sync session actor blacklist${
+              trigger ? ` (${trigger})` : ""
+            }:`,
+            error,
+          );
+        }
+      };
+
+      const handleSessionActorReady = async ({ pubkey, reason } = {}) => {
+        if (this.pubkey) {
+          return;
+        }
+
+        const normalizedPubkey = this.normalizeHexPubkey(pubkey);
+        if (!normalizedPubkey) {
+          return;
+        }
+
+        const triggerLabel = reason ? `session-actor-${reason}` : "session-actor";
+        await syncSessionActorBlacklist(triggerLabel);
+
+        const refreshReason = "session-actor-ready";
+        if (typeof this.refreshVisibleModerationUi === "function") {
+          try {
+            this.refreshVisibleModerationUi({ reason: refreshReason });
+          } catch (error) {
+            devLogger.warn(
+              "[app.init()] Failed to refresh moderation UI after session actor:",
+              error,
+            );
+          }
+        } else {
+          this.refreshAllVideoGrids({
+            reason: refreshReason,
+            forceMainReload: true,
+          }).catch((error) => {
+            devLogger.warn(
+              "[app.init()] Failed to refresh video grids after session actor:",
+              error,
+            );
+          });
+        }
+      };
+
+      if (typeof nostrClient.onSessionActorChange === "function") {
+        nostrClient.onSessionActorChange((detail) => {
+          handleSessionActorReady(detail).catch((error) => {
+            devLogger.warn(
+              "[app.init()] Failed to process session actor change:",
+              error,
+            );
+          });
+        });
+      }
+
+      await syncSessionActorBlacklist("post-refresh");
+
+      if (typeof accessControl.onBlacklistChange === "function") {
+        accessControl.onBlacklistChange(() => {
+          syncSessionActorBlacklist("blacklist-change");
+          if (this.isUserLoggedIn()) {
+            return;
+          }
+
+          const refreshReason = "admin-blacklist-change";
+          this.refreshAllVideoGrids({
+            reason: refreshReason,
+            forceMainReload: true,
+          }).catch((error) => {
+            devLogger.warn(
+              "[app.init()] Failed to refresh video grids after admin blacklist change:",
+              error,
+            );
+          });
+
+          if (typeof this.refreshVisibleModerationUi === "function") {
+            try {
+              this.refreshVisibleModerationUi({ reason: refreshReason });
+            } catch (error) {
+              devLogger.warn(
+                "[app.init()] Failed to refresh moderation UI after admin blacklist change:",
+                error,
+              );
+            }
+          }
+        });
+      }
 
       // Grab the "Subscriptions" link by its id in the sidebar
       this.subscriptionsLink = document.getElementById("subscriptionsLink");
@@ -2651,6 +2775,22 @@ class Application {
    * Setup general event listeners for logout, modals, etc.
    */
   setupEventListeners() {
+    if (moderationService && typeof moderationService.on === "function") {
+      moderationService.on("trusted-mutes", () => {
+        if (!this.isUserLoggedIn()) {
+          this.refreshAllVideoGrids({ reason: "trusted-mutes" });
+        } else {
+          this.refreshVisibleModerationUi({ reason: "trusted-mutes" });
+        }
+      });
+      moderationService.on("user-blocks", () => {
+        this.refreshVisibleModerationUi({ reason: "user-blocks" });
+      });
+      moderationService.on("summary", () => {
+        this.refreshVisibleModerationUi({ reason: "moderation-summary" });
+      });
+    }
+
     if (this.appChromeController) {
       this.appChromeController.initialize();
       return;
@@ -8622,7 +8762,9 @@ class Application {
       (normalizedPostedAt === null || normalizedEditedAt - normalizedPostedAt >= 60);
 
     if (shouldShowEdited) {
-      payload.edited = `Last edited ${this.formatTimeAgo(normalizedEditedAt)}`;
+      const abs = formatAbsoluteDateWithOrdinalUtil(normalizedEditedAt);
+      const rel = this.formatTimeAgo(normalizedEditedAt);
+      payload.edited = `Last edited: ${abs} (${rel})`;
     }
 
     return payload;
@@ -8705,6 +8847,21 @@ class Application {
   async resolveVideoPostedAt(video) {
     if (!video || typeof video !== "object") {
       return null;
+    }
+
+    // Prioritize NIP-71 published_at metadata if available
+    const rawNip71PublishedAt =
+      video?.nip71?.publishedAt ||
+      video?.nip71?.published_at ||
+      video?.nip71?.["published-at"];
+    const parsedNip71PublishedAt = Number(rawNip71PublishedAt);
+    const nip71PublishedAt = Number.isFinite(parsedNip71PublishedAt)
+      ? Math.floor(parsedNip71PublishedAt)
+      : null;
+
+    if (nip71PublishedAt !== null) {
+      this.cacheVideoRootCreatedAt(video, nip71PublishedAt);
+      return nip71PublishedAt;
     }
 
     const cached = this.getKnownVideoPostedAt(video);

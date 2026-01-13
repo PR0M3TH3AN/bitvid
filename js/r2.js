@@ -10,8 +10,12 @@ function sanitizeBaseDomain(domain) {
     return "";
   }
   let value = String(domain).trim().toLowerCase();
-  value = value.replace(/^https?:\/\//, "");
-  value = value.replace(/\/.*$/, "");
+  // Ensure it starts with https:// if it doesn't already
+  if (!/^https?:\/\//.test(value)) {
+    value = `https://${value}`;
+  }
+  // Remove trailing slashes
+  value = value.replace(/\/+$/, "");
   return value;
 }
 
