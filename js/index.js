@@ -621,6 +621,12 @@ async function bootstrapInterface() {
   await loadSidebar("components/sidebar.html", "sidebarContainer");
   devLogger.log("Sidebar loaded.");
 
+  try {
+    await applicationReadyPromise;
+  } catch (error) {
+    // fall through
+  }
+
   if (application && typeof application.hydrateSidebarNavigation === "function") {
     try {
       application.hydrateSidebarNavigation();
