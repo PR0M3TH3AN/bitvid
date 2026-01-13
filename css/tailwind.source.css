@@ -1897,7 +1897,7 @@
     .video-modal__layout {
       --video-modal-secondary-size: clamp(
         var(--video-modal-secondary-min),
-        40vw,
+        36vw,
         var(--video-modal-secondary-max)
       );
       grid-template-columns:
@@ -1936,7 +1936,7 @@
     .video-modal__layout {
       --video-modal-secondary-size: clamp(
         var(--video-modal-secondary-min),
-        36vw,
+        32vw,
         var(--video-modal-secondary-max)
       );
     }
