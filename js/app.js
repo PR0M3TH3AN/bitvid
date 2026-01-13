@@ -494,7 +494,7 @@ class Application {
             })
         : Promise.resolve(null);
 
-      await Promise.all([accessControlPromise, adminPanePromise]);
+      // await Promise.all([accessControlPromise, adminPanePromise]);
 
       const syncSessionActorBlacklist = async (trigger) => {
         if (this.pubkey) {
@@ -2698,17 +2698,15 @@ class Application {
       typeof reason === "string" && reason.trim() ? reason.trim() : undefined;
 
     if (typeof moderationService?.awaitUserBlockRefresh === "function") {
-      try {
-        await moderationService.awaitUserBlockRefresh();
-      } catch (error) {
+      moderationService.awaitUserBlockRefresh().catch((error) => {
         const contextMessage = normalizedReason
-          ? ` before ${normalizedReason}`
-          : "";
+          ? ` in background during ${normalizedReason}`
+          : " in background";
         devLogger.warn(
           `Failed to sync moderation summaries${contextMessage}:`,
           error,
         );
-      }
+      });
     }
 
     try {
@@ -5359,10 +5357,17 @@ class Application {
     devLogger.log("Starting loadVideos... (forceFetch =", forceFetch, ")");
 
     const container = this.mountVideoListView();
-    if (this.videoListView && container) {
-      this.videoListView.showLoading("Fetching recent videos…");
-    } else if (container) {
-      container.innerHTML = getSidebarLoadingMarkup("Fetching recent videos…");
+    const hasCachedVideos =
+      this.nostrService &&
+      Array.isArray(this.nostrService.getFilteredActiveVideos()) &&
+      this.nostrService.getFilteredActiveVideos().length > 0;
+
+    if (!hasCachedVideos) {
+      if (this.videoListView && container) {
+        this.videoListView.showLoading("Fetching recent videos…");
+      } else if (container) {
+        container.innerHTML = getSidebarLoadingMarkup("Fetching recent videos…");
+      }
     }
 
     let initialRefreshPromise = null;
