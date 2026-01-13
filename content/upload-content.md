@@ -9,36 +9,61 @@ bitvid is a decentralized platform, but for larger video files, we currently sup
 
 ## Step-by-Step Guide
 
-### 1. Create an API Token
-
-To let bitvid upload files to your bucket, you need an API Token with permission to edit R2 storage.
+### 1. Create a Bucket & Enable Public Access
 
 1. Log in to your [Cloudflare Dashboard](https://dash.cloudflare.com/).
 2. Navigate to **R2** in the sidebar.
-3. On the right side of the R2 Overview page, look for **"Manage R2 API Tokens"** and click it.
-4. Click the **"Create API Token"** button.
-5. **Configure the token:**
-   - **Token name**: Enter something recognizable, e.g., "bitvid-upload".
-   - **Permissions**: Select **"Admin Read & Write"** (easiest) or select the specific **"Workers R2 Storage"** permission with **"Edit"** access.
-   - **Specific Bucket(s)**: You can grant access to "All buckets" or a specific one if you already created it.
-   - **TTL**: Set this to "Forever" or a duration of your choice.
-6. Click **"Create API Token"**.
+3. Click **"Create Bucket"**.
+4. Give it a name (e.g., `my-bitvid-videos`) and click **"Create Bucket"**.
+5. Go to the **Settings** tab of your new bucket.
+6. Scroll down to **"Public Access"** and click **"Enable"** under "R2.dev subdomain".
+7. **Copy the Public Bucket URL** (it looks like `https://pub-xxxxxx.r2.dev`). You will need this later.
 
-### 2. Copy Your Credentials
+### 2. Configure CORS
 
-Once created, you will see your credentials. **Do not close this page yet!** You cannot see the Secret Access Key again.
+To allow your browser to upload files directly to Cloudflare, you must allow Cross-Origin Resource Sharing (CORS).
 
-Copy the following values:
+1. Still in your bucket's **Settings** tab, scroll down to **"CORS Policy"**.
+2. Click **"Add CORS Policy"** (or Edit).
+3. Paste the following JSON configuration:
 
-- **Access Key ID**: Usually starts with a random string.
-- **Secret Access Key**: A long string of characters (this is your password).
-- **Account ID**: This is found in the URL of your dashboard or on the R2 Overview page (e.g., `https://dash.cloudflare.com/<ACCOUNT_ID>/r2`).
+```json
+[
+  {
+    "AllowedOrigins": ["*"],
+    "AllowedMethods": ["GET", "PUT", "DELETE"],
+    "AllowedHeaders": ["*"],
+    "ExposeHeaders": ["ETag", "Content-Length", "Content-Range", "Accept-Ranges"],
+    "MaxAgeSeconds": 3600
+  }
+]
+```
+> **Note:** You can replace `"*"` in `AllowedOrigins` with your specific domain (e.g., `["https://bitvid.network"]`) for tighter security, but `"*"` is easiest for getting started.
 
-### 3. Configure bitvid
+4. Click **"Save"**.
 
-1. Return to the **Upload Video** modal in bitvid.
-2. Click **"Configure R2 Storage"**.
-3. Enter your **Account ID**, **Access Key ID**, and **Secret Access Key**.
-4. Click **"Save Credentials"**.
+### 3. Create an API Token
 
-bitvid will automatically attempt to create a private bucket for your videos if one doesn't exist, or you can use the "Advanced Options" to specify a custom bucket or domain.
+1. Go back to the **R2 Overview** page.
+2. Click **"Manage R2 API Tokens"** (right sidebar).
+3. Click **"Create API Token"**.
+4. **Configure the token:**
+   - **Token name**: e.g., "bitvid-upload".
+   - **Permissions**: Select **"Object Read & Write"**. This is the minimal permission needed to upload and delete files.
+   - **Specific Bucket(s)**: Select the bucket you created in Step 1.
+   - **TTL**: "Forever".
+5. Click **"Create API Token"**.
+
+### 4. Configure bitvid
+
+1. Copy the **Access Key ID**, **Secret Access Key**, and your **Account ID** (found on the R2 Overview page).
+2. Return to the **Upload Video** modal in bitvid.
+3. Click **"Configure R2 Storage"**.
+4. Enter your:
+   - **Account ID**
+   - **Access Key ID**
+   - **Secret Access Key**
+   - **Public Bucket URL** (from Step 1)
+5. Click **"Verify & Save"**.
+
+bitvid will verify your credentials by uploading a small test file. Once verified, you are ready to upload!
