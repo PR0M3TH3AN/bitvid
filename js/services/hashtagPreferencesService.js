@@ -378,8 +378,15 @@ class HashtagPreferencesService {
 
     const schema = getNostrEventSchema(NOTE_TYPES.HASHTAG_PREFERENCES);
     const canonicalKind = schema?.kind ?? 30015;
+    const legacyKind = 30005;
+
+    const kinds = [canonicalKind];
+    if (canonicalKind !== legacyKind) {
+      kinds.push(legacyKind);
+    }
+
     const filter = {
-      kinds: [canonicalKind],
+      kinds,
       authors: [normalized],
       "#d": [HASHTAG_IDENTIFIER],
       limit: 50,
@@ -415,6 +422,18 @@ class HashtagPreferencesService {
       const candidateTs = Number(candidate.created_at) || 0;
       const currentTs = Number(current.created_at) || 0;
       if (candidateTs === currentTs) {
+        if (
+          candidate.kind === canonicalKind &&
+          current.kind !== canonicalKind
+        ) {
+          return candidate;
+        }
+        if (
+          current.kind === canonicalKind &&
+          candidate.kind !== canonicalKind
+        ) {
+          return current;
+        }
         return candidate.id > current.id ? candidate : current;
       }
       return candidateTs > currentTs ? candidate : current;

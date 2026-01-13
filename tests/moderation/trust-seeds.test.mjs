@@ -200,8 +200,8 @@ test("bootstrap seeds track editor roster and ignore whitelist-only changes", as
   globalThis.__bootstrapAccessControlMock = accessControlMock;
   globalThis.__bootstrapModerationServiceMock = moderationServiceMock;
 
-  const bootstrapModule = await import("../../js/bootstrap.js");
-  await bootstrapModule.trustedSeedsReadyPromise;
+  const bootstrapModule = await import("../../js/services/trustBootstrap.js");
+  await bootstrapModule.bootstrapTrustedSeeds();
 
   assert.equal(ensureReadyCalls, 1);
   assert.ok(

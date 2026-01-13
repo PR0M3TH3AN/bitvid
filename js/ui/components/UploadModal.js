@@ -767,6 +767,10 @@ export class UploadModal {
       this.eventTarget.dispatchEvent(new CustomEvent(type, { detail }));
   }
 
+  getRoot() {
+      return this.root;
+  }
+
   setupModalAccessibility() {
     if (!this.root) return;
     if (this.modalAccessibility?.destroy) this.modalAccessibility.destroy();
