@@ -494,7 +494,7 @@ class Application {
             })
         : Promise.resolve(null);
 
-      await Promise.all([accessControlPromise, adminPanePromise]);
+      // await Promise.all([accessControlPromise, adminPanePromise]);
 
       const syncSessionActorBlacklist = async (trigger) => {
         if (this.pubkey) {

@@ -1104,7 +1104,12 @@ export class NostrService {
     this.ensureInitialLoadDeferred();
 
     try {
-      await this.ensureAccessControlReady();
+      this.ensureAccessControlReady().catch((error) => {
+        userLogger.warn(
+          "[nostrService] Background access control ready check failed:",
+          error
+        );
+      });
 
       if (forceFetch) {
         this.clearVideoSubscription();
