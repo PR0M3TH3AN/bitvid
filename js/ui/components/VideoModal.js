@@ -555,6 +555,15 @@ export class VideoModal {
 
     this.moderationController.initialize({ playerModal });
 
+    // Update overlay reference to the new bar selector
+    this.moderationOverlay =
+      playerModal.querySelector("[data-moderation-bar]") || null;
+    this.moderationBadge =
+      this.moderationOverlay?.querySelector("[data-moderation-badge='true']") ||
+      null;
+    this.moderationBadgeText =
+      this.moderationOverlay?.querySelector("[data-moderation-text]") || null;
+
     this.modalVideo = playerModal.querySelector("#modalVideo") || null;
     this.modalStatus = playerModal.querySelector("#modalStatus") || null;
     this.modalProgress = playerModal.querySelector("#modalProgress") || null;
@@ -4132,7 +4141,8 @@ export class VideoModal {
     }
 
     if (overlay) {
-      if (showModeration && !context?.overrideActive) {
+      // Changed logic: Always show the bar if moderation is active, even if overridden
+      if (showModeration) {
         overlay.removeAttribute("hidden");
       } else {
         overlay.setAttribute("hidden", "");
