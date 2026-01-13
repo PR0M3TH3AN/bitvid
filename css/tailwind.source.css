@@ -3295,6 +3295,23 @@
   .watch-history-card__hidden .moderation-badge {
     @apply self-start;
   }
+
+  /* Ensure the video modal avatar respects the blur state */
+  #playerModal .channel-card__avatar img[data-visual-state="blurred"] {
+    @apply transition duration-base ease-in-out;
+    filter: blur(var(--blur-thumbnail-blur));
+    transform: scale(1.05);
+  }
+
+  /* Override moderation badge text color inside the modal bar for better contrast in all themes */
+  #playerModal .video-modal__moderation-bar .moderation-badge {
+    --text-status-neutral-on: var(--color-text);
+    --text-status-warning-on: var(--color-warning-on);
+  }
+
+  #playerModal .video-modal__moderation-bar .moderation-badge[data-variant="neutral"] {
+    color: var(--color-text);
+  }
 }
 
 @layer components {

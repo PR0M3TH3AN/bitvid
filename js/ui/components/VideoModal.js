@@ -4140,6 +4140,14 @@ export class VideoModal {
       }
     }
 
+    if (this.creatorAvatar) {
+      if (shouldBlur) {
+        this.creatorAvatar.dataset.visualState = "blurred";
+      } else if (this.creatorAvatar.dataset.visualState === "blurred") {
+        delete this.creatorAvatar.dataset.visualState;
+      }
+    }
+
     if (overlay) {
       // Changed logic: Always show the bar if moderation is active, even if overridden
       if (showModeration) {
