@@ -1475,38 +1475,35 @@
     transform: scale(1.05);
   }
 
-  #playerModal .video-modal__moderation-overlay {
-    position: absolute;
-    inset: 0;
-    z-index: var(--z-modal-content);
+  #playerModal .video-modal__moderation-bar {
+    width: 100%;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: clamp(var(--space-sm), 3vw, var(--space-xl));
-    background: color-mix(in srgb, var(--color-overlay-strong) 62%, transparent);
-    text-align: center;
+    padding-bottom: var(--space-md);
   }
 
-  #playerModal .video-modal__moderation-overlay[hidden] {
+  #playerModal .video-modal__moderation-bar[hidden] {
     display: none;
   }
 
-  #playerModal .video-modal__moderation-overlay .moderation-badge {
-    @apply pb-4;
-    pointer-events: auto;
+  #playerModal .video-modal__moderation-bar .moderation-badge {
+    width: 100%;
+    max-width: none;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-sm);
+    @apply px-4 py-3;
   }
 
-  #playerModal .video-modal__moderation-overlay[data-overlay-state="override"] {
-    align-items: flex-start;
-    justify-content: flex-start;
-    background: none;
-    pointer-events: none;
+  #playerModal .video-modal__moderation-bar .moderation-badge__label {
+    flex: 1 1 auto;
   }
 
-  #playerModal
-    .video-modal__moderation-overlay[data-overlay-state="override"]
-    .moderation-badge {
-    pointer-events: auto;
+  #playerModal .video-modal__moderation-bar .moderation-badge__actions {
+    flex-shrink: 0;
   }
 
   .card[data-owner-is-viewer="true"][data-url-health-state="offline"][data-stream-health-state="unhealthy"] {
@@ -3297,6 +3294,23 @@
 
   .watch-history-card__hidden .moderation-badge {
     @apply self-start;
+  }
+
+  /* Ensure the video modal avatar respects the blur state */
+  #playerModal .channel-card__avatar img[data-visual-state="blurred"] {
+    @apply transition duration-base ease-in-out;
+    filter: blur(var(--blur-thumbnail-blur));
+    transform: scale(1.05);
+  }
+
+  /* Override moderation badge text color inside the modal bar for better contrast in all themes */
+  #playerModal .video-modal__moderation-bar .moderation-badge {
+    --text-status-neutral-on: var(--color-text);
+    --text-status-warning-on: var(--color-warning-on);
+  }
+
+  #playerModal .video-modal__moderation-bar .moderation-badge[data-variant="neutral"] {
+    color: var(--color-text);
   }
 }
 
