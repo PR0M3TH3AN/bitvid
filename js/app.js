@@ -3866,7 +3866,10 @@ class Application {
   }
 
   resolveSubscriptionsLink() {
-    if (this.subscriptionsLink instanceof HTMLElement) {
+    if (
+      this.subscriptionsLink instanceof HTMLElement &&
+      this.subscriptionsLink.isConnected
+    ) {
       return this.subscriptionsLink;
     }
 
