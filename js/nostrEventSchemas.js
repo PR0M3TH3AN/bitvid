@@ -1217,7 +1217,14 @@ export function buildCommentEvent({
     if (authorHint) {
       tag.push(authorHint);
     }
-    tags.push(tag);
+    const isDuplicate = tags.some(
+      (existing) =>
+        existing.length === tag.length &&
+        existing.every((val, index) => val === tag[index]),
+    );
+    if (!isDuplicate) {
+      tags.push(tag);
+    }
   };
 
   if (normalizedRootIdentifier) {

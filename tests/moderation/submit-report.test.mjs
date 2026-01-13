@@ -51,6 +51,10 @@ test("submitReport emits NIP-56 compliant report tags", async (t) => {
     relays: ["wss://relay.one"],
     ensurePool: async () => {},
     ensureExtensionPermissions: async () => ({ ok: true }),
+    ensureActiveSignerForPubkey: async () => ({
+      type: "extension",
+      signEvent: async (evt) => ({ ...evt, id: "signed-event", sig: "sig" }),
+    }),
     pool: createRelayPublishingPool(publishCalls),
   };
 
