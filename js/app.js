@@ -602,6 +602,21 @@ class Application {
         });
       }
 
+      if (typeof accessControl.onWhitelistChange === "function") {
+        accessControl.onWhitelistChange(() => {
+          const refreshReason = "admin-whitelist-change";
+          this.refreshAllVideoGrids({
+            reason: refreshReason,
+            forceMainReload: true,
+          }).catch((error) => {
+            devLogger.warn(
+              "[app.init()] Failed to refresh video grids after admin whitelist change:",
+              error,
+            );
+          });
+        });
+      }
+
       // Grab the "Subscriptions" link by its id in the sidebar
       this.subscriptionsLink = document.getElementById("subscriptionsLink");
 
