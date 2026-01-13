@@ -211,7 +211,7 @@
   --popup-padding-block: 0.75rem;
   --video-modal-primary-fr: 1.85fr;
   --video-modal-secondary-min: 320px;
-  --video-modal-secondary-max: 40rem;
+  --video-modal-secondary-max: 35rem;
   --video-modal-secondary-fr: 1fr;
   --video-modal-layout-max: calc(
     var(--layout-player-max-width) + var(--video-modal-secondary-max) +

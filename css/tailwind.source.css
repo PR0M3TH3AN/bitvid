@@ -1602,6 +1602,10 @@
     padding-block-start: var(--player-modal-vertical-padding);
   }
 
+  #playerModal .video-modal__primary > .watch-container:last-child {
+    padding-block-end: var(--player-modal-vertical-padding);
+  }
+
   #playerModal .video-modal__secondary > .watch-container:last-child {
     padding-block-end: var(--player-modal-vertical-padding);
   }
@@ -1897,7 +1901,7 @@
     .video-modal__layout {
       --video-modal-secondary-size: clamp(
         var(--video-modal-secondary-min),
-        36vw,
+        30vw,
         var(--video-modal-secondary-max)
       );
       grid-template-columns:
@@ -1936,7 +1940,7 @@
     .video-modal__layout {
       --video-modal-secondary-size: clamp(
         var(--video-modal-secondary-min),
-        32vw,
+        28vw,
         var(--video-modal-secondary-max)
       );
     }
