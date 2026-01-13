@@ -1,6 +1,8 @@
 import { normalizeDesignSystemContext } from "../../designSystem.js";
 import { formatShortNpub } from "../../utils/formatters.js";
 import { sanitizeProfileMediaUrl } from "../../utils/profileMedia.js";
+import { normalizeVideoModerationContext } from "../moderationUiHelpers.js";
+import { buildModerationBadgeText } from "../moderationCopy.js";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const DEFAULT_PROFILE_AVATAR = "assets/svg/default-profile.svg";
@@ -68,6 +70,10 @@ export class SimilarContentCard {
     this.timeEl = null;
     this.viewCountEl = null;
     this.discussionCountEl = null;
+
+    this.moderationBadgeEl = null;
+    this.moderationBadgeLabelEl = null;
+    this.moderationBadgeTextEl = null;
 
     this.build();
   }
@@ -342,6 +348,7 @@ export class SimilarContentCard {
       root.appendChild(content);
     }
 
+    this.refreshModerationUi();
     this.applyPointerDatasets();
     this.bindEvents();
   }
@@ -359,6 +366,89 @@ export class SimilarContentCard {
 
     this.mediaLinkEl = anchor;
     return anchor;
+  }
+
+  getModerationContext() {
+    return normalizeVideoModerationContext(this.video?.moderation);
+  }
+
+  buildModerationBadge(context = this.getModerationContext()) {
+    if (!context.shouldShow || !context.trustedMuted) {
+      return null;
+    }
+
+    const badge = this.document.createElement("div");
+    badge.className = "moderation-badge opacity-95";
+    badge.dataset.variant = "warning";
+    badge.dataset.moderationBadge = "true";
+    badge.dataset.moderationState = "trusted-mute";
+
+    // Position it centrally over the thumbnail like in VideoCard
+    badge.style.pointerEvents = "auto";
+
+    const label = this.document.createElement("span");
+    label.className = "moderation-badge__label inline-flex items-center gap-xs";
+
+    // Simplified icon for small card
+    const iconWrapper = this.document.createElement("span");
+    iconWrapper.className = "moderation-badge__icon";
+    iconWrapper.setAttribute("aria-hidden", "true");
+
+    const svg = this.document.createElementNS(SVG_NAMESPACE, "svg");
+    svg.setAttribute("viewBox", "0 0 20 20");
+    svg.setAttribute("focusable", "false");
+    svg.classList.add("moderation-badge__icon-mark");
+
+    const path = this.document.createElementNS(SVG_NAMESPACE, "path");
+    path.setAttribute("fill", "currentColor");
+    path.setAttribute("d", "M10 18a8 8 0 100-16 8 8 0 000 16zm-.75-11.75a.75.75 0 011.5 0v4.5a.75.75 0 01-1.5 0v-4.5zm.75 8.5a1 1 0 100-2 1 1 0 000 2z");
+    path.setAttribute("fill-rule", "evenodd");
+    path.setAttribute("clip-rule", "evenodd");
+
+    svg.appendChild(path);
+    iconWrapper.appendChild(svg);
+    label.appendChild(iconWrapper);
+
+    const text = this.document.createElement("span");
+    text.className = "moderation-badge__text";
+    // Shorten text for small cards if needed, but keeping standard for now
+    text.textContent = "Blocked by trusted contact";
+
+    label.appendChild(text);
+    badge.appendChild(label);
+
+    this.moderationBadgeEl = badge;
+    return badge;
+  }
+
+  refreshModerationUi() {
+    const context = this.getModerationContext();
+
+    if (this.moderationBadgeEl) {
+      this.moderationBadgeEl.remove();
+      this.moderationBadgeEl = null;
+    }
+
+    // Check specifically for muted/blurred state where we want the overlay
+    if (context.shouldShow && context.trustedMuted && !context.overrideActive) {
+      // Ensure media link exists
+      if (!this.mediaLinkEl) return;
+
+      const badge = this.buildModerationBadge(context);
+      if (badge) {
+        // Create a wrapper for centering if needed, or use classes on badge if possible.
+        // Similar to VideoCard, let's create a container for absolute positioning
+        const container = this.document.createElement("div");
+        container.className = "absolute inset-0 flex items-center justify-center p-2 z-10 pointer-events-none";
+        container.appendChild(badge);
+
+        this.mediaLinkEl.appendChild(container);
+        // We track the container removal via moderationBadgeEl reference if we wanted strict cleanup,
+        // but for now just rebuilding is fine if we store the container.
+        // Let's store badge el as the container actually to make removal easier
+        this.moderationBadgeEl = container;
+      }
+    }
   }
 
   buildThumbnail() {

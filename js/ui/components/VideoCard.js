@@ -493,14 +493,28 @@ export class VideoCard {
     }
 
     const moderationBadgeSlot = this.createElement("div", {
-      classNames: ["video-card__moderation-slot", "px-md", "pt-md"],
+      classNames: [
+        "video-card__moderation-overlay",
+        "absolute",
+        "inset-0",
+        "flex",
+        "items-center",
+        "justify-center",
+        "p-4",
+        "z-10",
+        "pointer-events-none",
+      ],
     });
     moderationBadgeSlot.hidden = true;
     moderationBadgeSlot.setAttribute("aria-hidden", "true");
     this.moderationBadgeSlot = moderationBadgeSlot;
 
+    // Append slot to anchor (media wrapper) instead of root to overlay thumbnail
+    if (this.anchorEl) {
+      this.anchorEl.appendChild(moderationBadgeSlot);
+    }
+
     root.appendChild(anchor);
-    root.appendChild(moderationBadgeSlot);
     root.appendChild(content);
 
     this.applyPlaybackDatasets();
@@ -1632,18 +1646,24 @@ export class VideoCard {
     let slot = this.moderationBadgeSlot;
     const hiddenActive = context.activeHidden && !context.overrideActive;
 
-    if (!slot && this.root) {
+    if (!slot && this.anchorEl) {
       slot = this.createElement("div", {
-        classNames: ["video-card__moderation-slot", "px-md", "pt-md"],
+        classNames: [
+          "video-card__moderation-overlay",
+          "absolute",
+          "inset-0",
+          "flex",
+          "items-center",
+          "justify-center",
+          "p-4",
+          "z-10",
+          "pointer-events-none",
+        ],
       });
       slot.hidden = true;
       slot.setAttribute("aria-hidden", "true");
       this.moderationBadgeSlot = slot;
-      if (this.anchorEl && this.anchorEl.parentElement === this.root) {
-        this.root.insertBefore(slot, this.anchorEl.nextSibling);
-      } else {
-        this.root.appendChild(slot);
-      }
+      this.anchorEl.appendChild(slot);
     }
 
     if (badge) {
@@ -1724,6 +1744,8 @@ export class VideoCard {
     if (!badge) {
       const nextBadge = this.buildModerationBadge(context);
       if (nextBadge && slot) {
+        nextBadge.style.pointerEvents = "auto"; // Enable interaction on badge itself
+        nextBadge.classList.add("opacity-95"); // Slight transparency
         slot.appendChild(nextBadge);
         slot.hidden = false;
         slot.removeAttribute("aria-hidden");
@@ -1732,6 +1754,8 @@ export class VideoCard {
       return;
     }
 
+    badge.style.pointerEvents = "auto";
+    badge.classList.add("opacity-95");
     badge.dataset.variant = context.overrideActive ? "neutral" : "warning";
     const state = context.overrideActive
       ? "override"
@@ -1985,9 +2009,17 @@ export class VideoCard {
         this.contentEl.setAttribute("aria-hidden", "true");
       }
 
-      if (badgeSlot && this.moderationBadgeEl) {
-        badgeSlot.hidden = false;
-        badgeSlot.removeAttribute("aria-hidden");
+      // In hidden state (blocked), the anchor/thumbnail is hidden, so overlay slot
+      // won't be visible. We rely on the summary container below.
+      // We hide the badge slot here because we don't want it floating if anchor is hidden
+      // (though usually anchor hidden means children hidden too).
+      // However, if we move badgeSlot to be a child of anchorEl, it will be hidden automatically.
+
+      if (badgeSlot) {
+        // If it's a child of anchorEl, it's hidden by parent.
+        // We can force it hidden to be safe.
+        badgeSlot.hidden = true;
+        badgeSlot.setAttribute("aria-hidden", "true");
       }
 
       const summaryContainer = this.ensureHiddenSummaryContainer();
@@ -2008,7 +2040,11 @@ export class VideoCard {
         this.contentEl.removeAttribute("hidden");
         this.contentEl.removeAttribute("aria-hidden");
       }
-      if (badgeSlot && !this.moderationBadgeEl) {
+      // Restore badge slot visibility if badge exists and we are not hidden
+      if (badgeSlot && this.moderationBadgeEl) {
+        badgeSlot.hidden = false;
+        badgeSlot.removeAttribute("aria-hidden");
+      } else if (badgeSlot) {
         badgeSlot.hidden = true;
         badgeSlot.setAttribute("aria-hidden", "true");
       }
