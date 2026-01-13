@@ -436,9 +436,20 @@ class Application {
         profileModalPromise,
       ]);
 
-      const nostrInitPromise = nostrClient.init();
+      // Initialize the pool early to unblock bootstrapTrustedSeeds,
+      // but do NOT await the full connection process here.
+      try {
+        await nostrClient.ensurePool();
+      } catch (poolError) {
+        devLogger.warn("[app.init()] Pool ensure failed:", poolError);
+      }
 
-      await Promise.all([modalBootstrapPromise, nostrInitPromise]);
+      // Kick off relay connection in the background.
+      const nostrInitPromise = nostrClient.init().catch((err) => {
+        devLogger.warn("[app.init()] Background nostrClient.init failed:", err);
+      });
+
+      await modalBootstrapPromise;
 
       try {
         await bootstrapTrustedSeeds();
@@ -588,6 +599,21 @@ class Application {
               );
             }
           }
+        });
+      }
+
+      if (typeof accessControl.onWhitelistChange === "function") {
+        accessControl.onWhitelistChange(() => {
+          const refreshReason = "admin-whitelist-change";
+          this.refreshAllVideoGrids({
+            reason: refreshReason,
+            forceMainReload: true,
+          }).catch((error) => {
+            devLogger.warn(
+              "[app.init()] Failed to refresh video grids after admin whitelist change:",
+              error,
+            );
+          });
         });
       }
 
