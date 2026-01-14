@@ -13,6 +13,7 @@ import {
   DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
   RUNTIME_FLAGS,
 } from "../constants.js";
+import { getBreakpointLg } from "../designSystem/metrics.js";
 import { getProviderMetadata } from "../services/authProviders/index.js";
 import { devLogger, userLogger } from "../utils/logger.js";
 
@@ -3683,7 +3684,8 @@ export class ProfileModalController {
     }
 
     try {
-      const query = window.matchMedia("(min-width: 1024px)");
+      const breakpointLg = getBreakpointLg();
+      const query = window.matchMedia(`(min-width: ${breakpointLg})`);
       const handler = (event) => {
         const matches =
           typeof event?.matches === "boolean" ? event.matches : query.matches;
