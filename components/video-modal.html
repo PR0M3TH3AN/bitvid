@@ -129,6 +129,32 @@
                 class="video-modal__stats rounded-2xl border border-border border-opacity-20 bg-surface px-6 py-5 shadow-sm"
                 data-video-stats
               >
+                <div class="video-modal__source-toggle-container mb-4" data-source-toggle-container hidden>
+                  <div class="inline-flex rounded-lg bg-overlay-panel-soft p-1">
+                    <button
+                      type="button"
+                      class="px-3 py-1.5 text-xs font-medium rounded-md transition-colors focus-ring"
+                      data-source-toggle="url"
+                      aria-pressed="true"
+                    >
+                      <span class="flex items-center gap-2">
+                        <span>CDN</span>
+                        <span class="text-xs opacity-70" data-active-servers-count>1 server</span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      class="px-3 py-1.5 text-xs font-medium rounded-md transition-colors focus-ring"
+                      data-source-toggle="torrent"
+                      aria-pressed="false"
+                    >
+                      <span class="flex items-center gap-2">
+                        <span>P2P</span>
+                        <span class="text-xs opacity-70" data-active-peers-count>0 peers</span>
+                      </span>
+                    </button>
+                  </div>
+                </div>
                 <div class="video-modal__progress">
                   <progress
                     id="modalProgress"

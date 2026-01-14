@@ -585,6 +585,14 @@ export class VideoModal {
     this.modalSpeed = playerModal.querySelector("#modalSpeed") || null;
     this.modalDownloaded =
       playerModal.querySelector("#modalDownloaded") || null;
+    this.sourceToggleContainer =
+      playerModal.querySelector("[data-source-toggle-container]") || null;
+    this.sourceToggleButtons =
+      playerModal.querySelectorAll("[data-source-toggle]") || [];
+    this.activeServersLabel =
+      playerModal.querySelector("[data-active-servers-count]") || null;
+    this.activePeersLabel =
+      playerModal.querySelector("[data-active-peers-count]") || null;
     this.setTorrentStatsVisibility(false);
     this.videoTitle = playerModal.querySelector("#videoTitle") || null;
     this.videoDescription =
@@ -2244,6 +2252,19 @@ export class VideoModal {
       this.modalMoreBtn.addEventListener("click", this.handleModalMoreButtonClick);
     }
 
+    if (this.sourceToggleButtons.length > 0) {
+      this.sourceToggleButtons.forEach((btn) => {
+        btn.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const mode = btn.dataset.sourceToggle;
+          if (mode) {
+            this.handleSourceToggle(mode);
+          }
+        });
+      });
+    }
+
     if (this.modalZapCloseBtn) {
       this.modalZapCloseBtn.addEventListener("click", (event) => {
         event?.preventDefault?.();
@@ -2560,6 +2581,58 @@ export class VideoModal {
       return;
     }
     this.dispatch("video:copy-magnet", { video: this.activeVideo });
+  }
+
+  handleSourceToggle(mode) {
+    if (!this.activeVideo || (mode !== "url" && mode !== "torrent")) {
+      return;
+    }
+
+    this.dispatch("playback:switch-source", {
+      video: this.activeVideo,
+      source: mode,
+    });
+  }
+
+  updateSourceAvailability(video) {
+    if (!this.sourceToggleContainer) {
+      return;
+    }
+
+    const hasUrl = Boolean(
+      typeof video?.url === "string" && video.url.trim()
+    );
+    const hasMagnet = Boolean(
+      (typeof video?.magnet === "string" && video.magnet.trim()) ||
+        video?.torrentSupported
+    );
+
+    if (hasUrl && hasMagnet) {
+      this.sourceToggleContainer.removeAttribute("hidden");
+      this.sourceToggleContainer.classList.remove("hidden");
+    } else {
+      this.sourceToggleContainer.setAttribute("hidden", "");
+      this.sourceToggleContainer.classList.add("hidden");
+    }
+
+    if (this.activeServersLabel) {
+      const count = hasUrl ? 1 : 0;
+      this.activeServersLabel.textContent =
+        count === 1 ? "1 server" : `${count} servers`;
+    }
+  }
+
+  updateSourceToggleState(activeSource) {
+    if (!this.sourceToggleButtons.length) {
+      return;
+    }
+
+    const current = activeSource === "torrent" ? "torrent" : "url";
+    this.sourceToggleButtons.forEach((btn) => {
+      const mode = btn.dataset.sourceToggle;
+      const isActive = mode === current;
+      btn.setAttribute("aria-pressed", isActive ? "true" : "false");
+    });
   }
 
   handleShareRequest(event) {
@@ -3262,6 +3335,8 @@ export class VideoModal {
 
   setTorrentStatsVisibility(shouldShow) {
     const visible = Boolean(shouldShow);
+    this.updateSourceToggleState(visible ? "torrent" : "url");
+
     const container = this.modalStatsContainer;
     const stats = this.modalStats;
     const toggle = (element, show) => {
@@ -3299,6 +3374,12 @@ export class VideoModal {
   updatePeers(text) {
     if (this.modalPeers) {
       this.modalPeers.textContent = text || "";
+    }
+    if (this.activePeersLabel) {
+      const match = (text || "").match(/\d+/);
+      const count = match ? parseInt(match[0], 10) : 0;
+      this.activePeersLabel.textContent =
+        count === 1 ? "1 peer" : `${count} peers`;
     }
   }
 
@@ -4076,6 +4157,7 @@ export class VideoModal {
       this.updateCreator(creator);
     }
 
+    this.updateSourceAvailability(this.activeVideo);
     this.refreshActiveVideoModeration({ video: this.activeVideo });
   }
 
