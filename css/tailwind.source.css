@@ -2435,7 +2435,6 @@
     inset-inline-start: 0;
     inset-block-start: 0;
     block-size: 100%;
-    inline-size: 0%;
     max-inline-size: 100%;
     background-image: linear-gradient(
       90deg,
@@ -2443,6 +2442,11 @@
       var(--color-accent-strong) 100%
     );
     transition: inline-size var(--motion-duration-base) var(--motion-ease-out);
+  }
+
+  .video-modal__reaction-meter-fill--empty {
+    inline-size: 0%;
+    width: 0%;
   }
 
   .video-modal__actions-group {
@@ -3319,6 +3323,29 @@
     max-width: var(--layout-docs-max-width);
     margin: 0 auto;
     padding: var(--space-md);
+  }
+
+  .docs-popover-scenarios__scroll-spacer {
+    height: 45rem;
+  }
+
+  .qr-code__table {
+    border: 0;
+    border-collapse: collapse;
+  }
+
+  .qr-code__cell {
+    border: 0;
+    border-collapse: collapse;
+    padding: 0;
+    margin: 0;
+    width: var(--qr-code-cell-width);
+    height: var(--qr-code-cell-height);
+    background-color: var(--qr-code-color-light);
+  }
+
+  .qr-code__cell--dark {
+    background-color: var(--qr-code-color-dark);
   }
 
   .fade-in {

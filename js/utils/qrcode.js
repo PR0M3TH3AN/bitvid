@@ -254,13 +254,21 @@ if (hasDocument) {
 			var nCount = oQRCode.getModuleCount();
 			var nWidth = Math.floor(_htOption.width / nCount);
 			var nHeight = Math.floor(_htOption.height / nCount);
-			var aHTML = ['<table style="border:0;border-collapse:collapse;">'];
+			var aHTML = ['<table class="qr-code__table">'];
+
+			_el.style.setProperty("--qr-code-color-dark", _htOption.colorDark);
+			_el.style.setProperty("--qr-code-color-light", _htOption.colorLight);
+			_el.style.setProperty("--qr-code-cell-width", nWidth + "px");
+			_el.style.setProperty("--qr-code-cell-height", nHeight + "px");
 			
 			for (var row = 0; row < nCount; row++) {
 				aHTML.push('<tr>');
 				
 				for (var col = 0; col < nCount; col++) {
-					aHTML.push('<td style="border:0;border-collapse:collapse;padding:0;margin:0;width:' + nWidth + 'px;height:' + nHeight + 'px;background-color:' + (oQRCode.isDark(row, col) ? _htOption.colorDark : _htOption.colorLight) + ';"></td>');
+					var cellClass = oQRCode.isDark(row, col)
+						? "qr-code__cell qr-code__cell--dark"
+						: "qr-code__cell";
+					aHTML.push('<td class="' + cellClass + '"></td>');
 				}
 				
 				aHTML.push('</tr>');
