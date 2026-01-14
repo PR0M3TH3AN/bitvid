@@ -410,3 +410,12 @@ export const VIEW_COUNT_CACHE_TTL_MS = 5 * 60 * 1000;
  * still letting operators retry if a publish genuinely failed.
  */
 export const ENSURE_PRESENCE_REBROADCAST_COOLDOWN_SECONDS = 5 * 60;
+
+/**
+ * Whether to import videos from Nostube (Kind 34235).
+ *
+ * When set to `true`, the client will fetch and display video notes published
+ * with Kind 34235 (Nostube). Default is `false` to keep the feed focused on
+ * native content until explicitly enabled.
+ */
+export const ENABLE_NOSTUBE_IMPORT = false;

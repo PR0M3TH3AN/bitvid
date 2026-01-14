@@ -1321,7 +1321,11 @@ export function convertEventToVideo(event = {}) {
   const url = directUrl;
 
   if (!url && !magnet) {
-    return { id: event.id, invalid: true, reason: "missing playable source" };
+    // Kind 34235 (Nostube) exception: These events might have the URL in tags/imeta instead of content JSON.
+    // We defer the invalid check for 34235 until later.
+    if (event.kind !== 34235) {
+      return { id: event.id, invalid: true, reason: "missing playable source" };
+    }
   }
 
   const thumbnail = safeTrim(parsedContent.thumbnail);
@@ -1385,12 +1389,74 @@ export function convertEventToVideo(event = {}) {
     version = rawVersion === undefined ? 2 : 1;
   }
 
-  if (version < 2) {
+  // Kind 34235 (Nostube) Exception
+  // These events do not follow the standard BitVid versioning or JSON content structure.
+  // We treat them as valid modern videos (version 2 equivalent) if they have a playable source.
+  const isNostube = event.kind === 34235;
+
+  if (version < 2 && !isNostube) {
     return {
       id: event.id,
       invalid: true,
       reason: `unsupported version ${version}`,
     };
+  }
+
+  // LOGIC TO EXTRACT NOSTUBE METADATA
+  let finalUrl = url;
+  let finalDescription = description;
+  let finalThumbnail = thumbnail;
+
+  if (isNostube) {
+    // Map content to description for Nostube videos
+    if (!finalDescription && typeof rawContent === "string") {
+      finalDescription = rawContent;
+    }
+
+    // Attempt to extract better metadata from NIP-71 style tags if available
+    const nip71Extracted = extractNip71MetadataFromTags(event);
+    if (nip71Extracted && nip71Extracted.metadata) {
+      const meta = nip71Extracted.metadata;
+
+      // Title precedence: Tag > Derived
+      if (meta.title) {
+        title = meta.title;
+      }
+
+      // Thumbnail precedence: Tag > JSON/Fallback
+      if (meta.imeta && Array.isArray(meta.imeta)) {
+        for (const variant of meta.imeta) {
+            // Check for image inside imeta
+             if (variant.image && variant.image.length > 0) {
+                 finalThumbnail = variant.image[0];
+             }
+             // Check for playable URL inside imeta if distinct
+             if (variant.url && !finalUrl) {
+                // If we didn't find a URL from tags/json, use this
+                finalUrl = variant.url;
+             }
+        }
+      }
+
+      // Check for standalone thumb/image tag which convertEventToVideo might not have picked up if not standard
+      if (!finalThumbnail) {
+          const imageTag = tags.find(t => t[0] === 'thumb' || t[0] === 'image');
+          if (imageTag && imageTag[1]) {
+              finalThumbnail = imageTag[1];
+          }
+      }
+    }
+
+    if (!finalUrl) {
+      const urlTag = tags.find(t => t[0] === 'url');
+      if (urlTag && urlTag[1]) {
+          finalUrl = urlTag[1];
+      }
+    }
+  }
+
+  if (!finalUrl && !magnet) {
+      return { id: event.id, invalid: true, reason: "missing playable source" };
   }
 
   const magnetHints = magnet
@@ -1407,12 +1473,12 @@ export function convertEventToVideo(event = {}) {
     isNsfw,
     isForKids,
     title,
-    url,
+    url: finalUrl,
     magnet,
     rawMagnet,
     infoHash,
-    thumbnail,
-    description,
+    thumbnail: finalThumbnail,
+    description: finalDescription,
     mode,
     deleted,
     ws,

@@ -23,6 +23,7 @@ export const NOTE_TYPES = Object.freeze({
   SUBSCRIPTION_LIST: "subscriptionList",
   USER_BLOCK_LIST: "userBlockList",
   HASHTAG_PREFERENCES: "hashtagPreferences",
+  NOSTUBE_VIDEO: "nostubeVideo",
   ADMIN_MODERATION_LIST: "adminModerationList",
   ADMIN_BLACKLIST: "adminBlacklist",
   ADMIN_WHITELIST: "adminWhitelist",
@@ -408,6 +409,17 @@ const BASE_SCHEMAS = {
       format: "nip44-json",
       description:
         "NIP-44 encrypted JSON: { version, interests: string[], disinterests: string[] }.",
+    },
+  },
+  [NOTE_TYPES.NOSTUBE_VIDEO]: {
+    type: NOTE_TYPES.NOSTUBE_VIDEO,
+    label: "Nostube video",
+    kind: 34235,
+    identifierTag: { name: "d" },
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      format: "text",
+      description: "Lyrics or text content mapped to video description.",
     },
   },
   [NOTE_TYPES.ADMIN_MODERATION_LIST]: {

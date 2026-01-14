@@ -15,8 +15,14 @@ import {
   getVideoSubscription as getStoredVideoSubscription,
   setVideoSubscription as setStoredVideoSubscription,
 } from "../state/appState.js";
+import { ENABLE_NOSTUBE_IMPORT } from "../config.js";
 
 const VIDEO_KIND = 30078;
+const NOSTUBE_KIND = 34235;
+
+function getVideoKinds() {
+  return ENABLE_NOSTUBE_IMPORT ? [VIDEO_KIND, NOSTUBE_KIND] : [VIDEO_KIND];
+}
 
 class SimpleEventEmitter {
   constructor(logger = null) {
@@ -1143,6 +1149,7 @@ export class NostrService {
           // use loadOlderVideos when the user scrolls for backfill.
           since: this.nostrClient.getLatestCachedCreatedAt() || undefined,
           limit: this.nostrClient.clampVideoRequestLimit(200),
+          kinds: getVideoKinds(),
         };
         const subscription = this.nostrClient.subscribeVideos(
           () => {
@@ -1189,7 +1196,7 @@ export class NostrService {
     );
 
     const filter = {
-      kinds: [VIDEO_KIND],
+      kinds: getVideoKinds(),
       "#t": ["video"],
       authors: authorList,
       limit: resolvedLimit,
@@ -1335,7 +1342,7 @@ export class NostrService {
       this.nostrClient?.clampVideoRequestLimit(limit) ?? limit ?? 0;
 
     const filter = {
-      kinds: [VIDEO_KIND],
+      kinds: getVideoKinds(),
       "#t": ["video"],
       until,
       limit: clampedLimit,
