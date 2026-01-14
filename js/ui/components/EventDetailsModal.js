@@ -57,7 +57,7 @@ export class EventDetailsModal {
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2">
                   <span data-author-name class="font-medium text-text truncate">Unknown</span>
-                  <button type="button" data-action="open-channel" class="text-xs text-accent hover:underline">View Channel</button>
+                  <button type="button" data-action="open-channel" class="text-xs text-critical hover:underline">View Channel</button>
                 </div>
                 <div class="flex items-center gap-2 mt-1">
                   <code data-author-npub class="text-xs text-muted truncate bg-panel/50 px-1.5 py-0.5 rounded max-w-[200px]"></code>
