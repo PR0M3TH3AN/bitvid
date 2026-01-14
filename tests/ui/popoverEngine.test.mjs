@@ -64,6 +64,7 @@ beforeEach(async () => {
   global.window = windowRef;
   global.document = documentRef;
   global.HTMLElement = windowRef.HTMLElement;
+  global.HTMLStyleElement = windowRef.HTMLStyleElement;
   global.Element = windowRef.Element;
   global.Node = windowRef.Node;
   global.getComputedStyle = windowRef.getComputedStyle.bind(windowRef);
@@ -103,6 +104,7 @@ afterEach(() => {
   delete global.window;
   delete global.document;
   delete global.HTMLElement;
+  delete global.HTMLStyleElement;
   delete global.Element;
   delete global.Node;
   delete global.getComputedStyle;
@@ -756,7 +758,7 @@ test("applies token-based sizing and arrow positioning", async () => {
   assert.equal(panelStyles.getPropertyValue("--popover-max-height").trim(), "240px");
   assert.equal(arrow.dataset.popoverArrowSide, "bottom");
   const arrowStyles = getComputedStyle(arrow);
-  assert.notEqual(arrowStyles.top, "");
+  assert.notEqual(arrowStyles.getPropertyValue("--popover-arrow-top").trim(), "auto");
 
   popover.destroy();
 });
