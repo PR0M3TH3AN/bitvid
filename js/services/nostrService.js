@@ -1008,12 +1008,16 @@ export class NostrService {
         ? options.isAuthorBlocked
         : () => false;
 
-    return videos.filter((video) =>
-      this.shouldIncludeVideo(video, {
+    return videos.filter((video) => {
+      const allowed = this.shouldIncludeVideo(video, {
         blacklistedEventIds: blacklist,
         isAuthorBlocked,
-      })
-    );
+      });
+      if (!allowed && video.tags?.find(t => t[0] === 'imeta') && ENABLE_NOSTUBE_IMPORT) { // Rough check for Nostube-like
+          devLogger.log("[nostrService] Filtered out Nostube-candidate video:", video.id, video.title);
+      }
+      return allowed;
+    });
   }
 
   async ensureAccessControlReady() {

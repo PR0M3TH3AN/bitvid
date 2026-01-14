@@ -5803,6 +5803,9 @@ export class NostrClient {
 
     // 1) On each incoming event, just push to the buffer and schedule a flush
     sub.on("event", (event) => {
+      if (event.kind === 34235) {
+        devLogger.log("[nostr] Received Kind 34235 event:", event.id);
+      }
       eventBuffer.push(event);
       scheduleFlush(false);
     });
