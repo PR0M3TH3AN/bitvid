@@ -1,7 +1,6 @@
 // js/storage/r2-s3.js
 
-const AWS_SDK_SPECIFIER =
-  "https://cdn.jsdelivr.net/npm/@aws-sdk/client-s3@3.637.0/+esm";
+const AWS_SDK_SPECIFIER = "https://esm.sh/@aws-sdk/client-s3@3.637.0?bundle";
 
 const disableNetworkImports = Boolean(
   globalThis?.__BITVID_DISABLE_NETWORK_IMPORTS__
@@ -252,22 +251,14 @@ export async function multipartUpload({
     AbortMultipartUploadCommand,
   } = requireAwsSdk();
 
+  console.debug("[R2] Starting multipart upload for:", key);
+
   const createCommand = new CreateMultipartUploadCommand({
     Bucket: bucket,
     Key: key,
     ContentType: contentType || file.type || "application/octet-stream",
     CacheControl: computeCacheControl(key),
   });
-
-  createCommand.middlewareStack.add(
-    (next) => async (args) => {
-      if (args?.request?.headers) {
-        args.request.headers["cf-create-bucket-if-missing"] = "true";
-      }
-      return next(args);
-    },
-    { step: "build" }
-  );
 
   const { UploadId } = await s3.send(createCommand);
 

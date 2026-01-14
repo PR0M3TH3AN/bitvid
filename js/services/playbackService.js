@@ -472,6 +472,13 @@ class PlaybackSession extends SimpleEventEmitter {
       const httpsUrl = this.sanitizedUrl;
       const webSeedCandidates = httpsUrl ? [httpsUrl] : [];
 
+      if (webSeedCandidates.length > 0) {
+        this.service.log(
+          `[playVideoWithFallback] Adding ${webSeedCandidates.length} web seed candidate(s) for fallback:`,
+          webSeedCandidates
+        );
+      }
+
       let fallbackStarted = false;
       const startTorrentFallback = async (reason) => {
         if (fallbackStarted) {
@@ -610,12 +617,19 @@ class PlaybackSession extends SimpleEventEmitter {
         const probeResult =
           typeof probeUrl === "function" ? await probeUrl(httpsUrl) : null;
         const probeOutcome = probeResult?.outcome || "error";
+        const probeStatus = probeResult?.status || "unknown";
         const shouldAttemptHosted =
           probeOutcome !== "bad" && probeOutcome !== "error";
 
         this.service.log(
-          `[playVideoWithFallback] Hosted URL probe outcome=${probeOutcome} shouldAttemptHosted=${shouldAttemptHosted}`
+          `[playVideoWithFallback] Hosted URL probe outcome=${probeOutcome} status=${probeStatus} shouldAttemptHosted=${shouldAttemptHosted}`
         );
+
+        if (probeOutcome === "bad") {
+          this.service.log(
+            `[playVideoWithFallback] ⚠️ Direct URL probe failed with status ${probeStatus}. WebSeed fallback using this same URL will likely also fail.`
+          );
+        }
 
         if (shouldAttemptHosted) {
           let outcomeResolved = false;

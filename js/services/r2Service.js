@@ -220,6 +220,16 @@ class R2Service {
     const secretAccessKey = String(formValues.secretAccessKey || "").trim();
     const baseDomain = sanitizeBaseDomain(formValues.baseDomain || ""); // This is the Public Bucket URL
 
+    if (baseDomain.includes(".r2.cloudflarestorage.com")) {
+      if (!quiet) {
+        this.setCloudflareSettingsStatus(
+          "It looks like you entered the S3 API URL. Please use your Public Bucket URL (e.g. https://pub-xxx.r2.dev or your custom domain).",
+          "error"
+        );
+      }
+      return false;
+    }
+
     if (!accountId || !accessKeyId || !secretAccessKey) {
       if (!quiet) {
         this.setCloudflareSettingsStatus(
@@ -419,23 +429,37 @@ class R2Service {
     const verifyContent = "bitvid-verification";
     const publicUrl = buildPublicUrl(baseDomain, verifyKey);
 
+    userLogger.info(
+      `[R2] Verifying access for Bucket: '${bucketName}' in Account: '${truncateMiddle(accountId, 6)}'`
+    );
+
     try {
       // 1. Initialize S3
       const s3 = makeR2Client({ accountId, accessKeyId, secretAccessKey });
 
-      // 2. Ensure bucket/cors (best effort)
+      // 2. Ensure bucket (best effort)
       try {
         await ensureBucketExists({ s3, bucket: bucketName });
-        const corsOrigins = this.getCorsOrigins();
-        if (corsOrigins.length > 0) {
-          await ensureBucketCors({ s3, bucket: bucketName, origins: corsOrigins });
-        }
       } catch (setupErr) {
-        userLogger.warn("Bucket setup warning during verification:", setupErr);
+        userLogger.warn("Bucket creation/check warning during verification:", setupErr);
         // Continue, assuming bucket might already exist and be configured
       }
 
-      // 3. Upload Test File
+      // 3. Ensure CORS (best effort)
+      try {
+        const corsOrigins = this.getCorsOrigins();
+        if (corsOrigins.length > 0) {
+          await ensureBucketCors({
+            s3,
+            bucket: bucketName,
+            origins: corsOrigins,
+          });
+        }
+      } catch (corsErr) {
+        userLogger.warn("CORS setup warning during verification:", corsErr);
+      }
+
+      // 4. Upload Test File
       const file = new File([verifyContent], "verify.txt", { type: "text/plain" });
       await multipartUpload({
         s3,
@@ -474,7 +498,15 @@ class R2Service {
 
     } catch (err) {
       userLogger.error("Verification failed:", err);
-      return { success: false, error: err.message || "Unknown error during verification." };
+      let errorMessage = err.message || "Unknown error during verification.";
+      if (
+        errorMessage.includes("Failed to fetch") ||
+        errorMessage.includes("NetworkError")
+      ) {
+        errorMessage +=
+          " This is likely a CORS issue. Please enable CORS in your Cloudflare R2 bucket settings. Also verify that the Bucket Name exists and your API Token has 'Object Read & Write' permissions.";
+      }
+      return { success: false, error: errorMessage };
     }
   }
 
