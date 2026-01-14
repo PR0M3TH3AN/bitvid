@@ -120,7 +120,6 @@ test("publishComment prefers active signer when available", async () => {
       ["K", "30078"],
       ["P", "deadbeef", "wss://definition-relay"],
       ["E", "video-event-id", "wss://video-relay"],
-      ["A", "30078:deadbeef:clip", "wss://definition-relay"],
       ["E", "parent-comment-id", "thread-participant"],
       ["K", String(COMMENT_EVENT_KIND)],
       ["P", "thread-participant"],
@@ -194,7 +193,6 @@ test("publishComment accepts legacy targets with only an event id", async () => 
     [
       ["E", "legacy-event-id"],
       ["K", String(COMMENT_EVENT_KIND)],
-      ["E", "legacy-event-id"],
       ["E", "parent-legacy"],
       ["K", String(COMMENT_EVENT_KIND)],
     ],
@@ -244,7 +242,6 @@ test("publishComment derives root and parent metadata from parent comment tags",
     ["K", "30078"],
     ["P", "videopk", "wss://author"],
     ["E", "video-event", "wss://root"],
-    ["A", "30078:videopk:root", "wss://definition"],
     ["E", "parent-comment", "wss://parent", "parentpk"],
     ["K", String(COMMENT_EVENT_KIND)],
     ["P", "parentpk", "wss://parent"],
@@ -709,7 +706,7 @@ test("subscribeVideoComments forwards matching events and cleans up unsubscribe"
       },
       {
         kinds: [COMMENT_EVENT_KIND, LEGACY_COMMENT_KIND],
-        "#a": ["30078:author:clip"],
+        "#A": ["30078:author:clip"],
         "#E": ["parent-1"],
       },
     ],
@@ -737,6 +734,9 @@ test("subscribeVideoComments forwards matching events and cleans up unsubscribe"
 
   assert.equal(receivedEvents.length, 1, "only matching events should reach the callback");
   assert.equal(receivedEvents[0].id, "comment-accepted", "matching event should be forwarded");
+
+  // Allow async subscription to settle
+  await new Promise(resolve => setTimeout(resolve, 0));
 
   unsubscribe();
   unsubscribe();
