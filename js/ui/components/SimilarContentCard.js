@@ -6,6 +6,48 @@ import { buildModerationBadgeText } from "../moderationCopy.js";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const DEFAULT_PROFILE_AVATAR = "assets/svg/default-profile.svg";
+let similarCardIdCounter = 0;
+const similarCardStyleRegistry = new WeakMap();
+
+function getSimilarCardStyleState(doc) {
+  if (!doc || typeof doc.createElement !== "function") {
+    return null;
+  }
+  const existing = similarCardStyleRegistry.get(doc);
+  if (existing) {
+    return existing;
+  }
+  let styleNode = doc.getElementById?.("similarContentCardStyles") || null;
+  if (!(styleNode instanceof HTMLStyleElement)) {
+    styleNode = doc.createElement("style");
+    styleNode.id = "similarContentCardStyles";
+    doc.head?.appendChild(styleNode);
+  }
+  const state = {
+    styleNode,
+    rules: new Map(),
+  };
+  similarCardStyleRegistry.set(doc, state);
+  return state;
+}
+
+function updateSimilarCardBackdrop(doc, cardId, url) {
+  const state = getSimilarCardStyleState(doc);
+  if (!state || !cardId) {
+    return;
+  }
+
+  if (url) {
+    state.rules.set(
+      cardId,
+      `[data-similar-card-id="${cardId}"] { --similar-card-thumb-url: url("${url}"); }`,
+    );
+  } else {
+    state.rules.delete(cardId);
+  }
+
+  state.styleNode.textContent = [...state.rules.values()].join("\n");
+}
 
 export class SimilarContentCard {
   constructor({
@@ -60,6 +102,7 @@ export class SimilarContentCard {
     this.callbacks = { onPlay: null };
 
     this.root = null;
+    this.cardStyleId = "";
     this.mediaLinkEl = null;
     this.thumbnailEl = null;
     this.contentEl = null;
@@ -330,6 +373,9 @@ export class SimilarContentCard {
     if (this.video.id) {
       root.dataset.videoId = this.video.id;
     }
+    similarCardIdCounter += 1;
+    this.cardStyleId = `similar-card-${similarCardIdCounter}`;
+    root.dataset.similarCardId = this.cardStyleId;
     const dsMode = this.designSystem?.getMode?.();
     if (dsMode) {
       root.setAttribute("data-ds", dsMode);
@@ -378,13 +424,10 @@ export class SimilarContentCard {
     }
 
     const badge = this.document.createElement("div");
-    badge.className = "moderation-badge opacity-95";
+    badge.className = "moderation-badge moderation-badge--interactive opacity-95";
     badge.dataset.variant = "warning";
     badge.dataset.moderationBadge = "true";
     badge.dataset.moderationState = "trusted-mute";
-
-    // Position it centrally over the thumbnail like in VideoCard
-    badge.style.pointerEvents = "auto";
 
     const label = this.document.createElement("span");
     label.className = "moderation-badge__label inline-flex items-center gap-xs";
@@ -556,14 +599,12 @@ export class SimilarContentCard {
   buildContentSection() {
     const content = this.document.createElement("div");
     content.classList.add("player-modal__similar-card-content");
-    content.style.minWidth = "0";
 
     const titleLink = this.document.createElement("a");
     titleLink.classList.add("player-modal__similar-card-title");
     titleLink.href = this.shareUrl;
     titleLink.textContent = this.video.title || "Untitled";
     titleLink.title = this.video.title || "Untitled";
-    titleLink.style.minWidth = "0";
 
     const authorStack = this.buildAuthorStack();
     const metaRow = this.buildMetaRow();
@@ -588,11 +629,9 @@ export class SimilarContentCard {
   buildAuthorStack() {
     const wrapper = this.document.createElement("div");
     wrapper.classList.add("player-modal__similar-card-author");
-    wrapper.style.minWidth = "0";
 
     const textWrapper = this.document.createElement("span");
     textWrapper.classList.add("player-modal__similar-card-author-meta");
-    textWrapper.style.minWidth = "0";
 
     const nameEl = this.document.createElement("span");
     nameEl.classList.add("author-name", "player-modal__similar-card-author-name");
@@ -653,7 +692,6 @@ export class SimilarContentCard {
   buildMetaRow() {
     const row = this.document.createElement("div");
     row.classList.add("player-modal__similar-card-meta");
-    row.style.minWidth = "0";
 
     const timeEl = this.document.createElement("time");
     timeEl.classList.add("player-modal__similar-card-timestamp");
@@ -870,11 +908,9 @@ export class SimilarContentCard {
   }
 
   setCardBackdropImage(src) {
-    if (!this.root || !this.root.style) {
+    if (!this.root || !this.cardStyleId) {
       return;
     }
-
-    const style = this.root.style;
 
     const normalizeSource = (raw) => {
       if (typeof raw !== "string") {
@@ -919,12 +955,9 @@ export class SimilarContentCard {
     const sanitized = normalizeSource(src);
     if (sanitized) {
       const escaped = sanitized.replace(/(["\\])/g, "\\$1");
-      style.setProperty(
-        "--similar-card-thumb-url",
-        `url("${escaped}")`
-      );
+      updateSimilarCardBackdrop(this.document, this.cardStyleId, escaped);
     } else {
-      style.removeProperty("--similar-card-thumb-url");
+      updateSimilarCardBackdrop(this.document, this.cardStyleId, "");
     }
   }
 }

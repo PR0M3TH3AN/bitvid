@@ -1135,8 +1135,7 @@ export class ProfileModalController {
     this.focusTrapSuspended = false;
     this.focusTrapSuspendCount = 0;
     this.focusTrapAriaHiddenBeforeSuspend = null;
-    this.focusTrapPointerEventsBeforeSuspend = null;
-    this.focusTrapVisibilityBeforeSuspend = null;
+    this.focusTrapNestedModalActiveBeforeSuspend = null;
     this.profileSwitcherSelectionPubkey = null;
     this.previouslyFocusedElement = null;
     this.largeLayoutQuery = null;
@@ -8332,25 +8331,16 @@ export class ProfileModalController {
       this.focusTrapAriaHiddenBeforeSuspend = modalRoot.getAttribute(
         "aria-hidden",
       );
-      this.focusTrapPointerEventsBeforeSuspend =
-        typeof modalRoot.style.pointerEvents === "string" &&
-        modalRoot.style.pointerEvents
-          ? modalRoot.style.pointerEvents
-          : null;
-      this.focusTrapVisibilityBeforeSuspend =
-        typeof modalRoot.style.visibility === "string" &&
-        modalRoot.style.visibility
-          ? modalRoot.style.visibility
+      this.focusTrapNestedModalActiveBeforeSuspend =
+        typeof modalRoot.dataset.nestedModalActive === "string"
+          ? modalRoot.dataset.nestedModalActive
           : null;
 
       modalRoot.dataset.nestedModalActive = "true";
       modalRoot.setAttribute("aria-hidden", "true");
-      modalRoot.style.setProperty("pointer-events", "none");
-      modalRoot.style.setProperty("visibility", "hidden");
     } else {
       this.focusTrapAriaHiddenBeforeSuspend = null;
-      this.focusTrapPointerEventsBeforeSuspend = null;
-      this.focusTrapVisibilityBeforeSuspend = null;
+      this.focusTrapNestedModalActiveBeforeSuspend = null;
     }
 
     const panel = this.getModalPanelElement();
@@ -8391,30 +8381,11 @@ export class ProfileModalController {
         }
       }
 
-      if (
-        this.focusTrapPointerEventsBeforeSuspend === null ||
-        this.focusTrapPointerEventsBeforeSuspend === undefined ||
-        this.focusTrapPointerEventsBeforeSuspend === ""
-      ) {
-        modalRoot.style.removeProperty("pointer-events");
+      if (this.focusTrapNestedModalActiveBeforeSuspend === null) {
+        delete modalRoot.dataset.nestedModalActive;
       } else {
-        modalRoot.style.setProperty(
-          "pointer-events",
-          this.focusTrapPointerEventsBeforeSuspend,
-        );
-      }
-
-      if (
-        this.focusTrapVisibilityBeforeSuspend === null ||
-        this.focusTrapVisibilityBeforeSuspend === undefined ||
-        this.focusTrapVisibilityBeforeSuspend === ""
-      ) {
-        modalRoot.style.removeProperty("visibility");
-      } else {
-        modalRoot.style.setProperty(
-          "visibility",
-          this.focusTrapVisibilityBeforeSuspend,
-        );
+        modalRoot.dataset.nestedModalActive =
+          this.focusTrapNestedModalActiveBeforeSuspend;
       }
     }
 
@@ -8424,8 +8395,7 @@ export class ProfileModalController {
     }
 
     this.focusTrapAriaHiddenBeforeSuspend = null;
-    this.focusTrapPointerEventsBeforeSuspend = null;
-    this.focusTrapVisibilityBeforeSuspend = null;
+    this.focusTrapNestedModalActiveBeforeSuspend = null;
 
     this.updateFocusTrap();
 
@@ -8503,21 +8473,7 @@ export class ProfileModalController {
         : null;
 
     if (modalRoot) {
-      modalRoot.style.setProperty("z-index", "var(--z-modal-top-root)");
-    }
-
-    if (this.profileModalBackdrop instanceof HTMLElement) {
-      this.profileModalBackdrop.style.setProperty(
-        "z-index",
-        "var(--z-modal-top-overlay)",
-      );
-    }
-
-    if (this.profileModalPanel instanceof HTMLElement) {
-      this.profileModalPanel.style.setProperty(
-        "z-index",
-        "var(--z-modal-top-content)",
-      );
+      modalRoot.dataset.modalStack = "top";
     }
   }
 
@@ -8685,8 +8641,7 @@ export class ProfileModalController {
       modalElement.classList.add("hidden");
       modalElement.setAttribute("aria-hidden", "true");
       delete modalElement.dataset.nestedModalActive;
-      modalElement.style.removeProperty("pointer-events");
-      modalElement.style.removeProperty("visibility");
+      delete modalElement.dataset.modalStack;
       this.setGlobalModalState("profile", false);
       this.setMobileView("menu", { skipFocusTrap: true });
 
@@ -8712,8 +8667,7 @@ export class ProfileModalController {
     this.focusTrapSuspendCount = 0;
     this.focusTrapSuspended = false;
     this.focusTrapAriaHiddenBeforeSuspend = null;
-    this.focusTrapPointerEventsBeforeSuspend = null;
-    this.focusTrapVisibilityBeforeSuspend = null;
+    this.focusTrapNestedModalActiveBeforeSuspend = null;
 
     if (
       this.boundProfileHistoryVisibility &&

@@ -20,6 +20,7 @@ const DEFAULT_MAX_WIDTH_TOKEN = "--popover-inline-safe-max";
 const MENU_TYPEAHEAD_RESET_MS = 500;
 
 let popoverPanelIdCounter = 0;
+let popoverArrowIdCounter = 0;
 
 let activePopoverInstance = null;
 
@@ -115,22 +116,39 @@ function resolveArrow(option, panel) {
   return null;
 }
 
-function applyArrowStyles({ arrowElement, placement, middlewareData }) {
+function ensureArrowId(arrowElement) {
+  if (!arrowElement) {
+    return "";
+  }
+  if (arrowElement.id) {
+    return arrowElement.id;
+  }
+  popoverArrowIdCounter += 1;
+  const arrowId = `popover-arrow-${popoverArrowIdCounter}`;
+  arrowElement.id = arrowId;
+  return arrowId;
+}
+
+function buildArrowStyleState({ arrowElement, placement, middlewareData }) {
+  const state = {
+    basePlacement: "",
+    values: {
+      left: "auto",
+      right: "auto",
+      top: "auto",
+      bottom: "auto",
+    },
+  };
+
   if (!arrowElement || typeof placement !== "string") {
-    return;
+    return state;
   }
 
   const basePlacement = placement.split("-")[0];
   const arrowData = middlewareData?.arrow || null;
 
-  arrowElement.style.left = "";
-  arrowElement.style.right = "";
-  arrowElement.style.top = "";
-  arrowElement.style.bottom = "";
-
   if (!arrowData || !basePlacement) {
-    delete arrowElement.dataset.popoverArrowSide;
-    return;
+    return state;
   }
 
   const staticSideMap = {
@@ -141,11 +159,11 @@ function applyArrowStyles({ arrowElement, placement, middlewareData }) {
   };
 
   if (Number.isFinite(arrowData.x)) {
-    arrowElement.style.left = `${Math.round(arrowData.x)}px`;
+    state.values.left = `${Math.round(arrowData.x)}px`;
   }
 
   if (Number.isFinite(arrowData.y)) {
-    arrowElement.style.top = `${Math.round(arrowData.y)}px`;
+    state.values.top = `${Math.round(arrowData.y)}px`;
   }
 
   const staticSide = staticSideMap[basePlacement] || null;
@@ -161,10 +179,11 @@ function applyArrowStyles({ arrowElement, placement, middlewareData }) {
       basePlacement === "top" || basePlacement === "bottom"
         ? arrowHeight
         : arrowWidth;
-    arrowElement.style[staticSide] = `${-Math.round(offsetValue)}px`;
+    state.values[staticSide] = `${-Math.round(offsetValue)}px`;
   }
 
-  arrowElement.dataset.popoverArrowSide = basePlacement;
+  state.basePlacement = basePlacement;
+  return state;
 }
 
 function containsTarget(root, target) {
@@ -238,6 +257,67 @@ export function createPopover(trigger, render, options = {}) {
     typeaheadBuffer: "",
     typeaheadTimeout: null,
   };
+  let popoverStyleNode = null;
+  let arrowStyleState = {
+    left: "auto",
+    right: "auto",
+    top: "auto",
+    bottom: "auto",
+  };
+  let panelStyleState = {
+    left: 0,
+    top: 0,
+    strategy,
+    maxWidth: "none",
+    maxHeight: "none",
+  };
+  let arrowId = "";
+
+  function ensurePopoverStyleNode(panelId) {
+    if (popoverStyleNode && popoverStyleNode.isConnected) {
+      return popoverStyleNode;
+    }
+    const styleId = `popover-style-${panelId}`;
+    const existing = documentRef?.getElementById?.(styleId) || null;
+    if (existing instanceof HTMLStyleElement) {
+      popoverStyleNode = existing;
+      return popoverStyleNode;
+    }
+    if (!documentRef?.createElement) {
+      return null;
+    }
+    const styleNode = documentRef.createElement("style");
+    styleNode.id = styleId;
+    documentRef.head?.appendChild(styleNode);
+    popoverStyleNode = styleNode;
+    return popoverStyleNode;
+  }
+
+  function syncPopoverStyles() {
+    if (!panel || !panel.id) {
+      return;
+    }
+    const styleNode = ensurePopoverStyleNode(panel.id);
+    if (!styleNode) {
+      return;
+    }
+    const panelRule = `#${panel.id}{` +
+      `--popover-left:${Math.round(panelStyleState.left)}px;` +
+      `--popover-top:${Math.round(panelStyleState.top)}px;` +
+      `--popover-strategy:${panelStyleState.strategy || strategy};` +
+      `--popover-max-width:${panelStyleState.maxWidth || "none"};` +
+      `--popover-max-height:${panelStyleState.maxHeight || "none"};` +
+      `}`;
+    const arrowRule = arrowId
+      ? `#${arrowId}{` +
+        `--popover-arrow-left:${arrowStyleState.left};` +
+        `--popover-arrow-right:${arrowStyleState.right};` +
+        `--popover-arrow-top:${arrowStyleState.top};` +
+        `--popover-arrow-bottom:${arrowStyleState.bottom};` +
+        `}`
+      : "";
+    styleNode.textContent = [panelRule, arrowRule].filter(Boolean).join("\n");
+  }
 
   function getView() {
     return documentRef?.defaultView || globalThis;
@@ -610,13 +690,21 @@ export function createPopover(trigger, render, options = {}) {
 
     if (maxWidthToken) {
       const widthValue = resolveTokenValue(maxWidthToken, documentRef);
-      panel.style.maxWidth = widthValue || "";
+      panelStyleState = {
+        ...panelStyleState,
+        maxWidth: widthValue || "none",
+      };
     }
 
     if (maxHeightToken) {
       const heightValue = resolveTokenValue(maxHeightToken, documentRef);
-      panel.style.maxHeight = heightValue || "";
+      panelStyleState = {
+        ...panelStyleState,
+        maxHeight: heightValue || "none",
+      };
     }
+
+    syncPopoverStyles();
   }
 
   function ensurePanel() {
@@ -672,6 +760,12 @@ export function createPopover(trigger, render, options = {}) {
 
     applyPanelTokens();
 
+    if (arrowElement) {
+      arrowElement.dataset.popoverArrow = "true";
+      arrowId = ensureArrowId(arrowElement);
+      syncPopoverStyles();
+    }
+
     return panel;
   }
 
@@ -720,18 +814,39 @@ export function createPopover(trigger, render, options = {}) {
           ? resolvedPlacement
           : placement;
 
-      panel.style.position = resolvedStrategy || strategy;
-      panel.style.left = `${Math.round(nextX)}px`;
-      panel.style.top = `${Math.round(nextY)}px`;
+      panelStyleState = {
+        ...panelStyleState,
+        left: nextX,
+        top: nextY,
+        strategy: resolvedStrategy || strategy,
+      };
       panel.dataset.popoverPlacement = finalPlacement;
 
       if (arrowElement) {
-        applyArrowStyles({
+        const arrowState = buildArrowStyleState({
           arrowElement,
           placement: finalPlacement,
           middlewareData,
         });
+        arrowStyleState = { ...arrowState.values };
+        if (arrowState.basePlacement) {
+          arrowElement.dataset.popoverArrowSide = arrowState.basePlacement;
+        } else {
+          delete arrowElement.dataset.popoverArrowSide;
+        }
+        arrowElement.dataset.popoverArrow = "true";
+        arrowId = ensureArrowId(arrowElement);
+      } else {
+        arrowStyleState = {
+          left: "auto",
+          right: "auto",
+          top: "auto",
+          bottom: "auto",
+        };
+        arrowId = "";
       }
+
+      syncPopoverStyles();
     } catch (error) {
       logger.user.error("[popover] positioning failed", error);
     }
@@ -908,8 +1023,14 @@ export function createPopover(trigger, render, options = {}) {
       portal.parentNode.removeChild(portal);
     }
 
+    if (popoverStyleNode?.parentNode) {
+      popoverStyleNode.parentNode.removeChild(popoverStyleNode);
+    }
+
     panel = null;
     arrowElement = null;
+    popoverStyleNode = null;
+    arrowId = "";
 
     if (anchor) {
       anchor.removeAttribute("aria-controls");
