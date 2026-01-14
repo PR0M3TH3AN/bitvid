@@ -419,6 +419,10 @@ class R2Service {
     const verifyContent = "bitvid-verification";
     const publicUrl = buildPublicUrl(baseDomain, verifyKey);
 
+    userLogger.info(
+      `[R2] Verifying access for Bucket: '${bucketName}' in Account: '${truncateMiddle(accountId, 6)}'`
+    );
+
     try {
       // 1. Initialize S3
       const s3 = makeR2Client({ accountId, accessKeyId, secretAccessKey });
@@ -490,7 +494,7 @@ class R2Service {
         errorMessage.includes("NetworkError")
       ) {
         errorMessage +=
-          " This is likely a CORS issue. Please enable CORS in your Cloudflare R2 bucket settings for this domain.";
+          " This is likely a CORS issue. Please enable CORS in your Cloudflare R2 bucket settings. Also verify that the Bucket Name exists and your API Token has 'Object Read & Write' permissions.";
       }
       return { success: false, error: errorMessage };
     }

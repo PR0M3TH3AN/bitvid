@@ -251,6 +251,8 @@ export async function multipartUpload({
     AbortMultipartUploadCommand,
   } = requireAwsSdk();
 
+  console.debug("[R2] Starting multipart upload for:", key);
+
   const createCommand = new CreateMultipartUploadCommand({
     Bucket: bucket,
     Key: key,
