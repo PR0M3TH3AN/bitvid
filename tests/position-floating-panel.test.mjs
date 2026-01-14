@@ -75,6 +75,7 @@ beforeEach(async () => {
   global.HTMLElement = windowRef.HTMLElement;
   global.Element = windowRef.Element;
   global.Node = windowRef.Node;
+  global.HTMLStyleElement = windowRef.HTMLStyleElement;
   global.getComputedStyle = windowRef.getComputedStyle.bind(windowRef);
   global.ResizeObserver = StubObserver;
   if (!global.PointerEvent) {
