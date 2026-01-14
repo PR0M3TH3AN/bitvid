@@ -59,6 +59,12 @@
     overflow-x: hidden;
   }
 
+  :root[data-theme-accent="override"] {
+    --color-accent: var(--color-accent-override);
+    --color-accent-strong: var(--color-accent-strong-override);
+    --color-accent-pressed: var(--color-accent-pressed-override);
+  }
+
   #uiOverlay {
     position: fixed;
     inset: 0;

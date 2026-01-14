@@ -100,49 +100,111 @@ import { THEME_ACCENT_OVERRIDES } from "../../config/instance-config.js";
     }
   };
 
+  const readAccentValues = (element) => {
+    if (!element) {
+      return null;
+    }
+
+    let styles;
+
+    try {
+      styles = getComputedStyle(element);
+    } catch (error) {
+      return null;
+    }
+
+    const values = {};
+    let hasValue = false;
+
+    Object.values(ACCENT_CSS_VARIABLES).forEach((cssVariable) => {
+      const rawValue = styles.getPropertyValue(cssVariable);
+      if (typeof rawValue === "string") {
+        const trimmed = rawValue.trim();
+        values[cssVariable] = trimmed;
+        if (trimmed !== "") {
+          hasValue = true;
+        }
+      }
+    });
+
+    return hasValue ? values : null;
+  };
+
   const readParentAccentOverrides = () => {
     const parentRoot = getParentRoot();
     if (!parentRoot) {
       return null;
     }
+    return readAccentValues(parentRoot);
+  };
 
-    const overrides = {};
-    let hasOverride = false;
+  const readDefaultAccentValues = (theme) => {
+    const previousAccent = root.dataset.themeAccent;
+    const previousTheme = root.dataset.theme;
 
-    Object.values(ACCENT_CSS_VARIABLES).forEach((cssVariable) => {
-      try {
-        const value = parentRoot.style.getPropertyValue(cssVariable);
-        if (typeof value === "string") {
-          const trimmed = value.trim();
-          if (trimmed !== "") {
-            overrides[cssVariable] = trimmed;
-            hasOverride = true;
-          }
-        }
-      } catch (error) {
-        /* noop */
-      }
+    root.removeAttribute("data-theme-accent");
+    if (theme && VALID_THEMES.has(theme)) {
+      root.dataset.theme = theme;
+    }
+
+    const values = readAccentValues(root);
+
+    if (previousAccent) {
+      root.dataset.themeAccent = previousAccent;
+    } else {
+      root.removeAttribute("data-theme-accent");
+    }
+
+    if (previousTheme) {
+      root.dataset.theme = previousTheme;
+    } else {
+      root.removeAttribute("data-theme");
+    }
+
+    return values;
+  };
+
+  const hasConfiguredAccentOverrides = (theme) => {
+    const configOverrides = CONFIG_ACCENT_OVERRIDES[theme];
+    if (!configOverrides || typeof configOverrides !== "object") {
+      return false;
+    }
+
+    return ACCENT_TOKENS.some((token) => {
+      const value = configOverrides[token];
+      return typeof value === "string" && value.trim() !== "";
     });
+  };
 
-    return hasOverride ? overrides : null;
+  const hasAccentOverrides = (parentOverrides, defaultValues) => {
+    if (!parentOverrides || !defaultValues) {
+      return false;
+    }
+
+    return Object.values(ACCENT_CSS_VARIABLES).some((cssVariable) => {
+      const parentValue = parentOverrides[cssVariable];
+      const defaultValue = defaultValues[cssVariable];
+      return parentValue && parentValue !== defaultValue;
+    });
   };
 
   const applyAccentOverrides = (theme) => {
-    const parentOverrides = readParentAccentOverrides();
-    const configOverrides = CONFIG_ACCENT_OVERRIDES[theme] || null;
+    const parentRoot = getParentRoot();
+    const parentAccentState = parentRoot?.dataset?.themeAccent || "";
+    const configOverrides = hasConfiguredAccentOverrides(theme);
+    const parentOverrides =
+      parentAccentState === "override"
+        ? true
+        : hasAccentOverrides(
+            readParentAccentOverrides(),
+            readDefaultAccentValues(theme)
+          );
 
-    ACCENT_TOKENS.forEach((token) => {
-      const cssVariable = ACCENT_CSS_VARIABLES[token];
-      const parentValue = parentOverrides?.[cssVariable];
-      const configValue = configOverrides?.[token];
-      const nextValue = parentValue || configValue || "";
-
-      if (typeof nextValue === "string" && nextValue.trim() !== "") {
-        root.style.setProperty(cssVariable, nextValue.trim());
-      } else {
-        root.style.removeProperty(cssVariable);
-      }
-    });
+    if (parentOverrides || configOverrides) {
+      root.dataset.themeAccent = "override";
+    } else {
+      root.removeAttribute("data-theme-accent");
+    }
   };
 
   const syncTheme = () => {
@@ -189,4 +251,3 @@ import { THEME_ACCENT_OVERRIDES } from "../../config/instance-config.js";
     { once: true }
   );
 })();
-
