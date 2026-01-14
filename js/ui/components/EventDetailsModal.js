@@ -1,4 +1,5 @@
 import { prepareStaticModal, openStaticModal, closeStaticModal } from "./staticModalAccessibility.js";
+import { sanitizeProfileMediaUrl } from "../../utils/profileMedia.js";
 
 const DEFAULT_PROFILE_AVATAR = "assets/svg/default-profile.svg";
 
@@ -277,7 +278,8 @@ export class EventDetailsModal {
     }
 
     if (authorPicEl) {
-      const pic = video.authorPicture || video.profile?.picture || DEFAULT_PROFILE_AVATAR;
+      const picCandidate = video.authorPicture || video.profile?.picture || "";
+      const pic = sanitizeProfileMediaUrl(picCandidate) || DEFAULT_PROFILE_AVATAR;
       authorPicEl.src = pic;
     }
 

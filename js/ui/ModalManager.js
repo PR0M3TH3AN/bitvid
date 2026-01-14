@@ -629,7 +629,10 @@ export default class ModalManager {
       callbacks: {
         showError: (msg) => app.showError(msg),
         showSuccess: (msg) => app.showSuccess(msg),
-        openCreatorChannel: (pubkey) => app.goToProfile(pubkey),
+        openCreatorChannel: (pubkey) => {
+          app.hideModal();
+          app.goToProfile(pubkey);
+        },
       },
     });
     app.eventDetailsModal = this.eventDetailsModal;
