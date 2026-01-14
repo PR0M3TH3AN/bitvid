@@ -273,12 +273,12 @@ export class EventDetailsModal {
 
     if (authorNameEl) {
       // If we have profile data attached to the video object (which NostrService usually does)
-      const name = video.authorName || video.profile?.name || video.profile?.display_name || "Unknown";
+      const name = video.authorName || video.profile?.name || video.profile?.display_name || video.creatorName || video.creator?.name || "Unknown";
       authorNameEl.textContent = name;
     }
 
     if (authorPicEl) {
-      const picCandidate = video.authorPicture || video.profile?.picture || "";
+      const picCandidate = video.authorPicture || video.profile?.picture || video.creatorPicture || video.creator?.picture || "";
       const pic = sanitizeProfileMediaUrl(picCandidate) || DEFAULT_PROFILE_AVATAR;
       authorPicEl.src = pic;
     }
@@ -340,9 +340,9 @@ export class EventDetailsModal {
         const enrichedHistory = history.map(h => ({
           ...h,
           profile,
-          authorName: video.authorName,
-          authorPicture: video.authorPicture,
-          authorNpub: video.authorNpub
+          authorName: video.authorName || video.creatorName,
+          authorPicture: video.authorPicture || video.creatorPicture,
+          authorNpub: video.authorNpub || video.creatorNpub
         }));
 
         this.history = enrichedHistory;
