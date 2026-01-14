@@ -132,7 +132,7 @@ test("loadSubscriptions aggregates relay results when one rejects", async () => 
   }
 });
 
-test("loadSubscriptions queries legacy kind fallback for pre-migration events", async () => {
+test("loadSubscriptions queries the correct subscription list kind", async () => {
   const SubscriptionsManager = subscriptions.constructor;
   const manager = new SubscriptionsManager();
 
@@ -181,16 +181,18 @@ test("loadSubscriptions queries legacy kind fallback for pre-migration events", 
 
     for (const filter of capturedFilters) {
       const kinds = Array.isArray(filter?.kinds) ? filter.kinds : [];
-      assert.ok(kinds.includes(schemaKind), "filter should include the active follow-set kind");
       assert.ok(
-        kinds.includes(30002),
-        "filter should include the legacy kind for backwards compatibility",
+        kinds.includes(schemaKind),
+        "filter should include the active follow-set kind",
       );
-      const uniqueKinds = Array.from(new Set(kinds));
       assert.equal(
         kinds.length,
-        uniqueKinds.length,
-        "filter kinds should not contain duplicate entries",
+        1,
+        "filter should only query the active follow-set kind",
+      );
+      assert.ok(
+        !kinds.includes(30002),
+        "filter should not include the legacy kind",
       );
     }
   } finally {
@@ -575,7 +577,12 @@ test(
 
     globalThis.window = dom.window;
     globalThis.document = dom.window.document;
-    globalThis.navigator = dom.window.navigator;
+
+    Object.defineProperty(globalThis, "navigator", {
+      value: dom.window.navigator,
+      writable: true,
+      configurable: true,
+    });
 
     const manager = new SubscriptionsManager();
 
@@ -696,7 +703,11 @@ test(
     if (typeof originalNavigator === "undefined") {
       delete globalThis.navigator;
     } else {
-      globalThis.navigator = originalNavigator;
+      Object.defineProperty(globalThis, "navigator", {
+        value: originalNavigator,
+        writable: true,
+        configurable: true,
+      });
     }
   },
 );
@@ -1053,7 +1064,12 @@ test(
 
     globalThis.window = dom.window;
     globalThis.document = dom.window.document;
-    globalThis.navigator = dom.window.navigator;
+
+    Object.defineProperty(globalThis, "navigator", {
+      value: dom.window.navigator,
+      writable: true,
+      configurable: true,
+    });
 
     const manager = new SubscriptionsManager();
 
@@ -1164,7 +1180,11 @@ test(
     if (typeof originalNavigator === "undefined") {
       delete globalThis.navigator;
     } else {
-      globalThis.navigator = originalNavigator;
+      Object.defineProperty(globalThis, "navigator", {
+        value: originalNavigator,
+        writable: true,
+        configurable: true,
+      });
     }
 
     setApplication(null);
