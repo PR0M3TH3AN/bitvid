@@ -1,7 +1,6 @@
 // js/storage/r2-s3.js
 
-const AWS_SDK_SPECIFIER =
-  "https://cdn.jsdelivr.net/npm/@aws-sdk/client-s3@3.637.0/+esm";
+const AWS_SDK_SPECIFIER = "https://esm.sh/@aws-sdk/client-s3@3.637.0";
 
 const disableNetworkImports = Boolean(
   globalThis?.__BITVID_DISABLE_NETWORK_IMPORTS__
