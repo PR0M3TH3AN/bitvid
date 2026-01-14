@@ -316,6 +316,9 @@ function normalizeWatchHistoryPayloadItem(entry, watchedAtMap) {
   if (!pointer) {
     return null;
   }
+  if (entry && typeof entry === "object" && entry.metadata && typeof entry.metadata === "object") {
+    pointer.metadata = { ...entry.metadata };
+  }
   const key = pointerKey(pointer);
   if (!key) {
     return null;
@@ -341,17 +344,26 @@ function normalizeWatchHistoryPayloadItem(entry, watchedAtMap) {
   };
 }
 
-export function buildWatchHistoryPayload(monthString, events, watchedAtMap) {
+export function buildWatchHistoryPayload(
+  monthString,
+  events,
+  watchedAtMap,
+  maxBytes = WATCH_HISTORY_PAYLOAD_MAX_BYTES,
+) {
   const normalizedMonth = typeof monthString === "string" ? monthString.trim() : "";
-  // We don't enforce MAX_BYTES here as we trust the monthly bucket is reasonable.
 
   const payload = {
-    events: [],
+    version: 2,
+    month: normalizedMonth,
+    items: [],
     watchedAt: {},
+    snapshot: "",
   };
 
   const included = [];
-  const skipped = []; // Not used but kept for interface compat if needed
+  const skipped = [];
+  const maxBytesValue =
+    Number.isFinite(maxBytes) && maxBytes > 0 ? Math.floor(maxBytes) : 0;
 
   for (const entry of Array.isArray(events) ? events : []) {
     const normalized = normalizeWatchHistoryPayloadItem(entry, watchedAtMap);
@@ -359,10 +371,37 @@ export function buildWatchHistoryPayload(monthString, events, watchedAtMap) {
       continue;
     }
 
-    payload.events.push(normalized.id);
+    const nextItems = [...payload.items, normalized.id];
+    const sizeEntry = { ...normalized.pointer };
     if (Number.isFinite(normalized.watchedAt)) {
-      payload.watchedAt[normalized.id] = normalized.watchedAt;
+      sizeEntry.watchedAt = normalized.watchedAt;
     }
+    const nextWatchedAt = { ...payload.watchedAt };
+    if (Number.isFinite(normalized.watchedAt)) {
+      nextWatchedAt[normalized.id] = normalized.watchedAt;
+    }
+
+    if (maxBytesValue) {
+      const entrySize = JSON.stringify(sizeEntry).length;
+      if (entrySize > maxBytesValue) {
+        skipped.push(normalized.pointer);
+        continue;
+      }
+
+      const candidatePayload = {
+        ...payload,
+        items: nextItems,
+        watchedAt: nextWatchedAt,
+      };
+      const serialized = JSON.stringify(candidatePayload);
+      if (serialized.length > maxBytesValue) {
+        skipped.push(normalized.pointer);
+        continue;
+      }
+    }
+
+    payload.items = nextItems;
+    payload.watchedAt = nextWatchedAt;
     included.push(normalized.pointer);
   }
 
@@ -998,6 +1037,10 @@ class WatchHistoryManager {
 
       const snapshotId = typeof entry?.snapshotId === "string" ? entry.snapshotId : "";
       const fingerprint = typeof entry?.fingerprint === "string" ? entry.fingerprint : "";
+      const metadata =
+        entry?.metadata && typeof entry.metadata === "object"
+          ? { ...entry.metadata }
+          : {};
       sanitizedActors[actorKey] = {
         actor:
           typeof entry?.actor === "string" && entry.actor.trim()
@@ -1008,7 +1051,7 @@ class WatchHistoryManager {
         savedAt,
         records,
         items,
-        metadata: {},
+        metadata,
       };
     }
     const storage = {
@@ -1057,6 +1100,7 @@ class WatchHistoryManager {
       } else if (Array.isArray(entry.items)) {
          records = canonicalizeWatchHistoryItems(entry.items, WATCH_HISTORY_MAX_ITEMS);
       }
+      const items = Object.values(records).flat();
 
       const snapshotId = typeof entry.snapshotId === "string" ? entry.snapshotId : "";
       const fingerprint = typeof entry.fingerprint === "string" ? entry.fingerprint : "";
@@ -1071,6 +1115,7 @@ class WatchHistoryManager {
         fingerprint,
         savedAt,
         records,
+        items,
         metadata: {},
       };
       mutated = true;
@@ -1351,6 +1396,43 @@ class WatchHistoryManager {
      if (!result.items && result.results) {
          result.items = result.results.flatMap(r => r.items || []);
      }
+     const actorCandidates = [options.actorPubkey];
+     if (typeof this.deps.getActivePubkey === "function") {
+       actorCandidates.push(this.deps.getActivePubkey());
+     }
+     const sessionActor = this.deps.getSessionActor?.();
+     if (sessionActor?.pubkey) {
+       actorCandidates.push(sessionActor.pubkey);
+     }
+     let resolvedActor = "";
+     for (const candidate of actorCandidates) {
+       if (typeof candidate === "string" && candidate.trim()) {
+         resolvedActor = candidate.trim();
+         break;
+       }
+     }
+     if (!resolvedActor && typeof this.deps.ensureSessionActor === "function") {
+       resolvedActor = await this.deps.ensureSessionActor();
+     }
+    const actorKey = normalizeActorKey(resolvedActor);
+    if (actorKey) {
+      const flatItems = Array.isArray(Object.values(buckets))
+        ? Object.values(buckets).flat()
+        : [];
+      const fingerprint = await this.getFingerprint(resolvedActor, buckets);
+      const entry = {
+        actor: resolvedActor,
+        records: buckets,
+        items: Array.isArray(flatItems) ? flatItems : [],
+        snapshotId: result.snapshotId || "",
+         pointerEvent: result.pointerEvent || null,
+         savedAt: Date.now(),
+         fingerprint,
+         metadata: {},
+       };
+       this.cache.set(actorKey, entry);
+       this.persistEntry(actorKey, entry);
+     }
      return result;
   }
 
@@ -1515,14 +1597,72 @@ class WatchHistoryManager {
     });
 
     const plaintext = JSON.stringify(payload);
+    let content = plaintext;
+    const encryptionTags = [];
+
+    if (activeSigner) {
+      if (this.deps.shouldRequestExtensionPermissions?.(activeSigner)) {
+        await this.deps.ensureExtensionPermissions?.(DEFAULT_NIP07_PERMISSION_METHODS);
+      }
+
+      const encryptors = [];
+      if (typeof activeSigner.nip44Encrypt === "function") {
+        encryptors.push({ scheme: "nip44", encrypt: activeSigner.nip44Encrypt });
+      }
+      if (typeof activeSigner.nip04Encrypt === "function") {
+        encryptors.push({ scheme: "nip04", encrypt: activeSigner.nip04Encrypt });
+      }
+
+      for (const encryptor of encryptors) {
+        try {
+          const encrypted = await encryptor.encrypt(actorPubkey, plaintext);
+          if (typeof encrypted === "string" && encrypted) {
+            content = encrypted;
+            encryptionTags.push(["encrypted", encryptor.scheme]);
+            break;
+          }
+        } catch (error) {
+          devLogger.warn(
+            "[nostr] Failed to encrypt watch history payload with signer:",
+            error,
+          );
+        }
+      }
+    }
+
+    if (!encryptionTags.length && privateKey) {
+      try {
+        const tools =
+          (await this.deps.ensureNostrTools?.()) || this.deps.getCachedNostrTools?.();
+        if (tools?.nip04 && typeof tools.nip04.encrypt === "function") {
+          const encrypted = await tools.nip04.encrypt(
+            privateKey,
+            actorPubkey,
+            plaintext,
+          );
+          if (typeof encrypted === "string" && encrypted) {
+            content = encrypted;
+            encryptionTags.push(["encrypted", "nip04"]);
+          }
+        }
+      } catch (error) {
+        devLogger.warn(
+          "[nostr] Failed to encrypt watch history payload with fallback tools:",
+          error,
+        );
+      }
+    }
 
     const event = buildWatchHistoryEvent({
       pubkey: actorPubkey,
       created_at: createdAtCursor,
       monthIdentifier,
       pointerTags,
-      content: plaintext,
+      content,
     });
+    if (encryptionTags.length) {
+      event.tags.push(...encryptionTags);
+    }
     createdAtCursor += 1;
     let signedEvent;
     try {
@@ -1936,6 +2076,74 @@ class WatchHistoryManager {
     const sortedEvents = [...eventToProcess].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
     const latestEvent = sortedEvents[0];
 
+    const chunkIdentifiers = [];
+    for (const event of pointerEvents) {
+      const tags = Array.isArray(event?.tags) ? event.tags : [];
+      for (const tag of tags) {
+        if (!Array.isArray(tag) || tag.length < 2) {
+          continue;
+        }
+        if (tag[0] !== "a" || typeof tag[1] !== "string") {
+          continue;
+        }
+        const segments = tag[1].split(":");
+        if (segments.length < 3) {
+          continue;
+        }
+        const kind = segments[0];
+        const pubkey = segments[1];
+        const identifier = segments.slice(2).join(":");
+        if (String(WATCH_HISTORY_KIND) !== kind) {
+          continue;
+        }
+        if (normalizeActorKey(pubkey) !== actorKey) {
+          continue;
+        }
+        if (identifier && !chunkIdentifiers.includes(identifier)) {
+          chunkIdentifiers.push(identifier);
+        }
+      }
+    }
+
+    let decryptedItems = [];
+    if (chunkIdentifiers.length && decryptSigner) {
+      try {
+        const results = await pool.list(readRelays, [
+          {
+            kinds: [WATCH_HISTORY_KIND],
+            authors: [actorKey],
+            "#d": chunkIdentifiers,
+          },
+        ]);
+        const chunkEvents = Array.isArray(results)
+          ? results.flat().filter((event) => event && typeof event === "object")
+          : [];
+        for (const event of chunkEvents) {
+          const ciphertext = typeof event.content === "string" ? event.content : "";
+          if (!ciphertext) {
+            continue;
+          }
+          let plaintext = "";
+          if (typeof decryptSigner.nip04Decrypt === "function") {
+            try {
+              plaintext = await decryptSigner.nip04Decrypt(actorKey, ciphertext);
+            } catch (error) {
+              devLogger.warn("[nostr] Failed to decrypt watch history chunk:", error);
+            }
+          }
+          if (!plaintext) {
+            continue;
+          }
+          const parsed = parseWatchHistoryPayload(plaintext);
+          if (Array.isArray(parsed.items) && parsed.items.length) {
+            decryptedItems.push(...parsed.items);
+          }
+        }
+      } catch (error) {
+        devLogger.warn("[nostr] Failed to fetch watch history chunks:", error);
+      }
+    }
+
     // We will collect items from all events and merge them
     const eventsToProcess = Array.isArray(eventToProcess) ? eventToProcess : [eventToProcess];
     const collectedItems = [];
@@ -1970,7 +2178,11 @@ class WatchHistoryManager {
     }
 
     const fallbackItems = extractPointerItemsFromEvent(latestEvent);
-    const mergedItems = collectedItems.length ? collectedItems : fallbackItems;
+    const mergedItems = decryptedItems.length
+      ? decryptedItems
+      : collectedItems.length
+        ? collectedItems
+        : fallbackItems;
 
     // Canonicalize into buckets
     const records = canonicalizeWatchHistoryItems(
