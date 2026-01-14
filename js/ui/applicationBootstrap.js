@@ -583,6 +583,12 @@ export default class ApplicationBootstrap {
         handleMirrorAction: (payload) => app.handleMirrorAction(payload),
         handleEnsurePresenceAction: (payload) =>
           app.handleEnsurePresenceAction(payload),
+        handleEventDetailsAction: (payload) => {
+          if (app.modalManager && app.modalManager.eventDetailsModal && payload?.video) {
+            app.modalManager.eventDetailsModal.open(payload.video);
+          }
+          return Promise.resolve();
+        },
         loadVideos: () => app.loadVideos(),
         refreshAllVideoGrids: (options) => app.refreshAllVideoGrids(options),
         onUserBlocksUpdated: () => {
