@@ -5850,7 +5850,12 @@ export class ProfileModalController {
     }
 
     try {
-      await renderer.ensureInitialLoad({ actor: primaryActor });
+      const state = typeof renderer.getState === "function" ? renderer.getState() : {};
+      if (state.initialized) {
+        await renderer.refresh({ actor: primaryActor, force: true });
+      } else {
+        await renderer.ensureInitialLoad({ actor: primaryActor });
+      }
 
       if (!this.boundProfileHistoryVisibility) {
         this.boundProfileHistoryVisibility = () => {

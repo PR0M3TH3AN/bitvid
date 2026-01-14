@@ -1212,10 +1212,13 @@ test('admin mutations invoke accessControl stubs and update admin DOM', async ()
 test('history pane lazily initializes the watch history renderer', async () => {
   const historyCalls = [];
   let capturedConfig = null;
+    let isInitialized = false;
 
   const fakeRenderer = {
+      getState: () => ({ initialized: isInitialized }),
     ensureInitialLoad: async ({ actor }) => {
       historyCalls.push(['ensure', actor]);
+        isInitialized = true;
     },
     refresh: async ({ actor, force }) => {
       historyCalls.push(['refresh', actor, force]);
@@ -1228,6 +1231,7 @@ test('history pane lazily initializes the watch history renderer', async () => {
     },
     destroy: () => {
       historyCalls.push(['destroy']);
+        isInitialized = false;
     },
   };
 
@@ -1248,26 +1252,52 @@ test('history pane lazily initializes the watch history renderer', async () => {
   controller.populateBlockedList = () => {};
   controller.refreshWalletPaneState = () => {};
 
+    // First show: Should call ensureInitialLoad but NOT refresh (optimized)
   controller.setActivePubkey(defaultActorHex);
   await controller.show('history');
   await Promise.resolve();
 
   assert.ok(capturedConfig);
   assert.equal(capturedConfig.viewSelector, '#profilePaneHistory');
-  assert.deepEqual(historyCalls.slice(0, 3), [
+
+    // Expect ensure + resume, NO refresh on first load
+    assert.deepEqual(historyCalls.slice(0, 2), [
     ['ensure', defaultActorHex],
-    ['refresh', defaultActorHex, true],
     ['resume'],
   ]);
   assert.ok(typeof controller.boundProfileHistoryVisibility === 'function');
 
-  await controller.hide();
-  await Promise.resolve();
+    // Reset calls for second pass
+    while (historyCalls.length) historyCalls.pop();
 
-  assert.equal(
-    historyCalls.some((entry) => Array.isArray(entry) && entry[0] === 'destroy'),
-    true,
-  );
-  assert.equal(controller.profileHistoryRenderer, null);
-  assert.equal(controller.boundProfileHistoryVisibility, null);
+    // Switch to another pane (should pause but NOT destroy)
+    controller.selectPane('account');
+    await Promise.resolve();
+
+    assert.equal(historyCalls.length > 0, true, 'Should have recorded calls after switching pane');
+    assert.equal(historyCalls[historyCalls.length - 1][0], 'pause');
+
+    // Clear calls
+    while (historyCalls.length) historyCalls.pop();
+
+    // Switch back to history. Renderer is still alive and initialized.
+    // Should call refresh + resume.
+    controller.selectPane('history');
+    await Promise.resolve();
+
+    assert.deepEqual(historyCalls, [
+      ['refresh', defaultActorHex, true],
+      ['resume'],
+    ]);
+
+    // Finally hide and destroy
+    await controller.hide();
+    await Promise.resolve();
+
+    assert.equal(
+      historyCalls.some((entry) => Array.isArray(entry) && entry[0] === 'destroy'),
+      true
+    );
+    assert.equal(controller.profileHistoryRenderer, null);
+    assert.equal(controller.boundProfileHistoryVisibility, null);
 });
