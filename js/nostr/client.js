@@ -1,6 +1,6 @@
 // js/nostr/client.js
 
-import { isDevMode } from "../config.js";
+import { isDevMode, ENABLE_NOSTUBE_IMPORT } from "../config.js";
 import { FEATURE_PUBLISH_NIP71 } from "../constants.js";
 import { accessControl } from "../accessControl.js";
 import { bytesToHex, sha256 } from "../../vendor/crypto-helpers.bundle.min.js";
@@ -5665,23 +5665,40 @@ export class NostrClient {
         : undefined;
     const resolvedUntil = Number.isFinite(until) ? Math.floor(until) : undefined;
 
-    const filter = {
+    const filters = [];
+
+    const standardFilter = {
       kinds: [30078],
       "#t": ["video"],
       limit: resolvedLimit,
     };
 
     if (resolvedSince !== undefined) {
-      filter.since = resolvedSince;
+      standardFilter.since = resolvedSince;
     }
 
     if (resolvedUntil !== undefined) {
-      filter.until = resolvedUntil;
+      standardFilter.until = resolvedUntil;
+    }
+    filters.push(standardFilter);
+
+    if (ENABLE_NOSTUBE_IMPORT) {
+      const nostubeFilter = {
+        kinds: [34235],
+        limit: resolvedLimit,
+      };
+      if (resolvedSince !== undefined) {
+        nostubeFilter.since = resolvedSince;
+      }
+      if (resolvedUntil !== undefined) {
+        nostubeFilter.until = resolvedUntil;
+      }
+      filters.push(nostubeFilter);
     }
 
-    devLogger.log("[subscribeVideos] Subscribing with filter:", filter);
+    devLogger.log("[subscribeVideos] Subscribing with filters:", filters);
 
-    const sub = this.pool.sub(this.relays, [filter]);
+    const sub = this.pool.sub(this.relays, filters);
     const invalidDuringSub = [];
 
     // We'll collect events here instead of processing them instantly
@@ -5911,12 +5928,30 @@ export class NostrClient {
     const requestedLimit = Number(options?.limit);
     const resolvedLimit = this.clampVideoRequestLimit(requestedLimit, DEFAULT_VIDEO_REQUEST_LIMIT);
 
-    const filter = {
+    const filters = [];
+    const standardFilter = {
       kinds: [30078],
       "#t": ["video"],
       limit: resolvedLimit,
       since: 0,
     };
+
+    if (Array.isArray(options?.authors)) {
+      standardFilter.authors = options.authors;
+    }
+    filters.push(standardFilter);
+
+    if (ENABLE_NOSTUBE_IMPORT) {
+      const nostubeFilter = {
+        kinds: [34235],
+        limit: resolvedLimit,
+        since: 0,
+      };
+      if (Array.isArray(options?.authors)) {
+        nostubeFilter.authors = options.authors;
+      }
+      filters.push(nostubeFilter);
+    }
 
     const localAll = new Map();
     // NEW: track invalid
@@ -5925,7 +5960,7 @@ export class NostrClient {
     try {
       await Promise.all(
         this.relays.map(async (url) => {
-          const events = await this.pool.list([url], [filter]);
+          const events = await this.pool.list([url], filters);
           for (const evt of events) {
             if (evt && evt.id) {
               this.rawEvents.set(evt.id, evt);
@@ -6687,21 +6722,35 @@ export class NostrClient {
       localMatches.filter((entry) => !entry.deleted).length <= 1 && targetDTag;
 
     if (shouldFetchFromRelays && this.pool) {
-      const filter = {
+      const filters = [];
+      const standardFilter = {
         kinds: [30078],
         "#t": ["video"],
         "#d": [targetDTag],
         limit: 200,
       };
       if (targetPubkey) {
-        filter.authors = [video.pubkey];
+        standardFilter.authors = [video.pubkey];
+      }
+      filters.push(standardFilter);
+
+      if (ENABLE_NOSTUBE_IMPORT) {
+        const nostubeFilter = {
+          kinds: [34235],
+          "#d": [targetDTag],
+          limit: 200,
+        };
+        if (targetPubkey) {
+          nostubeFilter.authors = [video.pubkey];
+        }
+        filters.push(nostubeFilter);
       }
 
       try {
         const perRelay = await Promise.all(
             this.relays.map(async (url) => {
               try {
-                const events = await this.pool.list([url], [filter]);
+                const events = await this.pool.list([url], filters);
                 return events || [];
               } catch (err) {
                 devLogger.warn(
