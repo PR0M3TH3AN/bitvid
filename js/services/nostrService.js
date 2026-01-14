@@ -1537,32 +1537,11 @@ export class NostrService {
       return [];
     }
 
-    const dTag = Array.isArray(video.tags)
-      ? video.tags.find((t) => Array.isArray(t) && t[0] === "d")
-      : null;
-    const dValue = dTag && dTag[1] ? dTag[1] : null;
-    const pubkey = video.pubkey;
-    const kind = video.kind;
-
-    // If we don't have enough info to query history by address, return just the input
-    if (!dValue || !pubkey || typeof kind !== "number") {
-      // If we have an ID, maybe we can at least return this specific event as a single-item history
-      if (video.id) {
-        return [video];
-      }
-      return [];
-    }
-
-    const filter = {
-      kinds: [kind],
-      authors: [pubkey],
-      "#d": [dValue],
-    };
-
     try {
-      const events = await this.nostrClient.pool.list(this.nostrClient.relays, [filter]);
-      // Sort by created_at ascending (oldest to newest)
-      return events.sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
+      // Use the client's robust hydration logic which handles legacy roots and d-tags
+      const history = await this.nostrClient.hydrateVideoHistory(video);
+      // Ensure specific sort order: Newest First (Descending)
+      return history.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
     } catch (error) {
       this.log("[nostrService] Failed to fetch video history", error);
       // Fallback to returning the known video if fetch fails

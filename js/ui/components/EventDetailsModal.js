@@ -106,20 +106,21 @@ export class EventDetailsModal {
           </section>
         </div>
 
-        <footer class="modal-footer p-4 border-t border-border bg-panel/30 flex items-center justify-between gap-4">
-          <button type="button" data-action="prev-version" class="btn-ghost flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
-            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
-            <span>View Previous</span>
-          </button>
-
-          <div class="text-sm text-muted font-medium">
-            <span data-version-indicator>Version 1 of 1</span>
+        <footer class="modal-footer p-4 border-t border-border bg-panel/30 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div class="text-sm text-muted font-medium order-2 sm:order-1">
+            <span data-version-indicator>Loading history...</span>
           </div>
 
-          <button type="button" data-action="next-version" class="btn-ghost flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
-            <span>View Next</span>
-            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
-          </button>
+          <div class="flex items-center gap-2 order-1 sm:order-2">
+            <button type="button" data-action="view-older" class="btn-ghost flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed" title="View Older Version">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+              <span>Older</span>
+            </button>
+            <button type="button" data-action="view-newer" class="btn-ghost flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed" title="View Newer Version">
+              <span>Newer</span>
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+            </button>
+          </div>
         </footer>
       </div>
     `;
@@ -202,7 +203,8 @@ export class EventDetailsModal {
         }
         break;
       }
-      case "prev-version": {
+      case "view-newer": {
+        // Newer means lower index (since history is Descending/Newest-First)
         if (this.currentIndex > 0) {
           this.currentIndex--;
           this.renderVersion(this.history[this.currentIndex]);
@@ -210,7 +212,8 @@ export class EventDetailsModal {
         }
         break;
       }
-      case "next-version": {
+      case "view-older": {
+        // Older means higher index
         if (this.currentIndex < this.history.length - 1) {
           this.currentIndex++;
           this.renderVersion(this.history[this.currentIndex]);
@@ -224,18 +227,32 @@ export class EventDetailsModal {
   updateNavigationState() {
     if (!this.root) return;
 
-    const prevBtn = this.root.querySelector('[data-action="prev-version"]');
-    const nextBtn = this.root.querySelector('[data-action="next-version"]');
+    // History is Newest First (Index 0 = Latest)
+    // Older = Index + 1
+    // Newer = Index - 1
+
+    const olderBtn = this.root.querySelector('[data-action="view-older"]');
+    const newerBtn = this.root.querySelector('[data-action="view-newer"]');
     const indicator = this.root.querySelector('[data-version-indicator]');
 
-    if (prevBtn) prevBtn.disabled = this.currentIndex <= 0;
-    if (nextBtn) nextBtn.disabled = this.currentIndex >= this.history.length - 1;
+    if (olderBtn) olderBtn.disabled = this.currentIndex >= this.history.length - 1;
+    if (newerBtn) newerBtn.disabled = this.currentIndex <= 0;
 
     if (indicator) {
       if (this.isLoadingHistory) {
         indicator.textContent = "Loading history...";
+      } else if (this.history.length > 0) {
+        // Display logical version number (Oldest = 1, Newest = N)
+        // index 0 (Newest) -> Version N
+        // index N-1 (Oldest) -> Version 1
+        const versionNumber = this.history.length - this.currentIndex;
+        indicator.textContent = `Version ${versionNumber} of ${this.history.length}`;
+
+        if (this.currentIndex === 0) {
+           indicator.textContent += " (Latest)";
+        }
       } else {
-        indicator.textContent = `Version ${this.currentIndex + 1} of ${this.history.length}`;
+        indicator.textContent = "Version 1 of 1";
       }
     }
   }
