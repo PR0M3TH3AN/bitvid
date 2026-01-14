@@ -258,16 +258,6 @@ export async function multipartUpload({
     CacheControl: computeCacheControl(key),
   });
 
-  createCommand.middlewareStack.add(
-    (next) => async (args) => {
-      if (args?.request?.headers) {
-        args.request.headers["cf-create-bucket-if-missing"] = "true";
-      }
-      return next(args);
-    },
-    { step: "build" }
-  );
-
   const { UploadId } = await s3.send(createCommand);
 
   if (!UploadId) {
