@@ -248,6 +248,29 @@
   --space-2xl: 3rem;
   --space-2xl-plus: 3.5rem;
 
+  /* Measurement primitives */
+  --size-2px: 2px;
+  --size-3px: 3px;
+  --size-12px: 12px;
+  --size-24px: 24px;
+  --size-30px: 30px;
+  --size-32px: 32px;
+  --size-64px: 64px;
+  --size-128px: 128px;
+  --size-140px: 140px;
+  --size-168px: 168px;
+  --size-256px: 256px;
+  --size-5-75rem: 5.75rem;
+  --size-6rem: 6rem;
+  --size-7rem: 7rem;
+  --size-8rem: 8rem;
+  --size-12rem: 12rem;
+  --size-12-5rem: 12.5rem;
+  --size-14rem: 14rem;
+  --size-28rem: 28rem;
+  --size-34rem: 34rem;
+  --size-45rem: 45rem;
+
   /* Border radii */
   --radius-sm: 0.25rem;
   --radius-md: 0.5rem;
@@ -262,18 +285,34 @@
 
   /* Component sizing */
   --menu-min-width: 12rem;
+  --header-search-max-inline: var(--size-34rem);
   --modal-max-width: 62.5rem;
   --modal-sheet-inline-max: var(--modal-max-width);
   --modal-shell-max-height: 90vh;
   --modal-sheet-max-height: 92vh;
   --modal-body-max-height: calc(92vh - 4rem);
+  --player-modal-module-scroll-min-height: var(--size-14rem);
+  --player-modal-module-scroll-max-height: var(--size-28rem);
   --modal-pane-max-height: 48vh;
   --modal-pane-min-height: 20rem;
+  --moderation-badge-max-inline: var(--size-28rem);
+  --notification-banner-max-inline: var(--size-28rem);
   --profile-modal-nav-min-width: max-content;
   --profile-modal-nav-max-width: max-content;
   --profile-modal-scrollbar-offset: var(--space-2xs);
   --modal-embed-height: 80vh;
   --profile-history-max-height: 26.25rem;
+  --comment-avatar-size: var(--space-xl-plus);
+  --comment-composer-min-height: var(--size-7rem);
+  --video-modal-reaction-label-min-inline: var(--size-6rem);
+  --video-modal-item-media-min: var(--size-5-75rem);
+  --video-modal-item-media-max: var(--size-8rem);
+  --video-card-compact-media-min: var(--size-8rem);
+  --video-card-compact-media-max: var(--size-12-5rem);
+  --similar-card-media-width: var(--size-168px);
+  --similar-card-media-width-sm: var(--size-140px);
+  --docs-popover-scroll-height: var(--size-45rem);
+  --profile-modal-active-min-width: var(--size-12rem);
   --status-log-min-height: 5rem;
   --layout-player-max-width: 68.75rem;
   --layout-docs-max-width: 92.5rem;
@@ -297,16 +336,24 @@
   --form-checkbox-checkmark-offset: calc(var(--space-3xs) * -1);
 
   /* Utility measurements */
+  --breakpoint-edge-offset: 0.02px;
   --offscreen-offset: -9999px;
 
   /* Motion */
   --motion-card-enter-translate: var(--space-xs);
   --motion-fade-in-translate: var(--space-md-plus);
+  --motion-login-option-hover-translate: calc(var(--size-3px) * -1);
+  --motion-video-card-hover-translate: -0.35rem;
+  --motion-video-card-backdrop-translate: 0.15rem;
 
   /* Shadows */
   --shadow-sm: 0 0.0625rem 0.125rem 0 var(--color-shadow-floating);
   --shadow-md: 0 0.25rem 0.375rem -0.0625rem var(--color-shadow-floating);
   --shadow-lg: 0 0.625rem 0.9375rem -0.1875rem var(--color-shadow-elevated);
+  --shadow-badge-offset-y: var(--size-12px);
+  --shadow-badge-blur: var(--size-30px);
+  --shadow-notification-offset-y: var(--size-32px);
+  --shadow-notification-blur: var(--size-64px);
   --shadow-modal: 0 2.75rem 6rem -1.25rem var(--color-shadow-modal);
   --shadow-sidebar-shell: 0 1.875rem 3.75rem -1.5rem var(--color-shadow-sidebar);
   --shadow-sidebar-accent: 0 1.65rem 3.25rem -1.35rem var(--color-sidebar-glow);
@@ -318,6 +365,9 @@
     0 0 0 0.25rem var(--color-sidebar-hover-strong);
   --shadow-popover-zap: 0 22px 48px -18px var(--color-shadow-intense);
   --shadow-video-modal: 0 1rem 2.25rem var(--color-shadow-elevated);
+  --blur-video-card-backdrop-strong: var(--size-24px);
+  --video-modal-ambient-blur-min: var(--size-128px);
+  --video-modal-ambient-blur-max: var(--size-256px);
 
   /* Typography */
   --font-family-sans: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
@@ -336,6 +386,7 @@
   --font-size-sidebar-nav: 0.95rem;
   --font-size-sidebar-subnav: 0.85rem;
   --font-size-sidebar-trigger: 0.9rem;
+  --link-underline-thickness: var(--size-2px);
   --line-height-tight: 1.1;
   --line-height-snug: 1.25;
   --line-height-base: 1.5;
