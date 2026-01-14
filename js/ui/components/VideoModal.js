@@ -35,6 +35,7 @@ import {
   formatShortNpub as defaultFormatShortNpub,
 } from "../../utils/formatters.js";
 import { sanitizeProfileMediaUrl } from "../../utils/profileMedia.js";
+import { getBreakpointLg } from "../../designSystem/metrics.js";
 
 const HEX64_REGEX = /^[0-9a-f]{64}$/i;
 const SIMILAR_CONTENT_LIMIT = 10;
@@ -5086,8 +5087,9 @@ export class VideoModal {
       return true;
     }
 
+    const breakpointLg = getBreakpointLg({ documentRef: this.document });
     try {
-      return win.matchMedia("(min-width: 1024px)").matches;
+      return win.matchMedia(`(min-width: ${breakpointLg})`).matches;
     } catch (error) {
       this.log(
         "[VideoModal] Failed to evaluate similar content media query",
@@ -5105,7 +5107,8 @@ export class VideoModal {
       return;
     }
 
-    const query = win.matchMedia("(min-width: 1024px)");
+    const breakpointLg = getBreakpointLg({ documentRef: this.document });
+    const query = win.matchMedia(`(min-width: ${breakpointLg})`);
     if (this.similarContentMediaQuery === query) {
       this.refreshSimilarContentVisibility();
       return;

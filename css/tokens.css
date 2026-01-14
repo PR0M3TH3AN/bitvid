@@ -200,6 +200,8 @@
   --space-sidebar-subnav-padding-block: 0.55rem;
   --space-sidebar-nav-translate: 0.35rem;
   --grid-card-min-width: 20rem;
+  /* Breakpoints (sync with Tailwind screen settings) */
+  --breakpoint-lg: 64rem;
   --popover-backdrop-blur: 12px;
   --overlay-panel-radius: var(--radius-lg);
   --overlay-panel-shadow: var(--shadow-lg);
