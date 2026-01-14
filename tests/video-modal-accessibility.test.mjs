@@ -27,6 +27,8 @@ export async function setupModal({ lazyLoad = false } = {}) {
   globalThis.document = document;
   globalThis.HTMLElement = window.HTMLElement;
   globalThis.HTMLVideoElement = window.HTMLVideoElement;
+  globalThis.HTMLStyleElement = window.HTMLStyleElement;
+  globalThis.HTMLCanvasElement = window.HTMLCanvasElement;
   globalThis.Element = window.Element;
   globalThis.CustomEvent = window.CustomEvent;
   globalThis.Event = window.Event;
@@ -149,6 +151,11 @@ export async function setupModal({ lazyLoad = false } = {}) {
     globalThis.ResizeObserver = ResizeObserverStub;
   }
 
+  if (window.HTMLCanvasElement) {
+    window.HTMLCanvasElement.prototype.getContext = () => null;
+  }
+
+
   let restoreFetch = null;
   if (lazyLoad) {
     const originalFetch = globalThis.fetch;
@@ -217,6 +224,8 @@ export async function setupModal({ lazyLoad = false } = {}) {
     delete globalThis.document;
     delete globalThis.HTMLElement;
     delete globalThis.HTMLVideoElement;
+    delete globalThis.HTMLStyleElement;
+    delete globalThis.HTMLCanvasElement;
     delete globalThis.Element;
     delete globalThis.CustomEvent;
     delete globalThis.Event;
@@ -403,12 +412,17 @@ async function setupPlaybackHarness() {
   globalThis.document = document;
   globalThis.HTMLElement = window.HTMLElement;
   globalThis.HTMLVideoElement = window.HTMLVideoElement;
+  globalThis.HTMLStyleElement = window.HTMLStyleElement;
   globalThis.Element = window.Element;
   globalThis.CustomEvent = window.CustomEvent;
   globalThis.Event = window.Event;
   globalThis.Node = window.Node;
   globalThis.EventTarget = window.EventTarget;
-  globalThis.navigator = window.navigator;
+  Object.defineProperty(globalThis, "navigator", {
+    value: window.navigator,
+    configurable: true,
+    writable: true,
+  });
   globalThis.location = window.location;
   globalThis.KeyboardEvent = window.KeyboardEvent;
   globalThis.MouseEvent = window.MouseEvent;
@@ -571,6 +585,7 @@ async function setupPlaybackHarness() {
     delete globalThis.document;
     delete globalThis.HTMLElement;
     delete globalThis.HTMLVideoElement;
+    delete globalThis.HTMLStyleElement;
     delete globalThis.Element;
     delete globalThis.CustomEvent;
     delete globalThis.Event;

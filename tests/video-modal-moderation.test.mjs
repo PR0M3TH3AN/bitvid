@@ -19,9 +19,8 @@ test("VideoModal blurs and restores playback when moderation overlay toggles", a
       const originalPause = videoElement.pause;
       videoElement.pause = function patchedPause() {
         pauseCalls += 1;
-        if (typeof originalPause === "function") {
-          return originalPause.call(this);
-        }
+        // Do not call originalPause because JSDOM throws "Not implemented"
+        // simulating a successful pause is sufficient for this test.
         return undefined;
       };
 
@@ -46,7 +45,7 @@ test("VideoModal blurs and restores playback when moderation overlay toggles", a
       assert.ok(stage, "video stage should exist");
       assert.equal(stage.dataset.visualState, "blurred");
 
-      const overlay = document.querySelector("[data-moderation-overlay]");
+      const overlay = document.querySelector("[data-moderation-bar]");
       assert.ok(overlay, "moderation overlay should be rendered");
       assert.equal(overlay.hasAttribute("hidden"), false);
 
@@ -87,7 +86,8 @@ test("VideoModal blurs and restores playback when moderation overlay toggles", a
       document.dispatchEvent(overrideSignal);
 
       assert.equal(stage.dataset.visualState, undefined);
-      assert.equal(overlay.hasAttribute("hidden"), true);
+      assert.equal(overlay.hasAttribute("hidden"), false, "overlay should remain visible in override mode");
+      assert.equal(overlay.dataset.overlayState, "override", "overlay should reflect override state");
 
       const restoreButton = document.querySelector(
         "[data-moderation-action='hide']",
@@ -140,7 +140,7 @@ test("VideoModal blurs and restores playback when moderation overlay toggles", a
       assert.ok(stage, "video stage should exist");
       assert.equal(stage.dataset.visualState, "blurred");
 
-      const overlay = document.querySelector("[data-moderation-overlay]");
+      const overlay = document.querySelector("[data-moderation-bar]");
       assert.ok(overlay, "moderation overlay should be rendered");
       assert.equal(overlay.hasAttribute("hidden"), false);
 

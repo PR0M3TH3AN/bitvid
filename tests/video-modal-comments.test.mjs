@@ -247,12 +247,10 @@ test(
     t.after(cleanup);
 
     const visibilityCalls = [];
-    const instrumentedModal = {
-      ...modal,
-      setCommentsVisibility: (isVisible) => {
-        visibilityCalls.push(isVisible);
-        modal.setCommentsVisibility(isVisible);
-      },
+    const originalSetVisibility = modal.setCommentsVisibility.bind(modal);
+    modal.setCommentsVisibility = (isVisible) => {
+      visibilityCalls.push(isVisible);
+      return originalSetVisibility(isVisible);
     };
 
     const snapshot = {
@@ -280,7 +278,7 @@ test(
         teardown: () => {},
         loadThread: () => Promise.resolve(snapshot),
       },
-      videoModal: instrumentedModal,
+      videoModal: modal,
       auth: {
         isLoggedIn: () => false,
       },
@@ -399,6 +397,7 @@ test(
         ],
       ]),
       commentIds: ["c1"],
+      childrenByParent: new Map([[null, ["c1"]]]),
       profiles: new Map([["ABCD", { name: "Mixed Case" }]]),
     });
 
@@ -478,6 +477,7 @@ test(
         ],
       ]),
       commentIds: ["comment-2"],
+      childrenByParent: new Map([[null, ["comment-2"]]]),
       profiles: new Map(),
     };
 

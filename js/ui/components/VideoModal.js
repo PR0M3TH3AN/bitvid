@@ -4116,12 +4116,11 @@ export class VideoModal {
   }
 
   applyModerationOverlay(context) {
+    const showModeration = Boolean(context?.shouldShow);
     const stage = this.videoStage;
     const overlay = this.moderationOverlay;
     const badge = this.moderationBadge;
     const textEl = this.moderationBadgeText;
-
-    const showModeration = Boolean(context?.shouldShow);
     const shouldBlur = Boolean(context?.activeBlur && !context?.overrideActive);
     const hiddenActive = Boolean(context?.activeHidden && !context?.overrideActive);
 
