@@ -7,48 +7,48 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="/css/tailwind.generated.css" />
     <style>
-      body {
-        background-color: #0f172a;
-        color: #f8fafc;
-        font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      .moderation-fixtures {
+        background-color: var(--surface-base);
+        color: var(--text-primary);
+        font-family: var(--font-family-sans);
       }
-      main {
-        max-width: 960px;
+      .moderation-fixtures__main {
+        max-width: 60rem;
         margin: 0 auto;
-        padding: 2rem 1.5rem 4rem;
+        padding: var(--space-xl) var(--space-lg) var(--space-2xl);
       }
-      h1 {
-        font-size: 2rem;
+      .moderation-fixtures__title {
+        font-size: var(--font-size-2xl);
         font-weight: 700;
-        margin-bottom: 1.5rem;
+        margin-bottom: var(--space-lg);
       }
-      section {
-        margin-bottom: 2.5rem;
+      .moderation-fixtures__section {
+        margin-bottom: var(--space-2xl);
       }
-      section h2 {
-        font-size: 1.25rem;
+      .moderation-fixtures__section-title {
+        font-size: var(--font-size-xl);
         font-weight: 600;
-        margin-bottom: 0.5rem;
+        margin-bottom: var(--space-2xs);
       }
-      section p {
-        color: #cbd5f5;
-        margin-bottom: 1rem;
+      .moderation-fixtures__section-description {
+        color: var(--text-muted);
+        margin-bottom: var(--space-md);
       }
       .fixture-toggle {
-        margin-top: 0.75rem;
-        font-size: 0.875rem;
-        color: #cbd5f5;
+        margin-top: var(--space-sm);
+        font-size: var(--font-size-sm);
+        color: var(--text-muted);
       }
       .fixture-toggle__label {
         display: inline-flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-xs);
       }
     </style>
   </head>
-  <body data-ds="new">
-    <main id="moderationFixtureRoot">
-      <h1>Moderation Test Fixtures</h1>
+  <body class="moderation-fixtures" data-ds="new">
+    <main id="moderationFixtureRoot" class="moderation-fixtures__main">
+      <h1 class="moderation-fixtures__title">Moderation Test Fixtures</h1>
       <p>
         These scenarios mirror the QA vectors in <code>docs/moderation/testing.md</code> so
         automated checks can assert blur thresholds, autoplay blocking, and local
@@ -575,14 +575,17 @@
 
         fixtures.forEach((fixture) => {
           const section = document.createElement("section");
+          section.classList.add("moderation-fixtures__section");
 
           const heading = document.createElement("h2");
           heading.textContent = fixture.heading;
+          heading.classList.add("moderation-fixtures__section-title");
           section.appendChild(heading);
 
           if (fixture.description) {
             const description = document.createElement("p");
             description.textContent = fixture.description;
+            description.classList.add("moderation-fixtures__section-description");
             section.appendChild(description);
           }
 
