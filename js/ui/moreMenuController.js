@@ -1590,51 +1590,14 @@ export default class MoreMenuController {
         break;
       }
       case "event-details": {
-        let video = null;
-        if (context === "modal") {
-          video = currentVideo;
-        } else {
-          // If called from a card, we might not have the full video object in context
-          // but usually the menu is triggered with a video object attached to the context
-          // in toggleMoreMenu.
-          // In handleMoreMenuAction, we don't receive the 'video' object directly, only the dataset.
-          // But `toggleMoreMenu` stores the context in `entry.context`.
-          // `handleMoreMenuAction` is called by the click handler which *doesn't* pass the full video object easily
-          // unless we hack it.
-          // However! `createPopoverRender` calls `handleMoreMenuAction` with just the dataset.
-          // Wait, `createPopoverRender` has `entry.context.video`.
-          // We can't access it easily here unless we pass it.
-          // But `MoreMenuController` handles actions.
-          // Let's rely on `dataset.eventId` to fetch/find the video if needed?
-          // Or better, `toggleMoreMenu` (which calls `ensurePopoverForTrigger`) sets the context.
-          // The click handler in `createPopoverRender` has `entry.context`.
-          // It calls `handleMoreMenuAction(action, dataset)`.
-          // It also calls `entry.context.onAction`.
-          //
-          // If we look at `js/app.js` (or wherever `MoreMenuController` is instantiated),
-          // we might see how `callbacks` are defined.
-          // But here we are IN `MoreMenuController`.
-          //
-          // For `event-details` to work, we need the video object.
-          // If it's the current video (modal), `currentVideo` works.
-          // If it's a card, `currentVideo` might be null or wrong.
-          //
-          // We can try to fetch the video from `dataset.eventId` using a callback or service.
-          // Or we can modify `handleMoreMenuAction` to accept `video` as an optional 3rd argument,
-          // and update `createPopoverRender` to pass it.
+        let targetVideo = video;
+        if (!targetVideo && context === "modal") {
+          targetVideo = currentVideo;
         }
-
-        // IMPORTANT: The `createPopoverRender` method in THIS file (lines 622+)
-        // `entry.context.video` is available there.
-        // It calls `await this.handleMoreMenuAction(action, dataset);`
-        // I should update `createPopoverRender` to pass the video!
-
-        // But first, let's finish the switch case assuming we can get the video.
-        // I'll modify `handleMoreMenuAction` signature in a separate edit or assume `this.callbacks.handleEventDetailsAction` can handle ID.
 
         await this.callbacks.handleEventDetailsAction({
           eventId: dataset.eventId,
-          video: video // Use explicit argument
+          video: targetVideo,
         });
         break;
       }
