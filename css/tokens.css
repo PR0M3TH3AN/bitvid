@@ -398,6 +398,9 @@
   --color-accent: rgb(99 102 241);
   --color-accent-strong: rgb(79 70 229);
   --color-accent-pressed: rgb(67 56 202);
+  --color-accent-override: rgb(84 0 17);
+  --color-accent-strong-override: rgb(254 0 50);
+  --color-accent-pressed-override: rgb(169 0 33);
   --color-primary: var(--color-accent-strong);
   --color-secondary: var(--color-accent);
 
@@ -582,6 +585,9 @@
   --color-accent: rgb(129 140 248);
   --color-accent-strong: rgb(99 102 241);
   --color-accent-pressed: rgb(79 70 229);
+  --color-accent-override: rgb(84 0 17);
+  --color-accent-strong-override: rgb(254 0 50);
+  --color-accent-pressed-override: rgb(169 0 33);
   --color-primary: var(--color-accent-strong);
   --color-secondary: rgb(56 189 248);
 
