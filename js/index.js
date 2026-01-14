@@ -885,22 +885,67 @@ async function bootstrapInterface() {
     };
   };
 
+  const sidebarDropupStyleState = (() => {
+    let styleNode = null;
+    let rootWidthRule = "";
+    const measureRules = new Map();
+
+    const ensureStyleNode = () => {
+      if (styleNode && styleNode.isConnected) {
+        return styleNode;
+      }
+      styleNode = document.getElementById("sidebarDropupStyles");
+      if (!(styleNode instanceof HTMLStyleElement)) {
+        styleNode = document.createElement("style");
+        styleNode.id = "sidebarDropupStyles";
+        document.head.appendChild(styleNode);
+      }
+      return styleNode;
+    };
+
+    const updateStyles = () => {
+      const node = ensureStyleNode();
+      const rules = [rootWidthRule, ...measureRules.values()].filter(Boolean);
+      node.textContent = rules.join("\n");
+    };
+
+    return {
+      setRootWidth: (value) => {
+        rootWidthRule = `:root { --sidebar-dropup-content-width: ${value}; }`;
+        updateStyles();
+      },
+      setMeasureWidth: (id, value) => {
+        measureRules.set(
+          id,
+          `.sidebar-dropup-measure[data-measure-id="${id}"] { width: ${value}; }`,
+        );
+        updateStyles();
+      },
+      clearMeasure: (id) => {
+        measureRules.delete(id);
+        updateStyles();
+      },
+    };
+  })();
+
+  let sidebarDropupMeasureId = 0;
+
   const resolveCssLengthToPixels = (value, container) => {
     if (!(container instanceof HTMLElement) || typeof value !== "string") {
       return 0;
     }
 
     const measurementNode = container.ownerDocument.createElement("div");
-    measurementNode.style.position = "absolute";
-    measurementNode.style.visibility = "hidden";
-    measurementNode.style.pointerEvents = "none";
-    measurementNode.style.height = "0";
-    measurementNode.style.width = value;
-    measurementNode.style.overflow = "hidden";
+    sidebarDropupMeasureId += 1;
+    const measureId = `sidebar-dropup-measure-${sidebarDropupMeasureId}`;
+    measurementNode.classList.add("sidebar-dropup-measure");
+    measurementNode.dataset.measureId = measureId;
+    sidebarDropupStyleState.setMeasureWidth(measureId, value);
 
     container.appendChild(measurementNode);
     const pixels = measurementNode.getBoundingClientRect().width;
     container.removeChild(measurementNode);
+    sidebarDropupStyleState.clearMeasure(measureId);
 
     return Number.isFinite(pixels) ? pixels : 0;
   };
@@ -910,46 +955,13 @@ async function bootstrapInterface() {
     const panel = panelInner?.closest(".sidebar-dropup-panel");
 
     if (!(panelInner instanceof HTMLElement) || !(panel instanceof HTMLElement)) {
-      document.documentElement.style.setProperty(
-        "--sidebar-dropup-content-width",
-        "0px",
-      );
+      sidebarDropupStyleState.setRootWidth("0px");
       return;
     }
 
-    const originalStyles = {
-      position: panelInner.style.position,
-      width: panelInner.style.width,
-      maxWidth: panelInner.style.maxWidth,
-      visibility: panelInner.style.visibility,
-      pointerEvents: panelInner.style.pointerEvents,
-      left: panelInner.style.left,
-      right: panelInner.style.right,
-      top: panelInner.style.top,
-      bottom: panelInner.style.bottom,
-    };
-
-    panelInner.style.position = "absolute";
-    panelInner.style.width = "max-content";
-    panelInner.style.maxWidth = "none";
-    panelInner.style.visibility = "hidden";
-    panelInner.style.pointerEvents = "none";
-    panelInner.style.left = "-9999px";
-    panelInner.style.right = "auto";
-    panelInner.style.top = "auto";
-    panelInner.style.bottom = "auto";
-
+    panelInner.classList.add("is-measuring");
     const measuredInnerWidth = Math.ceil(panelInner.scrollWidth);
-
-    panelInner.style.position = originalStyles.position;
-    panelInner.style.width = originalStyles.width;
-    panelInner.style.maxWidth = originalStyles.maxWidth;
-    panelInner.style.visibility = originalStyles.visibility;
-    panelInner.style.pointerEvents = originalStyles.pointerEvents;
-    panelInner.style.left = originalStyles.left;
-    panelInner.style.right = originalStyles.right;
-    panelInner.style.top = originalStyles.top;
-    panelInner.style.bottom = originalStyles.bottom;
+    panelInner.classList.remove("is-measuring");
 
     const panelStyles = window.getComputedStyle(panel);
     const paddingInlineStart = Number.parseFloat(panelStyles.paddingInlineStart) || 0;
@@ -965,10 +977,7 @@ async function bootstrapInterface() {
       measuredInnerWidth + paddingInlineStart + paddingInlineEnd + scrollReserve,
     );
 
-    document.documentElement.style.setProperty(
-      "--sidebar-dropup-content-width",
-      `${Math.ceil(totalWidth)}px`,
-    );
+    sidebarDropupStyleState.setRootWidth(`${Math.ceil(totalWidth)}px`);
   };
 
   const debouncedSidebarDropupResize = debounce(updateSidebarDropupContentWidth, 150);

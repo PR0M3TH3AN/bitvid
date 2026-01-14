@@ -153,6 +153,7 @@ export class VideoModal {
       "+": null,
       "-": null,
     };
+    this.reactionMeterStyleNode = null;
     this.reactionState = {
       counts: { "+": 0, "-": 0 },
       total: 0,
@@ -3116,9 +3117,32 @@ export class VideoModal {
       this.reactionMeterAssistive.textContent = assistiveLabel;
     }
 
-    if (this.reactionMeterFill) {
-      this.reactionMeterFill.style.inlineSize = `${likeRatio}%`;
-      this.reactionMeterFill.style.width = `${likeRatio}%`;
+    this.updateReactionMeterFill(likeRatio);
+  }
+
+  updateReactionMeterFill(likeRatio) {
+    const doc = this.playerModal?.ownerDocument || this.document;
+    if (!doc) {
+      return;
+    }
+
+    const clamped = Math.max(0, Math.min(100, Math.round(likeRatio)));
+    const widthValue = `${clamped}%`;
+    if (!this.reactionMeterStyleNode || !this.reactionMeterStyleNode.isConnected) {
+      const existing = doc.getElementById?.("videoModalReactionStyles");
+      if (existing instanceof HTMLStyleElement) {
+        this.reactionMeterStyleNode = existing;
+      } else {
+        const styleNode = doc.createElement("style");
+        styleNode.id = "videoModalReactionStyles";
+        doc.head?.appendChild(styleNode);
+        this.reactionMeterStyleNode = styleNode;
+      }
+    }
+
+    if (this.reactionMeterStyleNode) {
+      this.reactionMeterStyleNode.textContent =
+        `#playerModal { --video-modal-reaction-fill: ${widthValue}; }`;
     }
   }
 
@@ -4021,9 +4045,6 @@ export class VideoModal {
         this.videoTitle.textContent = titleText;
         // Ensure element is visible
         this.videoTitle.hidden = false;
-        if (this.videoTitle.style) {
-          this.videoTitle.style.display = "";
-        }
       } else {
         // Log for debugging if element cannot be found
         this.logger?.log?.(

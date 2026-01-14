@@ -34,7 +34,7 @@ test("cached thumbnails reuse existing src without lazy-loading", (t) => {
   const cachedSrc = "https://cdn.example.com/thumb.jpg";
   const cache = new Map([["video-123", cachedSrc]]);
 
-  const { card } = renderCard(t, {
+  const { card, window } = renderCard(t, {
     thumbnailCache: cache,
     fallbackThumbnailSrc: "https://cdn.example.com/fallback.jpg",
   });
@@ -46,7 +46,7 @@ test("cached thumbnails reuse existing src without lazy-loading", (t) => {
   assert.equal(img.src, cachedSrc);
   assert.equal(img.dataset.lazy, undefined);
   assert.equal(
-    root.style.getPropertyValue("--similar-card-thumb-url"),
+    window.getComputedStyle(root).getPropertyValue("--similar-card-thumb-url").trim(),
     `url("${cachedSrc}")`,
   );
 });
@@ -75,7 +75,7 @@ test("uncached thumbnails use fallback, cache on load, and retain blur state", (
   assert.equal(img.dataset.lazy, remoteThumb);
   assert.equal(img.dataset.thumbnailState, "blurred");
   assert.equal(
-    root.style.getPropertyValue("--similar-card-thumb-url"),
+    window.getComputedStyle(root).getPropertyValue("--similar-card-thumb-url").trim(),
     `url("${fallbackSrc}")`,
   );
 
@@ -84,7 +84,7 @@ test("uncached thumbnails use fallback, cache on load, and retain blur state", (
 
   assert.equal(cache.get("video-456"), remoteThumb);
   assert.equal(
-    root.style.getPropertyValue("--similar-card-thumb-url"),
+    window.getComputedStyle(root).getPropertyValue("--similar-card-thumb-url").trim(),
     `url("${remoteThumb}")`,
   );
   assert.equal(img.dataset.thumbnailState, "blurred");

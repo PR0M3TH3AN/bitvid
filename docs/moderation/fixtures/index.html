@@ -34,6 +34,16 @@
         color: #cbd5f5;
         margin-bottom: 1rem;
       }
+      .fixture-toggle {
+        margin-top: 0.75rem;
+        font-size: 0.875rem;
+        color: #cbd5f5;
+      }
+      .fixture-toggle__label {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
     </style>
   </head>
   <body data-ds="new">
@@ -581,14 +591,10 @@
 
           if (fixture.blockToggle && fixture.blockToggle.pubkey) {
             const toggleWrapper = document.createElement("div");
-            toggleWrapper.style.marginTop = "0.75rem";
-            toggleWrapper.style.fontSize = "0.875rem";
-            toggleWrapper.style.color = "#cbd5f5";
+            toggleWrapper.classList.add("fixture-toggle");
 
             const label = document.createElement("label");
-            label.style.display = "inline-flex";
-            label.style.alignItems = "center";
-            label.style.gap = "0.5rem";
+            label.classList.add("fixture-toggle__label");
 
             const input = document.createElement("input");
             input.type = "checkbox";

@@ -90,6 +90,53 @@ const channelModerationBadgeState = {
 };
 
 const channelVideoCardsById = new Map();
+let channelBannerStyleCounter = 0;
+const channelBannerStyleRegistry = new WeakMap();
+
+function getChannelBannerStyleState(doc) {
+  if (!doc || typeof doc.createElement !== "function") {
+    return null;
+  }
+  const existing = channelBannerStyleRegistry.get(doc);
+  if (existing) {
+    return existing;
+  }
+  let styleNode = doc.getElementById?.("channelBannerStyles") || null;
+  if (!(styleNode instanceof HTMLStyleElement)) {
+    styleNode = doc.createElement("style");
+    styleNode.id = "channelBannerStyles";
+    doc.head?.appendChild(styleNode);
+  }
+  const state = {
+    styleNode,
+    rules: new Map(),
+  };
+  channelBannerStyleRegistry.set(doc, state);
+  return state;
+}
+
+function updateChannelBannerBackground(el, url) {
+  const doc = el?.ownerDocument || (typeof document !== "undefined" ? document : null);
+  const state = getChannelBannerStyleState(doc);
+  if (!state || !el) {
+    return;
+  }
+
+  if (!el.dataset.channelBannerStyleId) {
+    channelBannerStyleCounter += 1;
+    el.dataset.channelBannerStyleId = `channel-banner-${channelBannerStyleCounter}`;
+  }
+  const selector = `[data-channel-banner-style-id="${el.dataset.channelBannerStyleId}"]`;
+
+  if (url) {
+    const escaped = url.replace(/(["\\])/g, "\\$1");
+    state.rules.set(selector, `${selector} { background-image: url("${escaped}"); }`);
+  } else {
+    state.rules.set(selector, `${selector} { background-image: none; }`);
+  }
+
+  state.styleNode.textContent = [...state.rules.values()].join("\n");
+}
 
 export function clearChannelVideoCardRegistry() {
   channelVideoCardsById.clear();
@@ -1432,10 +1479,7 @@ function setBannerVisual(el, url, { referrerPolicy } = {}) {
       el.src = resolvedUrl;
     }
   } else {
-    const value = resolvedUrl ? `url("${resolvedUrl}")` : "";
-    if (el.style.backgroundImage !== value) {
-      el.style.backgroundImage = value;
-    }
+    updateChannelBannerBackground(el, resolvedUrl || "");
   }
 
   if (el.dataset.bannerSrc !== resolvedUrl) {
