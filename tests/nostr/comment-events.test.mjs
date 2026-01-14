@@ -259,6 +259,8 @@ test("listVideoComments matches comments even when tag casing and whitespace dif
       [" E ", " VIDEO-1 "],
       ["E", " PARENT-1 "],
       ["K", String(COMMENT_EVENT_KIND)],
+      [" K ", " 30078 "],
+      [" P ", " AUTHOR "],
       ["P", " THREAD-PARTICIPANT "],
     ],
   };
