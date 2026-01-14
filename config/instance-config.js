@@ -418,4 +418,4 @@ export const ENSURE_PRESENCE_REBROADCAST_COOLDOWN_SECONDS = 5 * 60;
  * with Kind 34235 (Nostube). Default is `false` to keep the feed focused on
  * native content until explicitly enabled.
  */
-export const ENABLE_NOSTUBE_IMPORT = false;
+export const ENABLE_NOSTUBE_IMPORT = true;
