@@ -220,6 +220,16 @@ class R2Service {
     const secretAccessKey = String(formValues.secretAccessKey || "").trim();
     const baseDomain = sanitizeBaseDomain(formValues.baseDomain || ""); // This is the Public Bucket URL
 
+    if (baseDomain.includes(".r2.cloudflarestorage.com")) {
+      if (!quiet) {
+        this.setCloudflareSettingsStatus(
+          "It looks like you entered the S3 API URL. Please use your Public Bucket URL (e.g. https://pub-xxx.r2.dev or your custom domain).",
+          "error"
+        );
+      }
+      return false;
+    }
+
     if (!accountId || !accessKeyId || !secretAccessKey) {
       if (!quiet) {
         this.setCloudflareSettingsStatus(
