@@ -295,6 +295,17 @@ export function createVideoMoreMenuPanel({
     },
   });
 
+  appendMenuSeparator(doc, list);
+
+  appendMenuAction(doc, list, {
+    text: "Event Details",
+    action: "event-details",
+    dataset: {
+      eventId: metadata.id,
+      context,
+    },
+  });
+
   return panel;
 }
 

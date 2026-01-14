@@ -8,6 +8,7 @@ import { RevertModal } from "./components/RevertModal.js";
 import initUploadModal from "./initUploadModal.js";
 import initEditModal from "./initEditModal.js";
 import initDeleteModal from "./initDeleteModal.js";
+import { EventDetailsModal } from "./components/EventDetailsModal.js";
 import ZapController from "./zapController.js";
 import { nostrClient } from "../nostrClientFacade.js";
 
@@ -44,6 +45,8 @@ export default class ModalManager {
 
     this.videoModal = null;
     this.videoModalHandlers = {};
+
+    this.eventDetailsModal = null;
 
     this.zapController = null;
   }
@@ -614,6 +617,25 @@ export default class ModalManager {
     );
 
     app.videoModal = this.videoModal;
+
+    this.eventDetailsModal = new EventDetailsModal({
+      app,
+      document: doc,
+      helpers: {
+        escapeHtml: (value) => app.escapeHTML(value),
+        formatAbsoluteTimestamp: (ts) => app.formatAbsoluteTimestamp(ts),
+        safeEncodeNpub: (pubkey) => app.safeEncodeNpub(pubkey),
+      },
+      callbacks: {
+        showError: (msg) => app.showError(msg),
+        showSuccess: (msg) => app.showSuccess(msg),
+        openCreatorChannel: (pubkey) => {
+          app.hideModal();
+          app.goToProfile(pubkey);
+        },
+      },
+    });
+    app.eventDetailsModal = this.eventDetailsModal;
   }
 
   teardown() {
@@ -836,6 +858,7 @@ export default class ModalManager {
     app.deleteModal = null;
     app.deleteModalEvents = null;
     app.videoModal = null;
+    app.eventDetailsModal = null;
     app.zapController = null;
 
     this.uploadModal = null;
@@ -852,6 +875,7 @@ export default class ModalManager {
     this.deleteCancelHandler = null;
     this.videoModal = null;
     this.videoModalHandlers = {};
+    this.eventDetailsModal = null;
     this.zapController = null;
   }
 }

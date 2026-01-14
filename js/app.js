@@ -254,6 +254,13 @@ class Application {
     }
   }
 
+  hideModal() {
+    if (this.videoModal) {
+      this.videoModal.close();
+    }
+    // Also clear the active modal state if tracked elsewhere, though videoModal.close() usually handles it.
+  }
+
   loadSavedProfilesFromStorage() {
     const result = this.authService.loadSavedProfilesFromStorage();
     this.renderSavedProfiles();

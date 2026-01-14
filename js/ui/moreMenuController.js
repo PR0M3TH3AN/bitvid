@@ -65,6 +65,8 @@ export default class MoreMenuController {
         callbacks.handleMirrorAction || (() => Promise.resolve()),
       handleEnsurePresenceAction:
         callbacks.handleEnsurePresenceAction || (() => Promise.resolve()),
+      handleEventDetailsAction:
+        callbacks.handleEventDetailsAction || (() => Promise.resolve()),
       loadVideos: callbacks.loadVideos || (() => Promise.resolve()),
       onUserBlocksUpdated: callbacks.onUserBlocksUpdated || (() => {}),
     };
@@ -752,7 +754,7 @@ export default class MoreMenuController {
           const action = dataset.action || "";
 
           try {
-            await this.handleMoreMenuAction(action, dataset);
+            await this.handleMoreMenuAction(action, dataset, entry.context.video);
           } catch (error) {
             userLogger.error("[MoreMenu] Failed to handle action:", error);
           }
@@ -1083,7 +1085,7 @@ export default class MoreMenuController {
     });
   }
 
-  async handleMoreMenuAction(action, dataset = {}) {
+  async handleMoreMenuAction(action, dataset = {}, video = null) {
     const normalized = typeof action === "string" ? action.trim() : "";
     const context = dataset.context || "";
     const currentVideo = this.callbacks.getCurrentVideo();
@@ -1584,6 +1586,18 @@ export default class MoreMenuController {
           authorPubkey: normalizedAuthor,
           relayHint,
           trigger: dataset.triggerElement || null,
+        });
+        break;
+      }
+      case "event-details": {
+        let targetVideo = video;
+        if (!targetVideo && context === "modal") {
+          targetVideo = currentVideo;
+        }
+
+        await this.callbacks.handleEventDetailsAction({
+          eventId: dataset.eventId,
+          video: targetVideo,
         });
         break;
       }
