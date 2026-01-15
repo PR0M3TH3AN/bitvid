@@ -6,7 +6,7 @@ const TORRENT_SEED_OPTIONS = {
   destroyStoreOnDestroy: true,
 };
 
-function seedTorrentForFile(file) {
+function seedTorrentForFile(file, urlList = []) {
   if (!file) {
     return Promise.reject(new Error("No file provided for hashing."));
   }
@@ -25,6 +25,7 @@ function seedTorrentForFile(file) {
         {
           ...TORRENT_SEED_OPTIONS,
           name: file.name,
+          urlList: urlList,
         },
         (torrent) => {
           const infoHash = torrent.infoHash;
@@ -66,6 +67,6 @@ export async function calculateTorrentInfoHash(file) {
   return infoHash;
 }
 
-export async function createTorrentMetadata(file) {
-  return seedTorrentForFile(file);
+export async function createTorrentMetadata(file, urlList = []) {
+  return seedTorrentForFile(file, urlList);
 }

@@ -551,6 +551,10 @@ class R2Service {
     settingsInput = null,
     publishVideoNote,
     onReset,
+    forcedVideoKey = "",
+    forcedVideoUrl = "",
+    forcedTorrentKey = "",
+    forcedTorrentUrl = "",
   } = {}) {
     if (settingsInput) {
       const saved = await this.handleCloudflareSettingsSubmit(settingsInput, {
@@ -638,9 +642,12 @@ class R2Service {
     let statusMessage = `Uploading to ${bucketEntry.bucket}…`;
     this.setCloudflareUploadStatus(statusMessage, "info");
 
-    const key = buildR2Key(npub, file);
-    const publicUrl = buildPublicUrl(bucketEntry.publicBaseUrl, key);
+    // Use forced keys if provided, otherwise generate them
+    const key = forcedVideoKey || buildR2Key(npub, file);
+    const publicUrl = forcedVideoUrl || buildPublicUrl(bucketEntry.publicBaseUrl, key);
+
     const buildTorrentKey = () => {
+      if (forcedTorrentKey) return forcedTorrentKey;
       const baseKey = key.replace(/\.[^/.]+$/, "");
       if (baseKey && baseKey !== key) {
         return `${baseKey}.torrent`;
@@ -687,7 +694,7 @@ class R2Service {
       });
 
       let publishOutcome = true;
-      let torrentUrl = "";
+      let torrentUrl = forcedTorrentUrl || "";
 
       if (torrentFile) {
         this.setCloudflareUploadStatus("Uploading torrent metadata...", "info");
@@ -700,7 +707,9 @@ class R2Service {
             file: torrentFile,
             contentType: "application/x-bittorrent",
           });
-          torrentUrl = buildPublicUrl(bucketEntry.publicBaseUrl, torrentKey);
+          if (!torrentUrl) {
+             torrentUrl = buildPublicUrl(bucketEntry.publicBaseUrl, torrentKey);
+          }
         } catch (err) {
           userLogger.warn("Torrent metadata upload failed, continuing...", err);
         }
@@ -722,7 +731,14 @@ class R2Service {
         if (hasValidInfoHash) {
           const encodedDn = encodeURIComponent(file.name);
           const encodedWs = encodeURIComponent(publicUrl);
-          generatedMagnet = `magnet:?xt=urn:btih:${normalizedInfoHash}&dn=${encodedDn}&ws=${encodedWs}`;
+          let magnet = `magnet:?xt=urn:btih:${normalizedInfoHash}&dn=${encodedDn}&ws=${encodedWs}`;
+
+          if (torrentUrl) {
+            const encodedXs = encodeURIComponent(torrentUrl);
+            magnet += `&xs=${encodedXs}`;
+          }
+
+          generatedMagnet = magnet;
           generatedWs = publicUrl;
         } else {
           if (infoHash) {

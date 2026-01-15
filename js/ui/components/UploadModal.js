@@ -9,6 +9,7 @@ import {
 } from "../../services/videoNotePayload.js";
 import { createTorrentMetadata } from "../../utils/torrentHash.js";
 import { sanitizeBucketName } from "../../storage/r2-mgmt.js";
+import { buildR2Key, buildPublicUrl } from "../../r2.js";
 
 const INFO_HASH_PATTERN = /^[a-f0-9]{40}$/;
 
@@ -660,6 +661,39 @@ export class UploadModal {
 
       const npub = this.safeEncodeNpub(pubkey);
 
+      // Pre-calculate Keys & URLs to support WebSeeding
+      // We need the Public URL *before* we generate the torrent so we can embed it.
+      let videoKey = "";
+      let videoPublicUrl = "";
+      let torrentKey = "";
+      let torrentPublicUrl = "";
+
+      try {
+          // Temporarily grab current bucket settings to calculate URL
+          const bucketName = this.inputs.r2BucketName?.value || sanitizeBucketName(npub);
+          // Note: The actual upload might re-verify this, but we need a best-guess for the torrent.
+          // We rely on r2Service using the *same* logic or accepting our forced keys.
+          // Since we can't easily get the 'final' bucket config here without doing the 'ensureBucket' dance first,
+          // we'll do a lightweight check of the settings form.
+          const currentSettings = this.collectSettingsForm();
+          if (!currentSettings.baseDomain) {
+              throw new Error("Missing Public URL (Base Domain) in settings.");
+          }
+
+          videoKey = buildR2Key(npub, file);
+          // 'buildPublicUrl' logic: ${baseDomain}/${key}
+          videoPublicUrl = buildPublicUrl(currentSettings.baseDomain, videoKey);
+
+          // For the torrent file, we swap extension
+          const baseKey = videoKey.replace(/\.[^/.]+$/, "");
+          torrentKey = (baseKey && baseKey !== videoKey) ? `${baseKey}.torrent` : `${videoKey}.torrent`;
+          torrentPublicUrl = buildPublicUrl(currentSettings.baseDomain, torrentKey);
+
+      } catch (prepErr) {
+          userLogger.warn("Failed to pre-calculate R2 keys:", prepErr);
+          // We continue, but WebSeed generation will fail or be skipped.
+      }
+
       // 1. Calculate Torrent Info Hash (Client-side)
       this.isUploading = true;
       this.submitButton.disabled = true;
@@ -669,7 +703,10 @@ export class UploadModal {
       let infoHash = "";
       let torrentFile = null;
       try {
-          const torrentMetadata = await createTorrentMetadata(file);
+          // Pass the pre-calculated video URL as a WebSeed
+          const urlList = videoPublicUrl ? [videoPublicUrl] : [];
+          const torrentMetadata = await createTorrentMetadata(file, urlList);
+
           infoHash = torrentMetadata?.infoHash || "";
           if (torrentMetadata?.torrentFile) {
               const baseName = file.name.replace(/\.[^/.]+$/, "") || file.name;
@@ -715,6 +752,11 @@ export class UploadModal {
           settingsInput: this.collectSettingsForm(),
           publishVideoNote: this.publishVideoNote,
           onReset: () => this.resetForm(),
+          // Pass forced keys/URLs to ensure what's in the torrent matches where we upload
+          forcedVideoKey: videoKey,
+          forcedVideoUrl: videoPublicUrl,
+          forcedTorrentKey: torrentKey,
+          forcedTorrentUrl: torrentPublicUrl,
       });
   }
 
