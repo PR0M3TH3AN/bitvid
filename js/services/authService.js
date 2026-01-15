@@ -500,6 +500,35 @@ export default class AuthService {
       }
     }
 
+    if (control && typeof control.canAccess === "function") {
+      let canAccess = true;
+      try {
+        canAccess = control.canAccess(candidateNpub || nextPubkey);
+      } catch (error) {
+        this.log("[AuthService] accessControl.canAccess threw", error);
+        canAccess = Boolean(canAccess);
+      }
+
+      if (!canAccess) {
+        let isBlocked = false;
+        if (typeof control.isBlacklisted === "function") {
+          try {
+            isBlocked = control.isBlacklisted(candidateNpub || nextPubkey);
+          } catch (error) {
+            this.log("[AuthService] accessControl.isBlacklisted threw", error);
+            isBlocked = false;
+          }
+        }
+
+        const accessError = new Error(
+          isBlocked
+            ? "Your account has been blocked on this platform."
+            : "Access restricted to admins and moderators users only.",
+        );
+        throw accessError;
+      }
+    }
+
     if (normalized) {
       setPubkey(normalized);
       if (this.nostrClient && typeof this.nostrClient === "object") {
