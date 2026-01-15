@@ -287,6 +287,9 @@ export default class LoginModalController {
     this.nextRequestLoginOptionsResolver = null;
     this.pendingTask = null;
     this.modalPrepared = false;
+    this.generatedKeypair = null;
+    this.modalCloseObserver = null;
+    this.modalCloseIntervalId = null;
 
     this.initializeRemoteSignerStatus();
     this.initialized = false;
@@ -310,6 +313,7 @@ export default class LoginModalController {
     this.template = this.resolveTemplate();
 
     this.renderProviders();
+    this.initializeModalCloseTracking();
 
     if (typeof this.lastRemoteSignerStatus !== "undefined") {
       this.applyRemoteSignerStatus(this.lastRemoteSignerStatus);
@@ -317,6 +321,53 @@ export default class LoginModalController {
 
     this.providerContainer.addEventListener("click", this.boundClickHandler);
     this.initialized = true;
+  }
+
+  initializeModalCloseTracking() {
+    const modal = this.modalElement;
+    if (!(modal instanceof HTMLElement)) {
+      return;
+    }
+
+    const handleClose = () => {
+      if (!this.isModalOpen()) {
+        this.resetGeneratedKeypair();
+      }
+    };
+
+    if (typeof MutationObserver === "function") {
+      if (this.modalCloseObserver) {
+        return;
+      }
+      try {
+        const observer = new MutationObserver(handleClose);
+        observer.observe(modal, {
+          attributes: true,
+          attributeFilter: ["data-open", "class"],
+        });
+        this.modalCloseObserver = observer;
+        return;
+      } catch (error) {
+        devLogger.warn(
+          "[LoginModalController] Failed to observe login modal close state:",
+          error,
+        );
+      }
+    }
+
+    if (
+      this.modalCloseIntervalId ||
+      !this.window ||
+      typeof this.window.setInterval !== "function"
+    ) {
+      return;
+    }
+
+    this.modalCloseIntervalId = this.window.setInterval(handleClose, 500);
+  }
+
+  resetGeneratedKeypair() {
+    this.generatedKeypair = null;
   }
 
   ensureModalPrepared() {
@@ -339,6 +390,7 @@ export default class LoginModalController {
     }
 
     this.modalPrepared = true;
+    this.initializeModalCloseTracking();
     return this.modalElement instanceof HTMLElement ? this.modalElement : null;
   }
 
@@ -1636,12 +1688,25 @@ export default class LoginModalController {
       return null;
     }
 
-    // Generate keys
-    const sk = tools.generateSecretKey();
-    const pk = tools.getPublicKey(sk);
-    const npub = tools.nip19?.npubEncode ? tools.nip19.npubEncode(pk) : pk;
-    const nsec = tools.nip19?.nsecEncode ? tools.nip19.nsecEncode(sk) : "";
-    const hexSk = nsec ? nsec : tools.nip19?.bytesToHex ? tools.nip19.bytesToHex(sk) : ""; // Fallback if nsecEncode missing? unlikely with recent tools
+    if (!this.generatedKeypair) {
+      const sk = tools.generateSecretKey();
+      const pk = tools.getPublicKey(sk);
+      const npub = tools.nip19?.npubEncode ? tools.nip19.npubEncode(pk) : pk;
+      const nsec = tools.nip19?.nsecEncode ? tools.nip19.nsecEncode(sk) : "";
+      const hexSk = nsec
+        ? nsec
+        : tools.nip19?.bytesToHex
+        ? tools.nip19.bytesToHex(sk)
+        : "";
+      this.generatedKeypair = {
+        npub,
+        nsec,
+        hexSk,
+        pubkey: pk,
+      };
+    }
+
+    const { npub, nsec, hexSk } = this.generatedKeypair;
 
     // Display keys
     if (npubEl) npubEl.textContent = npub;
@@ -1695,6 +1760,34 @@ export default class LoginModalController {
 
       if (loginBtn) {
         loginBtn.addEventListener("click", () => {
+          const accessControl = this.services?.authService?.accessControl;
+          if (accessControl && typeof accessControl.canAccess === "function") {
+            let canAccess = true;
+            try {
+              canAccess = accessControl.canAccess(npub);
+            } catch (error) {
+              devLogger.warn(
+                "[LoginModalController] accessControl.canAccess threw:",
+                error,
+              );
+              canAccess = Boolean(canAccess);
+            }
+
+            if (!canAccess && typeof accessControl.whitelistMode === "function") {
+              const isWhitelistMode = accessControl.whitelistMode();
+              if (isWhitelistMode) {
+                const accessError = new Error(
+                  "Access restricted to admins and moderators users only.",
+                );
+                safeInvoke(this.callbacks.onLoginError, {
+                  message: accessError.message,
+                  error: accessError,
+                });
+                return;
+              }
+            }
+          }
+
           // Return credentials compatible with nsec provider
           finish({ secret: nsec || hexSk, persist: false });
         });
