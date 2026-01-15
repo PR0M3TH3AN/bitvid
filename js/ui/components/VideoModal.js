@@ -2607,13 +2607,22 @@ export class VideoModal {
         video?.torrentSupported
     );
 
-    if (hasUrl && hasMagnet) {
+    if (hasUrl || hasMagnet) {
       this.sourceToggleContainer.removeAttribute("hidden");
       this.sourceToggleContainer.classList.remove("hidden");
     } else {
       this.sourceToggleContainer.setAttribute("hidden", "");
       this.sourceToggleContainer.classList.add("hidden");
     }
+
+    this.sourceToggleButtons.forEach((btn) => {
+      const mode = btn.dataset.sourceToggle;
+      if (mode === "url") {
+        btn.disabled = !hasUrl;
+      } else if (mode === "torrent") {
+        btn.disabled = !hasMagnet;
+      }
+    });
 
     if (this.activeServersLabel) {
       const count = hasUrl ? 1 : 0;
@@ -2749,6 +2758,7 @@ export class VideoModal {
     }
     this.setGlobalModalState("player", true);
     this.applyLoadingPoster();
+    this.updateSourceAvailability(this.activeVideo);
     this.refreshActiveVideoModeration({ video: this.activeVideo });
   }
 
