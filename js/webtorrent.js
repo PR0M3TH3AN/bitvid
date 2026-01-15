@@ -232,10 +232,8 @@ export class TorrentClient {
             ? performance.now()
             : Date.now();
 
-        const isHealthy = Boolean(overrides.healthy) || hasWebSeed;
-        const peersCount =
-          (Number.isFinite(overrides.peers) ? overrides.peers : 0) ||
-          (hasWebSeed ? 1 : 0);
+        const isHealthy = Boolean(overrides.healthy);
+        const peersCount = Number.isFinite(overrides.peers) ? overrides.peers : 0;
 
         resolve({
           healthy: isHealthy,
@@ -255,15 +253,6 @@ export class TorrentClient {
           maxWebConns: safeMaxWebConns,
         });
       } catch (err) {
-        // If we have a webseed, we can consider it healthy even if adding fails (unlikely, but safe)
-        if (hasWebSeed) {
-          finalize({
-            healthy: true,
-            peers: 1,
-            reason: "peer",
-          });
-          return;
-        }
         finalize({
           reason: "error",
           error: toError(err),
@@ -281,25 +270,21 @@ export class TorrentClient {
 
       torrent.once("error", (err) => {
         const peers = Math.max(0, Math.floor(normalizeNumber(torrent?.numPeers, 0)));
-        // If webseed exists, ignore error and report healthy
-        if (hasWebSeed) {
-          finalize({ healthy: true, peers: Math.max(1, peers), reason: "peer" });
-        } else {
-          finalize({
-            healthy: false,
-            reason: "error",
-            error: toError(err),
-            peers,
-          });
-        }
+        finalize({
+          healthy: false,
+          reason: "error",
+          error: toError(err),
+          peers,
+        });
       });
 
       if (safeTimeout > 0) {
         timeoutId = setTimeout(() => {
           const peers = Math.max(0, Math.floor(normalizeNumber(torrent?.numPeers, 0)));
           finalize({
-            healthy: hasWebSeed,
-            peers: hasWebSeed ? Math.max(1, peers) : peers,
+            healthy: false,
+            peers,
+            reason: "timeout",
           });
         }, safeTimeout);
       }
