@@ -31,6 +31,15 @@ import {
 } from "./videoNotePayload.js";
 
 const STATUS_VARIANTS = new Set(["info", "success", "error", "warning"]);
+const INFO_HASH_PATTERN = /^[a-f0-9]{40}$/;
+
+function normalizeInfoHash(value) {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function isValidInfoHash(value) {
+  return INFO_HASH_PATTERN.test(value);
+}
 
 function createDefaultSettings() {
   return {
@@ -187,10 +196,10 @@ class R2Service {
       primaryVariant.m = mimeType;
     }
 
-    const normalizedHash =
-      typeof infoHash === "string" ? infoHash.trim().toLowerCase() : "";
+    const normalizedHash = normalizeInfoHash(infoHash);
     if (
       normalizedHash &&
+      isValidInfoHash(normalizedHash) &&
       (!primaryVariant.x || !String(primaryVariant.x).trim())
     ) {
       primaryVariant.x = normalizedHash;
@@ -705,14 +714,27 @@ class R2Service {
       } else {
         // Construct the Magnet Link
         // magnet:?xt=urn:btih:<infoHash>&dn=<filename>&ws=<publicUrl>
+        const normalizedInfoHash = normalizeInfoHash(infoHash);
+        const hasValidInfoHash = isValidInfoHash(normalizedInfoHash);
         let generatedMagnet = "";
         let generatedWs = "";
 
-        if (infoHash) {
-             const encodedDn = encodeURIComponent(file.name);
-             const encodedWs = encodeURIComponent(publicUrl);
-             generatedMagnet = `magnet:?xt=urn:btih:${infoHash}&dn=${encodedDn}&ws=${encodedWs}`;
-             generatedWs = publicUrl;
+        if (hasValidInfoHash) {
+          const encodedDn = encodeURIComponent(file.name);
+          const encodedWs = encodeURIComponent(publicUrl);
+          generatedMagnet = `magnet:?xt=urn:btih:${normalizedInfoHash}&dn=${encodedDn}&ws=${encodedWs}`;
+          generatedWs = publicUrl;
+        } else {
+          if (infoHash) {
+            userLogger.warn(
+              "Invalid info hash provided. Skipping magnet and webseed generation.",
+              infoHash
+            );
+          }
+          this.setCloudflareUploadStatus(
+            "Info hash missing or invalid. Publishing URL-first without WebTorrent fallback.",
+            "warning"
+          );
         }
 
         const rawVideoPayload = {
@@ -731,7 +753,7 @@ class R2Service {
         const mergedNip71 = this.buildNip71MetadataForUpload(metadata?.nip71, {
           publicUrl,
           file,
-          infoHash,
+          infoHash: hasValidInfoHash ? normalizedInfoHash : "",
         });
         if (mergedNip71 && Object.keys(mergedNip71).length) {
           rawVideoPayload.nip71 = mergedNip71;

@@ -209,12 +209,12 @@
                  <div class="space-y-2">
                     <label for="input-url" class="block text-sm font-medium text-text">Video URL</label>
                     <input id="input-url" type="url" class="input" placeholder="https://example.com/video.mp4" />
-                    <p class="text-xs text-muted">Direct link to a hosted video file.</p>
+                    <p class="text-xs text-muted">Primary hosted video source (URL-first playback).</p>
                 </div>
                  <div class="space-y-2">
                     <label for="input-magnet" class="block text-sm font-medium text-text">Magnet Link</label>
                     <input id="input-magnet" type="text" class="input" placeholder="magnet:?xt=urn:btih:..." />
-                    <p class="text-xs text-muted">Optional P2P fallback or primary source.</p>
+                    <p class="text-xs text-muted">Optional WebTorrent fallback when the URL is unavailable.</p>
                 </div>
             </div>
 
