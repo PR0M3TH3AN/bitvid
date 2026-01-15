@@ -400,18 +400,41 @@ class Application {
             if (!source) {
               return;
             }
-            if (this.currentVideo) {
-              this.playVideoWithFallback({
-                url: this.currentVideo.url,
-                magnet: this.currentVideo.magnet,
-                forcedSource: source,
-              }).catch((error) => {
-                devLogger.warn(
-                  "[app] Failed to switch playback source:",
-                  error,
-                );
-              });
+            const modalVideo = detail?.video || null;
+            const fallbackVideo = this.currentVideo || null;
+            const video = {
+              ...(fallbackVideo || {}),
+              ...(modalVideo || {}),
+            };
+
+            if (!modalVideo && !fallbackVideo) {
+              devLogger.warn("[app] Playback source switch missing video data.");
+              return;
             }
+
+            const magnetAvailable =
+              typeof video.magnet === "string" && video.magnet.trim();
+
+            if (source === "torrent" && !magnetAvailable) {
+              userLogger.warn(
+                "[app] Unable to switch to torrent playback: missing magnet.",
+              );
+              this.showError(
+                "Torrent playback is unavailable for this video. No magnet was provided.",
+              );
+              return;
+            }
+
+            this.playVideoWithFallback({
+              url: video.url,
+              magnet: video.magnet,
+              forcedSource: source,
+            }).catch((error) => {
+              devLogger.warn(
+                "[app] Failed to switch playback source:",
+                error,
+              );
+            });
           });
         }
       });
