@@ -2,6 +2,7 @@ import { normalizeDesignSystemContext } from "../../designSystem.js";
 import { updateVideoCardSourceVisibility } from "../../utils/cardSourceVisibility.js";
 import { sanitizeProfileMediaUrl } from "../../utils/profileMedia.js";
 import { userLogger } from "../../utils/logger.js";
+import { deriveTorrentPlaybackConfig } from "../../playbackUtils.js";
 import {
   applyModerationContextDatasets,
   getModerationOverrideActionLabels,
@@ -163,13 +164,21 @@ export class VideoCard {
     this.timestampEl = null;
 
     this.playbackUrl = typeof video.url === "string" ? video.url.trim() : "";
-    const magnet =
-      (typeof video.magnet === "string" ? video.magnet.trim() : "") ||
-      (typeof video.infoHash === "string" ? video.infoHash.trim() : "");
-    this.playbackMagnet = magnet;
-    this.magnetProvided = magnet.length > 0;
+    const rawMagnet =
+      typeof video.magnet === "string" ? video.magnet.trim() : "";
+    const rawInfoHash =
+      typeof video.infoHash === "string" ? video.infoHash.trim() : "";
+    const playbackConfig = deriveTorrentPlaybackConfig({
+      magnet: rawMagnet,
+      infoHash: rawInfoHash,
+      url: this.playbackUrl,
+    });
+    this.playbackMagnet = playbackConfig.magnet;
+    this.originalMagnetInput =
+      playbackConfig.originalInput || rawMagnet || rawInfoHash;
+    this.magnetProvided = playbackConfig.provided;
     this.magnetSupported = this.helpers.isMagnetSupported
-      ? this.helpers.isMagnetSupported(magnet)
+      ? this.helpers.isMagnetSupported(this.playbackMagnet)
       : false;
     this.showUnsupportedTorrentBadge =
       !this.playbackUrl && this.magnetProvided && !this.magnetSupported;
