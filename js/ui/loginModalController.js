@@ -271,12 +271,15 @@ export default class LoginModalController {
       this.modalElement?.querySelector("template[data-login-nsec-dialog]") || null;
     this.nip46Template =
       this.modalElement?.querySelector("template[data-login-nip46-dialog]") || null;
+    this.generateTemplate =
+      this.modalElement?.querySelector("template[data-login-generate-dialog]") || null;
     this.template = null;
     this.providerEntries = new Map();
     this.slowTimers = new Map();
     this.boundClickHandler = (event) => this.handleContainerClick(event);
     this.activeNsecForm = null;
     this.activeNip46Form = null;
+    this.activeGenerateView = null;
     this.pendingNip46Cleanup = null;
     this.remoteSignerUnsubscribe = null;
     this.lastRemoteSignerStatus = null;
@@ -1595,6 +1598,157 @@ export default class LoginModalController {
     });
   }
 
+  async promptForGenerateOptions() {
+    if (!this.modalBody || !this.generateTemplate) {
+      userLogger.warn("[LoginModalController] Account generation is unavailable.");
+      return null;
+    }
+
+    if (this.activeGenerateView) {
+      return null;
+    }
+
+    const fragment = this.generateTemplate.content
+      ? this.generateTemplate.content.cloneNode(true)
+      : null;
+    if (!fragment) {
+      return null;
+    }
+
+    const view = fragment.querySelector("[data-generate-view]");
+    if (!(view instanceof HTMLElement)) {
+      return null;
+    }
+
+    const npubEl = view.querySelector("[data-generate-npub]");
+    const nsecEl = view.querySelector("[data-generate-nsec]");
+    const copyNpubBtn = view.querySelector("[data-generate-copy-npub]");
+    const copyNsecBtn = view.querySelector("[data-generate-copy-nsec]");
+    const revealNsecBtn = view.querySelector("[data-generate-reveal-nsec]");
+    const downloadBtn = view.querySelector("[data-generate-download]");
+    const confirmCheckbox = view.querySelector("[data-generate-confirm]");
+    const loginBtn = view.querySelector("[data-generate-login]");
+    const cancelBtn = view.querySelector("[data-generate-cancel]");
+
+    const tools = this.window?.NostrTools;
+    if (!tools || typeof tools.generateSecretKey !== "function" || typeof tools.getPublicKey !== "function") {
+      userLogger.error("Key generation unavailable: NostrTools missing.");
+      return null;
+    }
+
+    // Generate keys
+    const sk = tools.generateSecretKey();
+    const pk = tools.getPublicKey(sk);
+    const npub = tools.nip19?.npubEncode ? tools.nip19.npubEncode(pk) : pk;
+    const nsec = tools.nip19?.nsecEncode ? tools.nip19.nsecEncode(sk) : "";
+    const hexSk = nsec ? nsec : tools.nip19?.bytesToHex ? tools.nip19.bytesToHex(sk) : ""; // Fallback if nsecEncode missing? unlikely with recent tools
+
+    // Display keys
+    if (npubEl) npubEl.textContent = npub;
+    if (nsecEl instanceof HTMLInputElement) nsecEl.value = nsec || "Error generating nsec";
+
+    const elementsToHide = [];
+    for (const child of Array.from(this.modalBody.children)) {
+      if (child instanceof HTMLElement && child !== view) {
+        if (child.tagName === "TEMPLATE") {
+          continue;
+        }
+        const wasHidden = child.classList.contains("hidden");
+        if (!wasHidden) {
+          child.classList.add("hidden");
+        }
+        elementsToHide.push({ element: child, wasHidden });
+      }
+    }
+
+    this.modalBody.appendChild(view);
+    this.activeGenerateView = view;
+
+    const cleanup = () => {
+      if (view.parentElement) {
+        view.parentElement.removeChild(view);
+      }
+      for (const entry of elementsToHide) {
+        if (!(entry?.element instanceof HTMLElement)) {
+          continue;
+        }
+        if (!entry.wasHidden) {
+          entry.element.classList.remove("hidden");
+        }
+      }
+      this.activeGenerateView = null;
+    };
+
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (detail) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(detail);
+      };
+
+      // Interactions
+      if (cancelBtn) {
+        cancelBtn.addEventListener("click", () => finish(null), { once: true });
+      }
+
+      if (loginBtn) {
+        loginBtn.addEventListener("click", () => {
+          // Return credentials compatible with nsec provider
+          finish({ secret: nsec || hexSk, persist: true });
+        });
+      }
+
+      if (confirmCheckbox) {
+        confirmCheckbox.addEventListener("change", (e) => {
+          if (loginBtn) loginBtn.disabled = !e.target.checked;
+        });
+      }
+
+      const copyToClipboard = async (text, btn) => {
+        if (!text) return;
+        try {
+          await navigator.clipboard.writeText(text);
+          // Optional: visual feedback could be added here
+        } catch (err) {
+          devLogger.warn("Failed to copy:", err);
+        }
+      };
+
+      if (copyNpubBtn) {
+        copyNpubBtn.addEventListener("click", () => copyToClipboard(npub, copyNpubBtn));
+      }
+
+      if (copyNsecBtn) {
+        copyNsecBtn.addEventListener("click", () => copyToClipboard(nsec, copyNsecBtn));
+      }
+
+      if (revealNsecBtn && nsecEl instanceof HTMLInputElement) {
+        revealNsecBtn.addEventListener("click", () => {
+          const isPassword = nsecEl.type === "password";
+          nsecEl.type = isPassword ? "text" : "password";
+          // Icon toggle logic could go here if icons were separate elements
+        });
+      }
+
+      if (downloadBtn) {
+        downloadBtn.addEventListener("click", () => {
+          const content = `Nostr Keys Backup\n\nPublic Key (npub): ${npub}\nSecret Key (nsec): ${nsec}\n\nKEEP YOUR NSEC PRIVATE AND SAFE!`;
+          const blob = new Blob([content], { type: "text/plain" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "nostr-keys.txt";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        });
+      }
+    });
+  }
+
   resolveTemplate() {
     if (!this.modalElement) {
       return null;
@@ -2033,6 +2187,32 @@ export default class LoginModalController {
       } catch (promptError) {
         devLogger.error(
           "[LoginModalController] Failed to collect remote signer connection:",
+          promptError,
+        );
+        return;
+      }
+    } else if (entry.provider.id === "generate") {
+      try {
+        const generateOptions = await this.promptForGenerateOptions();
+        if (!generateOptions) {
+          devLogger.log(
+            "[LoginModalController] Account generation cancelled by the user.",
+          );
+          if (entry.button instanceof HTMLButtonElement) {
+            entry.button.focus();
+          }
+          return;
+        }
+        providerOptions = generateOptions;
+        // Switch provider context to 'nsec' since we are logging in with a key
+        providerId = "nsec";
+        const nsecEntry = this.getProviderEntry("nsec");
+        if (nsecEntry) {
+          entry = nsecEntry;
+        }
+      } catch (promptError) {
+        devLogger.error(
+          "[LoginModalController] Failed to process account generation:",
           promptError,
         );
         return;
