@@ -719,18 +719,34 @@ class Application {
   }
 
   goToProfile(pubkey) {
-    if (!pubkey) {
+    if (typeof pubkey !== "string") {
       this.showError("No creator info available.");
       return;
     }
-    try {
-      const npub = window.NostrTools.nip19.npubEncode(pubkey);
-      // Switch to channel profile view
-      window.location.hash = `#view=channel-profile&npub=${npub}`;
-    } catch (err) {
-      devLogger.error("Failed to go to channel:", err);
-      this.showError("Could not open channel.");
+
+    let candidate = pubkey.trim();
+    if (!candidate) {
+      this.showError("No creator info available.");
+      return;
     }
+
+    if (candidate.startsWith("nostr:")) {
+      candidate = candidate.slice("nostr:".length);
+    }
+
+    const normalizedHex = this.normalizeHexPubkey(candidate);
+    const npub = normalizedHex ? this.safeEncodeNpub(normalizedHex) : null;
+
+    if (!npub) {
+      devLogger.warn(
+        "[Application] Invalid pubkey for profile navigation:",
+        candidate,
+      );
+      this.showError("Invalid creator profile.");
+      return;
+    }
+
+    window.location.hash = `#view=channel-profile&npub=${npub}`;
   }
 
   openCreatorChannel() {

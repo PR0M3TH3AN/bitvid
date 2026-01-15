@@ -198,9 +198,13 @@ export class EventDetailsModal {
         break;
       }
       case "open-channel": {
-        if (this.currentVideo.pubkey) {
+        const pubkey =
+          this.currentVideo && typeof this.currentVideo.pubkey === "string"
+            ? this.currentVideo.pubkey
+            : "";
+        if (pubkey) {
           this.close();
-          this.callbacks.openCreatorChannel(this.currentVideo.pubkey);
+          this.callbacks.openCreatorChannel(pubkey);
         }
         break;
       }
