@@ -400,18 +400,84 @@ class Application {
             if (!source) {
               return;
             }
-            if (this.currentVideo) {
-              this.playVideoWithFallback({
-                url: this.currentVideo.url,
-                magnet: this.currentVideo.magnet,
-                forcedSource: source,
-              }).catch((error) => {
-                devLogger.warn(
-                  "[app] Failed to switch playback source:",
-                  error,
-                );
-              });
+            const modalVideo = detail?.video || null;
+            const fallbackVideo = this.currentVideo || null;
+            const video = {
+              ...(fallbackVideo || {}),
+              ...(modalVideo || {}),
+            };
+            const urlCandidate =
+              typeof video.url === "string" ? video.url.trim() : "";
+            const magnetCandidate =
+              typeof video.magnet === "string" ? video.magnet.trim() : "";
+
+            if (!modalVideo && !fallbackVideo) {
+              devLogger.warn("[app] Playback source switch missing video data.");
+              return;
             }
+
+            const magnetAvailable = Boolean(magnetCandidate);
+            const cachedStreamHealth =
+              video?.id && this.streamHealthSnapshots instanceof Map
+                ? this.streamHealthSnapshots.get(video.id)
+                : null;
+            const cachedPeers = Number.isFinite(cachedStreamHealth?.peers)
+              ? cachedStreamHealth.peers
+              : null;
+            const hasActivePeers =
+              cachedPeers === null ? null : cachedPeers > 0;
+            const cachedUrlHealth =
+              video?.id && urlCandidate
+                ? this.getCachedUrlHealth(video.id, urlCandidate)
+                : null;
+            const cdnUnavailable =
+              !urlCandidate ||
+              ["offline", "timeout"].includes(cachedUrlHealth?.status);
+
+            if (source === "torrent" && !magnetAvailable) {
+              userLogger.warn(
+                "[app] Unable to switch to torrent playback: missing magnet.",
+              );
+              this.showError(
+                "Torrent playback is unavailable for this video. No magnet was provided.",
+              );
+              return;
+            }
+
+            if (source === "torrent" && hasActivePeers === false) {
+              userLogger.warn(
+                "[app] Unable to switch to torrent playback: no active peers.",
+              );
+              this.showError(
+                "Torrent playback is unavailable right now because there are no active peers.",
+              );
+              return;
+            }
+
+            if (source === "url" && cdnUnavailable) {
+              userLogger.warn(
+                "[app] Unable to switch to CDN playback: URL unavailable.",
+              );
+              this.showError(
+                "CDN playback is unavailable right now, staying on the torrent stream.",
+              );
+              return;
+            }
+
+            if (this.playSource && source === this.playSource) {
+              return;
+            }
+
+            this.playVideoWithFallback({
+              url: urlCandidate,
+              magnet: magnetCandidate,
+              forcedSource: source,
+            }).catch((error) => {
+              devLogger.warn(
+                "[app] Failed to switch playback source:",
+                error,
+              );
+            });
           });
         }
       });
