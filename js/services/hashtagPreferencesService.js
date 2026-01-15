@@ -430,9 +430,9 @@ class HashtagPreferencesService {
     if (!events.length) {
       // If we failed to fetch (network error) but already have data for this user,
       // preserve the existing state instead of wiping it.
-      if (fetchError && wasLoadedForUser) {
+      if (wasLoadedForUser) {
         userLogger.warn(
-          `${LOG_PREFIX} Keeping existing preferences after fetch error.`,
+          `${LOG_PREFIX} Keeping existing preferences despite empty relay response.`,
         );
         return;
       }
@@ -470,11 +470,21 @@ class HashtagPreferencesService {
     }, null);
 
     if (!latest) {
-      if (fetchError && wasLoadedForUser) {
+      if (wasLoadedForUser) {
         return;
       }
       this.reset();
       this.loaded = true;
+      return;
+    }
+
+    const currentCreatedAt = Number(this.eventCreatedAt) || 0;
+    const latestCreatedAt = Number(latest.created_at) || 0;
+
+    if (wasLoadedForUser && currentCreatedAt > latestCreatedAt) {
+      userLogger.warn(
+        `${LOG_PREFIX} Ignoring stale preferences event (remote: ${latestCreatedAt}, local: ${currentCreatedAt}).`,
+      );
       return;
     }
 
