@@ -7,7 +7,7 @@ import {
   normalizeVideoNotePayload,
   VIDEO_NOTE_ERROR_CODES,
 } from "../../services/videoNotePayload.js";
-import { calculateTorrentInfoHash } from "../../utils/torrentHash.js";
+import { createTorrentMetadata } from "../../utils/torrentHash.js";
 import { sanitizeBucketName } from "../../storage/r2-mgmt.js";
 
 export class UploadModal {
@@ -657,14 +657,18 @@ export class UploadModal {
       this.updateProgress(0); // Show bar at 0
 
       let infoHash = "";
+      let torrentFile = null;
       try {
-          infoHash = await calculateTorrentInfoHash(file);
+          const torrentMetadata = await createTorrentMetadata(file);
+          infoHash = torrentMetadata?.infoHash || "";
+          if (torrentMetadata?.torrentFile) {
+              const baseName = file.name.replace(/\.[^/.]+$/, "") || file.name;
+              torrentFile = new File([torrentMetadata.torrentFile], `${baseName}.torrent`, {
+                  type: "application/x-bittorrent",
+              });
+          }
       } catch (hashErr) {
           userLogger.warn("Failed to calculate info hash:", hashErr);
-          // We can proceed without it, or fail. The plan says we need it.
-          // Let's warn but proceed? Or fail? The user said "Also lets not forget that we calculate a torrent hash".
-          // I will proceed but log it, maybe the upload handles it gracefully (missing magnet).
-          // But passing empty infoHash means no magnet link generated in R2Service.
       }
 
       // 2. Upload
@@ -672,6 +676,7 @@ export class UploadModal {
           npub,
           file,
           thumbnailFile,
+          torrentFile,
           metadata,
           infoHash,
           settingsInput: this.collectSettingsForm(),
