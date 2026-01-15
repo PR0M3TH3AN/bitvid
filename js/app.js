@@ -390,6 +390,30 @@ class Application {
         if (modalRoot) {
           this.attachMoreMenuHandlers(modalRoot);
         }
+        if (
+          this.videoModal &&
+          typeof this.videoModal.addEventListener === "function"
+        ) {
+          this.videoModal.addEventListener("playback:switch-source", (event) => {
+            const detail = event?.detail || {};
+            const { source } = detail;
+            if (!source) {
+              return;
+            }
+            if (this.currentVideo) {
+              this.playVideoWithFallback({
+                url: this.currentVideo.url,
+                magnet: this.currentVideo.magnet,
+                forcedSource: source,
+              }).catch((error) => {
+                devLogger.warn(
+                  "[app] Failed to switch playback source:",
+                  error,
+                );
+              });
+            }
+          });
+        }
       });
 
       const uploadModalPromise = this.uploadModal
@@ -8209,7 +8233,7 @@ class Application {
    * and falls back to WebTorrent when needed.
    */
   async playVideoWithFallback(options = {}) {
-    const { url = "", magnet = "", trigger } = options || {};
+    const { url = "", magnet = "", trigger, forcedSource } = options || {};
     const hasTrigger = Object.prototype.hasOwnProperty.call(
       options || {},
       "trigger"
@@ -8223,6 +8247,7 @@ class Application {
     const requestSignature = JSON.stringify({
       url: sanitizedUrl,
       magnet: trimmedMagnet,
+      forcedSource,
     });
 
     const modalVideoIsConnected = (() => {
@@ -8374,6 +8399,7 @@ class Application {
         this.playViaWebTorrent(magnetUri, options),
       autoplay: () => this.autoplayModalVideo(),
       unsupportedBtihMessage: UNSUPPORTED_BTITH_MESSAGE,
+      forcedSource,
     });
 
     this.activePlaybackSession = session;

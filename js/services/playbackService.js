@@ -409,6 +409,7 @@ class PlaybackSession extends SimpleEventEmitter {
       playViaWebTorrent,
       autoplay,
       unsupportedBtihMessage = DEFAULT_UNSUPPORTED_BTITH_MESSAGE,
+      forcedSource = null,
     } = this.options;
 
     this.result = { source: null };
@@ -555,7 +556,11 @@ class PlaybackSession extends SimpleEventEmitter {
         return torrentInstance;
       };
 
-      if (this.service.urlFirstEnabled && httpsUrl) {
+      if (
+        this.service.urlFirstEnabled &&
+        httpsUrl &&
+        forcedSource !== "torrent"
+      ) {
         this.emit("status", { message: "Checking hosted URL..." });
         this.service.log(
           `[playVideoWithFallback] Probing hosted URL ${httpsUrl} (readyState=${activeVideoEl.readyState} networkState=${activeVideoEl.networkState}).`
