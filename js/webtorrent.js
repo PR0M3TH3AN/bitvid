@@ -1,5 +1,23 @@
 //js/webtorrent.js
 
+/**
+ * js/webtorrent.js
+ *
+ * This module wraps the WebTorrent client and manages the Service Worker integration.
+ * It is responsible for the "Torrent" half of the playback strategy.
+ *
+ * Key Responsibilities:
+ * - Singleton WebTorrent client: It ensures we reuse a single client instance to
+ *   avoid resource leaks and connection churn.
+ * - Service Worker Registration: It registers and manages `/sw.min.js`. This is critical
+ *   because WebTorrent in the browser streams data via a Service Worker "proxy" that
+ *   intercepts HTTP requests from the <video> element and serves bytes fetched from peers.
+ * - "Claim" Logic: It handles the complex dance of ensuring the Service Worker has
+ *   active control over the page (clients.claim) before attempting to stream, fixing
+ *   common "grey screen" regressions on page reload.
+ * - Browser Quirks: It handles Brave/Firefox specific logic.
+ */
+
 import WebTorrent from "./webtorrent.min.js";
 import { WSS_TRACKERS } from "./constants.js";
 import { safeDecodeURIComponent } from "./utils/safeDecode.js";
@@ -151,6 +169,10 @@ export class TorrentClient {
     return this.probeClient;
   }
 
+  /**
+   * Helper to check if a magnet link has active peers without starting a full
+   * download. Used for "Stream Health" badges/indicators in the UI.
+   */
   async probePeers(
     magnetURI,
     { timeoutMs = 8000, maxWebConns = 2, polls = 3 } = {}
@@ -837,6 +859,7 @@ export class TorrentClient {
         !!(initResult?.serviceWorkerReady && this.swRegistration);
 
       // 2) Create the server once if not already created.
+      // This "server" is the bridge that feeds the Service Worker.
       if (serviceWorkerReady && !this.serverCreated) {
         this.client.createServer({
           controller: this.swRegistration,
