@@ -1,3 +1,21 @@
+/**
+ * js/services/r2Service.js
+ *
+ * Service responsible for managing Cloudflare R2 uploads and configuration.
+ *
+ * Key Responsibilities:
+ * - Managing user R2 credentials and bucket settings.
+ * - performing S3-compatible multipart uploads (via `js/storage/r2-s3.js`).
+ * - Orchestrating the "Hybrid" video hosting strategy:
+ *   1. Videos are uploaded to R2 (S3) for reliable direct hosting.
+ *   2. A `.torrent` file is generated and uploaded alongside the video.
+ *   3. The final Magnet URI embeds the R2 URL as a "WebSeed" (`ws=`) and the
+ *      torrent file as a metadata source (`xs=`).
+ *
+ * This allows clients to stream directly from R2 (fast, reliable) while simultaneously
+ * joining the P2P swarm. If R2 bandwidth runs out or the link breaks, the swarm takes over.
+ */
+
 import {
   loadR2Settings,
   saveR2Settings,
@@ -352,6 +370,19 @@ class R2Service {
     return Array.from(origins);
   }
 
+  /**
+   * Ensures that the R2 bucket for the given user (npub) is properly configured.
+   *
+   * This method performs several critical setup steps:
+   * 1. Derives a sanitized bucket name from the npub.
+   * 2. Attempts to auto-create the bucket and apply CORS rules if the provided
+   *    credentials allow it (requires Admin/Edit permissions).
+   * 3. Syncs the bucket configuration with the local settings store, ensuring
+   *    the `publicBaseUrl` matches the user's base domain setting.
+   *
+   * @param {string} npub - The user's Nostr public key (npub).
+   * @returns {Promise<object>} The bucket configuration entry and status.
+   */
   async ensureBucketConfigForNpub(npub) {
     if (!npub || !this.cloudflareSettings) {
       return null;
@@ -440,6 +471,21 @@ class R2Service {
     };
   }
 
+  /**
+   * Verifies that the configured R2 bucket is publicly accessible and supports CORS.
+   *
+   * Strategy: "Upload-then-Fetch"
+   * 1. Uploads a small temporary text file to the bucket using the S3 API.
+   * 2. Attempts to fetch that file via the configured Public URL using `fetch()`.
+   *
+   * Why this matters:
+   * - Confirms the `publicBaseUrl` is correct and pointing to this bucket.
+   * - Confirms the bucket allows public reads.
+   * - Confirms CORS is configured to allow GET requests from this web origin.
+   *
+   * @param {object} params
+   * @returns {Promise<{success: boolean, error?: string}>}
+   */
   async verifyPublicAccess({ settings, npub }) {
     if (!settings || !npub) {
       return { success: false, error: "Missing settings or npub." };
@@ -541,6 +587,24 @@ class R2Service {
      return;
   }
 
+  /**
+   * Orchestrates the entire video upload workflow.
+   *
+   * This is the "Grand Central Station" of the upload feature. It handles:
+   * 1. **Validation**: Checks inputs, credentials, and file types.
+   * 2. **Bucket Setup**: Ensures the destination R2 bucket exists and is configured.
+   * 3. **Multipart Uploads**: Uploads the Thumbnail, Video File, and Torrent Metadata
+   *    to R2 in parallel/sequence using the S3 Multipart API.
+   * 4. **Magnet Construction**: Generates a specialized Magnet URI that includes:
+   *    - `xt`: The Info Hash (standard).
+   *    - `ws`: The WebSeed URL (direct HTTP link to the video on R2).
+   *    - `xs`: The Exact Source URL (link to the .torrent file on R2).
+   *    This `ws` + `xs` combo enables the "Hybrid" playback strategy (URL-first, P2P fallback).
+   * 5. **Publishing**: Constructs and signs the Nostr video event (Kind 30078).
+   *
+   * @param {object} params - Upload parameters.
+   * @returns {Promise<boolean>} True if successful.
+   */
   async handleCloudflareUploadSubmit({
     npub = "",
     file = null,
@@ -722,7 +786,13 @@ class R2Service {
         publishOutcome = false;
       } else {
         // Construct the Magnet Link
-        // magnet:?xt=urn:btih:<infoHash>&dn=<filename>&ws=<publicUrl>
+        // This is critical for the hybrid player:
+        // - `xt`: The Info Hash, identifying the content in the DHT.
+        // - `ws` (WebSeed): The direct R2 URL. WebTorrent clients use this to "seed"
+        //   the download via HTTP, ensuring high speed and reliability even with 0 peers.
+        // - `xs` (eXact Source): The URL to the .torrent file on R2. This allows
+        //   clients to fetch metadata (file structure, piece hashes) instantly via HTTP
+        //   instead of waiting to fetch it from the DHT (which can take minutes).
         const normalizedInfoHash = normalizeInfoHash(infoHash);
         const hasValidInfoHash = isValidInfoHash(normalizedInfoHash);
         let generatedMagnet = "";
@@ -733,6 +803,8 @@ class R2Service {
           const encodedWs = encodeURIComponent(publicUrl);
           let magnet = `magnet:?xt=urn:btih:${normalizedInfoHash}&dn=${encodedDn}&ws=${encodedWs}`;
 
+          // Append the xs (metadata) link if available. This significantly speeds up
+          // the "time to first frame" for P2P clients.
           if (torrentUrl) {
             const encodedXs = encodeURIComponent(torrentUrl);
             magnet += `&xs=${encodedXs}`;
