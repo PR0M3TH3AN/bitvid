@@ -2168,9 +2168,16 @@ export class VideoCard {
     }
   }
 
-  buildTorrentTooltip({ peers = null, checkedAt = null, reason = null } = {}) {
+  buildTorrentTooltip({
+    peers = null,
+    checkedAt = null,
+    reason = null,
+    webseedOnly = false,
+  } = {}) {
     const parts = [];
-    if (Number.isFinite(peers)) {
+    if (webseedOnly) {
+      parts.push("Webseed only");
+    } else if (Number.isFinite(peers)) {
       parts.push(`Peers: ${Math.max(0, Number(peers))}`);
     }
     if (Number.isFinite(checkedAt)) {
@@ -2255,6 +2262,7 @@ export class VideoCard {
       : null;
     const reason =
       typeof entry?.reason === "string" && entry.reason ? entry.reason : null;
+    const webseedOnly = Boolean(entry?.webseedOnly);
     const text =
       typeof entry?.text === "string" && entry.text ? entry.text : null;
     const tooltip =
@@ -2318,7 +2326,8 @@ export class VideoCard {
             checkedAt: Number.isFinite(entry?.checkedAt)
               ? entry.checkedAt
               : null,
-            reason
+            reason,
+            webseedOnly,
           }));
 
     badge.setAttribute("aria-label", tooltipValue);

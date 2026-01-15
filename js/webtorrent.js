@@ -257,6 +257,7 @@ export class TorrentClient {
           reason: "error",
           error: toError(err),
           peers: 0,
+          webseedOnly: hasWebSeed,
         });
         return;
       }
@@ -275,6 +276,7 @@ export class TorrentClient {
           reason: "error",
           error: toError(err),
           peers,
+          webseedOnly: peers === 0 && hasWebSeed,
         });
       });
 
@@ -285,6 +287,7 @@ export class TorrentClient {
             healthy: false,
             peers,
             reason: "timeout",
+            webseedOnly: peers === 0 && hasWebSeed,
           });
         }, safeTimeout);
       }

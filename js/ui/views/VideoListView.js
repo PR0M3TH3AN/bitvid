@@ -1040,6 +1040,9 @@ export class VideoListView {
     if (Number.isFinite(entry.peers)) {
       normalized.peers = Math.max(0, Number(entry.peers));
     }
+    if (typeof entry.webseedOnly === "boolean") {
+      normalized.webseedOnly = entry.webseedOnly;
+    }
     if (typeof entry.reason === "string" && entry.reason) {
       normalized.reason = entry.reason;
     }
