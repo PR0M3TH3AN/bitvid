@@ -536,6 +536,7 @@ class R2Service {
     npub = "",
     file = null,
     thumbnailFile = null,
+    torrentFile = null,
     metadata = {},
     infoHash = "",
     settingsInput = null,
@@ -630,6 +631,13 @@ class R2Service {
 
     const key = buildR2Key(npub, file);
     const publicUrl = buildPublicUrl(bucketEntry.publicBaseUrl, key);
+    const buildTorrentKey = () => {
+      const baseKey = key.replace(/\.[^/.]+$/, "");
+      if (baseKey && baseKey !== key) {
+        return `${baseKey}.torrent`;
+      }
+      return `${key}.torrent`;
+    };
 
     try {
       const s3 = makeR2Client({ accountId, accessKeyId, secretAccessKey });
@@ -670,6 +678,24 @@ class R2Service {
       });
 
       let publishOutcome = true;
+      let torrentUrl = "";
+
+      if (torrentFile) {
+        this.setCloudflareUploadStatus("Uploading torrent metadata...", "info");
+        const torrentKey = buildTorrentKey();
+        try {
+          await multipartUpload({
+            s3,
+            bucket: bucketEntry.bucket,
+            key: torrentKey,
+            file: torrentFile,
+            contentType: "application/x-bittorrent",
+          });
+          torrentUrl = buildPublicUrl(bucketEntry.publicBaseUrl, torrentKey);
+        } catch (err) {
+          userLogger.warn("Torrent metadata upload failed, continuing...", err);
+        }
+      }
 
       if (typeof publishVideoNote !== "function") {
         userLogger.warn(
@@ -696,7 +722,7 @@ class R2Service {
           thumbnail: metadata?.thumbnail ?? "",
           description: metadata?.description ?? "",
           ws: generatedWs || (metadata?.ws ?? ""),
-          xs: metadata?.xs ?? "",
+          xs: torrentUrl || (metadata?.xs ?? ""),
           enableComments: metadata?.enableComments,
           isNsfw: metadata?.isNsfw,
           isForKids: metadata?.isForKids,
