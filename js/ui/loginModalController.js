@@ -1696,7 +1696,7 @@ export default class LoginModalController {
       if (loginBtn) {
         loginBtn.addEventListener("click", () => {
           // Return credentials compatible with nsec provider
-          finish({ secret: nsec || hexSk, persist: true });
+          finish({ secret: nsec || hexSk, persist: false });
         });
       }
 
