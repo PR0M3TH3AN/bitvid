@@ -1,0 +1,3549 @@
+
+> bitvid@1.0.0 test:unit
+> node scripts/run-unit-tests.mjs
+
+
+→ Running tests/app-batch-fetch-profiles.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+[batchFetchProfiles] Failed to fetch profiles from relay wss://fail.example: Error: relay timed out
+    at Object.list (file:///app/tests/app-batch-fetch-profiles.test.mjs:80:31)
+    at file:///app/js/utils/profileBatchFetcher.js:115:10
+    at Array.map (<anonymous>)
+    at batchFetchProfilesFromRelays (file:///app/js/utils/profileBatchFetcher.js:112:75)
+    at TestContext.<anonymous> (file:///app/tests/app-batch-fetch-profiles.test.mjs:87:11)
+    at Test.runInAsyncScope (node:async_hooks:214:14)
+    at Test.run (node:internal/test_runner/test:1047:25)
+    at Test.start (node:internal/test_runner/test:944:17)
+    at startSubtestAfterBootstrap (node:internal/test_runner/harness:296:17)
+TAP version 13
+# Subtest: batchFetchProfiles handles fast and failing relays
+ok 1 - batchFetchProfiles handles fast and failing relays
+  ---
+  duration_ms: 3.663901
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 14.485961
+
+→ Running tests/app/channel-profile-moderation.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+[feedEngine/moderation] metadata.moderation updated {
+  stage: 'moderation',
+  videoId: 'vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv',
+  blockAutoplay: true,
+  blurThumbnail: true,
+  trustedCount: 2,
+  reportType: 'nudity',
+  hidden: false,
+  hideReason: null,
+  hideBypass: null
+}
+TAP version 13
+# Subtest: renderChannelVideosFromList decorates videos before storing
+ok 1 - renderChannelVideosFromList decorates videos before storing
+  ---
+  duration_ms: 207.141577
+  type: 'test'
+  ...
+# Subtest: renderChannelVideosFromList applies moderation blur without existing metadata
+ok 2 - renderChannelVideosFromList applies moderation blur without existing metadata
+  ---
+  duration_ms: 28.354471
+  type: 'test'
+  ...
+# Subtest: applyChannelVisualBlur blurs banner and avatar when viewer mutes author
+ok 3 - applyChannelVisualBlur blurs banner and avatar when viewer mutes author
+  ---
+  duration_ms: 10.407964
+  type: 'test'
+  ...
+# Subtest: moderation override clears channel blur via event wiring
+ok 4 - moderation override clears channel blur via event wiring
+  ---
+  duration_ms: 31.874762
+  type: 'test'
+  ...
+# Subtest: channel header moderation badge reflects blur state and override actions
+ok 5 - channel header moderation badge reflects blur state and override actions
+  ---
+  duration_ms: 28.830713
+  type: 'test'
+  ...
+# Subtest: channel video cards update moderation state in place when summary changes
+ok 6 - channel video cards update moderation state in place when summary changes
+  ---
+  duration_ms: 21.027125
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 338.865027
+
+→ Running tests/app/hydrate-sidebar-navigation.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+TAP version 13
+# Subtest: hydrateSidebarNavigation reveals chrome controls for authenticated viewers
+ok 1 - hydrateSidebarNavigation reveals chrome controls for authenticated viewers
+  ---
+  duration_ms: 85.765812
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 95.534809
+
+→ Running tests/app/is-user-logged-in.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+TAP version 13
+# Subtest: isUserLoggedIn returns false when no user pubkey is set
+ok 1 - isUserLoggedIn returns false when no user pubkey is set
+  ---
+  duration_ms: 1.24342
+  type: 'test'
+  ...
+# Subtest: isUserLoggedIn treats extension logins as authenticated
+ok 2 - isUserLoggedIn treats extension logins as authenticated
+  ---
+  duration_ms: 0.342771
+  type: 'test'
+  ...
+# Subtest: isUserLoggedIn guards against mismatched nostrClient state
+ok 3 - isUserLoggedIn guards against mismatched nostrClient state
+  ---
+  duration_ms: 0.21885
+  type: 'test'
+  ...
+# Subtest: isUserLoggedIn ignores anonymous session actor mismatches
+ok 4 - isUserLoggedIn ignores anonymous session actor mismatches
+  ---
+  duration_ms: 0.366481
+  type: 'test'
+  ...
+# Subtest: isUserLoggedIn rejects mismatched managed session actors
+ok 5 - isUserLoggedIn rejects mismatched managed session actors
+  ---
+  duration_ms: 0.363774
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 27.720299
+
+→ Running tests/app/moderation-overrides.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+TAP version 13
+# Subtest: handleModerationOverride decorates stored and current videos then refreshes UI
+ok 1 - handleModerationOverride decorates stored and current videos then refreshes UI
+  ---
+  duration_ms: 194.49769
+  type: 'test'
+  ...
+# Subtest: handleModerationOverride resumes deferred playback
+ok 2 - handleModerationOverride resumes deferred playback
+  ---
+  duration_ms: 1.039296
+  type: 'test'
+  ...
+# Subtest: handleModerationBlock requests a block, clears overrides, and refreshes hidden state
+ok 3 - handleModerationBlock requests a block, clears overrides, and refreshes hidden state
+  ---
+  duration_ms: 3.141341
+  type: 'test'
+  ...
+# Subtest: handleModerationBlock returns false when viewer is logged out
+ok 4 - handleModerationBlock returns false when viewer is logged out
+  ---
+  duration_ms: 1.469053
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 228.126063
+
+→ Running tests/app/moderation-settings-refresh.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+TAP version 13
+# Subtest: handleModerationSettingsChange refreshes feeds with updated thresholds
+ok 1 - handleModerationSettingsChange refreshes feeds with updated thresholds
+  ---
+  duration_ms: 187.701158
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 211.609953
+
+→ Running tests/app/similar-content.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+TAP version 13
+# Subtest: orders similar videos by shared tags then timestamp
+ok 1 - orders similar videos by shared tags then timestamp
+  ---
+  duration_ms: 2.710101
+  type: 'test'
+  ...
+# Subtest: returns no matches when the active video lacks tags
+ok 2 - returns no matches when the active video lacks tags
+  ---
+  duration_ms: 0.397953
+  type: 'test'
+  ...
+# Subtest: skips candidates without tag metadata
+ok 3 - skips candidates without tag metadata
+  ---
+  duration_ms: 0.429782
+  type: 'test'
+  ...
+# Subtest: filters NSFW and private videos when NSFW content is disabled
+ok 4 - filters NSFW and private videos when NSFW content is disabled
+  ---
+  duration_ms: 0.543902
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 28.632863
+
+→ Running tests/comment-event-builder.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+[nostrEventSchemas] Dropping unmatched surrogate characters from event content
+[nostrEventSchemas] Dropping unmatched surrogate characters from event content
+TAP version 13
+# Subtest: buildCommentEvent emits NIP-22 root metadata while keeping legacy fallbacks
+ok 1 - buildCommentEvent emits NIP-22 root metadata while keeping legacy fallbacks
+  ---
+  duration_ms: 2.755011
+  type: 'test'
+  ...
+# Subtest: buildCommentEvent includes parent pointers, kinds, and authors for replies
+ok 2 - buildCommentEvent includes parent pointers, kinds, and authors for replies
+  ---
+  duration_ms: 0.372898
+  type: 'test'
+  ...
+# Subtest: buildCommentEvent normalizes relays and preserves explicit overrides
+ok 3 - buildCommentEvent normalizes relays and preserves explicit overrides
+  ---
+  duration_ms: 0.819347
+  type: 'test'
+  ...
+# Subtest: buildCommentEvent falls back to event pointers when no address is supplied
+ok 4 - buildCommentEvent falls back to event pointers when no address is supplied
+  ---
+  duration_ms: 0.265402
+  type: 'test'
+  ...
+# Subtest: buildCommentEvent accepts partial metadata for parent overrides
+ok 5 - buildCommentEvent accepts partial metadata for parent overrides
+  ---
+  duration_ms: 0.455515
+  type: 'test'
+  ...
+# Subtest: buildCommentEvent sanitizes additional tags before signing
+ok 6 - buildCommentEvent sanitizes additional tags before signing
+  ---
+  duration_ms: 0.794463
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 18.077696
+
+→ Running tests/comment-thread-service.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+[commentThread] Cached 1 comments for AABBCC11223344556677889900aabbcc11223344556677889900aabbcc112233.
+[commentThread] Loaded 1 cached comments for aabbcc11223344556677889900aabbcc11223344556677889900aabbcc112233.
+[commentThread] Improved fetching fallback: feature disabled.
+[commentThread] Improved fetching fallback: feature disabled.
+[commentThread] Improved fetching fallback: feature disabled.
+TAP version 13
+# Subtest: CommentThreadService caches mixed-case video ids consistently
+ok 1 - CommentThreadService caches mixed-case video ids consistently
+  ---
+  duration_ms: 3.59206
+  type: 'test'
+  ...
+# Subtest: CommentThreadService surfaces cache read failures
+ok 2 - CommentThreadService surfaces cache read failures
+  ---
+  duration_ms: 0.82328
+  type: 'test'
+  ...
+# Subtest: CommentThreadService surfaces cache write failures
+ok 3 - CommentThreadService surfaces cache write failures
+  ---
+  duration_ms: 0.51484
+  type: 'test'
+  ...
+# Subtest: CommentThreadService persists caches safely during teardown failures
+ok 4 - CommentThreadService persists caches safely during teardown failures
+  ---
+  duration_ms: 1.604762
+  type: 'test'
+  ...
+# Subtest: CommentThreadService logs cache usage and fallback decisions
+ok 5 - CommentThreadService logs cache usage and fallback decisions
+  ---
+  duration_ms: 1.350328
+  type: 'test'
+  ...
+# Subtest: CommentThreadService normalizes mixed-case event ids in thread state
+ok 6 - CommentThreadService normalizes mixed-case event ids in thread state
+  ---
+  duration_ms: 2.139278
+  type: 'test'
+  ...
+# Subtest: CommentThreadService normalizes mixed-case pubkeys during hydration
+ok 7 - CommentThreadService normalizes mixed-case pubkeys during hydration
+  ---
+  duration_ms: 1.083168
+  type: 'test'
+  ...
+# Subtest: CommentThreadService deduplicates mixed-case event ids and pubkeys
+ok 8 - CommentThreadService deduplicates mixed-case event ids and pubkeys
+  ---
+  duration_ms: 1.036686
+  type: 'test'
+  ...
+[commentThread] Profile hydration attempt 1/3 failed for pubkeys: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc, dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd. Error: temporary hydration failure
+    at CommentThreadService.batchFetchProfiles (file:///app/tests/comment-thread-service.test.mjs:545:15)
+    at file:///app/js/services/commentThreadService.js:908:40
+    at CommentThreadService.flushProfileQueue (file:///app/js/services/commentThreadService.js:955:7)
+    at Timeout._onTimeout (file:///app/js/services/commentThreadService.js:884:12)
+    at listOnTimeout (node:internal/timers:588:17)
+    at process.processTimers (node:internal/timers:523:7)
+[commentThread] Retrying profile hydration in 50ms for pubkeys: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc, dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd.
+# Subtest: CommentThreadService retries profile hydration before succeeding
+ok 9 - CommentThreadService retries profile hydration before succeeding
+  ---
+  duration_ms: 77.954827
+  type: 'test'
+  ...
+[commentThread] Improved fetching fallback: feature disabled.
+# Subtest: CommentThreadService surfaces profile hydration failures after retries
+ok 10 - CommentThreadService surfaces profile hydration failures after retries
+  ---
+  duration_ms: 201.596
+  type: 'test'
+  ...
+# Subtest: listVideoComments accepts builder events without parent ids and filters replies
+ok 11 - listVideoComments accepts builder events without parent ids and filters replies
+  ---
+  duration_ms: 4.111756
+  type: 'test'
+  ...
+[commentThread] Improved fetching fallback: feature disabled.
+[commentThread] Improved fetching fallback: feature disabled.
+[commentThread] Improved fetching fallback: feature disabled.
+[commentThread] Improved fetching fallback: feature disabled.
+# Subtest: CommentThreadService hydrates, subscribes, and dedupes incoming comment events
+ok 12 - CommentThreadService hydrates, subscribes, and dedupes incoming comment events
+  ---
+  duration_ms: 34.686749
+  type: 'test'
+  ...
+# Subtest: CommentThreadService loadThread falls back to event id when address is missing
+ok 13 - CommentThreadService loadThread falls back to event id when address is missing
+  ---
+  duration_ms: 1.224302
+  type: 'test'
+  ...
+# Subtest: CommentThreadService requests and snapshots comments by root identifier
+ok 14 - CommentThreadService requests and snapshots comments by root identifier
+  ---
+  duration_ms: 0.969144
+  type: 'test'
+  ...
+# Subtest: CommentThreadService falls back to pointerIdentifiers root id
+ok 15 - CommentThreadService falls back to pointerIdentifiers root id
+  ---
+  duration_ms: 0.756254
+  type: 'test'
+  ...
+[commentThread] Comment cache miss for aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa: no entry present.
+[commentThread] Cached 0 comments for aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.
+[commentThread] Loaded 0 cached comments for aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.
+[commentThread] Cached 0 comments for aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.
+[commentThread] Cached 1 comments for aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.
+[commentThread] Cached 1 comments for aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.
+# Subtest: CommentThreadService preserves raw video author pubkeys during hydration fetches
+ok 16 - CommentThreadService preserves raw video author pubkeys during hydration fetches
+  ---
+  duration_ms: 2.705547
+  type: 'test'
+  ...
+# Subtest: CommentThreadService teardown cancels hydration timers
+ok 17 - CommentThreadService teardown cancels hydration timers
+  ---
+  duration_ms: 81.390937
+  type: 'test'
+  ...
+1..17
+# tests 17
+# suites 0
+# pass 17
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 427.466477
+
+→ Running tests/design-system-metrics.test.mjs
+TAP version 13
+# Subtest: metric probe falls back to numeric parsing when measurement fails
+ok 1 - metric probe falls back to numeric parsing when measurement fails
+  ---
+  duration_ms: 132.338397
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 142.733881
+
+→ Running tests/dm-decryptor.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+TAP version 13
+# Subtest: decryptDM handles kind 4 events with nip04 ciphertext
+ok 1 - decryptDM handles kind 4 events with nip04 ciphertext
+  ---
+  duration_ms: 69.592808
+  type: 'test'
+  ...
+# Subtest: decryptDM prefers recipient pubkeys when actor is the sender
+ok 2 - decryptDM prefers recipient pubkeys when actor is the sender
+  ---
+  duration_ms: 16.884034
+  type: 'test'
+  ...
+# Subtest: decryptDM unwraps kind 1059 gift wraps with nip44
+ok 3 - decryptDM unwraps kind 1059 gift wraps with nip44
+  ---
+  duration_ms: 57.451158
+  type: 'test'
+  ...
+# Subtest: decryptDM returns failure when decryptors are unavailable
+ok 4 - decryptDM returns failure when decryptors are unavailable
+  ---
+  duration_ms: 0.307919
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 156.553811
+
+→ Running tests/edit-modal-submit-state.test.mjs
+TAP version 13
+# Subtest: ignores additional submissions while pending without spurious errors
+ok 1 - ignores additional submissions while pending without spurious errors
+  ---
+  duration_ms: 241.033765
+  type: 'test'
+  ...
+# Subtest: editing the magnet refreshes torrent hints when ws/xs remain locked
+ok 2 - editing the magnet refreshes torrent hints when ws/xs remain locked
+  ---
+  duration_ms: 92.582009
+  type: 'test'
+  ...
+# Subtest: does not show missing video error after modal closes
+ok 3 - does not show missing video error after modal closes
+  ---
+  duration_ms: 77.582233
+  type: 'test'
+  ...
+1..3
+# tests 3
+# suites 0
+# pass 3
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 424.15931
+
+→ Running tests/hashtag-preferences.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+TAP version 13
+# Subtest: load decrypts nip44 payloads and normalizes tags
+ok 1 - load decrypts nip44 payloads and normalizes tags
+  ---
+  duration_ms: 17.461386
+  type: 'test'
+  ...
+# Subtest: load falls back to nip04 decryption
+ok 2 - load falls back to nip04 decryption
+  ---
+  duration_ms: 0.911765
+  type: 'test'
+  ...
+# Subtest: load retries decryptors when hinted scheme fails
+ok 3 - load retries decryptors when hinted scheme fails
+  ---
+  duration_ms: 1.141585
+  type: 'test'
+  ...
+# Subtest: interest and disinterest lists remain exclusive
+ok 4 - interest and disinterest lists remain exclusive
+  ---
+  duration_ms: 0.540691
+  type: 'test'
+  ...
+# Subtest: publish encrypts payload and builds event via builder
+ok 5 - publish encrypts payload and builds event via builder
+  ---
+  duration_ms: 10.673353
+  type: 'test'
+  ...
+# Subtest: publish falls back to window nostr encryptors
+ok 6 - publish falls back to window nostr encryptors
+  ---
+  duration_ms: 1.859746
+  type: 'test'
+  ...
+# Subtest: load prefers canonical kind when timestamps match while accepting legacy payload
+ok 7 - load prefers canonical kind when timestamps match while accepting legacy payload
+  ---
+  duration_ms: 1.136053
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 42.520467
+
+→ Running tests/magnet-utils.test.mjs
+TAP version 13
+# Subtest: safeDecodeMagnet handles encoded values
+ok 1 - safeDecodeMagnet handles encoded values
+  ---
+  duration_ms: 1.491509
+  type: 'test'
+  ...
+# Subtest: safeDecodeMagnet leaves plain strings untouched
+ok 2 - safeDecodeMagnet leaves plain strings untouched
+  ---
+  duration_ms: 0.415115
+  type: 'test'
+  ...
+# Subtest: bare hashes normalize consistently across helpers
+ok 3 - bare hashes normalize consistently across helpers
+  ---
+  duration_ms: 3.017175
+  type: 'test'
+  ...
+# Subtest: legacy %3A payloads decode across helpers
+ok 4 - legacy %3A payloads decode across helpers
+  ---
+  duration_ms: 0.681985
+  type: 'test'
+  ...
+# Subtest: duplicate trackers and hints stay in sync
+ok 5 - duplicate trackers and hints stay in sync
+  ---
+  duration_ms: 1.076586
+  type: 'test'
+  ...
+# Subtest: object helper enforces HTTPS web seeds when on HTTPS
+ok 6 - object helper enforces HTTPS web seeds when on HTTPS
+  ---
+  duration_ms: 0.495445
+  type: 'test'
+  ...
+# Subtest: object helper allows HTTP seeds on HTTP origins
+ok 7 - object helper allows HTTP seeds on HTTP origins
+  ---
+  duration_ms: 0.394093
+  type: 'test'
+  ...
+# Subtest: extractMagnetHints returns first ws/xs pair
+ok 8 - extractMagnetHints returns first ws/xs pair
+  ---
+  duration_ms: 0.309345
+  type: 'test'
+  ...
+# Subtest: string helper skips insecure ws hints on HTTPS origins
+ok 9 - string helper skips insecure ws hints on HTTPS origins
+  ---
+  duration_ms: 0.712482
+  type: 'test'
+  ...
+# Subtest: object helper reports didChange when output differs
+ok 10 - object helper reports didChange when output differs
+  ---
+  duration_ms: 0.726977
+  type: 'test'
+  ...
+# Subtest: helpers trim fragments from non-magnet values
+ok 11 - helpers trim fragments from non-magnet values
+  ---
+  duration_ms: 0.268142
+  type: 'test'
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 11
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 28.305604
+
+→ Running tests/media-loader.test.mjs
+TAP version 13
+# Subtest: MediaLoader assigns image sources once intersecting
+ok 1 - MediaLoader assigns image sources once intersecting
+  ---
+  duration_ms: 75.039361
+  type: 'test'
+  ...
+# Subtest: MediaLoader loads video sources and poster fallbacks
+ok 2 - MediaLoader loads video sources and poster fallbacks
+  ---
+  duration_ms: 21.136175
+  type: 'test'
+  ...
+# Subtest: MediaLoader clears unsupported lazy targets without inline styles
+ok 3 - MediaLoader clears unsupported lazy targets without inline styles
+  ---
+  duration_ms: 9.669998
+  type: 'test'
+  ...
+1..3
+# tests 3
+# suites 0
+# pass 3
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 122.549472
+
+→ Running tests/modal-accessibility.test.mjs
+TAP version 13
+# Subtest: UploadModal closes on Escape and restores trigger focus
+ok 1 - UploadModal closes on Escape and restores trigger focus
+  ---
+  duration_ms: 217.283085
+  type: 'test'
+  ...
+# Subtest: UploadModal backdrop click closes and restores trigger focus
+ok 2 - UploadModal backdrop click closes and restores trigger focus
+  ---
+  duration_ms: 78.035558
+  type: 'test'
+  ...
+# Subtest: UploadModal mode toggle updates button states
+ok 3 - UploadModal mode toggle updates button states
+  ---
+  duration_ms: 52.387514
+  type: 'test'
+  ...
+# Subtest: EditModal Escape closes and restores trigger focus
+ok 4 - EditModal Escape closes and restores trigger focus
+  ---
+  duration_ms: 88.64451
+  type: 'test'
+  ...
+# Subtest: EditModal backdrop click closes and restores trigger focus
+ok 5 - EditModal backdrop click closes and restores trigger focus
+  ---
+  duration_ms: 76.44296
+  type: 'test'
+  ...
+# Subtest: EditModal visibility toggle updates button state
+ok 6 - EditModal visibility toggle updates button state
+  ---
+  duration_ms: 75.461532
+  type: 'test'
+  ...
+# Subtest: RevertModal Escape closes and restores trigger focus
+ok 7 - RevertModal Escape closes and restores trigger focus
+  ---
+  duration_ms: 66.166059
+  type: 'test'
+  ...
+# Subtest: static modal helper toggles accessibility hooks
+ok 8 - static modal helper toggles accessibility hooks
+  ---
+  duration_ms: 10.588642
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 675.885536
+
+→ Running tests/moderation-service.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+TAP version 13
+# Subtest: trusted report summaries respect personal blocks and admin lists
+ok 1 - trusted report summaries respect personal blocks and admin lists
+  ---
+  duration_ms: 6.647324
+  type: 'test'
+  ...
+# Subtest: user block updates recompute summaries and emit notifications
+ok 2 - user block updates recompute summaries and emit notifications
+  ---
+  duration_ms: 4.365978
+  type: 'test'
+  ...
+# Subtest: moderation thresholds emit logger hooks only when crossing
+ok 3 - moderation thresholds emit logger hooks only when crossing
+  ---
+  duration_ms: 1.534276
+  type: 'test'
+  ...
+# Subtest: trusted mute aggregation tracks F1 mute lists
+ok 4 - trusted mute aggregation tracks F1 mute lists
+  ---
+  duration_ms: 1.135247
+  type: 'test'
+  ...
+# Subtest: viewer mute list publishes and updates aggregation
+ok 5 - viewer mute list publishes and updates aggregation
+  ---
+  duration_ms: 4.326123
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 31.909965
+
+→ Running tests/moderation-stage.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+[feedEngine/moderation] metadata.moderation updated {
+  stage: 'moderation',
+  videoId: 'c',
+  blockAutoplay: true,
+  blurThumbnail: true,
+  trustedCount: 5,
+  reportType: 'nudity',
+  hidden: false,
+  hideReason: null,
+  hideBypass: null
+}
+[feedEngine/moderation] metadata.moderation updated {
+  stage: 'moderation',
+  videoId: 'd',
+  blockAutoplay: true,
+  blurThumbnail: true,
+  trustedCount: 3,
+  reportType: 'nudity',
+  hidden: false,
+  hideReason: null,
+  hideBypass: null
+}
+[feedEngine/moderation] metadata.moderation updated {
+  stage: 'moderation',
+  videoId: 'muted',
+  blockAutoplay: true,
+  blurThumbnail: true,
+  trustedCount: 0,
+  reportType: 'nudity',
+  hidden: false,
+  hideReason: null,
+  hideBypass: null
+}
+[feedEngine/moderation] metadata.moderation updated {
+  stage: 'moderation',
+  videoId: 'normal',
+  blockAutoplay: false,
+  blurThumbnail: false,
+  trustedCount: 0,
+  reportType: 'nudity',
+  hidden: false,
+  hideReason: null,
+  hideBypass: null
+}
+[feedEngine/moderation] metadata.moderation updated {
+  stage: 'moderation',
+  videoId: 'custom-threshold',
+  blockAutoplay: false,
+  blurThumbnail: false,
+  trustedCount: 4,
+  reportType: 'nudity',
+  hidden: false,
+  hideReason: null,
+  hideBypass: null
+}
+[feedEngine/moderation] metadata.moderation updated {
+  stage: 'moderation',
+  videoId: 'custom-threshold',
+  blockAutoplay: true,
+  blurThumbnail: true,
+  trustedCount: 4,
+  reportType: 'nudity',
+  hidden: false,
+  hideReason: null,
+  hideBypass: null
+}
+[feedEngine/moderation] metadata.moderation updated {
+  stage: 'moderation',
+  videoId: 'runtime-threshold',
+  blockAutoplay: true,
+  blurThumbnail: true,
+  trustedCount: 3,
+  reportType: 'nudity',
+  hidden: true,
+  hideReason: 'trusted-report-hide',
+  hideBypass: null
+}
+[feedEngine/moderation] metadata.moderation updated {
+  stage: 'moderation',
+  videoId: 'runtime-threshold',
+  blockAutoplay: false,
+  blurThumbnail: false,
+  trustedCount: 3,
+  reportType: 'nudity',
+  hidden: false,
+  hideReason: null,
+  hideBypass: null
+}
+[feedEngine/moderation] metadata.moderation updated {
+  stage: 'moderation',
+  videoId: 'resolver-threshold',
+  blockAutoplay: false,
+  blurThumbnail: false,
+  trustedCount: 2,
+  reportType: 'nudity',
+  hidden: false,
+  hideReason: null,
+  hideBypass: null
+}
+[feedEngine/moderation] metadata.moderation updated {
+  stage: 'moderation',
+  videoId: 'resolver-threshold',
+  blockAutoplay: true,
+  blurThumbnail: true,
+  trustedCount: 2,
+  reportType: 'nudity',
+  hidden: true,
+  hideReason: 'trusted-report-hide',
+  hideBypass: null
+}
+[feedEngine/moderation] metadata.moderation updated {
+  stage: 'moderation',
+  videoId: 'whitelisted-video',
+  blockAutoplay: true,
+  blurThumbnail: true,
+  trustedCount: 4,
+  reportType: 'nudity',
+  hidden: false,
+  hideReason: null,
+  hideBypass: null
+}
+[feedEngine/moderation] metadata.moderation updated {
+  stage: 'moderation',
+  videoId: 'muted-video',
+  blockAutoplay: true,
+  blurThumbnail: true,
+  trustedCount: 3,
+  reportType: 'nudity',
+  hidden: false,
+  hideReason: null,
+  hideBypass: null
+}
+[feedEngine/moderation] metadata.moderation updated {
+  stage: 'moderation',
+  videoId: 'whitelisted-video',
+  blockAutoplay: true,
+  blurThumbnail: true,
+  trustedCount: 4,
+  reportType: 'nudity',
+  hidden: false,
+  hideReason: null,
+  hideBypass: null
+}
+[feedEngine/moderation] metadata.moderation updated {
+  stage: 'moderation',
+  videoId: 'muted-video',
+  blockAutoplay: false,
+  blurThumbnail: false,
+  trustedCount: 0,
+  reportType: 'nudity',
+  hidden: false,
+  hideReason: null,
+  hideBypass: null
+}
+[feedEngine/moderation] metadata.moderation updated {
+  stage: 'moderation',
+  videoId: 'viewer-muted',
+  blockAutoplay: true,
+  blurThumbnail: true,
+  trustedCount: 0,
+  reportType: 'nudity',
+  hidden: false,
+  hideReason: null,
+  hideBypass: null
+}
+[feedEngine/moderation] metadata.moderation updated {
+  stage: 'moderation',
+  videoId: '9999999999999999999999999999999999999999999999999999999999999999',
+  blockAutoplay: true,
+  blurThumbnail: true,
+  trustedCount: 1,
+  reportType: 'nudity',
+  hidden: false,
+  hideReason: null,
+  hideBypass: null
+}
+[feedEngine/moderation] metadata.moderation updated {
+  stage: 'moderation',
+  videoId: '9999999999999999999999999999999999999999999999999999999999999999',
+  blockAutoplay: false,
+  blurThumbnail: false,
+  trustedCount: 0,
+  reportType: 'nudity',
+  hidden: false,
+  hideReason: null,
+  hideBypass: null
+}
+TAP version 13
+# Subtest: moderation stage enforces admin lists without whitelist bypass
+ok 1 - moderation stage enforces admin lists without whitelist bypass
+  ---
+  duration_ms: 4.938689
+  type: 'test'
+  ...
+# Subtest: moderation stage annotates trusted mute metadata
+ok 2 - moderation stage annotates trusted mute metadata
+  ---
+  duration_ms: 1.248222
+  type: 'test'
+  ...
+# Subtest: moderation stage applies provided thresholds
+ok 3 - moderation stage applies provided thresholds
+  ---
+  duration_ms: 1.543316
+  type: 'test'
+  ...
+# Subtest: moderation stage respects runtime threshold changes
+ok 4 - moderation stage respects runtime threshold changes
+  ---
+  duration_ms: 1.726337
+  type: 'test'
+  ...
+# Subtest: moderation stage supports function-based threshold resolvers
+ok 5 - moderation stage supports function-based threshold resolvers
+  ---
+  duration_ms: 1.28325
+  type: 'test'
+  ...
+# Subtest: moderation stage propagates whitelist, muters, and threshold updates
+ok 6 - moderation stage propagates whitelist, muters, and threshold updates
+  ---
+  duration_ms: 1.743657
+  type: 'test'
+  ...
+# Subtest: moderation stage blurs viewer-muted authors
+ok 7 - moderation stage blurs viewer-muted authors
+  ---
+  duration_ms: 0.878017
+  type: 'test'
+  ...
+# Subtest: moderation stage clears cached reporters and muters after service signals
+ok 8 - moderation stage clears cached reporters and muters after service signals
+  ---
+  duration_ms: 1.124371
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 29.622752
+
+→ Running tests/moderation/hide-thresholds.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+[feedEngine/moderation] metadata.moderation updated {
+  stage: 'moderation',
+  videoId: '1111111111111111111111111111111111111111111111111111111111111111',
+  blockAutoplay: true,
+  blurThumbnail: true,
+  trustedCount: 0,
+  reportType: 'nudity',
+  hidden: true,
+  hideReason: 'trusted-mute-hide',
+  hideBypass: null
+}
+[feedEngine/moderation] metadata.moderation updated {
+  stage: 'moderation',
+  videoId: '2222222222222222222222222222222222222222222222222222222222222222',
+  blockAutoplay: true,
+  blurThumbnail: true,
+  trustedCount: 5,
+  reportType: 'nudity',
+  hidden: true,
+  hideReason: 'trusted-report-hide',
+  hideBypass: null
+}
+[feedEngine/moderation] metadata.moderation updated {
+  stage: 'moderation',
+  videoId: '6666666666666666666666666666666666666666666666666666666666666666',
+  blockAutoplay: true,
+  blurThumbnail: true,
+  trustedCount: 4,
+  reportType: 'nudity',
+  hidden: true,
+  hideReason: 'trusted-mute-hide',
+  hideBypass: null
+}
+[feedEngine/moderation] metadata.moderation updated {
+  stage: 'moderation',
+  videoId: '6666666666666666666666666666666666666666666666666666666666666666',
+  blockAutoplay: true,
+  blurThumbnail: true,
+  trustedCount: 4,
+  reportType: 'nudity',
+  hidden: false,
+  hideReason: null,
+  hideBypass: null
+}
+[feedEngine/moderation] metadata.moderation updated {
+  stage: 'moderation',
+  videoId: '9999999999999999999999999999999999999999999999999999999999999999',
+  blockAutoplay: true,
+  blurThumbnail: true,
+  trustedCount: 0,
+  reportType: 'nudity',
+  hidden: false,
+  hideReason: null,
+  hideBypass: null
+}
+[feedEngine/moderation] metadata.moderation updated {
+  stage: 'moderation',
+  videoId: '9999999999999999999999999999999999999999999999999999999999999999',
+  blockAutoplay: true,
+  blurThumbnail: true,
+  trustedCount: 0,
+  reportType: 'nudity',
+  hidden: true,
+  hideReason: 'trusted-mute-hide',
+  hideBypass: null
+}
+[feedEngine/moderation] metadata.moderation updated {
+  stage: 'moderation',
+  videoId: '3333333333333333333333333333333333333333333333333333333333333333',
+  blockAutoplay: true,
+  blurThumbnail: true,
+  trustedCount: 4,
+  reportType: 'nudity',
+  hidden: false,
+  hideReason: 'trusted-report-hide',
+  hideBypass: 'feed-policy'
+}
+[feedEngine/moderation] metadata.moderation updated {
+  stage: 'moderation',
+  videoId: '4444444444444444444444444444444444444444444444444444444444444444',
+  blockAutoplay: true,
+  blurThumbnail: true,
+  trustedCount: 6,
+  reportType: 'nudity',
+  hidden: true,
+  hideReason: 'trusted-report-hide',
+  hideBypass: null
+}
+TAP version 13
+# Subtest: moderation stage hides videos muted by trusted when threshold met
+ok 1 - moderation stage hides videos muted by trusted when threshold met
+  ---
+  duration_ms: 4.360718
+  type: 'test'
+  ...
+# Subtest: moderation stage hides videos when trusted reports exceed threshold
+ok 2 - moderation stage hides videos when trusted reports exceed threshold
+  ---
+  duration_ms: 0.875986
+  type: 'test'
+  ...
+# Subtest: moderation stage respects runtime hide threshold changes
+ok 3 - moderation stage respects runtime hide threshold changes
+  ---
+  duration_ms: 1.163728
+  type: 'test'
+  ...
+# Subtest: moderation stage supports trusted mute hide resolver functions
+ok 4 - moderation stage supports trusted mute hide resolver functions
+  ---
+  duration_ms: 1.393538
+  type: 'test'
+  ...
+# Subtest: moderation stage bypasses hard hides on home feed
+ok 5 - moderation stage bypasses hard hides on home feed
+  ---
+  duration_ms: 1.167521
+  type: 'test'
+  ...
+# Subtest: moderation stage hides admin-whitelisted videos once thresholds fire
+ok 6 - moderation stage hides admin-whitelisted videos once thresholds fire
+  ---
+  duration_ms: 0.867449
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 22.128609
+
+→ Running tests/moderation/submit-report.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+TAP version 13
+# Subtest: submitReport emits NIP-56 compliant report tags
+ok 1 - submitReport emits NIP-56 compliant report tags
+  ---
+  duration_ms: 10.921392
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 18.226625
+
+→ Running tests/moderation/trust-seeds.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+[bitvid] [moderationService] moderation threshold crossed
+[bitvid] [moderationService] moderation threshold crossed
+[bitvid] [moderationService] moderation threshold crossed
+[bitvid] [moderationService] moderation threshold crossed
+TAP version 13
+# Subtest: default trust seeds derive from config
+ok 1 - default trust seeds derive from config
+  ---
+  duration_ms: 2.217558
+  type: 'test'
+  ...
+# Subtest: trusted seeds contribute to trusted mute counts
+ok 2 - trusted seeds contribute to trusted mute counts
+  ---
+  duration_ms: 4.165864
+  type: 'test'
+  ...
+# Subtest: trusted seeds contribute to trusted report counts
+ok 3 - trusted seeds contribute to trusted report counts
+  ---
+  duration_ms: 2.847358
+  type: 'test'
+  ...
+# Subtest: trusted seed updates recompute guest report summaries
+ok 4 - trusted seed updates recompute guest report summaries
+  ---
+  duration_ms: 1.154913
+  type: 'test'
+  ...
+# Subtest: moderator seeds populate trusted contacts
+ok 5 - moderator seeds populate trusted contacts
+  ---
+  duration_ms: 1.034035
+  type: 'test'
+  ...
+[trustBootstrap] bootstrapTrustedSeeds called
+[trustBootstrap] waitForAccessControl result { ok: true, timedOut: false }
+[trustBootstrap] Applying 2 trusted seeds [
+  'npub15jnttpymeytm80hatjqcvhhqhzrhx6gxp8pq0wn93rhnu8s9h9dsha32lx',
+  'npub1moderatorexamplemoderatorexamplemoderatorexample1'
+]
+[trustBootstrap] Applying 2 trusted seeds [
+  'npub15jnttpymeytm80hatjqcvhhqhzrhx6gxp8pq0wn93rhnu8s9h9dsha32lx',
+  'npub1moderatorexamplemoderatorexamplemoderatorexample1'
+]
+[trustBootstrap] Applying 3 trusted seeds [
+  'npub15jnttpymeytm80hatjqcvhhqhzrhx6gxp8pq0wn93rhnu8s9h9dsha32lx',
+  'npub1newmoderatorexamplemoderatorexamplemoderator',
+  'npub1secondmoderatorexamplemoderatorexamplemod'
+]
+# Subtest: bootstrap seeds track editor roster and ignore whitelist-only changes
+ok 6 - bootstrap seeds track editor roster and ignore whitelist-only changes
+  ---
+  duration_ms: 77.816633
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3597.311714
+
+→ Running tests/moderation/trusted-mute-lists.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+TAP version 13
+[feedEngine/moderation] metadata.moderation updated {
+  stage: 'moderation',
+  videoId: 'video-muted',
+  blockAutoplay: true,
+  blurThumbnail: true,
+  trustedCount: 0,
+  reportType: 'nudity',
+  hidden: true,
+  hideReason: 'trusted-mute-hide',
+  hideBypass: null
+}
+# Subtest: trusted mute lists from seeds hide authors for anonymous viewers
+ok 1 - trusted mute lists from seeds hide authors for anonymous viewers
+  ---
+  duration_ms: 12.214913
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 21.436105
+
+→ Running tests/moderation/trusted-report-count.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+[bitvid] [moderationService] moderation threshold crossed
+[bitvid] [moderationService] moderation threshold crossed
+[bitvid] [moderationService] moderation threshold crossed
+[bitvid] [moderationService] moderation threshold crossed
+[bitvid] [moderationService] moderation threshold crossed
+[bitvid] [moderationService] moderation threshold crossed
+[bitvid] [moderationService] moderation threshold crossed
+[bitvid] [moderationService] moderation threshold crossed
+[bitvid] [moderationService] moderation threshold crossed
+[bitvid] [moderationService] moderation threshold crossed
+[bitvid] [moderationService] moderation threshold crossed
+[bitvid] [moderationService] moderation threshold crossed
+TAP version 13
+# Subtest: trustedReportCount dedupes multiple reports from the same trusted reporter
+ok 1 - trustedReportCount dedupes multiple reports from the same trusted reporter
+  ---
+  duration_ms: 5.233688
+  type: 'test'
+  ...
+# Subtest: trustedReportCount ignores reports from muted or blocked reporters
+ok 2 - trustedReportCount ignores reports from muted or blocked reporters
+  ---
+  duration_ms: 2.10161
+  type: 'test'
+  ...
+# Subtest: blocking and unblocking reporters recomputes trusted summaries
+ok 3 - blocking and unblocking reporters recomputes trusted summaries
+  ---
+  duration_ms: 2.632651
+  type: 'test'
+  ...
+# Subtest: trustedReportCount only counts eligible F1 reporters and admin whitelist
+ok 4 - trustedReportCount only counts eligible F1 reporters and admin whitelist
+  ---
+  duration_ms: 2.024396
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 24.095685
+
+→ Running tests/moderation/video-card.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+TAP version 13
+# Subtest: VideoCard renders moderation badges and respects viewer override
+ok 1 - VideoCard renders moderation badges and respects viewer override
+  ---
+  duration_ms: 314.256137
+  type: 'test'
+  ...
+# Subtest: VideoCard hides content when hide metadata is present and override unmasks it
+ok 2 - VideoCard hides content when hide metadata is present and override unmasks it
+  ---
+  duration_ms: 38.625361
+  type: 'test'
+  ...
+# Subtest: VideoCard blurs viewer-muted creators
+ok 3 - VideoCard blurs viewer-muted creators
+  ---
+  duration_ms: 17.474054
+  type: 'test'
+  ...
+# Subtest: VideoCard blurs thumbnails when trusted mute triggers without reports
+ok 4 - VideoCard blurs thumbnails when trusted mute triggers without reports
+  ---
+  duration_ms: 15.957504
+  type: 'test'
+  ...
+# Subtest: VideoCard block action restores trusted mute hide state after override
+ok 5 - VideoCard block action restores trusted mute hide state after override
+  ---
+  duration_ms: 26.952273
+  type: 'test'
+  ...
+# Subtest: applyModerationContextDatasets clears blur when overrides are active
+ok 6 - applyModerationContextDatasets clears blur when overrides are active
+  ---
+  duration_ms: 8.173577
+  type: 'test'
+  ...
+# Subtest: buildModerationBadgeText returns trusted contact block copy when autoplay block and trusted mute combine
+ok 7 - buildModerationBadgeText returns trusted contact block copy when autoplay block and trusted mute combine
+  ---
+  duration_ms: 0.173436
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 430.013934
+
+→ Running tests/more-menu-controller.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+TAP version 13
+# Subtest: copy-link action writes to clipboard and shows success
+ok 1 - copy-link action writes to clipboard and shows success
+  ---
+  duration_ms: 2.816818
+  type: 'test'
+  ...
+# Subtest: blacklist-author requires moderator access and refreshes subscriptions
+ok 2 - blacklist-author requires moderator access and refreshes subscriptions
+  ---
+  duration_ms: 0.72234
+  type: 'test'
+  ...
+# Subtest: blacklist-author shows error when no moderator session is available
+ok 3 - blacklist-author shows error when no moderator session is available
+  ---
+  duration_ms: 0.293986
+  type: 'test'
+  ...
+# Subtest: block-author updates user blocks, reloads videos, and refreshes feeds
+ok 4 - block-author updates user blocks, reloads videos, and refreshes feeds
+  ---
+  duration_ms: 0.694648
+  type: 'test'
+  ...
+# Subtest: mute-author updates viewer mute list and refreshes feeds
+ok 5 - mute-author updates viewer mute list and refreshes feeds
+  ---
+  duration_ms: 0.674537
+  type: 'test'
+  ...
+# Subtest: unmute-author removes creators from viewer mute list
+ok 6 - unmute-author removes creators from viewer mute list
+  ---
+  duration_ms: 0.522265
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 18.71889
+
+→ Running tests/nip71-base-event-tags.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+TAP version 13
+# Subtest: 30078 events carry nip71 metadata tags and hydrate fallback metadata
+ok 1 - 30078 events carry nip71 metadata tags and hydrate fallback metadata
+  ---
+  duration_ms: 5.886289
+  type: 'test'
+  ...
+# Subtest: imeta tags lower-case mime values
+ok 2 - imeta tags lower-case mime values
+  ---
+  duration_ms: 0.612337
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 19.830906
+
+→ Running tests/nip71-builder.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+TAP version 13
+# Subtest: buildNip71VideoEvent assembles rich metadata
+ok 1 - buildNip71VideoEvent assembles rich metadata
+  ---
+  duration_ms: 5.418189
+  type: 'test'
+  ...
+# Subtest: buildNip71VideoEvent falls back to summary and selects kind
+ok 2 - buildNip71VideoEvent falls back to summary and selects kind
+  ---
+  duration_ms: 0.448641
+  type: 'test'
+  ...
+# Subtest: buildNip71VideoEvent attaches pointer tags
+ok 3 - buildNip71VideoEvent attaches pointer tags
+  ---
+  duration_ms: 0.419975
+  type: 'test'
+  ...
+# Subtest: extractNip71MetadataFromTags parses metadata and pointers
+ok 4 - extractNip71MetadataFromTags parses metadata and pointers
+  ---
+  duration_ms: 1.287696
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 20.254222
+
+→ Running tests/nip71-form-manager.test.mjs
+TAP version 13
+# Subtest: collectSection sanitizes and deduplicates hashtags
+ok 1 - collectSection sanitizes and deduplicates hashtags
+  ---
+  duration_ms: 99.905777
+  type: 'test'
+  ...
+# Subtest: hydrateSection renders sanitized hashtags with prefix
+ok 2 - hydrateSection renders sanitized hashtags with prefix
+  ---
+  duration_ms: 20.288482
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 131.58605
+
+→ Running tests/nostr-login-permissions.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+Got pubkey: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+Converted to npub: npub1lllllllllllllllllllllllllllllllllllllllllllllllllllsq7lrjw
+Whitelist: []
+Blacklist: []
+Logged in with extension. Pubkey: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+User logged out.
+Got pubkey: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+Converted to npub: npub1lllllllllllllllllllllllllllllllllllllllllllllllllllsq7lrjw
+Whitelist: []
+Blacklist: []
+Logged in with extension. Pubkey: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+User logged out.
+[bitvid] [nostr] extension.enable request with explicit permissions failed: Error: object permissions unsupported
+    at enableImpl (file:///app/tests/nostr-login-permissions.test.mjs:299:31)
+    at Object.enable (file:///app/tests/nostr-login-permissions.test.mjs:60:32)
+    at runNip07WithRetry.label (file:///app/js/nostr/nip07Permissions.js:282:36)
+    at getOrStartOperation (file:///app/js/nostr/nip07Permissions.js:202:41)
+    at withNip07Timeout (file:///app/js/nostr/nip07Permissions.js:170:23)
+    at runNip07WithRetry (file:///app/js/nostr/nip07Permissions.js:214:18)
+    at requestEnablePermissions (file:///app/js/nostr/nip07Permissions.js:281:13)
+    at NostrClient.ensureExtensionPermissions (file:///app/js/nostr/client.js:2542:32)
+    at NostrClient.login (file:///app/js/nostr/client.js:3700:43)
+    at TestContext.<anonymous> (file:///app/tests/nostr-login-permissions.test.mjs:309:38)
+Got pubkey: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+Converted to npub: npub1lllllllllllllllllllllllllllllllllllllllllllllllllllsq7lrjw
+Whitelist: []
+Blacklist: []
+Logged in with extension. Pubkey: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+User logged out.
+[bitvid] [nostr] extension.enable request with explicit permissions failed: Error: payloads not supported
+    at enableImpl (file:///app/tests/nostr-login-permissions.test.mjs:342:31)
+    at Object.enable (file:///app/tests/nostr-login-permissions.test.mjs:60:32)
+    at runNip07WithRetry.label (file:///app/js/nostr/nip07Permissions.js:282:36)
+    at getOrStartOperation (file:///app/js/nostr/nip07Permissions.js:202:41)
+    at withNip07Timeout (file:///app/js/nostr/nip07Permissions.js:170:23)
+    at runNip07WithRetry (file:///app/js/nostr/nip07Permissions.js:214:18)
+    at requestEnablePermissions (file:///app/js/nostr/nip07Permissions.js:281:13)
+    at NostrClient.ensureExtensionPermissions (file:///app/js/nostr/client.js:2542:32)
+    at NostrClient.login (file:///app/js/nostr/client.js:3700:43)
+    at TestContext.<anonymous> (file:///app/tests/nostr-login-permissions.test.mjs:349:38)
+[bitvid] [nostr] extension.enable request with explicit permissions failed: Error: payloads not supported
+    at enableImpl (file:///app/tests/nostr-login-permissions.test.mjs:342:31)
+    at Object.enable (file:///app/tests/nostr-login-permissions.test.mjs:60:32)
+    at runNip07WithRetry.label (file:///app/js/nostr/nip07Permissions.js:282:36)
+    at getOrStartOperation (file:///app/js/nostr/nip07Permissions.js:202:41)
+    at withNip07Timeout (file:///app/js/nostr/nip07Permissions.js:170:23)
+    at runNip07WithRetry (file:///app/js/nostr/nip07Permissions.js:214:18)
+    at requestEnablePermissions (file:///app/js/nostr/nip07Permissions.js:281:13)
+    at async NostrClient.ensureExtensionPermissions (file:///app/js/nostr/client.js:2542:26)
+    at async NostrClient.login (file:///app/js/nostr/client.js:3700:32)
+    at async TestContext.<anonymous> (file:///app/tests/nostr-login-permissions.test.mjs:349:20)
+Got pubkey: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+Converted to npub: npub1lllllllllllllllllllllllllllllllllllllllllllllllllllsq7lrjw
+Whitelist: []
+Blacklist: []
+Logged in with extension. Pubkey: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+User logged out.
+TAP version 13
+# Subtest: NIP-07 login requests decrypt permissions upfront
+ok 1 - NIP-07 login requests decrypt permissions upfront
+  ---
+  duration_ms: 5.624984
+  type: 'test'
+  ...
+# Subtest: NIP-07 decrypt reuses cached extension permissions
+ok 2 - NIP-07 decrypt reuses cached extension permissions
+  ---
+  duration_ms: 2.356982
+  type: 'test'
+  ...
+# Subtest: NIP-07 login falls back when structured permissions fail
+ok 3 - NIP-07 login falls back when structured permissions fail
+  ---
+  duration_ms: 2.589261
+  type: 'test'
+  ...
+# Subtest: NIP-07 login supports extensions that only allow enable() without payload
+ok 4 - NIP-07 login supports extensions that only allow enable() without payload
+  ---
+  duration_ms: 2.156552
+  type: 'test'
+  ...
+[bitvid] [nostr] extension.enable request with explicit permissions failed: Error: Timed out waiting for the NIP-07 extension. Confirm the extension prompt in your browser toolbar and try again.
+    at Timeout.<anonymous> (file:///app/js/nostr/nip07Permissions.js:164:14)
+    at listOnTimeout (node:internal/timers:588:17)
+    at process.processTimers (node:internal/timers:523:7)
+Got pubkey: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+Converted to npub: npub1lllllllllllllllllllllllllllllllllllllllllllllllllllsq7lrjw
+Whitelist: []
+Blacklist: []
+Logged in with extension. Pubkey: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+User logged out.
+[bitvid] [nostr] extension.enable request with explicit permissions failed: Error: permission denied
+    at enableImpl (file:///app/tests/nostr-login-permissions.test.mjs:430:29)
+    at Object.enable (file:///app/tests/nostr-login-permissions.test.mjs:60:32)
+    at runNip07WithRetry.label (file:///app/js/nostr/nip07Permissions.js:282:36)
+    at getOrStartOperation (file:///app/js/nostr/nip07Permissions.js:202:41)
+    at withNip07Timeout (file:///app/js/nostr/nip07Permissions.js:170:23)
+    at runNip07WithRetry (file:///app/js/nostr/nip07Permissions.js:214:18)
+    at requestEnablePermissions (file:///app/js/nostr/nip07Permissions.js:281:13)
+    at NostrClient.ensureExtensionPermissions (file:///app/js/nostr/client.js:2542:32)
+    at NostrClient.login (file:///app/js/nostr/client.js:3700:43)
+    at file:///app/tests/nostr-login-permissions.test.mjs:435:44
+[bitvid] [nostr] extension.enable request with explicit permissions failed: Error: permission denied
+    at enableImpl (file:///app/tests/nostr-login-permissions.test.mjs:430:29)
+    at Object.enable (file:///app/tests/nostr-login-permissions.test.mjs:60:32)
+    at runNip07WithRetry.label (file:///app/js/nostr/nip07Permissions.js:282:36)
+    at getOrStartOperation (file:///app/js/nostr/nip07Permissions.js:202:41)
+    at withNip07Timeout (file:///app/js/nostr/nip07Permissions.js:170:23)
+    at runNip07WithRetry (file:///app/js/nostr/nip07Permissions.js:214:18)
+    at requestEnablePermissions (file:///app/js/nostr/nip07Permissions.js:281:13)
+    at async NostrClient.ensureExtensionPermissions (file:///app/js/nostr/client.js:2542:26)
+    at async NostrClient.login (file:///app/js/nostr/client.js:3700:32)
+    at async waitForActual (node:assert:644:5)
+[bitvid] Login error: Error: The NIP-07 extension reported "permission denied". Please approve the prompt and try again.
+    at NostrClient.login (file:///app/js/nostr/client.js:3706:29)
+    at async waitForActual (node:assert:644:5)
+    at async Function.rejects (node:assert:767:25)
+    at async TestContext.<anonymous> (file:///app/tests/nostr-login-permissions.test.mjs:435:5)
+    at async Test.run (node:internal/test_runner/test:1054:7)
+    at async Test.processPendingSubtests (node:internal/test_runner/test:744:7) {
+  cause: Error: permission denied
+      at enableImpl (file:///app/tests/nostr-login-permissions.test.mjs:430:29)
+      at Object.enable (file:///app/tests/nostr-login-permissions.test.mjs:60:32)
+      at runNip07WithRetry.label (file:///app/js/nostr/nip07Permissions.js:282:64)
+      at getOrStartOperation (file:///app/js/nostr/nip07Permissions.js:202:41)
+      at withNip07Timeout (file:///app/js/nostr/nip07Permissions.js:170:23)
+      at runNip07WithRetry (file:///app/js/nostr/nip07Permissions.js:214:18)
+      at requestEnablePermissions (file:///app/js/nostr/nip07Permissions.js:281:13)
+      at async NostrClient.ensureExtensionPermissions (file:///app/js/nostr/client.js:2542:26)
+      at async NostrClient.login (file:///app/js/nostr/client.js:3700:32)
+      at async waitForActual (node:assert:644:5)
+}
+User logged out.
+# Subtest: NIP-07 login quickly retries when a permission payload stalls
+ok 5 - NIP-07 login quickly retries when a permission payload stalls
+  ---
+  duration_ms: 82.428087
+  type: 'test'
+  ...
+# Subtest: NIP-07 login surfaces enable permission errors
+ok 6 - NIP-07 login surfaces enable permission errors
+  ---
+  duration_ms: 2.816909
+  type: 'test'
+  ...
+# Subtest: runNip07WithRetry respects timeout without retry multiplier
+ok 7 - runNip07WithRetry respects timeout without retry multiplier
+  ---
+  duration_ms: 61.108882
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 167.890534
+
+→ Running tests/nostr-private-key-signer.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+TAP version 13
+# Subtest: registerPrivateKeySigner exposes nip04 helpers
+ok 1 - registerPrivateKeySigner exposes nip04 helpers
+  ---
+  duration_ms: 190.705164
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 212.333059
+
+→ Running tests/nostr-send-direct-message.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+TAP version 13
+# Subtest: sendDirectMessage succeeds with private key signer and no extension
+ok 1 - sendDirectMessage succeeds with private key signer and no extension
+  ---
+  duration_ms: 189.424583
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 213.114544
+
+→ Running tests/nostr-service-access-control.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+[moderationService] reconcileTrustedMuteSubscriptions { previous: 0, next: 0 }
+[moderationService] subscribing to trusted mute list for 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+(moderationService) ensurePool failed while subscribing to trusted mute list for 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef Error: nostr-client-unavailable
+    at ModerationService.ensurePool (file:///app/js/services/moderationService.js:1631:13)
+    at file:///app/js/services/moderationService.js:953:20
+    at ModerationService.subscribeToTrustedMuteList (file:///app/js/services/moderationService.js:1020:7)
+    at ModerationService.reconcileTrustedMuteSubscriptions (file:///app/js/services/moderationService.js:901:12)
+    at ModerationService.rebuildTrustedContacts (file:///app/js/services/moderationService.js:583:10)
+    at ModerationService.clearTrustedMuteTracking (file:///app/js/services/moderationService.js:864:10)
+    at ModerationService.setViewerPubkey (file:///app/js/services/moderationService.js:1676:10)
+    at ModerationService.refreshViewerFromClient (file:///app/js/services/moderationService.js:1650:17)
+    at NostrService.getModerationService (file:///app/js/services/nostrService.js:824:32)
+    at NostrService.isViewerVideoAuthor (file:///app/js/services/nostrService.js:1607:12)
+[moderationService] ensurePool failed while fetching contacts Error: nostr-client-unavailable
+    at ModerationService.ensurePool (file:///app/js/services/moderationService.js:1631:13)
+    at ModerationService.fetchTrustedContacts (file:///app/js/services/moderationService.js:1726:18)
+    at ModerationService.setViewerPubkey (file:///app/js/services/moderationService.js:1692:36)
+    at ModerationService.refreshViewerFromClient (file:///app/js/services/moderationService.js:1650:17)
+    at NostrService.getModerationService (file:///app/js/services/nostrService.js:824:32)
+    at NostrService.isViewerVideoAuthor (file:///app/js/services/nostrService.js:1607:12)
+    at NostrService.shouldIncludeVideo (file:///app/js/services/nostrService.js:956:33)
+    at TestContext.<anonymous> (file:///app/tests/nostr-service-access-control.test.mjs:143:13)
+    at Test.runInAsyncScope (node:async_hooks:214:14)
+    at Test.run (node:internal/test_runner/test:1047:25)
+[moderationService] ensurePool failed while subscribing to contacts Error: nostr-client-unavailable
+    at ModerationService.ensurePool (file:///app/js/services/moderationService.js:1631:13)
+    at ModerationService.subscribeToContactList (file:///app/js/services/moderationService.js:1800:18)
+    at ModerationService.setViewerPubkey (file:///app/js/services/moderationService.js:1707:10)
+[bitvid] [UserBlockList] Relay error at wss://relay.damus.io: Error: nostrClient.pool.list is unavailable; cannot query block list.
+    at file:///app/js/userBlocks.js:1069:31
+    at new Promise (<anonymous>)
+    at fetchFromRelay (file:///app/js/userBlocks.js:1065:9)
+    at file:///app/js/userBlocks.js:1130:9
+    at Array.map (<anonymous>)
+    at UserBlockListManager.loadBlocks (file:///app/js/userBlocks.js:1129:39)
+    at UserBlockListManager.ensureLoaded (file:///app/js/userBlocks.js:865:16)
+    at ModerationService.ensureUserBlocksLoaded (file:///app/js/services/moderationService.js:921:29)
+    at ModerationService.setViewerPubkey (file:///app/js/services/moderationService.js:1711:16) {
+  code: 'pool-unavailable',
+  relay: 'wss://relay.damus.io'
+}
+[bitvid] [UserBlockList] Relay error at wss://nos.lol: Error: nostrClient.pool.list is unavailable; cannot query block list.
+    at file:///app/js/userBlocks.js:1069:31
+    at new Promise (<anonymous>)
+    at fetchFromRelay (file:///app/js/userBlocks.js:1065:9)
+    at file:///app/js/userBlocks.js:1130:9
+    at Array.map (<anonymous>)
+    at UserBlockListManager.loadBlocks (file:///app/js/userBlocks.js:1129:39)
+    at UserBlockListManager.ensureLoaded (file:///app/js/userBlocks.js:865:16)
+    at ModerationService.ensureUserBlocksLoaded (file:///app/js/services/moderationService.js:921:29)
+    at ModerationService.setViewerPubkey (file:///app/js/services/moderationService.js:1711:16) {
+  code: 'pool-unavailable',
+  relay: 'wss://nos.lol'
+}
+[bitvid] [UserBlockList] Relay error at wss://relay.snort.social: Error: nostrClient.pool.list is unavailable; cannot query block list.
+    at file:///app/js/userBlocks.js:1069:31
+    at new Promise (<anonymous>)
+    at fetchFromRelay (file:///app/js/userBlocks.js:1065:9)
+    at file:///app/js/userBlocks.js:1130:9
+    at Array.map (<anonymous>)
+    at UserBlockListManager.loadBlocks (file:///app/js/userBlocks.js:1129:39)
+    at UserBlockListManager.ensureLoaded (file:///app/js/userBlocks.js:865:16)
+    at ModerationService.ensureUserBlocksLoaded (file:///app/js/services/moderationService.js:921:29)
+    at ModerationService.setViewerPubkey (file:///app/js/services/moderationService.js:1711:16) {
+  code: 'pool-unavailable',
+  relay: 'wss://relay.snort.social'
+}
+[bitvid] [UserBlockList] Relay error at wss://relay.primal.net: Error: nostrClient.pool.list is unavailable; cannot query block list.
+    at file:///app/js/userBlocks.js:1069:31
+    at new Promise (<anonymous>)
+    at fetchFromRelay (file:///app/js/userBlocks.js:1065:9)
+    at file:///app/js/userBlocks.js:1133:9
+    at Array.map (<anonymous>)
+    at UserBlockListManager.loadBlocks (file:///app/js/userBlocks.js:1132:51)
+    at UserBlockListManager.ensureLoaded (file:///app/js/userBlocks.js:865:16)
+    at ModerationService.ensureUserBlocksLoaded (file:///app/js/services/moderationService.js:921:29)
+    at ModerationService.setViewerPubkey (file:///app/js/services/moderationService.js:1711:16) {
+  code: 'pool-unavailable',
+  relay: 'wss://relay.primal.net'
+}
+[bitvid] [UserBlockList] Relay error at wss://relay.nostr.band: Error: nostrClient.pool.list is unavailable; cannot query block list.
+    at file:///app/js/userBlocks.js:1069:31
+    at new Promise (<anonymous>)
+    at fetchFromRelay (file:///app/js/userBlocks.js:1065:9)
+    at file:///app/js/userBlocks.js:1133:9
+    at Array.map (<anonymous>)
+    at UserBlockListManager.loadBlocks (file:///app/js/userBlocks.js:1132:51)
+    at UserBlockListManager.ensureLoaded (file:///app/js/userBlocks.js:865:16)
+    at ModerationService.ensureUserBlocksLoaded (file:///app/js/services/moderationService.js:921:29)
+    at ModerationService.setViewerPubkey (file:///app/js/services/moderationService.js:1711:16) {
+  code: 'pool-unavailable',
+  relay: 'wss://relay.nostr.band'
+}
+[moderationService] subscribing to trusted mute list for 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+(moderationService) ensurePool failed while subscribing to trusted mute list for 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef Error: nostr-client-unavailable
+    at ModerationService.ensurePool (file:///app/js/services/moderationService.js:1631:13)
+    at file:///app/js/services/moderationService.js:953:20
+    at ModerationService.subscribeToTrustedMuteList (file:///app/js/services/moderationService.js:1020:7)
+    at ModerationService.ensureViewerMuteListLoaded (file:///app/js/services/moderationService.js:1298:35)
+    at ModerationService.setViewerPubkey (file:///app/js/services/moderationService.js:1712:16)
+TAP version 13
+# Subtest: shouldIncludeVideo returns true for whitelist author when npubEncode throws
+ok 1 - shouldIncludeVideo returns true for whitelist author when npubEncode throws
+  ---
+  duration_ms: 1.799086
+  type: 'test'
+  ...
+# Subtest: shouldIncludeVideo rejects blacklisted authors provided as npub
+ok 2 - shouldIncludeVideo rejects blacklisted authors provided as npub
+  ---
+  duration_ms: 0.323826
+  type: 'test'
+  ...
+# Subtest: shouldIncludeVideo rejects blacklisted authors provided as hex when npubEncode throws
+ok 3 - shouldIncludeVideo rejects blacklisted authors provided as hex when npubEncode throws
+  ---
+  duration_ms: 0.44755
+  type: 'test'
+  ...
+# Subtest: shouldIncludeVideo always returns true for the viewer's own video
+ok 4 - shouldIncludeVideo always returns true for the viewer's own video
+  ---
+  duration_ms: 4.777794
+  type: 'test'
+  ...
+# Subtest: shouldIncludeVideo allows access when access control would deny the author
+ok 5 - shouldIncludeVideo allows access when access control would deny the author
+  ---
+  duration_ms: 3.010374
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 25.226543
+
+→ Running tests/nostr/comment-events.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+[nostr] Comment event accepted by 1 relay(s): wss://custom
+[nostr] Comment event accepted by 1 relay(s): wss://primary
+[nostr] Comment event accepted by 1 relay(s): wss://primary
+[nostr] Comment event accepted by 1 relay(s): wss://primary
+TAP version 13
+# Subtest: publishComment prefers active signer when available
+ok 1 - publishComment prefers active signer when available
+  ---
+  duration_ms: 5.582698
+  type: 'test'
+  ...
+# Subtest: publishComment rejects when active signer is unavailable
+ok 2 - publishComment rejects when active signer is unavailable
+  ---
+  duration_ms: 0.681942
+  type: 'test'
+  ...
+# Subtest: publishComment accepts legacy targets with only an event id
+ok 3 - publishComment accepts legacy targets with only an event id
+  ---
+  duration_ms: 0.86759
+  type: 'test'
+  ...
+# Subtest: publishComment derives root and parent metadata from parent comment tags
+ok 4 - publishComment derives root and parent metadata from parent comment tags
+  ---
+  duration_ms: 0.887688
+  type: 'test'
+  ...
+# Subtest: listVideoComments matches comments even when tag casing and whitespace differ
+ok 5 - listVideoComments matches comments even when tag casing and whitespace differ
+  ---
+  duration_ms: 1.50333
+  type: 'test'
+  ...
+# Subtest: listVideoComments matches uppercase definition addresses without lowering
+ok 6 - listVideoComments matches uppercase definition addresses without lowering
+  ---
+  duration_ms: 0.654415
+  type: 'test'
+  ...
+# Subtest: publishComment emits only uppercase video event pointer when address and parent are absent
+ok 7 - publishComment emits only uppercase video event pointer when address and parent are absent
+  ---
+  duration_ms: 0.879939
+  type: 'test'
+  ...
+# Subtest: listVideoComments builds filters with uppercase roots plus legacy fallbacks
+ok 8 - listVideoComments builds filters with uppercase roots plus legacy fallbacks
+  ---
+  duration_ms: 0.996719
+  type: 'test'
+  ...
+# Subtest: listVideoComments emits uppercase root filters when only the identifier is known
+ok 9 - listVideoComments emits uppercase root filters when only the identifier is known
+  ---
+  duration_ms: 1.031203
+  type: 'test'
+  ...
+# Subtest: listVideoComments supports legacy targets without a definition address
+ok 10 - listVideoComments supports legacy targets without a definition address
+  ---
+  duration_ms: 0.981996
+  type: 'test'
+  ...
+# Subtest: subscribeVideoComments forwards matching events and cleans up unsubscribe
+ok 11 - subscribeVideoComments forwards matching events and cleans up unsubscribe
+  ---
+  duration_ms: 8.374751
+  type: 'test'
+  ...
+# Subtest: subscribeVideoComments supports video targets without a definition address
+ok 12 - subscribeVideoComments supports video targets without a definition address
+  ---
+  duration_ms: 0.587367
+  type: 'test'
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 31.835304
+
+→ Running tests/nostr/edit-video-dtag.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+Creating edited event with root ID: root-abc
+Event content: {"videoRootId":"root-abc","version":3,"deleted":false,"isPrivate":false,"isNsfw":false,"isForKids":false,"title":"Updated","url":"https://example.com/video.mp4","magnet":"magnet:?xt=urn:btih:example","thumbnail":"https://example.com/thumb.jpg","description":"original","mode":"live","enableComments":true,"ws":"wss://example.com","xs":"https://example.com/file.torrent"}
+Signed edited event: {
+  kind: 30078,
+  pubkey: 'abc123',
+  created_at: 1768516078,
+  tags: [ [ 't', 'video' ], [ 'd', 'stable-d-tag' ], [ 't', 'video' ] ],
+  content: '{"videoRootId":"root-abc","version":3,"deleted":false,"isPrivate":false,"isNsfw":false,"isForKids":false,"title":"Updated","url":"https://example.com/video.mp4","magnet":"magnet:?xt=urn:btih:example","thumbnail":"https://example.com/thumb.jpg","description":"original","mode":"live","enableComments":true,"ws":"wss://example.com","xs":"https://example.com/file.torrent"}',
+  id: 'signed-1'
+}
+Edited video published to wss://relay.one
+Creating edited event with root ID: root-abc
+Event content: {"videoRootId":"root-abc","version":3,"deleted":false,"isPrivate":false,"isNsfw":false,"isForKids":false,"title":"Updated","url":"https://example.com/video.mp4","magnet":"magnet:?xt=urn:btih:example","thumbnail":"https://example.com/thumb.jpg","description":"original","mode":"live","enableComments":true,"ws":"wss://example.com","xs":"https://example.com/file.torrent"}
+Signed edited event: {
+  kind: 30078,
+  pubkey: 'abc123',
+  created_at: 1768516078,
+  tags: [
+    [ 't', 'video' ],
+    [ 'd', 'event-original-no-d' ],
+    [ 't', 'video' ]
+  ],
+  content: '{"videoRootId":"root-abc","version":3,"deleted":false,"isPrivate":false,"isNsfw":false,"isForKids":false,"title":"Updated","url":"https://example.com/video.mp4","magnet":"magnet:?xt=urn:btih:example","thumbnail":"https://example.com/thumb.jpg","description":"original","mode":"live","enableComments":true,"ws":"wss://example.com","xs":"https://example.com/file.torrent"}',
+  id: 'signed-1'
+}
+Edited video published to wss://relay.one
+TAP version 13
+# Subtest: editVideo preserves existing d tag
+ok 1 - editVideo preserves existing d tag
+  ---
+  duration_ms: 7.607713
+  type: 'test'
+  ...
+# Subtest: editVideo falls back to base event id when d tag missing
+ok 2 - editVideo falls back to base event id when d tag missing
+  ---
+  duration_ms: 2.487982
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 21.548173
+
+→ Running tests/nostr/integration-remote-flow.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+Got pubkey: f96327722bc59747bd847449671d3af132c5ce357942b833950413bc8447bad9
+Converted to npub: npub1l93jwu3tckt500vyw3ykw8f67yevtn3409ptsvu4qsfmepz8htvsvn2y5u
+Whitelist: [
+  'npubf96327722bc59747bd847449671d3af132c5ce357942b833950413bc8447bad9'
+]
+Blacklist: []
+Logged in with extension. Pubkey: f96327722bc59747bd847449671d3af132c5ce357942b833950413bc8447bad9
+TAP version 13
+[nostr] View event accepted by 1 relay(s): wss://relay.integration
+Publishing new video with data: {
+  title: 'Integration Remote Video',
+  description: 'remote signer flow',
+  magnet: 'magnet:?xt=urn:btih:REMOTEINTEGRATION123456789',
+  mode: 'live',
+  isNsfw: false,
+  isForKids: false
+}
+Publish event with brand-new root: 1768516078789-7pow13f8o1n
+Event content: {"version":3,"title":"Integration Remote Video","url":"","magnet":"magnet:?xt=urn:btih:REMOTEINTEGRATION123456789","thumbnail":"","description":"remote signer flow","mode":"live","videoRootId":"1768516078789-7pow13f8o1n","deleted":false,"isPrivate":false,"isNsfw":false,"isForKids":false,"enableComments":true}
+Signed video note event: {
+  kind: 30078,
+  content: '{"version":3,"title":"Integration Remote Video","url":"","magnet":"magnet:?xt=urn:btih:REMOTEINTEGRATION123456789","thumbnail":"","description":"remote signer flow","mode":"live","videoRootId":"1768516078789-7pow13f8o1n","deleted":false,"isPrivate":false,"isNsfw":false,"isForKids":false,"enableComments":true}',
+  created_at: 1768516078,
+  tags: [ [ 't', 'video' ], [ 'd', '1768516078789-c2r5su5ppem' ] ],
+  pubkey: 'f96327722bc59747bd847449671d3af132c5ce357942b833950413bc8447bad9',
+  id: 'bd72c8794aeee8e4f0fce06dc5abf4fd3ad484ff01c9fe1b301c27cb87cc712e',
+  sig: '040b0f72ae205f2e9d0e4970e4968a7e9b73551aee1fcc4d6af55f74b18af4346f9a71b57b8db8e129299796726f3c1a3735c3d2d63bc069ad4adb707c49917b',
+  [Symbol(verified)]: true
+}
+Video note published to wss://relay.integration
+Skipping NIP-94 mirror: no hosted URL provided.
+[nostr] Preparing to publish watch history month. {
+  actor: 'f96327722bc59747bd847449671d3af132c5ce357942b833950413bc8447bad9',
+  monthIdentifier: '2023-11',
+  itemCount: 1,
+  payloadCount: 0,
+  relaysRequested: [ 'wss://relay.integration' ],
+  attempt: 0,
+  source: 'unknown'
+}
+[nostr] Watch history event accepted by 1/1 relay(s).
+[nostr] Watch history month publish result. {
+  actor: 'f96327722bc59747bd847449671d3af132c5ce357942b833950413bc8447bad9',
+  monthIdentifier: '2023-11',
+  success: true,
+  partialAcceptance: false,
+  error: null,
+  acceptedCount: 1
+}
+[watchHistoryService] loadLatest invoked. {
+  actor: 'f96327722bc59747bd847449671d3af132c5ce357942b833950413bc8447bad9',
+  cacheHasItems: false,
+  cacheExpiresAt: null,
+  forceRefresh: false
+}
+[watchHistoryService] Triggered nostr watch list refresh. {
+  actor: 'f96327722bc59747bd847449671d3af132c5ce357942b833950413bc8447bad9'
+}
+[nostr] Resolving watch history for actor. {
+  actor: 'f96327722bc59747bd847449671d3af132c5ce357942b833950413bc8447bad9',
+  forceRefresh: true
+}
+[nostr] Fetching watch history from relays. {
+  actor: 'f96327722bc59747bd847449671d3af132c5ce357942b833950413bc8447bad9',
+  forceRefresh: true
+}
+[nostr] Failed to fetch watch history pointer: TypeError: pool.list is not a function
+    at WatchHistoryManager.fetch (file:///app/js/nostr/watchHistory.js:2052:34)
+    at WatchHistoryManager.resolve (file:///app/js/nostr/watchHistory.js:2251:36)
+    at resolveWatchHistory (file:///app/js/nostr/watchHistory.js:2384:18)
+    at NostrClient.resolveWatchHistory (file:///app/js/nostr/client.js:3489:12)
+    at file:///app/js/watchHistoryService.js:1004:24
+    at async Object.loadLatest (file:///app/js/watchHistoryService.js:1268:22)
+    at async TestContext.<anonymous> (file:///app/tests/nostr/integration-remote-flow.test.mjs:308:18)
+    at async Test.run (node:internal/test_runner/test:1054:7)
+    at async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+[nostr] No watch history event found on relays. Falling back to storage. {
+  actor: 'f96327722bc59747bd847449671d3af132c5ce357942b833950413bc8447bad9'
+}
+[nostr] Watch history fetch complete. {
+  actor: 'f96327722bc59747bd847449671d3af132c5ce357942b833950413bc8447bad9',
+  snapshotId: null,
+  pointerFound: false,
+  itemCount: 1
+}
+[nostr] Watch history resolved and cached. {
+  actor: 'f96327722bc59747bd847449671d3af132c5ce357942b833950413bc8447bad9',
+  itemCount: 1,
+  snapshotId: null
+}
+# Subtest: nostr login + remote signing + publish + watch history integration
+ok 1 - nostr login + remote signing + publish + watch history integration
+  ---
+  duration_ms: 149.005388
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 604.02544
+
+→ Running tests/nostr/nip07Permissions.test.js
+TAP version 13
+# Subtest: writeStoredNip07Permissions normalizes and persists granted methods
+ok 1 - writeStoredNip07Permissions normalizes and persists granted methods
+  ---
+  duration_ms: 2.27066
+  type: 'test'
+  ...
+# Subtest: clearStoredNip07Permissions removes persisted grants
+ok 2 - clearStoredNip07Permissions removes persisted grants
+  ---
+  duration_ms: 0.284149
+  type: 'test'
+  ...
+# Subtest: requestEnablePermissions retries explicit and fallback variants
+ok 3 - requestEnablePermissions retries explicit and fallback variants
+  ---
+  duration_ms: 1.328993
+  type: 'test'
+  ...
+# Subtest: requestEnablePermissions reports unavailable extension
+ok 4 - requestEnablePermissions reports unavailable extension
+  ---
+  duration_ms: 0.215493
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 17.801958
+
+→ Running tests/nostr/nip46Client.test.js
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+[nostr] Created remote signer cipher { remotePubkey: '1d05a99b…9431 (len:64)', algorithm: 'nip44.v2' }
+[nostr] Encrypted remote signer payload {
+  remotePubkey: '1d05a99b…9431 (len:64)',
+  method: null,
+  requestId: null,
+  payloadPreview: {
+    type: 'string',
+    length: 30,
+    preview: '{"message":"hello","count":42}'
+  },
+  ciphertextLength: 132
+}
+[nostr] Reusing cached remote signer cipher { remotePubkey: '1d05a99b…9431 (len:64)', algorithm: 'nip44.v2' }
+[nostr] Decrypted remote signer payload {
+  remotePubkey: '1d05a99b…9431 (len:64)',
+  method: null,
+  requestId: null,
+  ciphertextLength: 132,
+  plaintextPreview: {
+    type: 'string',
+    length: 30,
+    preview: '{"message":"hello","count":42}'
+  }
+}
+[nostr] Reusing cached remote signer cipher { remotePubkey: '1d05a99b…9431 (len:64)', algorithm: 'nip44.v2' }
+[nostr] Decrypted remote signer payload {
+  remotePubkey: '1d05a99b…9431 (len:64)',
+  method: null,
+  requestId: null,
+  ciphertextLength: 132,
+  plaintextPreview: {
+    type: 'string',
+    length: 30,
+    preview: '{"message":"hello","count":42}'
+  }
+}
+[nostr] Handshake decrypt attempt { remotePubkey: 'a8f0347b…81af (len:64)', ciphertextLength: 132 }
+[nostr] Handshake decrypt failed for candidate {
+  remotePubkey: 'a8f0347b…81af (len:64)',
+  error: 'Failed to decrypt NIP-46 payload with available candidates.'
+}
+[nostr] Handshake decrypt attempt { remotePubkey: '17ac0250…9474 (len:64)', ciphertextLength: 132 }
+[nostr] Handshake decrypt succeeded { remotePubkey: '17ac0250…9474 (len:64)', algorithm: 'nip44.v2' }
+[nostr] Handshake decrypt attempt { remotePubkey: '0dbd4931…14a6 (len:64)', ciphertextLength: 72 }
+[nostr] Handshake decrypt succeeded { remotePubkey: '0dbd4931…14a6 (len:64)', algorithm: 'nip04' }
+[nostr] Remote signer RPC start {
+  method: 'ping',
+  remotePubkey: 'bbbbbbbb…bbbb (len:64)',
+  timeoutMs: 15000,
+  retries: 1,
+  params: []
+}
+[nostr] Remote signer using existing nostr pool
+[nostr] Remote signer subscription created {
+  remotePubkey: 'bbbbbbbb…bbbb (len:64)',
+  relays: [ 'wss://relay.example.com' ],
+  filters: [ { kinds: [Array], authors: [Array], '#p': [Array] } ]
+}
+[nostr] Remote signer RPC attempt prepared {
+  method: 'ping',
+  attempt: 1,
+  requestId: '76b96a54cecdd04161be98f71eb227d5',
+  remotePubkey: 'bbbbbbbb…bbbb (len:64)'
+}
+[nostr] Encrypted remote signer payload {
+  remotePubkey: 'bbbbbbbb…bbbb (len:64)',
+  method: 'ping',
+  requestId: '76b96a54cecdd04161be98f71eb227d5',
+  payloadPreview: {
+    type: 'string',
+    length: 69,
+    preview: '{"id":"76b96a54cecdd04161be98f71eb227d5","method":"ping","params":[]}'
+  },
+  ciphertextLength: 69
+}
+[nostr] Remote signer RPC event signed {
+  method: 'ping',
+  attempt: 1,
+  requestId: '76b96a54cecdd04161be98f71eb227d5',
+  relayCount: 1,
+  contentLength: 69
+}
+[nostr] Remote signer RPC awaiting response {
+  method: 'ping',
+  requestId: '76b96a54cecdd04161be98f71eb227d5',
+  attempt: 1
+}
+[nostr] Remote signer using existing nostr pool
+[nostr] Remote signer RPC published {
+  method: 'ping',
+  requestId: '76b96a54cecdd04161be98f71eb227d5',
+  attempt: 1,
+  publishResults: [ { relay: 'wss://relay.example.com', success: true, reason: null } ]
+}
+TAP version 13
+# Subtest: Nip46RpcClient encrypts payloads with nip44 conversation keys
+ok 1 - Nip46RpcClient encrypts payloads with nip44 conversation keys
+  ---
+  duration_ms: 159.489867
+  type: 'test'
+  ...
+# Subtest: decryptNip46PayloadWithKeys handles nip44.v2 ciphertext
+ok 2 - decryptNip46PayloadWithKeys handles nip44.v2 ciphertext
+  ---
+  duration_ms: 23.311243
+  type: 'test'
+  ...
+# Subtest: decryptNip46PayloadWithKeys coerces structured handshake payloads
+ok 3 - decryptNip46PayloadWithKeys coerces structured handshake payloads
+  ---
+  duration_ms: 22.998413
+  type: 'test'
+  ...
+# Subtest: decryptNip46PayloadWithKeys decodes buffer-based handshake payloads
+ok 4 - decryptNip46PayloadWithKeys decodes buffer-based handshake payloads
+  ---
+  duration_ms: 22.099871
+  type: 'test'
+  ...
+# Subtest: decryptNip46PayloadWithKeys supports nip04-style ciphertext wrappers
+ok 5 - decryptNip46PayloadWithKeys supports nip04-style ciphertext wrappers
+  ---
+  duration_ms: 29.341777
+  type: 'test'
+  ...
+# Subtest: parseNip46ConnectionString handles remote signer key hints
+ok 6 - parseNip46ConnectionString handles remote signer key hints
+  ---
+  duration_ms: 4.607274
+  type: 'test'
+  ...
+# Subtest: attemptDecryptNip46HandshakePayload falls back to expected remote signer key
+ok 7 - attemptDecryptNip46HandshakePayload falls back to expected remote signer key
+  ---
+  duration_ms: 40.66089
+  type: 'test'
+  ...
+# Subtest: attemptDecryptNip46HandshakePayload handles array-encoded nip04 payloads
+ok 8 - attemptDecryptNip46HandshakePayload handles array-encoded nip04 payloads
+  ---
+  duration_ms: 27.182736
+  type: 'test'
+  ...
+[nostr] Remote signer event received {
+  eventId: '',
+  remotePubkey: 'bbbbbbbb…bbbb (len:64)',
+  clientPubkey: 'cccccccc…cccc (len:64)',
+  createdAt: null,
+  contentLength: 57
+}
+[nostr] Decrypted remote signer payload {
+  remotePubkey: 'bbbbbbbb…bbbb (len:64)',
+  method: null,
+  requestId: null,
+  ciphertextLength: 57,
+  plaintextPreview: {
+    type: 'string',
+    length: 57,
+    preview: '{"id":"76b96a54cecdd04161be98f71eb227d5","result":"pong"}'
+  }
+}
+[nostr] Remote signer response parsed {
+  eventId: '',
+  requestId: '76b96a54cecdd04161be98f71eb227d5',
+  remotePubkey: 'bbbbbbbb…bbbb (len:64)',
+  method: 'ping',
+  resultSummary: { type: 'string', length: 4, value: 'pong' },
+  errorSummary: { type: 'string', length: 0 }
+}
+[nostr] Remote signer RPC response received {
+  method: 'ping',
+  requestId: '76b96a54cecdd04161be98f71eb227d5',
+  attempt: 1,
+  resultSummary: { type: 'string', length: 4, value: 'pong' }
+}
+# Subtest: Nip46RpcClient sendRpc publishes events and resolves responses
+ok 9 - Nip46RpcClient sendRpc publishes events and resolves responses
+  ---
+  duration_ms: 12.047645
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 351.754482
+
+→ Running tests/nostr/nip71.test.js
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+TAP version 13
+# Subtest: buildNip71MetadataTags normalizes structured fields
+ok 1 - buildNip71MetadataTags normalizes structured fields
+  ---
+  duration_ms: 4.824173
+  type: 'test'
+  ...
+# Subtest: collectNip71PointerRequests aggregates events and tags
+ok 2 - collectNip71PointerRequests aggregates events and tags
+  ---
+  duration_ms: 0.577221
+  type: 'test'
+  ...
+# Subtest: processNip71Events reconciles pointers and filters video hashtags
+ok 3 - processNip71Events reconciles pointers and filters video hashtags
+  ---
+  duration_ms: 1.290388
+  type: 'test'
+  ...
+# Subtest: populateNip71MetadataForVideos fetches missing records once
+ok 4 - populateNip71MetadataForVideos fetches missing records once
+  ---
+  duration_ms: 1.009767
+  type: 'test'
+  ...
+# Subtest: buildNip71VideoEvent composes pointer tags
+ok 5 - buildNip71VideoEvent composes pointer tags
+  ---
+  duration_ms: 0.643975
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 20.563988
+
+→ Running tests/nostr/nostrClientFacade.test.js
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+TAP version 13
+# Subtest: nostrClientFacade forwards the default client instance
+ok 1 - nostrClientFacade forwards the default client instance
+  ---
+  duration_ms: 1.100202
+  type: 'test'
+  ...
+# Subtest: nostrClientFacade forwards the default permission helper
+ok 2 - nostrClientFacade forwards the default permission helper
+  ---
+  duration_ms: 0.260835
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 13.021301
+
+→ Running tests/nostr/publishHelpers.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+Signed NIP-94 mirror event: {
+  kind: 1063,
+  pubkey: '1111111111111111111111111111111111111111111111111111111111111111',
+  created_at: 1768516080,
+  tags: [
+    [ 'url', 'https://videos.example/demo.mp4' ],
+    [ 'm', 'video/mp4' ]
+  ],
+  content: '',
+  id: '1063-1768516080',
+  sig: 'active-signature'
+}
+NIP-94 mirror published to wss://relay.example
+Signed NIP-94 mirror event: {
+  kind: 1063,
+  pubkey: '2222222222222222222222222222222222222222222222222222222222222222',
+  created_at: 1768516080,
+  tags: [
+    [ 'url', 'https://videos.example/demo.webm' ],
+    [ 'm', 'video/webm' ]
+  ],
+  content: '',
+  id: '1063-1768516080',
+  sig: 'active-signature'
+}
+NIP-94 mirror published to wss://relay.example
+Signed NIP-94 mirror event: {
+  kind: 1063,
+  pubkey: '3333333333333333333333333333333333333333333333333333333333333333',
+  created_at: 1768516080,
+  tags: [
+    [ 'url', 'https://videos.example/demo.mp4' ],
+    [ 'm', 'video/mp4' ],
+    [
+      'x',
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    ],
+    [
+      'ox',
+      'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+    ]
+  ],
+  content: '',
+  id: '1063-1768516080',
+  sig: 'active-signature'
+}
+NIP-94 mirror published to wss://relay.example
+TAP version 13
+# Subtest: mirrorVideoEvent lowercases provided MIME types
+ok 1 - mirrorVideoEvent lowercases provided MIME types
+  ---
+  duration_ms: 4.211971
+  type: 'test'
+  ...
+# Subtest: mirrorVideoEvent lowercases inferred MIME types
+ok 2 - mirrorVideoEvent lowercases inferred MIME types
+  ---
+  duration_ms: 1.19339
+  type: 'test'
+  ...
+# Subtest: mirrorVideoEvent includes hash tags when provided
+ok 3 - mirrorVideoEvent includes hash tags when provided
+  ---
+  duration_ms: 1.792545
+  type: 'test'
+  ...
+1..3
+# tests 3
+# suites 0
+# pass 3
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 18.489785
+
+→ Running tests/nostr/reaction-events.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+[nostr] Reaction event accepted by 1 relay(s): wss://relay.example
+[nostr] Unable to resolve event id for address reaction target. 30078:abcdef:clip-1
+TAP version 13
+# Subtest: publishVideoReaction includes both address and event tags when reacting to addressable content
+ok 1 - publishVideoReaction includes both address and event tags when reacting to addressable content
+  ---
+  duration_ms: 4.869829
+  type: 'test'
+  ...
+# Subtest: publishVideoReaction aborts when address pointer is missing a resolvable event id
+ok 2 - publishVideoReaction aborts when address pointer is missing a resolvable event id
+  ---
+  duration_ms: 0.720259
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 16.254264
+
+→ Running tests/nostr/revert-video-dtag.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+Revert event published to wss://relay.one
+Revert event published to wss://relay.one
+TAP version 13
+# Subtest: revertVideo preserves existing d tag
+ok 1 - revertVideo preserves existing d tag
+  ---
+  duration_ms: 5.39433
+  type: 'test'
+  ...
+# Subtest: revertVideo falls back to original event id when d tag missing
+ok 2 - revertVideo falls back to original event id when d tag missing
+  ---
+  duration_ms: 1.38247
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 18.814058
+
+→ Running tests/nostr/sessionActor.test.js
+TAP version 13
+# Subtest: encryptSessionPrivateKey + decryptSessionPrivateKey roundtrip
+ok 1 - encryptSessionPrivateKey + decryptSessionPrivateKey roundtrip
+  ---
+  duration_ms: 294.508365
+  type: 'test'
+  ...
+# Subtest: persistSessionActor stores plain-text session actors
+ok 2 - persistSessionActor stores plain-text session actors
+  ---
+  duration_ms: 1.269452
+  type: 'test'
+  ...
+# Subtest: persistSessionActor stores encrypted payload metadata
+ok 3 - persistSessionActor stores encrypted payload metadata
+  ---
+  duration_ms: 146.96302
+  type: 'test'
+  ...
+# Subtest: clearStoredSessionActor removes persisted payload
+ok 4 - clearStoredSessionActor removes persisted payload
+  ---
+  duration_ms: 0.401944
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 453.310111
+
+→ Running tests/nostr/signers.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+TAP version 13
+# Subtest: setActiveSigner hydrates extension capabilities from window.nostr
+ok 1 - setActiveSigner hydrates extension capabilities from window.nostr
+  ---
+  duration_ms: 1.487847
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 11.9898
+
+→ Running tests/nostr/toolkit.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+TAP version 13
+# Subtest: ensureNostrTools resolves the cached toolkit
+ok 1 - ensureNostrTools resolves the cached toolkit
+  ---
+  duration_ms: 1.261414
+  type: 'test'
+  ...
+# Subtest: resolveSimplePoolConstructor handles supported permutations
+ok 2 - resolveSimplePoolConstructor handles supported permutations
+  ---
+  duration_ms: 0.707472
+  type: 'test'
+  ...
+# Subtest: shimLegacySimplePoolMethods adds legacy sub/list wrappers
+ok 3 - shimLegacySimplePoolMethods adds legacy sub/list wrappers
+  ---
+  duration_ms: 2.446695
+  type: 'test'
+  ...
+1..3
+# tests 3
+# suites 0
+# pass 3
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 18.337712
+
+→ Running tests/nostr/watchHistory.test.js
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+[nostr] Fetching watch history from relays. {
+  actor: '3333333333333333333333333333333333333333333333333333333333333333',
+  forceRefresh: true
+}
+[nostr] Fetching watch history from relays. {
+  actor: '4444444444444444444444444444444444444444444444444444444444444444',
+  forceRefresh: true
+}
+[nostr] Failed to decrypt watch history chunk: Error: decrypt failed
+    at Object.nip04Decrypt (file:///app/tests/nostr/watchHistory.test.js:274:13)
+    at WatchHistoryManager.fetch (file:///app/js/nostr/watchHistory.js:2129:47)
+    at async TestContext.<anonymous> (file:///app/tests/nostr/watchHistory.test.js:298:20)
+    at async Test.run (node:internal/test_runner/test:1054:7)
+    at async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+[nostr] Preparing to publish watch history month. {
+  actor: 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff',
+  monthIdentifier: '1970-01',
+  itemCount: 1,
+  payloadCount: 0,
+  relaysRequested: [ 'wss://relay.integration' ],
+  attempt: 0,
+  source: 'unknown'
+}
+[nostr] Watch history event accepted by 1/1 relay(s).
+[nostr] Watch history month publish result. {
+  actor: 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff',
+  monthIdentifier: '1970-01',
+  success: true,
+  partialAcceptance: false,
+  error: null,
+  acceptedCount: 1
+}
+[nostr] Preparing to publish watch history month. {
+  actor: 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+  monthIdentifier: '1970-01',
+  itemCount: 1,
+  payloadCount: 0,
+  relaysRequested: [ 'wss://relay.cache' ],
+  attempt: 0,
+  source: 'unknown'
+}
+TAP version 13
+# Subtest: buildWatchHistoryPayload enforces byte limits and records skipped entries
+ok 1 - buildWatchHistoryPayload enforces byte limits and records skipped entries
+  ---
+  duration_ms: 3.122594
+  type: 'test'
+  ...
+# Subtest: getWatchHistoryStorage prunes entries that exceed the configured TTL
+ok 2 - getWatchHistoryStorage prunes entries that exceed the configured TTL
+  ---
+  duration_ms: 1.610241
+  type: 'test'
+  ...
+# Subtest: fetchWatchHistory prefers decrypted chunk payloads when nip04 decrypt succeeds
+ok 3 - fetchWatchHistory prefers decrypted chunk payloads when nip04 decrypt succeeds
+  ---
+  duration_ms: 3.254325
+  type: 'test'
+  ...
+# Subtest: fetchWatchHistory falls back to pointer payload when nip04 decrypt fails
+ok 4 - fetchWatchHistory falls back to pointer payload when nip04 decrypt fails
+  ---
+  duration_ms: 1.970943
+  type: 'test'
+  ...
+# Subtest: publishWatchHistorySnapshot uses injected nostr-tools helpers when signer cannot encrypt
+ok 5 - publishWatchHistorySnapshot uses injected nostr-tools helpers when signer cannot encrypt
+  ---
+  duration_ms: 3.922447
+  type: 'test'
+  ...
+[nostr] Watch history event accepted by 1/1 relay(s).
+[nostr] Watch history month publish result. {
+  actor: 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+  monthIdentifier: '1970-01',
+  success: true,
+  partialAcceptance: false,
+  error: null,
+  acceptedCount: 1
+}
+# Subtest: publishWatchHistorySnapshot caches successful snapshot results
+ok 6 - publishWatchHistorySnapshot caches successful snapshot results
+  ---
+  duration_ms: 7.635271
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 29.772931
+
+→ Running tests/nostr/watchHistoryBindings.test.js
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+TAP version 13
+# Subtest: updateWatchHistoryList delegates to the client's manager
+ok 1 - updateWatchHistoryList delegates to the client's manager
+  ---
+  duration_ms: 2.337075
+  type: 'test'
+  ...
+# Subtest: removeWatchHistoryItem delegates to the client's manager
+ok 2 - removeWatchHistoryItem delegates to the client's manager
+  ---
+  duration_ms: 0.505399
+  type: 'test'
+  ...
+# Subtest: watch history bindings throw when the manager is unavailable
+ok 3 - watch history bindings throw when the manager is unavailable
+  ---
+  duration_ms: 0.805863
+  type: 'test'
+  ...
+# Subtest: watch history bindings throw when a required method is missing
+ok 4 - watch history bindings throw when a required method is missing
+  ---
+  duration_ms: 0.334271
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 18.179027
+
+→ Running tests/nwc-settings-service.test.mjs
+TAP version 13
+# Subtest: nwc settings service preserves settings across profile switches
+ok 1 - nwc settings service preserves settings across profile switches
+  ---
+  duration_ms: 2.021824
+  type: 'test'
+  ...
+# Subtest: updateActiveNwcSettings returns cloned values
+ok 2 - updateActiveNwcSettings returns cloned values
+  ---
+  duration_ms: 0.481382
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 13.000889
+
+→ Running tests/position-floating-panel.test.mjs
+TAP version 13
+# Subtest: flips placement when bottom placement would collide with viewport
+ok 1 - flips placement when bottom placement would collide with viewport
+  ---
+  duration_ms: 232.61514
+  type: 'test'
+  ...
+# Subtest: closes previously open popovers without restoring focus
+ok 2 - closes previously open popovers without restoring focus
+  ---
+  duration_ms: 47.350033
+  type: 'test'
+  ...
+# Subtest: restores focus to the trigger when closed
+ok 3 - restores focus to the trigger when closed
+  ---
+  duration_ms: 22.913001
+  type: 'test'
+  ...
+1..3
+# tests 3
+# suites 0
+# pass 3
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 311.259589
+
+→ Running tests/profile-modal-controller.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+TAP version 13
+# Subtest: Profile modal Escape closes and restores trigger focus
+ok 1 - Profile modal Escape closes and restores trigger focus
+  ---
+  duration_ms: 522.56704
+  type: 'test'
+  ...
+# Subtest: Add profile request suspends focus trap and elevates login modal
+ok 2 - Add profile request suspends focus trap and elevates login modal
+  ---
+  duration_ms: 316.925292
+  type: 'test'
+  ...
+# Subtest: Profile modal navigation buttons toggle active state
+ok 3 - Profile modal navigation buttons toggle active state
+  ---
+  duration_ms: 295.431118
+  type: 'test'
+  ...
+# Subtest: Profile modal toggles mobile menu and pane views
+ok 4 - Profile modal toggles mobile menu and pane views
+  ---
+  duration_ms: 294.153597
+  type: 'test'
+  ...
+# Subtest: wallet URI input masks persisted values and restores on focus
+ok 5 - wallet URI input masks persisted values and restores on focus
+  ---
+  duration_ms: 207.553385
+  type: 'test'
+  ...
+# Subtest: Profile modal uses abbreviated npub display
+ok 6 - Profile modal uses abbreviated npub display
+  ---
+  duration_ms: 156.147157
+  type: 'test'
+  ...
+# Subtest: renderSavedProfiles applies provider metadata
+ok 7 - renderSavedProfiles applies provider metadata
+  ---
+  duration_ms: 156.745581
+  type: 'test'
+  ...
+# Subtest: Hashtag pane shows empty states by default
+ok 8 - Hashtag pane shows empty states by default
+  ---
+  duration_ms: 186.18485
+  type: 'test'
+  ...
+# Subtest: Hashtag pane adds, moves, and removes tags
+ok 9 - Hashtag pane adds, moves, and removes tags
+  ---
+  duration_ms: 200.623764
+  type: 'test'
+  ...
+# Subtest: handleAddHashtagPreference publishes updates
+ok 10 - handleAddHashtagPreference publishes updates
+  ---
+  duration_ms: 190.127443
+  type: 'test'
+  ...
+# Subtest: Hashtag pane resets after logout when service clears tags
+ok 11 - Hashtag pane resets after logout when service clears tags
+  ---
+  duration_ms: 225.754924
+  type: 'test'
+  ...
+# Subtest: load() injects markup and caches expected elements
+ok 12 - load() injects markup and caches expected elements
+  ---
+  duration_ms: 107.269311
+  type: 'test'
+  ...
+# Subtest: show()/hide() toggle panes, trap focus, and refresh the wallet pane
+ok 13 - show()/hide() toggle panes, trap focus, and refresh the wallet pane
+  ---
+  duration_ms: 195.392677
+  type: 'test'
+  ...
+# Subtest: populateProfileRelays renders entries and wires action buttons
+ok 14 - populateProfileRelays renders entries and wires action buttons
+  ---
+  duration_ms: 108.97498
+  type: 'test'
+  ...
+# Subtest: admin mutations invoke accessControl stubs and update admin DOM
+ok 15 - admin mutations invoke accessControl stubs and update admin DOM
+  ---
+  duration_ms: 115.919358
+  type: 'test'
+  ...
+# Subtest: history pane lazily initializes the watch history renderer
+ok 16 - history pane lazily initializes the watch history renderer
+  ---
+  duration_ms: 258.48374
+  type: 'test'
+  ...
+1..16
+# tests 16
+# suites 0
+# pass 16
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3608.336598
+
+→ Running tests/reaction-event-builder.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+TAP version 13
+# Subtest: buildReactionEvent includes pointer and author tags when pubkey provided
+ok 1 - buildReactionEvent includes pointer and author tags when pubkey provided
+  ---
+  duration_ms: 2.667226
+  type: 'test'
+  ...
+# Subtest: buildReactionEvent merges address and event pointers for addressable targets
+ok 2 - buildReactionEvent merges address and event pointers for addressable targets
+  ---
+  duration_ms: 0.700859
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 13.509911
+
+→ Running tests/safe-decode.test.mjs
+TAP version 13
+# Subtest: safeDecodeURIComponent returns original value on malformed sequences
+ok 1 - safeDecodeURIComponent returns original value on malformed sequences
+  ---
+  duration_ms: 1.188517
+  type: 'test'
+  ...
+# Subtest: safeDecode helpers handle double-encoded values when applied repeatedly
+ok 2 - safeDecode helpers handle double-encoded values when applied repeatedly
+  ---
+  duration_ms: 0.272872
+  type: 'test'
+  ...
+# Subtest: safeDecodeURIComponentLoose trims inputs by default
+ok 3 - safeDecodeURIComponentLoose trims inputs by default
+  ---
+  duration_ms: 0.203728
+  type: 'test'
+  ...
+# Subtest: safeDecodeURIComponentLoose preserves whitespace when trim is false
+ok 4 - safeDecodeURIComponentLoose preserves whitespace when trim is false
+  ---
+  duration_ms: 0.146806
+  type: 'test'
+  ...
+# Subtest: safeDecodeURIComponent handles empty strings consistently
+ok 5 - safeDecodeURIComponent handles empty strings consistently
+  ---
+  duration_ms: 0.229269
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 14.107262
+
+→ Running tests/state/cache-saved-profiles.test.mjs
+TAP version 13
+# Subtest: persistSavedProfiles preserves custom authType strings
+ok 1 - persistSavedProfiles preserves custom authType strings
+  ---
+  duration_ms: 1.975137
+  type: 'test'
+  ...
+# Subtest: loadSavedProfilesFromStorage retains custom provider authType
+ok 2 - loadSavedProfilesFromStorage retains custom provider authType
+  ---
+  duration_ms: 0.31826
+  type: 'test'
+  ...
+# Subtest: loadSavedProfilesFromStorage migrates missing authType to nip07
+ok 3 - loadSavedProfilesFromStorage migrates missing authType to nip07
+  ---
+  duration_ms: 0.347227
+  type: 'test'
+  ...
+# Subtest: loadSavedProfilesFromStorage trims stored authType values
+ok 4 - loadSavedProfilesFromStorage trims stored authType values
+  ---
+  duration_ms: 0.283366
+  type: 'test'
+  ...
+# Subtest: loadSavedProfilesFromStorage ignores legacy userPubKey
+ok 5 - loadSavedProfilesFromStorage ignores legacy userPubKey
+  ---
+  duration_ms: 0.248948
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 16.333862
+
+→ Running tests/state/profile-settings-store.test.mjs
+TAP version 13
+# Subtest: profile settings store clones values and tracks entries
+ok 1 - profile settings store clones values and tracks entries
+  ---
+  duration_ms: 2.35304
+  type: 'test'
+  ...
+# Subtest: profile settings store ignores falsy keys and survives clone failures
+ok 2 - profile settings store ignores falsy keys and survives clone failures
+  ---
+  duration_ms: 0.364469
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 13.953733
+
+→ Running tests/subscriptions-manager.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+[bitvid] [SubscriptionsManager] Relay error at wss://relay-b.example Error: relay failed
+    at Object.list (file:///app/tests/subscriptions-manager.test.mjs:64:31)
+    at file:///app/js/subscriptions.js:313:26
+    at Array.map (<anonymous>)
+    at SubscriptionsManager.loadSubscriptions (file:///app/js/subscriptions.js:312:39)
+    at TestContext.<anonymous> (file:///app/tests/subscriptions-manager.test.mjs:86:19)
+    at Test.runInAsyncScope (node:async_hooks:214:14)
+    at Test.run (node:internal/test_runner/test:1047:25)
+    at Test.start (node:internal/test_runner/test:944:17)
+    at startSubtestAfterBootstrap (node:internal/test_runner/harness:296:17)
+[SubscriptionsManager] ensureLoaded start viewer-pub
+[SubscriptionsManager] ensureLoaded success
+[SubscriptionsManager] awaiting nostrService initial load...
+[SubscriptionsManager] nostrService initial load done.
+[SubscriptionsManager] Calling engine.run('subscriptions')...
+[SubscriptionsManager] engine.run complete. Items: 0
+[SubscriptionsManager] ensureLoaded start viewer-pub
+[SubscriptionsManager] ensureLoaded success
+[SubscriptionsManager] awaiting nostrService initial load...
+[SubscriptionsManager] nostrService initial load done.
+[SubscriptionsManager] Calling engine.run('subscriptions')...
+[SubscriptionsManager] engine.run complete. Items: 1
+[SubscriptionsManager] ensureLoaded start ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+[SubscriptionsManager] ensureLoaded start ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+[SubscriptionsManager] ensureLoaded awaiting existing promise
+TAP version 13
+# Subtest: loadSubscriptions aggregates relay results when one rejects
+ok 1 - loadSubscriptions aggregates relay results when one rejects
+  ---
+  duration_ms: 4.308281
+  type: 'test'
+  ...
+# Subtest: loadSubscriptions queries the correct subscription list kind
+ok 2 - loadSubscriptions queries the correct subscription list kind
+  ---
+  duration_ms: 0.43859
+  type: 'test'
+  ...
+# Subtest: loadSubscriptions falls back to nip44 when hinted
+ok 3 - loadSubscriptions falls back to nip44 when hinted
+  ---
+  duration_ms: 0.785302
+  type: 'test'
+  ...
+# Subtest: loadSubscriptions handles nip44.v2 decryptors
+ok 4 - loadSubscriptions handles nip44.v2 decryptors
+  ---
+  duration_ms: 0.65784
+  type: 'test'
+  ...
+# Subtest: loadSubscriptions prefers nip44 decryptors when both are available
+ok 5 - loadSubscriptions prefers nip44 decryptors when both are available
+  ---
+  duration_ms: 0.634935
+  type: 'test'
+  ...
+# Subtest: loadSubscriptions uses active signer decryptors without requesting extension permissions
+ok 6 - loadSubscriptions uses active signer decryptors without requesting extension permissions
+  ---
+  duration_ms: 0.905866
+  type: 'test'
+  ...
+# Subtest: showSubscriptionVideos waits for nostrService warm-up and refreshes after updates
+ok 7 - showSubscriptionVideos waits for nostrService warm-up and refreshes after updates
+  ---
+  duration_ms: 79.985578
+  type: 'test'
+  ...
+[SubscriptionsManager] ensureLoaded success
+Subscription list published, event id: signed-direct-event accepted relays: [ 'wss://relay-direct.example' ]
+Subscription list published, event id: signed-nip44-event accepted relays: [ 'wss://relay-prefer-nip44.example' ]
+Subscription list published, event id: signed-nip04-event accepted relays: [ 'wss://relay-fallback-nip04.example' ]
+# Subtest: ensureLoaded memoizes concurrent loads
+ok 8 - ensureLoaded memoizes concurrent loads
+  ---
+  duration_ms: 7.110524
+  type: 'test'
+  ...
+# Subtest: publishSubscriptionList succeeds with direct signer without requesting extension permissions
+ok 9 - publishSubscriptionList succeeds with direct signer without requesting extension permissions
+  ---
+  duration_ms: 2.361667
+  type: 'test'
+  ...
+# Subtest: publishSubscriptionList prefers nip44 encryption when available
+ok 10 - publishSubscriptionList prefers nip44 encryption when available
+  ---
+  duration_ms: 1.398891
+  type: 'test'
+  ...
+# Subtest: publishSubscriptionList falls back to nip04 when nip44 fails
+ok 11 - publishSubscriptionList falls back to nip04 when nip44 fails
+  ---
+  duration_ms: 1.111257
+  type: 'test'
+  ...
+# Subtest: renderSameGridStyle shows empty state message
+ok 12 - renderSameGridStyle shows empty state message
+  ---
+  duration_ms: 17.943989
+  type: 'test'
+  ...
+# Subtest: renderSameGridStyle forwards moderation badge actions to the application
+ok 13 - renderSameGridStyle forwards moderation badge actions to the application
+  ---
+  duration_ms: 48.808537
+  type: 'test'
+  ...
+1..13
+# tests 13
+# suites 0
+# pass 13
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 6095.076304
+
+→ Running tests/torrent/service-worker-fallback-message.test.mjs
+TAP version 13
+# Subtest: returns generic message when error missing
+ok 1 - returns generic message when error missing
+  ---
+  duration_ms: 1.235088
+  type: 'test'
+  ...
+# Subtest: identifies HTTPS requirement errors
+ok 2 - identifies HTTPS requirement errors
+  ---
+  duration_ms: 1.3274
+  type: 'test'
+  ...
+# Subtest: identifies disabled service worker errors
+ok 3 - identifies disabled service worker errors
+  ---
+  duration_ms: 0.211828
+  type: 'test'
+  ...
+# Subtest: identifies Brave specific guidance
+ok 4 - identifies Brave specific guidance
+  ---
+  duration_ms: 0.16244
+  type: 'test'
+  ...
+# Subtest: identifies blocked script errors
+ok 5 - identifies blocked script errors
+  ---
+  duration_ms: 0.411678
+  type: 'test'
+  ...
+# Subtest: identifies controller claim timeout
+ok 6 - identifies controller claim timeout
+  ---
+  duration_ms: 0.170534
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 16.494328
+
+→ Running tests/torrent/style-helpers.test.mjs
+TAP version 13
+# Subtest: torrent/ui/styleHelpers
+    # Subtest: returns null when no element is provided
+    ok 1 - returns null when no element is provided
+      ---
+      duration_ms: 0.938835
+      type: 'test'
+      ...
+    # Subtest: returns the original element without mutations
+    ok 2 - returns the original element without mutations
+      ---
+      duration_ms: 67.821529
+      type: 'test'
+      ...
+    # Subtest: provides an empty, frozen fallback map
+    ok 3 - provides an empty, frozen fallback map
+      ---
+      duration_ms: 1.394044
+      type: 'test'
+      ...
+    # Subtest: no-ops when removing styles
+    ok 4 - no-ops when removing styles
+      ---
+      duration_ms: 9.397833
+      type: 'test'
+      ...
+    1..4
+ok 1 - torrent/ui/styleHelpers
+  ---
+  duration_ms: 81.172819
+  type: 'suite'
+  ...
+1..1
+# tests 4
+# suites 1
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 94.852074
+
+→ Running tests/torrent/toast-service.test.mjs
+TAP version 13
+# Subtest: torrent/ui/toastService
+    # Subtest: renders a toast with Tailwind token classes and removes it on dismiss
+    ok 1 - renders a toast with Tailwind token classes and removes it on dismiss
+      ---
+      duration_ms: 346.338853
+      type: 'test'
+      ...
+    1..1
+ok 1 - torrent/ui/toastService
+  ---
+  duration_ms: 347.876493
+  type: 'suite'
+  ...
+1..1
+# tests 1
+# suites 1
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 356.823358
+
+→ Running tests/ui/app-chrome-controller.test.mjs
+TAP version 13
+# Subtest: AppChromeController binds upload button when elements hydrate later
+ok 1 - AppChromeController binds upload button when elements hydrate later
+  ---
+  duration_ms: 73.60947
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 83.776883
+
+→ Running tests/ui/popoverEngine.test.mjs
+TAP version 13
+# Subtest: opens a popover in the overlay root and positions the panel
+ok 1 - opens a popover in the overlay root and positions the panel
+  ---
+  duration_ms: 232.804388
+  type: 'test'
+  ...
+# Subtest: positions bottom-end panels flush with the trigger's right edge
+ok 2 - positions bottom-end panels flush with the trigger's right edge
+  ---
+  duration_ms: 40.258659
+  type: 'test'
+  ...
+# Subtest: closes on outside pointer events and restores focus
+ok 3 - closes on outside pointer events and restores focus
+  ---
+  duration_ms: 23.481608
+  type: 'test'
+  ...
+# Subtest: supports roving focus, home/end navigation, and typeahead
+ok 4 - supports roving focus, home/end navigation, and typeahead
+  ---
+  duration_ms: 35.930104
+  type: 'test'
+  ...
+# Subtest: escape closes the popover and restores trigger focus
+ok 5 - escape closes the popover and restores trigger focus
+  ---
+  duration_ms: 21.577489
+  type: 'test'
+  ...
+# Subtest: close respects restoreFocus option for contextual menus
+ok 6 - close respects restoreFocus option for contextual menus
+  ---
+  duration_ms: 17.634692
+  type: 'test'
+  ...
+# Subtest: ensures only one popover is open at a time
+ok 7 - ensures only one popover is open at a time
+  ---
+  duration_ms: 27.484742
+  type: 'test'
+  ...
+# Subtest: applies token-based sizing and arrow positioning
+ok 8 - applies token-based sizing and arrow positioning
+  ---
+  duration_ms: 20.485301
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 428.176841
+
+→ Running tests/ui/profile-modal-moderation-settings.test.mjs
+TAP version 13
+# Subtest: moderation settings save updates service and disables control
+ok 1 - moderation settings save updates service and disables control
+  ---
+  duration_ms: 123.480906
+  type: 'test'
+  ...
+# Subtest: moderation reset restores defaults and clearing inputs uses defaults
+ok 2 - moderation reset restores defaults and clearing inputs uses defaults
+  ---
+  duration_ms: 23.981054
+  type: 'test'
+  ...
+# Subtest: guest fallback uses config moderation defaults
+ok 3 - guest fallback uses config moderation defaults
+  ---
+  duration_ms: 23.75416
+  type: 'test'
+  ...
+1..3
+# tests 3
+# suites 0
+# pass 3
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 184.084519
+
+→ Running tests/ui/similar-content-card.test.mjs
+TAP version 13
+# Subtest: cached thumbnails reuse existing src without lazy-loading
+ok 1 - cached thumbnails reuse existing src without lazy-loading
+  ---
+  duration_ms: 146.967352
+  type: 'test'
+  ...
+# Subtest: uncached thumbnails use fallback, cache on load, and retain blur state
+ok 2 - uncached thumbnails use fallback, cache on load, and retain blur state
+  ---
+  duration_ms: 32.149178
+  type: 'test'
+  ...
+# Subtest: primary clicks trigger onPlay while modifiers and right clicks do not
+ok 3 - primary clicks trigger onPlay while modifiers and right clicks do not
+  ---
+  duration_ms: 17.301954
+  type: 'test'
+  ...
+# Subtest: author identity fields render supplied values and datasets
+not ok 4 - author identity fields render supplied values and datasets
+  ---
+  duration_ms: 22.473225
+  type: 'test'
+  location: '/app/tests/ui/similar-content-card.test.mjs:130:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    The expression evaluated to a falsy value:
+
+      assert(npubEl)
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: ~
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (file:///app/tests/ui/similar-content-card.test.mjs:151:3)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: view counter wiring exposes pointer datasets
+not ok 5 - view counter wiring exposes pointer datasets
+  ---
+  duration_ms: 14.016288
+  type: 'test'
+  location: '/app/tests/ui/similar-content-card.test.mjs:170:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+
+    '–' !== '– views'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: '– views'
+  actual: '–'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///app/tests/ui/similar-content-card.test.mjs:185:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 3
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 247.150086
+file:///app/scripts/run-unit-tests.mjs:68
+        reject(new Error(`${relativePath} failed with exit code ${code}`));
+               ^
+
+Error: tests/ui/similar-content-card.test.mjs failed with exit code 1
+    at ChildProcess.<anonymous> (file:///app/scripts/run-unit-tests.mjs:68:16)
+    at ChildProcess.emit (node:events:519:28)
+    at maybeClose (node:internal/child_process:1101:16)
+    at ChildProcess._handle.onexit (node:internal/child_process:304:5)
+
+Node.js v22.21.1

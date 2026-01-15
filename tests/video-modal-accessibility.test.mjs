@@ -28,15 +28,23 @@ export async function setupModal({ lazyLoad = false } = {}) {
   globalThis.HTMLElement = window.HTMLElement;
   globalThis.HTMLVideoElement = window.HTMLVideoElement;
   globalThis.Element = window.Element;
+  globalThis.HTMLStyleElement = window.HTMLStyleElement;
   globalThis.CustomEvent = window.CustomEvent;
   globalThis.Event = window.Event;
   globalThis.Node = window.Node;
   globalThis.EventTarget = window.EventTarget;
-  Object.defineProperty(globalThis, "navigator", {
-    value: window.navigator,
-    configurable: true,
-    writable: true,
-  });
+  try {
+    Object.defineProperty(globalThis, "navigator", {
+      value: window.navigator,
+      configurable: true,
+      writable: true,
+    });
+  } catch (err) {
+    // If the property is already defined and not configurable (e.g. in some environments),
+    // we might not be able to overwrite it directly.
+    // In many JSDOM setups, navigator is already present.
+  }
+
   if (globalThis.navigator && !globalThis.navigator.clipboard) {
     globalThis.navigator.clipboard = {
       writeText: () => Promise.resolve(),
@@ -149,6 +157,13 @@ export async function setupModal({ lazyLoad = false } = {}) {
     globalThis.ResizeObserver = ResizeObserverStub;
   }
 
+  // Force override getContext to silence JSDOM "Not implemented" error
+  try {
+    window.HTMLCanvasElement.prototype.getContext = () => null;
+  } catch (err) {
+    // ignore
+  }
+
   let restoreFetch = null;
   if (lazyLoad) {
     const originalFetch = globalThis.fetch;
@@ -218,11 +233,19 @@ export async function setupModal({ lazyLoad = false } = {}) {
     delete globalThis.HTMLElement;
     delete globalThis.HTMLVideoElement;
     delete globalThis.Element;
+    delete globalThis.HTMLStyleElement;
     delete globalThis.CustomEvent;
     delete globalThis.Event;
     delete globalThis.Node;
     delete globalThis.EventTarget;
-    delete globalThis.navigator;
+    // We don't delete navigator here because we might not have been able to overwrite it.
+    // If we did overwrite it, it's just a value property now.
+    // If it was a getter, deleting it might be problematic if it's non-configurable.
+    // Best effort cleanup:
+    try {
+      delete globalThis.navigator;
+    } catch (e) {}
+
     delete globalThis.location;
     delete globalThis.KeyboardEvent;
     delete globalThis.MouseEvent;
@@ -404,11 +427,18 @@ async function setupPlaybackHarness() {
   globalThis.HTMLElement = window.HTMLElement;
   globalThis.HTMLVideoElement = window.HTMLVideoElement;
   globalThis.Element = window.Element;
+  globalThis.HTMLStyleElement = window.HTMLStyleElement;
   globalThis.CustomEvent = window.CustomEvent;
   globalThis.Event = window.Event;
   globalThis.Node = window.Node;
   globalThis.EventTarget = window.EventTarget;
-  globalThis.navigator = window.navigator;
+  try {
+    Object.defineProperty(globalThis, "navigator", {
+      value: window.navigator,
+      configurable: true,
+      writable: true,
+    });
+  } catch (err) {}
   globalThis.location = window.location;
   globalThis.KeyboardEvent = window.KeyboardEvent;
   globalThis.MouseEvent = window.MouseEvent;
@@ -572,11 +602,14 @@ async function setupPlaybackHarness() {
     delete globalThis.HTMLElement;
     delete globalThis.HTMLVideoElement;
     delete globalThis.Element;
+    delete globalThis.HTMLStyleElement;
     delete globalThis.CustomEvent;
     delete globalThis.Event;
     delete globalThis.Node;
     delete globalThis.EventTarget;
-    delete globalThis.navigator;
+    try {
+        delete globalThis.navigator;
+    } catch(e) {}
     delete globalThis.location;
     delete globalThis.KeyboardEvent;
     delete globalThis.MouseEvent;
