@@ -10,6 +10,16 @@ import {
 import { createTorrentMetadata } from "../../utils/torrentHash.js";
 import { sanitizeBucketName } from "../../storage/r2-mgmt.js";
 
+const INFO_HASH_PATTERN = /^[a-f0-9]{40}$/;
+
+function normalizeInfoHash(value) {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function isValidInfoHash(value) {
+  return INFO_HASH_PATTERN.test(value);
+}
+
 export class UploadModal {
   constructor({
     authService,
@@ -671,6 +681,29 @@ export class UploadModal {
           userLogger.warn("Failed to calculate info hash:", hashErr);
       }
 
+      const normalizedInfoHash = normalizeInfoHash(infoHash);
+      const hasValidInfoHash = isValidInfoHash(normalizedInfoHash);
+
+      if (!hasValidInfoHash) {
+          const proceed = confirm(
+            "We couldn't calculate a valid info hash. Publishing will continue with URL-first playback only, and WebTorrent fallback will be unavailable. Continue?"
+          );
+          if (!proceed) {
+              this.updateUploadStatus(
+                "Upload canceled. A valid info hash is required for WebTorrent fallback.",
+                "warning"
+              );
+              this.isUploading = false;
+              this.submitButton.disabled = false;
+              this.updateProgress(null);
+              return;
+          }
+          this.updateUploadStatus(
+            "Continuing without WebTorrent fallback (info hash unavailable).",
+            "warning"
+          );
+      }
+
       // 2. Upload
       await this.r2Service.uploadVideo({
           npub,
@@ -678,7 +711,7 @@ export class UploadModal {
           thumbnailFile,
           torrentFile,
           metadata,
-          infoHash,
+          infoHash: hasValidInfoHash ? normalizedInfoHash : "",
           settingsInput: this.collectSettingsForm(),
           publishVideoNote: this.publishVideoNote,
           onReset: () => this.resetForm(),
