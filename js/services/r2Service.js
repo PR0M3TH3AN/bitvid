@@ -117,7 +117,10 @@ class R2Service {
     this.emit("uploadProgress", { fraction });
   }
 
-  buildNip71MetadataForUpload(existingMetadata, { publicUrl = "", file = null } = {}) {
+  buildNip71MetadataForUpload(
+    existingMetadata,
+    { publicUrl = "", file = null, infoHash = "" } = {},
+  ) {
     const base =
       existingMetadata && typeof existingMetadata === "object"
         ? { ...existingMetadata }
@@ -168,8 +171,13 @@ class R2Service {
 
     const primaryVariant = imetaList[0];
     const normalizedUrl =
-      typeof publicUrl === "string" ? publicUrl.trim() : String(publicUrl || "").trim();
-    if (normalizedUrl && (!primaryVariant.url || !String(primaryVariant.url).trim())) {
+      typeof publicUrl === "string"
+        ? publicUrl.trim()
+        : String(publicUrl || "").trim();
+    if (
+      normalizedUrl &&
+      (!primaryVariant.url || !String(primaryVariant.url).trim())
+    ) {
       primaryVariant.url = normalizedUrl;
     }
 
@@ -177,6 +185,15 @@ class R2Service {
       file && typeof file.type === "string" ? file.type.trim() : "";
     if (mimeType && (!primaryVariant.m || !String(primaryVariant.m).trim())) {
       primaryVariant.m = mimeType;
+    }
+
+    const normalizedHash =
+      typeof infoHash === "string" ? infoHash.trim().toLowerCase() : "";
+    if (
+      normalizedHash &&
+      (!primaryVariant.x || !String(primaryVariant.x).trim())
+    ) {
+      primaryVariant.x = normalizedHash;
     }
 
     base.imeta = imetaList;
@@ -688,6 +705,7 @@ class R2Service {
         const mergedNip71 = this.buildNip71MetadataForUpload(metadata?.nip71, {
           publicUrl,
           file,
+          infoHash,
         });
         if (mergedNip71 && Object.keys(mergedNip71).length) {
           rawVideoPayload.nip71 = mergedNip71;
