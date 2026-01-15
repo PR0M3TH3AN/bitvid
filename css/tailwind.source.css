@@ -3633,6 +3633,18 @@
     z-index: var(--z-modal-top-content);
   }
 
+  #modalContainer > #eventDetailsModal {
+    z-index: var(--z-modal-top-root);
+  }
+
+  #modalContainer > #eventDetailsModal > .bv-modal-backdrop {
+    z-index: var(--z-modal-top-overlay);
+  }
+
+  #modalContainer > #eventDetailsModal .bv-modal__panel {
+    z-index: var(--z-modal-top-content);
+  }
+
   .bv-modal[data-nested-modal-active="true"] {
     pointer-events: none;
     visibility: hidden;
