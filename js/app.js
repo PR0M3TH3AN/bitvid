@@ -406,14 +406,33 @@ class Application {
               ...(fallbackVideo || {}),
               ...(modalVideo || {}),
             };
+            const urlCandidate =
+              typeof video.url === "string" ? video.url.trim() : "";
+            const magnetCandidate =
+              typeof video.magnet === "string" ? video.magnet.trim() : "";
 
             if (!modalVideo && !fallbackVideo) {
               devLogger.warn("[app] Playback source switch missing video data.");
               return;
             }
 
-            const magnetAvailable =
-              typeof video.magnet === "string" && video.magnet.trim();
+            const magnetAvailable = Boolean(magnetCandidate);
+            const cachedStreamHealth =
+              video?.id && this.streamHealthSnapshots instanceof Map
+                ? this.streamHealthSnapshots.get(video.id)
+                : null;
+            const cachedPeers = Number.isFinite(cachedStreamHealth?.peers)
+              ? cachedStreamHealth.peers
+              : null;
+            const hasActivePeers =
+              cachedPeers === null ? null : cachedPeers > 0;
+            const cachedUrlHealth =
+              video?.id && urlCandidate
+                ? this.getCachedUrlHealth(video.id, urlCandidate)
+                : null;
+            const cdnUnavailable =
+              !urlCandidate ||
+              ["offline", "timeout"].includes(cachedUrlHealth?.status);
 
             if (source === "torrent" && !magnetAvailable) {
               userLogger.warn(
@@ -425,9 +444,29 @@ class Application {
               return;
             }
 
+            if (source === "torrent" && hasActivePeers === false) {
+              userLogger.warn(
+                "[app] Unable to switch to torrent playback: no active peers.",
+              );
+              this.showError(
+                "Torrent playback is unavailable right now because there are no active peers.",
+              );
+              return;
+            }
+
+            if (source === "url" && cdnUnavailable) {
+              userLogger.warn(
+                "[app] Unable to switch to CDN playback: URL unavailable.",
+              );
+              this.showError(
+                "CDN playback is unavailable right now, staying on the torrent stream.",
+              );
+              return;
+            }
+
             this.playVideoWithFallback({
-              url: video.url,
-              magnet: video.magnet,
+              url: urlCandidate,
+              magnet: magnetCandidate,
               forcedSource: source,
             }).catch((error) => {
               devLogger.warn(
