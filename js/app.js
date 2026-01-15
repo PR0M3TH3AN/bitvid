@@ -724,25 +724,24 @@ class Application {
       return;
     }
 
-    const trimmed = pubkey.trim();
-    if (!trimmed) {
+    let candidate = pubkey.trim();
+    if (!candidate) {
       this.showError("No creator info available.");
       return;
     }
 
-    let npub = null;
-
-    if (trimmed.startsWith("npub1")) {
-      const decoded = this.safeDecodeNpub(trimmed);
-      if (decoded && HEX64_REGEX.test(decoded)) {
-        npub = this.safeEncodeNpub(decoded);
-      }
-    } else if (HEX64_REGEX.test(trimmed)) {
-      npub = this.safeEncodeNpub(trimmed);
+    if (candidate.startsWith("nostr:")) {
+      candidate = candidate.slice("nostr:".length);
     }
 
+    const normalizedHex = this.normalizeHexPubkey(candidate);
+    const npub = normalizedHex ? this.safeEncodeNpub(normalizedHex) : null;
+
     if (!npub) {
-      devLogger.warn("[Application] Invalid pubkey for profile navigation:", trimmed);
+      devLogger.warn(
+        "[Application] Invalid pubkey for profile navigation:",
+        candidate,
+      );
       this.showError("Invalid creator profile.");
       return;
     }
