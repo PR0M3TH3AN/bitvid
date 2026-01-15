@@ -464,6 +464,10 @@ class Application {
               return;
             }
 
+            if (this.playSource && source === this.playSource) {
+              return;
+            }
+
             this.playVideoWithFallback({
               url: urlCandidate,
               magnet: magnetCandidate,
