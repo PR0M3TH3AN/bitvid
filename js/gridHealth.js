@@ -62,12 +62,19 @@ function formatTime(ts) {
   }
 }
 
-function buildTooltip({ peers = 0, checkedAt, reason, webseedOnly } = {}) {
+function buildTooltip({
+  peers = 0,
+  checkedAt,
+  reason,
+  webseedReachable,
+} = {}) {
   const parts = [];
-  if (webseedOnly) {
-    parts.push("Webseed only");
-  } else if (Number.isFinite(peers)) {
-    parts.push(`Peers: ${Math.max(0, peers)}`);
+  const hasPeers = Number.isFinite(peers);
+  const normalizedPeers = hasPeers ? Math.max(0, peers) : 0;
+  if (webseedReachable && normalizedPeers === 0) {
+    parts.push("Reachable webseed");
+  } else if (hasPeers) {
+    parts.push(normalizedPeers > 0 ? `Peers: ${normalizedPeers}` : "No peers");
   }
   if (Number.isFinite(checkedAt)) {
     const formatted = formatTime(checkedAt);
@@ -99,6 +106,7 @@ function normalizeResult(result) {
     healthy: false,
     peers: 0,
     reason: "error",
+    webseedReachable: false,
     webseedOnly: false,
     appendedTrackers: false,
     hasProbeTrackers: false,
@@ -113,13 +121,15 @@ function normalizeResult(result) {
   const peers = Number.isFinite(result.peers)
     ? Math.max(0, Number(result.peers))
     : 0;
-  const healthy = Boolean(result.healthy) && peers > 0;
+  const webseedReachable = Boolean(result.webseedReachable);
+  const healthy = peers > 0 || webseedReachable;
   const reason = typeof result.reason === "string" ? result.reason : "error";
-  const webseedOnly = Boolean(result.webseedOnly) && peers === 0;
+  const webseedOnly = webseedReachable && peers === 0;
   return {
     healthy,
     peers: healthy ? Math.max(1, peers) : peers,
     reason,
+    webseedReachable,
     webseedOnly,
     appendedTrackers: Boolean(result.appendedTrackers),
     hasProbeTrackers:
@@ -422,6 +432,7 @@ function setBadge(card, state, details) {
   const hasPeerCount = details ? Number.isFinite(details.peers) : false;
   const peersTextValue = hasPeerCount ? String(peersValue) : "";
   const webseedOnly = Boolean(details?.webseedOnly);
+  const webseedReachable = Boolean(details?.webseedReachable);
 
   card.dataset.streamHealthState = normalizedState;
   if (hasPeerCount) {
@@ -495,7 +506,7 @@ function setBadge(card, state, details) {
           peers: peersValue,
           checkedAt: details?.checkedAt,
           reason: details?.reason,
-          webseedOnly,
+          webseedReachable,
         });
   badge.setAttribute("aria-label", tooltip);
   badge.setAttribute("title", tooltip);
@@ -514,6 +525,7 @@ function setBadge(card, state, details) {
     state: normalizedState,
     peers: hasPeerCount ? peersValue : null,
     reason: details && typeof details.reason === "string" ? details.reason : null,
+    webseedReachable,
     webseedOnly,
     checkedAt:
       details && Number.isFinite(details.checkedAt) ? Number(details.checkedAt) : null,

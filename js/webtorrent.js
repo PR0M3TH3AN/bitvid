@@ -2,6 +2,8 @@
 
 import WebTorrent from "./webtorrent.min.js";
 import { WSS_TRACKERS } from "./constants.js";
+import { safeDecodeMagnet } from "./magnetUtils.js";
+import { normalizeMagnetInput, sanitizeHttpUrl } from "./magnetShared.js";
 import { safeDecodeURIComponent } from "./utils/safeDecode.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 
@@ -113,6 +115,74 @@ function normalizeNumber(value, fallback = 0) {
   return fallback;
 }
 
+function extractWebSeeds(magnetURI) {
+  const decoded = safeDecodeMagnet(magnetURI);
+  const { params } = normalizeMagnetInput(decoded);
+  const webSeeds = [];
+  const seen = new Set();
+
+  for (const param of params) {
+    if (param.lowerKey !== "ws" && param.lowerKey !== "webseed") {
+      continue;
+    }
+    const candidate = param.decoded || param.value;
+    const sanitized = sanitizeHttpUrl(candidate);
+    if (!sanitized) {
+      continue;
+    }
+    const normalized = sanitized.toLowerCase();
+    if (seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    webSeeds.push(sanitized);
+  }
+
+  return webSeeds;
+}
+
+async function probeWebSeeds(webSeeds, { signal } = {}) {
+  if (!Array.isArray(webSeeds) || webSeeds.length === 0) {
+    return false;
+  }
+
+  for (const seed of webSeeds) {
+    if (!seed) {
+      continue;
+    }
+    try {
+      const headResponse = await fetch(seed, {
+        method: "HEAD",
+        mode: "cors",
+        credentials: "omit",
+        signal,
+      });
+      if (headResponse.ok) {
+        return true;
+      }
+    } catch (err) {
+      // Fall through to range probe.
+    }
+
+    try {
+      const rangeResponse = await fetch(seed, {
+        method: "GET",
+        mode: "cors",
+        credentials: "omit",
+        headers: { Range: "bytes=0-0" },
+        signal,
+      });
+      if (rangeResponse.ok || rangeResponse.status === 206) {
+        return true;
+      }
+    } catch (err) {
+      // Continue to next webseed.
+    }
+  }
+
+  return false;
+}
+
 function toError(err) {
   if (err instanceof Error) {
     return err;
@@ -164,6 +234,7 @@ export class TorrentClient {
         appendedTrackers: false,
         hasProbeTrackers: false,
         usedTrackers: [...TorrentClient.PROBE_TRACKERS],
+        webseedReachable: false,
         durationMs: 0,
       };
     }
@@ -172,7 +243,8 @@ export class TorrentClient {
     const { magnet: augmentedMagnet, appended, hasProbeTrackers } =
       appendProbeTrackers(magnet, trackers);
 
-    const hasWebSeed = magnet.includes("ws=") || magnet.includes("webSeed=");
+    const webSeeds = extractWebSeeds(magnet);
+    const hasWebSeed = webSeeds.length > 0;
 
     if (!hasProbeTrackers && !hasWebSeed) {
       return {
@@ -182,6 +254,7 @@ export class TorrentClient {
         appendedTrackers: false,
         hasProbeTrackers: false,
         usedTrackers: trackers,
+        webseedReachable: false,
         durationMs: 0,
       };
     }
@@ -205,6 +278,9 @@ export class TorrentClient {
       let torrent = null;
       let timeoutId = null;
       let pollId = null;
+      let webseedTimeoutId = null;
+      let webseedAbortController = null;
+      let webseedReachable = false;
 
       const finalize = (overrides = {}) => {
         if (settled) {
@@ -219,6 +295,14 @@ export class TorrentClient {
           clearInterval(pollId);
           pollId = null;
         }
+        if (webseedTimeoutId) {
+          clearTimeout(webseedTimeoutId);
+          webseedTimeoutId = null;
+        }
+        if (webseedAbortController) {
+          webseedAbortController.abort();
+          webseedAbortController = null;
+        }
         if (torrent) {
           try {
             torrent.destroy({ destroyStore: true });
@@ -232,10 +316,10 @@ export class TorrentClient {
             ? performance.now()
             : Date.now();
 
-        const isHealthy = Boolean(overrides.healthy);
         const peersCount = Number.isFinite(overrides.peers) ? overrides.peers : 0;
-
-        resolve({
+        const webseedOk = Boolean(overrides.webseedReachable);
+        const isHealthy = peersCount > 0 || webseedOk;
+        const result = {
           healthy: isHealthy,
           peers: peersCount,
           reason: isHealthy ? "peer" : "timeout",
@@ -243,8 +327,12 @@ export class TorrentClient {
           hasProbeTrackers,
           usedTrackers: trackers,
           durationMs: Math.max(0, endedAt - startedAt),
+          webseedReachable: webseedOk,
           ...overrides,
-        });
+        };
+        result.webseedOnly = result.webseedReachable && peersCount === 0;
+        result.healthy = peersCount > 0 || result.webseedReachable;
+        resolve(result);
       };
 
       try {
@@ -257,14 +345,50 @@ export class TorrentClient {
           reason: "error",
           error: toError(err),
           peers: 0,
-          webseedOnly: hasWebSeed,
+          webseedReachable: false,
         });
         return;
       }
 
+      if (hasWebSeed && typeof fetch === "function") {
+        webseedAbortController = new AbortController();
+        if (safeTimeout > 0) {
+          webseedTimeoutId = setTimeout(() => {
+            if (webseedAbortController) {
+              webseedAbortController.abort();
+            }
+          }, safeTimeout);
+        }
+
+        probeWebSeeds(webSeeds, {
+          signal: webseedAbortController.signal,
+        })
+          .then((reachable) => {
+            if (!reachable || settled) {
+              return;
+            }
+            webseedReachable = true;
+            const peers = Math.max(0, Math.floor(normalizeNumber(torrent?.numPeers, 0)));
+            finalize({
+              healthy: peers > 0 || webseedReachable,
+              peers,
+              reason: peers > 0 ? "peer" : "webseed",
+              webseedReachable,
+            });
+          })
+          .catch(() => {
+            // Ignore webseed probe failures; fallback to peer probe.
+          });
+      }
+
       const settleHealthy = () => {
         const peers = Math.max(1, Math.floor(normalizeNumber(torrent?.numPeers, 1)));
-        finalize({ healthy: true, peers, reason: "peer" });
+        finalize({
+          healthy: true,
+          peers,
+          reason: "peer",
+          webseedReachable,
+        });
       };
 
       torrent.once("wire", settleHealthy);
@@ -276,7 +400,7 @@ export class TorrentClient {
           reason: "error",
           error: toError(err),
           peers,
-          webseedOnly: peers === 0 && hasWebSeed,
+          webseedReachable,
         });
       });
 
@@ -287,7 +411,7 @@ export class TorrentClient {
             healthy: false,
             peers,
             reason: "timeout",
-            webseedOnly: peers === 0 && hasWebSeed,
+            webseedReachable,
           });
         }, safeTimeout);
       }
@@ -298,7 +422,12 @@ export class TorrentClient {
         }
         const peers = Math.max(0, Math.floor(normalizeNumber(torrent.numPeers, 0)));
         if (peers > 0) {
-          finalize({ healthy: true, peers, reason: "peer" });
+          finalize({
+            healthy: true,
+            peers,
+            reason: "peer",
+            webseedReachable,
+          });
         }
       }, pollInterval);
     });

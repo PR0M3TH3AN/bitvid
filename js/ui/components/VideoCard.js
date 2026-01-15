@@ -2130,6 +2130,9 @@ export class VideoCard {
     if (Number.isFinite(entry.peers)) {
       normalized.peers = Math.max(0, Number(entry.peers));
     }
+    if (typeof entry.webseedReachable === "boolean") {
+      normalized.webseedReachable = entry.webseedReachable;
+    }
     if (typeof entry.reason === "string" && entry.reason) {
       normalized.reason = entry.reason;
     }
@@ -2172,13 +2175,15 @@ export class VideoCard {
     peers = null,
     checkedAt = null,
     reason = null,
-    webseedOnly = false,
+    webseedReachable = false,
   } = {}) {
     const parts = [];
-    if (webseedOnly) {
-      parts.push("Webseed only");
-    } else if (Number.isFinite(peers)) {
-      parts.push(`Peers: ${Math.max(0, Number(peers))}`);
+    const hasPeers = Number.isFinite(peers);
+    const normalizedPeers = hasPeers ? Math.max(0, Number(peers)) : 0;
+    if (webseedReachable && normalizedPeers === 0) {
+      parts.push("Reachable webseed");
+    } else if (hasPeers) {
+      parts.push(normalizedPeers > 0 ? `Peers: ${normalizedPeers}` : "No peers");
     }
     if (Number.isFinite(checkedAt)) {
       const formatted = this.formatTorrentCheckedTime(checkedAt);
@@ -2262,7 +2267,7 @@ export class VideoCard {
       : null;
     const reason =
       typeof entry?.reason === "string" && entry.reason ? entry.reason : null;
-    const webseedOnly = Boolean(entry?.webseedOnly);
+    const webseedReachable = Boolean(entry?.webseedReachable);
     const text =
       typeof entry?.text === "string" && entry.text ? entry.text : null;
     const tooltip =
@@ -2314,8 +2319,15 @@ export class VideoCard {
       delete badge.dataset.variant;
     }
     const iconPrefix = descriptor.icon ? `${descriptor.icon} ` : "";
-    const computedText = `${iconPrefix}WebTorrent`;
-    badge.textContent = text || computedText;
+    let label = "WebTorrent";
+    if (webseedReachable && (!Number.isFinite(peersValue) || peersValue === 0)) {
+      label = "Reachable webseed";
+    } else if (state === "unhealthy" && Number.isFinite(peersValue) && peersValue === 0) {
+      label = "No peers";
+    }
+    const computedText = `${iconPrefix}${label}`;
+    const shouldUseComputedText = label !== "WebTorrent";
+    badge.textContent = shouldUseComputedText ? computedText : text || computedText;
 
     const tooltipValue =
       tooltip ||
@@ -2327,7 +2339,7 @@ export class VideoCard {
               ? entry.checkedAt
               : null,
             reason,
-            webseedOnly,
+            webseedReachable,
           }));
 
     badge.setAttribute("aria-label", tooltipValue);
