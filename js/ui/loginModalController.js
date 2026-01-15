@@ -287,7 +287,9 @@ export default class LoginModalController {
     this.nextRequestLoginOptionsResolver = null;
     this.pendingTask = null;
     this.modalPrepared = false;
+    // Track generated keys so we only create one keypair per modal session.
     this.generatedKeypair = null;
+    // Track modal close state to reset generated keys when the modal closes.
     this.modalCloseObserver = null;
     this.modalCloseIntervalId = null;
 
@@ -313,6 +315,7 @@ export default class LoginModalController {
     this.template = this.resolveTemplate();
 
     this.renderProviders();
+    // Start tracking modal close events to reset per-session key generation state.
     this.initializeModalCloseTracking();
 
     if (typeof this.lastRemoteSignerStatus !== "undefined") {
@@ -331,10 +334,12 @@ export default class LoginModalController {
 
     const handleClose = () => {
       if (!this.isModalOpen()) {
+        // Reset generated keys once the modal is closed to allow a new keypair later.
         this.resetGeneratedKeypair();
       }
     };
 
+    // Prefer a MutationObserver, fall back to polling if needed.
     if (typeof MutationObserver === "function") {
       if (this.modalCloseObserver) {
         return;
@@ -363,10 +368,12 @@ export default class LoginModalController {
       return;
     }
 
+    // Poll for modal close state as a fallback when observers are unavailable.
     this.modalCloseIntervalId = this.window.setInterval(handleClose, 500);
   }
 
   resetGeneratedKeypair() {
+    // Clear cached keypair so the next modal session generates fresh keys.
     this.generatedKeypair = null;
   }
 
@@ -390,6 +397,7 @@ export default class LoginModalController {
     }
 
     this.modalPrepared = true;
+    // Ensure close tracking starts after modal preparation updates the element.
     this.initializeModalCloseTracking();
     return this.modalElement instanceof HTMLElement ? this.modalElement : null;
   }
@@ -1688,6 +1696,7 @@ export default class LoginModalController {
       return null;
     }
 
+    // Generate keys only once per modal session to avoid duplicates.
     if (!this.generatedKeypair) {
       const sk = tools.generateSecretKey();
       const pk = tools.getPublicKey(sk);
@@ -1760,6 +1769,7 @@ export default class LoginModalController {
 
       if (loginBtn) {
         loginBtn.addEventListener("click", () => {
+          // Block generated accounts if whitelist-only access is enforced.
           const accessControl = this.services?.authService?.accessControl;
           if (accessControl && typeof accessControl.canAccess === "function") {
             let canAccess = true;
@@ -1776,6 +1786,7 @@ export default class LoginModalController {
             if (!canAccess && typeof accessControl.whitelistMode === "function") {
               const isWhitelistMode = accessControl.whitelistMode();
               if (isWhitelistMode) {
+                // Surface the access error via the login error callback/notification.
                 const accessError = new Error(
                   "Access restricted to admins and moderators users only.",
                 );
