@@ -292,6 +292,7 @@ export default class LoginModalController {
     // Track modal close state to reset generated keys when the modal closes.
     this.modalCloseObserver = null;
     this.modalCloseIntervalId = null;
+    this.isSelectionInProgress = false;
 
     this.initializeRemoteSignerStatus();
     this.initialized = false;
@@ -1696,30 +1697,76 @@ export default class LoginModalController {
       return null;
     }
 
-    // Generate keys only once per modal session to avoid duplicates.
-    if (!this.generatedKeypair) {
+    // Do not generate keys immediately. Wait for user action.
+    this.generatedKeypair = null;
+    let npub = "";
+    let nsec = "";
+    let hexSk = "";
+
+    // Reset fields
+    if (npubEl) {
+      npubEl.textContent = "";
+    }
+    if (nsecEl instanceof HTMLInputElement) {
+      nsecEl.value = "";
+    }
+
+    // Insert "Generate" button
+    const generateBtn = this.document.createElement("button");
+    generateBtn.type = "button";
+    generateBtn.className = "btn w-full mb-4";
+    generateBtn.textContent = "Generate New Keys";
+    // Insert before the first key field container, or at top of view?
+    // view structure: h3, p, div(space-y-3)
+    const contentContainer = view.querySelector(".space-y-3");
+    if (contentContainer) {
+      contentContainer.insertBefore(generateBtn, contentContainer.firstChild);
+    }
+
+    const keyContainer = contentContainer
+      ? contentContainer.querySelector(".space-y-2")
+      : null;
+    if (keyContainer) {
+      keyContainer.classList.add("hidden");
+    }
+    // Also hide the nsec container
+    const nsecContainer = contentContainer
+      ? contentContainer.querySelectorAll(".space-y-2")[1]
+      : null;
+    if (nsecContainer) {
+      nsecContainer.classList.add("hidden");
+    }
+
+    generateBtn.addEventListener("click", () => {
       const sk = tools.generateSecretKey();
       const pk = tools.getPublicKey(sk);
-      const npub = tools.nip19?.npubEncode ? tools.nip19.npubEncode(pk) : pk;
-      const nsec = tools.nip19?.nsecEncode ? tools.nip19.nsecEncode(sk) : "";
-      const hexSk = nsec
-        ? nsec
+      const npubGen = tools.nip19?.npubEncode ? tools.nip19.npubEncode(pk) : pk;
+      const nsecGen = tools.nip19?.nsecEncode ? tools.nip19.nsecEncode(sk) : "";
+      const hexSkGen = nsecGen
+        ? nsecGen
         : tools.nip19?.bytesToHex
         ? tools.nip19.bytesToHex(sk)
         : "";
+
       this.generatedKeypair = {
-        npub,
-        nsec,
-        hexSk,
+        npub: npubGen,
+        nsec: nsecGen,
+        hexSk: hexSkGen,
         pubkey: pk,
       };
-    }
 
-    const { npub, nsec, hexSk } = this.generatedKeypair;
+      npub = npubGen;
+      nsec = nsecGen;
+      hexSk = hexSkGen;
 
-    // Display keys
-    if (npubEl) npubEl.textContent = npub;
-    if (nsecEl instanceof HTMLInputElement) nsecEl.value = nsec || "Error generating nsec";
+      if (npubEl) npubEl.textContent = npub;
+      if (nsecEl instanceof HTMLInputElement) nsecEl.value = nsec;
+
+      generateBtn.classList.add("hidden");
+      if (keyContainer) keyContainer.classList.remove("hidden");
+      if (nsecContainer) nsecContainer.classList.remove("hidden");
+      if (loginBtn) loginBtn.disabled = true; // Still requires checkbox confirmation
+    });
 
     const elementsToHide = [];
     for (const child of Array.from(this.modalBody.children)) {
@@ -1764,11 +1811,26 @@ export default class LoginModalController {
 
       // Interactions
       if (cancelBtn) {
-        cancelBtn.addEventListener("click", () => finish(null), { once: true });
+        cancelBtn.addEventListener(
+          "click",
+          (e) => {
+            if (e) {
+              e.preventDefault();
+              e.stopPropagation();
+            }
+            finish(null);
+          },
+          { once: true },
+        );
       }
 
       if (loginBtn) {
         loginBtn.addEventListener("click", () => {
+          if (!this.generatedKeypair) {
+            return;
+          }
+          const { npub, nsec, hexSk } = this.generatedKeypair;
+
           // Block generated accounts if whitelist-only access is enforced.
           const accessControl = this.services?.authService?.accessControl;
           if (accessControl && typeof accessControl.canAccess === "function") {
@@ -2230,6 +2292,10 @@ export default class LoginModalController {
   }
 
   async handleProviderSelection(providerId) {
+    if (this.isSelectionInProgress) {
+      return;
+    }
+
     const entry = this.getProviderEntry(providerId);
     if (!entry) {
       devLogger.warn(
@@ -2252,171 +2318,173 @@ export default class LoginModalController {
       return;
     }
 
-    safeInvoke(this.callbacks.onProviderSelected, providerId);
-
-    let providerOptions = {};
-    if (entry.provider.id === "nsec") {
-      try {
-        const nsecOptions = await this.promptForNsecOptions();
-        if (!nsecOptions) {
-          devLogger.log(
-            "[LoginModalController] Direct key login cancelled by the user.",
-          );
-          if (entry.button instanceof HTMLButtonElement) {
-            entry.button.focus();
-          }
-          return;
-        }
-        providerOptions = nsecOptions;
-      } catch (promptError) {
-        devLogger.error(
-          "[LoginModalController] Failed to collect direct key credentials:",
-          promptError,
-        );
-        return;
-      }
-    } else if (entry.provider.id === "nip46") {
-      try {
-        const nip46Options = await this.promptForNip46Options();
-        if (!nip46Options) {
-          devLogger.log(
-            "[LoginModalController] Remote signer login cancelled by the user.",
-          );
-          if (entry.button instanceof HTMLButtonElement) {
-            entry.button.focus();
-          }
-          return;
-        }
-        providerOptions = nip46Options;
-      } catch (promptError) {
-        devLogger.error(
-          "[LoginModalController] Failed to collect remote signer connection:",
-          promptError,
-        );
-        return;
-      }
-    } else if (entry.provider.id === "generate") {
-      try {
-        const generateOptions = await this.promptForGenerateOptions();
-        if (!generateOptions) {
-          devLogger.log(
-            "[LoginModalController] Account generation cancelled by the user.",
-          );
-          if (entry.button instanceof HTMLButtonElement) {
-            entry.button.focus();
-          }
-          return;
-        }
-        providerOptions = generateOptions;
-        // Switch provider context to 'nsec' since we are logging in with a key
-        providerId = "nsec";
-        const nsecEntry = this.getProviderEntry("nsec");
-        if (nsecEntry) {
-          entry = nsecEntry;
-        }
-      } catch (promptError) {
-        devLogger.error(
-          "[LoginModalController] Failed to process account generation:",
-          promptError,
-        );
-        return;
-      }
-    }
-
-    this.setLoadingState(providerId, true);
-    devLogger.log(
-      `[LoginModalController] Starting login for provider ${providerId}.`,
-    );
-
-    const requestOptions = { providerId, ...providerOptions };
-
-    const extraOptions = await this.resolveNextRequestLoginOptions({
-      provider: entry.provider.source || entry.provider,
-      providerId,
-    });
-    if (extraOptions && typeof extraOptions === "object") {
-      Object.assign(requestOptions, extraOptions);
-    }
-
+    this.isSelectionInProgress = true;
     try {
-      const result = await this.services.authService.requestLogin(requestOptions);
+      safeInvoke(this.callbacks.onProviderSelected, providerId);
 
+      let providerOptions = {};
+      if (entry.provider.id === "nsec") {
+        try {
+          const nsecOptions = await this.promptForNsecOptions();
+          if (!nsecOptions) {
+            devLogger.log(
+              "[LoginModalController] Direct key login cancelled by the user.",
+            );
+            if (entry.button instanceof HTMLButtonElement) {
+              entry.button.focus();
+            }
+            return;
+          }
+          providerOptions = nsecOptions;
+        } catch (promptError) {
+          devLogger.error(
+            "[LoginModalController] Failed to collect direct key credentials:",
+            promptError,
+          );
+          return;
+        }
+      } else if (entry.provider.id === "nip46") {
+        try {
+          const nip46Options = await this.promptForNip46Options();
+          if (!nip46Options) {
+            devLogger.log(
+              "[LoginModalController] Remote signer login cancelled by the user.",
+            );
+            if (entry.button instanceof HTMLButtonElement) {
+              entry.button.focus();
+            }
+            return;
+          }
+          providerOptions = nip46Options;
+        } catch (promptError) {
+          devLogger.error(
+            "[LoginModalController] Failed to collect remote signer connection:",
+            promptError,
+          );
+          return;
+        }
+      } else if (entry.provider.id === "generate") {
+        try {
+          const generateOptions = await this.promptForGenerateOptions();
+          if (!generateOptions) {
+            devLogger.log(
+              "[LoginModalController] Account generation cancelled by the user.",
+            );
+            if (entry.button instanceof HTMLButtonElement) {
+              entry.button.focus();
+            }
+            return;
+          }
+          providerOptions = generateOptions;
+          // Switch provider context to 'nsec' since we are logging in with a key
+          providerId = "nsec";
+          const nsecEntry = this.getProviderEntry("nsec");
+          if (nsecEntry) {
+            entry = nsecEntry;
+          }
+        } catch (promptError) {
+          devLogger.error(
+            "[LoginModalController] Failed to process account generation:",
+            promptError,
+          );
+          return;
+        }
+      }
+
+      this.setLoadingState(providerId, true);
       devLogger.log(
-        `[LoginModalController] Login resolved for ${providerId} with pubkey:`,
-        result?.pubkey,
+        `[LoginModalController] Starting login for provider ${providerId}.`,
       );
 
-      const consumed = this.resolvePendingTask(result, { type: "add-profile" });
-      const shouldClose =
-        result &&
-        typeof result === "object" &&
-        typeof result.pubkey === "string" &&
-        result.pubkey.trim();
+      const requestOptions = { providerId, ...providerOptions };
 
-      if (shouldClose) {
-        this.helpers.closeModal();
-      }
-
-      if (consumed) {
-        return;
-      }
-
-      await safeInvokeAsync(this.callbacks.onLoginSuccess, {
+      const extraOptions = await this.resolveNextRequestLoginOptions({
         provider: entry.provider.source || entry.provider,
-        result,
+        providerId,
       });
-    } catch (error) {
-      devLogger.error(
-        `[LoginModalController] Login failed for ${providerId}:`,
-        error,
-      );
+      if (extraOptions && typeof extraOptions === "object") {
+        Object.assign(requestOptions, extraOptions);
+      }
 
-      const message = this.helpers.describeLoginError(
-        error,
-        entry.provider.errorMessage,
-      );
+      try {
+        const result =
+          await this.services.authService.requestLogin(requestOptions);
 
-      if (
-        !message ||
-        (typeof message === "string" && !message.trim())
-      ) {
-        devLogger.warn(
-          `[LoginModalController] describeLoginError returned empty message for ${providerId}.`,
+        devLogger.log(
+          `[LoginModalController] Login resolved for ${providerId} with pubkey:`,
+          result?.pubkey,
         );
+
+        const consumed = this.resolvePendingTask(result, { type: "add-profile" });
+        const shouldClose =
+          result &&
+          typeof result === "object" &&
+          typeof result.pubkey === "string" &&
+          result.pubkey.trim();
+
+        if (shouldClose) {
+          this.helpers.closeModal();
+        }
+
+        if (consumed) {
+          return;
+        }
+
+        await safeInvokeAsync(this.callbacks.onLoginSuccess, {
+          provider: entry.provider.source || entry.provider,
+          result,
+        });
+      } catch (error) {
+        devLogger.error(
+          `[LoginModalController] Login failed for ${providerId}:`,
+          error,
+        );
+
+        const message = this.helpers.describeLoginError(
+          error,
+          entry.provider.errorMessage,
+        );
+
+        if (!message || (typeof message === "string" && !message.trim())) {
+          devLogger.warn(
+            `[LoginModalController] describeLoginError returned empty message for ${providerId}.`,
+          );
+        }
+
+        const rejectionError =
+          error instanceof Error
+            ? error
+            : new Error(message || "Failed to login. Please try again.");
+
+        if (message && message !== rejectionError.message) {
+          rejectionError.message = message;
+        }
+
+        if (
+          error &&
+          typeof error === "object" &&
+          typeof error.code === "string" &&
+          !rejectionError.code
+        ) {
+          rejectionError.code = error.code;
+        }
+
+        const consumed = this.rejectPendingTask(rejectionError, {
+          type: "add-profile",
+        });
+
+        if (consumed) {
+          return;
+        }
+
+        await safeInvokeAsync(this.callbacks.onLoginError, {
+          provider: entry.provider.source || entry.provider,
+          error: rejectionError,
+          message,
+        });
       }
-
-      const rejectionError =
-        error instanceof Error
-          ? error
-          : new Error(message || "Failed to login. Please try again.");
-
-      if (message && message !== rejectionError.message) {
-        rejectionError.message = message;
-      }
-
-      if (
-        error &&
-        typeof error === "object" &&
-        typeof error.code === "string" &&
-        !rejectionError.code
-      ) {
-        rejectionError.code = error.code;
-      }
-
-      const consumed = this.rejectPendingTask(rejectionError, {
-        type: "add-profile",
-      });
-
-      if (consumed) {
-        return;
-      }
-
-      await safeInvokeAsync(this.callbacks.onLoginError, {
-        provider: entry.provider.source || entry.provider,
-        error: rejectionError,
-        message,
-      });
     } finally {
+      this.isSelectionInProgress = false;
       this.setLoadingState(providerId, false);
       if (this.pendingNip46Cleanup) {
         try {
@@ -2477,6 +2545,22 @@ export default class LoginModalController {
   }
 
   destroy() {
+    if (this.modalCloseObserver) {
+      try {
+        this.modalCloseObserver.disconnect();
+      } catch (error) {
+        // no-op
+      }
+    }
+    this.modalCloseObserver = null;
+
+    if (this.modalCloseIntervalId) {
+      if (this.window && typeof this.window.clearInterval === "function") {
+        this.window.clearInterval(this.modalCloseIntervalId);
+      }
+    }
+    this.modalCloseIntervalId = null;
+
     if (this.pendingTask && typeof this.pendingTask.reject === "function") {
       try {
         this.pendingTask.reject(this.createCancellationError());
