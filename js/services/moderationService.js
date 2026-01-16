@@ -109,6 +109,39 @@ function normalizeReportType(value) {
   return trimmed ? trimmed : "";
 }
 
+function isRelayHint(value) {
+  if (typeof value !== "string") {
+    return false;
+  }
+  const trimmed = value.trim().toLowerCase();
+  return (
+    trimmed.startsWith("wss://") ||
+    trimmed.startsWith("ws://") ||
+    trimmed.startsWith("https://") ||
+    trimmed.startsWith("http://")
+  );
+}
+
+function normalizeMuteCategory(value) {
+  return normalizeReportType(value);
+}
+
+function extractMuteCategoryFromTag(tag) {
+  if (!Array.isArray(tag)) {
+    return "";
+  }
+
+  const direct = normalizeMuteCategory(tag[3]);
+  if (direct) {
+    return direct;
+  }
+
+  const fallback = typeof tag[2] === "string" && !isRelayHint(tag[2])
+    ? normalizeMuteCategory(tag[2])
+    : "";
+  return fallback;
+}
+
 function cloneSummary(summary) {
   if (!summary || typeof summary !== "object") {
     return { eventId: "", totalTrusted: 0, types: {}, updatedAt: 0 };
@@ -794,9 +827,21 @@ export class ModerationService {
       if (!aggregate || !(aggregate.muters instanceof Map)) {
         continue;
       }
+      const expiredOwners = new Set();
       for (const [owner, updatedAt] of aggregate.muters.entries()) {
         if (ensureNumber(updatedAt) < cutoff) {
           aggregate.muters.delete(owner);
+          expiredOwners.add(owner);
+        }
+      }
+      if (aggregate.categories instanceof Map && expiredOwners.size) {
+        for (const [category, muters] of aggregate.categories.entries()) {
+          for (const owner of expiredOwners) {
+            muters.delete(owner);
+          }
+          if (!muters.size) {
+            aggregate.categories.delete(category);
+          }
         }
       }
       aggregate.count = aggregate.muters.size;
@@ -824,6 +869,39 @@ export class ModerationService {
     }
 
     return Array.from(refreshed.muters.keys());
+  }
+
+  getTrustedMuteCountsForAuthor(author) {
+    const normalized = normalizeHex(author);
+    if (!normalized) {
+      return { total: 0, categories: {} };
+    }
+
+    const entry = this.trustedMutedAuthors.get(normalized);
+    if (!entry || !(entry.muters instanceof Map)) {
+      return { total: 0, categories: {} };
+    }
+
+    this.pruneTrustedMuteAggregates([normalized]);
+    const refreshed = this.trustedMutedAuthors.get(normalized);
+    if (!refreshed || !(refreshed.muters instanceof Map)) {
+      return { total: 0, categories: {} };
+    }
+
+    const categories = {};
+    if (refreshed.categories instanceof Map) {
+      for (const [category, muters] of refreshed.categories.entries()) {
+        if (typeof category !== "string" || !category.trim()) {
+          continue;
+        }
+        categories[category] = muters instanceof Map ? muters.size : 0;
+      }
+    }
+
+    return {
+      total: refreshed.muters.size,
+      categories,
+    };
   }
 
   setLogger(newLogger) {
@@ -1143,34 +1221,71 @@ export class ModerationService {
       return;
     }
 
-    const sanitizedAuthors = new Set();
-    if (mutedAuthors instanceof Set || Array.isArray(mutedAuthors)) {
+    const sanitizedAuthors = new Map();
+    const addAuthor = (candidate, category = "") => {
+      const normalized = normalizeToHex(candidate);
+      if (!normalized) {
+        return;
+      }
+      const normalizedCategory = normalizeMuteCategory(category);
+      sanitizedAuthors.set(normalized, normalizedCategory);
+    };
+
+    if (mutedAuthors instanceof Map) {
+      for (const [candidate, category] of mutedAuthors.entries()) {
+        addAuthor(candidate, category);
+      }
+    } else if (mutedAuthors instanceof Set || Array.isArray(mutedAuthors)) {
       for (const candidate of mutedAuthors) {
-        const normalized = normalizeToHex(candidate);
-        if (!normalized) {
+        if (!candidate) {
           continue;
         }
-        sanitizedAuthors.add(normalized);
+        if (typeof candidate === "object") {
+          addAuthor(candidate.pubkey || candidate.author, candidate.category || candidate.reason);
+          continue;
+        }
+        addAuthor(candidate);
       }
     } else if (mutedAuthors && typeof mutedAuthors[Symbol.iterator] === "function") {
       for (const candidate of mutedAuthors) {
-        const normalized = normalizeToHex(candidate);
-        if (!normalized) {
+        if (!candidate) {
           continue;
         }
-        sanitizedAuthors.add(normalized);
+        if (typeof candidate === "object") {
+          addAuthor(candidate.pubkey || candidate.author, candidate.category || candidate.reason);
+          continue;
+        }
+        addAuthor(candidate);
       }
     }
 
     const touchedAuthors = new Set();
     const previous = this.trustedMuteLists.get(owner);
-    if (previous && previous.authors instanceof Set) {
-      for (const author of previous.authors) {
+    if (previous && previous.authors instanceof Map) {
+      for (const [author, category] of previous.authors.entries()) {
         const aggregate = this.trustedMutedAuthors.get(author);
         if (!aggregate || !(aggregate.muters instanceof Map)) {
           continue;
         }
         aggregate.muters.delete(owner);
+        if (aggregate.categories instanceof Map) {
+          if (category) {
+            const categoryMuters = aggregate.categories.get(category);
+            if (categoryMuters instanceof Map) {
+              categoryMuters.delete(owner);
+              if (!categoryMuters.size) {
+                aggregate.categories.delete(category);
+              }
+            }
+          } else {
+            for (const [existingCategory, muters] of aggregate.categories.entries()) {
+              muters.delete(owner);
+              if (!muters.size) {
+                aggregate.categories.delete(existingCategory);
+              }
+            }
+          }
+        }
         touchedAuthors.add(author);
       }
     }
@@ -1193,13 +1308,21 @@ export class ModerationService {
         eventId: normalizedEventId,
       });
 
-      for (const author of sanitizedAuthors) {
+      for (const [author, category] of sanitizedAuthors.entries()) {
         let aggregate = this.trustedMutedAuthors.get(author);
         if (!aggregate) {
-          aggregate = { muters: new Map(), count: 0 };
+          aggregate = { muters: new Map(), categories: new Map(), count: 0 };
           this.trustedMutedAuthors.set(author, aggregate);
         }
         aggregate.muters.set(owner, normalizedCreatedAt);
+        if (category) {
+          let categoryMuters = aggregate.categories.get(category);
+          if (!categoryMuters) {
+            categoryMuters = new Map();
+            aggregate.categories.set(category, categoryMuters);
+          }
+          categoryMuters.set(owner, normalizedCreatedAt);
+        }
         touchedAuthors.add(author);
       }
     }
@@ -1233,7 +1356,7 @@ export class ModerationService {
       }
     }
 
-    const mutedAuthors = new Set();
+    const mutedAuthors = new Map();
     if (Array.isArray(event.tags)) {
       for (const tag of event.tags) {
         if (!Array.isArray(tag) || tag.length < 2) {
@@ -1244,7 +1367,8 @@ export class ModerationService {
         }
         const normalized = normalizeToHex(tag[1]);
         if (normalized) {
-          mutedAuthors.add(normalized);
+          const category = extractMuteCategoryFromTag(tag);
+          mutedAuthors.set(normalized, category);
         }
       }
     }

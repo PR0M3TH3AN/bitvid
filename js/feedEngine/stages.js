@@ -483,7 +483,7 @@ export function createModerationStage({
     defaultValue: DEFAULT_BLUR_THRESHOLD,
     fallbackValue: DEFAULT_BLUR_THRESHOLD,
   });
-  const resolveMuteHideThreshold = createThresholdResolver(
+  const resolveMuteHideThresholdBase = createThresholdResolver(
     trustedMuteHideThreshold,
     {
       runtimeKey: "trustedMuteHideThreshold",
@@ -492,6 +492,35 @@ export function createModerationStage({
       allowInfinity: true,
     },
   );
+  const resolveMuteHideThreshold = (context, category) => {
+    const base = resolveMuteHideThresholdBase(context);
+    const normalizedCategory =
+      typeof category === "string" ? category.trim().toLowerCase() : "";
+    if (!normalizedCategory) {
+      return base;
+    }
+
+    const runtimeThresholds =
+      context?.runtime && typeof context.runtime === "object"
+        ? context.runtime.moderationThresholds
+        : null;
+
+    const thresholdMap =
+      runtimeThresholds && typeof runtimeThresholds === "object"
+        ? runtimeThresholds.trustedMuteHideThresholds
+        : null;
+
+    if (!thresholdMap || typeof thresholdMap !== "object") {
+      return base;
+    }
+
+    const override = thresholdMap[normalizedCategory];
+    if (Number.isFinite(override)) {
+      return Math.max(0, Math.floor(override));
+    }
+
+    return base;
+  };
   const resolveReportHideThreshold = createThresholdResolver(
     trustedReportHideThreshold,
     {
@@ -529,7 +558,6 @@ export function createModerationStage({
 
     const normalizedAutoplayThreshold = resolveAutoplayThreshold(context);
     const normalizedBlurThreshold = resolveBlurThreshold(context);
-    const normalizedMuteHideThreshold = resolveMuteHideThreshold(context);
     const normalizedReportHideThreshold = resolveReportHideThreshold(context);
 
     const activeIds = new Set();
@@ -779,6 +807,9 @@ export function createModerationStage({
       let trustedMuted = false;
       let trustedMuters = [];
       let trustedMuteCount = 0;
+      let trustedMuteCountTotal = 0;
+      let trustedMuteCategory = "";
+      let trustedMuteCountsByCategory = null;
       let viewerMuted = false;
       if (videoId) {
         try {
@@ -839,6 +870,21 @@ export function createModerationStage({
                 });
             }
           }
+          if (
+            trustedMuted &&
+            typeof resolvedService.getTrustedMuteCountsForAuthor === "function"
+          ) {
+            const summary = resolvedService.getTrustedMuteCountsForAuthor(authorHex);
+            if (summary && typeof summary === "object") {
+              trustedMuteCountTotal = Number.isFinite(summary.total)
+                ? Math.max(0, Math.floor(summary.total))
+                : 0;
+              trustedMuteCountsByCategory =
+                summary.categories && typeof summary.categories === "object"
+                  ? { ...summary.categories }
+                  : null;
+            }
+          }
           if (typeof resolvedService.isAuthorMutedByViewer === "function") {
             viewerMuted = resolvedService.isAuthorMutedByViewer(authorHex) === true;
           }
@@ -851,19 +897,75 @@ export function createModerationStage({
       }
 
       if (trustedMuted) {
-        trustedMuteCount = Number.isFinite(video?.moderation?.trustedMuteCount)
+        trustedMuteCountTotal = Number.isFinite(video?.moderation?.trustedMuteCount)
           ? Math.max(0, Math.floor(video.moderation.trustedMuteCount))
-          : trustedMuters.length;
-        if (!trustedMuteCount) {
-          trustedMuteCount = trustedMuters.length;
+          : trustedMuteCountTotal || trustedMuters.length;
+        if (!trustedMuteCountTotal) {
+          trustedMuteCountTotal = trustedMuters.length;
+        }
+        if (trustedMuteCountTotal <= 0) {
+          trustedMuteCountTotal = Math.max(1, trustedMuters.length || 1);
+        }
+        trustedMuteCategory = normalizedReportType;
+        if (
+          trustedMuteCountsByCategory &&
+          typeof trustedMuteCountsByCategory === "object"
+        ) {
+          const categoryCount =
+            trustedMuteCategory &&
+            Number.isFinite(trustedMuteCountsByCategory[trustedMuteCategory])
+              ? Math.max(
+                  0,
+                  Math.floor(trustedMuteCountsByCategory[trustedMuteCategory]),
+                )
+              : null;
+          if (categoryCount !== null && categoryCount !== undefined) {
+            trustedMuteCount = categoryCount;
+          } else if (!trustedMuteCategory) {
+            let bestCategory = "";
+            let bestCount = 0;
+            for (const [category, count] of Object.entries(
+              trustedMuteCountsByCategory,
+            )) {
+              if (!Number.isFinite(count)) {
+                continue;
+              }
+              const normalizedCategory = category.trim().toLowerCase();
+              const normalizedCount = Math.max(0, Math.floor(count));
+              if (!normalizedCategory) {
+                continue;
+              }
+              if (normalizedCount > bestCount) {
+                bestCount = normalizedCount;
+                bestCategory = normalizedCategory;
+              }
+            }
+            if (bestCategory) {
+              trustedMuteCategory = bestCategory;
+              trustedMuteCount = bestCount;
+            } else {
+              trustedMuteCount = trustedMuteCountTotal;
+            }
+          } else {
+            trustedMuteCount = trustedMuteCountTotal;
+          }
+        } else {
+          trustedMuteCount = trustedMuteCountTotal;
         }
         if (trustedMuteCount <= 0) {
-          trustedMuteCount = Math.max(1, trustedMuters.length || 1);
+          trustedMuteCount = trustedMuteCountTotal || Math.max(1, trustedMuters.length || 1);
         }
       } else {
         trustedMuteCount = 0;
+        trustedMuteCountTotal = 0;
+        trustedMuteCategory = "";
         trustedMuters = [];
       }
+
+      const normalizedMuteHideThreshold = resolveMuteHideThreshold(
+        context,
+        trustedMuteCategory,
+      );
 
       const blockAutoplay =
         trustedCount >= normalizedAutoplayThreshold || trustedMuted || viewerMuted;

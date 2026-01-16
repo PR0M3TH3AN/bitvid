@@ -17,10 +17,10 @@
 - `blurThumbnail = trustedReportCount(event,'nudity') >= DEFAULT_BLUR_THRESHOLD`
 - `hideAutoplay = trustedReportCount(event,'nudity') >= DEFAULT_AUTOPLAY_BLOCK_THRESHOLD`
 - `downrankIfMutedByF1 = true`
-- `hideIfTrustedMuteCount(author) >= DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD`
+- `hideIfTrustedMuteCount(author, category) >= trustedMuteHideThresholds[category] ?? DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD`
 - `hideIfTrustedSpamReports(event) >= DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD`
 
-Threshold constants are exported from [`config/instance-config.js`](../../config/instance-config.js) so operators can change the defaults without touching moderation code. Inspect the `DEFAULT_BLUR_THRESHOLD`, `DEFAULT_AUTOPLAY_BLOCK_THRESHOLD`, `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD`, and `DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD` exports to set your policy. The upstream repo includes example values (blur at 1, autoplay block at 1, trusted mute hide at 20, trusted spam hide at 1), but treat those as guidance rather than hard-coded requirements.
+Threshold constants are exported from [`config/instance-config.js`](../../config/instance-config.js) so operators can change the defaults without touching moderation code. Inspect the `DEFAULT_BLUR_THRESHOLD`, `DEFAULT_AUTOPLAY_BLOCK_THRESHOLD`, `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD`, and `DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD` exports to set your policy. The upstream repo includes example values (blur at 1, autoplay block at 1, trusted mute hide at 20, trusted spam hide at 1), but treat those as guidance rather than hard-coded requirements. Per-category trusted mute hide thresholds now live in moderation settings as `trustedMuteHideThresholds` (e.g., `{ spam: 5, nudity: 10 }`), and any category not present falls back to the default trusted mute hide threshold. When evaluating trusted mutes we use the content's report type if available, otherwise we fall back to any category metadata attached to trusted mute list entries.
 
 ### Trusted mute decay window
 - Trusted mute counts are **time-bounded**: only mute lists updated within the rolling window (currently 60 days) contribute to `trustedMuteCount`.
@@ -67,8 +67,10 @@ function shouldHideAutoplay(eventId: string, ctx: Ctx): boolean {
   return trustedReportCount(eventId, 'nudity', ctx.viewerFollows, ctx.reports) >= DEFAULT_AUTOPLAY_BLOCK_THRESHOLD;
 }
 
-function shouldHideForTrustedMute(authorHex: string, ctx: Ctx): boolean {
-  return ctx.trustedMuteCount(authorHex) >= DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD;
+function shouldHideForTrustedMute(authorHex: string, ctx: Ctx, category: Report['type']): boolean {
+  const thresholds = ctx.trustedMuteHideThresholds || {};
+  const threshold = thresholds[category] ?? DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD;
+  return ctx.trustedMuteCount(authorHex, category) >= threshold;
 }
 
 function shouldHideForTrustedSpam(eventId: string, ctx: Ctx): boolean {
