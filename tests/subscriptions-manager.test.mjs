@@ -129,6 +129,7 @@ test("loadSubscriptions aggregates relay results when one rejects", async () => 
     if (!hadWindow) {
       delete globalThis.window;
     }
+    localStorage.clear();
   }
 });
 
@@ -208,6 +209,7 @@ test("loadSubscriptions queries the correct subscription list kind", async () =>
     if (!hadWindow) {
       delete globalThis.window;
     }
+    localStorage.clear();
   }
 });
 
@@ -298,6 +300,7 @@ test("loadSubscriptions falls back to nip44 when hinted", async () => {
     if (!hadWindow) {
       delete globalThis.window;
     }
+    localStorage.clear();
   }
 });
 
@@ -389,6 +392,7 @@ test("loadSubscriptions handles nip44.v2 decryptors", async () => {
     if (!hadWindow) {
       delete globalThis.window;
     }
+    localStorage.clear();
   }
 });
 
@@ -471,6 +475,7 @@ test("loadSubscriptions prefers nip44 decryptors when both are available", async
     if (!hadWindow) {
       delete globalThis.window;
     }
+    localStorage.clear();
   }
 });
 
@@ -557,6 +562,7 @@ test(
       if (!hadWindow) {
         delete globalThis.window;
       }
+      localStorage.clear();
     }
   },
 );
@@ -1190,4 +1196,3 @@ test(
     setApplication(null);
   },
 );
-
