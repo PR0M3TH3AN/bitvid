@@ -430,7 +430,13 @@ export class SimilarContentCard {
 
   buildMediaSection() {
     const anchor = this.document.createElement("a");
-    anchor.classList.add("player-modal__similar-card-media");
+    anchor.classList.add(
+      "player-modal__similar-card-media",
+      "block",
+      "relative",
+      "overflow-hidden",
+      "rounded"
+    );
     anchor.href = this.shareUrl;
     anchor.setAttribute("data-primary-action", "play");
 
@@ -756,12 +762,15 @@ export class SimilarContentCard {
         this.thumbnailEl.classList.add("blur-xl");
         // Force blur style in case class utility is missing or overridden,
         // and clear the backdrop so the sharp background doesn't show through.
+        // Scale up to hide feathered edges of the blur.
         this.thumbnailEl.style.filter = "blur(24px)";
+        this.thumbnailEl.style.transform = "scale(1.2)";
         this.setCardBackdropImage("");
       } else {
         delete this.thumbnailEl.dataset.thumbnailState;
         this.thumbnailEl.classList.remove("blur-xl");
         this.thumbnailEl.style.filter = "";
+        this.thumbnailEl.style.transform = "";
         // Restore backdrop if src is available
         if (this.thumbnailEl.src) {
           this.setCardBackdropImage(this.thumbnailEl.src);
@@ -835,8 +844,9 @@ export class SimilarContentCard {
     if (this.shouldMaskNsfwForOwner || this.video?.moderation?.blurThumbnail) {
       img.dataset.thumbnailState = "blurred";
       img.classList.add("blur-xl");
-      // Pre-apply style to avoid flash
+      // Pre-apply style to avoid flash and crop edges
       img.style.filter = "blur(24px)";
+      img.style.transform = "scale(1.2)";
     }
 
     const handleLoad = () => {
@@ -845,18 +855,31 @@ export class SimilarContentCard {
         return;
       }
 
+      // If currently blurred, do not restore the backdrop to avoid transparency bleed-through.
+      const isBlurred = img.dataset.thumbnailState === "blurred";
+
       const fallbackAttr =
         (typeof img.dataset.fallbackSrc === "string"
           ? img.dataset.fallbackSrc.trim()
-          : "") || fallbackSrc || "";
+          : "") ||
+        fallbackSrc ||
+        "";
       const isFallback =
         !!fallbackAttr &&
         (currentSrc === fallbackAttr || currentSrc.endsWith(fallbackAttr));
 
       if (!isFallback) {
-        this.setCardBackdropImage(currentSrc);
+        if (isBlurred) {
+          this.setCardBackdropImage("");
+        } else {
+          this.setCardBackdropImage(currentSrc);
+        }
       } else if (fallbackAttr) {
-        this.setCardBackdropImage(fallbackAttr);
+        if (isBlurred) {
+          this.setCardBackdropImage("");
+        } else {
+          this.setCardBackdropImage(fallbackAttr);
+        }
       }
 
       if (thumbnailUrl && !isFallback && this.thumbnailCache) {
@@ -868,9 +891,19 @@ export class SimilarContentCard {
       const fallbackAttr =
         (typeof img.dataset.fallbackSrc === "string"
           ? img.dataset.fallbackSrc.trim()
-          : "") || fallbackSrc || "";
+          : "") ||
+        fallbackSrc ||
+        "";
+
+      // If currently blurred, do not set the backdrop.
+      const isBlurred = img.dataset.thumbnailState === "blurred";
+
       if (fallbackAttr) {
-        this.setCardBackdropImage(fallbackAttr);
+        if (isBlurred) {
+          this.setCardBackdropImage("");
+        } else {
+          this.setCardBackdropImage(fallbackAttr);
+        }
         if (!img.src || img.src === thumbnailUrl) {
           img.src = fallbackAttr;
         }
