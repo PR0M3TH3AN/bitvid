@@ -22,6 +22,7 @@ function assignAwsSdk(module) {
     UploadPartCommand: module.UploadPartCommand,
     CompleteMultipartUploadCommand: module.CompleteMultipartUploadCommand,
     AbortMultipartUploadCommand: module.AbortMultipartUploadCommand,
+    ListBucketsCommand: module.ListBucketsCommand,
     HeadBucketCommand: module.HeadBucketCommand,
     PutBucketCorsCommand: module.PutBucketCorsCommand,
     DeleteObjectCommand: module.DeleteObjectCommand,
@@ -56,6 +57,53 @@ async function loadAwsSdkModule() {
     return await awsSdkLoadPromise;
   } catch (error) {
     awsSdkLoadError = error;
+    throw error;
+  }
+}
+
+export async function testS3Connection(config) {
+  if (!config) {
+    throw new Error("Configuration required for testing S3 connection.");
+  }
+
+  await ensureR2SdkLoaded();
+
+  const { ListBucketsCommand, HeadBucketCommand } = requireAwsSdk();
+
+  const s3 = makeR2Client({
+    accountId: config.accountId,
+    accessKeyId: config.accessKeyId,
+    secretAccessKey: config.secretAccessKey,
+    endpoint: config.endpoint,
+    region: config.region,
+  });
+
+  // If bucket is specified, we check that specific bucket (permissions + existence).
+  if (config.bucket) {
+    try {
+      await s3.send(new HeadBucketCommand({ Bucket: config.bucket }));
+      return { success: true, message: `Successfully connected to bucket "${config.bucket}".` };
+    } catch (error) {
+      const status = error?.$metadata?.httpStatusCode || 0;
+      if (status === 403) {
+        throw new Error(`Access denied to bucket "${config.bucket}". Check your permissions.`);
+      } else if (status === 404) {
+        throw new Error(`Bucket "${config.bucket}" does not exist.`);
+      }
+      throw error;
+    }
+  }
+
+  // Otherwise, we just list buckets to verify credentials.
+  try {
+    const response = await s3.send(new ListBucketsCommand({}));
+    const count = response.Buckets ? response.Buckets.length : 0;
+    return { success: true, message: `Connection successful. Found ${count} buckets.` };
+  } catch (error) {
+    const status = error?.$metadata?.httpStatusCode || 0;
+    if (status === 403) {
+      throw new Error("Access denied. Check your Access Key ID and Secret Access Key.");
+    }
     throw error;
   }
 }
