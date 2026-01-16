@@ -405,6 +405,9 @@ export default class ApplicationBootstrap {
       assets: {
         fallbackThumbnailSrc: this.assets.fallbackThumbnailSrc,
       },
+      services: {
+        storageService,
+      },
     });
     modalManager.initialize();
     this.modalManager = modalManager;

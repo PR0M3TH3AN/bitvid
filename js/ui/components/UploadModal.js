@@ -10,6 +10,7 @@ import {
 import { createTorrentMetadata } from "../../utils/torrentHash.js";
 import { sanitizeBucketName } from "../../storage/r2-mgmt.js";
 import { buildR2Key, buildPublicUrl } from "../../r2.js";
+import { PROVIDERS } from "../../services/storageService.js";
 
 const INFO_HASH_PATTERN = /^[a-f0-9]{40}$/;
 
@@ -25,6 +26,7 @@ export class UploadModal {
   constructor({
     authService,
     r2Service,
+    storageService,
     publishVideoNote,
     removeTrackingScripts,
     setGlobalModalState,
@@ -37,6 +39,7 @@ export class UploadModal {
   } = {}) {
     this.authService = authService || null;
     this.r2Service = r2Service || null;
+    this.storageService = storageService || null;
     this.publishVideoNote =
       typeof publishVideoNote === "function" ? publishVideoNote : null;
     this.removeTrackingScripts =
@@ -62,6 +65,8 @@ export class UploadModal {
     this.isVisible = false;
     this.activeSource = "upload"; // 'upload' | 'external'
     this.cloudflareSettings = this.r2Service?.getSettings?.() || null;
+    this.isStorageUnlocked = false;
+    this.activeConnectionId = null;
 
     // UI References
     this.form = null;
@@ -117,7 +122,21 @@ export class UploadModal {
       this.registerR2Subscriptions();
 
       // Initial State
-      await this.loadR2Settings();
+      if (this.storageService) {
+        const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
+        this.isStorageUnlocked = pubkey ? this.storageService.isUnlocked(pubkey) : false;
+        if (this.isStorageUnlocked) {
+          await this.loadFromStorage();
+        } else {
+          // Attempt legacy load if not unlocked (or maybe just show locked state)
+          // For now we keep legacy behavior as fallback if storageService isn't used
+          // But user requested provider agnostic.
+          // We will update UI state in setSourceMode or similar
+        }
+      } else {
+        await this.loadR2Settings();
+      }
+      this.updateLockUi();
       this.setSourceMode("upload");
 
       return this.root;
@@ -205,11 +224,13 @@ export class UploadModal {
         browseThumbnail: $("#btn-thumbnail-file"),
         r2HelpLink: $("#link-r2-help"),
         copyBucket: $("#btn-copy-bucket"),
+        storageUnlock: $("#btn-storage-unlock"),
     };
 
     // Status text
     this.statusText = {
         storage: $("#storage-status"),
+        storageLock: $("#storage-lock-status"),
         uploadMain: $("#upload-status-text"),
         uploadPercent: $("#upload-percent-text"),
     };
@@ -266,6 +287,11 @@ export class UploadModal {
                 });
             }
         });
+    }
+
+    // Storage Unlock
+    if (this.toggles.storageUnlock) {
+        this.toggles.storageUnlock.addEventListener("click", () => this.handleUnlock());
     }
 
     // Automation
@@ -430,12 +456,95 @@ export class UploadModal {
   // --- R2 Integration ---
 
   async loadR2Settings() {
+      // Fallback legacy load if storage service not used/available
       if (!this.r2Service?.loadSettings) return;
       const settings = await this.r2Service.loadSettings();
       this.cloudflareSettings = settings || {};
       this.fillSettingsForm(this.cloudflareSettings);
       this.updateStorageStatus(this.hasValidR2Settings());
       return settings;
+  }
+
+  async loadFromStorage() {
+      if (!this.storageService) return;
+      const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
+      if (!pubkey) return;
+
+      const connections = await this.storageService.listConnections(pubkey);
+      const r2Conn = connections.find(c => c.provider === PROVIDERS.R2 || c.provider === "cloudflare_r2");
+
+      if (r2Conn) {
+          try {
+              const details = await this.storageService.getConnection(pubkey, r2Conn.id);
+              if (details) {
+                  this.cloudflareSettings = {
+                      accountId: details.accountId,
+                      accessKeyId: details.accessKeyId,
+                      secretAccessKey: details.secretAccessKey,
+                      baseDomain: details.meta?.baseDomain || "",
+                  };
+                  this.fillSettingsForm(this.cloudflareSettings);
+                  this.updateStorageStatus(true);
+                  this.activeConnectionId = r2Conn.id;
+              }
+          } catch (err) {
+              console.error("Failed to load connection", err);
+          }
+      }
+  }
+
+  async handleUnlock() {
+      if (!this.storageService) return;
+      const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
+      if (!pubkey) return;
+
+      // We need a signer. Try window.nostr or authService
+      let signer = window.nostr;
+      if (!signer && this.authService?.signer) {
+          signer = this.authService.signer;
+      }
+
+      if (!signer) {
+          alert("No signer available to unlock storage.");
+          return;
+      }
+
+      try {
+          this.toggles.storageUnlock.textContent = "Unlocking...";
+          this.toggles.storageUnlock.disabled = true;
+          await this.storageService.unlock(pubkey, { signer });
+          this.isStorageUnlocked = true;
+          this.updateLockUi();
+          await this.loadFromStorage();
+      } catch (err) {
+          console.error("Unlock failed", err);
+          alert("Failed to unlock storage: " + err.message);
+      } finally {
+          this.toggles.storageUnlock.textContent = "Unlock";
+          this.toggles.storageUnlock.disabled = false;
+      }
+  }
+
+  updateLockUi() {
+      const locked = !this.isStorageUnlocked;
+      if (this.statusText.storageLock) {
+          this.statusText.storageLock.textContent = locked ? "Locked 🔒" : "Unlocked 🔓";
+          this.statusText.storageLock.className = locked ? "text-xs text-critical" : "text-xs text-success";
+      }
+      if (this.toggles.storageUnlock) {
+          if (locked) {
+              this.toggles.storageUnlock.classList.remove("hidden");
+          } else {
+              this.toggles.storageUnlock.classList.add("hidden");
+          }
+      }
+      if (this.statusText.storage) {
+          if (locked) {
+              this.statusText.storage.classList.add("hidden");
+          } else {
+              this.statusText.storage.classList.remove("hidden");
+          }
+      }
   }
 
   hasValidR2Settings() {
@@ -531,7 +640,30 @@ export class UploadModal {
 
           // 2. Save on Success
           btn.textContent = "Saving...";
-          await this.r2Service.saveSettings(settings);
+
+          if (this.storageService && this.isStorageUnlocked) {
+              const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
+              if (pubkey) {
+                  // Save to secure storage
+                  const connectionId = this.activeConnectionId || `r2-${Date.now()}`;
+                  await this.storageService.saveConnection(pubkey, connectionId, {
+                      provider: PROVIDERS.R2,
+                      accountId: settings.accountId,
+                      accessKeyId: settings.accessKeyId,
+                      secretAccessKey: settings.secretAccessKey,
+                  }, {
+                      provider: PROVIDERS.R2,
+                      label: "Default R2",
+                      baseDomain: settings.baseDomain,
+                      defaultForUploads: true
+                  });
+                  this.activeConnectionId = connectionId;
+              }
+          } else {
+              // Legacy fallback
+              await this.r2Service.saveSettings(settings);
+          }
+
           this.cloudflareSettings = settings;
           this.updateStorageStatus(true);
 
@@ -742,6 +874,12 @@ export class UploadModal {
       }
 
       // 2. Upload
+      let explicitCredentials = null;
+      if (this.storageService && this.isStorageUnlocked && this.hasValidR2Settings()) {
+          // If using secure storage, we pass the credentials explicitly so they aren't saved to legacy DB
+          explicitCredentials = this.collectSettingsForm();
+      }
+
       await this.r2Service.uploadVideo({
           npub,
           file,
@@ -749,7 +887,8 @@ export class UploadModal {
           torrentFile,
           metadata,
           infoHash: hasValidInfoHash ? normalizedInfoHash : "",
-          settingsInput: this.collectSettingsForm(),
+          settingsInput: explicitCredentials ? null : this.collectSettingsForm(),
+          explicitCredentials,
           publishVideoNote: this.publishVideoNote,
           onReset: () => this.resetForm(),
           // Pass forced keys/URLs to ensure what's in the torrent matches where we upload
@@ -828,6 +967,17 @@ export class UploadModal {
     this.setGlobalModalState("upload", true);
     this.isVisible = true;
     this.populateBucketName(); // Ensure bucket name is fresh on open
+
+    // Refresh lock state on open
+    if (this.storageService) {
+        const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
+        this.isStorageUnlocked = pubkey ? this.storageService.isUnlocked(pubkey) : false;
+        this.updateLockUi();
+        if (this.isStorageUnlocked) {
+            this.loadFromStorage();
+        }
+    }
+
     this.modalAccessibility?.activate({ triggerElement });
   }
 

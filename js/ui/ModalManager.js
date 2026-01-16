@@ -18,6 +18,7 @@ export default class ModalManager {
     ui = {},
     documentRef = typeof document !== "undefined" ? document : null,
     assets = {},
+    services = {},
   } = {}) {
     this.app = app;
     this.ui = ui;
@@ -25,6 +26,7 @@ export default class ModalManager {
     this.assets = {
       fallbackThumbnailSrc: assets.fallbackThumbnailSrc || null,
     };
+    this.services = services;
 
     this.uploadModal = null;
     this.uploadModalEvents = null;
@@ -63,6 +65,7 @@ export default class ModalManager {
       services: {
         authService: app.authService,
         r2Service: app.r2Service,
+        storageService: this.services.storageService,
       },
       utilities: {
         removeTrackingScripts,
