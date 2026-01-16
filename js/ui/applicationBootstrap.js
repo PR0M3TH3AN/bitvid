@@ -14,6 +14,7 @@ import hashtagPreferences, {
 } from "../services/hashtagPreferencesService.js";
 import NwcSettingsService from "../services/nwcSettingsService.js";
 import nostrService from "../services/nostrService.js";
+import storageService from "../services/storageService.js";
 import watchHistoryService from "../watchHistoryService.js";
 import r2Service from "../services/r2Service.js";
 import { createFeedEngine } from "../feedEngine/index.js";
@@ -426,6 +427,7 @@ export default class ApplicationBootstrap {
           userBlocks,
           nostrClient,
           nostrService: app.nostrService,
+          storageService,
           subscriptions,
           accessControl,
           moderation: moderationService,
