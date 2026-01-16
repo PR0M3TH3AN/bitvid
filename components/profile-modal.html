@@ -286,6 +286,25 @@
                     Choose how many trusted reports or mutes it takes to blur thumbnails, block autoplay previews, or hide videos entirely.
                     Lower numbers are stricter.
                   </p>
+                  <div class="rounded-lg border border-border bg-bg-muted p-3 text-xs text-muted">
+                    <p>
+                      Trusted counts include your first-degree follows (F1) plus seeded moderators.
+                    </p>
+                    <dl class="mt-2 grid gap-1">
+                      <div class="flex items-center justify-between gap-3">
+                        <dt>Trusted contacts</dt>
+                        <dd id="profileModerationTrustedContactsCount" class="font-semibold text-text">0</dd>
+                      </div>
+                      <div class="flex items-center justify-between gap-3">
+                        <dt>Active trusted mute contributors</dt>
+                        <dd id="profileModerationTrustedMuteCount" class="font-semibold text-text">0</dd>
+                      </div>
+                      <div class="flex items-center justify-between gap-3">
+                        <dt>Active trusted report contributors</dt>
+                        <dd id="profileModerationTrustedReportCount" class="font-semibold text-text">0</dd>
+                      </div>
+                    </dl>
+                  </div>
                 </div>
                 <div class="grid gap-4 sm:grid-cols-2">
                   <label

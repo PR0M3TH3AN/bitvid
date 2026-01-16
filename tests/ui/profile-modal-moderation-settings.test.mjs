@@ -39,6 +39,9 @@ const TEMPLATE_HTML = `
   <div id="profileModerationSettings">
     <input id="profileModerationBlurThreshold" type="number" />
     <input id="profileModerationAutoplayThreshold" type="number" />
+    <div id="profileModerationTrustedContactsCount"></div>
+    <div id="profileModerationTrustedMuteCount"></div>
+    <div id="profileModerationTrustedReportCount"></div>
     <div data-role="trusted-hide-controls">
       <input id="profileModerationMuteHideThreshold" type="number" />
       <input id="profileModerationSpamHideThreshold" type="number" />
