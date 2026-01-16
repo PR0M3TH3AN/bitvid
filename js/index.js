@@ -685,23 +685,34 @@ async function bootstrapInterface() {
       try {
         await applicationReadyPromise;
       } catch (error) {
-        userLogger.info("Search function is coming soon.");
+        // Continue even if app fails full initialization, if possible.
+      }
+
+      const input = document.getElementById("headerSearchInput");
+      const query = input && input.value ? input.value.trim() : "";
+
+      if (!query) {
         return;
       }
 
-      if (application && typeof application.showStatus === "function") {
-        try {
-          application.showStatus("Search function is coming soon.", {
-            autoHideMs: 3500,
-            showSpinner: false,
-          });
-          return;
-        } catch (error) {
-          // fall through to logger fallback
+      // Check if it's an npub
+      try {
+        if (
+          window.NostrTools &&
+          window.NostrTools.nip19 &&
+          query.startsWith("npub1")
+        ) {
+          const decoded = window.NostrTools.nip19.decode(query);
+          if (decoded && decoded.type === "npub") {
+            setHashView(`channel-profile&npub=${encodeURIComponent(query)}`);
+            return;
+          }
         }
+      } catch (error) {
+        // Not a valid npub, proceed to search
       }
 
-      userLogger.info("Search function is coming soon.");
+      setHashView(`search&q=${encodeURIComponent(query)}`);
     });
   }
 
