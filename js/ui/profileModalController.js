@@ -903,17 +903,28 @@ export class ProfileModalController {
         ? moderationServiceCandidate
         : null;
     this.unsubscribeModerationContacts = null;
+    this.unsubscribeModerationStats = [];
     if (
       this.moderationService &&
       typeof this.moderationService.on === "function"
     ) {
       try {
+        const updateTrustStats = () => {
+          this.updateModerationTrustStats();
+        };
+
         this.unsubscribeModerationContacts = this.moderationService.on(
           "contacts",
           () => {
             void this.populateFriendsList();
+            updateTrustStats();
           },
         );
+
+        this.unsubscribeModerationStats = [
+          this.moderationService.on("trusted-mutes", updateTrustStats),
+          this.moderationService.on("summary", updateTrustStats),
+        ].filter((unsubscribe) => typeof unsubscribe === "function");
       } catch (error) {
         devLogger.warn(
           "[profileModal] Failed to subscribe to moderation contacts updates:",
@@ -1402,6 +1413,12 @@ export class ProfileModalController {
       document.getElementById("profileModerationReset") || null;
     this.moderationStatusText =
       document.getElementById("profileModerationStatus") || null;
+    this.moderationTrustedContactsCount =
+      document.getElementById("profileModerationTrustedContactsCount") || null;
+    this.moderationTrustedMuteCount =
+      document.getElementById("profileModerationTrustedMuteCount") || null;
+    this.moderationTrustedReportCount =
+      document.getElementById("profileModerationTrustedReportCount") || null;
     this.moderationHideControlsGroup =
       this.moderationSettingsCard?.querySelector(
         "[data-role=\"trusted-hide-controls\"]",
@@ -7050,6 +7067,7 @@ export class ProfileModalController {
       this.moderationSettingsDefaults = createInternalDefaultModerationSettings();
       this.currentModerationSettings = createInternalDefaultModerationSettings();
       this.updateTrustedHideControlsVisibility();
+      this.updateModerationTrustStats();
       this.applyModerationSettingsControlState({ resetStatus: true });
       return;
     }
@@ -7091,8 +7109,125 @@ export class ProfileModalController {
     }
 
     this.updateTrustedHideControlsVisibility();
+    this.updateModerationTrustStats();
 
     this.applyModerationSettingsControlState({ resetStatus: true });
+  }
+
+  getModerationTrustStats() {
+    const summary = {
+      trustedContactsCount: 0,
+      trustedMuteContributors: 0,
+      trustedReportContributors: 0,
+    };
+
+    const service = this.moderationService;
+    if (!service) {
+      return summary;
+    }
+
+    const trustedContacts =
+      service.trustedContacts instanceof Set
+        ? service.trustedContacts
+        : Array.isArray(service.trustedContacts)
+        ? new Set(service.trustedContacts)
+        : new Set();
+
+    summary.trustedContactsCount = trustedContacts.size;
+
+    const adminSnapshot =
+      typeof service.getAdminListSnapshot === "function"
+        ? service.getAdminListSnapshot()
+        : null;
+
+    const resolveStatus = (candidate) => {
+      if (typeof service.getAccessControlStatus === "function") {
+        return service.getAccessControlStatus(candidate, adminSnapshot);
+      }
+      return {
+        hex: this.normalizeHexPubkey(candidate),
+        whitelisted: false,
+        blacklisted: false,
+      };
+    };
+
+    const isBlocked = (pubkey) =>
+      typeof service.isPubkeyBlockedByViewer === "function"
+        ? service.isPubkeyBlockedByViewer(pubkey)
+        : false;
+
+    const isTrustedCandidate = (status) => {
+      if (!status || !status.hex) {
+        return false;
+      }
+      if (status.blacklisted) {
+        return false;
+      }
+      if (isBlocked(status.hex)) {
+        return false;
+      }
+      return Boolean(status.whitelisted || trustedContacts.has(status.hex));
+    };
+
+    if (service.trustedMuteLists instanceof Map) {
+      const trustedMuteOwners = new Set();
+      for (const owner of service.trustedMuteLists.keys()) {
+        const status = resolveStatus(owner);
+        if (isTrustedCandidate(status)) {
+          trustedMuteOwners.add(status.hex);
+        }
+      }
+      summary.trustedMuteContributors = trustedMuteOwners.size;
+    }
+
+    if (service.reportEvents instanceof Map) {
+      const trustedReporters = new Set();
+      for (const eventReports of service.reportEvents.values()) {
+        if (!(eventReports instanceof Map)) {
+          continue;
+        }
+        for (const reporter of eventReports.keys()) {
+          const status = resolveStatus(reporter);
+          if (!isTrustedCandidate(status)) {
+            continue;
+          }
+          trustedReporters.add(status.hex);
+        }
+      }
+      summary.trustedReportContributors = trustedReporters.size;
+    }
+
+    return summary;
+  }
+
+  updateModerationTrustStats() {
+    if (
+      !(this.moderationTrustedContactsCount instanceof HTMLElement) &&
+      !(this.moderationTrustedMuteCount instanceof HTMLElement) &&
+      !(this.moderationTrustedReportCount instanceof HTMLElement)
+    ) {
+      return;
+    }
+
+    const summary = this.getModerationTrustStats();
+
+    if (this.moderationTrustedContactsCount instanceof HTMLElement) {
+      this.moderationTrustedContactsCount.textContent = String(
+        summary.trustedContactsCount,
+      );
+    }
+
+    if (this.moderationTrustedMuteCount instanceof HTMLElement) {
+      this.moderationTrustedMuteCount.textContent = String(
+        summary.trustedMuteContributors,
+      );
+    }
+
+    if (this.moderationTrustedReportCount instanceof HTMLElement) {
+      this.moderationTrustedReportCount.textContent = String(
+        summary.trustedReportContributors,
+      );
+    }
   }
 
   async handleModerationSettingsSave() {
