@@ -3010,7 +3010,7 @@ class Application {
       this.videoListView.setPopularTagsContainer(this.videoListPopularTags);
     }
 
-    if (this.videoList) {
+    if (this.videoList && this.videoList.children.length === 0) {
       this.videoList.innerHTML = getSidebarLoadingMarkup(messageContext);
     }
   }
