@@ -1696,24 +1696,23 @@ export default class LoginModalController {
       return null;
     }
 
-    // Generate keys only once per modal session to avoid duplicates.
-    if (!this.generatedKeypair) {
-      const sk = tools.generateSecretKey();
-      const pk = tools.getPublicKey(sk);
-      const npub = tools.nip19?.npubEncode ? tools.nip19.npubEncode(pk) : pk;
-      const nsec = tools.nip19?.nsecEncode ? tools.nip19.nsecEncode(sk) : "";
-      const hexSk = nsec
-        ? nsec
-        : tools.nip19?.bytesToHex
-        ? tools.nip19.bytesToHex(sk)
-        : "";
-      this.generatedKeypair = {
-        npub,
-        nsec,
-        hexSk,
-        pubkey: pk,
-      };
-    }
+    // Always generate fresh keys for each "Create Account" session.
+    const sk = tools.generateSecretKey();
+    const pk = tools.getPublicKey(sk);
+    const npubGen = tools.nip19?.npubEncode ? tools.nip19.npubEncode(pk) : pk;
+    const nsecGen = tools.nip19?.nsecEncode ? tools.nip19.nsecEncode(sk) : "";
+    const hexSkGen = nsecGen
+      ? nsecGen
+      : tools.nip19?.bytesToHex
+      ? tools.nip19.bytesToHex(sk)
+      : "";
+
+    this.generatedKeypair = {
+      npub: npubGen,
+      nsec: nsecGen,
+      hexSk: hexSkGen,
+      pubkey: pk,
+    };
 
     const { npub, nsec, hexSk } = this.generatedKeypair;
 
@@ -1764,7 +1763,17 @@ export default class LoginModalController {
 
       // Interactions
       if (cancelBtn) {
-        cancelBtn.addEventListener("click", () => finish(null), { once: true });
+        cancelBtn.addEventListener(
+          "click",
+          (e) => {
+            if (e) {
+              e.preventDefault();
+              e.stopPropagation();
+            }
+            finish(null);
+          },
+          { once: true },
+        );
       }
 
       if (loginBtn) {
@@ -2477,6 +2486,22 @@ export default class LoginModalController {
   }
 
   destroy() {
+    if (this.modalCloseObserver) {
+      try {
+        this.modalCloseObserver.disconnect();
+      } catch (error) {
+        // no-op
+      }
+    }
+    this.modalCloseObserver = null;
+
+    if (this.modalCloseIntervalId) {
+      if (this.window && typeof this.window.clearInterval === "function") {
+        this.window.clearInterval(this.modalCloseIntervalId);
+      }
+    }
+    this.modalCloseIntervalId = null;
+
     if (this.pendingTask && typeof this.pendingTask.reject === "function") {
       try {
         this.pendingTask.reject(this.createCancellationError());
