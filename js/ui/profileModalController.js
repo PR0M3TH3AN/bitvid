@@ -1421,6 +1421,8 @@ export class ProfileModalController {
       document.getElementById("profileModerationTrustedMuteCount") || null;
     this.moderationTrustedReportCount =
       document.getElementById("profileModerationTrustedReportCount") || null;
+    this.moderationSeedOnlyIndicator =
+      document.getElementById("profileModerationSeedOnlyIndicator") || null;
     this.moderationHideControlsGroup =
       this.moderationSettingsCard?.querySelector(
         "[data-role=\"trusted-hide-controls\"]",
@@ -7140,11 +7142,18 @@ export class ProfileModalController {
       trustedContactsCount: 0,
       trustedMuteContributors: 0,
       trustedReportContributors: 0,
+      trustedSeedOnly: false,
     };
 
     const service = this.moderationService;
     if (!service) {
       return summary;
+    }
+
+    if (typeof service.isTrustedSeedOnly === "function") {
+      summary.trustedSeedOnly = service.isTrustedSeedOnly();
+    } else if (typeof service.trustedSeedOnly === "boolean") {
+      summary.trustedSeedOnly = service.trustedSeedOnly;
     }
 
     const trustedContacts =
@@ -7225,7 +7234,8 @@ export class ProfileModalController {
     if (
       !(this.moderationTrustedContactsCount instanceof HTMLElement) &&
       !(this.moderationTrustedMuteCount instanceof HTMLElement) &&
-      !(this.moderationTrustedReportCount instanceof HTMLElement)
+      !(this.moderationTrustedReportCount instanceof HTMLElement) &&
+      !(this.moderationSeedOnlyIndicator instanceof HTMLElement)
     ) {
       return;
     }
@@ -7248,6 +7258,10 @@ export class ProfileModalController {
       this.moderationTrustedReportCount.textContent = String(
         summary.trustedReportContributors,
       );
+    }
+
+    if (this.moderationSeedOnlyIndicator instanceof HTMLElement) {
+      this.moderationSeedOnlyIndicator.hidden = !summary.trustedSeedOnly;
     }
   }
 

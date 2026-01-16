@@ -117,6 +117,9 @@ export async function bootstrapTrustedSeeds() {
       });
       devLogger.info(`[trustBootstrap] Applying ${seeds.size} trusted seeds`, Array.from(seeds));
       moderationService.setTrustedSeeds(seeds);
+      if (typeof moderationService.updateTrustedSeedOnlyStatus === "function") {
+        moderationService.updateTrustedSeedOnlyStatus();
+      }
       if (
         moderationService &&
         typeof moderationService.recomputeAllSummaries === "function"
