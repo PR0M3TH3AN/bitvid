@@ -29,8 +29,9 @@ const URL_PROBE_TIMEOUT_RETRY_MS = 15 * 1000; // 15 seconds
 
 const HEX64_REGEX = /^[0-9a-f]{64}$/i;
 
-const MODERATION_OVERRIDE_STORAGE_KEY = "bitvid:moderationOverrides:v1";
-const MODERATION_OVERRIDE_STORAGE_VERSION = 1;
+const MODERATION_OVERRIDE_STORAGE_KEY = "bitvid:moderationOverrides:v2";
+const LEGACY_MODERATION_OVERRIDE_STORAGE_KEY = "bitvid:moderationOverrides:v1";
+const MODERATION_OVERRIDE_STORAGE_VERSION = 2;
 const MODERATION_SETTINGS_STORAGE_KEY = "bitvid:moderationSettings:v1";
 const MODERATION_SETTINGS_STORAGE_VERSION = 3;
 
@@ -268,6 +269,50 @@ function normalizeEventId(value) {
   }
 
   return HEX64_REGEX.test(trimmed) ? trimmed : null;
+}
+
+function buildModerationOverrideKey(authorPubkey, eventId) {
+  const normalizedAuthor =
+    typeof authorPubkey === "string" ? authorPubkey.trim().toLowerCase() : "";
+  return `${normalizedAuthor}:${eventId}`;
+}
+
+function normalizeModerationOverrideDescriptor(eventIdOrDescriptor, authorPubkey) {
+  let eventId = null;
+  let author = null;
+
+  if (eventIdOrDescriptor && typeof eventIdOrDescriptor === "object") {
+    eventId =
+      eventIdOrDescriptor.eventId ||
+      eventIdOrDescriptor.id ||
+      eventIdOrDescriptor.eventID ||
+      null;
+    author =
+      eventIdOrDescriptor.authorPubkey ||
+      eventIdOrDescriptor.pubkey ||
+      eventIdOrDescriptor.author ||
+      null;
+  } else if (typeof eventIdOrDescriptor === "string") {
+    eventId = eventIdOrDescriptor;
+  }
+
+  if (!author && typeof authorPubkey === "string") {
+    author = authorPubkey;
+  }
+
+  const normalizedEventId = normalizeEventId(eventId);
+  if (!normalizedEventId) {
+    return null;
+  }
+
+  const normalizedAuthor = normalizeHexPubkey(author);
+  const authorKey = normalizedAuthor || "";
+
+  return {
+    eventId: normalizedEventId,
+    authorPubkey: normalizedAuthor || "",
+    key: buildModerationOverrideKey(authorKey, normalizedEventId),
+  };
 }
 
 export function getSavedProfiles() {
@@ -1270,13 +1315,31 @@ export function getModerationOverridesMap() {
   return moderationOverrides;
 }
 
-export function getModerationOverride(eventId) {
-  const normalized = normalizeEventId(eventId);
+export function getModerationOverridesList() {
+  return Array.from(moderationOverrides.values()).map((entry) => ({ ...entry }));
+}
+
+function findModerationOverrideByEventId(eventId) {
+  for (const entry of moderationOverrides.values()) {
+    if (entry?.eventId === eventId) {
+      return entry;
+    }
+  }
+  return null;
+}
+
+export function getModerationOverride(eventIdOrDescriptor, authorPubkey) {
+  const normalized = normalizeModerationOverrideDescriptor(
+    eventIdOrDescriptor,
+    authorPubkey,
+  );
   if (!normalized) {
     return null;
   }
 
-  const entry = moderationOverrides.get(normalized);
+  const entry =
+    moderationOverrides.get(normalized.key) ||
+    findModerationOverrideByEventId(normalized.eventId);
   if (!entry) {
     return null;
   }
@@ -1289,10 +1352,14 @@ export function loadModerationOverridesFromStorage() {
     return;
   }
 
-  const raw = localStorage.getItem(MODERATION_OVERRIDE_STORAGE_KEY);
+  const raw =
+    localStorage.getItem(MODERATION_OVERRIDE_STORAGE_KEY) ||
+    localStorage.getItem(LEGACY_MODERATION_OVERRIDE_STORAGE_KEY);
   if (!raw) {
     return;
   }
+
+  let shouldRewrite = false;
 
   try {
     const payload = JSON.parse(raw);
@@ -1300,28 +1367,48 @@ export function loadModerationOverridesFromStorage() {
       return;
     }
 
-    if (payload.version !== MODERATION_OVERRIDE_STORAGE_VERSION) {
+    const entries = [];
+
+    if (payload.version === MODERATION_OVERRIDE_STORAGE_VERSION) {
+      if (Array.isArray(payload.entries)) {
+        entries.push(...payload.entries);
+      } else {
+        shouldRewrite = true;
+      }
+    } else if (payload.version === 1) {
+      const legacyEntries =
+        payload.entries && typeof payload.entries === "object"
+          ? payload.entries
+          : {};
+      Object.entries(legacyEntries).forEach(([eventId, entry]) => {
+        entries.push({
+          eventId,
+          authorPubkey: "",
+          showAnyway: entry?.showAnyway === true,
+          updatedAt: entry?.updatedAt,
+        });
+      });
+      shouldRewrite = true;
+    } else {
       return;
     }
 
-    const entries = payload.entries && typeof payload.entries === "object"
-      ? payload.entries
-      : {};
-
     moderationOverrides.clear();
 
-    for (const [eventId, entry] of Object.entries(entries)) {
-      const normalized = normalizeEventId(eventId);
-      if (!normalized) {
+    for (const entry of entries) {
+      if (!entry || entry.showAnyway !== true) {
         continue;
       }
-      if (!entry || entry.showAnyway !== true) {
+      const normalized = normalizeModerationOverrideDescriptor(entry);
+      if (!normalized) {
         continue;
       }
       const updatedAt = Number.isFinite(entry.updatedAt)
         ? Math.floor(entry.updatedAt)
         : Date.now();
-      moderationOverrides.set(normalized, {
+      moderationOverrides.set(normalized.key, {
+        eventId: normalized.eventId,
+        authorPubkey: normalized.authorPubkey,
         showAnyway: true,
         updatedAt,
       });
@@ -1332,6 +1419,11 @@ export function loadModerationOverridesFromStorage() {
       "[cache.loadModerationOverridesFromStorage] Failed to parse payload:",
       error,
     );
+    return;
+  }
+
+  if (shouldRewrite) {
+    persistModerationOverridesToStorage();
   }
 }
 
@@ -1340,23 +1432,30 @@ export function persistModerationOverridesToStorage() {
     return;
   }
 
-  const entries = {};
-  for (const [eventId, entry] of moderationOverrides.entries()) {
+  const entries = [];
+  for (const entry of moderationOverrides.values()) {
     if (!entry || entry.showAnyway !== true) {
+      continue;
+    }
+    const normalized = normalizeModerationOverrideDescriptor(entry);
+    if (!normalized) {
       continue;
     }
     const updatedAt = Number.isFinite(entry.updatedAt)
       ? Math.floor(entry.updatedAt)
       : Date.now();
-    entries[eventId] = {
+    entries.push({
+      eventId: normalized.eventId,
+      authorPubkey: normalized.authorPubkey,
       showAnyway: true,
       updatedAt,
-    };
+    });
   }
 
-  if (Object.keys(entries).length === 0) {
+  if (entries.length === 0) {
     try {
       localStorage.removeItem(MODERATION_OVERRIDE_STORAGE_KEY);
+      localStorage.removeItem(LEGACY_MODERATION_OVERRIDE_STORAGE_KEY);
     } catch (error) {
       userLogger.warn(
         "[cache.persistModerationOverridesToStorage] Failed to clear overrides:",
@@ -1377,6 +1476,7 @@ export function persistModerationOverridesToStorage() {
       MODERATION_OVERRIDE_STORAGE_KEY,
       JSON.stringify(payload),
     );
+    localStorage.removeItem(LEGACY_MODERATION_OVERRIDE_STORAGE_KEY);
   } catch (error) {
     userLogger.warn(
       "[cache.persistModerationOverridesToStorage] Failed to persist overrides:",
@@ -1386,18 +1486,21 @@ export function persistModerationOverridesToStorage() {
 }
 
 export function setModerationOverride(
-  eventId,
+  eventIdOrDescriptor,
   override = {},
   { persist = true } = {},
 ) {
-  const normalized = normalizeEventId(eventId);
+  const normalized = normalizeModerationOverrideDescriptor(
+    eventIdOrDescriptor,
+    override?.authorPubkey,
+  );
   if (!normalized) {
     return null;
   }
 
   const showAnyway = override?.showAnyway === true;
   if (!showAnyway) {
-    const removed = moderationOverrides.delete(normalized);
+    const removed = moderationOverrides.delete(normalized.key);
     if (removed && persist) {
       persistModerationOverridesToStorage();
     }
@@ -1408,14 +1511,21 @@ export function setModerationOverride(
     ? Math.floor(override.updatedAt)
     : Date.now();
 
-  const existing = moderationOverrides.get(normalized);
-  const nextEntry = { showAnyway: true, updatedAt };
+  const existing = moderationOverrides.get(normalized.key);
+  const nextEntry = {
+    eventId: normalized.eventId,
+    authorPubkey: normalized.authorPubkey,
+    showAnyway: true,
+    updatedAt,
+  };
   const changed =
     !existing ||
     existing.showAnyway !== nextEntry.showAnyway ||
-    existing.updatedAt !== nextEntry.updatedAt;
+    existing.updatedAt !== nextEntry.updatedAt ||
+    existing.eventId !== nextEntry.eventId ||
+    existing.authorPubkey !== nextEntry.authorPubkey;
 
-  moderationOverrides.set(normalized, nextEntry);
+  moderationOverrides.set(normalized.key, nextEntry);
 
   if (persist && changed) {
     persistModerationOverridesToStorage();
@@ -1424,13 +1534,24 @@ export function setModerationOverride(
   return { ...nextEntry };
 }
 
-export function clearModerationOverride(eventId, { persist = true } = {}) {
-  const normalized = normalizeEventId(eventId);
+export function clearModerationOverride(
+  eventIdOrDescriptor,
+  { persist = true } = {},
+) {
+  const normalized = normalizeModerationOverrideDescriptor(eventIdOrDescriptor);
   if (!normalized) {
     return false;
   }
 
-  const removed = moderationOverrides.delete(normalized);
+  let removed = moderationOverrides.delete(normalized.key);
+
+  for (const [key, entry] of moderationOverrides.entries()) {
+    if (entry?.eventId === normalized.eventId) {
+      moderationOverrides.delete(key);
+      removed = true;
+    }
+  }
+
   if (removed && persist) {
     persistModerationOverridesToStorage();
   }

@@ -6299,7 +6299,10 @@ class Application {
 
     const computedHidden = hideTriggered && !hideBypass;
 
-    const overrideEntry = getModerationOverride(video.id);
+    const overrideEntry = getModerationOverride({
+      eventId: video.id,
+      authorPubkey: video.pubkey || video.author?.pubkey || "",
+    });
     const overrideActive = overrideEntry?.showAnyway === true;
     const overrideUpdatedAt = Number.isFinite(overrideEntry?.updatedAt)
       ? Math.floor(overrideEntry.updatedAt)

@@ -504,6 +504,20 @@ const SERVICE_CONTRACT = [
     },
   },
   {
+    key: "getModerationOverrides",
+    type: "function",
+    description:
+      "Returns a list of stored moderation overrides for the active viewer.",
+    fallback: () => () => [],
+  },
+  {
+    key: "clearModerationOverride",
+    type: "function",
+    description:
+      "Clears a specific moderation override when the viewer resets a decision.",
+    fallback: () => () => false,
+  },
+  {
     key: "loadVideos",
     type: "function",
     description: "Triggers a video reload so UI reflects profile or permission changes.",
@@ -1099,8 +1113,11 @@ export class ProfileModalController {
     this.moderationSaveButton = null;
     this.moderationResetButton = null;
     this.moderationStatusText = null;
+    this.moderationOverridesList = null;
+    this.moderationOverridesEmpty = null;
     this.moderationHideControlsGroup = null;
     this.moderationHideControlElements = [];
+    this.boundModerationOverridesUpdate = null;
     this.moderatorSection = null;
     this.moderatorEmpty = null;
     this.adminModeratorList = null;
@@ -1415,6 +1432,10 @@ export class ProfileModalController {
       document.getElementById("profileModerationReset") || null;
     this.moderationStatusText =
       document.getElementById("profileModerationStatus") || null;
+    this.moderationOverridesList =
+      document.getElementById("profileModerationOverridesList") || null;
+    this.moderationOverridesEmpty =
+      document.getElementById("profileModerationOverridesEmpty") || null;
     this.moderationTrustedContactsCount =
       document.getElementById("profileModerationTrustedContactsCount") || null;
     this.moderationTrustedMuteCount =
@@ -2686,6 +2707,24 @@ export class ProfileModalController {
       this.moderationResetButton.addEventListener("click", () => {
         void this.handleModerationSettingsReset();
       });
+    }
+
+    if (!this.boundModerationOverridesUpdate && typeof document !== "undefined") {
+      this.boundModerationOverridesUpdate = () => {
+        this.refreshModerationOverridesUi();
+      };
+      document.addEventListener(
+        "video:moderation-override",
+        this.boundModerationOverridesUpdate,
+      );
+      document.addEventListener(
+        "video:moderation-hide",
+        this.boundModerationOverridesUpdate,
+      );
+      document.addEventListener(
+        "video:moderation-block",
+        this.boundModerationOverridesUpdate,
+      );
     }
 
     if (this.addModeratorButton instanceof HTMLElement) {
@@ -7084,6 +7123,206 @@ export class ProfileModalController {
     helper.textContent = TRUSTED_MUTE_HIDE_HELPER_TEXT;
   }
 
+  getModerationOverrideEntries() {
+    if (typeof this.services.getModerationOverrides !== "function") {
+      return [];
+    }
+
+    try {
+      const entries = this.services.getModerationOverrides();
+      return Array.isArray(entries) ? entries : [];
+    } catch (error) {
+      devLogger.info(
+        "[profileModal] moderation overrides fallback used",
+        error,
+      );
+      return [];
+    }
+  }
+
+  normalizeModerationOverrideEntries(entries = []) {
+    const normalized = [];
+    const seen = new Set();
+
+    entries.forEach((entry) => {
+      if (!entry || typeof entry !== "object") {
+        return;
+      }
+      const eventId =
+        typeof entry.eventId === "string"
+          ? entry.eventId.trim().toLowerCase()
+          : "";
+      if (!eventId) {
+        return;
+      }
+      const author =
+        typeof entry.authorPubkey === "string"
+          ? entry.authorPubkey.trim()
+          : "";
+      const normalizedAuthor = author ? this.normalizeHexPubkey(author) || author : "";
+      const key = `${normalizedAuthor || ""}:${eventId}`;
+      if (seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      normalized.push({
+        eventId,
+        authorPubkey: normalizedAuthor || "",
+        updatedAt: Number.isFinite(entry.updatedAt)
+          ? Math.floor(entry.updatedAt)
+          : 0,
+      });
+    });
+
+    normalized.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+
+    return normalized;
+  }
+
+  formatModerationOverrideTimestamp(updatedAt) {
+    const numeric = Number(updatedAt);
+    if (!Number.isFinite(numeric) || numeric <= 0) {
+      return { display: "", iso: "" };
+    }
+
+    try {
+      const date = new Date(numeric);
+      return {
+        display: date.toLocaleString(undefined, {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+        }),
+        iso: date.toISOString(),
+      };
+    } catch (error) {
+      return { display: "", iso: "" };
+    }
+  }
+
+  async handleModerationOverrideReset(entry) {
+    if (!entry || typeof entry !== "object") {
+      return false;
+    }
+
+    if (typeof this.services.clearModerationOverride !== "function") {
+      return false;
+    }
+
+    try {
+      await this.services.clearModerationOverride({
+        eventId: entry.eventId,
+        authorPubkey: entry.authorPubkey,
+      });
+      this.refreshModerationOverridesUi();
+      this.showSuccess("Moderation override reset.");
+      return true;
+    } catch (error) {
+      this.showError("Unable to reset this moderation override.");
+      return false;
+    }
+  }
+
+  refreshModerationOverridesUi() {
+    if (
+      !(this.moderationOverridesList instanceof HTMLElement) ||
+      !(this.moderationOverridesEmpty instanceof HTMLElement)
+    ) {
+      return;
+    }
+
+    const entries = this.normalizeModerationOverrideEntries(
+      this.getModerationOverrideEntries(),
+    );
+
+    this.moderationOverridesList.innerHTML = "";
+
+    if (!entries.length) {
+      this.moderationOverridesEmpty.classList.remove("hidden");
+      this.moderationOverridesList.classList.add("hidden");
+      return;
+    }
+
+    this.moderationOverridesEmpty.classList.add("hidden");
+    this.moderationOverridesList.classList.remove("hidden");
+
+    const entriesNeedingFetch = new Set();
+
+    entries.forEach((entry) => {
+      const item = document.createElement("li");
+      item.className = "card space-y-2 p-4";
+
+      const row = document.createElement("div");
+      row.className = "flex items-center justify-between gap-4";
+
+      const authorKey = entry.authorPubkey;
+      let profileSummary = null;
+      if (authorKey) {
+        const cacheEntry = this.services.getProfileCacheEntry(authorKey);
+        if (!cacheEntry) {
+          entriesNeedingFetch.add(authorKey);
+        }
+      }
+
+      const summaryData = this.resolveProfileSummaryForPubkey(authorKey);
+      profileSummary = this.createCompactProfileSummary(summaryData);
+
+      const actions = document.createElement("div");
+      actions.className = "flex flex-wrap items-center justify-end gap-2";
+
+      const resetButton = this.createRemoveButton({
+        label: "Reset",
+        onRemove: () => this.handleModerationOverrideReset(entry),
+      });
+      if (resetButton) {
+        actions.appendChild(resetButton);
+      }
+
+      if (profileSummary) {
+        row.appendChild(profileSummary);
+      }
+      if (actions.childElementCount > 0) {
+        row.appendChild(actions);
+      }
+
+      const meta = document.createElement("div");
+      meta.className = "flex flex-wrap items-center gap-3 text-2xs text-muted";
+
+      const contentId = document.createElement("span");
+      contentId.className = "font-mono text-2xs text-muted";
+      const shortId =
+        typeof this.truncateMiddle === "function"
+          ? this.truncateMiddle(entry.eventId, 16)
+          : entry.eventId;
+      contentId.textContent = `Content ${shortId}`;
+      contentId.title = entry.eventId;
+      meta.appendChild(contentId);
+
+      const timestamp = this.formatModerationOverrideTimestamp(entry.updatedAt);
+      if (timestamp.display) {
+        const time = document.createElement("time");
+        time.className = "text-2xs text-muted";
+        time.dateTime = timestamp.iso;
+        time.textContent = `Updated ${timestamp.display}`;
+        meta.appendChild(time);
+      }
+
+      item.appendChild(row);
+      item.appendChild(meta);
+
+      this.moderationOverridesList.appendChild(item);
+    });
+
+    if (
+      entriesNeedingFetch.size &&
+      typeof this.services.batchFetchProfiles === "function"
+    ) {
+      this.services.batchFetchProfiles(entriesNeedingFetch);
+    }
+  }
+
   refreshModerationSettingsUi() {
     const service = this.getModerationSettingsService();
     if (!service) {
@@ -7091,6 +7330,7 @@ export class ProfileModalController {
       this.currentModerationSettings = createInternalDefaultModerationSettings();
       this.updateTrustedHideControlsVisibility();
       this.updateModerationTrustStats();
+      this.refreshModerationOverridesUi();
       this.applyModerationSettingsControlState({ resetStatus: true });
       return;
     }
@@ -7133,6 +7373,7 @@ export class ProfileModalController {
 
     this.updateTrustedHideControlsVisibility();
     this.updateModerationTrustStats();
+    this.refreshModerationOverridesUi();
 
     this.applyModerationSettingsControlState({ resetStatus: true });
   }
