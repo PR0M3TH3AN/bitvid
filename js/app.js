@@ -3659,11 +3659,15 @@ class Application {
   async handleModerationSettingsChange({ settings, skipRefresh = false } = {}) {
     const normalized = this.normalizeModerationSettings(settings);
     this.moderationSettings = normalized;
+    const feedContext = {
+      feedName: this.feedName || "",
+      feedVariant: this.feedVariant || "",
+    };
 
     if (this.videosMap instanceof Map) {
       for (const video of this.videosMap.values()) {
         if (video && typeof video === "object") {
-          this.decorateVideoModeration(video);
+          this.decorateVideoModeration(video, feedContext);
         }
       }
     }
@@ -3677,7 +3681,7 @@ class Application {
           continue;
         }
         if (card.video && typeof card.video === "object") {
-          this.decorateVideoModeration(card.video);
+          this.decorateVideoModeration(card.video, feedContext);
         }
         try {
           card.refreshModerationUi();
@@ -3693,13 +3697,13 @@ class Application {
     if (this.videoListView && Array.isArray(this.videoListView.currentVideos)) {
       for (const video of this.videoListView.currentVideos) {
         if (video && typeof video === "object") {
-          this.decorateVideoModeration(video);
+          this.decorateVideoModeration(video, feedContext);
         }
       }
     }
 
     if (this.currentVideo && typeof this.currentVideo === "object") {
-      this.decorateVideoModeration(this.currentVideo);
+      this.decorateVideoModeration(this.currentVideo, feedContext);
     }
 
     if (!skipRefresh) {
@@ -3718,6 +3722,10 @@ class Application {
 
   refreshVisibleModerationUi({ reason } = {}) {
     const context = reason ? ` after ${reason}` : "";
+    const feedContext = {
+      feedName: this.feedName || "",
+      feedVariant: this.feedVariant || "",
+    };
 
     const redecorateVideo = (video) => {
       if (!video || typeof video !== "object") {
@@ -3725,7 +3733,7 @@ class Application {
       }
 
       try {
-        this.decorateVideoModeration(video);
+        this.decorateVideoModeration(video, feedContext);
       } catch (error) {
         devLogger.warn(
           `[Application] Failed to decorate video moderation${context}:`,
@@ -6031,7 +6039,7 @@ class Application {
     return { ...this.moderationSettings };
   }
 
-  decorateVideoModeration(video) {
+  decorateVideoModeration(video, feedContext = {}) {
     if (!video || typeof video !== "object") {
       return video;
     }
@@ -6226,7 +6234,23 @@ class Application {
         }
       : null;
 
+    const FEED_HIDE_BYPASS_NAMES = new Set(["home", "recent"]);
+    const normalizedFeedName =
+      typeof feedContext?.feedName === "string" ? feedContext.feedName.trim().toLowerCase() : "";
+    const normalizedFeedVariant =
+      typeof feedContext?.feedVariant === "string"
+        ? feedContext.feedVariant.trim().toLowerCase()
+        : "";
+    const feedPolicyBypass =
+      (normalizedFeedName && FEED_HIDE_BYPASS_NAMES.has(normalizedFeedName)) ||
+      (normalizedFeedVariant && FEED_HIDE_BYPASS_NAMES.has(normalizedFeedVariant));
+
     let hideBypass = hideTriggered ? existingHideBypass : "";
+
+    if (hideTriggered && !hideBypass && feedPolicyBypass) {
+      hideBypass = "feed-policy";
+    }
+
     const computedHidden = hideTriggered && !hideBypass;
 
     const overrideEntry = getModerationOverride(video.id);
