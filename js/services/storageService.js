@@ -6,6 +6,28 @@ const DB_NAME = "bitvid-storage";
 const DB_VERSION = 1;
 const STORE_ACCOUNTS = "accounts";
 
+/**
+ * STORE_ACCOUNTS Schema:
+ * {
+ *   pubkey: string,            // Primary Key (hex)
+ *   encryptedMasterKey: {      // Encrypted version of the AES-GCM master key
+ *     method: "nip44" | "nip04",
+ *     ciphertext: string
+ *   },
+ *   connections: {             // Map of connection configurations
+ *     [connectionId]: {
+ *       id: string,
+ *       provider: string,      // e.g., "cloudflare_r2"
+ *       meta: { ... },         // Plaintext metadata (label, default status, etc.)
+ *       encrypted: {           // AES-GCM encrypted payload (access keys, etc.)
+ *         cipher: string,
+ *         iv: string
+ *       }
+ *     }
+ *   }
+ * }
+ */
+
 export const PROVIDERS = Object.freeze({
   R2: "cloudflare_r2",
   S3: "aws_s3",
@@ -42,6 +64,9 @@ export class StorageService {
 
   /**
    * Initializes the IndexedDB connection.
+   * Uses a promise caching pattern to ensure we only open the DB once,
+   * even if multiple calls to init() happen simultaneously.
+   *
    * @returns {Promise<IDBDatabase>}
    */
   async init() {
@@ -129,6 +154,14 @@ export class StorageService {
 
   /**
    * Encrypts the Master Key using the user's signer (NIP-04/44).
+   *
+   * Strategy:
+   * 1. Export the random AES-GCM Master Key to hex.
+   * 2. Encrypt that hex string using the user's Nostr signer.
+   *    - Prefer NIP-44 (modern, better security).
+   *    - Fallback to NIP-04 (legacy, widely supported).
+   * 3. Store the result along with the method used.
+   *
    * @private
    */
   async _encryptMasterKey(masterKey, signer, pubkey) {
@@ -162,6 +195,9 @@ export class StorageService {
 
   /**
    * Decrypts the Master Key using the user's signer.
+   * Handles both NIP-44 and NIP-04 based on the `method` field stored
+   * with the key.
+   *
    * @private
    */
   async _decryptMasterKey(encryptedData, signer, pubkey) {
@@ -194,7 +230,9 @@ export class StorageService {
   }
 
   /**
-   * Encrypts a connection payload using the Master Key.
+   * Encrypts a connection payload (secrets) using the session's Master Key.
+   * Uses AES-GCM with a random 12-byte IV.
+   *
    * @private
    */
   async _encryptPayload(payload, masterKey) {
@@ -217,7 +255,8 @@ export class StorageService {
   }
 
   /**
-   * Decrypts a connection payload using the Master Key.
+   * Decrypts a connection payload using the session's Master Key.
+   *
    * @private
    */
   async _decryptPayload(encrypted, masterKey) {
@@ -400,6 +439,8 @@ export class StorageService {
 
   /**
    * Tests a connection access by delegating to the provider's test handler.
+   * Implements a Strategy pattern where `PROVIDER_TESTS` maps provider IDs
+   * to their specific verification logic (e.g., S3 `HeadBucket`).
    *
    * @param {string} provider - The provider ID (e.g. "cloudflare_r2")
    * @param {object} config - The decrypted configuration object
