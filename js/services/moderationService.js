@@ -6,6 +6,8 @@ import logger from "../utils/logger.js";
 
 const AUTOPLAY_TRUST_THRESHOLD = 1;
 const BLUR_TRUST_THRESHOLD = 1;
+const TRUSTED_MUTE_WINDOW_DAYS = 60;
+const TRUSTED_MUTE_WINDOW_SECONDS = TRUSTED_MUTE_WINDOW_DAYS * 24 * 60 * 60;
 
 function normalizeUserLogger(candidate) {
   if (
@@ -735,6 +737,60 @@ export class ModerationService {
     }
   }
 
+  getTrustedMuteWindowCutoff(nowSeconds = Date.now() / 1000) {
+    const normalizedNow = ensureNumber(nowSeconds) || Date.now() / 1000;
+    return normalizedNow - TRUSTED_MUTE_WINDOW_SECONDS;
+  }
+
+  pruneTrustedMuteAggregates(targetAuthors = null, { nowSeconds = Date.now() / 1000 } = {}) {
+    const cutoff = this.getTrustedMuteWindowCutoff(nowSeconds);
+    const targets =
+      targetAuthors instanceof Set || Array.isArray(targetAuthors)
+        ? Array.from(targetAuthors)
+        : targetAuthors && typeof targetAuthors[Symbol.iterator] === "function"
+        ? Array.from(targetAuthors)
+        : null;
+
+    const entries = targets
+      ? targets.map((author) => [author, this.trustedMutedAuthors.get(author)])
+      : Array.from(this.trustedMutedAuthors.entries());
+
+    for (const [author, aggregate] of entries) {
+      if (!aggregate || !(aggregate.muters instanceof Map)) {
+        continue;
+      }
+      for (const [owner, updatedAt] of aggregate.muters.entries()) {
+        if (ensureNumber(updatedAt) < cutoff) {
+          aggregate.muters.delete(owner);
+        }
+      }
+      aggregate.count = aggregate.muters.size;
+      if (!aggregate.muters.size) {
+        this.trustedMutedAuthors.delete(author);
+      }
+    }
+  }
+
+  getActiveTrustedMutersForAuthor(author) {
+    const normalized = normalizeHex(author);
+    if (!normalized) {
+      return [];
+    }
+
+    const entry = this.trustedMutedAuthors.get(normalized);
+    if (!entry || !(entry.muters instanceof Map)) {
+      return [];
+    }
+
+    this.pruneTrustedMuteAggregates([normalized]);
+    const refreshed = this.trustedMutedAuthors.get(normalized);
+    if (!refreshed || !(refreshed.muters instanceof Map)) {
+      return [];
+    }
+
+    return Array.from(refreshed.muters.keys());
+  }
+
   setLogger(newLogger) {
     this.log = normalizeLogger(newLogger);
   }
@@ -847,7 +903,7 @@ export class ModerationService {
     this.trustedMuteSubscriptions.clear();
 
     for (const [author, aggregate] of this.trustedMutedAuthors.entries()) {
-      if (aggregate && aggregate.muters instanceof Set) {
+      if (aggregate && aggregate.muters instanceof Map) {
         aggregate.muters.clear();
       }
     }
@@ -1071,19 +1127,16 @@ export class ModerationService {
       }
     }
 
+    const touchedAuthors = new Set();
     const previous = this.trustedMuteLists.get(owner);
     if (previous && previous.authors instanceof Set) {
       for (const author of previous.authors) {
         const aggregate = this.trustedMutedAuthors.get(author);
-        if (!aggregate || !(aggregate.muters instanceof Set)) {
+        if (!aggregate || !(aggregate.muters instanceof Map)) {
           continue;
         }
         aggregate.muters.delete(owner);
-        if (!aggregate.muters.size) {
-          this.trustedMutedAuthors.delete(author);
-        } else {
-          aggregate.count = aggregate.muters.size;
-        }
+        touchedAuthors.add(author);
       }
     }
 
@@ -1108,14 +1161,15 @@ export class ModerationService {
       for (const author of sanitizedAuthors) {
         let aggregate = this.trustedMutedAuthors.get(author);
         if (!aggregate) {
-          aggregate = { muters: new Set(), count: 0 };
+          aggregate = { muters: new Map(), count: 0 };
           this.trustedMutedAuthors.set(author, aggregate);
         }
-        aggregate.muters.add(owner);
-        aggregate.count = aggregate.muters.size;
+        aggregate.muters.set(owner, normalizedCreatedAt);
+        touchedAuthors.add(author);
       }
     }
 
+    this.pruneTrustedMuteAggregates(touchedAuthors);
     this.emit("trusted-mutes", { total: this.trustedMutedAuthors.size, owner });
   }
 
@@ -1460,26 +1514,12 @@ export class ModerationService {
   }
 
   isAuthorMutedByTrusted(pubkey) {
-    const normalized = normalizeHex(pubkey);
-    if (!normalized) {
-      return false;
-    }
-    const entry = this.trustedMutedAuthors.get(normalized);
-    return Boolean(entry && entry.muters instanceof Set && entry.muters.size > 0);
+    const muters = this.getActiveTrustedMutersForAuthor(pubkey);
+    return muters.length > 0;
   }
 
   getTrustedMutersForAuthor(pubkey) {
-    const normalized = normalizeHex(pubkey);
-    if (!normalized) {
-      return [];
-    }
-
-    const entry = this.trustedMutedAuthors.get(normalized);
-    if (!entry || !(entry.muters instanceof Set)) {
-      return [];
-    }
-
-    return Array.from(entry.muters);
+    return this.getActiveTrustedMutersForAuthor(pubkey);
   }
 
   isPubkeyBlockedByViewer(pubkey) {
