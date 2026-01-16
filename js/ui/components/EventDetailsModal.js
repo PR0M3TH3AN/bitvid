@@ -363,16 +363,21 @@ export class EventDetailsModal {
     // so the user can inspect the metadata fields (thumbnail, title, etc.)
     if (typeof content !== "string") {
       const payload = {
-        title: video.title,
-        description: video.description,
-        thumbnail: video.thumbnail,
-        url: video.url,
-        magnet: video.magnet,
+        videoRootId: video.videoRootId,
+        version: video.version,
+        deleted: video.deleted || false,
         isPrivate: video.isPrivate,
         isNsfw: video.isNsfw,
         isForKids: video.isForKids,
-        version: video.version,
+        title: video.title,
+        url: video.url,
+        magnet: video.magnet,
+        thumbnail: video.thumbnail,
+        description: video.description,
         mode: video.mode,
+        enableComments: video.enableComments ?? true,
+        ws: video.ws,
+        xs: video.xs,
       };
 
       // Clean up undefined/empty fields to keep it tidy
