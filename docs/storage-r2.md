@@ -1,15 +1,14 @@
 # Cloudflare R2 integration (r2Service)
 
 ## Purpose and scope
-`js/services/r2Service.js` is the client-side coordinator for Cloudflare R2 uploads. It owns:
 
-- Local persistence of Cloudflare credentials and bucket metadata used by the Upload modal.
-- Uploading the selected video/HLS asset via multipart S3 uploads and publishing the resulting
-  public URL into the video note payload.
+`js/services/r2Service.js` is the specialized provider handler for Cloudflare R2 uploads. While the new **Storage Tab** (powered by `StorageService`) manages the secure storage of credentials, `r2Service` is responsible for:
+
+- Uploading the selected video/HLS asset via multipart S3 uploads.
 - Verifying public access via the configured Public Bucket URL.
+- Publishing the resulting public URL into the video note payload.
 
-The service is used from the Upload modal UI (via `js/ui/components/UploadModal.js`) and is not a
-backend integration.
+> **Architecture Note:** For the high-level design of credential storage, encryption, and the provider adapter pattern, please refer to [`docs/storage-tab-design.md`](./storage-tab-design.md).
 
 ## Assets stored in R2
 R2 is used as the URL-first playback source. The upload path supports a single file per upload, but
@@ -44,74 +43,49 @@ Manually add a CORS policy in the bucket settings to allow uploads from your app
 4.  Copy the **Account ID**, **Access Key ID**, and **Secret Access Key**.
 
 ### Step 4: Configure the App
-1.  Open the Upload Modal in the app.
-2.  Expand **Storage Settings**.
+1.  Open the **Storage Tab** (in Profile or Upload modal).
+2.  Add a new connection and select **Cloudflare R2**.
 3.  Enter the **Account ID**, **Access Key ID**, **Secret Access Key**, and **Public Bucket URL**.
 4.  Click **Verify & Save**.
 
 The app will attempt to upload a small test file to verify the credentials and public access configuration.
 
 ## Upload lifecycle
-1. **Settings saved locally**
-   - The Upload modal calls `r2Service.saveSettings()` to persist Cloudflare credentials. Settings are stored in IndexedDB (`bitvidSettings` → `kv`)
-     with a localStorage fallback (`bitvid:r2Settings`).
 
-2. **Bucket preparation**
-   - The service relies on the user ensuring the bucket exists and is configured for CORS.
-   - It attempts a "best-effort" auto-configuration using the S3 keys (requires broader permissions), but strictly supports the manual "Object Read & Write" flow.
+1.  **Credential Retrieval:**
+    - When an upload starts, `UploadModal` retrieves the decrypted credentials from `StorageService`.
+    - `StorageService` handles the NIP-44/04 decryption of the Master Key and subsequent decryption of the R2 connection payload.
 
-3. **Upload and publish**
-   - The service builds the R2 object key and public URL.
-   - `multipartUpload()` uploads the file using S3 multipart uploads.
-   - On success, `publishVideoNote()` is called with the hosted URL, so playback can be URL-first
-     with magnet fallback.
+2.  **Upload Execution:**
+    - `r2Service.multipartUpload()` uses the standard AWS SDK commands (`CreateMultipartUpload`, `UploadPart`, etc.) via the generic `makeR2Client` adapter.
+    - The adapter automatically constructs the R2 endpoint (`https://<accountId>.r2.cloudflarestorage.com`) using the stored `accountId`.
 
-4. **UI feedback**
-   - The Upload modal receives progress, status, and verification errors via `r2Service` events.
+3.  **Publish:**
+    - On success, `publishVideoNote()` is called with the hosted URL, enabling URL-first playback.
 
-## Download / playback flow
-There is no direct “download” API for R2 in `r2Service`. Instead, R2 provides the public URL that
-gets saved into the video note payload. Playback uses that URL as the primary source and only falls
-back to magnet/WebTorrent when needed, preserving the URL-first playback promise.
+## Configuration keys
 
-## Configuration keys and where they live
-**Stored locally (IndexedDB / localStorage):**
+R2 credentials are no longer stored in plain `bitvidSettings`. They are encapsulated within the `StorageService` data model.
+
+**R2 Connection Profile (Encrypted):**
+- `provider`: `cloudflare_r2`
 - `accountId`: Cloudflare account ID.
-- `accessKeyId`: R2 S3 access key ID.
-- `secretAccessKey`: R2 S3 secret access key.
-- `baseDomain`: The Public Bucket URL (e.g., `https://pub-xxxx.r2.dev`) used to generate file URLs.
-- `buckets`: Cached map of `npub` → `{ bucket, publicBaseUrl, domainType, lastUpdated }`.
+- `accessKeyId`: S3 access key ID.
+- `secretAccessKey`: S3 secret access key.
+- `bucket`: The target bucket name.
 
-**Environment / global flags:**
+**Metadata (Plaintext):**
+- `baseDomain`: The Public Bucket URL (e.g., `https://pub-xxxx.r2.dev`).
+- `defaultForUploads`: Boolean flag indicating if this is the active upload target.
+
+## Environment / global flags
 - `globalThis.__BITVID_DISABLE_NETWORK_IMPORTS__`: disables the AWS SDK network import used by the
   R2 S3 client loader (`js/storage/r2-s3.js`). When true, uploads will fail with a load error until
   the SDK is bundled or otherwise provided.
 
-**Config files:**
-- There are no R2-specific keys in `config/` today; all R2 settings are entered through the UI and
-  stored locally in the browser.
-
-## Retry and fallback behavior
-- **Bucket/domain setup:**
-  - The system now relies on explicit user configuration for the Public Bucket URL (`baseDomain`). If this is missing or incorrect, verification will fail.
-- **CORS:**
-  - The app attempts to set CORS if permissions allow, but largely assumes the user has configured it manually if using minimal tokens.
-- **Multipart uploads:**
-  - There is no custom retry loop inside `multipartUpload()`. Failures propagate to the UI; the
-    caller can retry by re-initiating the upload.
-
 ## Security considerations
-- **Credential storage:** R2 credentials are stored in browser storage. Treat them as
-  sensitive and avoid sharing browser profiles. Clear settings via the Upload modal when done.
-- **Public exposure:** The generated URLs are public; uploaded assets should be safe for public
-  access. Use signed URLs only if you add a separate access layer.
-- **CORS and origins:** Ideally, scope CORS rules to the current origin to avoid overly broad exposure, though `*` is often used for ease of setup.
-- **Minimal Permissions:** We recommend "Object Read & Write" tokens to limit the scope of the keys to specific buckets and prevent admin actions.
 
-## Impact on uploads and playback
-- **Uploads:** Successful R2 uploads produce a hosted URL stored in the video note payload, enabling
-  URL-first playback. Metadata such as MIME type and the public URL are also stitched into the NIP-71
-  metadata block during publish.
-- **Playback:** The hosted URL is the primary stream source. If it fails, playback can still fall
-  back to the magnet/WebTorrent path, so the R2 integration improves reliability without removing
-  P2P fallback.
+- **Encrypted Storage:** All sensitive keys (`accessKeyId`, `secretAccessKey`) are encrypted at rest using the user's Nostr signer.
+- **Session Security:** Decrypted keys exist in memory only during the active session.
+- **Public Exposure:** The generated playback URLs are public. Ensure your bucket permissions match your intent.
+- **Least Privilege:** Always use "Object Read & Write" tokens rather than Admin tokens.
