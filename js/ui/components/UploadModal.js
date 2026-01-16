@@ -36,6 +36,7 @@ export class UploadModal {
     safeEncodeNpub,
     eventTarget,
     container,
+    onRequestStorageSettings,
   } = {}) {
     this.authService = authService || null;
     this.r2Service = r2Service || null;
@@ -60,6 +61,7 @@ export class UploadModal {
     this.eventTarget =
       eventTarget instanceof EventTarget ? eventTarget : new EventTarget();
     this.container = container || null;
+    this.onRequestStorageSettings = typeof onRequestStorageSettings === "function" ? onRequestStorageSettings : null;
 
     this.root = null;
     this.isVisible = false;
@@ -67,6 +69,7 @@ export class UploadModal {
     this.cloudflareSettings = this.r2Service?.getSettings?.() || null;
     this.isStorageUnlocked = false;
     this.activeConnectionId = null;
+    this.storageConfigured = false;
 
     // UI References
     this.form = null;
@@ -76,6 +79,7 @@ export class UploadModal {
     this.toggles = {};
     this.submitButton = null;
     this.submitStatus = null;
+    this.summaryView = {};
 
     // Logic/State
     this.nip71FormManager = new Nip71FormManager();
@@ -125,14 +129,8 @@ export class UploadModal {
       if (this.storageService) {
         const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
         this.isStorageUnlocked = pubkey ? this.storageService.isUnlocked(pubkey) : false;
-        if (this.isStorageUnlocked) {
-          await this.loadFromStorage();
-        } else {
-          // Attempt legacy load if not unlocked (or maybe just show locked state)
-          // For now we keep legacy behavior as fallback if storageService isn't used
-          // But user requested provider agnostic.
-          // We will update UI state in setSourceMode or similar
-        }
+        // Even if locked, we want to know if there's *potentially* a connection saved to show correct UI state (locked vs empty)
+        await this.loadFromStorage();
       } else {
         await this.loadR2Settings();
       }
@@ -170,6 +168,11 @@ export class UploadModal {
         settings: $("#section-storage-settings"),
         advanced: $("#section-advanced"),
         progress: $("#upload-progress-container"),
+    };
+
+    this.storageViews = {
+        summary: $("#storage-summary-view"),
+        form: $("#storage-form-view"),
     };
 
     // Inputs (Common)
@@ -225,6 +228,7 @@ export class UploadModal {
         r2HelpLink: $("#link-r2-help"),
         copyBucket: $("#btn-copy-bucket"),
         storageUnlock: $("#btn-storage-unlock"),
+        manageStorage: $("#btn-manage-storage"),
     };
 
     // Status text
@@ -233,6 +237,8 @@ export class UploadModal {
         storageLock: $("#storage-lock-status"),
         uploadMain: $("#upload-status-text"),
         uploadPercent: $("#upload-percent-text"),
+        summaryProvider: $("#summary-provider"),
+        summaryBucket: $("#summary-bucket"),
     };
 
     this.nip71FormManager.registerSection("main", this.form);
@@ -294,6 +300,16 @@ export class UploadModal {
         this.toggles.storageUnlock.addEventListener("click", () => this.handleUnlock());
     }
 
+    // Manage Storage
+    if (this.toggles.manageStorage) {
+        this.toggles.manageStorage.addEventListener("click", () => {
+            if (this.onRequestStorageSettings) {
+                this.close();
+                this.onRequestStorageSettings();
+            }
+        });
+    }
+
     // Automation
     this.setupDescriptionMirror();
     this.setupMutuallyExclusiveCheckboxes(this.toggles.nsfw, this.toggles.kids);
@@ -333,9 +349,11 @@ export class UploadModal {
         this.sourceSections.upload.classList.remove("hidden");
         this.sourceSections.external.classList.add("hidden");
 
-        // Auto-show settings if missing
-        if (!this.hasValidR2Settings() && this.sourceSections.settings.classList.contains("hidden")) {
+        // Auto-show settings if missing or not configured
+        if (!this.storageConfigured && !this.hasValidR2Settings() && this.sourceSections.settings.classList.contains("hidden")) {
             this.toggles.storageSettings.click(); // Expand
+        } else if (this.storageConfigured) {
+            // Keep collapsed if configured, per requirements
         }
 
         if (this.toggles.browseThumbnail) {
@@ -461,15 +479,7 @@ export class UploadModal {
       this.isStorageUnlocked = pubkey ? this.storageService.isUnlocked(pubkey) : false;
       this.updateLockUi();
 
-      if (this.isStorageUnlocked) {
-        await this.loadFromStorage();
-      } else {
-        // Locked: Clear sensitive data from UI and memory
-        this.cloudflareSettings = null;
-        this.fillSettingsForm({});
-        this.updateStorageStatus(false);
-        this.activeConnectionId = null;
-      }
+      await this.loadFromStorage();
     } else if (this.r2Service && typeof this.r2Service.loadSettings === "function") {
       await this.loadR2Settings();
     }
@@ -483,13 +493,24 @@ export class UploadModal {
       this.cloudflareSettings = settings || {};
       this.fillSettingsForm(this.cloudflareSettings);
       this.updateStorageStatus(this.hasValidR2Settings());
+
+      // Legacy mode implies no storage service or not used
+      this.toggleStorageView("form");
       return settings;
   }
 
   async loadFromStorage() {
       if (!this.storageService) return;
       const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
-      if (!pubkey) return;
+
+      this.cloudflareSettings = null;
+      this.activeConnectionId = null;
+      this.storageConfigured = false;
+
+      if (!pubkey) {
+          this.toggleStorageView("form");
+          return;
+      }
 
       try {
         const connections = await this.storageService.listConnections(pubkey);
@@ -498,32 +519,56 @@ export class UploadModal {
         const targetConn = defaultConn || connections.find(c => c.provider === PROVIDERS.R2 || c.provider === "cloudflare_r2");
 
         if (targetConn) {
-            const details = await this.storageService.getConnection(pubkey, targetConn.id);
-            if (details) {
-                // Map generic S3 or R2 details to settings
-                // R2 settings struct: accountId, accessKeyId, secretAccessKey, baseDomain
-                this.cloudflareSettings = {
-                    accountId: details.accountId, // Might be undefined for generic S3
-                    accessKeyId: details.accessKeyId,
-                    secretAccessKey: details.secretAccessKey,
-                    baseDomain: details.meta?.baseDomain || "",
-                    // Add generic endpoint for internal use if needed
-                    endpoint: details.endpoint,
-                    region: details.region,
-                    bucket: details.bucket
-                };
-                this.fillSettingsForm(this.cloudflareSettings);
+            this.storageConfigured = true;
+            this.toggleStorageView("summary");
 
-                const providerLabel = targetConn.provider === PROVIDERS.R2 || targetConn.provider === "cloudflare_r2"
-                  ? "R2"
-                  : (targetConn.meta?.label || "S3");
-                this.updateStorageStatus(true, providerLabel);
+            // Populate Summary
+            const providerName = targetConn.meta?.provider === "cloudflare_r2" ? "Cloudflare R2" : (targetConn.meta?.label || "S3 Storage");
+            const bucketName = targetConn.meta?.bucket || "Unknown Bucket";
 
-                this.activeConnectionId = targetConn.id;
+            if (this.statusText.summaryProvider) this.statusText.summaryProvider.textContent = providerName;
+            if (this.statusText.summaryBucket) this.statusText.summaryBucket.textContent = bucketName;
+
+            if (this.isStorageUnlocked) {
+                const details = await this.storageService.getConnection(pubkey, targetConn.id);
+                if (details) {
+                    // Map generic S3 or R2 details to settings
+                    // R2 settings struct: accountId, accessKeyId, secretAccessKey, baseDomain
+                    this.cloudflareSettings = {
+                        accountId: details.accountId, // Might be undefined for generic S3
+                        accessKeyId: details.accessKeyId,
+                        secretAccessKey: details.secretAccessKey,
+                        baseDomain: details.meta?.baseDomain || "",
+                        // Add generic endpoint for internal use if needed
+                        endpoint: details.endpoint,
+                        region: details.region,
+                        bucket: details.bucket
+                    };
+                    this.fillSettingsForm(this.cloudflareSettings);
+                    this.updateStorageStatus(true, providerName);
+                    this.activeConnectionId = targetConn.id;
+                }
+            } else {
+                // Locked state, can't get details yet
+                this.updateStorageStatus(false);
             }
+        } else {
+            // No connections configured
+            this.toggleStorageView("form");
         }
       } catch (err) {
           console.error("Failed to load connection", err);
+          this.toggleStorageView("form");
+      }
+  }
+
+  toggleStorageView(viewName) {
+      if (viewName === "summary") {
+          this.storageViews.summary.classList.remove("hidden");
+          this.storageViews.form.classList.add("hidden");
+      } else {
+          this.storageViews.summary.classList.add("hidden");
+          this.storageViews.form.classList.remove("hidden");
       }
   }
 
@@ -544,8 +589,10 @@ export class UploadModal {
       }
 
       try {
-          this.toggles.storageUnlock.textContent = "Unlocking...";
-          this.toggles.storageUnlock.disabled = true;
+          if (this.toggles.storageUnlock) {
+            this.toggles.storageUnlock.textContent = "Unlocking...";
+            this.toggles.storageUnlock.disabled = true;
+          }
           await this.storageService.unlock(pubkey, { signer });
           this.isStorageUnlocked = true;
           this.updateLockUi();
@@ -554,8 +601,10 @@ export class UploadModal {
           console.error("Unlock failed", err);
           alert("Failed to unlock storage: " + err.message);
       } finally {
-          this.toggles.storageUnlock.textContent = "Unlock";
-          this.toggles.storageUnlock.disabled = false;
+          if (this.toggles.storageUnlock) {
+            this.toggles.storageUnlock.textContent = "Unlock";
+            this.toggles.storageUnlock.disabled = false;
+          }
       }
   }
 
@@ -566,14 +615,17 @@ export class UploadModal {
           this.statusText.storageLock.className = locked ? "text-xs text-critical" : "text-xs text-success";
       }
       if (this.toggles.storageUnlock) {
-          if (locked) {
+          // Show unlock button only if locked AND we have a configuration to unlock
+          if (locked && this.storageConfigured) {
               this.toggles.storageUnlock.classList.remove("hidden");
           } else {
               this.toggles.storageUnlock.classList.add("hidden");
           }
       }
       if (this.statusText.storage) {
-          if (locked) {
+          if (locked && this.storageConfigured) {
+              this.statusText.storage.classList.add("hidden"); // Summary view has its own status area
+          } else if (locked) {
               this.statusText.storage.classList.add("hidden");
               this.statusText.storage.textContent = "";
           } else {
@@ -610,7 +662,7 @@ export class UploadModal {
       const secret = this.inputs.r2Secret?.value?.trim();
 
       if (!accountId || !keyId || !secret) {
-          alert("Please fill in Account ID, Access Key ID, and Secret Access Key.");
+          alert("Please fill in Account ID/Endpoint, Access Key ID, and Secret Access Key.");
           return;
       }
 
@@ -642,7 +694,7 @@ export class UploadModal {
       const npub = pubkey ? this.safeEncodeNpub(pubkey) : null;
 
       if (!settings.baseDomain) {
-           this.wizard.errorText.textContent = "Public Bucket URL is required.";
+           this.wizard.errorText.textContent = "Public URL is required.";
            this.wizard.errorContainer.classList.remove("hidden");
            return;
       }
@@ -663,7 +715,7 @@ export class UploadModal {
 
               // Dynamic Cloudflare Link
               // https://dash.cloudflare.com/?to=/:account/r2/default/buckets/:bucket/settings
-              if (settings.accountId && npub) {
+              if (settings.accountId && npub && !settings.accountId.includes("://")) {
                   const bucketName = this.inputs.r2BucketName?.value || "";
                   const cfLink = `https://dash.cloudflare.com/?to=/${settings.accountId}/r2/default/buckets/${bucketName}/settings`;
                   this.wizard.guideLink.href = cfLink;
@@ -681,16 +733,31 @@ export class UploadModal {
               if (pubkey) {
                   // Save to secure storage
                   const connectionId = this.activeConnectionId || `r2-${Date.now()}`;
-                  await this.storageService.saveConnection(pubkey, connectionId, {
-                      provider: PROVIDERS.R2,
-                      accountId: settings.accountId,
+
+                  // Heuristic for provider type
+                  let provider = PROVIDERS.GENERIC;
+                  let payload = {
                       accessKeyId: settings.accessKeyId,
                       secretAccessKey: settings.secretAccessKey,
+                  };
+
+                  // If account ID doesn't look like a URL, assume R2/S3-account-based
+                  if (settings.accountId && !settings.accountId.includes("://")) {
+                      provider = PROVIDERS.R2;
+                      payload.accountId = settings.accountId;
+                  } else {
+                      payload.endpoint = settings.accountId;
+                  }
+
+                  await this.storageService.saveConnection(pubkey, connectionId, {
+                      provider,
+                      ...payload,
                   }, {
-                      provider: PROVIDERS.R2,
-                      label: "Default R2",
+                      provider,
+                      label: provider === PROVIDERS.R2 ? "Default R2" : "Default S3",
                       baseDomain: settings.baseDomain,
-                      defaultForUploads: true
+                      defaultForUploads: true,
+                      bucket: this.inputs.r2BucketName?.value || sanitizeBucketName(npub)
                   });
                   this.activeConnectionId = connectionId;
               }
@@ -712,6 +779,8 @@ export class UploadModal {
               this.toggles.storageSettings.setAttribute("aria-expanded", "false");
               // Reset wizard to start for next edit
               this.goToCredentialsStep();
+              // Reload state to potentially switch to summary view
+              this.loadFromStorage();
           }, 1500);
       } catch (err) {
           userLogger.error("Verification crashed:", err);
