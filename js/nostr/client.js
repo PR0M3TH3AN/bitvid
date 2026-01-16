@@ -1787,7 +1787,8 @@ export class NostrClient {
             }
 
             if (secret) {
-              if (!resultValue || resultValue !== secret) {
+              const normalizedResult = resultValue ? resultValue.toLowerCase() : "";
+              if (resultValue !== secret && normalizedResult !== "ack") {
                 return;
               }
             }
@@ -2202,7 +2203,7 @@ export class NostrClient {
         message: error?.message || String(error),
         code: error?.code || null,
       });
-      await client.destroy().catch(() => {});
+      client.destroy();
       this.nip46Client = null;
       if (!remember) {
         clearStoredNip46Session();

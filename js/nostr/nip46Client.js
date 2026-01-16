@@ -1823,7 +1823,10 @@ export class Nip46RpcClient {
 
     if (this.secret) {
       const normalizedResult = typeof result === "string" ? result.trim() : "";
-      if (!normalizedResult || normalizedResult !== this.secret) {
+      if (
+        !normalizedResult ||
+        (normalizedResult !== this.secret && normalizedResult.toLowerCase() !== "ack")
+      ) {
         const error = new Error("Remote signer secret mismatch. Rejecting connection.");
         error.code = "nip46-secret-mismatch";
         throw error;
