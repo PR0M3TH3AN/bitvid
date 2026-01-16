@@ -37,9 +37,11 @@ import { isWatchHistoryDebugEnabled } from "../watchHistoryDebug.js";
 import { splitAndZap as splitAndZapDefault } from "../payments/zapSplit.js";
 import {
   getDefaultModerationSettings,
+  getModerationOverridesList,
   getModerationSettings,
   setModerationSettings,
   resetModerationSettings,
+  clearModerationOverride,
   persistSavedProfiles,
   getSavedProfiles,
   getActiveProfilePubkey,
@@ -443,6 +445,9 @@ export default class ApplicationBootstrap {
               setModerationSettings(partial),
             resetModerationSettings: () => resetModerationSettings(),
           },
+          getModerationOverrides: () => getModerationOverridesList(),
+          clearModerationOverride: (descriptor) =>
+            clearModerationOverride(descriptor),
           loadVideos: (forceFetch, context) =>
             app.loadVideos(forceFetch, context),
           onVideosShouldRefresh: (context) =>

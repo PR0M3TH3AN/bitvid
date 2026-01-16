@@ -414,6 +414,25 @@
                   role="status"
                   aria-live="polite"
                 ></p>
+                <div class="space-y-3 border-t border-border/60 pt-4">
+                  <div class="space-y-1">
+                    <h4 class="text-sm font-semibold text-text">Active overrides</h4>
+                    <p class="text-xs text-muted">
+                      Videos you unblocked with “Show anyway” stay listed here until reset.
+                    </p>
+                  </div>
+                  <div
+                    id="profileModerationOverridesEmpty"
+                    class="card border border-dashed border-border/60 p-4 text-center text-xs text-muted"
+                  >
+                    No moderation overrides yet.
+                  </div>
+                  <ul
+                    id="profileModerationOverridesList"
+                    class="grid-stack hidden"
+                    data-orientation="vertical"
+                  ></ul>
+                </div>
               </div>
             </section>
 

@@ -97,7 +97,7 @@ export default class ModerationActionController {
       return false;
     }
 
-    this.persistModerationOverride(video.id);
+    this.persistModerationOverride(video);
 
     const target = this.resolveTargetVideo(video);
     this.clearHideState(target);
@@ -199,7 +199,7 @@ export default class ModerationActionController {
       this.showStatus(statusMessage, { showSpinner: false });
     }
 
-    this.clearModerationOverride(video.id);
+    this.clearModerationOverride(video);
 
     const target = this.resolveTargetVideo(video);
     this.clearViewerOverride(target);
@@ -233,7 +233,7 @@ export default class ModerationActionController {
       return false;
     }
 
-    this.clearModerationOverride(video.id);
+    this.clearModerationOverride(video);
 
     const target = this.resolveTargetVideo(video);
     this.clearViewerOverride(target);
@@ -427,13 +427,45 @@ export default class ModerationActionController {
     }
   }
 
-  persistModerationOverride(eventId) {
-    if (!eventId || !this.services.setModerationOverride) {
+  getModerationOverrideDescriptor(video) {
+    if (!video || typeof video !== "object") {
+      return null;
+    }
+
+    const eventId = video.id;
+    if (!eventId) {
+      return null;
+    }
+
+    const rawAuthor =
+      typeof video.pubkey === "string"
+        ? video.pubkey
+        : typeof video.author?.pubkey === "string"
+        ? video.author.pubkey
+        : "";
+    const normalizedAuthor =
+      rawAuthor && this.auth.normalizePubkey
+        ? this.auth.normalizePubkey(rawAuthor)
+        : rawAuthor;
+
+    return {
+      eventId,
+      authorPubkey: normalizedAuthor || "",
+    };
+  }
+
+  persistModerationOverride(video) {
+    if (!this.services.setModerationOverride) {
+      return;
+    }
+
+    const descriptor = this.getModerationOverrideDescriptor(video);
+    if (!descriptor) {
       return;
     }
 
     try {
-      this.services.setModerationOverride(eventId, {
+      this.services.setModerationOverride(descriptor, {
         showAnyway: true,
         updatedAt: Date.now(),
       });
@@ -445,13 +477,18 @@ export default class ModerationActionController {
     }
   }
 
-  clearModerationOverride(eventId) {
-    if (!eventId || !this.services.clearModerationOverride) {
+  clearModerationOverride(video) {
+    if (!this.services.clearModerationOverride) {
+      return;
+    }
+
+    const descriptor = this.getModerationOverrideDescriptor(video);
+    if (!descriptor) {
       return;
     }
 
     try {
-      this.services.clearModerationOverride(eventId);
+      this.services.clearModerationOverride(descriptor);
     } catch (error) {
       devLogger.warn(
         "[ModerationActionController] Failed to clear moderation override:",
