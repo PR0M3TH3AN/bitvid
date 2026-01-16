@@ -152,7 +152,7 @@ import { updateWatchHistoryListWithDefaultClient } from "./nostrWatchHistoryFaca
 | Admin moderation list (`NOTE_TYPES.ADMIN_MODERATION_LIST`) | `30000` | `['d', 'bitvid:admin:editors']`, repeated `['p', <pubkey>]` entries | Empty content |
 | Admin blacklist (`NOTE_TYPES.ADMIN_BLACKLIST`) | `30000` | `['d', 'bitvid:admin:blacklist']`, repeated `['p', <pubkey>]` entries | Empty content |
 | Admin whitelist (`NOTE_TYPES.ADMIN_WHITELIST`) | `30000` | `['d', 'bitvid:admin:whitelist']`, repeated `['p', <pubkey>]` entries | Empty content |
-| Storage challenge (`NOTE_TYPES.STORAGE_CHALLENGE`) | `22242` | `['challenge', <hex>]`, `['purpose', 'bitvid-storage-key']` | Empty content; ephemeral event used for key derivation only. |
+| Storage challenge (`NOTE_TYPES.STORAGE_CHALLENGE`) | `22242` | `['challenge', <hex>]`, `['purpose', 'bitvid-storage-key']` | Empty content. This event is **ephemeral** and never published to relays. It serves as a challenge for the signer; the deterministic signature produced is used to derive the local encryption Master Key for the Storage Service. |
 
 Subscription lists therefore match the
 [NIP-51 follow-set specification](./nips/51.md#sets) by emitting kind `30000`
