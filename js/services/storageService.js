@@ -280,6 +280,13 @@ export class StorageService {
   }
 
   /**
+   * Checks if the storage is currently unlocked for the user.
+   */
+  isUnlocked(pubkey) {
+    return this.masterKeys.has(pubkey);
+  }
+
+  /**
    * Saves a connection configuration.
    * Requires unlock() to be called first.
    *

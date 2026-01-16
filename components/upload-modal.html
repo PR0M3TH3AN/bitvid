@@ -122,7 +122,11 @@
                     <div id="section-storage-settings" class="hidden mt-3 space-y-4 bg-surface-alt/50 p-4 rounded-lg border border-border/50">
                         <div class="flex items-center justify-between">
                             <h4 class="text-sm font-semibold text-text">Cloudflare R2 Credentials</h4>
-                            <span id="storage-status" class="text-xs text-muted">Stored locally</span>
+                            <div class="flex items-center gap-2">
+                                <span id="storage-lock-status" class="text-xs text-muted">Locked 🔒</span>
+                                <button type="button" id="btn-storage-unlock" class="text-xs text-accent hover:underline hidden">Unlock</button>
+                                <span id="storage-status" class="text-xs text-muted hidden">Stored locally</span>
+                            </div>
                         </div>
                         <div class="mb-2">
                             <p class="text-xs text-muted">

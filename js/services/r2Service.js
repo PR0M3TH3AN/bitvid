@@ -383,15 +383,18 @@ class R2Service {
    * @param {string} npub - The user's Nostr public key (npub).
    * @returns {Promise<object>} The bucket configuration entry and status.
    */
-  async ensureBucketConfigForNpub(npub) {
-    if (!npub || !this.cloudflareSettings) {
+  async ensureBucketConfigForNpub(npub, { credentials } = {}) {
+    if (!npub) {
       return null;
     }
 
-    const accountId = (this.cloudflareSettings.accountId || "").trim();
-    const accessKeyId = (this.cloudflareSettings.accessKeyId || "").trim();
-    const secretAccessKey = (this.cloudflareSettings.secretAccessKey || "").trim();
-    const baseDomain = this.cloudflareSettings.baseDomain || "";
+    // Prefer explicit credentials if provided, otherwise fallback to stored settings
+    const settings = credentials || this.cloudflareSettings || {};
+
+    const accountId = (settings.accountId || "").trim();
+    const accessKeyId = (settings.accessKeyId || "").trim();
+    const secretAccessKey = (settings.secretAccessKey || "").trim();
+    const baseDomain = settings.baseDomain || "";
     const corsOrigins = this.getCorsOrigins();
 
     if (!accountId) {
@@ -613,6 +616,7 @@ class R2Service {
     metadata = {},
     infoHash = "",
     settingsInput = null,
+    explicitCredentials = null,
     publishVideoNote,
     onReset,
     forcedVideoKey = "",
@@ -620,7 +624,9 @@ class R2Service {
     forcedTorrentKey = "",
     forcedTorrentUrl = "",
   } = {}) {
-    if (settingsInput) {
+    // If no explicit credentials, we might save settingsInput to legacy DB.
+    // If explicitCredentials ARE provided, we skip saving and use them directly.
+    if (!explicitCredentials && settingsInput) {
       const saved = await this.handleCloudflareSettingsSubmit(settingsInput, {
         quiet: true,
       });
@@ -660,9 +666,10 @@ class R2Service {
       return false;
     }
 
-    const accountId = (this.cloudflareSettings?.accountId || "").trim();
-    const accessKeyId = (this.cloudflareSettings?.accessKeyId || "").trim();
-    const secretAccessKey = (this.cloudflareSettings?.secretAccessKey || "").trim();
+    const effectiveSettings = explicitCredentials || this.cloudflareSettings || {};
+    const accountId = (effectiveSettings.accountId || "").trim();
+    const accessKeyId = (effectiveSettings.accessKeyId || "").trim();
+    const secretAccessKey = (effectiveSettings.secretAccessKey || "").trim();
 
     if (!accountId || !accessKeyId || !secretAccessKey) {
       this.setCloudflareUploadStatus(
@@ -678,7 +685,9 @@ class R2Service {
 
     let bucketResult = null;
     try {
-      bucketResult = await this.ensureBucketConfigForNpub(npub);
+      bucketResult = await this.ensureBucketConfigForNpub(npub, {
+        credentials: explicitCredentials,
+      });
     } catch (err) {
       userLogger.error("Failed to prepare R2 bucket:", err);
       this.setCloudflareUploadStatus(
