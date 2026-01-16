@@ -77,6 +77,8 @@ New operators should also note that fresh viewer accounts automatically inherit 
 
 The profile modal now exposes blur, autoplay, and hide thresholds so operators can dial in stricter or more permissive behavior. Enter a non-negative whole number to override the default or leave the field blank to fall back to the baseline values from [`config/instance-config.js`](../../config/instance-config.js) (`DEFAULT_BLUR_THRESHOLD`, `DEFAULT_AUTOPLAY_BLOCK_THRESHOLD`, `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD`, `DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD`). Adjustments are stored locally, applied immediately to the active feed, and rehydrate on every load. Update the config file to change the per-instance defaults that new viewers see.
 
+The trusted mute hide helper copy clarifies the escalation path: once the trusted mute count hits the threshold, cards are hidden with a “Show anyway” override, while lower signals only blur thumbnails or block autoplay previews.
+
 ### Personal hashtag preferences
 
 - The Profile modal’s Hashtags tab is wired to [`HashtagPreferencesService`](../../js/services/hashtagPreferencesService.js), which maintains a local snapshot of the viewer’s interests and disinterests, normalizes every tag, and guarantees that the two sets stay mutually exclusive before broadcasting UI change events.【F:js/services/hashtagPreferencesService.js†L206-L276】【F:js/services/hashtagPreferencesService.js†L304-L324】

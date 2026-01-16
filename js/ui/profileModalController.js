@@ -28,6 +28,8 @@ const NWC_URI_SCHEME = "nostr+walletconnect://";
 const SECRET_PLACEHOLDER = "*****";
 const DEFAULT_MAX_WALLET_DEFAULT_ZAP = 100000000;
 const DEFAULT_SAVED_PROFILE_LABEL = "Saved profile";
+const TRUSTED_MUTE_HIDE_HELPER_TEXT =
+  "Reaching this count hides cards (with “Show anyway”); lower signals only blur thumbnails or block autoplay.";
 
 const ADD_PROFILE_CANCELLATION_CODES = new Set([
   "login-cancelled",
@@ -1428,6 +1430,7 @@ export class ProfileModalController {
         "[data-role=\"trusted-hide-control\"]",
       ) || [],
     );
+    this.updateTrustedMuteHideHelperCopy();
 
     this.moderatorSection =
       document.getElementById("adminModeratorsSection") || null;
@@ -7059,6 +7062,24 @@ export class ProfileModalController {
     } else if (this.moderationStatusText.dataset.variant) {
       delete this.moderationStatusText.dataset.variant;
     }
+  }
+
+  updateTrustedMuteHideHelperCopy() {
+    if (!(this.moderationMuteHideInput instanceof HTMLInputElement)) {
+      return;
+    }
+
+    const label = this.moderationMuteHideInput.closest("label");
+    if (!(label instanceof HTMLElement)) {
+      return;
+    }
+
+    const helper = label.querySelector("span.text-xs");
+    if (!(helper instanceof HTMLElement)) {
+      return;
+    }
+
+    helper.textContent = TRUSTED_MUTE_HIDE_HELPER_TEXT;
   }
 
   refreshModerationSettingsUi() {
