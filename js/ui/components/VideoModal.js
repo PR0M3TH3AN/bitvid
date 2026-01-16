@@ -4947,6 +4947,22 @@ export class VideoModal {
         cardIndex
       );
 
+      // Wire up moderation callbacks
+      if (card) {
+        card.onModerationOverride = (detail) => {
+          this.dispatch("video:moderation-override", detail);
+          return true;
+        };
+        card.onModerationHide = (detail) => {
+          this.dispatch("video:moderation-hide", detail);
+          return true;
+        };
+        card.onModerationBlock = (detail) => {
+          this.dispatch("video:moderation-block", detail);
+          return true;
+        };
+      }
+
       const root = card.getRoot();
       if (!root) {
         return;
