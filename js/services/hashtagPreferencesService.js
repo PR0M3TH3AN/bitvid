@@ -344,6 +344,11 @@ class HashtagPreferencesService {
 
   async load(pubkey) {
     const normalized = normalizeHexPubkey(pubkey);
+    const wasLoadedForUser =
+      this.activePubkey &&
+      this.activePubkey === normalized &&
+      (this.interests.size > 0 || this.disinterests.size > 0 || this.loaded);
+
     this.activePubkey = normalized;
 
     if (!normalized) {
@@ -360,6 +365,13 @@ class HashtagPreferencesService {
       userLogger.warn(
         `${LOG_PREFIX} nostrClient.pool.list unavailable; treating preferences as empty.`,
       );
+      // If we already have data for this user, do not reset on transient client issues.
+      if (wasLoadedForUser) {
+        userLogger.warn(
+          `${LOG_PREFIX} Keeping existing preferences despite client unavailability.`,
+        );
+        return;
+      }
       this.reset();
       this.loaded = true;
       return;
@@ -371,6 +383,12 @@ class HashtagPreferencesService {
         : nostrClient.writeRelays,
     );
     if (!relays.length) {
+      if (wasLoadedForUser) {
+        userLogger.warn(
+          `${LOG_PREFIX} Keeping existing preferences; no relays available for refresh.`,
+        );
+        return;
+      }
       this.reset();
       this.loaded = true;
       return;
@@ -378,20 +396,30 @@ class HashtagPreferencesService {
 
     const schema = getNostrEventSchema(NOTE_TYPES.HASHTAG_PREFERENCES);
     const canonicalKind = schema?.kind ?? 30015;
+    const legacyKind = 30005;
+
+    const kinds = [canonicalKind];
+    if (canonicalKind !== legacyKind) {
+      kinds.push(legacyKind);
+    }
+
     const filter = {
-      kinds: [canonicalKind],
+      kinds,
       authors: [normalized],
       "#d": [HASHTAG_IDENTIFIER],
       limit: 50,
     };
 
     let events = [];
+    let fetchError = null;
+
     try {
       const result = await nostrClient.pool.list(relays, [filter]);
       if (Array.isArray(result)) {
         events = result.filter((event) => event && event.pubkey === normalized);
       }
     } catch (error) {
+      fetchError = error;
       userLogger.warn(
         `${LOG_PREFIX} Failed to load hashtag preferences from relays`,
         error,
@@ -400,6 +428,15 @@ class HashtagPreferencesService {
     }
 
     if (!events.length) {
+      // If we failed to fetch (network error) but already have data for this user,
+      // preserve the existing state instead of wiping it.
+      if (wasLoadedForUser) {
+        userLogger.warn(
+          `${LOG_PREFIX} Keeping existing preferences despite empty relay response.`,
+        );
+        return;
+      }
+
       this.reset();
       this.loaded = true;
       return;
@@ -415,14 +452,39 @@ class HashtagPreferencesService {
       const candidateTs = Number(candidate.created_at) || 0;
       const currentTs = Number(current.created_at) || 0;
       if (candidateTs === currentTs) {
+        if (
+          candidate.kind === canonicalKind &&
+          current.kind !== canonicalKind
+        ) {
+          return candidate;
+        }
+        if (
+          current.kind === canonicalKind &&
+          candidate.kind !== canonicalKind
+        ) {
+          return current;
+        }
         return candidate.id > current.id ? candidate : current;
       }
       return candidateTs > currentTs ? candidate : current;
     }, null);
 
     if (!latest) {
+      if (wasLoadedForUser) {
+        return;
+      }
       this.reset();
       this.loaded = true;
+      return;
+    }
+
+    const currentCreatedAt = Number(this.eventCreatedAt) || 0;
+    const latestCreatedAt = Number(latest.created_at) || 0;
+
+    if (wasLoadedForUser && currentCreatedAt > latestCreatedAt) {
+      userLogger.warn(
+        `${LOG_PREFIX} Ignoring stale preferences event (remote: ${latestCreatedAt}, local: ${currentCreatedAt}).`,
+      );
       return;
     }
 
@@ -432,6 +494,9 @@ class HashtagPreferencesService {
         `${LOG_PREFIX} Failed to decrypt hashtag preferences`,
         decryptResult.error,
       );
+      // If decryption fails on a reload, we might want to keep old data?
+      // But typically decryption failure means key mismatch or bad payload.
+      // Resetting is safer here to avoid stuck state, unless we want to be very conservative.
       this.reset();
       this.loaded = true;
       return;
@@ -776,4 +841,3 @@ const hashtagPreferences = new HashtagPreferencesService();
 
 export default hashtagPreferences;
 export { HashtagPreferencesService, hashtagPreferences, EVENTS as HASHTAG_PREFERENCES_EVENTS };
-

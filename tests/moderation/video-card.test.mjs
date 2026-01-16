@@ -35,7 +35,6 @@ function setupDom(t) {
     "ResizeObserver",
     "requestAnimationFrame",
     "cancelAnimationFrame",
-    "navigator",
   ];
 
   keys.forEach((key) => {
@@ -53,6 +52,14 @@ function setupDom(t) {
       };
     }
     globalThis[key] = window[key];
+  });
+
+  // Mock navigator safely
+  const originalNavigator = globalThis.navigator;
+  Object.defineProperty(globalThis, "navigator", {
+    value: window.navigator,
+    writable: true,
+    configurable: true,
   });
 
   if (!window.requestAnimationFrame) {
@@ -84,6 +91,12 @@ function setupDom(t) {
       } else {
         globalThis[key] = previousValue;
       }
+    });
+    // Restore navigator
+    Object.defineProperty(globalThis, "navigator", {
+      value: originalNavigator,
+      writable: true,
+      configurable: true,
     });
   });
 

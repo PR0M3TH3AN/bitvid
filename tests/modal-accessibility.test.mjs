@@ -38,7 +38,11 @@ function installDom(html) {
   globalThis.CustomEvent = window.CustomEvent;
   globalThis.Event = window.Event;
   globalThis.Node = window.Node;
-  globalThis.navigator = window.navigator;
+  Object.defineProperty(globalThis, "navigator", {
+    value: window.navigator,
+    writable: true,
+    configurable: true,
+  });
   globalThis.location = window.location;
   globalThis.KeyboardEvent = window.KeyboardEvent;
   globalThis.MouseEvent = window.MouseEvent;
@@ -210,31 +214,27 @@ for (const _ of [0]) {
       await modal.load();
       applyDesignSystemAttributes(document);
 
-      const customButton = document.querySelector(
-        ".upload-mode-toggle[data-upload-mode=\"custom\"]",
-      );
-      const cloudflareButton = document.querySelector(
-        ".upload-mode-toggle[data-upload-mode=\"cloudflare\"]",
-      );
-      const customSection = document.getElementById("customUploadSection");
-      const cloudflareSection = document.getElementById("cloudflareUploadSection");
+      const uploadButton = document.getElementById("btn-mode-upload");
+      const externalButton = document.getElementById("btn-mode-external");
+      const uploadSection = document.getElementById("section-source-upload");
+      const externalSection = document.getElementById("section-source-external");
 
-      assert.ok(customButton && cloudflareButton);
-      assert.ok(customSection && cloudflareSection);
+      assert.ok(uploadButton && externalButton);
+      assert.ok(uploadSection && externalSection);
 
-      modal.setMode("cloudflare");
+      modal.setSourceMode("upload");
 
-      assert.equal(cloudflareButton.getAttribute("aria-pressed"), "true");
-      assert.equal(customButton.getAttribute("aria-pressed"), "false");
-      assert.equal(cloudflareSection.classList.contains("hidden"), false);
-      assert.equal(customSection.classList.contains("hidden"), true);
+      assert.equal(uploadButton.getAttribute("aria-pressed"), "true");
+      assert.equal(externalButton.getAttribute("aria-pressed"), "false");
+      assert.equal(uploadSection.classList.contains("hidden"), false);
+      assert.equal(externalSection.classList.contains("hidden"), true);
 
-      modal.setMode("custom");
+      modal.setSourceMode("external");
 
-      assert.equal(customButton.getAttribute("aria-pressed"), "true");
-      assert.equal(cloudflareButton.getAttribute("aria-pressed"), "false");
-      assert.equal(customSection.classList.contains("hidden"), false);
-      assert.equal(cloudflareSection.classList.contains("hidden"), true);
+      assert.equal(externalButton.getAttribute("aria-pressed"), "true");
+      assert.equal(uploadButton.getAttribute("aria-pressed"), "false");
+      assert.equal(externalSection.classList.contains("hidden"), false);
+      assert.equal(uploadSection.classList.contains("hidden"), true);
 
       t.after(() => {
         modal.destroy();

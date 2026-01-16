@@ -1104,7 +1104,12 @@ export class NostrService {
     this.ensureInitialLoadDeferred();
 
     try {
-      await this.ensureAccessControlReady();
+      this.ensureAccessControlReady().catch((error) => {
+        userLogger.warn(
+          "[nostrService] Background access control ready check failed:",
+          error
+        );
+      });
 
       if (forceFetch) {
         this.clearVideoSubscription();
@@ -1525,6 +1530,23 @@ export class NostrService {
     this.emit("videos:deleted", detail);
 
     return detail;
+  }
+
+  async fetchVideoHistory(video) {
+    if (!video || typeof video !== "object") {
+      return [];
+    }
+
+    try {
+      // Use the client's robust hydration logic which handles legacy roots and d-tags
+      const history = await this.nostrClient.hydrateVideoHistory(video);
+      // Ensure specific sort order: Newest First (Descending)
+      return history.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+    } catch (error) {
+      this.log("[nostrService] Failed to fetch video history", error);
+      // Fallback to returning the known video if fetch fails
+      return [video];
+    }
   }
 
   async getOldEventById(eventId) {

@@ -7,13 +7,26 @@ import {
   normalizeVideoNotePayload,
   VIDEO_NOTE_ERROR_CODES,
 } from "../../services/videoNotePayload.js";
-import { calculateTorrentInfoHash } from "../../utils/torrentHash.js";
+import { createTorrentMetadata } from "../../utils/torrentHash.js";
 import { sanitizeBucketName } from "../../storage/r2-mgmt.js";
+import { buildR2Key, buildPublicUrl } from "../../r2.js";
+import { PROVIDERS } from "../../services/storageService.js";
+
+const INFO_HASH_PATTERN = /^[a-f0-9]{40}$/;
+
+function normalizeInfoHash(value) {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function isValidInfoHash(value) {
+  return INFO_HASH_PATTERN.test(value);
+}
 
 export class UploadModal {
   constructor({
     authService,
     r2Service,
+    storageService,
     publishVideoNote,
     removeTrackingScripts,
     setGlobalModalState,
@@ -26,6 +39,7 @@ export class UploadModal {
   } = {}) {
     this.authService = authService || null;
     this.r2Service = r2Service || null;
+    this.storageService = storageService || null;
     this.publishVideoNote =
       typeof publishVideoNote === "function" ? publishVideoNote : null;
     this.removeTrackingScripts =
@@ -51,6 +65,8 @@ export class UploadModal {
     this.isVisible = false;
     this.activeSource = "upload"; // 'upload' | 'external'
     this.cloudflareSettings = this.r2Service?.getSettings?.() || null;
+    this.isStorageUnlocked = false;
+    this.activeConnectionId = null;
 
     // UI References
     this.form = null;
@@ -106,7 +122,21 @@ export class UploadModal {
       this.registerR2Subscriptions();
 
       // Initial State
-      await this.loadR2Settings();
+      if (this.storageService) {
+        const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
+        this.isStorageUnlocked = pubkey ? this.storageService.isUnlocked(pubkey) : false;
+        if (this.isStorageUnlocked) {
+          await this.loadFromStorage();
+        } else {
+          // Attempt legacy load if not unlocked (or maybe just show locked state)
+          // For now we keep legacy behavior as fallback if storageService isn't used
+          // But user requested provider agnostic.
+          // We will update UI state in setSourceMode or similar
+        }
+      } else {
+        await this.loadR2Settings();
+      }
+      this.updateLockUi();
       this.setSourceMode("upload");
 
       return this.root;
@@ -194,11 +224,13 @@ export class UploadModal {
         browseThumbnail: $("#btn-thumbnail-file"),
         r2HelpLink: $("#link-r2-help"),
         copyBucket: $("#btn-copy-bucket"),
+        storageUnlock: $("#btn-storage-unlock"),
     };
 
     // Status text
     this.statusText = {
         storage: $("#storage-status"),
+        storageLock: $("#storage-lock-status"),
         uploadMain: $("#upload-status-text"),
         uploadPercent: $("#upload-percent-text"),
     };
@@ -255,6 +287,11 @@ export class UploadModal {
                 });
             }
         });
+    }
+
+    // Storage Unlock
+    if (this.toggles.storageUnlock) {
+        this.toggles.storageUnlock.addEventListener("click", () => this.handleUnlock());
     }
 
     // Automation
@@ -418,13 +455,131 @@ export class UploadModal {
 
   // --- R2 Integration ---
 
+  async refreshState() {
+    if (this.storageService) {
+      const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
+      this.isStorageUnlocked = pubkey ? this.storageService.isUnlocked(pubkey) : false;
+      this.updateLockUi();
+
+      if (this.isStorageUnlocked) {
+        await this.loadFromStorage();
+      } else {
+        // Locked: Clear sensitive data from UI and memory
+        this.cloudflareSettings = null;
+        this.fillSettingsForm({});
+        this.updateStorageStatus(false);
+        this.activeConnectionId = null;
+      }
+    } else if (this.r2Service && typeof this.r2Service.loadSettings === "function") {
+      await this.loadR2Settings();
+    }
+  }
+
+  // Legacy fallback loader (renamed for clarity if desired, but keeping signature safe)
   async loadR2Settings() {
+      // Fallback legacy load if storage service not used/available
       if (!this.r2Service?.loadSettings) return;
       const settings = await this.r2Service.loadSettings();
       this.cloudflareSettings = settings || {};
       this.fillSettingsForm(this.cloudflareSettings);
       this.updateStorageStatus(this.hasValidR2Settings());
       return settings;
+  }
+
+  async loadFromStorage() {
+      if (!this.storageService) return;
+      const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
+      if (!pubkey) return;
+
+      try {
+        const connections = await this.storageService.listConnections(pubkey);
+        // Prefer default connection, fallback to R2
+        const defaultConn = connections.find(c => c.meta?.defaultForUploads);
+        const targetConn = defaultConn || connections.find(c => c.provider === PROVIDERS.R2 || c.provider === "cloudflare_r2");
+
+        if (targetConn) {
+            const details = await this.storageService.getConnection(pubkey, targetConn.id);
+            if (details) {
+                // Map generic S3 or R2 details to settings
+                // R2 settings struct: accountId, accessKeyId, secretAccessKey, baseDomain
+                this.cloudflareSettings = {
+                    accountId: details.accountId, // Might be undefined for generic S3
+                    accessKeyId: details.accessKeyId,
+                    secretAccessKey: details.secretAccessKey,
+                    baseDomain: details.meta?.baseDomain || "",
+                    // Add generic endpoint for internal use if needed
+                    endpoint: details.endpoint,
+                    region: details.region,
+                    bucket: details.bucket
+                };
+                this.fillSettingsForm(this.cloudflareSettings);
+
+                const providerLabel = targetConn.provider === PROVIDERS.R2 || targetConn.provider === "cloudflare_r2"
+                  ? "R2"
+                  : (targetConn.meta?.label || "S3");
+                this.updateStorageStatus(true, providerLabel);
+
+                this.activeConnectionId = targetConn.id;
+            }
+        }
+      } catch (err) {
+          console.error("Failed to load connection", err);
+      }
+  }
+
+  async handleUnlock() {
+      if (!this.storageService) return;
+      const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
+      if (!pubkey) return;
+
+      // We need a signer. Try window.nostr or authService
+      let signer = window.nostr;
+      if (!signer && this.authService?.signer) {
+          signer = this.authService.signer;
+      }
+
+      if (!signer) {
+          alert("No signer available to unlock storage.");
+          return;
+      }
+
+      try {
+          this.toggles.storageUnlock.textContent = "Unlocking...";
+          this.toggles.storageUnlock.disabled = true;
+          await this.storageService.unlock(pubkey, { signer });
+          this.isStorageUnlocked = true;
+          this.updateLockUi();
+          await this.loadFromStorage();
+      } catch (err) {
+          console.error("Unlock failed", err);
+          alert("Failed to unlock storage: " + err.message);
+      } finally {
+          this.toggles.storageUnlock.textContent = "Unlock";
+          this.toggles.storageUnlock.disabled = false;
+      }
+  }
+
+  updateLockUi() {
+      const locked = !this.isStorageUnlocked;
+      if (this.statusText.storageLock) {
+          this.statusText.storageLock.textContent = locked ? "Locked 🔒" : "Unlocked 🔓";
+          this.statusText.storageLock.className = locked ? "text-xs text-critical" : "text-xs text-success";
+      }
+      if (this.toggles.storageUnlock) {
+          if (locked) {
+              this.toggles.storageUnlock.classList.remove("hidden");
+          } else {
+              this.toggles.storageUnlock.classList.add("hidden");
+          }
+      }
+      if (this.statusText.storage) {
+          if (locked) {
+              this.statusText.storage.classList.add("hidden");
+              this.statusText.storage.textContent = "";
+          } else {
+              this.statusText.storage.classList.remove("hidden");
+          }
+      }
   }
 
   hasValidR2Settings() {
@@ -520,7 +675,30 @@ export class UploadModal {
 
           // 2. Save on Success
           btn.textContent = "Saving...";
-          await this.r2Service.saveSettings(settings);
+
+          if (this.storageService && this.isStorageUnlocked) {
+              const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
+              if (pubkey) {
+                  // Save to secure storage
+                  const connectionId = this.activeConnectionId || `r2-${Date.now()}`;
+                  await this.storageService.saveConnection(pubkey, connectionId, {
+                      provider: PROVIDERS.R2,
+                      accountId: settings.accountId,
+                      accessKeyId: settings.accessKeyId,
+                      secretAccessKey: settings.secretAccessKey,
+                  }, {
+                      provider: PROVIDERS.R2,
+                      label: "Default R2",
+                      baseDomain: settings.baseDomain,
+                      defaultForUploads: true
+                  });
+                  this.activeConnectionId = connectionId;
+              }
+          } else {
+              // Legacy fallback
+              await this.r2Service.saveSettings(settings);
+          }
+
           this.cloudflareSettings = settings;
           this.updateStorageStatus(true);
 
@@ -544,9 +722,11 @@ export class UploadModal {
       }
   }
 
-  updateStorageStatus(isValid) {
+  updateStorageStatus(isValid, providerLabel) {
       if (this.statusText.storage) {
-          this.statusText.storage.textContent = isValid ? "Ready" : "Missing Credentials";
+          const baseText = isValid ? "Ready" : "Missing Credentials";
+          const label = providerLabel ? ` (${providerLabel})` : "";
+          this.statusText.storage.textContent = baseText + label;
           this.statusText.storage.className = isValid ? "text-xs text-accent" : "text-xs text-critical";
       }
   }
@@ -650,6 +830,39 @@ export class UploadModal {
 
       const npub = this.safeEncodeNpub(pubkey);
 
+      // Pre-calculate Keys & URLs to support WebSeeding
+      // We need the Public URL *before* we generate the torrent so we can embed it.
+      let videoKey = "";
+      let videoPublicUrl = "";
+      let torrentKey = "";
+      let torrentPublicUrl = "";
+
+      try {
+          // Temporarily grab current bucket settings to calculate URL
+          const bucketName = this.inputs.r2BucketName?.value || sanitizeBucketName(npub);
+          // Note: The actual upload might re-verify this, but we need a best-guess for the torrent.
+          // We rely on r2Service using the *same* logic or accepting our forced keys.
+          // Since we can't easily get the 'final' bucket config here without doing the 'ensureBucket' dance first,
+          // we'll do a lightweight check of the settings form.
+          const currentSettings = this.collectSettingsForm();
+          if (!currentSettings.baseDomain) {
+              throw new Error("Missing Public URL (Base Domain) in settings.");
+          }
+
+          videoKey = buildR2Key(npub, file);
+          // 'buildPublicUrl' logic: ${baseDomain}/${key}
+          videoPublicUrl = buildPublicUrl(currentSettings.baseDomain, videoKey);
+
+          // For the torrent file, we swap extension
+          const baseKey = videoKey.replace(/\.[^/.]+$/, "");
+          torrentKey = (baseKey && baseKey !== videoKey) ? `${baseKey}.torrent` : `${videoKey}.torrent`;
+          torrentPublicUrl = buildPublicUrl(currentSettings.baseDomain, torrentKey);
+
+      } catch (prepErr) {
+          userLogger.warn("Failed to pre-calculate R2 keys:", prepErr);
+          // We continue, but WebSeed generation will fail or be skipped.
+      }
+
       // 1. Calculate Torrent Info Hash (Client-side)
       this.isUploading = true;
       this.submitButton.disabled = true;
@@ -657,26 +870,69 @@ export class UploadModal {
       this.updateProgress(0); // Show bar at 0
 
       let infoHash = "";
+      let torrentFile = null;
       try {
-          infoHash = await calculateTorrentInfoHash(file);
+          // Pass the pre-calculated video URL as a WebSeed
+          const urlList = videoPublicUrl ? [videoPublicUrl] : [];
+          const torrentMetadata = await createTorrentMetadata(file, urlList);
+
+          infoHash = torrentMetadata?.infoHash || "";
+          if (torrentMetadata?.torrentFile) {
+              const baseName = file.name.replace(/\.[^/.]+$/, "") || file.name;
+              torrentFile = new File([torrentMetadata.torrentFile], `${baseName}.torrent`, {
+                  type: "application/x-bittorrent",
+              });
+          }
       } catch (hashErr) {
           userLogger.warn("Failed to calculate info hash:", hashErr);
-          // We can proceed without it, or fail. The plan says we need it.
-          // Let's warn but proceed? Or fail? The user said "Also lets not forget that we calculate a torrent hash".
-          // I will proceed but log it, maybe the upload handles it gracefully (missing magnet).
-          // But passing empty infoHash means no magnet link generated in R2Service.
+      }
+
+      const normalizedInfoHash = normalizeInfoHash(infoHash);
+      const hasValidInfoHash = isValidInfoHash(normalizedInfoHash);
+
+      if (!hasValidInfoHash) {
+          const proceed = confirm(
+            "We couldn't calculate a valid info hash. Publishing will continue with URL-first playback only, and WebTorrent fallback will be unavailable. Continue?"
+          );
+          if (!proceed) {
+              this.updateUploadStatus(
+                "Upload canceled. A valid info hash is required for WebTorrent fallback.",
+                "warning"
+              );
+              this.isUploading = false;
+              this.submitButton.disabled = false;
+              this.updateProgress(null);
+              return;
+          }
+          this.updateUploadStatus(
+            "Continuing without WebTorrent fallback (info hash unavailable).",
+            "warning"
+          );
       }
 
       // 2. Upload
+      let explicitCredentials = null;
+      if (this.storageService && this.isStorageUnlocked && this.hasValidR2Settings()) {
+          // If using secure storage, we pass the credentials explicitly so they aren't saved to legacy DB
+          explicitCredentials = this.collectSettingsForm();
+      }
+
       await this.r2Service.uploadVideo({
           npub,
           file,
           thumbnailFile,
+          torrentFile,
           metadata,
-          infoHash,
-          settingsInput: this.collectSettingsForm(),
+          infoHash: hasValidInfoHash ? normalizedInfoHash : "",
+          settingsInput: explicitCredentials ? null : this.collectSettingsForm(),
+          explicitCredentials,
           publishVideoNote: this.publishVideoNote,
           onReset: () => this.resetForm(),
+          // Pass forced keys/URLs to ensure what's in the torrent matches where we upload
+          forcedVideoKey: videoKey,
+          forcedVideoUrl: videoPublicUrl,
+          forcedTorrentKey: torrentKey,
+          forcedTorrentUrl: torrentPublicUrl,
       });
   }
 
@@ -748,6 +1004,17 @@ export class UploadModal {
     this.setGlobalModalState("upload", true);
     this.isVisible = true;
     this.populateBucketName(); // Ensure bucket name is fresh on open
+
+    // Refresh lock state on open
+    if (this.storageService) {
+        const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
+        this.isStorageUnlocked = pubkey ? this.storageService.isUnlocked(pubkey) : false;
+        this.updateLockUi();
+        if (this.isStorageUnlocked) {
+            this.loadFromStorage();
+        }
+    }
+
     this.modalAccessibility?.activate({ triggerElement });
   }
 
@@ -765,6 +1032,10 @@ export class UploadModal {
 
   emit(type, detail) {
       this.eventTarget.dispatchEvent(new CustomEvent(type, { detail }));
+  }
+
+  getRoot() {
+      return this.root;
   }
 
   setupModalAccessibility() {

@@ -433,22 +433,20 @@ class AccessControl {
   }
 
   async ensureReady() {
+    // If not loaded and not already refreshing, kick off a background refresh.
+    // We do NOT await this promise, allowing the application to proceed immediately.
+    // Reactive updates (e.g. onBlacklistChange) will handle the UI state when data arrives.
     if (!this.hasLoaded && !this._isRefreshing) {
-      this.refresh();
+      this.refresh().catch((error) => {
+        userLogger.warn(
+          "[accessControl] Background refresh failed:",
+          error,
+        );
+      });
     }
 
-    try {
-      await this._refreshPromise;
-      userLogger.info("[accessControl] ensureReady resolved");
-    } catch (error) {
-      if (!this.hasLoaded) {
-        userLogger.warn("[accessControl] ensureReady retry");
-        await this.refresh();
-        await this._refreshPromise;
-      } else {
-        throw error;
-      }
-    }
+    // Always resolve immediately to prevent blocking application startup.
+    return Promise.resolve();
   }
 
   whitelistMode() {

@@ -5629,12 +5629,13 @@ export class NostrClient {
 
   getLatestCachedCreatedAt() {
     let latest = 0;
+    const now = Math.floor(Date.now() / 1000);
 
     for (const video of this.allEvents.values()) {
       const createdAt = Number.isFinite(video?.created_at)
         ? Math.floor(video.created_at)
         : 0;
-      if (createdAt > latest) {
+      if (createdAt > latest && createdAt <= now) {
         latest = createdAt;
       }
     }

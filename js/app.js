@@ -254,6 +254,13 @@ class Application {
     }
   }
 
+  hideModal() {
+    if (this.videoModal) {
+      this.videoModal.close();
+    }
+    // Also clear the active modal state if tracked elsewhere, though videoModal.close() usually handles it.
+  }
+
   loadSavedProfilesFromStorage() {
     const result = this.authService.loadSavedProfilesFromStorage();
     this.renderSavedProfiles();
@@ -383,6 +390,96 @@ class Application {
         if (modalRoot) {
           this.attachMoreMenuHandlers(modalRoot);
         }
+        if (
+          this.videoModal &&
+          typeof this.videoModal.addEventListener === "function"
+        ) {
+          this.videoModal.addEventListener("playback:switch-source", (event) => {
+            const detail = event?.detail || {};
+            const { source } = detail;
+            if (!source) {
+              return;
+            }
+            const modalVideo = detail?.video || null;
+            const fallbackVideo = this.currentVideo || null;
+            const video = {
+              ...(fallbackVideo || {}),
+              ...(modalVideo || {}),
+            };
+            const urlCandidate =
+              typeof video.url === "string" ? video.url.trim() : "";
+            const magnetCandidate =
+              typeof video.magnet === "string" ? video.magnet.trim() : "";
+
+            if (!modalVideo && !fallbackVideo) {
+              devLogger.warn("[app] Playback source switch missing video data.");
+              return;
+            }
+
+            const magnetAvailable = Boolean(magnetCandidate);
+            const cachedStreamHealth =
+              video?.id && this.streamHealthSnapshots instanceof Map
+                ? this.streamHealthSnapshots.get(video.id)
+                : null;
+            const cachedPeers = Number.isFinite(cachedStreamHealth?.peers)
+              ? cachedStreamHealth.peers
+              : null;
+            const hasActivePeers =
+              cachedPeers === null ? null : cachedPeers > 0;
+            const cachedUrlHealth =
+              video?.id && urlCandidate
+                ? this.getCachedUrlHealth(video.id, urlCandidate)
+                : null;
+            const cdnUnavailable =
+              !urlCandidate ||
+              ["offline", "timeout"].includes(cachedUrlHealth?.status);
+
+            if (source === "torrent" && !magnetAvailable) {
+              userLogger.warn(
+                "[app] Unable to switch to torrent playback: missing magnet.",
+              );
+              this.showError(
+                "Torrent playback is unavailable for this video. No magnet was provided.",
+              );
+              return;
+            }
+
+            if (source === "torrent" && hasActivePeers === false) {
+              userLogger.warn(
+                "[app] Unable to switch to torrent playback: no active peers.",
+              );
+              this.showError(
+                "Torrent playback is unavailable right now because there are no active peers.",
+              );
+              return;
+            }
+
+            if (source === "url" && cdnUnavailable) {
+              userLogger.warn(
+                "[app] Unable to switch to CDN playback: URL unavailable.",
+              );
+              this.showError(
+                "CDN playback is unavailable right now, staying on the torrent stream.",
+              );
+              return;
+            }
+
+            if (this.playSource && source === this.playSource) {
+              return;
+            }
+
+            this.playVideoWithFallback({
+              url: urlCandidate,
+              magnet: magnetCandidate,
+              forcedSource: source,
+            }).catch((error) => {
+              devLogger.warn(
+                "[app] Failed to switch playback source:",
+                error,
+              );
+            });
+          });
+        }
       });
 
       const uploadModalPromise = this.uploadModal
@@ -436,9 +533,20 @@ class Application {
         profileModalPromise,
       ]);
 
-      const nostrInitPromise = nostrClient.init();
+      // Initialize the pool early to unblock bootstrapTrustedSeeds,
+      // but do NOT await the full connection process here.
+      try {
+        await nostrClient.ensurePool();
+      } catch (poolError) {
+        devLogger.warn("[app.init()] Pool ensure failed:", poolError);
+      }
 
-      await Promise.all([modalBootstrapPromise, nostrInitPromise]);
+      // Kick off relay connection in the background.
+      const nostrInitPromise = nostrClient.init().catch((err) => {
+        devLogger.warn("[app.init()] Background nostrClient.init failed:", err);
+      });
+
+      await modalBootstrapPromise;
 
       try {
         await bootstrapTrustedSeeds();
@@ -483,7 +591,7 @@ class Application {
             })
         : Promise.resolve(null);
 
-      await Promise.all([accessControlPromise, adminPanePromise]);
+      // await Promise.all([accessControlPromise, adminPanePromise]);
 
       const syncSessionActorBlacklist = async (trigger) => {
         if (this.pubkey) {
@@ -591,10 +699,40 @@ class Application {
         });
       }
 
+      if (typeof accessControl.onWhitelistChange === "function") {
+        accessControl.onWhitelistChange(() => {
+          const refreshReason = "admin-whitelist-change";
+          this.refreshAllVideoGrids({
+            reason: refreshReason,
+            forceMainReload: true,
+          }).catch((error) => {
+            devLogger.warn(
+              "[app.init()] Failed to refresh video grids after admin whitelist change:",
+              error,
+            );
+          });
+        });
+      }
+
       // Grab the "Subscriptions" link by its id in the sidebar
       this.subscriptionsLink = document.getElementById("subscriptionsLink");
 
       this.syncAuthUiState();
+
+      if (typeof window !== "undefined") {
+        window.addEventListener("bitvid:auth-changed", (event) => {
+          const detail = event.detail || {};
+          const previousPubkey = detail.previousPubkey;
+
+          if (previousPubkey && typeof storageService !== "undefined" && typeof storageService.lock === "function") {
+            storageService.lock(previousPubkey);
+          }
+
+          if (this.uploadModal && typeof this.uploadModal.refreshState === "function") {
+            this.uploadModal.refreshState();
+          }
+        });
+      }
 
       const savedPubKey = this.activeProfilePubkey;
       if (savedPubKey) {
@@ -662,18 +800,34 @@ class Application {
   }
 
   goToProfile(pubkey) {
-    if (!pubkey) {
+    if (typeof pubkey !== "string") {
       this.showError("No creator info available.");
       return;
     }
-    try {
-      const npub = window.NostrTools.nip19.npubEncode(pubkey);
-      // Switch to channel profile view
-      window.location.hash = `#view=channel-profile&npub=${npub}`;
-    } catch (err) {
-      devLogger.error("Failed to go to channel:", err);
-      this.showError("Could not open channel.");
+
+    let candidate = pubkey.trim();
+    if (!candidate) {
+      this.showError("No creator info available.");
+      return;
     }
+
+    if (candidate.startsWith("nostr:")) {
+      candidate = candidate.slice("nostr:".length);
+    }
+
+    const normalizedHex = this.normalizeHexPubkey(candidate);
+    const npub = normalizedHex ? this.safeEncodeNpub(normalizedHex) : null;
+
+    if (!npub) {
+      devLogger.warn(
+        "[Application] Invalid pubkey for profile navigation:",
+        candidate,
+      );
+      this.showError("Invalid creator profile.");
+      return;
+    }
+
+    window.location.hash = `#view=channel-profile&npub=${npub}`;
   }
 
   openCreatorChannel() {
@@ -2672,17 +2826,15 @@ class Application {
       typeof reason === "string" && reason.trim() ? reason.trim() : undefined;
 
     if (typeof moderationService?.awaitUserBlockRefresh === "function") {
-      try {
-        await moderationService.awaitUserBlockRefresh();
-      } catch (error) {
+      moderationService.awaitUserBlockRefresh().catch((error) => {
         const contextMessage = normalizedReason
-          ? ` before ${normalizedReason}`
-          : "";
+          ? ` in background during ${normalizedReason}`
+          : " in background";
         devLogger.warn(
           `Failed to sync moderation summaries${contextMessage}:`,
           error,
         );
-      }
+      });
     }
 
     try {
@@ -2873,7 +3025,7 @@ class Application {
       this.videoListView.setPopularTagsContainer(this.videoListPopularTags);
     }
 
-    if (this.videoList) {
+    if (this.videoList && this.videoList.children.length === 0) {
       this.videoList.innerHTML = getSidebarLoadingMarkup(messageContext);
     }
   }
@@ -3522,11 +3674,15 @@ class Application {
   async handleModerationSettingsChange({ settings, skipRefresh = false } = {}) {
     const normalized = this.normalizeModerationSettings(settings);
     this.moderationSettings = normalized;
+    const feedContext = {
+      feedName: this.feedName || "",
+      feedVariant: this.feedVariant || "",
+    };
 
     if (this.videosMap instanceof Map) {
       for (const video of this.videosMap.values()) {
         if (video && typeof video === "object") {
-          this.decorateVideoModeration(video);
+          this.decorateVideoModeration(video, feedContext);
         }
       }
     }
@@ -3540,7 +3696,7 @@ class Application {
           continue;
         }
         if (card.video && typeof card.video === "object") {
-          this.decorateVideoModeration(card.video);
+          this.decorateVideoModeration(card.video, feedContext);
         }
         try {
           card.refreshModerationUi();
@@ -3556,13 +3712,13 @@ class Application {
     if (this.videoListView && Array.isArray(this.videoListView.currentVideos)) {
       for (const video of this.videoListView.currentVideos) {
         if (video && typeof video === "object") {
-          this.decorateVideoModeration(video);
+          this.decorateVideoModeration(video, feedContext);
         }
       }
     }
 
     if (this.currentVideo && typeof this.currentVideo === "object") {
-      this.decorateVideoModeration(this.currentVideo);
+      this.decorateVideoModeration(this.currentVideo, feedContext);
     }
 
     if (!skipRefresh) {
@@ -3581,6 +3737,10 @@ class Application {
 
   refreshVisibleModerationUi({ reason } = {}) {
     const context = reason ? ` after ${reason}` : "";
+    const feedContext = {
+      feedName: this.feedName || "",
+      feedVariant: this.feedVariant || "",
+    };
 
     const redecorateVideo = (video) => {
       if (!video || typeof video !== "object") {
@@ -3588,7 +3748,7 @@ class Application {
       }
 
       try {
-        this.decorateVideoModeration(video);
+        this.decorateVideoModeration(video, feedContext);
       } catch (error) {
         devLogger.warn(
           `[Application] Failed to decorate video moderation${context}:`,
@@ -3842,7 +4002,10 @@ class Application {
   }
 
   resolveSubscriptionsLink() {
-    if (this.subscriptionsLink instanceof HTMLElement) {
+    if (
+      this.subscriptionsLink instanceof HTMLElement &&
+      this.subscriptionsLink.isConnected
+    ) {
       return this.subscriptionsLink;
     }
 
@@ -5333,10 +5496,17 @@ class Application {
     devLogger.log("Starting loadVideos... (forceFetch =", forceFetch, ")");
 
     const container = this.mountVideoListView();
-    if (this.videoListView && container) {
-      this.videoListView.showLoading("Fetching recent videos…");
-    } else if (container) {
-      container.innerHTML = getSidebarLoadingMarkup("Fetching recent videos…");
+    const hasCachedVideos =
+      this.nostrService &&
+      Array.isArray(this.nostrService.getFilteredActiveVideos()) &&
+      this.nostrService.getFilteredActiveVideos().length > 0;
+
+    if (!hasCachedVideos) {
+      if (this.videoListView && container) {
+        this.videoListView.showLoading("Fetching recent videos…");
+      } else if (container) {
+        container.innerHTML = getSidebarLoadingMarkup("Fetching recent videos…");
+      }
     }
 
     let initialRefreshPromise = null;
@@ -5884,7 +6054,7 @@ class Application {
     return { ...this.moderationSettings };
   }
 
-  decorateVideoModeration(video) {
+  decorateVideoModeration(video, feedContext = {}) {
     if (!video || typeof video !== "object") {
       return video;
     }
@@ -6079,7 +6249,23 @@ class Application {
         }
       : null;
 
+    const FEED_HIDE_BYPASS_NAMES = new Set(["home", "recent"]);
+    const normalizedFeedName =
+      typeof feedContext?.feedName === "string" ? feedContext.feedName.trim().toLowerCase() : "";
+    const normalizedFeedVariant =
+      typeof feedContext?.feedVariant === "string"
+        ? feedContext.feedVariant.trim().toLowerCase()
+        : "";
+    const feedPolicyBypass =
+      (normalizedFeedName && FEED_HIDE_BYPASS_NAMES.has(normalizedFeedName)) ||
+      (normalizedFeedVariant && FEED_HIDE_BYPASS_NAMES.has(normalizedFeedVariant));
+
     let hideBypass = hideTriggered ? existingHideBypass : "";
+
+    if (hideTriggered && !hideBypass && feedPolicyBypass) {
+      hideBypass = "feed-policy";
+    }
+
     const computedHidden = hideTriggered && !hideBypass;
 
     const overrideEntry = getModerationOverride(video.id);
@@ -8168,7 +8354,7 @@ class Application {
    * and falls back to WebTorrent when needed.
    */
   async playVideoWithFallback(options = {}) {
-    const { url = "", magnet = "", trigger } = options || {};
+    const { url = "", magnet = "", trigger, forcedSource } = options || {};
     const hasTrigger = Object.prototype.hasOwnProperty.call(
       options || {},
       "trigger"
@@ -8182,6 +8368,7 @@ class Application {
     const requestSignature = JSON.stringify({
       url: sanitizedUrl,
       magnet: trimmedMagnet,
+      forcedSource,
     });
 
     const modalVideoIsConnected = (() => {
@@ -8333,6 +8520,7 @@ class Application {
         this.playViaWebTorrent(magnetUri, options),
       autoplay: () => this.autoplayModalVideo(),
       unsupportedBtihMessage: UNSUPPORTED_BTITH_MESSAGE,
+      forcedSource,
     });
 
     this.activePlaybackSession = session;

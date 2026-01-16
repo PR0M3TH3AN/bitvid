@@ -235,6 +235,88 @@ if (hasDocument) {
 	})();
 
 	var useSVG = document.documentElement.tagName.toLowerCase() === "svg";
+	var qrCodeStyleRegistry = new WeakMap();
+	var qrCodeStyleCounter = 0;
+
+	function ensureQrCodeStyleState(doc) {
+		if (!doc || typeof doc.createElement !== "function") {
+			return null;
+		}
+		var existing = qrCodeStyleRegistry.get(doc);
+		if (existing) {
+			return existing;
+		}
+		var styleNode = doc.getElementById("qrCodeStyles");
+		if (!(styleNode instanceof HTMLStyleElement)) {
+			styleNode = doc.createElement("style");
+			styleNode.id = "qrCodeStyles";
+			doc.head && doc.head.appendChild(styleNode);
+		}
+		var state = {
+			styleNode: styleNode,
+			values: new Map()
+		};
+		qrCodeStyleRegistry.set(doc, state);
+		return state;
+	}
+
+	function buildQrCodeRule(selector, values) {
+		var declarations = [];
+		if (values.colorDark) {
+			declarations.push("--qr-code-color-dark: " + values.colorDark + ";");
+		}
+		if (values.colorLight) {
+			declarations.push("--qr-code-color-light: " + values.colorLight + ";");
+		}
+		if (values.cellWidth) {
+			declarations.push("--qr-code-cell-width: " + values.cellWidth + ";");
+		}
+		if (values.cellHeight) {
+			declarations.push("--qr-code-cell-height: " + values.cellHeight + ";");
+		}
+		if (values.tableMargin) {
+			declarations.push("--qr-code-table-margin: " + values.tableMargin + ";");
+		}
+		return selector + " { " + declarations.join(" ") + " }";
+	}
+
+	function updateQrCodeContainerStyles(el, values) {
+		if (!el) {
+			return;
+		}
+		var doc = el.ownerDocument || document;
+		var state = ensureQrCodeStyleState(doc);
+		if (!state) {
+			return;
+		}
+		if (!el.dataset.qrCodeStyleId) {
+			qrCodeStyleCounter += 1;
+			el.dataset.qrCodeStyleId = "qr-code-" + qrCodeStyleCounter;
+		}
+		var selector = "[data-qr-code-style-id=\"" + el.dataset.qrCodeStyleId + "\"]";
+		var currentValues = state.values.get(selector) || {};
+		var nextValues = Object.assign({}, currentValues, values || {});
+		state.values.set(selector, nextValues);
+		var rules = [];
+		state.values.forEach(function (entryValues, entrySelector) {
+			rules.push(buildQrCodeRule(entrySelector, entryValues));
+		});
+		state.styleNode.textContent = rules.join("\n");
+	}
+
+	function setQrCodeMode(el, mode) {
+		if (!el) {
+			return;
+		}
+		if (el.classList) {
+			el.classList.add("qr-code__container");
+		}
+		if (mode) {
+			el.dataset.qrCodeMode = mode;
+		} else {
+			delete el.dataset.qrCodeMode;
+		}
+	}
 
 	// Drawing in DOM by using Table tag
 	var Drawing = useSVG ? svgDrawer : !_isSupportCanvas() ? (function () {
@@ -254,13 +336,24 @@ if (hasDocument) {
 			var nCount = oQRCode.getModuleCount();
 			var nWidth = Math.floor(_htOption.width / nCount);
 			var nHeight = Math.floor(_htOption.height / nCount);
-			var aHTML = ['<table style="border:0;border-collapse:collapse;">'];
+			var aHTML = ['<table class="qr-code__table">'];
+
+			updateQrCodeContainerStyles(_el, {
+				colorDark: _htOption.colorDark,
+				colorLight: _htOption.colorLight,
+				cellWidth: nWidth + "px",
+				cellHeight: nHeight + "px",
+				tableMargin: "0px"
+			});
 			
 			for (var row = 0; row < nCount; row++) {
 				aHTML.push('<tr>');
 				
 				for (var col = 0; col < nCount; col++) {
-					aHTML.push('<td style="border:0;border-collapse:collapse;padding:0;margin:0;width:' + nWidth + 'px;height:' + nHeight + 'px;background-color:' + (oQRCode.isDark(row, col) ? _htOption.colorDark : _htOption.colorLight) + ';"></td>');
+					var cellClass = oQRCode.isDark(row, col)
+						? "qr-code__cell qr-code__cell--dark"
+						: "qr-code__cell";
+					aHTML.push('<td class="' + cellClass + '"></td>');
 				}
 				
 				aHTML.push('</tr>');
@@ -275,7 +368,9 @@ if (hasDocument) {
 			var nTopMarginTable = (_htOption.height - elTable.offsetHeight) / 2;
 			
 			if (nLeftMarginTable > 0 && nTopMarginTable > 0) {
-				elTable.style.margin = nTopMarginTable + "px " + nLeftMarginTable + "px";	
+				updateQrCodeContainerStyles(_el, {
+					tableMargin: nTopMarginTable + "px " + nLeftMarginTable + "px"
+				});
 			}
 		};
 		
@@ -290,8 +385,7 @@ if (hasDocument) {
 	})() : (function () { // Drawing in Canvas
 		function _onMakeImage() {
 			this._elImage.src = this._elCanvas.toDataURL("image/png");
-			this._elImage.style.display = "block";
-			this._elCanvas.style.display = "none";			
+			setQrCodeMode(this._el, "image");
 		}
 		
                 // Android 2.1 bug workaround
@@ -390,13 +484,22 @@ if (hasDocument) {
 			this._elCanvas.height = htOption.height;
 			el.appendChild(this._elCanvas);
 			this._el = el;
+			if (this._el && this._el.classList) {
+				this._el.classList.add("qr-code__container");
+			}
 			this._oContext = this._elCanvas.getContext("2d");
 			this._bIsPainted = false;
 			this._elImage = document.createElement("img");
 			this._elImage.alt = "Scan me!";
-			this._elImage.style.display = "none";
+			if (this._elImage.classList) {
+				this._elImage.classList.add("qr-code__image");
+			}
+			if (this._elCanvas && this._elCanvas.classList) {
+				this._elCanvas.classList.add("qr-code__canvas");
+			}
 			this._el.appendChild(this._elImage);
 			this._bSupportDataURI = null;
+			setQrCodeMode(this._el, "canvas");
 		};
 			
 		/**
@@ -415,7 +518,7 @@ if (hasDocument) {
 			var nRoundedWidth = Math.round(nWidth);
 			var nRoundedHeight = Math.round(nHeight);
 
-			_elImage.style.display = "none";
+			setQrCodeMode(this._el, "canvas");
 			this.clear();
 			
 			for (var row = 0; row < nCount; row++) {
@@ -596,6 +699,9 @@ if (hasDocument) {
 		
 		this._android = _getAndroid();
 		this._el = el;
+		if (this._el && this._el.classList) {
+			this._el.classList.add("qr-code__container");
+		}
 		this._oQRCode = null;
 		this._oDrawing = new Drawing(this._el, this._htOption);
 		

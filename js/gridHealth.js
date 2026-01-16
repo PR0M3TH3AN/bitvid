@@ -62,9 +62,11 @@ function formatTime(ts) {
   }
 }
 
-function buildTooltip({ peers = 0, checkedAt, reason } = {}) {
+function buildTooltip({ peers = 0, checkedAt, reason, webseedOnly } = {}) {
   const parts = [];
-  if (Number.isFinite(peers)) {
+  if (webseedOnly) {
+    parts.push("Webseed only");
+  } else if (Number.isFinite(peers)) {
     parts.push(`Peers: ${Math.max(0, peers)}`);
   }
   if (Number.isFinite(checkedAt)) {
@@ -97,6 +99,7 @@ function normalizeResult(result) {
     healthy: false,
     peers: 0,
     reason: "error",
+    webseedOnly: false,
     appendedTrackers: false,
     hasProbeTrackers: false,
     usedTrackers: Array.isArray(TorrentClient.PROBE_TRACKERS)
@@ -112,10 +115,12 @@ function normalizeResult(result) {
     : 0;
   const healthy = Boolean(result.healthy) && peers > 0;
   const reason = typeof result.reason === "string" ? result.reason : "error";
+  const webseedOnly = Boolean(result.webseedOnly) && peers === 0;
   return {
     healthy,
     peers: healthy ? Math.max(1, peers) : peers,
     reason,
+    webseedOnly,
     appendedTrackers: Boolean(result.appendedTrackers),
     hasProbeTrackers:
       typeof result.hasProbeTrackers === "boolean"
@@ -416,6 +421,7 @@ function setBadge(card, state, details) {
       : 0;
   const hasPeerCount = details ? Number.isFinite(details.peers) : false;
   const peersTextValue = hasPeerCount ? String(peersValue) : "";
+  const webseedOnly = Boolean(details?.webseedOnly);
 
   card.dataset.streamHealthState = normalizedState;
   if (hasPeerCount) {
@@ -489,6 +495,7 @@ function setBadge(card, state, details) {
           peers: peersValue,
           checkedAt: details?.checkedAt,
           reason: details?.reason,
+          webseedOnly,
         });
   badge.setAttribute("aria-label", tooltip);
   badge.setAttribute("title", tooltip);
@@ -507,6 +514,7 @@ function setBadge(card, state, details) {
     state: normalizedState,
     peers: hasPeerCount ? peersValue : null,
     reason: details && typeof details.reason === "string" ? details.reason : null,
+    webseedOnly,
     checkedAt:
       details && Number.isFinite(details.checkedAt) ? Number(details.checkedAt) : null,
     text: badge.textContent,

@@ -35,6 +35,7 @@ import {
   formatShortNpub as defaultFormatShortNpub,
 } from "../../utils/formatters.js";
 import { sanitizeProfileMediaUrl } from "../../utils/profileMedia.js";
+import { getBreakpointLg } from "../../designSystem/metrics.js";
 
 const HEX64_REGEX = /^[0-9a-f]{64}$/i;
 const SIMILAR_CONTENT_LIMIT = 10;
@@ -153,6 +154,7 @@ export class VideoModal {
       "+": null,
       "-": null,
     };
+    this.reactionMeterStyleNode = null;
     this.reactionState = {
       counts: { "+": 0, "-": 0 },
       total: 0,
@@ -555,6 +557,15 @@ export class VideoModal {
 
     this.moderationController.initialize({ playerModal });
 
+    // Update overlay reference to the new bar selector
+    this.moderationOverlay =
+      playerModal.querySelector("[data-moderation-bar]") || null;
+    this.moderationBadge =
+      this.moderationOverlay?.querySelector("[data-moderation-badge='true']") ||
+      null;
+    this.moderationBadgeText =
+      this.moderationOverlay?.querySelector("[data-moderation-text]") || null;
+
     this.modalVideo = playerModal.querySelector("#modalVideo") || null;
     this.modalStatus = playerModal.querySelector("#modalStatus") || null;
     this.modalProgress = playerModal.querySelector("#modalProgress") || null;
@@ -574,6 +585,14 @@ export class VideoModal {
     this.modalSpeed = playerModal.querySelector("#modalSpeed") || null;
     this.modalDownloaded =
       playerModal.querySelector("#modalDownloaded") || null;
+    this.sourceToggleContainer =
+      playerModal.querySelector("[data-source-toggle-container]") || null;
+    this.sourceToggleButtons =
+      playerModal.querySelectorAll("[data-source-toggle]") || [];
+    this.activeServersLabel =
+      playerModal.querySelector("[data-active-servers-count]") || null;
+    this.activePeersLabel =
+      playerModal.querySelector("[data-active-peers-count]") || null;
     this.setTorrentStatsVisibility(false);
     this.videoTitle = playerModal.querySelector("#videoTitle") || null;
     this.videoDescription =
@@ -2233,6 +2252,19 @@ export class VideoModal {
       this.modalMoreBtn.addEventListener("click", this.handleModalMoreButtonClick);
     }
 
+    if (this.sourceToggleButtons.length > 0) {
+      this.sourceToggleButtons.forEach((btn) => {
+        btn.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const mode = btn.dataset.sourceToggle;
+          if (mode) {
+            this.handleSourceToggle(mode);
+          }
+        });
+      });
+    }
+
     if (this.modalZapCloseBtn) {
       this.modalZapCloseBtn.addEventListener("click", (event) => {
         event?.preventDefault?.();
@@ -2551,6 +2583,67 @@ export class VideoModal {
     this.dispatch("video:copy-magnet", { video: this.activeVideo });
   }
 
+  handleSourceToggle(mode) {
+    if (!this.activeVideo || (mode !== "url" && mode !== "torrent")) {
+      return;
+    }
+
+    this.dispatch("playback:switch-source", {
+      video: this.activeVideo,
+      source: mode,
+    });
+  }
+
+  updateSourceAvailability(video) {
+    if (!this.sourceToggleContainer) {
+      return;
+    }
+
+    const hasUrl = Boolean(
+      typeof video?.url === "string" && video.url.trim()
+    );
+    const hasMagnet = Boolean(
+      (typeof video?.magnet === "string" && video.magnet.trim()) ||
+        video?.torrentSupported
+    );
+
+    if (hasUrl || hasMagnet) {
+      this.sourceToggleContainer.removeAttribute("hidden");
+      this.sourceToggleContainer.classList.remove("hidden");
+    } else {
+      this.sourceToggleContainer.setAttribute("hidden", "");
+      this.sourceToggleContainer.classList.add("hidden");
+    }
+
+    this.sourceToggleButtons.forEach((btn) => {
+      const mode = btn.dataset.sourceToggle;
+      if (mode === "url") {
+        btn.disabled = !hasUrl;
+      } else if (mode === "torrent") {
+        btn.disabled = !hasMagnet;
+      }
+    });
+
+    if (this.activeServersLabel) {
+      const count = hasUrl ? 1 : 0;
+      this.activeServersLabel.textContent =
+        count === 1 ? "1 server" : `${count} servers`;
+    }
+  }
+
+  updateSourceToggleState(activeSource) {
+    if (!this.sourceToggleButtons.length) {
+      return;
+    }
+
+    const current = activeSource === "torrent" ? "torrent" : "url";
+    this.sourceToggleButtons.forEach((btn) => {
+      const mode = btn.dataset.sourceToggle;
+      const isActive = mode === current;
+      btn.setAttribute("aria-pressed", isActive ? "true" : "false");
+    });
+  }
+
   handleShareRequest(event) {
     event?.preventDefault?.();
     if (this.shareBtn?.disabled) {
@@ -2665,6 +2758,7 @@ export class VideoModal {
     }
     this.setGlobalModalState("player", true);
     this.applyLoadingPoster();
+    this.updateSourceAvailability(this.activeVideo);
     this.refreshActiveVideoModeration({ video: this.activeVideo });
   }
 
@@ -3107,9 +3201,32 @@ export class VideoModal {
       this.reactionMeterAssistive.textContent = assistiveLabel;
     }
 
-    if (this.reactionMeterFill) {
-      this.reactionMeterFill.style.inlineSize = `${likeRatio}%`;
-      this.reactionMeterFill.style.width = `${likeRatio}%`;
+    this.updateReactionMeterFill(likeRatio);
+  }
+
+  updateReactionMeterFill(likeRatio) {
+    const doc = this.playerModal?.ownerDocument || this.document;
+    if (!doc) {
+      return;
+    }
+
+    const clamped = Math.max(0, Math.min(100, Math.round(likeRatio)));
+    const widthValue = `${clamped}%`;
+    if (!this.reactionMeterStyleNode || !this.reactionMeterStyleNode.isConnected) {
+      const existing = doc.getElementById?.("videoModalReactionStyles");
+      if (existing instanceof HTMLStyleElement) {
+        this.reactionMeterStyleNode = existing;
+      } else {
+        const styleNode = doc.createElement("style");
+        styleNode.id = "videoModalReactionStyles";
+        doc.head?.appendChild(styleNode);
+        this.reactionMeterStyleNode = styleNode;
+      }
+    }
+
+    if (this.reactionMeterStyleNode) {
+      this.reactionMeterStyleNode.textContent =
+        `#playerModal { --video-modal-reaction-fill: ${widthValue}; }`;
     }
   }
 
@@ -3228,6 +3345,8 @@ export class VideoModal {
 
   setTorrentStatsVisibility(shouldShow) {
     const visible = Boolean(shouldShow);
+    this.updateSourceToggleState(visible ? "torrent" : "url");
+
     const container = this.modalStatsContainer;
     const stats = this.modalStats;
     const toggle = (element, show) => {
@@ -3265,6 +3384,12 @@ export class VideoModal {
   updatePeers(text) {
     if (this.modalPeers) {
       this.modalPeers.textContent = text || "";
+    }
+    if (this.activePeersLabel) {
+      const match = (text || "").match(/\d+/);
+      const count = match ? parseInt(match[0], 10) : 0;
+      this.activePeersLabel.textContent =
+        count === 1 ? "1 peer" : `${count} peers`;
     }
   }
 
@@ -4012,9 +4137,6 @@ export class VideoModal {
         this.videoTitle.textContent = titleText;
         // Ensure element is visible
         this.videoTitle.hidden = false;
-        if (this.videoTitle.style) {
-          this.videoTitle.style.display = "";
-        }
       } else {
         // Log for debugging if element cannot be found
         this.logger?.log?.(
@@ -4045,6 +4167,7 @@ export class VideoModal {
       this.updateCreator(creator);
     }
 
+    this.updateSourceAvailability(this.activeVideo);
     this.refreshActiveVideoModeration({ video: this.activeVideo });
   }
 
@@ -4131,8 +4254,17 @@ export class VideoModal {
       }
     }
 
+    if (this.creatorAvatar) {
+      if (shouldBlur) {
+        this.creatorAvatar.dataset.visualState = "blurred";
+      } else if (this.creatorAvatar.dataset.visualState === "blurred") {
+        delete this.creatorAvatar.dataset.visualState;
+      }
+    }
+
     if (overlay) {
-      if (showModeration && !context?.overrideActive) {
+      // Changed logic: Always show the bar if moderation is active, even if overridden
+      if (showModeration) {
         overlay.removeAttribute("hidden");
       } else {
         overlay.setAttribute("hidden", "");
@@ -4815,6 +4947,22 @@ export class VideoModal {
         cardIndex
       );
 
+      // Wire up moderation callbacks
+      if (card) {
+        card.onModerationOverride = (detail) => {
+          this.dispatch("video:moderation-override", detail);
+          return true;
+        };
+        card.onModerationHide = (detail) => {
+          this.dispatch("video:moderation-hide", detail);
+          return true;
+        };
+        card.onModerationBlock = (detail) => {
+          this.dispatch("video:moderation-block", detail);
+          return true;
+        };
+      }
+
       const root = card.getRoot();
       if (!root) {
         return;
@@ -5047,8 +5195,9 @@ export class VideoModal {
       return true;
     }
 
+    const breakpointLg = getBreakpointLg({ documentRef: this.document });
     try {
-      return win.matchMedia("(min-width: 1024px)").matches;
+      return win.matchMedia(`(min-width: ${breakpointLg})`).matches;
     } catch (error) {
       this.log(
         "[VideoModal] Failed to evaluate similar content media query",
@@ -5066,7 +5215,8 @@ export class VideoModal {
       return;
     }
 
-    const query = win.matchMedia("(min-width: 1024px)");
+    const breakpointLg = getBreakpointLg({ documentRef: this.document });
+    const query = win.matchMedia(`(min-width: ${breakpointLg})`);
     if (this.similarContentMediaQuery === query) {
       this.refreshSimilarContentVisibility();
       return;

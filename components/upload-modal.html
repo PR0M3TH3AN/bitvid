@@ -122,7 +122,11 @@
                     <div id="section-storage-settings" class="hidden mt-3 space-y-4 bg-surface-alt/50 p-4 rounded-lg border border-border/50">
                         <div class="flex items-center justify-between">
                             <h4 class="text-sm font-semibold text-text">Cloudflare R2 Credentials</h4>
-                            <span id="storage-status" class="text-xs text-muted">Stored locally</span>
+                            <div class="flex items-center gap-2">
+                                <span id="storage-lock-status" class="text-xs text-muted">Locked 🔒</span>
+                                <button type="button" id="btn-storage-unlock" class="text-xs text-accent hover:underline hidden">Unlock</button>
+                                <span id="storage-status" class="text-xs text-muted hidden">Stored locally</span>
+                            </div>
                         </div>
                         <div class="mb-2">
                             <p class="text-xs text-muted">
@@ -153,7 +157,7 @@
                                     Copy
                                 </button>
                             </div>
-                            <p class="text-[10px] text-muted">Create a bucket with this exact name in Cloudflare R2.</p>
+                            <p class="text-4xs text-muted">Create a bucket with this exact name in Cloudflare R2.</p>
                         </div>
 
                         <!-- Step 1: Credentials -->
@@ -182,7 +186,7 @@
                             <div class="space-y-1">
                                 <label for="input-r2-domain" class="text-xs font-medium text-text">Public Bucket URL</label>
                                 <input id="input-r2-domain" type="text" class="input text-xs" placeholder="https://pub-xxx.r2.dev" />
-                                <p class="text-[10px] text-muted leading-tight">
+                                <p class="text-4xs text-muted leading-tight">
                                     Enable <strong>Public Access</strong> in the Cloudflare dashboard to get your r2.dev URL.
                                 </p>
                             </div>
@@ -209,12 +213,12 @@
                  <div class="space-y-2">
                     <label for="input-url" class="block text-sm font-medium text-text">Video URL</label>
                     <input id="input-url" type="url" class="input" placeholder="https://example.com/video.mp4" />
-                    <p class="text-xs text-muted">Direct link to a hosted video file.</p>
+                    <p class="text-xs text-muted">Primary hosted video source (URL-first playback).</p>
                 </div>
                  <div class="space-y-2">
                     <label for="input-magnet" class="block text-sm font-medium text-text">Magnet Link</label>
                     <input id="input-magnet" type="text" class="input" placeholder="magnet:?xt=urn:btih:..." />
-                    <p class="text-xs text-muted">Optional P2P fallback or primary source.</p>
+                    <p class="text-xs text-muted">Optional WebTorrent fallback when the URL is unavailable.</p>
                 </div>
             </div>
 

@@ -13,8 +13,10 @@ import {
   DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
   RUNTIME_FLAGS,
 } from "../constants.js";
+import { getBreakpointLg } from "../designSystem/metrics.js";
 import { getProviderMetadata } from "../services/authProviders/index.js";
 import { devLogger, userLogger } from "../utils/logger.js";
+import { getActiveSigner } from "../nostr/client.js";
 
 const noop = () => {};
 
@@ -1007,6 +1009,7 @@ export class ProfileModalController {
       account: null,
       relays: null,
       wallet: null,
+      storage: null,
       hashtags: null,
       subscriptions: null,
       friends: null,
@@ -1019,6 +1022,7 @@ export class ProfileModalController {
       account: null,
       relays: null,
       wallet: null,
+      storage: null,
       hashtags: null,
       subscriptions: null,
       friends: null,
@@ -1135,8 +1139,7 @@ export class ProfileModalController {
     this.focusTrapSuspended = false;
     this.focusTrapSuspendCount = 0;
     this.focusTrapAriaHiddenBeforeSuspend = null;
-    this.focusTrapPointerEventsBeforeSuspend = null;
-    this.focusTrapVisibilityBeforeSuspend = null;
+    this.focusTrapNestedModalActiveBeforeSuspend = null;
     this.profileSwitcherSelectionPubkey = null;
     this.previouslyFocusedElement = null;
     this.largeLayoutQuery = null;
@@ -1245,6 +1248,7 @@ export class ProfileModalController {
       document.getElementById("profileNavAccount") || null;
     this.navButtons.relays = document.getElementById("profileNavRelays") || null;
     this.navButtons.wallet = document.getElementById("profileNavWallet") || null;
+    this.navButtons.storage = document.getElementById("profileNavStorage") || null;
     this.navButtons.hashtags =
       document.getElementById("profileNavHashtags") || null;
     this.navButtons.subscriptions =
@@ -1262,6 +1266,7 @@ export class ProfileModalController {
     this.panes.account = document.getElementById("profilePaneAccount") || null;
     this.panes.relays = document.getElementById("profilePaneRelays") || null;
     this.panes.wallet = document.getElementById("profilePaneWallet") || null;
+    this.panes.storage = document.getElementById("profilePaneStorage") || null;
     this.panes.hashtags = document.getElementById("profilePaneHashtags") || null;
     this.panes.subscriptions =
       document.getElementById("profilePaneSubscriptions") || null;
@@ -1417,6 +1422,25 @@ export class ProfileModalController {
       document.getElementById("adminAddModeratorBtn") || null;
     this.moderatorInput =
       document.getElementById("adminModeratorInput") || null;
+
+    this.storageUnlockBtn = document.getElementById("profileStorageUnlockBtn") || null;
+    this.storageSaveBtn = document.getElementById("storageSaveBtn") || null;
+    this.storageTestBtn = document.getElementById("storageTestBtn") || null;
+    this.storageClearBtn = document.getElementById("storageClearBtn") || null;
+    this.storageUnlockSection = document.getElementById("profileStorageUnlock") || null;
+    this.storageFormSection = document.getElementById("profileStorageForm") || null;
+    this.storageStatusText = document.getElementById("profileStorageStatus") || null;
+    this.storageFormStatus = document.getElementById("storageFormStatus") || null;
+
+    this.storageProviderInput = document.getElementById("storageProvider") || null;
+    this.storageEndpointInput = document.getElementById("storageEndpoint") || null;
+    this.storageRegionInput = document.getElementById("storageRegion") || null;
+    this.storageAccessKeyInput = document.getElementById("storageAccessKey") || null;
+    this.storageSecretKeyInput = document.getElementById("storageSecretKey") || null;
+    this.storageBucketInput = document.getElementById("storageBucket") || null;
+    this.storagePrefixInput = document.getElementById("storagePrefix") || null;
+    this.storageDefaultInput = document.getElementById("storageDefault") || null;
+    this.storageR2Helper = document.getElementById("storageR2Helper") || null;
 
     // Backwards-compatible aliases retained for application code that still
     // mirrors DOM references from the controller. These should be removed once
@@ -2687,6 +2711,36 @@ export class ProfileModalController {
       });
     }
 
+    if (this.storageUnlockBtn instanceof HTMLElement) {
+      this.storageUnlockBtn.addEventListener("click", () => {
+        void this.handleUnlockStorage();
+      });
+    }
+
+    if (this.storageSaveBtn instanceof HTMLElement) {
+      this.storageSaveBtn.addEventListener("click", () => {
+        void this.handleSaveStorage();
+      });
+    }
+
+    if (this.storageTestBtn instanceof HTMLElement) {
+      this.storageTestBtn.addEventListener("click", () => {
+        void this.handleTestStorage();
+      });
+    }
+
+    if (this.storageClearBtn instanceof HTMLElement) {
+      this.storageClearBtn.addEventListener("click", () => {
+        void this.handleClearStorage();
+      });
+    }
+
+    if (this.storageProviderInput instanceof HTMLElement) {
+      this.storageProviderInput.addEventListener("change", () => {
+        this.updateStorageFormVisibility();
+      });
+    }
+
     this.updateMessagesReloadState();
   }
 
@@ -3684,7 +3738,8 @@ export class ProfileModalController {
     }
 
     try {
-      const query = window.matchMedia("(min-width: 1024px)");
+      const breakpointLg = getBreakpointLg();
+      const query = window.matchMedia(`(min-width: ${breakpointLg})`);
       const handler = (event) => {
         const matches =
           typeof event?.matches === "boolean" ? event.matches : query.matches;
@@ -3940,6 +3995,8 @@ export class ProfileModalController {
       void this.populateProfileMessages({ reason: "pane-select" });
     } else if (target === "wallet") {
       this.refreshWalletPaneState();
+    } else if (target === "storage") {
+      this.populateStoragePane();
     } else if (target === "hashtags") {
       this.populateHashtagPreferences();
     } else if (target === "subscriptions") {
@@ -5834,6 +5891,293 @@ export class ProfileModalController {
     }
   }
 
+  async populateStoragePane() {
+    const storageService = this.services.storageService;
+    const pubkey = this.normalizeHexPubkey(this.getActivePubkey());
+
+    if (!pubkey) {
+      // Not logged in
+      if (this.storageUnlockSection) this.storageUnlockSection.classList.add("hidden");
+      if (this.storageFormSection) this.storageFormSection.classList.add("hidden");
+      if (this.storageStatusText) {
+        this.storageStatusText.textContent = "Please login to manage storage.";
+        this.storageStatusText.className = "text-xs text-status-danger";
+      }
+      return;
+    }
+
+    const isUnlocked = storageService && storageService.masterKeys.has(pubkey);
+
+    if (this.storageStatusText) {
+      this.storageStatusText.textContent = isUnlocked ? "Unlocked" : "Locked";
+      this.storageStatusText.className = isUnlocked ? "text-xs text-status-success" : "text-xs text-status-warning";
+    }
+
+    if (isUnlocked) {
+      if (this.storageUnlockSection) this.storageUnlockSection.classList.add("hidden");
+      if (this.storageFormSection) this.storageFormSection.classList.remove("hidden");
+
+      // Load existing connection if form is empty or needs refresh
+      // For now, we assume managing a 'default' connection or the first one found.
+      try {
+        const connections = await storageService.listConnections(pubkey);
+        // Prioritize default for uploads
+        const defaultConn = connections.find(c => c.meta?.defaultForUploads);
+        const targetConn = defaultConn || connections[0];
+
+        if (targetConn) {
+          const conn = await storageService.getConnection(pubkey, targetConn.id);
+          if (conn) {
+            this.fillStorageForm(conn);
+            if (this.storageStatusText) {
+              const label = conn.meta?.label || conn.provider || "S3";
+              this.storageStatusText.textContent = `Unlocked (${label})`;
+            }
+          }
+        }
+      } catch (error) {
+        devLogger.error("Failed to load storage connections:", error);
+      }
+    } else {
+      if (this.storageUnlockSection) this.storageUnlockSection.classList.remove("hidden");
+      if (this.storageFormSection) this.storageFormSection.classList.add("hidden");
+    }
+
+    this.updateStorageFormVisibility();
+  }
+
+  fillStorageForm(conn) {
+    if (!conn) return;
+    const { provider, accessKeyId, secretAccessKey, accountId: payloadAccountId, endpoint: payloadEndpoint } = conn;
+    const { endpoint, region, bucket, prefix, defaultForUploads, accountId } = conn.meta || {};
+
+    if (this.storageProviderInput) this.storageProviderInput.value = provider || "cloudflare_r2";
+
+    // For R2, accountId is critical.
+    const resolvedEndpoint = endpoint || accountId || payloadAccountId || payloadEndpoint || "";
+
+    if (this.storageEndpointInput) this.storageEndpointInput.value = resolvedEndpoint;
+    if (this.storageRegionInput) this.storageRegionInput.value = region || "auto";
+    if (this.storageAccessKeyInput) this.storageAccessKeyInput.value = accessKeyId || "";
+    if (this.storageSecretKeyInput) this.storageSecretKeyInput.value = secretAccessKey || "";
+    if (this.storageBucketInput) this.storageBucketInput.value = bucket || "";
+    if (this.storagePrefixInput) this.storagePrefixInput.value = prefix || "";
+    if (this.storageDefaultInput) this.storageDefaultInput.checked = !!defaultForUploads;
+
+    this.updateStorageFormVisibility();
+  }
+
+  updateStorageFormVisibility() {
+    const provider = this.storageProviderInput?.value || "cloudflare_r2";
+    const isR2 = provider === "cloudflare_r2";
+
+    if (this.storageEndpointInput) {
+       // Hide generic endpoint for R2 as it is constructed from accountId (which we might map to endpoint or add field)
+       // The prompt said "Endpoint (for generic S3; can be hidden or preset for R2)"
+       // R2 uses accountId. r2Service expects accountId.
+       // We can overload "Endpoint" to be Account ID for R2 in the UI if we want, or add a field.
+       // The form has "Endpoint" and "Region".
+       // Let's hide Endpoint for R2 and assume we can parse account ID from existing R2 logic or add a field?
+       // Wait, the prompt requested: "Endpoint (for generic S3; can be hidden or preset for R2)".
+       // R2 needs Account ID. The generic form has Endpoint.
+       // I'll re-purpose Endpoint label or visibility based on provider.
+       // Actually, I'll keep it simple: Hide endpoint for R2. But where does User enter Account ID?
+       // `r2Service` uses `accountId`.
+       // I will repurpose the "Endpoint" input to be "Account ID" when R2 is selected, or add a field.
+       // The HTML I added has `storageEndpoint`.
+       // Let's toggle the label/placeholder.
+       const label = this.storageEndpointInput.parentElement.querySelector("span");
+       if (isR2) {
+         if (label) label.textContent = "Cloudflare Account ID";
+         this.storageEndpointInput.placeholder = "Account ID from Cloudflare dashboard";
+         this.storageEndpointInput.parentElement.classList.remove("hidden");
+         this.storageEndpointInput.type = "text";
+       } else {
+         if (label) label.textContent = "Endpoint URL";
+         this.storageEndpointInput.placeholder = "https://s3.example.com";
+         this.storageEndpointInput.parentElement.classList.remove("hidden");
+         this.storageEndpointInput.type = "url";
+       }
+    }
+
+    if (this.storageR2Helper) {
+        if (isR2) this.storageR2Helper.classList.remove("hidden");
+        else this.storageR2Helper.classList.add("hidden");
+    }
+  }
+
+  async handleUnlockStorage() {
+    const pubkey = this.normalizeHexPubkey(this.getActivePubkey());
+    if (!pubkey) return;
+
+    // We need the active signer.
+    const signer = getActiveSigner();
+    // Or try resolving via client if global one is missing?
+    // ProfileModalController imports getActiveSigner.
+
+    if (!signer) {
+        this.showError("No active signer found. Please login.");
+        return;
+    }
+
+    const storageService = this.services.storageService;
+    if (!storageService) {
+        this.showError("Storage service unavailable.");
+        return;
+    }
+
+    if (this.storageUnlockBtn) {
+        this.storageUnlockBtn.disabled = true;
+        this.storageUnlockBtn.textContent = "Unlocking...";
+    }
+
+    try {
+        await storageService.unlock(pubkey, { signer });
+        this.showSuccess("Storage unlocked.");
+        this.populateStoragePane();
+    } catch (error) {
+        devLogger.error("Failed to unlock storage:", error);
+        this.showError("Failed to unlock storage. Ensure your signer supports NIP-04/44.");
+    } finally {
+        if (this.storageUnlockBtn) {
+            this.storageUnlockBtn.disabled = false;
+            this.storageUnlockBtn.textContent = "Unlock Storage";
+        }
+    }
+  }
+
+  async handleSaveStorage() {
+    const pubkey = this.normalizeHexPubkey(this.getActivePubkey());
+    if (!pubkey) return;
+
+    const storageService = this.services.storageService;
+    if (!storageService) return;
+
+    const provider = this.storageProviderInput?.value || "cloudflare_r2";
+    const endpointOrAccount = this.storageEndpointInput?.value?.trim() || "";
+    const region = this.storageRegionInput?.value?.trim() || "auto";
+    const accessKeyId = this.storageAccessKeyInput?.value?.trim() || "";
+    const secretAccessKey = this.storageSecretKeyInput?.value?.trim() || "";
+    const bucket = this.storageBucketInput?.value?.trim() || "";
+    const prefix = this.storagePrefixInput?.value?.trim() || "";
+    const isDefault = this.storageDefaultInput?.checked || false;
+
+    if (!accessKeyId || !secretAccessKey || !bucket || !endpointOrAccount) {
+        this.setStorageFormStatus("Please fill in all required fields.", "error");
+        return;
+    }
+
+    const payload = {
+        provider,
+        accessKeyId,
+        secretAccessKey,
+    };
+
+    // For R2, endpoint input is Account ID.
+    // For Generic S3, it's the full endpoint URL.
+    if (provider === "cloudflare_r2") {
+        payload.accountId = endpointOrAccount;
+    } else {
+        payload.endpoint = endpointOrAccount;
+    }
+
+    const meta = {
+        provider,
+        region,
+        bucket,
+        prefix,
+        defaultForUploads: isDefault,
+        label: `${provider} - ${bucket}`,
+        // Duplicate non-sensitive info for easier listing
+        endpoint: provider === "cloudflare_r2" ? undefined : endpointOrAccount,
+    };
+
+    // If R2, we also need accountId in meta? No, keep it private if possible, but R2Service needs it.
+    // Actually R2 account ID is not strictly secret, but payload is encrypted.
+    // We can store it in meta if we want to show it in UI without decrypting.
+    if (provider === "cloudflare_r2") {
+        meta.accountId = endpointOrAccount;
+    }
+
+    this.setStorageFormStatus("Saving...", "info");
+
+    try {
+        await storageService.saveConnection(pubkey, "default", payload, meta);
+        this.setStorageFormStatus("Connection saved.", "success");
+        this.showSuccess("Storage connection saved.");
+    } catch (error) {
+        devLogger.error("Failed to save connection:", error);
+        this.setStorageFormStatus("Failed to save connection.", "error");
+    }
+  }
+
+  async handleTestStorage() {
+    const pubkey = this.normalizeHexPubkey(this.getActivePubkey());
+    if (!pubkey) return;
+
+    const storageService = this.services.storageService;
+    if (!storageService) {
+        this.setStorageFormStatus("Storage service unavailable.", "error");
+        return;
+    }
+
+    const provider = this.storageProviderInput?.value || "cloudflare_r2";
+    const endpointOrAccount = this.storageEndpointInput?.value?.trim() || "";
+    const region = this.storageRegionInput?.value?.trim() || "auto";
+    const accessKeyId = this.storageAccessKeyInput?.value?.trim() || "";
+    const secretAccessKey = this.storageSecretKeyInput?.value?.trim() || "";
+    const bucket = this.storageBucketInput?.value?.trim() || "";
+
+    if (!accessKeyId || !secretAccessKey || !endpointOrAccount) {
+        this.setStorageFormStatus("Missing credentials for test.", "error");
+        return;
+    }
+
+    this.setStorageFormStatus("Testing connection...", "info");
+
+    const config = {
+      provider,
+      accessKeyId,
+      secretAccessKey,
+      region,
+      bucket,
+    };
+
+    if (provider === "cloudflare_r2") {
+      config.accountId = endpointOrAccount;
+    } else {
+      config.endpoint = endpointOrAccount;
+    }
+
+    try {
+        const result = await storageService.testAccess(provider, config);
+        if (result.success) {
+            this.setStorageFormStatus(result.message || "Connection Verified!", "success");
+        } else {
+            this.setStorageFormStatus(`Test Failed: ${result.error}`, "error");
+        }
+    } catch (error) {
+        this.setStorageFormStatus(`Test Error: ${error.message}`, "error");
+    }
+  }
+
+  handleClearStorage() {
+    this.storageEndpointInput.value = "";
+    this.storageRegionInput.value = "auto";
+    this.storageAccessKeyInput.value = "";
+    this.storageSecretKeyInput.value = "";
+    this.storageBucketInput.value = "";
+    this.storagePrefixInput.value = "";
+    this.storageDefaultInput.checked = false;
+    this.setStorageFormStatus("", "info");
+  }
+
+  setStorageFormStatus(message, variant = "info") {
+    if (!this.storageFormStatus) return;
+    this.storageFormStatus.textContent = message;
+    this.storageFormStatus.className = `text-sm text-status-${variant}`;
+  }
+
   async populateProfileWatchHistory() {
     const renderer = this.ensureProfileHistoryRenderer();
     if (!renderer) {
@@ -5849,7 +6193,12 @@ export class ProfileModalController {
     }
 
     try {
-      await renderer.ensureInitialLoad({ actor: primaryActor });
+      const state = typeof renderer.getState === "function" ? renderer.getState() : {};
+      if (state.initialized) {
+        await renderer.refresh({ actor: primaryActor, force: true });
+      } else {
+        await renderer.ensureInitialLoad({ actor: primaryActor });
+      }
 
       if (!this.boundProfileHistoryVisibility) {
         this.boundProfileHistoryVisibility = () => {
@@ -8332,25 +8681,16 @@ export class ProfileModalController {
       this.focusTrapAriaHiddenBeforeSuspend = modalRoot.getAttribute(
         "aria-hidden",
       );
-      this.focusTrapPointerEventsBeforeSuspend =
-        typeof modalRoot.style.pointerEvents === "string" &&
-        modalRoot.style.pointerEvents
-          ? modalRoot.style.pointerEvents
-          : null;
-      this.focusTrapVisibilityBeforeSuspend =
-        typeof modalRoot.style.visibility === "string" &&
-        modalRoot.style.visibility
-          ? modalRoot.style.visibility
+      this.focusTrapNestedModalActiveBeforeSuspend =
+        typeof modalRoot.dataset.nestedModalActive === "string"
+          ? modalRoot.dataset.nestedModalActive
           : null;
 
       modalRoot.dataset.nestedModalActive = "true";
       modalRoot.setAttribute("aria-hidden", "true");
-      modalRoot.style.setProperty("pointer-events", "none");
-      modalRoot.style.setProperty("visibility", "hidden");
     } else {
       this.focusTrapAriaHiddenBeforeSuspend = null;
-      this.focusTrapPointerEventsBeforeSuspend = null;
-      this.focusTrapVisibilityBeforeSuspend = null;
+      this.focusTrapNestedModalActiveBeforeSuspend = null;
     }
 
     const panel = this.getModalPanelElement();
@@ -8391,30 +8731,11 @@ export class ProfileModalController {
         }
       }
 
-      if (
-        this.focusTrapPointerEventsBeforeSuspend === null ||
-        this.focusTrapPointerEventsBeforeSuspend === undefined ||
-        this.focusTrapPointerEventsBeforeSuspend === ""
-      ) {
-        modalRoot.style.removeProperty("pointer-events");
+      if (this.focusTrapNestedModalActiveBeforeSuspend === null) {
+        delete modalRoot.dataset.nestedModalActive;
       } else {
-        modalRoot.style.setProperty(
-          "pointer-events",
-          this.focusTrapPointerEventsBeforeSuspend,
-        );
-      }
-
-      if (
-        this.focusTrapVisibilityBeforeSuspend === null ||
-        this.focusTrapVisibilityBeforeSuspend === undefined ||
-        this.focusTrapVisibilityBeforeSuspend === ""
-      ) {
-        modalRoot.style.removeProperty("visibility");
-      } else {
-        modalRoot.style.setProperty(
-          "visibility",
-          this.focusTrapVisibilityBeforeSuspend,
-        );
+        modalRoot.dataset.nestedModalActive =
+          this.focusTrapNestedModalActiveBeforeSuspend;
       }
     }
 
@@ -8424,8 +8745,7 @@ export class ProfileModalController {
     }
 
     this.focusTrapAriaHiddenBeforeSuspend = null;
-    this.focusTrapPointerEventsBeforeSuspend = null;
-    this.focusTrapVisibilityBeforeSuspend = null;
+    this.focusTrapNestedModalActiveBeforeSuspend = null;
 
     this.updateFocusTrap();
 
@@ -8503,21 +8823,7 @@ export class ProfileModalController {
         : null;
 
     if (modalRoot) {
-      modalRoot.style.setProperty("z-index", "var(--z-modal-top-root)");
-    }
-
-    if (this.profileModalBackdrop instanceof HTMLElement) {
-      this.profileModalBackdrop.style.setProperty(
-        "z-index",
-        "var(--z-modal-top-overlay)",
-      );
-    }
-
-    if (this.profileModalPanel instanceof HTMLElement) {
-      this.profileModalPanel.style.setProperty(
-        "z-index",
-        "var(--z-modal-top-content)",
-      );
+      modalRoot.dataset.modalStack = "top";
     }
   }
 
@@ -8685,8 +8991,7 @@ export class ProfileModalController {
       modalElement.classList.add("hidden");
       modalElement.setAttribute("aria-hidden", "true");
       delete modalElement.dataset.nestedModalActive;
-      modalElement.style.removeProperty("pointer-events");
-      modalElement.style.removeProperty("visibility");
+      delete modalElement.dataset.modalStack;
       this.setGlobalModalState("profile", false);
       this.setMobileView("menu", { skipFocusTrap: true });
 
@@ -8712,8 +9017,7 @@ export class ProfileModalController {
     this.focusTrapSuspendCount = 0;
     this.focusTrapSuspended = false;
     this.focusTrapAriaHiddenBeforeSuspend = null;
-    this.focusTrapPointerEventsBeforeSuspend = null;
-    this.focusTrapVisibilityBeforeSuspend = null;
+    this.focusTrapNestedModalActiveBeforeSuspend = null;
 
     if (
       this.boundProfileHistoryVisibility &&

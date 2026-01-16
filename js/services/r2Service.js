@@ -1,3 +1,21 @@
+/**
+ * js/services/r2Service.js
+ *
+ * Service responsible for managing Cloudflare R2 uploads and configuration.
+ *
+ * Key Responsibilities:
+ * - Managing user R2 credentials and bucket settings.
+ * - performing S3-compatible multipart uploads (via `js/storage/r2-s3.js`).
+ * - Orchestrating the "Hybrid" video hosting strategy:
+ *   1. Videos are uploaded to R2 (S3) for reliable direct hosting.
+ *   2. A `.torrent` file is generated and uploaded alongside the video.
+ *   3. The final Magnet URI embeds the R2 URL as a "WebSeed" (`ws=`) and the
+ *      torrent file as a metadata source (`xs=`).
+ *
+ * This allows clients to stream directly from R2 (fast, reliable) while simultaneously
+ * joining the P2P swarm. If R2 bandwidth runs out or the link breaks, the swarm takes over.
+ */
+
 import {
   loadR2Settings,
   saveR2Settings,
@@ -29,8 +47,18 @@ import {
   normalizeVideoNotePayload,
   VIDEO_NOTE_ERROR_CODES,
 } from "./videoNotePayload.js";
+import storageService from "./storageService.js";
 
 const STATUS_VARIANTS = new Set(["info", "success", "error", "warning"]);
+const INFO_HASH_PATTERN = /^[a-f0-9]{40}$/;
+
+function normalizeInfoHash(value) {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function isValidInfoHash(value) {
+  return INFO_HASH_PATTERN.test(value);
+}
 
 function createDefaultSettings() {
   return {
@@ -40,6 +68,34 @@ function createDefaultSettings() {
     baseDomain: "", // Now interpreted as the public URL base
     buckets: {},
   };
+}
+
+function safeDecodeNpub(npub) {
+  if (typeof npub !== "string") {
+    return null;
+  }
+  const trimmed = npub.trim();
+  if (!trimmed) {
+    return null;
+  }
+  if (!trimmed.startsWith("npub1")) {
+    return null;
+  }
+  try {
+    if (
+      typeof window !== "undefined" &&
+      window.NostrTools &&
+      window.NostrTools.nip19
+    ) {
+      const { type, data } = window.NostrTools.nip19.decode(trimmed);
+      if (type === "npub") {
+        return data;
+      }
+    }
+  } catch (err) {
+    // Ignore decode errors
+  }
+  return null;
 }
 
 class R2Service {
@@ -117,7 +173,10 @@ class R2Service {
     this.emit("uploadProgress", { fraction });
   }
 
-  buildNip71MetadataForUpload(existingMetadata, { publicUrl = "", file = null } = {}) {
+  buildNip71MetadataForUpload(
+    existingMetadata,
+    { publicUrl = "", file = null, infoHash = "" } = {},
+  ) {
     const base =
       existingMetadata && typeof existingMetadata === "object"
         ? { ...existingMetadata }
@@ -168,8 +227,13 @@ class R2Service {
 
     const primaryVariant = imetaList[0];
     const normalizedUrl =
-      typeof publicUrl === "string" ? publicUrl.trim() : String(publicUrl || "").trim();
-    if (normalizedUrl && (!primaryVariant.url || !String(primaryVariant.url).trim())) {
+      typeof publicUrl === "string"
+        ? publicUrl.trim()
+        : String(publicUrl || "").trim();
+    if (
+      normalizedUrl &&
+      (!primaryVariant.url || !String(primaryVariant.url).trim())
+    ) {
       primaryVariant.url = normalizedUrl;
     }
 
@@ -177,6 +241,15 @@ class R2Service {
       file && typeof file.type === "string" ? file.type.trim() : "";
     if (mimeType && (!primaryVariant.m || !String(primaryVariant.m).trim())) {
       primaryVariant.m = mimeType;
+    }
+
+    const normalizedHash = normalizeInfoHash(infoHash);
+    if (
+      normalizedHash &&
+      isValidInfoHash(normalizedHash) &&
+      (!primaryVariant.x || !String(primaryVariant.x).trim())
+    ) {
+      primaryVariant.x = normalizedHash;
     }
 
     base.imeta = imetaList;
@@ -215,10 +288,24 @@ class R2Service {
   }
 
   async handleCloudflareSettingsSubmit(formValues = {}, { quiet = false } = {}) {
+    // Legacy support wrapper: redirects to storageService if possible, or warns.
+    // For now, we allow saving to legacy for backward compatibility if explicit flow isn't used,
+    // but we prefer to use storageService.
+
     const accountId = String(formValues.accountId || "").trim();
     const accessKeyId = String(formValues.accessKeyId || "").trim();
     const secretAccessKey = String(formValues.secretAccessKey || "").trim();
     const baseDomain = sanitizeBaseDomain(formValues.baseDomain || ""); // This is the Public Bucket URL
+
+    if (baseDomain.includes(".r2.cloudflarestorage.com")) {
+      if (!quiet) {
+        this.setCloudflareSettingsStatus(
+          "It looks like you entered the S3 API URL. Please use your Public Bucket URL (e.g. https://pub-xxx.r2.dev or your custom domain).",
+          "error"
+        );
+      }
+      return false;
+    }
 
     if (!accountId || !accessKeyId || !secretAccessKey) {
       if (!quiet) {
@@ -232,22 +319,23 @@ class R2Service {
 
     if (!baseDomain) {
       if (!quiet) {
-         this.setCloudflareSettingsStatus(
-             "Public Bucket URL is required (e.g., https://pub-xxx.r2.dev).",
-             "error"
-         );
+        this.setCloudflareSettingsStatus(
+          "Public Bucket URL is required (e.g., https://pub-xxx.r2.dev).",
+          "error"
+        );
       }
       return false;
     }
+
+    // Try to save to StorageService if available and unlocked
+    // We can't easily know the active pubkey here unless passed or inferred from context.
+    // Since this method is legacy, we'll default to legacy behavior but warn.
 
     let buckets = { ...(this.getSettings().buckets || {}) };
     const previousAccount = this.getSettings().accountId || "";
     const previousBaseDomain = this.getSettings().baseDomain || "";
 
-    if (
-      previousAccount !== accountId ||
-      previousBaseDomain !== baseDomain
-    ) {
+    if (previousAccount !== accountId || previousBaseDomain !== baseDomain) {
       buckets = {};
     }
 
@@ -283,6 +371,76 @@ class R2Service {
     return this.handleCloudflareSettingsSubmit(formValues, options);
   }
 
+  /**
+   * Resolves connection credentials for the given npub.
+   * Priority:
+   * 1. StorageService (Encrypted)
+   * 2. Legacy Settings (Plaintext)
+   */
+  async resolveConnection(npub) {
+    if (!npub) return null;
+
+    // 1. Try StorageService
+    const pubkey = safeDecodeNpub(npub);
+    if (pubkey && storageService) {
+      try {
+        if (storageService.isUnlocked(pubkey)) {
+          const connections = await storageService.listConnections(pubkey);
+          if (Array.isArray(connections) && connections.length > 0) {
+            let target = connections.find(
+              (c) => c.meta && c.meta.defaultForUploads
+            );
+            if (!target) {
+              // Prefer R2, else first
+              target = connections.find(
+                (c) => c.provider === "cloudflare_r2"
+              );
+            }
+            if (!target) {
+              target = connections[0];
+            }
+
+            if (target) {
+              const details = await storageService.getConnection(
+                pubkey,
+                target.id
+              );
+              if (details) {
+                // Map to R2 settings format
+                return {
+                  accountId: details.accountId || details.meta?.accountId || "",
+                  endpoint: details.endpoint || details.meta?.endpoint || "",
+                  bucket: details.bucket || details.meta?.bucket || "",
+                  region: details.region || details.meta?.region || "auto",
+                  accessKeyId: details.accessKeyId || "",
+                  secretAccessKey: details.secretAccessKey || "",
+                  baseDomain:
+                    details.meta?.baseDomain || details.meta?.publicUrl || "",
+                  isLegacy: false,
+                };
+              }
+            }
+          }
+        }
+      } catch (err) {
+        userLogger.warn("[R2Service] Failed to resolve from storage:", err);
+      }
+    }
+
+    // 2. Fallback to legacy
+    const legacy = this.cloudflareSettings;
+    if (
+      legacy &&
+      legacy.accountId &&
+      legacy.accessKeyId &&
+      legacy.secretAccessKey
+    ) {
+      return { ...legacy, isLegacy: true };
+    }
+
+    return null;
+  }
+
   async handleCloudflareClearSettings() {
     try {
       await clearR2Settings();
@@ -316,15 +474,37 @@ class R2Service {
     return Array.from(origins);
   }
 
-  async ensureBucketConfigForNpub(npub) {
-    if (!npub || !this.cloudflareSettings) {
+  /**
+   * Ensures that the R2 bucket for the given user (npub) is properly configured.
+   *
+   * This method performs several critical setup steps:
+   * 1. Derives a sanitized bucket name from the npub.
+   * 2. Attempts to auto-create the bucket and apply CORS rules if the provided
+   *    credentials allow it (requires Admin/Edit permissions).
+   * 3. Syncs the bucket configuration with the local settings store, ensuring
+   *    the `publicBaseUrl` matches the user's base domain setting.
+   *
+   * @param {string} npub - The user's Nostr public key (npub).
+   * @returns {Promise<object>} The bucket configuration entry and status.
+   */
+  async ensureBucketConfigForNpub(npub, { credentials } = {}) {
+    if (!npub) {
       return null;
     }
 
-    const accountId = (this.cloudflareSettings.accountId || "").trim();
-    const accessKeyId = (this.cloudflareSettings.accessKeyId || "").trim();
-    const secretAccessKey = (this.cloudflareSettings.secretAccessKey || "").trim();
-    const baseDomain = this.cloudflareSettings.baseDomain || "";
+    // Resolve credentials if not provided
+    let settings = credentials;
+    if (!settings) {
+      settings = await this.resolveConnection(npub);
+    }
+    if (!settings) {
+      settings = this.cloudflareSettings || {};
+    }
+
+    const accountId = (settings.accountId || "").trim();
+    const accessKeyId = (settings.accessKeyId || "").trim();
+    const secretAccessKey = (settings.secretAccessKey || "").trim();
+    const baseDomain = settings.baseDomain || "";
     const corsOrigins = this.getCorsOrigins();
 
     if (!accountId) {
@@ -336,39 +516,44 @@ class R2Service {
 
     // We no longer support automated bucket creation or domain management via API token.
     // We assume the user has created the bucket with the correct name and configured the public domain.
-    const bucketName = sanitizeBucketName(npub);
+    const bucketName = settings.bucket || sanitizeBucketName(npub);
 
     // We attempt to ensure the bucket exists and CORS is set up using the S3 keys if possible.
     if (accessKeyId && secretAccessKey) {
+      try {
+        const s3 = makeR2Client({
+          accountId,
+          accessKeyId,
+          secretAccessKey,
+          endpoint: settings.endpoint,
+          region: settings.region,
+        });
+
+        // Attempt to auto-create the bucket (requires Admin keys, but harmless if fails)
         try {
-          const s3 = makeR2Client({
-            accountId,
-            accessKeyId,
-            secretAccessKey,
-          });
-
-          // Attempt to auto-create the bucket (requires Admin keys, but harmless if fails)
-          try {
-             await ensureBucketExists({ s3, bucket: bucketName });
-          } catch (createErr) {
-             // 403 Forbidden is expected if keys are "Object Read & Write" only.
-             // We proceed assuming the user might have created it manually.
-             userLogger.debug("Auto-creation of bucket failed (likely permission issue), proceeding...", createErr);
-          }
-
-          if (corsOrigins.length > 0) {
-             await ensureBucketCors({
-                s3,
-                bucket: bucketName,
-                origins: corsOrigins,
-             });
-          }
-        } catch (corsErr) {
-          userLogger.warn(
-            "Failed to ensure R2 bucket/CORS configuration via access keys. Ensure the bucket exists and you have permissions.",
-            corsErr
+          await ensureBucketExists({ s3, bucket: bucketName });
+        } catch (createErr) {
+          // 403 Forbidden is expected if keys are "Object Read & Write" only.
+          // We proceed assuming the user might have created it manually.
+          userLogger.debug(
+            "Auto-creation of bucket failed (likely permission issue), proceeding...",
+            createErr
           );
         }
+
+        if (corsOrigins.length > 0) {
+          await ensureBucketCors({
+            s3,
+            bucket: bucketName,
+            origins: corsOrigins,
+          });
+        }
+      } catch (corsErr) {
+        userLogger.warn(
+          "Failed to ensure R2 bucket/CORS configuration via access keys. Ensure the bucket exists and you have permissions.",
+          corsErr
+        );
+      }
     }
 
     // Use the user-provided baseDomain as the public URL root.
@@ -376,34 +561,59 @@ class R2Service {
     const cleanBaseUrl = baseDomain.replace(/\/+$/, "");
 
     const manualEntry = {
-        bucket: bucketName,
-        publicBaseUrl: cleanBaseUrl,
-        domainType: "manual",
-        lastUpdated: Date.now(),
+      bucket: bucketName,
+      publicBaseUrl: cleanBaseUrl,
+      domainType: "manual",
+      lastUpdated: Date.now(),
     };
 
-    let entry = this.cloudflareSettings.buckets?.[npub];
-    let savedEntry = entry;
+    // If using legacy settings, we save the bucket mapping.
+    // If using StorageService (settings.isLegacy === false), we do NOT save to legacy store
+    // to avoid partial state or overwriting. We just return the manual entry.
+    if (settings.isLegacy !== false) {
+      let entry = this.cloudflareSettings.buckets?.[npub];
+      let savedEntry = entry;
 
-    if (
+      if (
         !entry ||
         entry.bucket !== manualEntry.bucket ||
         entry.publicBaseUrl !== manualEntry.publicBaseUrl
-    ) {
+      ) {
         const updatedSettings = await saveR2Settings(
           mergeBucketEntry(this.getSettings(), npub, manualEntry)
         );
         this.setSettings(updatedSettings);
         savedEntry = updatedSettings.buckets?.[npub] || manualEntry;
-    }
-
-    return {
+      }
+      return {
         entry: savedEntry,
         usedManagedFallback: false,
         customDomainStatus: "manual",
+      };
+    }
+
+    return {
+      entry: manualEntry,
+      usedManagedFallback: false,
+      customDomainStatus: "manual",
     };
   }
 
+  /**
+   * Verifies that the configured R2 bucket is publicly accessible and supports CORS.
+   *
+   * Strategy: "Upload-then-Fetch"
+   * 1. Uploads a small temporary text file to the bucket using the S3 API.
+   * 2. Attempts to fetch that file via the configured Public URL using `fetch()`.
+   *
+   * Why this matters:
+   * - Confirms the `publicBaseUrl` is correct and pointing to this bucket.
+   * - Confirms the bucket allows public reads.
+   * - Confirms CORS is configured to allow GET requests from this web origin.
+   *
+   * @param {object} params
+   * @returns {Promise<{success: boolean, error?: string}>}
+   */
   async verifyPublicAccess({ settings, npub }) {
     if (!settings || !npub) {
       return { success: false, error: "Missing settings or npub." };
@@ -419,23 +629,43 @@ class R2Service {
     const verifyContent = "bitvid-verification";
     const publicUrl = buildPublicUrl(baseDomain, verifyKey);
 
+    userLogger.info(
+      `[R2] Verifying access for Bucket: '${bucketName}' in Account: '${truncateMiddle(accountId, 6)}'`
+    );
+
     try {
       // 1. Initialize S3
-      const s3 = makeR2Client({ accountId, accessKeyId, secretAccessKey });
+      const s3 = makeR2Client({
+        accountId,
+        accessKeyId,
+        secretAccessKey,
+        endpoint: settings.endpoint,
+        region: settings.region,
+      });
 
-      // 2. Ensure bucket/cors (best effort)
+      // 2. Ensure bucket (best effort)
       try {
         await ensureBucketExists({ s3, bucket: bucketName });
-        const corsOrigins = this.getCorsOrigins();
-        if (corsOrigins.length > 0) {
-          await ensureBucketCors({ s3, bucket: bucketName, origins: corsOrigins });
-        }
       } catch (setupErr) {
-        userLogger.warn("Bucket setup warning during verification:", setupErr);
+        userLogger.warn("Bucket creation/check warning during verification:", setupErr);
         // Continue, assuming bucket might already exist and be configured
       }
 
-      // 3. Upload Test File
+      // 3. Ensure CORS (best effort)
+      try {
+        const corsOrigins = this.getCorsOrigins();
+        if (corsOrigins.length > 0) {
+          await ensureBucketCors({
+            s3,
+            bucket: bucketName,
+            origins: corsOrigins,
+          });
+        }
+      } catch (corsErr) {
+        userLogger.warn("CORS setup warning during verification:", corsErr);
+      }
+
+      // 4. Upload Test File
       const file = new File([verifyContent], "verify.txt", { type: "text/plain" });
       await multipartUpload({
         s3,
@@ -474,7 +704,15 @@ class R2Service {
 
     } catch (err) {
       userLogger.error("Verification failed:", err);
-      return { success: false, error: err.message || "Unknown error during verification." };
+      let errorMessage = err.message || "Unknown error during verification.";
+      if (
+        errorMessage.includes("Failed to fetch") ||
+        errorMessage.includes("NetworkError")
+      ) {
+        errorMessage +=
+          " This is likely a CORS issue. Please enable CORS in your Cloudflare R2 bucket settings. Also verify that the Bucket Name exists and your API Token has 'Object Read & Write' permissions.";
+      }
+      return { success: false, error: errorMessage };
     }
   }
 
@@ -483,17 +721,43 @@ class R2Service {
      return;
   }
 
+  /**
+   * Orchestrates the entire video upload workflow.
+   *
+   * This is the "Grand Central Station" of the upload feature. It handles:
+   * 1. **Validation**: Checks inputs, credentials, and file types.
+   * 2. **Bucket Setup**: Ensures the destination R2 bucket exists and is configured.
+   * 3. **Multipart Uploads**: Uploads the Thumbnail, Video File, and Torrent Metadata
+   *    to R2 in parallel/sequence using the S3 Multipart API.
+   * 4. **Magnet Construction**: Generates a specialized Magnet URI that includes:
+   *    - `xt`: The Info Hash (standard).
+   *    - `ws`: The WebSeed URL (direct HTTP link to the video on R2).
+   *    - `xs`: The Exact Source URL (link to the .torrent file on R2).
+   *    This `ws` + `xs` combo enables the "Hybrid" playback strategy (URL-first, P2P fallback).
+   * 5. **Publishing**: Constructs and signs the Nostr video event (Kind 30078).
+   *
+   * @param {object} params - Upload parameters.
+   * @returns {Promise<boolean>} True if successful.
+   */
   async handleCloudflareUploadSubmit({
     npub = "",
     file = null,
     thumbnailFile = null,
+    torrentFile = null,
     metadata = {},
     infoHash = "",
     settingsInput = null,
+    explicitCredentials = null,
     publishVideoNote,
     onReset,
+    forcedVideoKey = "",
+    forcedVideoUrl = "",
+    forcedTorrentKey = "",
+    forcedTorrentUrl = "",
   } = {}) {
-    if (settingsInput) {
+    // If no explicit credentials, we might save settingsInput to legacy DB.
+    // If explicitCredentials ARE provided, we skip saving and use them directly.
+    if (!explicitCredentials && settingsInput) {
       const saved = await this.handleCloudflareSettingsSubmit(settingsInput, {
         quiet: true,
       });
@@ -513,14 +777,15 @@ class R2Service {
 
     const rawTitleCandidate =
       metadata && typeof metadata === "object" ? metadata.title : metadata;
-    const title = typeof rawTitleCandidate === "string"
-      ? rawTitleCandidate.trim()
-      : String(rawTitleCandidate ?? "").trim();
+    const title =
+      typeof rawTitleCandidate === "string"
+        ? rawTitleCandidate.trim()
+        : String(rawTitleCandidate ?? "").trim();
 
     if (!title) {
       this.setCloudflareUploadStatus(
         getVideoNoteErrorMessage(VIDEO_NOTE_ERROR_CODES.MISSING_TITLE),
-        "error",
+        "error"
       );
       return false;
     }
@@ -533,13 +798,22 @@ class R2Service {
       return false;
     }
 
-    const accountId = (this.cloudflareSettings?.accountId || "").trim();
-    const accessKeyId = (this.cloudflareSettings?.accessKeyId || "").trim();
-    const secretAccessKey = (this.cloudflareSettings?.secretAccessKey || "").trim();
+    // Resolve settings from StorageService if explicitCredentials missing
+    let effectiveSettings = explicitCredentials;
+    if (!effectiveSettings) {
+      effectiveSettings = await this.resolveConnection(npub);
+    }
+    if (!effectiveSettings) {
+      effectiveSettings = this.cloudflareSettings || {};
+    }
+
+    const accountId = (effectiveSettings.accountId || "").trim();
+    const accessKeyId = (effectiveSettings.accessKeyId || "").trim();
+    const secretAccessKey = (effectiveSettings.secretAccessKey || "").trim();
 
     if (!accountId || !accessKeyId || !secretAccessKey) {
       this.setCloudflareUploadStatus(
-        "Missing R2 credentials. Save them before uploading.",
+        "Missing R2 credentials. Unlock your storage or save settings.",
         "error"
       );
       return false;
@@ -551,11 +825,15 @@ class R2Service {
 
     let bucketResult = null;
     try {
-      bucketResult = await this.ensureBucketConfigForNpub(npub);
+      bucketResult = await this.ensureBucketConfigForNpub(npub, {
+        credentials: effectiveSettings,
+      });
     } catch (err) {
       userLogger.error("Failed to prepare R2 bucket:", err);
       this.setCloudflareUploadStatus(
-        err?.message ? `Bucket setup failed: ${err.message}` : "Bucket setup failed.",
+        err?.message
+          ? `Bucket setup failed: ${err.message}`
+          : "Bucket setup failed.",
         "error"
       );
       this.setCloudflareUploading(false);
@@ -563,6 +841,7 @@ class R2Service {
       return false;
     }
 
+    // Use returned entry first (correct for both legacy and generic), fallback to legacy map
     const bucketEntry =
       bucketResult?.entry || this.cloudflareSettings?.buckets?.[npub];
 
@@ -579,11 +858,27 @@ class R2Service {
     let statusMessage = `Uploading to ${bucketEntry.bucket}…`;
     this.setCloudflareUploadStatus(statusMessage, "info");
 
-    const key = buildR2Key(npub, file);
-    const publicUrl = buildPublicUrl(bucketEntry.publicBaseUrl, key);
+    // Use forced keys if provided, otherwise generate them
+    const key = forcedVideoKey || buildR2Key(npub, file);
+    const publicUrl = forcedVideoUrl || buildPublicUrl(bucketEntry.publicBaseUrl, key);
+
+    const buildTorrentKey = () => {
+      if (forcedTorrentKey) return forcedTorrentKey;
+      const baseKey = key.replace(/\.[^/.]+$/, "");
+      if (baseKey && baseKey !== key) {
+        return `${baseKey}.torrent`;
+      }
+      return `${key}.torrent`;
+    };
 
     try {
-      const s3 = makeR2Client({ accountId, accessKeyId, secretAccessKey });
+      const s3 = makeR2Client({
+        accountId,
+        accessKeyId,
+        secretAccessKey,
+        endpoint: effectiveSettings.endpoint,
+        region: effectiveSettings.region,
+      });
 
       if (thumbnailFile) {
         this.setCloudflareUploadStatus("Uploading thumbnail...", "info");
@@ -621,6 +916,26 @@ class R2Service {
       });
 
       let publishOutcome = true;
+      let torrentUrl = forcedTorrentUrl || "";
+
+      if (torrentFile) {
+        this.setCloudflareUploadStatus("Uploading torrent metadata...", "info");
+        const torrentKey = buildTorrentKey();
+        try {
+          await multipartUpload({
+            s3,
+            bucket: bucketEntry.bucket,
+            key: torrentKey,
+            file: torrentFile,
+            contentType: "application/x-bittorrent",
+          });
+          if (!torrentUrl) {
+             torrentUrl = buildPublicUrl(bucketEntry.publicBaseUrl, torrentKey);
+          }
+        } catch (err) {
+          userLogger.warn("Torrent metadata upload failed, continuing...", err);
+        }
+      }
 
       if (typeof publishVideoNote !== "function") {
         userLogger.warn(
@@ -629,15 +944,43 @@ class R2Service {
         publishOutcome = false;
       } else {
         // Construct the Magnet Link
-        // magnet:?xt=urn:btih:<infoHash>&dn=<filename>&ws=<publicUrl>
+        // This is critical for the hybrid player:
+        // - `xt`: The Info Hash, identifying the content in the DHT.
+        // - `ws` (WebSeed): The direct R2 URL. WebTorrent clients use this to "seed"
+        //   the download via HTTP, ensuring high speed and reliability even with 0 peers.
+        // - `xs` (eXact Source): The URL to the .torrent file on R2. This allows
+        //   clients to fetch metadata (file structure, piece hashes) instantly via HTTP
+        //   instead of waiting to fetch it from the DHT (which can take minutes).
+        const normalizedInfoHash = normalizeInfoHash(infoHash);
+        const hasValidInfoHash = isValidInfoHash(normalizedInfoHash);
         let generatedMagnet = "";
         let generatedWs = "";
 
-        if (infoHash) {
-             const encodedDn = encodeURIComponent(file.name);
-             const encodedWs = encodeURIComponent(publicUrl);
-             generatedMagnet = `magnet:?xt=urn:btih:${infoHash}&dn=${encodedDn}&ws=${encodedWs}`;
-             generatedWs = publicUrl;
+        if (hasValidInfoHash) {
+          const encodedDn = encodeURIComponent(file.name);
+          const encodedWs = encodeURIComponent(publicUrl);
+          let magnet = `magnet:?xt=urn:btih:${normalizedInfoHash}&dn=${encodedDn}&ws=${encodedWs}`;
+
+          // Append the xs (metadata) link if available. This significantly speeds up
+          // the "time to first frame" for P2P clients.
+          if (torrentUrl) {
+            const encodedXs = encodeURIComponent(torrentUrl);
+            magnet += `&xs=${encodedXs}`;
+          }
+
+          generatedMagnet = magnet;
+          generatedWs = publicUrl;
+        } else {
+          if (infoHash) {
+            userLogger.warn(
+              "Invalid info hash provided. Skipping magnet and webseed generation.",
+              infoHash
+            );
+          }
+          this.setCloudflareUploadStatus(
+            "Info hash missing or invalid. Publishing URL-first without WebTorrent fallback.",
+            "warning"
+          );
         }
 
         const rawVideoPayload = {
@@ -647,7 +990,7 @@ class R2Service {
           thumbnail: metadata?.thumbnail ?? "",
           description: metadata?.description ?? "",
           ws: generatedWs || (metadata?.ws ?? ""),
-          xs: metadata?.xs ?? "",
+          xs: torrentUrl || (metadata?.xs ?? ""),
           enableComments: metadata?.enableComments,
           isNsfw: metadata?.isNsfw,
           isForKids: metadata?.isForKids,
@@ -656,6 +999,7 @@ class R2Service {
         const mergedNip71 = this.buildNip71MetadataForUpload(metadata?.nip71, {
           publicUrl,
           file,
+          infoHash: hasValidInfoHash ? normalizedInfoHash : "",
         });
         if (mergedNip71 && Object.keys(mergedNip71).length) {
           rawVideoPayload.nip71 = mergedNip71;
@@ -710,15 +1054,30 @@ class R2Service {
     accountId,
     accessKeyId,
     secretAccessKey,
+    endpoint,
+    region,
     bucket,
     key,
     onProgress,
   } = {}) {
-    if (!file || !bucket || !key || !accountId || !accessKeyId || !secretAccessKey) {
+    if (
+      !file ||
+      !bucket ||
+      !key ||
+      (!accountId && !endpoint) ||
+      !accessKeyId ||
+      !secretAccessKey
+    ) {
       throw new Error("Missing required parameters for uploadFile");
     }
 
-    const s3 = makeR2Client({ accountId, accessKeyId, secretAccessKey });
+    const s3 = makeR2Client({
+      accountId,
+      accessKeyId,
+      secretAccessKey,
+      endpoint,
+      region,
+    });
 
     await multipartUpload({
       s3,

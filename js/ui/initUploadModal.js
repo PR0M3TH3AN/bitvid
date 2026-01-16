@@ -14,6 +14,7 @@ export function initUploadModal({
   const {
     authService = null,
     r2Service = null,
+    storageService = null,
   } = services;
 
   const {
@@ -37,6 +38,7 @@ export function initUploadModal({
     new UploadModal({
       authService,
       r2Service,
+      storageService,
       publishVideoNote,
       removeTrackingScripts: removeTrackingScriptsFn,
       setGlobalModalState: setGlobalModalStateFn,

@@ -467,6 +467,7 @@ function normalizeCommentTarget(targetInput = {}, overrides = {}) {
     target.parentKind,
     options.parentCommentKind,
     target.parentCommentKind,
+    pickKind(parentCommentEvent?.kind),
   );
   let normalizedParentKind =
     typeof parentKindCandidate === "string" ? parentKindCandidate.trim() : "";
@@ -489,6 +490,7 @@ function normalizeCommentTarget(targetInput = {}, overrides = {}) {
     target.parentAuthorPubkey,
     options.parentCommentPubkey,
     target.parentCommentPubkey,
+    parentCommentEvent?.pubkey,
   );
   normalizedParentAuthorPubkey =
     typeof normalizedParentAuthorPubkey === "string"
@@ -669,6 +671,23 @@ function normalizeCommentTarget(targetInput = {}, overrides = {}) {
     const value = getTagField(tag, 1);
     if (value) {
       normalizedParentKind = value;
+    }
+  }
+
+  if (!normalizedParentAuthorRelay && normalizedParentAuthorPubkey) {
+    const parentTag = parentEventTags.find(
+      (tag) =>
+        Array.isArray(tag) &&
+        tag.length >= 2 &&
+        typeof tag[0] === "string" &&
+        tag[0].trim().toLowerCase() === "p" &&
+        normalizeTagValue(tag[1]) === normalizeTagValue(normalizedParentAuthorPubkey),
+    );
+    if (parentTag) {
+      const relay = getTagField(parentTag, 2);
+      if (relay) {
+        normalizedParentAuthorRelay = relay;
+      }
     }
   }
 

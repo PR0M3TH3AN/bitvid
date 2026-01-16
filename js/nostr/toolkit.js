@@ -522,7 +522,11 @@ export function shimLegacySimplePoolMethods(pool) {
           }
           closed = true;
           try {
-            closer?.close?.("closed by caller");
+            if (typeof closer === "function") {
+              closer();
+            } else if (closer && typeof closer.close === "function") {
+              closer.close("closed by caller");
+            }
           } catch (error) {
             devLogger.warn("[nostr] Failed to close SimplePool subscription.", error);
           }

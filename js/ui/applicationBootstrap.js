@@ -14,6 +14,7 @@ import hashtagPreferences, {
 } from "../services/hashtagPreferencesService.js";
 import NwcSettingsService from "../services/nwcSettingsService.js";
 import nostrService from "../services/nostrService.js";
+import storageService from "../services/storageService.js";
 import watchHistoryService from "../watchHistoryService.js";
 import r2Service from "../services/r2Service.js";
 import { createFeedEngine } from "../feedEngine/index.js";
@@ -404,6 +405,9 @@ export default class ApplicationBootstrap {
       assets: {
         fallbackThumbnailSrc: this.assets.fallbackThumbnailSrc,
       },
+      services: {
+        storageService,
+      },
     });
     modalManager.initialize();
     this.modalManager = modalManager;
@@ -426,6 +430,7 @@ export default class ApplicationBootstrap {
           userBlocks,
           nostrClient,
           nostrService: app.nostrService,
+          storageService,
           subscriptions,
           accessControl,
           moderation: moderationService,
@@ -583,6 +588,12 @@ export default class ApplicationBootstrap {
         handleMirrorAction: (payload) => app.handleMirrorAction(payload),
         handleEnsurePresenceAction: (payload) =>
           app.handleEnsurePresenceAction(payload),
+        handleEventDetailsAction: (payload) => {
+          if (app.modalManager && app.modalManager.eventDetailsModal && payload?.video) {
+            app.modalManager.eventDetailsModal.open(payload.video);
+          }
+          return Promise.resolve();
+        },
         loadVideos: () => app.loadVideos(),
         refreshAllVideoGrids: (options) => app.refreshAllVideoGrids(options),
         onUserBlocksUpdated: () => {

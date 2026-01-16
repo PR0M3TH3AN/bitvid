@@ -1,7 +1,6 @@
 // js/storage/r2-s3.js
 
-const AWS_SDK_SPECIFIER =
-  "https://cdn.jsdelivr.net/npm/@aws-sdk/client-s3@3.637.0/+esm";
+const AWS_SDK_SPECIFIER = "https://esm.sh/@aws-sdk/client-s3@3.637.0?bundle";
 
 const disableNetworkImports = Boolean(
   globalThis?.__BITVID_DISABLE_NETWORK_IMPORTS__
@@ -23,6 +22,7 @@ function assignAwsSdk(module) {
     UploadPartCommand: module.UploadPartCommand,
     CompleteMultipartUploadCommand: module.CompleteMultipartUploadCommand,
     AbortMultipartUploadCommand: module.AbortMultipartUploadCommand,
+    ListBucketsCommand: module.ListBucketsCommand,
     HeadBucketCommand: module.HeadBucketCommand,
     PutBucketCorsCommand: module.PutBucketCorsCommand,
     DeleteObjectCommand: module.DeleteObjectCommand,
@@ -57,6 +57,53 @@ async function loadAwsSdkModule() {
     return await awsSdkLoadPromise;
   } catch (error) {
     awsSdkLoadError = error;
+    throw error;
+  }
+}
+
+export async function testS3Connection(config) {
+  if (!config) {
+    throw new Error("Configuration required for testing S3 connection.");
+  }
+
+  await ensureR2SdkLoaded();
+
+  const { ListBucketsCommand, HeadBucketCommand } = requireAwsSdk();
+
+  const s3 = makeR2Client({
+    accountId: config.accountId,
+    accessKeyId: config.accessKeyId,
+    secretAccessKey: config.secretAccessKey,
+    endpoint: config.endpoint,
+    region: config.region,
+  });
+
+  // If bucket is specified, we check that specific bucket (permissions + existence).
+  if (config.bucket) {
+    try {
+      await s3.send(new HeadBucketCommand({ Bucket: config.bucket }));
+      return { success: true, message: `Successfully connected to bucket "${config.bucket}".` };
+    } catch (error) {
+      const status = error?.$metadata?.httpStatusCode || 0;
+      if (status === 403) {
+        throw new Error(`Access denied to bucket "${config.bucket}". Check your permissions.`);
+      } else if (status === 404) {
+        throw new Error(`Bucket "${config.bucket}" does not exist.`);
+      }
+      throw error;
+    }
+  }
+
+  // Otherwise, we just list buckets to verify credentials.
+  try {
+    const response = await s3.send(new ListBucketsCommand({}));
+    const count = response.Buckets ? response.Buckets.length : 0;
+    return { success: true, message: `Connection successful. Found ${count} buckets.` };
+  } catch (error) {
+    const status = error?.$metadata?.httpStatusCode || 0;
+    if (status === 403) {
+      throw new Error("Access denied. Check your Access Key ID and Secret Access Key.");
+    }
     throw error;
   }
 }
@@ -115,16 +162,24 @@ function computeCacheControl(key) {
   return "public, max-age=3600";
 }
 
-export function makeR2Client({ accountId, accessKeyId, secretAccessKey }) {
-  if (!accountId || !accessKeyId || !secretAccessKey) {
-    throw new Error("Missing Cloudflare R2 credentials");
+export function makeR2Client({
+  accountId,
+  accessKeyId,
+  secretAccessKey,
+  endpoint,
+  region,
+}) {
+  if ((!accountId && !endpoint) || !accessKeyId || !secretAccessKey) {
+    throw new Error("Missing S3/R2 credentials");
   }
 
   const { S3Client } = requireAwsSdk();
+  const finalEndpoint =
+    endpoint || `https://${accountId}.r2.cloudflarestorage.com`;
 
   return new S3Client({
-    region: "auto",
-    endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+    region: region || "auto",
+    endpoint: finalEndpoint,
     credentials: { accessKeyId, secretAccessKey },
     forcePathStyle: true,
   });
@@ -252,22 +307,14 @@ export async function multipartUpload({
     AbortMultipartUploadCommand,
   } = requireAwsSdk();
 
+  console.debug("[R2] Starting multipart upload for:", key);
+
   const createCommand = new CreateMultipartUploadCommand({
     Bucket: bucket,
     Key: key,
     ContentType: contentType || file.type || "application/octet-stream",
     CacheControl: computeCacheControl(key),
   });
-
-  createCommand.middlewareStack.add(
-    (next) => async (args) => {
-      if (args?.request?.headers) {
-        args.request.headers["cf-create-bucket-if-missing"] = "true";
-      }
-      return next(args);
-    },
-    { step: "build" }
-  );
 
   const { UploadId } = await s3.send(createCommand);
 

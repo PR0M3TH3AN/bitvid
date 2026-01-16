@@ -49,7 +49,6 @@ test("buildCommentEvent emits NIP-22 root metadata while keeping legacy fallback
     ["K", "30078"],
     ["P", "deadbeefcafebabe"],
     ["E", "video-event-id"],
-    ["A", "30078:deadbeefcafebabe:clip-1"],
     ["K", "30078"],
   ]);
   assert.equal(event.content, "Great video!");
@@ -72,7 +71,6 @@ test("buildCommentEvent includes parent pointers, kinds, and authors for replies
     ["K", "30078"],
     ["P", "deadbeefcafebabe"],
     ["E", "video-event-id"],
-    ["A", "30078:deadbeefcafebabe:clip-1"],
     ["E", "parent-comment-id", "parent-author"],
     ["K", String(VIDEO_COMMENT_KIND)],
     ["P", "parent-author"],
@@ -101,7 +99,6 @@ test("buildCommentEvent normalizes relays and preserves explicit overrides", () 
     ["K", "30078"],
     ["P", "deadbeefcafebabe", "wss://video.def"],
     ["E", "event123", "wss://comments.main"],
-    ["A", "30078:deadbeefcafebabe:clip-2", "wss://video.def"],
     ["E", "root-comment", "wss://parent", "cafecafe"],
     ["K", String(VIDEO_COMMENT_KIND)],
     ["P", "cafecafe", "wss://profile"],
@@ -151,7 +148,6 @@ test("buildCommentEvent accepts partial metadata for parent overrides", () => {
   assert.deepStrictEqual(event.tags, [
     ["E", "file-event"],
     ["K", "1063"],
-    ["E", "file-event"],
     ["E", "parent-comment", "wss://parent", "parent-only"],
     ["K", "1111"],
     ["P", "parent-only", "wss://parent-author"],

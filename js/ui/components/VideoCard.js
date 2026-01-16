@@ -2,6 +2,7 @@ import { normalizeDesignSystemContext } from "../../designSystem.js";
 import { updateVideoCardSourceVisibility } from "../../utils/cardSourceVisibility.js";
 import { sanitizeProfileMediaUrl } from "../../utils/profileMedia.js";
 import { userLogger } from "../../utils/logger.js";
+import { deriveTorrentPlaybackConfig } from "../../playbackUtils.js";
 import {
   applyModerationContextDatasets,
   getModerationOverrideActionLabels,
@@ -163,13 +164,21 @@ export class VideoCard {
     this.timestampEl = null;
 
     this.playbackUrl = typeof video.url === "string" ? video.url.trim() : "";
-    const magnet =
-      (typeof video.magnet === "string" ? video.magnet.trim() : "") ||
-      (typeof video.infoHash === "string" ? video.infoHash.trim() : "");
-    this.playbackMagnet = magnet;
-    this.magnetProvided = magnet.length > 0;
+    const rawMagnet =
+      typeof video.magnet === "string" ? video.magnet.trim() : "";
+    const rawInfoHash =
+      typeof video.infoHash === "string" ? video.infoHash.trim() : "";
+    const playbackConfig = deriveTorrentPlaybackConfig({
+      magnet: rawMagnet,
+      infoHash: rawInfoHash,
+      url: this.playbackUrl,
+    });
+    this.playbackMagnet = playbackConfig.magnet;
+    this.originalMagnetInput =
+      playbackConfig.originalInput || rawMagnet || rawInfoHash;
+    this.magnetProvided = playbackConfig.provided;
     this.magnetSupported = this.helpers.isMagnetSupported
-      ? this.helpers.isMagnetSupported(magnet)
+      ? this.helpers.isMagnetSupported(this.playbackMagnet)
       : false;
     this.showUnsupportedTorrentBadge =
       !this.playbackUrl && this.magnetProvided && !this.magnetSupported;
@@ -493,14 +502,28 @@ export class VideoCard {
     }
 
     const moderationBadgeSlot = this.createElement("div", {
-      classNames: ["video-card__moderation-slot", "px-md", "pt-md"],
+      classNames: [
+        "video-card__moderation-overlay",
+        "absolute",
+        "inset-0",
+        "flex",
+        "items-center",
+        "justify-center",
+        "p-4",
+        "z-10",
+        "pointer-events-none",
+      ],
     });
     moderationBadgeSlot.hidden = true;
     moderationBadgeSlot.setAttribute("aria-hidden", "true");
     this.moderationBadgeSlot = moderationBadgeSlot;
 
+    // Append slot to anchor (media wrapper) instead of root to overlay thumbnail
+    if (this.anchorEl) {
+      this.anchorEl.appendChild(moderationBadgeSlot);
+    }
+
     root.appendChild(anchor);
-    root.appendChild(moderationBadgeSlot);
     root.appendChild(content);
 
     this.applyPlaybackDatasets();
@@ -1632,18 +1655,24 @@ export class VideoCard {
     let slot = this.moderationBadgeSlot;
     const hiddenActive = context.activeHidden && !context.overrideActive;
 
-    if (!slot && this.root) {
+    if (!slot && this.anchorEl) {
       slot = this.createElement("div", {
-        classNames: ["video-card__moderation-slot", "px-md", "pt-md"],
+        classNames: [
+          "video-card__moderation-overlay",
+          "absolute",
+          "inset-0",
+          "flex",
+          "items-center",
+          "justify-center",
+          "p-4",
+          "z-10",
+          "pointer-events-none",
+        ],
       });
       slot.hidden = true;
       slot.setAttribute("aria-hidden", "true");
       this.moderationBadgeSlot = slot;
-      if (this.anchorEl && this.anchorEl.parentElement === this.root) {
-        this.root.insertBefore(slot, this.anchorEl.nextSibling);
-      } else {
-        this.root.appendChild(slot);
-      }
+      this.anchorEl.appendChild(slot);
     }
 
     if (badge) {
@@ -1724,6 +1753,8 @@ export class VideoCard {
     if (!badge) {
       const nextBadge = this.buildModerationBadge(context);
       if (nextBadge && slot) {
+        nextBadge.style.pointerEvents = "auto"; // Enable interaction on badge itself
+        nextBadge.classList.add("opacity-95"); // Slight transparency
         slot.appendChild(nextBadge);
         slot.hidden = false;
         slot.removeAttribute("aria-hidden");
@@ -1732,6 +1763,8 @@ export class VideoCard {
       return;
     }
 
+    badge.style.pointerEvents = "auto";
+    badge.classList.add("opacity-95");
     badge.dataset.variant = context.overrideActive ? "neutral" : "warning";
     const state = context.overrideActive
       ? "override"
@@ -1985,9 +2018,17 @@ export class VideoCard {
         this.contentEl.setAttribute("aria-hidden", "true");
       }
 
-      if (badgeSlot && this.moderationBadgeEl) {
-        badgeSlot.hidden = false;
-        badgeSlot.removeAttribute("aria-hidden");
+      // In hidden state (blocked), the anchor/thumbnail is hidden, so overlay slot
+      // won't be visible. We rely on the summary container below.
+      // We hide the badge slot here because we don't want it floating if anchor is hidden
+      // (though usually anchor hidden means children hidden too).
+      // However, if we move badgeSlot to be a child of anchorEl, it will be hidden automatically.
+
+      if (badgeSlot) {
+        // If it's a child of anchorEl, it's hidden by parent.
+        // We can force it hidden to be safe.
+        badgeSlot.hidden = true;
+        badgeSlot.setAttribute("aria-hidden", "true");
       }
 
       const summaryContainer = this.ensureHiddenSummaryContainer();
@@ -2008,7 +2049,11 @@ export class VideoCard {
         this.contentEl.removeAttribute("hidden");
         this.contentEl.removeAttribute("aria-hidden");
       }
-      if (badgeSlot && !this.moderationBadgeEl) {
+      // Restore badge slot visibility if badge exists and we are not hidden
+      if (badgeSlot && this.moderationBadgeEl) {
+        badgeSlot.hidden = false;
+        badgeSlot.removeAttribute("aria-hidden");
+      } else if (badgeSlot) {
         badgeSlot.hidden = true;
         badgeSlot.setAttribute("aria-hidden", "true");
       }
@@ -2132,9 +2177,16 @@ export class VideoCard {
     }
   }
 
-  buildTorrentTooltip({ peers = null, checkedAt = null, reason = null } = {}) {
+  buildTorrentTooltip({
+    peers = null,
+    checkedAt = null,
+    reason = null,
+    webseedOnly = false,
+  } = {}) {
     const parts = [];
-    if (Number.isFinite(peers)) {
+    if (webseedOnly) {
+      parts.push("Webseed only");
+    } else if (Number.isFinite(peers)) {
       parts.push(`Peers: ${Math.max(0, Number(peers))}`);
     }
     if (Number.isFinite(checkedAt)) {
@@ -2219,6 +2271,7 @@ export class VideoCard {
       : null;
     const reason =
       typeof entry?.reason === "string" && entry.reason ? entry.reason : null;
+    const webseedOnly = Boolean(entry?.webseedOnly);
     const text =
       typeof entry?.text === "string" && entry.text ? entry.text : null;
     const tooltip =
@@ -2282,7 +2335,8 @@ export class VideoCard {
             checkedAt: Number.isFinite(entry?.checkedAt)
               ? entry.checkedAt
               : null,
-            reason
+            reason,
+            webseedOnly,
           }));
 
     badge.setAttribute("aria-label", tooltipValue);

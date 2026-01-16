@@ -31,7 +31,7 @@ To allow your browser to upload files directly to Cloudflare, you must allow Cro
 [
   {
     "AllowedOrigins": ["*"],
-    "AllowedMethods": ["GET", "PUT", "DELETE"],
+    "AllowedMethods": ["GET", "PUT", "POST", "DELETE", "HEAD"],
     "AllowedHeaders": ["*"],
     "ExposeHeaders": ["ETag", "Content-Length", "Content-Range", "Accept-Ranges"],
     "MaxAgeSeconds": 3600

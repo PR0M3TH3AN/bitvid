@@ -9,8 +9,10 @@ import {
   ADMIN_COMMUNITY_BLACKLIST_PREFIX,
   isDevMode,
 } from "./config.js";
-import { getRegisteredNostrClient } from "./nostrClientRegistry.js";
-import { requestDefaultExtensionPermissions } from "./nostr/defaultClient.js";
+import {
+  getRegisteredNostrClient,
+  requestDefaultExtensionPermissions,
+} from "./nostrClientRegistry.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import {
   buildAdminListEvent,
