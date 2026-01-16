@@ -101,6 +101,15 @@
                 Wallet
               </button>
               <button
+                id="profileNavStorage"
+                type="button"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneStorage"
+                aria-selected="false"
+              >
+                Storage
+              </button>
+              <button
                 id="profileNavHashtags"
                 type="button"
                 class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
@@ -485,6 +494,102 @@
                   role="status"
                   aria-live="polite"
                 ></p>
+              </div>
+            </section>
+
+            <section
+              id="profilePaneStorage"
+              class="profile-pane hidden space-y-6"
+              role="tabpanel"
+              aria-labelledby="profileNavStorage"
+            >
+              <div class="space-y-4">
+                <div class="flex items-center justify-between">
+                  <h3 class="text-base font-semibold text-text">Storage Connections</h3>
+                  <div id="profileStorageStatus" class="text-xs text-muted"></div>
+                </div>
+                <p class="text-sm text-muted">
+                  Configure external storage providers for your uploads. Credentials are encrypted on your device.
+                </p>
+
+                <!-- Unlock UI -->
+                <div id="profileStorageUnlock" class="card space-y-4 p-5 hidden">
+                    <p class="text-sm text-muted">
+                        Unlock your secure storage to manage connections.
+                    </p>
+                    <button id="profileStorageUnlockBtn" type="button" class="btn focus-ring">
+                        Unlock Storage
+                    </button>
+                </div>
+
+                <!-- Connection Form -->
+                <div id="profileStorageForm" class="space-y-5 hidden">
+                    <div class="grid gap-4">
+                        <label class="block text-sm text-muted-strong" for="storageProvider">
+                            <span class="mb-2 block font-medium">Provider</span>
+                            <select id="storageProvider" class="input">
+                                <option value="cloudflare_r2" selected>Cloudflare R2</option>
+                                <option value="aws_s3" disabled>S3 Compatible (Coming Soon)</option>
+                            </select>
+                        </label>
+
+                        <!-- R2 Helper -->
+                        <div id="storageR2Helper" class="card border border-info/30 bg-info/10 p-3 text-xs text-info">
+                            Enter your Cloudflare R2 credentials. You can find these in your Cloudflare dashboard under R2 > Manage R2 API Tokens. Ensure the token has "Object Read & Write" permissions.
+                        </div>
+
+                        <label class="block text-sm text-muted-strong hidden" for="storageEndpoint">
+                            <span class="mb-2 block font-medium">Endpoint</span>
+                            <input id="storageEndpoint" type="url" class="input" placeholder="https://..." />
+                        </label>
+
+                        <label class="block text-sm text-muted-strong" for="storageRegion">
+                            <span class="mb-2 block font-medium">Region</span>
+                            <input id="storageRegion" type="text" class="input" placeholder="auto" value="auto" />
+                        </label>
+
+                        <label class="block text-sm text-muted-strong" for="storageAccessKey">
+                            <span class="mb-2 block font-medium">Access Key ID</span>
+                            <input id="storageAccessKey" type="text" class="input" />
+                        </label>
+
+                        <label class="block text-sm text-muted-strong" for="storageSecretKey">
+                            <span class="mb-2 block font-medium">Secret Access Key</span>
+                            <input id="storageSecretKey" type="password" class="input" />
+                        </label>
+
+                        <label class="block text-sm text-muted-strong" for="storageBucket">
+                            <span class="mb-2 block font-medium">Bucket Name</span>
+                            <input id="storageBucket" type="text" class="input" />
+                        </label>
+
+                        <label class="block text-sm text-muted-strong" for="storagePrefix">
+                            <span class="mb-2 block font-medium">Public URL / Prefix</span>
+                            <input id="storagePrefix" type="url" class="input" placeholder="https://pub-xxx.r2.dev" />
+                            <span class="mt-1 block text-xs text-muted">
+                                The public URL where your files will be accessible.
+                            </span>
+                        </label>
+
+                        <label class="flex items-center gap-2 text-sm text-muted-strong">
+                            <input id="storageDefault" type="checkbox" class="checkbox" />
+                            <span>Use as default for uploads</span>
+                        </label>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-3">
+                        <button id="storageSaveBtn" type="button" class="btn focus-ring">
+                            Save Connection
+                        </button>
+                        <button id="storageTestBtn" type="button" class="btn-ghost focus-ring">
+                            Test Connection
+                        </button>
+                        <button id="storageClearBtn" type="button" class="btn-ghost focus-ring text-status-danger">
+                            Clear
+                        </button>
+                    </div>
+                    <p id="storageFormStatus" class="text-sm" role="status" aria-live="polite"></p>
+                </div>
               </div>
             </section>
 
