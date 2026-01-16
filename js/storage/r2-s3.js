@@ -114,16 +114,24 @@ function computeCacheControl(key) {
   return "public, max-age=3600";
 }
 
-export function makeR2Client({ accountId, accessKeyId, secretAccessKey }) {
-  if (!accountId || !accessKeyId || !secretAccessKey) {
-    throw new Error("Missing Cloudflare R2 credentials");
+export function makeR2Client({
+  accountId,
+  accessKeyId,
+  secretAccessKey,
+  endpoint,
+  region,
+}) {
+  if ((!accountId && !endpoint) || !accessKeyId || !secretAccessKey) {
+    throw new Error("Missing S3/R2 credentials");
   }
 
   const { S3Client } = requireAwsSdk();
+  const finalEndpoint =
+    endpoint || `https://${accountId}.r2.cloudflarestorage.com`;
 
   return new S3Client({
-    region: "auto",
-    endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+    region: region || "auto",
+    endpoint: finalEndpoint,
     credentials: { accessKeyId, secretAccessKey },
     forcePathStyle: true,
   });

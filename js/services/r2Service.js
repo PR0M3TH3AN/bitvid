@@ -47,6 +47,7 @@ import {
   normalizeVideoNotePayload,
   VIDEO_NOTE_ERROR_CODES,
 } from "./videoNotePayload.js";
+import storageService from "./storageService.js";
 
 const STATUS_VARIANTS = new Set(["info", "success", "error", "warning"]);
 const INFO_HASH_PATTERN = /^[a-f0-9]{40}$/;
@@ -67,6 +68,34 @@ function createDefaultSettings() {
     baseDomain: "", // Now interpreted as the public URL base
     buckets: {},
   };
+}
+
+function safeDecodeNpub(npub) {
+  if (typeof npub !== "string") {
+    return null;
+  }
+  const trimmed = npub.trim();
+  if (!trimmed) {
+    return null;
+  }
+  if (!trimmed.startsWith("npub1")) {
+    return null;
+  }
+  try {
+    if (
+      typeof window !== "undefined" &&
+      window.NostrTools &&
+      window.NostrTools.nip19
+    ) {
+      const { type, data } = window.NostrTools.nip19.decode(trimmed);
+      if (type === "npub") {
+        return data;
+      }
+    }
+  } catch (err) {
+    // Ignore decode errors
+  }
+  return null;
 }
 
 class R2Service {
@@ -259,6 +288,10 @@ class R2Service {
   }
 
   async handleCloudflareSettingsSubmit(formValues = {}, { quiet = false } = {}) {
+    // Legacy support wrapper: redirects to storageService if possible, or warns.
+    // For now, we allow saving to legacy for backward compatibility if explicit flow isn't used,
+    // but we prefer to use storageService.
+
     const accountId = String(formValues.accountId || "").trim();
     const accessKeyId = String(formValues.accessKeyId || "").trim();
     const secretAccessKey = String(formValues.secretAccessKey || "").trim();
@@ -286,22 +319,23 @@ class R2Service {
 
     if (!baseDomain) {
       if (!quiet) {
-         this.setCloudflareSettingsStatus(
-             "Public Bucket URL is required (e.g., https://pub-xxx.r2.dev).",
-             "error"
-         );
+        this.setCloudflareSettingsStatus(
+          "Public Bucket URL is required (e.g., https://pub-xxx.r2.dev).",
+          "error"
+        );
       }
       return false;
     }
+
+    // Try to save to StorageService if available and unlocked
+    // We can't easily know the active pubkey here unless passed or inferred from context.
+    // Since this method is legacy, we'll default to legacy behavior but warn.
 
     let buckets = { ...(this.getSettings().buckets || {}) };
     const previousAccount = this.getSettings().accountId || "";
     const previousBaseDomain = this.getSettings().baseDomain || "";
 
-    if (
-      previousAccount !== accountId ||
-      previousBaseDomain !== baseDomain
-    ) {
+    if (previousAccount !== accountId || previousBaseDomain !== baseDomain) {
       buckets = {};
     }
 
@@ -335,6 +369,76 @@ class R2Service {
 
   async saveSettings(formValues = {}, options = {}) {
     return this.handleCloudflareSettingsSubmit(formValues, options);
+  }
+
+  /**
+   * Resolves connection credentials for the given npub.
+   * Priority:
+   * 1. StorageService (Encrypted)
+   * 2. Legacy Settings (Plaintext)
+   */
+  async resolveConnection(npub) {
+    if (!npub) return null;
+
+    // 1. Try StorageService
+    const pubkey = safeDecodeNpub(npub);
+    if (pubkey && storageService) {
+      try {
+        if (storageService.isUnlocked(pubkey)) {
+          const connections = await storageService.listConnections(pubkey);
+          if (Array.isArray(connections) && connections.length > 0) {
+            let target = connections.find(
+              (c) => c.meta && c.meta.defaultForUploads
+            );
+            if (!target) {
+              // Prefer R2, else first
+              target = connections.find(
+                (c) => c.provider === "cloudflare_r2"
+              );
+            }
+            if (!target) {
+              target = connections[0];
+            }
+
+            if (target) {
+              const details = await storageService.getConnection(
+                pubkey,
+                target.id
+              );
+              if (details) {
+                // Map to R2 settings format
+                return {
+                  accountId: details.accountId || details.meta?.accountId || "",
+                  endpoint: details.endpoint || details.meta?.endpoint || "",
+                  bucket: details.bucket || details.meta?.bucket || "",
+                  region: details.region || details.meta?.region || "auto",
+                  accessKeyId: details.accessKeyId || "",
+                  secretAccessKey: details.secretAccessKey || "",
+                  baseDomain:
+                    details.meta?.baseDomain || details.meta?.publicUrl || "",
+                  isLegacy: false,
+                };
+              }
+            }
+          }
+        }
+      } catch (err) {
+        userLogger.warn("[R2Service] Failed to resolve from storage:", err);
+      }
+    }
+
+    // 2. Fallback to legacy
+    const legacy = this.cloudflareSettings;
+    if (
+      legacy &&
+      legacy.accountId &&
+      legacy.accessKeyId &&
+      legacy.secretAccessKey
+    ) {
+      return { ...legacy, isLegacy: true };
+    }
+
+    return null;
   }
 
   async handleCloudflareClearSettings() {
@@ -388,8 +492,14 @@ class R2Service {
       return null;
     }
 
-    // Prefer explicit credentials if provided, otherwise fallback to stored settings
-    const settings = credentials || this.cloudflareSettings || {};
+    // Resolve credentials if not provided
+    let settings = credentials;
+    if (!settings) {
+      settings = await this.resolveConnection(npub);
+    }
+    if (!settings) {
+      settings = this.cloudflareSettings || {};
+    }
 
     const accountId = (settings.accountId || "").trim();
     const accessKeyId = (settings.accessKeyId || "").trim();
@@ -406,39 +516,44 @@ class R2Service {
 
     // We no longer support automated bucket creation or domain management via API token.
     // We assume the user has created the bucket with the correct name and configured the public domain.
-    const bucketName = sanitizeBucketName(npub);
+    const bucketName = settings.bucket || sanitizeBucketName(npub);
 
     // We attempt to ensure the bucket exists and CORS is set up using the S3 keys if possible.
     if (accessKeyId && secretAccessKey) {
+      try {
+        const s3 = makeR2Client({
+          accountId,
+          accessKeyId,
+          secretAccessKey,
+          endpoint: settings.endpoint,
+          region: settings.region,
+        });
+
+        // Attempt to auto-create the bucket (requires Admin keys, but harmless if fails)
         try {
-          const s3 = makeR2Client({
-            accountId,
-            accessKeyId,
-            secretAccessKey,
-          });
-
-          // Attempt to auto-create the bucket (requires Admin keys, but harmless if fails)
-          try {
-             await ensureBucketExists({ s3, bucket: bucketName });
-          } catch (createErr) {
-             // 403 Forbidden is expected if keys are "Object Read & Write" only.
-             // We proceed assuming the user might have created it manually.
-             userLogger.debug("Auto-creation of bucket failed (likely permission issue), proceeding...", createErr);
-          }
-
-          if (corsOrigins.length > 0) {
-             await ensureBucketCors({
-                s3,
-                bucket: bucketName,
-                origins: corsOrigins,
-             });
-          }
-        } catch (corsErr) {
-          userLogger.warn(
-            "Failed to ensure R2 bucket/CORS configuration via access keys. Ensure the bucket exists and you have permissions.",
-            corsErr
+          await ensureBucketExists({ s3, bucket: bucketName });
+        } catch (createErr) {
+          // 403 Forbidden is expected if keys are "Object Read & Write" only.
+          // We proceed assuming the user might have created it manually.
+          userLogger.debug(
+            "Auto-creation of bucket failed (likely permission issue), proceeding...",
+            createErr
           );
         }
+
+        if (corsOrigins.length > 0) {
+          await ensureBucketCors({
+            s3,
+            bucket: bucketName,
+            origins: corsOrigins,
+          });
+        }
+      } catch (corsErr) {
+        userLogger.warn(
+          "Failed to ensure R2 bucket/CORS configuration via access keys. Ensure the bucket exists and you have permissions.",
+          corsErr
+        );
+      }
     }
 
     // Use the user-provided baseDomain as the public URL root.
@@ -446,31 +561,41 @@ class R2Service {
     const cleanBaseUrl = baseDomain.replace(/\/+$/, "");
 
     const manualEntry = {
-        bucket: bucketName,
-        publicBaseUrl: cleanBaseUrl,
-        domainType: "manual",
-        lastUpdated: Date.now(),
+      bucket: bucketName,
+      publicBaseUrl: cleanBaseUrl,
+      domainType: "manual",
+      lastUpdated: Date.now(),
     };
 
-    let entry = this.cloudflareSettings.buckets?.[npub];
-    let savedEntry = entry;
+    // If using legacy settings, we save the bucket mapping.
+    // If using StorageService (settings.isLegacy === false), we do NOT save to legacy store
+    // to avoid partial state or overwriting. We just return the manual entry.
+    if (settings.isLegacy !== false) {
+      let entry = this.cloudflareSettings.buckets?.[npub];
+      let savedEntry = entry;
 
-    if (
+      if (
         !entry ||
         entry.bucket !== manualEntry.bucket ||
         entry.publicBaseUrl !== manualEntry.publicBaseUrl
-    ) {
+      ) {
         const updatedSettings = await saveR2Settings(
           mergeBucketEntry(this.getSettings(), npub, manualEntry)
         );
         this.setSettings(updatedSettings);
         savedEntry = updatedSettings.buckets?.[npub] || manualEntry;
-    }
-
-    return {
+      }
+      return {
         entry: savedEntry,
         usedManagedFallback: false,
         customDomainStatus: "manual",
+      };
+    }
+
+    return {
+      entry: manualEntry,
+      usedManagedFallback: false,
+      customDomainStatus: "manual",
     };
   }
 
@@ -510,7 +635,13 @@ class R2Service {
 
     try {
       // 1. Initialize S3
-      const s3 = makeR2Client({ accountId, accessKeyId, secretAccessKey });
+      const s3 = makeR2Client({
+        accountId,
+        accessKeyId,
+        secretAccessKey,
+        endpoint: settings.endpoint,
+        region: settings.region,
+      });
 
       // 2. Ensure bucket (best effort)
       try {
@@ -646,14 +777,15 @@ class R2Service {
 
     const rawTitleCandidate =
       metadata && typeof metadata === "object" ? metadata.title : metadata;
-    const title = typeof rawTitleCandidate === "string"
-      ? rawTitleCandidate.trim()
-      : String(rawTitleCandidate ?? "").trim();
+    const title =
+      typeof rawTitleCandidate === "string"
+        ? rawTitleCandidate.trim()
+        : String(rawTitleCandidate ?? "").trim();
 
     if (!title) {
       this.setCloudflareUploadStatus(
         getVideoNoteErrorMessage(VIDEO_NOTE_ERROR_CODES.MISSING_TITLE),
-        "error",
+        "error"
       );
       return false;
     }
@@ -666,14 +798,22 @@ class R2Service {
       return false;
     }
 
-    const effectiveSettings = explicitCredentials || this.cloudflareSettings || {};
+    // Resolve settings from StorageService if explicitCredentials missing
+    let effectiveSettings = explicitCredentials;
+    if (!effectiveSettings) {
+      effectiveSettings = await this.resolveConnection(npub);
+    }
+    if (!effectiveSettings) {
+      effectiveSettings = this.cloudflareSettings || {};
+    }
+
     const accountId = (effectiveSettings.accountId || "").trim();
     const accessKeyId = (effectiveSettings.accessKeyId || "").trim();
     const secretAccessKey = (effectiveSettings.secretAccessKey || "").trim();
 
     if (!accountId || !accessKeyId || !secretAccessKey) {
       this.setCloudflareUploadStatus(
-        "Missing R2 credentials. Save them before uploading.",
+        "Missing R2 credentials. Unlock your storage or save settings.",
         "error"
       );
       return false;
@@ -686,12 +826,14 @@ class R2Service {
     let bucketResult = null;
     try {
       bucketResult = await this.ensureBucketConfigForNpub(npub, {
-        credentials: explicitCredentials,
+        credentials: effectiveSettings,
       });
     } catch (err) {
       userLogger.error("Failed to prepare R2 bucket:", err);
       this.setCloudflareUploadStatus(
-        err?.message ? `Bucket setup failed: ${err.message}` : "Bucket setup failed.",
+        err?.message
+          ? `Bucket setup failed: ${err.message}`
+          : "Bucket setup failed.",
         "error"
       );
       this.setCloudflareUploading(false);
@@ -699,6 +841,7 @@ class R2Service {
       return false;
     }
 
+    // Use returned entry first (correct for both legacy and generic), fallback to legacy map
     const bucketEntry =
       bucketResult?.entry || this.cloudflareSettings?.buckets?.[npub];
 
@@ -729,7 +872,13 @@ class R2Service {
     };
 
     try {
-      const s3 = makeR2Client({ accountId, accessKeyId, secretAccessKey });
+      const s3 = makeR2Client({
+        accountId,
+        accessKeyId,
+        secretAccessKey,
+        endpoint: effectiveSettings.endpoint,
+        region: effectiveSettings.region,
+      });
 
       if (thumbnailFile) {
         this.setCloudflareUploadStatus("Uploading thumbnail...", "info");
@@ -905,15 +1054,30 @@ class R2Service {
     accountId,
     accessKeyId,
     secretAccessKey,
+    endpoint,
+    region,
     bucket,
     key,
     onProgress,
   } = {}) {
-    if (!file || !bucket || !key || !accountId || !accessKeyId || !secretAccessKey) {
+    if (
+      !file ||
+      !bucket ||
+      !key ||
+      (!accountId && !endpoint) ||
+      !accessKeyId ||
+      !secretAccessKey
+    ) {
       throw new Error("Missing required parameters for uploadFile");
     }
 
-    const s3 = makeR2Client({ accountId, accessKeyId, secretAccessKey });
+    const s3 = makeR2Client({
+      accountId,
+      accessKeyId,
+      secretAccessKey,
+      endpoint,
+      region,
+    });
 
     await multipartUpload({
       s3,
