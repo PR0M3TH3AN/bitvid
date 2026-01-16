@@ -1944,6 +1944,50 @@ export class Nip46RpcClient {
     }
   }
 
+  async nip04Encrypt(pubkey, plaintext) {
+    if (!pubkey || !plaintext) {
+      throw new Error("Pubkey and plaintext are required for NIP-04 encryption.");
+    }
+    const result = await this.sendRpc("nip04_encrypt", [pubkey, plaintext]);
+    if (typeof result !== "string") {
+      throw new Error("Remote signer returned invalid NIP-04 ciphertext.");
+    }
+    return result;
+  }
+
+  async nip04Decrypt(pubkey, ciphertext) {
+    if (!pubkey || !ciphertext) {
+      throw new Error("Pubkey and ciphertext are required for NIP-04 decryption.");
+    }
+    const result = await this.sendRpc("nip04_decrypt", [pubkey, ciphertext]);
+    if (typeof result !== "string") {
+      throw new Error("Remote signer returned invalid NIP-04 plaintext.");
+    }
+    return result;
+  }
+
+  async nip44Encrypt(pubkey, plaintext) {
+    if (!pubkey || !plaintext) {
+      throw new Error("Pubkey and plaintext are required for NIP-44 encryption.");
+    }
+    const result = await this.sendRpc("nip44_encrypt", [pubkey, plaintext]);
+    if (typeof result !== "string") {
+      throw new Error("Remote signer returned invalid NIP-44 ciphertext.");
+    }
+    return result;
+  }
+
+  async nip44Decrypt(pubkey, ciphertext) {
+    if (!pubkey || !ciphertext) {
+      throw new Error("Pubkey and ciphertext are required for NIP-44 decryption.");
+    }
+    const result = await this.sendRpc("nip44_decrypt", [pubkey, ciphertext]);
+    if (typeof result !== "string") {
+      throw new Error("Remote signer returned invalid NIP-44 plaintext.");
+    }
+    return result;
+  }
+
   getActiveSigner() {
     if (!this.userPubkey) {
       return null;
@@ -1954,6 +1998,14 @@ export class Nip46RpcClient {
         type: "nip46",
         pubkey: this.userPubkey,
         signEvent: (event) => this.signEvent(event),
+        nip04: {
+          encrypt: (pubkey, plaintext) => this.nip04Encrypt(pubkey, plaintext),
+          decrypt: (pubkey, ciphertext) => this.nip04Decrypt(pubkey, ciphertext),
+        },
+        nip44: {
+          encrypt: (pubkey, plaintext) => this.nip44Encrypt(pubkey, plaintext),
+          decrypt: (pubkey, ciphertext) => this.nip44Decrypt(pubkey, ciphertext),
+        },
       };
     }
 
