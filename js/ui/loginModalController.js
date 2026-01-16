@@ -2319,170 +2319,170 @@ export default class LoginModalController {
     }
 
     this.isSelectionInProgress = true;
-    safeInvoke(this.callbacks.onProviderSelected, providerId);
-
-    let providerOptions = {};
-    if (entry.provider.id === "nsec") {
-      try {
-        const nsecOptions = await this.promptForNsecOptions();
-        if (!nsecOptions) {
-          devLogger.log(
-            "[LoginModalController] Direct key login cancelled by the user.",
-          );
-          if (entry.button instanceof HTMLButtonElement) {
-            entry.button.focus();
-          }
-          return;
-        }
-        providerOptions = nsecOptions;
-      } catch (promptError) {
-        devLogger.error(
-          "[LoginModalController] Failed to collect direct key credentials:",
-          promptError,
-        );
-        return;
-      }
-    } else if (entry.provider.id === "nip46") {
-      try {
-        const nip46Options = await this.promptForNip46Options();
-        if (!nip46Options) {
-          devLogger.log(
-            "[LoginModalController] Remote signer login cancelled by the user.",
-          );
-          if (entry.button instanceof HTMLButtonElement) {
-            entry.button.focus();
-          }
-          return;
-        }
-        providerOptions = nip46Options;
-      } catch (promptError) {
-        devLogger.error(
-          "[LoginModalController] Failed to collect remote signer connection:",
-          promptError,
-        );
-        return;
-      }
-    } else if (entry.provider.id === "generate") {
-      try {
-        const generateOptions = await this.promptForGenerateOptions();
-        if (!generateOptions) {
-          devLogger.log(
-            "[LoginModalController] Account generation cancelled by the user.",
-          );
-          if (entry.button instanceof HTMLButtonElement) {
-            entry.button.focus();
-          }
-          return;
-        }
-        providerOptions = generateOptions;
-        // Switch provider context to 'nsec' since we are logging in with a key
-        providerId = "nsec";
-        const nsecEntry = this.getProviderEntry("nsec");
-        if (nsecEntry) {
-          entry = nsecEntry;
-        }
-      } catch (promptError) {
-        devLogger.error(
-          "[LoginModalController] Failed to process account generation:",
-          promptError,
-        );
-        return;
-      }
-    }
-
-    this.setLoadingState(providerId, true);
-    devLogger.log(
-      `[LoginModalController] Starting login for provider ${providerId}.`,
-    );
-
-    const requestOptions = { providerId, ...providerOptions };
-
-    const extraOptions = await this.resolveNextRequestLoginOptions({
-      provider: entry.provider.source || entry.provider,
-      providerId,
-    });
-    if (extraOptions && typeof extraOptions === "object") {
-      Object.assign(requestOptions, extraOptions);
-    }
-
     try {
-      const result = await this.services.authService.requestLogin(requestOptions);
+      safeInvoke(this.callbacks.onProviderSelected, providerId);
 
+      let providerOptions = {};
+      if (entry.provider.id === "nsec") {
+        try {
+          const nsecOptions = await this.promptForNsecOptions();
+          if (!nsecOptions) {
+            devLogger.log(
+              "[LoginModalController] Direct key login cancelled by the user.",
+            );
+            if (entry.button instanceof HTMLButtonElement) {
+              entry.button.focus();
+            }
+            return;
+          }
+          providerOptions = nsecOptions;
+        } catch (promptError) {
+          devLogger.error(
+            "[LoginModalController] Failed to collect direct key credentials:",
+            promptError,
+          );
+          return;
+        }
+      } else if (entry.provider.id === "nip46") {
+        try {
+          const nip46Options = await this.promptForNip46Options();
+          if (!nip46Options) {
+            devLogger.log(
+              "[LoginModalController] Remote signer login cancelled by the user.",
+            );
+            if (entry.button instanceof HTMLButtonElement) {
+              entry.button.focus();
+            }
+            return;
+          }
+          providerOptions = nip46Options;
+        } catch (promptError) {
+          devLogger.error(
+            "[LoginModalController] Failed to collect remote signer connection:",
+            promptError,
+          );
+          return;
+        }
+      } else if (entry.provider.id === "generate") {
+        try {
+          const generateOptions = await this.promptForGenerateOptions();
+          if (!generateOptions) {
+            devLogger.log(
+              "[LoginModalController] Account generation cancelled by the user.",
+            );
+            if (entry.button instanceof HTMLButtonElement) {
+              entry.button.focus();
+            }
+            return;
+          }
+          providerOptions = generateOptions;
+          // Switch provider context to 'nsec' since we are logging in with a key
+          providerId = "nsec";
+          const nsecEntry = this.getProviderEntry("nsec");
+          if (nsecEntry) {
+            entry = nsecEntry;
+          }
+        } catch (promptError) {
+          devLogger.error(
+            "[LoginModalController] Failed to process account generation:",
+            promptError,
+          );
+          return;
+        }
+      }
+
+      this.setLoadingState(providerId, true);
       devLogger.log(
-        `[LoginModalController] Login resolved for ${providerId} with pubkey:`,
-        result?.pubkey,
+        `[LoginModalController] Starting login for provider ${providerId}.`,
       );
 
-      const consumed = this.resolvePendingTask(result, { type: "add-profile" });
-      const shouldClose =
-        result &&
-        typeof result === "object" &&
-        typeof result.pubkey === "string" &&
-        result.pubkey.trim();
+      const requestOptions = { providerId, ...providerOptions };
 
-      if (shouldClose) {
-        this.helpers.closeModal();
-      }
-
-      if (consumed) {
-        return;
-      }
-
-      await safeInvokeAsync(this.callbacks.onLoginSuccess, {
+      const extraOptions = await this.resolveNextRequestLoginOptions({
         provider: entry.provider.source || entry.provider,
-        result,
+        providerId,
       });
-    } catch (error) {
-      devLogger.error(
-        `[LoginModalController] Login failed for ${providerId}:`,
-        error,
-      );
+      if (extraOptions && typeof extraOptions === "object") {
+        Object.assign(requestOptions, extraOptions);
+      }
 
-      const message = this.helpers.describeLoginError(
-        error,
-        entry.provider.errorMessage,
-      );
+      try {
+        const result =
+          await this.services.authService.requestLogin(requestOptions);
 
-      if (
-        !message ||
-        (typeof message === "string" && !message.trim())
-      ) {
-        devLogger.warn(
-          `[LoginModalController] describeLoginError returned empty message for ${providerId}.`,
+        devLogger.log(
+          `[LoginModalController] Login resolved for ${providerId} with pubkey:`,
+          result?.pubkey,
         );
+
+        const consumed = this.resolvePendingTask(result, { type: "add-profile" });
+        const shouldClose =
+          result &&
+          typeof result === "object" &&
+          typeof result.pubkey === "string" &&
+          result.pubkey.trim();
+
+        if (shouldClose) {
+          this.helpers.closeModal();
+        }
+
+        if (consumed) {
+          return;
+        }
+
+        await safeInvokeAsync(this.callbacks.onLoginSuccess, {
+          provider: entry.provider.source || entry.provider,
+          result,
+        });
+      } catch (error) {
+        devLogger.error(
+          `[LoginModalController] Login failed for ${providerId}:`,
+          error,
+        );
+
+        const message = this.helpers.describeLoginError(
+          error,
+          entry.provider.errorMessage,
+        );
+
+        if (!message || (typeof message === "string" && !message.trim())) {
+          devLogger.warn(
+            `[LoginModalController] describeLoginError returned empty message for ${providerId}.`,
+          );
+        }
+
+        const rejectionError =
+          error instanceof Error
+            ? error
+            : new Error(message || "Failed to login. Please try again.");
+
+        if (message && message !== rejectionError.message) {
+          rejectionError.message = message;
+        }
+
+        if (
+          error &&
+          typeof error === "object" &&
+          typeof error.code === "string" &&
+          !rejectionError.code
+        ) {
+          rejectionError.code = error.code;
+        }
+
+        const consumed = this.rejectPendingTask(rejectionError, {
+          type: "add-profile",
+        });
+
+        if (consumed) {
+          return;
+        }
+
+        await safeInvokeAsync(this.callbacks.onLoginError, {
+          provider: entry.provider.source || entry.provider,
+          error: rejectionError,
+          message,
+        });
       }
-
-      const rejectionError =
-        error instanceof Error
-          ? error
-          : new Error(message || "Failed to login. Please try again.");
-
-      if (message && message !== rejectionError.message) {
-        rejectionError.message = message;
-      }
-
-      if (
-        error &&
-        typeof error === "object" &&
-        typeof error.code === "string" &&
-        !rejectionError.code
-      ) {
-        rejectionError.code = error.code;
-      }
-
-      const consumed = this.rejectPendingTask(rejectionError, {
-        type: "add-profile",
-      });
-
-      if (consumed) {
-        return;
-      }
-
-      await safeInvokeAsync(this.callbacks.onLoginError, {
-        provider: entry.provider.source || entry.provider,
-        error: rejectionError,
-        message,
-      });
     } finally {
       this.isSelectionInProgress = false;
       this.setLoadingState(providerId, false);
