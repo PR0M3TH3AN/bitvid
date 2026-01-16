@@ -305,21 +305,94 @@ export class EventDetailsModal {
     }
 
     if (jsonEl) {
-      const rawEvent = this.getRawEvent(video);
-      jsonEl.textContent = JSON.stringify(rawEvent, null, 2);
+      jsonEl.textContent = "Loading raw event...";
+      this.currentRawEvent = null;
+
+      if (this.app?.nostrService?.nostrClient?.getEventById) {
+        this.app.nostrService.nostrClient
+          .getEventById(video.id, { includeRaw: true })
+          .then((result) => {
+            if (this.currentVideo && this.currentVideo.id === video.id) {
+              // Ensure we actually have a raw event (with signature)
+              // If getEventById returns a wrapper { video, rawEvent: null }, we must handle null.
+              const raw =
+                result && typeof result.rawEvent === "object"
+                  ? result.rawEvent
+                  : null;
+
+              if (raw) {
+                this.currentRawEvent = raw;
+                jsonEl.textContent = JSON.stringify(raw, null, 2);
+              } else {
+                // Fallback if fetch returned nothing usable
+                // Do not set currentRawEvent so copy-json uses the reconstruction logic
+                jsonEl.textContent = JSON.stringify(
+                  this.getRawEvent(video),
+                  null,
+                  2,
+                );
+              }
+            }
+          })
+          .catch((error) => {
+            console.error(
+              "[EventDetailsModal] Failed to fetch raw event:",
+              error,
+            );
+            if (this.currentVideo && this.currentVideo.id === video.id) {
+              jsonEl.textContent = `// Failed to load raw event.\n// Falling back to known data:\n${JSON.stringify(
+                this.getRawEvent(video),
+                null,
+                2,
+              )}`;
+            }
+          });
+      } else {
+        // Fallback if client or method missing
+        const rawEvent = this.getRawEvent(video);
+        jsonEl.textContent = JSON.stringify(rawEvent, null, 2);
+      }
     }
   }
 
   getRawEvent(video) {
     if (!video) return {};
+
+    let content = video.content;
+    // If raw content is missing (e.g. video loaded from cache/parsed), reconstruct it
+    // so the user can inspect the metadata fields (thumbnail, title, etc.)
+    if (typeof content !== "string") {
+      const payload = {
+        title: video.title,
+        description: video.description,
+        thumbnail: video.thumbnail,
+        url: video.url,
+        magnet: video.magnet,
+        isPrivate: video.isPrivate,
+        isNsfw: video.isNsfw,
+        isForKids: video.isForKids,
+        version: video.version,
+        mode: video.mode,
+      };
+
+      // Clean up undefined/empty fields to keep it tidy
+      Object.keys(payload).forEach((key) => {
+        if (payload[key] === undefined || payload[key] === null) {
+          delete payload[key];
+        }
+      });
+
+      content = JSON.stringify(payload);
+    }
+
     return {
       id: video.id,
       pubkey: video.pubkey,
       created_at: video.created_at,
-      kind: video.kind,
+      kind: video.kind || 30078,
       tags: video.tags,
-      content: video.content,
-      sig: video.sig,
+      content: content,
+      sig: video.sig || "unavailable (cached)",
     };
   }
 
