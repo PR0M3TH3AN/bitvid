@@ -22,6 +22,11 @@
 
 Threshold constants are exported from [`config/instance-config.js`](../../config/instance-config.js) so operators can change the defaults without touching moderation code. Inspect the `DEFAULT_BLUR_THRESHOLD`, `DEFAULT_AUTOPLAY_BLOCK_THRESHOLD`, `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD`, and `DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD` exports to set your policy. The upstream repo includes example values (blur at 1, autoplay block at 1, trusted mute hide at 20, trusted spam hide at 1), but treat those as guidance rather than hard-coded requirements.
 
+### Trusted mute decay window
+- Trusted mute counts are **time-bounded**: only mute lists updated within the rolling window (currently 60 days) contribute to `trustedMuteCount`.
+- If an F1 account has not refreshed its mute list within the window, its mutes are treated as expired until a newer list is ingested.
+- This window acts as a rate-limit/decay mechanism so stale mutes do not accumulate indefinitely.
+
 ### Why these numbers?
 - F1-only reports resist Sybil attacks.
 - Blur is reversible; hiding autoplay reduces accidental exposure.
