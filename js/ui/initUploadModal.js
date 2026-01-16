@@ -48,6 +48,11 @@ export function initUploadModal({
       safeEncodeNpub,
       eventTarget: events,
       container,
+      onRequestStorageSettings: () => {
+        if (app && app.profileController && typeof app.profileController.show === "function") {
+          app.profileController.show("storage");
+        }
+      },
     });
 
   const boundSubmitHandler =
