@@ -292,6 +292,7 @@ export default class LoginModalController {
     // Track modal close state to reset generated keys when the modal closes.
     this.modalCloseObserver = null;
     this.modalCloseIntervalId = null;
+    this.isSelectionInProgress = false;
 
     this.initializeRemoteSignerStatus();
     this.initialized = false;
@@ -1696,29 +1697,76 @@ export default class LoginModalController {
       return null;
     }
 
-    // Always generate fresh keys for each "Create Account" session.
-    const sk = tools.generateSecretKey();
-    const pk = tools.getPublicKey(sk);
-    const npubGen = tools.nip19?.npubEncode ? tools.nip19.npubEncode(pk) : pk;
-    const nsecGen = tools.nip19?.nsecEncode ? tools.nip19.nsecEncode(sk) : "";
-    const hexSkGen = nsecGen
-      ? nsecGen
-      : tools.nip19?.bytesToHex
-      ? tools.nip19.bytesToHex(sk)
-      : "";
+    // Do not generate keys immediately. Wait for user action.
+    this.generatedKeypair = null;
+    let npub = "";
+    let nsec = "";
+    let hexSk = "";
 
-    this.generatedKeypair = {
-      npub: npubGen,
-      nsec: nsecGen,
-      hexSk: hexSkGen,
-      pubkey: pk,
-    };
+    // Reset fields
+    if (npubEl) {
+      npubEl.textContent = "";
+    }
+    if (nsecEl instanceof HTMLInputElement) {
+      nsecEl.value = "";
+    }
 
-    const { npub, nsec, hexSk } = this.generatedKeypair;
+    // Insert "Generate" button
+    const generateBtn = this.document.createElement("button");
+    generateBtn.type = "button";
+    generateBtn.className = "btn w-full mb-4";
+    generateBtn.textContent = "Generate New Keys";
+    // Insert before the first key field container, or at top of view?
+    // view structure: h3, p, div(space-y-3)
+    const contentContainer = view.querySelector(".space-y-3");
+    if (contentContainer) {
+      contentContainer.insertBefore(generateBtn, contentContainer.firstChild);
+    }
 
-    // Display keys
-    if (npubEl) npubEl.textContent = npub;
-    if (nsecEl instanceof HTMLInputElement) nsecEl.value = nsec || "Error generating nsec";
+    const keyContainer = contentContainer
+      ? contentContainer.querySelector(".space-y-2")
+      : null;
+    if (keyContainer) {
+      keyContainer.classList.add("hidden");
+    }
+    // Also hide the nsec container
+    const nsecContainer = contentContainer
+      ? contentContainer.querySelectorAll(".space-y-2")[1]
+      : null;
+    if (nsecContainer) {
+      nsecContainer.classList.add("hidden");
+    }
+
+    generateBtn.addEventListener("click", () => {
+      const sk = tools.generateSecretKey();
+      const pk = tools.getPublicKey(sk);
+      const npubGen = tools.nip19?.npubEncode ? tools.nip19.npubEncode(pk) : pk;
+      const nsecGen = tools.nip19?.nsecEncode ? tools.nip19.nsecEncode(sk) : "";
+      const hexSkGen = nsecGen
+        ? nsecGen
+        : tools.nip19?.bytesToHex
+        ? tools.nip19.bytesToHex(sk)
+        : "";
+
+      this.generatedKeypair = {
+        npub: npubGen,
+        nsec: nsecGen,
+        hexSk: hexSkGen,
+        pubkey: pk,
+      };
+
+      npub = npubGen;
+      nsec = nsecGen;
+      hexSk = hexSkGen;
+
+      if (npubEl) npubEl.textContent = npub;
+      if (nsecEl instanceof HTMLInputElement) nsecEl.value = nsec;
+
+      generateBtn.classList.add("hidden");
+      if (keyContainer) keyContainer.classList.remove("hidden");
+      if (nsecContainer) nsecContainer.classList.remove("hidden");
+      if (loginBtn) loginBtn.disabled = true; // Still requires checkbox confirmation
+    });
 
     const elementsToHide = [];
     for (const child of Array.from(this.modalBody.children)) {
@@ -1778,6 +1826,11 @@ export default class LoginModalController {
 
       if (loginBtn) {
         loginBtn.addEventListener("click", () => {
+          if (!this.generatedKeypair) {
+            return;
+          }
+          const { npub, nsec, hexSk } = this.generatedKeypair;
+
           // Block generated accounts if whitelist-only access is enforced.
           const accessControl = this.services?.authService?.accessControl;
           if (accessControl && typeof accessControl.canAccess === "function") {
@@ -2239,6 +2292,10 @@ export default class LoginModalController {
   }
 
   async handleProviderSelection(providerId) {
+    if (this.isSelectionInProgress) {
+      return;
+    }
+
     const entry = this.getProviderEntry(providerId);
     if (!entry) {
       devLogger.warn(
@@ -2261,6 +2318,7 @@ export default class LoginModalController {
       return;
     }
 
+    this.isSelectionInProgress = true;
     safeInvoke(this.callbacks.onProviderSelected, providerId);
 
     let providerOptions = {};
@@ -2426,6 +2484,7 @@ export default class LoginModalController {
         message,
       });
     } finally {
+      this.isSelectionInProgress = false;
       this.setLoadingState(providerId, false);
       if (this.pendingNip46Cleanup) {
         try {
