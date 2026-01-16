@@ -33,6 +33,8 @@ import nostrService from "./services/nostrService.js";
 const SUBSCRIPTION_SET_KIND =
   getNostrEventSchema(NOTE_TYPES.SUBSCRIPTION_LIST)?.kind ?? 30000;
 
+const SUBSCRIPTIONS_CACHE_KEY_PREFIX = "bitvid:subscriptions:v1:";
+
 function normalizeHexPubkey(value) {
   if (typeof value !== "string") {
     return "";
@@ -247,6 +249,65 @@ class SubscriptionsManager {
       userLogger.warn("[SubscriptionsManager] No pubkey => cannot load subs.");
       return;
     }
+
+    const normalizedUserPubkey = normalizeHexPubkey(userPubkey) || userPubkey;
+
+    // 1. Attempt to load from cache first
+    const cached = this.loadFromCache(normalizedUserPubkey);
+    if (cached) {
+      devLogger.log("[SubscriptionsManager] Loaded subscriptions from cache.");
+      this.subscribedPubkeys = cached;
+      this.currentUserPubkey = normalizedUserPubkey;
+      this.loaded = true;
+
+      // Trigger background update
+      this.updateFromRelays(userPubkey).catch((err) => {
+        devLogger.warn("[SubscriptionsManager] Background update failed:", err);
+      });
+      return;
+    }
+
+    // 2. If no cache, must wait for relays
+    await this.updateFromRelays(userPubkey);
+  }
+
+  getCacheKey(userPubkey) {
+    if (!userPubkey) return null;
+    return `${SUBSCRIPTIONS_CACHE_KEY_PREFIX}${userPubkey}`;
+  }
+
+  loadFromCache(userPubkey) {
+    if (typeof localStorage === "undefined") return null;
+    const key = this.getCacheKey(userPubkey);
+    if (!key) return null;
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return new Set(parsed);
+      }
+    } catch (e) {
+      devLogger.warn("[SubscriptionsManager] Failed to parse cache:", e);
+    }
+    return null;
+  }
+
+  saveToCache(userPubkey) {
+    if (typeof localStorage === "undefined") return;
+    const key = this.getCacheKey(userPubkey);
+    if (!key) return;
+    const list = Array.from(this.subscribedPubkeys);
+    try {
+      localStorage.setItem(key, JSON.stringify(list));
+    } catch (e) {
+      devLogger.warn("[SubscriptionsManager] Failed to save to cache:", e);
+    }
+  }
+
+  async updateFromRelays(userPubkey) {
+    if (!userPubkey) return;
+
     try {
       const normalizedUserPubkey = normalizeHexPubkey(userPubkey) || userPubkey;
       const sessionActorPubkey = normalizeHexPubkey(
@@ -324,10 +385,18 @@ class SubscriptionsManager {
         }
       }
 
+      // If we got no events from relays, we should NOT wipe the cache if we have one.
+      // This protects against flaky relays returning empty results for existing users.
+      // If the user truly has no list (new user), cache is likely empty anyway.
       if (!events.length) {
-        this.subscribedPubkeys.clear();
-        this.subsEventId = null;
-        this.loaded = true;
+        // Only clear if we haven't loaded anything yet (e.g. fresh load, no cache)
+        if (!this.loaded) {
+          this.subscribedPubkeys.clear();
+          this.subsEventId = null;
+          this.loaded = true;
+        } else {
+          devLogger.warn("[SubscriptionsManager] Relays returned no events, keeping existing/cached list.");
+        }
         return;
       }
 
@@ -357,9 +426,12 @@ class SubscriptionsManager {
           "[SubscriptionsManager] Extension permissions denied while loading subscriptions; treating list as empty.",
           permissionResult.error,
         );
-        this.subscribedPubkeys.clear();
-        this.subsEventId = null;
-        this.loaded = true;
+        // Permission denied is definitive enough to stop trying to use this event
+        if (!this.loaded) {
+          this.subscribedPubkeys.clear();
+          this.subsEventId = null;
+          this.loaded = true;
+        }
         return;
       }
 
@@ -369,21 +441,51 @@ class SubscriptionsManager {
           "[SubscriptionsManager] Failed to decrypt subscription list:",
           decryptResult.error,
         );
-        this.subscribedPubkeys.clear();
-        this.subsEventId = null;
-        this.loaded = true;
+        if (!this.loaded) {
+          this.subscribedPubkeys.clear();
+          this.subsEventId = null;
+          this.loaded = true;
+        }
         return;
       }
 
       const decryptedStr = decryptResult.plaintext;
-
       const normalized = parseSubscriptionPlaintext(decryptedStr);
-      this.subscribedPubkeys = new Set(normalized);
 
+      const newSet = new Set(normalized);
+      const previousSet = this.subscribedPubkeys;
+
+      // Update state
+      this.subscribedPubkeys = newSet;
       this.currentUserPubkey = normalizedUserPubkey;
       this.loaded = true;
+
+      // Update persistent cache
+      this.saveToCache(normalizedUserPubkey);
+
+      // Check if we need to refresh the feed
+      let changed = newSet.size !== previousSet.size;
+      if (!changed) {
+        for (const key of newSet) {
+          if (!previousSet.has(key)) {
+            changed = true;
+            break;
+          }
+        }
+      }
+
+      if (changed) {
+        devLogger.log("[SubscriptionsManager] Subscription list updated from relays, refreshing feed.");
+        this.refreshActiveFeed({ reason: "subscription-update-background" }).catch((error) => {
+          userLogger.warn(
+            "[SubscriptionsManager] Failed to refresh after background subscription update:",
+            error
+          );
+        });
+      }
+
     } catch (err) {
-      userLogger.error("[SubscriptionsManager] Failed to load subs:", err);
+      userLogger.error("[SubscriptionsManager] Failed to update subs from relays:", err);
     }
   }
 
@@ -564,6 +666,7 @@ class SubscriptionsManager {
       return;
     }
     this.subscribedPubkeys.add(normalizedChannel);
+    this.saveToCache(userPubkey);
     await this.publishSubscriptionList(userPubkey);
     this.refreshActiveFeed({ reason: "subscription-update" }).catch((error) => {
       userLogger.warn(
@@ -588,6 +691,7 @@ class SubscriptionsManager {
       return;
     }
     this.subscribedPubkeys.delete(normalizedChannel);
+    this.saveToCache(userPubkey);
     await this.publishSubscriptionList(userPubkey);
     this.refreshActiveFeed({ reason: "subscription-update" }).catch((error) => {
       userLogger.warn(
