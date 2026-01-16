@@ -5921,13 +5921,18 @@ export class ProfileModalController {
       // For now, we assume managing a 'default' connection or the first one found.
       try {
         const connections = await storageService.listConnections(pubkey);
-        const targetId = "default"; // Simplified for now
-        const hasDefault = connections.find(c => c.id === targetId);
+        // Prioritize default for uploads
+        const defaultConn = connections.find(c => c.meta?.defaultForUploads);
+        const targetConn = defaultConn || connections[0];
 
-        if (hasDefault) {
-          const conn = await storageService.getConnection(pubkey, targetId);
+        if (targetConn) {
+          const conn = await storageService.getConnection(pubkey, targetConn.id);
           if (conn) {
             this.fillStorageForm(conn);
+            if (this.storageStatusText) {
+              const label = conn.meta?.label || conn.provider || "S3";
+              this.storageStatusText.textContent = `Unlocked (${label})`;
+            }
           }
         }
       } catch (error) {
@@ -5943,13 +5948,15 @@ export class ProfileModalController {
 
   fillStorageForm(conn) {
     if (!conn) return;
-    const { provider, accessKeyId, secretAccessKey } = conn;
+    const { provider, accessKeyId, secretAccessKey, accountId: payloadAccountId, endpoint: payloadEndpoint } = conn;
     const { endpoint, region, bucket, prefix, defaultForUploads, accountId } = conn.meta || {};
 
     if (this.storageProviderInput) this.storageProviderInput.value = provider || "cloudflare_r2";
-    // For R2, the user enters accountId in the 'endpoint' field (repurposed by UI logic).
-    // So we prefer accountId if available, otherwise endpoint.
-    if (this.storageEndpointInput) this.storageEndpointInput.value = endpoint || accountId || "";
+
+    // For R2, accountId is critical.
+    const resolvedEndpoint = endpoint || accountId || payloadAccountId || payloadEndpoint || "";
+
+    if (this.storageEndpointInput) this.storageEndpointInput.value = resolvedEndpoint;
     if (this.storageRegionInput) this.storageRegionInput.value = region || "auto";
     if (this.storageAccessKeyInput) this.storageAccessKeyInput.value = accessKeyId || "";
     if (this.storageSecretKeyInput) this.storageSecretKeyInput.value = secretAccessKey || "";

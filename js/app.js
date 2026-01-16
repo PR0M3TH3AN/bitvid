@@ -719,6 +719,21 @@ class Application {
 
       this.syncAuthUiState();
 
+      if (typeof window !== "undefined") {
+        window.addEventListener("bitvid:auth-changed", (event) => {
+          const detail = event.detail || {};
+          const previousPubkey = detail.previousPubkey;
+
+          if (previousPubkey && typeof storageService !== "undefined" && typeof storageService.lock === "function") {
+            storageService.lock(previousPubkey);
+          }
+
+          if (this.uploadModal && typeof this.uploadModal.refreshState === "function") {
+            this.uploadModal.refreshState();
+          }
+        });
+      }
+
       const savedPubKey = this.activeProfilePubkey;
       if (savedPubKey) {
         // Auto-login if a pubkey was saved
