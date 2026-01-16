@@ -754,9 +754,18 @@ export class SimilarContentCard {
       if (shouldBlur) {
         this.thumbnailEl.dataset.thumbnailState = "blurred";
         this.thumbnailEl.classList.add("blur-xl");
+        // Force blur style in case class utility is missing or overridden,
+        // and clear the backdrop so the sharp background doesn't show through.
+        this.thumbnailEl.style.filter = "blur(24px)";
+        this.setCardBackdropImage("");
       } else {
         delete this.thumbnailEl.dataset.thumbnailState;
         this.thumbnailEl.classList.remove("blur-xl");
+        this.thumbnailEl.style.filter = "";
+        // Restore backdrop if src is available
+        if (this.thumbnailEl.src) {
+          this.setCardBackdropImage(this.thumbnailEl.src);
+        }
       }
     }
 
@@ -826,6 +835,8 @@ export class SimilarContentCard {
     if (this.shouldMaskNsfwForOwner || this.video?.moderation?.blurThumbnail) {
       img.dataset.thumbnailState = "blurred";
       img.classList.add("blur-xl");
+      // Pre-apply style to avoid flash
+      img.style.filter = "blur(24px)";
     }
 
     const handleLoad = () => {
