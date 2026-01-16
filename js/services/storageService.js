@@ -1,5 +1,6 @@
 import { userLogger } from "../utils/logger.js";
 import { bytesToHex } from "../../vendor/crypto-helpers.bundle.min.js";
+import { testS3Connection } from "../storage/r2-s3.js";
 
 const DB_NAME = "bitvid-storage";
 const DB_VERSION = 1;
@@ -10,6 +11,12 @@ export const PROVIDERS = Object.freeze({
   S3: "aws_s3",
   GENERIC: "generic_s3",
 });
+
+const PROVIDER_TESTS = {
+  [PROVIDERS.R2]: testS3Connection,
+  [PROVIDERS.S3]: testS3Connection,
+  [PROVIDERS.GENERIC]: testS3Connection,
+};
 
 function hexToBytes(hex) {
   if (typeof hex !== "string") return new Uint8Array(0);
@@ -389,6 +396,45 @@ export class StorageService {
     }
 
     await this._saveAccount(account);
+  }
+
+  /**
+   * Tests a connection access by delegating to the provider's test handler.
+   *
+   * @param {string} provider - The provider ID (e.g. "cloudflare_r2")
+   * @param {object} config - The decrypted configuration object
+   * @returns {Promise<{success: boolean, message?: string, error?: string}>}
+   */
+  async testAccess(provider, config) {
+    const handler = PROVIDER_TESTS[provider];
+    if (!handler) {
+      return { success: false, error: `No test handler available for provider: ${provider}` };
+    }
+
+    try {
+      const result = await handler(config);
+      return { success: true, message: result.message || "Connection verified." };
+    } catch (err) {
+      const cleanError = err.message || "Unknown connection error";
+      userLogger.warn(`[StorageService] Test failed for ${provider}:`, err);
+      return { success: false, error: cleanError };
+    }
+  }
+
+  /**
+   * Tests a saved connection by ID.
+   * Requires unlock() to be called first.
+   *
+   * @param {string} pubkey
+   * @param {string} connectionId
+   */
+  async testConnection(pubkey, connectionId) {
+    const connection = await this.getConnection(pubkey, connectionId);
+    if (!connection) {
+      throw new Error("Connection not found.");
+    }
+
+    return this.testAccess(connection.provider, connection);
   }
 }
 

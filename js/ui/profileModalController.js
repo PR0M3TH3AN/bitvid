@@ -6108,79 +6108,44 @@ export class ProfileModalController {
     const pubkey = this.normalizeHexPubkey(this.getActivePubkey());
     if (!pubkey) return;
 
-    const provider = this.storageProviderInput?.value || "cloudflare_r2";
-    // We only support testing R2 for now via r2Service
-    if (provider !== "cloudflare_r2") {
-        this.setStorageFormStatus("Test only supported for R2 currently.", "warning");
+    const storageService = this.services.storageService;
+    if (!storageService) {
+        this.setStorageFormStatus("Storage service unavailable.", "error");
         return;
     }
 
-    const accountId = this.storageEndpointInput?.value?.trim() || "";
+    const provider = this.storageProviderInput?.value || "cloudflare_r2";
+    const endpointOrAccount = this.storageEndpointInput?.value?.trim() || "";
+    const region = this.storageRegionInput?.value?.trim() || "auto";
     const accessKeyId = this.storageAccessKeyInput?.value?.trim() || "";
     const secretAccessKey = this.storageSecretKeyInput?.value?.trim() || "";
     const bucket = this.storageBucketInput?.value?.trim() || "";
-    const baseDomain = this.storagePrefixInput?.value?.trim() || "";
 
-    if (!accountId || !accessKeyId || !secretAccessKey || !baseDomain) {
+    if (!accessKeyId || !secretAccessKey || !endpointOrAccount) {
         this.setStorageFormStatus("Missing credentials for test.", "error");
         return;
     }
 
     this.setStorageFormStatus("Testing connection...", "info");
 
-    // Construct settings object expected by r2Service
-    const settings = {
-        accountId,
-        accessKeyId,
-        secretAccessKey,
-        baseDomain
+    const config = {
+      provider,
+      accessKeyId,
+      secretAccessKey,
+      region,
+      bucket,
     };
 
-    // We also need to ensure the bucket name matches what verifyPublicAccess expects?
-    // r2Service.verifyPublicAccess derives bucket name from npub usually.
-    // But here we allow custom bucket?
-    // r2Service.verifyPublicAccess uses `sanitizeBucketName(npub)`.
-    // If the user entered a custom bucket, r2Service might not support testing it easily
-    // unless we modify r2Service to accept explicit bucket name.
-    // r2Service.js: `const bucketName = sanitizeBucketName(npub);` inside verifyPublicAccess.
-    // This implies r2Service enforces a specific bucket naming convention.
-    // However, for this generic storage tab, the user might want *any* bucket.
-    // Ideally r2Service.verifyPublicAccess should accept an optional bucket override.
-    // For now, I will warn if the user entered a bucket that doesn't match the expectation,
-    // OR I will trust r2Service to do its thing.
-    // Actually, r2Service is tightly coupled to the specific bitvid bucket naming scheme.
-    // The prompt asked for "Bucket" field.
-    // If I cannot change r2Service right now, I might have to skip the full test
-    // or rely on r2Service's logic which might fail if bucket doesn't match.
-    // Let's call verifyPublicAccess and see. It uses `npub` to derive bucket name.
-    // If I pass the user's manual bucket name, I need `r2Service` to use it.
-    // Since I can't modify r2Service in this step easily without reading it again (I did read it),
-    // I recall `verifyPublicAccess` takes `{ settings, npub }`.
-    // I will try to implement a lightweight test here or just call it.
-    // But wait, the user provided `bucket`.
-    // `r2Service.verifyPublicAccess` implementation:
-    // `const bucketName = sanitizeBucketName(npub);`
-    // It ignores any bucket in settings? No, it uses it to verify.
-    // I should probably implement a custom test function or update r2Service later.
-    // For now, I'll simulate a test or just try to use r2Service and warn about bucket name if it fails.
-
-    // Actually, I can check if `r2Service` has a method to test generic settings? No.
-    // I'll try to use `verifyPublicAccess` but warn the user that it tests the *default* bucket for their npub.
-    // Or better, I won't call it if the bucket doesn't match?
-    // Let's just try calling it.
-
-    // Wait, the prompt said "Implement a Storage tab... Wire UI handlers".
-    // It didn't force me to rewrite R2Service.
-    // I'll invoke verifyPublicAccess.
+    if (provider === "cloudflare_r2") {
+      config.accountId = endpointOrAccount;
+    } else {
+      config.endpoint = endpointOrAccount;
+    }
 
     try {
-        const result = await this.services.r2Service.verifyPublicAccess({
-            settings,
-            npub: this.services.safeEncodeNpub(pubkey)
-        });
-
+        const result = await storageService.testAccess(provider, config);
         if (result.success) {
-            this.setStorageFormStatus("Connection Verified!", "success");
+            this.setStorageFormStatus(result.message || "Connection Verified!", "success");
         } else {
             this.setStorageFormStatus(`Test Failed: ${result.error}`, "error");
         }
