@@ -32,7 +32,7 @@ const HEX64_REGEX = /^[0-9a-f]{64}$/i;
 const MODERATION_OVERRIDE_STORAGE_KEY = "bitvid:moderationOverrides:v1";
 const MODERATION_OVERRIDE_STORAGE_VERSION = 1;
 const MODERATION_SETTINGS_STORAGE_KEY = "bitvid:moderationSettings:v1";
-const MODERATION_SETTINGS_STORAGE_VERSION = 2;
+const MODERATION_SETTINGS_STORAGE_VERSION = 3;
 
 function computeDefaultModerationSettings() {
   const defaultBlur = sanitizeModerationThreshold(
@@ -92,6 +92,7 @@ function computeDefaultModerationSettings() {
       runtimeMuteHide,
       defaultTrustedMute,
     ),
+    trustedMuteHideThresholds: {},
     trustedSpamHideThreshold: sanitizeModerationThreshold(
       runtimeSpamHide,
       defaultTrustedSpam,
@@ -128,6 +129,37 @@ function sanitizeModerationThreshold(value, fallback) {
   }
 
   return clamped;
+}
+
+function sanitizeModerationThresholdMap(
+  value,
+  fallback = {},
+  { mergeFallback = false } = {},
+) {
+  const fallbackMap = fallback && typeof fallback === "object" ? fallback : {};
+  if (!value || typeof value !== "object") {
+    return mergeFallback ? { ...fallbackMap } : {};
+  }
+
+  const sanitized = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (typeof key !== "string") {
+      continue;
+    }
+    const normalizedKey = key.trim().toLowerCase();
+    if (!normalizedKey) {
+      continue;
+    }
+    const sanitizedValue = sanitizeModerationThreshold(
+      entry,
+      fallbackMap[normalizedKey],
+    );
+    if (Number.isFinite(sanitizedValue)) {
+      sanitized[normalizedKey] = sanitizedValue;
+    }
+  }
+
+  return mergeFallback ? { ...fallbackMap, ...sanitized } : sanitized;
 }
 
 function sanitizeProfileString(value) {
@@ -836,6 +868,27 @@ function haveModerationSettingsChanged(previous, next) {
     return true;
   }
 
+  const prevMuteThresholds =
+    previous.trustedMuteHideThresholds &&
+    typeof previous.trustedMuteHideThresholds === "object"
+      ? previous.trustedMuteHideThresholds
+      : {};
+  const nextMuteThresholds =
+    next.trustedMuteHideThresholds &&
+    typeof next.trustedMuteHideThresholds === "object"
+      ? next.trustedMuteHideThresholds
+      : {};
+  const allMuteKeys = new Set([
+    ...Object.keys(prevMuteThresholds),
+    ...Object.keys(nextMuteThresholds),
+  ]);
+
+  for (const key of allMuteKeys) {
+    if (prevMuteThresholds[key] !== nextMuteThresholds[key]) {
+      return true;
+    }
+  }
+
   return (
     previous.blurThreshold !== next.blurThreshold ||
     previous.autoplayBlockThreshold !== next.autoplayBlockThreshold ||
@@ -917,6 +970,11 @@ export function loadModerationSettingsFromStorage() {
           overrides.trustedMuteHideThreshold,
           defaults.trustedMuteHideThreshold,
         ),
+        trustedMuteHideThresholds: sanitizeModerationThresholdMap(
+          overrides.trustedMuteHideThresholds,
+          defaults.trustedMuteHideThresholds,
+          { mergeFallback: true },
+        ),
         trustedSpamHideThreshold: sanitizeModerationThreshold(
           overrides.trustedSpamHideThreshold,
           defaults.trustedSpamHideThreshold,
@@ -928,7 +986,7 @@ export function loadModerationSettingsFromStorage() {
         legacySettings,
       );
       shouldRewrite = true;
-    } else if (payload.version === MODERATION_SETTINGS_STORAGE_VERSION) {
+    } else if (payload.version === 2 || payload.version === MODERATION_SETTINGS_STORAGE_VERSION) {
       const defaults = createDefaultModerationSettings();
       const entries =
         payload.entries && typeof payload.entries === "object"
@@ -968,6 +1026,11 @@ export function loadModerationSettingsFromStorage() {
           trustedMuteHideThreshold: sanitizeModerationThreshold(
             overrides.trustedMuteHideThreshold,
             defaults.trustedMuteHideThreshold,
+          ),
+          trustedMuteHideThresholds: sanitizeModerationThresholdMap(
+            overrides.trustedMuteHideThresholds,
+            defaults.trustedMuteHideThresholds,
+            { mergeFallback: true },
           ),
           trustedSpamHideThreshold: sanitizeModerationThreshold(
             overrides.trustedSpamHideThreshold,
@@ -1021,6 +1084,16 @@ function persistModerationSettingsToStorage() {
 
     if (settings.trustedMuteHideThreshold !== defaults.trustedMuteHideThreshold) {
       overrides.trustedMuteHideThreshold = settings.trustedMuteHideThreshold;
+    }
+
+    const trustedMuteHideThresholds = sanitizeModerationThresholdMap(
+      settings.trustedMuteHideThresholds,
+      defaults.trustedMuteHideThresholds,
+      { mergeFallback: false },
+    );
+
+    if (Object.keys(trustedMuteHideThresholds).length > 0) {
+      overrides.trustedMuteHideThresholds = trustedMuteHideThresholds;
     }
 
     if (settings.trustedSpamHideThreshold !== defaults.trustedSpamHideThreshold) {
@@ -1110,6 +1183,38 @@ export function setModerationSettings(partial = {}, { persist = true } = {}) {
         : sanitizeModerationThreshold(value, defaults.trustedMuteHideThreshold);
     if (next.trustedMuteHideThreshold !== sanitized) {
       next.trustedMuteHideThreshold = sanitized;
+      changed = true;
+    }
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(partial, "trustedMuteHideThresholds")
+  ) {
+    const value = partial.trustedMuteHideThresholds;
+    const sanitized =
+      value === null
+        ? defaults.trustedMuteHideThresholds
+        : sanitizeModerationThresholdMap(value, defaults.trustedMuteHideThresholds, {
+            mergeFallback: true,
+          });
+    const current =
+      next.trustedMuteHideThresholds &&
+      typeof next.trustedMuteHideThresholds === "object"
+        ? next.trustedMuteHideThresholds
+        : {};
+    const nextKeys = new Set([
+      ...Object.keys(current),
+      ...Object.keys(sanitized),
+    ]);
+    let mapChanged = false;
+    for (const key of nextKeys) {
+      if (current[key] !== sanitized[key]) {
+        mapChanged = true;
+        break;
+      }
+    }
+    if (mapChanged) {
+      next.trustedMuteHideThresholds = { ...sanitized };
       changed = true;
     }
   }

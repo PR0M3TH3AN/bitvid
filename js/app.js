@@ -6001,6 +6001,27 @@ class Application {
 
   normalizeModerationSettings(settings = null) {
     const defaults = this.defaultModerationSettings || getDefaultModerationSettings();
+    const sanitizeThresholdMap = (value, fallback = {}) => {
+      const fallbackMap = fallback && typeof fallback === "object" ? fallback : {};
+      if (!value || typeof value !== "object") {
+        return { ...fallbackMap };
+      }
+      const sanitized = {};
+      for (const [key, entry] of Object.entries(value)) {
+        if (typeof key !== "string") {
+          continue;
+        }
+        const normalizedKey = key.trim().toLowerCase();
+        if (!normalizedKey) {
+          continue;
+        }
+        const numeric = Number(entry);
+        if (Number.isFinite(numeric)) {
+          sanitized[normalizedKey] = Math.max(0, Math.floor(numeric));
+        }
+      }
+      return { ...fallbackMap, ...sanitized };
+    };
     const defaultBlur = Number.isFinite(defaults?.blurThreshold)
       ? Math.max(0, Math.floor(defaults.blurThreshold))
       : DEFAULT_BLUR_THRESHOLD;
@@ -6028,6 +6049,11 @@ class Application {
       ? Math.max(0, Math.floor(defaults.trustedSpamHideThreshold))
       : runtimeTrustedSpam;
 
+    const defaultTrustedMuteHideThresholds = sanitizeThresholdMap(
+      defaults?.trustedMuteHideThresholds,
+      {},
+    );
+
     const blurSource = Number.isFinite(settings?.blurThreshold)
       ? Math.max(0, Math.floor(settings.blurThreshold))
       : defaultBlur;
@@ -6040,11 +6066,16 @@ class Application {
     const spamHideSource = Number.isFinite(settings?.trustedSpamHideThreshold)
       ? Math.max(0, Math.floor(settings.trustedSpamHideThreshold))
       : defaultTrustedSpamHide;
+    const muteHideThresholdsSource = sanitizeThresholdMap(
+      settings?.trustedMuteHideThresholds,
+      defaultTrustedMuteHideThresholds,
+    );
 
     return {
       blurThreshold: blurSource,
       autoplayBlockThreshold: autoplaySource,
       trustedMuteHideThreshold: muteHideSource,
+      trustedMuteHideThresholds: muteHideThresholdsSource,
       trustedSpamHideThreshold: spamHideSource,
     };
   }
