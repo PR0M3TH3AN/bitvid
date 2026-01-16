@@ -497,6 +497,7 @@ export class ModerationService {
     this.trustedMuteLists = new Map();
     this.trustedMutedAuthors = new Map();
     this.trustedMuteSubscriptions = new Map();
+    this.trustedSeedOnly = false;
 
     this.emitter = new SimpleEventEmitter((message, error) => {
       try {
@@ -549,6 +550,35 @@ export class ModerationService {
     return merged;
   }
 
+  computeTrustedSeedOnly() {
+    const trustedContacts =
+      this.trustedContacts instanceof Set ? this.trustedContacts : new Set();
+    const trustedSeedContacts =
+      this.trustedSeedContacts instanceof Set ? this.trustedSeedContacts : new Set();
+
+    if (!trustedSeedContacts.size || trustedContacts.size !== trustedSeedContacts.size) {
+      return false;
+    }
+
+    for (const value of trustedContacts) {
+      if (!trustedSeedContacts.has(value)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  updateTrustedSeedOnlyStatus() {
+    const nextValue = this.computeTrustedSeedOnly();
+    if (nextValue === this.trustedSeedOnly) {
+      return;
+    }
+
+    this.trustedSeedOnly = nextValue;
+    this.emit("trusted-seed-only", { seedOnly: nextValue });
+  }
+
   rebuildTrustedContacts(nextContacts = new Set(), { previous = null } = {}) {
     const sanitized = new Set();
 
@@ -580,6 +610,7 @@ export class ModerationService {
     const seededNext = this.mergeSeedsIntoSet(sanitized);
     this.trustedContacts = seededNext;
 
+    this.updateTrustedSeedOnlyStatus();
     this.emit("contacts", { size: seededNext.size });
     this.recomputeAllSummaries();
     this.reconcileTrustedMuteSubscriptions(previousContacts, seededNext);
@@ -679,6 +710,10 @@ export class ModerationService {
 
     this.trustedSeedContacts = sanitizedSeeds;
     this.rebuildTrustedContacts(this.viewerContacts, { previous: previousContacts });
+  }
+
+  isTrustedSeedOnly() {
+    return this.trustedSeedOnly === true;
   }
 
   logThresholdTransitions({
