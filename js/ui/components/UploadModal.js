@@ -455,6 +455,27 @@ export class UploadModal {
 
   // --- R2 Integration ---
 
+  async refreshState() {
+    if (this.storageService) {
+      const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
+      this.isStorageUnlocked = pubkey ? this.storageService.isUnlocked(pubkey) : false;
+      this.updateLockUi();
+
+      if (this.isStorageUnlocked) {
+        await this.loadFromStorage();
+      } else {
+        // Locked: Clear sensitive data from UI and memory
+        this.cloudflareSettings = null;
+        this.fillSettingsForm({});
+        this.updateStorageStatus(false);
+        this.activeConnectionId = null;
+      }
+    } else if (this.r2Service && typeof this.r2Service.loadSettings === "function") {
+      await this.loadR2Settings();
+    }
+  }
+
+  // Legacy fallback loader (renamed for clarity if desired, but keeping signature safe)
   async loadR2Settings() {
       // Fallback legacy load if storage service not used/available
       if (!this.r2Service?.loadSettings) return;
@@ -470,26 +491,39 @@ export class UploadModal {
       const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
       if (!pubkey) return;
 
-      const connections = await this.storageService.listConnections(pubkey);
-      const r2Conn = connections.find(c => c.provider === PROVIDERS.R2 || c.provider === "cloudflare_r2");
+      try {
+        const connections = await this.storageService.listConnections(pubkey);
+        // Prefer default connection, fallback to R2
+        const defaultConn = connections.find(c => c.meta?.defaultForUploads);
+        const targetConn = defaultConn || connections.find(c => c.provider === PROVIDERS.R2 || c.provider === "cloudflare_r2");
 
-      if (r2Conn) {
-          try {
-              const details = await this.storageService.getConnection(pubkey, r2Conn.id);
-              if (details) {
-                  this.cloudflareSettings = {
-                      accountId: details.accountId,
-                      accessKeyId: details.accessKeyId,
-                      secretAccessKey: details.secretAccessKey,
-                      baseDomain: details.meta?.baseDomain || "",
-                  };
-                  this.fillSettingsForm(this.cloudflareSettings);
-                  this.updateStorageStatus(true);
-                  this.activeConnectionId = r2Conn.id;
-              }
-          } catch (err) {
-              console.error("Failed to load connection", err);
-          }
+        if (targetConn) {
+            const details = await this.storageService.getConnection(pubkey, targetConn.id);
+            if (details) {
+                // Map generic S3 or R2 details to settings
+                // R2 settings struct: accountId, accessKeyId, secretAccessKey, baseDomain
+                this.cloudflareSettings = {
+                    accountId: details.accountId, // Might be undefined for generic S3
+                    accessKeyId: details.accessKeyId,
+                    secretAccessKey: details.secretAccessKey,
+                    baseDomain: details.meta?.baseDomain || "",
+                    // Add generic endpoint for internal use if needed
+                    endpoint: details.endpoint,
+                    region: details.region,
+                    bucket: details.bucket
+                };
+                this.fillSettingsForm(this.cloudflareSettings);
+
+                const providerLabel = targetConn.provider === PROVIDERS.R2 || targetConn.provider === "cloudflare_r2"
+                  ? "R2"
+                  : (targetConn.meta?.label || "S3");
+                this.updateStorageStatus(true, providerLabel);
+
+                this.activeConnectionId = targetConn.id;
+            }
+        }
+      } catch (err) {
+          console.error("Failed to load connection", err);
       }
   }
 
@@ -541,6 +575,7 @@ export class UploadModal {
       if (this.statusText.storage) {
           if (locked) {
               this.statusText.storage.classList.add("hidden");
+              this.statusText.storage.textContent = "";
           } else {
               this.statusText.storage.classList.remove("hidden");
           }
@@ -687,9 +722,11 @@ export class UploadModal {
       }
   }
 
-  updateStorageStatus(isValid) {
+  updateStorageStatus(isValid, providerLabel) {
       if (this.statusText.storage) {
-          this.statusText.storage.textContent = isValid ? "Ready" : "Missing Credentials";
+          const baseText = isValid ? "Ready" : "Missing Credentials";
+          const label = providerLabel ? ` (${providerLabel})` : "";
+          this.statusText.storage.textContent = baseText + label;
           this.statusText.storage.className = isValid ? "text-xs text-accent" : "text-xs text-critical";
       }
   }
