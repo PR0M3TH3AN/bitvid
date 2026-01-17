@@ -120,6 +120,7 @@ import {
   persistSessionActor as persistSessionActorEntry,
   readStoredSessionActorEntry,
 } from "./sessionActor.js";
+import { profileCache } from "../state/profileCache.js";
 import {
   HEX64_REGEX,
   NIP46_RPC_KIND,
@@ -267,6 +268,7 @@ function setActiveSigner(signer) {
   hydrateExtensionSignerCapabilities(signer);
   attachNipMethodAliases(signer);
 
+  const prevSigner = activeSigner;
   activeSigner = signer;
   const pubkey =
     typeof signer.pubkey === "string" && signer.pubkey.trim()
@@ -274,6 +276,11 @@ function setActiveSigner(signer) {
       : "";
   if (pubkey) {
     activeSignerRegistry.set(pubkey, signer);
+
+    // If signer type changed, clear decrypted runtime caches for this pubkey
+    if (prevSigner?.type && signer.type && prevSigner.type !== signer.type) {
+      profileCache.clearSignerRuntime(pubkey);
+    }
   }
 }
 

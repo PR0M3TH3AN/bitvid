@@ -14,6 +14,7 @@ import {
   assertAnyRelayAccepted,
 } from "../nostrPublish.js";
 import { userLogger } from "../utils/logger.js";
+import { profileCache } from "../state/profileCache.js";
 
 const LOG_PREFIX = "[HashtagPreferences]";
 const HASHTAG_IDENTIFIER = "bitvid:tag-preferences";
@@ -237,13 +238,20 @@ function determineDecryptionOrder(event, availableSchemes) {
 class HashtagPreferencesService {
   constructor() {
     this.emitter = new TinyEventEmitter();
-    this.interests = new Set();
-    this.disinterests = new Set();
     this.activePubkey = null;
-    this.eventId = null;
-    this.eventCreatedAt = null;
-    this.loaded = false;
-    this.preferencesVersion = DEFAULT_VERSION;
+
+    profileCache.on("active-partition-changed", (pubkey) => {
+      this.activePubkey = pubkey;
+      this.emitChange("profile-switch");
+    });
+  }
+
+  get state() {
+    return profileCache.get("hashtagPreferences");
+  }
+
+  set state(value) {
+    profileCache.set("hashtagPreferences", value);
   }
 
   on(eventName, handler) {
@@ -251,21 +259,23 @@ class HashtagPreferencesService {
   }
 
   reset() {
-    this.interests = new Set();
-    this.disinterests = new Set();
-    this.eventId = null;
-    this.eventCreatedAt = null;
-    this.loaded = false;
-    this.preferencesVersion = DEFAULT_VERSION;
+    this.state = {
+      interests: new Set(),
+      disinterests: new Set(),
+      eventId: null,
+      eventCreatedAt: null,
+      version: DEFAULT_VERSION,
+      loaded: false
+    };
     this.emitChange("reset");
   }
 
   getInterests() {
-    return Array.from(this.interests).sort((a, b) => a.localeCompare(b));
+    return Array.from(this.state.interests).sort((a, b) => a.localeCompare(b));
   }
 
   getDisinterests() {
-    return Array.from(this.disinterests).sort((a, b) => a.localeCompare(b));
+    return Array.from(this.state.disinterests).sort((a, b) => a.localeCompare(b));
   }
 
   addInterest(tag) {
@@ -274,11 +284,19 @@ class HashtagPreferencesService {
       return false;
     }
 
-    const hadInterest = this.interests.has(normalized);
-    const removedFromDisinterests = this.disinterests.delete(normalized);
-    this.interests.add(normalized);
+    const current = this.state;
+    const next = {
+        ...current,
+        interests: new Set(current.interests),
+        disinterests: new Set(current.disinterests)
+    };
+
+    const hadInterest = next.interests.has(normalized);
+    const removedFromDisinterests = next.disinterests.delete(normalized);
+    next.interests.add(normalized);
 
     if (!hadInterest || removedFromDisinterests) {
+      this.state = next;
       this.emitChange("interest-added", { tag: normalized });
       return true;
     }
@@ -288,11 +306,18 @@ class HashtagPreferencesService {
 
   removeInterest(tag) {
     const normalized = normalizeTag(tag);
-    if (!normalized || !this.interests.has(normalized)) {
+    if (!normalized || !this.state.interests.has(normalized)) {
       return false;
     }
 
-    this.interests.delete(normalized);
+    const current = this.state;
+    const next = {
+        ...current,
+        interests: new Set(current.interests)
+    };
+
+    next.interests.delete(normalized);
+    this.state = next;
     this.emitChange("interest-removed", { tag: normalized });
     return true;
   }
@@ -303,11 +328,19 @@ class HashtagPreferencesService {
       return false;
     }
 
-    const hadDisinterest = this.disinterests.has(normalized);
-    const removedFromInterests = this.interests.delete(normalized);
-    this.disinterests.add(normalized);
+    const current = this.state;
+    const next = {
+        ...current,
+        interests: new Set(current.interests),
+        disinterests: new Set(current.disinterests)
+    };
+
+    const hadDisinterest = next.disinterests.has(normalized);
+    const removedFromInterests = next.interests.delete(normalized);
+    next.disinterests.add(normalized);
 
     if (!hadDisinterest || removedFromInterests) {
+      this.state = next;
       this.emitChange("disinterest-added", { tag: normalized });
       return true;
     }
@@ -317,24 +350,32 @@ class HashtagPreferencesService {
 
   removeDisinterest(tag) {
     const normalized = normalizeTag(tag);
-    if (!normalized || !this.disinterests.has(normalized)) {
+    if (!normalized || !this.state.disinterests.has(normalized)) {
       return false;
     }
 
-    this.disinterests.delete(normalized);
+    const current = this.state;
+    const next = {
+        ...current,
+        disinterests: new Set(current.disinterests)
+    };
+
+    next.disinterests.delete(normalized);
+    this.state = next;
     this.emitChange("disinterest-removed", { tag: normalized });
     return true;
   }
 
   emitChange(action, detail = {}) {
     try {
+      const s = this.state;
       this.emitter.emit(EVENTS.CHANGE, {
         action,
         interests: this.getInterests(),
         disinterests: this.getDisinterests(),
-        eventId: this.eventId,
-        createdAt: this.eventCreatedAt,
-        version: this.preferencesVersion,
+        eventId: s.eventId,
+        createdAt: s.eventCreatedAt,
+        version: s.version,
         ...detail,
       });
     } catch (error) {
@@ -344,16 +385,23 @@ class HashtagPreferencesService {
 
   async load(pubkey) {
     const normalized = normalizeHexPubkey(pubkey);
-    const wasLoadedForUser =
-      this.activePubkey &&
-      this.activePubkey === normalized &&
-      (this.interests.size > 0 || this.disinterests.size > 0 || this.loaded);
+
+    // Ensure correct partition
+    if (profileCache.activePubkey !== normalized) {
+      profileCache.activatePartition(normalized);
+    }
 
     this.activePubkey = normalized;
+    const s = this.state;
+
+    const wasLoadedForUser =
+      (s.interests.size > 0 || s.disinterests.size > 0 || s.loaded);
 
     if (!normalized) {
       this.reset();
-      this.loaded = true;
+      // Directly mutate loaded state since reset sets it to false
+      const next = { ...this.state, loaded: true };
+      this.state = next;
       return;
     }
 
@@ -508,14 +556,16 @@ class HashtagPreferencesService {
       // downstream consumers receive a single structure.
       const normalizedPayload = normalizePreferencesPayload(payload);
 
-      this.preferencesVersion = normalizedPayload.version;
-      this.interests = normalizedPayload.interests;
-      this.disinterests = normalizedPayload.disinterests;
-      this.eventId = latest.id || null;
-      this.eventCreatedAt = Number.isFinite(latest?.created_at)
-        ? latest.created_at
-        : null;
-      this.loaded = true;
+      this.state = {
+        version: normalizedPayload.version,
+        interests: normalizedPayload.interests,
+        disinterests: normalizedPayload.disinterests,
+        eventId: latest.id || null,
+        eventCreatedAt: Number.isFinite(latest?.created_at)
+          ? latest.created_at
+          : null,
+        loaded: true
+      };
       this.emitChange("sync", { scheme: decryptResult.scheme });
     } catch (error) {
       userLogger.warn(
@@ -523,7 +573,8 @@ class HashtagPreferencesService {
         error,
       );
       this.reset();
-      this.loaded = true;
+      const next = { ...this.state, loaded: true };
+      this.state = next;
     }
   }
 
@@ -828,10 +879,14 @@ class HashtagPreferencesService {
       });
     }
 
-    this.eventId = signedEvent.id || null;
-    this.eventCreatedAt = Number.isFinite(signedEvent?.created_at)
-      ? signedEvent.created_at
-      : createdAt;
+    const nextState = {
+        ...this.state,
+        eventId: signedEvent.id || null,
+        eventCreatedAt: Number.isFinite(signedEvent?.created_at)
+          ? signedEvent.created_at
+          : createdAt
+    };
+    this.state = nextState;
     this.emitChange("published", { event: signedEvent, scheme: schemeUsed });
     return signedEvent;
   }

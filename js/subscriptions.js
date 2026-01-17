@@ -30,11 +30,10 @@ import { ALLOW_NSFW_CONTENT } from "./config.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import moderationService from "./services/moderationService.js";
 import nostrService from "./services/nostrService.js";
+import { profileCache } from "./state/profileCache.js";
 
 const SUBSCRIPTION_SET_KIND =
   getNostrEventSchema(NOTE_TYPES.SUBSCRIPTION_LIST)?.kind ?? 30000;
-
-const SUBSCRIPTIONS_CACHE_KEY_PREFIX = "bitvid:subscriptions:v1:";
 
 function normalizeHexPubkey(value) {
   if (typeof value !== "string") {
@@ -225,7 +224,6 @@ const subscribeVideoViewEventsApi = (pointer, options) =>
  */
 class SubscriptionsManager {
   constructor() {
-    this.subscribedPubkeys = new Set();
     this.subsEventId = null;
     this.currentUserPubkey = null;
     this.loaded = false;
@@ -240,6 +238,27 @@ class SubscriptionsManager {
     this.isRunningFeed = false;
     this.hasRenderedOnce = false;
     this.ensureNostrServiceListener();
+
+    profileCache.on("partition-updated", ({ key, pubkey }) => {
+      if (key === "subscriptions" && pubkey === this.currentUserPubkey) {
+        // Re-emit local status if needed, though we rely on refreshActiveFeed
+        // The old manager logic didn't really emit, but updateFromRelays called refreshActiveFeed.
+      }
+    });
+
+    profileCache.on("active-partition-changed", (pubkey) => {
+      this.currentUserPubkey = pubkey;
+      this.loaded = true; // Swapping partition makes it "loaded" from that partition's state immediately
+      this.refreshActiveFeed({ reason: "profile-switch" }).catch(() => {});
+    });
+  }
+
+  get subscribedPubkeys() {
+    return profileCache.get("subscriptions");
+  }
+
+  set subscribedPubkeys(value) {
+    profileCache.set("subscriptions", value);
   }
 
   /**
@@ -253,11 +272,14 @@ class SubscriptionsManager {
 
     const normalizedUserPubkey = normalizeHexPubkey(userPubkey) || userPubkey;
 
-    // 1. Attempt to load from cache first
-    const cached = this.loadFromCache(normalizedUserPubkey);
-    if (cached) {
+    // Ensure we are operating on the correct partition
+    if (profileCache.activePubkey !== normalizedUserPubkey) {
+      profileCache.activatePartition(normalizedUserPubkey);
+    }
+
+    // 1. Check if cache already has data (partition loaded automatically)
+    if (this.subscribedPubkeys.size > 0) {
       devLogger.log("[SubscriptionsManager] Loaded subscriptions from cache.");
-      this.subscribedPubkeys = cached;
       this.currentUserPubkey = normalizedUserPubkey;
       this.loaded = true;
 
@@ -270,48 +292,6 @@ class SubscriptionsManager {
 
     // 2. If no cache, must wait for relays
     await this.updateFromRelays(userPubkey);
-  }
-
-  getCacheKey(userPubkey) {
-    if (!userPubkey) return null;
-    return `${SUBSCRIPTIONS_CACHE_KEY_PREFIX}${userPubkey}`;
-  }
-
-  loadFromCache(userPubkey) {
-    const policy = CACHE_POLICIES[NOTE_TYPES.SUBSCRIPTION_LIST];
-    if (policy?.storage !== STORAGE_TIERS.LOCAL_STORAGE) {
-      return null;
-    }
-    if (typeof localStorage === "undefined") return null;
-    const key = this.getCacheKey(userPubkey);
-    if (!key) return null;
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    try {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        return new Set(parsed);
-      }
-    } catch (e) {
-      devLogger.warn("[SubscriptionsManager] Failed to parse cache:", e);
-    }
-    return null;
-  }
-
-  saveToCache(userPubkey) {
-    const policy = CACHE_POLICIES[NOTE_TYPES.SUBSCRIPTION_LIST];
-    if (policy?.storage !== STORAGE_TIERS.LOCAL_STORAGE) {
-      return;
-    }
-    if (typeof localStorage === "undefined") return;
-    const key = this.getCacheKey(userPubkey);
-    if (!key) return;
-    const list = Array.from(this.subscribedPubkeys);
-    try {
-      localStorage.setItem(key, JSON.stringify(list));
-    } catch (e) {
-      devLogger.warn("[SubscriptionsManager] Failed to save to cache:", e);
-    }
   }
 
   async updateFromRelays(userPubkey) {
@@ -464,13 +444,10 @@ class SubscriptionsManager {
       const newSet = new Set(normalized);
       const previousSet = this.subscribedPubkeys;
 
-      // Update state
+      // Update state (automatically persists via profileCache)
       this.subscribedPubkeys = newSet;
       this.currentUserPubkey = normalizedUserPubkey;
       this.loaded = true;
-
-      // Update persistent cache
-      this.saveToCache(normalizedUserPubkey);
 
       // Check if we need to refresh the feed
       let changed = newSet.size !== previousSet.size;
@@ -499,7 +476,7 @@ class SubscriptionsManager {
   }
 
   reset() {
-    this.subscribedPubkeys.clear();
+    this.subscribedPubkeys = new Set();
     this.subsEventId = null;
     this.currentUserPubkey = null;
     this.loaded = false;
@@ -674,8 +651,12 @@ class SubscriptionsManager {
       devLogger.log("Already subscribed to", channelHex);
       return;
     }
-    this.subscribedPubkeys.add(normalizedChannel);
-    this.saveToCache(userPubkey);
+
+    // Mutate via copy to trigger setter
+    const next = new Set(this.subscribedPubkeys);
+    next.add(normalizedChannel);
+    this.subscribedPubkeys = next;
+
     await this.publishSubscriptionList(userPubkey);
     this.refreshActiveFeed({ reason: "subscription-update" }).catch((error) => {
       userLogger.warn(
@@ -699,8 +680,12 @@ class SubscriptionsManager {
       devLogger.log("Channel not found in subscription list:", channelHex);
       return;
     }
-    this.subscribedPubkeys.delete(normalizedChannel);
-    this.saveToCache(userPubkey);
+
+    // Mutate via copy to trigger setter
+    const next = new Set(this.subscribedPubkeys);
+    next.delete(normalizedChannel);
+    this.subscribedPubkeys = next;
+
     await this.publishSubscriptionList(userPubkey);
     this.refreshActiveFeed({ reason: "subscription-update" }).catch((error) => {
       userLogger.warn(

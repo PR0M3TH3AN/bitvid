@@ -11,6 +11,7 @@ import {
   publishEventToRelays,
   assertAnyRelayAccepted,
 } from "./nostrPublish.js";
+import { profileCache } from "./state/profileCache.js";
 
 class TinyEventEmitter {
   constructor() {
@@ -68,7 +69,6 @@ const BACKGROUND_BLOCKLIST_TIMEOUT_MS = 6000;
 const BLOCKLIST_STORAGE_PREFIX = "bitvid:user-blocks";
 const BLOCKLIST_SEEDED_KEY_PREFIX = `${BLOCKLIST_STORAGE_PREFIX}:seeded:v1`;
 const BLOCKLIST_REMOVALS_KEY_PREFIX = `${BLOCKLIST_STORAGE_PREFIX}:removals:v1`;
-const BLOCKLIST_LOCAL_KEY_PREFIX = `${BLOCKLIST_STORAGE_PREFIX}:local:v1`;
 
 function resolveStorage() {
   if (typeof localStorage !== "undefined") {
@@ -747,76 +747,8 @@ function normalizeHex(pubkey) {
   return null;
 }
 
-function readLocalBlocks(actorHex) {
-  if (typeof actorHex !== "string" || !actorHex) {
-    return null;
-  }
-
-  const storage = resolveStorage();
-  if (!storage) {
-    return null;
-  }
-
-  const key = `${BLOCKLIST_LOCAL_KEY_PREFIX}:${actorHex}`;
-
-  try {
-    const raw = storage.getItem(key);
-    if (raw === null) {
-      return null;
-    }
-
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) {
-      return new Set();
-    }
-
-    const normalized = parsed
-      .map((entry) =>
-        typeof entry === "string" ? entry.trim().toLowerCase() : "",
-      )
-      .filter((entry) => /^[0-9a-f]{64}$/.test(entry));
-
-    return new Set(normalized);
-  } catch (error) {
-    userLogger.warn(
-      `[UserBlockList] Failed to read local blocks for ${actorHex}:`,
-      error,
-    );
-    return null;
-  }
-}
-
-function writeLocalBlocks(actorHex, blocks) {
-  if (typeof actorHex !== "string" || !actorHex) {
-    return;
-  }
-
-  const storage = resolveStorage();
-  if (!storage) {
-    return;
-  }
-
-  const key = `${BLOCKLIST_LOCAL_KEY_PREFIX}:${actorHex}`;
-
-  try {
-    if (!blocks || !blocks.size) {
-      // We persist empty sets as [] to distinguish from "not found" (null)
-      storage.setItem(key, "[]");
-      return;
-    }
-
-    storage.setItem(key, JSON.stringify(Array.from(blocks)));
-  } catch (error) {
-    userLogger.warn(
-      `[UserBlockList] Failed to persist local blocks for ${actorHex}:`,
-      error,
-    );
-  }
-}
-
 class UserBlockListManager {
   constructor() {
-    this.blockedPubkeys = new Set();
     this.blockEventId = null;
     this.blockEventCreatedAt = null;
     this.lastPublishedCreatedAt = null;
@@ -825,10 +757,27 @@ class UserBlockListManager {
     this.loaded = false;
     this.emitter = new TinyEventEmitter();
     this.seedStateCache = new Map();
+
+    profileCache.on("active-partition-changed", () => {
+      this.loaded = true;
+      this.emitter.emit(USER_BLOCK_EVENTS.CHANGE, {
+        action: "sync",
+        blockedPubkeys: Array.from(this.blockedPubkeys),
+        source: "profile-switch",
+      });
+    });
+  }
+
+  get blockedPubkeys() {
+    return profileCache.get("userBlocks");
+  }
+
+  set blockedPubkeys(value) {
+    profileCache.set("userBlocks", value);
   }
 
   reset() {
-    this.blockedPubkeys.clear();
+    this.blockedPubkeys = new Set();
     this.blockEventId = null;
     this.blockEventCreatedAt = null;
     this.lastPublishedCreatedAt = null;
@@ -874,6 +823,10 @@ class UserBlockListManager {
       return;
     }
 
+    if (profileCache.activePubkey !== normalized) {
+      profileCache.activatePartition(normalized);
+    }
+
     const since = Number.isFinite(options?.since)
       ? Math.max(0, Math.floor(options.since))
       : null;
@@ -906,17 +859,19 @@ class UserBlockListManager {
 
     emitStatus({ status: "loading", relays: Array.from(nostrClient.relays || []) });
 
-    const localBlocks = this._loadLocal(normalized);
-    if (localBlocks) {
-      this.blockedPubkeys = localBlocks;
+    // Local state is already loaded by profileCache on activation
+    if (this.blockedPubkeys.size > 0) {
       this.loaded = true;
       this.emitter.emit(USER_BLOCK_EVENTS.CHANGE, {
         action: "sync",
         blockedPubkeys: Array.from(this.blockedPubkeys),
         source: "local",
       });
-      emitStatus({ status: "settled" });
-      return;
+      // Optionally continue to background refresh from relays
+      if (!options.forceRefresh) {
+        emitStatus({ status: "settled" });
+        return;
+      }
     }
 
     const applyBlockedPubkeys = (nextValues, meta = {}) => {
@@ -1050,7 +1005,7 @@ class UserBlockListManager {
         : [];
 
       if (!relays.length) {
-        this.blockedPubkeys.clear();
+        this.blockedPubkeys = new Set();
         this.blockEventId = null;
         this.blockEventCreatedAt = null;
         this.loaded = true;
@@ -1448,20 +1403,8 @@ class UserBlockListManager {
     }
   }
 
-  _loadLocal(actorHex) {
-    const policy = CACHE_POLICIES[NOTE_TYPES.USER_BLOCK_LIST];
-    if (policy?.storage !== STORAGE_TIERS.LOCAL_STORAGE) {
-      return null;
-    }
-    return readLocalBlocks(actorHex);
-  }
-
   _saveLocal(actorHex) {
-    const policy = CACHE_POLICIES[NOTE_TYPES.USER_BLOCK_LIST];
-    if (policy?.storage !== STORAGE_TIERS.LOCAL_STORAGE) {
-      return;
-    }
-    writeLocalBlocks(actorHex, this.blockedPubkeys);
+    // No-op, managed by profileCache setter now
   }
 
   _getSeedState(actorHex) {

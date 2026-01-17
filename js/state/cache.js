@@ -14,6 +14,7 @@ import {
   writeUrlHealthToStorage,
 } from "../utils/storage.js";
 import createProfileSettingsStore from "./profileSettingsStore.js";
+import { profileCache } from "./profileCache.js";
 
 const PROFILE_CACHE_STORAGE_KEY = "bitvid:profileCache:v1";
 const PROFILE_CACHE_VERSION = 1;
@@ -340,6 +341,7 @@ export function setActiveProfilePubkey(pubkey, { persist = true } = {}) {
 
   activeProfilePubkey = nextValue;
   ensureModerationSettingsForKey(getActiveModerationStoreKey());
+  profileCache.activatePartition(activeProfilePubkey);
   if (persist) {
     persistSavedProfiles({ persistActive: true });
   }

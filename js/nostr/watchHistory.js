@@ -22,6 +22,7 @@ import {
 } from "./toolkit.js";
 import { DEFAULT_NIP07_PERMISSION_METHODS } from "./nip07Permissions.js";
 import { devLogger, userLogger } from "../utils/logger.js";
+import { profileCache } from "../state/profileCache.js";
 
 /**
  * Domain utilities for watch-history interactions. This module owns pointer
@@ -29,7 +30,6 @@ import { devLogger, userLogger } from "../utils/logger.js";
  * relay publishing, fetch/decrypt flows, and exposes a manager factory that is
  * dependency-injected with the nostr client hooks it needs.
  */
-const WATCH_HISTORY_STORAGE_KEY = "bitvid:watch-history:v5";
 const WATCH_HISTORY_STORAGE_VERSION = 5;
 const WATCH_HISTORY_REPUBLISH_BASE_DELAY_MS = 2000;
 const WATCH_HISTORY_REPUBLISH_MAX_DELAY_MS = 5 * 60 * 1000;
@@ -949,13 +949,23 @@ class WatchHistoryManager {
       getCachedNostrTools,
       ...(deps || {}),
     };
-    this.cache = new Map();
-    this.storage = null;
     this.republishTimers = new Map();
     this.refreshPromises = new Map();
     this.cacheTtlMs = 0;
     this.fingerprints = new Map();
     this.lastCreatedAt = 0;
+  }
+
+  get cache() {
+    return profileCache; // For compatibility access if needed, but methods use profileCache directly
+  }
+
+  get storage() {
+    return profileCache.get("watchHistory"); // Directly access state
+  }
+
+  set storage(val) {
+    // No-op or update profileCache if needed, but usually we mutate internal state of partition
   }
 
   getCacheTtlMs() {
@@ -978,170 +988,120 @@ class WatchHistoryManager {
   }
 
   getStorage() {
-    if (this.storage && this.storage.version === WATCH_HISTORY_STORAGE_VERSION) {
-      return this.storage;
-    }
-    const emptyStorage = { version: WATCH_HISTORY_STORAGE_VERSION, actors: {} };
-    if (typeof localStorage === "undefined") {
-      this.storage = emptyStorage;
-      return this.storage;
-    }
-    let raw = null;
-    try {
-      raw = localStorage.getItem(WATCH_HISTORY_STORAGE_KEY);
-    } catch (error) {
-      devLogger.warn("[nostr] Failed to read watch history storage:", error);
-      this.storage = emptyStorage;
-      return this.storage;
-    }
-    if (!raw || typeof raw !== "string") {
-      this.storage = emptyStorage;
-      return this.storage;
-    }
-    let parsed = null;
-    try {
-      parsed = JSON.parse(raw);
-    } catch (error) {
-      devLogger.warn("[nostr] Failed to parse watch history storage:", error);
-      this.storage = emptyStorage;
-      return this.storage;
-    }
-    const now = Date.now();
-    const ttl = this.getCacheTtlMs();
-    const actors =
-      parsed && typeof parsed === "object" && parsed.actors && typeof parsed.actors === "object"
-        ? parsed.actors
-        : {};
-    const sanitizedActors = {};
-    let mutated = false;
-    for (const [actorKeyRaw, entry] of Object.entries(actors)) {
-      const actorKey = normalizeActorKey(actorKeyRaw);
-      if (!actorKey) {
-        mutated = true;
-        continue;
-      }
-      const savedAt = Number(entry?.savedAt);
-      if (!Number.isFinite(savedAt) || savedAt <= 0 || now - savedAt > ttl) {
-        mutated = true;
-        continue;
-      }
+    // Delegate to profileCache which manages partitioned state.
+    // However, watchHistory is special as it was a monolithic object.
+    // The ProfileCache.ensurePartition loads it.
+    // We just return what's in the cache for consistency.
 
-      // Migration from v2 (flat items) to v3 (bucketed records)
-      let records = {};
-      let items = [];
-      if (parsed.version < 3 && Array.isArray(entry.items)) {
-         records = canonicalizeWatchHistoryItems(entry.items, WATCH_HISTORY_MAX_ITEMS);
-         items = Object.values(records).flat();
-         mutated = true;
-      } else if (entry.records && typeof entry.records === "object") {
-         // Re-canonicalize to ensure structure
-         const flatItems = Object.values(entry.records).flat();
-         records = canonicalizeWatchHistoryItems(flatItems, WATCH_HISTORY_MAX_ITEMS);
-         items = Object.values(records).flat();
-      } else if (Array.isArray(entry.items)) {
-         // Fallback if records missing but items present in v3 (shouldn't happen if persisted correctly but safe to handle)
-         records = canonicalizeWatchHistoryItems(entry.items, WATCH_HISTORY_MAX_ITEMS);
-         items = Object.values(records).flat();
-      }
+    // Note: profileCache stores "watchHistory" state which has "actors".
+    // We need to return the full object structure { version, actors } to satisfy existing consumers here.
 
-      const snapshotId = typeof entry?.snapshotId === "string" ? entry.snapshotId : "";
-      const fingerprint = typeof entry?.fingerprint === "string" ? entry.fingerprint : "";
-      const metadata =
-        entry?.metadata && typeof entry.metadata === "object"
-          ? { ...entry.metadata }
-          : {};
-      sanitizedActors[actorKey] = {
-        actor:
-          typeof entry?.actor === "string" && entry.actor.trim()
-            ? entry.actor.trim()
-            : actorKey,
-        snapshotId,
-        fingerprint,
-        savedAt,
-        records,
-        items,
-        metadata,
-      };
-    }
-    const storage = {
+    // Check active partition first
+    const active = profileCache.active();
+    const localState = active.get("watchHistory");
+
+    // We need to construct a view that looks like the old storage object
+    // But since profileCache partitions by pubkey, we might only see the active user's data
+    // if we strictly use the partition.
+    // HOWEVER, ProfilePartition.load("watchHistory") reads the global file and extracts ONLY the relevant actor.
+    // So `localState` is { actors: { [pubkey]: ... } }.
+
+    // If we need the FULL storage (all actors) we'd need to bypass partition or read from localStorage directly.
+    // But this Manager is generally used in context of specific actors.
+    // Let's return the partition state, enhanced with version.
+
+    return {
       version: WATCH_HISTORY_STORAGE_VERSION,
-      actors: sanitizedActors,
+      actors: localState?.actors || {}
     };
-    if (mutated || parsed?.version !== WATCH_HISTORY_STORAGE_VERSION) {
-      try {
-        localStorage.setItem(WATCH_HISTORY_STORAGE_KEY, JSON.stringify(storage));
-      } catch (error) {
-        devLogger.warn("[nostr] Failed to rewrite watch history storage:", error);
-      }
-    }
-    this.storage = storage;
-    return this.storage;
   }
 
   persistEntry(actorInput, entry) {
     const actorKey = normalizeActorKey(actorInput);
-    if (!actorKey) {
-      return;
-    }
-    const storage = this.getStorage();
-    const actors = { ...storage.actors };
-    const now = Date.now();
-    const ttl = this.getCacheTtlMs();
-    let mutated = false;
-    for (const [key, value] of Object.entries(actors)) {
-      const savedAt = Number(value?.savedAt);
-      if (!Number.isFinite(savedAt) || savedAt <= 0 || now - savedAt > ttl) {
-        delete actors[key];
-        mutated = true;
-      }
-    }
-    if (!entry) {
-      if (actors[actorKey]) {
-        delete actors[actorKey];
-        mutated = true;
-      }
-    } else {
-      // Entry can have `items` (flat) or `records` (buckets). We standardize to records.
-      let records = {};
-      if (entry.records && typeof entry.records === "object") {
-         const flat = Object.values(entry.records).flat();
-         records = canonicalizeWatchHistoryItems(flat, WATCH_HISTORY_MAX_ITEMS);
-      } else if (Array.isArray(entry.items)) {
-         records = canonicalizeWatchHistoryItems(entry.items, WATCH_HISTORY_MAX_ITEMS);
-      }
-      const items = Object.values(records).flat();
+    if (!actorKey) return;
 
-      const snapshotId = typeof entry.snapshotId === "string" ? entry.snapshotId : "";
-      const fingerprint = typeof entry.fingerprint === "string" ? entry.fingerprint : "";
-      const savedAt = Number.isFinite(entry.savedAt) && entry.savedAt > 0 ? entry.savedAt : now;
-      const actorValue =
-        typeof entry.actor === "string" && entry.actor.trim()
-          ? entry.actor.trim()
-          : actorInput || actorKey;
-      actors[actorKey] = {
-        actor: actorValue,
-        snapshotId,
-        fingerprint,
-        savedAt,
-        records,
-        items,
-        metadata: {},
-      };
-      mutated = true;
+    // Ensure we are working on the partition for this actor
+    if (profileCache.activePubkey !== actorKey && actorKey) {
+        // If we are persisting for a different actor, we should switch partition?
+        // Or just load that partition temporarily?
+        // Ideally we only persist for active user.
+        // If we are persisting for someone else, ProfileCache.ensurePartition(actorKey).set(...)
+        // But `activatePartition` is for UI switches.
+        // Let's use ensurePartition to get the specific partition instance.
+        const partition = profileCache.ensurePartition(actorKey);
+
+        let records = {};
+        let items = [];
+        if (entry) {
+            if (entry.records && typeof entry.records === "object") {
+                const flat = Object.values(entry.records).flat();
+                records = canonicalizeWatchHistoryItems(flat, WATCH_HISTORY_MAX_ITEMS);
+            } else if (Array.isArray(entry.items)) {
+                records = canonicalizeWatchHistoryItems(entry.items, WATCH_HISTORY_MAX_ITEMS);
+            }
+            items = Object.values(records).flat();
+        }
+
+        const now = Date.now();
+        const savedAt = Number.isFinite(entry?.savedAt) && entry.savedAt > 0 ? entry.savedAt : now;
+
+        const state = partition.get("watchHistory") || { actors: {} };
+
+        if (!entry) {
+            if (state.actors?.[actorKey]) delete state.actors[actorKey];
+        } else {
+            if (!state.actors) state.actors = {};
+            state.actors[actorKey] = {
+                actor: entry.actor || actorKey,
+                snapshotId: entry.snapshotId || "",
+                fingerprint: entry.fingerprint || "",
+                savedAt,
+                records,
+                items,
+                metadata: {}
+            };
+        }
+
+        partition.set("watchHistory", state); // triggers persist via ProfileCache
+        return;
     }
-    const payload = {
-      version: WATCH_HISTORY_STORAGE_VERSION,
-      actors,
-    };
-    this.storage = payload;
-    if (!mutated || typeof localStorage === "undefined") {
-      return;
+
+    // Default flow for active partition
+    const partition = profileCache.active();
+    const state = partition.get("watchHistory") || { actors: {} };
+
+    // ... duplicate logic for entry normalization ...
+    let records = {};
+    let items = [];
+    if (entry) {
+        if (entry.records && typeof entry.records === "object") {
+            const flat = Object.values(entry.records).flat();
+            records = canonicalizeWatchHistoryItems(flat, WATCH_HISTORY_MAX_ITEMS);
+        } else if (Array.isArray(entry.items)) {
+            records = canonicalizeWatchHistoryItems(entry.items, WATCH_HISTORY_MAX_ITEMS);
+        }
+        items = Object.values(records).flat();
     }
-    try {
-      localStorage.setItem(WATCH_HISTORY_STORAGE_KEY, JSON.stringify(payload));
-    } catch (error) {
-      devLogger.warn("[nostr] Failed to persist watch history entry:", error);
+
+    const now = Date.now();
+    const savedAt = Number.isFinite(entry?.savedAt) && entry.savedAt > 0 ? entry.savedAt : now;
+
+    if (!entry) {
+        if (state.actors?.[actorKey]) delete state.actors[actorKey];
+    } else {
+        if (!state.actors) state.actors = {};
+        state.actors[actorKey] = {
+            actor: entry.actor || actorKey,
+            snapshotId: entry.snapshotId || "",
+            fingerprint: entry.fingerprint || "",
+            savedAt,
+            records,
+            items,
+            metadata: {}
+        };
     }
+
+    partition.set("watchHistory", state);
   }
 
   cancelRepublish(taskId = null) {
@@ -1263,7 +1223,10 @@ class WatchHistoryManager {
 
     let itemsOrRecords = itemsOverride;
     if (!itemsOrRecords) {
-        const cacheEntry = this.cache.get(actorKey) || this.getStorage().actors?.[actorKey];
+        // Use partition access
+        const partition = profileCache.ensurePartition(actorKey);
+        const state = partition.get("watchHistory");
+        const cacheEntry = state?.actors?.[actorKey];
         itemsOrRecords = cacheEntry?.records || cacheEntry?.items || [];
     }
 
@@ -1330,7 +1293,9 @@ class WatchHistoryManager {
         fingerprint,
         metadata: {},
       };
-      this.cache.set(actorKey, entry);
+
+      // Update cache
+      // The old logic used `this.cache.set`. Now we persist to partition.
       this.persistEntry(actorKey, entry);
 
       if (!publishResult.ok && publishResult.retryable) {
@@ -1439,7 +1404,6 @@ class WatchHistoryManager {
          fingerprint,
          metadata: {},
        };
-       this.cache.set(actorKey, entry);
        this.persistEntry(actorKey, entry);
      }
      return result;
@@ -1838,7 +1802,6 @@ class WatchHistoryManager {
       fingerprint,
       metadata: {},
     };
-    this.cache.set(actorKey, entry);
     this.persistEntry(actorKey, entry);
     if (!publishResult.ok && publishResult.retryable) {
        // Retry full publish
@@ -1951,7 +1914,7 @@ class WatchHistoryManager {
       actor: resolvedActor,
       forceRefresh: options.forceRefresh === true,
     });
-    const existingEntry = this.cache.get(actorKey);
+    const existingEntry = this.getStorage().actors?.[actorKey];
     const now = Date.now();
     const ttl = this.getCacheTtlMs();
 
@@ -1982,7 +1945,6 @@ class WatchHistoryManager {
         fingerprint,
         metadata: {},
       };
-      this.cache.set(actorKey, entry);
       this.persistEntry(actorKey, entry);
       return { pointerEvent: null, items, snapshotId: entry.snapshotId };
     };
@@ -2225,7 +2187,6 @@ class WatchHistoryManager {
       fingerprint,
       metadata: {},
     };
-    this.cache.set(actorKey, entry);
     this.persistEntry(actorKey, entry);
     return { pointerEvent: latestEvent, items: flatItems, snapshotId: "" };
   }
@@ -2318,7 +2279,6 @@ class WatchHistoryManager {
       fingerprint,
       metadata: {},
     };
-    this.cache.set(actorKey, entry);
     this.persistEntry(actorKey, entry);
     return flatItems;
   }
@@ -2334,11 +2294,10 @@ class WatchHistoryManager {
       }
     }
     this.republishTimers.clear();
-    this.cache.clear();
     this.fingerprints.clear();
     this.refreshPromises.clear();
     this.lastCreatedAt = 0;
-    this.storage = null;
+    // this.cache is now profileCache, do not clear it globally here as it affects other partitions
   }
 }
 
