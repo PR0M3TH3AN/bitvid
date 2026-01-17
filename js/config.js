@@ -41,6 +41,8 @@ import {
   ENSURE_PRESENCE_REBROADCAST_COOLDOWN_SECONDS,
 } from "../config/instance-config.js";
 
+export const WATCH_HISTORY_VERSION_TAG_VALUE = "2";
+
 export const isDevMode = Boolean(IS_DEV_MODE);
 export { IS_DEV_MODE };
 
