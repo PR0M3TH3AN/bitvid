@@ -1,4 +1,5 @@
 import { NOTE_TYPES } from "../nostrEventSchemas.js";
+import { WATCH_HISTORY_LIST_IDENTIFIER } from "../config.js";
 
 export const STORAGE_TIERS = Object.freeze({
   MEMORY: "memory",
@@ -22,6 +23,7 @@ export const CACHE_POLICIES = Object.freeze({
     storage: STORAGE_TIERS.LOCAL_STORAGE,
     ttl: 24 * 60 * 60 * 1000, // 24 hours
     addressing: "kind:pubkey:d",
+    defaultDTag: WATCH_HISTORY_LIST_IDENTIFIER,
     merge: MERGE_STRATEGIES.APPEND_ONLY, // Bucketed append
   },
   [NOTE_TYPES.SUBSCRIPTION_LIST]: {

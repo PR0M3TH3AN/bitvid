@@ -1,8 +1,18 @@
 import { CACHE_POLICIES, STORAGE_TIERS } from "../nostr/cachePolicies.js";
+import { NOTE_TYPES } from "../nostrEventSchemas.js";
 import { userLogger } from "../utils/logger.js";
 
 const PROFILE_CACHE_VERSION = 1;
 const STORAGE_KEY_PREFIX = "bitvid:profile:";
+
+// Maps legacy/service section names to NOTE_TYPES for policy lookup
+const SECTION_TO_NOTE_TYPE = {
+  "watchHistory": NOTE_TYPES.WATCH_HISTORY,
+  "subscriptions": NOTE_TYPES.SUBSCRIPTION_LIST,
+  "blocks": NOTE_TYPES.USER_BLOCK_LIST,
+  "interests": NOTE_TYPES.HASHTAG_PREFERENCES,
+  "relays": NOTE_TYPES.RELAY_LIST,
+};
 
 class ProfileCache {
   constructor() {
@@ -29,44 +39,75 @@ class ProfileCache {
     return null;
   }
 
+  /**
+   * Resolves the cache policy for a given section/noteType.
+   * @param {string} section - The section identifier or noteType.
+   * @returns {object|null} The policy object or null.
+   */
+  getPolicy(section) {
+    if (!section) return null;
+    // Check if section is a known alias
+    const noteType = SECTION_TO_NOTE_TYPE[section] || section;
+    return CACHE_POLICIES[noteType] || null;
+  }
+
+  /**
+   * Resolves the canonical storage key for a section based on policy addressing.
+   * @param {string} section - The section identifier or noteType.
+   * @param {object} params - Parameters for key resolution { pubkey, dTag, kind }.
+   * @returns {string} The canonical storage key.
+   */
+  resolveAddressKey(section, { pubkey, dTag } = {}) {
+    const policy = this.getPolicy(section);
+    const resolvedPubkey = this.normalizeHexPubkey(pubkey || this.activePubkey);
+
+    if (!resolvedPubkey) {
+      // Fallback or error? For now, we return a key with "unknown" or empty if no pubkey available
+      // but typically we should have one.
+      return "";
+    }
+
+    if (policy && policy.addressing === "kind:pubkey:d") {
+      const resolvedDTag = dTag || policy.defaultDTag;
+      const noteType = SECTION_TO_NOTE_TYPE[section] || section;
+
+      // We can use the noteType string as part of the key if we don't have the numeric kind easily accessible
+      // or we can hardcode the mapping if we really want kind numbers.
+      // However, the policy key in CACHE_POLICIES is the note type string (e.g. "watchHistory").
+      // To satisfy "kind:pubkey:d", we should ideally use the kind number.
+      // But `CACHE_POLICIES` is keyed by string type.
+      // Let's use the noteType string in the key to be unique and consistent with CACHE_POLICIES keys.
+      // Format: bitvid:profile:{pubkey}:{noteType}:{dTag}:v{VERSION}
+
+      // If dTag is missing for a replaceable list, it's an issue, but we'll use "default" or empty.
+      const dSegment = resolvedDTag || "default";
+
+      // Note: We use the noteType string (e.g. "watchHistory") instead of numeric kind
+      // because we don't import the numeric mappings here directly beyond what's in schemas,
+      // and noteType is unique enough.
+      return `${STORAGE_KEY_PREFIX}${resolvedPubkey}:${noteType}:${dSegment}:v${PROFILE_CACHE_VERSION}`;
+    } else if (policy && policy.addressing === "kind:pubkey") {
+       const noteType = SECTION_TO_NOTE_TYPE[section] || section;
+       return `${STORAGE_KEY_PREFIX}${resolvedPubkey}:${noteType}:v${PROFILE_CACHE_VERSION}`;
+    }
+
+    // Fallback legacy key format
+    return `${STORAGE_KEY_PREFIX}${resolvedPubkey}:${section}:v${PROFILE_CACHE_VERSION}`;
+  }
+
   getStorageKey(pubkey, section) {
-    return `${STORAGE_KEY_PREFIX}${pubkey}:${section}:v${PROFILE_CACHE_VERSION}`;
+    // Forward to resolveAddressKey which handles the logic,
+    // but getStorageKey signature is (pubkey, section).
+    // We assume default dTag if applicable.
+    return this.resolveAddressKey(section, { pubkey });
   }
 
   getStorageTier(section) {
-    // We assume section maps to a NOTE_TYPE or we map it manually.
-    // For now, let's map known sections to cache policies.
-    // If unknown, default to LOCAL_STORAGE for safety or MEMORY if ephemeral.
-
-    // Mapping section names used in services to CACHE_POLICIES keys
-    // subscriptions -> NOTE_TYPES.SUBSCRIPTION_LIST (30000)
-    // blocks -> NOTE_TYPES.USER_BLOCK_LIST (30002/10000)
-    // interests -> NOTE_TYPES.HASHTAG_PREFERENCES (30015/30005)
-    // watchHistory -> NOTE_TYPES.WATCH_HISTORY (30078)
-    // relays -> NOTE_TYPES.RELAY_LIST (10002)
-
-    // We'll rely on the caller passing the correct section key that matches CACHE_POLICIES logic
-    // OR we define a map here.
-
-    // Let's use simple string keys for sections and map them here.
-    const policyMap = {
-      "subscriptions": "subscription_list", // maps to NOTE_TYPES.SUBSCRIPTION_LIST
-      "blocks": "user_block_list",
-      "interests": "hashtag_preferences",
-      "watchHistory": "watch_history",
-      "relays": "relay_list",
-      // Add others as needed
-    };
-
-    // Note: CACHE_POLICIES keys are the note types (strings or numbers).
-    // In `js/nostr/cachePolicies.js`:
-    // [NOTE_TYPES.SUBSCRIPTION_LIST]: ...
-    // We need to know what NOTE_TYPES.SUBSCRIPTION_LIST evaluates to.
-    // However, we can just look up by the policy object directly if we import NOTE_TYPES.
-    // But to avoid circular deps or heavy imports, we can just check the storage tier directly if provided via config
-    // or assume LOCAL_STORAGE for these user lists as per requirements.
-
-    // For now, hardcode LOCAL_STORAGE for the known persistent types, as per the plan's context.
+    const policy = this.getPolicy(section);
+    if (policy) {
+        return policy.storage;
+    }
+    // Default to LOCAL_STORAGE for unknown sections to match legacy behavior
     return STORAGE_TIERS.LOCAL_STORAGE;
   }
 
@@ -112,22 +153,7 @@ class ProfileCache {
       return this.memoryCache.get(memKey);
     }
 
-    // 2. Load from persistence (canonical/encrypted data)
-    // Note: 'get' is often used for the *decrypted* runtime state in services.
-    // But services need to load the *persisted* data to decrypt it.
-    // The separation of concerns:
-    // - profileCache stores the *persisted* blob (encrypted or raw).
-    // - Services decrypt it and store the *result* back in profileCache's memory tier?
-    // OR services keep their own runtime state?
-    // The plan says: "Keep decrypted/plaintext and signer-dependent runtime caches **in memory**"
-    // "Services remain logic + event emitters that read/write through the partition".
-
-    // So:
-    // `profileCache.get(section)` should probably return the *persisted* data.
-    // Services maintain their own runtime state derived from it, OR we allow storing runtime state in `profileCache` too?
-    // If `profileCache` is just a storage wrapper, `get` returns what's in localStorage.
-
-    // Let's implement `load` from storage.
+    // 2. Load from persistence
     const storageKey = this.getStorageKey(pubkey, section);
     const tier = this.getStorageTier(section);
 
@@ -135,7 +161,26 @@ class ProfileCache {
       try {
         const raw = localStorage.getItem(storageKey);
         if (raw) {
-          return JSON.parse(raw);
+          const parsed = JSON.parse(raw);
+
+          // TTL Check
+          const policy = this.getPolicy(section);
+          if (policy && Number.isFinite(policy.ttl) && policy.ttl > 0) {
+             // We check if data has savedAt or similar timestamp.
+             // If parsed is an object and has savedAt
+             const savedAt = parsed?.savedAt || parsed?.timestamp;
+             if (Number.isFinite(savedAt)) {
+                 const now = Date.now();
+                 // Check if savedAt is seconds or ms. Usually ms in JS, but watchHistory might use one or other.
+                 // In watchHistory.js: savedAt = Date.now(). So it's ms.
+                 if (now - savedAt > policy.ttl) {
+                     userLogger.info(`[ProfileCache] Expired ${section} for ${pubkey}`);
+                     return null;
+                 }
+             }
+          }
+
+          return parsed;
         }
       } catch (error) {
         userLogger.warn(`[ProfileCache] Failed to load ${section} for ${pubkey}`, error);
@@ -162,19 +207,9 @@ class ProfileCache {
       }
     }
 
-    // Update memory cache?
-    // If `get` reads from storage, `set` writes to storage.
-    // We can also cache in memory to avoid parsing JSON every time if we want.
-    // But if services manage runtime state, `profileCache` acts as the persistence layer.
-
     this.emit("update", { pubkey, section, data });
     this.emit("partition-updated", { pubkey, key: section });
   }
-
-  // Runtime memory cache methods (for decrypted data, if services want to use it)
-  // Or maybe services just use `get` and `set` for persistence?
-  // The plan says: "Keep decrypted/plaintext... in memory keyed by pubkey... and clear them on signer change."
-  // This implies `profileCache` SHOULD manage the memory cache too.
 
   setMemoryData(section, data) {
     if (!this.activePubkey) return;
