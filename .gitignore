@@ -5,3 +5,4 @@ src/webtorrent-docs/
 playwright-report/
 test-results/
 tests/visual/__snapshots__/
+artifacts/
