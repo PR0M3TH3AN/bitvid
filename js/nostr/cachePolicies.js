@@ -62,13 +62,13 @@ export const CACHE_POLICIES = Object.freeze({
   },
   [NOTE_TYPES.VIDEO_COMMENT]: {
     storage: STORAGE_TIERS.MEMORY,
-    ttl: 0, // Session only
+    ttl: 5 * 60 * 1000, // 5 minutes
     addressing: "id",
     merge: MERGE_STRATEGIES.APPEND_ONLY,
   },
   [NOTE_TYPES.VIDEO_REACTION]: {
     storage: STORAGE_TIERS.MEMORY,
-    ttl: 0,
+    ttl: 5 * 60 * 1000, // 5 minutes
     addressing: "id",
     merge: MERGE_STRATEGIES.APPEND_ONLY,
   },
