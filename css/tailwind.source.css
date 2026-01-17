@@ -3243,7 +3243,7 @@
   }
 
   .watch-history-card__thumbnail {
-    @apply block flex-none text-text no-underline w-full sm:w-56;
+    @apply block flex-none text-text no-underline w-56 max-w-full;
   }
 
   .watch-history-card__thumbnailInner {
