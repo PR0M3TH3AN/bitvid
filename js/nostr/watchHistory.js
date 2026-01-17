@@ -955,6 +955,21 @@ class WatchHistoryManager {
     this.cacheTtlMs = 0;
     this.fingerprints = new Map();
     this.lastCreatedAt = 0;
+
+    profileCache.subscribe((event, detail) => {
+      if (event === "profileChanged") {
+        this.clear();
+      } else if (event === "runtimeCleared") {
+        const activePubkey = typeof this.deps.getActivePubkey === "function"
+          ? this.deps.getActivePubkey()
+          : "";
+        const normalized = normalizeActorKey(detail.pubkey);
+        const active = normalizeActorKey(activePubkey);
+        if (normalized && active && normalized === active) {
+          this.cache.delete(normalized);
+        }
+      }
+    });
   }
 
   getCacheTtlMs() {

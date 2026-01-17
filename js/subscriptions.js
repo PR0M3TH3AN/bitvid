@@ -246,6 +246,11 @@ class SubscriptionsManager {
         this.reset();
         // Optionally reload immediately if we have a pubkey?
         // Usually UI triggers reload via showSubscriptionVideos
+      } else if (event === "runtimeCleared" && detail.pubkey === this.currentUserPubkey) {
+        this.reset();
+        if (this.currentUserPubkey) {
+          this.loadSubscriptions(this.currentUserPubkey);
+        }
       }
     });
   }
