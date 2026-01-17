@@ -4,6 +4,7 @@ import {
   requestDefaultExtensionPermissions,
 } from "./nostrClientFacade.js";
 import { getActiveSigner } from "./nostr/index.js";
+import { isSessionActor } from "./nostr/sessionActor.js";
 import { normalizeNostrPubkey } from "./nostr/nip46Client.js";
 import { buildBlockListEvent, BLOCK_LIST_IDENTIFIER, NOTE_TYPES } from "./nostrEventSchemas.js";
 import { CACHE_POLICIES, STORAGE_TIERS } from "./nostr/cachePolicies.js";
@@ -1521,6 +1522,15 @@ class UserBlockListManager {
     plaintext = "",
     onStatus,
   } = {}) {
+    // nostrClient imported from nostrClientFacade
+    if (isSessionActor(nostrClient)) {
+      const error = new Error(
+        "Publishing mute lists is not allowed for session actors."
+      );
+      error.code = "session-actor-publish-blocked";
+      throw error;
+    }
+
     const owner = normalizeHex(ownerPubkey);
     if (!owner || !signer || typeof signer.signEvent !== "function") {
       return null;
@@ -1622,6 +1632,14 @@ class UserBlockListManager {
   }
 
   async publishBlockList(userPubkey, options = {}) {
+    if (isSessionActor(nostrClient)) {
+      const error = new Error(
+        "Publishing block lists is not allowed for session actors."
+      );
+      error.code = "session-actor-publish-blocked";
+      throw error;
+    }
+
     const onStatus =
       options && typeof options.onStatus === "function" ? options.onStatus : null;
 

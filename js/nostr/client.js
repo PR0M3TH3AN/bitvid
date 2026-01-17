@@ -123,6 +123,7 @@ import {
   encryptSessionPrivateKey,
   persistSessionActor as persistSessionActorEntry,
   readStoredSessionActorEntry,
+  isSessionActor,
 } from "./sessionActor.js";
 import {
   HEX64_REGEX,
@@ -3646,6 +3647,13 @@ export class NostrClient {
     );
   }
   async publishWatchHistorySnapshot(rawItems, options = {}) {
+    if (isSessionActor(this)) {
+      const error = new Error(
+        "Publishing watch history is not allowed for session actors."
+      );
+      error.code = "session-actor-publish-blocked";
+      throw error;
+    }
     return publishWatchHistorySnapshotWithManager(
       this.watchHistory,
       rawItems,
@@ -3653,6 +3661,13 @@ export class NostrClient {
     );
   }
   async updateWatchHistoryList(rawItems = [], options = {}) {
+    if (isSessionActor(this)) {
+      const error = new Error(
+        "Publishing watch history is not allowed for session actors."
+      );
+      error.code = "session-actor-publish-blocked";
+      throw error;
+    }
     return updateWatchHistoryListWithManager(
       this.watchHistory,
       rawItems,
@@ -3660,6 +3675,13 @@ export class NostrClient {
     );
   }
   async removeWatchHistoryItem(pointerInput, options = {}) {
+    if (isSessionActor(this)) {
+      const error = new Error(
+        "Publishing watch history is not allowed for session actors."
+      );
+      error.code = "session-actor-publish-blocked";
+      throw error;
+    }
     return removeWatchHistoryItemWithManager(
       this.watchHistory,
       pointerInput,
