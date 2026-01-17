@@ -284,50 +284,89 @@ async function performProfileSearch(query, token) {
 }
 
 async function performVideoSearch(query, token) {
-    if (!nostrClient || !nostrClient.pool) return [];
+    if (!nostrClient) return [];
 
     const isHashtag = query.startsWith("#");
     const term = isHashtag ? query.slice(1) : query;
+    const lowerTerm = term.toLowerCase();
 
-    const filter = {
-        kinds: [30078],
-        limit: 50
-    };
+    // 1. Local Search (Cache)
+    const localMatches = [];
+    if (nostrClient.activeMap instanceof Map) {
+        for (const video of nostrClient.activeMap.values()) {
+            if (!video || video.deleted) continue;
 
-    if (isHashtag) {
-        filter["#t"] = [term];
-    } else {
-        filter.search = term;
-    }
+            let matches = false;
+            if (isHashtag) {
+                // Check tags for 't'
+                if (Array.isArray(video.tags)) {
+                    matches = video.tags.some(t => Array.isArray(t) && t[0] === "t" && t[1].toLowerCase() === lowerTerm);
+                }
+            } else {
+                // Check title/description
+                const title = video.title ? video.title.toLowerCase() : "";
+                const desc = video.description ? video.description.toLowerCase() : "";
+                if (title.includes(lowerTerm) || desc.includes(lowerTerm)) {
+                    matches = true;
+                }
+            }
 
-    const relays = nostrClient.relays || [];
-    if (relays.length === 0) return [];
-
-    let events = [];
-    try {
-        events = await nostrClient.pool.list(relays, [filter]);
-    } catch (e) {
-        devLogger.warn("Video search error", e);
-        return [];
+            if (matches) {
+                localMatches.push(video);
+            }
+        }
     }
 
     if (currentSearchToken !== token) return [];
 
-    const { convertEventToVideo } = await import("./nostr/index.js");
+    // 2. Relay Search
+    let relayVideos = [];
+    const relays = nostrClient.relays || [];
 
-    const videos = events.map(evt => {
-        const vid = convertEventToVideo(evt);
-        if (vid.invalid) return null;
-        return vid;
-    }).filter(Boolean);
+    if (relays.length > 0 && nostrClient.pool) {
+        const filter = {
+            kinds: [30078],
+            limit: 50
+        };
 
-    // Deduplicate by ID (or root)
-    const unique = new Map();
-    for (const v of videos) {
-        if (!unique.has(v.id)) {
-            unique.set(v.id, v);
+        if (isHashtag) {
+            filter["#t"] = [term];
+        } else {
+            filter.search = term;
+        }
+
+        try {
+            const events = await nostrClient.pool.list(relays, [filter]);
+
+            if (currentSearchToken === token) {
+                const { convertEventToVideo } = await import("./nostr/index.js");
+                relayVideos = events.map(evt => {
+                    const vid = convertEventToVideo(evt);
+                    if (vid.invalid) return null;
+                    return vid;
+                }).filter(Boolean);
+            }
+        } catch (e) {
+            devLogger.warn("Video search error", e);
+            // Continue with local matches if relay search fails
         }
     }
 
-    return Array.from(unique.values());
+    if (currentSearchToken !== token) return [];
+
+    // Deduplicate by ID
+    const unique = new Map();
+
+    // Add local matches first
+    for (const v of localMatches) {
+        if (!unique.has(v.id)) unique.set(v.id, v);
+    }
+
+    // Add relay matches (overwriting local if needed, or ignoring duplicates)
+    for (const v of relayVideos) {
+        if (!unique.has(v.id)) unique.set(v.id, v);
+    }
+
+    // Sort by creation date (newest first)
+    return Array.from(unique.values()).sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
 }
