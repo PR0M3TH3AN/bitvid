@@ -1,0 +1,39 @@
+{
+  "config": {
+    "relayUrl": "ws://127.0.0.1:3333",
+    "numClients": 100,
+    "durationSec": 10,
+    "eventsPerSec": 50,
+    "reportFile": "artifacts/load-report-2026-01-17.json",
+    "useInternalRelay": false
+  },
+  "metrics": {
+    "durationActual": 10.393,
+    "totalSent": 505,
+    "totalReceived": 443,
+    "errors": 0,
+    "throughput": {
+      "sentPerSec": 48.590397382853844,
+      "receivedPerSec": 42.624843644760894,
+      "bytesSentPerSec": 66310.88232464159,
+      "bytesReceivedPerSec": 598279.8999326469
+    },
+    "latency": {
+      "avgRoundtripMs": 12.214446952595937,
+      "avgPubAckMs": 12.590361445783133,
+      "p95RoundtripMs": 24,
+      "p99RoundtripMs": 35
+    },
+    "messageTypes": {
+      "OK": 505,
+      "EOSE": 10,
+      "EVENT": 4430
+    },
+    "resourceUsage": {
+      "user": 3681110,
+      "system": 245713
+    }
+  },
+  "bottlenecks": [],
+  "remediation": []
+}

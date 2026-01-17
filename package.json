@@ -44,6 +44,7 @@
   "dependencies": {
     "@floating-ui/dom": "^1.7.4",
     "path": "^0.12.7",
-    "webtorrent": "^1.9.7"
+    "webtorrent": "^1.9.7",
+    "ws": "^8.19.0"
   }
 }
