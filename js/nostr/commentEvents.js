@@ -10,6 +10,7 @@ import { normalizePointerInput } from "./watchHistory.js";
 import { devLogger, userLogger } from "../utils/logger.js";
 import { LRUCache } from "../utils/lruCache.js";
 import { CACHE_POLICIES } from "./cachePolicies.js";
+import { isSessionActor } from "./sessionActor.js";
 
 const COMMENT_EVENT_SCHEMA = getNostrEventSchema(NOTE_TYPES.VIDEO_COMMENT);
 const CACHE_POLICY = CACHE_POLICIES[NOTE_TYPES.VIDEO_COMMENT];
@@ -1112,6 +1113,14 @@ export async function publishComment(
 ) {
   if (!client?.pool) {
     return { ok: false, error: "nostr-uninitialized" };
+  }
+
+  if (isSessionActor(client)) {
+    const error = new Error(
+      "Publishing comments is not allowed for session actors."
+    );
+    error.code = "session-actor-publish-blocked";
+    return { ok: false, error };
   }
 
   const descriptor = normalizeCommentTarget(targetInput, options);

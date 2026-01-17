@@ -4,6 +4,7 @@ import {
   requestDefaultExtensionPermissions,
 } from "../nostrClientFacade.js";
 import { getActiveSigner } from "../nostr/index.js";
+import { isSessionActor } from "../nostr/sessionActor.js";
 import {
   buildHashtagPreferenceEvent,
   getNostrEventSchema,
@@ -700,6 +701,15 @@ class HashtagPreferencesService {
   }
 
   async publish(options = {}) {
+    // nostrClient imported from nostrClientFacade
+    if (isSessionActor(nostrClient)) {
+      const error = new Error(
+        "Publishing preferences is not allowed for session actors."
+      );
+      error.code = "session-actor-publish-blocked";
+      throw error;
+    }
+
     const targetPubkey = normalizeHexPubkey(
       typeof options?.pubkey === "string" ? options.pubkey : this.activePubkey,
     );

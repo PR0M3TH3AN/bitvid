@@ -380,6 +380,11 @@ export function clearStoredSessionActor() {
   }
 }
 
+export function isSessionActor(nostrClient) {
+  const sa = nostrClient?.sessionActor;
+  return !!sa && sa.source !== "nsec";
+}
+
 export const __testExports = {
   arrayBufferToBase64,
   base64ToUint8Array,
