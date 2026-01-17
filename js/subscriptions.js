@@ -30,11 +30,10 @@ import { ALLOW_NSFW_CONTENT } from "./config.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import moderationService from "./services/moderationService.js";
 import nostrService from "./services/nostrService.js";
+import { profileCache } from "./state/profileCache.js";
 
 const SUBSCRIPTION_SET_KIND =
   getNostrEventSchema(NOTE_TYPES.SUBSCRIPTION_LIST)?.kind ?? 30000;
-
-const SUBSCRIPTIONS_CACHE_KEY_PREFIX = "bitvid:subscriptions:v1:";
 
 function normalizeHexPubkey(value) {
   if (typeof value !== "string") {
@@ -240,6 +239,14 @@ class SubscriptionsManager {
     this.isRunningFeed = false;
     this.hasRenderedOnce = false;
     this.ensureNostrServiceListener();
+
+    profileCache.subscribe((event, detail) => {
+      if (event === "profileChanged") {
+        this.reset();
+        // Optionally reload immediately if we have a pubkey?
+        // Usually UI triggers reload via showSubscriptionVideos
+      }
+    });
   }
 
   /**
@@ -254,10 +261,10 @@ class SubscriptionsManager {
     const normalizedUserPubkey = normalizeHexPubkey(userPubkey) || userPubkey;
 
     // 1. Attempt to load from cache first
-    const cached = this.loadFromCache(normalizedUserPubkey);
-    if (cached) {
+    const cached = profileCache.get("subscriptions");
+    if (Array.isArray(cached)) {
       devLogger.log("[SubscriptionsManager] Loaded subscriptions from cache.");
-      this.subscribedPubkeys = cached;
+      this.subscribedPubkeys = new Set(cached);
       this.currentUserPubkey = normalizedUserPubkey;
       this.loaded = true;
 
@@ -272,46 +279,9 @@ class SubscriptionsManager {
     await this.updateFromRelays(userPubkey);
   }
 
-  getCacheKey(userPubkey) {
-    if (!userPubkey) return null;
-    return `${SUBSCRIPTIONS_CACHE_KEY_PREFIX}${userPubkey}`;
-  }
-
-  loadFromCache(userPubkey) {
-    const policy = CACHE_POLICIES[NOTE_TYPES.SUBSCRIPTION_LIST];
-    if (policy?.storage !== STORAGE_TIERS.LOCAL_STORAGE) {
-      return null;
-    }
-    if (typeof localStorage === "undefined") return null;
-    const key = this.getCacheKey(userPubkey);
-    if (!key) return null;
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    try {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        return new Set(parsed);
-      }
-    } catch (e) {
-      devLogger.warn("[SubscriptionsManager] Failed to parse cache:", e);
-    }
-    return null;
-  }
-
   saveToCache(userPubkey) {
-    const policy = CACHE_POLICIES[NOTE_TYPES.SUBSCRIPTION_LIST];
-    if (policy?.storage !== STORAGE_TIERS.LOCAL_STORAGE) {
-      return;
-    }
-    if (typeof localStorage === "undefined") return;
-    const key = this.getCacheKey(userPubkey);
-    if (!key) return;
-    const list = Array.from(this.subscribedPubkeys);
-    try {
-      localStorage.setItem(key, JSON.stringify(list));
-    } catch (e) {
-      devLogger.warn("[SubscriptionsManager] Failed to save to cache:", e);
-    }
+    // We assume userPubkey matches active profile, enforced by profileCache
+    profileCache.set("subscriptions", Array.from(this.subscribedPubkeys));
   }
 
   async updateFromRelays(userPubkey) {

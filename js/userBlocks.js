@@ -11,6 +11,7 @@ import {
   publishEventToRelays,
   assertAnyRelayAccepted,
 } from "./nostrPublish.js";
+import { profileCache } from "./state/profileCache.js";
 
 class TinyEventEmitter {
   constructor() {
@@ -64,24 +65,6 @@ export const USER_BLOCK_EVENTS = Object.freeze({
 const FAST_BLOCKLIST_RELAY_LIMIT = 3;
 const FAST_BLOCKLIST_TIMEOUT_MS = 2500;
 const BACKGROUND_BLOCKLIST_TIMEOUT_MS = 6000;
-
-const BLOCKLIST_STORAGE_PREFIX = "bitvid:user-blocks";
-const BLOCKLIST_SEEDED_KEY_PREFIX = `${BLOCKLIST_STORAGE_PREFIX}:seeded:v1`;
-const BLOCKLIST_REMOVALS_KEY_PREFIX = `${BLOCKLIST_STORAGE_PREFIX}:removals:v1`;
-const BLOCKLIST_LOCAL_KEY_PREFIX = `${BLOCKLIST_STORAGE_PREFIX}:local:v1`;
-
-function resolveStorage() {
-  if (typeof localStorage !== "undefined") {
-    return localStorage;
-  }
-  if (typeof window !== "undefined" && window.localStorage) {
-    return window.localStorage;
-  }
-  if (typeof globalThis !== "undefined" && globalThis.localStorage) {
-    return globalThis.localStorage;
-  }
-  return null;
-}
 
 function normalizeEncryptionToken(value) {
   if (typeof value !== "string") {
@@ -612,119 +595,6 @@ function decodeNpubToHex(npub) {
   return normalizeDecodedHex(fallbackDecodeNpubToHex(trimmed));
 }
 
-function readSeededFlag(actorHex) {
-  if (typeof actorHex !== "string" || !actorHex) {
-    return false;
-  }
-
-  if (typeof localStorage === "undefined") {
-    return false;
-  }
-
-  const key = `${BLOCKLIST_SEEDED_KEY_PREFIX}:${actorHex}`;
-
-  try {
-    const value = localStorage.getItem(key);
-    return value === "1";
-  } catch (error) {
-    userLogger.warn(
-      `[UserBlockList] Failed to read seeded baseline state for ${actorHex}:`,
-      error,
-    );
-    return false;
-  }
-}
-
-function writeSeededFlag(actorHex, seeded) {
-  if (typeof actorHex !== "string" || !actorHex) {
-    return;
-  }
-
-  const storage = resolveStorage();
-  if (!storage) {
-    return;
-  }
-
-  const key = `${BLOCKLIST_SEEDED_KEY_PREFIX}:${actorHex}`;
-
-  try {
-    if (seeded) {
-      localStorage.setItem(key, "1");
-    } else {
-      localStorage.removeItem(key);
-    }
-  } catch (error) {
-    userLogger.warn(
-      `[UserBlockList] Failed to persist seeded baseline state for ${actorHex}:`,
-      error,
-    );
-  }
-}
-
-function readRemovalSet(actorHex) {
-  const empty = new Set();
-  if (typeof actorHex !== "string" || !actorHex) {
-    return empty;
-  }
-
-  if (typeof localStorage === "undefined") {
-    return empty;
-  }
-
-  const key = `${BLOCKLIST_REMOVALS_KEY_PREFIX}:${actorHex}`;
-
-  try {
-    const raw = localStorage.getItem(key);
-    if (raw === null) {
-      return empty;
-    }
-
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) {
-      return empty;
-    }
-
-    const normalized = parsed
-      .map((entry) => (typeof entry === "string" ? entry.trim().toLowerCase() : ""))
-      .filter((entry) => /^[0-9a-f]{64}$/.test(entry));
-
-    return new Set(normalized);
-  } catch (error) {
-    userLogger.warn(
-      `[UserBlockList] Failed to read seed removal state for ${actorHex}:`,
-      error,
-    );
-    return empty;
-  }
-}
-
-function writeRemovalSet(actorHex, removals) {
-  if (typeof actorHex !== "string" || !actorHex) {
-    return;
-  }
-
-  const storage = resolveStorage();
-  if (!storage) {
-    return;
-  }
-
-  const key = `${BLOCKLIST_REMOVALS_KEY_PREFIX}:${actorHex}`;
-
-  try {
-    if (!removals || !removals.size) {
-      localStorage.removeItem(key);
-      return;
-    }
-
-    localStorage.setItem(key, JSON.stringify(Array.from(removals)));
-  } catch (error) {
-    userLogger.warn(
-      `[UserBlockList] Failed to persist seed removal state for ${actorHex}:`,
-      error,
-    );
-  }
-}
-
 function normalizeHex(pubkey) {
   if (typeof pubkey !== "string") {
     return null;
@@ -747,73 +617,6 @@ function normalizeHex(pubkey) {
   return null;
 }
 
-function readLocalBlocks(actorHex) {
-  if (typeof actorHex !== "string" || !actorHex) {
-    return null;
-  }
-
-  const storage = resolveStorage();
-  if (!storage) {
-    return null;
-  }
-
-  const key = `${BLOCKLIST_LOCAL_KEY_PREFIX}:${actorHex}`;
-
-  try {
-    const raw = storage.getItem(key);
-    if (raw === null) {
-      return null;
-    }
-
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) {
-      return new Set();
-    }
-
-    const normalized = parsed
-      .map((entry) =>
-        typeof entry === "string" ? entry.trim().toLowerCase() : "",
-      )
-      .filter((entry) => /^[0-9a-f]{64}$/.test(entry));
-
-    return new Set(normalized);
-  } catch (error) {
-    userLogger.warn(
-      `[UserBlockList] Failed to read local blocks for ${actorHex}:`,
-      error,
-    );
-    return null;
-  }
-}
-
-function writeLocalBlocks(actorHex, blocks) {
-  if (typeof actorHex !== "string" || !actorHex) {
-    return;
-  }
-
-  const storage = resolveStorage();
-  if (!storage) {
-    return;
-  }
-
-  const key = `${BLOCKLIST_LOCAL_KEY_PREFIX}:${actorHex}`;
-
-  try {
-    if (!blocks || !blocks.size) {
-      // We persist empty sets as [] to distinguish from "not found" (null)
-      storage.setItem(key, "[]");
-      return;
-    }
-
-    storage.setItem(key, JSON.stringify(Array.from(blocks)));
-  } catch (error) {
-    userLogger.warn(
-      `[UserBlockList] Failed to persist local blocks for ${actorHex}:`,
-      error,
-    );
-  }
-}
-
 class UserBlockListManager {
   constructor() {
     this.blockedPubkeys = new Set();
@@ -825,6 +628,12 @@ class UserBlockListManager {
     this.loaded = false;
     this.emitter = new TinyEventEmitter();
     this.seedStateCache = new Map();
+
+    profileCache.subscribe((event, detail) => {
+      if (event === "profileChanged") {
+        this.reset();
+      }
+    });
   }
 
   reset() {
@@ -1449,19 +1258,15 @@ class UserBlockListManager {
   }
 
   _loadLocal(actorHex) {
-    const policy = CACHE_POLICIES[NOTE_TYPES.USER_BLOCK_LIST];
-    if (policy?.storage !== STORAGE_TIERS.LOCAL_STORAGE) {
-      return null;
+    const cached = profileCache.get("blocks");
+    if (Array.isArray(cached)) {
+      return new Set(cached);
     }
-    return readLocalBlocks(actorHex);
+    return null;
   }
 
   _saveLocal(actorHex) {
-    const policy = CACHE_POLICIES[NOTE_TYPES.USER_BLOCK_LIST];
-    if (policy?.storage !== STORAGE_TIERS.LOCAL_STORAGE) {
-      return;
-    }
-    writeLocalBlocks(actorHex, this.blockedPubkeys);
+    profileCache.set("blocks", Array.from(this.blockedPubkeys));
   }
 
   _getSeedState(actorHex) {
@@ -1474,48 +1279,56 @@ class UserBlockListManager {
       return this.seedStateCache.get(normalized);
     }
 
-    const seeded = readSeededFlag(normalized);
-    const removals = readRemovalSet(normalized);
+    const stored = profileCache.get("blocks_meta") || {};
+    const seeded = !!stored.seeded;
+    const removals = new Set(Array.isArray(stored.removals) ? stored.removals : []);
+
     const state = { seeded, removals };
     this.seedStateCache.set(normalized, state);
     return state;
   }
 
+  _persistSeedState(actorHex) {
+    const normalized = normalizeHex(actorHex);
+    if (!normalized) return;
+    const state = this.seedStateCache.get(normalized);
+    if (!state) return;
+
+    profileCache.set("blocks_meta", {
+      seeded: state.seeded,
+      removals: Array.from(state.removals),
+    });
+  }
+
   _setSeeded(actorHex, seeded) {
     const normalized = normalizeHex(actorHex);
-    if (!normalized) {
-      return;
-    }
+    if (!normalized) return;
 
     const state = this._getSeedState(normalized);
     state.seeded = Boolean(seeded);
-    writeSeededFlag(normalized, state.seeded);
+    this._persistSeedState(normalized);
   }
 
   _addSeedRemoval(actorHex, targetHex) {
     const normalizedActor = normalizeHex(actorHex);
     const normalizedTarget = normalizeHex(targetHex);
-    if (!normalizedActor || !normalizedTarget) {
-      return;
-    }
+    if (!normalizedActor || !normalizedTarget) return;
 
     const state = this._getSeedState(normalizedActor);
     if (!state.removals.has(normalizedTarget)) {
       state.removals.add(normalizedTarget);
-      writeRemovalSet(normalizedActor, state.removals);
+      this._persistSeedState(normalizedActor);
     }
   }
 
   _clearSeedRemoval(actorHex, targetHex) {
     const normalizedActor = normalizeHex(actorHex);
     const normalizedTarget = normalizeHex(targetHex);
-    if (!normalizedActor || !normalizedTarget) {
-      return;
-    }
+    if (!normalizedActor || !normalizedTarget) return;
 
     const state = this._getSeedState(normalizedActor);
     if (state.removals.delete(normalizedTarget)) {
-      writeRemovalSet(normalizedActor, state.removals);
+      this._persistSeedState(normalizedActor);
     }
   }
 

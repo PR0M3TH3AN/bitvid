@@ -12,13 +12,13 @@ import {
   publishEventToRelays,
   assertAnyRelayAccepted,
 } from "./nostrPublish.js";
+import { profileCache } from "./state/profileCache.js";
 
 const MODE_SEQUENCE = ["both", "read", "write"];
 
 const FAST_RELAY_FETCH_LIMIT = 3;
 const FAST_RELAY_TIMEOUT_MS = 2500;
 const BACKGROUND_RELAY_TIMEOUT_MS = 6000;
-const RELAY_PREFS_STORAGE_KEY = "bitvid:relay-preferences:v1";
 
 function normalizeHexPubkey(pubkey) {
   if (typeof pubkey !== "string") {
@@ -201,39 +201,29 @@ class RelayPreferencesManager {
     } else {
       this.setEntries(this.defaultEntries, { allowEmpty: false, updateClient: true });
     }
+
+    profileCache.subscribe((event, detail) => {
+      if (event === "profileChanged") {
+        const fresh = this.loadFromStorage();
+        if (fresh && fresh.length) {
+          this.setEntries(fresh, { allowEmpty: false, updateClient: true });
+        } else {
+          this.setEntries(this.defaultEntries, { allowEmpty: false, updateClient: true });
+        }
+      }
+    });
   }
 
   loadFromStorage() {
-    const policy = CACHE_POLICIES[NOTE_TYPES.RELAY_LIST];
-    if (policy?.storage !== STORAGE_TIERS.LOCAL_STORAGE) {
-      return null;
-    }
-    if (typeof localStorage === "undefined") return null;
-    try {
-      const raw = localStorage.getItem(RELAY_PREFS_STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          return parsed;
-        }
-      }
-    } catch (err) {
-      devLogger.warn("[RelayPreferencesManager] Failed to load from storage", err);
+    const cached = profileCache.get("relays");
+    if (Array.isArray(cached)) {
+      return cached;
     }
     return null;
   }
 
   saveToStorage() {
-    const policy = CACHE_POLICIES[NOTE_TYPES.RELAY_LIST];
-    if (policy?.storage !== STORAGE_TIERS.LOCAL_STORAGE) {
-      return;
-    }
-    if (typeof localStorage === "undefined") return;
-    try {
-      localStorage.setItem(RELAY_PREFS_STORAGE_KEY, serializeEntries(this.entries));
-    } catch (err) {
-      devLogger.warn("[RelayPreferencesManager] Failed to save to storage", err);
-    }
+    profileCache.set("relays", this.entries.map((entry) => ({ url: entry.url, mode: entry.mode })));
   }
 
   snapshot() {
