@@ -997,7 +997,7 @@ class WatchHistoryManager {
         return { actors: {} }; // Return empty structure if no actor resolved
     }
 
-    const cached = profileCache.get("watchHistory");
+    const cached = profileCache.get(NOTE_TYPES.WATCH_HISTORY);
     if (!cached) {
       return { actors: {} };
     }
@@ -1045,7 +1045,7 @@ class WatchHistoryManager {
     };
 
     // profileCache keys by active profile, so we just set the data for "watchHistory"
-    profileCache.set("watchHistory", data);
+    profileCache.set(NOTE_TYPES.WATCH_HISTORY, data);
   }
 
   cancelRepublish(taskId = null) {
