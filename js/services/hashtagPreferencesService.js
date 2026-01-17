@@ -14,6 +14,7 @@ import {
   assertAnyRelayAccepted,
 } from "../nostrPublish.js";
 import { userLogger } from "../utils/logger.js";
+import { profileCache } from "../state/profileCache.js";
 
 const LOG_PREFIX = "[HashtagPreferences]";
 const HASHTAG_IDENTIFIER = "bitvid:tag-preferences";
@@ -244,6 +245,12 @@ class HashtagPreferencesService {
     this.eventCreatedAt = null;
     this.loaded = false;
     this.preferencesVersion = DEFAULT_VERSION;
+
+    profileCache.subscribe((event, detail) => {
+      if (event === "profileChanged") {
+        this.reset();
+      }
+    });
   }
 
   on(eventName, handler) {
@@ -258,6 +265,35 @@ class HashtagPreferencesService {
     this.loaded = false;
     this.preferencesVersion = DEFAULT_VERSION;
     this.emitChange("reset");
+  }
+
+  saveToCache() {
+    const interests = this.getInterests();
+    const disinterests = this.getDisinterests();
+    profileCache.set("interests", {
+      interests,
+      disinterests,
+      version: this.preferencesVersion,
+      eventId: this.eventId,
+      createdAt: this.eventCreatedAt,
+    });
+  }
+
+  loadFromCache(pubkey) {
+    // profileCache internally uses activePubkey, but we should verify if it matches
+    const cached = profileCache.get("interests");
+    if (cached && typeof cached === "object") {
+      this.activePubkey = normalizeHexPubkey(pubkey);
+      this.interests = new Set(Array.isArray(cached.interests) ? cached.interests : []);
+      this.disinterests = new Set(Array.isArray(cached.disinterests) ? cached.disinterests : []);
+      this.eventId = cached.eventId || null;
+      this.eventCreatedAt = cached.createdAt || null;
+      this.preferencesVersion = cached.version || DEFAULT_VERSION;
+      this.loaded = true;
+      this.emitChange("cache-load");
+      return true;
+    }
+    return false;
   }
 
   getInterests() {
@@ -355,6 +391,11 @@ class HashtagPreferencesService {
       this.reset();
       this.loaded = true;
       return;
+    }
+
+    // Try cache first
+    if (this.loadFromCache(normalized)) {
+      wasLoadedForUser = true;
     }
 
     if (
@@ -516,6 +557,7 @@ class HashtagPreferencesService {
         ? latest.created_at
         : null;
       this.loaded = true;
+      this.saveToCache();
       this.emitChange("sync", { scheme: decryptResult.scheme });
     } catch (error) {
       userLogger.warn(
