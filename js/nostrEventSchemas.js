@@ -7,6 +7,7 @@ import {
   isDevMode,
   WATCH_HISTORY_KIND,
   WATCH_HISTORY_LIST_IDENTIFIER,
+  WATCH_HISTORY_VERSION_TAG_VALUE,
 } from "./config.js";
 
 export const NOTE_TYPES = Object.freeze({
@@ -359,7 +360,7 @@ const BASE_SCHEMAS = {
       name: "d",
     },
     monthTagName: "month",
-    appendTags: DEFAULT_APPEND_TAGS,
+    appendTags: [["v", WATCH_HISTORY_VERSION_TAG_VALUE]],
     content: {
       format: "json",
       description:

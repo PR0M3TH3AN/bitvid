@@ -7,6 +7,7 @@ import {
   WATCH_HISTORY_PAYLOAD_MAX_BYTES,
   WATCH_HISTORY_FETCH_EVENT_LIMIT,
   WATCH_HISTORY_CACHE_TTL_MS,
+  WATCH_HISTORY_VERSION_TAG_VALUE,
 } from "../config.js";
 import {
   buildWatchHistoryEvent,
@@ -26,8 +27,8 @@ import { devLogger, userLogger } from "../utils/logger.js";
  * relay publishing, fetch/decrypt flows, and exposes a manager factory that is
  * dependency-injected with the nostr client hooks it needs.
  */
-const WATCH_HISTORY_STORAGE_KEY = "bitvid:watch-history:v4";
-const WATCH_HISTORY_STORAGE_VERSION = 4;
+const WATCH_HISTORY_STORAGE_KEY = "bitvid:watch-history:v5";
+const WATCH_HISTORY_STORAGE_VERSION = 5;
 const WATCH_HISTORY_REPUBLISH_BASE_DELAY_MS = 2000;
 const WATCH_HISTORY_REPUBLISH_MAX_DELAY_MS = 5 * 60 * 1000;
 const WATCH_HISTORY_REPUBLISH_MAX_ATTEMPTS = 8;
@@ -1653,6 +1654,11 @@ class WatchHistoryManager {
       }
     }
 
+    if (!encryptionTags.length) {
+      devLogger.warn("[nostr] Aborting watch history publish: mandatory encryption failed.");
+      return { ok: false, error: "encryption-failed", retryable: true };
+    }
+
     const event = buildWatchHistoryEvent({
       pubkey: actorPubkey,
       created_at: createdAtCursor,
@@ -2045,7 +2051,8 @@ class WatchHistoryManager {
         {
           kinds,
           authors: [actorKey],
-          // Fetch all parameterized replaceables of this kind to get history across all months
+          // Filter by the new version tag to ignore older history lists
+          "#v": [WATCH_HISTORY_VERSION_TAG_VALUE],
           limit,
         },
       ];
