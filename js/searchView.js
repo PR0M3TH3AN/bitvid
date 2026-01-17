@@ -232,55 +232,97 @@ async function renderSearchVideos(videos, container, app) {
 }
 
 async function performProfileSearch(query, token) {
-    if (!nostrClient || !nostrClient.pool) return [];
+    if (!query) return [];
 
-    const filter = {
-        kinds: [0],
-        search: query,
-        limit: 20
-    };
+    const normalizedQuery = query.toLowerCase();
+    const uniqueProfiles = new Map();
 
-    // If query looks like NIP-05 (user@domain), we could try to resolve it directly?
-    // For now, reliance on NIP-50 `search` is safer for broad queries.
+    // 1. Local Search (Scan known authors in cache)
+    if (nostrClient?.activeMap instanceof Map) {
+        const app = getApp();
+        if (app && typeof app.getProfileCacheEntry === 'function') {
+             const seenPubkeys = new Set();
+             for (const video of nostrClient.activeMap.values()) {
+                 if (!video || !video.pubkey || seenPubkeys.has(video.pubkey)) continue;
 
-    // We should also search our local cache?
-    // The requirement says "search nostr relays".
+                 seenPubkeys.add(video.pubkey);
+                 const entry = app.getProfileCacheEntry(video.pubkey);
+                 if (entry?.profile) {
+                     const name = entry.profile.name || entry.profile.display_name || "";
+                     const about = entry.profile.about || "";
+                     const nip05 = entry.profile.nip05 || "";
+                     const lightning = entry.profile.lightningAddress || "";
 
-    const relays = nostrClient.relays || [];
-    if (relays.length === 0) return [];
+                     if (name.toLowerCase().includes(normalizedQuery) ||
+                         about.toLowerCase().includes(normalizedQuery) ||
+                         nip05.toLowerCase().includes(normalizedQuery) ||
+                         lightning.toLowerCase().includes(normalizedQuery)) {
 
-    let events = [];
-    try {
-        events = await nostrClient.pool.list(relays, [filter]);
-    } catch (e) {
-        devLogger.warn("Profile search error", e);
-        return [];
+                         uniqueProfiles.set(video.pubkey, {
+                             pubkey: video.pubkey,
+                             metadata: entry.profile,
+                             created_at: entry.event?.created_at || 0
+                         });
+                     }
+                 } else if (video.authorName && video.authorName.toLowerCase().includes(normalizedQuery)) {
+                     // Fallback to video metadata if profile cache missing
+                     uniqueProfiles.set(video.pubkey, {
+                         pubkey: video.pubkey,
+                         metadata: {
+                             name: video.authorName,
+                             picture: video.authorPicture,
+                             nip05: video.authorNip05
+                         },
+                         created_at: 0
+                     });
+                 }
+             }
+        }
     }
 
     if (currentSearchToken !== token) return [];
 
-    const profiles = events.map(event => {
-        try {
-            const metadata = JSON.parse(event.content);
-            return {
-                pubkey: event.pubkey,
-                metadata,
-                created_at: event.created_at
+    // 2. Relay Search (NIP-50)
+    if (nostrClient && nostrClient.pool) {
+        const relays = nostrClient.relays || [];
+        if (relays.length > 0) {
+            const filter = {
+                kinds: [0],
+                search: query,
+                limit: 20
             };
-        } catch (e) {
-            return null;
-        }
-    }).filter(Boolean);
 
-    // Deduplicate by pubkey, keeping newest
-    const map = new Map();
-    for (const p of profiles) {
-        if (!map.has(p.pubkey) || map.get(p.pubkey).created_at < p.created_at) {
-            map.set(p.pubkey, p);
+            try {
+                const events = await nostrClient.pool.list(relays, [filter]);
+
+                if (currentSearchToken === token) {
+                    for (const event of events) {
+                        try {
+                            const metadata = JSON.parse(event.content);
+                            // Merge/Overwrite with newer
+                            const existing = uniqueProfiles.get(event.pubkey);
+                            if (!existing || existing.created_at < event.created_at) {
+                                uniqueProfiles.set(event.pubkey, {
+                                    pubkey: event.pubkey,
+                                    metadata,
+                                    created_at: event.created_at
+                                });
+                            }
+                        } catch (e) {
+                            // ignore invalid content
+                        }
+                    }
+                }
+            } catch (e) {
+                devLogger.warn("Profile relay search error", e);
+            }
         }
     }
 
-    return Array.from(map.values());
+    if (currentSearchToken !== token) return [];
+
+    // Convert map to array and sort by something relevant (maybe creation time or exact match?)
+    return Array.from(uniqueProfiles.values());
 }
 
 async function performVideoSearch(query, token) {
