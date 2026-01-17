@@ -3239,11 +3239,11 @@
   }
 
   .watch-history-card__primary {
-    @apply flex min-w-0 flex-1 flex-wrap items-stretch gap-4 sm:flex-nowrap;
+    @apply flex min-w-0 flex-1 flex-col items-stretch gap-4 sm:flex-row;
   }
 
   .watch-history-card__thumbnail {
-    @apply block flex-none text-text no-underline sm:w-56;
+    @apply block flex-none text-text no-underline w-full sm:w-56;
   }
 
   .watch-history-card__thumbnailInner {
