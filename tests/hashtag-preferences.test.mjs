@@ -69,17 +69,24 @@ test(
       async list(relays, filters) {
         assert.deepEqual(relays, ["wss://relay.one"]);
         assert.equal(filters.length, 1);
-        assert.deepEqual(filters[0].kinds, [30015, 30005]);
+        // Note: fetchListIncrementally calls pool.list separately for each kind
+        const kind = filters[0].kinds[0];
+        assert.ok([30015, 30005].includes(kind));
         assert.equal(filters[0]["#d"][0], "bitvid:tag-preferences");
-        return [
-          {
-            id: "evt1",
-            created_at: 100,
-            pubkey,
-            content: "ciphertext",
-            tags: [["encrypted", "nip44_v2"]],
-          },
-        ];
+
+        // Return event only for canonical kind to verify logic picks it up
+        if (kind === 30015) {
+          return [
+            {
+              id: "evt1",
+              created_at: 100,
+              pubkey,
+              content: "ciphertext",
+              tags: [["encrypted", "nip44_v2"]],
+            },
+          ];
+        }
+        return [];
       },
     };
     nostrClient.relays = ["wss://relay.one"];
@@ -359,25 +366,34 @@ test(
     nostrClient.pool = {
       async list(relays, filters) {
         assert.deepEqual(relays, ["wss://relay.tie"]);
-        assert.deepEqual(filters[0].kinds, [30015, 30005]);
-        return [
-          {
-            id: "evt-canonical",
-            kind: 30015,
-            created_at: 500,
-            pubkey,
-            content: "canonical-cipher",
-            tags: [["encrypted", "nip44_v2"]],
-          },
-          {
-            id: "evt-legacy",
-            kind: 30005,
-            created_at: 500,
-            pubkey,
-            content: "legacy-cipher",
-            tags: [["encrypted", "nip44_v2"]],
-          },
-        ];
+        const kind = filters[0].kinds[0];
+        assert.ok([30015, 30005].includes(kind));
+
+        if (kind === 30015) {
+          return [
+            {
+              id: "evt-canonical",
+              kind: 30015,
+              created_at: 500,
+              pubkey,
+              content: "canonical-cipher",
+              tags: [["encrypted", "nip44_v2"]],
+            },
+          ];
+        }
+        if (kind === 30005) {
+          return [
+            {
+              id: "evt-legacy",
+              kind: 30005,
+              created_at: 500,
+              pubkey,
+              content: "legacy-cipher",
+              tags: [["encrypted", "nip44_v2"]],
+            },
+          ];
+        }
+        return [];
       },
     };
     nostrClient.relays = ["wss://relay.tie"];

@@ -444,21 +444,24 @@ class HashtagPreferencesService {
       kinds.push(legacyKind);
     }
 
-    const filter = {
-      kinds,
-      authors: [normalized],
-      "#d": [HASHTAG_IDENTIFIER],
-      limit: 50,
-    };
-
     let events = [];
     let fetchError = null;
 
     try {
-      const result = await nostrClient.pool.list(relays, [filter]);
-      if (Array.isArray(result)) {
-        events = result.filter((event) => event && event.pubkey === normalized);
-      }
+      // Use incremental fetching for both kinds concurrently (if multiple kinds)
+      // fetchListIncrementally takes a single kind.
+      // kinds is array of [canonicalKind, legacyKind] if different.
+
+      const promises = kinds.map(kind => nostrClient.fetchListIncrementally({
+        kind,
+        pubkey: normalized,
+        dTag: HASHTAG_IDENTIFIER,
+        relayUrls: relays
+      }));
+
+      const results = await Promise.all(promises);
+      events = results.flat();
+
     } catch (error) {
       fetchError = error;
       userLogger.warn(
@@ -471,6 +474,7 @@ class HashtagPreferencesService {
     if (!events.length) {
       // If we failed to fetch (network error) but already have data for this user,
       // preserve the existing state instead of wiping it.
+      // If fetchListIncrementally returns empty, it means no new updates or full fetch yielded nothing.
       if (wasLoadedForUser) {
         userLogger.warn(
           `${LOG_PREFIX} Keeping existing preferences despite empty relay response.`,

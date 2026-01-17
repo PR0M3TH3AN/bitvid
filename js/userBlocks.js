@@ -4,6 +4,7 @@ import {
   requestDefaultExtensionPermissions,
 } from "./nostrClientFacade.js";
 import { getActiveSigner } from "./nostr/index.js";
+import { normalizeNostrPubkey } from "./nostr/nip46Client.js";
 import { buildBlockListEvent, BLOCK_LIST_IDENTIFIER, NOTE_TYPES } from "./nostrEventSchemas.js";
 import { CACHE_POLICIES, STORAGE_TIERS } from "./nostr/cachePolicies.js";
 import { devLogger, userLogger } from "./utils/logger.js";
@@ -844,104 +845,22 @@ class UserBlockListManager {
     };
 
     try {
-      const filter = {
-        kinds: [10000, 30002],
-        authors: [normalized],
-        limit: 2,
-      };
-
-      if (since !== null) {
-        filter.since = since;
-      }
-
       const relays = Array.isArray(nostrClient.relays)
         ? nostrClient.relays.filter((relay) => typeof relay === "string" && relay)
         : [];
 
       if (!relays.length) {
-        this.blockedPubkeys.clear();
-        this.blockEventId = null;
-        this.blockEventCreatedAt = null;
-        this.loaded = true;
+        // Only clear if truly no relays, though loadBlocks with no relays is weird.
+        if (!this.loaded) {
+          this.blockedPubkeys.clear();
+          this.blockEventId = null;
+          this.blockEventCreatedAt = null;
+          this.loaded = true;
+        }
         emitStatus({ status: "applied-empty" });
         emitStatus({ status: "settled" });
         return;
       }
-
-      const fastRelays = relays.slice(0, FAST_BLOCKLIST_RELAY_LIMIT);
-      const backgroundRelays = relays.slice(fastRelays.length);
-
-      const fetchFromRelay = (relayUrl, timeoutMs, requireEvent) =>
-        new Promise((resolve, reject) => {
-          let settled = false;
-          const pool = nostrClient?.pool;
-          if (!pool || typeof pool.list !== "function") {
-            const poolError = new Error(
-              "nostrClient.pool.list is unavailable; cannot query block list.",
-            );
-            poolError.code = "pool-unavailable";
-            poolError.relay = relayUrl;
-            reject(poolError);
-            return;
-          }
-          const timer = setTimeout(() => {
-            if (settled) {
-              return;
-            }
-            settled = true;
-            const timeoutError = new Error(
-              `Timed out fetching block list from ${relayUrl} after ${timeoutMs}ms`
-            );
-            timeoutError.code = "timeout";
-            timeoutError.relay = relayUrl;
-            timeoutError.timeoutMs = timeoutMs;
-            reject(timeoutError);
-          }, timeoutMs);
-
-          Promise.resolve()
-            .then(() => pool.list([relayUrl], [filter]))
-            .then((result) => {
-              if (settled) {
-                return;
-              }
-              settled = true;
-              clearTimeout(timer);
-              const events = Array.isArray(result)
-                ? result.filter(
-                    (event) =>
-                      event && event.pubkey === normalized && isUserBlockListEvent(event),
-                  )
-                : [];
-              if (requireEvent && !events.length) {
-                const emptyError = new Error(
-                  `No block list events returned from ${relayUrl}`
-                );
-                emptyError.code = "empty";
-                emptyError.relay = relayUrl;
-                reject(emptyError);
-                return;
-              }
-              resolve({ relayUrl, events });
-            })
-            .catch((error) => {
-              if (settled) {
-                return;
-              }
-              settled = true;
-              clearTimeout(timer);
-              const wrapped =
-                error instanceof Error ? error : new Error(String(error));
-              wrapped.relay = relayUrl;
-              reject(wrapped);
-            });
-        });
-
-      const fastPromises = fastRelays.map((relayUrl) =>
-        fetchFromRelay(relayUrl, FAST_BLOCKLIST_TIMEOUT_MS, true)
-      );
-      const backgroundPromises = backgroundRelays.map((relayUrl) =>
-        fetchFromRelay(relayUrl, BACKGROUND_BLOCKLIST_TIMEOUT_MS, false)
-      );
 
       const applyEvents = async (
         events,
@@ -958,9 +877,11 @@ class UserBlockListManager {
             emitStatus({ status: "stale", reason: "empty-result", source });
             return;
           }
-          this.blockEventId = null;
-          this.blockEventCreatedAt = null;
-          applyBlockedPubkeys([], { source, reason: "empty-result" });
+          if (!this.loaded) {
+             this.blockEventId = null;
+             this.blockEventCreatedAt = null;
+             applyBlockedPubkeys([], { source, reason: "empty-result" });
+          }
           emitStatus({ status: "applied-empty", source });
           return;
         }
@@ -981,9 +902,11 @@ class UserBlockListManager {
             emitStatus({ status: "stale", reason: "empty-result", source });
             return;
           }
-          this.blockEventId = null;
-          this.blockEventCreatedAt = null;
-          applyBlockedPubkeys([], { source, reason: "empty-result" });
+          if (!this.loaded) {
+             this.blockEventId = null;
+             this.blockEventCreatedAt = null;
+             applyBlockedPubkeys([], { source, reason: "empty-result" });
+          }
           emitStatus({ status: "applied-empty", source });
           return;
         }
@@ -1020,46 +943,6 @@ class UserBlockListManager {
         const newestOverall =
           newestMuteTime >= newestBlockTime ? newestMute : newestBlock;
         const newestCreatedAt = Math.max(newestMuteTime, newestBlockTime);
-
-        const guardCreatedAt = Math.max(
-          this.blockEventCreatedAt ?? 0,
-          this.lastPublishedCreatedAt ?? 0,
-        );
-
-        // If both are stale, skip
-        if (newestCreatedAt < guardCreatedAt) {
-          emitStatus({
-            status: "stale",
-            event: newestOverall,
-            guardCreatedAt,
-            source,
-          });
-          return;
-        }
-
-        if (
-          newestCreatedAt === guardCreatedAt &&
-          this.blockEventId &&
-          newestOverall?.id &&
-          newestOverall.id !== this.blockEventId
-        ) {
-          // If equal time but different ID, we might be seeing a race or propagation delay.
-          // But since we are merging, we should proceed unless it's strictly older context.
-          // For safety against flapping, we treat strict equality with different ID as stale
-          // if we already have a confirmed ID.
-          emitStatus({
-            status: "stale",
-            event: newestOverall,
-            guardCreatedAt,
-            source,
-          });
-          return;
-        }
-
-        if (newestOverall?.id && newestOverall.id === this.blockEventId) {
-          // Already applied this event. Idempotency check.
-          return;
-        }
 
         // We accept this state.
         this.blockEventId = newestOverall?.id || null;
@@ -1174,76 +1057,33 @@ class UserBlockListManager {
         }
       };
 
-      // Sequential promise handling to avoid race conditions but preserve background updates.
-      // 1. Try fast path.
-      let fastResult = null;
-      if (fastPromises.length) {
-        try {
-          fastResult = await Promise.any(fastPromises);
-        } catch (error) {
-          if (error instanceof AggregateError) {
-            error.errors?.forEach((err) => {
-              if (err?.code === "timeout") {
-                userLogger.warn(
-                  `[UserBlockList] Relay ${err.relay} timed out while loading block list (${err.timeoutMs}ms)`
-                );
-              }
-            });
-          } else {
-            userLogger.error("[UserBlockList] Fast block list fetch failed:", error);
-          }
-        }
+      // Concurrent incremental fetch for both kinds
+      const [muteEvents, blockEvents] = await Promise.all([
+        nostrClient.fetchListIncrementally({
+          kind: 10000,
+          pubkey: normalized,
+          relayUrls: relays,
+        }),
+        nostrClient.fetchListIncrementally({
+          kind: 30002,
+          pubkey: normalized,
+          dTag: BLOCK_LIST_IDENTIFIER,
+          relayUrls: relays,
+        }),
+      ]);
+
+      const combined = [...muteEvents, ...blockEvents];
+
+      // If combined is empty, check if we have loaded state
+      if (!combined.length) {
+         if (!this.loaded) {
+            // Assuming empty if we have no prior state
+            await applyEvents([], { source: "incremental" });
+         }
+      } else {
+         await applyEvents(combined, { source: "incremental" });
       }
 
-      if (fastResult?.events?.length) {
-        await applyEvents(fastResult.events, { source: "fast" });
-        // NOTE: We do NOT return here. We allow background relays to potentially provide newer data.
-      }
-
-      // 2. Wait for background (and failed fast relays).
-      if (backgroundRelays.length || (!fastResult?.events?.length && fastPromises.length)) {
-        emitStatus({
-          status: "awaiting-background",
-          relays: backgroundRelays.length ? backgroundRelays : fastRelays,
-        });
-      }
-
-      const allPromises = [...fastPromises, ...backgroundPromises];
-      const outcomes = await Promise.allSettled(allPromises);
-
-      const aggregated = [];
-      for (const outcome of outcomes) {
-        if (outcome.status === "fulfilled") {
-          const events = Array.isArray(outcome.value?.events)
-            ? outcome.value.events
-            : [];
-          if (events.length) {
-            aggregated.push(...events);
-          }
-        } else {
-          const reason = outcome.reason;
-          if (reason?.code === "timeout") {
-            userLogger.warn(
-              `[UserBlockList] Relay ${reason.relay} timed out while loading block list (${reason.timeoutMs}ms)`
-            );
-          } else {
-            const relay = reason?.relay || reason?.relayUrl;
-            userLogger.error(
-              `[UserBlockList] Relay error at ${relay}:`,
-              reason?.error ?? reason
-            );
-          }
-        }
-      }
-
-      if (!aggregated.length) {
-        // Only apply empty if fast path also found nothing (already handled by logic inside applyEvents,
-        // but explicit call ensures we settle state if everything failed).
-        await applyEvents([], { source: "background" });
-        return;
-      }
-
-      await applyEvents(aggregated, { skipIfEmpty: true, source: "background" });
 
     } catch (error) {
       userLogger.error("[UserBlockList] loadBlocks failed:", error);
