@@ -633,6 +633,11 @@ class UserBlockListManager {
     profileCache.subscribe((event, detail) => {
       if (event === "profileChanged") {
         this.reset();
+      } else if (event === "runtimeCleared" && detail.pubkey === this.activePubkey) {
+        this.reset();
+        if (this.activePubkey) {
+          this.loadBlocks(this.activePubkey);
+        }
       }
     });
   }
@@ -678,6 +683,8 @@ class UserBlockListManager {
 
   async loadBlocks(userPubkey, options = {}) {
     const normalized = normalizeHex(userPubkey);
+    this.activePubkey = normalized;
+
     if (!normalized) {
       this.reset();
       this.loaded = true;

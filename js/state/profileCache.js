@@ -168,6 +168,7 @@ class ProfileCache {
     // But if services manage runtime state, `profileCache` acts as the persistence layer.
 
     this.emit("update", { pubkey, section, data });
+    this.emit("partition-updated", { pubkey, key: section });
   }
 
   // Runtime memory cache methods (for decrypted data, if services want to use it)
@@ -195,6 +196,15 @@ class ProfileCache {
         this.memoryCache.delete(key);
       }
     }
+  }
+
+  clearSignerRuntime(pubkey) {
+    const normalized = this.normalizeHexPubkey(pubkey);
+    if (!normalized) {
+      return;
+    }
+    this.clearMemoryCache(normalized);
+    this.emit("runtimeCleared", { pubkey: normalized });
   }
 
   subscribe(callback) {

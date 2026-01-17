@@ -249,6 +249,11 @@ class HashtagPreferencesService {
     profileCache.subscribe((event, detail) => {
       if (event === "profileChanged") {
         this.reset();
+      } else if (event === "runtimeCleared" && detail.pubkey === this.activePubkey) {
+        this.reset();
+        if (this.activePubkey) {
+          this.load(this.activePubkey);
+        }
       }
     });
   }

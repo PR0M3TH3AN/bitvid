@@ -161,6 +161,7 @@ import {
   summarizeRpcResultForLog,
   summarizeRelayPublishResultsForLog,
 } from "./nip46Client.js";
+import { profileCache } from "../state/profileCache.js";
 
 let activeSigner = null;
 const activeSignerRegistry = new Map();
@@ -278,6 +279,7 @@ function setActiveSigner(signer) {
       : "";
   if (pubkey) {
     activeSignerRegistry.set(pubkey, signer);
+    profileCache.clearSignerRuntime(pubkey);
   }
 }
 
@@ -3432,15 +3434,18 @@ export class NostrClient {
   }
 
   getSyncLastSeen(kind, pubkey, dTag, relayUrl) {
-    return this.syncMetadataStore.getLastSeen(kind, pubkey, dTag, relayUrl);
+    const effectivePubkey = pubkey || this.pubkey;
+    return this.syncMetadataStore.getLastSeen(kind, effectivePubkey, dTag, relayUrl);
   }
 
   updateSyncLastSeen(kind, pubkey, dTag, relayUrl, createdAt) {
-    this.syncMetadataStore.updateLastSeen(kind, pubkey, dTag, relayUrl, createdAt);
+    const effectivePubkey = pubkey || this.pubkey;
+    this.syncMetadataStore.updateLastSeen(kind, effectivePubkey, dTag, relayUrl, createdAt);
   }
 
   getPerRelaySyncLastSeen(kind, pubkey, dTag) {
-    return this.syncMetadataStore.getPerRelayLastSeen(kind, pubkey, dTag);
+    const effectivePubkey = pubkey || this.pubkey;
+    return this.syncMetadataStore.getPerRelayLastSeen(kind, effectivePubkey, dTag);
   }
 
   async fetchListIncrementally({ kind, pubkey, dTag, relayUrls, fetchFn } = {}) {
