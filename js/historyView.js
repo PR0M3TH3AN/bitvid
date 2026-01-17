@@ -26,6 +26,8 @@ export const WATCH_HISTORY_EMPTY_COPY =
 export const WATCH_HISTORY_DISABLED_COPY =
   "Watch history sync is unavailable. Connect a NIP-07 extension or log in to enable syncing.";
 
+const WATCH_HISTORY_PRIVACY_DISMISSED_KEY =
+  "bitvid:watch-history:privacy-banner-dismissed";
 const DEFAULT_WATCH_HISTORY_BATCH_SIZE = 12;
 const WATCH_HISTORY_BATCH_SIZE = (() => {
   const raw = Number(WATCH_HISTORY_BATCH_PAGE_SIZE);
@@ -1406,6 +1408,11 @@ export function createWatchHistoryRenderer(config = {}) {
     clearButtonSelector = '[data-history-action="clear-cache"]',
     republishButtonSelector = '[data-history-action="republish"]',
     refreshButtonSelector = '[data-history-action="refresh"]',
+    privacyBannerSelector = "#watchHistoryPrivacyBanner",
+    privacyMessageSelector = "#watchHistoryPrivacyMessage",
+    privacyToggleSelector = "#watchHistoryPrivacyToggle",
+    privacyDismissSelector = "#watchHistoryPrivacyDismiss",
+    infoSelector = "#watchHistoryInfo",
     errorBannerSelector = "#watchHistoryError",
     scrollContainerSelector = null,
     featureBannerSelector = "#profileHistoryFeatureBanner",
@@ -1448,6 +1455,7 @@ export function createWatchHistoryRenderer(config = {}) {
     lastError: null,
     observer: null,
     observerAttached: false,
+    privacyDismissed: false,
     feedMetadata: null,
     sessionFallbackActive: false,
     syncEnabled,
@@ -1473,6 +1481,11 @@ export function createWatchHistoryRenderer(config = {}) {
     clearButton: null,
     republishButton: null,
     refreshButton: null,
+    privacyBanner: null,
+    privacyMessage: null,
+    privacyToggle: null,
+    privacyDismiss: null,
+    info: null,
     errorBanner: null,
     scrollContainer: null,
     featureBanner: null,
@@ -1484,6 +1497,7 @@ export function createWatchHistoryRenderer(config = {}) {
   let boundClearHandler = null;
   let boundRepublishHandler = null;
   let boundRefreshHandler = null;
+  let boundPrivacyDismissHandler = null;
 
   const subscriptions = new Set();
 
@@ -1500,6 +1514,11 @@ export function createWatchHistoryRenderer(config = {}) {
       clearButton: resolveElement(clearButtonSelector, scope),
       republishButton: resolveElement(republishButtonSelector, scope),
       refreshButton: resolveElement(refreshButtonSelector, scope),
+      privacyBanner: resolveElement(privacyBannerSelector, scope),
+      privacyMessage: resolveElement(privacyMessageSelector, scope),
+      privacyToggle: resolveElement(privacyToggleSelector, scope),
+      privacyDismiss: resolveElement(privacyDismissSelector, scope),
+      info: resolveElement(infoSelector, scope),
       errorBanner: resolveElement(errorBannerSelector, scope),
       scrollContainer: resolveElement(scrollContainerSelector, scope),
       featureBanner: resolveElement(featureBannerSelector, scope),
@@ -1837,6 +1856,34 @@ export function createWatchHistoryRenderer(config = {}) {
       setHidden(elements.loadMore, !state.hasMore);
       elements.loadMore.disabled = !state.hasMore;
     }
+  }
+
+  function updatePrivacyBanner() {
+    if (!(elements.privacyBanner instanceof HTMLElement)) {
+      return;
+    }
+    const dismissed = state.privacyDismissed;
+    if (dismissed) {
+      setHidden(elements.privacyBanner, true);
+      return;
+    }
+    if (elements.privacyMessage) {
+      elements.privacyMessage.textContent =
+        "Watch history only stores the event IDs of videos you've played. Titles and thumbnails reload from relays when available.";
+    }
+    if (elements.privacyToggle) {
+      setHidden(elements.privacyToggle, true);
+    }
+    setHidden(elements.privacyBanner, false);
+  }
+
+  function updateInfoCallout() {
+    if (!(elements.info instanceof HTMLElement)) {
+      return;
+    }
+    const message =
+      "Watch history keeps a lean list of event IDs. Details load on demand from relays when you open this page. Nothing is published from this view.";
+    elements.info.textContent = message;
   }
 
   async function resolveActorKey() {
@@ -2177,6 +2224,31 @@ export function createWatchHistoryRenderer(config = {}) {
     }
   }
 
+  function bindPrivacyControls() {
+    if (elements.privacyToggle) {
+      setHidden(elements.privacyToggle, true);
+    }
+
+    if (elements.privacyDismiss) {
+      if (boundPrivacyDismissHandler) {
+        elements.privacyDismiss.removeEventListener(
+          "click",
+          boundPrivacyDismissHandler
+        );
+      }
+      boundPrivacyDismissHandler = (event) => {
+        event.preventDefault();
+        state.privacyDismissed = true;
+        writePreference(WATCH_HISTORY_PRIVACY_DISMISSED_KEY, "true");
+        updatePrivacyBanner();
+      };
+      elements.privacyDismiss.addEventListener(
+        "click",
+        boundPrivacyDismissHandler
+      );
+    }
+  }
+
   async function loadHistory({ force = false, actorOverride } = {}) {
     if (state.isLoading) {
       return false;
@@ -2314,8 +2386,13 @@ export function createWatchHistoryRenderer(config = {}) {
       bindGridEvents();
       bindLoadMore();
       bindActions();
+      bindPrivacyControls();
       subscribeToFingerprintUpdates();
       subscribeToModerationEvents();
+      updateInfoCallout();
+      state.privacyDismissed =
+        readPreference(WATCH_HISTORY_PRIVACY_DISMISSED_KEY, "false") === "true";
+      updatePrivacyBanner();
       state.initialized = true;
       if (!state.featureEnabled) {
         state.items = [];
@@ -2417,6 +2494,13 @@ export function createWatchHistoryRenderer(config = {}) {
       if (elements.refreshButton && boundRefreshHandler) {
         elements.refreshButton.removeEventListener("click", boundRefreshHandler);
         boundRefreshHandler = null;
+      }
+      if (elements.privacyDismiss && boundPrivacyDismissHandler) {
+        elements.privacyDismiss.removeEventListener(
+          "click",
+          boundPrivacyDismissHandler
+        );
+        boundPrivacyDismissHandler = null;
       }
       clearSubscriptions();
       if (elements.grid) {

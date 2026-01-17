@@ -8,14 +8,7 @@ import { publishEventToRelay } from "../nostrPublish.js";
 import { RELAY_URLS } from "./toolkit.js";
 import { normalizePointerInput } from "./watchHistory.js";
 import { devLogger, userLogger } from "../utils/logger.js";
-import { LRUCache } from "../utils/lruCache.js";
-import { CACHE_POLICIES } from "./cachePolicies.js";
-import { isSessionActor } from "./sessionActor.js";
-
 const COMMENT_EVENT_SCHEMA = getNostrEventSchema(NOTE_TYPES.VIDEO_COMMENT);
-const CACHE_POLICY = CACHE_POLICIES[NOTE_TYPES.VIDEO_COMMENT];
-
-const commentCache = new LRUCache({ maxSize: 100 });
 export const COMMENT_EVENT_KIND = Number.isFinite(COMMENT_EVENT_SCHEMA?.kind)
   ? COMMENT_EVENT_SCHEMA.kind
   : 1111;
@@ -1115,14 +1108,6 @@ export async function publishComment(
     return { ok: false, error: "nostr-uninitialized" };
   }
 
-  if (isSessionActor(client)) {
-    const error = new Error(
-      "Publishing comments is not allowed for session actors."
-    );
-    error.code = "session-actor-publish-blocked";
-    return { ok: false, error };
-  }
-
   const descriptor = normalizeCommentTarget(targetInput, options);
   if (!descriptor) {
     return { ok: false, error: "invalid-target" };
@@ -1287,79 +1272,25 @@ export async function listVideoComments(client, targetInput, options = {}) {
   }
 
   let descriptor;
-  let filterTemplate;
+  let filters;
   try {
-    // createVideoCommentFilters returns { descriptor, filters: [...] }
-    const result = createVideoCommentFilters(targetInput, options);
-    descriptor = result.descriptor;
-    // We assume the first filter is the primary one we want to augment with 'since'
-    // or use in per-relay logic. For now, we use the full array.
-    filterTemplate = result.filters;
+    ({ descriptor, filters } = createVideoCommentFilters(targetInput, options));
   } catch (error) {
     devLogger.warn("[nostr] Failed to build comment filters:", error);
     return [];
   }
 
-  const cacheKey = descriptor.videoEventId;
-  const cached = commentCache.get(cacheKey);
-  const ttl = CACHE_POLICY.ttl;
-  const now = Date.now();
-  const forceRefresh = options?.forceRefresh === true;
-
-  if (cached && !forceRefresh && (now - cached.fetchedAt < ttl)) {
-    devLogger.debug(`[nostr] Comments cache hit for ${cacheKey}`);
-    return cached.items;
-  }
-
-  if (cached) {
-    devLogger.debug(`[nostr] Comments cache stale for ${cacheKey}, refreshing...`);
-  } else {
-    devLogger.debug(`[nostr] Comments cache miss for ${cacheKey}`);
-  }
-
   const relayList = sanitizeRelayList(options.relays, client.relays);
-  const lastSeens = cached?.lastSeenPerRelay || {};
-  const mergedLastSeens = { ...lastSeens };
 
-  const rawResults = [];
+  let rawResults;
+  try {
+    rawResults = await pool.list(relayList, filters);
+  } catch (error) {
+    devLogger.warn("[nostr] Failed to list video comments:", error);
+    return [];
+  }
 
-  // Parallel fetch from relays with incremental logic
-  await Promise.all(
-    relayList.map(async (url) => {
-      if (!url) return;
-      const lastSeen = lastSeens[url] || 0;
-      // Deep clone filters to apply 'since' safely per relay
-      const relayFilters = filterTemplate.map(f => {
-        const copy = { ...f };
-        if (lastSeen > 0) {
-          copy.since = lastSeen + 1;
-        }
-        return copy;
-      });
-
-      try {
-        const events = await pool.list([url], relayFilters);
-        let maxCreated = lastSeen;
-        if (Array.isArray(events)) {
-          for (const ev of events) {
-            rawResults.push(ev);
-            if (ev.created_at > maxCreated) {
-              maxCreated = ev.created_at;
-            }
-          }
-        }
-        if (maxCreated > lastSeen) {
-          mergedLastSeens[url] = maxCreated;
-        }
-      } catch (err) {
-        devLogger.warn(`[nostr] Failed to fetch comments from ${url}:`, err);
-      }
-    })
-  );
-
-  // If we have cached items, add them to the raw list for deduplication/merging
-  const combinedRaw = cached ? [...cached.items, ...rawResults] : rawResults;
-  const flattened = flattenListResults(combinedRaw);
+  const flattened = flattenListResults(rawResults);
   const dedupe = new Map();
   const order = [];
 
@@ -1392,7 +1323,7 @@ export async function listVideoComments(client, targetInput, options = {}) {
     }
   }
 
-  const finalItems = order
+  return order
     .map((entry) => {
       if (!entry) {
         return null;
@@ -1406,17 +1337,6 @@ export async function listVideoComments(client, targetInput, options = {}) {
       return null;
     })
     .filter(Boolean);
-
-  // Update cache
-  if (cacheKey) {
-    commentCache.set(cacheKey, {
-      items: finalItems,
-      lastSeenPerRelay: mergedLastSeens,
-      fetchedAt: Date.now()
-    });
-  }
-
-  return finalItems;
 }
 
 export function subscribeVideoComments(client, targetInput, options = {}) {

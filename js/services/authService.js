@@ -22,7 +22,6 @@ import {
   setProfileCacheEntry as setCachedProfileEntry,
   resetModerationSettings,
 } from "../state/cache.js";
-import { profileCache } from "../state/profileCache.js";
 import getDefaultAuthProvider, {
   providers as defaultAuthProviders,
 } from "./authProviders/index.js";
@@ -535,13 +534,11 @@ export default class AuthService {
       if (this.nostrClient && typeof this.nostrClient === "object") {
         this.nostrClient.pubkey = normalized;
       }
-      profileCache.setActiveProfile(normalized);
     } else {
       setPubkey(nextPubkey);
       if (this.nostrClient && typeof this.nostrClient === "object") {
         this.nostrClient.pubkey = trimmed ? trimmed.toLowerCase() : "";
       }
-      profileCache.setActiveProfile(trimmed ? trimmed.toLowerCase() : null);
     }
 
     const npub = candidateNpub;

@@ -896,23 +896,13 @@ async function testPublishSnapshotCanonicalizationAndChunking() {
     const novEvent = log.find(e => e.event.tags.find(t => t[0] === 'd' && t[1] === '2023-11'))?.event;
     assert(novEvent, "Nov event found");
 
-    // Plaintext content now (handle mock encrypted content if present)
-    let payload;
-    try {
-      payload = JSON.parse(novEvent.content);
-    } catch {
-      // If content is not JSON, it might be the mock encryption string "session:..."
-      // In that case we can't inspect the inner payload easily without full decrypt setup
-      console.warn("WARN: novEvent content is not JSON (likely encrypted), skipping payload assertions");
-      return;
-    }
+    // Plaintext content now
+    const payload = JSON.parse(novEvent.content);
 
     // Check dedup in Nov (payload.events contains IDs, payload.watchedAt contains timestamps)
-    if (payload && payload.events) {
-        const dupCount = payload.events.filter(id => id === "pointer-dup").length;
-        assert.equal(dupCount, 1, "deduped");
-        assert.equal(payload.watchedAt["pointer-dup"], 1_700_000_150, "latest watchedAt kept");
-    }
+    const dupCount = payload.events.filter(id => id === "pointer-dup").length;
+    assert.equal(dupCount, 1, "deduped");
+    assert.equal(payload.watchedAt["pointer-dup"], 1_700_000_150, "latest watchedAt kept");
 
   } finally {
     restoreCrypto.restore();
@@ -950,10 +940,11 @@ async function testPublishSnapshotUsesPlaintext() {
 
     assert.ok(result.ok, "snapshot should succeed");
 
-    // We expect encryption if extension is available (Mandatory encryption)
-    assert(
-      extension.getExtensionEncrypts() >= 1,
-      "extension encrypt SHOULD be invoked as encryption is mandatory",
+    // We expect NO encryption even if extension is available
+    assert.equal(
+      extension.getExtensionEncrypts(),
+      0,
+      "extension encrypt should NOT be invoked as we switched to plaintext",
     );
 
     const chunkEvent = result.pointerEvent;
@@ -961,12 +952,12 @@ async function testPublishSnapshotUsesPlaintext() {
       ? chunkEvent.tags.find((tag) => Array.isArray(tag) && tag[0] === "encrypted")
       : null;
 
-    assert.ok(schemeTag, "chunk should have encryption tag");
+    assert.equal(schemeTag, undefined, "chunk should not have encryption tag");
 
-    // Content is encrypted, so we can't parse it as JSON directly without decrypting.
-    // The test framework mock encrypts as "extension44:target:base64(plaintext)"
-    // We can verify it looks like ciphertext
-    assert.match(chunkEvent.content, /:/, "content should be mock ciphertext");
+    // Check if content is valid JSON
+    const payload = JSON.parse(chunkEvent.content);
+    assert(Array.isArray(payload.events), "payload should contain events array");
+    assert(payload.events.includes("ext-pointer-1"), "payload should include event ID");
 
   } finally {
     extension.restore();
@@ -2592,17 +2583,13 @@ async function testWatchHistoryFeedHydration() {
     await renderer.init({ actor, force: true });
     const state = renderer.getState();
 
-    try {
-      assert.equal(state.items.length, 1, "Should have 1 item");
-      const item = state.items[0];
+    assert.equal(state.items.length, 1, "Should have 1 item");
+    const item = state.items[0];
 
-      // Check if hydration worked
-      assert.ok(item.video, "Item should have video object populated");
-      assert.equal(item.video.title, videoTitle, "Video title should be hydrated from relay event");
-      assert.equal(item.video.id, videoId, "Video ID should match");
-    } catch (error) {
-      console.warn("WARN: testWatchHistoryFeedHydration assertion failed (flaky in CI environment):", error.message);
-    }
+    // Check if hydration worked
+    assert.ok(item.video, "Item should have video object populated");
+    assert.equal(item.video.title, videoTitle, "Video title should be hydrated from relay event");
+    assert.equal(item.video.id, videoId, "Video ID should match");
 
   } finally {
     nostrClient.pubkey = originalPubkey;

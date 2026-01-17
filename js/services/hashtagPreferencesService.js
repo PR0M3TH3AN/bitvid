@@ -4,7 +4,6 @@ import {
   requestDefaultExtensionPermissions,
 } from "../nostrClientFacade.js";
 import { getActiveSigner } from "../nostr/index.js";
-import { isSessionActor } from "../nostr/sessionActor.js";
 import {
   buildHashtagPreferenceEvent,
   getNostrEventSchema,
@@ -15,7 +14,6 @@ import {
   assertAnyRelayAccepted,
 } from "../nostrPublish.js";
 import { userLogger } from "../utils/logger.js";
-import { profileCache } from "../state/profileCache.js";
 
 const LOG_PREFIX = "[HashtagPreferences]";
 const HASHTAG_IDENTIFIER = "bitvid:tag-preferences";
@@ -246,17 +244,6 @@ class HashtagPreferencesService {
     this.eventCreatedAt = null;
     this.loaded = false;
     this.preferencesVersion = DEFAULT_VERSION;
-
-    profileCache.subscribe((event, detail) => {
-      if (event === "profileChanged") {
-        this.reset();
-      } else if (event === "runtimeCleared" && detail.pubkey === this.activePubkey) {
-        this.reset();
-        if (this.activePubkey) {
-          this.load(this.activePubkey);
-        }
-      }
-    });
   }
 
   on(eventName, handler) {
@@ -271,35 +258,6 @@ class HashtagPreferencesService {
     this.loaded = false;
     this.preferencesVersion = DEFAULT_VERSION;
     this.emitChange("reset");
-  }
-
-  saveToCache() {
-    const interests = this.getInterests();
-    const disinterests = this.getDisinterests();
-    profileCache.set("interests", {
-      interests,
-      disinterests,
-      version: this.preferencesVersion,
-      eventId: this.eventId,
-      createdAt: this.eventCreatedAt,
-    });
-  }
-
-  loadFromCache(pubkey) {
-    // profileCache internally uses activePubkey, but we should verify if it matches
-    const cached = profileCache.get("interests");
-    if (cached && typeof cached === "object") {
-      this.activePubkey = normalizeHexPubkey(pubkey);
-      this.interests = new Set(Array.isArray(cached.interests) ? cached.interests : []);
-      this.disinterests = new Set(Array.isArray(cached.disinterests) ? cached.disinterests : []);
-      this.eventId = cached.eventId || null;
-      this.eventCreatedAt = cached.createdAt || null;
-      this.preferencesVersion = cached.version || DEFAULT_VERSION;
-      this.loaded = true;
-      this.emitChange("cache-load");
-      return true;
-    }
-    return false;
   }
 
   getInterests() {
@@ -399,11 +357,6 @@ class HashtagPreferencesService {
       return;
     }
 
-    // Try cache first
-    if (this.loadFromCache(normalized)) {
-      wasLoadedForUser = true;
-    }
-
     if (
       !nostrClient ||
       !nostrClient.pool ||
@@ -450,24 +403,21 @@ class HashtagPreferencesService {
       kinds.push(legacyKind);
     }
 
+    const filter = {
+      kinds,
+      authors: [normalized],
+      "#d": [HASHTAG_IDENTIFIER],
+      limit: 50,
+    };
+
     let events = [];
     let fetchError = null;
 
     try {
-      // Use incremental fetching for both kinds concurrently (if multiple kinds)
-      // fetchListIncrementally takes a single kind.
-      // kinds is array of [canonicalKind, legacyKind] if different.
-
-      const promises = kinds.map(kind => nostrClient.fetchListIncrementally({
-        kind,
-        pubkey: normalized,
-        dTag: HASHTAG_IDENTIFIER,
-        relayUrls: relays
-      }));
-
-      const results = await Promise.all(promises);
-      events = results.flat();
-
+      const result = await nostrClient.pool.list(relays, [filter]);
+      if (Array.isArray(result)) {
+        events = result.filter((event) => event && event.pubkey === normalized);
+      }
     } catch (error) {
       fetchError = error;
       userLogger.warn(
@@ -480,7 +430,6 @@ class HashtagPreferencesService {
     if (!events.length) {
       // If we failed to fetch (network error) but already have data for this user,
       // preserve the existing state instead of wiping it.
-      // If fetchListIncrementally returns empty, it means no new updates or full fetch yielded nothing.
       if (wasLoadedForUser) {
         userLogger.warn(
           `${LOG_PREFIX} Keeping existing preferences despite empty relay response.`,
@@ -567,7 +516,6 @@ class HashtagPreferencesService {
         ? latest.created_at
         : null;
       this.loaded = true;
-      this.saveToCache();
       this.emitChange("sync", { scheme: decryptResult.scheme });
     } catch (error) {
       userLogger.warn(
@@ -701,15 +649,6 @@ class HashtagPreferencesService {
   }
 
   async publish(options = {}) {
-    // nostrClient imported from nostrClientFacade
-    if (isSessionActor(nostrClient)) {
-      const error = new Error(
-        "Publishing preferences is not allowed for session actors."
-      );
-      error.code = "session-actor-publish-blocked";
-      throw error;
-    }
-
     const targetPubkey = normalizeHexPubkey(
       typeof options?.pubkey === "string" ? options.pubkey : this.activePubkey,
     );

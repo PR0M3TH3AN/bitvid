@@ -7,7 +7,6 @@ import {
   getActiveSigner,
   convertEventToVideo as sharedConvertEventToVideo,
 } from "./nostr/index.js";
-import { normalizeNostrPubkey } from "./nostr/nip46Client.js";
 import {
   listVideoViewEvents,
   subscribeVideoViewEvents,
@@ -19,7 +18,6 @@ import {
   getNostrEventSchema,
   NOTE_TYPES,
 } from "./nostrEventSchemas.js";
-import { CACHE_POLICIES, STORAGE_TIERS } from "./nostr/cachePolicies.js";
 import { getSidebarLoadingMarkup } from "./sidebarLoading.js";
 import {
   publishEventToRelays,
@@ -31,10 +29,11 @@ import { ALLOW_NSFW_CONTENT } from "./config.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import moderationService from "./services/moderationService.js";
 import nostrService from "./services/nostrService.js";
-import { profileCache } from "./state/profileCache.js";
 
 const SUBSCRIPTION_SET_KIND =
   getNostrEventSchema(NOTE_TYPES.SUBSCRIPTION_LIST)?.kind ?? 30000;
+
+const SUBSCRIPTIONS_CACHE_KEY_PREFIX = "bitvid:subscriptions:v1:";
 
 function normalizeHexPubkey(value) {
   if (typeof value !== "string") {
@@ -240,19 +239,6 @@ class SubscriptionsManager {
     this.isRunningFeed = false;
     this.hasRenderedOnce = false;
     this.ensureNostrServiceListener();
-
-    profileCache.subscribe((event, detail) => {
-      if (event === "profileChanged") {
-        this.reset();
-        // Optionally reload immediately if we have a pubkey?
-        // Usually UI triggers reload via showSubscriptionVideos
-      } else if (event === "runtimeCleared" && detail.pubkey === this.currentUserPubkey) {
-        this.reset();
-        if (this.currentUserPubkey) {
-          this.loadSubscriptions(this.currentUserPubkey);
-        }
-      }
-    });
   }
 
   /**
@@ -267,10 +253,10 @@ class SubscriptionsManager {
     const normalizedUserPubkey = normalizeHexPubkey(userPubkey) || userPubkey;
 
     // 1. Attempt to load from cache first
-    const cached = profileCache.get("subscriptions");
-    if (Array.isArray(cached)) {
+    const cached = this.loadFromCache(normalizedUserPubkey);
+    if (cached) {
       devLogger.log("[SubscriptionsManager] Loaded subscriptions from cache.");
-      this.subscribedPubkeys = new Set(cached);
+      this.subscribedPubkeys = cached;
       this.currentUserPubkey = normalizedUserPubkey;
       this.loaded = true;
 
@@ -285,9 +271,38 @@ class SubscriptionsManager {
     await this.updateFromRelays(userPubkey);
   }
 
+  getCacheKey(userPubkey) {
+    if (!userPubkey) return null;
+    return `${SUBSCRIPTIONS_CACHE_KEY_PREFIX}${userPubkey}`;
+  }
+
+  loadFromCache(userPubkey) {
+    if (typeof localStorage === "undefined") return null;
+    const key = this.getCacheKey(userPubkey);
+    if (!key) return null;
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return new Set(parsed);
+      }
+    } catch (e) {
+      devLogger.warn("[SubscriptionsManager] Failed to parse cache:", e);
+    }
+    return null;
+  }
+
   saveToCache(userPubkey) {
-    // We assume userPubkey matches active profile, enforced by profileCache
-    profileCache.set("subscriptions", Array.from(this.subscribedPubkeys));
+    if (typeof localStorage === "undefined") return;
+    const key = this.getCacheKey(userPubkey);
+    if (!key) return;
+    const list = Array.from(this.subscribedPubkeys);
+    try {
+      localStorage.setItem(key, JSON.stringify(list));
+    } catch (e) {
+      devLogger.warn("[SubscriptionsManager] Failed to save to cache:", e);
+    }
   }
 
   async updateFromRelays(userPubkey) {
@@ -295,6 +310,29 @@ class SubscriptionsManager {
 
     try {
       const normalizedUserPubkey = normalizeHexPubkey(userPubkey) || userPubkey;
+      const sessionActorPubkey = normalizeHexPubkey(
+        nostrClient?.sessionActor?.pubkey,
+      );
+
+      const authorSet = new Set();
+      if (normalizedUserPubkey) {
+        authorSet.add(normalizedUserPubkey);
+      }
+      if (sessionActorPubkey) {
+        authorSet.add(sessionActorPubkey);
+      }
+
+      const authors = Array.from(authorSet);
+      if (!authors.length && userPubkey) {
+        authors.push(userPubkey);
+      }
+
+      const filter = {
+        kinds: [SUBSCRIPTION_SET_KIND],
+        authors,
+        "#d": [SUBSCRIPTION_LIST_IDENTIFIER],
+        limit: 1
+      };
 
       const relaySet = new Set();
       const addRelayCandidates = (candidates) => {
@@ -330,47 +368,34 @@ class SubscriptionsManager {
         devLogger.warn(
           "[SubscriptionsManager] No relay URLs available while loading subscriptions.",
         );
-        return;
       }
 
-      // Use incremental fetch helper
-      let events = await nostrClient.fetchListIncrementally({
-        kind: SUBSCRIPTION_SET_KIND,
-        pubkey: normalizedUserPubkey,
-        dTag: SUBSCRIPTION_LIST_IDENTIFIER,
-        relayUrls
-      });
+      const relayPromises = relayUrls.map((url) =>
+        nostrClient.pool.list([url], [filter]).catch((err) => {
+          userLogger.error(`[SubscriptionsManager] Relay error at ${url}`, err);
+          return [];
+        }),
+      );
 
-      // Also check session actor if different?
-      // The original code checked both userPubkey and sessionActor.pubkey.
-      // fetchListIncrementally takes a single pubkey.
-      // If we want to check session actor too, we need another call.
-      // However, usually the subscription list belongs to the logged in user (userPubkey).
-      // The session actor logic in original code:
-      // const sessionActorPubkey = normalizeHexPubkey(nostrClient?.sessionActor?.pubkey);
-      // ... authors: [normalizedUserPubkey, sessionActorPubkey]
-      // Since fetchListIncrementally filters by author=pubkey, we only query for normalizedUserPubkey here.
-      // If session actor support is critical for some delegation case, it needs a separate fetch.
-      // Assuming userPubkey is the primary target for subscriptions.
+      const settledResults = await Promise.allSettled(relayPromises);
+      const events = [];
+      for (const outcome of settledResults) {
+        if (outcome.status === "fulfilled" && Array.isArray(outcome.value) && outcome.value.length) {
+          events.push(...outcome.value);
+        }
+      }
 
+      // If we got no events from relays, we should NOT wipe the cache if we have one.
+      // This protects against flaky relays returning empty results for existing users.
+      // If the user truly has no list (new user), cache is likely empty anyway.
       if (!events.length) {
+        // Only clear if we haven't loaded anything yet (e.g. fresh load, no cache)
         if (!this.loaded) {
-          // If we have nothing loaded and found nothing, maybe user has no list.
-          // But we shouldn't wipe blindly if incremental fetch just returned no *new* events.
-          // Wait, fetchListIncrementally returns *events found*.
-          // If it performed incremental fetch and found nothing, it returns [].
-          // If it performed full fetch and found nothing, it returns [].
-
-          // We need to differentiate "no updates" vs "empty list".
-          // If we have cached data, we keep it.
-          // If we have NO cached data (this.loaded = false), and we get [], we assume empty list.
           this.subscribedPubkeys.clear();
           this.subsEventId = null;
           this.loaded = true;
         } else {
-           // We have data loaded, and relays returned nothing.
-           // This means no updates. We keep what we have.
-           devLogger.log("[SubscriptionsManager] No updates from relays.");
+          devLogger.warn("[SubscriptionsManager] Relays returned no events, keeping existing/cached list.");
         }
         return;
       }
@@ -378,16 +403,6 @@ class SubscriptionsManager {
       // Sort by created_at desc, pick newest
       events.sort((a, b) => b.created_at - a.created_at);
       const newest = events[0];
-
-      // Check if newest is actually newer than what we have
-      // If we loaded from cache, we might not have the event object, just the pubkeys.
-      // But we don't store the event timestamp in cache currently?
-      // profileCache only stores the array.
-      // Wait, we don't persist the event ID or created_at in profileCache for subscriptions.
-      // So we can't strictly compare timestamps against cache.
-      // However, fetchListIncrementally already handles the "newer than last sync" logic per relay.
-      // So any event returned here is effectively "new information" (or re-fetched full state).
-
       this.subsEventId = newest.id;
 
       const signer = getActiveSigner();

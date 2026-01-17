@@ -150,30 +150,19 @@ function generateViewEventDedupeTag(actorPubkey, pointer, createdAtSeconds) {
   return `${scope}:${normalizedActor}:${timestamp}:${entropy}`;
 }
 
-export function hasRecentViewPublish(scope, bucketIndex, actorPubkey) {
+export function hasRecentViewPublish(scope, bucketIndex) {
   if (!scope || !Number.isFinite(bucketIndex)) {
     return false;
   }
 
   const windowMs = getViewEventGuardWindowMs();
   const now = Date.now();
-  const safeActor =
-    typeof actorPubkey === "string" && actorPubkey.trim()
-      ? actorPubkey.trim().toLowerCase()
-      : "anon";
-
-  let actorMemory = viewEventPublishMemory.get(safeActor);
-  if (!actorMemory) {
-    actorMemory = new Map();
-    viewEventPublishMemory.set(safeActor, actorMemory);
-  }
-
-  const entry = actorMemory.get(scope);
+  const entry = viewEventPublishMemory.get(scope);
 
   if (entry) {
     const age = now - Number(entry.seenAt);
     if (!Number.isFinite(entry.seenAt) || age >= windowMs) {
-      actorMemory.delete(scope);
+      viewEventPublishMemory.delete(scope);
     } else if (Number(entry.bucket) === bucketIndex) {
       return true;
     }
@@ -183,7 +172,7 @@ export function hasRecentViewPublish(scope, bucketIndex, actorPubkey) {
     return false;
   }
 
-  const storageKey = `${VIEW_EVENT_GUARD_PREFIX}:${safeActor}:${scope}`;
+  const storageKey = `${VIEW_EVENT_GUARD_PREFIX}:${scope}`;
   let rawValue = null;
   try {
     rawValue = localStorage.getItem(storageKey);
@@ -218,7 +207,7 @@ export function hasRecentViewPublish(scope, bucketIndex, actorPubkey) {
     return false;
   }
 
-  actorMemory.set(scope, {
+  viewEventPublishMemory.set(scope, {
     bucket: storedBucket,
     seenAt: storedSeenAt,
   });
@@ -226,30 +215,19 @@ export function hasRecentViewPublish(scope, bucketIndex, actorPubkey) {
   return storedBucket === bucketIndex;
 }
 
-export function rememberViewPublish(scope, bucketIndex, actorPubkey) {
+export function rememberViewPublish(scope, bucketIndex) {
   if (!scope || !Number.isFinite(bucketIndex)) {
     return;
   }
 
   const now = Date.now();
   const windowMs = getViewEventGuardWindowMs();
-  const safeActor =
-    typeof actorPubkey === "string" && actorPubkey.trim()
-      ? actorPubkey.trim().toLowerCase()
-      : "anon";
-
-  let actorMemory = viewEventPublishMemory.get(safeActor);
-  if (!actorMemory) {
-    actorMemory = new Map();
-    viewEventPublishMemory.set(safeActor, actorMemory);
-  }
-
-  const entry = actorMemory.get(scope);
+  const entry = viewEventPublishMemory.get(scope);
   if (entry && Number.isFinite(entry.seenAt) && now - entry.seenAt >= windowMs) {
-    actorMemory.delete(scope);
+    viewEventPublishMemory.delete(scope);
   }
 
-  actorMemory.set(scope, {
+  viewEventPublishMemory.set(scope, {
     bucket: bucketIndex,
     seenAt: now,
   });
@@ -258,7 +236,7 @@ export function rememberViewPublish(scope, bucketIndex, actorPubkey) {
     return;
   }
 
-  const storageKey = `${VIEW_EVENT_GUARD_PREFIX}:${safeActor}:${scope}`;
+  const storageKey = `${VIEW_EVENT_GUARD_PREFIX}:${scope}`;
   try {
     localStorage.setItem(storageKey, `${bucketIndex}:${now}`);
   } catch (error) {
@@ -688,7 +666,6 @@ export async function publishViewEvent(
   }
 
   const actorPubkey = await client.ensureSessionActor();
-  // actorPubkey derived via client.ensureSessionActor()
   if (!actorPubkey) {
     return { ok: false, error: "missing-actor" };
   }
@@ -700,7 +677,7 @@ export async function publishViewEvent(
 
   const guardScope = deriveViewEventPointerScope(pointer);
   const guardBucket = deriveViewEventBucketIndex(createdAt);
-  if (guardScope && hasRecentViewPublish(guardScope, guardBucket, actorPubkey)) {
+  if (guardScope && hasRecentViewPublish(guardScope, guardBucket)) {
     devLogger.info("[nostr] Skipping duplicate view publish for scope", guardScope);
     return {
       ok: true,
@@ -838,7 +815,7 @@ export async function publishViewEvent(
   const success = acceptedRelays.length > 0;
   if (success) {
     if (guardScope) {
-      rememberViewPublish(guardScope, guardBucket, actorPubkey);
+      rememberViewPublish(guardScope, guardBucket);
     }
     devLogger.info(
       `[nostr] View event accepted by ${acceptedRelays.length} relay(s):`,

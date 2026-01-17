@@ -11,7 +11,7 @@ import {
 } from "../../js/nostr/watchHistory.js";
 import { WATCH_HISTORY_KIND } from "../../js/config.js";
 
-const WATCH_HISTORY_STORAGE_KEY = "bitvid:watch-history:v5";
+const WATCH_HISTORY_STORAGE_KEY = "bitvid:watch-history:v4";
 
 function ensureLocalStorageCleared() {
   if (typeof localStorage?.clear === "function") {

@@ -1,21 +1,5 @@
 // js/nostr/client.js
 
-/**
- * NostrClient
- *
- * The central controller for all Nostr network interactions and state management.
- *
- * Responsibilities:
- * - Connection Management: Maintains the connection pool to Relays.
- * - Event Publishing: Handles signing and broadcasting events (Kind 0, 1, 30078, etc.).
- * - State Management:
- *   - `allEvents`: A raw map of all fetched video events.
- *   - `activeMap`: A derived map containing only the *latest* version of each video (deduplicated by `videoRootId`).
- *   - `rawEvents`: A cache of the exact raw JSON events from relays (for signature verification).
- * - Caching: Implements a dual-layer cache (IndexedDB + localStorage) to restore app state instantly on load.
- * - Signer Management: Orchestrates NIP-07 (Extension), NIP-46 (Remote/Bunker), and NIP-01 (Local nsec) signers.
- */
-
 import { isDevMode } from "../config.js";
 import { FEATURE_PUBLISH_NIP71 } from "../constants.js";
 import { accessControl } from "../accessControl.js";
@@ -60,11 +44,6 @@ import {
   getNostrEventSchema,
   NOTE_TYPES,
 } from "../nostrEventSchemas.js";
-import { CACHE_POLICIES } from "./cachePolicies.js";
-import {
-  SyncMetadataStore,
-  __testExports as syncMetaTestExports,
-} from "./syncMetadataStore.js";
 import {
   listVideoViewEvents as listVideoViewEventsForClient,
   subscribeVideoViewEvents as subscribeVideoViewEventsForClient,
@@ -123,7 +102,6 @@ import {
   encryptSessionPrivateKey,
   persistSessionActor as persistSessionActorEntry,
   readStoredSessionActorEntry,
-  isSessionActor,
 } from "./sessionActor.js";
 import {
   HEX64_REGEX,
@@ -162,7 +140,6 @@ import {
   summarizeRpcResultForLog,
   summarizeRelayPublishResultsForLog,
 } from "./nip46Client.js";
-import { profileCache } from "../state/profileCache.js";
 
 let activeSigner = null;
 const activeSignerRegistry = new Map();
@@ -280,7 +257,6 @@ function setActiveSigner(signer) {
       : "";
   if (pubkey) {
     activeSignerRegistry.set(pubkey, signer);
-    profileCache.clearSignerRuntime(pubkey);
   }
 }
 
@@ -322,9 +298,7 @@ function shouldRequestExtensionPermissions(signer) {
 }
 
 const EVENTS_CACHE_STORAGE_KEY = "bitvid:eventsCache:v1";
-// We use the policy TTL, but currently the storage backend is hardcoded to IDB (with localStorage fallback).
-// Future refactors should make EventsCacheStore dynamic based on CACHE_POLICIES[NOTE_TYPES.VIDEO_POST].storage.
-const EVENTS_CACHE_TTL_MS = CACHE_POLICIES[NOTE_TYPES.VIDEO_POST]?.ttl ?? (10 * 60 * 1000);
+const EVENTS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const EVENTS_CACHE_DB_NAME = "bitvid-events-cache";
 const EVENTS_CACHE_DB_VERSION = 1;
 const EVENTS_CACHE_PERSIST_DELAY_MS = 450;
@@ -1154,7 +1128,6 @@ export class NostrClient {
 
     this.hasRestoredLocalData = false;
     this.eventsCacheStore = new EventsCacheStore();
-    this.syncMetadataStore = new SyncMetadataStore();
     this.cachePersistTimerId = null;
     this.cachePersistIdleId = null;
     this.cachePersistInFlight = null;
@@ -1867,17 +1840,6 @@ export class NostrClient {
     });
   }
 
-  /**
-   * Establishes a NIP-46 connection with a remote signer (e.g., Nostr Connect / Bunker).
-   *
-   * Process:
-   * 1. **Parse**: Decodes the `nostrconnect://` or `bunker://` URI.
-   * 2. **Handshake (if needed)**: If the URI is a "connect" request (no target pubkey yet),
-   *    it publishes an ephemeral event and waits for the signer to "ack".
-   * 3. **Connect**: Once the remote pubkey is known, sends a `connect` RPC command.
-   * 4. **Authorize**: Handles any `auth_url` challenges if the signer requires out-of-band approval.
-   * 5. **Session**: Stores the session metadata locally (if `remember: true`) to allow auto-reconnect.
-   */
   async connectRemoteSigner({
     connectionString,
     remember = true,
@@ -3434,152 +3396,6 @@ export class NostrClient {
     return applied;
   }
 
-  getSyncLastSeen(kind, pubkey, dTag, relayUrl) {
-    const effectivePubkey = pubkey || this.pubkey;
-    return this.syncMetadataStore.getLastSeen(kind, effectivePubkey, dTag, relayUrl);
-  }
-
-  updateSyncLastSeen(kind, pubkey, dTag, relayUrl, createdAt) {
-    const effectivePubkey = pubkey || this.pubkey;
-    this.syncMetadataStore.updateLastSeen(kind, effectivePubkey, dTag, relayUrl, createdAt);
-  }
-
-  getPerRelaySyncLastSeen(kind, pubkey, dTag) {
-    const effectivePubkey = pubkey || this.pubkey;
-    return this.syncMetadataStore.getPerRelayLastSeen(kind, effectivePubkey, dTag);
-  }
-
-  async fetchListIncrementally({ kind, pubkey, dTag, relayUrls, fetchFn } = {}) {
-    if (!kind || !pubkey) {
-      throw new Error("fetchListIncrementally requires kind and pubkey");
-    }
-
-    const normalizedPubkey = normalizeNostrPubkey(pubkey);
-    if (!normalizedPubkey) {
-      throw new Error("Invalid pubkey for fetchListIncrementally");
-    }
-
-    const relaysToUse = Array.isArray(relayUrls) && relayUrls.length
-      ? relayUrls
-      : this.relays;
-
-    const normalizedRelays = sanitizeRelayList(relaysToUse);
-    const results = [];
-    const concurrencyLimit = 4;
-
-    // We'll use the pool's list method if fetchFn isn't provided,
-    // but we need to call it per-relay.
-    const pool = await this.ensurePool();
-    const actualFetchFn = typeof fetchFn === "function"
-      ? fetchFn
-      : (r, f) => pool.list([r], [f]);
-
-    const chunks = [];
-    for (let i = 0; i < normalizedRelays.length; i += concurrencyLimit) {
-      chunks.push(normalizedRelays.slice(i, i + concurrencyLimit));
-    }
-
-    for (const chunk of chunks) {
-      const promises = chunk.map(async (relayUrl) => {
-        const lastSeen = this.getSyncLastSeen(kind, normalizedPubkey, dTag, relayUrl);
-        const filter = {
-          kinds: [kind],
-          authors: [normalizedPubkey],
-        };
-
-        if (dTag) {
-          filter["#d"] = [dTag];
-        }
-
-        // Strategy:
-        // If we have a lastSeen, ask for since = lastSeen + 1.
-        // If that fails or returns nothing, we don't necessarily fall back
-        // unless there's an error.
-        // Wait, requirements say:
-        // "If metadata is missing for a relay → do a full fetch"
-        // "If a relay returns an error ... fall back to full fetch"
-
-        let doFullFetch = true;
-        if (lastSeen > 0) {
-          filter.since = lastSeen + 1;
-          doFullFetch = false;
-        }
-
-        try {
-          let events = await actualFetchFn(relayUrl, filter);
-
-          // If incremental returned empty, we assume no updates (success).
-          // But if we did a full fetch (no since), empty means empty.
-
-          if (!events || !Array.isArray(events)) {
-             events = [];
-          }
-
-          // On success, update lastSeen with max created_at
-          let maxCreated = 0;
-          for (const ev of events) {
-            if (ev.created_at > maxCreated) {
-              maxCreated = ev.created_at;
-            }
-          }
-
-          if (maxCreated > 0) {
-            // Only update if we found something newer or if we did a full fetch
-            // Actually, if we did incremental and found new stuff, maxCreated > lastSeen.
-            // If we did full fetch, maxCreated is the latest.
-            this.updateSyncLastSeen(kind, normalizedPubkey, dTag, relayUrl, maxCreated);
-          }
-
-          return events;
-        } catch (error) {
-          // Fallback to full fetch if incremental failed or if relay error
-          if (!doFullFetch) {
-            try {
-              delete filter.since;
-              const events = await actualFetchFn(relayUrl, filter);
-              // Update lastSeen on success of fallback
-              let maxCreated = 0;
-              if (Array.isArray(events)) {
-                for (const ev of events) {
-                  if (ev.created_at > maxCreated) {
-                    maxCreated = ev.created_at;
-                  }
-                }
-              }
-              if (maxCreated > 0) {
-                 this.updateSyncLastSeen(kind, normalizedPubkey, dTag, relayUrl, maxCreated);
-              }
-              return events || [];
-            } catch (fallbackError) {
-              devLogger.warn(`[fetchListIncrementally] Full fetch fallback failed for ${relayUrl}`, fallbackError);
-              return [];
-            }
-          } else {
-             devLogger.warn(`[fetchListIncrementally] Fetch failed for ${relayUrl}`, error);
-             return [];
-          }
-        }
-      });
-
-      const chunkResults = await Promise.all(promises);
-      for (const res of chunkResults) {
-        if (Array.isArray(res)) {
-          results.push(...res);
-        }
-      }
-    }
-
-    // Deduplicate by ID
-    const uniqueEvents = new Map();
-    for (const ev of results) {
-      if (ev && ev.id) {
-        uniqueEvents.set(ev.id, ev);
-      }
-    }
-
-    return Array.from(uniqueEvents.values());
-  }
-
   applyRelayPreferences(preferences = {}) {
     const normalizedPrefs =
       preferences && typeof preferences === "object" ? preferences : {};
@@ -3647,13 +3463,6 @@ export class NostrClient {
     );
   }
   async publishWatchHistorySnapshot(rawItems, options = {}) {
-    if (isSessionActor(this)) {
-      const error = new Error(
-        "Publishing watch history is not allowed for session actors."
-      );
-      error.code = "session-actor-publish-blocked";
-      throw error;
-    }
     return publishWatchHistorySnapshotWithManager(
       this.watchHistory,
       rawItems,
@@ -3661,13 +3470,6 @@ export class NostrClient {
     );
   }
   async updateWatchHistoryList(rawItems = [], options = {}) {
-    if (isSessionActor(this)) {
-      const error = new Error(
-        "Publishing watch history is not allowed for session actors."
-      );
-      error.code = "session-actor-publish-blocked";
-      throw error;
-    }
     return updateWatchHistoryListWithManager(
       this.watchHistory,
       rawItems,
@@ -3675,13 +3477,6 @@ export class NostrClient {
     );
   }
   async removeWatchHistoryItem(pointerInput, options = {}) {
-    if (isSessionActor(this)) {
-      const error = new Error(
-        "Publishing watch history is not allowed for session actors."
-      );
-      error.code = "session-actor-publish-blocked";
-      throw error;
-    }
     return removeWatchHistoryItemWithManager(
       this.watchHistory,
       pointerInput,
@@ -3755,12 +3550,7 @@ export class NostrClient {
   }
 
   /**
-   * Initializes the client.
-   *
-   * Flow:
-   * 1. Restores local data (IndexedDB/localStorage) to render the UI immediately ("stale-while-revalidate").
-   * 2. Schedules the restoration of any stored NIP-46 remote signer session.
-   * 3. Initializes the NostrTools `SimplePool` and connects to the configured relays.
+   * Connect to the configured relays
    */
   async init() {
     devLogger.log("Connecting to relays...");
@@ -4628,16 +4418,6 @@ export class NostrClient {
     });
   }
 
-  /**
-   * Publishes a video event (Kind 30078).
-   *
-   * This constructs a V3 video note which includes:
-   * - Core metadata (title, description, thumbnail).
-   * - `magnet`: The Magnet URI (XT=InfoHash, WS=WebSeed, XS=TorrentMetadata).
-   * - `url`: The direct HTTP URL (WebSeed).
-   * - NIP-94 Mirror: Optionally publishes a Kind 1063 file header event if supported.
-   * - NIP-71: Optionally publishes a Kind 22 (Video Wrapper) for categorization if metadata is provided.
-   */
   async publishVideo(videoPayload, pubkey) {
     if (!pubkey) throw new Error("Not logged in to publish video.");
 
@@ -5865,23 +5645,14 @@ export class NostrClient {
   }
 
   /**
-   * Subscribes to Kind 30078 video events from relays.
+   * Subscribe to *all* videos (old and new) with a single subscription,
+   * buffering incoming events to avoid excessive DOM updates.
    *
-   * Strategy: "Buffering & Debouncing"
-   * Relays often send bursts of events (e.g., historical dumps or new floods).
-   * Processing every single event immediately would cause layout thrashing and UI lag.
-   *
-   * Instead, we:
-   * 1. Push incoming events into `eventBuffer`.
-   * 2. Schedule a flush operation (`flushEventBuffer`) with a short delay (75ms).
-   * 3. When the flush runs, we process the entire batch:
-   *    - Convert/Validate events.
-   *    - Update the `activeMap` (latest version logic).
-   *    - Persist to local cache.
-   *    - Notify the UI (`onVideo`).
-   *
-   * @param {Function} onVideo - Callback fired when new valid videos are processed.
+   * @param {Function} onVideo
    * @param {{ since?: number, until?: number, limit?: number }} [options]
+   *        `since` defaults to the latest cached created_at to avoid replaying
+   *        the full history on every load. `limit` is clamped to
+   *        MAX_VIDEO_REQUEST_LIMIT.
    */
   subscribeVideos(onVideo, options = {}) {
     const { since, until, limit } = options;
@@ -6792,18 +6563,13 @@ export class NostrClient {
   }
 
   /**
-   * Fetches the complete edit history for a video.
-   *
-   * Why this is complex:
-   * 1. **Video Root ID**: Modern videos use a `videoRootId` inside the JSON content to link versions.
-   * 2. **NIP-33 `d` Tags**: Relays index by the `d` tag, not the JSON content.
-   * 3. **Legacy Data**: Older videos might not have a `videoRootId` and rely solely on the `d` tag or even the original Event ID.
-   *
-   * Strategy:
-   * - First, check local memory (`allEvents`) for matches on `videoRootId` OR `d` tag.
-   * - If the root event is missing locally, fetch it by ID.
-   * - If we suspect missing history (e.g., only 1 version found), perform a relay query for the specific `d` tag.
-   * - Merge and sort all findings to present a linear history.
+   * Ensure we have every historical revision for a given video in memory and
+   * return the complete set sorted newest-first. We primarily group revisions
+   * by their shared `videoRootId`, but fall back to the NIP-33 `d` tag when
+   * working with legacy notes. The explicit `d` tag fetch is important because
+   * relays cannot be queried by values that only exist inside the JSON
+   * content. Without this pass, the UI would occasionally miss mid-history
+   * edits that were published from other devices.
    */
   async hydrateVideoHistory(video) {
     if (!video || typeof video !== "object") {
