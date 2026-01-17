@@ -62,6 +62,10 @@ import {
 } from "../nostrEventSchemas.js";
 import { CACHE_POLICIES } from "./cachePolicies.js";
 import {
+  SyncMetadataStore,
+  __testExports as syncMetaTestExports,
+} from "./syncMetadataStore.js";
+import {
   listVideoViewEvents as listVideoViewEventsForClient,
   subscribeVideoViewEvents as subscribeVideoViewEventsForClient,
   countVideoViewEvents as countVideoViewEventsForClient,
@@ -1147,6 +1151,7 @@ export class NostrClient {
 
     this.hasRestoredLocalData = false;
     this.eventsCacheStore = new EventsCacheStore();
+    this.syncMetadataStore = new SyncMetadataStore();
     this.cachePersistTimerId = null;
     this.cachePersistIdleId = null;
     this.cachePersistInFlight = null;
@@ -3424,6 +3429,149 @@ export class NostrClient {
     }
 
     return applied;
+  }
+
+  getSyncLastSeen(kind, pubkey, dTag, relayUrl) {
+    return this.syncMetadataStore.getLastSeen(kind, pubkey, dTag, relayUrl);
+  }
+
+  updateSyncLastSeen(kind, pubkey, dTag, relayUrl, createdAt) {
+    this.syncMetadataStore.updateLastSeen(kind, pubkey, dTag, relayUrl, createdAt);
+  }
+
+  getPerRelaySyncLastSeen(kind, pubkey, dTag) {
+    return this.syncMetadataStore.getPerRelayLastSeen(kind, pubkey, dTag);
+  }
+
+  async fetchListIncrementally({ kind, pubkey, dTag, relayUrls, fetchFn } = {}) {
+    if (!kind || !pubkey) {
+      throw new Error("fetchListIncrementally requires kind and pubkey");
+    }
+
+    const normalizedPubkey = normalizeNostrPubkey(pubkey);
+    if (!normalizedPubkey) {
+      throw new Error("Invalid pubkey for fetchListIncrementally");
+    }
+
+    const relaysToUse = Array.isArray(relayUrls) && relayUrls.length
+      ? relayUrls
+      : this.relays;
+
+    const normalizedRelays = sanitizeRelayList(relaysToUse);
+    const results = [];
+    const concurrencyLimit = 4;
+
+    // We'll use the pool's list method if fetchFn isn't provided,
+    // but we need to call it per-relay.
+    const pool = await this.ensurePool();
+    const actualFetchFn = typeof fetchFn === "function"
+      ? fetchFn
+      : (r, f) => pool.list([r], [f]);
+
+    const chunks = [];
+    for (let i = 0; i < normalizedRelays.length; i += concurrencyLimit) {
+      chunks.push(normalizedRelays.slice(i, i + concurrencyLimit));
+    }
+
+    for (const chunk of chunks) {
+      const promises = chunk.map(async (relayUrl) => {
+        const lastSeen = this.getSyncLastSeen(kind, normalizedPubkey, dTag, relayUrl);
+        const filter = {
+          kinds: [kind],
+          authors: [normalizedPubkey],
+        };
+
+        if (dTag) {
+          filter["#d"] = [dTag];
+        }
+
+        // Strategy:
+        // If we have a lastSeen, ask for since = lastSeen + 1.
+        // If that fails or returns nothing, we don't necessarily fall back
+        // unless there's an error.
+        // Wait, requirements say:
+        // "If metadata is missing for a relay → do a full fetch"
+        // "If a relay returns an error ... fall back to full fetch"
+
+        let doFullFetch = true;
+        if (lastSeen > 0) {
+          filter.since = lastSeen + 1;
+          doFullFetch = false;
+        }
+
+        try {
+          let events = await actualFetchFn(relayUrl, filter);
+
+          // If incremental returned empty, we assume no updates (success).
+          // But if we did a full fetch (no since), empty means empty.
+
+          if (!events || !Array.isArray(events)) {
+             events = [];
+          }
+
+          // On success, update lastSeen with max created_at
+          let maxCreated = 0;
+          for (const ev of events) {
+            if (ev.created_at > maxCreated) {
+              maxCreated = ev.created_at;
+            }
+          }
+
+          if (maxCreated > 0) {
+            // Only update if we found something newer or if we did a full fetch
+            // Actually, if we did incremental and found new stuff, maxCreated > lastSeen.
+            // If we did full fetch, maxCreated is the latest.
+            this.updateSyncLastSeen(kind, normalizedPubkey, dTag, relayUrl, maxCreated);
+          }
+
+          return events;
+        } catch (error) {
+          // Fallback to full fetch if incremental failed or if relay error
+          if (!doFullFetch) {
+            try {
+              delete filter.since;
+              const events = await actualFetchFn(relayUrl, filter);
+              // Update lastSeen on success of fallback
+              let maxCreated = 0;
+              if (Array.isArray(events)) {
+                for (const ev of events) {
+                  if (ev.created_at > maxCreated) {
+                    maxCreated = ev.created_at;
+                  }
+                }
+              }
+              if (maxCreated > 0) {
+                 this.updateSyncLastSeen(kind, normalizedPubkey, dTag, relayUrl, maxCreated);
+              }
+              return events || [];
+            } catch (fallbackError) {
+              devLogger.warn(`[fetchListIncrementally] Full fetch fallback failed for ${relayUrl}`, fallbackError);
+              return [];
+            }
+          } else {
+             devLogger.warn(`[fetchListIncrementally] Fetch failed for ${relayUrl}`, error);
+             return [];
+          }
+        }
+      });
+
+      const chunkResults = await Promise.all(promises);
+      for (const res of chunkResults) {
+        if (Array.isArray(res)) {
+          results.push(...res);
+        }
+      }
+    }
+
+    // Deduplicate by ID
+    const uniqueEvents = new Map();
+    for (const ev of results) {
+      if (ev && ev.id) {
+        uniqueEvents.set(ev.id, ev);
+      }
+    }
+
+    return Array.from(uniqueEvents.values());
   }
 
   applyRelayPreferences(preferences = {}) {
