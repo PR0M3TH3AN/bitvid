@@ -5,7 +5,8 @@ import {
   requestDefaultExtensionPermissions,
 } from "./nostrClientFacade.js";
 import { getActiveSigner } from "./nostr/index.js";
-import { buildRelayListEvent } from "./nostrEventSchemas.js";
+import { buildRelayListEvent, NOTE_TYPES } from "./nostrEventSchemas.js";
+import { CACHE_POLICIES, STORAGE_TIERS } from "./nostr/cachePolicies.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import {
   publishEventToRelays,
@@ -17,6 +18,7 @@ const MODE_SEQUENCE = ["both", "read", "write"];
 const FAST_RELAY_FETCH_LIMIT = 3;
 const FAST_RELAY_TIMEOUT_MS = 2500;
 const BACKGROUND_RELAY_TIMEOUT_MS = 6000;
+const RELAY_PREFS_STORAGE_KEY = "bitvid:relay-preferences:v1";
 
 function normalizeHexPubkey(pubkey) {
   if (typeof pubkey !== "string") {
@@ -191,7 +193,47 @@ class RelayPreferencesManager {
       const normalized = normalizeRelayUrl(url) || url;
       return createEntry(normalized, "both");
     });
-    this.setEntries(this.defaultEntries, { allowEmpty: false, updateClient: true });
+
+    // Attempt to load from storage if policy allows
+    const loaded = this.loadFromStorage();
+    if (loaded && loaded.length) {
+      this.setEntries(loaded, { allowEmpty: false, updateClient: true });
+    } else {
+      this.setEntries(this.defaultEntries, { allowEmpty: false, updateClient: true });
+    }
+  }
+
+  loadFromStorage() {
+    const policy = CACHE_POLICIES[NOTE_TYPES.RELAY_LIST];
+    if (policy?.storage !== STORAGE_TIERS.LOCAL_STORAGE) {
+      return null;
+    }
+    if (typeof localStorage === "undefined") return null;
+    try {
+      const raw = localStorage.getItem(RELAY_PREFS_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          return parsed;
+        }
+      }
+    } catch (err) {
+      devLogger.warn("[RelayPreferencesManager] Failed to load from storage", err);
+    }
+    return null;
+  }
+
+  saveToStorage() {
+    const policy = CACHE_POLICIES[NOTE_TYPES.RELAY_LIST];
+    if (policy?.storage !== STORAGE_TIERS.LOCAL_STORAGE) {
+      return;
+    }
+    if (typeof localStorage === "undefined") return;
+    try {
+      localStorage.setItem(RELAY_PREFS_STORAGE_KEY, serializeEntries(this.entries));
+    } catch (err) {
+      devLogger.warn("[RelayPreferencesManager] Failed to save to storage", err);
+    }
   }
 
   snapshot() {
@@ -279,6 +321,7 @@ class RelayPreferencesManager {
       this.syncClient();
     }
 
+    this.saveToStorage();
     return this.getEntries();
   }
 

@@ -4,7 +4,8 @@ import {
   requestDefaultExtensionPermissions,
 } from "./nostrClientFacade.js";
 import { getActiveSigner } from "./nostr/index.js";
-import { buildBlockListEvent, BLOCK_LIST_IDENTIFIER } from "./nostrEventSchemas.js";
+import { buildBlockListEvent, BLOCK_LIST_IDENTIFIER, NOTE_TYPES } from "./nostrEventSchemas.js";
+import { CACHE_POLICIES, STORAGE_TIERS } from "./nostr/cachePolicies.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import {
   publishEventToRelays,
@@ -1448,10 +1449,18 @@ class UserBlockListManager {
   }
 
   _loadLocal(actorHex) {
+    const policy = CACHE_POLICIES[NOTE_TYPES.USER_BLOCK_LIST];
+    if (policy?.storage !== STORAGE_TIERS.LOCAL_STORAGE) {
+      return null;
+    }
     return readLocalBlocks(actorHex);
   }
 
   _saveLocal(actorHex) {
+    const policy = CACHE_POLICIES[NOTE_TYPES.USER_BLOCK_LIST];
+    if (policy?.storage !== STORAGE_TIERS.LOCAL_STORAGE) {
+      return;
+    }
     writeLocalBlocks(actorHex, this.blockedPubkeys);
   }
 

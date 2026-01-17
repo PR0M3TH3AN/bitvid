@@ -18,6 +18,7 @@ import {
   getNostrEventSchema,
   NOTE_TYPES,
 } from "./nostrEventSchemas.js";
+import { CACHE_POLICIES, STORAGE_TIERS } from "./nostr/cachePolicies.js";
 import { getSidebarLoadingMarkup } from "./sidebarLoading.js";
 import {
   publishEventToRelays,
@@ -277,6 +278,10 @@ class SubscriptionsManager {
   }
 
   loadFromCache(userPubkey) {
+    const policy = CACHE_POLICIES[NOTE_TYPES.SUBSCRIPTION_LIST];
+    if (policy?.storage !== STORAGE_TIERS.LOCAL_STORAGE) {
+      return null;
+    }
     if (typeof localStorage === "undefined") return null;
     const key = this.getCacheKey(userPubkey);
     if (!key) return null;
@@ -294,6 +299,10 @@ class SubscriptionsManager {
   }
 
   saveToCache(userPubkey) {
+    const policy = CACHE_POLICIES[NOTE_TYPES.SUBSCRIPTION_LIST];
+    if (policy?.storage !== STORAGE_TIERS.LOCAL_STORAGE) {
+      return;
+    }
     if (typeof localStorage === "undefined") return;
     const key = this.getCacheKey(userPubkey);
     if (!key) return;
