@@ -564,7 +564,7 @@ async function computeWatchHistoryFingerprintForItems(itemsOrBuckets) {
   // Check if buckets
   let flatItems = [];
   if (Array.isArray(itemsOrBuckets)) {
-    flatItems = itemsOrBuckets;
+    flatItems = [...itemsOrBuckets];
   } else if (itemsOrBuckets && typeof itemsOrBuckets === "object") {
     flatItems = Object.keys(itemsOrBuckets)
       .sort()
