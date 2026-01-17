@@ -1,5 +1,21 @@
 // js/nostr/client.js
 
+/**
+ * NostrClient
+ *
+ * The central controller for all Nostr network interactions and state management.
+ *
+ * Responsibilities:
+ * - Connection Management: Maintains the connection pool to Relays.
+ * - Event Publishing: Handles signing and broadcasting events (Kind 0, 1, 30078, etc.).
+ * - State Management:
+ *   - `allEvents`: A raw map of all fetched video events.
+ *   - `activeMap`: A derived map containing only the *latest* version of each video (deduplicated by `videoRootId`).
+ *   - `rawEvents`: A cache of the exact raw JSON events from relays (for signature verification).
+ * - Caching: Implements a dual-layer cache (IndexedDB + localStorage) to restore app state instantly on load.
+ * - Signer Management: Orchestrates NIP-07 (Extension), NIP-46 (Remote/Bunker), and NIP-01 (Local nsec) signers.
+ */
+
 import { isDevMode } from "../config.js";
 import { FEATURE_PUBLISH_NIP71 } from "../constants.js";
 import { accessControl } from "../accessControl.js";
@@ -1840,6 +1856,17 @@ export class NostrClient {
     });
   }
 
+  /**
+   * Establishes a NIP-46 connection with a remote signer (e.g., Nostr Connect / Bunker).
+   *
+   * Process:
+   * 1. **Parse**: Decodes the `nostrconnect://` or `bunker://` URI.
+   * 2. **Handshake (if needed)**: If the URI is a "connect" request (no target pubkey yet),
+   *    it publishes an ephemeral event and waits for the signer to "ack".
+   * 3. **Connect**: Once the remote pubkey is known, sends a `connect` RPC command.
+   * 4. **Authorize**: Handles any `auth_url` challenges if the signer requires out-of-band approval.
+   * 5. **Session**: Stores the session metadata locally (if `remember: true`) to allow auto-reconnect.
+   */
   async connectRemoteSigner({
     connectionString,
     remember = true,
@@ -3550,7 +3577,12 @@ export class NostrClient {
   }
 
   /**
-   * Connect to the configured relays
+   * Initializes the client.
+   *
+   * Flow:
+   * 1. Restores local data (IndexedDB/localStorage) to render the UI immediately ("stale-while-revalidate").
+   * 2. Schedules the restoration of any stored NIP-46 remote signer session.
+   * 3. Initializes the NostrTools `SimplePool` and connects to the configured relays.
    */
   async init() {
     devLogger.log("Connecting to relays...");
@@ -4418,6 +4450,16 @@ export class NostrClient {
     });
   }
 
+  /**
+   * Publishes a video event (Kind 30078).
+   *
+   * This constructs a V3 video note which includes:
+   * - Core metadata (title, description, thumbnail).
+   * - `magnet`: The Magnet URI (XT=InfoHash, WS=WebSeed, XS=TorrentMetadata).
+   * - `url`: The direct HTTP URL (WebSeed).
+   * - NIP-94 Mirror: Optionally publishes a Kind 1063 file header event if supported.
+   * - NIP-71: Optionally publishes a Kind 22 (Video Wrapper) for categorization if metadata is provided.
+   */
   async publishVideo(videoPayload, pubkey) {
     if (!pubkey) throw new Error("Not logged in to publish video.");
 
@@ -5645,14 +5687,23 @@ export class NostrClient {
   }
 
   /**
-   * Subscribe to *all* videos (old and new) with a single subscription,
-   * buffering incoming events to avoid excessive DOM updates.
+   * Subscribes to Kind 30078 video events from relays.
    *
-   * @param {Function} onVideo
+   * Strategy: "Buffering & Debouncing"
+   * Relays often send bursts of events (e.g., historical dumps or new floods).
+   * Processing every single event immediately would cause layout thrashing and UI lag.
+   *
+   * Instead, we:
+   * 1. Push incoming events into `eventBuffer`.
+   * 2. Schedule a flush operation (`flushEventBuffer`) with a short delay (75ms).
+   * 3. When the flush runs, we process the entire batch:
+   *    - Convert/Validate events.
+   *    - Update the `activeMap` (latest version logic).
+   *    - Persist to local cache.
+   *    - Notify the UI (`onVideo`).
+   *
+   * @param {Function} onVideo - Callback fired when new valid videos are processed.
    * @param {{ since?: number, until?: number, limit?: number }} [options]
-   *        `since` defaults to the latest cached created_at to avoid replaying
-   *        the full history on every load. `limit` is clamped to
-   *        MAX_VIDEO_REQUEST_LIMIT.
    */
   subscribeVideos(onVideo, options = {}) {
     const { since, until, limit } = options;
@@ -6563,13 +6614,18 @@ export class NostrClient {
   }
 
   /**
-   * Ensure we have every historical revision for a given video in memory and
-   * return the complete set sorted newest-first. We primarily group revisions
-   * by their shared `videoRootId`, but fall back to the NIP-33 `d` tag when
-   * working with legacy notes. The explicit `d` tag fetch is important because
-   * relays cannot be queried by values that only exist inside the JSON
-   * content. Without this pass, the UI would occasionally miss mid-history
-   * edits that were published from other devices.
+   * Fetches the complete edit history for a video.
+   *
+   * Why this is complex:
+   * 1. **Video Root ID**: Modern videos use a `videoRootId` inside the JSON content to link versions.
+   * 2. **NIP-33 `d` Tags**: Relays index by the `d` tag, not the JSON content.
+   * 3. **Legacy Data**: Older videos might not have a `videoRootId` and rely solely on the `d` tag or even the original Event ID.
+   *
+   * Strategy:
+   * - First, check local memory (`allEvents`) for matches on `videoRootId` OR `d` tag.
+   * - If the root event is missing locally, fetch it by ID.
+   * - If we suspect missing history (e.g., only 1 version found), perform a relay query for the specific `d` tag.
+   * - Merge and sort all findings to present a linear history.
    */
   async hydrateVideoHistory(video) {
     if (!video || typeof video !== "object") {
