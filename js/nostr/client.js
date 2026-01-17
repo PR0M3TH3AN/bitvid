@@ -60,6 +60,7 @@ import {
   getNostrEventSchema,
   NOTE_TYPES,
 } from "../nostrEventSchemas.js";
+import { CACHE_POLICIES } from "./cachePolicies.js";
 import {
   listVideoViewEvents as listVideoViewEventsForClient,
   subscribeVideoViewEvents as subscribeVideoViewEventsForClient,
@@ -314,7 +315,9 @@ function shouldRequestExtensionPermissions(signer) {
 }
 
 const EVENTS_CACHE_STORAGE_KEY = "bitvid:eventsCache:v1";
-const EVENTS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+// We use the policy TTL, but currently the storage backend is hardcoded to IDB (with localStorage fallback).
+// Future refactors should make EventsCacheStore dynamic based on CACHE_POLICIES[NOTE_TYPES.VIDEO_POST].storage.
+const EVENTS_CACHE_TTL_MS = CACHE_POLICIES[NOTE_TYPES.VIDEO_POST]?.ttl ?? (10 * 60 * 1000);
 const EVENTS_CACHE_DB_NAME = "bitvid-events-cache";
 const EVENTS_CACHE_DB_VERSION = 1;
 const EVENTS_CACHE_PERSIST_DELAY_MS = 450;

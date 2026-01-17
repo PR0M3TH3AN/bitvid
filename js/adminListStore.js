@@ -17,7 +17,9 @@ import { devLogger, userLogger } from "./utils/logger.js";
 import {
   buildAdminListEvent,
   ADMIN_LIST_IDENTIFIERS,
+  NOTE_TYPES,
 } from "./nostrEventSchemas.js";
+import { CACHE_POLICIES, STORAGE_TIERS } from "./nostr/cachePolicies.js";
 import { publishEventToRelay } from "./nostrPublish.js";
 
 const ADMIN_STATE_CACHE_VERSION = 1;
@@ -231,6 +233,11 @@ function hasAnyEntries(state = {}) {
 }
 
 export const readCachedAdminState = () => {
+  const policy = CACHE_POLICIES[NOTE_TYPES.ADMIN_MODERATION_LIST];
+  if (policy?.storage !== STORAGE_TIERS.LOCAL_STORAGE) {
+    return null;
+  }
+
   if (typeof localStorage === "undefined") {
     return null;
   }
@@ -263,6 +270,11 @@ export const readCachedAdminState = () => {
 };
 
 export const writeCachedAdminState = (state) => {
+  const policy = CACHE_POLICIES[NOTE_TYPES.ADMIN_MODERATION_LIST];
+  if (policy?.storage !== STORAGE_TIERS.LOCAL_STORAGE) {
+    return;
+  }
+
   if (typeof localStorage === "undefined") {
     return;
   }

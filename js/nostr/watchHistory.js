@@ -11,7 +11,9 @@ import {
 } from "../config.js";
 import {
   buildWatchHistoryEvent,
+  NOTE_TYPES,
 } from "../nostrEventSchemas.js";
+import { CACHE_POLICIES } from "./cachePolicies.js";
 import { publishEventToRelays } from "../nostrPublish.js";
 import {
   RELAY_URLS,
@@ -960,11 +962,17 @@ class WatchHistoryManager {
     if (Number.isFinite(this.cacheTtlMs) && this.cacheTtlMs > 0) {
       return this.cacheTtlMs;
     }
+    const policyTtl = CACHE_POLICIES[NOTE_TYPES.WATCH_HISTORY]?.ttl;
     const configured = Number(WATCH_HISTORY_CACHE_TTL_MS);
-    const resolved =
+
+    // Prefer config if set (for backward compat or overrides), otherwise policy
+    let resolved =
       Number.isFinite(configured) && configured > 0
         ? Math.floor(configured)
-        : 24 * 60 * 60 * 1000;
+        : Number.isFinite(policyTtl) && policyTtl > 0
+          ? policyTtl
+          : 24 * 60 * 60 * 1000;
+
     this.cacheTtlMs = resolved;
     return resolved;
   }
