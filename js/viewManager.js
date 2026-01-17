@@ -135,4 +135,14 @@ export const viewInitRegistry = {
     // Call the initialization function from channelProfile.js
     initChannelProfileView();
   },
+  search: async () => {
+    try {
+      const module = await import("./searchView.js");
+      if (typeof module.initSearchView === "function") {
+        await module.initSearchView();
+      }
+    } catch (error) {
+      userLogger.error("Failed to initialize search view:", error);
+    }
+  },
 };
