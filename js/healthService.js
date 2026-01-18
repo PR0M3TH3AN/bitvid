@@ -3,6 +3,11 @@ import { trackerPing } from "./trackerPing.js";
 import { infoHashFromMagnet } from "./magnets.js";
 import { HEALTH_TTL_MS, CONCURRENCY } from "./trackerConfig.js";
 import { userLogger } from "./utils/logger.js";
+import {
+  readTrackerHealthFromStorage,
+  removeTrackerHealthFromStorage,
+  writeTrackerHealthToStorage,
+} from "./utils/storage.js";
 
 const queue = new PQueue({ concurrency: CONCURRENCY });
 const cache = new Map();
@@ -22,14 +27,25 @@ export function getHealthCached(infoHash) {
   if (!infoHash) {
     return null;
   }
-  const entry = cache.get(infoHash);
+  let entry = cache.get(infoHash);
+
+  if (!entry) {
+    entry = readTrackerHealthFromStorage(infoHash);
+  }
+
   if (!entry) {
     return null;
   }
   if (Date.now() - entry.ts > HEALTH_TTL_MS) {
     cache.delete(infoHash);
+    removeTrackerHealthFromStorage(infoHash);
     return null;
   }
+
+  if (!cache.has(infoHash)) {
+    cache.set(infoHash, entry);
+  }
+
   return entry.value;
 }
 
@@ -37,7 +53,9 @@ export function setHealthCache(infoHash, value) {
   if (!infoHash) {
     return;
   }
-  cache.set(infoHash, { ts: Date.now(), value });
+  const entry = { ts: Date.now(), value };
+  cache.set(infoHash, entry);
+  writeTrackerHealthToStorage(infoHash, entry);
 }
 
 export function queueHealthCheck(magnet, onResult) {
