@@ -440,6 +440,7 @@ export default class ApplicationBootstrap {
           nostrClient,
           nostrService: app.nostrService,
           storageService,
+          r2Service: app.r2Service,
           subscriptions,
           accessControl,
           moderation: moderationService,
