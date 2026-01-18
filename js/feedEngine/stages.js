@@ -328,27 +328,12 @@ export function createBlacklistFilterStage({
 
     const options = { blacklistedEventIds: blacklist, isAuthorBlocked };
 
-    const tagPreferences = context?.runtime?.tagPreferences;
-    const disinterests = normalizeTagSet(tagPreferences?.disinterests);
-    const hasTagPreferences = disinterests.size > 0;
-
     const results = [];
 
     for (const item of items) {
       const video = item?.video;
       if (!video || typeof video !== "object") {
         results.push(item);
-        continue;
-      }
-
-      if (hasTagPreferences && hasDisinterestedTag(video, disinterests)) {
-        context?.addWhy?.({
-          stage: stageName,
-          type: "filter",
-          reason: "disinterested-tag",
-          videoId: typeof video.id === "string" ? video.id : null,
-          pubkey: typeof video.pubkey === "string" ? video.pubkey : null,
-        });
         continue;
       }
 

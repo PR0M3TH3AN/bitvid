@@ -39,6 +39,7 @@ import {
   createDedupeByRootStage,
   createModerationStage,
   createResolvePostedAtStage,
+  createTagPreferenceFilterStage,
   createChronologicalSorter,
   createSubscriptionAuthorsSource,
   registerWatchHistoryFeed,
@@ -5273,9 +5274,10 @@ class Application {
       return this.feedEngine.registerFeed("recent", {
         source: createActiveNostrSource({ service: this.nostrService }),
         stages: [
-          // TODO(tag-preferences): introduce a dedicated stage here to filter by
-          // viewer interests/disinterests once the runtime metadata is wired up
-          // to filtering helpers.
+          // TODO(tag-preferences): keep tag-preference filtering consolidated in
+          // createTagPreferenceFilterStage so each feed has a single source of
+          // truth when interest-based inclusion/ranking lands.
+          createTagPreferenceFilterStage(),
           createBlacklistFilterStage({
             shouldIncludeVideo: (video, options) =>
               this.nostrService.shouldIncludeVideo(video, options),
@@ -5345,8 +5347,10 @@ class Application {
       return this.feedEngine.registerFeed("subscriptions", {
         source: createSubscriptionAuthorsSource({ service: this.nostrService }),
         stages: [
-          // TODO(tag-preferences): introduce preference-aware filtering ahead of
-          // the blacklist stage when tag-based ranking lands.
+          // TODO(tag-preferences): keep tag-preference filtering consolidated in
+          // createTagPreferenceFilterStage so each feed has a single source of
+          // truth when interest-based inclusion/ranking lands.
+          createTagPreferenceFilterStage(),
           createBlacklistFilterStage({
             shouldIncludeVideo: (video, options) =>
               this.nostrService.shouldIncludeVideo(video, options),
