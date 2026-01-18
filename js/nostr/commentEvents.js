@@ -12,6 +12,7 @@ import { LRUCache } from "../utils/lruCache.js";
 import { CACHE_POLICIES } from "./cachePolicies.js";
 import { isSessionActor } from "./sessionActor.js";
 import { queueSignEvent } from "./signRequestQueue.js";
+import { getActiveSigner } from "../nostrClientFacade.js";
 
 const COMMENT_EVENT_SCHEMA = getNostrEventSchema(NOTE_TYPES.VIDEO_COMMENT);
 const CACHE_POLICY = CACHE_POLICIES[NOTE_TYPES.VIDEO_COMMENT];
@@ -1107,7 +1108,6 @@ export async function publishComment(
   targetInput,
   options = {},
   {
-    resolveActiveSigner,
     shouldRequestExtensionPermissions,
     DEFAULT_NIP07_PERMISSION_METHODS,
   } = {},
@@ -1189,12 +1189,19 @@ export async function publishComment(
 
   let signedEvent = null;
 
-  const resolveSignerFn =
-    typeof resolveActiveSigner === "function" ? resolveActiveSigner : null;
-  const signer = resolveSignerFn ? resolveSignerFn(actorPubkey) : null;
+  const signer = getActiveSigner();
 
   if (!signer || typeof signer.signEvent !== "function") {
-    return { ok: false, error: "auth-required" };
+    const error = new Error(
+      "Login required: an active signer is needed to publish comments."
+    );
+    error.code = "auth-required";
+    return {
+      ok: false,
+      error: "auth-required",
+      message: error.message,
+      details: error,
+    };
   }
 
   let permissionResult = { ok: true };
