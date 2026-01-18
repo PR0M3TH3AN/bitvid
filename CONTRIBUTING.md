@@ -31,6 +31,22 @@ If we later introduce **dual-licensing** options (e.g., commercial licenses for 
 * Follow existing formatting/lint rules.
 * Update docs and user-facing text when behavior changes.
 
+## Agent PR Conventions
+
+Automated agents contributing to this repository should follow these rules:
+- **Atomic Commits**: Keep changes small and self-contained.
+- **Descriptive Titles**: Use clear, semantic titles (e.g., `fix(ui): resolve upload modal overflow`).
+- **Reference Issues**: Link to relevant issues in the PR description.
+- **Review AGENTS.md**: Always consult `AGENTS.md` for specific architectural guidelines and constraints before starting work.
+
+## Submitting a Pull Request
+
+1. Fork the repository and create a new branch from `main`.
+2. Make your changes, adding tests if applicable.
+3. Run `npm run test:unit` and `npm run lint` to ensure quality.
+4. Push your branch and open a Pull Request against the `main` branch.
+5. Provide a clear description of the problem and solution.
+
 ## Development Setup
 
 To set up the project locally:

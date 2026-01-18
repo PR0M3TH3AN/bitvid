@@ -125,6 +125,36 @@ To run **bitvid** locally:
 http://localhost:8000
 ```
 
+### Common Commands
+
+- **Run unit tests**: `npm run test:unit`
+- **Format code**: `npm run format`
+- **Lint code**: `npm run lint`
+
+### Send your first video post
+
+Use the event builders in `js/nostrEventSchemas.js` to construct valid video notes.
+
+```javascript
+import { buildVideoPostEvent } from './js/nostrEventSchemas.js';
+
+const event = buildVideoPostEvent({
+  pubkey: "your_pubkey_hex",
+  created_at: Math.floor(Date.now() / 1000),
+  dTagValue: "my-first-video",
+  content: {
+    version: 3,
+    title: "My First Video",
+    videoRootId: "my-first-video", // Logical ID, often matches d-tag
+    url: "https://example.com/video.mp4",
+    description: "This is a test video post sent via the SDK.",
+    // magnet: "magnet:?xt=urn:btih:..." // Optional fallback
+  }
+});
+
+console.log("Event to publish:", event);
+```
+
 ### CSS build pipeline
 
 Tailwind utilities are generated from `css/tailwind.source.css` and themed via
