@@ -173,6 +173,7 @@ import {
 import { createNip07Adapter } from "./adapters/nip07Adapter.js";
 import { createNsecAdapter } from "./adapters/nsecAdapter.js";
 import { createNip46Adapter } from "./adapters/nip46Adapter.js";
+import { queueSignEvent } from "./signRequestQueue.js";
 
 function normalizeProfileFromEvent(event) {
   if (!event || !event.content) return null;
@@ -4484,7 +4485,7 @@ export class NostrClient {
 
     let signedEvent;
     try {
-      signedEvent = await signer.signEvent(event);
+      signedEvent = await queueSignEvent(signer, event);
     } catch (error) {
       return { ok: false, error: "signature-failed", details: error };
     }
@@ -5065,7 +5066,7 @@ export class NostrClient {
     }
 
     try {
-      const signedEvent = await signer.signEvent(event);
+      const signedEvent = await queueSignEvent(signer, event);
       devLogger.log("Signed edited event:", signedEvent);
 
       const publishResults = await publishEventToRelays(
@@ -5238,7 +5239,7 @@ export class NostrClient {
       }
     }
 
-    const signedEvent = await signer.signEvent(event);
+    const signedEvent = await queueSignEvent(signer, event);
     const publishResults = await publishEventToRelays(
       this.pool,
       this.relays,
@@ -5551,7 +5552,7 @@ export class NostrClient {
             : "Delete published video events",
         };
 
-        const signedDelete = await signer.signEvent(deleteEvent);
+        const signedDelete = await queueSignEvent(signer, deleteEvent);
         const publishResults = await publishEventToRelays(
           this.pool,
           this.relays,

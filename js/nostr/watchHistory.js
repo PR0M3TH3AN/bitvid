@@ -23,6 +23,7 @@ import {
 import { DEFAULT_NIP07_PERMISSION_METHODS } from "./nip07Permissions.js";
 import { devLogger, userLogger } from "../utils/logger.js";
 import { profileCache } from "../state/profileCache.js";
+import { queueSignEvent } from "./signRequestQueue.js";
 
 /**
  * Domain utilities for watch-history interactions. This module owns pointer
@@ -1452,7 +1453,9 @@ class WatchHistoryManager {
 
     const signEvent = async (event) => {
       if (activeSigner) {
-        return activeSigner.signEvent(event);
+        return queueSignEvent(activeSigner, event, {
+          timeoutMs: options.timeoutMs,
+        });
       }
       return this.deps.signEventWithPrivateKey(event, privateKey);
     };

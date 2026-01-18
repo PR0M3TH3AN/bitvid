@@ -19,6 +19,7 @@ import {
 import { DEFAULT_NIP07_PERMISSION_METHODS } from "./nip07Permissions.js";
 import { devLogger, userLogger } from "../utils/logger.js";
 import { logRebroadcastCountFailure } from "./countDiagnostics.js";
+import { queueSignEvent } from "./signRequestQueue.js";
 
 const REBROADCAST_GUARD_PREFIX = "bitvid:rebroadcast:v1";
 const rebroadcastAttemptMemory = new Map();
@@ -359,7 +360,9 @@ export async function signAndPublishEvent({
     }
     if (permissionResult.ok) {
       try {
-        signedEvent = await signer.signEvent(event);
+        signedEvent = await queueSignEvent(signer, event, {
+          timeoutMs: options.timeoutMs,
+        });
       } catch (error) {
         userLogger.warn(
           "[nostr] Failed to sign event with active signer:",

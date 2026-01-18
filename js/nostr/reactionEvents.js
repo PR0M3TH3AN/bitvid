@@ -6,6 +6,7 @@ import { devLogger, userLogger } from "../utils/logger.js";
 import { LRUCache } from "../utils/lruCache.js";
 import { CACHE_POLICIES } from "./cachePolicies.js";
 import { NOTE_TYPES } from "../nostrEventSchemas.js";
+import { queueSignEvent } from "./signRequestQueue.js";
 
 const CACHE_POLICY = CACHE_POLICIES[NOTE_TYPES.VIDEO_REACTION];
 const reactionCache = new LRUCache({ maxSize: 100 });
@@ -441,7 +442,9 @@ export async function publishVideoReaction(
     }
     if (permissionResult.ok) {
       try {
-        signedEvent = await signer.signEvent(event);
+        signedEvent = await queueSignEvent(signer, event, {
+          timeoutMs: options?.timeoutMs,
+        });
       } catch (error) {
         userLogger.warn(
           "[nostr] Failed to sign reaction event with active signer:",

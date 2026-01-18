@@ -11,6 +11,7 @@ import { devLogger, userLogger } from "../utils/logger.js";
 import { LRUCache } from "../utils/lruCache.js";
 import { CACHE_POLICIES } from "./cachePolicies.js";
 import { isSessionActor } from "./sessionActor.js";
+import { queueSignEvent } from "./signRequestQueue.js";
 
 const COMMENT_EVENT_SCHEMA = getNostrEventSchema(NOTE_TYPES.VIDEO_COMMENT);
 const CACHE_POLICY = CACHE_POLICIES[NOTE_TYPES.VIDEO_COMMENT];
@@ -1221,7 +1222,9 @@ export async function publishComment(
   }
 
   try {
-    signedEvent = await signer.signEvent(event);
+    signedEvent = await queueSignEvent(signer, event, {
+      timeoutMs: options?.timeoutMs,
+    });
   } catch (error) {
     userLogger.warn(
       "[nostr] Failed to sign comment event with active signer:",

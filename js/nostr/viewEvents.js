@@ -13,6 +13,7 @@ import { RELAY_URLS } from "./toolkit.js";
 import { normalizePointerInput } from "./watchHistory.js";
 import { devLogger, userLogger } from "../utils/logger.js";
 import { logViewCountFailure } from "./countDiagnostics.js";
+import { queueSignEvent } from "./signRequestQueue.js";
 
 const VIEW_EVENT_GUARD_PREFIX = "bitvid:viewed";
 
@@ -793,7 +794,9 @@ export async function publishViewEvent(
     }
     if (permissionResult.ok) {
       try {
-        signedEvent = await signer.signEvent(event);
+        signedEvent = await queueSignEvent(signer, event, {
+          timeoutMs: options?.timeoutMs,
+        });
       } catch (error) {
         userLogger.warn(
           "[nostr] Failed to sign view event with active signer:",
