@@ -1,5 +1,6 @@
 // js/viewManager.js
 import { initChannelProfileView } from "./channelProfile.js";
+import { initForYouView } from "./forYouView.js";
 import { subscriptions } from "./subscriptions.js";
 import { getApplication } from "./applicationContext.js";
 import { ASSET_VERSION } from "../config/asset-version.js";
@@ -93,6 +94,7 @@ export const viewInitRegistry = {
     }
   },
   "for-you": () => {
+    initForYouView();
     const app = getApplication();
     if (app && typeof app.loadForYouVideos === "function") {
       if (typeof app.mountVideoListView === "function") {
