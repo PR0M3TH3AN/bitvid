@@ -395,8 +395,6 @@ export default class ApplicationBootstrap {
     app.loginModalController = null;
     app.currentUserNpub = null;
 
-    app.initializeLoginModalController({ logIfMissing: true });
-
     app.profileButton = doc?.getElementById("profileButton") || null;
     app.profileAvatar = doc?.getElementById("profileAvatar") || null;
 
