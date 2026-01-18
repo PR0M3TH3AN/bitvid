@@ -397,6 +397,19 @@ function waitForTransaction(tx) {
   });
 }
 
+/**
+ * Persists video events and tombstones to IndexedDB.
+ *
+ * Schema:
+ * - `events`: Store for video objects. Key: `id`.
+ * - `tombstones`: Store for deletion timestamps. Key: `key`.
+ * - `meta`: Store for versioning and timestamps. Key: `key`.
+ *
+ * Strategy:
+ * - Snapshots are saved periodically (debounced).
+ * - "Fingerprints" (hashes/stringified) are tracked to minimize writes.
+ * - If the TTL expires, the cache is cleared on restore.
+ */
 class EventsCacheStore {
   constructor() {
     this.dbPromise = null;
@@ -503,6 +516,7 @@ class EventsCacheStore {
       return null;
     }
 
+    // Check TTL: If cache is too old, wipe it and return null to force a fresh fetch.
     const now = Date.now();
     if (now - meta.savedAt > EVENTS_CACHE_TTL_MS) {
       const tx = db.transaction(["events", "tombstones", "meta"], "readwrite");
@@ -4635,12 +4649,15 @@ export class NostrClient {
     devLogger.log("Event content:", event.content);
 
     try {
+      // 1. Publish the primary Video Note (Kind 30078)
       const { signedEvent } = await this.signAndPublishEvent(event, {
         context: "video note",
         logName: "Video note",
         devLogLabel: "video note",
       });
 
+      // 2. Publish NIP-94 Mirror (Kind 1063) if a hosted URL is present.
+      // This allows clients that only understand NIP-94 to find the file.
       if (finalUrl) {
         const inferredMimeType = inferMimeTypeFromUrl(finalUrl);
         const mimeTypeSource =
@@ -4751,6 +4768,9 @@ export class NostrClient {
           );
         }
       } else devLogger.log("Skipping NIP-94 mirror: no hosted URL provided.");
+
+      // 3. Publish NIP-71 Metadata (Kind 22) if categories/tags were added.
+      // This is a separate event linked to the video via `a` tag or `e` tag.
       const hasMetadataObject =
         nip71Metadata && typeof nip71Metadata === "object";
       const metadataWasEdited =
@@ -5816,6 +5836,13 @@ export class NostrClient {
     const EVENT_FLUSH_DEBOUNCE_MS = 75;
     let flushTimerId = null;
 
+    /**
+     * Flushes the pending event buffer.
+     *
+     * This batch processing is critical for performance during the initial
+     * relay dump (thousands of events). It prevents React from re-rendering
+     * for every single event.
+     */
     const flushEventBuffer = () => {
       if (!eventBuffer.length) {
         return;
@@ -5836,19 +5863,24 @@ export class NostrClient {
             continue;
           }
 
+          // Merge any NIP-71 metadata we might already have cached for this video
           this.mergeNip71MetadataIntoVideo(video);
+          // Determine the "true" creation time of the root video
           this.applyRootCreatedAt(video);
 
           const activeKey = getActiveKey(video);
           const wasDeletedEvent = video.deleted === true;
 
+          // If this is a deletion event (Kind 5 or deletion marker), record a tombstone
+          // to prevent older versions from resurrecting.
           if (wasDeletedEvent) {
             this.recordTombstone(activeKey, video.created_at);
           } else {
+            // Otherwise, check if this video is already known to be deleted
             this.applyTombstoneGuard(video);
           }
 
-          // Store in allEvents
+          // Store in allEvents (history preservation)
           this.allEvents.set(evt.id, video);
 
           // If it's a "deleted" note, remove from activeMap
@@ -5866,11 +5898,13 @@ export class NostrClient {
             continue;
           }
 
-          // Otherwise, if it's newer than what we have, update activeMap
+          // Latest-wins logic: only update activeMap if this version is newer
           const prevActive = this.activeMap.get(activeKey);
           if (!prevActive || video.created_at > prevActive.created_at) {
             this.activeMap.set(activeKey, video);
             onVideo(video); // Trigger the callback that re-renders
+
+            // Fetch NIP-71 metadata (categorization tags) in the background
             this.populateNip71MetadataForVideos([video])
               .then(() => {
                 this.applyRootCreatedAt(video);
@@ -6734,6 +6768,9 @@ export class NostrClient {
           typeof candidate.videoRootId === "string" ? candidate.videoRootId : "";
         const candidateDTag = this.resolveEventDTag(candidate, video);
 
+        // A video is "the same" if:
+        // 1. It shares the same V3 `videoRootId`.
+        // 2. It shares the same NIP-33 `d` tag (for addressable updates).
         const sameRoot = targetRoot && candidateRoot === targetRoot;
         const sameD = targetDTag && candidateDTag === targetDTag;
 
