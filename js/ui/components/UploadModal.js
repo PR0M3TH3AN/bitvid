@@ -11,6 +11,10 @@ import { createTorrentMetadata } from "../../utils/torrentHash.js";
 import { sanitizeBucketName } from "../../storage/r2-mgmt.js";
 import { buildR2Key, buildPublicUrl } from "../../r2.js";
 import { PROVIDERS } from "../../services/storageService.js";
+import {
+  getActiveSigner,
+  requestDefaultExtensionPermissions,
+} from "../../nostrClientFacade.js";
 
 const INFO_HASH_PATTERN = /^[a-f0-9]{40}$/;
 
@@ -557,7 +561,7 @@ export class UploadModal {
             this.toggleStorageView("form");
         }
       } catch (err) {
-          console.error("Failed to load connection", err);
+          userLogger.error("Failed to load connection", err);
           this.toggleStorageView("form");
       }
   }
@@ -577,18 +581,28 @@ export class UploadModal {
       const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
       if (!pubkey) return;
 
-      // We need a signer. Try window.nostr or authService
-      let signer = window.nostr;
+      // We need a signer. Try active signer or authService
+      let signer = getActiveSigner();
       if (!signer && this.authService?.signer) {
           signer = this.authService.signer;
       }
 
-      if (!signer) {
+      const canSign = typeof signer?.canSign === "function"
+        ? signer.canSign()
+        : typeof signer?.signEvent === "function";
+      if (!canSign) {
           alert("No signer available to unlock storage.");
           return;
       }
 
       try {
+          if (signer?.type === "extension") {
+              const permissionResult = await requestDefaultExtensionPermissions();
+              if (!permissionResult?.ok) {
+                  alert("Extension permissions are required to unlock storage.");
+                  return;
+              }
+          }
           if (this.toggles.storageUnlock) {
             this.toggles.storageUnlock.textContent = "Unlocking...";
             this.toggles.storageUnlock.disabled = true;
@@ -598,7 +612,7 @@ export class UploadModal {
           this.updateLockUi();
           await this.loadFromStorage();
       } catch (err) {
-          console.error("Unlock failed", err);
+          userLogger.error("Unlock failed", err);
           alert("Failed to unlock storage: " + err.message);
       } finally {
           if (this.toggles.storageUnlock) {

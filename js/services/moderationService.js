@@ -1,4 +1,8 @@
-import { nostrClient } from "../nostrClientFacade.js";
+import {
+  getActiveSigner,
+  nostrClient,
+  requestDefaultExtensionPermissions,
+} from "../nostrClientFacade.js";
 import { publishEventToRelays, assertAnyRelayAccepted } from "../nostrPublish.js";
 import { accessControl } from "../accessControl.js";
 import { userBlocks, USER_BLOCK_EVENTS } from "../userBlocks.js";
@@ -1542,15 +1546,22 @@ export class ModerationService {
 
     await this.ensurePool();
 
-    const extension = typeof window !== "undefined" ? window.nostr : null;
-    if (!extension || typeof extension.signEvent !== "function") {
+    let signer = getActiveSigner();
+    if (!signer && typeof this.nostrClient?.ensureActiveSignerForPubkey === "function") {
+      signer = await this.nostrClient.ensureActiveSignerForPubkey(viewer);
+    }
+
+    const canSign = typeof signer?.canSign === "function"
+      ? signer.canSign()
+      : typeof signer?.signEvent === "function";
+    if (!canSign || typeof signer?.signEvent !== "function") {
       const error = new Error("nostr-extension-missing");
       error.code = "nostr-extension-missing";
       throw error;
     }
 
-    if (typeof this.nostrClient?.ensureExtensionPermissions === "function") {
-      const permissionResult = await this.nostrClient.ensureExtensionPermissions([
+    if (signer?.type === "extension") {
+      const permissionResult = await requestDefaultExtensionPermissions([
         "sign_event",
         "get_public_key",
       ]);
@@ -1583,7 +1594,7 @@ export class ModerationService {
 
     let signedEvent;
     try {
-      signedEvent = await extension.signEvent(event);
+      signedEvent = await signer.signEvent(event);
     } catch (error) {
       const wrapped = new Error("signature-failed");
       wrapped.code = "signature-failed";
