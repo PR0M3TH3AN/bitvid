@@ -35,6 +35,7 @@ import {
   formatShortNpub as defaultFormatShortNpub,
 } from "../../utils/formatters.js";
 import { sanitizeProfileMediaUrl } from "../../utils/profileMedia.js";
+import { normalizeHashtag } from "../../utils/hashtagNormalization.js";
 import { getBreakpointLg } from "../../designSystem/metrics.js";
 
 const HEX64_REGEX = /^[0-9a-f]{64}$/i;
@@ -2917,7 +2918,7 @@ export class VideoModal {
       }
 
       const raw = typeof entry === "string" ? entry : String(entry ?? "");
-      const trimmed = raw.trim().replace(/^#+/, "");
+      const trimmed = normalizeHashtag(raw);
 
       if (!trimmed) {
         continue;

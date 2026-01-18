@@ -1,4 +1,8 @@
 import { normalizeDesignSystemContext } from "../../designSystem.js";
+import {
+  normalizeHashtag,
+  formatHashtag,
+} from "../../utils/hashtagNormalization.js";
 
 export const TAG_PREFERENCE_ACTIONS = {
   ADD_INTEREST: "add-interest",
@@ -83,19 +87,9 @@ function appendMenuAction(doc, list, { text, action, dataset = {}, disabled = fa
 }
 
 function normalizeTag(tag) {
-  if (typeof tag !== "string") {
-    return { label: "", normalized: "" };
-  }
-
-  const trimmed = tag.trim();
-  if (!trimmed) {
-    return { label: "", normalized: "" };
-  }
-
-  const withoutHash = trimmed.replace(/^#+/, "");
-  const normalized = withoutHash.toLowerCase();
+  const normalized = normalizeHashtag(tag);
   return {
-    label: withoutHash,
+    label: normalized,
     normalized,
   };
 }
@@ -172,7 +166,7 @@ export function createTagPreferenceMenu({
   normalizeDesignSystemContext(designSystem);
 
   const { label, normalized } = normalizeTag(tag);
-  const headingLabel = label ? `#${label}` : "Tag preferences";
+  const headingLabel = label ? formatHashtag(label) : "Tag preferences";
 
   const { panel, list } = ensureMenuContainer(doc, ["w-56", "p-0"]);
   panel.dataset.menu = "tag-preference";
@@ -191,7 +185,7 @@ export function createTagPreferenceMenu({
   }
 
   const buttons = {};
-  const actionDataset = { tag: label || normalized };
+  const actionDataset = { tag: normalized };
 
   buttons.addInterest = appendMenuAction(doc, list, {
     text: "Add to interests",
@@ -225,7 +219,7 @@ export function createTagPreferenceMenu({
     }
     try {
       onAction(action, {
-        tag: label || normalized,
+        tag: normalized,
         normalizedTag: normalized,
         event,
         button,

@@ -27,6 +27,7 @@ import { attachHealthBadges } from "./gridHealth.js";
 import { attachUrlHealthBadges } from "./urlHealthObserver.js";
 import { updateVideoCardSourceVisibility } from "./utils/cardSourceVisibility.js";
 import { collectVideoTags } from "./utils/videoTags.js";
+import { normalizeHashtag } from "./utils/hashtagNormalization.js";
 import { sanitizeProfileMediaUrl } from "./utils/profileMedia.js";
 import { ADMIN_INITIAL_EVENT_BLACKLIST } from "./lists.js";
 import { userBlocks } from "./userBlocks.js";
@@ -2514,16 +2515,7 @@ class Application {
   }
 
   normalizeTagPreferenceCandidate(tag) {
-    if (typeof tag !== "string") {
-      return "";
-    }
-
-    const trimmed = tag.trim().replace(/^#+/, "");
-    if (!trimmed) {
-      return "";
-    }
-
-    return trimmed.toLowerCase();
+    return normalizeHashtag(tag);
   }
 
   getTagPreferenceState(tag) {

@@ -10,9 +10,24 @@ import nostrService from "../services/nostrService.js";
 import moderationService from "../services/moderationService.js";
 import logger from "../utils/logger.js";
 import { dedupeToNewestByRoot } from "../utils/videoDeduper.js";
+import { normalizeHashtag } from "../utils/hashtagNormalization.js";
 import { isPlainObject, toSet, hasDisinterestedTag } from "./utils.js";
 
 const FEED_HIDE_BYPASS_NAMES = new Set(["home", "recent"]);
+
+function normalizeTagSet(values) {
+  const normalized = new Set();
+  const source = toSet(values);
+
+  for (const value of source) {
+    const tag = normalizeHashtag(value);
+    if (tag) {
+      normalized.add(tag);
+    }
+  }
+
+  return normalized;
+}
 
 function resolveDedupeFunction(customDedupe) {
   if (typeof customDedupe === "function") {
@@ -258,6 +273,43 @@ export function createResolvePostedAtStage({
   };
 }
 
+export function createTagPreferenceFilterStage({
+  stageName = "tag-preference-filter",
+} = {}) {
+  return async function tagPreferenceFilterStage(items = [], context = {}) {
+    const tagPreferences = context?.runtime?.tagPreferences;
+    const disinterests = normalizeTagSet(tagPreferences?.disinterests);
+    if (!disinterests.size) {
+      return items;
+    }
+
+    const results = [];
+
+    for (const item of items) {
+      const video = item?.video;
+      if (!video || typeof video !== "object") {
+        results.push(item);
+        continue;
+      }
+
+      if (hasDisinterestedTag(video, disinterests)) {
+        context?.addWhy?.({
+          stage: stageName,
+          type: "filter",
+          reason: "disinterested-tag",
+          videoId: typeof video.id === "string" ? video.id : null,
+          pubkey: typeof video.pubkey === "string" ? video.pubkey : null,
+        });
+        continue;
+      }
+
+      results.push(item);
+    }
+
+    return results;
+  };
+}
+
 export function createBlacklistFilterStage({
   stageName = "blacklist-filter",
   shouldIncludeVideo,
@@ -277,7 +329,7 @@ export function createBlacklistFilterStage({
     const options = { blacklistedEventIds: blacklist, isAuthorBlocked };
 
     const tagPreferences = context?.runtime?.tagPreferences;
-    const disinterests = toSet(tagPreferences?.disinterests);
+    const disinterests = normalizeTagSet(tagPreferences?.disinterests);
     const hasTagPreferences = disinterests.size > 0;
 
     const results = [];
