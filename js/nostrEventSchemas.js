@@ -687,13 +687,14 @@ function mergePointerTags(pointerTags = []) {
   return merged;
 }
 
-export function buildVideoPostEvent({
-  pubkey,
-  created_at,
-  dTagValue,
-  content,
-  additionalTags = [],
-}) {
+export function buildVideoPostEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    dTagValue,
+    content,
+    additionalTags = [],
+  } = params || {};
   const schema = getNostrEventSchema(NOTE_TYPES.VIDEO_POST);
   const tags = [];
   if (schema?.topicTag?.name && schema?.topicTag?.value) {
@@ -708,21 +709,33 @@ export function buildVideoPostEvent({
     tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
   }
 
+  let serializedContent = "";
+  if (typeof content === "string") {
+    serializedContent = content;
+  } else {
+    try {
+      serializedContent = JSON.stringify(content ?? {});
+    } catch (error) {
+      serializedContent = "{}";
+    }
+  }
+
   return {
     kind: schema?.kind ?? 30078,
     pubkey,
     created_at,
     tags,
-    content: typeof content === "string" ? content : JSON.stringify(content ?? {}),
+    content: serializedContent,
   };
 }
 
-export function buildVideoMirrorEvent({
-  pubkey,
-  created_at,
-  tags = [],
-  content = "",
-}) {
+export function buildVideoMirrorEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    tags = [],
+    content = "",
+  } = params || {};
   const schema = getNostrEventSchema(NOTE_TYPES.VIDEO_MIRROR);
   const combinedTags = [];
   appendSchemaTags(combinedTags, schema);
@@ -742,20 +755,21 @@ export function buildVideoMirrorEvent({
   };
 }
 
-export function buildRepostEvent({
-  pubkey,
-  created_at,
-  eventId = "",
-  eventRelay = "",
-  address = "",
-  addressRelay = "",
-  authorPubkey = "",
-  additionalTags = [],
-  repostKind,
-  targetKind,
-  targetEvent = null,
-  serializedEvent = "",
-}) {
+export function buildRepostEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    eventId = "",
+    eventRelay = "",
+    address = "",
+    addressRelay = "",
+    authorPubkey = "",
+    additionalTags = [],
+    repostKind,
+    targetKind,
+    targetEvent = null,
+    serializedEvent = "",
+  } = params || {};
   const schema = getNostrEventSchema(NOTE_TYPES.REPOST);
   const tags = [];
 
@@ -856,12 +870,13 @@ export function buildRepostEvent({
   };
 }
 
-export function buildRelayListEvent({
-  pubkey,
-  created_at,
-  relays = [],
-  additionalTags = [],
-}) {
+export function buildRelayListEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    relays = [],
+    additionalTags = [],
+  } = params || {};
   const schema = getNostrEventSchema(NOTE_TYPES.RELAY_LIST);
   const tags = [];
   const relayTagName = schema?.relayTagName || "r";
@@ -926,17 +941,18 @@ export function buildRelayListEvent({
   };
 }
 
-export function buildViewEvent({
-  pubkey,
-  created_at,
-  pointerValue,
-  pointerTag,
-  pointerTags = [],
-  dedupeTag,
-  includeSessionTag = false,
-  additionalTags = [],
-  content = "",
-}) {
+export function buildViewEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    pointerValue,
+    pointerTag,
+    pointerTags = [],
+    dedupeTag,
+    includeSessionTag = false,
+    additionalTags = [],
+    content = "",
+  } = params || {};
   const schema = getNostrEventSchema(NOTE_TYPES.VIEW_EVENT);
   const tags = [];
   if (schema?.topicTag?.name && schema?.topicTag?.value) {
@@ -986,17 +1002,18 @@ export function buildViewEvent({
   };
 }
 
-export function buildReactionEvent({
-  pubkey,
-  created_at,
-  pointerValue,
-  pointerTag,
-  pointerTags = [],
-  targetPointer = null,
-  targetAuthorPubkey = "",
-  additionalTags = [],
-  content = "",
-}) {
+export function buildReactionEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    pointerValue,
+    pointerTag,
+    pointerTags = [],
+    targetPointer = null,
+    targetAuthorPubkey = "",
+    additionalTags = [],
+    content = "",
+  } = params || {};
   const schema = getNostrEventSchema(NOTE_TYPES.VIDEO_REACTION);
   const tags = [];
 
@@ -1117,30 +1134,31 @@ export function buildReactionEvent({
   };
 }
 
-export function buildCommentEvent({
-  pubkey,
-  created_at,
-  videoEventId = "",
-  videoEventRelay = "",
-  videoDefinitionAddress = "",
-  videoDefinitionRelay = "",
-  rootIdentifier = "",
-  rootIdentifierRelay = "",
-  parentCommentId = "",
-  parentCommentRelay = "",
-  threadParticipantPubkey = "",
-  threadParticipantRelay = "",
-  rootKind,
-  rootAuthorPubkey = "",
-  rootAuthorRelay = "",
-  parentKind,
-  parentAuthorPubkey = "",
-  parentAuthorRelay = "",
-  parentIdentifier = "",
-  parentIdentifierRelay = "",
-  additionalTags = [],
-  content = "",
-}) {
+export function buildCommentEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    videoEventId = "",
+    videoEventRelay = "",
+    videoDefinitionAddress = "",
+    videoDefinitionRelay = "",
+    rootIdentifier = "",
+    rootIdentifierRelay = "",
+    parentCommentId = "",
+    parentCommentRelay = "",
+    threadParticipantPubkey = "",
+    threadParticipantRelay = "",
+    rootKind,
+    rootAuthorPubkey = "",
+    rootAuthorRelay = "",
+    parentKind,
+    parentAuthorPubkey = "",
+    parentAuthorRelay = "",
+    parentIdentifier = "",
+    parentIdentifierRelay = "",
+    additionalTags = [],
+    content = "",
+  } = params || {};
   const schema = getNostrEventSchema(NOTE_TYPES.VIDEO_COMMENT);
   const tags = [];
 
@@ -1361,13 +1379,14 @@ export function buildCommentEvent({
   };
 }
 
-export function buildWatchHistoryEvent({
-  pubkey,
-  created_at,
-  monthIdentifier,
-  pointerTags = [],
-  content,
-}) {
+export function buildWatchHistoryEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    monthIdentifier,
+    pointerTags = [],
+    content,
+  } = params || {};
   const schema = getNostrEventSchema(NOTE_TYPES.WATCH_HISTORY);
   const tags = [];
   const identifierName = schema?.identifierTag?.name || "d";
@@ -1400,12 +1419,13 @@ export function buildWatchHistoryEvent({
   };
 }
 
-export function buildSubscriptionListEvent({
-  pubkey,
-  created_at,
-  content,
-  encryption,
-}) {
+export function buildSubscriptionListEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    content,
+    encryption,
+  } = params || {};
   const schema = getNostrEventSchema(NOTE_TYPES.SUBSCRIPTION_LIST);
   const tags = [];
   const identifierName = schema?.identifierTag?.name || "d";
@@ -1428,12 +1448,13 @@ export function buildSubscriptionListEvent({
   };
 }
 
-export function buildBlockListEvent({
-  pubkey,
-  created_at,
-  content,
-  encryption,
-}) {
+export function buildBlockListEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    content,
+    encryption,
+  } = params || {};
   const schema = getNostrEventSchema(NOTE_TYPES.USER_BLOCK_LIST);
   const tags = [];
   const identifierName = schema?.identifierTag?.name || "d";
@@ -1456,11 +1477,12 @@ export function buildBlockListEvent({
   };
 }
 
-export function buildHashtagPreferenceEvent({
-  pubkey,
-  created_at,
-  content,
-}) {
+export function buildHashtagPreferenceEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    content,
+  } = params || {};
   const schema = getNostrEventSchema(NOTE_TYPES.HASHTAG_PREFERENCES);
   const tags = [];
   const identifierName = schema?.identifierTag?.name || "d";
@@ -1492,7 +1514,12 @@ function resolveAdminNoteType(listKey) {
   }
 }
 
-export function buildAdminListEvent(listKey, { pubkey, created_at, hexPubkeys = [] }) {
+export function buildAdminListEvent(listKey, params) {
+  const {
+    pubkey,
+    created_at,
+    hexPubkeys = []
+  } = params || {};
   const schema = getNostrEventSchema(resolveAdminNoteType(listKey));
   if (!schema) {
     devLogger.warn(
@@ -1527,11 +1554,12 @@ export function buildAdminListEvent(listKey, { pubkey, created_at, hexPubkeys = 
   };
 }
 
-export function buildStorageChallengeEvent({
-  pubkey,
-  created_at,
-  challenge,
-}) {
+export function buildStorageChallengeEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    challenge,
+  } = params || {};
   const schema = getNostrEventSchema(NOTE_TYPES.STORAGE_CHALLENGE);
   const tags = [];
 
