@@ -11,7 +11,7 @@ import moderationService from "../services/moderationService.js";
 import logger from "../utils/logger.js";
 import { dedupeToNewestByRoot } from "../utils/videoDeduper.js";
 import { normalizeHashtag } from "../utils/hashtagNormalization.js";
-import { isPlainObject, toSet, hasDisinterestedTag } from "./utils.js";
+import { isPlainObject, toSet } from "./utils.js";
 
 const FEED_HIDE_BYPASS_NAMES = new Set(["home", "recent"]);
 
@@ -278,8 +278,9 @@ export function createTagPreferenceFilterStage({
 } = {}) {
   return async function tagPreferenceFilterStage(items = [], context = {}) {
     const tagPreferences = context?.runtime?.tagPreferences;
+    const interests = normalizeTagSet(tagPreferences?.interests);
     const disinterests = normalizeTagSet(tagPreferences?.disinterests);
-    if (!disinterests.size) {
+    if (!interests.size && !disinterests.size) {
       return items;
     }
 
@@ -292,7 +293,40 @@ export function createTagPreferenceFilterStage({
         continue;
       }
 
-      if (hasDisinterestedTag(video, disinterests)) {
+      const videoTags = new Set();
+      if (Array.isArray(video.tags)) {
+        for (const tag of video.tags) {
+          if (Array.isArray(tag) && tag[0] === "t" && typeof tag[1] === "string") {
+            const normalized = normalizeHashtag(tag[1]);
+            if (normalized) {
+              videoTags.add(normalized);
+            }
+          }
+        }
+      }
+
+      if (Array.isArray(video.nip71?.hashtags)) {
+        for (const tag of video.nip71.hashtags) {
+          if (typeof tag === "string") {
+            const normalized = normalizeHashtag(tag);
+            if (normalized) {
+              videoTags.add(normalized);
+            }
+          }
+        }
+      }
+
+      let disinterested = false;
+      if (disinterests.size) {
+        for (const tag of videoTags) {
+          if (disinterests.has(tag)) {
+            disinterested = true;
+            break;
+          }
+        }
+      }
+
+      if (disinterested) {
         context?.addWhy?.({
           stage: stageName,
           type: "filter",
@@ -301,6 +335,36 @@ export function createTagPreferenceFilterStage({
           pubkey: typeof video.pubkey === "string" ? video.pubkey : null,
         });
         continue;
+      }
+
+      let matchedInterests = [];
+      if (interests.size) {
+        matchedInterests = [...videoTags].filter((tag) => interests.has(tag));
+        if (matchedInterests.length === 0) {
+          context?.addWhy?.({
+            stage: stageName,
+            type: "filter",
+            reason: "no-interest-match",
+            videoId: typeof video.id === "string" ? video.id : null,
+            pubkey: typeof video.pubkey === "string" ? video.pubkey : null,
+          });
+          continue;
+        }
+      }
+
+      if (matchedInterests.length > 0) {
+        if (!isPlainObject(item.metadata)) {
+          item.metadata = {};
+        }
+        item.metadata.matchedInterests = matchedInterests;
+        context?.addWhy?.({
+          stage: stageName,
+          type: "filter",
+          reason: "matched-interests",
+          videoId: typeof video.id === "string" ? video.id : null,
+          pubkey: typeof video.pubkey === "string" ? video.pubkey : null,
+          tags: matchedInterests,
+        });
       }
 
       results.push(item);
