@@ -119,7 +119,7 @@ To run **bitvid** locally:
      npx serve
      ```
 
-3. Open the site in your browser:
+4. Open the site in your browser:
 
 ```
 http://localhost:8000
@@ -136,7 +136,7 @@ http://localhost:8000
 Use the event builders in `js/nostrEventSchemas.js` to construct valid video notes.
 
 ```javascript
-import { buildVideoPostEvent } from './js/nostrEventSchemas.js';
+import { buildVideoPostEvent } from "./js/nostrEventSchemas.js";
 
 const event = buildVideoPostEvent({
   pubkey: "your_pubkey_hex",
@@ -147,7 +147,7 @@ const event = buildVideoPostEvent({
     title: "My First Video",
     videoRootId: "my-first-video", // Logical ID, often matches d-tag
     url: "https://example.com/video.mp4",
-    description: "This is a test video post sent via the SDK.",
+    description: "This is a test video post sent via the SDK."
     // magnet: "magnet:?xt=urn:btih:..." // Optional fallback
   }
 });
@@ -259,7 +259,10 @@ signer, fall back to supported capabilities, and surface permission prompts.
 Use the facade for the common, stable entry points:
 
 ```js
-import { nostrClient, requestDefaultExtensionPermissions } from "./nostrClientFacade.js";
+import {
+  nostrClient,
+  requestDefaultExtensionPermissions
+} from "./nostrClientFacade.js";
 ```
 
 Custom auth providers should still register their signer object through the
@@ -378,7 +381,7 @@ placeholder at “—” and development builds log a warning—so mixed deploym
 5. **Test**:
    - Run unit tests: `npm run test:unit`
    - Validate the site functionality locally before submitting.
-5. **Submit a Pull Request**:
+6. **Submit a Pull Request**:
    - Explain your changes and reference any related issues.
 
 ### Contribution Guidelines
