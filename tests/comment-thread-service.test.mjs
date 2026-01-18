@@ -736,7 +736,7 @@ test(
       "reply queries should filter to child events when parent id is provided",
     );
 
-    assert.equal(listCalls.length, 2, "pool.list should be invoked for each query");
+    assert.equal(listCalls.length, 1, "subsequent query should be served from cache");
   },
 );
 
