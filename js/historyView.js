@@ -1404,7 +1404,6 @@ export function createWatchHistoryRenderer(config = {}) {
     sentinelSelector = "#watchHistorySentinel",
     loadMoreSelector = "#watchHistoryLoadMore",
     clearButtonSelector = '[data-history-action="clear-cache"]',
-    republishButtonSelector = '[data-history-action="republish"]',
     refreshButtonSelector = '[data-history-action="refresh"]',
     errorBannerSelector = "#watchHistoryError",
     scrollContainerSelector = null,
@@ -1471,7 +1470,6 @@ export function createWatchHistoryRenderer(config = {}) {
     sentinel: null,
     loadMore: null,
     clearButton: null,
-    republishButton: null,
     refreshButton: null,
     errorBanner: null,
     scrollContainer: null,
@@ -1482,7 +1480,6 @@ export function createWatchHistoryRenderer(config = {}) {
   let boundGridClickHandler = null;
   let boundLoadMoreHandler = null;
   let boundClearHandler = null;
-  let boundRepublishHandler = null;
   let boundRefreshHandler = null;
 
   const subscriptions = new Set();
@@ -1498,7 +1495,6 @@ export function createWatchHistoryRenderer(config = {}) {
       sentinel: resolveElement(sentinelSelector, scope),
       loadMore: resolveElement(loadMoreSelector, scope),
       clearButton: resolveElement(clearButtonSelector, scope),
-      republishButton: resolveElement(republishButtonSelector, scope),
       refreshButton: resolveElement(refreshButtonSelector, scope),
       errorBanner: resolveElement(errorBannerSelector, scope),
       scrollContainer: resolveElement(scrollContainerSelector, scope),
@@ -2124,42 +2120,6 @@ export function createWatchHistoryRenderer(config = {}) {
       elements.clearButton.addEventListener("click", boundClearHandler);
     }
 
-    if (elements.republishButton) {
-      if (boundRepublishHandler) {
-        elements.republishButton.removeEventListener(
-          "click",
-          boundRepublishHandler
-        );
-      }
-      boundRepublishHandler = async (event) => {
-        event.preventDefault();
-        userLogger.info("[historyView] 'Republish now' clicked.");
-        const actor = await resolveActorKey();
-        try {
-          const payload = state.items.map((entry) => ({
-            ...entry.pointer,
-            watchedAt: entry.watchedAt,
-          }));
-          await snapshot(payload, { actor, reason: "manual-republish" });
-          const app = getAppInstance();
-          if (typeof app?.showSuccess === "function") {
-            app.showSuccess("Watch history snapshot queued for publish.");
-          } else {
-            console.log("Watch history snapshot queued for publish.");
-          }
-        } catch (error) {
-          const app = getAppInstance();
-          if (typeof app?.showError === "function") {
-            app.showError("Failed to publish watch history. Try again later.");
-          } else {
-            console.error("Failed to publish watch history.");
-          }
-          userLogger.warn("[historyView] Republish failed:", error);
-        }
-      };
-      elements.republishButton.addEventListener("click", boundRepublishHandler);
-    }
-
     if (elements.refreshButton) {
       if (boundRefreshHandler) {
         elements.refreshButton.removeEventListener("click", boundRefreshHandler);
@@ -2406,13 +2366,6 @@ export function createWatchHistoryRenderer(config = {}) {
       if (elements.clearButton && boundClearHandler) {
         elements.clearButton.removeEventListener("click", boundClearHandler);
         boundClearHandler = null;
-      }
-      if (elements.republishButton && boundRepublishHandler) {
-        elements.republishButton.removeEventListener(
-          "click",
-          boundRepublishHandler
-        );
-        boundRepublishHandler = null;
       }
       if (elements.refreshButton && boundRefreshHandler) {
         elements.refreshButton.removeEventListener("click", boundRefreshHandler);
