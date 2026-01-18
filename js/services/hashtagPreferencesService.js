@@ -2,8 +2,8 @@
 import {
   nostrClient,
   requestDefaultExtensionPermissions,
+  getActiveSigner,
 } from "../nostrClientFacade.js";
-import { getActiveSigner } from "../nostr/index.js";
 import { isSessionActor } from "../nostr/sessionActor.js";
 import {
   buildHashtagPreferenceEvent,
@@ -622,7 +622,10 @@ class HashtagPreferencesService {
       return { ok: false, error };
     }
 
-    const signer = getActiveSigner();
+    let signer = getActiveSigner();
+    if (!signer && typeof nostrClient?.ensureActiveSignerForPubkey === "function") {
+      signer = await nostrClient.ensureActiveSignerForPubkey(userPubkey);
+    }
     const signerHasNip04 = typeof signer?.nip04Decrypt === "function";
     const signerHasNip44 = typeof signer?.nip44Decrypt === "function";
 
@@ -661,39 +664,6 @@ class HashtagPreferencesService {
 
     if (signerHasNip04) {
       registerDecryptor("nip04", (payload) => signer.nip04Decrypt(userPubkey, payload));
-    }
-
-    const nostrApi =
-      typeof window !== "undefined" && window && window.nostr ? window.nostr : null;
-    if (nostrApi) {
-      const nip04 =
-        nostrApi.nip04 && typeof nostrApi.nip04.decrypt === "function"
-          ? nostrApi.nip04
-          : null;
-      if (nip04 && !decryptors.has("nip04")) {
-        registerDecryptor("nip04", (payload) => nip04.decrypt(userPubkey, payload));
-      }
-
-      const nip44 =
-        nostrApi.nip44 && typeof nostrApi.nip44 === "object"
-          ? nostrApi.nip44
-          : null;
-      if (nip44) {
-        if (typeof nip44.decrypt === "function" && !decryptors.has("nip44")) {
-          registerDecryptor("nip44", (payload) => nip44.decrypt(userPubkey, payload));
-        }
-        const nip44v2 = nip44.v2 && typeof nip44.v2 === "object" ? nip44.v2 : null;
-        if (nip44v2 && typeof nip44v2.decrypt === "function") {
-          registerDecryptor("nip44_v2", (payload) =>
-            nip44v2.decrypt(userPubkey, payload),
-          );
-          if (!decryptors.has("nip44")) {
-            registerDecryptor("nip44", (payload) =>
-              nip44v2.decrypt(userPubkey, payload),
-            );
-          }
-        }
-      }
     }
 
     if (!decryptors.size) {
@@ -759,7 +729,10 @@ class HashtagPreferencesService {
       signer = await nostrClient.ensureActiveSignerForPubkey(targetPubkey);
     }
 
-    if (!signer || typeof signer.signEvent !== "function") {
+    const canSign = typeof signer?.canSign === "function"
+      ? signer.canSign()
+      : typeof signer?.signEvent === "function";
+    if (!canSign || typeof signer?.signEvent !== "function") {
       const error = new Error("An active signer is required to publish preferences.");
       error.code = "hashtag-preferences-missing-signer";
       throw error;
@@ -804,31 +777,6 @@ class HashtagPreferencesService {
 
     if (typeof signer.nip04Encrypt === "function") {
       registerEncryptor("nip04", (value) => signer.nip04Encrypt(targetPubkey, value));
-    }
-
-    const nostrApi =
-      typeof window !== "undefined" && window && window.nostr ? window.nostr : null;
-    if (nostrApi) {
-      const nip44 =
-        nostrApi.nip44 && typeof nostrApi.nip44 === "object"
-          ? nostrApi.nip44
-          : null;
-      if (nip44) {
-        if (typeof nip44.encrypt === "function") {
-          registerEncryptor("nip44", (value) => nip44.encrypt(targetPubkey, value));
-        }
-        const nip44v2 = nip44.v2 && typeof nip44.v2 === "object" ? nip44.v2 : null;
-        if (nip44v2 && typeof nip44v2.encrypt === "function") {
-          registerEncryptor("nip44_v2", (value) =>
-            nip44v2.encrypt(targetPubkey, value),
-          );
-        }
-      }
-      if (typeof nostrApi.nip04?.encrypt === "function") {
-        registerEncryptor("nip04", (value) =>
-          nostrApi.nip04.encrypt(targetPubkey, value),
-        );
-      }
     }
 
     if (!encryptors.length) {

@@ -1,12 +1,10 @@
 // js/subscriptions.js
 import {
+  getActiveSigner,
   nostrClient,
   requestDefaultExtensionPermissions,
 } from "./nostrClientFacade.js";
-import {
-  getActiveSigner,
-  convertEventToVideo as sharedConvertEventToVideo,
-} from "./nostr/index.js";
+import { convertEventToVideo as sharedConvertEventToVideo } from "./nostr/index.js";
 import { normalizeNostrPubkey } from "./nostr/nip46Client.js";
 import {
   listVideoViewEvents,
@@ -557,7 +555,10 @@ class SubscriptionsManager {
       decryptors.set(scheme, handler);
     };
 
-    const signer = getActiveSigner();
+    let signer = getActiveSigner();
+    if (!signer && typeof nostrClient?.ensureActiveSignerForPubkey === "function") {
+      signer = await nostrClient.ensureActiveSignerForPubkey(userPubkey);
+    }
     const signerHasNip04 = typeof signer?.nip04Decrypt === "function";
     const signerHasNip44 = typeof signer?.nip44Decrypt === "function";
 
@@ -567,34 +568,6 @@ class SubscriptionsManager {
 
     if (signerHasNip44) {
       registerDecryptor("nip44", (payload) => signer.nip44Decrypt(userPubkey, payload));
-    }
-
-    const nostrApi =
-      typeof window !== "undefined" && window && window.nostr ? window.nostr : null;
-    if (nostrApi) {
-      if (!signerHasNip04 && nostrApi.nip04 && typeof nostrApi.nip04.decrypt === "function") {
-        registerDecryptor("nip04", (payload) =>
-          nostrApi.nip04.decrypt(userPubkey, payload)
-        );
-      }
-
-      const nip44 =
-        nostrApi.nip44 && typeof nostrApi.nip44 === "object" ? nostrApi.nip44 : null;
-      if (nip44) {
-        if (!signerHasNip44 && typeof nip44.decrypt === "function") {
-          registerDecryptor("nip44", (payload) => nip44.decrypt(userPubkey, payload));
-        }
-
-        const nip44v2 = nip44.v2 && typeof nip44.v2 === "object" ? nip44.v2 : null;
-        if (nip44v2 && typeof nip44v2.decrypt === "function") {
-          registerDecryptor("nip44_v2", (payload) =>
-            nip44v2.decrypt(userPubkey, payload)
-          );
-          if (!decryptors.has("nip44")) {
-            registerDecryptor("nip44", (payload) => nip44v2.decrypt(userPubkey, payload));
-          }
-        }
-      }
     }
 
     if (!decryptors.size) {
@@ -700,7 +673,10 @@ class SubscriptionsManager {
       signer = await nostrClient.ensureActiveSignerForPubkey(userPubkey);
     }
 
-    if (!signer) {
+    const canSign = typeof signer?.canSign === "function"
+      ? signer.canSign()
+      : typeof signer?.signEvent === "function";
+    if (!canSign) {
       const error = new Error(
         "An active signer is required to update subscriptions."
       );

@@ -1,6 +1,7 @@
 // js/watchHistoryService.js
 
 import {
+  getActiveSigner,
   nostrClient,
   requestDefaultExtensionPermissions,
 } from "./nostrClientFacade.js";
@@ -73,31 +74,26 @@ function getSessionActorKey() {
   return normalizeActorKey(nostrClient?.sessionActor?.pubkey);
 }
 
-function shouldUseExtensionForHistory(actorKey) {
+async function ensureWatchHistoryExtensionPermissions(actorKey) {
   const normalizedActor = normalizeActorKey(actorKey);
   if (!normalizedActor) {
-    return false;
+    return { ok: true };
   }
 
   const loggedActor = normalizeActorKey(nostrClient?.pubkey);
   if (!loggedActor || loggedActor !== normalizedActor) {
-    return false;
+    return { ok: true };
   }
 
-  if (typeof window === "undefined") {
-    return false;
+  let signer = getActiveSigner();
+  if (!signer && typeof nostrClient?.ensureActiveSignerForPubkey === "function") {
+    signer = await nostrClient.ensureActiveSignerForPubkey(normalizedActor);
   }
 
-  const extension = window.nostr;
-  if (!extension) {
-    return false;
-  }
-
-  return typeof extension.signEvent === "function";
-}
-
-async function ensureWatchHistoryExtensionPermissions(actorKey) {
-  if (!shouldUseExtensionForHistory(actorKey)) {
+  const canSign = typeof signer?.canSign === "function"
+    ? signer.canSign()
+    : typeof signer?.signEvent === "function";
+  if (!canSign || signer?.type !== "extension") {
     return { ok: true };
   }
 
