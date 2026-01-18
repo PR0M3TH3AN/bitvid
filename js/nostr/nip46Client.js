@@ -12,6 +12,7 @@ import {
   assertAnyRelayAccepted as defaultAssertAnyRelayAccepted,
 } from "../nostrPublish.js";
 import { devLogger, userLogger } from "../utils/logger.js";
+import { Nip46RequestQueue, NIP46_PRIORITY } from "./nip46Queue.js";
 
 export const HEX64_REGEX = /^[0-9a-f]{64}$/i;
 
@@ -1400,6 +1401,7 @@ export class Nip46RpcClient {
     this.lastSeen = 0;
     this.userPubkey = "";
     this.activeSignerCache = null;
+    this.requestQueue = new Nip46RequestQueue();
   }
 
   get pool() {
@@ -1633,6 +1635,7 @@ export class Nip46RpcClient {
         error: error?.message || String(error),
       });
     }
+    this.requestQueue.clear(error);
     for (const [id, pending] of this.pendingRequests.entries()) {
       clearTimeout(pending.timeoutId);
       try {
@@ -1649,173 +1652,207 @@ export class Nip46RpcClient {
       throw new Error("Remote signer session has been disposed.");
     }
 
-    const timeoutMs = Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
-      ? options.timeoutMs
-      : NIP46_RESPONSE_TIMEOUT_MS;
-    const retries = Number.isFinite(options.retries) && options.retries >= 0
-      ? options.retries
-      : NIP46_MAX_RETRIES;
+    const priority = Number.isFinite(options.priority)
+      ? options.priority
+      : NIP46_PRIORITY.NORMAL;
 
-    let lastError = null;
+    return this.requestQueue.enqueue(async () => {
+      const timeoutMs =
+        Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
+          ? options.timeoutMs
+          : NIP46_RESPONSE_TIMEOUT_MS;
+      const retries =
+        Number.isFinite(options.retries) && options.retries >= 0
+          ? options.retries
+          : NIP46_MAX_RETRIES;
 
-    devLogger.debug("[nostr] Remote signer RPC start", {
-      method,
-      remotePubkey: summarizeHexForLog(this.remotePubkey),
-      timeoutMs,
-      retries,
-      params: summarizeRpcParamsForLog(method, params),
-    });
+      let lastError = null;
 
-    for (let attempt = 0; attempt <= retries; attempt += 1) {
-      await this.ensureSubscription();
-
-      const requestId = createNip46RequestId();
-      const message = {
-        id: requestId,
+      devLogger.debug("[nostr] Remote signer RPC start", {
         method,
-        params: Array.isArray(params) ? params : [],
-      };
-
-      devLogger.debug("[nostr] Remote signer RPC attempt prepared", {
-        method,
-        attempt: attempt + 1,
-        requestId,
         remotePubkey: summarizeHexForLog(this.remotePubkey),
+        timeoutMs,
+        retries,
+        params: summarizeRpcParamsForLog(method, params),
+        priority,
       });
 
-      let event;
-      try {
-        const content = await this.encryptPayload(message, {
-          method,
-          requestId,
-        });
-        if (!this.signEventWithKey) {
-          throw new Error("Remote signer signing helper is unavailable.");
-        }
-        event = this.signEventWithKey(
-          {
-            kind: NIP46_RPC_KIND,
-            pubkey: this.clientPublicKey,
-            created_at: Math.floor(Date.now() / 1000),
-            tags: [["p", this.remotePubkey]],
-            content,
-          },
-          this.clientPrivateKey,
-        );
-        devLogger.debug("[nostr] Remote signer RPC event signed", {
-          method,
-          attempt: attempt + 1,
-          requestId,
-          relayCount: this.relays.length,
-          contentLength: typeof event.content === "string" ? event.content.length : 0,
-        });
-      } catch (error) {
-        lastError = error;
-        devLogger.warn("[nostr] Remote signer RPC encryption failed", {
-          method,
-          attempt: attempt + 1,
-          requestId,
-          error: error?.message || String(error),
-        });
-        break;
-      }
+      for (let attempt = 0; attempt <= retries; attempt += 1) {
+        await this.ensureSubscription();
 
-      const responsePromise = new Promise((resolve, reject) => {
-        const timeoutId = setTimeout(() => {
-          this.pendingRequests.delete(requestId);
-          const timeoutError = new Error(
-            `Timed out waiting for remote signer response to ${method}.`,
+        const requestId = createNip46RequestId();
+        const message = {
+          id: requestId,
+          method,
+          params: Array.isArray(params) ? params : [],
+        };
+
+        devLogger.debug("[nostr] Remote signer RPC attempt prepared", {
+          method,
+          attempt: attempt + 1,
+          requestId,
+          remotePubkey: summarizeHexForLog(this.remotePubkey),
+        });
+
+        let event;
+        try {
+          const content = await this.encryptPayload(message, {
+            method,
+            requestId,
+          });
+          if (!this.signEventWithKey) {
+            throw new Error("Remote signer signing helper is unavailable.");
+          }
+          event = this.signEventWithKey(
+            {
+              kind: NIP46_RPC_KIND,
+              pubkey: this.clientPublicKey,
+              created_at: Math.floor(Date.now() / 1000),
+              tags: [["p", this.remotePubkey]],
+              content,
+            },
+            this.clientPrivateKey,
           );
-          timeoutError.code = "nip46-timeout";
-          devLogger.warn("[nostr] Remote signer RPC timed out", {
+          devLogger.debug("[nostr] Remote signer RPC event signed", {
+            method,
+            attempt: attempt + 1,
+            requestId,
+            relayCount: this.relays.length,
+            contentLength:
+              typeof event.content === "string" ? event.content.length : 0,
+          });
+        } catch (error) {
+          lastError = error;
+          devLogger.warn("[nostr] Remote signer RPC encryption failed", {
+            method,
+            attempt: attempt + 1,
+            requestId,
+            error: error?.message || String(error),
+          });
+          break;
+        }
+
+        const responsePromise = new Promise((resolve, reject) => {
+          const timeoutId = setTimeout(() => {
+            this.pendingRequests.delete(requestId);
+            const timeoutError = new Error(
+              `Timed out waiting for remote signer response to ${method}.`,
+            );
+            timeoutError.code = "nip46-timeout";
+            devLogger.warn("[nostr] Remote signer RPC timed out", {
+              method,
+              requestId,
+              attempt: attempt + 1,
+              timeoutMs,
+            });
+            reject(timeoutError);
+          }, timeoutMs);
+
+          this.pendingRequests.set(requestId, {
+            resolve,
+            reject,
+            timeoutId,
+            method,
+          });
+          devLogger.debug("[nostr] Remote signer RPC awaiting response", {
             method,
             requestId,
             attempt: attempt + 1,
-            timeoutMs,
           });
-          reject(timeoutError);
-        }, timeoutMs);
+        });
 
-        this.pendingRequests.set(requestId, {
-          resolve,
-          reject,
-          timeoutId,
-          method,
-        });
-        devLogger.debug("[nostr] Remote signer RPC awaiting response", {
-          method,
-          requestId,
-          attempt: attempt + 1,
-        });
-      });
+        try {
+          const publishResults = await this.publishEventToRelays(
+            await this.ensurePool(),
+            this.relays,
+            event,
+            { timeoutMs: NIP46_PUBLISH_TIMEOUT_MS },
+          );
+          this.assertAnyRelayAccepted(publishResults, { context: method });
+          devLogger.debug("[nostr] Remote signer RPC published", {
+            method,
+            requestId,
+            attempt: attempt + 1,
+            publishResults: summarizeRelayPublishResultsForLog(publishResults),
+          });
+        } catch (error) {
+          const pending = this.pendingRequests.get(requestId);
+          if (pending) {
+            clearTimeout(pending.timeoutId);
+            this.pendingRequests.delete(requestId);
+          }
+          lastError = error;
 
-      try {
-        const publishResults = await this.publishEventToRelays(
-          await this.ensurePool(),
-          this.relays,
-          event,
-          { timeoutMs: NIP46_PUBLISH_TIMEOUT_MS },
-        );
-        this.assertAnyRelayAccepted(publishResults, { context: method });
-        devLogger.debug("[nostr] Remote signer RPC published", {
-          method,
-          requestId,
-          attempt: attempt + 1,
-          publishResults: summarizeRelayPublishResultsForLog(publishResults),
-        });
-      } catch (error) {
-        const pending = this.pendingRequests.get(requestId);
-        if (pending) {
-          clearTimeout(pending.timeoutId);
-          this.pendingRequests.delete(requestId);
+          const isRateLimited =
+            error &&
+            (error.message?.includes("rate-limited") ||
+              error.message?.includes("noting too much"));
+
+          if (isRateLimited) {
+            devLogger.warn(
+              "[nostr] Remote signer RPC rate limited, backing off",
+              {
+                method,
+                requestId,
+                attempt: attempt + 1,
+                error: error?.message || String(error),
+              },
+            );
+            // Exponential backoff: 2s, 4s, 8s...
+            const backoffMs = 2000 * Math.pow(2, attempt);
+            await new Promise((r) => setTimeout(r, backoffMs));
+          } else {
+            devLogger.warn("[nostr] Remote signer RPC publish failed", {
+              method,
+              requestId,
+              attempt: attempt + 1,
+              error: error?.message || String(error),
+            });
+          }
+          continue;
         }
-        lastError = error;
-        devLogger.warn("[nostr] Remote signer RPC publish failed", {
-          method,
-          requestId,
-          attempt: attempt + 1,
-          error: error?.message || String(error),
-        });
-        continue;
+
+        try {
+          const result = await responsePromise;
+          devLogger.debug("[nostr] Remote signer RPC response received", {
+            method,
+            requestId,
+            attempt: attempt + 1,
+            resultSummary: summarizeRpcResultForLog(method, result),
+          });
+          return result;
+        } catch (error) {
+          lastError = error;
+          devLogger.warn("[nostr] Remote signer RPC attempt rejected", {
+            method,
+            requestId,
+            attempt: attempt + 1,
+            error: error?.message || String(error),
+          });
+          if (error?.code === "auth-challenge") {
+            throw error;
+          }
+        }
       }
 
-      try {
-        const result = await responsePromise;
-        devLogger.debug("[nostr] Remote signer RPC response received", {
+      if (lastError) {
+        devLogger.warn("[nostr] Remote signer RPC exhausted", {
           method,
-          requestId,
-          attempt: attempt + 1,
-          resultSummary: summarizeRpcResultForLog(method, result),
+          remotePubkey: summarizeHexForLog(this.remotePubkey),
+          error: lastError?.message || String(lastError),
         });
-        return result;
-      } catch (error) {
-        lastError = error;
-        devLogger.warn("[nostr] Remote signer RPC attempt rejected", {
-          method,
-          requestId,
-          attempt: attempt + 1,
-          error: error?.message || String(error),
-        });
-        if (error?.code === "auth-challenge") {
-          throw error;
-        }
+        throw lastError;
       }
-    }
 
-    if (lastError) {
-      devLogger.warn("[nostr] Remote signer RPC exhausted", {
-        method,
-        remotePubkey: summarizeHexForLog(this.remotePubkey),
-        error: lastError?.message || String(lastError),
-      });
-      throw lastError;
-    }
-
-    devLogger.warn("[nostr] Remote signer RPC failed without explicit error", {
-      method,
-      remotePubkey: summarizeHexForLog(this.remotePubkey),
-    });
-    throw new Error(`Remote signer request for ${method} failed.`);
+      devLogger.warn(
+        "[nostr] Remote signer RPC failed without explicit error",
+        {
+          method,
+          remotePubkey: summarizeHexForLog(this.remotePubkey),
+        },
+      );
+      throw new Error(`Remote signer request for ${method} failed.`);
+    }, priority);
   }
 
   async connect({ permissions } = {}) {
@@ -1832,6 +1869,7 @@ export class Nip46RpcClient {
     const result = await this.sendRpc("connect", params, {
       timeoutMs: Math.max(NIP46_RESPONSE_TIMEOUT_MS, 12_000),
       retries: 0,
+      priority: NIP46_PRIORITY.HIGH,
     });
 
     if (this.secret) {
@@ -1858,6 +1896,7 @@ export class Nip46RpcClient {
     const result = await this.sendRpc("get_public_key", [], {
       timeoutMs: NIP46_RESPONSE_TIMEOUT_MS,
       retries: 0,
+      priority: NIP46_PRIORITY.HIGH,
     });
     const pubkey = typeof result === "string" ? result.trim() : "";
     if (!pubkey) {
@@ -1878,6 +1917,7 @@ export class Nip46RpcClient {
       const result = await this.sendRpc("ping", [], {
         timeoutMs: 5000,
         retries: 0,
+        priority: NIP46_PRIORITY.HIGH,
       });
       const ok = typeof result === "string" && result.trim().toLowerCase() === "pong";
       devLogger.debug("[nostr] Remote signer ping result", {
@@ -1921,6 +1961,7 @@ export class Nip46RpcClient {
           ? options.timeoutMs
           : NIP46_SIGN_EVENT_TIMEOUT_MS,
         retries: Number.isFinite(options.retries) ? options.retries : NIP46_MAX_RETRIES,
+        priority: NIP46_PRIORITY.HIGH,
       },
     );
 
@@ -1961,7 +2002,9 @@ export class Nip46RpcClient {
     if (!pubkey || !plaintext) {
       throw new Error("Pubkey and plaintext are required for NIP-04 encryption.");
     }
-    const result = await this.sendRpc("nip04_encrypt", [pubkey, plaintext]);
+    const result = await this.sendRpc("nip04_encrypt", [pubkey, plaintext], {
+      priority: NIP46_PRIORITY.LOW,
+    });
     if (typeof result !== "string") {
       throw new Error("Remote signer returned invalid NIP-04 ciphertext.");
     }
@@ -1972,7 +2015,9 @@ export class Nip46RpcClient {
     if (!pubkey || !ciphertext) {
       throw new Error("Pubkey and ciphertext are required for NIP-04 decryption.");
     }
-    const result = await this.sendRpc("nip04_decrypt", [pubkey, ciphertext]);
+    const result = await this.sendRpc("nip04_decrypt", [pubkey, ciphertext], {
+      priority: NIP46_PRIORITY.LOW,
+    });
     if (typeof result !== "string") {
       throw new Error("Remote signer returned invalid NIP-04 plaintext.");
     }
@@ -1983,7 +2028,9 @@ export class Nip46RpcClient {
     if (!pubkey || !plaintext) {
       throw new Error("Pubkey and plaintext are required for NIP-44 encryption.");
     }
-    const result = await this.sendRpc("nip44_encrypt", [pubkey, plaintext]);
+    const result = await this.sendRpc("nip44_encrypt", [pubkey, plaintext], {
+      priority: NIP46_PRIORITY.LOW,
+    });
     if (typeof result !== "string") {
       throw new Error("Remote signer returned invalid NIP-44 ciphertext.");
     }
@@ -1994,7 +2041,9 @@ export class Nip46RpcClient {
     if (!pubkey || !ciphertext) {
       throw new Error("Pubkey and ciphertext are required for NIP-44 decryption.");
     }
-    const result = await this.sendRpc("nip44_decrypt", [pubkey, ciphertext]);
+    const result = await this.sendRpc("nip44_decrypt", [pubkey, ciphertext], {
+      priority: NIP46_PRIORITY.LOW,
+    });
     if (typeof result !== "string") {
       throw new Error("Remote signer returned invalid NIP-44 plaintext.");
     }
@@ -2046,6 +2095,9 @@ export class Nip46RpcClient {
     }
     this.subscription = null;
 
+    if (this.requestQueue) {
+      this.requestQueue.clear();
+    }
     this.rejectAllPending(new Error("Remote signer session closed."));
   }
 }
