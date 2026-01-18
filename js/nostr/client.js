@@ -170,6 +170,9 @@ import {
   clearActiveSigner as clearActiveSignerInRegistry,
   resolveActiveSigner as resolveActiveSignerFromRegistry,
 } from "../nostrClientRegistry.js";
+import { createNip07Adapter } from "./adapters/nip07Adapter.js";
+import { createNsecAdapter } from "./adapters/nsecAdapter.js";
+import { createNip46Adapter } from "./adapters/nip46Adapter.js";
 
 function normalizeProfileFromEvent(event) {
   if (!event || !event.content) return null;
@@ -1425,7 +1428,7 @@ export class NostrClient {
     };
   }
 
-  installNip46Client(client, { userPubkey } = {}) {
+  async installNip46Client(client, { userPubkey } = {}) {
     if (this.nip46Client && this.nip46Client !== client) {
       try {
         this.nip46Client.destroy();
@@ -1439,10 +1442,8 @@ export class NostrClient {
       this.nip46Client.userPubkey = userPubkey;
     }
 
-    const signer = client.getActiveSigner();
-    if (signer) {
-      setActiveSigner(signer);
-    }
+    const signer = await createNip46Adapter(client);
+    setActiveSigner(signer);
 
     return signer;
   }
@@ -2020,7 +2021,7 @@ export class NostrClient {
         userPubkey: summarizeHexForLog(userPubkey),
       });
       client.metadata = metadata;
-      const signer = this.installNip46Client(client, { userPubkey });
+      const signer = await this.installNip46Client(client, { userPubkey });
 
       if (remember) {
         devLogger.debug("[nostr] Persisting remote signer session", {
@@ -2146,7 +2147,7 @@ export class NostrClient {
       await client.connect({ permissions: stored.permissions });
       const userPubkey = await client.getUserPubkey();
       client.metadata = stored.metadata;
-      const signer = this.installNip46Client(client, { userPubkey });
+      const signer = await this.installNip46Client(client, { userPubkey });
 
       writeStoredNip46Session({
         ...stored,
@@ -2478,13 +2479,11 @@ export class NostrClient {
       return existingSigner;
     }
 
-    setActiveSigner({
-      type: "extension",
-      pubkey: extensionPubkey || normalizedPubkey,
-      signEvent: extension.signEvent.bind(extension),
-      nip04: extension.nip04,
-      nip44: extension.nip44,
-    });
+    const adapter = await createNip07Adapter(extension);
+    if (extensionPubkey) {
+      adapter.pubkey = extensionPubkey;
+    }
+    setActiveSigner(adapter);
 
     return resolveActiveSigner(normalizedPubkey || extensionPubkey);
   }
@@ -2917,12 +2916,11 @@ export class NostrClient {
     this.sessionActorCipherClosures = cipherClosures || null;
     this.sessionActorCipherClosuresPrivateKey = normalizedPrivateKey;
 
-    setActiveSigner({
-      type: "nsec",
+    const adapter = await createNsecAdapter({
+      privateKey: normalizedPrivateKey,
       pubkey: normalizedPubkey,
-      signEvent: (event) => signEventWithPrivateKey(event, normalizedPrivateKey),
-      ...cipherClosures,
     });
+    setActiveSigner(adapter);
 
     if (persist) {
       if (typeof passphrase !== "string" || !passphrase.trim()) {
@@ -3035,12 +3033,11 @@ export class NostrClient {
     this.sessionActorCipherClosures = cipherClosures || null;
     this.sessionActorCipherClosuresPrivateKey = normalizedPrivateKey;
 
-    setActiveSigner({
-      type: "nsec",
+    const adapter = await createNsecAdapter({
+      privateKey: normalizedPrivateKey,
       pubkey: normalizedPubkey,
-      signEvent: (event) => signEventWithPrivateKey(event, normalizedPrivateKey),
-      ...cipherClosures,
     });
+    setActiveSigner(adapter);
 
     const storedPayload = {
       pubkey: normalizedPubkey,
@@ -3824,16 +3821,9 @@ export class NostrClient {
       this.pubkey = pubkey;
       devLogger.log("Logged in with extension. Pubkey:", this.pubkey);
 
-      setActiveSigner({
-        type: "extension",
-        pubkey,
-        signEvent:
-          typeof extension.signEvent === "function"
-            ? extension.signEvent.bind(extension)
-            : null,
-        nip04: extension.nip04,
-        nip44: extension.nip44,
-      });
+      const adapter = await createNip07Adapter(extension);
+      adapter.pubkey = pubkey;
+      setActiveSigner(adapter);
 
       const postLoginPermissions = await this.ensureExtensionPermissions(
         DEFAULT_NIP07_PERMISSION_METHODS,
