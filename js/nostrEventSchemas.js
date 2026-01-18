@@ -27,7 +27,6 @@ export const NOTE_TYPES = Object.freeze({
   ADMIN_MODERATION_LIST: "adminModerationList",
   ADMIN_BLACKLIST: "adminBlacklist",
   ADMIN_WHITELIST: "adminWhitelist",
-  STORAGE_CHALLENGE: "storageChallenge",
   PROFILE_METADATA: "profileMetadata",
 });
 
@@ -448,17 +447,6 @@ const BASE_SCHEMAS = {
     participantTagName: "p",
     appendTags: DEFAULT_APPEND_TAGS,
     content: { format: "empty", description: "Content field unused." },
-  },
-  [NOTE_TYPES.STORAGE_CHALLENGE]: {
-    type: NOTE_TYPES.STORAGE_CHALLENGE,
-    label: "Storage challenge",
-    kind: 22242,
-    appendTags: [["purpose", "bitvid-storage-key"]],
-    content: {
-      format: "empty",
-      description:
-        "Ephemeral challenge event used for key derivation; never published.",
-    },
   },
   [NOTE_TYPES.PROFILE_METADATA]: {
     type: NOTE_TYPES.PROFILE_METADATA,
@@ -1547,31 +1535,6 @@ export function buildAdminListEvent(listKey, params) {
   appendSchemaTags(tags, schema);
   return {
     kind: schema?.kind ?? 30000,
-    pubkey,
-    created_at,
-    tags,
-    content: "",
-  };
-}
-
-export function buildStorageChallengeEvent(params) {
-  const {
-    pubkey,
-    created_at,
-    challenge,
-  } = params || {};
-  const schema = getNostrEventSchema(NOTE_TYPES.STORAGE_CHALLENGE);
-  const tags = [];
-
-  const normalizedChallenge = typeof challenge === "string" ? challenge.trim() : "";
-  if (normalizedChallenge) {
-    tags.push(["challenge", normalizedChallenge]);
-  }
-
-  appendSchemaTags(tags, schema);
-
-  return {
-    kind: schema?.kind ?? 22242,
     pubkey,
     created_at,
     tags,
