@@ -414,7 +414,7 @@ class HashtagPreferencesService {
 
   async load(pubkey) {
     const normalized = normalizeHexPubkey(pubkey);
-    const wasLoadedForUser =
+    let wasLoadedForUser =
       this.activePubkey &&
       this.activePubkey === normalized &&
       (this.interests.size > 0 || this.disinterests.size > 0 || this.loaded);
@@ -573,9 +573,16 @@ class HashtagPreferencesService {
         `${LOG_PREFIX} Failed to decrypt hashtag preferences`,
         decryptResult.error,
       );
-      // If decryption fails on a reload, we might want to keep old data?
-      // But typically decryption failure means key mismatch or bad payload.
-      // Resetting is safer here to avoid stuck state, unless we want to be very conservative.
+
+      // If we already have loaded preferences (e.g. from cache), preserve them
+      // rather than wiping everything just because the remote update couldn't be decrypted.
+      if (wasLoadedForUser) {
+        userLogger.warn(
+          `${LOG_PREFIX} Preserving cached preferences despite decryption failure.`,
+        );
+        return;
+      }
+
       this.reset();
       this.loaded = true;
       return;
