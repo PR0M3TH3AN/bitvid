@@ -1,6 +1,7 @@
 import { CACHE_POLICIES, STORAGE_TIERS } from "../nostr/cachePolicies.js";
 import { NOTE_TYPES } from "../nostrEventSchemas.js";
 import { userLogger } from "../utils/logger.js";
+import { sanitizeProfileMediaUrl } from "../utils/profileMedia.js";
 
 const PROFILE_CACHE_VERSION = 1;
 const STORAGE_KEY_PREFIX = "bitvid:profile:";
@@ -12,7 +13,15 @@ const SECTION_TO_NOTE_TYPE = {
   "blocks": NOTE_TYPES.USER_BLOCK_LIST,
   "interests": NOTE_TYPES.HASHTAG_PREFERENCES,
   "relays": NOTE_TYPES.RELAY_LIST,
+  "profile": NOTE_TYPES.PROFILE_METADATA,
 };
+
+function sanitizeProfileString(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value.trim();
+}
 
 class ProfileCache {
   constructor() {
@@ -146,6 +155,87 @@ class ProfileCache {
     this.setProfileData(this.activePubkey, section, data);
   }
 
+  getProfile(pubkey) {
+    const data = this.getProfileData(pubkey, "profile");
+    return data && data.profile ? data.profile : null;
+  }
+
+  setProfile(pubkey, profile, { persist = true } = {}) {
+    const normalizedPubkey = this.normalizeHexPubkey(pubkey);
+    if (!normalizedPubkey || !profile) {
+      return null;
+    }
+
+    const normalized = {
+      name: profile.name || profile.display_name || "Unknown",
+      picture:
+        sanitizeProfileMediaUrl(profile.picture || profile.image) ||
+        "assets/svg/default-profile.svg",
+    };
+
+    const about = sanitizeProfileString(profile.about || profile.aboutMe);
+    if (about) {
+      normalized.about = about;
+    }
+
+    const website = sanitizeProfileString(profile.website || profile.url);
+    if (website) {
+      normalized.website = website;
+    }
+
+    const banner = sanitizeProfileMediaUrl(
+      profile.banner ||
+        profile.header ||
+        profile.background ||
+        profile.cover ||
+        profile.cover_image ||
+        profile.coverImage
+    );
+    if (banner) {
+      normalized.banner = banner;
+    }
+
+    const lud16 = sanitizeProfileString(profile.lud16);
+    if (lud16) {
+      normalized.lud16 = lud16;
+    }
+
+    const lud06 = sanitizeProfileString(profile.lud06);
+    if (lud06) {
+      normalized.lud06 = lud06;
+    }
+
+    const lightningCandidates = [
+      sanitizeProfileString(profile.lightningAddress),
+      lud16,
+      lud06,
+    ].filter(Boolean);
+    if (lightningCandidates.length) {
+      normalized.lightningAddress = lightningCandidates[0];
+    }
+
+    const entry = {
+      profile: normalized,
+      timestamp: Date.now(),
+    };
+
+    // We can update memory directly if it's the active pubkey or we track everyone?
+    // ProfileCache logic for setProfileData updates memory cache if using setMemoryData,
+    // but typically getProfileData checks persistence if memory is empty.
+    // However, for profiles, we probably want persistence.
+    // The instructions say: "normalizes, stores, sets timestamp and persists".
+
+    // If persist is false, we might only update memory.
+    if (persist) {
+      this.setProfileData(normalizedPubkey, "profile", entry);
+    } else {
+      // Just memory
+      this.setMemoryDataForPubkey(normalizedPubkey, "profile", entry);
+    }
+
+    return entry;
+  }
+
   getProfileData(pubkey, section) {
     // 1. Check memory cache (runtime data)
     const memKey = `${pubkey}:${section}`;
@@ -180,6 +270,8 @@ class ProfileCache {
              }
           }
 
+          // Populate memory cache to avoid repeat parsing
+          this.memoryCache.set(memKey, parsed);
           return parsed;
         }
       } catch (error) {
@@ -207,8 +299,18 @@ class ProfileCache {
       }
     }
 
+    // Update memory cache
+    const memKey = `${pubkey}:${section}`;
+    this.memoryCache.set(memKey, data);
+
     this.emit("update", { pubkey, section, data });
     this.emit("partition-updated", { pubkey, key: section });
+  }
+
+  setMemoryDataForPubkey(pubkey, section, data) {
+    const memKey = `${pubkey}:${section}`;
+    this.memoryCache.set(memKey, data);
+    this.emit("update", { pubkey, section, data });
   }
 
   setMemoryData(section, data) {

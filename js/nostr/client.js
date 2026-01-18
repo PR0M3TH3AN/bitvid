@@ -164,6 +164,15 @@ import {
 } from "./nip46Client.js";
 import { profileCache } from "../state/profileCache.js";
 
+function normalizeProfileFromEvent(event) {
+  if (!event || !event.content) return null;
+  try {
+    return JSON.parse(event.content);
+  } catch (err) {
+    return null;
+  }
+}
+
 let activeSigner = null;
 const activeSignerRegistry = new Map();
 
@@ -6988,6 +6997,18 @@ export class NostrClient {
     return Array.from(this.activeMap.values()).sort(
       (a, b) => b.created_at - a.created_at
     );
+  }
+
+  handleEvent(event) {
+    if (!event || typeof event !== "object") return;
+
+    // Kind 0: Profile Metadata
+    if (event.kind === 0 && typeof event.pubkey === "string") {
+      const normalized = normalizeProfileFromEvent(event);
+      if (normalized) {
+        profileCache.setProfile(event.pubkey, normalized, { persist: true });
+      }
+    }
   }
 }
 
