@@ -52,6 +52,7 @@ export default class WatchHistoryTelemetry {
     normalizeHexPubkey,
     getActiveUserPubkey,
     ingestLocalViewEvent = defaultIngestLocalViewEvent,
+    onViewLogged,
     viewThresholdSeconds = DEFAULT_VIEW_THRESHOLD_SECONDS,
   } = {}) {
     this.watchHistoryService = watchHistoryService;
@@ -68,6 +69,7 @@ export default class WatchHistoryTelemetry {
       typeof ingestLocalViewEvent === "function"
         ? ingestLocalViewEvent
         : defaultIngestLocalViewEvent;
+    this.onViewLogged = typeof onViewLogged === "function" ? onViewLogged : null;
     this.viewThresholdSeconds = Number.isFinite(viewThresholdSeconds)
       ? Math.max(0, viewThresholdSeconds)
       : DEFAULT_VIEW_THRESHOLD_SECONDS;
@@ -267,6 +269,22 @@ export default class WatchHistoryTelemetry {
             } catch (error) {
               devLogger.warn(
                 "[watchHistoryTelemetry] Failed to ingest local view event:",
+                error,
+              );
+            }
+          }
+          if (this.onViewLogged) {
+            try {
+              this.onViewLogged({
+                pointer: thresholdPointer,
+                pointerKey: thresholdPointerKey,
+                video: state.videoMetadata,
+                event: viewResult?.event || null,
+                result: viewResult || null,
+              });
+            } catch (error) {
+              devLogger.warn(
+                "[watchHistoryTelemetry] onViewLogged handler failed:",
                 error,
               );
             }
