@@ -20,7 +20,8 @@
     "check:css": "npm run build:css",
     "test:visual": "npm run build && npx playwright test",
     "test:visual:update": "npm run build && cross-env UPDATE_VISUAL_BASELINES=1 npx playwright test",
-    "test:unit": "node scripts/run-unit-tests.mjs"
+    "test:unit": "node scripts/run-unit-tests.mjs",
+    "telemetry:aggregate": "node scripts/telemetry-aggregator.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.57.0",
