@@ -164,6 +164,12 @@ import {
 } from "./nip46Client.js";
 import { profileCache } from "../state/profileCache.js";
 import { createPrivateKeyCipherClosures } from "./signerHelpers.js";
+import {
+  setActiveSigner as setActiveSignerInRegistry,
+  getActiveSigner as getActiveSignerFromRegistry,
+  clearActiveSigner as clearActiveSignerInRegistry,
+  resolveActiveSigner as resolveActiveSignerFromRegistry,
+} from "../nostrClientRegistry.js";
 
 function normalizeProfileFromEvent(event) {
   if (!event || !event.content) return null;
@@ -173,9 +179,6 @@ function normalizeProfileFromEvent(event) {
     return null;
   }
 }
-
-let activeSigner = null;
-const activeSignerRegistry = new Map();
 
 function attachNipMethodAliases(signer) {
   if (!signer || typeof signer !== "object") {
@@ -283,45 +286,31 @@ function setActiveSigner(signer) {
   hydrateExtensionSignerCapabilities(signer);
   attachNipMethodAliases(signer);
 
-  activeSigner = signer;
   const pubkey =
     typeof signer.pubkey === "string" && signer.pubkey.trim()
       ? signer.pubkey.trim().toLowerCase()
       : "";
   if (pubkey) {
-    activeSignerRegistry.set(pubkey, signer);
     profileCache.clearSignerRuntime(pubkey);
   }
+
+  setActiveSignerInRegistry(signer);
 }
 
 function getActiveSigner() {
-  return activeSigner;
+  const signer = getActiveSignerFromRegistry();
+  hydrateExtensionSignerCapabilities(signer);
+  return signer;
 }
 
 function clearActiveSigner() {
-  activeSigner = null;
-  activeSignerRegistry.clear();
+  clearActiveSignerInRegistry();
 }
 
 function resolveActiveSigner(pubkey) {
-  if (typeof pubkey === "string" && pubkey.trim()) {
-    const normalized = pubkey.trim().toLowerCase();
-    const direct = activeSignerRegistry.get(normalized);
-    if (direct) {
-      hydrateExtensionSignerCapabilities(direct);
-      return direct;
-    }
-    if (
-      activeSigner?.pubkey &&
-      typeof activeSigner.pubkey === "string" &&
-      activeSigner.pubkey.trim().toLowerCase() === normalized
-    ) {
-      hydrateExtensionSignerCapabilities(activeSigner);
-      return activeSigner;
-    }
-  }
-  hydrateExtensionSignerCapabilities(activeSigner);
-  return activeSigner;
+  const signer = resolveActiveSignerFromRegistry(pubkey);
+  hydrateExtensionSignerCapabilities(signer);
+  return signer;
 }
 
 function shouldRequestExtensionPermissions(signer) {
