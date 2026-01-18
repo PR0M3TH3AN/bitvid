@@ -593,7 +593,7 @@ export class VideoListView {
       }
       this.lastRenderedVideoSignature = EMPTY_VIDEO_LIST_SIGNATURE;
       this.container.innerHTML = `
-        <p class="flex justify-center items-center h-full w-full text-center text-subtle">
+        <p class="flex justify-center items-center h-full w-full text-center text-muted-strong">
           No public videos available yet. Be the first to upload one!
         </p>`;
       return displayVideos;

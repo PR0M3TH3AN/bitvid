@@ -499,7 +499,7 @@
   }
 
   .btn {
-    @apply focus-ring inline-flex items-center justify-center gap-2 rounded-full border border-transparent bg-accent-strong px-5 py-2.5 text-base font-semibold text-white shadow-lg transition duration-base ease-in-out;
+    @apply focus-ring inline-flex items-center justify-center gap-2 rounded-full border border-transparent bg-accent-strong px-5 py-2.5 text-base font-semibold text-inverse shadow-lg transition duration-base ease-in-out;
   }
 
   .btn[data-size="sm"],

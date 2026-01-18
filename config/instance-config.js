@@ -278,16 +278,8 @@ export const DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD = 1;
  * pressed states used for hover/active presentations.
  */
 export const THEME_ACCENT_OVERRIDES = Object.freeze({
-  light: Object.freeze({
-    accent: "#540011",
-    accentStrong: "#fe0032",
-    accentPressed: "#a90021",
-  }),
-  dark: Object.freeze({
-    accent: "#540011",
-    accentStrong: "#fe0032",
-    accentPressed: "#a90021",
-  }),
+  light: null,
+  dark: null,
 });
 
 /**

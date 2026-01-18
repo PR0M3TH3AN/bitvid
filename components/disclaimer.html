@@ -13,7 +13,7 @@
   <!-- Outer container with wide layout, just like content-appeals-form -->
   <div class="bv-modal__panel modal-sheet max-h-modal-shell flex flex-col overflow-hidden" tabindex="-1">
     <!-- Main Content -->
-    <div class="modal-body flex-1 overflow-y-auto">
+    <div class="modal-body flex-1 overflow-y-auto" tabindex="0">
       <div class="mx-auto max-w-3xl space-y-8 text-base text-text">
         <div class="flex justify-center pt-1">
           <span
@@ -49,7 +49,7 @@
             </svg>
           </span>
         </div>
-        <header class="space-y-4 text-center">
+        <div class="space-y-4 text-center">
           <h2
             id="disclaimerModalTitle"
             class="text-4xl font-semibold tracking-tight text-text"
@@ -61,7 +61,7 @@
             directly between users. We want you to understand a few important
             points before you continue.
           </p>
-        </header>
+        </div>
         <div class="modal-alert" role="status">
           <svg
             class="modal-alert__icon"

@@ -489,7 +489,7 @@
   --color-danger-on: rgb(96 18 31);
 
   --color-warning: rgb(234 179 8);
-  --color-warning-strong: rgb(202 138 4);
+  --color-warning-strong: rgb(133 77 14);
   --color-warning-surface: rgb(253 224 71 / 0.35);
   --color-warning-border: rgb(234 179 8 / 0.35);
   --color-warning-glass: rgb(253 224 71 / 0.18);
@@ -636,7 +636,7 @@
   --color-border-subtle: rgb(38 52 76);
 
   --color-accent: rgb(129 140 248);
-  --color-accent-strong: rgb(99 102 241);
+  --color-accent-strong: rgb(129 140 248);
   --color-accent-pressed: rgb(79 70 229);
   --color-accent-override: rgb(84 0 17);
   --color-accent-strong-override: rgb(254 0 50);
