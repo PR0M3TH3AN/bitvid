@@ -716,6 +716,106 @@ async function bootstrapInterface() {
     });
   }
 
+  // Mobile Search Logic
+  const mobileSearchFab = document.getElementById("mobileSearchFab");
+  const mobileSearchContainer = document.getElementById(
+    "mobileSearchContainer",
+  );
+  const mobileSearchForm = document.getElementById("mobileSearchForm");
+  const mobileSearchInput = document.getElementById("mobileSearchInput");
+
+  if (mobileSearchFab && mobileSearchContainer) {
+    const openMobileSearch = () => {
+      mobileSearchFab.classList.add("hidden");
+      mobileSearchContainer.classList.remove("hidden");
+      if (mobileSearchInput) {
+        mobileSearchInput.focus();
+      }
+    };
+
+    const closeMobileSearch = () => {
+      mobileSearchContainer.classList.add("hidden");
+      mobileSearchFab.classList.remove("hidden");
+    };
+
+    mobileSearchFab.addEventListener("click", (e) => {
+      e.stopPropagation(); // Prevent document click from immediately closing it
+      openMobileSearch();
+    });
+
+    // Close when clicking outside
+    document.addEventListener("click", (event) => {
+      // If mobile search is not visible, do nothing
+      if (mobileSearchContainer.classList.contains("hidden")) {
+        return;
+      }
+
+      // If click is on the FAB, do nothing (handled by FAB listener)
+      if (mobileSearchFab.contains(event.target)) {
+        return;
+      }
+
+      // If click is inside the search container, do nothing
+      if (mobileSearchContainer.contains(event.target)) {
+        return;
+      }
+
+      // Otherwise, close it
+      closeMobileSearch();
+    });
+
+    // Prevent clicks inside the container from closing it (redundant with above check but safe)
+    mobileSearchContainer.addEventListener("click", (e) => {
+      e.stopPropagation();
+    });
+  }
+
+  if (mobileSearchForm) {
+    mobileSearchForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      try {
+        await applicationReadyPromise;
+      } catch (error) {
+        // Continue even if app fails full initialization, if possible.
+      }
+
+      const query =
+        mobileSearchInput && mobileSearchInput.value
+          ? mobileSearchInput.value.trim()
+          : "";
+
+      if (!query) {
+        return;
+      }
+
+      // Check if it's an npub (Copy logic from headerSearchForm)
+      try {
+        if (
+          window.NostrTools &&
+          window.NostrTools.nip19 &&
+          query.startsWith("npub1")
+        ) {
+          const decoded = window.NostrTools.nip19.decode(query);
+          if (decoded && decoded.type === "npub") {
+            setHashView(`channel-profile&npub=${encodeURIComponent(query)}`);
+            // Close search on submit
+            mobileSearchContainer.classList.add("hidden");
+            mobileSearchFab.classList.remove("hidden");
+            return;
+          }
+        }
+      } catch (error) {
+        // Not a valid npub, proceed to search
+      }
+
+      setHashView(`search&q=${encodeURIComponent(query)}`);
+      // Close search on submit
+      mobileSearchContainer.classList.add("hidden");
+      mobileSearchFab.classList.remove("hidden");
+    });
+  }
+
   const sidebar = document.getElementById("sidebar");
   const collapseToggle = document.getElementById("sidebarCollapseToggle");
   if (sidebar && !sidebar.hasAttribute("data-footer-state")) {
