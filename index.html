@@ -353,6 +353,67 @@
           seed. zap. subscribe.
         </h2>
       </div>
+
+      <!-- Mobile Search FAB -->
+      <button
+        id="mobileSearchFab"
+        class="focus-ring fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-critical shadow-lg transition-transform duration-200 hover:scale-105 active:scale-95 md:hidden"
+        aria-label="Open search"
+      >
+        <svg
+          class="h-6 w-6 text-white"
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+      </button>
+
+      <!-- Mobile Search Container -->
+      <div
+        id="mobileSearchContainer"
+        class="fixed bottom-6 right-6 z-50 hidden w-[calc(100%-3rem)] max-w-sm origin-bottom-right transition-all duration-200 md:hidden"
+      >
+        <form
+          id="mobileSearchForm"
+          role="search"
+          class="flex items-center gap-3 rounded-full border border-border bg-overlay-panel bg-opacity-95 p-2 shadow-xl backdrop-blur-md"
+        >
+          <button
+            type="button"
+            class="header-search__filter shrink-0"
+            aria-label="Open search filters"
+          >
+            <span
+              aria-hidden="true"
+              class="header-search__icon header-search__icon--filter"
+            ></span>
+          </button>
+          <label for="mobileSearchInput" class="sr-only">Search videos</label>
+          <input
+            id="mobileSearchInput"
+            class="header-search__input min-w-0 flex-1 bg-transparent px-2 text-base text-text outline-none placeholder:text-muted"
+            type="search"
+            name="query"
+            placeholder="Search videos"
+            autocomplete="off"
+          />
+          <button type="submit" class="header-search__submit shrink-0">
+            <span class="sr-only">Submit search</span>
+            <span
+              aria-hidden="true"
+              class="header-search__icon header-search__icon--submit"
+            ></span>
+          </button>
+        </form>
+      </div>
+
     </div>
 
     <!-- Additional Scripts -->
