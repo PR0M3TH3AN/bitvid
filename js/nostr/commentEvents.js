@@ -1308,7 +1308,9 @@ export async function listVideoComments(client, targetInput, options = {}) {
 
   if (cached && !forceRefresh && (now - cached.fetchedAt < ttl)) {
     devLogger.debug(`[nostr] Comments cache hit for ${cacheKey}`);
-    return cached.items;
+    return cached.items.filter((event) =>
+      isVideoCommentEvent(event, descriptor),
+    );
   }
 
   if (cached) {

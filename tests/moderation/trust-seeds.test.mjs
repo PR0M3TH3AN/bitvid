@@ -29,7 +29,7 @@ test("default trust seeds derive from config", () => {
   assert.notStrictEqual(DEFAULT_TRUST_SEED_NPUBS, CONFIG_DEFAULT_TRUST_SEED_NPUBS);
 });
 
-function createTrustedMuteEvent({ owner, muted, id = "m".repeat(64), createdAt = 1_700_000_000 } = {}) {
+function createTrustedMuteEvent({ owner, muted, id = "m".repeat(64), createdAt = Math.floor(Date.now() / 1000) } = {}) {
   return {
     kind: 10000,
     id,
