@@ -5434,6 +5434,31 @@ class Application {
     };
   }
 
+  recordFeedTelemetry(metadata = {}) {
+    if (!this.feedTelemetry || typeof this.feedTelemetry.recordTagMatch !== "function") {
+      return;
+    }
+
+    const why = Array.isArray(metadata?.why) ? metadata.why : [];
+    for (const entry of why) {
+      if (entry?.stage !== "tag-preference-filter") {
+        continue;
+      }
+
+      this.feedTelemetry.recordTagMatch({
+        feed: typeof entry.feed === "string" ? entry.feed : "",
+        feedVariant: typeof entry.feedVariant === "string" ? entry.feedVariant : "",
+        position: Number.isFinite(entry.position) ? entry.position : null,
+        matchedTagCount: entry.matchedTagCount,
+        hasMatch: entry.hasMatch,
+        matchedInterestCount: entry.matchedInterestCount,
+        hasInterestMatch: entry.hasInterestMatch,
+        matchedDisinterestCount: entry.matchedDisinterestCount,
+        hasDisinterestMatch: entry.hasDisinterestMatch,
+      });
+    }
+  }
+
   refreshRecentFeed({ reason, fallbackVideos } = {}) {
     const runtime = this.buildRecentFeedRuntime();
     const normalizedReason = typeof reason === "string" ? reason : undefined;
@@ -5445,6 +5470,7 @@ class Application {
         engine: "unavailable",
       };
       this.latestFeedMetadata = metadata;
+      this.recordFeedTelemetry(metadata);
       this.videosMap = this.nostrService.getVideosMap();
       if (this.videoListView) {
         this.videoListView.state.videosMap = this.videosMap;
@@ -5465,6 +5491,7 @@ class Application {
         }
 
         this.latestFeedMetadata = metadata;
+        this.recordFeedTelemetry(metadata);
         this.videosMap = this.nostrService.getVideosMap();
         if (this.videoListView) {
           this.videoListView.state.videosMap = this.videosMap;
@@ -5481,6 +5508,7 @@ class Application {
           error: true,
         };
         this.latestFeedMetadata = metadata;
+        this.recordFeedTelemetry(metadata);
         this.videosMap = this.nostrService.getVideosMap();
         if (this.videoListView) {
           this.videoListView.state.videosMap = this.videosMap;

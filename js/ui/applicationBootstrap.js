@@ -9,6 +9,7 @@ import PlaybackService from "../services/playbackService.js";
 import AuthService from "../services/authService.js";
 import DiscussionCountService from "../services/discussionCountService.js";
 import CommentThreadService from "../services/commentThreadService.js";
+import FeedTelemetry from "../services/feedTelemetry.js";
 import hashtagPreferences, {
   HASHTAG_PREFERENCES_EVENTS,
 } from "../services/hashtagPreferencesService.js";
@@ -146,6 +147,7 @@ export default class ApplicationBootstrap {
     app.deleteModal = null;
     app.moreMenuController = null;
     app.latestFeedMetadata = null;
+    app.feedTelemetry = new FeedTelemetry({ logger: devLogger });
     app.lastModalTrigger = null;
     app.modalCommentState = {
       videoEventId: null,

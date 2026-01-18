@@ -1001,6 +1001,10 @@ class SubscriptionsManager {
         metadata.reason = reason;
       }
 
+      if (typeof app?.recordFeedTelemetry === "function") {
+        app.recordFeedTelemetry(metadata);
+      }
+
       const enrichedResult = { ...result, metadata };
 
       if (app?.videosMap instanceof Map) {

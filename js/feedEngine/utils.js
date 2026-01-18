@@ -30,35 +30,53 @@ export function toArray(value) {
   return [value];
 }
 
-export function hasDisinterestedTag(video, disinterestsSet) {
-  if (!video || !disinterestsSet || !(disinterestsSet instanceof Set) || disinterestsSet.size === 0) {
-    return false;
+export function normalizeTagSet(values) {
+  const normalized = new Set();
+  const source = toSet(values);
+
+  for (const value of source) {
+    const tag = normalizeHashtag(value);
+    if (tag) {
+      normalized.add(tag);
+    }
   }
 
-  const matchesDisinterest = (tag) => {
+  return normalized;
+}
+
+export function countMatchingTags(video, tagSet) {
+  if (!video || !tagSet || !(tagSet instanceof Set) || tagSet.size === 0) {
+    return 0;
+  }
+
+  const matches = new Set();
+
+  const addMatch = (tag) => {
     const normalized = normalizeHashtag(tag);
-    return Boolean(normalized && disinterestsSet.has(normalized));
+    if (normalized && tagSet.has(normalized)) {
+      matches.add(normalized);
+    }
   };
 
-  // Check raw tags
   if (Array.isArray(video.tags)) {
     for (const tag of video.tags) {
       if (Array.isArray(tag) && tag[0] === "t" && typeof tag[1] === "string") {
-        if (matchesDisinterest(tag[1])) {
-          return true;
-        }
+        addMatch(tag[1]);
       }
     }
   }
 
-  // Check NIP-71 metadata hashtags if available
   if (video.nip71 && Array.isArray(video.nip71.hashtags)) {
     for (const tag of video.nip71.hashtags) {
-      if (typeof tag === "string" && matchesDisinterest(tag)) {
-        return true;
+      if (typeof tag === "string") {
+        addMatch(tag);
       }
     }
   }
 
-  return false;
+  return matches.size;
+}
+
+export function hasDisinterestedTag(video, disinterestsSet) {
+  return countMatchingTags(video, disinterestsSet) > 0;
 }

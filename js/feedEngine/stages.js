@@ -10,24 +10,14 @@ import nostrService from "../services/nostrService.js";
 import moderationService from "../services/moderationService.js";
 import logger from "../utils/logger.js";
 import { dedupeToNewestByRoot } from "../utils/videoDeduper.js";
-import { normalizeHashtag } from "../utils/hashtagNormalization.js";
-import { isPlainObject, toSet, hasDisinterestedTag } from "./utils.js";
+import {
+  isPlainObject,
+  toSet,
+  normalizeTagSet,
+  countMatchingTags,
+} from "./utils.js";
 
 const FEED_HIDE_BYPASS_NAMES = new Set(["home", "recent"]);
-
-function normalizeTagSet(values) {
-  const normalized = new Set();
-  const source = toSet(values);
-
-  for (const value of source) {
-    const tag = normalizeHashtag(value);
-    if (tag) {
-      normalized.add(tag);
-    }
-  }
-
-  return normalized;
-}
 
 function resolveDedupeFunction(customDedupe) {
   if (typeof customDedupe === "function") {
@@ -279,26 +269,46 @@ export function createTagPreferenceFilterStage({
   return async function tagPreferenceFilterStage(items = [], context = {}) {
     const tagPreferences = context?.runtime?.tagPreferences;
     const disinterests = normalizeTagSet(tagPreferences?.disinterests);
+    const interests = normalizeTagSet(tagPreferences?.interests);
     if (!disinterests.size) {
       return items;
     }
 
     const results = [];
 
-    for (const item of items) {
+    const feedName =
+      typeof context?.feedName === "string" ? context.feedName : "";
+    const feedVariant =
+      typeof context?.runtime?.feedVariant === "string"
+        ? context.runtime.feedVariant
+        : "";
+
+    for (let index = 0; index < items.length; index += 1) {
+      const item = items[index];
       const video = item?.video;
       if (!video || typeof video !== "object") {
         results.push(item);
         continue;
       }
 
-      if (hasDisinterestedTag(video, disinterests)) {
+      const matchedDisinterestCount = countMatchingTags(video, disinterests);
+      if (matchedDisinterestCount > 0) {
+        const matchedInterestCount = countMatchingTags(video, interests);
         context?.addWhy?.({
           stage: stageName,
           type: "filter",
           reason: "disinterested-tag",
           videoId: typeof video.id === "string" ? video.id : null,
           pubkey: typeof video.pubkey === "string" ? video.pubkey : null,
+          matchedTagCount: matchedDisinterestCount,
+          matchedDisinterestCount,
+          matchedInterestCount,
+          hasMatch: matchedDisinterestCount > 0,
+          hasDisinterestMatch: matchedDisinterestCount > 0,
+          hasInterestMatch: matchedInterestCount > 0,
+          position: Number.isFinite(index) ? index : null,
+          feed: feedName,
+          feedVariant,
         });
         continue;
       }

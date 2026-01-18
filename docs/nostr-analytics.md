@@ -39,3 +39,16 @@ The facade wraps [`js/nostr/viewEventBindings.js`](../js/nostr/viewEventBindings
 
 Background hydration keeps optimistic counts honest. The view counter subscribes to live events while simultaneously fetching historical lists and issuing a `COUNT` request. Whenever the authoritative total returned by `COUNT` exceeds the locally accumulated sum, the hydration routine overwrites the optimistic value so the UI stays aligned with relay truth. If `COUNT` falls back (because relays reject it or the browser is offline), the locally deduped history still anchors totals, and the next successful hydration pass reconciles any drift. This interplay means cards, modals, and dashboards settle on the same number without requiring a full page reload.
 
+## Feed telemetry (tag preference filtering)
+
+The feed engine emits a lightweight telemetry record whenever a video is filtered
+by the tag preference stage. These events are routed through the local
+`FeedTelemetry` logger (via `logger.dev`) and only include counts and booleans—no
+raw tag strings, interests, or disinterests are emitted. The payload includes:
+
+- `feed` and `feedVariant` (string identifiers for the feed context)
+- `position` (index of the filtered item in the feed run)
+- `matchedTagCount` (count of tag matches that triggered filtering)
+- `matchedInterestCount` / `hasInterestMatch`
+- `matchedDisinterestCount` / `hasDisinterestMatch`
+- `hasMatch` (derived boolean indicating any tag match)
