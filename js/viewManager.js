@@ -92,6 +92,20 @@ export const viewInitRegistry = {
       refreshApp.forceRefreshAllProfiles();
     }
   },
+  "for-you": () => {
+    const app = getApplication();
+    if (app && typeof app.loadVideos === "function") {
+      if (typeof app.mountVideoListView === "function") {
+        app.mountVideoListView();
+      }
+      app.loadVideos();
+    }
+    // Force profile updates after the new view is in place.
+    const refreshApp = getApplication();
+    if (refreshApp && typeof refreshApp.forceRefreshAllProfiles === "function") {
+      refreshApp.forceRefreshAllProfiles();
+    }
+  },
   explore: () => {
     devLogger.log("Explore view loaded.");
   },
