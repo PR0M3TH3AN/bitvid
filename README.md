@@ -103,7 +103,13 @@ To run **bitvid** locally:
    cd bitvid
    ```
 
-2. Start a local server:
+2. Install dependencies:
+
+   ```bash
+   npm ci
+   ```
+
+3. Start a local server:
    - Using Python:
      ```bash
      python -m http.server 8000
@@ -315,9 +321,14 @@ placeholder at “—” and development builds log a warning—so mixed deploym
    ```bash
    git checkout -b feature/your-feature-name
    ```
-3. **Make Changes**:
+3. **Install Dependencies**:
+   ```bash
+   npm ci
+   ```
+4. **Make Changes**:
    - Ensure your code follows best practices and is well-documented.
-4. **Test**:
+5. **Test**:
+   - Run unit tests: `npm run test:unit`
    - Validate the site functionality locally before submitting.
 5. **Submit a Pull Request**:
    - Explain your changes and reference any related issues.

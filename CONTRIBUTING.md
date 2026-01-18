@@ -31,6 +31,28 @@ If we later introduce **dual-licensing** options (e.g., commercial licenses for 
 * Follow existing formatting/lint rules.
 * Update docs and user-facing text when behavior changes.
 
+## Development Setup
+
+To set up the project locally:
+
+1. **Install Dependencies**:
+   ```bash
+   npm ci
+   ```
+
+2. **Run Tests**:
+   ```bash
+   npm run test:unit
+   ```
+
+3. **Format & Lint**:
+   ```bash
+   npm run format
+   npm run lint
+   ```
+
+For a full guide, see the [Local Setup section in README.md](./README.md#local-setup).
+
 ## Security
 
 If you find a vulnerability, please email **[security@bitvid.network](mailto:security@bitvid.network)**. We’ll coordinate a responsible disclosure window before public release.
