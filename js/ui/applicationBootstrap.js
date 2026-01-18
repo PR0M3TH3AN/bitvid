@@ -137,6 +137,13 @@ export default class ApplicationBootstrap {
       isNew: () => true,
     };
     app.videoModalReadyPromise = null;
+    app.feedTelemetryState = {
+      activeFeed: "",
+      matchedTagsById: new Map(),
+      matchReasonsById: new Map(),
+      lastImpressionSignature: "",
+      activePlayback: null,
+    };
 
     app.pendingModalZapOpen = false;
     app.videoListViewPlaybackHandler = null;
@@ -277,6 +284,7 @@ export default class ApplicationBootstrap {
       normalizeHexPubkey: (value) => app.normalizeHexPubkey(value),
       getActiveUserPubkey: () => app.pubkey,
       ingestLocalViewEvent,
+      onViewLogged: (detail) => app.handleFeedViewTelemetry(detail),
     });
 
     const playbackDependencies = {
@@ -812,6 +820,9 @@ export default class ApplicationBootstrap {
       magnet,
       trigger,
     }) => {
+      if (videoId) {
+        app.recordForYouClick(videoId);
+      }
       if (videoId) {
         Promise.resolve(
           app.playVideoByEventId(videoId, { url, magnet, trigger }),
