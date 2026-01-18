@@ -2405,6 +2405,28 @@ function resetZapRetryState() {
   }
 }
 
+function setZapCompleted(completed) {
+  const sendButton = getZapSendButton();
+  if (!sendButton) {
+    return;
+  }
+
+  if (completed) {
+    delete sendButton.dataset.retryPending;
+    sendButton.dataset.completed = "true";
+    sendButton.textContent = "Done";
+    sendButton.setAttribute("aria-label", "Close zap dialog");
+    sendButton.title = "Close zap dialog";
+  } else {
+    delete sendButton.dataset.completed;
+    if (!sendButton.dataset.retryPending) {
+      sendButton.textContent = "Send";
+      sendButton.setAttribute("aria-label", "Send a zap");
+      sendButton.removeAttribute("title");
+    }
+  }
+}
+
 function markZapRetryPending(shares) {
   const validShares = Array.isArray(shares)
     ? shares.filter((share) => share && share.amount > 0)
@@ -2786,6 +2808,7 @@ async function runZapAttempt({ amount, overrideFee = null, walletSettings }) {
 
 function handleZapAmountChange() {
   resetZapRetryState();
+  setZapCompleted(false);
   updateZapSplitSummary();
 }
 
@@ -2932,6 +2955,11 @@ async function handleZapSend(event) {
   const app = getApp();
 
   if (!amountInput || !sendButton) {
+    return;
+  }
+
+  if (sendButton.dataset.completed === "true") {
+    closeZapControls({ focusButton: true });
     return;
   }
 
@@ -3096,6 +3124,7 @@ async function handleZapSend(event) {
     setZapStatus(summary, "success");
     app?.showSuccess?.("Zap sent successfully!");
     resetZapRetryState();
+    setZapCompleted(true);
   } catch (error) {
     const tracker = Array.isArray(error?.__zapShareTracker)
       ? error.__zapShareTracker
