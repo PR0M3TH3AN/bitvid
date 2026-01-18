@@ -15,6 +15,7 @@ import {
   assertAnyRelayAccepted,
 } from "../nostrPublish.js";
 import { userLogger, devLogger } from "../utils/logger.js";
+import { normalizeHashtag } from "../utils/hashtagNormalization.js";
 import { profileCache } from "../state/profileCache.js";
 
 const LOG_PREFIX = "[HashtagPreferences]";
@@ -95,19 +96,6 @@ function sanitizeRelayList(candidate) {
     : [];
 }
 
-function normalizeTag(input) {
-  if (typeof input !== "string") {
-    return "";
-  }
-
-  const trimmed = input.trim().replace(/^#+/, "");
-  if (!trimmed) {
-    return "";
-  }
-
-  return trimmed.toLowerCase();
-}
-
 function normalizeEncryptionToken(value) {
   if (typeof value !== "string") {
     return "";
@@ -133,7 +121,7 @@ function normalizePreferencesPayload(payload) {
 
   const interests = new Set();
   for (const tag of rawInterests) {
-    const normalizedTag = normalizeTag(tag);
+    const normalizedTag = normalizeHashtag(tag);
     if (normalizedTag) {
       interests.add(normalizedTag);
     }
@@ -141,7 +129,7 @@ function normalizePreferencesPayload(payload) {
 
   const disinterests = new Set();
   for (const tag of rawDisinterests) {
-    const normalizedTag = normalizeTag(tag);
+    const normalizedTag = normalizeHashtag(tag);
     if (!normalizedTag) {
       continue;
     }
@@ -342,7 +330,7 @@ class HashtagPreferencesService {
   }
 
   addInterest(tag) {
-    const normalized = normalizeTag(tag);
+    const normalized = normalizeHashtag(tag);
     if (!normalized) {
       return false;
     }
@@ -360,7 +348,7 @@ class HashtagPreferencesService {
   }
 
   removeInterest(tag) {
-    const normalized = normalizeTag(tag);
+    const normalized = normalizeHashtag(tag);
     if (!normalized || !this.interests.has(normalized)) {
       return false;
     }
@@ -371,7 +359,7 @@ class HashtagPreferencesService {
   }
 
   addDisinterest(tag) {
-    const normalized = normalizeTag(tag);
+    const normalized = normalizeHashtag(tag);
     if (!normalized) {
       return false;
     }
@@ -389,7 +377,7 @@ class HashtagPreferencesService {
   }
 
   removeDisinterest(tag) {
-    const normalized = normalizeTag(tag);
+    const normalized = normalizeHashtag(tag);
     if (!normalized || !this.disinterests.has(normalized)) {
       return false;
     }

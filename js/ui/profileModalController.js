@@ -16,6 +16,10 @@ import {
 import { getBreakpointLg } from "../designSystem/metrics.js";
 import { getProviderMetadata } from "../services/authProviders/index.js";
 import { devLogger, userLogger } from "../utils/logger.js";
+import {
+  normalizeHashtag,
+  formatHashtag,
+} from "../utils/hashtagNormalization.js";
 import { getActiveSigner } from "../nostr/client.js";
 
 const noop = () => {};
@@ -4465,24 +4469,11 @@ export class ProfileModalController {
   }
 
   normalizeHashtagTag(value) {
-    if (typeof value !== "string") {
-      return "";
-    }
-
-    const trimmed = value.trim();
-    if (!trimmed) {
-      return "";
-    }
-
-    return trimmed.replace(/^#+/, "").toLowerCase();
+    return normalizeHashtag(value);
   }
 
   formatHashtagTag(value) {
-    const normalized = this.normalizeHashtagTag(value);
-    if (!normalized) {
-      return "";
-    }
-    return `#${normalized}`;
+    return formatHashtag(value);
   }
 
   sanitizeHashtagList(list) {

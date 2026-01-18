@@ -1,5 +1,7 @@
 // js/feedEngine/utils.js
 
+import { normalizeHashtag } from "../utils/hashtagNormalization.js";
+
 export function isPlainObject(value) {
   if (value === null || typeof value !== "object") {
     return false;
@@ -33,11 +35,16 @@ export function hasDisinterestedTag(video, disinterestsSet) {
     return false;
   }
 
+  const matchesDisinterest = (tag) => {
+    const normalized = normalizeHashtag(tag);
+    return Boolean(normalized && disinterestsSet.has(normalized));
+  };
+
   // Check raw tags
   if (Array.isArray(video.tags)) {
     for (const tag of video.tags) {
       if (Array.isArray(tag) && tag[0] === "t" && typeof tag[1] === "string") {
-        if (disinterestsSet.has(tag[1].toLowerCase())) {
+        if (matchesDisinterest(tag[1])) {
           return true;
         }
       }
@@ -47,7 +54,7 @@ export function hasDisinterestedTag(video, disinterestsSet) {
   // Check NIP-71 metadata hashtags if available
   if (video.nip71 && Array.isArray(video.nip71.hashtags)) {
     for (const tag of video.nip71.hashtags) {
-      if (typeof tag === "string" && disinterestsSet.has(tag.toLowerCase())) {
+      if (typeof tag === "string" && matchesDisinterest(tag)) {
         return true;
       }
     }
