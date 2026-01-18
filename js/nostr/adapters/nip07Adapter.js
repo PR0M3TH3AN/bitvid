@@ -27,9 +27,17 @@ export async function createNip07Adapter(extension) {
       signEvent: async () => {
         throw new Error("NIP-07 extension unavailable.");
       },
-      requestPermissions: async () => ({ ok: false, error: new Error("extension-unavailable") }),
+      requestPermissions: async () => ({
+        ok: false,
+        error: new Error("extension-unavailable"),
+      }),
       destroy: async () => {},
       canSign: () => false,
+      capabilities: {
+        sign: false,
+        nip44: false,
+        nip04: false,
+      },
     };
   }
 
@@ -92,6 +100,11 @@ export async function createNip07Adapter(extension) {
     requestPermissions,
     destroy: async () => {},
     canSign: () => typeof resolvedExtension.signEvent === "function",
+    capabilities: {
+      sign: typeof resolvedExtension.signEvent === "function",
+      nip44: Boolean(nip44Encrypt || nip44Decrypt),
+      nip04: Boolean(nip04Encrypt || nip04Decrypt),
+    },
   };
 
   if (nip04Encrypt) {

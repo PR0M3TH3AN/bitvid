@@ -21,9 +21,17 @@ export async function createNip46Adapter(client) {
       signEvent: async () => {
         throw new Error("NIP-46 client unavailable.");
       },
-      requestPermissions: async () => ({ ok: false, error: new Error("client-unavailable") }),
+      requestPermissions: async () => ({
+        ok: false,
+        error: new Error("client-unavailable"),
+      }),
       destroy: async () => {},
       canSign: () => false,
+      capabilities: {
+        sign: false,
+        nip44: false,
+        nip04: false,
+      },
     };
   }
 
@@ -47,6 +55,13 @@ export async function createNip46Adapter(client) {
     },
     canSign: () =>
       !resolvedClient.destroyed && typeof resolvedClient.signEvent === "function",
+    capabilities: {
+      sign:
+        !resolvedClient.destroyed &&
+        typeof resolvedClient.signEvent === "function",
+      nip44: false,
+      nip04: false,
+    },
   };
 
   if (typeof resolvedClient.nip04Encrypt === "function") {
@@ -61,6 +76,13 @@ export async function createNip46Adapter(client) {
   if (typeof resolvedClient.nip44Decrypt === "function") {
     signer.nip44Decrypt = resolvedClient.nip44Decrypt.bind(resolvedClient);
   }
+
+  signer.capabilities.nip04 = Boolean(
+    signer.nip04Encrypt || signer.nip04Decrypt
+  );
+  signer.capabilities.nip44 = Boolean(
+    signer.nip44Encrypt || signer.nip44Decrypt
+  );
 
   return signer;
 }
