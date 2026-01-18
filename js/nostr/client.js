@@ -255,6 +255,40 @@ function attachNipMethodAliases(signer) {
   }
 }
 
+function resolveSignerCapabilities(signer) {
+  const fallback = {
+    sign: false,
+    nip44: false,
+    nip04: false,
+  };
+
+  if (!signer || typeof signer !== "object") {
+    return fallback;
+  }
+
+  const capabilities =
+    signer.capabilities && typeof signer.capabilities === "object"
+      ? signer.capabilities
+      : {};
+
+  return {
+    sign:
+      typeof capabilities.sign === "boolean"
+        ? capabilities.sign
+        : typeof signer.signEvent === "function",
+    nip44:
+      typeof capabilities.nip44 === "boolean"
+        ? capabilities.nip44
+        : typeof signer.nip44Encrypt === "function" ||
+          typeof signer.nip44Decrypt === "function",
+    nip04:
+      typeof capabilities.nip04 === "boolean"
+        ? capabilities.nip04
+        : typeof signer.nip04Encrypt === "function" ||
+          typeof signer.nip04Decrypt === "function",
+  };
+}
+
 function hydrateExtensionSignerCapabilities(signer) {
   if (!signer || typeof signer !== "object" || signer.type !== "extension") {
     return;
@@ -288,6 +322,7 @@ function setActiveSigner(signer) {
 
   hydrateExtensionSignerCapabilities(signer);
   attachNipMethodAliases(signer);
+  signer.capabilities = resolveSignerCapabilities(signer);
 
   const pubkey =
     typeof signer.pubkey === "string" && signer.pubkey.trim()
@@ -3966,7 +4001,11 @@ export class NostrClient {
     }
 
     if (activeSigner) {
-      if (typeof activeSigner.nip44Decrypt === "function") {
+      const capabilities = resolveSignerCapabilities(activeSigner);
+      if (
+        capabilities.nip44 &&
+        typeof activeSigner.nip44Decrypt === "function"
+      ) {
         addCandidate(
           "nip44",
           activeSigner.nip44Decrypt.bind(activeSigner),
@@ -3977,7 +4016,10 @@ export class NostrClient {
           },
         );
       }
-      if (typeof activeSigner.nip04Decrypt === "function") {
+      if (
+        capabilities.nip04 &&
+        typeof activeSigner.nip04Decrypt === "function"
+      ) {
         addCandidate(
           "nip04",
           activeSigner.nip04Decrypt.bind(activeSigner),
@@ -4337,13 +4379,21 @@ export class NostrClient {
     }
 
     const encryptionCandidates = [];
-    if (typeof signer.nip44Encrypt === "function") {
+    const signerCapabilities = resolveSignerCapabilities(signer);
+    const allowNip04Fallback = signerCapabilities.nip04 === true;
+    if (
+      signerCapabilities.nip44 &&
+      typeof signer.nip44Encrypt === "function"
+    ) {
       encryptionCandidates.push({
         scheme: "nip44",
         encrypt: signer.nip44Encrypt,
       });
     }
-    if (typeof signer.nip04Encrypt === "function") {
+    if (
+      signerCapabilities.nip04 &&
+      typeof signer.nip04Encrypt === "function"
+    ) {
       encryptionCandidates.push({
         scheme: "nip04",
         encrypt: signer.nip04Encrypt,
@@ -4375,7 +4425,21 @@ export class NostrClient {
         typeof sessionActor.privateKey === "string" &&
         sessionActor.privateKey;
 
-      if (sessionMatchesActor) {
+      const canFallbackWithSession = sessionMatchesActor && allowNip04Fallback;
+
+      if (!encryptionCandidates.length && !canFallbackWithSession) {
+        const error = new Error(
+          "Your signer does not support NIP-44 or NIP-04 encryption.",
+        );
+        userLogger.warn("[nostr] Encryption unsupported for DM send.", error);
+        return {
+          ok: false,
+          error: "encryption-unsupported",
+          details: error,
+        };
+      }
+
+      if (canFallbackWithSession) {
         try {
           const tools = (await ensureNostrTools()) || getCachedNostrTools();
           if (tools?.nip04 && typeof tools.nip04.encrypt === "function") {

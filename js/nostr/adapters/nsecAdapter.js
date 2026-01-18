@@ -59,6 +59,11 @@ export async function createNsecAdapter({ privateKey, pubkey } = {}) {
     requestPermissions: async () => ({ ok: true }),
     destroy: async () => {},
     canSign: () => Boolean(normalizedPrivateKey),
+    capabilities: {
+      sign: Boolean(normalizedPrivateKey),
+      nip44: false,
+      nip04: false,
+    },
   };
 
   if (typeof cipherClosures.nip04Encrypt === "function") {
@@ -73,6 +78,13 @@ export async function createNsecAdapter({ privateKey, pubkey } = {}) {
   if (typeof cipherClosures.nip44Decrypt === "function") {
     signer.nip44Decrypt = cipherClosures.nip44Decrypt;
   }
+
+  signer.capabilities.nip04 = Boolean(
+    signer.nip04Encrypt || signer.nip04Decrypt
+  );
+  signer.capabilities.nip44 = Boolean(
+    signer.nip44Encrypt || signer.nip44Decrypt
+  );
 
   return signer;
 }
