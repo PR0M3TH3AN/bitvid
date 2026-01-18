@@ -119,7 +119,7 @@ To run **bitvid** locally:
      npx serve
      ```
 
-3. Open the site in your browser:
+4. Open the site in your browser:
 
 ```
 http://localhost:8000
@@ -330,7 +330,7 @@ placeholder at “—” and development builds log a warning—so mixed deploym
 5. **Test**:
    - Run unit tests: `npm run test:unit`
    - Validate the site functionality locally before submitting.
-5. **Submit a Pull Request**:
+6. **Submit a Pull Request**:
    - Explain your changes and reference any related issues.
 
 ### Contribution Guidelines

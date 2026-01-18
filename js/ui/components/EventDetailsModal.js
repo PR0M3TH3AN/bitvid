@@ -102,7 +102,7 @@ export class EventDetailsModal {
               </button>
             </div>
             <div class="relative flex-1 min-h-[200px] bg-black/80 rounded-lg border border-border overflow-hidden group">
-              <pre class="absolute inset-0 p-4 overflow-auto text-xs font-mono text-gray-300 scrollbar-thin"><code data-json-content></code></pre>
+              <pre class="absolute inset-0 p-4 overflow-auto text-xs font-mono text-white/80 scrollbar-thin"><code data-json-content></code></pre>
             </div>
           </section>
         </div>
@@ -135,8 +135,7 @@ export class EventDetailsModal {
     const container = this.document.getElementById("modalContainer") || this.document.body;
     const modal = this.document.createElement("div");
     modal.id = "eventDetailsModal";
-    modal.style.zIndex = "140";
-    modal.className = "bv-modal hidden items-center justify-center p-4";
+    modal.className = "bv-modal z-[140] hidden items-center justify-center p-4";
     modal.innerHTML = this.buildMarkup();
 
     this.root = modal;
