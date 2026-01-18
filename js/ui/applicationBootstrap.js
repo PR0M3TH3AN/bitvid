@@ -253,6 +253,7 @@ export default class ApplicationBootstrap {
       app.feedEngine.run = (...args) => app.feedEngine.runFeed(...args);
     }
     app.registerRecentFeed();
+    app.registerForYouFeed();
     app.registerSubscriptionsFeed();
     app.registerWatchHistoryFeed();
 

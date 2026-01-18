@@ -5308,6 +5308,82 @@ class Application {
     }
   }
 
+  /**
+   * Register the "for-you" feed pipeline.
+   */
+  registerForYouFeed() {
+    if (!this.feedEngine || typeof this.feedEngine.registerFeed !== "function") {
+      return null;
+    }
+
+    const existingDefinition =
+      typeof this.feedEngine.getFeedDefinition === "function"
+        ? this.feedEngine.getFeedDefinition("for-you")
+        : null;
+    if (existingDefinition) {
+      return existingDefinition;
+    }
+
+    try {
+      const app = this;
+      const resolveThresholdFromApp = (key) => ({ runtimeValue, defaultValue }) => {
+        if (
+          Number.isFinite(runtimeValue) ||
+          runtimeValue === Number.POSITIVE_INFINITY
+        ) {
+          return runtimeValue;
+        }
+
+        if (app && typeof app.getActiveModerationThresholds === "function") {
+          const active = app.getActiveModerationThresholds();
+          const candidate = active && typeof active === "object" ? active[key] : undefined;
+          if (
+            Number.isFinite(candidate) ||
+            candidate === Number.POSITIVE_INFINITY
+          ) {
+            return candidate;
+          }
+        }
+
+        return defaultValue;
+      };
+      return this.feedEngine.registerFeed("for-you", {
+        source: createActiveNostrSource({ service: this.nostrService }),
+        stages: [
+          // TODO(tag-preferences): keep tag-preference filtering consolidated in
+          // createTagPreferenceFilterStage so each feed has a single source of
+          // truth when interest-based inclusion/ranking lands.
+          createTagPreferenceFilterStage(),
+          createBlacklistFilterStage({
+            shouldIncludeVideo: (video, options) =>
+              this.nostrService.shouldIncludeVideo(video, options),
+          }),
+          createDedupeByRootStage({
+            dedupe: (videos) => this.dedupeVideosByRoot(videos),
+          }),
+          createModerationStage({
+            getService: () => this.nostrService.getModerationService(),
+            autoplayThreshold: resolveThresholdFromApp("autoplayBlockThreshold"),
+            blurThreshold: resolveThresholdFromApp("blurThreshold"),
+            trustedMuteHideThreshold: resolveThresholdFromApp("trustedMuteHideThreshold"),
+            trustedReportHideThreshold: resolveThresholdFromApp("trustedSpamHideThreshold"),
+          }),
+          createResolvePostedAtStage(),
+        ],
+        sorter: createChronologicalSorter(),
+        hooks: {
+          timestamps: {
+            getKnownVideoPostedAt: (video) => this.getKnownVideoPostedAt(video),
+            resolveVideoPostedAt: (video) => this.resolveVideoPostedAt(video),
+          },
+        },
+      });
+    } catch (error) {
+      devLogger.warn("[Application] Failed to register for-you feed:", error);
+      return null;
+    }
+  }
+
   registerSubscriptionsFeed() {
     if (!this.feedEngine || typeof this.feedEngine.registerFeed !== "function") {
       return null;
@@ -5408,6 +5484,32 @@ class Application {
     }
   }
 
+  buildForYouFeedRuntime() {
+    const blacklist =
+      this.blacklistedEventIds instanceof Set
+        ? new Set(this.blacklistedEventIds)
+        : new Set();
+
+    const preferenceSource =
+      typeof this.getHashtagPreferences === "function"
+        ? this.getHashtagPreferences()
+        : {};
+    const { interests = [], disinterests = [] } = preferenceSource || {};
+    const moderationThresholds = this.getActiveModerationThresholds();
+
+    return {
+      blacklistedEventIds: blacklist,
+      isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
+      tagPreferences: {
+        interests: Array.isArray(interests) ? [...interests] : [],
+        disinterests: Array.isArray(disinterests) ? [...disinterests] : [],
+      },
+      moderationThresholds: moderationThresholds
+        ? { ...moderationThresholds }
+        : undefined,
+    };
+  }
+
   buildRecentFeedRuntime() {
     const blacklist =
       this.blacklistedEventIds instanceof Set
@@ -5432,6 +5534,63 @@ class Application {
         ? { ...moderationThresholds }
         : undefined,
     };
+  }
+
+  refreshForYouFeed({ reason, fallbackVideos } = {}) {
+    const runtime = this.buildForYouFeedRuntime();
+    const normalizedReason = typeof reason === "string" ? reason : undefined;
+    const fallback = Array.isArray(fallbackVideos) ? fallbackVideos : [];
+
+    if (!this.feedEngine || typeof this.feedEngine.run !== "function") {
+      const metadata = {
+        reason: normalizedReason,
+        engine: "unavailable",
+      };
+      this.latestFeedMetadata = metadata;
+      this.videosMap = this.nostrService.getVideosMap();
+      if (this.videoListView) {
+        this.videoListView.state.videosMap = this.videosMap;
+      }
+      this.renderVideoList({ videos: fallback, metadata });
+      return Promise.resolve({ videos: fallback, metadata });
+    }
+
+    return this.feedEngine
+      .run("for-you", { runtime })
+      .then((result) => {
+        const videos = Array.isArray(result?.videos) ? result.videos : [];
+        const metadata = {
+          ...(result?.metadata || {}),
+        };
+        if (normalizedReason) {
+          metadata.reason = normalizedReason;
+        }
+
+        this.latestFeedMetadata = metadata;
+        this.videosMap = this.nostrService.getVideosMap();
+        if (this.videoListView) {
+          this.videoListView.state.videosMap = this.videosMap;
+        }
+
+        const payload = { videos, metadata };
+        this.renderVideoList(payload);
+        return payload;
+      })
+      .catch((error) => {
+        devLogger.error("[Application] Failed to run for-you feed:", error);
+        const metadata = {
+          reason: normalizedReason || "error:for-you-feed",
+          error: true,
+        };
+        this.latestFeedMetadata = metadata;
+        this.videosMap = this.nostrService.getVideosMap();
+        if (this.videoListView) {
+          this.videoListView.state.videosMap = this.videosMap;
+        }
+        const payload = { videos: fallback, metadata };
+        this.renderVideoList(payload);
+        return payload;
+      });
   }
 
   refreshRecentFeed({ reason, fallbackVideos } = {}) {
@@ -5532,6 +5691,53 @@ class Application {
       await initialRefreshPromise;
     } else if (!Array.isArray(videos) || videos.length === 0) {
       await this.refreshRecentFeed({ reason: "initial", fallbackVideos: [] });
+    }
+
+    this.videoSubscription = this.nostrService.getVideoSubscription() || null;
+    this.videosMap = this.nostrService.getVideosMap();
+    if (this.videoListView) {
+      this.videoListView.state.videosMap = this.videosMap;
+    }
+  }
+
+  async loadForYouVideos(forceFetch = false) {
+    devLogger.log("Starting loadForYouVideos... (forceFetch =", forceFetch, ")");
+
+    const container = this.mountVideoListView();
+    const hasCachedVideos =
+      this.nostrService &&
+      Array.isArray(this.nostrService.getFilteredActiveVideos()) &&
+      this.nostrService.getFilteredActiveVideos().length > 0;
+
+    if (!hasCachedVideos) {
+      if (this.videoListView && container) {
+        this.videoListView.showLoading("Fetching for-you videos…");
+      } else if (container) {
+        container.innerHTML = getSidebarLoadingMarkup("Fetching for-you videos…");
+      }
+    }
+
+    let initialRefreshPromise = null;
+
+    const videos = await this.nostrService.loadVideos({
+      forceFetch,
+      blacklistedEventIds: this.blacklistedEventIds,
+      isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
+      onVideos: (payload, detail = {}) => {
+        const promise = this.refreshForYouFeed({
+          reason: detail?.reason,
+          fallbackVideos: payload,
+        });
+        if (!initialRefreshPromise) {
+          initialRefreshPromise = promise;
+        }
+      },
+    });
+
+    if (initialRefreshPromise) {
+      await initialRefreshPromise;
+    } else if (!Array.isArray(videos) || videos.length === 0) {
+      await this.refreshForYouFeed({ reason: "initial", fallbackVideos: [] });
     }
 
     this.videoSubscription = this.nostrService.getVideoSubscription() || null;
