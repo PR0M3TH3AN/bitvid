@@ -144,6 +144,7 @@ import {
 } from "./state/cache.js";
 import ApplicationBootstrap from "./ui/applicationBootstrap.js";
 import VideoModalCommentController from "./ui/videoModalCommentController.js";
+import TorrentStatusController from "./ui/torrentStatusController.js";
 import ModerationActionController from "./services/moderationActionController.js";
 import { bootstrapTrustedSeeds } from "./services/trustBootstrap.js";
 
@@ -222,6 +223,11 @@ class Application {
 
     this.commentController = null;
     this.initializeCommentController();
+
+    this.torrentStatusController = new TorrentStatusController({
+      getVideoModal: () => this.videoModal,
+      onRemovePoster: (reason) => this.forceRemoveModalPoster(reason),
+    });
 
     this.unsubscribeFromPubkeyState = subscribeToAppStateKey(
       "pubkey",
@@ -7482,51 +7488,8 @@ class Application {
    * and do not re-trigger recursion here (no setTimeout).
    */
   updateTorrentStatus(torrent) {
-    devLogger.log("[DEBUG] updateTorrentStatus called with torrent:", torrent);
-
-    if (!torrent) {
-      devLogger.log("[DEBUG] torrent is null/undefined!");
-      return;
-    }
-
-    if (torrent.ready || (typeof torrent.progress === "number" && torrent.progress > 0)) {
-      // Belt-and-suspenders: if WebTorrent reports progress but the DOM events
-      // failed to fire we still rip off the loading GIF. This regression has
-      // bitten us in past releases, so the extra clear is intentional.
-      this.forceRemoveModalPoster(
-        torrent.ready ? "torrent-ready-flag" : "torrent-progress"
-      );
-    }
-
-    // Log only fields that actually exist on the torrent:
-    devLogger.log("[DEBUG] torrent.progress =", torrent.progress);
-    devLogger.log("[DEBUG] torrent.numPeers =", torrent.numPeers);
-    devLogger.log("[DEBUG] torrent.downloadSpeed =", torrent.downloadSpeed);
-    devLogger.log("[DEBUG] torrent.downloaded =", torrent.downloaded);
-    devLogger.log("[DEBUG] torrent.length =", torrent.length);
-    devLogger.log("[DEBUG] torrent.ready =", torrent.ready);
-
-    // Use "Complete" vs. "Downloading" as the textual status.
-    if (this.videoModal) {
-      const fullyDownloaded = torrent.progress >= 1;
-      this.videoModal.updateStatus(fullyDownloaded ? "Complete" : "Downloading");
-
-      const percent = (torrent.progress * 100).toFixed(2);
-      this.videoModal.updateProgress(`${percent}%`);
-      this.videoModal.updatePeers(`Peers: ${torrent.numPeers}`);
-
-      const kb = (torrent.downloadSpeed / 1024).toFixed(2);
-      this.videoModal.updateSpeed(`${kb} KB/s`);
-
-      const downloadedMb = (torrent.downloaded / (1024 * 1024)).toFixed(2);
-      const lengthMb = (torrent.length / (1024 * 1024)).toFixed(2);
-      this.videoModal.updateDownloaded(
-        `${downloadedMb} MB / ${lengthMb} MB`
-      );
-
-      if (torrent.ready) {
-        this.videoModal.updateStatus("Ready to play");
-      }
+    if (this.torrentStatusController) {
+      this.torrentStatusController.update(torrent);
     }
   }
 
