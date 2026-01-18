@@ -200,6 +200,32 @@ export function getActiveSigner() {
   return activeSigner;
 }
 
+export function logoutSigner(pubkey) {
+  const normalized = normalizePubkey(pubkey);
+  if (normalized) {
+    const entry = registeredSigners.get(normalized);
+    if (entry?.signer && typeof entry.signer.destroy === "function") {
+      try {
+        entry.signer.destroy();
+      } catch (error) {
+        // Ignore signer teardown failures.
+      }
+    }
+    registerSigner(normalized, null);
+    return;
+  }
+
+  if (activeSigner) {
+    const activePubkey = normalizePubkey(activeSigner.pubkey || activeSignerPubkey);
+    if (activePubkey) {
+      logoutSigner(activePubkey);
+      return;
+    }
+  }
+
+  updateActiveSigner(null, "");
+}
+
 export function resolveActiveSigner(pubkey) {
   const normalized = normalizePubkey(pubkey);
   if (normalized) {
