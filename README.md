@@ -218,6 +218,24 @@ The legacy `js/nostr.js` shim has been removed. Update any remaining
 `import { ... } from './nostr.js';` calls to use the facades above so upgrades
 stay painless.
 
+### Signer Adapters
+
+bitvid exposes a stable signer API through `js/nostrClientFacade.js`, which
+wraps the shared client created in `js/nostr/defaultClient.js` and registers
+signer adapters in `js/nostr/client.js`. Import the facade whenever you need to
+sign events or encrypt payloads so the adapter registry can select the active
+signer, fall back to supported capabilities, and surface permission prompts.
+
+Use the facade for the common, stable entry points:
+
+```js
+import { nostrClient, requestDefaultExtensionPermissions } from "./nostrClientFacade.js";
+```
+
+Custom auth providers should still register their signer object through the
+adapter registry in `js/nostr/client.js`, but downstream modules should only
+call the facade to keep API surfaces consistent.
+
 ### Nostr video fetch limits
 
 `nostrClient.fetchVideos(options)` now accepts an optional `options.limit` to

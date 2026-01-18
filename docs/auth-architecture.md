@@ -125,6 +125,12 @@ implementation on the `nostrClient`. Remote signers and extensions must support
 those encryption methods for DM features to work, while local `nsec` signers can
 provide the primitives directly.
 
+Signing/encryption requests always flow through the signer adapter registry in
+`js/nostr/client.js` (accessed via `js/nostrClientFacade.js`). The registry
+selects the active signer, falls back to the strongest supported capability, and
+triggers permission prompts (for example, the NIP-07 extension handshake) before
+attempting privileged calls.
+
 ## Related docs
 
 - [`docs/nostr-auth.md`](nostr-auth.md)
