@@ -131,7 +131,7 @@ export function setVideosMap(value) {
   if (value instanceof Map) {
     return updateKey("videosMap", value);
   }
-  return updateKey("videosMap", value ?? null);
+  return updateKey("videosMap", null);
 }
 
 export function getVideoSubscription() {
