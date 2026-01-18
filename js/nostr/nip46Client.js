@@ -95,10 +95,6 @@ export function sanitizeStoredNip46Session(candidate) {
     return null;
   }
 
-  const clientPrivateKey =
-    typeof candidate.clientPrivateKey === "string" && HEX64_REGEX.test(candidate.clientPrivateKey)
-      ? candidate.clientPrivateKey.toLowerCase()
-      : "";
   const clientPublicKey =
     typeof candidate.clientPublicKey === "string" && candidate.clientPublicKey.trim()
       ? candidate.clientPublicKey.trim().toLowerCase()
@@ -108,7 +104,7 @@ export function sanitizeStoredNip46Session(candidate) {
       ? candidate.remotePubkey.trim().toLowerCase()
       : "";
 
-  if (!clientPrivateKey || !remotePubkey) {
+  if (!remotePubkey) {
     return null;
   }
 
@@ -138,7 +134,6 @@ export function sanitizeStoredNip46Session(candidate) {
 
   return {
     version: 1,
-    clientPrivateKey,
     clientPublicKey,
     remotePubkey,
     relays,
@@ -149,10 +144,6 @@ export function sanitizeStoredNip46Session(candidate) {
         ? candidate.algorithm
         : "",
     ),
-    secret:
-      typeof candidate.secret === "string" && candidate.secret.trim()
-        ? candidate.secret.trim()
-        : "",
     permissions:
       typeof candidate.permissions === "string" && candidate.permissions.trim()
         ? candidate.permissions.trim()
@@ -187,7 +178,15 @@ export function readStoredNip46Session() {
 
   try {
     const parsed = JSON.parse(raw);
-    return sanitizeStoredNip46Session(parsed);
+    const sanitized = sanitizeStoredNip46Session(parsed);
+    if (
+      sanitized &&
+      (typeof parsed?.clientPrivateKey === "string" ||
+        typeof parsed?.secret === "string")
+    ) {
+      writeStoredNip46Session(sanitized);
+    }
+    return sanitized;
   } catch (error) {
     try {
       storage.removeItem(NIP46_SESSION_STORAGE_KEY);
@@ -207,7 +206,21 @@ export function writeStoredNip46Session(payload) {
     return;
   }
 
-  const normalized = sanitizeStoredNip46Session(payload);
+  const sanitizedInput =
+    payload && typeof payload === "object"
+      ? {
+          version: payload.version,
+          clientPublicKey: payload.clientPublicKey,
+          remotePubkey: payload.remotePubkey,
+          relays: payload.relays,
+          encryption: payload.encryption,
+          permissions: payload.permissions,
+          metadata: payload.metadata,
+          userPubkey: payload.userPubkey,
+          lastConnectedAt: payload.lastConnectedAt,
+        }
+      : payload;
+  const normalized = sanitizeStoredNip46Session(sanitizedInput);
   if (!normalized) {
     try {
       storage.removeItem(NIP46_SESSION_STORAGE_KEY);

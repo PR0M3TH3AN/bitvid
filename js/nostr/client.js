@@ -168,6 +168,7 @@ import {
   setActiveSigner as setActiveSignerInRegistry,
   getActiveSigner as getActiveSignerFromRegistry,
   clearActiveSigner as clearActiveSignerInRegistry,
+  logoutSigner as logoutSignerFromRegistry,
   resolveActiveSigner as resolveActiveSignerFromRegistry,
 } from "../nostrClientRegistry.js";
 import { createNip07Adapter } from "./adapters/nip07Adapter.js";
@@ -344,6 +345,10 @@ function getActiveSigner() {
 
 function clearActiveSigner() {
   clearActiveSignerInRegistry();
+}
+
+function logoutSigner(pubkey) {
+  logoutSignerFromRegistry(pubkey);
 }
 
 function resolveActiveSigner(pubkey) {
@@ -1199,9 +1204,11 @@ export class NostrClient {
 
     const remotePubkey = stored.remotePubkey || "";
     const userPubkey = stored.userPubkey || "";
+    const canReconnect = Boolean(stored.clientPrivateKey && stored.secret);
 
     return {
       hasSession: true,
+      canReconnect,
       remotePubkey,
       remoteNpub: encodeHexToNpub(remotePubkey),
       clientPublicKey: stored.clientPublicKey || "",
@@ -2068,12 +2075,10 @@ export class NostrClient {
         });
         writeStoredNip46Session({
           version: 1,
-          clientPrivateKey,
           clientPublicKey,
           remotePubkey,
           relays,
           encryption: client.encryptionAlgorithm || handshakeAlgorithm || "",
-          secret,
           permissions,
           metadata,
           userPubkey,
@@ -2155,7 +2160,7 @@ export class NostrClient {
       relays,
       encryption: stored.encryption || "",
       permissions: stored.permissions || null,
-      hasSecret: Boolean(stored.secret),
+      hasCredentials: Boolean(stored.clientPrivateKey && stored.secret),
     });
 
     this.emitRemoteSignerChange({
@@ -2164,6 +2169,12 @@ export class NostrClient {
       relays,
       metadata: stored.metadata,
     });
+
+    if (!stored.clientPrivateKey || !stored.secret) {
+      const error = new Error("Stored remote signer credentials are unavailable.");
+      error.code = "stored-session-missing-credentials";
+      throw error;
+    }
 
     const client = new Nip46RpcClient({
       nostrClient: this,
@@ -2186,8 +2197,13 @@ export class NostrClient {
       const signer = await this.installNip46Client(client, { userPubkey });
 
       writeStoredNip46Session({
-        ...stored,
+        version: 1,
+        clientPublicKey: stored.clientPublicKey,
+        remotePubkey: stored.remotePubkey,
+        relays: stored.relays,
         encryption: client.encryptionAlgorithm || stored.encryption || "",
+        permissions: stored.permissions,
+        metadata: stored.metadata,
         userPubkey,
         lastConnectedAt: Date.now(),
       });
@@ -2262,7 +2278,7 @@ export class NostrClient {
     }
 
     const stored = this.getStoredNip46Metadata();
-    if (!stored.hasSession) {
+    if (!stored.hasSession || !stored.canReconnect) {
       return null;
     }
 
@@ -2289,7 +2305,7 @@ export class NostrClient {
 
     const activeSigner = getActiveSigner();
     if (activeSigner?.type === "nip46") {
-      clearActiveSigner();
+      logoutSigner(activeSigner.pubkey);
     }
 
     if (!keepStored) {
@@ -2642,14 +2658,7 @@ export class NostrClient {
       return null;
     }
 
-    const { pubkey, privateKey, privateKeyEncrypted, encryption, createdAt } = entry;
-    if (privateKey && HEX64_REGEX.test(privateKey)) {
-      return {
-        pubkey,
-        privateKey: privateKey.toLowerCase(),
-        createdAt: Number.isFinite(createdAt) ? createdAt : Date.now(),
-      };
-    }
+    const { pubkey, privateKeyEncrypted, encryption, createdAt } = entry;
 
     if (privateKeyEncrypted && encryption) {
       this.lockedSessionActor = {
@@ -2672,7 +2681,7 @@ export class NostrClient {
       return null;
     }
 
-    const { pubkey, privateKeyEncrypted, encryption, createdAt, privateKey } = entry;
+    const { pubkey, privateKeyEncrypted, encryption, createdAt } = entry;
     const normalizedCreatedAt = Number.isFinite(createdAt)
       ? createdAt
       : Date.now();
@@ -2692,14 +2701,6 @@ export class NostrClient {
     }
 
     this.lockedSessionActor = null;
-
-    if (privateKey) {
-      return {
-        pubkey,
-        hasEncryptedKey: false,
-        createdAt: normalizedCreatedAt,
-      };
-    }
 
     if (pubkey) {
       return {
@@ -3878,8 +3879,9 @@ export class NostrClient {
   }
 
   logout() {
+    const previousPubkey = this.pubkey;
     this.pubkey = null;
-    clearActiveSigner();
+    logoutSigner(previousPubkey);
     const previousSessionActor = this.sessionActor;
     this.sessionActor = null;
     this.sessionActorCipherClosures = null;
