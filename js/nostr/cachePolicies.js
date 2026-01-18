@@ -84,6 +84,13 @@ export const CACHE_POLICIES = Object.freeze({
     storage: STORAGE_TIERS.LOCAL_STORAGE,
     ttl: Infinity,
     addressing: "kind:pubkey:d",
+    defaultDTag: "bitvid:tag-preferences",
+    merge: MERGE_STRATEGIES.REPLACEABLE,
+  },
+  [NOTE_TYPES.PROFILE_METADATA]: {
+    storage: STORAGE_TIERS.LOCAL_STORAGE,
+    ttl: Infinity,
+    addressing: "kind:pubkey",
     merge: MERGE_STRATEGIES.REPLACEABLE,
   },
 });

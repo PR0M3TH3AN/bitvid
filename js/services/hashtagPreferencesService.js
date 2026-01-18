@@ -14,7 +14,7 @@ import {
   publishEventToRelays,
   assertAnyRelayAccepted,
 } from "../nostrPublish.js";
-import { userLogger } from "../utils/logger.js";
+import { userLogger, devLogger } from "../utils/logger.js";
 import { profileCache } from "../state/profileCache.js";
 
 const LOG_PREFIX = "[HashtagPreferences]";
@@ -276,28 +276,56 @@ class HashtagPreferencesService {
   saveToCache() {
     const interests = this.getInterests();
     const disinterests = this.getDisinterests();
-    profileCache.set("interests", {
+    const payload = {
       interests,
       disinterests,
       version: this.preferencesVersion,
       eventId: this.eventId,
       createdAt: this.eventCreatedAt,
-    });
+    };
+    // Use the note type key directly, though "interests" maps to HASHTAG_PREFERENCES
+    // in profileCache. Using NOTE_TYPES.HASHTAG_PREFERENCES explicitly is safer if we import it,
+    // but relying on the mapped key "interests" is also consistent with current usage.
+    // However, the fix requires us to ensure we use the unified path.
+    // We'll stick to "interests" which maps to NOTE_TYPES.HASHTAG_PREFERENCES in profileCache.js
+    profileCache.set("interests", payload);
   }
 
   loadFromCache(pubkey) {
     // profileCache internally uses activePubkey, but we should verify if it matches
-    const cached = profileCache.get("interests");
-    if (cached && typeof cached === "object") {
-      this.activePubkey = normalizeHexPubkey(pubkey);
-      this.interests = new Set(Array.isArray(cached.interests) ? cached.interests : []);
-      this.disinterests = new Set(Array.isArray(cached.disinterests) ? cached.disinterests : []);
-      this.eventId = cached.eventId || null;
-      this.eventCreatedAt = cached.createdAt || null;
-      this.preferencesVersion = cached.version || DEFAULT_VERSION;
-      this.loaded = true;
-      this.emitChange("cache-load");
-      return true;
+    try {
+      let cached = profileCache.get("interests");
+
+      // Legacy fallback migration
+      if (!cached && typeof localStorage !== "undefined") {
+        try {
+          const legacy = localStorage.getItem(HASHTAG_IDENTIFIER);
+          if (legacy) {
+            const parsed = JSON.parse(legacy);
+            // Migrate to unified profile cache
+            profileCache.set("interests", parsed);
+            localStorage.removeItem(HASHTAG_IDENTIFIER);
+            cached = parsed;
+            devLogger.log(`${LOG_PREFIX} Migrated legacy preferences to profileCache.`);
+          }
+        } catch (err) {
+          devLogger.warn(`${LOG_PREFIX} Legacy migration failed:`, err);
+        }
+      }
+
+      if (cached && typeof cached === "object") {
+        this.activePubkey = normalizeHexPubkey(pubkey);
+        this.interests = new Set(Array.isArray(cached.interests) ? cached.interests : []);
+        this.disinterests = new Set(Array.isArray(cached.disinterests) ? cached.disinterests : []);
+        this.eventId = cached.eventId || null;
+        this.eventCreatedAt = cached.createdAt || null;
+        this.preferencesVersion = cached.version || DEFAULT_VERSION;
+        this.loaded = true;
+        this.emitChange("cache-load");
+        return true;
+      }
+    } catch (err) {
+      devLogger.warn(`${LOG_PREFIX} loadFromCache failed:`, err);
     }
     return false;
   }

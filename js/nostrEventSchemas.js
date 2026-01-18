@@ -28,6 +28,7 @@ export const NOTE_TYPES = Object.freeze({
   ADMIN_BLACKLIST: "adminBlacklist",
   ADMIN_WHITELIST: "adminWhitelist",
   STORAGE_CHALLENGE: "storageChallenge",
+  PROFILE_METADATA: "profileMetadata",
 });
 
 export const SUBSCRIPTION_LIST_IDENTIFIER = "subscriptions";
@@ -457,6 +458,16 @@ const BASE_SCHEMAS = {
       format: "empty",
       description:
         "Ephemeral challenge event used for key derivation; never published.",
+    },
+  },
+  [NOTE_TYPES.PROFILE_METADATA]: {
+    type: NOTE_TYPES.PROFILE_METADATA,
+    label: "Profile metadata",
+    kind: 0,
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      format: "json",
+      description: "Standard NIP-01 profile metadata (name, about, picture, etc.).",
     },
   },
 };

@@ -820,91 +820,22 @@ export function persistProfileCacheToStorage() {
   }
 }
 
+import { profileCache as unifiedProfileCache } from "./profileCache.js";
+
 export function getProfileCacheEntry(pubkey) {
-  const normalized = normalizeHexPubkey(pubkey);
-  if (!normalized) {
-    return null;
+  const profile = unifiedProfileCache.getProfile(pubkey);
+  // Maintain backward compatibility with { profile, timestamp } return shape
+  // although consumers mostly check .profile
+  if (profile) {
+    // We can fetch the raw data to get the timestamp if needed, but for now
+    // returning a synthetic entry matches most usage patterns.
+    return { profile, timestamp: Date.now() };
   }
-
-  const entry = profileCache.get(normalized);
-  if (!entry) {
-    return null;
-  }
-
-  const timestamp = typeof entry.timestamp === "number" ? entry.timestamp : 0;
-  if (!timestamp || Date.now() - timestamp > PROFILE_CACHE_TTL_MS) {
-    profileCache.delete(normalized);
-    persistProfileCacheToStorage();
-    return null;
-  }
-
-  return entry;
+  return null;
 }
 
 export function setProfileCacheEntry(pubkey, profile, { persist = true } = {}) {
-  const normalizedPubkey = normalizeHexPubkey(pubkey);
-  if (!normalizedPubkey || !profile) {
-    return null;
-  }
-
-  const normalized = {
-    name: profile.name || profile.display_name || "Unknown",
-    picture:
-      sanitizeProfileMediaUrl(profile.picture || profile.image) ||
-      "assets/svg/default-profile.svg",
-  };
-
-  const about = sanitizeProfileString(profile.about || profile.aboutMe);
-  if (about) {
-    normalized.about = about;
-  }
-
-  const website = sanitizeProfileString(profile.website || profile.url);
-  if (website) {
-    normalized.website = website;
-  }
-
-  const banner = sanitizeProfileMediaUrl(
-    profile.banner ||
-      profile.header ||
-      profile.background ||
-      profile.cover ||
-      profile.cover_image ||
-      profile.coverImage
-  );
-  if (banner) {
-    normalized.banner = banner;
-  }
-
-  const lud16 = sanitizeProfileString(profile.lud16);
-  if (lud16) {
-    normalized.lud16 = lud16;
-  }
-
-  const lud06 = sanitizeProfileString(profile.lud06);
-  if (lud06) {
-    normalized.lud06 = lud06;
-  }
-
-  const lightningCandidates = [
-    sanitizeProfileString(profile.lightningAddress),
-    lud16,
-    lud06,
-  ].filter(Boolean);
-  if (lightningCandidates.length) {
-    normalized.lightningAddress = lightningCandidates[0];
-  }
-
-  const entry = {
-    profile: normalized,
-    timestamp: Date.now(),
-  };
-
-  profileCache.set(normalizedPubkey, entry);
-  if (persist) {
-    persistProfileCacheToStorage();
-  }
-
+  const entry = unifiedProfileCache.setProfile(pubkey, profile, { persist });
   return entry;
 }
 
