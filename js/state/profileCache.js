@@ -167,7 +167,9 @@ class ProfileCache {
     }
 
     const normalized = {
-      name: profile.name || profile.display_name || "Unknown",
+      name:
+        sanitizeProfileString(profile.name || profile.display_name) ||
+        "Unknown",
       picture:
         sanitizeProfileMediaUrl(profile.picture || profile.image) ||
         "assets/svg/default-profile.svg",
