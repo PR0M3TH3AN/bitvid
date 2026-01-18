@@ -94,11 +94,11 @@ export const viewInitRegistry = {
   },
   "for-you": () => {
     const app = getApplication();
-    if (app && typeof app.loadVideos === "function") {
+    if (app && typeof app.loadForYouVideos === "function") {
       if (typeof app.mountVideoListView === "function") {
         app.mountVideoListView();
       }
-      app.loadVideos();
+      app.loadForYouVideos();
     }
     // Force profile updates after the new view is in place.
     const refreshApp = getApplication();
