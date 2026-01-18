@@ -1386,7 +1386,6 @@ export class ModerationService {
       return;
     }
 
-    this.log(`[moderationService] ingesting trusted mute event from ${owner} (${event.id})`);
     this.applyTrustedMuteEvent(owner, event);
   }
 
