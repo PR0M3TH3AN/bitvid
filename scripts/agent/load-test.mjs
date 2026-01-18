@@ -1,330 +1,306 @@
-import { WebSocket } from 'ws';
-import { generateSecretKey, getPublicKey, finalizeEvent } from 'nostr-tools';
-import { spawn } from 'node:child_process';
-import { writeFile, mkdir } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
+import WebSocket from 'ws';
+import { finalizeEvent, generateSecretKey, getPublicKey } from 'nostr-tools';
+import { writeFile, mkdir } from 'fs/promises';
+import path from 'path';
+import { performance } from 'perf_hooks';
 
-globalThis.WebSocket = WebSocket;
+// --- Configuration ---
+const ARGS = process.argv.slice(2);
+const getConfig = (key, defaultVal) => {
+  const idx = ARGS.indexOf(`--${key}`);
+  return idx !== -1 ? ARGS[idx + 1] : defaultVal;
+};
+
+const hasFlag = (flag) => ARGS.includes(`--${flag}`);
 
 const CONFIG = {
-  relayUrl: process.env.RELAY_URL || 'ws://127.0.0.1:3333',
-  numClients: parseInt(process.env.NUM_CLIENTS || '1000', 10),
-  durationSec: parseInt(process.env.DURATION_SEC || '60', 10),
-  eventsPerSec: parseInt(process.env.RATE || '20', 10),
-  reportFile: process.env.REPORT_FILE || `artifacts/load-report-${new Date().toISOString().split('T')[0]}.json`,
-  useInternalRelay: !process.env.RELAY_URL
+  clients: parseInt(getConfig('clients', '100'), 10),
+  duration: parseInt(getConfig('duration', '60'), 10), // seconds
+  relay: getConfig('relay', 'ws://localhost:8008'),
+  rate: parseInt(getConfig('rate', '50'), 10), // target events per second (global)
+  unsafe: hasFlag('unsafe'),
+  outputDir: 'artifacts',
 };
 
-function isLocalRelay(url) {
-  if (!url) return true;
-  try {
-    const u = new URL(url);
-    const host = u.hostname;
-    if (host === 'localhost' || host === '127.0.0.1' || host === '[::1]') return true;
-    if (host.startsWith('192.168.') || host.startsWith('10.') || host.match(/^172\.(1[6-9]|2\d|3[0-1])\./)) return true;
-    return false;
-  } catch { return false; }
-}
-
-// Metrics
-const stats = {
-  startTime: Date.now(),
-  sent: 0,
-  received: 0,
-  errors: 0,
-  latencies: [], // Roundtrip (ms)
-  pubAckLatencies: [], // Publish -> OK (ms)
-  bytesSent: 0,
-  bytesReceived: 0,
-  msgTypeCounts: {}
-};
-
-// Clients
-const clients = [];
-let relayProcess = null;
-
-async function startRelay() {
-  if (!CONFIG.useInternalRelay) return;
-
-  console.log('Starting internal relay...');
-  const relayScript = resolve('scripts/agent/simple-relay.mjs');
-
-  relayProcess = spawn('node', [relayScript], {
-    stdio: 'inherit',
-    env: { ...process.env, PORT: '3333' }
-  });
-
-  // Wait for it to be ready (dumb wait)
-  await new Promise(r => setTimeout(r, 2000));
-}
-
-function createClient(index) {
-  const sk = generateSecretKey();
-  const pk = getPublicKey(sk);
-
-  return new Promise((resolve, reject) => {
-    // Add timeout
-    const timeout = setTimeout(() => {
-        reject(new Error(`Client ${index} connection timeout`));
-        try { ws.close(); } catch {}
-    }, 5000);
-
-    const ws = new WebSocket(CONFIG.relayUrl);
-
-    const client = {
-      id: index,
-      ws,
-      sk,
-      pk,
-      subs: new Map(),
-      pendingPublishes: new Map() // eventId -> startTime
-    };
-
-    ws.on('open', () => {
-      clearTimeout(timeout);
-      resolve(client);
-    });
-
-    ws.on('error', (err) => {
-      // console.error(`Client ${index} error:`, err.message);
-      stats.errors++;
-      if (ws.readyState === WebSocket.CONNECTING) reject(err);
-    });
-
-    ws.on('message', (data) => {
-      const size = data.length;
-      stats.bytesReceived += size;
-
-      try {
-        const msg = JSON.parse(data.toString());
-        const type = msg[0];
-
-        stats.msgTypeCounts[type] = (stats.msgTypeCounts[type] || 0) + 1;
-
-        if (type === 'OK') {
-          const [_, eventId, success, info] = msg;
-          if (client.pendingPublishes.has(eventId)) {
-            const start = client.pendingPublishes.get(eventId);
-            const latency = Date.now() - start;
-            stats.pubAckLatencies.push(latency);
-            client.pendingPublishes.delete(eventId);
-          }
-          if (!success) {
-            stats.errors++;
-            // console.warn(`Publish failed for ${eventId}: ${info}`);
-          }
-        } else if (type === 'EVENT') {
-          const [_, subId, event] = msg;
-          // Calculate roundtrip if we tracked this event
-          // We can attach a 'created_at' but that's in seconds.
-          // We'll rely on a local map of sent events if we want precise RT,
-          // or we can embed a high-res timestamp in the content if we want.
-          // Let's use a global map for roundtrip tracking since any client might receive it.
-
-          if (pendingRoundtrips.has(event.id)) {
-            const start = pendingRoundtrips.get(event.id);
-            const latency = Date.now() - start;
-            stats.latencies.push(latency);
-            stats.received++;
-            pendingRoundtrips.delete(event.id); // Only count first receipt? Or Average?
-            // To avoid memory leak, we delete. For load test, first receipt is good enough proxy for propagation.
-          }
-        }
-      } catch (e) {
-        stats.errors++;
-      }
-    });
-  });
-}
-
-const pendingRoundtrips = new Map(); // eventId -> startTime
-
-async function runTest() {
-  if (!CONFIG.useInternalRelay && !isLocalRelay(CONFIG.relayUrl) && !process.env.FORCE_PUBLIC) {
-    console.error("Error: Configured relay appears to be public. Use FORCE_PUBLIC=1 to override.");
-    process.exit(1);
-  }
-
-  await startRelay();
-
-  console.log(`Connecting ${CONFIG.numClients} clients to ${CONFIG.relayUrl}...`);
-
-  // Batch connections to avoid connection storm
-  const BATCH_SIZE = 50;
-  for (let i = 0; i < CONFIG.numClients; i += BATCH_SIZE) {
-    const batchPromises = [];
-    for (let j = 0; j < BATCH_SIZE && i + j < CONFIG.numClients; j++) {
-      batchPromises.push(createClient(i + j));
-    }
+// --- Safety Check ---
+function isSafeRelay(url) {
+    if (CONFIG.unsafe) return true;
     try {
-      const batch = await Promise.all(batchPromises);
-      clients.push(...batch);
-      if ((i + BATCH_SIZE) % 500 === 0) console.log(`Connected ${clients.length}/${CONFIG.numClients}`);
+        const u = new URL(url);
+        if (u.hostname === 'localhost' || u.hostname === '127.0.0.1' || u.hostname === '[::1]') return true;
+        // Check for private IPs (10.x, 192.168.x, 172.16-31.x) could be added here,
+        // but for now localhost is the strict guardrail.
+        return false;
     } catch (e) {
-      console.error('Failed to connect clients:', e);
-      process.exit(1);
+        return false;
     }
-  }
+}
 
-  console.log('Clients connected. Subscribing...');
+if (!isSafeRelay(CONFIG.relay)) {
+    console.error(`\n[FATAL] Guardrail triggered: Attempting to load test a non-local relay (${CONFIG.relay}) without --unsafe flag.`);
+    console.error("Please target a local relay or use --unsafe if you are sure you own the infrastructure.\n");
+    process.exit(1);
+}
 
-  // Subscribe all clients to everything (or a subset to avoid explosion)
-  // If 1000 clients subscribe to everything, 1 publish = 1000 receives.
-  // 10 events/sec = 10,000 messages/sec. That's a lot.
-  // Let's have clients subscribe to a global filter but maybe we only have a subset of *listening* clients?
-  // Or simpler: Each client subscribes to itself, and we publish to random clients.
-  // But prompt says "simulate N clients ... connecting to the relay".
-  // And "Publish ... mixture ...".
-  // To measure roundtrip, someone needs to receive.
-  // Let's have 10% of clients be "listeners" that subscribe to a wildcard (or specific kinds).
+// --- Helpers ---
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  const listenerCount = Math.max(1, Math.floor(CONFIG.numClients * 0.1));
-  console.log(`Setting up ${listenerCount} listeners...`);
+const NOTE_TYPES = {
+    VIDEO_POST: 30078,
+    VIEW_EVENT: 30079
+};
 
-  for (let i = 0; i < listenerCount; i++) {
-    const client = clients[i];
-    const subId = 'sub1';
-    // Subscribe to the kinds we publish
-    const req = ['REQ', subId, { kinds: [30078, 30079] }];
-    client.ws.send(JSON.stringify(req));
-  }
+// Simplified Event Builders based on js/nostrEventSchemas.js
+function buildVideoPostEvent(signer, contentData) {
+    const created_at = Math.floor(Date.now() / 1000);
+    const event = {
+        kind: NOTE_TYPES.VIDEO_POST,
+        created_at,
+        tags: [
+            ['t', 'video'],
+            ['d', `video-${created_at}-${Math.random().toString(36).slice(2)}`]
+        ],
+        content: JSON.stringify(contentData),
+        pubkey: getPublicKey(signer.privateKey),
+    };
+    return finalizeEvent(event, signer.privateKey);
+}
 
-  console.log(`Starting load generation for ${CONFIG.durationSec} seconds...`);
+function buildViewEvent(signer, videoId) {
+    const created_at = Math.floor(Date.now() / 1000);
+    const event = {
+        kind: NOTE_TYPES.VIEW_EVENT,
+        created_at,
+        tags: [
+            ['t', 'view'],
+            ['e', videoId],
+            ['d', `view-${created_at}-${Math.random().toString(36).slice(2)}`] // Dedupe tag
+        ],
+        content: '',
+        pubkey: getPublicKey(signer.privateKey),
+    };
+    return finalizeEvent(event, signer.privateKey);
+}
 
-  // Cleanup stale roundtrips
-  const cleanupInterval = setInterval(() => {
-    const now = Date.now();
-    for (const [id, start] of pendingRoundtrips) {
-      if (now - start > 10000) pendingRoundtrips.delete(id);
+// --- Client Class ---
+class LoadClient {
+    constructor(relayUrl, id) {
+        this.id = id;
+        this.relayUrl = relayUrl;
+        this.privateKey = generateSecretKey();
+        this.pubkey = getPublicKey(this.privateKey);
+        this.ws = null;
+        this.connected = false;
+        this.pending = new Map(); // eventId -> startTime
     }
-  }, 5000);
-  cleanupInterval.unref();
 
-  // Better loop
-  let running = true;
-  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    connect() {
+        return new Promise((resolve, reject) => {
+            this.ws = new WebSocket(this.relayUrl);
+            this.ws.on('open', () => {
+                this.connected = true;
+                resolve();
+            });
+            this.ws.on('error', (err) => {
+                // console.error(`Client ${this.id} error:`, err.message);
+                reject(err);
+            });
+            this.ws.on('message', (data) => this.handleMessage(data));
+            this.ws.on('close', () => {
+                this.connected = false;
+            });
+        });
+    }
 
-  const runLoop = async () => {
-    while (running) {
-      const startTick = Date.now();
+    handleMessage(data) {
+        try {
+            const msg = JSON.parse(data);
+            if (msg[0] === 'OK') {
+                const eventId = msg[1];
+                const success = msg[2];
+                const message = msg[3];
 
-      // How many to send this tick (simulating 100ms ticks)
-      const batchSize = Math.ceil(CONFIG.eventsPerSec / 10);
+                if (this.pending.has(eventId)) {
+                    const startTime = this.pending.get(eventId);
+                    const latency = Date.now() - startTime;
+                    this.pending.delete(eventId);
+                    stats.recordAck(latency, success, message);
+                }
+            }
+        } catch (e) {
+            console.error('Error parsing message:', e);
+        }
+    }
 
-      for (let k = 0; k < batchSize; k++) {
-        const client = clients[Math.floor(Math.random() * clients.length)];
-        const isLarge = Math.random() > 0.5;
+    publish(event) {
+        if (!this.connected) return;
+        this.pending.set(event.id, Date.now());
+        this.ws.send(JSON.stringify(['EVENT', event]));
+        stats.recordSent();
+    }
 
-        const kind = isLarge ? 30078 : 30079;
-        const content = isLarge
-            ? JSON.stringify({ version: 3, title: "Load Test Video", description: "x".repeat(2000) })
-            : "view";
+    close() {
+        if (this.ws) this.ws.close();
+    }
+}
 
-        const event = {
-          kind,
-          created_at: Math.floor(Date.now() / 1000),
-          tags: [['t', isLarge ? 'video' : 'view']],
-          content,
-          pubkey: client.pk,
+// --- Metrics ---
+const stats = {
+    startTime: Date.now(),
+    sent: 0,
+    acked: 0,
+    failed: 0,
+    latencies: [],
+    signingTimes: [],
+    errors: [],
+    startCpu: process.cpuUsage(),
+
+    recordSent() {
+        this.sent++;
+    },
+
+    recordAck(latency, success, message) {
+        if (success) {
+            this.acked++;
+            this.latencies.push(latency);
+        } else {
+            this.failed++;
+            this.errors.push(message);
+        }
+    },
+
+    recordSigningTime(ms) {
+        this.signingTimes.push(ms);
+    },
+
+    getSummary() {
+        this.latencies.sort((a, b) => a - b);
+        this.signingTimes.sort((a, b) => a - b);
+
+        const calcStats = (arr) => {
+             const p50 = arr[Math.floor(arr.length * 0.5)] || 0;
+             const p95 = arr[Math.floor(arr.length * 0.95)] || 0;
+             const p99 = arr[Math.floor(arr.length * 0.99)] || 0;
+             const avg = arr.reduce((a, b) => a + b, 0) / (arr.length || 1);
+             return { avg: avg.toFixed(2), p50: p50.toFixed(2), p95: p95.toFixed(2), p99: p99.toFixed(2) };
         };
 
-        try {
-            const signedEvent = finalizeEvent(event, client.sk);
+        const durationSec = (Date.now() - this.startTime) / 1000;
+        const latencyStats = calcStats(this.latencies);
+        const signingStats = calcStats(this.signingTimes);
 
-            client.pendingPublishes.set(signedEvent.id, Date.now());
-            pendingRoundtrips.set(signedEvent.id, Date.now());
+        const cpuUsage = process.cpuUsage(this.startCpu);
+        const memUsage = process.memoryUsage();
 
-            const msg = JSON.stringify(['EVENT', signedEvent]);
-            client.ws.send(msg);
-            stats.sent++;
-            stats.bytesSent += msg.length;
-        } catch(e) {
-            stats.errors++;
-        }
-      }
-
-      const elapsed = Date.now() - startTick;
-      const wait = Math.max(0, 100 - elapsed);
-      await sleep(wait);
+        return {
+            config: CONFIG,
+            durationSec: durationSec.toFixed(2),
+            events: {
+                sent: this.sent,
+                acked: this.acked,
+                failed: this.failed,
+            },
+            throughput: {
+                sentPerSec: (this.sent / durationSec).toFixed(2),
+                ackedPerSec: (this.acked / durationSec).toFixed(2),
+            },
+            latencyMs: latencyStats,
+            signingTimeMs: signingStats,
+            resources: {
+                cpuUserSec: (cpuUsage.user / 1e6).toFixed(2),
+                cpuSystemSec: (cpuUsage.system / 1e6).toFixed(2),
+                memoryRssMb: (memUsage.rss / 1024 / 1024).toFixed(2),
+                memoryHeapMb: (memUsage.heapUsed / 1024 / 1024).toFixed(2)
+            },
+            errors: this.errors.slice(0, 10), // Sample top 10
+            hotFunctions: [
+                { name: "finalizeEvent (signing)", avgMs: signingStats.avg }
+            ],
+            bottlenecks: signingStats.avg > 100 ? ["Cryptographic operations (signing)"] : []
+        };
     }
-  };
+};
 
-  const loopPromise = runLoop();
+// --- Main ---
+async function run() {
+    console.log(`Starting load test with ${CONFIG.clients} clients against ${CONFIG.relay}`);
+    console.log(`Target rate: ${CONFIG.rate} events/sec`);
+    console.log(`Duration: ${CONFIG.duration} seconds`);
 
-  // Wait for duration
-  await new Promise(r => setTimeout(r, CONFIG.durationSec * 1000));
-  running = false;
-  await loopPromise;
+    const clients = [];
+    for (let i = 0; i < CONFIG.clients; i++) {
+        clients.push(new LoadClient(CONFIG.relay, i));
+    }
 
-  console.log('Test finished. Disconnecting...');
+    console.log('Connecting clients...');
+    await Promise.all(clients.map(c => c.connect().catch(e => null)));
+    const connectedCount = clients.filter(c => c.connected).length;
+    console.log(`Connected ${connectedCount}/${CONFIG.clients} clients.`);
 
-  // Cleanup
-  clients.forEach(c => c.ws.close());
-  if (relayProcess) {
-    relayProcess.kill();
-  }
+    if (connectedCount === 0) {
+        console.error("No clients connected. Aborting.");
+        process.exit(1);
+    }
 
-  // Report
-  await generateReport();
+    const endTime = Date.now() + (CONFIG.duration * 1000);
+    const intervalMs = 1000 / CONFIG.rate; // Delay between events to match rate
+
+    console.log('Starting load generation...');
+
+    // Simple loop to maintain rate
+    let running = true;
+    const loop = async () => {
+        while (running && Date.now() < endTime) {
+            const startLoop = Date.now();
+
+            // Pick random client
+            const client = clients[Math.floor(Math.random() * clients.length)];
+
+            // 10% Video Post, 90% View Event
+            const isVideo = Math.random() < 0.1;
+            let event;
+
+            const signStart = performance.now();
+            if (isVideo) {
+                const content = {
+                    title: `Load Test Video ${Date.now()}`,
+                    description: "Load test content",
+                    videoRootId: `root-${Date.now()}`,
+                    version: 3
+                };
+                event = buildVideoPostEvent(client, content);
+            } else {
+                event = buildViewEvent(client, "some-video-id");
+            }
+            const signEnd = performance.now();
+            stats.recordSigningTime(signEnd - signStart);
+
+            client.publish(event);
+
+            const elapsed = Date.now() - startLoop;
+            const wait = Math.max(0, intervalMs - elapsed);
+            await delay(wait);
+        }
+    };
+
+    await loop();
+    running = false;
+
+    console.log('Load generation finished. Waiting for pending ACKs (5s)...');
+    await delay(5000);
+
+    clients.forEach(c => c.close());
+
+    const summary = stats.getSummary();
+    console.log('--- Load Test Report ---');
+    console.log(JSON.stringify(summary, null, 2));
+
+    await mkdir(CONFIG.outputDir, { recursive: true });
+    // Use fixed date format YYYYMMDD for PR requirements
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const filename = path.join(CONFIG.outputDir, `load-report-${dateStr}.json`);
+    await writeFile(filename, JSON.stringify(summary, null, 2));
+    console.log(`Report saved to ${filename}`);
 }
 
-async function generateReport() {
-  const duration = (Date.now() - stats.startTime) / 1000;
-
-  // Stats
-  const avgLatency = stats.latencies.reduce((a, b) => a + b, 0) / (stats.latencies.length || 1);
-  const avgPubAck = stats.pubAckLatencies.reduce((a, b) => a + b, 0) / (stats.pubAckLatencies.length || 1);
-
-  const report = {
-    config: CONFIG,
-    metrics: {
-      durationActual: duration,
-      totalSent: stats.sent,
-      totalReceived: stats.received,
-      errors: stats.errors,
-      throughput: {
-        sentPerSec: stats.sent / duration,
-        receivedPerSec: stats.received / duration,
-        bytesSentPerSec: stats.bytesSent / duration,
-        bytesReceivedPerSec: stats.bytesReceived / duration
-      },
-      latency: {
-        avgRoundtripMs: avgLatency,
-        avgPubAckMs: avgPubAck,
-        p95RoundtripMs: percentile(stats.latencies, 95),
-        p99RoundtripMs: percentile(stats.latencies, 99)
-      },
-      messageTypes: stats.msgTypeCounts,
-      resourceUsage: process.cpuUsage()
-    },
-    bottlenecks: [], // Placeholder
-    remediation: [] // Placeholder
-  };
-
-  // Basic analysis
-  if (avgLatency > 1000) {
-    report.bottlenecks.push("High average latency (>1s)");
-    report.remediation.push("Check relay CPU or network bandwidth");
-  }
-  if (stats.errors > 0) {
-    report.bottlenecks.push(`Observed ${stats.errors} errors`);
-  }
-
-  // Ensure artifacts dir exists (created in previous step, but safe to check)
-  const reportPath = resolve(CONFIG.reportFile);
-  await mkdir(dirname(reportPath), { recursive: true });
-
-  writeFile(reportPath, JSON.stringify(report, null, 2))
-    .then(() => console.log(`Report written to ${reportPath}`))
-    .catch(e => console.error('Failed to write report:', e));
-}
-
-function percentile(arr, p) {
-  if (arr.length === 0) return 0;
-  arr.sort((a, b) => a - b);
-  const index = Math.floor((p / 100) * arr.length);
-  return arr[index];
-}
-
-runTest().catch(console.error);
+run().catch(console.error);

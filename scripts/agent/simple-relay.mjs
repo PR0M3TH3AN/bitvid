@@ -1,91 +1,54 @@
 import { WebSocketServer } from 'ws';
-import { matchFilters } from 'nostr-tools';
 
-const PORT = process.env.PORT || 3333;
+const PORT = 8008;
 const wss = new WebSocketServer({ port: PORT });
 
-// In-memory event storage
+// Simple in-memory store for REQ matching
 const events = [];
+const subscriptions = new Map(); // subId -> ws
 
-// Map<ws, Map<subId, filters>>
-const subscriptions = new Map();
-
-console.log(`Simple Relay running on port ${PORT}`);
+console.log(`Simple relay running on ws://localhost:${PORT}`);
 
 wss.on('connection', (ws) => {
-  subscriptions.set(ws, new Map());
-
   ws.on('message', (message) => {
     try {
-      const raw = message.toString(); // Ensure string
-      let data;
-      try {
-        data = JSON.parse(raw);
-      } catch (e) {
-        // Ignore malformed JSON
-        return;
-      }
-
+      const data = JSON.parse(message);
       if (!Array.isArray(data)) return;
 
       const [type, ...payload] = data;
 
       if (type === 'EVENT') {
-        const event = payload[0];
-        if (!event || !event.id) return;
+        const [event] = payload;
 
-        // Dedup
-        if (events.some(e => e.id === event.id)) {
-          ws.send(JSON.stringify(['OK', event.id, true, 'duplicate']));
-          return;
+        // Validation check
+        if (!event.id || !event.sig) {
+            ws.send(JSON.stringify(['OK', event.id, false, 'invalid: missing id or sig']));
+            return;
         }
 
+        // Simulate storage
         events.push(event);
-        ws.send(JSON.stringify(['OK', event.id, true, '']));
+        if (events.length > 1000) events.shift(); // Keep memory low
 
-        // Broadcast
-        for (const [client, clientSubs] of subscriptions) {
-          if (client.readyState !== 1) continue; // 1 = OPEN
-          for (const [subId, filters] of clientSubs) {
-            if (matchFilters(filters, event)) {
-              client.send(JSON.stringify(['EVENT', subId, event]));
+        // Simulate relay processing time (random 5-50ms)
+        setTimeout(() => {
+            if (ws.readyState === ws.OPEN) {
+                ws.send(JSON.stringify(['OK', event.id, true, 'saved']));
             }
-          }
-        }
+        }, Math.random() * 45 + 5);
 
       } else if (type === 'REQ') {
-        const subId = payload[0];
-        const filters = payload.slice(1);
-
-        subscriptions.get(ws).set(subId, filters);
-
-        // Send stored events
-        for (const event of events) {
-          if (matchFilters(filters, event)) {
-            ws.send(JSON.stringify(['EVENT', subId, event]));
-          }
-        }
+        const [subId, filter] = payload;
+        // Store subscription (simplified)
+        // In a real relay we would match existing events here
+        // For load test, we mostly care about the ACK of EVENTs
         ws.send(JSON.stringify(['EOSE', subId]));
 
       } else if (type === 'CLOSE') {
-        const subId = payload[0];
-        subscriptions.get(ws).delete(subId);
+          // No-op
       }
     } catch (e) {
-      console.error('Relay error:', e);
+      // ignore invalid JSON
     }
   });
-
-  ws.on('close', () => {
-    subscriptions.delete(ws);
-  });
-
-  ws.on('error', (err) => {
-    console.error('Client error:', err);
-  });
-});
-
-process.on('SIGINT', () => {
-  wss.close();
-  process.exit();
 });
