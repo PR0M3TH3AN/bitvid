@@ -17,6 +17,52 @@ import {
 } from "../state/appState.js";
 
 const VIDEO_KIND = 30078;
+const STORAGE_KEY_FILTERED_VIDEOS = "bitvid:filtered-videos:v1";
+const MAX_PERSISTED_VIDEOS = 100;
+
+function loadPersistedFilteredVideos() {
+  if (
+    typeof window === "undefined" ||
+    !window.localStorage ||
+    typeof window.localStorage.getItem !== "function"
+  ) {
+    return [];
+  }
+
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY_FILTERED_VIDEOS);
+    if (!raw) {
+      return [];
+    }
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    userLogger.warn("[nostrService] Failed to load persisted filtered videos", error);
+    return [];
+  }
+}
+
+function persistFilteredVideos(videos) {
+  if (
+    typeof window === "undefined" ||
+    !window.localStorage ||
+    typeof window.localStorage.setItem !== "function"
+  ) {
+    return;
+  }
+
+  if (!Array.isArray(videos)) {
+    return;
+  }
+
+  try {
+    const sliced = videos.slice(0, MAX_PERSISTED_VIDEOS);
+    const serialized = JSON.stringify(sliced);
+    window.localStorage.setItem(STORAGE_KEY_FILTERED_VIDEOS, serialized);
+  } catch (error) {
+    userLogger.warn("[nostrService] Failed to persist filtered videos", error);
+  }
+}
 
 class SimpleEventEmitter {
   constructor(logger = null) {
@@ -1104,12 +1150,16 @@ export class NostrService {
     this.ensureInitialLoadDeferred();
 
     try {
-      this.ensureAccessControlReady().catch((error) => {
+      // Ensure access control is ready before we attempt the optimistic re-filter
+      // so checks like canAccess() are accurate.
+      try {
+        await this.ensureAccessControlReady();
+      } catch (error) {
         userLogger.warn(
-          "[nostrService] Background access control ready check failed:",
+          "[nostrService] Access control ready check failed (continuing):",
           error
         );
-      });
+      }
 
       if (forceFetch) {
         this.clearVideoSubscription();
@@ -1129,13 +1179,62 @@ export class NostrService {
           }
         }
         this.emit("videos:updated", { videos: filtered, reason });
+
+        // Persist the fresh filtered result for next time
+        if (filtered.length > 0) {
+          persistFilteredVideos(filtered);
+        }
+
         return filtered;
       };
 
-      const cached = this.nostrClient.getActiveVideos();
-      const initial = applyAndNotify(cached, "cache");
+      // Optimistic Step: Load from persistent cache
+      let hasOptimisticData = false;
+      let optimisticResult = [];
+      try {
+        const persisted = loadPersistedFilteredVideos();
+        if (persisted && persisted.length > 0) {
+          // Re-filter synchronously using strict checks (same as normal flow)
+          const optimisticFiltered = this.filterVideos(persisted, {
+            blacklistedEventIds,
+            isAuthorBlocked,
+          });
 
-      this.resolveInitialLoad({ videos: initial, reason: "cache" });
+          if (optimisticFiltered.length > 0) {
+            this.cacheVideos(optimisticFiltered);
+            hasOptimisticData = true;
+            optimisticResult = optimisticFiltered;
+
+            if (typeof onVideos === "function") {
+              try {
+                onVideos(optimisticFiltered, { reason: "persistent-cache" });
+              } catch (error) {
+                userLogger.warn("[nostrService] onVideos handler threw (optimistic)", error);
+              }
+            }
+            this.emit("videos:updated", { videos: optimisticFiltered, reason: "persistent-cache" });
+            this.resolveInitialLoad({ videos: optimisticFiltered, reason: "persistent-cache" });
+          }
+        }
+      } catch (optimisticError) {
+        userLogger.warn("[nostrService] Optimistic load failed", optimisticError);
+      }
+
+      const cached = this.nostrClient.getActiveVideos();
+
+      // If we loaded optimistically and the in-memory cache is empty,
+      // skip emitting the empty list to prevent flashing empty content.
+      // Otherwise, proceed as normal.
+      const shouldSkipEmptyCache = hasOptimisticData && (!cached || cached.length === 0);
+
+      let initial = [];
+      if (!shouldSkipEmptyCache) {
+        initial = applyAndNotify(cached, "cache");
+        this.resolveInitialLoad({ videos: initial, reason: "cache" });
+      } else {
+        // If we skipped, return the optimistic data so the caller receives the currently visible videos
+        initial = optimisticResult;
+      }
 
       if (!getStoredVideoSubscription()) {
         const subscriptionOptions = {
