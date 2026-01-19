@@ -505,10 +505,12 @@ export class ModerationService {
     userBlocks: userBlockManager = null,
     accessControl: accessControlService = null,
     userLogger: userChannel = null,
+    requestExtensionPermissions: permissionRequester = null,
   } = {}) {
     this.nostrClient = client;
     this.log = normalizeLogger(log);
     this.userLogger = normalizeUserLogger(userChannel);
+    this.requestExtensionPermissions = permissionRequester || requestDefaultExtensionPermissions;
 
     this.viewerPubkey = "";
     this.viewerIsSessionActor = false;
@@ -1561,7 +1563,7 @@ export class ModerationService {
     }
 
     if (signer?.type === "extension") {
-      const permissionResult = await requestDefaultExtensionPermissions([
+      const permissionResult = await this.requestExtensionPermissions([
         "sign_event",
         "get_public_key",
       ]);

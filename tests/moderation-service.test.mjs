@@ -387,12 +387,18 @@ test("viewer mute list publishes and updates aggregation", async (t) => {
     relays: ["wss://relay.example"],
     ensurePool: async () => {},
     ensureExtensionPermissions: async () => ({ ok: true }),
+    ensureActiveSignerForPubkey: async (pubkey) => ({
+      type: "extension",
+      signEvent: async (e) => ({ ...e, id: "0".repeat(64), pubkey }),
+      canSign: () => true,
+    }),
   };
 
   const service = new ModerationService({
     logger: () => {},
     nostrClient,
     userLogger: noopUserLogger,
+    requestExtensionPermissions: async () => ({ ok: true }),
   });
 
   const previousNostr = globalThis.window.nostr;

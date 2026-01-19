@@ -12,7 +12,7 @@ import { LRUCache } from "../utils/lruCache.js";
 import { CACHE_POLICIES } from "./cachePolicies.js";
 import { isSessionActor } from "./sessionActor.js";
 import { queueSignEvent } from "./signRequestQueue.js";
-import { getActiveSigner } from "../nostrClientFacade.js";
+import { getActiveSigner } from "../nostrClientRegistry.js";
 
 const COMMENT_EVENT_SCHEMA = getNostrEventSchema(NOTE_TYPES.VIDEO_COMMENT);
 const CACHE_POLICY = CACHE_POLICIES[NOTE_TYPES.VIDEO_COMMENT];
