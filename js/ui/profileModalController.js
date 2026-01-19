@@ -3975,6 +3975,7 @@ export class ProfileModalController {
     try {
       let snapshot = await this.nostrService.loadDirectMessages({
         actorPubkey: actor,
+        initialLoad: true,
       });
       if (!Array.isArray(snapshot)) {
         snapshot = [];
