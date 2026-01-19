@@ -775,9 +775,12 @@ class Application {
         devLogger.log(
           "[app.init()] No #view= in the URL, loading default home view"
         );
+        const defaultView = this.isUserLoggedIn()
+          ? "views/for-you.html"
+          : "views/most-recent-videos.html";
         if (typeof this.loadView === "function") {
           await Promise.all([
-            this.loadView("views/most-recent-videos.html"),
+            this.loadView(defaultView),
             watchHistoryInitPromise,
           ]);
         } else {
