@@ -3217,13 +3217,24 @@ class Application {
     return true;
   }
 
-  handleProfilePrivacyToggle({ enabled, controller } = {}) {
-    if (enabled) {
-      this.showStatus("Privacy mode is coming in Phase 3.");
+  handleProfilePrivacyToggle({ enabled, controller, recipient } = {}) {
+    const relayHints = Array.isArray(recipient?.relayHints)
+      ? recipient.relayHints
+      : [];
+
+    if (enabled && !relayHints.length) {
+      this.showError("Recipient has not shared NIP-17 relay hints yet.");
       if (controller?.setPrivacyToggleState) {
         controller.setPrivacyToggleState(false);
       }
+      return;
     }
+
+    this.showStatus(
+      enabled
+        ? "NIP-17 privacy delivery enabled for this recipient."
+        : "Using standard DM delivery for this recipient.",
+    );
   }
 
   updateProfileInDOM(pubkey, profile) {
