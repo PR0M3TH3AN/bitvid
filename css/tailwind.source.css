@@ -3773,11 +3773,11 @@
 
   .notification-banner,
   .torrent-toast {
-    --notify-accent: var(--color-accent-strong);
-    --notify-accent-strong: var(--color-accent);
-    --notify-border: var(--surface-overlay-panel-tint);
-    --notify-background: var(--surface-overlay-panel);
-    --notify-foreground: var(--color-text);
+    --notify-accent: var(--notification-banner-accent);
+    --notify-accent-strong: var(--notification-banner-accent-strong);
+    --notify-border: var(--notification-banner-border);
+    --notify-background: var(--notification-banner-background);
+    --notify-foreground: var(--notification-banner-text);
 
     position: relative;
     display: flex;
@@ -3845,37 +3845,38 @@
 
   .notification-banner--critical,
   .torrent-toast--error {
-    --notify-accent: var(--color-critical-strong);
-    --notify-accent-strong: var(--color-critical);
-    --notify-border: var(--color-ring-critical-soft);
-    --notify-background: var(--color-card-critical);
-    --notify-foreground: var(--color-critical-strong);
+    --notify-accent: var(--notification-banner-critical-accent);
+    --notify-accent-strong: var(--notification-banner-critical-accent-strong);
+    --notify-border: var(--notification-banner-critical-border);
+    --notify-background: var(--notification-banner-critical-background);
+    --notify-foreground: var(--notification-banner-critical-text);
   }
 
   .notification-banner--success,
   .torrent-toast--success {
-    --notify-accent: var(--status-success-strong);
-    --notify-accent-strong: var(--status-success);
-    --notify-border: var(--status-success-border);
-    --notify-background: var(--status-success-surface);
-    --notify-foreground: var(--status-success-on);
+    --notify-accent: var(--notification-banner-success-accent);
+    --notify-accent-strong: var(--notification-banner-success-accent-strong);
+    --notify-border: var(--notification-banner-success-border);
+    --notify-background: var(--notification-banner-success-background);
+    --notify-foreground: var(--notification-banner-success-text);
   }
 
   .notification-banner--info,
   .torrent-toast--info {
-    --notify-accent: var(--color-info-strong);
-    --notify-accent-strong: var(--color-info);
-    --notify-border: var(--color-info-border);
-    --notify-background: var(--status-info-surface);
+    --notify-accent: var(--notification-banner-info-accent);
+    --notify-accent-strong: var(--notification-banner-info-accent-strong);
+    --notify-border: var(--notification-banner-info-border);
+    --notify-background: var(--notification-banner-info-background);
+    --notify-foreground: var(--notification-banner-info-text);
   }
 
   .notification-banner--warning,
   .torrent-toast--warn {
-    --notify-accent: var(--color-warning-strong);
-    --notify-accent-strong: var(--color-warning);
-    --notify-border: var(--status-warning-border);
-    --notify-background: var(--status-warning-surface);
-    --notify-foreground: var(--status-warning-on);
+    --notify-accent: var(--notification-banner-warning-accent);
+    --notify-accent-strong: var(--notification-banner-warning-accent-strong);
+    --notify-border: var(--notification-banner-warning-border);
+    --notify-background: var(--notification-banner-warning-background);
+    --notify-foreground: var(--notification-banner-warning-text);
   }
 
   .status-banner .status-spinner {
@@ -5112,8 +5113,8 @@
     align-self: flex-start;
     padding: var(--space-3xs) var(--space-xs);
     border-radius: var(--radius-full);
-    background: var(--surface-overlay);
-    color: var(--text-inverse);
+    background: var(--unread-badge-background);
+    color: var(--unread-badge-text);
     font-size: var(--font-size-3xs);
   }
 
@@ -5196,8 +5197,9 @@
     gap: var(--space-2xs);
     padding: var(--space-sm) var(--space-md);
     border-radius: var(--radius-lg);
-    border: var(--border-width-hairline) solid var(--border-subtle);
-    background: var(--surface-sunken);
+    border: var(--border-width-hairline) solid var(--message-bubble-border);
+    background: var(--message-bubble-background);
+    color: var(--message-bubble-text);
   }
 
   .dm-message-bubble--incoming {
@@ -5206,7 +5208,8 @@
 
   .dm-message-bubble--outgoing {
     align-self: flex-end;
-    background: var(--surface-overlay-panel);
+    background: var(--message-bubble-outgoing-background);
+    border-color: var(--message-bubble-outgoing-border);
   }
 
   .dm-message-bubble__content {
@@ -5217,7 +5220,7 @@
     display: flex;
     gap: var(--space-xs);
     font-size: var(--font-size-2xs);
-    color: var(--text-muted);
+    color: var(--message-bubble-meta);
   }
 
   .dm-message-bubble__status {
@@ -5279,6 +5282,18 @@
     background: var(--status-danger-surface);
     border-color: var(--status-danger-border);
     color: var(--status-danger-on);
+  }
+
+  .reply-highlight {
+    padding: var(--space-xs) var(--space-sm);
+    border-radius: var(--radius-md);
+    border: var(--border-width-hairline) solid var(--reply-highlight-border);
+    background: var(--reply-highlight-background);
+    color: var(--reply-highlight-text);
+  }
+
+  .reply-highlight svg {
+    color: var(--reply-highlight-icon);
   }
 
   .dm-composer {

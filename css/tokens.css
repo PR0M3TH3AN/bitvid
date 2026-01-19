@@ -141,6 +141,53 @@
   --status-neutral-border: var(--color-neutral-border);
   --status-neutral-on: var(--color-neutral-on);
 
+  /* Messaging & notifications */
+  --message-bubble-background: var(--surface-sunken);
+  --message-bubble-border: var(--border-subtle);
+  --message-bubble-text: var(--text-primary);
+  --message-bubble-meta: var(--text-muted);
+  --message-bubble-outgoing-background: var(--surface-overlay-panel);
+  --message-bubble-outgoing-border: var(--border-overlay);
+
+  --unread-badge-background: var(--status-info-strong);
+  --unread-badge-text: var(--text-inverse);
+
+  --reply-highlight-background: var(--status-info-surface);
+  --reply-highlight-border: var(--status-info-border);
+  --reply-highlight-text: var(--status-info-on);
+  --reply-highlight-icon: var(--status-info-on);
+
+  --notification-banner-accent: var(--color-accent-strong);
+  --notification-banner-accent-strong: var(--color-accent);
+  --notification-banner-border: var(--surface-overlay-panel-tint);
+  --notification-banner-background: var(--surface-overlay-panel);
+  --notification-banner-text: var(--text-primary);
+  --notification-banner-icon: var(--text-primary);
+
+  --notification-banner-critical-accent: var(--status-danger-strong);
+  --notification-banner-critical-accent-strong: var(--status-danger);
+  --notification-banner-critical-border: var(--color-ring-critical-soft);
+  --notification-banner-critical-background: var(--surface-raised-critical);
+  --notification-banner-critical-text: var(--status-danger-on);
+
+  --notification-banner-success-accent: var(--status-success-strong);
+  --notification-banner-success-accent-strong: var(--status-success);
+  --notification-banner-success-border: var(--status-success-border);
+  --notification-banner-success-background: var(--status-success-surface);
+  --notification-banner-success-text: var(--status-success-on);
+
+  --notification-banner-info-accent: var(--status-info-strong);
+  --notification-banner-info-accent-strong: var(--status-info);
+  --notification-banner-info-border: var(--status-info-border);
+  --notification-banner-info-background: var(--status-info-surface);
+  --notification-banner-info-text: var(--status-info-on);
+
+  --notification-banner-warning-accent: var(--status-warning-strong);
+  --notification-banner-warning-accent-strong: var(--status-warning);
+  --notification-banner-warning-border: var(--status-warning-border);
+  --notification-banner-warning-background: var(--status-warning-surface);
+  --notification-banner-warning-text: var(--status-warning-on);
+
   /* Layout & stacking */
   --scrollbar-width: 0.5rem;
   --scrollbar-track: var(--color-white-soft);
