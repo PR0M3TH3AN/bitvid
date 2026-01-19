@@ -15,6 +15,7 @@ import {
 } from "../constants.js";
 import { getBreakpointLg } from "../designSystem/metrics.js";
 import { getProviderMetadata } from "../services/authProviders/index.js";
+import { AppShell } from "./dm/index.js";
 import { devLogger, userLogger } from "../utils/logger.js";
 import {
   normalizeHashtag,
@@ -1295,6 +1296,8 @@ export class ProfileModalController {
     this.profileMessagesRelayStatus = null;
     this.profileMessagesReadReceiptsToggle = null;
     this.profileMessagesTypingToggle = null;
+    this.dmAppShellContainer = null;
+    this.dmAppShell = null;
     this.profileLinkPreviewAutoToggle = null;
     this.walletUriInput = null;
     this.walletDefaultZapInput = null;
@@ -1608,6 +1611,8 @@ export class ProfileModalController {
       document.getElementById("profileMessagesReadReceiptsToggle") || null;
     this.profileMessagesTypingToggle =
       document.getElementById("profileMessagesTypingToggle") || null;
+    this.dmAppShellContainer =
+      document.getElementById("dmAppShellMount") || null;
     this.profileLinkPreviewAutoToggle =
       document.getElementById("profileLinkPreviewAutoToggle") || null;
 
@@ -4038,13 +4043,59 @@ export class ProfileModalController {
     void this.ensureDirectMessageSubscription(actor);
   }
 
+  mountDmAppShell() {
+    const container =
+      this.dmAppShellContainer instanceof HTMLElement
+        ? this.dmAppShellContainer
+        : null;
+    if (!container) {
+      return;
+    }
+
+    container.innerHTML = "";
+
+    try {
+      this.dmAppShell = new AppShell({ document });
+    } catch (error) {
+      this.dmAppShell = null;
+      devLogger.warn("[profileModal] Failed to mount DM app shell:", error);
+      return;
+    }
+
+    const root =
+      this.dmAppShell &&
+      typeof this.dmAppShell.getRoot === "function"
+        ? this.dmAppShell.getRoot()
+        : null;
+    if (!(root instanceof HTMLElement)) {
+      devLogger.warn("[profileModal] DM app shell root missing.");
+      return;
+    }
+
+    container.appendChild(root);
+  }
+
+  unmountDmAppShell() {
+    const container =
+      this.dmAppShellContainer instanceof HTMLElement
+        ? this.dmAppShellContainer
+        : null;
+    if (container) {
+      container.innerHTML = "";
+    }
+
+    this.dmAppShell = null;
+  }
+
   resumeProfileMessages() {
     this.messagesViewActive = true;
+    this.mountDmAppShell();
     this.updateMessagesReloadState();
   }
 
   pauseProfileMessages() {
     this.messagesViewActive = false;
+    this.unmountDmAppShell();
     this.updateMessagesReloadState();
   }
 
