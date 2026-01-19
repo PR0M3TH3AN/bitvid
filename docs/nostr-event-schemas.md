@@ -163,6 +163,8 @@ import { updateWatchHistoryListWithDefaultClient } from "./nostrWatchHistoryFaca
 | Storage challenge (`NOTE_TYPES.STORAGE_CHALLENGE`) | `22242` | `['challenge', <hex>]`, `['purpose', 'bitvid-storage-key']` | Empty content. This event is **ephemeral** and never published to relays. It serves as a challenge for the signer; the deterministic signature produced is used to derive the local encryption Master Key for the Storage Service. |
 | Profile metadata (`NOTE_TYPES.PROFILE_METADATA`) | `0` | `['d', ...]` is not used | JSON payload with NIP-01 fields (`name`, `about`, `picture`, `nip05`, etc.) |
 | Mute list (`NOTE_TYPES.MUTE_LIST`) | `10000` | Repeated `['p', <pubkey>]` tags for blocked/muted users | Optional content (often encrypted) |
+| Zap request (`NOTE_TYPES.ZAP_REQUEST`) | `9734` | `['p', <recipient pubkey>]` plus optional `['e', <event id>]`, `['a', <coordinate>]`, `['amount', <msats>]`, `['lnurl', <bech32>]`, and `['relays', ...]` for receipt publishing | Optional plaintext zap note |
+| Zap receipt (`NOTE_TYPES.ZAP_RECEIPT`) | `9735` | `['bolt11', <invoice>]`, `['description', <zap request JSON>]`, `['p', <recipient pubkey>]` plus optional `['e', <event id>]` and `['a', <coordinate>]` | Empty content; receipts are published by the recipient's LNURL server |
 
 Subscription lists therefore match the
 [NIP-51 follow-set specification](./nips/51.md#sets) by emitting kind `30000`

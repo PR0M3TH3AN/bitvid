@@ -20,6 +20,8 @@ export const NOTE_TYPES = Object.freeze({
   VIEW_EVENT: "viewEvent",
   VIDEO_REACTION: "videoReaction",
   VIDEO_COMMENT: "videoComment",
+  ZAP_REQUEST: "zapRequest",
+  ZAP_RECEIPT: "zapReceipt",
   WATCH_HISTORY: "watchHistory",
   SUBSCRIPTION_LIST: "subscriptionList",
   USER_BLOCK_LIST: "userBlockList",
@@ -360,6 +362,28 @@ const BASE_SCHEMAS = {
     content: {
       format: "text",
       description: "Plain text comment body sanitized for UTF-8 compatibility.",
+    },
+  },
+  [NOTE_TYPES.ZAP_REQUEST]: {
+    type: NOTE_TYPES.ZAP_REQUEST,
+    label: "Zap request",
+    kind: 9734,
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      format: "text",
+      description:
+        "Optional zap message included in the zap request sent to LNURL pay callbacks.",
+    },
+  },
+  [NOTE_TYPES.ZAP_RECEIPT]: {
+    type: NOTE_TYPES.ZAP_RECEIPT,
+    label: "Zap receipt",
+    kind: 9735,
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      format: "text",
+      description:
+        "Zap receipts are published by lightning wallets to confirm zap requests.",
     },
   },
   [NOTE_TYPES.WATCH_HISTORY]: {
@@ -1117,6 +1141,80 @@ export function buildViewEvent(params) {
 
   return {
     kind: schema?.kind ?? WATCH_HISTORY_KIND,
+    pubkey,
+    created_at,
+    tags,
+    content: resolvedContent,
+  };
+}
+
+export function buildZapRequestEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    recipientPubkey,
+    relays = [],
+    amountSats,
+    lnurl,
+    eventId,
+    coordinate,
+    additionalTags = [],
+    content = "",
+  } = params || {};
+  const schema = getNostrEventSchema(NOTE_TYPES.ZAP_REQUEST);
+  const tags = [];
+
+  const normalizedRecipient = normalizePointerIdentifier(recipientPubkey);
+  if (normalizedRecipient) {
+    tags.push(["p", normalizedRecipient]);
+  }
+
+  const normalizedEventId = normalizePointerIdentifier(eventId);
+  if (normalizedEventId) {
+    tags.push(["e", normalizedEventId]);
+  }
+
+  if (typeof coordinate === "string" && coordinate.trim()) {
+    tags.push(["a", coordinate.trim()]);
+  }
+
+  if (typeof lnurl === "string" && lnurl.trim()) {
+    tags.push(["lnurl", lnurl.trim()]);
+  }
+
+  if (Number.isFinite(amountSats)) {
+    tags.push(["amount", String(Math.max(0, Math.round(amountSats)) * 1000)]);
+  }
+
+  const relayList = Array.isArray(relays) ? relays : [];
+  const relaySeen = new Set();
+  const normalizedRelays = [];
+  relayList.forEach((relay) => {
+    if (typeof relay !== "string") {
+      return;
+    }
+    const trimmed = relay.trim();
+    if (!trimmed || relaySeen.has(trimmed)) {
+      return;
+    }
+    relaySeen.add(trimmed);
+    normalizedRelays.push(trimmed);
+  });
+  if (normalizedRelays.length) {
+    tags.push(["relays", ...normalizedRelays]);
+  }
+
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
+  }
+
+  appendSchemaTags(tags, schema);
+
+  const resolvedContent = ensureValidUtf8Content(content);
+
+  return {
+    kind: schema?.kind ?? 9734,
     pubkey,
     created_at,
     tags,
