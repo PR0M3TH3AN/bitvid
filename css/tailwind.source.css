@@ -5211,7 +5211,7 @@
     background: var(--surface-panel);
     border: var(--border-width-hairline) solid var(--border-subtle);
     overflow-y: auto;
-    min-height: var(--sidebar-width-expanded-base);
+    min-height: var(--size-16rem);
   }
 
   .dm-message-thread__state {
@@ -5495,8 +5495,8 @@
   }
 
   .dm-composer__input:focus-visible {
-    outline: var(--size-2px) solid var(--color-accent);
-    outline-offset: var(--size-2px);
+    outline: var(--space-3xs) solid var(--color-accent);
+    outline-offset: var(--space-3xs);
   }
 
   .dm-composer__actions {
@@ -5662,110 +5662,6 @@
     min-height: var(--space-md);
   }
 
-  .dm-contact-row__zap {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2xs);
-    padding: var(--space-3xs) var(--space-xs);
-    border-radius: var(--radius-full);
-    border: var(--border-width-hairline) solid var(--border-subtle);
-    background: var(--surface-sunken);
-    color: var(--text-muted);
-    font-size: var(--font-size-3xs);
-  }
-
-  .dm-zap-receipts {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-xs);
-    padding: 0 var(--space-sm) var(--space-sm);
-  }
-
-  .dm-zap-receipts__header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-
-  .dm-zap-receipts__title {
-    font-size: var(--font-size-xs);
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: var(--tracking-wide);
-    color: var(--text-muted);
-  }
-
-  .dm-zap-receipts__list {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-xs);
-    padding: 0;
-    margin: 0;
-    list-style: none;
-  }
-
-  .dm-zap-receipts__item {
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    gap: var(--space-sm);
-    align-items: center;
-    padding: var(--space-xs);
-    border-radius: var(--radius-md);
-    border: var(--border-width-hairline) solid var(--border-subtle);
-    background: var(--surface-sunken);
-  }
-
-  .dm-zap-receipts__amount {
-    font-weight: 600;
-    color: var(--text-primary);
-    font-size: var(--font-size-xs);
-    white-space: nowrap;
-  }
-
-  .dm-zap-receipts__details {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3xs);
-    min-width: 0;
-  }
-
-  .dm-zap-receipts__sender {
-    font-size: var(--font-size-xs);
-    color: var(--text-primary);
-  }
-
-  .dm-zap-receipts__note {
-    font-size: var(--font-size-2xs);
-    color: var(--text-muted);
-  }
-
-  .dm-zap-receipts__meta {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3xs);
-    align-items: flex-end;
-    font-size: var(--font-size-2xs);
-    color: var(--text-muted);
-    white-space: nowrap;
-  }
-
-  .dm-zap-receipts__status[data-status="confirmed"] {
-    color: var(--status-success);
-  }
-
-  .dm-zap-receipts__status[data-status="pending"] {
-    color: var(--status-warning);
-  }
-
-  .dm-zap-receipts__status[data-status="failed"] {
-    color: var(--status-danger);
-  }
-
-  .dm-zap-receipts__empty {
-    font-size: var(--font-size-xs);
-    color: var(--text-muted);
-  }
-
   @media (min-width: theme("screens.md")) {
     .dm-app-shell {
       flex-direction: row;
@@ -5773,8 +5669,8 @@
     }
 
     .dm-app-shell__sidebar {
-      flex: 0 0 var(--size-18rem);
-      max-width: var(--grid-card-min-width);
+    flex: 0 0 var(--size-18rem);
+    max-width: var(--size-20rem);
       height: calc(100vh - var(--space-lg) * 2);
     }
 
@@ -5790,7 +5686,7 @@
 
   @media (min-width: theme("screens.lg")) {
     .dm-app-shell__sidebar {
-      flex-basis: var(--grid-card-min-width);
+      flex-basis: var(--size-20rem);
     }
 
     .dm-message-thread__timeline {
