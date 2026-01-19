@@ -363,7 +363,7 @@ function getPointerSnapshot(pointerInput) {
   return snapshotState(state);
 }
 
-export function ingestLocalReaction({ event, pointer }) {
+function ingestLocalReaction({ event, pointer }) {
   if (!event || !pointer) {
     return;
   }
@@ -785,7 +785,6 @@ export const reactionCounter = {
   },
 };
 
-reactionCounter.ingestLocalReaction = ingestLocalReaction;
 reactionCounter.subscribe = subscribeToPointer;
 reactionCounter.unsubscribe = unsubscribeFromPointer;
 reactionCounter.getSnapshot = getPointerSnapshot;
