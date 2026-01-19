@@ -18,6 +18,7 @@ export function MessageThread({
   messages = [],
   state = "idle",
   errorType = "",
+  privacyMode = "nip04",
 } = {}) {
   if (!doc) {
     throw new Error("MessageThread requires a document reference.");
@@ -39,6 +40,21 @@ export function MessageThread({
       createElement(doc, "span", "dm-message-thread__status", contact.status),
     );
   }
+  const normalizedPrivacy =
+    typeof privacyMode === "string" ? privacyMode.trim().toLowerCase() : "";
+  const isNip17 = normalizedPrivacy === "nip17" || normalizedPrivacy === "private";
+  const privacyLabel = `Privacy: ${isNip17 ? "NIP-17" : "NIP-04"}`;
+  const privacyHint = isNip17
+    ? "NIP-17 gift-wraps your DM so relays only see the wrapper and relay hints."
+    : "NIP-04 sends a direct encrypted DM; relays can still see sender and recipient metadata.";
+  const privacyBadge = createElement(
+    doc,
+    "span",
+    "dm-message-thread__status",
+    privacyLabel,
+  );
+  privacyBadge.title = privacyHint;
+  header.appendChild(privacyBadge);
   root.appendChild(header);
 
   const timeline = createElement(doc, "div", "dm-message-thread__timeline");

@@ -76,6 +76,7 @@ export class AppShell {
     threadState = "idle",
     threadErrorType = "",
     composerState = "idle",
+    privacyMode = "nip04",
     notifications = [],
     signingAdapter = null,
     onSelectConversation,
@@ -120,12 +121,14 @@ export class AppShell {
         messages,
         state: threadState,
         errorType: threadErrorType,
+        privacyMode,
       }),
     );
     main.appendChild(
       Composer({
         document: doc,
         state: composerState,
+        privacyMode,
         signingAdapter,
         onSend: onSendMessage,
       }),

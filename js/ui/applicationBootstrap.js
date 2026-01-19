@@ -504,6 +504,9 @@ export default class ApplicationBootstrap {
           setDmRecipient: (pubkey) => app.setDmRecipientPubkey(pubkey),
           getDmRelayHints: (pubkey) => app.getDmRelayHints(pubkey),
           setDmRelayHints: (pubkey, hints) => app.setDmRelayHints(pubkey, hints),
+          getDmRelayPreferences: (pubkey) => app.getDmRelayHints(pubkey),
+          setDmRelayPreferences: (pubkey, hints) =>
+            app.setDmRelayHints(pubkey, hints),
         };
 
         const profileModalCallbacks = {
@@ -541,6 +544,8 @@ export default class ApplicationBootstrap {
           onOpenRelays: (payload) => app.handleProfileUseDmRelays(payload),
           onTogglePrivacy: (payload) =>
             app.handleProfilePrivacyToggle(payload),
+          onPublishDmRelayPreferences: (payload) =>
+            app.handleProfilePublishDmRelayPreferences(payload),
         };
 
         app.profileController = new ProfileModalController({
