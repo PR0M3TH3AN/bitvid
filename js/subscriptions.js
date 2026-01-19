@@ -535,6 +535,25 @@ class SubscriptionsManager {
     return this.subscribedPubkeys.has(normalized);
   }
 
+  async toggleChannel(channelHex, userPubkey) {
+    if (!userPubkey) {
+      throw new Error("No user pubkey => cannot toggleChannel.");
+    }
+    await this.ensureLoaded(userPubkey);
+    const isSubscribed = this.isSubscribed(channelHex) === true;
+    try {
+      if (isSubscribed) {
+        await this.removeChannel(channelHex, userPubkey);
+      } else {
+        await this.addChannel(channelHex, userPubkey);
+      }
+      return { ok: true, subscribed: !isSubscribed };
+    } catch (error) {
+      userLogger.error("[SubscriptionsManager] Failed to toggle subscription:", error);
+      throw error;
+    }
+  }
+
   getSubscribedAuthors() {
     return Array.from(this.subscribedPubkeys);
   }

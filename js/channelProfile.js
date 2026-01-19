@@ -3389,13 +3389,7 @@ function setupChannelMessageControls() {
         }
 
         try {
-          const isSubscribed =
-            subscriptions.isSubscribed(resolvedHex) === true;
-          if (isSubscribed) {
-            await subscriptions.removeChannel(resolvedHex, app.pubkey);
-          } else {
-            await subscriptions.addChannel(resolvedHex, app.pubkey);
-          }
+          await subscriptions.toggleChannel(resolvedHex, app.pubkey);
         } catch (error) {
           userLogger.error("Failed to toggle channel notifications:", error);
           const permissionErrorCodes = new Set([
@@ -4218,11 +4212,7 @@ function renderSubscribeButton(channelHex) {
         return;
       }
       try {
-        if (alreadySubscribed) {
-          await subscriptions.removeChannel(channelHex, currentApp.pubkey);
-        } else {
-          await subscriptions.addChannel(channelHex, currentApp.pubkey);
-        }
+        await subscriptions.toggleChannel(channelHex, currentApp.pubkey);
         // Re-render the button so it toggles state
         renderSubscribeButton(channelHex);
       } catch (err) {
