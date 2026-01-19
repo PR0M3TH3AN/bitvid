@@ -40,7 +40,12 @@
           </button>
         </div>
         <nav class="sidebar-nav" aria-label="Primary">
-          <a href="#view=for-you" class="sidebar-nav-link" title="For You">
+          <a
+            id="forYouLink"
+            href="#view=for-you"
+            class="sidebar-nav-link hidden"
+            title="For You"
+          >
             <img
               src="assets/svg/for-you-feed-icon.svg"
               alt=""
@@ -48,6 +53,15 @@
               class="sidebar-icon"
             />
             <span class="sidebar-text">For You</span>
+          </a>
+          <a href="#view=most-recent-videos" class="sidebar-nav-link" title="Recently Added">
+            <img
+              src="assets/svg/globe-icon.svg"
+              alt=""
+              aria-hidden="true"
+              class="sidebar-icon"
+            />
+            <span class="sidebar-text">Recently Added</span>
           </a>
           <a href="#view=explore" class="sidebar-nav-link" title="Explore">
             <img
