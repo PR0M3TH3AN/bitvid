@@ -18,6 +18,7 @@ export default class AppChromeController {
     this.elements = {
       logoutButton: this.normalizeElement(elements.logoutButton),
       profileButton: this.normalizeElement(elements.profileButton),
+      profileUnreadDot: this.normalizeElement(elements.profileUnreadDot),
       uploadButton: this.normalizeElement(elements.uploadButton),
       loginButton: this.normalizeElement(elements.loginButton),
       closeLoginModalButton: this.normalizeElement(
@@ -204,6 +205,21 @@ export default class AppChromeController {
       button.addEventListener("click", this.handleProfileClick);
       this.boundElements.profileButton = button;
     }
+  }
+
+  setUnreadDmIndicator(visible) {
+    const dot = this.normalizeElement(this.elements.profileUnreadDot);
+    if (!dot) {
+      return;
+    }
+
+    const profileButton = this.normalizeElement(this.elements.profileButton);
+    const isProfileVisible =
+      profileButton &&
+      !profileButton.classList.contains("hidden") &&
+      !profileButton.hasAttribute("hidden");
+
+    dot.classList.toggle("is-visible", Boolean(visible) && isProfileVisible);
   }
 
   bindUploadButton() {

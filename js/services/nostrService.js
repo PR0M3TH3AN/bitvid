@@ -763,10 +763,16 @@ export class NostrService {
   }
 
   async acknowledgeRenderedDirectMessages(conversationId, renderedUntil) {
-    return this.dmNotificationManager.acknowledgeRenderedMessages({
+    const conversation = await this.dmNotificationManager.acknowledgeRenderedMessages({
       conversationId,
       renderedUntil,
     });
+    if (conversation) {
+      this.emit("directMessages:conversationUpdated", {
+        conversation,
+      });
+    }
+    return conversation;
   }
 
   getDirectMessageUnseenCount(conversationId) {

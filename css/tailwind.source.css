@@ -235,6 +235,23 @@
     display: block;
   }
 
+  #profileUnreadDot {
+    position: absolute;
+    top: var(--space-3xs);
+    right: var(--space-3xs);
+    width: calc(var(--space-2xs) + var(--space-3xs));
+    height: calc(var(--space-2xs) + var(--space-3xs));
+    border-radius: 999px;
+    border: var(--border-width-hairline) solid var(--color-page);
+    background-color: var(--status-danger);
+    display: none;
+    pointer-events: none;
+  }
+
+  #profileUnreadDot.is-visible {
+    display: block;
+  }
+
   .header-icon-toggle[data-theme-state="light"]:hover,
   .header-icon-toggle[data-theme-state="light"]:focus-visible {
     color: var(--color-text);
