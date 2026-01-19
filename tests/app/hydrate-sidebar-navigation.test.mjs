@@ -17,6 +17,7 @@ const VIEW_HTML = `<!DOCTYPE html>
       <button id="closeLoginModal"></button>
     </div>
     <a id="subscriptionsLink" class="hidden"></a>
+    <a id="forYouLink" class="hidden"></a>
   </body>
 </html>`;
 
@@ -58,6 +59,7 @@ test("hydrateSidebarNavigation reveals chrome controls for authenticated viewers
     const loginButton = window.document.getElementById("loginButton");
     const logoutButton = window.document.getElementById("logoutButton");
     const subscriptionsLink = window.document.getElementById("subscriptionsLink");
+    const forYouLink = window.document.getElementById("forYouLink");
     const closeLoginButton = window.document.getElementById("closeLoginModal");
 
     assert.equal(app.uploadButton, uploadButton);
@@ -74,6 +76,84 @@ test("hydrateSidebarNavigation reveals chrome controls for authenticated viewers
     assert.equal(loginButton.hasAttribute("hidden"), true);
     assert.equal(logoutButton.classList.contains("hidden"), false);
     assert.equal(subscriptionsLink.classList.contains("hidden"), false);
+    assert.equal(forYouLink.classList.contains("hidden"), false);
+
+    assert.ok(app.appChromeController.receivedElements);
+    assert.equal(
+      app.appChromeController.receivedElements.uploadButton,
+      uploadButton,
+    );
+    assert.equal(
+      app.appChromeController.receivedElements.profileButton,
+      profileButton,
+    );
+  } finally {
+    global.window = previousWindow;
+    global.document = previousDocument;
+    if (previousHTMLElement === undefined) {
+      delete global.HTMLElement;
+    } else {
+      global.HTMLElement = previousHTMLElement;
+    }
+  }
+});
+
+test("hydrateSidebarNavigation hides chrome controls for logged-out viewers", () => {
+  const dom = new JSDOM(VIEW_HTML, { url: "https://example.com" });
+  const { window } = dom;
+
+  const previousWindow = global.window;
+  const previousDocument = global.document;
+
+  global.window = window;
+  global.document = window.document;
+  const previousHTMLElement = global.HTMLElement;
+  global.HTMLElement = window.HTMLElement;
+
+  try {
+    const app = Object.create(Application.prototype);
+
+    app.appChromeController = {
+      receivedElements: null,
+      setElements(elements) {
+        this.receivedElements = elements;
+      },
+    };
+
+    app.userStatus = window.document.getElementById("userStatus");
+    app.userPubKey = window.document.getElementById("userPubKey");
+    app.subscriptionsLink = null;
+    app.isUserLoggedIn = () => false;
+    app.log = () => {};
+    app.showError = () => {};
+    app.showSuccess = () => {};
+    app.showStatus = () => {};
+
+    app.hydrateSidebarNavigation();
+
+    const uploadButton = window.document.getElementById("uploadButton");
+    const profileButton = window.document.getElementById("profileButton");
+    const loginButton = window.document.getElementById("loginButton");
+    const logoutButton = window.document.getElementById("logoutButton");
+    const subscriptionsLink = window.document.getElementById("subscriptionsLink");
+    const forYouLink = window.document.getElementById("forYouLink");
+    const closeLoginButton = window.document.getElementById("closeLoginModal");
+
+    assert.equal(app.uploadButton, uploadButton);
+    assert.equal(app.profileButton, profileButton);
+    assert.equal(app.loginButton, loginButton);
+    assert.equal(app.logoutButton, logoutButton);
+    assert.equal(app.closeLoginModalBtn, closeLoginButton);
+
+    assert.equal(uploadButton.classList.contains("hidden"), true);
+    assert.equal(uploadButton.hasAttribute("hidden"), true);
+    assert.equal(profileButton.classList.contains("hidden"), true);
+    assert.equal(profileButton.hasAttribute("hidden"), true);
+    assert.equal(loginButton.classList.contains("hidden"), false);
+    assert.equal(loginButton.hasAttribute("hidden"), false);
+    assert.equal(logoutButton.classList.contains("hidden"), true);
+    assert.equal(subscriptionsLink.classList.contains("hidden"), true);
+    assert.equal(forYouLink.classList.contains("hidden"), true);
 
     assert.ok(app.appChromeController.receivedElements);
     assert.equal(
