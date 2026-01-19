@@ -3,6 +3,7 @@ import { convertEventToVideo } from "../nostr/index.js";
 import { accessControl } from "../accessControl.js";
 import { ALLOW_NSFW_CONTENT } from "../config.js";
 import { devLogger, userLogger } from "../utils/logger.js";
+import { describeAttachment, extractAttachmentsFromMessage } from "../attachments/attachmentUtils.js";
 import moderationService from "./moderationService.js";
 import {
   DM_RELAY_WARNING_FALLBACK,
@@ -206,7 +207,16 @@ function extractSnapshotPreview(message) {
   }
 
   const selected = candidates.find((candidate) => candidate && candidate.trim());
-  return sanitizeSnapshotPreview(selected || "");
+  if (selected) {
+    return sanitizeSnapshotPreview(selected);
+  }
+
+  const attachments = extractAttachmentsFromMessage(message);
+  if (attachments.length) {
+    return sanitizeSnapshotPreview(describeAttachment(attachments[0]));
+  }
+
+  return "";
 }
 
 function getActiveKey(video) {

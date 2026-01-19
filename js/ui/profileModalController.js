@@ -24,6 +24,17 @@ import { getActiveSigner } from "../nostr/client.js";
 import { sanitizeRelayList } from "../nostr/nip46Client.js";
 import { buildPublicUrl, buildR2Key } from "../r2.js";
 import { buildProfileMetadataEvent } from "../nostrEventSchemas.js";
+import {
+  describeAttachment,
+  extractAttachmentsFromMessage,
+  formatAttachmentSize,
+} from "../attachments/attachmentUtils.js";
+import {
+  clearAttachmentCache,
+  downloadAttachment,
+  uploadAttachment,
+  getAttachmentCacheStats,
+} from "../services/attachmentService.js";
 
 const noop = () => {};
 
@@ -1205,8 +1216,15 @@ export class ProfileModalController {
     this.profileMessagesStatus = null;
     this.profileMessagesReloadButton = null;
     this.profileMessagesPane = null;
+    this.profileMessagesConversation = null;
+    this.profileMessagesConversationEmpty = null;
     this.profileMessageInput = null;
     this.profileMessageSendButton = null;
+    this.profileMessageAttachmentInput = null;
+    this.profileMessageAttachmentButton = null;
+    this.profileMessageAttachmentEncrypt = null;
+    this.profileMessageAttachmentList = null;
+    this.profileMessageAttachmentClearCache = null;
     this.profileMessagesComposerHelper = null;
     this.profileMessagesSendDmButton = null;
     this.profileMessagesOpenRelaysButton = null;
@@ -1287,6 +1305,8 @@ export class ProfileModalController {
     this.pendingMessagesRender = null;
     this.messagesStatusClearTimeout = null;
     this.dmPrivacyToggleTouched = false;
+    this.dmAttachmentQueue = [];
+    this.dmAttachmentUploads = new Map();
 
     this.profileHistoryRenderer = null;
     this.profileHistoryRendererConfig = null;
@@ -1473,10 +1493,24 @@ export class ProfileModalController {
       document.getElementById("profileMessagesStatus") || null;
     this.profileMessagesReloadButton =
       document.getElementById("profileMessagesReload") || null;
+    this.profileMessagesConversation =
+      document.getElementById("profileMessagesConversation") || null;
+    this.profileMessagesConversationEmpty =
+      document.getElementById("profileMessagesConversationEmpty") || null;
     this.profileMessageInput =
       document.getElementById("profileMessageInput") || null;
     this.profileMessageSendButton =
       document.getElementById("profileMessageSendBtn") || null;
+    this.profileMessageAttachmentInput =
+      document.getElementById("profileMessageAttachmentInput") || null;
+    this.profileMessageAttachmentButton =
+      document.getElementById("profileMessageAttachmentButton") || null;
+    this.profileMessageAttachmentEncrypt =
+      document.getElementById("profileMessageAttachmentEncrypt") || null;
+    this.profileMessageAttachmentList =
+      document.getElementById("profileMessageAttachmentList") || null;
+    this.profileMessageAttachmentClearCache =
+      document.getElementById("profileMessageAttachmentClearCache") || null;
     this.profileMessagesComposerHelper =
       document.getElementById("profileMessagesComposerHelper") || null;
     this.profileMessagesSendDmButton =
@@ -2246,6 +2280,7 @@ export class ProfileModalController {
       this.setMessagesAnnouncement("Message recipient cleared.");
     }
 
+    void this.renderDirectMessageConversation();
     return nextRecipient;
   }
 
@@ -2361,6 +2396,7 @@ export class ProfileModalController {
       : this.resolveActiveDmActor();
 
     this.setDirectMessageRecipient(null, { reason: "clear" });
+    this.resetAttachmentQueue({ clearInput: true });
 
     if (
       this.directMessagesSubscription &&
@@ -2379,6 +2415,15 @@ export class ProfileModalController {
       this.profileMessagesList.innerHTML = "";
       this.profileMessagesList.classList.add("hidden");
       this.profileMessagesList.setAttribute("hidden", "");
+    }
+    if (this.profileMessagesConversation instanceof HTMLElement) {
+      this.profileMessagesConversation.innerHTML = "";
+      this.profileMessagesConversation.classList.add("hidden");
+      this.profileMessagesConversation.setAttribute("hidden", "");
+    }
+    if (this.profileMessagesConversationEmpty instanceof HTMLElement) {
+      this.profileMessagesConversationEmpty.classList.remove("hidden");
+      this.profileMessagesConversationEmpty.removeAttribute("hidden");
     }
 
     if (!normalized) {
@@ -2518,6 +2563,10 @@ export class ProfileModalController {
     const input = this.profileMessageInput;
     const button = this.profileMessageSendButton;
     const helper = this.profileMessagesComposerHelper;
+    const attachmentInput = this.profileMessageAttachmentInput;
+    const attachmentButton = this.profileMessageAttachmentButton;
+    const attachmentEncrypt = this.profileMessageAttachmentEncrypt;
+    const attachmentClearCache = this.profileMessageAttachmentClearCache;
     const shouldDisable = this.messagesLoadingState === "unauthenticated";
 
     const applyDisabledState = (element) => {
@@ -2535,6 +2584,10 @@ export class ProfileModalController {
 
     applyDisabledState(input);
     applyDisabledState(button);
+    applyDisabledState(attachmentInput);
+    applyDisabledState(attachmentButton);
+    applyDisabledState(attachmentEncrypt);
+    applyDisabledState(attachmentClearCache);
 
     if (helper instanceof HTMLElement) {
       if (shouldDisable) {
@@ -2641,6 +2694,337 @@ export class ProfileModalController {
     }
   }
 
+  generateAttachmentId(file) {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID();
+    }
+
+    const name = typeof file?.name === "string" ? file.name : "attachment";
+    return `${name}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+
+  resetAttachmentQueue({ clearInput = false } = {}) {
+    this.dmAttachmentQueue.forEach((entry) => {
+      if (entry?.previewUrl && typeof URL !== "undefined") {
+        try {
+          URL.revokeObjectURL(entry.previewUrl);
+        } catch (error) {
+          devLogger.warn("[profileModal] Failed to revoke attachment preview URL.", error);
+        }
+      }
+    });
+    this.dmAttachmentQueue = [];
+    this.dmAttachmentUploads.clear();
+
+    if (clearInput && this.profileMessageAttachmentInput) {
+      this.profileMessageAttachmentInput.value = "";
+    }
+
+    this.renderAttachmentQueue();
+  }
+
+  handleAttachmentSelection() {
+    const input = this.profileMessageAttachmentInput;
+    if (!(input instanceof HTMLInputElement) || !input.files) {
+      return;
+    }
+
+    const files = Array.from(input.files);
+    if (!files.length) {
+      return;
+    }
+
+    files.forEach((file) => {
+      const previewUrl =
+        typeof URL !== "undefined" ? URL.createObjectURL(file) : "";
+      this.dmAttachmentQueue.push({
+        id: this.generateAttachmentId(file),
+        file,
+        name: file.name,
+        type: file.type || "application/octet-stream",
+        size: file.size,
+        previewUrl,
+        status: "pending",
+        progress: 0,
+      });
+    });
+
+    input.value = "";
+    this.renderAttachmentQueue();
+  }
+
+  renderAttachmentQueue() {
+    const list = this.profileMessageAttachmentList;
+    if (!(list instanceof HTMLElement)) {
+      return;
+    }
+
+    list.innerHTML = "";
+
+    if (!this.dmAttachmentQueue.length) {
+      return;
+    }
+
+    this.dmAttachmentQueue.forEach((entry) => {
+      const item = document.createElement("div");
+      item.className = "card flex flex-col gap-2 p-3";
+      item.dataset.attachmentId = entry.id;
+
+      const header = document.createElement("div");
+      header.className = "flex items-center justify-between gap-2";
+      const title = document.createElement("div");
+      title.className = "text-sm font-semibold text-text";
+      title.textContent = entry.name || "Attachment";
+      header.appendChild(title);
+
+      const removeButton = document.createElement("button");
+      removeButton.type = "button";
+      removeButton.className = "btn-ghost focus-ring inline-flex items-center";
+      removeButton.dataset.size = "sm";
+      removeButton.textContent = "Remove";
+      removeButton.addEventListener("click", () => {
+        this.dmAttachmentQueue = this.dmAttachmentQueue.filter(
+          (queued) => queued.id !== entry.id,
+        );
+        if (entry.previewUrl && typeof URL !== "undefined") {
+          URL.revokeObjectURL(entry.previewUrl);
+        }
+        this.renderAttachmentQueue();
+      });
+      header.appendChild(removeButton);
+      item.appendChild(header);
+
+      const meta = document.createElement("div");
+      meta.className = "text-xs text-muted";
+      const sizeLabel = formatAttachmentSize(entry.size);
+      meta.textContent = sizeLabel
+        ? `${entry.type || "file"} · ${sizeLabel}`
+        : entry.type || "file";
+      item.appendChild(meta);
+
+      if (entry.previewUrl && entry.type?.startsWith("image/")) {
+        const img = document.createElement("img");
+        img.src = entry.previewUrl;
+        img.alt = entry.name || "Attachment preview";
+        img.className = "h-24 w-24 rounded-lg object-cover";
+        item.appendChild(img);
+      }
+
+      const progress = document.createElement("progress");
+      progress.className = "progress";
+      progress.value = entry.progress || 0;
+      progress.max = 1;
+      progress.dataset.variant = "surface";
+      item.appendChild(progress);
+
+      const status = document.createElement("div");
+      status.className = "text-xs text-muted";
+      status.textContent =
+        entry.status === "uploading"
+          ? "Uploading…"
+          : entry.status === "error"
+          ? entry.error || "Upload failed."
+          : "Ready to upload.";
+      item.appendChild(status);
+
+      list.appendChild(item);
+    });
+  }
+
+  async uploadAttachmentQueue(actorPubkey) {
+    const r2Service = this.services.r2Service;
+    if (!r2Service) {
+      throw new Error("Storage service unavailable.");
+    }
+
+    const encrypt =
+      this.profileMessageAttachmentEncrypt instanceof HTMLInputElement
+        ? this.profileMessageAttachmentEncrypt.checked
+        : false;
+
+    const payloads = [];
+
+    for (const entry of this.dmAttachmentQueue) {
+      entry.status = "uploading";
+      entry.progress = 0;
+      this.renderAttachmentQueue();
+
+      try {
+        const payload = await uploadAttachment({
+          r2Service,
+          pubkey: actorPubkey,
+          file: entry.file,
+          encrypt,
+          buildKey: buildR2Key,
+          buildUrl: buildPublicUrl,
+          onProgress: (fraction) => {
+            entry.progress = Number.isFinite(fraction) ? fraction : entry.progress;
+            this.renderAttachmentQueue();
+          },
+        });
+        payloads.push(payload);
+        entry.status = "uploaded";
+        entry.progress = 1;
+      } catch (error) {
+        entry.status = "error";
+        entry.error =
+          error && typeof error.message === "string"
+            ? error.message
+            : "Attachment upload failed.";
+        this.renderAttachmentQueue();
+        throw error;
+      }
+    }
+
+    return payloads;
+  }
+
+  async renderDirectMessageConversation() {
+    const container = this.profileMessagesConversation;
+    const emptyState = this.profileMessagesConversationEmpty;
+    const actor = this.resolveActiveDmActor();
+    const recipient = this.resolveActiveDmRecipient();
+
+    if (!(container instanceof HTMLElement)) {
+      return;
+    }
+
+    container.innerHTML = "";
+
+    if (!actor || !recipient || !this.directMessagesCache.length) {
+      container.classList.add("hidden");
+      container.setAttribute("hidden", "");
+      if (emptyState instanceof HTMLElement) {
+        emptyState.classList.remove("hidden");
+        emptyState.removeAttribute("hidden");
+      }
+      return;
+    }
+
+    const messages = this.directMessagesCache
+      .filter((entry) => this.resolveDirectMessageRemote(entry, actor) === recipient)
+      .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+
+    if (!messages.length) {
+      container.classList.add("hidden");
+      container.setAttribute("hidden", "");
+      if (emptyState instanceof HTMLElement) {
+        emptyState.classList.remove("hidden");
+        emptyState.removeAttribute("hidden");
+      }
+      return;
+    }
+
+    if (emptyState instanceof HTMLElement) {
+      emptyState.classList.add("hidden");
+      emptyState.setAttribute("hidden", "");
+    }
+
+    messages.forEach((message) => {
+      const item = document.createElement("div");
+      item.className = "card flex flex-col gap-2 p-3";
+
+      const body = document.createElement("div");
+      body.className = "text-sm text-text whitespace-pre-line";
+      const text = typeof message.plaintext === "string" ? message.plaintext.trim() : "";
+      body.textContent = text || "Attachment";
+      item.appendChild(body);
+
+      const attachments = extractAttachmentsFromMessage(message);
+      attachments.forEach((attachment) => {
+        const attachmentCard = document.createElement("div");
+        attachmentCard.className = "flex flex-col gap-2 rounded-lg border border-border/60 p-3";
+
+        const title = document.createElement("div");
+        title.className = "text-xs font-semibold text-text";
+        title.textContent = describeAttachment(attachment);
+        attachmentCard.appendChild(title);
+
+        const meta = document.createElement("div");
+        meta.className = "text-3xs text-muted";
+        const sizeLabel = formatAttachmentSize(attachment.size);
+        const typeLabel = attachment.type || "file";
+        meta.textContent = sizeLabel ? `${typeLabel} · ${sizeLabel}` : typeLabel;
+        attachmentCard.appendChild(meta);
+
+        const progress = document.createElement("progress");
+        progress.className = "progress";
+        progress.value = 0;
+        progress.max = 1;
+        progress.dataset.variant = "surface";
+        attachmentCard.appendChild(progress);
+
+        const status = document.createElement("div");
+        status.className = "text-3xs text-muted";
+        status.textContent = attachment.encrypted
+          ? "Decrypting attachment…"
+          : "Downloading attachment…";
+        attachmentCard.appendChild(status);
+
+        item.appendChild(attachmentCard);
+
+        downloadAttachment({
+          url: attachment.url,
+          expectedHash: attachment.x,
+          key: attachment.key,
+          mimeType: attachment.type,
+          onProgress: (fraction) => {
+            progress.value = Number.isFinite(fraction) ? fraction : progress.value;
+          },
+        })
+          .then((result) => {
+            progress.value = 1;
+            progress.classList.add("hidden");
+            progress.setAttribute("hidden", "");
+            status.textContent = attachment.encrypted ? "Decrypted." : "Ready.";
+
+            if (!result?.objectUrl) {
+              return;
+            }
+
+            if (attachment.type?.startsWith("image/")) {
+              const img = document.createElement("img");
+              img.src = result.objectUrl;
+              img.alt = attachment.name || "Attachment preview";
+              img.className = "h-40 w-full rounded-lg object-cover";
+              attachmentCard.appendChild(img);
+            } else if (attachment.type?.startsWith("video/")) {
+              const video = document.createElement("video");
+              video.src = result.objectUrl;
+              video.controls = true;
+              video.className = "w-full rounded-lg";
+              attachmentCard.appendChild(video);
+            } else if (attachment.type?.startsWith("audio/")) {
+              const audio = document.createElement("audio");
+              audio.src = result.objectUrl;
+              audio.controls = true;
+              audio.className = "w-full";
+              attachmentCard.appendChild(audio);
+            } else {
+              const link = document.createElement("a");
+              link.href = result.objectUrl;
+              link.textContent = "Download attachment";
+              link.className = "text-xs text-accent underline-offset-2 hover:underline";
+              link.download = attachment.name || "attachment";
+              attachmentCard.appendChild(link);
+            }
+          })
+          .catch((error) => {
+            status.textContent =
+              error && typeof error.message === "string"
+                ? error.message
+                : "Attachment download failed.";
+            status.classList.add("text-critical");
+          });
+      });
+
+      container.appendChild(item);
+    });
+
+    container.classList.remove("hidden");
+    container.removeAttribute("hidden");
+  }
+
   describeDirectMessageSendError(code) {
     switch (code) {
       case "sign-event-unavailable":
@@ -2670,7 +3054,9 @@ export class ProfileModalController {
       case "invalid-target":
         return "Select a valid recipient before sending.";
       case "empty-message":
-        return "Please enter a message.";
+        return "Please enter a message or attach a file.";
+      case "attachments-unsupported":
+        return "Attachments require NIP-17 delivery. Enable the privacy toggle to send files.";
       default:
         return "Unable to send message. Please try again.";
     }
@@ -2683,8 +3069,9 @@ export class ProfileModalController {
     }
 
     const message = typeof input.value === "string" ? input.value.trim() : "";
-    if (!message) {
-      this.showError("Please enter a message.");
+    const hasAttachments = this.dmAttachmentQueue.length > 0;
+    if (!message && !hasAttachments) {
+      this.showError("Please enter a message or attach a file.");
       return;
     }
 
@@ -2708,6 +3095,13 @@ export class ProfileModalController {
         : false;
     const senderRelayHints = this.getActiveDmRelayPreferences();
 
+    if (hasAttachments && !useNip17) {
+      this.showError(
+        "Attachments require NIP-17 delivery. Enable the privacy toggle to send files.",
+      );
+      return;
+    }
+
     if (useNip17 && !recipientRelayHints.length) {
       this.showStatus(
         "Privacy warning: this recipient has not shared NIP-17 relays, so we'll use your default relays.",
@@ -2729,6 +3123,22 @@ export class ProfileModalController {
     }
 
     try {
+      let attachmentPayloads = [];
+      if (hasAttachments) {
+        try {
+          attachmentPayloads = await this.uploadAttachmentQueue(
+            this.resolveActiveDmActor(),
+          );
+        } catch (error) {
+          const messageText =
+            error && typeof error.message === "string"
+              ? error.message
+              : "Attachment upload failed.";
+          this.showError(messageText);
+          return;
+        }
+      }
+
       const result = await this.services.nostrClient.sendDirectMessage(
         target,
         message,
@@ -2738,12 +3148,14 @@ export class ProfileModalController {
               useNip17: true,
               recipientRelayHints,
               senderRelayHints,
+              attachments: attachmentPayloads,
             }
           : {},
       );
 
       if (result?.ok) {
         input.value = "";
+        this.resetAttachmentQueue({ clearInput: true });
         this.showSuccess("Message sent.");
         if (result?.warning === "dm-relays-fallback") {
           this.showStatus(
@@ -3121,6 +3533,7 @@ export class ProfileModalController {
     if (!threads.length) {
       this.profileMessagesList.classList.add("hidden");
       this.profileMessagesList.setAttribute("hidden", "");
+      void this.renderDirectMessageConversation();
       return;
     }
 
@@ -3146,6 +3559,7 @@ export class ProfileModalController {
 
     this.profileMessagesList.classList.remove("hidden");
     this.profileMessagesList.removeAttribute("hidden");
+    void this.renderDirectMessageConversation();
   }
 
   async populateProfileMessages(options = {}) {
@@ -3517,6 +3931,30 @@ export class ProfileModalController {
     if (this.profileMessageSendButton instanceof HTMLElement) {
       this.profileMessageSendButton.addEventListener("click", () => {
         void this.handleSendProfileMessage();
+      });
+    }
+
+    if (this.profileMessageAttachmentButton instanceof HTMLElement) {
+      this.profileMessageAttachmentButton.addEventListener("click", () => {
+        if (this.profileMessageAttachmentInput instanceof HTMLInputElement) {
+          this.profileMessageAttachmentInput.click();
+        }
+      });
+    }
+
+    if (this.profileMessageAttachmentInput instanceof HTMLElement) {
+      this.profileMessageAttachmentInput.addEventListener("change", () => {
+        this.handleAttachmentSelection();
+      });
+    }
+
+    if (this.profileMessageAttachmentClearCache instanceof HTMLElement) {
+      this.profileMessageAttachmentClearCache.addEventListener("click", () => {
+        clearAttachmentCache();
+        const stats = getAttachmentCacheStats();
+        this.showStatus(
+          `Attachment cache cleared (${stats.size}/${stats.maxSize}).`,
+        );
       });
     }
 

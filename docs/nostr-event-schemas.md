@@ -145,6 +145,7 @@ import { updateWatchHistoryListWithDefaultClient } from "./nostrWatchHistoryFaca
 | NIP-94 mirror (`NOTE_TYPES.VIDEO_MIRROR`) | `1063` | Tags forwarded from `publishVideo` (URL, mime type, thumbnail, alt text, magnet) | Plain text alt description |
 | Repost (`NOTE_TYPES.REPOST`) | `6` | `['e', <event id>, <relay?>]` with optional address pointer `['a', <kind:pubkey:identifier>, <relay?>]`, and `['p', <pubkey>]` when the origin author is known; inherits schema append tags | JSON-serialized event being reposted |
 | Video comment (`NOTE_TYPES.VIDEO_COMMENT`) | `1111` | NIP-22 root scope tags `['A'\|`E`\|`I`, <pointer>, <relay?>?], `['K', <root kind>]`, and `['P', <root author pubkey>, <relay?>?]` plus parent metadata `['E'\|`I`, <parent pointer>, <relay?>?, <author?>], `['K', <parent kind>]`, `['P', <parent author>, <relay?>?]`; inherits schema append tags | Plain text body sanitized to valid UTF-8 |
+| DM attachment (`NOTE_TYPES.DM_ATTACHMENT`) | `15` | `['p', <recipient pubkey>]`, `['x', <sha256 of uploaded bytes>]`, `['url', <download url>]`, optional `['name', <filename>]`, `['type', <mime>]`, `['size', <bytes>]`, optional `['k', <base64 key>]`; inherits schema append tags | Empty content; attachment metadata is represented as tags |
 
 > **Publishing note:** Session actors only emit passive telemetry (for example, view counters) and must **not** sign video comments. Require a logged-in Nostr signer for comment publishing via [`commentEvents`](../js/nostr/commentEvents.js).
 

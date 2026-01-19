@@ -57,6 +57,7 @@ import {
   buildVideoPostEvent,
   buildRepostEvent,
   buildWatchHistoryEvent,
+  buildDmAttachmentEvent,
   getNostrEventSchema,
   NOTE_TYPES,
 } from "../nostrEventSchemas.js";
@@ -4426,12 +4427,22 @@ export class NostrClient {
 
     const trimmedTarget = typeof targetNpub === "string" ? targetNpub.trim() : "";
     const trimmedMessage = typeof message === "string" ? message.trim() : "";
+    const attachments = Array.isArray(resolvedOptions.attachments)
+      ? resolvedOptions.attachments.filter(
+          (attachment) =>
+            attachment &&
+            typeof attachment === "object" &&
+            (typeof attachment.url === "string" ||
+              typeof attachment.x === "string"),
+        )
+      : [];
+    const hasAttachments = attachments.length > 0;
 
     if (!trimmedTarget) {
       return { ok: false, error: "invalid-target" };
     }
 
-    if (!trimmedMessage) {
+    if (!trimmedMessage && !hasAttachments) {
       return { ok: false, error: "empty-message" };
     }
 
@@ -4523,6 +4534,10 @@ export class NostrClient {
 
     const signerCapabilities = resolveSignerCapabilities(signer);
     const useNip17 = Boolean(resolvedOptions.useNip17);
+
+    if (hasAttachments && !useNip17) {
+      return { ok: false, error: "attachments-unsupported" };
+    }
 
     const resolveNip17RelaySelection = async (pubkey, relayHints) => {
       const discoveryRelays = sanitizeRelayList(
@@ -4651,15 +4666,55 @@ export class NostrClient {
         return { privateKey: normalizedPrivateKey, pubkey };
       };
 
-      const rumorEvent = {
-        kind: 14,
-        created_at: Math.floor(Date.now() / 1000),
-        tags: [["p", targetHex]],
-        content: trimmedMessage,
-        pubkey: actorHex,
-      };
+      const rumorEvents = [];
+      const createdAt = Math.floor(Date.now() / 1000);
 
-      const buildGiftWrapForRecipient = async (recipientPubkey, relayHint) => {
+      if (trimmedMessage) {
+        rumorEvents.push({
+          kind: 14,
+          created_at: createdAt,
+          tags: [["p", targetHex]],
+          content: trimmedMessage,
+          pubkey: actorHex,
+        });
+      }
+
+      if (hasAttachments) {
+        attachments.forEach((attachment) => {
+          const normalizedAttachment = {
+            x:
+              typeof attachment.x === "string"
+                ? attachment.x.trim().toLowerCase()
+                : "",
+            url: typeof attachment.url === "string" ? attachment.url.trim() : "",
+            name:
+              typeof attachment.name === "string" ? attachment.name.trim() : "",
+            type:
+              typeof attachment.type === "string" ? attachment.type.trim() : "",
+            size: Number.isFinite(attachment.size) ? Math.floor(attachment.size) : null,
+            key: typeof attachment.key === "string" ? attachment.key.trim() : "",
+          };
+
+          rumorEvents.push(
+            buildDmAttachmentEvent({
+              pubkey: actorHex,
+              created_at: createdAt,
+              recipientPubkey: targetHex,
+              attachment: normalizedAttachment,
+            }),
+          );
+        });
+      }
+
+      if (!rumorEvents.length) {
+        return { ok: false, error: "empty-message" };
+      }
+
+      const buildGiftWrapForRecipient = async (
+        recipientPubkey,
+        relayHint,
+        rumorEvent,
+      ) => {
         const sealPayload = {
           kind: 13,
           created_at: randomPastTimestamp(),
@@ -4710,94 +4765,135 @@ export class NostrClient {
         };
       };
 
-      let recipientGiftWrap;
-      try {
-        recipientGiftWrap = await buildGiftWrapForRecipient(
-          targetHex,
-          recipientSelection.relays[0] || "",
-        );
-      } catch (error) {
-        devLogger.warn("[nostr] Failed to build NIP-17 recipient wrap.", error);
-        const errorCode =
-          error?.message === "wrapper-keygen-failed"
-            ? "nip17-keygen-failed"
-            : "encryption-failed";
-        return { ok: false, error: errorCode, details: error };
-      }
+      const resolveRumorPreview = (rumorEvent) => {
+        const content =
+          typeof rumorEvent?.content === "string" ? rumorEvent.content.trim() : "";
+        if (content) {
+          return content;
+        }
 
-      const conversationId = `dm:${[actorHex, targetHex].sort().join(":")}`;
-      const dmRecord = {
-        id: recipientGiftWrap.wrap.id,
-        conversation_id: conversationId,
-        sender_pubkey: actorHex,
-        receiver_pubkey: targetHex,
-        created_at: rumorEvent.created_at,
-        kind: rumorEvent.kind,
-        content: trimmedMessage,
-        tags: rumorEvent.tags,
-        status: "pending",
-        seen: true,
+        const tags = Array.isArray(rumorEvent?.tags) ? rumorEvent.tags : [];
+        const nameTag = tags.find(
+          (tag) => Array.isArray(tag) && tag[0] === "name" && tag[1],
+        );
+        if (nameTag) {
+          return `Attachment: ${nameTag[1]}`;
+        }
+
+        return "Attachment";
       };
 
-      try {
-        await writeMessages(dmRecord);
-        await updateConversationFromMessage(dmRecord, {
-          preview: trimmedMessage,
-          unseenDelta: 0,
-        });
-      } catch (error) {
-        devLogger.warn("[nostr] Failed to persist outgoing DM.", error);
-      }
-
-      const recipientPublishResults = await Promise.all(
-        recipientSelection.relays.map((url) =>
-          publishEventToRelay(this.pool, url, recipientGiftWrap.wrap),
-        ),
-      );
-
-      const recipientSuccess = recipientPublishResults.some(
-        (result) => result.success,
-      );
-      if (!recipientSuccess) {
+      const publishRumorEvent = async (rumorEvent) => {
+        let recipientGiftWrap;
         try {
-          await writeMessages({ ...dmRecord, status: "failed" });
+          recipientGiftWrap = await buildGiftWrapForRecipient(
+            targetHex,
+            recipientSelection.relays[0] || "",
+            rumorEvent,
+          );
         } catch (error) {
-          devLogger.warn("[nostr] Failed to persist DM failure state.", error);
+          devLogger.warn("[nostr] Failed to build NIP-17 recipient wrap.", error);
+          const errorCode =
+            error?.message === "wrapper-keygen-failed"
+              ? "nip17-keygen-failed"
+              : "encryption-failed";
+          return { ok: false, error: errorCode, details: error };
         }
-        return {
-          ok: false,
-          error: "publish-failed",
-          details: recipientPublishResults.filter((result) => !result.success),
+
+        const conversationId = `dm:${[actorHex, targetHex].sort().join(":")}`;
+        const preview = resolveRumorPreview(rumorEvent);
+        const dmRecord = {
+          id: recipientGiftWrap.wrap.id,
+          conversation_id: conversationId,
+          sender_pubkey: actorHex,
+          receiver_pubkey: targetHex,
+          created_at: rumorEvent.created_at,
+          kind: rumorEvent.kind,
+          content: typeof rumorEvent.content === "string" ? rumorEvent.content : "",
+          tags: rumorEvent.tags,
+          status: "pending",
+          seen: true,
         };
-      }
 
-      let senderGiftWrap = null;
-      try {
-        senderGiftWrap = await buildGiftWrapForRecipient(
-          actorHex,
-          senderRelayTargets[0] || "",
-        );
-      } catch (error) {
-        devLogger.warn("[nostr] Failed to build NIP-17 sender copy.", error);
-      }
+        try {
+          await writeMessages(dmRecord);
+          await updateConversationFromMessage(dmRecord, {
+            preview,
+            unseenDelta: 0,
+          });
+        } catch (error) {
+          devLogger.warn("[nostr] Failed to persist outgoing DM.", error);
+        }
 
-      if (senderGiftWrap && senderRelayTargets.length) {
-        const senderPublishResults = await Promise.all(
-          senderRelayTargets.map((url) =>
-            publishEventToRelay(this.pool, url, senderGiftWrap.wrap),
+        const recipientPublishResults = await Promise.all(
+          recipientSelection.relays.map((url) =>
+            publishEventToRelay(this.pool, url, recipientGiftWrap.wrap),
           ),
         );
-        if (!senderPublishResults.some((result) => result.success)) {
-          devLogger.warn("[nostr] Failed to publish sender copy of NIP-17 DM.", {
-            relays: senderRelayTargets,
-          });
+
+        const recipientSuccess = recipientPublishResults.some(
+          (result) => result.success,
+        );
+        if (!recipientSuccess) {
+          try {
+            await writeMessages({ ...dmRecord, status: "failed" });
+          } catch (error) {
+            devLogger.warn("[nostr] Failed to persist DM failure state.", error);
+          }
+          return {
+            ok: false,
+            error: "publish-failed",
+            details: recipientPublishResults.filter((result) => !result.success),
+          };
+        }
+
+        let senderGiftWrap = null;
+        try {
+          senderGiftWrap = await buildGiftWrapForRecipient(
+            actorHex,
+            senderRelayTargets[0] || "",
+            rumorEvent,
+          );
+        } catch (error) {
+          devLogger.warn("[nostr] Failed to build NIP-17 sender copy.", error);
+        }
+
+        if (senderGiftWrap && senderRelayTargets.length) {
+          const senderPublishResults = await Promise.all(
+            senderRelayTargets.map((url) =>
+              publishEventToRelay(this.pool, url, senderGiftWrap.wrap),
+            ),
+          );
+          if (!senderPublishResults.some((result) => result.success)) {
+            devLogger.warn("[nostr] Failed to publish sender copy of NIP-17 DM.", {
+              relays: senderRelayTargets,
+            });
+          }
+        }
+
+        try {
+          await writeMessages({ ...dmRecord, status: "published" });
+        } catch (error) {
+          devLogger.warn("[nostr] Failed to persist DM publish state.", error);
+        }
+
+        return { ok: true };
+      };
+
+      const failures = [];
+      for (const rumorEvent of rumorEvents) {
+        const result = await publishRumorEvent(rumorEvent);
+        if (!result?.ok) {
+          failures.push(result);
         }
       }
 
-      try {
-        await writeMessages({ ...dmRecord, status: "published" });
-      } catch (error) {
-        devLogger.warn("[nostr] Failed to persist DM publish state.", error);
+      if (failures.length) {
+        return {
+          ok: false,
+          error: failures[0]?.error || "publish-failed",
+          details: failures,
+        };
       }
 
       return relayWarning ? { ok: true, warning: relayWarning } : { ok: true };

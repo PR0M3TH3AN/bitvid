@@ -1174,6 +1174,21 @@
                 aria-live="polite"
                 aria-label="Direct message threads"
               ></ul>
+              <div
+                id="profileMessagesConversation"
+                class="hidden flex flex-col gap-3"
+                role="log"
+                aria-live="polite"
+                aria-label="Direct message conversation"
+              ></div>
+              <p
+                id="profileMessagesConversationEmpty"
+                class="hidden text-sm text-muted"
+                role="status"
+                aria-live="polite"
+              >
+                Select a thread to view messages and attachments.
+              </p>
               <div class="flex flex-col gap-3 border-t border-border/60 pt-4">
                 <label class="sr-only" for="profileMessageInput">Message</label>
                 <textarea
@@ -1182,6 +1197,45 @@
                   rows="3"
                   placeholder="Write a message…"
                 ></textarea>
+                <div class="flex flex-col gap-2">
+                  <input
+                    id="profileMessageAttachmentInput"
+                    type="file"
+                    class="sr-only"
+                    multiple
+                  />
+                  <div class="flex flex-wrap items-center gap-2">
+                    <button
+                      id="profileMessageAttachmentButton"
+                      type="button"
+                      class="btn-ghost focus-ring inline-flex items-center gap-2"
+                      data-size="sm"
+                    >
+                      Attach file
+                    </button>
+                    <label class="inline-flex items-center gap-2 text-xs text-muted">
+                      <input
+                        id="profileMessageAttachmentEncrypt"
+                        type="checkbox"
+                        class="checkbox"
+                      />
+                      Encrypt attachments
+                    </label>
+                    <button
+                      id="profileMessageAttachmentClearCache"
+                      type="button"
+                      class="btn-ghost focus-ring inline-flex items-center gap-2"
+                      data-size="sm"
+                    >
+                      Clear attachment cache
+                    </button>
+                  </div>
+                  <div
+                    id="profileMessageAttachmentList"
+                    class="grid-stack"
+                    data-orientation="vertical"
+                  ></div>
+                </div>
                 <div class="flex flex-wrap items-center justify-between gap-2">
                   <p
                     id="profileMessagesComposerHelper"
