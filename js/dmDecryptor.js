@@ -23,6 +23,43 @@ function cloneEvent(event) {
   return cloned;
 }
 
+function normalizeCreatedAt(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return null;
+  }
+
+  return Math.floor(numeric);
+}
+
+function normalizeInnerMessage(event) {
+  if (!event || typeof event !== "object") {
+    return null;
+  }
+
+  const normalized = cloneEvent(event) || {};
+  normalized.content = typeof event.content === "string" ? event.content : "";
+
+  if (Number.isFinite(event.kind)) {
+    normalized.kind = event.kind;
+  }
+
+  const createdAt = normalizeCreatedAt(event.created_at);
+  if (createdAt !== null) {
+    normalized.created_at = createdAt;
+  } else if ("created_at" in normalized) {
+    delete normalized.created_at;
+  }
+
+  if (Array.isArray(event.tags)) {
+    normalized.tags = event.tags.map((tag) =>
+      Array.isArray(tag) ? [...tag] : tag,
+    );
+  }
+
+  return normalized;
+}
+
 function normalizeHex(candidate) {
   if (typeof candidate !== "string") {
     return "";
@@ -269,16 +306,12 @@ function buildDecryptResult({
   errors = [],
 }) {
   const normalizedScheme = normalizeScheme(scheme || decryptor?.scheme || "");
-  const timestampCandidates = [];
-  if (message && Number.isFinite(message.created_at)) {
-    timestampCandidates.push(message.created_at);
-  }
-  if (event && Number.isFinite(event.created_at)) {
-    timestampCandidates.push(event.created_at);
-  }
-  const timestamp = timestampCandidates.length
-    ? Math.max(...timestampCandidates)
-    : Date.now() / 1000;
+  const messageTimestamp =
+    message && Number.isFinite(message.created_at) ? message.created_at : null;
+  const eventTimestamp =
+    event && Number.isFinite(event.created_at) ? event.created_at : null;
+  const timestamp =
+    messageTimestamp ?? eventTimestamp ?? Date.now() / 1000;
 
   return {
     ok,
@@ -379,15 +412,19 @@ async function decryptGiftWrap(event, decryptors, actorPubkey) {
         stage: "seal",
       });
       const rumor = parseEventJson(rumorSerialized, "rumor");
+      const normalizedRumor = normalizeInnerMessage(rumor);
 
-      const plaintext = typeof rumor?.content === "string" ? rumor.content : "";
-      const senderPubkey = normalizeHex(rumor?.pubkey) || sealPubkey;
-      const recipients = collectRecipients(rumor?.tags);
+      const plaintext =
+        typeof normalizedRumor?.content === "string"
+          ? normalizedRumor.content
+          : "";
+      const senderPubkey = normalizeHex(normalizedRumor?.pubkey) || sealPubkey;
+      const recipients = collectRecipients(normalizedRumor?.tags);
 
       return buildDecryptResult({
         ok: true,
         event,
-        message: rumor,
+        message: normalizedRumor,
         plaintext,
         recipients,
         senderPubkey,
