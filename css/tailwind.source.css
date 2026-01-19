@@ -5131,13 +5131,13 @@
   }
 
   .dm-avatar--md {
-    width: 2.5rem;
-    height: 2.5rem;
+    width: var(--space-xl-plus);
+    height: var(--space-xl-plus);
   }
 
   .dm-avatar--sm {
-    width: 2rem;
-    height: 2rem;
+    width: var(--space-xl);
+    height: var(--space-xl);
   }
 
   .dm-avatar__image {
@@ -5179,7 +5179,7 @@
     background: var(--surface-panel);
     border: var(--border-width-hairline) solid var(--border-subtle);
     overflow-y: auto;
-    min-height: 16rem;
+    min-height: var(--sidebar-width-expanded-base);
   }
 
   .dm-message-thread__state {
@@ -5266,7 +5266,7 @@
   }
 
   .dm-day-divider__line {
-    height: 1px;
+    height: var(--border-width-hairline);
     background: var(--border-subtle);
   }
 
@@ -5291,7 +5291,8 @@
     font-size: var(--font-size-2xs);
     font-weight: 600;
     color: var(--text-muted);
-    transition: color var(--motion-duration-fast) var(--motion-ease-out),
+    transition:
+      color var(--motion-duration-fast) var(--motion-ease-out),
       background var(--motion-duration-fast) var(--motion-ease-out),
       border-color var(--motion-duration-fast) var(--motion-ease-out);
   }
@@ -5352,7 +5353,8 @@
     background: var(--surface-sunken);
     font-size: var(--font-size-xs);
     text-align: left;
-    transition: border-color var(--motion-duration-fast) var(--motion-ease-out),
+    transition:
+      border-color var(--motion-duration-fast) var(--motion-ease-out),
       background var(--motion-duration-fast) var(--motion-ease-out);
   }
 
@@ -5461,8 +5463,8 @@
   }
 
   .dm-composer__input:focus-visible {
-    outline: 2px solid var(--color-accent);
-    outline-offset: 2px;
+    outline: var(--size-2px) solid var(--color-accent);
+    outline-offset: var(--size-2px);
   }
 
   .dm-composer__actions {
@@ -5523,7 +5525,7 @@
   .dm-composer__status {
     font-size: var(--font-size-2xs);
     color: var(--status-danger);
-    min-height: 1rem;
+    min-height: var(--space-md);
   }
 
   @media (min-width: theme("screens.md")) {
@@ -5533,8 +5535,8 @@
     }
 
     .dm-app-shell__sidebar {
-      flex: 0 0 18rem;
-      max-width: 20rem;
+      flex: 0 0 var(--size-18rem);
+      max-width: var(--grid-card-min-width);
       height: calc(100vh - var(--space-lg) * 2);
     }
 
@@ -5550,7 +5552,7 @@
 
   @media (min-width: theme("screens.lg")) {
     .dm-app-shell__sidebar {
-      flex-basis: 20rem;
+      flex-basis: var(--grid-card-min-width);
     }
 
     .dm-message-thread__timeline {
