@@ -36,14 +36,21 @@ export function MessageBubble({
     meta.appendChild(createElement(doc, "span", "dm-message-bubble__time", timestamp));
   }
 
-  if (status === "failed") {
-    meta.appendChild(
-      createElement(doc, "span", "dm-message-bubble__status", "Send failed"),
+  if (variant === "outgoing") {
+    const statusLabel = createElement(
+      doc,
+      "span",
+      "dm-message-bubble__status",
+      status === "failed"
+        ? "Failed to send"
+        : status === "pending"
+          ? "Pending…"
+          : status === "sending"
+            ? "Sending…"
+            : "Sent",
     );
-  } else if (status === "sending") {
-    meta.appendChild(
-      createElement(doc, "span", "dm-message-bubble__status", "Sending…"),
-    );
+    statusLabel.dataset.status = status;
+    meta.appendChild(statusLabel);
   }
 
   wrapper.appendChild(meta);

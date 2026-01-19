@@ -5224,7 +5224,36 @@
   }
 
   .dm-message-bubble__status {
+    color: var(--text-muted);
+  }
+
+  .dm-message-bubble__status[data-status="pending"] {
+    color: var(--status-warning);
+  }
+
+  .dm-message-bubble__status[data-status="sending"] {
+    color: var(--status-info);
+  }
+
+  .dm-message-bubble__status[data-status="failed"] {
     color: var(--status-danger);
+  }
+
+  .dm-message-thread__new {
+    align-self: center;
+    border-radius: var(--radius-full);
+    border: var(--border-width-hairline) solid var(--border-subtle);
+    padding: var(--space-2xs) var(--space-sm);
+    font-size: var(--font-size-2xs);
+    background: var(--surface-sunken);
+    color: var(--text-muted);
+  }
+
+  .dm-message-thread__new:hover,
+  .dm-message-thread__new:focus-visible {
+    background: var(--surface-overlay-panel-soft);
+    color: var(--text-primary);
+    outline: none;
   }
 
   .dm-day-divider {
@@ -5329,9 +5358,36 @@
     gap: var(--space-sm);
   }
 
+  .dm-composer__tools {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    flex-wrap: wrap;
+  }
+
   .dm-composer__hint {
     font-size: var(--font-size-2xs);
     color: var(--text-muted);
+  }
+
+  .dm-composer__attach,
+  .dm-composer__privacy {
+    border-radius: var(--radius-md);
+    border: var(--border-width-hairline) solid var(--border-default);
+    background: var(--surface-base);
+    color: var(--text-muted);
+    padding: var(--space-2xs) var(--space-sm);
+    font-size: var(--font-size-2xs);
+    cursor: pointer;
+  }
+
+  .dm-composer__attach:hover,
+  .dm-composer__attach:focus-visible,
+  .dm-composer__privacy:hover,
+  .dm-composer__privacy:focus-visible {
+    background: var(--surface-overlay-panel-soft);
+    color: var(--text-primary);
+    outline: none;
   }
 
   .dm-composer__send {

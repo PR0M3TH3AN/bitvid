@@ -13,6 +13,7 @@ export function Composer({
   document: doc,
   placeholder = "Write a message…",
   state = "idle",
+  privacyMode: initialPrivacyMode = "standard",
   onSend,
 } = {}) {
   if (!doc) {
@@ -21,6 +22,7 @@ export function Composer({
 
   const form = createElement(doc, "form", "dm-composer");
   form.noValidate = true;
+  let privacyMode = initialPrivacyMode;
 
   const label = createElement(doc, "label", "dm-composer__label", "Message");
   label.setAttribute("for", "dm-composer-input");
@@ -29,17 +31,49 @@ export function Composer({
   textarea.id = "dm-composer-input";
   textarea.placeholder = placeholder;
   textarea.rows = 2;
+  textarea.setAttribute("aria-label", "Message");
+
+  const hintId = "dm-composer-hint";
 
   const actions = createElement(doc, "div", "dm-composer__actions");
+  const tools = createElement(doc, "div", "dm-composer__tools");
   const hint = createElement(
     doc,
     "span",
     "dm-composer__hint",
-    "Press Ctrl/⌘ + Enter to send",
+    "Enter to send, Shift + Enter for newline",
   );
+  hint.id = hintId;
+  textarea.setAttribute("aria-describedby", hintId);
+
+  const attachButton = createElement(
+    doc,
+    "button",
+    "dm-composer__attach",
+    "Attach",
+  );
+  attachButton.type = "button";
+  attachButton.setAttribute("aria-label", "Attach a file");
+
+  const privacyToggle = createElement(
+    doc,
+    "button",
+    "dm-composer__privacy",
+    "Standard",
+  );
+  privacyToggle.type = "button";
+  privacyToggle.setAttribute("aria-pressed", "false");
+  privacyToggle.setAttribute("aria-label", "Toggle privacy mode");
+
+  tools.appendChild(attachButton);
+  tools.appendChild(privacyToggle);
+  tools.appendChild(hint);
+
   const button = createElement(doc, "button", "dm-composer__send", "Send");
   button.type = "submit";
-  actions.appendChild(hint);
+  button.setAttribute("aria-label", "Send message");
+
+  actions.appendChild(tools);
   actions.appendChild(button);
 
   const status = createElement(doc, "div", "dm-composer__status");
@@ -57,12 +91,27 @@ export function Composer({
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     if (typeof onSend === "function") {
-      onSend(textarea.value);
+      onSend(textarea.value, { privacyMode, attachments: [] });
     }
   });
 
+  const updatePrivacyLabel = () => {
+    privacyToggle.textContent = privacyMode === "private" ? "Private" : "Standard";
+    privacyToggle.setAttribute(
+      "aria-pressed",
+      privacyMode === "private" ? "true" : "false",
+    );
+  };
+
+  updatePrivacyLabel();
+
+  privacyToggle.addEventListener("click", () => {
+    privacyMode = privacyMode === "private" ? "standard" : "private";
+    updatePrivacyLabel();
+  });
+
   textarea.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+    if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       form.requestSubmit();
     }
