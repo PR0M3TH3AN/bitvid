@@ -40,14 +40,28 @@
           </button>
         </div>
         <nav class="sidebar-nav" aria-label="Primary">
-          <a href="#view=most-recent-videos" class="sidebar-nav-link" title="Recent">
+          <a
+            id="forYouLink"
+            href="#view=for-you"
+            class="sidebar-nav-link hidden"
+            title="For You"
+          >
             <img
-              src="assets/svg/recent-icon.svg"
+              src="assets/svg/for-you-feed-icon.svg"
               alt=""
               aria-hidden="true"
               class="sidebar-icon"
             />
-            <span class="sidebar-text">Recent</span>
+            <span class="sidebar-text">For You</span>
+          </a>
+          <a href="#view=most-recent-videos" class="sidebar-nav-link" title="Recently Added">
+            <img
+              src="assets/svg/globe-icon.svg"
+              alt=""
+              aria-hidden="true"
+              class="sidebar-icon"
+            />
+            <span class="sidebar-text">Recently Added</span>
           </a>
           <a href="#view=explore" class="sidebar-nav-link" title="Explore">
             <img
@@ -57,15 +71,6 @@
               class="sidebar-icon"
             />
             <span class="sidebar-text">Explore</span>
-          </a>
-          <a href="#view=history" class="sidebar-nav-link" title="History">
-            <img
-              src="assets/svg/history-icon.svg"
-              alt=""
-              aria-hidden="true"
-              class="sidebar-icon"
-            />
-            <span class="sidebar-text">History</span>
           </a>
           <a
             id="subscriptionsLink"
@@ -80,6 +85,15 @@
               class="sidebar-icon"
             />
             <span class="sidebar-text">Subscriptions</span>
+          </a>
+          <a href="#view=history" class="sidebar-nav-link" title="History">
+            <img
+              src="assets/svg/history-icon.svg"
+              alt=""
+              aria-hidden="true"
+              class="sidebar-icon"
+            />
+            <span class="sidebar-text">History</span>
           </a>
         </nav>
       </section>
@@ -287,15 +301,6 @@
                 class="sidebar-icon"
               />
               <span class="sidebar-text">Links</span>
-            </a>
-            <a href="#view=ipns" class="sidebar-nav-link sidebar-nav-link--sub" title="IPNS">
-              <img
-                src="assets/svg/ipns-icon.svg"
-                alt=""
-                aria-hidden="true"
-                class="sidebar-icon"
-              />
-              <span class="sidebar-text">IPNS</span>
             </a>
             <a
               href="#"

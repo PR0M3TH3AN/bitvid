@@ -37,9 +37,11 @@ import { isWatchHistoryDebugEnabled } from "../watchHistoryDebug.js";
 import { splitAndZap as splitAndZapDefault } from "../payments/zapSplit.js";
 import {
   getDefaultModerationSettings,
+  getModerationOverridesList,
   getModerationSettings,
   setModerationSettings,
   resetModerationSettings,
+  clearModerationOverride,
   persistSavedProfiles,
   getSavedProfiles,
   getActiveProfilePubkey,
@@ -135,6 +137,13 @@ export default class ApplicationBootstrap {
       isNew: () => true,
     };
     app.videoModalReadyPromise = null;
+    app.feedTelemetryState = {
+      activeFeed: "",
+      matchedTagsById: new Map(),
+      matchReasonsById: new Map(),
+      lastImpressionSignature: "",
+      activePlayback: null,
+    };
 
     app.pendingModalZapOpen = false;
     app.videoListViewPlaybackHandler = null;
@@ -251,6 +260,7 @@ export default class ApplicationBootstrap {
       app.feedEngine.run = (...args) => app.feedEngine.runFeed(...args);
     }
     app.registerRecentFeed();
+    app.registerForYouFeed();
     app.registerSubscriptionsFeed();
     app.registerWatchHistoryFeed();
 
@@ -274,6 +284,7 @@ export default class ApplicationBootstrap {
       normalizeHexPubkey: (value) => app.normalizeHexPubkey(value),
       getActiveUserPubkey: () => app.pubkey,
       ingestLocalViewEvent,
+      onViewLogged: (detail) => app.handleFeedViewTelemetry(detail),
     });
 
     const playbackDependencies = {
@@ -393,8 +404,6 @@ export default class ApplicationBootstrap {
     app.loginModalController = null;
     app.currentUserNpub = null;
 
-    app.initializeLoginModalController({ logIfMissing: true });
-
     app.profileButton = doc?.getElementById("profileButton") || null;
     app.profileAvatar = doc?.getElementById("profileAvatar") || null;
 
@@ -431,6 +440,7 @@ export default class ApplicationBootstrap {
           nostrClient,
           nostrService: app.nostrService,
           storageService,
+          r2Service: app.r2Service,
           subscriptions,
           accessControl,
           moderation: moderationService,
@@ -443,6 +453,9 @@ export default class ApplicationBootstrap {
               setModerationSettings(partial),
             resetModerationSettings: () => resetModerationSettings(),
           },
+          getModerationOverrides: () => getModerationOverridesList(),
+          clearModerationOverride: (descriptor) =>
+            clearModerationOverride(descriptor),
           loadVideos: (forceFetch, context) =>
             app.loadVideos(forceFetch, context),
           onVideosShouldRefresh: (context) =>
@@ -615,6 +628,7 @@ export default class ApplicationBootstrap {
     app.tagPreferencePopovers = new Map();
 
     app.subscriptionsLink = null;
+    app.forYouLink = null;
 
     app.notificationPortal = doc?.getElementById("notificationPortal") || null;
     app.errorContainer = doc?.getElementById("errorContainer") || null;
@@ -808,6 +822,9 @@ export default class ApplicationBootstrap {
       magnet,
       trigger,
     }) => {
+      if (videoId) {
+        app.recordForYouClick(videoId);
+      }
       if (videoId) {
         Promise.resolve(
           app.playVideoByEventId(videoId, { url, magnet, trigger }),

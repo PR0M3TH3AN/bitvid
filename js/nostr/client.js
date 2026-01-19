@@ -1,5 +1,21 @@
 // js/nostr/client.js
 
+/**
+ * NostrClient
+ *
+ * The central controller for all Nostr network interactions and state management.
+ *
+ * Responsibilities:
+ * - Connection Management: Maintains the connection pool to Relays.
+ * - Event Publishing: Handles signing and broadcasting events (Kind 0, 1, 30078, etc.).
+ * - State Management:
+ *   - `allEvents`: A raw map of all fetched video events.
+ *   - `activeMap`: A derived map containing only the *latest* version of each video (deduplicated by `videoRootId`).
+ *   - `rawEvents`: A cache of the exact raw JSON events from relays (for signature verification).
+ * - Caching: Implements a dual-layer cache (IndexedDB + localStorage) to restore app state instantly on load.
+ * - Signer Management: Orchestrates NIP-07 (Extension), NIP-46 (Remote/Bunker), and NIP-01 (Local nsec) signers.
+ */
+
 import { isDevMode } from "../config.js";
 import { FEATURE_PUBLISH_NIP71 } from "../constants.js";
 import { accessControl } from "../accessControl.js";
@@ -44,6 +60,11 @@ import {
   getNostrEventSchema,
   NOTE_TYPES,
 } from "../nostrEventSchemas.js";
+import { CACHE_POLICIES } from "./cachePolicies.js";
+import {
+  SyncMetadataStore,
+  __testExports as syncMetaTestExports,
+} from "./syncMetadataStore.js";
 import {
   listVideoViewEvents as listVideoViewEventsForClient,
   subscribeVideoViewEvents as subscribeVideoViewEventsForClient,
@@ -102,6 +123,7 @@ import {
   encryptSessionPrivateKey,
   persistSessionActor as persistSessionActorEntry,
   readStoredSessionActorEntry,
+  isSessionActor,
 } from "./sessionActor.js";
 import {
   HEX64_REGEX,
@@ -140,9 +162,28 @@ import {
   summarizeRpcResultForLog,
   summarizeRelayPublishResultsForLog,
 } from "./nip46Client.js";
+import { profileCache } from "../state/profileCache.js";
+import { createPrivateKeyCipherClosures } from "./signerHelpers.js";
+import {
+  setActiveSigner as setActiveSignerInRegistry,
+  getActiveSigner as getActiveSignerFromRegistry,
+  clearActiveSigner as clearActiveSignerInRegistry,
+  logoutSigner as logoutSignerFromRegistry,
+  resolveActiveSigner as resolveActiveSignerFromRegistry,
+} from "../nostrClientRegistry.js";
+import { createNip07Adapter } from "./adapters/nip07Adapter.js";
+import { createNsecAdapter } from "./adapters/nsecAdapter.js";
+import { createNip46Adapter } from "./adapters/nip46Adapter.js";
+import { queueSignEvent } from "./signRequestQueue.js";
 
-let activeSigner = null;
-const activeSignerRegistry = new Map();
+function normalizeProfileFromEvent(event) {
+  if (!event || !event.content) return null;
+  try {
+    return JSON.parse(event.content);
+  } catch (err) {
+    return null;
+  }
+}
 
 function attachNipMethodAliases(signer) {
   if (!signer || typeof signer !== "object") {
@@ -216,6 +257,40 @@ function attachNipMethodAliases(signer) {
   }
 }
 
+function resolveSignerCapabilities(signer) {
+  const fallback = {
+    sign: false,
+    nip44: false,
+    nip04: false,
+  };
+
+  if (!signer || typeof signer !== "object") {
+    return fallback;
+  }
+
+  const capabilities =
+    signer.capabilities && typeof signer.capabilities === "object"
+      ? signer.capabilities
+      : {};
+
+  return {
+    sign:
+      typeof capabilities.sign === "boolean"
+        ? capabilities.sign
+        : typeof signer.signEvent === "function",
+    nip44:
+      typeof capabilities.nip44 === "boolean"
+        ? capabilities.nip44
+        : typeof signer.nip44Encrypt === "function" ||
+          typeof signer.nip44Decrypt === "function",
+    nip04:
+      typeof capabilities.nip04 === "boolean"
+        ? capabilities.nip04
+        : typeof signer.nip04Encrypt === "function" ||
+          typeof signer.nip04Decrypt === "function",
+  };
+}
+
 function hydrateExtensionSignerCapabilities(signer) {
   if (!signer || typeof signer !== "object" || signer.type !== "extension") {
     return;
@@ -249,45 +324,37 @@ function setActiveSigner(signer) {
 
   hydrateExtensionSignerCapabilities(signer);
   attachNipMethodAliases(signer);
+  signer.capabilities = resolveSignerCapabilities(signer);
 
-  activeSigner = signer;
   const pubkey =
     typeof signer.pubkey === "string" && signer.pubkey.trim()
       ? signer.pubkey.trim().toLowerCase()
       : "";
   if (pubkey) {
-    activeSignerRegistry.set(pubkey, signer);
+    profileCache.clearSignerRuntime(pubkey);
   }
+
+  setActiveSignerInRegistry(signer);
 }
 
 function getActiveSigner() {
-  return activeSigner;
+  const signer = getActiveSignerFromRegistry();
+  hydrateExtensionSignerCapabilities(signer);
+  return signer;
 }
 
 function clearActiveSigner() {
-  activeSigner = null;
-  activeSignerRegistry.clear();
+  clearActiveSignerInRegistry();
+}
+
+function logoutSigner(pubkey) {
+  logoutSignerFromRegistry(pubkey);
 }
 
 function resolveActiveSigner(pubkey) {
-  if (typeof pubkey === "string" && pubkey.trim()) {
-    const normalized = pubkey.trim().toLowerCase();
-    const direct = activeSignerRegistry.get(normalized);
-    if (direct) {
-      hydrateExtensionSignerCapabilities(direct);
-      return direct;
-    }
-    if (
-      activeSigner?.pubkey &&
-      typeof activeSigner.pubkey === "string" &&
-      activeSigner.pubkey.trim().toLowerCase() === normalized
-    ) {
-      hydrateExtensionSignerCapabilities(activeSigner);
-      return activeSigner;
-    }
-  }
-  hydrateExtensionSignerCapabilities(activeSigner);
-  return activeSigner;
+  const signer = resolveActiveSignerFromRegistry(pubkey);
+  hydrateExtensionSignerCapabilities(signer);
+  return signer;
 }
 
 function shouldRequestExtensionPermissions(signer) {
@@ -298,7 +365,9 @@ function shouldRequestExtensionPermissions(signer) {
 }
 
 const EVENTS_CACHE_STORAGE_KEY = "bitvid:eventsCache:v1";
-const EVENTS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+// We use the policy TTL, but currently the storage backend is hardcoded to IDB (with localStorage fallback).
+// Future refactors should make EventsCacheStore dynamic based on CACHE_POLICIES[NOTE_TYPES.VIDEO_POST].storage.
+const EVENTS_CACHE_TTL_MS = CACHE_POLICIES[NOTE_TYPES.VIDEO_POST]?.ttl ?? (10 * 60 * 1000);
 const EVENTS_CACHE_DB_NAME = "bitvid-events-cache";
 const EVENTS_CACHE_DB_VERSION = 1;
 const EVENTS_CACHE_PERSIST_DELAY_MS = 450;
@@ -328,6 +397,19 @@ function waitForTransaction(tx) {
   });
 }
 
+/**
+ * Persists video events and tombstones to IndexedDB.
+ *
+ * Schema:
+ * - `events`: Store for video objects. Key: `id`.
+ * - `tombstones`: Store for deletion timestamps. Key: `key`.
+ * - `meta`: Store for versioning and timestamps. Key: `key`.
+ *
+ * Strategy:
+ * - Snapshots are saved periodically (debounced).
+ * - "Fingerprints" (hashes/stringified) are tracked to minimize writes.
+ * - If the TTL expires, the cache is cleared on restore.
+ */
 class EventsCacheStore {
   constructor() {
     this.dbPromise = null;
@@ -434,6 +516,7 @@ class EventsCacheStore {
       return null;
     }
 
+    // Check TTL: If cache is too old, wipe it and return null to force a fresh fetch.
     const now = Date.now();
     if (now - meta.savedAt > EVENTS_CACHE_TTL_MS) {
       const tx = db.transaction(["events", "tombstones", "meta"], "readwrite");
@@ -774,165 +857,6 @@ function eventToAddressPointer(event) {
   return "";
 }
 
-let loggedMissingCipherToolkit = false;
-let loggedMissingNip04Cipher = false;
-let loggedMissingNip44Cipher = false;
-
-async function createPrivateKeyCipherClosures(privateKey) {
-  const normalizedPrivateKey =
-    typeof privateKey === "string" && HEX64_REGEX.test(privateKey)
-      ? privateKey.toLowerCase()
-      : "";
-
-  if (!normalizedPrivateKey) {
-    return {};
-  }
-
-  const tools = (await ensureNostrTools()) || getCachedNostrTools();
-  if (!tools) {
-    if (!loggedMissingCipherToolkit) {
-      loggedMissingCipherToolkit = true;
-      devLogger.warn(
-        "[nostr] nostr-tools bundle missing for private key cipher helpers.",
-      );
-    }
-    return {};
-  }
-
-  const closures = {};
-
-  const normalizeTargetPubkey = (candidate) => {
-    const normalized = normalizeActorKey(candidate);
-    if (!normalized || !HEX64_REGEX.test(normalized)) {
-      throw new Error("A hex-encoded pubkey is required for encryption.");
-    }
-    return normalized;
-  };
-
-  const resolveHexToBytes = () => {
-    if (typeof tools?.utils?.hexToBytes === "function") {
-      return (value) => tools.utils.hexToBytes(value);
-    }
-
-    return (value) => {
-      if (typeof value !== "string") {
-        throw new Error("Invalid hex input.");
-      }
-      const trimmed = value.trim();
-      if (!trimmed || trimmed.length % 2 !== 0) {
-        throw new Error("Invalid hex input.");
-      }
-
-      const bytes = new Uint8Array(trimmed.length / 2);
-      for (let index = 0; index < trimmed.length; index += 2) {
-        const byte = Number.parseInt(trimmed.slice(index, index + 2), 16);
-        if (Number.isNaN(byte)) {
-          throw new Error("Invalid hex input.");
-        }
-        bytes[index / 2] = byte;
-      }
-      return bytes;
-    };
-  };
-
-  if (
-    tools?.nip04?.encrypt &&
-    typeof tools.nip04.encrypt === "function" &&
-    tools?.nip04?.decrypt &&
-    typeof tools.nip04.decrypt === "function"
-  ) {
-    closures.nip04Encrypt = async (targetPubkey, plaintext) =>
-      tools.nip04.encrypt(
-        normalizedPrivateKey,
-        normalizeTargetPubkey(targetPubkey),
-        plaintext,
-      );
-
-    closures.nip04Decrypt = async (targetPubkey, ciphertext) =>
-      tools.nip04.decrypt(
-        normalizedPrivateKey,
-        normalizeTargetPubkey(targetPubkey),
-        ciphertext,
-      );
-  } else if (!loggedMissingNip04Cipher) {
-    loggedMissingNip04Cipher = true;
-    devLogger.warn(
-      "[nostr] nip04 helpers unavailable in nostr-tools bundle.",
-    );
-  }
-
-  const nip44 = tools?.nip44 || null;
-  let nip44Encrypt = null;
-  let nip44Decrypt = null;
-  let nip44GetConversationKey = null;
-
-  if (nip44?.v2 && typeof nip44.v2 === "object") {
-    if (typeof nip44.v2.encrypt === "function") {
-      nip44Encrypt = nip44.v2.encrypt;
-    }
-    if (typeof nip44.v2.decrypt === "function") {
-      nip44Decrypt = nip44.v2.decrypt;
-    }
-    if (typeof nip44.v2?.utils?.getConversationKey === "function") {
-      nip44GetConversationKey = nip44.v2.utils.getConversationKey;
-    }
-  }
-
-  if ((!nip44Encrypt || !nip44Decrypt) && nip44 && typeof nip44 === "object") {
-    if (typeof nip44.encrypt === "function") {
-      nip44Encrypt = nip44.encrypt;
-    }
-    if (typeof nip44.decrypt === "function") {
-      nip44Decrypt = nip44.decrypt;
-    }
-    if (!nip44GetConversationKey) {
-      if (typeof nip44.getConversationKey === "function") {
-        nip44GetConversationKey = nip44.getConversationKey;
-      } else if (typeof nip44.utils?.getConversationKey === "function") {
-        nip44GetConversationKey = nip44.utils.getConversationKey;
-      }
-    }
-  }
-
-  if (nip44Encrypt && nip44Decrypt && nip44GetConversationKey) {
-    const hexToBytes = resolveHexToBytes();
-    let cachedPrivateKeyBytes = null;
-    const getPrivateKeyBytes = () => {
-      if (!cachedPrivateKeyBytes) {
-        cachedPrivateKeyBytes = hexToBytes(normalizedPrivateKey);
-      }
-      return cachedPrivateKeyBytes;
-    };
-
-    const conversationKeyCache = new Map();
-    const ensureConversationKey = (targetPubkey) => {
-      const normalizedTarget = normalizeTargetPubkey(targetPubkey);
-      const cached = conversationKeyCache.get(normalizedTarget);
-      if (cached) {
-        return cached;
-      }
-
-      const privateKeyBytes = getPrivateKeyBytes();
-      const derived = nip44GetConversationKey(privateKeyBytes, normalizedTarget);
-      conversationKeyCache.set(normalizedTarget, derived);
-      return derived;
-    };
-
-    closures.nip44Encrypt = async (targetPubkey, plaintext) =>
-      nip44Encrypt(plaintext, ensureConversationKey(targetPubkey));
-
-    closures.nip44Decrypt = async (targetPubkey, ciphertext) =>
-      nip44Decrypt(ciphertext, ensureConversationKey(targetPubkey));
-  } else if (!loggedMissingNip44Cipher) {
-    loggedMissingNip44Cipher = true;
-    devLogger.warn(
-      "[nostr] nip44 helpers unavailable in nostr-tools bundle.",
-    );
-  }
-
-  return closures;
-}
-
 function cloneEventForCache(event) {
   if (!event || typeof event !== "object") {
     return null;
@@ -1128,6 +1052,7 @@ export class NostrClient {
 
     this.hasRestoredLocalData = false;
     this.eventsCacheStore = new EventsCacheStore();
+    this.syncMetadataStore = new SyncMetadataStore();
     this.cachePersistTimerId = null;
     this.cachePersistIdleId = null;
     this.cachePersistInFlight = null;
@@ -1293,9 +1218,11 @@ export class NostrClient {
 
     const remotePubkey = stored.remotePubkey || "";
     const userPubkey = stored.userPubkey || "";
+    const canReconnect = Boolean(stored.clientPrivateKey && stored.secret);
 
     return {
       hasSession: true,
+      canReconnect,
       remotePubkey,
       remoteNpub: encodeHexToNpub(remotePubkey),
       clientPublicKey: stored.clientPublicKey || "",
@@ -1558,7 +1485,7 @@ export class NostrClient {
     };
   }
 
-  installNip46Client(client, { userPubkey } = {}) {
+  async installNip46Client(client, { userPubkey } = {}) {
     if (this.nip46Client && this.nip46Client !== client) {
       try {
         this.nip46Client.destroy();
@@ -1572,10 +1499,8 @@ export class NostrClient {
       this.nip46Client.userPubkey = userPubkey;
     }
 
-    const signer = client.getActiveSigner();
-    if (signer) {
-      setActiveSigner(signer);
-    }
+    const signer = await createNip46Adapter(client);
+    setActiveSigner(signer);
 
     return signer;
   }
@@ -1787,7 +1712,8 @@ export class NostrClient {
             }
 
             if (secret) {
-              if (!resultValue || resultValue !== secret) {
+              const normalizedResult = resultValue ? resultValue.toLowerCase() : "";
+              if (resultValue !== secret && normalizedResult !== "ack") {
                 return;
               }
             }
@@ -1839,6 +1765,17 @@ export class NostrClient {
     });
   }
 
+  /**
+   * Establishes a NIP-46 connection with a remote signer (e.g., Nostr Connect / Bunker).
+   *
+   * Process:
+   * 1. **Parse**: Decodes the `nostrconnect://` or `bunker://` URI.
+   * 2. **Handshake (if needed)**: If the URI is a "connect" request (no target pubkey yet),
+   *    it publishes an ephemeral event and waits for the signer to "ack".
+   * 3. **Connect**: Once the remote pubkey is known, sends a `connect` RPC command.
+   * 4. **Authorize**: Handles any `auth_url` challenges if the signer requires out-of-band approval.
+   * 5. **Session**: Stores the session metadata locally (if `remember: true`) to allow auto-reconnect.
+   */
   async connectRemoteSigner({
     connectionString,
     remember = true,
@@ -2141,7 +2078,7 @@ export class NostrClient {
         userPubkey: summarizeHexForLog(userPubkey),
       });
       client.metadata = metadata;
-      const signer = this.installNip46Client(client, { userPubkey });
+      const signer = await this.installNip46Client(client, { userPubkey });
 
       if (remember) {
         devLogger.debug("[nostr] Persisting remote signer session", {
@@ -2152,12 +2089,10 @@ export class NostrClient {
         });
         writeStoredNip46Session({
           version: 1,
-          clientPrivateKey,
           clientPublicKey,
           remotePubkey,
           relays,
           encryption: client.encryptionAlgorithm || handshakeAlgorithm || "",
-          secret,
           permissions,
           metadata,
           userPubkey,
@@ -2202,7 +2137,7 @@ export class NostrClient {
         message: error?.message || String(error),
         code: error?.code || null,
       });
-      await client.destroy().catch(() => {});
+      client.destroy();
       this.nip46Client = null;
       if (!remember) {
         clearStoredNip46Session();
@@ -2239,7 +2174,7 @@ export class NostrClient {
       relays,
       encryption: stored.encryption || "",
       permissions: stored.permissions || null,
-      hasSecret: Boolean(stored.secret),
+      hasCredentials: Boolean(stored.clientPrivateKey && stored.secret),
     });
 
     this.emitRemoteSignerChange({
@@ -2248,6 +2183,12 @@ export class NostrClient {
       relays,
       metadata: stored.metadata,
     });
+
+    if (!stored.clientPrivateKey || !stored.secret) {
+      const error = new Error("Stored remote signer credentials are unavailable.");
+      error.code = "stored-session-missing-credentials";
+      throw error;
+    }
 
     const client = new Nip46RpcClient({
       nostrClient: this,
@@ -2267,11 +2208,16 @@ export class NostrClient {
       await client.connect({ permissions: stored.permissions });
       const userPubkey = await client.getUserPubkey();
       client.metadata = stored.metadata;
-      const signer = this.installNip46Client(client, { userPubkey });
+      const signer = await this.installNip46Client(client, { userPubkey });
 
       writeStoredNip46Session({
-        ...stored,
+        version: 1,
+        clientPublicKey: stored.clientPublicKey,
+        remotePubkey: stored.remotePubkey,
+        relays: stored.relays,
         encryption: client.encryptionAlgorithm || stored.encryption || "",
+        permissions: stored.permissions,
+        metadata: stored.metadata,
         userPubkey,
         lastConnectedAt: Date.now(),
       });
@@ -2346,7 +2292,7 @@ export class NostrClient {
     }
 
     const stored = this.getStoredNip46Metadata();
-    if (!stored.hasSession) {
+    if (!stored.hasSession || !stored.canReconnect) {
       return null;
     }
 
@@ -2373,7 +2319,7 @@ export class NostrClient {
 
     const activeSigner = getActiveSigner();
     if (activeSigner?.type === "nip46") {
-      clearActiveSigner();
+      logoutSigner(activeSigner.pubkey);
     }
 
     if (!keepStored) {
@@ -2599,13 +2545,11 @@ export class NostrClient {
       return existingSigner;
     }
 
-    setActiveSigner({
-      type: "extension",
-      pubkey: extensionPubkey || normalizedPubkey,
-      signEvent: extension.signEvent.bind(extension),
-      nip04: extension.nip04,
-      nip44: extension.nip44,
-    });
+    const adapter = await createNip07Adapter(extension);
+    if (extensionPubkey) {
+      adapter.pubkey = extensionPubkey;
+    }
+    setActiveSigner(adapter);
 
     return resolveActiveSigner(normalizedPubkey || extensionPubkey);
   }
@@ -2728,14 +2672,7 @@ export class NostrClient {
       return null;
     }
 
-    const { pubkey, privateKey, privateKeyEncrypted, encryption, createdAt } = entry;
-    if (privateKey && HEX64_REGEX.test(privateKey)) {
-      return {
-        pubkey,
-        privateKey: privateKey.toLowerCase(),
-        createdAt: Number.isFinite(createdAt) ? createdAt : Date.now(),
-      };
-    }
+    const { pubkey, privateKeyEncrypted, encryption, createdAt } = entry;
 
     if (privateKeyEncrypted && encryption) {
       this.lockedSessionActor = {
@@ -2758,7 +2695,7 @@ export class NostrClient {
       return null;
     }
 
-    const { pubkey, privateKeyEncrypted, encryption, createdAt, privateKey } = entry;
+    const { pubkey, privateKeyEncrypted, encryption, createdAt } = entry;
     const normalizedCreatedAt = Number.isFinite(createdAt)
       ? createdAt
       : Date.now();
@@ -2778,14 +2715,6 @@ export class NostrClient {
     }
 
     this.lockedSessionActor = null;
-
-    if (privateKey) {
-      return {
-        pubkey,
-        hasEncryptedKey: false,
-        createdAt: normalizedCreatedAt,
-      };
-    }
 
     if (pubkey) {
       return {
@@ -3038,12 +2967,11 @@ export class NostrClient {
     this.sessionActorCipherClosures = cipherClosures || null;
     this.sessionActorCipherClosuresPrivateKey = normalizedPrivateKey;
 
-    setActiveSigner({
-      type: "nsec",
+    const adapter = await createNsecAdapter({
+      privateKey: normalizedPrivateKey,
       pubkey: normalizedPubkey,
-      signEvent: (event) => signEventWithPrivateKey(event, normalizedPrivateKey),
-      ...cipherClosures,
     });
+    setActiveSigner(adapter);
 
     if (persist) {
       if (typeof passphrase !== "string" || !passphrase.trim()) {
@@ -3156,12 +3084,11 @@ export class NostrClient {
     this.sessionActorCipherClosures = cipherClosures || null;
     this.sessionActorCipherClosuresPrivateKey = normalizedPrivateKey;
 
-    setActiveSigner({
-      type: "nsec",
+    const adapter = await createNsecAdapter({
+      privateKey: normalizedPrivateKey,
       pubkey: normalizedPubkey,
-      signEvent: (event) => signEventWithPrivateKey(event, normalizedPrivateKey),
-      ...cipherClosures,
     });
+    setActiveSigner(adapter);
 
     const storedPayload = {
       pubkey: normalizedPubkey,
@@ -3395,6 +3322,152 @@ export class NostrClient {
     return applied;
   }
 
+  getSyncLastSeen(kind, pubkey, dTag, relayUrl) {
+    const effectivePubkey = pubkey || this.pubkey;
+    return this.syncMetadataStore.getLastSeen(kind, effectivePubkey, dTag, relayUrl);
+  }
+
+  updateSyncLastSeen(kind, pubkey, dTag, relayUrl, createdAt) {
+    const effectivePubkey = pubkey || this.pubkey;
+    this.syncMetadataStore.updateLastSeen(kind, effectivePubkey, dTag, relayUrl, createdAt);
+  }
+
+  getPerRelaySyncLastSeen(kind, pubkey, dTag) {
+    const effectivePubkey = pubkey || this.pubkey;
+    return this.syncMetadataStore.getPerRelayLastSeen(kind, effectivePubkey, dTag);
+  }
+
+  async fetchListIncrementally({ kind, pubkey, dTag, relayUrls, fetchFn } = {}) {
+    if (!kind || !pubkey) {
+      throw new Error("fetchListIncrementally requires kind and pubkey");
+    }
+
+    const normalizedPubkey = normalizeNostrPubkey(pubkey);
+    if (!normalizedPubkey) {
+      throw new Error("Invalid pubkey for fetchListIncrementally");
+    }
+
+    const relaysToUse = Array.isArray(relayUrls) && relayUrls.length
+      ? relayUrls
+      : this.relays;
+
+    const normalizedRelays = sanitizeRelayList(relaysToUse);
+    const results = [];
+    const concurrencyLimit = 4;
+
+    // We'll use the pool's list method if fetchFn isn't provided,
+    // but we need to call it per-relay.
+    const pool = await this.ensurePool();
+    const actualFetchFn = typeof fetchFn === "function"
+      ? fetchFn
+      : (r, f) => pool.list([r], [f]);
+
+    const chunks = [];
+    for (let i = 0; i < normalizedRelays.length; i += concurrencyLimit) {
+      chunks.push(normalizedRelays.slice(i, i + concurrencyLimit));
+    }
+
+    for (const chunk of chunks) {
+      const promises = chunk.map(async (relayUrl) => {
+        const lastSeen = this.getSyncLastSeen(kind, normalizedPubkey, dTag, relayUrl);
+        const filter = {
+          kinds: [kind],
+          authors: [normalizedPubkey],
+        };
+
+        if (dTag) {
+          filter["#d"] = [dTag];
+        }
+
+        // Strategy:
+        // If we have a lastSeen, ask for since = lastSeen + 1.
+        // If that fails or returns nothing, we don't necessarily fall back
+        // unless there's an error.
+        // Wait, requirements say:
+        // "If metadata is missing for a relay → do a full fetch"
+        // "If a relay returns an error ... fall back to full fetch"
+
+        let doFullFetch = true;
+        if (lastSeen > 0) {
+          filter.since = lastSeen + 1;
+          doFullFetch = false;
+        }
+
+        try {
+          let events = await actualFetchFn(relayUrl, filter);
+
+          // If incremental returned empty, we assume no updates (success).
+          // But if we did a full fetch (no since), empty means empty.
+
+          if (!events || !Array.isArray(events)) {
+             events = [];
+          }
+
+          // On success, update lastSeen with max created_at
+          let maxCreated = 0;
+          for (const ev of events) {
+            if (ev.created_at > maxCreated) {
+              maxCreated = ev.created_at;
+            }
+          }
+
+          if (maxCreated > 0) {
+            // Only update if we found something newer or if we did a full fetch
+            // Actually, if we did incremental and found new stuff, maxCreated > lastSeen.
+            // If we did full fetch, maxCreated is the latest.
+            this.updateSyncLastSeen(kind, normalizedPubkey, dTag, relayUrl, maxCreated);
+          }
+
+          return events;
+        } catch (error) {
+          // Fallback to full fetch if incremental failed or if relay error
+          if (!doFullFetch) {
+            try {
+              delete filter.since;
+              const events = await actualFetchFn(relayUrl, filter);
+              // Update lastSeen on success of fallback
+              let maxCreated = 0;
+              if (Array.isArray(events)) {
+                for (const ev of events) {
+                  if (ev.created_at > maxCreated) {
+                    maxCreated = ev.created_at;
+                  }
+                }
+              }
+              if (maxCreated > 0) {
+                 this.updateSyncLastSeen(kind, normalizedPubkey, dTag, relayUrl, maxCreated);
+              }
+              return events || [];
+            } catch (fallbackError) {
+              devLogger.warn(`[fetchListIncrementally] Full fetch fallback failed for ${relayUrl}`, fallbackError);
+              return [];
+            }
+          } else {
+             devLogger.warn(`[fetchListIncrementally] Fetch failed for ${relayUrl}`, error);
+             return [];
+          }
+        }
+      });
+
+      const chunkResults = await Promise.all(promises);
+      for (const res of chunkResults) {
+        if (Array.isArray(res)) {
+          results.push(...res);
+        }
+      }
+    }
+
+    // Deduplicate by ID
+    const uniqueEvents = new Map();
+    for (const ev of results) {
+      if (ev && ev.id) {
+        uniqueEvents.set(ev.id, ev);
+      }
+    }
+
+    return Array.from(uniqueEvents.values());
+  }
+
   applyRelayPreferences(preferences = {}) {
     const normalizedPrefs =
       preferences && typeof preferences === "object" ? preferences : {};
@@ -3462,6 +3535,13 @@ export class NostrClient {
     );
   }
   async publishWatchHistorySnapshot(rawItems, options = {}) {
+    if (isSessionActor(this)) {
+      const error = new Error(
+        "Publishing watch history is not allowed for session actors."
+      );
+      error.code = "session-actor-publish-blocked";
+      throw error;
+    }
     return publishWatchHistorySnapshotWithManager(
       this.watchHistory,
       rawItems,
@@ -3469,6 +3549,13 @@ export class NostrClient {
     );
   }
   async updateWatchHistoryList(rawItems = [], options = {}) {
+    if (isSessionActor(this)) {
+      const error = new Error(
+        "Publishing watch history is not allowed for session actors."
+      );
+      error.code = "session-actor-publish-blocked";
+      throw error;
+    }
     return updateWatchHistoryListWithManager(
       this.watchHistory,
       rawItems,
@@ -3476,6 +3563,13 @@ export class NostrClient {
     );
   }
   async removeWatchHistoryItem(pointerInput, options = {}) {
+    if (isSessionActor(this)) {
+      const error = new Error(
+        "Publishing watch history is not allowed for session actors."
+      );
+      error.code = "session-actor-publish-blocked";
+      throw error;
+    }
     return removeWatchHistoryItemWithManager(
       this.watchHistory,
       pointerInput,
@@ -3549,7 +3643,12 @@ export class NostrClient {
   }
 
   /**
-   * Connect to the configured relays
+   * Initializes the client.
+   *
+   * Flow:
+   * 1. Restores local data (IndexedDB/localStorage) to render the UI immediately ("stale-while-revalidate").
+   * 2. Schedules the restoration of any stored NIP-46 remote signer session.
+   * 3. Initializes the NostrTools `SimplePool` and connects to the configured relays.
    */
   async init() {
     devLogger.log("Connecting to relays...");
@@ -3773,16 +3872,9 @@ export class NostrClient {
       this.pubkey = pubkey;
       devLogger.log("Logged in with extension. Pubkey:", this.pubkey);
 
-      setActiveSigner({
-        type: "extension",
-        pubkey,
-        signEvent:
-          typeof extension.signEvent === "function"
-            ? extension.signEvent.bind(extension)
-            : null,
-        nip04: extension.nip04,
-        nip44: extension.nip44,
-      });
+      const adapter = await createNip07Adapter(extension);
+      adapter.pubkey = pubkey;
+      setActiveSigner(adapter);
 
       const postLoginPermissions = await this.ensureExtensionPermissions(
         DEFAULT_NIP07_PERMISSION_METHODS,
@@ -3801,8 +3893,9 @@ export class NostrClient {
   }
 
   logout() {
+    const previousPubkey = this.pubkey;
     this.pubkey = null;
-    clearActiveSigner();
+    logoutSigner(previousPubkey);
     const previousSessionActor = this.sessionActor;
     this.sessionActor = null;
     this.sessionActorCipherClosures = null;
@@ -3925,7 +4018,11 @@ export class NostrClient {
     }
 
     if (activeSigner) {
-      if (typeof activeSigner.nip44Decrypt === "function") {
+      const capabilities = resolveSignerCapabilities(activeSigner);
+      if (
+        capabilities.nip44 &&
+        typeof activeSigner.nip44Decrypt === "function"
+      ) {
         addCandidate(
           "nip44",
           activeSigner.nip44Decrypt.bind(activeSigner),
@@ -3936,7 +4033,10 @@ export class NostrClient {
           },
         );
       }
-      if (typeof activeSigner.nip04Decrypt === "function") {
+      if (
+        capabilities.nip04 &&
+        typeof activeSigner.nip04Decrypt === "function"
+      ) {
         addCandidate(
           "nip04",
           activeSigner.nip04Decrypt.bind(activeSigner),
@@ -4296,13 +4396,21 @@ export class NostrClient {
     }
 
     const encryptionCandidates = [];
-    if (typeof signer.nip44Encrypt === "function") {
+    const signerCapabilities = resolveSignerCapabilities(signer);
+    const allowNip04Fallback = signerCapabilities.nip04 === true;
+    if (
+      signerCapabilities.nip44 &&
+      typeof signer.nip44Encrypt === "function"
+    ) {
       encryptionCandidates.push({
         scheme: "nip44",
         encrypt: signer.nip44Encrypt,
       });
     }
-    if (typeof signer.nip04Encrypt === "function") {
+    if (
+      signerCapabilities.nip04 &&
+      typeof signer.nip04Encrypt === "function"
+    ) {
       encryptionCandidates.push({
         scheme: "nip04",
         encrypt: signer.nip04Encrypt,
@@ -4334,7 +4442,21 @@ export class NostrClient {
         typeof sessionActor.privateKey === "string" &&
         sessionActor.privateKey;
 
-      if (sessionMatchesActor) {
+      const canFallbackWithSession = sessionMatchesActor && allowNip04Fallback;
+
+      if (!encryptionCandidates.length && !canFallbackWithSession) {
+        const error = new Error(
+          "Your signer does not support NIP-44 or NIP-04 encryption.",
+        );
+        userLogger.warn("[nostr] Encryption unsupported for DM send.", error);
+        return {
+          ok: false,
+          error: "encryption-unsupported",
+          details: error,
+        };
+      }
+
+      if (canFallbackWithSession) {
         try {
           const tools = (await ensureNostrTools()) || getCachedNostrTools();
           if (tools?.nip04 && typeof tools.nip04.encrypt === "function") {
@@ -4379,7 +4501,7 @@ export class NostrClient {
 
     let signedEvent;
     try {
-      signedEvent = await signer.signEvent(event);
+      signedEvent = await queueSignEvent(signer, event);
     } catch (error) {
       return { ok: false, error: "signature-failed", details: error };
     }
@@ -4417,6 +4539,16 @@ export class NostrClient {
     });
   }
 
+  /**
+   * Publishes a video event (Kind 30078).
+   *
+   * This constructs a V3 video note which includes:
+   * - Core metadata (title, description, thumbnail).
+   * - `magnet`: The Magnet URI (XT=InfoHash, WS=WebSeed, XS=TorrentMetadata).
+   * - `url`: The direct HTTP URL (WebSeed).
+   * - NIP-94 Mirror: Optionally publishes a Kind 1063 file header event if supported.
+   * - NIP-71: Optionally publishes a Kind 22 (Video Wrapper) for categorization if metadata is provided.
+   */
   async publishVideo(videoPayload, pubkey) {
     if (!pubkey) throw new Error("Not logged in to publish video.");
 
@@ -4517,12 +4649,15 @@ export class NostrClient {
     devLogger.log("Event content:", event.content);
 
     try {
+      // 1. Publish the primary Video Note (Kind 30078)
       const { signedEvent } = await this.signAndPublishEvent(event, {
         context: "video note",
         logName: "Video note",
         devLogLabel: "video note",
       });
 
+      // 2. Publish NIP-94 Mirror (Kind 1063) if a hosted URL is present.
+      // This allows clients that only understand NIP-94 to find the file.
       if (finalUrl) {
         const inferredMimeType = inferMimeTypeFromUrl(finalUrl);
         const mimeTypeSource =
@@ -4633,6 +4768,9 @@ export class NostrClient {
           );
         }
       } else devLogger.log("Skipping NIP-94 mirror: no hosted URL provided.");
+
+      // 3. Publish NIP-71 Metadata (Kind 22) if categories/tags were added.
+      // This is a separate event linked to the video via `a` tag or `e` tag.
       const hasMetadataObject =
         nip71Metadata && typeof nip71Metadata === "object";
       const metadataWasEdited =
@@ -4950,7 +5088,7 @@ export class NostrClient {
     }
 
     try {
-      const signedEvent = await signer.signEvent(event);
+      const signedEvent = await queueSignEvent(signer, event);
       devLogger.log("Signed edited event:", signedEvent);
 
       const publishResults = await publishEventToRelays(
@@ -5123,7 +5261,7 @@ export class NostrClient {
       }
     }
 
-    const signedEvent = await signer.signEvent(event);
+    const signedEvent = await queueSignEvent(signer, event);
     const publishResults = await publishEventToRelays(
       this.pool,
       this.relays,
@@ -5436,7 +5574,7 @@ export class NostrClient {
             : "Delete published video events",
         };
 
-        const signedDelete = await signer.signEvent(deleteEvent);
+        const signedDelete = await queueSignEvent(signer, deleteEvent);
         const publishResults = await publishEventToRelays(
           this.pool,
           this.relays,
@@ -5644,14 +5782,23 @@ export class NostrClient {
   }
 
   /**
-   * Subscribe to *all* videos (old and new) with a single subscription,
-   * buffering incoming events to avoid excessive DOM updates.
+   * Subscribes to Kind 30078 video events from relays.
    *
-   * @param {Function} onVideo
+   * Strategy: "Buffering & Debouncing"
+   * Relays often send bursts of events (e.g., historical dumps or new floods).
+   * Processing every single event immediately would cause layout thrashing and UI lag.
+   *
+   * Instead, we:
+   * 1. Push incoming events into `eventBuffer`.
+   * 2. Schedule a flush operation (`flushEventBuffer`) with a short delay (75ms).
+   * 3. When the flush runs, we process the entire batch:
+   *    - Convert/Validate events.
+   *    - Update the `activeMap` (latest version logic).
+   *    - Persist to local cache.
+   *    - Notify the UI (`onVideo`).
+   *
+   * @param {Function} onVideo - Callback fired when new valid videos are processed.
    * @param {{ since?: number, until?: number, limit?: number }} [options]
-   *        `since` defaults to the latest cached created_at to avoid replaying
-   *        the full history on every load. `limit` is clamped to
-   *        MAX_VIDEO_REQUEST_LIMIT.
    */
   subscribeVideos(onVideo, options = {}) {
     const { since, until, limit } = options;
@@ -5689,6 +5836,13 @@ export class NostrClient {
     const EVENT_FLUSH_DEBOUNCE_MS = 75;
     let flushTimerId = null;
 
+    /**
+     * Flushes the pending event buffer.
+     *
+     * This batch processing is critical for performance during the initial
+     * relay dump (thousands of events). It prevents React from re-rendering
+     * for every single event.
+     */
     const flushEventBuffer = () => {
       if (!eventBuffer.length) {
         return;
@@ -5709,19 +5863,24 @@ export class NostrClient {
             continue;
           }
 
+          // Merge any NIP-71 metadata we might already have cached for this video
           this.mergeNip71MetadataIntoVideo(video);
+          // Determine the "true" creation time of the root video
           this.applyRootCreatedAt(video);
 
           const activeKey = getActiveKey(video);
           const wasDeletedEvent = video.deleted === true;
 
+          // If this is a deletion event (Kind 5 or deletion marker), record a tombstone
+          // to prevent older versions from resurrecting.
           if (wasDeletedEvent) {
             this.recordTombstone(activeKey, video.created_at);
           } else {
+            // Otherwise, check if this video is already known to be deleted
             this.applyTombstoneGuard(video);
           }
 
-          // Store in allEvents
+          // Store in allEvents (history preservation)
           this.allEvents.set(evt.id, video);
 
           // If it's a "deleted" note, remove from activeMap
@@ -5739,11 +5898,13 @@ export class NostrClient {
             continue;
           }
 
-          // Otherwise, if it's newer than what we have, update activeMap
+          // Latest-wins logic: only update activeMap if this version is newer
           const prevActive = this.activeMap.get(activeKey);
           if (!prevActive || video.created_at > prevActive.created_at) {
             this.activeMap.set(activeKey, video);
             onVideo(video); // Trigger the callback that re-renders
+
+            // Fetch NIP-71 metadata (categorization tags) in the background
             this.populateNip71MetadataForVideos([video])
               .then(() => {
                 this.applyRootCreatedAt(video);
@@ -6562,13 +6723,18 @@ export class NostrClient {
   }
 
   /**
-   * Ensure we have every historical revision for a given video in memory and
-   * return the complete set sorted newest-first. We primarily group revisions
-   * by their shared `videoRootId`, but fall back to the NIP-33 `d` tag when
-   * working with legacy notes. The explicit `d` tag fetch is important because
-   * relays cannot be queried by values that only exist inside the JSON
-   * content. Without this pass, the UI would occasionally miss mid-history
-   * edits that were published from other devices.
+   * Fetches the complete edit history for a video.
+   *
+   * Why this is complex:
+   * 1. **Video Root ID**: Modern videos use a `videoRootId` inside the JSON content to link versions.
+   * 2. **NIP-33 `d` Tags**: Relays index by the `d` tag, not the JSON content.
+   * 3. **Legacy Data**: Older videos might not have a `videoRootId` and rely solely on the `d` tag or even the original Event ID.
+   *
+   * Strategy:
+   * - First, check local memory (`allEvents`) for matches on `videoRootId` OR `d` tag.
+   * - If the root event is missing locally, fetch it by ID.
+   * - If we suspect missing history (e.g., only 1 version found), perform a relay query for the specific `d` tag.
+   * - Merge and sort all findings to present a linear history.
    */
   async hydrateVideoHistory(video) {
     if (!video || typeof video !== "object") {
@@ -6602,6 +6768,9 @@ export class NostrClient {
           typeof candidate.videoRootId === "string" ? candidate.videoRootId : "";
         const candidateDTag = this.resolveEventDTag(candidate, video);
 
+        // A video is "the same" if:
+        // 1. It shares the same V3 `videoRootId`.
+        // 2. It shares the same NIP-33 `d` tag (for addressable updates).
         const sameRoot = targetRoot && candidateRoot === targetRoot;
         const sameD = targetDTag && candidateDTag === targetDTag;
 
@@ -6753,6 +6922,18 @@ export class NostrClient {
     return Array.from(this.activeMap.values()).sort(
       (a, b) => b.created_at - a.created_at
     );
+  }
+
+  handleEvent(event) {
+    if (!event || typeof event !== "object") return;
+
+    // Kind 0: Profile Metadata
+    if (event.kind === 0 && typeof event.pubkey === "string") {
+      const normalized = normalizeProfileFromEvent(event);
+      if (normalized) {
+        profileCache.setProfile(event.pubkey, normalized, { persist: true });
+      }
+    }
   }
 }
 

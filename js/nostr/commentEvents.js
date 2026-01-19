@@ -8,7 +8,16 @@ import { publishEventToRelay } from "../nostrPublish.js";
 import { RELAY_URLS } from "./toolkit.js";
 import { normalizePointerInput } from "./watchHistory.js";
 import { devLogger, userLogger } from "../utils/logger.js";
+import { LRUCache } from "../utils/lruCache.js";
+import { CACHE_POLICIES } from "./cachePolicies.js";
+import { isSessionActor } from "./sessionActor.js";
+import { queueSignEvent } from "./signRequestQueue.js";
+import { getActiveSigner } from "../nostrClientRegistry.js";
+
 const COMMENT_EVENT_SCHEMA = getNostrEventSchema(NOTE_TYPES.VIDEO_COMMENT);
+const CACHE_POLICY = CACHE_POLICIES[NOTE_TYPES.VIDEO_COMMENT];
+
+const commentCache = new LRUCache({ maxSize: 100 });
 export const COMMENT_EVENT_KIND = Number.isFinite(COMMENT_EVENT_SCHEMA?.kind)
   ? COMMENT_EVENT_SCHEMA.kind
   : 1111;
@@ -1099,13 +1108,20 @@ export async function publishComment(
   targetInput,
   options = {},
   {
-    resolveActiveSigner,
     shouldRequestExtensionPermissions,
     DEFAULT_NIP07_PERMISSION_METHODS,
   } = {},
 ) {
   if (!client?.pool) {
     return { ok: false, error: "nostr-uninitialized" };
+  }
+
+  if (isSessionActor(client)) {
+    const error = new Error(
+      "Publishing comments is not allowed for session actors."
+    );
+    error.code = "session-actor-publish-blocked";
+    return { ok: false, error };
   }
 
   const descriptor = normalizeCommentTarget(targetInput, options);
@@ -1173,12 +1189,19 @@ export async function publishComment(
 
   let signedEvent = null;
 
-  const resolveSignerFn =
-    typeof resolveActiveSigner === "function" ? resolveActiveSigner : null;
-  const signer = resolveSignerFn ? resolveSignerFn(actorPubkey) : null;
+  const signer = getActiveSigner();
 
   if (!signer || typeof signer.signEvent !== "function") {
-    return { ok: false, error: "auth-required" };
+    const error = new Error(
+      "Login required: an active signer is needed to publish comments."
+    );
+    error.code = "auth-required";
+    return {
+      ok: false,
+      error: "auth-required",
+      message: error.message,
+      details: error,
+    };
   }
 
   let permissionResult = { ok: true };
@@ -1206,7 +1229,9 @@ export async function publishComment(
   }
 
   try {
-    signedEvent = await signer.signEvent(event);
+    signedEvent = await queueSignEvent(signer, event, {
+      timeoutMs: options?.timeoutMs,
+    });
   } catch (error) {
     userLogger.warn(
       "[nostr] Failed to sign comment event with active signer:",
@@ -1272,25 +1297,81 @@ export async function listVideoComments(client, targetInput, options = {}) {
   }
 
   let descriptor;
-  let filters;
+  let filterTemplate;
   try {
-    ({ descriptor, filters } = createVideoCommentFilters(targetInput, options));
+    // createVideoCommentFilters returns { descriptor, filters: [...] }
+    const result = createVideoCommentFilters(targetInput, options);
+    descriptor = result.descriptor;
+    // We assume the first filter is the primary one we want to augment with 'since'
+    // or use in per-relay logic. For now, we use the full array.
+    filterTemplate = result.filters;
   } catch (error) {
     devLogger.warn("[nostr] Failed to build comment filters:", error);
     return [];
   }
 
-  const relayList = sanitizeRelayList(options.relays, client.relays);
+  const cacheKey = descriptor.videoEventId;
+  const cached = commentCache.get(cacheKey);
+  const ttl = CACHE_POLICY.ttl;
+  const now = Date.now();
+  const forceRefresh = options?.forceRefresh === true;
 
-  let rawResults;
-  try {
-    rawResults = await pool.list(relayList, filters);
-  } catch (error) {
-    devLogger.warn("[nostr] Failed to list video comments:", error);
-    return [];
+  if (cached && !forceRefresh && (now - cached.fetchedAt < ttl)) {
+    devLogger.debug(`[nostr] Comments cache hit for ${cacheKey}`);
+    return cached.items.filter((event) =>
+      isVideoCommentEvent(event, descriptor),
+    );
   }
 
-  const flattened = flattenListResults(rawResults);
+  if (cached) {
+    devLogger.debug(`[nostr] Comments cache stale for ${cacheKey}, refreshing...`);
+  } else {
+    devLogger.debug(`[nostr] Comments cache miss for ${cacheKey}`);
+  }
+
+  const relayList = sanitizeRelayList(options.relays, client.relays);
+  const lastSeens = cached?.lastSeenPerRelay || {};
+  const mergedLastSeens = { ...lastSeens };
+
+  const rawResults = [];
+
+  // Parallel fetch from relays with incremental logic
+  await Promise.all(
+    relayList.map(async (url) => {
+      if (!url) return;
+      const lastSeen = lastSeens[url] || 0;
+      // Deep clone filters to apply 'since' safely per relay
+      const relayFilters = filterTemplate.map(f => {
+        const copy = { ...f };
+        if (lastSeen > 0) {
+          copy.since = lastSeen + 1;
+        }
+        return copy;
+      });
+
+      try {
+        const events = await pool.list([url], relayFilters);
+        let maxCreated = lastSeen;
+        if (Array.isArray(events)) {
+          for (const ev of events) {
+            rawResults.push(ev);
+            if (ev.created_at > maxCreated) {
+              maxCreated = ev.created_at;
+            }
+          }
+        }
+        if (maxCreated > lastSeen) {
+          mergedLastSeens[url] = maxCreated;
+        }
+      } catch (err) {
+        devLogger.warn(`[nostr] Failed to fetch comments from ${url}:`, err);
+      }
+    })
+  );
+
+  // If we have cached items, add them to the raw list for deduplication/merging
+  const combinedRaw = cached ? [...cached.items, ...rawResults] : rawResults;
+  const flattened = flattenListResults(combinedRaw);
   const dedupe = new Map();
   const order = [];
 
@@ -1323,7 +1404,7 @@ export async function listVideoComments(client, targetInput, options = {}) {
     }
   }
 
-  return order
+  const finalItems = order
     .map((entry) => {
       if (!entry) {
         return null;
@@ -1337,6 +1418,17 @@ export async function listVideoComments(client, targetInput, options = {}) {
       return null;
     })
     .filter(Boolean);
+
+  // Update cache
+  if (cacheKey) {
+    commentCache.set(cacheKey, {
+      items: finalItems,
+      lastSeenPerRelay: mergedLastSeens,
+      fetchedAt: Date.now()
+    });
+  }
+
+  return finalItems;
 }
 
 export function subscribeVideoComments(client, targetInput, options = {}) {

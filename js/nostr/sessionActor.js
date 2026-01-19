@@ -7,6 +7,10 @@ export const SESSION_ACTOR_KDF_HASH = "SHA-256";
 export const SESSION_ACTOR_ENCRYPTION_ALGORITHM = "AES-GCM";
 export const SESSION_ACTOR_SALT_BYTES = 16;
 export const SESSION_ACTOR_IV_BYTES = 12;
+const SESSION_ACTOR_DB_NAME = "bitvidSessionActor";
+const SESSION_ACTOR_DB_VERSION = 1;
+const SESSION_ACTOR_STORE = "sessionActor";
+let sessionActorDbPromise = null;
 
 function arrayBufferToBase64(buffer) {
   if (!buffer) {
@@ -60,6 +64,91 @@ function base64ToUint8Array(base64) {
     bytes[index] = binary.charCodeAt(index);
   }
   return bytes;
+}
+
+function isIndexedDbAvailable() {
+  try {
+    return typeof indexedDB !== "undefined";
+  } catch (error) {
+    return false;
+  }
+}
+
+function openSessionActorDb() {
+  if (!isIndexedDbAvailable()) {
+    return Promise.resolve(null);
+  }
+
+  if (sessionActorDbPromise) {
+    return sessionActorDbPromise;
+  }
+
+  sessionActorDbPromise = new Promise((resolve, reject) => {
+    const request = indexedDB.open(SESSION_ACTOR_DB_NAME, SESSION_ACTOR_DB_VERSION);
+
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(SESSION_ACTOR_STORE)) {
+        db.createObjectStore(SESSION_ACTOR_STORE);
+      }
+    };
+
+    request.onsuccess = () => {
+      resolve(request.result);
+    };
+
+    request.onerror = () => {
+      reject(request.error || new Error("Failed to open session actor DB"));
+    };
+  });
+
+  return sessionActorDbPromise;
+}
+
+function persistSessionActorToIndexedDb(payload) {
+  return openSessionActorDb()
+    .then((db) => {
+      if (!db) {
+        return false;
+      }
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(SESSION_ACTOR_STORE, "readwrite");
+        const store = tx.objectStore(SESSION_ACTOR_STORE);
+        store.put(payload, SESSION_ACTOR_STORAGE_KEY);
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () =>
+          reject(tx.error || new Error("Session actor IndexedDB write failed"));
+        tx.onabort = () =>
+          reject(tx.error || new Error("Session actor IndexedDB write aborted"));
+      });
+    })
+    .catch((error) => {
+      devLogger.warn("[nostr] Failed to persist session actor to IndexedDB:", error);
+      return false;
+    });
+}
+
+function clearStoredSessionActorIndexedDb() {
+  return openSessionActorDb()
+    .then((db) => {
+      if (!db) {
+        return false;
+      }
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(SESSION_ACTOR_STORE, "readwrite");
+        const store = tx.objectStore(SESSION_ACTOR_STORE);
+        store.delete(SESSION_ACTOR_STORAGE_KEY);
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () =>
+          reject(tx.error || new Error("Session actor IndexedDB delete failed"));
+        tx.onabort = () =>
+          reject(tx.error || new Error("Session actor IndexedDB delete aborted"));
+      });
+    })
+    .catch((error) => {
+      devLogger.warn("[nostr] Failed to clear session actor IndexedDB entry:", error);
+      return false;
+    });
 }
 
 function generateRandomBytes(length) {
@@ -283,8 +372,6 @@ export function readStoredSessionActorEntry() {
     const parsed = JSON.parse(raw);
     const pubkey =
       typeof parsed?.pubkey === "string" ? parsed.pubkey.trim() : "";
-    const privateKey =
-      typeof parsed?.privateKey === "string" ? parsed.privateKey.trim() : "";
     const privateKeyEncrypted =
       typeof parsed?.privateKeyEncrypted === "string"
         ? parsed.privateKeyEncrypted.trim()
@@ -294,9 +381,33 @@ export function readStoredSessionActorEntry() {
       ? parsed.createdAt
       : Date.now();
 
+    if (parsed?.privateKey) {
+      if (privateKeyEncrypted && encryption) {
+        persistSessionActor({
+          pubkey,
+          privateKeyEncrypted,
+          encryption,
+          createdAt,
+        });
+      } else {
+        try {
+          localStorage.removeItem(SESSION_ACTOR_STORAGE_KEY);
+        } catch (cleanupError) {
+          devLogger.warn(
+            "[nostr] Failed to clear legacy session actor entry:",
+            cleanupError,
+          );
+        }
+      }
+    }
+
+    if (!privateKeyEncrypted || !encryption) {
+      return null;
+    }
+
     return {
       pubkey,
-      privateKey,
+      privateKey: "",
       privateKeyEncrypted,
       encryption,
       createdAt,
@@ -317,16 +428,14 @@ export function readStoredSessionActorEntry() {
 }
 
 export function persistSessionActor(actor) {
-  if (typeof localStorage === "undefined") {
-    return;
-  }
-
   if (
     !actor ||
     typeof actor.pubkey !== "string" ||
     !actor.pubkey ||
-    ((typeof actor.privateKey !== "string" || !actor.privateKey) &&
-      (typeof actor.privateKeyEncrypted !== "string" || !actor.privateKeyEncrypted))
+    typeof actor.privateKeyEncrypted !== "string" ||
+    !actor.privateKeyEncrypted ||
+    !actor.encryption ||
+    typeof actor.encryption !== "object"
   ) {
     return;
   }
@@ -340,44 +449,42 @@ export function persistSessionActor(actor) {
     createdAt,
   };
 
-  if (typeof actor.privateKey === "string" && actor.privateKey) {
-    payload.privateKey = actor.privateKey;
-  } else if (
-    typeof actor.privateKeyEncrypted === "string" &&
-    actor.privateKeyEncrypted &&
-    actor.encryption &&
-    typeof actor.encryption === "object"
-  ) {
-    const normalizedEncryption = normalizeStoredEncryptionMetadata(actor.encryption);
-    if (!normalizedEncryption) {
-      return;
-    }
-    payload.privateKeyEncrypted = actor.privateKeyEncrypted;
-    payload.encryption = normalizedEncryption;
-  } else {
+  const normalizedEncryption = normalizeStoredEncryptionMetadata(actor.encryption);
+  if (!normalizedEncryption) {
     return;
   }
+  payload.privateKeyEncrypted = actor.privateKeyEncrypted;
+  payload.encryption = normalizedEncryption;
 
-  try {
-    localStorage.setItem(
-      SESSION_ACTOR_STORAGE_KEY,
-      JSON.stringify(payload),
-    );
-  } catch (error) {
-    devLogger.warn("[nostr] Failed to persist session actor:", error);
+  persistSessionActorToIndexedDb(payload);
+
+  if (typeof localStorage !== "undefined") {
+    try {
+      localStorage.setItem(
+        SESSION_ACTOR_STORAGE_KEY,
+        JSON.stringify(payload),
+      );
+    } catch (error) {
+      devLogger.warn("[nostr] Failed to persist session actor:", error);
+    }
   }
 }
 
 export function clearStoredSessionActor() {
-  if (typeof localStorage === "undefined") {
-    return;
-  }
+  clearStoredSessionActorIndexedDb();
 
-  try {
-    localStorage.removeItem(SESSION_ACTOR_STORAGE_KEY);
-  } catch (error) {
-    devLogger.warn("[nostr] Failed to clear stored session actor:", error);
+  if (typeof localStorage !== "undefined") {
+    try {
+      localStorage.removeItem(SESSION_ACTOR_STORAGE_KEY);
+    } catch (error) {
+      devLogger.warn("[nostr] Failed to clear stored session actor:", error);
+    }
   }
+}
+
+export function isSessionActor(nostrClient) {
+  const sa = nostrClient?.sessionActor;
+  return !!sa && sa.source !== "nsec";
 }
 
 export const __testExports = {

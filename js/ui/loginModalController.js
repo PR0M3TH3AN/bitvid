@@ -1140,19 +1140,14 @@ export default class LoginModalController {
     const handshakePanel = form.querySelector("[data-nip46-handshake-panel]");
     const qrContainer = form.querySelector("[data-nip46-qr]");
     const handshakeInput = form.querySelector("[data-nip46-handshake-uri]");
+    const debugUriContainer = form.querySelector("[data-nip46-debug-uri]");
     const copyButton = form.querySelector("[data-nip46-copy-uri]");
-    const secretNode = form.querySelector("[data-nip46-secret]");
     const statusNode = form.querySelector("[data-nip46-status]");
     const authContainer = form.querySelector("[data-nip46-auth]");
     const authMessageNode = form.querySelector("[data-nip46-auth-message]");
     const authOpenButton = form.querySelector("[data-nip46-auth-open]");
-    const manualToggle = form.querySelector("[data-nip46-toggle-manual]");
-    const manualFields = form.querySelector("[data-nip46-manual-fields]");
-    const manualInput = form.querySelector("[data-nip46-legacy-uri]");
-    const rememberCheckbox = form.querySelector("[data-nip46-remember]");
     const reuseButton = form.querySelector("[data-nip46-reuse]");
     const cancelButton = form.querySelector("[data-nip46-cancel]");
-    const submitButton = form.querySelector("[data-nip46-submit]");
     const errorNode = form.querySelector("[data-nip46-error]");
 
     const storedMetadata = this.getStoredNip46Metadata();
@@ -1178,10 +1173,12 @@ export default class LoginModalController {
     this.modalBody.appendChild(form);
     this.activeNip46Form = form;
 
-    if (handshakeInput instanceof HTMLTextAreaElement) {
+    if (handshakeInput instanceof HTMLInputElement) {
       handshakeInput.readOnly = true;
       handshakeInput.value = "";
-      handshakeInput.placeholder = "Waiting for connect link…";
+    }
+    if (debugUriContainer instanceof HTMLElement) {
+      debugUriContainer.textContent = "Waiting for connect link...";
     }
     if (copyButton instanceof HTMLButtonElement) {
       copyButton.disabled = true;
@@ -1236,7 +1233,6 @@ export default class LoginModalController {
     const resetStatus = () => setStatus("", "info");
 
     let qrInstance = null;
-    let manualMode = false;
     let pendingAuthUrl = "";
 
     const setAuthChallenge = (url) => {
@@ -1264,18 +1260,6 @@ export default class LoginModalController {
 
     const setPendingState = (pending) => {
       const disabled = pending === true;
-      if (submitButton instanceof HTMLButtonElement) {
-        submitButton.disabled = disabled;
-      }
-      if (rememberCheckbox instanceof HTMLInputElement) {
-        rememberCheckbox.disabled = disabled;
-      }
-      if (manualToggle instanceof HTMLButtonElement) {
-        manualToggle.disabled = disabled;
-      }
-      if (manualInput instanceof HTMLTextAreaElement) {
-        manualInput.disabled = disabled;
-      }
       if (reuseButton instanceof HTMLButtonElement) {
         reuseButton.disabled = disabled;
       }
@@ -1284,7 +1268,7 @@ export default class LoginModalController {
       }
       if (copyButton instanceof HTMLButtonElement) {
         const hasUri =
-          handshakeInput instanceof HTMLTextAreaElement &&
+          handshakeInput instanceof HTMLInputElement &&
           !!handshakeInput.value;
         copyButton.disabled = disabled || !hasUri;
       }
@@ -1295,23 +1279,21 @@ export default class LoginModalController {
         detail && typeof detail === "object"
           ? detail.uri || detail.connectionString || ""
           : "";
-      if (handshakeInput instanceof HTMLTextAreaElement) {
+      if (!uri) {
+        setError("Failed to generate connection link. Please try again.");
+        return;
+      }
+
+      if (handshakeInput instanceof HTMLInputElement) {
         handshakeInput.value = uri;
+      }
+      if (debugUriContainer instanceof HTMLElement) {
+        debugUriContainer.textContent = uri;
       }
       if (copyButton instanceof HTMLButtonElement) {
         copyButton.disabled = !uri;
       }
-      if (secretNode instanceof HTMLElement) {
-        const secretValue =
-          detail && typeof detail.secret === "string" ? detail.secret.trim() : "";
-        if (secretValue) {
-          secretNode.textContent = `Secret: ${secretValue}`;
-          secretNode.classList.remove("hidden");
-        } else {
-          secretNode.textContent = "";
-          secretNode.classList.add("hidden");
-        }
-      }
+
       if (qrContainer instanceof HTMLElement) {
         qrContainer.innerHTML = "";
         const resolveTokenColor = (tokenName, fallback) => {
@@ -1354,7 +1336,7 @@ export default class LoginModalController {
             if (fallback) {
               fallback.className = "text-center text-xs text-text-muted";
               fallback.textContent =
-                "Unable to render QR code. Use the connect link below.";
+                "Unable to render QR code. Use the copy button below.";
               qrContainer.appendChild(fallback);
             }
           }
@@ -1363,9 +1345,6 @@ export default class LoginModalController {
         }
       }
       setPendingState(false);
-      if (submitButton instanceof HTMLButtonElement) {
-        submitButton.disabled = true;
-      }
       resetStatus();
       clearAuthChallenge();
       setError("");
@@ -1411,41 +1390,12 @@ export default class LoginModalController {
       setAuthChallenge(normalized);
     };
 
-    const applyManualMode = (enabled) => {
-      manualMode = enabled === true;
-      if (manualFields instanceof HTMLElement) {
-        manualFields.classList.toggle("hidden", !manualMode);
-      }
-      if (handshakePanel instanceof HTMLElement) {
-        handshakePanel.classList.toggle("hidden", manualMode);
-      }
-      if (manualToggle instanceof HTMLButtonElement) {
-        manualToggle.textContent = manualMode
-          ? "Back to QR pairing"
-          : "Paste a signer-provided bunker link instead";
-      }
-      if (manualMode && manualInput instanceof HTMLTextAreaElement) {
-        manualInput.focus();
-      }
-      if (!manualMode && manualInput instanceof HTMLTextAreaElement) {
-        manualInput.value = "";
-      }
-      resetStatus();
-      clearAuthChallenge();
-      setError("");
-    };
-
-    let submitHandler = null;
     let cancelHandler = null;
     let reuseHandler = null;
     let copyHandler = null;
-    let manualToggleHandler = null;
     let authOpenHandler = null;
 
     const cleanup = () => {
-      if (submitHandler) {
-        form.removeEventListener("submit", submitHandler);
-      }
       if (cancelHandler && cancelButton instanceof HTMLButtonElement) {
         cancelButton.removeEventListener("click", cancelHandler);
       }
@@ -1454,9 +1404,6 @@ export default class LoginModalController {
       }
       if (copyHandler && copyButton instanceof HTMLButtonElement) {
         copyButton.removeEventListener("click", copyHandler);
-      }
-      if (manualToggleHandler && manualToggle instanceof HTMLButtonElement) {
-        manualToggle.removeEventListener("click", manualToggleHandler);
       }
       if (authOpenHandler && authOpenButton instanceof HTMLButtonElement) {
         authOpenButton.removeEventListener("click", authOpenHandler);
@@ -1483,7 +1430,6 @@ export default class LoginModalController {
 
     resetStatus();
     clearAuthChallenge();
-    applyManualMode(false);
     setError("");
 
     return new Promise((resolve) => {
@@ -1506,41 +1452,11 @@ export default class LoginModalController {
         resolve(detail);
       };
 
-      submitHandler = (event) => {
-        event.preventDefault();
+      // Auto-submit immediately to generate the QR code
+      const autoStart = () => {
         setError("");
         resetStatus();
         clearAuthChallenge();
-
-        const remember =
-          rememberCheckbox instanceof HTMLInputElement
-            ? rememberCheckbox.checked
-            : true;
-
-        if (manualMode) {
-          if (!(manualInput instanceof HTMLTextAreaElement)) {
-            setError("Manual input is unavailable.");
-            return;
-          }
-          const raw = manualInput.value.trim();
-          if (!raw) {
-            setError("Paste the bunker:// link from your signer.");
-            manualInput.focus();
-            return;
-          }
-          setPendingState(true);
-          finish(
-            {
-              mode: "manual",
-              connectionString: raw,
-              remember: remember !== false,
-              onStatus: handleStatus,
-              onAuthUrl: handleAuthUrl,
-            },
-            { keepMounted: false },
-          );
-          return;
-        }
 
         const metadata = {};
         if (this.document && typeof this.document.title === "string") {
@@ -1557,7 +1473,7 @@ export default class LoginModalController {
         finish(
           {
             mode: "handshake",
-            remember: remember !== false,
+            remember: true, // Always remember for now in simplified flow
             metadata,
             onHandshakePrepared: updateHandshakeDisplay,
             onStatus: handleStatus,
@@ -1566,8 +1482,6 @@ export default class LoginModalController {
           { keepMounted: true },
         );
       };
-
-      form.addEventListener("submit", submitHandler);
 
       if (cancelButton instanceof HTMLButtonElement) {
         cancelHandler = (event) => {
@@ -1588,7 +1502,7 @@ export default class LoginModalController {
       if (copyButton instanceof HTMLButtonElement) {
         copyHandler = async (event) => {
           event.preventDefault();
-          if (!(handshakeInput instanceof HTMLTextAreaElement)) {
+          if (!(handshakeInput instanceof HTMLInputElement)) {
             return;
           }
           const value = handshakeInput.value.trim();
@@ -1615,31 +1529,25 @@ export default class LoginModalController {
               }
             } catch (error) {
               copied = false;
-            } finally {
-              handshakeInput.setSelectionRange(
-                handshakeInput.value.length,
-                handshakeInput.value.length,
-              );
             }
           }
           if (copied) {
-            setStatus("Connect URI copied to clipboard.", "success");
+            // Temporary button feedback
+            const originalText = copyButton.textContent;
+            copyButton.textContent = "Copied!";
+            copyButton.classList.add("btn-success"); // Assuming this utility exists or similar
+            setTimeout(() => {
+                copyButton.textContent = originalText;
+                copyButton.classList.remove("btn-success");
+            }, 2000);
           } else {
             setStatus(
-              "Copy failed. Copy the link manually if needed.",
+              "Copy failed. Use the manual fallback below.",
               "warning",
             );
           }
         };
         copyButton.addEventListener("click", copyHandler);
-      }
-
-      if (manualToggle instanceof HTMLButtonElement) {
-        manualToggleHandler = (event) => {
-          event.preventDefault();
-          applyManualMode(!manualMode);
-        };
-        manualToggle.addEventListener("click", manualToggleHandler);
       }
 
       if (authOpenButton instanceof HTMLButtonElement) {
@@ -1656,6 +1564,9 @@ export default class LoginModalController {
         };
         authOpenButton.addEventListener("click", authOpenHandler);
       }
+
+      // Kick off the handshake generation
+      setTimeout(autoStart, 0);
     });
   }
 

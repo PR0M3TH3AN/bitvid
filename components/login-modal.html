@@ -338,8 +338,7 @@
           <div class="space-y-2">
             <h3 class="text-lg font-semibold text-text">Pair a remote signer</h3>
             <p class="text-sm text-text-muted">
-              Scan the QR code with your signer or share the connect link to start a
-              Nostr Connect session.
+              Scan the QR code with your signer (like Amber or NsecBunker) to login.
             </p>
           </div>
           <div
@@ -347,50 +346,49 @@
             class="hidden rounded-lg border border-danger/60 bg-danger/10 px-4 py-2 text-sm text-danger"
             role="alert"
           ></div>
-          <div data-nip46-handshake-panel class="space-y-4">
-            <div class="flex flex-col items-center gap-5 sm:items-stretch">
+          <div data-nip46-handshake-panel class="space-y-6">
+            <div class="flex flex-col items-center gap-6">
               <div
-                class="flex aspect-square w-full max-w-sm items-center justify-center rounded-2xl border border-border-strong bg-white p-5 shadow-sm sm:max-w-md sm:p-8"
+                class="flex aspect-square w-full max-w-xs items-center justify-center rounded-2xl border border-border-strong bg-white p-4 shadow-sm"
                 data-nip46-qr
                 aria-hidden="true"
               >
-                <div class="w-full text-center text-sm text-text-muted">
-                  Generating connect code…
+                <div class="w-full text-center text-sm text-text-muted animate-pulse">
+                  Generating code...
                 </div>
               </div>
-              <div class="w-full space-y-3 sm:max-w-xl">
-                <label class="block text-sm font-medium text-text" for="nip46HandshakeUri">
-                  Connect URI
-                </label>
-                <textarea
-                  id="nip46HandshakeUri"
-                  class="input"
-                  rows="3"
-                  spellcheck="false"
-                  autocomplete="off"
+
+              <div class="w-full space-y-4 text-center">
+                <!-- Hidden input for copy functionality -->
+                <input
+                  type="text"
+                  class="sr-only"
                   data-nip46-handshake-uri
                   readonly
-                ></textarea>
-                <div class="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    class="btn-ghost w-full text-sm sm:w-auto"
-                    data-nip46-copy-uri
-                    disabled
-                  >
-                    Copy link
-                  </button>
-                </div>
-                <p
-                  data-nip46-secret
-                  class="hidden break-words text-xs text-text-muted"
-                ></p>
+                  aria-hidden="true"
+                >
+
+                <button
+                  type="button"
+                  class="btn w-full sm:max-w-xs"
+                  data-nip46-copy-uri
+                  disabled
+                >
+                  Copy Connect Link
+                </button>
+
+                <details class="text-sm text-text-muted">
+                  <summary class="cursor-pointer hover:text-text hover:underline">Trouble scanning?</summary>
+                  <div class="mt-2 p-2 bg-overlay-panel border border-border rounded-lg break-all text-xs font-mono text-left select-all" data-nip46-debug-uri>
+                    <!-- Raw URI injected here for debugging/manual copy -->
+                  </div>
+                </details>
               </div>
             </div>
           </div>
           <div
             data-nip46-status
-            class="hidden rounded-lg border border-info/40 bg-info/10 px-4 py-2 text-sm text-info"
+            class="hidden rounded-lg border border-info/40 bg-info/10 px-4 py-3 text-sm text-info font-medium text-center"
             role="status"
           ></div>
           <div
@@ -403,45 +401,19 @@
               Open signer challenge
             </button>
           </div>
-          <div class="space-y-2">
-            <button type="button" class="btn-link text-sm" data-nip46-toggle-manual>
-              Paste a signer-provided bunker link instead
-            </button>
-            <div class="hidden space-y-2" data-nip46-manual-fields>
-              <label class="block text-sm font-medium text-text" for="nip46LegacyUri">
-                Signer link
-              </label>
-              <textarea
-                id="nip46LegacyUri"
-                class="input"
-                rows="2"
-                spellcheck="false"
-                autocomplete="off"
-                placeholder="bunker://…"
-                data-nip46-legacy-uri
-              ></textarea>
-              <p class="text-xs text-text-muted">
-                Use this fallback when your signer cannot scan QR codes.
-              </p>
-            </div>
-          </div>
-          <div class="space-y-2">
-            <label class="inline-flex items-center gap-2 text-sm text-text">
-              <input type="checkbox" class="checkbox" data-nip46-remember checked />
-              <span>Remember this signer for future logins</span>
-            </label>
+
+          <div class="flex justify-between items-center pt-2">
             <button
               type="button"
               class="btn-link text-sm hidden"
               data-nip46-reuse
             >
-              Reconnect using the saved session
+              Reconnect saved
             </button>
-          </div>
-          <div class="flex justify-end gap-2">
             <button type="button" class="btn-ghost" data-nip46-cancel>Cancel</button>
-            <button type="submit" class="btn" data-nip46-submit>Connect</button>
           </div>
+          <!-- Hidden submit to satisfy form semantics if needed, though we trigger via logic -->
+          <button type="submit" class="hidden" data-nip46-submit></button>
         </form>
       </template>
     </div>

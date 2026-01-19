@@ -1,4 +1,8 @@
-import { nostrClient } from "../nostrClientFacade.js";
+import {
+  getActiveSigner,
+  nostrClient,
+  requestDefaultExtensionPermissions,
+} from "../nostrClientFacade.js";
 import { publishEventToRelays, assertAnyRelayAccepted } from "../nostrPublish.js";
 import { accessControl } from "../accessControl.js";
 import { userBlocks, USER_BLOCK_EVENTS } from "../userBlocks.js";
@@ -6,6 +10,8 @@ import logger from "../utils/logger.js";
 
 const AUTOPLAY_TRUST_THRESHOLD = 1;
 const BLUR_TRUST_THRESHOLD = 1;
+const TRUSTED_MUTE_WINDOW_DAYS = 60;
+const TRUSTED_MUTE_WINDOW_SECONDS = TRUSTED_MUTE_WINDOW_DAYS * 24 * 60 * 60;
 
 function normalizeUserLogger(candidate) {
   if (
@@ -105,6 +111,39 @@ function normalizeReportType(value) {
   }
   const trimmed = value.trim().toLowerCase();
   return trimmed ? trimmed : "";
+}
+
+function isRelayHint(value) {
+  if (typeof value !== "string") {
+    return false;
+  }
+  const trimmed = value.trim().toLowerCase();
+  return (
+    trimmed.startsWith("wss://") ||
+    trimmed.startsWith("ws://") ||
+    trimmed.startsWith("https://") ||
+    trimmed.startsWith("http://")
+  );
+}
+
+function normalizeMuteCategory(value) {
+  return normalizeReportType(value);
+}
+
+function extractMuteCategoryFromTag(tag) {
+  if (!Array.isArray(tag)) {
+    return "";
+  }
+
+  const direct = normalizeMuteCategory(tag[3]);
+  if (direct) {
+    return direct;
+  }
+
+  const fallback = typeof tag[2] === "string" && !isRelayHint(tag[2])
+    ? normalizeMuteCategory(tag[2])
+    : "";
+  return fallback;
 }
 
 function cloneSummary(summary) {
@@ -466,10 +505,12 @@ export class ModerationService {
     userBlocks: userBlockManager = null,
     accessControl: accessControlService = null,
     userLogger: userChannel = null,
+    requestExtensionPermissions: permissionRequester = null,
   } = {}) {
     this.nostrClient = client;
     this.log = normalizeLogger(log);
     this.userLogger = normalizeUserLogger(userChannel);
+    this.requestExtensionPermissions = permissionRequester || requestDefaultExtensionPermissions;
 
     this.viewerPubkey = "";
     this.viewerIsSessionActor = false;
@@ -495,6 +536,7 @@ export class ModerationService {
     this.trustedMuteLists = new Map();
     this.trustedMutedAuthors = new Map();
     this.trustedMuteSubscriptions = new Map();
+    this.trustedSeedOnly = false;
 
     this.emitter = new SimpleEventEmitter((message, error) => {
       try {
@@ -547,6 +589,35 @@ export class ModerationService {
     return merged;
   }
 
+  computeTrustedSeedOnly() {
+    const trustedContacts =
+      this.trustedContacts instanceof Set ? this.trustedContacts : new Set();
+    const trustedSeedContacts =
+      this.trustedSeedContacts instanceof Set ? this.trustedSeedContacts : new Set();
+
+    if (!trustedSeedContacts.size || trustedContacts.size !== trustedSeedContacts.size) {
+      return false;
+    }
+
+    for (const value of trustedContacts) {
+      if (!trustedSeedContacts.has(value)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  updateTrustedSeedOnlyStatus() {
+    const nextValue = this.computeTrustedSeedOnly();
+    if (nextValue === this.trustedSeedOnly) {
+      return;
+    }
+
+    this.trustedSeedOnly = nextValue;
+    this.emit("trusted-seed-only", { seedOnly: nextValue });
+  }
+
   rebuildTrustedContacts(nextContacts = new Set(), { previous = null } = {}) {
     const sanitized = new Set();
 
@@ -578,6 +649,7 @@ export class ModerationService {
     const seededNext = this.mergeSeedsIntoSet(sanitized);
     this.trustedContacts = seededNext;
 
+    this.updateTrustedSeedOnlyStatus();
     this.emit("contacts", { size: seededNext.size });
     this.recomputeAllSummaries();
     this.reconcileTrustedMuteSubscriptions(previousContacts, seededNext);
@@ -679,6 +751,10 @@ export class ModerationService {
     this.rebuildTrustedContacts(this.viewerContacts, { previous: previousContacts });
   }
 
+  isTrustedSeedOnly() {
+    return this.trustedSeedOnly === true;
+  }
+
   logThresholdTransitions({
     eventId = "",
     reportType = "",
@@ -733,6 +809,105 @@ export class ModerationService {
         logger.user.warn("[moderationService] failed to log threshold transition", error);
       }
     }
+  }
+
+  getTrustedMuteWindowCutoff(nowSeconds = Date.now() / 1000) {
+    const normalizedNow = ensureNumber(nowSeconds) || Date.now() / 1000;
+    return normalizedNow - TRUSTED_MUTE_WINDOW_SECONDS;
+  }
+
+  pruneTrustedMuteAggregates(targetAuthors = null, { nowSeconds = Date.now() / 1000 } = {}) {
+    const cutoff = this.getTrustedMuteWindowCutoff(nowSeconds);
+    const targets =
+      targetAuthors instanceof Set || Array.isArray(targetAuthors)
+        ? Array.from(targetAuthors)
+        : targetAuthors && typeof targetAuthors[Symbol.iterator] === "function"
+        ? Array.from(targetAuthors)
+        : null;
+
+    const entries = targets
+      ? targets.map((author) => [author, this.trustedMutedAuthors.get(author)])
+      : Array.from(this.trustedMutedAuthors.entries());
+
+    for (const [author, aggregate] of entries) {
+      if (!aggregate || !(aggregate.muters instanceof Map)) {
+        continue;
+      }
+      const expiredOwners = new Set();
+      for (const [owner, updatedAt] of aggregate.muters.entries()) {
+        if (ensureNumber(updatedAt) < cutoff) {
+          aggregate.muters.delete(owner);
+          expiredOwners.add(owner);
+        }
+      }
+      if (aggregate.categories instanceof Map && expiredOwners.size) {
+        for (const [category, muters] of aggregate.categories.entries()) {
+          for (const owner of expiredOwners) {
+            muters.delete(owner);
+          }
+          if (!muters.size) {
+            aggregate.categories.delete(category);
+          }
+        }
+      }
+      aggregate.count = aggregate.muters.size;
+      if (!aggregate.muters.size) {
+        this.trustedMutedAuthors.delete(author);
+      }
+    }
+  }
+
+  getActiveTrustedMutersForAuthor(author) {
+    const normalized = normalizeHex(author);
+    if (!normalized) {
+      return [];
+    }
+
+    const entry = this.trustedMutedAuthors.get(normalized);
+    if (!entry || !(entry.muters instanceof Map)) {
+      return [];
+    }
+
+    this.pruneTrustedMuteAggregates([normalized]);
+    const refreshed = this.trustedMutedAuthors.get(normalized);
+    if (!refreshed || !(refreshed.muters instanceof Map)) {
+      return [];
+    }
+
+    return Array.from(refreshed.muters.keys());
+  }
+
+  getTrustedMuteCountsForAuthor(author) {
+    const normalized = normalizeHex(author);
+    if (!normalized) {
+      return { total: 0, categories: {} };
+    }
+
+    const entry = this.trustedMutedAuthors.get(normalized);
+    if (!entry || !(entry.muters instanceof Map)) {
+      return { total: 0, categories: {} };
+    }
+
+    this.pruneTrustedMuteAggregates([normalized]);
+    const refreshed = this.trustedMutedAuthors.get(normalized);
+    if (!refreshed || !(refreshed.muters instanceof Map)) {
+      return { total: 0, categories: {} };
+    }
+
+    const categories = {};
+    if (refreshed.categories instanceof Map) {
+      for (const [category, muters] of refreshed.categories.entries()) {
+        if (typeof category !== "string" || !category.trim()) {
+          continue;
+        }
+        categories[category] = muters instanceof Map ? muters.size : 0;
+      }
+    }
+
+    return {
+      total: refreshed.muters.size,
+      categories,
+    };
   }
 
   setLogger(newLogger) {
@@ -847,7 +1022,7 @@ export class ModerationService {
     this.trustedMuteSubscriptions.clear();
 
     for (const [author, aggregate] of this.trustedMutedAuthors.entries()) {
-      if (aggregate && aggregate.muters instanceof Set) {
+      if (aggregate && aggregate.muters instanceof Map) {
         aggregate.muters.clear();
       }
     }
@@ -1052,38 +1227,72 @@ export class ModerationService {
       return;
     }
 
-    const sanitizedAuthors = new Set();
-    if (mutedAuthors instanceof Set || Array.isArray(mutedAuthors)) {
+    const sanitizedAuthors = new Map();
+    const addAuthor = (candidate, category = "") => {
+      const normalized = normalizeToHex(candidate);
+      if (!normalized) {
+        return;
+      }
+      const normalizedCategory = normalizeMuteCategory(category);
+      sanitizedAuthors.set(normalized, normalizedCategory);
+    };
+
+    if (mutedAuthors instanceof Map) {
+      for (const [candidate, category] of mutedAuthors.entries()) {
+        addAuthor(candidate, category);
+      }
+    } else if (mutedAuthors instanceof Set || Array.isArray(mutedAuthors)) {
       for (const candidate of mutedAuthors) {
-        const normalized = normalizeToHex(candidate);
-        if (!normalized) {
+        if (!candidate) {
           continue;
         }
-        sanitizedAuthors.add(normalized);
+        if (typeof candidate === "object") {
+          addAuthor(candidate.pubkey || candidate.author, candidate.category || candidate.reason);
+          continue;
+        }
+        addAuthor(candidate);
       }
     } else if (mutedAuthors && typeof mutedAuthors[Symbol.iterator] === "function") {
       for (const candidate of mutedAuthors) {
-        const normalized = normalizeToHex(candidate);
-        if (!normalized) {
+        if (!candidate) {
           continue;
         }
-        sanitizedAuthors.add(normalized);
+        if (typeof candidate === "object") {
+          addAuthor(candidate.pubkey || candidate.author, candidate.category || candidate.reason);
+          continue;
+        }
+        addAuthor(candidate);
       }
     }
 
+    const touchedAuthors = new Set();
     const previous = this.trustedMuteLists.get(owner);
-    if (previous && previous.authors instanceof Set) {
-      for (const author of previous.authors) {
+    if (previous && previous.authors instanceof Map) {
+      for (const [author, category] of previous.authors.entries()) {
         const aggregate = this.trustedMutedAuthors.get(author);
-        if (!aggregate || !(aggregate.muters instanceof Set)) {
+        if (!aggregate || !(aggregate.muters instanceof Map)) {
           continue;
         }
         aggregate.muters.delete(owner);
-        if (!aggregate.muters.size) {
-          this.trustedMutedAuthors.delete(author);
-        } else {
-          aggregate.count = aggregate.muters.size;
+        if (aggregate.categories instanceof Map) {
+          if (category) {
+            const categoryMuters = aggregate.categories.get(category);
+            if (categoryMuters instanceof Map) {
+              categoryMuters.delete(owner);
+              if (!categoryMuters.size) {
+                aggregate.categories.delete(category);
+              }
+            }
+          } else {
+            for (const [existingCategory, muters] of aggregate.categories.entries()) {
+              muters.delete(owner);
+              if (!muters.size) {
+                aggregate.categories.delete(existingCategory);
+              }
+            }
+          }
         }
+        touchedAuthors.add(author);
       }
     }
 
@@ -1105,17 +1314,26 @@ export class ModerationService {
         eventId: normalizedEventId,
       });
 
-      for (const author of sanitizedAuthors) {
+      for (const [author, category] of sanitizedAuthors.entries()) {
         let aggregate = this.trustedMutedAuthors.get(author);
         if (!aggregate) {
-          aggregate = { muters: new Set(), count: 0 };
+          aggregate = { muters: new Map(), categories: new Map(), count: 0 };
           this.trustedMutedAuthors.set(author, aggregate);
         }
-        aggregate.muters.add(owner);
-        aggregate.count = aggregate.muters.size;
+        aggregate.muters.set(owner, normalizedCreatedAt);
+        if (category) {
+          let categoryMuters = aggregate.categories.get(category);
+          if (!categoryMuters) {
+            categoryMuters = new Map();
+            aggregate.categories.set(category, categoryMuters);
+          }
+          categoryMuters.set(owner, normalizedCreatedAt);
+        }
+        touchedAuthors.add(author);
       }
     }
 
+    this.pruneTrustedMuteAggregates(touchedAuthors);
     this.emit("trusted-mutes", { total: this.trustedMutedAuthors.size, owner });
   }
 
@@ -1144,7 +1362,7 @@ export class ModerationService {
       }
     }
 
-    const mutedAuthors = new Set();
+    const mutedAuthors = new Map();
     if (Array.isArray(event.tags)) {
       for (const tag of event.tags) {
         if (!Array.isArray(tag) || tag.length < 2) {
@@ -1155,7 +1373,8 @@ export class ModerationService {
         }
         const normalized = normalizeToHex(tag[1]);
         if (normalized) {
-          mutedAuthors.add(normalized);
+          const category = extractMuteCategoryFromTag(tag);
+          mutedAuthors.set(normalized, category);
         }
       }
     }
@@ -1173,7 +1392,6 @@ export class ModerationService {
       return;
     }
 
-    this.log(`[moderationService] ingesting trusted mute event from ${owner} (${event.id})`);
     this.applyTrustedMuteEvent(owner, event);
   }
 
@@ -1330,15 +1548,22 @@ export class ModerationService {
 
     await this.ensurePool();
 
-    const extension = typeof window !== "undefined" ? window.nostr : null;
-    if (!extension || typeof extension.signEvent !== "function") {
+    let signer = getActiveSigner();
+    if (!signer && typeof this.nostrClient?.ensureActiveSignerForPubkey === "function") {
+      signer = await this.nostrClient.ensureActiveSignerForPubkey(viewer);
+    }
+
+    const canSign = typeof signer?.canSign === "function"
+      ? signer.canSign()
+      : typeof signer?.signEvent === "function";
+    if (!canSign || typeof signer?.signEvent !== "function") {
       const error = new Error("nostr-extension-missing");
       error.code = "nostr-extension-missing";
       throw error;
     }
 
-    if (typeof this.nostrClient?.ensureExtensionPermissions === "function") {
-      const permissionResult = await this.nostrClient.ensureExtensionPermissions([
+    if (signer?.type === "extension") {
+      const permissionResult = await this.requestExtensionPermissions([
         "sign_event",
         "get_public_key",
       ]);
@@ -1371,7 +1596,7 @@ export class ModerationService {
 
     let signedEvent;
     try {
-      signedEvent = await extension.signEvent(event);
+      signedEvent = await signer.signEvent(event);
     } catch (error) {
       const wrapped = new Error("signature-failed");
       wrapped.code = "signature-failed";
@@ -1460,26 +1685,12 @@ export class ModerationService {
   }
 
   isAuthorMutedByTrusted(pubkey) {
-    const normalized = normalizeHex(pubkey);
-    if (!normalized) {
-      return false;
-    }
-    const entry = this.trustedMutedAuthors.get(normalized);
-    return Boolean(entry && entry.muters instanceof Set && entry.muters.size > 0);
+    const muters = this.getActiveTrustedMutersForAuthor(pubkey);
+    return muters.length > 0;
   }
 
   getTrustedMutersForAuthor(pubkey) {
-    const normalized = normalizeHex(pubkey);
-    if (!normalized) {
-      return [];
-    }
-
-    const entry = this.trustedMutedAuthors.get(normalized);
-    if (!entry || !(entry.muters instanceof Set)) {
-      return [];
-    }
-
-    return Array.from(entry.muters);
+    return this.getActiveTrustedMutersForAuthor(pubkey);
   }
 
   isPubkeyBlockedByViewer(pubkey) {

@@ -102,7 +102,7 @@ export class EventDetailsModal {
               </button>
             </div>
             <div class="relative flex-1 min-h-[200px] bg-black/80 rounded-lg border border-border overflow-hidden group">
-              <pre class="absolute inset-0 p-4 overflow-auto text-xs font-mono text-gray-300 scrollbar-thin"><code data-json-content></code></pre>
+              <pre class="absolute inset-0 p-4 overflow-auto text-xs font-mono text-white/80 scrollbar-thin"><code data-json-content></code></pre>
             </div>
           </section>
         </div>
@@ -135,8 +135,7 @@ export class EventDetailsModal {
     const container = this.document.getElementById("modalContainer") || this.document.body;
     const modal = this.document.createElement("div");
     modal.id = "eventDetailsModal";
-    modal.style.zIndex = "140";
-    modal.className = "bv-modal hidden items-center justify-center p-4";
+    modal.className = "bv-modal z-[140] hidden items-center justify-center p-4";
     modal.innerHTML = this.buildMarkup();
 
     this.root = modal;
@@ -305,21 +304,99 @@ export class EventDetailsModal {
     }
 
     if (jsonEl) {
-      const rawEvent = this.getRawEvent(video);
-      jsonEl.textContent = JSON.stringify(rawEvent, null, 2);
+      jsonEl.textContent = "Loading raw event...";
+      this.currentRawEvent = null;
+
+      if (this.app?.nostrService?.nostrClient?.getEventById) {
+        this.app.nostrService.nostrClient
+          .getEventById(video.id, { includeRaw: true })
+          .then((result) => {
+            if (this.currentVideo && this.currentVideo.id === video.id) {
+              // Ensure we actually have a raw event (with signature)
+              // If getEventById returns a wrapper { video, rawEvent: null }, we must handle null.
+              const raw =
+                result && typeof result.rawEvent === "object"
+                  ? result.rawEvent
+                  : null;
+
+              if (raw) {
+                this.currentRawEvent = raw;
+                jsonEl.textContent = JSON.stringify(raw, null, 2);
+              } else {
+                // Fallback if fetch returned nothing usable
+                // Do not set currentRawEvent so copy-json uses the reconstruction logic
+                jsonEl.textContent = JSON.stringify(
+                  this.getRawEvent(video),
+                  null,
+                  2,
+                );
+              }
+            }
+          })
+          .catch((error) => {
+            console.error(
+              "[EventDetailsModal] Failed to fetch raw event:",
+              error,
+            );
+            if (this.currentVideo && this.currentVideo.id === video.id) {
+              jsonEl.textContent = `// Failed to load raw event.\n// Falling back to known data:\n${JSON.stringify(
+                this.getRawEvent(video),
+                null,
+                2,
+              )}`;
+            }
+          });
+      } else {
+        // Fallback if client or method missing
+        const rawEvent = this.getRawEvent(video);
+        jsonEl.textContent = JSON.stringify(rawEvent, null, 2);
+      }
     }
   }
 
   getRawEvent(video) {
     if (!video) return {};
+
+    let content = video.content;
+    // If raw content is missing (e.g. video loaded from cache/parsed), reconstruct it
+    // so the user can inspect the metadata fields (thumbnail, title, etc.)
+    if (typeof content !== "string") {
+      const payload = {
+        videoRootId: video.videoRootId,
+        version: video.version,
+        deleted: video.deleted || false,
+        isPrivate: video.isPrivate,
+        isNsfw: video.isNsfw,
+        isForKids: video.isForKids,
+        title: video.title,
+        url: video.url,
+        magnet: video.magnet,
+        thumbnail: video.thumbnail,
+        description: video.description,
+        mode: video.mode,
+        enableComments: video.enableComments ?? true,
+        ws: video.ws,
+        xs: video.xs,
+      };
+
+      // Clean up undefined/empty fields to keep it tidy
+      Object.keys(payload).forEach((key) => {
+        if (payload[key] === undefined || payload[key] === null) {
+          delete payload[key];
+        }
+      });
+
+      content = JSON.stringify(payload);
+    }
+
     return {
       id: video.id,
       pubkey: video.pubkey,
       created_at: video.created_at,
-      kind: video.kind,
+      kind: video.kind || 30078,
       tags: video.tags,
-      content: video.content,
-      sig: video.sig,
+      content: content,
+      sig: video.sig || "unavailable (cached)",
     };
   }
 

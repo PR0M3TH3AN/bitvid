@@ -27,6 +27,7 @@ import { attachHealthBadges } from "./gridHealth.js";
 import { attachUrlHealthBadges } from "./urlHealthObserver.js";
 import { updateVideoCardSourceVisibility } from "./utils/cardSourceVisibility.js";
 import { collectVideoTags } from "./utils/videoTags.js";
+import { normalizeHashtag } from "./utils/hashtagNormalization.js";
 import { sanitizeProfileMediaUrl } from "./utils/profileMedia.js";
 import { ADMIN_INITIAL_EVENT_BLACKLIST } from "./lists.js";
 import { userBlocks } from "./userBlocks.js";
@@ -38,6 +39,7 @@ import {
   createDedupeByRootStage,
   createModerationStage,
   createResolvePostedAtStage,
+  createTagPreferenceFilterStage,
   createChronologicalSorter,
   createSubscriptionAuthorsSource,
   registerWatchHistoryFeed,
@@ -90,11 +92,8 @@ import {
   openStaticModal,
   closeStaticModal,
 } from "./ui/components/staticModalAccessibility.js";
-import createTagPreferenceMenu, {
-  TAG_PREFERENCE_ACTIONS,
-  applyTagPreferenceMenuState,
-} from "./ui/components/tagPreferenceMenu.js";
 import LoginModalController from "./ui/loginModalController.js";
+import TagPreferenceMenuController from "./ui/tagPreferenceMenuController.js";
 import { pointerArrayToKey } from "./utils/pointer.js";
 import resolveVideoPointer, {
   buildVideoAddressPointer,
@@ -109,6 +108,7 @@ import {
   syncActiveVideoRootTimestamp,
 } from "./utils/videoTimestamps.js";
 import { getDesignSystemMode as getCanonicalDesignSystemMode } from "./designSystem.js";
+import { getHashViewName, setHashView } from "./hashView.js";
 import {
   getPubkey as getStoredPubkey,
   setPubkey as setStoredPubkey,
@@ -144,6 +144,7 @@ import {
 } from "./state/cache.js";
 import ApplicationBootstrap from "./ui/applicationBootstrap.js";
 import VideoModalCommentController from "./ui/videoModalCommentController.js";
+import TorrentStatusController from "./ui/torrentStatusController.js";
 import ModerationActionController from "./services/moderationActionController.js";
 import { bootstrapTrustedSeeds } from "./services/trustBootstrap.js";
 
@@ -223,6 +224,11 @@ class Application {
     this.commentController = null;
     this.initializeCommentController();
 
+    this.torrentStatusController = new TorrentStatusController({
+      getVideoModal: () => this.videoModal,
+      onRemovePoster: (reason) => this.forceRemoveModalPoster(reason),
+    });
+
     this.unsubscribeFromPubkeyState = subscribeToAppStateKey(
       "pubkey",
       (next, previous) => {
@@ -240,6 +246,34 @@ class Application {
         }
       }
     );
+
+    this.tagPreferenceMenuController = new TagPreferenceMenuController({
+      services: { hashtagPreferences },
+      callbacks: {
+        isLoggedIn: () => this.isUserLoggedIn(),
+        getMembership: (tag) => this.getTagPreferenceMembership(tag),
+        showError: (msg) => this.showError(msg),
+        describeError: (err, opts) =>
+          this.describeHashtagPreferencesError(err, opts),
+        onPreferenceUpdate: () => {
+          this.updateCachedHashtagPreferences();
+          this.refreshTagPreferenceUi();
+        },
+        onMenuOpen: (trigger) => {
+          this.closeVideoSettingsMenu({ restoreFocus: false });
+          this.closeAllMoreMenus({
+            restoreFocus: false,
+            skipTrigger: trigger,
+            skipView: true,
+          });
+        },
+        getPubkey: () => this.normalizeHexPubkey(this.pubkey),
+      },
+      helpers: {
+        createPopover,
+        getDesignSystem: () => this.designSystemContext,
+      },
+    });
 
     this.initializeModerationActionController();
   }
@@ -767,9 +801,12 @@ class Application {
         devLogger.log(
           "[app.init()] No #view= in the URL, loading default home view"
         );
+        const defaultView = this.isUserLoggedIn()
+          ? "views/for-you.html"
+          : "views/most-recent-videos.html";
         if (typeof this.loadView === "function") {
           await Promise.all([
-            this.loadView("views/most-recent-videos.html"),
+            this.loadView(defaultView),
             watchHistoryInitPromise,
           ]);
         } else {
@@ -2508,16 +2545,7 @@ class Application {
   }
 
   normalizeTagPreferenceCandidate(tag) {
-    if (typeof tag !== "string") {
-      return "";
-    }
-
-    const trimmed = tag.trim().replace(/^#+/, "");
-    if (!trimmed) {
-      return "";
-    }
-
-    return trimmed.toLowerCase();
+    return normalizeHashtag(tag);
   }
 
   getTagPreferenceState(tag) {
@@ -2717,38 +2745,7 @@ class Application {
       }
     }
 
-    this.refreshActiveTagPreferenceMenus();
-  }
-
-  refreshActiveTagPreferenceMenus() {
-    if (!this.tagPreferencePopovers) {
-      return;
-    }
-
-    const isLoggedIn = this.isUserLoggedIn();
-    this.tagPreferencePopovers.forEach((entry) => {
-      if (!entry) {
-        return;
-      }
-
-      const buttons = entry.buttons || {};
-      if (!buttons || Object.keys(buttons).length === 0) {
-        return;
-      }
-
-      try {
-        applyTagPreferenceMenuState({
-          buttons,
-          membership: this.getTagPreferenceMembership(entry.tag),
-          isLoggedIn,
-        });
-      } catch (error) {
-        devLogger.warn(
-          "[Application] Failed to refresh tag preference menu state:",
-          error,
-        );
-      }
-    });
+    this.tagPreferenceMenuController.refreshActiveMenus();
   }
 
   async loadHashtagPreferencesForPubkey(pubkey) {
@@ -2953,7 +2950,7 @@ class Application {
     );
   }
 
-  mountVideoListView(container = null) {
+  mountVideoListView({ container = null, includeTags = true } = {}) {
     if (!this.videoListView) {
       return null;
     }
@@ -2963,15 +2960,23 @@ class Application {
         container,
         view: this.videoListView,
         currentVideoList: this.videoList,
+        includeTags,
       });
       this.videoList = videoList || null;
       this.videoListPopularTags = popularTags || null;
       return this.videoList;
     }
 
+    const isElement = (value) =>
+      typeof HTMLElement !== "undefined" && value instanceof HTMLElement;
+
     const target = container || document.getElementById("videoList");
     this.videoList = target || null;
-    const tagsRoot = document.getElementById("recentVideoTags");
+
+    let tagsRoot = null;
+    if (includeTags) {
+      tagsRoot = document.getElementById("recentVideoTags");
+    }
     this.videoListPopularTags = tagsRoot || null;
     if (typeof this.videoListView.setPopularTagsContainer === "function") {
       this.videoListView.setPopularTagsContainer(this.videoListPopularTags);
@@ -3929,6 +3934,11 @@ class Application {
     if (subscriptionsLink) {
       subscriptionsLink.classList.remove("hidden");
     }
+
+    const forYouLink = this.resolveForYouLink();
+    if (forYouLink) {
+      forYouLink.classList.remove("hidden");
+    }
   }
 
   applyLoggedOutUiState() {
@@ -3962,6 +3972,11 @@ class Application {
     const subscriptionsLink = this.resolveSubscriptionsLink();
     if (subscriptionsLink) {
       subscriptionsLink.classList.add("hidden");
+    }
+
+    const forYouLink = this.resolveForYouLink();
+    if (forYouLink) {
+      forYouLink.classList.add("hidden");
     }
   }
 
@@ -4019,9 +4034,25 @@ class Application {
     return null;
   }
 
+  resolveForYouLink() {
+    if (this.forYouLink instanceof HTMLElement && this.forYouLink.isConnected) {
+      return this.forYouLink;
+    }
+
+    const linkCandidate = document.getElementById("forYouLink");
+    if (linkCandidate instanceof HTMLElement) {
+      this.forYouLink = linkCandidate;
+      return this.forYouLink;
+    }
+
+    this.forYouLink = null;
+    return null;
+  }
+
   hydrateSidebarNavigation() {
     const chromeElements = this.refreshChromeElements();
     this.resolveSubscriptionsLink();
+    this.resolveForYouLink();
 
     if (this.appChromeController) {
       if (typeof this.appChromeController.setElements === "function") {
@@ -4088,6 +4119,13 @@ class Application {
 
     this.applyAuthenticatedUiState();
     this.commentController?.refreshAuthState?.();
+
+    const currentView = getHashViewName();
+    const normalizedView =
+      typeof currentView === "string" ? currentView.toLowerCase() : "";
+    if (!normalizedView || normalizedView === "most-recent-videos") {
+      setHashView("for-you");
+    }
 
     const rawProviderId =
       typeof detail?.providerId === "string" ? detail.providerId.trim() : "";
@@ -4333,6 +4371,14 @@ class Application {
     }
 
     this.applyLoggedOutUiState();
+
+    const logoutView = getHashViewName();
+    if (
+      typeof logoutView === "string" &&
+      logoutView.trim().toLowerCase() === "for-you"
+    ) {
+      setHashView("most-recent-videos");
+    }
 
     const activeModalVideo =
       typeof this.videoModal?.getCurrentVideo === "function"
@@ -5275,9 +5321,6 @@ class Application {
       return this.feedEngine.registerFeed("recent", {
         source: createActiveNostrSource({ service: this.nostrService }),
         stages: [
-          // TODO(tag-preferences): introduce a dedicated stage here to filter by
-          // viewer interests/disinterests once the runtime metadata is wired up
-          // to filtering helpers.
           createBlacklistFilterStage({
             shouldIncludeVideo: (video, options) =>
               this.nostrService.shouldIncludeVideo(video, options),
@@ -5304,6 +5347,82 @@ class Application {
       });
     } catch (error) {
       devLogger.warn("[Application] Failed to register recent feed:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Register the "for-you" feed pipeline.
+   */
+  registerForYouFeed() {
+    if (!this.feedEngine || typeof this.feedEngine.registerFeed !== "function") {
+      return null;
+    }
+
+    const existingDefinition =
+      typeof this.feedEngine.getFeedDefinition === "function"
+        ? this.feedEngine.getFeedDefinition("for-you")
+        : null;
+    if (existingDefinition) {
+      return existingDefinition;
+    }
+
+    try {
+      const app = this;
+      const resolveThresholdFromApp = (key) => ({ runtimeValue, defaultValue }) => {
+        if (
+          Number.isFinite(runtimeValue) ||
+          runtimeValue === Number.POSITIVE_INFINITY
+        ) {
+          return runtimeValue;
+        }
+
+        if (app && typeof app.getActiveModerationThresholds === "function") {
+          const active = app.getActiveModerationThresholds();
+          const candidate = active && typeof active === "object" ? active[key] : undefined;
+          if (
+            Number.isFinite(candidate) ||
+            candidate === Number.POSITIVE_INFINITY
+          ) {
+            return candidate;
+          }
+        }
+
+        return defaultValue;
+      };
+      return this.feedEngine.registerFeed("for-you", {
+        source: createActiveNostrSource({ service: this.nostrService }),
+        stages: [
+          // TODO(tag-preferences): keep tag-preference filtering consolidated in
+          // createTagPreferenceFilterStage so each feed has a single source of
+          // truth when interest-based inclusion/ranking lands.
+          createTagPreferenceFilterStage(),
+          createBlacklistFilterStage({
+            shouldIncludeVideo: (video, options) =>
+              this.nostrService.shouldIncludeVideo(video, options),
+          }),
+          createDedupeByRootStage({
+            dedupe: (videos) => this.dedupeVideosByRoot(videos),
+          }),
+          createModerationStage({
+            getService: () => this.nostrService.getModerationService(),
+            autoplayThreshold: resolveThresholdFromApp("autoplayBlockThreshold"),
+            blurThreshold: resolveThresholdFromApp("blurThreshold"),
+            trustedMuteHideThreshold: resolveThresholdFromApp("trustedMuteHideThreshold"),
+            trustedReportHideThreshold: resolveThresholdFromApp("trustedSpamHideThreshold"),
+          }),
+          createResolvePostedAtStage(),
+        ],
+        sorter: createChronologicalSorter(),
+        hooks: {
+          timestamps: {
+            getKnownVideoPostedAt: (video) => this.getKnownVideoPostedAt(video),
+            resolveVideoPostedAt: (video) => this.resolveVideoPostedAt(video),
+          },
+        },
+      });
+    } catch (error) {
+      devLogger.warn("[Application] Failed to register for-you feed:", error);
       return null;
     }
   }
@@ -5347,8 +5466,10 @@ class Application {
       return this.feedEngine.registerFeed("subscriptions", {
         source: createSubscriptionAuthorsSource({ service: this.nostrService }),
         stages: [
-          // TODO(tag-preferences): introduce preference-aware filtering ahead of
-          // the blacklist stage when tag-based ranking lands.
+          // TODO(tag-preferences): keep tag-preference filtering consolidated in
+          // createTagPreferenceFilterStage so each feed has a single source of
+          // truth when interest-based inclusion/ranking lands.
+          createTagPreferenceFilterStage(),
           createBlacklistFilterStage({
             shouldIncludeVideo: (video, options) =>
               this.nostrService.shouldIncludeVideo(video, options),
@@ -5406,14 +5527,19 @@ class Application {
     }
   }
 
-  buildRecentFeedRuntime() {
+  buildForYouFeedRuntime() {
     const blacklist =
       this.blacklistedEventIds instanceof Set
         ? new Set(this.blacklistedEventIds)
         : new Set();
 
     const preferenceSource =
-      typeof this.getHashtagPreferences === "function"
+      this.hashtagPreferencesSnapshot &&
+      typeof this.hashtagPreferencesSnapshot === "object"
+        ? this.hashtagPreferencesSnapshot
+        : typeof this.createHashtagPreferencesSnapshot === "function"
+        ? this.createHashtagPreferencesSnapshot()
+        : typeof this.getHashtagPreferences === "function"
         ? this.getHashtagPreferences()
         : {};
     const { interests = [], disinterests = [] } = preferenceSource || {};
@@ -5430,6 +5556,85 @@ class Application {
         ? { ...moderationThresholds }
         : undefined,
     };
+  }
+
+  buildRecentFeedRuntime() {
+    const blacklist =
+      this.blacklistedEventIds instanceof Set
+        ? new Set(this.blacklistedEventIds)
+        : new Set();
+
+    const moderationThresholds = this.getActiveModerationThresholds();
+
+    return {
+      blacklistedEventIds: blacklist,
+      isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
+      moderationThresholds: moderationThresholds
+        ? { ...moderationThresholds }
+        : undefined,
+    };
+  }
+
+  refreshForYouFeed({ reason, fallbackVideos } = {}) {
+    const runtime = this.buildForYouFeedRuntime();
+    const normalizedReason = typeof reason === "string" ? reason : undefined;
+    const fallback = Array.isArray(fallbackVideos) ? fallbackVideos : [];
+
+    if (!this.feedEngine || typeof this.feedEngine.run !== "function") {
+      const metadata = {
+        reason: normalizedReason,
+        engine: "unavailable",
+      };
+      this.latestFeedMetadata = metadata;
+      this.videosMap = this.nostrService.getVideosMap();
+      if (this.videoListView) {
+        this.videoListView.state.videosMap = this.videosMap;
+      }
+      this.updateForYouTelemetryMetadata([], metadata);
+      this.renderVideoList({ videos: fallback, metadata });
+      return Promise.resolve({ videos: fallback, metadata });
+    }
+
+    return this.feedEngine
+      .run("for-you", { runtime })
+      .then((result) => {
+        const videos = Array.isArray(result?.videos) ? result.videos : [];
+        const metadata = {
+          ...(result?.metadata || {}),
+        };
+        if (normalizedReason) {
+          metadata.reason = normalizedReason;
+        }
+
+        this.latestFeedMetadata = metadata;
+        this.videosMap = this.nostrService.getVideosMap();
+        if (this.videoListView) {
+          this.videoListView.state.videosMap = this.videosMap;
+        }
+
+        const items = Array.isArray(result?.items) ? result.items : [];
+        this.updateForYouTelemetryMetadata(items, metadata);
+
+        const payload = { videos, metadata };
+        this.renderVideoList(payload);
+        return payload;
+      })
+      .catch((error) => {
+        devLogger.error("[Application] Failed to run for-you feed:", error);
+        const metadata = {
+          reason: normalizedReason || "error:for-you-feed",
+          error: true,
+        };
+        this.latestFeedMetadata = metadata;
+        this.videosMap = this.nostrService.getVideosMap();
+        if (this.videoListView) {
+          this.videoListView.state.videosMap = this.videosMap;
+        }
+        this.updateForYouTelemetryMetadata([], metadata);
+        const payload = { videos: fallback, metadata };
+        this.renderVideoList(payload);
+        return payload;
+      });
   }
 
   refreshRecentFeed({ reason, fallbackVideos } = {}) {
@@ -5494,6 +5699,7 @@ class Application {
    */
   async loadVideos(forceFetch = false) {
     devLogger.log("Starting loadVideos... (forceFetch =", forceFetch, ")");
+    this.setFeedTelemetryContext("recent");
 
     const container = this.mountVideoListView();
     const hasCachedVideos =
@@ -5530,6 +5736,54 @@ class Application {
       await initialRefreshPromise;
     } else if (!Array.isArray(videos) || videos.length === 0) {
       await this.refreshRecentFeed({ reason: "initial", fallbackVideos: [] });
+    }
+
+    this.videoSubscription = this.nostrService.getVideoSubscription() || null;
+    this.videosMap = this.nostrService.getVideosMap();
+    if (this.videoListView) {
+      this.videoListView.state.videosMap = this.videosMap;
+    }
+  }
+
+  async loadForYouVideos(forceFetch = false) {
+    devLogger.log("Starting loadForYouVideos... (forceFetch =", forceFetch, ")");
+    this.setFeedTelemetryContext("for-you");
+
+    const container = this.mountVideoListView({ includeTags: false });
+    const hasCachedVideos =
+      this.nostrService &&
+      Array.isArray(this.nostrService.getFilteredActiveVideos()) &&
+      this.nostrService.getFilteredActiveVideos().length > 0;
+
+    if (!hasCachedVideos) {
+      if (this.videoListView && container) {
+        this.videoListView.showLoading("Fetching for-you videos…");
+      } else if (container) {
+        container.innerHTML = getSidebarLoadingMarkup("Fetching for-you videos…");
+      }
+    }
+
+    let initialRefreshPromise = null;
+
+    const videos = await this.nostrService.loadVideos({
+      forceFetch,
+      blacklistedEventIds: this.blacklistedEventIds,
+      isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
+      onVideos: (payload, detail = {}) => {
+        const promise = this.refreshForYouFeed({
+          reason: detail?.reason,
+          fallbackVideos: payload,
+        });
+        if (!initialRefreshPromise) {
+          initialRefreshPromise = promise;
+        }
+      },
+    });
+
+    if (initialRefreshPromise) {
+      await initialRefreshPromise;
+    } else if (!Array.isArray(videos) || videos.length === 0) {
+      await this.refreshForYouFeed({ reason: "initial", fallbackVideos: [] });
     }
 
     this.videoSubscription = this.nostrService.getVideoSubscription() || null;
@@ -5842,6 +6096,298 @@ class Application {
     }
   }
 
+  setFeedTelemetryContext(feedName = "") {
+    if (!this.feedTelemetryState || typeof this.feedTelemetryState !== "object") {
+      this.feedTelemetryState = {
+        activeFeed: "",
+        matchedTagsById: new Map(),
+        matchReasonsById: new Map(),
+        lastImpressionSignature: "",
+        activePlayback: null,
+      };
+    }
+
+    const normalized =
+      typeof feedName === "string" ? feedName.trim().toLowerCase() : "";
+    if (this.feedTelemetryState.activeFeed !== normalized) {
+      this.feedTelemetryState.lastImpressionSignature = "";
+      this.feedTelemetryState.activePlayback = null;
+    }
+    this.feedTelemetryState.activeFeed = normalized;
+
+    if (normalized !== "for-you") {
+      this.feedTelemetryState.matchedTagsById = new Map();
+      this.feedTelemetryState.matchReasonsById = new Map();
+    }
+  }
+
+  isForYouFeedActive() {
+    return this.feedTelemetryState?.activeFeed === "for-you";
+  }
+
+  updateForYouTelemetryMetadata(items = [], metadata = {}) {
+    if (!this.isForYouFeedActive()) {
+      return;
+    }
+
+    const matchedTagsById = new Map();
+    const matchReasonsById = new Map();
+
+    if (Array.isArray(items)) {
+      items.forEach((item) => {
+        const videoId =
+          typeof item?.video?.id === "string" ? item.video.id : "";
+        if (!videoId) {
+          return;
+        }
+        const matched =
+          Array.isArray(item?.metadata?.matchedInterests)
+            ? item.metadata.matchedInterests
+            : [];
+        matchedTagsById.set(videoId, matched);
+      });
+    }
+
+    const whyEntries = Array.isArray(metadata?.why) ? metadata.why : [];
+    whyEntries.forEach((entry) => {
+      if (!entry || entry.reason !== "matched-interests") {
+        return;
+      }
+      const videoId = typeof entry.videoId === "string" ? entry.videoId : "";
+      if (!videoId) {
+        return;
+      }
+      const reasons = matchReasonsById.get(videoId) || [];
+      reasons.push({
+        stage: typeof entry.stage === "string" ? entry.stage : "",
+        reason: entry.reason,
+      });
+      matchReasonsById.set(videoId, reasons);
+    });
+
+    this.feedTelemetryState.matchedTagsById = matchedTagsById;
+    this.feedTelemetryState.matchReasonsById = matchReasonsById;
+  }
+
+  resolveVideoForTelemetry(videoId) {
+    if (typeof videoId !== "string" || !videoId) {
+      return null;
+    }
+
+    if (this.videosMap instanceof Map && this.videosMap.has(videoId)) {
+      return this.videosMap.get(videoId) || null;
+    }
+
+    if (this.videoListView && Array.isArray(this.videoListView.currentVideos)) {
+      return this.videoListView.currentVideos.find((video) => video?.id === videoId) || null;
+    }
+
+    return null;
+  }
+
+  resolveVideoIndex(videoId) {
+    if (!this.videoListView || !Array.isArray(this.videoListView.currentVideos)) {
+      return null;
+    }
+
+    const index = this.videoListView.currentVideos.findIndex(
+      (video) => video?.id === videoId,
+    );
+    return index >= 0 ? index : null;
+  }
+
+  buildForYouTelemetryPayload({ video, videoId, position } = {}) {
+    if (!this.isForYouFeedActive()) {
+      return null;
+    }
+
+    const eventId =
+      typeof videoId === "string" && videoId
+        ? videoId
+        : typeof video?.id === "string"
+          ? video.id
+          : "";
+    if (!eventId) {
+      return null;
+    }
+
+    const matchedTagsRaw =
+      this.feedTelemetryState?.matchedTagsById?.get(eventId) || [];
+    const matchedTags = Array.isArray(matchedTagsRaw)
+      ? Array.from(
+          new Set(
+            matchedTagsRaw
+              .filter((tag) => typeof tag === "string")
+              .map((tag) => tag.trim())
+              .filter(Boolean),
+          ),
+        )
+      : [];
+
+    const whyRaw = this.feedTelemetryState?.matchReasonsById?.get(eventId) || [];
+    const why = Array.isArray(whyRaw)
+      ? whyRaw.map((entry) => ({
+          stage: typeof entry.stage === "string" ? entry.stage : "",
+          reason: typeof entry.reason === "string" ? entry.reason : "",
+        }))
+      : [];
+
+    const payload = {
+      feed: "for-you",
+      eventId,
+      videoId: eventId,
+      matchedTags,
+      why,
+    };
+
+    const videoRootId =
+      typeof video?.videoRootId === "string" ? video.videoRootId : "";
+    if (videoRootId) {
+      payload.videoRootId = videoRootId;
+    }
+
+    const pubkey = typeof video?.pubkey === "string" ? video.pubkey : "";
+    if (pubkey) {
+      payload.pubkey = pubkey;
+    }
+
+    if (Number.isFinite(position)) {
+      payload.position = Math.max(0, Math.floor(position));
+    }
+
+    return payload;
+  }
+
+  emitTelemetryEvent(eventName, payload) {
+    if (!eventName || !payload) {
+      return false;
+    }
+
+    const doc =
+      (this.videoModal && this.videoModal.document) ||
+      (typeof document !== "undefined" ? document : null);
+
+    if (!doc || typeof doc.dispatchEvent !== "function") {
+      return false;
+    }
+
+    try {
+      doc.dispatchEvent(
+        new CustomEvent("bitvid:telemetry", {
+          detail: { event: eventName, payload },
+        }),
+      );
+      return true;
+    } catch (error) {
+      userLogger.warn("[Application] Failed to emit telemetry event:", error);
+      return false;
+    }
+  }
+
+  emitForYouTelemetryEvent(eventName, { video, videoId, position } = {}) {
+    const payload = this.buildForYouTelemetryPayload({
+      video,
+      videoId,
+      position,
+    });
+    if (!payload) {
+      return false;
+    }
+
+    return this.emitTelemetryEvent(eventName, payload);
+  }
+
+  emitForYouImpressions(videos = []) {
+    if (!this.isForYouFeedActive() || !Array.isArray(videos)) {
+      return;
+    }
+
+    const signature = videos
+      .map((video) => (typeof video?.id === "string" ? video.id : ""))
+      .filter(Boolean)
+      .join("|");
+
+    if (
+      signature &&
+      signature === this.feedTelemetryState.lastImpressionSignature
+    ) {
+      return;
+    }
+
+    this.feedTelemetryState.lastImpressionSignature = signature;
+
+    videos.forEach((video, index) => {
+      this.emitForYouTelemetryEvent("for_you_impression", {
+        video,
+        videoId: video?.id,
+        position: index,
+      });
+    });
+  }
+
+  recordForYouClick(videoId) {
+    if (!this.isForYouFeedActive() || !videoId) {
+      return;
+    }
+
+    const video = this.resolveVideoForTelemetry(videoId);
+    const position = this.resolveVideoIndex(videoId);
+
+    this.feedTelemetryState.activePlayback = {
+      feed: "for-you",
+      videoId,
+    };
+
+    this.emitForYouTelemetryEvent("for_you_click", {
+      video,
+      videoId,
+      position,
+    });
+  }
+
+  handleFeedViewTelemetry(detail = {}) {
+    if (!this.isForYouFeedActive()) {
+      return;
+    }
+
+    const activePlayback = this.feedTelemetryState?.activePlayback;
+    if (!activePlayback || activePlayback.feed !== "for-you") {
+      return;
+    }
+
+    const currentVideoId =
+      typeof this.currentVideo?.id === "string"
+        ? this.currentVideo.id
+        : activePlayback.videoId;
+    if (!currentVideoId || currentVideoId !== activePlayback.videoId) {
+      return;
+    }
+
+    const pointerKey =
+      typeof detail?.pointerKey === "string" ? detail.pointerKey : "";
+    if (activePlayback.pointerKey && pointerKey) {
+      if (activePlayback.pointerKey !== pointerKey) {
+        return;
+      }
+    }
+
+    const video = this.resolveVideoForTelemetry(currentVideoId);
+    const payload = this.buildForYouTelemetryPayload({
+      video,
+      videoId: currentVideoId,
+    });
+    if (!payload) {
+      return;
+    }
+
+    if (pointerKey) {
+      payload.pointerKey = pointerKey;
+    }
+
+    this.emitTelemetryEvent("for_you_watch", payload);
+    this.feedTelemetryState.activePlayback = null;
+  }
+
   async renderVideoList(payload) {
     if (!this.videoListView) {
       return;
@@ -5861,9 +6407,9 @@ class Application {
       if (Array.isArray(payload.videos)) {
         videos = payload.videos;
       }
-    if (payload.metadata && typeof payload.metadata === "object") {
-      metadata = { ...payload.metadata };
-    }
+      if (payload.metadata && typeof payload.metadata === "object") {
+        metadata = { ...payload.metadata };
+      }
     }
 
     this.latestFeedMetadata = metadata;
@@ -5884,6 +6430,7 @@ class Application {
       : [];
 
     this.videoListView.render(decoratedVideos, metadata);
+    this.emitForYouImpressions(decoratedVideos);
 
     if (typeof this.refreshVisibleModerationUi === "function") {
       const renderReason =
@@ -6001,6 +6548,27 @@ class Application {
 
   normalizeModerationSettings(settings = null) {
     const defaults = this.defaultModerationSettings || getDefaultModerationSettings();
+    const sanitizeThresholdMap = (value, fallback = {}) => {
+      const fallbackMap = fallback && typeof fallback === "object" ? fallback : {};
+      if (!value || typeof value !== "object") {
+        return { ...fallbackMap };
+      }
+      const sanitized = {};
+      for (const [key, entry] of Object.entries(value)) {
+        if (typeof key !== "string") {
+          continue;
+        }
+        const normalizedKey = key.trim().toLowerCase();
+        if (!normalizedKey) {
+          continue;
+        }
+        const numeric = Number(entry);
+        if (Number.isFinite(numeric)) {
+          sanitized[normalizedKey] = Math.max(0, Math.floor(numeric));
+        }
+      }
+      return { ...fallbackMap, ...sanitized };
+    };
     const defaultBlur = Number.isFinite(defaults?.blurThreshold)
       ? Math.max(0, Math.floor(defaults.blurThreshold))
       : DEFAULT_BLUR_THRESHOLD;
@@ -6028,6 +6596,11 @@ class Application {
       ? Math.max(0, Math.floor(defaults.trustedSpamHideThreshold))
       : runtimeTrustedSpam;
 
+    const defaultTrustedMuteHideThresholds = sanitizeThresholdMap(
+      defaults?.trustedMuteHideThresholds,
+      {},
+    );
+
     const blurSource = Number.isFinite(settings?.blurThreshold)
       ? Math.max(0, Math.floor(settings.blurThreshold))
       : defaultBlur;
@@ -6040,11 +6613,16 @@ class Application {
     const spamHideSource = Number.isFinite(settings?.trustedSpamHideThreshold)
       ? Math.max(0, Math.floor(settings.trustedSpamHideThreshold))
       : defaultTrustedSpamHide;
+    const muteHideThresholdsSource = sanitizeThresholdMap(
+      settings?.trustedMuteHideThresholds,
+      defaultTrustedMuteHideThresholds,
+    );
 
     return {
       blurThreshold: blurSource,
       autoplayBlockThreshold: autoplaySource,
       trustedMuteHideThreshold: muteHideSource,
+      trustedMuteHideThresholds: muteHideThresholdsSource,
       trustedSpamHideThreshold: spamHideSource,
     };
   }
@@ -6268,7 +6846,10 @@ class Application {
 
     const computedHidden = hideTriggered && !hideBypass;
 
-    const overrideEntry = getModerationOverride(video.id);
+    const overrideEntry = getModerationOverride({
+      eventId: video.id,
+      authorPubkey: video.pubkey || video.author?.pubkey || "",
+    });
     const overrideActive = overrideEntry?.showAnyway === true;
     const overrideUpdatedAt = Number.isFinite(overrideEntry?.updatedAt)
       ? Math.floor(overrideEntry.updatedAt)
@@ -6579,7 +7160,9 @@ class Application {
     }
 
     this.closeVideoSettingsMenu({ restoreFocus: options?.restoreFocus !== false });
-    this.closeTagPreferenceMenus({ restoreFocus: options?.restoreFocus !== false });
+    this.tagPreferenceMenuController.closeMenus({
+      restoreFocus: options?.restoreFocus !== false,
+    });
   }
 
   attachMoreMenuHandlers(container) {
@@ -6773,298 +7356,20 @@ class Application {
     return closed;
   }
 
-  ensureTagPreferencePopover(detail = {}) {
-    const triggerCandidate = detail?.trigger || null;
-    const trigger =
-      triggerCandidate && triggerCandidate.nodeType === 1 ? triggerCandidate : null;
-    const rawTag = typeof detail?.tag === "string" ? detail.tag : "";
-    const tag = rawTag.trim();
-
-    if (!trigger || !tag) {
-      return null;
-    }
-
-    let entry = this.tagPreferencePopovers.get(trigger);
-
-    const render = ({ document: documentRef, close }) => {
-      const menu = createTagPreferenceMenu({
-        document: documentRef,
-        tag: entry.tag,
-        isLoggedIn: this.isUserLoggedIn(),
-        membership: this.getTagPreferenceMembership(entry.tag),
-        designSystem: this.designSystemContext,
-        onAction: (action, actionDetail = {}) => {
-          void this.handleTagPreferenceMenuAction(action, {
-            tag: entry.tag,
-            trigger,
-            video: entry.video || null,
-            closePopover: close,
-            actionDetail,
-          });
-        },
-      });
-
-      if (!menu?.panel) {
-        return null;
-      }
-
-      entry.panel = menu.panel;
-      entry.buttons = menu.buttons;
-      return menu.panel;
-    };
-
-    if (!entry) {
-      entry = {
-        trigger,
-        tag,
-        context: detail.context || "",
-        video: detail.video || null,
-        panel: null,
-        buttons: null,
-        popover: null,
-      };
-
-      const ownerDocument =
-        trigger.ownerDocument || (typeof document !== "undefined" ? document : null);
-
-      const popover = createPopover(trigger, render, {
-        document: ownerDocument,
-        placement: "bottom-start",
-        restoreFocusOnClose: true,
-      });
-
-      if (!popover) {
-        return null;
-      }
-
-      const originalDestroy = popover.destroy?.bind(popover);
-      if (typeof originalDestroy === "function") {
-        popover.destroy = (...args) => {
-          originalDestroy(...args);
-          if (this.tagPreferencePopovers.get(trigger) === entry) {
-            this.tagPreferencePopovers.delete(trigger);
-          }
-        };
-      }
-
-      entry.popover = popover;
-      this.tagPreferencePopovers.set(trigger, entry);
-    } else {
-      entry.tag = tag;
-      entry.context = detail.context || entry.context || "";
-      entry.video = detail.video || entry.video || null;
-    }
-
-    return entry;
+  ensureTagPreferencePopover(detail) {
+    return this.tagPreferenceMenuController.ensurePopover(detail);
   }
 
-  requestTagPreferenceMenu(detail = {}) {
-    const entry = this.ensureTagPreferencePopover(detail);
-    if (!entry?.popover) {
-      return;
-    }
-
-    const popover = entry.popover;
-    const restoreFocus = detail.restoreFocus !== false;
-
-    if (typeof popover.isOpen === "function" && popover.isOpen()) {
-      popover.close({ restoreFocus });
-      return;
-    }
-
-    this.closeTagPreferenceMenus({
-      restoreFocus: false,
-      skipTrigger: entry.trigger,
-    });
-    this.closeVideoSettingsMenu({ restoreFocus: false });
-    this.closeAllMoreMenus({
-      restoreFocus: false,
-      skipTrigger: entry.trigger,
-      skipView: true,
-    });
-
-    popover
-      .open()
-      .then(() => {
-        this.refreshActiveTagPreferenceMenus();
-      })
-      .catch((error) =>
-        userLogger.error("[TagPreferenceMenu] Failed to open popover:", error),
-      );
+  requestTagPreferenceMenu(detail) {
+    return this.tagPreferenceMenuController.requestMenu(detail);
   }
 
-  closeTagPreferenceMenus(detail = {}) {
-    const triggerCandidate = detail?.trigger || null;
-    const trigger =
-      triggerCandidate && triggerCandidate.nodeType === 1 ? triggerCandidate : null;
-    const restoreFocus = detail?.restoreFocus !== false;
-    const skipTrigger = detail?.skipTrigger || null;
-
-    if (trigger) {
-      const entry = this.tagPreferencePopovers.get(trigger);
-      if (entry?.popover && typeof entry.popover.close === "function") {
-        return entry.popover.close({ restoreFocus });
-      }
-      return false;
-    }
-
-    let closed = false;
-    this.tagPreferencePopovers.forEach((entry, key) => {
-      if (!entry?.popover || typeof entry.popover.close !== "function") {
-        return;
-      }
-      if (skipTrigger && key === skipTrigger) {
-        return;
-      }
-      const result = entry.popover.close({ restoreFocus });
-      closed = closed || result;
-    });
-    return closed;
-  }
-
-  async persistHashtagPreferencesFromMenu() {
-    const service = this.hashtagPreferences;
-    const publish =
-      service && typeof service.publish === "function" ? service.publish : null;
-
-    if (!publish) {
-      const message = this.describeHashtagPreferencesError(null, {
-        fallbackMessage: "Hashtag preferences are unavailable right now.",
-      });
-      if (message) {
-        this.showError(message);
-      }
-      const error = new Error(
-        message || "Hashtag preferences are unavailable right now.",
-      );
-      error.code = "service-unavailable";
-      throw error;
-    }
-
-    if (this.hashtagPreferencesPublishInFlight) {
-      return this.hashtagPreferencesPublishPromise;
-    }
-
-    const normalizedPubkey = this.normalizeHexPubkey(this.pubkey);
-    const payload = normalizedPubkey ? { pubkey: normalizedPubkey } : {};
-
-    this.hashtagPreferencesPublishInFlight = true;
-
-    const publishPromise = (async () => {
-      try {
-        return await publish.call(service, payload);
-      } catch (error) {
-        const failure =
-          error instanceof Error ? error : new Error(String(error || ""));
-        if (!failure.code) {
-          failure.code = "hashtag-preferences-publish-failed";
-        }
-        const message = this.describeHashtagPreferencesError(failure, {
-          operation: "update",
-        });
-        if (message) {
-          this.showError(message);
-        }
-        throw failure;
-      } finally {
-        this.hashtagPreferencesPublishInFlight = false;
-        this.hashtagPreferencesPublishPromise = null;
-      }
-    })();
-
-    this.hashtagPreferencesPublishPromise = publishPromise;
-    return publishPromise;
-  }
-
-  async handleTagPreferenceMenuAction(action, detail = {}) {
-    const tag = typeof detail?.tag === "string" ? detail.tag : "";
-    if (!tag) {
-      return;
-    }
-
-    const service = this.hashtagPreferences;
-    if (!service) {
-      return;
-    }
-
-    let result = false;
-    try {
-      switch (action) {
-        case TAG_PREFERENCE_ACTIONS.ADD_INTEREST:
-          result = service.addInterest(tag);
-          break;
-        case TAG_PREFERENCE_ACTIONS.REMOVE_INTEREST:
-          result = service.removeInterest(tag);
-          break;
-        case TAG_PREFERENCE_ACTIONS.ADD_DISINTEREST:
-          result = service.addDisinterest(tag);
-          break;
-        case TAG_PREFERENCE_ACTIONS.REMOVE_DISINTEREST:
-          result = service.removeDisinterest(tag);
-          break;
-        default:
-          userLogger.warn(`[TagPreferenceMenu] Unhandled action: ${action}`);
-          return;
-      }
-    } catch (error) {
-      devLogger.error(
-        "[Application] Failed to mutate hashtag preference via menu:",
-        error,
-      );
-      const message = this.describeHashtagPreferencesError(error, {
-        operation: "update",
-      });
-      if (message) {
-        this.showError(message);
-      }
-      return;
-    }
-
-    if (!result) {
-      return;
-    }
-
-    this.updateCachedHashtagPreferences();
-    this.refreshTagPreferenceUi();
-
-    try {
-      await this.persistHashtagPreferencesFromMenu();
-    } catch (error) {
-      return;
-    }
-
-    this.updateCachedHashtagPreferences();
-    this.refreshTagPreferenceUi();
-
-    if (typeof detail?.closePopover === "function") {
-      detail.closePopover({ restoreFocus: false });
-    }
+  closeTagPreferenceMenus(detail) {
+    return this.tagPreferenceMenuController.closeMenus(detail);
   }
 
   handleTagPreferenceActivation(detail = {}) {
-    const tag = typeof detail?.tag === "string" ? detail.tag : "";
-    if (!tag) {
-      return;
-    }
-
-    const triggerCandidate = detail?.trigger || null;
-    const trigger =
-      triggerCandidate && triggerCandidate.nodeType === 1 ? triggerCandidate : null;
-    if (!trigger) {
-      return;
-    }
-
-    if (detail?.event) {
-      detail.event.preventDefault?.();
-      detail.event.stopPropagation?.();
-    }
-
-    this.requestTagPreferenceMenu({
-      trigger,
-      tag,
-      context: detail?.context || "",
-      video: detail?.video || null,
-    });
+    this.tagPreferenceMenuController.handleActivation(detail);
   }
 
   syncModalMoreMenuData() {
@@ -7448,51 +7753,8 @@ class Application {
    * and do not re-trigger recursion here (no setTimeout).
    */
   updateTorrentStatus(torrent) {
-    devLogger.log("[DEBUG] updateTorrentStatus called with torrent:", torrent);
-
-    if (!torrent) {
-      devLogger.log("[DEBUG] torrent is null/undefined!");
-      return;
-    }
-
-    if (torrent.ready || (typeof torrent.progress === "number" && torrent.progress > 0)) {
-      // Belt-and-suspenders: if WebTorrent reports progress but the DOM events
-      // failed to fire we still rip off the loading GIF. This regression has
-      // bitten us in past releases, so the extra clear is intentional.
-      this.forceRemoveModalPoster(
-        torrent.ready ? "torrent-ready-flag" : "torrent-progress"
-      );
-    }
-
-    // Log only fields that actually exist on the torrent:
-    devLogger.log("[DEBUG] torrent.progress =", torrent.progress);
-    devLogger.log("[DEBUG] torrent.numPeers =", torrent.numPeers);
-    devLogger.log("[DEBUG] torrent.downloadSpeed =", torrent.downloadSpeed);
-    devLogger.log("[DEBUG] torrent.downloaded =", torrent.downloaded);
-    devLogger.log("[DEBUG] torrent.length =", torrent.length);
-    devLogger.log("[DEBUG] torrent.ready =", torrent.ready);
-
-    // Use "Complete" vs. "Downloading" as the textual status.
-    if (this.videoModal) {
-      const fullyDownloaded = torrent.progress >= 1;
-      this.videoModal.updateStatus(fullyDownloaded ? "Complete" : "Downloading");
-
-      const percent = (torrent.progress * 100).toFixed(2);
-      this.videoModal.updateProgress(`${percent}%`);
-      this.videoModal.updatePeers(`Peers: ${torrent.numPeers}`);
-
-      const kb = (torrent.downloadSpeed / 1024).toFixed(2);
-      this.videoModal.updateSpeed(`${kb} KB/s`);
-
-      const downloadedMb = (torrent.downloaded / (1024 * 1024)).toFixed(2);
-      const lengthMb = (torrent.length / (1024 * 1024)).toFixed(2);
-      this.videoModal.updateDownloaded(
-        `${downloadedMb} MB / ${lengthMb} MB`
-      );
-
-      if (torrent.ready) {
-        this.videoModal.updateStatus("Ready to play");
-      }
+    if (this.torrentStatusController) {
+      this.torrentStatusController.update(torrent);
     }
   }
 
@@ -8822,6 +9084,14 @@ class Application {
       this.currentVideo.pointerKey = this.currentVideoPointerKey;
     }
 
+    if (
+      this.feedTelemetryState?.activePlayback?.feed === "for-you" &&
+      this.feedTelemetryState.activePlayback.videoId === eventId
+    ) {
+      this.feedTelemetryState.activePlayback.pointerKey =
+        this.currentVideoPointerKey || null;
+    }
+
     this.subscribeModalViewCount(
       this.currentVideoPointer,
       this.currentVideoPointerKey
@@ -10112,9 +10382,8 @@ class Application {
       this.modalManager = null;
     }
 
-    this.closeTagPreferenceMenus({ restoreFocus: false });
-    if (this.tagPreferencePopovers) {
-      this.tagPreferencePopovers.clear();
+    if (this.tagPreferenceMenuController) {
+      this.tagPreferenceMenuController.clear();
     }
 
     if (this.videoListView) {

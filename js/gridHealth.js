@@ -3,6 +3,11 @@ import { infoHashFromMagnet } from "./magnets.js";
 import { updateVideoCardSourceVisibility } from "./utils/cardSourceVisibility.js";
 import { TorrentClient, torrentClient } from "./webtorrent.js";
 import { userLogger } from "./utils/logger.js";
+import {
+  readTorrentProbeFromStorage,
+  removeTorrentProbeFromStorage,
+  writeTorrentProbeToStorage,
+} from "./utils/storage.js";
 
 const badgeUpdateListeners = new Set();
 
@@ -33,14 +38,29 @@ function getCacheEntry(key) {
   if (!key) {
     return null;
   }
-  const entry = probeCache.get(key);
+  let entry = probeCache.get(key);
+
+  if (!entry) {
+    // Try storage if memory miss
+    entry = readTorrentProbeFromStorage(key);
+  }
+
   if (!entry) {
     return null;
   }
+
+  // Verify freshness
   if (now() - entry.ts > PROBE_CACHE_TTL_MS) {
     probeCache.delete(key);
+    removeTorrentProbeFromStorage(key);
     return null;
   }
+
+  // Populate memory if it came from storage
+  if (!probeCache.has(key)) {
+    probeCache.set(key, entry);
+  }
+
   return entry.value;
 }
 
@@ -48,7 +68,9 @@ function setCacheEntry(key, value) {
   if (!key) {
     return;
   }
-  probeCache.set(key, { ts: now(), value });
+  const entry = { ts: now(), value };
+  probeCache.set(key, entry);
+  writeTorrentProbeToStorage(key, entry);
 }
 
 function formatTime(ts) {

@@ -482,7 +482,7 @@ export class SimilarContentCard {
     button.textContent = "Show";
     button.addEventListener("click", this.boundShowAnywayHandler);
     // Explicit pointer events since container is none
-    button.style.pointerEvents = "auto";
+    button.classList.add("pointer-events-auto");
     return button;
   }
 
@@ -503,7 +503,7 @@ export class SimilarContentCard {
     button.setAttribute("aria-label", ariaLabel);
     button.textContent = "Hide";
     button.addEventListener("click", this.boundModerationHideHandler);
-    button.style.pointerEvents = "auto";
+    button.classList.add("pointer-events-auto");
     return button;
   }
 
@@ -520,7 +520,7 @@ export class SimilarContentCard {
     button.dataset.moderationAction = "block";
     button.textContent = "Block";
     button.addEventListener("click", this.boundModerationBlockHandler);
-    button.style.pointerEvents = "auto";
+    button.classList.add("pointer-events-auto");
     return button;
   }
 
@@ -669,7 +669,7 @@ export class SimilarContentCard {
       : "trusted-mute";
 
     // Allow interaction with children
-    badge.style.pointerEvents = "auto";
+    badge.classList.add("pointer-events-auto");
 
     const label = this.document.createElement("span");
     label.className = "moderation-badge__label inline-flex items-center gap-xs";
@@ -763,14 +763,12 @@ export class SimilarContentCard {
         // Force blur style in case class utility is missing or overridden,
         // and clear the backdrop so the sharp background doesn't show through.
         // Scale up to hide feathered edges of the blur.
-        this.thumbnailEl.style.filter = "blur(24px)";
-        this.thumbnailEl.style.transform = "scale(1.2)";
+        this.thumbnailEl.classList.add("scale-[1.2]");
         this.setCardBackdropImage("");
       } else {
         delete this.thumbnailEl.dataset.thumbnailState;
         this.thumbnailEl.classList.remove("blur-xl");
-        this.thumbnailEl.style.filter = "";
-        this.thumbnailEl.style.transform = "";
+        this.thumbnailEl.classList.remove("scale-[1.2]");
         // Restore backdrop if src is available
         if (this.thumbnailEl.src) {
           this.setCardBackdropImage(this.thumbnailEl.src);
@@ -845,8 +843,7 @@ export class SimilarContentCard {
       img.dataset.thumbnailState = "blurred";
       img.classList.add("blur-xl");
       // Pre-apply style to avoid flash and crop edges
-      img.style.filter = "blur(24px)";
-      img.style.transform = "scale(1.2)";
+      img.classList.add("scale-[1.2]");
     }
 
     const handleLoad = () => {

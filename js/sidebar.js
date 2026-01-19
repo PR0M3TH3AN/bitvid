@@ -1,5 +1,5 @@
 // sidebar.js
-import { setHashView } from "./index.js";
+import { setHashView } from "./hashView.js";
 
 export function setupSidebarNavigation() {
   const sidebarLinks = document.querySelectorAll('#sidebar a[href^="#view="]');
@@ -12,7 +12,7 @@ export function setupSidebarNavigation() {
       const match = href.match(/^#view=(.+)/);
       if (!match) return;
 
-      const viewName = match[1]; // "about", "ipns", etc.
+      const viewName = match[1]; // "about", etc.
       setHashView(viewName); // This changes the hash and loads the view.
     });
   });

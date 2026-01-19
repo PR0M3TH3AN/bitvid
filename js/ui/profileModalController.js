@@ -16,7 +16,12 @@ import {
 import { getBreakpointLg } from "../designSystem/metrics.js";
 import { getProviderMetadata } from "../services/authProviders/index.js";
 import { devLogger, userLogger } from "../utils/logger.js";
+import {
+  normalizeHashtag,
+  formatHashtag,
+} from "../utils/hashtagNormalization.js";
 import { getActiveSigner } from "../nostr/client.js";
+import { buildPublicUrl, buildR2Key } from "../r2.js";
 
 const noop = () => {};
 
@@ -28,6 +33,8 @@ const NWC_URI_SCHEME = "nostr+walletconnect://";
 const SECRET_PLACEHOLDER = "*****";
 const DEFAULT_MAX_WALLET_DEFAULT_ZAP = 100000000;
 const DEFAULT_SAVED_PROFILE_LABEL = "Saved profile";
+const TRUSTED_MUTE_HIDE_HELPER_TEXT =
+  "Reaching this count hides cards (with “Show anyway”); lower signals only blur thumbnails or block autoplay.";
 
 const ADD_PROFILE_CANCELLATION_CODES = new Set([
   "login-cancelled",
@@ -182,6 +189,12 @@ const SERVICE_CONTRACT = [
       typeof fallbackMessage === "string" && fallbackMessage.trim()
         ? fallbackMessage.trim()
         : "Failed to login. Please try again.",
+  },
+  {
+    key: "r2Service",
+    type: "object",
+    description: "Service for handling file uploads (R2/S3).",
+    optional: true,
   },
   {
     key: "nostrService",
@@ -500,6 +513,20 @@ const SERVICE_CONTRACT = [
 
       return service;
     },
+  },
+  {
+    key: "getModerationOverrides",
+    type: "function",
+    description:
+      "Returns a list of stored moderation overrides for the active viewer.",
+    fallback: () => () => [],
+  },
+  {
+    key: "clearModerationOverride",
+    type: "function",
+    description:
+      "Clears a specific moderation override when the viewer resets a decision.",
+    fallback: () => () => false,
   },
   {
     key: "loadVideos",
@@ -903,17 +930,28 @@ export class ProfileModalController {
         ? moderationServiceCandidate
         : null;
     this.unsubscribeModerationContacts = null;
+    this.unsubscribeModerationStats = [];
     if (
       this.moderationService &&
       typeof this.moderationService.on === "function"
     ) {
       try {
+        const updateTrustStats = () => {
+          this.updateModerationTrustStats();
+        };
+
         this.unsubscribeModerationContacts = this.moderationService.on(
           "contacts",
           () => {
             void this.populateFriendsList();
+            updateTrustStats();
           },
         );
+
+        this.unsubscribeModerationStats = [
+          this.moderationService.on("trusted-mutes", updateTrustStats),
+          this.moderationService.on("summary", updateTrustStats),
+        ].filter((unsubscribe) => typeof unsubscribe === "function");
       } catch (error) {
         devLogger.warn(
           "[profileModal] Failed to subscribe to moderation contacts updates:",
@@ -1062,6 +1100,9 @@ export class ProfileModalController {
     this.profileMessagesStatus = null;
     this.profileMessagesReloadButton = null;
     this.profileMessagesPane = null;
+    this.profileMessageInput = null;
+    this.profileMessageSendButton = null;
+    this.profileMessagesComposerHelper = null;
     this.walletUriInput = null;
     this.walletDefaultZapInput = null;
     this.walletSaveButton = null;
@@ -1086,8 +1127,11 @@ export class ProfileModalController {
     this.moderationSaveButton = null;
     this.moderationResetButton = null;
     this.moderationStatusText = null;
+    this.moderationOverridesList = null;
+    this.moderationOverridesEmpty = null;
     this.moderationHideControlsGroup = null;
     this.moderationHideControlElements = [];
+    this.boundModerationOverridesUpdate = null;
     this.moderatorSection = null;
     this.moderatorEmpty = null;
     this.adminModeratorList = null;
@@ -1263,7 +1307,11 @@ export class ProfileModalController {
       document.getElementById("profileNavHistory") || null;
     this.navButtons.admin = document.getElementById("profileNavAdmin") || null;
 
+    this.profileEditBtn = document.getElementById("profileEditBtn") || null;
+    this.profileEditBackBtn = document.getElementById("profileEditBackBtn") || null;
+
     this.panes.account = document.getElementById("profilePaneAccount") || null;
+    this.panes.edit = document.getElementById("profilePaneEdit") || null;
     this.panes.relays = document.getElementById("profilePaneRelays") || null;
     this.panes.wallet = document.getElementById("profilePaneWallet") || null;
     this.panes.storage = document.getElementById("profilePaneStorage") || null;
@@ -1310,6 +1358,12 @@ export class ProfileModalController {
       document.getElementById("profileMessagesStatus") || null;
     this.profileMessagesReloadButton =
       document.getElementById("profileMessagesReload") || null;
+    this.profileMessageInput =
+      document.getElementById("profileMessageInput") || null;
+    this.profileMessageSendButton =
+      document.getElementById("profileMessageSendBtn") || null;
+    this.profileMessagesComposerHelper =
+      document.getElementById("profileMessagesComposerHelper") || null;
 
     if (this.pendingMessagesRender) {
       const { messages, actorPubkey } = this.pendingMessagesRender;
@@ -1402,6 +1456,18 @@ export class ProfileModalController {
       document.getElementById("profileModerationReset") || null;
     this.moderationStatusText =
       document.getElementById("profileModerationStatus") || null;
+    this.moderationOverridesList =
+      document.getElementById("profileModerationOverridesList") || null;
+    this.moderationOverridesEmpty =
+      document.getElementById("profileModerationOverridesEmpty") || null;
+    this.moderationTrustedContactsCount =
+      document.getElementById("profileModerationTrustedContactsCount") || null;
+    this.moderationTrustedMuteCount =
+      document.getElementById("profileModerationTrustedMuteCount") || null;
+    this.moderationTrustedReportCount =
+      document.getElementById("profileModerationTrustedReportCount") || null;
+    this.moderationSeedOnlyIndicator =
+      document.getElementById("profileModerationSeedOnlyIndicator") || null;
     this.moderationHideControlsGroup =
       this.moderationSettingsCard?.querySelector(
         "[data-role=\"trusted-hide-controls\"]",
@@ -1411,6 +1477,7 @@ export class ProfileModalController {
         "[data-role=\"trusted-hide-control\"]",
       ) || [],
     );
+    this.updateTrustedMuteHideHelperCopy();
 
     this.moderatorSection =
       document.getElementById("adminModeratorsSection") || null;
@@ -1480,6 +1547,29 @@ export class ProfileModalController {
     this.adminBlacklistList = this.blacklistList;
     this.adminAddBlacklistButton = this.addBlacklistButton;
     this.adminBlacklistInput = this.blacklistInput;
+
+    this.editNameInput = document.getElementById("editNameInput") || null;
+    this.editDisplayNameInput = document.getElementById("editDisplayNameInput") || null;
+    this.editAboutInput = document.getElementById("editAboutInput") || null;
+    this.editWebsiteInput = document.getElementById("editWebsiteInput") || null;
+    this.editNip05Input = document.getElementById("editNip05Input") || null;
+    this.editLud16Input = document.getElementById("editLud16Input") || null;
+    this.editPictureInput = document.getElementById("editPictureInput") || null;
+    this.editBannerInput = document.getElementById("editBannerInput") || null;
+
+    this.editPictureFile = document.getElementById("editPictureFile") || null;
+    this.editPictureUploadBtn = document.getElementById("editPictureUploadBtn") || null;
+    this.editPictureStorageHint = document.getElementById("editPictureStorageHint") || null;
+    this.editPictureConfigureLink = document.getElementById("editPictureConfigureLink") || null;
+
+    this.editBannerFile = document.getElementById("editBannerFile") || null;
+    this.editBannerUploadBtn = document.getElementById("editBannerUploadBtn") || null;
+    this.editBannerStorageHint = document.getElementById("editBannerStorageHint") || null;
+    this.editBannerConfigureLink = document.getElementById("editBannerConfigureLink") || null;
+
+    this.editSaveBtn = document.getElementById("editSaveBtn") || null;
+    this.editCancelBtn = document.getElementById("editCancelBtn") || null;
+    this.editStatusText = document.getElementById("editStatusText") || null;
 
     if (this.createWatchHistoryRenderer) {
       this.ensureProfileHistoryRenderer();
@@ -1864,6 +1954,7 @@ export class ProfileModalController {
     }
 
     this.updateMessagesReloadState();
+    this.updateMessageComposerState();
   }
 
   updateMessagesReloadState() {
@@ -1886,6 +1977,40 @@ export class ProfileModalController {
       button.setAttribute("aria-disabled", "true");
     } else {
       button.removeAttribute("aria-disabled");
+    }
+  }
+
+  updateMessageComposerState() {
+    const input = this.profileMessageInput;
+    const button = this.profileMessageSendButton;
+    const helper = this.profileMessagesComposerHelper;
+    const shouldDisable = this.messagesLoadingState === "unauthenticated";
+
+    const applyDisabledState = (element) => {
+      if (!(element instanceof HTMLElement) || !("disabled" in element)) {
+        return;
+      }
+
+      element.disabled = shouldDisable;
+      if (shouldDisable) {
+        element.setAttribute("aria-disabled", "true");
+      } else {
+        element.removeAttribute("aria-disabled");
+      }
+    };
+
+    applyDisabledState(input);
+    applyDisabledState(button);
+
+    if (helper instanceof HTMLElement) {
+      if (shouldDisable) {
+        helper.textContent = "Sign in to send messages.";
+        helper.classList.remove("hidden");
+        helper.removeAttribute("hidden");
+      } else {
+        helper.classList.add("hidden");
+        helper.setAttribute("hidden", "");
+      }
     }
   }
 
@@ -1916,6 +2041,93 @@ export class ProfileModalController {
         }
         this.messagesStatusClearTimeout = null;
       }, 2500);
+    }
+  }
+
+  describeDirectMessageSendError(code) {
+    switch (code) {
+      case "sign-event-unavailable":
+        return "Connect a Nostr signer to send messages.";
+      case "encryption-unsupported":
+        return "Your signer does not support NIP-44 or NIP-04 encryption.";
+      case "extension-permission-denied":
+        return "Please grant your Nostr extension permission to send messages.";
+      case "missing-actor-pubkey":
+        return "We couldn’t determine your public key to send this message.";
+      case "nostr-uninitialized":
+        return "Direct messages are still connecting to relays. Please try again.";
+      case "signature-failed":
+        return "We couldn’t sign the message. Please reconnect your signer and try again.";
+      case "encryption-failed":
+        return "We couldn’t encrypt the message. Please try again.";
+      case "publish-failed":
+        return "Failed to deliver this message to any relay. Please try again.";
+      case "invalid-target":
+        return "Select a valid recipient before sending.";
+      case "empty-message":
+        return "Please enter a message.";
+      default:
+        return "Unable to send message. Please try again.";
+    }
+  }
+
+  async handleSendProfileMessage() {
+    const input = this.profileMessageInput;
+    if (!(input instanceof HTMLTextAreaElement)) {
+      return;
+    }
+
+    const message = typeof input.value === "string" ? input.value.trim() : "";
+    if (!message) {
+      this.showError("Please enter a message.");
+      return;
+    }
+
+    const targetCandidate =
+      this.resolveActiveDmActor() || this.directMessagesLastActor;
+    const target =
+      typeof targetCandidate === "string" ? targetCandidate.trim() : "";
+    if (!target) {
+      this.showError("Please select a message recipient.");
+      return;
+    }
+
+    if (
+      !this.services.nostrClient ||
+      typeof this.services.nostrClient.sendDirectMessage !== "function"
+    ) {
+      this.showError("Direct message service unavailable.");
+      return;
+    }
+
+    const sendButton = this.profileMessageSendButton;
+    if (sendButton instanceof HTMLElement && "disabled" in sendButton) {
+      sendButton.disabled = true;
+      sendButton.setAttribute("aria-disabled", "true");
+    }
+
+    try {
+      const result = await this.services.nostrClient.sendDirectMessage(
+        target,
+        message,
+      );
+
+      if (result?.ok) {
+        input.value = "";
+        this.showSuccess("Message sent.");
+        void this.populateProfileMessages({ force: true, reason: "send-message" });
+        return;
+      }
+
+      const errorCode =
+        typeof result?.error === "string" ? result.error : "unknown";
+      userLogger.warn("[profileModal] Failed to send direct message:", errorCode);
+      this.showError(this.describeDirectMessageSendError(errorCode));
+    } catch (error) {
+      userLogger.error("[profileModal] Unexpected DM send failure:", error);
+      this.showError("Unable to send message. Please try again.");
+    } finally {
+      this.updateMessageComposerState();
     }
   }
 
@@ -2592,6 +2804,21 @@ export class ProfileModalController {
       });
     }
 
+    if (this.profileMessageSendButton instanceof HTMLElement) {
+      this.profileMessageSendButton.addEventListener("click", () => {
+        void this.handleSendProfileMessage();
+      });
+    }
+
+    if (this.profileMessageInput instanceof HTMLElement) {
+      this.profileMessageInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && !event.shiftKey) {
+          event.preventDefault();
+          void this.handleSendProfileMessage();
+        }
+      });
+    }
+
     if (this.walletUriInput instanceof HTMLElement) {
       this.walletUriInput.addEventListener("focus", () => {
         this.revealSecretInputValue(this.walletUriInput);
@@ -2666,6 +2893,24 @@ export class ProfileModalController {
       });
     }
 
+    if (!this.boundModerationOverridesUpdate && typeof document !== "undefined") {
+      this.boundModerationOverridesUpdate = () => {
+        this.refreshModerationOverridesUi();
+      };
+      document.addEventListener(
+        "video:moderation-override",
+        this.boundModerationOverridesUpdate,
+      );
+      document.addEventListener(
+        "video:moderation-hide",
+        this.boundModerationOverridesUpdate,
+      );
+      document.addEventListener(
+        "video:moderation-block",
+        this.boundModerationOverridesUpdate,
+      );
+    }
+
     if (this.addModeratorButton instanceof HTMLElement) {
       this.addModeratorButton.addEventListener("click", () => {
         void this.handleAddModerator();
@@ -2738,6 +2983,68 @@ export class ProfileModalController {
     if (this.storageProviderInput instanceof HTMLElement) {
       this.storageProviderInput.addEventListener("change", () => {
         this.updateStorageFormVisibility();
+      });
+    }
+
+    if (this.profileEditBtn instanceof HTMLElement) {
+      this.profileEditBtn.addEventListener("click", () => {
+        this.handleEditProfile();
+      });
+    }
+
+    if (this.profileEditBackBtn instanceof HTMLElement) {
+      this.profileEditBackBtn.addEventListener("click", () => {
+        this.selectPane("account");
+      });
+    }
+
+    if (this.editCancelBtn instanceof HTMLElement) {
+      this.editCancelBtn.addEventListener("click", () => {
+        this.selectPane("account");
+      });
+    }
+
+    if (this.editSaveBtn instanceof HTMLElement) {
+      this.editSaveBtn.addEventListener("click", () => {
+        void this.handleSaveProfile();
+      });
+    }
+
+    if (this.editPictureUploadBtn instanceof HTMLElement) {
+      this.editPictureUploadBtn.addEventListener("click", () => {
+        if (this.editPictureFile) this.editPictureFile.click();
+      });
+    }
+
+    if (this.editPictureFile instanceof HTMLElement) {
+      this.editPictureFile.addEventListener("change", () => {
+        void this.handleUpload("picture");
+      });
+    }
+
+    if (this.editBannerUploadBtn instanceof HTMLElement) {
+      this.editBannerUploadBtn.addEventListener("click", () => {
+        if (this.editBannerFile) this.editBannerFile.click();
+      });
+    }
+
+    if (this.editBannerFile instanceof HTMLElement) {
+      this.editBannerFile.addEventListener("change", () => {
+        void this.handleUpload("banner");
+      });
+    }
+
+    if (this.editPictureConfigureLink instanceof HTMLElement) {
+      this.editPictureConfigureLink.addEventListener("click", (e) => {
+        e.preventDefault();
+        this.selectPane("storage");
+      });
+    }
+
+    if (this.editBannerConfigureLink instanceof HTMLElement) {
+      this.editBannerConfigureLink.addEventListener("click", (e) => {
+        e.preventDefault();
+        this.selectPane("storage");
       });
     }
 
@@ -4404,24 +4711,11 @@ export class ProfileModalController {
   }
 
   normalizeHashtagTag(value) {
-    if (typeof value !== "string") {
-      return "";
-    }
-
-    const trimmed = value.trim();
-    if (!trimmed) {
-      return "";
-    }
-
-    return trimmed.replace(/^#+/, "").toLowerCase();
+    return normalizeHashtag(value);
   }
 
   formatHashtagTag(value) {
-    const normalized = this.normalizeHashtagTag(value);
-    if (!normalized) {
-      return "";
-    }
-    return `#${normalized}`;
+    return formatHashtag(value);
   }
 
   sanitizeHashtagList(list) {
@@ -5891,6 +6185,171 @@ export class ProfileModalController {
     }
   }
 
+  handleEditProfile() {
+    this.selectPane("edit");
+    void this.populateEditPane();
+  }
+
+  async populateEditPane() {
+    const pubkey = this.normalizeHexPubkey(this.getActivePubkey());
+    if (!pubkey) {
+      return;
+    }
+
+    const cacheEntry = this.services.getProfileCacheEntry(pubkey);
+    const profile = cacheEntry?.profile || {};
+
+    if (this.editNameInput) this.editNameInput.value = profile.name || "";
+    if (this.editDisplayNameInput)
+      this.editDisplayNameInput.value = profile.display_name || "";
+    if (this.editAboutInput) this.editAboutInput.value = profile.about || "";
+    if (this.editWebsiteInput)
+      this.editWebsiteInput.value = profile.website || "";
+    if (this.editNip05Input) this.editNip05Input.value = profile.nip05 || "";
+    if (this.editLud16Input) this.editLud16Input.value = profile.lud16 || "";
+    if (this.editPictureInput)
+      this.editPictureInput.value = profile.picture || "";
+    if (this.editBannerInput) this.editBannerInput.value = profile.banner || "";
+
+    void this.checkStorageForUploads(pubkey);
+  }
+
+  async checkStorageForUploads(pubkey) {
+    const r2Service = this.services.r2Service;
+    if (!r2Service) return;
+
+    let hasStorage = false;
+    try {
+      const credentials = await r2Service.resolveConnection(pubkey);
+      hasStorage = !!credentials;
+    } catch (e) {
+      hasStorage = false;
+    }
+
+    const updateUI = (uploadBtn, hint, has) => {
+      if (uploadBtn) {
+        uploadBtn.disabled = !has;
+        if (!has) uploadBtn.setAttribute("aria-disabled", "true");
+        else uploadBtn.removeAttribute("aria-disabled");
+      }
+      if (hint) {
+        if (has) hint.classList.add("hidden");
+        else hint.classList.remove("hidden");
+      }
+    };
+
+    updateUI(
+      this.editPictureUploadBtn,
+      this.editPictureStorageHint,
+      hasStorage,
+    );
+    updateUI(this.editBannerUploadBtn, this.editBannerStorageHint, hasStorage);
+  }
+
+  async handleUpload(type) {
+    const pubkey = this.normalizeHexPubkey(this.getActivePubkey());
+    if (!pubkey) return;
+
+    const r2Service = this.services.r2Service;
+    if (!r2Service) return;
+
+    const fileInput =
+      type === "picture" ? this.editPictureFile : this.editBannerFile;
+    const urlInput =
+      type === "picture" ? this.editPictureInput : this.editBannerInput;
+    const uploadBtn =
+      type === "picture" ? this.editPictureUploadBtn : this.editBannerUploadBtn;
+
+    if (!fileInput || !fileInput.files.length) return;
+    const file = fileInput.files[0];
+
+    try {
+      if (uploadBtn) {
+        uploadBtn.disabled = true;
+        uploadBtn.textContent = "Uploading...";
+      }
+
+      const credentials = await r2Service.resolveConnection(pubkey);
+      if (!credentials) {
+        this.showError("Storage configuration missing.");
+        return;
+      }
+
+      const key = buildR2Key(pubkey, file);
+      await r2Service.uploadFile({
+        file,
+        ...credentials,
+        bucket: credentials.bucket,
+        key,
+      });
+
+      const url = buildPublicUrl(credentials.baseDomain, key);
+      if (urlInput) urlInput.value = url;
+
+      fileInput.value = "";
+    } catch (error) {
+      this.showError("Upload failed: " + (error.message || "Unknown error"));
+      devLogger.error("Upload error:", error);
+    } finally {
+      if (uploadBtn) {
+        uploadBtn.disabled = false;
+        uploadBtn.textContent = "Upload";
+      }
+    }
+  }
+
+  async handleSaveProfile() {
+    const pubkey = this.normalizeHexPubkey(this.getActivePubkey());
+    if (!pubkey) return;
+
+    const profile = {
+      name: this.editNameInput?.value?.trim() || "",
+      display_name: this.editDisplayNameInput?.value?.trim() || "",
+      about: this.editAboutInput?.value?.trim() || "",
+      website: this.editWebsiteInput?.value?.trim() || "",
+      nip05: this.editNip05Input?.value?.trim() || "",
+      lud16: this.editLud16Input?.value?.trim() || "",
+      picture: this.editPictureInput?.value?.trim() || "",
+      banner: this.editBannerInput?.value?.trim() || "",
+    };
+
+    if (this.editSaveBtn) {
+      this.editSaveBtn.disabled = true;
+      this.editSaveBtn.textContent = "Saving...";
+    }
+
+    try {
+      const content = JSON.stringify(profile);
+      const event = {
+        kind: 0,
+        created_at: Math.floor(Date.now() / 1000),
+        pubkey,
+        tags: [],
+        content,
+      };
+
+      const result =
+        await this.services.nostrClient.signAndPublishEvent(event);
+
+      if (result && result.signedEvent) {
+        if (this.services.nostrClient.handleEvent) {
+          this.services.nostrClient.handleEvent(result.signedEvent);
+        }
+      }
+
+      this.showSuccess("Profile updated!");
+      this.selectPane("account");
+      this.renderSavedProfiles();
+    } catch (error) {
+      this.showError("Failed to save profile: " + error.message);
+    } finally {
+      if (this.editSaveBtn) {
+        this.editSaveBtn.disabled = false;
+        this.editSaveBtn.textContent = "Save Profile";
+      }
+    }
+  }
+
   async populateStoragePane() {
     const storageService = this.services.storageService;
     const pubkey = this.normalizeHexPubkey(this.getActivePubkey());
@@ -7044,12 +7503,232 @@ export class ProfileModalController {
     }
   }
 
+  updateTrustedMuteHideHelperCopy() {
+    if (!(this.moderationMuteHideInput instanceof HTMLInputElement)) {
+      return;
+    }
+
+    const label = this.moderationMuteHideInput.closest("label");
+    if (!(label instanceof HTMLElement)) {
+      return;
+    }
+
+    const helper = label.querySelector("span.text-xs");
+    if (!(helper instanceof HTMLElement)) {
+      return;
+    }
+
+    helper.textContent = TRUSTED_MUTE_HIDE_HELPER_TEXT;
+  }
+
+  getModerationOverrideEntries() {
+    if (typeof this.services.getModerationOverrides !== "function") {
+      return [];
+    }
+
+    try {
+      const entries = this.services.getModerationOverrides();
+      return Array.isArray(entries) ? entries : [];
+    } catch (error) {
+      devLogger.info(
+        "[profileModal] moderation overrides fallback used",
+        error,
+      );
+      return [];
+    }
+  }
+
+  normalizeModerationOverrideEntries(entries = []) {
+    const normalized = [];
+    const seen = new Set();
+
+    entries.forEach((entry) => {
+      if (!entry || typeof entry !== "object") {
+        return;
+      }
+      const eventId =
+        typeof entry.eventId === "string"
+          ? entry.eventId.trim().toLowerCase()
+          : "";
+      if (!eventId) {
+        return;
+      }
+      const author =
+        typeof entry.authorPubkey === "string"
+          ? entry.authorPubkey.trim()
+          : "";
+      const normalizedAuthor = author ? this.normalizeHexPubkey(author) || author : "";
+      const key = `${normalizedAuthor || ""}:${eventId}`;
+      if (seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      normalized.push({
+        eventId,
+        authorPubkey: normalizedAuthor || "",
+        updatedAt: Number.isFinite(entry.updatedAt)
+          ? Math.floor(entry.updatedAt)
+          : 0,
+      });
+    });
+
+    normalized.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+
+    return normalized;
+  }
+
+  formatModerationOverrideTimestamp(updatedAt) {
+    const numeric = Number(updatedAt);
+    if (!Number.isFinite(numeric) || numeric <= 0) {
+      return { display: "", iso: "" };
+    }
+
+    try {
+      const date = new Date(numeric);
+      return {
+        display: date.toLocaleString(undefined, {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+        }),
+        iso: date.toISOString(),
+      };
+    } catch (error) {
+      return { display: "", iso: "" };
+    }
+  }
+
+  async handleModerationOverrideReset(entry) {
+    if (!entry || typeof entry !== "object") {
+      return false;
+    }
+
+    if (typeof this.services.clearModerationOverride !== "function") {
+      return false;
+    }
+
+    try {
+      await this.services.clearModerationOverride({
+        eventId: entry.eventId,
+        authorPubkey: entry.authorPubkey,
+      });
+      this.refreshModerationOverridesUi();
+      this.showSuccess("Moderation override reset.");
+      return true;
+    } catch (error) {
+      this.showError("Unable to reset this moderation override.");
+      return false;
+    }
+  }
+
+  refreshModerationOverridesUi() {
+    if (
+      !(this.moderationOverridesList instanceof HTMLElement) ||
+      !(this.moderationOverridesEmpty instanceof HTMLElement)
+    ) {
+      return;
+    }
+
+    const entries = this.normalizeModerationOverrideEntries(
+      this.getModerationOverrideEntries(),
+    );
+
+    this.moderationOverridesList.innerHTML = "";
+
+    if (!entries.length) {
+      this.moderationOverridesEmpty.classList.remove("hidden");
+      this.moderationOverridesList.classList.add("hidden");
+      return;
+    }
+
+    this.moderationOverridesEmpty.classList.add("hidden");
+    this.moderationOverridesList.classList.remove("hidden");
+
+    const entriesNeedingFetch = new Set();
+
+    entries.forEach((entry) => {
+      const item = document.createElement("li");
+      item.className = "card space-y-2 p-4";
+
+      const row = document.createElement("div");
+      row.className = "flex items-center justify-between gap-4";
+
+      const authorKey = entry.authorPubkey;
+      let profileSummary = null;
+      if (authorKey) {
+        const cacheEntry = this.services.getProfileCacheEntry(authorKey);
+        if (!cacheEntry) {
+          entriesNeedingFetch.add(authorKey);
+        }
+      }
+
+      const summaryData = this.resolveProfileSummaryForPubkey(authorKey);
+      profileSummary = this.createCompactProfileSummary(summaryData);
+
+      const actions = document.createElement("div");
+      actions.className = "flex flex-wrap items-center justify-end gap-2";
+
+      const resetButton = this.createRemoveButton({
+        label: "Reset",
+        onRemove: () => this.handleModerationOverrideReset(entry),
+      });
+      if (resetButton) {
+        actions.appendChild(resetButton);
+      }
+
+      if (profileSummary) {
+        row.appendChild(profileSummary);
+      }
+      if (actions.childElementCount > 0) {
+        row.appendChild(actions);
+      }
+
+      const meta = document.createElement("div");
+      meta.className = "flex flex-wrap items-center gap-3 text-2xs text-muted";
+
+      const contentId = document.createElement("span");
+      contentId.className = "font-mono text-2xs text-muted";
+      const shortId =
+        typeof this.truncateMiddle === "function"
+          ? this.truncateMiddle(entry.eventId, 16)
+          : entry.eventId;
+      contentId.textContent = `Content ${shortId}`;
+      contentId.title = entry.eventId;
+      meta.appendChild(contentId);
+
+      const timestamp = this.formatModerationOverrideTimestamp(entry.updatedAt);
+      if (timestamp.display) {
+        const time = document.createElement("time");
+        time.className = "text-2xs text-muted";
+        time.dateTime = timestamp.iso;
+        time.textContent = `Updated ${timestamp.display}`;
+        meta.appendChild(time);
+      }
+
+      item.appendChild(row);
+      item.appendChild(meta);
+
+      this.moderationOverridesList.appendChild(item);
+    });
+
+    if (
+      entriesNeedingFetch.size &&
+      typeof this.services.batchFetchProfiles === "function"
+    ) {
+      this.services.batchFetchProfiles(entriesNeedingFetch);
+    }
+  }
+
   refreshModerationSettingsUi() {
     const service = this.getModerationSettingsService();
     if (!service) {
       this.moderationSettingsDefaults = createInternalDefaultModerationSettings();
       this.currentModerationSettings = createInternalDefaultModerationSettings();
       this.updateTrustedHideControlsVisibility();
+      this.updateModerationTrustStats();
+      this.refreshModerationOverridesUi();
       this.applyModerationSettingsControlState({ resetStatus: true });
       return;
     }
@@ -7091,8 +7770,138 @@ export class ProfileModalController {
     }
 
     this.updateTrustedHideControlsVisibility();
+    this.updateModerationTrustStats();
+    this.refreshModerationOverridesUi();
 
     this.applyModerationSettingsControlState({ resetStatus: true });
+  }
+
+  getModerationTrustStats() {
+    const summary = {
+      trustedContactsCount: 0,
+      trustedMuteContributors: 0,
+      trustedReportContributors: 0,
+      trustedSeedOnly: false,
+    };
+
+    const service = this.moderationService;
+    if (!service) {
+      return summary;
+    }
+
+    if (typeof service.isTrustedSeedOnly === "function") {
+      summary.trustedSeedOnly = service.isTrustedSeedOnly();
+    } else if (typeof service.trustedSeedOnly === "boolean") {
+      summary.trustedSeedOnly = service.trustedSeedOnly;
+    }
+
+    const trustedContacts =
+      service.trustedContacts instanceof Set
+        ? service.trustedContacts
+        : Array.isArray(service.trustedContacts)
+        ? new Set(service.trustedContacts)
+        : new Set();
+
+    summary.trustedContactsCount = trustedContacts.size;
+
+    const adminSnapshot =
+      typeof service.getAdminListSnapshot === "function"
+        ? service.getAdminListSnapshot()
+        : null;
+
+    const resolveStatus = (candidate) => {
+      if (typeof service.getAccessControlStatus === "function") {
+        return service.getAccessControlStatus(candidate, adminSnapshot);
+      }
+      return {
+        hex: this.normalizeHexPubkey(candidate),
+        whitelisted: false,
+        blacklisted: false,
+      };
+    };
+
+    const isBlocked = (pubkey) =>
+      typeof service.isPubkeyBlockedByViewer === "function"
+        ? service.isPubkeyBlockedByViewer(pubkey)
+        : false;
+
+    const isTrustedCandidate = (status) => {
+      if (!status || !status.hex) {
+        return false;
+      }
+      if (status.blacklisted) {
+        return false;
+      }
+      if (isBlocked(status.hex)) {
+        return false;
+      }
+      return Boolean(status.whitelisted || trustedContacts.has(status.hex));
+    };
+
+    if (service.trustedMuteLists instanceof Map) {
+      const trustedMuteOwners = new Set();
+      for (const owner of service.trustedMuteLists.keys()) {
+        const status = resolveStatus(owner);
+        if (isTrustedCandidate(status)) {
+          trustedMuteOwners.add(status.hex);
+        }
+      }
+      summary.trustedMuteContributors = trustedMuteOwners.size;
+    }
+
+    if (service.reportEvents instanceof Map) {
+      const trustedReporters = new Set();
+      for (const eventReports of service.reportEvents.values()) {
+        if (!(eventReports instanceof Map)) {
+          continue;
+        }
+        for (const reporter of eventReports.keys()) {
+          const status = resolveStatus(reporter);
+          if (!isTrustedCandidate(status)) {
+            continue;
+          }
+          trustedReporters.add(status.hex);
+        }
+      }
+      summary.trustedReportContributors = trustedReporters.size;
+    }
+
+    return summary;
+  }
+
+  updateModerationTrustStats() {
+    if (
+      !(this.moderationTrustedContactsCount instanceof HTMLElement) &&
+      !(this.moderationTrustedMuteCount instanceof HTMLElement) &&
+      !(this.moderationTrustedReportCount instanceof HTMLElement) &&
+      !(this.moderationSeedOnlyIndicator instanceof HTMLElement)
+    ) {
+      return;
+    }
+
+    const summary = this.getModerationTrustStats();
+
+    if (this.moderationTrustedContactsCount instanceof HTMLElement) {
+      this.moderationTrustedContactsCount.textContent = String(
+        summary.trustedContactsCount,
+      );
+    }
+
+    if (this.moderationTrustedMuteCount instanceof HTMLElement) {
+      this.moderationTrustedMuteCount.textContent = String(
+        summary.trustedMuteContributors,
+      );
+    }
+
+    if (this.moderationTrustedReportCount instanceof HTMLElement) {
+      this.moderationTrustedReportCount.textContent = String(
+        summary.trustedReportContributors,
+      );
+    }
+
+    if (this.moderationSeedOnlyIndicator instanceof HTMLElement) {
+      this.moderationSeedOnlyIndicator.hidden = !summary.trustedSeedOnly;
+    }
   }
 
   async handleModerationSettingsSave() {

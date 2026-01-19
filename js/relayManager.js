@@ -5,12 +5,14 @@ import {
   requestDefaultExtensionPermissions,
 } from "./nostrClientFacade.js";
 import { getActiveSigner } from "./nostr/index.js";
-import { buildRelayListEvent } from "./nostrEventSchemas.js";
+import { buildRelayListEvent, NOTE_TYPES } from "./nostrEventSchemas.js";
+import { CACHE_POLICIES, STORAGE_TIERS } from "./nostr/cachePolicies.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import {
   publishEventToRelays,
   assertAnyRelayAccepted,
 } from "./nostrPublish.js";
+import { profileCache } from "./state/profileCache.js";
 
 const MODE_SEQUENCE = ["both", "read", "write"];
 
@@ -191,7 +193,37 @@ class RelayPreferencesManager {
       const normalized = normalizeRelayUrl(url) || url;
       return createEntry(normalized, "both");
     });
-    this.setEntries(this.defaultEntries, { allowEmpty: false, updateClient: true });
+
+    // Attempt to load from storage if policy allows
+    const loaded = this.loadFromStorage();
+    if (loaded && loaded.length) {
+      this.setEntries(loaded, { allowEmpty: false, updateClient: true });
+    } else {
+      this.setEntries(this.defaultEntries, { allowEmpty: false, updateClient: true });
+    }
+
+    profileCache.subscribe((event, detail) => {
+      if (event === "profileChanged") {
+        const fresh = this.loadFromStorage();
+        if (fresh && fresh.length) {
+          this.setEntries(fresh, { allowEmpty: false, updateClient: true });
+        } else {
+          this.setEntries(this.defaultEntries, { allowEmpty: false, updateClient: true });
+        }
+      }
+    });
+  }
+
+  loadFromStorage() {
+    const cached = profileCache.get("relays");
+    if (Array.isArray(cached)) {
+      return cached;
+    }
+    return null;
+  }
+
+  saveToStorage() {
+    profileCache.set("relays", this.entries.map((entry) => ({ url: entry.url, mode: entry.mode })));
   }
 
   snapshot() {
@@ -279,6 +311,7 @@ class RelayPreferencesManager {
       this.syncClient();
     }
 
+    this.saveToStorage();
     return this.getEntries();
   }
 

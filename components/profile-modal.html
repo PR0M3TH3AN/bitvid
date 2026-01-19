@@ -230,13 +230,22 @@
                     <span id="profileModalName" class="truncate text-sm font-semibold text-text">Loading...</span>
                     <span id="profileModalNpub" class="break-all font-mono text-xs text-muted">npub1...</span>
                   </div>
-                  <a
-                    id="profileChannelLink"
-                    href="#"
-                    class="btn-ghost focus-ring profile-modal__channel-link hidden text-xs"
-                  >
-                    View channel
-                  </a>
+                  <div class="flex flex-wrap items-center gap-2 profile-modal__actions">
+                    <a
+                      id="profileChannelLink"
+                      href="#"
+                      class="btn-ghost focus-ring hidden text-xs"
+                    >
+                      View channel
+                    </a>
+                    <button
+                      id="profileEditBtn"
+                      type="button"
+                      class="btn-ghost focus-ring text-xs"
+                    >
+                      Edit profile
+                    </button>
+                  </div>
                 </div>
 
                 <div
@@ -286,6 +295,33 @@
                     Choose how many trusted reports or mutes it takes to blur thumbnails, block autoplay previews, or hide videos entirely.
                     Lower numbers are stricter.
                   </p>
+                  <div class="rounded-lg border border-border bg-bg-muted p-3 text-xs text-muted">
+                    <p>
+                      Trusted counts include your first-degree follows (F1) plus seeded moderators.
+                    </p>
+                    <dl class="mt-2 grid gap-1">
+                      <div class="flex items-center justify-between gap-3">
+                        <dt>Trusted contacts</dt>
+                        <dd id="profileModerationTrustedContactsCount" class="font-semibold text-text">0</dd>
+                      </div>
+                      <div class="flex items-center justify-between gap-3">
+                        <dt>Active trusted mute contributors</dt>
+                        <dd id="profileModerationTrustedMuteCount" class="font-semibold text-text">0</dd>
+                      </div>
+                      <div class="flex items-center justify-between gap-3">
+                        <dt>Active trusted report contributors</dt>
+                        <dd id="profileModerationTrustedReportCount" class="font-semibold text-text">0</dd>
+                      </div>
+                    </dl>
+                    <p
+                      id="profileModerationSeedOnlyIndicator"
+                      class="mt-2 flex items-center gap-1 text-xs text-warning-strong"
+                      hidden
+                    >
+                      <span aria-hidden="true">●</span>
+                      <span>Seeded moderators only</span>
+                    </p>
+                  </div>
                 </div>
                 <div class="grid gap-4 sm:grid-cols-2">
                   <label
@@ -387,6 +423,185 @@
                   role="status"
                   aria-live="polite"
                 ></p>
+                <div class="space-y-3 border-t border-border/60 pt-4">
+                  <div class="space-y-1">
+                    <h4 class="text-sm font-semibold text-text">Active overrides</h4>
+                    <p class="text-xs text-muted">
+                      Videos you unblocked with “Show anyway” stay listed here until reset.
+                    </p>
+                  </div>
+                  <div
+                    id="profileModerationOverridesEmpty"
+                    class="card border border-dashed border-border/60 p-4 text-center text-xs text-muted"
+                  >
+                    No moderation overrides yet.
+                  </div>
+                  <ul
+                    id="profileModerationOverridesList"
+                    class="grid-stack hidden"
+                    data-orientation="vertical"
+                  ></ul>
+                </div>
+              </div>
+            </section>
+
+            <section
+              id="profilePaneEdit"
+              class="profile-pane hidden space-y-6"
+              role="tabpanel"
+              aria-label="Edit profile"
+            >
+              <div class="flex items-center gap-2 mb-4">
+                <button
+                  id="profileEditBackBtn"
+                  type="button"
+                  class="btn-ghost focus-ring p-1 -ml-1 text-muted hover:text-text"
+                  aria-label="Back to account"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" />
+                  </svg>
+                </button>
+                <h3 class="text-lg font-bold text-text">Edit Profile</h3>
+              </div>
+
+              <div class="space-y-5">
+                <!-- Basic Info -->
+                <div class="grid gap-4 sm:grid-cols-2">
+                  <label class="block text-sm text-muted-strong" for="editNameInput">
+                    <span class="mb-2 block font-medium">Username</span>
+                    <input
+                      id="editNameInput"
+                      type="text"
+                      class="input"
+                      placeholder="Name"
+                    />
+                  </label>
+                  <label class="block text-sm text-muted-strong" for="editDisplayNameInput">
+                    <span class="mb-2 block font-medium">Display Name</span>
+                    <input
+                      id="editDisplayNameInput"
+                      type="text"
+                      class="input"
+                      placeholder="Display Name (optional)"
+                    />
+                  </label>
+                </div>
+
+                <label class="block text-sm text-muted-strong" for="editAboutInput">
+                  <span class="mb-2 block font-medium">About</span>
+                  <textarea
+                    id="editAboutInput"
+                    class="input min-h-[80px]"
+                    placeholder="Tell us about yourself..."
+                  ></textarea>
+                </label>
+
+                <label class="block text-sm text-muted-strong" for="editWebsiteInput">
+                  <span class="mb-2 block font-medium">Website</span>
+                  <input
+                    id="editWebsiteInput"
+                    type="url"
+                    class="input"
+                    placeholder="https://example.com"
+                  />
+                </label>
+
+                <!-- Verifications -->
+                <div class="grid gap-4 sm:grid-cols-2">
+                  <label class="block text-sm text-muted-strong" for="editNip05Input">
+                    <span class="mb-2 block font-medium">NIP-05 Verification</span>
+                    <input
+                      id="editNip05Input"
+                      type="text"
+                      class="input"
+                      placeholder="name@domain.com"
+                    />
+                  </label>
+                  <label class="block text-sm text-muted-strong" for="editLud16Input">
+                    <span class="mb-2 block font-medium">Lightning Address (LUD16)</span>
+                    <input
+                      id="editLud16Input"
+                      type="text"
+                      class="input"
+                      placeholder="name@provider.com"
+                    />
+                  </label>
+                </div>
+
+                <!-- Images -->
+                <div class="space-y-4">
+                  <div class="flex flex-col gap-2">
+                    <label class="block text-sm text-muted-strong" for="editPictureInput">
+                      <span class="mb-2 block font-medium">Profile Picture URL</span>
+                    </label>
+                    <div class="flex gap-2">
+                      <input
+                        id="editPictureInput"
+                        type="url"
+                        class="input flex-1"
+                        placeholder="https://..."
+                      />
+                      <input type="file" id="editPictureFile" hidden accept="image/*" />
+                      <button
+                        id="editPictureUploadBtn"
+                        type="button"
+                        class="btn-ghost focus-ring"
+                        title="Upload profile picture"
+                      >
+                        Upload
+                      </button>
+                    </div>
+                    <div id="editPictureStorageHint" class="text-xs text-muted hidden">
+                      <a href="#" id="editPictureConfigureLink" class="underline hover:text-text">Configure storage</a> to enable uploads.
+                    </div>
+                  </div>
+
+                  <div class="flex flex-col gap-2">
+                    <label class="block text-sm text-muted-strong" for="editBannerInput">
+                      <span class="mb-2 block font-medium">Banner Image URL</span>
+                    </label>
+                    <div class="flex gap-2">
+                      <input
+                        id="editBannerInput"
+                        type="url"
+                        class="input flex-1"
+                        placeholder="https://..."
+                      />
+                      <input type="file" id="editBannerFile" hidden accept="image/*" />
+                      <button
+                        id="editBannerUploadBtn"
+                        type="button"
+                        class="btn-ghost focus-ring"
+                        title="Upload banner image"
+                      >
+                        Upload
+                      </button>
+                    </div>
+                    <div id="editBannerStorageHint" class="text-xs text-muted hidden">
+                      <a href="#" id="editBannerConfigureLink" class="underline hover:text-text">Configure storage</a> to enable uploads.
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Actions -->
+                <div class="flex flex-wrap items-center gap-3 pt-4 border-t border-border/60">
+                  <button
+                    id="editSaveBtn"
+                    type="button"
+                    class="btn focus-ring"
+                  >
+                    Save Profile
+                  </button>
+                  <button
+                    id="editCancelBtn"
+                    type="button"
+                    class="btn-ghost focus-ring"
+                  >
+                    Cancel
+                  </button>
+                </div>
+                <p id="editStatusText" class="text-sm text-muted" role="status" aria-live="polite"></p>
               </div>
             </section>
 
@@ -852,6 +1067,33 @@
                 aria-live="polite"
                 aria-label="Direct message threads"
               ></ul>
+              <div class="flex flex-col gap-3 border-t border-border/60 pt-4">
+                <label class="sr-only" for="profileMessageInput">Message</label>
+                <textarea
+                  id="profileMessageInput"
+                  class="input min-h-[96px]"
+                  rows="3"
+                  placeholder="Write a message…"
+                ></textarea>
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <p
+                    id="profileMessagesComposerHelper"
+                    class="text-xs text-muted hidden"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    Sign in to send messages.
+                  </p>
+                  <button
+                    id="profileMessageSendBtn"
+                    type="button"
+                    class="btn focus-ring inline-flex items-center gap-2"
+                    data-size="sm"
+                  >
+                    Send
+                  </button>
+                </div>
+              </div>
             </section>
             <section
               id="profilePaneHistory"

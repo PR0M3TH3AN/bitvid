@@ -7,10 +7,13 @@ import {
   WATCH_HISTORY_PAYLOAD_MAX_BYTES,
   WATCH_HISTORY_FETCH_EVENT_LIMIT,
   WATCH_HISTORY_CACHE_TTL_MS,
+  WATCH_HISTORY_VERSION_TAG_VALUE,
 } from "../config.js";
 import {
   buildWatchHistoryEvent,
+  NOTE_TYPES,
 } from "../nostrEventSchemas.js";
+import { CACHE_POLICIES } from "./cachePolicies.js";
 import { publishEventToRelays } from "../nostrPublish.js";
 import {
   RELAY_URLS,
@@ -19,6 +22,8 @@ import {
 } from "./toolkit.js";
 import { DEFAULT_NIP07_PERMISSION_METHODS } from "./nip07Permissions.js";
 import { devLogger, userLogger } from "../utils/logger.js";
+import { profileCache } from "../state/profileCache.js";
+import { queueSignEvent } from "./signRequestQueue.js";
 
 /**
  * Domain utilities for watch-history interactions. This module owns pointer
@@ -26,8 +31,6 @@ import { devLogger, userLogger } from "../utils/logger.js";
  * relay publishing, fetch/decrypt flows, and exposes a manager factory that is
  * dependency-injected with the nostr client hooks it needs.
  */
-const WATCH_HISTORY_STORAGE_KEY = "bitvid:watch-history:v4";
-const WATCH_HISTORY_STORAGE_VERSION = 4;
 const WATCH_HISTORY_REPUBLISH_BASE_DELAY_MS = 2000;
 const WATCH_HISTORY_REPUBLISH_MAX_DELAY_MS = 5 * 60 * 1000;
 const WATCH_HISTORY_REPUBLISH_MAX_ATTEMPTS = 8;
@@ -563,7 +566,7 @@ async function computeWatchHistoryFingerprintForItems(itemsOrBuckets) {
   // Check if buckets
   let flatItems = [];
   if (Array.isArray(itemsOrBuckets)) {
-    flatItems = itemsOrBuckets;
+    flatItems = [...itemsOrBuckets];
   } else if (itemsOrBuckets && typeof itemsOrBuckets === "object") {
     flatItems = Object.keys(itemsOrBuckets)
       .sort()
@@ -953,163 +956,86 @@ class WatchHistoryManager {
     this.cacheTtlMs = 0;
     this.fingerprints = new Map();
     this.lastCreatedAt = 0;
+
+    profileCache.subscribe((event, detail) => {
+      if (event === "profileChanged") {
+        this.clear();
+      } else if (event === "runtimeCleared") {
+        const activePubkey = typeof this.deps.getActivePubkey === "function"
+          ? this.deps.getActivePubkey()
+          : "";
+        const normalized = normalizeActorKey(detail.pubkey);
+        const active = normalizeActorKey(activePubkey);
+        if (normalized && active && normalized === active) {
+          this.cache.delete(normalized);
+        }
+      }
+    });
   }
 
   getCacheTtlMs() {
     if (Number.isFinite(this.cacheTtlMs) && this.cacheTtlMs > 0) {
       return this.cacheTtlMs;
     }
+    const policyTtl = CACHE_POLICIES[NOTE_TYPES.WATCH_HISTORY]?.ttl;
     const configured = Number(WATCH_HISTORY_CACHE_TTL_MS);
-    const resolved =
+
+    // Prefer config if set (for backward compat or overrides), otherwise policy
+    let resolved =
       Number.isFinite(configured) && configured > 0
         ? Math.floor(configured)
-        : 24 * 60 * 60 * 1000;
+        : Number.isFinite(policyTtl) && policyTtl > 0
+          ? policyTtl
+          : 24 * 60 * 60 * 1000;
+
     this.cacheTtlMs = resolved;
     return resolved;
   }
 
-  getStorage() {
-    if (this.storage && this.storage.version === WATCH_HISTORY_STORAGE_VERSION) {
-      return this.storage;
+  getStorage(actorInput = null) {
+    const actorKey = normalizeActorKey(actorInput) || normalizeActorKey(this.deps.getActivePubkey?.());
+    if (!actorKey) {
+        return { actors: {} }; // Return empty structure if no actor resolved
     }
-    const emptyStorage = { version: WATCH_HISTORY_STORAGE_VERSION, actors: {} };
-    if (typeof localStorage === "undefined") {
-      this.storage = emptyStorage;
-      return this.storage;
-    }
-    let raw = null;
-    try {
-      raw = localStorage.getItem(WATCH_HISTORY_STORAGE_KEY);
-    } catch (error) {
-      devLogger.warn("[nostr] Failed to read watch history storage:", error);
-      this.storage = emptyStorage;
-      return this.storage;
-    }
-    if (!raw || typeof raw !== "string") {
-      this.storage = emptyStorage;
-      return this.storage;
-    }
-    let parsed = null;
-    try {
-      parsed = JSON.parse(raw);
-    } catch (error) {
-      devLogger.warn("[nostr] Failed to parse watch history storage:", error);
-      this.storage = emptyStorage;
-      return this.storage;
-    }
-    const now = Date.now();
-    const ttl = this.getCacheTtlMs();
-    const actors =
-      parsed && typeof parsed === "object" && parsed.actors && typeof parsed.actors === "object"
-        ? parsed.actors
-        : {};
-    const sanitizedActors = {};
-    let mutated = false;
-    for (const [actorKeyRaw, entry] of Object.entries(actors)) {
-      const actorKey = normalizeActorKey(actorKeyRaw);
-      if (!actorKey) {
-        mutated = true;
-        continue;
-      }
-      const savedAt = Number(entry?.savedAt);
-      if (!Number.isFinite(savedAt) || savedAt <= 0 || now - savedAt > ttl) {
-        mutated = true;
-        continue;
-      }
 
-      // Migration from v2 (flat items) to v3 (bucketed records)
-      let records = {};
-      let items = [];
-      if (parsed.version < 3 && Array.isArray(entry.items)) {
-         records = canonicalizeWatchHistoryItems(entry.items, WATCH_HISTORY_MAX_ITEMS);
-         items = Object.values(records).flat();
-         mutated = true;
-      } else if (entry.records && typeof entry.records === "object") {
-         // Re-canonicalize to ensure structure
-         const flatItems = Object.values(entry.records).flat();
-         records = canonicalizeWatchHistoryItems(flatItems, WATCH_HISTORY_MAX_ITEMS);
-         items = Object.values(records).flat();
-      } else if (Array.isArray(entry.items)) {
-         // Fallback if records missing but items present in v3 (shouldn't happen if persisted correctly but safe to handle)
-         records = canonicalizeWatchHistoryItems(entry.items, WATCH_HISTORY_MAX_ITEMS);
-         items = Object.values(records).flat();
-      }
-
-      const snapshotId = typeof entry?.snapshotId === "string" ? entry.snapshotId : "";
-      const fingerprint = typeof entry?.fingerprint === "string" ? entry.fingerprint : "";
-      const metadata =
-        entry?.metadata && typeof entry.metadata === "object"
-          ? { ...entry.metadata }
-          : {};
-      sanitizedActors[actorKey] = {
-        actor:
-          typeof entry?.actor === "string" && entry.actor.trim()
-            ? entry.actor.trim()
-            : actorKey,
-        snapshotId,
-        fingerprint,
-        savedAt,
-        records,
-        items,
-        metadata,
-      };
+    const cached = profileCache.get(NOTE_TYPES.WATCH_HISTORY);
+    if (!cached) {
+      return { actors: {} };
     }
-    const storage = {
-      version: WATCH_HISTORY_STORAGE_VERSION,
-      actors: sanitizedActors,
+
+    // Wrap single entry in actors map for compatibility
+    return {
+      actors: {
+        [actorKey]: cached
+      }
     };
-    if (mutated || parsed?.version !== WATCH_HISTORY_STORAGE_VERSION) {
-      try {
-        localStorage.setItem(WATCH_HISTORY_STORAGE_KEY, JSON.stringify(storage));
-      } catch (error) {
-        devLogger.warn("[nostr] Failed to rewrite watch history storage:", error);
-      }
-    }
-    this.storage = storage;
-    return this.storage;
   }
 
   persistEntry(actorInput, entry) {
     const actorKey = normalizeActorKey(actorInput);
-    if (!actorKey) {
+    if (!actorKey || !entry) {
       return;
     }
-    const storage = this.getStorage();
-    const actors = { ...storage.actors };
-    const now = Date.now();
-    const ttl = this.getCacheTtlMs();
-    let mutated = false;
-    for (const [key, value] of Object.entries(actors)) {
-      const savedAt = Number(value?.savedAt);
-      if (!Number.isFinite(savedAt) || savedAt <= 0 || now - savedAt > ttl) {
-        delete actors[key];
-        mutated = true;
-      }
-    }
-    if (!entry) {
-      if (actors[actorKey]) {
-        delete actors[actorKey];
-        mutated = true;
-      }
-    } else {
-      // Entry can have `items` (flat) or `records` (buckets). We standardize to records.
-      let records = {};
-      if (entry.records && typeof entry.records === "object") {
-         const flat = Object.values(entry.records).flat();
-         records = canonicalizeWatchHistoryItems(flat, WATCH_HISTORY_MAX_ITEMS);
-      } else if (Array.isArray(entry.items)) {
-         records = canonicalizeWatchHistoryItems(entry.items, WATCH_HISTORY_MAX_ITEMS);
-      }
-      const items = Object.values(records).flat();
 
-      const snapshotId = typeof entry.snapshotId === "string" ? entry.snapshotId : "";
-      const fingerprint = typeof entry.fingerprint === "string" ? entry.fingerprint : "";
-      const savedAt = Number.isFinite(entry.savedAt) && entry.savedAt > 0 ? entry.savedAt : now;
-      const actorValue =
+    // Entry can have `items` (flat) or `records` (buckets). We standardize to records.
+    let records = {};
+    if (entry.records && typeof entry.records === "object") {
+        const flat = Object.values(entry.records).flat();
+        records = canonicalizeWatchHistoryItems(flat, WATCH_HISTORY_MAX_ITEMS);
+    } else if (Array.isArray(entry.items)) {
+        records = canonicalizeWatchHistoryItems(entry.items, WATCH_HISTORY_MAX_ITEMS);
+    }
+    const items = Object.values(records).flat();
+
+    const snapshotId = typeof entry.snapshotId === "string" ? entry.snapshotId : "";
+    const fingerprint = typeof entry.fingerprint === "string" ? entry.fingerprint : "";
+    const savedAt = Number.isFinite(entry.savedAt) && entry.savedAt > 0 ? entry.savedAt : Date.now();
+    const actorValue =
         typeof entry.actor === "string" && entry.actor.trim()
-          ? entry.actor.trim()
-          : actorInput || actorKey;
-      actors[actorKey] = {
+        ? entry.actor.trim()
+        : actorInput || actorKey;
+
+    const data = {
         actor: actorValue,
         snapshotId,
         fingerprint,
@@ -1117,22 +1043,10 @@ class WatchHistoryManager {
         records,
         items,
         metadata: {},
-      };
-      mutated = true;
-    }
-    const payload = {
-      version: WATCH_HISTORY_STORAGE_VERSION,
-      actors,
     };
-    this.storage = payload;
-    if (!mutated || typeof localStorage === "undefined") {
-      return;
-    }
-    try {
-      localStorage.setItem(WATCH_HISTORY_STORAGE_KEY, JSON.stringify(payload));
-    } catch (error) {
-      devLogger.warn("[nostr] Failed to persist watch history entry:", error);
-    }
+
+    // profileCache keys by active profile, so we just set the data for "watchHistory"
+    profileCache.set(NOTE_TYPES.WATCH_HISTORY, data);
   }
 
   cancelRepublish(taskId = null) {
@@ -1539,7 +1453,9 @@ class WatchHistoryManager {
 
     const signEvent = async (event) => {
       if (activeSigner) {
-        return activeSigner.signEvent(event);
+        return queueSignEvent(activeSigner, event, {
+          timeoutMs: options.timeoutMs,
+        });
       }
       return this.deps.signEventWithPrivateKey(event, privateKey);
     };
@@ -1651,6 +1567,11 @@ class WatchHistoryManager {
           error,
         );
       }
+    }
+
+    if (!encryptionTags.length) {
+      devLogger.warn("[nostr] Aborting watch history publish: mandatory encryption failed.");
+      return { ok: false, error: "encryption-failed", retryable: true };
     }
 
     const event = buildWatchHistoryEvent({
@@ -2045,7 +1966,8 @@ class WatchHistoryManager {
         {
           kinds,
           authors: [actorKey],
-          // Fetch all parameterized replaceables of this kind to get history across all months
+          // Filter by the new version tag to ignore older history lists
+          "#v": [WATCH_HISTORY_VERSION_TAG_VALUE],
           limit,
         },
       ];

@@ -67,10 +67,16 @@ await nostrClient.ensureExtensionPermissions();
 `setActiveSigner` accepts any object that implements the subset of capabilities
 you support. `nostrClient` (imported from the
 [NIP-07](https://github.com/nostr-protocol/nips/blob/master/07.md)-aligned
-`nostrClientFacade.js`) will prefer the registered signer for signing and
-encryption before falling back to session actors. Call `clearActiveSigner()` on
-logout if your integration manages session state manually; the built-in logout
-handler already does this for the default extension flow.
+`nostrClientFacade.js`) routes signing and encryption through the adapter
+registry in `js/nostr/client.js`, prefers the registered signer, and falls back
+to the strongest available capability (or session actors for telemetry) when a
+method is unavailable. Permission prompts are surfaced via
+`nostrClient.ensureExtensionPermissions()` or the
+`requestDefaultExtensionPermissions()` helper from
+`js/nostr/defaultClient.js`, so features can ask for access before issuing
+sign/encrypt calls. Call `clearActiveSigner()` on logout if your integration
+manages session state manually; the built-in logout handler already does this
+for the default extension flow.
 
 ### Accessing raw events
 

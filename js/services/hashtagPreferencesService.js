@@ -2,8 +2,9 @@
 import {
   nostrClient,
   requestDefaultExtensionPermissions,
+  getActiveSigner,
 } from "../nostrClientFacade.js";
-import { getActiveSigner } from "../nostr/index.js";
+import { isSessionActor } from "../nostr/sessionActor.js";
 import {
   buildHashtagPreferenceEvent,
   getNostrEventSchema,
@@ -13,7 +14,9 @@ import {
   publishEventToRelays,
   assertAnyRelayAccepted,
 } from "../nostrPublish.js";
-import { userLogger } from "../utils/logger.js";
+import { userLogger, devLogger } from "../utils/logger.js";
+import { normalizeHashtag } from "../utils/hashtagNormalization.js";
+import { profileCache } from "../state/profileCache.js";
 
 const LOG_PREFIX = "[HashtagPreferences]";
 const HASHTAG_IDENTIFIER = "bitvid:tag-preferences";
@@ -93,19 +96,6 @@ function sanitizeRelayList(candidate) {
     : [];
 }
 
-function normalizeTag(input) {
-  if (typeof input !== "string") {
-    return "";
-  }
-
-  const trimmed = input.trim().replace(/^#+/, "");
-  if (!trimmed) {
-    return "";
-  }
-
-  return trimmed.toLowerCase();
-}
-
 function normalizeEncryptionToken(value) {
   if (typeof value !== "string") {
     return "";
@@ -131,7 +121,7 @@ function normalizePreferencesPayload(payload) {
 
   const interests = new Set();
   for (const tag of rawInterests) {
-    const normalizedTag = normalizeTag(tag);
+    const normalizedTag = normalizeHashtag(tag);
     if (normalizedTag) {
       interests.add(normalizedTag);
     }
@@ -139,7 +129,7 @@ function normalizePreferencesPayload(payload) {
 
   const disinterests = new Set();
   for (const tag of rawDisinterests) {
-    const normalizedTag = normalizeTag(tag);
+    const normalizedTag = normalizeHashtag(tag);
     if (!normalizedTag) {
       continue;
     }
@@ -244,6 +234,20 @@ class HashtagPreferencesService {
     this.eventCreatedAt = null;
     this.loaded = false;
     this.preferencesVersion = DEFAULT_VERSION;
+
+    profileCache.subscribe((event, detail) => {
+      if (event === "profileChanged") {
+        this.reset();
+        if (detail.pubkey) {
+          this.load(detail.pubkey);
+        }
+      } else if (event === "runtimeCleared" && detail.pubkey === this.activePubkey) {
+        this.reset();
+        if (this.activePubkey) {
+          this.load(this.activePubkey);
+        }
+      }
+    });
   }
 
   on(eventName, handler) {
@@ -260,6 +264,63 @@ class HashtagPreferencesService {
     this.emitChange("reset");
   }
 
+  saveToCache() {
+    const interests = this.getInterests();
+    const disinterests = this.getDisinterests();
+    const payload = {
+      interests,
+      disinterests,
+      version: this.preferencesVersion,
+      eventId: this.eventId,
+      createdAt: this.eventCreatedAt,
+    };
+    // Use the note type key directly, though "interests" maps to HASHTAG_PREFERENCES
+    // in profileCache. Using NOTE_TYPES.HASHTAG_PREFERENCES explicitly is safer if we import it,
+    // but relying on the mapped key "interests" is also consistent with current usage.
+    // However, the fix requires us to ensure we use the unified path.
+    // We'll stick to "interests" which maps to NOTE_TYPES.HASHTAG_PREFERENCES in profileCache.js
+    profileCache.set("interests", payload);
+  }
+
+  loadFromCache(pubkey) {
+    // profileCache internally uses activePubkey, but we should verify if it matches
+    try {
+      let cached = profileCache.get("interests");
+
+      // Legacy fallback migration
+      if (!cached && typeof localStorage !== "undefined") {
+        try {
+          const legacy = localStorage.getItem(HASHTAG_IDENTIFIER);
+          if (legacy) {
+            const parsed = JSON.parse(legacy);
+            // Migrate to unified profile cache
+            profileCache.set("interests", parsed);
+            localStorage.removeItem(HASHTAG_IDENTIFIER);
+            cached = parsed;
+            devLogger.log(`${LOG_PREFIX} Migrated legacy preferences to profileCache.`);
+          }
+        } catch (err) {
+          devLogger.warn(`${LOG_PREFIX} Legacy migration failed:`, err);
+        }
+      }
+
+      if (cached && typeof cached === "object") {
+        this.activePubkey = normalizeHexPubkey(pubkey);
+        this.interests = new Set(Array.isArray(cached.interests) ? cached.interests : []);
+        this.disinterests = new Set(Array.isArray(cached.disinterests) ? cached.disinterests : []);
+        this.eventId = cached.eventId || null;
+        this.eventCreatedAt = cached.createdAt || null;
+        this.preferencesVersion = cached.version || DEFAULT_VERSION;
+        this.loaded = true;
+        this.emitChange("cache-load");
+        return true;
+      }
+    } catch (err) {
+      devLogger.warn(`${LOG_PREFIX} loadFromCache failed:`, err);
+    }
+    return false;
+  }
+
   getInterests() {
     return Array.from(this.interests).sort((a, b) => a.localeCompare(b));
   }
@@ -269,7 +330,7 @@ class HashtagPreferencesService {
   }
 
   addInterest(tag) {
-    const normalized = normalizeTag(tag);
+    const normalized = normalizeHashtag(tag);
     if (!normalized) {
       return false;
     }
@@ -287,7 +348,7 @@ class HashtagPreferencesService {
   }
 
   removeInterest(tag) {
-    const normalized = normalizeTag(tag);
+    const normalized = normalizeHashtag(tag);
     if (!normalized || !this.interests.has(normalized)) {
       return false;
     }
@@ -298,7 +359,7 @@ class HashtagPreferencesService {
   }
 
   addDisinterest(tag) {
-    const normalized = normalizeTag(tag);
+    const normalized = normalizeHashtag(tag);
     if (!normalized) {
       return false;
     }
@@ -316,7 +377,7 @@ class HashtagPreferencesService {
   }
 
   removeDisinterest(tag) {
-    const normalized = normalizeTag(tag);
+    const normalized = normalizeHashtag(tag);
     if (!normalized || !this.disinterests.has(normalized)) {
       return false;
     }
@@ -344,7 +405,7 @@ class HashtagPreferencesService {
 
   async load(pubkey) {
     const normalized = normalizeHexPubkey(pubkey);
-    const wasLoadedForUser =
+    let wasLoadedForUser =
       this.activePubkey &&
       this.activePubkey === normalized &&
       (this.interests.size > 0 || this.disinterests.size > 0 || this.loaded);
@@ -355,6 +416,11 @@ class HashtagPreferencesService {
       this.reset();
       this.loaded = true;
       return;
+    }
+
+    // Try cache first
+    if (this.loadFromCache(normalized)) {
+      wasLoadedForUser = true;
     }
 
     if (
@@ -403,21 +469,24 @@ class HashtagPreferencesService {
       kinds.push(legacyKind);
     }
 
-    const filter = {
-      kinds,
-      authors: [normalized],
-      "#d": [HASHTAG_IDENTIFIER],
-      limit: 50,
-    };
-
     let events = [];
     let fetchError = null;
 
     try {
-      const result = await nostrClient.pool.list(relays, [filter]);
-      if (Array.isArray(result)) {
-        events = result.filter((event) => event && event.pubkey === normalized);
-      }
+      // Use incremental fetching for both kinds concurrently (if multiple kinds)
+      // fetchListIncrementally takes a single kind.
+      // kinds is array of [canonicalKind, legacyKind] if different.
+
+      const promises = kinds.map(kind => nostrClient.fetchListIncrementally({
+        kind,
+        pubkey: normalized,
+        dTag: HASHTAG_IDENTIFIER,
+        relayUrls: relays
+      }));
+
+      const results = await Promise.all(promises);
+      events = results.flat();
+
     } catch (error) {
       fetchError = error;
       userLogger.warn(
@@ -430,6 +499,7 @@ class HashtagPreferencesService {
     if (!events.length) {
       // If we failed to fetch (network error) but already have data for this user,
       // preserve the existing state instead of wiping it.
+      // If fetchListIncrementally returns empty, it means no new updates or full fetch yielded nothing.
       if (wasLoadedForUser) {
         userLogger.warn(
           `${LOG_PREFIX} Keeping existing preferences despite empty relay response.`,
@@ -494,9 +564,16 @@ class HashtagPreferencesService {
         `${LOG_PREFIX} Failed to decrypt hashtag preferences`,
         decryptResult.error,
       );
-      // If decryption fails on a reload, we might want to keep old data?
-      // But typically decryption failure means key mismatch or bad payload.
-      // Resetting is safer here to avoid stuck state, unless we want to be very conservative.
+
+      // If we already have loaded preferences (e.g. from cache), preserve them
+      // rather than wiping everything just because the remote update couldn't be decrypted.
+      if (wasLoadedForUser) {
+        userLogger.warn(
+          `${LOG_PREFIX} Preserving cached preferences despite decryption failure.`,
+        );
+        return;
+      }
+
       this.reset();
       this.loaded = true;
       return;
@@ -516,6 +593,7 @@ class HashtagPreferencesService {
         ? latest.created_at
         : null;
       this.loaded = true;
+      this.saveToCache();
       this.emitChange("sync", { scheme: decryptResult.scheme });
     } catch (error) {
       userLogger.warn(
@@ -535,7 +613,10 @@ class HashtagPreferencesService {
       return { ok: false, error };
     }
 
-    const signer = getActiveSigner();
+    let signer = getActiveSigner();
+    if (!signer && typeof nostrClient?.ensureActiveSignerForPubkey === "function") {
+      signer = await nostrClient.ensureActiveSignerForPubkey(userPubkey);
+    }
     const signerHasNip04 = typeof signer?.nip04Decrypt === "function";
     const signerHasNip44 = typeof signer?.nip44Decrypt === "function";
 
@@ -574,39 +655,6 @@ class HashtagPreferencesService {
 
     if (signerHasNip04) {
       registerDecryptor("nip04", (payload) => signer.nip04Decrypt(userPubkey, payload));
-    }
-
-    const nostrApi =
-      typeof window !== "undefined" && window && window.nostr ? window.nostr : null;
-    if (nostrApi) {
-      const nip04 =
-        nostrApi.nip04 && typeof nostrApi.nip04.decrypt === "function"
-          ? nostrApi.nip04
-          : null;
-      if (nip04 && !decryptors.has("nip04")) {
-        registerDecryptor("nip04", (payload) => nip04.decrypt(userPubkey, payload));
-      }
-
-      const nip44 =
-        nostrApi.nip44 && typeof nostrApi.nip44 === "object"
-          ? nostrApi.nip44
-          : null;
-      if (nip44) {
-        if (typeof nip44.decrypt === "function" && !decryptors.has("nip44")) {
-          registerDecryptor("nip44", (payload) => nip44.decrypt(userPubkey, payload));
-        }
-        const nip44v2 = nip44.v2 && typeof nip44.v2 === "object" ? nip44.v2 : null;
-        if (nip44v2 && typeof nip44v2.decrypt === "function") {
-          registerDecryptor("nip44_v2", (payload) =>
-            nip44v2.decrypt(userPubkey, payload),
-          );
-          if (!decryptors.has("nip44")) {
-            registerDecryptor("nip44", (payload) =>
-              nip44v2.decrypt(userPubkey, payload),
-            );
-          }
-        }
-      }
     }
 
     if (!decryptors.size) {
@@ -649,6 +697,15 @@ class HashtagPreferencesService {
   }
 
   async publish(options = {}) {
+    // nostrClient imported from nostrClientFacade
+    if (isSessionActor(nostrClient)) {
+      const error = new Error(
+        "Publishing preferences is not allowed for session actors."
+      );
+      error.code = "session-actor-publish-blocked";
+      throw error;
+    }
+
     const targetPubkey = normalizeHexPubkey(
       typeof options?.pubkey === "string" ? options.pubkey : this.activePubkey,
     );
@@ -663,7 +720,10 @@ class HashtagPreferencesService {
       signer = await nostrClient.ensureActiveSignerForPubkey(targetPubkey);
     }
 
-    if (!signer || typeof signer.signEvent !== "function") {
+    const canSign = typeof signer?.canSign === "function"
+      ? signer.canSign()
+      : typeof signer?.signEvent === "function";
+    if (!canSign || typeof signer?.signEvent !== "function") {
       const error = new Error("An active signer is required to publish preferences.");
       error.code = "hashtag-preferences-missing-signer";
       throw error;
@@ -708,31 +768,6 @@ class HashtagPreferencesService {
 
     if (typeof signer.nip04Encrypt === "function") {
       registerEncryptor("nip04", (value) => signer.nip04Encrypt(targetPubkey, value));
-    }
-
-    const nostrApi =
-      typeof window !== "undefined" && window && window.nostr ? window.nostr : null;
-    if (nostrApi) {
-      const nip44 =
-        nostrApi.nip44 && typeof nostrApi.nip44 === "object"
-          ? nostrApi.nip44
-          : null;
-      if (nip44) {
-        if (typeof nip44.encrypt === "function") {
-          registerEncryptor("nip44", (value) => nip44.encrypt(targetPubkey, value));
-        }
-        const nip44v2 = nip44.v2 && typeof nip44.v2 === "object" ? nip44.v2 : null;
-        if (nip44v2 && typeof nip44v2.encrypt === "function") {
-          registerEncryptor("nip44_v2", (value) =>
-            nip44v2.encrypt(targetPubkey, value),
-          );
-        }
-      }
-      if (typeof nostrApi.nip04?.encrypt === "function") {
-        registerEncryptor("nip04", (value) =>
-          nostrApi.nip04.encrypt(targetPubkey, value),
-        );
-      }
     }
 
     if (!encryptors.length) {

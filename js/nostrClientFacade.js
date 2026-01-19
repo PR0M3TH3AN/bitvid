@@ -9,3 +9,13 @@ export {
   nostrClient,
   requestDefaultExtensionPermissions,
 } from "./nostr/defaultClient.js";
+
+export {
+  registerSigner,
+  setActiveSigner,
+  getActiveSigner,
+  resolveActiveSigner,
+  listRegisteredSigners,
+  onActiveSignerChanged,
+  offActiveSignerChanged,
+} from "./nostrClientRegistry.js";

@@ -17,7 +17,9 @@ import { devLogger, userLogger } from "./utils/logger.js";
 import {
   buildAdminListEvent,
   ADMIN_LIST_IDENTIFIERS,
+  NOTE_TYPES,
 } from "./nostrEventSchemas.js";
+import { CACHE_POLICIES, STORAGE_TIERS } from "./nostr/cachePolicies.js";
 import { publishEventToRelay } from "./nostrPublish.js";
 
 const ADMIN_STATE_CACHE_VERSION = 1;
@@ -231,6 +233,11 @@ function hasAnyEntries(state = {}) {
 }
 
 export const readCachedAdminState = () => {
+  const policy = CACHE_POLICIES[NOTE_TYPES.ADMIN_MODERATION_LIST];
+  if (policy?.storage !== STORAGE_TIERS.LOCAL_STORAGE) {
+    return null;
+  }
+
   if (typeof localStorage === "undefined") {
     return null;
   }
@@ -263,6 +270,11 @@ export const readCachedAdminState = () => {
 };
 
 export const writeCachedAdminState = (state) => {
+  const policy = CACHE_POLICIES[NOTE_TYPES.ADMIN_MODERATION_LIST];
+  if (policy?.storage !== STORAGE_TIERS.LOCAL_STORAGE) {
+    return;
+  }
+
   if (typeof localStorage === "undefined") {
     return;
   }
@@ -512,59 +524,56 @@ async function fetchLatestListEvent(filter, contextLabel = "admin-list") {
   const nostrClient = requireNostrClient();
   const relays = ensureNostrReady();
 
-  const normalizedFilter = {};
-  if (Array.isArray(filter?.kinds) && filter.kinds.length) {
-    normalizedFilter.kinds = [...filter.kinds];
-  } else {
-    normalizedFilter.kinds = [30000];
-  }
+  const kind = (Array.isArray(filter?.kinds) && filter.kinds.length)
+    ? filter.kinds[0]
+    : 30000;
 
-  if (typeof filter?.limit === "number") {
-    normalizedFilter.limit = filter.limit;
-  } else {
-    normalizedFilter.limit = 50;
-  }
+  const pubkey = (Array.isArray(filter?.authors) && filter.authors.length)
+    ? filter.authors[0]
+    : "";
 
-  if (Array.isArray(filter?.["#d"]) && filter["#d"].length) {
-    normalizedFilter["#d"] = [...filter["#d"]];
-  }
+  const dTag = (Array.isArray(filter?.["#d"]) && filter["#d"].length)
+    ? filter["#d"][0]
+    : "";
 
-  if (Array.isArray(filter?.authors) && filter.authors.length) {
-    normalizedFilter.authors = [...filter.authors];
+  // Note: fetchListIncrementally expects single kind, pubkey, dTag.
+  // The existing fetchLatestListEvent was a bit generic but admin lists are specific.
+  // If we can't extract specific identifiers, fall back to pool list (no incremental).
+
+  if (!pubkey) {
+     devLogger.warn(`[adminListStore] Cannot use incremental fetch for ${contextLabel} without author.`);
+     // Fallback to old behavior if pubkey missing (e.g. search scenario? unlikely for admin lists)
+     // Actually admin lists always have specific d-tag and author (editor list, whitelist, blacklist, community lists)
+     // So we should be fine.
   }
 
   let events = [];
   try {
-    const combined = await nostrClient.pool.list(relays, [normalizedFilter]);
-    if (Array.isArray(combined)) {
-      events = combined;
+    if (pubkey) {
+      events = await nostrClient.fetchListIncrementally({
+        kind,
+        pubkey,
+        dTag,
+        relayUrls: relays
+      });
+    } else {
+       // Fallback for non-specific queries
+       const normalizedFilter = {
+         kinds: [kind],
+         limit: 50
+       };
+       if (dTag) normalizedFilter["#d"] = [dTag];
+       if (filter.authors) normalizedFilter.authors = filter.authors;
+       events = await nostrClient.pool.list(relays, [normalizedFilter]);
     }
   } catch (error) {
     devLogger.warn(
-      `[adminListStore] Combined relay fetch failed for ${contextLabel}:`,
+      `[adminListStore] Fetch failed for ${contextLabel}:`,
       error,
     );
   }
 
-  if (!events.length) {
-    const perRelay = await Promise.all(
-      relays.map(async (url) => {
-        try {
-          const result = await nostrClient.pool.list([url], [normalizedFilter]);
-          return Array.isArray(result) ? result : [];
-        } catch (error) {
-          devLogger.warn(
-            `[adminListStore] Relay fetch failed for ${contextLabel} on ${url}:`,
-            error,
-          );
-          return [];
-        }
-      })
-    );
-    events = perRelay.flat();
-  }
-
-  if (!events.length) {
+  if (!events || !events.length) {
     return null;
   }
 

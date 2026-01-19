@@ -115,93 +115,118 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
-                        <span>Configure R2 Storage</span>
+                        <span>Storage Configuration</span>
                     </button>
 
-                    <!-- Storage Settings Form -->
+                    <!-- Storage Settings Container -->
                     <div id="section-storage-settings" class="hidden mt-3 space-y-4 bg-surface-alt/50 p-4 rounded-lg border border-border/50">
-                        <div class="flex items-center justify-between">
-                            <h4 class="text-sm font-semibold text-text">Cloudflare R2 Credentials</h4>
-                            <div class="flex items-center gap-2">
-                                <span id="storage-lock-status" class="text-xs text-muted">Locked 🔒</span>
-                                <button type="button" id="btn-storage-unlock" class="text-xs text-accent hover:underline hidden">Unlock</button>
-                                <span id="storage-status" class="text-xs text-muted hidden">Stored locally</span>
+
+                        <!-- Read-Only Summary (for configured storage) -->
+                        <div id="storage-summary-view" class="hidden space-y-3">
+                            <div class="flex items-center justify-between">
+                                <h4 class="text-sm font-semibold text-text">Active Storage</h4>
+                                <div class="flex items-center gap-2">
+                                    <span id="storage-lock-status" class="text-xs text-muted">Locked 🔒</span>
+                                    <button type="button" id="btn-storage-unlock" class="text-xs text-accent hover:underline hidden">Unlock</button>
+                                    <button type="button" id="btn-manage-storage" class="text-xs text-muted hover:text-text hover:underline">Manage Storage</button>
+                                </div>
                             </div>
-                        </div>
-                        <div class="mb-2">
+                            <div class="grid grid-cols-2 gap-2 text-xs">
+                                <div>
+                                    <span class="block text-muted">Provider</span>
+                                    <span id="summary-provider" class="font-medium text-text">--</span>
+                                </div>
+                                <div>
+                                    <span class="block text-muted">Bucket</span>
+                                    <span id="summary-bucket" class="font-medium text-text">--</span>
+                                </div>
+                            </div>
                             <p class="text-xs text-muted">
-                                Required for direct file uploads.
-                                <a href="#view=upload-content" id="link-r2-help" class="text-accent hover:underline font-medium ml-1">
-                                    Read the setup guide.
-                                </a>
+                                Your videos will be uploaded to this bucket.
                             </p>
                         </div>
 
-                         <!-- Target Bucket Display -->
-                        <div class="space-y-1">
-                            <label for="input-r2-bucket-name" class="text-xs font-medium text-text">Target Bucket Name (Required)</label>
-                            <div class="flex gap-2">
-                                <input
-                                    id="input-r2-bucket-name"
-                                    type="text"
-                                    class="input text-xs bg-surface-alt text-muted cursor-text select-all"
-                                    readonly
-                                    placeholder="Log in to see your bucket name"
-                                />
-                                <button
-                                    type="button"
-                                    id="btn-copy-bucket"
-                                    class="btn-ghost px-2 text-xs border border-border/30"
-                                    aria-label="Copy bucket name"
-                                >
-                                    Copy
-                                </button>
+                        <!-- Editable Form (Legacy/Fallback) -->
+                        <div id="storage-form-view" class="space-y-4">
+                            <div class="flex items-center justify-between">
+                                <h4 class="text-sm font-semibold text-text">Storage Credentials</h4>
+                                <span id="storage-status" class="text-xs text-muted hidden">Stored locally</span>
                             </div>
-                            <p class="text-4xs text-muted">Create a bucket with this exact name in Cloudflare R2.</p>
-                        </div>
-
-                        <!-- Step 1: Credentials -->
-                        <div id="step-credentials" class="space-y-3">
-                            <div class="space-y-1">
-                                <label for="input-r2-account" class="text-xs font-medium text-text">Account ID</label>
-                                <input id="input-r2-account" type="text" class="input text-xs" placeholder="xxxxxxxx..." />
-                            </div>
-                            <div class="grid gap-3 md:grid-cols-2">
-                                 <div class="space-y-1">
-                                    <label for="input-r2-key" class="text-xs font-medium text-text">Access Key ID</label>
-                                    <input id="input-r2-key" type="text" class="input text-xs" placeholder="AKIA..." />
-                                </div>
-                                <div class="space-y-1">
-                                    <label for="input-r2-secret" class="text-xs font-medium text-text">Secret Access Key</label>
-                                    <input id="input-r2-secret" type="password" class="input text-xs" />
-                                </div>
-                            </div>
-                            <div class="flex justify-end gap-2 pt-2">
-                                <button type="button" id="btn-next-step" class="btn btn-sm">Next</button>
-                            </div>
-                        </div>
-
-                        <!-- Step 2: Verification -->
-                        <div id="step-verification" class="hidden space-y-3 pt-2 border-t border-border/30">
-                            <div class="space-y-1">
-                                <label for="input-r2-domain" class="text-xs font-medium text-text">Public Bucket URL</label>
-                                <input id="input-r2-domain" type="text" class="input text-xs" placeholder="https://pub-xxx.r2.dev" />
-                                <p class="text-4xs text-muted leading-tight">
-                                    Enable <strong>Public Access</strong> in the Cloudflare dashboard to get your r2.dev URL.
+                            <div class="mb-2">
+                                <p class="text-xs text-muted">
+                                    Required for direct file uploads.
+                                    <a href="#view=upload-content" id="link-r2-help" class="text-accent hover:underline font-medium ml-1">
+                                        Read the setup guide.
+                                    </a>
                                 </p>
                             </div>
 
-                            <!-- Error Container for Verification Failures -->
-                            <div id="container-verification-error" class="hidden bg-critical/10 border border-critical/30 rounded p-3 text-xs text-critical space-y-2">
-                                <p id="text-verification-error" class="font-medium">Verification Failed</p>
-                                <a id="link-cloudflare-guide" href="#" target="_blank" class="block text-center bg-critical/10 hover:bg-critical/20 py-1.5 rounded font-medium transition-colors">
-                                    Open Cloudflare Dashboard &rarr;
-                                </a>
+                             <!-- Target Bucket Display -->
+                            <div class="space-y-1">
+                                <label for="input-r2-bucket-name" class="text-xs font-medium text-text">Target Bucket Name (Required)</label>
+                                <div class="flex gap-2">
+                                    <input
+                                        id="input-r2-bucket-name"
+                                        type="text"
+                                        class="input text-xs bg-surface-alt text-muted cursor-text select-all"
+                                        readonly
+                                        placeholder="Log in to see your bucket name"
+                                    />
+                                    <button
+                                        type="button"
+                                        id="btn-copy-bucket"
+                                        class="btn-ghost px-2 text-xs border border-border/30"
+                                        aria-label="Copy bucket name"
+                                    >
+                                        Copy
+                                    </button>
+                                </div>
+                                <p class="text-4xs text-muted">Create a bucket with this exact name in your storage provider.</p>
                             </div>
 
-                            <div class="flex justify-end gap-2 pt-2">
-                                <button type="button" id="btn-back-step" class="btn-ghost px-2 text-xs">Back</button>
-                                <button type="button" id="btn-save-settings" class="btn btn-sm">Verify & Save</button>
+                            <!-- Step 1: Credentials -->
+                            <div id="step-credentials" class="space-y-3">
+                                <div class="space-y-1">
+                                    <label for="input-r2-account" class="text-xs font-medium text-text">Account ID / Endpoint</label>
+                                    <input id="input-r2-account" type="text" class="input text-xs" placeholder="xxxxxxxx... or https://..." />
+                                </div>
+                                <div class="grid gap-3 md:grid-cols-2">
+                                     <div class="space-y-1">
+                                        <label for="input-r2-key" class="text-xs font-medium text-text">Access Key ID</label>
+                                        <input id="input-r2-key" type="text" class="input text-xs" placeholder="AKIA..." />
+                                    </div>
+                                    <div class="space-y-1">
+                                        <label for="input-r2-secret" class="text-xs font-medium text-text">Secret Access Key</label>
+                                        <input id="input-r2-secret" type="password" class="input text-xs" />
+                                    </div>
+                                </div>
+                                <div class="flex justify-end gap-2 pt-2">
+                                    <button type="button" id="btn-next-step" class="btn btn-sm">Next</button>
+                                </div>
+                            </div>
+
+                            <!-- Step 2: Verification -->
+                            <div id="step-verification" class="hidden space-y-3 pt-2 border-t border-border/30">
+                                <div class="space-y-1">
+                                    <label for="input-r2-domain" class="text-xs font-medium text-text">Public URL</label>
+                                    <input id="input-r2-domain" type="text" class="input text-xs" placeholder="https://pub-xxx.r2.dev" />
+                                    <p class="text-4xs text-muted leading-tight">
+                                        The public URL where your files will be accessible.
+                                    </p>
+                                </div>
+
+                                <!-- Error Container for Verification Failures -->
+                                <div id="container-verification-error" class="hidden bg-critical/10 border border-critical/30 rounded p-3 text-xs text-critical space-y-2">
+                                    <p id="text-verification-error" class="font-medium">Verification Failed</p>
+                                    <a id="link-cloudflare-guide" href="#" target="_blank" class="block text-center bg-critical/10 hover:bg-critical/20 py-1.5 rounded font-medium transition-colors">
+                                        Check Provider Settings &rarr;
+                                    </a>
+                                </div>
+
+                                <div class="flex justify-end gap-2 pt-2">
+                                    <button type="button" id="btn-back-step" class="btn-ghost px-2 text-xs">Back</button>
+                                    <button type="button" id="btn-save-settings" class="btn btn-sm">Verify & Save</button>
+                                </div>
                             </div>
                         </div>
                     </div>

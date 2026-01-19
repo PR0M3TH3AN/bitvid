@@ -22,6 +22,7 @@ import {
   setProfileCacheEntry as setCachedProfileEntry,
   resetModerationSettings,
 } from "../state/cache.js";
+import { profileCache } from "../state/profileCache.js";
 import getDefaultAuthProvider, {
   providers as defaultAuthProviders,
 } from "./authProviders/index.js";
@@ -534,11 +535,13 @@ export default class AuthService {
       if (this.nostrClient && typeof this.nostrClient === "object") {
         this.nostrClient.pubkey = normalized;
       }
+      profileCache.setActiveProfile(normalized);
     } else {
       setPubkey(nextPubkey);
       if (this.nostrClient && typeof this.nostrClient === "object") {
         this.nostrClient.pubkey = trimmed ? trimmed.toLowerCase() : "";
       }
+      profileCache.setActiveProfile(trimmed ? trimmed.toLowerCase() : null);
     }
 
     const npub = candidateNpub;
@@ -1057,15 +1060,9 @@ export default class AuthService {
         });
 
         const newest = selectNewestEvent(aggregated);
-        if (!newest) {
-          return;
+        if (newest && this.nostrClient && typeof this.nostrClient.handleEvent === "function") {
+          this.nostrClient.handleEvent(newest);
         }
-
-        const profile = buildProfileFromEvent(newest);
-        this.setProfileCacheEntry(normalized, profile, {
-          persist: true,
-          reason: "load-own-profile:background",
-        });
       })
       .catch((error) => {
         this.log("[AuthService] Background profile refresh failed", error);
@@ -1093,11 +1090,12 @@ export default class AuthService {
     if (fastResult?.events?.length) {
       const newest = selectNewestEvent(fastResult.events);
       if (newest) {
+        if (this.nostrClient && typeof this.nostrClient.handleEvent === "function") {
+          this.nostrClient.handleEvent(newest);
+        }
         const profile = buildProfileFromEvent(newest);
-        this.setProfileCacheEntry(normalized, profile, {
-          persist: true,
-          reason: "load-own-profile:fast",
-        });
+        // setProfileCacheEntry now delegates to profileCache.setProfile, but handleEvent also does it.
+        // Doing it here returns the profile object which might be needed immediately.
         background.catch(() => {});
         return profile;
       }
@@ -1156,24 +1154,25 @@ export default class AuthService {
         }
       }
 
-      if (newest?.content) {
-        const data = JSON.parse(newest.content);
-        const profile = {
-          name: data.display_name || data.name || FALLBACK_PROFILE.name,
-          picture: data.picture || FALLBACK_PROFILE.picture,
-          about: typeof data.about === "string" ? data.about : FALLBACK_PROFILE.about,
-          website:
-            typeof data.website === "string" ? data.website : FALLBACK_PROFILE.website,
-          banner:
-            typeof data.banner === "string" ? data.banner : FALLBACK_PROFILE.banner,
-          lud16: typeof data.lud16 === "string" ? data.lud16 : FALLBACK_PROFILE.lud16,
-          lud06: typeof data.lud06 === "string" ? data.lud06 : FALLBACK_PROFILE.lud06,
-        };
-        this.setProfileCacheEntry(normalized, profile, {
-          persist: true,
-          reason: forceRefresh ? "force-refresh" : "fetch-profile",
-        });
-        return profile;
+      if (newest) {
+        if (this.nostrClient && typeof this.nostrClient.handleEvent === "function") {
+          this.nostrClient.handleEvent(newest);
+        }
+        if (newest.content) {
+          const data = JSON.parse(newest.content);
+          const profile = {
+            name: data.display_name || data.name || FALLBACK_PROFILE.name,
+            picture: data.picture || FALLBACK_PROFILE.picture,
+            about: typeof data.about === "string" ? data.about : FALLBACK_PROFILE.about,
+            website:
+              typeof data.website === "string" ? data.website : FALLBACK_PROFILE.website,
+            banner:
+              typeof data.banner === "string" ? data.banner : FALLBACK_PROFILE.banner,
+            lud16: typeof data.lud16 === "string" ? data.lud16 : FALLBACK_PROFILE.lud16,
+            lud06: typeof data.lud06 === "string" ? data.lud06 : FALLBACK_PROFILE.lud06,
+          };
+          return profile;
+        }
       }
     } catch (error) {
       this.log("[AuthService] Failed to fetch profile", error);

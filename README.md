@@ -2,8 +2,6 @@
 
 # bitvid - Decentralized Video Sharing
 
-##### IPNS: [k51qzi5uqu5dgwr4oejq9rk41aoe9zcupenby6iqecsk5byc7rx48uecd133a1](https://k51qzi5uqu5dgwr4oejq9rk41aoe9zcupenby6iqecsk5byc7rx48uecd133a1.ipns.dweb.link/)
-
 **bitvid** is a decentralized platform where users can share videos and follow creators with privacy and freedom. Built with a static site architecture, it’s lightweight, efficient, and fully decentralized, making it ideal for hosting or local deployment.
 
 ---
@@ -103,7 +101,13 @@ To run **bitvid** locally:
    cd bitvid
    ```
 
-2. Start a local server:
+2. Install dependencies:
+
+   ```bash
+   npm ci
+   ```
+
+3. Start a local server:
    - Using Python:
      ```bash
      python -m http.server 8000
@@ -113,10 +117,40 @@ To run **bitvid** locally:
      npx serve
      ```
 
-3. Open the site in your browser:
+4. Open the site in your browser:
 
 ```
 http://localhost:8000
+```
+
+### Common Commands
+
+- **Run unit tests**: `npm run test:unit`
+- **Format code**: `npm run format`
+- **Lint code**: `npm run lint`
+
+### Send your first video post
+
+Use the event builders in `js/nostrEventSchemas.js` to construct valid video notes.
+
+```javascript
+import { buildVideoPostEvent } from "./js/nostrEventSchemas.js";
+
+const event = buildVideoPostEvent({
+  pubkey: "your_pubkey_hex",
+  created_at: Math.floor(Date.now() / 1000),
+  dTagValue: "my-first-video",
+  content: {
+    version: 3,
+    title: "My First Video",
+    videoRootId: "my-first-video", // Logical ID, often matches d-tag
+    url: "https://example.com/video.mp4",
+    description: "This is a test video post sent via the SDK."
+    // magnet: "magnet:?xt=urn:btih:..." // Optional fallback
+  }
+});
+
+console.log("Event to publish:", event);
 ```
 
 ### CSS build pipeline
@@ -211,6 +245,27 @@ the entry point that matches their feature set:
 The legacy `js/nostr.js` shim has been removed. Update any remaining
 `import { ... } from './nostr.js';` calls to use the facades above so upgrades
 stay painless.
+
+### Signer Adapters
+
+bitvid exposes a stable signer API through `js/nostrClientFacade.js`, which
+wraps the shared client created in `js/nostr/defaultClient.js` and registers
+signer adapters in `js/nostr/client.js`. Import the facade whenever you need to
+sign events or encrypt payloads so the adapter registry can select the active
+signer, fall back to supported capabilities, and surface permission prompts.
+
+Use the facade for the common, stable entry points:
+
+```js
+import {
+  nostrClient,
+  requestDefaultExtensionPermissions
+} from "./nostrClientFacade.js";
+```
+
+Custom auth providers should still register their signer object through the
+adapter registry in `js/nostr/client.js`, but downstream modules should only
+call the facade to keep API surfaces consistent.
 
 ### Nostr video fetch limits
 
@@ -315,11 +370,16 @@ placeholder at “—” and development builds log a warning—so mixed deploym
    ```bash
    git checkout -b feature/your-feature-name
    ```
-3. **Make Changes**:
+3. **Install Dependencies**:
+   ```bash
+   npm ci
+   ```
+4. **Make Changes**:
    - Ensure your code follows best practices and is well-documented.
-4. **Test**:
+5. **Test**:
+   - Run unit tests: `npm run test:unit`
    - Validate the site functionality locally before submitting.
-5. **Submit a Pull Request**:
+6. **Submit a Pull Request**:
    - Explain your changes and reference any related issues.
 
 ### Contribution Guidelines

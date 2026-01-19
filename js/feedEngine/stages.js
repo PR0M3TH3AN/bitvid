@@ -10,9 +10,24 @@ import nostrService from "../services/nostrService.js";
 import moderationService from "../services/moderationService.js";
 import logger from "../utils/logger.js";
 import { dedupeToNewestByRoot } from "../utils/videoDeduper.js";
-import { isPlainObject, toSet, hasDisinterestedTag } from "./utils.js";
+import { normalizeHashtag } from "../utils/hashtagNormalization.js";
+import { isPlainObject, toSet } from "./utils.js";
 
 const FEED_HIDE_BYPASS_NAMES = new Set(["home", "recent"]);
+
+function normalizeTagSet(values) {
+  const normalized = new Set();
+  const source = toSet(values);
+
+  for (const value of source) {
+    const tag = normalizeHashtag(value);
+    if (tag) {
+      normalized.add(tag);
+    }
+  }
+
+  return normalized;
+}
 
 function resolveDedupeFunction(customDedupe) {
   if (typeof customDedupe === "function") {
@@ -258,6 +273,107 @@ export function createResolvePostedAtStage({
   };
 }
 
+export function createTagPreferenceFilterStage({
+  stageName = "tag-preference-filter",
+} = {}) {
+  return async function tagPreferenceFilterStage(items = [], context = {}) {
+    const tagPreferences = context?.runtime?.tagPreferences;
+    const interests = normalizeTagSet(tagPreferences?.interests);
+    const disinterests = normalizeTagSet(tagPreferences?.disinterests);
+    if (!interests.size && !disinterests.size) {
+      return items;
+    }
+
+    const results = [];
+
+    for (const item of items) {
+      const video = item?.video;
+      if (!video || typeof video !== "object") {
+        results.push(item);
+        continue;
+      }
+
+      const videoTags = new Set();
+      if (Array.isArray(video.tags)) {
+        for (const tag of video.tags) {
+          if (Array.isArray(tag) && tag[0] === "t" && typeof tag[1] === "string") {
+            const normalized = normalizeHashtag(tag[1]);
+            if (normalized) {
+              videoTags.add(normalized);
+            }
+          }
+        }
+      }
+
+      if (Array.isArray(video.nip71?.hashtags)) {
+        for (const tag of video.nip71.hashtags) {
+          if (typeof tag === "string") {
+            const normalized = normalizeHashtag(tag);
+            if (normalized) {
+              videoTags.add(normalized);
+            }
+          }
+        }
+      }
+
+      let disinterested = false;
+      if (disinterests.size) {
+        for (const tag of videoTags) {
+          if (disinterests.has(tag)) {
+            disinterested = true;
+            break;
+          }
+        }
+      }
+
+      if (disinterested) {
+        context?.addWhy?.({
+          stage: stageName,
+          type: "filter",
+          reason: "disinterested-tag",
+          videoId: typeof video.id === "string" ? video.id : null,
+          pubkey: typeof video.pubkey === "string" ? video.pubkey : null,
+        });
+        continue;
+      }
+
+      let matchedInterests = [];
+      if (interests.size) {
+        matchedInterests = [...videoTags].filter((tag) => interests.has(tag));
+        if (matchedInterests.length === 0) {
+          context?.addWhy?.({
+            stage: stageName,
+            type: "filter",
+            reason: "no-interest-match",
+            videoId: typeof video.id === "string" ? video.id : null,
+            pubkey: typeof video.pubkey === "string" ? video.pubkey : null,
+          });
+          continue;
+        }
+      }
+
+      if (matchedInterests.length > 0) {
+        if (!isPlainObject(item.metadata)) {
+          item.metadata = {};
+        }
+        item.metadata.matchedInterests = matchedInterests;
+        context?.addWhy?.({
+          stage: stageName,
+          type: "filter",
+          reason: "matched-interests",
+          videoId: typeof video.id === "string" ? video.id : null,
+          pubkey: typeof video.pubkey === "string" ? video.pubkey : null,
+          tags: matchedInterests,
+        });
+      }
+
+      results.push(item);
+    }
+
+    return results;
+  };
+}
+
 export function createBlacklistFilterStage({
   stageName = "blacklist-filter",
   shouldIncludeVideo,
@@ -276,27 +392,12 @@ export function createBlacklistFilterStage({
 
     const options = { blacklistedEventIds: blacklist, isAuthorBlocked };
 
-    const tagPreferences = context?.runtime?.tagPreferences;
-    const disinterests = toSet(tagPreferences?.disinterests);
-    const hasTagPreferences = disinterests.size > 0;
-
     const results = [];
 
     for (const item of items) {
       const video = item?.video;
       if (!video || typeof video !== "object") {
         results.push(item);
-        continue;
-      }
-
-      if (hasTagPreferences && hasDisinterestedTag(video, disinterests)) {
-        context?.addWhy?.({
-          stage: stageName,
-          type: "filter",
-          reason: "disinterested-tag",
-          videoId: typeof video.id === "string" ? video.id : null,
-          pubkey: typeof video.pubkey === "string" ? video.pubkey : null,
-        });
         continue;
       }
 
@@ -483,7 +584,7 @@ export function createModerationStage({
     defaultValue: DEFAULT_BLUR_THRESHOLD,
     fallbackValue: DEFAULT_BLUR_THRESHOLD,
   });
-  const resolveMuteHideThreshold = createThresholdResolver(
+  const resolveMuteHideThresholdBase = createThresholdResolver(
     trustedMuteHideThreshold,
     {
       runtimeKey: "trustedMuteHideThreshold",
@@ -492,6 +593,35 @@ export function createModerationStage({
       allowInfinity: true,
     },
   );
+  const resolveMuteHideThreshold = (context, category) => {
+    const base = resolveMuteHideThresholdBase(context);
+    const normalizedCategory =
+      typeof category === "string" ? category.trim().toLowerCase() : "";
+    if (!normalizedCategory) {
+      return base;
+    }
+
+    const runtimeThresholds =
+      context?.runtime && typeof context.runtime === "object"
+        ? context.runtime.moderationThresholds
+        : null;
+
+    const thresholdMap =
+      runtimeThresholds && typeof runtimeThresholds === "object"
+        ? runtimeThresholds.trustedMuteHideThresholds
+        : null;
+
+    if (!thresholdMap || typeof thresholdMap !== "object") {
+      return base;
+    }
+
+    const override = thresholdMap[normalizedCategory];
+    if (Number.isFinite(override)) {
+      return Math.max(0, Math.floor(override));
+    }
+
+    return base;
+  };
   const resolveReportHideThreshold = createThresholdResolver(
     trustedReportHideThreshold,
     {
@@ -529,7 +659,6 @@ export function createModerationStage({
 
     const normalizedAutoplayThreshold = resolveAutoplayThreshold(context);
     const normalizedBlurThreshold = resolveBlurThreshold(context);
-    const normalizedMuteHideThreshold = resolveMuteHideThreshold(context);
     const normalizedReportHideThreshold = resolveReportHideThreshold(context);
 
     const activeIds = new Set();
@@ -779,6 +908,9 @@ export function createModerationStage({
       let trustedMuted = false;
       let trustedMuters = [];
       let trustedMuteCount = 0;
+      let trustedMuteCountTotal = 0;
+      let trustedMuteCategory = "";
+      let trustedMuteCountsByCategory = null;
       let viewerMuted = false;
       if (videoId) {
         try {
@@ -839,6 +971,21 @@ export function createModerationStage({
                 });
             }
           }
+          if (
+            trustedMuted &&
+            typeof resolvedService.getTrustedMuteCountsForAuthor === "function"
+          ) {
+            const summary = resolvedService.getTrustedMuteCountsForAuthor(authorHex);
+            if (summary && typeof summary === "object") {
+              trustedMuteCountTotal = Number.isFinite(summary.total)
+                ? Math.max(0, Math.floor(summary.total))
+                : 0;
+              trustedMuteCountsByCategory =
+                summary.categories && typeof summary.categories === "object"
+                  ? { ...summary.categories }
+                  : null;
+            }
+          }
           if (typeof resolvedService.isAuthorMutedByViewer === "function") {
             viewerMuted = resolvedService.isAuthorMutedByViewer(authorHex) === true;
           }
@@ -851,19 +998,75 @@ export function createModerationStage({
       }
 
       if (trustedMuted) {
-        trustedMuteCount = Number.isFinite(video?.moderation?.trustedMuteCount)
+        trustedMuteCountTotal = Number.isFinite(video?.moderation?.trustedMuteCount)
           ? Math.max(0, Math.floor(video.moderation.trustedMuteCount))
-          : trustedMuters.length;
-        if (!trustedMuteCount) {
-          trustedMuteCount = trustedMuters.length;
+          : trustedMuteCountTotal || trustedMuters.length;
+        if (!trustedMuteCountTotal) {
+          trustedMuteCountTotal = trustedMuters.length;
+        }
+        if (trustedMuteCountTotal <= 0) {
+          trustedMuteCountTotal = Math.max(1, trustedMuters.length || 1);
+        }
+        trustedMuteCategory = normalizedReportType;
+        if (
+          trustedMuteCountsByCategory &&
+          typeof trustedMuteCountsByCategory === "object"
+        ) {
+          const categoryCount =
+            trustedMuteCategory &&
+            Number.isFinite(trustedMuteCountsByCategory[trustedMuteCategory])
+              ? Math.max(
+                  0,
+                  Math.floor(trustedMuteCountsByCategory[trustedMuteCategory]),
+                )
+              : null;
+          if (categoryCount !== null && categoryCount !== undefined) {
+            trustedMuteCount = categoryCount;
+          } else if (!trustedMuteCategory) {
+            let bestCategory = "";
+            let bestCount = 0;
+            for (const [category, count] of Object.entries(
+              trustedMuteCountsByCategory,
+            )) {
+              if (!Number.isFinite(count)) {
+                continue;
+              }
+              const normalizedCategory = category.trim().toLowerCase();
+              const normalizedCount = Math.max(0, Math.floor(count));
+              if (!normalizedCategory) {
+                continue;
+              }
+              if (normalizedCount > bestCount) {
+                bestCount = normalizedCount;
+                bestCategory = normalizedCategory;
+              }
+            }
+            if (bestCategory) {
+              trustedMuteCategory = bestCategory;
+              trustedMuteCount = bestCount;
+            } else {
+              trustedMuteCount = trustedMuteCountTotal;
+            }
+          } else {
+            trustedMuteCount = trustedMuteCountTotal;
+          }
+        } else {
+          trustedMuteCount = trustedMuteCountTotal;
         }
         if (trustedMuteCount <= 0) {
-          trustedMuteCount = Math.max(1, trustedMuters.length || 1);
+          trustedMuteCount = trustedMuteCountTotal || Math.max(1, trustedMuters.length || 1);
         }
       } else {
         trustedMuteCount = 0;
+        trustedMuteCountTotal = 0;
+        trustedMuteCategory = "";
         trustedMuters = [];
       }
+
+      const normalizedMuteHideThreshold = resolveMuteHideThreshold(
+        context,
+        trustedMuteCategory,
+      );
 
       const blockAutoplay =
         trustedCount >= normalizedAutoplayThreshold || trustedMuted || viewerMuted;

@@ -3,7 +3,11 @@
 import { validateInstanceConfig } from "../config/validate-config.js";
 import { ASSET_VERSION } from "../config/asset-version.js";
 import "./bufferPolyfill.js";
-import { setApplication, setApplicationReady } from "./applicationContext.js";
+import {
+  getApplication,
+  setApplication,
+  setApplicationReady,
+} from "./applicationContext.js";
 import nostrService from "./services/nostrService.js";
 import r2Service from "./services/r2Service.js";
 import { loadView, viewInitRegistry } from "./viewManager.js";
@@ -12,6 +16,7 @@ import {
   initThemeController,
   refreshThemeControls,
 } from "./themeController.js";
+import { setHashView } from "./hashView.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import {
   prepareStaticModal,
@@ -28,6 +33,7 @@ import {
   TIP_JAR_URL,
   isLockdownMode,
 } from "./config.js";
+import { createHashChangeHandler } from "./hashChangeHandler.js";
 import AuthService from "./services/authService.js";
 import getAuthProvider, {
   providers as authProviders,
@@ -685,23 +691,134 @@ async function bootstrapInterface() {
       try {
         await applicationReadyPromise;
       } catch (error) {
-        userLogger.info("Search function is coming soon.");
+        // Continue even if app fails full initialization, if possible.
+      }
+
+      const input = document.getElementById("headerSearchInput");
+      const query = input && input.value ? input.value.trim() : "";
+
+      if (!query) {
         return;
       }
 
-      if (application && typeof application.showStatus === "function") {
-        try {
-          application.showStatus("Search function is coming soon.", {
-            autoHideMs: 3500,
-            showSpinner: false,
-          });
-          return;
-        } catch (error) {
-          // fall through to logger fallback
+      // Check if it's an npub
+      try {
+        if (
+          window.NostrTools &&
+          window.NostrTools.nip19 &&
+          query.startsWith("npub1")
+        ) {
+          const decoded = window.NostrTools.nip19.decode(query);
+          if (decoded && decoded.type === "npub") {
+            setHashView(`channel-profile&npub=${encodeURIComponent(query)}`);
+            return;
+          }
         }
+      } catch (error) {
+        // Not a valid npub, proceed to search
       }
 
-      userLogger.info("Search function is coming soon.");
+      setHashView(`search&q=${encodeURIComponent(query)}`);
+    });
+  }
+
+  // Mobile Search Logic
+  const mobileSearchFab = document.getElementById("mobileSearchFab");
+  const mobileSearchContainer = document.getElementById(
+    "mobileSearchContainer",
+  );
+  const mobileSearchForm = document.getElementById("mobileSearchForm");
+  const mobileSearchInput = document.getElementById("mobileSearchInput");
+
+  if (mobileSearchFab && mobileSearchContainer) {
+    const openMobileSearch = () => {
+      mobileSearchFab.classList.add("hidden");
+      mobileSearchContainer.classList.remove("hidden");
+      if (mobileSearchInput) {
+        mobileSearchInput.focus();
+      }
+    };
+
+    const closeMobileSearch = () => {
+      mobileSearchContainer.classList.add("hidden");
+      mobileSearchFab.classList.remove("hidden");
+    };
+
+    mobileSearchFab.addEventListener("click", (e) => {
+      e.stopPropagation(); // Prevent document click from immediately closing it
+      openMobileSearch();
+    });
+
+    // Close when clicking outside
+    document.addEventListener("click", (event) => {
+      // If mobile search is not visible, do nothing
+      if (mobileSearchContainer.classList.contains("hidden")) {
+        return;
+      }
+
+      // If click is on the FAB, do nothing (handled by FAB listener)
+      if (mobileSearchFab.contains(event.target)) {
+        return;
+      }
+
+      // If click is inside the search container, do nothing
+      if (mobileSearchContainer.contains(event.target)) {
+        return;
+      }
+
+      // Otherwise, close it
+      closeMobileSearch();
+    });
+
+    // Prevent clicks inside the container from closing it (redundant with above check but safe)
+    mobileSearchContainer.addEventListener("click", (e) => {
+      e.stopPropagation();
+    });
+  }
+
+  if (mobileSearchForm) {
+    mobileSearchForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      try {
+        await applicationReadyPromise;
+      } catch (error) {
+        // Continue even if app fails full initialization, if possible.
+      }
+
+      const query =
+        mobileSearchInput && mobileSearchInput.value
+          ? mobileSearchInput.value.trim()
+          : "";
+
+      if (!query) {
+        return;
+      }
+
+      // Check if it's an npub (Copy logic from headerSearchForm)
+      try {
+        if (
+          window.NostrTools &&
+          window.NostrTools.nip19 &&
+          query.startsWith("npub1")
+        ) {
+          const decoded = window.NostrTools.nip19.decode(query);
+          if (decoded && decoded.type === "npub") {
+            setHashView(`channel-profile&npub=${encodeURIComponent(query)}`);
+            // Close search on submit
+            mobileSearchContainer.classList.add("hidden");
+            mobileSearchFab.classList.remove("hidden");
+            return;
+          }
+        }
+      } catch (error) {
+        // Not a valid npub, proceed to search
+      }
+
+      setHashView(`search&q=${encodeURIComponent(query)}`);
+      // Close search on submit
+      mobileSearchContainer.classList.add("hidden");
+      mobileSearchFab.classList.remove("hidden");
     });
   }
 
@@ -1146,23 +1263,6 @@ if (document.readyState === "loading") {
 -------------------------------------------- */
 
 /**
- * Sets the location.hash to "#view=<viewName>",
- * removing any ?modal=... or ?v=... from the query string.
- */
-export function setHashView(viewName) {
-  const url = new URL(window.location.href);
-  url.searchParams.delete("modal");
-  url.searchParams.delete("v");
-  const newUrl = url.pathname + url.search + `#view=${viewName}`;
-  window.history.replaceState({}, "", newUrl);
-
-  if (typeof viewName === "string" && viewName.toLowerCase() === "history") {
-  }
-
-  handleHashChange();
-}
-
-/**
  * Sets a query param (e.g. ?modal=xxx or ?v=yyy),
  * removing any "#view=..." from the hash to avoid collisions.
  */
@@ -1262,46 +1362,11 @@ function handleQueryParams() {
   }
 }
 
-async function handleHashChange() {
-  devLogger.log("handleHashChange called, current hash =", window.location.hash);
-
-  try {
-    await applicationReadyPromise;
-  } catch (error) {
-    userLogger.warn(
-      "Proceeding with hash handling despite application initialization failure:",
-      error
-    );
-  }
-
-  const hash = window.location.hash || "";
-  // Use a regex that captures up to the first ampersand or end of string.
-  // E.g. "#view=channel-profile&npub=..." => viewName = "channel-profile"
-  const match = hash.match(/^#view=([^&]+)/);
-
-  try {
-    if (!match || !match[1]) {
-      // No valid "#view=..." => default to "most-recent-videos"
-      await loadView("views/most-recent-videos.html");
-      const initFn = viewInitRegistry["most-recent-videos"];
-      if (typeof initFn === "function") {
-        await initFn();
-      }
-      return;
-    }
-
-    const viewName = match[1]; // only the chunk before any '&'
-    if (typeof viewName === "string" && viewName.toLowerCase() === "history") {
-    }
-    const viewUrl = `views/${viewName}.html`;
-
-    // Now dynamically load that partial, then call its init function
-    await loadView(viewUrl);
-    const initFn = viewInitRegistry[viewName];
-    if (typeof initFn === "function") {
-      await initFn();
-    }
-  } catch (error) {
-    userLogger.error("Failed to handle hash change:", error);
-  }
-}
+const handleHashChange = createHashChangeHandler({
+  getApplication,
+  getApplicationReady: () => applicationReadyPromise,
+  loadView,
+  viewInitRegistry,
+  devLogger,
+  userLogger,
+});

@@ -846,13 +846,21 @@
 
   .moderation-badge__icon {
     @apply inline-flex h-5 w-5 items-center justify-center rounded-full bg-status-warning-surface text-status-warning-on;
-    background-color: color-mix(in srgb, var(--status-warning) 18%, transparent);
+    background-color: color-mix(
+      in srgb,
+      var(--status-warning) 18%,
+      transparent
+    );
     color: var(--status-warning-on);
   }
 
   .moderation-badge[data-variant="neutral"] .moderation-badge__icon {
     @apply bg-status-neutral-surface text-status-neutral-on;
-    background-color: color-mix(in srgb, var(--status-neutral) 18%, transparent);
+    background-color: color-mix(
+      in srgb,
+      var(--status-neutral) 18%,
+      transparent
+    );
     color: var(--status-neutral-on);
   }
 
@@ -861,40 +869,65 @@
   }
 
   .moderation-badge__text {
-    @apply text-xs font-semibold tracking-tight whitespace-nowrap;
+    @apply whitespace-nowrap text-xs font-semibold tracking-tight;
   }
 
   .moderation-badge__action {
-    @apply inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold normal-case tracking-tight transition duration-150 ease-out bg-status-warning-surface border-status-warning-border text-status-warning-on;
-    background-color: color-mix(in srgb, var(--status-warning) 16%, transparent);
-    border-color: color-mix(in srgb, var(--status-warning-border) 80%, transparent);
+    @apply inline-flex items-center gap-1.5 rounded-full border border-status-warning-border bg-status-warning-surface px-3 py-1 text-xs font-semibold normal-case tracking-tight text-status-warning-on transition duration-150 ease-out;
+    background-color: color-mix(
+      in srgb,
+      var(--status-warning) 16%,
+      transparent
+    );
+    border-color: color-mix(
+      in srgb,
+      var(--status-warning-border) 80%,
+      transparent
+    );
     color: var(--status-warning-on);
   }
 
   .moderation-badge[data-variant="warning"] .moderation-badge__action:hover {
-    background-color: color-mix(in srgb, var(--status-warning) 24%, transparent);
+    background-color: color-mix(
+      in srgb,
+      var(--status-warning) 24%,
+      transparent
+    );
   }
 
   .moderation-badge[data-variant="neutral"] .moderation-badge__action {
-    @apply bg-status-neutral-surface border-status-neutral-border text-status-neutral-on;
-    background-color: color-mix(in srgb, var(--status-neutral) 16%, transparent);
-    border-color: color-mix(in srgb, var(--status-neutral-border) 80%, transparent);
+    @apply border-status-neutral-border bg-status-neutral-surface text-status-neutral-on;
+    background-color: color-mix(
+      in srgb,
+      var(--status-neutral) 16%,
+      transparent
+    );
+    border-color: color-mix(
+      in srgb,
+      var(--status-neutral-border) 80%,
+      transparent
+    );
     color: var(--status-neutral-on);
   }
 
   .moderation-badge[data-variant="neutral"] .moderation-badge__action:hover {
-    background-color: color-mix(in srgb, var(--status-neutral) 24%, transparent);
+    background-color: color-mix(
+      in srgb,
+      var(--status-neutral) 24%,
+      transparent
+    );
   }
 
   .moderation-badge__action:focus-visible {
-    outline: var(--outline-thick-width)
-      solid color-mix(in srgb, var(--status-warning) 38%, transparent);
+    outline: var(--outline-thick-width) solid
+      color-mix(in srgb, var(--status-warning) 38%, transparent);
     outline-offset: var(--space-3xs);
   }
 
-  .moderation-badge[data-variant="neutral"] .moderation-badge__action:focus-visible {
-    outline: var(--outline-thick-width)
-      solid color-mix(in srgb, var(--status-neutral) 38%, transparent);
+  .moderation-badge[data-variant="neutral"]
+    .moderation-badge__action:focus-visible {
+    outline: var(--outline-thick-width) solid
+      color-mix(in srgb, var(--status-neutral) 38%, transparent);
   }
 
   .moderation-badge__action[disabled] {
@@ -1082,7 +1115,9 @@
   .card:focus-within {
     --video-card-lift-translate-y: var(--motion-video-card-hover-translate);
     --video-card-backdrop-opacity: 0.425;
-    --video-card-backdrop-translate-y: var(--motion-video-card-backdrop-translate);
+    --video-card-backdrop-translate-y: var(
+      --motion-video-card-backdrop-translate
+    );
     --video-card-backdrop-scale: 1.12;
     --video-card-backdrop-blur: var(--blur-video-card-backdrop-strong);
     @apply shadow-lg;
@@ -1493,7 +1528,9 @@
     position: relative;
   }
 
-  #playerModal .video-modal__video[data-visual-state="blurred"] .video-modal__media {
+  #playerModal
+    .video-modal__video[data-visual-state="blurred"]
+    .video-modal__media {
     @apply transition duration-base ease-in-out;
     filter: blur(var(--blur-thumbnail-blur));
     transform: scale(1.05);
@@ -2076,9 +2113,9 @@
     width: 100%;
   }
 
-  #playerModal .player-modal__module-item > .card:not(
-      .player-modal__similar-card
-    ) {
+  #playerModal
+    .player-modal__module-item
+    > .card:not(.player-modal__similar-card) {
     @apply flex w-full flex-row flex-nowrap items-stretch gap-md;
   }
 
@@ -2164,7 +2201,7 @@
   }
 
   .player-modal__similar-card-author {
-    @apply flex items-center min-w-0;
+    @apply flex min-w-0 items-center;
   }
 
   .player-modal__similar-card-author-meta {
@@ -2398,7 +2435,7 @@
   }
 
   .video-modal__actions-row {
-    @apply flex w-full flex-wrap items-start gap-y-3 gap-x-3 sm:gap-x-4;
+    @apply flex w-full flex-wrap items-start gap-x-3 gap-y-3 sm:gap-x-4;
   }
 
   .video-modal__reactions,
@@ -2571,11 +2608,8 @@
     margin: 0;
     padding: var(--space-md);
     border-radius: var(--radius-lg);
-    border: var(--border-width-hairline) dashed color-mix(
-      in srgb,
-      var(--border-default) 40%,
-      transparent
-    );
+    border: var(--border-width-hairline) dashed
+      color-mix(in srgb, var(--border-default) 40%, transparent);
     background-color: var(--surface-alt);
   }
 
@@ -2680,21 +2714,14 @@
   .comment-thread__load-more:focus-visible {
     border-color: var(--border-default);
     color: var(--text-primary);
-    background-color: color-mix(
-      in srgb,
-      var(--surface-alt) 70%,
-      transparent
-    );
+    background-color: color-mix(in srgb, var(--surface-alt) 70%, transparent);
   }
 
   .comment-thread__disabled {
     @apply text-sm text-muted;
     border-radius: var(--radius-lg);
-    border: var(--border-width-hairline) dashed color-mix(
-      in srgb,
-      var(--border-default) 32%,
-      transparent
-    );
+    border: var(--border-width-hairline) dashed
+      color-mix(in srgb, var(--border-default) 32%, transparent);
     background-color: var(--surface-alt);
     padding: var(--space-md);
   }
@@ -3239,11 +3266,11 @@
   }
 
   .watch-history-card__primary {
-    @apply flex min-w-0 flex-1 flex-wrap items-stretch gap-4 sm:flex-nowrap;
+    @apply flex min-w-0 flex-1 flex-col items-stretch gap-4 sm:flex-row;
   }
 
   .watch-history-card__thumbnail {
-    @apply block flex-none text-text no-underline sm:w-56;
+    @apply block w-56 max-w-full flex-none text-text no-underline;
   }
 
   .watch-history-card__thumbnailInner {
@@ -3352,7 +3379,9 @@
     --text-status-warning-on: var(--color-warning-on);
   }
 
-  #playerModal .video-modal__moderation-bar .moderation-badge[data-variant="neutral"] {
+  #playerModal
+    .video-modal__moderation-bar
+    .moderation-badge[data-variant="neutral"] {
     color: var(--color-text);
   }
 }
@@ -3716,8 +3745,8 @@
     flex-direction: column;
     align-items: center;
     gap: var(--space-md);
-    padding: calc(var(--space-xl) + env(safe-area-inset-top))
-      var(--space-lg) var(--space-lg);
+    padding: calc(var(--space-xl) + env(safe-area-inset-top)) var(--space-lg)
+      var(--space-lg);
     pointer-events: none;
     opacity: 0;
     transform: translateY(var(--toast-translate));

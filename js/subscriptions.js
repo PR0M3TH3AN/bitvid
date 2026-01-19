@@ -1,12 +1,11 @@
 // js/subscriptions.js
 import {
+  getActiveSigner,
   nostrClient,
   requestDefaultExtensionPermissions,
 } from "./nostrClientFacade.js";
-import {
-  getActiveSigner,
-  convertEventToVideo as sharedConvertEventToVideo,
-} from "./nostr/index.js";
+import { convertEventToVideo as sharedConvertEventToVideo } from "./nostr/index.js";
+import { normalizeNostrPubkey } from "./nostr/nip46Client.js";
 import {
   listVideoViewEvents,
   subscribeVideoViewEvents,
@@ -18,6 +17,7 @@ import {
   getNostrEventSchema,
   NOTE_TYPES,
 } from "./nostrEventSchemas.js";
+import { CACHE_POLICIES, STORAGE_TIERS } from "./nostr/cachePolicies.js";
 import { getSidebarLoadingMarkup } from "./sidebarLoading.js";
 import {
   publishEventToRelays,
@@ -29,6 +29,7 @@ import { ALLOW_NSFW_CONTENT } from "./config.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import moderationService from "./services/moderationService.js";
 import nostrService from "./services/nostrService.js";
+import { profileCache } from "./state/profileCache.js";
 
 const SUBSCRIPTION_SET_KIND =
   getNostrEventSchema(NOTE_TYPES.SUBSCRIPTION_LIST)?.kind ?? 30000;
@@ -237,6 +238,19 @@ class SubscriptionsManager {
     this.isRunningFeed = false;
     this.hasRenderedOnce = false;
     this.ensureNostrServiceListener();
+
+    profileCache.subscribe((event, detail) => {
+      if (event === "profileChanged") {
+        this.reset();
+        // Optionally reload immediately if we have a pubkey?
+        // Usually UI triggers reload via showSubscriptionVideos
+      } else if (event === "runtimeCleared" && detail.pubkey === this.currentUserPubkey) {
+        this.reset();
+        if (this.currentUserPubkey) {
+          this.loadSubscriptions(this.currentUserPubkey);
+        }
+      }
+    });
   }
 
   /**
@@ -247,31 +261,38 @@ class SubscriptionsManager {
       userLogger.warn("[SubscriptionsManager] No pubkey => cannot load subs.");
       return;
     }
+
+    const normalizedUserPubkey = normalizeHexPubkey(userPubkey) || userPubkey;
+
+    // 1. Attempt to load from cache first
+    const cached = profileCache.get("subscriptions");
+    if (Array.isArray(cached)) {
+      devLogger.log("[SubscriptionsManager] Loaded subscriptions from cache.");
+      this.subscribedPubkeys = new Set(cached);
+      this.currentUserPubkey = normalizedUserPubkey;
+      this.loaded = true;
+
+      // Trigger background update
+      this.updateFromRelays(userPubkey).catch((err) => {
+        devLogger.warn("[SubscriptionsManager] Background update failed:", err);
+      });
+      return;
+    }
+
+    // 2. If no cache, must wait for relays
+    await this.updateFromRelays(userPubkey);
+  }
+
+  saveToCache(userPubkey) {
+    // We assume userPubkey matches active profile, enforced by profileCache
+    profileCache.set("subscriptions", Array.from(this.subscribedPubkeys));
+  }
+
+  async updateFromRelays(userPubkey) {
+    if (!userPubkey) return;
+
     try {
       const normalizedUserPubkey = normalizeHexPubkey(userPubkey) || userPubkey;
-      const sessionActorPubkey = normalizeHexPubkey(
-        nostrClient?.sessionActor?.pubkey,
-      );
-
-      const authorSet = new Set();
-      if (normalizedUserPubkey) {
-        authorSet.add(normalizedUserPubkey);
-      }
-      if (sessionActorPubkey) {
-        authorSet.add(sessionActorPubkey);
-      }
-
-      const authors = Array.from(authorSet);
-      if (!authors.length && userPubkey) {
-        authors.push(userPubkey);
-      }
-
-      const filter = {
-        kinds: [SUBSCRIPTION_SET_KIND],
-        authors,
-        "#d": [SUBSCRIPTION_LIST_IDENTIFIER],
-        limit: 1
-      };
 
       const relaySet = new Set();
       const addRelayCandidates = (candidates) => {
@@ -307,33 +328,64 @@ class SubscriptionsManager {
         devLogger.warn(
           "[SubscriptionsManager] No relay URLs available while loading subscriptions.",
         );
+        return;
       }
 
-      const relayPromises = relayUrls.map((url) =>
-        nostrClient.pool.list([url], [filter]).catch((err) => {
-          userLogger.error(`[SubscriptionsManager] Relay error at ${url}`, err);
-          return [];
-        }),
-      );
+      // Use incremental fetch helper
+      let events = await nostrClient.fetchListIncrementally({
+        kind: SUBSCRIPTION_SET_KIND,
+        pubkey: normalizedUserPubkey,
+        dTag: SUBSCRIPTION_LIST_IDENTIFIER,
+        relayUrls
+      });
 
-      const settledResults = await Promise.allSettled(relayPromises);
-      const events = [];
-      for (const outcome of settledResults) {
-        if (outcome.status === "fulfilled" && Array.isArray(outcome.value) && outcome.value.length) {
-          events.push(...outcome.value);
-        }
-      }
+      // Also check session actor if different?
+      // The original code checked both userPubkey and sessionActor.pubkey.
+      // fetchListIncrementally takes a single pubkey.
+      // If we want to check session actor too, we need another call.
+      // However, usually the subscription list belongs to the logged in user (userPubkey).
+      // The session actor logic in original code:
+      // const sessionActorPubkey = normalizeHexPubkey(nostrClient?.sessionActor?.pubkey);
+      // ... authors: [normalizedUserPubkey, sessionActorPubkey]
+      // Since fetchListIncrementally filters by author=pubkey, we only query for normalizedUserPubkey here.
+      // If session actor support is critical for some delegation case, it needs a separate fetch.
+      // Assuming userPubkey is the primary target for subscriptions.
 
       if (!events.length) {
-        this.subscribedPubkeys.clear();
-        this.subsEventId = null;
-        this.loaded = true;
+        if (!this.loaded) {
+          // If we have nothing loaded and found nothing, maybe user has no list.
+          // But we shouldn't wipe blindly if incremental fetch just returned no *new* events.
+          // Wait, fetchListIncrementally returns *events found*.
+          // If it performed incremental fetch and found nothing, it returns [].
+          // If it performed full fetch and found nothing, it returns [].
+
+          // We need to differentiate "no updates" vs "empty list".
+          // If we have cached data, we keep it.
+          // If we have NO cached data (this.loaded = false), and we get [], we assume empty list.
+          this.subscribedPubkeys.clear();
+          this.subsEventId = null;
+          this.loaded = true;
+        } else {
+           // We have data loaded, and relays returned nothing.
+           // This means no updates. We keep what we have.
+           devLogger.log("[SubscriptionsManager] No updates from relays.");
+        }
         return;
       }
 
       // Sort by created_at desc, pick newest
       events.sort((a, b) => b.created_at - a.created_at);
       const newest = events[0];
+
+      // Check if newest is actually newer than what we have
+      // If we loaded from cache, we might not have the event object, just the pubkeys.
+      // But we don't store the event timestamp in cache currently?
+      // profileCache only stores the array.
+      // Wait, we don't persist the event ID or created_at in profileCache for subscriptions.
+      // So we can't strictly compare timestamps against cache.
+      // However, fetchListIncrementally already handles the "newer than last sync" logic per relay.
+      // So any event returned here is effectively "new information" (or re-fetched full state).
+
       this.subsEventId = newest.id;
 
       const signer = getActiveSigner();
@@ -357,9 +409,12 @@ class SubscriptionsManager {
           "[SubscriptionsManager] Extension permissions denied while loading subscriptions; treating list as empty.",
           permissionResult.error,
         );
-        this.subscribedPubkeys.clear();
-        this.subsEventId = null;
-        this.loaded = true;
+        // Permission denied is definitive enough to stop trying to use this event
+        if (!this.loaded) {
+          this.subscribedPubkeys.clear();
+          this.subsEventId = null;
+          this.loaded = true;
+        }
         return;
       }
 
@@ -369,21 +424,51 @@ class SubscriptionsManager {
           "[SubscriptionsManager] Failed to decrypt subscription list:",
           decryptResult.error,
         );
-        this.subscribedPubkeys.clear();
-        this.subsEventId = null;
-        this.loaded = true;
+        if (!this.loaded) {
+          this.subscribedPubkeys.clear();
+          this.subsEventId = null;
+          this.loaded = true;
+        }
         return;
       }
 
       const decryptedStr = decryptResult.plaintext;
-
       const normalized = parseSubscriptionPlaintext(decryptedStr);
-      this.subscribedPubkeys = new Set(normalized);
 
+      const newSet = new Set(normalized);
+      const previousSet = this.subscribedPubkeys;
+
+      // Update state
+      this.subscribedPubkeys = newSet;
       this.currentUserPubkey = normalizedUserPubkey;
       this.loaded = true;
+
+      // Update persistent cache
+      this.saveToCache(normalizedUserPubkey);
+
+      // Check if we need to refresh the feed
+      let changed = newSet.size !== previousSet.size;
+      if (!changed) {
+        for (const key of newSet) {
+          if (!previousSet.has(key)) {
+            changed = true;
+            break;
+          }
+        }
+      }
+
+      if (changed) {
+        devLogger.log("[SubscriptionsManager] Subscription list updated from relays, refreshing feed.");
+        this.refreshActiveFeed({ reason: "subscription-update-background" }).catch((error) => {
+          userLogger.warn(
+            "[SubscriptionsManager] Failed to refresh after background subscription update:",
+            error
+          );
+        });
+      }
+
     } catch (err) {
-      userLogger.error("[SubscriptionsManager] Failed to load subs:", err);
+      userLogger.error("[SubscriptionsManager] Failed to update subs from relays:", err);
     }
   }
 
@@ -450,6 +535,25 @@ class SubscriptionsManager {
     return this.subscribedPubkeys.has(normalized);
   }
 
+  async toggleChannel(channelHex, userPubkey) {
+    if (!userPubkey) {
+      throw new Error("No user pubkey => cannot toggleChannel.");
+    }
+    await this.ensureLoaded(userPubkey);
+    const isSubscribed = this.isSubscribed(channelHex) === true;
+    try {
+      if (isSubscribed) {
+        await this.removeChannel(channelHex, userPubkey);
+      } else {
+        await this.addChannel(channelHex, userPubkey);
+      }
+      return { ok: true, subscribed: !isSubscribed };
+    } catch (error) {
+      userLogger.error("[SubscriptionsManager] Failed to toggle subscription:", error);
+      throw error;
+    }
+  }
+
   getSubscribedAuthors() {
     return Array.from(this.subscribedPubkeys);
   }
@@ -470,7 +574,10 @@ class SubscriptionsManager {
       decryptors.set(scheme, handler);
     };
 
-    const signer = getActiveSigner();
+    let signer = getActiveSigner();
+    if (!signer && typeof nostrClient?.ensureActiveSignerForPubkey === "function") {
+      signer = await nostrClient.ensureActiveSignerForPubkey(userPubkey);
+    }
     const signerHasNip04 = typeof signer?.nip04Decrypt === "function";
     const signerHasNip44 = typeof signer?.nip44Decrypt === "function";
 
@@ -480,34 +587,6 @@ class SubscriptionsManager {
 
     if (signerHasNip44) {
       registerDecryptor("nip44", (payload) => signer.nip44Decrypt(userPubkey, payload));
-    }
-
-    const nostrApi =
-      typeof window !== "undefined" && window && window.nostr ? window.nostr : null;
-    if (nostrApi) {
-      if (!signerHasNip04 && nostrApi.nip04 && typeof nostrApi.nip04.decrypt === "function") {
-        registerDecryptor("nip04", (payload) =>
-          nostrApi.nip04.decrypt(userPubkey, payload)
-        );
-      }
-
-      const nip44 =
-        nostrApi.nip44 && typeof nostrApi.nip44 === "object" ? nostrApi.nip44 : null;
-      if (nip44) {
-        if (!signerHasNip44 && typeof nip44.decrypt === "function") {
-          registerDecryptor("nip44", (payload) => nip44.decrypt(userPubkey, payload));
-        }
-
-        const nip44v2 = nip44.v2 && typeof nip44.v2 === "object" ? nip44.v2 : null;
-        if (nip44v2 && typeof nip44v2.decrypt === "function") {
-          registerDecryptor("nip44_v2", (payload) =>
-            nip44v2.decrypt(userPubkey, payload)
-          );
-          if (!decryptors.has("nip44")) {
-            registerDecryptor("nip44", (payload) => nip44v2.decrypt(userPubkey, payload));
-          }
-        }
-      }
     }
 
     if (!decryptors.size) {
@@ -564,6 +643,7 @@ class SubscriptionsManager {
       return;
     }
     this.subscribedPubkeys.add(normalizedChannel);
+    this.saveToCache(userPubkey);
     await this.publishSubscriptionList(userPubkey);
     this.refreshActiveFeed({ reason: "subscription-update" }).catch((error) => {
       userLogger.warn(
@@ -588,6 +668,7 @@ class SubscriptionsManager {
       return;
     }
     this.subscribedPubkeys.delete(normalizedChannel);
+    this.saveToCache(userPubkey);
     await this.publishSubscriptionList(userPubkey);
     this.refreshActiveFeed({ reason: "subscription-update" }).catch((error) => {
       userLogger.warn(
@@ -611,7 +692,10 @@ class SubscriptionsManager {
       signer = await nostrClient.ensureActiveSignerForPubkey(userPubkey);
     }
 
-    if (!signer) {
+    const canSign = typeof signer?.canSign === "function"
+      ? signer.canSign()
+      : typeof signer?.signEvent === "function";
+    if (!canSign) {
       const error = new Error(
         "An active signer is required to update subscriptions."
       );

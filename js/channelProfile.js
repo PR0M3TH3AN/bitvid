@@ -155,6 +155,49 @@ function normalizeHex(value) {
   return /^[0-9a-f]{64}$/.test(trimmed) ? trimmed : "";
 }
 
+function decodeNpubToHex(npub) {
+  if (typeof npub !== "string" || !npub.trim()) {
+    return "";
+  }
+  try {
+    const decoded = window?.NostrTools?.nip19?.decode?.(npub);
+    if (decoded?.type !== "npub" || !decoded.data) {
+      return "";
+    }
+    if (typeof decoded.data === "string") {
+      return normalizeHex(decoded.data);
+    }
+
+    let bufferSource = null;
+    if (decoded.data instanceof Uint8Array) {
+      bufferSource = decoded.data;
+    } else if (Array.isArray(decoded.data)) {
+      bufferSource = Uint8Array.from(decoded.data);
+    } else if (
+      decoded.data?.type === "Buffer" &&
+      Array.isArray(decoded.data?.data)
+    ) {
+      bufferSource = Uint8Array.from(decoded.data.data);
+    }
+
+    if (!bufferSource) {
+      return "";
+    }
+
+    if (typeof window?.NostrTools?.utils?.bytesToHex === "function") {
+      return normalizeHex(window.NostrTools.utils.bytesToHex(bufferSource));
+    }
+    return normalizeHex(
+      Array.from(bufferSource)
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("")
+    );
+  } catch (error) {
+    devLogger.warn("[ChannelProfile] Failed to decode npub to hex", error);
+    return "";
+  }
+}
+
 function decorateChannelVideo(video, app = getApp()) {
   if (!video || typeof video !== "object") {
     return null;
@@ -2405,6 +2448,28 @@ function resetZapRetryState() {
   }
 }
 
+function setZapCompleted(completed) {
+  const sendButton = getZapSendButton();
+  if (!sendButton) {
+    return;
+  }
+
+  if (completed) {
+    delete sendButton.dataset.retryPending;
+    sendButton.dataset.completed = "true";
+    sendButton.textContent = "Done";
+    sendButton.setAttribute("aria-label", "Close zap dialog");
+    sendButton.title = "Close zap dialog";
+  } else {
+    delete sendButton.dataset.completed;
+    if (!sendButton.dataset.retryPending) {
+      sendButton.textContent = "Send";
+      sendButton.setAttribute("aria-label", "Send a zap");
+      sendButton.removeAttribute("title");
+    }
+  }
+}
+
 function markZapRetryPending(shares) {
   const validShares = Array.isArray(shares)
     ? shares.filter((share) => share && share.amount > 0)
@@ -2786,6 +2851,7 @@ async function runZapAttempt({ amount, overrideFee = null, walletSettings }) {
 
 function handleZapAmountChange() {
   resetZapRetryState();
+  setZapCompleted(false);
   updateZapSplitSummary();
 }
 
@@ -2932,6 +2998,11 @@ async function handleZapSend(event) {
   const app = getApp();
 
   if (!amountInput || !sendButton) {
+    return;
+  }
+
+  if (sendButton.dataset.completed === "true") {
+    closeZapControls({ focusButton: true });
     return;
   }
 
@@ -3096,6 +3167,7 @@ async function handleZapSend(event) {
     setZapStatus(summary, "success");
     app?.showSuccess?.("Zap sent successfully!");
     resetZapRetryState();
+    setZapCompleted(true);
   } catch (error) {
     const tracker = Array.isArray(error?.__zapShareTracker)
       ? error.__zapShareTracker
@@ -3251,6 +3323,67 @@ function setupChannelShareButton() {
   });
 
   shareBtn.dataset.initialized = "true";
+}
+
+function resolveChannelHexForControls() {
+  const normalized = normalizeHex(currentChannelHex);
+  if (normalized) {
+    return normalized;
+  }
+  return decodeNpubToHex(currentChannelNpub);
+}
+
+function setupChannelMessageControls() {
+  const doc = typeof document !== "undefined" ? document : null;
+  const messageBtn = doc?.getElementById("channelMessageBtn") || null;
+
+  if (!messageBtn) {
+    return;
+  }
+
+  const channelHex = resolveChannelHexForControls();
+  if (!channelHex) {
+    devLogger.warn("[ChannelProfile] Unable to resolve channel hex for controls.");
+  }
+
+  if (messageBtn) {
+    if (messageBtn.dataset.initialized !== "true") {
+      messageBtn.addEventListener("click", () => {
+        const app = getApp();
+        const resolvedHex = resolveChannelHexForControls();
+        if (!resolvedHex) {
+          app?.showError?.("Unable to resolve channel messages.");
+          userLogger.warn("Channel message clicked without a valid channel hex.");
+          return;
+        }
+
+        const controller = app?.profileController;
+        if (!controller) {
+          app?.showError?.("Messages are unavailable right now.");
+          userLogger.warn(
+            "Profile controller unavailable for channel messages."
+          );
+          return;
+        }
+
+        if (typeof controller.handleActiveDmIdentityChanged === "function") {
+          controller.handleActiveDmIdentityChanged(resolvedHex);
+        } else {
+          userLogger.warn(
+            "Profile controller missing handleActiveDmIdentityChanged."
+          );
+        }
+
+        if (typeof controller.show === "function") {
+          controller.show("messages");
+        } else {
+          app?.showError?.("Messages are unavailable right now.");
+          userLogger.warn("Profile controller missing show() for messages.");
+        }
+      });
+      messageBtn.dataset.initialized = "true";
+    }
+  }
 }
 
 function setupChannelMoreMenu() {
@@ -3627,6 +3760,7 @@ export async function initChannelProfileView() {
   updateChannelModerationVisuals({ app, pubkey: currentChannelHex });
 
   setupChannelShareButton();
+  setupChannelMessageControls();
   setupChannelMoreMenu();
 
   const initialMenuRefresh = updateChannelMenuState().catch((error) => {
@@ -4013,11 +4147,7 @@ function renderSubscribeButton(channelHex) {
         return;
       }
       try {
-        if (alreadySubscribed) {
-          await subscriptions.removeChannel(channelHex, currentApp.pubkey);
-        } else {
-          await subscriptions.addChannel(channelHex, currentApp.pubkey);
-        }
+        await subscriptions.toggleChannel(channelHex, currentApp.pubkey);
         // Re-render the button so it toggles state
         renderSubscribeButton(channelHex);
       } catch (err) {
