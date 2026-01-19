@@ -141,6 +141,14 @@ function normalizeMessage(raw) {
       ? statusRaw
       : "";
   const seen = raw.seen === true;
+  const encryptionScheme =
+    typeof raw.encryption_scheme === "string"
+      ? raw.encryption_scheme.trim()
+      : typeof raw.encryptionScheme === "string"
+        ? raw.encryptionScheme.trim()
+        : typeof raw.scheme === "string"
+          ? raw.scheme.trim()
+          : "";
 
   return {
     id,
@@ -154,6 +162,7 @@ function normalizeMessage(raw) {
     relay: typeof raw.relay === "string" ? raw.relay : "",
     status,
     seen,
+    encryption_scheme: encryptionScheme,
   };
 }
 
@@ -178,6 +187,9 @@ function normalizeConversation(raw) {
     created_at: sanitizeTimestamp(raw.created_at ?? raw.createdAt),
     last_message_at: sanitizeTimestamp(
       raw.last_message_at ?? raw.lastMessageAt,
+    ),
+    downloaded_until: sanitizeTimestamp(
+      raw.downloaded_until ?? raw.downloadedUntil,
     ),
     last_message_preview:
       typeof raw.last_message_preview === "string"
@@ -347,6 +359,9 @@ export async function updateConversationFromMessage(message, options = {}) {
     Number.isFinite(Number(options.unseenDelta))
       ? Number(options.unseenDelta)
       : 0;
+  const downloadedUntil = sanitizeTimestamp(
+    options.downloadedUntil ?? normalized.created_at,
+  );
 
   try {
     const db = await openDmDb();
@@ -368,6 +383,10 @@ export async function updateConversationFromMessage(message, options = {}) {
       ...existing,
       created_at: existing.created_at || normalized.created_at,
       last_message_at: normalized.created_at,
+      downloaded_until: Math.max(
+        existing.downloaded_until || 0,
+        downloadedUntil,
+      ),
       last_message_preview: preview,
       unseen_count: Math.max(
         0,

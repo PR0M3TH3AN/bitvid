@@ -107,6 +107,10 @@ import {
   shimLegacySimplePoolMethods,
 } from "./toolkit.js";
 import { encryptNip04InWorker } from "./nip04WorkerClient.js";
+import {
+  decryptDmInWorker,
+  isDmDecryptWorkerSupported,
+} from "./dmDecryptWorkerClient.js";
 import { devLogger, userLogger } from "../utils/logger.js";
 import { updateConversationFromMessage, writeMessages } from "../storage/dmDb.js";
 import {
@@ -4056,6 +4060,42 @@ export class NostrClient {
       typeof sessionActor.privateKey === "string" &&
       sessionActor.privateKey
     ) {
+      const canUseWorker = isDmDecryptWorkerSupported();
+      const sessionPrivateKey = sessionActor.privateKey;
+
+      if (canUseWorker) {
+        addCandidate(
+          "nip44",
+          (targetPubkey, ciphertext) =>
+            decryptDmInWorker({
+              scheme: "nip44",
+              privateKey: sessionPrivateKey,
+              targetPubkey,
+              ciphertext,
+            }),
+          {
+            priority: -6,
+            source: "worker",
+            supportsGiftWrap: true,
+          },
+        );
+
+        addCandidate(
+          "nip04",
+          (targetPubkey, ciphertext) =>
+            decryptDmInWorker({
+              scheme: "nip04",
+              privateKey: sessionPrivateKey,
+              targetPubkey,
+              ciphertext,
+            }),
+          {
+            priority: -4,
+            source: "worker",
+          },
+        );
+      }
+
       if (
         !this.sessionActorCipherClosures ||
         this.sessionActorCipherClosuresPrivateKey !== sessionActor.privateKey

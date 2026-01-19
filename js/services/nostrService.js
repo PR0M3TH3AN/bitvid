@@ -10,6 +10,10 @@ import {
   clearDirectMessageSnapshot,
 } from "../directMessagesStore.js";
 import {
+  updateConversationFromMessage,
+  writeMessages,
+} from "../storage/dmDb.js";
+import {
   getVideosMap as getStoredVideosMap,
   setVideosMap as setStoredVideosMap,
   getVideoSubscription as getStoredVideoSubscription,
@@ -286,6 +290,93 @@ function resolveDirectMessageRemotePubkey(message, actorPubkey = "") {
   return "";
 }
 
+function buildConversationId(actorPubkey, remotePubkey) {
+  const normalizedActor = normalizeHexPubkey(actorPubkey);
+  const normalizedRemote = normalizeHexPubkey(remotePubkey);
+
+  if (!normalizedActor || !normalizedRemote) {
+    return "";
+  }
+
+  return `dm:${[normalizedActor, normalizedRemote].sort().join(":")}`;
+}
+
+function normalizeDirectMessageRecord(message, actorPubkey = "") {
+  if (!message || message.ok !== true) {
+    return null;
+  }
+
+  const actor = normalizeHexPubkey(
+    actorPubkey || message.actorPubkey || "",
+  );
+  const remote = resolveDirectMessageRemotePubkey(message, actor);
+  const conversationId = buildConversationId(actor, remote);
+  const eventId =
+    typeof message?.event?.id === "string" ? message.event.id : "";
+
+  if (!conversationId || !eventId) {
+    return null;
+  }
+
+  const senderPubkey = normalizeHexPubkey(
+    message?.sender?.pubkey ||
+      message?.message?.pubkey ||
+      message?.event?.pubkey ||
+      "",
+  );
+  const direction = message.direction;
+  let receiverPubkey = "";
+
+  if (direction === "incoming") {
+    receiverPubkey = actor;
+  } else if (direction === "outgoing") {
+    receiverPubkey = remote;
+  } else if (senderPubkey) {
+    receiverPubkey = senderPubkey === actor ? remote : actor;
+  }
+
+  const createdAt = sanitizeSnapshotTimestamp(
+    message?.message?.created_at ??
+      message?.event?.created_at ??
+      message?.timestamp,
+  );
+
+  const kind =
+    Number.isFinite(message?.message?.kind)
+      ? message.message.kind
+      : Number.isFinite(message?.event?.kind)
+      ? message.event.kind
+      : 0;
+
+  const tags = Array.isArray(message?.message?.tags)
+    ? message.message.tags
+    : Array.isArray(message?.event?.tags)
+    ? message.event.tags
+    : [];
+
+  const encryptionScheme =
+    typeof message?.scheme === "string"
+      ? message.scheme.trim()
+      : typeof message?.decryptor?.scheme === "string"
+      ? message.decryptor.scheme.trim()
+      : "";
+
+  return {
+    id: eventId,
+    conversation_id: conversationId,
+    sender_pubkey: senderPubkey || actor,
+    receiver_pubkey: receiverPubkey,
+    created_at: createdAt,
+    kind,
+    content: typeof message?.plaintext === "string" ? message.plaintext : "",
+    tags,
+    relay: typeof message?.event?.relay === "string" ? message.event.relay : "",
+    status: "published",
+    seen: direction !== "incoming",
+    encryption_scheme: encryptionScheme,
+  };
+}
+
 function buildSnapshotFromMessages(messages, actorPubkey = "") {
   const normalizedActor = normalizeHexPubkey(actorPubkey);
   const threadMap = new Map();
@@ -510,6 +601,31 @@ export class NostrService {
     }
   }
 
+  async persistDirectMessageRecord(message, { actorPubkey = null } = {}) {
+    const record = normalizeDirectMessageRecord(
+      message,
+      actorPubkey || message?.actorPubkey || this.dmActorPubkey,
+    );
+    if (!record) {
+      return null;
+    }
+
+    try {
+      await writeMessages(record);
+      await updateConversationFromMessage(record, {
+        preview: extractSnapshotPreview(message),
+        unseenDelta: message?.direction === "incoming" ? 1 : 0,
+        downloadedUntil: sanitizeSnapshotTimestamp(
+          message?.timestamp ?? message?.event?.created_at ?? record.created_at,
+        ),
+      });
+      return record;
+    } catch (error) {
+      userLogger.warn("[nostrService] Failed to persist DM record", error);
+      return null;
+    }
+  }
+
   applyDirectMessage(message, { reason = "update", event = null } = {}) {
     if (!message || message.ok !== true) {
       return;
@@ -574,6 +690,10 @@ export class NostrService {
           error,
         );
       });
+    }
+
+    if (!normalized.snapshot) {
+      void this.persistDirectMessageRecord(normalized, { actorPubkey: actor });
     }
   }
 
