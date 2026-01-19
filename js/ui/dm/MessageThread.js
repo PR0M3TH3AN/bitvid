@@ -1,5 +1,7 @@
 import { DayDivider } from "./DayDivider.js";
 import { MessageBubble } from "./MessageBubble.js";
+import { ZapReceiptList } from "./ZapReceiptList.js";
+import { formatZapAmount } from "./zapHelpers.js";
 
 function createElement(doc, tag, className, text) {
   const element = doc.createElement(tag);
@@ -19,6 +21,9 @@ export function MessageThread({
   state = "idle",
   errorType = "",
   privacyMode = "nip04",
+  zapReceipts = [],
+  conversationZapTotalSats = 0,
+  profileZapTotalSats = 0,
 } = {}) {
   if (!doc) {
     throw new Error("MessageThread requires a document reference.");
@@ -55,6 +60,28 @@ export function MessageThread({
   );
   privacyBadge.title = privacyHint;
   header.appendChild(privacyBadge);
+
+  const zapSummary = createElement(doc, "div", "dm-message-thread__zap-summary");
+  zapSummary.appendChild(
+    createElement(doc, "span", "dm-message-thread__zap-label", "Zaps"),
+  );
+  zapSummary.appendChild(
+    createElement(
+      doc,
+      "span",
+      "dm-message-thread__zap-total",
+      formatZapAmount(conversationZapTotalSats),
+    ),
+  );
+  zapSummary.appendChild(
+    createElement(
+      doc,
+      "span",
+      "dm-message-thread__zap-profile",
+      `Profile: ${formatZapAmount(profileZapTotalSats)}`,
+    ),
+  );
+  header.appendChild(zapSummary);
   root.appendChild(header);
 
   const timeline = createElement(doc, "div", "dm-message-thread__timeline");
@@ -102,5 +129,13 @@ export function MessageThread({
   }
 
   root.appendChild(timeline);
+
+  root.appendChild(
+    ZapReceiptList({
+      document: doc,
+      receipts: zapReceipts,
+      emptyLabel: "No zap receipts published yet.",
+    }),
+  );
   return root;
 }
