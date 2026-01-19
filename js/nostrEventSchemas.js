@@ -28,6 +28,7 @@ export const NOTE_TYPES = Object.freeze({
   ADMIN_BLACKLIST: "adminBlacklist",
   ADMIN_WHITELIST: "adminWhitelist",
   PROFILE_METADATA: "profileMetadata",
+  MUTE_LIST: "muteList",
 });
 
 export const SUBSCRIPTION_LIST_IDENTIFIER = "subscriptions";
@@ -270,8 +271,8 @@ const BASE_SCHEMAS = {
     kind: 6,
     appendTags: DEFAULT_APPEND_TAGS,
     content: {
-      format: "empty",
-      description: "Content field intentionally empty for pure repost events.",
+      format: "json",
+      description: "Content field contains the JSON-serialized event being reposted.",
     },
   },
   [NOTE_TYPES.NIP71_VIDEO]: {
@@ -456,6 +457,17 @@ const BASE_SCHEMAS = {
     content: {
       format: "json",
       description: "Standard NIP-01 profile metadata (name, about, picture, etc.).",
+    },
+  },
+  [NOTE_TYPES.MUTE_LIST]: {
+    type: NOTE_TYPES.MUTE_LIST,
+    label: "Mute list",
+    kind: 10000,
+    participantTagName: "p",
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      format: "text",
+      description: "Optional content (often encrypted) with public p tags.",
     },
   },
 };
@@ -926,6 +938,83 @@ export function buildRelayListEvent(params) {
     created_at,
     tags,
     content: "",
+  };
+}
+
+export function buildProfileMetadataEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    metadata = {},
+    content,
+    additionalTags = [],
+  } = params || {};
+  const schema = getNostrEventSchema(NOTE_TYPES.PROFILE_METADATA);
+  const tags = [];
+  appendSchemaTags(tags, schema);
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
+  }
+
+  let serializedContent = "";
+  if (typeof content === "string") {
+    serializedContent = content;
+  } else {
+    try {
+      serializedContent = JSON.stringify(metadata || {});
+    } catch (error) {
+      serializedContent = "{}";
+    }
+  }
+
+  return {
+    kind: schema?.kind ?? 0,
+    pubkey,
+    created_at,
+    tags,
+    content: serializedContent,
+  };
+}
+
+export function buildMuteListEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    pTags = [],
+    content = "",
+    encrypted = false,
+    encryptionTag = "",
+    additionalTags = [],
+  } = params || {};
+  const schema = getNostrEventSchema(NOTE_TYPES.MUTE_LIST);
+  const tags = [];
+
+  const participantTagName = schema?.participantTagName || "p";
+  if (Array.isArray(pTags)) {
+    pTags.forEach((hex) => {
+      if (typeof hex === "string" && hex.trim()) {
+        tags.push([participantTagName, hex.trim()]);
+      }
+    });
+  }
+
+  if (encrypted && encryptionTag) {
+    tags.push(["encrypted", encryptionTag]);
+  }
+
+  appendSchemaTags(tags, schema);
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
+  }
+
+  return {
+    kind: schema?.kind ?? 10000,
+    pubkey,
+    created_at,
+    tags,
+    content: typeof content === "string" ? content : "",
   };
 }
 
