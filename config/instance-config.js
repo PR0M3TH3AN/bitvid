@@ -43,6 +43,23 @@ export const IS_VERBOSE_DEV_MODE = true;
 export const IS_LOCKDOWN_MODE = false;
 
 /**
+ * The title displayed in the header when the site is in lockdown mode.
+ *
+ * Customize this to match the tone of your maintenance window or incident
+ * response. Default is "Maintenance Mode".
+ */
+export const LOCKDOWN_TITLE = "Maintenance Mode";
+
+/**
+ * The primary message displayed to visitors when the site is in lockdown mode.
+ *
+ * This text should explain why the site is unavailable and when users might
+ * expect it to return. Default is generic maintenance copy.
+ */
+export const LOCKDOWN_MESSAGE =
+  "We are currently undergoing maintenance. Please come back later.";
+
+/**
  * The primary administrator for this bitvid instance.
  *
  * bitvid treats this Nostr public key (npub) as the "Super Admin". This user

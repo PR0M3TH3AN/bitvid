@@ -5,6 +5,8 @@ import {
   IS_DEV_MODE,
   IS_VERBOSE_DEV_MODE,
   IS_LOCKDOWN_MODE,
+  LOCKDOWN_TITLE,
+  LOCKDOWN_MESSAGE,
   ADMIN_SUPER_NPUB,
   ADMIN_DM_IMAGE_URL,
   BITVID_WEBSITE_URL,
@@ -51,6 +53,7 @@ export { IS_VERBOSE_DEV_MODE };
 
 export const isLockdownMode = Boolean(IS_LOCKDOWN_MODE);
 export { IS_LOCKDOWN_MODE };
+export { LOCKDOWN_TITLE, LOCKDOWN_MESSAGE };
 
 if (typeof window !== "undefined") {
   window.__BITVID_DEV_MODE__ = isDevMode;
