@@ -48,7 +48,21 @@ const DEFAULT_MESSAGES = [
     direction: "outgoing",
     body: "Thanks! I'm wiring up the layout and keyboard flow now.",
     timestamp: "09:14",
-    status: "sending",
+    status: "pending",
+  },
+  {
+    id: "msg-3",
+    direction: "outgoing",
+    body: "Next up: privacy mode toggles and attachment rails.",
+    timestamp: "09:16",
+    status: "sent",
+  },
+  {
+    id: "msg-4",
+    direction: "outgoing",
+    body: "I can resend if this didn't go through.",
+    timestamp: "09:18",
+    status: "failed",
   },
 ];
 

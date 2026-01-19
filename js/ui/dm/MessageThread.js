@@ -45,6 +45,16 @@ export function MessageThread({
   timeline.setAttribute("role", "log");
   timeline.setAttribute("aria-live", "polite");
 
+  const newMessagesBanner = createElement(
+    doc,
+    "button",
+    "dm-message-thread__new",
+    "New messages",
+  );
+  newMessagesBanner.type = "button";
+  newMessagesBanner.setAttribute("aria-label", "Jump to newest messages");
+  timeline.appendChild(newMessagesBanner);
+
   const stateEl = createElement(doc, "div", "dm-message-thread__state");
 
   if (state === "loading") {
