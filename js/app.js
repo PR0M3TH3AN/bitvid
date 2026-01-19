@@ -5300,10 +5300,6 @@ class Application {
       return this.feedEngine.registerFeed("recent", {
         source: createActiveNostrSource({ service: this.nostrService }),
         stages: [
-          // TODO(tag-preferences): keep tag-preference filtering consolidated in
-          // createTagPreferenceFilterStage so each feed has a single source of
-          // truth when interest-based inclusion/ranking lands.
-          createTagPreferenceFilterStage(),
           createBlacklistFilterStage({
             shouldIncludeVideo: (video, options) =>
               this.nostrService.shouldIncludeVideo(video, options),
@@ -5542,20 +5538,11 @@ class Application {
         ? new Set(this.blacklistedEventIds)
         : new Set();
 
-    const preferenceSource =
-      typeof this.getHashtagPreferences === "function"
-        ? this.getHashtagPreferences()
-        : {};
-    const { interests = [], disinterests = [] } = preferenceSource || {};
     const moderationThresholds = this.getActiveModerationThresholds();
 
     return {
       blacklistedEventIds: blacklist,
       isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
-      tagPreferences: {
-        interests: Array.isArray(interests) ? [...interests] : [],
-        disinterests: Array.isArray(disinterests) ? [...disinterests] : [],
-      },
       moderationThresholds: moderationThresholds
         ? { ...moderationThresholds }
         : undefined,
