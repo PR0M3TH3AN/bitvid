@@ -3928,6 +3928,11 @@ class Application {
     if (subscriptionsLink) {
       subscriptionsLink.classList.remove("hidden");
     }
+
+    const forYouLink = this.resolveForYouLink();
+    if (forYouLink) {
+      forYouLink.classList.remove("hidden");
+    }
   }
 
   applyLoggedOutUiState() {
@@ -3961,6 +3966,11 @@ class Application {
     const subscriptionsLink = this.resolveSubscriptionsLink();
     if (subscriptionsLink) {
       subscriptionsLink.classList.add("hidden");
+    }
+
+    const forYouLink = this.resolveForYouLink();
+    if (forYouLink) {
+      forYouLink.classList.add("hidden");
     }
   }
 
@@ -4018,9 +4028,25 @@ class Application {
     return null;
   }
 
+  resolveForYouLink() {
+    if (this.forYouLink instanceof HTMLElement && this.forYouLink.isConnected) {
+      return this.forYouLink;
+    }
+
+    const linkCandidate = document.getElementById("forYouLink");
+    if (linkCandidate instanceof HTMLElement) {
+      this.forYouLink = linkCandidate;
+      return this.forYouLink;
+    }
+
+    this.forYouLink = null;
+    return null;
+  }
+
   hydrateSidebarNavigation() {
     const chromeElements = this.refreshChromeElements();
     this.resolveSubscriptionsLink();
+    this.resolveForYouLink();
 
     if (this.appChromeController) {
       if (typeof this.appChromeController.setElements === "function") {
