@@ -1020,6 +1020,9 @@ export class ProfileModalController {
       onAdminNotifyError: callbacks.onAdminNotifyError || noop,
       onModerationSettingsChange:
         callbacks.onModerationSettingsChange || noop,
+      onSendDm: callbacks.onSendDm || noop,
+      onTogglePrivacy: callbacks.onTogglePrivacy || noop,
+      onOpenRelays: callbacks.onOpenRelays || noop,
     };
 
     this.profileModal = null;
@@ -1103,6 +1106,9 @@ export class ProfileModalController {
     this.profileMessageInput = null;
     this.profileMessageSendButton = null;
     this.profileMessagesComposerHelper = null;
+    this.profileMessagesSendDmButton = null;
+    this.profileMessagesOpenRelaysButton = null;
+    this.profileMessagesPrivacyToggle = null;
     this.walletUriInput = null;
     this.walletDefaultZapInput = null;
     this.walletSaveButton = null;
@@ -1364,6 +1370,12 @@ export class ProfileModalController {
       document.getElementById("profileMessageSendBtn") || null;
     this.profileMessagesComposerHelper =
       document.getElementById("profileMessagesComposerHelper") || null;
+    this.profileMessagesSendDmButton =
+      document.getElementById("profileMessagesSendDm") || null;
+    this.profileMessagesOpenRelaysButton =
+      document.getElementById("profileMessagesOpenRelays") || null;
+    this.profileMessagesPrivacyToggle =
+      document.getElementById("profileMessagesPrivacyToggle") || null;
 
     if (this.pendingMessagesRender) {
       const { messages, actorPubkey } = this.pendingMessagesRender;
@@ -2041,6 +2053,30 @@ export class ProfileModalController {
         }
         this.messagesStatusClearTimeout = null;
       }, 2500);
+    }
+  }
+
+  handleSendDmRequest() {
+    const callback = this.callbacks.onSendDm;
+    if (callback && callback !== noop) {
+      callback({
+        actorPubkey: this.resolveActiveDmActor(),
+        controller: this,
+      });
+    }
+  }
+
+  handleOpenDmRelaysRequest() {
+    const callback = this.callbacks.onOpenRelays;
+    if (callback && callback !== noop) {
+      callback({ controller: this });
+    }
+  }
+
+  handlePrivacyToggle(enabled) {
+    const callback = this.callbacks.onTogglePrivacy;
+    if (callback && callback !== noop) {
+      callback({ controller: this, enabled: Boolean(enabled) });
     }
   }
 
@@ -2801,6 +2837,27 @@ export class ProfileModalController {
     if (this.profileMessagesReloadButton instanceof HTMLElement) {
       this.profileMessagesReloadButton.addEventListener("click", () => {
         void this.populateProfileMessages({ force: true, reason: "manual" });
+      });
+    }
+
+    if (this.profileMessagesSendDmButton instanceof HTMLElement) {
+      this.profileMessagesSendDmButton.addEventListener("click", () => {
+        this.handleSendDmRequest();
+      });
+    }
+
+    if (this.profileMessagesOpenRelaysButton instanceof HTMLElement) {
+      this.profileMessagesOpenRelaysButton.addEventListener("click", () => {
+        this.handleOpenDmRelaysRequest();
+      });
+    }
+
+    if (this.profileMessagesPrivacyToggle instanceof HTMLElement) {
+      this.profileMessagesPrivacyToggle.addEventListener("change", (event) => {
+        const toggle = event.currentTarget;
+        if (toggle instanceof HTMLInputElement) {
+          this.handlePrivacyToggle(toggle.checked);
+        }
       });
     }
 
