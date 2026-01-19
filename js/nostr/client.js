@@ -4376,6 +4376,10 @@ export class NostrClient {
       resolvedActorOverride = null;
     }
 
+    if (!resolvedOptions || typeof resolvedOptions !== "object") {
+      resolvedOptions = {};
+    }
+
     const trimmedTarget = typeof targetNpub === "string" ? targetNpub.trim() : "";
     const trimmedMessage = typeof message === "string" ? message.trim() : "";
 
@@ -4474,6 +4478,307 @@ export class NostrClient {
     }
 
     const signerCapabilities = resolveSignerCapabilities(signer);
+    const useNip17 = Boolean(resolvedOptions.useNip17);
+
+    const resolveNip17RelayList = async (pubkey, relayHints) => {
+      const direct = sanitizeRelayList(relayHints);
+      if (direct.length) {
+        return direct;
+      }
+
+      const relayCandidates = sanitizeRelayList(
+        Array.isArray(this.readRelays) && this.readRelays.length
+          ? this.readRelays
+          : Array.isArray(this.relays) && this.relays.length
+            ? this.relays
+            : RELAY_URLS,
+      );
+
+      if (!relayCandidates.length || !this.pool) {
+        return [];
+      }
+
+      try {
+        await this.ensurePool();
+        const events = await this.pool.list(relayCandidates, [
+          { kinds: [10050], authors: [pubkey], limit: 1 },
+        ]);
+        const sorted = Array.isArray(events)
+          ? events
+              .filter((entry) => entry && entry.pubkey === pubkey)
+              .sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0))
+          : [];
+        if (!sorted.length) {
+          return [];
+        }
+
+        const tags = Array.isArray(sorted[0]?.tags) ? sorted[0].tags : [];
+        const relayList = tags
+          .filter((tag) => Array.isArray(tag) && tag[0] === "relay")
+          .map((tag) => (typeof tag[1] === "string" ? tag[1].trim() : ""))
+          .filter(Boolean);
+        return sanitizeRelayList(relayList);
+      } catch (error) {
+        devLogger.warn("[nostr] Failed to load NIP-17 relay list.", error);
+        return [];
+      }
+    };
+
+    if (useNip17) {
+      if (!signerCapabilities.nip44 || typeof signer.nip44Encrypt !== "function") {
+        return { ok: false, error: "nip44-unsupported" };
+      }
+
+      const recipientRelays = await resolveNip17RelayList(
+        targetHex,
+        resolvedOptions.recipientRelayHints,
+      );
+
+      if (!recipientRelays.length) {
+        return { ok: false, error: "nip17-relays-missing" };
+      }
+
+      const senderRelays = await resolveNip17RelayList(
+        actorHex,
+        resolvedOptions.senderRelayHints,
+      );
+      const fallbackRelays = sanitizeRelayList(
+        Array.isArray(this.writeRelays) && this.writeRelays.length
+          ? this.writeRelays
+          : Array.isArray(this.relays) && this.relays.length
+            ? this.relays
+            : RELAY_URLS,
+      );
+      const senderRelayTargets = senderRelays.length ? senderRelays : fallbackRelays;
+
+      const tools = await ensureNostrTools();
+      const getPublicKey =
+        tools && typeof tools.getPublicKey === "function" ? tools.getPublicKey : null;
+      if (!getPublicKey) {
+        return { ok: false, error: "nip17-keygen-failed" };
+      }
+
+      const randomPastTimestamp = () => {
+        const now = Math.floor(Date.now() / 1000);
+        const offset = Math.floor(Math.random() * 172800);
+        return now - offset;
+      };
+
+      const generateEphemeralKeypair = () => {
+        let privateKey = "";
+        try {
+          if (typeof tools.generateSecretKey === "function") {
+            const secret = tools.generateSecretKey();
+            if (secret instanceof Uint8Array) {
+              privateKey = bytesToHex(secret);
+            }
+          }
+          if (!privateKey) {
+            if (typeof tools.generatePrivateKey === "function") {
+              privateKey = tools.generatePrivateKey();
+            } else if (window?.crypto?.getRandomValues) {
+              const randomBytes = new Uint8Array(32);
+              window.crypto.getRandomValues(randomBytes);
+              privateKey = Array.from(randomBytes)
+                .map((byte) => byte.toString(16).padStart(2, "0"))
+                .join("");
+            }
+          }
+        } catch (error) {
+          devLogger.warn("[nostr] Failed to generate NIP-17 wrapper key.", error);
+          privateKey = "";
+        }
+
+        const normalizedPrivateKey =
+          typeof privateKey === "string" ? privateKey.trim() : "";
+        if (!normalizedPrivateKey) {
+          return null;
+        }
+
+        let pubkey = "";
+        try {
+          pubkey = getPublicKey(normalizedPrivateKey);
+        } catch (error) {
+          let retrySuccess = false;
+          try {
+            if (HEX64_REGEX.test(normalizedPrivateKey)) {
+              const bytes = new Uint8Array(normalizedPrivateKey.length / 2);
+              for (let i = 0; i < normalizedPrivateKey.length; i += 2) {
+                bytes[i / 2] = parseInt(
+                  normalizedPrivateKey.substring(i, i + 2),
+                  16,
+                );
+              }
+              pubkey = getPublicKey(bytes);
+              retrySuccess = true;
+            }
+          } catch (retryError) {
+            // Fall back to error handling below
+          }
+          if (!retrySuccess) {
+            devLogger.warn(
+              "[nostr] Failed to derive NIP-17 wrapper pubkey.",
+              error,
+            );
+            return null;
+          }
+        }
+
+        return { privateKey: normalizedPrivateKey, pubkey };
+      };
+
+      const rumorEvent = {
+        kind: 14,
+        created_at: Math.floor(Date.now() / 1000),
+        tags: [["p", targetHex]],
+        content: trimmedMessage,
+        pubkey: actorHex,
+      };
+
+      const buildGiftWrapForRecipient = async (recipientPubkey, relayHint) => {
+        const sealPayload = {
+          kind: 13,
+          created_at: randomPastTimestamp(),
+          tags: [],
+          content: await signer.nip44Encrypt(
+            recipientPubkey,
+            JSON.stringify(rumorEvent),
+          ),
+          pubkey: actorHex,
+        };
+
+        const signedSeal = await signingAdapter.signEvent(sealPayload);
+        if (!signedSeal || typeof signedSeal.id !== "string") {
+          throw new Error("seal-signature-failed");
+        }
+
+        const wrapperKeys = generateEphemeralKeypair();
+        if (!wrapperKeys) {
+          throw new Error("wrapper-keygen-failed");
+        }
+
+        const cipherClosures = await createPrivateKeyCipherClosures(
+          wrapperKeys.privateKey,
+        );
+        if (typeof cipherClosures.nip44Encrypt !== "function") {
+          throw new Error("wrapper-encryption-unavailable");
+        }
+
+        const wrapCiphertext = await cipherClosures.nip44Encrypt(
+          recipientPubkey,
+          JSON.stringify(signedSeal),
+        );
+        const wrapTags = relayHint
+          ? [["p", recipientPubkey, relayHint]]
+          : [["p", recipientPubkey]];
+
+        const wrapEvent = {
+          kind: 1059,
+          created_at: randomPastTimestamp(),
+          tags: wrapTags,
+          content: wrapCiphertext,
+          pubkey: wrapperKeys.pubkey,
+        };
+
+        return {
+          wrap: signEventWithPrivateKey(wrapEvent, wrapperKeys.privateKey),
+          seal: signedSeal,
+        };
+      };
+
+      let recipientGiftWrap;
+      try {
+        recipientGiftWrap = await buildGiftWrapForRecipient(
+          targetHex,
+          recipientRelays[0] || "",
+        );
+      } catch (error) {
+        devLogger.warn("[nostr] Failed to build NIP-17 recipient wrap.", error);
+        const errorCode =
+          error?.message === "wrapper-keygen-failed"
+            ? "nip17-keygen-failed"
+            : "encryption-failed";
+        return { ok: false, error: errorCode, details: error };
+      }
+
+      const conversationId = `dm:${[actorHex, targetHex].sort().join(":")}`;
+      const dmRecord = {
+        id: recipientGiftWrap.wrap.id,
+        conversation_id: conversationId,
+        sender_pubkey: actorHex,
+        receiver_pubkey: targetHex,
+        created_at: rumorEvent.created_at,
+        kind: rumorEvent.kind,
+        content: trimmedMessage,
+        tags: rumorEvent.tags,
+        status: "pending",
+        seen: true,
+      };
+
+      try {
+        await writeMessages(dmRecord);
+        await updateConversationFromMessage(dmRecord, {
+          preview: trimmedMessage,
+          unseenDelta: 0,
+        });
+      } catch (error) {
+        devLogger.warn("[nostr] Failed to persist outgoing DM.", error);
+      }
+
+      const recipientPublishResults = await Promise.all(
+        recipientRelays.map((url) =>
+          publishEventToRelay(this.pool, url, recipientGiftWrap.wrap),
+        ),
+      );
+
+      const recipientSuccess = recipientPublishResults.some(
+        (result) => result.success,
+      );
+      if (!recipientSuccess) {
+        try {
+          await writeMessages({ ...dmRecord, status: "failed" });
+        } catch (error) {
+          devLogger.warn("[nostr] Failed to persist DM failure state.", error);
+        }
+        return {
+          ok: false,
+          error: "publish-failed",
+          details: recipientPublishResults.filter((result) => !result.success),
+        };
+      }
+
+      let senderGiftWrap = null;
+      try {
+        senderGiftWrap = await buildGiftWrapForRecipient(
+          actorHex,
+          senderRelayTargets[0] || "",
+        );
+      } catch (error) {
+        devLogger.warn("[nostr] Failed to build NIP-17 sender copy.", error);
+      }
+
+      if (senderGiftWrap && senderRelayTargets.length) {
+        const senderPublishResults = await Promise.all(
+          senderRelayTargets.map((url) =>
+            publishEventToRelay(this.pool, url, senderGiftWrap.wrap),
+          ),
+        );
+        if (!senderPublishResults.some((result) => result.success)) {
+          devLogger.warn("[nostr] Failed to publish sender copy of NIP-17 DM.", {
+            relays: senderRelayTargets,
+          });
+        }
+      }
+
+      try {
+        await writeMessages({ ...dmRecord, status: "published" });
+      } catch (error) {
+        devLogger.warn("[nostr] Failed to persist DM publish state.", error);
+      }
+
+      return { ok: true };
+    }
+
     const encryptionErrors = [];
     let ciphertext = "";
 

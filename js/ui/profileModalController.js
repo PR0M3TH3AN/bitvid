@@ -1244,6 +1244,7 @@ export class ProfileModalController {
     this.directMessagesUnsubscribes = [];
     this.pendingMessagesRender = null;
     this.messagesStatusClearTimeout = null;
+    this.dmPrivacyToggleTouched = false;
 
     this.profileHistoryRenderer = null;
     this.profileHistoryRendererConfig = null;
@@ -1919,7 +1920,24 @@ export class ProfileModalController {
       }
     }
 
-    return this.buildDmRecipientContext(normalized);
+    const context = this.buildDmRecipientContext(normalized);
+    this.updateDmPrivacyToggleForRecipient(context);
+    return context;
+  }
+
+  updateDmPrivacyToggleForRecipient(recipientContext, { force = false } = {}) {
+    if (!recipientContext) {
+      return;
+    }
+
+    const relayHints = Array.isArray(recipientContext.relayHints)
+      ? recipientContext.relayHints
+      : [];
+    const hasHints = relayHints.length > 0;
+
+    if (!this.dmPrivacyToggleTouched || force) {
+      this.setPrivacyToggleState(hasHints);
+    }
   }
 
   setDirectMessageRecipient(pubkey, { reason = "manual" } = {}) {
@@ -1930,6 +1948,7 @@ export class ProfileModalController {
       this.state.setDmRecipient(nextRecipient);
     }
 
+    this.dmPrivacyToggleTouched = false;
     this.updateMessageThreadSelection(nextRecipient);
 
     if (nextRecipient) {
@@ -2302,12 +2321,27 @@ export class ProfileModalController {
   }
 
   handlePrivacyToggle(enabled) {
+    const recipientContext = this.buildDmRecipientContext(
+      this.resolveActiveDmRecipient(),
+    );
+    const relayHints = Array.isArray(recipientContext?.relayHints)
+      ? recipientContext.relayHints
+      : [];
+
+    if (enabled && !relayHints.length) {
+      this.showError("Recipient has not shared NIP-17 relay hints yet.");
+      this.setPrivacyToggleState(false);
+      this.dmPrivacyToggleTouched = false;
+      return;
+    }
+
+    this.dmPrivacyToggleTouched = true;
     const callback = this.callbacks.onTogglePrivacy;
     if (callback && callback !== noop) {
       callback({
         controller: this,
         enabled: Boolean(enabled),
-        recipient: this.buildDmRecipientContext(this.resolveActiveDmRecipient()),
+        recipient: recipientContext,
       });
     }
   }
@@ -2318,6 +2352,12 @@ export class ProfileModalController {
         return "Connect a Nostr signer to send messages.";
       case "encryption-unsupported":
         return "Your signer does not support NIP-04 encryption.";
+      case "nip44-unsupported":
+        return "Your signer does not support NIP-44 encryption required for NIP-17.";
+      case "nip17-relays-missing":
+        return "Recipient has not shared NIP-17 relay hints yet.";
+      case "nip17-keygen-failed":
+        return "We couldn’t create secure wrapper keys for NIP-17 delivery.";
       case "extension-permission-denied":
         return "Please grant your Nostr extension permission to send messages.";
       case "missing-actor-pubkey":
@@ -2361,6 +2401,22 @@ export class ProfileModalController {
       return;
     }
 
+    const recipientContext = this.buildDmRecipientContext(targetHex);
+    const recipientRelayHints = Array.isArray(recipientContext?.relayHints)
+      ? recipientContext.relayHints
+      : [];
+    const useNip17 =
+      this.profileMessagesPrivacyToggle instanceof HTMLInputElement
+        ? this.profileMessagesPrivacyToggle.checked
+        : false;
+
+    if (useNip17 && !recipientRelayHints.length) {
+      this.showError("Recipient has not shared NIP-17 relay hints yet.");
+      this.setPrivacyToggleState(false);
+      this.dmPrivacyToggleTouched = false;
+      return;
+    }
+
     if (
       !this.services.nostrClient ||
       typeof this.services.nostrClient.sendDirectMessage !== "function"
@@ -2379,6 +2435,13 @@ export class ProfileModalController {
       const result = await this.services.nostrClient.sendDirectMessage(
         target,
         message,
+        null,
+        useNip17
+          ? {
+              useNip17: true,
+              recipientRelayHints,
+            }
+          : {},
       );
 
       if (result?.ok) {
