@@ -135,6 +135,12 @@ function normalizeMessage(raw) {
   const receiverPubkey = normalizePubkey(
     raw.receiver_pubkey ?? raw.receiverPubkey ?? raw.to_pubkey,
   );
+  const statusRaw = typeof raw.status === "string" ? raw.status.trim() : "";
+  const status =
+    statusRaw === "pending" || statusRaw === "published" || statusRaw === "failed"
+      ? statusRaw
+      : "";
+  const seen = raw.seen === true;
 
   return {
     id,
@@ -146,6 +152,8 @@ function normalizeMessage(raw) {
     content: typeof raw.content === "string" ? raw.content : "",
     tags: Array.isArray(raw.tags) ? raw.tags : [],
     relay: typeof raw.relay === "string" ? raw.relay : "",
+    status,
+    seen,
   };
 }
 

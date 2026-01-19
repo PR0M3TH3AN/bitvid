@@ -106,7 +106,9 @@ import {
   resolveSimplePoolConstructor,
   shimLegacySimplePoolMethods,
 } from "./toolkit.js";
+import { encryptNip04InWorker } from "./nip04WorkerClient.js";
 import { devLogger, userLogger } from "../utils/logger.js";
+import { updateConversationFromMessage, writeMessages } from "../storage/dmDb.js";
 import {
   DEFAULT_NIP07_ENCRYPTION_METHODS,
   DEFAULT_NIP07_PERMISSION_METHODS,
@@ -4324,7 +4326,14 @@ export class NostrClient {
     return newPromise;
   }
 
-  async sendDirectMessage(targetNpub, message, actorPubkeyOverride = null) {
+  async sendDirectMessage(targetNpub, message, actorPubkeyOverride = null, options = {}) {
+    let resolvedOptions = options;
+    let resolvedActorOverride = actorPubkeyOverride;
+    if (actorPubkeyOverride && typeof actorPubkeyOverride === "object") {
+      resolvedOptions = actorPubkeyOverride;
+      resolvedActorOverride = null;
+    }
+
     const trimmedTarget = typeof targetNpub === "string" ? targetNpub.trim() : "";
     const trimmedMessage = typeof message === "string" ? message.trim() : "";
 
@@ -4341,12 +4350,12 @@ export class NostrClient {
     }
 
     const activeSignerCandidate =
-      typeof actorPubkeyOverride === "string" && actorPubkeyOverride.trim()
-        ? resolveActiveSigner(actorPubkeyOverride)
+      typeof resolvedActorOverride === "string" && resolvedActorOverride.trim()
+        ? resolveActiveSigner(resolvedActorOverride)
         : resolveActiveSigner(this.pubkey);
     const baseActiveSigner = activeSignerCandidate || getActiveSigner();
     const signer =
-      typeof actorPubkeyOverride === "string" && actorPubkeyOverride.trim()
+      typeof resolvedActorOverride === "string" && resolvedActorOverride.trim()
         ? activeSignerCandidate
         : baseActiveSigner
         ? resolveActiveSigner(baseActiveSigner.pubkey || this.pubkey)
@@ -4374,8 +4383,8 @@ export class NostrClient {
     }
 
     let actorHex =
-      typeof actorPubkeyOverride === "string" && actorPubkeyOverride.trim()
-        ? actorPubkeyOverride.trim()
+      typeof resolvedActorOverride === "string" && resolvedActorOverride.trim()
+        ? resolvedActorOverride.trim()
         : "";
 
     if (!actorHex && typeof this.pubkey === "string") {
@@ -4386,67 +4395,87 @@ export class NostrClient {
       actorHex = signer.pubkey;
     }
 
-    if (!actorHex) {
-      return { ok: false, error: "missing-actor-pubkey" };
-    }
-
     const targetHex = decodeNpubToHex(trimmedTarget);
     if (!targetHex) {
       return { ok: false, error: "invalid-target" };
     }
 
-    const encryptionCandidates = [];
-    const signerCapabilities = resolveSignerCapabilities(signer);
-    const allowNip04Fallback = signerCapabilities.nip04 === true;
-    if (
-      signerCapabilities.nip44 &&
-      typeof signer.nip44Encrypt === "function"
-    ) {
-      encryptionCandidates.push({
-        scheme: "nip44",
-        encrypt: signer.nip44Encrypt,
-      });
-    }
-    if (
-      signerCapabilities.nip04 &&
-      typeof signer.nip04Encrypt === "function"
-    ) {
-      encryptionCandidates.push({
-        scheme: "nip04",
-        encrypt: signer.nip04Encrypt,
-      });
+    const signingAdapter =
+      resolvedOptions?.signingAdapter &&
+      typeof resolvedOptions.signingAdapter === "object"
+        ? resolvedOptions.signingAdapter
+        : signer && typeof signer.signEvent === "function"
+        ? {
+            signEvent: (event) => signer.signEvent(event),
+            getPubkey: async () => actorHex || signer.pubkey || "",
+            getDisplayName: async () => "",
+          }
+        : null;
+
+    if (!signingAdapter || typeof signingAdapter.signEvent !== "function") {
+      return { ok: false, error: "sign-event-unavailable" };
     }
 
+    if (typeof signingAdapter.getPubkey === "function") {
+      try {
+        const adapterPubkey = await signingAdapter.getPubkey();
+        if (typeof adapterPubkey === "string" && adapterPubkey.trim()) {
+          actorHex = adapterPubkey.trim();
+        }
+      } catch (error) {
+        devLogger.warn("[nostr] Failed to resolve DM pubkey from adapter.", error);
+      }
+    }
+
+    if (!actorHex) {
+      return { ok: false, error: "missing-actor-pubkey" };
+    }
+
+    const signerCapabilities = resolveSignerCapabilities(signer);
     const encryptionErrors = [];
     let ciphertext = "";
 
-    for (const candidate of encryptionCandidates) {
+    const normalizedActorHex = normalizeActorKey(actorHex);
+    const sessionActor = this.sessionActor;
+    const sessionPrivateKey =
+      sessionActor &&
+      typeof sessionActor.pubkey === "string" &&
+      sessionActor.pubkey.toLowerCase() === normalizedActorHex &&
+      typeof sessionActor.privateKey === "string"
+        ? sessionActor.privateKey
+        : "";
+
+    if (sessionPrivateKey) {
       try {
-        const encrypted = await candidate.encrypt(targetHex, trimmedMessage);
+        ciphertext = await encryptNip04InWorker({
+          privateKey: sessionPrivateKey,
+          targetPubkey: targetHex,
+          plaintext: trimmedMessage,
+        });
+      } catch (error) {
+        encryptionErrors.push({ scheme: "nip04-worker", error });
+      }
+    }
+
+    if (
+      !ciphertext &&
+      signerCapabilities.nip04 &&
+      typeof signer.nip04Encrypt === "function"
+    ) {
+      try {
+        const encrypted = await signer.nip04Encrypt(targetHex, trimmedMessage);
         if (typeof encrypted === "string" && encrypted) {
           ciphertext = encrypted;
-          break;
         }
       } catch (error) {
-        encryptionErrors.push({ scheme: candidate.scheme, error });
+        encryptionErrors.push({ scheme: "nip04", error });
       }
     }
 
     if (!ciphertext) {
-      const normalizedActorHex = normalizeActorKey(actorHex);
-      const sessionActor = this.sessionActor;
-      const sessionMatchesActor =
-        sessionActor &&
-        typeof sessionActor.pubkey === "string" &&
-        sessionActor.pubkey.toLowerCase() === normalizedActorHex &&
-        typeof sessionActor.privateKey === "string" &&
-        sessionActor.privateKey;
-
-      const canFallbackWithSession = sessionMatchesActor && allowNip04Fallback;
-
-      if (!encryptionCandidates.length && !canFallbackWithSession) {
+      if (!sessionPrivateKey && !signerCapabilities.nip04) {
         const error = new Error(
-          "Your signer does not support NIP-44 or NIP-04 encryption.",
+          "Your signer does not support NIP-04 encryption.",
         );
         userLogger.warn("[nostr] Encryption unsupported for DM send.", error);
         return {
@@ -4456,31 +4485,6 @@ export class NostrClient {
         };
       }
 
-      if (canFallbackWithSession) {
-        try {
-          const tools = (await ensureNostrTools()) || getCachedNostrTools();
-          if (tools?.nip04 && typeof tools.nip04.encrypt === "function") {
-            const encrypted = await tools.nip04.encrypt(
-              sessionActor.privateKey,
-              targetHex,
-              trimmedMessage,
-            );
-            if (typeof encrypted === "string" && encrypted) {
-              ciphertext = encrypted;
-            }
-          } else {
-            encryptionErrors.push({
-              scheme: "nip04",
-              error: new Error("nostr-tools nip04 helpers unavailable"),
-            });
-          }
-        } catch (error) {
-          encryptionErrors.push({ scheme: "nip04", error });
-        }
-      }
-    }
-
-    if (!ciphertext) {
       const details =
         encryptionErrors.length === 1
           ? encryptionErrors[0].error
@@ -4501,13 +4505,103 @@ export class NostrClient {
 
     let signedEvent;
     try {
-      signedEvent = await queueSignEvent(signer, event);
+      signedEvent = await signingAdapter.signEvent(event);
     } catch (error) {
       return { ok: false, error: "signature-failed", details: error };
     }
 
-    const relays =
-      Array.isArray(this.relays) && this.relays.length ? this.relays : RELAY_URLS;
+    if (!signedEvent || typeof signedEvent.id !== "string") {
+      return { ok: false, error: "signature-failed" };
+    }
+
+    const conversationId = `dm:${[actorHex, targetHex].sort().join(":")}`;
+    const dmRecord = {
+      id: signedEvent.id,
+      conversation_id: conversationId,
+      sender_pubkey: actorHex,
+      receiver_pubkey: targetHex,
+      created_at: event.created_at,
+      kind: event.kind,
+      content: trimmedMessage,
+      tags: event.tags,
+      status: "pending",
+      seen: true,
+    };
+
+    try {
+      await writeMessages(dmRecord);
+      await updateConversationFromMessage(dmRecord, {
+        preview: trimmedMessage,
+        unseenDelta: 0,
+      });
+    } catch (error) {
+      devLogger.warn("[nostr] Failed to persist outgoing DM.", error);
+    }
+
+    const relayListCandidates = sanitizeRelayList(
+      Array.isArray(this.readRelays) && this.readRelays.length
+        ? this.readRelays
+        : Array.isArray(this.relays) && this.relays.length
+        ? this.relays
+        : RELAY_URLS,
+    );
+
+    const parseRecipientRelays = (relayEvent) => {
+      const tags = Array.isArray(relayEvent?.tags) ? relayEvent.tags : [];
+      const seen = new Set();
+      const candidates = [];
+
+      tags.forEach((tag) => {
+        if (!Array.isArray(tag) || tag[0] !== "r") {
+          return;
+        }
+        const url = typeof tag[1] === "string" ? tag[1].trim() : "";
+        if (!url) {
+          return;
+        }
+        const marker =
+          typeof tag[2] === "string" ? tag[2].trim().toLowerCase() : "";
+        if (marker === "write") {
+          return;
+        }
+        if (!seen.has(url)) {
+          seen.add(url);
+          candidates.push(url);
+        }
+      });
+
+      return sanitizeRelayList(candidates);
+    };
+
+    let recipientRelays = [];
+    if (relayListCandidates.length) {
+      try {
+        await this.ensurePool();
+        const events = await this.pool.list(relayListCandidates, [
+          { kinds: [10002], authors: [targetHex], limit: 1 },
+        ]);
+        const sorted = Array.isArray(events)
+          ? events
+              .filter((entry) => entry && entry.pubkey === targetHex)
+              .sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0))
+          : [];
+        if (sorted.length) {
+          recipientRelays = parseRecipientRelays(sorted[0]);
+        }
+      } catch (error) {
+        devLogger.warn("[nostr] Failed to load recipient relay list.", error);
+      }
+    }
+
+    const fallbackRelays = sanitizeRelayList(
+      Array.isArray(this.writeRelays) && this.writeRelays.length
+        ? this.writeRelays
+        : Array.isArray(this.relays) && this.relays.length
+        ? this.relays
+        : RELAY_URLS,
+    );
+
+    const relays = recipientRelays.length ? recipientRelays : fallbackRelays;
 
     const publishResults = await Promise.all(
       relays.map((url) => publishEventToRelay(this.pool, url, signedEvent))
@@ -4515,11 +4609,22 @@ export class NostrClient {
 
     const success = publishResults.some((result) => result.success);
     if (!success) {
+      try {
+        await writeMessages({ ...dmRecord, status: "failed" });
+      } catch (error) {
+        devLogger.warn("[nostr] Failed to persist DM failure state.", error);
+      }
       return {
         ok: false,
         error: "publish-failed",
         details: publishResults.filter((result) => !result.success),
       };
+    }
+
+    try {
+      await writeMessages({ ...dmRecord, status: "published" });
+    } catch (error) {
+      devLogger.warn("[nostr] Failed to persist DM publish state.", error);
     }
 
     return { ok: true };
