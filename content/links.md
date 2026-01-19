@@ -129,11 +129,3 @@ Beta - [beta.bitvid.network](https://beta.bitvid.network)
 Main - [bitvid.network#view=links](https://bitvid.network#view=links)
 
 Beta - [beta.bitvid.network#view=links](https://beta.bitvid.network#view=links)
-
----
-
-### IPNS
-
-Main - [bitvid.network#view=ipns](https://bitvid.network#view=ipns)
-
-Beta - [beta.bitvid.network#view=ipns](https://beta.bitvid.network#view=ipns)
