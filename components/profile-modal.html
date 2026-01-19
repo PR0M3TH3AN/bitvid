@@ -1067,6 +1067,33 @@
                 aria-live="polite"
                 aria-label="Direct message threads"
               ></ul>
+              <div class="flex flex-col gap-3 border-t border-border/60 pt-4">
+                <label class="sr-only" for="profileMessageInput">Message</label>
+                <textarea
+                  id="profileMessageInput"
+                  class="input min-h-[96px]"
+                  rows="3"
+                  placeholder="Write a message…"
+                ></textarea>
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <p
+                    id="profileMessagesComposerHelper"
+                    class="text-xs text-muted hidden"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    Sign in to send messages.
+                  </p>
+                  <button
+                    id="profileMessageSendBtn"
+                    type="button"
+                    class="btn focus-ring inline-flex items-center gap-2"
+                    data-size="sm"
+                  >
+                    Send
+                  </button>
+                </div>
+              </div>
             </section>
             <section
               id="profilePaneHistory"
