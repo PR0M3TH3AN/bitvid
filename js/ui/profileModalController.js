@@ -22,6 +22,7 @@ import {
 } from "../utils/hashtagNormalization.js";
 import { getActiveSigner } from "../nostr/client.js";
 import { buildPublicUrl, buildR2Key } from "../r2.js";
+import { buildProfileMetadataEvent } from "../nostrEventSchemas.js";
 
 const noop = () => {};
 
@@ -6376,14 +6377,11 @@ export class ProfileModalController {
     }
 
     try {
-      const content = JSON.stringify(profile);
-      const event = {
-        kind: 0,
-        created_at: Math.floor(Date.now() / 1000),
+      const event = buildProfileMetadataEvent({
         pubkey,
-        tags: [],
-        content,
-      };
+        created_at: Math.floor(Date.now() / 1000),
+        metadata: profile,
+      });
 
       const result =
         await this.services.nostrClient.signAndPublishEvent(event);

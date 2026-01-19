@@ -16,6 +16,7 @@ import {
   setNostrEventSchemaOverrides,
   buildVideoPostEvent,
   buildRepostEvent,
+  buildProfileMetadataEvent,
 } from "./nostrEventSchemas.js";
 
 // Inspect the current schema
@@ -142,7 +143,7 @@ import { updateWatchHistoryListWithDefaultClient } from "./nostrWatchHistoryFaca
 | --- | --- | --- | --- |
 | Video post (`NOTE_TYPES.VIDEO_POST`) | `30078` | `['t','video']`, `['d', <stable video identifier>]` plus optional schema append tags | JSON payload using Content Schema v3 (`version`, `title`, optional `url`, `magnet`, `thumbnail`, `description`, `mode`, `videoRootId`, `deleted`, `isPrivate`, `isNsfw`, `isForKids`, `enableComments`, `ws`, `xs`) |
 | NIP-94 mirror (`NOTE_TYPES.VIDEO_MIRROR`) | `1063` | Tags forwarded from `publishVideo` (URL, mime type, thumbnail, alt text, magnet) | Plain text alt description |
-| Repost (`NOTE_TYPES.REPOST`) | `6` | `['e', <event id>, <relay?>]` with optional address pointer `['a', <kind:pubkey:identifier>, <relay?>]`, and `['p', <pubkey>]` when the origin author is known; inherits schema append tags | Empty content |
+| Repost (`NOTE_TYPES.REPOST`) | `6` | `['e', <event id>, <relay?>]` with optional address pointer `['a', <kind:pubkey:identifier>, <relay?>]`, and `['p', <pubkey>]` when the origin author is known; inherits schema append tags | JSON-serialized event being reposted |
 | Video comment (`NOTE_TYPES.VIDEO_COMMENT`) | `1111` | NIP-22 root scope tags `['A'\|`E`\|`I`, <pointer>, <relay?>?], `['K', <root kind>]`, and `['P', <root author pubkey>, <relay?>?]` plus parent metadata `['E'\|`I`, <parent pointer>, <relay?>?, <author?>], `['K', <parent kind>]`, `['P', <parent author>, <relay?>?]`; inherits schema append tags | Plain text body sanitized to valid UTF-8 |
 
 > **Publishing note:** Session actors only emit passive telemetry (for example, view counters) and must **not** sign video comments. Require a logged-in Nostr signer for comment publishing via [`commentEvents`](../js/nostr/commentEvents.js).
@@ -159,6 +160,8 @@ import { updateWatchHistoryListWithDefaultClient } from "./nostrWatchHistoryFaca
 | Admin blacklist (`NOTE_TYPES.ADMIN_BLACKLIST`) | `30000` | `['d', 'bitvid:admin:blacklist']`, repeated `['p', <pubkey>]` entries | Empty content |
 | Admin whitelist (`NOTE_TYPES.ADMIN_WHITELIST`) | `30000` | `['d', 'bitvid:admin:whitelist']`, repeated `['p', <pubkey>]` entries | Empty content |
 | Storage challenge (`NOTE_TYPES.STORAGE_CHALLENGE`) | `22242` | `['challenge', <hex>]`, `['purpose', 'bitvid-storage-key']` | Empty content. This event is **ephemeral** and never published to relays. It serves as a challenge for the signer; the deterministic signature produced is used to derive the local encryption Master Key for the Storage Service. |
+| Profile metadata (`NOTE_TYPES.PROFILE_METADATA`) | `0` | `['d', ...]` is not used | JSON payload with NIP-01 fields (`name`, `about`, `picture`, `nip05`, etc.) |
+| Mute list (`NOTE_TYPES.MUTE_LIST`) | `10000` | Repeated `['p', <pubkey>]` tags for blocked/muted users | Optional content (often encrypted) |
 
 Subscription lists therefore match the
 [NIP-51 follow-set specification](./nips/51.md#sets) by emitting kind `30000`

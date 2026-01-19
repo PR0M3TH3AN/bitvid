@@ -6,7 +6,7 @@ import {
 import { getActiveSigner } from "./nostr/index.js";
 import { isSessionActor } from "./nostr/sessionActor.js";
 import { normalizeNostrPubkey } from "./nostr/nip46Client.js";
-import { buildBlockListEvent, BLOCK_LIST_IDENTIFIER, NOTE_TYPES } from "./nostrEventSchemas.js";
+import { buildBlockListEvent, buildMuteListEvent, BLOCK_LIST_IDENTIFIER, NOTE_TYPES } from "./nostrEventSchemas.js";
 import { CACHE_POLICIES, STORAGE_TIERS } from "./nostr/cachePolicies.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import {
@@ -1536,19 +1536,12 @@ class UserBlockListManager {
       return null;
     }
 
-    const tags = sanitizeMuteTags(blockedPubkeys, owner);
+    const sanitizedTags = sanitizeMuteTags(blockedPubkeys, owner);
+    const pTags = sanitizedTags.map((tag) => tag[1]);
 
     const timestamp = Number.isFinite(createdAt)
       ? Math.max(0, Math.floor(createdAt))
       : Math.floor(Date.now() / 1000);
-
-    const event = {
-      kind: 10000,
-      pubkey: owner,
-      created_at: timestamp,
-      tags,
-      content: "",
-    };
 
     const payloadText = typeof plaintext === "string" ? plaintext : "";
     let encryptedContent = "";
@@ -1579,12 +1572,14 @@ class UserBlockListManager {
       }
     }
 
-    if (encryptedContent) {
-      event.content = encryptedContent;
-      if (encryptionTagValue) {
-        event.tags.push(["encrypted", encryptionTagValue]);
-      }
-    }
+    const event = buildMuteListEvent({
+      pubkey: owner,
+      created_at: timestamp,
+      pTags,
+      content: encryptedContent,
+      encrypted: !!encryptionTagValue,
+      encryptionTag: encryptionTagValue,
+    });
 
     onStatus?.({ status: "mute-publishing" });
 
