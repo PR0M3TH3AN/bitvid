@@ -24,6 +24,7 @@ export const NOTE_TYPES = Object.freeze({
   SUBSCRIPTION_LIST: "subscriptionList",
   USER_BLOCK_LIST: "userBlockList",
   HASHTAG_PREFERENCES: "hashtagPreferences",
+  DM_RELAY_LIST: "dmRelayList",
   ADMIN_MODERATION_LIST: "adminModerationList",
   ADMIN_BLACKLIST: "adminBlacklist",
   ADMIN_WHITELIST: "adminWhitelist",
@@ -306,6 +307,14 @@ const BASE_SCHEMAS = {
     relayTagName: "r",
     readMarker: "read",
     writeMarker: "write",
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: { format: "empty", description: "Content field unused." },
+  },
+  [NOTE_TYPES.DM_RELAY_LIST]: {
+    type: NOTE_TYPES.DM_RELAY_LIST,
+    label: "DM relay hints",
+    kind: 10050,
+    relayTagName: "relay",
     appendTags: DEFAULT_APPEND_TAGS,
     content: { format: "empty", description: "Content field unused." },
   },
@@ -934,6 +943,42 @@ export function buildRelayListEvent(params) {
 
   return {
     kind: schema?.kind ?? 10002,
+    pubkey,
+    created_at,
+    tags,
+    content: "",
+  };
+}
+
+export function buildDmRelayListEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    relays = [],
+    additionalTags = [],
+  } = params || {};
+  const schema = getNostrEventSchema(NOTE_TYPES.DM_RELAY_LIST);
+  const tags = [];
+  const relayTagName = schema?.relayTagName || "relay";
+
+  if (Array.isArray(relays)) {
+    relays.forEach((relay) => {
+      const normalized = typeof relay === "string" ? relay.trim() : "";
+      if (normalized) {
+        tags.push([relayTagName, normalized]);
+      }
+    });
+  }
+
+  appendSchemaTags(tags, schema);
+
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
+  }
+
+  return {
+    kind: schema?.kind ?? 10050,
     pubkey,
     created_at,
     tags,

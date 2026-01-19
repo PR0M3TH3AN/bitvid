@@ -69,6 +69,11 @@ import createPopover from "./ui/overlay/popoverEngine.js";
 import { createVideoSettingsMenuPanel } from "./ui/components/videoMenuRenderers.js";
 import moderationService from "./services/moderationService.js";
 import { sanitizeRelayList } from "./nostr/nip46Client.js";
+import { buildDmRelayListEvent } from "./nostrEventSchemas.js";
+import {
+  publishEventToRelays,
+  assertAnyRelayAccepted,
+} from "./nostrPublish.js";
 import {
   initViewCounter,
   subscribeToVideoViewCount,
@@ -3091,6 +3096,132 @@ class Application {
     const stored = sanitizeRelayList(Array.isArray(hints) ? hints : []);
     this.dmRelayHints.set(normalized, stored);
     return stored.slice();
+  }
+
+  async publishDmRelayPreferences({ pubkey, relays } = {}) {
+    const normalized = this.normalizeHexPubkey(pubkey || this.pubkey);
+    if (!normalized) {
+      const error = new Error("A valid pubkey is required to publish DM relays.");
+      error.code = "invalid-pubkey";
+      throw error;
+    }
+
+    const relayHints = sanitizeRelayList(Array.isArray(relays) ? relays : []);
+    if (!relayHints.length) {
+      const error = new Error("Add at least one DM relay before publishing.");
+      error.code = "empty";
+      throw error;
+    }
+
+    if (!nostrClient?.pool) {
+      const error = new Error(
+        "Nostr is not connected yet. Please try again once relays are ready.",
+      );
+      error.code = "nostr-uninitialized";
+      throw error;
+    }
+
+    const signer = await nostrClient.ensureActiveSignerForPubkey(normalized);
+    if (!signer || typeof signer.signEvent !== "function") {
+      const error = new Error(
+        "An active signer with signEvent support is required to publish DM relays.",
+      );
+      error.code = "nostr-extension-missing";
+      throw error;
+    }
+
+    if (signer.type === "extension" && nostrClient.ensureExtensionPermissions) {
+      const permissionResult = await nostrClient.ensureExtensionPermissions();
+      if (!permissionResult?.ok) {
+        userLogger.warn(
+          "[Application] Signer permissions denied while publishing DM relays.",
+          permissionResult?.error,
+        );
+        const error = new Error(
+          "The active signer must allow signing before publishing DM relays.",
+        );
+        error.code = "extension-permission-denied";
+        error.cause = permissionResult?.error;
+        throw error;
+      }
+    }
+
+    const event = buildDmRelayListEvent({
+      pubkey: normalized,
+      created_at: Math.floor(Date.now() / 1000),
+      relays: relayHints,
+    });
+
+    const signedEvent = await signer.signEvent(event);
+
+    const relayTargets = sanitizeRelayList(
+      Array.isArray(nostrClient.writeRelays) && nostrClient.writeRelays.length
+        ? nostrClient.writeRelays
+        : Array.isArray(nostrClient.relays)
+        ? nostrClient.relays
+        : [],
+    );
+
+    if (!relayTargets.length) {
+      const error = new Error("No relay targets are available for publishing.");
+      error.code = "no-targets";
+      throw error;
+    }
+
+    const publishResults = await publishEventToRelays(
+      nostrClient.pool,
+      relayTargets,
+      signedEvent,
+    );
+
+    let publishSummary;
+    try {
+      publishSummary = assertAnyRelayAccepted(publishResults, {
+        context: "dm relay hints update",
+        message: "No relays accepted the DM relay list.",
+      });
+    } catch (publishError) {
+      if (publishError?.relayFailures?.length) {
+        publishError.relayFailures.forEach(
+          ({ url, error: relayError, reason }) => {
+            userLogger.error(
+              `[Application] Relay ${url} rejected DM relay list: ${reason}`,
+              relayError || reason,
+            );
+          },
+        );
+      }
+      throw publishError;
+    }
+
+    if (publishSummary.failed.length) {
+      publishSummary.failed.forEach(({ url, error: relayError }) => {
+        const reason =
+          relayError instanceof Error
+            ? relayError.message
+            : relayError
+            ? String(relayError)
+            : "publish failed";
+        userLogger.warn(
+          `[Application] Relay ${url} did not acknowledge DM relay hints: ${reason}`,
+          relayError,
+        );
+      });
+    }
+
+    return {
+      ok: true,
+      event: signedEvent,
+      accepted: publishSummary.accepted.map(({ url }) => url),
+      failed: publishSummary.failed.map(({ url, error: relayError }) => ({
+        url,
+        error: relayError || null,
+      })),
+    };
+  }
+
+  handleProfilePublishDmRelayPreferences({ relays, pubkey } = {}) {
+    return this.publishDmRelayPreferences({ relays, pubkey });
   }
 
   async fetchDmRelayHints(pubkey) {

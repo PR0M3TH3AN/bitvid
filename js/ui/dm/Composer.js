@@ -13,7 +13,7 @@ export function Composer({
   document: doc,
   placeholder = "Write a message…",
   state = "idle",
-  privacyMode: initialPrivacyMode = "standard",
+  privacyMode: initialPrivacyMode = "nip04",
   signingAdapter = null,
   onSend,
 } = {}) {
@@ -60,7 +60,7 @@ export function Composer({
     doc,
     "button",
     "dm-composer__privacy",
-    "Standard",
+    "NIP-04",
   );
   privacyToggle.type = "button";
   privacyToggle.setAttribute("aria-pressed", "false");
@@ -121,17 +121,23 @@ export function Composer({
   });
 
   const updatePrivacyLabel = () => {
-    privacyToggle.textContent = privacyMode === "private" ? "Private" : "Standard";
-    privacyToggle.setAttribute(
-      "aria-pressed",
-      privacyMode === "private" ? "true" : "false",
-    );
+    const normalized =
+      typeof privacyMode === "string" ? privacyMode.trim().toLowerCase() : "";
+    const isNip17 = normalized === "nip17" || normalized === "private";
+    privacyToggle.textContent = isNip17 ? "NIP-17" : "NIP-04";
+    privacyToggle.setAttribute("aria-pressed", isNip17 ? "true" : "false");
+    privacyToggle.title = isNip17
+      ? "NIP-17 gift-wraps your DM so relays only see the wrapper and relay hints."
+      : "NIP-04 sends a direct encrypted DM; relays can still see sender and recipient metadata.";
   };
 
   updatePrivacyLabel();
 
   privacyToggle.addEventListener("click", () => {
-    privacyMode = privacyMode === "private" ? "standard" : "private";
+    const normalized =
+      typeof privacyMode === "string" ? privacyMode.trim().toLowerCase() : "";
+    const isNip17 = normalized === "nip17" || normalized === "private";
+    privacyMode = isNip17 ? "nip04" : "nip17";
     updatePrivacyLabel();
   });
 
