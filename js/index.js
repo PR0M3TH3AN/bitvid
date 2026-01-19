@@ -3,7 +3,11 @@
 import { validateInstanceConfig } from "../config/validate-config.js";
 import { ASSET_VERSION } from "../config/asset-version.js";
 import "./bufferPolyfill.js";
-import { setApplication, setApplicationReady } from "./applicationContext.js";
+import {
+  getApplication,
+  setApplication,
+  setApplicationReady,
+} from "./applicationContext.js";
 import nostrService from "./services/nostrService.js";
 import r2Service from "./services/r2Service.js";
 import { loadView, viewInitRegistry } from "./viewManager.js";
@@ -29,6 +33,7 @@ import {
   TIP_JAR_URL,
   isLockdownMode,
 } from "./config.js";
+import { createHashChangeHandler } from "./hashChangeHandler.js";
 import AuthService from "./services/authService.js";
 import getAuthProvider, {
   providers as authProviders,
@@ -1357,48 +1362,11 @@ function handleQueryParams() {
   }
 }
 
-async function handleHashChange() {
-  devLogger.log("handleHashChange called, current hash =", window.location.hash);
-
-  try {
-    await applicationReadyPromise;
-  } catch (error) {
-    userLogger.warn(
-      "Proceeding with hash handling despite application initialization failure:",
-      error
-    );
-  }
-
-  const hash = window.location.hash || "";
-  // Use a regex that captures up to the first ampersand or end of string.
-  // E.g. "#view=channel-profile&npub=..." => viewName = "channel-profile"
-  const match = hash.match(/^#view=([^&]+)/);
-
-  try {
-    if (!match || !match[1]) {
-      // No valid "#view=..." => default to "for-you" when logged in
-      const isLoggedIn = getApplication()?.isUserLoggedIn();
-      const defaultViewName = isLoggedIn ? "for-you" : "most-recent-videos";
-      await loadView(`views/${defaultViewName}.html`);
-      const initFn = viewInitRegistry[defaultViewName];
-      if (typeof initFn === "function") {
-        await initFn();
-      }
-      return;
-    }
-
-    const viewName = match[1]; // only the chunk before any '&'
-    if (typeof viewName === "string" && viewName.toLowerCase() === "history") {
-    }
-    const viewUrl = `views/${viewName}.html`;
-
-    // Now dynamically load that partial, then call its init function
-    await loadView(viewUrl);
-    const initFn = viewInitRegistry[viewName];
-    if (typeof initFn === "function") {
-      await initFn();
-    }
-  } catch (error) {
-    userLogger.error("Failed to handle hash change:", error);
-  }
-}
+const handleHashChange = createHashChangeHandler({
+  getApplication,
+  getApplicationReady: () => applicationReadyPromise,
+  loadView,
+  viewInitRegistry,
+  devLogger,
+  userLogger,
+});
