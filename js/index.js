@@ -1392,9 +1392,11 @@ async function handleHashChange() {
 
   try {
     if (!match || !match[1]) {
-      // No valid "#view=..." => default to "most-recent-videos"
-      await loadView("views/most-recent-videos.html");
-      const initFn = viewInitRegistry["most-recent-videos"];
+      // No valid "#view=..." => default to "for-you" when logged in
+      const isLoggedIn = getApplication()?.isUserLoggedIn();
+      const defaultViewName = isLoggedIn ? "for-you" : "most-recent-videos";
+      await loadView(`views/${defaultViewName}.html`);
+      const initFn = viewInitRegistry[defaultViewName];
       if (typeof initFn === "function") {
         await initFn();
       }
