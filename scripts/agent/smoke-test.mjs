@@ -1,81 +1,31 @@
-import { JSDOM } from 'jsdom';
-import * as crypto from 'node:crypto';
-import { WebSocket } from 'ws';
+import { chromium } from '@playwright/test';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
-import * as NostrTools from 'nostr-tools';
-import 'fake-indexeddb/auto';
+import { fileURLToPath } from 'node:url';
 
-// Polyfills for Node.js environment
-const dom = new JSDOM('', { url: 'http://localhost' });
-global.window = dom.window;
-global.document = dom.window.document;
-// Node 21+ has global.navigator which is read-only
-if (!global.navigator) {
-    global.navigator = dom.window.navigator;
-}
-global.self = global.window;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const REPO_ROOT = path.resolve(__dirname, '../../');
 
-// localStorage Mock
-global.localStorage = {
-  _data: {},
-  getItem: function(k) { return this._data[k] || null; },
-  setItem: function(k, v) { this._data[k] = String(v); },
-  removeItem: function(k) { delete this._data[k]; },
-  clear: function() { this._data = {}; }
-};
-
-// WebSocket
-global.WebSocket = WebSocket;
-
-// Crypto
-// Node.js crypto matches Web Crypto API in recent versions (v19+) via globalThis.crypto
-// But we explicitly set it to ensure compatibility
-if (!global.crypto) {
-    global.crypto = crypto.webcrypto || crypto;
-}
-
-// TextEncoder/Decoder
-global.TextEncoder = TextEncoder;
-global.TextDecoder = TextDecoder;
-
-// NostrTools
-// The application expects NostrTools in the global scope for some operations
-global.NostrTools = NostrTools;
-global.window.NostrTools = NostrTools;
-
-// Inject NostrTools into window for ensureNostrTools to find
-dom.window.NostrTools = NostrTools;
-
-
-// Import Application Modules
-// Dynamic import to ensure globals are set before modules load
-const { NostrClient } = await import('../../js/nostr/client.js');
-const { decryptDM } = await import('../../js/dmDecryptor.js');
-
-// Configuration
-const RELAY_PORT = 3334; // Use a different port than default to avoid conflicts
-const RELAY_URL = `ws://127.0.0.1:${RELAY_PORT}`;
-const ARTIFACTS_DIR = 'artifacts';
+const ARTIFACTS_DIR = path.join(REPO_ROOT, 'artifacts');
 const TIMESTAMP = new Date().toISOString().replace(/[:.]/g, '-');
 const LOG_FILE = path.join(ARTIFACTS_DIR, `smoke-${TIMESTAMP}.log`);
 const REPORT_FILE = path.join(ARTIFACTS_DIR, `smoke-report-${TIMESTAMP}.json`);
+const RELAY_PORT = 8008;
+const HTTP_PORT = 8001;
 
-// Logger
+// Ensure artifacts dir exists
+if (!fs.existsSync(ARTIFACTS_DIR)) {
+    fs.mkdirSync(ARTIFACTS_DIR, { recursive: true });
+}
+
 function log(message, type = 'INFO') {
     const msg = `[${new Date().toISOString()}] [${type}] ${message}`;
     console.log(msg);
     fs.appendFileSync(LOG_FILE, msg + '\n');
 }
 
-// Ensure artifacts dir exists
-if (!fs.existsSync(ARTIFACTS_DIR)) {
-    fs.mkdirSync(ARTIFACTS_DIR);
-}
-
-// Test State
-let relayProcess = null;
 const stats = {
     steps: 0,
     failures: 0,
@@ -98,186 +48,254 @@ function recordStep(name, success, error = null) {
     stats.details.push(detail);
 }
 
-async function startRelay() {
-    log('Starting local relay...');
-    const relayScript = path.resolve('scripts/agent/simple-relay.mjs');
-
+async function startProcess(command, args, cwd, readyCheck) {
     return new Promise((resolve, reject) => {
-        relayProcess = spawn('node', [relayScript], {
-            env: { ...process.env, PORT: String(RELAY_PORT) },
-            stdio: 'pipe' // Capture output
-        });
+        const proc = spawn(command, args, { cwd, stdio: 'pipe' });
+        let started = false;
+        const label = args.some(a => a.includes('relay')) ? 'RELAY' : command;
 
-        relayProcess.stdout.on('data', (data) => {
-            // log(`Relay: ${data.toString().trim()}`, 'DEBUG');
-            if (data.toString().includes(`running on port ${RELAY_PORT}`)) {
-                resolve();
+        const checkData = (data) => {
+            const output = data.toString();
+            if (started) {
+                 if (label === 'RELAY') log(`[RELAY] ${output.trim()}`, 'DEBUG');
+                 return;
             }
+            if (readyCheck(output)) {
+                started = true;
+                resolve(proc);
+            }
+        };
+
+        proc.stdout.on('data', (data) => {
+            checkData(data);
+        });
+        proc.stderr.on('data', (data) => {
+             checkData(data);
         });
 
-        relayProcess.stderr.on('data', (data) => {
-            log(`Relay Error: ${data.toString()}`, 'ERROR');
-        });
-
-        relayProcess.on('error', (err) => {
-            reject(err);
+        proc.on('error', (err) => reject(err));
+        proc.on('exit', (code) => {
+            if (!started) reject(new Error(`${command} exited early with code ${code}`));
         });
 
         // Timeout fallback
         setTimeout(() => {
-            if (relayProcess.exitCode === null) {
-                // Assume started if not exited after 2s and no output confirmed yet (fallback)
-                resolve();
-            } else {
-                reject(new Error(`Relay process exited with code ${relayProcess.exitCode}`));
+            if (!started) {
+                // For http server, sometimes it doesn't output much
+                if (command.includes('python') || command.includes('http.server')) {
+                    started = true;
+                    resolve(proc);
+                } else {
+                    reject(new Error(`${command} timed out waiting for ready signal`));
+                }
             }
         }, 3000);
     });
 }
 
-async function runTest() {
+async function runSmokeTest() {
+    let relayProc, serverProc, browser;
+
     try {
-        await startRelay();
-        log(`Relay started at ${RELAY_URL}`);
+        log('Starting smoke test...');
 
-        // --- 1. Client Initialization & Connection ---
-        log('Initializing NostrClient...');
-        const client = new NostrClient();
+        // 1. Start Relay
+        log('Starting local relay...');
+        relayProc = await startProcess(
+            'node',
+            ['scripts/agent/simple-relay.mjs'],
+            REPO_ROOT,
+            (output) => output.includes(`running on ws://localhost:${RELAY_PORT}`) || output.includes(`running on port ${RELAY_PORT}`)
+        );
+        // Relay script in repo uses hardcoded port 8008 or env var PORT.
+        // I need to check if simple-relay.mjs respects PORT env var.
+        // Checking existing simple-relay.mjs content... it uses const PORT = 8008;
+        // Wait, I saw "const PORT = 8008;" in the file content.
+        // I should probably edit simple-relay.mjs to accept PORT env or just use 8008.
+        // Let's assume 8008 for now if I can't change it easily, but wait, I can pass it via env?
+        // The script I read: "const PORT = 8008;" -> It does NOT use process.env.PORT.
+        // So I must use 8008.
+        // Let's restart relayProc with correct expectation if needed, or just modify the script temporarily?
+        // Ah, the user prompt said "Start a local relay instance".
+        // I'll stick to 8008.
 
-        // Override relays
-        client.relays = [RELAY_URL];
-        client.readRelays = [RELAY_URL];
-        client.writeRelays = [RELAY_URL];
+    } catch (e) {
+        log('Failed to start relay: ' + e.message, 'FATAL');
+        // We can try to proceed if relay is already running?
+        // But let's fix the port logic.
+    }
 
-        // Init connection
-        try {
-            await client.init();
-            recordStep('Client Init & Relay Connection', true);
-        } catch (e) {
-            recordStep('Client Init & Relay Connection', false, e);
-            throw e; // Critical failure
-        }
+    try {
+        // 2. Start HTTP Server
+        log('Starting HTTP server...');
+        serverProc = await startProcess(
+            'python3',
+            ['-m', 'http.server', String(HTTP_PORT)],
+            REPO_ROOT,
+            (output) => output.includes(`Serving HTTP on 0.0.0.0 port ${HTTP_PORT}`)
+        );
 
-        // --- 2. Identity Setup (Ephemeral) ---
-        log('Generating ephemeral keys...');
-        const sk1 = NostrTools.generateSecretKey();
-        const pk1 = NostrTools.getPublicKey(sk1);
-        const hexSk1 = NostrTools.utils.bytesToHex(sk1);
+        // 3. Launch Browser
+        log('Launching browser...');
+        browser = await chromium.launch({ headless: true }); // headless: true for CI
+        const context = await browser.newContext();
+        const page = await context.newPage();
 
-        const sk2 = NostrTools.generateSecretKey();
-        const pk2 = NostrTools.getPublicKey(sk2);
-        const hexSk2 = NostrTools.utils.bytesToHex(sk2);
+        // 4. Navigate to app
+        log(`Navigating to http://localhost:${HTTP_PORT}...`);
+        await page.goto(`http://localhost:${HTTP_PORT}`, { waitUntil: 'networkidle' });
 
-        log(`Alice: ${pk1}`);
-        log(`Bob: ${pk2}`);
+        // 5. Inject Test Logic
+        // We will do everything inside page.evaluate to access the window context and modules
+        log('Executing test logic in browser...');
 
-        try {
-            // Login as Alice
-            await client.registerPrivateKeySigner({ privateKey: hexSk1, pubkey: pk1 });
-            // For nsec login, client.pubkey is not set, but sessionActor is.
-            if (client.sessionActor.pubkey !== pk1) throw new Error('Session actor pubkey mismatch');
-            recordStep('Login (Alice)', true);
-        } catch (e) {
-            recordStep('Login (Alice)', false, e);
-            throw e;
-        }
+        const testResult = await page.evaluate(async ({ relayUrl }) => {
+            const logs = [];
+            const steps = [];
 
-        // --- 3. Publish Video ---
-        log('Alice publishing video...');
-        const videoPayload = {
-            title: 'Smoke Test Video',
-            description: 'This is a test video',
-            url: 'https://example.com/video.mp4',
-            thumbnail: 'https://example.com/thumb.jpg',
-            mode: 'live'
-        };
+            function log(msg) { console.log(msg); logs.push(msg); }
 
-        let publishedEventId = null;
-        try {
-            const event = await client.publishVideo(videoPayload, pk1);
-            if (!event || !event.id) throw new Error('Publish returned invalid event');
-            publishedEventId = event.id;
-            recordStep('Publish Video', true);
-            log(`Published Video ID: ${publishedEventId}`);
-        } catch (e) {
-            recordStep('Publish Video', false, e);
-            throw e;
-        }
+            try {
+                // Dynamic import of the client
+                // Note: The path must be relative to the URL being served
+                const { nostrClient } = await import('./js/nostr/defaultClient.js');
 
-        // --- 4. Verify Publish (Read back) ---
-        log('Verifying published video...');
-        // Wait a bit for relay to index/propagate
-        await new Promise(r => setTimeout(r, 500));
+                // Wait for NostrTools
+                if (!window.NostrTools) {
+                    await new Promise(r => setTimeout(r, 1000));
+                    if (!window.NostrTools) throw new Error("NostrTools not available on window");
+                }
+                const NostrTools = window.NostrTools;
 
-        try {
-            // Fetch by ID
-            const fetched = await client.getEventById(publishedEventId);
-            if (!fetched) throw new Error('Event not found on relay');
-            if (fetched.title !== videoPayload.title) throw new Error('Fetched event content mismatch');
-            recordStep('Verify Video Publish', true);
-        } catch (e) {
-            recordStep('Verify Video Publish', false, e);
-        }
+                // --- Step 1: Init ---
+                // Reset relays to our local relay only
+                nostrClient.relays = [relayUrl];
+                nostrClient.readRelays = [relayUrl];
+                nostrClient.writeRelays = [relayUrl];
 
-        // --- 5. Send DM ---
-        log('Alice sending DM to Bob...');
-        const message = "Hello Bob, this is a smoke test.";
-        try {
-            // Bob's npub
-            const bobNpub = NostrTools.nip19.npubEncode(pk2);
-            const result = await client.sendDirectMessage(bobNpub, message);
-            if (!result.ok) throw new Error(`DM send failed: ${result.error}`);
-            recordStep('Send DM', true);
-        } catch (e) {
-            recordStep('Send DM', false, e);
-            throw e;
-        }
+                // Re-init or connect
+                await nostrClient.init();
+                // Force connection again just in case init was already called by the app with defaults
+                await nostrClient.connectToRelays();
 
-        // --- 6. Decrypt DM (Bob) ---
-        log('Bob receiving and decrypting DM...');
+                steps.push({ name: 'Init & Connect', success: true });
 
-        // We need to simulate Bob receiving the message.
-        // We can query DMs for Bob.
-        // But current client is logged in as Alice.
-        // We can either logout and login as Bob, or just query DMs and manually decrypt using Bob's key.
-        // Let's logout and login as Bob to verify the full flow in client.
+                // --- Step 2: Login (Alice) ---
+                const sk1 = NostrTools.generateSecretKey();
+                const pk1 = NostrTools.getPublicKey(sk1);
+                const hexSk1 = NostrTools.utils.bytesToHex(sk1);
 
-        try {
-            client.logout();
-            await client.registerPrivateKeySigner({ privateKey: hexSk2, pubkey: pk2 });
-            log('Logged in as Bob');
+                await nostrClient.registerPrivateKeySigner({ privateKey: hexSk1, pubkey: pk1 });
+                if (nostrClient.sessionActor?.pubkey !== pk1) throw new Error(`Login failed: sessionActor.pubkey (${nostrClient.sessionActor?.pubkey}) !== ${pk1}`);
 
-            // Wait for DM to arrive
-            await new Promise(r => setTimeout(r, 500));
+                steps.push({ name: 'Login (Alice)', success: true });
 
-            // List DMs
-            const messages = await client.listDirectMessages(pk2);
-            // messages should be decrypted objects
+                // --- Step 3: Publish Video ---
+                const videoPayload = {
+                    title: 'Smoke Test Video ' + Date.now(),
+                    description: 'Test Description',
+                    url: 'https://example.com/video.mp4',
+                    thumbnail: 'https://example.com/thumb.jpg',
+                    mode: 'live'
+                };
 
-            const found = messages.find(m => m.plaintext === message);
+                const event = await nostrClient.publishVideo(videoPayload, pk1);
+                if (!event || !event.id) throw new Error("Publish failed");
 
-            if (found) {
-                recordStep('Decrypt DM', true);
-                log(`Decrypted message: ${found.plaintext}`);
-            } else {
-                // Debug info
-                log(`Found ${messages.length} messages for Bob.`);
-                messages.forEach(m => log(`Msg: ${m.plaintext}, Error: ${JSON.stringify(m.errors)}`));
-                throw new Error('Target DM not found or not decrypted');
+                steps.push({ name: 'Publish Video', success: true });
+
+                // --- Step 4: Verify Video ---
+                // Wait a bit
+                await new Promise(r => setTimeout(r, 1500));
+
+                // Fetch directly
+                const fetched = await nostrClient.getEventById(event.id);
+                if (!fetched) {
+                    // Try debugging
+                    const raw = await nostrClient.fetchRawEventById(event.id);
+                    throw new Error(`Could not fetch published video ${event.id}. Raw result: ${raw ? 'found' : 'null'}`);
+                }
+                if (fetched.title !== videoPayload.title) throw new Error("Video content mismatch");
+
+                steps.push({ name: 'Verify Video', success: true });
+
+                // --- Step 5: DM (Alice -> Bob) ---
+                const sk2 = NostrTools.generateSecretKey();
+                const pk2 = NostrTools.getPublicKey(sk2);
+                const hexSk2 = NostrTools.utils.bytesToHex(sk2);
+                const npub2 = NostrTools.nip19.npubEncode(pk2);
+
+                const msg = "Secret Message " + Date.now();
+                const dmResult = await nostrClient.sendDirectMessage(npub2, msg);
+                if (!dmResult.ok) throw new Error("DM send failed: " + dmResult.error);
+
+                steps.push({ name: 'Send DM', success: true });
+
+                // --- Step 6: Decrypt DM (Bob) ---
+                // Switch to Bob
+                nostrClient.logout();
+                await nostrClient.registerPrivateKeySigner({ privateKey: hexSk2, pubkey: pk2 });
+
+                await new Promise(r => setTimeout(r, 500));
+
+                const dms = await nostrClient.listDirectMessages(pk2);
+                const found = dms.find(m => m.plaintext === msg);
+
+                if (!found) {
+                     // Log details
+                     return {
+                         success: false,
+                         steps,
+                         logs,
+                         error: "DM not found. Found: " + dms.map(d => d.plaintext).join(', ')
+                     };
+                }
+
+                steps.push({ name: 'Decrypt DM', success: true });
+
+                return { success: true, steps, logs };
+
+            } catch (e) {
+                return { success: false, steps, logs, error: e.message, stack: e.stack };
             }
+        }, { relayUrl: `ws://localhost:${RELAY_PORT}` });
 
-        } catch (e) {
-            recordStep('Decrypt DM', false, e);
+        // Process results
+        if (testResult.logs) {
+            testResult.logs.forEach(l => log(`[Browser] ${l}`));
+        }
+
+        if (testResult.steps) {
+            testResult.steps.forEach(s => recordStep(s.name, s.success));
+        }
+
+        if (!testResult.success) {
+            throw new Error(testResult.error || "Unknown browser test failure");
         }
 
     } catch (err) {
-        log(`Test suite failed: ${err.message}`, 'FATAL');
-        if (err.stack) log(err.stack, 'FATAL');
+        log(`Test failed: ${err.message}`, 'FATAL');
+        recordStep('Smoke Test Suite', false, err);
+        // Take screenshot if browser is active
+        if (browser) {
+            try {
+                const page = browser.contexts()[0].pages()[0];
+                if (page) {
+                    await page.screenshot({ path: path.join(ARTIFACTS_DIR, `failure-${TIMESTAMP}.png`) });
+                    log(`Screenshot saved to failure-${TIMESTAMP}.png`);
+                }
+            } catch (e) {
+                log('Failed to capture screenshot: ' + e.message);
+            }
+        }
     } finally {
         // Cleanup
-        if (relayProcess) {
-            log('Stopping relay...');
-            relayProcess.kill();
+        if (browser) await browser.close();
+        if (serverProc) {
+            try { process.kill(serverProc.pid); } catch (e) { /* ignore */ }
+        }
+        if (relayProc) {
+            try { process.kill(relayProc.pid); } catch (e) { /* ignore */ }
         }
 
         // Report
@@ -287,17 +305,9 @@ async function runTest() {
             logFile: LOG_FILE
         }, null, 2));
 
-        console.log(`\nTest Finished.`);
-        console.log(`Pass: ${stats.steps - stats.failures}/${stats.steps}`);
-        console.log(`Log: ${LOG_FILE}`);
-        console.log(`Report: ${REPORT_FILE}`);
-
-        if (stats.failures > 0) {
-            process.exit(1);
-        } else {
-            process.exit(0);
-        }
+        console.log(`Report saved to ${REPORT_FILE}`);
+        if (stats.failures > 0) process.exit(1);
     }
 }
 
-runTest();
+runSmokeTest();
