@@ -145,6 +145,7 @@ import {
   setModerationSettings,
   resetModerationSettings,
   loadModerationSettingsFromStorage,
+  loadDmPrivacySettingsFromStorage,
   URL_PROBE_TIMEOUT_MS,
   urlHealthConstants,
 } from "./state/cache.js";
@@ -423,6 +424,7 @@ class Application {
 
       loadModerationOverridesFromStorage();
       loadModerationSettingsFromStorage();
+      loadDmPrivacySettingsFromStorage();
       this.moderationSettings = this.normalizeModerationSettings(
         getModerationSettings(),
       );

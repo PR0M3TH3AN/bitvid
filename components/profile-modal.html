@@ -1139,6 +1139,42 @@
                   aria-live="polite"
                 ></p>
               </div>
+              <div class="card space-y-4 p-4">
+                <div class="space-y-1">
+                  <h3 class="text-sm font-semibold text-text">Message activity privacy</h3>
+                  <p class="text-xs text-muted">
+                    Read receipts and typing indicators are optional signals published to relays.
+                  </p>
+                </div>
+                <div class="rounded-lg border border-border/60 bg-bg-muted px-3 py-2 text-xs text-muted">
+                  Privacy warning: enabling these signals shares message activity metadata with anyone
+                  who can access your relay events.
+                </div>
+                <div class="space-y-2">
+                  <label
+                    for="profileMessagesReadReceiptsToggle"
+                    class="inline-flex items-center gap-2 text-xs font-medium text-muted-strong"
+                  >
+                    <input
+                      id="profileMessagesReadReceiptsToggle"
+                      type="checkbox"
+                      class="checkbox"
+                    />
+                    Send read receipts
+                  </label>
+                  <label
+                    for="profileMessagesTypingToggle"
+                    class="inline-flex items-center gap-2 text-xs font-medium text-muted-strong"
+                  >
+                    <input
+                      id="profileMessagesTypingToggle"
+                      type="checkbox"
+                      class="checkbox"
+                    />
+                    Share typing indicators
+                  </label>
+                </div>
+              </div>
               <div
                 id="profileMessagesStatus"
                 class="sr-only"

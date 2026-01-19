@@ -80,6 +80,10 @@ import {
   subscribeVideoComments as subscribeVideoCommentsForClient,
 } from "./commentEvents.js";
 import {
+  publishDmReadReceipt as publishDmReadReceiptForClient,
+  publishDmTypingIndicator as publishDmTypingIndicatorForClient,
+} from "./dmSignalEvents.js";
+import {
   logCountTimeoutCleanupFailure,
   logRelayCountFailure,
 } from "./countDiagnostics.js";
@@ -3670,6 +3674,20 @@ export class NostrClient {
       resolveActiveSigner,
       shouldRequestExtensionPermissions,
       signEventWithPrivateKey,
+      DEFAULT_NIP07_PERMISSION_METHODS,
+    });
+  }
+
+  async publishDmReadReceipt(payload, options = {}) {
+    return publishDmReadReceiptForClient(this, payload, options, {
+      shouldRequestExtensionPermissions,
+      DEFAULT_NIP07_PERMISSION_METHODS,
+    });
+  }
+
+  async publishDmTypingIndicator(payload, options = {}) {
+    return publishDmTypingIndicatorForClient(this, payload, options, {
+      shouldRequestExtensionPermissions,
       DEFAULT_NIP07_PERMISSION_METHODS,
     });
   }

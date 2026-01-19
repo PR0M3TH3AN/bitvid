@@ -21,6 +21,8 @@ export const NOTE_TYPES = Object.freeze({
   VIDEO_REACTION: "videoReaction",
   VIDEO_COMMENT: "videoComment",
   DM_ATTACHMENT: "dmAttachment",
+  DM_READ_RECEIPT: "dmReadReceipt",
+  DM_TYPING: "dmTypingIndicator",
   ZAP_REQUEST: "zapRequest",
   ZAP_RECEIPT: "zapReceipt",
   WATCH_HISTORY: "watchHistory",
@@ -380,6 +382,34 @@ const BASE_SCHEMAS = {
     content: {
       format: "empty",
       description: "Attachment metadata is carried in tags; content is empty.",
+    },
+  },
+  [NOTE_TYPES.DM_READ_RECEIPT]: {
+    type: NOTE_TYPES.DM_READ_RECEIPT,
+    label: "DM read receipt",
+    kind: 20001,
+    recipientTagName: "p",
+    eventTagName: "e",
+    kindTagName: "k",
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      format: "empty",
+      description: "Ephemeral read receipt pointer for a DM event.",
+    },
+  },
+  [NOTE_TYPES.DM_TYPING]: {
+    type: NOTE_TYPES.DM_TYPING,
+    label: "DM typing indicator",
+    kind: 20002,
+    recipientTagName: "p",
+    eventTagName: "e",
+    statusTagName: "t",
+    statusTagValue: "typing",
+    expirationTagName: "expiration",
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      format: "empty",
+      description: "Ephemeral typing indicator with an expiration timestamp.",
     },
   },
   [NOTE_TYPES.ZAP_REQUEST]: {
@@ -1148,6 +1178,92 @@ export function buildDmAttachmentEvent(params) {
 
   return {
     kind: schema?.kind ?? 15,
+    pubkey,
+    created_at,
+    tags,
+    content: "",
+  };
+}
+
+export function buildDmReadReceiptEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    recipientPubkey,
+    eventId,
+    messageKind,
+    additionalTags = [],
+  } = params || {};
+  const schema = getNostrEventSchema(NOTE_TYPES.DM_READ_RECEIPT);
+  const tags = [];
+
+  const recipient = normalizePointerIdentifier(recipientPubkey);
+  if (recipient) {
+    tags.push([schema?.recipientTagName || "p", recipient]);
+  }
+
+  const normalizedEventId = normalizePointerIdentifier(eventId);
+  if (normalizedEventId) {
+    tags.push([schema?.eventTagName || "e", normalizedEventId]);
+  }
+
+  if (Number.isFinite(messageKind)) {
+    tags.push([schema?.kindTagName || "k", String(Math.floor(messageKind))]);
+  }
+
+  appendSchemaTags(tags, schema);
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
+  }
+
+  return {
+    kind: schema?.kind ?? 20001,
+    pubkey,
+    created_at,
+    tags,
+    content: "",
+  };
+}
+
+export function buildDmTypingIndicatorEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    recipientPubkey,
+    eventId,
+    expiresAt,
+    additionalTags = [],
+  } = params || {};
+  const schema = getNostrEventSchema(NOTE_TYPES.DM_TYPING);
+  const tags = [];
+
+  const recipient = normalizePointerIdentifier(recipientPubkey);
+  if (recipient) {
+    tags.push([schema?.recipientTagName || "p", recipient]);
+  }
+
+  const normalizedEventId = normalizePointerIdentifier(eventId);
+  if (normalizedEventId) {
+    tags.push([schema?.eventTagName || "e", normalizedEventId]);
+  }
+
+  if (schema?.statusTagName && schema?.statusTagValue) {
+    tags.push([schema.statusTagName, schema.statusTagValue]);
+  }
+
+  if (Number.isFinite(expiresAt)) {
+    tags.push([schema?.expirationTagName || "expiration", String(Math.floor(expiresAt))]);
+  }
+
+  appendSchemaTags(tags, schema);
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
+  }
+
+  return {
+    kind: schema?.kind ?? 20002,
     pubkey,
     created_at,
     tags,

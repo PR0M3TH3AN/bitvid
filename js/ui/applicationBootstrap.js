@@ -41,6 +41,8 @@ import {
   getModerationSettings,
   setModerationSettings,
   resetModerationSettings,
+  getDmPrivacySettings,
+  setDmPrivacySettings,
   clearModerationOverride,
   persistSavedProfiles,
   getSavedProfiles,
@@ -507,6 +509,9 @@ export default class ApplicationBootstrap {
           getDmRelayPreferences: (pubkey) => app.getDmRelayHints(pubkey),
           setDmRelayPreferences: (pubkey, hints) =>
             app.setDmRelayHints(pubkey, hints),
+          getDmPrivacySettings: () => getDmPrivacySettings(),
+          setDmPrivacySettings: (settings, options = {}) =>
+            setDmPrivacySettings(settings, options),
         };
 
         const profileModalCallbacks = {
