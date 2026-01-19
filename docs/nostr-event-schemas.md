@@ -79,6 +79,9 @@ sign/encrypt calls. Call `clearActiveSigner()` on logout if your integration
 manages session state manually; the built-in logout handler already does this
 for the default extension flow.
 
+For adapter implementation details and test guidance, see
+[`docs/signing-adapter.md`](signing-adapter.md).
+
 ### Accessing raw events
 
 `NostrClient` now keeps a lightweight cache of parsed videos alongside a
@@ -188,6 +191,10 @@ bitvid now consumes both legacy direct messages (kind `4`) and modern gift-wrap 
 `NostrClient` exposes `listDirectMessages()` and `subscribeDirectMessages()` APIs that hydrate decryptors lazily (preferring extension-provided helpers) and cache results in an LRU keyed by event id. `NostrService` mirrors the normalized messages via `getDirectMessages()` and emits updates as new events arrive so the UI can render private conversations without reimplementing the unwrap logic.
 
 The `isPrivate` flag in Content Schema v3 marks cards that should stay off shared or public grids. Clients should suppress these events for everyone except the owner, even though the payload stays in clear text for compatibility.
+
+For the privacy model, relay hint selection flow, and user controls (privacy
+toggle, relay list publishing, and metadata toggles), see
+[`docs/dm-privacy-model.md`](dm-privacy-model.md).
 
 If you introduce a new Nostr feature, add its schema to
 `js/nostrEventSchemas.js` so that the catalogue stays complete and so existing
