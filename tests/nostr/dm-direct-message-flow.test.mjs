@@ -90,61 +90,222 @@ class FakeRelayPool {
   }
 }
 
-test("two clients can send, decrypt, notify, and mark DMs as seen", async () => {
+async function configureNostrTools() {
   const previousCanonical = globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__;
   const previousNostrTools = globalThis.NostrTools;
   const previousReady = globalThis.nostrToolsReady;
 
   const nostrTools = await import("nostr-tools");
 
+  globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__ = nostrTools;
+  globalThis.NostrTools = nostrTools;
+  globalThis.nostrToolsReady = Promise.resolve({ ok: true, value: nostrTools });
+
+  const restore = () => {
+    if (previousCanonical === undefined) {
+      delete globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__;
+    } else {
+      globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__ = previousCanonical;
+    }
+
+    if (previousNostrTools === undefined) {
+      delete globalThis.NostrTools;
+    } else {
+      globalThis.NostrTools = previousNostrTools;
+    }
+
+    if (previousReady === undefined) {
+      delete globalThis.nostrToolsReady;
+    } else {
+      globalThis.nostrToolsReady = previousReady;
+    }
+  };
+
+  return { nostrTools, restore };
+}
+
+async function setupDmScenario() {
+  const { nostrTools, restore } = await configureNostrTools();
+  const senderSecret = nostrTools.generateSecretKey();
+  const receiverSecret = nostrTools.generateSecretKey();
+  const senderPrivateKey = nostrTools.utils.bytesToHex(senderSecret);
+  const receiverPrivateKey = nostrTools.utils.bytesToHex(receiverSecret);
+
+  const senderPubkey = nostrTools.getPublicKey(senderPrivateKey);
+  const receiverPubkey = nostrTools.getPublicKey(receiverPrivateKey);
+
+  const createSigner = (privateKey, pubkey) => ({
+    type: "test",
+    pubkey,
+    signEvent: (event) => {
+      const finalized = nostrTools.finalizeEvent(event, privateKey);
+      return { ...event, id: finalized.id, sig: finalized.sig };
+    },
+    nip04Encrypt: (target, plaintext) =>
+      nostrTools.nip04.encrypt(privateKey, target, plaintext),
+    nip04Decrypt: (target, ciphertext) =>
+      nostrTools.nip04.decrypt(privateKey, target, ciphertext),
+  });
+
+  const senderSigner = createSigner(senderPrivateKey, senderPubkey);
+  const receiverSigner = createSigner(receiverPrivateKey, receiverPubkey);
+
+  const relayPool = new FakeRelayPool();
+
+  const senderClient = new NostrClient();
+  senderClient.pool = relayPool;
+  senderClient.relays = ["wss://relay.unit.test"];
+  senderClient.readRelays = [];
+  senderClient.writeRelays = [];
+  senderClient.pubkey = senderPubkey;
+
+  const receiverClient = new NostrClient();
+  receiverClient.pool = relayPool;
+  receiverClient.relays = ["wss://relay.unit.test"];
+  receiverClient.readRelays = [];
+  receiverClient.writeRelays = [];
+  receiverClient.pubkey = receiverPubkey;
+
+  const receiverService = new NostrService({ logger: () => {} });
+  receiverService.nostrClient = receiverClient;
+
+  return {
+    nostrTools,
+    restore,
+    senderSigner,
+    receiverSigner,
+    senderPubkey,
+    receiverPubkey,
+    relayPool,
+    senderClient,
+    receiverClient,
+    receiverService,
+  };
+}
+
+test("DM relay duplication is deduped", async () => {
+  const {
+    nostrTools,
+    restore,
+    senderSigner,
+    receiverSigner,
+    receiverPubkey,
+    relayPool,
+    senderClient,
+    receiverClient,
+    receiverService,
+  } = await setupDmScenario();
+
   try {
-    globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__ = nostrTools;
-    globalThis.NostrTools = nostrTools;
-    globalThis.nostrToolsReady = Promise.resolve({ ok: true, value: nostrTools });
-
-    const senderSecret = nostrTools.generateSecretKey();
-    const receiverSecret = nostrTools.generateSecretKey();
-    const senderPrivateKey = nostrTools.utils.bytesToHex(senderSecret);
-    const receiverPrivateKey = nostrTools.utils.bytesToHex(receiverSecret);
-
-    const senderPubkey = nostrTools.getPublicKey(senderPrivateKey);
-    const receiverPubkey = nostrTools.getPublicKey(receiverPrivateKey);
-
-    const createSigner = (privateKey, pubkey) => ({
-      type: "test",
-      pubkey,
-      signEvent: (event) => {
-        const finalized = nostrTools.finalizeEvent(event, privateKey);
-        return { ...event, id: finalized.id, sig: finalized.sig };
-      },
-      nip04Encrypt: (target, plaintext) =>
-        nostrTools.nip04.encrypt(privateKey, target, plaintext),
-      nip04Decrypt: (target, ciphertext) =>
-        nostrTools.nip04.decrypt(privateKey, target, ciphertext),
+    const notifications = [];
+    receiverService.on("directMessages:notification", (payload) => {
+      notifications.push(payload);
     });
 
-    const senderSigner = createSigner(senderPrivateKey, senderPubkey);
-    const receiverSigner = createSigner(receiverPrivateKey, receiverPubkey);
+    const received = [];
+    const subscription = receiverClient.subscribeDirectMessages(receiverPubkey, {
+      onMessage: (message, { event }) => {
+        received.push(message);
+        receiverService.applyDirectMessage(
+          { ...message, actorPubkey: receiverPubkey },
+          { reason: "subscription", event },
+        );
+      },
+    });
 
-    const relayPool = new FakeRelayPool();
+    setActiveSigner(senderSigner);
+    const sendResult = await senderClient.sendDirectMessage(
+      nostrTools.nip19.npubEncode(receiverPubkey),
+      "Hello from sender",
+    );
 
-    const senderClient = new NostrClient();
-    senderClient.pool = relayPool;
-    senderClient.relays = ["wss://relay.unit.test"];
-    senderClient.readRelays = [];
-    senderClient.writeRelays = [];
-    senderClient.pubkey = senderPubkey;
+    assert.equal(sendResult.ok, true);
 
-    const receiverClient = new NostrClient();
-    receiverClient.pool = relayPool;
-    receiverClient.relays = ["wss://relay.unit.test"];
-    receiverClient.readRelays = [];
-    receiverClient.writeRelays = [];
-    receiverClient.pubkey = receiverPubkey;
+    setActiveSigner(receiverSigner);
+    relayPool.flushQueue({ duplicate: true });
 
-    const receiverService = new NostrService({ logger: () => {} });
-    receiverService.nostrClient = receiverClient;
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
+    assert.equal(received.length, 1, "duplicate relay events should be deduped");
+    assert.equal(notifications.length, 1, "incoming messages should notify once");
+
+    subscription.unsub();
+  } finally {
+    restore();
+  }
+});
+
+test("out-of-order DM delivery keeps newest messages first", async () => {
+  const {
+    nostrTools,
+    restore,
+    senderSigner,
+    receiverSigner,
+    receiverPubkey,
+    relayPool,
+    senderClient,
+    receiverClient,
+    receiverService,
+  } = await setupDmScenario();
+
+  try {
+    setActiveSigner(receiverSigner);
+    receiverClient.subscribeDirectMessages(receiverPubkey, {
+      onMessage: (message, { event }) => {
+        receiverService.applyDirectMessage(
+          { ...message, actorPubkey: receiverPubkey },
+          { reason: "subscription", event },
+        );
+      },
+    });
+
+    setActiveSigner(senderSigner);
+    const firstSend = await senderClient.sendDirectMessage(
+      nostrTools.nip19.npubEncode(receiverPubkey),
+      "First message",
+    );
+    const secondSend = await senderClient.sendDirectMessage(
+      nostrTools.nip19.npubEncode(receiverPubkey),
+      "Second message",
+    );
+
+    assert.equal(firstSend.ok, true);
+    assert.equal(secondSend.ok, true);
+
+    relayPool.queue[0].created_at = 100;
+    relayPool.queue[1].created_at = 200;
+
+    setActiveSigner(receiverSigner);
+    relayPool.deliver(relayPool.queue[1]);
+    relayPool.deliver(relayPool.queue[0]);
+    relayPool.queue = [];
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    const messages = receiverService.getDirectMessages();
+    assert.equal(messages.length, 2, "two DM messages should be present");
+    assert.equal(messages[0].plaintext, "Second message");
+    assert.equal(messages[1].plaintext, "First message");
+  } finally {
+    restore();
+  }
+});
+
+test("DM reconnect replays do not duplicate messages or reset seen state", async () => {
+  const {
+    nostrTools,
+    restore,
+    senderSigner,
+    receiverSigner,
+    senderPubkey,
+    receiverPubkey,
+    relayPool,
+    senderClient,
+    receiverClient,
+    receiverService,
+  } = await setupDmScenario();
+
+  try {
     const notifications = [];
     receiverService.on("directMessages:notification", (payload) => {
       notifications.push(payload);
@@ -176,12 +337,9 @@ test("two clients can send, decrypt, notify, and mark DMs as seen", async () => 
     assert.equal(sendResult.ok, true);
 
     setActiveSigner(receiverSigner);
-    relayPool.flushQueue({ duplicate: true });
+    relayPool.flushQueue();
 
     await new Promise((resolve) => setTimeout(resolve, 10));
-
-    assert.equal(received.length, 1, "duplicate relay events should be deduped");
-    assert.equal(notifications.length, 1, "incoming messages should notify once");
 
     const conversationId = `dm:${[senderPubkey, receiverPubkey].sort().join(":")}`;
     assert.equal(receiverService.getDirectMessageUnseenCount(conversationId), 1);
@@ -215,22 +373,6 @@ test("two clients can send, decrypt, notify, and mark DMs as seen", async () => 
     );
     assert.equal(notifications.length, 1, "replays should not trigger notifications");
   } finally {
-    if (previousCanonical === undefined) {
-      delete globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__;
-    } else {
-      globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__ = previousCanonical;
-    }
-
-    if (previousNostrTools === undefined) {
-      delete globalThis.NostrTools;
-    } else {
-      globalThis.NostrTools = previousNostrTools;
-    }
-
-    if (previousReady === undefined) {
-      delete globalThis.nostrToolsReady;
-    } else {
-      globalThis.nostrToolsReady = previousReady;
-    }
+    restore();
   }
 });
