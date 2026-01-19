@@ -13,7 +13,7 @@ const TIMESTAMP = new Date().toISOString().replace(/[:.]/g, '-');
 const LOG_FILE = path.join(ARTIFACTS_DIR, `smoke-${TIMESTAMP}.log`);
 const REPORT_FILE = path.join(ARTIFACTS_DIR, `smoke-report-${TIMESTAMP}.json`);
 const RELAY_PORT = 8008;
-const HTTP_PORT = 8001;
+const HTTP_PORT = 8000;
 
 // Ensure artifacts dir exists
 if (!fs.existsSync(ARTIFACTS_DIR)) {
@@ -107,22 +107,10 @@ async function runSmokeTest() {
             REPO_ROOT,
             (output) => output.includes(`running on ws://localhost:${RELAY_PORT}`) || output.includes(`running on port ${RELAY_PORT}`)
         );
-        // Relay script in repo uses hardcoded port 8008 or env var PORT.
-        // I need to check if simple-relay.mjs respects PORT env var.
-        // Checking existing simple-relay.mjs content... it uses const PORT = 8008;
-        // Wait, I saw "const PORT = 8008;" in the file content.
-        // I should probably edit simple-relay.mjs to accept PORT env or just use 8008.
-        // Let's assume 8008 for now if I can't change it easily, but wait, I can pass it via env?
-        // The script I read: "const PORT = 8008;" -> It does NOT use process.env.PORT.
-        // So I must use 8008.
-        // Let's restart relayProc with correct expectation if needed, or just modify the script temporarily?
-        // Ah, the user prompt said "Start a local relay instance".
-        // I'll stick to 8008.
 
     } catch (e) {
         log('Failed to start relay: ' + e.message, 'FATAL');
-        // We can try to proceed if relay is already running?
-        // But let's fix the port logic.
+        // We attempt to proceed, as relay might be running
     }
 
     try {
