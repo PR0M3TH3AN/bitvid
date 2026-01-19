@@ -4066,12 +4066,13 @@ export class NostrClient {
       if (canUseWorker) {
         addCandidate(
           "nip44",
-          (targetPubkey, ciphertext) =>
+          (targetPubkey, ciphertext, options = {}) =>
             decryptDmInWorker({
               scheme: "nip44",
               privateKey: sessionPrivateKey,
               targetPubkey,
               ciphertext,
+              event: options?.event,
             }),
           {
             priority: -6,
@@ -4082,12 +4083,13 @@ export class NostrClient {
 
         addCandidate(
           "nip04",
-          (targetPubkey, ciphertext) =>
+          (targetPubkey, ciphertext, options = {}) =>
             decryptDmInWorker({
               scheme: "nip04",
               privateKey: sessionPrivateKey,
               targetPubkey,
               ciphertext,
+              event: options?.event,
             }),
           {
             priority: -4,

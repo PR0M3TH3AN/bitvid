@@ -268,6 +268,7 @@ function buildDecryptResult({
   envelope = null,
   errors = [],
 }) {
+  const normalizedScheme = normalizeScheme(scheme || decryptor?.scheme || "");
   const timestampCandidates = [];
   if (message && Number.isFinite(message.created_at)) {
     timestampCandidates.push(message.created_at);
@@ -295,11 +296,12 @@ function buildDecryptResult({
     actorPubkey: normalizeHex(actorPubkey),
     decryptor: decryptor
       ? {
-          scheme: normalizeScheme(decryptor.scheme) || scheme || "",
+          scheme: normalizeScheme(decryptor.scheme) || normalizedScheme || "",
           source: decryptor.source || "",
         }
-      : { scheme: scheme || "", source: "" },
-    scheme: normalizeScheme(scheme || decryptor?.scheme || ""),
+      : { scheme: normalizedScheme || "", source: "" },
+    scheme: normalizedScheme,
+    encryption_scheme: normalizedScheme,
     envelope,
     direction: deriveDirection(actorPubkey, senderPubkey, recipients),
     timestamp: Number.isFinite(timestamp) ? timestamp : Date.now() / 1000,
@@ -472,6 +474,10 @@ async function decryptLegacyDm(event, decryptors, actorPubkey) {
         });
 
         if (typeof plaintext === "string") {
+          const resolvedScheme =
+            normalizeScheme(hints.algorithms?.[0]) ||
+            normalizeScheme(decryptor.scheme) ||
+            "";
           return buildDecryptResult({
             ok: true,
             event,
@@ -484,7 +490,7 @@ async function decryptLegacyDm(event, decryptors, actorPubkey) {
             senderPubkey,
             actorPubkey,
             decryptor,
-            scheme: decryptor.scheme || hints.algorithms?.[0] || "",
+            scheme: resolvedScheme,
           });
         }
       } catch (error) {
@@ -586,4 +592,3 @@ export const __testUtils = {
   collectRecipients,
   orderDecryptors,
 };
-
