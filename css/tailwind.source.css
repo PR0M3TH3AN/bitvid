@@ -237,10 +237,10 @@
 
   #profileUnreadDot {
     position: absolute;
-    top: var(--space-3xs);
-    right: var(--space-3xs);
-    width: calc(var(--space-2xs) + var(--space-3xs));
-    height: calc(var(--space-2xs) + var(--space-3xs));
+    top: var(--space-2xs);
+    right: var(--space-2xs);
+    width: var(--space-sm);
+    height: var(--space-sm);
     border-radius: 999px;
     border: var(--border-width-hairline) solid var(--color-page);
     background-color: var(--status-danger);
@@ -2820,6 +2820,7 @@
     min-block-size: 100%;
     max-block-size: none;
     overflow: hidden;
+    --modal-sheet-inline-max: var(--profile-modal-inline-max);
     --profile-modal-scale: 0.9;
     --profile-modal-gap: calc(
       (var(--space-md) - var(--space-3xs)) * var(--profile-modal-scale)
@@ -3006,6 +3007,23 @@
     gap: var(--profile-modal-nav-gap);
     align-self: flex-start;
     overflow-x: hidden;
+  }
+
+  .profile-nav__unread-dot {
+    position: absolute;
+    top: var(--space-3xs);
+    right: var(--space-3xs);
+    width: var(--space-sm);
+    height: var(--space-sm);
+    border-radius: 999px;
+    border: var(--border-width-hairline) solid var(--surface-panel);
+    background-color: var(--status-danger);
+    display: none;
+    pointer-events: none;
+  }
+
+  .profile-nav__unread-dot.is-visible {
+    display: block;
   }
 
   .profile-modal__panes {
@@ -5006,12 +5024,24 @@
     min-height: 100vh;
   }
 
+  .profile-modal .dm-app-shell {
+    min-height: 0;
+    height: auto;
+    padding: var(--space-md);
+  }
+
   .dm-app-shell__sidebar,
   .dm-app-shell__main {
     border-radius: var(--radius-lg);
     border: var(--border-width-hairline) solid var(--border-default);
     background: var(--surface-panel);
     box-shadow: var(--shadow-soft);
+  }
+
+  .profile-modal .dm-app-shell__sidebar,
+  .profile-modal .dm-app-shell__main {
+    height: auto;
+    min-height: 0;
   }
 
   .dm-app-shell__sidebar {
@@ -5033,6 +5063,11 @@
     gap: var(--space-md);
     padding: var(--space-md);
     background: var(--surface-raised);
+  }
+
+  .profile-modal .dm-app-shell__main,
+  .profile-modal .dm-app-shell__sidebar {
+    min-width: 0;
   }
 
   .dm-conversation-list {
@@ -5686,8 +5721,8 @@
     }
 
     .dm-app-shell__sidebar {
-    flex: 0 0 var(--size-18rem);
-    max-width: var(--size-20rem);
+      flex: 0 0 var(--size-18rem);
+      max-width: var(--size-20rem);
       height: calc(100vh - var(--space-lg) * 2);
     }
 
@@ -5698,6 +5733,24 @@
     .dm-conversation-list__items {
       max-height: none;
       flex: 1;
+    }
+  }
+
+  @media (min-width: theme("screens.md")) {
+    .profile-modal .dm-app-shell {
+      flex-direction: row;
+      align-items: stretch;
+    }
+
+    .profile-modal .dm-app-shell__sidebar {
+      flex: 0 0 var(--size-18rem);
+      max-width: var(--size-20rem);
+      height: auto;
+    }
+
+    .profile-modal .dm-app-shell__main {
+      flex: 1 1 auto;
+      height: auto;
     }
   }
 

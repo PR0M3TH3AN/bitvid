@@ -4684,7 +4684,9 @@ class Application {
     }
 
     this.applyLoggedOutUiState();
-    if (this.appChromeController?.setUnreadDmIndicator) {
+    if (typeof this.refreshUnreadDmIndicator === "function") {
+      void this.refreshUnreadDmIndicator({ reason: "auth-logout" });
+    } else if (this.appChromeController?.setUnreadDmIndicator) {
       this.appChromeController.setUnreadDmIndicator(false);
     }
 

@@ -148,11 +148,16 @@
               <button
                 id="profileNavMessages"
                 type="button"
-                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                class="btn-ghost focus-ring relative w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
                 aria-controls="profilePaneMessages"
                 aria-selected="false"
               >
                 Messages
+                <span
+                  id="profileMessagesUnreadDot"
+                  class="profile-nav__unread-dot"
+                  aria-hidden="true"
+                ></span>
               </button>
               <button
                 id="profileNavHistory"

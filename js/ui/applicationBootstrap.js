@@ -687,15 +687,24 @@ export default class ApplicationBootstrap {
 
     app.videosMap = app.nostrService.getVideosMap();
     app.refreshUnreadDmIndicator = async ({ reason = "" } = {}) => {
-      if (
-        !app.appChromeController ||
-        typeof app.appChromeController.setUnreadDmIndicator !== "function"
-      ) {
-        return;
-      }
+      const applyIndicatorState = (visible) => {
+        if (
+          app.appChromeController &&
+          typeof app.appChromeController.setUnreadDmIndicator === "function"
+        ) {
+          app.appChromeController.setUnreadDmIndicator(visible);
+        }
+
+        if (
+          app.profileController &&
+          typeof app.profileController.setMessagesUnreadIndicator === "function"
+        ) {
+          app.profileController.setMessagesUnreadIndicator(visible);
+        }
+      };
 
       if (typeof app.isUserLoggedIn === "function" && !app.isUserLoggedIn()) {
-        app.appChromeController.setUnreadDmIndicator(false);
+        applyIndicatorState(false);
         return;
       }
 
@@ -704,7 +713,7 @@ export default class ApplicationBootstrap {
         typeof app.nostrService.listDirectMessageConversationSummaries !==
           "function"
       ) {
-        app.appChromeController.setUnreadDmIndicator(false);
+        applyIndicatorState(false);
         return;
       }
 
@@ -717,14 +726,14 @@ export default class ApplicationBootstrap {
               return sum + (Number.isFinite(count) ? count : 0);
             }, 0)
           : 0;
-        app.appChromeController.setUnreadDmIndicator(totalUnseen > 0);
+        applyIndicatorState(totalUnseen > 0);
       } catch (error) {
         devLogger.warn(
           "[Application] Failed to refresh DM unread indicator",
           reason,
           error,
         );
-        app.appChromeController.setUnreadDmIndicator(false);
+        applyIndicatorState(false);
       }
     };
 
@@ -746,8 +755,8 @@ export default class ApplicationBootstrap {
     );
     nostrUnsubscribes.push(
       app.nostrService.on("directMessages:cleared", () => {
-        if (app.appChromeController) {
-          app.appChromeController.setUnreadDmIndicator(false);
+        if (typeof app.refreshUnreadDmIndicator === "function") {
+          void app.refreshUnreadDmIndicator({ reason: "dm-cleared" });
         }
       }),
     );

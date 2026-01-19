@@ -1297,6 +1297,7 @@ export class ProfileModalController {
     this.profileMessagesRelayStatus = null;
     this.profileMessagesReadReceiptsToggle = null;
     this.profileMessagesTypingToggle = null;
+    this.profileMessagesUnreadDot = null;
     this.dmAppShellContainer = null;
     this.dmAppShell = null;
     this.profileLinkPreviewAutoToggle = null;
@@ -1615,6 +1616,8 @@ export class ProfileModalController {
       document.getElementById("profileMessagesReadReceiptsToggle") || null;
     this.profileMessagesTypingToggle =
       document.getElementById("profileMessagesTypingToggle") || null;
+    this.profileMessagesUnreadDot =
+      document.getElementById("profileMessagesUnreadDot") || null;
     this.dmAppShellContainer =
       document.getElementById("dmAppShellMount") || null;
     this.profileLinkPreviewAutoToggle =
@@ -2756,6 +2759,23 @@ export class ProfileModalController {
     } else {
       button.removeAttribute("aria-disabled");
     }
+  }
+
+  setMessagesUnreadIndicator(visible) {
+    if (!(this.profileMessagesUnreadDot instanceof HTMLElement)) {
+      return;
+    }
+
+    const button = this.navButtons.messages;
+    const isVisible =
+      button instanceof HTMLElement &&
+      !button.classList.contains("hidden") &&
+      !button.hasAttribute("hidden");
+
+    this.profileMessagesUnreadDot.classList.toggle(
+      "is-visible",
+      Boolean(visible) && isVisible,
+    );
   }
 
   updateMessageComposerState() {
@@ -12593,6 +12613,7 @@ export class ProfileModalController {
     this.clearHashtagInputs();
     this.setHashtagStatus("", "muted");
     this.handleActiveDmIdentityChanged(null);
+    this.setMessagesUnreadIndicator(false);
     this.populateDmRelayPreferences();
     this.setDmRelayPreferencesStatus("");
 
