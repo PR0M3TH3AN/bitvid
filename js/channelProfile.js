@@ -3333,82 +3333,17 @@ function resolveChannelHexForControls() {
   return decodeNpubToHex(currentChannelNpub);
 }
 
-function syncChannelNotifyButtonState(button, channelHex) {
-  if (!button) {
-    return;
-  }
-  const resolvedHex = normalizeHex(channelHex);
-  const isSubscribed =
-    resolvedHex && subscriptions.isSubscribed(resolvedHex) === true;
-  button.setAttribute("aria-pressed", isSubscribed.toString());
-  button.dataset.state = isSubscribed ? "subscribed" : "unsubscribed";
-  button.classList.toggle("active", isSubscribed);
-}
-
-function openLoginModalForChannelControls(triggerElement) {
-  const loginModal =
-    prepareStaticModal({ id: "loginModal" }) ||
-    document.getElementById("loginModal");
-
-  if (loginModal && openStaticModal(loginModal, { triggerElement })) {
-    setGlobalModalState("login", true);
-  } else {
-    userLogger.warn("Unable to open login modal for channel controls.");
-  }
-}
-
 function setupChannelMessageControls() {
   const doc = typeof document !== "undefined" ? document : null;
-  const notifyBtn = doc?.getElementById("channelNotifyBtn") || null;
   const messageBtn = doc?.getElementById("channelMessageBtn") || null;
 
-  if (!notifyBtn && !messageBtn) {
+  if (!messageBtn) {
     return;
   }
 
   const channelHex = resolveChannelHexForControls();
   if (!channelHex) {
     devLogger.warn("[ChannelProfile] Unable to resolve channel hex for controls.");
-  }
-
-  if (notifyBtn) {
-    syncChannelNotifyButtonState(notifyBtn, channelHex);
-    if (notifyBtn.dataset.initialized !== "true") {
-      notifyBtn.addEventListener("click", async () => {
-        const app = getApp();
-        const resolvedHex = resolveChannelHexForControls();
-        if (!resolvedHex) {
-          app?.showError?.("Unable to resolve channel notifications.");
-          userLogger.warn("Channel notify clicked without a valid channel hex.");
-          return;
-        }
-
-        if (!app?.pubkey) {
-          openLoginModalForChannelControls(notifyBtn);
-          return;
-        }
-
-        try {
-          await subscriptions.toggleChannel(resolvedHex, app.pubkey);
-        } catch (error) {
-          userLogger.error("Failed to toggle channel notifications:", error);
-          const permissionErrorCodes = new Set([
-            "extension-permission-denied",
-            "nip04-missing",
-          ]);
-          const message = permissionErrorCodes.has(error?.code)
-            ? "Your Nostr extension must support NIP-04 to manage private lists."
-            : "Failed to update channel notifications. Please try again.";
-          app?.showError?.(message);
-        } finally {
-          syncChannelNotifyButtonState(
-            notifyBtn,
-            resolveChannelHexForControls()
-          );
-        }
-      });
-      notifyBtn.dataset.initialized = "true";
-    }
   }
 
   if (messageBtn) {
