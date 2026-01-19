@@ -114,6 +114,10 @@ import {
 import { devLogger, userLogger } from "../utils/logger.js";
 import { updateConversationFromMessage, writeMessages } from "../storage/dmDb.js";
 import {
+  DM_RELAY_WARNING_FALLBACK,
+  resolveDmRelaySelection,
+} from "../services/dmNostrService.js";
+import {
   DEFAULT_NIP07_ENCRYPTION_METHODS,
   DEFAULT_NIP07_PERMISSION_METHODS,
   clearStoredNip07Permissions,
@@ -4480,67 +4484,13 @@ export class NostrClient {
     const signerCapabilities = resolveSignerCapabilities(signer);
     const useNip17 = Boolean(resolvedOptions.useNip17);
 
-    const resolveNip17RelayList = async (pubkey, relayHints) => {
-      const direct = sanitizeRelayList(relayHints);
-      if (direct.length) {
-        return direct;
-      }
-
-      const relayCandidates = sanitizeRelayList(
+    const resolveNip17RelaySelection = async (pubkey, relayHints) => {
+      const discoveryRelays = sanitizeRelayList(
         Array.isArray(this.readRelays) && this.readRelays.length
           ? this.readRelays
           : Array.isArray(this.relays) && this.relays.length
             ? this.relays
             : RELAY_URLS,
-      );
-
-      if (!relayCandidates.length || !this.pool) {
-        return [];
-      }
-
-      try {
-        await this.ensurePool();
-        const events = await this.pool.list(relayCandidates, [
-          { kinds: [10050], authors: [pubkey], limit: 1 },
-        ]);
-        const sorted = Array.isArray(events)
-          ? events
-              .filter((entry) => entry && entry.pubkey === pubkey)
-              .sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0))
-          : [];
-        if (!sorted.length) {
-          return [];
-        }
-
-        const tags = Array.isArray(sorted[0]?.tags) ? sorted[0].tags : [];
-        const relayList = tags
-          .filter((tag) => Array.isArray(tag) && tag[0] === "relay")
-          .map((tag) => (typeof tag[1] === "string" ? tag[1].trim() : ""))
-          .filter(Boolean);
-        return sanitizeRelayList(relayList);
-      } catch (error) {
-        devLogger.warn("[nostr] Failed to load NIP-17 relay list.", error);
-        return [];
-      }
-    };
-
-    if (useNip17) {
-      if (!signerCapabilities.nip44 || typeof signer.nip44Encrypt !== "function") {
-        return { ok: false, error: "nip44-unsupported" };
-      }
-
-      const recipientRelays = await resolveNip17RelayList(
-        targetHex,
-        resolvedOptions.recipientRelayHints,
-      );
-
-      if (!recipientRelays.length) {
-        return { ok: false, error: "nip17-relays-missing" };
-      }
-
-      const senderRelays = await resolveNip17RelayList(
-        actorHex,
-        resolvedOptions.senderRelayHints,
       );
       const fallbackRelays = sanitizeRelayList(
         Array.isArray(this.writeRelays) && this.writeRelays.length
@@ -4549,7 +4499,41 @@ export class NostrClient {
             ? this.relays
             : RELAY_URLS,
       );
-      const senderRelayTargets = senderRelays.length ? senderRelays : fallbackRelays;
+
+      return resolveDmRelaySelection({
+        pubkey,
+        relayHints,
+        discoveryRelays,
+        fallbackRelays,
+        pool: this.pool,
+        log: { dev: devLogger, user: userLogger },
+      });
+    };
+
+    if (useNip17) {
+      if (!signerCapabilities.nip44 || typeof signer.nip44Encrypt !== "function") {
+        return { ok: false, error: "nip44-unsupported" };
+      }
+
+      const recipientSelection = await resolveNip17RelaySelection(
+        targetHex,
+        resolvedOptions.recipientRelayHints,
+      );
+
+      if (!recipientSelection.relays.length) {
+        return { ok: false, error: "nip17-relays-unavailable" };
+      }
+
+      const senderSelection = await resolveNip17RelaySelection(
+        actorHex,
+        resolvedOptions.senderRelayHints,
+      );
+      const senderRelayTargets = senderSelection.relays;
+      const relayWarning =
+        recipientSelection.warning === DM_RELAY_WARNING_FALLBACK ||
+        senderSelection.warning === DM_RELAY_WARNING_FALLBACK
+          ? DM_RELAY_WARNING_FALLBACK
+          : null;
 
       const tools = await ensureNostrTools();
       const getPublicKey =
@@ -4690,7 +4674,7 @@ export class NostrClient {
       try {
         recipientGiftWrap = await buildGiftWrapForRecipient(
           targetHex,
-          recipientRelays[0] || "",
+          recipientSelection.relays[0] || "",
         );
       } catch (error) {
         devLogger.warn("[nostr] Failed to build NIP-17 recipient wrap.", error);
@@ -4726,7 +4710,7 @@ export class NostrClient {
       }
 
       const recipientPublishResults = await Promise.all(
-        recipientRelays.map((url) =>
+        recipientSelection.relays.map((url) =>
           publishEventToRelay(this.pool, url, recipientGiftWrap.wrap),
         ),
       );
@@ -4776,7 +4760,7 @@ export class NostrClient {
         devLogger.warn("[nostr] Failed to persist DM publish state.", error);
       }
 
-      return { ok: true };
+      return relayWarning ? { ok: true, warning: relayWarning } : { ok: true };
     }
 
     const encryptionErrors = [];

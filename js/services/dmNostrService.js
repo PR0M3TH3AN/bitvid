@@ -1,4 +1,5 @@
 import { ensureNostrTools, resolveSimplePoolConstructor, shimLegacySimplePoolMethods } from "../nostr/toolkit.js";
+import { sanitizeRelayList } from "../nostr/nip46Client.js";
 import { publishEventToRelay } from "../nostrPublish.js";
 import logger from "../utils/logger.js";
 
@@ -9,6 +10,7 @@ const DEFAULT_BACKOFF = {
 };
 
 const MAX_SEEN_EVENT_IDS = 5000;
+export const DM_RELAY_WARNING_FALLBACK = "dm-relays-fallback";
 
 function normalizeRelayList(relays) {
   if (!Array.isArray(relays)) {
@@ -42,6 +44,77 @@ function normalizeLogger(candidate) {
   }
 
   return logger;
+}
+
+function extractRelayHintsFromEvent(event) {
+  const tags = Array.isArray(event?.tags) ? event.tags : [];
+  return sanitizeRelayList(
+    tags
+      .filter((tag) => Array.isArray(tag) && tag[0] === "relay")
+      .map((tag) => (typeof tag[1] === "string" ? tag[1].trim() : "")),
+  );
+}
+
+export async function resolveDmRelaySelection({
+  pubkey,
+  relayHints = [],
+  discoveryRelays = [],
+  fallbackRelays = [],
+  pool = null,
+  log = null,
+} = {}) {
+  const resolvedLogger = normalizeLogger(log || logger);
+  const normalizedPubkey = normalizePubkey(pubkey);
+  const hintedRelays = sanitizeRelayList(Array.isArray(relayHints) ? relayHints : []);
+
+  if (hintedRelays.length) {
+    return { relays: hintedRelays, source: "hints", warning: null };
+  }
+
+  const discoveryList = sanitizeRelayList(
+    Array.isArray(discoveryRelays) ? discoveryRelays : [],
+  );
+  const fallbackList = sanitizeRelayList(
+    Array.isArray(fallbackRelays) && fallbackRelays.length
+      ? fallbackRelays
+      : discoveryRelays,
+  );
+
+  if (
+    normalizedPubkey &&
+    pool &&
+    typeof pool.list === "function" &&
+    discoveryList.length
+  ) {
+    try {
+      const events = await pool.list(discoveryList, [
+        { kinds: [10050], authors: [normalizedPubkey], limit: 1 },
+      ]);
+      const sorted = Array.isArray(events)
+        ? events
+            .filter((entry) => entry && entry.pubkey === normalizedPubkey)
+            .sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0))
+        : [];
+      if (sorted.length) {
+        const relays = extractRelayHintsFromEvent(sorted[0]);
+        if (relays.length) {
+          return { relays, source: "kind-10050", warning: null };
+        }
+      }
+    } catch (error) {
+      resolvedLogger.dev.warn("[dmNostrService] Failed to fetch DM relay hints.", error);
+    }
+  }
+
+  if (fallbackList.length) {
+    return {
+      relays: fallbackList,
+      source: "fallback",
+      warning: DM_RELAY_WARNING_FALLBACK,
+    };
+  }
+
+  return { relays: [], source: "none", warning: null };
 }
 
 function clampNumber(value, minimum, maximum) {
