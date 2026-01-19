@@ -5513,7 +5513,12 @@ class Application {
         : new Set();
 
     const preferenceSource =
-      typeof this.getHashtagPreferences === "function"
+      this.hashtagPreferencesSnapshot &&
+      typeof this.hashtagPreferencesSnapshot === "object"
+        ? this.hashtagPreferencesSnapshot
+        : typeof this.createHashtagPreferencesSnapshot === "function"
+        ? this.createHashtagPreferencesSnapshot()
+        : typeof this.getHashtagPreferences === "function"
         ? this.getHashtagPreferences()
         : {};
     const { interests = [], disinterests = [] } = preferenceSource || {};
