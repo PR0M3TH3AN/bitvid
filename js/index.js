@@ -12,6 +12,7 @@ import {
   initThemeController,
   refreshThemeControls,
 } from "./themeController.js";
+import { setHashView } from "./hashView.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import {
   prepareStaticModal,
@@ -1255,23 +1256,6 @@ if (document.readyState === "loading") {
 /* -------------------------------------------
    HELPER FUNCTIONS FOR QUERY AND HASH
 -------------------------------------------- */
-
-/**
- * Sets the location.hash to "#view=<viewName>",
- * removing any ?modal=... or ?v=... from the query string.
- */
-export function setHashView(viewName) {
-  const url = new URL(window.location.href);
-  url.searchParams.delete("modal");
-  url.searchParams.delete("v");
-  const newUrl = url.pathname + url.search + `#view=${viewName}`;
-  window.history.replaceState({}, "", newUrl);
-
-  if (typeof viewName === "string" && viewName.toLowerCase() === "history") {
-  }
-
-  handleHashChange();
-}
 
 /**
  * Sets a query param (e.g. ?modal=xxx or ?v=yyy),
