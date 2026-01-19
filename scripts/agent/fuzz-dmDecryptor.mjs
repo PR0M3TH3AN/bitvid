@@ -1,6 +1,6 @@
 
 import { decryptDM } from '../../js/dmDecryptor.js';
-import { getRandomFuzzInput, randomHex } from './fuzz-utils.mjs';
+import { getRandomFuzzInput, randomHex, randomString } from './fuzz-utils.mjs';
 import fs from 'fs';
 import path from 'path';
 
@@ -47,17 +47,29 @@ function runFuzz(name, fn, inputGenerator, iterations = 1000) {
     }
 }
 
-// Mock decryptor
-const mockDecryptor = {
-    scheme: 'nip44_v2',
-    decrypt: async (pubkey, ciphertext) => {
-        // sometimes succeed, sometimes fail
-        if (Math.random() > 0.5) {
-            return JSON.stringify({ content: 'decrypted', pubkey: randomHex(), created_at: Date.now()/1000 });
-        } else {
-            throw new Error('Decrypt failed');
+// Deterministic Mock decryptor factory based on input seed
+const createMockDecryptor = (seedValue) => {
+    return {
+        scheme: 'nip44_v2',
+        decrypt: async (pubkey, ciphertext, options) => {
+            // Use seed to determine behavior deterministically
+            // seedValue comes from input.
+            const mode = (typeof seedValue === 'number' ? seedValue : 0) % 10;
+
+            if (mode > 6) {
+                // Success
+                return JSON.stringify({ content: 'decrypted', pubkey: randomHex(), created_at: Date.now()/1000 });
+            } else if (mode > 3) {
+                // Garbage JSON
+                return "{ bad json";
+            } else if (mode > 1) {
+                 // Not JSON
+                 return "Just a string";
+            } else {
+                throw new Error('Decrypt failed');
+            }
         }
-    }
+    };
 };
 
 const throwingDecryptor = {
@@ -69,27 +81,41 @@ const wrapper = async (input) => {
     // input is fuzzy junk.
     // We construct a call to decryptDM(event, context)
 
-    let event = input;
-    let context = {
-        actorPubkey: randomHex(),
-        decryptors: [mockDecryptor, throwingDecryptor]
-    };
+    // Deterministic randomness from input if object
+    let seed = 0;
+    if (input && typeof input === 'object') {
+        seed = Object.keys(input).length;
+    } else if (typeof input === 'string') {
+        seed = input.length;
+    } else if (typeof input === 'number') {
+        seed = Math.floor(input);
+    }
 
+    let event = input;
+
+    // Deterministically force supported kinds based on seed
     if (typeof input === 'object' && input !== null && !Array.isArray(input)) {
-        // If input is an object, treat it as the event structure, but potentially corrupted
+        const kinds = [4, 1059, input.kind];
         event = {
-            kind: input.kind !== undefined ? input.kind : 4,
+            ...input,
+            kind: kinds[seed % kinds.length],
             content: input.content || 'ciphertext',
             pubkey: input.pubkey || randomHex(),
             tags: input.tags || [['p', randomHex()]],
-            created_at: input.created_at || Date.now()/1000,
-            ...input
+            created_at: input.created_at || Date.now()/1000
         };
+    }
 
-        // Also fuzz context sometimes
-        if (Math.random() > 0.8) {
-            context = input.context || getRandomFuzzInput();
-        }
+    const mockDec = createMockDecryptor(seed);
+
+    let context = {
+        actorPubkey: randomHex(),
+        decryptors: [mockDec, throwingDecryptor]
+    };
+
+    // Deterministically fuzz context
+    if ((seed % 10) > 8) {
+        context = input.context || getRandomFuzzInput();
     }
 
     await decryptDM(event, context);
