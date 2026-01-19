@@ -62,26 +62,55 @@ export function Composer({
   attachButton.type = "button";
   attachButton.setAttribute("aria-label", "Attach a file");
 
+  const moreButton = createElement(
+    doc,
+    "button",
+    "btn-ghost dm-composer__more-btn",
+    "…",
+  );
+  moreButton.type = "button";
+  moreButton.setAttribute("aria-label", "More options");
+  moreButton.setAttribute("aria-expanded", "false");
+  moreButton.setAttribute("aria-haspopup", "true");
+
+  const moreMenu = createElement(doc, "div", "dm-composer__more-menu hidden");
+  moreMenu.setAttribute("role", "menu");
+
   const privacyToggle = createElement(
     doc,
     "button",
-    "dm-composer__privacy",
+    "dm-composer__menu-item",
     "NIP-04",
   );
   privacyToggle.type = "button";
+  privacyToggle.setAttribute("role", "menuitem");
   privacyToggle.setAttribute("aria-pressed", "false");
   privacyToggle.setAttribute("aria-label", "Toggle privacy mode");
 
-  const zapToggle = createElement(doc, "button", "dm-composer__zap-toggle", "Zap");
+  const zapToggle = createElement(doc, "button", "dm-composer__menu-item", "Zap");
   zapToggle.type = "button";
+  zapToggle.setAttribute("role", "menuitem");
   zapToggle.setAttribute("aria-expanded", "false");
   zapToggle.setAttribute("aria-label", "Open zap composer");
   zapToggle.setAttribute("aria-pressed", "false");
 
+  moreMenu.appendChild(privacyToggle);
+  moreMenu.appendChild(zapToggle);
+
   tools.appendChild(attachButton);
-  tools.appendChild(privacyToggle);
-  tools.appendChild(zapToggle);
+  tools.appendChild(moreButton);
+  tools.appendChild(moreMenu);
   tools.appendChild(hint);
+
+  moreButton.addEventListener("click", () => {
+    const isExpanded = moreButton.getAttribute("aria-expanded") === "true";
+    moreButton.setAttribute("aria-expanded", String(!isExpanded));
+    if (!isExpanded) {
+      moreMenu.classList.remove("hidden");
+    } else {
+      moreMenu.classList.add("hidden");
+    }
+  });
 
   const button = createElement(doc, "button", "dm-composer__send", "Send");
   button.type = "submit";
