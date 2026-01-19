@@ -664,6 +664,44 @@
                 </div>
               </div>
               <ul id="relayList" class="grid-stack" data-orientation="vertical"></ul>
+              <div id="relayHealthPanel" class="card space-y-4 p-5">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                  <div class="space-y-1">
+                    <h3 class="text-base font-semibold text-text">Relay health</h3>
+                    <p class="text-sm text-muted">
+                      Monitor connectivity, latency, and errors for your configured relays.
+                    </p>
+                  </div>
+                  <button
+                    id="relayHealthRefreshBtn"
+                    type="button"
+                    class="btn-ghost focus-ring text-xs"
+                  >
+                    Refresh
+                  </button>
+                </div>
+                <label
+                  for="relayHealthTelemetryOptIn"
+                  class="inline-flex items-center gap-2 text-xs font-medium text-muted-strong"
+                >
+                  <input
+                    id="relayHealthTelemetryOptIn"
+                    type="checkbox"
+                    class="checkbox"
+                  />
+                  Share relay health telemetry
+                </label>
+                <p class="text-xs text-muted">
+                  Telemetry is opt-in and only includes relay URLs, latency, and error counts.
+                </p>
+                <ul id="relayHealthList" class="grid-stack" data-orientation="vertical"></ul>
+                <p
+                  id="relayHealthStatus"
+                  class="text-xs text-muted"
+                  role="status"
+                  aria-live="polite"
+                ></p>
+              </div>
             </section>
 
             <section

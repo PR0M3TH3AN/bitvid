@@ -1241,6 +1241,12 @@ export class ProfileModalController {
     this.relayInput = null;
     this.addRelayButton = null;
     this.restoreRelaysButton = null;
+    this.relayHealthPanel = null;
+    this.relayHealthList = null;
+    this.relayHealthStatus = null;
+    this.relayHealthRefreshButton = null;
+    this.relayHealthTelemetryToggle = null;
+    this.relayHealthRefreshPromise = null;
     this.profileRelayList = null;
     this.profileRelayInput = null;
     this.profileAddRelayBtn = null;
@@ -1521,6 +1527,16 @@ export class ProfileModalController {
     this.addRelayButton = document.getElementById("addRelayBtn") || null;
     this.restoreRelaysButton =
       document.getElementById("restoreRelaysBtn") || null;
+    this.relayHealthPanel =
+      document.getElementById("relayHealthPanel") || null;
+    this.relayHealthList =
+      document.getElementById("relayHealthList") || null;
+    this.relayHealthStatus =
+      document.getElementById("relayHealthStatus") || null;
+    this.relayHealthRefreshButton =
+      document.getElementById("relayHealthRefreshBtn") || null;
+    this.relayHealthTelemetryToggle =
+      document.getElementById("relayHealthTelemetryOptIn") || null;
 
     this.subscriptionList =
       document.getElementById("subscriptionsList") || null;
@@ -4188,6 +4204,18 @@ export class ProfileModalController {
       });
     }
 
+    if (this.relayHealthRefreshButton instanceof HTMLElement) {
+      this.relayHealthRefreshButton.addEventListener("click", () => {
+        void this.refreshRelayHealthPanel({ forceRefresh: true, reason: "manual" });
+      });
+    }
+
+    if (this.relayHealthTelemetryToggle instanceof HTMLInputElement) {
+      this.relayHealthTelemetryToggle.addEventListener("change", () => {
+        this.handleRelayHealthTelemetryToggle();
+      });
+    }
+
     if (this.addBlockedButton instanceof HTMLElement) {
       this.addBlockedButton.addEventListener("click", () => {
         void this.handleAddBlockedCreator();
@@ -5828,6 +5856,9 @@ export class ProfileModalController {
 
     if (target === "history") {
       void this.populateProfileWatchHistory();
+    } else if (target === "relays") {
+      this.populateProfileRelays();
+      void this.refreshRelayHealthPanel({ forceRefresh: true, reason: "pane-select" });
     } else if (target === "messages") {
       this.resumeProfileMessages();
       void this.populateProfileMessages({ reason: "pane-select" });
@@ -5949,6 +5980,166 @@ export class ProfileModalController {
     });
   }
 
+  updateRelayHealthStatus(message = "") {
+    if (!this.relayHealthStatus) {
+      return;
+    }
+
+    const text = typeof message === "string" ? message.trim() : "";
+    this.relayHealthStatus.textContent = text;
+  }
+
+  renderRelayHealthSnapshot(snapshot = []) {
+    if (!this.relayHealthList) {
+      return;
+    }
+
+    this.relayHealthList.innerHTML = "";
+
+    if (!snapshot.length) {
+      const emptyState = document.createElement("li");
+      emptyState.className =
+        "card border border-dashed border-surface-strong p-4 text-center text-sm text-muted";
+      emptyState.textContent = "No relays configured.";
+      this.relayHealthList.appendChild(emptyState);
+      return;
+    }
+
+    snapshot.forEach((entry) => {
+      const item = document.createElement("li");
+      item.className = "card flex flex-col gap-2 p-4";
+
+      const header = document.createElement("div");
+      header.className = "flex items-center justify-between gap-3";
+
+      const urlEl = document.createElement("p");
+      urlEl.className = "text-sm font-medium text-primary break-all";
+      urlEl.textContent = entry.url;
+
+      const connection = document.createElement("span");
+      const connected = Boolean(entry.connected);
+      connection.className = `text-xs font-semibold ${
+        connected ? "text-status-success" : "text-status-danger"
+      }`;
+      connection.textContent = connected ? "Connected" : "Unavailable";
+
+      header.appendChild(urlEl);
+      header.appendChild(connection);
+
+      const details = document.createElement("div");
+      details.className = "grid grid-cols-2 gap-3 text-xs text-muted sm:grid-cols-3";
+
+      const latency = document.createElement("div");
+      latency.className = "flex items-center justify-between gap-2";
+      const latencyLabel = document.createElement("span");
+      latencyLabel.textContent = "Latency";
+      const latencyValue = document.createElement("span");
+      latencyValue.className = "text-text";
+      latencyValue.textContent = Number.isFinite(entry.lastLatencyMs)
+        ? `${entry.lastLatencyMs} ms`
+        : "—";
+      latency.appendChild(latencyLabel);
+      latency.appendChild(latencyValue);
+
+      const errors = document.createElement("div");
+      errors.className = "flex items-center justify-between gap-2";
+      const errorsLabel = document.createElement("span");
+      errorsLabel.textContent = "Errors";
+      const errorsValue = document.createElement("span");
+      errorsValue.className = "text-text";
+      errorsValue.textContent = Number.isFinite(entry.errorCount)
+        ? `${entry.errorCount}`
+        : "0";
+      errors.appendChild(errorsLabel);
+      errors.appendChild(errorsValue);
+
+      const checks = document.createElement("div");
+      checks.className = "flex items-center justify-between gap-2";
+      const checksLabel = document.createElement("span");
+      checksLabel.textContent = "Checked";
+      const checksValue = document.createElement("span");
+      checksValue.className = "text-text";
+      if (Number.isFinite(entry.lastCheckedAt) && entry.lastCheckedAt > 0) {
+        checksValue.textContent = new Date(entry.lastCheckedAt).toLocaleTimeString();
+      } else {
+        checksValue.textContent = "—";
+      }
+      checks.appendChild(checksLabel);
+      checks.appendChild(checksValue);
+
+      details.appendChild(latency);
+      details.appendChild(errors);
+      details.appendChild(checks);
+
+      item.appendChild(header);
+      item.appendChild(details);
+
+      this.relayHealthList.appendChild(item);
+    });
+  }
+
+  handleRelayHealthTelemetryToggle() {
+    const service = this.services?.relayHealthService;
+    if (!service || !(this.relayHealthTelemetryToggle instanceof HTMLInputElement)) {
+      return;
+    }
+
+    const enabled = service.setTelemetryOptIn(
+      this.relayHealthTelemetryToggle.checked,
+    );
+    this.relayHealthTelemetryToggle.checked = enabled;
+    this.updateRelayHealthStatus(
+      enabled ? "Relay health telemetry enabled." : "Relay health telemetry disabled.",
+    );
+  }
+
+  async refreshRelayHealthPanel({ forceRefresh = false, reason = "" } = {}) {
+    const service = this.services?.relayHealthService;
+    if (!service || !this.relayHealthList) {
+      return [];
+    }
+
+    if (this.relayHealthTelemetryToggle instanceof HTMLInputElement) {
+      this.relayHealthTelemetryToggle.checked = service.getTelemetryOptIn();
+    }
+
+    const snapshot = service.getSnapshot();
+    this.renderRelayHealthSnapshot(snapshot);
+
+    if (!forceRefresh) {
+      return snapshot;
+    }
+
+    if (this.relayHealthRefreshPromise) {
+      return this.relayHealthRefreshPromise;
+    }
+
+    const statusMessage = reason === "manual" ? "Refreshing relay health…" : "Checking relays…";
+    this.updateRelayHealthStatus(statusMessage);
+
+    const refreshPromise = service
+      .refresh()
+      .then((latest) => {
+        this.renderRelayHealthSnapshot(latest);
+        this.updateRelayHealthStatus("Relay health updated.");
+        return latest;
+      })
+      .catch((error) => {
+        this.updateRelayHealthStatus("Failed to refresh relay health.");
+        this.showError("Failed to refresh relay health.");
+        devLogger.warn("[profileModal] Relay health refresh failed:", error);
+        return [];
+      })
+      .finally(() => {
+        if (this.relayHealthRefreshPromise === refreshPromise) {
+          this.relayHealthRefreshPromise = null;
+        }
+      });
+
+    this.relayHealthRefreshPromise = refreshPromise;
+    return refreshPromise;
+  }
+
   async handleRelayOperation(meta = {}, {
     successMessage = "Relay preferences updated.",
     skipPublishIfUnchanged = true,
@@ -6010,10 +6201,12 @@ export class ProfileModalController {
         this.showSuccess(unchangedMessage);
       }
       this.populateProfileRelays();
+      void this.refreshRelayHealthPanel({ forceRefresh: true, reason: "relay-update" });
       return operationContext;
     }
 
     this.populateProfileRelays();
+    void this.refreshRelayHealthPanel({ forceRefresh: true, reason: "relay-update" });
 
     if (operationContext.ok) {
       if (successMessage) {

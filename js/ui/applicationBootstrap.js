@@ -17,6 +17,7 @@ import nostrService from "../services/nostrService.js";
 import storageService from "../services/storageService.js";
 import watchHistoryService from "../watchHistoryService.js";
 import r2Service from "../services/r2Service.js";
+import RelayHealthService from "../services/relayHealthService.js";
 import { createFeedEngine } from "../feedEngine/index.js";
 import { URL_FIRST_ENABLED } from "../constants.js";
 import { ALLOW_NSFW_CONTENT } from "../config.js";
@@ -426,6 +427,12 @@ export default class ApplicationBootstrap {
     const modalContainer = doc?.getElementById("modalContainer") || null;
     try {
       if (modalContainer) {
+        const relayHealthService = new RelayHealthService({
+          relayManager,
+          nostrClient,
+          telemetryEmitter: (eventName, payload) =>
+            app.emitTelemetryEvent(eventName, payload),
+        });
         const profileModalServices = {
           normalizeHexPubkey: (value) => app.normalizeHexPubkey(value),
           safeEncodeNpub: (pubkey) => app.safeEncodeNpub(pubkey),
@@ -480,6 +487,7 @@ export default class ApplicationBootstrap {
             app.describeHashtagPreferencesError(error, {
               fallbackMessage,
             }),
+          relayHealthService,
           log: (...args) => app.log(...args),
           closeAllMoreMenus: (options) => app.closeAllMoreMenus(options),
           clipboard:
