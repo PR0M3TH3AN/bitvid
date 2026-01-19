@@ -432,6 +432,7 @@ export default class ApplicationBootstrap {
           formatShortNpub: (value) => formatShortNpub(value),
           getProfileCacheEntry: (pubkey) => app.getProfileCacheEntry(pubkey),
           batchFetchProfiles: (authorSet) => app.batchFetchProfiles(authorSet),
+          fetchDmRelayHints: (pubkey) => app.fetchDmRelayHints(pubkey),
           switchProfile: (pubkey) => app.authService.switchProfile(pubkey),
           removeSavedProfile: (pubkey) =>
             app.authService.removeSavedProfile(pubkey),
@@ -499,6 +500,10 @@ export default class ApplicationBootstrap {
             setStoredActiveProfilePubkey(normalized, options);
             return getActiveProfilePubkey();
           },
+          getDmRecipient: () => app.getDmRecipientPubkey(),
+          setDmRecipient: (pubkey) => app.setDmRecipientPubkey(pubkey),
+          getDmRelayHints: (pubkey) => app.getDmRelayHints(pubkey),
+          setDmRelayHints: (pubkey, hints) => app.setDmRelayHints(pubkey, hints),
         };
 
         const profileModalCallbacks = {
@@ -532,6 +537,10 @@ export default class ApplicationBootstrap {
             app.handleProfileHistoryEvent(payload),
           onModerationSettingsChange: (payload) =>
             app.handleModerationSettingsChange(payload),
+          onSendDm: (payload) => app.handleProfileSendDmRequest(payload),
+          onOpenRelays: (payload) => app.handleProfileUseDmRelays(payload),
+          onTogglePrivacy: (payload) =>
+            app.handleProfilePrivacyToggle(payload),
         };
 
         app.profileController = new ProfileModalController({

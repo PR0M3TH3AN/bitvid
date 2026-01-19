@@ -68,6 +68,7 @@ import { devLogger, userLogger } from "./utils/logger.js";
 import createPopover from "./ui/overlay/popoverEngine.js";
 import { createVideoSettingsMenuPanel } from "./ui/components/videoMenuRenderers.js";
 import moderationService from "./services/moderationService.js";
+import { sanitizeRelayList } from "./nostr/nip46Client.js";
 import {
   initViewCounter,
   subscribeToVideoViewCount,
@@ -220,6 +221,8 @@ class Application {
     this.modalManager = modalManager;
 
     this.modalCreatorProfileRequestToken = null;
+    this.dmRecipientPubkey = null;
+    this.dmRelayHints = new Map();
 
     this.commentController = null;
     this.initializeCommentController();
@@ -3056,6 +3059,171 @@ class Application {
         this.updateProfileInDOM(pubkey, profile),
       hex64Regex: HEX64_REGEX,
     });
+  }
+
+  getDmRecipientPubkey() {
+    return this.dmRecipientPubkey;
+  }
+
+  setDmRecipientPubkey(pubkey) {
+    const normalized = this.normalizeHexPubkey(pubkey);
+    this.dmRecipientPubkey = normalized || null;
+    return this.dmRecipientPubkey;
+  }
+
+  getDmRelayHints(pubkey) {
+    const normalized = this.normalizeHexPubkey(pubkey);
+    if (!normalized || !(this.dmRelayHints instanceof Map)) {
+      return [];
+    }
+    const hints = this.dmRelayHints.get(normalized);
+    return Array.isArray(hints) ? hints.slice() : [];
+  }
+
+  setDmRelayHints(pubkey, hints = []) {
+    const normalized = this.normalizeHexPubkey(pubkey);
+    if (!normalized) {
+      return [];
+    }
+    if (!(this.dmRelayHints instanceof Map)) {
+      this.dmRelayHints = new Map();
+    }
+    const stored = sanitizeRelayList(Array.isArray(hints) ? hints : []);
+    this.dmRelayHints.set(normalized, stored);
+    return stored.slice();
+  }
+
+  async fetchDmRelayHints(pubkey) {
+    const normalized = this.normalizeHexPubkey(pubkey);
+    if (!normalized) {
+      return [];
+    }
+
+    const cached = this.getDmRelayHints(normalized);
+    if (cached.length) {
+      return cached;
+    }
+
+    const relayCandidates =
+      Array.isArray(nostrClient?.readRelays) && nostrClient.readRelays.length
+        ? nostrClient.readRelays
+        : Array.isArray(nostrClient?.relays)
+        ? nostrClient.relays
+        : [];
+
+    const relayList = sanitizeRelayList(relayCandidates);
+    if (!relayList.length) {
+      return [];
+    }
+
+    if (!nostrClient?.pool || typeof nostrClient.pool.list !== "function") {
+      return [];
+    }
+
+    try {
+      const events = await nostrClient.pool.list(relayList, [
+        { kinds: [10050], authors: [normalized], limit: 1 },
+      ]);
+      const sorted = Array.isArray(events)
+        ? events
+            .filter((event) => event && event.pubkey === normalized)
+            .sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0))
+        : [];
+      if (!sorted.length) {
+        return [];
+      }
+
+      const tags = Array.isArray(sorted[0]?.tags) ? sorted[0].tags : [];
+      const relayHints = sanitizeRelayList(
+        tags
+          .filter((tag) => Array.isArray(tag) && tag[0] === "relay")
+          .map((tag) => (typeof tag[1] === "string" ? tag[1].trim() : "")),
+      );
+
+      this.setDmRelayHints(normalized, relayHints);
+      return relayHints;
+    } catch (error) {
+      devLogger.warn(
+        "[Application] Failed to load DM relay hints:",
+        error,
+      );
+    }
+
+    return [];
+  }
+
+  openDirectMessageComposer({ recipientPubkey, source = "" } = {}) {
+    const normalized = this.normalizeHexPubkey(recipientPubkey);
+    if (!normalized) {
+      this.showError("Please select a valid message recipient.");
+      return false;
+    }
+
+    this.setDmRecipientPubkey(normalized);
+
+    if (this.profileController) {
+      try {
+        if (typeof this.profileController.setDirectMessageRecipient === "function") {
+          this.profileController.setDirectMessageRecipient(normalized, {
+            reason: source || "external",
+          });
+        }
+        if (typeof this.profileController.show === "function") {
+          this.profileController.show("messages");
+        }
+        if (typeof this.profileController.focusMessageComposer === "function") {
+          this.profileController.focusMessageComposer();
+        }
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to open DM composer:",
+          error,
+        );
+      }
+    }
+
+    return true;
+  }
+
+  handleProfileSendDmRequest({ recipient } = {}) {
+    const recipientPubkey =
+      typeof recipient?.pubkey === "string"
+        ? recipient.pubkey
+        : null;
+
+    return this.openDirectMessageComposer({
+      recipientPubkey,
+      source: "profile-modal",
+    });
+  }
+
+  handleProfileUseDmRelays({ recipient, controller } = {}) {
+    const relayHints = Array.isArray(recipient?.relayHints)
+      ? recipient.relayHints
+      : [];
+    if (!relayHints.length) {
+      this.showError("No DM relays found for this recipient.");
+      return false;
+    }
+
+    if (recipient?.pubkey) {
+      this.setDmRelayHints(recipient.pubkey, relayHints);
+    }
+
+    this.showSuccess("Recipient DM relays ready for use.");
+    if (controller?.focusMessageComposer) {
+      controller.focusMessageComposer();
+    }
+    return true;
+  }
+
+  handleProfilePrivacyToggle({ enabled, controller } = {}) {
+    if (enabled) {
+      this.showStatus("Privacy mode is coming in Phase 3.");
+      if (controller?.setPrivacyToggleState) {
+        controller.setPrivacyToggleState(false);
+      }
+    }
   }
 
   updateProfileInDOM(pubkey, profile) {

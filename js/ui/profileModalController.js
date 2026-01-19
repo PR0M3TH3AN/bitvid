@@ -277,6 +277,13 @@ const SERVICE_CONTRACT = [
     fallback: () => async () => [],
   },
   {
+    key: "fetchDmRelayHints",
+    type: "function",
+    description:
+      "Fetches DM relay hints (kind 10050) for a given pubkey.",
+    fallback: () => async () => [],
+  },
+  {
     key: "switchProfile",
     type: "function",
     description:
@@ -695,6 +702,62 @@ const STATE_CONTRACT = [
       return internal.walletBusy;
     },
   },
+  {
+    key: "getDmRecipient",
+    type: "function",
+    description:
+      "Returns the currently selected direct message recipient pubkey.",
+    fallback: (internal) => () => internal.dmRecipient,
+  },
+  {
+    key: "setDmRecipient",
+    type: "function",
+    description:
+      "Updates the selected direct message recipient pubkey and returns the stored value.",
+    fallback: (internal) => (pubkey) => {
+      if (typeof pubkey === "string") {
+        const trimmed = pubkey.trim();
+        internal.dmRecipient = trimmed || null;
+      } else {
+        internal.dmRecipient = null;
+      }
+      return internal.dmRecipient;
+    },
+  },
+  {
+    key: "getDmRelayHints",
+    type: "function",
+    description:
+      "Returns the cached DM relay hints for a given pubkey.",
+    fallback: (internal) => (pubkey) => {
+      const normalized =
+        typeof pubkey === "string" ? pubkey.trim().toLowerCase() : "";
+      if (!normalized || !(internal.dmRelayHints instanceof Map)) {
+        return [];
+      }
+      const hints = internal.dmRelayHints.get(normalized);
+      return Array.isArray(hints) ? hints.slice() : [];
+    },
+  },
+  {
+    key: "setDmRelayHints",
+    type: "function",
+    description:
+      "Stores DM relay hints for a given pubkey and returns the stored list.",
+    fallback: (internal) => (pubkey, hints = []) => {
+      if (!(internal.dmRelayHints instanceof Map)) {
+        internal.dmRelayHints = new Map();
+      }
+      const normalized =
+        typeof pubkey === "string" ? pubkey.trim().toLowerCase() : "";
+      if (!normalized) {
+        return [];
+      }
+      const stored = Array.isArray(hints) ? hints.slice() : [];
+      internal.dmRelayHints.set(normalized, stored);
+      return stored;
+    },
+  },
 ];
 
 function buildServicesContract(services = {}, internalState) {
@@ -883,6 +946,8 @@ export class ProfileModalController {
       walletBusy: false,
       walletSettings: createInternalDefaultNwcSettings(),
       moderationSettings: createInternalDefaultModerationSettings(),
+      dmRecipient: null,
+      dmRelayHints: new Map(),
     };
 
     this.services = buildServicesContract(services, this.internalState);
@@ -1769,6 +1834,148 @@ export class ProfileModalController {
     return null;
   }
 
+  resolveActiveDmRecipient() {
+    const candidate =
+      typeof this.state.getDmRecipient === "function"
+        ? this.state.getDmRecipient()
+        : null;
+    const normalized = this.normalizeHexPubkey(candidate);
+    if (normalized) {
+      return normalized;
+    }
+    return null;
+  }
+
+  buildDmRecipientContext(pubkey) {
+    const normalized = this.normalizeHexPubkey(pubkey);
+    if (!normalized) {
+      return null;
+    }
+
+    const npub =
+      typeof this.safeEncodeNpub === "function"
+        ? this.safeEncodeNpub(normalized)
+        : null;
+
+    const cacheEntry =
+      typeof this.services.getProfileCacheEntry === "function"
+        ? this.services.getProfileCacheEntry(normalized)
+        : null;
+    const profile = cacheEntry?.profile || null;
+
+    const displayName =
+      profile?.display_name?.trim?.() ||
+      profile?.name?.trim?.() ||
+      (typeof this.formatShortNpub === "function"
+        ? this.formatShortNpub(npub)
+        : npub) ||
+      npub ||
+      "Unknown profile";
+
+    const relayHints =
+      typeof this.state.getDmRelayHints === "function"
+        ? this.state.getDmRelayHints(normalized)
+        : [];
+
+    return {
+      pubkey: normalized,
+      npub,
+      profile,
+      displayName,
+      relayHints: Array.isArray(relayHints) ? relayHints.slice() : [],
+    };
+  }
+
+  async ensureDmRecipientData(pubkey) {
+    const normalized = this.normalizeHexPubkey(pubkey);
+    if (!normalized) {
+      return null;
+    }
+
+    if (
+      typeof this.services.batchFetchProfiles === "function"
+    ) {
+      try {
+        await this.services.batchFetchProfiles([normalized]);
+      } catch (error) {
+        devLogger.warn(
+          "[profileModal] Failed to fetch DM recipient metadata:",
+          error,
+        );
+      }
+    }
+
+    if (typeof this.services.fetchDmRelayHints === "function") {
+      try {
+        const hints = await this.services.fetchDmRelayHints(normalized);
+        if (typeof this.state.setDmRelayHints === "function") {
+          this.state.setDmRelayHints(normalized, hints);
+        }
+      } catch (error) {
+        devLogger.warn(
+          "[profileModal] Failed to fetch DM relay hints:",
+          error,
+        );
+      }
+    }
+
+    return this.buildDmRecipientContext(normalized);
+  }
+
+  setDirectMessageRecipient(pubkey, { reason = "manual" } = {}) {
+    const normalized = this.normalizeHexPubkey(pubkey);
+    const nextRecipient = normalized || null;
+
+    if (typeof this.state.setDmRecipient === "function") {
+      this.state.setDmRecipient(nextRecipient);
+    }
+
+    this.updateMessageThreadSelection(nextRecipient);
+
+    if (nextRecipient) {
+      void this.ensureDmRecipientData(nextRecipient);
+      this.setMessagesAnnouncement("Ready to message this recipient.");
+    } else if (reason === "clear") {
+      this.setMessagesAnnouncement("Message recipient cleared.");
+    }
+
+    return nextRecipient;
+  }
+
+  updateMessageThreadSelection(activeRecipient) {
+    if (!(this.profileMessagesList instanceof HTMLElement)) {
+      return;
+    }
+
+    const normalized = this.normalizeHexPubkey(activeRecipient);
+    const items = Array.from(
+      this.profileMessagesList.querySelectorAll("[data-remote-pubkey]"),
+    );
+
+    items.forEach((item) => {
+      if (!(item instanceof HTMLElement)) {
+        return;
+      }
+      const remote = this.normalizeHexPubkey(item.dataset.remotePubkey);
+      const isActive = normalized && remote === normalized;
+      item.dataset.state = isActive ? "active" : "inactive";
+    });
+  }
+
+  focusMessageComposer() {
+    const input = this.profileMessageInput;
+    if (input instanceof HTMLTextAreaElement) {
+      input.focus();
+      input.select();
+    }
+  }
+
+  setPrivacyToggleState(enabled) {
+    if (this.profileMessagesPrivacyToggle instanceof HTMLInputElement) {
+      this.profileMessagesPrivacyToggle.checked = Boolean(enabled);
+    }
+  }
+
   ensureDirectMessageSubscription(actorPubkey = null) {
     if (
       !this.nostrService ||
@@ -1844,6 +2051,8 @@ export class ProfileModalController {
     const normalized = actorPubkey
       ? this.normalizeHexPubkey(actorPubkey)
       : this.resolveActiveDmActor();
+
+    this.setDirectMessageRecipient(null, { reason: "clear" });
 
     if (
       this.directMessagesSubscription &&
@@ -2057,27 +2266,49 @@ export class ProfileModalController {
     }
   }
 
-  handleSendDmRequest() {
+  async handleSendDmRequest() {
+    const recipient = this.resolveActiveDmRecipient();
+    if (!recipient) {
+      this.showError("Please select a message recipient.");
+      return;
+    }
+
+    const context = await this.ensureDmRecipientData(recipient);
+    this.focusMessageComposer();
+
     const callback = this.callbacks.onSendDm;
     if (callback && callback !== noop) {
       callback({
         actorPubkey: this.resolveActiveDmActor(),
+        recipient: context,
         controller: this,
       });
     }
   }
 
-  handleOpenDmRelaysRequest() {
+  async handleOpenDmRelaysRequest() {
+    const recipient = this.resolveActiveDmRecipient();
+    if (!recipient) {
+      this.showError("Please select a message recipient.");
+      return;
+    }
+
+    const context = await this.ensureDmRecipientData(recipient);
+
     const callback = this.callbacks.onOpenRelays;
     if (callback && callback !== noop) {
-      callback({ controller: this });
+      callback({ controller: this, recipient: context });
     }
   }
 
   handlePrivacyToggle(enabled) {
     const callback = this.callbacks.onTogglePrivacy;
     if (callback && callback !== noop) {
-      callback({ controller: this, enabled: Boolean(enabled) });
+      callback({
+        controller: this,
+        enabled: Boolean(enabled),
+        recipient: this.buildDmRecipientContext(this.resolveActiveDmRecipient()),
+      });
     }
   }
 
@@ -2120,10 +2351,11 @@ export class ProfileModalController {
       return;
     }
 
-    const targetCandidate =
-      this.resolveActiveDmActor() || this.directMessagesLastActor;
+    const targetHex = this.resolveActiveDmRecipient();
     const target =
-      typeof targetCandidate === "string" ? targetCandidate.trim() : "";
+      typeof targetHex === "string" && typeof this.safeEncodeNpub === "function"
+        ? this.safeEncodeNpub(targetHex)
+        : "";
     if (!target) {
       this.showError("Please select a message recipient.");
       return;
@@ -2172,6 +2404,7 @@ export class ProfileModalController {
     this.directMessagesCache = [];
     this.directMessagesLastActor = this.resolveActiveDmActor();
     this.messagesInitialLoadPending = true;
+    this.setDirectMessageRecipient(null, { reason: "clear" });
 
     if (this.profileMessagesList instanceof HTMLElement) {
       this.profileMessagesList.innerHTML = "";
@@ -2391,6 +2624,7 @@ export class ProfileModalController {
     const item = document.createElement("li");
     item.className = "card flex flex-col gap-3 p-4";
     item.setAttribute("data-remote-pubkey", thread.remoteHex);
+    item.dataset.state = "inactive";
 
     const header = document.createElement("div");
     header.className = "flex items-start justify-between gap-3";
@@ -2468,6 +2702,13 @@ export class ProfileModalController {
 
     item.appendChild(meta);
 
+    item.addEventListener("click", () => {
+      this.setDirectMessageRecipient(thread.remoteHex, {
+        reason: "thread-select",
+      });
+      this.focusMessageComposer();
+    });
+
     return item;
   }
 
@@ -2522,6 +2763,19 @@ export class ProfileModalController {
       if (item) {
         this.profileMessagesList.appendChild(item);
       }
+    }
+
+    const activeRecipient = this.resolveActiveDmRecipient();
+    const hasActiveRecipient =
+      activeRecipient &&
+      threads.some((thread) => thread.remoteHex === activeRecipient);
+
+    if (threads.length && !hasActiveRecipient) {
+      this.setDirectMessageRecipient(threads[0].remoteHex, {
+        reason: "thread-default",
+      });
+    } else if (hasActiveRecipient) {
+      this.updateMessageThreadSelection(activeRecipient);
     }
 
     this.profileMessagesList.classList.remove("hidden");
@@ -2697,6 +2951,7 @@ export class ProfileModalController {
     }
 
     this.directMessagesCache = [];
+    this.setDirectMessageRecipient(null, { reason: "clear" });
     if (this.profileMessagesList instanceof HTMLElement) {
       this.profileMessagesList.innerHTML = "";
       this.profileMessagesList.classList.add("hidden");
@@ -2843,13 +3098,13 @@ export class ProfileModalController {
 
     if (this.profileMessagesSendDmButton instanceof HTMLElement) {
       this.profileMessagesSendDmButton.addEventListener("click", () => {
-        this.handleSendDmRequest();
+        void this.handleSendDmRequest();
       });
     }
 
     if (this.profileMessagesOpenRelaysButton instanceof HTMLElement) {
       this.profileMessagesOpenRelaysButton.addEventListener("click", () => {
-        this.handleOpenDmRelaysRequest();
+        void this.handleOpenDmRelaysRequest();
       });
     }
 

@@ -3357,6 +3357,14 @@ function setupChannelMessageControls() {
           return;
         }
 
+        if (typeof app?.openDirectMessageComposer === "function") {
+          app.openDirectMessageComposer({
+            recipientPubkey: resolvedHex,
+            source: "channel-profile",
+          });
+          return;
+        }
+
         const controller = app?.profileController;
         if (!controller) {
           app?.showError?.("Messages are unavailable right now.");
