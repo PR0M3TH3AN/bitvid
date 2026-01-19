@@ -14,6 +14,7 @@ export function Composer({
   placeholder = "Write a message…",
   state = "idle",
   privacyMode: initialPrivacyMode = "standard",
+  signingAdapter = null,
   onSend,
 } = {}) {
   if (!doc) {
@@ -88,11 +89,35 @@ export function Composer({
   form.appendChild(actions);
   form.appendChild(status);
 
+  const handleSubmit = async () => {
+    if (typeof onSend !== "function") {
+      return;
+    }
+
+    const payload = { privacyMode, attachments: [] };
+    if (signingAdapter) {
+      try {
+        if (typeof signingAdapter.getPubkey === "function") {
+          payload.pubkey = await signingAdapter.getPubkey();
+        }
+        if (typeof signingAdapter.getDisplayName === "function") {
+          payload.displayName = await signingAdapter.getDisplayName();
+        }
+        if (typeof signingAdapter.signMessage === "function") {
+          payload.signature = await signingAdapter.signMessage(textarea.value);
+        }
+      } catch (error) {
+        payload.signingError =
+          error instanceof Error ? error.message : "Signing failed.";
+      }
+    }
+
+    onSend(textarea.value, payload);
+  };
+
   form.addEventListener("submit", (event) => {
     event.preventDefault();
-    if (typeof onSend === "function") {
-      onSend(textarea.value, { privacyMode, attachments: [] });
-    }
+    void handleSubmit();
   });
 
   const updatePrivacyLabel = () => {

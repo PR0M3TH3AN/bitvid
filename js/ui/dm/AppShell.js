@@ -77,6 +77,7 @@ export class AppShell {
     threadErrorType = "",
     composerState = "idle",
     notifications = [],
+    signingAdapter = null,
     onSelectConversation,
     onSendMessage,
   } = {}) {
@@ -125,6 +126,7 @@ export class AppShell {
       Composer({
         document: doc,
         state: composerState,
+        signingAdapter,
         onSend: onSendMessage,
       }),
     );
