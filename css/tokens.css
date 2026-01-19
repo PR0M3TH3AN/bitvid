@@ -303,6 +303,8 @@
   --size-30px: 30px;
   --size-32px: 32px;
   --size-64px: 64px;
+  --size-80px: 80px;
+  --size-96px: 96px;
   --size-128px: 128px;
   --size-140px: 140px;
   --size-168px: 168px;
@@ -314,6 +316,7 @@
   --size-12rem: 12rem;
   --size-12-5rem: 12.5rem;
   --size-14rem: 14rem;
+  --size-18rem: 18rem;
   --size-28rem: 28rem;
   --size-34rem: 34rem;
   --size-45rem: 45rem;
