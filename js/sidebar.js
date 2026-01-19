@@ -1,5 +1,5 @@
 // sidebar.js
-import { setHashView } from "./index.js";
+import { setHashView } from "./hashView.js";
 
 export function setupSidebarNavigation() {
   const sidebarLinks = document.querySelectorAll('#sidebar a[href^="#view="]');

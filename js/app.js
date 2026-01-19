@@ -111,6 +111,7 @@ import {
   syncActiveVideoRootTimestamp,
 } from "./utils/videoTimestamps.js";
 import { getDesignSystemMode as getCanonicalDesignSystemMode } from "./designSystem.js";
+import { getHashViewName, setHashView } from "./hashView.js";
 import {
   getPubkey as getStoredPubkey,
   setPubkey as setStoredPubkey,
@@ -4117,6 +4118,13 @@ class Application {
     this.applyAuthenticatedUiState();
     this.commentController?.refreshAuthState?.();
 
+    const currentView = getHashViewName();
+    const normalizedView =
+      typeof currentView === "string" ? currentView.toLowerCase() : "";
+    if (!normalizedView || normalizedView === "most-recent-videos") {
+      setHashView("for-you");
+    }
+
     const rawProviderId =
       typeof detail?.providerId === "string" ? detail.providerId.trim() : "";
     const rawAuthType =
@@ -4361,6 +4369,14 @@ class Application {
     }
 
     this.applyLoggedOutUiState();
+
+    const logoutView = getHashViewName();
+    if (
+      typeof logoutView === "string" &&
+      logoutView.trim().toLowerCase() === "for-you"
+    ) {
+      setHashView("most-recent-videos");
+    }
 
     const activeModalVideo =
       typeof this.videoModal?.getCurrentVideo === "function"
