@@ -21,6 +21,7 @@ export function ConversationList({
   activeId = "",
   state = "idle",
   onSelect,
+  onMarkAllRead,
 } = {}) {
   if (!doc) {
     throw new Error("ConversationList requires a document reference.");
@@ -29,6 +30,21 @@ export function ConversationList({
   const root = createElement(doc, "section", "dm-conversation-list");
   const header = createElement(doc, "div", "dm-conversation-list__header");
   header.appendChild(createElement(doc, "h2", "dm-conversation-list__title", "Messages"));
+  if (typeof onMarkAllRead === "function") {
+    const markAllButton = createElement(
+      doc,
+      "button",
+      "btn-ghost",
+      "Mark all as read",
+    );
+    markAllButton.type = "button";
+    markAllButton.dataset.size = "sm";
+    markAllButton.disabled = !conversations.length;
+    markAllButton.addEventListener("click", () => {
+      onMarkAllRead();
+    });
+    header.appendChild(markAllButton);
+  }
   root.appendChild(header);
 
   const list = createElement(doc, "div", "dm-conversation-list__items");

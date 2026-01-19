@@ -24,6 +24,7 @@ export function MessageThread({
   zapReceipts = [],
   conversationZapTotalSats = 0,
   profileZapTotalSats = 0,
+  onMarkRead,
 } = {}) {
   if (!doc) {
     throw new Error("MessageThread requires a document reference.");
@@ -82,6 +83,23 @@ export function MessageThread({
     ),
   );
   header.appendChild(zapSummary);
+
+  if (typeof onMarkRead === "function") {
+    const actions = createElement(doc, "div", "ml-auto flex items-center gap-2");
+    const markReadButton = createElement(doc, "button", "btn-ghost", "Mark read");
+    markReadButton.type = "button";
+    markReadButton.dataset.size = "sm";
+    const conversationId =
+      typeof contact.id === "string" ? contact.id.trim() : "";
+    if (!conversationId) {
+      markReadButton.disabled = true;
+    }
+    markReadButton.addEventListener("click", () => {
+      onMarkRead(contact);
+    });
+    actions.appendChild(markReadButton);
+    header.appendChild(actions);
+  }
   root.appendChild(header);
 
   const timeline = createElement(doc, "div", "dm-message-thread__timeline");

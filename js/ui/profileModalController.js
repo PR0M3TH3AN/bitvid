@@ -3879,6 +3879,40 @@ export class ProfileModalController {
     return "nip04";
   }
 
+  getDirectMessagesForConversation(conversationId, actorPubkey = null) {
+    const actor = this.normalizeHexPubkey(actorPubkey || this.resolveActiveDmActor());
+    if (!actor || !conversationId) {
+      return [];
+    }
+
+    const remote = this.resolveRemoteForConversationId(conversationId, actor);
+    if (!remote) {
+      return [];
+    }
+
+    return (Array.isArray(this.directMessagesCache) ? this.directMessagesCache : [])
+      .filter(
+        (entry) =>
+          entry &&
+          entry.ok === true &&
+          this.resolveDirectMessageRemote(entry, actor) === remote,
+      )
+      .sort((a, b) => (a?.timestamp || 0) - (b?.timestamp || 0));
+  }
+
+  getLatestDirectMessageTimestampForConversation(conversationId, actorPubkey = null) {
+    const messages = this.getDirectMessagesForConversation(
+      conversationId,
+      actorPubkey,
+    );
+    if (!messages.length) {
+      return 0;
+    }
+
+    const last = messages[messages.length - 1];
+    return Number(last?.timestamp) || 0;
+  }
+
   buildDmMessageTimeline(messages, { actorPubkey, remotePubkey } = {}) {
     const actor = this.normalizeHexPubkey(actorPubkey);
     const remote = this.normalizeHexPubkey(remotePubkey);
@@ -4383,6 +4417,12 @@ export class ProfileModalController {
         onSendMessage: (messageText, payload) => {
           void this.handleDmAppShellSendMessage(messageText, payload);
         },
+        onMarkConversationRead: (conversation) => {
+          void this.handleDmConversationMarkRead(conversation);
+        },
+        onMarkAllRead: () => {
+          void this.handleDmMarkAllConversationsRead();
+        },
       });
     } catch (error) {
       this.dmAppShell = null;
@@ -4403,9 +4443,14 @@ export class ProfileModalController {
     container.appendChild(root);
 
     if (actor && activeConversationId) {
+      const renderedUntil =
+        this.getLatestDirectMessageTimestampForConversation(
+          activeConversationId,
+          actor,
+        ) || Date.now() / 1000;
       void this.nostrService?.acknowledgeRenderedDirectMessages?.(
         activeConversationId,
-        Date.now() / 1000,
+        renderedUntil,
       );
     }
   }
@@ -4454,6 +4499,113 @@ export class ProfileModalController {
     }
 
     this.setFocusedDmConversation(conversationId);
+
+    await this.renderDmAppShell(this.directMessagesCache, {
+      actorPubkey: actor,
+    });
+  }
+
+  async handleDmConversationMarkRead(conversation) {
+    const conversationId =
+      conversation && typeof conversation.id === "string"
+        ? conversation.id.trim()
+        : this.activeDmConversationId;
+    if (!conversationId) {
+      return;
+    }
+
+    const actor = this.resolveActiveDmActor();
+    if (
+      !actor ||
+      !this.nostrService ||
+      typeof this.nostrService.acknowledgeRenderedDirectMessages !== "function"
+    ) {
+      return;
+    }
+
+    const renderedUntil = this.getLatestDirectMessageTimestampForConversation(
+      conversationId,
+      actor,
+    );
+
+    try {
+      await this.nostrService.acknowledgeRenderedDirectMessages(
+        conversationId,
+        renderedUntil,
+      );
+    } catch (error) {
+      devLogger.warn("[profileModal] Failed to mark conversation read:", error);
+    }
+
+    const recipient = this.resolveRemoteForConversationId(conversationId, actor);
+    const messages = this.getDirectMessagesForConversation(conversationId, actor);
+    if (recipient && messages.length) {
+      void this.maybePublishReadReceipt(messages, {
+        recipientPubkey: recipient,
+      });
+    }
+
+    await this.renderDmAppShell(this.directMessagesCache, {
+      actorPubkey: actor,
+    });
+  }
+
+  async handleDmMarkAllConversationsRead() {
+    if (
+      !this.nostrService ||
+      typeof this.nostrService.acknowledgeRenderedDirectMessages !== "function"
+    ) {
+      return;
+    }
+
+    const actor = this.resolveActiveDmActor();
+    if (!actor) {
+      return;
+    }
+
+    const summaries =
+      typeof this.nostrService.listDirectMessageConversationSummaries === "function"
+        ? await this.nostrService.listDirectMessageConversationSummaries()
+        : [];
+    const list = Array.isArray(summaries) ? summaries : [];
+
+    for (const summary of list) {
+      const conversationId =
+        typeof summary?.conversation_id === "string"
+          ? summary.conversation_id.trim()
+          : typeof summary?.conversationId === "string"
+            ? summary.conversationId.trim()
+            : "";
+      if (!conversationId) {
+        continue;
+      }
+
+      const renderedUntil =
+        Number(summary?.last_message_at) ||
+        Number(summary?.downloaded_until) ||
+        Number(summary?.opened_until) ||
+        this.getLatestDirectMessageTimestampForConversation(conversationId, actor);
+
+      try {
+        await this.nostrService.acknowledgeRenderedDirectMessages(
+          conversationId,
+          renderedUntil,
+        );
+      } catch (error) {
+        devLogger.warn(
+          "[profileModal] Failed to mark conversation read:",
+          error,
+        );
+      }
+
+      const recipient = this.resolveRemoteForConversationId(conversationId, actor);
+      const messages = this.getDirectMessagesForConversation(conversationId, actor);
+      if (recipient && messages.length) {
+        void this.maybePublishReadReceipt(messages, {
+          recipientPubkey: recipient,
+        });
+      }
+    }
 
     await this.renderDmAppShell(this.directMessagesCache, {
       actorPubkey: actor,

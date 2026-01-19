@@ -28,6 +28,7 @@ function normalizeConversationState(conversation) {
     conversation_id: conversation.conversation_id || "",
     opened_until: sanitizeTimestamp(conversation.opened_until),
     downloaded_until: sanitizeTimestamp(conversation.downloaded_until),
+    last_message_at: sanitizeTimestamp(conversation.last_message_at),
     unseen_count: Number.isFinite(Number(conversation.unseen_count))
       ? Number(conversation.unseen_count)
       : 0,

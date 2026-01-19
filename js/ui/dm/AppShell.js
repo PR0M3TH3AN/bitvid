@@ -127,6 +127,8 @@ export class AppShell {
     onSelectConversation,
     onSendMessage,
     onSendZap,
+    onMarkConversationRead,
+    onMarkAllRead,
   } = {}) {
     if (!doc) {
       throw new Error("AppShell requires a document reference.");
@@ -165,6 +167,7 @@ export class AppShell {
         activeId: activeConversationId,
         state: conversationState,
         onSelect: onSelectConversation,
+        onMarkAllRead,
       }),
     );
 
@@ -187,6 +190,7 @@ export class AppShell {
         conversationZapTotalSats:
           totalsByConversation.get(activeConversation.id) || 0,
         profileZapTotalSats: totalsByProfile.get(activeConversation.pubkey) || 0,
+        onMarkRead: onMarkConversationRead,
       }),
     );
     main.appendChild(
