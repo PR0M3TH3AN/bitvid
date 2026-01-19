@@ -5273,6 +5273,66 @@
   .dm-notification-center {
     display: flex;
     flex-direction: column;
+    gap: var(--space-sm);
+  }
+
+  .dm-notification-center__filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-xs);
+  }
+
+  .dm-notification-center__filter-button {
+    border-radius: var(--radius-full);
+    border: var(--border-width-hairline) solid var(--border-subtle);
+    background: var(--surface-sunken);
+    padding: var(--space-2xs) var(--space-sm);
+    font-size: var(--font-size-2xs);
+    font-weight: 600;
+    color: var(--text-muted);
+    transition: color var(--motion-duration-fast) var(--motion-ease-out),
+      background var(--motion-duration-fast) var(--motion-ease-out),
+      border-color var(--motion-duration-fast) var(--motion-ease-out);
+  }
+
+  .dm-notification-center__filter-button:hover,
+  .dm-notification-center__filter-button:focus-visible {
+    outline: none;
+    border-color: var(--border-strong);
+    background: var(--surface-raised);
+    color: var(--text-primary);
+  }
+
+  .dm-notification-center__filter-button--active {
+    border-color: var(--border-strong);
+    background: var(--surface-overlay-panel);
+    color: var(--text-primary);
+  }
+
+  .dm-notification-center__groups {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+  }
+
+  .dm-notification-center__group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+  }
+
+  .dm-notification-center__group-title {
+    font-size: var(--font-size-2xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
+    color: var(--text-muted);
+  }
+
+  .dm-notification-center__list {
+    display: flex;
+    flex-direction: column;
     gap: var(--space-xs);
   }
 
@@ -5281,33 +5341,87 @@
     color: var(--text-muted);
   }
 
-  .dm-notification-center__item {
-    padding: var(--space-xs) var(--space-sm);
+  .dm-notification-item {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-sm);
     border-radius: var(--radius-md);
     border: var(--border-width-hairline) solid var(--border-subtle);
     background: var(--surface-sunken);
     font-size: var(--font-size-xs);
+    text-align: left;
+    transition: border-color var(--motion-duration-fast) var(--motion-ease-out),
+      background var(--motion-duration-fast) var(--motion-ease-out);
   }
 
-  .dm-notification-center__item--info {
+  .dm-notification-item:hover,
+  .dm-notification-item:focus-visible {
+    outline: none;
+    border-color: var(--border-strong);
+    background: var(--surface-raised);
+  }
+
+  .dm-notification-item__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--icon-size-md);
+    height: var(--icon-size-md);
+    border-radius: var(--radius-full);
+    background: var(--surface-overlay-panel-soft);
+    color: var(--text-muted);
+    font-size: var(--font-size-xs);
+  }
+
+  .dm-notification-item__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2xs);
+    min-width: 0;
+  }
+
+  .dm-notification-item__title {
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .dm-notification-item__message {
+    color: var(--text-muted);
+  }
+
+  .dm-notification-item__meta {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2xs);
+    color: var(--text-muted);
+  }
+
+  .dm-notification-item__timestamp {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .dm-notification-item--info {
     background: var(--status-info-surface);
     border-color: var(--status-info-border);
     color: var(--status-info-on);
   }
 
-  .dm-notification-center__item--success {
+  .dm-notification-item--success {
     background: var(--status-success-surface);
     border-color: var(--status-success-border);
     color: var(--status-success-on);
   }
 
-  .dm-notification-center__item--warning {
+  .dm-notification-item--warning {
     background: var(--status-warning-surface);
     border-color: var(--status-warning-border);
     color: var(--status-warning-on);
   }
 
-  .dm-notification-center__item--error {
+  .dm-notification-item--error {
     background: var(--status-danger-surface);
     border-color: var(--status-danger-border);
     color: var(--status-danger-on);
