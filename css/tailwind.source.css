@@ -5095,6 +5095,12 @@
     gap: var(--space-xs);
   }
 
+  .dm-contact-row__meta {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+  }
+
   .dm-contact-row__name {
     font-weight: 600;
   }
@@ -5167,6 +5173,32 @@
 
   .dm-message-thread__status {
     font-size: var(--font-size-xs);
+    color: var(--text-muted);
+  }
+
+  .dm-message-thread__zap-summary {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+    padding: var(--space-2xs) var(--space-xs);
+    border-radius: var(--radius-full);
+    border: var(--border-width-hairline) solid var(--border-subtle);
+    background: var(--surface-sunken);
+    color: var(--text-muted);
+    font-size: var(--font-size-2xs);
+  }
+
+  .dm-message-thread__zap-label {
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
+  }
+
+  .dm-message-thread__zap-total {
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .dm-message-thread__zap-profile {
     color: var(--text-muted);
   }
 
@@ -5497,6 +5529,29 @@
     cursor: pointer;
   }
 
+  .dm-composer__zap-toggle {
+    border-radius: var(--radius-md);
+    border: var(--border-width-hairline) solid var(--border-default);
+    background: var(--surface-base);
+    color: var(--text-muted);
+    padding: var(--space-2xs) var(--space-sm);
+    font-size: var(--font-size-2xs);
+    cursor: pointer;
+  }
+
+  .dm-composer__zap-toggle[aria-pressed="true"] {
+    border-color: var(--border-strong);
+    background: var(--surface-overlay-panel);
+    color: var(--text-primary);
+  }
+
+  .dm-composer__zap-toggle:hover,
+  .dm-composer__zap-toggle:focus-visible {
+    background: var(--surface-overlay-panel-soft);
+    color: var(--text-primary);
+    outline: none;
+  }
+
   .dm-composer__attach:hover,
   .dm-composer__attach:focus-visible,
   .dm-composer__privacy:hover,
@@ -5520,6 +5575,85 @@
   .dm-composer__send:focus-visible {
     background: var(--surface-overlay-panel-soft);
     outline: none;
+  }
+
+  .dm-composer__zap-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    padding: var(--space-sm);
+    border-radius: var(--radius-md);
+    border: var(--border-width-hairline) solid var(--border-subtle);
+    background: var(--surface-sunken);
+  }
+
+  .dm-composer__zap-recipient {
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .dm-composer__zap-address {
+    font-size: var(--font-size-2xs);
+    color: var(--text-muted);
+  }
+
+  .dm-composer__zap-label {
+    font-size: var(--font-size-2xs);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
+    color: var(--text-muted);
+  }
+
+  .dm-composer__zap-input {
+    border-radius: var(--radius-md);
+    border: var(--border-width-hairline) solid var(--border-default);
+    background: var(--surface-base);
+    color: var(--text-primary);
+    padding: var(--space-2xs) var(--space-sm);
+    font-size: var(--font-size-xs);
+    font-family: inherit;
+  }
+
+  .dm-composer__zap-input:focus-visible {
+    outline: var(--size-2px) solid var(--color-accent);
+    outline-offset: var(--size-2px);
+  }
+
+  .dm-composer__zap-actions {
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .dm-composer__zap-send {
+    border-radius: var(--radius-md);
+    border: var(--border-width-hairline) solid var(--border-strong);
+    background: var(--surface-overlay-panel);
+    color: var(--text-primary);
+    padding: var(--space-2xs) var(--space-md);
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .dm-composer__zap-send:hover,
+  .dm-composer__zap-send:focus-visible {
+    background: var(--surface-overlay-panel-soft);
+    outline: none;
+  }
+
+  .dm-composer__zap-status {
+    font-size: var(--font-size-2xs);
+    color: var(--text-muted);
+    min-height: var(--space-md);
+  }
+
+  .dm-composer__zap-status[data-state="error"] {
+    color: var(--status-danger);
+  }
+
+  .dm-composer__zap-status[data-state="success"] {
+    color: var(--status-success);
   }
 
   .dm-composer__status {

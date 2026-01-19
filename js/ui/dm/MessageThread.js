@@ -1,5 +1,7 @@
 import { DayDivider } from "./DayDivider.js";
 import { MessageBubble } from "./MessageBubble.js";
+import { ZapReceiptList } from "./ZapReceiptList.js";
+import { formatZapAmount } from "./zapHelpers.js";
 
 function createElement(doc, tag, className, text) {
   const element = doc.createElement(tag);
@@ -18,6 +20,10 @@ export function MessageThread({
   messages = [],
   state = "idle",
   errorType = "",
+  privacyMode = "nip04",
+  zapReceipts = [],
+  conversationZapTotalSats = 0,
+  profileZapTotalSats = 0,
 } = {}) {
   if (!doc) {
     throw new Error("MessageThread requires a document reference.");
@@ -39,6 +45,43 @@ export function MessageThread({
       createElement(doc, "span", "dm-message-thread__status", contact.status),
     );
   }
+  const normalizedPrivacy =
+    typeof privacyMode === "string" ? privacyMode.trim().toLowerCase() : "";
+  const isNip17 = normalizedPrivacy === "nip17" || normalizedPrivacy === "private";
+  const privacyLabel = `Privacy: ${isNip17 ? "NIP-17" : "NIP-04"}`;
+  const privacyHint = isNip17
+    ? "NIP-17 gift-wraps your DM so relays only see the wrapper and relay hints."
+    : "NIP-04 sends a direct encrypted DM; relays can still see sender and recipient metadata.";
+  const privacyBadge = createElement(
+    doc,
+    "span",
+    "dm-message-thread__status",
+    privacyLabel,
+  );
+  privacyBadge.title = privacyHint;
+  header.appendChild(privacyBadge);
+
+  const zapSummary = createElement(doc, "div", "dm-message-thread__zap-summary");
+  zapSummary.appendChild(
+    createElement(doc, "span", "dm-message-thread__zap-label", "Zaps"),
+  );
+  zapSummary.appendChild(
+    createElement(
+      doc,
+      "span",
+      "dm-message-thread__zap-total",
+      formatZapAmount(conversationZapTotalSats),
+    ),
+  );
+  zapSummary.appendChild(
+    createElement(
+      doc,
+      "span",
+      "dm-message-thread__zap-profile",
+      `Profile: ${formatZapAmount(profileZapTotalSats)}`,
+    ),
+  );
+  header.appendChild(zapSummary);
   root.appendChild(header);
 
   const timeline = createElement(doc, "div", "dm-message-thread__timeline");
@@ -86,5 +129,13 @@ export function MessageThread({
   }
 
   root.appendChild(timeline);
+
+  root.appendChild(
+    ZapReceiptList({
+      document: doc,
+      receipts: zapReceipts,
+      emptyLabel: "No zap receipts published yet.",
+    }),
+  );
   return root;
 }

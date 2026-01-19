@@ -20,14 +20,21 @@ export const NOTE_TYPES = Object.freeze({
   VIEW_EVENT: "viewEvent",
   VIDEO_REACTION: "videoReaction",
   VIDEO_COMMENT: "videoComment",
+  DM_ATTACHMENT: "dmAttachment",
+  DM_READ_RECEIPT: "dmReadReceipt",
+  DM_TYPING: "dmTypingIndicator",
+  ZAP_REQUEST: "zapRequest",
+  ZAP_RECEIPT: "zapReceipt",
   WATCH_HISTORY: "watchHistory",
   SUBSCRIPTION_LIST: "subscriptionList",
   USER_BLOCK_LIST: "userBlockList",
   HASHTAG_PREFERENCES: "hashtagPreferences",
+  DM_RELAY_LIST: "dmRelayList",
   ADMIN_MODERATION_LIST: "adminModerationList",
   ADMIN_BLACKLIST: "adminBlacklist",
   ADMIN_WHITELIST: "adminWhitelist",
   PROFILE_METADATA: "profileMetadata",
+  MUTE_LIST: "muteList",
 });
 
 export const SUBSCRIPTION_LIST_IDENTIFIER = "subscriptions";
@@ -270,8 +277,8 @@ const BASE_SCHEMAS = {
     kind: 6,
     appendTags: DEFAULT_APPEND_TAGS,
     content: {
-      format: "empty",
-      description: "Content field intentionally empty for pure repost events.",
+      format: "json",
+      description: "Content field contains the JSON-serialized event being reposted.",
     },
   },
   [NOTE_TYPES.NIP71_VIDEO]: {
@@ -305,6 +312,14 @@ const BASE_SCHEMAS = {
     relayTagName: "r",
     readMarker: "read",
     writeMarker: "write",
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: { format: "empty", description: "Content field unused." },
+  },
+  [NOTE_TYPES.DM_RELAY_LIST]: {
+    type: NOTE_TYPES.DM_RELAY_LIST,
+    label: "DM relay hints",
+    kind: 10050,
+    relayTagName: "relay",
     appendTags: DEFAULT_APPEND_TAGS,
     content: { format: "empty", description: "Content field unused." },
   },
@@ -350,6 +365,73 @@ const BASE_SCHEMAS = {
     content: {
       format: "text",
       description: "Plain text comment body sanitized for UTF-8 compatibility.",
+    },
+  },
+  [NOTE_TYPES.DM_ATTACHMENT]: {
+    type: NOTE_TYPES.DM_ATTACHMENT,
+    label: "DM attachment (NIP-17 file rumor)",
+    kind: 15,
+    participantTagName: "p",
+    hashTagName: "x",
+    urlTagName: "url",
+    nameTagName: "name",
+    typeTagName: "type",
+    sizeTagName: "size",
+    keyTagName: "k",
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      format: "empty",
+      description: "Attachment metadata is carried in tags; content is empty.",
+    },
+  },
+  [NOTE_TYPES.DM_READ_RECEIPT]: {
+    type: NOTE_TYPES.DM_READ_RECEIPT,
+    label: "DM read receipt",
+    kind: 20001,
+    recipientTagName: "p",
+    eventTagName: "e",
+    kindTagName: "k",
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      format: "empty",
+      description: "Ephemeral read receipt pointer for a DM event.",
+    },
+  },
+  [NOTE_TYPES.DM_TYPING]: {
+    type: NOTE_TYPES.DM_TYPING,
+    label: "DM typing indicator",
+    kind: 20002,
+    recipientTagName: "p",
+    eventTagName: "e",
+    statusTagName: "t",
+    statusTagValue: "typing",
+    expirationTagName: "expiration",
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      format: "empty",
+      description: "Ephemeral typing indicator with an expiration timestamp.",
+    },
+  },
+  [NOTE_TYPES.ZAP_REQUEST]: {
+    type: NOTE_TYPES.ZAP_REQUEST,
+    label: "Zap request",
+    kind: 9734,
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      format: "text",
+      description:
+        "Optional zap message included in the zap request sent to LNURL pay callbacks.",
+    },
+  },
+  [NOTE_TYPES.ZAP_RECEIPT]: {
+    type: NOTE_TYPES.ZAP_RECEIPT,
+    label: "Zap receipt",
+    kind: 9735,
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      format: "text",
+      description:
+        "Zap receipts are published by lightning wallets to confirm zap requests.",
     },
   },
   [NOTE_TYPES.WATCH_HISTORY]: {
@@ -456,6 +538,17 @@ const BASE_SCHEMAS = {
     content: {
       format: "json",
       description: "Standard NIP-01 profile metadata (name, about, picture, etc.).",
+    },
+  },
+  [NOTE_TYPES.MUTE_LIST]: {
+    type: NOTE_TYPES.MUTE_LIST,
+    label: "Mute list",
+    kind: 10000,
+    participantTagName: "p",
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      format: "text",
+      description: "Optional content (often encrypted) with public p tags.",
     },
   },
 };
@@ -929,6 +1022,255 @@ export function buildRelayListEvent(params) {
   };
 }
 
+export function buildDmRelayListEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    relays = [],
+    additionalTags = [],
+  } = params || {};
+  const schema = getNostrEventSchema(NOTE_TYPES.DM_RELAY_LIST);
+  const tags = [];
+  const relayTagName = schema?.relayTagName || "relay";
+
+  if (Array.isArray(relays)) {
+    relays.forEach((relay) => {
+      const normalized = typeof relay === "string" ? relay.trim() : "";
+      if (normalized) {
+        tags.push([relayTagName, normalized]);
+      }
+    });
+  }
+
+  appendSchemaTags(tags, schema);
+
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
+  }
+
+  return {
+    kind: schema?.kind ?? 10050,
+    pubkey,
+    created_at,
+    tags,
+    content: "",
+  };
+}
+
+export function buildProfileMetadataEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    metadata = {},
+    content,
+    additionalTags = [],
+  } = params || {};
+  const schema = getNostrEventSchema(NOTE_TYPES.PROFILE_METADATA);
+  const tags = [];
+  appendSchemaTags(tags, schema);
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
+  }
+
+  let serializedContent = "";
+  if (typeof content === "string") {
+    serializedContent = content;
+  } else {
+    try {
+      serializedContent = JSON.stringify(metadata || {});
+    } catch (error) {
+      serializedContent = "{}";
+    }
+  }
+
+  return {
+    kind: schema?.kind ?? 0,
+    pubkey,
+    created_at,
+    tags,
+    content: serializedContent,
+  };
+}
+
+export function buildMuteListEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    pTags = [],
+    content = "",
+    encrypted = false,
+    encryptionTag = "",
+    additionalTags = [],
+  } = params || {};
+  const schema = getNostrEventSchema(NOTE_TYPES.MUTE_LIST);
+  const tags = [];
+
+  const participantTagName = schema?.participantTagName || "p";
+  if (Array.isArray(pTags)) {
+    pTags.forEach((hex) => {
+      if (typeof hex === "string" && hex.trim()) {
+        tags.push([participantTagName, hex.trim()]);
+      }
+    });
+  }
+
+  if (encrypted && encryptionTag) {
+    tags.push(["encrypted", encryptionTag]);
+  }
+
+  appendSchemaTags(tags, schema);
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
+  }
+
+  return {
+    kind: schema?.kind ?? 10000,
+    pubkey,
+    created_at,
+    tags,
+    content: typeof content === "string" ? content : "",
+  };
+}
+
+export function buildDmAttachmentEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    recipientPubkey,
+    attachment = {},
+    additionalTags = [],
+  } = params || {};
+  const schema = getNostrEventSchema(NOTE_TYPES.DM_ATTACHMENT);
+  const tags = [];
+
+  const participantTagName = schema?.participantTagName || "p";
+  if (recipientPubkey && typeof recipientPubkey === "string") {
+    tags.push([participantTagName, recipientPubkey.trim()]);
+  }
+
+  if (attachment?.x) {
+    tags.push([schema?.hashTagName || "x", attachment.x]);
+  }
+  if (attachment?.url) {
+    tags.push([schema?.urlTagName || "url", attachment.url]);
+  }
+  if (attachment?.name) {
+    tags.push([schema?.nameTagName || "name", attachment.name]);
+  }
+  if (attachment?.type) {
+    tags.push([schema?.typeTagName || "type", attachment.type]);
+  }
+  if (Number.isFinite(attachment?.size)) {
+    tags.push([schema?.sizeTagName || "size", String(attachment.size)]);
+  }
+  if (attachment?.key) {
+    tags.push([schema?.keyTagName || "k", attachment.key]);
+  }
+
+  appendSchemaTags(tags, schema);
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
+  }
+
+  return {
+    kind: schema?.kind ?? 15,
+    pubkey,
+    created_at,
+    tags,
+    content: "",
+  };
+}
+
+export function buildDmReadReceiptEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    recipientPubkey,
+    eventId,
+    messageKind,
+    additionalTags = [],
+  } = params || {};
+  const schema = getNostrEventSchema(NOTE_TYPES.DM_READ_RECEIPT);
+  const tags = [];
+
+  const recipient = normalizePointerIdentifier(recipientPubkey);
+  if (recipient) {
+    tags.push([schema?.recipientTagName || "p", recipient]);
+  }
+
+  const normalizedEventId = normalizePointerIdentifier(eventId);
+  if (normalizedEventId) {
+    tags.push([schema?.eventTagName || "e", normalizedEventId]);
+  }
+
+  if (Number.isFinite(messageKind)) {
+    tags.push([schema?.kindTagName || "k", String(Math.floor(messageKind))]);
+  }
+
+  appendSchemaTags(tags, schema);
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
+  }
+
+  return {
+    kind: schema?.kind ?? 20001,
+    pubkey,
+    created_at,
+    tags,
+    content: "",
+  };
+}
+
+export function buildDmTypingIndicatorEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    recipientPubkey,
+    eventId,
+    expiresAt,
+    additionalTags = [],
+  } = params || {};
+  const schema = getNostrEventSchema(NOTE_TYPES.DM_TYPING);
+  const tags = [];
+
+  const recipient = normalizePointerIdentifier(recipientPubkey);
+  if (recipient) {
+    tags.push([schema?.recipientTagName || "p", recipient]);
+  }
+
+  const normalizedEventId = normalizePointerIdentifier(eventId);
+  if (normalizedEventId) {
+    tags.push([schema?.eventTagName || "e", normalizedEventId]);
+  }
+
+  if (schema?.statusTagName && schema?.statusTagValue) {
+    tags.push([schema.statusTagName, schema.statusTagValue]);
+  }
+
+  if (Number.isFinite(expiresAt)) {
+    tags.push([schema?.expirationTagName || "expiration", String(Math.floor(expiresAt))]);
+  }
+
+  appendSchemaTags(tags, schema);
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
+  }
+
+  return {
+    kind: schema?.kind ?? 20002,
+    pubkey,
+    created_at,
+    tags,
+    content: "",
+  };
+}
+
 export function buildViewEvent(params) {
   const {
     pubkey,
@@ -983,6 +1325,80 @@ export function buildViewEvent(params) {
 
   return {
     kind: schema?.kind ?? WATCH_HISTORY_KIND,
+    pubkey,
+    created_at,
+    tags,
+    content: resolvedContent,
+  };
+}
+
+export function buildZapRequestEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    recipientPubkey,
+    relays = [],
+    amountSats,
+    lnurl,
+    eventId,
+    coordinate,
+    additionalTags = [],
+    content = "",
+  } = params || {};
+  const schema = getNostrEventSchema(NOTE_TYPES.ZAP_REQUEST);
+  const tags = [];
+
+  const normalizedRecipient = normalizePointerIdentifier(recipientPubkey);
+  if (normalizedRecipient) {
+    tags.push(["p", normalizedRecipient]);
+  }
+
+  const normalizedEventId = normalizePointerIdentifier(eventId);
+  if (normalizedEventId) {
+    tags.push(["e", normalizedEventId]);
+  }
+
+  if (typeof coordinate === "string" && coordinate.trim()) {
+    tags.push(["a", coordinate.trim()]);
+  }
+
+  if (typeof lnurl === "string" && lnurl.trim()) {
+    tags.push(["lnurl", lnurl.trim()]);
+  }
+
+  if (Number.isFinite(amountSats)) {
+    tags.push(["amount", String(Math.max(0, Math.round(amountSats)) * 1000)]);
+  }
+
+  const relayList = Array.isArray(relays) ? relays : [];
+  const relaySeen = new Set();
+  const normalizedRelays = [];
+  relayList.forEach((relay) => {
+    if (typeof relay !== "string") {
+      return;
+    }
+    const trimmed = relay.trim();
+    if (!trimmed || relaySeen.has(trimmed)) {
+      return;
+    }
+    relaySeen.add(trimmed);
+    normalizedRelays.push(trimmed);
+  });
+  if (normalizedRelays.length) {
+    tags.push(["relays", ...normalizedRelays]);
+  }
+
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
+  }
+
+  appendSchemaTags(tags, schema);
+
+  const resolvedContent = ensureValidUtf8Content(content);
+
+  return {
+    kind: schema?.kind ?? 9734,
     pubkey,
     created_at,
     tags,

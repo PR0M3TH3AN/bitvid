@@ -64,6 +64,7 @@ const wrapper = (input) => {
         };
     }
 
+    // Deterministic execution: input fully defines execution path.
     normalizeAndAugmentMagnet(rawValue, options);
 };
 

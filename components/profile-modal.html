@@ -443,6 +443,26 @@
                   ></ul>
                 </div>
               </div>
+
+              <div id="profileLinkPreviewSettings" class="card space-y-4 p-5">
+                <div class="space-y-2">
+                  <h3 class="text-base font-semibold text-text">Link previews</h3>
+                  <p class="text-sm text-muted">
+                    Control when bitvid fetches link preview metadata. Disable auto-fetch to review new domains before previews load.
+                  </p>
+                </div>
+                <label
+                  for="profileLinkPreviewAutoToggle"
+                  class="inline-flex items-center gap-2 text-xs font-medium text-muted-strong"
+                >
+                  <input
+                    id="profileLinkPreviewAutoToggle"
+                    type="checkbox"
+                    class="checkbox"
+                  />
+                  Auto-fetch previews from new domains
+                </label>
+              </div>
             </section>
 
             <section
@@ -492,7 +512,7 @@
                   <span class="mb-2 block font-medium">About</span>
                   <textarea
                     id="editAboutInput"
-                    class="input min-h-[80px]"
+                    class="input min-h-[var(--size-80px)]"
                     placeholder="Tell us about yourself..."
                   ></textarea>
                 </label>
@@ -644,6 +664,44 @@
                 </div>
               </div>
               <ul id="relayList" class="grid-stack" data-orientation="vertical"></ul>
+              <div id="relayHealthPanel" class="card space-y-4 p-5">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                  <div class="space-y-1">
+                    <h3 class="text-base font-semibold text-text">Relay health</h3>
+                    <p class="text-sm text-muted">
+                      Monitor connectivity, latency, and errors for your configured relays.
+                    </p>
+                  </div>
+                  <button
+                    id="relayHealthRefreshBtn"
+                    type="button"
+                    class="btn-ghost focus-ring text-xs"
+                  >
+                    Refresh
+                  </button>
+                </div>
+                <label
+                  for="relayHealthTelemetryOptIn"
+                  class="inline-flex items-center gap-2 text-xs font-medium text-muted-strong"
+                >
+                  <input
+                    id="relayHealthTelemetryOptIn"
+                    type="checkbox"
+                    class="checkbox"
+                  />
+                  Share relay health telemetry
+                </label>
+                <p class="text-xs text-muted">
+                  Telemetry is opt-in and only includes relay URLs, latency, and error counts.
+                </p>
+                <ul id="relayHealthList" class="grid-stack" data-orientation="vertical"></ul>
+                <p
+                  id="relayHealthStatus"
+                  class="text-xs text-muted"
+                  role="status"
+                  aria-live="polite"
+                ></p>
+              </div>
             </section>
 
             <section
@@ -1009,144 +1067,7 @@
               role="tabpanel"
               aria-labelledby="profileNavMessages"
             >
-              <p class="text-sm text-muted">
-                View encrypted conversations sent with NIP-04 or NIP-44. bitvid keeps message data on this device only.
-              </p>
-              <div class="card space-y-4 p-4">
-                <div class="flex flex-wrap items-start justify-between gap-3">
-                  <div class="space-y-1">
-                    <h3 class="text-sm font-semibold text-text">Direct message actions</h3>
-                    <p class="text-xs text-muted">
-                      Start a new DM or jump to relay preferences before you send.
-                    </p>
-                  </div>
-                  <button
-                    id="profileMessagesSendDm"
-                    type="button"
-                    class="btn focus-ring inline-flex items-center gap-2"
-                    data-size="sm"
-                  >
-                    Send DM
-                  </button>
-                </div>
-                <div class="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-3">
-                  <div class="space-y-1">
-                    <h4 class="text-xs font-semibold text-text">Preferred DM relay</h4>
-                    <p class="text-xs text-muted">
-                      Select a relay to prioritize encrypted message delivery.
-                    </p>
-                  </div>
-                  <button
-                    id="profileMessagesOpenRelays"
-                    type="button"
-                    class="btn-ghost focus-ring inline-flex items-center gap-2"
-                    data-size="sm"
-                  >
-                    Manage relays
-                  </button>
-                </div>
-                <div class="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-3">
-                  <div class="space-y-1">
-                    <h4 class="text-xs font-semibold text-text">Privacy mode (coming soon)</h4>
-                    <p class="text-xs text-muted">
-                      Pause inbound DM sync and clear cached previews on this device.
-                    </p>
-                  </div>
-                  <label
-                    for="profileMessagesPrivacyToggle"
-                    class="inline-flex items-center gap-2 text-xs font-medium text-muted-strong"
-                  >
-                    <input
-                      id="profileMessagesPrivacyToggle"
-                      type="checkbox"
-                      class="checkbox"
-                    />
-                    Enable
-                  </label>
-                </div>
-              </div>
-              <div
-                id="profileMessagesStatus"
-                class="sr-only"
-                role="status"
-                aria-live="polite"
-              ></div>
-              <div
-                id="profileMessagesLoading"
-                class="hidden py-6"
-                role="status"
-                aria-live="polite"
-              >
-                <div class="sidebar-loading-wrapper">
-                  <div class="sidebar-loading-indicator">
-                    <span
-                      class="status-spinner status-spinner--inline"
-                      aria-hidden="true"
-                    ></span>
-                    <span class="sidebar-loading-text"
-                      >Fetching direct messages from relays…</span
-                    >
-                  </div>
-                </div>
-              </div>
-              <div
-                id="profileMessagesError"
-                class="card hidden border border-critical/40 bg-critical/10 px-4 py-3 text-sm text-critical"
-                role="alert"
-                aria-live="assertive"
-              ></div>
-              <div
-                id="profileMessagesEmpty"
-                class="card hidden border border-dashed border-border/60 p-6 text-center text-sm text-muted"
-                role="status"
-                aria-live="polite"
-              >
-                No direct messages yet.
-              </div>
-              <div class="flex items-center justify-end gap-2">
-                <button
-                  id="profileMessagesReload"
-                  type="button"
-                  class="btn-ghost focus-ring inline-flex items-center gap-2"
-                  data-size="sm"
-                >
-                  Refresh
-                </button>
-              </div>
-              <ul
-                id="profileMessagesList"
-                class="grid-stack hidden"
-                data-orientation="vertical"
-                aria-live="polite"
-                aria-label="Direct message threads"
-              ></ul>
-              <div class="flex flex-col gap-3 border-t border-border/60 pt-4">
-                <label class="sr-only" for="profileMessageInput">Message</label>
-                <textarea
-                  id="profileMessageInput"
-                  class="input min-h-[96px]"
-                  rows="3"
-                  placeholder="Write a message…"
-                ></textarea>
-                <div class="flex flex-wrap items-center justify-between gap-2">
-                  <p
-                    id="profileMessagesComposerHelper"
-                    class="text-xs text-muted hidden"
-                    role="status"
-                    aria-live="polite"
-                  >
-                    Sign in to send messages.
-                  </p>
-                  <button
-                    id="profileMessageSendBtn"
-                    type="button"
-                    class="btn focus-ring inline-flex items-center gap-2"
-                    data-size="sm"
-                  >
-                    Send
-                  </button>
-                </div>
-              </div>
+              <div id="dmAppShellMount"></div>
             </section>
             <section
               id="profilePaneHistory"

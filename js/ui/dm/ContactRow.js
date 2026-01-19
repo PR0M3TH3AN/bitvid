@@ -1,4 +1,5 @@
 import { Avatar } from "./Avatar.js";
+import { formatZapAmount } from "./zapHelpers.js";
 
 function createElement(doc, tag, className, text) {
   const element = doc.createElement(tag);
@@ -30,6 +31,7 @@ export function ContactRow({
     unreadCount = 0,
     avatarSrc = "",
     status = "",
+    zapTotalSats = null,
   } = contact;
 
   const button = createElement(doc, "button", "dm-contact-row");
@@ -56,8 +58,25 @@ export function ContactRow({
   const nameEl = createElement(doc, "span", "dm-contact-row__name", name);
   header.appendChild(nameEl);
 
+  const meta = createElement(doc, "span", "dm-contact-row__meta");
   const timeEl = createElement(doc, "span", "dm-contact-row__time", timestamp);
-  header.appendChild(timeEl);
+  meta.appendChild(timeEl);
+
+  if (Number.isFinite(zapTotalSats)) {
+    const zapTotal = createElement(
+      doc,
+      "span",
+      "dm-contact-row__zap",
+      formatZapAmount(zapTotalSats, { compact: true }),
+    );
+    zapTotal.setAttribute(
+      "aria-label",
+      `Total zaps ${formatZapAmount(zapTotalSats)}`,
+    );
+    meta.appendChild(zapTotal);
+  }
+
+  header.appendChild(meta);
   content.appendChild(header);
 
   const previewEl = createElement(

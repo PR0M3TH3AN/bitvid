@@ -34,6 +34,8 @@ const LEGACY_MODERATION_OVERRIDE_STORAGE_KEY = "bitvid:moderationOverrides:v1";
 const MODERATION_OVERRIDE_STORAGE_VERSION = 2;
 const MODERATION_SETTINGS_STORAGE_KEY = "bitvid:moderationSettings:v1";
 const MODERATION_SETTINGS_STORAGE_VERSION = 3;
+const DM_PRIVACY_SETTINGS_STORAGE_KEY = "bitvid:dmPrivacySettings:v1";
+const DM_PRIVACY_SETTINGS_STORAGE_VERSION = 1;
 
 function computeDefaultModerationSettings() {
   const defaultBlur = sanitizeModerationThreshold(
@@ -112,6 +114,22 @@ const moderationSettingsStore = createProfileSettingsStore({
 moderationSettingsStore.set(
   GLOBAL_MODERATION_PROFILE_KEY,
   createDefaultModerationSettings(),
+);
+
+function createDefaultDmPrivacySettings() {
+  return {
+    readReceiptsEnabled: false,
+    typingIndicatorsEnabled: false,
+  };
+}
+
+const GLOBAL_DM_PRIVACY_PROFILE_KEY = "__dmPrivacyDefault__";
+const dmPrivacySettingsStore = createProfileSettingsStore({
+  clone: (value) => ({ ...value }),
+});
+dmPrivacySettingsStore.set(
+  GLOBAL_DM_PRIVACY_PROFILE_KEY,
+  createDefaultDmPrivacySettings(),
 );
 
 function sanitizeModerationThreshold(value, fallback) {
@@ -1115,6 +1133,208 @@ function persistModerationSettingsToStorage() {
   } catch (error) {
     userLogger.warn(
       "[cache.persistModerationSettingsToStorage] Failed to persist overrides:",
+      error,
+    );
+  }
+}
+
+function getDmPrivacyStoreKeyForPubkey(pubkey) {
+  const normalized = normalizeHexPubkey(pubkey);
+  return normalized || GLOBAL_DM_PRIVACY_PROFILE_KEY;
+}
+
+function ensureDmPrivacySettingsForKey(key) {
+  const storeKey = key || GLOBAL_DM_PRIVACY_PROFILE_KEY;
+  if (!dmPrivacySettingsStore.has(storeKey)) {
+    dmPrivacySettingsStore.set(storeKey, createDefaultDmPrivacySettings());
+  }
+  return dmPrivacySettingsStore.get(storeKey);
+}
+
+function normalizeDmPrivacySettings(partial = {}) {
+  const defaults = createDefaultDmPrivacySettings();
+  const resolved = partial && typeof partial === "object" ? partial : {};
+  return {
+    readReceiptsEnabled:
+      typeof resolved.readReceiptsEnabled === "boolean"
+        ? resolved.readReceiptsEnabled
+        : defaults.readReceiptsEnabled,
+    typingIndicatorsEnabled:
+      typeof resolved.typingIndicatorsEnabled === "boolean"
+        ? resolved.typingIndicatorsEnabled
+        : defaults.typingIndicatorsEnabled,
+  };
+}
+
+export function getDefaultDmPrivacySettings() {
+  return createDefaultDmPrivacySettings();
+}
+
+export function getDmPrivacySettingsForPubkey(pubkey) {
+  const key = getDmPrivacyStoreKeyForPubkey(pubkey);
+  const settings = ensureDmPrivacySettingsForKey(key);
+  return { ...settings };
+}
+
+export function getDmPrivacySettings() {
+  return getDmPrivacySettingsForPubkey(activeProfilePubkey);
+}
+
+export function setDmPrivacySettings(partial = {}, options = {}) {
+  const targetPubkey =
+    typeof options?.pubkey === "string" ? options.pubkey : activeProfilePubkey;
+  const key = getDmPrivacyStoreKeyForPubkey(targetPubkey);
+  const existing = ensureDmPrivacySettingsForKey(key);
+  const normalized = normalizeDmPrivacySettings({ ...existing, ...partial });
+  dmPrivacySettingsStore.set(key, normalized);
+  persistDmPrivacySettingsToStorage();
+  return { ...normalized };
+}
+
+export function loadDmPrivacySettingsFromStorage() {
+  dmPrivacySettingsStore.clear();
+  dmPrivacySettingsStore.set(
+    GLOBAL_DM_PRIVACY_PROFILE_KEY,
+    createDefaultDmPrivacySettings(),
+  );
+
+  if (typeof localStorage === "undefined") {
+    return getDmPrivacySettings();
+  }
+
+  const raw = localStorage.getItem(DM_PRIVACY_SETTINGS_STORAGE_KEY);
+  if (!raw) {
+    return getDmPrivacySettings();
+  }
+
+  let shouldRewrite = false;
+
+  try {
+    const payload = JSON.parse(raw);
+    if (!payload || typeof payload !== "object") {
+      shouldRewrite = true;
+    } else if (payload.version === DM_PRIVACY_SETTINGS_STORAGE_VERSION) {
+      const defaults = createDefaultDmPrivacySettings();
+      const entries =
+        payload.entries && typeof payload.entries === "object"
+          ? payload.entries
+          : {};
+
+      for (const [key, entry] of Object.entries(entries)) {
+        if (!entry || typeof entry !== "object") {
+          shouldRewrite = true;
+          continue;
+        }
+
+        const overrides =
+          entry.overrides && typeof entry.overrides === "object"
+            ? entry.overrides
+            : {};
+
+        const storeKey =
+          key === "default"
+            ? GLOBAL_DM_PRIVACY_PROFILE_KEY
+            : getDmPrivacyStoreKeyForPubkey(key);
+
+        if (!storeKey) {
+          shouldRewrite = true;
+          continue;
+        }
+
+        const settings = {
+          readReceiptsEnabled:
+            typeof overrides.readReceiptsEnabled === "boolean"
+              ? overrides.readReceiptsEnabled
+              : defaults.readReceiptsEnabled,
+          typingIndicatorsEnabled:
+            typeof overrides.typingIndicatorsEnabled === "boolean"
+              ? overrides.typingIndicatorsEnabled
+              : defaults.typingIndicatorsEnabled,
+        };
+
+        dmPrivacySettingsStore.set(storeKey, settings);
+      }
+    } else {
+      shouldRewrite = true;
+    }
+  } catch (error) {
+    userLogger.warn(
+      "[cache.loadDmPrivacySettingsFromStorage] Failed to parse payload:",
+      error,
+    );
+    shouldRewrite = true;
+  }
+
+  if (shouldRewrite) {
+    persistDmPrivacySettingsToStorage();
+  }
+
+  return getDmPrivacySettings();
+}
+
+function persistDmPrivacySettingsToStorage() {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+
+  const defaults = createDefaultDmPrivacySettings();
+  const entries = {};
+
+  for (const [key, value] of dmPrivacySettingsStore.entries()) {
+    const settings =
+      value && typeof value === "object"
+        ? value
+        : createDefaultDmPrivacySettings();
+
+    const overrides = {};
+
+    if (settings.readReceiptsEnabled !== defaults.readReceiptsEnabled) {
+      overrides.readReceiptsEnabled = settings.readReceiptsEnabled;
+    }
+
+    if (settings.typingIndicatorsEnabled !== defaults.typingIndicatorsEnabled) {
+      overrides.typingIndicatorsEnabled = settings.typingIndicatorsEnabled;
+    }
+
+    if (Object.keys(overrides).length === 0) {
+      continue;
+    }
+
+    const storageKey =
+      key === GLOBAL_DM_PRIVACY_PROFILE_KEY ? "default" : key;
+
+    entries[storageKey] = {
+      overrides,
+      savedAt: Date.now(),
+    };
+  }
+
+  if (Object.keys(entries).length === 0) {
+    try {
+      localStorage.removeItem(DM_PRIVACY_SETTINGS_STORAGE_KEY);
+    } catch (error) {
+      userLogger.warn(
+        "[cache.persistDmPrivacySettingsToStorage] Failed to clear overrides:",
+        error,
+      );
+    }
+    return;
+  }
+
+  const payload = {
+    version: DM_PRIVACY_SETTINGS_STORAGE_VERSION,
+    entries,
+    savedAt: Date.now(),
+  };
+
+  try {
+    localStorage.setItem(
+      DM_PRIVACY_SETTINGS_STORAGE_KEY,
+      JSON.stringify(payload),
+    );
+  } catch (error) {
+    userLogger.warn(
+      "[cache.persistDmPrivacySettingsToStorage] Failed to persist overrides:",
       error,
     );
   }

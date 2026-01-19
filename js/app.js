@@ -68,6 +68,12 @@ import { devLogger, userLogger } from "./utils/logger.js";
 import createPopover from "./ui/overlay/popoverEngine.js";
 import { createVideoSettingsMenuPanel } from "./ui/components/videoMenuRenderers.js";
 import moderationService from "./services/moderationService.js";
+import { sanitizeRelayList } from "./nostr/nip46Client.js";
+import { buildDmRelayListEvent } from "./nostrEventSchemas.js";
+import {
+  publishEventToRelays,
+  assertAnyRelayAccepted,
+} from "./nostrPublish.js";
 import {
   initViewCounter,
   subscribeToVideoViewCount,
@@ -139,6 +145,7 @@ import {
   setModerationSettings,
   resetModerationSettings,
   loadModerationSettingsFromStorage,
+  loadDmPrivacySettingsFromStorage,
   URL_PROBE_TIMEOUT_MS,
   urlHealthConstants,
 } from "./state/cache.js";
@@ -220,6 +227,8 @@ class Application {
     this.modalManager = modalManager;
 
     this.modalCreatorProfileRequestToken = null;
+    this.dmRecipientPubkey = null;
+    this.dmRelayHints = new Map();
 
     this.commentController = null;
     this.initializeCommentController();
@@ -415,6 +424,7 @@ class Application {
 
       loadModerationOverridesFromStorage();
       loadModerationSettingsFromStorage();
+      loadDmPrivacySettingsFromStorage();
       this.moderationSettings = this.normalizeModerationSettings(
         getModerationSettings(),
       );
@@ -3056,6 +3066,306 @@ class Application {
         this.updateProfileInDOM(pubkey, profile),
       hex64Regex: HEX64_REGEX,
     });
+  }
+
+  getDmRecipientPubkey() {
+    return this.dmRecipientPubkey;
+  }
+
+  setDmRecipientPubkey(pubkey) {
+    const normalized = this.normalizeHexPubkey(pubkey);
+    this.dmRecipientPubkey = normalized || null;
+    return this.dmRecipientPubkey;
+  }
+
+  getDmRelayHints(pubkey) {
+    const normalized = this.normalizeHexPubkey(pubkey);
+    if (!normalized || !(this.dmRelayHints instanceof Map)) {
+      return [];
+    }
+    const hints = this.dmRelayHints.get(normalized);
+    return Array.isArray(hints) ? hints.slice() : [];
+  }
+
+  setDmRelayHints(pubkey, hints = []) {
+    const normalized = this.normalizeHexPubkey(pubkey);
+    if (!normalized) {
+      return [];
+    }
+    if (!(this.dmRelayHints instanceof Map)) {
+      this.dmRelayHints = new Map();
+    }
+    const stored = sanitizeRelayList(Array.isArray(hints) ? hints : []);
+    this.dmRelayHints.set(normalized, stored);
+    return stored.slice();
+  }
+
+  async publishDmRelayPreferences({ pubkey, relays } = {}) {
+    const normalized = this.normalizeHexPubkey(pubkey || this.pubkey);
+    if (!normalized) {
+      const error = new Error("A valid pubkey is required to publish DM relays.");
+      error.code = "invalid-pubkey";
+      throw error;
+    }
+
+    const relayHints = sanitizeRelayList(Array.isArray(relays) ? relays : []);
+    if (!relayHints.length) {
+      const error = new Error("Add at least one DM relay before publishing.");
+      error.code = "empty";
+      throw error;
+    }
+
+    if (!nostrClient?.pool) {
+      const error = new Error(
+        "Nostr is not connected yet. Please try again once relays are ready.",
+      );
+      error.code = "nostr-uninitialized";
+      throw error;
+    }
+
+    const signer = await nostrClient.ensureActiveSignerForPubkey(normalized);
+    if (!signer || typeof signer.signEvent !== "function") {
+      const error = new Error(
+        "An active signer with signEvent support is required to publish DM relays.",
+      );
+      error.code = "nostr-extension-missing";
+      throw error;
+    }
+
+    if (signer.type === "extension" && nostrClient.ensureExtensionPermissions) {
+      const permissionResult = await nostrClient.ensureExtensionPermissions();
+      if (!permissionResult?.ok) {
+        userLogger.warn(
+          "[Application] Signer permissions denied while publishing DM relays.",
+          permissionResult?.error,
+        );
+        const error = new Error(
+          "The active signer must allow signing before publishing DM relays.",
+        );
+        error.code = "extension-permission-denied";
+        error.cause = permissionResult?.error;
+        throw error;
+      }
+    }
+
+    const event = buildDmRelayListEvent({
+      pubkey: normalized,
+      created_at: Math.floor(Date.now() / 1000),
+      relays: relayHints,
+    });
+
+    const signedEvent = await signer.signEvent(event);
+
+    const relayTargets = sanitizeRelayList(
+      Array.isArray(nostrClient.writeRelays) && nostrClient.writeRelays.length
+        ? nostrClient.writeRelays
+        : Array.isArray(nostrClient.relays)
+        ? nostrClient.relays
+        : [],
+    );
+
+    if (!relayTargets.length) {
+      const error = new Error("No relay targets are available for publishing.");
+      error.code = "no-targets";
+      throw error;
+    }
+
+    const publishResults = await publishEventToRelays(
+      nostrClient.pool,
+      relayTargets,
+      signedEvent,
+    );
+
+    let publishSummary;
+    try {
+      publishSummary = assertAnyRelayAccepted(publishResults, {
+        context: "dm relay hints update",
+        message: "No relays accepted the DM relay list.",
+      });
+    } catch (publishError) {
+      if (publishError?.relayFailures?.length) {
+        publishError.relayFailures.forEach(
+          ({ url, error: relayError, reason }) => {
+            userLogger.error(
+              `[Application] Relay ${url} rejected DM relay list: ${reason}`,
+              relayError || reason,
+            );
+          },
+        );
+      }
+      throw publishError;
+    }
+
+    if (publishSummary.failed.length) {
+      publishSummary.failed.forEach(({ url, error: relayError }) => {
+        const reason =
+          relayError instanceof Error
+            ? relayError.message
+            : relayError
+            ? String(relayError)
+            : "publish failed";
+        userLogger.warn(
+          `[Application] Relay ${url} did not acknowledge DM relay hints: ${reason}`,
+          relayError,
+        );
+      });
+    }
+
+    return {
+      ok: true,
+      event: signedEvent,
+      accepted: publishSummary.accepted.map(({ url }) => url),
+      failed: publishSummary.failed.map(({ url, error: relayError }) => ({
+        url,
+        error: relayError || null,
+      })),
+    };
+  }
+
+  handleProfilePublishDmRelayPreferences({ relays, pubkey } = {}) {
+    return this.publishDmRelayPreferences({ relays, pubkey });
+  }
+
+  async fetchDmRelayHints(pubkey) {
+    const normalized = this.normalizeHexPubkey(pubkey);
+    if (!normalized) {
+      return [];
+    }
+
+    const cached = this.getDmRelayHints(normalized);
+    if (cached.length) {
+      return cached;
+    }
+
+    const relayCandidates =
+      Array.isArray(nostrClient?.readRelays) && nostrClient.readRelays.length
+        ? nostrClient.readRelays
+        : Array.isArray(nostrClient?.relays)
+        ? nostrClient.relays
+        : [];
+
+    const relayList = sanitizeRelayList(relayCandidates);
+    if (!relayList.length) {
+      return [];
+    }
+
+    if (!nostrClient?.pool || typeof nostrClient.pool.list !== "function") {
+      return [];
+    }
+
+    try {
+      const events = await nostrClient.pool.list(relayList, [
+        { kinds: [10050], authors: [normalized], limit: 1 },
+      ]);
+      const sorted = Array.isArray(events)
+        ? events
+            .filter((event) => event && event.pubkey === normalized)
+            .sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0))
+        : [];
+      if (!sorted.length) {
+        return [];
+      }
+
+      const tags = Array.isArray(sorted[0]?.tags) ? sorted[0].tags : [];
+      const relayHints = sanitizeRelayList(
+        tags
+          .filter((tag) => Array.isArray(tag) && tag[0] === "relay")
+          .map((tag) => (typeof tag[1] === "string" ? tag[1].trim() : "")),
+      );
+
+      this.setDmRelayHints(normalized, relayHints);
+      return relayHints;
+    } catch (error) {
+      devLogger.warn(
+        "[Application] Failed to load DM relay hints:",
+        error,
+      );
+    }
+
+    return [];
+  }
+
+  openDirectMessageComposer({ recipientPubkey, source = "" } = {}) {
+    const normalized = this.normalizeHexPubkey(recipientPubkey);
+    if (!normalized) {
+      this.showError("Please select a valid message recipient.");
+      return false;
+    }
+
+    this.setDmRecipientPubkey(normalized);
+
+    if (this.profileController) {
+      try {
+        if (typeof this.profileController.setDirectMessageRecipient === "function") {
+          this.profileController.setDirectMessageRecipient(normalized, {
+            reason: source || "external",
+          });
+        }
+        if (typeof this.profileController.show === "function") {
+          this.profileController.show("messages");
+        }
+        if (typeof this.profileController.focusMessageComposer === "function") {
+          this.profileController.focusMessageComposer();
+        }
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to open DM composer:",
+          error,
+        );
+      }
+    }
+
+    return true;
+  }
+
+  handleProfileSendDmRequest({ recipient } = {}) {
+    const recipientPubkey =
+      typeof recipient?.pubkey === "string"
+        ? recipient.pubkey
+        : null;
+
+    return this.openDirectMessageComposer({
+      recipientPubkey,
+      source: "profile-modal",
+    });
+  }
+
+  handleProfileUseDmRelays({ recipient, controller } = {}) {
+    const relayHints = Array.isArray(recipient?.relayHints)
+      ? recipient.relayHints
+      : [];
+    if (!relayHints.length) {
+      this.showError("No DM relays found for this recipient.");
+      return false;
+    }
+
+    if (recipient?.pubkey) {
+      this.setDmRelayHints(recipient.pubkey, relayHints);
+    }
+
+    this.showSuccess("Recipient DM relays ready for use.");
+    if (controller?.focusMessageComposer) {
+      controller.focusMessageComposer();
+    }
+    return true;
+  }
+
+  handleProfilePrivacyToggle({ enabled, controller, recipient } = {}) {
+    const relayHints = Array.isArray(recipient?.relayHints)
+      ? recipient.relayHints
+      : [];
+
+    if (enabled && !relayHints.length) {
+      this.showStatus(
+        "Privacy warning: this recipient has not shared NIP-17 relays, so we'll use your default relays.",
+      );
+    }
+
+    this.showStatus(
+      enabled
+        ? "NIP-17 privacy delivery enabled for this recipient."
+        : "Using standard DM delivery for this recipient.",
+    );
   }
 
   updateProfileInDOM(pubkey, profile) {

@@ -126,6 +126,9 @@ http://localhost:8000
 ### Common Commands
 
 - **Run unit tests**: `npm run test:unit`
+- **Run DM unit tests**: `npm run test:dm:unit`
+- **Run DM integration tests**: `npm run test:dm:integration`
+- **Run headless E2E tests**: `npm run test:e2e`
 - **Format code**: `npm run format`
 - **Lint code**: `npm run lint`
 
@@ -393,10 +396,13 @@ placeholder at “—” and development builds log a warning—so mixed deploym
 
 ## Testing
 
-Continuous integration runs CSS linting/builds, the Playwright kitchen-sink snapshots, and the Node-based unit tests on every push.
+Continuous integration runs CSS linting/builds, the DM unit/integration suites, the Playwright kitchen-sink snapshots, headless E2E flows, and the Node-based unit tests on every push.
 Before pushing, run `npm run build` locally so the Tailwind bundle regenerates.
 Pair that with `npm run test:unit` for application logic changes and
 `npm run test:visual` for presentation updates to mirror the CI surface area.
+For DM-specific changes, also run `npm run test:dm:unit` and
+`npm run test:dm:integration` to cover the direct message flows.
+Use `npm run test:e2e` to execute the headless Playwright journeys in `tests/e2e`.
 
 ### Manual QA checklist
 
