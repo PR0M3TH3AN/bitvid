@@ -42,6 +42,12 @@ const pointerListeners = new Map();
 let persistTimer = null;
 let nextTokenId = 1;
 
+// Batch subscription state
+let batchedSubscription = null;
+const batchedPointers = new Set();
+let batchedSubscriptionTeardown = null;
+let batchedSubscriptionDebounce = null;
+
 restoreCacheSnapshot();
 
 /**
@@ -522,7 +528,8 @@ async function hydratePointer(key, listeners) {
   }
 }
 
-function ensureHydration(key, listeners) {
+function ensureHydration(key, listeners, skip = false) {
+  if (skip) return;
   if (!listeners.hydrationPromise) {
     listeners.hydrationPromise = hydratePointer(key, listeners).finally(() => {
       listeners.hydrationPromise = null;
@@ -544,6 +551,11 @@ function ensureLiveSubscription(key, listeners) {
   }
   const pointer = listeners.pointer;
   const options = listeners.options || {};
+
+  if (options.skipSubscription) {
+    return;
+  }
+
   try {
     const since = Math.floor(Date.now() / 1000) - Math.max(1, VIEW_COUNT_DEDUPE_WINDOW_SECONDS);
     const unsubscribe = subscribeVideoViewEventsApi(pointer, {
@@ -601,7 +613,7 @@ export function subscribeToVideoViewCount(pointerInput, handler, options = {}) {
   } catch (error) {
     userLogger.warn("[viewCounter] Initial handler invocation threw:", error);
   }
-  ensureHydration(key, listeners);
+  ensureHydration(key, listeners, options.skipSubscription);
   ensureLiveSubscription(key, listeners);
   return token;
 }
@@ -618,6 +630,231 @@ export function unsubscribeFromVideoViewCount(pointerInput, token) {
   listeners.handlers.delete(token);
   if (!listeners.handlers.size && listeners.liveUnsub) {
     listeners.liveUnsub();
+  }
+}
+
+/**
+ * Subscribes to view counts for a batch of videos using a single Nostr subscription.
+ *
+ * @param {Array<string|object>} pointerInputs - List of pointers to watch.
+ * @param {Function} handler - Callback invoked when *any* of the counts change.
+ * @param {object} options - Subscription options.
+ * @returns {Function} Unsubscribe function.
+ */
+export function subscribeToBatchedViewCounts(pointerInputs, handler, options = {}) {
+  if (!Array.isArray(pointerInputs) || !pointerInputs.length) {
+    return () => {};
+  }
+
+  // Register handlers for each pointer individually so state flows to them
+  const tokens = [];
+  pointerInputs.forEach(input => {
+    try {
+      const { key } = canonicalizePointer(input);
+      // We pass the global handler, which will receive updates for this specific key
+      const token = subscribeToVideoViewCount(input, (snapshot) => {
+        handler(key, snapshot);
+      }, { ...options, skipSubscription: true }); // We'll handle the sub manually!
+      tokens.push({ input, token });
+      batchedPointers.add(key);
+    } catch (e) {
+      userLogger.warn("[viewCounter] Failed to register batched pointer:", e);
+    }
+  });
+
+  scheduleBatchedSubscriptionRefresh(options);
+
+  return () => {
+    tokens.forEach(({ input, token }) => {
+      try {
+        const { key } = canonicalizePointer(input);
+        unsubscribeFromVideoViewCount(input, token);
+        batchedPointers.delete(key);
+      } catch (e) {
+        // ignore cleanup errors
+      }
+    });
+    scheduleBatchedSubscriptionRefresh(options);
+  };
+}
+
+function scheduleBatchedSubscriptionRefresh(options) {
+  if (batchedSubscriptionDebounce) {
+    clearTimeout(batchedSubscriptionDebounce);
+  }
+
+  batchedSubscriptionDebounce = setTimeout(() => {
+    refreshBatchedSubscription(options);
+  }, 100); // 100ms debounce
+}
+
+async function hydrateBatchedViewCounts(pointers, options = {}) {
+  if (!pointers || pointers.size === 0) return;
+
+  const eValues = new Set();
+  const aValues = new Set();
+
+  for (const key of pointers) {
+    if (key.startsWith("e:")) {
+      eValues.add(key.slice(2));
+    } else if (key.startsWith("a:")) {
+      aValues.add(key.slice(2));
+    }
+  }
+
+  if (eValues.size === 0 && aValues.size === 0) return;
+
+  // We need to construct filters for countEventsAcrossRelays
+  // It takes an array of filters.
+  const filter = {
+    kinds: [30079],
+    "#t": ["view"],
+  };
+
+  const sinceSeconds = Math.floor(Date.now() / 1000) - VIEW_COUNT_BACKFILL_MAX_DAYS * SECONDS_PER_DAY;
+  filter.since = sinceSeconds;
+
+  const filters = [];
+  // We might need to split this if too large, but for now one filter with both #e and #a list is standard.
+  if (eValues.size) filter["#e"] = Array.from(eValues);
+  if (aValues.size) filter["#a"] = Array.from(aValues);
+
+  filters.push(filter);
+
+  try {
+    // 1. List events for hydration (populate dedupe buckets)
+    // We use listVideoViewEventsApi logic but batched.
+    // Actually we can just use nostrClient.fetchListIncrementally or raw pool.list
+    const relayList = options.relays || nostrClient.relays;
+
+    // We do list first to fill buckets
+    const listResult = await nostrClient.pool.list(relayList, filters);
+    for (const event of listResult) {
+       // We need to apply to ALL matching keys.
+       // applyEventToState handles bucket derivation logic.
+       // But we need to know WHICH key it matches.
+       // applyEventToState(key, event) checks deriveBucketKey(event).
+       // deriveBucketKey uses pubkey+created_at.
+       // Wait, deriveFallbackKey uses id or sig.
+       // But how do we map event back to key?
+       // The event has tags.
+       const tags = event.tags;
+       for (const tag of tags) {
+          if (tag[0] === 'e' && eValues.has(tag[1])) {
+             applyEventToState(`e:${tag[1]}`, event);
+          } else if (tag[0] === 'a' && aValues.has(tag[1])) {
+             applyEventToState(`a:${tag[1]}`, event);
+          }
+       }
+    }
+
+    // 2. Count totals
+    // We can use countEventsAcrossRelays.
+    // But wait, countEventsAcrossRelays returns aggregate.
+    // Relays return "count: N" for the filter.
+    // If we send one filter with MANY #e, the relay returns the TOTAL count for ALL those videos combined?
+    // YES. Standard NIP-45 COUNT returns count for the filter set.
+    // So we CANNOT batch COUNT if we want per-video granularity, UNLESS the relay supports NIP-45 grouping which is rare/not standard.
+    // OR we rely purely on the LIST result for counts?
+    // listVideoViewEventsApi does a list.
+    // countVideoViewEventsApi does a count.
+
+    // If we can't batch COUNT, then we must rely on LIST for the count or do individual counts.
+    // Doing individual counts brings us back to "too many REQs".
+    // So for the list view, we might have to accept that "approximate count from LIST" is better than "exact count from 20 requests".
+    // Or we accept that initial load is just what we get from the list (up to limit).
+    // filters.limit isn't set above, so it defaults to relay max.
+
+    // The previous implementation of `hydratePointer` did both.
+    // If we skip `count`, we just sum the list.
+    // Given the constraints, summing the list (which we are fetching anyway) is the scalable approach.
+
+    // So we just did the list above. That hydrates state.total based on unique events seen.
+    // We should notify handlers.
+    for (const key of pointers) {
+        notifyHandlers(key);
+    }
+
+  } catch (error) {
+    userLogger.warn("[viewCounter] Failed to hydrate batched views:", error);
+  }
+}
+
+function refreshBatchedSubscription(options = {}) {
+  if (batchedSubscriptionTeardown) {
+    try {
+      batchedSubscriptionTeardown();
+    } catch (err) {
+      userLogger.warn("[viewCounter] Failed to tear down old batch sub:", err);
+    }
+    batchedSubscriptionTeardown = null;
+  }
+
+  if (batchedPointers.size === 0) {
+    return;
+  }
+
+  // Collect all IDs and Addresses
+  const eValues = new Set();
+  const aValues = new Set();
+
+  for (const key of batchedPointers) {
+    if (key.startsWith("e:")) {
+      eValues.add(key.slice(2));
+    } else if (key.startsWith("a:")) {
+      aValues.add(key.slice(2));
+    }
+  }
+
+  if (eValues.size === 0 && aValues.size === 0) {
+    return;
+  }
+
+  // We need to bypass the standard subscribeVideoViewEvents because it takes one pointer.
+  // We need to construct a custom filter.
+  // We can use nostrClient directly.
+  if (!nostrClient || !nostrClient.pool) {
+    return;
+  }
+
+  const since = Math.floor(Date.now() / 1000) - Math.max(1, VIEW_COUNT_DEDUPE_WINDOW_SECONDS);
+  const filter = {
+    kinds: [30079], // VIEW_EVENT_KIND hardcoded to avoid import cycle or duplicate constant
+    "#t": ["view"],
+    since,
+  };
+
+  if (eValues.size) filter["#e"] = Array.from(eValues);
+  if (aValues.size) filter["#a"] = Array.from(aValues);
+
+  // Trigger batch hydration
+  hydrateBatchedViewCounts(batchedPointers, options);
+
+  try {
+    const relays = options.relays || nostrClient.relays;
+    const sub = nostrClient.pool.sub(relays, [filter]);
+
+    sub.on("event", (event) => {
+      // We need to match this event to *all* matching keys
+      // An event might tag multiple videos (rare but possible)
+      // Or we just check tags.
+      const tags = event.tags;
+      for (const tag of tags) {
+        if (tag[0] === 'e' && eValues.has(tag[1])) {
+          applyEventToState(`e:${tag[1]}`, event);
+          notifyHandlers(`e:${tag[1]}`);
+        } else if (tag[0] === 'a' && aValues.has(tag[1])) {
+          applyEventToState(`a:${tag[1]}`, event);
+          notifyHandlers(`a:${tag[1]}`);
+        }
+      }
+    });
+
+    batchedSubscriptionTeardown = () => {
+      sub.unsub();
+    };
+  } catch (error) {
+    userLogger.warn("[viewCounter] Failed to start batched subscription:", error);
   }
 }
 
