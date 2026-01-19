@@ -9,10 +9,8 @@ import {
   saveDirectMessageSnapshot,
   clearDirectMessageSnapshot,
 } from "../directMessagesStore.js";
-import {
-  updateConversationFromMessage,
-  writeMessages,
-} from "../storage/dmDb.js";
+import { writeMessages } from "../storage/dmDb.js";
+import { DmNotificationManager } from "./dmNotificationManager.js";
 import {
   getVideosMap as getStoredVideosMap,
   setVideosMap as setStoredVideosMap,
@@ -488,6 +486,9 @@ export class NostrService {
     this.dmSubscription = null;
     this.dmActorPubkey = null;
     this.dmHydratedFromSnapshot = false;
+    this.dmNotificationManager = new DmNotificationManager({
+      logger: userLogger,
+    });
     try {
       if (this.moderationService && typeof this.moderationService.setNostrClient === "function") {
         this.moderationService.setNostrClient(this.nostrClient);
@@ -612,18 +613,47 @@ export class NostrService {
 
     try {
       await writeMessages(record);
-      await updateConversationFromMessage(record, {
+      const notificationResult = await this.dmNotificationManager.recordMessage({
+        record,
         preview: extractSnapshotPreview(message),
-        unseenDelta: message?.direction === "incoming" ? 1 : 0,
-        downloadedUntil: sanitizeSnapshotTimestamp(
-          message?.timestamp ?? message?.event?.created_at ?? record.created_at,
-        ),
+        direction: message?.direction || "",
       });
+      if (notificationResult?.conversation) {
+        this.emit("directMessages:conversationUpdated", {
+          conversation: notificationResult.conversation,
+        });
+      }
+      if (notificationResult?.shouldNotify) {
+        this.emit("directMessages:notification", {
+          conversationId: record.conversation_id,
+          message: record,
+          unseenCount: notificationResult.conversation?.unseen_count || 0,
+        });
+      }
       return record;
     } catch (error) {
       userLogger.warn("[nostrService] Failed to persist DM record", error);
       return null;
     }
+  }
+
+  setFocusedDirectMessageConversation(conversationId, isFocused = true) {
+    this.dmNotificationManager.setFocusedConversation(conversationId, isFocused);
+  }
+
+  async acknowledgeRenderedDirectMessages(conversationId, renderedUntil) {
+    return this.dmNotificationManager.acknowledgeRenderedMessages({
+      conversationId,
+      renderedUntil,
+    });
+  }
+
+  getDirectMessageUnseenCount(conversationId) {
+    return this.dmNotificationManager.getUnseenCount(conversationId);
+  }
+
+  async listDirectMessageConversationSummaries() {
+    return this.dmNotificationManager.listConversationSummaries();
   }
 
   applyDirectMessage(message, { reason = "update", event = null } = {}) {

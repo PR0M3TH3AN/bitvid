@@ -1,7 +1,7 @@
 import { devLogger, userLogger } from "../utils/logger.js";
 
 const DB_NAME = "bitvidDm";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 const STORES = Object.freeze({
   CONVERSATIONS: "conversations",
@@ -57,6 +57,28 @@ const MIGRATIONS = [
       }
     },
   },
+  {
+    version: 2,
+    migrate: (db, transaction) => {
+      if (!db.objectStoreNames.contains(STORES.CONVERSATIONS)) {
+        return;
+      }
+
+      const store = transaction
+        ? transaction.objectStore(STORES.CONVERSATIONS)
+        : db.transaction(STORES.CONVERSATIONS, "readwrite").objectStore(
+            STORES.CONVERSATIONS,
+          );
+      if (!store.indexNames.contains("opened_until")) {
+        store.createIndex("opened_until", "opened_until", { unique: false });
+      }
+      if (!store.indexNames.contains("downloaded_until")) {
+        store.createIndex("downloaded_until", "downloaded_until", {
+          unique: false,
+        });
+      }
+    },
+  },
 ];
 
 function isIndexedDbAvailable() {
@@ -67,10 +89,10 @@ function isIndexedDbAvailable() {
   }
 }
 
-function applyMigrations(db, oldVersion, newVersion) {
+function applyMigrations(db, oldVersion, newVersion, transaction) {
   for (const migration of MIGRATIONS) {
     if (migration.version > oldVersion && migration.version <= newVersion) {
-      migration.migrate(db);
+      migration.migrate(db, transaction);
     }
   }
 }
@@ -88,7 +110,9 @@ function openDmDb() {
       const db = request.result;
       const oldVersion = event.oldVersion ?? 0;
       const newVersion = event.newVersion ?? DB_VERSION;
-      applyMigrations(db, oldVersion, newVersion);
+      const upgradeTransaction =
+        request.transaction || event.target?.transaction || null;
+      applyMigrations(db, oldVersion, newVersion, upgradeTransaction);
     };
 
     request.onsuccess = () => resolve(request.result);
@@ -191,6 +215,7 @@ function normalizeConversation(raw) {
     downloaded_until: sanitizeTimestamp(
       raw.downloaded_until ?? raw.downloadedUntil,
     ),
+    opened_until: sanitizeTimestamp(raw.opened_until ?? raw.openedUntil),
     last_message_preview:
       typeof raw.last_message_preview === "string"
         ? raw.last_message_preview
@@ -362,6 +387,7 @@ export async function updateConversationFromMessage(message, options = {}) {
   const downloadedUntil = sanitizeTimestamp(
     options.downloadedUntil ?? normalized.created_at,
   );
+  const openedUntil = sanitizeTimestamp(options.openedUntil);
 
   try {
     const db = await openDmDb();
@@ -387,6 +413,7 @@ export async function updateConversationFromMessage(message, options = {}) {
         existing.downloaded_until || 0,
         downloadedUntil,
       ),
+      opened_until: Math.max(existing.opened_until || 0, openedUntil),
       last_message_preview: preview,
       unseen_count: Math.max(
         0,
@@ -400,6 +427,87 @@ export async function updateConversationFromMessage(message, options = {}) {
   } catch (error) {
     userLogger.warn("[dmDb] Failed to update conversation metadata", error);
     return null;
+  }
+}
+
+export async function updateConversationOpenState(
+  conversationId,
+  { openedUntil, unseenCount } = {},
+) {
+  if (typeof conversationId !== "string" || !conversationId.trim()) {
+    return null;
+  }
+
+  const normalizedId = conversationId.trim();
+  const nextOpenedUntil = sanitizeTimestamp(openedUntil);
+  const nextUnseenCount = Number.isFinite(Number(unseenCount))
+    ? Math.max(0, Number(unseenCount))
+    : null;
+
+  try {
+    const db = await openDmDb();
+    if (!db) {
+      return null;
+    }
+
+    const tx = db.transaction(STORES.CONVERSATIONS, "readwrite");
+    const store = tx.objectStore(STORES.CONVERSATIONS);
+    const existing =
+      (await runRequest(store.get(normalizedId))) ||
+      normalizeConversation({ conversation_id: normalizedId });
+
+    if (!existing) {
+      return null;
+    }
+
+    const next = {
+      ...existing,
+      opened_until: Math.max(existing.opened_until || 0, nextOpenedUntil),
+      unseen_count:
+        nextUnseenCount === null
+          ? existing.unseen_count
+          : nextUnseenCount,
+    };
+
+    store.put(next);
+    await finalizeTransaction(tx);
+    return next;
+  } catch (error) {
+    userLogger.warn("[dmDb] Failed to update conversation open state", error);
+    return null;
+  }
+}
+
+export async function listConversations() {
+  try {
+    const db = await openDmDb();
+    if (!db) {
+      return [];
+    }
+
+    const tx = db.transaction(STORES.CONVERSATIONS, "readonly");
+    const store = tx.objectStore(STORES.CONVERSATIONS);
+    const results = [];
+    const request = store.openCursor();
+
+    return await new Promise((resolve) => {
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) {
+          resolve(results);
+          return;
+        }
+        results.push(cursor.value);
+        cursor.continue();
+      };
+      request.onerror = () => {
+        userLogger.warn("[dmDb] Failed to list conversations", request.error);
+        resolve(results);
+      };
+    });
+  } catch (error) {
+    userLogger.warn("[dmDb] Failed to list conversations", error);
+    return [];
   }
 }
 
