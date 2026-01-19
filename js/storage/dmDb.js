@@ -64,11 +64,14 @@ const MIGRATIONS = [
         return;
       }
 
+      // If transaction is provided (during upgrade), use it.
+      // Otherwise create a new one (but this path is questionable during upgrade).
       const store = transaction
         ? transaction.objectStore(STORES.CONVERSATIONS)
-        : db.transaction(STORES.CONVERSATIONS, "readwrite").objectStore(
-            STORES.CONVERSATIONS,
-          );
+        : db.createObjectStore(STORES.CONVERSATIONS, { keyPath: "conversation_id" });
+        // Fallback: If store doesn't exist and no transaction provided (unlikely in upgrade), create it?
+        // Actually, if transaction is missing in migration, we are in trouble.
+        // But for safe-guarding against "store not found":
       if (!store.indexNames.contains("opened_until")) {
         store.createIndex("opened_until", "opened_until", { unique: false });
       }
@@ -261,6 +264,7 @@ export async function writeConversationMetadata(conversation) {
     const tx = db.transaction(STORES.CONVERSATIONS, "readwrite");
     tx.objectStore(STORES.CONVERSATIONS).put(normalized);
     await finalizeTransaction(tx);
+    db.close();
     return normalized;
   } catch (error) {
     userLogger.warn("[dmDb] Failed to write conversation metadata", error);
@@ -292,6 +296,7 @@ export async function writeMessages(messages) {
     }
 
     await finalizeTransaction(tx);
+    db.close();
     return normalized;
   } catch (error) {
     userLogger.warn("[dmDb] Failed to persist messages", error);
@@ -314,6 +319,7 @@ export async function getConversation(conversationId) {
     const store = tx.objectStore(STORES.CONVERSATIONS);
     const result = await runRequest(store.get(conversationId.trim()));
     await finalizeTransaction(tx);
+    db.close();
     return result || null;
   } catch (error) {
     userLogger.warn("[dmDb] Failed to read conversation metadata", error);
@@ -363,7 +369,7 @@ export async function listMessagesByConversation(conversationId, options = {}) {
         userLogger.warn("[dmDb] Failed to list messages", request.error);
         resolve(results);
       };
-    });
+    }).finally(() => db.close());
   } catch (error) {
     userLogger.warn("[dmDb] Failed to list messages", error);
     return [];
@@ -423,6 +429,7 @@ export async function updateConversationFromMessage(message, options = {}) {
 
     store.put(next);
     await finalizeTransaction(tx);
+    db.close();
     return next;
   } catch (error) {
     userLogger.warn("[dmDb] Failed to update conversation metadata", error);
@@ -471,6 +478,7 @@ export async function updateConversationOpenState(
 
     store.put(next);
     await finalizeTransaction(tx);
+    db.close();
     return next;
   } catch (error) {
     userLogger.warn("[dmDb] Failed to update conversation open state", error);
@@ -504,7 +512,7 @@ export async function listConversations() {
         userLogger.warn("[dmDb] Failed to list conversations", request.error);
         resolve(results);
       };
-    });
+    }).finally(() => db.close());
   } catch (error) {
     userLogger.warn("[dmDb] Failed to list conversations", error);
     return [];
@@ -543,6 +551,7 @@ export async function clearDmDb() {
     }
 
     await finalizeTransaction(tx);
+    db.close();
     return true;
   } catch (error) {
     devLogger.warn("[dmDb] Failed to clear DM database", error);
