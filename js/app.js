@@ -4429,6 +4429,9 @@ class Application {
 
     this.applyAuthenticatedUiState();
     this.commentController?.refreshAuthState?.();
+    if (typeof this.refreshUnreadDmIndicator === "function") {
+      void this.refreshUnreadDmIndicator({ reason: "auth-login" });
+    }
 
     const currentView = getHashViewName();
     const normalizedView =
@@ -4681,6 +4684,11 @@ class Application {
     }
 
     this.applyLoggedOutUiState();
+    if (typeof this.refreshUnreadDmIndicator === "function") {
+      void this.refreshUnreadDmIndicator({ reason: "auth-logout" });
+    } else if (this.appChromeController?.setUnreadDmIndicator) {
+      this.appChromeController.setUnreadDmIndicator(false);
+    }
 
     const logoutView = getHashViewName();
     if (

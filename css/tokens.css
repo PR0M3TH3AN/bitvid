@@ -322,6 +322,7 @@
   --size-28rem: 28rem;
   --size-34rem: 34rem;
   --size-45rem: 45rem;
+  --size-70rem: 70rem;
 
   /* Border radii */
   --radius-sm: 0.25rem;
@@ -343,6 +344,7 @@
   --modal-shell-max-height: 90vh;
   --modal-sheet-max-height: 92vh;
   --modal-body-max-height: calc(92vh - 4rem);
+  --profile-modal-inline-max: var(--size-70rem);
   --player-modal-module-scroll-min-height: var(--size-14rem);
   --player-modal-module-scroll-max-height: var(--size-28rem);
   --modal-pane-max-height: 48vh;

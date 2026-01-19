@@ -409,6 +409,7 @@ export default class ApplicationBootstrap {
 
     app.profileButton = doc?.getElementById("profileButton") || null;
     app.profileAvatar = doc?.getElementById("profileAvatar") || null;
+    app.profileUnreadDot = doc?.getElementById("profileUnreadDot") || null;
 
     const modalManager = new ModalManager({
       app,
@@ -685,12 +686,88 @@ export default class ApplicationBootstrap {
     };
 
     app.videosMap = app.nostrService.getVideosMap();
-    app.unsubscribeFromNostrService = app.nostrService.on(
-      "subscription:changed",
-      ({ subscription }) => {
+    app.refreshUnreadDmIndicator = async ({ reason = "" } = {}) => {
+      const applyIndicatorState = (visible) => {
+        if (
+          app.appChromeController &&
+          typeof app.appChromeController.setUnreadDmIndicator === "function"
+        ) {
+          app.appChromeController.setUnreadDmIndicator(visible);
+        }
+
+        if (
+          app.profileController &&
+          typeof app.profileController.setMessagesUnreadIndicator === "function"
+        ) {
+          app.profileController.setMessagesUnreadIndicator(visible);
+        }
+      };
+
+      if (typeof app.isUserLoggedIn === "function" && !app.isUserLoggedIn()) {
+        applyIndicatorState(false);
+        return;
+      }
+
+      if (
+        !app.nostrService ||
+        typeof app.nostrService.listDirectMessageConversationSummaries !==
+          "function"
+      ) {
+        applyIndicatorState(false);
+        return;
+      }
+
+      try {
+        const summaries =
+          await app.nostrService.listDirectMessageConversationSummaries();
+        const totalUnseen = Array.isArray(summaries)
+          ? summaries.reduce((sum, summary) => {
+              const count = Number(summary?.unseen_count);
+              return sum + (Number.isFinite(count) ? count : 0);
+            }, 0)
+          : 0;
+        applyIndicatorState(totalUnseen > 0);
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to refresh DM unread indicator",
+          reason,
+          error,
+        );
+        applyIndicatorState(false);
+      }
+    };
+
+    const nostrUnsubscribes = [];
+    nostrUnsubscribes.push(
+      app.nostrService.on("subscription:changed", ({ subscription }) => {
         app.videoSubscription = subscription || null;
-      },
+      }),
     );
+    nostrUnsubscribes.push(
+      app.nostrService.on("directMessages:notification", () => {
+        void app.refreshUnreadDmIndicator({ reason: "dm-notification" });
+      }),
+    );
+    nostrUnsubscribes.push(
+      app.nostrService.on("directMessages:conversationUpdated", () => {
+        void app.refreshUnreadDmIndicator({ reason: "dm-conversation-update" });
+      }),
+    );
+    nostrUnsubscribes.push(
+      app.nostrService.on("directMessages:cleared", () => {
+        if (typeof app.refreshUnreadDmIndicator === "function") {
+          void app.refreshUnreadDmIndicator({ reason: "dm-cleared" });
+        }
+      }),
+    );
+    app.unsubscribeFromNostrService = () => {
+      while (nostrUnsubscribes.length) {
+        const unsubscribe = nostrUnsubscribes.pop();
+        if (typeof unsubscribe === "function") {
+          unsubscribe();
+        }
+      }
+    };
     app.boundNwcSettingsToastHandler = null;
     Object.defineProperty(app, "savedProfiles", {
       configurable: false,
@@ -926,6 +1003,7 @@ export default class ApplicationBootstrap {
       elements: {
         logoutButton: app.logoutButton,
         profileButton: app.profileButton,
+        profileUnreadDot: app.profileUnreadDot,
         uploadButton: app.uploadButton,
         loginButton: app.loginButton,
         closeLoginModalButton: app.closeLoginModalBtn,
