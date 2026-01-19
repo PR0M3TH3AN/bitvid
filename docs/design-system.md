@@ -181,6 +181,15 @@ Mix in Tailwind utilities for icon spacing (`gap-3`), sizing (`px-lg`, `py-sm`),
 
 `.badge` renders an inline pill (`bg-panel`, uppercase text). Opt into semantic variants with `data-variant="info"`, `data-variant="critical"`, or `data-variant="neutral"`. Layer on utilities for icon alignment or truncation.
 
+### Messaging & Notification Tokens
+
+Use the dedicated messaging tokens when styling chat surfaces and banners so they inherit theme-safe contrast and icon colors:
+
+- **Message bubbles:** `--message-bubble-background`, `--message-bubble-border`, `--message-bubble-text`, and `--message-bubble-meta` drive the base bubble surface, while `--message-bubble-outgoing-background`/`--message-bubble-outgoing-border` cover the current-user variant. These map back to surface, border, and text semantic tokens so bubbles maintain AA contrast. 【F:css/tokens.css†L102-L115】
+- **Unread badges:** `--unread-badge-background` and `--unread-badge-text` keep badge text legible at WCAG AA while ensuring iconography stays ≥3:1 against the fill. 【F:css/tokens.css†L117-L118】
+- **Reply highlights:** `--reply-highlight-background`, `--reply-highlight-border`, `--reply-highlight-text`, and `--reply-highlight-icon` align reply callouts with the info status palette. 【F:css/tokens.css†L120-L123】
+- **Notification banners:** Base banner colors map through `--notification-banner-*` tokens, with per-variant slots (`critical`, `success`, `info`, `warning`) pulling from the status palettes for AA-compliant text and 3:1 icon contrast. 【F:css/tokens.css†L125-L154】
+
 ### Cards
 
 `.card` is the base surface for grid items and panels:
