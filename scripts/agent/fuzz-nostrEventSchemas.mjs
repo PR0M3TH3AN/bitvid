@@ -12,9 +12,10 @@ import {
     buildBlockListEvent,
     buildHashtagPreferenceEvent,
     buildAdminListEvent,
-    buildStorageChallengeEvent,
     sanitizeAdditionalTags,
-    getNostrEventSchema
+    getNostrEventSchema,
+    setNostrEventSchemaOverrides,
+    NOTE_TYPES
 } from '../../js/nostrEventSchemas.js';
 import { getRandomFuzzInput, randomString, randomHex } from './fuzz-utils.mjs';
 import fs from 'fs';
@@ -66,8 +67,6 @@ function runFuzz(name, fn, inputGenerator, iterations = 1000) {
 // Wrap functions that take multiple arguments or objects
 const wrappers = {
     buildVideoPostEvent: (input) => {
-        // Input is expected to be an object, but we fuzz it with anything.
-        // If it is an object, we fuzz its properties too.
         if (typeof input === 'object' && input !== null && !Array.isArray(input)) {
              buildVideoPostEvent({
                  pubkey: input.pubkey || getRandomFuzzInput(),
@@ -205,22 +204,29 @@ const wrappers = {
             buildAdminListEvent(key, input);
         }
     },
-    buildStorageChallengeEvent: (input) => {
-        if (typeof input === 'object' && input !== null) {
-            buildStorageChallengeEvent({
-                 ...input,
-                 pubkey: input.pubkey || getRandomFuzzInput(),
-                 created_at: input.created_at || getRandomFuzzInput()
-            });
-        } else {
-            buildStorageChallengeEvent(input);
-        }
-    },
     sanitizeAdditionalTags: (input) => {
         sanitizeAdditionalTags(input);
     },
     getNostrEventSchema: (input) => {
         getNostrEventSchema(input);
+    },
+    setNostrEventSchemaOverrides: (input) => {
+        try {
+            setNostrEventSchemaOverrides(input);
+            // Deterministically pick a type based on input properties if possible
+            const types = Object.values(NOTE_TYPES);
+            let index = 0;
+            if (typeof input === 'object' && input !== null) {
+                index = Object.keys(input).length % types.length;
+            } else if (typeof input === 'string') {
+                index = input.length % types.length;
+            }
+            const type = types[index];
+            getNostrEventSchema(type);
+        } finally {
+            // Clean up global state to avoid pollution
+            setNostrEventSchemaOverrides({});
+        }
     }
 };
 
