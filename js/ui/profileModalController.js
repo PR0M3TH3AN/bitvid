@@ -52,6 +52,8 @@ const DEFAULT_MAX_WALLET_DEFAULT_ZAP = 100000000;
 const DEFAULT_SAVED_PROFILE_LABEL = "Saved profile";
 const TRUSTED_MUTE_HIDE_HELPER_TEXT =
   "Reaching this count hides cards (with “Show anyway”); lower signals only blur thumbnails or block autoplay.";
+const TYPING_INDICATOR_TTL_SECONDS = 15;
+const TYPING_INDICATOR_COOLDOWN_MS = 4000;
 
 const ADD_PROFILE_CANCELLATION_CODES = new Set([
   "login-cancelled",
@@ -101,6 +103,15 @@ const DEFAULT_INTERNAL_MODERATION_SETTINGS = Object.freeze({
 
 function createInternalDefaultModerationSettings() {
   return { ...DEFAULT_INTERNAL_MODERATION_SETTINGS };
+}
+
+const DEFAULT_INTERNAL_DM_PRIVACY_SETTINGS = Object.freeze({
+  readReceiptsEnabled: false,
+  typingIndicatorsEnabled: false,
+});
+
+function createInternalDefaultDmPrivacySettings() {
+  return { ...DEFAULT_INTERNAL_DM_PRIVACY_SETTINGS };
 }
 
 function ensureInternalModerationSettings(internalState) {
@@ -808,6 +819,43 @@ const STATE_CONTRACT = [
       return stored;
     },
   },
+  {
+    key: "getDmPrivacySettings",
+    type: "function",
+    description:
+      "Returns the DM privacy settings (read receipts and typing indicators) for the active profile.",
+    fallback: (internal) => () => {
+      if (!(internal.dmPrivacySettings instanceof Map)) {
+        internal.dmPrivacySettings = new Map();
+      }
+      const settings = internal.dmPrivacySettings.get("default");
+      return settings ? { ...settings } : createInternalDefaultDmPrivacySettings();
+    },
+  },
+  {
+    key: "setDmPrivacySettings",
+    type: "function",
+    description:
+      "Updates the DM privacy settings (read receipts and typing indicators) for the active profile.",
+    fallback: (internal) => (settings = {}) => {
+      if (!(internal.dmPrivacySettings instanceof Map)) {
+        internal.dmPrivacySettings = new Map();
+      }
+      const base = createInternalDefaultDmPrivacySettings();
+      const normalized = {
+        readReceiptsEnabled:
+          typeof settings.readReceiptsEnabled === "boolean"
+            ? settings.readReceiptsEnabled
+            : base.readReceiptsEnabled,
+        typingIndicatorsEnabled:
+          typeof settings.typingIndicatorsEnabled === "boolean"
+            ? settings.typingIndicatorsEnabled
+            : base.typingIndicatorsEnabled,
+      };
+      internal.dmPrivacySettings.set("default", normalized);
+      return { ...normalized };
+    },
+  },
 ];
 
 function buildServicesContract(services = {}, internalState) {
@@ -1239,6 +1287,8 @@ export class ProfileModalController {
     this.profileMessagesRelayAddButton = null;
     this.profileMessagesRelayPublishButton = null;
     this.profileMessagesRelayStatus = null;
+    this.profileMessagesReadReceiptsToggle = null;
+    this.profileMessagesTypingToggle = null;
     this.profileLinkPreviewAutoToggle = null;
     this.walletUriInput = null;
     this.walletDefaultZapInput = null;
@@ -1310,6 +1360,8 @@ export class ProfileModalController {
     this.pendingMessagesRender = null;
     this.messagesStatusClearTimeout = null;
     this.dmPrivacyToggleTouched = false;
+    this.dmReadReceiptCache = new Set();
+    this.dmTypingLastSentAt = 0;
     this.dmAttachmentQueue = [];
     this.dmAttachmentUploads = new Map();
 
@@ -1536,6 +1588,10 @@ export class ProfileModalController {
       document.getElementById("profileMessagesRelayPublish") || null;
     this.profileMessagesRelayStatus =
       document.getElementById("profileMessagesRelayStatus") || null;
+    this.profileMessagesReadReceiptsToggle =
+      document.getElementById("profileMessagesReadReceiptsToggle") || null;
+    this.profileMessagesTypingToggle =
+      document.getElementById("profileMessagesTypingToggle") || null;
     this.profileLinkPreviewAutoToggle =
       document.getElementById("profileLinkPreviewAutoToggle") || null;
 
@@ -1566,6 +1622,7 @@ export class ProfileModalController {
     this.setMessagesLoadingState(this.messagesLoadingState || "idle");
     this.updateMessagePrivacyModeDisplay();
     this.populateDmRelayPreferences();
+    this.syncDmPrivacySettingsUi();
 
     this.walletUriInput = document.getElementById("profileWalletUri") || null;
     this.walletDefaultZapInput =
@@ -2000,6 +2057,86 @@ export class ProfileModalController {
       : "NIP-04 sends a direct encrypted DM; relays can still see sender and recipient metadata.";
   }
 
+  getDmPrivacySettingsSnapshot() {
+    const fallback = createInternalDefaultDmPrivacySettings();
+    if (typeof this.state.getDmPrivacySettings !== "function") {
+      return { ...fallback };
+    }
+
+    const settings = this.state.getDmPrivacySettings();
+    return {
+      readReceiptsEnabled:
+        typeof settings?.readReceiptsEnabled === "boolean"
+          ? settings.readReceiptsEnabled
+          : fallback.readReceiptsEnabled,
+      typingIndicatorsEnabled:
+        typeof settings?.typingIndicatorsEnabled === "boolean"
+          ? settings.typingIndicatorsEnabled
+          : fallback.typingIndicatorsEnabled,
+    };
+  }
+
+  persistDmPrivacySettings(partial = {}) {
+    if (typeof this.state.setDmPrivacySettings !== "function") {
+      return this.getDmPrivacySettingsSnapshot();
+    }
+
+    const resolved =
+      partial && typeof partial === "object" ? partial : {};
+
+    const current = this.getDmPrivacySettingsSnapshot();
+    const merged = {
+      readReceiptsEnabled:
+        typeof resolved.readReceiptsEnabled === "boolean"
+          ? resolved.readReceiptsEnabled
+          : current.readReceiptsEnabled,
+      typingIndicatorsEnabled:
+        typeof resolved.typingIndicatorsEnabled === "boolean"
+          ? resolved.typingIndicatorsEnabled
+          : current.typingIndicatorsEnabled,
+    };
+
+    return this.state.setDmPrivacySettings(merged);
+  }
+
+  syncDmPrivacySettingsUi() {
+    const settings = this.getDmPrivacySettingsSnapshot();
+
+    if (this.profileMessagesReadReceiptsToggle instanceof HTMLInputElement) {
+      this.profileMessagesReadReceiptsToggle.checked =
+        settings.readReceiptsEnabled;
+    }
+
+    if (this.profileMessagesTypingToggle instanceof HTMLInputElement) {
+      this.profileMessagesTypingToggle.checked =
+        settings.typingIndicatorsEnabled;
+    }
+  }
+
+  handleReadReceiptsToggle(enabled) {
+    this.persistDmPrivacySettings({
+      readReceiptsEnabled: Boolean(enabled),
+    });
+    this.syncDmPrivacySettingsUi();
+    this.showStatus(
+      enabled
+        ? "Read receipts enabled for direct messages."
+        : "Read receipts disabled.",
+    );
+  }
+
+  handleTypingIndicatorsToggle(enabled) {
+    this.persistDmPrivacySettings({
+      typingIndicatorsEnabled: Boolean(enabled),
+    });
+    this.syncDmPrivacySettingsUi();
+    this.showStatus(
+      enabled
+        ? "Typing indicators enabled for direct messages."
+        : "Typing indicators disabled.",
+    );
+  }
+
   syncLinkPreviewSettingsUi() {
     if (!(this.profileLinkPreviewAutoToggle instanceof HTMLInputElement)) {
       return;
@@ -2418,6 +2555,9 @@ export class ProfileModalController {
 
     this.setDirectMessageRecipient(null, { reason: "clear" });
     this.resetAttachmentQueue({ clearInput: true });
+    this.dmReadReceiptCache.clear();
+    this.dmTypingLastSentAt = 0;
+    this.syncDmPrivacySettingsUi();
 
     if (
       this.directMessagesSubscription &&
@@ -2941,6 +3081,10 @@ export class ProfileModalController {
       emptyState.setAttribute("hidden", "");
     }
 
+    void this.maybePublishReadReceipt(messages, {
+      recipientPubkey: recipient,
+    });
+
     messages.forEach((message) => {
       const item = document.createElement("div");
       item.className = "card flex flex-col gap-2 p-3";
@@ -3044,6 +3188,193 @@ export class ProfileModalController {
 
     container.classList.remove("hidden");
     container.removeAttribute("hidden");
+  }
+
+  resolveDirectMessageEventId(message) {
+    if (!message || typeof message !== "object") {
+      return "";
+    }
+
+    const eventId =
+      typeof message.event?.id === "string" ? message.event.id.trim() : "";
+    if (eventId) {
+      return eventId;
+    }
+
+    const innerId =
+      typeof message.message?.id === "string" ? message.message.id.trim() : "";
+    return innerId;
+  }
+
+  resolveLatestDirectMessageForRecipient(recipientPubkey, actorPubkey = null) {
+    const normalizedRecipient =
+      typeof recipientPubkey === "string"
+        ? this.normalizeHexPubkey(recipientPubkey)
+        : "";
+    if (!normalizedRecipient || !Array.isArray(this.directMessagesCache)) {
+      return null;
+    }
+
+    const resolvedActor = actorPubkey
+      ? this.normalizeHexPubkey(actorPubkey)
+      : this.resolveActiveDmActor();
+
+    let latest = null;
+    let latestTimestamp = 0;
+
+    for (const entry of this.directMessagesCache) {
+      if (this.resolveDirectMessageRemote(entry, resolvedActor) !== normalizedRecipient) {
+        continue;
+      }
+      const timestamp = Number(entry?.timestamp) || 0;
+      if (!latest || timestamp > latestTimestamp) {
+        latest = entry;
+        latestTimestamp = timestamp;
+      }
+    }
+
+    return latest;
+  }
+
+  resolveDirectMessageKind(message) {
+    if (!message || typeof message !== "object") {
+      return null;
+    }
+
+    if (Number.isFinite(message?.event?.kind)) {
+      return Number(message.event.kind);
+    }
+
+    if (Number.isFinite(message?.message?.kind)) {
+      return Number(message.message.kind);
+    }
+
+    return null;
+  }
+
+  async maybePublishReadReceipt(messages, { recipientPubkey } = {}) {
+    if (!Array.isArray(messages) || !messages.length) {
+      return;
+    }
+
+    const settings = this.getDmPrivacySettingsSnapshot();
+    if (!settings.readReceiptsEnabled) {
+      return;
+    }
+
+    if (
+      !this.services.nostrClient ||
+      typeof this.services.nostrClient.publishDmReadReceipt !== "function"
+    ) {
+      return;
+    }
+
+    const normalizedRecipient =
+      typeof recipientPubkey === "string"
+        ? this.normalizeHexPubkey(recipientPubkey)
+        : "";
+    if (!normalizedRecipient) {
+      return;
+    }
+
+    let latestMessage = null;
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const entry = messages[index];
+      if (
+        entry &&
+        typeof entry === "object" &&
+        entry.direction === "incoming"
+      ) {
+        const eventId = this.resolveDirectMessageEventId(entry);
+        if (eventId) {
+          latestMessage = entry;
+          break;
+        }
+      }
+    }
+
+    if (!latestMessage) {
+      return;
+    }
+
+    const eventId = this.resolveDirectMessageEventId(latestMessage);
+    if (!eventId) {
+      return;
+    }
+
+    const cacheKey = `${normalizedRecipient}:${eventId}`;
+    if (this.dmReadReceiptCache.has(cacheKey)) {
+      return;
+    }
+
+    const relayHints = this.buildDmRecipientContext(normalizedRecipient)?.relayHints || [];
+    const messageKind = this.resolveDirectMessageKind(latestMessage);
+
+    try {
+      const result = await this.services.nostrClient.publishDmReadReceipt({
+        eventId,
+        recipientPubkey: normalizedRecipient,
+        messageKind,
+        relays: relayHints,
+      });
+
+      if (result?.ok) {
+        this.dmReadReceiptCache.add(cacheKey);
+      }
+    } catch (error) {
+      devLogger.warn("[profileModal] Failed to publish read receipt:", error);
+    }
+  }
+
+  async maybePublishTypingIndicator() {
+    const settings = this.getDmPrivacySettingsSnapshot();
+    if (!settings.typingIndicatorsEnabled) {
+      return;
+    }
+
+    if (
+      !this.services.nostrClient ||
+      typeof this.services.nostrClient.publishDmTypingIndicator !== "function"
+    ) {
+      return;
+    }
+
+    const input = this.profileMessageInput;
+    const messageText =
+      input instanceof HTMLTextAreaElement ? input.value.trim() : "";
+    if (!messageText) {
+      return;
+    }
+
+    const recipient = this.resolveActiveDmRecipient();
+    if (!recipient) {
+      return;
+    }
+
+    const now = Date.now();
+    if (now - this.dmTypingLastSentAt < TYPING_INDICATOR_COOLDOWN_MS) {
+      return;
+    }
+
+    this.dmTypingLastSentAt = now;
+
+    const relayHints = this.buildDmRecipientContext(recipient)?.relayHints || [];
+    const latestMessage = this.resolveLatestDirectMessageForRecipient(
+      recipient,
+      this.resolveActiveDmActor(),
+    );
+    const latestEventId = this.resolveDirectMessageEventId(latestMessage);
+
+    try {
+      await this.services.nostrClient.publishDmTypingIndicator({
+        recipientPubkey: recipient,
+        conversationEventId: latestEventId || null,
+        relays: relayHints,
+        expiresInSeconds: TYPING_INDICATOR_TTL_SECONDS,
+      });
+    } catch (error) {
+      devLogger.warn("[profileModal] Failed to publish typing indicator:", error);
+    }
   }
 
   describeDirectMessageSendError(code) {
@@ -3928,6 +4259,24 @@ export class ProfileModalController {
       });
     }
 
+    if (this.profileMessagesReadReceiptsToggle instanceof HTMLElement) {
+      this.profileMessagesReadReceiptsToggle.addEventListener("change", (event) => {
+        const toggle = event.currentTarget;
+        if (toggle instanceof HTMLInputElement) {
+          this.handleReadReceiptsToggle(toggle.checked);
+        }
+      });
+    }
+
+    if (this.profileMessagesTypingToggle instanceof HTMLElement) {
+      this.profileMessagesTypingToggle.addEventListener("change", (event) => {
+        const toggle = event.currentTarget;
+        if (toggle instanceof HTMLInputElement) {
+          this.handleTypingIndicatorsToggle(toggle.checked);
+        }
+      });
+    }
+
     if (this.profileLinkPreviewAutoToggle instanceof HTMLElement) {
       this.profileLinkPreviewAutoToggle.addEventListener("change", (event) => {
         const toggle = event.currentTarget;
@@ -3994,6 +4343,9 @@ export class ProfileModalController {
           event.preventDefault();
           void this.handleSendProfileMessage();
         }
+      });
+      this.profileMessageInput.addEventListener("input", () => {
+        void this.maybePublishTypingIndicator();
       });
     }
 
