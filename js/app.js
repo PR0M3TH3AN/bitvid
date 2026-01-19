@@ -92,11 +92,8 @@ import {
   openStaticModal,
   closeStaticModal,
 } from "./ui/components/staticModalAccessibility.js";
-import createTagPreferenceMenu, {
-  TAG_PREFERENCE_ACTIONS,
-  applyTagPreferenceMenuState,
-} from "./ui/components/tagPreferenceMenu.js";
 import LoginModalController from "./ui/loginModalController.js";
+import TagPreferenceMenuController from "./ui/tagPreferenceMenuController.js";
 import { pointerArrayToKey } from "./utils/pointer.js";
 import resolveVideoPointer, {
   buildVideoAddressPointer,
@@ -249,6 +246,34 @@ class Application {
         }
       }
     );
+
+    this.tagPreferenceMenuController = new TagPreferenceMenuController({
+      services: { hashtagPreferences },
+      callbacks: {
+        isLoggedIn: () => this.isUserLoggedIn(),
+        getMembership: (tag) => this.getTagPreferenceMembership(tag),
+        showError: (msg) => this.showError(msg),
+        describeError: (err, opts) =>
+          this.describeHashtagPreferencesError(err, opts),
+        onPreferenceUpdate: () => {
+          this.updateCachedHashtagPreferences();
+          this.refreshTagPreferenceUi();
+        },
+        onMenuOpen: (trigger) => {
+          this.closeVideoSettingsMenu({ restoreFocus: false });
+          this.closeAllMoreMenus({
+            restoreFocus: false,
+            skipTrigger: trigger,
+            skipView: true,
+          });
+        },
+        getPubkey: () => this.normalizeHexPubkey(this.pubkey),
+      },
+      helpers: {
+        createPopover,
+        getDesignSystem: () => this.designSystemContext,
+      },
+    });
 
     this.initializeModerationActionController();
   }
@@ -2720,38 +2745,7 @@ class Application {
       }
     }
 
-    this.refreshActiveTagPreferenceMenus();
-  }
-
-  refreshActiveTagPreferenceMenus() {
-    if (!this.tagPreferencePopovers) {
-      return;
-    }
-
-    const isLoggedIn = this.isUserLoggedIn();
-    this.tagPreferencePopovers.forEach((entry) => {
-      if (!entry) {
-        return;
-      }
-
-      const buttons = entry.buttons || {};
-      if (!buttons || Object.keys(buttons).length === 0) {
-        return;
-      }
-
-      try {
-        applyTagPreferenceMenuState({
-          buttons,
-          membership: this.getTagPreferenceMembership(entry.tag),
-          isLoggedIn,
-        });
-      } catch (error) {
-        devLogger.warn(
-          "[Application] Failed to refresh tag preference menu state:",
-          error,
-        );
-      }
-    });
+    this.tagPreferenceMenuController.refreshActiveMenus();
   }
 
   async loadHashtagPreferencesForPubkey(pubkey) {
@@ -7166,7 +7160,9 @@ class Application {
     }
 
     this.closeVideoSettingsMenu({ restoreFocus: options?.restoreFocus !== false });
-    this.closeTagPreferenceMenus({ restoreFocus: options?.restoreFocus !== false });
+    this.tagPreferenceMenuController.closeMenus({
+      restoreFocus: options?.restoreFocus !== false,
+    });
   }
 
   attachMoreMenuHandlers(container) {
@@ -7360,298 +7356,20 @@ class Application {
     return closed;
   }
 
-  ensureTagPreferencePopover(detail = {}) {
-    const triggerCandidate = detail?.trigger || null;
-    const trigger =
-      triggerCandidate && triggerCandidate.nodeType === 1 ? triggerCandidate : null;
-    const rawTag = typeof detail?.tag === "string" ? detail.tag : "";
-    const tag = rawTag.trim();
-
-    if (!trigger || !tag) {
-      return null;
-    }
-
-    let entry = this.tagPreferencePopovers.get(trigger);
-
-    const render = ({ document: documentRef, close }) => {
-      const menu = createTagPreferenceMenu({
-        document: documentRef,
-        tag: entry.tag,
-        isLoggedIn: this.isUserLoggedIn(),
-        membership: this.getTagPreferenceMembership(entry.tag),
-        designSystem: this.designSystemContext,
-        onAction: (action, actionDetail = {}) => {
-          void this.handleTagPreferenceMenuAction(action, {
-            tag: entry.tag,
-            trigger,
-            video: entry.video || null,
-            closePopover: close,
-            actionDetail,
-          });
-        },
-      });
-
-      if (!menu?.panel) {
-        return null;
-      }
-
-      entry.panel = menu.panel;
-      entry.buttons = menu.buttons;
-      return menu.panel;
-    };
-
-    if (!entry) {
-      entry = {
-        trigger,
-        tag,
-        context: detail.context || "",
-        video: detail.video || null,
-        panel: null,
-        buttons: null,
-        popover: null,
-      };
-
-      const ownerDocument =
-        trigger.ownerDocument || (typeof document !== "undefined" ? document : null);
-
-      const popover = createPopover(trigger, render, {
-        document: ownerDocument,
-        placement: "bottom-start",
-        restoreFocusOnClose: true,
-      });
-
-      if (!popover) {
-        return null;
-      }
-
-      const originalDestroy = popover.destroy?.bind(popover);
-      if (typeof originalDestroy === "function") {
-        popover.destroy = (...args) => {
-          originalDestroy(...args);
-          if (this.tagPreferencePopovers.get(trigger) === entry) {
-            this.tagPreferencePopovers.delete(trigger);
-          }
-        };
-      }
-
-      entry.popover = popover;
-      this.tagPreferencePopovers.set(trigger, entry);
-    } else {
-      entry.tag = tag;
-      entry.context = detail.context || entry.context || "";
-      entry.video = detail.video || entry.video || null;
-    }
-
-    return entry;
+  ensureTagPreferencePopover(detail) {
+    return this.tagPreferenceMenuController.ensurePopover(detail);
   }
 
-  requestTagPreferenceMenu(detail = {}) {
-    const entry = this.ensureTagPreferencePopover(detail);
-    if (!entry?.popover) {
-      return;
-    }
-
-    const popover = entry.popover;
-    const restoreFocus = detail.restoreFocus !== false;
-
-    if (typeof popover.isOpen === "function" && popover.isOpen()) {
-      popover.close({ restoreFocus });
-      return;
-    }
-
-    this.closeTagPreferenceMenus({
-      restoreFocus: false,
-      skipTrigger: entry.trigger,
-    });
-    this.closeVideoSettingsMenu({ restoreFocus: false });
-    this.closeAllMoreMenus({
-      restoreFocus: false,
-      skipTrigger: entry.trigger,
-      skipView: true,
-    });
-
-    popover
-      .open()
-      .then(() => {
-        this.refreshActiveTagPreferenceMenus();
-      })
-      .catch((error) =>
-        userLogger.error("[TagPreferenceMenu] Failed to open popover:", error),
-      );
+  requestTagPreferenceMenu(detail) {
+    return this.tagPreferenceMenuController.requestMenu(detail);
   }
 
-  closeTagPreferenceMenus(detail = {}) {
-    const triggerCandidate = detail?.trigger || null;
-    const trigger =
-      triggerCandidate && triggerCandidate.nodeType === 1 ? triggerCandidate : null;
-    const restoreFocus = detail?.restoreFocus !== false;
-    const skipTrigger = detail?.skipTrigger || null;
-
-    if (trigger) {
-      const entry = this.tagPreferencePopovers.get(trigger);
-      if (entry?.popover && typeof entry.popover.close === "function") {
-        return entry.popover.close({ restoreFocus });
-      }
-      return false;
-    }
-
-    let closed = false;
-    this.tagPreferencePopovers.forEach((entry, key) => {
-      if (!entry?.popover || typeof entry.popover.close !== "function") {
-        return;
-      }
-      if (skipTrigger && key === skipTrigger) {
-        return;
-      }
-      const result = entry.popover.close({ restoreFocus });
-      closed = closed || result;
-    });
-    return closed;
-  }
-
-  async persistHashtagPreferencesFromMenu() {
-    const service = this.hashtagPreferences;
-    const publish =
-      service && typeof service.publish === "function" ? service.publish : null;
-
-    if (!publish) {
-      const message = this.describeHashtagPreferencesError(null, {
-        fallbackMessage: "Hashtag preferences are unavailable right now.",
-      });
-      if (message) {
-        this.showError(message);
-      }
-      const error = new Error(
-        message || "Hashtag preferences are unavailable right now.",
-      );
-      error.code = "service-unavailable";
-      throw error;
-    }
-
-    if (this.hashtagPreferencesPublishInFlight) {
-      return this.hashtagPreferencesPublishPromise;
-    }
-
-    const normalizedPubkey = this.normalizeHexPubkey(this.pubkey);
-    const payload = normalizedPubkey ? { pubkey: normalizedPubkey } : {};
-
-    this.hashtagPreferencesPublishInFlight = true;
-
-    const publishPromise = (async () => {
-      try {
-        return await publish.call(service, payload);
-      } catch (error) {
-        const failure =
-          error instanceof Error ? error : new Error(String(error || ""));
-        if (!failure.code) {
-          failure.code = "hashtag-preferences-publish-failed";
-        }
-        const message = this.describeHashtagPreferencesError(failure, {
-          operation: "update",
-        });
-        if (message) {
-          this.showError(message);
-        }
-        throw failure;
-      } finally {
-        this.hashtagPreferencesPublishInFlight = false;
-        this.hashtagPreferencesPublishPromise = null;
-      }
-    })();
-
-    this.hashtagPreferencesPublishPromise = publishPromise;
-    return publishPromise;
-  }
-
-  async handleTagPreferenceMenuAction(action, detail = {}) {
-    const tag = typeof detail?.tag === "string" ? detail.tag : "";
-    if (!tag) {
-      return;
-    }
-
-    const service = this.hashtagPreferences;
-    if (!service) {
-      return;
-    }
-
-    let result = false;
-    try {
-      switch (action) {
-        case TAG_PREFERENCE_ACTIONS.ADD_INTEREST:
-          result = service.addInterest(tag);
-          break;
-        case TAG_PREFERENCE_ACTIONS.REMOVE_INTEREST:
-          result = service.removeInterest(tag);
-          break;
-        case TAG_PREFERENCE_ACTIONS.ADD_DISINTEREST:
-          result = service.addDisinterest(tag);
-          break;
-        case TAG_PREFERENCE_ACTIONS.REMOVE_DISINTEREST:
-          result = service.removeDisinterest(tag);
-          break;
-        default:
-          userLogger.warn(`[TagPreferenceMenu] Unhandled action: ${action}`);
-          return;
-      }
-    } catch (error) {
-      devLogger.error(
-        "[Application] Failed to mutate hashtag preference via menu:",
-        error,
-      );
-      const message = this.describeHashtagPreferencesError(error, {
-        operation: "update",
-      });
-      if (message) {
-        this.showError(message);
-      }
-      return;
-    }
-
-    if (!result) {
-      return;
-    }
-
-    this.updateCachedHashtagPreferences();
-    this.refreshTagPreferenceUi();
-
-    try {
-      await this.persistHashtagPreferencesFromMenu();
-    } catch (error) {
-      return;
-    }
-
-    this.updateCachedHashtagPreferences();
-    this.refreshTagPreferenceUi();
-
-    if (typeof detail?.closePopover === "function") {
-      detail.closePopover({ restoreFocus: false });
-    }
+  closeTagPreferenceMenus(detail) {
+    return this.tagPreferenceMenuController.closeMenus(detail);
   }
 
   handleTagPreferenceActivation(detail = {}) {
-    const tag = typeof detail?.tag === "string" ? detail.tag : "";
-    if (!tag) {
-      return;
-    }
-
-    const triggerCandidate = detail?.trigger || null;
-    const trigger =
-      triggerCandidate && triggerCandidate.nodeType === 1 ? triggerCandidate : null;
-    if (!trigger) {
-      return;
-    }
-
-    if (detail?.event) {
-      detail.event.preventDefault?.();
-      detail.event.stopPropagation?.();
-    }
-
-    this.requestTagPreferenceMenu({
-      trigger,
-      tag,
-      context: detail?.context || "",
-      video: detail?.video || null,
-    });
+    this.tagPreferenceMenuController.handleActivation(detail);
   }
 
   syncModalMoreMenuData() {
@@ -10664,9 +10382,8 @@ class Application {
       this.modalManager = null;
     }
 
-    this.closeTagPreferenceMenus({ restoreFocus: false });
-    if (this.tagPreferencePopovers) {
-      this.tagPreferencePopovers.clear();
+    if (this.tagPreferenceMenuController) {
+      this.tagPreferenceMenuController.clear();
     }
 
     if (this.videoListView) {
