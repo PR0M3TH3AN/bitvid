@@ -1100,6 +1100,9 @@ export class ProfileModalController {
     this.profileMessagesStatus = null;
     this.profileMessagesReloadButton = null;
     this.profileMessagesPane = null;
+    this.profileMessageInput = null;
+    this.profileMessageSendButton = null;
+    this.profileMessagesComposerHelper = null;
     this.walletUriInput = null;
     this.walletDefaultZapInput = null;
     this.walletSaveButton = null;
@@ -1355,6 +1358,12 @@ export class ProfileModalController {
       document.getElementById("profileMessagesStatus") || null;
     this.profileMessagesReloadButton =
       document.getElementById("profileMessagesReload") || null;
+    this.profileMessageInput =
+      document.getElementById("profileMessageInput") || null;
+    this.profileMessageSendButton =
+      document.getElementById("profileMessageSendBtn") || null;
+    this.profileMessagesComposerHelper =
+      document.getElementById("profileMessagesComposerHelper") || null;
 
     if (this.pendingMessagesRender) {
       const { messages, actorPubkey } = this.pendingMessagesRender;
@@ -1945,6 +1954,7 @@ export class ProfileModalController {
     }
 
     this.updateMessagesReloadState();
+    this.updateMessageComposerState();
   }
 
   updateMessagesReloadState() {
@@ -1967,6 +1977,40 @@ export class ProfileModalController {
       button.setAttribute("aria-disabled", "true");
     } else {
       button.removeAttribute("aria-disabled");
+    }
+  }
+
+  updateMessageComposerState() {
+    const input = this.profileMessageInput;
+    const button = this.profileMessageSendButton;
+    const helper = this.profileMessagesComposerHelper;
+    const shouldDisable = this.messagesLoadingState === "unauthenticated";
+
+    const applyDisabledState = (element) => {
+      if (!(element instanceof HTMLElement) || !("disabled" in element)) {
+        return;
+      }
+
+      element.disabled = shouldDisable;
+      if (shouldDisable) {
+        element.setAttribute("aria-disabled", "true");
+      } else {
+        element.removeAttribute("aria-disabled");
+      }
+    };
+
+    applyDisabledState(input);
+    applyDisabledState(button);
+
+    if (helper instanceof HTMLElement) {
+      if (shouldDisable) {
+        helper.textContent = "Sign in to send messages.";
+        helper.classList.remove("hidden");
+        helper.removeAttribute("hidden");
+      } else {
+        helper.classList.add("hidden");
+        helper.setAttribute("hidden", "");
+      }
     }
   }
 
@@ -1997,6 +2041,93 @@ export class ProfileModalController {
         }
         this.messagesStatusClearTimeout = null;
       }, 2500);
+    }
+  }
+
+  describeDirectMessageSendError(code) {
+    switch (code) {
+      case "sign-event-unavailable":
+        return "Connect a Nostr signer to send messages.";
+      case "encryption-unsupported":
+        return "Your signer does not support NIP-44 or NIP-04 encryption.";
+      case "extension-permission-denied":
+        return "Please grant your Nostr extension permission to send messages.";
+      case "missing-actor-pubkey":
+        return "We couldn’t determine your public key to send this message.";
+      case "nostr-uninitialized":
+        return "Direct messages are still connecting to relays. Please try again.";
+      case "signature-failed":
+        return "We couldn’t sign the message. Please reconnect your signer and try again.";
+      case "encryption-failed":
+        return "We couldn’t encrypt the message. Please try again.";
+      case "publish-failed":
+        return "Failed to deliver this message to any relay. Please try again.";
+      case "invalid-target":
+        return "Select a valid recipient before sending.";
+      case "empty-message":
+        return "Please enter a message.";
+      default:
+        return "Unable to send message. Please try again.";
+    }
+  }
+
+  async handleSendProfileMessage() {
+    const input = this.profileMessageInput;
+    if (!(input instanceof HTMLTextAreaElement)) {
+      return;
+    }
+
+    const message = typeof input.value === "string" ? input.value.trim() : "";
+    if (!message) {
+      this.showError("Please enter a message.");
+      return;
+    }
+
+    const targetCandidate =
+      this.resolveActiveDmActor() || this.directMessagesLastActor;
+    const target =
+      typeof targetCandidate === "string" ? targetCandidate.trim() : "";
+    if (!target) {
+      this.showError("Please select a message recipient.");
+      return;
+    }
+
+    if (
+      !this.services.nostrClient ||
+      typeof this.services.nostrClient.sendDirectMessage !== "function"
+    ) {
+      this.showError("Direct message service unavailable.");
+      return;
+    }
+
+    const sendButton = this.profileMessageSendButton;
+    if (sendButton instanceof HTMLElement && "disabled" in sendButton) {
+      sendButton.disabled = true;
+      sendButton.setAttribute("aria-disabled", "true");
+    }
+
+    try {
+      const result = await this.services.nostrClient.sendDirectMessage(
+        target,
+        message,
+      );
+
+      if (result?.ok) {
+        input.value = "";
+        this.showSuccess("Message sent.");
+        void this.populateProfileMessages({ force: true, reason: "send-message" });
+        return;
+      }
+
+      const errorCode =
+        typeof result?.error === "string" ? result.error : "unknown";
+      userLogger.warn("[profileModal] Failed to send direct message:", errorCode);
+      this.showError(this.describeDirectMessageSendError(errorCode));
+    } catch (error) {
+      userLogger.error("[profileModal] Unexpected DM send failure:", error);
+      this.showError("Unable to send message. Please try again.");
+    } finally {
+      this.updateMessageComposerState();
     }
   }
 
@@ -2670,6 +2801,21 @@ export class ProfileModalController {
     if (this.profileMessagesReloadButton instanceof HTMLElement) {
       this.profileMessagesReloadButton.addEventListener("click", () => {
         void this.populateProfileMessages({ force: true, reason: "manual" });
+      });
+    }
+
+    if (this.profileMessageSendButton instanceof HTMLElement) {
+      this.profileMessageSendButton.addEventListener("click", () => {
+        void this.handleSendProfileMessage();
+      });
+    }
+
+    if (this.profileMessageInput instanceof HTMLElement) {
+      this.profileMessageInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && !event.shiftKey) {
+          event.preventDefault();
+          void this.handleSendProfileMessage();
+        }
       });
     }
 
