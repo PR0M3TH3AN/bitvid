@@ -35,6 +35,10 @@ import {
   uploadAttachment,
   getAttachmentCacheStats,
 } from "../services/attachmentService.js";
+import {
+  getLinkPreviewSettings,
+  setLinkPreviewAutoFetch,
+} from "../utils/linkPreviewSettings.js";
 
 const noop = () => {};
 
@@ -1235,6 +1239,7 @@ export class ProfileModalController {
     this.profileMessagesRelayAddButton = null;
     this.profileMessagesRelayPublishButton = null;
     this.profileMessagesRelayStatus = null;
+    this.profileLinkPreviewAutoToggle = null;
     this.walletUriInput = null;
     this.walletDefaultZapInput = null;
     this.walletSaveButton = null;
@@ -1531,6 +1536,8 @@ export class ProfileModalController {
       document.getElementById("profileMessagesRelayPublish") || null;
     this.profileMessagesRelayStatus =
       document.getElementById("profileMessagesRelayStatus") || null;
+    this.profileLinkPreviewAutoToggle =
+      document.getElementById("profileLinkPreviewAutoToggle") || null;
 
     if (this.pendingMessagesRender) {
       const { messages, actorPubkey } = this.pendingMessagesRender;
@@ -1991,6 +1998,20 @@ export class ProfileModalController {
     this.profileMessagesPrivacyMode.title = isNip17
       ? "NIP-17 gift-wraps your DM so relays only see the wrapper and relay hints."
       : "NIP-04 sends a direct encrypted DM; relays can still see sender and recipient metadata.";
+  }
+
+  syncLinkPreviewSettingsUi() {
+    if (!(this.profileLinkPreviewAutoToggle instanceof HTMLInputElement)) {
+      return;
+    }
+    const settings = getLinkPreviewSettings();
+    this.profileLinkPreviewAutoToggle.checked = Boolean(
+      settings?.autoFetchUnknownDomains,
+    );
+  }
+
+  handleLinkPreviewToggle(enabled) {
+    setLinkPreviewAutoFetch(Boolean(enabled));
   }
 
   async refreshDmRelayPreferences({ force = false } = {}) {
@@ -3903,6 +3924,15 @@ export class ProfileModalController {
         const toggle = event.currentTarget;
         if (toggle instanceof HTMLInputElement) {
           this.handlePrivacyToggle(toggle.checked);
+        }
+      });
+    }
+
+    if (this.profileLinkPreviewAutoToggle instanceof HTMLElement) {
+      this.profileLinkPreviewAutoToggle.addEventListener("change", (event) => {
+        const toggle = event.currentTarget;
+        if (toggle instanceof HTMLInputElement) {
+          this.handleLinkPreviewToggle(toggle.checked);
         }
       });
     }
@@ -10808,6 +10838,7 @@ export class ProfileModalController {
     this.renderSavedProfiles();
     this.refreshWalletPaneState();
     this.refreshModerationSettingsUi();
+    this.syncLinkPreviewSettingsUi();
     const hasBlockHydrator =
       this.services.userBlocks &&
       typeof this.services.userBlocks.ensureLoaded === "function";
