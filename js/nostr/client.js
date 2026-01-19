@@ -417,6 +417,10 @@ function waitForTransaction(tx) {
  * - If the TTL expires, the cache is cleared on restore.
  */
 class EventsCacheStore {
+  /**
+   * Initializes the EventsCacheStore.
+   * Tracks fingerprints of persisted items to avoid redundant writes.
+   */
   constructor() {
     this.dbPromise = null;
     this.persistedEventFingerprints = new Map();
@@ -511,6 +515,12 @@ class EventsCacheStore {
     return meta;
   }
 
+  /**
+   * Restores the full state from IndexedDB.
+   *
+   * @returns {Promise<{version: number, savedAt: number, events: Map, tombstones: Map}|null>}
+   * The restored snapshot or null if cache is missing/expired.
+   */
   async restoreSnapshot() {
     const db = await this.getDb();
     if (!db) {
@@ -573,6 +583,14 @@ class EventsCacheStore {
     };
   }
 
+  /**
+   * Persists the current state to IndexedDB.
+   * Only writes changes (diffs against fingerprints).
+   *
+   * @param {{events: Map, tombstones: Map, savedAt: number}} payload - The state to save.
+   * @returns {Promise<{persisted: boolean, eventWrites: number, eventDeletes: number, tombstoneWrites: number, tombstoneDeletes: number}>}
+   * Stats about the persistence operation.
+   */
   async persistSnapshot(payload) {
     const db = await this.getDb();
     if (!db) {
@@ -1034,6 +1052,10 @@ export {
 };
 
 export class NostrClient {
+  /**
+   * Initializes the NostrClient.
+   * Sets up connection pools, state maps, and default relays.
+   */
   constructor() {
     this.pool = null;
     this.poolPromise = null;
@@ -1042,16 +1064,32 @@ export class NostrClient {
     this.readRelays = Array.from(this.relays);
     this.writeRelays = Array.from(this.relays);
 
-    // Store all events so older links still work
+    /**
+     * @type {Map<string, object>}
+     * Maps event ID to the converted Video object.
+     * Stores ALL fetched versions to ensure old links resolve.
+     */
     this.allEvents = new Map();
 
-    // Keep a separate cache of raw events so we can republish the exact payload
+    /**
+     * @type {Map<string, object>}
+     * Maps event ID to the raw Nostr event object.
+     * Kept for signature verification and republishing (e.g. NIP-94 mirror).
+     */
     this.rawEvents = new Map();
 
-    // “activeMap” holds only the newest version for each root
+    /**
+     * @type {Map<string, object>}
+     * Maps `videoRootId` (or `pubkey:dTag`) to the latest valid Video object.
+     * This is the "materialized view" used by the UI.
+     */
     this.activeMap = new Map();
 
-    // Track the newest deletion timestamp for each active key
+    /**
+     * @type {Map<string, number>}
+     * Maps `activeKey` to the timestamp of its latest deletion.
+     * Prevents older events from reappearing after a delete.
+     */
     this.tombstones = new Map();
 
     this.rootCreatedAtByRoot = new Map();
@@ -3655,6 +3693,8 @@ export class NostrClient {
    * 1. Restores local data (IndexedDB/localStorage) to render the UI immediately ("stale-while-revalidate").
    * 2. Schedules the restoration of any stored NIP-46 remote signer session.
    * 3. Initializes the NostrTools `SimplePool` and connects to the configured relays.
+   *
+   * @returns {Promise<void>} Resolves when relays are connected (or at least attempted).
    */
   async init() {
     devLogger.log("Connecting to relays...");
@@ -5000,6 +5040,11 @@ export class NostrClient {
    * - `url`: The direct HTTP URL (WebSeed).
    * - NIP-94 Mirror: Optionally publishes a Kind 1063 file header event if supported.
    * - NIP-71: Optionally publishes a Kind 22 (Video Wrapper) for categorization if metadata is provided.
+   *
+   * @param {object} videoPayload - The video metadata and form data.
+   * @param {string} pubkey - The public key of the publisher.
+   * @returns {Promise<import("nostr-tools").Event>} The signed and published event.
+   * @throws {Error} If not logged in or publishing fails.
    */
   async publishVideo(videoPayload, pubkey) {
     if (!pubkey) throw new Error("Not logged in to publish video.");
@@ -5360,6 +5405,12 @@ export class NostrClient {
    *
    * This version forces version=2 for the original note and uses
    * lowercase comparison for public keys.
+   *
+   * @param {object} originalEventStub - The original video event (must have `id`).
+   * @param {object} updatedData - The new metadata to apply.
+   * @param {string} userPubkey - The public key of the editor (must match owner).
+   * @returns {Promise<import("nostr-tools").Event>} The signed and published edit event.
+   * @throws {Error} If permission denied, ownership mismatch, or publish failure.
    */
   async editVideo(originalEventStub, updatedData, userPubkey) {
     if (!userPubkey) {
@@ -5595,7 +5646,13 @@ export class NostrClient {
   }
 
   /**
-   * revertVideo => old style
+   * Reverts a video (soft delete).
+   * Publishes a new version with the same `d` tag but `deleted: true`.
+   * The content is replaced with a placeholder.
+   *
+   * @param {object} originalEvent - The video event to revert.
+   * @param {string} pubkey - The public key of the owner.
+   * @returns {Promise<{event: object, publishResults: object[], summary: object}>} Result of the operation.
    */
   async revertVideo(originalEvent, pubkey) {
     if (!pubkey) {
@@ -5766,10 +5823,14 @@ export class NostrClient {
   }
 
   /**
-   * "Deleting" => Mark all content with the same videoRootId as {deleted:true}
-   * and blank out magnet/desc.
+   * Deletes all versions of a video.
+   * 1. Reverts every known version (soft delete) by publishing a `deleted: true` update for each `d` tag or root.
+   * 2. Publishes Kind 5 (NIP-09) deletion events for all event IDs and NIP-33 addresses.
    *
-   * This version now asks for confirmation before proceeding.
+   * @param {string} videoRootId - The root ID of the video series.
+   * @param {string} pubkey - The owner's public key.
+   * @param {{confirm?: boolean, video?: object}} [options] - Options (confirm dialog, target video hint).
+   * @returns {Promise<{reverts: object[], deletes: object[]}|null>} Summary of actions taken, or null if cancelled.
    */
   async deleteAllVersions(videoRootId, pubkey, options = {}) {
     if (!pubkey) {
@@ -6249,8 +6310,9 @@ export class NostrClient {
    *    - Persist to local cache.
    *    - Notify the UI (`onVideo`).
    *
-   * @param {Function} onVideo - Callback fired when new valid videos are processed.
-   * @param {{ since?: number, until?: number, limit?: number }} [options]
+   * @param {Function} onVideo - Callback fired when new valid videos are processed. Receives the `Video` object.
+   * @param {{ since?: number, until?: number, limit?: number }} [options] - Filter options.
+   * @returns {import("nostr-tools").Sub} The subscription object. Call `unsub()` to stop.
    */
   subscribeVideos(onVideo, options = {}) {
     const { since, until, limit } = options;
@@ -7187,6 +7249,9 @@ export class NostrClient {
    * - If the root event is missing locally, fetch it by ID.
    * - If we suspect missing history (e.g., only 1 version found), perform a relay query for the specific `d` tag.
    * - Merge and sort all findings to present a linear history.
+   *
+   * @param {object} video - The video object to find history for.
+   * @returns {Promise<object[]>} Sorted array of video objects (newest first).
    */
   async hydrateVideoHistory(video) {
     if (!video || typeof video !== "object") {

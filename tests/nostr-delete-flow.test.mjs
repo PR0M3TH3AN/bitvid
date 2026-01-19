@@ -257,10 +257,10 @@ await (async function testTombstonePersistenceAcrossSaveRestore() {
 
   client.allEvents.set(legacyVideo.id, { ...legacyVideo });
   client.recordTombstone(activeKey, legacyVideo.created_at + 50);
-  client.saveLocalData();
+  await client.saveLocalData("test", { immediate: true });
 
   const restored = new NostrClient();
-  restored.restoreLocalData();
+  await restored.restoreLocalData();
 
   assert.equal(
     restored.tombstones.get(activeKey),
