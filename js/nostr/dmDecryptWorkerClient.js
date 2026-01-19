@@ -77,6 +77,10 @@ export function isDmDecryptWorkerSupported() {
   return typeof Worker !== "undefined";
 }
 
+export function getDmDecryptWorkerQueueSize() {
+  return pending.size;
+}
+
 export function decryptDmInWorker({
   scheme = "nip04",
   privateKey,

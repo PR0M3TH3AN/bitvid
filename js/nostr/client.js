@@ -117,6 +117,7 @@ import {
   isDmDecryptWorkerSupported,
 } from "./dmDecryptWorkerClient.js";
 import { devLogger, userLogger } from "../utils/logger.js";
+import { LRUCache } from "../utils/lruCache.js";
 import { updateConversationFromMessage, writeMessages } from "../storage/dmDb.js";
 import {
   DM_RELAY_WARNING_FALLBACK,
@@ -908,45 +909,6 @@ function cloneEventForCache(event) {
 const DM_DECRYPT_CACHE_LIMIT = 256;
 const DM_EVENT_KINDS = Object.freeze([4, 1059]);
 
-class SimpleLruCache {
-  constructor(limit = 100) {
-    const resolvedLimit = Number.isFinite(limit) && limit > 0 ? limit : 100;
-    this.limit = Math.floor(resolvedLimit);
-    this.map = new Map();
-  }
-
-  get(key) {
-    if (!this.map.has(key)) {
-      return undefined;
-    }
-
-    const value = this.map.get(key);
-    this.map.delete(key);
-    this.map.set(key, value);
-    return value;
-  }
-
-  set(key, value) {
-    if (key === undefined || key === null) {
-      return;
-    }
-
-    if (this.map.has(key)) {
-      this.map.delete(key);
-    }
-    this.map.set(key, value);
-
-    while (this.map.size > this.limit) {
-      const oldestKey = this.map.keys().next().value;
-      this.map.delete(oldestKey);
-    }
-  }
-
-  clear() {
-    this.map.clear();
-  }
-}
-
 function buildDmFilters(actorPubkey, { since, until, limit } = {}) {
   const normalizedActor = normalizeActorKey(actorPubkey);
   const filters = [];
@@ -1217,7 +1179,7 @@ export class NostrClient {
         },
       },
     });
-    this.dmDecryptCache = new SimpleLruCache(DM_DECRYPT_CACHE_LIMIT);
+    this.dmDecryptCache = new LRUCache({ maxSize: DM_DECRYPT_CACHE_LIMIT });
     this.dmDecryptor = null;
     this.dmDecryptorPromise = null;
     this.sessionActorCipherClosures = null;
@@ -4009,6 +3971,13 @@ export class NostrClient {
     return DM_DECRYPT_CACHE_LIMIT;
   }
 
+  getDmDecryptCacheStats() {
+    if (!this.dmDecryptCache || typeof this.dmDecryptCache.getStats !== "function") {
+      return null;
+    }
+    return this.dmDecryptCache.getStats();
+  }
+
   clearDmDecryptCache() {
     if (this.dmDecryptCache) {
       this.dmDecryptCache.clear();
@@ -4231,6 +4200,11 @@ export class NostrClient {
       throw new Error("DM decryption helpers are unavailable.");
     }
 
+    const decryptLimit =
+      Number.isFinite(options?.decryptLimit) && options.decryptLimit > 0
+        ? Math.floor(options.decryptLimit)
+        : null;
+
     const relayCandidates = Array.isArray(options.relays)
       ? options.relays
       : Array.isArray(this.readRelays) && this.readRelays.length
@@ -4266,8 +4240,19 @@ export class NostrClient {
       }
     }
 
+    let decryptTargets = Array.from(deduped.values());
+    decryptTargets.sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0));
+
+    if (decryptLimit && decryptTargets.length > decryptLimit) {
+      devLogger.debug("[nostr] Limiting DM decrypt workload", {
+        requested: decryptTargets.length,
+        decryptLimit,
+      });
+      decryptTargets = decryptTargets.slice(0, decryptLimit);
+    }
+
     const messages = [];
-    for (const event of deduped.values()) {
+    for (const event of decryptTargets) {
       try {
         const decrypted = await this.decryptDirectMessageEvent(event, {
           actorPubkey: context.actorPubkey || actorPubkeyInput,
