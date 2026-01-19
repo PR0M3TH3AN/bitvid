@@ -21,6 +21,7 @@ import {
   normalizeHashtag,
   formatHashtag,
 } from "../utils/hashtagNormalization.js";
+import { formatTimeAgo } from "../utils/formatters.js";
 import { getActiveSigner } from "../nostr/client.js";
 import { sanitizeRelayList } from "../nostr/nip46Client.js";
 import { buildPublicUrl, buildR2Key } from "../r2.js";
@@ -1373,6 +1374,9 @@ export class ProfileModalController {
     this.dmTypingLastSentAt = 0;
     this.dmAttachmentQueue = [];
     this.dmAttachmentUploads = new Map();
+    this.activeDmConversationId = "";
+    this.focusedDmConversationId = "";
+    this.dmComposerState = "idle";
 
     this.profileHistoryRenderer = null;
     this.profileHistoryRendererConfig = null;
@@ -1626,7 +1630,8 @@ export class ProfileModalController {
         );
       });
     } else if (
-      this.profileMessagesList instanceof HTMLElement &&
+      (this.profileMessagesList instanceof HTMLElement ||
+        this.dmAppShellContainer instanceof HTMLElement) &&
       Array.isArray(this.directMessagesCache) &&
       this.directMessagesCache.length
     ) {
@@ -2457,9 +2462,15 @@ export class ProfileModalController {
       this.setMessagesAnnouncement("Ready to message this recipient.");
     } else if (reason === "clear") {
       this.setMessagesAnnouncement("Message recipient cleared.");
+      this.setFocusedDmConversation("");
     }
 
     void this.renderDirectMessageConversation();
+    if (this.dmAppShellContainer instanceof HTMLElement) {
+      void this.renderDmAppShell(this.directMessagesCache, {
+        actorPubkey: this.resolveActiveDmActor(),
+      });
+    }
     return nextRecipient;
   }
 
@@ -2716,6 +2727,12 @@ export class ProfileModalController {
 
     this.updateMessagesReloadState();
     this.updateMessageComposerState();
+
+    if (this.dmAppShellContainer instanceof HTMLElement) {
+      void this.renderDmAppShell(this.directMessagesCache, {
+        actorPubkey: this.resolveActiveDmActor(),
+      });
+    }
   }
 
   updateMessagesReloadState() {
@@ -3567,6 +3584,12 @@ export class ProfileModalController {
     this.setMessagesLoadingState(actor ? "empty" : "unauthenticated", {
       message,
     });
+
+    if (this.dmAppShellContainer instanceof HTMLElement) {
+      void this.renderDmAppShell(this.directMessagesCache, {
+        actorPubkey: actor,
+      });
+    }
   }
 
   extractDirectMessagePreview(entry) {
@@ -3609,6 +3632,8 @@ export class ProfileModalController {
 
     let displayName = formattedNpub || fallbackNpub || "Unknown profile";
     let avatarSrc = FALLBACK_PROFILE_AVATAR;
+    let lightningAddress = "";
+    let status = "";
 
     if (normalized && typeof this.services.getProfileCacheEntry === "function") {
       const cacheEntry = this.services.getProfileCacheEntry(normalized);
@@ -3623,6 +3648,16 @@ export class ProfileModalController {
         if (typeof profile.picture === "string" && profile.picture.trim()) {
           avatarSrc = profile.picture.trim();
         }
+
+        if (typeof profile.lud16 === "string" && profile.lud16.trim()) {
+          lightningAddress = profile.lud16.trim();
+        } else if (typeof profile.lud06 === "string" && profile.lud06.trim()) {
+          lightningAddress = profile.lud06.trim();
+        }
+
+        if (typeof profile.status === "string" && profile.status.trim()) {
+          status = profile.status.trim();
+        }
       }
     }
 
@@ -3630,6 +3665,8 @@ export class ProfileModalController {
       displayName,
       displayNpub: formattedNpub || fallbackNpub || "npub unavailable",
       avatarSrc,
+      lightningAddress,
+      status,
     };
   }
 
@@ -3654,6 +3691,343 @@ export class ProfileModalController {
     } catch (error) {
       return { display: "", iso: "" };
     }
+  }
+
+  buildDmConversationId(actorPubkey, remotePubkey) {
+    const normalizedActor = this.normalizeHexPubkey(actorPubkey);
+    const normalizedRemote = this.normalizeHexPubkey(remotePubkey);
+
+    if (!normalizedActor || !normalizedRemote) {
+      return "";
+    }
+
+    return `dm:${[normalizedActor, normalizedRemote].sort().join(":")}`;
+  }
+
+  formatConversationTimestamp(timestamp) {
+    const numeric = Number(timestamp);
+    if (!Number.isFinite(numeric) || numeric <= 0) {
+      return "";
+    }
+
+    try {
+      return formatTimeAgo(numeric);
+    } catch (error) {
+      return "";
+    }
+  }
+
+  formatMessageClockTime(timestamp) {
+    const numeric = Number(timestamp);
+    if (!Number.isFinite(numeric) || numeric <= 0) {
+      return "";
+    }
+
+    try {
+      const date = new Date(numeric * 1000);
+      return date.toLocaleTimeString(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+      });
+    } catch (error) {
+      return "";
+    }
+  }
+
+  formatMessageDayLabel(timestamp) {
+    const numeric = Number(timestamp);
+    if (!Number.isFinite(numeric) || numeric <= 0) {
+      return "";
+    }
+
+    try {
+      const date = new Date(numeric * 1000);
+      const today = new Date();
+      const startOfToday = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate(),
+      );
+      const startOfMessageDay = new Date(
+        date.getFullYear(),
+        date.getMonth(),
+        date.getDate(),
+      );
+      const diffDays = Math.round(
+        (startOfToday - startOfMessageDay) / (1000 * 60 * 60 * 24),
+      );
+
+      if (diffDays === 0) {
+        return "Today";
+      }
+      if (diffDays === 1) {
+        return "Yesterday";
+      }
+
+      return date.toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
+    } catch (error) {
+      return "";
+    }
+  }
+
+  resolveDirectMessageScheme(message) {
+    if (!message || typeof message !== "object") {
+      return "";
+    }
+
+    const scheme =
+      typeof message.scheme === "string"
+        ? message.scheme
+        : typeof message.encryption_scheme === "string"
+        ? message.encryption_scheme
+        : typeof message?.decryptor?.scheme === "string"
+        ? message.decryptor.scheme
+        : "";
+
+    return typeof scheme === "string" ? scheme.trim().toLowerCase() : "";
+  }
+
+  resolveDirectMessageStatus(message) {
+    if (!message || typeof message !== "object") {
+      return "sent";
+    }
+
+    const status =
+      typeof message.status === "string"
+        ? message.status
+        : typeof message.deliveryStatus === "string"
+        ? message.deliveryStatus
+        : typeof message.state === "string"
+        ? message.state
+        : "";
+
+    return status ? status.trim() : "sent";
+  }
+
+  resolveDirectMessageBody(message) {
+    if (!message || typeof message !== "object") {
+      return "";
+    }
+
+    if (typeof message.plaintext === "string" && message.plaintext.trim()) {
+      return message.plaintext.trim();
+    }
+
+    const preview = this.extractDirectMessagePreview(message);
+    if (preview) {
+      return preview;
+    }
+
+    const attachments = extractAttachmentsFromMessage(message);
+    if (attachments.length) {
+      return describeAttachment(attachments[0]);
+    }
+
+    return "";
+  }
+
+  resolveDirectMessagePreviewForConversation(message) {
+    if (!message || typeof message !== "object") {
+      return "";
+    }
+
+    const preview = this.extractDirectMessagePreview(message);
+    if (preview) {
+      return preview;
+    }
+
+    const attachments = extractAttachmentsFromMessage(message);
+    if (attachments.length) {
+      return describeAttachment(attachments[0]);
+    }
+
+    return "";
+  }
+
+  resolveRemoteForConversationId(conversationId, actorPubkey) {
+    const actor = this.normalizeHexPubkey(actorPubkey || this.resolveActiveDmActor());
+    const normalizedConversationId =
+      typeof conversationId === "string" ? conversationId.trim() : "";
+
+    if (!actor || !normalizedConversationId) {
+      return null;
+    }
+
+    for (const entry of Array.isArray(this.directMessagesCache) ? this.directMessagesCache : []) {
+      const remote = this.resolveDirectMessageRemote(entry, actor);
+      if (!remote) {
+        continue;
+      }
+      const resolvedId = this.buildDmConversationId(actor, remote);
+      if (resolvedId && resolvedId === normalizedConversationId) {
+        return remote;
+      }
+    }
+
+    return null;
+  }
+
+  resolveConversationPrivacyMode(latestMessage) {
+    const scheme = this.resolveDirectMessageScheme(latestMessage);
+    if (scheme.includes("nip17") || scheme.includes("nip44")) {
+      return "nip17";
+    }
+    return "nip04";
+  }
+
+  buildDmMessageTimeline(messages, { actorPubkey, remotePubkey } = {}) {
+    const actor = this.normalizeHexPubkey(actorPubkey);
+    const remote = this.normalizeHexPubkey(remotePubkey);
+    if (!actor || !remote) {
+      return [];
+    }
+
+    const threadMessages = Array.isArray(messages)
+      ? messages.filter((entry) => this.resolveDirectMessageRemote(entry, actor) === remote)
+      : [];
+
+    threadMessages.sort((a, b) => (a?.timestamp || 0) - (b?.timestamp || 0));
+
+    const timeline = [];
+    let lastDayLabel = "";
+
+    threadMessages.forEach((message) => {
+      const dayLabel = this.formatMessageDayLabel(message?.timestamp);
+      if (dayLabel && dayLabel !== lastDayLabel) {
+        timeline.push({ type: "day", label: dayLabel });
+        lastDayLabel = dayLabel;
+      }
+
+      timeline.push({
+        id: this.resolveDirectMessageEventId(message) || "",
+        direction: message?.direction || "incoming",
+        body: this.resolveDirectMessageBody(message) || "Encrypted message",
+        timestamp: this.formatMessageClockTime(message?.timestamp),
+        status: this.resolveDirectMessageStatus(message),
+      });
+    });
+
+    return timeline;
+  }
+
+  async buildDmConversationData(messages, { actorPubkey } = {}) {
+    const actor = this.normalizeHexPubkey(
+      actorPubkey || this.resolveActiveDmActor(),
+    );
+    if (!actor) {
+      return {
+        actor: "",
+        conversations: [],
+        activeConversationId: "",
+        activeThread: null,
+        activeRemotePubkey: null,
+        timeline: [],
+      };
+    }
+
+    const threads = this.groupDirectMessages(messages, actor);
+    const remoteKeys = new Set();
+    threads.forEach((thread) => {
+      if (thread.remoteHex) {
+        remoteKeys.add(thread.remoteHex);
+      }
+    });
+
+    if (
+      remoteKeys.size &&
+      this.services.batchFetchProfiles &&
+      typeof this.services.batchFetchProfiles === "function"
+    ) {
+      try {
+        await this.services.batchFetchProfiles(remoteKeys);
+      } catch (error) {
+        devLogger.warn(
+          "[profileModal] Failed to fetch DM profile metadata:",
+          error,
+        );
+      }
+    }
+
+    const conversations = threads.map((thread) => {
+      const conversationId = this.buildDmConversationId(actor, thread.remoteHex);
+      const summary = this.resolveProfileSummaryForPubkey(thread.remoteHex);
+      const preview = this.resolveDirectMessagePreviewForConversation(thread.latestMessage);
+      const unreadCount =
+        this.nostrService &&
+        typeof this.nostrService.getDirectMessageUnseenCount === "function" &&
+        conversationId
+          ? this.nostrService.getDirectMessageUnseenCount(conversationId)
+          : 0;
+      const recipientContext = this.buildDmRecipientContext(thread.remoteHex);
+
+      return {
+        id: conversationId,
+        name: summary.displayName,
+        preview: preview || "Encrypted message",
+        timestamp: this.formatConversationTimestamp(thread.latestTimestamp),
+        unreadCount,
+        avatarSrc: summary.avatarSrc,
+        status: summary.status,
+        pubkey: thread.remoteHex,
+        lightningAddress: summary.lightningAddress,
+        relayHints: Array.isArray(recipientContext?.relayHints)
+          ? recipientContext.relayHints
+          : [],
+      };
+    });
+
+    const conversationMap = new Map();
+    threads.forEach((thread) => {
+      const conversationId = this.buildDmConversationId(actor, thread.remoteHex);
+      if (conversationId) {
+        conversationMap.set(conversationId, thread);
+      }
+    });
+
+    const storedRecipient = this.resolveActiveDmRecipient();
+    const storedConversationId =
+      storedRecipient && actor
+        ? this.buildDmConversationId(actor, storedRecipient)
+        : "";
+    const preferredConversationId =
+      this.activeDmConversationId || storedConversationId;
+    const fallbackConversationId = conversations[0]?.id || "";
+    const activeConversationId =
+      preferredConversationId && conversationMap.has(preferredConversationId)
+        ? preferredConversationId
+        : fallbackConversationId;
+    const activeThread = activeConversationId
+      ? conversationMap.get(activeConversationId)
+      : null;
+    const activeRemotePubkey =
+      activeThread?.remoteHex ||
+      (activeConversationId
+        ? this.resolveRemoteForConversationId(activeConversationId, actor)
+        : storedRecipient) ||
+      null;
+
+    if (activeConversationId && this.activeDmConversationId !== activeConversationId) {
+      this.activeDmConversationId = activeConversationId;
+    }
+
+    return {
+      actor,
+      conversations,
+      activeConversationId,
+      activeThread,
+      activeRemotePubkey,
+      timeline:
+        activeRemotePubkey && actor
+          ? this.buildDmMessageTimeline(messages, {
+              actorPubkey: actor,
+              remotePubkey: activeRemotePubkey,
+            })
+          : [],
+    };
   }
 
   groupDirectMessages(messages, actorPubkey) {
@@ -3864,11 +4238,17 @@ export class ProfileModalController {
   }
 
   async renderProfileMessages(messages, { actorPubkey = null } = {}) {
+    if (this.dmAppShellContainer instanceof HTMLElement) {
+      await this.renderDmAppShell(messages, { actorPubkey });
+    }
+
     if (!(this.profileMessagesList instanceof HTMLElement)) {
-      this.pendingMessagesRender = {
-        messages: Array.isArray(messages) ? messages : [],
-        actorPubkey,
-      };
+      if (!(this.dmAppShellContainer instanceof HTMLElement)) {
+        this.pendingMessagesRender = {
+          messages: Array.isArray(messages) ? messages : [],
+          actorPubkey,
+        };
+      }
       return;
     }
 
@@ -3933,6 +4313,288 @@ export class ProfileModalController {
     this.profileMessagesList.classList.remove("hidden");
     this.profileMessagesList.removeAttribute("hidden");
     void this.renderDirectMessageConversation();
+  }
+
+  async renderDmAppShell(messages, { actorPubkey = null } = {}) {
+    const container =
+      this.dmAppShellContainer instanceof HTMLElement
+        ? this.dmAppShellContainer
+        : null;
+    if (!container) {
+      return;
+    }
+
+    const snapshot = Array.isArray(messages) ? messages : this.directMessagesCache;
+    const {
+      actor,
+      conversations,
+      activeConversationId,
+      activeThread,
+      timeline,
+    } = await this.buildDmConversationData(snapshot, { actorPubkey });
+
+    const currentRecipient = this.resolveActiveDmRecipient();
+    if (!currentRecipient && activeThread?.remoteHex) {
+      this.setDirectMessageRecipient(activeThread.remoteHex, {
+        reason: "thread-default",
+      });
+    }
+
+    const loadingState = this.messagesLoadingState || "idle";
+    const conversationState =
+      loadingState === "loading"
+        ? "loading"
+        : loadingState === "error"
+        ? "error"
+        : loadingState === "empty" || loadingState === "unauthenticated"
+        ? "empty"
+        : "idle";
+
+    const hasActiveConversation = Boolean(activeConversationId);
+    const threadState =
+      conversationState === "loading"
+        ? "loading"
+        : !hasActiveConversation
+        ? "empty"
+        : timeline.length
+        ? "idle"
+        : "empty";
+
+    const privacyMode = this.resolveConversationPrivacyMode(
+      activeThread?.latestMessage,
+    );
+
+    container.innerHTML = "";
+
+    try {
+      this.dmAppShell = new AppShell({
+        document,
+        conversations,
+        activeConversationId,
+        conversationState,
+        messages: timeline,
+        threadState,
+        privacyMode,
+        composerState: this.dmComposerState || "idle",
+        notifications: [],
+        onSelectConversation: (conversation) => {
+          void this.handleDmConversationSelect(conversation);
+        },
+        onSendMessage: (messageText, payload) => {
+          void this.handleDmAppShellSendMessage(messageText, payload);
+        },
+      });
+    } catch (error) {
+      this.dmAppShell = null;
+      devLogger.warn("[profileModal] Failed to render DM app shell:", error);
+      return;
+    }
+
+    const root =
+      this.dmAppShell &&
+      typeof this.dmAppShell.getRoot === "function"
+        ? this.dmAppShell.getRoot()
+        : null;
+    if (!(root instanceof HTMLElement)) {
+      devLogger.warn("[profileModal] DM app shell root missing.");
+      return;
+    }
+
+    container.appendChild(root);
+
+    if (actor && activeConversationId) {
+      void this.nostrService?.acknowledgeRenderedDirectMessages?.(
+        activeConversationId,
+        Date.now() / 1000,
+      );
+    }
+  }
+
+  setFocusedDmConversation(conversationId) {
+    if (
+      !this.nostrService ||
+      typeof this.nostrService.setFocusedDirectMessageConversation !== "function"
+    ) {
+      return;
+    }
+
+    if (
+      this.focusedDmConversationId &&
+      this.focusedDmConversationId !== conversationId
+    ) {
+      this.nostrService.setFocusedDirectMessageConversation(
+        this.focusedDmConversationId,
+        false,
+      );
+    }
+
+    if (conversationId) {
+      this.nostrService.setFocusedDirectMessageConversation(conversationId, true);
+      this.focusedDmConversationId = conversationId;
+    } else {
+      this.focusedDmConversationId = "";
+    }
+  }
+
+  async handleDmConversationSelect(conversation) {
+    const conversationId =
+      conversation && typeof conversation.id === "string"
+        ? conversation.id.trim()
+        : "";
+    if (!conversationId) {
+      return;
+    }
+
+    const actor = this.resolveActiveDmActor();
+    const remote = this.resolveRemoteForConversationId(conversationId, actor);
+
+    this.activeDmConversationId = conversationId;
+    if (remote) {
+      this.setDirectMessageRecipient(remote, { reason: "thread-select" });
+    }
+
+    this.setFocusedDmConversation(conversationId);
+
+    await this.renderDmAppShell(this.directMessagesCache, {
+      actorPubkey: actor,
+    });
+  }
+
+  async handleDmAppShellSendMessage(messageText, payload = {}) {
+    const normalizedPayload =
+      payload && typeof payload === "object" ? payload : {};
+    const message =
+      typeof messageText === "string" ? messageText.trim() : "";
+    const attachments = Array.isArray(normalizedPayload.attachments)
+      ? normalizedPayload.attachments
+      : [];
+
+    if (!message && !attachments.length) {
+      this.showError("Please enter a message or attach a file.");
+      this.dmComposerState = "error";
+      await this.renderDmAppShell(this.directMessagesCache, {
+        actorPubkey: this.resolveActiveDmActor(),
+      });
+      return;
+    }
+
+    const actor = this.resolveActiveDmActor();
+    const activeConversationId =
+      this.activeDmConversationId ||
+      (actor && this.resolveActiveDmRecipient()
+        ? this.buildDmConversationId(actor, this.resolveActiveDmRecipient())
+        : "");
+    const targetHex =
+      this.resolveRemoteForConversationId(activeConversationId, actor) ||
+      this.resolveActiveDmRecipient();
+
+    const target =
+      typeof targetHex === "string" && typeof this.safeEncodeNpub === "function"
+        ? this.safeEncodeNpub(targetHex)
+        : "";
+    if (!target) {
+      this.showError("Please select a message recipient.");
+      this.dmComposerState = "error";
+      await this.renderDmAppShell(this.directMessagesCache, {
+        actorPubkey: actor,
+      });
+      return;
+    }
+
+    if (
+      !this.services.nostrClient ||
+      typeof this.services.nostrClient.sendDirectMessage !== "function"
+    ) {
+      this.showError("Direct message service unavailable.");
+      this.dmComposerState = "error";
+      await this.renderDmAppShell(this.directMessagesCache, {
+        actorPubkey: actor,
+      });
+      return;
+    }
+
+    const privacyMode =
+      typeof normalizedPayload.privacyMode === "string"
+        ? normalizedPayload.privacyMode.trim().toLowerCase()
+        : "nip04";
+    const useNip17 = privacyMode === "nip17" || privacyMode === "private";
+
+    if (attachments.length && !useNip17) {
+      this.showError(
+        "Attachments require NIP-17 delivery. Enable the privacy toggle to send files.",
+      );
+      this.dmComposerState = "error";
+      await this.renderDmAppShell(this.directMessagesCache, {
+        actorPubkey: actor,
+      });
+      return;
+    }
+
+    const recipientContext = this.buildDmRecipientContext(targetHex);
+    const recipientRelayHints = Array.isArray(recipientContext?.relayHints)
+      ? recipientContext.relayHints
+      : [];
+    const senderRelayHints = this.getActiveDmRelayPreferences();
+
+    if (useNip17 && !recipientRelayHints.length) {
+      this.showStatus(
+        "Privacy warning: this recipient has not shared NIP-17 relays, so we'll use your default relays.",
+      );
+    }
+
+    this.dmComposerState = "sending";
+    await this.renderDmAppShell(this.directMessagesCache, {
+      actorPubkey: actor,
+    });
+
+    try {
+      const result = await this.services.nostrClient.sendDirectMessage(
+        target,
+        message,
+        null,
+        useNip17
+          ? {
+              useNip17: true,
+              recipientRelayHints,
+              senderRelayHints,
+              attachments,
+            }
+          : {},
+      );
+
+      if (result?.ok) {
+        this.showSuccess("Message sent.");
+        if (result?.warning === "dm-relays-fallback") {
+          this.showStatus(
+            "Privacy warning: this message used default relays because no NIP-17 relay list was found.",
+          );
+        }
+        if (
+          this.nostrService &&
+          typeof this.nostrService.loadDirectMessages === "function"
+        ) {
+          await this.nostrService.loadDirectMessages({
+            actorPubkey: actor,
+            initialLoad: false,
+          });
+        }
+        this.dmComposerState = "idle";
+      } else {
+        const errorCode =
+          typeof result?.error === "string" ? result.error : "unknown";
+        userLogger.warn("[profileModal] Failed to send direct message:", errorCode);
+        this.showError(this.describeDirectMessageSendError(errorCode));
+        this.dmComposerState = "error";
+      }
+    } catch (error) {
+      userLogger.error("[profileModal] Unexpected DM send failure:", error);
+      this.showError("Unable to send message. Please try again.");
+      this.dmComposerState = "error";
+    } finally {
+      await this.renderDmAppShell(this.directMessagesCache, {
+        actorPubkey: actor,
+      });
+    }
   }
 
   async populateProfileMessages(options = {}) {
@@ -4051,28 +4713,9 @@ export class ProfileModalController {
     if (!container) {
       return;
     }
-
-    container.innerHTML = "";
-
-    try {
-      this.dmAppShell = new AppShell({ document });
-    } catch (error) {
-      this.dmAppShell = null;
-      devLogger.warn("[profileModal] Failed to mount DM app shell:", error);
-      return;
-    }
-
-    const root =
-      this.dmAppShell &&
-      typeof this.dmAppShell.getRoot === "function"
-        ? this.dmAppShell.getRoot()
-        : null;
-    if (!(root instanceof HTMLElement)) {
-      devLogger.warn("[profileModal] DM app shell root missing.");
-      return;
-    }
-
-    container.appendChild(root);
+    void this.renderDmAppShell(this.directMessagesCache, {
+      actorPubkey: this.directMessagesLastActor,
+    });
   }
 
   unmountDmAppShell() {
@@ -4163,6 +4806,12 @@ export class ProfileModalController {
       this.setMessagesLoadingState("unauthenticated");
     } else {
       this.setMessagesLoadingState("empty");
+    }
+
+    if (this.dmAppShellContainer instanceof HTMLElement) {
+      void this.renderDmAppShell(this.directMessagesCache, {
+        actorPubkey: actor,
+      });
     }
   }
 

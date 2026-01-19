@@ -1067,6 +1067,36 @@
               role="tabpanel"
               aria-labelledby="profileNavMessages"
             >
+              <div class="card flex flex-col gap-4 p-4">
+                <div class="space-y-1">
+                  <h3 class="text-sm font-semibold text-text">Direct message privacy</h3>
+                  <p class="text-xs text-muted">
+                    Control read receipts and typing indicators for direct messages.
+                  </p>
+                </div>
+                <div class="flex flex-col gap-3">
+                  <label class="flex items-center justify-between gap-3 text-sm text-text">
+                    <span>Read receipts</span>
+                    <input
+                      id="profileMessagesReadReceiptsToggle"
+                      type="checkbox"
+                      class="switch"
+                      role="switch"
+                      aria-label="Enable read receipts"
+                    />
+                  </label>
+                  <label class="flex items-center justify-between gap-3 text-sm text-text">
+                    <span>Typing indicators</span>
+                    <input
+                      id="profileMessagesTypingToggle"
+                      type="checkbox"
+                      class="switch"
+                      role="switch"
+                      aria-label="Enable typing indicators"
+                    />
+                  </label>
+                </div>
+              </div>
               <div id="dmAppShellMount"></div>
             </section>
             <section
