@@ -628,6 +628,7 @@ export default class ApplicationBootstrap {
     app.tagPreferencePopovers = new Map();
 
     app.subscriptionsLink = null;
+    app.forYouLink = null;
 
     app.notificationPortal = doc?.getElementById("notificationPortal") || null;
     app.errorContainer = doc?.getElementById("errorContainer") || null;
