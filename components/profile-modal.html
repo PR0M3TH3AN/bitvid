@@ -1,7 +1,7 @@
 <!-- components/profile-modal.html -->
 <div
   id="profileModal"
-  class="bv-modal hidden items-start"
+  class="bv-modal hidden"
   role="dialog"
   aria-modal="true"
   aria-labelledby="profileModalTitle"
@@ -12,7 +12,7 @@
   <div class="bv-modal-backdrop"></div>
 
   <div
-    class="bv-modal__panel modal-sheet profile-modal"
+    class="bv-modal__panel profile-modal w-full h-full max-w-none rounded-none border-none p-0"
     tabindex="-1"
     data-mobile-view="menu"
   >
@@ -217,7 +217,7 @@
                   data-state="active"
                 >
                   <span
-                    class="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-info/50 bg-surface"
+                    class="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-accent/50 bg-surface"
                   >
                     <img
                       id="profileModalAvatar"
@@ -228,7 +228,7 @@
                   </span>
                   <div class="profile-modal__active-details">
                     <div class="profile-modal__active-meta">
-                      <span class="text-3xs font-semibold uppercase tracking-extra-wide text-info">
+                      <span class="text-3xs font-semibold uppercase tracking-extra-wide text-accent">
                         Active profile
                       </span>
                     </div>

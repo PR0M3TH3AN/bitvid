@@ -59,8 +59,6 @@ export function ContactRow({
   header.appendChild(nameEl);
 
   const meta = createElement(doc, "span", "dm-contact-row__meta");
-  const timeEl = createElement(doc, "span", "dm-contact-row__time", timestamp);
-  meta.appendChild(timeEl);
 
   if (Number.isFinite(zapTotalSats)) {
     const zapTotal = createElement(
@@ -78,14 +76,6 @@ export function ContactRow({
 
   header.appendChild(meta);
   content.appendChild(header);
-
-  const previewEl = createElement(
-    doc,
-    "div",
-    "dm-contact-row__preview",
-    preview,
-  );
-  content.appendChild(previewEl);
 
   if (unreadCount > 0) {
     const badge = createElement(doc, "span", "dm-contact-row__badge");

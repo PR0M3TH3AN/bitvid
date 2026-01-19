@@ -241,7 +241,7 @@
     right: var(--space-2xs);
     width: var(--space-sm);
     height: var(--space-sm);
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     border: var(--border-width-hairline) solid var(--color-page);
     background-color: var(--status-danger);
     display: none;
@@ -3015,7 +3015,7 @@
     right: var(--space-3xs);
     width: var(--space-sm);
     height: var(--space-sm);
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     border: var(--border-width-hairline) solid var(--surface-panel);
     background-color: var(--status-danger);
     display: none;
@@ -5171,8 +5171,8 @@
     align-self: flex-start;
     padding: var(--space-3xs) var(--space-xs);
     border-radius: var(--radius-full);
-    background: var(--unread-badge-background);
-    color: var(--unread-badge-text);
+    background: var(--color-accent);
+    color: var(--color-white);
     font-size: var(--font-size-3xs);
   }
 
@@ -5292,12 +5292,21 @@
 
   .dm-message-bubble--outgoing {
     align-self: flex-end;
-    background: var(--message-bubble-outgoing-background);
-    border-color: var(--message-bubble-outgoing-border);
+    background: var(--color-accent);
+    color: var(--color-white);
+    border-color: var(--color-accent-strong);
+  }
+
+  .dm-message-bubble--outgoing .dm-message-bubble__meta,
+  .dm-message-bubble--outgoing .dm-message-bubble__status {
+    color: var(--color-white);
+    opacity: 0.9;
   }
 
   .dm-message-bubble__content {
     font-size: var(--font-size-sm);
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
   }
 
   .dm-message-bubble__meta {
@@ -5563,6 +5572,7 @@
     align-items: center;
     gap: var(--space-sm);
     flex-wrap: wrap;
+    position: relative;
   }
 
   .dm-composer__hint {
@@ -5571,7 +5581,7 @@
   }
 
   .dm-composer__attach,
-  .dm-composer__privacy {
+  .dm-composer__more-btn {
     border-radius: var(--radius-md);
     border: var(--border-width-hairline) solid var(--border-default);
     background: var(--surface-base);
@@ -5581,33 +5591,56 @@
     cursor: pointer;
   }
 
-  .dm-composer__zap-toggle {
-    border-radius: var(--radius-md);
-    border: var(--border-width-hairline) solid var(--border-default);
-    background: var(--surface-base);
-    color: var(--text-muted);
-    padding: var(--space-2xs) var(--space-sm);
-    font-size: var(--font-size-2xs);
-    cursor: pointer;
+  .dm-composer__more-btn {
+    font-weight: 700;
+    line-height: 1;
+    min-width: 2rem;
   }
 
-  .dm-composer__zap-toggle[aria-pressed="true"] {
-    border-color: var(--border-strong);
+  .dm-composer__more-menu {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    margin-bottom: var(--space-xs);
     background: var(--surface-overlay-panel);
-    color: var(--text-primary);
+    border: var(--border-width-hairline) solid var(--border-default);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-popover);
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    min-width: 8rem;
+    padding: var(--space-xs);
   }
 
-  .dm-composer__zap-toggle:hover,
-  .dm-composer__zap-toggle:focus-visible {
+  .dm-composer__menu-item {
+    text-align: left;
+    padding: var(--space-xs) var(--space-sm);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: background var(--motion-duration-fast) ease-out;
+  }
+
+  .dm-composer__menu-item:hover,
+  .dm-composer__menu-item:focus-visible {
     background: var(--surface-overlay-panel-soft);
     color: var(--text-primary);
     outline: none;
   }
 
+  .dm-composer__menu-item[aria-pressed="true"] {
+    background: var(--color-accent);
+    color: var(--color-white);
+  }
+
   .dm-composer__attach:hover,
   .dm-composer__attach:focus-visible,
-  .dm-composer__privacy:hover,
-  .dm-composer__privacy:focus-visible {
+  .dm-composer__more-btn:hover,
+  .dm-composer__more-btn:focus-visible {
     background: var(--surface-overlay-panel-soft);
     color: var(--text-primary);
     outline: none;
