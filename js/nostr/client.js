@@ -116,6 +116,10 @@ import {
   decryptDmInWorker,
   isDmDecryptWorkerSupported,
 } from "./dmDecryptWorkerClient.js";
+import {
+  sanitizeDecryptError,
+  summarizeDmEventForLog,
+} from "./dmDecryptDiagnostics.js";
 import { devLogger, userLogger } from "../utils/logger.js";
 import { LRUCache } from "../utils/lruCache.js";
 import { updateConversationFromMessage, writeMessages } from "../storage/dmDb.js";
@@ -4177,8 +4181,8 @@ export class NostrClient {
       result = await decryptDM(event, context);
     } catch (error) {
       devLogger.warn("[nostr] DM decryptor threw unexpectedly.", {
-        error,
-        eventId,
+        error: sanitizeDecryptError(error),
+        event: summarizeDmEventForLog(event),
       });
       throw error;
     }
@@ -4262,8 +4266,8 @@ export class NostrClient {
         }
       } catch (error) {
         devLogger.warn("[nostr] Failed to decrypt DM event during list.", {
-          error,
-          id: event?.id || null,
+          error: sanitizeDecryptError(error),
+          event: summarizeDmEventForLog(event),
         });
       }
     }
@@ -4349,8 +4353,8 @@ export class NostrClient {
             devLogger.warn(
               "[nostr] Failed to decrypt DM event from subscription.",
               {
-                error,
-                id: eventId,
+                error: sanitizeDecryptError(error),
+                event: summarizeDmEventForLog(event),
               },
             );
           }
