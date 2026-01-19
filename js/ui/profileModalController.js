@@ -2085,7 +2085,7 @@ export class ProfileModalController {
       case "sign-event-unavailable":
         return "Connect a Nostr signer to send messages.";
       case "encryption-unsupported":
-        return "Your signer does not support NIP-44 or NIP-04 encryption.";
+        return "Your signer does not support NIP-04 encryption.";
       case "extension-permission-denied":
         return "Please grant your Nostr extension permission to send messages.";
       case "missing-actor-pubkey":
