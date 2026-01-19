@@ -10,10 +10,10 @@ import {
 
 const { indexedDB, IDBKeyRange } = await import("fake-indexeddb");
 
-global.indexedDB = indexedDB;
-globalThis.indexedDB = indexedDB;
-global.IDBKeyRange = IDBKeyRange;
-globalThis.IDBKeyRange = IDBKeyRange;
+if (!globalThis.indexedDB) {
+  globalThis.indexedDB = indexedDB;
+  globalThis.IDBKeyRange = IDBKeyRange;
+}
 
 async function deleteDatabase(name) {
   await new Promise((resolve) => {
