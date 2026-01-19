@@ -155,6 +155,49 @@ function normalizeHex(value) {
   return /^[0-9a-f]{64}$/.test(trimmed) ? trimmed : "";
 }
 
+function decodeNpubToHex(npub) {
+  if (typeof npub !== "string" || !npub.trim()) {
+    return "";
+  }
+  try {
+    const decoded = window?.NostrTools?.nip19?.decode?.(npub);
+    if (decoded?.type !== "npub" || !decoded.data) {
+      return "";
+    }
+    if (typeof decoded.data === "string") {
+      return normalizeHex(decoded.data);
+    }
+
+    let bufferSource = null;
+    if (decoded.data instanceof Uint8Array) {
+      bufferSource = decoded.data;
+    } else if (Array.isArray(decoded.data)) {
+      bufferSource = Uint8Array.from(decoded.data);
+    } else if (
+      decoded.data?.type === "Buffer" &&
+      Array.isArray(decoded.data?.data)
+    ) {
+      bufferSource = Uint8Array.from(decoded.data.data);
+    }
+
+    if (!bufferSource) {
+      return "";
+    }
+
+    if (typeof window?.NostrTools?.utils?.bytesToHex === "function") {
+      return normalizeHex(window.NostrTools.utils.bytesToHex(bufferSource));
+    }
+    return normalizeHex(
+      Array.from(bufferSource)
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("")
+    );
+  } catch (error) {
+    devLogger.warn("[ChannelProfile] Failed to decode npub to hex", error);
+    return "";
+  }
+}
+
 function decorateChannelVideo(video, app = getApp()) {
   if (!video || typeof video !== "object") {
     return null;
@@ -3282,6 +3325,138 @@ function setupChannelShareButton() {
   shareBtn.dataset.initialized = "true";
 }
 
+function resolveChannelHexForControls() {
+  const normalized = normalizeHex(currentChannelHex);
+  if (normalized) {
+    return normalized;
+  }
+  return decodeNpubToHex(currentChannelNpub);
+}
+
+function syncChannelNotifyButtonState(button, channelHex) {
+  if (!button) {
+    return;
+  }
+  const resolvedHex = normalizeHex(channelHex);
+  const isSubscribed =
+    resolvedHex && subscriptions.isSubscribed(resolvedHex) === true;
+  button.setAttribute("aria-pressed", isSubscribed.toString());
+  button.dataset.state = isSubscribed ? "subscribed" : "unsubscribed";
+  button.classList.toggle("active", isSubscribed);
+}
+
+function openLoginModalForChannelControls(triggerElement) {
+  const loginModal =
+    prepareStaticModal({ id: "loginModal" }) ||
+    document.getElementById("loginModal");
+
+  if (loginModal && openStaticModal(loginModal, { triggerElement })) {
+    setGlobalModalState("login", true);
+  } else {
+    userLogger.warn("Unable to open login modal for channel controls.");
+  }
+}
+
+function setupChannelMessageControls() {
+  const doc = typeof document !== "undefined" ? document : null;
+  const notifyBtn = doc?.getElementById("channelNotifyBtn") || null;
+  const messageBtn = doc?.getElementById("channelMessageBtn") || null;
+
+  if (!notifyBtn && !messageBtn) {
+    return;
+  }
+
+  const channelHex = resolveChannelHexForControls();
+  if (!channelHex) {
+    devLogger.warn("[ChannelProfile] Unable to resolve channel hex for controls.");
+  }
+
+  if (notifyBtn) {
+    syncChannelNotifyButtonState(notifyBtn, channelHex);
+    if (notifyBtn.dataset.initialized !== "true") {
+      notifyBtn.addEventListener("click", async () => {
+        const app = getApp();
+        const resolvedHex = resolveChannelHexForControls();
+        if (!resolvedHex) {
+          app?.showError?.("Unable to resolve channel notifications.");
+          userLogger.warn("Channel notify clicked without a valid channel hex.");
+          return;
+        }
+
+        if (!app?.pubkey) {
+          openLoginModalForChannelControls(notifyBtn);
+          return;
+        }
+
+        try {
+          const isSubscribed =
+            subscriptions.isSubscribed(resolvedHex) === true;
+          if (isSubscribed) {
+            await subscriptions.removeChannel(resolvedHex, app.pubkey);
+          } else {
+            await subscriptions.addChannel(resolvedHex, app.pubkey);
+          }
+        } catch (error) {
+          userLogger.error("Failed to toggle channel notifications:", error);
+          const permissionErrorCodes = new Set([
+            "extension-permission-denied",
+            "nip04-missing",
+          ]);
+          const message = permissionErrorCodes.has(error?.code)
+            ? "Your Nostr extension must support NIP-04 to manage private lists."
+            : "Failed to update channel notifications. Please try again.";
+          app?.showError?.(message);
+        } finally {
+          syncChannelNotifyButtonState(
+            notifyBtn,
+            resolveChannelHexForControls()
+          );
+        }
+      });
+      notifyBtn.dataset.initialized = "true";
+    }
+  }
+
+  if (messageBtn) {
+    if (messageBtn.dataset.initialized !== "true") {
+      messageBtn.addEventListener("click", () => {
+        const app = getApp();
+        const resolvedHex = resolveChannelHexForControls();
+        if (!resolvedHex) {
+          app?.showError?.("Unable to resolve channel messages.");
+          userLogger.warn("Channel message clicked without a valid channel hex.");
+          return;
+        }
+
+        const controller = app?.profileController;
+        if (!controller) {
+          app?.showError?.("Messages are unavailable right now.");
+          userLogger.warn(
+            "Profile controller unavailable for channel messages."
+          );
+          return;
+        }
+
+        if (typeof controller.handleActiveDmIdentityChanged === "function") {
+          controller.handleActiveDmIdentityChanged(resolvedHex);
+        } else {
+          userLogger.warn(
+            "Profile controller missing handleActiveDmIdentityChanged."
+          );
+        }
+
+        if (typeof controller.show === "function") {
+          controller.show("messages");
+        } else {
+          app?.showError?.("Messages are unavailable right now.");
+          userLogger.warn("Profile controller missing show() for messages.");
+        }
+      });
+      messageBtn.dataset.initialized = "true";
+    }
+  }
+}
+
 function setupChannelMoreMenu() {
   const doc = typeof document !== "undefined" ? document : null;
   const moreBtn = doc?.getElementById("channelMoreBtn") || null;
@@ -3656,6 +3831,7 @@ export async function initChannelProfileView() {
   updateChannelModerationVisuals({ app, pubkey: currentChannelHex });
 
   setupChannelShareButton();
+  setupChannelMessageControls();
   setupChannelMoreMenu();
 
   const initialMenuRefresh = updateChannelMenuState().catch((error) => {
