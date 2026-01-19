@@ -1752,6 +1752,9 @@ export class ProfileModalController {
     subscribe("directMessages:failure", (detail) => {
       this.handleDirectMessagesError(detail);
     });
+    subscribe("directMessages:relayWarning", (detail) => {
+      this.handleDirectMessagesRelayWarning(detail);
+    });
 
     this.directMessagesUnsubscribes = unsubscribes;
 
@@ -1995,7 +1998,7 @@ export class ProfileModalController {
     }
   }
 
-  ensureDirectMessageSubscription(actorPubkey = null) {
+  async ensureDirectMessageSubscription(actorPubkey = null) {
     if (
       !this.nostrService ||
       typeof this.nostrService.ensureDirectMessageSubscription !== "function"
@@ -2028,7 +2031,7 @@ export class ProfileModalController {
 
     let subscription = null;
     try {
-      subscription = this.nostrService.ensureDirectMessageSubscription({
+      subscription = await this.nostrService.ensureDirectMessageSubscription({
         actorPubkey: normalizedActor,
       });
     } catch (error) {
@@ -2099,7 +2102,7 @@ export class ProfileModalController {
     }
 
     this.setMessagesLoadingState("loading");
-    this.ensureDirectMessageSubscription(normalized);
+    void this.ensureDirectMessageSubscription(normalized);
     this.updateMessagesReloadState();
 
     if (this.getActivePane() === "messages") {
@@ -2329,10 +2332,9 @@ export class ProfileModalController {
       : [];
 
     if (enabled && !relayHints.length) {
-      this.showError("Recipient has not shared NIP-17 relay hints yet.");
-      this.setPrivacyToggleState(false);
-      this.dmPrivacyToggleTouched = false;
-      return;
+      this.showStatus(
+        "Privacy warning: this recipient has not shared NIP-17 relays, so we'll use your default relays.",
+      );
     }
 
     this.dmPrivacyToggleTouched = true;
@@ -2356,6 +2358,8 @@ export class ProfileModalController {
         return "Your signer does not support NIP-44 encryption required for NIP-17.";
       case "nip17-relays-missing":
         return "Recipient has not shared NIP-17 relay hints yet.";
+      case "nip17-relays-unavailable":
+        return "No DM relays are available to deliver this message.";
       case "nip17-keygen-failed":
         return "We couldn’t create secure wrapper keys for NIP-17 delivery.";
       case "extension-permission-denied":
@@ -2411,10 +2415,9 @@ export class ProfileModalController {
         : false;
 
     if (useNip17 && !recipientRelayHints.length) {
-      this.showError("Recipient has not shared NIP-17 relay hints yet.");
-      this.setPrivacyToggleState(false);
-      this.dmPrivacyToggleTouched = false;
-      return;
+      this.showStatus(
+        "Privacy warning: this recipient has not shared NIP-17 relays, so we'll use your default relays.",
+      );
     }
 
     if (
@@ -2447,6 +2450,11 @@ export class ProfileModalController {
       if (result?.ok) {
         input.value = "";
         this.showSuccess("Message sent.");
+        if (result?.warning === "dm-relays-fallback") {
+          this.showStatus(
+            "Privacy warning: this message used default relays because no NIP-17 relay list was found.",
+          );
+        }
         void this.populateProfileMessages({ force: true, reason: "send-message" });
         return;
       }
@@ -2949,7 +2957,7 @@ export class ProfileModalController {
       }
     }
 
-    this.ensureDirectMessageSubscription(actor);
+    void this.ensureDirectMessageSubscription(actor);
   }
 
   resumeProfileMessages() {
@@ -3049,6 +3057,16 @@ export class ProfileModalController {
 
     this.setMessagesAnnouncement("Unable to sync direct messages right now.");
     this.updateMessagesReloadState();
+  }
+
+  handleDirectMessagesRelayWarning(detail = {}) {
+    if (detail?.warning !== "dm-relays-fallback") {
+      return;
+    }
+
+    this.showStatus(
+      "Privacy warning: direct messages are using your default relays because no NIP-17 relay list is available.",
+    );
   }
 
   registerEventListeners() {

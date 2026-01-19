@@ -2,8 +2,12 @@ import { nostrClient } from "../nostrClientFacade.js";
 import { convertEventToVideo } from "../nostr/index.js";
 import { accessControl } from "../accessControl.js";
 import { ALLOW_NSFW_CONTENT } from "../config.js";
-import { userLogger } from "../utils/logger.js";
+import { devLogger, userLogger } from "../utils/logger.js";
 import moderationService from "./moderationService.js";
+import {
+  DM_RELAY_WARNING_FALLBACK,
+  resolveDmRelaySelection,
+} from "./dmNostrService.js";
 import {
   loadDirectMessageSnapshot,
   saveDirectMessageSnapshot,
@@ -874,7 +878,7 @@ export class NostrService {
     return snapshot;
   }
 
-  ensureDirectMessageSubscription({ actorPubkey, relays, ...handlers } = {}) {
+  async ensureDirectMessageSubscription({ actorPubkey, relays, ...handlers } = {}) {
     if (this.dmSubscription) {
       return this.dmSubscription;
     }
@@ -885,11 +889,40 @@ export class NostrService {
       return null;
     }
 
+    let resolvedRelays = Array.isArray(relays) ? relays : null;
+    let relaySelection = null;
+
+    if (!resolvedRelays) {
+      const discoveryRelays = Array.isArray(this.nostrClient?.readRelays)
+        ? this.nostrClient.readRelays
+        : Array.isArray(this.nostrClient?.relays)
+        ? this.nostrClient.relays
+        : [];
+
+      let pool = this.nostrClient?.pool || null;
+      if (!pool && typeof this.nostrClient?.ensurePool === "function") {
+        try {
+          pool = await this.nostrClient.ensurePool();
+        } catch (error) {
+          devLogger.warn("[nostrService] Failed to initialize DM relay pool.", error);
+        }
+      }
+
+      relaySelection = await resolveDmRelaySelection({
+        pubkey: normalizedActor,
+        discoveryRelays,
+        fallbackRelays: discoveryRelays,
+        pool,
+        log: { dev: devLogger, user: userLogger },
+      });
+      resolvedRelays = relaySelection.relays;
+    }
+
     try {
       const subscription = this.nostrClient.subscribeDirectMessages(
         normalizedActor,
         {
-          relays,
+          relays: resolvedRelays,
           onEvent: handlers.onEvent,
           onMessage: (message, context = {}) => {
             this.applyDirectMessage(message, {
@@ -957,6 +990,14 @@ export class NostrService {
       this.dmSubscription = subscription;
       this.dmActorPubkey = normalizedActor;
       this.emit("directMessages:subscribed", { subscription });
+      if (relaySelection?.warning === DM_RELAY_WARNING_FALLBACK) {
+        this.emit("directMessages:relayWarning", {
+          actorPubkey: normalizedActor,
+          warning: relaySelection.warning,
+          relays: resolvedRelays,
+          source: relaySelection.source,
+        });
+      }
       return subscription;
     } catch (error) {
       userLogger.warn(

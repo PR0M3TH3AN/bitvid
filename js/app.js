@@ -3223,11 +3223,9 @@ class Application {
       : [];
 
     if (enabled && !relayHints.length) {
-      this.showError("Recipient has not shared NIP-17 relay hints yet.");
-      if (controller?.setPrivacyToggleState) {
-        controller.setPrivacyToggleState(false);
-      }
-      return;
+      this.showStatus(
+        "Privacy warning: this recipient has not shared NIP-17 relays, so we'll use your default relays.",
+      );
     }
 
     this.showStatus(
