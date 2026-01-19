@@ -2956,7 +2956,7 @@ class Application {
     );
   }
 
-  mountVideoListView(container = null) {
+  mountVideoListView({ container = null, includeTags = true } = {}) {
     if (!this.videoListView) {
       return null;
     }
@@ -2966,15 +2966,23 @@ class Application {
         container,
         view: this.videoListView,
         currentVideoList: this.videoList,
+        includeTags,
       });
       this.videoList = videoList || null;
       this.videoListPopularTags = popularTags || null;
       return this.videoList;
     }
 
+    const isElement = (value) =>
+      typeof HTMLElement !== "undefined" && value instanceof HTMLElement;
+
     const target = container || document.getElementById("videoList");
     this.videoList = target || null;
-    const tagsRoot = document.getElementById("recentVideoTags");
+
+    let tagsRoot = null;
+    if (includeTags) {
+      tagsRoot = document.getElementById("recentVideoTags");
+    }
     this.videoListPopularTags = tagsRoot || null;
     if (typeof this.videoListView.setPopularTagsContainer === "function") {
       this.videoListView.setPopularTagsContainer(this.videoListPopularTags);
@@ -5747,7 +5755,7 @@ class Application {
     devLogger.log("Starting loadForYouVideos... (forceFetch =", forceFetch, ")");
     this.setFeedTelemetryContext("for-you");
 
-    const container = this.mountVideoListView();
+    const container = this.mountVideoListView({ includeTags: false });
     const hasCachedVideos =
       this.nostrService &&
       Array.isArray(this.nostrService.getFilteredActiveVideos()) &&

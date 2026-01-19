@@ -17,13 +17,16 @@ export default class VideoListViewController {
     );
   }
 
-  mount({ container = null, view, currentVideoList = null } = {}) {
+  mount({ container = null, view, currentVideoList = null, includeTags = true } = {}) {
     if (!view) {
       return { videoList: currentVideoList || null, popularTags: null };
     }
 
     const target = container || this.getElementById("videoList");
-    const popularTags = this.getElementById("recentVideoTags");
+    let popularTags = null;
+    if (includeTags) {
+      popularTags = this.getElementById("recentVideoTags");
+    }
 
     if (typeof view.setPopularTagsContainer === "function") {
       view.setPopularTagsContainer(popularTags || null);
