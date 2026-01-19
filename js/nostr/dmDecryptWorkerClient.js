@@ -82,6 +82,7 @@ export function decryptDmInWorker({
   privateKey,
   targetPubkey,
   ciphertext,
+  event,
   timeoutMs = DEFAULT_TIMEOUT_MS,
 } = {}) {
   const worker = ensureWorker();
@@ -95,6 +96,7 @@ export function decryptDmInWorker({
     typeof targetPubkey === "string" ? targetPubkey.trim() : "";
   const payloadCiphertext = typeof ciphertext === "string" ? ciphertext : "";
   const payloadScheme = typeof scheme === "string" ? scheme : "";
+  const payloadEvent = event && typeof event === "object" ? event : null;
 
   if (!trimmedPrivateKey || !trimmedTarget || !payloadCiphertext) {
     return Promise.reject(new Error("dm-worker-invalid-input"));
@@ -115,6 +117,7 @@ export function decryptDmInWorker({
       privateKey: trimmedPrivateKey,
       targetPubkey: trimmedTarget,
       ciphertext: payloadCiphertext,
+      event: payloadEvent,
     });
   });
 }

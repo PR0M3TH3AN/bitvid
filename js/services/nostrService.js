@@ -353,7 +353,9 @@ function normalizeDirectMessageRecord(message, actorPubkey = "") {
     : [];
 
   const encryptionScheme =
-    typeof message?.scheme === "string"
+    typeof message?.encryption_scheme === "string"
+      ? message.encryption_scheme.trim()
+      : typeof message?.scheme === "string"
       ? message.scheme.trim()
       : typeof message?.decryptor?.scheme === "string"
       ? message.decryptor.scheme.trim()
@@ -442,6 +444,7 @@ function hydrateMessagesFromSnapshot(snapshot, actorPubkey = "") {
       recipients: [],
       direction: "unknown",
       scheme: "",
+      encryption_scheme: "",
       decryptor: { scheme: "", source: "snapshot" },
       event: {
         id: `dm-snapshot:${normalizedActor || "actor"}:${remote}:${timestamp}:${index}`,

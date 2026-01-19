@@ -47,6 +47,8 @@ const normalizePayload = (payload) => {
     typeof payload.targetPubkey === "string" ? payload.targetPubkey.trim() : "";
   const ciphertext =
     typeof payload.ciphertext === "string" ? payload.ciphertext : "";
+  const event =
+    payload.event && typeof payload.event === "object" ? payload.event : null;
 
   if (!id || !privateKey || !targetPubkey || !ciphertext) {
     return null;
@@ -58,6 +60,33 @@ const normalizePayload = (payload) => {
     privateKey,
     targetPubkey,
     ciphertext,
+    event,
+  };
+};
+
+const normalizeEventForVerification = (event) => {
+  if (!event || typeof event !== "object") {
+    return null;
+  }
+
+  const pubkey = typeof event.pubkey === "string" ? event.pubkey.trim() : "";
+  const sig = typeof event.sig === "string" ? event.sig.trim() : "";
+  const id = typeof event.id === "string" ? event.id.trim() : "";
+
+  if (!pubkey || !sig || !id) {
+    return null;
+  }
+
+  return {
+    id,
+    pubkey,
+    sig,
+    kind: Number.isFinite(event.kind) ? event.kind : 0,
+    created_at: Number.isFinite(event.created_at)
+      ? event.created_at
+      : Math.floor(Date.now() / 1000),
+    tags: Array.isArray(event.tags) ? event.tags : [],
+    content: typeof event.content === "string" ? event.content : "",
   };
 };
 
@@ -137,6 +166,31 @@ const ensureNip44 = async () => {
   };
 };
 
+const verifyEventSignature = async (event, tools = null) => {
+  const candidate = normalizeEventForVerification(event);
+  if (!candidate) {
+    throw new Error("missing-event-signature");
+  }
+
+  const resolvedTools = tools || (await ensureNostrTools()) || getCachedNostrTools();
+  if (!resolvedTools || typeof resolvedTools !== "object") {
+    throw new Error("signature-verification-unavailable");
+  }
+
+  if (
+    typeof resolvedTools.validateEvent !== "function" ||
+    typeof resolvedTools.verifyEvent !== "function"
+  ) {
+    throw new Error("signature-verification-unavailable");
+  }
+
+  if (!resolvedTools.validateEvent(candidate) || !resolvedTools.verifyEvent(candidate)) {
+    throw new Error("invalid-event-signature");
+  }
+
+  return true;
+};
+
 const handleMessage = async (event) => {
   const payload = normalizePayload(event?.data);
   if (!payload) {
@@ -159,6 +213,7 @@ const handleMessage = async (event) => {
 
   try {
     if (payload.scheme === "nip44" || payload.scheme === "nip44_v2") {
+      await verifyEventSignature(payload.event);
       const nip44 = await ensureNip44();
       const privateKeyBytes = nip44.hexToBytes(payload.privateKey);
       const conversationKey = nip44.getConversationKey(
