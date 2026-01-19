@@ -20,6 +20,7 @@ export const NOTE_TYPES = Object.freeze({
   VIEW_EVENT: "viewEvent",
   VIDEO_REACTION: "videoReaction",
   VIDEO_COMMENT: "videoComment",
+  DM_ATTACHMENT: "dmAttachment",
   ZAP_REQUEST: "zapRequest",
   ZAP_RECEIPT: "zapReceipt",
   WATCH_HISTORY: "watchHistory",
@@ -362,6 +363,23 @@ const BASE_SCHEMAS = {
     content: {
       format: "text",
       description: "Plain text comment body sanitized for UTF-8 compatibility.",
+    },
+  },
+  [NOTE_TYPES.DM_ATTACHMENT]: {
+    type: NOTE_TYPES.DM_ATTACHMENT,
+    label: "DM attachment (NIP-17 file rumor)",
+    kind: 15,
+    participantTagName: "p",
+    hashTagName: "x",
+    urlTagName: "url",
+    nameTagName: "name",
+    typeTagName: "type",
+    sizeTagName: "size",
+    keyTagName: "k",
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      format: "empty",
+      description: "Attachment metadata is carried in tags; content is empty.",
     },
   },
   [NOTE_TYPES.ZAP_REQUEST]: {
@@ -1084,6 +1102,56 @@ export function buildMuteListEvent(params) {
     created_at,
     tags,
     content: typeof content === "string" ? content : "",
+  };
+}
+
+export function buildDmAttachmentEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    recipientPubkey,
+    attachment = {},
+    additionalTags = [],
+  } = params || {};
+  const schema = getNostrEventSchema(NOTE_TYPES.DM_ATTACHMENT);
+  const tags = [];
+
+  const participantTagName = schema?.participantTagName || "p";
+  if (recipientPubkey && typeof recipientPubkey === "string") {
+    tags.push([participantTagName, recipientPubkey.trim()]);
+  }
+
+  if (attachment?.x) {
+    tags.push([schema?.hashTagName || "x", attachment.x]);
+  }
+  if (attachment?.url) {
+    tags.push([schema?.urlTagName || "url", attachment.url]);
+  }
+  if (attachment?.name) {
+    tags.push([schema?.nameTagName || "name", attachment.name]);
+  }
+  if (attachment?.type) {
+    tags.push([schema?.typeTagName || "type", attachment.type]);
+  }
+  if (Number.isFinite(attachment?.size)) {
+    tags.push([schema?.sizeTagName || "size", String(attachment.size)]);
+  }
+  if (attachment?.key) {
+    tags.push([schema?.keyTagName || "k", attachment.key]);
+  }
+
+  appendSchemaTags(tags, schema);
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
+  }
+
+  return {
+    kind: schema?.kind ?? 15,
+    pubkey,
+    created_at,
+    tags,
+    content: "",
   };
 }
 
