@@ -433,9 +433,12 @@ export default class VideoModalCommentController {
     }
 
     const comments = this.createMapFromInput(payload.commentsById);
+<<<<<<< HEAD
     const childrenByParent = this.createChildrenMapFromInput(
       payload.childrenByParent,
     );
+=======
+>>>>>>> origin/main
     const profiles = this.createMapFromInput(payload.profiles, {
       normalizeKey: this.utils.normalizeHexPubkey,
     });
@@ -456,6 +459,7 @@ export default class VideoModalCommentController {
       ? payload.commentIds
       : [];
 
+<<<<<<< HEAD
     if (
       this.modalCommentState.parentCommentId &&
       comments.has(this.modalCommentState.parentCommentId)
@@ -507,6 +511,8 @@ export default class VideoModalCommentController {
       return;
     }
 
+=======
+>>>>>>> origin/main
     commentIds.forEach((commentId) => {
       if (!comments.has(commentId)) {
         return;

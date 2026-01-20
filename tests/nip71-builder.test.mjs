@@ -4,7 +4,11 @@ import test from "node:test";
 import {
   buildNip71VideoEvent,
   extractNip71MetadataFromTags,
+<<<<<<< HEAD
 } from "../js/nostr/nip71.js";
+=======
+} from "../js/nostr.js";
+>>>>>>> origin/main
 
 const participantNpub = "npub1bitvidparticipantfixture";
 const participantHexFromNpub = "c".repeat(64);

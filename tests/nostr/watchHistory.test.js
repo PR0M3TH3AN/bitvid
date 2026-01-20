@@ -3,7 +3,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+<<<<<<< HEAD
   buildWatchHistoryPayload,
+=======
+  chunkWatchHistoryPayloadItems,
+>>>>>>> origin/main
   createWatchHistoryManager,
   fetchWatchHistory,
   getWatchHistoryCacheTtlMs,
@@ -11,7 +15,11 @@ import {
 } from "../../js/nostr/watchHistory.js";
 import { WATCH_HISTORY_KIND } from "../../js/config.js";
 
+<<<<<<< HEAD
 const WATCH_HISTORY_STORAGE_KEY = "bitvid:watch-history:v5";
+=======
+const WATCH_HISTORY_STORAGE_KEY = "bitvid:watch-history:v2";
+>>>>>>> origin/main
 
 function ensureLocalStorageCleared() {
   if (typeof localStorage?.clear === "function") {
@@ -23,8 +31,13 @@ test.beforeEach(() => {
   ensureLocalStorageCleared();
 });
 
+<<<<<<< HEAD
 test("buildWatchHistoryPayload enforces byte limits and records skipped entries", () => {
   const month = "2025-01";
+=======
+test("chunkWatchHistoryPayloadItems enforces byte limits and records skipped entries", () => {
+  const snapshotId = "snapshot-chunk";
+>>>>>>> origin/main
   const maxBytes = 256;
   const oversizedPointer = {
     type: "e",
@@ -39,10 +52,16 @@ test("buildWatchHistoryPayload enforces byte limits and records skipped entries"
   }));
   const payloadItems = [oversizedPointer, ...smallPointers];
 
+<<<<<<< HEAD
   const { payload, skipped, included } = buildWatchHistoryPayload(
     month,
     payloadItems,
     null,
+=======
+  const { chunks, skipped } = chunkWatchHistoryPayloadItems(
+    payloadItems,
+    snapshotId,
+>>>>>>> origin/main
     maxBytes,
   );
 
@@ -53,6 +72,7 @@ test("buildWatchHistoryPayload enforces byte limits and records skipped entries"
     "skipped list should capture the oversized pointer",
   );
 
+<<<<<<< HEAD
   assert.equal(payload.month, month, "payload should record the requested month");
   assert.equal(payload.version, 2, "payload should record the expected version");
   assert.deepStrictEqual(
@@ -75,6 +95,29 @@ test("buildWatchHistoryPayload enforces byte limits and records skipped entries"
     serializedLength <= maxBytes,
     `payload should respect the configured max bytes (observed ${serializedLength})`,
   );
+=======
+  const flattened = chunks.flat();
+  assert.deepStrictEqual(
+    flattened.map((item) => item.value),
+    smallPointers.map((item) => item.value),
+    "all remaining pointers should be included across chunks",
+  );
+  assert(chunks.length > 1, "payload should be split across multiple chunks");
+
+  chunks.forEach((chunkItems, index) => {
+    const serializedLength = JSON.stringify({
+      version: 2,
+      snapshot: snapshotId,
+      chunkIndex: index,
+      totalChunks: chunks.length,
+      items: chunkItems,
+    }).length;
+    assert(
+      serializedLength <= maxBytes,
+      `chunk ${index} should respect the configured max bytes (observed ${serializedLength})`,
+    );
+  });
+>>>>>>> origin/main
 });
 
 test("getWatchHistoryStorage prunes entries that exceed the configured TTL", () => {

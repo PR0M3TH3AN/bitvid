@@ -4,15 +4,23 @@ import assert from "node:assert/strict";
 const { userBlocks, USER_BLOCK_EVENTS } = await import("../js/userBlocks.js");
 const {
   nostrClient,
+<<<<<<< HEAD
 } = await import("../js/nostrClientFacade.js");
 const { setActiveSigner, clearActiveSigner, getActiveSigner } = await import(
   "../js/nostr/client.js"
 );
+=======
+  setActiveSigner,
+  clearActiveSigner,
+  getActiveSigner,
+} = await import("../js/nostr.js");
+>>>>>>> origin/main
 
 if (typeof globalThis.window === "undefined") {
   globalThis.window = {};
 }
 
+<<<<<<< HEAD
 // Fix environment for NostrTools
 if (typeof globalThis.NostrTools === "undefined") {
   // Polyfill enough of NostrTools for the tests to function if actual library missing or failing bootstrap
@@ -24,6 +32,8 @@ if (typeof globalThis.NostrTools === "undefined") {
   };
 }
 
+=======
+>>>>>>> origin/main
 await (async () => {
   const actor = "f".repeat(64);
   const blocked = "e".repeat(64);
@@ -98,6 +108,7 @@ await (async () => {
       "loadBlocks should initiate queries for all relays concurrently"
     );
 
+<<<<<<< HEAD
     // Reverting to original test data:
     // relay-one (fast): OLD event
     // relay-two (fast): NEW event
@@ -108,6 +119,8 @@ await (async () => {
     // Background path (Promise.allSettled) gets BOTH.
     // Background path merges and finds 'event-new'.
     // So if the code correctly implements eventual consistency, userBlocks.blockEventId will settle on 'event-new'.
+=======
+>>>>>>> origin/main
     const responses = {
       [relays[0]]: [
         {
@@ -334,7 +347,11 @@ await (async () => {
   const originalMuteEventCreatedAt = userBlocks.muteEventCreatedAt;
   const originalLoaded = userBlocks.loaded;
   const originalSeedStateCache = userBlocks.seedStateCache;
+<<<<<<< HEAD
   const originalNostrTools = globalThis.NostrTools;
+=======
+  const originalNostrTools = window.NostrTools;
+>>>>>>> origin/main
 
   const publishCalls = [];
 
@@ -345,8 +362,12 @@ await (async () => {
     [seedTwoNpub, seedTwoHex],
   ]);
 
+<<<<<<< HEAD
   // Patch both globalThis and window to ensure userBlocks sees it
   globalThis.NostrTools = {
+=======
+  window.NostrTools = {
+>>>>>>> origin/main
     ...(originalNostrTools || {}),
     nip19: {
       ...((originalNostrTools && originalNostrTools.nip19) || {}),
@@ -358,7 +379,10 @@ await (async () => {
       },
     },
   };
+<<<<<<< HEAD
   window.NostrTools = globalThis.NostrTools;
+=======
+>>>>>>> origin/main
 
   userBlocks.ensureLoaded = async () => {
     userBlocks.loaded = true;
@@ -477,7 +501,11 @@ await (async () => {
     userBlocks.muteEventCreatedAt = originalMuteEventCreatedAt;
     userBlocks.loaded = originalLoaded;
     userBlocks.seedStateCache = originalSeedStateCache;
+<<<<<<< HEAD
     globalThis.NostrTools = originalNostrTools;
+=======
+    window.NostrTools = originalNostrTools;
+>>>>>>> origin/main
     localStorage.clear();
   }
 })();
@@ -515,8 +543,11 @@ await (async () => {
   let latestCiphertext = "cipher:[]";
   let latestEventId = "event-initial";
   let latestCreatedAt = 1_000;
+<<<<<<< HEAD
   // Capture tags for faithful mock
   let latestTags = [];
+=======
+>>>>>>> origin/main
 
   const decryptPayloads = new Map([[latestCiphertext, JSON.stringify([])]]);
 
@@ -527,7 +558,10 @@ await (async () => {
   nostrClient.pool = {
     publish: (_targets, event) => {
       latestCiphertext = event.content;
+<<<<<<< HEAD
       latestTags = event.tags; // Store tags
+=======
+>>>>>>> origin/main
       latestEventId = event.id || `event-${Date.now()}`;
       latestCreatedAt = event.created_at || Math.floor(Date.now() / 1000);
       return {
@@ -547,7 +581,10 @@ await (async () => {
         created_at: latestCreatedAt,
         pubkey: actor,
         content: latestCiphertext,
+<<<<<<< HEAD
         tags: latestTags || [], // Return tags so encryption hints work
+=======
+>>>>>>> origin/main
       },
     ],
   };
@@ -1071,6 +1108,7 @@ await (async () => {
     }
   }
 })();
+<<<<<<< HEAD
 
 await (async () => {
     // Test for tag-only Kind 10000 events (Primal-style)
@@ -1238,3 +1276,5 @@ await (async () => {
     window.nostr = originalNostr;
   }
 })();
+=======
+>>>>>>> origin/main

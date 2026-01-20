@@ -75,13 +75,17 @@ beforeEach(async () => {
   global.HTMLElement = windowRef.HTMLElement;
   global.Element = windowRef.Element;
   global.Node = windowRef.Node;
+<<<<<<< HEAD
   global.HTMLStyleElement = windowRef.HTMLStyleElement;
+=======
+>>>>>>> origin/main
   global.getComputedStyle = windowRef.getComputedStyle.bind(windowRef);
   global.ResizeObserver = StubObserver;
   if (!global.PointerEvent) {
     global.PointerEvent = windowRef.PointerEvent || windowRef.Event;
   }
   windowRef.scrollTo = () => {};
+<<<<<<< HEAD
   const rootStyle = documentRef.createElement("style");
   rootStyle.id = "testRootVars";
   rootStyle.textContent = `
@@ -91,6 +95,16 @@ beforeEach(async () => {
     }
   `;
   documentRef.head.appendChild(rootStyle);
+=======
+  documentRef.documentElement.style.setProperty(
+    "--popover-inline-safe-max",
+    "calc(100vw - var(--space-xl))",
+  );
+  documentRef.documentElement.style.setProperty(
+    "--overlay-panel-padding-block",
+    "240px",
+  );
+>>>>>>> origin/main
 
   setMockedPosition();
 
@@ -207,6 +221,7 @@ test("flips placement when bottom placement would collide with viewport", async 
 
   const panel = documentRef.querySelector('[data-test-panel="collision"]');
   assert.ok(panel, "panel should render");
+<<<<<<< HEAD
   const panelStyles = windowRef.getComputedStyle(panel);
   assert.equal(panel.dataset.popoverState, "open");
   assert.equal(panel.dataset.state, "open");
@@ -221,6 +236,18 @@ test("flips placement when bottom placement would collide with viewport", async 
 
   const top = Number.parseInt(panelStyles.getPropertyValue("--popover-top"), 10);
   const left = Number.parseInt(panelStyles.getPropertyValue("--popover-left"), 10);
+=======
+  assert.equal(panel.dataset.popoverState, "open");
+  assert.equal(panel.dataset.state, "open");
+  assert.equal(panel.dataset.popoverPlacement, "top-start");
+  assert.equal(panel.style.position, "fixed");
+  assert.equal(panel.style.left, "96px");
+  assert.equal(panel.style.top, "81px");
+  assert.equal(panel.style.maxWidth, "calc(100vw - var(--space-xl))");
+
+  const top = Number.parseInt(panel.style.top, 10);
+  const left = Number.parseInt(panel.style.left, 10);
+>>>>>>> origin/main
   assert.ok(Number.isFinite(top));
   assert.ok(Number.isFinite(left));
   assert.ok(top >= 0, "top should stay within viewport");

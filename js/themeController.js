@@ -133,25 +133,34 @@ const applyAccentOverrides = (root, theme) => {
       ? accentOverrides[theme]
       : null;
 
+<<<<<<< HEAD
   let hasOverrides = false;
 
+=======
+>>>>>>> origin/main
   Object.entries(ACCENT_CSS_VARIABLES).forEach(([token, cssVariable]) => {
     const overrideValue = themeOverrides ? themeOverrides[token] : null;
     const normalized = normalizeAccentValue(overrideValue);
 
     if (normalized) {
       root.style.setProperty(cssVariable, normalized);
+<<<<<<< HEAD
       hasOverrides = true;
+=======
+>>>>>>> origin/main
     } else {
       root.style.removeProperty(cssVariable);
     }
   });
+<<<<<<< HEAD
 
   if (hasOverrides) {
     root.dataset.themeAccent = "override";
   } else {
     root.removeAttribute("data-theme-accent");
   }
+=======
+>>>>>>> origin/main
 };
 
 const updateThemeColorMeta = (theme) => {
@@ -378,3 +387,7 @@ export const initThemeController = () => {
   applyTheme(initialTheme, { persist: true });
   refreshThemeControls(document);
 };
+<<<<<<< HEAD
+=======
+
+>>>>>>> origin/main

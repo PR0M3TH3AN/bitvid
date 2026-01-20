@@ -271,15 +271,21 @@ export default class LoginModalController {
       this.modalElement?.querySelector("template[data-login-nsec-dialog]") || null;
     this.nip46Template =
       this.modalElement?.querySelector("template[data-login-nip46-dialog]") || null;
+<<<<<<< HEAD
     this.generateTemplate =
       this.modalElement?.querySelector("template[data-login-generate-dialog]") || null;
+=======
+>>>>>>> origin/main
     this.template = null;
     this.providerEntries = new Map();
     this.slowTimers = new Map();
     this.boundClickHandler = (event) => this.handleContainerClick(event);
     this.activeNsecForm = null;
     this.activeNip46Form = null;
+<<<<<<< HEAD
     this.activeGenerateView = null;
+=======
+>>>>>>> origin/main
     this.pendingNip46Cleanup = null;
     this.remoteSignerUnsubscribe = null;
     this.lastRemoteSignerStatus = null;
@@ -287,12 +293,15 @@ export default class LoginModalController {
     this.nextRequestLoginOptionsResolver = null;
     this.pendingTask = null;
     this.modalPrepared = false;
+<<<<<<< HEAD
     // Track generated keys so we only create one keypair per modal session.
     this.generatedKeypair = null;
     // Track modal close state to reset generated keys when the modal closes.
     this.modalCloseObserver = null;
     this.modalCloseIntervalId = null;
     this.isSelectionInProgress = false;
+=======
+>>>>>>> origin/main
 
     this.initializeRemoteSignerStatus();
     this.initialized = false;
@@ -316,8 +325,11 @@ export default class LoginModalController {
     this.template = this.resolveTemplate();
 
     this.renderProviders();
+<<<<<<< HEAD
     // Start tracking modal close events to reset per-session key generation state.
     this.initializeModalCloseTracking();
+=======
+>>>>>>> origin/main
 
     if (typeof this.lastRemoteSignerStatus !== "undefined") {
       this.applyRemoteSignerStatus(this.lastRemoteSignerStatus);
@@ -327,6 +339,7 @@ export default class LoginModalController {
     this.initialized = true;
   }
 
+<<<<<<< HEAD
   initializeModalCloseTracking() {
     const modal = this.modalElement;
     if (!(modal instanceof HTMLElement)) {
@@ -378,6 +391,8 @@ export default class LoginModalController {
     this.generatedKeypair = null;
   }
 
+=======
+>>>>>>> origin/main
   ensureModalPrepared() {
     if (!(this.modalElement instanceof HTMLElement)) {
       return null;
@@ -398,8 +413,11 @@ export default class LoginModalController {
     }
 
     this.modalPrepared = true;
+<<<<<<< HEAD
     // Ensure close tracking starts after modal preparation updates the element.
     this.initializeModalCloseTracking();
+=======
+>>>>>>> origin/main
     return this.modalElement instanceof HTMLElement ? this.modalElement : null;
   }
 
@@ -1140,14 +1158,29 @@ export default class LoginModalController {
     const handshakePanel = form.querySelector("[data-nip46-handshake-panel]");
     const qrContainer = form.querySelector("[data-nip46-qr]");
     const handshakeInput = form.querySelector("[data-nip46-handshake-uri]");
+<<<<<<< HEAD
     const debugUriContainer = form.querySelector("[data-nip46-debug-uri]");
     const copyButton = form.querySelector("[data-nip46-copy-uri]");
+=======
+    const copyButton = form.querySelector("[data-nip46-copy-uri]");
+    const secretNode = form.querySelector("[data-nip46-secret]");
+>>>>>>> origin/main
     const statusNode = form.querySelector("[data-nip46-status]");
     const authContainer = form.querySelector("[data-nip46-auth]");
     const authMessageNode = form.querySelector("[data-nip46-auth-message]");
     const authOpenButton = form.querySelector("[data-nip46-auth-open]");
+<<<<<<< HEAD
     const reuseButton = form.querySelector("[data-nip46-reuse]");
     const cancelButton = form.querySelector("[data-nip46-cancel]");
+=======
+    const manualToggle = form.querySelector("[data-nip46-toggle-manual]");
+    const manualFields = form.querySelector("[data-nip46-manual-fields]");
+    const manualInput = form.querySelector("[data-nip46-legacy-uri]");
+    const rememberCheckbox = form.querySelector("[data-nip46-remember]");
+    const reuseButton = form.querySelector("[data-nip46-reuse]");
+    const cancelButton = form.querySelector("[data-nip46-cancel]");
+    const submitButton = form.querySelector("[data-nip46-submit]");
+>>>>>>> origin/main
     const errorNode = form.querySelector("[data-nip46-error]");
 
     const storedMetadata = this.getStoredNip46Metadata();
@@ -1173,12 +1206,19 @@ export default class LoginModalController {
     this.modalBody.appendChild(form);
     this.activeNip46Form = form;
 
+<<<<<<< HEAD
     if (handshakeInput instanceof HTMLInputElement) {
       handshakeInput.readOnly = true;
       handshakeInput.value = "";
     }
     if (debugUriContainer instanceof HTMLElement) {
       debugUriContainer.textContent = "Waiting for connect link...";
+=======
+    if (handshakeInput instanceof HTMLTextAreaElement) {
+      handshakeInput.readOnly = true;
+      handshakeInput.value = "";
+      handshakeInput.placeholder = "Waiting for connect link…";
+>>>>>>> origin/main
     }
     if (copyButton instanceof HTMLButtonElement) {
       copyButton.disabled = true;
@@ -1233,6 +1273,10 @@ export default class LoginModalController {
     const resetStatus = () => setStatus("", "info");
 
     let qrInstance = null;
+<<<<<<< HEAD
+=======
+    let manualMode = false;
+>>>>>>> origin/main
     let pendingAuthUrl = "";
 
     const setAuthChallenge = (url) => {
@@ -1260,6 +1304,21 @@ export default class LoginModalController {
 
     const setPendingState = (pending) => {
       const disabled = pending === true;
+<<<<<<< HEAD
+=======
+      if (submitButton instanceof HTMLButtonElement) {
+        submitButton.disabled = disabled;
+      }
+      if (rememberCheckbox instanceof HTMLInputElement) {
+        rememberCheckbox.disabled = disabled;
+      }
+      if (manualToggle instanceof HTMLButtonElement) {
+        manualToggle.disabled = disabled;
+      }
+      if (manualInput instanceof HTMLTextAreaElement) {
+        manualInput.disabled = disabled;
+      }
+>>>>>>> origin/main
       if (reuseButton instanceof HTMLButtonElement) {
         reuseButton.disabled = disabled;
       }
@@ -1268,7 +1327,11 @@ export default class LoginModalController {
       }
       if (copyButton instanceof HTMLButtonElement) {
         const hasUri =
+<<<<<<< HEAD
           handshakeInput instanceof HTMLInputElement &&
+=======
+          handshakeInput instanceof HTMLTextAreaElement &&
+>>>>>>> origin/main
           !!handshakeInput.value;
         copyButton.disabled = disabled || !hasUri;
       }
@@ -1279,6 +1342,7 @@ export default class LoginModalController {
         detail && typeof detail === "object"
           ? detail.uri || detail.connectionString || ""
           : "";
+<<<<<<< HEAD
       if (!uri) {
         setError("Failed to generate connection link. Please try again.");
         return;
@@ -1294,6 +1358,25 @@ export default class LoginModalController {
         copyButton.disabled = !uri;
       }
 
+=======
+      if (handshakeInput instanceof HTMLTextAreaElement) {
+        handshakeInput.value = uri;
+      }
+      if (copyButton instanceof HTMLButtonElement) {
+        copyButton.disabled = !uri;
+      }
+      if (secretNode instanceof HTMLElement) {
+        const secretValue =
+          detail && typeof detail.secret === "string" ? detail.secret.trim() : "";
+        if (secretValue) {
+          secretNode.textContent = `Secret: ${secretValue}`;
+          secretNode.classList.remove("hidden");
+        } else {
+          secretNode.textContent = "";
+          secretNode.classList.add("hidden");
+        }
+      }
+>>>>>>> origin/main
       if (qrContainer instanceof HTMLElement) {
         qrContainer.innerHTML = "";
         const resolveTokenColor = (tokenName, fallback) => {
@@ -1336,7 +1419,11 @@ export default class LoginModalController {
             if (fallback) {
               fallback.className = "text-center text-xs text-text-muted";
               fallback.textContent =
+<<<<<<< HEAD
                 "Unable to render QR code. Use the copy button below.";
+=======
+                "Unable to render QR code. Use the connect link below.";
+>>>>>>> origin/main
               qrContainer.appendChild(fallback);
             }
           }
@@ -1345,6 +1432,12 @@ export default class LoginModalController {
         }
       }
       setPendingState(false);
+<<<<<<< HEAD
+=======
+      if (submitButton instanceof HTMLButtonElement) {
+        submitButton.disabled = true;
+      }
+>>>>>>> origin/main
       resetStatus();
       clearAuthChallenge();
       setError("");
@@ -1390,12 +1483,50 @@ export default class LoginModalController {
       setAuthChallenge(normalized);
     };
 
+<<<<<<< HEAD
     let cancelHandler = null;
     let reuseHandler = null;
     let copyHandler = null;
     let authOpenHandler = null;
 
     const cleanup = () => {
+=======
+    const applyManualMode = (enabled) => {
+      manualMode = enabled === true;
+      if (manualFields instanceof HTMLElement) {
+        manualFields.classList.toggle("hidden", !manualMode);
+      }
+      if (handshakePanel instanceof HTMLElement) {
+        handshakePanel.classList.toggle("hidden", manualMode);
+      }
+      if (manualToggle instanceof HTMLButtonElement) {
+        manualToggle.textContent = manualMode
+          ? "Back to QR pairing"
+          : "Paste a signer-provided bunker link instead";
+      }
+      if (manualMode && manualInput instanceof HTMLTextAreaElement) {
+        manualInput.focus();
+      }
+      if (!manualMode && manualInput instanceof HTMLTextAreaElement) {
+        manualInput.value = "";
+      }
+      resetStatus();
+      clearAuthChallenge();
+      setError("");
+    };
+
+    let submitHandler = null;
+    let cancelHandler = null;
+    let reuseHandler = null;
+    let copyHandler = null;
+    let manualToggleHandler = null;
+    let authOpenHandler = null;
+
+    const cleanup = () => {
+      if (submitHandler) {
+        form.removeEventListener("submit", submitHandler);
+      }
+>>>>>>> origin/main
       if (cancelHandler && cancelButton instanceof HTMLButtonElement) {
         cancelButton.removeEventListener("click", cancelHandler);
       }
@@ -1405,6 +1536,12 @@ export default class LoginModalController {
       if (copyHandler && copyButton instanceof HTMLButtonElement) {
         copyButton.removeEventListener("click", copyHandler);
       }
+<<<<<<< HEAD
+=======
+      if (manualToggleHandler && manualToggle instanceof HTMLButtonElement) {
+        manualToggle.removeEventListener("click", manualToggleHandler);
+      }
+>>>>>>> origin/main
       if (authOpenHandler && authOpenButton instanceof HTMLButtonElement) {
         authOpenButton.removeEventListener("click", authOpenHandler);
       }
@@ -1430,6 +1567,10 @@ export default class LoginModalController {
 
     resetStatus();
     clearAuthChallenge();
+<<<<<<< HEAD
+=======
+    applyManualMode(false);
+>>>>>>> origin/main
     setError("");
 
     return new Promise((resolve) => {
@@ -1452,12 +1593,50 @@ export default class LoginModalController {
         resolve(detail);
       };
 
+<<<<<<< HEAD
       // Auto-submit immediately to generate the QR code
       const autoStart = () => {
+=======
+      submitHandler = (event) => {
+        event.preventDefault();
+>>>>>>> origin/main
         setError("");
         resetStatus();
         clearAuthChallenge();
 
+<<<<<<< HEAD
+=======
+        const remember =
+          rememberCheckbox instanceof HTMLInputElement
+            ? rememberCheckbox.checked
+            : true;
+
+        if (manualMode) {
+          if (!(manualInput instanceof HTMLTextAreaElement)) {
+            setError("Manual input is unavailable.");
+            return;
+          }
+          const raw = manualInput.value.trim();
+          if (!raw) {
+            setError("Paste the bunker:// link from your signer.");
+            manualInput.focus();
+            return;
+          }
+          setPendingState(true);
+          finish(
+            {
+              mode: "manual",
+              connectionString: raw,
+              remember: remember !== false,
+              onStatus: handleStatus,
+              onAuthUrl: handleAuthUrl,
+            },
+            { keepMounted: false },
+          );
+          return;
+        }
+
+>>>>>>> origin/main
         const metadata = {};
         if (this.document && typeof this.document.title === "string") {
           const title = this.document.title.trim();
@@ -1473,7 +1652,11 @@ export default class LoginModalController {
         finish(
           {
             mode: "handshake",
+<<<<<<< HEAD
             remember: true, // Always remember for now in simplified flow
+=======
+            remember: remember !== false,
+>>>>>>> origin/main
             metadata,
             onHandshakePrepared: updateHandshakeDisplay,
             onStatus: handleStatus,
@@ -1483,6 +1666,11 @@ export default class LoginModalController {
         );
       };
 
+<<<<<<< HEAD
+=======
+      form.addEventListener("submit", submitHandler);
+
+>>>>>>> origin/main
       if (cancelButton instanceof HTMLButtonElement) {
         cancelHandler = (event) => {
           event.preventDefault();
@@ -1502,7 +1690,11 @@ export default class LoginModalController {
       if (copyButton instanceof HTMLButtonElement) {
         copyHandler = async (event) => {
           event.preventDefault();
+<<<<<<< HEAD
           if (!(handshakeInput instanceof HTMLInputElement)) {
+=======
+          if (!(handshakeInput instanceof HTMLTextAreaElement)) {
+>>>>>>> origin/main
             return;
           }
           const value = handshakeInput.value.trim();
@@ -1529,6 +1721,7 @@ export default class LoginModalController {
               }
             } catch (error) {
               copied = false;
+<<<<<<< HEAD
             }
           }
           if (copied) {
@@ -1543,6 +1736,20 @@ export default class LoginModalController {
           } else {
             setStatus(
               "Copy failed. Use the manual fallback below.",
+=======
+            } finally {
+              handshakeInput.setSelectionRange(
+                handshakeInput.value.length,
+                handshakeInput.value.length,
+              );
+            }
+          }
+          if (copied) {
+            setStatus("Connect URI copied to clipboard.", "success");
+          } else {
+            setStatus(
+              "Copy failed. Copy the link manually if needed.",
+>>>>>>> origin/main
               "warning",
             );
           }
@@ -1550,6 +1757,17 @@ export default class LoginModalController {
         copyButton.addEventListener("click", copyHandler);
       }
 
+<<<<<<< HEAD
+=======
+      if (manualToggle instanceof HTMLButtonElement) {
+        manualToggleHandler = (event) => {
+          event.preventDefault();
+          applyManualMode(!manualMode);
+        };
+        manualToggle.addEventListener("click", manualToggleHandler);
+      }
+
+>>>>>>> origin/main
       if (authOpenButton instanceof HTMLButtonElement) {
         authOpenHandler = (event) => {
           event.preventDefault();
@@ -1564,6 +1782,7 @@ export default class LoginModalController {
         };
         authOpenButton.addEventListener("click", authOpenHandler);
       }
+<<<<<<< HEAD
 
       // Kick off the handshake generation
       setTimeout(autoStart, 0);
@@ -1823,6 +2042,8 @@ export default class LoginModalController {
           URL.revokeObjectURL(url);
         });
       }
+=======
+>>>>>>> origin/main
     });
   }
 
@@ -2203,10 +2424,13 @@ export default class LoginModalController {
   }
 
   async handleProviderSelection(providerId) {
+<<<<<<< HEAD
     if (this.isSelectionInProgress) {
       return;
     }
 
+=======
+>>>>>>> origin/main
     const entry = this.getProviderEntry(providerId);
     if (!entry) {
       devLogger.warn(
@@ -2229,6 +2453,7 @@ export default class LoginModalController {
       return;
     }
 
+<<<<<<< HEAD
     this.isSelectionInProgress = true;
     try {
       safeInvoke(this.callbacks.onProviderSelected, providerId);
@@ -2396,6 +2621,147 @@ export default class LoginModalController {
       }
     } finally {
       this.isSelectionInProgress = false;
+=======
+    safeInvoke(this.callbacks.onProviderSelected, providerId);
+
+    let providerOptions = {};
+    if (entry.provider.id === "nsec") {
+      try {
+        const nsecOptions = await this.promptForNsecOptions();
+        if (!nsecOptions) {
+          devLogger.log(
+            "[LoginModalController] Direct key login cancelled by the user.",
+          );
+          if (entry.button instanceof HTMLButtonElement) {
+            entry.button.focus();
+          }
+          return;
+        }
+        providerOptions = nsecOptions;
+      } catch (promptError) {
+        devLogger.error(
+          "[LoginModalController] Failed to collect direct key credentials:",
+          promptError,
+        );
+        return;
+      }
+    } else if (entry.provider.id === "nip46") {
+      try {
+        const nip46Options = await this.promptForNip46Options();
+        if (!nip46Options) {
+          devLogger.log(
+            "[LoginModalController] Remote signer login cancelled by the user.",
+          );
+          if (entry.button instanceof HTMLButtonElement) {
+            entry.button.focus();
+          }
+          return;
+        }
+        providerOptions = nip46Options;
+      } catch (promptError) {
+        devLogger.error(
+          "[LoginModalController] Failed to collect remote signer connection:",
+          promptError,
+        );
+        return;
+      }
+    }
+
+    this.setLoadingState(providerId, true);
+    devLogger.log(
+      `[LoginModalController] Starting login for provider ${providerId}.`,
+    );
+
+    const requestOptions = { providerId, ...providerOptions };
+
+    const extraOptions = await this.resolveNextRequestLoginOptions({
+      provider: entry.provider.source || entry.provider,
+      providerId,
+    });
+    if (extraOptions && typeof extraOptions === "object") {
+      Object.assign(requestOptions, extraOptions);
+    }
+
+    try {
+      const result = await this.services.authService.requestLogin(requestOptions);
+
+      devLogger.log(
+        `[LoginModalController] Login resolved for ${providerId} with pubkey:`,
+        result?.pubkey,
+      );
+
+      const consumed = this.resolvePendingTask(result, { type: "add-profile" });
+      const shouldClose =
+        result &&
+        typeof result === "object" &&
+        typeof result.pubkey === "string" &&
+        result.pubkey.trim();
+
+      if (shouldClose) {
+        this.helpers.closeModal();
+      }
+
+      if (consumed) {
+        return;
+      }
+
+      await safeInvokeAsync(this.callbacks.onLoginSuccess, {
+        provider: entry.provider.source || entry.provider,
+        result,
+      });
+    } catch (error) {
+      devLogger.error(
+        `[LoginModalController] Login failed for ${providerId}:`,
+        error,
+      );
+
+      const message = this.helpers.describeLoginError(
+        error,
+        entry.provider.errorMessage,
+      );
+
+      if (
+        !message ||
+        (typeof message === "string" && !message.trim())
+      ) {
+        devLogger.warn(
+          `[LoginModalController] describeLoginError returned empty message for ${providerId}.`,
+        );
+      }
+
+      const rejectionError =
+        error instanceof Error
+          ? error
+          : new Error(message || "Failed to login. Please try again.");
+
+      if (message && message !== rejectionError.message) {
+        rejectionError.message = message;
+      }
+
+      if (
+        error &&
+        typeof error === "object" &&
+        typeof error.code === "string" &&
+        !rejectionError.code
+      ) {
+        rejectionError.code = error.code;
+      }
+
+      const consumed = this.rejectPendingTask(rejectionError, {
+        type: "add-profile",
+      });
+
+      if (consumed) {
+        return;
+      }
+
+      await safeInvokeAsync(this.callbacks.onLoginError, {
+        provider: entry.provider.source || entry.provider,
+        error: rejectionError,
+        message,
+      });
+    } finally {
+>>>>>>> origin/main
       this.setLoadingState(providerId, false);
       if (this.pendingNip46Cleanup) {
         try {
@@ -2456,6 +2822,7 @@ export default class LoginModalController {
   }
 
   destroy() {
+<<<<<<< HEAD
     if (this.modalCloseObserver) {
       try {
         this.modalCloseObserver.disconnect();
@@ -2472,6 +2839,8 @@ export default class LoginModalController {
     }
     this.modalCloseIntervalId = null;
 
+=======
+>>>>>>> origin/main
     if (this.pendingTask && typeof this.pendingTask.reject === "function") {
       try {
         this.pendingTask.reject(this.createCancellationError());

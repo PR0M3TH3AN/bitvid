@@ -379,6 +379,7 @@ export function normalizeVideoNotePayload(input) {
   }
 
   if (legacyFormData.magnet) {
+<<<<<<< HEAD
     const wsList = [];
     if (ws) {
       wsList.push(ws);
@@ -389,6 +390,10 @@ export function normalizeVideoNotePayload(input) {
 
     const normalizedMagnet = normalizeAndAugmentMagnet(legacyFormData.magnet, {
       ws: wsList,
+=======
+    const normalizedMagnet = normalizeAndAugmentMagnet(legacyFormData.magnet, {
+      ws,
+>>>>>>> origin/main
       xs,
     });
     legacyFormData.magnet = normalizedMagnet;

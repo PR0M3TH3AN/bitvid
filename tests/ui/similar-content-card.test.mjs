@@ -34,7 +34,11 @@ test("cached thumbnails reuse existing src without lazy-loading", (t) => {
   const cachedSrc = "https://cdn.example.com/thumb.jpg";
   const cache = new Map([["video-123", cachedSrc]]);
 
+<<<<<<< HEAD
   const { card, window } = renderCard(t, {
+=======
+  const { card } = renderCard(t, {
+>>>>>>> origin/main
     thumbnailCache: cache,
     fallbackThumbnailSrc: "https://cdn.example.com/fallback.jpg",
   });
@@ -46,7 +50,11 @@ test("cached thumbnails reuse existing src without lazy-loading", (t) => {
   assert.equal(img.src, cachedSrc);
   assert.equal(img.dataset.lazy, undefined);
   assert.equal(
+<<<<<<< HEAD
     window.getComputedStyle(root).getPropertyValue("--similar-card-thumb-url").trim(),
+=======
+    root.style.getPropertyValue("--similar-card-thumb-url"),
+>>>>>>> origin/main
     `url("${cachedSrc}")`,
   );
 });
@@ -75,7 +83,11 @@ test("uncached thumbnails use fallback, cache on load, and retain blur state", (
   assert.equal(img.dataset.lazy, remoteThumb);
   assert.equal(img.dataset.thumbnailState, "blurred");
   assert.equal(
+<<<<<<< HEAD
     window.getComputedStyle(root).getPropertyValue("--similar-card-thumb-url").trim(),
+=======
+    root.style.getPropertyValue("--similar-card-thumb-url"),
+>>>>>>> origin/main
     `url("${fallbackSrc}")`,
   );
 
@@ -84,7 +96,11 @@ test("uncached thumbnails use fallback, cache on load, and retain blur state", (
 
   assert.equal(cache.get("video-456"), remoteThumb);
   assert.equal(
+<<<<<<< HEAD
     window.getComputedStyle(root).getPropertyValue("--similar-card-thumb-url").trim(),
+=======
+    root.style.getPropertyValue("--similar-card-thumb-url"),
+>>>>>>> origin/main
     `url("${remoteThumb}")`,
   );
   assert.equal(img.dataset.thumbnailState, "blurred");
@@ -142,16 +158,24 @@ test("author identity fields render supplied values and datasets", (t) => {
 
   const root = card.getRoot();
   const nameEl = root.querySelector(".author-name");
+<<<<<<< HEAD
   // The npub element is intentionally detached from the DOM but retained in the instance
   const npubEl = card.authorNpubEl;
+=======
+  const npubEl = root.querySelector(".author-npub");
+>>>>>>> origin/main
   const avatarEl = root.querySelector(
     ".player-modal__similar-card-avatar-img",
   );
 
   assert(nameEl);
   assert(npubEl);
+<<<<<<< HEAD
   // Avatar is also detached/optional in the current component logic (see buildAuthorStack comments)
   // assert(avatarEl);
+=======
+  assert(avatarEl);
+>>>>>>> origin/main
 
   assert.equal(nameEl.textContent, identity.name);
   assert.equal(nameEl.dataset.pubkey, identity.pubkey);
@@ -164,11 +188,17 @@ test("author identity fields render supplied values and datasets", (t) => {
   assert.equal(npubEl.hidden, false);
   assert.equal(npubEl.getAttribute("aria-hidden"), "false");
 
+<<<<<<< HEAD
   if (avatarEl) {
     assert.equal(avatarEl.dataset.pubkey, identity.pubkey);
     assert.equal(avatarEl.src, identity.picture);
     assert.match(avatarEl.alt, /Satoshi/);
   }
+=======
+  assert.equal(avatarEl.dataset.pubkey, identity.pubkey);
+  assert.equal(avatarEl.src, identity.picture);
+  assert.match(avatarEl.alt, /Satoshi/);
+>>>>>>> origin/main
 });
 
 test("view counter wiring exposes pointer datasets", (t) => {
@@ -186,7 +216,11 @@ test("view counter wiring exposes pointer datasets", (t) => {
   assert(viewEl);
   assert.equal(viewEl.dataset.viewPointer, pointerInfo.key);
   assert.equal(viewEl.dataset.viewCount, "");
+<<<<<<< HEAD
   assert.equal(viewEl.textContent, "–");
+=======
+  assert.equal(viewEl.textContent, "– views");
+>>>>>>> origin/main
 
   const root = card.getRoot();
   assert.equal(root.dataset.pointerKey, pointerInfo.key);

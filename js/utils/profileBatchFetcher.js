@@ -1,6 +1,10 @@
 // js/utils/profileBatchFetcher.js
 
+<<<<<<< HEAD
 import { nostrClient } from "../nostrClientFacade.js";
+=======
+import { nostrClient } from "../nostr.js";
+>>>>>>> origin/main
 import { devLogger } from "./logger.js";
 
 const DEFAULT_PROFILE_IMAGE = "assets/svg/default-profile.svg";

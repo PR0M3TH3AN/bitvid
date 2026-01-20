@@ -8,6 +8,7 @@ import { publishEventToRelay } from "../nostrPublish.js";
 import { RELAY_URLS } from "./toolkit.js";
 import { normalizePointerInput } from "./watchHistory.js";
 import { devLogger, userLogger } from "../utils/logger.js";
+<<<<<<< HEAD
 import { LRUCache } from "../utils/lruCache.js";
 import { CACHE_POLICIES } from "./cachePolicies.js";
 import { isSessionActor } from "./sessionActor.js";
@@ -18,6 +19,9 @@ const COMMENT_EVENT_SCHEMA = getNostrEventSchema(NOTE_TYPES.VIDEO_COMMENT);
 const CACHE_POLICY = CACHE_POLICIES[NOTE_TYPES.VIDEO_COMMENT];
 
 const commentCache = new LRUCache({ maxSize: 100 });
+=======
+const COMMENT_EVENT_SCHEMA = getNostrEventSchema(NOTE_TYPES.VIDEO_COMMENT);
+>>>>>>> origin/main
 export const COMMENT_EVENT_KIND = Number.isFinite(COMMENT_EVENT_SCHEMA?.kind)
   ? COMMENT_EVENT_SCHEMA.kind
   : 1111;
@@ -476,7 +480,10 @@ function normalizeCommentTarget(targetInput = {}, overrides = {}) {
     target.parentKind,
     options.parentCommentKind,
     target.parentCommentKind,
+<<<<<<< HEAD
     pickKind(parentCommentEvent?.kind),
+=======
+>>>>>>> origin/main
   );
   let normalizedParentKind =
     typeof parentKindCandidate === "string" ? parentKindCandidate.trim() : "";
@@ -499,7 +506,10 @@ function normalizeCommentTarget(targetInput = {}, overrides = {}) {
     target.parentAuthorPubkey,
     options.parentCommentPubkey,
     target.parentCommentPubkey,
+<<<<<<< HEAD
     parentCommentEvent?.pubkey,
+=======
+>>>>>>> origin/main
   );
   normalizedParentAuthorPubkey =
     typeof normalizedParentAuthorPubkey === "string"
@@ -683,6 +693,7 @@ function normalizeCommentTarget(targetInput = {}, overrides = {}) {
     }
   }
 
+<<<<<<< HEAD
   if (!normalizedParentAuthorRelay && normalizedParentAuthorPubkey) {
     const parentTag = parentEventTags.find(
       (tag) =>
@@ -700,6 +711,8 @@ function normalizeCommentTarget(targetInput = {}, overrides = {}) {
     }
   }
 
+=======
+>>>>>>> origin/main
   if (!normalizedParentAuthorPubkey || !normalizedParentAuthorRelay) {
     const tag = findTagByName(parentEventTags, "p");
     if (tag) {
@@ -828,10 +841,23 @@ function createVideoCommentFilters(targetInput, options = {}) {
 
   const eventFilter = {
     kinds: getAllowedCommentKinds(),
+<<<<<<< HEAD
     "#E": [descriptor.videoEventId],
   };
   filters.push(applyFilterOptions(eventFilter, options));
 
+=======
+    "#e": [descriptor.videoEventId],
+  };
+  filters.push(applyFilterOptions(eventFilter, options));
+
+  const uppercaseEventFilter = {
+    kinds: getAllowedCommentKinds(),
+    "#E": [descriptor.videoEventId],
+  };
+  filters.push(applyFilterOptions(uppercaseEventFilter, options));
+
+>>>>>>> origin/main
   const uppercaseFilter = { kinds: getAllowedCommentKinds() };
   let hasUppercasePointer = false;
 
@@ -839,6 +865,15 @@ function createVideoCommentFilters(targetInput, options = {}) {
     uppercaseFilter["#I"] = [descriptor.rootIdentifier];
     hasUppercasePointer = true;
 
+<<<<<<< HEAD
+=======
+    const lowercaseRootFilter = {
+      kinds: getAllowedCommentKinds(),
+      "#i": [descriptor.rootIdentifier],
+    };
+
+    filters.push(applyFilterOptions(lowercaseRootFilter, options));
+>>>>>>> origin/main
   } else if (
     typeof descriptor.videoDefinitionAddress === "string" &&
     descriptor.videoDefinitionAddress
@@ -875,6 +910,15 @@ function createVideoCommentFilters(targetInput, options = {}) {
     descriptor.parentCommentId &&
     descriptor.parentCommentId !== descriptor.videoEventId
   ) {
+<<<<<<< HEAD
+=======
+    const parentFilter = {
+      kinds: getAllowedCommentKinds(),
+      "#e": [descriptor.parentCommentId],
+    };
+    filters.push(applyFilterOptions(parentFilter, options));
+
+>>>>>>> origin/main
     const parentUppercaseFilter = {
       kinds: getAllowedCommentKinds(),
       "#E": [descriptor.parentCommentId],
@@ -883,6 +927,20 @@ function createVideoCommentFilters(targetInput, options = {}) {
   }
 
   if (descriptor.videoDefinitionAddress) {
+<<<<<<< HEAD
+=======
+    const definitionFilter = {
+      kinds: getAllowedCommentKinds(),
+      "#a": [descriptor.videoDefinitionAddress],
+    };
+
+    if (descriptor.parentCommentId) {
+      definitionFilter["#e"] = [descriptor.parentCommentId];
+    }
+
+    filters.push(applyFilterOptions(definitionFilter, options));
+
+>>>>>>> origin/main
     const definitionUppercaseFilter = {
       kinds: getAllowedCommentKinds(),
       "#A": [descriptor.videoDefinitionAddress],
@@ -975,8 +1033,26 @@ function isVideoCommentEvent(event, descriptor) {
     targetDescriptor.parentAuthorPubkey,
   );
 
+<<<<<<< HEAD
   const kindTagValues = [];
   const authorTagValues = [];
+=======
+  let sawRootKindTag = false;
+  let rootKindMatches = !expectedRootKind;
+  let rootKindMismatch = false;
+
+  let sawRootAuthorTag = false;
+  let rootAuthorMatches = !expectedRootAuthor;
+  let rootAuthorMismatch = false;
+
+  let sawParentKindTag = false;
+  let parentKindMatches = !expectedParentKind;
+  let parentKindMismatch = false;
+
+  let sawParentAuthorTag = false;
+  let parentAuthorMatches = !expectedParentAuthor;
+  let parentAuthorMismatch = false;
+>>>>>>> origin/main
 
   for (const tag of tags) {
     if (!Array.isArray(tag) || tag.length < 2) {
@@ -984,6 +1060,7 @@ function isVideoCommentEvent(event, descriptor) {
     }
     const [rawName, rawValue] = tag;
     const trimmedName = typeof rawName === "string" ? rawName.trim() : "";
+<<<<<<< HEAD
     const upperName = trimmedName.toUpperCase();
     const normalizedValue = normalizeTagValue(rawValue);
     if (!upperName || !normalizedValue) {
@@ -991,13 +1068,26 @@ function isVideoCommentEvent(event, descriptor) {
     }
 
     if (upperName === "I") {
+=======
+    const lowerName = trimmedName.toLowerCase();
+    const normalizedValue = normalizeTagValue(rawValue);
+    if (!lowerName || !normalizedValue) {
+      continue;
+    }
+
+    if (lowerName === "i") {
+>>>>>>> origin/main
       if (
         normalizedRootIdentifier &&
         normalizedValue === normalizedRootIdentifier
       ) {
         hasIdentifierTag = true;
       }
+<<<<<<< HEAD
     } else if (upperName === "A") {
+=======
+    } else if (lowerName === "a") {
+>>>>>>> origin/main
       if (
         normalizedVideoDefinitionAddress &&
         normalizedValue === normalizedVideoDefinitionAddress
@@ -1005,7 +1095,11 @@ function isVideoCommentEvent(event, descriptor) {
         hasDefinitionTag = true;
         matchedDefinitionPointer = true;
       }
+<<<<<<< HEAD
     } else if (upperName === "E") {
+=======
+    } else if (lowerName === "e") {
+>>>>>>> origin/main
       if (
         normalizedVideoEventId &&
         normalizedValue === normalizedVideoEventId
@@ -1019,6 +1113,7 @@ function isVideoCommentEvent(event, descriptor) {
       ) {
         hasParentTag = true;
       }
+<<<<<<< HEAD
     } else if (upperName === "K") {
       kindTagValues.push(normalizedValue);
     } else if (upperName === "P") {
@@ -1041,6 +1136,39 @@ function isVideoCommentEvent(event, descriptor) {
   const parentAuthorMatches =
     !expectedParentAuthor || authorTagValues.includes(expectedParentAuthor);
 
+=======
+    } else if (trimmedName === "K") {
+      sawRootKindTag = true;
+      if (!expectedRootKind || normalizedValue === expectedRootKind) {
+        rootKindMatches = true;
+      } else {
+        rootKindMismatch = true;
+      }
+    } else if (trimmedName === "P") {
+      sawRootAuthorTag = true;
+      if (!expectedRootAuthor || normalizedValue === expectedRootAuthor) {
+        rootAuthorMatches = true;
+      } else {
+        rootAuthorMismatch = true;
+      }
+    } else if (trimmedName === "k") {
+      sawParentKindTag = true;
+      if (!expectedParentKind || normalizedValue === expectedParentKind) {
+        parentKindMatches = true;
+      } else {
+        parentKindMismatch = true;
+      }
+    } else if (trimmedName === "p") {
+      sawParentAuthorTag = true;
+      if (!expectedParentAuthor || normalizedValue === expectedParentAuthor) {
+        parentAuthorMatches = true;
+      } else {
+        parentAuthorMismatch = true;
+      }
+    }
+  }
+
+>>>>>>> origin/main
   if (!hasDefinitionTag && requiresAddressMatch && matchedEventPointer) {
     hasDefinitionTag = true;
   }
@@ -1084,6 +1212,17 @@ function isVideoCommentEvent(event, descriptor) {
     return false;
   }
 
+<<<<<<< HEAD
+=======
+  if ((sawRootKindTag && rootKindMismatch) || (sawRootAuthorTag && rootAuthorMismatch)) {
+    return false;
+  }
+
+  if ((sawParentKindTag && parentKindMismatch) || (sawParentAuthorTag && parentAuthorMismatch)) {
+    return false;
+  }
+
+>>>>>>> origin/main
   if (sawRootKindTag && expectedRootKind && !rootKindMatches) {
     return false;
   }
@@ -1108,6 +1247,10 @@ export async function publishComment(
   targetInput,
   options = {},
   {
+<<<<<<< HEAD
+=======
+    resolveActiveSigner,
+>>>>>>> origin/main
     shouldRequestExtensionPermissions,
     DEFAULT_NIP07_PERMISSION_METHODS,
   } = {},
@@ -1116,6 +1259,7 @@ export async function publishComment(
     return { ok: false, error: "nostr-uninitialized" };
   }
 
+<<<<<<< HEAD
   if (isSessionActor(client)) {
     const error = new Error(
       "Publishing comments is not allowed for session actors."
@@ -1124,6 +1268,8 @@ export async function publishComment(
     return { ok: false, error };
   }
 
+=======
+>>>>>>> origin/main
   const descriptor = normalizeCommentTarget(targetInput, options);
   if (!descriptor) {
     return { ok: false, error: "invalid-target" };
@@ -1189,6 +1335,7 @@ export async function publishComment(
 
   let signedEvent = null;
 
+<<<<<<< HEAD
   const signer = getActiveSigner();
 
   if (!signer || typeof signer.signEvent !== "function") {
@@ -1202,6 +1349,14 @@ export async function publishComment(
       message: error.message,
       details: error,
     };
+=======
+  const resolveSignerFn =
+    typeof resolveActiveSigner === "function" ? resolveActiveSigner : null;
+  const signer = resolveSignerFn ? resolveSignerFn(actorPubkey) : null;
+
+  if (!signer || typeof signer.signEvent !== "function") {
+    return { ok: false, error: "auth-required" };
+>>>>>>> origin/main
   }
 
   let permissionResult = { ok: true };
@@ -1229,9 +1384,13 @@ export async function publishComment(
   }
 
   try {
+<<<<<<< HEAD
     signedEvent = await queueSignEvent(signer, event, {
       timeoutMs: options?.timeoutMs,
     });
+=======
+    signedEvent = await signer.signEvent(event);
+>>>>>>> origin/main
   } catch (error) {
     userLogger.warn(
       "[nostr] Failed to sign comment event with active signer:",
@@ -1297,6 +1456,7 @@ export async function listVideoComments(client, targetInput, options = {}) {
   }
 
   let descriptor;
+<<<<<<< HEAD
   let filterTemplate;
   try {
     // createVideoCommentFilters returns { descriptor, filters: [...] }
@@ -1305,11 +1465,17 @@ export async function listVideoComments(client, targetInput, options = {}) {
     // We assume the first filter is the primary one we want to augment with 'since'
     // or use in per-relay logic. For now, we use the full array.
     filterTemplate = result.filters;
+=======
+  let filters;
+  try {
+    ({ descriptor, filters } = createVideoCommentFilters(targetInput, options));
+>>>>>>> origin/main
   } catch (error) {
     devLogger.warn("[nostr] Failed to build comment filters:", error);
     return [];
   }
 
+<<<<<<< HEAD
   const cacheKey = descriptor.videoEventId;
   const cached = commentCache.get(cacheKey);
   const ttl = CACHE_POLICY.ttl;
@@ -1372,6 +1538,19 @@ export async function listVideoComments(client, targetInput, options = {}) {
   // If we have cached items, add them to the raw list for deduplication/merging
   const combinedRaw = cached ? [...cached.items, ...rawResults] : rawResults;
   const flattened = flattenListResults(combinedRaw);
+=======
+  const relayList = sanitizeRelayList(options.relays, client.relays);
+
+  let rawResults;
+  try {
+    rawResults = await pool.list(relayList, filters);
+  } catch (error) {
+    devLogger.warn("[nostr] Failed to list video comments:", error);
+    return [];
+  }
+
+  const flattened = flattenListResults(rawResults);
+>>>>>>> origin/main
   const dedupe = new Map();
   const order = [];
 
@@ -1404,7 +1583,11 @@ export async function listVideoComments(client, targetInput, options = {}) {
     }
   }
 
+<<<<<<< HEAD
   const finalItems = order
+=======
+  return order
+>>>>>>> origin/main
     .map((entry) => {
       if (!entry) {
         return null;
@@ -1418,6 +1601,7 @@ export async function listVideoComments(client, targetInput, options = {}) {
       return null;
     })
     .filter(Boolean);
+<<<<<<< HEAD
 
   // Update cache
   if (cacheKey) {
@@ -1429,6 +1613,8 @@ export async function listVideoComments(client, targetInput, options = {}) {
   }
 
   return finalItems;
+=======
+>>>>>>> origin/main
 }
 
 export function subscribeVideoComments(client, targetInput, options = {}) {

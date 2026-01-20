@@ -438,6 +438,7 @@ export class EditModal {
 
     this.applyVideoToForm(editContext);
     this.nip71FormManager.resetSection(this.nip71SectionKey);
+<<<<<<< HEAD
 
     let nip71Data = video.nip71 && typeof video.nip71 === "object" ? { ...video.nip71 } : {};
 
@@ -470,6 +471,11 @@ export class EditModal {
 
     this.nip71FormManager.hydrateSection(this.nip71SectionKey, nip71Data);
 
+=======
+    if (video.nip71 && typeof video.nip71 === "object") {
+      this.nip71FormManager.hydrateSection(this.nip71SectionKey, video.nip71);
+    }
+>>>>>>> origin/main
     const initialNip71 = this.nip71FormManager.collectSection(this.nip71SectionKey);
     this.originalNip71Metadata = this.cloneNip71Metadata(initialNip71);
     this.originalNip71MetadataJson = JSON.stringify(this.originalNip71Metadata);
@@ -955,6 +961,7 @@ export class EditModal {
     const originalIsNsfw = original.isNsfw === true;
     const originalIsForKids = original.isForKids === true;
 
+<<<<<<< HEAD
     const rawNip71 = this.nip71FormManager.collectSection(this.nip71SectionKey);
     const currentNip71 = this.cloneNip71Metadata(rawNip71);
 
@@ -972,6 +979,11 @@ export class EditModal {
         delete currentNip71.publishedAt;
       }
     }
+=======
+    const currentNip71 = this.cloneNip71Metadata(
+      this.nip71FormManager.collectSection(this.nip71SectionKey)
+    );
+>>>>>>> origin/main
     const hasImetaSource = Array.isArray(currentNip71?.imeta)
       ? currentNip71.imeta.some((variant) => {
           if (!variant || typeof variant !== "object") {

@@ -7,7 +7,10 @@ import {
   isDevMode,
   WATCH_HISTORY_KIND,
   WATCH_HISTORY_LIST_IDENTIFIER,
+<<<<<<< HEAD
   WATCH_HISTORY_VERSION_TAG_VALUE,
+=======
+>>>>>>> origin/main
 } from "./config.js";
 
 export const NOTE_TYPES = Object.freeze({
@@ -20,6 +23,7 @@ export const NOTE_TYPES = Object.freeze({
   VIEW_EVENT: "viewEvent",
   VIDEO_REACTION: "videoReaction",
   VIDEO_COMMENT: "videoComment",
+<<<<<<< HEAD
   DM_ATTACHMENT: "dmAttachment",
   ZAP_REQUEST: "zapRequest",
   ZAP_RECEIPT: "zapReceipt",
@@ -33,6 +37,16 @@ export const NOTE_TYPES = Object.freeze({
   ADMIN_WHITELIST: "adminWhitelist",
   PROFILE_METADATA: "profileMetadata",
   MUTE_LIST: "muteList",
+=======
+  WATCH_HISTORY_INDEX: "watchHistoryIndex",
+  WATCH_HISTORY_CHUNK: "watchHistoryChunk",
+  SUBSCRIPTION_LIST: "subscriptionList",
+  USER_BLOCK_LIST: "userBlockList",
+  HASHTAG_PREFERENCES: "hashtagPreferences",
+  ADMIN_MODERATION_LIST: "adminModerationList",
+  ADMIN_BLACKLIST: "adminBlacklist",
+  ADMIN_WHITELIST: "adminWhitelist",
+>>>>>>> origin/main
 });
 
 export const SUBSCRIPTION_LIST_IDENTIFIER = "subscriptions";
@@ -275,8 +289,13 @@ const BASE_SCHEMAS = {
     kind: 6,
     appendTags: DEFAULT_APPEND_TAGS,
     content: {
+<<<<<<< HEAD
       format: "json",
       description: "Content field contains the JSON-serialized event being reposted.",
+=======
+      format: "empty",
+      description: "Content field intentionally empty for pure repost events.",
+>>>>>>> origin/main
     },
   },
   [NOTE_TYPES.NIP71_VIDEO]: {
@@ -313,6 +332,7 @@ const BASE_SCHEMAS = {
     appendTags: DEFAULT_APPEND_TAGS,
     content: { format: "empty", description: "Content field unused." },
   },
+<<<<<<< HEAD
   [NOTE_TYPES.DM_RELAY_LIST]: {
     type: NOTE_TYPES.DM_RELAY_LIST,
     label: "DM relay hints",
@@ -321,6 +341,8 @@ const BASE_SCHEMAS = {
     appendTags: DEFAULT_APPEND_TAGS,
     content: { format: "empty", description: "Content field unused." },
   },
+=======
+>>>>>>> origin/main
   [NOTE_TYPES.VIEW_EVENT]: {
     type: NOTE_TYPES.VIEW_EVENT,
     label: "View counter",
@@ -349,22 +371,34 @@ const BASE_SCHEMAS = {
     type: NOTE_TYPES.VIDEO_COMMENT,
     label: "Video comment",
     kind: 1111,
+<<<<<<< HEAD
     videoEventTagName: "E",
     videoDefinitionTagName: "A",
     parentCommentTagName: "E",
     parentAuthorTagName: "P",
+=======
+    videoEventTagName: "e",
+    videoDefinitionTagName: "a",
+    parentCommentTagName: "e",
+    parentAuthorTagName: "p",
+>>>>>>> origin/main
     rootEventPointerTagName: "E",
     rootDefinitionPointerTagName: "A",
     rootIdentifierPointerTagName: "I",
     rootKindTagName: "K",
     rootAuthorTagName: "P",
+<<<<<<< HEAD
     parentKindTagName: "K",
+=======
+    parentKindTagName: "k",
+>>>>>>> origin/main
     appendTags: DEFAULT_APPEND_TAGS,
     content: {
       format: "text",
       description: "Plain text comment body sanitized for UTF-8 compatibility.",
     },
   },
+<<<<<<< HEAD
   [NOTE_TYPES.DM_ATTACHMENT]: {
     type: NOTE_TYPES.DM_ATTACHMENT,
     label: "DM attachment (NIP-17 file rumor)",
@@ -407,16 +441,52 @@ const BASE_SCHEMAS = {
   [NOTE_TYPES.WATCH_HISTORY]: {
     type: NOTE_TYPES.WATCH_HISTORY,
     label: "Watch history month",
+=======
+  [NOTE_TYPES.WATCH_HISTORY_INDEX]: {
+    type: NOTE_TYPES.WATCH_HISTORY_INDEX,
+    label: "Watch history index",
+    kind: WATCH_HISTORY_KIND,
+    identifierTag: {
+      name: "d",
+      value: WATCH_HISTORY_LIST_IDENTIFIER,
+    },
+    snapshotTagName: "snapshot",
+    totalTagName: "chunks",
+    chunkPointerTagName: "a",
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      format: "json",
+      description:
+        "JSON payload describing the active snapshot and chunk count.",
+    },
+  },
+  [NOTE_TYPES.WATCH_HISTORY_CHUNK]: {
+    type: NOTE_TYPES.WATCH_HISTORY_CHUNK,
+    label: "Watch history snapshot",
+>>>>>>> origin/main
     kind: WATCH_HISTORY_KIND,
     identifierTag: {
       name: "d",
     },
+<<<<<<< HEAD
     monthTagName: "month",
     appendTags: [["v", WATCH_HISTORY_VERSION_TAG_VALUE]],
     content: {
       format: "json",
       description:
         "JSON payload containing a month's watched event identifiers with optional watchedAt metadata.",
+=======
+    encryptionTag: { name: "encrypted", values: ["nip44_v2", "nip44", "nip04"] },
+    snapshotTagName: "snapshot",
+    chunkTagName: "chunk",
+    headTag: { name: "head", value: "1" },
+    headTagIndex: 2,
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      format: "encrypted-json",
+      description:
+        "Encrypted JSON payload containing chunked watch history entries.",
+>>>>>>> origin/main
     },
   },
   [NOTE_TYPES.SUBSCRIPTION_LIST]: {
@@ -500,6 +570,7 @@ const BASE_SCHEMAS = {
     appendTags: DEFAULT_APPEND_TAGS,
     content: { format: "empty", description: "Content field unused." },
   },
+<<<<<<< HEAD
   [NOTE_TYPES.PROFILE_METADATA]: {
     type: NOTE_TYPES.PROFILE_METADATA,
     label: "Profile metadata",
@@ -521,6 +592,8 @@ const BASE_SCHEMAS = {
       description: "Optional content (often encrypted) with public p tags.",
     },
   },
+=======
+>>>>>>> origin/main
 };
 
 let schemaOverrides = {};
@@ -738,6 +811,7 @@ function mergePointerTags(pointerTags = []) {
   return merged;
 }
 
+<<<<<<< HEAD
 export function buildVideoPostEvent(params) {
   const {
     pubkey,
@@ -746,6 +820,15 @@ export function buildVideoPostEvent(params) {
     content,
     additionalTags = [],
   } = params || {};
+=======
+export function buildVideoPostEvent({
+  pubkey,
+  created_at,
+  dTagValue,
+  content,
+  additionalTags = [],
+}) {
+>>>>>>> origin/main
   const schema = getNostrEventSchema(NOTE_TYPES.VIDEO_POST);
   const tags = [];
   if (schema?.topicTag?.name && schema?.topicTag?.value) {
@@ -760,6 +843,7 @@ export function buildVideoPostEvent(params) {
     tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
   }
 
+<<<<<<< HEAD
   let serializedContent = "";
   if (typeof content === "string") {
     serializedContent = content;
@@ -771,11 +855,14 @@ export function buildVideoPostEvent(params) {
     }
   }
 
+=======
+>>>>>>> origin/main
   return {
     kind: schema?.kind ?? 30078,
     pubkey,
     created_at,
     tags,
+<<<<<<< HEAD
     content: serializedContent,
   };
 }
@@ -787,6 +874,18 @@ export function buildVideoMirrorEvent(params) {
     tags = [],
     content = "",
   } = params || {};
+=======
+    content: typeof content === "string" ? content : JSON.stringify(content ?? {}),
+  };
+}
+
+export function buildVideoMirrorEvent({
+  pubkey,
+  created_at,
+  tags = [],
+  content = "",
+}) {
+>>>>>>> origin/main
   const schema = getNostrEventSchema(NOTE_TYPES.VIDEO_MIRROR);
   const combinedTags = [];
   appendSchemaTags(combinedTags, schema);
@@ -806,6 +905,7 @@ export function buildVideoMirrorEvent(params) {
   };
 }
 
+<<<<<<< HEAD
 export function buildRepostEvent(params) {
   const {
     pubkey,
@@ -821,6 +921,22 @@ export function buildRepostEvent(params) {
     targetEvent = null,
     serializedEvent = "",
   } = params || {};
+=======
+export function buildRepostEvent({
+  pubkey,
+  created_at,
+  eventId = "",
+  eventRelay = "",
+  address = "",
+  addressRelay = "",
+  authorPubkey = "",
+  additionalTags = [],
+  repostKind,
+  targetKind,
+  targetEvent = null,
+  serializedEvent = "",
+}) {
+>>>>>>> origin/main
   const schema = getNostrEventSchema(NOTE_TYPES.REPOST);
   const tags = [];
 
@@ -921,6 +1037,7 @@ export function buildRepostEvent(params) {
   };
 }
 
+<<<<<<< HEAD
 export function buildRelayListEvent(params) {
   const {
     pubkey,
@@ -928,6 +1045,14 @@ export function buildRelayListEvent(params) {
     relays = [],
     additionalTags = [],
   } = params || {};
+=======
+export function buildRelayListEvent({
+  pubkey,
+  created_at,
+  relays = [],
+  additionalTags = [],
+}) {
+>>>>>>> origin/main
   const schema = getNostrEventSchema(NOTE_TYPES.RELAY_LIST);
   const tags = [];
   const relayTagName = schema?.relayTagName || "r";
@@ -992,6 +1117,7 @@ export function buildRelayListEvent(params) {
   };
 }
 
+<<<<<<< HEAD
 export function buildDmRelayListEvent(params) {
   const {
     pubkey,
@@ -1167,6 +1293,19 @@ export function buildViewEvent(params) {
     additionalTags = [],
     content = "",
   } = params || {};
+=======
+export function buildViewEvent({
+  pubkey,
+  created_at,
+  pointerValue,
+  pointerTag,
+  pointerTags = [],
+  dedupeTag,
+  includeSessionTag = false,
+  additionalTags = [],
+  content = "",
+}) {
+>>>>>>> origin/main
   const schema = getNostrEventSchema(NOTE_TYPES.VIEW_EVENT);
   const tags = [];
   if (schema?.topicTag?.name && schema?.topicTag?.value) {
@@ -1216,6 +1355,7 @@ export function buildViewEvent(params) {
   };
 }
 
+<<<<<<< HEAD
 export function buildZapRequestEvent(params) {
   const {
     pubkey,
@@ -1302,6 +1442,19 @@ export function buildReactionEvent(params) {
     additionalTags = [],
     content = "",
   } = params || {};
+=======
+export function buildReactionEvent({
+  pubkey,
+  created_at,
+  pointerValue,
+  pointerTag,
+  pointerTags = [],
+  targetPointer = null,
+  targetAuthorPubkey = "",
+  additionalTags = [],
+  content = "",
+}) {
+>>>>>>> origin/main
   const schema = getNostrEventSchema(NOTE_TYPES.VIDEO_REACTION);
   const tags = [];
 
@@ -1422,6 +1575,7 @@ export function buildReactionEvent(params) {
   };
 }
 
+<<<<<<< HEAD
 export function buildCommentEvent(params) {
   const {
     pubkey,
@@ -1447,6 +1601,32 @@ export function buildCommentEvent(params) {
     additionalTags = [],
     content = "",
   } = params || {};
+=======
+export function buildCommentEvent({
+  pubkey,
+  created_at,
+  videoEventId = "",
+  videoEventRelay = "",
+  videoDefinitionAddress = "",
+  videoDefinitionRelay = "",
+  rootIdentifier = "",
+  rootIdentifierRelay = "",
+  parentCommentId = "",
+  parentCommentRelay = "",
+  threadParticipantPubkey = "",
+  threadParticipantRelay = "",
+  rootKind,
+  rootAuthorPubkey = "",
+  rootAuthorRelay = "",
+  parentKind,
+  parentAuthorPubkey = "",
+  parentAuthorRelay = "",
+  parentIdentifier = "",
+  parentIdentifierRelay = "",
+  additionalTags = [],
+  content = "",
+}) {
+>>>>>>> origin/main
   const schema = getNostrEventSchema(NOTE_TYPES.VIDEO_COMMENT);
   const tags = [];
 
@@ -1529,12 +1709,20 @@ export function buildCommentEvent(params) {
   const rootIdentifierPointerTagName = schema?.rootIdentifierPointerTagName || "I";
   const rootKindTagName = schema?.rootKindTagName || "K";
   const rootAuthorTagName = schema?.rootAuthorTagName || "P";
+<<<<<<< HEAD
   const parentIdentifierTagName = schema?.parentIdentifierTagName || "I";
   const videoDefinitionTagName = schema?.videoDefinitionTagName || "A";
   const videoEventTagName = schema?.videoEventTagName || "E";
   const parentCommentTagName = schema?.parentCommentTagName || "E";
   const parentAuthorTagName = schema?.parentAuthorTagName || "P";
   const parentKindTagName = schema?.parentKindTagName || "K";
+=======
+  const videoDefinitionTagName = schema?.videoDefinitionTagName || "a";
+  const videoEventTagName = schema?.videoEventTagName || "e";
+  const parentCommentTagName = schema?.parentCommentTagName || "e";
+  const parentAuthorTagName = schema?.parentAuthorTagName || "p";
+  const parentKindTagName = schema?.parentKindTagName || "k";
+>>>>>>> origin/main
 
   const appendPointerTag = (tagName, value, relay, authorHint) => {
     if (!tagName || !value) {
@@ -1547,6 +1735,7 @@ export function buildCommentEvent(params) {
     if (authorHint) {
       tag.push(authorHint);
     }
+<<<<<<< HEAD
     const isDuplicate = tags.some(
       (existing) =>
         existing.length === tag.length &&
@@ -1555,6 +1744,9 @@ export function buildCommentEvent(params) {
     if (!isDuplicate) {
       tags.push(tag);
     }
+=======
+    tags.push(tag);
+>>>>>>> origin/main
   };
 
   if (normalizedRootIdentifier) {
@@ -1610,11 +1802,15 @@ export function buildCommentEvent(params) {
   }
 
   if (normalizedParentIdentifier) {
+<<<<<<< HEAD
     appendPointerTag(
       parentIdentifierTagName,
       normalizedParentIdentifier,
       normalizedParentIdentifierRelay,
     );
+=======
+    appendPointerTag("i", normalizedParentIdentifier, normalizedParentIdentifierRelay);
+>>>>>>> origin/main
   }
 
   if (parentCommentTagName && normalizedParentCommentId) {
@@ -1667,6 +1863,7 @@ export function buildCommentEvent(params) {
   };
 }
 
+<<<<<<< HEAD
 export function buildWatchHistoryEvent(params) {
   const {
     pubkey,
@@ -1689,6 +1886,115 @@ export function buildWatchHistoryEvent(params) {
   const monthTagName = schema?.monthTagName || "month";
   if (monthTagName && identifierValue) {
     tags.push([monthTagName, identifierValue]);
+=======
+export function buildWatchHistoryIndexEvent({
+  pubkey,
+  created_at,
+  snapshotId,
+  totalChunks,
+  chunkAddresses = [],
+  additionalTags = [],
+  content,
+}) {
+  const schema = getNostrEventSchema(NOTE_TYPES.WATCH_HISTORY_INDEX);
+  const tags = [];
+  const identifierName = schema?.identifierTag?.name || "d";
+  const identifierValue = schema?.identifierTag?.value || WATCH_HISTORY_LIST_IDENTIFIER;
+  if (identifierName && identifierValue) {
+    tags.push([identifierName, identifierValue]);
+  }
+  const snapshotTagName = schema?.snapshotTagName || "snapshot";
+  if (snapshotTagName && snapshotId) {
+    tags.push([snapshotTagName, snapshotId]);
+  }
+  const totalTagName = schema?.totalTagName || "chunks";
+  if (totalTagName && Number.isFinite(totalChunks)) {
+    tags.push([totalTagName, String(Math.max(0, Math.floor(totalChunks)))]);
+  }
+  const pointerTagName = schema?.chunkPointerTagName || "a";
+  chunkAddresses.forEach((address) => {
+    if (typeof address === "string" && address) {
+      tags.push([pointerTagName, address]);
+    }
+  });
+
+  appendSchemaTags(tags, schema);
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
+  }
+
+  let resolvedContent = content;
+  if (resolvedContent === undefined) {
+    const payload = {};
+    if (snapshotId) {
+      payload.snapshot = snapshotId;
+    }
+    if (Number.isFinite(totalChunks)) {
+      payload.totalChunks = Math.max(0, Math.floor(totalChunks));
+    }
+    resolvedContent = JSON.stringify(payload);
+  } else if (typeof resolvedContent !== "string") {
+    resolvedContent = JSON.stringify(resolvedContent ?? {});
+  }
+
+  return {
+    kind: schema?.kind ?? WATCH_HISTORY_KIND,
+    pubkey,
+    created_at,
+    tags,
+    content:
+      typeof resolvedContent === "string"
+        ? resolvedContent
+        : String(resolvedContent ?? ""),
+  };
+}
+
+export function buildWatchHistoryChunkEvent({
+  pubkey,
+  created_at,
+  chunkIdentifier,
+  snapshotId,
+  chunkIndex,
+  totalChunks,
+  pointerTags = [],
+  chunkAddresses = [],
+  content,
+  encryption,
+}) {
+  const schema = getNostrEventSchema(NOTE_TYPES.WATCH_HISTORY_CHUNK);
+  const tags = [];
+  const identifierName = schema?.identifierTag?.name || "d";
+  const identifierValue = chunkIdentifier || schema?.identifierTag?.value;
+  if (identifierName && identifierValue) {
+    tags.push([identifierName, identifierValue]);
+  }
+  const encryptionTagName = schema?.encryptionTag?.name;
+  const normalizedOptions = Array.isArray(schema?.encryptionTag?.values)
+    ? schema.encryptionTag.values
+        .map((value) => (typeof value === "string" ? value.trim() : ""))
+        .filter(Boolean)
+    : [];
+  const normalizedRequested = typeof encryption === "string" ? encryption.trim() : "";
+  let resolvedEncryptionTag = "";
+  if (normalizedRequested) {
+    resolvedEncryptionTag = normalizedRequested;
+  } else if (typeof schema?.encryptionTag?.value === "string") {
+    resolvedEncryptionTag = schema.encryptionTag.value;
+  } else if (normalizedOptions.length) {
+    [resolvedEncryptionTag] = normalizedOptions;
+  }
+  if (encryptionTagName && resolvedEncryptionTag) {
+    tags.push([encryptionTagName, resolvedEncryptionTag]);
+  }
+  const snapshotTagName = schema?.snapshotTagName;
+  if (snapshotTagName && snapshotId) {
+    tags.push([snapshotTagName, snapshotId]);
+  }
+  const chunkTagName = schema?.chunkTagName;
+  if (chunkTagName && typeof chunkIndex === "number" && typeof totalChunks === "number") {
+    tags.push([chunkTagName, String(chunkIndex), String(totalChunks)]);
+>>>>>>> origin/main
   }
   pointerTags.forEach((tag) => {
     if (Array.isArray(tag) && tag.length >= 2) {
@@ -1696,17 +2002,37 @@ export function buildWatchHistoryEvent(params) {
     }
   });
 
+<<<<<<< HEAD
+=======
+  if (chunkIndex === 0 && schema?.headTag?.name && schema?.headTag?.value) {
+    const insertionIndex = Number.isInteger(schema?.headTagIndex)
+      ? Math.max(0, Math.min(tags.length, schema.headTagIndex))
+      : Math.min(tags.length, 2);
+    tags.splice(insertionIndex, 0, [schema.headTag.name, schema.headTag.value]);
+    chunkAddresses.forEach((address) => {
+      if (typeof address === "string" && address) {
+        tags.push(["a", address]);
+      }
+    });
+  }
+
+>>>>>>> origin/main
   appendSchemaTags(tags, schema);
 
   return {
     kind: schema?.kind ?? WATCH_HISTORY_KIND,
     pubkey,
+<<<<<<< HEAD
     created_at: Number.isFinite(created_at) ? created_at : Math.floor(Date.now() / 1000),
+=======
+    created_at,
+>>>>>>> origin/main
     tags,
     content: typeof content === "string" ? content : String(content ?? ""),
   };
 }
 
+<<<<<<< HEAD
 export function buildSubscriptionListEvent(params) {
   const {
     pubkey,
@@ -1714,6 +2040,14 @@ export function buildSubscriptionListEvent(params) {
     content,
     encryption,
   } = params || {};
+=======
+export function buildSubscriptionListEvent({
+  pubkey,
+  created_at,
+  content,
+  encryption,
+}) {
+>>>>>>> origin/main
   const schema = getNostrEventSchema(NOTE_TYPES.SUBSCRIPTION_LIST);
   const tags = [];
   const identifierName = schema?.identifierTag?.name || "d";
@@ -1736,6 +2070,7 @@ export function buildSubscriptionListEvent(params) {
   };
 }
 
+<<<<<<< HEAD
 export function buildBlockListEvent(params) {
   const {
     pubkey,
@@ -1743,6 +2078,14 @@ export function buildBlockListEvent(params) {
     content,
     encryption,
   } = params || {};
+=======
+export function buildBlockListEvent({
+  pubkey,
+  created_at,
+  content,
+  encryption,
+}) {
+>>>>>>> origin/main
   const schema = getNostrEventSchema(NOTE_TYPES.USER_BLOCK_LIST);
   const tags = [];
   const identifierName = schema?.identifierTag?.name || "d";
@@ -1765,12 +2108,20 @@ export function buildBlockListEvent(params) {
   };
 }
 
+<<<<<<< HEAD
 export function buildHashtagPreferenceEvent(params) {
   const {
     pubkey,
     created_at,
     content,
   } = params || {};
+=======
+export function buildHashtagPreferenceEvent({
+  pubkey,
+  created_at,
+  content,
+}) {
+>>>>>>> origin/main
   const schema = getNostrEventSchema(NOTE_TYPES.HASHTAG_PREFERENCES);
   const tags = [];
   const identifierName = schema?.identifierTag?.name || "d";
@@ -1802,12 +2153,16 @@ function resolveAdminNoteType(listKey) {
   }
 }
 
+<<<<<<< HEAD
 export function buildAdminListEvent(listKey, params) {
   const {
     pubkey,
     created_at,
     hexPubkeys = []
   } = params || {};
+=======
+export function buildAdminListEvent(listKey, { pubkey, created_at, hexPubkeys = [] }) {
+>>>>>>> origin/main
   const schema = getNostrEventSchema(resolveAdminNoteType(listKey));
   if (!schema) {
     devLogger.warn(

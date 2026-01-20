@@ -170,6 +170,7 @@ When moving a feature to a controller, follow these steps:
 
 ---
 
+<<<<<<< HEAD
 ## 9. Nostr Addressing & NIP-33 (Lessons Learned)
 
 * **Addressing Rule:** NIP-33 events (e.g., videos, long-form content) are uniquely identified by the combination of `kind`, `pubkey`, and the `d` tag.
@@ -188,6 +189,8 @@ When moving a feature to a controller, follow these steps:
 
 ---
 
+=======
+>>>>>>> origin/main
 ## Next
 
 Please read these documents next.

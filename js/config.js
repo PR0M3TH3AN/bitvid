@@ -29,6 +29,10 @@ import {
   DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
   WATCH_HISTORY_KIND,
   WATCH_HISTORY_LIST_IDENTIFIER,
+<<<<<<< HEAD
+=======
+  WATCH_HISTORY_LEGACY_LIST_IDENTIFIERS,
+>>>>>>> origin/main
   WATCH_HISTORY_MAX_ITEMS,
   WATCH_HISTORY_BATCH_RESOLVE,
   WATCH_HISTORY_BATCH_PAGE_SIZE,
@@ -41,8 +45,11 @@ import {
   ENSURE_PRESENCE_REBROADCAST_COOLDOWN_SECONDS,
 } from "../config/instance-config.js";
 
+<<<<<<< HEAD
 export const WATCH_HISTORY_VERSION_TAG_VALUE = "2";
 
+=======
+>>>>>>> origin/main
 export const isDevMode = Boolean(IS_DEV_MODE);
 export { IS_DEV_MODE };
 
@@ -120,6 +127,10 @@ export { ADMIN_WHITELIST_MODE_STORAGE_KEY };
 
 export { WATCH_HISTORY_KIND };
 export { WATCH_HISTORY_LIST_IDENTIFIER };
+<<<<<<< HEAD
+=======
+export { WATCH_HISTORY_LEGACY_LIST_IDENTIFIERS };
+>>>>>>> origin/main
 export { WATCH_HISTORY_MAX_ITEMS };
 export { WATCH_HISTORY_BATCH_RESOLVE };
 export { WATCH_HISTORY_BATCH_PAGE_SIZE };

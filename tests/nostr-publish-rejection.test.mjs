@@ -48,11 +48,15 @@ let activeSignerCleanup = null;
 
 try {
   const { RelayPublishError } = await import("../js/nostrPublish.js");
+<<<<<<< HEAD
   const [{ nostrClient }, { setActiveSigner, clearActiveSigner }] =
     await Promise.all([
       import("../js/nostrClientFacade.js"),
       import("../js/nostr/client.js"),
     ]);
+=======
+  const { nostrClient, setActiveSigner, clearActiveSigner } = await import("../js/nostr.js");
+>>>>>>> origin/main
   const { subscriptions } = await import("../js/subscriptions.js");
   const { userBlocks } = await import("../js/userBlocks.js");
   const { Application } = await import("../js/app.js");

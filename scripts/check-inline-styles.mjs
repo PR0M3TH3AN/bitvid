@@ -24,8 +24,11 @@ const IGNORED_DIRS = new Set([
   ".vercel",
   "tmp",
   "logs",
+<<<<<<< HEAD
   "playwright-report",
   "test-results",
+=======
+>>>>>>> origin/main
 ]);
 
 const DIST_SCAN_PREFIXES = new Set([

@@ -1,7 +1,10 @@
 // js/payments/nwcClient.js
 
 import { nostrToolsReady } from "../nostrToolsBootstrap.js";
+<<<<<<< HEAD
 import { signEventWithPrivateKey } from "../nostr/publishHelpers.js";
+=======
+>>>>>>> origin/main
 import { userLogger } from "../utils/logger.js";
 import { isZapAllowanceExhaustedError } from "./zapSharedState.js";
 
@@ -1289,6 +1292,10 @@ export async function ensureWallet({ settings } = {}) {
 }
 
 async function encryptRequestPayload(context, payload) {
+<<<<<<< HEAD
+=======
+  const tools = assertNostrTools(["getEventHash", "signEvent"]);
+>>>>>>> origin/main
   const encryption = await ensureEncryption(context);
 
   const plaintext = JSON.stringify(payload);
@@ -1307,7 +1314,14 @@ async function encryptRequestPayload(context, payload) {
     tags,
   };
 
+<<<<<<< HEAD
   return signEventWithPrivateKey(event, context.secretKey);
+=======
+  event.id = tools.getEventHash(event);
+  event.sig = tools.signEvent(event, context.secretKey);
+
+  return event;
+>>>>>>> origin/main
 }
 
 function registerPendingRequest(eventId, payloadId, { resolve, reject, timeoutMs }) {

@@ -5,11 +5,19 @@ const hashtagPreferencesModule = await import(
   "../js/services/hashtagPreferencesService.js"
 );
 const hashtagPreferences = hashtagPreferencesModule.default;
+<<<<<<< HEAD
 const [{ nostrClient }, { setActiveSigner, clearActiveSigner }] =
   await Promise.all([
     import("../js/nostrClientFacade.js"),
     import("../js/nostr/client.js"),
   ]);
+=======
+const {
+  nostrClient,
+  setActiveSigner,
+  clearActiveSigner,
+} = await import("../js/nostr.js");
+>>>>>>> origin/main
 
 if (typeof globalThis.window === "undefined") {
   globalThis.window = {};
@@ -69,6 +77,7 @@ test(
       async list(relays, filters) {
         assert.deepEqual(relays, ["wss://relay.one"]);
         assert.equal(filters.length, 1);
+<<<<<<< HEAD
         // Note: fetchListIncrementally calls pool.list separately for each kind
         const kind = filters[0].kinds[0];
         assert.ok([30015, 30005].includes(kind));
@@ -87,6 +96,19 @@ test(
           ];
         }
         return [];
+=======
+        assert.deepEqual(filters[0].kinds, [30015, 30005]);
+        assert.equal(filters[0]["#d"][0], "bitvid:tag-preferences");
+        return [
+          {
+            id: "evt1",
+            created_at: 100,
+            pubkey,
+            content: "ciphertext",
+            tags: [["encrypted", "nip44_v2"]],
+          },
+        ];
+>>>>>>> origin/main
       },
     };
     nostrClient.relays = ["wss://relay.one"];
@@ -268,6 +290,7 @@ test(
     const pubkey = "e".repeat(64);
     const encryptCalls = [];
 
+<<<<<<< HEAD
     // The service relies on the signer interface, so we mock the encryption methods on the signer directly.
     // The "fallback" logic is handled by the signer implementation (e.g. Nip07Signer) in the real app.
     setActiveSigner({
@@ -286,6 +309,34 @@ test(
       }
     });
 
+=======
+    setActiveSigner({
+      type: "inpage",
+      signEvent: async (event) => ({ ...event, id: "signed-window" }),
+    });
+
+    window.nostr = {
+      nip44: {
+        encrypt: async (target, plaintext) => {
+          encryptCalls.push({ scheme: "nip44", target, plaintext });
+          throw new Error("nip44 failed");
+        },
+        v2: {
+          encrypt: async (target, plaintext) => {
+            encryptCalls.push({ scheme: "nip44_v2", target, plaintext });
+            return "cipher-from-window";
+          },
+        },
+      },
+      nip04: {
+        encrypt: async (target, plaintext) => {
+          encryptCalls.push({ scheme: "nip04", target, plaintext });
+          return "cipher-nip04";
+        },
+      },
+    };
+
+>>>>>>> origin/main
     const publishedEvents = [];
     nostrClient.pool = {
       list: async () => [],
@@ -310,19 +361,32 @@ test(
     const signedEvent = await hashtagPreferences.publish();
 
     assert.equal(signedEvent.id, "signed-window");
+<<<<<<< HEAD
     // We expect 1 call since the first scheme (nip44_v2) succeeds
     assert.equal(encryptCalls.length, 1);
     assert.equal(encryptCalls[0].scheme, "nip44_call");
     assert.equal(encryptCalls[0].target, pubkey);
     assert.ok(encryptCalls[0].plaintext.includes("windowtag"));
 
+=======
+    assert.equal(encryptCalls.length >= 2, true);
+    assert.equal(encryptCalls[0].scheme, "nip44");
+    assert.equal(encryptCalls[1].scheme, "nip44_v2");
+    assert.equal(encryptCalls[0].target, pubkey);
+    assert.equal(encryptCalls[1].target, pubkey);
+    assert.ok(encryptCalls[0].plaintext.includes("windowtag"));
+    assert.ok(encryptCalls[1].plaintext.includes("windowtag"));
+>>>>>>> origin/main
     assert.equal(publishedEvents.length, 1);
     assert.deepEqual(publishedEvents[0].urls, ["wss://relay.window"]);
     assert.equal(publishedEvents[0].event.kind, 30015);
     const encryptedTag = publishedEvents[0].event.tags.find(
       (tag) => Array.isArray(tag) && tag[0] === "encrypted",
     );
+<<<<<<< HEAD
     // nip44_v2 is the first tried scheme, so it is the one used
+=======
+>>>>>>> origin/main
     assert.equal(encryptedTag[1], "nip44_v2");
   },
 );
@@ -358,6 +422,7 @@ test(
     nostrClient.pool = {
       async list(relays, filters) {
         assert.deepEqual(relays, ["wss://relay.tie"]);
+<<<<<<< HEAD
         const kind = filters[0].kinds[0];
         assert.ok([30015, 30005].includes(kind));
 
@@ -386,6 +451,27 @@ test(
           ];
         }
         return [];
+=======
+        assert.deepEqual(filters[0].kinds, [30015, 30005]);
+        return [
+          {
+            id: "evt-canonical",
+            kind: 30015,
+            created_at: 500,
+            pubkey,
+            content: "canonical-cipher",
+            tags: [["encrypted", "nip44_v2"]],
+          },
+          {
+            id: "evt-legacy",
+            kind: 30005,
+            created_at: 500,
+            pubkey,
+            content: "legacy-cipher",
+            tags: [["encrypted", "nip44_v2"]],
+          },
+        ];
+>>>>>>> origin/main
       },
     };
     nostrClient.relays = ["wss://relay.tie"];

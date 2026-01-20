@@ -14,7 +14,11 @@ module.exports = {
     extend: {
       screens: {
         xs: "30rem",
+<<<<<<< HEAD
         compact: "25rem"
+=======
+        compact: "25rem",
+>>>>>>> origin/main
       },
       colors: {
         page: "var(--color-page)",
@@ -29,7 +33,11 @@ module.exports = {
           "panel-hover": "var(--surface-panel-hover)",
           sunken: "var(--surface-sunken)",
           muted: "var(--surface-muted)",
+<<<<<<< HEAD
           inverse: "var(--surface-inverse)"
+=======
+          inverse: "var(--surface-inverse)",
+>>>>>>> origin/main
         },
         overlay: {
           DEFAULT: "var(--surface-overlay)",
@@ -202,7 +210,11 @@ module.exports = {
       borderColor: {
         surface: "var(--border-default)",
         "surface-strong": "var(--border-strong)",
+<<<<<<< HEAD
         overlay: "var(--border-overlay)",
+=======
+        "overlay": "var(--border-overlay)",
+>>>>>>> origin/main
         "overlay-strong": "var(--border-overlay-strong)",
         "status-info-border": "var(--status-info-border)",
         "status-success-border": "var(--status-success-border)",
@@ -278,6 +290,7 @@ module.exports = {
         "sidebar-shell-block-end": "var(--space-sidebar-shell-block-end)",
         "sidebar-scroll-gap": "var(--space-sidebar-scroll-gap)",
         "sidebar-panel-gap": "var(--space-sidebar-panel-gap)",
+<<<<<<< HEAD
         "sidebar-panel-padding-block":
           "var(--space-sidebar-panel-padding-block)",
         "sidebar-panel-padding-inline":
@@ -294,6 +307,18 @@ module.exports = {
         "sidebar-nav-padding-block": "var(--space-sidebar-nav-padding-block)",
         "sidebar-subnav-padding-block":
           "var(--space-sidebar-subnav-padding-block)",
+=======
+        "sidebar-panel-padding-block": "var(--space-sidebar-panel-padding-block)",
+        "sidebar-panel-padding-inline": "var(--space-sidebar-panel-padding-inline)",
+        "sidebar-footer-gap": "var(--space-sidebar-footer-gap)",
+        "sidebar-trigger-padding-block": "var(--space-sidebar-trigger-padding-block)",
+        "sidebar-popover-offset": "var(--space-sidebar-popover-offset)",
+        "sidebar-popover-padding-block": "var(--space-sidebar-popover-padding-block)",
+        "sidebar-popover-padding-inline": "var(--space-sidebar-popover-padding-inline)",
+        "sidebar-popover-gap": "var(--space-sidebar-popover-gap)",
+        "sidebar-nav-padding-block": "var(--space-sidebar-nav-padding-block)",
+        "sidebar-subnav-padding-block": "var(--space-sidebar-subnav-padding-block)",
+>>>>>>> origin/main
         "sidebar-mobile-gutter": "var(--sidebar-mobile-gutter)",
         "popup-inline": "var(--popup-padding-inline)",
         "popup-block": "var(--popup-padding-block)",
@@ -328,6 +353,7 @@ module.exports = {
         mono: ["var(--font-family-mono)"]
       },
       fontSize: {
+<<<<<<< HEAD
         "4xs": [
           "var(--font-size-4xs)",
           { lineHeight: "var(--line-height-tight)" }
@@ -340,6 +366,11 @@ module.exports = {
           "var(--font-size-2xs)",
           { lineHeight: "var(--line-height-tight)" }
         ],
+=======
+        "4xs": ["var(--font-size-4xs)", { lineHeight: "var(--line-height-tight)" }],
+        "3xs": ["var(--font-size-3xs)", { lineHeight: "var(--line-height-tight)" }],
+        "2xs": ["var(--font-size-2xs)", { lineHeight: "var(--line-height-tight)" }],
+>>>>>>> origin/main
         xs: ["var(--font-size-xs)", { lineHeight: "var(--line-height-tight)" }],
         sm: ["var(--font-size-sm)", { lineHeight: "var(--line-height-snug)" }],
         base: [
@@ -394,19 +425,31 @@ module.exports = {
             lineHeight: "1.6",
             maxWidth: "none",
             fontFamily: theme("fontFamily.sans").join(", "),
+<<<<<<< HEAD
             h1: {
+=======
+            "h1": {
+>>>>>>> origin/main
               fontWeight: theme("fontWeight.bold"),
               marginTop: "0.5rem",
               marginBottom: "1rem",
               fontSize: theme("fontSize.2xl")[0]
             },
+<<<<<<< HEAD
             h2: {
+=======
+            "h2": {
+>>>>>>> origin/main
               fontWeight: theme("fontWeight.bold"),
               marginTop: "1.25rem",
               marginBottom: "0.75rem",
               fontSize: theme("fontSize.xl")[0]
             },
+<<<<<<< HEAD
             h3: {
+=======
+            "h3": {
+>>>>>>> origin/main
               fontWeight: theme("fontWeight.semibold"),
               marginTop: "1rem",
               marginBottom: "0.75rem",
@@ -417,7 +460,11 @@ module.exports = {
               marginTop: "0.75rem",
               marginBottom: "0.5rem"
             },
+<<<<<<< HEAD
             p: {
+=======
+            "p": {
+>>>>>>> origin/main
               marginTop: "0",
               marginBottom: "1rem"
             },
@@ -426,11 +473,19 @@ module.exports = {
               marginBottom: "1rem",
               paddingLeft: "1.25rem"
             },
+<<<<<<< HEAD
             li: {
               marginTop: "0.5rem",
               marginBottom: "0.5rem"
             },
             blockquote: {
+=======
+            "li": {
+              marginTop: "0.5rem",
+              marginBottom: "0.5rem"
+            },
+            "blockquote": {
+>>>>>>> origin/main
               borderLeftWidth: "4px",
               borderLeftColor: "var(--color-border-subtle)",
               paddingLeft: "1rem",
@@ -438,7 +493,11 @@ module.exports = {
               marginBottom: "1rem",
               color: "var(--color-muted)"
             },
+<<<<<<< HEAD
             code: {
+=======
+            "code": {
+>>>>>>> origin/main
               backgroundColor: "var(--color-page-alt)",
               color: "var(--color-secondary)",
               padding: "0.2rem 0.4rem",
@@ -453,7 +512,11 @@ module.exports = {
             "code::after": {
               content: "none"
             },
+<<<<<<< HEAD
             pre: {
+=======
+            "pre": {
+>>>>>>> origin/main
               backgroundColor: "var(--color-page-alt)",
               color: "var(--color-text-strong)",
               padding: "1rem",
@@ -471,7 +534,11 @@ module.exports = {
               fontWeight: "inherit",
               color: "inherit"
             },
+<<<<<<< HEAD
             a: {
+=======
+            "a": {
+>>>>>>> origin/main
               color: "var(--color-primary)",
               textDecoration: "none",
               fontWeight: theme("fontWeight.medium")
@@ -479,13 +546,21 @@ module.exports = {
             "a:hover": {
               textDecoration: "underline"
             },
+<<<<<<< HEAD
             hr: {
+=======
+            "hr": {
+>>>>>>> origin/main
               borderColor: "var(--color-border-subtle)",
               borderTopWidth: "1px",
               marginTop: "2rem",
               marginBottom: "2rem"
             },
+<<<<<<< HEAD
             img: {
+=======
+            "img": {
+>>>>>>> origin/main
               marginTop: "0",
               marginBottom: "1rem",
               borderRadius: theme("borderRadius.md"),

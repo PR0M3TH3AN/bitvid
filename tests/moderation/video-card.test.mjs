@@ -35,6 +35,10 @@ function setupDom(t) {
     "ResizeObserver",
     "requestAnimationFrame",
     "cancelAnimationFrame",
+<<<<<<< HEAD
+=======
+    "navigator",
+>>>>>>> origin/main
   ];
 
   keys.forEach((key) => {
@@ -54,6 +58,7 @@ function setupDom(t) {
     globalThis[key] = window[key];
   });
 
+<<<<<<< HEAD
   // Mock navigator safely
   const originalNavigator = globalThis.navigator;
   Object.defineProperty(globalThis, "navigator", {
@@ -62,6 +67,8 @@ function setupDom(t) {
     configurable: true,
   });
 
+=======
+>>>>>>> origin/main
   if (!window.requestAnimationFrame) {
     window.requestAnimationFrame = (cb) => setTimeout(() => cb(Date.now()), 16);
     globalThis.requestAnimationFrame = window.requestAnimationFrame;
@@ -92,12 +99,15 @@ function setupDom(t) {
         globalThis[key] = previousValue;
       }
     });
+<<<<<<< HEAD
     // Restore navigator
     Object.defineProperty(globalThis, "navigator", {
       value: originalNavigator,
       writable: true,
       configurable: true,
     });
+=======
+>>>>>>> origin/main
   });
 
   return { window, document: window.document };

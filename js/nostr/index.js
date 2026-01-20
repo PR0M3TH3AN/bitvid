@@ -30,7 +30,11 @@ export {
 export {
   normalizePointerInput,
   pointerKey,
+<<<<<<< HEAD
   buildWatchHistoryPayload,
+=======
+  chunkWatchHistoryPayloadItems,
+>>>>>>> origin/main
   normalizeActorKey,
   parseWatchHistoryContentWithFallback,
   isNip04EncryptedWatchHistoryEvent,

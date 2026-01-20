@@ -13,6 +13,7 @@ import {
   DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
   RUNTIME_FLAGS,
 } from "../constants.js";
+<<<<<<< HEAD
 import { getBreakpointLg } from "../designSystem/metrics.js";
 import { getProviderMetadata } from "../services/authProviders/index.js";
 import { devLogger, userLogger } from "../utils/logger.js";
@@ -39,6 +40,10 @@ import {
   getLinkPreviewSettings,
   setLinkPreviewAutoFetch,
 } from "../utils/linkPreviewSettings.js";
+=======
+import { getProviderMetadata } from "../services/authProviders/index.js";
+import { devLogger, userLogger } from "../utils/logger.js";
+>>>>>>> origin/main
 
 const noop = () => {};
 
@@ -50,8 +55,11 @@ const NWC_URI_SCHEME = "nostr+walletconnect://";
 const SECRET_PLACEHOLDER = "*****";
 const DEFAULT_MAX_WALLET_DEFAULT_ZAP = 100000000;
 const DEFAULT_SAVED_PROFILE_LABEL = "Saved profile";
+<<<<<<< HEAD
 const TRUSTED_MUTE_HIDE_HELPER_TEXT =
   "Reaching this count hides cards (with “Show anyway”); lower signals only blur thumbnails or block autoplay.";
+=======
+>>>>>>> origin/main
 
 const ADD_PROFILE_CANCELLATION_CODES = new Set([
   "login-cancelled",
@@ -208,12 +216,15 @@ const SERVICE_CONTRACT = [
         : "Failed to login. Please try again.",
   },
   {
+<<<<<<< HEAD
     key: "r2Service",
     type: "object",
     description: "Service for handling file uploads (R2/S3).",
     optional: true,
   },
   {
+=======
+>>>>>>> origin/main
     key: "nostrService",
     type: "object",
     description:
@@ -293,6 +304,7 @@ const SERVICE_CONTRACT = [
     fallback: () => async () => [],
   },
   {
+<<<<<<< HEAD
     key: "fetchDmRelayHints",
     type: "function",
     description:
@@ -300,6 +312,8 @@ const SERVICE_CONTRACT = [
     fallback: () => async () => [],
   },
   {
+=======
+>>>>>>> origin/main
     key: "switchProfile",
     type: "function",
     description:
@@ -539,6 +553,7 @@ const SERVICE_CONTRACT = [
     },
   },
   {
+<<<<<<< HEAD
     key: "getModerationOverrides",
     type: "function",
     description:
@@ -553,6 +568,8 @@ const SERVICE_CONTRACT = [
     fallback: () => () => false,
   },
   {
+=======
+>>>>>>> origin/main
     key: "loadVideos",
     type: "function",
     description: "Triggers a video reload so UI reflects profile or permission changes.",
@@ -718,6 +735,7 @@ const STATE_CONTRACT = [
       return internal.walletBusy;
     },
   },
+<<<<<<< HEAD
   {
     key: "getDmRecipient",
     type: "function",
@@ -808,6 +826,8 @@ const STATE_CONTRACT = [
       return stored;
     },
   },
+=======
+>>>>>>> origin/main
 ];
 
 function buildServicesContract(services = {}, internalState) {
@@ -996,8 +1016,11 @@ export class ProfileModalController {
       walletBusy: false,
       walletSettings: createInternalDefaultNwcSettings(),
       moderationSettings: createInternalDefaultModerationSettings(),
+<<<<<<< HEAD
       dmRecipient: null,
       dmRelayHints: new Map(),
+=======
+>>>>>>> origin/main
     };
 
     this.services = buildServicesContract(services, this.internalState);
@@ -1046,20 +1069,27 @@ export class ProfileModalController {
         ? moderationServiceCandidate
         : null;
     this.unsubscribeModerationContacts = null;
+<<<<<<< HEAD
     this.unsubscribeModerationStats = [];
+=======
+>>>>>>> origin/main
     if (
       this.moderationService &&
       typeof this.moderationService.on === "function"
     ) {
       try {
+<<<<<<< HEAD
         const updateTrustStats = () => {
           this.updateModerationTrustStats();
         };
 
+=======
+>>>>>>> origin/main
         this.unsubscribeModerationContacts = this.moderationService.on(
           "contacts",
           () => {
             void this.populateFriendsList();
+<<<<<<< HEAD
             updateTrustStats();
           },
         );
@@ -1068,6 +1098,10 @@ export class ProfileModalController {
           this.moderationService.on("trusted-mutes", updateTrustStats),
           this.moderationService.on("summary", updateTrustStats),
         ].filter((unsubscribe) => typeof unsubscribe === "function");
+=======
+          },
+        );
+>>>>>>> origin/main
       } catch (error) {
         devLogger.warn(
           "[profileModal] Failed to subscribe to moderation contacts updates:",
@@ -1136,10 +1170,13 @@ export class ProfileModalController {
       onAdminNotifyError: callbacks.onAdminNotifyError || noop,
       onModerationSettingsChange:
         callbacks.onModerationSettingsChange || noop,
+<<<<<<< HEAD
       onSendDm: callbacks.onSendDm || noop,
       onTogglePrivacy: callbacks.onTogglePrivacy || noop,
       onOpenRelays: callbacks.onOpenRelays || noop,
       onPublishDmRelayPreferences: callbacks.onPublishDmRelayPreferences || noop,
+=======
+>>>>>>> origin/main
     };
 
     this.profileModal = null;
@@ -1167,7 +1204,10 @@ export class ProfileModalController {
       account: null,
       relays: null,
       wallet: null,
+<<<<<<< HEAD
       storage: null,
+=======
+>>>>>>> origin/main
       hashtags: null,
       subscriptions: null,
       friends: null,
@@ -1180,7 +1220,10 @@ export class ProfileModalController {
       account: null,
       relays: null,
       wallet: null,
+<<<<<<< HEAD
       storage: null,
+=======
+>>>>>>> origin/main
       hashtags: null,
       subscriptions: null,
       friends: null,
@@ -1220,6 +1263,7 @@ export class ProfileModalController {
     this.profileMessagesStatus = null;
     this.profileMessagesReloadButton = null;
     this.profileMessagesPane = null;
+<<<<<<< HEAD
     this.profileMessagesConversation = null;
     this.profileMessagesConversationEmpty = null;
     this.profileMessageInput = null;
@@ -1240,6 +1284,8 @@ export class ProfileModalController {
     this.profileMessagesRelayPublishButton = null;
     this.profileMessagesRelayStatus = null;
     this.profileLinkPreviewAutoToggle = null;
+=======
+>>>>>>> origin/main
     this.walletUriInput = null;
     this.walletDefaultZapInput = null;
     this.walletSaveButton = null;
@@ -1264,11 +1310,16 @@ export class ProfileModalController {
     this.moderationSaveButton = null;
     this.moderationResetButton = null;
     this.moderationStatusText = null;
+<<<<<<< HEAD
     this.moderationOverridesList = null;
     this.moderationOverridesEmpty = null;
     this.moderationHideControlsGroup = null;
     this.moderationHideControlElements = [];
     this.boundModerationOverridesUpdate = null;
+=======
+    this.moderationHideControlsGroup = null;
+    this.moderationHideControlElements = [];
+>>>>>>> origin/main
     this.moderatorSection = null;
     this.moderatorEmpty = null;
     this.adminModeratorList = null;
@@ -1309,9 +1360,12 @@ export class ProfileModalController {
     this.directMessagesUnsubscribes = [];
     this.pendingMessagesRender = null;
     this.messagesStatusClearTimeout = null;
+<<<<<<< HEAD
     this.dmPrivacyToggleTouched = false;
     this.dmAttachmentQueue = [];
     this.dmAttachmentUploads = new Map();
+=======
+>>>>>>> origin/main
 
     this.profileHistoryRenderer = null;
     this.profileHistoryRendererConfig = null;
@@ -1323,7 +1377,12 @@ export class ProfileModalController {
     this.focusTrapSuspended = false;
     this.focusTrapSuspendCount = 0;
     this.focusTrapAriaHiddenBeforeSuspend = null;
+<<<<<<< HEAD
     this.focusTrapNestedModalActiveBeforeSuspend = null;
+=======
+    this.focusTrapPointerEventsBeforeSuspend = null;
+    this.focusTrapVisibilityBeforeSuspend = null;
+>>>>>>> origin/main
     this.profileSwitcherSelectionPubkey = null;
     this.previouslyFocusedElement = null;
     this.largeLayoutQuery = null;
@@ -1343,6 +1402,7 @@ export class ProfileModalController {
       throw new Error("profile modal container missing");
     }
 
+<<<<<<< HEAD
     // Invalidate any stale renderer reference so it is recreated
     // with the freshly loaded DOM elements.
     if (this.profileHistoryRenderer) {
@@ -1357,6 +1417,8 @@ export class ProfileModalController {
       this.profileHistoryRendererConfig = null;
     }
 
+=======
+>>>>>>> origin/main
     const response = await fetch("components/profile-modal.html");
     if (!response.ok) {
       throw new Error(`Failed to load profile modal HTML (${response.status})`);
@@ -1432,7 +1494,10 @@ export class ProfileModalController {
       document.getElementById("profileNavAccount") || null;
     this.navButtons.relays = document.getElementById("profileNavRelays") || null;
     this.navButtons.wallet = document.getElementById("profileNavWallet") || null;
+<<<<<<< HEAD
     this.navButtons.storage = document.getElementById("profileNavStorage") || null;
+=======
+>>>>>>> origin/main
     this.navButtons.hashtags =
       document.getElementById("profileNavHashtags") || null;
     this.navButtons.subscriptions =
@@ -1447,6 +1512,7 @@ export class ProfileModalController {
       document.getElementById("profileNavHistory") || null;
     this.navButtons.admin = document.getElementById("profileNavAdmin") || null;
 
+<<<<<<< HEAD
     this.profileEditBtn = document.getElementById("profileEditBtn") || null;
     this.profileEditBackBtn = document.getElementById("profileEditBackBtn") || null;
 
@@ -1455,6 +1521,11 @@ export class ProfileModalController {
     this.panes.relays = document.getElementById("profilePaneRelays") || null;
     this.panes.wallet = document.getElementById("profilePaneWallet") || null;
     this.panes.storage = document.getElementById("profilePaneStorage") || null;
+=======
+    this.panes.account = document.getElementById("profilePaneAccount") || null;
+    this.panes.relays = document.getElementById("profilePaneRelays") || null;
+    this.panes.wallet = document.getElementById("profilePaneWallet") || null;
+>>>>>>> origin/main
     this.panes.hashtags = document.getElementById("profilePaneHashtags") || null;
     this.panes.subscriptions =
       document.getElementById("profilePaneSubscriptions") || null;
@@ -1498,6 +1569,7 @@ export class ProfileModalController {
       document.getElementById("profileMessagesStatus") || null;
     this.profileMessagesReloadButton =
       document.getElementById("profileMessagesReload") || null;
+<<<<<<< HEAD
     this.profileMessagesConversation =
       document.getElementById("profileMessagesConversation") || null;
     this.profileMessagesConversationEmpty =
@@ -1538,6 +1610,8 @@ export class ProfileModalController {
       document.getElementById("profileMessagesRelayStatus") || null;
     this.profileLinkPreviewAutoToggle =
       document.getElementById("profileLinkPreviewAutoToggle") || null;
+=======
+>>>>>>> origin/main
 
     if (this.pendingMessagesRender) {
       const { messages, actorPubkey } = this.pendingMessagesRender;
@@ -1564,8 +1638,11 @@ export class ProfileModalController {
     }
 
     this.setMessagesLoadingState(this.messagesLoadingState || "idle");
+<<<<<<< HEAD
     this.updateMessagePrivacyModeDisplay();
     this.populateDmRelayPreferences();
+=======
+>>>>>>> origin/main
 
     this.walletUriInput = document.getElementById("profileWalletUri") || null;
     this.walletDefaultZapInput =
@@ -1632,6 +1709,7 @@ export class ProfileModalController {
       document.getElementById("profileModerationReset") || null;
     this.moderationStatusText =
       document.getElementById("profileModerationStatus") || null;
+<<<<<<< HEAD
     this.moderationOverridesList =
       document.getElementById("profileModerationOverridesList") || null;
     this.moderationOverridesEmpty =
@@ -1644,6 +1722,8 @@ export class ProfileModalController {
       document.getElementById("profileModerationTrustedReportCount") || null;
     this.moderationSeedOnlyIndicator =
       document.getElementById("profileModerationSeedOnlyIndicator") || null;
+=======
+>>>>>>> origin/main
     this.moderationHideControlsGroup =
       this.moderationSettingsCard?.querySelector(
         "[data-role=\"trusted-hide-controls\"]",
@@ -1653,7 +1733,10 @@ export class ProfileModalController {
         "[data-role=\"trusted-hide-control\"]",
       ) || [],
     );
+<<<<<<< HEAD
     this.updateTrustedMuteHideHelperCopy();
+=======
+>>>>>>> origin/main
 
     this.moderatorSection =
       document.getElementById("adminModeratorsSection") || null;
@@ -1666,6 +1749,7 @@ export class ProfileModalController {
     this.moderatorInput =
       document.getElementById("adminModeratorInput") || null;
 
+<<<<<<< HEAD
     this.storageUnlockBtn = document.getElementById("profileStorageUnlockBtn") || null;
     this.storageSaveBtn = document.getElementById("storageSaveBtn") || null;
     this.storageTestBtn = document.getElementById("storageTestBtn") || null;
@@ -1685,6 +1769,8 @@ export class ProfileModalController {
     this.storageDefaultInput = document.getElementById("storageDefault") || null;
     this.storageR2Helper = document.getElementById("storageR2Helper") || null;
 
+=======
+>>>>>>> origin/main
     // Backwards-compatible aliases retained for application code that still
     // mirrors DOM references from the controller. These should be removed once
     // the application stops reaching through the controller.
@@ -1724,6 +1810,7 @@ export class ProfileModalController {
     this.adminAddBlacklistButton = this.addBlacklistButton;
     this.adminBlacklistInput = this.blacklistInput;
 
+<<<<<<< HEAD
     this.editNameInput = document.getElementById("editNameInput") || null;
     this.editDisplayNameInput = document.getElementById("editDisplayNameInput") || null;
     this.editAboutInput = document.getElementById("editAboutInput") || null;
@@ -1747,6 +1834,8 @@ export class ProfileModalController {
     this.editCancelBtn = document.getElementById("editCancelBtn") || null;
     this.editStatusText = document.getElementById("editStatusText") || null;
 
+=======
+>>>>>>> origin/main
     if (this.createWatchHistoryRenderer) {
       this.ensureProfileHistoryRenderer();
     }
@@ -1764,10 +1853,14 @@ export class ProfileModalController {
     const config = this.getProfileHistoryRendererConfig();
 
     try {
+<<<<<<< HEAD
       this.profileHistoryRenderer = this.createWatchHistoryRenderer({
         ...config,
         container: this.profileModalPanel || this.profileModalRoot,
       });
+=======
+      this.profileHistoryRenderer = this.createWatchHistoryRenderer(config);
+>>>>>>> origin/main
     } catch (error) {
       userLogger.error(
         "[profileModal] Failed to create watch history renderer:",
@@ -1791,6 +1884,7 @@ export class ProfileModalController {
       statusSelector: "#profileHistoryStatus",
       emptySelector: "#profileHistoryEmpty",
       sentinelSelector: "#profileHistorySentinel",
+<<<<<<< HEAD
       scrollContainerSelector: "#profileModalPanes",
       errorBannerSelector: "#profileHistoryError",
       clearButtonSelector: "#profileHistoryClear",
@@ -1803,6 +1897,19 @@ export class ProfileModalController {
       infoSelector: "#profileHistoryInfo",
       featureBannerSelector: "#profileHistoryFeatureBanner",
       sessionWarningSelector: "#profileHistorySessionWarning",
+=======
+      scrollContainerSelector: "#profileHistoryScroll",
+      errorBannerSelector: "#profileHistoryError",
+      clearButtonSelector: "#profileHistoryClear",
+      republishButtonSelector: "#profileHistoryRepublish",
+      featureBannerSelector: "#profileHistoryFeatureBanner",
+      toastRegionSelector: "#profileHistoryToastRegion",
+      sessionWarningSelector: "#profileHistorySessionWarning",
+      metadataToggleSelector: "#profileHistoryMetadataToggle",
+      metadataThumbSelector: "#profileHistoryMetadataThumb",
+      metadataLabelSelector: "#profileHistoryMetadataLabel",
+      metadataDescriptionSelector: "#profileHistoryMetadataDescription",
+>>>>>>> origin/main
       emptyCopy: "You haven’t watched any videos yet.",
       remove: (payload) =>
         this.callbacks.onHistoryReady({
@@ -1849,9 +1956,12 @@ export class ProfileModalController {
     subscribe("directMessages:failure", (detail) => {
       this.handleDirectMessagesError(detail);
     });
+<<<<<<< HEAD
     subscribe("directMessages:relayWarning", (detail) => {
       this.handleDirectMessagesRelayWarning(detail);
     });
+=======
+>>>>>>> origin/main
 
     this.directMessagesUnsubscribes = unsubscribes;
 
@@ -1935,6 +2045,7 @@ export class ProfileModalController {
     return null;
   }
 
+<<<<<<< HEAD
   resolveActiveDmRecipient() {
     const candidate =
       typeof this.state.getDmRecipient === "function"
@@ -2341,6 +2452,9 @@ export class ProfileModalController {
   }
 
   async ensureDirectMessageSubscription(actorPubkey = null) {
+=======
+  ensureDirectMessageSubscription(actorPubkey = null) {
+>>>>>>> origin/main
     if (
       !this.nostrService ||
       typeof this.nostrService.ensureDirectMessageSubscription !== "function"
@@ -2373,7 +2487,11 @@ export class ProfileModalController {
 
     let subscription = null;
     try {
+<<<<<<< HEAD
       subscription = await this.nostrService.ensureDirectMessageSubscription({
+=======
+      subscription = this.nostrService.ensureDirectMessageSubscription({
+>>>>>>> origin/main
         actorPubkey: normalizedActor,
       });
     } catch (error) {
@@ -2416,9 +2534,12 @@ export class ProfileModalController {
       ? this.normalizeHexPubkey(actorPubkey)
       : this.resolveActiveDmActor();
 
+<<<<<<< HEAD
     this.setDirectMessageRecipient(null, { reason: "clear" });
     this.resetAttachmentQueue({ clearInput: true });
 
+=======
+>>>>>>> origin/main
     if (
       this.directMessagesSubscription &&
       this.directMessagesSubscription.actor &&
@@ -2437,6 +2558,7 @@ export class ProfileModalController {
       this.profileMessagesList.classList.add("hidden");
       this.profileMessagesList.setAttribute("hidden", "");
     }
+<<<<<<< HEAD
     if (this.profileMessagesConversation instanceof HTMLElement) {
       this.profileMessagesConversation.innerHTML = "";
       this.profileMessagesConversation.classList.add("hidden");
@@ -2446,17 +2568,26 @@ export class ProfileModalController {
       this.profileMessagesConversationEmpty.classList.remove("hidden");
       this.profileMessagesConversationEmpty.removeAttribute("hidden");
     }
+=======
+>>>>>>> origin/main
 
     if (!normalized) {
       this.setMessagesLoadingState("unauthenticated");
       this.updateMessagesReloadState();
+<<<<<<< HEAD
       this.populateDmRelayPreferences();
       this.setDmRelayPreferencesStatus("");
+=======
+>>>>>>> origin/main
       return;
     }
 
     this.setMessagesLoadingState("loading");
+<<<<<<< HEAD
     void this.ensureDirectMessageSubscription(normalized);
+=======
+    this.ensureDirectMessageSubscription(normalized);
+>>>>>>> origin/main
     this.updateMessagesReloadState();
 
     if (this.getActivePane() === "messages") {
@@ -2465,8 +2596,11 @@ export class ProfileModalController {
         reason: "identity-change",
       });
     }
+<<<<<<< HEAD
 
     void this.refreshDmRelayPreferences({ force: true });
+=======
+>>>>>>> origin/main
   }
 
   setMessagesLoadingState(state, options = {}) {
@@ -2554,7 +2688,10 @@ export class ProfileModalController {
     }
 
     this.updateMessagesReloadState();
+<<<<<<< HEAD
     this.updateMessageComposerState();
+=======
+>>>>>>> origin/main
   }
 
   updateMessagesReloadState() {
@@ -2580,6 +2717,7 @@ export class ProfileModalController {
     }
   }
 
+<<<<<<< HEAD
   updateMessageComposerState() {
     const input = this.profileMessageInput;
     const button = this.profileMessageSendButton;
@@ -2624,6 +2762,8 @@ export class ProfileModalController {
     this.updateMessagePrivacyModeDisplay();
   }
 
+=======
+>>>>>>> origin/main
   setMessagesAnnouncement(message) {
     if (!(this.profileMessagesStatus instanceof HTMLElement)) {
       return;
@@ -2654,6 +2794,7 @@ export class ProfileModalController {
     }
   }
 
+<<<<<<< HEAD
   async handleSendDmRequest() {
     const recipient = this.resolveActiveDmRecipient();
     if (!recipient) {
@@ -3199,11 +3340,16 @@ export class ProfileModalController {
     }
   }
 
+=======
+>>>>>>> origin/main
   clearProfileMessages({ message } = {}) {
     this.directMessagesCache = [];
     this.directMessagesLastActor = this.resolveActiveDmActor();
     this.messagesInitialLoadPending = true;
+<<<<<<< HEAD
     this.setDirectMessageRecipient(null, { reason: "clear" });
+=======
+>>>>>>> origin/main
 
     if (this.profileMessagesList instanceof HTMLElement) {
       this.profileMessagesList.innerHTML = "";
@@ -3423,7 +3569,10 @@ export class ProfileModalController {
     const item = document.createElement("li");
     item.className = "card flex flex-col gap-3 p-4";
     item.setAttribute("data-remote-pubkey", thread.remoteHex);
+<<<<<<< HEAD
     item.dataset.state = "inactive";
+=======
+>>>>>>> origin/main
 
     const header = document.createElement("div");
     header.className = "flex items-start justify-between gap-3";
@@ -3501,6 +3650,7 @@ export class ProfileModalController {
 
     item.appendChild(meta);
 
+<<<<<<< HEAD
     item.addEventListener("click", () => {
       this.setDirectMessageRecipient(thread.remoteHex, {
         reason: "thread-select",
@@ -3508,6 +3658,8 @@ export class ProfileModalController {
       this.focusMessageComposer();
     });
 
+=======
+>>>>>>> origin/main
     return item;
   }
 
@@ -3554,7 +3706,10 @@ export class ProfileModalController {
     if (!threads.length) {
       this.profileMessagesList.classList.add("hidden");
       this.profileMessagesList.setAttribute("hidden", "");
+<<<<<<< HEAD
       void this.renderDirectMessageConversation();
+=======
+>>>>>>> origin/main
       return;
     }
 
@@ -3565,6 +3720,7 @@ export class ProfileModalController {
       }
     }
 
+<<<<<<< HEAD
     const activeRecipient = this.resolveActiveDmRecipient();
     const hasActiveRecipient =
       activeRecipient &&
@@ -3581,6 +3737,10 @@ export class ProfileModalController {
     this.profileMessagesList.classList.remove("hidden");
     this.profileMessagesList.removeAttribute("hidden");
     void this.renderDirectMessageConversation();
+=======
+    this.profileMessagesList.classList.remove("hidden");
+    this.profileMessagesList.removeAttribute("hidden");
+>>>>>>> origin/main
   }
 
   async populateProfileMessages(options = {}) {
@@ -3687,7 +3847,11 @@ export class ProfileModalController {
       }
     }
 
+<<<<<<< HEAD
     void this.ensureDirectMessageSubscription(actor);
+=======
+    this.ensureDirectMessageSubscription(actor);
+>>>>>>> origin/main
   }
 
   resumeProfileMessages() {
@@ -3752,7 +3916,10 @@ export class ProfileModalController {
     }
 
     this.directMessagesCache = [];
+<<<<<<< HEAD
     this.setDirectMessageRecipient(null, { reason: "clear" });
+=======
+>>>>>>> origin/main
     if (this.profileMessagesList instanceof HTMLElement) {
       this.profileMessagesList.innerHTML = "";
       this.profileMessagesList.classList.add("hidden");
@@ -3789,6 +3956,7 @@ export class ProfileModalController {
     this.updateMessagesReloadState();
   }
 
+<<<<<<< HEAD
   handleDirectMessagesRelayWarning(detail = {}) {
     if (detail?.warning !== "dm-relays-fallback") {
       return;
@@ -3799,6 +3967,8 @@ export class ProfileModalController {
     );
   }
 
+=======
+>>>>>>> origin/main
   registerEventListeners() {
     if (this.closeButton instanceof HTMLElement) {
       this.closeButton.addEventListener("click", () => {
@@ -3907,6 +4077,7 @@ export class ProfileModalController {
       });
     }
 
+<<<<<<< HEAD
     if (this.profileMessagesSendDmButton instanceof HTMLElement) {
       this.profileMessagesSendDmButton.addEventListener("click", () => {
         void this.handleSendDmRequest();
@@ -3997,6 +4168,8 @@ export class ProfileModalController {
       });
     }
 
+=======
+>>>>>>> origin/main
     if (this.walletUriInput instanceof HTMLElement) {
       this.walletUriInput.addEventListener("focus", () => {
         this.revealSecretInputValue(this.walletUriInput);
@@ -4071,6 +4244,7 @@ export class ProfileModalController {
       });
     }
 
+<<<<<<< HEAD
     if (!this.boundModerationOverridesUpdate && typeof document !== "undefined") {
       this.boundModerationOverridesUpdate = () => {
         this.refreshModerationOverridesUi();
@@ -4089,6 +4263,8 @@ export class ProfileModalController {
       );
     }
 
+=======
+>>>>>>> origin/main
     if (this.addModeratorButton instanceof HTMLElement) {
       this.addModeratorButton.addEventListener("click", () => {
         void this.handleAddModerator();
@@ -4134,6 +4310,7 @@ export class ProfileModalController {
       });
     }
 
+<<<<<<< HEAD
     if (this.storageUnlockBtn instanceof HTMLElement) {
       this.storageUnlockBtn.addEventListener("click", () => {
         void this.handleUnlockStorage();
@@ -4226,6 +4403,8 @@ export class ProfileModalController {
       });
     }
 
+=======
+>>>>>>> origin/main
     this.updateMessagesReloadState();
   }
 
@@ -5223,8 +5402,12 @@ export class ProfileModalController {
     }
 
     try {
+<<<<<<< HEAD
       const breakpointLg = getBreakpointLg();
       const query = window.matchMedia(`(min-width: ${breakpointLg})`);
+=======
+      const query = window.matchMedia("(min-width: 1024px)");
+>>>>>>> origin/main
       const handler = (event) => {
         const matches =
           typeof event?.matches === "boolean" ? event.matches : query.matches;
@@ -5478,11 +5661,16 @@ export class ProfileModalController {
     } else if (target === "messages") {
       this.resumeProfileMessages();
       void this.populateProfileMessages({ reason: "pane-select" });
+<<<<<<< HEAD
       void this.refreshDmRelayPreferences();
     } else if (target === "wallet") {
       this.refreshWalletPaneState();
     } else if (target === "storage") {
       this.populateStoragePane();
+=======
+    } else if (target === "wallet") {
+      this.refreshWalletPaneState();
+>>>>>>> origin/main
     } else if (target === "hashtags") {
       this.populateHashtagPreferences();
     } else if (target === "subscriptions") {
@@ -5890,11 +6078,32 @@ export class ProfileModalController {
   }
 
   normalizeHashtagTag(value) {
+<<<<<<< HEAD
     return normalizeHashtag(value);
   }
 
   formatHashtagTag(value) {
     return formatHashtag(value);
+=======
+    if (typeof value !== "string") {
+      return "";
+    }
+
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return "";
+    }
+
+    return trimmed.replace(/^#+/, "").toLowerCase();
+  }
+
+  formatHashtagTag(value) {
+    const normalized = this.normalizeHashtagTag(value);
+    if (!normalized) {
+      return "";
+    }
+    return `#${normalized}`;
+>>>>>>> origin/main
   }
 
   sanitizeHashtagList(list) {
@@ -7364,6 +7573,7 @@ export class ProfileModalController {
     }
   }
 
+<<<<<<< HEAD
   handleEditProfile() {
     this.selectPane("edit");
     void this.populateEditPane();
@@ -7813,6 +8023,8 @@ export class ProfileModalController {
     this.storageFormStatus.className = `text-sm text-status-${variant}`;
   }
 
+=======
+>>>>>>> origin/main
   async populateProfileWatchHistory() {
     const renderer = this.ensureProfileHistoryRenderer();
     if (!renderer) {
@@ -7828,12 +8040,20 @@ export class ProfileModalController {
     }
 
     try {
+<<<<<<< HEAD
       const state = typeof renderer.getState === "function" ? renderer.getState() : {};
       if (state.initialized) {
         await renderer.refresh({ actor: primaryActor, force: true });
       } else {
         await renderer.ensureInitialLoad({ actor: primaryActor });
       }
+=======
+      await renderer.ensureInitialLoad({ actor: primaryActor });
+      await renderer.refresh({
+        actor: primaryActor,
+        force: true,
+      });
+>>>>>>> origin/main
 
       if (!this.boundProfileHistoryVisibility) {
         this.boundProfileHistoryVisibility = () => {
@@ -8679,6 +8899,7 @@ export class ProfileModalController {
     }
   }
 
+<<<<<<< HEAD
   updateTrustedMuteHideHelperCopy() {
     if (!(this.moderationMuteHideInput instanceof HTMLInputElement)) {
       return;
@@ -8897,14 +9118,19 @@ export class ProfileModalController {
     }
   }
 
+=======
+>>>>>>> origin/main
   refreshModerationSettingsUi() {
     const service = this.getModerationSettingsService();
     if (!service) {
       this.moderationSettingsDefaults = createInternalDefaultModerationSettings();
       this.currentModerationSettings = createInternalDefaultModerationSettings();
       this.updateTrustedHideControlsVisibility();
+<<<<<<< HEAD
       this.updateModerationTrustStats();
       this.refreshModerationOverridesUi();
+=======
+>>>>>>> origin/main
       this.applyModerationSettingsControlState({ resetStatus: true });
       return;
     }
@@ -8946,12 +9172,16 @@ export class ProfileModalController {
     }
 
     this.updateTrustedHideControlsVisibility();
+<<<<<<< HEAD
     this.updateModerationTrustStats();
     this.refreshModerationOverridesUi();
+=======
+>>>>>>> origin/main
 
     this.applyModerationSettingsControlState({ resetStatus: true });
   }
 
+<<<<<<< HEAD
   getModerationTrustStats() {
     const summary = {
       trustedContactsCount: 0,
@@ -9080,6 +9310,8 @@ export class ProfileModalController {
     }
   }
 
+=======
+>>>>>>> origin/main
   async handleModerationSettingsSave() {
     const service = this.getModerationSettingsService();
     const context = {
@@ -9367,6 +9599,7 @@ export class ProfileModalController {
       return;
     }
 
+<<<<<<< HEAD
     const {
       onRemove,
       removeLabel = "Remove",
@@ -9375,6 +9608,10 @@ export class ProfileModalController {
       overlapSet,
       overlapLabel,
     } = options;
+=======
+    const { onRemove, removeLabel = "Remove", confirmMessage, removable = true } =
+      options;
+>>>>>>> origin/main
 
     const formatNpub =
       typeof this.formatShortNpub === "function"
@@ -9416,8 +9653,11 @@ export class ProfileModalController {
         "card flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between";
 
       const normalizedNpub = typeof npub === "string" ? npub.trim() : "";
+<<<<<<< HEAD
       const comparableNpub =
         this.normalizeNpubValue(normalizedNpub) || normalizedNpub;
+=======
+>>>>>>> origin/main
       const decodedHex =
         normalizedNpub && normalizedNpub.startsWith("npub1")
           ? this.safeDecodeNpub(normalizedNpub)
@@ -9452,6 +9692,7 @@ export class ProfileModalController {
         avatarSrc,
       });
 
+<<<<<<< HEAD
       if (
         summary &&
         overlapLabel &&
@@ -9466,6 +9707,8 @@ export class ProfileModalController {
         summary.appendChild(overlapBadge);
       }
 
+=======
+>>>>>>> origin/main
       const actions = document.createElement("div");
       actions.className =
         "flex flex-wrap items-center justify-end gap-2 sm:flex-none";
@@ -9531,6 +9774,7 @@ export class ProfileModalController {
     const blacklist = this.normalizeAdminListEntries(
       this.services.accessControl.getBlacklist(),
     );
+<<<<<<< HEAD
     const normalizeForCompare = (value) =>
       this.normalizeNpubValue(value) ||
       (typeof value === "string" ? value.trim() : "");
@@ -9540,6 +9784,8 @@ export class ProfileModalController {
     const blacklistCompare = new Set(
       blacklist.map(normalizeForCompare).filter(Boolean),
     );
+=======
+>>>>>>> origin/main
 
     this.renderAdminList(
       this.adminModeratorList,
@@ -9564,8 +9810,11 @@ export class ProfileModalController {
         removeLabel: "Remove",
         confirmMessage: "Remove {npub} from the whitelist?",
         removable: true,
+<<<<<<< HEAD
         overlapSet: blacklistCompare,
         overlapLabel: "Also blacklisted",
+=======
+>>>>>>> origin/main
       },
     );
 
@@ -9579,8 +9828,11 @@ export class ProfileModalController {
         removeLabel: "Unblock",
         confirmMessage: "Remove {npub} from the blacklist?",
         removable: true,
+<<<<<<< HEAD
         overlapSet: whitelistCompare,
         overlapLabel: "Also whitelisted",
+=======
+>>>>>>> origin/main
       },
     );
   }
@@ -10666,16 +10918,37 @@ export class ProfileModalController {
       this.focusTrapAriaHiddenBeforeSuspend = modalRoot.getAttribute(
         "aria-hidden",
       );
+<<<<<<< HEAD
       this.focusTrapNestedModalActiveBeforeSuspend =
         typeof modalRoot.dataset.nestedModalActive === "string"
           ? modalRoot.dataset.nestedModalActive
+=======
+      this.focusTrapPointerEventsBeforeSuspend =
+        typeof modalRoot.style.pointerEvents === "string" &&
+        modalRoot.style.pointerEvents
+          ? modalRoot.style.pointerEvents
+          : null;
+      this.focusTrapVisibilityBeforeSuspend =
+        typeof modalRoot.style.visibility === "string" &&
+        modalRoot.style.visibility
+          ? modalRoot.style.visibility
+>>>>>>> origin/main
           : null;
 
       modalRoot.dataset.nestedModalActive = "true";
       modalRoot.setAttribute("aria-hidden", "true");
+<<<<<<< HEAD
     } else {
       this.focusTrapAriaHiddenBeforeSuspend = null;
       this.focusTrapNestedModalActiveBeforeSuspend = null;
+=======
+      modalRoot.style.setProperty("pointer-events", "none");
+      modalRoot.style.setProperty("visibility", "hidden");
+    } else {
+      this.focusTrapAriaHiddenBeforeSuspend = null;
+      this.focusTrapPointerEventsBeforeSuspend = null;
+      this.focusTrapVisibilityBeforeSuspend = null;
+>>>>>>> origin/main
     }
 
     const panel = this.getModalPanelElement();
@@ -10716,11 +10989,38 @@ export class ProfileModalController {
         }
       }
 
+<<<<<<< HEAD
       if (this.focusTrapNestedModalActiveBeforeSuspend === null) {
         delete modalRoot.dataset.nestedModalActive;
       } else {
         modalRoot.dataset.nestedModalActive =
           this.focusTrapNestedModalActiveBeforeSuspend;
+=======
+      if (
+        this.focusTrapPointerEventsBeforeSuspend === null ||
+        this.focusTrapPointerEventsBeforeSuspend === undefined ||
+        this.focusTrapPointerEventsBeforeSuspend === ""
+      ) {
+        modalRoot.style.removeProperty("pointer-events");
+      } else {
+        modalRoot.style.setProperty(
+          "pointer-events",
+          this.focusTrapPointerEventsBeforeSuspend,
+        );
+      }
+
+      if (
+        this.focusTrapVisibilityBeforeSuspend === null ||
+        this.focusTrapVisibilityBeforeSuspend === undefined ||
+        this.focusTrapVisibilityBeforeSuspend === ""
+      ) {
+        modalRoot.style.removeProperty("visibility");
+      } else {
+        modalRoot.style.setProperty(
+          "visibility",
+          this.focusTrapVisibilityBeforeSuspend,
+        );
+>>>>>>> origin/main
       }
     }
 
@@ -10730,7 +11030,12 @@ export class ProfileModalController {
     }
 
     this.focusTrapAriaHiddenBeforeSuspend = null;
+<<<<<<< HEAD
     this.focusTrapNestedModalActiveBeforeSuspend = null;
+=======
+    this.focusTrapPointerEventsBeforeSuspend = null;
+    this.focusTrapVisibilityBeforeSuspend = null;
+>>>>>>> origin/main
 
     this.updateFocusTrap();
 
@@ -10808,7 +11113,25 @@ export class ProfileModalController {
         : null;
 
     if (modalRoot) {
+<<<<<<< HEAD
       modalRoot.dataset.modalStack = "top";
+=======
+      modalRoot.style.setProperty("z-index", "var(--z-modal-top-root)");
+    }
+
+    if (this.profileModalBackdrop instanceof HTMLElement) {
+      this.profileModalBackdrop.style.setProperty(
+        "z-index",
+        "var(--z-modal-top-overlay)",
+      );
+    }
+
+    if (this.profileModalPanel instanceof HTMLElement) {
+      this.profileModalPanel.style.setProperty(
+        "z-index",
+        "var(--z-modal-top-content)",
+      );
+>>>>>>> origin/main
     }
   }
 
@@ -10838,7 +11161,10 @@ export class ProfileModalController {
     this.renderSavedProfiles();
     this.refreshWalletPaneState();
     this.refreshModerationSettingsUi();
+<<<<<<< HEAD
     this.syncLinkPreviewSettingsUi();
+=======
+>>>>>>> origin/main
     const hasBlockHydrator =
       this.services.userBlocks &&
       typeof this.services.userBlocks.ensureLoaded === "function";
@@ -10977,7 +11303,12 @@ export class ProfileModalController {
       modalElement.classList.add("hidden");
       modalElement.setAttribute("aria-hidden", "true");
       delete modalElement.dataset.nestedModalActive;
+<<<<<<< HEAD
       delete modalElement.dataset.modalStack;
+=======
+      modalElement.style.removeProperty("pointer-events");
+      modalElement.style.removeProperty("visibility");
+>>>>>>> origin/main
       this.setGlobalModalState("profile", false);
       this.setMobileView("menu", { skipFocusTrap: true });
 
@@ -11003,7 +11334,12 @@ export class ProfileModalController {
     this.focusTrapSuspendCount = 0;
     this.focusTrapSuspended = false;
     this.focusTrapAriaHiddenBeforeSuspend = null;
+<<<<<<< HEAD
     this.focusTrapNestedModalActiveBeforeSuspend = null;
+=======
+    this.focusTrapPointerEventsBeforeSuspend = null;
+    this.focusTrapVisibilityBeforeSuspend = null;
+>>>>>>> origin/main
 
     if (
       this.boundProfileHistoryVisibility &&
@@ -11117,7 +11453,10 @@ export class ProfileModalController {
     this.refreshWalletPaneState();
     this.populateHashtagPreferences();
     this.handleActiveDmIdentityChanged(activePubkey);
+<<<<<<< HEAD
     void this.refreshDmRelayPreferences({ force: true });
+=======
+>>>>>>> origin/main
 
     postLoginPromise
       .then(() => {
@@ -11127,7 +11466,10 @@ export class ProfileModalController {
         this.populateProfileRelays();
         this.refreshWalletPaneState();
         this.populateHashtagPreferences();
+<<<<<<< HEAD
         void this.refreshDmRelayPreferences({ force: true });
+=======
+>>>>>>> origin/main
       })
       .catch((error) => {
         userLogger.warn(
@@ -11172,6 +11514,7 @@ export class ProfileModalController {
       userLogger.warn("Failed to refresh admin pane after logout:", error);
     }
 
+<<<<<<< HEAD
     if (
       this.subscriptionsService &&
       typeof this.subscriptionsService.reset === "function"
@@ -11186,6 +11529,8 @@ export class ProfileModalController {
       }
     }
 
+=======
+>>>>>>> origin/main
     this.populateBlockedList();
     this.clearSubscriptionsList();
     this.clearFriendsList();
@@ -11195,8 +11540,11 @@ export class ProfileModalController {
     this.clearHashtagInputs();
     this.setHashtagStatus("", "muted");
     this.handleActiveDmIdentityChanged(null);
+<<<<<<< HEAD
     this.populateDmRelayPreferences();
     this.setDmRelayPreferencesStatus("");
+=======
+>>>>>>> origin/main
 
     return true;
   }

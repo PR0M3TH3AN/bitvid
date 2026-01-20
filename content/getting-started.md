@@ -2,7 +2,11 @@ Ready to jump in? Here's everything you need to know to start watching and shari
 
 ## Watching Videos
 
+<<<<<<< HEAD
 1. Just visit [bitvid.network](https://bitvid.network) or one of our alternate sites like [bitvid.btc.us](https://bitvid.btc.us) and [bitvid.eth.limo](https://bitvid.eth.limo).
+=======
+1. Just visit [bitvid.network](https://bitvid.network) or one of our alternate sites like [bitvid.btc.us](https://bitvid.btc.us) and [bitvid.eth.limo](https://bitvid.eth.limo). We also have other instances via [IPNS](ipns.html) gateways you can try.
+>>>>>>> origin/main
 2. Browse the videos on the homepage
 3. Click any video to start watching
    That's it! No account needed to watch.

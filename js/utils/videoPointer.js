@@ -16,12 +16,16 @@ export function resolveVideoPointer({
   videoRootId,
   dTag,
   fallbackEventId,
+<<<<<<< HEAD
   relay,
+=======
+>>>>>>> origin/main
 } = {}) {
   const normalizedPubkey = normalizeString(pubkey).toLowerCase();
   const normalizedKind =
     typeof kind === "number" && Number.isFinite(kind) ? kind : DEFAULT_VIDEO_KIND;
   const pointerCandidates = [];
+<<<<<<< HEAD
   const normalizedRelay = normalizeString(relay);
 
   const normalizedDTag = normalizeString(dTag);
@@ -36,13 +40,31 @@ export function resolveVideoPointer({
     const ptr = ["a", `${normalizedKind}:${normalizedPubkey}:${rootId}`];
     if (normalizedRelay) ptr.push(normalizedRelay);
     pointerCandidates.push(ptr);
+=======
+
+  const rootId = normalizeString(videoRootId);
+  if (rootId && normalizedPubkey) {
+    pointerCandidates.push(["a", `${normalizedKind}:${normalizedPubkey}:${rootId}`]);
+  }
+
+  const normalizedDTag = normalizeString(dTag);
+  if (normalizedDTag && normalizedPubkey) {
+    pointerCandidates.push([
+      "a",
+      `${normalizedKind}:${normalizedPubkey}:${normalizedDTag}`,
+    ]);
+>>>>>>> origin/main
   }
 
   const fallbackId = normalizeString(fallbackEventId);
   if (fallbackId) {
+<<<<<<< HEAD
     const ptr = ["e", fallbackId];
     if (normalizedRelay) ptr.push(normalizedRelay);
     pointerCandidates.push(ptr);
+=======
+    pointerCandidates.push(["e", fallbackId]);
+>>>>>>> origin/main
   }
 
   for (const pointer of pointerCandidates) {

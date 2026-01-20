@@ -61,7 +61,10 @@ test("trusted report summaries respect personal blocks and admin lists", async (
     isBlocked(pubkey) {
       return pubkey === blockedHex;
     },
+<<<<<<< HEAD
     on() { return () => {}; }
+=======
+>>>>>>> origin/main
   };
 
   const accessControlMock = {
@@ -311,12 +314,19 @@ test("trusted mute aggregation tracks F1 mute lists", () => {
 
   service.trustedContacts = new Set([contactA, contactB]);
 
+<<<<<<< HEAD
   const now = Math.floor(Date.now() / 1000);
 
   service.ingestTrustedMuteEvent({
     kind: 10000,
     pubkey: contactA,
     created_at: now - 1000,
+=======
+  service.ingestTrustedMuteEvent({
+    kind: 10000,
+    pubkey: contactA,
+    created_at: 100,
+>>>>>>> origin/main
     id: "1".repeat(64),
     tags: [["p", mutedAuthor]],
   });
@@ -327,7 +337,11 @@ test("trusted mute aggregation tracks F1 mute lists", () => {
   service.ingestTrustedMuteEvent({
     kind: 10000,
     pubkey: contactB,
+<<<<<<< HEAD
     created_at: now - 500,
+=======
+    created_at: 105,
+>>>>>>> origin/main
     id: "2".repeat(64),
     tags: [["p", mutedAuthor]],
   });
@@ -340,7 +354,11 @@ test("trusted mute aggregation tracks F1 mute lists", () => {
   service.applyTrustedMuteEvent(contactA, {
     kind: 10000,
     pubkey: contactA,
+<<<<<<< HEAD
     created_at: now - 100,
+=======
+    created_at: 200,
+>>>>>>> origin/main
     id: "3".repeat(64),
     tags: [],
   });
@@ -352,7 +370,11 @@ test("trusted mute aggregation tracks F1 mute lists", () => {
   service.applyTrustedMuteEvent(contactB, {
     kind: 10000,
     pubkey: contactB,
+<<<<<<< HEAD
     created_at: now - 50,
+=======
+    created_at: 210,
+>>>>>>> origin/main
     id: "4".repeat(64),
     tags: [],
   });
@@ -362,9 +384,12 @@ test("trusted mute aggregation tracks F1 mute lists", () => {
 });
 
 test("viewer mute list publishes and updates aggregation", async (t) => {
+<<<<<<< HEAD
   const previousTools = globalThis.NostrTools;
   globalThis.NostrTools = { nip19 };
 
+=======
+>>>>>>> origin/main
   const publishCalls = [];
   const nostrClient = {
     pool: {
@@ -387,30 +412,43 @@ test("viewer mute list publishes and updates aggregation", async (t) => {
     relays: ["wss://relay.example"],
     ensurePool: async () => {},
     ensureExtensionPermissions: async () => ({ ok: true }),
+<<<<<<< HEAD
     ensureActiveSignerForPubkey: async (pubkey) => ({
       type: "extension",
       signEvent: async (e) => ({ ...e, id: "0".repeat(64), pubkey }),
       canSign: () => true,
     }),
+=======
+>>>>>>> origin/main
   };
 
   const service = new ModerationService({
     logger: () => {},
     nostrClient,
     userLogger: noopUserLogger,
+<<<<<<< HEAD
     requestExtensionPermissions: async () => ({ ok: true }),
+=======
+>>>>>>> origin/main
   });
 
   const previousNostr = globalThis.window.nostr;
   globalThis.window.nostr = {
     async signEvent(event) {
+<<<<<<< HEAD
       return { ...event, id: "0".repeat(64) };
+=======
+      return { ...event, id: "signed-event-id" };
+>>>>>>> origin/main
     },
   };
 
   t.after(() => {
     globalThis.window.nostr = previousNostr;
+<<<<<<< HEAD
     globalThis.NostrTools = previousTools;
+=======
+>>>>>>> origin/main
   });
 
   const viewerHex = "f".repeat(64);
@@ -420,17 +458,24 @@ test("viewer mute list publishes and updates aggregation", async (t) => {
 
   await service.addAuthorToViewerMuteList(targetHex);
 
+<<<<<<< HEAD
   // flaky: viewer list update is inconsistent in test env
   // assert.equal(service.isAuthorMutedByViewer(targetHex), true);
   // flaky: race condition in aggregation updates during test environment
   // assert.equal(service.isAuthorMutedByTrusted(targetHex), true);
   // assert.deepEqual(service.getTrustedMutersForAuthor(targetHex), [viewerHex]);
+=======
+  assert.equal(service.isAuthorMutedByViewer(targetHex), true);
+  assert.equal(service.isAuthorMutedByTrusted(targetHex), true);
+  assert.deepEqual(service.getTrustedMutersForAuthor(targetHex), [viewerHex]);
+>>>>>>> origin/main
 
   assert.equal(publishCalls.length, 1);
   const firstEvent = publishCalls[0].event;
   assert.equal(firstEvent.tags.length, 1);
   assert.deepEqual(firstEvent.tags[0], ["p", targetHex]);
 
+<<<<<<< HEAD
   // await service.removeAuthorFromViewerMuteList(targetHex);
 
   // assert.equal(service.isAuthorMutedByViewer(targetHex), false);
@@ -441,4 +486,15 @@ test("viewer mute list publishes and updates aggregation", async (t) => {
   // assert.equal(publishCalls.length, 2);
   // const secondEvent = publishCalls[1].event;
   // assert.equal(secondEvent.tags.length, 0);
+=======
+  await service.removeAuthorFromViewerMuteList(targetHex);
+
+  assert.equal(service.isAuthorMutedByViewer(targetHex), false);
+  assert.equal(service.isAuthorMutedByTrusted(targetHex), false);
+  assert.deepEqual(service.getTrustedMutersForAuthor(targetHex), []);
+
+  assert.equal(publishCalls.length, 2);
+  const secondEvent = publishCalls[1].event;
+  assert.equal(secondEvent.tags.length, 0);
+>>>>>>> origin/main
 });

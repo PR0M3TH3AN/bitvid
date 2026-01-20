@@ -5,7 +5,11 @@ import {
   NostrClient,
   setActiveSigner,
   clearActiveSigner,
+<<<<<<< HEAD
 } from "../../js/nostr/client.js";
+=======
+} from "../../js/nostr.js";
+>>>>>>> origin/main
 
 function createStubPool() {
   return {

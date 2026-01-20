@@ -2,6 +2,7 @@
 
 let registeredNostrClient = null;
 let requestPermissionsDelegate = null;
+<<<<<<< HEAD
 const registeredSigners = new Map();
 let activeSigner = null;
 let activeSignerPubkey = "";
@@ -73,6 +74,8 @@ function updateActiveSigner(nextSigner, nextPubkey) {
     });
   }
 }
+=======
+>>>>>>> origin/main
 
 export function registerNostrClient(client, options = {}) {
   registeredNostrClient = client || null;
@@ -116,6 +119,7 @@ export function requestDefaultExtensionPermissions(...args) {
   return Promise.resolve({ ok: false, error });
 }
 
+<<<<<<< HEAD
 export function registerSigner(pubkey, signer, meta = {}) {
   const normalized = normalizePubkey(pubkey);
   if (!normalized) {
@@ -265,4 +269,8 @@ export function offActiveSignerChanged(callback) {
 export const __nostrClientRegistryTestHooks = {
   clearNostrClientRegistration,
   clearActiveSigner,
+=======
+export const __nostrClientRegistryTestHooks = {
+  clearNostrClientRegistration,
+>>>>>>> origin/main
 };

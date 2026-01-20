@@ -52,7 +52,10 @@ export default class WatchHistoryTelemetry {
     normalizeHexPubkey,
     getActiveUserPubkey,
     ingestLocalViewEvent = defaultIngestLocalViewEvent,
+<<<<<<< HEAD
     onViewLogged,
+=======
+>>>>>>> origin/main
     viewThresholdSeconds = DEFAULT_VIEW_THRESHOLD_SECONDS,
   } = {}) {
     this.watchHistoryService = watchHistoryService;
@@ -69,11 +72,18 @@ export default class WatchHistoryTelemetry {
       typeof ingestLocalViewEvent === "function"
         ? ingestLocalViewEvent
         : defaultIngestLocalViewEvent;
+<<<<<<< HEAD
     this.onViewLogged = typeof onViewLogged === "function" ? onViewLogged : null;
+=======
+>>>>>>> origin/main
     this.viewThresholdSeconds = Number.isFinite(viewThresholdSeconds)
       ? Math.max(0, viewThresholdSeconds)
       : DEFAULT_VIEW_THRESHOLD_SECONDS;
 
+<<<<<<< HEAD
+=======
+    this.watchHistoryMetadataEnabled = null;
+>>>>>>> origin/main
     this.watchHistoryPreferenceUnsubscribe = null;
     this.playbackTelemetryState = null;
     this.loggedViewPointerKeys = new Set();
@@ -82,6 +92,7 @@ export default class WatchHistoryTelemetry {
   destroy() {
     this.resetPlaybackLoggingState();
     this._clearPreferenceSubscription();
+<<<<<<< HEAD
   }
 
   async initPreferenceSync() {
@@ -102,6 +113,151 @@ export default class WatchHistoryTelemetry {
 
   dropMetadata(pointerKey) {
     // Deprecated
+=======
+    this.watchHistoryMetadataEnabled = null;
+  }
+
+  async initPreferenceSync() {
+    if (!this.watchHistoryService?.isEnabled?.()) {
+      this.watchHistoryMetadataEnabled = false;
+      return null;
+    }
+
+    this.refreshPreferenceSettings();
+
+    if (
+      typeof this.watchHistoryService.subscribe === "function" &&
+      !this.watchHistoryPreferenceUnsubscribe
+    ) {
+      try {
+        const unsubscribe = this.watchHistoryService.subscribe(
+          "metadata-preference",
+          (payload) => {
+            const previous = this.watchHistoryMetadataEnabled;
+            const enabled = payload?.enabled !== false;
+            this.watchHistoryMetadataEnabled = enabled;
+            if (previous === true && enabled === false) {
+              try {
+                this.watchHistoryService?.clearLocalMetadata?.();
+              } catch (error) {
+                devLogger.warn(
+                  "[watchHistoryTelemetry] Failed to clear cached metadata after toggle off:",
+                  error,
+                );
+              }
+            }
+          },
+        );
+        if (typeof unsubscribe === "function") {
+          this.watchHistoryPreferenceUnsubscribe = unsubscribe;
+        }
+      } catch (error) {
+        devLogger.warn(
+          "[watchHistoryTelemetry] Failed to subscribe to metadata preference changes:",
+          error,
+        );
+      }
+    }
+
+    return this.watchHistoryPreferenceUnsubscribe || null;
+  }
+
+  refreshPreferenceSettings() {
+    if (!this.watchHistoryService?.isEnabled?.()) {
+      this.watchHistoryMetadataEnabled = false;
+      return this.watchHistoryMetadataEnabled;
+    }
+
+    const previous = this.watchHistoryMetadataEnabled;
+    let enabled = true;
+
+    try {
+      if (typeof this.watchHistoryService.getSettings === "function") {
+        const settings = this.watchHistoryService.getSettings();
+        enabled = settings?.metadata?.storeLocally !== false;
+      } else if (
+        typeof this.watchHistoryService.shouldStoreMetadata === "function"
+      ) {
+        enabled = this.watchHistoryService.shouldStoreMetadata() !== false;
+      }
+    } catch (error) {
+      devLogger.warn(
+        "[watchHistoryTelemetry] Failed to read metadata settings:",
+        error,
+      );
+      enabled = true;
+    }
+
+    this.watchHistoryMetadataEnabled = enabled;
+
+    if (enabled === false && previous !== false) {
+      try {
+        this.watchHistoryService?.clearLocalMetadata?.();
+      } catch (error) {
+        devLogger.warn(
+          "[watchHistoryTelemetry] Failed to purge metadata cache while preference disabled:",
+          error,
+        );
+      }
+    }
+
+    return this.watchHistoryMetadataEnabled;
+  }
+
+  isMetadataPreferenceEnabled() {
+    return this.watchHistoryMetadataEnabled !== false;
+  }
+
+  persistMetadataForVideo(video, pointerInfo) {
+    if (
+      !this.watchHistoryMetadataEnabled ||
+      !pointerInfo ||
+      !pointerInfo.key ||
+      typeof this.watchHistoryService?.setLocalMetadata !== "function"
+    ) {
+      return;
+    }
+
+    if (!video || typeof video !== "object") {
+      return;
+    }
+
+    const metadata = {
+      // Persist only sanitized metadata so local history never stores playback
+      // transports or magnet fingerprints.
+      video: sanitizeVideoMetadata(video),
+    };
+
+    try {
+      this.watchHistoryService.setLocalMetadata(pointerInfo.key, metadata);
+    } catch (error) {
+      devLogger.warn(
+        "[watchHistoryTelemetry] Failed to persist local metadata for pointer:",
+        pointerInfo.key,
+        error,
+      );
+    }
+  }
+
+  dropMetadata(pointerKey) {
+    if (!pointerKey || typeof pointerKey !== "string") {
+      return;
+    }
+
+    if (typeof this.watchHistoryService?.removeLocalMetadata !== "function") {
+      return;
+    }
+
+    try {
+      this.watchHistoryService.removeLocalMetadata(pointerKey);
+    } catch (error) {
+      devLogger.warn(
+        "[watchHistoryTelemetry] Failed to remove cached metadata for pointer:",
+        pointerKey,
+        error,
+      );
+    }
+>>>>>>> origin/main
   }
 
   async handleRemoval(payload = {}) {
@@ -227,11 +383,64 @@ export default class WatchHistoryTelemetry {
         try {
           const canUseWatchHistoryService =
             typeof this.watchHistoryService?.publishView === "function";
+<<<<<<< HEAD
+=======
+          const resolveWatchActor = () => {
+            const normalizedUser = this.normalizeHexPubkey(
+              this.getActiveUserPubkey(),
+            );
+            if (normalizedUser) {
+              return normalizedUser;
+            }
+
+            const normalizedClient = this.normalizeHexPubkey(
+              this.nostrClient?.pubkey,
+            );
+            if (normalizedClient) {
+              return normalizedClient;
+            }
+
+            const normalizedSession = this.normalizeHexPubkey(
+              this.nostrClient?.sessionActor?.pubkey,
+            );
+            if (normalizedSession) {
+              return normalizedSession;
+            }
+
+            if (normalizeString(this.nostrClient?.pubkey)) {
+              return normalizeString(this.nostrClient.pubkey).toLowerCase();
+            }
+
+            if (normalizeString(this.nostrClient?.sessionActor?.pubkey)) {
+              return normalizeString(
+                this.nostrClient.sessionActor.pubkey,
+              ).toLowerCase();
+            }
+
+            return "";
+          };
+
+          const activeWatchActor = resolveWatchActor();
+          const watchMetadata = {};
+          if (activeWatchActor) {
+            watchMetadata.actor = activeWatchActor;
+          }
+          if (state.videoMetadata) {
+            watchMetadata.video = state.videoMetadata;
+          }
+          const metadataPayload = Object.keys(watchMetadata).length
+            ? watchMetadata
+            : undefined;
+>>>>>>> origin/main
 
           if (canUseWatchHistoryService) {
             viewResult = await this.watchHistoryService.publishView(
               thresholdPointer,
               undefined,
+<<<<<<< HEAD
+=======
+              metadataPayload,
+>>>>>>> origin/main
             );
           } else if (typeof this.nostrClient?.recordVideoView === "function") {
             viewResult = await this.nostrClient.recordVideoView(
@@ -273,6 +482,7 @@ export default class WatchHistoryTelemetry {
               );
             }
           }
+<<<<<<< HEAD
           if (this.onViewLogged) {
             try {
               this.onViewLogged({
@@ -289,6 +499,8 @@ export default class WatchHistoryTelemetry {
               );
             }
           }
+=======
+>>>>>>> origin/main
         } else if (isDevMode && viewResult) {
           userLogger.warn(
             "[watchHistoryTelemetry] View event rejected by relays:",

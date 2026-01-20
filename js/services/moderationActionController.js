@@ -97,7 +97,11 @@ export default class ModerationActionController {
       return false;
     }
 
+<<<<<<< HEAD
     this.persistModerationOverride(video);
+=======
+    this.persistModerationOverride(video.id);
+>>>>>>> origin/main
 
     const target = this.resolveTargetVideo(video);
     this.clearHideState(target);
@@ -199,7 +203,11 @@ export default class ModerationActionController {
       this.showStatus(statusMessage, { showSpinner: false });
     }
 
+<<<<<<< HEAD
     this.clearModerationOverride(video);
+=======
+    this.clearModerationOverride(video.id);
+>>>>>>> origin/main
 
     const target = this.resolveTargetVideo(video);
     this.clearViewerOverride(target);
@@ -233,7 +241,11 @@ export default class ModerationActionController {
       return false;
     }
 
+<<<<<<< HEAD
     this.clearModerationOverride(video);
+=======
+    this.clearModerationOverride(video.id);
+>>>>>>> origin/main
 
     const target = this.resolveTargetVideo(video);
     this.clearViewerOverride(target);
@@ -427,6 +439,7 @@ export default class ModerationActionController {
     }
   }
 
+<<<<<<< HEAD
   getModerationOverrideDescriptor(video) {
     if (!video || typeof video !== "object") {
       return null;
@@ -461,11 +474,19 @@ export default class ModerationActionController {
 
     const descriptor = this.getModerationOverrideDescriptor(video);
     if (!descriptor) {
+=======
+  persistModerationOverride(eventId) {
+    if (!eventId || !this.services.setModerationOverride) {
+>>>>>>> origin/main
       return;
     }
 
     try {
+<<<<<<< HEAD
       this.services.setModerationOverride(descriptor, {
+=======
+      this.services.setModerationOverride(eventId, {
+>>>>>>> origin/main
         showAnyway: true,
         updatedAt: Date.now(),
       });
@@ -477,6 +498,7 @@ export default class ModerationActionController {
     }
   }
 
+<<<<<<< HEAD
   clearModerationOverride(video) {
     if (!this.services.clearModerationOverride) {
       return;
@@ -484,11 +506,19 @@ export default class ModerationActionController {
 
     const descriptor = this.getModerationOverrideDescriptor(video);
     if (!descriptor) {
+=======
+  clearModerationOverride(eventId) {
+    if (!eventId || !this.services.clearModerationOverride) {
+>>>>>>> origin/main
       return;
     }
 
     try {
+<<<<<<< HEAD
       this.services.clearModerationOverride(descriptor);
+=======
+      this.services.clearModerationOverride(eventId);
+>>>>>>> origin/main
     } catch (error) {
       devLogger.warn(
         "[ModerationActionController] Failed to clear moderation override:",

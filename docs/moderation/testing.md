@@ -41,7 +41,11 @@ Expected:
 
 * After 1 report → no blur; autoplay allowed.
 * Once reports reach `DEFAULT_AUTOPLAY_BLOCK_THRESHOLD` → autoplay blocked (the upstream configuration currently sets this to 2, but rely on your `config/instance-config.js` value).
+<<<<<<< HEAD
 * Once reports reach `DEFAULT_BLUR_THRESHOLD` → thumbnail blurred; reason chip shown (upstream example: 1). At the spam threshold (`TRUSTED_SPAM_HIDE_THRESHOLD` sourced from `DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD` in [`config/instance-config.js`](../../config/instance-config.js)) the card hides entirely and the badge copy switches to "Hidden · {count} trusted spam report(s)" until the viewer overrides it.
+=======
+* Once reports reach `DEFAULT_BLUR_THRESHOLD` → thumbnail blurred; reason chip shown (upstream example: 3). At the spam threshold (`TRUSTED_SPAM_HIDE_THRESHOLD` sourced from `DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD` in [`config/instance-config.js`](../../config/instance-config.js)) the card hides entirely and the badge copy switches to "Hidden · {count} trusted spam report(s)" until the viewer overrides it.
+>>>>>>> origin/main
 
 **Exercises:** [`ModerationService.ingestReportEvent()`](../../js/services/moderationService.js) and [`ModerationService.getTrustedReportSummary()`](../../js/services/moderationService.js) wire through [`createModerationStage()`](../../js/feedEngine/stages.js) so [`bitvidApp.decorateVideoModeration()`](../../js/app.js) can hand the summary to [`VideoCard.refreshModerationUi()`](../../js/ui/components/VideoCard.js).
 
@@ -56,7 +60,11 @@ Expected:
 }
 ```
 
+<<<<<<< HEAD
 Expected: author’s items are downranked/blurred for this viewer. When the mute threshold (`TRUSTED_MUTE_HIDE_THRESHOLD`, sourced from `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD` in [`config/instance-config.js`](../../config/instance-config.js); upstream example: 20) is met, cards render with "Hidden · {count} trusted mute(s)" and require a "Show anyway" override to display content plus a "Restore default moderation" control to revert.
+=======
+Expected: author’s items are downranked/hidden for this viewer. When the mute threshold (`TRUSTED_MUTE_HIDE_THRESHOLD`, sourced from `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD` in [`config/instance-config.js`](../../config/instance-config.js); upstream example: 1) is met, cards render with "Hidden · {count} trusted mute(s)" and require a "Show anyway" override to display content plus a "Restore default moderation" control to revert.
+>>>>>>> origin/main
 
 **Exercises:** [`ModerationService.ingestTrustedMuteEvent()`](../../js/services/moderationService.js) updates [`ModerationService.isAuthorMutedByTrusted()`](../../js/services/moderationService.js) / [`getTrustedMutersForAuthor()`](../../js/services/moderationService.js), which [`createModerationStage()`](../../js/feedEngine/stages.js) propagates to the video item before [`VideoCard.refreshModerationUi()`](../../js/ui/components/VideoCard.js) renders the mute state.
 

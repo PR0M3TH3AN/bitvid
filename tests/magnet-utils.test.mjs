@@ -89,6 +89,10 @@ test("duplicate trackers and hints stay in sync", () => {
 
   const objectResult = normalizeMagnetObject(baseMagnet, {
     extraTrackers: [
+<<<<<<< HEAD
+=======
+      "wss://tracker.fastcast.nz",
+>>>>>>> origin/main
       "http://tracker.invalid",
       "wss://tracker.openwebtorrent.com",
     ],
@@ -113,6 +117,13 @@ test("duplicate trackers and hints stay in sync", () => {
   ).length;
   assert.equal(openwebCount, 1, "Duplicate trackers should be deduped when appended");
   assert.ok(
+<<<<<<< HEAD
+=======
+    trackers.includes("wss://tracker.fastcast.nz"),
+    "Extra WSS tracker should be retained"
+  );
+  assert.ok(
+>>>>>>> origin/main
     !trackers.includes("http://tracker.invalid"),
     "HTTP tracker candidates should be ignored"
   );

@@ -1,0 +1,68 @@
+:root {
+  --color-bg: #ffffff;
+  --color-card: #1e293b;
+  --color-primary: #8b5cf6;
+  --color-secondary: #f43f5e;
+  --color-text: #7b7b7b;
+  --color-muted: #94a3b8;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+}
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  line-height: 1.5;
+  height: 100%;
+  width: 100%;
+}
+
+/* Container used in header & footer */
+.container {
+  width: 95%;
+  max-width: 95%;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+/* Header styling */
+.header-torrent {
+  background-color: var(--color-bg);
+  margin-bottom: 2rem;
+  /* No extra horizontal padding so it lines up with .container */
+}
+
+.logo-container {
+  display: flex;
+  align-items: center;
+}
+
+.bitvid-logo {
+  height: 6rem;
+  width: auto;
+  /* Adjust spacing around the logo if needed */
+  margin-bottom: 0.5rem;
+  margin-top: 4rem;
+}
+
+/* Footer styling */
+.footer-torrent {
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  padding-top: 2rem;
+  padding-bottom: 2rem;
+  margin-top: 2rem;
+  background-color: var(--color-bg);
+  text-align: center;
+}
+
+/* If you want to override the generic footer rules, remove them or unify here:
+footer {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  margin-top: 4rem;
+  padding-top: 2rem;
+}
+*/
+
+/* Additional styling remains unchanged... */

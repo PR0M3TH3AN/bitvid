@@ -1,6 +1,7 @@
 import { normalizeDesignSystemContext } from "../../designSystem.js";
 import { formatShortNpub } from "../../utils/formatters.js";
 import { sanitizeProfileMediaUrl } from "../../utils/profileMedia.js";
+<<<<<<< HEAD
 import {
   getModerationOverrideActionLabels,
   normalizeVideoModerationContext,
@@ -51,6 +52,10 @@ function updateSimilarCardBackdrop(doc, cardId, url) {
 
   state.styleNode.textContent = [...state.rules.values()].join("\n");
 }
+=======
+
+const DEFAULT_PROFILE_AVATAR = "assets/svg/default-profile.svg";
+>>>>>>> origin/main
 
 export class SimilarContentCard {
   constructor({
@@ -102,6 +107,7 @@ export class SimilarContentCard {
         ? fallbackThumbnailSrc.trim()
         : "";
 
+<<<<<<< HEAD
     this.callbacks = {
       onPlay: null,
       onModerationOverride: null,
@@ -111,6 +117,11 @@ export class SimilarContentCard {
 
     this.root = null;
     this.cardStyleId = "";
+=======
+    this.callbacks = { onPlay: null };
+
+    this.root = null;
+>>>>>>> origin/main
     this.mediaLinkEl = null;
     this.thumbnailEl = null;
     this.contentEl = null;
@@ -120,6 +131,7 @@ export class SimilarContentCard {
     this.authorNpubEl = null;
     this.timeEl = null;
     this.viewCountEl = null;
+<<<<<<< HEAD
     this.discussionCountEl = null;
 
     this.moderationBadgeEl = null;
@@ -134,6 +146,8 @@ export class SimilarContentCard {
       this.handleModerationHideClick(event);
     this.boundModerationBlockHandler = (event) =>
       this.handleModerationBlockClick(event);
+=======
+>>>>>>> origin/main
 
     this.build();
   }
@@ -142,6 +156,7 @@ export class SimilarContentCard {
     this.callbacks.onPlay = typeof fn === "function" ? fn : null;
   }
 
+<<<<<<< HEAD
   set onModerationOverride(fn) {
     this.callbacks.onModerationOverride = typeof fn === "function" ? fn : null;
   }
@@ -154,6 +169,8 @@ export class SimilarContentCard {
     this.callbacks.onModerationHide = typeof fn === "function" ? fn : null;
   }
 
+=======
+>>>>>>> origin/main
   getRoot() {
     return this.root;
   }
@@ -162,10 +179,13 @@ export class SimilarContentCard {
     return this.viewCountEl;
   }
 
+<<<<<<< HEAD
   getDiscussionCountElement() {
     return this.discussionCountEl;
   }
 
+=======
+>>>>>>> origin/main
   closeMoreMenu() {}
 
   closeSettingsMenu() {}
@@ -394,17 +414,25 @@ export class SimilarContentCard {
   }
 
   build() {
+<<<<<<< HEAD
     // Modified: Ensure 'group' class for hover effects
     const root = this.document.createElement("article");
     root.classList.add("player-modal__similar-card", "card", "group");
+=======
+    const root = this.document.createElement("article");
+    root.classList.add("player-modal__similar-card", "card");
+>>>>>>> origin/main
     root.dataset.component = "similar-content-card";
     root.dataset.index = String(this.index);
     if (this.video.id) {
       root.dataset.videoId = this.video.id;
     }
+<<<<<<< HEAD
     similarCardIdCounter += 1;
     this.cardStyleId = `similar-card-${similarCardIdCounter}`;
     root.dataset.similarCardId = this.cardStyleId;
+=======
+>>>>>>> origin/main
     const dsMode = this.designSystem?.getMode?.();
     if (dsMode) {
       root.setAttribute("data-ds", dsMode);
@@ -423,13 +451,17 @@ export class SimilarContentCard {
       root.appendChild(content);
     }
 
+<<<<<<< HEAD
     this.refreshModerationUi();
+=======
+>>>>>>> origin/main
     this.applyPointerDatasets();
     this.bindEvents();
   }
 
   buildMediaSection() {
     const anchor = this.document.createElement("a");
+<<<<<<< HEAD
     anchor.classList.add(
       "player-modal__similar-card-media",
       "block",
@@ -437,6 +469,9 @@ export class SimilarContentCard {
       "overflow-hidden",
       "rounded"
     );
+=======
+    anchor.classList.add("player-modal__similar-card-media");
+>>>>>>> origin/main
     anchor.href = this.shareUrl;
     anchor.setAttribute("data-primary-action", "play");
 
@@ -449,6 +484,7 @@ export class SimilarContentCard {
     return anchor;
   }
 
+<<<<<<< HEAD
   getModerationContext() {
     return normalizeVideoModerationContext(this.video?.moderation);
   }
@@ -793,6 +829,8 @@ export class SimilarContentCard {
     }
   }
 
+=======
+>>>>>>> origin/main
   buildThumbnail() {
     const img = this.document.createElement("img");
     img.decoding = "async";
@@ -800,6 +838,7 @@ export class SimilarContentCard {
     img.alt = this.video.title || "";
     img.dataset.videoThumbnail = "true";
 
+<<<<<<< HEAD
     // Modified: Add transition classes for hover zoom
     img.classList.add(
       "transition-transform",
@@ -808,6 +847,8 @@ export class SimilarContentCard {
       "group-hover:scale-105"
     );
 
+=======
+>>>>>>> origin/main
     const rawThumbnail =
       typeof this.video.thumbnail === "string"
         ? this.video.thumbnail.trim()
@@ -841,9 +882,12 @@ export class SimilarContentCard {
 
     if (this.shouldMaskNsfwForOwner || this.video?.moderation?.blurThumbnail) {
       img.dataset.thumbnailState = "blurred";
+<<<<<<< HEAD
       img.classList.add("blur-xl");
       // Pre-apply style to avoid flash and crop edges
       img.classList.add("scale-[1.2]");
+=======
+>>>>>>> origin/main
     }
 
     const handleLoad = () => {
@@ -852,6 +896,7 @@ export class SimilarContentCard {
         return;
       }
 
+<<<<<<< HEAD
       // If currently blurred, do not restore the backdrop to avoid transparency bleed-through.
       const isBlurred = img.dataset.thumbnailState === "blurred";
 
@@ -861,11 +906,18 @@ export class SimilarContentCard {
           : "") ||
         fallbackSrc ||
         "";
+=======
+      const fallbackAttr =
+        (typeof img.dataset.fallbackSrc === "string"
+          ? img.dataset.fallbackSrc.trim()
+          : "") || fallbackSrc || "";
+>>>>>>> origin/main
       const isFallback =
         !!fallbackAttr &&
         (currentSrc === fallbackAttr || currentSrc.endsWith(fallbackAttr));
 
       if (!isFallback) {
+<<<<<<< HEAD
         if (isBlurred) {
           this.setCardBackdropImage("");
         } else {
@@ -877,6 +929,11 @@ export class SimilarContentCard {
         } else {
           this.setCardBackdropImage(fallbackAttr);
         }
+=======
+        this.setCardBackdropImage(currentSrc);
+      } else if (fallbackAttr) {
+        this.setCardBackdropImage(fallbackAttr);
+>>>>>>> origin/main
       }
 
       if (thumbnailUrl && !isFallback && this.thumbnailCache) {
@@ -888,6 +945,7 @@ export class SimilarContentCard {
       const fallbackAttr =
         (typeof img.dataset.fallbackSrc === "string"
           ? img.dataset.fallbackSrc.trim()
+<<<<<<< HEAD
           : "") ||
         fallbackSrc ||
         "";
@@ -901,6 +959,11 @@ export class SimilarContentCard {
         } else {
           this.setCardBackdropImage(fallbackAttr);
         }
+=======
+          : "") || fallbackSrc || "";
+      if (fallbackAttr) {
+        this.setCardBackdropImage(fallbackAttr);
+>>>>>>> origin/main
         if (!img.src || img.src === thumbnailUrl) {
           img.src = fallbackAttr;
         }
@@ -929,16 +992,27 @@ export class SimilarContentCard {
   buildContentSection() {
     const content = this.document.createElement("div");
     content.classList.add("player-modal__similar-card-content");
+<<<<<<< HEAD
+=======
+    content.style.minWidth = "0";
+>>>>>>> origin/main
 
     const titleLink = this.document.createElement("a");
     titleLink.classList.add("player-modal__similar-card-title");
     titleLink.href = this.shareUrl;
     titleLink.textContent = this.video.title || "Untitled";
     titleLink.title = this.video.title || "Untitled";
+<<<<<<< HEAD
 
     const authorStack = this.buildAuthorStack();
     const metaRow = this.buildMetaRow();
     const engagement = this.buildEngagementSection();
+=======
+    titleLink.style.minWidth = "0";
+
+    const authorStack = this.buildAuthorStack();
+    const metaRow = this.buildMetaRow();
+>>>>>>> origin/main
 
     content.appendChild(titleLink);
     if (authorStack) {
@@ -947,9 +1021,12 @@ export class SimilarContentCard {
     if (metaRow) {
       content.appendChild(metaRow);
     }
+<<<<<<< HEAD
     if (engagement) {
       content.appendChild(engagement);
     }
+=======
+>>>>>>> origin/main
 
     this.contentEl = content;
     this.titleEl = titleLink;
@@ -959,6 +1036,7 @@ export class SimilarContentCard {
   buildAuthorStack() {
     const wrapper = this.document.createElement("div");
     wrapper.classList.add("player-modal__similar-card-author");
+<<<<<<< HEAD
 
     const textWrapper = this.document.createElement("span");
     textWrapper.classList.add("player-modal__similar-card-author-meta");
@@ -977,6 +1055,10 @@ export class SimilarContentCard {
     // or kept minimal if desired. For now, we keep structure but can style via CSS order if needed)
 
     // Actually, keeping the avatar structure but CSS will handle sizing/layout
+=======
+    wrapper.style.minWidth = "0";
+
+>>>>>>> origin/main
     const avatarWrapper = this.document.createElement("span");
     avatarWrapper.classList.add("player-modal__similar-card-avatar");
 
@@ -987,6 +1069,7 @@ export class SimilarContentCard {
     avatarImg.alt = "";
     avatarWrapper.appendChild(avatarImg);
 
+<<<<<<< HEAD
     // Append avatar then text
     wrapper.appendChild(textWrapper);
 
@@ -1010,6 +1093,23 @@ export class SimilarContentCard {
     wrapper.appendChild(textWrapper);
 
     // We preserve refs
+=======
+    const textWrapper = this.document.createElement("span");
+    textWrapper.classList.add("player-modal__similar-card-author-meta");
+    textWrapper.style.minWidth = "0";
+
+    const nameEl = this.document.createElement("span");
+    nameEl.classList.add("author-name", "player-modal__similar-card-author-name");
+    textWrapper.appendChild(nameEl);
+
+    const npubEl = this.document.createElement("span");
+    npubEl.classList.add("author-npub", "player-modal__similar-card-author-npub");
+    textWrapper.appendChild(npubEl);
+
+    wrapper.appendChild(avatarWrapper);
+    wrapper.appendChild(textWrapper);
+
+>>>>>>> origin/main
     this.avatarEl = avatarImg;
     this.authorNameEl = nameEl;
     this.authorNpubEl = npubEl;
@@ -1022,6 +1122,10 @@ export class SimilarContentCard {
   buildMetaRow() {
     const row = this.document.createElement("div");
     row.classList.add("player-modal__similar-card-meta");
+<<<<<<< HEAD
+=======
+    row.style.minWidth = "0";
+>>>>>>> origin/main
 
     const timeEl = this.document.createElement("time");
     timeEl.classList.add("player-modal__similar-card-timestamp");
@@ -1038,6 +1142,7 @@ export class SimilarContentCard {
     row.appendChild(timeEl);
     this.timeEl = timeEl;
 
+<<<<<<< HEAD
     return row;
   }
 
@@ -1181,6 +1286,30 @@ export class SimilarContentCard {
     return container;
   }
 
+=======
+    const shouldShowViews = Boolean(this.pointerInfo?.key);
+    if (shouldShowViews) {
+      const separator = this.document.createElement("span");
+      separator.classList.add("player-modal__similar-card-separator");
+      separator.setAttribute("aria-hidden", "true");
+      separator.textContent = "•";
+      row.appendChild(separator);
+    }
+
+    const viewEl = this.document.createElement("span");
+    viewEl.classList.add("player-modal__similar-card-views", "view-count-text");
+    viewEl.dataset.viewCount = "";
+    viewEl.textContent = "– views";
+    if (this.pointerInfo?.key) {
+      viewEl.dataset.viewPointer = this.pointerInfo.key;
+    }
+    row.appendChild(viewEl);
+    this.viewCountEl = viewEl;
+
+    return row;
+  }
+
+>>>>>>> origin/main
   applyPointerDatasets() {
     if (!this.root || !this.pointerInfo) {
       return;
@@ -1238,10 +1367,19 @@ export class SimilarContentCard {
   }
 
   setCardBackdropImage(src) {
+<<<<<<< HEAD
     if (!this.root || !this.cardStyleId) {
       return;
     }
 
+=======
+    if (!this.root || !this.root.style) {
+      return;
+    }
+
+    const style = this.root.style;
+
+>>>>>>> origin/main
     const normalizeSource = (raw) => {
       if (typeof raw !== "string") {
         return "";
@@ -1285,9 +1423,18 @@ export class SimilarContentCard {
     const sanitized = normalizeSource(src);
     if (sanitized) {
       const escaped = sanitized.replace(/(["\\])/g, "\\$1");
+<<<<<<< HEAD
       updateSimilarCardBackdrop(this.document, this.cardStyleId, escaped);
     } else {
       updateSimilarCardBackdrop(this.document, this.cardStyleId, "");
+=======
+      style.setProperty(
+        "--similar-card-thumb-url",
+        `url("${escaped}")`
+      );
+    } else {
+      style.removeProperty("--similar-card-thumb-url");
+>>>>>>> origin/main
     }
   }
 }

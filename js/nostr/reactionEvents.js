@@ -3,6 +3,7 @@ import { publishEventToRelay } from "../nostrPublish.js";
 import { RELAY_URLS } from "./toolkit.js";
 import { normalizePointerInput } from "./watchHistory.js";
 import { devLogger, userLogger } from "../utils/logger.js";
+<<<<<<< HEAD
 import { LRUCache } from "../utils/lruCache.js";
 import { CACHE_POLICIES } from "./cachePolicies.js";
 import { NOTE_TYPES } from "../nostrEventSchemas.js";
@@ -10,6 +11,8 @@ import { queueSignEvent } from "./signRequestQueue.js";
 
 const CACHE_POLICY = CACHE_POLICIES[NOTE_TYPES.VIDEO_REACTION];
 const reactionCache = new LRUCache({ maxSize: 100 });
+=======
+>>>>>>> origin/main
 
 function sanitizeRelayList(primary, fallback) {
   if (Array.isArray(primary) && primary.length) {
@@ -134,6 +137,7 @@ function extractEventRelayFromPointerInput(pointerInput) {
   return "";
 }
 
+<<<<<<< HEAD
 export async function listVideoReactions(client, targetInput, options = {}) {
   let pool = client?.pool;
   const ensurePool =
@@ -271,6 +275,8 @@ export async function listVideoReactions(client, targetInput, options = {}) {
   return finalItems;
 }
 
+=======
+>>>>>>> origin/main
 export async function publishVideoReaction(
   client,
   pointerInput,
@@ -442,9 +448,13 @@ export async function publishVideoReaction(
     }
     if (permissionResult.ok) {
       try {
+<<<<<<< HEAD
         signedEvent = await queueSignEvent(signer, event, {
           timeoutMs: options?.timeoutMs,
         });
+=======
+        signedEvent = await signer.signEvent(event);
+>>>>>>> origin/main
       } catch (error) {
         userLogger.warn(
           "[nostr] Failed to sign reaction event with active signer:",

@@ -18,8 +18,12 @@ Playback telemetry runs even when a viewer has not connected a Nostr account. Th
 
 When a player crosses the 12-second watch threshold, bitvid invokes [`publishViewEvent`](../js/nostr/viewEvents.js#L662-L838) through the view-only [`recordVideoView`](../js/nostr/viewEvents.js#L854-L879) contract. The helper considers the publish successful as soon as any configured relay acknowledges the event, which in practice keeps latency under a second on public relays. The UI optimistically increments totals by feeding the signed event into [`ingestLocalViewEvent`](../js/viewCounter.js#L619-L633), so cards and modals reflect the new view immediately even while other relays finish syncing.
 
+<<<<<<< HEAD
 After a view is recorded, the watch history service updates the actor's queue
 and publishes snapshots as needed, keeping analytics and history in sync.
+=======
+The watch history pipeline has been retired; `recordVideoView` now focuses solely on analytics publishing.
+>>>>>>> origin/main
 
 To avoid double-counting the same session, the playback stack respects the cooldown keys generated in [`js/app.js`](../js/app.js#L6825-L6893). The combination of pointer identity and viewer fingerprint prevents re-logging until the dedupe window expires or the user switches accounts.
 
@@ -33,7 +37,11 @@ When wiring moderation or playback toggles into view analytics, import helpers f
 import { recordVideoView, subscribeVideoViewEvents } from "../nostrViewEventsFacade.js";
 ```
 
+<<<<<<< HEAD
 The facade wraps [`js/nostr/viewEventBindings.js`](../js/nostr/viewEventBindings.js) so feature flags, relay discovery, and COUNT/LIST fallbacks all run through the same guard clauses that enforce the NIP-71/NIP-78 schemas. Modules that need to no-op when relays disable optional methods can rely on the binding’s "unavailable" errors to short-circuit cleanly.
+=======
+The facade wraps [`js/nostr/viewEventBindings.js`](../js/nostr/viewEventBindings.js) so feature flags, relay discovery, and COUNT/LIST fallbacks all run through the same guard clauses that enforce the NIP-71/NIP-78 schemas. `js/nostr.js` still exports shimmed versions for legacy bundles, but new code should migrate to the facades to keep the eventual removal painless. Modules that need to no-op when relays disable optional methods can rely on the binding’s "unavailable" errors to short-circuit cleanly.
+>>>>>>> origin/main
 
 ### Hydration, COUNT, and UI sync
 

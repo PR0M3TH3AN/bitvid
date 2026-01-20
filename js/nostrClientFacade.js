@@ -9,6 +9,7 @@ export {
   nostrClient,
   requestDefaultExtensionPermissions,
 } from "./nostr/defaultClient.js";
+<<<<<<< HEAD
 
 export {
   registerSigner,
@@ -19,3 +20,5 @@ export {
   onActiveSignerChanged,
   offActiveSignerChanged,
 } from "./nostrClientRegistry.js";
+=======
+>>>>>>> origin/main

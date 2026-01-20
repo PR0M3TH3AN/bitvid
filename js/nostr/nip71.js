@@ -1,4 +1,9 @@
+<<<<<<< HEAD
 import { deriveTitleFromEvent } from "../videoEventUtils.js";
+=======
+import { ACCEPT_LEGACY_V1 } from "../constants.js";
+import { deriveTitleFromEvent, magnetFromText } from "../videoEventUtils.js";
+>>>>>>> origin/main
 import { extractMagnetHints } from "../magnet.js";
 import { devLogger } from "../utils/logger.js";
 import { getCachedNostrTools } from "./toolkit.js";
@@ -1312,12 +1317,58 @@ export function convertEventToVideo(event = {}) {
     if (trimmed.toLowerCase().startsWith("magnet:?")) {
       return trimmed;
     }
+<<<<<<< HEAD
     return "";
+=======
+    const extracted = magnetFromText(trimmed);
+    return extracted ? extracted.trim() : "";
+>>>>>>> origin/main
   };
 
   let magnet = normalizeMagnetCandidate(directMagnetRaw);
   let rawMagnet = magnet ? directMagnetRaw : "";
 
+<<<<<<< HEAD
+=======
+  if (!magnet && ACCEPT_LEGACY_V1) {
+    const inlineMagnet = normalizeMagnetCandidate(rawContent);
+    if (inlineMagnet) {
+      magnet = inlineMagnet;
+    }
+
+    if (!magnet) {
+      outer: for (const tag of tags) {
+        if (!Array.isArray(tag) || tag.length < 2) {
+          continue;
+        }
+
+        const key =
+          typeof tag[0] === "string" ? tag[0].trim().toLowerCase() : "";
+
+        const startIndex = key === "magnet" ? 1 : 0;
+        for (let i = startIndex; i < tag.length; i += 1) {
+          const candidate = normalizeMagnetCandidate(tag[i]);
+          if (candidate) {
+            magnet = candidate;
+            break outer;
+          }
+        }
+      }
+    }
+
+    if (!magnet) {
+      const recoveredFromRaw = magnetFromText(rawContent);
+      if (recoveredFromRaw) {
+        magnet = safeTrim(recoveredFromRaw);
+      }
+    }
+  }
+
+  if (!rawMagnet && magnet) {
+    rawMagnet = magnet;
+  }
+
+>>>>>>> origin/main
   const url = directUrl;
 
   if (!url && !magnet) {
@@ -1371,6 +1422,14 @@ export function convertEventToVideo(event = {}) {
   }
 
   let title = safeTrim(derivedTitle);
+<<<<<<< HEAD
+=======
+  if (!title && ACCEPT_LEGACY_V1 && (magnet || infoHash)) {
+    title = infoHash
+      ? `Legacy Video ${infoHash.slice(0, 8)}`
+      : "Legacy BitTorrent Video";
+  }
+>>>>>>> origin/main
 
   if (!title) {
     const reason = parseError
@@ -1385,7 +1444,11 @@ export function convertEventToVideo(event = {}) {
     version = rawVersion === undefined ? 2 : 1;
   }
 
+<<<<<<< HEAD
   if (version < 2) {
+=======
+  if (version < 2 && !ACCEPT_LEGACY_V1) {
+>>>>>>> origin/main
     return {
       id: event.id,
       invalid: true,

@@ -27,7 +27,10 @@ import { attachHealthBadges } from "./gridHealth.js";
 import { attachUrlHealthBadges } from "./urlHealthObserver.js";
 import { updateVideoCardSourceVisibility } from "./utils/cardSourceVisibility.js";
 import { collectVideoTags } from "./utils/videoTags.js";
+<<<<<<< HEAD
 import { normalizeHashtag } from "./utils/hashtagNormalization.js";
+=======
+>>>>>>> origin/main
 import { sanitizeProfileMediaUrl } from "./utils/profileMedia.js";
 import { ADMIN_INITIAL_EVENT_BLACKLIST } from "./lists.js";
 import { userBlocks } from "./userBlocks.js";
@@ -39,7 +42,10 @@ import {
   createDedupeByRootStage,
   createModerationStage,
   createResolvePostedAtStage,
+<<<<<<< HEAD
   createTagPreferenceFilterStage,
+=======
+>>>>>>> origin/main
   createChronologicalSorter,
   createSubscriptionAuthorsSource,
   registerWatchHistoryFeed,
@@ -68,12 +74,15 @@ import { devLogger, userLogger } from "./utils/logger.js";
 import createPopover from "./ui/overlay/popoverEngine.js";
 import { createVideoSettingsMenuPanel } from "./ui/components/videoMenuRenderers.js";
 import moderationService from "./services/moderationService.js";
+<<<<<<< HEAD
 import { sanitizeRelayList } from "./nostr/nip46Client.js";
 import { buildDmRelayListEvent } from "./nostrEventSchemas.js";
 import {
   publishEventToRelays,
   assertAnyRelayAccepted,
 } from "./nostrPublish.js";
+=======
+>>>>>>> origin/main
 import {
   initViewCounter,
   subscribeToVideoViewCount,
@@ -84,7 +93,10 @@ import {
 import { splitAndZap as splitAndZapDefault } from "./payments/zapSplit.js";
 import {
   formatAbsoluteTimestamp as formatAbsoluteTimestampUtil,
+<<<<<<< HEAD
   formatAbsoluteDateWithOrdinal as formatAbsoluteDateWithOrdinalUtil,
+=======
+>>>>>>> origin/main
   formatTimeAgo as formatTimeAgoUtil,
   truncateMiddle,
   formatShortNpub,
@@ -98,8 +110,16 @@ import {
   openStaticModal,
   closeStaticModal,
 } from "./ui/components/staticModalAccessibility.js";
+<<<<<<< HEAD
 import LoginModalController from "./ui/loginModalController.js";
 import TagPreferenceMenuController from "./ui/tagPreferenceMenuController.js";
+=======
+import createTagPreferenceMenu, {
+  TAG_PREFERENCE_ACTIONS,
+  applyTagPreferenceMenuState,
+} from "./ui/components/tagPreferenceMenu.js";
+import LoginModalController from "./ui/loginModalController.js";
+>>>>>>> origin/main
 import { pointerArrayToKey } from "./utils/pointer.js";
 import resolveVideoPointer, {
   buildVideoAddressPointer,
@@ -114,7 +134,10 @@ import {
   syncActiveVideoRootTimestamp,
 } from "./utils/videoTimestamps.js";
 import { getDesignSystemMode as getCanonicalDesignSystemMode } from "./designSystem.js";
+<<<<<<< HEAD
 import { getHashViewName, setHashView } from "./hashView.js";
+=======
+>>>>>>> origin/main
 import {
   getPubkey as getStoredPubkey,
   setPubkey as setStoredPubkey,
@@ -150,9 +173,13 @@ import {
 } from "./state/cache.js";
 import ApplicationBootstrap from "./ui/applicationBootstrap.js";
 import VideoModalCommentController from "./ui/videoModalCommentController.js";
+<<<<<<< HEAD
 import TorrentStatusController from "./ui/torrentStatusController.js";
 import ModerationActionController from "./services/moderationActionController.js";
 import { bootstrapTrustedSeeds } from "./services/trustBootstrap.js";
+=======
+import ModerationActionController from "./services/moderationActionController.js";
+>>>>>>> origin/main
 
 const recordVideoViewApi = (...args) => recordVideoView(nostrClient, ...args);
 
@@ -226,17 +253,23 @@ class Application {
     this.modalManager = modalManager;
 
     this.modalCreatorProfileRequestToken = null;
+<<<<<<< HEAD
     this.dmRecipientPubkey = null;
     this.dmRelayHints = new Map();
+=======
+>>>>>>> origin/main
 
     this.commentController = null;
     this.initializeCommentController();
 
+<<<<<<< HEAD
     this.torrentStatusController = new TorrentStatusController({
       getVideoModal: () => this.videoModal,
       onRemovePoster: (reason) => this.forceRemoveModalPoster(reason),
     });
 
+=======
+>>>>>>> origin/main
     this.unsubscribeFromPubkeyState = subscribeToAppStateKey(
       "pubkey",
       (next, previous) => {
@@ -255,6 +288,7 @@ class Application {
       }
     );
 
+<<<<<<< HEAD
     this.tagPreferenceMenuController = new TagPreferenceMenuController({
       services: { hashtagPreferences },
       callbacks: {
@@ -283,6 +317,8 @@ class Application {
       },
     });
 
+=======
+>>>>>>> origin/main
     this.initializeModerationActionController();
   }
 
@@ -296,6 +332,7 @@ class Application {
     }
   }
 
+<<<<<<< HEAD
   hideModal() {
     if (this.videoModal) {
       this.videoModal.close();
@@ -303,6 +340,8 @@ class Application {
     // Also clear the active modal state if tracked elsewhere, though videoModal.close() usually handles it.
   }
 
+=======
+>>>>>>> origin/main
   loadSavedProfilesFromStorage() {
     const result = this.authService.loadSavedProfilesFromStorage();
     this.renderSavedProfiles();
@@ -378,6 +417,7 @@ class Application {
   isAuthorBlocked(pubkey) {
     try {
       if (userBlocks && typeof userBlocks.isBlocked === "function") {
+<<<<<<< HEAD
         if (userBlocks.isBlocked(pubkey)) {
           return true;
         }
@@ -396,6 +436,9 @@ class Application {
             return true;
           }
         }
+=======
+        return userBlocks.isBlocked(pubkey);
+>>>>>>> origin/main
       }
     } catch (error) {
       devLogger.warn("[Application] Failed to evaluate block status:", error);
@@ -432,6 +475,7 @@ class Application {
         if (modalRoot) {
           this.attachMoreMenuHandlers(modalRoot);
         }
+<<<<<<< HEAD
         if (
           this.videoModal &&
           typeof this.videoModal.addEventListener === "function"
@@ -522,6 +566,8 @@ class Application {
             });
           });
         }
+=======
+>>>>>>> origin/main
       });
 
       const uploadModalPromise = this.uploadModal
@@ -575,6 +621,7 @@ class Application {
         profileModalPromise,
       ]);
 
+<<<<<<< HEAD
       // Initialize the pool early to unblock bootstrapTrustedSeeds,
       // but do NOT await the full connection process here.
       try {
@@ -595,6 +642,11 @@ class Application {
       } catch (error) {
         devLogger.warn("[app.init()] Trusted seed bootstrap failed:", error);
       }
+=======
+      const nostrInitPromise = nostrClient.init();
+
+      await Promise.all([modalBootstrapPromise, nostrInitPromise]);
+>>>>>>> origin/main
 
       try {
         initViewCounter({ nostrClient });
@@ -633,6 +685,7 @@ class Application {
             })
         : Promise.resolve(null);
 
+<<<<<<< HEAD
       // await Promise.all([accessControlPromise, adminPanePromise]);
 
       const syncSessionActorBlacklist = async (trigger) => {
@@ -755,12 +808,16 @@ class Application {
           });
         });
       }
+=======
+      await Promise.all([accessControlPromise, adminPanePromise]);
+>>>>>>> origin/main
 
       // Grab the "Subscriptions" link by its id in the sidebar
       this.subscriptionsLink = document.getElementById("subscriptionsLink");
 
       this.syncAuthUiState();
 
+<<<<<<< HEAD
       if (typeof window !== "undefined") {
         window.addEventListener("bitvid:auth-changed", (event) => {
           const detail = event.detail || {};
@@ -776,6 +833,8 @@ class Application {
         });
       }
 
+=======
+>>>>>>> origin/main
       const savedPubKey = this.activeProfilePubkey;
       if (savedPubKey) {
         // Auto-login if a pubkey was saved
@@ -809,12 +868,18 @@ class Application {
         devLogger.log(
           "[app.init()] No #view= in the URL, loading default home view"
         );
+<<<<<<< HEAD
         const defaultView = this.isUserLoggedIn()
           ? "views/for-you.html"
           : "views/most-recent-videos.html";
         if (typeof this.loadView === "function") {
           await Promise.all([
             this.loadView(defaultView),
+=======
+        if (typeof this.loadView === "function") {
+          await Promise.all([
+            this.loadView("views/most-recent-videos.html"),
+>>>>>>> origin/main
             watchHistoryInitPromise,
           ]);
         } else {
@@ -845,6 +910,7 @@ class Application {
   }
 
   goToProfile(pubkey) {
+<<<<<<< HEAD
     if (typeof pubkey !== "string") {
       this.showError("No creator info available.");
       return;
@@ -873,6 +939,20 @@ class Application {
     }
 
     window.location.hash = `#view=channel-profile&npub=${npub}`;
+=======
+    if (!pubkey) {
+      this.showError("No creator info available.");
+      return;
+    }
+    try {
+      const npub = window.NostrTools.nip19.npubEncode(pubkey);
+      // Switch to channel profile view
+      window.location.hash = `#view=channel-profile&npub=${npub}`;
+    } catch (err) {
+      devLogger.error("Failed to go to channel:", err);
+      this.showError("Could not open channel.");
+    }
+>>>>>>> origin/main
   }
 
   openCreatorChannel() {
@@ -1162,7 +1242,10 @@ class Application {
       videoRootId: video.videoRootId,
       dTag: dTagValue,
       fallbackEventId: video.id,
+<<<<<<< HEAD
       relay: video.relay,
+=======
+>>>>>>> origin/main
     });
   }
 
@@ -2553,7 +2636,20 @@ class Application {
   }
 
   normalizeTagPreferenceCandidate(tag) {
+<<<<<<< HEAD
     return normalizeHashtag(tag);
+=======
+    if (typeof tag !== "string") {
+      return "";
+    }
+
+    const trimmed = tag.trim().replace(/^#+/, "");
+    if (!trimmed) {
+      return "";
+    }
+
+    return trimmed.toLowerCase();
+>>>>>>> origin/main
   }
 
   getTagPreferenceState(tag) {
@@ -2753,7 +2849,42 @@ class Application {
       }
     }
 
+<<<<<<< HEAD
     this.tagPreferenceMenuController.refreshActiveMenus();
+=======
+    this.refreshActiveTagPreferenceMenus();
+  }
+
+  refreshActiveTagPreferenceMenus() {
+    if (!this.tagPreferencePopovers) {
+      return;
+    }
+
+    const isLoggedIn = this.isUserLoggedIn();
+    this.tagPreferencePopovers.forEach((entry) => {
+      if (!entry) {
+        return;
+      }
+
+      const buttons = entry.buttons || {};
+      if (!buttons || Object.keys(buttons).length === 0) {
+        return;
+      }
+
+      try {
+        applyTagPreferenceMenuState({
+          buttons,
+          membership: this.getTagPreferenceMembership(entry.tag),
+          isLoggedIn,
+        });
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to refresh tag preference menu state:",
+          error,
+        );
+      }
+    });
+>>>>>>> origin/main
   }
 
   async loadHashtagPreferencesForPubkey(pubkey) {
@@ -2831,15 +2962,28 @@ class Application {
       typeof reason === "string" && reason.trim() ? reason.trim() : undefined;
 
     if (typeof moderationService?.awaitUserBlockRefresh === "function") {
+<<<<<<< HEAD
       moderationService.awaitUserBlockRefresh().catch((error) => {
         const contextMessage = normalizedReason
           ? ` in background during ${normalizedReason}`
           : " in background";
+=======
+      try {
+        await moderationService.awaitUserBlockRefresh();
+      } catch (error) {
+        const contextMessage = normalizedReason
+          ? ` before ${normalizedReason}`
+          : "";
+>>>>>>> origin/main
         devLogger.warn(
           `Failed to sync moderation summaries${contextMessage}:`,
           error,
         );
+<<<<<<< HEAD
       });
+=======
+      }
+>>>>>>> origin/main
     }
 
     try {
@@ -2932,6 +3076,7 @@ class Application {
    * Setup general event listeners for logout, modals, etc.
    */
   setupEventListeners() {
+<<<<<<< HEAD
     if (moderationService && typeof moderationService.on === "function") {
       moderationService.on("trusted-mutes", () => {
         if (!this.isUserLoggedIn()) {
@@ -2948,6 +3093,8 @@ class Application {
       });
     }
 
+=======
+>>>>>>> origin/main
     if (this.appChromeController) {
       this.appChromeController.initialize();
       return;
@@ -2958,7 +3105,11 @@ class Application {
     );
   }
 
+<<<<<<< HEAD
   mountVideoListView({ container = null, includeTags = true } = {}) {
+=======
+  mountVideoListView(container = null) {
+>>>>>>> origin/main
     if (!this.videoListView) {
       return null;
     }
@@ -2968,13 +3119,17 @@ class Application {
         container,
         view: this.videoListView,
         currentVideoList: this.videoList,
+<<<<<<< HEAD
         includeTags,
+=======
+>>>>>>> origin/main
       });
       this.videoList = videoList || null;
       this.videoListPopularTags = popularTags || null;
       return this.videoList;
     }
 
+<<<<<<< HEAD
     const isElement = (value) =>
       typeof HTMLElement !== "undefined" && value instanceof HTMLElement;
 
@@ -2985,6 +3140,11 @@ class Application {
     if (includeTags) {
       tagsRoot = document.getElementById("recentVideoTags");
     }
+=======
+    const target = container || document.getElementById("videoList");
+    this.videoList = target || null;
+    const tagsRoot = document.getElementById("recentVideoTags");
+>>>>>>> origin/main
     this.videoListPopularTags = tagsRoot || null;
     if (typeof this.videoListView.setPopularTagsContainer === "function") {
       this.videoListView.setPopularTagsContainer(this.videoListPopularTags);
@@ -3038,7 +3198,11 @@ class Application {
       this.videoListView.setPopularTagsContainer(this.videoListPopularTags);
     }
 
+<<<<<<< HEAD
     if (this.videoList && this.videoList.children.length === 0) {
+=======
+    if (this.videoList) {
+>>>>>>> origin/main
       this.videoList.innerHTML = getSidebarLoadingMarkup(messageContext);
     }
   }
@@ -3066,6 +3230,7 @@ class Application {
     });
   }
 
+<<<<<<< HEAD
   getDmRecipientPubkey() {
     return this.dmRecipientPubkey;
   }
@@ -3366,6 +3531,8 @@ class Application {
     );
   }
 
+=======
+>>>>>>> origin/main
   updateProfileInDOM(pubkey, profile) {
     if (this.profileIdentityController) {
       this.profileIdentityController.updateProfileIdentity({
@@ -3987,15 +4154,22 @@ class Application {
   async handleModerationSettingsChange({ settings, skipRefresh = false } = {}) {
     const normalized = this.normalizeModerationSettings(settings);
     this.moderationSettings = normalized;
+<<<<<<< HEAD
     const feedContext = {
       feedName: this.feedName || "",
       feedVariant: this.feedVariant || "",
     };
+=======
+>>>>>>> origin/main
 
     if (this.videosMap instanceof Map) {
       for (const video of this.videosMap.values()) {
         if (video && typeof video === "object") {
+<<<<<<< HEAD
           this.decorateVideoModeration(video, feedContext);
+=======
+          this.decorateVideoModeration(video);
+>>>>>>> origin/main
         }
       }
     }
@@ -4009,7 +4183,11 @@ class Application {
           continue;
         }
         if (card.video && typeof card.video === "object") {
+<<<<<<< HEAD
           this.decorateVideoModeration(card.video, feedContext);
+=======
+          this.decorateVideoModeration(card.video);
+>>>>>>> origin/main
         }
         try {
           card.refreshModerationUi();
@@ -4025,13 +4203,21 @@ class Application {
     if (this.videoListView && Array.isArray(this.videoListView.currentVideos)) {
       for (const video of this.videoListView.currentVideos) {
         if (video && typeof video === "object") {
+<<<<<<< HEAD
           this.decorateVideoModeration(video, feedContext);
+=======
+          this.decorateVideoModeration(video);
+>>>>>>> origin/main
         }
       }
     }
 
     if (this.currentVideo && typeof this.currentVideo === "object") {
+<<<<<<< HEAD
       this.decorateVideoModeration(this.currentVideo, feedContext);
+=======
+      this.decorateVideoModeration(this.currentVideo);
+>>>>>>> origin/main
     }
 
     if (!skipRefresh) {
@@ -4050,10 +4236,13 @@ class Application {
 
   refreshVisibleModerationUi({ reason } = {}) {
     const context = reason ? ` after ${reason}` : "";
+<<<<<<< HEAD
     const feedContext = {
       feedName: this.feedName || "",
       feedVariant: this.feedVariant || "",
     };
+=======
+>>>>>>> origin/main
 
     const redecorateVideo = (video) => {
       if (!video || typeof video !== "object") {
@@ -4061,7 +4250,11 @@ class Application {
       }
 
       try {
+<<<<<<< HEAD
         this.decorateVideoModeration(video, feedContext);
+=======
+        this.decorateVideoModeration(video);
+>>>>>>> origin/main
       } catch (error) {
         devLogger.warn(
           `[Application] Failed to decorate video moderation${context}:`,
@@ -4242,11 +4435,14 @@ class Application {
     if (subscriptionsLink) {
       subscriptionsLink.classList.remove("hidden");
     }
+<<<<<<< HEAD
 
     const forYouLink = this.resolveForYouLink();
     if (forYouLink) {
       forYouLink.classList.remove("hidden");
     }
+=======
+>>>>>>> origin/main
   }
 
   applyLoggedOutUiState() {
@@ -4281,11 +4477,14 @@ class Application {
     if (subscriptionsLink) {
       subscriptionsLink.classList.add("hidden");
     }
+<<<<<<< HEAD
 
     const forYouLink = this.resolveForYouLink();
     if (forYouLink) {
       forYouLink.classList.add("hidden");
     }
+=======
+>>>>>>> origin/main
   }
 
   syncAuthUiState() {
@@ -4325,10 +4524,14 @@ class Application {
   }
 
   resolveSubscriptionsLink() {
+<<<<<<< HEAD
     if (
       this.subscriptionsLink instanceof HTMLElement &&
       this.subscriptionsLink.isConnected
     ) {
+=======
+    if (this.subscriptionsLink instanceof HTMLElement) {
+>>>>>>> origin/main
       return this.subscriptionsLink;
     }
 
@@ -4342,6 +4545,7 @@ class Application {
     return null;
   }
 
+<<<<<<< HEAD
   resolveForYouLink() {
     if (this.forYouLink instanceof HTMLElement && this.forYouLink.isConnected) {
       return this.forYouLink;
@@ -4361,6 +4565,11 @@ class Application {
     const chromeElements = this.refreshChromeElements();
     this.resolveSubscriptionsLink();
     this.resolveForYouLink();
+=======
+  hydrateSidebarNavigation() {
+    const chromeElements = this.refreshChromeElements();
+    this.resolveSubscriptionsLink();
+>>>>>>> origin/main
 
     if (this.appChromeController) {
       if (typeof this.appChromeController.setElements === "function") {
@@ -4428,6 +4637,7 @@ class Application {
     this.applyAuthenticatedUiState();
     this.commentController?.refreshAuthState?.();
 
+<<<<<<< HEAD
     const currentView = getHashViewName();
     const normalizedView =
       typeof currentView === "string" ? currentView.toLowerCase() : "";
@@ -4435,6 +4645,8 @@ class Application {
       setHashView("for-you");
     }
 
+=======
+>>>>>>> origin/main
     const rawProviderId =
       typeof detail?.providerId === "string" ? detail.providerId.trim() : "";
     const rawAuthType =
@@ -4680,6 +4892,7 @@ class Application {
 
     this.applyLoggedOutUiState();
 
+<<<<<<< HEAD
     const logoutView = getHashViewName();
     if (
       typeof logoutView === "string" &&
@@ -4688,6 +4901,8 @@ class Application {
       setHashView("most-recent-videos");
     }
 
+=======
+>>>>>>> origin/main
     const activeModalVideo =
       typeof this.videoModal?.getCurrentVideo === "function"
         ? this.videoModal.getCurrentVideo()
@@ -4917,6 +5132,7 @@ class Application {
         // Tell webtorrent to cleanup
         await torrentClient.cleanup();
         this.log("[cleanup] WebTorrent cleanup resolved.");
+<<<<<<< HEAD
 
         try {
           if (navigator.serviceWorker && navigator.serviceWorker.controller) {
@@ -4925,6 +5141,8 @@ class Application {
         } catch (err) {
           // Ignore errors when cancelling the service worker stream; it may not be active.
         }
+=======
+>>>>>>> origin/main
       } catch (err) {
         devLogger.error("Cleanup error:", err);
       } finally {
@@ -5560,9 +5778,13 @@ class Application {
     // user-visible UI is already closed.
     const performCleanup = async () => {
       try {
+<<<<<<< HEAD
         if (navigator.serviceWorker && navigator.serviceWorker.controller) {
           await fetch("/webtorrent/cancel/", { mode: "no-cors" });
         }
+=======
+        await fetch("/webtorrent/cancel/", { mode: "no-cors" });
+>>>>>>> origin/main
       } catch (err) {
         devLogger.warn("[hideModal] webtorrent cancel fetch failed:", err);
       }
@@ -5629,6 +5851,12 @@ class Application {
       return this.feedEngine.registerFeed("recent", {
         source: createActiveNostrSource({ service: this.nostrService }),
         stages: [
+<<<<<<< HEAD
+=======
+          // TODO(tag-preferences): introduce a dedicated stage here to filter by
+          // viewer interests/disinterests once the runtime metadata is wired up
+          // to filtering helpers.
+>>>>>>> origin/main
           createBlacklistFilterStage({
             shouldIncludeVideo: (video, options) =>
               this.nostrService.shouldIncludeVideo(video, options),
@@ -5659,6 +5887,7 @@ class Application {
     }
   }
 
+<<<<<<< HEAD
   /**
    * Register the "for-you" feed pipeline.
    */
@@ -5735,6 +5964,8 @@ class Application {
     }
   }
 
+=======
+>>>>>>> origin/main
   registerSubscriptionsFeed() {
     if (!this.feedEngine || typeof this.feedEngine.registerFeed !== "function") {
       return null;
@@ -5774,10 +6005,15 @@ class Application {
       return this.feedEngine.registerFeed("subscriptions", {
         source: createSubscriptionAuthorsSource({ service: this.nostrService }),
         stages: [
+<<<<<<< HEAD
           // TODO(tag-preferences): keep tag-preference filtering consolidated in
           // createTagPreferenceFilterStage so each feed has a single source of
           // truth when interest-based inclusion/ranking lands.
           createTagPreferenceFilterStage(),
+=======
+          // TODO(tag-preferences): introduce preference-aware filtering ahead of
+          // the blacklist stage when tag-based ranking lands.
+>>>>>>> origin/main
           createBlacklistFilterStage({
             shouldIncludeVideo: (video, options) =>
               this.nostrService.shouldIncludeVideo(video, options),
@@ -5835,19 +6071,27 @@ class Application {
     }
   }
 
+<<<<<<< HEAD
   buildForYouFeedRuntime() {
+=======
+  buildRecentFeedRuntime() {
+>>>>>>> origin/main
     const blacklist =
       this.blacklistedEventIds instanceof Set
         ? new Set(this.blacklistedEventIds)
         : new Set();
 
     const preferenceSource =
+<<<<<<< HEAD
       this.hashtagPreferencesSnapshot &&
       typeof this.hashtagPreferencesSnapshot === "object"
         ? this.hashtagPreferencesSnapshot
         : typeof this.createHashtagPreferencesSnapshot === "function"
         ? this.createHashtagPreferencesSnapshot()
         : typeof this.getHashtagPreferences === "function"
+=======
+      typeof this.getHashtagPreferences === "function"
+>>>>>>> origin/main
         ? this.getHashtagPreferences()
         : {};
     const { interests = [], disinterests = [] } = preferenceSource || {};
@@ -5866,6 +6110,7 @@ class Application {
     };
   }
 
+<<<<<<< HEAD
   buildRecentFeedRuntime() {
     const blacklist =
       this.blacklistedEventIds instanceof Set
@@ -5945,6 +6190,8 @@ class Application {
       });
   }
 
+=======
+>>>>>>> origin/main
   refreshRecentFeed({ reason, fallbackVideos } = {}) {
     const runtime = this.buildRecentFeedRuntime();
     const normalizedReason = typeof reason === "string" ? reason : undefined;
@@ -6007,6 +6254,7 @@ class Application {
    */
   async loadVideos(forceFetch = false) {
     devLogger.log("Starting loadVideos... (forceFetch =", forceFetch, ")");
+<<<<<<< HEAD
     this.setFeedTelemetryContext("recent");
 
     const container = this.mountVideoListView();
@@ -6021,6 +6269,14 @@ class Application {
       } else if (container) {
         container.innerHTML = getSidebarLoadingMarkup("Fetching recent videos…");
       }
+=======
+
+    const container = this.mountVideoListView();
+    if (this.videoListView && container) {
+      this.videoListView.showLoading("Fetching recent videos…");
+    } else if (container) {
+      container.innerHTML = getSidebarLoadingMarkup("Fetching recent videos…");
+>>>>>>> origin/main
     }
 
     let initialRefreshPromise = null;
@@ -6053,6 +6309,7 @@ class Application {
     }
   }
 
+<<<<<<< HEAD
   async loadForYouVideos(forceFetch = false) {
     devLogger.log("Starting loadForYouVideos... (forceFetch =", forceFetch, ")");
     this.setFeedTelemetryContext("for-you");
@@ -6101,6 +6358,8 @@ class Application {
     }
   }
 
+=======
+>>>>>>> origin/main
   async loadOlderVideos(lastTimestamp) {
     const olderVideos = await this.nostrService.loadOlderVideos(lastTimestamp, {
       blacklistedEventIds: this.blacklistedEventIds,
@@ -6404,6 +6663,7 @@ class Application {
     }
   }
 
+<<<<<<< HEAD
   setFeedTelemetryContext(feedName = "") {
     if (!this.feedTelemetryState || typeof this.feedTelemetryState !== "object") {
       this.feedTelemetryState = {
@@ -6696,6 +6956,8 @@ class Application {
     this.feedTelemetryState.activePlayback = null;
   }
 
+=======
+>>>>>>> origin/main
   async renderVideoList(payload) {
     if (!this.videoListView) {
       return;
@@ -6715,9 +6977,15 @@ class Application {
       if (Array.isArray(payload.videos)) {
         videos = payload.videos;
       }
+<<<<<<< HEAD
       if (payload.metadata && typeof payload.metadata === "object") {
         metadata = { ...payload.metadata };
       }
+=======
+    if (payload.metadata && typeof payload.metadata === "object") {
+      metadata = { ...payload.metadata };
+    }
+>>>>>>> origin/main
     }
 
     this.latestFeedMetadata = metadata;
@@ -6738,7 +7006,10 @@ class Application {
       : [];
 
     this.videoListView.render(decoratedVideos, metadata);
+<<<<<<< HEAD
     this.emitForYouImpressions(decoratedVideos);
+=======
+>>>>>>> origin/main
 
     if (typeof this.refreshVisibleModerationUi === "function") {
       const renderReason =
@@ -6856,6 +7127,7 @@ class Application {
 
   normalizeModerationSettings(settings = null) {
     const defaults = this.defaultModerationSettings || getDefaultModerationSettings();
+<<<<<<< HEAD
     const sanitizeThresholdMap = (value, fallback = {}) => {
       const fallbackMap = fallback && typeof fallback === "object" ? fallback : {};
       if (!value || typeof value !== "object") {
@@ -6877,6 +7149,8 @@ class Application {
       }
       return { ...fallbackMap, ...sanitized };
     };
+=======
+>>>>>>> origin/main
     const defaultBlur = Number.isFinite(defaults?.blurThreshold)
       ? Math.max(0, Math.floor(defaults.blurThreshold))
       : DEFAULT_BLUR_THRESHOLD;
@@ -6904,11 +7178,14 @@ class Application {
       ? Math.max(0, Math.floor(defaults.trustedSpamHideThreshold))
       : runtimeTrustedSpam;
 
+<<<<<<< HEAD
     const defaultTrustedMuteHideThresholds = sanitizeThresholdMap(
       defaults?.trustedMuteHideThresholds,
       {},
     );
 
+=======
+>>>>>>> origin/main
     const blurSource = Number.isFinite(settings?.blurThreshold)
       ? Math.max(0, Math.floor(settings.blurThreshold))
       : defaultBlur;
@@ -6921,16 +7198,22 @@ class Application {
     const spamHideSource = Number.isFinite(settings?.trustedSpamHideThreshold)
       ? Math.max(0, Math.floor(settings.trustedSpamHideThreshold))
       : defaultTrustedSpamHide;
+<<<<<<< HEAD
     const muteHideThresholdsSource = sanitizeThresholdMap(
       settings?.trustedMuteHideThresholds,
       defaultTrustedMuteHideThresholds,
     );
+=======
+>>>>>>> origin/main
 
     return {
       blurThreshold: blurSource,
       autoplayBlockThreshold: autoplaySource,
       trustedMuteHideThreshold: muteHideSource,
+<<<<<<< HEAD
       trustedMuteHideThresholds: muteHideThresholdsSource,
+=======
+>>>>>>> origin/main
       trustedSpamHideThreshold: spamHideSource,
     };
   }
@@ -6940,7 +7223,11 @@ class Application {
     return { ...this.moderationSettings };
   }
 
+<<<<<<< HEAD
   decorateVideoModeration(video, feedContext = {}) {
+=======
+  decorateVideoModeration(video) {
+>>>>>>> origin/main
     if (!video || typeof video !== "object") {
       return video;
     }
@@ -7135,6 +7422,7 @@ class Application {
         }
       : null;
 
+<<<<<<< HEAD
     const FEED_HIDE_BYPASS_NAMES = new Set(["home", "recent"]);
     const normalizedFeedName =
       typeof feedContext?.feedName === "string" ? feedContext.feedName.trim().toLowerCase() : "";
@@ -7158,6 +7446,12 @@ class Application {
       eventId: video.id,
       authorPubkey: video.pubkey || video.author?.pubkey || "",
     });
+=======
+    let hideBypass = hideTriggered ? existingHideBypass : "";
+    const computedHidden = hideTriggered && !hideBypass;
+
+    const overrideEntry = getModerationOverride(video.id);
+>>>>>>> origin/main
     const overrideActive = overrideEntry?.showAnyway === true;
     const overrideUpdatedAt = Number.isFinite(overrideEntry?.updatedAt)
       ? Math.floor(overrideEntry.updatedAt)
@@ -7468,9 +7762,13 @@ class Application {
     }
 
     this.closeVideoSettingsMenu({ restoreFocus: options?.restoreFocus !== false });
+<<<<<<< HEAD
     this.tagPreferenceMenuController.closeMenus({
       restoreFocus: options?.restoreFocus !== false,
     });
+=======
+    this.closeTagPreferenceMenus({ restoreFocus: options?.restoreFocus !== false });
+>>>>>>> origin/main
   }
 
   attachMoreMenuHandlers(container) {
@@ -7664,6 +7962,7 @@ class Application {
     return closed;
   }
 
+<<<<<<< HEAD
   ensureTagPreferencePopover(detail) {
     return this.tagPreferenceMenuController.ensurePopover(detail);
   }
@@ -7678,6 +7977,300 @@ class Application {
 
   handleTagPreferenceActivation(detail = {}) {
     this.tagPreferenceMenuController.handleActivation(detail);
+=======
+  ensureTagPreferencePopover(detail = {}) {
+    const triggerCandidate = detail?.trigger || null;
+    const trigger =
+      triggerCandidate && triggerCandidate.nodeType === 1 ? triggerCandidate : null;
+    const rawTag = typeof detail?.tag === "string" ? detail.tag : "";
+    const tag = rawTag.trim();
+
+    if (!trigger || !tag) {
+      return null;
+    }
+
+    let entry = this.tagPreferencePopovers.get(trigger);
+
+    const render = ({ document: documentRef, close }) => {
+      const menu = createTagPreferenceMenu({
+        document: documentRef,
+        tag: entry.tag,
+        isLoggedIn: this.isUserLoggedIn(),
+        membership: this.getTagPreferenceMembership(entry.tag),
+        designSystem: this.designSystemContext,
+        onAction: (action, actionDetail = {}) => {
+          void this.handleTagPreferenceMenuAction(action, {
+            tag: entry.tag,
+            trigger,
+            video: entry.video || null,
+            closePopover: close,
+            actionDetail,
+          });
+        },
+      });
+
+      if (!menu?.panel) {
+        return null;
+      }
+
+      entry.panel = menu.panel;
+      entry.buttons = menu.buttons;
+      return menu.panel;
+    };
+
+    if (!entry) {
+      entry = {
+        trigger,
+        tag,
+        context: detail.context || "",
+        video: detail.video || null,
+        panel: null,
+        buttons: null,
+        popover: null,
+      };
+
+      const ownerDocument =
+        trigger.ownerDocument || (typeof document !== "undefined" ? document : null);
+
+      const popover = createPopover(trigger, render, {
+        document: ownerDocument,
+        placement: "bottom-start",
+        restoreFocusOnClose: true,
+      });
+
+      if (!popover) {
+        return null;
+      }
+
+      const originalDestroy = popover.destroy?.bind(popover);
+      if (typeof originalDestroy === "function") {
+        popover.destroy = (...args) => {
+          originalDestroy(...args);
+          if (this.tagPreferencePopovers.get(trigger) === entry) {
+            this.tagPreferencePopovers.delete(trigger);
+          }
+        };
+      }
+
+      entry.popover = popover;
+      this.tagPreferencePopovers.set(trigger, entry);
+    } else {
+      entry.tag = tag;
+      entry.context = detail.context || entry.context || "";
+      entry.video = detail.video || entry.video || null;
+    }
+
+    return entry;
+  }
+
+  requestTagPreferenceMenu(detail = {}) {
+    const entry = this.ensureTagPreferencePopover(detail);
+    if (!entry?.popover) {
+      return;
+    }
+
+    const popover = entry.popover;
+    const restoreFocus = detail.restoreFocus !== false;
+
+    if (typeof popover.isOpen === "function" && popover.isOpen()) {
+      popover.close({ restoreFocus });
+      return;
+    }
+
+    this.closeTagPreferenceMenus({
+      restoreFocus: false,
+      skipTrigger: entry.trigger,
+    });
+    this.closeVideoSettingsMenu({ restoreFocus: false });
+    this.closeAllMoreMenus({
+      restoreFocus: false,
+      skipTrigger: entry.trigger,
+      skipView: true,
+    });
+
+    popover
+      .open()
+      .then(() => {
+        this.refreshActiveTagPreferenceMenus();
+      })
+      .catch((error) =>
+        userLogger.error("[TagPreferenceMenu] Failed to open popover:", error),
+      );
+  }
+
+  closeTagPreferenceMenus(detail = {}) {
+    const triggerCandidate = detail?.trigger || null;
+    const trigger =
+      triggerCandidate && triggerCandidate.nodeType === 1 ? triggerCandidate : null;
+    const restoreFocus = detail?.restoreFocus !== false;
+    const skipTrigger = detail?.skipTrigger || null;
+
+    if (trigger) {
+      const entry = this.tagPreferencePopovers.get(trigger);
+      if (entry?.popover && typeof entry.popover.close === "function") {
+        return entry.popover.close({ restoreFocus });
+      }
+      return false;
+    }
+
+    let closed = false;
+    this.tagPreferencePopovers.forEach((entry, key) => {
+      if (!entry?.popover || typeof entry.popover.close !== "function") {
+        return;
+      }
+      if (skipTrigger && key === skipTrigger) {
+        return;
+      }
+      const result = entry.popover.close({ restoreFocus });
+      closed = closed || result;
+    });
+    return closed;
+  }
+
+  async persistHashtagPreferencesFromMenu() {
+    const service = this.hashtagPreferences;
+    const publish =
+      service && typeof service.publish === "function" ? service.publish : null;
+
+    if (!publish) {
+      const message = this.describeHashtagPreferencesError(null, {
+        fallbackMessage: "Hashtag preferences are unavailable right now.",
+      });
+      if (message) {
+        this.showError(message);
+      }
+      const error = new Error(
+        message || "Hashtag preferences are unavailable right now.",
+      );
+      error.code = "service-unavailable";
+      throw error;
+    }
+
+    if (this.hashtagPreferencesPublishInFlight) {
+      return this.hashtagPreferencesPublishPromise;
+    }
+
+    const normalizedPubkey = this.normalizeHexPubkey(this.pubkey);
+    const payload = normalizedPubkey ? { pubkey: normalizedPubkey } : {};
+
+    this.hashtagPreferencesPublishInFlight = true;
+
+    const publishPromise = (async () => {
+      try {
+        return await publish.call(service, payload);
+      } catch (error) {
+        const failure =
+          error instanceof Error ? error : new Error(String(error || ""));
+        if (!failure.code) {
+          failure.code = "hashtag-preferences-publish-failed";
+        }
+        const message = this.describeHashtagPreferencesError(failure, {
+          operation: "update",
+        });
+        if (message) {
+          this.showError(message);
+        }
+        throw failure;
+      } finally {
+        this.hashtagPreferencesPublishInFlight = false;
+        this.hashtagPreferencesPublishPromise = null;
+      }
+    })();
+
+    this.hashtagPreferencesPublishPromise = publishPromise;
+    return publishPromise;
+  }
+
+  async handleTagPreferenceMenuAction(action, detail = {}) {
+    const tag = typeof detail?.tag === "string" ? detail.tag : "";
+    if (!tag) {
+      return;
+    }
+
+    const service = this.hashtagPreferences;
+    if (!service) {
+      return;
+    }
+
+    let result = false;
+    try {
+      switch (action) {
+        case TAG_PREFERENCE_ACTIONS.ADD_INTEREST:
+          result = service.addInterest(tag);
+          break;
+        case TAG_PREFERENCE_ACTIONS.REMOVE_INTEREST:
+          result = service.removeInterest(tag);
+          break;
+        case TAG_PREFERENCE_ACTIONS.ADD_DISINTEREST:
+          result = service.addDisinterest(tag);
+          break;
+        case TAG_PREFERENCE_ACTIONS.REMOVE_DISINTEREST:
+          result = service.removeDisinterest(tag);
+          break;
+        default:
+          userLogger.warn(`[TagPreferenceMenu] Unhandled action: ${action}`);
+          return;
+      }
+    } catch (error) {
+      devLogger.error(
+        "[Application] Failed to mutate hashtag preference via menu:",
+        error,
+      );
+      const message = this.describeHashtagPreferencesError(error, {
+        operation: "update",
+      });
+      if (message) {
+        this.showError(message);
+      }
+      return;
+    }
+
+    if (!result) {
+      return;
+    }
+
+    this.updateCachedHashtagPreferences();
+    this.refreshTagPreferenceUi();
+
+    try {
+      await this.persistHashtagPreferencesFromMenu();
+    } catch (error) {
+      return;
+    }
+
+    this.updateCachedHashtagPreferences();
+    this.refreshTagPreferenceUi();
+
+    if (typeof detail?.closePopover === "function") {
+      detail.closePopover({ restoreFocus: false });
+    }
+  }
+
+  handleTagPreferenceActivation(detail = {}) {
+    const tag = typeof detail?.tag === "string" ? detail.tag : "";
+    if (!tag) {
+      return;
+    }
+
+    const triggerCandidate = detail?.trigger || null;
+    const trigger =
+      triggerCandidate && triggerCandidate.nodeType === 1 ? triggerCandidate : null;
+    if (!trigger) {
+      return;
+    }
+
+    if (detail?.event) {
+      detail.event.preventDefault?.();
+      detail.event.stopPropagation?.();
+    }
+
+    this.requestTagPreferenceMenu({
+      trigger,
+      tag,
+      context: detail?.context || "",
+      video: detail?.video || null,
+    });
+>>>>>>> origin/main
   }
 
   syncModalMoreMenuData() {
@@ -8061,8 +8654,56 @@ class Application {
    * and do not re-trigger recursion here (no setTimeout).
    */
   updateTorrentStatus(torrent) {
+<<<<<<< HEAD
     if (this.torrentStatusController) {
       this.torrentStatusController.update(torrent);
+=======
+    devLogger.log("[DEBUG] updateTorrentStatus called with torrent:", torrent);
+
+    if (!torrent) {
+      devLogger.log("[DEBUG] torrent is null/undefined!");
+      return;
+    }
+
+    if (torrent.ready || (typeof torrent.progress === "number" && torrent.progress > 0)) {
+      // Belt-and-suspenders: if WebTorrent reports progress but the DOM events
+      // failed to fire we still rip off the loading GIF. This regression has
+      // bitten us in past releases, so the extra clear is intentional.
+      this.forceRemoveModalPoster(
+        torrent.ready ? "torrent-ready-flag" : "torrent-progress"
+      );
+    }
+
+    // Log only fields that actually exist on the torrent:
+    devLogger.log("[DEBUG] torrent.progress =", torrent.progress);
+    devLogger.log("[DEBUG] torrent.numPeers =", torrent.numPeers);
+    devLogger.log("[DEBUG] torrent.downloadSpeed =", torrent.downloadSpeed);
+    devLogger.log("[DEBUG] torrent.downloaded =", torrent.downloaded);
+    devLogger.log("[DEBUG] torrent.length =", torrent.length);
+    devLogger.log("[DEBUG] torrent.ready =", torrent.ready);
+
+    // Use "Complete" vs. "Downloading" as the textual status.
+    if (this.videoModal) {
+      const fullyDownloaded = torrent.progress >= 1;
+      this.videoModal.updateStatus(fullyDownloaded ? "Complete" : "Downloading");
+
+      const percent = (torrent.progress * 100).toFixed(2);
+      this.videoModal.updateProgress(`${percent}%`);
+      this.videoModal.updatePeers(`Peers: ${torrent.numPeers}`);
+
+      const kb = (torrent.downloadSpeed / 1024).toFixed(2);
+      this.videoModal.updateSpeed(`${kb} KB/s`);
+
+      const downloadedMb = (torrent.downloaded / (1024 * 1024)).toFixed(2);
+      const lengthMb = (torrent.length / (1024 * 1024)).toFixed(2);
+      this.videoModal.updateDownloaded(
+        `${downloadedMb} MB / ${lengthMb} MB`
+      );
+
+      if (torrent.ready) {
+        this.videoModal.updateStatus("Ready to play");
+      }
+>>>>>>> origin/main
     }
   }
 
@@ -8532,6 +9173,7 @@ class Application {
       const decoded = window.NostrTools.nip19.decode(maybeNevent);
       if (decoded.type === "nevent" && decoded.data.id) {
         const eventId = decoded.data.id;
+<<<<<<< HEAD
         const relay =
           Array.isArray(decoded.data.relays) && decoded.data.relays.length
             ? decoded.data.relays[0]
@@ -8540,12 +9182,22 @@ class Application {
         let localMatch = this.videosMap.get(eventId);
         if (localMatch) {
           this.playVideoByEventId(eventId, { relay });
+=======
+        // 1) check local map
+        let localMatch = this.videosMap.get(eventId);
+        if (localMatch) {
+          this.playVideoByEventId(eventId);
+>>>>>>> origin/main
         } else {
           // 2) fallback => getOldEventById
           this.getOldEventById(eventId)
             .then((video) => {
               if (video) {
+<<<<<<< HEAD
                 this.playVideoByEventId(eventId, { relay });
+=======
+                this.playVideoByEventId(eventId);
+>>>>>>> origin/main
               } else {
                 this.showError("No matching video found for that link.");
               }
@@ -8924,7 +9576,11 @@ class Application {
    * and falls back to WebTorrent when needed.
    */
   async playVideoWithFallback(options = {}) {
+<<<<<<< HEAD
     const { url = "", magnet = "", trigger, forcedSource } = options || {};
+=======
+    const { url = "", magnet = "", trigger } = options || {};
+>>>>>>> origin/main
     const hasTrigger = Object.prototype.hasOwnProperty.call(
       options || {},
       "trigger"
@@ -8938,7 +9594,10 @@ class Application {
     const requestSignature = JSON.stringify({
       url: sanitizedUrl,
       magnet: trimmedMagnet,
+<<<<<<< HEAD
       forcedSource,
+=======
+>>>>>>> origin/main
     });
 
     const modalVideoIsConnected = (() => {
@@ -9090,7 +9749,10 @@ class Application {
         this.playViaWebTorrent(magnetUri, options),
       autoplay: () => this.autoplayModalVideo(),
       unsupportedBtihMessage: UNSUPPORTED_BTITH_MESSAGE,
+<<<<<<< HEAD
       forcedSource,
+=======
+>>>>>>> origin/main
     });
 
     this.activePlaybackSession = session;
@@ -9381,7 +10043,10 @@ class Application {
       videoRootId: video.videoRootId,
       dTag: dTagValue,
       fallbackEventId: video.id || eventId,
+<<<<<<< HEAD
       relay: hint.relay || video.relay,
+=======
+>>>>>>> origin/main
     });
 
     this.currentVideoPointer = pointerInfo?.pointer || null;
@@ -9392,6 +10057,7 @@ class Application {
       this.currentVideo.pointerKey = this.currentVideoPointerKey;
     }
 
+<<<<<<< HEAD
     if (
       this.feedTelemetryState?.activePlayback?.feed === "for-you" &&
       this.feedTelemetryState.activePlayback.videoId === eventId
@@ -9400,6 +10066,8 @@ class Application {
         this.currentVideoPointerKey || null;
     }
 
+=======
+>>>>>>> origin/main
     this.subscribeModalViewCount(
       this.currentVideoPointer,
       this.currentVideoPointerKey
@@ -9528,9 +10196,13 @@ class Application {
       (normalizedPostedAt === null || normalizedEditedAt - normalizedPostedAt >= 60);
 
     if (shouldShowEdited) {
+<<<<<<< HEAD
       const abs = formatAbsoluteDateWithOrdinalUtil(normalizedEditedAt);
       const rel = this.formatTimeAgo(normalizedEditedAt);
       payload.edited = `Last edited: ${abs} (${rel})`;
+=======
+      payload.edited = `Last edited ${this.formatTimeAgo(normalizedEditedAt)}`;
+>>>>>>> origin/main
     }
 
     return payload;
@@ -9615,6 +10287,7 @@ class Application {
       return null;
     }
 
+<<<<<<< HEAD
     // Prioritize NIP-71 published_at metadata if available
     const rawNip71PublishedAt =
       video?.nip71?.publishedAt ||
@@ -9630,6 +10303,8 @@ class Application {
       return nip71PublishedAt;
     }
 
+=======
+>>>>>>> origin/main
     const cached = this.getKnownVideoPostedAt(video);
     if (cached !== null) {
       return cached;
@@ -10690,8 +11365,14 @@ class Application {
       this.modalManager = null;
     }
 
+<<<<<<< HEAD
     if (this.tagPreferenceMenuController) {
       this.tagPreferenceMenuController.clear();
+=======
+    this.closeTagPreferenceMenus({ restoreFocus: false });
+    if (this.tagPreferencePopovers) {
+      this.tagPreferencePopovers.clear();
+>>>>>>> origin/main
     }
 
     if (this.videoListView) {

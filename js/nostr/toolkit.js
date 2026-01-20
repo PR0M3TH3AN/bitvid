@@ -476,7 +476,26 @@ export function shimLegacySimplePoolMethods(pool) {
         if (subscribeMap) {
           closer = subscribeMap(requests, subscribeParams);
         } else if (subscribeMany) {
+<<<<<<< HEAD
           closer = subscribeMany(relayList, filterList, subscribeParams);
+=======
+          // subscribeMany only accepts a single filter, so reuse subscribeMap-style batching
+          // by issuing one subscription per filter.
+          const subs = filterList.map((filter) =>
+            subscribeMany(relayList, filter, subscribeParams)
+          );
+          closer = {
+            close: (reason) => {
+              subs.forEach((sub) => {
+                try {
+                  sub?.close?.(reason);
+                } catch (error) {
+                  devLogger.warn("[nostr] Failed to close SimplePool subscription.", error);
+                }
+              });
+            },
+          };
+>>>>>>> origin/main
         } else if (subscribeSingle && filterList.length) {
           closer = subscribeSingle(relayList, filterList[0], subscribeParams);
         }
@@ -522,11 +541,15 @@ export function shimLegacySimplePoolMethods(pool) {
           }
           closed = true;
           try {
+<<<<<<< HEAD
             if (typeof closer === "function") {
               closer();
             } else if (closer && typeof closer.close === "function") {
               closer.close("closed by caller");
             }
+=======
+            closer?.close?.("closed by caller");
+>>>>>>> origin/main
           } catch (error) {
             devLogger.warn("[nostr] Failed to close SimplePool subscription.", error);
           }
@@ -548,6 +571,7 @@ export function shimLegacySimplePoolMethods(pool) {
       }
 
       return new Promise((resolve) => {
+<<<<<<< HEAD
         let timer = null;
 
         const finish = () => {
@@ -560,6 +584,10 @@ export function shimLegacySimplePoolMethods(pool) {
 
         if (!subscription || typeof subscription.on !== "function") {
           finish();
+=======
+        if (!subscription || typeof subscription.on !== "function") {
+          resolve(events);
+>>>>>>> origin/main
           return;
         }
 
@@ -572,6 +600,7 @@ export function shimLegacySimplePoolMethods(pool) {
           } catch (error) {
             devLogger.warn("[nostr] Failed to unsubscribe after list EOSE.", error);
           }
+<<<<<<< HEAD
           finish();
         });
         subscription.on("close", () => {
@@ -594,6 +623,13 @@ export function shimLegacySimplePoolMethods(pool) {
           }
           finish();
         }, timeoutMs);
+=======
+          resolve(events);
+        });
+        subscription.on("close", () => {
+          resolve(events);
+        });
+>>>>>>> origin/main
       });
     };
   }

@@ -66,7 +66,10 @@ export function createSubscriptionAuthorsSource({ service } = {}) {
   const resolvedService = resolveService(service, nostrService);
 
   return async function subscriptionAuthorsSource(context = {}) {
+<<<<<<< HEAD
     context?.log?.("[subscriptions-source] START");
+=======
+>>>>>>> origin/main
     const runtimeAuthors = toArray(
       context?.runtime?.subscriptionAuthors || context?.runtime?.authors
     ).map(normalizeAuthor);
@@ -89,8 +92,11 @@ export function createSubscriptionAuthorsSource({ service } = {}) {
       [...runtimeAuthors, ...configAuthors, ...hookAuthors].filter(Boolean)
     );
 
+<<<<<<< HEAD
     context?.log?.(`[subscriptions-source] Resolved ${authors.size} authors.`);
 
+=======
+>>>>>>> origin/main
     if (!authors.size) {
       return [];
     }
@@ -118,6 +124,7 @@ export function createSubscriptionAuthorsSource({ service } = {}) {
     let videos = [];
     try {
       if (hasTargetedLookup) {
+<<<<<<< HEAD
         context?.log?.("[subscriptions-source] Calling getActiveVideosByAuthors...");
         videos = await Promise.resolve(
           resolvedService.getActiveVideosByAuthors(authorList, options)
@@ -132,6 +139,11 @@ export function createSubscriptionAuthorsSource({ service } = {}) {
             videos = fetched;
           }
         }
+=======
+        videos = await Promise.resolve(
+          resolvedService.getActiveVideosByAuthors(authorList, options)
+        );
+>>>>>>> origin/main
       } else {
         videos = await Promise.resolve(
           resolvedService.getFilteredActiveVideos(options)

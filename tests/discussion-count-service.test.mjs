@@ -40,7 +40,11 @@ async function testRefreshCountsCachesResults() {
       const [eventFilter, uppercaseFilter, addressFilter] = filters;
       assert.deepEqual(eventFilter, {
         kinds: [COMMENT_EVENT_KIND],
+<<<<<<< HEAD
         "#E": ["count-video-1"],
+=======
+        "#e": ["count-video-1"],
+>>>>>>> origin/main
       });
       assert.deepEqual(uppercaseFilter, {
         kinds: [COMMENT_EVENT_KIND],
@@ -50,7 +54,11 @@ async function testRefreshCountsCachesResults() {
       });
       assert.deepEqual(addressFilter, {
         kinds: [COMMENT_EVENT_KIND],
+<<<<<<< HEAD
         "#A": ["30078:pubkey-1:identifier-1"],
+=======
+        "#a": ["30078:pubkey-1:identifier-1"],
+>>>>>>> origin/main
       });
       return {
         total: 5,
@@ -123,7 +131,11 @@ async function testUnsupportedRelaysUpdateDomState() {
       const [eventFilter, uppercaseFilter, addressFilter] = filters;
       assert.deepEqual(eventFilter, {
         kinds: [COMMENT_EVENT_KIND],
+<<<<<<< HEAD
         "#E": ["unsupported-video"],
+=======
+        "#e": ["unsupported-video"],
+>>>>>>> origin/main
       });
       assert.deepEqual(uppercaseFilter, {
         kinds: [COMMENT_EVENT_KIND],
@@ -133,7 +145,11 @@ async function testUnsupportedRelaysUpdateDomState() {
       });
       assert.deepEqual(addressFilter, {
         kinds: [COMMENT_EVENT_KIND],
+<<<<<<< HEAD
         "#A": ["30078:pubkey-2:identifier-2"],
+=======
+        "#a": ["30078:pubkey-2:identifier-2"],
+>>>>>>> origin/main
       });
       return {
         total: 7,

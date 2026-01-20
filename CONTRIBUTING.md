@@ -31,6 +31,7 @@ If we later introduce **dual-licensing** options (e.g., commercial licenses for 
 * Follow existing formatting/lint rules.
 * Update docs and user-facing text when behavior changes.
 
+<<<<<<< HEAD
 ## Agent PR Conventions
 
 Automated agents contributing to this repository should follow these rules:
@@ -69,6 +70,8 @@ To set up the project locally:
 
 For a full guide, see the [Local Setup section in README.md](./README.md#local-setup).
 
+=======
+>>>>>>> origin/main
 ## Security
 
 If you find a vulnerability, please email **[security@bitvid.network](mailto:security@bitvid.network)**. We’ll coordinate a responsible disclosure window before public release.

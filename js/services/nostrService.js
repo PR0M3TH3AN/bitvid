@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import { nostrClient } from "../nostrClientFacade.js";
 import { convertEventToVideo } from "../nostr/index.js";
 import { accessControl } from "../accessControl.js";
@@ -10,12 +11,24 @@ import {
   resolveDmRelaySelection,
 } from "./dmNostrService.js";
 import {
+=======
+import { nostrClient } from "../nostr.js";
+import { convertEventToVideo } from "../nostr/index.js";
+import { accessControl } from "../accessControl.js";
+import { ALLOW_NSFW_CONTENT } from "../config.js";
+import { userLogger } from "../utils/logger.js";
+import moderationService from "./moderationService.js";
+import {
+>>>>>>> origin/main
   loadDirectMessageSnapshot,
   saveDirectMessageSnapshot,
   clearDirectMessageSnapshot,
 } from "../directMessagesStore.js";
+<<<<<<< HEAD
 import { writeMessages } from "../storage/dmDb.js";
 import { DmNotificationManager } from "./dmNotificationManager.js";
+=======
+>>>>>>> origin/main
 import {
   getVideosMap as getStoredVideosMap,
   setVideosMap as setStoredVideosMap,
@@ -24,6 +37,7 @@ import {
 } from "../state/appState.js";
 
 const VIDEO_KIND = 30078;
+<<<<<<< HEAD
 const STORAGE_KEY_FILTERED_VIDEOS = "bitvid:filtered-videos:v1";
 const MAX_PERSISTED_VIDEOS = 100;
 
@@ -70,6 +84,8 @@ function persistFilteredVideos(videos) {
     userLogger.warn("[nostrService] Failed to persist filtered videos", error);
   }
 }
+=======
+>>>>>>> origin/main
 
 class SimpleEventEmitter {
   constructor(logger = null) {
@@ -207,6 +223,7 @@ function extractSnapshotPreview(message) {
   }
 
   const selected = candidates.find((candidate) => candidate && candidate.trim());
+<<<<<<< HEAD
   if (selected) {
     return sanitizeSnapshotPreview(selected);
   }
@@ -228,6 +245,9 @@ function getActiveKey(video) {
     return `${video.pubkey}:${dTag[1]}`;
   }
   return `LEGACY:${video.id}`;
+=======
+  return sanitizeSnapshotPreview(selected || "");
+>>>>>>> origin/main
 }
 
 function resolveDirectMessageRemotePubkey(message, actorPubkey = "") {
@@ -302,6 +322,7 @@ function resolveDirectMessageRemotePubkey(message, actorPubkey = "") {
   return "";
 }
 
+<<<<<<< HEAD
 function buildConversationId(actorPubkey, remotePubkey) {
   const normalizedActor = normalizeHexPubkey(actorPubkey);
   const normalizedRemote = normalizeHexPubkey(remotePubkey);
@@ -391,6 +412,8 @@ function normalizeDirectMessageRecord(message, actorPubkey = "") {
   };
 }
 
+=======
+>>>>>>> origin/main
 function buildSnapshotFromMessages(messages, actorPubkey = "") {
   const normalizedActor = normalizeHexPubkey(actorPubkey);
   const threadMap = new Map();
@@ -458,7 +481,10 @@ function hydrateMessagesFromSnapshot(snapshot, actorPubkey = "") {
       recipients: [],
       direction: "unknown",
       scheme: "",
+<<<<<<< HEAD
       encryption_scheme: "",
+=======
+>>>>>>> origin/main
       decryptor: { scheme: "", source: "snapshot" },
       event: {
         id: `dm-snapshot:${normalizedActor || "actor"}:${remote}:${timestamp}:${index}`,
@@ -503,9 +529,12 @@ export class NostrService {
     this.dmSubscription = null;
     this.dmActorPubkey = null;
     this.dmHydratedFromSnapshot = false;
+<<<<<<< HEAD
     this.dmNotificationManager = new DmNotificationManager({
       logger: userLogger,
     });
+=======
+>>>>>>> origin/main
     try {
       if (this.moderationService && typeof this.moderationService.setNostrClient === "function") {
         this.moderationService.setNostrClient(this.nostrClient);
@@ -619,6 +648,7 @@ export class NostrService {
     }
   }
 
+<<<<<<< HEAD
   async persistDirectMessageRecord(message, { actorPubkey = null } = {}) {
     const record = normalizeDirectMessageRecord(
       message,
@@ -673,6 +703,8 @@ export class NostrService {
     return this.dmNotificationManager.listConversationSummaries();
   }
 
+=======
+>>>>>>> origin/main
   applyDirectMessage(message, { reason = "update", event = null } = {}) {
     if (!message || message.ok !== true) {
       return;
@@ -738,10 +770,13 @@ export class NostrService {
         );
       });
     }
+<<<<<<< HEAD
 
     if (!normalized.snapshot) {
       void this.persistDirectMessageRecord(normalized, { actorPubkey: actor });
     }
+=======
+>>>>>>> origin/main
   }
 
   async hydrateDirectMessagesFromStore({
@@ -888,7 +923,11 @@ export class NostrService {
     return snapshot;
   }
 
+<<<<<<< HEAD
   async ensureDirectMessageSubscription({ actorPubkey, relays, ...handlers } = {}) {
+=======
+  ensureDirectMessageSubscription({ actorPubkey, relays, ...handlers } = {}) {
+>>>>>>> origin/main
     if (this.dmSubscription) {
       return this.dmSubscription;
     }
@@ -899,6 +938,7 @@ export class NostrService {
       return null;
     }
 
+<<<<<<< HEAD
     let resolvedRelays = Array.isArray(relays) ? relays : null;
     let relaySelection = null;
 
@@ -928,11 +968,17 @@ export class NostrService {
       resolvedRelays = relaySelection.relays;
     }
 
+=======
+>>>>>>> origin/main
     try {
       const subscription = this.nostrClient.subscribeDirectMessages(
         normalizedActor,
         {
+<<<<<<< HEAD
           relays: resolvedRelays,
+=======
+          relays,
+>>>>>>> origin/main
           onEvent: handlers.onEvent,
           onMessage: (message, context = {}) => {
             this.applyDirectMessage(message, {
@@ -1000,6 +1046,7 @@ export class NostrService {
       this.dmSubscription = subscription;
       this.dmActorPubkey = normalizedActor;
       this.emit("directMessages:subscribed", { subscription });
+<<<<<<< HEAD
       if (relaySelection?.warning === DM_RELAY_WARNING_FALLBACK) {
         this.emit("directMessages:relayWarning", {
           actorPubkey: normalizedActor,
@@ -1008,6 +1055,8 @@ export class NostrService {
           source: relaySelection.source,
         });
       }
+=======
+>>>>>>> origin/main
       return subscription;
     } catch (error) {
       userLogger.warn(
@@ -1354,6 +1403,7 @@ export class NostrService {
     this.ensureInitialLoadDeferred();
 
     try {
+<<<<<<< HEAD
       // Ensure access control is ready before we attempt the optimistic re-filter
       // so checks like canAccess() are accurate.
       try {
@@ -1364,6 +1414,9 @@ export class NostrService {
           error
         );
       }
+=======
+      await this.ensureAccessControlReady();
+>>>>>>> origin/main
 
       if (forceFetch) {
         this.clearVideoSubscription();
@@ -1383,6 +1436,7 @@ export class NostrService {
           }
         }
         this.emit("videos:updated", { videos: filtered, reason });
+<<<<<<< HEAD
 
         // Persist the fresh filtered result for next time
         if (filtered.length > 0) {
@@ -1439,6 +1493,15 @@ export class NostrService {
         // If we skipped, return the optimistic data so the caller receives the currently visible videos
         initial = optimisticResult;
       }
+=======
+        return filtered;
+      };
+
+      const cached = this.nostrClient.getActiveVideos();
+      const initial = applyAndNotify(cached, "cache");
+
+      this.resolveInitialLoad({ videos: initial, reason: "cache" });
+>>>>>>> origin/main
 
       if (!getStoredVideoSubscription()) {
         const subscriptionOptions = {
@@ -1478,6 +1541,7 @@ export class NostrService {
     }
   }
 
+<<<<<<< HEAD
   async fetchVideosByAuthors(authors, options = {}) {
     const authorList = Array.isArray(authors) ? authors : [];
     if (!authorList.length) {
@@ -1624,6 +1688,8 @@ export class NostrService {
     }
   }
 
+=======
+>>>>>>> origin/main
   async loadOlderVideos(lastTimestamp, {
     blacklistedEventIds,
     isAuthorBlocked,
@@ -1835,6 +1901,7 @@ export class NostrService {
     return detail;
   }
 
+<<<<<<< HEAD
   async fetchVideoHistory(video) {
     if (!video || typeof video !== "object") {
       return [];
@@ -1852,6 +1919,8 @@ export class NostrService {
     }
   }
 
+=======
+>>>>>>> origin/main
   async getOldEventById(eventId) {
     const map = this.ensureVideosMap();
     const isBlockedNsfw = (video) =>

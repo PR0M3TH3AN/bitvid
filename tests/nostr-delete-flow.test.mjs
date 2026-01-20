@@ -1,6 +1,10 @@
 import "./test-helpers/setup-localstorage.mjs";
 import assert from "node:assert/strict";
+<<<<<<< HEAD
 import { NostrClient } from "../js/nostr/client.js";
+=======
+import { NostrClient } from "../js/nostr.js";
+>>>>>>> origin/main
 import { NostrService } from "../js/services/nostrService.js";
 
 await (async function testDeleteFlowPublishesDeletionFlag() {
@@ -257,10 +261,17 @@ await (async function testTombstonePersistenceAcrossSaveRestore() {
 
   client.allEvents.set(legacyVideo.id, { ...legacyVideo });
   client.recordTombstone(activeKey, legacyVideo.created_at + 50);
+<<<<<<< HEAD
   await client.saveLocalData("test", { immediate: true });
 
   const restored = new NostrClient();
   await restored.restoreLocalData();
+=======
+  client.saveLocalData();
+
+  const restored = new NostrClient();
+  restored.restoreLocalData();
+>>>>>>> origin/main
 
   assert.equal(
     restored.tombstones.get(activeKey),

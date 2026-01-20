@@ -235,6 +235,7 @@ if (hasDocument) {
 	})();
 
 	var useSVG = document.documentElement.tagName.toLowerCase() === "svg";
+<<<<<<< HEAD
 	var qrCodeStyleRegistry = new WeakMap();
 	var qrCodeStyleCounter = 0;
 
@@ -317,6 +318,8 @@ if (hasDocument) {
 			delete el.dataset.qrCodeMode;
 		}
 	}
+=======
+>>>>>>> origin/main
 
 	// Drawing in DOM by using Table tag
 	var Drawing = useSVG ? svgDrawer : !_isSupportCanvas() ? (function () {
@@ -336,6 +339,7 @@ if (hasDocument) {
 			var nCount = oQRCode.getModuleCount();
 			var nWidth = Math.floor(_htOption.width / nCount);
 			var nHeight = Math.floor(_htOption.height / nCount);
+<<<<<<< HEAD
 			var aHTML = ['<table class="qr-code__table">'];
 
 			updateQrCodeContainerStyles(_el, {
@@ -345,15 +349,22 @@ if (hasDocument) {
 				cellHeight: nHeight + "px",
 				tableMargin: "0px"
 			});
+=======
+			var aHTML = ['<table style="border:0;border-collapse:collapse;">'];
+>>>>>>> origin/main
 			
 			for (var row = 0; row < nCount; row++) {
 				aHTML.push('<tr>');
 				
 				for (var col = 0; col < nCount; col++) {
+<<<<<<< HEAD
 					var cellClass = oQRCode.isDark(row, col)
 						? "qr-code__cell qr-code__cell--dark"
 						: "qr-code__cell";
 					aHTML.push('<td class="' + cellClass + '"></td>');
+=======
+					aHTML.push('<td style="border:0;border-collapse:collapse;padding:0;margin:0;width:' + nWidth + 'px;height:' + nHeight + 'px;background-color:' + (oQRCode.isDark(row, col) ? _htOption.colorDark : _htOption.colorLight) + ';"></td>');
+>>>>>>> origin/main
 				}
 				
 				aHTML.push('</tr>');
@@ -368,9 +379,13 @@ if (hasDocument) {
 			var nTopMarginTable = (_htOption.height - elTable.offsetHeight) / 2;
 			
 			if (nLeftMarginTable > 0 && nTopMarginTable > 0) {
+<<<<<<< HEAD
 				updateQrCodeContainerStyles(_el, {
 					tableMargin: nTopMarginTable + "px " + nLeftMarginTable + "px"
 				});
+=======
+				elTable.style.margin = nTopMarginTable + "px " + nLeftMarginTable + "px";
+>>>>>>> origin/main
 			}
 		};
 		
@@ -385,7 +400,12 @@ if (hasDocument) {
 	})() : (function () { // Drawing in Canvas
 		function _onMakeImage() {
 			this._elImage.src = this._elCanvas.toDataURL("image/png");
+<<<<<<< HEAD
 			setQrCodeMode(this._el, "image");
+=======
+			this._elImage.style.display = "block";
+			this._elCanvas.style.display = "none";
+>>>>>>> origin/main
 		}
 		
                 // Android 2.1 bug workaround
@@ -484,13 +504,17 @@ if (hasDocument) {
 			this._elCanvas.height = htOption.height;
 			el.appendChild(this._elCanvas);
 			this._el = el;
+<<<<<<< HEAD
 			if (this._el && this._el.classList) {
 				this._el.classList.add("qr-code__container");
 			}
+=======
+>>>>>>> origin/main
 			this._oContext = this._elCanvas.getContext("2d");
 			this._bIsPainted = false;
 			this._elImage = document.createElement("img");
 			this._elImage.alt = "Scan me!";
+<<<<<<< HEAD
 			if (this._elImage.classList) {
 				this._elImage.classList.add("qr-code__image");
 			}
@@ -500,6 +524,11 @@ if (hasDocument) {
 			this._el.appendChild(this._elImage);
 			this._bSupportDataURI = null;
 			setQrCodeMode(this._el, "canvas");
+=======
+			this._elImage.style.display = "none";
+			this._el.appendChild(this._elImage);
+			this._bSupportDataURI = null;
+>>>>>>> origin/main
 		};
 			
 		/**
@@ -518,7 +547,11 @@ if (hasDocument) {
 			var nRoundedWidth = Math.round(nWidth);
 			var nRoundedHeight = Math.round(nHeight);
 
+<<<<<<< HEAD
 			setQrCodeMode(this._el, "canvas");
+=======
+			_elImage.style.display = "none";
+>>>>>>> origin/main
 			this.clear();
 			
 			for (var row = 0; row < nCount; row++) {
@@ -699,9 +732,12 @@ if (hasDocument) {
 		
 		this._android = _getAndroid();
 		this._el = el;
+<<<<<<< HEAD
 		if (this._el && this._el.classList) {
 			this._el.classList.add("qr-code__container");
 		}
+=======
+>>>>>>> origin/main
 		this._oQRCode = null;
 		this._oDrawing = new Drawing(this._el, this._htOption);
 		

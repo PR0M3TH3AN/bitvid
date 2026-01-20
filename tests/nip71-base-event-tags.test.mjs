@@ -2,8 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { buildVideoPostEvent } from "../js/nostrEventSchemas.js";
+<<<<<<< HEAD
 import { buildNip71MetadataTags } from "../js/nostr/nip71.js";
 import { NostrClient } from "../js/nostr/client.js";
+=======
+import { buildNip71MetadataTags, NostrClient } from "../js/nostr.js";
+>>>>>>> origin/main
 
 test("30078 events carry nip71 metadata tags and hydrate fallback metadata", () => {
   const metadataInput = {

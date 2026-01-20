@@ -5,14 +5,21 @@ import {
   requestDefaultExtensionPermissions,
 } from "./nostrClientFacade.js";
 import { getActiveSigner } from "./nostr/index.js";
+<<<<<<< HEAD
 import { buildRelayListEvent, NOTE_TYPES } from "./nostrEventSchemas.js";
 import { CACHE_POLICIES, STORAGE_TIERS } from "./nostr/cachePolicies.js";
+=======
+import { buildRelayListEvent } from "./nostrEventSchemas.js";
+>>>>>>> origin/main
 import { devLogger, userLogger } from "./utils/logger.js";
 import {
   publishEventToRelays,
   assertAnyRelayAccepted,
 } from "./nostrPublish.js";
+<<<<<<< HEAD
 import { profileCache } from "./state/profileCache.js";
+=======
+>>>>>>> origin/main
 
 const MODE_SEQUENCE = ["both", "read", "write"];
 
@@ -193,6 +200,7 @@ class RelayPreferencesManager {
       const normalized = normalizeRelayUrl(url) || url;
       return createEntry(normalized, "both");
     });
+<<<<<<< HEAD
 
     // Attempt to load from storage if policy allows
     const loaded = this.loadFromStorage();
@@ -224,6 +232,9 @@ class RelayPreferencesManager {
 
   saveToStorage() {
     profileCache.set("relays", this.entries.map((entry) => ({ url: entry.url, mode: entry.mode })));
+=======
+    this.setEntries(this.defaultEntries, { allowEmpty: false, updateClient: true });
+>>>>>>> origin/main
   }
 
   snapshot() {
@@ -311,7 +322,10 @@ class RelayPreferencesManager {
       this.syncClient();
     }
 
+<<<<<<< HEAD
     this.saveToStorage();
+=======
+>>>>>>> origin/main
     return this.getEntries();
   }
 

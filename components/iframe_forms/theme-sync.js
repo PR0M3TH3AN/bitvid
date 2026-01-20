@@ -100,6 +100,7 @@ import { THEME_ACCENT_OVERRIDES } from "../../config/instance-config.js";
     }
   };
 
+<<<<<<< HEAD
   const readAccentValues = (element) => {
     if (!element) {
       return null;
@@ -130,11 +131,14 @@ import { THEME_ACCENT_OVERRIDES } from "../../config/instance-config.js";
     return hasValue ? values : null;
   };
 
+=======
+>>>>>>> origin/main
   const readParentAccentOverrides = () => {
     const parentRoot = getParentRoot();
     if (!parentRoot) {
       return null;
     }
+<<<<<<< HEAD
     return readAccentValues(parentRoot);
   };
 
@@ -205,6 +209,46 @@ import { THEME_ACCENT_OVERRIDES } from "../../config/instance-config.js";
     } else {
       root.removeAttribute("data-theme-accent");
     }
+=======
+
+    const overrides = {};
+    let hasOverride = false;
+
+    Object.values(ACCENT_CSS_VARIABLES).forEach((cssVariable) => {
+      try {
+        const value = parentRoot.style.getPropertyValue(cssVariable);
+        if (typeof value === "string") {
+          const trimmed = value.trim();
+          if (trimmed !== "") {
+            overrides[cssVariable] = trimmed;
+            hasOverride = true;
+          }
+        }
+      } catch (error) {
+        /* noop */
+      }
+    });
+
+    return hasOverride ? overrides : null;
+  };
+
+  const applyAccentOverrides = (theme) => {
+    const parentOverrides = readParentAccentOverrides();
+    const configOverrides = CONFIG_ACCENT_OVERRIDES[theme] || null;
+
+    ACCENT_TOKENS.forEach((token) => {
+      const cssVariable = ACCENT_CSS_VARIABLES[token];
+      const parentValue = parentOverrides?.[cssVariable];
+      const configValue = configOverrides?.[token];
+      const nextValue = parentValue || configValue || "";
+
+      if (typeof nextValue === "string" && nextValue.trim() !== "") {
+        root.style.setProperty(cssVariable, nextValue.trim());
+      } else {
+        root.style.removeProperty(cssVariable);
+      }
+    });
+>>>>>>> origin/main
   };
 
   const syncTheme = () => {
@@ -251,3 +295,7 @@ import { THEME_ACCENT_OVERRIDES } from "../../config/instance-config.js";
     { once: true }
   );
 })();
+<<<<<<< HEAD
+=======
+
+>>>>>>> origin/main

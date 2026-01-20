@@ -2,7 +2,10 @@ import { normalizeDesignSystemContext } from "../../designSystem.js";
 import { updateVideoCardSourceVisibility } from "../../utils/cardSourceVisibility.js";
 import { sanitizeProfileMediaUrl } from "../../utils/profileMedia.js";
 import { userLogger } from "../../utils/logger.js";
+<<<<<<< HEAD
 import { deriveTorrentPlaybackConfig } from "../../playbackUtils.js";
+=======
+>>>>>>> origin/main
 import {
   applyModerationContextDatasets,
   getModerationOverrideActionLabels,
@@ -164,6 +167,7 @@ export class VideoCard {
     this.timestampEl = null;
 
     this.playbackUrl = typeof video.url === "string" ? video.url.trim() : "";
+<<<<<<< HEAD
     const rawMagnet =
       typeof video.magnet === "string" ? video.magnet.trim() : "";
     const rawInfoHash =
@@ -179,6 +183,15 @@ export class VideoCard {
     this.magnetProvided = playbackConfig.provided;
     this.magnetSupported = this.helpers.isMagnetSupported
       ? this.helpers.isMagnetSupported(this.playbackMagnet)
+=======
+    const magnet =
+      (typeof video.magnet === "string" ? video.magnet.trim() : "") ||
+      (typeof video.infoHash === "string" ? video.infoHash.trim() : "");
+    this.playbackMagnet = magnet;
+    this.magnetProvided = magnet.length > 0;
+    this.magnetSupported = this.helpers.isMagnetSupported
+      ? this.helpers.isMagnetSupported(magnet)
+>>>>>>> origin/main
       : false;
     this.showUnsupportedTorrentBadge =
       !this.playbackUrl && this.magnetProvided && !this.magnetSupported;
@@ -485,9 +498,15 @@ export class VideoCard {
       content.appendChild(badgesContainer);
     }
 
+<<<<<<< HEAD
     const engagement = this.buildEngagementSection();
     if (engagement) {
       content.appendChild(engagement);
+=======
+    const discussion = this.buildDiscussionCount();
+    if (discussion) {
+      content.appendChild(discussion);
+>>>>>>> origin/main
     }
 
     if (this.showUnsupportedTorrentBadge) {
@@ -502,6 +521,7 @@ export class VideoCard {
     }
 
     const moderationBadgeSlot = this.createElement("div", {
+<<<<<<< HEAD
       classNames: [
         "video-card__moderation-overlay",
         "absolute",
@@ -513,17 +533,25 @@ export class VideoCard {
         "z-10",
         "pointer-events-none",
       ],
+=======
+      classNames: ["video-card__moderation-slot", "px-md", "pt-md"],
+>>>>>>> origin/main
     });
     moderationBadgeSlot.hidden = true;
     moderationBadgeSlot.setAttribute("aria-hidden", "true");
     this.moderationBadgeSlot = moderationBadgeSlot;
 
+<<<<<<< HEAD
     // Append slot to anchor (media wrapper) instead of root to overlay thumbnail
     if (this.anchorEl) {
       this.anchorEl.appendChild(moderationBadgeSlot);
     }
 
     root.appendChild(anchor);
+=======
+    root.appendChild(anchor);
+    root.appendChild(moderationBadgeSlot);
+>>>>>>> origin/main
     root.appendChild(content);
 
     this.applyPlaybackDatasets();
@@ -949,6 +977,7 @@ export class VideoCard {
     metadata.appendChild(timeEl);
     this.timestampEl = timeEl;
 
+<<<<<<< HEAD
     // (View count moved to engagement section)
 
     if (
@@ -967,6 +996,31 @@ export class VideoCard {
         textContent: "Edited",
       });
       metadata.appendChild(edited);
+=======
+    if (this.pointerInfo && this.pointerInfo.key) {
+      const dotClassNames = ["text-muted-strong"];
+      if (!isCompact) {
+        dotClassNames.push("mx-1");
+      }
+
+      const dot = this.createElement("span", {
+        classNames: dotClassNames,
+        textContent: "•"
+      });
+      dot.setAttribute("aria-hidden", "true");
+
+      const view = this.createElement("span", {
+        classNames: ["view-count-text"],
+        textContent: "– views"
+      });
+      view.dataset.viewCount = "";
+      view.dataset.viewPointer = this.pointerInfo.key;
+
+      metadata.appendChild(dot);
+      metadata.appendChild(view);
+
+      this.viewCountEl = view;
+>>>>>>> origin/main
     }
 
     authorMeta.appendChild(authorName);
@@ -1655,6 +1709,7 @@ export class VideoCard {
     let slot = this.moderationBadgeSlot;
     const hiddenActive = context.activeHidden && !context.overrideActive;
 
+<<<<<<< HEAD
     if (!slot && this.anchorEl) {
       slot = this.createElement("div", {
         classNames: [
@@ -1668,11 +1723,24 @@ export class VideoCard {
           "z-10",
           "pointer-events-none",
         ],
+=======
+    if (!slot && this.root) {
+      slot = this.createElement("div", {
+        classNames: ["video-card__moderation-slot", "px-md", "pt-md"],
+>>>>>>> origin/main
       });
       slot.hidden = true;
       slot.setAttribute("aria-hidden", "true");
       this.moderationBadgeSlot = slot;
+<<<<<<< HEAD
       this.anchorEl.appendChild(slot);
+=======
+      if (this.anchorEl && this.anchorEl.parentElement === this.root) {
+        this.root.insertBefore(slot, this.anchorEl.nextSibling);
+      } else {
+        this.root.appendChild(slot);
+      }
+>>>>>>> origin/main
     }
 
     if (badge) {
@@ -1753,8 +1821,11 @@ export class VideoCard {
     if (!badge) {
       const nextBadge = this.buildModerationBadge(context);
       if (nextBadge && slot) {
+<<<<<<< HEAD
         nextBadge.style.pointerEvents = "auto"; // Enable interaction on badge itself
         nextBadge.classList.add("opacity-95"); // Slight transparency
+=======
+>>>>>>> origin/main
         slot.appendChild(nextBadge);
         slot.hidden = false;
         slot.removeAttribute("aria-hidden");
@@ -1763,8 +1834,11 @@ export class VideoCard {
       return;
     }
 
+<<<<<<< HEAD
     badge.style.pointerEvents = "auto";
     badge.classList.add("opacity-95");
+=======
+>>>>>>> origin/main
     badge.dataset.variant = context.overrideActive ? "neutral" : "warning";
     const state = context.overrideActive
       ? "override"
@@ -2018,6 +2092,7 @@ export class VideoCard {
         this.contentEl.setAttribute("aria-hidden", "true");
       }
 
+<<<<<<< HEAD
       // In hidden state (blocked), the anchor/thumbnail is hidden, so overlay slot
       // won't be visible. We rely on the summary container below.
       // We hide the badge slot here because we don't want it floating if anchor is hidden
@@ -2029,6 +2104,11 @@ export class VideoCard {
         // We can force it hidden to be safe.
         badgeSlot.hidden = true;
         badgeSlot.setAttribute("aria-hidden", "true");
+=======
+      if (badgeSlot && this.moderationBadgeEl) {
+        badgeSlot.hidden = false;
+        badgeSlot.removeAttribute("aria-hidden");
+>>>>>>> origin/main
       }
 
       const summaryContainer = this.ensureHiddenSummaryContainer();
@@ -2049,11 +2129,15 @@ export class VideoCard {
         this.contentEl.removeAttribute("hidden");
         this.contentEl.removeAttribute("aria-hidden");
       }
+<<<<<<< HEAD
       // Restore badge slot visibility if badge exists and we are not hidden
       if (badgeSlot && this.moderationBadgeEl) {
         badgeSlot.hidden = false;
         badgeSlot.removeAttribute("aria-hidden");
       } else if (badgeSlot) {
+=======
+      if (badgeSlot && !this.moderationBadgeEl) {
+>>>>>>> origin/main
         badgeSlot.hidden = true;
         badgeSlot.setAttribute("aria-hidden", "true");
       }
@@ -2177,6 +2261,7 @@ export class VideoCard {
     }
   }
 
+<<<<<<< HEAD
   buildTorrentTooltip({
     peers = null,
     checkedAt = null,
@@ -2187,6 +2272,11 @@ export class VideoCard {
     if (webseedOnly) {
       parts.push("Webseed only");
     } else if (Number.isFinite(peers)) {
+=======
+  buildTorrentTooltip({ peers = null, checkedAt = null, reason = null } = {}) {
+    const parts = [];
+    if (Number.isFinite(peers)) {
+>>>>>>> origin/main
       parts.push(`Peers: ${Math.max(0, Number(peers))}`);
     }
     if (Number.isFinite(checkedAt)) {
@@ -2271,7 +2361,10 @@ export class VideoCard {
       : null;
     const reason =
       typeof entry?.reason === "string" && entry.reason ? entry.reason : null;
+<<<<<<< HEAD
     const webseedOnly = Boolean(entry?.webseedOnly);
+=======
+>>>>>>> origin/main
     const text =
       typeof entry?.text === "string" && entry.text ? entry.text : null;
     const tooltip =
@@ -2335,8 +2428,12 @@ export class VideoCard {
             checkedAt: Number.isFinite(entry?.checkedAt)
               ? entry.checkedAt
               : null,
+<<<<<<< HEAD
             reason,
             webseedOnly,
+=======
+            reason
+>>>>>>> origin/main
           }));
 
     badge.setAttribute("aria-label", tooltipValue);
@@ -2361,6 +2458,7 @@ export class VideoCard {
     }
   }
 
+<<<<<<< HEAD
   createEyeIcon(classNames = []) {
     const svg = this.document.createElementNS(SVG_NAMESPACE, "svg");
     svg.setAttribute("viewBox", "0 0 24 24");
@@ -2474,10 +2572,29 @@ export class VideoCard {
         initialCount = this.video.discussionCount;
       } else if (typeof this.video.discussionCount === "string") {
         const parsed = Number.parseInt(this.video.discussionCount.trim(), 10);
+=======
+  buildDiscussionCount() {
+    if (this.variant === "compact") {
+      return null;
+    }
+
+    if (this.video.enableComments === false) {
+      return null;
+    }
+
+    let initialCount = null;
+    if (typeof this.video.discussionCount === "number") {
+      initialCount = this.video.discussionCount;
+    } else if (typeof this.video.discussionCount === "string") {
+      const trimmed = this.video.discussionCount.trim();
+      if (trimmed) {
+        const parsed = Number.parseInt(trimmed, 10);
+>>>>>>> origin/main
         if (Number.isFinite(parsed)) {
           initialCount = parsed;
         }
       }
+<<<<<<< HEAD
 
       if (Number.isFinite(initialCount) && initialCount >= 0) {
         const wrapper = this.createElement("div", {
@@ -2507,6 +2624,44 @@ export class VideoCard {
       }
     }
 
+=======
+    }
+
+    if (
+      initialCount === null ||
+      !Number.isFinite(initialCount) ||
+      initialCount < 0
+    ) {
+      return null;
+    }
+
+    const safeCount = Math.floor(initialCount);
+    const displayValue = this.helpers.toLocaleString
+      ? this.helpers.toLocaleString(safeCount)
+      : safeCount.toLocaleString();
+
+    const container = this.createElement("div", {
+      classNames: ["flex", "items-center", "text-xs", "text-muted-strong"]
+    });
+    container.dataset.discussionCount = this.video.id;
+    container.dataset.countState = "ready";
+
+    const valueEl = this.createElement("span", {
+      textContent: displayValue
+    });
+    valueEl.dataset.discussionCountValue = "";
+
+    const labelEl = this.createElement("span", {
+      classNames: ["ml-1"],
+      textContent: "notes"
+    });
+
+    container.appendChild(valueEl);
+    container.appendChild(labelEl);
+
+    this.discussionCountEl = container;
+
+>>>>>>> origin/main
     return container;
   }
 

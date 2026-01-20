@@ -3,8 +3,12 @@ import assert from "node:assert/strict";
 
 import { JSDOM } from "jsdom";
 
+<<<<<<< HEAD
 import { nostrClient } from "../js/nostrClientFacade.js";
 import { getActiveSigner, setActiveSigner } from "../js/nostr/client.js";
+=======
+import { nostrClient, getActiveSigner, setActiveSigner } from "../js/nostr.js";
+>>>>>>> origin/main
 import { subscriptions } from "../js/subscriptions.js";
 import { setApplication } from "../js/applicationContext.js";
 import nostrService from "../js/services/nostrService.js";
@@ -129,11 +133,18 @@ test("loadSubscriptions aggregates relay results when one rejects", async () => 
     if (!hadWindow) {
       delete globalThis.window;
     }
+<<<<<<< HEAD
     localStorage.clear();
   }
 });
 
 test("loadSubscriptions queries the correct subscription list kind", async () => {
+=======
+  }
+});
+
+test("loadSubscriptions queries legacy kind fallback for pre-migration events", async () => {
+>>>>>>> origin/main
   const SubscriptionsManager = subscriptions.constructor;
   const manager = new SubscriptionsManager();
 
@@ -182,6 +193,7 @@ test("loadSubscriptions queries the correct subscription list kind", async () =>
 
     for (const filter of capturedFilters) {
       const kinds = Array.isArray(filter?.kinds) ? filter.kinds : [];
+<<<<<<< HEAD
       assert.ok(
         kinds.includes(schemaKind),
         "filter should include the active follow-set kind",
@@ -194,6 +206,18 @@ test("loadSubscriptions queries the correct subscription list kind", async () =>
       assert.ok(
         !kinds.includes(30002),
         "filter should not include the legacy kind",
+=======
+      assert.ok(kinds.includes(schemaKind), "filter should include the active follow-set kind");
+      assert.ok(
+        kinds.includes(30002),
+        "filter should include the legacy kind for backwards compatibility",
+      );
+      const uniqueKinds = Array.from(new Set(kinds));
+      assert.equal(
+        kinds.length,
+        uniqueKinds.length,
+        "filter kinds should not contain duplicate entries",
+>>>>>>> origin/main
       );
     }
   } finally {
@@ -209,7 +233,10 @@ test("loadSubscriptions queries the correct subscription list kind", async () =>
     if (!hadWindow) {
       delete globalThis.window;
     }
+<<<<<<< HEAD
     localStorage.clear();
+=======
+>>>>>>> origin/main
   }
 });
 
@@ -300,7 +327,10 @@ test("loadSubscriptions falls back to nip44 when hinted", async () => {
     if (!hadWindow) {
       delete globalThis.window;
     }
+<<<<<<< HEAD
     localStorage.clear();
+=======
+>>>>>>> origin/main
   }
 });
 
@@ -392,7 +422,10 @@ test("loadSubscriptions handles nip44.v2 decryptors", async () => {
     if (!hadWindow) {
       delete globalThis.window;
     }
+<<<<<<< HEAD
     localStorage.clear();
+=======
+>>>>>>> origin/main
   }
 });
 
@@ -475,7 +508,10 @@ test("loadSubscriptions prefers nip44 decryptors when both are available", async
     if (!hadWindow) {
       delete globalThis.window;
     }
+<<<<<<< HEAD
     localStorage.clear();
+=======
+>>>>>>> origin/main
   }
 });
 
@@ -562,7 +598,10 @@ test(
       if (!hadWindow) {
         delete globalThis.window;
       }
+<<<<<<< HEAD
       localStorage.clear();
+=======
+>>>>>>> origin/main
     }
   },
 );
@@ -583,12 +622,16 @@ test(
 
     globalThis.window = dom.window;
     globalThis.document = dom.window.document;
+<<<<<<< HEAD
 
     Object.defineProperty(globalThis, "navigator", {
       value: dom.window.navigator,
       writable: true,
       configurable: true,
     });
+=======
+    globalThis.navigator = dom.window.navigator;
+>>>>>>> origin/main
 
     const manager = new SubscriptionsManager();
 
@@ -709,11 +752,15 @@ test(
     if (typeof originalNavigator === "undefined") {
       delete globalThis.navigator;
     } else {
+<<<<<<< HEAD
       Object.defineProperty(globalThis, "navigator", {
         value: originalNavigator,
         writable: true,
         configurable: true,
       });
+=======
+      globalThis.navigator = originalNavigator;
+>>>>>>> origin/main
     }
   },
 );
@@ -1070,12 +1117,16 @@ test(
 
     globalThis.window = dom.window;
     globalThis.document = dom.window.document;
+<<<<<<< HEAD
 
     Object.defineProperty(globalThis, "navigator", {
       value: dom.window.navigator,
       writable: true,
       configurable: true,
     });
+=======
+    globalThis.navigator = dom.window.navigator;
+>>>>>>> origin/main
 
     const manager = new SubscriptionsManager();
 
@@ -1186,13 +1237,21 @@ test(
     if (typeof originalNavigator === "undefined") {
       delete globalThis.navigator;
     } else {
+<<<<<<< HEAD
       Object.defineProperty(globalThis, "navigator", {
         value: originalNavigator,
         writable: true,
         configurable: true,
       });
+=======
+      globalThis.navigator = originalNavigator;
+>>>>>>> origin/main
     }
 
     setApplication(null);
   },
 );
+<<<<<<< HEAD
+=======
+
+>>>>>>> origin/main

@@ -5,5 +5,8 @@ src/webtorrent-docs/
 playwright-report/
 test-results/
 tests/visual/__snapshots__/
+<<<<<<< HEAD
 artifacts/
 server.log
+=======
+>>>>>>> origin/main

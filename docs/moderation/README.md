@@ -6,7 +6,11 @@ bitvid is follow-centric. Your Home feed comes from people you follow (F1). Disc
 ## Core principles
 - **Freedom to choose**: User picks filters. Defaults are safe but reversible.
 - **Explain decisions**: Every blur/hide shows a “why” badge and a “show anyway” control.
+<<<<<<< HEAD
 - **Blacklist > whitelist**: Admin blacklists and moderation gates always win; whitelists only influence Discovery ranking.
+=======
+- **Whitelist > blacklist**: Prefer showing content from trusted networks over fighting global spam.
+>>>>>>> origin/main
 - **Minimal central power**: Admin lists are opt-in; users can unsubscribe.
 
 ## Threat model (short)
@@ -50,7 +54,11 @@ Thread new moderation behaviors through the same service → stage → app → U
 - Opt-in admin lists (30000 with `d=bitvid:admin:*`) can hard-hide content, but whitelist entries no longer bypass moderation gates—they only influence Discovery rankings when a viewer opts into that list.
 - Trust seeds now come from the Super Admin plus every active moderator, so their reports shape anonymous/default visitor filters automatically. The `DEFAULT_TRUST_SEED_NPUBS` export only activates as an emergency fallback when those live lists cannot be loaded (toggle via `FEATURE_TRUST_SEEDS`).
 
+<<<<<<< HEAD
 > Default thresholds now come directly from [`config/instance-config.js`](../../config/instance-config.js). Look for the exports `DEFAULT_BLUR_THRESHOLD`, `DEFAULT_AUTOPLAY_BLOCK_THRESHOLD`, `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD`, and `DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD` to adjust the instance-wide behavior before deploying. The upstream repo currently publishes example values of 1 trusted report for blur, 1 for autoplay blocking, 20 trusted mutes to hide authors, and 1 trusted spam report to hide videos.
+=======
+> Default thresholds now come directly from [`config/instance-config.js`](../../config/instance-config.js). Look for the exports `DEFAULT_BLUR_THRESHOLD`, `DEFAULT_AUTOPLAY_BLOCK_THRESHOLD`, `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD`, and `DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD` to adjust the instance-wide behavior before deploying. The upstream repo currently publishes example values of 3 trusted reports for blur, 2 for autoplay blocking, 1 trusted mute to hide authors, and 3 trusted spam reports to hide videos.
+>>>>>>> origin/main
 
 > Operators can still override these thresholds on a per-viewer basis in **Settings → Safety & Moderation**; leaving the UI fields blank restores the config-driven defaults. Update [`config/instance-config.js`](../../config/instance-config.js) to change what new viewers receive out of the box.
 
@@ -67,7 +75,11 @@ Operators can delegate hard-hide decisions to trusted curators without giving th
 
 1. The super admin maintains a `kind 30000` list with `d=${ADMIN_LIST_NAMESPACE}:${ADMIN_COMMUNITY_BLACKLIST_SOURCES}`. Each `a` tag references a community curator’s blacklist as `30000:<curator hex pubkey>:${ADMIN_LIST_NAMESPACE}:${ADMIN_COMMUNITY_BLACKLIST_PREFIX}:<slug>`.
 2. Every curator publishes their own `kind 30000` list using the referenced `d` tag (`${ADMIN_LIST_NAMESPACE}:${ADMIN_COMMUNITY_BLACKLIST_PREFIX}:<slug>`) and fills it with `p` tags for accounts they want hidden.
+<<<<<<< HEAD
 3. bitvid automatically fetches each referenced list, merges the entries into the global blacklist, and removes any duplicates or guard-protected accounts (super admin or editors).
+=======
+3. bitvid automatically fetches each referenced list, merges the entries into the global blacklist, and removes any duplicates or guard-protected accounts (super admin, editors, or whitelist members).
+>>>>>>> origin/main
 
 To add a community list, append a new `a` tag to the super-admin source list and ask the curator to publish their companion `p` list. To remove a list, delete the `a` tag or ask the curator to clear their `p` entries; the client stops ingesting it on the next refresh.
 
@@ -77,12 +89,16 @@ New operators should also note that fresh viewer accounts automatically inherit 
 
 The profile modal now exposes blur, autoplay, and hide thresholds so operators can dial in stricter or more permissive behavior. Enter a non-negative whole number to override the default or leave the field blank to fall back to the baseline values from [`config/instance-config.js`](../../config/instance-config.js) (`DEFAULT_BLUR_THRESHOLD`, `DEFAULT_AUTOPLAY_BLOCK_THRESHOLD`, `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD`, `DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD`). Adjustments are stored locally, applied immediately to the active feed, and rehydrate on every load. Update the config file to change the per-instance defaults that new viewers see.
 
+<<<<<<< HEAD
 The trusted mute hide helper copy clarifies the escalation path: once the trusted mute count hits the threshold, cards are hidden with a “Show anyway” override, while lower signals only blur thumbnails or block autoplay previews.
 
+=======
+>>>>>>> origin/main
 ### Personal hashtag preferences
 
 - The Profile modal’s Hashtags tab is wired to [`HashtagPreferencesService`](../../js/services/hashtagPreferencesService.js), which maintains a local snapshot of the viewer’s interests and disinterests, normalizes every tag, and guarantees that the two sets stay mutually exclusive before broadcasting UI change events.【F:js/services/hashtagPreferencesService.js†L206-L276】【F:js/services/hashtagPreferencesService.js†L304-L324】
 - `bitvidApp` resolves the active pubkey’s preferences at login, listens for `CHANGE` events, and forwards the normalized snapshot to controllers so moderation and discovery logic can react without querying relays again.【F:js/app.js†L3811-L3906】【F:js/app.js†L3940-L4050】
+<<<<<<< HEAD
 - Publishing writes a replaceable `kind 30015` list with `d=bitvid:tag-preferences`, encrypting the `{ version, interests, disinterests }` payload via the best available NIP-44/NIP-04 scheme before hitting every configured write relay.【F:docs/nostr-event-schemas.md†L150-L201】【F:js/services/hashtagPreferencesService.js†L520-L711】
 - Legacy `30005` events are ignored; saving or toggling a tag republishes preferences as `30015`, so prompt users to re-save if they previously only published the deprecated kind.【F:js/services/hashtagPreferencesService.js†L360-L470】【F:docs/nostr-event-schemas.md†L196-L201】
 
@@ -90,6 +106,15 @@ The trusted mute hide helper copy clarifies the escalation path: once the truste
 
 - `TRUSTED_MUTE_HIDE_THRESHOLD` — numeric default for the trusted mute hide control. Initialized from `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD` in [`config/instance-config.js`](../../config/instance-config.js); the upstream config sets this to `20`, but adjust the export to match your policy.
 - `TRUSTED_SPAM_HIDE_THRESHOLD` — numeric default for the trusted spam hide control. Initialized from `DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD` in [`config/instance-config.js`](../../config/instance-config.js); the upstream config example is `1`.
+=======
+- Publishing writes a replaceable `kind 30015` list (legacy `30005` remains readable) with `d=bitvid:tag-preferences`, encrypting the `{ version, interests, disinterests }` payload via the best available NIP-44/NIP-04 scheme before hitting every configured write relay.【F:docs/nostr-event-schemas.md†L150-L201】【F:js/services/hashtagPreferencesService.js†L520-L711】
+- Legacy `30005` events are still fetched and decrypted; saving or toggling a tag republishes them as `30015`, so operators only need to prompt a re-save if they want faster convergence than organic edits provide.【F:js/services/hashtagPreferencesService.js†L360-L470】【F:docs/nostr-event-schemas.md†L196-L201】
+
+### Runtime flags
+
+- `TRUSTED_MUTE_HIDE_THRESHOLD` — numeric default for the trusted mute hide control. Initialized from `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD` in [`config/instance-config.js`](../../config/instance-config.js); the upstream config sets this to `1`, but adjust the export to match your policy.
+- `TRUSTED_SPAM_HIDE_THRESHOLD` — numeric default for the trusted spam hide control. Initialized from `DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD` in [`config/instance-config.js`](../../config/instance-config.js); the upstream config example is `3`.
+>>>>>>> origin/main
 - `FEATURE_TRUSTED_HIDE_CONTROLS` — boolean toggle to hide/show the new trusted hide controls in the UI (default `true`).
 
 ## Files in this folder

@@ -1,6 +1,7 @@
 import { userLogger } from "../utils/logger.js";
 // js/services/playbackService.js
 
+<<<<<<< HEAD
 /**
  * PlaybackService acts as the central conductor for video playback.
  * It manages the lifecycle of a "PlaybackSession", which encapsulates the complex
@@ -18,6 +19,8 @@ import { userLogger } from "../utils/logger.js";
  *   old session is cancelled and doesn't overwrite the new one.
  */
 
+=======
+>>>>>>> origin/main
 class SimpleEventEmitter {
   constructor(logger = null) {
     this.logger = typeof logger === "function" ? logger : null;
@@ -133,6 +136,7 @@ export class PlaybackService {
     }
   }
 
+<<<<<<< HEAD
   /**
    * Registers a set of event listeners ("watchdogs") on the video element to detect
    * when playback has stalled or failed.
@@ -149,6 +153,8 @@ export class PlaybackService {
    * @param {Function} options.onFallback - Called if playback fails or stalls.
    * @returns {Function} cleanup function to remove listeners.
    */
+=======
+>>>>>>> origin/main
   registerUrlPlaybackWatchdogs(
     videoElement,
     { stallMs = 8000, onSuccess, onFallback } = {}
@@ -204,8 +210,11 @@ export class PlaybackService {
       }
     };
 
+<<<<<<< HEAD
     // The timer is reset on any "progress" event. If `stallMs` passes without
     // a reset, we assume the connection is dead/stalled and fallback.
+=======
+>>>>>>> origin/main
     const resetTimer = () => {
       if (!active || !normalizedStallMs) {
         return;
@@ -221,6 +230,7 @@ export class PlaybackService {
       listeners.push([eventName, handler]);
     };
 
+<<<<<<< HEAD
     // Immediate failure conditions
     addListener("error", () => triggerFallback("error"));
     addListener("abort", () => triggerFallback("abort"));
@@ -231,6 +241,14 @@ export class PlaybackService {
     addListener("ended", handleSuccess);
 
     // Keep-alive events that reset the stall timer
+=======
+    addListener("error", () => triggerFallback("error"));
+    addListener("abort", () => triggerFallback("abort"));
+    addListener("stalled", () => triggerFallback("stalled"));
+    addListener("playing", handleSuccess);
+    addListener("ended", handleSuccess);
+
+>>>>>>> origin/main
     const timerEvents = [
       "timeupdate",
       "progress",
@@ -267,6 +285,7 @@ export class PlaybackService {
   }
 }
 
+<<<<<<< HEAD
 /**
  * PlaybackSession represents a single attempt to play a specific video.
  * It manages the state machine of:
@@ -280,6 +299,8 @@ export class PlaybackService {
  * the UI can check `matchesRequestSignature` to see if it can reuse the active session
  * or if it needs to spin up a new one.
  */
+=======
+>>>>>>> origin/main
 class PlaybackSession extends SimpleEventEmitter {
   constructor(service, options = {}) {
     super((message, ...args) => service.log(message, ...args));
@@ -294,9 +315,12 @@ class PlaybackSession extends SimpleEventEmitter {
       typeof options.url === "string" ? options.url.trim() : "";
     this.trimmedMagnet =
       typeof options.magnet === "string" ? options.magnet.trim() : "";
+<<<<<<< HEAD
 
     // The signature prevents duplicate work if the same video is requested again
     // while already loading/playing.
+=======
+>>>>>>> origin/main
     this.requestSignature =
       typeof options.requestSignature === "string"
         ? options.requestSignature
@@ -444,10 +468,13 @@ class PlaybackSession extends SimpleEventEmitter {
     };
   }
 
+<<<<<<< HEAD
   /**
    * Begins the playback flow. Returns a promise that resolves when playback
    * has either successfully started (URL or Torrent) or fatally failed.
    */
+=======
+>>>>>>> origin/main
   async start() {
     if (this.startPromise) {
       return this.startPromise;
@@ -456,6 +483,7 @@ class PlaybackSession extends SimpleEventEmitter {
     return this.startPromise;
   }
 
+<<<<<<< HEAD
   /**
    * The core execution loop for the session.
    * Flow:
@@ -467,6 +495,8 @@ class PlaybackSession extends SimpleEventEmitter {
    *    d. If watchdog triggers (stall/error), trigger `startTorrentFallback`.
    * 3. If URL fails or not available, call `startTorrentFallback`.
    */
+=======
+>>>>>>> origin/main
   async execute() {
     const {
       videoElement,
@@ -479,7 +509,10 @@ class PlaybackSession extends SimpleEventEmitter {
       playViaWebTorrent,
       autoplay,
       unsupportedBtihMessage = DEFAULT_UNSUPPORTED_BTITH_MESSAGE,
+<<<<<<< HEAD
       forcedSource = null,
+=======
+>>>>>>> origin/main
     } = this.options;
 
     this.result = { source: null };
@@ -543,6 +576,7 @@ class PlaybackSession extends SimpleEventEmitter {
       const httpsUrl = this.sanitizedUrl;
       const webSeedCandidates = httpsUrl ? [httpsUrl] : [];
 
+<<<<<<< HEAD
       if (webSeedCandidates.length > 0) {
         this.service.log(
           `[playVideoWithFallback] Adding ${webSeedCandidates.length} web seed candidate(s) for fallback:`,
@@ -552,6 +586,8 @@ class PlaybackSession extends SimpleEventEmitter {
 
       // -- Fallback Logic --
       // This function switches from the "URL" path to the "Torrent" path.
+=======
+>>>>>>> origin/main
       let fallbackStarted = false;
       const startTorrentFallback = async (reason) => {
         if (fallbackStarted) {
@@ -565,7 +601,10 @@ class PlaybackSession extends SimpleEventEmitter {
         cleanupHostedUrlStatusListeners();
         cleanupDebugListeners();
 
+<<<<<<< HEAD
         // Reset the video element state so WebTorrent can take over clean.
+=======
+>>>>>>> origin/main
         if (activeVideoEl) {
           try {
             activeVideoEl.pause();
@@ -616,7 +655,10 @@ class PlaybackSession extends SimpleEventEmitter {
           return null;
         }
 
+<<<<<<< HEAD
         // Delegate to the WebTorrent driver (see js/webtorrent.js interactions in app.js)
+=======
+>>>>>>> origin/main
         const torrentInstance = await playViaWebTorrent(this.magnetForPlayback, {
           fallbackMagnet: this.fallbackMagnet,
           urlList: webSeedCandidates,
@@ -630,12 +672,16 @@ class PlaybackSession extends SimpleEventEmitter {
         return torrentInstance;
       };
 
+<<<<<<< HEAD
       // -- Primary Path: Direct URL --
       if (
         this.service.urlFirstEnabled &&
         httpsUrl &&
         forcedSource !== "torrent"
       ) {
+=======
+      if (this.service.urlFirstEnabled && httpsUrl) {
+>>>>>>> origin/main
         this.emit("status", { message: "Checking hosted URL..." });
         this.service.log(
           `[playVideoWithFallback] Probing hosted URL ${httpsUrl} (readyState=${activeVideoEl.readyState} networkState=${activeVideoEl.networkState}).`
@@ -697,11 +743,15 @@ class PlaybackSession extends SimpleEventEmitter {
         const probeResult =
           typeof probeUrl === "function" ? await probeUrl(httpsUrl) : null;
         const probeOutcome = probeResult?.outcome || "error";
+<<<<<<< HEAD
         const probeStatus = probeResult?.status || "unknown";
+=======
+>>>>>>> origin/main
         const shouldAttemptHosted =
           probeOutcome !== "bad" && probeOutcome !== "error";
 
         this.service.log(
+<<<<<<< HEAD
           `[playVideoWithFallback] Hosted URL probe outcome=${probeOutcome} status=${probeStatus} shouldAttemptHosted=${shouldAttemptHosted}`
         );
 
@@ -711,6 +761,11 @@ class PlaybackSession extends SimpleEventEmitter {
           );
         }
 
+=======
+          `[playVideoWithFallback] Hosted URL probe outcome=${probeOutcome} shouldAttemptHosted=${shouldAttemptHosted}`
+        );
+
+>>>>>>> origin/main
         if (shouldAttemptHosted) {
           let outcomeResolved = false;
           let outcomeResolver = () => {};
@@ -726,15 +781,21 @@ class PlaybackSession extends SimpleEventEmitter {
             };
           });
 
+<<<<<<< HEAD
           // Install the watchdogs before we assign src and play.
+=======
+>>>>>>> origin/main
           const attachWatchdogs = ({ stallMs = 8000 } = {}) => {
             this.registerWatchdogs(activeVideoEl, {
               stallMs,
               onSuccess: () => outcomeResolver({ status: "success" }),
               onFallback: (reason) => {
                 if (autoplayBlocked && reason === "stall") {
+<<<<<<< HEAD
                   // If browser blocked autoplay, a stall is expected (video is paused).
                   // Don't fallback yet; wait for user interaction.
+=======
+>>>>>>> origin/main
                   this.service.log(
                     "[playVideoWithFallback] Autoplay blocked; waiting for user gesture before falling back."
                   );
@@ -742,7 +803,11 @@ class PlaybackSession extends SimpleEventEmitter {
                     message: "Press play to start the hosted video.",
                   });
                   this.emit("autoplay-blocked", { reason });
+<<<<<<< HEAD
                   attachWatchdogs({ stallMs: 0 }); // Disable timer
+=======
+                  attachWatchdogs({ stallMs: 0 });
+>>>>>>> origin/main
                   return;
                 }
 
@@ -808,7 +873,10 @@ class PlaybackSession extends SimpleEventEmitter {
             return this.result;
           }
 
+<<<<<<< HEAD
           // If we are here, the watchdog triggered a fallback.
+=======
+>>>>>>> origin/main
           const fallbackReason =
             playbackOutcome?.reason || "watchdog-triggered";
           const torrentInstance = await startTorrentFallback(fallbackReason);
@@ -825,7 +893,10 @@ class PlaybackSession extends SimpleEventEmitter {
         cleanupDebugListeners();
       }
 
+<<<<<<< HEAD
       // -- Secondary Path: Magnet / Torrent --
+=======
+>>>>>>> origin/main
       if (this.magnetForPlayback) {
         const torrentInstance = await startTorrentFallback("magnet-primary");
         this.result = torrentInstance

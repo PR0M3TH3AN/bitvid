@@ -36,6 +36,7 @@ export function normalizeAndAugmentMagnet(rawValue, { ws = "", xs = "" } = {}) {
     ensureTorrentHint(params, normalizedXs, { requireHttp: false });
   }
 
+<<<<<<< HEAD
   const wsList = Array.isArray(ws)
     ? ws
     : typeof ws === "string"
@@ -50,6 +51,13 @@ export function normalizeAndAugmentMagnet(rawValue, { ws = "", xs = "" } = {}) {
       .map((item) => formatAbsoluteUrl(item));
 
     ensureWebSeeds(params, formattedList, {
+=======
+  const rawWs = typeof ws === "string" ? ws.trim() : "";
+  if (rawWs) {
+    const formattedWs = formatAbsoluteUrl(rawWs);
+    const allowHttpSeed = resolveAppProtocol() === "http:";
+    ensureWebSeeds(params, formattedWs, {
+>>>>>>> origin/main
       allowHttp: allowHttpSeed,
       allowUnparsed: true,
     });

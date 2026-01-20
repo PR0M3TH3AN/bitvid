@@ -1,5 +1,6 @@
 //js/webtorrent.js
 
+<<<<<<< HEAD
 /**
  * js/webtorrent.js
  *
@@ -18,6 +19,8 @@
  * - Browser Quirks: It handles Brave/Firefox specific logic.
  */
 
+=======
+>>>>>>> origin/main
 import WebTorrent from "./webtorrent.min.js";
 import { WSS_TRACKERS } from "./constants.js";
 import { safeDecodeURIComponent } from "./utils/safeDecode.js";
@@ -169,10 +172,13 @@ export class TorrentClient {
     return this.probeClient;
   }
 
+<<<<<<< HEAD
   /**
    * Helper to check if a magnet link has active peers without starting a full
    * download. Used for "Stream Health" badges/indicators in the UI.
    */
+=======
+>>>>>>> origin/main
   async probePeers(
     magnetURI,
     { timeoutMs = 8000, maxWebConns = 2, polls = 3 } = {}
@@ -194,9 +200,13 @@ export class TorrentClient {
     const { magnet: augmentedMagnet, appended, hasProbeTrackers } =
       appendProbeTrackers(magnet, trackers);
 
+<<<<<<< HEAD
     const hasWebSeed = magnet.includes("ws=") || magnet.includes("webSeed=");
 
     if (!hasProbeTrackers && !hasWebSeed) {
+=======
+    if (!hasProbeTrackers) {
+>>>>>>> origin/main
       return {
         healthy: false,
         peers: 0,
@@ -254,6 +264,7 @@ export class TorrentClient {
             ? performance.now()
             : Date.now();
 
+<<<<<<< HEAD
         const isHealthy = Boolean(overrides.healthy);
         const peersCount = Number.isFinite(overrides.peers) ? overrides.peers : 0;
 
@@ -261,6 +272,12 @@ export class TorrentClient {
           healthy: isHealthy,
           peers: peersCount,
           reason: isHealthy ? "peer" : "timeout",
+=======
+        resolve({
+          healthy: false,
+          peers: 0,
+          reason: "timeout",
+>>>>>>> origin/main
           appendedTrackers: appended,
           hasProbeTrackers,
           usedTrackers: trackers,
@@ -279,7 +296,10 @@ export class TorrentClient {
           reason: "error",
           error: toError(err),
           peers: 0,
+<<<<<<< HEAD
           webseedOnly: hasWebSeed,
+=======
+>>>>>>> origin/main
         });
         return;
       }
@@ -292,24 +312,37 @@ export class TorrentClient {
       torrent.once("wire", settleHealthy);
 
       torrent.once("error", (err) => {
+<<<<<<< HEAD
         const peers = Math.max(0, Math.floor(normalizeNumber(torrent?.numPeers, 0)));
+=======
+>>>>>>> origin/main
         finalize({
           healthy: false,
           reason: "error",
           error: toError(err),
+<<<<<<< HEAD
           peers,
           webseedOnly: peers === 0 && hasWebSeed,
+=======
+          peers: Math.max(0, Math.floor(normalizeNumber(torrent?.numPeers, 0))),
+>>>>>>> origin/main
         });
       });
 
       if (safeTimeout > 0) {
         timeoutId = setTimeout(() => {
+<<<<<<< HEAD
           const peers = Math.max(0, Math.floor(normalizeNumber(torrent?.numPeers, 0)));
           finalize({
             healthy: false,
             peers,
             reason: "timeout",
             webseedOnly: peers === 0 && hasWebSeed,
+=======
+          finalize({
+            healthy: false,
+            peers: Math.max(0, Math.floor(normalizeNumber(torrent?.numPeers, 0))),
+>>>>>>> origin/main
           });
         }, safeTimeout);
       }
@@ -859,7 +892,10 @@ export class TorrentClient {
         !!(initResult?.serviceWorkerReady && this.swRegistration);
 
       // 2) Create the server once if not already created.
+<<<<<<< HEAD
       // This "server" is the bridge that feeds the Service Worker.
+=======
+>>>>>>> origin/main
       if (serviceWorkerReady && !this.serverCreated) {
         this.client.createServer({
           controller: this.swRegistration,

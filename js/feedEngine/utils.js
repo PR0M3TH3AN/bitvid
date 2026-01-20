@@ -1,7 +1,10 @@
 // js/feedEngine/utils.js
 
+<<<<<<< HEAD
 import { normalizeHashtag } from "../utils/hashtagNormalization.js";
 
+=======
+>>>>>>> origin/main
 export function isPlainObject(value) {
   if (value === null || typeof value !== "object") {
     return false;
@@ -29,6 +32,7 @@ export function toArray(value) {
   }
   return [value];
 }
+<<<<<<< HEAD
 
 export function hasDisinterestedTag(video, disinterestsSet) {
   if (!video || !disinterestsSet || !(disinterestsSet instanceof Set) || disinterestsSet.size === 0) {
@@ -62,3 +66,5 @@ export function hasDisinterestedTag(video, disinterestsSet) {
 
   return false;
 }
+=======
+>>>>>>> origin/main

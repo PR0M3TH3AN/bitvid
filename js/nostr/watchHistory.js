@@ -1,12 +1,17 @@
 import {
   WATCH_HISTORY_KIND,
   WATCH_HISTORY_LIST_IDENTIFIER,
+<<<<<<< HEAD
+=======
+  WATCH_HISTORY_LEGACY_LIST_IDENTIFIERS,
+>>>>>>> origin/main
   WATCH_HISTORY_MAX_ITEMS,
   WATCH_HISTORY_BATCH_RESOLVE,
   WATCH_HISTORY_BATCH_PAGE_SIZE,
   WATCH_HISTORY_PAYLOAD_MAX_BYTES,
   WATCH_HISTORY_FETCH_EVENT_LIMIT,
   WATCH_HISTORY_CACHE_TTL_MS,
+<<<<<<< HEAD
   WATCH_HISTORY_VERSION_TAG_VALUE,
 } from "../config.js";
 import {
@@ -14,6 +19,13 @@ import {
   NOTE_TYPES,
 } from "../nostrEventSchemas.js";
 import { CACHE_POLICIES } from "./cachePolicies.js";
+=======
+} from "../config.js";
+import {
+  buildWatchHistoryChunkEvent,
+  buildWatchHistoryIndexEvent,
+} from "../nostrEventSchemas.js";
+>>>>>>> origin/main
 import { publishEventToRelays } from "../nostrPublish.js";
 import {
   RELAY_URLS,
@@ -22,8 +34,11 @@ import {
 } from "./toolkit.js";
 import { DEFAULT_NIP07_PERMISSION_METHODS } from "./nip07Permissions.js";
 import { devLogger, userLogger } from "../utils/logger.js";
+<<<<<<< HEAD
 import { profileCache } from "../state/profileCache.js";
 import { queueSignEvent } from "./signRequestQueue.js";
+=======
+>>>>>>> origin/main
 
 /**
  * Domain utilities for watch-history interactions. This module owns pointer
@@ -31,6 +46,11 @@ import { queueSignEvent } from "./signRequestQueue.js";
  * relay publishing, fetch/decrypt flows, and exposes a manager factory that is
  * dependency-injected with the nostr client hooks it needs.
  */
+<<<<<<< HEAD
+=======
+const WATCH_HISTORY_STORAGE_KEY = "bitvid:watch-history:v2";
+const WATCH_HISTORY_STORAGE_VERSION = 2;
+>>>>>>> origin/main
 const WATCH_HISTORY_REPUBLISH_BASE_DELAY_MS = 2000;
 const WATCH_HISTORY_REPUBLISH_MAX_DELAY_MS = 5 * 60 * 1000;
 const WATCH_HISTORY_REPUBLISH_MAX_ATTEMPTS = 8;
@@ -41,6 +61,45 @@ const WATCH_HISTORY_ENCRYPTION_FALLBACK_ORDER = Object.freeze([
   "nip04",
 ]);
 
+<<<<<<< HEAD
+=======
+function cloneVideoMetadata(video) {
+  if (!video || typeof video !== "object") {
+    return null;
+  }
+  try {
+    return JSON.parse(JSON.stringify(video));
+  } catch (error) {
+    devLogger.warn("[nostr] Failed to clone watch history video metadata", error);
+    return { ...video };
+  }
+}
+
+function cloneProfileMetadata(profile) {
+  if (!profile || typeof profile !== "object") {
+    return null;
+  }
+  try {
+    return JSON.parse(JSON.stringify(profile));
+  } catch (error) {
+    devLogger.warn("[nostr] Failed to clone watch history profile metadata", error);
+    return { ...profile };
+  }
+}
+
+function clonePointerMetadata(metadata) {
+  if (!metadata || typeof metadata !== "object") {
+    return null;
+  }
+  try {
+    return JSON.parse(JSON.stringify(metadata));
+  } catch (error) {
+    devLogger.warn("[nostr] Failed to clone watch history pointer metadata", error);
+    return { ...metadata };
+  }
+}
+
+>>>>>>> origin/main
 function mergePointerDetails(target, source) {
   if (!target || typeof target !== "object" || !source || typeof source !== "object") {
     return target;
@@ -62,6 +121,22 @@ function mergePointerDetails(target, source) {
       target.relay = source.relay.trim();
     }
   }
+<<<<<<< HEAD
+=======
+  if (!target.metadata && source.metadata && typeof source.metadata === "object") {
+    target.metadata = clonePointerMetadata(source.metadata);
+  } else if (target.metadata && source.metadata) {
+    const merged = clonePointerMetadata(target.metadata) || {};
+    const additional = clonePointerMetadata(source.metadata) || {};
+    target.metadata = { ...merged, ...additional };
+  }
+  if (!target.video && source.video) {
+    target.video = cloneVideoMetadata(source.video);
+  }
+  if (!target.profile && source.profile) {
+    target.profile = cloneProfileMetadata(source.profile);
+  }
+>>>>>>> origin/main
   return target;
 }
 
@@ -99,6 +174,32 @@ function clonePointerItem(pointer) {
     cloned.session = true;
   }
 
+<<<<<<< HEAD
+=======
+  const metadata = clonePointerMetadata(pointer.metadata);
+  if (metadata) {
+    cloned.metadata = metadata;
+  }
+
+  const video = cloneVideoMetadata(pointer.video) || metadata?.video || null;
+  if (video) {
+    cloned.video = video;
+  }
+
+  const profile = cloneProfileMetadata(pointer.profile) || metadata?.profile || null;
+  if (profile) {
+    cloned.profile = profile;
+  }
+
+  if (pointer.completed === true || metadata?.completed === true) {
+    cloned.completed = true;
+  }
+
+  if (!Number.isFinite(cloned.resumeAt) && Number.isFinite(metadata?.resumeAt)) {
+    cloned.resumeAt = metadata.resumeAt;
+  }
+
+>>>>>>> origin/main
   return cloned;
 }
 
@@ -229,6 +330,7 @@ function normalizePointersFromPayload(payload) {
   if (!payload || typeof payload !== "object") {
     return normalized;
   }
+<<<<<<< HEAD
   const watchedAt =
     payload.watchedAt && typeof payload.watchedAt === "object" ? payload.watchedAt : {};
 
@@ -264,15 +366,40 @@ function normalizePointersFromPayload(payload) {
 
 const WATCH_HISTORY_MONTH_PATTERN = /^(\d{4})-(0[1-9]|1[0-2])$/;
 
+=======
+  const source = Array.isArray(payload.items) ? payload.items : [];
+  for (const candidate of source) {
+    const pointer = normalizePointerInput(candidate);
+    if (!pointer) {
+      continue;
+    }
+    const key = pointerKey(pointer);
+    if (!key || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    normalized.push(pointer);
+  }
+  return normalized;
+}
+
+>>>>>>> origin/main
 function parseWatchHistoryPayload(plaintext) {
   if (typeof plaintext !== "string") {
     return {
       version: 0,
+<<<<<<< HEAD
       month: "",
       items: [],
       events: [],
       watchedAt: {},
       snapshot: "",
+=======
+      items: [],
+      snapshot: "",
+      chunkIndex: 0,
+      totalChunks: 1,
+>>>>>>> origin/main
     };
   }
   try {
@@ -280,6 +407,7 @@ function parseWatchHistoryPayload(plaintext) {
     if (!parsed || typeof parsed !== "object") {
       return {
         version: 0,
+<<<<<<< HEAD
         month: "",
         items: [],
         events: [],
@@ -301,19 +429,45 @@ function parseWatchHistoryPayload(plaintext) {
       parsed.watchedAt && typeof parsed.watchedAt === "object" ? parsed.watchedAt : {};
 
     return { version, month, items, events, watchedAt, snapshot };
+=======
+        items: [],
+        snapshot: "",
+        chunkIndex: 0,
+        totalChunks: 1,
+      };
+    }
+    const version = Number.isFinite(parsed.version) ? parsed.version : 0;
+    const items = normalizePointersFromPayload(parsed);
+    const snapshot = typeof parsed.snapshot === "string" ? parsed.snapshot : "";
+    const chunkIndex = Number.isFinite(parsed.chunkIndex)
+      ? Math.max(0, Math.floor(parsed.chunkIndex))
+      : 0;
+    const totalChunks = Number.isFinite(parsed.totalChunks)
+      ? Math.max(1, Math.floor(parsed.totalChunks))
+      : 1;
+    return { version, items, snapshot, chunkIndex, totalChunks };
+>>>>>>> origin/main
   } catch (error) {
     devLogger.warn("[nostr] Failed to parse watch history payload:", error);
     return {
       version: 0,
+<<<<<<< HEAD
       month: "",
       items: [],
       events: [],
       watchedAt: {},
       snapshot: "",
+=======
+      items: [],
+      snapshot: "",
+      chunkIndex: 0,
+      totalChunks: 1,
+>>>>>>> origin/main
     };
   }
 }
 
+<<<<<<< HEAD
 function normalizeWatchHistoryPayloadItem(entry, watchedAtMap) {
   const pointer = normalizePointerInput(entry);
   if (!pointer) {
@@ -409,6 +563,105 @@ export function buildWatchHistoryPayload(
   }
 
   return { payload, included, skipped };
+=======
+export function chunkWatchHistoryPayloadItems(payloadItems, snapshotId, maxBytes) {
+  const items = Array.isArray(payloadItems) ? payloadItems : [];
+  const safeMax = Math.max(128, Math.floor(maxBytes || 0));
+  const measurementLimit = Math.max(64, safeMax - 32);
+  const normalizedSnapshot = typeof snapshotId === "string" ? snapshotId : "";
+
+  const chunks = [];
+  const skipped = [];
+  let current = [];
+
+  const estimateLength = (chunkItems, chunkIndex, totalGuess) =>
+    JSON.stringify({
+      version: 2,
+      snapshot: normalizedSnapshot,
+      chunkIndex,
+      totalChunks: totalGuess,
+      items: chunkItems,
+    }).length;
+
+  for (const item of items) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+
+    if (!current.length) {
+      const candidate = [item];
+      const size = estimateLength(candidate, chunks.length, chunks.length + 1);
+      if (size <= measurementLimit) {
+        current = candidate;
+        continue;
+      }
+      skipped.push(item);
+      continue;
+    }
+
+    const next = [...current, item];
+    const nextSize = estimateLength(next, chunks.length, chunks.length + 1);
+    if (nextSize <= measurementLimit) {
+      current = next;
+      continue;
+    }
+
+    chunks.push(current);
+    current = [item];
+  }
+
+  if (current.length) {
+    chunks.push(current);
+  }
+
+  let needsRebalance = true;
+  while (needsRebalance) {
+    needsRebalance = false;
+    for (let index = 0; index < chunks.length; index += 1) {
+      let chunkItems = chunks[index];
+      if (!Array.isArray(chunkItems)) {
+        chunks[index] = [];
+        chunkItems = chunks[index];
+      }
+      let payloadSize = JSON.stringify({
+        version: 2,
+        snapshot: normalizedSnapshot,
+        chunkIndex: index,
+        totalChunks: chunks.length,
+        items: chunkItems,
+      }).length;
+      while (chunkItems.length && payloadSize > safeMax) {
+        const overflow = chunkItems.pop();
+        if (!overflow) {
+          break;
+        }
+        if (!chunks[index + 1]) {
+          chunks[index + 1] = [];
+        }
+        chunks[index + 1].unshift(overflow);
+        needsRebalance = true;
+        chunkItems = chunks[index];
+        payloadSize = JSON.stringify({
+          version: 2,
+          snapshot: normalizedSnapshot,
+          chunkIndex: index,
+          totalChunks: chunks.length,
+          items: chunkItems,
+        }).length;
+      }
+    }
+  }
+
+  while (chunks.length > 1 && chunks[chunks.length - 1].length === 0) {
+    chunks.pop();
+  }
+
+  if (!chunks.length) {
+    chunks.push([]);
+  }
+
+  return { chunks, skipped };
+>>>>>>> origin/main
 }
 
 export function normalizeActorKey(actor) {
@@ -491,6 +744,7 @@ function canonicalizeWatchHistoryItems(rawItems, maxItems = WATCH_HISTORY_MAX_IT
     }
     return 0;
   });
+<<<<<<< HEAD
 
   const limited = (!Number.isFinite(maxItems) || maxItems <= 0)
     ? deduped
@@ -514,6 +768,24 @@ function canonicalizeWatchHistoryItems(rawItems, maxItems = WATCH_HISTORY_MAX_IT
 
 function sanitizeWatchHistoryMetadata(metadata) {
   return {};
+=======
+  if (!Number.isFinite(maxItems) || maxItems <= 0) {
+    return deduped;
+  }
+  return deduped.slice(0, Math.max(0, Math.floor(maxItems)));
+}
+
+function sanitizeWatchHistoryMetadata(metadata) {
+  if (!metadata || typeof metadata !== "object") {
+    return {};
+  }
+  try {
+    return JSON.parse(JSON.stringify(metadata));
+  } catch (error) {
+    devLogger.warn("[nostr] Failed to sanitize watch history metadata:", error);
+    return {};
+  }
+>>>>>>> origin/main
 }
 
 function serializeWatchHistoryItems(items) {
@@ -541,14 +813,57 @@ function serializeWatchHistoryItems(items) {
       if (watchedAt !== undefined) {
         payload.watchedAt = watchedAt;
       }
+<<<<<<< HEAD
+=======
+      const metadata = clonePointerMetadata(item?.metadata);
+      if (metadata) {
+        payload.metadata = metadata;
+      }
+      const video = metadata?.video || cloneVideoMetadata(item?.video);
+      if (video) {
+        if (payload.metadata) {
+          payload.metadata.video = payload.metadata.video || video;
+        } else {
+          payload.video = video;
+        }
+      }
+      const profile = metadata?.profile || cloneProfileMetadata(item?.profile);
+      if (profile) {
+        if (payload.metadata) {
+          payload.metadata.profile = payload.metadata.profile || profile;
+        } else {
+          payload.profile = profile;
+        }
+      }
+>>>>>>> origin/main
       const resumeAt = Number.isFinite(item?.resumeAt)
         ? Math.max(0, Math.floor(item.resumeAt))
         : undefined;
       if (resumeAt !== undefined) {
+<<<<<<< HEAD
         payload.resumeAt = resumeAt;
       }
       if (item?.completed === true) {
         payload.completed = true;
+=======
+        if (payload.metadata) {
+          if (!Number.isFinite(payload.metadata.resumeAt)) {
+            payload.metadata.resumeAt = resumeAt;
+          }
+        } else {
+          payload.resumeAt = resumeAt;
+        }
+      }
+      if (item?.completed === true) {
+        if (payload.metadata) {
+          payload.metadata.completed = true;
+        } else {
+          payload.completed = true;
+        }
+      }
+      if (payload.metadata && !Object.keys(payload.metadata).length) {
+        delete payload.metadata;
+>>>>>>> origin/main
       }
       return payload;
     })
@@ -562,6 +877,7 @@ function bytesToHex(bytes) {
     .join("");
 }
 
+<<<<<<< HEAD
 async function computeWatchHistoryFingerprintForItems(itemsOrBuckets) {
   // Check if buckets
   let flatItems = [];
@@ -585,6 +901,10 @@ async function computeWatchHistoryFingerprintForItems(itemsOrBuckets) {
   });
 
   const serialized = serializeWatchHistoryItems(flatItems);
+=======
+async function computeWatchHistoryFingerprintForItems(items) {
+  const serialized = serializeWatchHistoryItems(items);
+>>>>>>> origin/main
   const encoder = typeof TextEncoder === "function" ? new TextEncoder() : null;
   if (encoder && window?.crypto?.subtle?.digest) {
     try {
@@ -847,6 +1167,7 @@ function mergeWatchHistoryItemsWithFallback(parsed, fallbackItems) {
   if (!parsed || typeof parsed !== "object") {
     return {
       version: 0,
+<<<<<<< HEAD
       month: "",
       items: fallbackItems,
       snapshot: "",
@@ -885,6 +1206,21 @@ function mergeWatchHistoryItemsWithFallback(parsed, fallbackItems) {
     items: merged,
     snapshot: parsed.snapshot,
   };
+=======
+      items: fallbackItems,
+      snapshot: "",
+      chunkIndex: 0,
+      totalChunks: 1,
+    };
+  }
+  if (Array.isArray(parsed.items) && parsed.items.length) {
+    return parsed;
+  }
+  if (!Array.isArray(fallbackItems) || fallbackItems.length === 0) {
+    return parsed;
+  }
+  return { ...parsed, items: fallbackItems };
+>>>>>>> origin/main
 }
 
 export function parseWatchHistoryContentWithFallback(content, fallbackItems, fallbackPayload) {
@@ -956,6 +1292,7 @@ class WatchHistoryManager {
     this.cacheTtlMs = 0;
     this.fingerprints = new Map();
     this.lastCreatedAt = 0;
+<<<<<<< HEAD
 
     profileCache.subscribe((event, detail) => {
       if (event === "profileChanged") {
@@ -971,12 +1308,15 @@ class WatchHistoryManager {
         }
       }
     });
+=======
+>>>>>>> origin/main
   }
 
   getCacheTtlMs() {
     if (Number.isFinite(this.cacheTtlMs) && this.cacheTtlMs > 0) {
       return this.cacheTtlMs;
     }
+<<<<<<< HEAD
     const policyTtl = CACHE_POLICIES[NOTE_TYPES.WATCH_HISTORY]?.ttl;
     const configured = Number(WATCH_HISTORY_CACHE_TTL_MS);
 
@@ -988,10 +1328,18 @@ class WatchHistoryManager {
           ? policyTtl
           : 24 * 60 * 60 * 1000;
 
+=======
+    const configured = Number(WATCH_HISTORY_CACHE_TTL_MS);
+    const resolved =
+      Number.isFinite(configured) && configured > 0
+        ? Math.floor(configured)
+        : 24 * 60 * 60 * 1000;
+>>>>>>> origin/main
     this.cacheTtlMs = resolved;
     return resolved;
   }
 
+<<<<<<< HEAD
   getStorage(actorInput = null) {
     const actorKey = normalizeActorKey(actorInput) || normalizeActorKey(this.deps.getActivePubkey?.());
     if (!actorKey) {
@@ -1009,10 +1357,92 @@ class WatchHistoryManager {
         [actorKey]: cached
       }
     };
+=======
+  getStorage() {
+    if (this.storage && this.storage.version === WATCH_HISTORY_STORAGE_VERSION) {
+      return this.storage;
+    }
+    const emptyStorage = { version: WATCH_HISTORY_STORAGE_VERSION, actors: {} };
+    if (typeof localStorage === "undefined") {
+      this.storage = emptyStorage;
+      return this.storage;
+    }
+    let raw = null;
+    try {
+      raw = localStorage.getItem(WATCH_HISTORY_STORAGE_KEY);
+    } catch (error) {
+      devLogger.warn("[nostr] Failed to read watch history storage:", error);
+      this.storage = emptyStorage;
+      return this.storage;
+    }
+    if (!raw || typeof raw !== "string") {
+      this.storage = emptyStorage;
+      return this.storage;
+    }
+    let parsed = null;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (error) {
+      devLogger.warn("[nostr] Failed to parse watch history storage:", error);
+      this.storage = emptyStorage;
+      return this.storage;
+    }
+    const now = Date.now();
+    const ttl = this.getCacheTtlMs();
+    const actors =
+      parsed && typeof parsed === "object" && parsed.actors && typeof parsed.actors === "object"
+        ? parsed.actors
+        : {};
+    const sanitizedActors = {};
+    let mutated = false;
+    for (const [actorKeyRaw, entry] of Object.entries(actors)) {
+      const actorKey = normalizeActorKey(actorKeyRaw);
+      if (!actorKey) {
+        mutated = true;
+        continue;
+      }
+      const savedAt = Number(entry?.savedAt);
+      if (!Number.isFinite(savedAt) || savedAt <= 0 || now - savedAt > ttl) {
+        mutated = true;
+        continue;
+      }
+      const items = Array.isArray(entry?.items)
+        ? canonicalizeWatchHistoryItems(entry.items, WATCH_HISTORY_MAX_ITEMS)
+        : [];
+      const metadata = sanitizeWatchHistoryMetadata(entry?.metadata);
+      const snapshotId = typeof entry?.snapshotId === "string" ? entry.snapshotId : "";
+      const fingerprint = typeof entry?.fingerprint === "string" ? entry.fingerprint : "";
+      sanitizedActors[actorKey] = {
+        actor:
+          typeof entry?.actor === "string" && entry.actor.trim()
+            ? entry.actor.trim()
+            : actorKey,
+        snapshotId,
+        fingerprint,
+        savedAt,
+        items,
+        metadata,
+      };
+    }
+    const storage = {
+      version: WATCH_HISTORY_STORAGE_VERSION,
+      actors: sanitizedActors,
+    };
+    if (mutated || parsed?.version !== WATCH_HISTORY_STORAGE_VERSION) {
+      try {
+        localStorage.setItem(WATCH_HISTORY_STORAGE_KEY, JSON.stringify(storage));
+      } catch (error) {
+        devLogger.warn("[nostr] Failed to rewrite watch history storage:", error);
+      }
+    }
+    this.storage = storage;
+    return this.storage;
+>>>>>>> origin/main
   }
 
   persistEntry(actorInput, entry) {
     const actorKey = normalizeActorKey(actorInput);
+<<<<<<< HEAD
     if (!actorKey || !entry) {
       return;
     }
@@ -1036,10 +1466,46 @@ class WatchHistoryManager {
         : actorInput || actorKey;
 
     const data = {
+=======
+    if (!actorKey) {
+      return;
+    }
+    const storage = this.getStorage();
+    const actors = { ...storage.actors };
+    const now = Date.now();
+    const ttl = this.getCacheTtlMs();
+    let mutated = false;
+    for (const [key, value] of Object.entries(actors)) {
+      const savedAt = Number(value?.savedAt);
+      if (!Number.isFinite(savedAt) || savedAt <= 0 || now - savedAt > ttl) {
+        delete actors[key];
+        mutated = true;
+      }
+    }
+    if (!entry) {
+      if (actors[actorKey]) {
+        delete actors[actorKey];
+        mutated = true;
+      }
+    } else {
+      const items = Array.isArray(entry.items)
+        ? canonicalizeWatchHistoryItems(entry.items, WATCH_HISTORY_MAX_ITEMS)
+        : [];
+      const metadata = sanitizeWatchHistoryMetadata(entry.metadata);
+      const snapshotId = typeof entry.snapshotId === "string" ? entry.snapshotId : "";
+      const fingerprint = typeof entry.fingerprint === "string" ? entry.fingerprint : "";
+      const savedAt = Number.isFinite(entry.savedAt) && entry.savedAt > 0 ? entry.savedAt : now;
+      const actorValue =
+        typeof entry.actor === "string" && entry.actor.trim()
+          ? entry.actor.trim()
+          : actorInput || actorKey;
+      actors[actorKey] = {
+>>>>>>> origin/main
         actor: actorValue,
         snapshotId,
         fingerprint,
         savedAt,
+<<<<<<< HEAD
         records,
         items,
         metadata: {},
@@ -1051,6 +1517,30 @@ class WatchHistoryManager {
 
   cancelRepublish(taskId = null) {
     if (!taskId) {
+=======
+        items,
+        metadata,
+      };
+      mutated = true;
+    }
+    const payload = {
+      version: WATCH_HISTORY_STORAGE_VERSION,
+      actors,
+    };
+    this.storage = payload;
+    if (!mutated || typeof localStorage === "undefined") {
+      return;
+    }
+    try {
+      localStorage.setItem(WATCH_HISTORY_STORAGE_KEY, JSON.stringify(payload));
+    } catch (error) {
+      devLogger.warn("[nostr] Failed to persist watch history entry:", error);
+    }
+  }
+
+  cancelRepublish(snapshotId = null) {
+    if (!snapshotId) {
+>>>>>>> origin/main
       for (const entry of this.republishTimers.values()) {
         if (entry && typeof entry.timer === "number") {
           clearTimeout(entry.timer);
@@ -1063,7 +1553,11 @@ class WatchHistoryManager {
       this.republishTimers.clear();
       return;
     }
+<<<<<<< HEAD
     const key = typeof taskId === "string" ? taskId.trim() : "";
+=======
+    const key = typeof snapshotId === "string" ? snapshotId.trim() : "";
+>>>>>>> origin/main
     if (!key) {
       return;
     }
@@ -1078,8 +1572,13 @@ class WatchHistoryManager {
     this.republishTimers.delete(key);
   }
 
+<<<<<<< HEAD
   scheduleRepublish(taskId, operation, options = {}) {
     const key = typeof taskId === "string" ? taskId.trim() : "";
+=======
+  scheduleRepublish(snapshotId, operation, options = {}) {
+    const key = typeof snapshotId === "string" ? snapshotId.trim() : "";
+>>>>>>> origin/main
     if (!key || typeof operation !== "function") {
       return;
     }
@@ -1110,7 +1609,11 @@ class WatchHistoryManager {
     );
     if (onSchedule) {
       try {
+<<<<<<< HEAD
         onSchedule({ taskId: key, attempt: attempt + 1, delay });
+=======
+        onSchedule({ snapshotId: key, attempt: attempt + 1, delay });
+>>>>>>> origin/main
       } catch (error) {
         devLogger.warn(
           `[nostr] Failed to notify watch history republish schedule for ${key}:`,
@@ -1165,6 +1668,7 @@ class WatchHistoryManager {
     if (!actorKey) {
       return "";
     }
+<<<<<<< HEAD
 
     let itemsOrRecords = itemsOverride;
     if (!itemsOrRecords) {
@@ -1179,6 +1683,17 @@ class WatchHistoryManager {
     }
 
     const fingerprint = await computeWatchHistoryFingerprintForItems(buckets);
+=======
+    const items = Array.isArray(itemsOverride)
+      ? canonicalizeWatchHistoryItems(itemsOverride, WATCH_HISTORY_MAX_ITEMS)
+      : (() => {
+        const cacheEntry = this.cache.get(actorKey) || this.getStorage().actors?.[actorKey];
+        return Array.isArray(cacheEntry?.items)
+          ? canonicalizeWatchHistoryItems(cacheEntry.items, WATCH_HISTORY_MAX_ITEMS)
+          : [];
+      })();
+    const fingerprint = await computeWatchHistoryFingerprintForItems(items);
+>>>>>>> origin/main
     const previous = this.fingerprints.get(actorKey);
     if (previous && previous !== fingerprint) {
       devLogger.info(`[nostr] Watch history fingerprint changed for ${actorKey}.`);
@@ -1209,6 +1724,7 @@ class WatchHistoryManager {
         return fetchResult;
       }
       const storageEntry = this.getStorage().actors?.[actorKey];
+<<<<<<< HEAD
 
       const records = storageEntry?.records || {};
       const flatItems = Object.values(records).flat();
@@ -1244,15 +1760,62 @@ class WatchHistoryManager {
         this.scheduleRepublish("background-refresh", async (attempt) =>
             this.publishRecords(records, {
               actorPubkey: resolvedActor,
+=======
+      const metadata = sanitizeWatchHistoryMetadata(storageEntry?.metadata);
+      const alreadyAttempted = metadata.autoSnapshotAttempted === true;
+      const items = Array.isArray(storageEntry?.items)
+        ? canonicalizeWatchHistoryItems(storageEntry.items, WATCH_HISTORY_MAX_ITEMS)
+        : [];
+      if (!items.length || alreadyAttempted) {
+        return fetchResult;
+      }
+      metadata.autoSnapshotAttempted = true;
+      metadata.autoSnapshotAttemptedAt = Date.now();
+      const publishResult = await this.publishSnapshot(items, {
+        actorPubkey: resolvedActor,
+        snapshotId: storageEntry?.snapshotId,
+        source: "background-refresh",
+      });
+      const fingerprint = await this.getFingerprint(resolvedActor, items);
+      const entry = {
+        actor: resolvedActor,
+        items,
+        snapshotId: publishResult.snapshotId || storageEntry?.snapshotId || "",
+        pointerEvent: publishResult.pointerEvent || null,
+        chunkEvents: publishResult.chunkEvents || [],
+        savedAt: Date.now(),
+        fingerprint,
+        metadata,
+      };
+      this.cache.set(actorKey, entry);
+      this.persistEntry(actorKey, entry);
+      if (!publishResult.ok && publishResult.retryable) {
+        const retrySnapshot = entry.snapshotId || publishResult.snapshotId;
+        if (retrySnapshot) {
+          this.scheduleRepublish(retrySnapshot, async (attempt) =>
+            this.publishSnapshot(entry.items, {
+              actorPubkey: resolvedActor,
+              snapshotId: retrySnapshot,
+>>>>>>> origin/main
               attempt,
               source: "background-refresh",
             }),
           );
+<<<<<<< HEAD
       }
 
       return {
         pointerEvent: entry.pointerEvent,
         items: flatItems,
+=======
+        }
+      } else if (publishResult.ok && entry.snapshotId) {
+        this.cancelRepublish(entry.snapshotId);
+      }
+      return {
+        pointerEvent: entry.pointerEvent,
+        items: entry.items,
+>>>>>>> origin/main
         snapshotId: entry.snapshotId,
       };
     })()
@@ -1267,6 +1830,7 @@ class WatchHistoryManager {
     return promise;
   }
 
+<<<<<<< HEAD
   async publishRecords(records, options = {}) {
      // High level wrapper to publish multiple months
      // records is { "YYYY-MM": [items] }
@@ -1353,6 +1917,9 @@ class WatchHistoryManager {
   async publishMonthRecord(monthIdentifier, items, options = {}) {
     if (!items || !items.length) return { ok: true };
 
+=======
+  async publishSnapshot(rawItems, options = {}) {
+>>>>>>> origin/main
     const pool = typeof this.deps.getPool === "function" ? this.deps.getPool() : null;
     if (!pool) {
       return { ok: false, error: "nostr-uninitialized", retryable: false };
@@ -1389,9 +1956,24 @@ class WatchHistoryManager {
       normalizedLogged === actorKey &&
       signer &&
       typeof signer.signEvent === "function";
+<<<<<<< HEAD
 
     const activeSigner = canUseActiveSignerSign ? signer : null;
 
+=======
+    const signerSupportsEncryption =
+      canUseActiveSignerSign &&
+      signer &&
+      (typeof signer.nip04Encrypt === "function" || typeof signer.nip44Encrypt === "function");
+    const activeSigner = canUseActiveSignerSign ? signer : null;
+    const encryptionSigner = signerSupportsEncryption ? signer : null;
+    if (
+      (canUseActiveSignerSign || signerSupportsEncryption) &&
+      this.deps.shouldRequestExtensionPermissions?.(signer)
+    ) {
+      await this.deps.ensureExtensionPermissions?.(DEFAULT_NIP07_PERMISSION_METHODS);
+    }
+>>>>>>> origin/main
     let privateKey = "";
     if (!canUseActiveSignerSign) {
       if (!sessionActor || sessionActor.pubkey !== actorKey) {
@@ -1409,6 +1991,7 @@ class WatchHistoryManager {
         return { ok: false, error: "missing-session-key", retryable: false };
       }
     }
+<<<<<<< HEAD
 
     // Sort items latest first for payload construction
     items.sort((a, b) => (b.watchedAt || 0) - (a.watchedAt || 0));
@@ -1419,6 +2002,27 @@ class WatchHistoryManager {
       options.watchedAtMap || null
     );
 
+=======
+    const canonicalItems = canonicalizeWatchHistoryItems(
+      Array.isArray(rawItems) ? rawItems : [],
+      WATCH_HISTORY_MAX_ITEMS,
+    );
+    const snapshotId =
+      typeof options.snapshotId === "string" && options.snapshotId.trim()
+        ? options.snapshotId.trim()
+        : `snapshot-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+    const { chunks, skipped } = chunkWatchHistoryPayloadItems(
+      canonicalItems,
+      snapshotId,
+      WATCH_HISTORY_PAYLOAD_MAX_BYTES,
+    );
+    if (skipped.length) {
+      devLogger.warn(
+        `[nostr] Watch history snapshot skipped ${skipped.length} oversize ${skipped.length === 1 ? "entry" : "entries"
+        }.`,
+      );
+    }
+>>>>>>> origin/main
     const relayCandidates = [];
     if (Array.isArray(options.relays) && options.relays.length) {
       relayCandidates.push(...options.relays);
@@ -1438,16 +2042,25 @@ class WatchHistoryManager {
     if (!relays.length) {
       relays = Array.from(RELAY_URLS);
     }
+<<<<<<< HEAD
 
     devLogger.info("[nostr] Preparing to publish watch history month.", {
       actor: actorKey,
       monthIdentifier,
       itemCount: items.length,
       payloadCount: Array.isArray(payload.events) ? payload.events.length : 0,
+=======
+    devLogger.info("[nostr] Preparing to publish watch history snapshot.", {
+      actor: actorKey,
+      snapshotId,
+      itemCount: canonicalItems.length,
+      chunkCount: chunks.length,
+>>>>>>> origin/main
       relaysRequested: relays,
       attempt: options.attempt || 0,
       source: options.source || "unknown",
     });
+<<<<<<< HEAD
 
     const createdAtBase = Math.max(Math.floor(Date.now() / 1000), this.lastCreatedAt + 1);
 
@@ -1456,11 +2069,180 @@ class WatchHistoryManager {
         return queueSignEvent(activeSigner, event, {
           timeoutMs: options.timeoutMs,
         });
+=======
+    const createdAtBase = Math.max(Math.floor(Date.now() / 1000), this.lastCreatedAt + 1);
+    const toolkitCache = { current: null };
+    const encryptionCandidates = [];
+    const registerEncryptor = (scheme, handler, source) => {
+      if (!scheme || typeof handler !== "function") {
+        return;
+      }
+      encryptionCandidates.push({
+        scheme,
+        handler,
+        source: source || "unknown",
+      });
+    };
+
+    if (encryptionSigner) {
+      if (typeof encryptionSigner.nip44Encrypt === "function") {
+        registerEncryptor(
+          "nip44_v2",
+          (plaintext) => encryptionSigner.nip44Encrypt(actorPubkey, plaintext),
+          "active-signer",
+        );
+        registerEncryptor(
+          "nip44",
+          (plaintext) => encryptionSigner.nip44Encrypt(actorPubkey, plaintext),
+          "active-signer",
+        );
+      }
+      if (typeof encryptionSigner.nip04Encrypt === "function") {
+        registerEncryptor(
+          "nip04",
+          (plaintext) => encryptionSigner.nip04Encrypt(actorPubkey, plaintext),
+          "active-signer",
+        );
+      }
+    }
+
+    const ensureSessionEncryptors = async () => {
+      if (!privateKey) {
+        return;
+      }
+      const tools = await resolveNostrToolkit(this.deps, toolkitCache);
+      if (!tools) {
+        return;
+      }
+      const suite = createNip44CipherSuite(tools, privateKey, actorKey);
+      if (suite?.v2?.encrypt) {
+        registerEncryptor(
+          "nip44_v2",
+          (plaintext) => suite.v2.encrypt(plaintext),
+          "session-nip44_v2",
+        );
+        registerEncryptor(
+          "nip44",
+          (plaintext) => suite.v2.encrypt(plaintext),
+          "session-nip44_v2",
+        );
+      }
+      if (suite?.legacy?.encrypt) {
+        registerEncryptor(
+          "nip44",
+          (plaintext) => suite.legacy.encrypt(plaintext),
+          "session-nip44",
+        );
+      }
+      if (tools?.nip04 && typeof tools.nip04.encrypt === "function") {
+        registerEncryptor(
+          "nip04",
+          (plaintext) => tools.nip04.encrypt(privateKey, actorPubkey, plaintext),
+          "session-nip04",
+        );
+      }
+    };
+
+    await ensureSessionEncryptors();
+
+    if (!encryptionCandidates.length) {
+      devLogger.warn(
+        "[nostr] No encryption strategies available to publish watch history.",
+        {
+          actor: actorKey,
+          snapshotId,
+        },
+      );
+      return { ok: false, error: "encryption-unavailable", retryable: false };
+    }
+
+    const candidateIdentity = (candidate) =>
+      `${candidate.scheme}:${candidate.source || "unknown"}`;
+    const failedEncryptionCandidates = new Set();
+    const encryptionAttemptErrors = [];
+    let selectedEncryptor = null;
+
+    const tryEncryptWithCandidate = async (candidate, plaintext, context = {}) => {
+      const details = {
+        actor: actorKey,
+        snapshotId,
+        chunkIndex: context.chunkIndex ?? null,
+        chunkIdentifier: context.chunkIdentifier ?? null,
+        scheme: candidate.scheme,
+        source: candidate.source,
+      };
+      try {
+        devLogger.info("[nostr] Attempting to encrypt watch history chunk.", details);
+        const encrypted = await candidate.handler(plaintext);
+        if (typeof encrypted !== "string" || !encrypted) {
+          throw new Error("empty-ciphertext");
+        }
+        devLogger.info("[nostr] Encrypted watch history chunk.", details);
+        return { ciphertext: encrypted, scheme: candidate.scheme, candidate };
+      } catch (error) {
+        devLogger.warn("[nostr] Failed to encrypt watch history chunk with candidate.", {
+          ...details,
+          error: error?.message || error,
+        });
+        failedEncryptionCandidates.add(candidateIdentity(candidate));
+        encryptionAttemptErrors.push({
+          scheme: candidate.scheme,
+          source: candidate.source,
+          error,
+          context: {
+            snapshotId,
+            chunkIndex: context.chunkIndex ?? null,
+            chunkIdentifier: context.chunkIdentifier ?? null,
+          },
+        });
+        return null;
+      }
+    };
+
+    const encryptChunkPayload = async (plaintext, context = {}) => {
+      if (
+        selectedEncryptor &&
+        !failedEncryptionCandidates.has(candidateIdentity(selectedEncryptor))
+      ) {
+        const reuseResult = await tryEncryptWithCandidate(
+          selectedEncryptor,
+          plaintext,
+          context,
+        );
+        if (reuseResult) {
+          return reuseResult;
+        }
+        selectedEncryptor = null;
+      }
+      for (const candidate of encryptionCandidates) {
+        const identity = candidateIdentity(candidate);
+        if (failedEncryptionCandidates.has(identity)) {
+          continue;
+        }
+        const result = await tryEncryptWithCandidate(candidate, plaintext, context);
+        if (result) {
+          selectedEncryptor = candidate;
+          return result;
+        }
+      }
+      throw new Error("encryption-unavailable");
+    };
+    const signEvent = async (event) => {
+      if (activeSigner) {
+        return activeSigner.signEvent(event);
+>>>>>>> origin/main
       }
       return this.deps.signEventWithPrivateKey(event, privateKey);
     };
     let createdAtCursor = createdAtBase;
+<<<<<<< HEAD
 
+=======
+    const chunkResults = [];
+    const chunkAddresses = [];
+    let anyChunkRejected = false;
+    let anyChunkPartial = false;
+>>>>>>> origin/main
     const formatRelayStatus = (results = []) => {
       const normalized = Array.isArray(results) ? results : [];
       const statuses = [];
@@ -1503,6 +2285,7 @@ class WatchHistoryManager {
       }
       return statuses;
     };
+<<<<<<< HEAD
 
     const pointerTags = included.map((pointer) => {
       const tag = [pointer.type === "a" ? "a" : "e", pointer.value];
@@ -1623,12 +2406,206 @@ class WatchHistoryManager {
         errorCode = "publish-rejected";
       } else if (partialAcceptance) {
         errorCode = "partial-relay-acceptance";
+=======
+    for (let index = 0; index < chunks.length; index += 1) {
+      const chunkItems = Array.isArray(chunks[index]) ? chunks[index] : [];
+      const pointerTags = chunkItems.map((pointer) => {
+        const tag = [pointer.type === "a" ? "a" : "e", pointer.value];
+        if (pointer.relay) {
+          tag.push(pointer.relay);
+        }
+        return tag;
+      });
+      devLogger.info(
+        "[nostr] Publishing watch history chunk.",
+        {
+          actor: actorKey,
+          snapshotId,
+          chunkIndex: index,
+          chunkSize: chunkItems.length,
+          relays,
+        },
+      );
+      const plaintext = JSON.stringify({
+        version: 2,
+        snapshot: snapshotId,
+        chunkIndex: index,
+        totalChunks: chunks.length,
+        items: chunkItems,
+      });
+      const chunkIdentifier = `${snapshotId}:${index}`;
+      let ciphertext = "";
+      let encryptionScheme = "";
+      try {
+        const encryptionResult = await encryptChunkPayload(plaintext, {
+          chunkIndex: index,
+          chunkIdentifier,
+        });
+        ciphertext = encryptionResult?.ciphertext || "";
+        encryptionScheme = encryptionResult?.scheme || "";
+      } catch (error) {
+        devLogger.warn("[nostr] Failed to encrypt watch history chunk:", {
+          actor: actorKey,
+          snapshotId,
+          chunkIndex: index,
+          chunkIdentifier,
+          error: error?.message || error,
+          attempts: encryptionAttemptErrors.map((entry) => ({
+            scheme: entry.scheme,
+            source: entry.source,
+            error: entry.error?.message || entry.error,
+          })),
+        });
+        return { ok: false, error: "encryption-failed", retryable: false };
+      }
+      if (!ciphertext) {
+        devLogger.warn("[nostr] Encryption produced an empty payload for watch history chunk.", {
+          actor: actorKey,
+          snapshotId,
+          chunkIndex: index,
+          chunkIdentifier,
+          scheme: encryptionScheme || null,
+        });
+        return { ok: false, error: "encryption-failed", retryable: false };
+      }
+      const event = buildWatchHistoryChunkEvent({
+        pubkey: actorPubkey,
+        created_at: createdAtCursor,
+        chunkIdentifier,
+        snapshotId,
+        chunkIndex: index,
+        totalChunks: chunks.length,
+        pointerTags,
+        content: ciphertext,
+        encryption: encryptionScheme,
+      });
+      createdAtCursor += 1;
+      let signedEvent;
+      try {
+        signedEvent = await signEvent(event);
+      } catch (error) {
+        devLogger.warn("[nostr] Failed to sign watch history chunk:", error);
+        return { ok: false, error: "signing-failed", retryable: false };
+      }
+      const publishResults = await publishEventToRelays(
+        pool,
+        relays,
+        signedEvent,
+      );
+      const relayStatus = formatRelayStatus(publishResults);
+      const acceptedCount = relayStatus.filter((entry) => entry.success).length;
+      if (acceptedCount === 0) {
+        anyChunkRejected = true;
+        devLogger.warn(
+          `[nostr] Watch history chunk ${index} rejected by all relays:`,
+          publishResults,
+        );
+      } else {
+        const logMessage =
+          acceptedCount === relays.length ? "accepted" : "partially accepted";
+        if (acceptedCount === relays.length) {
+          devLogger.info(
+            `[nostr] Watch history chunk ${index} accepted by ${acceptedCount}/${relays.length} relay(s).`,
+          );
+        } else {
+          anyChunkPartial = true;
+          devLogger.warn(
+            `[nostr] Watch history chunk ${index} ${logMessage} by ${acceptedCount}/${relays.length} relay(s).`,
+            publishResults,
+          );
+        }
+      }
+      const address = this.deps.eventToAddressPointer?.(signedEvent);
+      if (address) {
+        chunkAddresses.push(address);
+      }
+      chunkResults.push({
+        event: signedEvent,
+        publishResults,
+        acceptedCount,
+        relayStatus,
+      });
+    }
+    const pointerEvent = buildWatchHistoryIndexEvent({
+      pubkey: actorPubkey,
+      created_at: createdAtCursor,
+      snapshotId,
+      totalChunks: chunks.length,
+      chunkAddresses,
+    });
+    createdAtCursor += 1;
+    let signedPointerEvent;
+    try {
+      signedPointerEvent = await signEvent(pointerEvent);
+    } catch (error) {
+      devLogger.warn("[nostr] Failed to sign watch history pointer event:", error);
+      return { ok: false, error: "signing-failed", retryable: false };
+    }
+    devLogger.info(
+      "[nostr] Publishing watch history pointer event.",
+      {
+        actor: actorKey,
+        snapshotId,
+        relays,
+      },
+    );
+    const pointerResults = await publishEventToRelays(
+      pool,
+      relays,
+      signedPointerEvent,
+    );
+    const pointerRelayStatus = formatRelayStatus(pointerResults);
+    const pointerAcceptedCount = pointerRelayStatus.filter((entry) => entry.success).length;
+    const pointerAccepted = pointerAcceptedCount > 0;
+    if (pointerAcceptedCount === relays.length) {
+      devLogger.info(
+        `[nostr] Watch history pointer accepted by ${pointerAcceptedCount}/${relays.length} relay(s).`,
+      );
+    } else if (pointerAccepted) {
+      devLogger.warn(
+        `[nostr] Watch history pointer partially accepted by ${pointerAcceptedCount}/${relays.length} relay(s).`,
+        pointerResults,
+      );
+    } else {
+      devLogger.warn(
+        "[nostr] Watch history pointer rejected by all relays:",
+        pointerResults,
+      );
+    }
+    this.lastCreatedAt = createdAtCursor;
+    const chunkStatuses = chunkResults.map((entry) => entry.relayStatus);
+    const chunkAcceptedEverywhere = chunkResults.every(
+      (entry) => entry.acceptedCount === relays.length,
+    );
+    const chunkRejectedEverywhere = chunkResults.some((entry) => entry.acceptedCount === 0);
+    const pointerRejectedEverywhere = pointerAcceptedCount === 0;
+    const pointerPartial = pointerAccepted && pointerAcceptedCount < relays.length;
+    const partialAcceptance = pointerPartial || anyChunkPartial;
+    const success =
+      !pointerRejectedEverywhere &&
+      pointerAcceptedCount === relays.length &&
+      chunkAcceptedEverywhere &&
+      !anyChunkRejected;
+    let errorCode = null;
+    if (!success) {
+      if (pointerRejectedEverywhere && chunkRejectedEverywhere) {
+        errorCode = "pointer-and-chunk-rejected";
+      } else if (pointerRejectedEverywhere) {
+        errorCode = "pointer-rejected";
+      } else if (chunkRejectedEverywhere || anyChunkRejected) {
+        errorCode = "chunk-rejected";
+      } else if (partialAcceptance) {
+        errorCode = "partial-relay-acceptance";
+      } else {
+        errorCode = "publish-rejected";
+>>>>>>> origin/main
       }
     }
     const result = {
       ok: success,
       retryable: !success,
       actor: actorPubkey,
+<<<<<<< HEAD
       monthIdentifier,
       items: items,
       pointerEvent: signedEvent,
@@ -1636,6 +2613,18 @@ class WatchHistoryManager {
         pointer: publishResults,
         relayStatus: {
           pointer: relayStatus,
+=======
+      snapshotId,
+      items: canonicalItems,
+      pointerEvent: signedPointerEvent,
+      chunkEvents: chunkResults.map((entry) => entry.event),
+      publishResults: {
+        pointer: pointerResults,
+        chunks: chunkResults.map((entry) => entry.publishResults),
+        relayStatus: {
+          pointer: pointerRelayStatus,
+          chunks: chunkStatuses,
+>>>>>>> origin/main
         },
       },
       skippedCount: skipped.length,
@@ -1646,6 +2635,7 @@ class WatchHistoryManager {
       result.error = errorCode;
     }
 
+<<<<<<< HEAD
     devLogger.info("[nostr] Watch history month publish result.", {
       actor: actorKey,
       monthIdentifier,
@@ -1653,6 +2643,49 @@ class WatchHistoryManager {
       partialAcceptance,
       error: result.error || null,
       acceptedCount,
+=======
+    const shouldPersistLocally =
+      pointerAcceptedCount > 0 && !chunkRejectedEverywhere;
+
+    if (shouldPersistLocally) {
+      const storage = this.getStorage();
+      const previousEntry =
+        this.cache.get(actorKey) || storage.actors?.[actorKey] || {};
+      const metadata = sanitizeWatchHistoryMetadata(previousEntry.metadata);
+      metadata.updatedAt = Date.now();
+      metadata.status = success ? "ok" : "partial";
+      metadata.lastPublishResults = result.publishResults;
+      metadata.skippedCount = result.skippedCount || 0;
+      if (success) {
+        delete metadata.lastError;
+      } else {
+        metadata.lastError = result.error || "publish-partial";
+      }
+
+      const entry = {
+        actor: actorPubkey,
+        items: canonicalItems,
+        snapshotId,
+        pointerEvent: result.pointerEvent,
+        chunkEvents: result.chunkEvents,
+        savedAt: Date.now(),
+        fingerprint: await this.getFingerprint(actorPubkey, canonicalItems),
+        metadata,
+      };
+
+      this.cache.set(actorKey, entry);
+      this.persistEntry(actorKey, entry);
+    }
+
+    devLogger.info("[nostr] Watch history snapshot publish result.", {
+      actor: actorKey,
+      snapshotId,
+      success,
+      partialAcceptance,
+      error: result.error || null,
+      pointerAcceptedCount,
+      chunkAcceptedCounts: chunkResults.map((entry) => entry.acceptedCount),
+>>>>>>> origin/main
     });
     return result;
   }
@@ -1678,6 +2711,7 @@ class WatchHistoryManager {
     }
     const storage = this.getStorage();
     const cachedEntry = this.cache.get(actorKey) || storage.actors?.[actorKey] || {};
+<<<<<<< HEAD
 
     // Existing items - try to get records, fallback to items
     let existingItems = [];
@@ -1724,17 +2758,41 @@ class WatchHistoryManager {
 
     // Publish
     const publishResult = await this.publishRecords(records, {
+=======
+    const existingItems = Array.isArray(cachedEntry.items)
+      ? canonicalizeWatchHistoryItems(cachedEntry.items, WATCH_HISTORY_MAX_ITEMS)
+      : [];
+    const incomingItems = Array.isArray(rawItems) ? rawItems : [];
+    const combined =
+      options.replace === true ? incomingItems : [...incomingItems, ...existingItems];
+    const canonicalItems = canonicalizeWatchHistoryItems(
+      combined,
+      WATCH_HISTORY_MAX_ITEMS,
+    );
+    const fingerprint = await this.getFingerprint(resolvedActor, canonicalItems);
+    devLogger.info("[nostr] Updating watch history list.", {
+      actor: resolvedActor,
+      incomingItemCount: incomingItems.length,
+      finalItemCount: canonicalItems.length,
+      replace: options.replace === true,
+    });
+    const publishResult = await this.publishSnapshot(canonicalItems, {
+>>>>>>> origin/main
       actorPubkey: resolvedActor,
       snapshotId: options.snapshotId || cachedEntry.snapshotId,
       attempt: options.attempt || 0,
     });
+<<<<<<< HEAD
 
+=======
+>>>>>>> origin/main
     devLogger.info("[nostr] Watch history list publish attempt finished.", {
       actor: resolvedActor,
       snapshotId: publishResult.snapshotId || null,
       success: !!publishResult.ok,
       retryable: !!publishResult.retryable,
     });
+<<<<<<< HEAD
     const entry = {
       actor: resolvedActor,
       records,
@@ -1757,6 +2815,40 @@ class WatchHistoryManager {
       );
     } else {
       this.cancelRepublish("update-list");
+=======
+    const metadata = sanitizeWatchHistoryMetadata(cachedEntry.metadata);
+    metadata.updatedAt = Date.now();
+    metadata.status = publishResult.ok ? "ok" : "error";
+    metadata.lastPublishResults = publishResult.publishResults;
+    metadata.skippedCount = publishResult.skippedCount || 0;
+    if (!publishResult.ok) {
+      metadata.lastError = publishResult.error || "publish-failed";
+    } else {
+      delete metadata.lastError;
+    }
+    const entry = {
+      actor: resolvedActor,
+      items: canonicalItems,
+      snapshotId: publishResult.snapshotId || cachedEntry.snapshotId || "",
+      pointerEvent: publishResult.pointerEvent || cachedEntry.pointerEvent || null,
+      chunkEvents: publishResult.chunkEvents || cachedEntry.chunkEvents || [],
+      savedAt: Date.now(),
+      fingerprint,
+      metadata,
+    };
+    this.cache.set(actorKey, entry);
+    this.persistEntry(actorKey, entry);
+    if (!publishResult.ok && publishResult.retryable && entry.snapshotId) {
+      this.scheduleRepublish(entry.snapshotId, async (attempt) =>
+        this.publishSnapshot(entry.items, {
+          actorPubkey: resolvedActor,
+          snapshotId: entry.snapshotId,
+          attempt,
+        }),
+      );
+    } else if (publishResult.ok && entry.snapshotId) {
+      this.cancelRepublish(entry.snapshotId);
+>>>>>>> origin/main
     }
     return publishResult;
   }
@@ -1786,6 +2878,7 @@ class WatchHistoryManager {
     }
     const existingEntry =
       this.cache.get(actorKey) || this.getStorage().actors?.[actorKey] || {};
+<<<<<<< HEAD
 
     let existingItems = [];
     if (existingEntry.records) {
@@ -1794,6 +2887,11 @@ class WatchHistoryManager {
         existingItems = existingEntry.items;
     }
 
+=======
+    const existingItems = Array.isArray(existingEntry.items)
+      ? canonicalizeWatchHistoryItems(existingEntry.items, WATCH_HISTORY_MAX_ITEMS)
+      : [];
+>>>>>>> origin/main
     const targetKey = pointerKey(pointer);
     const filtered = existingItems.filter((item) => pointerKey(item) !== targetKey);
     if (filtered.length === existingItems.length) {
@@ -1834,6 +2932,7 @@ class WatchHistoryManager {
       return { pointerEvent: null, items: [], snapshotId: "" };
     }
     const actorKeyIsHex = /^[0-9a-f]{64}$/.test(actorKey);
+<<<<<<< HEAD
 
     const activePubkey = typeof this.deps.getActivePubkey === "function" ? this.deps.getActivePubkey() : "";
     const normalizedLogged = normalizeActorKey(activePubkey);
@@ -1843,17 +2942,29 @@ class WatchHistoryManager {
         signer = this.deps.resolveActiveSigner?.(activePubkey);
     }
 
+=======
+    const normalizedLogged = normalizeActorKey(
+      typeof this.deps.getActivePubkey === "function" ? this.deps.getActivePubkey() : "",
+    );
+    const signer = this.deps.resolveActiveSigner?.(actorKey) || null;
+>>>>>>> origin/main
     const canUseActiveSignerDecrypt =
       normalizedLogged &&
       normalizedLogged === actorKey &&
       signer &&
       (typeof signer.nip04Decrypt === "function" || typeof signer.nip44Decrypt === "function");
     const decryptSigner = canUseActiveSignerDecrypt ? signer : null;
+<<<<<<< HEAD
 
     if (decryptSigner && this.deps.shouldRequestExtensionPermissions?.(decryptSigner)) {
       await this.deps.ensureExtensionPermissions?.(DEFAULT_NIP07_PERMISSION_METHODS);
     }
 
+=======
+    if (decryptSigner && this.deps.shouldRequestExtensionPermissions?.(decryptSigner)) {
+      await this.deps.ensureExtensionPermissions?.(DEFAULT_NIP07_PERMISSION_METHODS);
+    }
+>>>>>>> origin/main
     devLogger.info("[nostr] Fetching watch history from relays.", {
       actor: resolvedActor,
       forceRefresh: options.forceRefresh === true,
@@ -1861,6 +2972,7 @@ class WatchHistoryManager {
     const existingEntry = this.cache.get(actorKey);
     const now = Date.now();
     const ttl = this.getCacheTtlMs();
+<<<<<<< HEAD
 
     const loadFromStorage = async () => {
       const storageEntry = this.getStorage().actors?.[actorKey];
@@ -1881,19 +2993,42 @@ class WatchHistoryManager {
         actor: resolvedActor,
         items,
         records,
+=======
+    const loadFromStorage = async () => {
+      const storageEntry = this.getStorage().actors?.[actorKey];
+      const items = Array.isArray(storageEntry?.items)
+        ? canonicalizeWatchHistoryItems(storageEntry.items, WATCH_HISTORY_MAX_ITEMS)
+        : [];
+      const fingerprint = typeof storageEntry?.fingerprint === "string"
+        ? storageEntry.fingerprint
+        : await this.getFingerprint(resolvedActor, items);
+      const entry = {
+        actor: resolvedActor,
+        items,
+>>>>>>> origin/main
         snapshotId: typeof storageEntry?.snapshotId === "string"
           ? storageEntry.snapshotId
           : "",
         pointerEvent: null,
+<<<<<<< HEAD
         savedAt: now,
         fingerprint,
         metadata: {},
+=======
+        chunkEvents: [],
+        savedAt: now,
+        fingerprint,
+        metadata: sanitizeWatchHistoryMetadata(storageEntry?.metadata),
+>>>>>>> origin/main
       };
       this.cache.set(actorKey, entry);
       this.persistEntry(actorKey, entry);
       return { pointerEvent: null, items, snapshotId: entry.snapshotId };
     };
+<<<<<<< HEAD
 
+=======
+>>>>>>> origin/main
     if (!actorKeyIsHex) {
       devLogger.warn(
         `[nostr] Cannot normalize watch history actor key to hex. Aborting relay fetch for ${resolvedActor}.`,
@@ -1940,9 +3075,19 @@ class WatchHistoryManager {
         snapshotId: existingEntry?.snapshotId || "",
       };
     }
+<<<<<<< HEAD
     const limitRaw = Number(WATCH_HISTORY_FETCH_EVENT_LIMIT);
     const limit =
       Number.isFinite(limitRaw) && limitRaw > 0 ? Math.floor(limitRaw) : 50;
+=======
+    const identifiers = [
+      WATCH_HISTORY_LIST_IDENTIFIER,
+      ...WATCH_HISTORY_LEGACY_LIST_IDENTIFIERS,
+    ];
+    const limitRaw = Number(WATCH_HISTORY_FETCH_EVENT_LIMIT);
+    const limit =
+      Number.isFinite(limitRaw) && limitRaw > 0 ? Math.floor(limitRaw) : 20;
+>>>>>>> origin/main
     let readRelays = [];
     if (typeof this.deps.getReadRelays === "function") {
       const read = this.deps.getReadRelays();
@@ -1961,6 +3106,7 @@ class WatchHistoryManager {
     }
     let pointerEvents = [];
     try {
+<<<<<<< HEAD
       const kinds = [WATCH_HISTORY_KIND];
       const filters = [
         {
@@ -1968,6 +3114,13 @@ class WatchHistoryManager {
           authors: [actorKey],
           // Filter by the new version tag to ignore older history lists
           "#v": [WATCH_HISTORY_VERSION_TAG_VALUE],
+=======
+      const filters = [
+        {
+          kinds: [WATCH_HISTORY_KIND],
+          authors: [actorKey],
+          "#d": identifiers,
+>>>>>>> origin/main
           limit,
         },
       ];
@@ -1980,6 +3133,7 @@ class WatchHistoryManager {
     } catch (error) {
       devLogger.warn("[nostr] Failed to fetch watch history pointer:", error);
     }
+<<<<<<< HEAD
 
     // Process all events
     let eventToProcess = pointerEvents.length > 0 ? pointerEvents : null;
@@ -1987,12 +3141,33 @@ class WatchHistoryManager {
     if (!eventToProcess || eventToProcess.length === 0) {
       devLogger.info(
         "[nostr] No watch history event found on relays. Falling back to storage.",
+=======
+    const pointerEvent = pointerEvents.reduce((latest, current) => {
+      if (!current || typeof current !== "object") {
+        return latest;
+      }
+      const currentCreated = Number.isFinite(current.created_at)
+        ? current.created_at
+        : 0;
+      const latestCreated = Number.isFinite(latest?.created_at)
+        ? latest.created_at
+        : 0;
+      if (currentCreated > latestCreated) {
+        return current;
+      }
+      return latest;
+    }, null);
+    if (!pointerEvent) {
+      devLogger.info(
+        "[nostr] No watch history pointer event found on relays. Falling back to storage.",
+>>>>>>> origin/main
         {
           actor: resolvedActor,
         },
       );
       return await loadFromStorage();
     }
+<<<<<<< HEAD
 
     // Determine snapshotId from the latest event (prioritizing monthly)
     const sortedEvents = [...eventToProcess].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
@@ -2022,10 +3197,50 @@ class WatchHistoryManager {
           continue;
         }
         if (identifier && !chunkIdentifiers.includes(identifier)) {
+=======
+    const fallbackItems = extractPointerItemsFromEvent(pointerEvent);
+    const pointerPayload = parseWatchHistoryContentWithFallback(
+      pointerEvent.content,
+      fallbackItems,
+      {
+        version: 0,
+        items: fallbackItems,
+        snapshot: "",
+        chunkIndex: 0,
+        totalChunks: 1,
+      },
+    );
+    const snapshotId = (() => {
+      const tags = Array.isArray(pointerEvent.tags) ? pointerEvent.tags : [];
+      for (const tag of tags) {
+        if (Array.isArray(tag) && tag[0] === "snapshot" && typeof tag[1] === "string") {
+          return tag[1];
+        }
+      }
+      return pointerPayload.snapshot || "";
+    })();
+    const chunkAddresses = (() => {
+      const tags = Array.isArray(pointerEvent.tags) ? pointerEvent.tags : [];
+      const addresses = [];
+      for (const tag of tags) {
+        if (Array.isArray(tag) && tag[0] === "a" && typeof tag[1] === "string" && tag[1]) {
+          addresses.push(tag[1]);
+        }
+      }
+      return addresses;
+    })();
+    const chunkIdentifiers = [];
+    for (const address of chunkAddresses) {
+      const parts = address.split(":");
+      if (parts.length >= 3) {
+        const identifier = parts.slice(2).join(":");
+        if (identifier) {
+>>>>>>> origin/main
           chunkIdentifiers.push(identifier);
         }
       }
     }
+<<<<<<< HEAD
 
     let decryptedItems = [];
     if (chunkIdentifiers.length && decryptSigner) {
@@ -2061,10 +3276,38 @@ class WatchHistoryManager {
             decryptedItems.push(...parsed.items);
           }
         }
+=======
+    const chunkFilters = [];
+    if (chunkIdentifiers.length) {
+      chunkFilters.push({
+        kinds: [WATCH_HISTORY_KIND],
+        authors: [actorKey],
+        "#d": chunkIdentifiers,
+        limit: Math.max(chunkIdentifiers.length * 2, limit),
+      });
+    } else if (snapshotId) {
+      chunkFilters.push({
+        kinds: [WATCH_HISTORY_KIND],
+        authors: [actorKey],
+        "#snapshot": [snapshotId],
+        limit,
+      });
+    }
+    let chunkEvents = [];
+    if (chunkFilters.length) {
+      try {
+        const chunkResults = await pool.list(readRelays, chunkFilters);
+        chunkEvents = Array.isArray(chunkResults)
+          ? chunkResults
+            .flat()
+            .filter((event) => event && typeof event === "object")
+          : [];
+>>>>>>> origin/main
       } catch (error) {
         devLogger.warn("[nostr] Failed to fetch watch history chunks:", error);
       }
     }
+<<<<<<< HEAD
 
     // We will collect items from all events and merge them
     const eventsToProcess = Array.isArray(eventToProcess) ? eventToProcess : [eventToProcess];
@@ -2085,19 +3328,269 @@ class WatchHistoryManager {
 
       // Try parsing as plaintext first
       const payload = parseWatchHistoryContentWithFallback(
+=======
+    const latestChunks = new Map();
+    for (const event of chunkEvents) {
+      const identifier = (() => {
+        const tags = Array.isArray(event.tags) ? event.tags : [];
+        for (const tag of tags) {
+          if (Array.isArray(tag) && tag[0] === "d" && typeof tag[1] === "string") {
+            return tag[1];
+          }
+        }
+        return null;
+      })();
+      if (!identifier) {
+        continue;
+      }
+      const existing = latestChunks.get(identifier);
+      const createdAt = Number.isFinite(event?.created_at) ? event.created_at : 0;
+      const existingCreated = Number.isFinite(existing?.created_at) ? existing.created_at : 0;
+      if (!existing || createdAt > existingCreated) {
+        latestChunks.set(identifier, event);
+      }
+    }
+    const decryptErrors = [];
+    const collectedItems = [];
+    const toolkitCache = { current: null };
+    const decryptorCandidates = new Map();
+    const registerDecryptor = (scheme, handler, source) => {
+      if (!scheme || typeof handler !== "function") {
+        return;
+      }
+      const existing = decryptorCandidates.get(scheme) || [];
+      existing.push({ handler, source: source || "unknown" });
+      decryptorCandidates.set(scheme, existing);
+    };
+
+    if (decryptSigner) {
+      if (typeof decryptSigner.nip44Decrypt === "function") {
+        registerDecryptor(
+          "nip44_v2",
+          (payload) => decryptSigner.nip44Decrypt(actorKey, payload),
+          "active-signer",
+        );
+        registerDecryptor(
+          "nip44",
+          (payload) => decryptSigner.nip44Decrypt(actorKey, payload),
+          "active-signer",
+        );
+      }
+      if (typeof decryptSigner.nip04Decrypt === "function") {
+        registerDecryptor(
+          "nip04",
+          (payload) => decryptSigner.nip04Decrypt(actorKey, payload),
+          "active-signer",
+        );
+      }
+    }
+
+    const ensureSessionDecryptors = async () => {
+      try {
+        let session = this.deps.getSessionActor?.();
+        if (!session || session.pubkey !== actorKey || !session.privateKey) {
+          const ensured = await this.deps.ensureSessionActor?.();
+          if (normalizeActorKey(ensured) !== actorKey) {
+            throw new Error("session-actor-mismatch");
+          }
+          session = this.deps.getSessionActor?.();
+        }
+        if (!session || session.pubkey !== actorKey) {
+          throw new Error("session-actor-missing");
+        }
+        if (!session.privateKey) {
+          throw new Error("missing-session-key");
+        }
+        const tools = await resolveNostrToolkit(this.deps, toolkitCache);
+        if (!tools) {
+          throw new Error("nostr-tools-missing");
+        }
+        const suite = createNip44CipherSuite(tools, session.privateKey, actorKey);
+        if (suite?.v2?.decrypt) {
+          registerDecryptor(
+            "nip44_v2",
+            async (payload) => suite.v2.decrypt(payload),
+            "session-nip44_v2",
+          );
+          registerDecryptor(
+            "nip44",
+            async (payload) => suite.v2.decrypt(payload),
+            "session-nip44_v2",
+          );
+        }
+        if (suite?.legacy?.decrypt) {
+          registerDecryptor(
+            "nip44",
+            async (payload) => suite.legacy.decrypt(payload),
+            "session-nip44",
+          );
+        }
+        if (tools?.nip04 && typeof tools.nip04.decrypt === "function") {
+          registerDecryptor(
+            "nip04",
+            async (payload) => tools.nip04.decrypt(session.privateKey, actorKey, payload),
+            "session-nip04",
+          );
+        }
+      } catch (error) {
+        devLogger.warn("[nostr] Unable to register session decryptors for watch history.", {
+          actorKey,
+          error: error?.message || error,
+        });
+      }
+    };
+
+    await ensureSessionDecryptors();
+    const chunkCount = latestChunks.size || chunkIdentifiers.length || 0;
+    const chunkKeys = chunkIdentifiers.length
+      ? chunkIdentifiers
+      : Array.from(latestChunks.keys());
+    for (const identifier of chunkKeys) {
+      const event = latestChunks.get(identifier);
+      if (!event) {
+        continue;
+      }
+      const fallbackPointers = extractPointerItemsFromEvent(event);
+      const ciphertext = typeof event.content === "string" ? event.content : "";
+      const ciphertextPreview = ciphertext.slice(0, 32);
+      const chunkContext = {
+        chunkIdentifier: identifier,
+        eventId: event.id ?? null,
+      };
+      const availableSchemes = Array.from(decryptorCandidates.keys());
+      const decryptOrder = determineWatchHistoryDecryptionOrder(
+        event,
+        ciphertext,
+        availableSchemes,
+      );
+      let plaintext = null;
+      let usedScheme = "";
+      let usedSource = "";
+      const attemptFailures = [];
+
+      if (decryptOrder.length) {
+        outer: for (const scheme of decryptOrder) {
+          const candidates = decryptorCandidates.get(scheme) || [];
+          for (const candidate of candidates) {
+            const details = {
+              actorKey,
+              ...chunkContext,
+              scheme,
+              source: candidate.source,
+            };
+            try {
+              devLogger.info("[nostr] Attempting to decrypt watch history chunk.", details);
+              const result = await candidate.handler(ciphertext, chunkContext);
+              if (typeof result !== "string") {
+                throw new Error("invalid-plaintext");
+              }
+              devLogger.info("[nostr] Successfully decrypted watch history chunk.", details);
+              plaintext = result;
+              usedScheme = scheme;
+              usedSource = candidate.source || "";
+              break outer;
+            } catch (error) {
+              devLogger.warn("[nostr] Failed to decrypt watch history chunk with candidate.", {
+                ...details,
+                error: error?.message || error,
+              });
+              attemptFailures.push({ scheme, source: candidate.source, error });
+            }
+          }
+        }
+      }
+
+      const encryptionHints = extractWatchHistoryEncryptionHints(event, ciphertext);
+      const isEncryptedChunk =
+        encryptionHints.length > 0 ||
+        (!looksLikeJsonStructure(ciphertext) && Boolean(ciphertext.trim()));
+
+      let payload;
+      if (plaintext !== null) {
+        devLogger.info("[nostr] Decrypted watch history chunk. Parsing plaintext payload.", {
+          actorKey,
+          ...chunkContext,
+          scheme: usedScheme || null,
+          source: usedSource || null,
+          plaintextPreview: typeof plaintext === "string" ? plaintext.slice(0, 64) : null,
+          expectedPlaintextFormat:
+            "JSON string with { version, items, snapshot, chunkIndex, totalChunks }",
+        });
+        payload = parseWatchHistoryContentWithFallback(
+          plaintext,
+          fallbackPointers,
+          {
+            version: 0,
+            items: fallbackPointers,
+            snapshot: snapshotId,
+            chunkIndex: 0,
+            totalChunks: chunkCount || 1,
+          },
+        );
+      } else if (isEncryptedChunk) {
+        decryptErrors.push({
+          chunkIdentifier: identifier,
+          eventId: event.id ?? null,
+          attempts: attemptFailures,
+        });
+        devLogger.warn(
+          "[nostr] Decrypt failed for watch history chunk. Falling back to pointer items.",
+          {
+            actorKey,
+            ...chunkContext,
+            attempts: attemptFailures.map((entry) => ({
+              scheme: entry.scheme,
+              source: entry.source,
+              error: entry.error?.message || entry.error,
+            })),
+            ciphertextPreview,
+            fallbackPointerCount: Array.isArray(fallbackPointers)
+              ? fallbackPointers.length
+              : 0,
+            expectedPlaintextFormat:
+              "JSON string with { version, items, snapshot, chunkIndex, totalChunks }",
+          },
+        );
+        payload = {
+          version: 0,
+          items: fallbackPointers,
+        };
+      } else {
+        devLogger.info(
+          "[nostr] Watch history chunk is plaintext. Attempting to parse expected payload format.",
+          {
+            actorKey,
+            ...chunkContext,
+            ciphertextPreview,
+            expectedPlaintextFormat:
+              "JSON string with { version, items, snapshot, chunkIndex, totalChunks }",
+          },
+        );
+        payload = parseWatchHistoryContentWithFallback(
+>>>>>>> origin/main
           ciphertext,
           fallbackPointers,
           {
             version: 0,
             items: fallbackPointers,
+<<<<<<< HEAD
             snapshot: eventSnapshotId,
           }
       );
+=======
+            snapshot: snapshotId,
+            chunkIndex: 0,
+            totalChunks: chunkCount || 1,
+          },
+        );
+      }
+>>>>>>> origin/main
 
       if (Array.isArray(payload?.items)) {
         collectedItems.push(...payload.items);
       }
     }
+<<<<<<< HEAD
 
     const fallbackItems = extractPointerItemsFromEvent(latestEvent);
     const mergedItems = decryptedItems.length
@@ -2135,6 +3628,40 @@ class WatchHistoryManager {
     this.cache.set(actorKey, entry);
     this.persistEntry(actorKey, entry);
     return { pointerEvent: latestEvent, items: flatItems, snapshotId: "" };
+=======
+    if (decryptErrors.length) {
+      devLogger.warn(
+        `[nostr] Failed to decrypt ${decryptErrors.length} watch history chunk(s) for ${actorKey}. Using fallback pointers.`,
+      );
+    }
+    const mergedItems = collectedItems.length ? collectedItems : pointerPayload.items;
+    const canonicalItems = canonicalizeWatchHistoryItems(
+      mergedItems,
+      WATCH_HISTORY_MAX_ITEMS,
+    );
+    const fingerprint = await this.getFingerprint(
+      resolvedActor,
+      canonicalItems,
+    );
+    const metadata = sanitizeWatchHistoryMetadata(
+      this.getStorage().actors?.[actorKey]?.metadata,
+    );
+    metadata.lastFetchedAt = now;
+    metadata.decryptErrors = decryptErrors.length;
+    const entry = {
+      actor: resolvedActor,
+      items: canonicalItems,
+      snapshotId,
+      pointerEvent,
+      chunkEvents: Array.from(latestChunks.values()),
+      savedAt: now,
+      fingerprint,
+      metadata,
+    };
+    this.cache.set(actorKey, entry);
+    this.persistEntry(actorKey, entry);
+    return { pointerEvent, items: canonicalItems, snapshotId };
+>>>>>>> origin/main
   }
 
   async resolve(actorInput, options = {}) {
@@ -2161,6 +3688,7 @@ class WatchHistoryManager {
       forceRefresh: options.forceRefresh === true,
     });
     const storage = this.getStorage();
+<<<<<<< HEAD
     const storageEntry = storage.actors?.[actorKey];
 
     let fallbackItems = [];
@@ -2170,6 +3698,14 @@ class WatchHistoryManager {
         fallbackItems = storageEntry.items;
     }
 
+=======
+    const fallbackItems = Array.isArray(storage.actors?.[actorKey]?.items)
+      ? canonicalizeWatchHistoryItems(
+        storage.actors[actorKey].items,
+        WATCH_HISTORY_MAX_ITEMS,
+      )
+      : [];
+>>>>>>> origin/main
     const fetchResult = await this.fetch(resolvedActor, {
       forceRefresh: options.forceRefresh || false,
     });
@@ -2178,6 +3714,13 @@ class WatchHistoryManager {
         version: 2,
         items: fetchResult.items || [],
         snapshot: fetchResult.snapshotId || "",
+<<<<<<< HEAD
+=======
+        chunkIndex: 0,
+        totalChunks: Array.isArray(fetchResult.items)
+          ? fetchResult.items.length
+          : 0,
+>>>>>>> origin/main
       },
       fallbackItems,
     );
@@ -2188,6 +3731,7 @@ class WatchHistoryManager {
     const batchLimit = shouldBatch && hasCustomBatchSize
       ? Math.min(Math.floor(batchPageSizeRaw), WATCH_HISTORY_MAX_ITEMS)
       : WATCH_HISTORY_MAX_ITEMS;
+<<<<<<< HEAD
 
     // Re-bucket with limit
     const records = canonicalizeWatchHistoryItems(
@@ -2203,20 +3747,38 @@ class WatchHistoryManager {
     const fingerprint = await this.getFingerprint(
       resolvedActor,
       records,
+=======
+    const canonicalItems = canonicalizeWatchHistoryItems(
+      merged.items || [],
+      batchLimit,
+    );
+    const fingerprint = await this.getFingerprint(
+      resolvedActor,
+      canonicalItems,
+>>>>>>> origin/main
     );
     devLogger.info("[nostr] Watch history fetch complete.", {
       actor: resolvedActor,
       snapshotId: fetchResult.snapshotId || null,
       pointerFound: !!fetchResult.pointerEvent,
+<<<<<<< HEAD
       itemCount: flatItems.length,
     });
     devLogger.info("[nostr] Watch history resolved and cached.", {
       actor: resolvedActor,
       itemCount: flatItems.length,
+=======
+      itemCount: canonicalItems.length,
+    });
+    devLogger.info("[nostr] Watch history resolved and cached.", {
+      actor: resolvedActor,
+      itemCount: canonicalItems.length,
+>>>>>>> origin/main
       snapshotId: fetchResult.snapshotId || null,
     });
     const entry = {
       actor: resolvedActor,
+<<<<<<< HEAD
       records,
       items: flatItems,
       snapshotId: fetchResult.snapshotId || storage.actors?.[actorKey]?.snapshotId || "",
@@ -2228,6 +3790,19 @@ class WatchHistoryManager {
     this.cache.set(actorKey, entry);
     this.persistEntry(actorKey, entry);
     return flatItems;
+=======
+      items: canonicalItems,
+      snapshotId: fetchResult.snapshotId || storage.actors?.[actorKey]?.snapshotId || "",
+      pointerEvent: fetchResult.pointerEvent || null,
+      chunkEvents: [],
+      savedAt: Date.now(),
+      fingerprint,
+      metadata: sanitizeWatchHistoryMetadata(storage.actors?.[actorKey]?.metadata),
+    };
+    this.cache.set(actorKey, entry);
+    this.persistEntry(actorKey, entry);
+    return canonicalItems;
+>>>>>>> origin/main
   }
 
   clear() {
@@ -2261,17 +3836,30 @@ export function persistWatchHistoryEntry(manager, actorInput, entry) {
   return manager.persistEntry(actorInput, entry);
 }
 
+<<<<<<< HEAD
 export function cancelWatchHistoryRepublish(manager, taskId = null) {
   return manager.cancelRepublish(taskId);
+=======
+export function cancelWatchHistoryRepublish(manager, snapshotId = null) {
+  return manager.cancelRepublish(snapshotId);
+>>>>>>> origin/main
 }
 
 export function scheduleWatchHistoryRepublish(
   manager,
+<<<<<<< HEAD
   taskId,
   operation,
   options = {},
 ) {
   return manager.scheduleRepublish(taskId, operation, options);
+=======
+  snapshotId,
+  operation,
+  options = {},
+) {
+  return manager.scheduleRepublish(snapshotId, operation, options);
+>>>>>>> origin/main
 }
 
 export function getWatchHistoryFingerprint(
@@ -2329,3 +3917,7 @@ export const watchHistoryHelpers = {
   computeWatchHistoryFingerprintForItems,
   extractPointerItemsFromEvent,
 };
+<<<<<<< HEAD
+=======
+
+>>>>>>> origin/main

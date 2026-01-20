@@ -2,13 +2,17 @@ import { userLogger } from "./logger.js";
 // js/utils/storage.js
 
 const URL_HEALTH_STORAGE_PREFIX = "bitvid:urlHealth:";
+<<<<<<< HEAD
 const TORRENT_PROBE_STORAGE_PREFIX = "bitvid:torrentProbe:";
 const TRACKER_HEALTH_STORAGE_PREFIX = "bitvid:trackerHealth:";
+=======
+>>>>>>> origin/main
 
 export function getUrlHealthStorageKey(eventId) {
   return `${URL_HEALTH_STORAGE_PREFIX}${eventId}`;
 }
 
+<<<<<<< HEAD
 export function getTorrentProbeStorageKey(infoHash) {
   return `${TORRENT_PROBE_STORAGE_PREFIX}${infoHash}`;
 }
@@ -17,6 +21,8 @@ export function getTrackerHealthStorageKey(infoHash) {
   return `${TRACKER_HEALTH_STORAGE_PREFIX}${infoHash}`;
 }
 
+=======
+>>>>>>> origin/main
 export function readUrlHealthFromStorage(eventId) {
   if (!eventId || typeof localStorage === "undefined") {
     return null;
@@ -65,6 +71,7 @@ export function removeUrlHealthFromStorage(eventId) {
     userLogger.warn(`Failed to remove URL health for ${eventId}:`, err);
   }
 }
+<<<<<<< HEAD
 
 export function readTorrentProbeFromStorage(infoHash) {
   if (!infoHash || typeof localStorage === "undefined") {
@@ -169,3 +176,5 @@ export function removeTrackerHealthFromStorage(infoHash) {
     userLogger.warn(`Failed to remove tracker health for ${infoHash}:`, err);
   }
 }
+=======
+>>>>>>> origin/main

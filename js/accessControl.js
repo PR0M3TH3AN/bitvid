@@ -117,7 +117,10 @@ class AccessControl {
     this._hydratedFromCache = false;
     this._whitelistListeners = new Set();
     this._editorListeners = new Set();
+<<<<<<< HEAD
     this._blacklistListeners = new Set();
+=======
+>>>>>>> origin/main
 
     this._scheduleHydrateFromCache();
   }
@@ -243,7 +246,10 @@ class AccessControl {
   }
 
   _applyState(state, options = {}) {
+<<<<<<< HEAD
     userLogger.info("[accessControl] _applyState called", { state, options });
+=======
+>>>>>>> origin/main
     const markLoaded = options.markLoaded !== false;
     const editors = Array.isArray(state?.editors) ? state.editors : [];
     const whitelist = Array.isArray(state?.whitelist) ? state.whitelist : [];
@@ -253,8 +259,11 @@ class AccessControl {
       this.editors instanceof Set ? new Set(this.editors) : new Set();
     const previousWhitelist =
       this.whitelist instanceof Set ? new Set(this.whitelist) : new Set();
+<<<<<<< HEAD
     const previousBlacklist =
       this.blacklist instanceof Set ? new Set(this.blacklist) : new Set();
+=======
+>>>>>>> origin/main
 
     this.editors = new Set(
       dedupeNpubs([...ADMIN_EDITORS_NPUBS, ...editors])
@@ -265,6 +274,10 @@ class AccessControl {
     const whitelistChanged = !areSetsEqual(previousWhitelist, this.whitelist);
 
     const blacklistDedupe = dedupeNpubs(blacklist);
+<<<<<<< HEAD
+=======
+    const whitelistSet = new Set(normalizedWhitelist.map(normalizeNpub));
+>>>>>>> origin/main
     const adminGuardSet = new Set([
       normalizeNpub(ADMIN_SUPER_NPUB),
       ...Array.from(this.editors),
@@ -274,13 +287,22 @@ class AccessControl {
       if (!normalized) {
         return false;
       }
+<<<<<<< HEAD
+=======
+      if (whitelistSet.has(normalized)) {
+        return false;
+      }
+>>>>>>> origin/main
       if (adminGuardSet.has(normalized)) {
         return false;
       }
       return true;
     });
     this.blacklist = new Set(sanitizedBlacklist);
+<<<<<<< HEAD
     const blacklistChanged = !areSetsEqual(previousBlacklist, this.blacklist);
+=======
+>>>>>>> origin/main
 
     const toolkitCandidate =
       (typeof window !== "undefined" ? window?.NostrTools : null) ||
@@ -327,9 +349,12 @@ class AccessControl {
     if (editorsChanged) {
       this._emitEditorsChange(Array.from(this.editors));
     }
+<<<<<<< HEAD
     if (blacklistChanged) {
       this._emitBlacklistChange(Array.from(this.blacklist));
     }
+=======
+>>>>>>> origin/main
   }
 
   _emitWhitelistChange(whitelistValues) {
@@ -350,6 +375,7 @@ class AccessControl {
     }
   }
 
+<<<<<<< HEAD
   _emitBlacklistChange(blacklistValues) {
     if (!this._blacklistListeners.size) {
       return;
@@ -368,6 +394,8 @@ class AccessControl {
     }
   }
 
+=======
+>>>>>>> origin/main
   _emitEditorsChange(editorsValues) {
     if (!this._editorListeners.size) {
       return;
@@ -418,11 +446,17 @@ class AccessControl {
 
   refresh() {
     if (this._isRefreshing) {
+<<<<<<< HEAD
       userLogger.info("[accessControl] refresh ignored (already refreshing)");
       return this._refreshPromise;
     }
 
     userLogger.info("[accessControl] refresh started");
+=======
+      return this._refreshPromise;
+    }
+
+>>>>>>> origin/main
     const operation = this._performRefresh();
     const tracked = operation.catch((error) => {
       userLogger.error("Failed to refresh admin lists:", error);
@@ -433,6 +467,7 @@ class AccessControl {
   }
 
   async ensureReady() {
+<<<<<<< HEAD
     // If not loaded and not already refreshing, kick off a background refresh.
     // We do NOT await this promise, allowing the application to proceed immediately.
     // Reactive updates (e.g. onBlacklistChange) will handle the UI state when data arrives.
@@ -447,6 +482,22 @@ class AccessControl {
 
     // Always resolve immediately to prevent blocking application startup.
     return Promise.resolve();
+=======
+    if (!this.hasLoaded && !this._isRefreshing) {
+      this.refresh();
+    }
+
+    try {
+      await this._refreshPromise;
+    } catch (error) {
+      if (!this.hasLoaded) {
+        await this.refresh();
+        await this._refreshPromise;
+      } else {
+        throw error;
+      }
+    }
+>>>>>>> origin/main
   }
 
   whitelistMode() {
@@ -509,6 +560,7 @@ class AccessControl {
     };
   }
 
+<<<<<<< HEAD
   onBlacklistChange(listener) {
     if (typeof listener !== "function") {
       return () => {};
@@ -521,6 +573,8 @@ class AccessControl {
     };
   }
 
+=======
+>>>>>>> origin/main
   async addModerator(requestorNpub, moderatorNpub) {
     if (!this.isSuperAdmin(requestorNpub)) {
       return { ok: false, error: "forbidden" };
@@ -579,7 +633,13 @@ class AccessControl {
     }
 
     const nextWhitelist = dedupeNpubs([...this.getWhitelist(), normalized]);
+<<<<<<< HEAD
     const nextBlacklist = this.getBlacklist();
+=======
+    const nextBlacklist = this.getBlacklist().filter(
+      (value) => value !== normalized
+    );
+>>>>>>> origin/main
 
     try {
       await persistAdminState(actorNpub, {
@@ -638,7 +698,13 @@ class AccessControl {
     }
 
     const nextBlacklist = dedupeNpubs([...this.getBlacklist(), normalized]);
+<<<<<<< HEAD
     const nextWhitelist = this.getWhitelist();
+=======
+    const nextWhitelist = this.getWhitelist().filter(
+      (value) => value !== normalized
+    );
+>>>>>>> origin/main
 
     try {
       await persistAdminState(actorNpub, {
@@ -688,9 +754,21 @@ class AccessControl {
     if (!normalized) {
       return false;
     }
+<<<<<<< HEAD
 
     const normalizedHexCandidate = normalizeHexKey(normalized);
     if (normalizedHexCandidate) {
+=======
+    if (this.whitelist.has(normalized)) {
+      return false;
+    }
+
+    const normalizedHexCandidate = normalizeHexKey(normalized);
+    if (normalizedHexCandidate) {
+      if (this.whitelistPubkeys.has(normalizedHexCandidate)) {
+        return false;
+      }
+>>>>>>> origin/main
       return this.blacklistPubkeys.has(normalizedHexCandidate);
     }
 
@@ -738,14 +816,24 @@ class AccessControl {
         return false;
       }
 
+<<<<<<< HEAD
       if (this.blacklistPubkeys.has(hex)) {
         return false;
       }
 
+=======
+>>>>>>> origin/main
       if (this.whitelistPubkeys.has(hex)) {
         return true;
       }
 
+<<<<<<< HEAD
+=======
+      if (this.blacklistPubkeys.has(hex)) {
+        return false;
+      }
+
+>>>>>>> origin/main
       if (this.whitelistEnabled && !this.whitelistPubkeys.has(hex)) {
         return false;
       }
@@ -762,6 +850,7 @@ class AccessControl {
     }
 
     if (hex) {
+<<<<<<< HEAD
       if (this.blacklistPubkeys.has(hex)) {
         return false;
       }
@@ -772,12 +861,27 @@ class AccessControl {
 
     if (this.blacklist.has(normalized)) {
       return false;
+=======
+      if (this.whitelistPubkeys.has(hex)) {
+        return true;
+      }
+      if (this.blacklistPubkeys.has(hex)) {
+        return false;
+      }
+>>>>>>> origin/main
     }
 
     if (this.whitelist.has(normalized)) {
       return true;
     }
 
+<<<<<<< HEAD
+=======
+    if (this.blacklist.has(normalized)) {
+      return false;
+    }
+
+>>>>>>> origin/main
     if (this.whitelistEnabled && !this.whitelist.has(normalized)) {
       return false;
     }

@@ -7,10 +7,13 @@ export const SESSION_ACTOR_KDF_HASH = "SHA-256";
 export const SESSION_ACTOR_ENCRYPTION_ALGORITHM = "AES-GCM";
 export const SESSION_ACTOR_SALT_BYTES = 16;
 export const SESSION_ACTOR_IV_BYTES = 12;
+<<<<<<< HEAD
 const SESSION_ACTOR_DB_NAME = "bitvidSessionActor";
 const SESSION_ACTOR_DB_VERSION = 1;
 const SESSION_ACTOR_STORE = "sessionActor";
 let sessionActorDbPromise = null;
+=======
+>>>>>>> origin/main
 
 function arrayBufferToBase64(buffer) {
   if (!buffer) {
@@ -66,6 +69,7 @@ function base64ToUint8Array(base64) {
   return bytes;
 }
 
+<<<<<<< HEAD
 function isIndexedDbAvailable() {
   try {
     return typeof indexedDB !== "undefined";
@@ -151,6 +155,8 @@ function clearStoredSessionActorIndexedDb() {
     });
 }
 
+=======
+>>>>>>> origin/main
 function generateRandomBytes(length) {
   const size = Number.isFinite(length) ? Math.max(0, Math.floor(length)) : 0;
   if (size <= 0) {
@@ -372,6 +378,11 @@ export function readStoredSessionActorEntry() {
     const parsed = JSON.parse(raw);
     const pubkey =
       typeof parsed?.pubkey === "string" ? parsed.pubkey.trim() : "";
+<<<<<<< HEAD
+=======
+    const privateKey =
+      typeof parsed?.privateKey === "string" ? parsed.privateKey.trim() : "";
+>>>>>>> origin/main
     const privateKeyEncrypted =
       typeof parsed?.privateKeyEncrypted === "string"
         ? parsed.privateKeyEncrypted.trim()
@@ -381,6 +392,7 @@ export function readStoredSessionActorEntry() {
       ? parsed.createdAt
       : Date.now();
 
+<<<<<<< HEAD
     if (parsed?.privateKey) {
       if (privateKeyEncrypted && encryption) {
         persistSessionActor({
@@ -408,6 +420,11 @@ export function readStoredSessionActorEntry() {
     return {
       pubkey,
       privateKey: "",
+=======
+    return {
+      pubkey,
+      privateKey,
+>>>>>>> origin/main
       privateKeyEncrypted,
       encryption,
       createdAt,
@@ -428,14 +445,26 @@ export function readStoredSessionActorEntry() {
 }
 
 export function persistSessionActor(actor) {
+<<<<<<< HEAD
+=======
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+
+>>>>>>> origin/main
   if (
     !actor ||
     typeof actor.pubkey !== "string" ||
     !actor.pubkey ||
+<<<<<<< HEAD
     typeof actor.privateKeyEncrypted !== "string" ||
     !actor.privateKeyEncrypted ||
     !actor.encryption ||
     typeof actor.encryption !== "object"
+=======
+    ((typeof actor.privateKey !== "string" || !actor.privateKey) &&
+      (typeof actor.privateKeyEncrypted !== "string" || !actor.privateKeyEncrypted))
+>>>>>>> origin/main
   ) {
     return;
   }
@@ -449,6 +478,7 @@ export function persistSessionActor(actor) {
     createdAt,
   };
 
+<<<<<<< HEAD
   const normalizedEncryption = normalizeStoredEncryptionMetadata(actor.encryption);
   if (!normalizedEncryption) {
     return;
@@ -467,10 +497,38 @@ export function persistSessionActor(actor) {
     } catch (error) {
       devLogger.warn("[nostr] Failed to persist session actor:", error);
     }
+=======
+  if (typeof actor.privateKey === "string" && actor.privateKey) {
+    payload.privateKey = actor.privateKey;
+  } else if (
+    typeof actor.privateKeyEncrypted === "string" &&
+    actor.privateKeyEncrypted &&
+    actor.encryption &&
+    typeof actor.encryption === "object"
+  ) {
+    const normalizedEncryption = normalizeStoredEncryptionMetadata(actor.encryption);
+    if (!normalizedEncryption) {
+      return;
+    }
+    payload.privateKeyEncrypted = actor.privateKeyEncrypted;
+    payload.encryption = normalizedEncryption;
+  } else {
+    return;
+  }
+
+  try {
+    localStorage.setItem(
+      SESSION_ACTOR_STORAGE_KEY,
+      JSON.stringify(payload),
+    );
+  } catch (error) {
+    devLogger.warn("[nostr] Failed to persist session actor:", error);
+>>>>>>> origin/main
   }
 }
 
 export function clearStoredSessionActor() {
+<<<<<<< HEAD
   clearStoredSessionActorIndexedDb();
 
   if (typeof localStorage !== "undefined") {
@@ -485,6 +543,17 @@ export function clearStoredSessionActor() {
 export function isSessionActor(nostrClient) {
   const sa = nostrClient?.sessionActor;
   return !!sa && sa.source !== "nsec";
+=======
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+
+  try {
+    localStorage.removeItem(SESSION_ACTOR_STORAGE_KEY);
+  } catch (error) {
+    devLogger.warn("[nostr] Failed to clear stored session actor:", error);
+  }
+>>>>>>> origin/main
 }
 
 export const __testExports = {

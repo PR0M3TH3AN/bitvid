@@ -14,7 +14,10 @@ export function initUploadModal({
   const {
     authService = null,
     r2Service = null,
+<<<<<<< HEAD
     storageService = null,
+=======
+>>>>>>> origin/main
   } = services;
 
   const {
@@ -38,7 +41,10 @@ export function initUploadModal({
     new UploadModal({
       authService,
       r2Service,
+<<<<<<< HEAD
       storageService,
+=======
+>>>>>>> origin/main
       publishVideoNote,
       removeTrackingScripts: removeTrackingScriptsFn,
       setGlobalModalState: setGlobalModalStateFn,
@@ -48,11 +54,14 @@ export function initUploadModal({
       safeEncodeNpub,
       eventTarget: events,
       container,
+<<<<<<< HEAD
       onRequestStorageSettings: () => {
         if (app && app.profileController && typeof app.profileController.show === "function") {
           app.profileController.show("storage");
         }
       },
+=======
+>>>>>>> origin/main
     });
 
   const boundSubmitHandler =

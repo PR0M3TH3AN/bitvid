@@ -4,16 +4,24 @@ import {
   requestDefaultExtensionPermissions,
 } from "./nostrClientFacade.js";
 import { getActiveSigner } from "./nostr/index.js";
+<<<<<<< HEAD
 import { isSessionActor } from "./nostr/sessionActor.js";
 import { normalizeNostrPubkey } from "./nostr/nip46Client.js";
 import { buildBlockListEvent, buildMuteListEvent, BLOCK_LIST_IDENTIFIER, NOTE_TYPES } from "./nostrEventSchemas.js";
 import { CACHE_POLICIES, STORAGE_TIERS } from "./nostr/cachePolicies.js";
 import { devLogger, userLogger } from "./utils/logger.js";
+=======
+import { buildBlockListEvent, BLOCK_LIST_IDENTIFIER } from "./nostrEventSchemas.js";
+import { userLogger } from "./utils/logger.js";
+>>>>>>> origin/main
 import {
   publishEventToRelays,
   assertAnyRelayAccepted,
 } from "./nostrPublish.js";
+<<<<<<< HEAD
 import { profileCache } from "./state/profileCache.js";
+=======
+>>>>>>> origin/main
 
 class TinyEventEmitter {
   constructor() {
@@ -68,6 +76,13 @@ const FAST_BLOCKLIST_RELAY_LIMIT = 3;
 const FAST_BLOCKLIST_TIMEOUT_MS = 2500;
 const BACKGROUND_BLOCKLIST_TIMEOUT_MS = 6000;
 
+<<<<<<< HEAD
+=======
+const BLOCKLIST_STORAGE_PREFIX = "bitvid:user-blocks";
+const BLOCKLIST_SEEDED_KEY_PREFIX = `${BLOCKLIST_STORAGE_PREFIX}:seeded:v1`;
+const BLOCKLIST_REMOVALS_KEY_PREFIX = `${BLOCKLIST_STORAGE_PREFIX}:removals:v1`;
+
+>>>>>>> origin/main
 function normalizeEncryptionToken(value) {
   if (typeof value !== "string") {
     return "";
@@ -286,6 +301,7 @@ function serializeBlockListTagMatrix(values, ownerPubkey, options = {}) {
   return JSON.stringify(tags);
 }
 
+<<<<<<< HEAD
 function extractPubkeysFromTags(tags, ownerPubkey = null) {
   if (!Array.isArray(tags)) {
     return [];
@@ -312,6 +328,8 @@ function extractPubkeysFromTags(tags, ownerPubkey = null) {
   return collected;
 }
 
+=======
+>>>>>>> origin/main
 function parseBlockListPlaintext(plaintext, ownerPubkey) {
   if (typeof plaintext !== "string" || !plaintext) {
     return [];
@@ -330,13 +348,43 @@ function parseBlockListPlaintext(plaintext, ownerPubkey) {
 
   const owner = normalizeHex(ownerPubkey);
 
+<<<<<<< HEAD
   if (Array.isArray(parsed)) {
     return extractPubkeysFromTags(parsed, owner);
+=======
+  const extractFromTags = (tags) => {
+    const collected = [];
+    const seen = new Set();
+    for (const entry of tags) {
+      if (!Array.isArray(entry) || entry.length < 2) {
+        continue;
+      }
+      const label = typeof entry[0] === "string" ? entry[0].trim().toLowerCase() : "";
+      if (label !== "p") {
+        continue;
+      }
+      const normalized = normalizeHex(entry[1]);
+      if (!normalized || normalized === owner || seen.has(normalized)) {
+        continue;
+      }
+      seen.add(normalized);
+      collected.push(normalized);
+    }
+    return collected;
+  };
+
+  if (Array.isArray(parsed)) {
+    return extractFromTags(parsed);
+>>>>>>> origin/main
   }
 
   if (parsed && typeof parsed === "object") {
     if (Array.isArray(parsed.tags) && parsed.tags.length) {
+<<<<<<< HEAD
       return extractPubkeysFromTags(parsed.tags, owner);
+=======
+      return extractFromTags(parsed.tags);
+>>>>>>> origin/main
     }
 
     const legacy = Array.isArray(parsed.blockedPubkeys) ? parsed.blockedPubkeys : [];
@@ -372,6 +420,7 @@ function isUserBlockListEvent(event) {
   return false;
 }
 
+<<<<<<< HEAD
 function isTaggedBlockListEvent(event) {
   if (!event || !Array.isArray(event.tags)) {
     return false;
@@ -562,12 +611,18 @@ function normalizeNpubInput(value) {
   return trimmed;
 }
 
+=======
+>>>>>>> origin/main
 function decodeNpubToHex(npub) {
   if (typeof npub !== "string") {
     return null;
   }
 
+<<<<<<< HEAD
   const trimmed = normalizeNpubInput(npub);
+=======
+  const trimmed = npub.trim();
+>>>>>>> origin/main
   if (!trimmed) {
     return null;
   }
@@ -576,6 +631,7 @@ function decodeNpubToHex(npub) {
     return trimmed.toLowerCase();
   }
 
+<<<<<<< HEAD
   const tools = typeof globalThis !== "undefined" ? globalThis?.NostrTools : null;
   const decoder = tools?.nip19?.decode;
   if (typeof decoder === "function") {
@@ -595,6 +651,142 @@ function decodeNpubToHex(npub) {
   }
 
   return normalizeDecodedHex(fallbackDecodeNpubToHex(trimmed));
+=======
+  if (!trimmed.toLowerCase().startsWith("npub1")) {
+    return null;
+  }
+
+  const tools = window?.NostrTools;
+  const decoder = tools?.nip19?.decode;
+  if (typeof decoder !== "function") {
+    return null;
+  }
+
+  try {
+    const decoded = decoder(trimmed);
+    if (decoded?.type === "npub" && typeof decoded.data === "string") {
+      const hex = decoded.data.trim();
+      if (/^[0-9a-f]{64}$/i.test(hex)) {
+        return hex.toLowerCase();
+      }
+    }
+  } catch (error) {
+    return null;
+  }
+
+  return null;
+}
+
+function readSeededFlag(actorHex) {
+  if (typeof actorHex !== "string" || !actorHex) {
+    return false;
+  }
+
+  if (typeof localStorage === "undefined") {
+    return false;
+  }
+
+  const key = `${BLOCKLIST_SEEDED_KEY_PREFIX}:${actorHex}`;
+
+  try {
+    const value = localStorage.getItem(key);
+    return value === "1";
+  } catch (error) {
+    userLogger.warn(
+      `[UserBlockList] Failed to read seeded baseline state for ${actorHex}:`,
+      error,
+    );
+    return false;
+  }
+}
+
+function writeSeededFlag(actorHex, seeded) {
+  if (typeof actorHex !== "string" || !actorHex) {
+    return;
+  }
+
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+
+  const key = `${BLOCKLIST_SEEDED_KEY_PREFIX}:${actorHex}`;
+
+  try {
+    if (seeded) {
+      localStorage.setItem(key, "1");
+    } else {
+      localStorage.removeItem(key);
+    }
+  } catch (error) {
+    userLogger.warn(
+      `[UserBlockList] Failed to persist seeded baseline state for ${actorHex}:`,
+      error,
+    );
+  }
+}
+
+function readRemovalSet(actorHex) {
+  const empty = new Set();
+  if (typeof actorHex !== "string" || !actorHex) {
+    return empty;
+  }
+
+  if (typeof localStorage === "undefined") {
+    return empty;
+  }
+
+  const key = `${BLOCKLIST_REMOVALS_KEY_PREFIX}:${actorHex}`;
+
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw === null) {
+      return empty;
+    }
+
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return empty;
+    }
+
+    const normalized = parsed
+      .map((entry) => (typeof entry === "string" ? entry.trim().toLowerCase() : ""))
+      .filter((entry) => /^[0-9a-f]{64}$/.test(entry));
+
+    return new Set(normalized);
+  } catch (error) {
+    userLogger.warn(
+      `[UserBlockList] Failed to read seed removal state for ${actorHex}:`,
+      error,
+    );
+    return empty;
+  }
+}
+
+function writeRemovalSet(actorHex, removals) {
+  if (typeof actorHex !== "string" || !actorHex) {
+    return;
+  }
+
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+
+  const key = `${BLOCKLIST_REMOVALS_KEY_PREFIX}:${actorHex}`;
+
+  try {
+    if (!removals || !removals.size) {
+      localStorage.removeItem(key);
+      return;
+    }
+
+    localStorage.setItem(key, JSON.stringify(Array.from(removals)));
+  } catch (error) {
+    userLogger.warn(
+      `[UserBlockList] Failed to persist seed removal state for ${actorHex}:`,
+      error,
+    );
+  }
+>>>>>>> origin/main
 }
 
 function normalizeHex(pubkey) {
@@ -630,6 +822,7 @@ class UserBlockListManager {
     this.loaded = false;
     this.emitter = new TinyEventEmitter();
     this.seedStateCache = new Map();
+<<<<<<< HEAD
 
     profileCache.subscribe((event, detail) => {
       if (event === "profileChanged") {
@@ -641,6 +834,8 @@ class UserBlockListManager {
         }
       }
     });
+=======
+>>>>>>> origin/main
   }
 
   reset() {
@@ -684,8 +879,11 @@ class UserBlockListManager {
 
   async loadBlocks(userPubkey, options = {}) {
     const normalized = normalizeHex(userPubkey);
+<<<<<<< HEAD
     this.activePubkey = normalized;
 
+=======
+>>>>>>> origin/main
     if (!normalized) {
       this.reset();
       this.loaded = true;
@@ -724,6 +922,7 @@ class UserBlockListManager {
 
     emitStatus({ status: "loading", relays: Array.from(nostrClient.relays || []) });
 
+<<<<<<< HEAD
     const localBlocks = this._loadLocal(normalized);
     if (localBlocks) {
       this.blockedPubkeys = localBlocks;
@@ -737,6 +936,8 @@ class UserBlockListManager {
       return;
     }
 
+=======
+>>>>>>> origin/main
     const applyBlockedPubkeys = (nextValues, meta = {}) => {
       const nextSet = new Set(Array.isArray(nextValues) ? nextValues : []);
       this.blockedPubkeys = nextSet;
@@ -853,11 +1054,25 @@ class UserBlockListManager {
     };
 
     try {
+<<<<<<< HEAD
+=======
+      const filter = {
+        kinds: [10000, 30002],
+        authors: [normalized],
+        limit: 2,
+      };
+
+      if (since !== null) {
+        filter.since = since;
+      }
+
+>>>>>>> origin/main
       const relays = Array.isArray(nostrClient.relays)
         ? nostrClient.relays.filter((relay) => typeof relay === "string" && relay)
         : [];
 
       if (!relays.length) {
+<<<<<<< HEAD
         // Only clear if truly no relays, though loadBlocks with no relays is weird.
         if (!this.loaded) {
           this.blockedPubkeys.clear();
@@ -865,11 +1080,95 @@ class UserBlockListManager {
           this.blockEventCreatedAt = null;
           this.loaded = true;
         }
+=======
+        this.blockedPubkeys.clear();
+        this.blockEventId = null;
+        this.blockEventCreatedAt = null;
+        this.loaded = true;
+>>>>>>> origin/main
         emitStatus({ status: "applied-empty" });
         emitStatus({ status: "settled" });
         return;
       }
 
+<<<<<<< HEAD
+=======
+      const fastRelays = relays.slice(0, FAST_BLOCKLIST_RELAY_LIMIT);
+      const backgroundRelays = relays.slice(fastRelays.length);
+
+      const fetchFromRelay = (relayUrl, timeoutMs, requireEvent) =>
+        new Promise((resolve, reject) => {
+          let settled = false;
+          const pool = nostrClient?.pool;
+          if (!pool || typeof pool.list !== "function") {
+            const poolError = new Error(
+              "nostrClient.pool.list is unavailable; cannot query block list.",
+            );
+            poolError.code = "pool-unavailable";
+            poolError.relay = relayUrl;
+            reject(poolError);
+            return;
+          }
+          const timer = setTimeout(() => {
+            if (settled) {
+              return;
+            }
+            settled = true;
+            const timeoutError = new Error(
+              `Timed out fetching block list from ${relayUrl} after ${timeoutMs}ms`
+            );
+            timeoutError.code = "timeout";
+            timeoutError.relay = relayUrl;
+            timeoutError.timeoutMs = timeoutMs;
+            reject(timeoutError);
+          }, timeoutMs);
+
+          Promise.resolve()
+            .then(() => pool.list([relayUrl], [filter]))
+            .then((result) => {
+              if (settled) {
+                return;
+              }
+              settled = true;
+              clearTimeout(timer);
+              const events = Array.isArray(result)
+                ? result.filter(
+                    (event) =>
+                      event && event.pubkey === normalized && isUserBlockListEvent(event),
+                  )
+                : [];
+              if (requireEvent && !events.length) {
+                const emptyError = new Error(
+                  `No block list events returned from ${relayUrl}`
+                );
+                emptyError.code = "empty";
+                emptyError.relay = relayUrl;
+                reject(emptyError);
+                return;
+              }
+              resolve({ relayUrl, events });
+            })
+            .catch((error) => {
+              if (settled) {
+                return;
+              }
+              settled = true;
+              clearTimeout(timer);
+              const wrapped =
+                error instanceof Error ? error : new Error(String(error));
+              wrapped.relay = relayUrl;
+              reject(wrapped);
+            });
+        });
+
+      const fastPromises = fastRelays.map((relayUrl) =>
+        fetchFromRelay(relayUrl, FAST_BLOCKLIST_TIMEOUT_MS, true)
+      );
+      const backgroundPromises = backgroundRelays.map((relayUrl) =>
+        fetchFromRelay(relayUrl, BACKGROUND_BLOCKLIST_TIMEOUT_MS, false)
+      );
+
+>>>>>>> origin/main
       const applyEvents = async (
         events,
         { skipIfEmpty = false, source = "fast" } = {},
@@ -878,6 +1177,7 @@ class UserBlockListManager {
           if (skipIfEmpty) {
             return;
           }
+<<<<<<< HEAD
           if (
             this.lastPublishedCreatedAt !== null ||
             this.blockEventCreatedAt !== null
@@ -890,10 +1190,20 @@ class UserBlockListManager {
              this.blockEventCreatedAt = null;
              applyBlockedPubkeys([], { source, reason: "empty-result" });
           }
+=======
+          if (this.lastPublishedCreatedAt !== null || this.blockEventCreatedAt !== null) {
+            emitStatus({ status: "stale", reason: "empty-result", source });
+            return;
+          }
+          this.blockEventId = null;
+          this.blockEventCreatedAt = null;
+          applyBlockedPubkeys([], { source, reason: "empty-result" });
+>>>>>>> origin/main
           emitStatus({ status: "applied-empty", source });
           return;
         }
 
+<<<<<<< HEAD
         const validEvents = events.filter(
           (event) =>
             event && event.pubkey === normalized && isUserBlockListEvent(event),
@@ -915,10 +1225,31 @@ class UserBlockListManager {
              this.blockEventCreatedAt = null;
              applyBlockedPubkeys([], { source, reason: "empty-result" });
           }
+=======
+        const sorted = events
+          .filter(
+            (event) =>
+              event && event.pubkey === normalized && isUserBlockListEvent(event),
+          )
+          .sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0));
+
+        if (!sorted.length) {
+          if (skipIfEmpty) {
+            return;
+          }
+          if (this.lastPublishedCreatedAt !== null || this.blockEventCreatedAt !== null) {
+            emitStatus({ status: "stale", reason: "empty-result", source });
+            return;
+          }
+          this.blockEventId = null;
+          this.blockEventCreatedAt = null;
+          applyBlockedPubkeys([], { source, reason: "empty-result" });
+>>>>>>> origin/main
           emitStatus({ status: "applied-empty", source });
           return;
         }
 
+<<<<<<< HEAD
         // Separate by kind to merge distinct lists (Block vs Mute)
         const muteEvents = validEvents.filter((e) => e.kind === 10000);
 
@@ -1031,10 +1362,85 @@ class UserBlockListManager {
             error: decryptionError,
             decryptor: "mixed",
           });
+=======
+        const newest = sorted[0];
+        const newestCreatedAt = Number.isFinite(newest?.created_at)
+          ? newest.created_at
+          : 0;
+        const guardCreatedAt = Math.max(
+          this.blockEventCreatedAt ?? 0,
+          this.lastPublishedCreatedAt ?? 0,
+        );
+
+        if (newestCreatedAt < guardCreatedAt) {
+          emitStatus({ status: "stale", event: newest, guardCreatedAt, source });
+          return;
+        }
+
+        if (
+          newestCreatedAt === guardCreatedAt &&
+          this.blockEventId &&
+          newest?.id &&
+          newest.id !== this.blockEventId
+        ) {
+          emitStatus({ status: "stale", event: newest, guardCreatedAt, source });
+          return;
+        }
+
+        if (newest?.id && newest.id === this.blockEventId) {
+          this.blockEventCreatedAt = Number.isFinite(newestCreatedAt)
+            ? newestCreatedAt
+            : this.blockEventCreatedAt;
+          emitStatus({ status: "confirmed", event: newest, source });
+          return;
+        }
+
+        this.blockEventId = newest?.id || null;
+        this.blockEventCreatedAt = Number.isFinite(newestCreatedAt)
+          ? newestCreatedAt
+          : null;
+
+        if (!newest?.content) {
+          applyBlockedPubkeys([], { source, reason: "empty-event", event: newest });
+          emitStatus({ status: "applied-empty", event: newest, source });
+          return;
+        }
+
+        const {
+          decryptors,
+          order,
+          sources,
+          permissionError,
+        } = await resolveDecryptors(newest);
+
+        if (!decryptors.size) {
+          if (permissionError) {
+            userLogger.warn(
+              "[UserBlockList] Unable to load block list via extension decryptor; permissions denied.",
+              permissionError,
+            );
+            this.reset();
+            this.loaded = true;
+            emitStatus({ status: "error", error: permissionError, decryptor: "extension" });
+            emitStatus({ status: "settled" });
+            return;
+          }
+
+          userLogger.warn(
+            "[UserBlockList] No decryptors available; treating block list as empty.",
+          );
+          this.reset();
+          this.loaded = true;
+          const error = new Error(
+            "No decryptors are available to load the block list.",
+          );
+          emitStatus({ status: "error", error, decryptor: "unavailable" });
+>>>>>>> origin/main
           emitStatus({ status: "settled" });
           return;
         }
 
+<<<<<<< HEAD
         const hasMute = Boolean(newestMute);
         const hasBlock = Boolean(newestBlock);
 
@@ -1093,6 +1499,191 @@ class UserBlockListManager {
       }
 
 
+=======
+        let decrypted = "";
+        let schemeUsed = "";
+        let schemeSource = "unavailable";
+        const attemptErrors = [];
+
+        for (const scheme of order) {
+          const handler = decryptors.get(scheme);
+          if (typeof handler !== "function") {
+            continue;
+          }
+          const sourceLabel = sources.get(scheme) || "unknown";
+          try {
+            const plaintext = await handler(newest.content);
+            if (typeof plaintext !== "string") {
+              throw new Error("Decryption returned a non-string payload.");
+            }
+            decrypted = plaintext;
+            schemeUsed = scheme;
+            schemeSource = sourceLabel;
+            break;
+          } catch (error) {
+            attemptErrors.push({ scheme, source: sourceLabel, error });
+          }
+        }
+
+        if (!decrypted) {
+          const error = new Error(
+            "Failed to decrypt block list with available schemes.",
+          );
+          error.code = "block-list-decrypt-failed";
+          if (attemptErrors.length) {
+            error.cause = attemptErrors;
+          }
+          const lastAttempt = attemptErrors.length
+            ? attemptErrors[attemptErrors.length - 1]
+            : null;
+          const decryptPath = lastAttempt?.source || "unavailable";
+          userLogger.error(
+            `[UserBlockList] Failed to decrypt block list via available schemes (last: ${decryptPath}).`,
+            error,
+          );
+          applyBlockedPubkeys([], {
+            source,
+            reason: "decrypt-error",
+            event: newest,
+            error,
+            decryptor: decryptPath,
+            errors: attemptErrors,
+          });
+          emitStatus({
+            status: "error",
+            event: newest,
+            error,
+            source,
+            decryptor: decryptPath,
+          });
+          return;
+        }
+
+        try {
+          const sanitized = parseBlockListPlaintext(decrypted, normalized);
+          applyBlockedPubkeys(sanitized, {
+            source,
+            reason: "applied",
+            event: newest,
+            scheme: schemeUsed,
+            decryptor: schemeSource,
+          });
+          emitStatus({
+            status: "applied",
+            event: newest,
+            blockedPubkeys: Array.from(this.blockedPubkeys),
+            source,
+            scheme: schemeUsed,
+            decryptor: schemeSource,
+          });
+        } catch (err) {
+          userLogger.error("[UserBlockList] Failed to parse block list:", err);
+          applyBlockedPubkeys([], {
+            source,
+            reason: "parse-error",
+            event: newest,
+            error: err,
+            decryptor: schemeSource,
+            scheme: schemeUsed,
+          });
+          emitStatus({
+            status: "error",
+            event: newest,
+            error: err,
+            source,
+            decryptor: schemeSource,
+            scheme: schemeUsed,
+          });
+        }
+      };
+
+      const background = Promise.allSettled([
+        ...fastPromises,
+        ...backgroundPromises,
+      ])
+        .then(async (outcomes) => {
+          const aggregated = [];
+          for (const outcome of outcomes) {
+            if (outcome.status === "fulfilled") {
+              const events = Array.isArray(outcome.value?.events)
+                ? outcome.value.events
+                : [];
+              if (events.length) {
+                aggregated.push(...events);
+              }
+            } else {
+              const reason = outcome.reason;
+              if (reason?.code === "timeout") {
+                userLogger.warn(
+                  `[UserBlockList] Relay ${reason.relay} timed out while loading block list (${reason.timeoutMs}ms)`
+                );
+              } else {
+                const relay = reason?.relay || reason?.relayUrl;
+                userLogger.error(
+                  `[UserBlockList] Relay error at ${relay}:`,
+                  reason?.error ?? reason
+                );
+              }
+            }
+          }
+
+          if (!aggregated.length) {
+            return { foundEvents: false };
+          }
+
+          await applyEvents(aggregated, { skipIfEmpty: true, source: "background" });
+          return { foundEvents: true };
+        })
+        .catch((error) => {
+          userLogger.error("[UserBlockList] background block list refresh failed:", error);
+          return { foundEvents: false, error };
+        });
+
+      let fastResult = null;
+      if (fastPromises.length) {
+        try {
+          fastResult = await Promise.any(fastPromises);
+        } catch (error) {
+          if (error instanceof AggregateError) {
+            error.errors?.forEach((err) => {
+              if (err?.code === "timeout") {
+                userLogger.warn(
+                  `[UserBlockList] Relay ${err.relay} timed out while loading block list (${err.timeoutMs}ms)`
+                );
+              }
+            });
+          } else {
+            userLogger.error("[UserBlockList] Fast block list fetch failed:", error);
+          }
+        }
+      }
+
+      if (fastResult?.events?.length) {
+        await applyEvents(fastResult.events, { source: "fast" });
+        background.catch(() => {});
+        return;
+      }
+
+      if (backgroundRelays.length || fastPromises.length) {
+        emitStatus({
+          status: "awaiting-background",
+          relays: backgroundRelays.length ? backgroundRelays : fastRelays,
+        });
+      }
+
+      const backgroundOutcome = await background;
+
+      if (backgroundOutcome?.foundEvents) {
+        return;
+      }
+
+      if (backgroundOutcome?.error) {
+        emitStatus({ status: "error", error: backgroundOutcome.error, source: "background" });
+        return;
+      }
+
+      await applyEvents([], { source: "background" });
+>>>>>>> origin/main
     } catch (error) {
       userLogger.error("[UserBlockList] loadBlocks failed:", error);
       applyBlockedPubkeys([], { source: "fast", reason: "load-error", error });
@@ -1105,6 +1696,7 @@ class UserBlockListManager {
     }
   }
 
+<<<<<<< HEAD
   _loadLocal(actorHex) {
     const cached = profileCache.get("blocks");
     if (Array.isArray(cached)) {
@@ -1117,6 +1709,8 @@ class UserBlockListManager {
     profileCache.set("blocks", Array.from(this.blockedPubkeys));
   }
 
+=======
+>>>>>>> origin/main
   _getSeedState(actorHex) {
     const normalized = normalizeHex(actorHex);
     if (!normalized) {
@@ -1127,15 +1721,21 @@ class UserBlockListManager {
       return this.seedStateCache.get(normalized);
     }
 
+<<<<<<< HEAD
     const stored = profileCache.get("blocks_meta") || {};
     const seeded = !!stored.seeded;
     const removals = new Set(Array.isArray(stored.removals) ? stored.removals : []);
 
+=======
+    const seeded = readSeededFlag(normalized);
+    const removals = readRemovalSet(normalized);
+>>>>>>> origin/main
     const state = { seeded, removals };
     this.seedStateCache.set(normalized, state);
     return state;
   }
 
+<<<<<<< HEAD
   _persistSeedState(actorHex) {
     const normalized = normalizeHex(actorHex);
     if (!normalized) return;
@@ -1155,28 +1755,59 @@ class UserBlockListManager {
     const state = this._getSeedState(normalized);
     state.seeded = Boolean(seeded);
     this._persistSeedState(normalized);
+=======
+  _setSeeded(actorHex, seeded) {
+    const normalized = normalizeHex(actorHex);
+    if (!normalized) {
+      return;
+    }
+
+    const state = this._getSeedState(normalized);
+    state.seeded = Boolean(seeded);
+    writeSeededFlag(normalized, state.seeded);
+>>>>>>> origin/main
   }
 
   _addSeedRemoval(actorHex, targetHex) {
     const normalizedActor = normalizeHex(actorHex);
     const normalizedTarget = normalizeHex(targetHex);
+<<<<<<< HEAD
     if (!normalizedActor || !normalizedTarget) return;
+=======
+    if (!normalizedActor || !normalizedTarget) {
+      return;
+    }
+>>>>>>> origin/main
 
     const state = this._getSeedState(normalizedActor);
     if (!state.removals.has(normalizedTarget)) {
       state.removals.add(normalizedTarget);
+<<<<<<< HEAD
       this._persistSeedState(normalizedActor);
+=======
+      writeRemovalSet(normalizedActor, state.removals);
+>>>>>>> origin/main
     }
   }
 
   _clearSeedRemoval(actorHex, targetHex) {
     const normalizedActor = normalizeHex(actorHex);
     const normalizedTarget = normalizeHex(targetHex);
+<<<<<<< HEAD
     if (!normalizedActor || !normalizedTarget) return;
 
     const state = this._getSeedState(normalizedActor);
     if (state.removals.delete(normalizedTarget)) {
       this._persistSeedState(normalizedActor);
+=======
+    if (!normalizedActor || !normalizedTarget) {
+      return;
+    }
+
+    const state = this._getSeedState(normalizedActor);
+    if (state.removals.delete(normalizedTarget)) {
+      writeRemovalSet(normalizedActor, state.removals);
+>>>>>>> origin/main
     }
   }
 
@@ -1193,6 +1824,7 @@ class UserBlockListManager {
       return { ok: true, seeded: false, reason: "already-seeded" };
     }
 
+<<<<<<< HEAD
     const removals = state.removals;
     const additions = new Set();
     let invalidCount = 0;
@@ -1273,19 +1905,27 @@ class UserBlockListManager {
       return { ok: true, seeded: false, reason: "already-seeded" };
     }
 
+=======
+>>>>>>> origin/main
     if (this.blockedPubkeys.size > 0) {
       return { ok: true, seeded: false, reason: "non-empty" };
     }
 
     const removals = state.removals;
     const additions = new Set();
+<<<<<<< HEAD
     let invalidCount = 0;
+=======
+>>>>>>> origin/main
 
     const candidates = Array.isArray(candidateNpubs) ? candidateNpubs : [];
     for (const candidate of candidates) {
       const candidateHex = normalizeHex(candidate);
       if (!candidateHex) {
+<<<<<<< HEAD
         invalidCount += 1;
+=======
+>>>>>>> origin/main
         continue;
       }
       if (candidateHex === actorHex) {
@@ -1298,6 +1938,7 @@ class UserBlockListManager {
     }
 
     if (!additions.size) {
+<<<<<<< HEAD
       if (candidates.length) {
         devLogger.info(
           "[UserBlockList] Local seed candidates resolved to zero additions.",
@@ -1315,6 +1956,21 @@ class UserBlockListManager {
 
     additions.forEach((hex) => this.blockedPubkeys.add(hex));
 
+=======
+      return { ok: true, seeded: false, reason: "no-candidates" };
+    }
+
+    const snapshot = new Set(this.blockedPubkeys);
+    additions.forEach((hex) => this.blockedPubkeys.add(hex));
+
+    try {
+      await this.publishBlockList(actorHex);
+    } catch (error) {
+      this.blockedPubkeys = snapshot;
+      throw error;
+    }
+
+>>>>>>> origin/main
     this._setSeeded(actorHex, true);
     additions.forEach((hex) => this._clearSeedRemoval(actorHex, hex));
 
@@ -1324,6 +1980,7 @@ class UserBlockListManager {
         actorPubkey: actorHex,
         blockedPubkeys: Array.from(this.blockedPubkeys),
         addedPubkeys: Array.from(additions),
+<<<<<<< HEAD
         localOnly: true,
       });
     } catch (error) {
@@ -1399,6 +2056,11 @@ class UserBlockListManager {
       });
     } catch (error) {
       userLogger.warn("[UserBlockList] Failed to emit delta seed change event:", error);
+=======
+      });
+    } catch (error) {
+      userLogger.warn("[UserBlockList] Failed to emit seed change event:", error);
+>>>>>>> origin/main
     }
 
     return { ok: true, seeded: true, addedPubkeys: Array.from(additions) };
@@ -1432,6 +2094,7 @@ class UserBlockListManager {
     const snapshot = new Set(this.blockedPubkeys);
     this.blockedPubkeys.add(targetHex);
 
+<<<<<<< HEAD
     const loggedInPubkey = normalizeHex(nostrClient?.pubkey);
     const sessionPubkey = normalizeHex(nostrClient?.sessionActor?.pubkey);
     const isSessionActor =
@@ -1448,6 +2111,8 @@ class UserBlockListManager {
       return { ok: true };
     }
 
+=======
+>>>>>>> origin/main
     try {
       await this.publishBlockList(actorHex);
       this.emitter.emit(USER_BLOCK_EVENTS.CHANGE, {
@@ -1483,6 +2148,7 @@ class UserBlockListManager {
     const snapshot = new Set(this.blockedPubkeys);
     this.blockedPubkeys.delete(targetHex);
 
+<<<<<<< HEAD
     const loggedInPubkey = normalizeHex(nostrClient?.pubkey);
     const sessionPubkey = normalizeHex(nostrClient?.sessionActor?.pubkey);
     const isSessionActor =
@@ -1499,6 +2165,8 @@ class UserBlockListManager {
       return { ok: true };
     }
 
+=======
+>>>>>>> origin/main
     try {
       await this.publishBlockList(actorHex);
       this.emitter.emit(USER_BLOCK_EVENTS.CHANGE, {
@@ -1522,6 +2190,7 @@ class UserBlockListManager {
     plaintext = "",
     onStatus,
   } = {}) {
+<<<<<<< HEAD
     // nostrClient imported from nostrClientFacade
     if (isSessionActor(nostrClient)) {
       const error = new Error(
@@ -1531,18 +2200,35 @@ class UserBlockListManager {
       throw error;
     }
 
+=======
+>>>>>>> origin/main
     const owner = normalizeHex(ownerPubkey);
     if (!owner || !signer || typeof signer.signEvent !== "function") {
       return null;
     }
 
+<<<<<<< HEAD
     const sanitizedTags = sanitizeMuteTags(blockedPubkeys, owner);
     const pTags = sanitizedTags.map((tag) => tag[1]);
+=======
+    const tags = sanitizeMuteTags(blockedPubkeys, owner);
+>>>>>>> origin/main
 
     const timestamp = Number.isFinite(createdAt)
       ? Math.max(0, Math.floor(createdAt))
       : Math.floor(Date.now() / 1000);
 
+<<<<<<< HEAD
+=======
+    const event = {
+      kind: 10000,
+      pubkey: owner,
+      created_at: timestamp,
+      tags,
+      content: "",
+    };
+
+>>>>>>> origin/main
     const payloadText = typeof plaintext === "string" ? plaintext : "";
     let encryptedContent = "";
     let encryptionTagValue = "";
@@ -1572,6 +2258,7 @@ class UserBlockListManager {
       }
     }
 
+<<<<<<< HEAD
     const event = buildMuteListEvent({
       pubkey: owner,
       created_at: timestamp,
@@ -1580,6 +2267,14 @@ class UserBlockListManager {
       encrypted: !!encryptionTagValue,
       encryptionTag: encryptionTagValue,
     });
+=======
+    if (encryptedContent) {
+      event.content = encryptedContent;
+      if (encryptionTagValue) {
+        event.tags.push(["encrypted", encryptionTagValue]);
+      }
+    }
+>>>>>>> origin/main
 
     onStatus?.({ status: "mute-publishing" });
 
@@ -1627,6 +2322,7 @@ class UserBlockListManager {
   }
 
   async publishBlockList(userPubkey, options = {}) {
+<<<<<<< HEAD
     if (isSessionActor(nostrClient)) {
       const error = new Error(
         "Publishing block lists is not allowed for session actors."
@@ -1635,16 +2331,22 @@ class UserBlockListManager {
       throw error;
     }
 
+=======
+>>>>>>> origin/main
     const onStatus =
       options && typeof options.onStatus === "function" ? options.onStatus : null;
 
     onStatus?.({ status: "publishing" });
 
+<<<<<<< HEAD
     let signer = getActiveSigner();
     if (!signer) {
       signer = await nostrClient.ensureActiveSignerForPubkey(userPubkey);
     }
 
+=======
+    const signer = getActiveSigner();
+>>>>>>> origin/main
     if (!signer) {
       const err = new Error(
         "An active signer is required to update the block list."

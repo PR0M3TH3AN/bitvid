@@ -1,8 +1,11 @@
 import { userLogger } from "../../utils/logger.js";
+<<<<<<< HEAD
 import {
   normalizeHashtag,
   formatHashtag,
 } from "../../utils/hashtagNormalization.js";
+=======
+>>>>>>> origin/main
 // NOTE: Keep the Upload, Edit, and Revert modals in lockstep when updating NIP-71 form features.
 
 const REPEATER_KEYS = ["imeta", "text-track", "segment", "t", "p", "r"];
@@ -472,11 +475,30 @@ export class Nip71FormManager {
       value = `${value ?? ""}`;
     }
 
+<<<<<<< HEAD
     return normalizeHashtag(value);
   }
 
   renderHashtagValue(value) {
     return formatHashtag(value);
+=======
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return "";
+    }
+
+    const withoutHash = trimmed.replace(/^#+/, "").trim();
+    if (!withoutHash) {
+      return "";
+    }
+
+    return withoutHash.toLowerCase();
+  }
+
+  renderHashtagValue(value) {
+    const sanitized = this.sanitizeHashtagValue(value);
+    return sanitized ? `#${sanitized}` : "";
+>>>>>>> origin/main
   }
 
   collectNestedValues(entry, nestedKey) {
@@ -797,3 +819,7 @@ export class Nip71FormManager {
     return this.sections.get(key) || null;
   }
 }
+<<<<<<< HEAD
+=======
+
+>>>>>>> origin/main

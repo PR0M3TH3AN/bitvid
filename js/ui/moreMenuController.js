@@ -65,8 +65,11 @@ export default class MoreMenuController {
         callbacks.handleMirrorAction || (() => Promise.resolve()),
       handleEnsurePresenceAction:
         callbacks.handleEnsurePresenceAction || (() => Promise.resolve()),
+<<<<<<< HEAD
       handleEventDetailsAction:
         callbacks.handleEventDetailsAction || (() => Promise.resolve()),
+=======
+>>>>>>> origin/main
       loadVideos: callbacks.loadVideos || (() => Promise.resolve()),
       onUserBlocksUpdated: callbacks.onUserBlocksUpdated || (() => {}),
     };
@@ -754,7 +757,11 @@ export default class MoreMenuController {
           const action = dataset.action || "";
 
           try {
+<<<<<<< HEAD
             await this.handleMoreMenuAction(action, dataset, entry.context.video);
+=======
+            await this.handleMoreMenuAction(action, dataset);
+>>>>>>> origin/main
           } catch (error) {
             userLogger.error("[MoreMenu] Failed to handle action:", error);
           }
@@ -1085,7 +1092,11 @@ export default class MoreMenuController {
     });
   }
 
+<<<<<<< HEAD
   async handleMoreMenuAction(action, dataset = {}, video = null) {
+=======
+  async handleMoreMenuAction(action, dataset = {}) {
+>>>>>>> origin/main
     const normalized = typeof action === "string" ? action.trim() : "";
     const context = dataset.context || "";
     const currentVideo = this.callbacks.getCurrentVideo();
@@ -1589,6 +1600,7 @@ export default class MoreMenuController {
         });
         break;
       }
+<<<<<<< HEAD
       case "event-details": {
         let targetVideo = video;
         if (!targetVideo && context === "modal") {
@@ -1601,6 +1613,8 @@ export default class MoreMenuController {
         });
         break;
       }
+=======
+>>>>>>> origin/main
       default:
         break;
     }

@@ -10,11 +10,15 @@ import nostrService from "../services/nostrService.js";
 import moderationService from "../services/moderationService.js";
 import logger from "../utils/logger.js";
 import { dedupeToNewestByRoot } from "../utils/videoDeduper.js";
+<<<<<<< HEAD
 import { normalizeHashtag } from "../utils/hashtagNormalization.js";
+=======
+>>>>>>> origin/main
 import { isPlainObject, toSet } from "./utils.js";
 
 const FEED_HIDE_BYPASS_NAMES = new Set(["home", "recent"]);
 
+<<<<<<< HEAD
 function normalizeTagSet(values) {
   const normalized = new Set();
   const source = toSet(values);
@@ -29,6 +33,8 @@ function normalizeTagSet(values) {
   return normalized;
 }
 
+=======
+>>>>>>> origin/main
 function resolveDedupeFunction(customDedupe) {
   if (typeof customDedupe === "function") {
     return customDedupe;
@@ -273,6 +279,7 @@ export function createResolvePostedAtStage({
   };
 }
 
+<<<<<<< HEAD
 export function createTagPreferenceFilterStage({
   stageName = "tag-preference-filter",
 } = {}) {
@@ -374,6 +381,8 @@ export function createTagPreferenceFilterStage({
   };
 }
 
+=======
+>>>>>>> origin/main
 export function createBlacklistFilterStage({
   stageName = "blacklist-filter",
   shouldIncludeVideo,
@@ -392,6 +401,13 @@ export function createBlacklistFilterStage({
 
     const options = { blacklistedEventIds: blacklist, isAuthorBlocked };
 
+<<<<<<< HEAD
+=======
+    // TODO(tag-preferences): incorporate context.runtime.tagPreferences once the
+    // filtering helpers are in place so this stage can drop disinterested tags
+    // without disturbing existing blacklist logic.
+
+>>>>>>> origin/main
     const results = [];
 
     for (const item of items) {
@@ -584,7 +600,11 @@ export function createModerationStage({
     defaultValue: DEFAULT_BLUR_THRESHOLD,
     fallbackValue: DEFAULT_BLUR_THRESHOLD,
   });
+<<<<<<< HEAD
   const resolveMuteHideThresholdBase = createThresholdResolver(
+=======
+  const resolveMuteHideThreshold = createThresholdResolver(
+>>>>>>> origin/main
     trustedMuteHideThreshold,
     {
       runtimeKey: "trustedMuteHideThreshold",
@@ -593,6 +613,7 @@ export function createModerationStage({
       allowInfinity: true,
     },
   );
+<<<<<<< HEAD
   const resolveMuteHideThreshold = (context, category) => {
     const base = resolveMuteHideThresholdBase(context);
     const normalizedCategory =
@@ -622,6 +643,8 @@ export function createModerationStage({
 
     return base;
   };
+=======
+>>>>>>> origin/main
   const resolveReportHideThreshold = createThresholdResolver(
     trustedReportHideThreshold,
     {
@@ -659,6 +682,10 @@ export function createModerationStage({
 
     const normalizedAutoplayThreshold = resolveAutoplayThreshold(context);
     const normalizedBlurThreshold = resolveBlurThreshold(context);
+<<<<<<< HEAD
+=======
+    const normalizedMuteHideThreshold = resolveMuteHideThreshold(context);
+>>>>>>> origin/main
     const normalizedReportHideThreshold = resolveReportHideThreshold(context);
 
     const activeIds = new Set();
@@ -908,9 +935,12 @@ export function createModerationStage({
       let trustedMuted = false;
       let trustedMuters = [];
       let trustedMuteCount = 0;
+<<<<<<< HEAD
       let trustedMuteCountTotal = 0;
       let trustedMuteCategory = "";
       let trustedMuteCountsByCategory = null;
+=======
+>>>>>>> origin/main
       let viewerMuted = false;
       if (videoId) {
         try {
@@ -971,6 +1001,7 @@ export function createModerationStage({
                 });
             }
           }
+<<<<<<< HEAD
           if (
             trustedMuted &&
             typeof resolvedService.getTrustedMuteCountsForAuthor === "function"
@@ -986,6 +1017,8 @@ export function createModerationStage({
                   : null;
             }
           }
+=======
+>>>>>>> origin/main
           if (typeof resolvedService.isAuthorMutedByViewer === "function") {
             viewerMuted = resolvedService.isAuthorMutedByViewer(authorHex) === true;
           }
@@ -998,6 +1031,7 @@ export function createModerationStage({
       }
 
       if (trustedMuted) {
+<<<<<<< HEAD
         trustedMuteCountTotal = Number.isFinite(video?.moderation?.trustedMuteCount)
           ? Math.max(0, Math.floor(video.moderation.trustedMuteCount))
           : trustedMuteCountTotal || trustedMuters.length;
@@ -1068,6 +1102,22 @@ export function createModerationStage({
         trustedMuteCategory,
       );
 
+=======
+        trustedMuteCount = Number.isFinite(video?.moderation?.trustedMuteCount)
+          ? Math.max(0, Math.floor(video.moderation.trustedMuteCount))
+          : trustedMuters.length;
+        if (!trustedMuteCount) {
+          trustedMuteCount = trustedMuters.length;
+        }
+        if (trustedMuteCount <= 0) {
+          trustedMuteCount = Math.max(1, trustedMuters.length || 1);
+        }
+      } else {
+        trustedMuteCount = 0;
+        trustedMuters = [];
+      }
+
+>>>>>>> origin/main
       const blockAutoplay =
         trustedCount >= normalizedAutoplayThreshold || trustedMuted || viewerMuted;
       const blurFromReports = trustedCount >= normalizedBlurThreshold;

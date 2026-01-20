@@ -458,6 +458,20 @@ for (const _ of [0]) {
           profileModalRoot?.querySelector('.bv-modal__panel') || profileModalRoot;
         assert.ok(panel?.hasAttribute('inert'));
 
+<<<<<<< HEAD
+=======
+        assert.equal(
+          profileModalRoot?.style.visibility,
+          'hidden',
+          'profile modal should hide visually while login modal is active',
+        );
+        assert.equal(
+          profileModalRoot?.style.pointerEvents,
+          'none',
+          'profile modal should not intercept pointer events while login modal is active',
+        );
+
+>>>>>>> origin/main
         assert.strictEqual(
           container.lastElementChild,
           loginModal,
@@ -480,6 +494,19 @@ for (const _ of [0]) {
           'profile modal should restore aria-hidden',
         );
         assert.equal(panel?.hasAttribute('inert'), false);
+<<<<<<< HEAD
+=======
+        assert.equal(
+          profileModalRoot?.style.visibility ?? '',
+          '',
+          'profile modal visibility should restore after login',
+        );
+        assert.equal(
+          profileModalRoot?.style.pointerEvents ?? '',
+          '',
+          'profile modal pointer events should restore after login',
+        );
+>>>>>>> origin/main
       } finally {
         cleanup();
       }
@@ -1212,6 +1239,7 @@ test('admin mutations invoke accessControl stubs and update admin DOM', async ()
 test('history pane lazily initializes the watch history renderer', async () => {
   const historyCalls = [];
   let capturedConfig = null;
+<<<<<<< HEAD
     let isInitialized = false;
 
   const fakeRenderer = {
@@ -1219,6 +1247,12 @@ test('history pane lazily initializes the watch history renderer', async () => {
     ensureInitialLoad: async ({ actor }) => {
       historyCalls.push(['ensure', actor]);
         isInitialized = true;
+=======
+
+  const fakeRenderer = {
+    ensureInitialLoad: async ({ actor }) => {
+      historyCalls.push(['ensure', actor]);
+>>>>>>> origin/main
     },
     refresh: async ({ actor, force }) => {
       historyCalls.push(['refresh', actor, force]);
@@ -1231,7 +1265,10 @@ test('history pane lazily initializes the watch history renderer', async () => {
     },
     destroy: () => {
       historyCalls.push(['destroy']);
+<<<<<<< HEAD
         isInitialized = false;
+=======
+>>>>>>> origin/main
     },
   };
 
@@ -1252,21 +1289,31 @@ test('history pane lazily initializes the watch history renderer', async () => {
   controller.populateBlockedList = () => {};
   controller.refreshWalletPaneState = () => {};
 
+<<<<<<< HEAD
     // First show: Should call ensureInitialLoad but NOT refresh (optimized)
+=======
+>>>>>>> origin/main
   controller.setActivePubkey(defaultActorHex);
   await controller.show('history');
   await Promise.resolve();
 
   assert.ok(capturedConfig);
   assert.equal(capturedConfig.viewSelector, '#profilePaneHistory');
+<<<<<<< HEAD
 
     // Expect ensure + resume, NO refresh on first load
     assert.deepEqual(historyCalls.slice(0, 2), [
     ['ensure', defaultActorHex],
+=======
+  assert.deepEqual(historyCalls.slice(0, 3), [
+    ['ensure', defaultActorHex],
+    ['refresh', defaultActorHex, true],
+>>>>>>> origin/main
     ['resume'],
   ]);
   assert.ok(typeof controller.boundProfileHistoryVisibility === 'function');
 
+<<<<<<< HEAD
     // Reset calls for second pass
     while (historyCalls.length) historyCalls.pop();
 
@@ -1300,4 +1347,118 @@ test('history pane lazily initializes the watch history renderer', async () => {
     );
     assert.equal(controller.profileHistoryRenderer, null);
     assert.equal(controller.boundProfileHistoryVisibility, null);
+=======
+  await controller.hide();
+  await Promise.resolve();
+
+  assert.equal(
+    historyCalls.some((entry) => Array.isArray(entry) && entry[0] === 'destroy'),
+    true,
+  );
+  assert.equal(controller.profileHistoryRenderer, null);
+  assert.equal(controller.boundProfileHistoryVisibility, null);
+});
+
+test('history metadata toggle updates stored preference', async (t) => {
+  let storedPreference = true;
+  let clearCalls = 0;
+
+  const originalSetPreference = watchHistoryService.setMetadataPreference;
+  const originalShouldStore = watchHistoryService.shouldStoreMetadata;
+  const originalClearMetadata = watchHistoryService.clearLocalMetadata;
+  const originalSubscribe = watchHistoryService.subscribe;
+  const originalIsEnabled = watchHistoryService.isEnabled;
+  const originalSupportsLocal = watchHistoryService.supportsLocalHistory;
+  const originalIsLocalOnly = watchHistoryService.isLocalOnly;
+
+  watchHistoryService.setMetadataPreference = (value) => {
+    storedPreference = value !== false;
+  };
+  watchHistoryService.shouldStoreMetadata = () => storedPreference;
+  watchHistoryService.clearLocalMetadata = () => {
+    clearCalls += 1;
+  };
+  watchHistoryService.subscribe = () => () => {};
+  watchHistoryService.isEnabled = () => true;
+  watchHistoryService.supportsLocalHistory = () => true;
+  watchHistoryService.isLocalOnly = () => false;
+
+  t.after(() => {
+    watchHistoryService.setMetadataPreference = originalSetPreference;
+    watchHistoryService.shouldStoreMetadata = originalShouldStore;
+    watchHistoryService.clearLocalMetadata = originalClearMetadata;
+    watchHistoryService.subscribe = originalSubscribe;
+    watchHistoryService.isEnabled = originalIsEnabled;
+    watchHistoryService.supportsLocalHistory = originalSupportsLocal;
+    watchHistoryService.isLocalOnly = originalIsLocalOnly;
+  });
+
+  const controller = createController({
+    createWatchHistoryRenderer: (config) =>
+      createWatchHistoryRenderer({
+        ...config,
+        fetchHistory: async () => ({ items: [], metadata: {} }),
+        snapshot: async () => ({}),
+      }),
+    services: {
+      nostrClient: { sessionActor: { pubkey: defaultActorHex } },
+      getCurrentUserNpub: () => defaultActorNpub,
+    },
+  });
+
+  await controller.load();
+  applyDesignSystemAttributes(document);
+
+  controller.refreshAdminPaneState = async () => {};
+  controller.populateProfileRelays = () => {};
+  controller.populateBlockedList = () => {};
+  controller.refreshWalletPaneState = () => {};
+
+  controller.setActivePubkey(defaultActorHex);
+
+  let cleanupRan = false;
+  const cleanup = () => {
+    try {
+      controller.hide({ silent: true });
+    } catch {}
+    cleanupRan = true;
+  };
+
+  try {
+    await controller.show('history');
+    await waitForAnimationFrame(window, 3);
+
+    const toggle = document.getElementById('profileHistoryMetadataToggle');
+    assert.ok(toggle);
+    assert.equal(toggle.getAttribute('aria-checked'), 'true');
+    assert.equal(toggle.getAttribute('data-enabled'), 'true');
+
+    toggle.dispatchEvent(
+      new window.MouseEvent('click', { bubbles: true, cancelable: true }),
+    );
+    await waitForAnimationFrame(window, 2);
+
+    assert.equal(storedPreference, false);
+    assert.equal(toggle.getAttribute('aria-checked'), 'false');
+    assert.equal(toggle.getAttribute('data-enabled'), 'false');
+    assert.equal(clearCalls, 1);
+
+    toggle.dispatchEvent(
+      new window.MouseEvent('click', { bubbles: true, cancelable: true }),
+    );
+    await waitForAnimationFrame(window, 2);
+
+    assert.equal(storedPreference, true);
+    assert.equal(toggle.getAttribute('aria-checked'), 'true');
+    assert.equal(toggle.getAttribute('data-enabled'), 'true');
+  } finally {
+    cleanup();
+  }
+
+  t.after(() => {
+    if (!cleanupRan) {
+      cleanup();
+    }
+  });
+>>>>>>> origin/main
 });

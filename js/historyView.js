@@ -18,14 +18,26 @@ import {
   getModerationOverrideActionLabels,
 } from "./ui/moderationUiHelpers.js";
 import { buildModerationBadgeText } from "./ui/moderationCopy.js";
+<<<<<<< HEAD
 import { formatShortNpub } from "./utils/formatters.js";
+=======
+>>>>>>> origin/main
 
 export const WATCH_HISTORY_EMPTY_COPY =
   "Your watch history is empty. Watch some videos to populate this list.";
 
 export const WATCH_HISTORY_DISABLED_COPY =
+<<<<<<< HEAD
   "Watch history sync is unavailable. Connect a NIP-07 extension or log in to enable syncing.";
 
+=======
+  "Watch history sync is unavailable. Connect a NIP-07 extension or log in to enable encrypted syncing.";
+
+const WATCH_HISTORY_METADATA_PREF_KEY =
+  "bitvid:watch-history:metadata-preference";
+const WATCH_HISTORY_PRIVACY_DISMISSED_KEY =
+  "bitvid:watch-history:privacy-banner-dismissed";
+>>>>>>> origin/main
 const DEFAULT_WATCH_HISTORY_BATCH_SIZE = 12;
 const WATCH_HISTORY_BATCH_SIZE = (() => {
   const raw = Number(WATCH_HISTORY_BATCH_PAGE_SIZE);
@@ -49,6 +61,7 @@ function escapeSelector(value) {
   return value.replace(/([^a-zA-Z0-9_-])/g, "\\$1");
 }
 
+<<<<<<< HEAD
 function resolveElement(selector, root = document) {
   if (!selector || typeof selector !== "string") {
     return null;
@@ -56,6 +69,14 @@ function resolveElement(selector, root = document) {
   const scope = root && typeof root.querySelector === "function" ? root : document;
   try {
     return scope.querySelector(selector);
+=======
+function resolveElement(selector) {
+  if (!selector || typeof selector !== "string") {
+    return null;
+  }
+  try {
+    return document.querySelector(selector);
+>>>>>>> origin/main
   } catch (error) {
     userLogger.warn("[historyView] Failed to query selector:", selector, error);
     return null;
@@ -85,11 +106,15 @@ function getAppInstance() {
   return getApplication();
 }
 
+<<<<<<< HEAD
 function buildWatchHistoryFeedRuntime({
   actor,
   cursor = 0,
   forceRefresh = false,
 } = {}) {
+=======
+function buildWatchHistoryFeedRuntime({ actor, cursor = 0 } = {}) {
+>>>>>>> origin/main
   const app = getAppInstance();
   const normalizedActor =
     typeof actor === "string" && actor.trim() ? actor.trim() : "";
@@ -107,9 +132,14 @@ function buildWatchHistoryFeedRuntime({
       false,
     watchHistory: {
       actor: normalizedActor,
+<<<<<<< HEAD
       cursor: Number.isFinite(cursor) ? cursor : 0,
       forceRefresh: forceRefresh === true,
     },
+=======
+      cursor: Number.isFinite(cursor) ? cursor : 0
+    }
+>>>>>>> origin/main
   };
 
   const preferenceSource =
@@ -245,6 +275,7 @@ function normalizeHistoryItems(rawItems) {
     if (a.watchedAt !== b.watchedAt) {
       return b.watchedAt - a.watchedAt;
     }
+<<<<<<< HEAD
     const createdA = Number.isFinite(a?.video?.created_at)
       ? a.video.created_at
       : 0;
@@ -254,6 +285,8 @@ function normalizeHistoryItems(rawItems) {
     if (createdA !== createdB) {
       return createdB - createdA;
     }
+=======
+>>>>>>> origin/main
     return a.pointerKey.localeCompare(b.pointerKey);
   });
   return normalized;
@@ -1116,7 +1149,11 @@ function refreshRegisteredHistoryCards(video, context, pointerKeys = null) {
   });
 }
 
+<<<<<<< HEAD
 export function buildHistoryCard({ item, video, profile }) {
+=======
+export function buildHistoryCard({ item, video, profile, metadataPreference }) {
+>>>>>>> origin/main
   const article = document.createElement("article");
   article.className = "watch-history-card";
   article.dataset.pointerKey = item.pointerKey;
@@ -1253,7 +1290,11 @@ export function buildHistoryCard({ item, video, profile }) {
     profile?.display_name || profile?.name || profile?.username || "Unknown";
   if ((!creatorLabel || creatorLabel === "Unknown") && video?.pubkey) {
     const encoded = app?.safeEncodeNpub?.(video.pubkey) || "";
+<<<<<<< HEAD
     creatorLabel = formatShortNpub(encoded) || encoded || video.pubkey.slice(0, 8).concat("…");
+=======
+    creatorLabel = encoded || video.pubkey.slice(0, 8).concat("…");
+>>>>>>> origin/main
   }
   creatorNameButton.textContent = creatorLabel;
 
@@ -1316,10 +1357,17 @@ export function buildHistoryCard({ item, video, profile }) {
   }
   removeButton.setAttribute(
     "aria-label",
+<<<<<<< HEAD
     "Remove this history entry (sync may take a moment)."
   );
   removeButton.title =
     "Removes this entry from history. Relay sync may take a moment.";
+=======
+    "Remove this encrypted history entry (sync may take a moment)."
+  );
+  removeButton.title =
+    "Removes this entry from encrypted history. Relay sync may take a moment.";
+>>>>>>> origin/main
 
   actions.appendChild(playButton);
   actions.appendChild(channelButton);
@@ -1327,6 +1375,16 @@ export function buildHistoryCard({ item, video, profile }) {
 
   meta.appendChild(actions);
 
+<<<<<<< HEAD
+=======
+  if (metadataPreference === "relay-opt-in") {
+    const hint = document.createElement("p");
+    hint.className = "text-xs text-info";
+    hint.textContent = "Metadata is shared with relays for this entry.";
+    meta.appendChild(hint);
+  }
+
+>>>>>>> origin/main
   article.appendChild(primary);
   article.appendChild(meta);
 
@@ -1372,24 +1430,36 @@ export function buildHistoryCard({ item, video, profile }) {
 
 export function createWatchHistoryRenderer(config = {}) {
   const {
+<<<<<<< HEAD
     container = typeof document !== "undefined" ? document : null,
     fetchHistory = async (
       actorInput,
       { cursor = 0, forceRefresh = false } = {}
     ) => {
+=======
+    fetchHistory = async (actorInput, { cursor = 0 } = {}) => {
+>>>>>>> origin/main
       const app = getAppInstance();
       const engine = app?.feedEngine;
       if (engine && typeof engine.run === "function") {
         const runtime = buildWatchHistoryFeedRuntime({
           actor: actorInput,
+<<<<<<< HEAD
           cursor,
           forceRefresh,
+=======
+          cursor
+>>>>>>> origin/main
         });
         return engine.run("watch-history", { runtime });
       }
       const items = await watchHistoryService.loadLatest(actorInput, {
+<<<<<<< HEAD
         allowStale: !forceRefresh,
         forceRefresh,
+=======
+        allowStale: true
+>>>>>>> origin/main
       });
       const normalized = normalizeHistoryItems(items);
       return { items: normalized, metadata: { engine: "service-fallback" } };
@@ -1404,11 +1474,29 @@ export function createWatchHistoryRenderer(config = {}) {
     sentinelSelector = "#watchHistorySentinel",
     loadMoreSelector = "#watchHistoryLoadMore",
     clearButtonSelector = '[data-history-action="clear-cache"]',
+<<<<<<< HEAD
     refreshButtonSelector = '[data-history-action="refresh"]',
     errorBannerSelector = "#watchHistoryError",
     scrollContainerSelector = null,
     featureBannerSelector = "#profileHistoryFeatureBanner",
     sessionWarningSelector = "#profileHistorySessionWarning",
+=======
+    republishButtonSelector = '[data-history-action="republish"]',
+    privacyBannerSelector = "#watchHistoryPrivacyBanner",
+    privacyMessageSelector = "#watchHistoryPrivacyMessage",
+    privacyToggleSelector = "#watchHistoryPrivacyToggle",
+    privacyDismissSelector = "#watchHistoryPrivacyDismiss",
+    infoSelector = "#watchHistoryInfo",
+    errorBannerSelector = "#watchHistoryError",
+    scrollContainerSelector = null,
+    featureBannerSelector = "#profileHistoryFeatureBanner",
+    toastRegionSelector = "#profileHistoryToastRegion",
+    sessionWarningSelector = "#profileHistorySessionWarning",
+    metadataToggleSelector = "#profileHistoryMetadataToggle",
+    metadataThumbSelector = "#profileHistoryMetadataThumb",
+    metadataLabelSelector = "#profileHistoryMetadataLabel",
+    metadataDescriptionSelector = "#profileHistoryMetadataDescription",
+>>>>>>> origin/main
     emptyCopy = WATCH_HISTORY_EMPTY_COPY,
     disabledCopy = WATCH_HISTORY_DISABLED_COPY,
     batchSize = WATCH_HISTORY_BATCH_SIZE,
@@ -1447,7 +1535,18 @@ export function createWatchHistoryRenderer(config = {}) {
     lastError: null,
     observer: null,
     observerAttached: false,
+<<<<<<< HEAD
     feedMetadata: null,
+=======
+    metadataPreference: "encrypted-only",
+    privacyDismissed: false,
+    metadataCache: new Map(),
+    feedMetadata: null,
+    metadataStorageEnabled:
+      typeof watchHistoryService.shouldStoreMetadata === "function"
+        ? watchHistoryService.shouldStoreMetadata() !== false
+        : true,
+>>>>>>> origin/main
     sessionFallbackActive: false,
     syncEnabled,
     localSupported,
@@ -1470,16 +1569,35 @@ export function createWatchHistoryRenderer(config = {}) {
     sentinel: null,
     loadMore: null,
     clearButton: null,
+<<<<<<< HEAD
     refreshButton: null,
     errorBanner: null,
     scrollContainer: null,
     featureBanner: null,
     sessionWarning: null
+=======
+    republishButton: null,
+    privacyBanner: null,
+    privacyMessage: null,
+    privacyToggle: null,
+    privacyDismiss: null,
+    info: null,
+    errorBanner: null,
+    scrollContainer: null,
+    featureBanner: null,
+    toastRegion: null,
+    sessionWarning: null,
+    metadataToggle: null,
+    metadataThumb: null,
+    metadataLabel: null,
+    metadataDescription: null
+>>>>>>> origin/main
   };
 
   let boundGridClickHandler = null;
   let boundLoadMoreHandler = null;
   let boundClearHandler = null;
+<<<<<<< HEAD
   let boundRefreshHandler = null;
 
   const subscriptions = new Set();
@@ -1500,6 +1618,41 @@ export function createWatchHistoryRenderer(config = {}) {
       scrollContainer: resolveElement(scrollContainerSelector, scope),
       featureBanner: resolveElement(featureBannerSelector, scope),
       sessionWarning: resolveElement(sessionWarningSelector, scope)
+=======
+  let boundRepublishHandler = null;
+  let boundPrivacyToggleHandler = null;
+  let boundPrivacyDismissHandler = null;
+  let boundMetadataToggleHandler = null;
+
+  const subscriptions = new Set();
+  const toastTimers = new Set();
+
+  function refreshElements() {
+    elements = {
+      view: resolveElement(viewSelector),
+      grid: resolveElement(gridSelector),
+      loading: resolveElement(loadingSelector),
+      status: resolveElement(statusSelector),
+      empty: resolveElement(emptySelector),
+      sentinel: resolveElement(sentinelSelector),
+      loadMore: resolveElement(loadMoreSelector),
+      clearButton: resolveElement(clearButtonSelector),
+      republishButton: resolveElement(republishButtonSelector),
+      privacyBanner: resolveElement(privacyBannerSelector),
+      privacyMessage: resolveElement(privacyMessageSelector),
+      privacyToggle: resolveElement(privacyToggleSelector),
+      privacyDismiss: resolveElement(privacyDismissSelector),
+      info: resolveElement(infoSelector),
+      errorBanner: resolveElement(errorBannerSelector),
+      scrollContainer: resolveElement(scrollContainerSelector),
+      featureBanner: resolveElement(featureBannerSelector),
+      toastRegion: resolveElement(toastRegionSelector),
+      sessionWarning: resolveElement(sessionWarningSelector),
+      metadataToggle: resolveElement(metadataToggleSelector),
+      metadataThumb: resolveElement(metadataThumbSelector),
+      metadataLabel: resolveElement(metadataLabelSelector),
+      metadataDescription: resolveElement(metadataDescriptionSelector)
+>>>>>>> origin/main
     };
   }
 
@@ -1520,6 +1673,57 @@ export function createWatchHistoryRenderer(config = {}) {
     fingerprintRefreshQueued = false;
   }
 
+<<<<<<< HEAD
+=======
+  function clearToasts() {
+    for (const timer of toastTimers) {
+      clearTimeout(timer);
+    }
+    toastTimers.clear();
+    if (elements.toastRegion instanceof HTMLElement) {
+      elements.toastRegion.innerHTML = "";
+    }
+  }
+
+  function pushToast({ message, variant = "info", duration = 8000 }) {
+    if (!(elements.toastRegion instanceof HTMLElement)) {
+      return;
+    }
+    const text = typeof message === "string" ? message.trim() : "";
+    if (!text) {
+      return;
+    }
+    const variantClass =
+      {
+        info: "border-info/40 bg-info/10 text-info",
+        warning: "border-warning-strong bg-warning-surface text-warning-strong",
+        error: "border-critical/40 bg-critical/10 text-critical"
+      }[variant] || "border-border bg-overlay-panel-soft text-text";
+
+    if (elements.toastRegion.childElementCount >= 3) {
+      const firstChild = elements.toastRegion.firstElementChild;
+      if (firstChild instanceof HTMLElement) {
+        firstChild.remove();
+      }
+    }
+
+    const toast = document.createElement("div");
+    toast.className = `rounded-md border px-4 py-2 text-sm ${variantClass}`;
+    toast.setAttribute("role", "status");
+    toast.textContent = text;
+    elements.toastRegion.appendChild(toast);
+
+    const timeout = Number.isFinite(duration) ? Math.max(0, duration) : 8000;
+    if (timeout > 0) {
+      const timer = setTimeout(() => {
+        toast.remove();
+        toastTimers.delete(timer);
+      }, timeout);
+      toastTimers.add(timer);
+    }
+  }
+
+>>>>>>> origin/main
   function updateFeatureBanner() {
     const actor = typeof state.actor === "string" ? state.actor : undefined;
     const syncEnabled =
@@ -1562,6 +1766,33 @@ export function createWatchHistoryRenderer(config = {}) {
     setHidden(elements.featureBanner, false);
   }
 
+<<<<<<< HEAD
+=======
+  function updateMetadataToggle() {
+    if (!(elements.metadataToggle instanceof HTMLElement)) {
+      return;
+    }
+    const enabled = state.metadataStorageEnabled;
+    elements.metadataToggle.setAttribute(
+      "aria-checked",
+      enabled ? "true" : "false"
+    );
+    elements.metadataToggle.setAttribute(
+      "data-enabled",
+      enabled ? "true" : "false"
+    );
+    elements.metadataToggle.dataset.state = enabled ? "on" : "off";
+    elements.metadataToggle.classList.toggle("bg-info", enabled);
+    elements.metadataToggle.classList.toggle("border-info", enabled);
+    elements.metadataToggle.classList.toggle("bg-panel", !enabled);
+    elements.metadataToggle.classList.toggle("border-border", !enabled);
+    if (elements.metadataThumb instanceof HTMLElement) {
+      elements.metadataThumb.classList.toggle("translate-x-5", enabled);
+      elements.metadataThumb.classList.toggle("translate-x-1", !enabled);
+    }
+  }
+
+>>>>>>> origin/main
   function updateSessionFallbackWarning() {
     if (!(elements.sessionWarning instanceof HTMLElement)) {
       return;
@@ -1579,6 +1810,56 @@ export function createWatchHistoryRenderer(config = {}) {
     setHidden(elements.sessionWarning, !fallbackActive);
   }
 
+<<<<<<< HEAD
+=======
+  function subscribeToMetadataPreference() {
+    if (typeof watchHistoryService.subscribe !== "function") {
+      return;
+    }
+    const unsubscribe = watchHistoryService.subscribe(
+      "metadata-preference",
+      (payload) => {
+        const enabled = payload?.enabled !== false;
+        state.metadataStorageEnabled = enabled;
+        updateMetadataToggle();
+      }
+    );
+    if (typeof unsubscribe === "function") {
+      subscriptions.add(unsubscribe);
+    }
+  }
+
+  function subscribeToRepublishEvents() {
+    if (typeof watchHistoryService.subscribe !== "function") {
+      return;
+    }
+    const unsubscribe = watchHistoryService.subscribe(
+      "republish-scheduled",
+      (payload) => {
+        if (!payload) {
+          return;
+        }
+        if (payload.actor && state.actor && payload.actor !== state.actor) {
+          return;
+        }
+        let message = "Republish retry scheduled.";
+        const delayMs = Number.isFinite(payload.delayMs)
+          ? Math.max(0, Math.floor(payload.delayMs))
+          : null;
+        if (delayMs != null) {
+          const seconds = Math.max(1, Math.round(delayMs / 1000));
+          const suffix = seconds === 1 ? "" : "s";
+          message = `Republish retry scheduled in about ${seconds} second${suffix}.`;
+        }
+        pushToast({ message, variant: "warning" });
+      }
+    );
+    if (typeof unsubscribe === "function") {
+      subscriptions.add(unsubscribe);
+    }
+  }
+
+>>>>>>> origin/main
   function queueFingerprintRefresh() {
     if (!fingerprintRefreshQueued) {
       return;
@@ -1670,6 +1951,30 @@ export function createWatchHistoryRenderer(config = {}) {
         entry.metadata.video = workingVideo;
         entry.video = workingVideo;
         if (entry.pointerKey) {
+<<<<<<< HEAD
+=======
+          const cached = state.metadataCache.get(entry.pointerKey) || {};
+          state.metadataCache.set(entry.pointerKey, {
+            ...cached,
+            video: workingVideo
+          });
+          if (state.metadataStorageEnabled) {
+            try {
+              watchHistoryService.setLocalMetadata?.(entry.pointerKey, {
+                ...cached,
+                video: workingVideo
+              });
+            } catch (error) {
+              if (isDevEnv) {
+                userLogger.warn(
+                  "[historyView] Failed to persist moderation metadata for pointer:",
+                  entry.pointerKey,
+                  error
+                );
+              }
+            }
+          }
+>>>>>>> origin/main
           affectedPointers.push(entry.pointerKey);
         }
       }
@@ -1835,6 +2140,45 @@ export function createWatchHistoryRenderer(config = {}) {
     }
   }
 
+<<<<<<< HEAD
+=======
+  function updatePrivacyBanner() {
+    if (!(elements.privacyBanner instanceof HTMLElement)) {
+      return;
+    }
+    const preference = state.metadataPreference;
+    const dismissed = state.privacyDismissed;
+    if (dismissed && preference !== "relay-opt-in") {
+      setHidden(elements.privacyBanner, true);
+      return;
+    }
+    let message =
+      "Your history stays encrypted. Share metadata with relays to sync thumbnails across devices?";
+    let toggleLabel = "Share metadata";
+    if (preference === "relay-opt-in") {
+      message =
+        "You are sharing metadata with relays so your thumbnails and titles stay in sync.";
+      toggleLabel = "Keep encrypted only";
+    }
+    if (elements.privacyMessage) {
+      elements.privacyMessage.textContent = message;
+    }
+    if (elements.privacyToggle) {
+      elements.privacyToggle.textContent = toggleLabel;
+    }
+    setHidden(elements.privacyBanner, false);
+  }
+
+  function updateInfoCallout() {
+    if (!(elements.info instanceof HTMLElement)) {
+      return;
+    }
+    const message =
+      "Thumbnails and titles are hydrated locally from your device caches. Nothing is published unless you opt in.";
+    elements.info.textContent = message;
+  }
+
+>>>>>>> origin/main
   async function resolveActorKey() {
     if (typeof getActor === "function") {
       try {
@@ -1865,6 +2209,10 @@ export function createWatchHistoryRenderer(config = {}) {
         continue;
       }
 
+<<<<<<< HEAD
+=======
+      const pointerKeyValue = item.pointerKey || null;
+>>>>>>> origin/main
       const baseMetadata =
         item &&
         typeof item === "object" &&
@@ -1873,10 +2221,47 @@ export function createWatchHistoryRenderer(config = {}) {
           ? { ...item.metadata }
           : {};
 
+<<<<<<< HEAD
       const metadata = {
         ...baseMetadata,
         video: item.video || baseMetadata.video || null,
         profile: baseMetadata.profile || null
+=======
+      let cached = pointerKeyValue
+        ? state.metadataCache.get(pointerKeyValue)
+        : null;
+      if (
+        !cached &&
+        pointerKeyValue &&
+        typeof watchHistoryService.getLocalMetadata === "function"
+      ) {
+        try {
+          cached =
+            watchHistoryService.getLocalMetadata(pointerKeyValue) || null;
+        } catch (error) {
+          if (isDevEnv) {
+            userLogger.warn(
+              "[historyView] Failed to read stored metadata for pointer:",
+              pointerKeyValue,
+              error
+            );
+          }
+        }
+      }
+
+      let video = item.video || baseMetadata.video || null;
+      let profile = baseMetadata.profile || null;
+
+      if (cached) {
+        video = video || cached.video || null;
+        profile = profile || cached.profile || null;
+      }
+
+      const metadata = {
+        ...baseMetadata,
+        video: video || null,
+        profile: profile || null
+>>>>>>> origin/main
       };
 
       if (metadata.video && typeof metadata.video === "object") {
@@ -1898,6 +2283,48 @@ export function createWatchHistoryRenderer(config = {}) {
         }
       }
 
+<<<<<<< HEAD
+=======
+      video = metadata.video || null;
+
+      if (pointerKeyValue) {
+        state.metadataCache.set(pointerKeyValue, {
+          video: metadata.video,
+          profile: metadata.profile
+        });
+        if (state.metadataStorageEnabled) {
+          try {
+            watchHistoryService.setLocalMetadata?.(pointerKeyValue, {
+              video: metadata.video,
+              profile: metadata.profile
+            });
+          } catch (error) {
+            if (isDevEnv) {
+              userLogger.warn(
+                "[historyView] Failed to persist metadata for pointer:",
+                pointerKeyValue,
+                error
+              );
+            }
+          }
+        } else if (
+          typeof watchHistoryService.removeLocalMetadata === "function"
+        ) {
+          try {
+            watchHistoryService.removeLocalMetadata(pointerKeyValue);
+          } catch (error) {
+            if (isDevEnv) {
+              userLogger.warn(
+                "[historyView] Failed to remove cached metadata for pointer:",
+                pointerKeyValue,
+                error
+              );
+            }
+          }
+        }
+      }
+
+>>>>>>> origin/main
       hydrated.push({ ...item, video: metadata.video, metadata });
     }
     return hydrated;
@@ -1978,7 +2405,12 @@ export function createWatchHistoryRenderer(config = {}) {
       const card = buildHistoryCard({
         item: entry,
         video: entry.metadata?.video || null,
+<<<<<<< HEAD
         profile: entry.metadata?.profile || null
+=======
+        profile: entry.metadata?.profile || null,
+        metadataPreference: state.metadataPreference
+>>>>>>> origin/main
       });
       container.list.appendChild(card);
     });
@@ -2090,13 +2522,17 @@ export function createWatchHistoryRenderer(config = {}) {
       }
       boundClearHandler = async (event) => {
         event.preventDefault();
+<<<<<<< HEAD
         userLogger.info("[historyView] 'Clear local history' clicked.");
+=======
+>>>>>>> origin/main
         const actor = await resolveActorKey();
         try {
           await watchHistoryService.resetProgress(actor);
           state.items = [];
           state.cursor = 0;
           state.hasMore = false;
+<<<<<<< HEAD
           showEmptyState();
           const app = getAppInstance();
           if (typeof app?.showSuccess === "function") {
@@ -2104,10 +2540,27 @@ export function createWatchHistoryRenderer(config = {}) {
           } else {
             console.log("Local watch history reset.");
           }
+=======
+          state.metadataCache.clear();
+          try {
+            watchHistoryService.clearLocalMetadata?.();
+          } catch (error) {
+            if (isDevEnv) {
+              userLogger.warn(
+                "[historyView] Failed to clear stored metadata while resetting progress:",
+                error
+              );
+            }
+          }
+          showEmptyState();
+          const app = getAppInstance();
+          app?.showSuccess?.("Local watch history cache cleared.");
+>>>>>>> origin/main
         } catch (error) {
           const message =
             error && typeof error.message === "string"
               ? error.message
+<<<<<<< HEAD
               : "Failed to reset local watch history.";
           const app = getAppInstance();
           if (typeof app?.showError === "function") {
@@ -2115,11 +2568,17 @@ export function createWatchHistoryRenderer(config = {}) {
           } else {
             console.error(message);
           }
+=======
+              : "Failed to clear local watch history cache.";
+          const app = getAppInstance();
+          app?.showError?.(message);
+>>>>>>> origin/main
         }
       };
       elements.clearButton.addEventListener("click", boundClearHandler);
     }
 
+<<<<<<< HEAD
     if (elements.refreshButton) {
       if (boundRefreshHandler) {
         elements.refreshButton.removeEventListener("click", boundRefreshHandler);
@@ -2137,6 +2596,138 @@ export function createWatchHistoryRenderer(config = {}) {
     }
   }
 
+=======
+    if (elements.republishButton) {
+      if (boundRepublishHandler) {
+        elements.republishButton.removeEventListener(
+          "click",
+          boundRepublishHandler
+        );
+      }
+      boundRepublishHandler = async (event) => {
+        event.preventDefault();
+        const actor = await resolveActorKey();
+        try {
+          const payload = state.items.map((entry) => ({
+            ...entry.pointer,
+            watchedAt: entry.watchedAt
+          }));
+          await snapshot(payload, { actor, reason: "manual-republish" });
+          const app = getAppInstance();
+          app?.showSuccess?.("Watch history snapshot queued for publish.");
+        } catch (error) {
+          const app = getAppInstance();
+          app?.showError?.("Failed to publish watch history. Try again later.");
+          if (isDevEnv) {
+            userLogger.warn("[historyView] Republish failed:", error);
+          }
+        }
+      };
+      elements.republishButton.addEventListener("click", boundRepublishHandler);
+    }
+  }
+
+  function bindPrivacyControls() {
+    if (elements.privacyToggle) {
+      if (boundPrivacyToggleHandler) {
+        elements.privacyToggle.removeEventListener(
+          "click",
+          boundPrivacyToggleHandler
+        );
+      }
+      boundPrivacyToggleHandler = (event) => {
+        event.preventDefault();
+        if (state.metadataPreference === "relay-opt-in") {
+          state.metadataPreference = "encrypted-only";
+        } else {
+          state.metadataPreference = "relay-opt-in";
+          state.privacyDismissed = false;
+        }
+        writePreference(
+          WATCH_HISTORY_METADATA_PREF_KEY,
+          state.metadataPreference
+        );
+        updatePrivacyBanner();
+        renderer.render();
+      };
+      elements.privacyToggle.addEventListener(
+        "click",
+        boundPrivacyToggleHandler
+      );
+    }
+
+    if (elements.privacyDismiss) {
+      if (boundPrivacyDismissHandler) {
+        elements.privacyDismiss.removeEventListener(
+          "click",
+          boundPrivacyDismissHandler
+        );
+      }
+      boundPrivacyDismissHandler = (event) => {
+        event.preventDefault();
+        state.privacyDismissed = true;
+        writePreference(WATCH_HISTORY_PRIVACY_DISMISSED_KEY, "true");
+        updatePrivacyBanner();
+      };
+      elements.privacyDismiss.addEventListener(
+        "click",
+        boundPrivacyDismissHandler
+      );
+    }
+  }
+
+  function bindMetadataToggle() {
+    if (!(elements.metadataToggle instanceof HTMLElement)) {
+      return;
+    }
+    if (boundMetadataToggleHandler) {
+      elements.metadataToggle.removeEventListener(
+        "click",
+        boundMetadataToggleHandler
+      );
+    }
+    boundMetadataToggleHandler = (event) => {
+      event.preventDefault();
+      const nextValue = !state.metadataStorageEnabled;
+      try {
+        if (typeof watchHistoryService.setMetadataPreference === "function") {
+          watchHistoryService.setMetadataPreference(nextValue);
+        }
+      } catch (error) {
+        if (isDevEnv) {
+          userLogger.warn(
+            "[historyView] Failed to set metadata preference:",
+            error
+          );
+        }
+      }
+      state.metadataStorageEnabled =
+        typeof watchHistoryService.shouldStoreMetadata === "function"
+          ? watchHistoryService.shouldStoreMetadata() !== false
+          : nextValue;
+      updateMetadataToggle();
+      if (!state.metadataStorageEnabled) {
+        try {
+          watchHistoryService.clearLocalMetadata?.();
+        } catch (error) {
+          if (isDevEnv) {
+            userLogger.warn(
+              "[historyView] Failed to clear stored metadata after disabling preference:",
+              error
+            );
+          }
+        }
+        state.metadataCache.clear();
+        void renderer.render();
+      }
+    };
+    elements.metadataToggle.addEventListener(
+      "click",
+      boundMetadataToggleHandler
+    );
+  }
+
+>>>>>>> origin/main
   async function loadHistory({ force = false, actorOverride } = {}) {
     if (state.isLoading) {
       return false;
@@ -2161,10 +2752,14 @@ export function createWatchHistoryRenderer(config = {}) {
     updateSessionFallbackWarning();
     let result = null;
     try {
+<<<<<<< HEAD
       result = await fetchHistory(actor, {
         cursor: 0,
         forceRefresh: force === true,
       });
+=======
+      result = await fetchHistory(actor, { cursor: 0 });
+>>>>>>> origin/main
       state.lastError = null;
       hideErrorBanner();
     } catch (error) {
@@ -2184,6 +2779,10 @@ export function createWatchHistoryRenderer(config = {}) {
     }
     const feedItems = Array.isArray(result?.items) ? result.items : [];
     const normalized = [];
+<<<<<<< HEAD
+=======
+    state.metadataCache.clear();
+>>>>>>> origin/main
     for (const entry of feedItems) {
       const pointer = normalizePointerInput(entry?.pointer || entry);
       if (!pointer) {
@@ -2220,6 +2819,13 @@ export function createWatchHistoryRenderer(config = {}) {
         video: video || null,
         profile: profile || null
       };
+<<<<<<< HEAD
+=======
+      state.metadataCache.set(pointerKeyValue, {
+        video: metadata.video,
+        profile: metadata.profile
+      });
+>>>>>>> origin/main
       normalized.push({
         pointer,
         pointerKey: pointerKeyValue,
@@ -2268,14 +2874,42 @@ export function createWatchHistoryRenderer(config = {}) {
         return;
       }
       clearSubscriptions();
+<<<<<<< HEAD
+=======
+      clearToasts();
+>>>>>>> origin/main
       refreshElements();
       updateFeatureBanner();
       ensureObserver();
       bindGridEvents();
       bindLoadMore();
       bindActions();
+<<<<<<< HEAD
       subscribeToFingerprintUpdates();
       subscribeToModerationEvents();
+=======
+      bindPrivacyControls();
+      bindMetadataToggle();
+      subscribeToMetadataPreference();
+      subscribeToRepublishEvents();
+      subscribeToFingerprintUpdates();
+      subscribeToModerationEvents();
+      updateInfoCallout();
+      state.metadataStorageEnabled =
+        typeof watchHistoryService.shouldStoreMetadata === "function"
+          ? watchHistoryService.shouldStoreMetadata() !== false
+          : true;
+      updateMetadataToggle();
+      const storedPreference = readPreference(
+        WATCH_HISTORY_METADATA_PREF_KEY,
+        "encrypted-only"
+      );
+      state.metadataPreference =
+        storedPreference === "relay-opt-in" ? "relay-opt-in" : "encrypted-only";
+      state.privacyDismissed =
+        readPreference(WATCH_HISTORY_PRIVACY_DISMISSED_KEY, "false") === "true";
+      updatePrivacyBanner();
+>>>>>>> origin/main
       state.initialized = true;
       if (!state.featureEnabled) {
         state.items = [];
@@ -2286,19 +2920,26 @@ export function createWatchHistoryRenderer(config = {}) {
         showFeatureDisabledState();
         return;
       }
+<<<<<<< HEAD
       // Use cached data immediately if available (force: false) unless overridden
       const force = options.force === true;
       await this.refresh({ ...options, force });
+=======
+      await this.refresh({ ...options, force: true });
+>>>>>>> origin/main
     },
     async ensureInitialLoad(options = {}) {
       if (!state.initialized) {
         await this.init(options);
         return;
       }
+<<<<<<< HEAD
       if (options.actor !== state.actor) {
         await this.refresh(options);
         return;
       }
+=======
+>>>>>>> origin/main
       refreshElements();
       updateFeatureBanner();
       if (!state.featureEnabled) {
@@ -2310,6 +2951,15 @@ export function createWatchHistoryRenderer(config = {}) {
         showFeatureDisabledState();
         return;
       }
+<<<<<<< HEAD
+=======
+      bindMetadataToggle();
+      state.metadataStorageEnabled =
+        typeof watchHistoryService.shouldStoreMetadata === "function"
+          ? watchHistoryService.shouldStoreMetadata() !== false
+          : true;
+      updateMetadataToggle();
+>>>>>>> origin/main
     },
     async refresh(options = {}) {
       updateFeatureBanner();
@@ -2367,11 +3017,44 @@ export function createWatchHistoryRenderer(config = {}) {
         elements.clearButton.removeEventListener("click", boundClearHandler);
         boundClearHandler = null;
       }
+<<<<<<< HEAD
       if (elements.refreshButton && boundRefreshHandler) {
         elements.refreshButton.removeEventListener("click", boundRefreshHandler);
         boundRefreshHandler = null;
       }
       clearSubscriptions();
+=======
+      if (elements.republishButton && boundRepublishHandler) {
+        elements.republishButton.removeEventListener(
+          "click",
+          boundRepublishHandler
+        );
+        boundRepublishHandler = null;
+      }
+      if (elements.privacyToggle && boundPrivacyToggleHandler) {
+        elements.privacyToggle.removeEventListener(
+          "click",
+          boundPrivacyToggleHandler
+        );
+        boundPrivacyToggleHandler = null;
+      }
+      if (elements.privacyDismiss && boundPrivacyDismissHandler) {
+        elements.privacyDismiss.removeEventListener(
+          "click",
+          boundPrivacyDismissHandler
+        );
+        boundPrivacyDismissHandler = null;
+      }
+      if (elements.metadataToggle && boundMetadataToggleHandler) {
+        elements.metadataToggle.removeEventListener(
+          "click",
+          boundMetadataToggleHandler
+        );
+        boundMetadataToggleHandler = null;
+      }
+      clearSubscriptions();
+      clearToasts();
+>>>>>>> origin/main
       if (elements.grid) {
         elements.grid.innerHTML = "";
       }
@@ -2380,6 +3063,10 @@ export function createWatchHistoryRenderer(config = {}) {
       state.items = [];
       state.cursor = 0;
       state.hasMore = false;
+<<<<<<< HEAD
+=======
+      state.metadataCache.clear();
+>>>>>>> origin/main
       rendererRef = null;
       fingerprintRefreshQueued = false;
     },
@@ -2405,6 +3092,21 @@ export function createWatchHistoryRenderer(config = {}) {
       if (card) {
         card.remove();
       }
+<<<<<<< HEAD
+=======
+      state.metadataCache.delete(pointerKeyValue);
+      try {
+        watchHistoryService.removeLocalMetadata?.(pointerKeyValue);
+      } catch (error) {
+        if (isDevEnv) {
+          userLogger.warn(
+            "[historyView] Failed to drop cached metadata for pointer:",
+            pointerKeyValue,
+            error
+          );
+        }
+      }
+>>>>>>> origin/main
       removeEmptyDayContainers(elements.grid);
       if (!state.items.length) {
         showEmptyState();

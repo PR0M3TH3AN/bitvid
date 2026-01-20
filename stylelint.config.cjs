@@ -2,7 +2,11 @@ const VAR_PATTERN = /^var\(--.*\)$/;
 const CONTAINS_VAR_PATTERN = /var\(--.*\)/;
 const LINEAR_GRADIENT_PATTERN = /^linear-gradient\(/;
 const COLOR_MIX_PATTERN = /^color-mix\([\s\S]+\)$/;
+<<<<<<< HEAD
 const NON_TOKEN_LENGTH_PATTERN = /^(?!.*var\().*\b\d*\.?\d+(?:px|rem)\b/;
+=======
+const NON_TOKEN_LENGTH_PATTERN = /(?!.*var\().*\b\d*\.?\d+(?:px|rem)\b/;
+>>>>>>> origin/main
 
 module.exports = {
   ignoreFiles: ['css/tailwind.generated.css'],

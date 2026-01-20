@@ -22,7 +22,10 @@ import {
   setProfileCacheEntry as setCachedProfileEntry,
   resetModerationSettings,
 } from "../state/cache.js";
+<<<<<<< HEAD
 import { profileCache } from "../state/profileCache.js";
+=======
+>>>>>>> origin/main
 import getDefaultAuthProvider, {
   providers as defaultAuthProviders,
 } from "./authProviders/index.js";
@@ -501,6 +504,7 @@ export default class AuthService {
       }
     }
 
+<<<<<<< HEAD
     if (control && typeof control.canAccess === "function") {
       let canAccess = true;
       try {
@@ -530,18 +534,26 @@ export default class AuthService {
       }
     }
 
+=======
+>>>>>>> origin/main
     if (normalized) {
       setPubkey(normalized);
       if (this.nostrClient && typeof this.nostrClient === "object") {
         this.nostrClient.pubkey = normalized;
       }
+<<<<<<< HEAD
       profileCache.setActiveProfile(normalized);
+=======
+>>>>>>> origin/main
     } else {
       setPubkey(nextPubkey);
       if (this.nostrClient && typeof this.nostrClient === "object") {
         this.nostrClient.pubkey = trimmed ? trimmed.toLowerCase() : "";
       }
+<<<<<<< HEAD
       profileCache.setActiveProfile(trimmed ? trimmed.toLowerCase() : null);
+=======
+>>>>>>> origin/main
     }
 
     const npub = candidateNpub;
@@ -1060,9 +1072,21 @@ export default class AuthService {
         });
 
         const newest = selectNewestEvent(aggregated);
+<<<<<<< HEAD
         if (newest && this.nostrClient && typeof this.nostrClient.handleEvent === "function") {
           this.nostrClient.handleEvent(newest);
         }
+=======
+        if (!newest) {
+          return;
+        }
+
+        const profile = buildProfileFromEvent(newest);
+        this.setProfileCacheEntry(normalized, profile, {
+          persist: true,
+          reason: "load-own-profile:background",
+        });
+>>>>>>> origin/main
       })
       .catch((error) => {
         this.log("[AuthService] Background profile refresh failed", error);
@@ -1090,12 +1114,20 @@ export default class AuthService {
     if (fastResult?.events?.length) {
       const newest = selectNewestEvent(fastResult.events);
       if (newest) {
+<<<<<<< HEAD
         if (this.nostrClient && typeof this.nostrClient.handleEvent === "function") {
           this.nostrClient.handleEvent(newest);
         }
         const profile = buildProfileFromEvent(newest);
         // setProfileCacheEntry now delegates to profileCache.setProfile, but handleEvent also does it.
         // Doing it here returns the profile object which might be needed immediately.
+=======
+        const profile = buildProfileFromEvent(newest);
+        this.setProfileCacheEntry(normalized, profile, {
+          persist: true,
+          reason: "load-own-profile:fast",
+        });
+>>>>>>> origin/main
         background.catch(() => {});
         return profile;
       }
@@ -1154,6 +1186,7 @@ export default class AuthService {
         }
       }
 
+<<<<<<< HEAD
       if (newest) {
         if (this.nostrClient && typeof this.nostrClient.handleEvent === "function") {
           this.nostrClient.handleEvent(newest);
@@ -1173,6 +1206,26 @@ export default class AuthService {
           };
           return profile;
         }
+=======
+      if (newest?.content) {
+        const data = JSON.parse(newest.content);
+        const profile = {
+          name: data.display_name || data.name || FALLBACK_PROFILE.name,
+          picture: data.picture || FALLBACK_PROFILE.picture,
+          about: typeof data.about === "string" ? data.about : FALLBACK_PROFILE.about,
+          website:
+            typeof data.website === "string" ? data.website : FALLBACK_PROFILE.website,
+          banner:
+            typeof data.banner === "string" ? data.banner : FALLBACK_PROFILE.banner,
+          lud16: typeof data.lud16 === "string" ? data.lud16 : FALLBACK_PROFILE.lud16,
+          lud06: typeof data.lud06 === "string" ? data.lud06 : FALLBACK_PROFILE.lud06,
+        };
+        this.setProfileCacheEntry(normalized, profile, {
+          persist: true,
+          reason: forceRefresh ? "force-refresh" : "fetch-profile",
+        });
+        return profile;
+>>>>>>> origin/main
       }
     } catch (error) {
       this.log("[AuthService] Failed to fetch profile", error);

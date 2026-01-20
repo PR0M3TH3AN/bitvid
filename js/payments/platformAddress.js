@@ -1,7 +1,11 @@
 // js/payments/platformAddress.js
 
 import { PLATFORM_LUD16_OVERRIDE, ADMIN_SUPER_NPUB } from "../config.js";
+<<<<<<< HEAD
 import { nostrClient } from "../nostrClientFacade.js";
+=======
+import { nostrClient } from "../nostr.js";
+>>>>>>> origin/main
 import { setProfileCacheEntry } from "../state/cache.js";
 import { nostrToolsReady } from "../nostrToolsBootstrap.js";
 import { userLogger } from "../utils/logger.js";

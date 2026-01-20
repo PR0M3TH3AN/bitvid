@@ -181,6 +181,7 @@ Mix in Tailwind utilities for icon spacing (`gap-3`), sizing (`px-lg`, `py-sm`),
 
 `.badge` renders an inline pill (`bg-panel`, uppercase text). Opt into semantic variants with `data-variant="info"`, `data-variant="critical"`, or `data-variant="neutral"`. Layer on utilities for icon alignment or truncation.
 
+<<<<<<< HEAD
 ### Messaging & Notification Tokens
 
 Use the dedicated messaging tokens when styling chat surfaces and banners so they inherit theme-safe contrast and icon colors:
@@ -190,6 +191,8 @@ Use the dedicated messaging tokens when styling chat surfaces and banners so the
 - **Reply highlights:** `--reply-highlight-background`, `--reply-highlight-border`, `--reply-highlight-text`, and `--reply-highlight-icon` align reply callouts with the info status palette. 【F:css/tokens.css†L120-L123】
 - **Notification banners:** Base banner colors map through `--notification-banner-*` tokens, with per-variant slots (`critical`, `success`, `info`, `warning`) pulling from the status palettes for AA-compliant text and 3:1 icon contrast. 【F:css/tokens.css†L125-L154】
 
+=======
+>>>>>>> origin/main
 ### Cards
 
 `.card` is the base surface for grid items and panels:

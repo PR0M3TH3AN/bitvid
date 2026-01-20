@@ -52,10 +52,14 @@ const {
 } = await import(
   "../js/adminListStore.js"
 );
+<<<<<<< HEAD
 const [{ nostrClient }, { setActiveSigner }] = await Promise.all([
   import("../js/nostrClientFacade.js"),
   import("../js/nostr/client.js"),
 ]);
+=======
+const { nostrClient, setActiveSigner } = await import("../js/nostr.js");
+>>>>>>> origin/main
 const {
   ADMIN_SUPER_NPUB,
   ADMIN_LIST_NAMESPACE,

@@ -1,6 +1,9 @@
 // js/viewManager.js
 import { initChannelProfileView } from "./channelProfile.js";
+<<<<<<< HEAD
 import { initForYouView } from "./forYouView.js";
+=======
+>>>>>>> origin/main
 import { subscriptions } from "./subscriptions.js";
 import { getApplication } from "./applicationContext.js";
 import { ASSET_VERSION } from "../config/asset-version.js";
@@ -93,6 +96,7 @@ export const viewInitRegistry = {
       refreshApp.forceRefreshAllProfiles();
     }
   },
+<<<<<<< HEAD
   "for-you": () => {
     initForYouView();
     const app = getApplication();
@@ -108,6 +112,8 @@ export const viewInitRegistry = {
       refreshApp.forceRefreshAllProfiles();
     }
   },
+=======
+>>>>>>> origin/main
   explore: () => {
     devLogger.log("Explore view loaded.");
   },
@@ -151,6 +157,7 @@ export const viewInitRegistry = {
     // Call the initialization function from channelProfile.js
     initChannelProfileView();
   },
+<<<<<<< HEAD
   search: async () => {
     try {
       const module = await import("./searchView.js");
@@ -161,4 +168,6 @@ export const viewInitRegistry = {
       userLogger.error("Failed to initialize search view:", error);
     }
   },
+=======
+>>>>>>> origin/main
 };

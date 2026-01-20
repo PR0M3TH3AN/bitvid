@@ -29,11 +29,18 @@ const URL_PROBE_TIMEOUT_RETRY_MS = 15 * 1000; // 15 seconds
 
 const HEX64_REGEX = /^[0-9a-f]{64}$/i;
 
+<<<<<<< HEAD
 const MODERATION_OVERRIDE_STORAGE_KEY = "bitvid:moderationOverrides:v2";
 const LEGACY_MODERATION_OVERRIDE_STORAGE_KEY = "bitvid:moderationOverrides:v1";
 const MODERATION_OVERRIDE_STORAGE_VERSION = 2;
 const MODERATION_SETTINGS_STORAGE_KEY = "bitvid:moderationSettings:v1";
 const MODERATION_SETTINGS_STORAGE_VERSION = 3;
+=======
+const MODERATION_OVERRIDE_STORAGE_KEY = "bitvid:moderationOverrides:v1";
+const MODERATION_OVERRIDE_STORAGE_VERSION = 1;
+const MODERATION_SETTINGS_STORAGE_KEY = "bitvid:moderationSettings:v1";
+const MODERATION_SETTINGS_STORAGE_VERSION = 2;
+>>>>>>> origin/main
 
 function computeDefaultModerationSettings() {
   const defaultBlur = sanitizeModerationThreshold(
@@ -93,7 +100,10 @@ function computeDefaultModerationSettings() {
       runtimeMuteHide,
       defaultTrustedMute,
     ),
+<<<<<<< HEAD
     trustedMuteHideThresholds: {},
+=======
+>>>>>>> origin/main
     trustedSpamHideThreshold: sanitizeModerationThreshold(
       runtimeSpamHide,
       defaultTrustedSpam,
@@ -132,6 +142,7 @@ function sanitizeModerationThreshold(value, fallback) {
   return clamped;
 }
 
+<<<<<<< HEAD
 function sanitizeModerationThresholdMap(
   value,
   fallback = {},
@@ -163,6 +174,8 @@ function sanitizeModerationThresholdMap(
   return mergeFallback ? { ...fallbackMap, ...sanitized } : sanitized;
 }
 
+=======
+>>>>>>> origin/main
 function sanitizeProfileString(value) {
   if (typeof value !== "string") {
     return "";
@@ -271,6 +284,7 @@ function normalizeEventId(value) {
   return HEX64_REGEX.test(trimmed) ? trimmed : null;
 }
 
+<<<<<<< HEAD
 function buildModerationOverrideKey(authorPubkey, eventId) {
   const normalizedAuthor =
     typeof authorPubkey === "string" ? authorPubkey.trim().toLowerCase() : "";
@@ -315,6 +329,8 @@ function normalizeModerationOverrideDescriptor(eventIdOrDescriptor, authorPubkey
   };
 }
 
+=======
+>>>>>>> origin/main
 export function getSavedProfiles() {
   return savedProfiles;
 }
@@ -820,6 +836,7 @@ export function persistProfileCacheToStorage() {
   }
 }
 
+<<<<<<< HEAD
 import { profileCache as unifiedProfileCache } from "./profileCache.js";
 
 export function getProfileCacheEntry(pubkey) {
@@ -836,6 +853,93 @@ export function getProfileCacheEntry(pubkey) {
 
 export function setProfileCacheEntry(pubkey, profile, { persist = true } = {}) {
   const entry = unifiedProfileCache.setProfile(pubkey, profile, { persist });
+=======
+export function getProfileCacheEntry(pubkey) {
+  const normalized = normalizeHexPubkey(pubkey);
+  if (!normalized) {
+    return null;
+  }
+
+  const entry = profileCache.get(normalized);
+  if (!entry) {
+    return null;
+  }
+
+  const timestamp = typeof entry.timestamp === "number" ? entry.timestamp : 0;
+  if (!timestamp || Date.now() - timestamp > PROFILE_CACHE_TTL_MS) {
+    profileCache.delete(normalized);
+    persistProfileCacheToStorage();
+    return null;
+  }
+
+  return entry;
+}
+
+export function setProfileCacheEntry(pubkey, profile, { persist = true } = {}) {
+  const normalizedPubkey = normalizeHexPubkey(pubkey);
+  if (!normalizedPubkey || !profile) {
+    return null;
+  }
+
+  const normalized = {
+    name: profile.name || profile.display_name || "Unknown",
+    picture:
+      sanitizeProfileMediaUrl(profile.picture || profile.image) ||
+      "assets/svg/default-profile.svg",
+  };
+
+  const about = sanitizeProfileString(profile.about || profile.aboutMe);
+  if (about) {
+    normalized.about = about;
+  }
+
+  const website = sanitizeProfileString(profile.website || profile.url);
+  if (website) {
+    normalized.website = website;
+  }
+
+  const banner = sanitizeProfileMediaUrl(
+    profile.banner ||
+      profile.header ||
+      profile.background ||
+      profile.cover ||
+      profile.cover_image ||
+      profile.coverImage
+  );
+  if (banner) {
+    normalized.banner = banner;
+  }
+
+  const lud16 = sanitizeProfileString(profile.lud16);
+  if (lud16) {
+    normalized.lud16 = lud16;
+  }
+
+  const lud06 = sanitizeProfileString(profile.lud06);
+  if (lud06) {
+    normalized.lud06 = lud06;
+  }
+
+  const lightningCandidates = [
+    sanitizeProfileString(profile.lightningAddress),
+    lud16,
+    lud06,
+  ].filter(Boolean);
+  if (lightningCandidates.length) {
+    normalized.lightningAddress = lightningCandidates[0];
+  }
+
+  const entry = {
+    profile: normalized,
+    timestamp: Date.now(),
+  };
+
+  profileCache.set(normalizedPubkey, entry);
+  if (persist) {
+    persistProfileCacheToStorage();
+  }
+
+>>>>>>> origin/main
   return entry;
 }
 
@@ -844,6 +948,7 @@ function haveModerationSettingsChanged(previous, next) {
     return true;
   }
 
+<<<<<<< HEAD
   const prevMuteThresholds =
     previous.trustedMuteHideThresholds &&
     typeof previous.trustedMuteHideThresholds === "object"
@@ -865,6 +970,8 @@ function haveModerationSettingsChanged(previous, next) {
     }
   }
 
+=======
+>>>>>>> origin/main
   return (
     previous.blurThreshold !== next.blurThreshold ||
     previous.autoplayBlockThreshold !== next.autoplayBlockThreshold ||
@@ -946,11 +1053,14 @@ export function loadModerationSettingsFromStorage() {
           overrides.trustedMuteHideThreshold,
           defaults.trustedMuteHideThreshold,
         ),
+<<<<<<< HEAD
         trustedMuteHideThresholds: sanitizeModerationThresholdMap(
           overrides.trustedMuteHideThresholds,
           defaults.trustedMuteHideThresholds,
           { mergeFallback: true },
         ),
+=======
+>>>>>>> origin/main
         trustedSpamHideThreshold: sanitizeModerationThreshold(
           overrides.trustedSpamHideThreshold,
           defaults.trustedSpamHideThreshold,
@@ -962,7 +1072,11 @@ export function loadModerationSettingsFromStorage() {
         legacySettings,
       );
       shouldRewrite = true;
+<<<<<<< HEAD
     } else if (payload.version === 2 || payload.version === MODERATION_SETTINGS_STORAGE_VERSION) {
+=======
+    } else if (payload.version === MODERATION_SETTINGS_STORAGE_VERSION) {
+>>>>>>> origin/main
       const defaults = createDefaultModerationSettings();
       const entries =
         payload.entries && typeof payload.entries === "object"
@@ -1003,11 +1117,14 @@ export function loadModerationSettingsFromStorage() {
             overrides.trustedMuteHideThreshold,
             defaults.trustedMuteHideThreshold,
           ),
+<<<<<<< HEAD
           trustedMuteHideThresholds: sanitizeModerationThresholdMap(
             overrides.trustedMuteHideThresholds,
             defaults.trustedMuteHideThresholds,
             { mergeFallback: true },
           ),
+=======
+>>>>>>> origin/main
           trustedSpamHideThreshold: sanitizeModerationThreshold(
             overrides.trustedSpamHideThreshold,
             defaults.trustedSpamHideThreshold,
@@ -1062,6 +1179,7 @@ function persistModerationSettingsToStorage() {
       overrides.trustedMuteHideThreshold = settings.trustedMuteHideThreshold;
     }
 
+<<<<<<< HEAD
     const trustedMuteHideThresholds = sanitizeModerationThresholdMap(
       settings.trustedMuteHideThresholds,
       defaults.trustedMuteHideThresholds,
@@ -1072,6 +1190,8 @@ function persistModerationSettingsToStorage() {
       overrides.trustedMuteHideThresholds = trustedMuteHideThresholds;
     }
 
+=======
+>>>>>>> origin/main
     if (settings.trustedSpamHideThreshold !== defaults.trustedSpamHideThreshold) {
       overrides.trustedSpamHideThreshold = settings.trustedSpamHideThreshold;
     }
@@ -1163,6 +1283,7 @@ export function setModerationSettings(partial = {}, { persist = true } = {}) {
     }
   }
 
+<<<<<<< HEAD
   if (
     Object.prototype.hasOwnProperty.call(partial, "trustedMuteHideThresholds")
   ) {
@@ -1195,6 +1316,8 @@ export function setModerationSettings(partial = {}, { persist = true } = {}) {
     }
   }
 
+=======
+>>>>>>> origin/main
   if (Object.prototype.hasOwnProperty.call(partial, "trustedSpamHideThreshold")) {
     const value = partial.trustedSpamHideThreshold;
     const sanitized =
@@ -1246,6 +1369,7 @@ export function getModerationOverridesMap() {
   return moderationOverrides;
 }
 
+<<<<<<< HEAD
 export function getModerationOverridesList() {
   return Array.from(moderationOverrides.values()).map((entry) => ({ ...entry }));
 }
@@ -1264,13 +1388,21 @@ export function getModerationOverride(eventIdOrDescriptor, authorPubkey) {
     eventIdOrDescriptor,
     authorPubkey,
   );
+=======
+export function getModerationOverride(eventId) {
+  const normalized = normalizeEventId(eventId);
+>>>>>>> origin/main
   if (!normalized) {
     return null;
   }
 
+<<<<<<< HEAD
   const entry =
     moderationOverrides.get(normalized.key) ||
     findModerationOverrideByEventId(normalized.eventId);
+=======
+  const entry = moderationOverrides.get(normalized);
+>>>>>>> origin/main
   if (!entry) {
     return null;
   }
@@ -1283,21 +1415,29 @@ export function loadModerationOverridesFromStorage() {
     return;
   }
 
+<<<<<<< HEAD
   const raw =
     localStorage.getItem(MODERATION_OVERRIDE_STORAGE_KEY) ||
     localStorage.getItem(LEGACY_MODERATION_OVERRIDE_STORAGE_KEY);
+=======
+  const raw = localStorage.getItem(MODERATION_OVERRIDE_STORAGE_KEY);
+>>>>>>> origin/main
   if (!raw) {
     return;
   }
 
+<<<<<<< HEAD
   let shouldRewrite = false;
 
+=======
+>>>>>>> origin/main
   try {
     const payload = JSON.parse(raw);
     if (!payload || typeof payload !== "object") {
       return;
     }
 
+<<<<<<< HEAD
     const entries = [];
 
     if (payload.version === MODERATION_OVERRIDE_STORAGE_VERSION) {
@@ -1332,14 +1472,36 @@ export function loadModerationOverridesFromStorage() {
       }
       const normalized = normalizeModerationOverrideDescriptor(entry);
       if (!normalized) {
+=======
+    if (payload.version !== MODERATION_OVERRIDE_STORAGE_VERSION) {
+      return;
+    }
+
+    const entries = payload.entries && typeof payload.entries === "object"
+      ? payload.entries
+      : {};
+
+    moderationOverrides.clear();
+
+    for (const [eventId, entry] of Object.entries(entries)) {
+      const normalized = normalizeEventId(eventId);
+      if (!normalized) {
+        continue;
+      }
+      if (!entry || entry.showAnyway !== true) {
+>>>>>>> origin/main
         continue;
       }
       const updatedAt = Number.isFinite(entry.updatedAt)
         ? Math.floor(entry.updatedAt)
         : Date.now();
+<<<<<<< HEAD
       moderationOverrides.set(normalized.key, {
         eventId: normalized.eventId,
         authorPubkey: normalized.authorPubkey,
+=======
+      moderationOverrides.set(normalized, {
+>>>>>>> origin/main
         showAnyway: true,
         updatedAt,
       });
@@ -1350,11 +1512,14 @@ export function loadModerationOverridesFromStorage() {
       "[cache.loadModerationOverridesFromStorage] Failed to parse payload:",
       error,
     );
+<<<<<<< HEAD
     return;
   }
 
   if (shouldRewrite) {
     persistModerationOverridesToStorage();
+=======
+>>>>>>> origin/main
   }
 }
 
@@ -1363,6 +1528,7 @@ export function persistModerationOverridesToStorage() {
     return;
   }
 
+<<<<<<< HEAD
   const entries = [];
   for (const entry of moderationOverrides.values()) {
     if (!entry || entry.showAnyway !== true) {
@@ -1387,6 +1553,25 @@ export function persistModerationOverridesToStorage() {
     try {
       localStorage.removeItem(MODERATION_OVERRIDE_STORAGE_KEY);
       localStorage.removeItem(LEGACY_MODERATION_OVERRIDE_STORAGE_KEY);
+=======
+  const entries = {};
+  for (const [eventId, entry] of moderationOverrides.entries()) {
+    if (!entry || entry.showAnyway !== true) {
+      continue;
+    }
+    const updatedAt = Number.isFinite(entry.updatedAt)
+      ? Math.floor(entry.updatedAt)
+      : Date.now();
+    entries[eventId] = {
+      showAnyway: true,
+      updatedAt,
+    };
+  }
+
+  if (Object.keys(entries).length === 0) {
+    try {
+      localStorage.removeItem(MODERATION_OVERRIDE_STORAGE_KEY);
+>>>>>>> origin/main
     } catch (error) {
       userLogger.warn(
         "[cache.persistModerationOverridesToStorage] Failed to clear overrides:",
@@ -1407,7 +1592,10 @@ export function persistModerationOverridesToStorage() {
       MODERATION_OVERRIDE_STORAGE_KEY,
       JSON.stringify(payload),
     );
+<<<<<<< HEAD
     localStorage.removeItem(LEGACY_MODERATION_OVERRIDE_STORAGE_KEY);
+=======
+>>>>>>> origin/main
   } catch (error) {
     userLogger.warn(
       "[cache.persistModerationOverridesToStorage] Failed to persist overrides:",
@@ -1417,6 +1605,7 @@ export function persistModerationOverridesToStorage() {
 }
 
 export function setModerationOverride(
+<<<<<<< HEAD
   eventIdOrDescriptor,
   override = {},
   { persist = true } = {},
@@ -1425,13 +1614,24 @@ export function setModerationOverride(
     eventIdOrDescriptor,
     override?.authorPubkey,
   );
+=======
+  eventId,
+  override = {},
+  { persist = true } = {},
+) {
+  const normalized = normalizeEventId(eventId);
+>>>>>>> origin/main
   if (!normalized) {
     return null;
   }
 
   const showAnyway = override?.showAnyway === true;
   if (!showAnyway) {
+<<<<<<< HEAD
     const removed = moderationOverrides.delete(normalized.key);
+=======
+    const removed = moderationOverrides.delete(normalized);
+>>>>>>> origin/main
     if (removed && persist) {
       persistModerationOverridesToStorage();
     }
@@ -1442,6 +1642,7 @@ export function setModerationOverride(
     ? Math.floor(override.updatedAt)
     : Date.now();
 
+<<<<<<< HEAD
   const existing = moderationOverrides.get(normalized.key);
   const nextEntry = {
     eventId: normalized.eventId,
@@ -1457,6 +1658,16 @@ export function setModerationOverride(
     existing.authorPubkey !== nextEntry.authorPubkey;
 
   moderationOverrides.set(normalized.key, nextEntry);
+=======
+  const existing = moderationOverrides.get(normalized);
+  const nextEntry = { showAnyway: true, updatedAt };
+  const changed =
+    !existing ||
+    existing.showAnyway !== nextEntry.showAnyway ||
+    existing.updatedAt !== nextEntry.updatedAt;
+
+  moderationOverrides.set(normalized, nextEntry);
+>>>>>>> origin/main
 
   if (persist && changed) {
     persistModerationOverridesToStorage();
@@ -1465,15 +1676,21 @@ export function setModerationOverride(
   return { ...nextEntry };
 }
 
+<<<<<<< HEAD
 export function clearModerationOverride(
   eventIdOrDescriptor,
   { persist = true } = {},
 ) {
   const normalized = normalizeModerationOverrideDescriptor(eventIdOrDescriptor);
+=======
+export function clearModerationOverride(eventId, { persist = true } = {}) {
+  const normalized = normalizeEventId(eventId);
+>>>>>>> origin/main
   if (!normalized) {
     return false;
   }
 
+<<<<<<< HEAD
   let removed = moderationOverrides.delete(normalized.key);
 
   for (const [key, entry] of moderationOverrides.entries()) {
@@ -1483,6 +1700,9 @@ export function clearModerationOverride(
     }
   }
 
+=======
+  const removed = moderationOverrides.delete(normalized);
+>>>>>>> origin/main
   if (removed && persist) {
     persistModerationOverridesToStorage();
   }

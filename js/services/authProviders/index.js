@@ -1,7 +1,10 @@
 import nip07 from "./nip07.js";
 import nip46 from "./nip46.js";
 import nsec from "./nsec.js";
+<<<<<<< HEAD
 import generate from "./generate.js";
+=======
+>>>>>>> origin/main
 
 function normalizeProviderId(provider, fallbackId) {
   if (provider && typeof provider.id === "string") {
@@ -39,7 +42,11 @@ function normalizeProviderMetadata(provider, fallbackId) {
   return Object.freeze({ id, label, description, badgeVariant });
 }
 
+<<<<<<< HEAD
 const providerList = [nip07, nip46, nsec, generate].filter(Boolean);
+=======
+const providerList = [nip07, nip46, nsec].filter(Boolean);
+>>>>>>> origin/main
 const providerMap = {};
 const metadataMap = {};
 

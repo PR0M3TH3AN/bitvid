@@ -9,19 +9,38 @@ import {
   ADMIN_COMMUNITY_BLACKLIST_PREFIX,
   isDevMode,
 } from "./config.js";
+<<<<<<< HEAD
 import {
   getRegisteredNostrClient,
   requestDefaultExtensionPermissions,
 } from "./nostrClientRegistry.js";
+=======
+import { getRegisteredNostrClient } from "./nostrClientRegistry.js";
+import { requestDefaultExtensionPermissions } from "./nostr/defaultClient.js";
+>>>>>>> origin/main
 import { devLogger, userLogger } from "./utils/logger.js";
 import {
   buildAdminListEvent,
   ADMIN_LIST_IDENTIFIERS,
+<<<<<<< HEAD
   NOTE_TYPES,
 } from "./nostrEventSchemas.js";
 import { CACHE_POLICIES, STORAGE_TIERS } from "./nostr/cachePolicies.js";
 import { publishEventToRelay } from "./nostrPublish.js";
 
+=======
+} from "./nostrEventSchemas.js";
+import { publishEventToRelay } from "./nostrPublish.js";
+
+const LEGACY_STORAGE_KEYS = {
+  editors: "bitvid_admin_editors",
+  whitelist: "bitvid_admin_whitelist",
+  whitelistLegacy: "bitvid_whitelist",
+  blacklist: "bitvid_admin_blacklist",
+  blacklistLegacy: "bitvid_blacklist",
+};
+
+>>>>>>> origin/main
 const ADMIN_STATE_CACHE_VERSION = 1;
 const ADMIN_STATE_CACHE_KEY = `bitvid_admin_state_v${ADMIN_STATE_CACHE_VERSION}`;
 
@@ -197,6 +216,10 @@ function sanitizeNpubList(values) {
 function sanitizeAdminState(state = {}) {
   const sanitizedEditors = sanitizeNpubList(state.editors || []);
   const sanitizedWhitelist = sanitizeNpubList(state.whitelist || []);
+<<<<<<< HEAD
+=======
+  const whitelistSet = new Set(sanitizedWhitelist.map(normalizeNpub));
+>>>>>>> origin/main
 
   const adminGuardSet = new Set([
     normalizeNpub(ADMIN_SUPER_NPUB),
@@ -210,6 +233,12 @@ function sanitizeAdminState(state = {}) {
       if (!normalized) {
         return false;
       }
+<<<<<<< HEAD
+=======
+      if (whitelistSet.has(normalized)) {
+        return false;
+      }
+>>>>>>> origin/main
       if (adminGuardSet.has(normalized)) {
         return false;
       }
@@ -232,12 +261,52 @@ function hasAnyEntries(state = {}) {
   );
 }
 
+<<<<<<< HEAD
 export const readCachedAdminState = () => {
   const policy = CACHE_POLICIES[NOTE_TYPES.ADMIN_MODERATION_LIST];
   if (policy?.storage !== STORAGE_TIERS.LOCAL_STORAGE) {
     return null;
   }
 
+=======
+function readJsonListFromStorage(key) {
+  if (typeof localStorage === "undefined") {
+    return null;
+  }
+
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw === null) {
+      return null;
+    }
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch (error) {
+    devLogger.warn(
+      `[adminListStore] Failed to parse legacy list for ${key}:`,
+      error,
+    );
+    return null;
+  }
+}
+
+function loadLegacyAdminState() {
+  const editors = readJsonListFromStorage(LEGACY_STORAGE_KEYS.editors) || [];
+  const whitelist =
+    readJsonListFromStorage(LEGACY_STORAGE_KEYS.whitelist) ||
+    readJsonListFromStorage(LEGACY_STORAGE_KEYS.whitelistLegacy) ||
+    [];
+  const blacklist =
+    readJsonListFromStorage(LEGACY_STORAGE_KEYS.blacklist) ||
+    readJsonListFromStorage(LEGACY_STORAGE_KEYS.blacklistLegacy) ||
+    [];
+
+  const sanitized = sanitizeAdminState({ editors, whitelist, blacklist });
+  return hasAnyEntries(sanitized) ? sanitized : null;
+}
+
+export const readCachedAdminState = () => {
+>>>>>>> origin/main
   if (typeof localStorage === "undefined") {
     return null;
   }
@@ -270,11 +339,14 @@ export const readCachedAdminState = () => {
 };
 
 export const writeCachedAdminState = (state) => {
+<<<<<<< HEAD
   const policy = CACHE_POLICIES[NOTE_TYPES.ADMIN_MODERATION_LIST];
   if (policy?.storage !== STORAGE_TIERS.LOCAL_STORAGE) {
     return;
   }
 
+=======
+>>>>>>> origin/main
   if (typeof localStorage === "undefined") {
     return;
   }
@@ -290,6 +362,43 @@ export const writeCachedAdminState = (state) => {
   }
 };
 
+<<<<<<< HEAD
+=======
+function clearLegacyStorageFor(listKey) {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+
+  const keyGroups = {
+    editors: [LEGACY_STORAGE_KEYS.editors],
+    whitelist: [
+      LEGACY_STORAGE_KEYS.whitelist,
+      LEGACY_STORAGE_KEYS.whitelistLegacy,
+    ],
+    blacklist: [
+      LEGACY_STORAGE_KEYS.blacklist,
+      LEGACY_STORAGE_KEYS.blacklistLegacy,
+    ],
+  };
+
+  const keys = keyGroups[listKey];
+  if (!Array.isArray(keys)) {
+    return;
+  }
+
+  for (const key of keys) {
+    try {
+      localStorage.removeItem(key);
+    } catch (error) {
+      devLogger.warn(
+        `[adminListStore] Failed to clear legacy storage for ${key}:`,
+        error,
+      );
+    }
+  }
+}
+
+>>>>>>> origin/main
 function ensureNostrReady() {
   const nostrClient = requireNostrClient();
 
@@ -524,6 +633,7 @@ async function fetchLatestListEvent(filter, contextLabel = "admin-list") {
   const nostrClient = requireNostrClient();
   const relays = ensureNostrReady();
 
+<<<<<<< HEAD
   const kind = (Array.isArray(filter?.kinds) && filter.kinds.length)
     ? filter.kinds[0]
     : 30000;
@@ -545,10 +655,32 @@ async function fetchLatestListEvent(filter, contextLabel = "admin-list") {
      // Fallback to old behavior if pubkey missing (e.g. search scenario? unlikely for admin lists)
      // Actually admin lists always have specific d-tag and author (editor list, whitelist, blacklist, community lists)
      // So we should be fine.
+=======
+  const normalizedFilter = {};
+  if (Array.isArray(filter?.kinds) && filter.kinds.length) {
+    normalizedFilter.kinds = [...filter.kinds];
+  } else {
+    normalizedFilter.kinds = [30000];
+  }
+
+  if (typeof filter?.limit === "number") {
+    normalizedFilter.limit = filter.limit;
+  } else {
+    normalizedFilter.limit = 50;
+  }
+
+  if (Array.isArray(filter?.["#d"]) && filter["#d"].length) {
+    normalizedFilter["#d"] = [...filter["#d"]];
+  }
+
+  if (Array.isArray(filter?.authors) && filter.authors.length) {
+    normalizedFilter.authors = [...filter.authors];
+>>>>>>> origin/main
   }
 
   let events = [];
   try {
+<<<<<<< HEAD
     if (pubkey) {
       events = await nostrClient.fetchListIncrementally({
         kind,
@@ -569,11 +701,42 @@ async function fetchLatestListEvent(filter, contextLabel = "admin-list") {
   } catch (error) {
     devLogger.warn(
       `[adminListStore] Fetch failed for ${contextLabel}:`,
+=======
+    const combined = await nostrClient.pool.list(relays, [normalizedFilter]);
+    if (Array.isArray(combined)) {
+      events = combined;
+    }
+  } catch (error) {
+    devLogger.warn(
+      `[adminListStore] Combined relay fetch failed for ${contextLabel}:`,
+>>>>>>> origin/main
       error,
     );
   }
 
+<<<<<<< HEAD
   if (!events || !events.length) {
+=======
+  if (!events.length) {
+    const perRelay = await Promise.all(
+      relays.map(async (url) => {
+        try {
+          const result = await nostrClient.pool.list([url], [normalizedFilter]);
+          return Array.isArray(result) ? result : [];
+        } catch (error) {
+          devLogger.warn(
+            `[adminListStore] Relay fetch failed for ${contextLabel} on ${url}:`,
+            error,
+          );
+          return [];
+        }
+      })
+    );
+    events = perRelay.flat();
+  }
+
+  if (!events.length) {
+>>>>>>> origin/main
     return null;
   }
 
@@ -855,6 +1018,12 @@ async function persistNostrState(actorNpub, updates = {}) {
   }
 
   if (Array.isArray(updates.blacklist)) {
+<<<<<<< HEAD
+=======
+    const whitelistSet = new Set(
+      (sanitizedUpdates.whitelist || []).map(normalizeNpub)
+    );
+>>>>>>> origin/main
     const editorGuard = new Set([
       normalizeNpub(ADMIN_SUPER_NPUB),
       ...ADMIN_EDITORS_NPUBS.map(normalizeNpub),
@@ -871,6 +1040,12 @@ async function persistNostrState(actorNpub, updates = {}) {
         if (!normalized) {
           return false;
         }
+<<<<<<< HEAD
+=======
+        if (whitelistSet.has(normalized)) {
+          return false;
+        }
+>>>>>>> origin/main
         if (editorGuard.has(normalized)) {
           return false;
         }
@@ -933,6 +1108,11 @@ async function persistNostrState(actorNpub, updates = {}) {
         loggingError,
       );
     });
+<<<<<<< HEAD
+=======
+
+    clearLegacyStorageFor(listKey);
+>>>>>>> origin/main
   }
 }
 
@@ -1003,6 +1183,19 @@ export async function loadAdminState() {
     }
   }
 
+<<<<<<< HEAD
+=======
+  if (!hasAnyEntries(mergedState)) {
+    const legacy = loadLegacyAdminState();
+    if (legacy && isDevMode) {
+      userLogger.warn(
+        "[adminListStore] Ignoring legacy admin lists because remote mode is enforced. Publish them to Nostr to retain access.",
+        legacy
+      );
+    }
+  }
+
+>>>>>>> origin/main
   return mergedState || sanitizeAdminState();
 }
 

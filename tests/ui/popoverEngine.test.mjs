@@ -64,7 +64,10 @@ beforeEach(async () => {
   global.window = windowRef;
   global.document = documentRef;
   global.HTMLElement = windowRef.HTMLElement;
+<<<<<<< HEAD
   global.HTMLStyleElement = windowRef.HTMLStyleElement;
+=======
+>>>>>>> origin/main
   global.Element = windowRef.Element;
   global.Node = windowRef.Node;
   global.getComputedStyle = windowRef.getComputedStyle.bind(windowRef);
@@ -104,7 +107,10 @@ afterEach(() => {
   delete global.window;
   delete global.document;
   delete global.HTMLElement;
+<<<<<<< HEAD
   delete global.HTMLStyleElement;
+=======
+>>>>>>> origin/main
   delete global.Element;
   delete global.Node;
   delete global.getComputedStyle;
@@ -178,10 +184,16 @@ test("opens a popover in the overlay root and positions the panel", async () => 
   assert.equal(panel.dataset.popoverState, "open");
   assert.equal(panel.dataset.state, "open");
   assert.equal(panel.dataset.popoverPlacement, "bottom-start");
+<<<<<<< HEAD
   const panelStyles = documentRef.defaultView.getComputedStyle(panel);
   assert.equal(panelStyles.getPropertyValue("--popover-strategy").trim(), "fixed");
   assert.equal(panelStyles.getPropertyValue("--popover-left").trim(), "173px");
   assert.equal(panelStyles.getPropertyValue("--popover-top").trim(), "248px");
+=======
+  assert.equal(panel.style.position, "fixed");
+  assert.equal(panel.style.left, "173px");
+  assert.equal(panel.style.top, "248px");
+>>>>>>> origin/main
   assert.equal(panel.getAttribute("role"), "menu");
   assert.equal(documentRef.activeElement, panel);
   assert.equal(trigger.getAttribute("aria-expanded"), "true");
@@ -241,6 +253,7 @@ test("positions bottom-end panels flush with the trigger's right edge", async ()
 
   const panel = documentRef.getElementById("popover-bottom-end");
   assert.ok(panel);
+<<<<<<< HEAD
   const panelStyles = documentRef.defaultView.getComputedStyle(panel);
   assert.equal(panel.dataset.popoverPlacement, "bottom-end");
   assert.equal(panelStyles.getPropertyValue("--popover-left").trim(), "120px");
@@ -250,6 +263,14 @@ test("positions bottom-end panels flush with the trigger's right edge", async ()
   const panelRight =
     Number.parseInt(panelStyles.getPropertyValue("--popover-left"), 10) +
     panel.offsetWidth;
+=======
+  assert.equal(panel.dataset.popoverPlacement, "bottom-end");
+  assert.equal(panel.style.left, "120px");
+  assert.equal(panel.style.top, "265px");
+
+  const triggerRight = Math.round(trigger.getBoundingClientRect().right);
+  const panelRight = Number.parseInt(panel.style.left, 10) + panel.offsetWidth;
+>>>>>>> origin/main
   assert.equal(panelRight, triggerRight);
 
   popover.destroy();
@@ -693,6 +714,7 @@ test("applies token-based sizing and arrow positioning", async () => {
     height: 40,
   });
 
+<<<<<<< HEAD
   const rootStyle = documentRef.createElement("style");
   rootStyle.textContent = `
     :root {
@@ -701,6 +723,10 @@ test("applies token-based sizing and arrow positioning", async () => {
     }
   `;
   documentRef.head.appendChild(rootStyle);
+=======
+  documentRef.documentElement.style.setProperty("--popover-inline-safe-max", "320px");
+  documentRef.documentElement.style.setProperty("--overlay-panel-padding-block", "240px");
+>>>>>>> origin/main
 
   const popover = createPopover(
     trigger,
@@ -754,11 +780,19 @@ test("applies token-based sizing and arrow positioning", async () => {
   const arrow = panel.querySelector(".arrow");
 
   const panelStyles = getComputedStyle(panel);
+<<<<<<< HEAD
   assert.equal(panelStyles.getPropertyValue("--popover-max-width").trim(), "320px");
   assert.equal(panelStyles.getPropertyValue("--popover-max-height").trim(), "240px");
   assert.equal(arrow.dataset.popoverArrowSide, "bottom");
   const arrowStyles = getComputedStyle(arrow);
   assert.notEqual(arrowStyles.getPropertyValue("--popover-arrow-top").trim(), "auto");
+=======
+  assert.equal(panelStyles.maxWidth, "320px");
+  assert.equal(panelStyles.maxHeight, "240px");
+  assert.equal(arrow.dataset.popoverArrowSide, "bottom");
+  const arrowStyles = getComputedStyle(arrow);
+  assert.notEqual(arrowStyles.top, "");
+>>>>>>> origin/main
 
   popover.destroy();
 });

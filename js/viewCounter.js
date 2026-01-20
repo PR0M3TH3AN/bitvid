@@ -42,12 +42,15 @@ const pointerListeners = new Map();
 let persistTimer = null;
 let nextTokenId = 1;
 
+<<<<<<< HEAD
 // Batch subscription state
 let batchedSubscription = null;
 const batchedPointers = new Set();
 let batchedSubscriptionTeardown = null;
 let batchedSubscriptionDebounce = null;
 
+=======
+>>>>>>> origin/main
 restoreCacheSnapshot();
 
 /**
@@ -55,7 +58,11 @@ restoreCacheSnapshot();
  * @property {number} total
  * @property {Map<string, number>} dedupeBuckets
  * @property {number} lastSyncedAt
+<<<<<<< HEAD
  * @property {"idle"|"hydrating"|"live"|"stale"} status
+=======
+ * @property {"idle"|"hydrating"|"live"} status
+>>>>>>> origin/main
  */
 
 /**
@@ -242,6 +249,15 @@ function restoreCacheSnapshot() {
     if (!payload || payload.version !== 1) {
       return;
     }
+<<<<<<< HEAD
+=======
+    const savedAt = Number(payload.savedAt) || 0;
+    const now = Date.now();
+    if (!savedAt || now - savedAt > VIEW_COUNT_CACHE_TTL_MS) {
+      localStorage.removeItem(VIEW_COUNTER_STORAGE_KEY);
+      return;
+    }
+>>>>>>> origin/main
     const entries = Array.isArray(payload.entries) ? payload.entries : [];
     for (const entry of entries) {
       if (!Array.isArray(entry) || entry.length !== 2) {
@@ -488,8 +504,12 @@ async function hydratePointer(key, listeners) {
     }
   }
   let mutated = false;
+<<<<<<< HEAD
   const hasListEvents = Array.isArray(listResult) && listResult.length > 0;
   if (hasListEvents) {
+=======
+  if (Array.isArray(listResult)) {
+>>>>>>> origin/main
     for (const event of listResult) {
       mutated = applyEventToState(key, event) || mutated;
     }
@@ -502,13 +522,19 @@ async function hydratePointer(key, listeners) {
 
   if (bestCount !== null) {
     const state = ensurePointerState(key);
+<<<<<<< HEAD
     const shouldUpdate = bestCount > state.total || state.total === 0;
+=======
+    const shouldUpdate =
+      !countResult?.fallback || bestCount >= state.total || state.total === 0;
+>>>>>>> origin/main
     if (shouldUpdate && state.total !== bestCount) {
       state.total = bestCount;
       state.lastSyncedAt = Date.now();
       mutated = true;
     }
   }
+<<<<<<< HEAD
   if (!hasListEvents && bestCount === null) {
     const state = ensurePointerState(key);
     state.status = "stale";
@@ -516,6 +542,8 @@ async function hydratePointer(key, listeners) {
     notifyHandlers(key);
     return;
   }
+=======
+>>>>>>> origin/main
   if (mutated) {
     schedulePersist();
     notifyHandlers(key);
@@ -528,6 +556,7 @@ async function hydratePointer(key, listeners) {
   }
 }
 
+<<<<<<< HEAD
 function ensureHydration(key, listeners, skip = false) {
   if (skip) return;
   if (!listeners.hydrationPromise) {
@@ -538,6 +567,14 @@ function ensureHydration(key, listeners, skip = false) {
         setPointerStatus(key, "live");
       } else if (state.status === "stale") {
         setPointerStatus(key, "stale");
+=======
+function ensureHydration(key, listeners) {
+  if (!listeners.hydrationPromise) {
+    listeners.hydrationPromise = hydratePointer(key, listeners).finally(() => {
+      listeners.hydrationPromise = null;
+      if (listeners.liveUnsub) {
+        setPointerStatus(key, "live");
+>>>>>>> origin/main
       } else {
         setPointerStatus(key, "idle");
       }
@@ -551,11 +588,14 @@ function ensureLiveSubscription(key, listeners) {
   }
   const pointer = listeners.pointer;
   const options = listeners.options || {};
+<<<<<<< HEAD
 
   if (options.skipSubscription) {
     return;
   }
 
+=======
+>>>>>>> origin/main
   try {
     const since = Math.floor(Date.now() / 1000) - Math.max(1, VIEW_COUNT_DEDUPE_WINDOW_SECONDS);
     const unsubscribe = subscribeVideoViewEventsApi(pointer, {
@@ -588,9 +628,14 @@ function ensureLiveSubscription(key, listeners) {
 
 export function initViewCounter({ nostrClient } = {}) {
   if (nostrClient && typeof nostrClient === "object") {
+<<<<<<< HEAD
     // The singleton Nostr client is already registered inside
     // js/nostr/defaultClient.js. This hook remains for backwards
     // compatibility.
+=======
+    // The singleton Nostr client is already registered inside js/nostr.js.
+    // This hook remains for backwards compatibility.
+>>>>>>> origin/main
   }
 }
 
@@ -613,7 +658,11 @@ export function subscribeToVideoViewCount(pointerInput, handler, options = {}) {
   } catch (error) {
     userLogger.warn("[viewCounter] Initial handler invocation threw:", error);
   }
+<<<<<<< HEAD
   ensureHydration(key, listeners, options.skipSubscription);
+=======
+  ensureHydration(key, listeners);
+>>>>>>> origin/main
   ensureLiveSubscription(key, listeners);
   return token;
 }
@@ -633,6 +682,7 @@ export function unsubscribeFromVideoViewCount(pointerInput, token) {
   }
 }
 
+<<<<<<< HEAD
 /**
  * Subscribes to view counts for a batch of videos using a single Nostr subscription.
  *
@@ -858,6 +908,8 @@ function refreshBatchedSubscription(options = {}) {
   }
 }
 
+=======
+>>>>>>> origin/main
 export function ingestLocalViewEvent({ event, pointer }) {
   if (!event || !pointer) {
     return;

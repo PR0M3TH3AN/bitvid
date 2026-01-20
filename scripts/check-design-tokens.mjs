@@ -218,11 +218,14 @@ function shouldSkipMatch(content, index) {
   if (previousChar === "[") {
     return true;
   }
+<<<<<<< HEAD
   // Check if it's part of a variable name (e.g. --size-2px)
   // We check if the preceding character is '-'
   if (previousChar === "-") {
     return true;
   }
+=======
+>>>>>>> origin/main
   return false;
 }
 

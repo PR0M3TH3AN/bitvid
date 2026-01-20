@@ -7,6 +7,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="/css/tailwind.generated.css" />
     <style>
+<<<<<<< HEAD
       .moderation-fixtures {
         background-color: var(--surface-base);
         color: var(--text-primary);
@@ -53,6 +54,44 @@
         These scenarios mirror the QA vectors in
         <code>docs/moderation/testing.md</code> so automated checks can assert
         blur thresholds, autoplay blocking, and local override persistence.
+=======
+      body {
+        background-color: #0f172a;
+        color: #f8fafc;
+        font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      main {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 2rem 1.5rem 4rem;
+      }
+      h1 {
+        font-size: 2rem;
+        font-weight: 700;
+        margin-bottom: 1.5rem;
+      }
+      section {
+        margin-bottom: 2.5rem;
+      }
+      section h2 {
+        font-size: 1.25rem;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+      }
+      section p {
+        color: #cbd5f5;
+        margin-bottom: 1rem;
+      }
+    </style>
+  </head>
+  <body data-ds="new">
+    <main id="moderationFixtureRoot">
+      <h1>Moderation Test Fixtures</h1>
+      <p>
+        These scenarios mirror the QA vectors in <code>docs/moderation/testing.md</code> so
+        automated checks can assert blur thresholds, autoplay blocking, and local
+        override persistence.
+>>>>>>> origin/main
       </p>
     </main>
     <script type="module">
@@ -74,17 +113,26 @@
             id: "1".repeat(64),
             title: "Fixture: Blurred Preview",
             pubkey: "a".repeat(64),
+<<<<<<< HEAD
             thumbnail: "/assets/jpg/video-thumbnail-fallback.jpg"
+=======
+            thumbnail: "/assets/jpg/video-thumbnail-fallback.jpg",
+>>>>>>> origin/main
           },
           moderation: {
             blockAutoplay: true,
             blurThumbnail: true,
             trustedCount: 3,
+<<<<<<< HEAD
             reportType: "nudity"
+=======
+            reportType: "nudity",
+>>>>>>> origin/main
           },
           reporters: [
             { name: "Jess F1", pubkey: "b".repeat(64), latest: 1_700_000_010 },
             { name: "Mira F1", pubkey: "c".repeat(64), latest: 1_700_000_020 },
+<<<<<<< HEAD
             { name: "Omar F1", pubkey: "d".repeat(64), latest: 1_700_000_030 }
           ],
           blockToggle: {
@@ -96,18 +144,35 @@
           key: "autoplay-threshold",
           heading:
             "Autoplay threshold (config default: ≥2 trusted nudity reports)",
+=======
+            { name: "Omar F1", pubkey: "d".repeat(64), latest: 1_700_000_030 },
+          ],
+          blockToggle: {
+            label: "Simulate viewer blocking Mira F1",
+            pubkey: "c".repeat(64),
+          },
+        },
+        {
+          key: "autoplay-threshold",
+          heading: "Autoplay threshold (config default: ≥2 trusted nudity reports)",
+>>>>>>> origin/main
           description:
             "Card should block autoplay but stay unblurred so users can inspect the thumbnail.",
           video: {
             id: "2".repeat(64),
             title: "Fixture: Autoplay Blocked",
             pubkey: "e".repeat(64),
+<<<<<<< HEAD
             thumbnail: "/assets/jpg/video-thumbnail-fallback.jpg"
+=======
+            thumbnail: "/assets/jpg/video-thumbnail-fallback.jpg",
+>>>>>>> origin/main
           },
           moderation: {
             blockAutoplay: true,
             blurThumbnail: false,
             trustedCount: 2,
+<<<<<<< HEAD
             reportType: "nudity"
           },
           reporters: [
@@ -120,49 +185,93 @@
           heading: '"Show anyway" override (persists locally)',
           description:
             'Card starts blurred and blocked; activating "Show anyway" should persist across reloads.',
+=======
+            reportType: "nudity",
+          },
+          reporters: [
+            { name: "Jess F1", pubkey: "b".repeat(64), latest: 1_700_000_010 },
+            { name: "Mira F1", pubkey: "c".repeat(64), latest: 1_700_000_020 },
+          ],
+        },
+        {
+          key: "show-anyway",
+          heading: "\"Show anyway\" override (persists locally)",
+          description:
+            "Card starts blurred and blocked; activating \"Show anyway\" should persist across reloads.",
+>>>>>>> origin/main
           enableOverride: true,
           video: {
             id: "3".repeat(64),
             title: "Fixture: Override Persistence",
             pubkey: "f".repeat(64),
+<<<<<<< HEAD
             thumbnail: "/assets/jpg/video-thumbnail-fallback.jpg"
+=======
+            thumbnail: "/assets/jpg/video-thumbnail-fallback.jpg",
+>>>>>>> origin/main
           },
           moderation: {
             blockAutoplay: true,
             blurThumbnail: true,
             trustedCount: 3,
+<<<<<<< HEAD
             reportType: "nudity"
+=======
+            reportType: "nudity",
+>>>>>>> origin/main
           },
           reporters: [
             { name: "Jess F1", pubkey: "b".repeat(64), latest: 1_700_000_010 },
             { name: "Mira F1", pubkey: "c".repeat(64), latest: 1_700_000_020 },
+<<<<<<< HEAD
             { name: "Omar F1", pubkey: "d".repeat(64), latest: 1_700_000_030 }
           ]
+=======
+            { name: "Omar F1", pubkey: "d".repeat(64), latest: 1_700_000_030 },
+          ],
+>>>>>>> origin/main
         },
         {
           key: "trusted-report-hide",
           heading: "Trusted report hide (config default: ≥3 spam reports)",
           description:
+<<<<<<< HEAD
             'Card should render hidden with spam copy until the viewer clicks "Show anyway".',
+=======
+            "Card should render hidden with spam copy until the viewer clicks \"Show anyway\".",
+>>>>>>> origin/main
           enableOverride: true,
           thresholds: { reportHide: 3 },
           video: {
             id: "4".repeat(64),
             title: "Fixture: Trusted Report Hide",
             pubkey: "aa".repeat(32),
+<<<<<<< HEAD
             thumbnail: "/assets/jpg/video-thumbnail-fallback.jpg"
+=======
+            thumbnail: "/assets/jpg/video-thumbnail-fallback.jpg",
+>>>>>>> origin/main
           },
           moderation: {
             blockAutoplay: true,
             blurThumbnail: true,
             trustedCount: 3,
+<<<<<<< HEAD
             reportType: "spam"
+=======
+            reportType: "spam",
+>>>>>>> origin/main
           },
           reporters: [
             { name: "Jess F1", pubkey: "b".repeat(64), latest: 1_700_000_010 },
             { name: "Mira F1", pubkey: "c".repeat(64), latest: 1_700_000_020 },
+<<<<<<< HEAD
             { name: "Omar F1", pubkey: "d".repeat(64), latest: 1_700_000_030 }
           ]
+=======
+            { name: "Omar F1", pubkey: "d".repeat(64), latest: 1_700_000_030 },
+          ],
+>>>>>>> origin/main
         },
         {
           key: "trusted-mute-hide",
@@ -175,16 +284,27 @@
             id: "5".repeat(64),
             title: "Fixture: Trusted Mute Hide",
             pubkey: "bb".repeat(32),
+<<<<<<< HEAD
             thumbnail: "/assets/jpg/video-thumbnail-fallback.jpg"
+=======
+            thumbnail: "/assets/jpg/video-thumbnail-fallback.jpg",
+>>>>>>> origin/main
           },
           moderation: {
             blockAutoplay: false,
             blurThumbnail: false,
             trustedMuted: true,
+<<<<<<< HEAD
             trustedMuteCount: 1
           },
           muters: [{ name: "Jess F1", pubkey: "b".repeat(64) }]
         }
+=======
+            trustedMuteCount: 1,
+          },
+          muters: [{ name: "Jess F1", pubkey: "b".repeat(64) }],
+        },
+>>>>>>> origin/main
       ];
 
       const blockedReportersByVideo = new Map();
@@ -197,12 +317,16 @@
       }
 
       function setReporterBlocked(videoId, pubkey, blocked) {
+<<<<<<< HEAD
         if (
           typeof videoId !== "string" ||
           !videoId ||
           typeof pubkey !== "string" ||
           !pubkey
         ) {
+=======
+        if (typeof videoId !== "string" || !videoId || typeof pubkey !== "string" || !pubkey) {
+>>>>>>> origin/main
           return;
         }
 
@@ -235,9 +359,13 @@
       }
 
       function getActiveReporters(fixture, videoId) {
+<<<<<<< HEAD
         const reporters = Array.isArray(fixture?.reporters)
           ? fixture.reporters
           : [];
+=======
+        const reporters = Array.isArray(fixture?.reporters) ? fixture.reporters : [];
+>>>>>>> origin/main
         if (!reporters.length) {
           return [];
         }
@@ -248,8 +376,12 @@
         }
 
         return reporters.filter((reporter) => {
+<<<<<<< HEAD
           const key =
             typeof reporter?.pubkey === "string" ? reporter.pubkey : "";
+=======
+          const key = typeof reporter?.pubkey === "string" ? reporter.pubkey : "";
+>>>>>>> origin/main
           if (!key) {
             return false;
           }
@@ -267,6 +399,7 @@
             if (!reporter || typeof reporter !== "object") {
               return null;
             }
+<<<<<<< HEAD
             const pubkey =
               typeof reporter.pubkey === "string" ? reporter.pubkey : "";
             if (!pubkey) {
@@ -275,6 +408,13 @@
             const latest = Number.isFinite(reporter.latest)
               ? Math.floor(reporter.latest)
               : 0;
+=======
+            const pubkey = typeof reporter.pubkey === "string" ? reporter.pubkey : "";
+            if (!pubkey) {
+              return null;
+            }
+            const latest = Number.isFinite(reporter.latest) ? Math.floor(reporter.latest) : 0;
+>>>>>>> origin/main
             const name = typeof reporter.name === "string" ? reporter.name : "";
             return { name, pubkey, latest };
           })
@@ -314,10 +454,14 @@
             ? sanitizedReporters
             : normalizeFixtureReporters(getActiveReporters(fixture, videoId));
 
+<<<<<<< HEAD
         const latest = reporters.reduce(
           (max, reporter) => Math.max(max, reporter.latest),
           0
         );
+=======
+        const latest = reporters.reduce((max, reporter) => Math.max(max, reporter.latest), 0);
+>>>>>>> origin/main
 
         return {
           eventId: fixture.video.id,
@@ -326,10 +470,17 @@
             [fixture.moderation.reportType]: {
               trusted: reporters.length,
               total: reporters.length,
+<<<<<<< HEAD
               latest
             }
           },
           updatedAt: Date.now()
+=======
+              latest,
+            },
+          },
+          updatedAt: Date.now(),
+>>>>>>> origin/main
         };
       }
 
@@ -339,6 +490,7 @@
         const sanitizedReporters = normalizeFixtureReporters(activeReporters);
         const thresholds =
           fixture.thresholds && typeof fixture.thresholds === "object"
+<<<<<<< HEAD
             ? {
                 blur: 3,
                 autoplay: 2,
@@ -346,6 +498,9 @@
                 muteHide: 1,
                 ...fixture.thresholds
               }
+=======
+            ? { blur: 3, autoplay: 2, reportHide: 3, muteHide: 1, ...fixture.thresholds }
+>>>>>>> origin/main
             : { blur: 3, autoplay: 2, reportHide: 3, muteHide: 1 };
         const autoplayThreshold = Number.isFinite(thresholds.autoplay)
           ? Math.max(0, Math.floor(thresholds.autoplay))
@@ -367,6 +522,7 @@
           .map((reporter) => reporter.name)
           .filter((value) => typeof value === "string" && value);
 
+<<<<<<< HEAD
         const reporterPubkeys = sanitizedReporters.map(
           (reporter) => reporter.pubkey
         );
@@ -383,6 +539,18 @@
           .map((muter) =>
             typeof muter?.pubkey === "string" ? muter.pubkey : ""
           )
+=======
+        const reporterPubkeys = sanitizedReporters.map((reporter) => reporter.pubkey);
+
+        const trustedReporterEntries = sanitizedReporters.map((reporter) => ({
+          pubkey: reporter.pubkey,
+          latest: reporter.latest,
+        }));
+
+        const muterEntries = Array.isArray(fixture.muters) ? fixture.muters : [];
+        const muterPubkeys = muterEntries
+          .map((muter) => (typeof muter?.pubkey === "string" ? muter.pubkey : ""))
+>>>>>>> origin/main
           .filter(Boolean);
         const muterDisplayNames = muterEntries
           .map((muter) => (typeof muter?.name === "string" ? muter.name : ""))
@@ -417,7 +585,11 @@
         const hideCounts = hidden
           ? {
               trustedMuteCount: muteCount,
+<<<<<<< HEAD
               trustedReportCount: trustedCount
+=======
+              trustedReportCount: trustedCount,
+>>>>>>> origin/main
             }
           : null;
 
@@ -430,7 +602,11 @@
           trustedMuted,
           trustedMuters: muterPubkeys,
           trustedMuteCount: muteCount,
+<<<<<<< HEAD
           trustedMuterDisplayNames: muterDisplayNames
+=======
+          trustedMuterDisplayNames: muterDisplayNames,
+>>>>>>> origin/main
         };
 
         const summary = buildSummary(fixture, videoId, sanitizedReporters);
@@ -452,6 +628,7 @@
           hideReason: hidden ? hideReason : "",
           hideCounts: hideCounts
             ? {
+<<<<<<< HEAD
                 trustedMuteCount: Math.max(
                   0,
                   Number(hideCounts.trustedMuteCount) || 0
@@ -464,6 +641,14 @@
             : null,
           hideBypass,
           hideTriggered: hidden
+=======
+                trustedMuteCount: Math.max(0, Number(hideCounts.trustedMuteCount) || 0),
+                trustedReportCount: Math.max(0, Number(hideCounts.trustedReportCount) || 0),
+              }
+            : null,
+          hideBypass,
+          hideTriggered: hidden,
+>>>>>>> origin/main
         };
 
         base.original = {
@@ -473,7 +658,11 @@
           hideReason: originalState.hideReason,
           hideCounts: originalState.hideCounts,
           hideBypass: originalState.hideBypass,
+<<<<<<< HEAD
           hideTriggered: originalState.hideTriggered
+=======
+          hideTriggered: originalState.hideTriggered,
+>>>>>>> origin/main
         };
 
         if (overrideEntry?.showAnyway) {
@@ -481,7 +670,11 @@
             showAnyway: true,
             updatedAt: Number.isFinite(overrideEntry.updatedAt)
               ? Math.floor(overrideEntry.updatedAt)
+<<<<<<< HEAD
               : Date.now()
+=======
+              : Date.now(),
+>>>>>>> origin/main
           };
           base.blockAutoplay = false;
           base.blurThumbnail = false;
@@ -534,7 +727,11 @@
           ...entry,
           updatedAt: Number.isFinite(entry?.updatedAt)
             ? Math.floor(entry.updatedAt)
+<<<<<<< HEAD
             : Date.now()
+=======
+            : Date.now(),
+>>>>>>> origin/main
         };
         persistOverrides(next);
         return next;
@@ -542,7 +739,11 @@
 
       function createCard(fixture, overrides) {
         const video = {
+<<<<<<< HEAD
           ...fixture.video
+=======
+          ...fixture.video,
+>>>>>>> origin/main
         };
         video.moderation = buildModerationState(fixture, overrides, video.id);
 
@@ -557,7 +758,11 @@
                 return value.toLocaleString("en-US");
               }
               return String(value ?? "");
+<<<<<<< HEAD
             }
+=======
+            },
+>>>>>>> origin/main
           },
           helpers: {
             isMagnetSupported: () => true,
@@ -567,6 +772,7 @@
                 return value.toLocaleString(locales || "en-US", options);
               }
               return String(value ?? "");
+<<<<<<< HEAD
             }
           },
           assets: {
@@ -584,6 +790,21 @@
             overrides,
             video.id
           );
+=======
+            },
+          },
+          assets: {
+            fallbackThumbnailSrc: "/assets/jpg/video-thumbnail-fallback.jpg",
+          },
+          designSystem: {
+            getMode: () => "new",
+            isNew: () => true,
+          },
+        });
+
+        const refreshModeration = () => {
+          card.video.moderation = buildModerationState(fixture, overrides, video.id);
+>>>>>>> origin/main
           if (typeof card.refreshModerationUi === "function") {
             card.refreshModerationUi();
           }
@@ -612,16 +833,23 @@
 
         fixtures.forEach((fixture) => {
           const section = document.createElement("section");
+<<<<<<< HEAD
           section.classList.add("moderation-fixtures__section");
 
           const heading = document.createElement("h2");
           heading.textContent = fixture.heading;
           heading.classList.add("moderation-fixtures__section-title");
+=======
+
+          const heading = document.createElement("h2");
+          heading.textContent = fixture.heading;
+>>>>>>> origin/main
           section.appendChild(heading);
 
           if (fixture.description) {
             const description = document.createElement("p");
             description.textContent = fixture.description;
+<<<<<<< HEAD
             description.classList.add(
               "moderation-fixtures__section-description"
             );
@@ -632,10 +860,17 @@
             fixture,
             overrides
           );
+=======
+            section.appendChild(description);
+          }
+
+          const { root: cardRoot, refreshModeration } = createCard(fixture, overrides);
+>>>>>>> origin/main
           section.appendChild(cardRoot);
 
           if (fixture.blockToggle && fixture.blockToggle.pubkey) {
             const toggleWrapper = document.createElement("div");
+<<<<<<< HEAD
             toggleWrapper.classList.add("fixture-toggle");
 
             const label = document.createElement("label");
@@ -662,6 +897,27 @@
                 };
                 const maybePromise =
                   moderationService?.queueUserBlockRefresh?.(detail);
+=======
+            toggleWrapper.style.marginTop = "0.75rem";
+            toggleWrapper.style.fontSize = "0.875rem";
+            toggleWrapper.style.color = "#cbd5f5";
+
+            const label = document.createElement("label");
+            label.style.display = "inline-flex";
+            label.style.alignItems = "center";
+            label.style.gap = "0.5rem";
+
+            const input = document.createElement("input");
+            input.type = "checkbox";
+            input.checked = isReporterBlocked(fixture.video.id, fixture.blockToggle.pubkey);
+            input.addEventListener("change", () => {
+              const checked = input.checked;
+              setReporterBlocked(fixture.video.id, fixture.blockToggle.pubkey, checked);
+              const action = checked ? "block" : "unblock";
+              try {
+                const detail = { action, targetPubkey: fixture.blockToggle.pubkey };
+                const maybePromise = moderationService?.queueUserBlockRefresh?.(detail);
+>>>>>>> origin/main
                 if (maybePromise && typeof maybePromise.then === "function") {
                   maybePromise.catch(() => {});
                 }

@@ -12,7 +12,10 @@ import {
 import { ensureWallet, sendPayment } from "./nwcClient.js";
 import { getPlatformLightningAddress } from "./platformAddress.js";
 import { RELAY_URLS } from "../nostr/toolkit.js";
+<<<<<<< HEAD
 import { signEventWithPrivateKey } from "../nostr/publishHelpers.js";
+=======
+>>>>>>> origin/main
 import { userLogger } from "../utils/logger.js";
 import { validateZapReceipt } from "./zapReceiptValidator.js";
 import {
@@ -347,6 +350,14 @@ function buildZapRequest({
   comment,
   lnurl,
 }) {
+<<<<<<< HEAD
+=======
+  const tools = getNostrTools();
+  if (!tools?.getEventHash || !tools?.signEvent) {
+    throw new Error("NostrTools is required to sign zap requests.");
+  }
+
+>>>>>>> origin/main
   const tags = [];
   if (recipientPubkey) {
     tags.push(["p", recipientPubkey]);
@@ -381,8 +392,15 @@ function buildZapRequest({
     pubkey: wallet?.clientPubkey || "",
   };
 
+<<<<<<< HEAD
   const signedEvent = signEventWithPrivateKey(event, wallet?.secretKey);
   return JSON.stringify(signedEvent);
+=======
+  event.id = tools.getEventHash(event);
+  event.sig = tools.signEvent(event, wallet?.secretKey);
+
+  return JSON.stringify(event);
+>>>>>>> origin/main
 }
 
 function determineRecipientPubkey({ recipientType, metadata, videoEvent }) {

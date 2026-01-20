@@ -7,7 +7,10 @@ import {
 import {
   subscribeToVideoViewCount,
   unsubscribeFromVideoViewCount,
+<<<<<<< HEAD
   subscribeToBatchedViewCounts,
+=======
+>>>>>>> origin/main
 } from "../../viewCounter.js";
 import { normalizeDesignSystemContext } from "../../designSystem.js";
 import { userLogger } from "../../utils/logger.js";
@@ -209,7 +212,10 @@ export class VideoListView {
     };
 
     this.tagPreferenceStateResolver = null;
+<<<<<<< HEAD
     this.batchedViewTeardown = null;
+=======
+>>>>>>> origin/main
 
     this.allowNsfw = allowNsfw !== false;
     this.designSystem = normalizeDesignSystemContext(designSystem);
@@ -278,7 +284,10 @@ export class VideoListView {
   destroy() {
     this.unmount();
     this.teardownAllViewCountSubscriptions();
+<<<<<<< HEAD
     this.teardownBatchedViewSubscription();
+=======
+>>>>>>> origin/main
     this.renderedVideoIds.clear();
     this.videoCardInstances = [];
     this.currentVideos = [];
@@ -647,8 +656,11 @@ export class VideoListView {
     const canManageBlacklist = this.utils.canManageBlacklist();
     this.videoCardInstances = [];
 
+<<<<<<< HEAD
     const pointersToBatch = [];
 
+=======
+>>>>>>> origin/main
     displayVideos.forEach((video, index) => {
       if (!video || !video.id || !video.title) {
         return;
@@ -703,7 +715,10 @@ export class VideoListView {
       const pointerInfo = this.utils.derivePointerInfo(video);
       if (pointerInfo) {
         this.utils.persistWatchHistoryMetadata(video, pointerInfo);
+<<<<<<< HEAD
         pointersToBatch.push(pointerInfo.pointer);
+=======
+>>>>>>> origin/main
       }
 
       const identity = {
@@ -999,6 +1014,7 @@ export class VideoListView {
     });
     this.pruneDetachedViewCountElements();
 
+<<<<<<< HEAD
     // Start Batched View Count Subscription
     this.teardownBatchedViewSubscription();
     if (pointersToBatch.length > 0) {
@@ -1053,6 +1069,11 @@ export class VideoListView {
     }
   }
 
+=======
+    return displayVideos;
+  }
+
+>>>>>>> origin/main
   cacheUrlHealth(videoId, entry) {
     if (!videoId || !(this.state.urlHealthByVideoId instanceof Map)) {
       return;
@@ -1097,9 +1118,12 @@ export class VideoListView {
     if (Number.isFinite(entry.peers)) {
       normalized.peers = Math.max(0, Number(entry.peers));
     }
+<<<<<<< HEAD
     if (typeof entry.webseedOnly === "boolean") {
       normalized.webseedOnly = entry.webseedOnly;
     }
+=======
+>>>>>>> origin/main
     if (typeof entry.reason === "string" && entry.reason) {
       normalized.reason = entry.reason;
     }
@@ -1264,8 +1288,21 @@ export class VideoListView {
 
     keysToRemove.forEach((key) => {
       const entry = this.viewCountSubscriptions.get(key);
+<<<<<<< HEAD
       // NOTE: We no longer call unsubscribeFromVideoViewCount individually
       // because subscription management is handled by subscribeToBatchedViewCounts.
+=======
+      if (entry && entry.pointer && entry.token) {
+        try {
+          unsubscribeFromVideoViewCount(entry.pointer, entry.token);
+        } catch (error) {
+          userLogger.warn(
+            `[viewCount] Failed to unsubscribe from stale pointer ${key}:`,
+            error
+          );
+        }
+      }
+>>>>>>> origin/main
       this.viewCountSubscriptions.delete(key);
     });
   }
@@ -1376,6 +1413,7 @@ export class VideoListView {
       return existing;
     }
 
+<<<<<<< HEAD
     // We no longer call subscribeToVideoViewCount here.
     // Instead, we just register the entry for the batch subscription to find.
     // The initial state will be "hydrating" or "idle".
@@ -1384,14 +1422,54 @@ export class VideoListView {
       pointer: pointerInfo.pointer,
       key: pointerInfo.key,
       token: null, // No individual token anymore
+=======
+    const entry = {
+      pointer: pointerInfo.pointer,
+      key: pointerInfo.key,
+      token: null,
+>>>>>>> origin/main
       elements: new Set(),
       lastTotal: null,
       lastStatus: "idle",
       lastText: "– views",
     };
 
+<<<<<<< HEAD
     this.viewCountSubscriptions.set(pointerInfo.key, entry);
     return entry;
+=======
+    try {
+      const token = subscribeToVideoViewCount(pointerInfo.pointer, ({ total, status }) => {
+        let text;
+        if (Number.isFinite(total)) {
+          const numeric = Number(total);
+          entry.lastTotal = numeric;
+          text = this.formatters.formatViewCountLabel(numeric);
+        } else if (status === "hydrating") {
+          text = "Loading views…";
+        } else {
+          text = "– views";
+        }
+
+        entry.lastStatus = status;
+        entry.lastText = text;
+
+        for (const el of Array.from(entry.elements)) {
+          if (!el || !el.isConnected) {
+            entry.elements.delete(el);
+            continue;
+          }
+          el.textContent = text;
+        }
+      });
+      entry.token = token;
+      this.viewCountSubscriptions.set(pointerInfo.key, entry);
+      return entry;
+    } catch (error) {
+      userLogger.warn("[viewCount] Failed to subscribe to view counter:", error);
+      return null;
+    }
+>>>>>>> origin/main
   }
 
   registerVideoViewCountElement(cardEl, pointerInfo) {
@@ -1434,8 +1512,26 @@ export class VideoListView {
   }
 
   teardownAllViewCountSubscriptions() {
+<<<<<<< HEAD
     // Just clear the map, the batched subscription teardown will handle the network
     this.viewCountSubscriptions.clear();
+=======
+    const keys = Array.from(this.viewCountSubscriptions.keys());
+    keys.forEach((key) => {
+      const entry = this.viewCountSubscriptions.get(key);
+      if (entry && entry.token && entry.pointer) {
+        try {
+          unsubscribeFromVideoViewCount(entry.pointer, entry.token);
+        } catch (error) {
+          userLogger.warn(
+            `[viewCount] Failed to unsubscribe from pointer ${key}:`,
+            error
+          );
+        }
+      }
+      this.viewCountSubscriptions.delete(key);
+    });
+>>>>>>> origin/main
   }
 
   closeAllMenus(options = {}) {

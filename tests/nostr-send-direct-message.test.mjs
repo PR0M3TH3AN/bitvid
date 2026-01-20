@@ -25,11 +25,17 @@ test("sendDirectMessage succeeds with private key signer and no extension", asyn
       value: canonicalTools,
     });
 
+<<<<<<< HEAD
     const [{ nostrClient }, { getActiveSigner, clearActiveSigner }] =
       await Promise.all([
         import("../js/nostrClientFacade.js"),
         import("../js/nostr/client.js"),
       ]);
+=======
+    const { nostrClient, getActiveSigner, clearActiveSigner } = await import(
+      "../js/nostr.js"
+    );
+>>>>>>> origin/main
 
     const previousPool = nostrClient.pool;
     const previousRelays = Array.isArray(nostrClient.relays)

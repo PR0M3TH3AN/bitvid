@@ -38,6 +38,10 @@ function setupDom(t) {
     CustomEvent: globalThis.CustomEvent,
     Event: globalThis.Event,
     Node: globalThis.Node,
+<<<<<<< HEAD
+=======
+    navigator: globalThis.navigator,
+>>>>>>> origin/main
     location: globalThis.location,
     MutationObserver: globalThis.MutationObserver,
     IntersectionObserver: globalThis.IntersectionObserver,
@@ -49,11 +53,15 @@ function setupDom(t) {
   globalThis.CustomEvent = window.CustomEvent;
   globalThis.Event = window.Event;
   globalThis.Node = window.Node;
+<<<<<<< HEAD
   Object.defineProperty(globalThis, "navigator", {
     value: window.navigator,
     writable: true,
     configurable: true,
   });
+=======
+  globalThis.navigator = window.navigator;
+>>>>>>> origin/main
   globalThis.location = window.location;
   globalThis.MutationObserver = window.MutationObserver;
   globalThis.IntersectionObserver =

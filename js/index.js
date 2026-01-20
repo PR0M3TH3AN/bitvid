@@ -3,11 +3,15 @@
 import { validateInstanceConfig } from "../config/validate-config.js";
 import { ASSET_VERSION } from "../config/asset-version.js";
 import "./bufferPolyfill.js";
+<<<<<<< HEAD
 import {
   getApplication,
   setApplication,
   setApplicationReady,
 } from "./applicationContext.js";
+=======
+import { setApplication, setApplicationReady } from "./applicationContext.js";
+>>>>>>> origin/main
 import nostrService from "./services/nostrService.js";
 import r2Service from "./services/r2Service.js";
 import { loadView, viewInitRegistry } from "./viewManager.js";
@@ -16,7 +20,10 @@ import {
   initThemeController,
   refreshThemeControls,
 } from "./themeController.js";
+<<<<<<< HEAD
 import { setHashView } from "./hashView.js";
+=======
+>>>>>>> origin/main
 import { devLogger, userLogger } from "./utils/logger.js";
 import {
   prepareStaticModal,
@@ -33,7 +40,10 @@ import {
   TIP_JAR_URL,
   isLockdownMode,
 } from "./config.js";
+<<<<<<< HEAD
 import { createHashChangeHandler } from "./hashChangeHandler.js";
+=======
+>>>>>>> origin/main
 import AuthService from "./services/authService.js";
 import getAuthProvider, {
   providers as authProviders,
@@ -627,12 +637,15 @@ async function bootstrapInterface() {
   await loadSidebar("components/sidebar.html", "sidebarContainer");
   devLogger.log("Sidebar loaded.");
 
+<<<<<<< HEAD
   try {
     await applicationReadyPromise;
   } catch (error) {
     // fall through
   }
 
+=======
+>>>>>>> origin/main
   if (application && typeof application.hydrateSidebarNavigation === "function") {
     try {
       application.hydrateSidebarNavigation();
@@ -691,6 +704,7 @@ async function bootstrapInterface() {
       try {
         await applicationReadyPromise;
       } catch (error) {
+<<<<<<< HEAD
         // Continue even if app fails full initialization, if possible.
       }
 
@@ -819,6 +833,25 @@ async function bootstrapInterface() {
       // Close search on submit
       mobileSearchContainer.classList.add("hidden");
       mobileSearchFab.classList.remove("hidden");
+=======
+        userLogger.info("Search function is coming soon.");
+        return;
+      }
+
+      if (application && typeof application.showStatus === "function") {
+        try {
+          application.showStatus("Search function is coming soon.", {
+            autoHideMs: 3500,
+            showSpinner: false,
+          });
+          return;
+        } catch (error) {
+          // fall through to logger fallback
+        }
+      }
+
+      userLogger.info("Search function is coming soon.");
+>>>>>>> origin/main
     });
   }
 
@@ -1002,6 +1035,7 @@ async function bootstrapInterface() {
     };
   };
 
+<<<<<<< HEAD
   const sidebarDropupStyleState = (() => {
     let styleNode = null;
     let rootWidthRule = "";
@@ -1047,22 +1081,36 @@ async function bootstrapInterface() {
 
   let sidebarDropupMeasureId = 0;
 
+=======
+>>>>>>> origin/main
   const resolveCssLengthToPixels = (value, container) => {
     if (!(container instanceof HTMLElement) || typeof value !== "string") {
       return 0;
     }
 
     const measurementNode = container.ownerDocument.createElement("div");
+<<<<<<< HEAD
     sidebarDropupMeasureId += 1;
     const measureId = `sidebar-dropup-measure-${sidebarDropupMeasureId}`;
     measurementNode.classList.add("sidebar-dropup-measure");
     measurementNode.dataset.measureId = measureId;
     sidebarDropupStyleState.setMeasureWidth(measureId, value);
+=======
+    measurementNode.style.position = "absolute";
+    measurementNode.style.visibility = "hidden";
+    measurementNode.style.pointerEvents = "none";
+    measurementNode.style.height = "0";
+    measurementNode.style.width = value;
+    measurementNode.style.overflow = "hidden";
+>>>>>>> origin/main
 
     container.appendChild(measurementNode);
     const pixels = measurementNode.getBoundingClientRect().width;
     container.removeChild(measurementNode);
+<<<<<<< HEAD
     sidebarDropupStyleState.clearMeasure(measureId);
+=======
+>>>>>>> origin/main
 
     return Number.isFinite(pixels) ? pixels : 0;
   };
@@ -1072,6 +1120,7 @@ async function bootstrapInterface() {
     const panel = panelInner?.closest(".sidebar-dropup-panel");
 
     if (!(panelInner instanceof HTMLElement) || !(panel instanceof HTMLElement)) {
+<<<<<<< HEAD
       sidebarDropupStyleState.setRootWidth("0px");
       return;
     }
@@ -1079,6 +1128,48 @@ async function bootstrapInterface() {
     panelInner.classList.add("is-measuring");
     const measuredInnerWidth = Math.ceil(panelInner.scrollWidth);
     panelInner.classList.remove("is-measuring");
+=======
+      document.documentElement.style.setProperty(
+        "--sidebar-dropup-content-width",
+        "0px",
+      );
+      return;
+    }
+
+    const originalStyles = {
+      position: panelInner.style.position,
+      width: panelInner.style.width,
+      maxWidth: panelInner.style.maxWidth,
+      visibility: panelInner.style.visibility,
+      pointerEvents: panelInner.style.pointerEvents,
+      left: panelInner.style.left,
+      right: panelInner.style.right,
+      top: panelInner.style.top,
+      bottom: panelInner.style.bottom,
+    };
+
+    panelInner.style.position = "absolute";
+    panelInner.style.width = "max-content";
+    panelInner.style.maxWidth = "none";
+    panelInner.style.visibility = "hidden";
+    panelInner.style.pointerEvents = "none";
+    panelInner.style.left = "-9999px";
+    panelInner.style.right = "auto";
+    panelInner.style.top = "auto";
+    panelInner.style.bottom = "auto";
+
+    const measuredInnerWidth = Math.ceil(panelInner.scrollWidth);
+
+    panelInner.style.position = originalStyles.position;
+    panelInner.style.width = originalStyles.width;
+    panelInner.style.maxWidth = originalStyles.maxWidth;
+    panelInner.style.visibility = originalStyles.visibility;
+    panelInner.style.pointerEvents = originalStyles.pointerEvents;
+    panelInner.style.left = originalStyles.left;
+    panelInner.style.right = originalStyles.right;
+    panelInner.style.top = originalStyles.top;
+    panelInner.style.bottom = originalStyles.bottom;
+>>>>>>> origin/main
 
     const panelStyles = window.getComputedStyle(panel);
     const paddingInlineStart = Number.parseFloat(panelStyles.paddingInlineStart) || 0;
@@ -1094,7 +1185,14 @@ async function bootstrapInterface() {
       measuredInnerWidth + paddingInlineStart + paddingInlineEnd + scrollReserve,
     );
 
+<<<<<<< HEAD
     sidebarDropupStyleState.setRootWidth(`${Math.ceil(totalWidth)}px`);
+=======
+    document.documentElement.style.setProperty(
+      "--sidebar-dropup-content-width",
+      `${Math.ceil(totalWidth)}px`,
+    );
+>>>>>>> origin/main
   };
 
   const debouncedSidebarDropupResize = debounce(updateSidebarDropupContentWidth, 150);
@@ -1263,6 +1361,26 @@ if (document.readyState === "loading") {
 -------------------------------------------- */
 
 /**
+<<<<<<< HEAD
+=======
+ * Sets the location.hash to "#view=<viewName>",
+ * removing any ?modal=... or ?v=... from the query string.
+ */
+export function setHashView(viewName) {
+  const url = new URL(window.location.href);
+  url.searchParams.delete("modal");
+  url.searchParams.delete("v");
+  const newUrl = url.pathname + url.search + `#view=${viewName}`;
+  window.history.replaceState({}, "", newUrl);
+
+  if (typeof viewName === "string" && viewName.toLowerCase() === "history") {
+  }
+
+  handleHashChange();
+}
+
+/**
+>>>>>>> origin/main
  * Sets a query param (e.g. ?modal=xxx or ?v=yyy),
  * removing any "#view=..." from the hash to avoid collisions.
  */
@@ -1362,6 +1480,7 @@ function handleQueryParams() {
   }
 }
 
+<<<<<<< HEAD
 const handleHashChange = createHashChangeHandler({
   getApplication,
   getApplicationReady: () => applicationReadyPromise,
@@ -1370,3 +1489,48 @@ const handleHashChange = createHashChangeHandler({
   devLogger,
   userLogger,
 });
+=======
+async function handleHashChange() {
+  devLogger.log("handleHashChange called, current hash =", window.location.hash);
+
+  try {
+    await applicationReadyPromise;
+  } catch (error) {
+    userLogger.warn(
+      "Proceeding with hash handling despite application initialization failure:",
+      error
+    );
+  }
+
+  const hash = window.location.hash || "";
+  // Use a regex that captures up to the first ampersand or end of string.
+  // E.g. "#view=channel-profile&npub=..." => viewName = "channel-profile"
+  const match = hash.match(/^#view=([^&]+)/);
+
+  try {
+    if (!match || !match[1]) {
+      // No valid "#view=..." => default to "most-recent-videos"
+      await loadView("views/most-recent-videos.html");
+      const initFn = viewInitRegistry["most-recent-videos"];
+      if (typeof initFn === "function") {
+        await initFn();
+      }
+      return;
+    }
+
+    const viewName = match[1]; // only the chunk before any '&'
+    if (typeof viewName === "string" && viewName.toLowerCase() === "history") {
+    }
+    const viewUrl = `views/${viewName}.html`;
+
+    // Now dynamically load that partial, then call its init function
+    await loadView(viewUrl);
+    const initFn = viewInitRegistry[viewName];
+    if (typeof initFn === "function") {
+      await initFn();
+    }
+  } catch (error) {
+    userLogger.error("Failed to handle hash change:", error);
+  }
+}
+>>>>>>> origin/main

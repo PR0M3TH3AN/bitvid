@@ -123,7 +123,11 @@ const SANITIZED_DEFAULT_AUTOPLAY_BLOCK_THRESHOLD = coerceNonNegativeInteger(
 );
 const SANITIZED_DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD = coerceNonNegativeInteger(
   CONFIG_DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
+<<<<<<< HEAD
   4,
+=======
+  1,
+>>>>>>> origin/main
 );
 const SANITIZED_DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD = coerceNonNegativeInteger(
   CONFIG_DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
@@ -145,6 +149,11 @@ export const DEFAULT_TRUST_SEED_NPUBS = SANITIZED_DEFAULT_TRUST_SEED_NPUBS;
 
 const DEFAULT_FLAGS = Object.freeze({
   URL_FIRST_ENABLED: true, // try URL before magnet in the player
+<<<<<<< HEAD
+=======
+  ACCEPT_LEGACY_V1: true, // accept v1 magnet-only notes
+  VIEW_FILTER_INCLUDE_LEGACY_VIDEO: false,
+>>>>>>> origin/main
   FEATURE_WATCH_HISTORY_V2: true,
   FEATURE_PUBLISH_NIP71: false,
   FEATURE_HASHTAG_PREFERENCES: false,
@@ -164,6 +173,12 @@ const runtimeFlags = (() => {
   }
   const initial = {
     URL_FIRST_ENABLED: DEFAULT_FLAGS.URL_FIRST_ENABLED,
+<<<<<<< HEAD
+=======
+    ACCEPT_LEGACY_V1: DEFAULT_FLAGS.ACCEPT_LEGACY_V1,
+    VIEW_FILTER_INCLUDE_LEGACY_VIDEO:
+      DEFAULT_FLAGS.VIEW_FILTER_INCLUDE_LEGACY_VIDEO,
+>>>>>>> origin/main
     FEATURE_WATCH_HISTORY_V2: DEFAULT_FLAGS.FEATURE_WATCH_HISTORY_V2,
     FEATURE_PUBLISH_NIP71: DEFAULT_FLAGS.FEATURE_PUBLISH_NIP71,
     FEATURE_HASHTAG_PREFERENCES: DEFAULT_FLAGS.FEATURE_HASHTAG_PREFERENCES,
@@ -186,6 +201,19 @@ export let URL_FIRST_ENABLED = coerceBoolean(
   DEFAULT_FLAGS.URL_FIRST_ENABLED
 );
 
+<<<<<<< HEAD
+=======
+export let ACCEPT_LEGACY_V1 = coerceBoolean(
+  runtimeFlags.ACCEPT_LEGACY_V1,
+  DEFAULT_FLAGS.ACCEPT_LEGACY_V1
+);
+
+export let VIEW_FILTER_INCLUDE_LEGACY_VIDEO = coerceBoolean(
+  runtimeFlags.VIEW_FILTER_INCLUDE_LEGACY_VIDEO,
+  DEFAULT_FLAGS.VIEW_FILTER_INCLUDE_LEGACY_VIDEO
+);
+
+>>>>>>> origin/main
 export let FEATURE_WATCH_HISTORY_V2 = coerceBoolean(
   runtimeFlags.FEATURE_WATCH_HISTORY_V2,
   DEFAULT_FLAGS.FEATURE_WATCH_HISTORY_V2
@@ -241,6 +269,34 @@ Object.defineProperty(runtimeFlags, "URL_FIRST_ENABLED", {
   },
 });
 
+<<<<<<< HEAD
+=======
+Object.defineProperty(runtimeFlags, "ACCEPT_LEGACY_V1", {
+  configurable: true,
+  enumerable: true,
+  get() {
+    return ACCEPT_LEGACY_V1;
+  },
+  set(next) {
+    ACCEPT_LEGACY_V1 = coerceBoolean(next, DEFAULT_FLAGS.ACCEPT_LEGACY_V1);
+  },
+});
+
+Object.defineProperty(runtimeFlags, "VIEW_FILTER_INCLUDE_LEGACY_VIDEO", {
+  configurable: true,
+  enumerable: true,
+  get() {
+    return VIEW_FILTER_INCLUDE_LEGACY_VIDEO;
+  },
+  set(next) {
+    VIEW_FILTER_INCLUDE_LEGACY_VIDEO = coerceBoolean(
+      next,
+      DEFAULT_FLAGS.VIEW_FILTER_INCLUDE_LEGACY_VIDEO
+    );
+  },
+});
+
+>>>>>>> origin/main
 Object.defineProperty(runtimeFlags, "FEATURE_WATCH_HISTORY_V2", {
   configurable: true,
   enumerable: true,
@@ -368,6 +424,11 @@ Object.defineProperty(runtimeFlags, "TRUSTED_SPAM_HIDE_THRESHOLD", {
 
 // Ensure the runtime object reflects the sanitized defaults immediately.
 runtimeFlags.URL_FIRST_ENABLED = URL_FIRST_ENABLED;
+<<<<<<< HEAD
+=======
+runtimeFlags.ACCEPT_LEGACY_V1 = ACCEPT_LEGACY_V1;
+runtimeFlags.VIEW_FILTER_INCLUDE_LEGACY_VIDEO = VIEW_FILTER_INCLUDE_LEGACY_VIDEO;
+>>>>>>> origin/main
 runtimeFlags.FEATURE_WATCH_HISTORY_V2 = FEATURE_WATCH_HISTORY_V2;
 runtimeFlags.FEATURE_PUBLISH_NIP71 = FEATURE_PUBLISH_NIP71;
 runtimeFlags.FEATURE_HASHTAG_PREFERENCES = FEATURE_HASHTAG_PREFERENCES;
@@ -384,6 +445,19 @@ export function setUrlFirstEnabled(next) {
   return URL_FIRST_ENABLED;
 }
 
+<<<<<<< HEAD
+=======
+export function setAcceptLegacyV1(next) {
+  runtimeFlags.ACCEPT_LEGACY_V1 = next;
+  return ACCEPT_LEGACY_V1;
+}
+
+export function setViewFilterIncludeLegacyVideo(next) {
+  runtimeFlags.VIEW_FILTER_INCLUDE_LEGACY_VIDEO = next;
+  return VIEW_FILTER_INCLUDE_LEGACY_VIDEO;
+}
+
+>>>>>>> origin/main
 export function getWatchHistoryV2Enabled() {
   return FEATURE_WATCH_HISTORY_V2 === true;
 }
@@ -415,6 +489,13 @@ export function setHashtagPreferencesEnabled(next) {
 
 export function resetRuntimeFlags() {
   setUrlFirstEnabled(DEFAULT_FLAGS.URL_FIRST_ENABLED);
+<<<<<<< HEAD
+=======
+  setAcceptLegacyV1(DEFAULT_FLAGS.ACCEPT_LEGACY_V1);
+  setViewFilterIncludeLegacyVideo(
+    DEFAULT_FLAGS.VIEW_FILTER_INCLUDE_LEGACY_VIDEO
+  );
+>>>>>>> origin/main
   setWatchHistoryV2Enabled(DEFAULT_FLAGS.FEATURE_WATCH_HISTORY_V2);
   setHashtagPreferencesEnabled(DEFAULT_FLAGS.FEATURE_HASHTAG_PREFERENCES);
   setTrustSeedsEnabled(DEFAULT_FLAGS.FEATURE_TRUST_SEEDS);

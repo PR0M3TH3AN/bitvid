@@ -304,11 +304,14 @@ export function bootstrapNostrTools() {
 
     const remoteImports = [
       withTimeout(
+<<<<<<< HEAD
         () => import("https://cdn.jsdelivr.net/npm/nostr-tools@2.17.0/+esm"),
         REMOTE_IMPORT_TIMEOUT,
         "jsdelivr-main"
       ),
       withTimeout(
+=======
+>>>>>>> origin/main
         () => import("https://esm.sh/nostr-tools@2.17.0"),
         REMOTE_IMPORT_TIMEOUT,
         "esm-main"

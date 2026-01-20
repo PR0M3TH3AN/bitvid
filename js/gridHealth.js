@@ -3,11 +3,14 @@ import { infoHashFromMagnet } from "./magnets.js";
 import { updateVideoCardSourceVisibility } from "./utils/cardSourceVisibility.js";
 import { TorrentClient, torrentClient } from "./webtorrent.js";
 import { userLogger } from "./utils/logger.js";
+<<<<<<< HEAD
 import {
   readTorrentProbeFromStorage,
   removeTorrentProbeFromStorage,
   writeTorrentProbeToStorage,
 } from "./utils/storage.js";
+=======
+>>>>>>> origin/main
 
 const badgeUpdateListeners = new Set();
 
@@ -38,6 +41,7 @@ function getCacheEntry(key) {
   if (!key) {
     return null;
   }
+<<<<<<< HEAD
   let entry = probeCache.get(key);
 
   if (!entry) {
@@ -61,6 +65,16 @@ function getCacheEntry(key) {
     probeCache.set(key, entry);
   }
 
+=======
+  const entry = probeCache.get(key);
+  if (!entry) {
+    return null;
+  }
+  if (now() - entry.ts > PROBE_CACHE_TTL_MS) {
+    probeCache.delete(key);
+    return null;
+  }
+>>>>>>> origin/main
   return entry.value;
 }
 
@@ -68,9 +82,13 @@ function setCacheEntry(key, value) {
   if (!key) {
     return;
   }
+<<<<<<< HEAD
   const entry = { ts: now(), value };
   probeCache.set(key, entry);
   writeTorrentProbeToStorage(key, entry);
+=======
+  probeCache.set(key, { ts: now(), value });
+>>>>>>> origin/main
 }
 
 function formatTime(ts) {
@@ -84,11 +102,17 @@ function formatTime(ts) {
   }
 }
 
+<<<<<<< HEAD
 function buildTooltip({ peers = 0, checkedAt, reason, webseedOnly } = {}) {
   const parts = [];
   if (webseedOnly) {
     parts.push("Webseed only");
   } else if (Number.isFinite(peers)) {
+=======
+function buildTooltip({ peers = 0, checkedAt, reason } = {}) {
+  const parts = [];
+  if (Number.isFinite(peers)) {
+>>>>>>> origin/main
     parts.push(`Peers: ${Math.max(0, peers)}`);
   }
   if (Number.isFinite(checkedAt)) {
@@ -121,7 +145,10 @@ function normalizeResult(result) {
     healthy: false,
     peers: 0,
     reason: "error",
+<<<<<<< HEAD
     webseedOnly: false,
+=======
+>>>>>>> origin/main
     appendedTrackers: false,
     hasProbeTrackers: false,
     usedTrackers: Array.isArray(TorrentClient.PROBE_TRACKERS)
@@ -137,12 +164,18 @@ function normalizeResult(result) {
     : 0;
   const healthy = Boolean(result.healthy) && peers > 0;
   const reason = typeof result.reason === "string" ? result.reason : "error";
+<<<<<<< HEAD
   const webseedOnly = Boolean(result.webseedOnly) && peers === 0;
+=======
+>>>>>>> origin/main
   return {
     healthy,
     peers: healthy ? Math.max(1, peers) : peers,
     reason,
+<<<<<<< HEAD
     webseedOnly,
+=======
+>>>>>>> origin/main
     appendedTrackers: Boolean(result.appendedTrackers),
     hasProbeTrackers:
       typeof result.hasProbeTrackers === "boolean"
@@ -443,7 +476,10 @@ function setBadge(card, state, details) {
       : 0;
   const hasPeerCount = details ? Number.isFinite(details.peers) : false;
   const peersTextValue = hasPeerCount ? String(peersValue) : "";
+<<<<<<< HEAD
   const webseedOnly = Boolean(details?.webseedOnly);
+=======
+>>>>>>> origin/main
 
   card.dataset.streamHealthState = normalizedState;
   if (hasPeerCount) {
@@ -517,7 +553,10 @@ function setBadge(card, state, details) {
           peers: peersValue,
           checkedAt: details?.checkedAt,
           reason: details?.reason,
+<<<<<<< HEAD
           webseedOnly,
+=======
+>>>>>>> origin/main
         });
   badge.setAttribute("aria-label", tooltip);
   badge.setAttribute("title", tooltip);
@@ -536,7 +575,10 @@ function setBadge(card, state, details) {
     state: normalizedState,
     peers: hasPeerCount ? peersValue : null,
     reason: details && typeof details.reason === "string" ? details.reason : null,
+<<<<<<< HEAD
     webseedOnly,
+=======
+>>>>>>> origin/main
     checkedAt:
       details && Number.isFinite(details.checkedAt) ? Number(details.checkedAt) : null,
     text: badge.textContent,

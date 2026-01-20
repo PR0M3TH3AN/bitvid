@@ -8,7 +8,10 @@ export {
 export {
   createDedupeByRootStage,
   createBlacklistFilterStage,
+<<<<<<< HEAD
   createTagPreferenceFilterStage,
+=======
+>>>>>>> origin/main
   createWatchHistorySuppressionStage,
   createModerationStage,
   createResolvePostedAtStage,

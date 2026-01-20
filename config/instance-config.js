@@ -21,7 +21,11 @@
  * `false` before deploying to production so that end users receive the stable
  * experience. Downstream modules read this flag via `js/config.js`.
  */
+<<<<<<< HEAD
 export const IS_DEV_MODE = true;
+=======
+export const IS_DEV_MODE = false;
+>>>>>>> origin/main
 
 /**
  * Whether development builds should surface extra verbose diagnostics.
@@ -30,7 +34,11 @@ export const IS_DEV_MODE = true;
  * request failures) visible in the console. Flip it to `false` when you want
  * a quieter dev mode without disabling other development helpers entirely.
  */
+<<<<<<< HEAD
 export const IS_VERBOSE_DEV_MODE = true;
+=======
+export const IS_VERBOSE_DEV_MODE = false;
+>>>>>>> origin/main
 
 /**
  * Whether the current deployment should operate in lockdown mode.
@@ -256,7 +264,11 @@ export const DEFAULT_AUTOPLAY_BLOCK_THRESHOLD = 1;
  * enforce community standards or raise it to tolerate more reports before
  * hiding.
  */
+<<<<<<< HEAD
 export const DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD = 20;
+=======
+export const DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD = 1;
+>>>>>>> origin/main
 
 /**
  * Trusted spam/report threshold that hides videos globally.
@@ -293,12 +305,24 @@ export const THEME_ACCENT_OVERRIDES = Object.freeze({
 /**
  * Nostr kind used when persisting watch history events.
  *
+<<<<<<< HEAD
  * bitvid standardizes on kind 30079 so that watch events, view logs, and media
  * metadata stay in the same family of documents. Operators that want to
  * experiment with a separate list kind (for example, a NIP-51 collection) can
  * flip this number so long as their relays accept the chosen kind.
  */
 export const WATCH_HISTORY_KIND = 30079;
+=======
+ * bitvid’s roadmap standardizes on kind 30079 so that watch events, view logs,
+ * and media metadata stay in the same family of documents. During the rollout
+ * from the legacy 30078 payloads, clients query both kinds so historical data
+ * keeps syncing; remove the compatibility fetch once all writers emit the new
+ * kind. Operators that want to experiment with a separate list kind (for
+ * example, a NIP-51 collection) can flip this number so long as their relays
+ * accept the chosen kind.
+ */
+export const WATCH_HISTORY_KIND = 30078;
+>>>>>>> origin/main
 
 /**
  * Identifier applied to the watch-history list when storing it on relays.
@@ -311,6 +335,28 @@ export const WATCH_HISTORY_KIND = 30079;
 export const WATCH_HISTORY_LIST_IDENTIFIER = "watch-history";
 
 /**
+<<<<<<< HEAD
+=======
+ * Legacy identifiers that bitvid clients should continue honoring when
+ * fetching historical watch-history snapshots.
+ */
+export const WATCH_HISTORY_LEGACY_LIST_IDENTIFIERS = Object.freeze([
+  "watch-history:v2:index",
+]);
+
+/**
+ * Whether to enable the V2 encrypted watch-history service.
+ *
+ * The runtime flag that controls this feature defaults to `false` so that new
+ * deployments stick with the analytics-only view flow until operators opt in.
+ * To enable V2, set `window.__BITVID_RUNTIME_FLAGS__.FEATURE_WATCH_HISTORY_V2 = true`
+ * in a bootstrap script (or override the value before the app loads). When the
+ * flag stays off, bitvid still emits legacy view events and will honor
+ * existing watch-history reads per plan §12, but the sync UI will surface a
+ * disabled banner instead of querying relays.
+ */
+/**
+>>>>>>> origin/main
  * Maximum number of watch-history entries to retain per user.
  *
  * The roadmap targets a rolling window of 1,500 items so the UI can highlight

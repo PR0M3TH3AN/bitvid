@@ -10,6 +10,13 @@ const {
   createVideoViewEventFilters,
   getViewEventGuardWindowMs,
 } = await import("../js/nostr/viewEvents.js");
+<<<<<<< HEAD
+=======
+const {
+  setViewFilterIncludeLegacyVideo,
+  resetRuntimeFlags,
+} = await import("../js/constants.js");
+>>>>>>> origin/main
 
 async function withMockedNow(initialMs, callback) {
   const originalNow = Date.now;
@@ -90,15 +97,40 @@ async function testCreateVideoViewEventFiltersForAddressPointer() {
   assertPointerFilterStructure(filters[0], pointerValue, "primary");
 }
 
+<<<<<<< HEAD
 async function testCreateVideoViewEventFiltersForEventPointer() {
   const pointerValue = "legacy-event";
   const { filters } = createVideoViewEventFilters({ type: "e", value: pointerValue });
   assert.ok(Array.isArray(filters) && filters.length === 1, "filters should include only the pointer filter");
   assertPointerFilterStructure(filters[0], pointerValue, "primary");
+=======
+async function testCreateVideoViewEventFiltersIncludeLegacyWhenEnabled() {
+  const pointerValue = "legacy-event";
+  resetRuntimeFlags();
+  setViewFilterIncludeLegacyVideo(true);
+  try {
+    const { filters } = createVideoViewEventFilters({ type: "e", value: pointerValue });
+    assert.ok(Array.isArray(filters) && filters.length === 2, "legacy flag should add a secondary filter");
+    assertPointerFilterStructure(filters[0], pointerValue, "primary");
+    const legacyFilter = filters[1];
+    assert.ok(legacyFilter, "legacy filter should exist when flag enabled");
+    assert.deepEqual(
+      legacyFilter["#video"],
+      [pointerValue],
+      "legacy filter should match the pointer value via #video tag",
+    );
+  } finally {
+    resetRuntimeFlags();
+  }
+>>>>>>> origin/main
 }
 
 await testRememberViewPublishHonorsGuardWindow();
 await testCreateVideoViewEventFiltersForAddressPointer();
+<<<<<<< HEAD
 await testCreateVideoViewEventFiltersForEventPointer();
+=======
+await testCreateVideoViewEventFiltersIncludeLegacyWhenEnabled();
+>>>>>>> origin/main
 
 console.log("nostr view events tests passed");

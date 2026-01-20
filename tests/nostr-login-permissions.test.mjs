@@ -2,8 +2,12 @@ import "./test-helpers/setup-localstorage.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 
+<<<<<<< HEAD
 import { nostrClient } from "../js/nostrClientFacade.js";
 import { NostrClient, __testExports } from "../js/nostr/client.js";
+=======
+import { NostrClient, nostrClient, __testExports } from "../js/nostr.js";
+>>>>>>> origin/main
 import { accessControl } from "../js/accessControl.js";
 
 const {

@@ -11,7 +11,11 @@ export class ModerationController {
     this.modal.videoStage =
       playerModal?.querySelector(".video-modal__video") || null;
     this.modal.moderationOverlay =
+<<<<<<< HEAD
       playerModal?.querySelector("[data-moderation-bar]") || null;
+=======
+      this.modal.videoStage?.querySelector("[data-moderation-overlay]") || null;
+>>>>>>> origin/main
     this.modal.moderationBadge =
       this.modal.moderationOverlay?.querySelector(
         "[data-moderation-badge='true']",

@@ -101,6 +101,7 @@
                 Wallet
               </button>
               <button
+<<<<<<< HEAD
                 id="profileNavStorage"
                 type="button"
                 class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
@@ -110,6 +111,8 @@
                 Storage
               </button>
               <button
+=======
+>>>>>>> origin/main
                 id="profileNavHashtags"
                 type="button"
                 class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
@@ -181,7 +184,11 @@
             data-profile-mobile-pane
             aria-hidden="true"
           >
+<<<<<<< HEAD
             <div id="profileModalPanes" class="profile-modal__panes">
+=======
+            <div class="profile-modal__panes">
+>>>>>>> origin/main
             <section
               id="profilePaneAccount"
               class="profile-pane space-y-6"
@@ -230,6 +237,7 @@
                     <span id="profileModalName" class="truncate text-sm font-semibold text-text">Loading...</span>
                     <span id="profileModalNpub" class="break-all font-mono text-xs text-muted">npub1...</span>
                   </div>
+<<<<<<< HEAD
                   <div class="flex flex-wrap items-center gap-2 profile-modal__actions">
                     <a
                       id="profileChannelLink"
@@ -246,6 +254,15 @@
                       Edit profile
                     </button>
                   </div>
+=======
+                  <a
+                    id="profileChannelLink"
+                    href="#"
+                    class="btn-ghost focus-ring profile-modal__channel-link hidden text-xs"
+                  >
+                    View channel
+                  </a>
+>>>>>>> origin/main
                 </div>
 
                 <div
@@ -295,6 +312,7 @@
                     Choose how many trusted reports or mutes it takes to blur thumbnails, block autoplay previews, or hide videos entirely.
                     Lower numbers are stricter.
                   </p>
+<<<<<<< HEAD
                   <div class="rounded-lg border border-border bg-bg-muted p-3 text-xs text-muted">
                     <p>
                       Trusted counts include your first-degree follows (F1) plus seeded moderators.
@@ -322,6 +340,8 @@
                       <span>Seeded moderators only</span>
                     </p>
                   </div>
+=======
+>>>>>>> origin/main
                 </div>
                 <div class="grid gap-4 sm:grid-cols-2">
                   <label
@@ -423,6 +443,7 @@
                   role="status"
                   aria-live="polite"
                 ></p>
+<<<<<<< HEAD
                 <div class="space-y-3 border-t border-border/60 pt-4">
                   <div class="space-y-1">
                     <h4 class="text-sm font-semibold text-text">Active overrides</h4>
@@ -622,6 +643,8 @@
                   </button>
                 </div>
                 <p id="editStatusText" class="text-sm text-muted" role="status" aria-live="polite"></p>
+=======
+>>>>>>> origin/main
               </div>
             </section>
 
@@ -733,6 +756,7 @@
             </section>
 
             <section
+<<<<<<< HEAD
               id="profilePaneStorage"
               class="profile-pane hidden space-y-6"
               role="tabpanel"
@@ -829,6 +853,8 @@
             </section>
 
             <section
+=======
+>>>>>>> origin/main
               id="profilePaneHashtags"
               class="profile-pane hidden space-y-6"
               role="tabpanel"
@@ -1032,6 +1058,7 @@
               <p class="text-sm text-muted">
                 View encrypted conversations sent with NIP-04 or NIP-44. bitvid keeps message data on this device only.
               </p>
+<<<<<<< HEAD
               <div class="card space-y-4 p-4">
                 <div class="flex flex-wrap items-start justify-between gap-3">
                   <div class="space-y-1">
@@ -1139,6 +1166,8 @@
                   aria-live="polite"
                 ></p>
               </div>
+=======
+>>>>>>> origin/main
               <div
                 id="profileMessagesStatus"
                 class="sr-only"
@@ -1194,6 +1223,7 @@
                 aria-live="polite"
                 aria-label="Direct message threads"
               ></ul>
+<<<<<<< HEAD
               <div
                 id="profileMessagesConversation"
                 class="hidden flex flex-col gap-3"
@@ -1282,6 +1312,8 @@
                   </button>
                 </div>
               </div>
+=======
+>>>>>>> origin/main
             </section>
             <section
               id="profilePaneHistory"
@@ -1321,6 +1353,7 @@
                     >
                       Republish now
                     </button>
+<<<<<<< HEAD
                     <button
                       id="profileHistoryRefresh"
                       type="button"
@@ -1328,10 +1361,44 @@
                       data-size="sm"
                     >
                       Refresh
+=======
+                  </div>
+                  <div class="flex items-start gap-3">
+                    <div class="flex flex-col">
+                      <span
+                        id="profileHistoryMetadataLabel"
+                        class="text-sm font-medium text-text"
+                      >
+                        Store titles/thumbnails locally
+                      </span>
+                      <span
+                        id="profileHistoryMetadataDescription"
+                        class="text-xs text-muted"
+                      >
+                        When disabled, bitvid skips saving rich metadata to this device.
+                      </span>
+                    </div>
+                    <button
+                      id="profileHistoryMetadataToggle"
+                      type="button"
+                      class="focus-ring relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer items-center rounded-full border border-border bg-panel transition"
+                      role="switch"
+                      aria-checked="true"
+                      aria-labelledby="profileHistoryMetadataLabel"
+                      aria-describedby="profileHistoryMetadataDescription"
+                    >
+                      <span class="sr-only">Toggle local metadata storage</span>
+                      <span
+                        id="profileHistoryMetadataThumb"
+                        class="inline-block h-5 w-5 translate-x-5 transform rounded-full bg-white transition"
+                        aria-hidden="true"
+                      ></span>
+>>>>>>> origin/main
                     </button>
                   </div>
                 </div>
                 <div
+<<<<<<< HEAD
                   id="profileHistoryPrivacyBanner"
                   class="card hidden border border-status-info-border bg-status-info-surface px-4 py-3 text-sm text-status-info-on"
                   role="status"
@@ -1356,6 +1423,13 @@
                   </div>
                 </div>
                 <p id="profileHistoryInfo" class="text-xs text-muted"></p>
+=======
+                  id="profileHistoryToastRegion"
+                  class="space-y-2"
+                  aria-live="polite"
+                  aria-atomic="false"
+                ></div>
+>>>>>>> origin/main
                 <div
                   id="profileHistorySessionWarning"
                   class="hidden pill"
@@ -1396,7 +1470,11 @@
                 >
                   You haven’t watched any videos yet.
                 </div>
+<<<<<<< HEAD
                 <div id="profileHistoryScroll" class="relative">
+=======
+                <div id="profileHistoryScroll" class="relative max-h-profile-history overflow-y-auto pr-1">
+>>>>>>> origin/main
                   <div
                     id="profileHistoryGrid"
                     class="grid-stack hidden"
@@ -1465,7 +1543,11 @@
                   <h4 class="text-base font-semibold text-text">Whitelist</h4>
                 </div>
                 <p class="text-sm text-muted">
+<<<<<<< HEAD
                   Creators listed here remain visible when whitelist mode is enabled. Accounts can appear in both lists, and the blacklist always takes precedence.
+=======
+                  Creators listed here remain visible when whitelist mode is enabled. Adding someone removes them from the blacklist.
+>>>>>>> origin/main
                 </p>
                 <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
                   <label class="flex-1 text-sm text-muted-strong" for="adminWhitelistInput">
@@ -1501,7 +1583,11 @@
                   <h4 class="text-base font-semibold text-text">Blacklist</h4>
                 </div>
                 <p class="text-sm text-muted">
+<<<<<<< HEAD
                   Creators on the blacklist are hidden from bitvid everywhere. Accounts can appear in both lists, and the blacklist always takes precedence.
+=======
+                  Creators on the blacklist are hidden from bitvid everywhere. Adding someone removes them from the whitelist.
+>>>>>>> origin/main
                 </p>
                 <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
                   <label class="flex-1 text-sm text-muted-strong" for="adminBlacklistInput">

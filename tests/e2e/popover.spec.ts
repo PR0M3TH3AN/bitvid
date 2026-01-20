@@ -16,10 +16,13 @@ test.describe("popover layout scenarios", () => {
         .getComputedStyle(document.documentElement)
         .getPropertyValue("--popover-inline-safe-max")
         .trim();
+<<<<<<< HEAD
       const popoverMaxWidth = window
         .getComputedStyle(node)
         .getPropertyValue("--popover-max-width")
         .trim();
+=======
+>>>>>>> origin/main
 
       return {
         rect: {
@@ -33,7 +36,11 @@ test.describe("popover layout scenarios", () => {
         viewport: { width: viewportWidth, height: viewportHeight },
         placement: node.dataset.popoverPlacement || "",
         state: node.dataset.popoverState || "",
+<<<<<<< HEAD
         popoverMaxWidth,
+=======
+        inlineMaxWidth: node.style.maxWidth,
+>>>>>>> origin/main
         tokenMaxWidth: tokenValue,
       };
     });
@@ -55,10 +62,13 @@ test.describe("popover layout scenarios", () => {
           .getComputedStyle(document.documentElement)
           .getPropertyValue("--popover-inline-safe-max")
           .trim();
+<<<<<<< HEAD
         const popoverMaxWidth = window
           .getComputedStyle(node)
           .getPropertyValue("--popover-max-width")
           .trim();
+=======
+>>>>>>> origin/main
 
         return {
           rect: {
@@ -80,7 +90,11 @@ test.describe("popover layout scenarios", () => {
           viewport: { width: viewportWidth, height: viewportHeight },
           placement: node.dataset.popoverPlacement || "",
           state: node.dataset.popoverState || "",
+<<<<<<< HEAD
           popoverMaxWidth,
+=======
+          inlineMaxWidth: node.style.maxWidth,
+>>>>>>> origin/main
           tokenMaxWidth: tokenValue,
         };
       }, triggerHandle);
@@ -110,7 +124,11 @@ test.describe("popover layout scenarios", () => {
     assertWithinViewport(metrics);
     expect(metrics.state).toBe("open");
     expect(metrics.placement.startsWith("top")).toBeTruthy();
+<<<<<<< HEAD
     expect(metrics.popoverMaxWidth).toBe(metrics.tokenMaxWidth);
+=======
+    expect(metrics.inlineMaxWidth).toBe(metrics.tokenMaxWidth);
+>>>>>>> origin/main
     expect(metrics.tokenMaxWidth.length).toBeGreaterThan(0);
   });
 
@@ -127,7 +145,11 @@ test.describe("popover layout scenarios", () => {
     assertWithinViewport(metrics);
     expect(metrics.state).toBe("open");
     expect(metrics.placement.includes("bottom")).toBeTruthy();
+<<<<<<< HEAD
     expect(metrics.popoverMaxWidth).toBe(metrics.tokenMaxWidth);
+=======
+    expect(metrics.inlineMaxWidth).toBe(metrics.tokenMaxWidth);
+>>>>>>> origin/main
     expect(metrics.tokenMaxWidth.length).toBeGreaterThan(0);
   });
 
@@ -145,7 +167,11 @@ test.describe("popover layout scenarios", () => {
 
     assertWithinViewport(metrics);
     expect(metrics.state).toBe("open");
+<<<<<<< HEAD
     expect(metrics.popoverMaxWidth).toBe(metrics.tokenMaxWidth);
+=======
+    expect(metrics.inlineMaxWidth).toBe(metrics.tokenMaxWidth);
+>>>>>>> origin/main
     expect(metrics.tokenMaxWidth.length).toBeGreaterThan(0);
   });
 });

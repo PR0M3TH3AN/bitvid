@@ -90,6 +90,7 @@ export function formatTimeAgo(timestamp) {
   }
   return "just now";
 }
+<<<<<<< HEAD
 
 /**
  * Formats a timestamp (in seconds) to a long absolute date with ordinal day
@@ -124,3 +125,5 @@ export function formatAbsoluteDateWithOrdinal(timestamp) {
     return date.toDateString();
   }
 }
+=======
+>>>>>>> origin/main

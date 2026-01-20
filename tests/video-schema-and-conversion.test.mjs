@@ -5,7 +5,11 @@ import {
   NOTE_TYPES,
   getNostrEventSchema,
 } from "../js/nostrEventSchemas.js";
+<<<<<<< HEAD
 import { convertEventToVideo } from "../js/nostr/nip71.js";
+=======
+import { convertEventToVideo } from "../js/nostr.js";
+>>>>>>> origin/main
 
 test("video post schema documents nsfw and kids flags", () => {
   const schema = getNostrEventSchema(NOTE_TYPES.VIDEO_POST);

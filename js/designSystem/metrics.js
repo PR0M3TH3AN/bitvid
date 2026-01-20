@@ -5,7 +5,10 @@ import {
 } from "./dynamicStyles.js";
 
 const TOKEN_FALLBACKS = {
+<<<<<<< HEAD
   "--breakpoint-lg": "64rem",
+=======
+>>>>>>> origin/main
   "--grid-card-min-width": "20rem",
   "--popover-backdrop-blur": "12px",
   "--toast-translate": "0.75rem",
@@ -181,6 +184,7 @@ export function getGridCardMinWidthPx(options = {}) {
   return readDesignTokenAsPixels("--grid-card-min-width", options);
 }
 
+<<<<<<< HEAD
 export function getBreakpointLg(options = {}) {
   return readDesignToken("--breakpoint-lg", options);
 }
@@ -189,6 +193,8 @@ export function getBreakpointLgPx(options = {}) {
   return readDesignTokenAsPixels("--breakpoint-lg", options);
 }
 
+=======
+>>>>>>> origin/main
 export function getPopoverBackdropBlur(options = {}) {
   return readDesignToken("--popover-backdrop-blur", options);
 }
@@ -253,3 +259,7 @@ export const designMetrics = {
 };
 
 export default designMetrics;
+<<<<<<< HEAD
+=======
+
+>>>>>>> origin/main

@@ -7,12 +7,19 @@
 Currently, logic related to the **video note specification** and how data is structured (version, `isPrivate`, encryption placeholders, and so on) is scattered across three files:
 
 1. **app.js**: Contains UI handling, form submissions, and some note structure (like `version`, `title`, `magnet`).
+<<<<<<< HEAD
 2. **nostr client modules** (for example, `js/nostr/client.js`): Build and edit Nostr events (`publishVideo`, `editVideo`, `deleteVideo`). They also hold methods for “fake encryption” and “fake decryption,” among other utilities.
 3. **webtorrent.js**: Mostly focuses on torrent streaming but does not handle note logic directly. It rarely touches the note data, so it may not need major restructuring.
 
 The legacy `nostr.js` shim no longer exists; references to it map to the nostr client layer under `js/nostr/`.
 
 To isolate note-spec-related operations, you can create a new file (for example, `bitvidNoteSpec.js`). This file will have all the code that deals with creating or parsing your event content fields (version, magnet link encryption, etc.). Then `app.js` and the nostr client modules can import those functions.
+=======
+2. **nostr.js**: Builds and edits Nostr events (`publishVideo`, `editVideo`, `deleteVideo`). It also holds methods for “fake encryption” and “fake decryption,” among other utilities.
+3. **webtorrent.js**: Mostly focuses on torrent streaming but does not handle note logic directly. It rarely touches the note data, so it may not need major restructuring.
+
+To isolate note-spec-related operations, you can create a new file (for example, `bitvidNoteSpec.js`). This file will have all the code that deals with creating or parsing your event content fields (version, magnet link encryption, etc.). Then `app.js` and `nostr.js` can import those functions.
+>>>>>>> origin/main
 
 ---
 
@@ -20,7 +27,11 @@ To isolate note-spec-related operations, you can create a new file (for example,
 
 - **Centralize the note specification**: Keep details like `version`, `deleted`, `isPrivate`, encryption, and decryption in one place.
 - **Simplify `app.js`**: Move form building/parsing to new spec-related functions. That way, `app.js` only handles UI and user actions.
+<<<<<<< HEAD
 - **Streamline the nostr client layer**: Shift event creation logic into a function from the new note spec file. Nostr code then just calls that function, signs it, and publishes it.
+=======
+- **Streamline `nostr.js`**: Shift event creation logic into a function from the new note spec file. Nostr code then just calls that function, signs it, and publishes it.
+>>>>>>> origin/main
 
 ---
 
@@ -120,17 +131,30 @@ Now `handleSubmit` is only handling the UI, while actual note-building moves to 
 
 ---
 
+<<<<<<< HEAD
 ### 2. Extracting Logic from the nostr client layer
 
 In the nostr client modules, you have methods like `publishVideo`, `editVideo`, and `deleteVideo`. They build the note content, sign it, and publish it. You can simplify them:
 
 - **Rename** them to something more generic (e.g., `publishNote`, `updateNote`, `deleteNote`) if that aligns better with Nostr usage.
 - **Import** helper functions from `bitvidNoteSpec.js` to build or edit the actual content. That way, the nostr client layer doesn’t need to know about `version`, `deleted`, or encryption details.
+=======
+### 2. Extracting Logic from `nostr.js`
+
+In `nostr.js`, you have methods like `publishVideo`, `editVideo`, and `deleteVideo`. They build the note content, sign it, and publish it. You can simplify them:
+
+- **Rename** them to something more generic (e.g., `publishNote`, `updateNote`, `deleteNote`) if that aligns better with Nostr usage.
+- **Import** helper functions from `bitvidNoteSpec.js` to build or edit the actual content. That way, `nostr.js` doesn’t need to know about `version`, `deleted`, or encryption details.
+>>>>>>> origin/main
 
 For example, you might do this:
 
 ```js
+<<<<<<< HEAD
 // nostr client module
+=======
+// nostr.js
+>>>>>>> origin/main
 import { buildEditNote, buildDeleteNote } from "./bitvidNoteSpec.js";
 
 class NostrClient {
@@ -152,7 +176,11 @@ class NostrClient {
 }
 ```
 
+<<<<<<< HEAD
 By delegating the actual note-building to `buildEditNote` and `buildDeleteNote`, you keep the nostr client layer focused on signing and relaying events.
+=======
+By delegating the actual note-building to `buildEditNote` and `buildDeleteNote`, you keep `nostr.js` focused on signing and relaying events.
+>>>>>>> origin/main
 
 ---
 
@@ -172,16 +200,27 @@ By delegating the actual note-building to `buildEditNote` and `buildDeleteNote`,
    - Remove direct references to building the final note object in `handleSubmit`.  
    - Instead, gather user inputs, call a helper function from `bitvidNoteSpec.js` to produce the final note object, then pass that object to `nostrClient.publishNote` (or a similar method).
 
+<<<<<<< HEAD
 3. **Update the nostr client modules:**
    - Rename or refactor `publishVideo`, `editVideo`, and `deleteVideo` to call your new helper methods from `bitvidNoteSpec.js`.
    - Keep the Nostr signing and publishing logic inside the client layer.
+=======
+3. **Update `nostr.js`:**
+   - Rename or refactor `publishVideo`, `editVideo`, and `deleteVideo` to call your new helper methods from `bitvidNoteSpec.js`.
+   - Keep the Nostr signing and publishing logic inside `nostr.js`.
+>>>>>>> origin/main
 
 4. **Verify Data Flow:**  
    - Confirm that after form submission, the final event object is built in `bitvidNoteSpec.js`, returned to `app.js`, and forwarded to `nostrClient`.  
    - Ensure you can still subscribe to events and parse them without issues.
 
+<<<<<<< HEAD
 5. **Remove Redundant Code:**
    - Delete any leftover duplication in `app.js` or the nostr client modules relating to magnet encryption or note structuring.
+=======
+5. **Remove Redundant Code:**
+   - Delete any leftover duplication in `app.js` or `nostr.js` relating to magnet encryption or note structuring.
+>>>>>>> origin/main
 
 6. **Test Thoroughly:**  
    - Create, edit, and delete events to ensure everything behaves the same.  
@@ -259,7 +298,11 @@ export function isValidNoteContent(content) {
 }
 ```
 
+<<<<<<< HEAD
 By keeping these details in a single file, you won’t have to search through `app.js` or the nostr client modules whenever you need to tweak the note structure.
+=======
+By keeping these details in a single file, you won’t have to search through `app.js` or `nostr.js` whenever you need to tweak the note structure.
+>>>>>>> origin/main
 
 ---
 

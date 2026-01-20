@@ -17,6 +17,7 @@
 - `blurThumbnail = trustedReportCount(event,'nudity') >= DEFAULT_BLUR_THRESHOLD`
 - `hideAutoplay = trustedReportCount(event,'nudity') >= DEFAULT_AUTOPLAY_BLOCK_THRESHOLD`
 - `downrankIfMutedByF1 = true`
+<<<<<<< HEAD
 - `hideIfTrustedMuteCount(author, category) >= trustedMuteHideThresholds[category] ?? DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD`
 - `hideIfTrustedSpamReports(event) >= DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD`
 
@@ -26,6 +27,12 @@ Threshold constants are exported from [`config/instance-config.js`](../../config
 - Trusted mute counts are **time-bounded**: only mute lists updated within the rolling window (currently 60 days) contribute to `trustedMuteCount`.
 - If an F1 account has not refreshed its mute list within the window, its mutes are treated as expired until a newer list is ingested.
 - This window acts as a rate-limit/decay mechanism so stale mutes do not accumulate indefinitely.
+=======
+- `hideIfTrustedMuteCount(author) >= DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD`
+- `hideIfTrustedSpamReports(event) >= DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD`
+
+Threshold constants are exported from [`config/instance-config.js`](../../config/instance-config.js) so operators can change the defaults without touching moderation code. Inspect the `DEFAULT_BLUR_THRESHOLD`, `DEFAULT_AUTOPLAY_BLOCK_THRESHOLD`, `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD`, and `DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD` exports to set your policy. The upstream repo includes example values (blur at 3, autoplay block at 2, trusted mute hide at 1, trusted spam hide at 3), but treat those as guidance rather than hard-coded requirements.
+>>>>>>> origin/main
 
 ### Why these numbers?
 - F1-only reports resist Sybil attacks.
@@ -67,10 +74,15 @@ function shouldHideAutoplay(eventId: string, ctx: Ctx): boolean {
   return trustedReportCount(eventId, 'nudity', ctx.viewerFollows, ctx.reports) >= DEFAULT_AUTOPLAY_BLOCK_THRESHOLD;
 }
 
+<<<<<<< HEAD
 function shouldHideForTrustedMute(authorHex: string, ctx: Ctx, category: Report['type']): boolean {
   const thresholds = ctx.trustedMuteHideThresholds || {};
   const threshold = thresholds[category] ?? DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD;
   return ctx.trustedMuteCount(authorHex, category) >= threshold;
+=======
+function shouldHideForTrustedMute(authorHex: string, ctx: Ctx): boolean {
+  return ctx.trustedMuteCount(authorHex) >= DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD;
+>>>>>>> origin/main
 }
 
 function shouldHideForTrustedSpam(eventId: string, ctx: Ctx): boolean {

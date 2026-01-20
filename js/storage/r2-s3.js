@@ -1,6 +1,11 @@
 // js/storage/r2-s3.js
 
+<<<<<<< HEAD
 const AWS_SDK_SPECIFIER = "https://esm.sh/@aws-sdk/client-s3@3.637.0?bundle";
+=======
+const AWS_SDK_SPECIFIER =
+  "https://esm.sh/@aws-sdk/client-s3@3.637.0?target=es2022&bundle";
+>>>>>>> origin/main
 
 const disableNetworkImports = Boolean(
   globalThis?.__BITVID_DISABLE_NETWORK_IMPORTS__
@@ -22,10 +27,15 @@ function assignAwsSdk(module) {
     UploadPartCommand: module.UploadPartCommand,
     CompleteMultipartUploadCommand: module.CompleteMultipartUploadCommand,
     AbortMultipartUploadCommand: module.AbortMultipartUploadCommand,
+<<<<<<< HEAD
     ListBucketsCommand: module.ListBucketsCommand,
     HeadBucketCommand: module.HeadBucketCommand,
     PutBucketCorsCommand: module.PutBucketCorsCommand,
     DeleteObjectCommand: module.DeleteObjectCommand,
+=======
+    HeadBucketCommand: module.HeadBucketCommand,
+    PutBucketCorsCommand: module.PutBucketCorsCommand,
+>>>>>>> origin/main
   };
 }
 
@@ -61,6 +71,7 @@ async function loadAwsSdkModule() {
   }
 }
 
+<<<<<<< HEAD
 export async function testS3Connection(config) {
   if (!config) {
     throw new Error("Configuration required for testing S3 connection.");
@@ -108,6 +119,8 @@ export async function testS3Connection(config) {
   }
 }
 
+=======
+>>>>>>> origin/main
 function requireAwsSdk() {
   if (awsSdk) {
     return awsSdk;
@@ -162,6 +175,7 @@ function computeCacheControl(key) {
   return "public, max-age=3600";
 }
 
+<<<<<<< HEAD
 export function makeR2Client({
   accountId,
   accessKeyId,
@@ -180,12 +194,28 @@ export function makeR2Client({
   return new S3Client({
     region: region || "auto",
     endpoint: finalEndpoint,
+=======
+export function makeR2Client({ accountId, accessKeyId, secretAccessKey }) {
+  if (!accountId || !accessKeyId || !secretAccessKey) {
+    throw new Error("Missing Cloudflare R2 credentials");
+  }
+
+  const { S3Client } = requireAwsSdk();
+
+  return new S3Client({
+    region: "auto",
+    endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+>>>>>>> origin/main
     credentials: { accessKeyId, secretAccessKey },
     forcePathStyle: true,
   });
 }
 
+<<<<<<< HEAD
 export async function ensureBucketExists({ s3, bucket }) {
+=======
+async function ensureBucketExists({ s3, bucket }) {
+>>>>>>> origin/main
   const { CreateBucketCommand, HeadBucketCommand } = requireAwsSdk();
 
   try {
@@ -255,6 +285,7 @@ export async function ensureBucketCors({ s3, bucket, origins }) {
   await s3.send(command);
 }
 
+<<<<<<< HEAD
 export async function deleteObject({ s3, bucket, key }) {
   if (!s3 || !bucket || !key) {
     throw new Error("Missing required parameters for deleteObject");
@@ -279,6 +310,8 @@ export async function deleteObject({ s3, bucket, key }) {
   }
 }
 
+=======
+>>>>>>> origin/main
 export async function multipartUpload({
   s3,
   bucket,
@@ -307,8 +340,11 @@ export async function multipartUpload({
     AbortMultipartUploadCommand,
   } = requireAwsSdk();
 
+<<<<<<< HEAD
   console.debug("[R2] Starting multipart upload for:", key);
 
+=======
+>>>>>>> origin/main
   const createCommand = new CreateMultipartUploadCommand({
     Bucket: bucket,
     Key: key,
@@ -316,6 +352,19 @@ export async function multipartUpload({
     CacheControl: computeCacheControl(key),
   });
 
+<<<<<<< HEAD
+=======
+  createCommand.middlewareStack.add(
+    (next) => async (args) => {
+      if (args?.request?.headers) {
+        args.request.headers["cf-create-bucket-if-missing"] = "true";
+      }
+      return next(args);
+    },
+    { step: "build" }
+  );
+
+>>>>>>> origin/main
   const { UploadId } = await s3.send(createCommand);
 
   if (!UploadId) {

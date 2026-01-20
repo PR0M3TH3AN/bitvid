@@ -59,6 +59,7 @@
                   class="video-modal__ambient-canvas"
                 ></canvas>
               </div>
+<<<<<<< HEAD
               <div
                 class="video-modal__moderation-bar"
                 data-moderation-bar
@@ -112,6 +113,61 @@
                 </div>
               </div>
               <div class="video-modal__video" data-video-surface>
+=======
+              <div class="video-modal__video" data-video-surface>
+                <div
+                  class="video-modal__moderation-overlay"
+                  data-moderation-overlay
+                  hidden
+                >
+                  <div
+                    class="moderation-badge"
+                    data-moderation-badge="true"
+                    data-variant="warning"
+                    role="status"
+                    aria-live="polite"
+                    aria-atomic="true"
+                  >
+                    <span class="moderation-badge__label inline-flex items-center gap-xs">
+                      <span class="moderation-badge__icon" aria-hidden="true">
+                        <svg
+                          class="moderation-badge__icon-mark"
+                          viewBox="0 0 20 20"
+                          focusable="false"
+                          aria-hidden="true"
+                        >
+                          <path
+                            fill="currentColor"
+                            d="M10 18a8 8 0 100-16 8 8 0 000 16zm-.75-11.75a.75.75 0 011.5 0v4.5a.75.75 0 01-1.5 0v-4.5zm.75 8.5a1 1 0 100-2 1 1 0 000 2z"
+                            fill-rule="evenodd"
+                            clip-rule="evenodd"
+                          />
+                        </svg>
+                      </span>
+                      <span
+                        class="moderation-badge__text"
+                        data-moderation-text
+                      >
+                        Content or user blocked by a trusted contact.
+                      </span>
+                    </span>
+                    <div
+                      class="moderation-badge__actions"
+                      data-moderation-actions
+                    >
+                      <button
+                        type="button"
+                        class="moderation-badge__action flex-shrink-0"
+                        data-moderation-action="override"
+                        aria-pressed="false"
+                        aria-label="Show anyway"
+                      >
+                        Show anyway
+                      </button>
+                    </div>
+                  </div>
+                </div>
+>>>>>>> origin/main
                 <video
                   id="modalVideo"
                   class="video-modal__media"
@@ -120,6 +176,7 @@
               </div>
             </div>
 
+<<<<<<< HEAD
             <div class="video-modal__source-toggle-container watch-container" data-source-toggle-container hidden>
               <div class="inline-flex rounded-lg bg-overlay-panel-soft p-1">
                 <button
@@ -147,6 +204,8 @@
               </div>
             </div>
 
+=======
+>>>>>>> origin/main
             <div
               class="watch-container"
               data-video-stats-container
@@ -202,6 +261,7 @@
                     <div class="video-modal__meta-info flex flex-wrap items-center gap-3">
                       <span id="videoTimestamp" class="modal-meta">Posted just now</span>
                       <span id="videoEditedTimestamp" class="modal-meta hidden">Last edited just now</span>
+<<<<<<< HEAD
                       <span id="videoViewCount" class="modal-meta modal-view-count flex items-center gap-1.5" title="Views">
                         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4">
                           <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
@@ -209,6 +269,9 @@
                         </svg>
                         <span data-view-count-text>–</span>
                       </span>
+=======
+                      <span id="videoViewCount" class="modal-meta modal-view-count">– views</span>
+>>>>>>> origin/main
                     </div>
                   </div>
 
@@ -296,8 +359,14 @@
                       <span class="video-modal__reaction-meter-label" data-reaction-meter-label>No reactions yet</span>
                       <div class="video-modal__reaction-meter-track" aria-hidden="true">
                         <div
+<<<<<<< HEAD
                           class="video-modal__reaction-meter-fill video-modal__reaction-meter-fill--empty"
                           data-reaction-meter-fill
+=======
+                          class="video-modal__reaction-meter-fill"
+                          data-reaction-meter-fill
+                          style="width: 0%"
+>>>>>>> origin/main
                         ></div>
                       </div>
                       <span class="sr-only" data-reaction-meter-sr>No reactions yet</span>
@@ -521,12 +590,15 @@
                   >
                     No description available.
                   </p>
+<<<<<<< HEAD
                   <div
                     id="videoDescriptionPreviews"
                     class="mt-4 space-y-3"
                     data-link-previews
                     hidden
                   ></div>
+=======
+>>>>>>> origin/main
                 </div>
 
                 <div

@@ -16,7 +16,10 @@ import {
   setNostrEventSchemaOverrides,
   buildVideoPostEvent,
   buildRepostEvent,
+<<<<<<< HEAD
   buildProfileMetadataEvent,
+=======
+>>>>>>> origin/main
 } from "./nostrEventSchemas.js";
 
 // Inspect the current schema
@@ -68,6 +71,7 @@ await nostrClient.ensureExtensionPermissions();
 `setActiveSigner` accepts any object that implements the subset of capabilities
 you support. `nostrClient` (imported from the
 [NIP-07](https://github.com/nostr-protocol/nips/blob/master/07.md)-aligned
+<<<<<<< HEAD
 `nostrClientFacade.js`) routes signing and encryption through the adapter
 registry in `js/nostr/client.js`, prefers the registered signer, and falls back
 to the strongest available capability (or session actors for telemetry) when a
@@ -78,6 +82,12 @@ method is unavailable. Permission prompts are surfaced via
 sign/encrypt calls. Call `clearActiveSigner()` on logout if your integration
 manages session state manually; the built-in logout handler already does this
 for the default extension flow.
+=======
+`nostrClientFacade.js`) will prefer the registered signer for signing and
+encryption before falling back to session actors. Call `clearActiveSigner()` on
+logout if your integration manages session state manually; the built-in logout
+handler already does this for the default extension flow.
+>>>>>>> origin/main
 
 ### Accessing raw events
 
@@ -117,8 +127,14 @@ through the dedicated facade when you need to run a NIP-07 handshake:
 import { nostrClient, requestDefaultExtensionPermissions } from "./nostrClientFacade.js";
 ```
 
+<<<<<<< HEAD
 The compatibility shim has been removed; import from the facades above to avoid
 broken references.【F:js/nostr/defaultClient.js†L1-L25】
+=======
+`js/nostr.js` remains as a compatibility shim while downstream packages migrate;
+it forwards to the new facades but is slated for removal once legacy imports
+are retired.【F:js/nostr/defaultClient.js†L1-L25】【F:js/nostr.js†L1-L92】
+>>>>>>> origin/main
 
 For analytics, route through the
 [NIP-71](https://github.com/nostr-protocol/nips/blob/master/71.md) helpers in
@@ -128,10 +144,17 @@ For analytics, route through the
 import { recordVideoView } from "./nostrViewEventsFacade.js";
 ```
 
+<<<<<<< HEAD
 Watch-history list management layers a replaceable,
 [NIP-51](https://github.com/nostr-protocol/nips/blob/master/51.md)-style list
 of monthly records. Import from `nostrWatchHistoryFacade.js` to stay aligned
 with the simplified month-by-month lifecycle:
+=======
+Watch-history list management layers
+[NIP-51](https://github.com/nostr-protocol/nips/blob/master/51.md) semantics on
+encrypted snapshots—import from `nostrWatchHistoryFacade.js` to stay aligned
+with the chunk/index lifecycle:
+>>>>>>> origin/main
 
 ```js
 import { updateWatchHistoryListWithDefaultClient } from "./nostrWatchHistoryFacade.js";
@@ -143,6 +166,7 @@ import { updateWatchHistoryListWithDefaultClient } from "./nostrWatchHistoryFaca
 | --- | --- | --- | --- |
 | Video post (`NOTE_TYPES.VIDEO_POST`) | `30078` | `['t','video']`, `['d', <stable video identifier>]` plus optional schema append tags | JSON payload using Content Schema v3 (`version`, `title`, optional `url`, `magnet`, `thumbnail`, `description`, `mode`, `videoRootId`, `deleted`, `isPrivate`, `isNsfw`, `isForKids`, `enableComments`, `ws`, `xs`) |
 | NIP-94 mirror (`NOTE_TYPES.VIDEO_MIRROR`) | `1063` | Tags forwarded from `publishVideo` (URL, mime type, thumbnail, alt text, magnet) | Plain text alt description |
+<<<<<<< HEAD
 | Repost (`NOTE_TYPES.REPOST`) | `6` | `['e', <event id>, <relay?>]` with optional address pointer `['a', <kind:pubkey:identifier>, <relay?>]`, and `['p', <pubkey>]` when the origin author is known; inherits schema append tags | JSON-serialized event being reposted |
 | Video comment (`NOTE_TYPES.VIDEO_COMMENT`) | `1111` | NIP-22 root scope tags `['A'\|`E`\|`I`, <pointer>, <relay?>?], `['K', <root kind>]`, and `['P', <root author pubkey>, <relay?>?]` plus parent metadata `['E'\|`I`, <parent pointer>, <relay?>?, <author?>], `['K', <parent kind>]`, `['P', <parent author>, <relay?>?]`; inherits schema append tags | Plain text body sanitized to valid UTF-8 |
 | DM attachment (`NOTE_TYPES.DM_ATTACHMENT`) | `15` | `['p', <recipient pubkey>]`, `['x', <sha256 of uploaded bytes>]`, `['url', <download url>]`, optional `['name', <filename>]`, `['type', <mime>]`, `['size', <bytes>]`, optional `['k', <base64 key>]`; inherits schema append tags | Empty content; attachment metadata is represented as tags |
@@ -166,12 +190,37 @@ import { updateWatchHistoryListWithDefaultClient } from "./nostrWatchHistoryFaca
 | Mute list (`NOTE_TYPES.MUTE_LIST`) | `10000` | Repeated `['p', <pubkey>]` tags for blocked/muted users | Optional content (often encrypted) |
 | Zap request (`NOTE_TYPES.ZAP_REQUEST`) | `9734` | `['p', <recipient pubkey>]` plus optional `['e', <event id>]`, `['a', <coordinate>]`, `['amount', <msats>]`, `['lnurl', <bech32>]`, and `['relays', ...]` for receipt publishing | Optional plaintext zap note |
 | Zap receipt (`NOTE_TYPES.ZAP_RECEIPT`) | `9735` | `['bolt11', <invoice>]`, `['description', <zap request JSON>]`, `['p', <recipient pubkey>]` plus optional `['e', <event id>]` and `['a', <coordinate>]` | Empty content; receipts are published by the recipient's LNURL server |
+=======
+| Repost (`NOTE_TYPES.REPOST`) | `6` | `['e', <event id>, <relay?>]` with optional address pointer `['a', <kind:pubkey:identifier>, <relay?>]`, and `['p', <pubkey>]` when the origin author is known; inherits schema append tags | Empty content |
+| Video comment (`NOTE_TYPES.VIDEO_COMMENT`) | `1111` | NIP-22 root scope tags `['A'\|`E`\|`I`, <pointer>, <relay?>?], `['K', <root kind>]`, and `['P', <root author pubkey>, <relay?>?]` plus parent metadata `['a'\|`e`\|`i`, <parent pointer>, <relay?>?, <author?>], `['k', <parent kind>]`, `['p', <parent author>, <relay?>?]`; builder retains legacy lowercase fallbacks (`['a', ...]`/`['e', ...]`/`['p', ...]`) alongside the uppercase set for compatibility; inherits schema append tags | Plain text body sanitized to valid UTF-8 |
+
+> **Publishing note:** Session actors only emit passive telemetry (for example, view counters) and must **not** sign video comments. Require a logged-in Nostr signer for comment publishing via [`commentEvents`](../js/nostr/commentEvents.js).
+
+> **Compatibility tip:** When a comment anchors itself to a video definition address, emit both the uppercase root pointer and a legacy `['e', <root event id>]` tag. This mirrors the [NIP-22 addressable events example](./nips/22.md#addressable-events) so clients that only understand `#e` tags can still follow the thread.
+| NIP-71 video (`NOTE_TYPES.NIP71_VIDEO`) | `21` | `['title', <title>]`, optional `['published_at', <unix seconds>]`, optional `['alt', <text>]`, repeated `['imeta', ...]` entries describing NIP-92 media variants, optional `['duration', <seconds>]`, repeated `['text-track', <url>, <kind>, <language>]`, optional `['content-warning', <reason>]`, repeated `['segment', <start>, <end>, <title>, <thumbnail>]`, repeated hashtags `['t', <tag>]`, repeated participants `['p', <pubkey>, <relay?>]`, repeated references `['r', <url>]` | Plain text summary carried in the content field. Publishing is gated by the `FEATURE_PUBLISH_NIP71` runtime flag while the rollout stabilizes. |
+| NIP-71 short video (`NOTE_TYPES.NIP71_SHORT_VIDEO`) | `22` | Same as `NOTE_TYPES.NIP71_VIDEO`; the kind differentiates short-form presentations. | Plain text summary; gated by `FEATURE_PUBLISH_NIP71`. |
+| Relay list (`NOTE_TYPES.RELAY_LIST`) | `10002` | Repeating `['r', <relay url>]` tags, optionally with a marker of `'read'` or `'write'` to scope the relay; marker omitted for read/write relays | Empty content |
+| View counter (`NOTE_TYPES.VIEW_EVENT`) | `WATCH_HISTORY_KIND` (default `30079`, clients also read legacy `30078`) | Canonical tag set: `['t','view']`, a pointer tag (`['e', <eventId>]` or `['a', <address>]`), and a stable dedupe tag `['d', <view identifier>]`, with optional `['session','true']` when a session actor signs; schema overrides may append extra tags. `['video', ...]` is supported for legacy overrides only. | Optional plaintext message |
+| Watch history index (`NOTE_TYPES.WATCH_HISTORY_INDEX`) | `WATCH_HISTORY_KIND` (default `30079`, clients also read legacy `30078`) | `['d', WATCH_HISTORY_LIST_IDENTIFIER]`, `['snapshot', <id>]`, `['chunks', <total>]`, repeated `['a', <chunk address>]` pointers plus schema append tags | JSON payload `{ snapshot, totalChunks }` (may be empty when using tags only) |
+| Watch history chunk (`NOTE_TYPES.WATCH_HISTORY_CHUNK`) | `WATCH_HISTORY_KIND` (default `30079`, clients also read legacy `30078`) | `['d', <snapshotId:index>]`, `['encrypted','nip04']`, `['snapshot', <id>]`, `['chunk', <index>, <total>]`, optional leading `['head','1']` on the first chunk, pointer tags for each item, plus schema append tags | NIP-04 encrypted JSON chunk (`{ version, snapshot, chunkIndex, totalChunks, items[] }`) |
+| Subscription list (`NOTE_TYPES.SUBSCRIPTION_LIST`) | `30000` (clients also read legacy `30002`) | `['d', 'subscriptions']` | NIP-04/NIP-44 encrypted JSON array of NIP-51 follow-set tuples (e.g., `[['p', <hex>], …]`) |
+| User block list (`NOTE_TYPES.USER_BLOCK_LIST`) | `10000` | `['d', 'user-blocks']` | NIP-04/NIP-44 encrypted JSON `{ blockedPubkeys: string[] }` |
+| Hashtag preferences (`NOTE_TYPES.HASHTAG_PREFERENCES`) | `30015` (reads legacy `30005`) | `['d', 'bitvid:tag-preferences']` plus schema-appended `['encrypted','nip44_v2']` | NIP-44 encrypted JSON `{ version, interests: string[], disinterests: string[] }` |
+| Admin moderation list (`NOTE_TYPES.ADMIN_MODERATION_LIST`) | `30000` | `['d', 'bitvid:admin:editors']`, repeated `['p', <pubkey>]` entries | Empty content |
+| Admin blacklist (`NOTE_TYPES.ADMIN_BLACKLIST`) | `30000` | `['d', 'bitvid:admin:blacklist']`, repeated `['p', <pubkey>]` entries | Empty content |
+| Admin whitelist (`NOTE_TYPES.ADMIN_WHITELIST`) | `30000` | `['d', 'bitvid:admin:whitelist']`, repeated `['p', <pubkey>]` entries | Empty content |
+>>>>>>> origin/main
 
 Subscription lists therefore match the
 [NIP-51 follow-set specification](./nips/51.md#sets) by emitting kind `30000`
 events with the shared `['d','subscriptions']` identifier. Builders continue to
 encrypt the payload so individual follows stay private unless explicitly
+<<<<<<< HEAD
 revealed by the author.
+=======
+revealed by the author. Readers still request legacy kind `30002` alongside
+`30000` while older clients migrate so existing follow sets remain visible.
+>>>>>>> origin/main
 
 NIP-94 compliance: mirror events now normalize the `['m', <mime>]` tag to lowercase—covering both user input and inferred values—so they satisfy [NIP-94's lowercase MIME requirement](./nips/94.md). Related helpers reuse the same normalization to keep future publishers aligned.
 
@@ -200,16 +249,26 @@ so downstream clients can detect that the payload is encrypted. The `content`
 field must be a NIP-44 ciphertext representing the JSON shape
 `{ version, interests: string[], disinterests: string[] }`, allowing clients to
 share their preferred and muted hashtags without exposing the raw preferences on
+<<<<<<< HEAD
 relays.
+=======
+relays. Readers continue to accept legacy `30005` payloads so previously
+published preferences remain visible.
+>>>>>>> origin/main
 
 ### Migration approach: auto-republish on next user change
 
 We are **not** shipping a one-off migration helper. Instead, the existing
 `HashtagPreferencesService.publish()` flow reissues preferences as kind `30015`
+<<<<<<< HEAD
 the next time a user saves their interests from the profile modal. Legacy
 `30005` payloads are no longer read, so users with only legacy events must
 resave their preferences to publish the canonical kind. That publish path
 already:
+=======
+the next time a user saves their interests from the profile modal. That publish
+path already:
+>>>>>>> origin/main
 
 * rehydrates the signer via `getActiveSigner()` and aborts when no signer is
   available, so background jobs cannot emit preferences without user consent;
@@ -232,8 +291,14 @@ Operators should monitor the rollout as follows:
 1. After deploying this change, review relay dashboards or logs for accounts
    saving preferences to confirm new `30015` writes are accepted (look for the
    `bitvid:tag-preferences` `d` tag).
+<<<<<<< HEAD
 2. Spot-check a few migrated accounts by fetching `30015` events; the canonical
    kind should present the newest `created_at` timestamp once a user saves.
+=======
+2. Spot-check a few migrated accounts by fetching both `30015` and legacy
+   `30005` events; the canonical kind should present the newest `created_at`
+   timestamp once a user saves.
+>>>>>>> origin/main
 3. If relays reject events, correlate the warnings emitted by
    `HashtagPreferencesService.publish()` in operator consoles to identify relay
    outages or permission errors.
@@ -257,6 +322,7 @@ experimentation.
 
 ### Watch history identifiers
 
+<<<<<<< HEAD
 The watch history pipeline is always enabled and publishes encrypted monthly
 records to the canonical `WATCH_HISTORY_KIND` stream. Clients rely on the
 default `WATCH_HISTORY_LIST_IDENTIFIER` (`"watch-history"`) and store each
@@ -284,3 +350,26 @@ device, etc.) should remain on-device via the
 Refer to the [`WatchHistoryService`](../js/watchHistoryService.js) for queue
 management hooks and metadata toggle controls that complement these schema
 definitions.【F:js/watchHistoryService.js†L695-L776】【F:js/watchHistoryService.js†L1040-L1093】
+=======
+The encrypted watch history pipeline is gated by the `FEATURE_WATCH_HISTORY_V2`
+runtime flag. When the flag is disabled, clients continue emitting view events
+but skip publishing snapshots; the UI still resolves legacy `watch-history:v2:index`
+lists so operators can stage the rollout per deployment.【F:config/instance-config.js†L69-L94】【F:js/watchHistoryService.js†L82-L140】【F:js/watchHistoryService.js†L948-L985】
+
+Active identifiers include the default `WATCH_HISTORY_LIST_IDENTIFIER`
+(`"watch-history"`) and the legacy aliases enumerated in
+`WATCH_HISTORY_LEGACY_LIST_IDENTIFIERS`. Chunk events derive their `d` tag from
+`<snapshotId>:<index>`, advertise `['snapshot', <id>]`, and carry `['chunk', <index>, <total>]`
+plus an optional leading `['head','1']` marker so relays can prioritize the first
+ciphertext. Chunk content is encrypted with the strongest mutually supported
+scheme: clients probe for NIP-44 v2 first, fall back to NIP-44, and finally use
+NIP-04 for legacy compatibility. The negotiated value is written back to the
+`['encrypted', ...]` tag so other readers can attempt the same scheme before
+falling back. All payloads store only pointer entries; richer metadata remains
+on-device via the [`WatchHistoryService`](../js/watchHistoryService.js) APIs,
+which default to pointer-only writes and local-only metadata caches.【F:config/instance-config.js†L60-L78】【F:js/nostrEventSchemas.js†L157-L189】【F:js/nostr/watchHistory.js†L1380-L1549】【F:js/watchHistoryService.js†L331-L376】
+
+Refer to the [`WatchHistoryService`](../js/watchHistoryService.js) for queue
+management hooks, manual snapshot helpers, and metadata toggle controls that
+complement these schema definitions.【F:js/watchHistoryService.js†L695-L776】【F:js/watchHistoryService.js†L1040-L1093】
+>>>>>>> origin/main

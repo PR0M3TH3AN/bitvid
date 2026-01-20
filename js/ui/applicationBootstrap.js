@@ -14,7 +14,10 @@ import hashtagPreferences, {
 } from "../services/hashtagPreferencesService.js";
 import NwcSettingsService from "../services/nwcSettingsService.js";
 import nostrService from "../services/nostrService.js";
+<<<<<<< HEAD
 import storageService from "../services/storageService.js";
+=======
+>>>>>>> origin/main
 import watchHistoryService from "../watchHistoryService.js";
 import r2Service from "../services/r2Service.js";
 import { createFeedEngine } from "../feedEngine/index.js";
@@ -37,11 +40,17 @@ import { isWatchHistoryDebugEnabled } from "../watchHistoryDebug.js";
 import { splitAndZap as splitAndZapDefault } from "../payments/zapSplit.js";
 import {
   getDefaultModerationSettings,
+<<<<<<< HEAD
   getModerationOverridesList,
   getModerationSettings,
   setModerationSettings,
   resetModerationSettings,
   clearModerationOverride,
+=======
+  getModerationSettings,
+  setModerationSettings,
+  resetModerationSettings,
+>>>>>>> origin/main
   persistSavedProfiles,
   getSavedProfiles,
   getActiveProfilePubkey,
@@ -137,6 +146,7 @@ export default class ApplicationBootstrap {
       isNew: () => true,
     };
     app.videoModalReadyPromise = null;
+<<<<<<< HEAD
     app.feedTelemetryState = {
       activeFeed: "",
       matchedTagsById: new Map(),
@@ -144,6 +154,8 @@ export default class ApplicationBootstrap {
       lastImpressionSignature: "",
       activePlayback: null,
     };
+=======
+>>>>>>> origin/main
 
     app.pendingModalZapOpen = false;
     app.videoListViewPlaybackHandler = null;
@@ -260,7 +272,10 @@ export default class ApplicationBootstrap {
       app.feedEngine.run = (...args) => app.feedEngine.runFeed(...args);
     }
     app.registerRecentFeed();
+<<<<<<< HEAD
     app.registerForYouFeed();
+=======
+>>>>>>> origin/main
     app.registerSubscriptionsFeed();
     app.registerWatchHistoryFeed();
 
@@ -284,7 +299,10 @@ export default class ApplicationBootstrap {
       normalizeHexPubkey: (value) => app.normalizeHexPubkey(value),
       getActiveUserPubkey: () => app.pubkey,
       ingestLocalViewEvent,
+<<<<<<< HEAD
       onViewLogged: (detail) => app.handleFeedViewTelemetry(detail),
+=======
+>>>>>>> origin/main
     });
 
     const playbackDependencies = {
@@ -404,6 +422,11 @@ export default class ApplicationBootstrap {
     app.loginModalController = null;
     app.currentUserNpub = null;
 
+<<<<<<< HEAD
+=======
+    app.initializeLoginModalController({ logIfMissing: true });
+
+>>>>>>> origin/main
     app.profileButton = doc?.getElementById("profileButton") || null;
     app.profileAvatar = doc?.getElementById("profileAvatar") || null;
 
@@ -414,9 +437,12 @@ export default class ApplicationBootstrap {
       assets: {
         fallbackThumbnailSrc: this.assets.fallbackThumbnailSrc,
       },
+<<<<<<< HEAD
       services: {
         storageService,
       },
+=======
+>>>>>>> origin/main
     });
     modalManager.initialize();
     this.modalManager = modalManager;
@@ -432,7 +458,10 @@ export default class ApplicationBootstrap {
           formatShortNpub: (value) => formatShortNpub(value),
           getProfileCacheEntry: (pubkey) => app.getProfileCacheEntry(pubkey),
           batchFetchProfiles: (authorSet) => app.batchFetchProfiles(authorSet),
+<<<<<<< HEAD
           fetchDmRelayHints: (pubkey) => app.fetchDmRelayHints(pubkey),
+=======
+>>>>>>> origin/main
           switchProfile: (pubkey) => app.authService.switchProfile(pubkey),
           removeSavedProfile: (pubkey) =>
             app.authService.removeSavedProfile(pubkey),
@@ -440,8 +469,11 @@ export default class ApplicationBootstrap {
           userBlocks,
           nostrClient,
           nostrService: app.nostrService,
+<<<<<<< HEAD
           storageService,
           r2Service: app.r2Service,
+=======
+>>>>>>> origin/main
           subscriptions,
           accessControl,
           moderation: moderationService,
@@ -454,9 +486,12 @@ export default class ApplicationBootstrap {
               setModerationSettings(partial),
             resetModerationSettings: () => resetModerationSettings(),
           },
+<<<<<<< HEAD
           getModerationOverrides: () => getModerationOverridesList(),
           clearModerationOverride: (descriptor) =>
             clearModerationOverride(descriptor),
+=======
+>>>>>>> origin/main
           loadVideos: (forceFetch, context) =>
             app.loadVideos(forceFetch, context),
           onVideosShouldRefresh: (context) =>
@@ -500,6 +535,7 @@ export default class ApplicationBootstrap {
             setStoredActiveProfilePubkey(normalized, options);
             return getActiveProfilePubkey();
           },
+<<<<<<< HEAD
           getDmRecipient: () => app.getDmRecipientPubkey(),
           setDmRecipient: (pubkey) => app.setDmRecipientPubkey(pubkey),
           getDmRelayHints: (pubkey) => app.getDmRelayHints(pubkey),
@@ -507,6 +543,8 @@ export default class ApplicationBootstrap {
           getDmRelayPreferences: (pubkey) => app.getDmRelayHints(pubkey),
           setDmRelayPreferences: (pubkey, hints) =>
             app.setDmRelayHints(pubkey, hints),
+=======
+>>>>>>> origin/main
         };
 
         const profileModalCallbacks = {
@@ -540,12 +578,15 @@ export default class ApplicationBootstrap {
             app.handleProfileHistoryEvent(payload),
           onModerationSettingsChange: (payload) =>
             app.handleModerationSettingsChange(payload),
+<<<<<<< HEAD
           onSendDm: (payload) => app.handleProfileSendDmRequest(payload),
           onOpenRelays: (payload) => app.handleProfileUseDmRelays(payload),
           onTogglePrivacy: (payload) =>
             app.handleProfilePrivacyToggle(payload),
           onPublishDmRelayPreferences: (payload) =>
             app.handleProfilePublishDmRelayPreferences(payload),
+=======
+>>>>>>> origin/main
         };
 
         app.profileController = new ProfileModalController({
@@ -615,12 +656,15 @@ export default class ApplicationBootstrap {
         handleMirrorAction: (payload) => app.handleMirrorAction(payload),
         handleEnsurePresenceAction: (payload) =>
           app.handleEnsurePresenceAction(payload),
+<<<<<<< HEAD
         handleEventDetailsAction: (payload) => {
           if (app.modalManager && app.modalManager.eventDetailsModal && payload?.video) {
             app.modalManager.eventDetailsModal.open(payload.video);
           }
           return Promise.resolve();
         },
+=======
+>>>>>>> origin/main
         loadVideos: () => app.loadVideos(),
         refreshAllVideoGrids: (options) => app.refreshAllVideoGrids(options),
         onUserBlocksUpdated: () => {
@@ -642,7 +686,10 @@ export default class ApplicationBootstrap {
     app.tagPreferencePopovers = new Map();
 
     app.subscriptionsLink = null;
+<<<<<<< HEAD
     app.forYouLink = null;
+=======
+>>>>>>> origin/main
 
     app.notificationPortal = doc?.getElementById("notificationPortal") || null;
     app.errorContainer = doc?.getElementById("errorContainer") || null;
@@ -837,9 +884,12 @@ export default class ApplicationBootstrap {
       trigger,
     }) => {
       if (videoId) {
+<<<<<<< HEAD
         app.recordForYouClick(videoId);
       }
       if (videoId) {
+=======
+>>>>>>> origin/main
         Promise.resolve(
           app.playVideoByEventId(videoId, { url, magnet, trigger }),
         ).catch((error) => {

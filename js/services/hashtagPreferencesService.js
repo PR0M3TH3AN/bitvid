@@ -2,9 +2,14 @@
 import {
   nostrClient,
   requestDefaultExtensionPermissions,
+<<<<<<< HEAD
   getActiveSigner,
 } from "../nostrClientFacade.js";
 import { isSessionActor } from "../nostr/sessionActor.js";
+=======
+} from "../nostrClientFacade.js";
+import { getActiveSigner } from "../nostr/index.js";
+>>>>>>> origin/main
 import {
   buildHashtagPreferenceEvent,
   getNostrEventSchema,
@@ -14,9 +19,13 @@ import {
   publishEventToRelays,
   assertAnyRelayAccepted,
 } from "../nostrPublish.js";
+<<<<<<< HEAD
 import { userLogger, devLogger } from "../utils/logger.js";
 import { normalizeHashtag } from "../utils/hashtagNormalization.js";
 import { profileCache } from "../state/profileCache.js";
+=======
+import { userLogger } from "../utils/logger.js";
+>>>>>>> origin/main
 
 const LOG_PREFIX = "[HashtagPreferences]";
 const HASHTAG_IDENTIFIER = "bitvid:tag-preferences";
@@ -96,6 +105,22 @@ function sanitizeRelayList(candidate) {
     : [];
 }
 
+<<<<<<< HEAD
+=======
+function normalizeTag(input) {
+  if (typeof input !== "string") {
+    return "";
+  }
+
+  const trimmed = input.trim().replace(/^#+/, "");
+  if (!trimmed) {
+    return "";
+  }
+
+  return trimmed.toLowerCase();
+}
+
+>>>>>>> origin/main
 function normalizeEncryptionToken(value) {
   if (typeof value !== "string") {
     return "";
@@ -121,7 +146,11 @@ function normalizePreferencesPayload(payload) {
 
   const interests = new Set();
   for (const tag of rawInterests) {
+<<<<<<< HEAD
     const normalizedTag = normalizeHashtag(tag);
+=======
+    const normalizedTag = normalizeTag(tag);
+>>>>>>> origin/main
     if (normalizedTag) {
       interests.add(normalizedTag);
     }
@@ -129,7 +158,11 @@ function normalizePreferencesPayload(payload) {
 
   const disinterests = new Set();
   for (const tag of rawDisinterests) {
+<<<<<<< HEAD
     const normalizedTag = normalizeHashtag(tag);
+=======
+    const normalizedTag = normalizeTag(tag);
+>>>>>>> origin/main
     if (!normalizedTag) {
       continue;
     }
@@ -234,6 +267,7 @@ class HashtagPreferencesService {
     this.eventCreatedAt = null;
     this.loaded = false;
     this.preferencesVersion = DEFAULT_VERSION;
+<<<<<<< HEAD
 
     profileCache.subscribe((event, detail) => {
       if (event === "profileChanged") {
@@ -248,6 +282,8 @@ class HashtagPreferencesService {
         }
       }
     });
+=======
+>>>>>>> origin/main
   }
 
   on(eventName, handler) {
@@ -264,6 +300,7 @@ class HashtagPreferencesService {
     this.emitChange("reset");
   }
 
+<<<<<<< HEAD
   saveToCache() {
     const interests = this.getInterests();
     const disinterests = this.getDisinterests();
@@ -321,6 +358,8 @@ class HashtagPreferencesService {
     return false;
   }
 
+=======
+>>>>>>> origin/main
   getInterests() {
     return Array.from(this.interests).sort((a, b) => a.localeCompare(b));
   }
@@ -330,7 +369,11 @@ class HashtagPreferencesService {
   }
 
   addInterest(tag) {
+<<<<<<< HEAD
     const normalized = normalizeHashtag(tag);
+=======
+    const normalized = normalizeTag(tag);
+>>>>>>> origin/main
     if (!normalized) {
       return false;
     }
@@ -348,7 +391,11 @@ class HashtagPreferencesService {
   }
 
   removeInterest(tag) {
+<<<<<<< HEAD
     const normalized = normalizeHashtag(tag);
+=======
+    const normalized = normalizeTag(tag);
+>>>>>>> origin/main
     if (!normalized || !this.interests.has(normalized)) {
       return false;
     }
@@ -359,7 +406,11 @@ class HashtagPreferencesService {
   }
 
   addDisinterest(tag) {
+<<<<<<< HEAD
     const normalized = normalizeHashtag(tag);
+=======
+    const normalized = normalizeTag(tag);
+>>>>>>> origin/main
     if (!normalized) {
       return false;
     }
@@ -377,7 +428,11 @@ class HashtagPreferencesService {
   }
 
   removeDisinterest(tag) {
+<<<<<<< HEAD
     const normalized = normalizeHashtag(tag);
+=======
+    const normalized = normalizeTag(tag);
+>>>>>>> origin/main
     if (!normalized || !this.disinterests.has(normalized)) {
       return false;
     }
@@ -405,11 +460,14 @@ class HashtagPreferencesService {
 
   async load(pubkey) {
     const normalized = normalizeHexPubkey(pubkey);
+<<<<<<< HEAD
     let wasLoadedForUser =
       this.activePubkey &&
       this.activePubkey === normalized &&
       (this.interests.size > 0 || this.disinterests.size > 0 || this.loaded);
 
+=======
+>>>>>>> origin/main
     this.activePubkey = normalized;
 
     if (!normalized) {
@@ -418,11 +476,14 @@ class HashtagPreferencesService {
       return;
     }
 
+<<<<<<< HEAD
     // Try cache first
     if (this.loadFromCache(normalized)) {
       wasLoadedForUser = true;
     }
 
+=======
+>>>>>>> origin/main
     if (
       !nostrClient ||
       !nostrClient.pool ||
@@ -431,6 +492,7 @@ class HashtagPreferencesService {
       userLogger.warn(
         `${LOG_PREFIX} nostrClient.pool.list unavailable; treating preferences as empty.`,
       );
+<<<<<<< HEAD
       // If we already have data for this user, do not reset on transient client issues.
       if (wasLoadedForUser) {
         userLogger.warn(
@@ -438,6 +500,8 @@ class HashtagPreferencesService {
         );
         return;
       }
+=======
+>>>>>>> origin/main
       this.reset();
       this.loaded = true;
       return;
@@ -449,12 +513,15 @@ class HashtagPreferencesService {
         : nostrClient.writeRelays,
     );
     if (!relays.length) {
+<<<<<<< HEAD
       if (wasLoadedForUser) {
         userLogger.warn(
           `${LOG_PREFIX} Keeping existing preferences; no relays available for refresh.`,
         );
         return;
       }
+=======
+>>>>>>> origin/main
       this.reset();
       this.loaded = true;
       return;
@@ -463,6 +530,7 @@ class HashtagPreferencesService {
     const schema = getNostrEventSchema(NOTE_TYPES.HASHTAG_PREFERENCES);
     const canonicalKind = schema?.kind ?? 30015;
     const legacyKind = 30005;
+<<<<<<< HEAD
 
     const kinds = [canonicalKind];
     if (canonicalKind !== legacyKind) {
@@ -489,6 +557,25 @@ class HashtagPreferencesService {
 
     } catch (error) {
       fetchError = error;
+=======
+    const filterKinds = canonicalKind === legacyKind
+      ? [canonicalKind]
+      : [canonicalKind, legacyKind];
+    const filter = {
+      kinds: filterKinds,
+      authors: [normalized],
+      "#d": [HASHTAG_IDENTIFIER],
+      limit: 50,
+    };
+
+    let events = [];
+    try {
+      const result = await nostrClient.pool.list(relays, [filter]);
+      if (Array.isArray(result)) {
+        events = result.filter((event) => event && event.pubkey === normalized);
+      }
+    } catch (error) {
+>>>>>>> origin/main
       userLogger.warn(
         `${LOG_PREFIX} Failed to load hashtag preferences from relays`,
         error,
@@ -497,6 +584,7 @@ class HashtagPreferencesService {
     }
 
     if (!events.length) {
+<<<<<<< HEAD
       // If we failed to fetch (network error) but already have data for this user,
       // preserve the existing state instead of wiping it.
       // If fetchListIncrementally returns empty, it means no new updates or full fetch yielded nothing.
@@ -507,11 +595,25 @@ class HashtagPreferencesService {
         return;
       }
 
+=======
+>>>>>>> origin/main
       this.reset();
       this.loaded = true;
       return;
     }
 
+<<<<<<< HEAD
+=======
+    // Prefer the newest event, breaking timestamp ties by prioritizing the
+    // canonical kind (30015) before falling back to the legacy 30005 payload.
+    const preferredKinds = filterKinds;
+    const getKindPriority = (event) => {
+      const kindValue = Number(event?.kind);
+      const index = preferredKinds.indexOf(kindValue);
+      return index === -1 ? preferredKinds.length : index;
+    };
+
+>>>>>>> origin/main
     const latest = events.reduce((current, candidate) => {
       if (!candidate) {
         return current;
@@ -522,6 +624,7 @@ class HashtagPreferencesService {
       const candidateTs = Number(candidate.created_at) || 0;
       const currentTs = Number(current.created_at) || 0;
       if (candidateTs === currentTs) {
+<<<<<<< HEAD
         if (
           candidate.kind === canonicalKind &&
           current.kind !== canonicalKind
@@ -533,6 +636,12 @@ class HashtagPreferencesService {
           candidate.kind !== canonicalKind
         ) {
           return current;
+=======
+        const candidatePriority = getKindPriority(candidate);
+        const currentPriority = getKindPriority(current);
+        if (candidatePriority !== currentPriority) {
+          return candidatePriority < currentPriority ? candidate : current;
+>>>>>>> origin/main
         }
         return candidate.id > current.id ? candidate : current;
       }
@@ -540,14 +649,18 @@ class HashtagPreferencesService {
     }, null);
 
     if (!latest) {
+<<<<<<< HEAD
       if (wasLoadedForUser) {
         return;
       }
+=======
+>>>>>>> origin/main
       this.reset();
       this.loaded = true;
       return;
     }
 
+<<<<<<< HEAD
     const currentCreatedAt = Number(this.eventCreatedAt) || 0;
     const latestCreatedAt = Number(latest.created_at) || 0;
 
@@ -558,12 +671,15 @@ class HashtagPreferencesService {
       return;
     }
 
+=======
+>>>>>>> origin/main
     const decryptResult = await this.decryptEvent(latest, normalized);
     if (!decryptResult.ok) {
       userLogger.warn(
         `${LOG_PREFIX} Failed to decrypt hashtag preferences`,
         decryptResult.error,
       );
+<<<<<<< HEAD
 
       // If we already have loaded preferences (e.g. from cache), preserve them
       // rather than wiping everything just because the remote update couldn't be decrypted.
@@ -574,6 +690,8 @@ class HashtagPreferencesService {
         return;
       }
 
+=======
+>>>>>>> origin/main
       this.reset();
       this.loaded = true;
       return;
@@ -581,8 +699,13 @@ class HashtagPreferencesService {
 
     try {
       const payload = JSON.parse(decryptResult.plaintext);
+<<<<<<< HEAD
       // Normalize the decrypted payload into the canonical preferences shape so
       // downstream consumers receive a single structure.
+=======
+      // Normalize whichever source kind we decrypted into the canonical
+      // preferences payload so downstream consumers receive a single shape.
+>>>>>>> origin/main
       const normalizedPayload = normalizePreferencesPayload(payload);
 
       this.preferencesVersion = normalizedPayload.version;
@@ -593,7 +716,10 @@ class HashtagPreferencesService {
         ? latest.created_at
         : null;
       this.loaded = true;
+<<<<<<< HEAD
       this.saveToCache();
+=======
+>>>>>>> origin/main
       this.emitChange("sync", { scheme: decryptResult.scheme });
     } catch (error) {
       userLogger.warn(
@@ -613,10 +739,14 @@ class HashtagPreferencesService {
       return { ok: false, error };
     }
 
+<<<<<<< HEAD
     let signer = getActiveSigner();
     if (!signer && typeof nostrClient?.ensureActiveSignerForPubkey === "function") {
       signer = await nostrClient.ensureActiveSignerForPubkey(userPubkey);
     }
+=======
+    const signer = getActiveSigner();
+>>>>>>> origin/main
     const signerHasNip04 = typeof signer?.nip04Decrypt === "function";
     const signerHasNip44 = typeof signer?.nip44Decrypt === "function";
 
@@ -657,6 +787,42 @@ class HashtagPreferencesService {
       registerDecryptor("nip04", (payload) => signer.nip04Decrypt(userPubkey, payload));
     }
 
+<<<<<<< HEAD
+=======
+    const nostrApi =
+      typeof window !== "undefined" && window && window.nostr ? window.nostr : null;
+    if (nostrApi) {
+      const nip04 =
+        nostrApi.nip04 && typeof nostrApi.nip04.decrypt === "function"
+          ? nostrApi.nip04
+          : null;
+      if (nip04 && !decryptors.has("nip04")) {
+        registerDecryptor("nip04", (payload) => nip04.decrypt(userPubkey, payload));
+      }
+
+      const nip44 =
+        nostrApi.nip44 && typeof nostrApi.nip44 === "object"
+          ? nostrApi.nip44
+          : null;
+      if (nip44) {
+        if (typeof nip44.decrypt === "function" && !decryptors.has("nip44")) {
+          registerDecryptor("nip44", (payload) => nip44.decrypt(userPubkey, payload));
+        }
+        const nip44v2 = nip44.v2 && typeof nip44.v2 === "object" ? nip44.v2 : null;
+        if (nip44v2 && typeof nip44v2.decrypt === "function") {
+          registerDecryptor("nip44_v2", (payload) =>
+            nip44v2.decrypt(userPubkey, payload),
+          );
+          if (!decryptors.has("nip44")) {
+            registerDecryptor("nip44", (payload) =>
+              nip44v2.decrypt(userPubkey, payload),
+            );
+          }
+        }
+      }
+    }
+
+>>>>>>> origin/main
     if (!decryptors.size) {
       const error = new Error(
         "No decryptors available for hashtag preferences payload.",
@@ -697,6 +863,7 @@ class HashtagPreferencesService {
   }
 
   async publish(options = {}) {
+<<<<<<< HEAD
     // nostrClient imported from nostrClientFacade
     if (isSessionActor(nostrClient)) {
       const error = new Error(
@@ -706,6 +873,8 @@ class HashtagPreferencesService {
       throw error;
     }
 
+=======
+>>>>>>> origin/main
     const targetPubkey = normalizeHexPubkey(
       typeof options?.pubkey === "string" ? options.pubkey : this.activePubkey,
     );
@@ -715,6 +884,7 @@ class HashtagPreferencesService {
       throw error;
     }
 
+<<<<<<< HEAD
     let signer = getActiveSigner();
     if (!signer) {
       signer = await nostrClient.ensureActiveSignerForPubkey(targetPubkey);
@@ -724,6 +894,10 @@ class HashtagPreferencesService {
       ? signer.canSign()
       : typeof signer?.signEvent === "function";
     if (!canSign || typeof signer?.signEvent !== "function") {
+=======
+    const signer = getActiveSigner();
+    if (!signer || typeof signer.signEvent !== "function") {
+>>>>>>> origin/main
       const error = new Error("An active signer is required to publish preferences.");
       error.code = "hashtag-preferences-missing-signer";
       throw error;
@@ -770,6 +944,34 @@ class HashtagPreferencesService {
       registerEncryptor("nip04", (value) => signer.nip04Encrypt(targetPubkey, value));
     }
 
+<<<<<<< HEAD
+=======
+    const nostrApi =
+      typeof window !== "undefined" && window && window.nostr ? window.nostr : null;
+    if (nostrApi) {
+      const nip44 =
+        nostrApi.nip44 && typeof nostrApi.nip44 === "object"
+          ? nostrApi.nip44
+          : null;
+      if (nip44) {
+        if (typeof nip44.encrypt === "function") {
+          registerEncryptor("nip44", (value) => nip44.encrypt(targetPubkey, value));
+        }
+        const nip44v2 = nip44.v2 && typeof nip44.v2 === "object" ? nip44.v2 : null;
+        if (nip44v2 && typeof nip44v2.encrypt === "function") {
+          registerEncryptor("nip44_v2", (value) =>
+            nip44v2.encrypt(targetPubkey, value),
+          );
+        }
+      }
+      if (typeof nostrApi.nip04?.encrypt === "function") {
+        registerEncryptor("nip04", (value) =>
+          nostrApi.nip04.encrypt(targetPubkey, value),
+        );
+      }
+    }
+
+>>>>>>> origin/main
     if (!encryptors.length) {
       const error = new Error("No encryptors available to publish preferences.");
       error.code = "hashtag-preferences-no-encryptor";
@@ -876,3 +1078,7 @@ const hashtagPreferences = new HashtagPreferencesService();
 
 export default hashtagPreferences;
 export { HashtagPreferencesService, hashtagPreferences, EVENTS as HASHTAG_PREFERENCES_EVENTS };
+<<<<<<< HEAD
+=======
+
+>>>>>>> origin/main

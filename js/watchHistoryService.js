@@ -1,7 +1,10 @@
 // js/watchHistoryService.js
 
 import {
+<<<<<<< HEAD
   getActiveSigner,
+=======
+>>>>>>> origin/main
   nostrClient,
   requestDefaultExtensionPermissions,
 } from "./nostrClientFacade.js";
@@ -14,20 +17,62 @@ import {
   WATCH_HISTORY_CACHE_TTL_MS,
   WATCH_HISTORY_MAX_ITEMS,
 } from "./config.js";
+<<<<<<< HEAD
 import { getApplication } from "./applicationContext.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 
 const LOCAL_STORAGE_QUEUE_KEY = "bitvid:watch-history:queue:v1";
 const SESSION_STORAGE_VERSION = 1;
 const POINTER_THROTTLE_MS = 60 * 1000;
+=======
+import {
+  FEATURE_WATCH_HISTORY_V2,
+  getWatchHistoryV2Enabled,
+} from "./constants.js";
+import { isDevMode } from "./config.js";
+import { getApplication } from "./applicationContext.js";
+import { devLogger, userLogger } from "./utils/logger.js";
+
+const SESSION_STORAGE_KEY = "bitvid:watch-history:session:v1";
+const SESSION_STORAGE_VERSION = 1;
+const POINTER_THROTTLE_MS = 60 * 1000;
+const METADATA_STORAGE_KEY = "bitvid:watch-history:metadata-cache:v1";
+const METADATA_STORAGE_VERSION = 1;
+const METADATA_PREFERENCE_KEY = "bitvid:watch-history:metadata:store-locally";
+
+>>>>>>> origin/main
 const state = {
   restored: false,
   queues: new Map(),
   inflightSnapshots: new Map(),
   fingerprintCache: new Map(),
   listeners: new Map(),
+<<<<<<< HEAD
 };
 
+=======
+  metadata: {
+    restored: false,
+    cache: new Map(),
+    preference: null,
+  },
+};
+
+function resolveFlagEnabled() {
+  try {
+    if (typeof getWatchHistoryV2Enabled === "function") {
+      return getWatchHistoryV2Enabled() === true;
+    }
+  } catch (error) {
+    devLogger.warn(
+      "[watchHistoryService] Failed to read FEATURE_WATCH_HISTORY_V2 flag:",
+      error,
+    );
+  }
+  return FEATURE_WATCH_HISTORY_V2 === true;
+}
+
+>>>>>>> origin/main
 function getLoggedInActorKey() {
   const direct = normalizeActorKey(nostrClient?.pubkey);
   if (direct) {
@@ -74,14 +119,22 @@ function getSessionActorKey() {
   return normalizeActorKey(nostrClient?.sessionActor?.pubkey);
 }
 
+<<<<<<< HEAD
 async function ensureWatchHistoryExtensionPermissions(actorKey) {
   const normalizedActor = normalizeActorKey(actorKey);
   if (!normalizedActor) {
     return { ok: true };
+=======
+function shouldUseExtensionForHistory(actorKey) {
+  const normalizedActor = normalizeActorKey(actorKey);
+  if (!normalizedActor) {
+    return false;
+>>>>>>> origin/main
   }
 
   const loggedActor = normalizeActorKey(nostrClient?.pubkey);
   if (!loggedActor || loggedActor !== normalizedActor) {
+<<<<<<< HEAD
     return { ok: true };
   }
 
@@ -94,6 +147,25 @@ async function ensureWatchHistoryExtensionPermissions(actorKey) {
     ? signer.canSign()
     : typeof signer?.signEvent === "function";
   if (!canSign || signer?.type !== "extension") {
+=======
+    return false;
+  }
+
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const extension = window.nostr;
+  if (!extension || !extension.nip04) {
+    return false;
+  }
+
+  return typeof extension.nip04.decrypt === "function";
+}
+
+async function ensureWatchHistoryExtensionPermissions(actorKey) {
+  if (!shouldUseExtensionForHistory(actorKey)) {
+>>>>>>> origin/main
     return { ok: true };
   }
 
@@ -103,7 +175,11 @@ async function ensureWatchHistoryExtensionPermissions(actorKey) {
   }
 
   const message =
+<<<<<<< HEAD
     "Approve your NIP-07 extension to sync watch history.";
+=======
+    "Approve your NIP-07 extension to decrypt encrypted watch history.";
+>>>>>>> origin/main
   const error = new Error(message);
   error.code = "watch-history-extension-permission-denied";
   error.cause = permissionResult.error;
@@ -139,12 +215,38 @@ function resolveEffectiveActorKey(actorInput) {
 }
 
 function isFeatureEnabled(actorInput) {
+<<<<<<< HEAD
   const actorKey = resolveEffectiveActorKey(actorInput);
   const session = getSessionActorKey();
   if (actorKey && session && actorKey === session) {
     return false;
   }
   return true;
+=======
+  const baseEnabled = resolveFlagEnabled();
+  const actorKey = resolveEffectiveActorKey(actorInput);
+  const logged = getLoggedInActorKey();
+  const session = getSessionActorKey();
+
+  if (actorKey && logged && actorKey === logged) {
+    return true;
+  }
+
+  if (actorKey && session && actorKey === session) {
+    return false;
+  }
+
+  if (!actorKey) {
+    if (logged) {
+      return true;
+    }
+    if (session) {
+      return false;
+    }
+  }
+
+  return baseEnabled;
+>>>>>>> origin/main
 }
 
 function isLocalOnly(actorInput) {
@@ -163,6 +265,7 @@ function supportsLocalHistory(actorInput) {
   return isLocalOnly(actorInput);
 }
 
+<<<<<<< HEAD
 function getQueueStorage() {
   try {
     if (typeof window !== "undefined" && window.localStorage) {
@@ -170,6 +273,15 @@ function getQueueStorage() {
     }
   } catch (error) {
     devLogger.warn("[watchHistoryService] localStorage unavailable for queue:", error);
+=======
+function getSessionStorage() {
+  try {
+    if (typeof window !== "undefined" && window.sessionStorage) {
+      return window.sessionStorage;
+    }
+  } catch (error) {
+    devLogger.warn("[watchHistoryService] sessionStorage unavailable:", error);
+>>>>>>> origin/main
   }
   return null;
 }
@@ -185,6 +297,348 @@ function getLocalStorage() {
   return null;
 }
 
+<<<<<<< HEAD
+=======
+function ensureMetadataPreference() {
+  if (typeof state.metadata.preference === "boolean") {
+    return state.metadata.preference;
+  }
+  const storage = getLocalStorage();
+  if (!storage) {
+    state.metadata.preference = true;
+    return state.metadata.preference;
+  }
+  try {
+    const stored = storage.getItem(METADATA_PREFERENCE_KEY);
+    if (stored === null) {
+      state.metadata.preference = true;
+    } else {
+      state.metadata.preference = stored === "true";
+    }
+  } catch (error) {
+    devLogger.warn(
+      "[watchHistoryService] Failed to read metadata preference:",
+      error,
+    );
+    state.metadata.preference = true;
+  }
+  return state.metadata.preference;
+}
+
+function persistMetadataPreference(value) {
+  const storage = getLocalStorage();
+  if (!storage) {
+    return;
+  }
+  try {
+    if (value === true) {
+      storage.setItem(METADATA_PREFERENCE_KEY, "true");
+    } else {
+      storage.setItem(METADATA_PREFERENCE_KEY, "false");
+    }
+  } catch (error) {
+    devLogger.warn(
+      "[watchHistoryService] Failed to persist metadata preference:",
+      error,
+    );
+  }
+}
+
+function sanitizeVideoForStorage(video) {
+  if (!video || typeof video !== "object") {
+    return null;
+  }
+  const createdAt = Number.isFinite(video.created_at)
+    ? Math.floor(Number(video.created_at))
+    : null;
+  return {
+    id: typeof video.id === "string" ? video.id : "",
+    title: typeof video.title === "string" ? video.title : "",
+    thumbnail: typeof video.thumbnail === "string" ? video.thumbnail : "",
+    url: typeof video.url === "string" ? video.url : "",
+    magnet: typeof video.magnet === "string" ? video.magnet : "",
+    pubkey: typeof video.pubkey === "string" ? video.pubkey : "",
+    created_at: createdAt,
+    infoHash: typeof video.infoHash === "string" ? video.infoHash : "",
+    legacyInfoHash:
+      typeof video.legacyInfoHash === "string" ? video.legacyInfoHash : "",
+    mode: typeof video.mode === "string" ? video.mode : "",
+    isPrivate: video?.isPrivate === true,
+    description:
+      typeof video.description === "string" ? video.description : "",
+  };
+}
+
+function sanitizeVideoForHistory(video) {
+  const sanitized = sanitizeVideoForStorage(video);
+  if (!sanitized) {
+    return null;
+  }
+
+  return {
+    id: sanitized.id,
+    title: sanitized.title,
+    thumbnail: sanitized.thumbnail,
+    pubkey: sanitized.pubkey,
+    created_at: sanitized.created_at,
+    url: sanitized.url,
+    magnet: sanitized.magnet,
+    infoHash: sanitized.infoHash,
+    legacyInfoHash:
+      typeof video?.legacyInfoHash === "string"
+        ? video.legacyInfoHash
+        : typeof sanitized.legacyInfoHash === "string"
+        ? sanitized.legacyInfoHash
+        : "",
+  };
+}
+
+function sanitizeProfileForStorage(profile) {
+  if (!profile || typeof profile !== "object") {
+    return null;
+  }
+  return {
+    pubkey: typeof profile.pubkey === "string" ? profile.pubkey : "",
+    name: typeof profile.name === "string" ? profile.name : "",
+    display_name:
+      typeof profile.display_name === "string" ? profile.display_name : "",
+    picture: typeof profile.picture === "string" ? profile.picture : "",
+    nip05: typeof profile.nip05 === "string" ? profile.nip05 : "",
+  };
+}
+
+function restoreMetadataCache() {
+  if (state.metadata.restored) {
+    return;
+  }
+  state.metadata.restored = true;
+
+  const storage = getLocalStorage();
+  if (!storage) {
+    return;
+  }
+
+  let raw = null;
+  try {
+    raw = storage.getItem(METADATA_STORAGE_KEY);
+  } catch (error) {
+    devLogger.warn(
+      "[watchHistoryService] Failed to read metadata cache:",
+      error,
+    );
+    return;
+  }
+
+  if (!raw || typeof raw !== "string") {
+    return;
+  }
+
+  let parsed = null;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    devLogger.warn(
+      "[watchHistoryService] Failed to parse metadata cache:",
+      error,
+    );
+    try {
+      storage.removeItem(METADATA_STORAGE_KEY);
+    } catch (cleanupError) {
+      devLogger.warn(
+        "[watchHistoryService] Failed to clear corrupt metadata cache:",
+        cleanupError,
+      );
+    }
+    return;
+  }
+
+  if (!parsed || parsed.version !== METADATA_STORAGE_VERSION) {
+    try {
+      storage.removeItem(METADATA_STORAGE_KEY);
+    } catch (cleanupError) {
+      devLogger.warn(
+        "[watchHistoryService] Failed to clear outdated metadata cache:",
+        cleanupError,
+      );
+    }
+    return;
+  }
+
+  state.metadata.cache.clear();
+  const entries = parsed.entries && typeof parsed.entries === "object"
+    ? parsed.entries
+    : {};
+  for (const [key, entry] of Object.entries(entries)) {
+    if (typeof key !== "string" || !key) {
+      continue;
+    }
+    const sanitizedVideo = sanitizeVideoForStorage(entry?.video);
+    const sanitizedProfile = sanitizeProfileForStorage(entry?.profile);
+    state.metadata.cache.set(key, {
+      video: sanitizedVideo,
+      profile: sanitizedProfile,
+      storedAt: Number.isFinite(entry?.storedAt) ? entry.storedAt : Date.now(),
+    });
+  }
+}
+
+function sanitizePointerMetadata(metadata) {
+  if (!metadata || typeof metadata !== "object") {
+    return null;
+  }
+
+  const pointerMetadata = {};
+  const video = sanitizeVideoForHistory(metadata.video);
+  if (video) {
+    pointerMetadata.video = video;
+  }
+
+  const profile = sanitizeProfileForStorage(metadata.profile);
+  if (profile) {
+    pointerMetadata.profile = profile;
+  }
+
+  const resumeCandidates = [
+    metadata.resumeAt,
+    metadata.resume,
+    metadata.resumeSeconds,
+  ];
+  for (const candidate of resumeCandidates) {
+    if (Number.isFinite(candidate)) {
+      pointerMetadata.resumeAt = Math.max(0, Math.floor(candidate));
+      break;
+    }
+  }
+
+  if (metadata.completed === true) {
+    pointerMetadata.completed = true;
+  }
+
+  return Object.keys(pointerMetadata).length ? pointerMetadata : null;
+}
+
+function persistMetadataCache() {
+  const storage = getLocalStorage();
+  if (!storage) {
+    return;
+  }
+  const shouldStore = shouldStoreMetadataLocally();
+  if (!shouldStore || !state.metadata.cache.size) {
+    try {
+      storage.removeItem(METADATA_STORAGE_KEY);
+    } catch (error) {
+      devLogger.warn(
+        "[watchHistoryService] Failed to clear metadata cache:",
+        error,
+      );
+    }
+    return;
+  }
+
+  const payload = { version: METADATA_STORAGE_VERSION, entries: {} };
+  for (const [key, entry] of state.metadata.cache.entries()) {
+    payload.entries[key] = {
+      video: sanitizeVideoForStorage(entry?.video) || null,
+      profile: sanitizeProfileForStorage(entry?.profile) || null,
+      storedAt: Number.isFinite(entry?.storedAt) ? entry.storedAt : Date.now(),
+    };
+  }
+  try {
+    storage.setItem(METADATA_STORAGE_KEY, JSON.stringify(payload));
+  } catch (error) {
+    devLogger.warn(
+      "[watchHistoryService] Failed to persist metadata cache:",
+      error,
+    );
+  }
+}
+
+function shouldStoreMetadataLocally() {
+  return ensureMetadataPreference() === true;
+}
+
+function setMetadataPreference(enabled) {
+  const normalized = enabled === false ? false : true;
+  const previous = ensureMetadataPreference();
+  state.metadata.preference = normalized;
+  persistMetadataPreference(normalized);
+  if (!normalized) {
+    state.metadata.cache.clear();
+    persistMetadataCache();
+  } else {
+    persistMetadataCache();
+  }
+  if (previous !== normalized) {
+    emit("metadata-preference", { enabled: normalized });
+  }
+}
+
+function getMetadataPreference() {
+  return ensureMetadataPreference();
+}
+
+function getLocalMetadata(pointerKeyValue) {
+  restoreMetadataCache();
+  const key = typeof pointerKeyValue === "string" ? pointerKeyValue : "";
+  if (!key) {
+    return null;
+  }
+  const stored = state.metadata.cache.get(key);
+  if (!stored) {
+    return null;
+  }
+  return {
+    video: stored.video ? { ...stored.video } : null,
+    profile: stored.profile ? { ...stored.profile } : null,
+    storedAt: stored.storedAt,
+  };
+}
+
+function setLocalMetadata(pointerKeyValue, metadata) {
+  if (!shouldStoreMetadataLocally()) {
+    return;
+  }
+  const key = typeof pointerKeyValue === "string" ? pointerKeyValue : "";
+  if (!key) {
+    return;
+  }
+  restoreMetadataCache();
+  if (!metadata || typeof metadata !== "object") {
+    state.metadata.cache.delete(key);
+    persistMetadataCache();
+    return;
+  }
+  const video = sanitizeVideoForStorage(metadata.video);
+  const profile = sanitizeProfileForStorage(metadata.profile);
+  state.metadata.cache.set(key, {
+    video,
+    profile,
+    storedAt: Date.now(),
+  });
+  persistMetadataCache();
+}
+
+function removeLocalMetadata(pointerKeyValue) {
+  const key = typeof pointerKeyValue === "string" ? pointerKeyValue : "";
+  if (!key) {
+    return;
+  }
+  restoreMetadataCache();
+  if (state.metadata.cache.delete(key)) {
+    persistMetadataCache();
+  }
+}
+
+function clearLocalMetadata() {
+  restoreMetadataCache();
+  if (!state.metadata.cache.size) {
+    return;
+  }
+  state.metadata.cache.clear();
+  persistMetadataCache();
+}
+
+>>>>>>> origin/main
 function emit(eventName, payload) {
   const listeners = state.listeners.get(eventName);
   if (listeners && listeners.size) {
@@ -251,6 +705,10 @@ function getOrCreateQueue(actorKey) {
     queue = {
       items: new Map(),
       throttle: new Map(),
+<<<<<<< HEAD
+=======
+      pendingSnapshotId: null,
+>>>>>>> origin/main
       lastSnapshotReason: null,
       republishScheduled: false,
     };
@@ -265,16 +723,26 @@ function restoreQueueState() {
   }
   state.restored = true;
 
+<<<<<<< HEAD
   const storage = getQueueStorage();
+=======
+  const storage = getSessionStorage();
+>>>>>>> origin/main
   if (!storage) {
     return;
   }
 
   let raw = null;
   try {
+<<<<<<< HEAD
     raw = storage.getItem(LOCAL_STORAGE_QUEUE_KEY);
   } catch (error) {
     devLogger.warn("[watchHistoryService] Failed to read queue storage:", error);
+=======
+    raw = storage.getItem(SESSION_STORAGE_KEY);
+  } catch (error) {
+    devLogger.warn("[watchHistoryService] Failed to read session cache:", error);
+>>>>>>> origin/main
     return;
   }
 
@@ -286,12 +754,21 @@ function restoreQueueState() {
   try {
     parsed = JSON.parse(raw);
   } catch (error) {
+<<<<<<< HEAD
     devLogger.warn("[watchHistoryService] Failed to parse queue storage:", error);
     try {
       storage.removeItem(LOCAL_STORAGE_QUEUE_KEY);
     } catch (cleanupError) {
       devLogger.warn(
         "[watchHistoryService] Failed to clear corrupt queue storage:",
+=======
+    devLogger.warn("[watchHistoryService] Failed to parse session cache:", error);
+    try {
+      storage.removeItem(SESSION_STORAGE_KEY);
+    } catch (cleanupError) {
+      devLogger.warn(
+        "[watchHistoryService] Failed to clear corrupt session cache:",
+>>>>>>> origin/main
         cleanupError
       );
     }
@@ -300,10 +777,17 @@ function restoreQueueState() {
 
   if (!parsed || parsed.version !== SESSION_STORAGE_VERSION) {
     try {
+<<<<<<< HEAD
       storage.removeItem(LOCAL_STORAGE_QUEUE_KEY);
     } catch (cleanupError) {
       devLogger.warn(
         "[watchHistoryService] Failed to clear outdated queue storage:",
+=======
+      storage.removeItem(SESSION_STORAGE_KEY);
+    } catch (cleanupError) {
+      devLogger.warn(
+        "[watchHistoryService] Failed to clear outdated session cache:",
+>>>>>>> origin/main
         cleanupError
       );
     }
@@ -341,6 +825,14 @@ function restoreQueueState() {
       });
     }
 
+<<<<<<< HEAD
+=======
+    if (typeof entry?.pendingSnapshotId === "string" && entry.pendingSnapshotId) {
+      queue.pendingSnapshotId = entry.pendingSnapshotId;
+    } else {
+      queue.pendingSnapshotId = null;
+    }
+>>>>>>> origin/main
     if (
       typeof entry?.lastSnapshotReason === "string" &&
       entry.lastSnapshotReason
@@ -350,8 +842,12 @@ function restoreQueueState() {
       queue.lastSnapshotReason = null;
     }
 
+<<<<<<< HEAD
     // If there are items in the queue, schedule a sync
     if (queue.items.size > 0 && isFeatureEnabled(actorKey)) {
+=======
+    if (queue.pendingSnapshotId && isFeatureEnabled(actorKey)) {
+>>>>>>> origin/main
       scheduleRepublishForQueue(actorKey);
     }
   }
@@ -368,7 +864,11 @@ function ensureQueue(actorKey) {
 }
 
 function persistQueueState() {
+<<<<<<< HEAD
   const storage = getQueueStorage();
+=======
+  const storage = getSessionStorage();
+>>>>>>> origin/main
   if (!storage) {
     return;
   }
@@ -378,11 +878,19 @@ function persistQueueState() {
 
   for (const [actorKey, queue] of state.queues.entries()) {
     const items = collectQueueItems(actorKey);
+<<<<<<< HEAD
     if (!items.length) {
+=======
+    if (!items.length && !queue.pendingSnapshotId) {
+>>>>>>> origin/main
       continue;
     }
     payload.actors[actorKey] = {
       items,
+<<<<<<< HEAD
+=======
+      pendingSnapshotId: queue.pendingSnapshotId,
+>>>>>>> origin/main
       lastSnapshotReason: queue.lastSnapshotReason,
     };
     hasEntries = true;
@@ -390,10 +898,17 @@ function persistQueueState() {
 
   if (!hasEntries) {
     try {
+<<<<<<< HEAD
       storage.removeItem(LOCAL_STORAGE_QUEUE_KEY);
     } catch (error) {
       devLogger.warn(
         "[watchHistoryService] Failed to clear empty queue storage:",
+=======
+      storage.removeItem(SESSION_STORAGE_KEY);
+    } catch (error) {
+      devLogger.warn(
+        "[watchHistoryService] Failed to clear empty session cache:",
+>>>>>>> origin/main
         error
       );
     }
@@ -401,9 +916,15 @@ function persistQueueState() {
   }
 
   try {
+<<<<<<< HEAD
     storage.setItem(LOCAL_STORAGE_QUEUE_KEY, JSON.stringify(payload));
   } catch (error) {
     devLogger.warn("[watchHistoryService] Failed to persist queue storage:", error);
+=======
+    storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(payload));
+  } catch (error) {
+    devLogger.warn("[watchHistoryService] Failed to persist session cache:", error);
+>>>>>>> origin/main
   }
 }
 
@@ -501,6 +1022,10 @@ function clearQueue(actorKey) {
   }
   queue.items.clear();
   queue.throttle.clear();
+<<<<<<< HEAD
+=======
+  queue.pendingSnapshotId = null;
+>>>>>>> origin/main
   queue.republishScheduled = false;
   persistQueueState();
   notifyQueueChange(actorKey);
@@ -539,6 +1064,14 @@ function pruneQueueAfterSnapshot(actorKey, queue, keysToClear, snapshotStart) {
     }
   }
 
+<<<<<<< HEAD
+=======
+  if (queue.pendingSnapshotId) {
+    queue.pendingSnapshotId = null;
+    mutated = true;
+  }
+
+>>>>>>> origin/main
   if (queue.republishScheduled) {
     queue.republishScheduled = false;
     mutated = true;
@@ -574,6 +1107,7 @@ function scheduleRepublishForQueue(actorKey) {
     return;
   }
   const queue = state.queues.get(actorKey);
+<<<<<<< HEAD
   if (!queue || !queue.items.size || queue.republishScheduled) {
     return;
   }
@@ -586,12 +1120,26 @@ function scheduleRepublishForQueue(actorKey) {
     async (attempt) => {
       const latestItems = collectQueueItems(actorKey);
       if (!latestItems.length) {
+=======
+  if (!queue || !queue.pendingSnapshotId || queue.republishScheduled) {
+    return;
+  }
+  const snapshotId = queue.pendingSnapshotId;
+  queue.republishScheduled = true;
+  nostrClient.scheduleWatchHistoryRepublish(
+    snapshotId,
+    async (attempt) => {
+      const latestItems = collectQueueItems(actorKey);
+      if (!latestItems.length) {
+        queue.pendingSnapshotId = null;
+>>>>>>> origin/main
         queue.republishScheduled = false;
         persistQueueState();
         return {
           ok: true,
           skipped: true,
           actor: actorKey,
+<<<<<<< HEAD
         };
       }
 
@@ -617,12 +1165,42 @@ function scheduleRepublishForQueue(actorKey) {
           keysToClear,
           snapshotStartTime
         );
+=======
+          snapshotId,
+        };
+      }
+      const publishResult = await nostrClient.publishWatchHistorySnapshot(
+        latestItems,
+        {
+          actorPubkey: actorKey,
+          snapshotId,
+          attempt,
+          source: `${queue.lastSnapshotReason || "session"}-retry`,
+        }
+      );
+      if (publishResult?.snapshotId) {
+        queue.pendingSnapshotId = publishResult.snapshotId;
+      }
+      if (publishResult?.ok) {
+        queue.pendingSnapshotId = null;
+        queue.republishScheduled = false;
+        queue.items.clear();
+        queue.throttle.clear();
+>>>>>>> origin/main
         await updateFingerprintCache(
           actorKey,
           publishResult.items || latestItems,
         );
+<<<<<<< HEAD
       } else if (!publishResult?.retryable) {
         // If not retryable, we clear the scheduled flag to allow new attempts later
+=======
+        persistQueueState();
+        notifyQueueChange(actorKey);
+      } else if (!publishResult?.retryable) {
+        queue.pendingSnapshotId =
+          publishResult?.snapshotId || queue.pendingSnapshotId;
+>>>>>>> origin/main
         queue.republishScheduled = false;
         persistQueueState();
       }
@@ -632,6 +1210,10 @@ function scheduleRepublishForQueue(actorKey) {
       onSchedule: ({ delay }) => {
         emit("republish-scheduled", {
           actor: actorKey,
+<<<<<<< HEAD
+=======
+          snapshotId,
+>>>>>>> origin/main
           delayMs: Number.isFinite(delay) ? delay : null,
         });
       },
@@ -658,11 +1240,29 @@ async function updateFingerprintCache(actorKey, items) {
   return fingerprint;
 }
 
+<<<<<<< HEAD
 async function publishView(pointerInput, createdAt) {
+=======
+async function publishView(pointerInput, createdAt, metadata = {}) {
+>>>>>>> origin/main
   const recordOptions = {};
   if (Number.isFinite(createdAt)) {
     recordOptions.created_at = createdAt;
   }
+<<<<<<< HEAD
+=======
+  if (metadata && typeof metadata === "object") {
+    if (Array.isArray(metadata.additionalTags)) {
+      recordOptions.additionalTags = metadata.additionalTags;
+    }
+    if (Array.isArray(metadata.relays)) {
+      recordOptions.relays = metadata.relays;
+    }
+    if (metadata.content != null) {
+      recordOptions.content = metadata.content;
+    }
+  }
+>>>>>>> origin/main
 
   const viewResult = await nostrClient.recordVideoView(pointerInput, recordOptions);
 
@@ -671,6 +1271,10 @@ async function publishView(pointerInput, createdAt) {
     {
     pointer: pointerInput,
     createdAt,
+<<<<<<< HEAD
+=======
+    hasMetadata: !!metadata,
+>>>>>>> origin/main
     }
   );
 
@@ -683,11 +1287,17 @@ async function publishView(pointerInput, createdAt) {
     return viewResult;
   }
 
+<<<<<<< HEAD
   let actorCandidate =
+=======
+  const actorCandidate =
+    (typeof metadata.actor === "string" && metadata.actor.trim()) ||
+>>>>>>> origin/main
     viewResult?.event?.pubkey ||
     nostrClient?.pubkey ||
     nostrClient?.sessionActor?.pubkey ||
     "";
+<<<<<<< HEAD
   let actorKey = normalizeActorKey(actorCandidate);
   let usedSessionFallback = false;
   if (!actorKey && typeof nostrClient?.ensureSessionActor === "function") {
@@ -699,6 +1309,9 @@ async function publishView(pointerInput, createdAt) {
       usedSessionFallback = true;
     }
   }
+=======
+  const actorKey = normalizeActorKey(actorCandidate);
+>>>>>>> origin/main
   if (!actorKey) {
     userLogger.warn(
       "[watchHistoryService] Unable to resolve actor for watch list update.",
@@ -706,12 +1319,15 @@ async function publishView(pointerInput, createdAt) {
     );
     return viewResult;
   }
+<<<<<<< HEAD
   if (usedSessionFallback) {
     devLogger.info(
       "[watchHistoryService] Using session actor fallback for watch history update.",
       { actor: actorKey }
     );
   }
+=======
+>>>>>>> origin/main
 
   const queue = ensureQueue(actorKey);
   if (!queue) {
@@ -738,10 +1354,39 @@ async function publishView(pointerInput, createdAt) {
     viewResult?.event?.created_at
   );
 
+<<<<<<< HEAD
   delete normalizedPointer.video;
   delete normalizedPointer.profile;
   delete normalizedPointer.resumeAt;
   delete normalizedPointer.completed;
+=======
+  const pointerMetadata = sanitizePointerMetadata(metadata);
+  if (pointerMetadata) {
+    const existingMetadata =
+      typeof normalizedPointer.metadata === "object"
+        ? normalizedPointer.metadata
+        : {};
+    normalizedPointer.metadata = { ...existingMetadata, ...pointerMetadata };
+    if (pointerMetadata.video) {
+      normalizedPointer.video = pointerMetadata.video;
+    }
+    if (pointerMetadata.profile) {
+      normalizedPointer.profile = pointerMetadata.profile;
+    }
+    if (
+      Number.isFinite(pointerMetadata.resumeAt) &&
+      !Number.isFinite(normalizedPointer.resumeAt)
+    ) {
+      normalizedPointer.resumeAt = Math.max(
+        0,
+        Math.floor(pointerMetadata.resumeAt),
+      );
+    }
+    if (pointerMetadata.completed === true) {
+      normalizedPointer.completed = true;
+    }
+  }
+>>>>>>> origin/main
 
   const key = pointerKey(normalizedPointer);
   devLogger.info(
@@ -840,9 +1485,12 @@ async function publishView(pointerInput, createdAt) {
         watchedAt: normalizedPointer.watchedAt,
       }
     );
+<<<<<<< HEAD
   } else {
     // Automatically schedule a republish if enabled
     scheduleRepublishForQueue(actorKey);
+=======
+>>>>>>> origin/main
   }
 
   return viewResult;
@@ -857,14 +1505,22 @@ async function snapshot(items, options = {}) {
 
   if (!isFeatureEnabled(actorKey)) {
     devLogger.debug(
+<<<<<<< HEAD
       "[watchHistoryService] Snapshot skipped because this actor is limited to local watch history.",
+=======
+      "[watchHistoryService] Snapshot skipped because watch history sync is unavailable for this actor.",
+>>>>>>> origin/main
       {
       actor: actorKey,
       requestedItems: Array.isArray(items) ? items.length : 0,
       reason,
       }
     );
+<<<<<<< HEAD
     return { ok: true, skipped: true, reason: "local-only" };
+=======
+    return { ok: true, skipped: true, reason: "feature-disabled" };
+>>>>>>> origin/main
   }
 
   if (state.inflightSnapshots.has(actorKey)) {
@@ -916,10 +1572,18 @@ async function snapshot(items, options = {}) {
   const run = (async () => {
     const snapshotStartTime = Date.now();
     emit("snapshot-start", { actor: actorKey, reason, items: payloadItems });
+<<<<<<< HEAD
     const publishResult = await nostrClient.updateWatchHistoryList(
       payloadItems,
       {
         actorPubkey: actorKey,
+=======
+    const publishResult = await nostrClient.publishWatchHistorySnapshot(
+      payloadItems,
+      {
+        actorPubkey: actorKey,
+        source: reason,
+>>>>>>> origin/main
       }
     );
 
@@ -929,13 +1593,23 @@ async function snapshot(items, options = {}) {
       actor: actorKey,
       reason,
       success: !!publishResult?.ok,
+<<<<<<< HEAD
+=======
+      snapshotId: publishResult?.snapshotId || null,
+>>>>>>> origin/main
       retryable: !!publishResult?.retryable,
       }
     );
 
     if (!publishResult?.ok) {
+<<<<<<< HEAD
       if (publishResult?.retryable) {
         if (queue) {
+=======
+      if (publishResult?.retryable && publishResult?.snapshotId) {
+        if (queue) {
+          queue.pendingSnapshotId = publishResult.snapshotId;
+>>>>>>> origin/main
           queue.lastSnapshotReason = reason;
           queue.republishScheduled = false;
           persistQueueState();
@@ -948,6 +1622,7 @@ async function snapshot(items, options = {}) {
       throw error;
     }
 
+<<<<<<< HEAD
     if (publishResult?.ok) {
       if (!items) {
         pruneQueueAfterSnapshot(actorKey, queue, queuePayloadKeys, snapshotStartTime);
@@ -955,6 +1630,14 @@ async function snapshot(items, options = {}) {
         queue.republishScheduled = false;
         persistQueueState();
       }
+=======
+    if (!items) {
+      pruneQueueAfterSnapshot(actorKey, queue, queuePayloadKeys, snapshotStartTime);
+    } else if (queue) {
+      queue.pendingSnapshotId = null;
+      queue.republishScheduled = false;
+      persistQueueState();
+>>>>>>> origin/main
     }
 
     await updateFingerprintCache(actorKey, publishResult.items || payloadItems);
@@ -1028,6 +1711,7 @@ function scheduleWatchHistoryRefresh(actorKey, cacheEntry = {}) {
   return promise;
 }
 
+<<<<<<< HEAD
 function resolveEntryPointer(entry) {
   if (!entry) {
     return null;
@@ -1181,25 +1865,38 @@ function mergeQueuedItemsIfNeeded(actorKey, items) {
   return mergeWatchHistoryItems(items, queueItems);
 }
 
+=======
+>>>>>>> origin/main
 async function loadLatest(actorInput, options = {}) {
   const actorKey = resolveActorKey(actorInput);
   if (!actorKey) {
     return [];
   }
 
+<<<<<<< HEAD
   if (!state.restored) {
     restoreQueueState();
   }
 
+=======
+>>>>>>> origin/main
   const normalizedOptions =
     options && typeof options === "object" ? options : {};
   // Only callers that can react to a later fingerprint update should opt into
   // stale cache reads; everyone else waits for the fresh list so they do not
   // miss entries.
   const allowStale = normalizedOptions.allowStale === true;
+<<<<<<< HEAD
   const forceRefresh = normalizedOptions.forceRefresh === true;
 
   if (!isFeatureEnabled(actorKey)) {
+=======
+
+  if (!isFeatureEnabled(actorKey)) {
+    if (!state.restored) {
+      restoreQueueState();
+    }
+>>>>>>> origin/main
     const items = collectQueueItems(actorKey);
     devLogger.debug(
       "[watchHistoryService] loadLatest returning local-only watch history queue.",
@@ -1219,7 +1916,10 @@ async function loadLatest(actorInput, options = {}) {
     actor: actorKey,
     cacheHasItems: Array.isArray(cacheEntry?.items),
     cacheExpiresAt: cacheEntry?.expiresAt || null,
+<<<<<<< HEAD
     forceRefresh,
+=======
+>>>>>>> origin/main
     }
   );
   const hasCachedItems = Array.isArray(cacheEntry?.items);
@@ -1228,7 +1928,11 @@ async function loadLatest(actorInput, options = {}) {
     cacheEntry?.expiresAt &&
     cacheEntry.expiresAt > now;
 
+<<<<<<< HEAD
   if (cacheIsFresh && !forceRefresh) {
+=======
+  if (cacheIsFresh) {
+>>>>>>> origin/main
     devLogger.debug(
       "[watchHistoryService] Returning cached watch list items.",
       {
@@ -1236,7 +1940,11 @@ async function loadLatest(actorInput, options = {}) {
       itemCount: cacheEntry.items.length,
       }
     );
+<<<<<<< HEAD
     return mergeQueuedItemsIfNeeded(actorKey, cacheEntry.items);
+=======
+    return cacheEntry.items;
+>>>>>>> origin/main
   }
 
   if (cacheEntry?.promise) {
@@ -1254,6 +1962,7 @@ async function loadLatest(actorInput, options = {}) {
         itemCount: cacheEntry.items.length,
         }
       );
+<<<<<<< HEAD
       return mergeQueuedItemsIfNeeded(actorKey, cacheEntry.items);
     }
     const resolved = await cacheEntry.promise;
@@ -1263,6 +1972,15 @@ async function loadLatest(actorInput, options = {}) {
   if (!allowStale || !hasCachedItems) {
     const resolved = await scheduleWatchHistoryRefresh(actorKey, cacheEntry);
     return mergeQueuedItemsIfNeeded(actorKey, resolved);
+=======
+      return cacheEntry.items;
+    }
+    return cacheEntry.promise;
+  }
+
+  if (!allowStale || !hasCachedItems) {
+    return scheduleWatchHistoryRefresh(actorKey, cacheEntry);
+>>>>>>> origin/main
   }
 
   const refreshPromise = scheduleWatchHistoryRefresh(actorKey, cacheEntry);
@@ -1276,7 +1994,11 @@ async function loadLatest(actorInput, options = {}) {
     }
   );
 
+<<<<<<< HEAD
   return mergeQueuedItemsIfNeeded(actorKey, cacheEntry.items || []);
+=======
+  return cacheEntry.items || [];
+>>>>>>> origin/main
 }
 
 async function getFingerprint(actorInput) {
@@ -1350,6 +2072,20 @@ function getAllQueues() {
   return summary;
 }
 
+<<<<<<< HEAD
+=======
+function getSettings() {
+  const preference = getMetadataPreference();
+  return {
+    metadata: {
+      preference,
+      storeLocally: preference === true,
+      cacheSize: state.metadata.cache.size,
+    },
+  };
+}
+
+>>>>>>> origin/main
 const watchHistoryService = {
   isEnabled: isFeatureEnabled,
   supportsLocalHistory,
@@ -1361,6 +2097,17 @@ const watchHistoryService = {
   resetProgress,
   getQueuedPointers,
   getAllQueues,
+<<<<<<< HEAD
+=======
+  getMetadataPreference,
+  setMetadataPreference,
+  shouldStoreMetadata: shouldStoreMetadataLocally,
+  getLocalMetadata,
+  setLocalMetadata,
+  removeLocalMetadata,
+  clearLocalMetadata,
+  getSettings,
+>>>>>>> origin/main
   subscribe,
 };
 

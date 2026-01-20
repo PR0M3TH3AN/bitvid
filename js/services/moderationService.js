@@ -1,8 +1,12 @@
+<<<<<<< HEAD
 import {
   getActiveSigner,
   nostrClient,
   requestDefaultExtensionPermissions,
 } from "../nostrClientFacade.js";
+=======
+import { nostrClient } from "../nostr.js";
+>>>>>>> origin/main
 import { publishEventToRelays, assertAnyRelayAccepted } from "../nostrPublish.js";
 import { accessControl } from "../accessControl.js";
 import { userBlocks, USER_BLOCK_EVENTS } from "../userBlocks.js";
@@ -10,8 +14,11 @@ import logger from "../utils/logger.js";
 
 const AUTOPLAY_TRUST_THRESHOLD = 1;
 const BLUR_TRUST_THRESHOLD = 1;
+<<<<<<< HEAD
 const TRUSTED_MUTE_WINDOW_DAYS = 60;
 const TRUSTED_MUTE_WINDOW_SECONDS = TRUSTED_MUTE_WINDOW_DAYS * 24 * 60 * 60;
+=======
+>>>>>>> origin/main
 
 function normalizeUserLogger(candidate) {
   if (
@@ -113,6 +120,7 @@ function normalizeReportType(value) {
   return trimmed ? trimmed : "";
 }
 
+<<<<<<< HEAD
 function isRelayHint(value) {
   if (typeof value !== "string") {
     return false;
@@ -146,6 +154,8 @@ function extractMuteCategoryFromTag(tag) {
   return fallback;
 }
 
+=======
+>>>>>>> origin/main
 function cloneSummary(summary) {
   if (!summary || typeof summary !== "object") {
     return { eventId: "", totalTrusted: 0, types: {}, updatedAt: 0 };
@@ -485,6 +495,7 @@ function ensureNumber(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+<<<<<<< HEAD
 function resolveStorage() {
   if (typeof localStorage !== "undefined") {
     return localStorage;
@@ -498,6 +509,8 @@ function resolveStorage() {
   return null;
 }
 
+=======
+>>>>>>> origin/main
 export class ModerationService {
   constructor({
     nostrClient: client = null,
@@ -505,15 +518,23 @@ export class ModerationService {
     userBlocks: userBlockManager = null,
     accessControl: accessControlService = null,
     userLogger: userChannel = null,
+<<<<<<< HEAD
     requestExtensionPermissions: permissionRequester = null,
+=======
+>>>>>>> origin/main
   } = {}) {
     this.nostrClient = client;
     this.log = normalizeLogger(log);
     this.userLogger = normalizeUserLogger(userChannel);
+<<<<<<< HEAD
     this.requestExtensionPermissions = permissionRequester || requestDefaultExtensionPermissions;
 
     this.viewerPubkey = "";
     this.viewerIsSessionActor = false;
+=======
+
+    this.viewerPubkey = "";
+>>>>>>> origin/main
     this.trustedContacts = new Set();
     this.trustedSeedContacts = new Set();
     this.viewerContacts = new Set();
@@ -536,7 +557,10 @@ export class ModerationService {
     this.trustedMuteLists = new Map();
     this.trustedMutedAuthors = new Map();
     this.trustedMuteSubscriptions = new Map();
+<<<<<<< HEAD
     this.trustedSeedOnly = false;
+=======
+>>>>>>> origin/main
 
     this.emitter = new SimpleEventEmitter((message, error) => {
       try {
@@ -576,11 +600,17 @@ export class ModerationService {
     }
 
     if (this.trustedSeedContacts instanceof Set) {
+<<<<<<< HEAD
       const adminSnapshot = this.getAdminListSnapshot();
       const blacklistHex = adminSnapshot.blacklistHex;
       for (const seed of this.trustedSeedContacts) {
         const normalized = normalizeHex(seed);
         if (normalized && (!blacklistHex || !blacklistHex.has(normalized))) {
+=======
+      for (const seed of this.trustedSeedContacts) {
+        const normalized = normalizeHex(seed);
+        if (normalized) {
+>>>>>>> origin/main
           merged.add(normalized);
         }
       }
@@ -589,6 +619,7 @@ export class ModerationService {
     return merged;
   }
 
+<<<<<<< HEAD
   computeTrustedSeedOnly() {
     const trustedContacts =
       this.trustedContacts instanceof Set ? this.trustedContacts : new Set();
@@ -618,6 +649,8 @@ export class ModerationService {
     this.emit("trusted-seed-only", { seedOnly: nextValue });
   }
 
+=======
+>>>>>>> origin/main
   rebuildTrustedContacts(nextContacts = new Set(), { previous = null } = {}) {
     const sanitized = new Set();
 
@@ -649,7 +682,10 @@ export class ModerationService {
     const seededNext = this.mergeSeedsIntoSet(sanitized);
     this.trustedContacts = seededNext;
 
+<<<<<<< HEAD
     this.updateTrustedSeedOnlyStatus();
+=======
+>>>>>>> origin/main
     this.emit("contacts", { size: seededNext.size });
     this.recomputeAllSummaries();
     this.reconcileTrustedMuteSubscriptions(previousContacts, seededNext);
@@ -722,23 +758,35 @@ export class ModerationService {
   }
 
   setTrustedSeeds(seeds = []) {
+<<<<<<< HEAD
     this.log("[moderationService] setTrustedSeeds called", { count: seeds?.length || seeds?.size || 0 });
     const sanitizedSeeds = new Set();
     const adminSnapshot = this.getAdminListSnapshot();
+=======
+    const sanitizedSeeds = new Set();
+>>>>>>> origin/main
 
     if (seeds instanceof Set || Array.isArray(seeds)) {
       for (const candidate of seeds) {
         const normalized = normalizeToHex(candidate);
+<<<<<<< HEAD
         const status = this.getAccessControlStatus(candidate, adminSnapshot);
         if (normalized && !status.blacklisted) {
+=======
+        if (normalized) {
+>>>>>>> origin/main
           sanitizedSeeds.add(normalized);
         }
       }
     } else if (seeds && typeof seeds[Symbol.iterator] === "function") {
       for (const candidate of seeds) {
         const normalized = normalizeToHex(candidate);
+<<<<<<< HEAD
         const status = this.getAccessControlStatus(candidate, adminSnapshot);
         if (normalized && !status.blacklisted) {
+=======
+        if (normalized) {
+>>>>>>> origin/main
           sanitizedSeeds.add(normalized);
         }
       }
@@ -751,10 +799,13 @@ export class ModerationService {
     this.rebuildTrustedContacts(this.viewerContacts, { previous: previousContacts });
   }
 
+<<<<<<< HEAD
   isTrustedSeedOnly() {
     return this.trustedSeedOnly === true;
   }
 
+=======
+>>>>>>> origin/main
   logThresholdTransitions({
     eventId = "",
     reportType = "",
@@ -811,6 +862,7 @@ export class ModerationService {
     }
   }
 
+<<<<<<< HEAD
   getTrustedMuteWindowCutoff(nowSeconds = Date.now() / 1000) {
     const normalizedNow = ensureNumber(nowSeconds) || Date.now() / 1000;
     return normalizedNow - TRUSTED_MUTE_WINDOW_SECONDS;
@@ -910,6 +962,8 @@ export class ModerationService {
     };
   }
 
+=======
+>>>>>>> origin/main
   setLogger(newLogger) {
     this.log = normalizeLogger(newLogger);
   }
@@ -1007,7 +1061,16 @@ export class ModerationService {
   }
 
   clearTrustedMuteTracking({ previousContacts = null } = {}) {
+<<<<<<< HEAD
     void previousContacts;
+=======
+    const previous =
+      previousContacts instanceof Set
+        ? new Set(previousContacts)
+        : this.trustedContacts instanceof Set
+        ? new Set(this.trustedContacts)
+        : new Set();
+>>>>>>> origin/main
 
     for (const [pubkey, entry] of this.trustedMuteSubscriptions.entries()) {
       if (entry && typeof entry.unsub === "function") {
@@ -1022,7 +1085,11 @@ export class ModerationService {
     this.trustedMuteSubscriptions.clear();
 
     for (const [author, aggregate] of this.trustedMutedAuthors.entries()) {
+<<<<<<< HEAD
       if (aggregate && aggregate.muters instanceof Map) {
+=======
+      if (aggregate && aggregate.muters instanceof Set) {
+>>>>>>> origin/main
         aggregate.muters.clear();
       }
     }
@@ -1035,8 +1102,12 @@ export class ModerationService {
 
     this.emit("trusted-mutes", { total: 0 });
 
+<<<<<<< HEAD
     const emptyPrevious = new Set();
     this.rebuildTrustedContacts(new Set(), { previous: emptyPrevious });
+=======
+    this.rebuildTrustedContacts(new Set(), { previous });
+>>>>>>> origin/main
   }
 
   isTrustedMuteOwner(pubkey) {
@@ -1054,11 +1125,14 @@ export class ModerationService {
     const previous = previousSet instanceof Set ? new Set(previousSet) : new Set();
     const next = nextSet instanceof Set ? new Set(nextSet) : new Set();
 
+<<<<<<< HEAD
     this.log("[moderationService] reconcileTrustedMuteSubscriptions", {
       previous: previous.size,
       next: next.size,
     });
 
+=======
+>>>>>>> origin/main
     if (this.viewerPubkey) {
       if (this.trustedMuteSubscriptions.has(this.viewerPubkey)) {
         previous.add(this.viewerPubkey);
@@ -1073,12 +1147,23 @@ export class ModerationService {
     }
 
     for (const value of next) {
+<<<<<<< HEAD
       this.subscribeToTrustedMuteList(value).catch((error) => {
         this.log(
           `(moderationService) failed to subscribe to trusted mute list for ${value}`,
           error,
         );
       });
+=======
+      if (!previous.has(value)) {
+        this.subscribeToTrustedMuteList(value).catch((error) => {
+          this.log(
+            `(moderationService) failed to subscribe to trusted mute list for ${value}`,
+            error,
+          );
+        });
+      }
+>>>>>>> origin/main
     }
   }
 
@@ -1117,12 +1202,18 @@ export class ModerationService {
       }
       return;
     } else if (typeof record.unsub === "function") {
+<<<<<<< HEAD
       this.log(`[moderationService] already subscribed to ${normalized}`);
       return;
     }
 
     this.log(`[moderationService] subscribing to trusted mute list for ${normalized}`);
 
+=======
+      return;
+    }
+
+>>>>>>> origin/main
     record.promise = (async () => {
       try {
         await this.ensurePool();
@@ -1140,7 +1231,10 @@ export class ModerationService {
 
       const relays = resolveRelayList(this.nostrClient);
       if (!relays.length) {
+<<<<<<< HEAD
         this.log(`[moderationService] no relays available for ${normalized}`);
+=======
+>>>>>>> origin/main
         return;
       }
 
@@ -1185,7 +1279,10 @@ export class ModerationService {
         });
         sub.on("eose", () => {});
         record.unsub = typeof sub.unsub === "function" ? () => sub.unsub() : null;
+<<<<<<< HEAD
         this.log(`[moderationService] subscribed to trusted mute list for ${normalized}`);
+=======
+>>>>>>> origin/main
       } catch (error) {
         this.log(
           `(moderationService) failed to subscribe to trusted mute list for ${normalized}`,
@@ -1227,6 +1324,7 @@ export class ModerationService {
       return;
     }
 
+<<<<<<< HEAD
     const sanitizedAuthors = new Map();
     const addAuthor = (candidate, category = "") => {
       const normalized = normalizeToHex(candidate);
@@ -1293,6 +1391,40 @@ export class ModerationService {
           }
         }
         touchedAuthors.add(author);
+=======
+    const sanitizedAuthors = new Set();
+    if (mutedAuthors instanceof Set || Array.isArray(mutedAuthors)) {
+      for (const candidate of mutedAuthors) {
+        const normalized = normalizeToHex(candidate);
+        if (!normalized) {
+          continue;
+        }
+        sanitizedAuthors.add(normalized);
+      }
+    } else if (mutedAuthors && typeof mutedAuthors[Symbol.iterator] === "function") {
+      for (const candidate of mutedAuthors) {
+        const normalized = normalizeToHex(candidate);
+        if (!normalized) {
+          continue;
+        }
+        sanitizedAuthors.add(normalized);
+      }
+    }
+
+    const previous = this.trustedMuteLists.get(owner);
+    if (previous && previous.authors instanceof Set) {
+      for (const author of previous.authors) {
+        const aggregate = this.trustedMutedAuthors.get(author);
+        if (!aggregate || !(aggregate.muters instanceof Set)) {
+          continue;
+        }
+        aggregate.muters.delete(owner);
+        if (!aggregate.muters.size) {
+          this.trustedMutedAuthors.delete(author);
+        } else {
+          aggregate.count = aggregate.muters.size;
+        }
+>>>>>>> origin/main
       }
     }
 
@@ -1314,6 +1446,7 @@ export class ModerationService {
         eventId: normalizedEventId,
       });
 
+<<<<<<< HEAD
       for (const [author, category] of sanitizedAuthors.entries()) {
         let aggregate = this.trustedMutedAuthors.get(author);
         if (!aggregate) {
@@ -1334,6 +1467,19 @@ export class ModerationService {
     }
 
     this.pruneTrustedMuteAggregates(touchedAuthors);
+=======
+      for (const author of sanitizedAuthors) {
+        let aggregate = this.trustedMutedAuthors.get(author);
+        if (!aggregate) {
+          aggregate = { muters: new Set(), count: 0 };
+          this.trustedMutedAuthors.set(author, aggregate);
+        }
+        aggregate.muters.add(owner);
+        aggregate.count = aggregate.muters.size;
+      }
+    }
+
+>>>>>>> origin/main
     this.emit("trusted-mutes", { total: this.trustedMutedAuthors.size, owner });
   }
 
@@ -1362,7 +1508,11 @@ export class ModerationService {
       }
     }
 
+<<<<<<< HEAD
     const mutedAuthors = new Map();
+=======
+    const mutedAuthors = new Set();
+>>>>>>> origin/main
     if (Array.isArray(event.tags)) {
       for (const tag of event.tags) {
         if (!Array.isArray(tag) || tag.length < 2) {
@@ -1373,8 +1523,12 @@ export class ModerationService {
         }
         const normalized = normalizeToHex(tag[1]);
         if (normalized) {
+<<<<<<< HEAD
           const category = extractMuteCategoryFromTag(tag);
           mutedAuthors.set(normalized, category);
+=======
+          mutedAuthors.add(normalized);
+>>>>>>> origin/main
         }
       }
     }
@@ -1407,6 +1561,7 @@ export class ModerationService {
     return this.viewerMuteList.has(normalized);
   }
 
+<<<<<<< HEAD
   loadLocalMutes(pubkey) {
     const normalized = normalizeHex(pubkey);
     if (!normalized) {
@@ -1486,6 +1641,8 @@ export class ModerationService {
     }
   }
 
+=======
+>>>>>>> origin/main
   async ensureViewerMuteListLoaded(pubkey = this.viewerPubkey) {
     const normalized = normalizeHex(pubkey);
     if (!normalized) {
@@ -1499,11 +1656,14 @@ export class ModerationService {
       return;
     }
 
+<<<<<<< HEAD
     if (this.viewerIsSessionActor && normalized === this.viewerPubkey) {
       this.loadLocalMutes(normalized);
       return;
     }
 
+=======
+>>>>>>> origin/main
     if (this.viewerMutePromise) {
       try {
         await this.viewerMutePromise;
@@ -1537,6 +1697,7 @@ export class ModerationService {
       throw error;
     }
 
+<<<<<<< HEAD
     if (this.viewerIsSessionActor && viewer === this.viewerPubkey) {
       this.saveLocalMutes(viewer, muted);
       this.replaceTrustedMuteList(viewer, muted, {
@@ -1557,13 +1718,24 @@ export class ModerationService {
       ? signer.canSign()
       : typeof signer?.signEvent === "function";
     if (!canSign || typeof signer?.signEvent !== "function") {
+=======
+    await this.ensurePool();
+
+    const extension = typeof window !== "undefined" ? window.nostr : null;
+    if (!extension || typeof extension.signEvent !== "function") {
+>>>>>>> origin/main
       const error = new Error("nostr-extension-missing");
       error.code = "nostr-extension-missing";
       throw error;
     }
 
+<<<<<<< HEAD
     if (signer?.type === "extension") {
       const permissionResult = await this.requestExtensionPermissions([
+=======
+    if (typeof this.nostrClient?.ensureExtensionPermissions === "function") {
+      const permissionResult = await this.nostrClient.ensureExtensionPermissions([
+>>>>>>> origin/main
         "sign_event",
         "get_public_key",
       ]);
@@ -1596,7 +1768,11 @@ export class ModerationService {
 
     let signedEvent;
     try {
+<<<<<<< HEAD
       signedEvent = await signer.signEvent(event);
+=======
+      signedEvent = await extension.signEvent(event);
+>>>>>>> origin/main
     } catch (error) {
       const wrapped = new Error("signature-failed");
       wrapped.code = "signature-failed";
@@ -1685,12 +1861,35 @@ export class ModerationService {
   }
 
   isAuthorMutedByTrusted(pubkey) {
+<<<<<<< HEAD
     const muters = this.getActiveTrustedMutersForAuthor(pubkey);
     return muters.length > 0;
   }
 
   getTrustedMutersForAuthor(pubkey) {
     return this.getActiveTrustedMutersForAuthor(pubkey);
+=======
+    const normalized = normalizeHex(pubkey);
+    if (!normalized) {
+      return false;
+    }
+    const entry = this.trustedMutedAuthors.get(normalized);
+    return Boolean(entry && entry.muters instanceof Set && entry.muters.size > 0);
+  }
+
+  getTrustedMutersForAuthor(pubkey) {
+    const normalized = normalizeHex(pubkey);
+    if (!normalized) {
+      return [];
+    }
+
+    const entry = this.trustedMutedAuthors.get(normalized);
+    if (!entry || !(entry.muters instanceof Set)) {
+      return [];
+    }
+
+    return Array.from(entry.muters);
+>>>>>>> origin/main
   }
 
   isPubkeyBlockedByViewer(pubkey) {
@@ -1845,9 +2044,13 @@ export class ModerationService {
   }
 
   async refreshViewerFromClient() {
+<<<<<<< HEAD
     const clientPubkey = normalizeHex(
       this.nostrClient?.pubkey || this.nostrClient?.sessionActor?.pubkey,
     );
+=======
+    const clientPubkey = normalizeHex(this.nostrClient?.pubkey);
+>>>>>>> origin/main
     if (clientPubkey === this.viewerPubkey) {
       if (this.contactListPromise) {
         try {
@@ -1877,6 +2080,7 @@ export class ModerationService {
       this.trustedContacts instanceof Set ? new Set(this.trustedContacts) : new Set();
 
     this.viewerPubkey = normalized;
+<<<<<<< HEAD
 
     const loggedInPubkey = normalizeHex(this.nostrClient?.pubkey);
     const sessionPubkey = normalizeHex(this.nostrClient?.sessionActor?.pubkey);
@@ -1884,6 +2088,8 @@ export class ModerationService {
     this.viewerIsSessionActor =
       !!normalized && !loggedInPubkey && normalized === sessionPubkey;
 
+=======
+>>>>>>> origin/main
     this.clearTrustedMuteTracking({ previousContacts });
 
     if (this.contactSubscription && typeof this.contactSubscription.unsub === "function") {
@@ -2454,10 +2660,14 @@ export class ModerationService {
       throw error;
     }
 
+<<<<<<< HEAD
     const reporterPubkey = normalizeHex(
       this.nostrClient?.pubkey || this.nostrClient?.sessionActor?.pubkey,
     );
 
+=======
+    const reporterPubkey = normalizeHex(this.nostrClient?.pubkey);
+>>>>>>> origin/main
     if (!reporterPubkey) {
       const error = new Error("viewer-not-logged-in");
       error.code = "viewer-not-logged-in";
@@ -2471,6 +2681,7 @@ export class ModerationService {
       throw error;
     }
 
+<<<<<<< HEAD
     const signer = await this.nostrClient.ensureActiveSignerForPubkey(
       reporterPubkey,
     );
@@ -2484,6 +2695,16 @@ export class ModerationService {
       signer.type === "extension" &&
       typeof this.nostrClient?.ensureExtensionPermissions === "function"
     ) {
+=======
+    const extension = typeof window !== "undefined" ? window.nostr : null;
+    if (!extension) {
+      const error = new Error("nostr-extension-missing");
+      error.code = "nostr-extension-missing";
+      throw error;
+    }
+
+    if (typeof this.nostrClient?.ensureExtensionPermissions === "function") {
+>>>>>>> origin/main
       const permissionResult = await this.nostrClient.ensureExtensionPermissions([
         "sign_event",
         "get_public_key",
@@ -2520,7 +2741,11 @@ export class ModerationService {
 
     let signedEvent;
     try {
+<<<<<<< HEAD
       signedEvent = await signer.signEvent(event);
+=======
+      signedEvent = await extension.signEvent(event);
+>>>>>>> origin/main
     } catch (error) {
       const wrapped = new Error("signature-failed");
       wrapped.code = "signature-failed";

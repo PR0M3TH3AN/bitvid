@@ -398,7 +398,11 @@ export default class ZapController {
 
       this.resetRetryState();
       this.modalZapCommentValue = "";
+<<<<<<< HEAD
       this.videoModal?.setZapComment("");
+=======
+      this.videoModal?.resetZapForm({ amount: "", comment: "" });
+>>>>>>> origin/main
       this.videoModal?.setZapCompleted(true);
       this.applyDefaultAmount();
     } catch (error) {

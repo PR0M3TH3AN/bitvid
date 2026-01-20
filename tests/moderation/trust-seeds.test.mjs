@@ -29,7 +29,11 @@ test("default trust seeds derive from config", () => {
   assert.notStrictEqual(DEFAULT_TRUST_SEED_NPUBS, CONFIG_DEFAULT_TRUST_SEED_NPUBS);
 });
 
+<<<<<<< HEAD
 function createTrustedMuteEvent({ owner, muted, id = "m".repeat(64), createdAt = Math.floor(Date.now() / 1000) } = {}) {
+=======
+function createTrustedMuteEvent({ owner, muted, id = "m".repeat(64), createdAt = 1_700_000_000 } = {}) {
+>>>>>>> origin/main
   return {
     kind: 10000,
     id,
@@ -200,8 +204,13 @@ test("bootstrap seeds track editor roster and ignore whitelist-only changes", as
   globalThis.__bootstrapAccessControlMock = accessControlMock;
   globalThis.__bootstrapModerationServiceMock = moderationServiceMock;
 
+<<<<<<< HEAD
   const bootstrapModule = await import("../../js/services/trustBootstrap.js");
   await bootstrapModule.bootstrapTrustedSeeds();
+=======
+  const bootstrapModule = await import("../../js/bootstrap.js");
+  await bootstrapModule.trustedSeedsReadyPromise;
+>>>>>>> origin/main
 
   assert.equal(ensureReadyCalls, 1);
   assert.ok(

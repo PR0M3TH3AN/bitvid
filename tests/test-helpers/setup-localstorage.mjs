@@ -43,7 +43,10 @@ if (typeof globalThis.localStorage === "undefined") {
 if (typeof globalThis.window.localStorage === "undefined") {
   globalThis.window.localStorage = globalThis.localStorage;
 }
+<<<<<<< HEAD
 
 if (typeof globalThis.structuredClone === "undefined") {
   globalThis.structuredClone = (val) => JSON.parse(JSON.stringify(val));
 }
+=======
+>>>>>>> origin/main

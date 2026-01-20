@@ -295,6 +295,7 @@ export function createVideoMoreMenuPanel({
     },
   });
 
+<<<<<<< HEAD
   appendMenuSeparator(doc, list);
 
   appendMenuAction(doc, list, {
@@ -306,6 +307,8 @@ export function createVideoMoreMenuPanel({
     },
   });
 
+=======
+>>>>>>> origin/main
   return panel;
 }
 

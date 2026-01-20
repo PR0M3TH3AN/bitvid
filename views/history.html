@@ -16,6 +16,7 @@
           data-history-action="clear-cache"
           class="btn-ghost"
         >
+<<<<<<< HEAD
           Clear local history
         </button>
         <button
@@ -25,11 +26,56 @@
           aria-label="Refresh watch history from relays"
         >
           Refresh
+=======
+          Clear local cache
+        </button>
+        <button
+          type="button"
+          data-history-action="republish"
+          class="btn"
+        >
+          Republish now
+>>>>>>> origin/main
         </button>
       </div>
     </div>
 
     <div
+<<<<<<< HEAD
+=======
+      id="watchHistoryPrivacyBanner"
+      class="card hidden p-md"
+      role="status"
+      aria-live="polite"
+    >
+      <div
+        class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+      >
+        <p id="watchHistoryPrivacyMessage" class="text-sm text-info">
+          Your history stays encrypted. Share metadata with relays to sync
+          thumbnails across devices?
+        </p>
+        <div class="flex flex-wrap gap-2">
+          <button id="watchHistoryPrivacyToggle" type="button" class="btn">
+            Share metadata
+          </button>
+          <button
+            id="watchHistoryPrivacyDismiss"
+            type="button"
+            class="btn-ghost"
+          >
+            Dismiss
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div id="watchHistoryInfo" class="card p-md text-sm">
+      Thumbnails and titles are hydrated locally from your device caches.
+    </div>
+
+    <div
+>>>>>>> origin/main
       id="watchHistoryError"
       class="card hidden p-md text-sm text-critical"
       data-state="critical"

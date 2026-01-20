@@ -11,9 +11,13 @@ import { withMockedNostrTools, createModerationServiceHarness } from "../helpers
 
 const { userBlocks } = await import("../../js/userBlocks.js");
 const { nostrClient } = await import("../../js/nostrClientFacade.js");
+<<<<<<< HEAD
 const { setActiveSigner, clearActiveSigner } = await import(
   "../../js/nostr/client.js"
 );
+=======
+const { setActiveSigner, clearActiveSigner } = await import("../../js/nostr.js");
+>>>>>>> origin/main
 
 test("trusted mute lists from seeds hide authors for anonymous viewers", async (t) => {
   withMockedNostrTools(t);
@@ -150,7 +154,11 @@ test("trusted mute lists from seeds hide authors for anonymous viewers", async (
     service,
     autoplayThreshold: DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
     blurThreshold: DEFAULT_BLUR_THRESHOLD,
+<<<<<<< HEAD
     trustedMuteHideThreshold: 1, // Override to ensure hiding triggers with a single mute
+=======
+    trustedMuteHideThreshold: DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
+>>>>>>> origin/main
     reportType: "nudity",
   });
 

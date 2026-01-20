@@ -11,6 +11,7 @@ export function createUiDom({
   });
 
   const { window } = dom;
+<<<<<<< HEAD
 
   // Expose necessary globals for instance checks
   // JSDOM runs in its own context, so instanceof checks against global constructors
@@ -42,5 +43,11 @@ export function createUiDom({
         delete global.CustomEvent;
         window.close();
     },
+=======
+  return {
+    window,
+    document: window.document,
+    cleanup: () => window.close(),
+>>>>>>> origin/main
   };
 }

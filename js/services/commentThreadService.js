@@ -278,6 +278,7 @@ export default class CommentThreadService {
       }
     }
 
+<<<<<<< HEAD
     this.startSubscription(target);
 
     const cached = this.getCachedComments(this.videoEventId);
@@ -289,6 +290,8 @@ export default class CommentThreadService {
 
     this.emitThreadReady();
 
+=======
+>>>>>>> origin/main
     let events = [];
     try {
       events = await this.fetchThread(target, {
@@ -302,11 +305,19 @@ export default class CommentThreadService {
 
     if (Array.isArray(events)) {
       events.forEach((event) => {
+<<<<<<< HEAD
         this.processIncomingEvent(event, { emitReorder: true });
+=======
+        this.processIncomingEvent(event, { isInitial: true });
+>>>>>>> origin/main
       });
     }
 
     this.emitThreadReady();
+<<<<<<< HEAD
+=======
+    this.startSubscription(target);
+>>>>>>> origin/main
 
     if (this.profileHydrationTimer) {
       clearTimeout(this.profileHydrationTimer);
@@ -613,11 +624,16 @@ export default class CommentThreadService {
     });
   }
 
+<<<<<<< HEAD
   startSubscription(target, options = {}) {
+=======
+  startSubscription(target) {
+>>>>>>> origin/main
     if (typeof this.subscribeVideoComments !== "function") {
       return;
     }
 
+<<<<<<< HEAD
     const subOptions = {
       ...options,
       relays: this.activeRelays,
@@ -626,6 +642,15 @@ export default class CommentThreadService {
 
     try {
       const cleanup = this.subscribeVideoComments(target, subOptions);
+=======
+    const options = {
+      relays: this.activeRelays,
+      onEvent: (event) => this.processIncomingEvent(event),
+    };
+
+    try {
+      const cleanup = this.subscribeVideoComments(target, options);
+>>>>>>> origin/main
       if (typeof cleanup === "function") {
         this.subscriptionCleanup = () => {
           try {
@@ -647,10 +672,14 @@ export default class CommentThreadService {
     }
   }
 
+<<<<<<< HEAD
   processIncomingEvent(
     event,
     { isInitial = false, emitReorder = false } = {},
   ) {
+=======
+  processIncomingEvent(event, { isInitial = false } = {}) {
+>>>>>>> origin/main
     const result = this.applyEvent(event);
     if (!result) {
       return;
@@ -663,9 +692,12 @@ export default class CommentThreadService {
 
     if (!isInitial && result.type === "update") {
       this.persistCommentCache();
+<<<<<<< HEAD
       if (emitReorder && result.changed) {
         this.emitThreadReady();
       }
+=======
+>>>>>>> origin/main
     }
   }
 
@@ -713,6 +745,7 @@ export default class CommentThreadService {
       return { type: "insert", parentId, parentKey, eventId, event };
     }
 
+<<<<<<< HEAD
     let changed = false;
 
     if (existingMeta.parentKey !== parentKey) {
@@ -721,6 +754,12 @@ export default class CommentThreadService {
       this.insertIntoParentList(parentKey, eventId, createdAt);
     } else if (existingMeta.createdAt !== createdAt) {
       changed = true;
+=======
+    if (existingMeta.parentKey !== parentKey) {
+      this.removeFromParentList(existingMeta.parentKey, eventId);
+      this.insertIntoParentList(parentKey, eventId, createdAt);
+    } else if (existingMeta.createdAt !== createdAt) {
+>>>>>>> origin/main
       this.reorderParentList(parentKey, eventId, createdAt);
     }
 
@@ -728,7 +767,11 @@ export default class CommentThreadService {
       this.queueProfileForHydration(pubkey);
     }
 
+<<<<<<< HEAD
     return { type: "update", parentId, parentKey, eventId, event, changed };
+=======
+    return { type: "update", parentId, parentKey, eventId, event };
+>>>>>>> origin/main
   }
 
   extractParentId(event) {

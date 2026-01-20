@@ -25,8 +25,11 @@ export function normalizeAndAugmentMagnet(
     appProtocol,
   } = {}
 ) {
+<<<<<<< HEAD
   const safeExtraTrackers = Array.isArray(extraTrackers) ? extraTrackers : [];
 
+=======
+>>>>>>> origin/main
   const {
     initial,
     canonicalValue,
@@ -51,7 +54,11 @@ export function normalizeAndAugmentMagnet(
 
   let didChange = didMutate;
 
+<<<<<<< HEAD
   if (ensureTrackers(params, [...WSS_TRACKERS, ...safeExtraTrackers])) {
+=======
+  if (ensureTrackers(params, [...WSS_TRACKERS, ...extraTrackers])) {
+>>>>>>> origin/main
     didChange = true;
   }
 

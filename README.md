@@ -2,6 +2,11 @@
 
 # bitvid - Decentralized Video Sharing
 
+<<<<<<< HEAD
+=======
+##### IPNS: [k51qzi5uqu5dgwr4oejq9rk41aoe9zcupenby6iqecsk5byc7rx48uecd133a1](https://k51qzi5uqu5dgwr4oejq9rk41aoe9zcupenby6iqecsk5byc7rx48uecd133a1.ipns.dweb.link/)
+
+>>>>>>> origin/main
 **bitvid** is a decentralized platform where users can share videos and follow creators with privacy and freedom. Built with a static site architecture, it’s lightweight, efficient, and fully decentralized, making it ideal for hosting or local deployment.
 
 ---
@@ -36,12 +41,21 @@
 
 Open the **Upload** modal from the header toolbar and start by selecting the NIP-71 event type that matches your post. The chooser sets the correct Nostr kind and schema defaults so the published note follows [`docs/nostr-event-schemas.md`](docs/nostr-event-schemas.md).
 
+<<<<<<< HEAD
 Both upload modes expose metadata repeaters for **variants** and **hashtags**, while the [Edit Video](components/edit-video-modal.html) modal offers the full suite (including **captions/text tracks**, **segments**, **participants**, and **references**). Use these when you have multiple playback qualities (variants), accessibility tracks (captions), multipart drops (segments), discoverability tags (hashtags), credited collaborators (participants), or cross-posts/threads (references). Skip any repeater you don’t need—the base schema stays valid without them.
 
 Pick the flow that matches your source material:
 
 - **External Link (hosted URL or magnet)**: Provide a title plus an HTTPS video URL and/or a WebTorrent magnet. The form requires at least one transport, validates `ws=`/`xs=` hints, keeps magnets raw by decoding them with `safeDecodeMagnet()` before publish, and applies whatever metadata repeaters you configured. If you submit a magnet without a hosted URL, the modal warns that availability depends on peers seeding the torrent.
 - **Upload File (direct R2 upload)**: Enter your Cloudflare credentials in the guided form, optionally expand the **Advanced options** accordion to override pathing or access controls, then drop media files for bitvid to upload through the R2 API. The modal tracks progress, applies your metadata selections, auto-fills the primary `imeta` variant once the upload completes, and publishes the resulting R2 URL back into the note automatically.
+=======
+Both upload modes expose metadata repeaters for **variants**, **captions/text tracks**, **segments**, **hashtags**, **participants**, and **references**. Use these when you have multiple playback qualities (variants), accessibility tracks (captions), multipart drops (segments), discoverability tags (hashtags), credited collaborators (participants), or cross-posts/threads (references). Skip any repeater you don’t need—the base schema stays valid without them.
+
+Pick the flow that matches your source material:
+
+- **Custom (hosted URL or magnet)**: Provide a title plus an HTTPS video URL and/or a WebTorrent magnet. The form requires at least one transport, validates `ws=`/`xs=` hints, keeps magnets raw by decoding them with `safeDecodeMagnet()` before publish, and applies whatever metadata repeaters you configured.
+- **Cloudflare (R2 direct upload)**: Enter your Cloudflare credentials in the guided form, optionally expand the **Advanced settings** accordion to override pathing or access controls, then drop media files for bitvid to upload through the R2 API. The modal tracks progress, applies your metadata selections, auto-fills the primary `imeta` variant once the upload completes, and publishes the resulting R2 URL back into the note automatically.
+>>>>>>> origin/main
 
 Hosted URLs remain the preferred playback path, and you can still add a magnet or supplemental web seeds when using either mode. Use the **Private** toggle to keep the resulting card visible only to you, and lean on the repeaters whenever you want to surface richer context or alternate assets as outlined in the event schema reference.
 
@@ -51,7 +65,10 @@ Hosted URLs remain the preferred playback path, and you can still add a magnet o
 2. **WebTorrent fallback**: If the URL probe fails or returns an error status, bitvid falls back to WebTorrent using the raw magnet. The helpers append HTTPS `ws=`/`xs=` hints so peers seed quickly.
 3. **Safety checks**: Magnets are decoded with `safeDecodeMagnet()` and normalized via `normalizeAndAugmentMagnet()` before reaching WebTorrent. Trackers remain WSS-only to satisfy browser constraints.
 4. **Operator playbook**: If a deployment causes playback regressions, flip the relevant feature flags back to their default values in `js/constants.js` and redeploy. Capture the rollback steps in AGENTS.md and the PR description so the Main channel stays stable.
+<<<<<<< HEAD
 5. **Deep dive**: See [`docs/playback-fallback.md`](docs/playback-fallback.md) for the call flow into `playbackService`, magnet normalization details, and fallback hand-off points.
+=======
+>>>>>>> origin/main
 
 ### Watch history & view counts
 
@@ -101,6 +118,7 @@ To run **bitvid** locally:
    cd bitvid
    ```
 
+<<<<<<< HEAD
 2. Install dependencies:
 
    ```bash
@@ -108,6 +126,9 @@ To run **bitvid** locally:
    ```
 
 3. Start a local server:
+=======
+2. Start a local server:
+>>>>>>> origin/main
    - Using Python:
      ```bash
      python -m http.server 8000
@@ -117,12 +138,17 @@ To run **bitvid** locally:
      npx serve
      ```
 
+<<<<<<< HEAD
 4. Open the site in your browser:
+=======
+3. Open the site in your browser:
+>>>>>>> origin/main
 
 ```
 http://localhost:8000
 ```
 
+<<<<<<< HEAD
 ### Common Commands
 
 - **Run unit tests**: `npm run test:unit`
@@ -153,6 +179,8 @@ const event = buildVideoPostEvent({
 console.log("Event to publish:", event);
 ```
 
+=======
+>>>>>>> origin/main
 ### CSS build pipeline
 
 Tailwind utilities are generated from `css/tailwind.source.css` and themed via
@@ -242,6 +270,7 @@ the entry point that matches their feature set:
 2. **View counters ([NIP-71](https://github.com/nostr-protocol/nips/blob/master/71.md)):** `import { recordVideoView, subscribeVideoViewEvents } from './nostrViewEventsFacade.js';`
 3. **Watch-history lists ([NIP-51](https://github.com/nostr-protocol/nips/blob/master/51.md) + [NIP-04](https://github.com/nostr-protocol/nips/blob/master/04.md) encryption):** `import { updateWatchHistoryListWithDefaultClient } from './nostrWatchHistoryFacade.js';`
 
+<<<<<<< HEAD
 The legacy `js/nostr.js` shim has been removed. Update any remaining
 `import { ... } from './nostr.js';` calls to use the facades above so upgrades
 stay painless.
@@ -275,6 +304,11 @@ to `DEFAULT_VIDEO_REQUEST_LIMIT` (150) and is clamped to
 `MAX_VIDEO_REQUEST_LIMIT` (500) to avoid accidental firehose requests as the
 network grows. Use a smaller limit for lightweight surfaces or a larger value
 when running batch jobs that can tolerate additional load.
+=======
+`js/nostr.js` remains as a compatibility shim while existing plugins migrate, but
+it will be removed in a future release. Move any legacy `import { ... } from './nostr.js';`
+calls over to the facades above so upgrades stay painless.
+>>>>>>> origin/main
 
 The build command compiles Tailwind with `tailwind.config.cjs`, runs it through
 the PostCSS pipeline defined in `postcss.config.cjs` (for autoprefixing), and
@@ -310,8 +344,11 @@ artifacts now that the deploy pipeline owns the build step.
   - Central place for instance-specific values like the Super Admin npub and the
     default whitelist-only mode setting. Update the documented exports here when
     preparing a new deployment.
+<<<<<<< HEAD
   - See [`docs/instance-config.md`](docs/instance-config.md) for a full
     reference of every setting and how to tune it.
+=======
+>>>>>>> origin/main
   - Flip `IS_DEV_MODE` to `false` before shipping production builds. The flag
     flows into `js/config.js` as `isDevMode`, seeds the
     `window.__BITVID_DEV_MODE__` global for inline scripts, and gates whether the
@@ -370,6 +407,7 @@ placeholder at “—” and development builds log a warning—so mixed deploym
    ```bash
    git checkout -b feature/your-feature-name
    ```
+<<<<<<< HEAD
 3. **Install Dependencies**:
    ```bash
    npm ci
@@ -380,6 +418,13 @@ placeholder at “—” and development builds log a warning—so mixed deploym
    - Run unit tests: `npm run test:unit`
    - Validate the site functionality locally before submitting.
 6. **Submit a Pull Request**:
+=======
+3. **Make Changes**:
+   - Ensure your code follows best practices and is well-documented.
+4. **Test**:
+   - Validate the site functionality locally before submitting.
+5. **Submit a Pull Request**:
+>>>>>>> origin/main
    - Explain your changes and reference any related issues.
 
 ### Contribution Guidelines

@@ -17,11 +17,17 @@ test("registerPrivateKeySigner exposes nip04 helpers", async () => {
       value: canonicalTools,
     });
 
+<<<<<<< HEAD
     const [{ nostrClient }, { getActiveSigner, clearActiveSigner }] =
       await Promise.all([
         import("../js/nostrClientFacade.js"),
         import("../js/nostr/client.js"),
       ]);
+=======
+    const { nostrClient, getActiveSigner, clearActiveSigner } = await import(
+      "../js/nostr.js"
+    );
+>>>>>>> origin/main
 
     const privateKeyBytes = nostrTools.generateSecretKey();
     const privateKeyHex = nostrTools.utils.bytesToHex(privateKeyBytes);

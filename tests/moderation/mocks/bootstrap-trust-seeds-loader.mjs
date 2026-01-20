@@ -1,14 +1,25 @@
 const ACCESS_CONTROL_MOCK_URL = "bitvid:tests:access-control";
 const MODERATION_SERVICE_MOCK_URL = "bitvid:tests:moderation-service";
+<<<<<<< HEAD
 const BOOTSTRAP_PATH_SUFFIX = "/js/services/trustBootstrap.js";
+=======
+const BOOTSTRAP_PATH_SUFFIX = "/js/bootstrap.js";
+>>>>>>> origin/main
 
 export function resolve(specifier, context, defaultResolve) {
   const parent = context?.parentURL || "";
   if (parent.endsWith(BOOTSTRAP_PATH_SUFFIX)) {
+<<<<<<< HEAD
     if (specifier === "../accessControl.js") {
       return { url: ACCESS_CONTROL_MOCK_URL, shortCircuit: true };
     }
     if (specifier === "./moderationService.js") {
+=======
+    if (specifier === "./accessControl.js") {
+      return { url: ACCESS_CONTROL_MOCK_URL, shortCircuit: true };
+    }
+    if (specifier === "./services/moderationService.js") {
+>>>>>>> origin/main
       return { url: MODERATION_SERVICE_MOCK_URL, shortCircuit: true };
     }
   }

@@ -20,7 +20,10 @@ const DEFAULT_MAX_WIDTH_TOKEN = "--popover-inline-safe-max";
 const MENU_TYPEAHEAD_RESET_MS = 500;
 
 let popoverPanelIdCounter = 0;
+<<<<<<< HEAD
 let popoverArrowIdCounter = 0;
+=======
+>>>>>>> origin/main
 
 let activePopoverInstance = null;
 
@@ -116,6 +119,7 @@ function resolveArrow(option, panel) {
   return null;
 }
 
+<<<<<<< HEAD
 function ensureArrowId(arrowElement) {
   if (!arrowElement) {
     return "";
@@ -142,13 +146,29 @@ function buildArrowStyleState({ arrowElement, placement, middlewareData }) {
 
   if (!arrowElement || typeof placement !== "string") {
     return state;
+=======
+function applyArrowStyles({ arrowElement, placement, middlewareData }) {
+  if (!arrowElement || typeof placement !== "string") {
+    return;
+>>>>>>> origin/main
   }
 
   const basePlacement = placement.split("-")[0];
   const arrowData = middlewareData?.arrow || null;
 
+<<<<<<< HEAD
   if (!arrowData || !basePlacement) {
     return state;
+=======
+  arrowElement.style.left = "";
+  arrowElement.style.right = "";
+  arrowElement.style.top = "";
+  arrowElement.style.bottom = "";
+
+  if (!arrowData || !basePlacement) {
+    delete arrowElement.dataset.popoverArrowSide;
+    return;
+>>>>>>> origin/main
   }
 
   const staticSideMap = {
@@ -159,11 +179,19 @@ function buildArrowStyleState({ arrowElement, placement, middlewareData }) {
   };
 
   if (Number.isFinite(arrowData.x)) {
+<<<<<<< HEAD
     state.values.left = `${Math.round(arrowData.x)}px`;
   }
 
   if (Number.isFinite(arrowData.y)) {
     state.values.top = `${Math.round(arrowData.y)}px`;
+=======
+    arrowElement.style.left = `${Math.round(arrowData.x)}px`;
+  }
+
+  if (Number.isFinite(arrowData.y)) {
+    arrowElement.style.top = `${Math.round(arrowData.y)}px`;
+>>>>>>> origin/main
   }
 
   const staticSide = staticSideMap[basePlacement] || null;
@@ -179,11 +207,18 @@ function buildArrowStyleState({ arrowElement, placement, middlewareData }) {
       basePlacement === "top" || basePlacement === "bottom"
         ? arrowHeight
         : arrowWidth;
+<<<<<<< HEAD
     state.values[staticSide] = `${-Math.round(offsetValue)}px`;
   }
 
   state.basePlacement = basePlacement;
   return state;
+=======
+    arrowElement.style[staticSide] = `${-Math.round(offsetValue)}px`;
+  }
+
+  arrowElement.dataset.popoverArrowSide = basePlacement;
+>>>>>>> origin/main
 }
 
 function containsTarget(root, target) {
@@ -257,6 +292,7 @@ export function createPopover(trigger, render, options = {}) {
     typeaheadBuffer: "",
     typeaheadTimeout: null,
   };
+<<<<<<< HEAD
   let popoverStyleNode = null;
   let arrowStyleState = {
     left: "auto",
@@ -318,6 +354,8 @@ export function createPopover(trigger, render, options = {}) {
       : "";
     styleNode.textContent = [panelRule, arrowRule].filter(Boolean).join("\n");
   }
+=======
+>>>>>>> origin/main
 
   function getView() {
     return documentRef?.defaultView || globalThis;
@@ -690,14 +728,19 @@ export function createPopover(trigger, render, options = {}) {
 
     if (maxWidthToken) {
       const widthValue = resolveTokenValue(maxWidthToken, documentRef);
+<<<<<<< HEAD
       panelStyleState = {
         ...panelStyleState,
         maxWidth: widthValue || "none",
       };
+=======
+      panel.style.maxWidth = widthValue || "";
+>>>>>>> origin/main
     }
 
     if (maxHeightToken) {
       const heightValue = resolveTokenValue(maxHeightToken, documentRef);
+<<<<<<< HEAD
       panelStyleState = {
         ...panelStyleState,
         maxHeight: heightValue || "none",
@@ -705,6 +748,10 @@ export function createPopover(trigger, render, options = {}) {
     }
 
     syncPopoverStyles();
+=======
+      panel.style.maxHeight = heightValue || "";
+    }
+>>>>>>> origin/main
   }
 
   function ensurePanel() {
@@ -760,12 +807,15 @@ export function createPopover(trigger, render, options = {}) {
 
     applyPanelTokens();
 
+<<<<<<< HEAD
     if (arrowElement) {
       arrowElement.dataset.popoverArrow = "true";
       arrowId = ensureArrowId(arrowElement);
       syncPopoverStyles();
     }
 
+=======
+>>>>>>> origin/main
     return panel;
   }
 
@@ -814,6 +864,7 @@ export function createPopover(trigger, render, options = {}) {
           ? resolvedPlacement
           : placement;
 
+<<<<<<< HEAD
       panelStyleState = {
         ...panelStyleState,
         left: nextX,
@@ -824,10 +875,20 @@ export function createPopover(trigger, render, options = {}) {
 
       if (arrowElement) {
         const arrowState = buildArrowStyleState({
+=======
+      panel.style.position = resolvedStrategy || strategy;
+      panel.style.left = `${Math.round(nextX)}px`;
+      panel.style.top = `${Math.round(nextY)}px`;
+      panel.dataset.popoverPlacement = finalPlacement;
+
+      if (arrowElement) {
+        applyArrowStyles({
+>>>>>>> origin/main
           arrowElement,
           placement: finalPlacement,
           middlewareData,
         });
+<<<<<<< HEAD
         arrowStyleState = { ...arrowState.values };
         if (arrowState.basePlacement) {
           arrowElement.dataset.popoverArrowSide = arrowState.basePlacement;
@@ -847,6 +908,9 @@ export function createPopover(trigger, render, options = {}) {
       }
 
       syncPopoverStyles();
+=======
+      }
+>>>>>>> origin/main
     } catch (error) {
       logger.user.error("[popover] positioning failed", error);
     }
@@ -1023,6 +1087,7 @@ export function createPopover(trigger, render, options = {}) {
       portal.parentNode.removeChild(portal);
     }
 
+<<<<<<< HEAD
     if (popoverStyleNode?.parentNode) {
       popoverStyleNode.parentNode.removeChild(popoverStyleNode);
     }
@@ -1031,6 +1096,10 @@ export function createPopover(trigger, render, options = {}) {
     arrowElement = null;
     popoverStyleNode = null;
     arrowId = "";
+=======
+    panel = null;
+    arrowElement = null;
+>>>>>>> origin/main
 
     if (anchor) {
       anchor.removeAttribute("aria-controls");

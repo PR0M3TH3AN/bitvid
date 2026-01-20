@@ -23,6 +23,7 @@ function cloneEvent(event) {
   return cloned;
 }
 
+<<<<<<< HEAD
 function normalizeCreatedAt(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric) || numeric <= 0) {
@@ -60,6 +61,8 @@ function normalizeInnerMessage(event) {
   return normalized;
 }
 
+=======
+>>>>>>> origin/main
 function normalizeHex(candidate) {
   if (typeof candidate !== "string") {
     return "";
@@ -305,6 +308,7 @@ function buildDecryptResult({
   envelope = null,
   errors = [],
 }) {
+<<<<<<< HEAD
   const normalizedScheme = normalizeScheme(scheme || decryptor?.scheme || "");
   const messageTimestamp =
     message && Number.isFinite(message.created_at) ? message.created_at : null;
@@ -312,6 +316,18 @@ function buildDecryptResult({
     event && Number.isFinite(event.created_at) ? event.created_at : null;
   const timestamp =
     messageTimestamp ?? eventTimestamp ?? Date.now() / 1000;
+=======
+  const timestampCandidates = [];
+  if (message && Number.isFinite(message.created_at)) {
+    timestampCandidates.push(message.created_at);
+  }
+  if (event && Number.isFinite(event.created_at)) {
+    timestampCandidates.push(event.created_at);
+  }
+  const timestamp = timestampCandidates.length
+    ? Math.max(...timestampCandidates)
+    : Date.now() / 1000;
+>>>>>>> origin/main
 
   return {
     ok,
@@ -329,12 +345,20 @@ function buildDecryptResult({
     actorPubkey: normalizeHex(actorPubkey),
     decryptor: decryptor
       ? {
+<<<<<<< HEAD
           scheme: normalizeScheme(decryptor.scheme) || normalizedScheme || "",
           source: decryptor.source || "",
         }
       : { scheme: normalizedScheme || "", source: "" },
     scheme: normalizedScheme,
     encryption_scheme: normalizedScheme,
+=======
+          scheme: normalizeScheme(decryptor.scheme) || scheme || "",
+          source: decryptor.source || "",
+        }
+      : { scheme: scheme || "", source: "" },
+    scheme: normalizeScheme(scheme || decryptor?.scheme || ""),
+>>>>>>> origin/main
     envelope,
     direction: deriveDirection(actorPubkey, senderPubkey, recipients),
     timestamp: Number.isFinite(timestamp) ? timestamp : Date.now() / 1000,
@@ -412,6 +436,7 @@ async function decryptGiftWrap(event, decryptors, actorPubkey) {
         stage: "seal",
       });
       const rumor = parseEventJson(rumorSerialized, "rumor");
+<<<<<<< HEAD
       const normalizedRumor = normalizeInnerMessage(rumor);
 
       const plaintext =
@@ -420,11 +445,21 @@ async function decryptGiftWrap(event, decryptors, actorPubkey) {
           : "";
       const senderPubkey = normalizeHex(normalizedRumor?.pubkey) || sealPubkey;
       const recipients = collectRecipients(normalizedRumor?.tags);
+=======
+
+      const plaintext = typeof rumor?.content === "string" ? rumor.content : "";
+      const senderPubkey = normalizeHex(rumor?.pubkey) || sealPubkey;
+      const recipients = collectRecipients(rumor?.tags);
+>>>>>>> origin/main
 
       return buildDecryptResult({
         ok: true,
         event,
+<<<<<<< HEAD
         message: normalizedRumor,
+=======
+        message: rumor,
+>>>>>>> origin/main
         plaintext,
         recipients,
         senderPubkey,
@@ -511,10 +546,13 @@ async function decryptLegacyDm(event, decryptors, actorPubkey) {
         });
 
         if (typeof plaintext === "string") {
+<<<<<<< HEAD
           const resolvedScheme =
             normalizeScheme(hints.algorithms?.[0]) ||
             normalizeScheme(decryptor.scheme) ||
             "";
+=======
+>>>>>>> origin/main
           return buildDecryptResult({
             ok: true,
             event,
@@ -527,7 +565,11 @@ async function decryptLegacyDm(event, decryptors, actorPubkey) {
             senderPubkey,
             actorPubkey,
             decryptor,
+<<<<<<< HEAD
             scheme: resolvedScheme,
+=======
+            scheme: decryptor.scheme || hints.algorithms?.[0] || "",
+>>>>>>> origin/main
           });
         }
       } catch (error) {
@@ -629,3 +671,7 @@ export const __testUtils = {
   collectRecipients,
   orderDecryptors,
 };
+<<<<<<< HEAD
+=======
+
+>>>>>>> origin/main

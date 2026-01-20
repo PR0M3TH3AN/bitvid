@@ -90,6 +90,7 @@ const channelModerationBadgeState = {
 };
 
 const channelVideoCardsById = new Map();
+<<<<<<< HEAD
 let channelBannerStyleCounter = 0;
 const channelBannerStyleRegistry = new WeakMap();
 
@@ -137,6 +138,8 @@ function updateChannelBannerBackground(el, url) {
 
   state.styleNode.textContent = [...state.rules.values()].join("\n");
 }
+=======
+>>>>>>> origin/main
 
 export function clearChannelVideoCardRegistry() {
   channelVideoCardsById.clear();
@@ -155,6 +158,7 @@ function normalizeHex(value) {
   return /^[0-9a-f]{64}$/.test(trimmed) ? trimmed : "";
 }
 
+<<<<<<< HEAD
 function decodeNpubToHex(npub) {
   if (typeof npub !== "string" || !npub.trim()) {
     return "";
@@ -198,6 +202,8 @@ function decodeNpubToHex(npub) {
   }
 }
 
+=======
+>>>>>>> origin/main
 function decorateChannelVideo(video, app = getApp()) {
   if (!video || typeof video !== "object") {
     return null;
@@ -1522,7 +1528,14 @@ function setBannerVisual(el, url, { referrerPolicy } = {}) {
       el.src = resolvedUrl;
     }
   } else {
+<<<<<<< HEAD
     updateChannelBannerBackground(el, resolvedUrl || "");
+=======
+    const value = resolvedUrl ? `url("${resolvedUrl}")` : "";
+    if (el.style.backgroundImage !== value) {
+      el.style.backgroundImage = value;
+    }
+>>>>>>> origin/main
   }
 
   if (el.dataset.bannerSrc !== resolvedUrl) {
@@ -2448,6 +2461,7 @@ function resetZapRetryState() {
   }
 }
 
+<<<<<<< HEAD
 function setZapCompleted(completed) {
   const sendButton = getZapSendButton();
   if (!sendButton) {
@@ -2470,6 +2484,8 @@ function setZapCompleted(completed) {
   }
 }
 
+=======
+>>>>>>> origin/main
 function markZapRetryPending(shares) {
   const validShares = Array.isArray(shares)
     ? shares.filter((share) => share && share.amount > 0)
@@ -2851,7 +2867,10 @@ async function runZapAttempt({ amount, overrideFee = null, walletSettings }) {
 
 function handleZapAmountChange() {
   resetZapRetryState();
+<<<<<<< HEAD
   setZapCompleted(false);
+=======
+>>>>>>> origin/main
   updateZapSplitSummary();
 }
 
@@ -3001,11 +3020,14 @@ async function handleZapSend(event) {
     return;
   }
 
+<<<<<<< HEAD
   if (sendButton.dataset.completed === "true") {
     closeZapControls({ focusButton: true });
     return;
   }
 
+=======
+>>>>>>> origin/main
   if (!zapPopover || zapPopoverTrigger !== zapButton) {
     setupZapButton({ force: true });
   }
@@ -3167,7 +3189,10 @@ async function handleZapSend(event) {
     setZapStatus(summary, "success");
     app?.showSuccess?.("Zap sent successfully!");
     resetZapRetryState();
+<<<<<<< HEAD
     setZapCompleted(true);
+=======
+>>>>>>> origin/main
   } catch (error) {
     const tracker = Array.isArray(error?.__zapShareTracker)
       ? error.__zapShareTracker
@@ -3325,6 +3350,7 @@ function setupChannelShareButton() {
   shareBtn.dataset.initialized = "true";
 }
 
+<<<<<<< HEAD
 function resolveChannelHexForControls() {
   const normalized = normalizeHex(currentChannelHex);
   if (normalized) {
@@ -3394,6 +3420,8 @@ function setupChannelMessageControls() {
   }
 }
 
+=======
+>>>>>>> origin/main
 function setupChannelMoreMenu() {
   const doc = typeof document !== "undefined" ? document : null;
   const moreBtn = doc?.getElementById("channelMoreBtn") || null;
@@ -3768,7 +3796,10 @@ export async function initChannelProfileView() {
   updateChannelModerationVisuals({ app, pubkey: currentChannelHex });
 
   setupChannelShareButton();
+<<<<<<< HEAD
   setupChannelMessageControls();
+=======
+>>>>>>> origin/main
   setupChannelMoreMenu();
 
   const initialMenuRefresh = updateChannelMenuState().catch((error) => {
@@ -4155,7 +4186,15 @@ function renderSubscribeButton(channelHex) {
         return;
       }
       try {
+<<<<<<< HEAD
         await subscriptions.toggleChannel(channelHex, currentApp.pubkey);
+=======
+        if (alreadySubscribed) {
+          await subscriptions.removeChannel(channelHex, currentApp.pubkey);
+        } else {
+          await subscriptions.addChannel(channelHex, currentApp.pubkey);
+        }
+>>>>>>> origin/main
         // Re-render the button so it toggles state
         renderSubscribeButton(channelHex);
       } catch (err) {

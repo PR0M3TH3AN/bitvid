@@ -5,7 +5,11 @@ const {
   setActiveSigner,
   resolveActiveSigner,
   clearActiveSigner,
+<<<<<<< HEAD
 } = await import("../../js/nostr/client.js");
+=======
+} = await import("../../js/nostr.js");
+>>>>>>> origin/main
 
 test("setActiveSigner hydrates extension capabilities from window.nostr", async () => {
   clearActiveSigner();

@@ -35,6 +35,7 @@ import {
   formatShortNpub as defaultFormatShortNpub,
 } from "../../utils/formatters.js";
 import { sanitizeProfileMediaUrl } from "../../utils/profileMedia.js";
+<<<<<<< HEAD
 import { normalizeHashtag } from "../../utils/hashtagNormalization.js";
 import { getBreakpointLg } from "../../designSystem/metrics.js";
 import { LinkPreviewService } from "../../services/linkPreviewService.js";
@@ -44,6 +45,8 @@ import {
   isLinkPreviewDomainAllowed,
   subscribeToLinkPreviewSettings,
 } from "../../utils/linkPreviewSettings.js";
+=======
+>>>>>>> origin/main
 
 const HEX64_REGEX = /^[0-9a-f]{64}$/i;
 const SIMILAR_CONTENT_LIMIT = 10;
@@ -134,7 +137,10 @@ export class VideoModal {
     this.modalDownloaded = null;
     this.videoTitle = null;
     this.videoDescription = null;
+<<<<<<< HEAD
     this.videoDescriptionPreviews = null;
+=======
+>>>>>>> origin/main
     this.videoTimestamp = null;
     this.videoEditedTimestamp = null;
     this.videoViewCountEl = null;
@@ -163,7 +169,10 @@ export class VideoModal {
       "+": null,
       "-": null,
     };
+<<<<<<< HEAD
     this.reactionMeterStyleNode = null;
+=======
+>>>>>>> origin/main
     this.reactionState = {
       counts: { "+": 0, "-": 0 },
       total: 0,
@@ -256,12 +265,15 @@ export class VideoModal {
     this.commentCallbacks = {
       teardown: null,
     };
+<<<<<<< HEAD
     this.linkPreviewService = new LinkPreviewService();
     this.linkPreviewAbortControllers = new Map();
     this.linkPreviewSettingsUnsubscribe = null;
     this.currentDescriptionText = "";
     this.handleLinkPreviewSettingsChange =
       this.handleLinkPreviewSettingsChange.bind(this);
+=======
+>>>>>>> origin/main
     this.boundCommentSubmitHandler =
       this.handleCommentComposerSubmit.bind(this);
     this.boundCommentInputHandler =
@@ -572,6 +584,7 @@ export class VideoModal {
 
     this.moderationController.initialize({ playerModal });
 
+<<<<<<< HEAD
     // Update overlay reference to the new bar selector
     this.moderationOverlay =
       playerModal.querySelector("[data-moderation-bar]") || null;
@@ -581,6 +594,8 @@ export class VideoModal {
     this.moderationBadgeText =
       this.moderationOverlay?.querySelector("[data-moderation-text]") || null;
 
+=======
+>>>>>>> origin/main
     this.modalVideo = playerModal.querySelector("#modalVideo") || null;
     this.modalStatus = playerModal.querySelector("#modalStatus") || null;
     this.modalProgress = playerModal.querySelector("#modalProgress") || null;
@@ -600,6 +615,7 @@ export class VideoModal {
     this.modalSpeed = playerModal.querySelector("#modalSpeed") || null;
     this.modalDownloaded =
       playerModal.querySelector("#modalDownloaded") || null;
+<<<<<<< HEAD
     this.sourceToggleContainer =
       playerModal.querySelector("[data-source-toggle-container]") || null;
     this.sourceToggleButtons =
@@ -608,12 +624,17 @@ export class VideoModal {
       playerModal.querySelector("[data-active-servers-count]") || null;
     this.activePeersLabel =
       playerModal.querySelector("[data-active-peers-count]") || null;
+=======
+>>>>>>> origin/main
     this.setTorrentStatsVisibility(false);
     this.videoTitle = playerModal.querySelector("#videoTitle") || null;
     this.videoDescription =
       playerModal.querySelector("#videoDescription") || null;
+<<<<<<< HEAD
     this.videoDescriptionPreviews =
       playerModal.querySelector("#videoDescriptionPreviews") || null;
+=======
+>>>>>>> origin/main
     this.videoTimestamp = playerModal.querySelector("#videoTimestamp") || null;
     this.videoEditedTimestamp =
       playerModal.querySelector("#videoEditedTimestamp") || null;
@@ -666,6 +687,7 @@ export class VideoModal {
 
     this.commentsController.initialize({ playerModal });
 
+<<<<<<< HEAD
     if (this.linkPreviewSettingsUnsubscribe) {
       this.linkPreviewSettingsUnsubscribe();
     }
@@ -673,6 +695,8 @@ export class VideoModal {
       this.handleLinkPreviewSettingsChange,
     );
 
+=======
+>>>>>>> origin/main
     const closeButton = playerModal.querySelector("#closeModal");
     if (closeButton) {
       closeButton.addEventListener("click", () => {
@@ -1147,11 +1171,16 @@ export class VideoModal {
       return;
     }
 
+<<<<<<< HEAD
     this.insertCommentNodeSorted(container, node);
+=======
+    container.appendChild(node);
+>>>>>>> origin/main
     this.updateCommentCount(this.commentNodes.size);
     this.toggleCommentEmptyState(this.commentNodes.size === 0);
   }
 
+<<<<<<< HEAD
   insertCommentNodeSorted(container, node) {
     if (!container || !node) {
       return;
@@ -1177,6 +1206,8 @@ export class VideoModal {
     }
   }
 
+=======
+>>>>>>> origin/main
   buildCommentTree(commentId, commentsMap, childrenMap, depth = 0) {
     const normalizedId =
       typeof commentId === "string" && commentId.trim()
@@ -1240,9 +1271,12 @@ export class VideoModal {
     listItem.classList.add("comment-thread__item");
     listItem.dataset.commentId = commentId;
     listItem.dataset.commentDepth = String(Math.max(0, depth));
+<<<<<<< HEAD
     listItem.dataset.timestamp = String(
       Number.isFinite(event.created_at) ? event.created_at : 0
     );
+=======
+>>>>>>> origin/main
     if (typeof event.pubkey === "string" && event.pubkey.trim()) {
       listItem.dataset.commentAuthor = event.pubkey.trim();
     }
@@ -2021,11 +2055,14 @@ export class VideoModal {
     this.similarContentController.destroy();
     this.moderationController.destroy();
     this.invokeCommentTeardown();
+<<<<<<< HEAD
     this.clearLinkPreviews();
     if (this.linkPreviewSettingsUnsubscribe) {
       this.linkPreviewSettingsUnsubscribe();
       this.linkPreviewSettingsUnsubscribe = null;
     }
+=======
+>>>>>>> origin/main
 
     if (this.document) {
       this.document.removeEventListener(
@@ -2281,6 +2318,7 @@ export class VideoModal {
       this.modalMoreBtn.addEventListener("click", this.handleModalMoreButtonClick);
     }
 
+<<<<<<< HEAD
     if (this.sourceToggleButtons.length > 0) {
       this.sourceToggleButtons.forEach((btn) => {
         btn.addEventListener("click", (event) => {
@@ -2294,6 +2332,8 @@ export class VideoModal {
       });
     }
 
+=======
+>>>>>>> origin/main
     if (this.modalZapCloseBtn) {
       this.modalZapCloseBtn.addEventListener("click", (event) => {
         event?.preventDefault?.();
@@ -2612,6 +2652,7 @@ export class VideoModal {
     this.dispatch("video:copy-magnet", { video: this.activeVideo });
   }
 
+<<<<<<< HEAD
   handleSourceToggle(mode) {
     if (!this.activeVideo || (mode !== "url" && mode !== "torrent")) {
       return;
@@ -2673,6 +2714,8 @@ export class VideoModal {
     });
   }
 
+=======
+>>>>>>> origin/main
   handleShareRequest(event) {
     event?.preventDefault?.();
     if (this.shareBtn?.disabled) {
@@ -2754,6 +2797,7 @@ export class VideoModal {
     if (!this.videoTitle) {
       this.videoTitle = this.playerModal.querySelector("#videoTitle") || null;
     }
+<<<<<<< HEAD
 
     // Ensure comments controller is initialized if elements are missing
     if (
@@ -2764,6 +2808,8 @@ export class VideoModal {
       this.commentsController.initialize({ playerModal: this.playerModal });
     }
 
+=======
+>>>>>>> origin/main
     // Set title immediately when opening if video has a title
     if (this.videoTitle && video && typeof video.title === "string" && video.title.trim()) {
       this.videoTitle.textContent = video.title.trim();
@@ -2787,7 +2833,10 @@ export class VideoModal {
     }
     this.setGlobalModalState("player", true);
     this.applyLoadingPoster();
+<<<<<<< HEAD
     this.updateSourceAvailability(this.activeVideo);
+=======
+>>>>>>> origin/main
     this.refreshActiveVideoModeration({ video: this.activeVideo });
   }
 
@@ -2811,7 +2860,10 @@ export class VideoModal {
     this.resetCommentComposer();
     this.renderVideoTags([]);
     this.clearSimilarContent();
+<<<<<<< HEAD
     this.clearLinkPreviews();
+=======
+>>>>>>> origin/main
     this.forceRemovePoster("close");
   }
 
@@ -2947,7 +2999,11 @@ export class VideoModal {
       }
 
       const raw = typeof entry === "string" ? entry : String(entry ?? "");
+<<<<<<< HEAD
       const trimmed = normalizeHashtag(raw);
+=======
+      const trimmed = raw.trim().replace(/^#+/, "");
+>>>>>>> origin/main
 
       if (!trimmed) {
         continue;
@@ -3231,6 +3287,7 @@ export class VideoModal {
       this.reactionMeterAssistive.textContent = assistiveLabel;
     }
 
+<<<<<<< HEAD
     this.updateReactionMeterFill(likeRatio);
   }
 
@@ -3257,6 +3314,11 @@ export class VideoModal {
     if (this.reactionMeterStyleNode) {
       this.reactionMeterStyleNode.textContent =
         `#playerModal { --video-modal-reaction-fill: ${widthValue}; }`;
+=======
+    if (this.reactionMeterFill) {
+      this.reactionMeterFill.style.inlineSize = `${likeRatio}%`;
+      this.reactionMeterFill.style.width = `${likeRatio}%`;
+>>>>>>> origin/main
     }
   }
 
@@ -3375,8 +3437,11 @@ export class VideoModal {
 
   setTorrentStatsVisibility(shouldShow) {
     const visible = Boolean(shouldShow);
+<<<<<<< HEAD
     this.updateSourceToggleState(visible ? "torrent" : "url");
 
+=======
+>>>>>>> origin/main
     const container = this.modalStatsContainer;
     const stats = this.modalStats;
     const toggle = (element, show) => {
@@ -3415,12 +3480,15 @@ export class VideoModal {
     if (this.modalPeers) {
       this.modalPeers.textContent = text || "";
     }
+<<<<<<< HEAD
     if (this.activePeersLabel) {
       const match = (text || "").match(/\d+/);
       const count = match ? parseInt(match[0], 10) : 0;
       this.activePeersLabel.textContent =
         count === 1 ? "1 peer" : `${count} peers`;
     }
+=======
+>>>>>>> origin/main
   }
 
   updateSpeed(text) {
@@ -4114,6 +4182,7 @@ export class VideoModal {
   }
 
   updateViewCountLabel(text) {
+<<<<<<< HEAD
     if (!this.videoViewCountEl) {
       return;
     }
@@ -4125,6 +4194,10 @@ export class VideoModal {
     } else {
       // Fallback if span is missing
       this.videoViewCountEl.textContent = text || "–";
+=======
+    if (this.videoViewCountEl) {
+      this.videoViewCountEl.textContent = text || "";
+>>>>>>> origin/main
     }
   }
 
@@ -4167,6 +4240,12 @@ export class VideoModal {
         this.videoTitle.textContent = titleText;
         // Ensure element is visible
         this.videoTitle.hidden = false;
+<<<<<<< HEAD
+=======
+        if (this.videoTitle.style) {
+          this.videoTitle.style.display = "";
+        }
+>>>>>>> origin/main
       } else {
         // Log for debugging if element cannot be found
         this.logger?.log?.(
@@ -4197,7 +4276,10 @@ export class VideoModal {
       this.updateCreator(creator);
     }
 
+<<<<<<< HEAD
     this.updateSourceAvailability(this.activeVideo);
+=======
+>>>>>>> origin/main
     this.refreshActiveVideoModeration({ video: this.activeVideo });
   }
 
@@ -4284,6 +4366,7 @@ export class VideoModal {
       }
     }
 
+<<<<<<< HEAD
     if (this.creatorAvatar) {
       if (shouldBlur) {
         this.creatorAvatar.dataset.visualState = "blurred";
@@ -4295,6 +4378,10 @@ export class VideoModal {
     if (overlay) {
       // Changed logic: Always show the bar if moderation is active, even if overridden
       if (showModeration) {
+=======
+    if (overlay) {
+      if (showModeration && !context?.overrideActive) {
+>>>>>>> origin/main
         overlay.removeAttribute("hidden");
       } else {
         overlay.setAttribute("hidden", "");
@@ -4737,7 +4824,10 @@ export class VideoModal {
     }
 
     if (description === null || description === undefined) {
+<<<<<<< HEAD
       this.clearLinkPreviews();
+=======
+>>>>>>> origin/main
       return;
     }
 
@@ -4745,7 +4835,10 @@ export class VideoModal {
       typeof description === "string" ? description : String(description ?? "");
 
     if (!normalized) {
+<<<<<<< HEAD
       this.clearLinkPreviews();
+=======
+>>>>>>> origin/main
       return;
     }
 
@@ -4760,7 +4853,10 @@ export class VideoModal {
     });
 
     target.appendChild(fragment);
+<<<<<<< HEAD
     this.renderLinkPreviews(normalized);
+=======
+>>>>>>> origin/main
   }
 
   appendDescriptionLine(target, line) {
@@ -4836,6 +4932,7 @@ export class VideoModal {
     return { anchor, trailing };
   }
 
+<<<<<<< HEAD
   handleLinkPreviewSettingsChange(event) {
     const detail = event?.detail?.settings || null;
     if (!this.videoDescriptionPreviews) {
@@ -5095,6 +5192,8 @@ export class VideoModal {
     }
   }
 
+=======
+>>>>>>> origin/main
   updateTimestamps({ posted, edited } = {}) {
     if (this.videoTimestamp) {
       if (posted) {
@@ -5239,6 +5338,7 @@ export class VideoModal {
         cardIndex
       );
 
+<<<<<<< HEAD
       // Wire up moderation callbacks
       if (card) {
         card.onModerationOverride = (detail) => {
@@ -5255,6 +5355,8 @@ export class VideoModal {
         };
       }
 
+=======
+>>>>>>> origin/main
       const root = card.getRoot();
       if (!root) {
         return;
@@ -5487,9 +5589,14 @@ export class VideoModal {
       return true;
     }
 
+<<<<<<< HEAD
     const breakpointLg = getBreakpointLg({ documentRef: this.document });
     try {
       return win.matchMedia(`(min-width: ${breakpointLg})`).matches;
+=======
+    try {
+      return win.matchMedia("(min-width: 1024px)").matches;
+>>>>>>> origin/main
     } catch (error) {
       this.log(
         "[VideoModal] Failed to evaluate similar content media query",
@@ -5507,8 +5614,12 @@ export class VideoModal {
       return;
     }
 
+<<<<<<< HEAD
     const breakpointLg = getBreakpointLg({ documentRef: this.document });
     const query = win.matchMedia(`(min-width: ${breakpointLg})`);
+=======
+    const query = win.matchMedia("(min-width: 1024px)");
+>>>>>>> origin/main
     if (this.similarContentMediaQuery === query) {
       this.refreshSimilarContentVisibility();
       return;
@@ -5889,14 +6000,25 @@ export class VideoModal {
       return this.formatViewCountLabel(Number(total));
     }
     if (status === "hydrating") {
+<<<<<<< HEAD
       return "Loading…";
     }
     return "–";
+=======
+      return "Loading views…";
+    }
+    return "– views";
+>>>>>>> origin/main
   }
 
   formatViewCountLabel(total) {
     const numeric = Number.isFinite(total) ? Math.max(0, Number(total)) : 0;
+<<<<<<< HEAD
     return formatViewCount(numeric);
+=======
+    const label = numeric === 1 ? "view" : "views";
+    return `${formatViewCount(numeric)} ${label}`;
+>>>>>>> origin/main
   }
 
   syncMoreMenuData({ currentVideo, canManageBlacklist }) {

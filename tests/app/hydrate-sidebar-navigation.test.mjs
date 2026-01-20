@@ -17,7 +17,10 @@ const VIEW_HTML = `<!DOCTYPE html>
       <button id="closeLoginModal"></button>
     </div>
     <a id="subscriptionsLink" class="hidden"></a>
+<<<<<<< HEAD
     <a id="forYouLink" class="hidden"></a>
+=======
+>>>>>>> origin/main
   </body>
 </html>`;
 
@@ -59,7 +62,10 @@ test("hydrateSidebarNavigation reveals chrome controls for authenticated viewers
     const loginButton = window.document.getElementById("loginButton");
     const logoutButton = window.document.getElementById("logoutButton");
     const subscriptionsLink = window.document.getElementById("subscriptionsLink");
+<<<<<<< HEAD
     const forYouLink = window.document.getElementById("forYouLink");
+=======
+>>>>>>> origin/main
     const closeLoginButton = window.document.getElementById("closeLoginModal");
 
     assert.equal(app.uploadButton, uploadButton);
@@ -76,6 +82,7 @@ test("hydrateSidebarNavigation reveals chrome controls for authenticated viewers
     assert.equal(loginButton.hasAttribute("hidden"), true);
     assert.equal(logoutButton.classList.contains("hidden"), false);
     assert.equal(subscriptionsLink.classList.contains("hidden"), false);
+<<<<<<< HEAD
     assert.equal(forYouLink.classList.contains("hidden"), false);
 
     assert.ok(app.appChromeController.receivedElements);
@@ -154,6 +161,8 @@ test("hydrateSidebarNavigation hides chrome controls for logged-out viewers", ()
     assert.equal(logoutButton.classList.contains("hidden"), true);
     assert.equal(subscriptionsLink.classList.contains("hidden"), true);
     assert.equal(forYouLink.classList.contains("hidden"), true);
+=======
+>>>>>>> origin/main
 
     assert.ok(app.appChromeController.receivedElements);
     assert.equal(
