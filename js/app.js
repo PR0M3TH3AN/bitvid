@@ -150,6 +150,7 @@ import {
   urlHealthConstants,
 } from "./state/cache.js";
 import ApplicationBootstrap from "./ui/applicationBootstrap.js";
+import SimilarContentController from "./ui/similarContentController.js";
 import VideoModalCommentController from "./ui/videoModalCommentController.js";
 import TorrentStatusController from "./ui/torrentStatusController.js";
 import ModerationActionController from "./services/moderationActionController.js";
@@ -285,6 +286,7 @@ class Application {
     });
 
     this.initializeModerationActionController();
+    this.initializeSimilarContentController();
   }
 
   get modalVideo() {
@@ -1136,7 +1138,40 @@ class Application {
     };
   }
 
+  initializeSimilarContentController() {
+    if (this.similarContentController) {
+      return;
+    }
+
+    this.similarContentController = new SimilarContentController({
+      services: {
+        nostrClient,
+      },
+      callbacks: {
+        isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
+        decorateVideoModeration: (video) => this.decorateVideoModeration(video),
+        decorateVideoCreatorIdentity: (video) => this.decorateVideoCreatorIdentity(video),
+      },
+      ui: {
+        videoModal: this.videoModal,
+      },
+      state: {
+        getVideoListView: () => this.videoListView,
+        getVideosMap: () => this.videosMap,
+      },
+      helpers: {
+        getKnownVideoPostedAt: (video) => this.getKnownVideoPostedAt(video),
+        buildShareUrlFromEventId: (id) => this.buildShareUrlFromEventId(id),
+        formatTimeAgo: (ts) => this.formatTimeAgo(ts),
+      }
+    });
+  }
+
   extractDTagValue(tags) {
+    if (this.similarContentController) {
+      return this.similarContentController.extractDTagValue(tags);
+    }
+    // Fallback if controller not initialized (though it should be)
     if (!Array.isArray(tags)) {
       return "";
     }
@@ -1152,6 +1187,10 @@ class Application {
   }
 
   deriveVideoPointerInfo(video) {
+    if (this.similarContentController) {
+      return this.similarContentController.deriveVideoPointerInfo(video);
+    }
+    // Fallback if controller not initialized
     if (!video || typeof video !== "object") {
       return null;
     }
@@ -1168,271 +1207,20 @@ class Application {
     });
   }
 
-  computeSimilarContentCandidates({ activeVideo = this.currentVideo, maxItems = 5 } = {}) {
-    const decorateCandidate = (video) => {
-      if (!video || typeof video !== "object") {
-        return video;
-      }
-      let decoratedVideo = video;
-      if (typeof this.decorateVideoModeration === "function") {
-        try {
-          const decorated = this.decorateVideoModeration(video);
-          if (decorated && typeof decorated === "object") {
-            decoratedVideo = decorated;
-          }
-        } catch (error) {
-          devLogger.warn(
-            "[Application] Failed to decorate similar content candidate",
-            error,
-          );
-        }
-      }
-      if (typeof this.decorateVideoCreatorIdentity === "function") {
-        try {
-          const identityDecorated = this.decorateVideoCreatorIdentity(
-            decoratedVideo,
-          );
-          if (identityDecorated && typeof identityDecorated === "object") {
-            decoratedVideo = identityDecorated;
-          }
-        } catch (error) {
-          devLogger.warn(
-            "[Application] Failed to decorate similar content identity",
-            error,
-          );
-        }
-      }
-      return decoratedVideo;
-    };
-
-    const target = activeVideo && typeof activeVideo === "object" ? decorateCandidate(activeVideo) : null;
-    if (!target) {
-      return [];
-    }
-
-    const activeTagsSource = Array.isArray(target.displayTags) && target.displayTags.length
-      ? target.displayTags
-      : collectVideoTags(target);
-
-    const activeTagSet = new Set();
-    for (const tag of activeTagsSource) {
-      if (typeof tag !== "string") {
-        continue;
-      }
-      const normalized = tag.trim().toLowerCase();
-      if (normalized) {
-        activeTagSet.add(normalized);
-      }
-    }
-
-    if (activeTagSet.size === 0) {
-      return [];
-    }
-
-    const limit = Number.isFinite(maxItems) && maxItems > 0
-      ? Math.max(1, Math.floor(maxItems))
-      : 5;
-
-    let candidateSource = [];
-    if (Array.isArray(this.videoListView?.currentVideos) && this.videoListView.currentVideos.length) {
-      candidateSource = this.videoListView.currentVideos;
-    } else if (this.videosMap instanceof Map && this.videosMap.size) {
-      candidateSource = Array.from(this.videosMap.values());
-    } else if (nostrClient && typeof nostrClient.getActiveVideos === "function") {
-      try {
-        const activeVideos = nostrClient.getActiveVideos();
-        if (Array.isArray(activeVideos)) {
-          candidateSource = activeVideos;
-        }
-      } catch (error) {
-        devLogger.warn("[Application] Failed to read active videos for similar content:", error);
-      }
-    }
-
-    if (!Array.isArray(candidateSource) || candidateSource.length === 0) {
-      return [];
-    }
-
-    const activeId = typeof target.id === "string" ? target.id : "";
-    const activePointerKey = typeof target.pointerKey === "string" ? target.pointerKey : "";
-    const seenKeys = new Set();
-    if (activeId) {
-      const normalizedId = activeId.trim().toLowerCase();
-      if (normalizedId) {
-        seenKeys.add(normalizedId);
-      }
-    }
-    if (activePointerKey) {
-      const normalizedPointer = activePointerKey.trim().toLowerCase();
-      if (normalizedPointer) {
-        seenKeys.add(normalizedPointer);
-      }
-    }
-
-    const results = [];
-
-    for (const candidate of candidateSource) {
-      const decoratedCandidate = decorateCandidate(candidate);
-      if (!decoratedCandidate || typeof decoratedCandidate !== "object") {
-        continue;
-      }
-      if (decoratedCandidate === target) {
-        continue;
-      }
-
-      const candidateId = typeof decoratedCandidate.id === "string" ? decoratedCandidate.id : "";
-      if (candidateId && candidateId === activeId) {
-        continue;
-      }
-      if (decoratedCandidate.deleted === true) {
-        continue;
-      }
-      if (decoratedCandidate.isPrivate === true) {
-        continue;
-      }
-      if (decoratedCandidate.isNsfw === true && ALLOW_NSFW_CONTENT !== true) {
-        continue;
-      }
-
-      const candidatePubkey = typeof decoratedCandidate.pubkey === "string" ? decoratedCandidate.pubkey : "";
-      if (candidatePubkey && this.isAuthorBlocked(candidatePubkey)) {
-        continue;
-      }
-
-      const candidateTagsSource = Array.isArray(decoratedCandidate.displayTags) && decoratedCandidate.displayTags.length
-        ? decoratedCandidate.displayTags
-        : collectVideoTags(decoratedCandidate);
-      if (!Array.isArray(candidateTagsSource) || candidateTagsSource.length === 0) {
-        continue;
-      }
-
-      const candidateTagSet = new Set();
-      for (const tag of candidateTagsSource) {
-        if (typeof tag !== "string") {
-          continue;
-        }
-        const normalized = tag.trim().toLowerCase();
-        if (normalized) {
-          candidateTagSet.add(normalized);
-        }
-      }
-
-      if (candidateTagSet.size === 0) {
-        continue;
-      }
-
-      let sharedCount = 0;
-      for (const tag of candidateTagSet) {
-        if (activeTagSet.has(tag)) {
-          sharedCount += 1;
-        }
-      }
-
-      if (sharedCount === 0) {
-        continue;
-      }
-
-      const pointerInfo = this.deriveVideoPointerInfo(candidate);
-      const pointerKey = typeof candidate.pointerKey === "string" && candidate.pointerKey.trim()
-        ? candidate.pointerKey.trim()
-        : typeof pointerInfo?.key === "string" && pointerInfo.key
-          ? pointerInfo.key
-          : "";
-
-      const dedupeKeyRaw = (candidateId || pointerKey || "").trim();
-      if (dedupeKeyRaw) {
-        const dedupeKey = dedupeKeyRaw.toLowerCase();
-        if (seenKeys.has(dedupeKey)) {
-          continue;
-        }
-        seenKeys.add(dedupeKey);
-      }
-
-      if (!Array.isArray(candidate.displayTags) || candidate.displayTags.length === 0) {
-        candidate.displayTags = Array.isArray(candidateTagsSource)
-          ? candidateTagsSource.slice()
-          : [];
-      }
-
-      let postedAt = this.getKnownVideoPostedAt(decoratedCandidate);
-      if (!Number.isFinite(postedAt) && Number.isFinite(decoratedCandidate.rootCreatedAt)) {
-        postedAt = Math.floor(decoratedCandidate.rootCreatedAt);
-      }
-      if (!Number.isFinite(postedAt) && Number.isFinite(decoratedCandidate.created_at)) {
-        postedAt = Math.floor(decoratedCandidate.created_at);
-      }
-      if (!Number.isFinite(postedAt)) {
-        postedAt = null;
-      }
-
-      let shareUrl = "";
-      if (typeof decoratedCandidate.shareUrl === "string" && decoratedCandidate.shareUrl.trim()) {
-        shareUrl = decoratedCandidate.shareUrl.trim();
-      } else if (candidateId) {
-        shareUrl = this.buildShareUrlFromEventId(candidateId) || "";
-      }
-
-      results.push({
-        video: decoratedCandidate,
-        pointerInfo: pointerInfo || null,
-        shareUrl,
-        postedAt,
-        sharedTagCount: sharedCount,
+  computeSimilarContentCandidates(options = {}) {
+    if (this.similarContentController) {
+      return this.similarContentController.computeCandidates({
+        activeVideo: options.activeVideo || this.currentVideo,
+        maxItems: options.maxItems,
       });
     }
-
-    if (results.length === 0) {
-      return [];
-    }
-
-    results.sort((a, b) => {
-      if (b.sharedTagCount !== a.sharedTagCount) {
-        return b.sharedTagCount - a.sharedTagCount;
-      }
-      const tsA = Number.isFinite(a.postedAt) ? a.postedAt : 0;
-      const tsB = Number.isFinite(b.postedAt) ? b.postedAt : 0;
-      return tsB - tsA;
-    });
-
-    return results.slice(0, limit).map((entry) => {
-      const normalizedPostedAt = Number.isFinite(entry.postedAt)
-        ? Math.floor(entry.postedAt)
-        : null;
-      const timeAgo = normalizedPostedAt !== null ? this.formatTimeAgo(normalizedPostedAt) : "";
-      return {
-        video: entry.video,
-        pointerInfo: entry.pointerInfo,
-        shareUrl: entry.shareUrl,
-        postedAt: normalizedPostedAt,
-        timeAgo,
-        sharedTagCount: entry.sharedTagCount,
-      };
-    });
+    return [];
   }
 
   updateModalSimilarContent({ activeVideo = this.currentVideo, maxItems } = {}) {
-    if (!this.videoModal) {
-      return;
-    }
-
-    const target = activeVideo && typeof activeVideo === "object" ? activeVideo : null;
-    if (!target) {
-      if (typeof this.videoModal.clearSimilarContent === "function") {
-        this.videoModal.clearSimilarContent();
-      }
-      return;
-    }
-
-    const matches = this.computeSimilarContentCandidates({ activeVideo: target, maxItems });
-    if (matches.length > 0) {
-      if (typeof this.videoModal.setSimilarContent === "function") {
-        this.videoModal.setSimilarContent(matches);
-      }
-      return;
-    }
-
-    if (typeof this.videoModal.clearSimilarContent === "function") {
-      this.videoModal.clearSimilarContent();
+    if (this.similarContentController) {
+      this.similarContentController.ui.videoModal = this.videoModal;
+      this.similarContentController.updateModal({ activeVideo, maxItems });
     }
   }
 
