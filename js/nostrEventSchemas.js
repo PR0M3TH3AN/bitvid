@@ -865,10 +865,11 @@ export function buildRepostEvent(params) {
     typeof eventRelay === "string" ? eventRelay.trim() : "";
 
   if (normalizedEventId) {
-    if (!normalizedEventRelay) {
-      throw new Error("missing-event-relay");
+    if (normalizedEventRelay) {
+      tags.push(["e", normalizedEventId, normalizedEventRelay]);
+    } else {
+      tags.push(["e", normalizedEventId]);
     }
-    tags.push(["e", normalizedEventId, normalizedEventRelay]);
   }
 
   const normalizedAddress = typeof address === "string" ? address.trim() : "";
