@@ -1030,8 +1030,18 @@ export class NostrClient {
   /**
    * Initializes the NostrClient.
    * Sets up connection pools, state maps, and default relays.
+   *
+   * The client manages the full lifecycle of Nostr interactions:
+   * - Connection pooling via `SimplePool`.
+   * - State tracking (allEvents, activeMap).
+   * - Signer negotiation (NIP-07, NIP-46, local).
+   * - Background caching with IndexedDB.
    */
   constructor() {
+    /**
+     * @type {import("nostr-tools").SimplePool}
+     * The underlying pool of relay connections.
+     */
     this.pool = null;
     this.poolPromise = null;
     this.pubkey = null;
@@ -1043,13 +1053,15 @@ export class NostrClient {
      * @type {Map<string, object>}
      * Maps event ID to the converted Video object.
      * Stores ALL fetched versions to ensure old links resolve.
+     * @public
      */
     this.allEvents = new Map();
 
     /**
-     * @type {Map<string, object>}
+     * @type {Map<string, import("nostr-tools").Event>}
      * Maps event ID to the raw Nostr event object.
      * Kept for signature verification and republishing (e.g. NIP-94 mirror).
+     * @public
      */
     this.rawEvents = new Map();
 
@@ -1057,6 +1069,8 @@ export class NostrClient {
      * @type {Map<string, object>}
      * Maps `videoRootId` (or `pubkey:dTag`) to the latest valid Video object.
      * This is the "materialized view" used by the UI.
+     * It automatically deduplicates versions, keeping only the most recent one.
+     * @public
      */
     this.activeMap = new Map();
 
@@ -1064,6 +1078,8 @@ export class NostrClient {
      * @type {Map<string, number>}
      * Maps `activeKey` to the timestamp of its latest deletion.
      * Prevents older events from reappearing after a delete.
+     * Critical for "Eventual Consistency" handling.
+     * @public
      */
     this.tombstones = new Map();
 
@@ -3688,6 +3704,7 @@ export class NostrClient {
   async init() {
     devLogger.log("Connecting to relays...");
 
+    // 1. Restore cache for immediate UI render (Stale-While-Revalidate)
     await this.restoreLocalData();
 
     try {
@@ -5125,7 +5142,9 @@ export class NostrClient {
    * - Core metadata (title, description, thumbnail).
    * - `magnet`: The Magnet URI (XT=InfoHash, WS=WebSeed, XS=TorrentMetadata).
    * - `url`: The direct HTTP URL (WebSeed).
-   * - NIP-94 Mirror: Optionally publishes a Kind 1063 file header event if supported.
+   *
+   * Side Effects:
+   * - NIP-94 Mirror: Optionally publishes a Kind 1063 file header event if a hosted URL is provided.
    * - NIP-71: Optionally publishes a Kind 22 (Video Wrapper) for categorization if metadata is provided.
    *
    * @param {object} videoPayload - The video metadata and form data.
@@ -6397,7 +6416,9 @@ export class NostrClient {
    *    - Persist to local cache.
    *    - Notify the UI (`onVideo`).
    *
-   * @param {Function} onVideo - Callback fired when new valid videos are processed. Receives the `Video` object.
+   * This ensures O(1) renders per batch instead of O(N) renders per event.
+   *
+   * @param {function(object): void} onVideo - Callback fired when new valid videos are processed. Receives the `Video` object.
    * @param {{ since?: number, until?: number, limit?: number }} [options] - Filter options.
    * @returns {import("nostr-tools").Sub} The subscription object. Call `unsub()` to stop.
    */
@@ -6667,7 +6688,14 @@ export class NostrClient {
   }
 
   /**
-   * fetchVideos => old approach
+   * Fetches videos using a standard Request/Response model (legacy).
+   *
+   * Unlike `subscribeVideos` (which is streaming), this waits for all relays to EOSE
+   * before returning. It is useful for one-off fetches but less efficient for the main feed.
+   *
+   * @param {object} options - Filter options (limit, etc.).
+   * @returns {Promise<object[]>} A promise resolving to the list of active videos.
+   * @deprecated Use `subscribeVideos` for the main feed to support buffering and streaming.
    */
   async fetchVideos(options = {}) {
     const requestedLimit = Number(options?.limit);
