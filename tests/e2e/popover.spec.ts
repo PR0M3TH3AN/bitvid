@@ -1,9 +1,11 @@
 import { expect, test } from "@playwright/test";
 import type { Locator } from "@playwright/test";
+import { applyReducedMotion, failOnConsoleErrors } from "./helpers/uiTestUtils";
 
 test.describe("popover layout scenarios", () => {
   test.beforeEach(async ({ page }) => {
-    await page.emulateMedia({ reducedMotion: "reduce" });
+    await applyReducedMotion(page);
+    failOnConsoleErrors(page);
     await page.goto("/docs/popover-scenarios.html", { waitUntil: "networkidle" });
   });
 
@@ -150,13 +152,6 @@ test.describe("popover layout scenarios", () => {
   });
 
   test("stress tests popover triggers without console errors", async ({ page }) => {
-    const consoleErrors: string[] = [];
-    page.on("console", (message) => {
-      if (message.type() === "error") {
-        consoleErrors.push(message.text());
-      }
-    });
-
     await page.locator('[data-test-open-modal]').click();
     await expect(page.locator('[data-test-modal]')).toBeVisible();
 
@@ -180,15 +175,14 @@ test.describe("popover layout scenarios", () => {
       await page.click("body");
       await page.waitForTimeout(60);
       await expect(page.locator('[data-popover-state="open"]')).toHaveCount(0);
-      expect(consoleErrors).toHaveLength(0);
-      consoleErrors.length = 0;
     }
   });
 });
 
 test.describe("popover demo alignments", () => {
   test.beforeEach(async ({ page }) => {
-    await page.emulateMedia({ reducedMotion: "reduce" });
+    await applyReducedMotion(page);
+    failOnConsoleErrors(page);
     await page.goto("/views/dev/popover-demo.html", { waitUntil: "networkidle" });
   });
 
