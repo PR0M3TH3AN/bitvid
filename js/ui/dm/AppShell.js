@@ -157,7 +157,7 @@ export class AppShell {
     );
 
     const sidebar = createElement(doc, "aside", "dm-app-shell__sidebar");
-    const sidebarHeader = createElement(doc, "div", "dm-app-shell__sidebar-header flex items-center justify-between p-4");
+    const sidebarHeader = createElement(doc, "div", "dm-app-shell__sidebar-header flex items-center justify-between p-4 relative");
     const sidebarTitle = createElement(
       doc,
       "h1",
@@ -184,7 +184,6 @@ export class AppShell {
         onToggleTypingIndicators,
       });
       popover.classList.add("dm-settings-popover", "absolute", "z-50", "right-4", "top-12", "bg-surface", "border", "border-border", "rounded-xl");
-      sidebarHeader.style.position = "relative";
       sidebarHeader.appendChild(popover);
 
       const closeHandler = (event) => {

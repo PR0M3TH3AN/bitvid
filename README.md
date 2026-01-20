@@ -107,7 +107,12 @@ To run **bitvid** locally:
    npm ci
    ```
 
-3. Start a local server:
+3. Build the project:
+   ```bash
+   npm run build
+   ```
+
+4. Start a local server:
    - Using Python:
      ```bash
      python -m http.server 8000

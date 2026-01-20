@@ -5601,7 +5601,7 @@
   .dm-composer__more-btn {
     font-weight: 700;
     line-height: 1;
-    min-width: 2rem;
+    min-width: var(--space-xl);
   }
 
   .dm-composer__more-menu {
@@ -5616,7 +5616,7 @@
     z-index: 10;
     display: flex;
     flex-direction: column;
-    min-width: 8rem;
+    min-width: var(--size-8rem);
     padding: var(--space-xs);
   }
 
