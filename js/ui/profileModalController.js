@@ -1211,6 +1211,7 @@ export class ProfileModalController {
     this.globalProfileAvatar = null;
     this.closeButton = null;
     this.logoutButton = null;
+    this.mobileLogoutButton = null;
     this.channelLink = null;
     this.addAccountButton = null;
     this.navButtons = {
@@ -1475,6 +1476,8 @@ export class ProfileModalController {
     this.profileModalBackButton =
       document.getElementById("profileModalBack") || null;
     this.logoutButton = document.getElementById("profileLogoutBtn") || null;
+    this.mobileLogoutButton =
+      document.getElementById("profileMobileLogoutBtn") || null;
     this.channelLink = document.getElementById("profileChannelLink") || null;
     this.addAccountButton =
       document.getElementById("profileAddAccountBtn") || null;
@@ -5024,6 +5027,17 @@ export class ProfileModalController {
   registerEventListeners() {
     if (this.closeButton instanceof HTMLElement) {
       this.closeButton.addEventListener("click", () => {
+        this.hide();
+      });
+    }
+
+    if (this.mobileLogoutButton instanceof HTMLElement) {
+      this.mobileLogoutButton.addEventListener("click", async () => {
+        try {
+          await this.callbacks.onLogout(this);
+        } catch (error) {
+          this.showError("Failed to logout. Please try again.");
+        }
         this.hide();
       });
     }
