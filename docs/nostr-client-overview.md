@@ -1,79 +1,80 @@
 # NostrClient Overview
 
-`NostrClient` (`js/nostr/client.js`) is the central controller for all Nostr network interactions and state management in the application. It acts as a facade over `nostr-tools`, managing connections to multiple relays, signing events, and maintaining the local application state.
+The `NostrClient` (`js/nostr/client.js`) is the central controller for all Nostr network interactions, state management, and cryptographic operations in the application. It acts as a facade over `nostr-tools` and manages the complexity of connecting to relays, syncing data, and handling various NIPs (Nostr Implementation Possibilities).
 
-## Responsibilities
+## Core Responsibilities
 
-1.  **Connection Management**: Maintains a pool of connections to configured Nostr relays. It handles initialization, reconnection, and error logging.
-2.  **Event Publishing**: Handles the creation, signing, and broadcasting of various Nostr event kinds (Video Post: 30078, Reaction: 7, Comment: 1, etc.). It supports NIP-07 (Extension), NIP-46 (Remote/Bunker), and NIP-01 (Local nsec) signers.
-3.  **State Management**:
-    *   `allEvents`: A raw map of all fetched video events (Kind 30078), preserving history.
-    *   `activeMap`: A derived map containing only the *latest* version of each video, deduplicated by `videoRootId` or `d` tag. This is the source of truth for the UI.
-    *   `rawEvents`: A cache of the exact raw JSON events from relays, used for signature verification and republishing.
-    *   `tombstones`: Tracks deletion timestamps to prevent deleted events from reappearing.
-4.  **Caching**: Implements a dual-layer cache (`IndexedDB` + `localStorage`) to persist `activeMap`, `allEvents`, and `tombstones`. This allows the app to restore its state instantly on load ("stale-while-revalidate").
-5.  **Video Lifecycle**: Manages the full lifecycle of a video post: Publish -> Edit (new event with same `d` tag) -> Revert (new event, same `d`, deleted flag) -> Delete (Kind 5).
+1.  **Connection Management**: Maintains persistent connections to multiple relays using `SimplePool`.
+2.  **State Management**: Tracks video events, deletions (tombstones), and deduplicates content.
+3.  **Caching**: Implements a "stale-while-revalidate" strategy using IndexedDB (`EventsCacheStore`) to load content immediately while fetching updates in the background.
+4.  **Publishing**: Orchestrates the signing and broadcasting of events, including complex multi-event flows (e.g., Video + Mirror + NIP-71).
+5.  **Signer Management**: Abstracts the differences between NIP-07 (Extension), NIP-46 (Remote/Bunker), and Local (nsec) signers.
 
-## Key Concepts
+## State Architecture
 
-### Active Video Logic
-Nostr is an append-only protocol. Edits are new events. `NostrClient` implements "latest-wins" logic to present a coherent view:
-- **Identifier**: Videos are identified by a `videoRootId` (in the content) or a NIP-33 `d` tag.
-- **Resolution**: When a new event arrives, the client checks if it's newer than the current active version in `activeMap`. If so, it replaces the entry.
-- **Deletions**: If an event has `deleted: true` or is a Kind 5 deletion, it is removed from `activeMap`, and a tombstone is recorded.
+The client maintains several in-memory maps to manage state:
 
-### Buffering & Debouncing
-To handle high volumes of events (e.g., during initial relay dump), `subscribeVideos` uses a buffering strategy:
-1.  Incoming events are pushed to `eventBuffer`.
-2.  A flush is scheduled with a short debounce (e.g., 75ms).
-3.  On flush, the batch is processed: validation, state updates, and UI notification.
-This prevents UI thrashing.
+*   **`allEvents`** (`Map<string, Video>`): A raw collection of all fetched video events, keyed by Event ID. This includes history (older versions) and is used for hydration.
+*   **`activeMap`** (`Map<string, Video>`): The "materialized view" used by the UI. It maps a unique key (Video Root ID or `pubkey:dTag`) to the *latest* valid version of a video. It automatically handles deduplication and versioning.
+*   **`rawEvents`** (`Map<string, Event>`): caches the exact raw JSON events received from relays. This is crucial for signature verification and republishing (e.g., NIP-94 mirrors) without altering the original signature.
+*   **`tombstones`** (`Map<string, number>`): Tracks the timestamp of deletions. This prevents older versions of a video from "resurrecting" if a relay sends them after a user has deleted the video.
 
-### Tombstones
-Because relays are eventually consistent, a deleted event might arrive *after* a deletion command.
-- `tombstones` map `activeKey` -> `timestamp`.
-- If an incoming event is older than the tombstone for its key, it is ignored (`applyTombstoneGuard`).
+## Caching Strategy
 
-## Example Flow: `subscribeVideos`
+To ensure a snappy UX, the client uses `EventsCacheStore` to persist `allEvents` and `tombstones` to IndexedDB.
 
-```mermaid
-sequenceDiagram
-    participant UI
-    participant Client as NostrClient
-    participant Buffer as EventBuffer
-    participant State as activeMap
-    participant Relays
+1.  **Load**: On `init()`, the client loads the snapshot from IndexedDB into memory.
+2.  **Fingerprinting**: To minimize write overhead, objects are fingerprinted. Only changed items are written back to disk.
+3.  **Persistence**: Changes are persisted periodically (debounced) or on critical actions (like a flush after a batch subscription).
 
-    UI->>Client: subscribeVideos(onVideo)
-    Client->>Relays: REQ Kind 30078
-    Relays-->>Client: EVENT (Video A, v1)
-    Client->>Buffer: Push Event
-    Client->>Buffer: Schedule Flush (75ms)
-    Relays-->>Client: EVENT (Video B, v1)
-    Client->>Buffer: Push Event
+## Subscription Model: Buffering & Debouncing
 
-    Note over Client, Buffer: 75ms passes...
+Relays often send events in bursts (e.g., thousands of events on initial load). Processing each event individually would freeze the UI. `NostrClient` implements a **Buffering & Debouncing** strategy in `subscribeVideos`:
 
-    Client->>Buffer: Flush()
-    loop For each event
-        Buffer->>State: Is newer?
-        alt Yes
-            State->>State: Update Entry
-            State->>UI: onVideo(Video)
-        else No
-            State->>State: Ignore
-        end
-    end
+1.  **Buffer**: Incoming events are pushed into an `eventBuffer` array.
+2.  **Debounce**: A flush is scheduled (e.g., 75ms delay).
+3.  **Flush**: When the timer fires, the entire buffer is processed in a batch:
+    *   Events are converted to `Video` objects.
+    *   `activeMap` is updated (latest-wins logic).
+    *   `onVideo` callback is fired once for the batch or per-item, but React updates are batched effectively.
+    *   State is persisted to the local cache.
+
+## Publishing Lifecycle
+
+Publishing a video is a multi-step process to ensure compatibility and discoverability:
+
+1.  **Video Note (Kind 30078)**: The primary payload containing metadata (title, magnet, etc.).
+2.  **NIP-94 Mirror (Kind 1063)**: (Optional) If a HTTP URL is provided, a "File Header" event is published to support clients that only rely on NIP-94.
+3.  **NIP-71 Metadata (Kind 22)**: (Optional) If the user adds categories or tags, a separate metadata event is linked to the video.
+
+## Code Example
+
+```javascript
+import { NostrClient } from "./js/nostr/client.js";
+
+const client = new NostrClient();
+
+// 1. Initialize (loads cache, connects to relays)
+await client.init();
+
+// 2. Subscribe to videos
+const sub = client.subscribeVideos((video) => {
+  console.log("New video received:", video.title);
+});
+
+// 3. Login (NIP-07)
+await client.login();
+
+// 4. Publish a video
+await client.publishVideo({
+  title: "My Video",
+  magnet: "magnet:?xt=urn:btih:...",
+  // ...
+}, client.pubkey);
 ```
 
-## When to Modify
+## Why it works this way
 
-- **Adding a new Event Kind**: If the app needs to support a new type of interaction (e.g., playlists), add the handling logic here and in `js/nostrEventSchemas.js`.
-- **Changing Caching Strategy**: Modify `EventsCacheStore` or `persistLocalData` if the caching requirements change.
-- **Updating Signing Logic**: Changes to NIP-07 or NIP-46 integration should be carefully reviewed here.
-
-## Related Files
-
-- `js/nostrEventSchemas.js`: Definitions of event structures.
-- `js/nostr/nip71.js`: Helper logic for video categorization (NIP-71).
-- `js/nostr/watchHistory.js`: Manages user watch history state.
+*   **Active Map**: The `activeMap` ensures that if a user edits a video (publishing a new version), the UI automatically shows the new one and hides the old one, even if relays send them out of order.
+*   **Tombstones**: Distributed systems are eventually consistent. A relay might send a "deleted" video event *after* we've processed the deletion locally. Tombstones ensure we ignore it.
+*   **Raw Events**: We never modify the original event object for verification purposes. The `Video` object in `allEvents` is a normalized, app-specific representation.
