@@ -25,14 +25,7 @@ export function Avatar({
   }
 
   const avatar = doc.createElement("div");
-
-  const sizeClasses = {
-    md: "dm-avatar--md",
-    sm: "dm-avatar--sm",
-  };
-  const sizeClass = sizeClasses[size] || "dm-avatar--md";
-
-  avatar.className = `dm-avatar ${sizeClass}`;
+  avatar.className = `dm-avatar dm-avatar--${size}`;
   if (status) {
     avatar.dataset.status = status;
   }
