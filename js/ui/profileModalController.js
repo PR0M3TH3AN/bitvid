@@ -12352,6 +12352,12 @@ export class ProfileModalController {
 
     modalRoot.classList.remove("hidden");
     modalRoot.setAttribute("aria-hidden", "false");
+    if (document.body) {
+      document.body.classList.add("modal-open");
+    }
+    if (document.documentElement) {
+      document.documentElement.classList.add("modal-open");
+    }
     this.setGlobalModalState("profile", true);
     const preserveMenu = this.isMobileLayoutActive();
     this.selectPane(pane, { keepMenuView: preserveMenu });
@@ -12385,6 +12391,12 @@ export class ProfileModalController {
       modalElement.setAttribute("aria-hidden", "true");
       delete modalElement.dataset.nestedModalActive;
       delete modalElement.dataset.modalStack;
+      if (document.body) {
+        document.body.classList.remove("modal-open");
+      }
+      if (document.documentElement) {
+        document.documentElement.classList.remove("modal-open");
+      }
       this.setGlobalModalState("profile", false);
       this.setMobileView("menu", { skipFocusTrap: true });
 
