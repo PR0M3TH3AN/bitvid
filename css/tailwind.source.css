@@ -3006,13 +3006,14 @@
     flex-wrap: wrap;
     gap: var(--profile-modal-nav-gap);
     align-self: flex-start;
-    overflow-x: hidden;
+    overflow-x: visible;
   }
 
   .profile-nav__unread-dot {
     position: absolute;
-    top: var(--space-3xs);
-    right: var(--space-3xs);
+    top: 50%;
+    left: -6px;
+    right: auto;
     width: var(--space-sm);
     height: var(--space-sm);
     border-radius: var(--radius-full);
@@ -3020,6 +3021,7 @@
     background-color: var(--status-danger);
     display: none;
     pointer-events: none;
+    transform: translateY(-50%);
   }
 
   .profile-nav__unread-dot.is-visible {
