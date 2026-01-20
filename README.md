@@ -108,6 +108,7 @@ To run **bitvid** locally:
    ```
 
 3. Build the project:
+
    ```bash
    npm run build
    ```
@@ -122,7 +123,7 @@ To run **bitvid** locally:
      npx serve
      ```
 
-4. Open the site in your browser:
+5. Open the site in your browser:
 
 ```
 http://localhost:8000
