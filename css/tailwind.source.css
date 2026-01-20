@@ -5192,11 +5192,15 @@
   .dm-avatar--md {
     width: var(--space-xl-plus);
     height: var(--space-xl-plus);
+    min-width: var(--space-xl-plus);
+    min-height: var(--space-xl-plus);
   }
 
   .dm-avatar--sm {
     width: var(--space-xl);
     height: var(--space-xl);
+    min-width: var(--space-xl);
+    min-height: var(--space-xl);
   }
 
   .dm-avatar__image {
