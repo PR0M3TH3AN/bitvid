@@ -5711,9 +5711,8 @@ class Application {
       return this.feedEngine.registerFeed("for-you", {
         source: createActiveNostrSource({ service: this.nostrService }),
         stages: [
-          // TODO(tag-preferences): keep tag-preference filtering consolidated in
-          // createTagPreferenceFilterStage so each feed has a single source of
-          // truth when interest-based inclusion/ranking lands.
+          // Note: Tag-preference filtering is consolidated in createTagPreferenceFilterStage
+          // so each feed has a single source of truth for interest-based inclusion/ranking.
           createTagPreferenceFilterStage(),
           createBlacklistFilterStage({
             shouldIncludeVideo: (video, options) =>
@@ -5784,9 +5783,8 @@ class Application {
       return this.feedEngine.registerFeed("subscriptions", {
         source: createSubscriptionAuthorsSource({ service: this.nostrService }),
         stages: [
-          // TODO(tag-preferences): keep tag-preference filtering consolidated in
-          // createTagPreferenceFilterStage so each feed has a single source of
-          // truth when interest-based inclusion/ranking lands.
+          // Note: Tag-preference filtering is consolidated in createTagPreferenceFilterStage
+          // so each feed has a single source of truth for interest-based inclusion/ranking.
           createTagPreferenceFilterStage(),
           createBlacklistFilterStage({
             shouldIncludeVideo: (video, options) =>
