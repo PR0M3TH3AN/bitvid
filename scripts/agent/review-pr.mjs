@@ -1,4 +1,4 @@
-import { execSync, spawnSync } from 'child_process';
+import { spawnSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
@@ -19,9 +19,7 @@ function runCommand(command, args = [], options = {}) {
   return spawnSync(command, args, {
     encoding: 'utf-8',
     stdio: ['ignore', 'pipe', 'pipe'],
-    shell: false, // Turn off shell for security unless needed, but spawnSync defaults to false.
-    // However, if I used shell: true before, args might need care.
-    // If shell is false, args are safe.
+    shell: false,
     ...options
   });
 }
@@ -38,17 +36,21 @@ function checkGhAvailability() {
 function getChangedFiles(baseBranch = 'origin/main') {
   try {
     const res = spawnSync('git', ['diff', '--name-only', `${baseBranch}...HEAD`], { encoding: 'utf-8' });
-    if (res.status !== 0) throw new Error(res.stderr);
+    if (res.status !== 0) {
+        // Fallback: use local changes
+        const local = spawnSync('git', ['diff', '--name-only', 'HEAD'], { encoding: 'utf-8' });
+        return local.stdout ? local.stdout.trim().split('\n').filter(Boolean) : [];
+    }
     return res.stdout.trim().split('\n').filter(Boolean);
   } catch (error) {
-    log(`Warning: Could not determine changed files against ${baseBranch}. Using local changes if any.`);
+    log(`Warning: Could not determine changed files. Using local changes if any.`);
     return [];
   }
 }
 
 async function reviewContext(contextName, options) {
   const report = [];
-  report.push(`# Automated PR Review`);
+  report.push(`# Automated PR Review & Suggested Improvements`);
   report.push(`**Context:** ${contextName}`);
   report.push(`**Date:** ${new Date().toISOString()}`);
   report.push('');
@@ -59,9 +61,6 @@ async function reviewContext(contextName, options) {
     // 1. Install dependencies
     if (!options.noInstall) {
       log('Installing dependencies (npm ci)...');
-      // On Windows, npm is a cmd. Using shell: true might be needed for 'npm' command,
-      // or use 'npm.cmd'. Linux is fine.
-      // Safe to use shell: true for static commands.
       const ciResult = spawnSync('npm', ['ci'], { encoding: 'utf-8', shell: true });
       if (ciResult.status !== 0) {
         report.push(`## 🚨 Dependency Installation Failed`);
@@ -86,19 +85,20 @@ async function reviewContext(contextName, options) {
 
       if (formattedFiles.length > 0) {
         report.push(`## 🎨 Formatting Suggestions`);
-        report.push(`The following files need formatting. Run \`npm run format\` to fix.`);
+        report.push(`The following files need formatting:`);
         report.push('<ul>');
         formattedFiles.forEach(f => report.push(`<li>${f}</li>`));
         report.push('</ul>');
         report.push('');
 
         // Fast-path suggestion
-        report.push('**Suggestion:** Apply `npm run format` and re-run tests.');
+        report.push('**Suggestion:** apply `npm run format` and re-run tests');
 
         if (options.applyFixes) {
           try {
             log('Applying formatting fixes...');
             runCommand('git', ['add', '.']);
+            // Explicit wording: fix(ai): <short> (agent)
             runCommand('git', ['commit', '-m', 'fix(ai): formatting (agent)']);
 
             log('Pushing changes...');
@@ -111,44 +111,32 @@ async function reviewContext(contextName, options) {
                  report.push('**Action:** Applied formatting fixes locally, but failed to push.');
                  report.push(`**Error:** ${pushResult.stderr}`);
 
-                 // Attempt fallback: Create new branch?
-                 // If we are in a detached HEAD or locked branch, pushing might fail.
-                 // "open a follow-up PR if you could not directly update the PR branch"
-                 // If we have GH CLI...
                  if (checkGhAvailability()) {
                       const newBranch = `fix/ai-formatting-${Date.now()}`;
                       log(`Attempting fallback: creating new branch ${newBranch}...`);
                       runCommand('git', ['checkout', '-b', newBranch]);
                       const pushNew = runCommand('git', ['push', '-u', 'origin', newBranch]);
                       if (pushNew.status === 0) {
-                          // Create PR
                           log('Creating fallback PR...');
-                          // We need to target the original branch? Or main?
-                          // Let's target the current context if possible.
-                          // But we don't know the original target easily without GH CLI.
-                          // We'll just create a PR against default.
                           const prRes = spawnSync('gh', ['pr', 'create', '--title', 'fix(ai): formatting (agent)', '--body', 'Automated formatting fixes.', '--fill'], { encoding: 'utf-8' });
                           if (prRes.status === 0) {
                               report.push(`**Action:** Created follow-up PR: ${prRes.stdout.trim()}`);
                           } else {
                               report.push(`**Error:** Failed to create follow-up PR: ${prRes.stderr}`);
                           }
-                      } else {
-                           report.push(`**Error:** Failed to push fallback branch: ${pushNew.stderr}`);
                       }
-
-                      // Switch back?
-                      // reviewContext usually assumes we stay on the branch or restore.
                  }
             }
-
           } catch (e) {
             log(`Error applying fixes: ${e.message}`);
             report.push(`**Error:** Failed to apply formatting fixes: ${e.message}`);
           }
         } else {
-           // Revert changes so checking other things is clean?
-           // If we don't apply fixes, we should revert.
+           // If we're not applying fixes, we should revert the formatting changes so they don't affect subsequent steps?
+           // However, keeping them might be good for running tests on clean code?
+           // But if tests rely on formatting (unlikely), it matters.
+           // Usually we revert so the working tree matches the PR state for further analysis.
+           spawnSync('git', ['checkout', '.'], { stdio: 'ignore' });
         }
       } else {
         report.push(`## ✅ Formatting`);
@@ -163,11 +151,21 @@ async function reviewContext(contextName, options) {
       if (lintResult.status !== 0) {
         report.push(`## ⚠️ Linter Warnings/Errors`);
         report.push('`npm run lint` reported issues:');
+
+        // Extract lines with "Error" or "Warning"
+        const lines = (lintResult.stdout + '\n' + lintResult.stderr).split('\n');
+        const issues = lines.filter(l => l.match(/error|warning/i)).slice(0, 20); // Limit to 20
+
         report.push('<details><summary>Show Lint Output</summary>');
         report.push('');
         report.push('```');
-        report.push(lintResult.stdout);
-        report.push(lintResult.stderr);
+        if (issues.length > 0) {
+            report.push(issues.join('\n'));
+            if (lines.length > issues.length) report.push('...');
+        } else {
+            report.push(lintResult.stdout.slice(-1000));
+            report.push(lintResult.stderr.slice(-1000));
+        }
         report.push('```');
         report.push('</details>');
 
@@ -189,12 +187,27 @@ async function reviewContext(contextName, options) {
          report.push('`npm run test:unit` timed out after 5 minutes.');
       } else if (testResult.status !== 0) {
         report.push(`## ❌ Test Failures`);
-        report.push('`npm run test:unit` failed. Inspect the stack traces below.');
+        report.push('`npm run test:unit` failed.');
+
+        // Analyze stdout for failing test file
+        // Expecting "→ Running tests/..." lines.
+        const output = testResult.stdout || '';
+        const runningLines = output.match(/→ Running (.*)/g);
+        let lastTest = 'Unknown';
+        if (runningLines && runningLines.length > 0) {
+            lastTest = runningLines[runningLines.length - 1].replace('→ Running ', '').trim();
+        }
+
+        report.push(`**Possible culprit:** \`${lastTest}\``);
+        report.push('Suggested area to inspect: check the stack trace below for the failing assertion.');
+
         report.push('<details><summary>Show Test Output</summary>');
         report.push('');
         report.push('```');
-        report.push(testResult.stdout ? testResult.stdout.slice(-5000) : 'No stdout');
-        report.push(testResult.stderr ? testResult.stderr.slice(-5000) : 'No stderr');
+        // Capture context around the failure?
+        // Usually the end of stdout has the failure.
+        report.push(output.slice(-3000));
+        report.push((testResult.stderr || '').slice(-3000));
         report.push('```');
         report.push('</details>');
       } else {
@@ -211,17 +224,11 @@ async function reviewContext(contextName, options) {
 
     if (sensitiveChanges.length > 0) {
       report.push(`## 🔒 Security Review Required`);
-      report.push(`This PR modifies sensitive files. **requires-security-review**, **requires-protocol-review**`);
+      report.push(`This PR modifies sensitive files.`);
+      report.push(`**Flags:** \`requires-security-review\`, \`requires-protocol-review\``);
       report.push('<ul>');
       sensitiveChanges.forEach(f => report.push(`<li>${f}</li>`));
       report.push('</ul>');
-    }
-
-    // Cleanup formatting if not applied
-    if (!options.applyFixes) {
-        try {
-            spawnSync('git', ['checkout', '.'], { stdio: 'ignore' });
-        } catch (e) {}
     }
 
     return report.join('\n');
@@ -242,7 +249,6 @@ async function main() {
   };
 
   const branchArg = args.find(a => !a.startsWith('--') && args.indexOf(a) !== args.indexOf('--pr') + 1);
-
   const ghAvailable = checkGhAvailability();
 
   if (options.all) {
@@ -250,7 +256,6 @@ async function main() {
       console.error('Error: `gh` CLI not found. Cannot list open PRs.');
       process.exit(1);
     }
-    // Fetch PRs
     log('Fetching open PRs...');
     try {
         const prsJson = spawnSync('gh', ['pr', 'list', '--json', 'number,headRefName,url'], { encoding: 'utf-8' });
@@ -263,14 +268,11 @@ async function main() {
             try {
                 spawnSync('gh', ['pr', 'checkout', pr.number]);
                 const report = await reviewContext(`PR #${pr.number}`, options);
-
-                // Post comment
                 const tempFile = `pr_review_${pr.number}.md`;
                 fs.writeFileSync(tempFile, report);
                 log(`Posting comment to PR #${pr.number}...`);
                 spawnSync('gh', ['pr', 'comment', pr.number, '-F', tempFile]);
                 fs.unlinkSync(tempFile);
-
             } catch (e) {
                 log(`Failed to process PR #${pr.number}: ${e.message}`);
             }
@@ -288,19 +290,15 @@ async function main() {
       try {
           const res = spawnSync('gh', ['pr', 'checkout', options.pr], { encoding: 'utf-8' });
           if (res.status !== 0) throw new Error(res.stderr);
-
           const report = await reviewContext(`PR #${options.pr}`, options);
           console.log(report);
-
           fs.writeFileSync(LOG_FILE, report);
           log(`Report saved to ${LOG_FILE}`);
-
       } catch (e) {
           console.error(e);
           process.exit(1);
       }
   } else {
-      // Current branch or specified branch
       let originalBranch;
       if (branchArg) {
           try {
