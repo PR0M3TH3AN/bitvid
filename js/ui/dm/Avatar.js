@@ -25,7 +25,13 @@ export function Avatar({
   }
 
   const avatar = doc.createElement("div");
-  avatar.className = `dm-avatar dm-avatar--${size}`;
+  // Explicit mapping ensures Tailwind scanner detects these classes
+  const sizeClass = {
+    sm: "dm-avatar--sm",
+    md: "dm-avatar--md",
+  }[size] || `dm-avatar--${size}`;
+
+  avatar.className = `dm-avatar ${sizeClass}`;
   if (status) {
     avatar.dataset.status = status;
   }

@@ -48,6 +48,7 @@ export function ContactRow({
     document: doc,
     src: avatarSrc,
     alt: name,
+    size: "md",
     initials: name,
     status,
   });
