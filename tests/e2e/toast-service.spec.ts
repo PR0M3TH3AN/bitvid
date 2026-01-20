@@ -1,8 +1,10 @@
 import { expect, test } from "@playwright/test";
+import { applyReducedMotion, failOnConsoleErrors } from "./helpers/uiTestUtils";
 
 test.describe("toast service in full DOM", () => {
   test("renders, expires, and dismisses toasts", async ({ page }) => {
-    await page.emulateMedia({ reducedMotion: "reduce" });
+    await applyReducedMotion(page);
+    failOnConsoleErrors(page);
     await page.goto("/docs/kitchen-sink.html", { waitUntil: "networkidle" });
 
     await page.addScriptTag({

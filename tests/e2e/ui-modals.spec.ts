@@ -1,19 +1,15 @@
 import { expect, test } from "@playwright/test";
+import {
+  applyReducedMotion,
+  failOnConsoleErrors,
+  forceOpenModal,
+} from "./helpers/uiTestUtils";
 
 test.describe("login modal flows", () => {
   test.beforeEach(async ({ page }) => {
-    await page.emulateMedia({ reducedMotion: "reduce" });
+    await applyReducedMotion(page);
+    failOnConsoleErrors(page);
     await page.goto("/components/login-modal.html", { waitUntil: "networkidle" });
-    await page.addStyleTag({
-      content: `
-        * {
-          animation-duration: 0s !important;
-          animation-delay: 0s !important;
-          transition-duration: 0s !important;
-          transition-delay: 0s !important;
-        }
-      `,
-    });
 
     await page.addScriptTag({
       type: "module",
@@ -175,7 +171,8 @@ test.describe("component modal pages", () => {
 
   for (const pageName of modalPages) {
     test(`closes ${pageName} modal`, async ({ page }) => {
-      await page.emulateMedia({ reducedMotion: "reduce" });
+      await applyReducedMotion(page);
+      failOnConsoleErrors(page);
       await page.goto(`/components/${pageName}.html`, {
         waitUntil: "networkidle",
       });
@@ -183,14 +180,7 @@ test.describe("component modal pages", () => {
       const modal = page.locator(".bv-modal");
       await expect(modal).toHaveCount(1);
 
-      await page.evaluate(() => {
-        const element = document.querySelector(".bv-modal");
-        if (!element) {
-          return;
-        }
-        element.classList.remove("hidden");
-        element.setAttribute("data-open", "true");
-      });
+      await forceOpenModal(page, ".bv-modal");
 
       await expect(modal).not.toHaveClass(/hidden/);
 
