@@ -40,7 +40,7 @@ export const IS_VERBOSE_DEV_MODE = true;
  * Leave this `false` for normal operation so downstream modules (via
  * `js/config.js`) continue exposing the full experience.
  */
-export const IS_LOCKDOWN_MODE = true;
+export const IS_LOCKDOWN_MODE = false;
 
 /**
  * The title displayed in the header when the site is in lockdown mode.
