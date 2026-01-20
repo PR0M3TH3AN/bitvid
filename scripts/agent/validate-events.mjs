@@ -1,10 +1,18 @@
 import {
+  NOTE_TYPES,
   getNostrEventSchema,
   buildVideoPostEvent,
   buildVideoMirrorEvent,
   buildRepostEvent,
   buildRelayListEvent,
+  buildDmRelayListEvent,
+  buildProfileMetadataEvent,
+  buildMuteListEvent,
+  buildDmAttachmentEvent,
+  buildDmReadReceiptEvent,
+  buildDmTypingIndicatorEvent,
   buildViewEvent,
+  buildZapRequestEvent,
   buildReactionEvent,
   buildCommentEvent,
   buildWatchHistoryEvent,
@@ -12,284 +20,413 @@ import {
   buildBlockListEvent,
   buildHashtagPreferenceEvent,
   buildAdminListEvent,
-  buildProfileMetadataEvent,
-  buildMuteListEvent,
-  NOTE_TYPES,
-  ADMIN_LIST_IDENTIFIERS
 } from "../../js/nostrEventSchemas.js";
 
-const TEST_PUBKEY = "0000000000000000000000000000000000000000000000000000000000000001";
-const TEST_TIMESTAMP = 1700000000;
+import { buildNip71VideoEvent } from "../../js/nostr/nip71.js";
 
-function validateEvent(event, schema, label) {
+// Mock data
+const MOCK_PUBKEY = "0000000000000000000000000000000000000000000000000000000000000001";
+const MOCK_EVENT_ID = "0000000000000000000000000000000000000000000000000000000000000002";
+const MOCK_TIMESTAMP = 1700000000;
+const MOCK_URL = "https://example.com/video.mp4";
+const MOCK_THUMBNAIL = "https://example.com/thumb.jpg";
+const MOCK_MAGNET = "magnet:?xt=urn:btih:example";
+const MOCK_RELAY = "wss://relay.example.com";
+const MOCK_D_TAG = "mock-d-tag";
+
+// Helper to check if a tag exists
+function hasTag(tags, tagName, tagValue = null) {
+  return tags.some(
+    (tag) =>
+      Array.isArray(tag) &&
+      tag[0] === tagName &&
+      (tagValue === null || tag[1] === tagValue)
+  );
+}
+
+// Validation logic
+function validateEvent(type, event) {
+  const schema = getNostrEventSchema(type);
   const errors = [];
 
-  // Check Kind
-  if (schema.kind !== undefined && event.kind !== schema.kind) {
+  if (!schema) {
+    return [`Schema not found for type: ${type}`];
+  }
+
+  // 1. Validate Kind
+  if (event.kind !== schema.kind) {
     errors.push(`Kind mismatch: expected ${schema.kind}, got ${event.kind}`);
   }
 
-  // Check Content Format
+  // 2. Validate Required Tags
+  // Topic tag
+  if (schema.topicTag) {
+    if (!hasTag(event.tags, schema.topicTag.name, schema.topicTag.value)) {
+      errors.push(
+        `Missing topic tag: ${schema.topicTag.name}=${schema.topicTag.value}`
+      );
+    }
+  }
+
+  // Identifier tag (d tag)
+  if (schema.identifierTag) {
+    // For lists with fixed identifier values (like subscription list), check the value
+    const expectedValue = schema.identifierTag.value;
+    if (!hasTag(event.tags, schema.identifierTag.name, expectedValue)) {
+      errors.push(
+        `Missing identifier tag: ${schema.identifierTag.name}${
+          expectedValue ? "=" + expectedValue : ""
+        }`
+      );
+    }
+  }
+
+  // Append tags
+  if (schema.appendTags) {
+    schema.appendTags.forEach((appendTag) => {
+      const tagName = appendTag[0];
+      const tagValue = appendTag[1];
+      if (!hasTag(event.tags, tagName, tagValue)) {
+        errors.push(`Missing append tag: ${tagName}=${tagValue}`);
+      }
+    });
+  }
+
+  // Specific schema tags
+  if (schema.relayTagName) {
+      // Check if at least one relay tag exists if we added relays in mock data
+      // This is slightly context dependent, but we can check if the builder respects the tag name
+      // Logic: if we expect the builder to use 'r' or 'relay', we can't easily verify generally unless we check specific output
+      // But we can check if any tag with that name exists IF we passed relays.
+  }
+
+  // 3. Validate Content Format
   if (schema.content) {
     if (schema.content.format === "json") {
       try {
-        const parsed = JSON.parse(event.content);
+        JSON.parse(event.content);
+        // TODO: Validate JSON schema fields if defined (schema.content.fields)
         if (schema.content.fields) {
-          for (const field of schema.content.fields) {
-            if (field.required && parsed[field.key] === undefined) {
-              errors.push(`Missing required content field: ${field.key}`);
-            }
-            if (parsed[field.key] !== undefined) {
-               // Basic type checking
-               if (field.type === 'number' && typeof parsed[field.key] !== 'number') {
-                   errors.push(`Field ${field.key} expected number, got ${typeof parsed[field.key]}`);
-               }
-               if (field.type === 'string' && typeof parsed[field.key] !== 'string') {
-                   errors.push(`Field ${field.key} expected string, got ${typeof parsed[field.key]}`);
-               }
-               if (field.type === 'boolean' && typeof parsed[field.key] !== 'boolean') {
-                   errors.push(`Field ${field.key} expected boolean, got ${typeof parsed[field.key]}`);
-               }
-            }
-          }
+            const parsed = JSON.parse(event.content);
+            schema.content.fields.forEach(field => {
+                if (field.required && parsed[field.key] === undefined) {
+                    errors.push(`Missing required content field: ${field.key}`);
+                }
+                if (parsed[field.key] !== undefined) {
+                    if (field.type === 'number' && typeof parsed[field.key] !== 'number') {
+                         errors.push(`Invalid type for content field ${field.key}: expected number, got ${typeof parsed[field.key]}`);
+                    }
+                    if (field.type === 'string' && typeof parsed[field.key] !== 'string') {
+                        errors.push(`Invalid type for content field ${field.key}: expected string, got ${typeof parsed[field.key]}`);
+                   }
+                   if (field.type === 'boolean' && typeof parsed[field.key] !== 'boolean') {
+                        errors.push(`Invalid type for content field ${field.key}: expected boolean, got ${typeof parsed[field.key]}`);
+                   }
+                }
+            });
         }
       } catch (e) {
-        errors.push(`Content is not valid JSON: ${e.message}`);
+        errors.push("Content is not valid JSON");
       }
     } else if (schema.content.format === "empty") {
       if (event.content !== "") {
-        errors.push(`Content expected to be empty, got length ${event.content.length}`);
+        errors.push("Content should be empty");
+      }
+    } else if (
+      schema.content.format === "text" ||
+      schema.content.format === "encrypted-tag-list" ||
+      schema.content.format === "nip44-json"
+    ) {
+      if (typeof event.content !== "string") {
+        errors.push("Content must be a string");
       }
     }
   }
 
-  // Check Tags
-  if (schema.topicTag) {
-    const hasTag = event.tags.some(t => t[0] === schema.topicTag.name && t[1] === schema.topicTag.value);
-    if (!hasTag) {
-      errors.push(`Missing topic tag: ${schema.topicTag.name}=${schema.topicTag.value}`);
-    }
-  }
-
-  if (schema.identifierTag) {
-    const hasTag = event.tags.some(t => t[0] === schema.identifierTag.name);
-    if (!hasTag) {
-      errors.push(`Missing identifier tag: ${schema.identifierTag.name}`);
-    }
-     if (schema.identifierTag.value) {
-        const hasValue = event.tags.some(t => t[0] === schema.identifierTag.name && t[1] === schema.identifierTag.value);
-        if (!hasValue) {
-            errors.push(`Missing identifier tag value: ${schema.identifierTag.name}=${schema.identifierTag.value}`);
-        }
-    }
-  }
-
-  // Append Tags Check (Simple existence check for fixed tags)
-    if (schema.appendTags) {
-        schema.appendTags.forEach(expectedTag => {
-            if (Array.isArray(expectedTag)) {
-                 const found = event.tags.some(t =>
-                    t.length >= expectedTag.length &&
-                    expectedTag.every((val, i) => t[i] === val)
-                );
-                if (!found) {
-                     errors.push(`Missing appended tag: ${JSON.stringify(expectedTag)}`);
-                }
-            }
-        });
-    }
-
-
-  if (errors.length > 0) {
-    console.error(`❌ ${label} validation failed:`);
-    errors.forEach(e => console.error(`  - ${e}`));
-    return false;
-  } else {
-    console.log(`✅ ${label} validated successfully.`);
-    return true;
-  }
+  return errors;
 }
 
-async function runValidation() {
-  console.log("Starting Event Schema Validation...\n");
-  let allPassed = true;
-
-  // 1. Video Post
+// Test cases
+const tests = [
   {
-    const schema = getNostrEventSchema(NOTE_TYPES.VIDEO_POST);
-    const event = buildVideoPostEvent({
-      pubkey: TEST_PUBKEY,
-      created_at: TEST_TIMESTAMP,
-      dTagValue: "test-video",
+    name: "Video Post",
+    type: NOTE_TYPES.VIDEO_POST,
+    builder: buildVideoPostEvent,
+    params: {
+      pubkey: MOCK_PUBKEY,
+      created_at: MOCK_TIMESTAMP,
+      dTagValue: MOCK_D_TAG,
       content: {
-        version: 1,
+        version: 3,
         title: "Test Video",
-        videoRootId: "root-id"
-      }
-    });
-    if (!validateEvent(event, schema, "Video Post")) allPassed = false;
-  }
-
-  // 2. Video Mirror
+        videoRootId: MOCK_EVENT_ID,
+      },
+    },
+  },
   {
-    const schema = getNostrEventSchema(NOTE_TYPES.VIDEO_MIRROR);
-    const event = buildVideoMirrorEvent({
-        pubkey: TEST_PUBKEY,
-        created_at: TEST_TIMESTAMP,
-        content: "mirror description"
-    });
-    if (!validateEvent(event, schema, "Video Mirror")) allPassed = false;
-  }
-
-  // 3. Repost
+    name: "Video Mirror",
+    type: NOTE_TYPES.VIDEO_MIRROR,
+    builder: buildVideoMirrorEvent,
+    params: {
+      pubkey: MOCK_PUBKEY,
+      created_at: MOCK_TIMESTAMP,
+      content: "Alt text",
+      tags: [["magnet", MOCK_MAGNET]],
+    },
+  },
   {
-    const schema = getNostrEventSchema(NOTE_TYPES.REPOST);
-    const event = buildRepostEvent({
-        pubkey: TEST_PUBKEY,
-        created_at: TEST_TIMESTAMP,
-        eventId: "event-id",
-        eventRelay: "wss://relay.example.com",
-        serializedEvent: JSON.stringify({ id: "event-id", kind: 1, tags: [], content: "test" })
-    });
-    // Schema updated to expect JSON content, so this should pass now.
-    if (!validateEvent(event, schema, "Repost")) allPassed = false;
-  }
-
-  // 4. Relay List
+    name: "Repost",
+    type: NOTE_TYPES.REPOST,
+    builder: buildRepostEvent,
+    params: {
+      pubkey: MOCK_PUBKEY,
+      created_at: MOCK_TIMESTAMP,
+      eventId: MOCK_EVENT_ID,
+      eventRelay: MOCK_RELAY,
+      targetEvent: { id: MOCK_EVENT_ID, pubkey: MOCK_PUBKEY, kind: 1, content: "test", tags: [], created_at: MOCK_TIMESTAMP },
+    },
+  },
   {
-      const schema = getNostrEventSchema(NOTE_TYPES.RELAY_LIST);
-      const event = buildRelayListEvent({
-          pubkey: TEST_PUBKEY,
-          created_at: TEST_TIMESTAMP,
-          relays: ["wss://relay.one", { url: "wss://relay.two", mode: "read" }]
-      });
-      if (!validateEvent(event, schema, "Relay List")) allPassed = false;
-  }
-
-  // 5. View Event
+    name: "Relay List",
+    type: NOTE_TYPES.RELAY_LIST,
+    builder: buildRelayListEvent,
+    params: {
+      pubkey: MOCK_PUBKEY,
+      created_at: MOCK_TIMESTAMP,
+      relays: [
+        { url: "wss://r1.com", read: true, write: true },
+        { url: "wss://r2.com", read: true, write: false },
+      ],
+    },
+  },
   {
-      const schema = getNostrEventSchema(NOTE_TYPES.VIEW_EVENT);
-      const event = buildViewEvent({
-          pubkey: TEST_PUBKEY,
-          created_at: TEST_TIMESTAMP,
-          dedupeTag: "dedupe-val",
-          includeSessionTag: true,
-          content: "view log"
-      });
-      if (!validateEvent(event, schema, "View Event")) allPassed = false;
-  }
-
-  // 6. Reaction Event
+    name: "DM Relay List",
+    type: NOTE_TYPES.DM_RELAY_LIST,
+    builder: buildDmRelayListEvent,
+    params: {
+      pubkey: MOCK_PUBKEY,
+      created_at: MOCK_TIMESTAMP,
+      relays: ["wss://dm.relay.com"],
+    },
+  },
   {
-      const schema = getNostrEventSchema(NOTE_TYPES.VIDEO_REACTION);
-      const event = buildReactionEvent({
-          pubkey: TEST_PUBKEY,
-          created_at: TEST_TIMESTAMP,
-          targetPointer: { type: "e", value: "target-id", relay: "wss://r.com" },
-          content: "+"
-      });
-      if (!validateEvent(event, schema, "Reaction Event")) allPassed = false;
-  }
-
-  // 7. Comment Event
+    name: "Profile Metadata",
+    type: NOTE_TYPES.PROFILE_METADATA,
+    builder: buildProfileMetadataEvent,
+    params: {
+      pubkey: MOCK_PUBKEY,
+      created_at: MOCK_TIMESTAMP,
+      metadata: { name: "TestUser", about: "Testing" },
+    },
+  },
   {
-      const schema = getNostrEventSchema(NOTE_TYPES.VIDEO_COMMENT);
-      const event = buildCommentEvent({
-          pubkey: TEST_PUBKEY,
-          created_at: TEST_TIMESTAMP,
-          videoEventId: "vid-id",
-          content: "Nice video!"
-      });
-      if (!validateEvent(event, schema, "Comment Event")) allPassed = false;
-  }
-
-  // 8. Watch History
+    name: "Mute List",
+    type: NOTE_TYPES.MUTE_LIST,
+    builder: buildMuteListEvent,
+    params: {
+      pubkey: MOCK_PUBKEY,
+      created_at: MOCK_TIMESTAMP,
+      pTags: [MOCK_PUBKEY],
+    },
+  },
   {
-      const schema = getNostrEventSchema(NOTE_TYPES.WATCH_HISTORY);
-      const event = buildWatchHistoryEvent({
-          pubkey: TEST_PUBKEY,
-          created_at: TEST_TIMESTAMP,
-          monthIdentifier: "2023-10",
-          content: JSON.stringify(["watched-id-1"])
-      });
-      if (!validateEvent(event, schema, "Watch History")) allPassed = false;
-  }
-
-  // 9. Subscription List
+    name: "DM Attachment",
+    type: NOTE_TYPES.DM_ATTACHMENT,
+    builder: buildDmAttachmentEvent,
+    params: {
+      pubkey: MOCK_PUBKEY,
+      created_at: MOCK_TIMESTAMP,
+      recipientPubkey: MOCK_PUBKEY,
+      attachment: { x: "hash", url: MOCK_URL, type: "image/jpeg" },
+    },
+  },
   {
-      const schema = getNostrEventSchema(NOTE_TYPES.SUBSCRIPTION_LIST);
-      const event = buildSubscriptionListEvent({
-          pubkey: TEST_PUBKEY,
-          created_at: TEST_TIMESTAMP,
-          content: "encrypted-stuff"
-      });
-      if (!validateEvent(event, schema, "Subscription List")) allPassed = false;
-  }
-
-  // 10. Block List
+    name: "DM Read Receipt",
+    type: NOTE_TYPES.DM_READ_RECEIPT,
+    builder: buildDmReadReceiptEvent,
+    params: {
+      pubkey: MOCK_PUBKEY,
+      created_at: MOCK_TIMESTAMP,
+      recipientPubkey: MOCK_PUBKEY,
+      eventId: MOCK_EVENT_ID,
+      messageKind: 4,
+    },
+  },
   {
-      const schema = getNostrEventSchema(NOTE_TYPES.USER_BLOCK_LIST);
-      const event = buildBlockListEvent({
-          pubkey: TEST_PUBKEY,
-          created_at: TEST_TIMESTAMP,
-          content: "encrypted-stuff"
-      });
-      if (!validateEvent(event, schema, "Block List")) allPassed = false;
-  }
-
-  // 11. Hashtag Preference
+    name: "DM Typing Indicator",
+    type: NOTE_TYPES.DM_TYPING,
+    builder: buildDmTypingIndicatorEvent,
+    params: {
+      pubkey: MOCK_PUBKEY,
+      created_at: MOCK_TIMESTAMP,
+      recipientPubkey: MOCK_PUBKEY,
+      eventId: MOCK_EVENT_ID,
+      expiresAt: MOCK_TIMESTAMP + 60,
+    },
+  },
   {
-      const schema = getNostrEventSchema(NOTE_TYPES.HASHTAG_PREFERENCES);
-      const event = buildHashtagPreferenceEvent({
-          pubkey: TEST_PUBKEY,
-          created_at: TEST_TIMESTAMP,
-          content: JSON.stringify({ version: 1, interests: [], disinterests: [] })
-      });
-      if (!validateEvent(event, schema, "Hashtag Preferences")) allPassed = false;
-  }
-
-  // 12. Admin List (Moderation)
+    name: "View Event",
+    type: NOTE_TYPES.VIEW_EVENT,
+    builder: buildViewEvent,
+    params: {
+      pubkey: MOCK_PUBKEY,
+      created_at: MOCK_TIMESTAMP,
+      pointerTag: ["e", MOCK_EVENT_ID],
+      dedupeTag: "unique-view-id",
+    },
+  },
   {
-      const schema = getNostrEventSchema(NOTE_TYPES.ADMIN_MODERATION_LIST);
-      const event = buildAdminListEvent("moderation", {
-          pubkey: TEST_PUBKEY,
-          created_at: TEST_TIMESTAMP,
-          hexPubkeys: ["0000000000000000000000000000000000000000000000000000000000000002"]
-      });
-      if (!validateEvent(event, schema, "Admin Moderation List")) allPassed = false;
-  }
-
-  // 13. Profile Metadata
+    name: "Zap Request",
+    type: NOTE_TYPES.ZAP_REQUEST,
+    builder: buildZapRequestEvent,
+    params: {
+      pubkey: MOCK_PUBKEY,
+      created_at: MOCK_TIMESTAMP,
+      recipientPubkey: MOCK_PUBKEY,
+      amountSats: 100,
+      relays: [MOCK_RELAY],
+      eventId: MOCK_EVENT_ID,
+    },
+  },
   {
-      const schema = getNostrEventSchema(NOTE_TYPES.PROFILE_METADATA);
-      const event = buildProfileMetadataEvent({
-          pubkey: TEST_PUBKEY,
-          created_at: TEST_TIMESTAMP,
-          metadata: { name: "Test User", about: "Testing" }
-      });
-      if (!validateEvent(event, schema, "Profile Metadata")) allPassed = false;
-  }
-
-  // 14. Mute List
+    name: "Reaction",
+    type: NOTE_TYPES.VIDEO_REACTION,
+    builder: buildReactionEvent,
+    params: {
+      pubkey: MOCK_PUBKEY,
+      created_at: MOCK_TIMESTAMP,
+      targetPointer: { type: "e", value: MOCK_EVENT_ID, relay: MOCK_RELAY },
+      content: "+",
+    },
+  },
   {
-      const schema = getNostrEventSchema(NOTE_TYPES.MUTE_LIST);
-      const event = buildMuteListEvent({
-          pubkey: TEST_PUBKEY,
-          created_at: TEST_TIMESTAMP,
-          pTags: ["0000000000000000000000000000000000000000000000000000000000000002"]
-      });
-      if (!validateEvent(event, schema, "Mute List")) allPassed = false;
-  }
+    name: "Video Comment",
+    type: NOTE_TYPES.VIDEO_COMMENT,
+    builder: buildCommentEvent,
+    params: {
+      pubkey: MOCK_PUBKEY,
+      created_at: MOCK_TIMESTAMP,
+      videoEventId: MOCK_EVENT_ID,
+      videoEventRelay: MOCK_RELAY,
+      content: "Great video!",
+    },
+  },
+  {
+    name: "Watch History",
+    type: NOTE_TYPES.WATCH_HISTORY,
+    builder: buildWatchHistoryEvent,
+    params: {
+      pubkey: MOCK_PUBKEY,
+      created_at: MOCK_TIMESTAMP,
+      monthIdentifier: "2023-11",
+      pointerTags: [["e", MOCK_EVENT_ID]],
+      content: JSON.stringify({ version: 2, month: "2023-11", items: [] }),
+    },
+  },
+  {
+    name: "Subscription List",
+    type: NOTE_TYPES.SUBSCRIPTION_LIST,
+    builder: buildSubscriptionListEvent,
+    params: {
+      pubkey: MOCK_PUBKEY,
+      created_at: MOCK_TIMESTAMP,
+      content: "encrypted-content",
+      encryption: "nip44",
+    },
+  },
+  {
+    name: "Block List",
+    type: NOTE_TYPES.USER_BLOCK_LIST,
+    builder: buildBlockListEvent,
+    params: {
+      pubkey: MOCK_PUBKEY,
+      created_at: MOCK_TIMESTAMP,
+      content: "encrypted-content",
+      encryption: "nip44",
+    },
+  },
+  {
+    name: "Hashtag Preferences",
+    type: NOTE_TYPES.HASHTAG_PREFERENCES,
+    builder: buildHashtagPreferenceEvent,
+    params: {
+      pubkey: MOCK_PUBKEY,
+      created_at: MOCK_TIMESTAMP,
+      content: "encrypted-content",
+    },
+  },
+  {
+    name: "Admin Moderation List",
+    type: NOTE_TYPES.ADMIN_MODERATION_LIST,
+    builder: (params) => buildAdminListEvent("moderation", params),
+    params: {
+      pubkey: MOCK_PUBKEY,
+      created_at: MOCK_TIMESTAMP,
+      hexPubkeys: [MOCK_PUBKEY],
+    },
+  },
+  {
+    name: "Admin Blacklist",
+    type: NOTE_TYPES.ADMIN_BLACKLIST,
+    builder: (params) => buildAdminListEvent("blacklist", params),
+    params: {
+      pubkey: MOCK_PUBKEY,
+      created_at: MOCK_TIMESTAMP,
+      hexPubkeys: [MOCK_PUBKEY],
+    },
+  },
+  {
+    name: "Admin Whitelist",
+    type: NOTE_TYPES.ADMIN_WHITELIST,
+    builder: (params) => buildAdminListEvent("whitelist", params),
+    params: {
+      pubkey: MOCK_PUBKEY,
+      created_at: MOCK_TIMESTAMP,
+      hexPubkeys: [MOCK_PUBKEY],
+    },
+  },
+  {
+    name: "NIP-71 Video",
+    type: NOTE_TYPES.NIP71_VIDEO,
+    builder: buildNip71VideoEvent,
+    params: {
+      metadata: {
+        kind: 21,
+        title: "Test NIP-71 Video",
+        summary: "This is a test summary",
+      },
+      pubkey: MOCK_PUBKEY,
+      title: "Test NIP-71 Video",
+    },
+  },
+];
 
-  if (!allPassed) {
-    console.error("\n❌ Some validations failed.");
-    process.exit(1);
-  } else {
-    console.log("\n✅ All validations passed.");
-  }
-}
+// Execution
+console.log("Starting Event Validation...");
+let failCount = 0;
 
-runValidation().catch(e => {
-    console.error(e);
-    process.exit(1);
+tests.forEach((test) => {
+  try {
+    const event = test.builder(test.params);
+    const errors = validateEvent(test.type, event);
+
+    if (errors.length > 0) {
+      console.error(`❌ ${test.name} Failed:`);
+      errors.forEach((err) => console.error(`   - ${err}`));
+      failCount++;
+    } else {
+      console.log(`✅ ${test.name} Passed`);
+    }
+  } catch (e) {
+    console.error(`❌ ${test.name} threw exception:`, e);
+    failCount++;
+  }
 });
+
+if (failCount > 0) {
+  console.log(`\nValidation failed with ${failCount} errors.`);
+  process.exit(1);
+} else {
+  console.log("\nAll events validated successfully!");
+  process.exit(0);
+}

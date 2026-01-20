@@ -801,13 +801,19 @@ export function buildVideoPostEvent(params) {
     }
   }
 
-  return {
+  const event = {
     kind: schema?.kind ?? 30078,
     pubkey,
     created_at,
     tags,
     content: serializedContent,
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.VIDEO_POST, event);
+  }
+
+  return event;
 }
 
 export function buildVideoMirrorEvent(params) {
@@ -1958,11 +1964,82 @@ export function buildAdminListEvent(listKey, params) {
   };
 }
 
+function hasTag(tags, tagName, tagValue = null) {
+  if (!Array.isArray(tags)) return false;
+  return tags.some(
+    (tag) =>
+      Array.isArray(tag) &&
+      tag[0] === tagName &&
+      (tagValue === null || tag[1] === tagValue)
+  );
+}
+
+export function validateEventAgainstSchema(type, event) {
+  if (!isDevMode || !event) return;
+
+  const schema = getNostrEventSchema(type);
+  if (!schema) return;
+
+  if (event.kind !== schema.kind) {
+    devLogger.warn(
+      `[schema] Kind mismatch for ${type}: expected ${schema.kind}, got ${event.kind}`,
+    );
+  }
+
+  if (schema.topicTag) {
+    if (!hasTag(event.tags, schema.topicTag.name, schema.topicTag.value)) {
+      devLogger.warn(
+        `[schema] Missing topic tag for ${type}: ${schema.topicTag.name}=${schema.topicTag.value}`,
+      );
+    }
+  }
+
+  if (schema.identifierTag) {
+    const expectedValue = schema.identifierTag.value;
+    if (!hasTag(event.tags, schema.identifierTag.name, expectedValue)) {
+      devLogger.warn(
+        `[schema] Missing identifier tag for ${type}: ${schema.identifierTag.name}${
+          expectedValue ? "=" + expectedValue : ""
+        }`,
+      );
+    }
+  }
+
+  if (schema.appendTags) {
+    schema.appendTags.forEach((appendTag) => {
+      if (Array.isArray(appendTag) && appendTag.length >= 2) {
+        const tagName = appendTag[0];
+        const tagValue = appendTag[1];
+        if (!hasTag(event.tags, tagName, tagValue)) {
+          devLogger.warn(
+            `[schema] Missing append tag for ${type}: ${tagName}=${tagValue}`,
+          );
+        }
+      }
+    });
+  }
+
+  if (schema.content) {
+    if (schema.content.format === "json") {
+      try {
+        JSON.parse(event.content);
+      } catch (e) {
+        devLogger.warn(`[schema] Content is not valid JSON for ${type}`);
+      }
+    } else if (schema.content.format === "empty") {
+      if (event.content !== "") {
+        devLogger.warn(`[schema] Content should be empty for ${type}`);
+      }
+    }
+  }
+}
+
 if (typeof window !== "undefined") {
   window.bitvidNostrEvents = {
     NOTE_TYPES,
     getSchema: getNostrEventSchema,
     getAllSchemas: getAllNostrEventSchemas,
     setOverrides: setNostrEventSchemaOverrides,
+    validateEvent: validateEventAgainstSchema,
   };
 }
