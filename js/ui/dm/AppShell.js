@@ -184,7 +184,7 @@ export class AppShell {
         onToggleTypingIndicators,
       });
       popover.classList.add("dm-settings-popover", "absolute", "z-50", "right-4", "top-12", "bg-surface", "border", "border-border", "rounded-xl");
-      sidebarHeader.style.position = "relative";
+      sidebarHeader.classList.add("relative");
       sidebarHeader.appendChild(popover);
 
       const closeHandler = (event) => {

@@ -1,9 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import Application from "../../js/app.js";
-
-const computeSimilarContent = Application.prototype.computeSimilarContentCandidates;
+import SimilarContentController from "../../js/ui/similarContentController.js";
 
 function createAppStub({ videos = [] } = {}) {
   const videosMap = new Map();
@@ -13,7 +11,7 @@ function createAppStub({ videos = [] } = {}) {
     }
   }
 
-  return {
+  const appStub = {
     videoListView: { currentVideos: videos },
     videosMap,
     getKnownVideoPostedAt(video) {
@@ -44,6 +42,35 @@ function createAppStub({ videos = [] } = {}) {
       return false;
     },
   };
+
+  const controller = new SimilarContentController({
+    services: {
+      nostrClient: {
+        getActiveVideos: () => videos,
+      },
+    },
+    callbacks: {
+      isAuthorBlocked: (pubkey) => appStub.isAuthorBlocked(pubkey),
+      decorateVideoModeration: (video) => video,
+      decorateVideoCreatorIdentity: (video) => video,
+    },
+    state: {
+      getVideoListView: () => appStub.videoListView,
+      getVideosMap: () => appStub.videosMap,
+    },
+    helpers: {
+      getKnownVideoPostedAt: (video) => appStub.getKnownVideoPostedAt(video),
+      buildShareUrlFromEventId: (id) => appStub.buildShareUrlFromEventId(id),
+      formatTimeAgo: (ts) => appStub.formatTimeAgo(ts),
+    },
+  });
+
+  appStub.similarContentController = controller;
+  appStub.computeSimilarContentCandidates = function (options) {
+    return this.similarContentController.computeCandidates(options);
+  };
+
+  return appStub;
 }
 
 function createVideo({
@@ -117,7 +144,10 @@ test("orders similar videos by shared tags then timestamp", () => {
     videos: [candidateA, candidateB, candidateC],
   });
 
-  const matches = computeSimilarContent.call(app, { activeVideo, maxItems: 5 });
+  const matches = app.computeSimilarContentCandidates({
+    activeVideo,
+    maxItems: 5,
+  });
   assert.equal(matches.length, 3);
   assert.deepEqual(
     matches.map((entry) => entry.video.id),
@@ -140,7 +170,10 @@ test("returns no matches when the active video lacks tags", () => {
   });
 
   const app = createAppStub({ videos: [candidate] });
-  const matches = computeSimilarContent.call(app, { activeVideo, maxItems: 5 });
+  const matches = app.computeSimilarContentCandidates({
+    activeVideo,
+    maxItems: 5,
+  });
   assert.deepEqual(matches, []);
 });
 
@@ -162,7 +195,10 @@ test("skips candidates without tag metadata", () => {
     videos: [candidateWithTags, candidateWithoutTags],
   });
 
-  const matches = computeSimilarContent.call(app, { activeVideo, maxItems: 5 });
+  const matches = app.computeSimilarContentCandidates({
+    activeVideo,
+    maxItems: 5,
+  });
   assert.equal(matches.length, 1);
   assert.equal(matches[0].video.id, "video-a");
 });
@@ -192,7 +228,10 @@ test("filters NSFW and private videos when NSFW content is disabled", () => {
     videos: [publicVideo, nsfwVideo, privateVideo],
   });
 
-  const matches = computeSimilarContent.call(app, { activeVideo, maxItems: 5 });
+  const matches = app.computeSimilarContentCandidates({
+    activeVideo,
+    maxItems: 5,
+  });
   assert.deepEqual(
     matches.map((entry) => entry.video.id),
     ["video-public"],

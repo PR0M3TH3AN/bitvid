@@ -237,8 +237,9 @@ export default class SimilarContentController {
         seenKeys.add(dedupeKey);
       }
 
-      if (!Array.isArray(candidate.displayTags) || candidate.displayTags.length === 0) {
-        candidate.displayTags = Array.isArray(candidateTagsSource)
+      // Ensure the candidate itself has displayTags populated for the result view
+      if (!Array.isArray(decoratedCandidate.displayTags) || decoratedCandidate.displayTags.length === 0) {
+        decoratedCandidate.displayTags = Array.isArray(candidateTagsSource)
           ? candidateTagsSource.slice()
           : [];
       }
