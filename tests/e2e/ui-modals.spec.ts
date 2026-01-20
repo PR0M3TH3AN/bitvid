@@ -149,3 +149,84 @@ test.describe("login modal flows", () => {
     expect(lastRequest.secret).toBe("nsec-test-secret");
   });
 });
+
+test.describe("component modal pages", () => {
+  const modalPages = [
+    "upload-modal",
+    "edit-video-modal",
+    "delete-video-modal",
+    "revert-video-modal",
+    "profile-modal",
+    "video-modal",
+    "lockdown-modal",
+    "application-form",
+  ];
+
+  const closeSelectors = [
+    ".modal-close",
+    "[data-dismiss]",
+    ".btn-ghost",
+    "[data-cancel]",
+    "[data-close]",
+    "[data-close-modal]",
+    "[data-modal-close]",
+    "[data-modal-cancel]",
+  ];
+
+  for (const pageName of modalPages) {
+    test(`closes ${pageName} modal`, async ({ page }) => {
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await page.goto(`/components/${pageName}.html`, {
+        waitUntil: "networkidle",
+      });
+
+      const modal = page.locator(".bv-modal");
+      await expect(modal).toHaveCount(1);
+
+      await page.evaluate(() => {
+        const element = document.querySelector(".bv-modal");
+        if (!element) {
+          return;
+        }
+        element.classList.remove("hidden");
+        element.setAttribute("data-open", "true");
+      });
+
+      await expect(modal).not.toHaveClass(/hidden/);
+
+      let closeSelector: string | null = null;
+      for (const selector of closeSelectors) {
+        if ((await page.locator(selector).count()) > 0) {
+          closeSelector = selector;
+          break;
+        }
+      }
+
+      if (closeSelector) {
+        await page.locator(closeSelector).first().click();
+      } else {
+        expect(
+          false,
+          `Modal page ${pageName} is missing a close/cancel control.`,
+        ).toBeTruthy();
+        await page.evaluate(() => {
+          const element = document.querySelector(".bv-modal");
+          if (!element) {
+            return;
+          }
+          element.setAttribute("data-open", "false");
+          element.classList.add("hidden");
+        });
+      }
+
+      await page.waitForFunction(() => {
+        const element = document.querySelector(".bv-modal");
+        if (!element) {
+          return true;
+        }
+        const dataOpen = element.getAttribute("data-open");
+        return dataOpen === "false" || element.classList.contains("hidden");
+      });
+    });
+  }
+});
