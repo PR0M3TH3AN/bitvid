@@ -4,8 +4,6 @@ import "../../tests/test-helpers/setup-localstorage.mjs"; // Ensure localStorage
 import SimilarContentController from "../../js/ui/similarContentController.js";
 import { ALLOW_NSFW_CONTENT } from "../../js/config.js";
 
-import SimilarContentController from "../../js/ui/similarContentController.js";
-
 function createControllerStub({ videos = [] } = {}) {
   const videosMap = new Map();
   for (const video of videos) {
