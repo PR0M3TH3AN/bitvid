@@ -1225,6 +1225,7 @@ export class ProfileModalController {
       messages: null,
       history: null,
       admin: null,
+      safety: null,
     };
     this.panes = {
       account: null,
@@ -1238,6 +1239,7 @@ export class ProfileModalController {
       messages: null,
       history: null,
       admin: null,
+      safety: null,
     };
     this.relayList = null;
     this.relayInput = null;
@@ -1512,6 +1514,7 @@ export class ProfileModalController {
     this.navButtons.history =
       document.getElementById("profileNavHistory") || null;
     this.navButtons.admin = document.getElementById("profileNavAdmin") || null;
+    this.navButtons.safety = document.getElementById("profileNavSafety") || null;
 
     this.profileEditBtn = document.getElementById("profileEditBtn") || null;
     this.profileEditBackBtn = document.getElementById("profileEditBackBtn") || null;
@@ -1529,6 +1532,7 @@ export class ProfileModalController {
     this.panes.messages = document.getElementById("profilePaneMessages") || null;
     this.panes.history = document.getElementById("profilePaneHistory") || null;
     this.panes.admin = document.getElementById("profilePaneAdmin") || null;
+    this.panes.safety = document.getElementById("profilePaneSafety") || null;
 
     this.relayList = document.getElementById("relayList") || null;
     this.relayInput = document.getElementById("relayInput") || null;
@@ -6745,6 +6749,9 @@ export class ProfileModalController {
       void this.populateSubscriptionsList();
     } else if (target === "blocked") {
       this.populateBlockedList();
+    } else if (target === "safety") {
+      this.refreshModerationSettingsUi();
+      this.syncLinkPreviewSettingsUi();
     }
 
     this.callbacks.onSelectPane(target, { controller: this });
