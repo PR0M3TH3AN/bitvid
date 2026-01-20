@@ -1,11 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import Application from "../../js/app.js";
+import SimilarContentController from "../../js/ui/similarContentController.js";
 
-const computeSimilarContent = Application.prototype.computeSimilarContentCandidates;
-
-function createAppStub({ videos = [] } = {}) {
+function createControllerStub({ videos = [] } = {}) {
   const videosMap = new Map();
   for (const video of videos) {
     if (video && typeof video.id === "string") {
@@ -13,9 +11,18 @@ function createAppStub({ videos = [] } = {}) {
     }
   }
 
-  return {
-    videoListView: { currentVideos: videos },
-    videosMap,
+  const services = {
+    nostrClient: {
+      getActiveVideos: () => videos,
+    },
+  };
+
+  const state = {
+    getVideoListView: () => ({ currentVideos: videos }),
+    getVideosMap: () => videosMap,
+  };
+
+  const helpers = {
     getKnownVideoPostedAt(video) {
       if (Number.isFinite(video?.rootCreatedAt)) {
         return Math.floor(video.rootCreatedAt);
@@ -31,19 +38,18 @@ function createAppStub({ videos = [] } = {}) {
     formatTimeAgo(timestamp) {
       return Number.isFinite(timestamp) ? `${timestamp}s` : "";
     },
-    deriveVideoPointerInfo(video) {
-      if (video?.pointerInfo) {
-        return video.pointerInfo;
-      }
-      if (typeof video?.pointerKey === "string" && video.pointerKey.trim()) {
-        return { key: video.pointerKey.trim() };
-      }
-      return null;
-    },
-    isAuthorBlocked() {
-      return false;
-    },
   };
+
+  const callbacks = {
+    isAuthorBlocked: () => false,
+  };
+
+  return new SimilarContentController({
+    services,
+    state,
+    helpers,
+    callbacks,
+  });
 }
 
 function createVideo({
@@ -113,11 +119,11 @@ test("orders similar videos by shared tags then timestamp", () => {
     rootCreatedAt: 50,
   });
 
-  const app = createAppStub({
+  const controller = createControllerStub({
     videos: [candidateA, candidateB, candidateC],
   });
 
-  const matches = computeSimilarContent.call(app, { activeVideo, maxItems: 5 });
+  const matches = controller.computeCandidates({ activeVideo, maxItems: 5 });
   assert.equal(matches.length, 3);
   assert.deepEqual(
     matches.map((entry) => entry.video.id),
@@ -139,8 +145,8 @@ test("returns no matches when the active video lacks tags", () => {
     displayTags: ["art"],
   });
 
-  const app = createAppStub({ videos: [candidate] });
-  const matches = computeSimilarContent.call(app, { activeVideo, maxItems: 5 });
+  const controller = createControllerStub({ videos: [candidate] });
+  const matches = controller.computeCandidates({ activeVideo, maxItems: 5 });
   assert.deepEqual(matches, []);
 });
 
@@ -158,11 +164,11 @@ test("skips candidates without tag metadata", () => {
     id: "video-b",
   });
 
-  const app = createAppStub({
+  const controller = createControllerStub({
     videos: [candidateWithTags, candidateWithoutTags],
   });
 
-  const matches = computeSimilarContent.call(app, { activeVideo, maxItems: 5 });
+  const matches = controller.computeCandidates({ activeVideo, maxItems: 5 });
   assert.equal(matches.length, 1);
   assert.equal(matches[0].video.id, "video-a");
 });
@@ -188,11 +194,11 @@ test("filters NSFW and private videos when NSFW content is disabled", () => {
     isPrivate: true,
   });
 
-  const app = createAppStub({
+  const controller = createControllerStub({
     videos: [publicVideo, nsfwVideo, privateVideo],
   });
 
-  const matches = computeSimilarContent.call(app, { activeVideo, maxItems: 5 });
+  const matches = controller.computeCandidates({ activeVideo, maxItems: 5 });
   assert.deepEqual(
     matches.map((entry) => entry.video.id),
     ["video-public"],
