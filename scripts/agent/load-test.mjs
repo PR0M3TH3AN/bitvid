@@ -1,318 +1,340 @@
+import './setup-test-env.js';
 import WebSocket from 'ws';
 import { generateSecretKey, getPublicKey, finalizeEvent } from 'nostr-tools';
-import { spawn } from 'child_process';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { spawn, exec } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { buildVideoPostEvent, buildViewEvent } from '../../js/nostrEventSchemas.js';
+import { buildNip71VideoEvent } from '../../js/nostr/nip71.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const PROJECT_ROOT = path.resolve(__dirname, '../..');
+const REPO_ROOT = path.resolve(__dirname, '../../');
+const ARTIFACTS_DIR = path.join(REPO_ROOT, 'artifacts');
 
-// Configuration
+// Ensure artifacts dir exists
+if (!fs.existsSync(ARTIFACTS_DIR)) {
+  fs.mkdirSync(ARTIFACTS_DIR, { recursive: true });
+}
+
+// Configuration defaults
 const CONFIG = {
+  clients: 100, // Default N
+  duration: 60, // Seconds
+  rate: 5, // Events per second per client (approx)
   relayUrl: 'ws://localhost:8008',
-  numClients: 1000,
-  durationSeconds: 60,
-  eventsPerSecond: 100,
-  mix: {
-    viewEvent: 0.8,
-    videoPost: 0.2
-  },
-  unsafe: false
+  relayScript: 'scripts/agent/simple-relay.mjs',
+  force: false
 };
 
 // Parse args
 const args = process.argv.slice(2);
 for (let i = 0; i < args.length; i++) {
   const arg = args[i];
-  if (arg === '--clients') CONFIG.numClients = parseInt(args[++i], 10);
-  else if (arg === '--duration') CONFIG.durationSeconds = parseInt(args[++i], 10);
-  else if (arg === '--rate') CONFIG.eventsPerSecond = parseInt(args[++i], 10);
-  else if (arg === '--relay') CONFIG.relayUrl = args[++i];
-  else if (arg === '--unsafe') CONFIG.unsafe = true;
+  if (arg.startsWith('--clients')) {
+    if (arg.includes('=')) CONFIG.clients = parseInt(arg.split('=')[1]);
+    else if (args[i+1]) CONFIG.clients = parseInt(args[++i]);
+  }
+  else if (arg.startsWith('--duration')) {
+    if (arg.includes('=')) CONFIG.duration = parseInt(arg.split('=')[1]);
+    else if (args[i+1]) CONFIG.duration = parseInt(args[++i]);
+  }
+  else if (arg.startsWith('--rate')) {
+    if (arg.includes('=')) CONFIG.rate = parseFloat(arg.split('=')[1]);
+    else if (args[i+1]) CONFIG.rate = parseFloat(args[++i]);
+  }
+  else if (arg.startsWith('--relay')) {
+    if (arg.includes('=')) CONFIG.relayUrl = arg.split('=')[1];
+    else if (args[i+1]) CONFIG.relayUrl = args[++i];
+  }
+  else if (arg === '--force') {
+    CONFIG.force = true;
+  }
 }
 
 console.log('Load Test Configuration:', CONFIG);
 
-// Guardrail
+// Helper: Is IP Private?
+function isPrivateIP(ip) {
+  const parts = ip.split('.').map(Number);
+  if (parts.length !== 4) return false; // Basic check, ipv4 only
+  // 10.0.0.0 - 10.255.255.255
+  if (parts[0] === 10) return true;
+  // 172.16.0.0 - 172.31.255.255
+  if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+  // 192.168.0.0 - 192.168.255.255
+  if (parts[0] === 192 && parts[1] === 168) return true;
+  // 127.0.0.0 - 127.255.255.255
+  if (parts[0] === 127) return true;
+  return false;
+}
+
+// Guardrail: Public Relays
 function isSafeRelay(url) {
-    if (CONFIG.unsafe) return true;
+  try {
+    const u = new URL(url);
+    const hostname = u.hostname;
+
+    // Localhost whitelist
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') return true;
+
+    // Private IP whitelist
+    if (isPrivateIP(hostname)) return true;
+
+    return false;
+  } catch (e) {
+    return false;
+  }
+}
+
+if (!isSafeRelay(CONFIG.relayUrl) && !CONFIG.force) {
+  console.error(`FATAL: Relay "${CONFIG.relayUrl}" is not on the whitelist (localhost or private IP).`);
+  console.error('Use --force to override this safety check ONLY if you are testing against a dedicated private relay.');
+  process.exit(1);
+}
+
+// Client Class
+class LoadClient {
+  constructor(id, relayUrl) {
+    this.id = id;
+    this.relayUrl = relayUrl;
+    this.sk = generateSecretKey();
+    this.pk = getPublicKey(this.sk);
+    this.ws = null;
+    this.connected = false;
+    this.queue = [];
+    this.pending = new Map(); // id -> { start, resolve, reject }
+  }
+
+  connect() {
+    return new Promise((resolve, reject) => {
+      this.ws = new WebSocket(this.relayUrl);
+      this.ws.on('open', () => {
+        this.connected = true;
+        resolve();
+      });
+      this.ws.on('error', (err) => {
+        if (!this.connected) reject(err);
+        else console.error(`Client ${this.id} error:`, err.message);
+      });
+      this.ws.on('close', () => {
+        this.connected = false;
+      });
+      this.ws.on('message', (data) => this.handleMessage(data));
+    });
+  }
+
+  handleMessage(data) {
     try {
-        const u = new URL(url);
-        return u.hostname === 'localhost' || u.hostname === '127.0.0.1' || u.hostname === '[::1]';
-    } catch {
-        return false;
+      const msg = JSON.parse(data);
+      if (msg[0] === 'OK') {
+        const [, eventId, success, message] = msg;
+        const pending = this.pending.get(eventId);
+        if (pending) {
+          if (success) pending.resolve(performance.now() - pending.start);
+          else pending.reject(new Error(message));
+          this.pending.delete(eventId);
+        }
+      }
+    } catch (e) {
+      console.error(`Client ${this.id} parse error:`, e);
     }
+  }
+
+  async publish(eventTemplate) {
+    if (!this.connected) throw new Error('Not connected');
+
+    const event = finalizeEvent(eventTemplate, this.sk);
+
+    return new Promise((resolve, reject) => {
+      this.pending.set(event.id, {
+        start: performance.now(),
+        resolve,
+        reject
+      });
+
+      try {
+          this.ws.send(JSON.stringify(['EVENT', event]));
+      } catch(e) {
+          this.pending.delete(event.id);
+          reject(e);
+      }
+    });
+  }
+
+  close() {
+    if (this.ws) this.ws.close();
+  }
 }
 
-if (!isSafeRelay(CONFIG.relayUrl)) {
-    console.error('ERROR: Guardrail active. Cannot run against public relays without --unsafe flag.');
-    process.exit(1);
-}
-
-// Artifacts setup
-const ARTIFACTS_DIR = path.join(PROJECT_ROOT, 'artifacts');
-if (!fs.existsSync(ARTIFACTS_DIR)) {
-  fs.mkdirSync(ARTIFACTS_DIR, { recursive: true });
-}
-
-// Helpers
-function buildViewEvent(pubkey) {
-  return {
-    kind: 30079,
-    created_at: Math.floor(Date.now() / 1000),
-    tags: [
-      ['d', 'watch-history'],
-      ['t', 'view'],
-      ['session', 'true']
-    ],
-    content: JSON.stringify({ timestamp: Date.now(), random: Math.random() }),
-    pubkey
-  };
-}
-
-function buildVideoPostEvent(pubkey) {
-  return {
-    kind: 30078,
-    created_at: Math.floor(Date.now() / 1000),
-    tags: [
-      ['d', Math.random().toString(36).substring(7)],
-      ['t', 'video']
-    ],
-    content: JSON.stringify({
-      version: 1,
-      title: `Load Test Video ${Math.random().toString(36)}`,
-      videoRootId: Math.random().toString(36),
-      mode: 's',
-      duration: 120
-    }),
-    pubkey
-  };
-}
-
-// State
-const metrics = {
-  sent: 0,
-  ok: 0,
-  failed: 0,
+// Stats
+const stats = {
+  totalSent: 0,
+  totalReceived: 0,
+  errors: 0,
   latencies: [],
-  signingTimes: [],
-  startTime: Date.now(),
-  startCpu: process.cpuUsage(),
-  errors: []
+  relayMetrics: [] // { timestamp, cpu, memory }
 };
 
-// Main execution
-async function main() {
-  let relayProcess = null;
-  const isLocalRelay = CONFIG.relayUrl.includes('localhost') || CONFIG.relayUrl.includes('127.0.0.1');
-
-  if (isLocalRelay) {
-    try {
-      await checkRelay(CONFIG.relayUrl);
-      console.log('Relay is already running.');
-    } catch (e) {
-      console.log('Relay not running, spawning simple-relay.mjs...');
-      const relayScript = path.join(PROJECT_ROOT, 'scripts/agent/simple-relay.mjs');
-      if (!fs.existsSync(relayScript)) {
-          console.error(`Simple relay script not found at ${relayScript}`);
-          process.exit(1);
-      }
-      relayProcess = spawn('node', [relayScript], {
-        stdio: 'inherit',
-        detached: false
-      });
-      await new Promise(resolve => setTimeout(resolve, 2000));
-    }
-  }
-
-  console.log(`Simulating ${CONFIG.numClients} clients...`);
-
-  const MAX_CONNS = Math.min(CONFIG.numClients, 100);
-  const connections = [];
-
-  for (let i = 0; i < MAX_CONNS; i++) {
-    const ws = new WebSocket(CONFIG.relayUrl);
-    ws.on('error', (err) => {
-        metrics.errors.push(err.message);
+async function getRelayMetrics(pid) {
+  if (!pid) return null;
+  return new Promise(resolve => {
+    exec(`ps -p ${pid} -o %cpu,%mem`, (err, stdout) => {
+      if (err) return resolve(null);
+      const lines = stdout.trim().split('\n');
+      if (lines.length < 2) return resolve(null);
+      const [cpu, mem] = lines[1].trim().split(/\s+/);
+      resolve({ cpu: parseFloat(cpu), mem: parseFloat(mem) });
     });
-    connections.push(ws);
+  });
+}
+
+async function run() {
+  // Start Relay
+  let relayProc;
+  let relayPid;
+
+  if (CONFIG.relayUrl.includes('localhost') || CONFIG.relayUrl.includes('127.0.0.1')) {
+    console.log('Starting local relay...');
+    relayProc = spawn('node', [CONFIG.relayScript], { cwd: REPO_ROOT, stdio: 'inherit' });
+    relayPid = relayProc.pid;
+    // Wait for relay
+    await new Promise(r => setTimeout(r, 2000));
+  } else {
+    console.log('Using external relay. Cannot monitor CPU/Mem directly.');
   }
 
-  await Promise.all(connections.map(ws => new Promise(resolve => {
-      if (ws.readyState === WebSocket.OPEN) resolve();
-      else ws.on('open', resolve);
-      setTimeout(resolve, 1000);
+  // Create Clients
+  console.log(`Creating ${CONFIG.clients} clients...`);
+  const clients = [];
+  for (let i = 0; i < CONFIG.clients; i++) {
+    clients.push(new LoadClient(i, CONFIG.relayUrl));
+  }
+
+  // Connect Clients
+  console.log('Connecting clients...');
+  const connectStart = performance.now();
+  await Promise.all(clients.map(c => c.connect().catch(e => {
+    console.error(`Client ${c.id} failed to connect:`, e.message);
+    stats.errors++;
   })));
+  console.log(`Connected in ${(performance.now() - connectStart).toFixed(2)}ms`);
 
-  console.log(`${connections.length} connections established.`);
-
-  const keypairs = [];
-  for (let i = 0; i < CONFIG.numClients; i++) {
-    const sk = generateSecretKey();
-    keypairs.push({
-        sk,
-        pk: getPublicKey(sk)
-    });
-  }
-
+  // Load Loop
   console.log('Starting load generation...');
-  const intervalMs = 1000 / CONFIG.eventsPerSecond;
-  const endAt = Date.now() + (CONFIG.durationSeconds * 1000);
+  const endTime = Date.now() + CONFIG.duration * 1000;
+  const runningClients = clients.filter(c => c.connected);
 
-  const pendingLatencies = new Map();
+  // Monitor Loop
+  const monitorInterval = setInterval(async () => {
+    if (relayPid) {
+      const metrics = await getRelayMetrics(relayPid);
+      if (metrics) {
+        stats.relayMetrics.push({ timestamp: Date.now(), ...metrics });
+      }
+    }
+  }, 1000);
 
-  connections.forEach(ws => {
-      ws.removeAllListeners('message');
-      ws.on('message', (data) => {
-          try {
-              const msg = JSON.parse(data);
-              if (msg[0] === 'OK') {
-                  const eventId = msg[1];
-                  if (pendingLatencies.has(eventId)) {
-                      const start = pendingLatencies.get(eventId);
-                      const latency = Date.now() - start;
-                      metrics.latencies.push(latency);
-                      pendingLatencies.delete(eventId);
-                  }
-                  metrics.ok++;
-              } else if (msg[0] === 'NOTICE') {
-                  metrics.errors.push(msg[1]);
+  // Traffic Loop
+  const trafficPromises = runningClients.map(async (client) => {
+    while (Date.now() < endTime) {
+      const type = Math.random() > 0.8 ? 'VIDEO' : 'VIEW'; // 20% video, 80% view
+      let template;
+
+      try {
+        if (type === 'VIDEO') {
+          // Simulate multi-part (Video + NIP-71)
+          // For load test, we just publish the main video event.
+          // Properly linking NIP-71 requires more state, but we can publish Kind 30078.
+           const videoRootId = `load-${client.id}-${Date.now()}`;
+           template = buildVideoPostEvent({
+              pubkey: client.pk,
+              created_at: Math.floor(Date.now() / 1000),
+              dTagValue: videoRootId,
+              content: {
+                title: `Load Test Video ${Date.now()}`,
+                videoRootId: videoRootId,
+                version: 3
               }
-          } catch (e) {}
-      });
+           });
+        } else {
+          // View Event
+          template = buildViewEvent({
+            pubkey: client.pk,
+            created_at: Math.floor(Date.now() / 1000),
+            pointerValue: `30078:${client.pk}:test`,
+            pointerTag: ['a', `30078:${client.pk}:test`]
+          });
+        }
+
+        stats.totalSent++;
+        const latency = await client.publish(template);
+        stats.totalReceived++;
+        stats.latencies.push(latency);
+
+      } catch (e) {
+        stats.errors++;
+        // Backoff slightly on error
+        await new Promise(r => setTimeout(r, 100));
+      }
+
+      // Rate limiting
+      const delay = 1000 / CONFIG.rate + (Math.random() * 20 - 10);
+      await new Promise(r => setTimeout(r, Math.max(10, delay)));
+    }
   });
 
-  const loop = async () => {
-    while (Date.now() < endAt) {
-       const loopStart = Date.now();
+  await Promise.all(trafficPromises);
 
-       const client = keypairs[Math.floor(Math.random() * keypairs.length)];
-       const ws = connections[Math.floor(Math.random() * connections.length)];
+  clearInterval(monitorInterval);
+  clients.forEach(c => c.close());
+  if (relayProc) relayProc.kill();
 
-       if (ws.readyState === WebSocket.OPEN) {
-           let eventTemplate;
-           if (Math.random() < CONFIG.mix.viewEvent) {
-               eventTemplate = buildViewEvent(client.pk);
-           } else {
-               eventTemplate = buildVideoPostEvent(client.pk);
-           }
+  // Report
+  console.log('Load test completed. Generating report...');
 
-           try {
-               const signStart = process.hrtime();
-               const event = finalizeEvent(eventTemplate, client.sk);
-               const signEnd = process.hrtime(signStart);
-               const signMs = (signEnd[0] * 1000) + (signEnd[1] / 1e6);
-               metrics.signingTimes.push(signMs);
+  stats.latencies.sort((a, b) => a - b);
+  const p50 = stats.latencies[Math.floor(stats.latencies.length * 0.5)] || 0;
+  const p95 = stats.latencies[Math.floor(stats.latencies.length * 0.95)] || 0;
+  const p99 = stats.latencies[Math.floor(stats.latencies.length * 0.99)] || 0;
+  const avg = stats.latencies.reduce((a, b) => a + b, 0) / (stats.latencies.length || 1);
 
-               const msg = JSON.stringify(['EVENT', event]);
-
-               if (Math.random() < 0.05) {
-                   pendingLatencies.set(event.id, Date.now());
-               }
-
-               ws.send(msg);
-               metrics.sent++;
-           } catch (err) {
-               metrics.failed++;
-               metrics.errors.push(err.message);
-           }
-       }
-
-       const elapsed = Date.now() - loopStart;
-       const targetDelay = 1000 / CONFIG.eventsPerSecond;
-       if (elapsed < targetDelay) {
-           await new Promise(r => setTimeout(r, targetDelay - elapsed));
-       }
-    }
-    finish(relayProcess);
+  const report = {
+    config: CONFIG,
+    timestamp: new Date().toISOString(),
+    metrics: {
+      totalRequests: stats.totalSent,
+      successfulRequests: stats.totalReceived,
+      errors: stats.errors,
+      throughput: stats.totalReceived / CONFIG.duration,
+      latency: {
+        avg,
+        p50,
+        p95,
+        p99,
+        min: stats.latencies[0] || 0,
+        max: stats.latencies[stats.latencies.length - 1] || 0
+      },
+      relayResources: stats.relayMetrics
+    },
+    bottlenecks: [],
+    remediation: []
   };
 
-  loop();
+  // Simple analysis
+  if (p99 > 200) {
+    report.bottlenecks.push('High P99 Latency (>200ms)');
+    report.remediation.push('Investigate relay event processing loop or event size overhead.');
+  }
+  if (stats.errors > 0) {
+    report.bottlenecks.push(`Error rate ${(stats.errors/stats.totalSent*100).toFixed(2)}%`);
+    report.remediation.push('Check relay logs for validation errors or connection limits.');
+  }
+
+  const reportPath = path.join(ARTIFACTS_DIR, `load-report-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
+  fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
+  console.log(`Report saved to ${reportPath}`);
 }
 
-function checkRelay(url) {
-    return new Promise((resolve, reject) => {
-        const ws = new WebSocket(url);
-        ws.on('open', () => {
-            ws.close();
-            resolve();
-        });
-        ws.on('error', (err) => {
-            reject(err);
-        });
-    });
-}
-
-function finish(relayProcess) {
-    console.log('Test finished. Generating report...');
-
-    const cpuUsage = process.cpuUsage(metrics.startCpu);
-    const memUsage = process.memoryUsage();
-
-    const avgLatency = metrics.latencies.reduce((a, b) => a + b, 0) / (metrics.latencies.length || 1);
-    const sortedLatencies = metrics.latencies.sort((a, b) => a - b);
-    const p95 = sortedLatencies[Math.floor(sortedLatencies.length * 0.95)] || 0;
-    const maxLatency = sortedLatencies[sortedLatencies.length - 1] || 0;
-
-    const avgSignTime = metrics.signingTimes.reduce((a, b) => a + b, 0) / (metrics.signingTimes.length || 1);
-    const sortedSignTimes = metrics.signingTimes.sort((a, b) => a - b);
-    const p95SignTime = sortedSignTimes[Math.floor(sortedSignTimes.length * 0.95)] || 0;
-
-    const durationSec = (Date.now() - metrics.startTime) / 1000;
-    const throughput = metrics.ok / durationSec;
-
-    const report = {
-        timestamp: new Date().toISOString(),
-        config: CONFIG,
-        metrics: {
-            durationSeconds: durationSec,
-            totalSent: metrics.sent,
-            totalOk: metrics.ok,
-            totalFailed: metrics.failed,
-            throughputEventsPerSec: throughput,
-            latencyMs: {
-                avg: avgLatency,
-                p95: p95,
-                max: maxLatency
-            },
-            crypto: {
-                avgSigningTimeMs: avgSignTime,
-                p95SigningTimeMs: p95SignTime
-            },
-            resources: {
-                cpuUser: cpuUsage.user,
-                cpuSystem: cpuUsage.system,
-                memoryRss: memUsage.rss,
-                memoryHeapTotal: memUsage.heapTotal,
-                memoryHeapUsed: memUsage.heapUsed
-            },
-            errorSample: metrics.errors.slice(0, 10)
-        },
-        bottlenecks: [
-            avgLatency > 1000 ? "High Average Latency (>1s)" : null,
-            avgSignTime > 10 ? "Cryptographic Bottleneck (Signing > 10ms)" : null,
-            metrics.failed > 0 ? "Failed Events Detected" : null
-        ].filter(Boolean),
-        remediation: "If latency is high, consider scaling the relay. If signing is slow, review crypto library or CPU resources."
-    };
-
-    const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
-    const reportPath = path.join(ARTIFACTS_DIR, `load-report-${dateStr}.json`);
-    fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
-
-    console.log(`Report saved to ${reportPath}`);
-    console.log(JSON.stringify(report.metrics, null, 2));
-
-    if (relayProcess) {
-        console.log('Stopping local relay...');
-        relayProcess.kill();
-    }
-    process.exit(0);
-}
-
-main().catch(err => {
-    console.error(err);
-    process.exit(1);
-});
+run().catch(console.error);
