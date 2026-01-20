@@ -126,6 +126,7 @@ export class AppShell {
     notifications = [],
     signingAdapter = null,
     zapConfig = null,
+    mobileView = "list",
     onSelectConversation,
     onSendMessage,
     onSendZap,
@@ -133,6 +134,7 @@ export class AppShell {
     onMarkAllRead,
     onToggleReadReceipts,
     onToggleTypingIndicators,
+    onBack,
   } = {}) {
     if (!doc) {
       throw new Error("AppShell requires a document reference.");
@@ -140,6 +142,9 @@ export class AppShell {
 
     this.document = doc;
     this.root = createElement(doc, "div", "dm-app-shell");
+    if (typeof mobileView === "string") {
+      this.root.dataset.dmView = mobileView;
+    }
 
     const { totalsByConversation, totalsByProfile } = aggregateZapTotals(zapReceipts);
     const enrichedConversations = conversations.map((conversation) => ({
@@ -224,6 +229,7 @@ export class AppShell {
         profileZapTotalSats: totalsByProfile.get(activeConversation.pubkey) || 0,
         onMarkRead: onMarkConversationRead,
         onSendZap,
+        onBack,
         zapConfig,
       }),
     );

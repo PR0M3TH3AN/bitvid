@@ -28,6 +28,7 @@ export function MessageThread({
   profileZapTotalSats = 0,
   onMarkRead,
   onSendZap,
+  onBack,
   zapConfig = null,
 } = {}) {
   if (!doc) {
@@ -37,6 +38,18 @@ export function MessageThread({
   const root = createElement(doc, "section", "dm-message-thread");
 
   const header = createElement(doc, "header", "dm-message-thread__header");
+
+  if (typeof onBack === "function") {
+    const backBtn = createElement(doc, "button", "dm-message-thread__back btn-ghost btn-icon");
+    backBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>`;
+    backBtn.ariaLabel = "Back to conversations";
+    backBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      onBack();
+    });
+    header.appendChild(backBtn);
+  }
+
   header.appendChild(
     createElement(
       doc,
