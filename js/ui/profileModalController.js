@@ -1297,8 +1297,6 @@ export class ProfileModalController {
     this.profileMessagesRelayAddButton = null;
     this.profileMessagesRelayPublishButton = null;
     this.profileMessagesRelayStatus = null;
-    this.profileMessagesReadReceiptsToggle = null;
-    this.profileMessagesTypingToggle = null;
     this.profileMessagesUnreadDot = null;
     this.dmAppShellContainer = null;
     this.dmAppShell = null;
@@ -1616,10 +1614,6 @@ export class ProfileModalController {
       document.getElementById("profileMessagesRelayPublish") || null;
     this.profileMessagesRelayStatus =
       document.getElementById("profileMessagesRelayStatus") || null;
-    this.profileMessagesReadReceiptsToggle =
-      document.getElementById("profileMessagesReadReceiptsToggle") || null;
-    this.profileMessagesTypingToggle =
-      document.getElementById("profileMessagesTypingToggle") || null;
     this.profileMessagesUnreadDot =
       document.getElementById("profileMessagesUnreadDot") || null;
     this.dmAppShellContainer =
@@ -2133,17 +2127,9 @@ export class ProfileModalController {
   }
 
   syncDmPrivacySettingsUi() {
-    const settings = this.getDmPrivacySettingsSnapshot();
-
-    if (this.profileMessagesReadReceiptsToggle instanceof HTMLInputElement) {
-      this.profileMessagesReadReceiptsToggle.checked =
-        settings.readReceiptsEnabled;
-    }
-
-    if (this.profileMessagesTypingToggle instanceof HTMLInputElement) {
-      this.profileMessagesTypingToggle.checked =
-        settings.typingIndicatorsEnabled;
-    }
+    // Legacy UI toggles removed.
+    // This method is kept for backwards compatibility with call sites that might expect it,
+    // though the settings are now managed via AppShell.
   }
 
   handleReadReceiptsToggle(enabled) {
