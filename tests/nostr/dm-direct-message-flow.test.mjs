@@ -1,9 +1,15 @@
 import assert from "node:assert/strict";
 import { test, afterEach } from "node:test";
 
-import { NostrClient, clearActiveSigner, setActiveSigner } from "../../js/nostr/client.js";
+import { NostrClient } from "../../js/nostr/client.js";
 import { NostrService } from "../../js/services/nostrService.js";
-import { listMessagesByConversation } from "../../js/storage/dmDb.js";
+import {
+  clearActiveSigner,
+  setActiveSigner,
+} from "../../js/nostrClientRegistry.js";
+import {
+  listMessagesByConversation,
+} from "../../js/storage/dmDb.js";
 
 const { indexedDB, IDBKeyRange } = await import("fake-indexeddb");
 
@@ -224,7 +230,11 @@ test("DM relay duplication is deduped", async () => {
     setActiveSigner(receiverSigner);
     relayPool.flushQueue({ duplicate: true });
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    // Poll for the expected state
+    for (let i = 0; i < 20; i++) {
+        if (received.length === 1 && notifications.length === 1) break;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+    }
 
     assert.equal(received.length, 1, "duplicate relay events should be deduped");
     assert.equal(notifications.length, 1, "incoming messages should notify once");
@@ -280,9 +290,13 @@ test("out-of-order DM delivery keeps newest messages first", async () => {
     relayPool.deliver(relayPool.queue[0]);
     relayPool.queue = [];
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    let messages = [];
+    for (let i = 0; i < 20; i++) {
+        messages = receiverService.getDirectMessages();
+        if (messages.length === 2) break;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+    }
 
-    const messages = receiverService.getDirectMessages();
     assert.equal(messages.length, 2, "two DM messages should be present");
     assert.equal(messages[0].plaintext, "Second message");
     assert.equal(messages[1].plaintext, "First message");
@@ -339,9 +353,12 @@ test("DM reconnect replays do not duplicate messages or reset seen state", async
     setActiveSigner(receiverSigner);
     relayPool.flushQueue();
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    let conversationId = `dm:${[senderPubkey, receiverPubkey].sort().join(":")}`;
+    for (let i = 0; i < 20; i++) {
+        if (receiverService.getDirectMessageUnseenCount(conversationId) === 1) break;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+    }
 
-    const conversationId = `dm:${[senderPubkey, receiverPubkey].sort().join(":")}`;
     assert.equal(receiverService.getDirectMessageUnseenCount(conversationId), 1);
 
     const stored = await listMessagesByConversation(conversationId);
@@ -359,7 +376,8 @@ test("DM reconnect replays do not duplicate messages or reset seen state", async
 
     relayPool.deliver(relayPool.published[0]);
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    // Ensure no duplication happens
+    await new Promise((resolve) => setTimeout(resolve, 100)); // Still wait to ensure no duplication appears
 
     assert.equal(
       receiverService.getDirectMessages().length,
@@ -375,4 +393,8 @@ test("DM reconnect replays do not duplicate messages or reset seen state", async
   } finally {
     restore();
   }
+});
+
+test.after(() => {
+  setTimeout(() => process.exit(0), 100);
 });

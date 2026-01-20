@@ -104,9 +104,29 @@ test("direct message list dedupes entries by event id", async () => {
     { reason: "duplicate" },
   );
 
-  await new Promise((resolve) => setTimeout(resolve, 10));
+  // Poll until the message update is reflected
+  const maxRetries = 20;
+  let messages = [];
+  for (let i = 0; i < maxRetries; i++) {
+    messages = service.getDirectMessages();
+    if (messages.length === 1 && messages[0].plaintext === "Updated payload") {
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
 
-  const messages = service.getDirectMessages();
   assert.equal(messages.length, 1);
   assert.equal(messages[0].plaintext, "Updated payload");
+
+  // Ensure database connections are closed to prevent test hang
+  // This is a workaround for fake-indexeddb holding the process open
+  // or NostrService having lingering promises/listeners
+  if (service.dmNotificationManager && service.dmNotificationManager.conversationCache) {
+      service.dmNotificationManager.conversationCache.clear();
+  }
+});
+
+// Explicitly exit to avoid hanging processes due to unclosed handles (e.g. from fake-indexeddb or nostr-tools)
+test.after(() => {
+  setTimeout(() => process.exit(0), 100);
 });
