@@ -146,6 +146,7 @@ Use the event builders in `js/nostrEventSchemas.js` to construct valid video not
 import { buildVideoPostEvent } from "./js/nostrEventSchemas.js";
 
 const event = buildVideoPostEvent({
+  // Provide your hex pubkey (not npub)
   pubkey: "your_pubkey_hex",
   created_at: Math.floor(Date.now() / 1000),
   dTagValue: "my-first-video",
