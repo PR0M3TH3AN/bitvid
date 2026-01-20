@@ -4421,6 +4421,8 @@ export class ProfileModalController {
     container.innerHTML = "";
 
     try {
+      const dmPrivacySettings = this.getDmPrivacySettingsSnapshot();
+
       this.dmAppShell = new AppShell({
         document,
         conversations,
@@ -4429,8 +4431,12 @@ export class ProfileModalController {
         messages: timeline,
         threadState,
         privacyMode,
+        dmPrivacySettings,
         composerState: this.dmComposerState || "idle",
         notifications: [],
+        zapConfig: {
+            signer: this.services.nostrClient,
+        },
         onSelectConversation: (conversation) => {
           void this.handleDmConversationSelect(conversation);
         },
@@ -4442,6 +4448,12 @@ export class ProfileModalController {
         },
         onMarkAllRead: () => {
           void this.handleDmMarkAllConversationsRead();
+        },
+        onToggleReadReceipts: (enabled) => {
+          this.handleReadReceiptsToggle(enabled);
+        },
+        onToggleTypingIndicators: (enabled) => {
+          this.handleTypingIndicatorsToggle(enabled);
         },
       });
     } catch (error) {
@@ -5160,23 +5172,7 @@ export class ProfileModalController {
       });
     }
 
-    if (this.profileMessagesReadReceiptsToggle instanceof HTMLElement) {
-      this.profileMessagesReadReceiptsToggle.addEventListener("change", (event) => {
-        const toggle = event.currentTarget;
-        if (toggle instanceof HTMLInputElement) {
-          this.handleReadReceiptsToggle(toggle.checked);
-        }
-      });
-    }
-
-    if (this.profileMessagesTypingToggle instanceof HTMLElement) {
-      this.profileMessagesTypingToggle.addEventListener("change", (event) => {
-        const toggle = event.currentTarget;
-        if (toggle instanceof HTMLInputElement) {
-          this.handleTypingIndicatorsToggle(toggle.checked);
-        }
-      });
-    }
+    // Legacy toggles removed - handled by DMPrivacySettings in AppShell
 
     if (this.profileLinkPreviewAutoToggle instanceof HTMLElement) {
       this.profileLinkPreviewAutoToggle.addEventListener("change", (event) => {

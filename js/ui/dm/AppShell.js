@@ -2,6 +2,7 @@ import { Composer } from "./Composer.js";
 import { ConversationList } from "./ConversationList.js";
 import { MessageThread } from "./MessageThread.js";
 import { NotificationCenter } from "./NotificationCenter.js";
+import { DMPrivacySettings } from "./DMPrivacySettings.js";
 import { aggregateZapTotals } from "./zapHelpers.js";
 
 function createElement(doc, tag, className, text) {
@@ -121,6 +122,7 @@ export class AppShell {
     threadErrorType = "",
     composerState = "idle",
     privacyMode = "nip04",
+    dmPrivacySettings = { readReceiptsEnabled: false, typingIndicatorsEnabled: false },
     notifications = [],
     signingAdapter = null,
     zapConfig = null,
@@ -129,6 +131,8 @@ export class AppShell {
     onSendZap,
     onMarkConversationRead,
     onMarkAllRead,
+    onToggleReadReceipts,
+    onToggleTypingIndicators,
   } = {}) {
     if (!doc) {
       throw new Error("AppShell requires a document reference.");
@@ -153,13 +157,47 @@ export class AppShell {
     );
 
     const sidebar = createElement(doc, "aside", "dm-app-shell__sidebar");
+    const sidebarHeader = createElement(doc, "div", "dm-app-shell__sidebar-header flex items-center justify-between p-4");
     const sidebarTitle = createElement(
       doc,
       "h1",
-      "dm-app-shell__title",
+      "dm-app-shell__title text-lg font-bold",
       "Direct Messages",
     );
-    sidebar.appendChild(sidebarTitle);
+    sidebarHeader.appendChild(sidebarTitle);
+
+    const settingsBtn = createElement(doc, "button", "btn-ghost btn-icon");
+    settingsBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>`;
+    settingsBtn.ariaLabel = "Direct message settings";
+    settingsBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      let popover = sidebar.querySelector(".dm-settings-popover");
+      if (popover) {
+        popover.remove();
+        return;
+      }
+      popover = DMPrivacySettings({
+        document: doc,
+        readReceiptsEnabled: dmPrivacySettings.readReceiptsEnabled,
+        typingIndicatorsEnabled: dmPrivacySettings.typingIndicatorsEnabled,
+        onToggleReadReceipts,
+        onToggleTypingIndicators,
+      });
+      popover.classList.add("dm-settings-popover", "absolute", "z-50", "right-4", "top-12", "bg-surface", "border", "border-border", "rounded-xl");
+      sidebarHeader.style.position = "relative";
+      sidebarHeader.appendChild(popover);
+
+      const closeHandler = (event) => {
+        if (!popover.contains(event.target) && event.target !== settingsBtn && !settingsBtn.contains(event.target)) {
+          popover.remove();
+          doc.removeEventListener("click", closeHandler);
+        }
+      };
+      doc.addEventListener("click", closeHandler);
+    });
+    sidebarHeader.appendChild(settingsBtn);
+    sidebar.appendChild(sidebarHeader);
+
     sidebar.appendChild(
       ConversationList({
         document: doc,
@@ -172,12 +210,7 @@ export class AppShell {
     );
 
     const main = createElement(doc, "main", "dm-app-shell__main");
-    main.appendChild(
-      NotificationCenter({
-        document: doc,
-        notices: notifications,
-      }),
-    );
+
     main.appendChild(
       MessageThread({
         document: doc,
@@ -191,6 +224,8 @@ export class AppShell {
           totalsByConversation.get(activeConversation.id) || 0,
         profileZapTotalSats: totalsByProfile.get(activeConversation.pubkey) || 0,
         onMarkRead: onMarkConversationRead,
+        onSendZap,
+        zapConfig,
       }),
     );
     main.appendChild(
@@ -202,7 +237,14 @@ export class AppShell {
         zapRecipient: activeConversation,
         zapConfig,
         onSend: onSendMessage,
-        onSendZap,
+        // Zap button moved to MessageThread, so onSendZap here might be redundant if triggered from thread
+        // But Composer still handles text message sending.
+      }),
+    );
+    main.appendChild(
+      NotificationCenter({
+        document: doc,
+        notices: notifications,
       }),
     );
 

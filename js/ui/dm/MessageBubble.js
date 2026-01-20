@@ -33,7 +33,9 @@ export function MessageBubble({
 
   const meta = createElement(doc, "div", "dm-message-bubble__meta");
   if (timestamp) {
-    meta.appendChild(createElement(doc, "span", "dm-message-bubble__time", timestamp));
+    // Added 'text-muted' class for theme-respecting color (usually handles light/dark text)
+    const timeSpan = createElement(doc, "span", "dm-message-bubble__time text-muted", timestamp);
+    meta.appendChild(timeSpan);
   }
 
   if (variant === "outgoing") {
