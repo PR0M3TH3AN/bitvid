@@ -66,7 +66,7 @@ To set up the project locally:
    npm run test:unit
    ```
 
-3. **Format & Lint**:
+4. **Format & Lint**:
    ```bash
    npm run format
    npm run lint
