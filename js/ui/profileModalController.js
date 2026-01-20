@@ -1050,6 +1050,8 @@ export class ProfileModalController {
       dmRelayHints: new Map(),
     };
 
+    this.dmMobileView = "list";
+
     this.services = buildServicesContract(services, this.internalState);
     this.state = buildStateContract(state, this.internalState);
 
@@ -4430,8 +4432,15 @@ export class ProfileModalController {
         zapConfig: {
             signer: this.services.nostrClient,
         },
+        mobileView: this.dmMobileView || "list",
         onSelectConversation: (conversation) => {
           void this.handleDmConversationSelect(conversation);
+        },
+        onBack: () => {
+          this.dmMobileView = "list";
+          void this.renderDmAppShell(this.directMessagesCache, {
+            actorPubkey: this.resolveActiveDmActor(),
+          });
         },
         onSendMessage: (messageText, payload) => {
           void this.handleDmAppShellSendMessage(messageText, payload);
@@ -4514,6 +4523,8 @@ export class ProfileModalController {
     if (!conversationId) {
       return;
     }
+
+    this.dmMobileView = "thread";
 
     const actor = this.resolveActiveDmActor();
     const remote = this.resolveRemoteForConversationId(conversationId, actor);

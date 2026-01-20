@@ -5754,6 +5754,20 @@
     min-height: var(--space-md);
   }
 
+  @media (max-width: 767.98px) {
+    .dm-app-shell[data-dm-view="list"] .dm-app-shell__main {
+      display: none !important;
+    }
+
+    .dm-app-shell[data-dm-view="thread"] .dm-app-shell__sidebar {
+      display: none !important;
+    }
+
+    .dm-message-thread__back {
+      @apply inline-flex items-center gap-2;
+    }
+  }
+
   @media (min-width: theme("screens.md")) {
     .dm-app-shell {
       flex-direction: row;
@@ -5764,15 +5778,21 @@
       flex: 0 0 var(--size-18rem);
       max-width: var(--size-20rem);
       height: calc(100vh - var(--space-lg) * 2);
+      display: flex !important;
     }
 
     .dm-app-shell__main {
       height: calc(100vh - var(--space-lg) * 2);
+      display: flex !important;
     }
 
     .dm-conversation-list__items {
       max-height: none;
       flex: 1;
+    }
+
+    .dm-message-thread__back {
+      display: none !important;
     }
   }
 
