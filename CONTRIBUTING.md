@@ -56,7 +56,12 @@ To set up the project locally:
    npm ci
    ```
 
-2. **Run Tests**:
+2. **Build**:
+   ```bash
+   npm run build
+   ```
+
+3. **Run Tests**:
    ```bash
    npm run test:unit
    ```

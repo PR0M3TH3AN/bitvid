@@ -4,7 +4,57 @@ import "../../tests/test-helpers/setup-localstorage.mjs"; // Ensure localStorage
 import SimilarContentController from "../../js/ui/similarContentController.js";
 import { ALLOW_NSFW_CONTENT } from "../../js/config.js";
 
-// Mock helper to create video objects
+import SimilarContentController from "../../js/ui/similarContentController.js";
+
+function createControllerStub({ videos = [] } = {}) {
+  const videosMap = new Map();
+  for (const video of videos) {
+    if (video && typeof video.id === "string") {
+      videosMap.set(video.id, video);
+    }
+  }
+
+  const services = {
+    nostrClient: {
+      getActiveVideos: () => videos,
+    },
+  };
+
+  const state = {
+    getVideoListView: () => ({ currentVideos: videos }),
+    getVideosMap: () => videosMap,
+  };
+
+  const helpers = {
+    getKnownVideoPostedAt(video) {
+      if (Number.isFinite(video?.rootCreatedAt)) {
+        return Math.floor(video.rootCreatedAt);
+      }
+      if (Number.isFinite(video?.created_at)) {
+        return Math.floor(video.created_at);
+      }
+      return null;
+    },
+    buildShareUrlFromEventId(id) {
+      return id ? `https://bitvid.invalid/${id}` : "";
+    },
+    formatTimeAgo(timestamp) {
+      return Number.isFinite(timestamp) ? `${timestamp}s` : "";
+    },
+  };
+
+  const callbacks = {
+    isAuthorBlocked: () => false,
+  };
+
+  return new SimilarContentController({
+    services,
+    state,
+    helpers,
+    callbacks,
+  });
+}
+
 function createVideo({
   id,
   pubkey = "author",
@@ -131,7 +181,7 @@ test("orders similar videos by shared tags then timestamp", () => {
     rootCreatedAt: 50,
   });
 
-  const controller = createController({
+  const controller = createControllerStub({
     videos: [candidateA, candidateB, candidateC],
   });
 
@@ -164,7 +214,7 @@ test("returns no matches when the active video lacks tags", () => {
     displayTags: ["art"],
   });
 
-  const controller = createController({ videos: [candidate] });
+  const controller = createControllerStub({ videos: [candidate] });
   const matches = controller.computeCandidates({ activeVideo, maxItems: 5 });
   assert.deepEqual(matches, []);
 });
@@ -183,7 +233,7 @@ test("skips candidates without tag metadata", () => {
     id: "video-b",
   });
 
-  const controller = createController({
+  const controller = createControllerStub({
     videos: [candidateWithTags, candidateWithoutTags],
   });
 
@@ -226,22 +276,13 @@ test("filters NSFW and private videos when NSFW content is disabled", (t) => {
     isPrivate: true,
   });
 
-  const controller = createController({
+  const controller = createControllerStub({
     videos: [publicVideo, nsfwVideo, privateVideo],
   });
 
   const matches = controller.computeCandidates({ activeVideo, maxItems: 5 });
-
-  // If ALLOW_NSFW_CONTENT is true, nsfwVideo might be included.
-  // If ALLOW_NSFW_CONTENT is false, it should be excluded.
-  // privateVideo should always be excluded.
-
-  const matchIds = matches.map((entry) => entry.video.id);
-  assert.ok(!matchIds.includes("video-private"));
-
-  // We can check the actual behavior.
-  // If we can't mock the config, we assert based on the variable's value if exported?
-  // But we can't change it.
-  // Let's just assert that private video is excluded, which covers at least one filter logic.
-  assert.ok(matchIds.includes("video-public"));
+  assert.deepEqual(
+    matches.map((entry) => entry.video.id),
+    ["video-public"],
+  );
 });
