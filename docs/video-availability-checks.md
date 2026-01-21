@@ -51,14 +51,6 @@ The grid health module manages per-card WebTorrent probes and badge updates:
   - `reason` is normalized into known values such as `timeout`, `no-trackers`, `invalid`, etc.
 - `setBadge` applies `data-stream-health-state`, `data-stream-health-peers`, and `data-stream-health-reason` on both the card and badge, then calls `updateVideoCardSourceVisibility`.
 
-### Tracker-based probes (`js/healthService.js`)
-
-`js/healthService.js` provides a queueing + caching wrapper around tracker pings for other health consumers:
-
-- `queueHealthCheck(magnet, onResult)` uses a PQueue (`CONCURRENCY` from `js/trackerConfig.js`).
-- Results are cached by info hash for `HEALTH_TTL_MS`.
-- Responses are normalized into a default object with `ok`, `seeders`, `leechers`, `responded`, and `from` fields.
-
 ## Card visibility rules
 
 `js/utils/cardSourceVisibility.js` centralizes hide/show behavior based on health datasets:
@@ -80,7 +72,7 @@ The grid health module manages per-card WebTorrent probes and badge updates:
 1. **Card render** — `VideoCard` sets the initial dataset fields, usually `checking` when a source exists.
 2. **Badge attachment** — `bitvidApp` renders badge markup and wires observers (`attachUrlHealthBadges` / `attachHealthBadges`).
 3. **Scroll/observer trigger** — as cards enter the viewport, `urlHealthObserver` and `gridHealth` schedule probes.
-4. **Cache reuse** — if cached results exist (URL cache in `js/state/cache.js`, torrent cache in `js/gridHealth.js` / `js/healthService.js`), the badges update immediately without re-probing.
+4. **Cache reuse** — if cached results exist (URL cache in `js/state/cache.js`, torrent cache in `js/gridHealth.js`), the badges update immediately without re-probing.
 5. **Probe completion** — results update badge text, dataset state, and card visibility (`updateVideoCardSourceVisibility`).
 
 For how these checks interact with playback fallbacks, see [Playback fallback](playback-fallback.md).

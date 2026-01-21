@@ -78,28 +78,6 @@ export function infoHashFromMagnet(magnet) {
   return hash ? hash.toLowerCase() : null;
 }
 
-export function trackersFromMagnet(magnet) {
-  if (typeof magnet !== "string") {
-    return [];
-  }
-  const parsed = parseMagnetLite(magnet);
-  if (!parsed || !Array.isArray(parsed.announce)) {
-    return [];
-  }
-  const deduped = new Set();
-  parsed.announce.forEach((url) => {
-    if (typeof url !== "string") {
-      return;
-    }
-    const trimmed = url.trim();
-    if (!trimmed) {
-      return;
-    }
-    deduped.add(trimmed);
-  });
-  return Array.from(deduped);
-}
-
 function parseMagnetLite(magnet) {
   if (typeof magnet !== "string") {
     return { infoHash: "", announce: [] };
