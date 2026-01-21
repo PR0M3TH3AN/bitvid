@@ -1,6 +1,13 @@
 import "../test-helpers/setup-localstorage.mjs";
 import { ModerationService } from "../../js/services/moderationService.js";
-import { getDefaultModerationSettings } from "../../js/state/cache.js";
+import ModerationDecorator from "../../js/services/moderationDecorator.js";
+import ModerationActionController from "../../js/services/moderationActionController.js";
+import {
+  getDefaultModerationSettings,
+  setModerationOverride,
+  clearModerationOverride,
+} from "../../js/state/cache.js";
+import { userBlocks } from "../../js/userBlocks.js";
 
 const DEFAULT_CONTACT_OWNER = "f".repeat(64);
 const DEFAULT_REPORT_TARGET = "e".repeat(64);
@@ -209,7 +216,49 @@ export async function createModerationAppHarness() {
     return app.__profiles.get(pubkey) || null;
   };
 
+  app.moderationDecorator = new ModerationDecorator({
+    getProfileCacheEntry: (pubkey) => app.getProfileCacheEntry(pubkey),
+  });
+
+  app.moderationActionController = new ModerationActionController({
+    services: {
+      userBlocks,
+      setModerationOverride,
+      clearModerationOverride,
+    },
+    auth: {
+      isLoggedIn: () => app.isUserLoggedIn(),
+      getViewerPubkey: () => app.pubkey,
+      normalizePubkey: (value) =>
+        app.normalizeHexPubkey
+          ? app.normalizeHexPubkey(value)
+          : Application.prototype.normalizeHexPubkey.call(app, value),
+    },
+    actions: {
+      refreshVideos: (payload) => app.onVideosShouldRefresh(payload),
+      showStatus: (message, options) => app.showStatus(message, options),
+      showError: (message) => app.showError(message),
+      decorateVideoModeration: (video) => app.decorateVideoModeration(video),
+      resumePlayback: (video) => app.resumePendingModeratedPlayback(video),
+      describeBlockError: (error) => app.describeUserBlockActionError(error),
+    },
+    selectors: {
+      getVideoById: (id) => (app.videosMap ? app.videosMap.get(id) : null),
+      getCurrentVideo: () => app.currentVideo,
+    },
+    ui: {
+      refreshCardModerationUi: (card, options) =>
+        app.refreshCardModerationUi(card, options),
+      dispatchModerationEvent: (eventName, detail) =>
+        app.dispatchModerationEvent(eventName, detail),
+    },
+  });
+
   app.decorateVideoModeration = Application.prototype.decorateVideoModeration;
+  app.resumePendingModeratedPlayback =
+    Application.prototype.resumePendingModeratedPlayback;
+  app.describeUserBlockActionError =
+    Application.prototype.describeUserBlockActionError;
   app.deriveModerationReportType = Application.prototype.deriveModerationReportType;
   app.deriveModerationTrustedCount = Application.prototype.deriveModerationTrustedCount;
   app.getReporterDisplayName = Application.prototype.getReporterDisplayName;
