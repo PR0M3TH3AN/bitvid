@@ -1,53 +1,51 @@
-
 from playwright.sync_api import sync_playwright
 
-def verify_profile_modal():
+def verify_profile_messages():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        context = browser.new_context(viewport={'width': 1280, 'height': 720})
-        page = context.new_page()
-
-        # Navigate to the app
+        page = browser.new_page()
         page.goto("http://localhost:8000")
 
-        # Wait for the page to load
-        page.wait_for_load_state("networkidle")
+        # 1. Close disclaimer modal if present
+        # The logs say #disclaimerModal intercepts events.
+        try:
+            page.wait_for_selector("#closeDisclaimerModal", timeout=5000)
+            page.click("#closeDisclaimerModal")
+        except:
+            print("Disclaimer modal not found or not visible")
 
-        # Make the profile modal visible
-        page.evaluate("""() => {
+        # Also could be #disclaimerAgreeBtn
+        try:
+            page.wait_for_selector("#disclaimerAgreeBtn", timeout=2000)
+            page.click("#disclaimerAgreeBtn")
+        except:
+            pass
+
+        # 2. Open Profile Modal via JS
+        page.evaluate("""
             const modal = document.getElementById('profileModal');
             if (modal) {
                 modal.classList.remove('hidden');
                 modal.setAttribute('aria-hidden', 'false');
+                document.body.classList.add('modal-open');
+
+                // Ensure profile modal is on top if multiple modals
+                modal.style.zIndex = '9999';
             }
-        }""")
+        """)
 
-        # Force the Messages pane to be visible
-        page.evaluate("""() => {
-            const pane = document.getElementById('profilePaneMessages');
-            if (pane) {
-                pane.classList.remove('hidden');
-                pane.removeAttribute('hidden');
-                // Ensure other panes are hidden if needed, but not strictly necessary for content check
-            }
-        }""")
+        # 3. Click Messages tab
+        # Wait for animation/visibility
+        page.wait_for_timeout(500)
+        page.click("#profileNavMessages")
 
-        # Wait for the pane to become active/visible
-        page.wait_for_selector("#profilePaneMessages:not(.hidden)")
+        # 4. Wait for AppShell
+        page.wait_for_selector("#dmAppShellMount")
+        page.wait_for_timeout(2000)
 
-        # Take a screenshot
+        # 5. Take screenshot
         page.screenshot(path="verification_profile_messages.png")
-
-        content = page.content()
-        if "Direct message privacy" in content:
-            print("FAILURE: 'Direct message privacy' text found in the page source.")
-        else:
-            print("SUCCESS: 'Direct message privacy' text NOT found.")
-
-        if "Read receipts" in content and "Direct message privacy" in content:
-             print("FAILURE: 'Read receipts' text found.")
-
         browser.close()
 
 if __name__ == "__main__":
-    verify_profile_modal()
+    verify_profile_messages()

@@ -4,6 +4,7 @@ import { MessageThread } from "./MessageThread.js";
 import { NotificationCenter } from "./NotificationCenter.js";
 import { DMPrivacySettings } from "./DMPrivacySettings.js";
 import { aggregateZapTotals } from "./zapHelpers.js";
+import { createZapInterface } from "./ZapInterface.js";
 
 function createElement(doc, tag, className, text) {
   const element = doc.createElement(tag);
@@ -233,6 +234,29 @@ export class AppShell {
         zapConfig,
       }),
     );
+    const handleZapTrigger = () => {
+      const existingInterface = main.querySelector(".dm-zap-interface");
+      if (existingInterface) {
+        existingInterface.remove();
+        return;
+      }
+
+      const zapInterface = createZapInterface(doc, {
+        contact: activeConversation,
+        zapReceipts: activeZapReceipts,
+        onSendZap,
+        zapConfig
+      });
+
+      // Position it relative to the composer or just absolute in main
+      // The extracted createZapInterface uses 'absolute bottom-16 right-4' which positions it nicely
+      // relative to the container if the container is relative.
+      // main usually has relative positioning or we can append to root.
+      // AppShell root has absolute positioning context maybe?
+      // If main is the container, we append there.
+      main.appendChild(zapInterface);
+    };
+
     main.appendChild(
       Composer({
         document: doc,
@@ -242,8 +266,7 @@ export class AppShell {
         zapRecipient: activeConversation,
         zapConfig,
         onSend: onSendMessage,
-        // Zap button moved to MessageThread, so onSendZap here might be redundant if triggered from thread
-        // But Composer still handles text message sending.
+        onZap: handleZapTrigger,
       }),
     );
     main.appendChild(

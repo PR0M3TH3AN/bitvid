@@ -18,6 +18,7 @@ export function Composer({
   zapRecipient = null,
   zapConfig = null,
   onSend,
+  onZap,
 } = {}) {
   if (!doc) {
     throw new Error("Composer requires a document reference.");
@@ -105,7 +106,38 @@ export function Composer({
   button.setAttribute("aria-label", "Send message");
 
   actions.appendChild(tools);
-  actions.appendChild(button);
+
+  // Zap Button
+  // We use dm-composer__send as a base for layout/size compatibility, but tweak styles.
+  // Using accent-action-button to apply accent color on hover, and px-2 for icon squareness.
+  const zapBtn = createElement(doc, "button", "dm-composer__send accent-action-button px-2");
+  zapBtn.type = "button";
+  zapBtn.setAttribute("aria-label", "Zap");
+  zapBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>`;
+  zapBtn.style.marginRight = "var(--space-xs)"; // Add some spacing between zap and send if needed, though flex gap usually handles it.
+  // Actually, actions usually has a gap? Let's check parent styles.
+  // dm-composer__actions usually separates tools and submit.
+  // If we want it NEXT to Send, we should group them or just append.
+  // We'll append both to a container or just actions.
+
+  if (typeof onZap === "function") {
+    zapBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        onZap();
+    });
+    // Create a wrapper for buttons if we want tight grouping, or just append to actions.
+    // actions has "flex items-center justify-between" usually?
+    // Let's check CSS for dm-composer__actions.
+    // If not, we might need a wrapper.
+    // tools is one child. button is another.
+    // We'll wrap Zap and Send in a div to keep them together on the right.
+    const buttonGroup = createElement(doc, "div", "flex items-center gap-2");
+    buttonGroup.appendChild(zapBtn);
+    buttonGroup.appendChild(button);
+    actions.appendChild(buttonGroup);
+  } else {
+    actions.appendChild(button);
+  }
 
   const status = createElement(doc, "div", "dm-composer__status");
   if (state === "error") {
