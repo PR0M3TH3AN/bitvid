@@ -66,6 +66,3 @@ export function attachUrlHealthBadges(container, onCheck) {
   }
 }
 
-export function refreshUrlHealthBadges(container) {
-  urlCardObserver.refresh(container);
-}

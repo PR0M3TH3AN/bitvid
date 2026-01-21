@@ -17,6 +17,7 @@ import nostrService from "../services/nostrService.js";
 import storageService from "../services/storageService.js";
 import watchHistoryService from "../watchHistoryService.js";
 import r2Service from "../services/r2Service.js";
+import RelayHealthService from "../services/relayHealthService.js";
 import { createFeedEngine } from "../feedEngine/index.js";
 import { URL_FIRST_ENABLED } from "../constants.js";
 import { ALLOW_NSFW_CONTENT } from "../config.js";
@@ -41,6 +42,8 @@ import {
   getModerationSettings,
   setModerationSettings,
   resetModerationSettings,
+  getDmPrivacySettings,
+  setDmPrivacySettings,
   clearModerationOverride,
   persistSavedProfiles,
   getSavedProfiles,
@@ -406,6 +409,7 @@ export default class ApplicationBootstrap {
 
     app.profileButton = doc?.getElementById("profileButton") || null;
     app.profileAvatar = doc?.getElementById("profileAvatar") || null;
+    app.profileUnreadDot = doc?.getElementById("profileUnreadDot") || null;
 
     const modalManager = new ModalManager({
       app,
@@ -424,6 +428,12 @@ export default class ApplicationBootstrap {
     const modalContainer = doc?.getElementById("modalContainer") || null;
     try {
       if (modalContainer) {
+        const relayHealthService = new RelayHealthService({
+          relayManager,
+          nostrClient,
+          telemetryEmitter: (eventName, payload) =>
+            app.emitTelemetryEvent(eventName, payload),
+        });
         const profileModalServices = {
           normalizeHexPubkey: (value) => app.normalizeHexPubkey(value),
           safeEncodeNpub: (pubkey) => app.safeEncodeNpub(pubkey),
@@ -432,6 +442,7 @@ export default class ApplicationBootstrap {
           formatShortNpub: (value) => formatShortNpub(value),
           getProfileCacheEntry: (pubkey) => app.getProfileCacheEntry(pubkey),
           batchFetchProfiles: (authorSet) => app.batchFetchProfiles(authorSet),
+          fetchDmRelayHints: (pubkey) => app.fetchDmRelayHints(pubkey),
           switchProfile: (pubkey) => app.authService.switchProfile(pubkey),
           removeSavedProfile: (pubkey) =>
             app.authService.removeSavedProfile(pubkey),
@@ -477,6 +488,7 @@ export default class ApplicationBootstrap {
             app.describeHashtagPreferencesError(error, {
               fallbackMessage,
             }),
+          relayHealthService,
           log: (...args) => app.log(...args),
           closeAllMoreMenus: (options) => app.closeAllMoreMenus(options),
           clipboard:
@@ -499,6 +511,16 @@ export default class ApplicationBootstrap {
             setStoredActiveProfilePubkey(normalized, options);
             return getActiveProfilePubkey();
           },
+          getDmRecipient: () => app.getDmRecipientPubkey(),
+          setDmRecipient: (pubkey) => app.setDmRecipientPubkey(pubkey),
+          getDmRelayHints: (pubkey) => app.getDmRelayHints(pubkey),
+          setDmRelayHints: (pubkey, hints) => app.setDmRelayHints(pubkey, hints),
+          getDmRelayPreferences: (pubkey) => app.getDmRelayHints(pubkey),
+          setDmRelayPreferences: (pubkey, hints) =>
+            app.setDmRelayHints(pubkey, hints),
+          getDmPrivacySettings: () => getDmPrivacySettings(),
+          setDmPrivacySettings: (settings, options = {}) =>
+            setDmPrivacySettings(settings, options),
         };
 
         const profileModalCallbacks = {
@@ -532,6 +554,12 @@ export default class ApplicationBootstrap {
             app.handleProfileHistoryEvent(payload),
           onModerationSettingsChange: (payload) =>
             app.handleModerationSettingsChange(payload),
+          onSendDm: (payload) => app.handleProfileSendDmRequest(payload),
+          onOpenRelays: (payload) => app.handleProfileUseDmRelays(payload),
+          onTogglePrivacy: (payload) =>
+            app.handleProfilePrivacyToggle(payload),
+          onPublishDmRelayPreferences: (payload) =>
+            app.handleProfilePublishDmRelayPreferences(payload),
         };
 
         app.profileController = new ProfileModalController({
@@ -658,12 +686,88 @@ export default class ApplicationBootstrap {
     };
 
     app.videosMap = app.nostrService.getVideosMap();
-    app.unsubscribeFromNostrService = app.nostrService.on(
-      "subscription:changed",
-      ({ subscription }) => {
+    app.refreshUnreadDmIndicator = async ({ reason = "" } = {}) => {
+      const applyIndicatorState = (visible) => {
+        if (
+          app.appChromeController &&
+          typeof app.appChromeController.setUnreadDmIndicator === "function"
+        ) {
+          app.appChromeController.setUnreadDmIndicator(visible);
+        }
+
+        if (
+          app.profileController &&
+          typeof app.profileController.setMessagesUnreadIndicator === "function"
+        ) {
+          app.profileController.setMessagesUnreadIndicator(visible);
+        }
+      };
+
+      if (typeof app.isUserLoggedIn === "function" && !app.isUserLoggedIn()) {
+        applyIndicatorState(false);
+        return;
+      }
+
+      if (
+        !app.nostrService ||
+        typeof app.nostrService.listDirectMessageConversationSummaries !==
+          "function"
+      ) {
+        applyIndicatorState(false);
+        return;
+      }
+
+      try {
+        const summaries =
+          await app.nostrService.listDirectMessageConversationSummaries();
+        const totalUnseen = Array.isArray(summaries)
+          ? summaries.reduce((sum, summary) => {
+              const count = Number(summary?.unseen_count);
+              return sum + (Number.isFinite(count) ? count : 0);
+            }, 0)
+          : 0;
+        applyIndicatorState(totalUnseen > 0);
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to refresh DM unread indicator",
+          reason,
+          error,
+        );
+        applyIndicatorState(false);
+      }
+    };
+
+    const nostrUnsubscribes = [];
+    nostrUnsubscribes.push(
+      app.nostrService.on("subscription:changed", ({ subscription }) => {
         app.videoSubscription = subscription || null;
-      },
+      }),
     );
+    nostrUnsubscribes.push(
+      app.nostrService.on("directMessages:notification", () => {
+        void app.refreshUnreadDmIndicator({ reason: "dm-notification" });
+      }),
+    );
+    nostrUnsubscribes.push(
+      app.nostrService.on("directMessages:conversationUpdated", () => {
+        void app.refreshUnreadDmIndicator({ reason: "dm-conversation-update" });
+      }),
+    );
+    nostrUnsubscribes.push(
+      app.nostrService.on("directMessages:cleared", () => {
+        if (typeof app.refreshUnreadDmIndicator === "function") {
+          void app.refreshUnreadDmIndicator({ reason: "dm-cleared" });
+        }
+      }),
+    );
+    app.unsubscribeFromNostrService = () => {
+      while (nostrUnsubscribes.length) {
+        const unsubscribe = nostrUnsubscribes.pop();
+        if (typeof unsubscribe === "function") {
+          unsubscribe();
+        }
+      }
+    };
     app.boundNwcSettingsToastHandler = null;
     Object.defineProperty(app, "savedProfiles", {
       configurable: false,
@@ -899,6 +1003,7 @@ export default class ApplicationBootstrap {
       elements: {
         logoutButton: app.logoutButton,
         profileButton: app.profileButton,
+        profileUnreadDot: app.profileUnreadDot,
         uploadButton: app.uploadButton,
         loginButton: app.loginButton,
         closeLoginModalButton: app.closeLoginModalBtn,

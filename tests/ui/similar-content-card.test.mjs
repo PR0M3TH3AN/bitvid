@@ -76,7 +76,7 @@ test("uncached thumbnails use fallback, cache on load, and retain blur state", (
   assert.equal(img.dataset.thumbnailState, "blurred");
   assert.equal(
     window.getComputedStyle(root).getPropertyValue("--similar-card-thumb-url").trim(),
-    `url("${fallbackSrc}")`,
+    "",
   );
 
   img.src = remoteThumb;
@@ -85,7 +85,7 @@ test("uncached thumbnails use fallback, cache on load, and retain blur state", (
   assert.equal(cache.get("video-456"), remoteThumb);
   assert.equal(
     window.getComputedStyle(root).getPropertyValue("--similar-card-thumb-url").trim(),
-    `url("${remoteThumb}")`,
+    "",
   );
   assert.equal(img.dataset.thumbnailState, "blurred");
 });

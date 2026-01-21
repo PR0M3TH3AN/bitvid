@@ -1,0 +1,241 @@
+
+> bitvid@1.0.0 test:unit
+> node scripts/run-unit-tests.mjs
+
+
+→ Running tests/app-batch-fetch-profiles.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+[batchFetchProfiles] Failed to fetch profiles from relay wss://fail.example: Error: relay timed out
+    at Object.list (file:///app/tests/app-batch-fetch-profiles.test.mjs:80:31)
+    at file:///app/js/utils/profileBatchFetcher.js:115:10
+    at Array.map (<anonymous>)
+    at batchFetchProfilesFromRelays (file:///app/js/utils/profileBatchFetcher.js:112:75)
+    at TestContext.<anonymous> (file:///app/tests/app-batch-fetch-profiles.test.mjs:87:11)
+    at Test.runInAsyncScope (node:async_hooks:214:14)
+    at Test.run (node:internal/test_runner/test:1047:25)
+    at Test.start (node:internal/test_runner/test:944:17)
+    at startSubtestAfterBootstrap (node:internal/test_runner/harness:296:17)
+TAP version 13
+# Subtest: batchFetchProfiles handles fast and failing relays
+ok 1 - batchFetchProfiles handles fast and failing relays
+  ---
+  duration_ms: 3.595152
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 13.23252
+
+→ Running tests/app/channel-profile-moderation.test.mjs
+[bitvid] Initialized nostr nip04 helpers.
+[bitvid] Initialized nostr nip44 helpers.
+[ChannelProfile] Failed to prepare channel videos for moderation TypeError: Cannot read properties of undefined (reading 'normalizeModerationSettings')
+    at Application.getActiveModerationThresholds (file:///app/js/app.js:6593:56)
+    at applyChannelModerationToVideos (file:///app/js/channelProfile.js:282:21)
+    at renderChannelVideosFromList (file:///app/js/channelProfile.js:4490:28)
+    at TestContext.<anonymous> (file:///app/tests/app/channel-profile-moderation.test.mjs:135:26)
+    at async Test.run (node:internal/test_runner/test:1054:7)
+    at async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+[feedEngine/moderation] metadata.moderation updated {
+  stage: 'moderation',
+  videoId: 'vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv',
+  blockAutoplay: true,
+  blurThumbnail: true,
+  trustedCount: 2,
+  reportType: 'nudity',
+  hidden: false,
+  hideReason: null,
+  hideBypass: null
+}
+[ChannelProfile] Failed to decorate channel video moderation TypeError: Cannot read properties of undefined (reading 'decorateVideo')
+    at Application.decorateVideoModeration (file:///app/js/app.js:6598:37)
+    at decorateChannelVideo (file:///app/js/channelProfile.js:210:29)
+    at applyChannelModerationToVideos (file:///app/js/channelProfile.js:363:26)
+    at async renderChannelVideosFromList (file:///app/js/channelProfile.js:4490:22)
+    at async TestContext.<anonymous> (file:///app/tests/app/channel-profile-moderation.test.mjs:216:20)
+    at async Test.run (node:internal/test_runner/test:1054:7)
+    at async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+[ChannelProfile] Failed to decorate channel video moderation TypeError: Cannot read properties of undefined (reading 'decorateVideo')
+    at Application.decorateVideoModeration (file:///app/js/app.js:6598:37)
+    at decorateChannelVideo (file:///app/js/channelProfile.js:210:29)
+    at resolveChannelModeration (file:///app/js/channelProfile.js:917:23)
+    at applyChannelVisualBlur (file:///app/js/channelProfile.js:962:22)
+    at updateChannelModerationVisuals (file:///app/js/channelProfile.js:1027:18)
+    at renderChannelVideosFromList (file:///app/js/channelProfile.js:4893:3)
+    at async TestContext.<anonymous> (file:///app/tests/app/channel-profile-moderation.test.mjs:216:20)
+    at async Test.run (node:internal/test_runner/test:1054:7)
+    at async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+[ChannelProfile] Failed to decorate channel video moderation TypeError: Cannot read properties of undefined (reading 'decorateVideo')
+    at Application.decorateVideoModeration (file:///app/js/app.js:6598:37)
+    at decorateChannelVideo (file:///app/js/channelProfile.js:210:29)
+    at applyChannelModerationToVideos (file:///app/js/channelProfile.js:363:26)
+    at async renderChannelVideosFromList (file:///app/js/channelProfile.js:4490:22)
+    at async TestContext.<anonymous> (file:///app/tests/app/channel-profile-moderation.test.mjs:309:3)
+    at async Test.run (node:internal/test_runner/test:1054:7)
+    at async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+[ChannelProfile] Failed to decorate channel video moderation TypeError: Cannot read properties of undefined (reading 'decorateVideo')
+    at Application.decorateVideoModeration (file:///app/js/app.js:6598:37)
+    at decorateChannelVideo (file:///app/js/channelProfile.js:210:29)
+    at resolveChannelModeration (file:///app/js/channelProfile.js:917:23)
+    at applyChannelVisualBlur (file:///app/js/channelProfile.js:962:22)
+    at updateChannelModerationVisuals (file:///app/js/channelProfile.js:1027:18)
+    at renderChannelVideosFromList (file:///app/js/channelProfile.js:4893:3)
+    at async TestContext.<anonymous> (file:///app/tests/app/channel-profile-moderation.test.mjs:309:3)
+    at async Test.run (node:internal/test_runner/test:1054:7)
+    at async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+[ChannelProfile] Failed to decorate channel video moderation TypeError: Cannot read properties of undefined (reading 'decorateVideo')
+    at Application.decorateVideoModeration (file:///app/js/app.js:6598:37)
+    at decorateChannelVideo (file:///app/js/channelProfile.js:210:29)
+    at applyChannelModerationToVideos (file:///app/js/channelProfile.js:363:26)
+    at async renderChannelVideosFromList (file:///app/js/channelProfile.js:4490:22)
+    at async TestContext.<anonymous> (file:///app/tests/app/channel-profile-moderation.test.mjs:383:3)
+    at async Test.run (node:internal/test_runner/test:1054:7)
+    at async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+[ChannelProfile] Failed to decorate channel video moderation TypeError: Cannot read properties of undefined (reading 'decorateVideo')
+    at Application.decorateVideoModeration (file:///app/js/app.js:6598:37)
+    at decorateChannelVideo (file:///app/js/channelProfile.js:210:29)
+    at resolveChannelModeration (file:///app/js/channelProfile.js:917:23)
+    at applyChannelVisualBlur (file:///app/js/channelProfile.js:962:22)
+    at updateChannelModerationVisuals (file:///app/js/channelProfile.js:1027:18)
+    at renderChannelVideosFromList (file:///app/js/channelProfile.js:4893:3)
+    at async TestContext.<anonymous> (file:///app/tests/app/channel-profile-moderation.test.mjs:383:3)
+    at async Test.run (node:internal/test_runner/test:1054:7)
+    at async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+[ChannelProfile] Failed to decorate channel video moderation TypeError: Cannot read properties of undefined (reading 'decorateVideo')
+    at Application.decorateVideoModeration (file:///app/js/app.js:6598:37)
+    at decorateChannelVideo (file:///app/js/channelProfile.js:210:29)
+    at resolveChannelModeration (file:///app/js/channelProfile.js:917:23)
+    at applyChannelVisualBlur (file:///app/js/channelProfile.js:962:22)
+    at TestContext.<anonymous> (file:///app/tests/app/channel-profile-moderation.test.mjs:390:3)
+    at async Test.run (node:internal/test_runner/test:1054:7)
+    at async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+[ChannelProfile] Failed to decorate channel video moderation TypeError: Cannot read properties of undefined (reading 'decorateVideo')
+    at Application.decorateVideoModeration (file:///app/js/app.js:6598:37)
+    at decorateChannelVideo (file:///app/js/channelProfile.js:210:29)
+    at resolveChannelModeration (file:///app/js/channelProfile.js:917:23)
+    at applyChannelVisualBlur (file:///app/js/channelProfile.js:962:22)
+    at updateChannelModerationVisuals (file:///app/js/channelProfile.js:1027:18)
+    at handleChannelModerationOverride (file:///app/js/channelProfile.js:804:5)
+    at channelModerationBadgeState.boundOverride (file:///app/js/channelProfile.js:570:7)
+    at HTMLButtonElement.callTheUserObjectsOperation (/app/node_modules/jsdom/lib/jsdom/living/generated/EventListener.js:26:30)
+    at innerInvokeEventListeners (/app/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:350:25)
+    at invokeEventListeners (/app/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+TAP version 13
+# Subtest: renderChannelVideosFromList decorates videos before storing
+ok 1 - renderChannelVideosFromList decorates videos before storing
+  ---
+  duration_ms: 227.825736
+  type: 'test'
+  ...
+# Subtest: renderChannelVideosFromList applies moderation blur without existing metadata
+ok 2 - renderChannelVideosFromList applies moderation blur without existing metadata
+  ---
+  duration_ms: 29.073289
+  type: 'test'
+  ...
+# Subtest: applyChannelVisualBlur blurs banner and avatar when viewer mutes author
+ok 3 - applyChannelVisualBlur blurs banner and avatar when viewer mutes author
+  ---
+  duration_ms: 10.234244
+  type: 'test'
+  ...
+# Subtest: moderation override clears channel blur via event wiring
+not ok 4 - moderation override clears channel blur via event wiring
+  ---
+  duration_ms: 27.303235
+  type: 'test'
+  location: '/app/tests/app/channel-profile-moderation.test.mjs:261:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+
+    + undefined
+    - 'blurred'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'blurred'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///app/tests/app/channel-profile-moderation.test.mjs:318:10)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+[ChannelProfile] Failed to decorate channel video moderation TypeError: Cannot read properties of undefined (reading 'decorateVideo')
+    at Application.decorateVideoModeration (file:///app/js/app.js:6598:37)
+    at decorateChannelVideo (file:///app/js/channelProfile.js:210:29)
+    at applyChannelModerationToVideos (file:///app/js/channelProfile.js:363:26)
+    at async renderChannelVideosFromList (file:///app/js/channelProfile.js:4490:22)
+    at async TestContext.<anonymous> (file:///app/tests/app/channel-profile-moderation.test.mjs:477:3)
+    at async Test.run (node:internal/test_runner/test:1054:7)
+    at async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+[ChannelProfile] Failed to decorate channel video moderation TypeError: Cannot read properties of undefined (reading 'decorateVideo')
+    at Application.decorateVideoModeration (file:///app/js/app.js:6598:37)
+    at decorateChannelVideo (file:///app/js/channelProfile.js:210:29)
+    at resolveChannelModeration (file:///app/js/channelProfile.js:917:23)
+    at applyChannelVisualBlur (file:///app/js/channelProfile.js:962:22)
+    at updateChannelModerationVisuals (file:///app/js/channelProfile.js:1027:18)
+    at renderChannelVideosFromList (file:///app/js/channelProfile.js:4893:3)
+    at async TestContext.<anonymous> (file:///app/tests/app/channel-profile-moderation.test.mjs:477:3)
+    at async Test.run (node:internal/test_runner/test:1054:7)
+    at async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+[ChannelProfile] Failed to decorate channel video moderation TypeError: Cannot read properties of undefined (reading 'decorateVideo')
+    at Application.decorateVideoModeration (file:///app/js/app.js:6598:37)
+    at decorateChannelVideo (file:///app/js/channelProfile.js:210:29)
+    at handleModerationSummarySignal (file:///app/js/channelProfile.js:1139:26)
+    at SimpleEventEmitter.emit (file:///app/js/services/moderationService.js:61:9)
+    at ModerationService.emit (file:///app/js/services/moderationService.js:979:18)
+    at TestContext.<anonymous> (file:///app/tests/app/channel-profile-moderation.test.mjs:513:21)
+    at async Test.run (node:internal/test_runner/test:1054:7)
+    at async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+[ChannelProfile] Failed to decorate channel video moderation TypeError: Cannot read properties of undefined (reading 'decorateVideo')
+    at Application.decorateVideoModeration (file:///app/js/app.js:6598:37)
+    at decorateChannelVideo (file:///app/js/channelProfile.js:210:29)
+    at resolveChannelModeration (file:///app/js/channelProfile.js:917:23)
+    at applyChannelVisualBlur (file:///app/js/channelProfile.js:962:22)
+    at updateChannelModerationVisuals (file:///app/js/channelProfile.js:1027:18)
+    at handleModerationSummarySignal (file:///app/js/channelProfile.js:1145:3)
+    at SimpleEventEmitter.emit (file:///app/js/services/moderationService.js:61:9)
+    at ModerationService.emit (file:///app/js/services/moderationService.js:979:18)
+    at TestContext.<anonymous> (file:///app/tests/app/channel-profile-moderation.test.mjs:513:21)
+    at async Test.run (node:internal/test_runner/test:1054:7)
+# Subtest: channel header moderation badge reflects blur state and override actions
+ok 5 - channel header moderation badge reflects blur state and override actions
+  ---
+  duration_ms: 29.747436
+  type: 'test'
+  ...
+# Subtest: channel video cards update moderation state in place when summary changes
+ok 6 - channel video cards update moderation state in place when summary changes
+  ---
+  duration_ms: 21.934654
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 5
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 357.18362
+file:///app/scripts/run-unit-tests.mjs:68
+        reject(new Error(`${relativePath} failed with exit code ${code}`));
+               ^
+
+Error: tests/app/channel-profile-moderation.test.mjs failed with exit code 1
+    at ChildProcess.<anonymous> (file:///app/scripts/run-unit-tests.mjs:68:16)
+    at ChildProcess.emit (node:events:519:28)
+    at maybeClose (node:internal/child_process:1101:16)
+    at ChildProcess._handle.onexit (node:internal/child_process:304:5)
+
+Node.js v22.21.1

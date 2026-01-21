@@ -32,6 +32,8 @@ import {
   DNS_URL,
   TIP_JAR_URL,
   isLockdownMode,
+  LOCKDOWN_TITLE,
+  LOCKDOWN_MESSAGE,
 } from "./config.js";
 import { createHashChangeHandler } from "./hashChangeHandler.js";
 import AuthService from "./services/authService.js";
@@ -323,6 +325,16 @@ async function prepareLockdownInterface() {
     document.getElementById(LOCKDOWN_MODAL_ID);
   if (!(modal instanceof HTMLElement)) {
     throw new Error("Lockdown modal markup is missing after load.");
+  }
+
+  const titleEl = document.getElementById("lockdownModalTitle");
+  if (titleEl) {
+    titleEl.textContent = LOCKDOWN_TITLE;
+  }
+
+  const messageEl = document.getElementById("lockdownModalMessage");
+  if (messageEl) {
+    messageEl.textContent = LOCKDOWN_MESSAGE;
   }
 
   const loginButton = modal.querySelector("[data-lockdown-login]");

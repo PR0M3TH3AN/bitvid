@@ -1,9 +1,11 @@
 import { expect, test } from "@playwright/test";
 import type { Locator } from "@playwright/test";
+import { applyReducedMotion, failOnConsoleErrors } from "./helpers/uiTestUtils";
 
 test.describe("popover layout scenarios", () => {
   test.beforeEach(async ({ page }) => {
-    await page.emulateMedia({ reducedMotion: "reduce" });
+    await applyReducedMotion(page);
+    failOnConsoleErrors(page);
     await page.goto("/docs/popover-scenarios.html", { waitUntil: "networkidle" });
   });
 
@@ -148,11 +150,39 @@ test.describe("popover layout scenarios", () => {
     expect(metrics.popoverMaxWidth).toBe(metrics.tokenMaxWidth);
     expect(metrics.tokenMaxWidth.length).toBeGreaterThan(0);
   });
+
+  test("stress tests popover triggers without console errors", async ({ page }) => {
+    await page.locator('[data-test-open-modal]').click();
+    await expect(page.locator('[data-test-modal]')).toBeVisible();
+
+    const triggers = [
+      '[data-test-trigger="grid-bottom-right"]',
+      '[data-test-trigger="modal-menu"]',
+      '[data-test-trigger="scroll-bottom"]',
+    ];
+
+    for (let pass = 0; pass < 4; pass += 1) {
+      const scrollRegion = page.locator('[data-test-scroll-region]');
+      await scrollRegion.evaluate((node) => {
+        node.scrollTop = node.scrollHeight;
+      });
+
+      for (const selector of triggers) {
+        await page.locator(selector).click();
+        await page.waitForTimeout(60);
+      }
+
+      await page.click("body");
+      await page.waitForTimeout(60);
+      await expect(page.locator('[data-popover-state="open"]')).toHaveCount(0);
+    }
+  });
 });
 
 test.describe("popover demo alignments", () => {
   test.beforeEach(async ({ page }) => {
-    await page.emulateMedia({ reducedMotion: "reduce" });
+    await applyReducedMotion(page);
+    failOnConsoleErrors(page);
     await page.goto("/views/dev/popover-demo.html", { waitUntil: "networkidle" });
   });
 

@@ -1,7 +1,7 @@
 <!-- components/profile-modal.html -->
 <div
   id="profileModal"
-  class="bv-modal hidden items-start"
+  class="bv-modal hidden"
   role="dialog"
   aria-modal="true"
   aria-labelledby="profileModalTitle"
@@ -12,7 +12,7 @@
   <div class="bv-modal-backdrop"></div>
 
   <div
-    class="bv-modal__panel modal-sheet profile-modal"
+    class="bv-modal__panel profile-modal w-full h-full max-w-none rounded-none border-none p-0"
     tabindex="-1"
     data-mobile-view="menu"
   >
@@ -137,6 +137,15 @@
                 Friends
               </button>
               <button
+                id="profileNavSafety"
+                type="button"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneSafety"
+                aria-selected="false"
+              >
+                Safety
+              </button>
+              <button
                 id="profileNavBlocked"
                 type="button"
                 class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
@@ -148,11 +157,16 @@
               <button
                 id="profileNavMessages"
                 type="button"
-                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                class="btn-ghost focus-ring relative w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
                 aria-controls="profilePaneMessages"
                 aria-selected="false"
               >
                 Messages
+                <span
+                  id="profileMessagesUnreadDot"
+                  class="profile-nav__unread-dot"
+                  aria-hidden="true"
+                ></span>
               </button>
               <button
                 id="profileNavHistory"
@@ -171,6 +185,14 @@
                 aria-selected="false"
               >
                 Admin (Moderation)
+              </button>
+              <button
+                id="profileMobileLogoutBtn"
+                type="button"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium mt-6 lg:hidden"
+                data-variant="critical"
+              >
+                Logout
               </button>
             </nav>
           </div>
@@ -212,7 +234,7 @@
                   data-state="active"
                 >
                   <span
-                    class="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-info/50 bg-surface"
+                    class="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-accent/50 bg-surface"
                   >
                     <img
                       id="profileModalAvatar"
@@ -223,7 +245,7 @@
                   </span>
                   <div class="profile-modal__active-details">
                     <div class="profile-modal__active-meta">
-                      <span class="text-3xs font-semibold uppercase tracking-extra-wide text-info">
+                      <span class="text-3xs font-semibold uppercase tracking-extra-wide text-accent">
                         Active profile
                       </span>
                     </div>
@@ -287,162 +309,6 @@
                   Profiles you add here will stay on this device so you can quickly switch before posting or moderating.
                 </p>
               </div>
-
-              <div id="profileModerationSettings" class="card space-y-5 p-5">
-                <div class="space-y-2">
-                  <h3 class="text-base font-semibold text-text">Safety & Moderation</h3>
-                  <p class="text-sm text-muted">
-                    Choose how many trusted reports or mutes it takes to blur thumbnails, block autoplay previews, or hide videos entirely.
-                    Lower numbers are stricter.
-                  </p>
-                  <div class="rounded-lg border border-border bg-bg-muted p-3 text-xs text-muted">
-                    <p>
-                      Trusted counts include your first-degree follows (F1) plus seeded moderators.
-                    </p>
-                    <dl class="mt-2 grid gap-1">
-                      <div class="flex items-center justify-between gap-3">
-                        <dt>Trusted contacts</dt>
-                        <dd id="profileModerationTrustedContactsCount" class="font-semibold text-text">0</dd>
-                      </div>
-                      <div class="flex items-center justify-between gap-3">
-                        <dt>Active trusted mute contributors</dt>
-                        <dd id="profileModerationTrustedMuteCount" class="font-semibold text-text">0</dd>
-                      </div>
-                      <div class="flex items-center justify-between gap-3">
-                        <dt>Active trusted report contributors</dt>
-                        <dd id="profileModerationTrustedReportCount" class="font-semibold text-text">0</dd>
-                      </div>
-                    </dl>
-                    <p
-                      id="profileModerationSeedOnlyIndicator"
-                      class="mt-2 flex items-center gap-1 text-xs text-warning-strong"
-                      hidden
-                    >
-                      <span aria-hidden="true">●</span>
-                      <span>Seeded moderators only</span>
-                    </p>
-                  </div>
-                </div>
-                <div class="grid gap-4 sm:grid-cols-2">
-                  <label
-                    class="block text-sm text-muted-strong"
-                    for="profileModerationBlurThreshold"
-                  >
-                    <span class="mb-2 block font-medium">Blur after trusted reports</span>
-                    <input
-                      id="profileModerationBlurThreshold"
-                      type="number"
-                      inputmode="numeric"
-                      min="0"
-                      step="1"
-                      class="input"
-                    />
-                    <span class="mt-1 block text-xs text-muted">
-                      Thumbnails blur when trusted contacts report nudity at or above this count.
-                    </span>
-                  </label>
-                  <label
-                    class="block text-sm text-muted-strong"
-                    for="profileModerationAutoplayThreshold"
-                  >
-                    <span class="mb-2 block font-medium">Block autoplay after reports</span>
-                    <input
-                      id="profileModerationAutoplayThreshold"
-                      type="number"
-                      inputmode="numeric"
-                      min="0"
-                      step="1"
-                      class="input"
-                    />
-                    <span class="mt-1 block text-xs text-muted">
-                      Autoplay previews pause once trusted reports meet this threshold.
-                    </span>
-                  </label>
-                </div>
-                <div
-                  class="grid gap-4 sm:grid-cols-2"
-                  data-role="trusted-hide-controls"
-                >
-                  <label
-                    class="block text-sm text-muted-strong"
-                    for="profileModerationMuteHideThreshold"
-                    data-role="trusted-hide-control"
-                  >
-                    <span class="mb-2 block font-medium">Hide after trusted mutes</span>
-                    <input
-                      id="profileModerationMuteHideThreshold"
-                      type="number"
-                      inputmode="numeric"
-                      min="0"
-                      step="1"
-                      class="input"
-                    />
-                    <span class="mt-1 block text-xs text-muted">
-                      Hide videos when this many trusted contacts add the author to their mute list.
-                    </span>
-                  </label>
-                  <label
-                    class="block text-sm text-muted-strong"
-                    for="profileModerationSpamHideThreshold"
-                    data-role="trusted-hide-control"
-                  >
-                    <span class="mb-2 block font-medium">Hide after trusted spam reports</span>
-                    <input
-                      id="profileModerationSpamHideThreshold"
-                      type="number"
-                      inputmode="numeric"
-                      min="0"
-                      step="1"
-                      class="input"
-                    />
-                    <span class="mt-1 block text-xs text-muted">
-                      Hide videos entirely once trusted contacts report spam at or above this count.
-                    </span>
-                  </label>
-                </div>
-                <div class="flex flex-wrap items-center gap-3">
-                  <button
-                    id="profileModerationSave"
-                    type="button"
-                    class="btn focus-ring"
-                    disabled
-                  >
-                    Save moderation settings
-                  </button>
-                  <button
-                    id="profileModerationReset"
-                    type="button"
-                    class="btn-ghost focus-ring"
-                  >
-                    Restore defaults
-                  </button>
-                </div>
-                <p
-                  id="profileModerationStatus"
-                  class="text-sm text-muted"
-                  role="status"
-                  aria-live="polite"
-                ></p>
-                <div class="space-y-3 border-t border-border/60 pt-4">
-                  <div class="space-y-1">
-                    <h4 class="text-sm font-semibold text-text">Active overrides</h4>
-                    <p class="text-xs text-muted">
-                      Videos you unblocked with “Show anyway” stay listed here until reset.
-                    </p>
-                  </div>
-                  <div
-                    id="profileModerationOverridesEmpty"
-                    class="card border border-dashed border-border/60 p-4 text-center text-xs text-muted"
-                  >
-                    No moderation overrides yet.
-                  </div>
-                  <ul
-                    id="profileModerationOverridesList"
-                    class="grid-stack hidden"
-                    data-orientation="vertical"
-                  ></ul>
-                </div>
-              </div>
             </section>
 
             <section
@@ -492,7 +358,7 @@
                   <span class="mb-2 block font-medium">About</span>
                   <textarea
                     id="editAboutInput"
-                    class="input min-h-[80px]"
+                    class="input min-h-[var(--size-80px)]"
                     placeholder="Tell us about yourself..."
                   ></textarea>
                 </label>
@@ -644,6 +510,44 @@
                 </div>
               </div>
               <ul id="relayList" class="grid-stack" data-orientation="vertical"></ul>
+              <div id="relayHealthPanel" class="card space-y-4 p-5">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                  <div class="space-y-1">
+                    <h3 class="text-base font-semibold text-text">Relay health</h3>
+                    <p class="text-sm text-muted">
+                      Monitor connectivity, latency, and errors for your configured relays.
+                    </p>
+                  </div>
+                  <button
+                    id="relayHealthRefreshBtn"
+                    type="button"
+                    class="btn-ghost focus-ring text-xs"
+                  >
+                    Refresh
+                  </button>
+                </div>
+                <label
+                  for="relayHealthTelemetryOptIn"
+                  class="inline-flex items-center gap-2 text-xs font-medium text-muted-strong"
+                >
+                  <input
+                    id="relayHealthTelemetryOptIn"
+                    type="checkbox"
+                    class="checkbox"
+                  />
+                  Share relay health telemetry
+                </label>
+                <p class="text-xs text-muted">
+                  Telemetry is opt-in and only includes relay URLs, latency, and error counts.
+                </p>
+                <ul id="relayHealthList" class="grid-stack" data-orientation="vertical"></ul>
+                <p
+                  id="relayHealthStatus"
+                  class="text-xs text-muted"
+                  role="status"
+                  aria-live="polite"
+                ></p>
+              </div>
             </section>
 
             <section
@@ -966,6 +870,189 @@
             </section>
 
             <section
+              id="profilePaneSafety"
+              class="profile-pane hidden space-y-6"
+              role="tabpanel"
+              aria-labelledby="profileNavSafety"
+            >
+              <div id="profileModerationSettings" class="card space-y-5 p-5">
+                <div class="space-y-2">
+                  <h3 class="text-base font-semibold text-text">Safety</h3>
+                  <p class="text-sm text-muted">
+                    Choose how many trusted reports or mutes it takes to blur thumbnails, block autoplay previews, or hide videos entirely.
+                    Lower numbers are stricter.
+                  </p>
+                  <div class="rounded-lg border border-border bg-bg-muted p-3 text-xs text-muted">
+                    <p>
+                      Trusted counts include your first-degree follows (F1) plus seeded moderators.
+                    </p>
+                    <dl class="mt-2 grid gap-1">
+                      <div class="flex items-center justify-between gap-3">
+                        <dt>Trusted contacts</dt>
+                        <dd id="profileModerationTrustedContactsCount" class="font-semibold text-text">0</dd>
+                      </div>
+                      <div class="flex items-center justify-between gap-3">
+                        <dt>Active trusted mute contributors</dt>
+                        <dd id="profileModerationTrustedMuteCount" class="font-semibold text-text">0</dd>
+                      </div>
+                      <div class="flex items-center justify-between gap-3">
+                        <dt>Active trusted report contributors</dt>
+                        <dd id="profileModerationTrustedReportCount" class="font-semibold text-text">0</dd>
+                      </div>
+                    </dl>
+                    <p
+                      id="profileModerationSeedOnlyIndicator"
+                      class="mt-2 flex items-center gap-1 text-xs text-warning-strong"
+                      hidden
+                    >
+                      <span aria-hidden="true">●</span>
+                      <span>Seeded moderators only</span>
+                    </p>
+                  </div>
+                </div>
+                <div class="grid gap-4 sm:grid-cols-2">
+                  <label
+                    class="block text-sm text-muted-strong"
+                    for="profileModerationBlurThreshold"
+                  >
+                    <span class="mb-2 block font-medium">Blur after trusted reports</span>
+                    <input
+                      id="profileModerationBlurThreshold"
+                      type="number"
+                      inputmode="numeric"
+                      min="0"
+                      step="1"
+                      class="input"
+                    />
+                    <span class="mt-1 block text-xs text-muted">
+                      Thumbnails blur when trusted contacts report nudity at or above this count.
+                    </span>
+                  </label>
+                  <label
+                    class="block text-sm text-muted-strong"
+                    for="profileModerationAutoplayThreshold"
+                  >
+                    <span class="mb-2 block font-medium">Block autoplay after reports</span>
+                    <input
+                      id="profileModerationAutoplayThreshold"
+                      type="number"
+                      inputmode="numeric"
+                      min="0"
+                      step="1"
+                      class="input"
+                    />
+                    <span class="mt-1 block text-xs text-muted">
+                      Autoplay previews pause once trusted reports meet this threshold.
+                    </span>
+                  </label>
+                </div>
+                <div
+                  class="grid gap-4 sm:grid-cols-2"
+                  data-role="trusted-hide-controls"
+                >
+                  <label
+                    class="block text-sm text-muted-strong"
+                    for="profileModerationMuteHideThreshold"
+                    data-role="trusted-hide-control"
+                  >
+                    <span class="mb-2 block font-medium">Hide after trusted mutes</span>
+                    <input
+                      id="profileModerationMuteHideThreshold"
+                      type="number"
+                      inputmode="numeric"
+                      min="0"
+                      step="1"
+                      class="input"
+                    />
+                    <span class="mt-1 block text-xs text-muted">
+                      Hide videos when this many trusted contacts add the author to their mute list.
+                    </span>
+                  </label>
+                  <label
+                    class="block text-sm text-muted-strong"
+                    for="profileModerationSpamHideThreshold"
+                    data-role="trusted-hide-control"
+                  >
+                    <span class="mb-2 block font-medium">Hide after trusted spam reports</span>
+                    <input
+                      id="profileModerationSpamHideThreshold"
+                      type="number"
+                      inputmode="numeric"
+                      min="0"
+                      step="1"
+                      class="input"
+                    />
+                    <span class="mt-1 block text-xs text-muted">
+                      Hide videos entirely once trusted contacts report spam at or above this count.
+                    </span>
+                  </label>
+                </div>
+                <div class="flex flex-wrap items-center gap-3">
+                  <button
+                    id="profileModerationSave"
+                    type="button"
+                    class="btn focus-ring"
+                    disabled
+                  >
+                    Save moderation settings
+                  </button>
+                  <button
+                    id="profileModerationReset"
+                    type="button"
+                    class="btn-ghost focus-ring"
+                  >
+                    Restore defaults
+                  </button>
+                </div>
+                <p
+                  id="profileModerationStatus"
+                  class="text-sm text-muted"
+                  role="status"
+                  aria-live="polite"
+                ></p>
+                <div class="space-y-3 border-t border-border/60 pt-4">
+                  <div class="space-y-1">
+                    <h4 class="text-sm font-semibold text-text">Active overrides</h4>
+                    <p class="text-xs text-muted">
+                      Videos you unblocked with “Show anyway” stay listed here until reset.
+                    </p>
+                  </div>
+                  <div
+                    id="profileModerationOverridesEmpty"
+                    class="card border border-dashed border-border/60 p-4 text-center text-xs text-muted"
+                  >
+                    No moderation overrides yet.
+                  </div>
+                  <ul
+                    id="profileModerationOverridesList"
+                    class="grid-stack hidden"
+                    data-orientation="vertical"
+                  ></ul>
+                </div>
+              </div>
+
+              <div id="profileLinkPreviewSettings" class="card space-y-4 p-5">
+                <div class="space-y-2">
+                  <h3 class="text-base font-semibold text-text">Link previews</h3>
+                  <p class="text-sm text-muted">
+                    Control when bitvid fetches link preview metadata. Disable auto-fetch to review new domains before previews load.
+                  </p>
+                </div>
+                <label
+                  for="profileLinkPreviewAutoToggle"
+                  class="inline-flex items-center gap-2 text-xs font-medium text-muted-strong"
+                >
+                  <input
+                    id="profileLinkPreviewAutoToggle"
+                    type="checkbox"
+                    class="checkbox"
+                  />
+                  Auto-fetch previews from new domains
+                </label>
+              </div>
+            </section>
+
+            <section
               id="profilePaneBlocked"
               class="profile-pane hidden space-y-4"
               role="tabpanel"
@@ -1009,91 +1096,7 @@
               role="tabpanel"
               aria-labelledby="profileNavMessages"
             >
-              <p class="text-sm text-muted">
-                View encrypted conversations sent with NIP-04 or NIP-44. bitvid keeps message data on this device only.
-              </p>
-              <div
-                id="profileMessagesStatus"
-                class="sr-only"
-                role="status"
-                aria-live="polite"
-              ></div>
-              <div
-                id="profileMessagesLoading"
-                class="hidden py-6"
-                role="status"
-                aria-live="polite"
-              >
-                <div class="sidebar-loading-wrapper">
-                  <div class="sidebar-loading-indicator">
-                    <span
-                      class="status-spinner status-spinner--inline"
-                      aria-hidden="true"
-                    ></span>
-                    <span class="sidebar-loading-text"
-                      >Fetching direct messages from relays…</span
-                    >
-                  </div>
-                </div>
-              </div>
-              <div
-                id="profileMessagesError"
-                class="card hidden border border-critical/40 bg-critical/10 px-4 py-3 text-sm text-critical"
-                role="alert"
-                aria-live="assertive"
-              ></div>
-              <div
-                id="profileMessagesEmpty"
-                class="card hidden border border-dashed border-border/60 p-6 text-center text-sm text-muted"
-                role="status"
-                aria-live="polite"
-              >
-                No direct messages yet.
-              </div>
-              <div class="flex items-center justify-end gap-2">
-                <button
-                  id="profileMessagesReload"
-                  type="button"
-                  class="btn-ghost focus-ring inline-flex items-center gap-2"
-                  data-size="sm"
-                >
-                  Refresh
-                </button>
-              </div>
-              <ul
-                id="profileMessagesList"
-                class="grid-stack hidden"
-                data-orientation="vertical"
-                aria-live="polite"
-                aria-label="Direct message threads"
-              ></ul>
-              <div class="flex flex-col gap-3 border-t border-border/60 pt-4">
-                <label class="sr-only" for="profileMessageInput">Message</label>
-                <textarea
-                  id="profileMessageInput"
-                  class="input min-h-[96px]"
-                  rows="3"
-                  placeholder="Write a message…"
-                ></textarea>
-                <div class="flex flex-wrap items-center justify-between gap-2">
-                  <p
-                    id="profileMessagesComposerHelper"
-                    class="text-xs text-muted hidden"
-                    role="status"
-                    aria-live="polite"
-                  >
-                    Sign in to send messages.
-                  </p>
-                  <button
-                    id="profileMessageSendBtn"
-                    type="button"
-                    class="btn focus-ring inline-flex items-center gap-2"
-                    data-size="sm"
-                  >
-                    Send
-                  </button>
-                </div>
-              </div>
+              <div id="dmAppShellMount"></div>
             </section>
             <section
               id="profilePaneHistory"
@@ -1349,7 +1352,7 @@
       </div>
 
       <!-- Modal Footer -->
-      <div class="flex items-center justify-end gap-3 border-t border-border/60 p-4">
+      <div class="hidden lg:flex items-center justify-end gap-3 border-t border-border/60 p-4">
         <button id="profileLogoutBtn" class="btn focus-ring" data-variant="danger">
           Logout
         </button>

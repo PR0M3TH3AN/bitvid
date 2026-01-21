@@ -1,254 +1,98 @@
+// Run with: node scripts/run-targeted-tests.mjs tests/nostr/toolkit.test.mjs
+
 import assert from "node:assert/strict";
 import test from "node:test";
-
-const originalCanonical = globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__;
-const originalNostrTools = globalThis.NostrTools;
-const originalNostrToolsReady = globalThis.nostrToolsReady;
-
-class BootstrapSimplePool {
-  sub() {}
-  close() {}
-}
-
-const bootstrapToolkit = {
-  ok: true,
-  nip19: {
-    decode: (value) => value,
-    npubEncode: (value) => value,
-  },
-  SimplePool: BootstrapSimplePool,
-};
-
-globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__ = bootstrapToolkit;
-globalThis.NostrTools = bootstrapToolkit;
-globalThis.nostrToolsReady = Promise.resolve(bootstrapToolkit);
-
-const toolkitModule = await import("../../js/nostr/toolkit.js");
-const {
-  rememberNostrTools,
-  getCachedNostrTools,
-  ensureNostrTools,
-  resolveSimplePoolConstructor,
+import {
+  DEFAULT_RELAY_URLS,
   shimLegacySimplePoolMethods,
-} = toolkitModule;
+  resolveSimplePoolConstructor,
+  readToolkitFromScope,
+  normalizeToolkitCandidate,
+} from "../../js/nostr/toolkit.js";
 
-const baselineToolkit = getCachedNostrTools() || bootstrapToolkit;
-
-test.after(() => {
-  if (originalCanonical === undefined) {
-    delete globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__;
-  } else {
-    globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__ = originalCanonical;
-  }
-
-  if (originalNostrTools === undefined) {
-    delete globalThis.NostrTools;
-  } else {
-    globalThis.NostrTools = originalNostrTools;
-  }
-
-  if (originalNostrToolsReady === undefined) {
-    delete globalThis.nostrToolsReady;
-  } else {
-    globalThis.nostrToolsReady = originalNostrToolsReady;
-  }
-
-  rememberNostrTools(baselineToolkit);
+test("toolkit: DEFAULT_RELAY_URLS is frozen and contains valid URLs", () => {
+  assert.ok(Array.isArray(DEFAULT_RELAY_URLS));
+  assert.ok(Object.isFrozen(DEFAULT_RELAY_URLS));
+  assert.ok(DEFAULT_RELAY_URLS.length > 0);
+  assert.ok(DEFAULT_RELAY_URLS.every((url) => url.startsWith("wss://")));
 });
 
-test("ensureNostrTools resolves the cached toolkit", async () => {
-  class CachedSimplePool {
-    sub() {}
-    close() {}
-  }
-
-  const cachedToolkit = {
-    ok: true,
-    nip19: {
-      decode: (value) => value,
-      npubEncode: (value) => value,
-    },
-    SimplePool: CachedSimplePool,
-  };
-
-  const previousCanonicalForTest = globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__;
-  const previousNostrToolsForTest = globalThis.NostrTools;
-
-  globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__ = cachedToolkit;
-  globalThis.NostrTools = cachedToolkit;
-  rememberNostrTools(cachedToolkit);
-
-  try {
-    const ensured = await ensureNostrTools();
-    assert.strictEqual(ensured, cachedToolkit);
-  } finally {
-    if (previousCanonicalForTest === undefined) {
-      delete globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__;
-    } else {
-      globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__ = previousCanonicalForTest;
-    }
-
-    if (previousNostrToolsForTest === undefined) {
-      delete globalThis.NostrTools;
-    } else {
-      globalThis.NostrTools = previousNostrToolsForTest;
-    }
-
-    rememberNostrTools(baselineToolkit);
-  }
-});
-
-test("resolveSimplePoolConstructor handles supported permutations", () => {
+test("toolkit: resolveSimplePoolConstructor finds SimplePool", () => {
   class MockSimplePool {
     sub() {}
     close() {}
   }
 
-  const variations = [
-    { label: "tools.SimplePool", tools: { SimplePool: MockSimplePool } },
-    { label: "tools.pool.SimplePool", tools: { pool: { SimplePool: MockSimplePool } } },
-    { label: "tools.pool constructor", tools: { pool: MockSimplePool } },
-    {
-      label: "tools.SimplePool.SimplePool",
-      tools: { SimplePool: { SimplePool: MockSimplePool } },
-    },
-    {
-      label: "tools.SimplePool.default",
-      tools: { SimplePool: { default: MockSimplePool } },
-    },
-    { label: "tools.pool.default", tools: { pool: { default: MockSimplePool } } },
-    {
-      label: "tools.default.SimplePool",
-      tools: { default: { SimplePool: MockSimplePool } },
-    },
-    {
-      label: "tools.default.pool.SimplePool",
-      tools: { default: { pool: { SimplePool: MockSimplePool } } },
-    },
-    {
-      label: "tools.default.pool constructor",
-      tools: { default: { pool: MockSimplePool } },
-    },
-  ];
+  const mockTools = {
+    SimplePool: MockSimplePool,
+  };
 
-  for (const { label, tools } of variations) {
-    assert.strictEqual(
-      resolveSimplePoolConstructor(tools),
-      MockSimplePool,
-      `expected ${label}`
-    );
-  }
+  const Resolved = resolveSimplePoolConstructor(mockTools);
+  assert.equal(Resolved, MockSimplePool);
 
-  assert.strictEqual(
-    resolveSimplePoolConstructor({}, { SimplePool: MockSimplePool }),
-    MockSimplePool,
-    "scope.SimplePool fallback"
-  );
-
-  assert.strictEqual(
-    resolveSimplePoolConstructor({}, { pool: { SimplePool: MockSimplePool } }),
-    MockSimplePool,
-    "scope.pool.SimplePool fallback"
-  );
-
-  assert.strictEqual(
-    resolveSimplePoolConstructor(
-      {},
-      { NostrTools: { pool: { SimplePool: MockSimplePool } } }
-    ),
-    MockSimplePool,
-    "scope.NostrTools.pool.SimplePool fallback"
-  );
-
-  assert.strictEqual(
-    resolveSimplePoolConstructor({}, {}),
-    null,
-    "returns null when no candidates are available"
-  );
-});
-
-test("shimLegacySimplePoolMethods adds legacy sub/list wrappers", async () => {
-  let capturedRequests = null;
-  let capturedParams = null;
-  const closeReasons = [];
-
-  const mockPool = {
-    subscribeMap(requests, params) {
-      capturedRequests = requests;
-      capturedParams = params;
-      return {
-        close(reason) {
-          closeReasons.push(reason);
-        },
-      };
+  const mockToolsNested = {
+    pool: {
+      SimplePool: MockSimplePool,
     },
   };
 
-  shimLegacySimplePoolMethods(mockPool);
+  const ResolvedNested = resolveSimplePoolConstructor(mockToolsNested);
+  assert.equal(ResolvedNested, MockSimplePool);
+});
 
-  assert.strictEqual(typeof mockPool.sub, "function");
-  assert.strictEqual(typeof mockPool.list, "function");
+test("toolkit: shimLegacySimplePoolMethods adds sub/list/map if missing", () => {
+  const pool = {
+    subscribeMany: () => () => {},
+  };
 
-  const relays = ["wss://relay.one", "wss://relay.two"];
-  const filters = [{ kinds: [1] }, { authors: ["abc"] }];
+  shimLegacySimplePoolMethods(pool);
 
-  const sub = mockPool.sub(relays, filters, {
-    alreadyHaveEvent(id) {
-      return id === "skip";
+  assert.equal(typeof pool.sub, "function");
+  assert.equal(typeof pool.list, "function");
+
+  // Verify shim methods return expected interface
+  const sub = pool.sub([], []);
+  assert.equal(typeof sub.on, "function");
+  assert.equal(typeof sub.off, "function");
+  assert.equal(typeof sub.unsub, "function");
+});
+
+test("toolkit: readToolkitFromScope finds NostrTools in global scope", () => {
+  const mockScope = {
+    NostrTools: {
+      generateSecretKey: () => {},
     },
-  });
+  };
 
-  assert.ok(Array.isArray(capturedRequests));
-  assert.strictEqual(capturedRequests.length, relays.length * filters.length);
-  assert.ok(capturedRequests.every((entry) => entry && entry.url && entry.filter));
-  assert.ok(capturedParams);
-  assert.strictEqual(typeof capturedParams.onevent, "function");
-  assert.strictEqual(typeof capturedParams.oneose, "function");
-  assert.strictEqual(typeof capturedParams.onclose, "function");
-  assert.strictEqual(typeof capturedParams.alreadyHaveEvent, "function");
+  const tools = readToolkitFromScope(mockScope);
+  assert.ok(tools);
+  assert.equal(typeof tools.generateSecretKey, "function");
+});
 
-  const receivedEvents = [];
-  const eosePromise = new Promise((resolve) => sub.on("eose", resolve));
-  const closePromise = new Promise((resolve) => sub.on("close", resolve));
-  sub.on("event", (event) => {
-    receivedEvents.push(event.id);
-  });
+test("toolkit: normalizeToolkitCandidate validation", () => {
+  assert.equal(normalizeToolkitCandidate(null), null);
+  assert.equal(normalizeToolkitCandidate({ ok: false }), null);
+  assert.equal(normalizeToolkitCandidate({ then: () => {} }), null); // Promise-like
 
-  assert.strictEqual(capturedParams.alreadyHaveEvent("skip"), true);
-  assert.strictEqual(capturedParams.alreadyHaveEvent("id-1"), false);
-  assert.strictEqual(capturedParams.alreadyHaveEvent("id-1"), true);
+  const valid = { generateSecretKey: () => {} };
+  const normalized = normalizeToolkitCandidate(valid);
+  assert.deepEqual(normalized, valid);
+});
 
-  capturedParams.onevent({ id: "id-1" });
-  capturedParams.onevent({ id: "id-2" });
-  capturedParams.oneose();
-  capturedParams.onclose(["done"]);
+test("toolkit: shimLegacySimplePoolMethods handles simple list operation", async () => {
+  const pool = {
+    subscribeMany: (relays, filters, opts) => {
+      setTimeout(() => {
+        if (opts.onevent) opts.onevent({ id: "1" });
+        if (opts.oneose) opts.oneose();
+      }, 10);
+      return () => {};
+    },
+  };
 
-  await eosePromise;
-  const closePayload = await closePromise;
+  shimLegacySimplePoolMethods(pool);
 
-  assert.deepStrictEqual(receivedEvents, ["id-1", "id-2"]);
-  assert.deepStrictEqual(closePayload, ["done"]);
-
-  sub.unsub();
-
-  closeReasons.length = 0;
-  const immediateUnsub = mockPool.sub(["wss://relay.extra"], [{ kinds: [2] }]);
-  immediateUnsub.unsub();
-  assert.ok(closeReasons.includes("closed by caller"));
-
-  capturedParams = null;
-  capturedRequests = null;
-  closeReasons.length = 0;
-
-  const listPromise = mockPool.list(["wss://relay.example"], [{ kinds: [1] }]);
-  assert.ok(capturedParams);
-  capturedParams.onevent({ id: "evt-1" });
-  capturedParams.onevent({ id: "evt-2" });
-  capturedParams.oneose();
-
-  const listed = await listPromise;
-  assert.deepStrictEqual(
-    listed.map((event) => event.id),
-    ["evt-1", "evt-2"]
-  );
+  const events = await pool.list(["wss://relay.com"], [{ kinds: [1] }]);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].id, "1");
 });

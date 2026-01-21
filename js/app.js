@@ -68,6 +68,12 @@ import { devLogger, userLogger } from "./utils/logger.js";
 import createPopover from "./ui/overlay/popoverEngine.js";
 import { createVideoSettingsMenuPanel } from "./ui/components/videoMenuRenderers.js";
 import moderationService from "./services/moderationService.js";
+import { sanitizeRelayList } from "./nostr/nip46Client.js";
+import { buildDmRelayListEvent } from "./nostrEventSchemas.js";
+import {
+  publishEventToRelays,
+  assertAnyRelayAccepted,
+} from "./nostrPublish.js";
 import {
   initViewCounter,
   subscribeToVideoViewCount,
@@ -139,13 +145,16 @@ import {
   setModerationSettings,
   resetModerationSettings,
   loadModerationSettingsFromStorage,
+  loadDmPrivacySettingsFromStorage,
   URL_PROBE_TIMEOUT_MS,
   urlHealthConstants,
 } from "./state/cache.js";
 import ApplicationBootstrap from "./ui/applicationBootstrap.js";
+import SimilarContentController from "./ui/similarContentController.js";
 import VideoModalCommentController from "./ui/videoModalCommentController.js";
 import TorrentStatusController from "./ui/torrentStatusController.js";
 import ModerationActionController from "./services/moderationActionController.js";
+import ModerationDecorator from "./services/moderationDecorator.js";
 import { bootstrapTrustedSeeds } from "./services/trustBootstrap.js";
 
 const recordVideoViewApi = (...args) => recordVideoView(nostrClient, ...args);
@@ -220,6 +229,8 @@ class Application {
     this.modalManager = modalManager;
 
     this.modalCreatorProfileRequestToken = null;
+    this.dmRecipientPubkey = null;
+    this.dmRelayHints = new Map();
 
     this.commentController = null;
     this.initializeCommentController();
@@ -275,7 +286,12 @@ class Application {
       },
     });
 
+    this.moderationDecorator = new ModerationDecorator({
+      getProfileCacheEntry: (pubkey) => this.getProfileCacheEntry(pubkey),
+    });
+
     this.initializeModerationActionController();
+    this.initializeSimilarContentController();
   }
 
   get modalVideo() {
@@ -415,6 +431,7 @@ class Application {
 
       loadModerationOverridesFromStorage();
       loadModerationSettingsFromStorage();
+      loadDmPrivacySettingsFromStorage();
       this.moderationSettings = this.normalizeModerationSettings(
         getModerationSettings(),
       );
@@ -1126,7 +1143,40 @@ class Application {
     };
   }
 
+  initializeSimilarContentController() {
+    if (this.similarContentController) {
+      return;
+    }
+
+    this.similarContentController = new SimilarContentController({
+      services: {
+        nostrClient,
+      },
+      callbacks: {
+        isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
+        decorateVideoModeration: (video) => this.decorateVideoModeration(video),
+        decorateVideoCreatorIdentity: (video) => this.decorateVideoCreatorIdentity(video),
+      },
+      ui: {
+        videoModal: this.videoModal,
+      },
+      state: {
+        getVideoListView: () => this.videoListView,
+        getVideosMap: () => this.videosMap,
+      },
+      helpers: {
+        getKnownVideoPostedAt: (video) => this.getKnownVideoPostedAt(video),
+        buildShareUrlFromEventId: (id) => this.buildShareUrlFromEventId(id),
+        formatTimeAgo: (ts) => this.formatTimeAgo(ts),
+      }
+    });
+  }
+
   extractDTagValue(tags) {
+    if (this.similarContentController) {
+      return this.similarContentController.extractDTagValue(tags);
+    }
+    // Fallback if controller not initialized (though it should be)
     if (!Array.isArray(tags)) {
       return "";
     }
@@ -1142,6 +1192,10 @@ class Application {
   }
 
   deriveVideoPointerInfo(video) {
+    if (this.similarContentController) {
+      return this.similarContentController.deriveVideoPointerInfo(video);
+    }
+    // Fallback if controller not initialized
     if (!video || typeof video !== "object") {
       return null;
     }
@@ -1158,271 +1212,20 @@ class Application {
     });
   }
 
-  computeSimilarContentCandidates({ activeVideo = this.currentVideo, maxItems = 5 } = {}) {
-    const decorateCandidate = (video) => {
-      if (!video || typeof video !== "object") {
-        return video;
-      }
-      let decoratedVideo = video;
-      if (typeof this.decorateVideoModeration === "function") {
-        try {
-          const decorated = this.decorateVideoModeration(video);
-          if (decorated && typeof decorated === "object") {
-            decoratedVideo = decorated;
-          }
-        } catch (error) {
-          devLogger.warn(
-            "[Application] Failed to decorate similar content candidate",
-            error,
-          );
-        }
-      }
-      if (typeof this.decorateVideoCreatorIdentity === "function") {
-        try {
-          const identityDecorated = this.decorateVideoCreatorIdentity(
-            decoratedVideo,
-          );
-          if (identityDecorated && typeof identityDecorated === "object") {
-            decoratedVideo = identityDecorated;
-          }
-        } catch (error) {
-          devLogger.warn(
-            "[Application] Failed to decorate similar content identity",
-            error,
-          );
-        }
-      }
-      return decoratedVideo;
-    };
-
-    const target = activeVideo && typeof activeVideo === "object" ? decorateCandidate(activeVideo) : null;
-    if (!target) {
-      return [];
-    }
-
-    const activeTagsSource = Array.isArray(target.displayTags) && target.displayTags.length
-      ? target.displayTags
-      : collectVideoTags(target);
-
-    const activeTagSet = new Set();
-    for (const tag of activeTagsSource) {
-      if (typeof tag !== "string") {
-        continue;
-      }
-      const normalized = tag.trim().toLowerCase();
-      if (normalized) {
-        activeTagSet.add(normalized);
-      }
-    }
-
-    if (activeTagSet.size === 0) {
-      return [];
-    }
-
-    const limit = Number.isFinite(maxItems) && maxItems > 0
-      ? Math.max(1, Math.floor(maxItems))
-      : 5;
-
-    let candidateSource = [];
-    if (Array.isArray(this.videoListView?.currentVideos) && this.videoListView.currentVideos.length) {
-      candidateSource = this.videoListView.currentVideos;
-    } else if (this.videosMap instanceof Map && this.videosMap.size) {
-      candidateSource = Array.from(this.videosMap.values());
-    } else if (nostrClient && typeof nostrClient.getActiveVideos === "function") {
-      try {
-        const activeVideos = nostrClient.getActiveVideos();
-        if (Array.isArray(activeVideos)) {
-          candidateSource = activeVideos;
-        }
-      } catch (error) {
-        devLogger.warn("[Application] Failed to read active videos for similar content:", error);
-      }
-    }
-
-    if (!Array.isArray(candidateSource) || candidateSource.length === 0) {
-      return [];
-    }
-
-    const activeId = typeof target.id === "string" ? target.id : "";
-    const activePointerKey = typeof target.pointerKey === "string" ? target.pointerKey : "";
-    const seenKeys = new Set();
-    if (activeId) {
-      const normalizedId = activeId.trim().toLowerCase();
-      if (normalizedId) {
-        seenKeys.add(normalizedId);
-      }
-    }
-    if (activePointerKey) {
-      const normalizedPointer = activePointerKey.trim().toLowerCase();
-      if (normalizedPointer) {
-        seenKeys.add(normalizedPointer);
-      }
-    }
-
-    const results = [];
-
-    for (const candidate of candidateSource) {
-      const decoratedCandidate = decorateCandidate(candidate);
-      if (!decoratedCandidate || typeof decoratedCandidate !== "object") {
-        continue;
-      }
-      if (decoratedCandidate === target) {
-        continue;
-      }
-
-      const candidateId = typeof decoratedCandidate.id === "string" ? decoratedCandidate.id : "";
-      if (candidateId && candidateId === activeId) {
-        continue;
-      }
-      if (decoratedCandidate.deleted === true) {
-        continue;
-      }
-      if (decoratedCandidate.isPrivate === true) {
-        continue;
-      }
-      if (decoratedCandidate.isNsfw === true && ALLOW_NSFW_CONTENT !== true) {
-        continue;
-      }
-
-      const candidatePubkey = typeof decoratedCandidate.pubkey === "string" ? decoratedCandidate.pubkey : "";
-      if (candidatePubkey && this.isAuthorBlocked(candidatePubkey)) {
-        continue;
-      }
-
-      const candidateTagsSource = Array.isArray(decoratedCandidate.displayTags) && decoratedCandidate.displayTags.length
-        ? decoratedCandidate.displayTags
-        : collectVideoTags(decoratedCandidate);
-      if (!Array.isArray(candidateTagsSource) || candidateTagsSource.length === 0) {
-        continue;
-      }
-
-      const candidateTagSet = new Set();
-      for (const tag of candidateTagsSource) {
-        if (typeof tag !== "string") {
-          continue;
-        }
-        const normalized = tag.trim().toLowerCase();
-        if (normalized) {
-          candidateTagSet.add(normalized);
-        }
-      }
-
-      if (candidateTagSet.size === 0) {
-        continue;
-      }
-
-      let sharedCount = 0;
-      for (const tag of candidateTagSet) {
-        if (activeTagSet.has(tag)) {
-          sharedCount += 1;
-        }
-      }
-
-      if (sharedCount === 0) {
-        continue;
-      }
-
-      const pointerInfo = this.deriveVideoPointerInfo(candidate);
-      const pointerKey = typeof candidate.pointerKey === "string" && candidate.pointerKey.trim()
-        ? candidate.pointerKey.trim()
-        : typeof pointerInfo?.key === "string" && pointerInfo.key
-          ? pointerInfo.key
-          : "";
-
-      const dedupeKeyRaw = (candidateId || pointerKey || "").trim();
-      if (dedupeKeyRaw) {
-        const dedupeKey = dedupeKeyRaw.toLowerCase();
-        if (seenKeys.has(dedupeKey)) {
-          continue;
-        }
-        seenKeys.add(dedupeKey);
-      }
-
-      if (!Array.isArray(candidate.displayTags) || candidate.displayTags.length === 0) {
-        candidate.displayTags = Array.isArray(candidateTagsSource)
-          ? candidateTagsSource.slice()
-          : [];
-      }
-
-      let postedAt = this.getKnownVideoPostedAt(decoratedCandidate);
-      if (!Number.isFinite(postedAt) && Number.isFinite(decoratedCandidate.rootCreatedAt)) {
-        postedAt = Math.floor(decoratedCandidate.rootCreatedAt);
-      }
-      if (!Number.isFinite(postedAt) && Number.isFinite(decoratedCandidate.created_at)) {
-        postedAt = Math.floor(decoratedCandidate.created_at);
-      }
-      if (!Number.isFinite(postedAt)) {
-        postedAt = null;
-      }
-
-      let shareUrl = "";
-      if (typeof decoratedCandidate.shareUrl === "string" && decoratedCandidate.shareUrl.trim()) {
-        shareUrl = decoratedCandidate.shareUrl.trim();
-      } else if (candidateId) {
-        shareUrl = this.buildShareUrlFromEventId(candidateId) || "";
-      }
-
-      results.push({
-        video: decoratedCandidate,
-        pointerInfo: pointerInfo || null,
-        shareUrl,
-        postedAt,
-        sharedTagCount: sharedCount,
+  computeSimilarContentCandidates(options = {}) {
+    if (this.similarContentController) {
+      return this.similarContentController.computeCandidates({
+        activeVideo: options.activeVideo || this.currentVideo,
+        maxItems: options.maxItems,
       });
     }
-
-    if (results.length === 0) {
-      return [];
-    }
-
-    results.sort((a, b) => {
-      if (b.sharedTagCount !== a.sharedTagCount) {
-        return b.sharedTagCount - a.sharedTagCount;
-      }
-      const tsA = Number.isFinite(a.postedAt) ? a.postedAt : 0;
-      const tsB = Number.isFinite(b.postedAt) ? b.postedAt : 0;
-      return tsB - tsA;
-    });
-
-    return results.slice(0, limit).map((entry) => {
-      const normalizedPostedAt = Number.isFinite(entry.postedAt)
-        ? Math.floor(entry.postedAt)
-        : null;
-      const timeAgo = normalizedPostedAt !== null ? this.formatTimeAgo(normalizedPostedAt) : "";
-      return {
-        video: entry.video,
-        pointerInfo: entry.pointerInfo,
-        shareUrl: entry.shareUrl,
-        postedAt: normalizedPostedAt,
-        timeAgo,
-        sharedTagCount: entry.sharedTagCount,
-      };
-    });
+    return [];
   }
 
   updateModalSimilarContent({ activeVideo = this.currentVideo, maxItems } = {}) {
-    if (!this.videoModal) {
-      return;
-    }
-
-    const target = activeVideo && typeof activeVideo === "object" ? activeVideo : null;
-    if (!target) {
-      if (typeof this.videoModal.clearSimilarContent === "function") {
-        this.videoModal.clearSimilarContent();
-      }
-      return;
-    }
-
-    const matches = this.computeSimilarContentCandidates({ activeVideo: target, maxItems });
-    if (matches.length > 0) {
-      if (typeof this.videoModal.setSimilarContent === "function") {
-        this.videoModal.setSimilarContent(matches);
-      }
-      return;
-    }
-
-    if (typeof this.videoModal.clearSimilarContent === "function") {
-      this.videoModal.clearSimilarContent();
+    if (this.similarContentController) {
+      this.similarContentController.ui.videoModal = this.videoModal;
+      this.similarContentController.updateModal({ activeVideo, maxItems });
     }
   }
 
@@ -3058,6 +2861,306 @@ class Application {
     });
   }
 
+  getDmRecipientPubkey() {
+    return this.dmRecipientPubkey;
+  }
+
+  setDmRecipientPubkey(pubkey) {
+    const normalized = this.normalizeHexPubkey(pubkey);
+    this.dmRecipientPubkey = normalized || null;
+    return this.dmRecipientPubkey;
+  }
+
+  getDmRelayHints(pubkey) {
+    const normalized = this.normalizeHexPubkey(pubkey);
+    if (!normalized || !(this.dmRelayHints instanceof Map)) {
+      return [];
+    }
+    const hints = this.dmRelayHints.get(normalized);
+    return Array.isArray(hints) ? hints.slice() : [];
+  }
+
+  setDmRelayHints(pubkey, hints = []) {
+    const normalized = this.normalizeHexPubkey(pubkey);
+    if (!normalized) {
+      return [];
+    }
+    if (!(this.dmRelayHints instanceof Map)) {
+      this.dmRelayHints = new Map();
+    }
+    const stored = sanitizeRelayList(Array.isArray(hints) ? hints : []);
+    this.dmRelayHints.set(normalized, stored);
+    return stored.slice();
+  }
+
+  async publishDmRelayPreferences({ pubkey, relays } = {}) {
+    const normalized = this.normalizeHexPubkey(pubkey || this.pubkey);
+    if (!normalized) {
+      const error = new Error("A valid pubkey is required to publish DM relays.");
+      error.code = "invalid-pubkey";
+      throw error;
+    }
+
+    const relayHints = sanitizeRelayList(Array.isArray(relays) ? relays : []);
+    if (!relayHints.length) {
+      const error = new Error("Add at least one DM relay before publishing.");
+      error.code = "empty";
+      throw error;
+    }
+
+    if (!nostrClient?.pool) {
+      const error = new Error(
+        "Nostr is not connected yet. Please try again once relays are ready.",
+      );
+      error.code = "nostr-uninitialized";
+      throw error;
+    }
+
+    const signer = await nostrClient.ensureActiveSignerForPubkey(normalized);
+    if (!signer || typeof signer.signEvent !== "function") {
+      const error = new Error(
+        "An active signer with signEvent support is required to publish DM relays.",
+      );
+      error.code = "nostr-extension-missing";
+      throw error;
+    }
+
+    if (signer.type === "extension" && nostrClient.ensureExtensionPermissions) {
+      const permissionResult = await nostrClient.ensureExtensionPermissions();
+      if (!permissionResult?.ok) {
+        userLogger.warn(
+          "[Application] Signer permissions denied while publishing DM relays.",
+          permissionResult?.error,
+        );
+        const error = new Error(
+          "The active signer must allow signing before publishing DM relays.",
+        );
+        error.code = "extension-permission-denied";
+        error.cause = permissionResult?.error;
+        throw error;
+      }
+    }
+
+    const event = buildDmRelayListEvent({
+      pubkey: normalized,
+      created_at: Math.floor(Date.now() / 1000),
+      relays: relayHints,
+    });
+
+    const signedEvent = await signer.signEvent(event);
+
+    const relayTargets = sanitizeRelayList(
+      Array.isArray(nostrClient.writeRelays) && nostrClient.writeRelays.length
+        ? nostrClient.writeRelays
+        : Array.isArray(nostrClient.relays)
+        ? nostrClient.relays
+        : [],
+    );
+
+    if (!relayTargets.length) {
+      const error = new Error("No relay targets are available for publishing.");
+      error.code = "no-targets";
+      throw error;
+    }
+
+    const publishResults = await publishEventToRelays(
+      nostrClient.pool,
+      relayTargets,
+      signedEvent,
+    );
+
+    let publishSummary;
+    try {
+      publishSummary = assertAnyRelayAccepted(publishResults, {
+        context: "dm relay hints update",
+        message: "No relays accepted the DM relay list.",
+      });
+    } catch (publishError) {
+      if (publishError?.relayFailures?.length) {
+        publishError.relayFailures.forEach(
+          ({ url, error: relayError, reason }) => {
+            userLogger.error(
+              `[Application] Relay ${url} rejected DM relay list: ${reason}`,
+              relayError || reason,
+            );
+          },
+        );
+      }
+      throw publishError;
+    }
+
+    if (publishSummary.failed.length) {
+      publishSummary.failed.forEach(({ url, error: relayError }) => {
+        const reason =
+          relayError instanceof Error
+            ? relayError.message
+            : relayError
+            ? String(relayError)
+            : "publish failed";
+        userLogger.warn(
+          `[Application] Relay ${url} did not acknowledge DM relay hints: ${reason}`,
+          relayError,
+        );
+      });
+    }
+
+    return {
+      ok: true,
+      event: signedEvent,
+      accepted: publishSummary.accepted.map(({ url }) => url),
+      failed: publishSummary.failed.map(({ url, error: relayError }) => ({
+        url,
+        error: relayError || null,
+      })),
+    };
+  }
+
+  handleProfilePublishDmRelayPreferences({ relays, pubkey } = {}) {
+    return this.publishDmRelayPreferences({ relays, pubkey });
+  }
+
+  async fetchDmRelayHints(pubkey) {
+    const normalized = this.normalizeHexPubkey(pubkey);
+    if (!normalized) {
+      return [];
+    }
+
+    const cached = this.getDmRelayHints(normalized);
+    if (cached.length) {
+      return cached;
+    }
+
+    const relayCandidates =
+      Array.isArray(nostrClient?.readRelays) && nostrClient.readRelays.length
+        ? nostrClient.readRelays
+        : Array.isArray(nostrClient?.relays)
+        ? nostrClient.relays
+        : [];
+
+    const relayList = sanitizeRelayList(relayCandidates);
+    if (!relayList.length) {
+      return [];
+    }
+
+    if (!nostrClient?.pool || typeof nostrClient.pool.list !== "function") {
+      return [];
+    }
+
+    try {
+      const events = await nostrClient.pool.list(relayList, [
+        { kinds: [10050], authors: [normalized], limit: 1 },
+      ]);
+      const sorted = Array.isArray(events)
+        ? events
+            .filter((event) => event && event.pubkey === normalized)
+            .sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0))
+        : [];
+      if (!sorted.length) {
+        return [];
+      }
+
+      const tags = Array.isArray(sorted[0]?.tags) ? sorted[0].tags : [];
+      const relayHints = sanitizeRelayList(
+        tags
+          .filter((tag) => Array.isArray(tag) && tag[0] === "relay")
+          .map((tag) => (typeof tag[1] === "string" ? tag[1].trim() : "")),
+      );
+
+      this.setDmRelayHints(normalized, relayHints);
+      return relayHints;
+    } catch (error) {
+      devLogger.warn(
+        "[Application] Failed to load DM relay hints:",
+        error,
+      );
+    }
+
+    return [];
+  }
+
+  openDirectMessageComposer({ recipientPubkey, source = "" } = {}) {
+    const normalized = this.normalizeHexPubkey(recipientPubkey);
+    if (!normalized) {
+      this.showError("Please select a valid message recipient.");
+      return false;
+    }
+
+    this.setDmRecipientPubkey(normalized);
+
+    if (this.profileController) {
+      try {
+        if (typeof this.profileController.setDirectMessageRecipient === "function") {
+          this.profileController.setDirectMessageRecipient(normalized, {
+            reason: source || "external",
+          });
+        }
+        if (typeof this.profileController.show === "function") {
+          this.profileController.show("messages");
+        }
+        if (typeof this.profileController.focusMessageComposer === "function") {
+          this.profileController.focusMessageComposer();
+        }
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to open DM composer:",
+          error,
+        );
+      }
+    }
+
+    return true;
+  }
+
+  handleProfileSendDmRequest({ recipient } = {}) {
+    const recipientPubkey =
+      typeof recipient?.pubkey === "string"
+        ? recipient.pubkey
+        : null;
+
+    return this.openDirectMessageComposer({
+      recipientPubkey,
+      source: "profile-modal",
+    });
+  }
+
+  handleProfileUseDmRelays({ recipient, controller } = {}) {
+    const relayHints = Array.isArray(recipient?.relayHints)
+      ? recipient.relayHints
+      : [];
+    if (!relayHints.length) {
+      this.showError("No DM relays found for this recipient.");
+      return false;
+    }
+
+    if (recipient?.pubkey) {
+      this.setDmRelayHints(recipient.pubkey, relayHints);
+    }
+
+    this.showSuccess("Recipient DM relays ready for use.");
+    if (controller?.focusMessageComposer) {
+      controller.focusMessageComposer();
+    }
+    return true;
+  }
+
+  handleProfilePrivacyToggle({ enabled, controller, recipient } = {}) {
+    const relayHints = Array.isArray(recipient?.relayHints)
+      ? recipient.relayHints
+      : [];
+
+    if (enabled && !relayHints.length) {
+      this.showStatus(
+        "Privacy warning: this recipient has not shared NIP-17 relays, so we'll use your default relays.",
+      );
+    }
+
+    this.showStatus(
+      enabled
+        ? "NIP-17 privacy delivery enabled for this recipient."
+        : "Using standard DM delivery for this recipient.",
+    );
+  }
+
   updateProfileInDOM(pubkey, profile) {
     if (this.profileIdentityController) {
       this.profileIdentityController.updateProfileIdentity({
@@ -3726,6 +3829,8 @@ class Application {
       this.decorateVideoModeration(this.currentVideo, feedContext);
     }
 
+    this.moderationDecorator.updateSettings(normalized);
+
     if (!skipRefresh) {
       try {
         await this.onVideosShouldRefresh({ reason: "moderation-settings-change" });
@@ -4119,6 +4224,9 @@ class Application {
 
     this.applyAuthenticatedUiState();
     this.commentController?.refreshAuthState?.();
+    if (typeof this.refreshUnreadDmIndicator === "function") {
+      void this.refreshUnreadDmIndicator({ reason: "auth-login" });
+    }
 
     const currentView = getHashViewName();
     const normalizedView =
@@ -4371,6 +4479,11 @@ class Application {
     }
 
     this.applyLoggedOutUiState();
+    if (typeof this.refreshUnreadDmIndicator === "function") {
+      void this.refreshUnreadDmIndicator({ reason: "auth-logout" });
+    } else if (this.appChromeController?.setUnreadDmIndicator) {
+      this.appChromeController.setUnreadDmIndicator(false);
+    }
 
     const logoutView = getHashViewName();
     if (
@@ -5393,9 +5506,8 @@ class Application {
       return this.feedEngine.registerFeed("for-you", {
         source: createActiveNostrSource({ service: this.nostrService }),
         stages: [
-          // TODO(tag-preferences): keep tag-preference filtering consolidated in
-          // createTagPreferenceFilterStage so each feed has a single source of
-          // truth when interest-based inclusion/ranking lands.
+          // Note: Tag-preference filtering is consolidated in createTagPreferenceFilterStage
+          // so each feed has a single source of truth for interest-based inclusion/ranking.
           createTagPreferenceFilterStage(),
           createBlacklistFilterStage({
             shouldIncludeVideo: (video, options) =>
@@ -5466,9 +5578,8 @@ class Application {
       return this.feedEngine.registerFeed("subscriptions", {
         source: createSubscriptionAuthorsSource({ service: this.nostrService }),
         stages: [
-          // TODO(tag-preferences): keep tag-preference filtering consolidated in
-          // createTagPreferenceFilterStage so each feed has a single source of
-          // truth when interest-based inclusion/ranking lands.
+          // Note: Tag-preference filtering is consolidated in createTagPreferenceFilterStage
+          // so each feed has a single source of truth for interest-based inclusion/ranking.
           createTagPreferenceFilterStage(),
           createBlacklistFilterStage({
             shouldIncludeVideo: (video, options) =>
@@ -6463,487 +6574,28 @@ class Application {
   }
 
   deriveModerationReportType(summary) {
-    if (!summary || typeof summary !== "object") {
-      return "";
-    }
-
-    const types = summary.types && typeof summary.types === "object" ? summary.types : null;
-    if (!types) {
-      return "";
-    }
-
-    let bestType = "";
-    let bestScore = -1;
-    for (const [type, stats] of Object.entries(types)) {
-      if (!stats || typeof stats !== "object") {
-        continue;
-      }
-      const trusted = Number.isFinite(stats.trusted) ? Math.floor(stats.trusted) : 0;
-      if (trusted > bestScore) {
-        bestScore = trusted;
-        bestType = typeof type === "string" ? type : bestType;
-      }
-    }
-
-    return typeof bestType === "string" ? bestType.toLowerCase() : "";
+    return this.moderationDecorator.deriveModerationReportType(summary);
   }
 
   deriveModerationTrustedCount(summary, reportType) {
-    if (!summary || typeof summary !== "object") {
-      return 0;
-    }
-
-    const normalizedType = typeof reportType === "string" ? reportType.toLowerCase() : "";
-    const types = summary.types && typeof summary.types === "object" ? summary.types : {};
-
-    if (normalizedType && types[normalizedType]) {
-      const entry = types[normalizedType];
-      if (entry && Number.isFinite(entry.trusted)) {
-        return Math.max(0, Math.floor(entry.trusted));
-      }
-    }
-
-    if (Number.isFinite(summary.totalTrusted)) {
-      return Math.max(0, Math.floor(summary.totalTrusted));
-    }
-
-    for (const stats of Object.values(types)) {
-      if (stats && Number.isFinite(stats.trusted)) {
-        return Math.max(0, Math.floor(stats.trusted));
-      }
-    }
-
-    return 0;
+    return this.moderationDecorator.deriveModerationTrustedCount(summary, reportType);
   }
 
   getReporterDisplayName(pubkey) {
-    if (typeof pubkey !== "string") {
-      return "";
-    }
-
-    const trimmed = pubkey.trim();
-    if (!trimmed) {
-      return "";
-    }
-
-    const cachedProfile = this.getProfileCacheEntry(trimmed);
-    const cachedName = cachedProfile?.profile?.name;
-    if (typeof cachedName === "string" && cachedName.trim()) {
-      return cachedName.trim();
-    }
-
-    try {
-      if (typeof window !== "undefined" && window.NostrTools?.nip19?.npubEncode) {
-        const encoded = window.NostrTools.nip19.npubEncode(trimmed);
-        if (encoded && typeof encoded === "string") {
-          return formatShortNpub(encoded);
-        }
-      }
-    } catch (error) {
-      userLogger.warn("[Application] Failed to encode reporter npub", error);
-    }
-
-    return formatShortNpub(trimmed);
+    return this.moderationDecorator.getReporterDisplayName(pubkey);
   }
 
   normalizeModerationSettings(settings = null) {
-    const defaults = this.defaultModerationSettings || getDefaultModerationSettings();
-    const sanitizeThresholdMap = (value, fallback = {}) => {
-      const fallbackMap = fallback && typeof fallback === "object" ? fallback : {};
-      if (!value || typeof value !== "object") {
-        return { ...fallbackMap };
-      }
-      const sanitized = {};
-      for (const [key, entry] of Object.entries(value)) {
-        if (typeof key !== "string") {
-          continue;
-        }
-        const normalizedKey = key.trim().toLowerCase();
-        if (!normalizedKey) {
-          continue;
-        }
-        const numeric = Number(entry);
-        if (Number.isFinite(numeric)) {
-          sanitized[normalizedKey] = Math.max(0, Math.floor(numeric));
-        }
-      }
-      return { ...fallbackMap, ...sanitized };
-    };
-    const defaultBlur = Number.isFinite(defaults?.blurThreshold)
-      ? Math.max(0, Math.floor(defaults.blurThreshold))
-      : DEFAULT_BLUR_THRESHOLD;
-    const defaultAutoplay = Number.isFinite(defaults?.autoplayBlockThreshold)
-      ? Math.max(0, Math.floor(defaults.autoplayBlockThreshold))
-      : DEFAULT_AUTOPLAY_BLOCK_THRESHOLD;
-
-    const runtimeMuteSource = getTrustedMuteHideThreshold();
-    const runtimeTrustedMute = Number.isFinite(runtimeMuteSource)
-      ? Math.max(0, Math.floor(runtimeMuteSource))
-      : DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD;
-    const defaultTrustedMuteHide = Number.isFinite(
-      defaults?.trustedMuteHideThreshold,
-    )
-      ? Math.max(0, Math.floor(defaults.trustedMuteHideThreshold))
-      : runtimeTrustedMute;
-
-    const runtimeSpamSource = getTrustedSpamHideThreshold();
-    const runtimeTrustedSpam = Number.isFinite(runtimeSpamSource)
-      ? Math.max(0, Math.floor(runtimeSpamSource))
-      : DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD;
-    const defaultTrustedSpamHide = Number.isFinite(
-      defaults?.trustedSpamHideThreshold,
-    )
-      ? Math.max(0, Math.floor(defaults.trustedSpamHideThreshold))
-      : runtimeTrustedSpam;
-
-    const defaultTrustedMuteHideThresholds = sanitizeThresholdMap(
-      defaults?.trustedMuteHideThresholds,
-      {},
-    );
-
-    const blurSource = Number.isFinite(settings?.blurThreshold)
-      ? Math.max(0, Math.floor(settings.blurThreshold))
-      : defaultBlur;
-    const autoplaySource = Number.isFinite(settings?.autoplayBlockThreshold)
-      ? Math.max(0, Math.floor(settings.autoplayBlockThreshold))
-      : defaultAutoplay;
-    const muteHideSource = Number.isFinite(settings?.trustedMuteHideThreshold)
-      ? Math.max(0, Math.floor(settings.trustedMuteHideThreshold))
-      : defaultTrustedMuteHide;
-    const spamHideSource = Number.isFinite(settings?.trustedSpamHideThreshold)
-      ? Math.max(0, Math.floor(settings.trustedSpamHideThreshold))
-      : defaultTrustedSpamHide;
-    const muteHideThresholdsSource = sanitizeThresholdMap(
-      settings?.trustedMuteHideThresholds,
-      defaultTrustedMuteHideThresholds,
-    );
-
-    return {
-      blurThreshold: blurSource,
-      autoplayBlockThreshold: autoplaySource,
-      trustedMuteHideThreshold: muteHideSource,
-      trustedMuteHideThresholds: muteHideThresholdsSource,
-      trustedSpamHideThreshold: spamHideSource,
-    };
+    return this.moderationDecorator.normalizeModerationSettings(settings);
   }
 
   getActiveModerationThresholds() {
-    this.moderationSettings = this.normalizeModerationSettings(this.moderationSettings);
+    this.moderationSettings = this.moderationDecorator.normalizeModerationSettings(this.moderationSettings);
     return { ...this.moderationSettings };
   }
 
   decorateVideoModeration(video, feedContext = {}) {
-    if (!video || typeof video !== "object") {
-      return video;
-    }
-
-    const existingModeration =
-      video.moderation && typeof video.moderation === "object"
-        ? { ...video.moderation }
-        : {};
-
-    const summary =
-      existingModeration.summary && typeof existingModeration.summary === "object"
-        ? existingModeration.summary
-        : null;
-
-    const rawReportType =
-      typeof existingModeration.reportType === "string" &&
-      existingModeration.reportType.trim()
-        ? existingModeration.reportType.trim().toLowerCase()
-        : "";
-
-    const reportType = rawReportType || this.deriveModerationReportType(summary) || "";
-
-    const sanitizedReporters = Array.isArray(existingModeration.trustedReporters)
-      ? existingModeration.trustedReporters
-          .map((entry) => {
-            if (!entry || typeof entry !== "object") {
-              return null;
-            }
-            const pubkey =
-              typeof entry.pubkey === "string" ? entry.pubkey.trim().toLowerCase() : "";
-            if (!pubkey) {
-              return null;
-            }
-            const latest = Number.isFinite(entry.latest)
-              ? Math.floor(entry.latest)
-              : 0;
-            return { pubkey, latest };
-          })
-          .filter(Boolean)
-      : [];
-
-    const reporterPubkeys = sanitizedReporters.map((entry) => entry.pubkey);
-
-    const rawTrustedMuters = Array.isArray(existingModeration.trustedMuters)
-      ? existingModeration.trustedMuters
-          .map((value) => (typeof value === "string" ? value.trim().toLowerCase() : ""))
-          .filter(Boolean)
-      : [];
-
-    const trustedMuteCount = Number.isFinite(existingModeration.trustedMuteCount)
-      ? Math.max(0, Math.floor(existingModeration.trustedMuteCount))
-      : rawTrustedMuters.length;
-
-    const trustedMuted = existingModeration.trustedMuted === true || trustedMuteCount > 0;
-
-    const reporterDisplayNames = [];
-    const seenNames = new Set();
-    for (const reporterPubkey of reporterPubkeys) {
-      const name = this.getReporterDisplayName(reporterPubkey);
-      if (!name) {
-        continue;
-      }
-      const normalizedName = name.trim();
-      if (!normalizedName) {
-        continue;
-      }
-      const key = normalizedName.toLowerCase();
-      if (seenNames.has(key)) {
-        continue;
-      }
-      seenNames.add(key);
-      reporterDisplayNames.push(normalizedName);
-    }
-
-    const trustedMuterDisplayNames = [];
-    if (trustedMuted) {
-      const seenMuteNames = new Set();
-      for (const muterPubkey of rawTrustedMuters) {
-        const name = this.getReporterDisplayName(muterPubkey);
-        if (!name) {
-          continue;
-        }
-        const normalizedName = name.trim();
-        if (!normalizedName) {
-          continue;
-        }
-        const key = normalizedName.toLowerCase();
-        if (seenMuteNames.has(key)) {
-          continue;
-        }
-        seenMuteNames.add(key);
-        trustedMuterDisplayNames.push(normalizedName);
-      }
-    }
-
-    const trustedCount = Number.isFinite(existingModeration.trustedCount)
-      ? Math.max(0, Math.floor(existingModeration.trustedCount))
-      : this.deriveModerationTrustedCount(summary, reportType);
-
-    const viewerMuted = existingModeration.viewerMuted === true;
-    const existingBlockAutoplay = existingModeration.blockAutoplay === true;
-    const existingBlurThumbnail = existingModeration.blurThumbnail === true;
-    const existingBlurReason =
-      typeof existingModeration.blurReason === "string"
-        ? existingModeration.blurReason.trim()
-        : "";
-
-    const thresholds = this.getActiveModerationThresholds();
-    const computedBlockAutoplayBase =
-      trustedCount >= thresholds.autoplayBlockThreshold || trustedMuted;
-    const computedBlockAutoplay =
-      computedBlockAutoplayBase || viewerMuted || existingBlockAutoplay;
-
-    const blurFromReports = trustedCount >= thresholds.blurThreshold;
-    let computedBlurThumbnail =
-      blurFromReports || trustedMuted || viewerMuted || existingBlurThumbnail;
-    let computedBlurReason = "";
-
-    if (blurFromReports) {
-      computedBlurReason = "trusted-report";
-    } else if (trustedMuted) {
-      computedBlurReason = "trusted-mute";
-    } else if (viewerMuted) {
-      computedBlurReason = "viewer-mute";
-    } else if (existingBlurThumbnail && existingBlurReason) {
-      computedBlurReason = existingBlurReason;
-    }
-
-    const muteHideThreshold = Number.isFinite(thresholds.trustedMuteHideThreshold)
-      ? Math.max(0, Math.floor(thresholds.trustedMuteHideThreshold))
-      : Number.POSITIVE_INFINITY;
-    const reportHideThreshold = Number.isFinite(thresholds.trustedSpamHideThreshold)
-      ? Math.max(0, Math.floor(thresholds.trustedSpamHideThreshold))
-      : Number.POSITIVE_INFINITY;
-
-    const existingHideReason =
-      typeof existingModeration.hideReason === "string"
-        ? existingModeration.hideReason.trim()
-        : "";
-    const existingHideBypass =
-      typeof existingModeration.hideBypass === "string"
-        ? existingModeration.hideBypass.trim()
-        : "";
-    const existingHideCounts =
-      existingModeration.hideCounts && typeof existingModeration.hideCounts === "object"
-        ? existingModeration.hideCounts
-        : null;
-
-    let hideReason = "";
-    let hideTriggered = false;
-
-    if (trustedMuted && trustedMuteCount >= muteHideThreshold) {
-      hideReason = "trusted-mute-hide";
-      hideTriggered = true;
-    } else if (trustedCount >= reportHideThreshold) {
-      hideReason = "trusted-report-hide";
-      hideTriggered = true;
-    } else if (existingHideReason && existingHideCounts) {
-      hideReason = existingHideReason;
-      hideTriggered = true;
-    }
-
-    if (!computedBlurThumbnail && (viewerMuted || trustedMuted || hideTriggered)) {
-      computedBlurThumbnail = true;
-      if (hideTriggered) {
-        computedBlurReason = hideReason || "trusted-hide";
-      } else if (viewerMuted) {
-        computedBlurReason = "viewer-mute";
-      } else if (trustedMuted) {
-        computedBlurReason = "trusted-mute";
-      }
-    } else if (computedBlurThumbnail) {
-      if (hideTriggered) {
-        computedBlurReason = hideReason || "trusted-hide";
-      } else if (viewerMuted && !blurFromReports && !trustedMuted) {
-        computedBlurReason = "viewer-mute";
-      } else if (trustedMuted && !blurFromReports) {
-        computedBlurReason = "trusted-mute";
-      } else if (!computedBlurReason && blurFromReports) {
-        computedBlurReason = "trusted-report";
-      }
-    }
-
-    if (computedBlurThumbnail && !computedBlurReason && existingBlurReason) {
-      computedBlurReason = existingBlurReason;
-    }
-
-    const hideCounts = hideTriggered
-      ? {
-          trustedMuteCount,
-          trustedReportCount: trustedCount,
-        }
-      : null;
-
-    const FEED_HIDE_BYPASS_NAMES = new Set(["home", "recent"]);
-    const normalizedFeedName =
-      typeof feedContext?.feedName === "string" ? feedContext.feedName.trim().toLowerCase() : "";
-    const normalizedFeedVariant =
-      typeof feedContext?.feedVariant === "string"
-        ? feedContext.feedVariant.trim().toLowerCase()
-        : "";
-    const feedPolicyBypass =
-      (normalizedFeedName && FEED_HIDE_BYPASS_NAMES.has(normalizedFeedName)) ||
-      (normalizedFeedVariant && FEED_HIDE_BYPASS_NAMES.has(normalizedFeedVariant));
-
-    let hideBypass = hideTriggered ? existingHideBypass : "";
-
-    if (hideTriggered && !hideBypass && feedPolicyBypass) {
-      hideBypass = "feed-policy";
-    }
-
-    const computedHidden = hideTriggered && !hideBypass;
-
-    const overrideEntry = getModerationOverride({
-      eventId: video.id,
-      authorPubkey: video.pubkey || video.author?.pubkey || "",
-    });
-    const overrideActive = overrideEntry?.showAnyway === true;
-    const overrideUpdatedAt = Number.isFinite(overrideEntry?.updatedAt)
-      ? Math.floor(overrideEntry.updatedAt)
-      : Date.now();
-
-    const originalHideCounts = hideCounts
-      ? {
-          trustedMuteCount: Math.max(0, Math.floor(hideCounts.trustedMuteCount)),
-          trustedReportCount: Math.max(0, Math.floor(hideCounts.trustedReportCount)),
-        }
-      : null;
-
-    const originalState = {
-      blockAutoplay: computedBlockAutoplay,
-      blurThumbnail: computedBlurThumbnail,
-      hidden: computedHidden,
-      hideReason: hideTriggered ? hideReason : "",
-      hideCounts: originalHideCounts,
-      hideBypass,
-      hideTriggered,
-      blurReason: computedBlurThumbnail ? computedBlurReason : "",
-    };
-
-    const decoratedModeration = {
-      ...existingModeration,
-      reportType,
-      trustedCount,
-      trustedReporters: sanitizedReporters,
-      reporterPubkeys,
-      reporterDisplayNames,
-      trustedMuted,
-      trustedMuters: rawTrustedMuters,
-      trustedMuteCount,
-      trustedMuterDisplayNames,
-      blurReason: computedBlurThumbnail ? computedBlurReason : "",
-      original: {
-        blockAutoplay: originalState.blockAutoplay,
-        blurThumbnail: originalState.blurThumbnail,
-        hidden: originalState.hidden,
-        hideReason: originalState.hideReason,
-        hideCounts: originalState.hideCounts,
-        hideBypass: originalState.hideBypass,
-        hideTriggered: originalState.hideTriggered,
-        blurReason: originalState.blurReason,
-      },
-    };
-
-    if (!computedBlurThumbnail && decoratedModeration.blurReason) {
-      delete decoratedModeration.blurReason;
-    }
-
-    if (overrideActive) {
-      decoratedModeration.blockAutoplay = false;
-      decoratedModeration.blurThumbnail = false;
-      decoratedModeration.hidden = false;
-      if (decoratedModeration.hideReason) {
-        delete decoratedModeration.hideReason;
-      }
-      if (decoratedModeration.hideCounts) {
-        delete decoratedModeration.hideCounts;
-      }
-      if (decoratedModeration.hideBypass) {
-        delete decoratedModeration.hideBypass;
-      }
-      decoratedModeration.viewerOverride = {
-        showAnyway: true,
-        updatedAt: overrideUpdatedAt,
-      };
-    } else {
-      decoratedModeration.blockAutoplay = originalState.blockAutoplay;
-      decoratedModeration.blurThumbnail = originalState.blurThumbnail;
-      decoratedModeration.hidden = originalState.hidden;
-      if (originalState.hideReason) {
-        decoratedModeration.hideReason = originalState.hideReason;
-      } else if (decoratedModeration.hideReason) {
-        delete decoratedModeration.hideReason;
-      }
-      if (originalState.hideCounts) {
-        decoratedModeration.hideCounts = { ...originalState.hideCounts };
-      } else if (decoratedModeration.hideCounts) {
-        delete decoratedModeration.hideCounts;
-      }
-      if (originalState.hideBypass) {
-        decoratedModeration.hideBypass = originalState.hideBypass;
-      } else if (decoratedModeration.hideBypass) {
-        delete decoratedModeration.hideBypass;
-      }
-      if (decoratedModeration.viewerOverride) {
-        delete decoratedModeration.viewerOverride;
-      }
-    }
-
-    video.moderation = decoratedModeration;
-    return video;
+    return this.moderationDecorator.decorateVideo(video, feedContext);
   }
 
   initializeModerationActionController() {

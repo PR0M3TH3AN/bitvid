@@ -322,6 +322,3 @@ export async function clearDirectMessageSnapshot(pubkey) {
   return cleared;
 }
 
-export function buildDirectMessageSnapshotPayload(entries) {
-  return normalizeSnapshotList(entries);
-}

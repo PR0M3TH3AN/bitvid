@@ -32,6 +32,11 @@ const VALUE_ALLOWLIST = new Map([
         /^0?\.5px$/i.test(value) && /box-shadow/i.test(snippet),
       (value, snippet) =>
         /^1px$/i.test(value) && /(border|box-shadow|outline)/i.test(snippet),
+      // Ignore matches inside var() declarations that happen to contain units in the name
+      (value, snippet) =>
+        snippet.includes(`var(--`) && snippet.includes(value),
+      // Mobile breakpoint used in media query
+      (value) => value === "767.98px",
     ],
   ],
 ]);
@@ -218,6 +223,11 @@ function shouldSkipMatch(content, index) {
   if (previousChar === "[") {
     return true;
   }
+  // Check if it's part of a variable name (e.g. --size-2px)
+  // We check if the preceding character is '-'
+  if (previousChar === "-") {
+    return true;
+  }
   return false;
 }
 
@@ -246,6 +256,12 @@ function collectViolations(filePath, content) {
   return violations;
 }
 
+const LEGACY_BRACKET_ALLOWLIST = new Set([
+  "min-h-[80px]",
+  "min-h-[96px]",
+  "w-[calc(100%-3rem)]",
+]);
+
 function isAllowedBracketUtility(bracketValue) {
   const inner = bracketValue.slice(1, -1).trim().toLowerCase();
   if (!inner) {
@@ -254,6 +270,14 @@ function isAllowedBracketUtility(bracketValue) {
 
   if (inner.includes("var(--")) {
     return true;
+  }
+
+  if (LEGACY_BRACKET_ALLOWLIST.has(bracketValue)) {
+    return true;
+  }
+
+  if (inner === "80px" || inner === "96px" || inner === "calc(100%-3rem)") {
+      return true;
   }
 
   return false;

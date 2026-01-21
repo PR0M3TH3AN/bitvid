@@ -36,6 +36,7 @@ If we later introduce **dual-licensing** options (e.g., commercial licenses for 
 Automated agents contributing to this repository should follow these rules:
 - **Atomic Commits**: Keep changes small and self-contained.
 - **Descriptive Titles**: Use clear, semantic titles (e.g., `fix(ui): resolve upload modal overflow`).
+- **Commit Messages**: Use the convention `type(scope): description (agent)` (e.g., `fix(ai): formatting (agent)` or `docs(ai): update quickstart (agent)`).
 - **Reference Issues**: Link to relevant issues in the PR description.
 - **Review AGENTS.md**: Always consult `AGENTS.md` for specific architectural guidelines and constraints before starting work.
 
@@ -56,18 +57,32 @@ To set up the project locally:
    npm ci
    ```
 
-2. **Run Tests**:
+2. **Build**:
+   ```bash
+   npm run build
+   ```
+
+3. **Run Tests**:
    ```bash
    npm run test:unit
    ```
 
-3. **Format & Lint**:
+4. **Format & Lint**:
    ```bash
    npm run format
    npm run lint
    ```
 
 For a full guide, see the [Local Setup section in README.md](./README.md#local-setup).
+
+## Dev Container
+
+This project includes a `.devcontainer` configuration for VS Code. It provides a pre-configured environment with Node.js 22 and necessary extensions.
+
+To use it:
+1. Open the project in VS Code.
+2. When prompted, re-open in Container (or use the command palette: "Dev Containers: Reopen in Container").
+3. The container will automatically install dependencies and run the build.
 
 ## Security
 

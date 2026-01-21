@@ -16,6 +16,7 @@ import {
   setNostrEventSchemaOverrides,
   buildVideoPostEvent,
   buildRepostEvent,
+  buildProfileMetadataEvent,
 } from "./nostrEventSchemas.js";
 
 // Inspect the current schema
@@ -77,6 +78,9 @@ method is unavailable. Permission prompts are surfaced via
 sign/encrypt calls. Call `clearActiveSigner()` on logout if your integration
 manages session state manually; the built-in logout handler already does this
 for the default extension flow.
+
+For adapter implementation details and test guidance, see
+[`docs/signing-adapter.md`](signing-adapter.md).
 
 ### Accessing raw events
 
@@ -142,23 +146,31 @@ import { updateWatchHistoryListWithDefaultClient } from "./nostrWatchHistoryFaca
 | --- | --- | --- | --- |
 | Video post (`NOTE_TYPES.VIDEO_POST`) | `30078` | `['t','video']`, `['d', <stable video identifier>]` plus optional schema append tags | JSON payload using Content Schema v3 (`version`, `title`, optional `url`, `magnet`, `thumbnail`, `description`, `mode`, `videoRootId`, `deleted`, `isPrivate`, `isNsfw`, `isForKids`, `enableComments`, `ws`, `xs`) |
 | NIP-94 mirror (`NOTE_TYPES.VIDEO_MIRROR`) | `1063` | Tags forwarded from `publishVideo` (URL, mime type, thumbnail, alt text, magnet) | Plain text alt description |
-| Repost (`NOTE_TYPES.REPOST`) | `6` | `['e', <event id>, <relay?>]` with optional address pointer `['a', <kind:pubkey:identifier>, <relay?>]`, and `['p', <pubkey>]` when the origin author is known; inherits schema append tags | Empty content |
+| Repost (`NOTE_TYPES.REPOST`) | `6` | `['e', <event id>, <relay?>]` with optional address pointer `['a', <kind:pubkey:identifier>, <relay?>]`, and `['p', <pubkey>]` when the origin author is known; inherits schema append tags | JSON-serialized event being reposted |
+| Video reaction (`NOTE_TYPES.VIDEO_REACTION`) | `7` | `['e', <event id>, <relay?>]` or `['a', <kind:pubkey:identifier>, <relay?>]`, and `['p', <author pubkey>]` | Reaction content (e.g. `+`, `-`, or emoji) |
 | Video comment (`NOTE_TYPES.VIDEO_COMMENT`) | `1111` | NIP-22 root scope tags `['A'\|`E`\|`I`, <pointer>, <relay?>?], `['K', <root kind>]`, and `['P', <root author pubkey>, <relay?>?]` plus parent metadata `['E'\|`I`, <parent pointer>, <relay?>?, <author?>], `['K', <parent kind>]`, `['P', <parent author>, <relay?>?]`; inherits schema append tags | Plain text body sanitized to valid UTF-8 |
+| DM attachment (`NOTE_TYPES.DM_ATTACHMENT`) | `15` | `['p', <recipient pubkey>]`, `['x', <sha256 of uploaded bytes>]`, `['url', <download url>]`, optional `['name', <filename>]`, `['type', <mime>]`, `['size', <bytes>]`, optional `['k', <base64 key>]`; inherits schema append tags | Empty content; attachment metadata is represented as tags |
+| DM read receipt (`NOTE_TYPES.DM_READ_RECEIPT`) | `20001` | `['p', <recipient pubkey>]`, `['e', <message event id>]`, optional `['k', <message kind>]`; inherits schema append tags | Empty content; ephemeral receipt for message activity |
+| DM typing indicator (`NOTE_TYPES.DM_TYPING`) | `20002` | `['p', <recipient pubkey>]`, optional `['e', <conversation event id>]`, `['t','typing']`, `['expiration', <unix seconds>]`; inherits schema append tags | Empty content; ephemeral typing indicator that expires quickly |
 
 > **Publishing note:** Session actors only emit passive telemetry (for example, view counters) and must **not** sign video comments. Require a logged-in Nostr signer for comment publishing via [`commentEvents`](../js/nostr/commentEvents.js).
 
 | NIP-71 video (`NOTE_TYPES.NIP71_VIDEO`) | `21` | `['title', <title>]`, optional `['published_at', <unix seconds>]`, optional `['alt', <text>]`, repeated `['imeta', ...]` entries describing NIP-92 media variants, optional `['duration', <seconds>]`, repeated `['text-track', <url>, <kind>, <language>]`, optional `['content-warning', <reason>]`, repeated `['segment', <start>, <end>, <title>, <thumbnail>]`, repeated hashtags `['t', <tag>]`, repeated participants `['p', <pubkey>, <relay?>]`, repeated references `['r', <url>]` | Plain text summary carried in the content field. Publishing is gated by the `FEATURE_PUBLISH_NIP71` runtime flag while the rollout stabilizes. |
 | NIP-71 short video (`NOTE_TYPES.NIP71_SHORT_VIDEO`) | `22` | Same as `NOTE_TYPES.NIP71_VIDEO`; the kind differentiates short-form presentations. | Plain text summary; gated by `FEATURE_PUBLISH_NIP71`. |
 | Relay list (`NOTE_TYPES.RELAY_LIST`) | `10002` | Repeating `['r', <relay url>]` tags, optionally with a marker of `'read'` or `'write'` to scope the relay; marker omitted for read/write relays | Empty content |
+| DM relay hints (`NOTE_TYPES.DM_RELAY_LIST`) | `10050` | Repeating `['relay', <relay url>]` tags to advertise delivery relays for NIP-17 gift-wrapped DMs | Empty content |
 | View counter (`NOTE_TYPES.VIEW_EVENT`) | `WATCH_HISTORY_KIND` (default `30079`) | Canonical tag set: `['t','view']`, a pointer tag (`['e', <eventId>]` or `['a', <address>]`), and a stable dedupe tag `['d', <view identifier>]`, with optional `['session','true']` when a session actor signs; schema overrides may append extra tags. `['video', ...]` is supported for legacy overrides only. | Optional plaintext message |
-| Watch history month (`NOTE_TYPES.WATCH_HISTORY_INDEX`) | `WATCH_HISTORY_KIND` (default `30079`) | Replaceable list tag `['d', `${WATCH_HISTORY_LIST_IDENTIFIER}:<YYYY-MM>`]` with optional `['month', <YYYY-MM>]` marker plus schema append tags; no chunk pointers required. | JSON payload `{ version, month: 'YYYY-MM', items: [{ id: <eventId\|address>, watched_at?: <unix seconds> }] }` |
+| Watch history month (`NOTE_TYPES.WATCH_HISTORY`) | `WATCH_HISTORY_KIND` (default `30079`) | Replaceable list tag `['d', `${WATCH_HISTORY_LIST_IDENTIFIER}:<YYYY-MM>`]` with optional `['month', <YYYY-MM>]` marker plus schema append tags; no chunk pointers required. | JSON payload `{ version, month: 'YYYY-MM', items: [{ id: <eventId\|address>, watched_at?: <unix seconds> }] }` |
 | Subscription list (`NOTE_TYPES.SUBSCRIPTION_LIST`) | `30000` | `['d', 'subscriptions']` | NIP-04/NIP-44 encrypted JSON array of NIP-51 follow-set tuples (e.g., `[['p', <hex>], …]`) |
 | User block list (`NOTE_TYPES.USER_BLOCK_LIST`) | `10000` | `['d', 'user-blocks']` | NIP-04/NIP-44 encrypted JSON `{ blockedPubkeys: string[] }` |
 | Hashtag preferences (`NOTE_TYPES.HASHTAG_PREFERENCES`) | `30015` | `['d', 'bitvid:tag-preferences']` plus schema-appended `['encrypted','nip44_v2']` | NIP-44 encrypted JSON `{ version, interests: string[], disinterests: string[] }` |
 | Admin moderation list (`NOTE_TYPES.ADMIN_MODERATION_LIST`) | `30000` | `['d', 'bitvid:admin:editors']`, repeated `['p', <pubkey>]` entries | Empty content |
 | Admin blacklist (`NOTE_TYPES.ADMIN_BLACKLIST`) | `30000` | `['d', 'bitvid:admin:blacklist']`, repeated `['p', <pubkey>]` entries | Empty content |
 | Admin whitelist (`NOTE_TYPES.ADMIN_WHITELIST`) | `30000` | `['d', 'bitvid:admin:whitelist']`, repeated `['p', <pubkey>]` entries | Empty content |
-| Storage challenge (`NOTE_TYPES.STORAGE_CHALLENGE`) | `22242` | `['challenge', <hex>]`, `['purpose', 'bitvid-storage-key']` | Empty content. This event is **ephemeral** and never published to relays. It serves as a challenge for the signer; the deterministic signature produced is used to derive the local encryption Master Key for the Storage Service. |
+| Profile metadata (`NOTE_TYPES.PROFILE_METADATA`) | `0` | `['d', ...]` is not used | JSON payload with NIP-01 fields (`name`, `about`, `picture`, `nip05`, etc.) |
+| Mute list (`NOTE_TYPES.MUTE_LIST`) | `10000` | Repeated `['p', <pubkey>]` tags for blocked/muted users | Optional content (often encrypted) |
+| Zap request (`NOTE_TYPES.ZAP_REQUEST`) | `9734` | `['p', <recipient pubkey>]` plus optional `['e', <event id>]`, `['a', <coordinate>]`, `['amount', <msats>]`, `['lnurl', <bech32>]`, and `['relays', ...]` for receipt publishing | Optional plaintext zap note |
+| Zap receipt (`NOTE_TYPES.ZAP_RECEIPT`) | `9735` | `['bolt11', <invoice>]`, `['description', <zap request JSON>]`, `['p', <recipient pubkey>]` plus optional `['e', <event id>]` and `['a', <coordinate>]` | Empty content; receipts are published by the recipient's LNURL server |
 
 Subscription lists therefore match the
 [NIP-51 follow-set specification](./nips/51.md#sets) by emitting kind `30000`
@@ -179,6 +191,10 @@ bitvid now consumes both legacy direct messages (kind `4`) and modern gift-wrap 
 `NostrClient` exposes `listDirectMessages()` and `subscribeDirectMessages()` APIs that hydrate decryptors lazily (preferring extension-provided helpers) and cache results in an LRU keyed by event id. `NostrService` mirrors the normalized messages via `getDirectMessages()` and emits updates as new events arrive so the UI can render private conversations without reimplementing the unwrap logic.
 
 The `isPrivate` flag in Content Schema v3 marks cards that should stay off shared or public grids. Clients should suppress these events for everyone except the owner, even though the payload stays in clear text for compatibility.
+
+For the privacy model, relay hint selection flow, and user controls (privacy
+toggle, relay list publishing, and metadata toggles), see
+[`docs/dm-privacy-model.md`](dm-privacy-model.md).
 
 If you introduce a new Nostr feature, add its schema to
 `js/nostrEventSchemas.js` so that the catalogue stays complete and so existing

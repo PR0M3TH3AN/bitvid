@@ -13,7 +13,6 @@ export const DEFAULT_RELAY_URLS = Object.freeze([
   "wss://nos.lol",
   "wss://relay.snort.social",
   "wss://relay.primal.net",
-  "wss://relay.nostr.band",
 ]);
 
 export const RELAY_URLS = Array.from(DEFAULT_RELAY_URLS);

@@ -9,7 +9,21 @@ module.exports = {
     "./torrent/**/*.html",
     "./torrent/**/*.js"
   ],
-  safelist: ["bv-logo__background"],
+  safelist: [
+    "bv-logo__background",
+    "p-0",
+    "sm:p-0",
+    "lg:p-8",
+    "w-full",
+    "h-full",
+    "max-w-none",
+    "rounded-none",
+    "border-0",
+    "lg:max-w-5xl",
+    "lg:rounded-modal-xl",
+    "lg:border",
+    "lg:h-auto"
+  ],
   theme: {
     extend: {
       screens: {

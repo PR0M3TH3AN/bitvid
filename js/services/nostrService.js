@@ -2,13 +2,22 @@ import { nostrClient } from "../nostrClientFacade.js";
 import { convertEventToVideo } from "../nostr/index.js";
 import { accessControl } from "../accessControl.js";
 import { ALLOW_NSFW_CONTENT } from "../config.js";
-import { userLogger } from "../utils/logger.js";
+import { devLogger, userLogger } from "../utils/logger.js";
+import { LRUCache } from "../utils/lruCache.js";
+import { describeAttachment, extractAttachmentsFromMessage } from "../attachments/attachmentUtils.js";
 import moderationService from "./moderationService.js";
+import {
+  DM_RELAY_WARNING_FALLBACK,
+  resolveDmRelaySelection,
+} from "./dmNostrService.js";
 import {
   loadDirectMessageSnapshot,
   saveDirectMessageSnapshot,
   clearDirectMessageSnapshot,
 } from "../directMessagesStore.js";
+import { writeMessages } from "../storage/dmDb.js";
+import { DmNotificationManager } from "./dmNotificationManager.js";
+import { getDmDecryptWorkerQueueSize } from "../nostr/dmDecryptWorkerClient.js";
 import {
   getVideosMap as getStoredVideosMap,
   setVideosMap as setStoredVideosMap,
@@ -19,6 +28,9 @@ import {
 const VIDEO_KIND = 30078;
 const STORAGE_KEY_FILTERED_VIDEOS = "bitvid:filtered-videos:v1";
 const MAX_PERSISTED_VIDEOS = 100;
+const DM_DEFAULT_PAGE_LIMIT = 200;
+const DM_INITIAL_DECRYPT_LIMIT = 120;
+const DM_PREVIEW_CACHE_LIMIT = 500;
 
 function loadPersistedFilteredVideos() {
   if (
@@ -200,7 +212,65 @@ function extractSnapshotPreview(message) {
   }
 
   const selected = candidates.find((candidate) => candidate && candidate.trim());
-  return sanitizeSnapshotPreview(selected || "");
+  if (selected) {
+    return sanitizeSnapshotPreview(selected);
+  }
+
+  const attachments = extractAttachmentsFromMessage(message);
+  if (attachments.length) {
+    return sanitizeSnapshotPreview(describeAttachment(attachments[0]));
+  }
+
+  return "";
+}
+
+function resolvePreviewCacheKey(message) {
+  if (!message || typeof message !== "object") {
+    return "";
+  }
+
+  const eventId = typeof message?.event?.id === "string" ? message.event.id : "";
+  if (eventId) {
+    return eventId;
+  }
+
+  const remote =
+    typeof message?.snapshot?.remotePubkey === "string"
+      ? message.snapshot.remotePubkey.trim()
+      : typeof message?.remotePubkey === "string"
+      ? message.remotePubkey.trim()
+      : "";
+  const timestamp = Number.isFinite(message?.timestamp)
+    ? Math.floor(message.timestamp)
+    : Number.isFinite(message?.message?.created_at)
+    ? Math.floor(message.message.created_at)
+    : 0;
+
+  if (remote && timestamp) {
+    return `snapshot:${remote}:${timestamp}`;
+  }
+
+  return "";
+}
+
+function toPositiveInteger(value, fallback) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return fallback;
+  }
+  return Math.floor(numeric);
+}
+
+function getMemoryUsageSnapshot() {
+  if (typeof performance === "undefined" || !performance?.memory) {
+    return null;
+  }
+
+  return {
+    usedJSHeapSize: performance.memory.usedJSHeapSize,
+    totalJSHeapSize: performance.memory.totalJSHeapSize,
+    jsHeapSizeLimit: performance.memory.jsHeapSizeLimit,
+  };
 }
 
 function getActiveKey(video) {
@@ -286,7 +356,96 @@ function resolveDirectMessageRemotePubkey(message, actorPubkey = "") {
   return "";
 }
 
-function buildSnapshotFromMessages(messages, actorPubkey = "") {
+function buildConversationId(actorPubkey, remotePubkey) {
+  const normalizedActor = normalizeHexPubkey(actorPubkey);
+  const normalizedRemote = normalizeHexPubkey(remotePubkey);
+
+  if (!normalizedActor || !normalizedRemote) {
+    return "";
+  }
+
+  return `dm:${[normalizedActor, normalizedRemote].sort().join(":")}`;
+}
+
+function normalizeDirectMessageRecord(message, actorPubkey = "") {
+  if (!message || message.ok !== true) {
+    return null;
+  }
+
+  const actor = normalizeHexPubkey(
+    actorPubkey || message.actorPubkey || "",
+  );
+  const remote = resolveDirectMessageRemotePubkey(message, actor);
+  const conversationId = buildConversationId(actor, remote);
+  const eventId =
+    typeof message?.event?.id === "string" ? message.event.id : "";
+
+  if (!conversationId || !eventId) {
+    return null;
+  }
+
+  const senderPubkey = normalizeHexPubkey(
+    message?.sender?.pubkey ||
+      message?.message?.pubkey ||
+      message?.event?.pubkey ||
+      "",
+  );
+  const direction = message.direction;
+  let receiverPubkey = "";
+
+  if (direction === "incoming") {
+    receiverPubkey = actor;
+  } else if (direction === "outgoing") {
+    receiverPubkey = remote;
+  } else if (senderPubkey) {
+    receiverPubkey = senderPubkey === actor ? remote : actor;
+  }
+
+  const createdAt = sanitizeSnapshotTimestamp(
+    message?.message?.created_at ??
+      message?.event?.created_at ??
+      message?.timestamp,
+  );
+
+  const kind =
+    Number.isFinite(message?.message?.kind)
+      ? message.message.kind
+      : Number.isFinite(message?.event?.kind)
+      ? message.event.kind
+      : 0;
+
+  const tags = Array.isArray(message?.message?.tags)
+    ? message.message.tags
+    : Array.isArray(message?.event?.tags)
+    ? message.event.tags
+    : [];
+
+  const encryptionScheme =
+    typeof message?.encryption_scheme === "string"
+      ? message.encryption_scheme.trim()
+      : typeof message?.scheme === "string"
+      ? message.scheme.trim()
+      : typeof message?.decryptor?.scheme === "string"
+      ? message.decryptor.scheme.trim()
+      : "";
+
+  return {
+    id: eventId,
+    conversation_id: conversationId,
+    sender_pubkey: senderPubkey || actor,
+    receiver_pubkey: receiverPubkey,
+    created_at: createdAt,
+    kind,
+    content: typeof message?.plaintext === "string" ? message.plaintext : "",
+    tags,
+    relay: typeof message?.event?.relay === "string" ? message.event.relay : "",
+    status: "published",
+    seen: direction !== "incoming",
+    encryption_scheme: encryptionScheme,
+  };
+}
+
+function buildSnapshotFromMessages(messages, actorPubkey = "", resolvePreview = null) {
   const normalizedActor = normalizeHexPubkey(actorPubkey);
   const threadMap = new Map();
 
@@ -301,7 +460,10 @@ function buildSnapshotFromMessages(messages, actorPubkey = "") {
     }
 
     const timestamp = sanitizeSnapshotTimestamp(message.timestamp);
-    const preview = extractSnapshotPreview(message);
+    const preview =
+      typeof resolvePreview === "function"
+        ? resolvePreview(message)
+        : extractSnapshotPreview(message);
 
     const existing = threadMap.get(remote);
     if (!existing || timestamp > existing.latestTimestamp) {
@@ -353,6 +515,7 @@ function hydrateMessagesFromSnapshot(snapshot, actorPubkey = "") {
       recipients: [],
       direction: "unknown",
       scheme: "",
+      encryption_scheme: "",
       decryptor: { scheme: "", source: "snapshot" },
       event: {
         id: `dm-snapshot:${normalizedActor || "actor"}:${remote}:${timestamp}:${index}`,
@@ -397,6 +560,10 @@ export class NostrService {
     this.dmSubscription = null;
     this.dmActorPubkey = null;
     this.dmHydratedFromSnapshot = false;
+    this.dmNotificationManager = new DmNotificationManager({
+      logger: userLogger,
+    });
+    this.dmPreviewCache = new LRUCache({ maxSize: DM_PREVIEW_CACHE_LIMIT });
     try {
       if (this.moderationService && typeof this.moderationService.setNostrClient === "function") {
         this.moderationService.setNostrClient(this.nostrClient);
@@ -412,6 +579,49 @@ export class NostrService {
     } catch (error) {
       userLogger.warn("[nostrService] logger threw", error);
     }
+  }
+
+  getDirectMessagePreviewCacheStats() {
+    if (!this.dmPreviewCache || typeof this.dmPreviewCache.getStats !== "function") {
+      return null;
+    }
+    return this.dmPreviewCache.getStats();
+  }
+
+  resolveDirectMessagePreview(message) {
+    const cacheKey = resolvePreviewCacheKey(message);
+    if (cacheKey && this.dmPreviewCache) {
+      const cached = this.dmPreviewCache.get(cacheKey);
+      if (cached !== undefined) {
+        return cached;
+      }
+    }
+
+    const preview = extractSnapshotPreview(message);
+    if (cacheKey && this.dmPreviewCache) {
+      this.dmPreviewCache.set(cacheKey, preview);
+    }
+    return preview;
+  }
+
+  logDirectMessageDiagnostics({ context = "", limit, decryptLimit } = {}) {
+    const cacheStats =
+      typeof this.nostrClient?.getDmDecryptCacheStats === "function"
+        ? this.nostrClient.getDmDecryptCacheStats()
+        : null;
+    const previewStats = this.getDirectMessagePreviewCacheStats();
+    const memory = getMemoryUsageSnapshot();
+
+    devLogger.debug("[nostrService] DM diagnostics", {
+      context,
+      limit,
+      decryptLimit,
+      workerQueueSize: getDmDecryptWorkerQueueSize(),
+      messageCount: Array.isArray(this.dmMessages) ? this.dmMessages.length : 0,
+      decryptCache: cacheStats,
+      previewCache: previewStats,
+      memory,
+    });
   }
 
   on(eventName, handler) {
@@ -486,6 +696,9 @@ export class NostrService {
     this.dmMessages = [];
     this.dmMessageIndex = new Map();
     this.dmHydratedFromSnapshot = false;
+    if (this.dmPreviewCache) {
+      this.dmPreviewCache.clear();
+    }
     const activeActor = normalizeHexPubkey(
       typeof actorPubkey === "string" && actorPubkey
         ? actorPubkey
@@ -508,6 +721,66 @@ export class NostrService {
       this.emit("directMessages:cleared", {});
       this.emit("directMessages:updated", { messages: [] });
     }
+  }
+
+  async persistDirectMessageRecord(message, { actorPubkey = null } = {}) {
+    const record = normalizeDirectMessageRecord(
+      message,
+      actorPubkey || message?.actorPubkey || this.dmActorPubkey,
+    );
+    if (!record) {
+      return null;
+    }
+
+    try {
+      await writeMessages(record);
+      const notificationResult = await this.dmNotificationManager.recordMessage({
+        record,
+        preview: this.resolveDirectMessagePreview(message),
+        direction: message?.direction || "",
+      });
+      if (notificationResult?.conversation) {
+        this.emit("directMessages:conversationUpdated", {
+          conversation: notificationResult.conversation,
+        });
+      }
+      if (notificationResult?.shouldNotify) {
+        this.emit("directMessages:notification", {
+          conversationId: record.conversation_id,
+          message: record,
+          unseenCount: notificationResult.conversation?.unseen_count || 0,
+        });
+      }
+      return record;
+    } catch (error) {
+      userLogger.warn("[nostrService] Failed to persist DM record", error);
+      return null;
+    }
+  }
+
+  setFocusedDirectMessageConversation(conversationId, isFocused = true) {
+    this.dmNotificationManager.setFocusedConversation(conversationId, isFocused);
+  }
+
+  async acknowledgeRenderedDirectMessages(conversationId, renderedUntil) {
+    const conversation = await this.dmNotificationManager.acknowledgeRenderedMessages({
+      conversationId,
+      renderedUntil,
+    });
+    if (conversation) {
+      this.emit("directMessages:conversationUpdated", {
+        conversation,
+      });
+    }
+    return conversation;
+  }
+
+  getDirectMessageUnseenCount(conversationId) {
+    return this.dmNotificationManager.getUnseenCount(conversationId);
+  }
+
+  async listDirectMessageConversationSummaries() {
+    return this.dmNotificationManager.listConversationSummaries();
   }
 
   applyDirectMessage(message, { reason = "update", event = null } = {}) {
@@ -575,6 +848,10 @@ export class NostrService {
         );
       });
     }
+
+    if (!normalized.snapshot) {
+      void this.persistDirectMessageRecord(normalized, { actorPubkey: actor });
+    }
   }
 
   async hydrateDirectMessagesFromStore({
@@ -641,6 +918,28 @@ export class NostrService {
       return [];
     }
 
+    const initialLoad = options.initialLoad !== false;
+    const limitCandidate = Number(options.limit);
+    const resolvedLimit = toPositiveInteger(limitCandidate, DM_DEFAULT_PAGE_LIMIT);
+    const decryptLimitCandidate = Number(options.decryptLimit);
+    let resolvedDecryptLimit = initialLoad
+      ? toPositiveInteger(decryptLimitCandidate, DM_INITIAL_DECRYPT_LIMIT)
+      : Number.isFinite(decryptLimitCandidate) && decryptLimitCandidate > 0
+      ? Math.floor(decryptLimitCandidate)
+      : null;
+
+    if (resolvedDecryptLimit && resolvedDecryptLimit > resolvedLimit) {
+      resolvedDecryptLimit = resolvedLimit;
+    }
+
+    if (!Number.isFinite(limitCandidate) || limitCandidate <= 0) {
+      devLogger.debug("[nostrService] Using default DM pagination limit", {
+        limit: resolvedLimit,
+        decryptLimit: resolvedDecryptLimit,
+        initialLoad,
+      });
+    }
+
     const forceHydration =
       this.dmActorPubkey && this.dmActorPubkey !== normalizedActor;
 
@@ -657,6 +956,8 @@ export class NostrService {
       messages = await this.nostrClient.listDirectMessages(normalizedActor, {
         relays,
         ...options,
+        limit: resolvedLimit,
+        decryptLimit: resolvedDecryptLimit,
       });
     } catch (error) {
       userLogger.warn("[nostrService] Failed to load direct messages", error);
@@ -718,10 +1019,16 @@ export class NostrService {
       );
     }
 
+    this.logDirectMessageDiagnostics({
+      context: "load",
+      limit: resolvedLimit,
+      decryptLimit: resolvedDecryptLimit,
+    });
+
     return snapshot;
   }
 
-  ensureDirectMessageSubscription({ actorPubkey, relays, ...handlers } = {}) {
+  async ensureDirectMessageSubscription({ actorPubkey, relays, ...handlers } = {}) {
     if (this.dmSubscription) {
       return this.dmSubscription;
     }
@@ -732,11 +1039,40 @@ export class NostrService {
       return null;
     }
 
+    let resolvedRelays = Array.isArray(relays) ? relays : null;
+    let relaySelection = null;
+
+    if (!resolvedRelays) {
+      const discoveryRelays = Array.isArray(this.nostrClient?.readRelays)
+        ? this.nostrClient.readRelays
+        : Array.isArray(this.nostrClient?.relays)
+        ? this.nostrClient.relays
+        : [];
+
+      let pool = this.nostrClient?.pool || null;
+      if (!pool && typeof this.nostrClient?.ensurePool === "function") {
+        try {
+          pool = await this.nostrClient.ensurePool();
+        } catch (error) {
+          devLogger.warn("[nostrService] Failed to initialize DM relay pool.", error);
+        }
+      }
+
+      relaySelection = await resolveDmRelaySelection({
+        pubkey: normalizedActor,
+        discoveryRelays,
+        fallbackRelays: discoveryRelays,
+        pool,
+        log: { dev: devLogger, user: userLogger },
+      });
+      resolvedRelays = relaySelection.relays;
+    }
+
     try {
       const subscription = this.nostrClient.subscribeDirectMessages(
         normalizedActor,
         {
-          relays,
+          relays: resolvedRelays,
           onEvent: handlers.onEvent,
           onMessage: (message, context = {}) => {
             this.applyDirectMessage(message, {
@@ -804,6 +1140,14 @@ export class NostrService {
       this.dmSubscription = subscription;
       this.dmActorPubkey = normalizedActor;
       this.emit("directMessages:subscribed", { subscription });
+      if (relaySelection?.warning === DM_RELAY_WARNING_FALLBACK) {
+        this.emit("directMessages:relayWarning", {
+          actorPubkey: normalizedActor,
+          warning: relaySelection.warning,
+          relays: resolvedRelays,
+          source: relaySelection.source,
+        });
+      }
       return subscription;
     } catch (error) {
       userLogger.warn(
@@ -843,6 +1187,7 @@ export class NostrService {
     const snapshotPayload = buildSnapshotFromMessages(
       sourceMessages,
       normalizedActor,
+      (message) => this.resolveDirectMessagePreview(message),
     );
 
     if (!snapshotPayload.length) {

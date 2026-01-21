@@ -1,12 +1,13 @@
 {
 	"name": "bitvid",
-	"image": "mcr.microsoft.com/devcontainers/javascript-node:20",
-	"postCreateCommand": "npm ci",
+	"image": "mcr.microsoft.com/devcontainers/javascript-node:22",
+	"postCreateCommand": "npm ci && npm run build",
 	"customizations": {
 		"vscode": {
 			"extensions": [
 				"esbenp.prettier-vscode",
-				"bradlc.vscode-tailwindcss"
+				"bradlc.vscode-tailwindcss",
+				"stylelint.vscode-stylelint"
 			]
 		}
 	}

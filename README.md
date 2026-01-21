@@ -107,7 +107,13 @@ To run **bitvid** locally:
    npm ci
    ```
 
-3. Start a local server:
+3. Build the project:
+
+   ```bash
+   npm run build
+   ```
+
+4. Start a local server:
    - Using Python:
      ```bash
      python -m http.server 8000
@@ -117,17 +123,20 @@ To run **bitvid** locally:
      npx serve
      ```
 
-4. Open the site in your browser:
+5. Open the site in your browser:
 
 ```
 http://localhost:8000
 ```
 
-### Common Commands
+### Quickstart Commands
 
 - **Run unit tests**: `npm run test:unit`
 - **Format code**: `npm run format`
 - **Lint code**: `npm run lint`
+- **Run DM unit tests**: `npm run test:dm:unit`
+- **Run DM integration tests**: `npm run test:dm:integration`
+- **Run headless E2E tests**: `npm run test:e2e`
 
 ### Send your first video post
 
@@ -137,13 +146,14 @@ Use the event builders in `js/nostrEventSchemas.js` to construct valid video not
 import { buildVideoPostEvent } from "./js/nostrEventSchemas.js";
 
 const event = buildVideoPostEvent({
+  // Provide your hex pubkey (not npub)
   pubkey: "your_pubkey_hex",
   created_at: Math.floor(Date.now() / 1000),
-  dTagValue: "my-first-video",
+  dTagValue: "my-first-video", // The stable identifier (d-tag) for this video
   content: {
     version: 3,
     title: "My First Video",
-    videoRootId: "my-first-video", // Logical ID, often matches d-tag
+    videoRootId: "my-first-video", // Logical ID, typically matches the d-tag
     url: "https://example.com/video.mp4",
     description: "This is a test video post sent via the SDK."
     // magnet: "magnet:?xt=urn:btih:..." // Optional fallback
@@ -393,10 +403,13 @@ placeholder at “—” and development builds log a warning—so mixed deploym
 
 ## Testing
 
-Continuous integration runs CSS linting/builds, the Playwright kitchen-sink snapshots, and the Node-based unit tests on every push.
+Continuous integration runs CSS linting/builds, the DM unit/integration suites, the Playwright kitchen-sink snapshots, headless E2E flows, and the Node-based unit tests on every push.
 Before pushing, run `npm run build` locally so the Tailwind bundle regenerates.
 Pair that with `npm run test:unit` for application logic changes and
 `npm run test:visual` for presentation updates to mirror the CI surface area.
+For DM-specific changes, also run `npm run test:dm:unit` and
+`npm run test:dm:integration` to cover the direct message flows.
+Use `npm run test:e2e` to execute the headless Playwright journeys in `tests/e2e`.
 
 ### Manual QA checklist
 
