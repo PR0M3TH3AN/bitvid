@@ -18,9 +18,32 @@ function renderProfileCards(profiles, container) {
   if (!container) return;
   container.innerHTML = "";
 
+  // Reset the "Show More" button and container limit state
+  const showMoreContainer = document.getElementById("searchChannelShowMore");
+  if (showMoreContainer) {
+    showMoreContainer.classList.add("hidden");
+  }
+  container.classList.remove("channel-grid-limit");
+
   if (!profiles || profiles.length === 0) {
     container.innerHTML = `<p class="text-sm text-muted col-span-full">No matching channels found.</p>`;
     return;
+  }
+
+  // If we have more than 5 results (the smallest limit), we might need to show the button
+  // depending on screen size, but for simplicity we just enable it if > 5.
+  if (profiles.length > 5) {
+    container.classList.add("channel-grid-limit");
+    if (showMoreContainer) {
+      showMoreContainer.classList.remove("hidden");
+      const btn = showMoreContainer.querySelector("button");
+      if (btn) {
+        btn.onclick = () => {
+          container.classList.remove("channel-grid-limit");
+          showMoreContainer.classList.add("hidden");
+        };
+      }
+    }
   }
 
   const fragment = document.createDocumentFragment();
