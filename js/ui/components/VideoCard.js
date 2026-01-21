@@ -436,6 +436,7 @@ export class VideoCard {
       "p-md",
       "bv-stack",
       "bv-stack--tight",
+      "min-w-0",
     ];
     if (isCompact) {
       contentClassNames.push("flex-1");
