@@ -104,10 +104,8 @@ function validateEvent(type, event) {
   if (schema.content) {
     if (schema.content.format === "json") {
       try {
-        JSON.parse(event.content);
-        // TODO: Validate JSON schema fields if defined (schema.content.fields)
+        const parsed = JSON.parse(event.content);
         if (schema.content.fields) {
-            const parsed = JSON.parse(event.content);
             schema.content.fields.forEach(field => {
                 if (field.required && parsed[field.key] === undefined) {
                     errors.push(`Missing required content field: ${field.key}`);
