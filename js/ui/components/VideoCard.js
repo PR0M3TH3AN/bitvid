@@ -3016,7 +3016,7 @@ export class VideoCard {
 
     if (isOverflowing) {
       host.classList.add("can-marquee");
-      // Speed: 50px/s
+      // Speed: 50 pixels per second
       // Distance is contentWidth (one item width including padding)
       const distance = contentWidth;
       const duration = distance / 50;

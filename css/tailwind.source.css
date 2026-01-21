@@ -5855,8 +5855,9 @@
     position: relative;
     overflow: hidden;
     white-space: nowrap;
-    /* Optional: Ensure it takes layout space */
     width: 100%;
+    min-width: 0;
+    max-width: 100%;
   }
 
   .marquee-static {
@@ -5887,7 +5888,7 @@
 
   .marquee-item {
     flex-shrink: 0;
-    padding-right: 2rem; /* Gap between loop items */
+    padding-right: var(--space-xl); /* Gap between loop items */
   }
 
   @keyframes marquee-scroll {
@@ -5896,7 +5897,7 @@
   }
 
   /* Desktop Hover State */
-  @media (min-width: 1024px) {
+  @media (min-width: theme("screens.lg")) {
     .card:hover .marquee-host.can-marquee .marquee-static {
       opacity: 0;
     }
@@ -5909,7 +5910,7 @@
   }
 
   /* Mobile Active State */
-  @media (max-width: 1023.98px) {
+  @media (max-width: calc(theme("screens.lg") - var(--breakpoint-edge-offset))) {
     .card[data-mobile-active="true"] .marquee-host.can-marquee .marquee-static {
       opacity: 0;
     }
