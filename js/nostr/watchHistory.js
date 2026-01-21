@@ -1101,13 +1101,25 @@ class WatchHistoryManager {
     if (attempt > WATCH_HISTORY_REPUBLISH_MAX_ATTEMPTS) {
       return;
     }
-    const exponentialDelay = WATCH_HISTORY_REPUBLISH_BASE_DELAY_MS * Math.pow(2, attempt);
-    const cappedDelay = Math.min(exponentialDelay, WATCH_HISTORY_REPUBLISH_MAX_DELAY_MS);
-    const jitter = Math.random() * cappedDelay * WATCH_HISTORY_REPUBLISH_JITTER;
-    const delay = Math.max(
-      WATCH_HISTORY_REPUBLISH_BASE_DELAY_MS,
-      Math.floor(cappedDelay + jitter),
-    );
+
+    let delay = 0;
+    if (attempt === 0) {
+      delay = 10;
+    } else {
+      const exponentialDelay =
+        WATCH_HISTORY_REPUBLISH_BASE_DELAY_MS * Math.pow(2, attempt);
+      const cappedDelay = Math.min(
+        exponentialDelay,
+        WATCH_HISTORY_REPUBLISH_MAX_DELAY_MS,
+      );
+      const jitter =
+        Math.random() * cappedDelay * WATCH_HISTORY_REPUBLISH_JITTER;
+      delay = Math.max(
+        WATCH_HISTORY_REPUBLISH_BASE_DELAY_MS,
+        Math.floor(cappedDelay + jitter),
+      );
+    }
+
     if (onSchedule) {
       try {
         onSchedule({ taskId: key, attempt: attempt + 1, delay });

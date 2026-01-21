@@ -5,7 +5,7 @@ import {
   ingestLocalViewEvent as defaultIngestLocalViewEvent,
 } from "../viewCounter.js";
 
-const DEFAULT_VIEW_THRESHOLD_SECONDS = 12;
+const DEFAULT_VIEW_THRESHOLD_SECONDS = 5;
 
 function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
