@@ -332,7 +332,8 @@ async function run() {
     report.remediation.push('Check relay logs for validation errors or connection limits.');
   }
 
-  const reportPath = path.join(ARTIFACTS_DIR, `load-report-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
+  const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
+  const reportPath = path.join(ARTIFACTS_DIR, `load-report-${dateStr}.json`);
   fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
   console.log(`Report saved to ${reportPath}`);
 }
