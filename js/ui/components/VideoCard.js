@@ -386,6 +386,8 @@ export class VideoCard {
 
     this.root = root;
 
+    VideoCard.observeViewport(this.root);
+
     this.root.dataset.component = "video-card";
     this.syncCardState();
     this.syncMotionState();
@@ -449,17 +451,17 @@ export class VideoCard {
       isCompact ? "text-base" : "text-lg",
       isCompact ? "font-semibold" : "font-bold",
       "text-text",
-      "line-clamp-2",
       "cursor-pointer",
     ];
     if (isCompact) {
       titleClassNames.push("leading-snug");
     }
 
-    const title = this.createElement("h3", {
-      classNames: titleClassNames,
-      textContent: this.video.title
-    });
+    const title = this.buildMarqueeStructure(
+      "h3",
+      titleClassNames,
+      this.video.title
+    );
     title.dataset.videoId = this.video.id;
     this.titleEl = title;
 
@@ -645,7 +647,7 @@ export class VideoCard {
   applyIdentityToAuthorElements() {
     const nameLabel = this.identity?.name || "Unknown";
     if (this.authorNameEl) {
-      this.authorNameEl.textContent = nameLabel || "Unknown";
+      this.updateMarqueeText(this.authorNameEl, nameLabel || "Unknown");
     }
 
     if (this.authorPicEl) {
@@ -918,16 +920,17 @@ export class VideoCard {
 
     const authorMeta = this.createElement("div", { classNames: ["min-w-0"] });
 
-    const authorName = this.createElement("p", {
-      classNames: [
+    const authorName = this.buildMarqueeStructure(
+      "p",
+      [
         isCompact ? "text-xs" : "text-sm",
         "text-muted",
         "author-name",
         "cursor-pointer",
         "video-card__author-name",
       ],
-      textContent: "Loading name...",
-    });
+      "Loading name..."
+    );
     if (this.video.pubkey) {
       authorName.dataset.pubkey = this.video.pubkey;
     }
@@ -2943,6 +2946,114 @@ export class VideoCard {
     }
 
     return false;
+  }
+
+  buildMarqueeStructure(tagName, classNames, textContent, attrs = {}) {
+    const host = this.createElement(tagName, {
+      classNames: [...classNames, "marquee-host"],
+      attrs,
+    });
+
+    // Use span instead of div to ensure valid HTML when nested in h3/p
+    const staticEl = this.createElement("span", {
+      classNames: ["marquee-static", "block"],
+      textContent,
+    });
+
+    const animEl = this.createElement("span", {
+      classNames: ["marquee-anim"],
+      attrs: { "aria-hidden": "true" },
+    });
+    const track = this.createElement("span", { classNames: ["marquee-track"] });
+
+    const item1 = this.createElement("span", {
+      classNames: ["marquee-item"],
+      textContent,
+    });
+    const item2 = this.createElement("span", {
+      classNames: ["marquee-item"],
+      textContent,
+    });
+
+    track.appendChild(item1);
+    track.appendChild(item2);
+    animEl.appendChild(track);
+
+    host.appendChild(staticEl);
+    host.appendChild(animEl);
+
+    host._marqueeRefs = { staticEl, item1, item2, track };
+
+    VideoCard.observeMarquee(host);
+
+    return host;
+  }
+
+  updateMarqueeText(host, text) {
+    if (!host) return;
+    if (!host._marqueeRefs) {
+      host.textContent = text;
+      return;
+    }
+    const { staticEl, item1, item2 } = host._marqueeRefs;
+    if (staticEl) staticEl.textContent = text;
+    if (item1) item1.textContent = text;
+    if (item2) item2.textContent = text;
+    // Trigger check immediately if possible, or wait for observer
+    VideoCard.checkMarqueeOverflow(host);
+  }
+
+  // Moved checkMarqueeOverflow to static to be shared by observer
+  static checkMarqueeOverflow(host) {
+    if (!host || !host._marqueeRefs) return;
+    const { staticEl, track, item1 } = host._marqueeRefs;
+
+    // Use item1 width (full content width) vs host width
+    const contentWidth = item1 ? item1.offsetWidth : staticEl.scrollWidth;
+    const availableWidth = host.clientWidth;
+
+    const isOverflowing = contentWidth > availableWidth;
+
+    if (isOverflowing) {
+      host.classList.add("can-marquee");
+      // Speed: 50px/s
+      // Distance is contentWidth (one item width including padding)
+      const distance = contentWidth;
+      const duration = distance / 50;
+      const safeDuration = Math.max(duration, 2);
+      track.style.setProperty("--marquee-duration", `${safeDuration}s`);
+    } else {
+      host.classList.remove("can-marquee");
+    }
+  }
+
+  static observeMarquee(element) {
+    if (!VideoCard.marqueeResizeObserver) {
+      VideoCard.marqueeResizeObserver = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          VideoCard.checkMarqueeOverflow(entry.target);
+        }
+      });
+    }
+    VideoCard.marqueeResizeObserver.observe(element);
+  }
+
+  static observeViewport(element) {
+    if (!VideoCard.viewportObserver) {
+      VideoCard.viewportObserver = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (entry.isIntersecting) {
+              entry.target.setAttribute("data-mobile-active", "true");
+            } else {
+              entry.target.removeAttribute("data-mobile-active");
+            }
+          }
+        },
+        { rootMargin: "-40% 0px -40% 0px", threshold: 0 }
+      );
+    }
+    VideoCard.viewportObserver.observe(element);
   }
 
   createElement(tagName, { classNames = [], attrs = {}, textContent } = {}) {
