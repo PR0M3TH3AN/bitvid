@@ -198,3 +198,28 @@ test("helpers trim fragments from non-magnet values", () => {
     "Dropping the fragment should be reflected in didChange"
   );
 });
+
+test("normalizeAndAugmentMagnet filters out known broken trackers", () => {
+  const infoHash = "abcdef0123456789abcdef0123456789abcdef01";
+  const brokenTrackers = [
+    "wss://tracker.dler.org/announce",
+    "wss://tracker.ghostchu-services.top/announce"
+  ];
+
+  const rawMagnet =
+    `magnet:?xt=urn:btih:${infoHash}` +
+    `&tr=${brokenTrackers[0]}` +
+    `&tr=${brokenTrackers[1]}`;
+
+  const result = normalizeMagnetObject(rawMagnet);
+
+  const trackers = getParamValues(result.magnet, "tr");
+  for (const broken of brokenTrackers) {
+    assert.ok(
+      !trackers.includes(broken),
+      `Expected broken tracker ${broken} to be removed`
+    );
+  }
+
+  assertDefaultTrackersPresent(result.magnet);
+});
