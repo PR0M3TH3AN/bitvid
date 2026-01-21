@@ -257,6 +257,9 @@ export class AppShell {
       main.appendChild(zapInterface);
     };
 
+    const conversationZapTotalSats = totalsByConversation.get(activeConversation.id) || 0;
+    const profileZapTotalSats = totalsByProfile.get(activeConversation.pubkey) || 0;
+
     main.appendChild(
       Composer({
         document: doc,
@@ -267,6 +270,10 @@ export class AppShell {
         zapConfig,
         onSend: onSendMessage,
         onZap: handleZapTrigger,
+        zapStats: {
+            conversationTotal: conversationZapTotalSats,
+            profileTotal: profileZapTotalSats
+        }
       }),
     );
     main.appendChild(

@@ -1,6 +1,5 @@
 import { DayDivider } from "./DayDivider.js";
 import { MessageBubble } from "./MessageBubble.js";
-import { formatZapAmount } from "./zapHelpers.js";
 
 function createElement(doc, tag, className, text) {
   const element = doc.createElement(tag);
@@ -75,28 +74,6 @@ export function MessageThread({
   );
   privacyBadge.title = privacyHint;
   header.appendChild(privacyBadge);
-
-  const zapSummary = createElement(doc, "div", "dm-message-thread__zap-summary");
-  zapSummary.appendChild(
-    createElement(doc, "span", "dm-message-thread__zap-label", "Zaps"),
-  );
-  zapSummary.appendChild(
-    createElement(
-      doc,
-      "span",
-      "dm-message-thread__zap-total",
-      formatZapAmount(conversationZapTotalSats),
-    ),
-  );
-  zapSummary.appendChild(
-    createElement(
-      doc,
-      "span",
-      "dm-message-thread__zap-profile",
-      `Profile: ${formatZapAmount(profileZapTotalSats)}`,
-    ),
-  );
-  header.appendChild(zapSummary);
 
   if (typeof onMarkRead === "function") {
     const actions = createElement(doc, "div", "ml-auto flex items-center gap-2");
