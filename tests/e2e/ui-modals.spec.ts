@@ -195,10 +195,14 @@ test.describe("component modal pages", () => {
       if (closeSelector) {
         await page.locator(closeSelector).first().click();
       } else {
-        expect(
-          false,
-          `Modal page ${pageName} is missing a close/cancel control.`,
-        ).toBeTruthy();
+        // lockdown-modal is an exception to the rule as it is designed to be inescapable.
+        if (pageName !== "lockdown-modal") {
+          expect(
+            false,
+            `Modal page ${pageName} is missing a close/cancel control.`,
+          ).toBeTruthy();
+        }
+
         await page.evaluate(() => {
           const element = document.querySelector(".bv-modal");
           if (!element) {
