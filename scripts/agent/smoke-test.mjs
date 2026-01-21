@@ -22,37 +22,55 @@ function log(message) {
   fs.appendFileSync(LOG_FILE, line + '\n');
 }
 
-async function startServer() {
-  log('Starting local server (python3)...');
-  const serverProcess = spawn('python3', ['-m', 'http.server', '8000'], {
+async function startProcess(command, args, name) {
+  log(`Starting ${name}...`);
+  const proc = spawn(command, args, {
     cwd: ROOT_DIR,
-    stdio: 'ignore'
+    stdio: 'pipe', // Capture output
+    env: process.env
+  });
+
+  proc.stdout.on('data', (data) => {
+    log(`[${name}] ${data.toString().trim()}`);
+  });
+
+  proc.stderr.on('data', (data) => {
+     log(`[${name} ERR] ${data.toString().trim()}`);
+  });
+
+  proc.on('error', (err) => {
+    log(`[${name}] Failed to start: ${err.message}`);
   });
 
   // Give it a moment to start
   await new Promise(resolve => setTimeout(resolve, 2000));
-  return serverProcess;
+  return proc;
 }
 
 async function run() {
   let serverProcess;
+  let relayProcess;
   let browser;
   let exitCode = 0;
 
   try {
-    serverProcess = await startServer();
+    // 1. Start Relay
+    relayProcess = await startProcess('node', ['scripts/agent/simple-relay.mjs'], 'LocalRelay');
+
+    // 2. Start Web Server
+    serverProcess = await startProcess('python3', ['-m', 'http.server', '8000'], 'WebServer');
 
     log('Launching browser...');
     browser = await chromium.launch({ headless: true });
     const page = await browser.newPage();
 
     page.on('console', msg => {
+      const type = msg.type();
       const text = msg.text();
-      // Filter out some noise if needed, but keeping it is safer for debugging
-      if (msg.type() === 'error') {
-        log(`BROWSER ERROR: ${text}`);
-      } else {
-        // log(`BROWSER: ${text}`); // Optional verbose logging
+      if (text.startsWith('[SmokeTest]')) {
+          log(text);
+      } else if (type === 'error') {
+          log(`BROWSER ERROR: ${text}`);
       }
     });
 
@@ -60,158 +78,189 @@ async function run() {
       log(`PAGE ERROR: ${err.message}`);
     });
 
-    log('Navigating to app...');
-    await page.goto('http://localhost:8000');
+    log('Navigating to http://127.0.0.1:8000 ...');
+    await page.goto('http://127.0.0.1:8000');
 
-    // Wait for app to load (checking for #app or similar)
-    await page.waitForSelector('#app', { timeout: 10000 });
-    log('App loaded.');
+    // Wait for App and NostrTools
+    log('Waiting for app and NostrTools...');
+    await page.waitForFunction(() => window.NostrTools && document.querySelector('#app'), { timeout: 15000 });
+    log('App loaded and NostrTools available.');
 
     // Inject test logic
-    log('Running in-page smoke test...');
+    log('Running in-page smoke test logic...');
+
     const result = await page.evaluate(async () => {
       const logs = [];
-      function pageLog(m) { logs.push(m); console.log('[SmokeTest] ' + m); }
+      function pageLog(m) {
+          const msg = `[SmokeTest] ${m}`;
+          console.log(msg);
+          logs.push(msg);
+      }
 
       try {
-        // 1. Import Client
-        pageLog('Importing nostrClient...');
+        const RELAY_URL = 'ws://localhost:8008';
+        pageLog(`Test Relay: ${RELAY_URL}`);
+
+        // 1. Import Modules
         const { nostrClient } = await import('./js/nostrClientFacade.js');
-        const { NostrTools } = window; // Assumed to be loaded via script tag in index.html
+        const { decryptDM } = await import('./js/dmDecryptor.js');
+        const NostrTools = window.NostrTools;
 
-        if (!nostrClient) throw new Error('nostrClient not found');
-        if (!NostrTools) throw new Error('NostrTools not found on window');
+        if (!nostrClient) throw new Error('nostrClient import failed');
+        if (!decryptDM) throw new Error('decryptDM import failed');
 
-        // Override relays to a specific subset to avoid spamming all defaults if local relay is not available
-        // Ideally this would be a local relay, but we use a public one for the smoke test as fallback.
-        const TEST_RELAY = 'wss://relay.damus.io';
-        pageLog(`Configuring nostrClient to use ${TEST_RELAY}...`);
+        // 2. Configure Client
+        pageLog('Configuring nostrClient...');
+        nostrClient.relays = [RELAY_URL];
+        nostrClient.writeRelays = [RELAY_URL];
+        nostrClient.readRelays = [RELAY_URL];
 
-        // If nostrClient is already initialized, we might need to reconnect or just update properties
-        nostrClient.relays = [TEST_RELAY];
-        nostrClient.writeRelays = [TEST_RELAY];
-        nostrClient.readRelays = [TEST_RELAY];
-
+        // Force connection logic if needed, but adding to relays list usually triggers connection attempt in client
+        // Check pool if available
         if (nostrClient.pool) {
-             // Ensure connection to our test relay
-             await nostrClient.pool.ensureRelay(TEST_RELAY);
+            await nostrClient.pool.ensureRelay(RELAY_URL);
         }
 
-        // Wait a bit for connection
+        // Wait for connection
         pageLog('Waiting for relay connection...');
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        await new Promise(r => setTimeout(r, 1000));
 
-        // 2. Generate Identity
-        pageLog('Generating ephemeral identity...');
+        // 3. Generate Identity & Login
+        pageLog('Generating ephemeral keys...');
 
-        const bytesToHex = (bytes) => {
+        // Helper since NostrTools.bytesToHex might be missing depending on version/bundle
+        function toHex(bytes) {
             return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
-        };
-
-        let privateKey;
-        if (NostrTools.generateSecretKey) {
-            const secret = NostrTools.generateSecretKey();
-            if (secret instanceof Uint8Array) {
-                privateKey = bytesToHex(secret);
-            } else {
-                privateKey = secret;
-            }
-        } else {
-            privateKey = NostrTools.generatePrivateKey();
         }
 
-        const pubkey = NostrTools.getPublicKey(privateKey);
-        pageLog(`Generated pubkey: ${pubkey}`);
+        const skBytes = NostrTools.generateSecretKey();
+        const sk = toHex(skBytes);
+        const pk = NostrTools.getPublicKey(skBytes);
+        pageLog(`Generated Pubkey: ${pk}`);
 
-        // 3. Login
-        pageLog('Logging in...');
-        await nostrClient.registerPrivateKeySigner({ privateKey, pubkey });
+        await nostrClient.registerPrivateKeySigner({ privateKey: sk, pubkey: pk });
+        pageLog('Logged in.');
 
         // 4. Publish Video
-        pageLog('Publishing video...');
+        pageLog('Publishing VIDEO_POST...');
+        const videoRootId = `smoke-${Date.now()}`;
         const videoPayload = {
-            legacyFormData: { // extractVideoPublishPayload expects this structure or direct fields
+            legacyFormData: {
                 title: `Smoke Test Video ${Date.now()}`,
-                description: 'Automated smoke test artifact',
-                url: 'https://example.com/video.mp4',
-                magnet: 'magnet:?xt=urn:btih:c9e15763f722f23e98ce29a8c0c4000000000000&dn=test', // Valid-ish magnet
+                description: 'Smoke test artifact',
+                url: 'https://example.com/smoke.mp4',
+                magnet: 'magnet:?xt=urn:btih:c9e15763f722f23e98ce29a8c0c4000000000000&dn=smoke',
                 mimeType: 'video/mp4',
                 isForKids: false,
                 isNsfw: false,
-                isPrivate: true,
+                isPrivate: true
             },
             fileSha256: '0000000000000000000000000000000000000000000000000000000000000000'
         };
 
-        // Note: publishVideo takes (videoPayload, pubkey)
-        const event = await nostrClient.publishVideo(videoPayload, pubkey);
-        pageLog(`Video published! ID: ${event.id}`);
+        const pubEvent = await nostrClient.publishVideo(videoPayload, pk);
+        if (!pubEvent || !pubEvent.id) throw new Error('Publish failed, no event returned');
+        pageLog(`Video published: ${pubEvent.id}`);
 
-        // 5. Verify Read Back
-        pageLog('Verifying read back...');
-        // We can use getEventById
-        const fetched = await nostrClient.getEventById(event.id);
-        if (!fetched) throw new Error('Failed to fetch published video');
-        if (fetched.id !== event.id) throw new Error('Fetched ID mismatch');
-        pageLog('Read back successful.');
+        // 5. Verify Video Readback
+        pageLog('Verifying video readback...');
+        await new Promise(r => setTimeout(r, 500)); // Propagate
+        const fetched = await nostrClient.getEventById(pubEvent.id);
+        if (!fetched || fetched.id !== pubEvent.id) throw new Error('Failed to fetch video event');
+        pageLog('Video verified.');
 
-        // 6. DM Flow
-        pageLog('Testing DM flow (Self-DM)...');
-        // We'll send a DM to ourselves
-        const npub = NostrTools.nip19.npubEncode(pubkey);
-        const message = `Smoke Test DM ${Date.now()}`;
+        // 6. DM Flow (Self-DM)
+        pageLog('Testing DM flow (Self-Send)...');
+        const message = `Smoke DM ${Date.now()}`;
+        const npub = NostrTools.nip19.npubEncode(pk);
 
-        const dmResult = await nostrClient.sendDirectMessage(npub, message);
-        if (!dmResult.ok) throw new Error(`DM Send failed: ${dmResult.error}`);
-        pageLog('DM Sent.');
+        const dmRes = await nostrClient.sendDirectMessage(npub, message);
+        if (!dmRes.ok) throw new Error(`DM Send failed: ${dmRes.error}`);
+        pageLog('DM sent.');
 
-        // Decrypt
-        // We need to fetch it. listDirectMessages
-        pageLog('Fetching and decrypting DMs...');
-        // Allow some time for propagation to relay and back
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // 7. Fetch & Decrypt
+        pageLog('Fetching DM...');
+        await new Promise(r => setTimeout(r, 500));
 
-        const dms = await nostrClient.listDirectMessages(pubkey, { limit: 10 });
+        // We use listDirectMessages which handles fetching and decrypting usually,
+        // BUT the prompt asks to "verify decryption via js/dmDecryptor.js".
+        // `nostrClient.listDirectMessages` might use `dmDecryptor` internally or have its own logic.
+        // Let's manually fetch the raw event and decrypt it to be sure we are testing `dmDecryptor.js`.
 
-        const match = dms.find(r => r.content === message || r.plaintext === message);
+        const filter = {
+            kinds: [4, 1059],
+            '#p': [pk],
+            limit: 10
+        };
+        const events = await nostrClient.pool.list([RELAY_URL], [filter]);
+        const targetEvent = events.find(e => e.pubkey === pk); // Sent by self
 
-        if (!match) {
-            pageLog('DM not found in list. Fetched count: ' + dms.length);
-            console.log('DMs:', JSON.stringify(dms));
-            throw new Error('DM verification failed');
+        if (!targetEvent) throw new Error('DM event not found on relay');
+        pageLog(`Found DM event kind ${targetEvent.kind}`);
+
+        // Setup Decrypt Context
+        const decryptors = [];
+
+        // NIP-44
+        if (NostrTools.nip44) {
+             decryptors.push({
+                 scheme: 'nip44',
+                 decrypt: (pk, ct) => NostrTools.nip44.decrypt(sk, pk, ct),
+                 priority: 1,
+                 supportsGiftWrap: true
+             });
+        }
+        // NIP-04
+        if (NostrTools.nip04) {
+             decryptors.push({
+                 scheme: 'nip04',
+                 decrypt: async (pk, ct) => NostrTools.nip04.decrypt(sk, pk, ct),
+                 priority: 0
+             });
         }
 
-        pageLog('DM Verified.');
+        const context = {
+            actorPubkey: pk,
+            decryptors
+        };
+
+        pageLog('Decrypting...');
+        const decrypted = await decryptDM(targetEvent, context);
+
+        if (!decrypted.ok) {
+            console.error('Decryption errors:', decrypted.errors);
+            throw new Error('Decryption failed');
+        }
+
+        if (decrypted.plaintext !== message) {
+             throw new Error(`Message mismatch: Got "${decrypted.plaintext}", expected "${message}"`);
+        }
+
+        pageLog('Decryption verified!');
 
         return { success: true, logs };
 
       } catch (e) {
-        pageLog(`ERROR: ${e.message}`);
+        pageLog(`FATAL: ${e.message}`);
         return { success: false, error: e.message, stack: e.stack, logs };
       }
     });
 
     if (result.success) {
-      log('Smoke Test Passed!');
-      result.logs.forEach(l => log(`[PAGE] ${l}`));
-
+      log('SMOKE TEST PASSED');
       const summary = {
         timestamp: new Date().toISOString(),
         status: 'success',
-        steps: ['login', 'publish', 'dm_send', 'dm_decrypt'],
         logs: result.logs
       };
       fs.writeFileSync(path.join(ARTIFACTS_DIR, `smoke-summary-${DATE_STR}.json`), JSON.stringify(summary, null, 2));
-
     } else {
-      log('Smoke Test Failed!');
-      result.logs.forEach(l => log(`[PAGE] ${l}`));
+      log('SMOKE TEST FAILED');
       log(`Error: ${result.error}`);
-      log(`Stack: ${result.stack}`);
 
-      const screenshotPath = path.join(ARTIFACTS_DIR, `failure-${DATE_STR}.png`);
+      const screenshotPath = path.join(ARTIFACTS_DIR, `smoke-fail-${DATE_STR}.png`);
       await page.screenshot({ path: screenshotPath });
-      log(`Screenshot saved to ${screenshotPath}`);
+      log(`Screenshot saved: ${screenshotPath}`);
 
       const summary = {
         timestamp: new Date().toISOString(),
@@ -220,20 +269,17 @@ async function run() {
         logs: result.logs
       };
       fs.writeFileSync(path.join(ARTIFACTS_DIR, `smoke-summary-${DATE_STR}.json`), JSON.stringify(summary, null, 2));
-
       exitCode = 1;
     }
 
   } catch (err) {
-    log(`CRITICAL ERROR: ${err.message}`);
-    log(err.stack);
+    log(`SCRIPT ERROR: ${err.message}`);
+    console.error(err);
     exitCode = 1;
   } finally {
     if (browser) await browser.close();
-    if (serverProcess) {
-      serverProcess.kill();
-      log('Server stopped.');
-    }
+    if (serverProcess) serverProcess.kill();
+    if (relayProcess) relayProcess.kill();
   }
 
   process.exit(exitCode);
