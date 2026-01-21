@@ -1883,7 +1883,6 @@ export class ProfileModalController {
       scrollContainerSelector: "#profileModalPanes",
       errorBannerSelector: "#profileHistoryError",
       clearButtonSelector: "#profileHistoryClear",
-      republishButtonSelector: "#profileHistoryRepublish",
       refreshButtonSelector: "#profileHistoryRefresh",
       privacyBannerSelector: "#profileHistoryPrivacyBanner",
       privacyMessageSelector: "#profileHistoryPrivacyMessage",
