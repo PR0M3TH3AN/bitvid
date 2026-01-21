@@ -6,6 +6,7 @@ import { getApplication } from "./applicationContext.js";
 import { ASSET_VERSION } from "../config/asset-version.js";
 import { applyDesignSystemAttributes } from "./designSystem.js";
 import { devLogger, userLogger } from "./utils/logger.js";
+import { attachFeedInfoPopover } from "./ui/components/FeedInfoPopover.js";
 
 const TRACKING_SCRIPT_PATTERN = /(?:^|\/)tracking\.js(?:$|\?)/;
 
@@ -92,6 +93,14 @@ export const viewInitRegistry = {
     if (refreshApp && typeof refreshApp.forceRefreshAllProfiles === "function") {
       refreshApp.forceRefreshAllProfiles();
     }
+
+    const infoTrigger = document.getElementById("recentInfoTrigger");
+    if (infoTrigger) {
+      attachFeedInfoPopover(
+        infoTrigger,
+        "Global chronological feed from all relays."
+      );
+    }
   },
   "for-you": () => {
     initForYouView();
@@ -110,6 +119,13 @@ export const viewInitRegistry = {
   },
   explore: () => {
     devLogger.log("Explore view loaded.");
+    const infoTrigger = document.getElementById("exploreInfoTrigger");
+    if (infoTrigger) {
+      attachFeedInfoPopover(
+        infoTrigger,
+        "Coming soon."
+      );
+    }
   },
   history: async () => {
     try {
@@ -129,6 +145,14 @@ export const viewInitRegistry = {
    */
   subscriptions: async () => {
     devLogger.log("Subscriptions view loaded.");
+
+    const infoTrigger = document.getElementById("subscriptionsInfoTrigger");
+    if (infoTrigger) {
+      attachFeedInfoPopover(
+        infoTrigger,
+        "Latest videos from channels you follow."
+      );
+    }
 
     const app = getApplication();
     if (!app?.pubkey) {
