@@ -148,7 +148,31 @@
 
   <hr class="my-6" />
 
-  <h3 class="mb-4 text-lg font-bold text-text-strong">Videos by This User</h3>
+  <div class="flex items-center gap-2 mb-4">
+    <h3 class="text-lg font-bold text-text-strong">Videos by This User</h3>
+    <button
+      type="button"
+      id="channelInfoTrigger"
+      class="text-muted hover:text-text focus:outline-none transition-colors"
+      aria-label="How is this feed sorted?"
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        class="w-5 h-5"
+        aria-hidden="true"
+      >
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="16" x2="12" y2="12"></line>
+        <line x1="12" y1="8" x2="12.01" y2="8"></line>
+      </svg>
+    </button>
+  </div>
   <div id="channelVideoList" class="bv-grid-video">
     <!-- User’s videos will go here -->
   </div>

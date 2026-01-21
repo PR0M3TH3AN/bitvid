@@ -7,6 +7,7 @@ import { escapeHTML } from "./utils/domUtils.js";
 import { formatShortNpub } from "./utils/formatters.js";
 import { sanitizeProfileMediaUrl } from "./utils/profileMedia.js";
 import { devLogger } from "./utils/logger.js";
+import { attachFeedInfoPopover } from "./ui/components/FeedInfoPopover.js";
 
 function getApp() {
   return getApplication();
@@ -107,6 +108,14 @@ export async function initSearchView() {
   const titleEl = document.getElementById("searchTitle");
   if (titleEl) {
     titleEl.textContent = query ? `Search Results for "${query}"` : "Search Results";
+  }
+
+  const infoTrigger = document.getElementById("searchInfoTrigger");
+  if (infoTrigger) {
+    attachFeedInfoPopover(
+      infoTrigger,
+      "Results matching your search query."
+    );
   }
 
   const channelList = document.getElementById("searchChannelList");
