@@ -55,6 +55,26 @@ async function reviewContext(contextName, options) {
   report.push(`**Date:** ${new Date().toISOString()}`);
   report.push('');
 
+  // Release Channel Guidance
+  if (options.baseBranch) {
+      report.push(`## ℹ️ Release Channel Guidance`);
+      if (options.baseBranch === 'main') {
+         report.push('**Target: Main (Production)**');
+         report.push('- Commits must be atomic.');
+         report.push('- No destructive migrations.');
+         report.push('- Feature flags must default to `false`.');
+         report.push('- Ensure UX and magnet safety guarantees are preserved.');
+      } else if (options.baseBranch === 'unstable') {
+         report.push('**Target: Unstable (Experimentation)**');
+         report.push('- Gate risky behavior behind feature flags (`js/constants.js`).');
+         report.push('- Document toggle/rollback plans in PR description.');
+      } else {
+         report.push(`Target: ${options.baseBranch}`);
+         report.push('Please refer to `AGENTS.md` for release channel guidance.');
+      }
+      report.push('');
+  }
+
   let failed = false;
 
   try {
@@ -258,7 +278,7 @@ async function main() {
     }
     log('Fetching open PRs...');
     try {
-        const prsJson = spawnSync('gh', ['pr', 'list', '--json', 'number,headRefName,url'], { encoding: 'utf-8' });
+        const prsJson = spawnSync('gh', ['pr', 'list', '--json', 'number,headRefName,baseRefName,url'], { encoding: 'utf-8' });
         if (prsJson.status !== 0) throw new Error(prsJson.stderr);
         const prs = JSON.parse(prsJson.stdout);
         log(`Found ${prs.length} open PRs.`);
@@ -267,6 +287,8 @@ async function main() {
             log(`Checking out PR #${pr.number} (${pr.headRefName})...`);
             try {
                 spawnSync('gh', ['pr', 'checkout', pr.number]);
+                // Pass baseBranch from PR details
+                options.baseBranch = pr.baseRefName;
                 const report = await reviewContext(`PR #${pr.number}`, options);
                 const tempFile = `pr_review_${pr.number}.md`;
                 fs.writeFileSync(tempFile, report);
@@ -288,8 +310,16 @@ async function main() {
       }
       log(`Checking out PR #${options.pr}...`);
       try {
+          // Fetch base branch first
+          const viewRes = spawnSync('gh', ['pr', 'view', options.pr, '--json', 'baseRefName'], { encoding: 'utf-8' });
+          if (viewRes.status === 0) {
+              const prDetails = JSON.parse(viewRes.stdout);
+              options.baseBranch = prDetails.baseRefName;
+          }
+
           const res = spawnSync('gh', ['pr', 'checkout', options.pr], { encoding: 'utf-8' });
           if (res.status !== 0) throw new Error(res.stderr);
+
           const report = await reviewContext(`PR #${options.pr}`, options);
           console.log(report);
           fs.writeFileSync(LOG_FILE, report);
@@ -312,6 +342,10 @@ async function main() {
       }
 
       const currentBranch = spawnSync('git', ['branch', '--show-current'], { encoding: 'utf-8' }).stdout.trim();
+      // Logic for local run: can we guess the target?
+      // Usually local run is 'against' something.
+      // But we can just skip or default.
+
       const report = await reviewContext(currentBranch, options);
 
       console.log('\n--- REPORT ---\n');
