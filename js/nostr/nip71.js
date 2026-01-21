@@ -290,6 +290,22 @@ function buildParticipantTag(participant) {
   return values;
 }
 
+/**
+ * Converts a NIP-71 metadata object into Nostr tags.
+ *
+ * Mapping:
+ * - `title` -> `['title', ...]`
+ * - `publishedAt` -> `['published_at', ...]`
+ * - `imeta` -> `['imeta', 'url', ..., 'dim', ...]` (Video variants)
+ * - `textTracks` -> `['text-track', ...]`
+ * - `segments` -> `['segment', ...]`
+ * - `hashtags` -> `['t', ...]`
+ * - `participants` -> `['p', ...]`
+ * - `references` -> `['r', ...]`
+ *
+ * @param {object} metadata - The metadata object (parsed structure).
+ * @returns {string[][]} Array of tags ready for the event.
+ */
 export function buildNip71MetadataTags(metadata) {
   if (!metadata || typeof metadata !== "object") {
     return [];
@@ -571,6 +587,16 @@ function parseHashtagTag(tag) {
   return value || null;
 }
 
+/**
+ * Parses a NIP-71 event (Kind 22 or 21) into a structured metadata object.
+ *
+ * Extracts:
+ * - Standard NIP-71 tags (title, imeta, segments, etc.)
+ * - Pointer references (a, e, d tags) used to link this metadata to the video.
+ *
+ * @param {import("nostr-tools").Event} event - The raw Nostr event.
+ * @returns {{metadata: object, pointers: object, source: object}|null} The parsed structure or null if invalid.
+ */
 export function extractNip71MetadataFromTags(event) {
   if (!event || typeof event !== "object") {
     return null;
@@ -840,6 +866,21 @@ export function buildNip71PointerTags({
   return pointerTags;
 }
 
+/**
+ * Constructs a Kind 22 (Video Wrapper) or Kind 21 (Video Segment) event.
+ *
+ * This event holds the NIP-71 categorization and metadata, separate from the
+ * playable video note (Kind 30078). It links to the video via `a` or `e` tags.
+ *
+ * @param {object} params
+ * @param {object} params.metadata - The NIP-71 metadata object.
+ * @param {string} params.pubkey - The publisher's public key.
+ * @param {string} params.title - The title (required by NIP-71).
+ * @param {string} [params.summaryFallback] - Fallback content if summary is missing.
+ * @param {number} [params.createdAt] - Timestamp.
+ * @param {object} [params.pointerIdentifiers] - Pointers to the target video ({videoRootId, eventId, dTag}).
+ * @returns {import("nostr-tools").Event|null} The unsigned event object.
+ */
 export function buildNip71VideoEvent({
   metadata,
   pubkey = "",
@@ -1011,6 +1052,19 @@ function storeNip71RecordForRoot(nip71Cache, videoRootId, parsedRecord) {
   }
 }
 
+/**
+ * Processes a batch of NIP-71 events and updates the cache.
+ *
+ * Logic:
+ * - Parses each event.
+ * - Identifies which video root(s) it belongs to (via `a` tag or cache lookup).
+ * - Updates `nip71Cache` with the most recent valid metadata for that root.
+ *
+ * @param {import("nostr-tools").Event[]} events - List of fetched events.
+ * @param {object} context
+ * @param {Map} context.nip71Cache - The shared metadata cache.
+ * @param {Map} [context.pointerMap] - Map of pointer values to video info (optimization).
+ */
 export function processNip71Events(events, { nip71Cache, pointerMap = null } = {}) {
   if (!Array.isArray(events) || !events.length || !(nip71Cache instanceof Map)) {
     return;
@@ -1045,6 +1099,17 @@ export function processNip71Events(events, { nip71Cache, pointerMap = null } = {
   });
 }
 
+/**
+ * Hydrates a video object with cached NIP-71 metadata.
+ *
+ * If metadata exists for the video's `videoRootId`, `eventId`, or `d` tag,
+ * it is merged into `video.nip71` and `video.nip71Source`.
+ *
+ * @param {object} video - The video object to mutate.
+ * @param {object} context
+ * @param {Map} context.nip71Cache - The metadata cache.
+ * @returns {object} The mutated video object.
+ */
 export function mergeNip71MetadataIntoVideo(video, { nip71Cache } = {}) {
   if (!video || typeof video !== "object") {
     return video;

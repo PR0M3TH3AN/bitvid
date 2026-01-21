@@ -4,6 +4,7 @@
  * NostrClient
  *
  * The central controller for all Nostr network interactions and state management.
+ * For a high-level overview, see `docs/nostr-client-overview.md`.
  *
  * Responsibilities:
  * - Connection Management: Maintains the connection pool to Relays.
