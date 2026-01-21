@@ -35,6 +35,8 @@ const VALUE_ALLOWLIST = new Map([
       // Ignore matches inside var() declarations that happen to contain units in the name
       (value, snippet) =>
         snippet.includes(`var(--`) && snippet.includes(value),
+      // Mobile breakpoint used in media query
+      (value) => value === "767.98px",
     ],
   ],
 ]);

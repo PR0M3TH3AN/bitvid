@@ -74,6 +74,15 @@ To set up the project locally:
 
 For a full guide, see the [Local Setup section in README.md](./README.md#local-setup).
 
+## Dev Container
+
+This project includes a `.devcontainer` configuration for VS Code. It provides a pre-configured environment with Node.js 22 and necessary extensions.
+
+To use it:
+1. Open the project in VS Code.
+2. When prompted, re-open in Container (or use the command palette: "Dev Containers: Reopen in Container").
+3. The container will automatically install dependencies and run the build.
+
 ## Security
 
 If you find a vulnerability, please email **[security@bitvid.network](mailto:security@bitvid.network)**. We’ll coordinate a responsible disclosure window before public release.
