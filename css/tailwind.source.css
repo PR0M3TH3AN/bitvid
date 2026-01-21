@@ -4593,9 +4593,15 @@
   }
 
   #app[data-sidebar-state="collapsed"] {
-    margin-left: var(--sidebar-width-collapsed);
-    width: calc(100vw - var(--sidebar-width-collapsed));
-    max-width: calc(100vw - var(--sidebar-width-collapsed));
+    margin-left: calc(
+      var(--sidebar-width-collapsed) + var(--sidebar-content-gap)
+    );
+    width: calc(
+      100vw - var(--sidebar-width-collapsed) - var(--sidebar-content-gap)
+    );
+    max-width: calc(
+      100vw - var(--sidebar-width-collapsed) - var(--sidebar-content-gap)
+    );
   }
 
   #app[data-sidebar-state="expanded"] {
@@ -5754,7 +5760,7 @@
     min-height: var(--space-md);
   }
 
-  @media (max-width: 767.98px) {
+  @media (max-width: calc(theme("screens.md") - var(--breakpoint-edge-offset))) {
     .dm-app-shell[data-dm-view="list"] .dm-app-shell__main {
       display: none !important;
     }
