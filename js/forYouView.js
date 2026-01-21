@@ -1,5 +1,6 @@
 import { getApplication } from "./applicationContext.js";
 import { devLogger } from "./utils/logger.js";
+import { attachFeedInfoPopover } from "./ui/components/FeedInfoPopover.js";
 
 const VIDEO_CARD_SELECTOR = "[data-component=\"video-card\"]";
 const EMPTY_STATE_SELECTOR = "[data-for-you-empty-state]";
@@ -23,6 +24,14 @@ class ForYouView {
     this.container.addEventListener("click", this.handleContainerClick);
     this.observeContainer();
     this.updateEmptyState();
+
+    const infoTrigger = this.document.getElementById("feedInfoTrigger");
+    if (infoTrigger) {
+      attachFeedInfoPopover(
+        infoTrigger,
+        "Most Recent Video - Disinterests Tags - Watch History + Interests Tags"
+      );
+    }
   }
 
   observeContainer() {
