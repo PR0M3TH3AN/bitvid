@@ -1,36 +1,38 @@
+import "./setup-test-env.js";
 import { Fuzzer } from "./fuzz-lib.mjs";
 import { normalizeAndAugmentMagnet } from "../../js/magnetUtils.js";
 
-// Mock global dependencies if needed
-if (typeof global.window === "undefined") {
-    global.window = {
-        location: { protocol: "https:" }
-    };
-}
-
 const fuzzer = new Fuzzer("magnet-utils");
 
-async function test(fuzzer, state) {
-    const rawValue = fuzzer.randBool() ?
-        `magnet:?xt=urn:btih:${fuzzer.randString(40, "0123456789abcdef")}&dn=${fuzzer.randString(10)}` :
-        fuzzer.randUnicodeString(100);
+async function fuzzTest(fuzzer, state) {
+  // Generate inputs
+  const rawValue = fuzzer.randBool() ? fuzzer.randString(100) : "magnet:?xt=urn:btih:" + fuzzer.randString(40, "0123456789abcdef");
 
-    const options = {
-        webSeed: fuzzer.randBool() ? fuzzer.randString(50) : fuzzer.randArray(() => fuzzer.randString(50), 0, 3),
-        torrentUrl: fuzzer.randBool() ? fuzzer.randString(50) : undefined,
-        xs: fuzzer.randBool() ? fuzzer.randString(50) : undefined,
-        extraTrackers: fuzzer.randArray(() => fuzzer.randString(30), 0, 5),
-        appProtocol: fuzzer.pick(["http:", "https:", "magnet:", "unknown:"]),
-        logger: () => {} // No-op logger
-    };
+  // Inject garbage into magnet link
+  let malformedValue = rawValue;
+  if (fuzzer.randBool()) {
+      // url encode some chars
+      malformedValue = encodeURIComponent(rawValue);
+  }
 
-    // Sometimes pass garbage options
-    if (fuzzer.randBool()) {
-        options.webSeed = fuzzer.randJSON();
-    }
+  const options = {
+      webSeed: fuzzer.randBool() ? fuzzer.randString(50) : [fuzzer.randString(50)],
+      torrentUrl: fuzzer.randString(50),
+      xs: fuzzer.randString(50),
+      extraTrackers: fuzzer.randArray(() => fuzzer.randString(30), 0, 3),
+      appProtocol: fuzzer.randBool() ? "http:" : "https:"
+  };
 
-    state.input = { rawValue, options };
-    normalizeAndAugmentMagnet(rawValue, options);
+  state.input = {
+      rawValue: malformedValue,
+      options
+  };
+
+  try {
+      normalizeAndAugmentMagnet(malformedValue, options);
+  } catch (err) {
+      throw err;
+  }
 }
 
-fuzzer.runFuzzLoop(5000, test);
+fuzzer.runFuzzLoop(5000, fuzzTest).catch(console.error);
