@@ -4,6 +4,7 @@
  * NostrClient
  *
  * The central controller for all Nostr network interactions and state management.
+ * For a high-level overview, see `docs/nostr-client-overview.md`.
  *
  * Responsibilities:
  * - Connection Management: Maintains the connection pool to Relays.
@@ -58,6 +59,8 @@ import {
   buildRepostEvent,
   buildWatchHistoryEvent,
   buildDmAttachmentEvent,
+  buildDeletionEvent,
+  buildLegacyDirectMessageEvent,
   getNostrEventSchema,
   NOTE_TYPES,
 } from "../nostrEventSchemas.js";
@@ -4986,13 +4989,12 @@ export class NostrClient {
       return { ok: false, error: "encryption-failed", details };
     }
 
-    const event = {
-      kind: 4,
-      created_at: Math.floor(Date.now() / 1000),
-      tags: [["p", targetHex]],
-      content: ciphertext,
+    const event = buildLegacyDirectMessageEvent({
       pubkey: actorHex,
-    };
+      created_at: Math.floor(Date.now() / 1000),
+      recipientPubkey: targetHex,
+      ciphertext,
+    });
 
     let signedEvent;
     try {
@@ -5831,21 +5833,12 @@ export class NostrClient {
       mode: oldContent.mode || "live",
     };
 
-    const tags = [["t", "video"]];
-    if (stableDTag) {
-      // NIP-78 requires replaceable events to publish a stable "d" tag.
-      // Legacy videos may not carry one, so reuse the prior event id to
-      // guarantee the revert stays addressable.
-      tags.push(["d", stableDTag]);
-    }
-
-    const event = {
-      kind: 30078,
+    const event = buildVideoPostEvent({
       pubkey,
       created_at: Math.floor(Date.now() / 1000),
-      tags,
-      content: JSON.stringify(contentObject),
-    };
+      dTagValue: stableDTag,
+      content: contentObject,
+    });
 
     await this.ensureActiveSignerForPubkey(pubkey);
 
@@ -6181,17 +6174,22 @@ export class NostrClient {
       const chunkSize = 100;
       for (let index = 0; index < identifierRecords.length; index += chunkSize) {
         const chunk = identifierRecords.slice(index, index + chunkSize);
-        const deleteTags = chunk.map((record) => [record.type, record.value]);
+        const eventIds = chunk
+          .filter((record) => record.type === "e")
+          .map((record) => record.value);
+        const addresses = chunk
+          .filter((record) => record.type === "a")
+          .map((record) => record.value);
 
-        const deleteEvent = {
-          kind: 5,
+        const deleteEvent = buildDeletionEvent({
           pubkey,
           created_at: Math.floor(Date.now() / 1000),
-          tags: deleteTags,
-          content: inferredRoot
+          eventIds,
+          addresses,
+          reason: inferredRoot
             ? `Delete video root ${inferredRoot}`
             : "Delete published video events",
-        };
+        });
 
         const signedDelete = await queueSignEvent(signer, deleteEvent);
         const publishResults = await publishEventToRelays(

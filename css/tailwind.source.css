@@ -5855,3 +5855,35 @@
     max-block-size: none;
   }
 }
+@layer components {
+  /*
+    Responsive grid limit utility
+    Default (Mobile): Limit to 5
+    lg: Limit to 6
+    xl: Limit to 8
+  */
+  .channel-grid-limit > :nth-child(n+6) {
+    display: none !important;
+  }
+
+  @media (min-width: theme('screens.lg')) {
+    .channel-grid-limit > :nth-child(n+6) {
+      display: flex !important; /* Restore visibility for item 6 */
+    }
+    .channel-grid-limit > :nth-child(n+7) {
+      display: none !important; /* Hide 7+ */
+    }
+  }
+
+  @media (min-width: theme('screens.xl')) {
+    .channel-grid-limit > :nth-child(n+7) {
+      display: flex !important; /* Restore visibility for item 7 */
+    }
+    .channel-grid-limit > :nth-child(n+8) {
+        display: flex !important; /* Restore visibility for item 8 */
+    }
+    .channel-grid-limit > :nth-child(n+9) {
+      display: none !important; /* Hide 9+ */
+    }
+  }
+}

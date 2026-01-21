@@ -1,9 +1,9 @@
 import { WSS_TRACKERS as DEFAULT_WSS_TRACKERS } from "./constants.js";
 
-export const TRACKER_TIMEOUT_MS = 3000;
-export const TRACKER_PER_MAGNET = 3;
+export const TRACKER_TIMEOUT_MS = 6000;
+export const TRACKER_PER_MAGNET = 10;
 export const HEALTH_TTL_MS = 2 * 60 * 1000;
-export const CONCURRENCY = 3;
+export const CONCURRENCY = 6;
 export const TRACKER_ERROR_COOLDOWN_MS = 60 * 1000;
 
 export function resolveTrackerList({ magnetTrackers } = {}) {

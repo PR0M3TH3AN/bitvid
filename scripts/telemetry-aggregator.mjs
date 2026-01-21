@@ -1,26 +1,24 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 
 // Configuration
 const ARTIFACTS_DIR = 'artifacts';
 const REPORTS_DIR = 'ai/reports';
-const TEST_LOG = 'test_output.log';
+const LOG_FILES = ['test_output.log', 'server.log', 'python_server.log', 'npm_output.log'];
 
 // Regex patterns for PII sanitization
 const PII_PATTERNS = [
-    { name: 'IP', regex: /\b(?:\d{1,3}\.){3}\d{1,3}\b/g, replacement: '[IP]' },
     { name: 'EMAIL', regex: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, replacement: '[EMAIL]' },
+    { name: 'IPV4', regex: /\b(?:\d{1,3}\.){3}\d{1,3}\b/g, replacement: '[IP]' },
+    { name: 'IPV6', regex: /\b([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}\b/g, replacement: '[IPV6]' },
     // Hex keys (64 chars) - common in Nostr (private/public keys, event IDs, signatures)
-    // We want to mask potential keys but maybe keep event IDs if we are sure they are IDs?
-    // For safety, we mask all 64-char hex strings that look like keys/signatures.
-    // However, stack traces might contain IDs that are useful for debugging.
-    // The prompt says "Strip IPs, keys, emails... Keep only stack traces and counts."
-    // It's better to be safe than sorry with keys.
-    // We will mask 64-char hex strings.
     { name: 'HEX_KEY', regex: /\b[a-fA-F0-9]{64}\b/g, replacement: '[HEX_KEY]' },
     // Nostr Bech32 keys (nsec, npub, nprofile, etc.)
-    { name: 'NSEC', regex: /\bnsec1[a-z0-9]{50,}\b/g, replacement: '[NSEC_KEY]' },
-    { name: 'NPUB', regex: /\bnpub1[a-z0-9]{50,}\b/g, replacement: '[NPUB_KEY]' },
+    { name: 'BECH32', regex: /\b(npub|nsec|note|nevent|nprofile|naddr|nrelay|ncryptsec)1[a-z0-9]{50,}\b/g, replacement: '[BECH32_KEY]' },
+    // Generic path sanitization to hide user names
+    { name: 'HOME_PATH', regex: /\/home\/[a-zA-Z0-9_\-.]+\//g, replacement: '$HOME/' },
+    { name: 'REPO_PATH', regex: /\/app\//g, replacement: '$REPO/' } // Assuming sandbox mount point or common container path
 ];
 
 function sanitize(text) {
@@ -32,30 +30,46 @@ function sanitize(text) {
     return sanitized;
 }
 
+function getFingerprint(stack) {
+    if (!stack) return 'unknown';
+    const hash = crypto.createHash('sha256');
+    hash.update(stack);
+    return hash.digest('hex').substring(0, 8);
+}
+
+function suggestOwner(stack) {
+    if (!stack) return 'Unassigned';
+    const lowerStack = stack.toLowerCase();
+
+    if (lowerStack.includes('js/nostr') || lowerStack.includes('nip')) return 'Protocol Team';
+    if (lowerStack.includes('js/ui') || lowerStack.includes('components') || lowerStack.includes('css')) return 'Frontend Team';
+    if (lowerStack.includes('auth') || lowerStack.includes('crypto')) return 'Security Team';
+    if (lowerStack.includes('tests') || lowerStack.includes('spec') || lowerStack.includes('playwright')) return 'QA Team';
+    if (lowerStack.includes('storage') || lowerStack.includes('db') || lowerStack.includes('cache')) return 'Storage Team';
+    if (lowerStack.includes('agent') || lowerStack.includes('scripts')) return 'DevOps/Agent Team';
+    if (lowerStack.includes('webtorrent') || lowerStack.includes('torrent')) return 'P2P Team';
+
+    return 'Unassigned';
+}
+
 // -----------------------------------------------------------------------------
 // Collectors
 // -----------------------------------------------------------------------------
 
 function collectUnitTests() {
     const errors = [];
-    if (!fs.existsSync(TEST_LOG)) {
-        console.warn(`Unit test log not found at ${TEST_LOG}`);
-        return errors;
-    }
+    const logFile = 'test_output.log';
+    if (!fs.existsSync(logFile)) return errors;
 
-    const content = fs.readFileSync(TEST_LOG, 'utf8');
+    const content = fs.readFileSync(logFile, 'utf8');
     const lines = content.split('\n');
     let currentError = null;
     let insideErrorBlock = false;
 
-    // TAP Parsing Logic (simplified)
-    // We look for "not ok <number> - <title>"
-    // Then capture indentation blocks as details/stack
-
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
 
-        // Start of a failure
+        // Start of a TAP failure
         if (line.match(/^not ok \d+ - /)) {
             if (currentError) {
                 errors.push(currentError);
@@ -71,33 +85,20 @@ function collectUnitTests() {
             continue;
         }
 
-        // End of failure block (next test or summary)
-        if (line.match(/^(ok \d+|# tests \d+|1\.\.\d+)/) || (insideErrorBlock && !line.startsWith('  '))) {
-             if (currentError && insideErrorBlock) {
-                 // The indentation check is a bit flaky with TAP,
-                 // usually YAML blocks are indented.
-                 // But "ok" or "#" definitely ends it.
-
-                 // If line doesn't start with space and it's not a TAP directive,
-                 // it might be console output which we might want to capture?
-                 // For now, let's assume TAP structure:
-                 // not ok 1 - test
-                 //   ---
-                 //   error: ...
-                 //   ...
-                 //   ...
-             }
-        }
-
-        if (currentError && insideErrorBlock) {
-            // Check if we exited the indented block
-            if (line.trim() !== '' && !line.startsWith('  ') && !line.startsWith('\t')) {
-                insideErrorBlock = false;
-                errors.push(currentError);
-                currentError = null;
-            } else {
+        // End of failure block detection (heuristic)
+        // TAP ok line, or start of a new test section, or unexpected unindented line that looks like a header
+        if (insideErrorBlock) {
+             if (line.match(/^(ok \d+|# tests \d+|1\.\.\d+|TAP version)/)) {
+                 insideErrorBlock = false;
+                 errors.push(currentError);
+                 currentError = null;
+             } else {
+                 // Capture detail lines
+                 // If line is empty or indented, it's likely part of the error
+                 // If it's unindented but not a TAP command, it might still be part of it (console logs)
+                 // We'll be greedy here.
                  currentError.details.push(sanitize(line));
-            }
+             }
         }
     }
 
@@ -105,22 +106,66 @@ function collectUnitTests() {
         errors.push(currentError);
     }
 
-    // Post-process to extract stack trace for fingerprinting
+    // Post-process for stack/fingerprint
     errors.forEach(e => {
         const fullText = e.details.join('\n');
-        // Simple fingerprint: file path + error message
-        // Try to extract "stack: |-" block
-        const stackMatch = fullText.match(/stack: \|-([\s\S]+?)(?:\n\s*\w+:|$)/);
+        // Try to extract stack trace
+        const stackMatch = fullText.match(/stack: \|-([\s\S]+?)(?:\n\s*\w+:|$)/) || fullText.match(/Error:([\s\S]+)/);
         if (stackMatch) {
             e.stack = stackMatch[1].trim();
         } else {
-            // Fallback to title
-            e.stack = e.title;
+            e.stack = fullText.trim() || e.title;
         }
+        e.fingerprint = getFingerprint(e.stack);
+        e.owner = suggestOwner(e.stack);
+    });
 
-        // Fingerprint: remove line numbers from stack
-        // Also prepend title to ensure different tests with similar stacks (common in runners) are distinct
-        e.fingerprint = e.title + '::' + e.stack.replace(/:\d+:\d+/g, ':x:x').replace(/\d+/g, 'N');
+    return errors;
+}
+
+function collectGenericLogs(filepath, sourceName) {
+    const errors = [];
+    if (!fs.existsSync(filepath)) return errors;
+
+    const content = fs.readFileSync(filepath, 'utf8');
+    const lines = content.split('\n');
+    let currentError = null;
+
+    for (const line of lines) {
+        // Simple heuristic for generic logs: look for "Error:" or "Exception:"
+        // and capture following lines that look like stack traces (start with 'at ' or are indented)
+
+        const isErrorStart = /Error:|Exception:|FAIL|CRITICAL/.test(line);
+        const isStackLine = /^\s+at /.test(line) || /^\s+/.test(line); // Indented lines often follow errors
+
+        if (isErrorStart) {
+            if (currentError) {
+                errors.push(currentError);
+            }
+            currentError = {
+                source: sourceName,
+                title: sanitize(line.trim()),
+                details: [sanitize(line.trim())],
+                severity: 'High'
+            };
+        } else if (currentError && isStackLine) {
+            currentError.details.push(sanitize(line.trim()));
+        } else if (currentError) {
+            // End of error block
+            errors.push(currentError);
+            currentError = null;
+        }
+    }
+
+    if (currentError) {
+        errors.push(currentError);
+    }
+
+    // Post-process
+    errors.forEach(e => {
+        e.stack = e.details.join('\n');
+        e.fingerprint = getFingerprint(e.stack);
+        e.owner = suggestOwner(e.stack);
     });
 
     return errors;
@@ -138,19 +183,34 @@ function collectSmokeTests() {
             if (content.stats && content.stats.failures > 0) {
                 const failedSteps = content.stats.details.filter(d => !d.success);
                 for (const step of failedSteps) {
+                    const sanitizedError = sanitize(step.error);
                     errors.push({
                         source: 'smoke-test',
                         title: sanitize(`Smoke Test Failed: ${step.name}`),
-                        details: [sanitize(step.error)],
-                        stack: sanitize(step.error),
-                        fingerprint: sanitize(step.name), // Group by step name
-                        severity: 'Critical'
+                        details: [sanitizedError],
+                        stack: sanitizedError,
+                        fingerprint: getFingerprint(sanitizedError + step.name),
+                        severity: 'Critical',
+                        owner: suggestOwner(sanitizedError) || 'QA Team'
                     });
                 }
             }
         } catch (err) {
-            console.warn(`Failed to parse smoke report ${file}:`, err);
+            console.warn(`Failed to parse smoke report ${file}:`, err.message);
         }
+    }
+    return errors;
+}
+
+function collectAgentLogs() {
+    const errors = [];
+    if (!fs.existsSync(ARTIFACTS_DIR)) return errors;
+
+    // Look for any .log files in artifacts that aren't the main ones we already checked (if any)
+    const files = fs.readdirSync(ARTIFACTS_DIR).filter(f => f.endsWith('.log'));
+
+    for (const file of files) {
+        errors.push(...collectGenericLogs(path.join(ARTIFACTS_DIR, file), `agent-log:${file}`));
     }
     return errors;
 }
@@ -163,7 +223,7 @@ function aggregate(errors) {
     const grouped = {};
 
     for (const err of errors) {
-        const key = err.fingerprint || err.title;
+        const key = err.fingerprint;
         if (!grouped[key]) {
             grouped[key] = {
                 fingerprint: key,
@@ -171,13 +231,16 @@ function aggregate(errors) {
                 count: 0,
                 sources: new Set(),
                 severity: err.severity,
-                exampleStack: err.stack
+                stack: err.stack,
+                owner: err.owner
             };
         }
         grouped[key].count++;
         grouped[key].sources.add(err.source);
         // Escalating severity if we see critical
         if (err.severity === 'Critical') grouped[key].severity = 'Critical';
+
+        // Update title if new one is longer/better (optional, keeping first for now)
     }
 
     return Object.values(grouped).sort((a, b) => {
@@ -209,14 +272,17 @@ function generateReport(aggregates) {
     md += `**Generated:** ${new Date().toISOString()}\n\n`;
 
     md += `## Top 10 Priority Issues\n\n`;
-    md += `| Priority | Count | Issue | Sources |\n`;
-    md += `| :--- | :---: | :--- | :--- |\n`;
+    md += `| Priority | Count | Issue | Owner | Sources |\n`;
+    md += `| :--- | :---: | :--- | :--- | :--- |\n`;
 
     const top10 = aggregates.slice(0, 10);
 
     for (const item of top10) {
-        const titleShort = item.title.length > 80 ? item.title.substring(0, 77) + '...' : item.title;
-        md += `| **${item.severity}** | ${item.count} | ${titleShort} | ${Array.from(item.sources).join(', ')} |\n`;
+        // Truncate title
+        const titleShort = item.title.length > 60 ? item.title.substring(0, 57) + '...' : item.title;
+        // Escape pipes for Markdown table
+        const titleSafe = titleShort.replace(/\|/g, '\\|');
+        md += `| **${item.severity}** | ${item.count} | ${titleSafe} | ${item.owner} | ${Array.from(item.sources).join(', ')} |\n`;
     }
 
     md += `\n## Detailed Breakdown\n\n`;
@@ -225,10 +291,11 @@ function generateReport(aggregates) {
         md += `### [${item.severity}] ${item.title}\n`;
         md += `- **Occurrences:** ${item.count}\n`;
         md += `- **Sources:** ${Array.from(item.sources).join(', ')}\n`;
-        md += `- **Suggested Owner:** TBD (Automated Triage)\n`;
+        md += `- **Suggested Owner:** ${item.owner}\n`;
+        md += `- **Fingerprint:** \`${item.fingerprint}\`\n`;
         md += `\n**Stack Trace / Details:**\n`;
         md += "```\n";
-        md += item.exampleStack || "No stack trace available";
+        md += item.stack || "No stack trace available";
         md += "\n```\n\n";
     }
 
@@ -241,6 +308,9 @@ function generateReport(aggregates) {
 }
 
 function generateJSONArtifact(aggregates) {
+    if (!fs.existsSync(ARTIFACTS_DIR)) {
+        fs.mkdirSync(ARTIFACTS_DIR, { recursive: true });
+    }
     const filepath = path.join(ARTIFACTS_DIR, 'error-aggregates.json');
     // Convert Set to Array for JSON
     const data = aggregates.map(a => ({
@@ -259,15 +329,33 @@ async function main() {
     console.log('Starting Telemetry Aggregation...');
 
     // 1. Collect
-    const unitTestErrors = collectUnitTests();
-    const smokeTestErrors = collectSmokeTests();
-    console.log(`Collected ${unitTestErrors.length} unit test errors.`);
-    console.log(`Collected ${smokeTestErrors.length} smoke test errors.`);
+    const errors = [];
 
-    const allErrors = [...unitTestErrors, ...smokeTestErrors];
+    // Unit Tests
+    const unitTestErrors = collectUnitTests();
+    console.log(`Collected ${unitTestErrors.length} unit test errors.`);
+    errors.push(...unitTestErrors);
+
+    // Server Logs
+    for (const logFile of LOG_FILES) {
+        if (logFile === 'test_output.log') continue; // Handled by collectUnitTests
+        const genericErrors = collectGenericLogs(logFile, logFile);
+        console.log(`Collected ${genericErrors.length} errors from ${logFile}.`);
+        errors.push(...genericErrors);
+    }
+
+    // Smoke Tests
+    const smokeTestErrors = collectSmokeTests();
+    console.log(`Collected ${smokeTestErrors.length} smoke test errors.`);
+    errors.push(...smokeTestErrors);
+
+    // Agent Logs
+    const agentErrors = collectAgentLogs();
+    console.log(`Collected ${agentErrors.length} agent log errors.`);
+    errors.push(...agentErrors);
 
     // 2. Aggregate
-    const aggregates = aggregate(allErrors);
+    const aggregates = aggregate(errors);
     console.log(`Aggregated into ${aggregates.length} unique issues.`);
 
     // 3. Report

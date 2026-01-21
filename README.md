@@ -129,14 +129,14 @@ To run **bitvid** locally:
 http://localhost:8000
 ```
 
-### Common Commands
+### Quickstart Commands
 
 - **Run unit tests**: `npm run test:unit`
+- **Format code**: `npm run format`
+- **Lint code**: `npm run lint`
 - **Run DM unit tests**: `npm run test:dm:unit`
 - **Run DM integration tests**: `npm run test:dm:integration`
 - **Run headless E2E tests**: `npm run test:e2e`
-- **Format code**: `npm run format`
-- **Lint code**: `npm run lint`
 
 ### Send your first video post
 
@@ -149,11 +149,11 @@ const event = buildVideoPostEvent({
   // Provide your hex pubkey (not npub)
   pubkey: "your_pubkey_hex",
   created_at: Math.floor(Date.now() / 1000),
-  dTagValue: "my-first-video",
+  dTagValue: "my-first-video", // The stable identifier (d-tag) for this video
   content: {
     version: 3,
     title: "My First Video",
-    videoRootId: "my-first-video", // Logical ID, often matches d-tag
+    videoRootId: "my-first-video", // Logical ID, typically matches the d-tag
     url: "https://example.com/video.mp4",
     description: "This is a test video post sent via the SDK."
     // magnet: "magnet:?xt=urn:btih:..." // Optional fallback

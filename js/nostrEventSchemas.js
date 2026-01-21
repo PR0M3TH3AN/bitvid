@@ -35,6 +35,8 @@ export const NOTE_TYPES = Object.freeze({
   ADMIN_WHITELIST: "adminWhitelist",
   PROFILE_METADATA: "profileMetadata",
   MUTE_LIST: "muteList",
+  DELETION: "deletion",
+  LEGACY_DM: "legacyDm",
 });
 
 export const SUBSCRIPTION_LIST_IDENTIFIER = "subscriptions";
@@ -549,6 +551,27 @@ const BASE_SCHEMAS = {
     content: {
       format: "text",
       description: "Optional content (often encrypted) with public p tags.",
+    },
+  },
+  [NOTE_TYPES.DELETION]: {
+    type: NOTE_TYPES.DELETION,
+    label: "Deletion",
+    kind: 5,
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      format: "text",
+      description: "Reason for deletion.",
+    },
+  },
+  [NOTE_TYPES.LEGACY_DM]: {
+    type: NOTE_TYPES.LEGACY_DM,
+    label: "Legacy Direct Message",
+    kind: 4,
+    appendTags: DEFAULT_APPEND_TAGS,
+    recipientTagName: "p",
+    content: {
+      format: "text",
+      description: "NIP-04 encrypted ciphertext.",
     },
   },
 };
@@ -1139,6 +1162,82 @@ export function buildMuteListEvent(params) {
     created_at,
     tags,
     content: typeof content === "string" ? content : "",
+  };
+}
+
+export function buildDeletionEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    eventIds = [],
+    addresses = [],
+    reason = "",
+    additionalTags = [],
+  } = params || {};
+  const schema = getNostrEventSchema(NOTE_TYPES.DELETION);
+  const tags = [];
+
+  if (Array.isArray(eventIds)) {
+    eventIds.forEach((id) => {
+      const normalized = normalizePointerIdentifier(id);
+      if (normalized) {
+        tags.push(["e", normalized]);
+      }
+    });
+  }
+
+  if (Array.isArray(addresses)) {
+    addresses.forEach((addr) => {
+      const normalized = typeof addr === "string" ? addr.trim() : "";
+      if (normalized) {
+        tags.push(["a", normalized]);
+      }
+    });
+  }
+
+  appendSchemaTags(tags, schema);
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
+  }
+
+  return {
+    kind: schema?.kind ?? 5,
+    pubkey,
+    created_at,
+    tags,
+    content: typeof reason === "string" ? reason : "",
+  };
+}
+
+export function buildLegacyDirectMessageEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    recipientPubkey,
+    ciphertext = "",
+    additionalTags = [],
+  } = params || {};
+  const schema = getNostrEventSchema(NOTE_TYPES.LEGACY_DM);
+  const tags = [];
+
+  const recipient = normalizePointerIdentifier(recipientPubkey);
+  if (recipient) {
+    tags.push([schema?.recipientTagName || "p", recipient]);
+  }
+
+  appendSchemaTags(tags, schema);
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
+  }
+
+  return {
+    kind: schema?.kind ?? 4,
+    pubkey,
+    created_at,
+    tags,
+    content: typeof ciphertext === "string" ? ciphertext : "",
   };
 }
 
