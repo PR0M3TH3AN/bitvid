@@ -7,6 +7,7 @@ test("sendDirectMessage succeeds with private key signer and no extension", asyn
   const previousCanonical = globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__;
   const previousNostrTools = globalThis.NostrTools;
   const previousReady = globalThis.nostrToolsReady;
+  const previousWorker = globalThis.Worker;
 
   const nostrTools = await import("nostr-tools");
   const canonicalTools = { ...nostrTools };
@@ -24,6 +25,33 @@ test("sendDirectMessage succeeds with private key signer and no extension", asyn
       ok: true,
       value: canonicalTools,
     });
+
+    globalThis.Worker = class MockWorker {
+      constructor() {
+        this.listeners = {};
+      }
+      addEventListener(type, listener) {
+        if (!this.listeners[type]) this.listeners[type] = [];
+        this.listeners[type].push(listener);
+      }
+      postMessage(data) {
+        const { id, privateKey, targetPubkey, plaintext } = data;
+        Promise.resolve(
+          canonicalTools.nip04.encrypt(privateKey, targetPubkey, plaintext),
+        )
+          .then((ciphertext) => {
+            const event = { data: { id, ok: true, ciphertext } };
+            this.listeners["message"]?.forEach((fn) => fn(event));
+          })
+          .catch((err) => {
+            const event = {
+              data: { id, ok: false, error: { message: err.message } },
+            };
+            this.listeners["message"]?.forEach((fn) => fn(event));
+          });
+      }
+      terminate() {}
+    };
 
     const [{ nostrClient }, { getActiveSigner, clearActiveSigner }] =
       await Promise.all([
@@ -52,8 +80,13 @@ test("sendDirectMessage succeeds with private key signer and no extension", asyn
           },
         };
       },
+      list() {
+        return Promise.resolve([]);
+      },
     };
     nostrClient.relays = [RELAY_URL];
+    nostrClient.readRelays = [RELAY_URL];
+    nostrClient.writeRelays = [RELAY_URL];
 
     const senderPrivateKey = canonicalTools.utils.bytesToHex(
       canonicalTools.generateSecretKey(),
@@ -131,6 +164,12 @@ test("sendDirectMessage succeeds with private key signer and no extension", asyn
       delete globalThis.nostrToolsReady;
     } else {
       globalThis.nostrToolsReady = previousReady;
+    }
+
+    if (previousWorker === undefined) {
+      delete globalThis.Worker;
+    } else {
+      globalThis.Worker = previousWorker;
     }
   }
 });
