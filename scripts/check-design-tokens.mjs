@@ -39,6 +39,13 @@ const VALUE_ALLOWLIST = new Map([
       (value) => value === "767.98px",
     ],
   ],
+  [
+    "js/ui/components/VideoCard.js",
+    [
+      // Desktop breakpoint used in media query match
+      (value) => value === "1024px",
+    ],
+  ],
 ]);
 
 const MARKUP_EXTENSIONS = new Set([".html", ".md", ".mdx", ".markdown", ".njk", ".nunjucks"]);
