@@ -461,6 +461,29 @@ class Application {
           this.videoModal &&
           typeof this.videoModal.addEventListener === "function"
         ) {
+          this.videoModal.addEventListener("video:share-nostr", () => {
+            this.showStatus(
+              "Sharing on Nostr is not implemented yet. Coming soon!",
+            );
+          });
+
+          this.videoModal.addEventListener("video:copy-cdn", (event) => {
+            const video = event?.detail?.video || this.currentVideo;
+            const url = video?.url || "";
+            if (!url) {
+              this.showError("No CDN link available to copy.");
+              return;
+            }
+            navigator.clipboard
+              .writeText(url)
+              .then(() => this.showSuccess("CDN link copied to clipboard!"))
+              .catch(() => this.showError("Failed to copy CDN link."));
+          });
+
+          this.videoModal.addEventListener("video:copy-magnet", () => {
+            this.handleCopyMagnet();
+          });
+
           this.videoModal.addEventListener("playback:switch-source", (event) => {
             const detail = event?.detail || {};
             const { source } = detail;
@@ -5139,11 +5162,6 @@ class Application {
     }
   }
 
-  setCopyMagnetState(enabled) {
-    if (this.videoModal) {
-      this.videoModal.setCopyEnabled(enabled);
-    }
-  }
 
   setShareButtonState(enabled) {
     if (this.videoModal) {
@@ -8173,7 +8191,7 @@ class Application {
       this.currentVideo.torrentSupported = !!magnetForPlayback;
     }
     this.currentMagnetUri = magnetForPlayback || null;
-    this.setCopyMagnetState(!!magnetForPlayback);
+    // this.setCopyMagnetState(!!magnetForPlayback); // Removed
 
     const unsubscribers = [];
     const subscribe = (eventName, handler) => {
@@ -8471,8 +8489,8 @@ class Application {
 
     this.currentMagnetUri = sanitizedMagnet || null;
 
-    this.setCopyMagnetState(!!sanitizedMagnet);
-    this.setShareButtonState(true);
+    // this.setCopyMagnetState(!!sanitizedMagnet); // Removed
+    // this.setShareButtonState(true); // Moved to after showModalWithPoster
 
     const nevent = window.NostrTools.nip19.neventEncode({ id: eventId });
     const pushUrl =
@@ -8494,6 +8512,8 @@ class Application {
       "";
 
     await this.showModalWithPoster(this.currentVideo);
+
+    this.setShareButtonState(true);
 
     this.commentController?.load(this.currentVideo);
 
@@ -8845,8 +8865,8 @@ class Application {
 
     this.currentMagnetUri = sanitizedMagnet || null;
 
-    this.setCopyMagnetState(!!sanitizedMagnet);
-    this.setShareButtonState(false);
+    // this.setCopyMagnetState(!!sanitizedMagnet);
+    // this.setShareButtonState(false);
 
     if (this.videoModal) {
       this.videoModal.updateMetadata({
@@ -8863,6 +8883,8 @@ class Application {
     }
 
     await this.showModalWithPoster(this.currentVideo, hasTrigger ? { trigger } : {});
+
+    this.setShareButtonState(false);
 
     this.commentController?.load(null);
 
