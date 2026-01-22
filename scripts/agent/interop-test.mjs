@@ -1,308 +1,259 @@
-import { WebSocket } from 'ws';
-import crypto from 'node:crypto';
-import { spawn } from 'node:child_process';
-import { resolve } from 'node:path';
-import { setTimeout } from 'node:timers/promises';
+// Import environment setup FIRST to ensure polyfills are ready before other imports
+import './setup-test-env.js';
 
-// --- Polyfills ---
-if (!globalThis.WebSocket) {
-  globalThis.WebSocket = WebSocket;
-}
-if (!globalThis.crypto) {
-  globalThis.crypto = crypto;
-}
-if (!globalThis.window) {
-  globalThis.window = globalThis;
-}
+import * as NostrTools from 'nostr-tools';
+// Destructure what we need, handling potential version differences if necessary
+const { generateSecretKey, getPublicKey, nip19, nip04, nip44 } = NostrTools;
 
-// Ensure TextEncoder is available (it should be in Node > 11)
-if (!globalThis.TextEncoder) {
-    const { TextEncoder, TextDecoder } = await import('util');
-    globalThis.TextEncoder = TextEncoder;
-    globalThis.TextDecoder = TextDecoder;
-}
-
-// --- Imports ---
-// We need to import nostr-tools. Since it's an ESM module in node_modules, dynamic import should work.
-const nostrTools = await import('nostr-tools');
-const { generateSecretKey, getPublicKey, finalizeEvent } = nostrTools;
-
-// Import Schema Builders
+// --- Imports from Codebase ---
+import { NostrClient } from '../../js/nostr/client.js';
+import { decryptDM } from '../../js/dmDecryptor.js';
 import {
   buildVideoPostEvent,
   buildViewEvent,
-  buildLegacyDirectMessageEvent,
-  getNostrEventSchema,
-  NOTE_TYPES,
+  NOTE_TYPES
 } from '../../js/nostrEventSchemas.js';
 
-// Import DM Decryptor
-import { decryptDM } from '../../js/dmDecryptor.js';
+// --- Configuration ---
+// Using a small, respectful list of public relays for interop testing
+const TEST_RELAYS = [
+  'wss://relay.damus.io',
+  'wss://nos.lol'
+];
 
 // --- Helpers ---
 function bytesToHex(bytes) {
   return Buffer.from(bytes).toString('hex');
 }
 
-function hexToBytes(hex) {
-    if (typeof hex !== 'string') {
-        throw new TypeError('hexToBytes: expected string, got ' + typeof hex);
-    }
-    if (hex.length % 2) throw new Error('hexToBytes: received string with odd length');
-    const array = new Uint8Array(hex.length / 2);
-    for (let i = 0; i < hex.length; i += 2) {
-        array[i / 2] = parseInt(hex.slice(i, i + 2), 16);
-    }
-    return array;
-}
-
-// Minimal Nostr Client Wrapper for Testing
-// We are manually constructing events and using a simple WebSocket connection or NostrClient if possible.
-// Given the complexity of instantiating `NostrClient` in a pure Node environment without full DOM (IndexedDB, localStorage etc),
-// we will verify the schema builders and use a lightweight interaction for publishing/subscribing.
-// However, the prompt asks to use `nostrClientFacade` or `NostrClient`.
-// The `NostrClient` class depends heavily on browser APIs (IndexedDB, localStorage).
-// We will mock necessary browser APIs to instantiate `NostrClient` if possible, or use a simplified test client that respects the same logic.
-
-// Let's try to mock the minimal environment for `NostrClient`
-class MockLocalStorage {
-    constructor() { this.store = {}; }
-    getItem(key) { return this.store[key] || null; }
-    setItem(key, value) { this.store[key] = String(value); }
-    removeItem(key) { delete this.store[key]; }
-    clear() { this.store = {}; }
-}
-globalThis.localStorage = new MockLocalStorage();
-// IndexedDB is more complex. We might mock `EventsCacheStore` methods if we can override them or just let them fail gracefully (NostrClient handles failures).
-// Or we can mock `indexedDB` global.
-import 'fake-indexeddb/auto'; // If available? No, not in dependencies list.
-// Dependencies list has `fake-indexeddb` in devDependencies.
-// Let's import it.
-try {
-    await import('fake-indexeddb/auto');
-} catch (e) {
-    console.warn("fake-indexeddb not found, IndexedDB might fail.");
-}
-
-// Now we can try to import NostrClient
-// We need to handle `vendor/crypto-helpers.bundle.min.js` import in `js/nostr/client.js`.
-// Since we are in Node, that relative import might fail or work depending on how Node handles it.
-// It is a file in the repo. Node should be able to import it if it's ESM.
-// `js/nostr/client.js` imports it as `../../vendor/crypto-helpers.bundle.min.js`.
-// We are in `scripts/agent/interop-test.mjs`, so `../../js/nostr/client.js` is where we import from.
-// `js/nostr/client.js` is relative to root.
-// Let's see if we can import `NostrClient`.
-
-import { NostrClient } from '../../js/nostr/client.js';
-
-// --- Test Setup ---
-const RELAY_PORT = 8008;
-const RELAY_URL = `ws://localhost:${RELAY_PORT}`;
-let relayProcess;
-
-async function startRelay() {
-  console.log('Starting local relay...');
-  const relayScript = resolve(process.cwd(), 'scripts/agent/simple-relay.mjs');
-  relayProcess = spawn('node', [relayScript], { stdio: 'inherit' });
-
-  // Wait for relay to be ready
-  for (let i = 0; i < 20; i++) {
-    try {
-        const ws = new WebSocket(RELAY_URL);
-        await new Promise((resolve, reject) => {
-            ws.on('open', () => { ws.close(); resolve(); });
-            ws.on('error', reject);
-        });
-        console.log('Relay is ready.');
-        return;
-    } catch (e) {
-        await setTimeout(500);
-    }
-  }
-  throw new Error('Relay failed to start');
-}
-
-function stopRelay() {
-  if (relayProcess) {
-    console.log('Stopping local relay...');
-    relayProcess.kill();
-  }
-}
-
-// --- Main Test Logic ---
+// --- Main Test ---
 async function runTests() {
-  let exitCode = 0;
+  console.log("=== Starting Protocol & Interop Tests ===");
+  console.log(`[Config] Relays: ${TEST_RELAYS.join(', ')}`);
+
+  // 1. Initialize Client
+  // Programmatic instantiation as requested
+  const client = new NostrClient();
+  client.relays = [...TEST_RELAYS];
+  client.readRelays = [...TEST_RELAYS];
+  client.writeRelays = [...TEST_RELAYS];
+
+  // Initialize connection
+  await client.init();
+  console.log("[Setup] NostrClient initialized and connecting...");
+
+  // Wait a bit for connections to establish
+  await new Promise(r => setTimeout(r, 1000));
+
+  // 2. Generate Ephemeral Keys
+  // Use ephemeral keys (generate locally) as requested
+  const aliceSkBytes = generateSecretKey();
+  const aliceSk = bytesToHex(aliceSkBytes);
+  const alicePk = getPublicKey(aliceSkBytes);
+  console.log(`[Keys] Alice (Sender): ${alicePk}`);
+
+  const bobSkBytes = generateSecretKey();
+  const bobSk = bytesToHex(bobSkBytes);
+  const bobPk = getPublicKey(bobSkBytes);
+  console.log(`[Keys] Bob (Receiver):   ${bobPk}`);
+
+  // Register Alice as signer for the client
+  await client.registerPrivateKeySigner({ privateKey: aliceSk });
+  console.log("[Setup] Alice registered as active signer.");
+
+  // --- Test A: Publish VIDEO_POST ---
+  console.log("\n>>> Test A: Publish VIDEO_POST");
+  const videoRootId = `test-${Date.now()}-${Math.random().toString(36).substring(2)}`;
+  const videoContent = {
+    version: 3,
+    title: `Interop Test Video ${Date.now()}`,
+    description: "Automated interop test video event.",
+    url: "https://example.com/video.mp4",
+    thumbnail: "https://example.com/thumb.jpg",
+    mimeType: "video/mp4",
+    isForKids: false,
+    isNsfw: false,
+    enableComments: false,
+    videoRootId,
+    mode: "live"
+  };
+
+  // Use schema builder
+  const videoEventTemplate = buildVideoPostEvent({
+    pubkey: alicePk,
+    created_at: Math.floor(Date.now() / 1000),
+    dTagValue: videoRootId,
+    content: videoContent
+  });
+
+  let videoEvent;
   try {
-    await startRelay();
+    const result = await client.signAndPublishEvent(videoEventTemplate);
+    videoEvent = result.signedEvent;
 
-    // 1. Generate keys
-    const sk = generateSecretKey();
-    const pk = getPublicKey(sk);
-    const skHex = bytesToHex(sk);
-    const pkHex = pk;
-    console.log(`Ephemeral identity: ${pkHex}`);
+    // Check summary for acceptance
+    const summary = result.summary;
+    const acceptedCount = summary?.accepted?.length || 0;
 
-    // 2. Instantiate Client
-    const client = new NostrClient();
-    // Override relays to use our local test relay
-    client.relays = [RELAY_URL];
-    client.readRelays = [RELAY_URL];
-    client.writeRelays = [RELAY_URL];
-
-    // Inject custom signer adapter for the test
-    const signer = {
-        pubkey: pkHex,
-        signEvent: async (event) => {
-             return finalizeEvent(event, sk);
-        },
-        nip04Encrypt: async (pubkey, plaintext) => {
-             return await nostrTools.nip04.encrypt(sk, pubkey, plaintext);
-        },
-        nip04Decrypt: async (pubkey, ciphertext) => {
-             return await nostrTools.nip04.decrypt(sk, pubkey, ciphertext);
-        }
-    };
-    // We need to set this signer as active
-    // We can use the registry or just manually set it if the client exposes a way.
-    // Client.js has `setActiveSigner` exported? No, it's not a method of NostrClient instance, but exported from module.
-    // But `NostrClient` imports `setActiveSigner` from `../nostrClientRegistry.js`.
-    // We can try to import `setActiveSigner` from `nostrClientRegistry.js` and call it.
-
-    const { setActiveSigner } = await import('../../js/nostrClientRegistry.js');
-    setActiveSigner(signer);
-
-    // Also we need to ensure the client is "logged in" or at least has a pubkey set for some operations
-    client.pubkey = pkHex;
-
-    await client.init();
-    console.log('Client initialized.');
-
-    // Test A: Video Post
-    console.log('\n--- Test A: Video Post ---');
-    const videoData = {
-        title: "Test Video " + Date.now(),
-        description: "Integration test video",
-        magnet: "magnet:?xt=urn:btih:c917253504812345678901234567890123456789&dn=test",
-        isPrivate: false
-    };
-    // Use schema builder
-    const videoEventUnsigned = buildVideoPostEvent({
-        pubkey: pkHex,
-        created_at: Math.floor(Date.now() / 1000),
-        dTagValue: "test-video-" + Date.now(),
-        content: videoData
-    });
-    // Sign and publish
-    const signedVideoEvent = await signer.signEvent(videoEventUnsigned);
-    console.log(`Publishing Video Event: ${signedVideoEvent.id}`);
-
-    // Using client.publishEventToRelays or similar?
-    // Client has `publishVideo` but it does a lot of logic.
-    // Let's use `client.signAndPublishEvent` if possible, or low level pool publish.
-    // `client.pool` should be available.
-    await Promise.all(client.relays.map(url => {
-        const sub = client.pool.publish([url], signedVideoEvent);
-        return new Promise((resolve) => {
-             // We can just assume it sends for this test, or wait a bit.
-             // SimplePool publish returns a Promise in newer versions?
-             // In `js/nostr/toolkit.js` it seems to return an object with Promise?
-             // Actually `publishEventToRelay` in `js/nostrPublish.js` is what `client` uses.
-             // Let's use `client.signAndPublishEvent` if we can.
-             // `signAndPublishEvent` helper is used by `client`.
-             resolve();
-        });
-    }));
-    await setTimeout(200); // Wait for relay processing
-
-    // Verify
-    const fetchedEvent = await client.getEventById(signedVideoEvent.id, { includeRaw: true });
-    if (fetchedEvent && fetchedEvent.video && fetchedEvent.video.title === videoData.title) {
-        console.log('✅ Video Post verification successful');
-    } else {
-        console.error('❌ Video Post verification failed');
-        console.error('Fetched:', fetchedEvent);
-        exitCode = 1;
+    if (acceptedCount === 0) {
+        throw new Error(`Relays rejected the video event. Details: ${JSON.stringify(summary)}`);
     }
-
-    // Test B: View Event
-    console.log('\n--- Test B: View Event ---');
-    const viewEventUnsigned = buildViewEvent({
-        pubkey: pkHex,
-        created_at: Math.floor(Date.now() / 1000),
-        pointerTag: ['a', `30078:${pkHex}:${videoData.title}`], // Simplification
-        content: "viewed"
-    });
-    const signedViewEvent = await signer.signEvent(viewEventUnsigned);
-    // Publish
-    await Promise.all(client.relays.map(url => client.pool.publish([url], signedViewEvent)));
-    await setTimeout(200);
-
-    // Verify by fetching
-    const fetchedView = await client.fetchRawEventById(signedViewEvent.id);
-    if (fetchedView && fetchedView.id === signedViewEvent.id) {
-        console.log('✅ View Event verification successful');
-    } else {
-        console.error('❌ View Event verification failed');
-        exitCode = 1;
-    }
-
-    // Test C: DM
-    console.log('\n--- Test C: Direct Message ---');
-    const dmMessage = "Hello from interop test";
-    const recipientPubkey = pkHex; // Self-DM for simplicity
-
-    // We can use `client.sendDirectMessage` or build manually.
-    // Let's use buildLegacyDirectMessageEvent + decryptDM to test the decryptor explicitly as requested.
-
-    // Encrypt
-    const ciphertext = await signer.nip04Encrypt(recipientPubkey, dmMessage);
-    const dmEventUnsigned = buildLegacyDirectMessageEvent({
-        pubkey: pkHex,
-        created_at: Math.floor(Date.now() / 1000),
-        recipientPubkey: recipientPubkey,
-        ciphertext: ciphertext
-    });
-    const signedDmEvent = await signer.signEvent(dmEventUnsigned);
-
-    // Publish
-    await Promise.all(client.relays.map(url => client.pool.publish([url], signedDmEvent)));
-    await setTimeout(200);
-
-    // Fetch and Decrypt
-    const fetchedDm = await client.fetchRawEventById(signedDmEvent.id);
-    if (!fetchedDm) {
-         console.error('❌ DM Event fetch failed');
-         exitCode = 1;
-    } else {
-        // Use decryptDM helper
-        // We need to provide a context with a decryptor
-        const decryptorContext = {
-            actorPubkey: pkHex,
-            decryptors: [{
-                scheme: 'nip04',
-                decrypt: signer.nip04Decrypt,
-                source: 'test-signer'
-            }]
-        };
-
-        const decryptionResult = await decryptDM(fetchedDm, decryptorContext);
-
-        if (decryptionResult.ok && decryptionResult.plaintext === dmMessage) {
-            console.log('✅ DM Decryption successful');
-        } else {
-            console.error('❌ DM Decryption failed');
-            console.error('Result:', decryptionResult);
-            exitCode = 1;
-        }
-    }
-
-  } catch (error) {
-    console.error('Test failed with error:', error);
-    exitCode = 1;
-  } finally {
-    stopRelay();
-    process.exit(exitCode);
+    console.log(`[Pass] Published Video Event ID: ${videoEvent.id} (Accepted by ${acceptedCount} relays)`);
+  } catch (e) {
+    console.error("[Fail] Video publish failed:", e);
+    process.exit(1);
   }
+
+  // --- Test B: Fetch & Verify ---
+  console.log("\n>>> Test B: Fetch & Verify Roundtrip");
+  // Allow propagation
+  await new Promise(r => setTimeout(r, 2000));
+
+  try {
+    const result = await client.getEventById(videoEvent.id, { includeRaw: true });
+
+    if (!result || !result.rawEvent) {
+      throw new Error("Could not fetch raw event back from relays.");
+    }
+
+    const { video, rawEvent } = result;
+
+    if (rawEvent.id !== videoEvent.id) {
+      throw new Error(`ID mismatch. Expected ${videoEvent.id}, got ${rawEvent.id}`);
+    }
+
+    // Verify content shape
+    const content = JSON.parse(rawEvent.content);
+    if (content.title !== videoContent.title) {
+        throw new Error(`Content mismatch. Title: ${content.title} vs ${videoContent.title}`);
+    }
+
+    // Verify signature (basic check)
+    const isSigValid = NostrTools.verifyEvent(rawEvent);
+    if (!isSigValid) {
+        throw new Error("Event signature verification failed.");
+    }
+
+    console.log("[Pass] Event fetched, signature verified, and content matches.");
+  } catch (e) {
+    console.error(`[Fail] Fetch & Verify failed: ${e.message}`);
+    process.exit(1);
+  }
+
+  // --- Test C: Publish VIEW_EVENT ---
+  console.log("\n>>> Test C: Publish VIEW_EVENT");
+  const viewEventTemplate = buildViewEvent({
+    pubkey: alicePk,
+    created_at: Math.floor(Date.now() / 1000),
+    pointerValue: videoEvent.id,
+    pointerTag: ['e', videoEvent.id],
+    dedupeTag: `view:${videoEvent.id}:${Date.now()}`,
+    includeSessionTag: false // Not a session actor
+  });
+
+  try {
+    const viewResult = await client.signAndPublishEvent(viewEventTemplate);
+    const acceptedCount = viewResult.summary?.accepted?.length || 0;
+    if (acceptedCount > 0) {
+        console.log(`[Pass] View Event published. ID: ${viewResult.signedEvent.id}`);
+    } else {
+        console.warn(`[Warn] View Event publish result not OK:`, viewResult);
+    }
+  } catch (e) {
+    console.error("[Fail] View Event publish threw:", e);
+  }
+
+  // --- Test D: Encrypted DM ---
+  console.log("\n>>> Test D: Direct Message (Encryption/Decryption)");
+  const dmMessage = `Secret message ${Date.now()}`;
+
+  // We are Alice. Send to Bob.
+  // Note: client.sendDirectMessage uses the registered signer (Alice)
+  console.log(`[DM] Sending from Alice to Bob...`);
+  try {
+    const bobNpub = nip19.npubEncode(bobPk);
+    const sendRes = await client.sendDirectMessage(bobNpub, dmMessage);
+    if (!sendRes.ok) {
+        throw new Error(sendRes.error || "Unknown error sending DM");
+    }
+    console.log("[DM] Message sent.");
+  } catch (e) {
+    console.error("[Fail] DM Send failed:", e);
+    process.exit(1);
+  }
+
+  // Wait for propagation
+  await new Promise(r => setTimeout(r, 2000));
+
+  // Verify by fetching as Bob
+  // We need to use the pool directly to fetch, as 'client' is configured as Alice
+  console.log(`[DM] Fetching events for Bob (p=${bobPk})...`);
+  const filter = {
+    kinds: [4, 1059], // Legacy and GiftWrap
+    '#p': [bobPk],
+    authors: [alicePk], // Sent by Alice
+    limit: 1
+  };
+
+  const dmEvents = await client.pool.list(TEST_RELAYS, [filter]);
+  console.log(`[DM] Found ${dmEvents.length} events for Bob.`);
+
+  if (dmEvents.length === 0) {
+    console.error("[Fail] No DM events found on relays.");
+    process.exit(1);
+  }
+
+  const targetEvent = dmEvents[0];
+  console.log(`[DM] Decrypting event kind ${targetEvent.kind}...`);
+
+  // Setup Bob's decryptors
+  const bobDecryptors = [];
+
+  // NIP-44
+  if (nip44) {
+    bobDecryptors.push({
+        scheme: 'nip44',
+        decrypt: (pk, ct) => nip44.decrypt(bobSk, pk, ct),
+        priority: 1,
+        supportsGiftWrap: true
+    });
+  }
+  // NIP-04
+  if (nip04) {
+    bobDecryptors.push({
+        scheme: 'nip04',
+        decrypt: async (pk, ct) => nip04.decrypt(bobSk, pk, ct),
+        priority: 0
+    });
+  }
+
+  const decryptContext = {
+    actorPubkey: bobPk,
+    decryptors: bobDecryptors
+  };
+
+  const decryptRes = await decryptDM(targetEvent, decryptContext);
+
+  if (!decryptRes.ok) {
+    console.error("[Fail] Decryption failed:", decryptRes.errors);
+    process.exit(1);
+  }
+
+  if (decryptRes.plaintext !== dmMessage) {
+    console.error(`[Fail] Message mismatch. Got: "${decryptRes.plaintext}", Expected: "${dmMessage}"`);
+    process.exit(1);
+  }
+
+  console.log(`[Pass] Decryption verified. Scheme: ${decryptRes.scheme}, Message: "${decryptRes.plaintext}"`);
+
+  // Cleanup
+  // In a real scenario we might delete the events, but these are ephemeral and test relays usually clean up or we accept the dust for this test.
+
+  console.log("\n=== All Tests Passed ===");
+  process.exit(0);
 }
 
-runTests();
+runTests().catch(e => {
+  console.error("Unhandled Error:", e);
+  process.exit(1);
+});

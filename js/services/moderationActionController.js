@@ -206,6 +206,12 @@ export default class ModerationActionController {
     this.clearHideBypass(target);
     this.decorateVideo(target);
 
+    if (target !== video) {
+      this.clearViewerOverride(video);
+      this.clearHideBypass(video);
+      this.decorateVideo(video);
+    }
+
     const current = this.getCurrentVideo();
     if (current && current.id === video.id) {
       this.clearViewerOverride(current);

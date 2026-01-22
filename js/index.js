@@ -1223,10 +1223,7 @@ async function bootstrapInterface() {
   if (closeNostrFormBtn) {
     closeNostrFormBtn.addEventListener("click", () => {
       closeStaticModal("nostrFormModal");
-      if (
-        !localStorage.getItem("hasSeenDisclaimer") &&
-        localStorage.getItem("playwright-bypass-disclaimer") !== "true"
-      ) {
+      if (!localStorage.getItem("hasSeenDisclaimer")) {
         const disclaimerModal = document.getElementById("disclaimerModal");
         if (disclaimerModal) {
           openStaticModal(disclaimerModal);
@@ -1309,10 +1306,7 @@ function handleQueryParams() {
     if (closeAppealsBtn) {
       closeAppealsBtn.addEventListener("click", () => {
         closeStaticModal("contentAppealsModal");
-        if (
-          !localStorage.getItem("hasSeenDisclaimer") &&
-          localStorage.getItem("playwright-bypass-disclaimer") !== "true"
-        ) {
+        if (!localStorage.getItem("hasSeenDisclaimer")) {
           const disclaimerModal = document.getElementById("disclaimerModal");
           if (disclaimerModal) {
             openStaticModal(disclaimerModal);
@@ -1329,10 +1323,7 @@ function handleQueryParams() {
     }
   } else {
     const hasSeenDisclaimer = localStorage.getItem("hasSeenDisclaimer");
-    const bypassDisclaimer =
-      localStorage.getItem("playwright-bypass-disclaimer") === "true";
-
-    if (!hasSeenDisclaimer && !bypassDisclaimer) {
+    if (!hasSeenDisclaimer) {
       const disclaimerModal = document.getElementById("disclaimerModal");
       if (disclaimerModal) {
         openStaticModal(disclaimerModal);

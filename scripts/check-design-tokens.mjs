@@ -42,7 +42,7 @@ const VALUE_ALLOWLIST = new Map([
   [
     "js/ui/components/VideoCard.js",
     [
-      // Desktop breakpoint used in media query
+      // Desktop breakpoint used in media query match
       (value) => value === "1024px",
     ],
   ],
