@@ -6,6 +6,18 @@ import {
 } from "./helpers/uiTestUtils";
 
 test.describe("login modal flows", () => {
+  test("preflight check for asset availability", async ({ request }) => {
+    const assets = [
+      "/assets/svg/default-profile.svg",
+      "/components/iframe_forms/iframe-application-form.html",
+    ];
+
+    for (const asset of assets) {
+      const response = await request.get(asset);
+      expect(response.status(), `Asset ${asset} should be available`).toBe(200);
+    }
+  });
+
   test.beforeEach(async ({ page }) => {
     await applyReducedMotion(page);
     failOnConsoleErrors(page);
