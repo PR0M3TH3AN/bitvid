@@ -7,6 +7,19 @@ no longer requires hunting through the codebase. It also exposes helpers for
 building events and for overriding the schema at runtime when you need to
 experiment.
 
+## Validation
+
+To verify that event builders produce spec-compliant events, run the validation script:
+
+```bash
+node scripts/agent/validate-events.mjs
+```
+
+This script generates example events for all defined builders and checks them against their schemas, ensuring:
+- Correct kind
+- Presence of required tags (topic, identifier, etc.)
+- Correct content format (JSON vs text vs empty)
+
 ## Runtime helpers
 
 ```js
