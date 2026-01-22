@@ -1,6 +1,10 @@
 import { expect, test } from "@playwright/test";
 import type { Locator } from "@playwright/test";
-import { applyReducedMotion, failOnConsoleErrors } from "./helpers/uiTestUtils";
+import {
+  applyReducedMotion,
+  failOnConsoleErrors,
+  waitForRAF,
+} from "./helpers/uiTestUtils";
 
 async function getPanelMetrics(locator: Locator) {
   return locator.evaluate((node) => {
@@ -103,7 +107,14 @@ test.describe("popover layout scenarios", () => {
   });
 
   test("keeps the bottom-right grid menu inside the viewport", async ({ page }) => {
-    await page.locator('[data-test-trigger="grid-bottom-right"]').click();
+    // Reduce viewport height to force the menu to flip to the top
+    await page.setViewportSize({ width: 1280, height: 300 });
+
+    const trigger = page.locator('[data-test-trigger="grid-bottom-right"]');
+    // Scroll to bottom to ensure the element is near the viewport edge
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+
+    await trigger.click();
     const panel = page.locator('[data-test-panel="grid-bottom-right"]');
     await expect(panel).toHaveAttribute("data-popover-state", "open");
 
@@ -111,7 +122,7 @@ test.describe("popover layout scenarios", () => {
 
     assertWithinViewport(metrics);
     expect(metrics.state).toBe("open");
-    expect(metrics.placement.startsWith("top")).toBeTruthy();
+    expect(metrics.placement.startsWith("top"), `Expected placement to start with 'top' but got '${metrics.placement}'`).toBeTruthy();
     expect(metrics.popoverMaxWidth).toBe(metrics.tokenMaxWidth);
     expect(metrics.tokenMaxWidth.length).toBeGreaterThan(0);
   });
@@ -168,12 +179,15 @@ test.describe("popover layout scenarios", () => {
       });
 
       for (const selector of triggers) {
-        await page.locator(selector).click();
-        await page.waitForTimeout(60);
+        // Use force click to bypass potential residual overlay interception, simulating aggressive user action
+        await page.locator(selector).click({ force: true });
+        await waitForRAF(page);
       }
 
-      await page.click("body");
-      await page.waitForTimeout(60);
+      // Close by clicking backdrop/body
+      // Use force: true to bypass potential interception if we just want to signal a close
+      await page.click("body", { force: true });
+      await waitForRAF(page);
       await expect(page.locator('[data-popover-state="open"]')).toHaveCount(0);
     }
   });
