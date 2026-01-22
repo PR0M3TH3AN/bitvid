@@ -109,6 +109,8 @@ const DEFAULT_WSS_TRACKERS = Object.freeze([
   "wss://tracker.files.fm:7073/announce",
   "wss://tracker.btorrent.xyz",
   "wss://tracker.novage.com.ua:443/announce",
+  "wss://tracker.webtorrent.dev",
+  "wss://open.video.lukewarlow.uk:443/announce",
 ]);
 
 const SANITIZED_DEFAULT_BLUR_THRESHOLD = coerceNonNegativeInteger(

@@ -4594,9 +4594,15 @@
   }
 
   #app[data-sidebar-state="collapsed"] {
-    margin-left: var(--sidebar-width-collapsed);
-    width: calc(100vw - var(--sidebar-width-collapsed));
-    max-width: calc(100vw - var(--sidebar-width-collapsed));
+    margin-left: calc(
+      var(--sidebar-width-collapsed) + var(--sidebar-content-gap)
+    );
+    width: calc(
+      100vw - var(--sidebar-width-collapsed) - var(--sidebar-content-gap)
+    );
+    max-width: calc(
+      100vw - var(--sidebar-width-collapsed) - var(--sidebar-content-gap)
+    );
   }
 
   #app[data-sidebar-state="expanded"] {
@@ -5755,7 +5761,7 @@
     min-height: var(--space-md);
   }
 
-  @media (max-width: 767.98px) {
+  @media (max-width: calc(theme("screens.md") - var(--breakpoint-edge-offset))) {
     .dm-app-shell[data-dm-view="list"] .dm-app-shell__main {
       display: none !important;
     }
@@ -5850,91 +5856,35 @@
     max-block-size: none;
   }
 }
-
 @layer components {
-  .marquee-host {
-    position: relative;
-    overflow: hidden;
-    white-space: nowrap;
-    width: 100%;
-    min-width: 0;
-    max-width: 100%;
+  /*
+    Responsive grid limit utility
+    Default (Mobile): Limit to 5
+    lg: Limit to 6
+    xl: Limit to 8
+  */
+  .channel-grid-limit > :nth-child(n+6) {
+    display: none !important;
   }
 
-  .marquee-static {
-    @apply truncate;
-    opacity: 1;
-    transition: opacity 0.3s ease;
-  }
-
-  .marquee-anim {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    opacity: 0;
-    transition: opacity 0.3s ease;
-    pointer-events: none;
-    mask-image: linear-gradient(to right, transparent, black 4%, black 96%, transparent);
-    -webkit-mask-image: linear-gradient(to right, transparent, black 4%, black 96%, transparent);
-  }
-
-  .marquee-track {
-    display: flex;
-    width: max-content;
-    animation: marquee-scroll linear infinite;
-    animation-duration: var(--marquee-duration, 10s);
-    animation-play-state: paused;
-  }
-
-  .marquee-item {
-    flex-shrink: 0;
-    padding-right: var(--space-xl); /* Gap between loop items */
-  }
-
-  @keyframes marquee-scroll {
-    0% { transform: translateX(0); }
-    100% { transform: translateX(-50%); }
-  }
-
-  /* Desktop Hover State */
-  @media (min-width: theme("screens.lg")) {
-    .card:hover .marquee-host.can-marquee .marquee-static {
-      opacity: 0;
+  @media (min-width: theme('screens.lg')) {
+    .channel-grid-limit > :nth-child(n+6) {
+      display: flex !important; /* Restore visibility for item 6 */
     }
-    .card:hover .marquee-host.can-marquee .marquee-anim {
-      opacity: 1;
-    }
-    .card:hover .marquee-host.can-marquee .marquee-track {
-      animation-play-state: running;
+    .channel-grid-limit > :nth-child(n+7) {
+      display: none !important; /* Hide 7+ */
     }
   }
 
-  /* Mobile Active State */
-  @media (max-width: calc(theme("screens.lg") - var(--breakpoint-edge-offset))) {
-    .card[data-mobile-active="true"] {
-      --video-card-lift-translate-y: var(--motion-video-card-hover-translate);
-      --video-card-backdrop-opacity: 0.425;
-      --video-card-backdrop-translate-y: var(
-        --motion-video-card-backdrop-translate
-      );
-      --video-card-backdrop-scale: 1.12;
-      --video-card-backdrop-blur: var(--blur-video-card-backdrop-strong);
-      @apply shadow-lg;
+  @media (min-width: theme('screens.xl')) {
+    .channel-grid-limit > :nth-child(n+7) {
+      display: flex !important; /* Restore visibility for item 7 */
     }
-
-    .card[data-mobile-active="true"] .video-card__title {
-      color: var(--color-accent);
+    .channel-grid-limit > :nth-child(n+8) {
+        display: flex !important; /* Restore visibility for item 8 */
     }
-
-    .card[data-mobile-active="true"] .marquee-host.can-marquee .marquee-static {
-      opacity: 0;
-    }
-    .card[data-mobile-active="true"] .marquee-host.can-marquee .marquee-anim {
-      opacity: 1;
-    }
-    .card[data-mobile-active="true"] .marquee-host.can-marquee .marquee-track {
-      animation-play-state: running;
+    .channel-grid-limit > :nth-child(n+9) {
+      display: none !important; /* Hide 9+ */
     }
   }
 }

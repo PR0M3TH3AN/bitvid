@@ -497,12 +497,13 @@ class Application {
 
             if (source === "torrent" && hasActivePeers === false) {
               userLogger.warn(
-                "[app] Unable to switch to torrent playback: no active peers.",
+                "[app] Switching to torrent playback despite 0 active peers detected.",
               );
-              this.showError(
-                "Torrent playback is unavailable right now because there are no active peers.",
+              this.showStatus(
+                "Warning: No peers detected. Playback may fail or stall.",
+                { autoHideMs: 5000 }
               );
-              return;
+              // Proceed anyway
             }
 
             if (source === "url" && cdnUnavailable) {
