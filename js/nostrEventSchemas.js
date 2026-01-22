@@ -1912,11 +1912,13 @@ export function buildWatchHistoryEvent(params) {
   if (monthTagName && identifierValue) {
     tags.push([monthTagName, identifierValue]);
   }
-  pointerTags.forEach((tag) => {
-    if (Array.isArray(tag) && tag.length >= 2) {
-      tags.push(tag.map((value) => (typeof value === "string" ? value : String(value))));
-    }
-  });
+  if (Array.isArray(pointerTags)) {
+    pointerTags.forEach((tag) => {
+      if (Array.isArray(tag) && tag.length >= 2) {
+        tags.push(tag.map((value) => (typeof value === "string" ? value : String(value))));
+      }
+    });
+  }
 
   appendSchemaTags(tags, schema);
 
