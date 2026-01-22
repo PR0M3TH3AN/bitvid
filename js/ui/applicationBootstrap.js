@@ -657,6 +657,7 @@ export default class ApplicationBootstrap {
 
     app.subscriptionsLink = null;
     app.forYouLink = null;
+    app.exploreLink = null;
 
     app.notificationPortal = doc?.getElementById("notificationPortal") || null;
     app.errorContainer = doc?.getElementById("errorContainer") || null;
