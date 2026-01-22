@@ -5,6 +5,10 @@ const STORAGE_KEY = "bitvid:moderation:fixture-overrides";
 const SENTINEL_KEY = "__moderationFixturesInit__";
 const RESTORE_BUTTON_LABEL = "Restore default moderation";
 
+async function waitForFixtureReady(page) {
+  await page.waitForFunction(() => window.__moderationFixturesReady__ === true);
+}
+
 function setupStorageReset(page) {
   return page.addInitScript(({ storageKey, sentinelKey }) => {
     try {
@@ -38,6 +42,7 @@ test.afterEach(async ({ page }) => {
 test.describe("moderation fixtures", () => {
   test("blur fixture masks thumbnails and blocks autoplay", async ({ page }) => {
     await page.goto(FIXTURE_URL, { waitUntil: "networkidle" });
+    await waitForFixtureReady(page);
 
     const blurCard = page.locator('[data-test-id="blur-threshold"]');
     const thumbnail = blurCard.locator('img[data-video-thumbnail]');
@@ -53,6 +58,7 @@ test.describe("moderation fixtures", () => {
 
   test("autoplay fixture disables preview without blurring", async ({ page }) => {
     await page.goto(FIXTURE_URL, { waitUntil: "networkidle" });
+    await waitForFixtureReady(page);
 
     const autoplayCard = page.locator('[data-test-id="autoplay-threshold"]');
     const thumbnail = autoplayCard.locator('img[data-video-thumbnail]');
@@ -64,9 +70,15 @@ test.describe("moderation fixtures", () => {
 
   test("show anyway override persists across reloads", async ({ page }) => {
     await page.goto(FIXTURE_URL, { waitUntil: "networkidle" });
+    await waitForFixtureReady(page);
 
     const overrideCard = page.locator('[data-test-id="show-anyway"]');
     const thumbnail = overrideCard.locator('img[data-video-thumbnail]');
+
+    await expect(overrideCard).toHaveAttribute(
+      "data-moderation-override-available",
+      "true"
+    );
     const showAnywayButton = overrideCard.getByRole("button", { name: "Show anyway" });
     const restoreButtonQuery = overrideCard.getByRole("button", {
       name: RESTORE_BUTTON_LABEL,
@@ -92,6 +104,7 @@ test.describe("moderation fixtures", () => {
     await expect(overrideCard.getByRole("button", { name: "Show anyway" })).toHaveCount(0);
 
     await page.reload({ waitUntil: "networkidle" });
+    await waitForFixtureReady(page);
 
     const reloadedCard = page.locator('[data-test-id="show-anyway"]');
     const reloadedThumbnail = reloadedCard.locator('img[data-video-thumbnail]');
@@ -128,9 +141,15 @@ test.describe("moderation fixtures", () => {
 
   test("trusted report hide fixture supports show anyway override", async ({ page }) => {
     await page.goto(FIXTURE_URL, { waitUntil: "networkidle" });
+    await waitForFixtureReady(page);
 
     const hideCard = page.locator('[data-test-id="trusted-report-hide"]');
     const badge = hideCard.locator('[data-moderation-badge="true"]');
+
+    await expect(hideCard).toHaveAttribute(
+      "data-moderation-override-available",
+      "true"
+    );
     const showAnywayButton = hideCard.getByRole("button", { name: "Show anyway" });
     const restoreButtonQuery = hideCard.getByRole("button", {
       name: RESTORE_BUTTON_LABEL,
@@ -167,10 +186,16 @@ test.describe("moderation fixtures", () => {
     page,
   }) => {
     await page.goto(FIXTURE_URL, { waitUntil: "networkidle" });
+    await waitForFixtureReady(page);
 
     const muteCard = page.locator('[data-test-id="trusted-mute-hide"]');
     const badge = muteCard.locator('[data-moderation-badge="true"]');
     const thumbnail = muteCard.locator('img[data-video-thumbnail]');
+
+    await expect(muteCard).toHaveAttribute(
+      "data-moderation-override-available",
+      "true"
+    );
     const showAnywayButton = muteCard.getByRole("button", { name: "Show anyway" });
     const restoreButtonQuery = muteCard.getByRole("button", {
       name: RESTORE_BUTTON_LABEL,
