@@ -10,7 +10,10 @@ export {
   createResolvePostedAtStage,
 } from "./stages.js";
 export { createExploreScorerStage } from "./exploreScoring.js";
-export { createChronologicalSorter } from "./sorters.js";
+export {
+  createChronologicalSorter,
+  createExploreDiversitySorter,
+} from "./sorters.js";
 export {
   createActiveNostrSource,
   createSubscriptionAuthorsSource,
