@@ -1,10 +1,6 @@
 // js/feedEngine/index.js
 
-export {
-  createFeedEngine,
-  DEFAULT_FEED_CONFIG,
-  DEFAULT_CONFIG_SCHEMA,
-} from "./engine.js";
+export { createFeedEngine } from "./engine.js";
 export {
   createDedupeByRootStage,
   createBlacklistFilterStage,

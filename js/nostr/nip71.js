@@ -1,5 +1,5 @@
 import { deriveTitleFromEvent } from "../videoEventUtils.js";
-import { extractMagnetHints } from "../magnet.js";
+import { extractMagnetHints } from "../magnetShared.js";
 import { devLogger } from "../utils/logger.js";
 import { getCachedNostrTools } from "./toolkit.js";
 

@@ -6,10 +6,7 @@ import {
   normalizeAndAugmentMagnet as normalizeMagnetObject,
   safeDecodeMagnet,
 } from "../js/magnetUtils.js";
-import {
-  extractMagnetHints,
-  normalizeAndAugmentMagnet as normalizeMagnetString,
-} from "../js/magnet.js";
+import { extractMagnetHints } from "../js/magnetShared.js";
 
 function getParamValues(magnet, key) {
   const parsed = new URL(magnet);
@@ -47,36 +44,23 @@ test("safeDecodeMagnet leaves plain strings untouched", () => {
   );
 });
 
-test("bare hashes normalize consistently across helpers", () => {
+test("bare hashes normalize consistently", () => {
   const infoHash = "0123456789abcdef0123456789abcdef01234567";
   const objectResult = normalizeMagnetObject(infoHash);
-  const stringResult = normalizeMagnetString(infoHash);
 
   assert.ok(objectResult.didChange, "Bare hashes should mark didChange true");
-  assert.equal(
-    stringResult,
-    objectResult.magnet,
-    "String helper should match object helper output"
-  );
 
-  const xtValues = getParamValues(stringResult, "xt");
+  const xtValues = getParamValues(objectResult.magnet, "xt");
   assert.deepEqual(xtValues, [`urn:btih:${infoHash}`]);
-  assertDefaultTrackersPresent(stringResult);
+  assertDefaultTrackersPresent(objectResult.magnet);
 });
 
-test("legacy %3A payloads decode across helpers", () => {
+test("legacy %3A payloads decode", () => {
   const infoHash = "abcdefabcdefabcdefabcdefabcdefabcdefabcd";
   const encoded = `magnet:?xt=urn%3Abtih%3A${infoHash}&dn=Example`;
   const objectResult = normalizeMagnetObject(encoded);
-  const stringResult = normalizeMagnetString(encoded);
 
-  assert.equal(
-    stringResult,
-    objectResult.magnet,
-    "Helpers should agree on encoded xt payload normalization"
-  );
-
-  const xtValues = getParamValues(stringResult, "xt");
+  const xtValues = getParamValues(objectResult.magnet, "xt");
   assert.deepEqual(xtValues, [`urn:btih:${infoHash}`]);
 });
 
@@ -96,18 +80,7 @@ test("duplicate trackers and hints stay in sync", () => {
     webSeed: "https://cdn.example.com/files/",
   });
 
-  const stringResult = normalizeMagnetString(baseMagnet, {
-    ws: "https://cdn.example.com/files/", // ensure string helper adds hint
-    xs: "https://cdn.example.com/video.torrent",
-  });
-
-  assert.equal(
-    stringResult,
-    objectResult.magnet,
-    "Helpers should emit identical magnets after augmentation"
-  );
-
-  const trackers = getParamValues(stringResult, "tr");
+  const trackers = getParamValues(objectResult.magnet, "tr");
   const openwebCount = trackers.filter(
     (value) => value === "wss://tracker.openwebtorrent.com"
   ).length;
@@ -117,10 +90,10 @@ test("duplicate trackers and hints stay in sync", () => {
     "HTTP tracker candidates should be ignored"
   );
 
-  const webSeeds = getParamValues(stringResult, "ws");
+  const webSeeds = getParamValues(objectResult.magnet, "ws");
   assert.deepEqual(webSeeds, ["https://cdn.example.com/files/"]);
 
-  const xsValues = getParamValues(stringResult, "xs");
+  const xsValues = getParamValues(objectResult.magnet, "xs");
   assert.deepEqual(xsValues, ["https://cdn.example.com/video.torrent"]);
 });
 
@@ -170,15 +143,6 @@ test("extractMagnetHints returns first ws/xs pair", () => {
   });
 });
 
-test("string helper skips insecure ws hints on HTTPS origins", () => {
-  const infoHash = "0123456789abcdef0123456789abcdef01234567";
-  const normalized = normalizeMagnetString(`magnet:?xt=urn:btih:${infoHash}`, {
-    ws: "http://cdn.example.com/video-base/",
-  });
-  const parsed = new URL(normalized);
-  assert.equal(parsed.searchParams.getAll("ws").length, 0);
-});
-
 test("object helper reports didChange when output differs", () => {
   const infoHash = "abcdef0123456789abcdef0123456789abcdef01";
   const result = normalizeMagnetObject(`magnet:?xt=urn:btih:${infoHash}`, {
@@ -190,9 +154,7 @@ test("object helper reports didChange when output differs", () => {
 test("helpers trim fragments from non-magnet values", () => {
   const url = "https://example.com/video.mp4#fragment";
   const objectResult = normalizeMagnetObject(url);
-  const stringResult = normalizeMagnetString(url);
   assert.equal(objectResult.magnet, "https://example.com/video.mp4");
-  assert.equal(stringResult, "https://example.com/video.mp4");
   assert.ok(
     objectResult.didChange,
     "Dropping the fragment should be reflected in didChange"
