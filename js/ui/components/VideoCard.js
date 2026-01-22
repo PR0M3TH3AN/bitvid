@@ -3043,7 +3043,19 @@ export class VideoCard {
     if (!VideoCard.viewportObserver) {
       VideoCard.viewportObserver = new IntersectionObserver(
         (entries) => {
+          // Prevent active state on desktop to avoid conflicting with hover
+          const isDesktop =
+            typeof window !== "undefined" &&
+            window.matchMedia("(min-width: 1024px)").matches;
+
           for (const entry of entries) {
+            if (isDesktop) {
+              if (entry.target.hasAttribute("data-mobile-active")) {
+                entry.target.removeAttribute("data-mobile-active");
+              }
+              continue;
+            }
+
             if (entry.isIntersecting) {
               entry.target.setAttribute("data-mobile-active", "true");
             } else {
@@ -3051,7 +3063,7 @@ export class VideoCard {
             }
           }
         },
-        { rootMargin: "-25% 0px -25% 0px", threshold: 0 }
+        { rootMargin: "-45% 0px -45% 0px", threshold: 0 }
       );
     }
     VideoCard.viewportObserver.observe(element);

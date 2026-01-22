@@ -1130,8 +1130,7 @@
   }
 
   .card:hover,
-  .card:focus-within,
-  .card[data-mobile-active="true"] {
+  .card:focus-within {
     --video-card-lift-translate-y: var(--motion-video-card-hover-translate);
     --video-card-backdrop-opacity: 0.425;
     --video-card-backdrop-translate-y: var(
@@ -1163,8 +1162,7 @@
   }
 
   .video-card__title:hover,
-  .video-card__title:focus-visible,
-  .card[data-mobile-active="true"] .video-card__title {
+  .video-card__title:focus-visible {
     color: var(--color-accent);
   }
 
@@ -5914,6 +5912,21 @@
 
   /* Mobile Active State */
   @media (max-width: calc(theme("screens.lg") - var(--breakpoint-edge-offset))) {
+    .card[data-mobile-active="true"] {
+      --video-card-lift-translate-y: var(--motion-video-card-hover-translate);
+      --video-card-backdrop-opacity: 0.425;
+      --video-card-backdrop-translate-y: var(
+        --motion-video-card-backdrop-translate
+      );
+      --video-card-backdrop-scale: 1.12;
+      --video-card-backdrop-blur: var(--blur-video-card-backdrop-strong);
+      @apply shadow-lg;
+    }
+
+    .card[data-mobile-active="true"] .video-card__title {
+      color: var(--color-accent);
+    }
+
     .card[data-mobile-active="true"] .marquee-host.can-marquee .marquee-static {
       opacity: 0;
     }
