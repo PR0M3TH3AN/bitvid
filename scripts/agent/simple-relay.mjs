@@ -1,6 +1,6 @@
 import { WebSocketServer } from 'ws';
 
-const PORT = 8008;
+const PORT = process.env.PORT || 8008;
 const wss = new WebSocketServer({ port: PORT });
 
 // Simple in-memory store for REQ matching

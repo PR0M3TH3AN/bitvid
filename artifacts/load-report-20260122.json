@@ -1,0 +1,70 @@
+{
+  "summary": {
+    "date": "2026-01-22T19:39:07.362Z",
+    "duration_sec": 14.367,
+    "clients": 50,
+    "events_published": 380,
+    "events_confirmed": 380,
+    "events_failed": 0
+  },
+  "metrics": {
+    "throughput": {
+      "avg_events_per_sec": 26.44950233173244
+    },
+    "latency_ms": {
+      "build": {
+        "avg": 0.09473684210526316,
+        "p95": 1
+      },
+      "sign": {
+        "avg": 6.257894736842105,
+        "p95": 10
+      },
+      "rtt": {
+        "avg": 30.563157894736843,
+        "p95": 50
+      }
+    },
+    "resources": {
+      "cpu_samples": [
+        {
+          "timestamp": 9.227,
+          "user": 1834418,
+          "system": 114421
+        },
+        {
+          "timestamp": 14.266,
+          "user": 3170422,
+          "system": 155074
+        }
+      ],
+      "memory_samples": [
+        {
+          "timestamp": 9.227,
+          "rss": 94273536,
+          "heapUsed": 11273392
+        },
+        {
+          "timestamp": 14.266,
+          "rss": 94453760,
+          "heapUsed": 11443640
+        }
+      ]
+    },
+    "errors": []
+  },
+  "hot_functions": [
+    {
+      "name": "buildEvent",
+      "avg_ms": 0.09473684210526316
+    },
+    {
+      "name": "signEvent",
+      "avg_ms": 6.257894736842105
+    }
+  ],
+  "recommendations": [
+    "If signEvent latency > 5ms, consider offloading signing to Web Workers or using Wasm optimization.",
+    "If RTT is high but build/sign is low, network or relay processing is the bottleneck."
+  ]
+}
