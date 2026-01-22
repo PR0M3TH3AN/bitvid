@@ -7,6 +7,17 @@ const rootDir = path.dirname(fileURLToPath(new URL("../package.json", import.met
 const testsDir = path.join(rootDir, "tests");
 const testFiles = [];
 const setupImport = new URL("../tests/test-helpers/setup-localstorage.mjs", import.meta.url);
+const shardArg = process.argv.find((arg) => arg.startsWith("--shard="));
+const shardValue = shardArg ? shardArg.split("=")[1] : process.env.UNIT_TEST_SHARD;
+const timeoutMs = process.env.UNIT_TEST_TIMEOUT_MS
+  ? Number(process.env.UNIT_TEST_TIMEOUT_MS)
+  : null;
+
+if (timeoutMs !== null && (!Number.isFinite(timeoutMs) || timeoutMs <= 0)) {
+  throw new Error(
+    "UNIT_TEST_TIMEOUT_MS must be a positive number representing milliseconds.",
+  );
+}
 
 async function collectTests(dir) {
   const entries = await readdir(dir, { withFileTypes: true });
@@ -40,42 +51,120 @@ async function collectTests(dir) {
   }
 }
 
-await collectTests(testsDir);
+function parseShard(value) {
+  if (!value) {
+    return null;
+  }
 
-testFiles.sort((a, b) => a.localeCompare(b));
+  const match = /^(\d+)\/(\d+)$/.exec(value.trim());
+  if (!match) {
+    throw new Error("Shard format must be <index>/<total>, e.g. 1/3.");
+  }
 
-if (testFiles.length === 0) {
-  console.log("No unit tests found.");
-  process.exit(0);
+  const index = Number(match[1]);
+  const total = Number(match[2]);
+
+  if (!Number.isInteger(index) || !Number.isInteger(total) || total < 1) {
+    throw new Error("Shard values must be positive integers.");
+  }
+
+  if (index < 1 || index > total) {
+    throw new Error("Shard index must be between 1 and total (inclusive).");
+  }
+
+  return { index, total };
 }
 
-for (const testFile of testFiles) {
-  const relativePath = path.relative(rootDir, testFile);
-  console.log(`\n→ Running ${relativePath}`);
+async function run() {
+  await collectTests(testsDir);
 
-  await new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, ["--import", setupImport.href, testFile], {
-      stdio: "inherit",
-    });
+  testFiles.sort((a, b) => a.localeCompare(b));
 
-    child.on("close", (code, signal) => {
-      if (signal) {
-        reject(new Error(`${relativePath} exited with signal ${signal}`));
-        return;
+  if (testFiles.length === 0) {
+    console.log("No unit tests found.");
+    return;
+  }
+
+  const shard = parseShard(shardValue);
+  const selectedTests = shard
+    ? testFiles.filter((_, index) => index % shard.total === shard.index - 1)
+    : testFiles;
+
+  if (shard) {
+    console.log(
+      `Using shard ${shard.index}/${shard.total} (${selectedTests.length} of ${testFiles.length} files).`,
+    );
+  }
+
+  if (selectedTests.length === 0) {
+    console.log("No unit tests found for this shard.");
+    return;
+  }
+
+  for (const testFile of selectedTests) {
+    const relativePath = path.relative(rootDir, testFile);
+    console.log(`\n→ Running ${relativePath}`);
+
+    await new Promise((resolve, reject) => {
+      const child = spawn(process.execPath, ["--import", setupImport.href, testFile], {
+        stdio: "inherit",
+      });
+      let finished = false;
+      let timeoutId = null;
+
+      const finalize = (error) => {
+        if (finished) {
+          return;
+        }
+        finished = true;
+
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve();
+      };
+
+      if (timeoutMs !== null) {
+        timeoutId = setTimeout(() => {
+          child.kill("SIGKILL");
+          finalize(
+            new Error(`${relativePath} timed out after ${timeoutMs}ms and was aborted.`),
+          );
+        }, timeoutMs);
       }
 
-      if (code !== 0) {
-        reject(new Error(`${relativePath} failed with exit code ${code}`));
-        return;
-      }
+      child.on("close", (code, signal) => {
+        if (signal) {
+          finalize(new Error(`${relativePath} exited with signal ${signal}`));
+          return;
+        }
 
-      resolve();
-    });
+        if (code !== 0) {
+          finalize(new Error(`${relativePath} failed with exit code ${code}`));
+          return;
+        }
 
-    child.on("error", (error) => {
-      reject(error);
+        finalize();
+      });
+
+      child.on("error", (error) => {
+        finalize(error);
+      });
     });
-  });
+  }
+
+  console.log("\n✔ All unit tests passed");
 }
 
-console.log("\n✔ All unit tests passed");
+try {
+  await run();
+} catch (error) {
+  console.error(`\n✖ ${error.message}`);
+  process.exit(1);
+}
