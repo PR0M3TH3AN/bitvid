@@ -139,6 +139,18 @@ http://localhost:8000
 - **Run DM integration tests**: `npm run test:dm:integration`
 - **Run headless E2E tests**: `npm run test:e2e`
 
+### Visual Regression Debugging
+
+Visual regression tests (`test:visual`) are configured to retain screenshots, videos, and traces when they fail. These artifacts are stored in the `artifacts/test-results` directory.
+
+To quickly view the location of these artifacts:
+
+```bash
+./scripts/show-artifacts.sh
+```
+
+Use these artifacts to inspect the UI state at the moment of failure and diagnose rendering issues or regressions.
+
 ### Send your first video post
 
 Use the event builders in `js/nostrEventSchemas.js` to construct valid video notes.
