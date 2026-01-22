@@ -1,3 +1,7 @@
+/**
+ * Agent Smoke Test
+ * Verified flows: Login, Publish (Video), DM Decrypt (NIP-04/44)
+ */
 import { chromium } from 'playwright';
 import { spawn } from 'child_process';
 import fs from 'fs';
