@@ -3734,6 +3734,11 @@ export class NostrClient {
     }
   }
 
+  /**
+   * Ensures the `SimplePool` (from nostr-tools) is initialized and ready.
+   *
+   * @returns {Promise<import("nostr-tools").SimplePool>} The active pool instance.
+   */
   async ensurePool() {
     if (this.pool) {
       return this.pool;
@@ -4440,6 +4445,22 @@ export class NostrClient {
     return newPromise;
   }
 
+  /**
+   * Sends a Direct Message (DM) to a target user.
+   *
+   * Supports:
+   * - **Legacy (NIP-04)**: Simple base64 ciphertext (deprecated but widely supported).
+   * - **Wrapped (NIP-17)**: Sealed rumors inside gift wraps (private, metadata-leaking free).
+   * - **Attachments**: Handling file attachments via NIP-17 or fallback text.
+   *
+   * @param {string} targetNpub - The recipient's npub.
+   * @param {string} message - The text content to send.
+   * @param {string|null} [actorPubkeyOverride] - Optional sender pubkey override.
+   * @param {object} [options] - Configuration options.
+   * @param {boolean} [options.useNip17=false] - Whether to use the new NIP-17 protocol.
+   * @param {Array} [options.attachments] - File attachments (NIP-17 only).
+   * @returns {Promise<{ok: boolean, error?: string, details?: any}>} Result of the operation.
+   */
   async sendDirectMessage(targetNpub, message, actorPubkeyOverride = null, options = {}) {
     let resolvedOptions = options;
     let resolvedActorOverride = actorPubkeyOverride;
@@ -6275,6 +6296,14 @@ export class NostrClient {
     };
   }
 
+  /**
+   * Schedules a persistence task to save the current state (events, tombstones) to local storage.
+   *
+   * @param {string} [reason="unspecified"] - Debug label for why persistence was triggered.
+   * @param {object} [options]
+   * @param {boolean} [options.immediate=false] - If true, bypasses the debounce timer and saves immediately.
+   * @returns {Promise<boolean>} A promise resolving to whether persistence succeeded.
+   */
   saveLocalData(reason = "unspecified", options = {}) {
     const { immediate = false } = options;
 
@@ -6307,6 +6336,13 @@ export class NostrClient {
     return this.cachePersistInFlight;
   }
 
+  /**
+   * Executes the actual persistence logic, writing to IndexedDB (preferred) or localStorage.
+   *
+   * @param {string} reason - Debug label.
+   * @returns {Promise<boolean>} True if successful.
+   * @private
+   */
   async persistLocalData(reason = "unspecified") {
     const payload = this.buildCachePayload();
     const startedAt = Date.now();
