@@ -3051,7 +3051,7 @@ export class VideoCard {
             }
           }
         },
-        { rootMargin: "-40% 0px -40% 0px", threshold: 0 }
+        { rootMargin: "-25% 0px -25% 0px", threshold: 0 }
       );
     }
     VideoCard.viewportObserver.observe(element);

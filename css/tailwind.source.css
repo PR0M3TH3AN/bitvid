@@ -1130,7 +1130,8 @@
   }
 
   .card:hover,
-  .card:focus-within {
+  .card:focus-within,
+  .card[data-mobile-active="true"] {
     --video-card-lift-translate-y: var(--motion-video-card-hover-translate);
     --video-card-backdrop-opacity: 0.425;
     --video-card-backdrop-translate-y: var(
@@ -1162,7 +1163,8 @@
   }
 
   .video-card__title:hover,
-  .video-card__title:focus-visible {
+  .video-card__title:focus-visible,
+  .card[data-mobile-active="true"] .video-card__title {
     color: var(--color-accent);
   }
 
