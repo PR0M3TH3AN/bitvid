@@ -112,6 +112,7 @@ To run **bitvid** locally:
    ```bash
    npm run build
    ```
+   (This generates `css/tailwind.generated.css`, which is gitignored and required for styling.)
 
 4. Start a local server:
    - Using Python:
