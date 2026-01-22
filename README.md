@@ -112,6 +112,7 @@ To run **bitvid** locally:
    ```bash
    npm run build
    ```
+
    (This generates `css/tailwind.generated.css`, which is gitignored and required for styling.)
 
 4. Start a local server:
@@ -151,6 +152,7 @@ To run Playwright tests in a consistent containerized environment, use the provi
 - **Custom command**: Pass any command as an argument, e.g., `./scripts/run-playwright-docker.sh npm run test:e2e`.
 
 The script:
+
 1. Builds the `bitvid-playwright` Docker image (based on `mcr.microsoft.com/playwright`).
 2. Mounts the current directory to `/app` (allowing source changes to be reflected immediately).
 3. Uses an anonymous volume for `/app/node_modules` to preserve the container's Linux-specific dependencies.
