@@ -4061,6 +4061,11 @@ class Application {
     if (forYouLink) {
       forYouLink.classList.remove("hidden");
     }
+
+    const exploreLink = this.resolveExploreLink();
+    if (exploreLink) {
+      exploreLink.classList.remove("hidden");
+    }
   }
 
   applyLoggedOutUiState() {
@@ -4099,6 +4104,11 @@ class Application {
     const forYouLink = this.resolveForYouLink();
     if (forYouLink) {
       forYouLink.classList.add("hidden");
+    }
+
+    const exploreLink = this.resolveExploreLink();
+    if (exploreLink) {
+      exploreLink.classList.add("hidden");
     }
   }
 
@@ -4171,10 +4181,29 @@ class Application {
     return null;
   }
 
+  resolveExploreLink() {
+    if (
+      this.exploreLink instanceof HTMLElement &&
+      this.exploreLink.isConnected
+    ) {
+      return this.exploreLink;
+    }
+
+    const linkCandidate = document.getElementById("exploreLink");
+    if (linkCandidate instanceof HTMLElement) {
+      this.exploreLink = linkCandidate;
+      return this.exploreLink;
+    }
+
+    this.exploreLink = null;
+    return null;
+  }
+
   hydrateSidebarNavigation() {
     const chromeElements = this.refreshChromeElements();
     this.resolveSubscriptionsLink();
     this.resolveForYouLink();
+    this.resolveExploreLink();
 
     if (this.appChromeController) {
       if (typeof this.appChromeController.setElements === "function") {

@@ -18,6 +18,7 @@ const VIEW_HTML = `<!DOCTYPE html>
     </div>
     <a id="subscriptionsLink" class="hidden"></a>
     <a id="forYouLink" class="hidden"></a>
+    <a id="exploreLink" class="hidden"></a>
   </body>
 </html>`;
 
@@ -46,6 +47,7 @@ test("hydrateSidebarNavigation reveals chrome controls for authenticated viewers
     app.userStatus = window.document.getElementById("userStatus");
     app.userPubKey = window.document.getElementById("userPubKey");
     app.subscriptionsLink = null;
+    app.exploreLink = null;
     app.isUserLoggedIn = () => true;
     app.log = () => {};
     app.showError = () => {};
@@ -60,6 +62,7 @@ test("hydrateSidebarNavigation reveals chrome controls for authenticated viewers
     const logoutButton = window.document.getElementById("logoutButton");
     const subscriptionsLink = window.document.getElementById("subscriptionsLink");
     const forYouLink = window.document.getElementById("forYouLink");
+    const exploreLink = window.document.getElementById("exploreLink");
     const closeLoginButton = window.document.getElementById("closeLoginModal");
 
     assert.equal(app.uploadButton, uploadButton);
@@ -77,6 +80,7 @@ test("hydrateSidebarNavigation reveals chrome controls for authenticated viewers
     assert.equal(logoutButton.classList.contains("hidden"), false);
     assert.equal(subscriptionsLink.classList.contains("hidden"), false);
     assert.equal(forYouLink.classList.contains("hidden"), false);
+    assert.equal(exploreLink.classList.contains("hidden"), false);
 
     assert.ok(app.appChromeController.receivedElements);
     assert.equal(
@@ -123,6 +127,7 @@ test("hydrateSidebarNavigation hides chrome controls for logged-out viewers", ()
     app.userStatus = window.document.getElementById("userStatus");
     app.userPubKey = window.document.getElementById("userPubKey");
     app.subscriptionsLink = null;
+    app.exploreLink = null;
     app.isUserLoggedIn = () => false;
     app.log = () => {};
     app.showError = () => {};
@@ -137,6 +142,7 @@ test("hydrateSidebarNavigation hides chrome controls for logged-out viewers", ()
     const logoutButton = window.document.getElementById("logoutButton");
     const subscriptionsLink = window.document.getElementById("subscriptionsLink");
     const forYouLink = window.document.getElementById("forYouLink");
+    const exploreLink = window.document.getElementById("exploreLink");
     const closeLoginButton = window.document.getElementById("closeLoginModal");
 
     assert.equal(app.uploadButton, uploadButton);
@@ -154,6 +160,7 @@ test("hydrateSidebarNavigation hides chrome controls for logged-out viewers", ()
     assert.equal(logoutButton.classList.contains("hidden"), true);
     assert.equal(subscriptionsLink.classList.contains("hidden"), true);
     assert.equal(forYouLink.classList.contains("hidden"), true);
+    assert.equal(exploreLink.classList.contains("hidden"), true);
 
     assert.ok(app.appChromeController.receivedElements);
     assert.equal(
