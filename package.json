@@ -39,7 +39,7 @@
     "playwright": "^1.57.0",
     "pngjs": "^7.0.0",
     "postcss": "^8.4.41",
-    "prettier": "^3.8.1",
+    "prettier": "^3.8.0",
     "prettier-plugin-tailwindcss": "^0.6.5",
     "stylelint": "^16.26.1",
     "stylelint-config-standard": "^36.0.1",

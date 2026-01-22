@@ -45,11 +45,6 @@ class DisclaimerModal {
   }
 
   show() {
-    // Check if Playwright automation requested to bypass the disclaimer
-    if (localStorage.getItem("playwright-bypass-disclaimer") === "true") {
-      return;
-    }
-
     // In case the modal hasn't been initialized yet.
     if (!this.modal) {
       this.init();

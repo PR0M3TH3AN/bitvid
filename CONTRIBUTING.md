@@ -30,7 +30,6 @@ If we later introduce **dual-licensing** options (e.g., commercial licenses for 
 * Add tests where reasonable; keep UI accessible.
 * Follow existing formatting/lint rules.
 * Update docs and user-facing text when behavior changes.
-* Check `KNOWN_ISSUES.md` for pre-existing environmental quirks or test failures before debugging.
 
 ## Agent PR Conventions
 
@@ -62,13 +61,16 @@ To set up the project locally:
    ```bash
    npm run build
    ```
-   *Note: This generates CSS and other assets.*
 
-3. **Verify Environment**:
+3. **Run Tests**:
+   ```bash
+   npm run test:unit
+   ```
+
+4. **Format & Lint**:
    ```bash
    npm run format
    npm run lint
-   npm run test:unit
    ```
 
 For a full guide, see the [Local Setup section in README.md](./README.md#local-setup).

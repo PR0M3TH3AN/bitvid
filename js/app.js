@@ -6641,7 +6641,19 @@ class Application {
   }
 
   decorateVideoModeration(video, feedContext = {}) {
-    return this.moderationDecorator.decorateVideo(video, feedContext);
+    const decorated = this.moderationDecorator.decorateVideo(video, feedContext);
+    if (
+      video &&
+      video.pubkey &&
+      this.isAuthorBlocked(video.pubkey) &&
+      decorated &&
+      decorated.moderation
+    ) {
+      decorated.moderation.viewerMuted = true;
+      decorated.moderation.hidden = true;
+      decorated.moderation.hideReason = "viewer-block";
+    }
+    return decorated;
   }
 
   initializeModerationActionController() {

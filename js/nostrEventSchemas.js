@@ -891,7 +891,7 @@ export function buildRepostEvent(params) {
     if (normalizedEventRelay) {
       tags.push(["e", normalizedEventId, normalizedEventRelay]);
     } else {
-      throw new Error("missing-event-relay");
+      tags.push(["e", normalizedEventId]);
     }
   }
 
