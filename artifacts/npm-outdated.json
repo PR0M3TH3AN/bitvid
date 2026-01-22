@@ -27,6 +27,13 @@
     "dependent": "app",
     "location": "/app/node_modules/pixelmatch"
   },
+  "prettier": {
+    "current": "3.8.0",
+    "wanted": "3.8.1",
+    "latest": "3.8.1",
+    "dependent": "app",
+    "location": "/app/node_modules/prettier"
+  },
   "prettier-plugin-tailwindcss": {
     "current": "0.6.14",
     "wanted": "0.6.14",
