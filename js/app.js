@@ -8459,7 +8459,7 @@ class Application {
       this.currentVideo.torrentSupported = !!magnetForPlayback;
     }
     this.currentMagnetUri = magnetForPlayback || null;
-    this.setCopyMagnetState(!!magnetForPlayback);
+    // this.setCopyMagnetState(!!magnetForPlayback); // Removed
 
     const unsubscribers = [];
     const subscribe = (eventName, handler) => {
@@ -8757,8 +8757,8 @@ class Application {
 
     this.currentMagnetUri = sanitizedMagnet || null;
 
-    this.setCopyMagnetState(!!sanitizedMagnet);
-    this.setShareButtonState(true);
+    // this.setCopyMagnetState(!!sanitizedMagnet); // Removed
+    // this.setShareButtonState(true); // Moved to after showModalWithPoster
 
     const nevent = window.NostrTools.nip19.neventEncode({ id: eventId });
     const pushUrl =
@@ -8780,6 +8780,8 @@ class Application {
       "";
 
     await this.showModalWithPoster(this.currentVideo);
+
+    this.setShareButtonState(true);
 
     this.commentController?.load(this.currentVideo);
 
@@ -9131,8 +9133,8 @@ class Application {
 
     this.currentMagnetUri = sanitizedMagnet || null;
 
-    this.setCopyMagnetState(!!sanitizedMagnet);
-    this.setShareButtonState(false);
+    // this.setCopyMagnetState(!!sanitizedMagnet);
+    // this.setShareButtonState(false);
 
     if (this.videoModal) {
       this.videoModal.updateMetadata({
@@ -9149,6 +9151,8 @@ class Application {
     }
 
     await this.showModalWithPoster(this.currentVideo, hasTrigger ? { trigger } : {});
+
+    this.setShareButtonState(false);
 
     this.commentController?.load(null);
 
