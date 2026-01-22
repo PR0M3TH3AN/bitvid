@@ -1,6 +1,9 @@
 import { createModalAccessibility } from "./modalAccessibility.js";
 import createPopover from "../overlay/popoverEngine.js";
-import { createVideoMoreMenuPanel } from "./videoMenuRenderers.js";
+import {
+  createVideoMoreMenuPanel,
+  createVideoShareMenuPanel,
+} from "./videoMenuRenderers.js";
 import { attachAmbientBackground } from "../ambientBackground.js";
 import { applyDesignSystemAttributes } from "../../designSystem.js";
 import { devLogger } from "../../utils/logger.js";
@@ -661,6 +664,7 @@ export class VideoModal {
     this.modalZapDialogOpen = false;
     this.setupModalZapPopover();
     this.setupModalMorePopover();
+    this.setupModalSharePopover();
 
     this.refreshActiveVideoModeration({ video: this.activeVideo });
 
@@ -2220,7 +2224,8 @@ export class VideoModal {
     if (this.copyMagnetBtn) {
       this.copyMagnetBtn.addEventListener("click", this.handleCopyRequest);
     }
-    if (this.shareBtn) {
+    if (this.shareBtn && this.shareBtn.dataset.modalMenuHandler !== "true") {
+      this.shareBtn.dataset.modalMenuHandler = "true";
       this.shareBtn.addEventListener("click", this.handleShareRequest);
     }
 
@@ -2523,6 +2528,149 @@ export class VideoModal {
     this.modalMorePopover = popover;
   }
 
+  setupModalSharePopover() {
+    if (!this.shareBtn) {
+      this.modalSharePopover = null;
+      return;
+    }
+
+    const documentRef =
+      this.shareBtn.ownerDocument ||
+      this.document ||
+      (typeof document !== "undefined" ? document : null);
+
+    const render = ({ document: doc, close }) => {
+      const panel = this.buildModalShareMenuPanel({ document: doc, close });
+      return panel;
+    };
+
+    const popover = createPopover(this.shareBtn, render, {
+      document: documentRef,
+      placement: "bottom-end",
+      restoreFocusOnClose: true,
+    });
+
+    if (!popover) {
+      this.modalSharePopover = null;
+      return;
+    }
+
+    const originalOpen = popover.open?.bind(popover);
+    if (originalOpen) {
+      popover.open = async (...args) => {
+        this.refreshModalShareMenuPanel();
+        return originalOpen(...args);
+      };
+    }
+
+    const originalDestroy = popover.destroy?.bind(popover);
+    if (originalDestroy) {
+      popover.destroy = (...args) => {
+        originalDestroy(...args);
+        if (this.modalSharePopover === popover) {
+          this.modalSharePopover = null;
+        }
+      };
+    }
+
+    this.shareBtn.dataset.shareMenuToggleBound = "true";
+    this.modalSharePopover = popover;
+  }
+
+  buildModalShareMenuPanel({ document: doc, close }) {
+    const isLoggedIn =
+      this.commentComposerState.reason !== "login-required" &&
+      !this.commentComposerState.disabled;
+
+    const hasMagnet = Boolean(
+      (typeof this.activeVideo?.magnet === "string" &&
+        this.activeVideo.magnet.trim()) ||
+        this.activeVideo?.torrentSupported
+    );
+
+    const hasCdn = Boolean(
+      typeof this.activeVideo?.url === "string" && this.activeVideo.url.trim()
+    );
+
+    const panel = createVideoShareMenuPanel({
+      document: doc,
+      video: this.activeVideo,
+      isLoggedIn,
+      hasMagnet,
+      hasCdn,
+      context: "modal",
+    });
+
+    if (!panel) {
+      return null;
+    }
+
+    const buttons = panel.querySelectorAll("button[data-action]");
+    buttons.forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const dataset = {};
+        Object.entries(button.dataset || {}).forEach(([key, value]) => {
+          dataset[key] = value;
+        });
+        if (!dataset.context) {
+          dataset.context = "modal";
+        }
+
+        const action = dataset.action || "";
+
+        // Map menu actions to events
+        if (action === "share") {
+          this.dispatch("video:share", { video: this.activeVideo });
+        } else if (action === "share-nostr") {
+          this.dispatch("video:share-nostr", { video: this.activeVideo });
+        } else if (action === "copy-magnet") {
+          this.dispatch("video:copy-magnet", { video: this.activeVideo });
+        } else if (action === "copy-cdn") {
+          this.dispatch("video:copy-cdn", { video: this.activeVideo });
+        }
+
+        if (typeof close === "function") {
+          close({ reason: "action" });
+        }
+      });
+    });
+
+    return panel;
+  }
+
+  refreshModalShareMenuPanel() {
+    if (!this.modalSharePopover) {
+      return;
+    }
+
+    const existingPanel = this.modalSharePopover.getPanel?.();
+    const documentRef =
+      existingPanel?.ownerDocument ||
+      this.shareBtn?.ownerDocument ||
+      this.document ||
+      (typeof document !== "undefined" ? document : null);
+
+    if (!documentRef) {
+      return;
+    }
+
+    const nextPanel = this.buildModalShareMenuPanel({
+      document: documentRef,
+      close: (options) => this.modalSharePopover?.close(options),
+    });
+
+    if (!nextPanel) {
+      return;
+    }
+
+    if (existingPanel && existingPanel.parentNode) {
+      existingPanel.parentNode.replaceChild(nextPanel, existingPanel);
+    }
+  }
+
   buildModalMoreMenuPanel({ document: doc, close }) {
     const panel = createVideoMoreMenuPanel({
       document: doc,
@@ -2675,10 +2823,19 @@ export class VideoModal {
 
   handleShareRequest(event) {
     event?.preventDefault?.();
+    event?.stopPropagation?.();
     if (this.shareBtn?.disabled) {
       return;
     }
-    this.dispatch("video:share", { video: this.activeVideo });
+    if (this.modalSharePopover?.toggle) {
+      this.modalSharePopover.toggle();
+      return;
+    }
+    if (this.modalSharePopover?.isOpen?.()) {
+      this.modalSharePopover.close?.();
+    } else {
+      this.modalSharePopover?.open?.();
+    }
   }
 
   handleCreatorNavigation(event) {

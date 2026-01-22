@@ -445,6 +445,29 @@ class Application {
           this.videoModal &&
           typeof this.videoModal.addEventListener === "function"
         ) {
+          this.videoModal.addEventListener("video:share-nostr", () => {
+            this.showStatus(
+              "Sharing on Nostr is not implemented yet. Coming soon!",
+            );
+          });
+
+          this.videoModal.addEventListener("video:copy-cdn", (event) => {
+            const video = event?.detail?.video || this.currentVideo;
+            const url = video?.url || "";
+            if (!url) {
+              this.showError("No CDN link available to copy.");
+              return;
+            }
+            navigator.clipboard
+              .writeText(url)
+              .then(() => this.showSuccess("CDN link copied to clipboard!"))
+              .catch(() => this.showError("Failed to copy CDN link."));
+          });
+
+          this.videoModal.addEventListener("video:copy-magnet", () => {
+            this.handleCopyMagnet();
+          });
+
           this.videoModal.addEventListener("playback:switch-source", (event) => {
             const detail = event?.detail || {};
             const { source } = detail;
@@ -5094,11 +5117,6 @@ class Application {
     }
   }
 
-  setCopyMagnetState(enabled) {
-    if (this.videoModal) {
-      this.videoModal.setCopyEnabled(enabled);
-    }
-  }
 
   setShareButtonState(enabled) {
     if (this.videoModal) {
