@@ -1051,6 +1051,7 @@
   }
 
   .card {
+    min-width: 0;
     --video-card-lift-translate-y: 0;
     --video-card-backdrop-opacity: 0;
     --video-card-backdrop-translate-y: var(--space-md-plus);
