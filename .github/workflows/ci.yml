@@ -70,12 +70,52 @@ jobs:
             test-results
           if-no-files-found: ignore
 
-      - name: Run unit tests
-        run: npm run test:unit
-
       - name: Fail if visual regressions detected
         if: steps.visual.outcome == 'failure'
         run: exit 1
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [20]
+        shard: [1, 2, 3]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Cache npm directory
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ matrix.node-version }}-npm-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-${{ matrix.node-version }}-npm-
+
+      - name: Cache node_modules
+        id: node-modules-cache
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-${{ matrix.node-version }}-modules-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-${{ matrix.node-version }}-modules-
+
+      - name: Install dependencies
+        if: steps.node-modules-cache.outputs.cache-hit != 'true'
+        run: npm ci
+
+      - name: Run unit tests (shard ${{ matrix.shard }}/3)
+        env:
+          UNIT_TEST_TIMEOUT_MS: 300000
+        run: npm run test:unit:shard${{ matrix.shard }}
 
   dm-unit-tests:
     runs-on: ubuntu-latest

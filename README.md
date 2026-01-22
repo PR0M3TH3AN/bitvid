@@ -387,7 +387,7 @@ placeholder at “—” and development builds log a warning—so mixed deploym
 4. **Make Changes**:
    - Ensure your code follows best practices and is well-documented.
 5. **Test**:
-   - Run unit tests: `npm run test:unit`
+   - Run unit tests: `npm run test:unit` (or a shard like `npm run test:unit:shard1`)
    - Validate the site functionality locally before submitting.
 6. **Submit a Pull Request**:
    - Explain your changes and reference any related issues.
@@ -405,8 +405,12 @@ placeholder at “—” and development builds log a warning—so mixed deploym
 
 Continuous integration runs CSS linting/builds, the DM unit/integration suites, the Playwright kitchen-sink snapshots, headless E2E flows, and the Node-based unit tests on every push.
 Before pushing, run `npm run build` locally so the Tailwind bundle regenerates.
-Pair that with `npm run test:unit` for application logic changes and
-`npm run test:visual` for presentation updates to mirror the CI surface area.
+Pair that with `npm run test:unit` for application logic changes, or a shard
+(`npm run test:unit:shard1`, `test:unit:shard2`, `test:unit:shard3`) when you want to
+split the suite. You can also set `UNIT_TEST_SHARD=1/3` or pass `--shard=1/3`
+to `scripts/run-unit-tests.mjs` for custom shard splits, and use
+`UNIT_TEST_TIMEOUT_MS=120000` to abort a single stalled test file without
+blocking the entire run. `npm run test:visual` covers presentation updates to mirror the CI surface area.
 For DM-specific changes, also run `npm run test:dm:unit` and
 `npm run test:dm:integration` to cover the direct message flows.
 Use `npm run test:e2e` to execute the headless Playwright journeys in `tests/e2e`.
