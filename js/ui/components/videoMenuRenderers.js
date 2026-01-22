@@ -309,6 +309,66 @@ export function createVideoMoreMenuPanel({
   return panel;
 }
 
+export function createVideoShareMenuPanel({
+  document: documentRef = null,
+  video = null,
+  isLoggedIn = false,
+  hasMagnet = false,
+  hasCdn = false,
+  designSystem = null,
+} = {}) {
+  const doc = resolveDocument(documentRef);
+  if (!doc) {
+    return null;
+  }
+  normalizeDesignSystemContext(designSystem);
+
+  const metadata = resolveVideoMetadata(video);
+  const { panel, list } = ensureMenuContainer(doc, ["w-48", "p-0"]);
+  panel.dataset.menu = "video-share";
+
+  appendMenuAction(doc, list, {
+    text: "Copy URL",
+    action: "share",
+    dataset: { eventId: metadata.id },
+  });
+
+  const nostrBtn = appendMenuAction(doc, list, {
+    text: "Share on Nostr",
+    action: "share-nostr",
+    dataset: { eventId: metadata.id },
+  });
+  if (!isLoggedIn) {
+    nostrBtn.disabled = true;
+    nostrBtn.classList.add("opacity-50", "cursor-not-allowed");
+    nostrBtn.title = "Log in to share on Nostr";
+  }
+
+  const magnetBtn = appendMenuAction(doc, list, {
+    text: "Copy Magnet",
+    action: "copy-magnet",
+    dataset: { eventId: metadata.id },
+  });
+  if (!hasMagnet) {
+    magnetBtn.disabled = true;
+    magnetBtn.classList.add("opacity-50", "cursor-not-allowed");
+    magnetBtn.title = "No magnet link available";
+  }
+
+  const cdnBtn = appendMenuAction(doc, list, {
+    text: "Copy CDN Link",
+    action: "copy-cdn",
+    dataset: { eventId: metadata.id },
+  });
+  if (!hasCdn) {
+    cdnBtn.disabled = true;
+    cdnBtn.classList.add("opacity-50", "cursor-not-allowed");
+    cdnBtn.title = "No CDN link available";
+  }
+
+  return panel;
+}
+
 export function createChannelProfileMenuPanel({
   document: documentRef = null,
   context = "channel-profile",

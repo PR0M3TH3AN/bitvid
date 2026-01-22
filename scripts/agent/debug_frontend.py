@@ -1,30 +1,29 @@
 from playwright.sync_api import sync_playwright
-import sys
 import time
+import sys
 
 def run():
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch()
         page = browser.new_page()
 
-        # Subscribe to console messages
+        print("--- Console Messages ---")
         page.on("console", lambda msg: print(f"console:{msg.type}: {msg.text}"))
 
-        # Subscribe to uncaught exceptions
+        print("--- Page Errors ---")
         page.on("pageerror", lambda exc: print(f"pageerror: {exc}"))
 
-        # Subscribe to failed network requests
+        print("--- Failed Requests ---")
         page.on("requestfailed", lambda req: print(f"requestfailed: {req.url} {req.failure}"))
 
         try:
-            # Navigate to localhost
-            page.goto("http://localhost:8000", wait_until="networkidle")
-            # Wait a bit for async operations
-            time.sleep(2)
+            page.goto("http://localhost:8000")
+            # Wait for potential initialization errors
+            time.sleep(5)
         except Exception as e:
-            print(f"Error navigating: {e}")
-        finally:
-            browser.close()
+            print(f"Navigation failed: {e}")
+
+        browser.close()
 
 if __name__ == "__main__":
     run()

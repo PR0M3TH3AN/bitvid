@@ -1,81 +1,47 @@
 
-import { normalizeAndAugmentMagnet } from '../../js/magnetUtils.js';
-import { getRandomFuzzInput } from './fuzz-utils.mjs';
-import fs from 'fs';
-import path from 'path';
+import { normalizeAndAugmentMagnet } from "../../js/magnetUtils.js";
+import { runFuzzer, randomString, randomInt, randomJSON, randomHex, randomBoolean, randomItem } from "./fuzz-shared.mjs";
 
-const REPRODUCERS_DIR = 'examples/reproducers/magnetUtils';
-fs.mkdirSync(REPRODUCERS_DIR, { recursive: true });
+async function fuzzMagnetUtils(iteration) {
+  const baseMagnets = [
+    "magnet:?xt=urn:btih:" + randomHex(40),
+    "magnet:?xt=urn:btih:" + randomHex(40).toUpperCase(),
+    "magnet:?xt=urn:btih:" + randomString(40), // Invalid hex
+    "magnet:?xt=urn:btih:" + randomHex(40) + "&dn=" + randomString(10),
+    "magnet:?xt=urn:btih:" + randomHex(40) + "&tr=" + encodeURIComponent("wss://" + randomString(10) + ".com"),
+    randomString(100),
+    ""
+  ];
 
-const failures = [];
+  const rawValue = Math.random() < 0.8 ? randomItem(baseMagnets) : randomString(100);
 
-function recordFailure(target, input, error) {
-    const id = Date.now() + Math.random().toString(36).substring(7);
-    const filename = path.join(REPRODUCERS_DIR, `${target}-${id}.json`);
+  const options = {
+    webSeed: Math.random() < 0.5 ? randomString(20) : [randomString(20), randomString(20)],
+    torrentUrl: Math.random() < 0.5 ? "https://" + randomString(10) + ".com/file.torrent" : randomString(20),
+    xs: Math.random() < 0.5 ? "https://" + randomString(10) + ".com/file.torrent" : randomString(20),
+    extraTrackers: Math.random() < 0.5 ? ["wss://" + randomString(10) + ".com"] : randomJSON(1, 2),
+    appProtocol: randomItem(["http:", "https:", "magnet:", randomString(5)])
+  };
 
-    // Handle circular input for logging
-    let safeInput = input;
-    try {
-        JSON.stringify(input);
-    } catch {
-        safeInput = "[Circular or non-serializable input]";
-    }
+  // Malformed options
+  if (Math.random() < 0.1) {
+    options.webSeed = 123;
+  }
+  if (Math.random() < 0.1) {
+    options.extraTrackers = "string";
+  }
 
-    const report = {
-        target,
-        input: safeInput,
-        error: {
-            message: error.message,
-            stack: error.stack
-        }
-    };
+  const input = {
+    rawValue,
+    options
+  };
 
-    fs.writeFileSync(filename, JSON.stringify(report, null, 2));
-    failures.push(report);
-    console.error(`[FAIL] ${target}: ${error.message} (Report saved to ${filename})`);
+  // Mock logger to avoid spamming console
+  options.logger = () => {};
+
+  normalizeAndAugmentMagnet(rawValue, options);
+
+  return input;
 }
 
-function runFuzz(name, fn, inputGenerator, iterations = 1000) {
-    console.log(`Fuzzing ${name} for ${iterations} iterations...`);
-    for (let i = 0; i < iterations; i++) {
-        const input = inputGenerator();
-        try {
-            fn(input);
-        } catch (error) {
-            recordFailure(name, input, error);
-        }
-    }
-}
-
-const wrapper = (input) => {
-    // input is fuzzy junk.
-    // normalizeAndAugmentMagnet(rawValue, options)
-
-    let rawValue = input;
-    let options = {};
-
-    if (typeof input === 'object' && input !== null && !Array.isArray(input)) {
-        rawValue = input.rawValue || getRandomFuzzInput();
-        options = input.options || {
-            webSeed: getRandomFuzzInput(),
-            torrentUrl: getRandomFuzzInput(),
-            xs: getRandomFuzzInput(),
-            extraTrackers: getRandomFuzzInput()
-        };
-    }
-
-    // Deterministic execution: input fully defines execution path.
-    normalizeAndAugmentMagnet(rawValue, options);
-};
-
-runFuzz('normalizeAndAugmentMagnet', wrapper, getRandomFuzzInput);
-
-// Write summary
-fs.writeFileSync('artifacts/fuzz-report-magnetUtils.json', JSON.stringify(failures, null, 2));
-if (failures.length > 0) {
-    console.log(`\nFuzzing finished with ${failures.length} failures.`);
-    process.exit(1);
-} else {
-    console.log("\nFuzzing finished with 0 failures.");
-    process.exit(0);
-}
+runFuzzer("magnetUtils", fuzzMagnetUtils, 10000); // Fast, so more iterations

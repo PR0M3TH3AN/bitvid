@@ -1,11 +1,33 @@
 <div class="fade-in bv-stack">
-  <header class="mb-4">
+  <header class="flex items-center gap-2 mb-4">
     <h1
       id="searchTitle"
       class="text-2xl font-bold tracking-tight text-text-strong"
     >
       Search Results
     </h1>
+    <button
+      type="button"
+      id="searchInfoTrigger"
+      class="text-muted hover:text-text focus:outline-none transition-colors"
+      aria-label="How is this feed sorted?"
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        class="w-5 h-5"
+        aria-hidden="true"
+      >
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="16" x2="12" y2="12"></line>
+        <line x1="12" y1="8" x2="12.01" y2="8"></line>
+      </svg>
+    </button>
   </header>
 
   <section class="bv-stack">
@@ -17,6 +39,9 @@
       class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
     >
       <!-- Channel cards injected here -->
+    </div>
+    <div id="searchChannelShowMore" class="hidden flex justify-center mt-2">
+      <button class="btn-ghost" data-size="sm">Show More</button>
     </div>
   </section>
 

@@ -19,6 +19,7 @@ import {
 } from "./ui/moderationUiHelpers.js";
 import { buildModerationBadgeText } from "./ui/moderationCopy.js";
 import { formatShortNpub } from "./utils/formatters.js";
+import { attachFeedInfoPopover } from "./ui/components/FeedInfoPopover.js";
 
 export const WATCH_HISTORY_EMPTY_COPY =
   "Your watch history is empty. Watch some videos to populate this list.";
@@ -2475,6 +2476,13 @@ export function createWatchHistoryRenderer(config = {}) {
 export const watchHistoryRenderer = createWatchHistoryRenderer();
 
 export async function initHistoryView() {
+  const infoTrigger = document.getElementById("historyInfoTrigger");
+  if (infoTrigger) {
+    attachFeedInfoPopover(
+      infoTrigger,
+      "Chronological list of videos you have watched."
+    );
+  }
   await watchHistoryRenderer.init();
 }
 

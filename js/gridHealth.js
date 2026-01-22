@@ -212,7 +212,7 @@ function queueProbe(magnet, cacheKey, priority = 0) {
 }
 
 const PROBE_CACHE_TTL_MS = 5 * 60 * 1000;
-const PROBE_TIMEOUT_MS = 8000;
+const PROBE_TIMEOUT_MS = 20000;
 const PROBE_CONCURRENCY = 96;
 const PROBE_POLL_COUNT = 3;
 const PRIORITY_BASELINE = 1_000_000;

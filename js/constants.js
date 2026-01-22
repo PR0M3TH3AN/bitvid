@@ -106,11 +106,10 @@ function sanitizeTrustSeedList(candidate) {
 
 const DEFAULT_WSS_TRACKERS = Object.freeze([
   "wss://tracker.openwebtorrent.com",
-  "wss://tracker.ghostchu-services.top:443/announce",
   "wss://tracker.files.fm:7073/announce",
-  "wss://tracker.dler.org:443/announce",
   "wss://tracker.btorrent.xyz",
   "wss://tracker.novage.com.ua:443/announce",
+  "wss://tracker.webtorrent.dev",
 ]);
 
 const SANITIZED_DEFAULT_BLUR_THRESHOLD = coerceNonNegativeInteger(

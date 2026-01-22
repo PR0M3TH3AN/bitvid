@@ -150,6 +150,7 @@ import {
   urlHealthConstants,
 } from "./state/cache.js";
 import ApplicationBootstrap from "./ui/applicationBootstrap.js";
+import EngagementController from "./ui/engagementController.js";
 import SimilarContentController from "./ui/similarContentController.js";
 import VideoModalCommentController from "./ui/videoModalCommentController.js";
 import TorrentStatusController from "./ui/torrentStatusController.js";
@@ -288,6 +289,21 @@ class Application {
 
     this.moderationDecorator = new ModerationDecorator({
       getProfileCacheEntry: (pubkey) => this.getProfileCacheEntry(pubkey),
+    });
+
+    this.engagementController = new EngagementController({
+      services: {
+        nostrClient,
+      },
+      ui: {
+        showError: (msg) => this.showError(msg),
+        showSuccess: (msg) => this.showSuccess(msg),
+        showStatus: (msg, opts) => this.showStatus(msg, opts),
+      },
+      state: {
+        getCurrentVideo: () => this.currentVideo,
+        getCurrentVideoPointer: () => this.currentVideoPointer,
+      },
     });
 
     this.initializeModerationActionController();
@@ -445,6 +461,29 @@ class Application {
           this.videoModal &&
           typeof this.videoModal.addEventListener === "function"
         ) {
+          this.videoModal.addEventListener("video:share-nostr", () => {
+            this.showStatus(
+              "Sharing on Nostr is not implemented yet. Coming soon!",
+            );
+          });
+
+          this.videoModal.addEventListener("video:copy-cdn", (event) => {
+            const video = event?.detail?.video || this.currentVideo;
+            const url = video?.url || "";
+            if (!url) {
+              this.showError("No CDN link available to copy.");
+              return;
+            }
+            navigator.clipboard
+              .writeText(url)
+              .then(() => this.showSuccess("CDN link copied to clipboard!"))
+              .catch(() => this.showError("Failed to copy CDN link."));
+          });
+
+          this.videoModal.addEventListener("video:copy-magnet", () => {
+            this.handleCopyMagnet();
+          });
+
           this.videoModal.addEventListener("playback:switch-source", (event) => {
             const detail = event?.detail || {};
             const { source } = detail;
@@ -497,12 +536,13 @@ class Application {
 
             if (source === "torrent" && hasActivePeers === false) {
               userLogger.warn(
-                "[app] Unable to switch to torrent playback: no active peers.",
+                "[app] Switching to torrent playback despite 0 active peers detected.",
               );
-              this.showError(
-                "Torrent playback is unavailable right now because there are no active peers.",
+              this.showStatus(
+                "Warning: No peers detected. Playback may fail or stall.",
+                { autoHideMs: 5000 }
               );
-              return;
+              // Proceed anyway
             }
 
             if (source === "url" && cdnUnavailable) {
@@ -4044,6 +4084,11 @@ class Application {
     if (forYouLink) {
       forYouLink.classList.remove("hidden");
     }
+
+    const exploreLink = this.resolveExploreLink();
+    if (exploreLink) {
+      exploreLink.classList.remove("hidden");
+    }
   }
 
   applyLoggedOutUiState() {
@@ -4082,6 +4127,11 @@ class Application {
     const forYouLink = this.resolveForYouLink();
     if (forYouLink) {
       forYouLink.classList.add("hidden");
+    }
+
+    const exploreLink = this.resolveExploreLink();
+    if (exploreLink) {
+      exploreLink.classList.add("hidden");
     }
   }
 
@@ -4154,10 +4204,29 @@ class Application {
     return null;
   }
 
+  resolveExploreLink() {
+    if (
+      this.exploreLink instanceof HTMLElement &&
+      this.exploreLink.isConnected
+    ) {
+      return this.exploreLink;
+    }
+
+    const linkCandidate = document.getElementById("exploreLink");
+    if (linkCandidate instanceof HTMLElement) {
+      this.exploreLink = linkCandidate;
+      return this.exploreLink;
+    }
+
+    this.exploreLink = null;
+    return null;
+  }
+
   hydrateSidebarNavigation() {
     const chromeElements = this.refreshChromeElements();
     this.resolveSubscriptionsLink();
     this.resolveForYouLink();
+    this.resolveExploreLink();
 
     if (this.appChromeController) {
       if (typeof this.appChromeController.setElements === "function") {
@@ -5093,11 +5162,6 @@ class Application {
     }
   }
 
-  setCopyMagnetState(enabled) {
-    if (this.videoModal) {
-      this.videoModal.setCopyEnabled(enabled);
-    }
-  }
 
   setShareButtonState(enabled) {
     if (this.videoModal) {
@@ -6595,7 +6659,19 @@ class Application {
   }
 
   decorateVideoModeration(video, feedContext = {}) {
-    return this.moderationDecorator.decorateVideo(video, feedContext);
+    const decorated = this.moderationDecorator.decorateVideo(video, feedContext);
+    if (
+      video &&
+      video.pubkey &&
+      this.isAuthorBlocked(video.pubkey) &&
+      decorated &&
+      decorated.moderation
+    ) {
+      decorated.moderation.viewerMuted = true;
+      decorated.moderation.hidden = true;
+      decorated.moderation.hideReason = "viewer-block";
+    }
+    return decorated;
   }
 
   initializeModerationActionController() {
@@ -7030,37 +7106,6 @@ class Application {
     }
   }
 
-  derivePointerFromDataset(dataset = {}, context = "") {
-    const type =
-      typeof dataset.pointerType === "string" ? dataset.pointerType.trim() : "";
-    const value =
-      typeof dataset.pointerValue === "string" ? dataset.pointerValue.trim() : "";
-    const relay =
-      typeof dataset.pointerRelay === "string" ? dataset.pointerRelay.trim() : "";
-
-    if (type && value) {
-      return relay ? [type, value, relay] : [type, value];
-    }
-
-    if (
-      context === "modal" &&
-      Array.isArray(this.currentVideoPointer) &&
-      this.currentVideoPointer.length >= 2
-    ) {
-      return this.currentVideoPointer;
-    }
-
-    if (
-      context === "modal" &&
-      Array.isArray(this.currentVideo?.pointer) &&
-      this.currentVideo.pointer.length >= 2
-    ) {
-      return this.currentVideo.pointer;
-    }
-
-    return null;
-  }
-
   async handleMoreMenuAction(action, dataset = {}) {
     if (!this.moreMenuController) {
       return;
@@ -7070,332 +7115,20 @@ class Application {
   }
 
   async handleRepostAction(dataset = {}) {
-    const context = typeof dataset.context === "string" ? dataset.context : "";
-    const explicitEventId =
-      typeof dataset.eventId === "string" && dataset.eventId.trim()
-        ? dataset.eventId.trim()
-        : "";
-    const fallbackEventId =
-      context === "modal" && this.currentVideo?.id ? this.currentVideo.id : "";
-    const targetEventId = explicitEventId || fallbackEventId;
-
-    if (!targetEventId) {
-      this.showError("No event is available to repost.");
-      return;
-    }
-
-    const pointer = this.derivePointerFromDataset(dataset, context);
-
-    let author = typeof dataset.author === "string" ? dataset.author.trim() : "";
-    if (!author && context === "modal" && this.currentVideo?.pubkey) {
-      author = this.currentVideo.pubkey;
-    }
-
-    const rawKindValue = (() => {
-      if (typeof dataset.kind === "string" && dataset.kind.trim()) {
-        const parsed = Number.parseInt(dataset.kind.trim(), 10);
-        return Number.isFinite(parsed) ? parsed : null;
-      }
-      if (Number.isFinite(dataset.kind)) {
-        return Number(dataset.kind);
-      }
-      if (Number.isFinite(this.currentVideo?.kind)) {
-        return Number(this.currentVideo.kind);
-      }
-      return null;
-    })();
-
-    const options = {
-      pointer,
-      pointerType: dataset.pointerType,
-      pointerValue: dataset.pointerValue,
-      pointerRelay: dataset.pointerRelay,
-      authorPubkey: author,
-    };
-
-    if (Number.isFinite(rawKindValue)) {
-      options.kind = Math.floor(rawKindValue);
-    }
-
-    try {
-      const result = await nostrClient.repostEvent(targetEventId, options);
-
-      if (!result?.ok) {
-        const code = result?.error || "repost-failed";
-        switch (code) {
-          case "invalid-event-id":
-            this.showError("No event is available to repost.");
-            break;
-          case "missing-actor":
-            this.showError(
-              "Cannot sign the repost right now. Please refresh and try again.",
-            );
-            break;
-          case "pool-unavailable":
-            this.showError("Cannot reach relays right now. Please try again later.");
-            break;
-          case "publish-rejected":
-            this.showError("No relay accepted the repost attempt.");
-            break;
-          case "signing-failed":
-            this.showError("Failed to sign the repost. Please try again.");
-            break;
-          default:
-            this.showError("Failed to repost the video. Please try again later.");
-            break;
-        }
-        return;
-      }
-
-      const acceptedCount = Array.isArray(result.summary?.accepted)
-        ? result.summary.accepted.length
-        : 0;
-      const relayCount =
-        acceptedCount > 0
-          ? acceptedCount
-          : Array.isArray(result.relays)
-          ? result.relays.length
-          : acceptedCount;
-
-      const fragments = [];
-      if (relayCount > 0) {
-        fragments.push(
-          `Reposted to ${relayCount} relay${relayCount === 1 ? "" : "s"}.`,
-        );
-      } else {
-        fragments.push("Reposted.");
-      }
-
-      if (result.sessionActor) {
-        fragments.push("Boost as session user.");
-      }
-
-      this.showSuccess(fragments.join(" ").trim());
-    } catch (error) {
-      devLogger.warn("[app] Repost action failed:", error);
-      this.showError("Failed to repost the video. Please try again later.");
+    if (this.engagementController) {
+      return this.engagementController.handleRepostAction(dataset);
     }
   }
 
   async handleMirrorAction(dataset = {}) {
-    const context = typeof dataset.context === "string" ? dataset.context : "";
-    const explicitEventId =
-      typeof dataset.eventId === "string" && dataset.eventId.trim()
-        ? dataset.eventId.trim()
-        : "";
-    const fallbackEventId =
-      context === "modal" && this.currentVideo?.id ? this.currentVideo.id : "";
-    const targetEventId = explicitEventId || fallbackEventId;
-
-    if (!targetEventId) {
-      this.showError("No event is available to mirror.");
-      return;
-    }
-
-    const explicitUrl =
-      typeof dataset.url === "string" && dataset.url.trim() ? dataset.url.trim() : "";
-    const fallbackUrl =
-      context === "modal" && typeof this.currentVideo?.url === "string"
-        ? this.currentVideo.url.trim()
-        : "";
-    const targetUrl = explicitUrl || fallbackUrl;
-
-    if (!targetUrl) {
-      this.showError("This video does not expose a hosted URL to mirror.");
-      return;
-    }
-
-    const rawMagnet =
-      typeof dataset.magnet === "string" && dataset.magnet.trim()
-        ? dataset.magnet.trim()
-        : "";
-    const fallbackMagnet =
-      context === "modal"
-        ? (this.currentVideo?.magnet || this.currentVideo?.originalMagnet || "")
-        : "";
-    const magnet = rawMagnet || fallbackMagnet;
-
-    const thumbnail =
-      typeof dataset.thumbnail === "string" && dataset.thumbnail.trim()
-        ? dataset.thumbnail.trim()
-        : context === "modal" && typeof this.currentVideo?.thumbnail === "string"
-        ? this.currentVideo.thumbnail.trim()
-        : "";
-
-    const description =
-      typeof dataset.description === "string" && dataset.description.trim()
-        ? dataset.description.trim()
-        : context === "modal" && typeof this.currentVideo?.description === "string"
-        ? this.currentVideo.description.trim()
-        : "";
-
-    const title =
-      typeof dataset.title === "string" && dataset.title.trim()
-        ? dataset.title.trim()
-        : context === "modal" && typeof this.currentVideo?.title === "string"
-        ? this.currentVideo.title.trim()
-        : "";
-
-    const datasetPrivate =
-      dataset.isPrivate === "true" || dataset.isPrivate === true ? true : false;
-    const fallbackPrivate = context === "modal" && this.currentVideo?.isPrivate === true;
-    const isPrivate = datasetPrivate || fallbackPrivate;
-
-    if (isPrivate) {
-      this.showError("Mirroring is unavailable for private videos.");
-      return;
-    }
-
-    const options = {
-      url: targetUrl,
-      magnet,
-      thumbnail,
-      description,
-      title,
-      isPrivate,
-    };
-
-    try {
-      const result = await nostrClient.mirrorVideoEvent(targetEventId, options);
-
-      if (!result?.ok) {
-        const code = result?.error || "mirror-failed";
-        switch (code) {
-          case "invalid-event-id":
-            this.showError("No event is available to mirror.");
-            break;
-          case "missing-url":
-            this.showError("This video does not expose a hosted URL to mirror.");
-            break;
-          case "missing-actor":
-            this.showError(
-              "Cannot sign the mirror right now. Please refresh and try again.",
-            );
-            break;
-          case "pool-unavailable":
-            this.showError("Cannot reach relays right now. Please try again later.");
-            break;
-          case "publish-rejected":
-            this.showError("No relay accepted the mirror attempt.");
-            break;
-          case "signing-failed":
-            this.showError("Failed to sign the mirror. Please try again.");
-            break;
-          default:
-            this.showError("Failed to mirror the video. Please try again later.");
-            break;
-        }
-        return;
-      }
-
-      const acceptedCount = Array.isArray(result.summary?.accepted)
-        ? result.summary.accepted.length
-        : 0;
-      const relayCount =
-        acceptedCount > 0
-          ? acceptedCount
-          : Array.isArray(result.relays)
-          ? result.relays.length
-          : acceptedCount;
-
-      const fragments = [];
-      if (relayCount > 0) {
-        fragments.push(
-          `Mirrored to ${relayCount} relay${relayCount === 1 ? "" : "s"}.`,
-        );
-      } else {
-        fragments.push("Mirrored.");
-      }
-
-      if (result.sessionActor) {
-        fragments.push("Boost as session user.");
-      }
-
-      this.showSuccess(fragments.join(" ").trim());
-    } catch (error) {
-      devLogger.warn("[app] Mirror action failed:", error);
-      this.showError("Failed to mirror the video. Please try again later.");
+    if (this.engagementController) {
+      return this.engagementController.handleMirrorAction(dataset);
     }
   }
 
   async handleEnsurePresenceAction(dataset = {}) {
-    const context = typeof dataset.context === "string" ? dataset.context : "";
-    const explicitEventId =
-      typeof dataset.eventId === "string" && dataset.eventId.trim()
-        ? dataset.eventId.trim()
-        : "";
-    const fallbackEventId =
-      context === "modal" && this.currentVideo?.id ? this.currentVideo.id : "";
-    const targetEventId = explicitEventId || fallbackEventId;
-
-    if (!targetEventId) {
-      this.showError("No event is available to rebroadcast.");
-      return;
-    }
-
-    const explicitPubkey =
-      typeof dataset.pubkey === "string" && dataset.pubkey.trim()
-        ? dataset.pubkey.trim()
-        : "";
-    const datasetAuthor =
-      typeof dataset.author === "string" && dataset.author.trim()
-        ? dataset.author.trim()
-        : "";
-    const fallbackPubkey =
-      context === "modal" && typeof this.currentVideo?.pubkey === "string"
-        ? this.currentVideo.pubkey
-        : datasetAuthor;
-    const targetPubkey = explicitPubkey || fallbackPubkey || "";
-
-    try {
-      const result = await nostrClient.rebroadcastEvent(targetEventId, {
-        pubkey: targetPubkey,
-      });
-
-      if (result?.throttled) {
-        const remainingMs = Math.max(0, Number(result?.cooldown?.remainingMs) || 0);
-        const remainingSeconds = Math.ceil(remainingMs / 1000);
-        const message =
-          remainingSeconds > 0
-            ? `Rebroadcast is cooling down. Try again in ${remainingSeconds}s.`
-            : "Rebroadcast is cooling down. Try again soon.";
-        this.showStatus(message);
-        if (typeof window !== "undefined" && typeof window.setTimeout === "function") {
-          window.setTimeout(() => {
-            this.showStatus("");
-          }, 5000);
-        }
-        return;
-      }
-
-      if (!result?.ok) {
-        const code = result?.error || "rebroadcast-failed";
-        switch (code) {
-          case "event-not-found":
-            this.showError("Original event payload is unavailable. Reload and try again.");
-            break;
-          case "publish-rejected":
-            this.showError("No relay accepted the rebroadcast attempt.");
-            break;
-          case "pool-unavailable":
-            this.showError("Cannot reach relays right now. Please try again later.");
-            break;
-          default:
-            this.showError("Failed to rebroadcast. Please try again later.");
-            break;
-        }
-        return;
-      }
-
-      if (result?.alreadyPresent) {
-        this.showSuccess("Relays already have this revision.");
-        return;
-      }
-
-      this.showSuccess("Rebroadcast requested across relays.");
-    } catch (error) {
-      devLogger.warn("[app] Rebroadcast action failed:", error);
-      this.showError("Failed to rebroadcast. Please try again later.");
+    if (this.engagementController) {
+      return this.engagementController.handleEnsurePresenceAction(dataset);
     }
   }
 
@@ -8458,7 +8191,7 @@ class Application {
       this.currentVideo.torrentSupported = !!magnetForPlayback;
     }
     this.currentMagnetUri = magnetForPlayback || null;
-    this.setCopyMagnetState(!!magnetForPlayback);
+    // this.setCopyMagnetState(!!magnetForPlayback); // Removed
 
     const unsubscribers = [];
     const subscribe = (eventName, handler) => {
@@ -8756,8 +8489,8 @@ class Application {
 
     this.currentMagnetUri = sanitizedMagnet || null;
 
-    this.setCopyMagnetState(!!sanitizedMagnet);
-    this.setShareButtonState(true);
+    // this.setCopyMagnetState(!!sanitizedMagnet); // Removed
+    // this.setShareButtonState(true); // Moved to after showModalWithPoster
 
     const nevent = window.NostrTools.nip19.neventEncode({ id: eventId });
     const pushUrl =
@@ -8779,6 +8512,8 @@ class Application {
       "";
 
     await this.showModalWithPoster(this.currentVideo);
+
+    this.setShareButtonState(true);
 
     this.commentController?.load(this.currentVideo);
 
@@ -9130,8 +8865,8 @@ class Application {
 
     this.currentMagnetUri = sanitizedMagnet || null;
 
-    this.setCopyMagnetState(!!sanitizedMagnet);
-    this.setShareButtonState(false);
+    // this.setCopyMagnetState(!!sanitizedMagnet);
+    // this.setShareButtonState(false);
 
     if (this.videoModal) {
       this.videoModal.updateMetadata({
@@ -9148,6 +8883,8 @@ class Application {
     }
 
     await this.showModalWithPoster(this.currentVideo, hasTrigger ? { trigger } : {});
+
+    this.setShareButtonState(false);
 
     this.commentController?.load(null);
 

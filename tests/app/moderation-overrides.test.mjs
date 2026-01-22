@@ -184,8 +184,12 @@ test("handleModerationBlock requests a block, clears overrides, and refreshes hi
   const originalIsBlocked = userBlocks.isBlocked;
 
   const ensureLoadedMock = mock.fn(async () => {});
-  const addBlockMock = mock.fn(async () => ({ ok: true }));
-  const isBlockedMock = mock.fn(() => false);
+  let blockedState = false;
+  const addBlockMock = mock.fn(async () => {
+    blockedState = true;
+    return { ok: true };
+  });
+  const isBlockedMock = mock.fn(() => blockedState);
 
   userBlocks.ensureLoaded = ensureLoadedMock;
   userBlocks.addBlock = addBlockMock;

@@ -1,134 +1,63 @@
 
-import { decryptDM } from '../../js/dmDecryptor.js';
-import { getRandomFuzzInput, randomHex, randomString } from './fuzz-utils.mjs';
-import fs from 'fs';
-import path from 'path';
+import { decryptDM } from "../../js/dmDecryptor.js";
+import { runFuzzer, randomString, randomInt, randomJSON, randomHex, randomBoolean, randomItem } from "./fuzz-shared.mjs";
 
-const REPRODUCERS_DIR = 'examples/reproducers/dmDecryptor';
-fs.mkdirSync(REPRODUCERS_DIR, { recursive: true });
+async function fuzzDmDecryptor(iteration) {
+  const schemes = ["nip04", "nip44", "nip44_v2", randomString(5)];
 
-const failures = [];
+  const mockDecryptor = (scheme) => ({
+    scheme,
+    decrypt: async (pubkey, ciphertext, options) => {
+      // Simulate random failures
+      if (Math.random() < 0.1) throw new Error("Decryption failed");
 
-function recordFailure(target, input, error) {
-    const id = Date.now() + Math.random().toString(36).substring(7);
-    const filename = path.join(REPRODUCERS_DIR, `${target}-${id}.json`);
+      // Simulate random return values
+      const type = randomInt(0, 3);
+      if (type === 0) return randomString(20);
+      if (type === 1) return JSON.stringify(randomJSON(2, 2)); // Return JSON string
+      if (type === 2) return ""; // Empty string
+      if (type === 3) return ciphertext; // Echo
+    },
+    source: "mock-fuzzer",
+    priority: randomInt(0, 10),
+    supportsGiftWrap: scheme.startsWith("nip44")
+  });
 
-    // Handle circular input for logging
-    let safeInput = input;
-    try {
-        JSON.stringify(input);
-    } catch {
-        safeInput = "[Circular or non-serializable input]";
-    }
+  const decryptors = [];
+  const numDecryptors = randomInt(0, 3);
+  for (let i = 0; i < numDecryptors; i++) {
+    decryptors.push(mockDecryptor(randomItem(schemes)));
+  }
 
-    const report = {
-        target,
-        input: safeInput,
-        error: {
-            message: error.message,
-            stack: error.stack
-        }
-    };
+  const event = {
+    kind: randomItem([4, 1059, randomInt(0, 20000)]),
+    pubkey: randomHex(64),
+    created_at: randomInt(1000000000, 2000000000),
+    tags: randomJSON(2, 3), // Tags can be anything in fuzzing
+    content: randomString(100)
+  };
 
-    fs.writeFileSync(filename, JSON.stringify(report, null, 2));
-    failures.push(report);
-    console.error(`[FAIL] ${target}: ${error.message} (Report saved to ${filename})`);
+  // Sometimes provide malformed event
+  if (Math.random() < 0.05) {
+    event.kind = "string";
+  }
+  if (Math.random() < 0.05) {
+    event.tags = "string";
+  }
+
+  const context = {
+    actorPubkey: randomHex(64),
+    decryptors
+  };
+
+  const input = {
+    event,
+    context
+  };
+
+  await decryptDM(event, context);
+
+  return input;
 }
 
-function runFuzz(name, fn, inputGenerator, iterations = 1000) {
-    console.log(`Fuzzing ${name} for ${iterations} iterations...`);
-    for (let i = 0; i < iterations; i++) {
-        const input = inputGenerator();
-        try {
-            fn(input);
-        } catch (error) {
-            recordFailure(name, input, error);
-        }
-    }
-}
-
-// Deterministic Mock decryptor factory based on input seed
-const createMockDecryptor = (seedValue) => {
-    return {
-        scheme: 'nip44_v2',
-        decrypt: async (pubkey, ciphertext, options) => {
-            // Use seed to determine behavior deterministically
-            // seedValue comes from input.
-            const mode = (typeof seedValue === 'number' ? seedValue : 0) % 10;
-
-            if (mode > 6) {
-                // Success
-                return JSON.stringify({ content: 'decrypted', pubkey: randomHex(), created_at: Date.now()/1000 });
-            } else if (mode > 3) {
-                // Garbage JSON
-                return "{ bad json";
-            } else if (mode > 1) {
-                 // Not JSON
-                 return "Just a string";
-            } else {
-                throw new Error('Decrypt failed');
-            }
-        }
-    };
-};
-
-const throwingDecryptor = {
-    scheme: 'nip44',
-    decrypt: async () => { throw new Error("Hard fail"); }
-}
-
-const wrapper = async (input) => {
-    // input is fuzzy junk.
-    // We construct a call to decryptDM(event, context)
-
-    // Deterministic randomness from input if object
-    let seed = 0;
-    if (input && typeof input === 'object') {
-        seed = Object.keys(input).length;
-    } else if (typeof input === 'string') {
-        seed = input.length;
-    } else if (typeof input === 'number') {
-        seed = Math.floor(input);
-    }
-
-    let event = input;
-
-    // Deterministically force supported kinds based on seed
-    if (typeof input === 'object' && input !== null && !Array.isArray(input)) {
-        const kinds = [4, 1059, input.kind];
-        event = {
-            ...input,
-            kind: kinds[seed % kinds.length],
-            content: input.content || 'ciphertext',
-            pubkey: input.pubkey || randomHex(),
-            tags: input.tags || [['p', randomHex()]],
-            created_at: input.created_at || Date.now()/1000
-        };
-    }
-
-    const mockDec = createMockDecryptor(seed);
-
-    let context = {
-        actorPubkey: randomHex(),
-        decryptors: [mockDec, throwingDecryptor]
-    };
-
-    // Deterministically fuzz context
-    if ((seed % 10) > 8) {
-        context = input.context || getRandomFuzzInput();
-    }
-
-    await decryptDM(event, context);
-};
-
-runFuzz('decryptDM', wrapper, getRandomFuzzInput);
-
-// Write summary
-fs.writeFileSync('artifacts/fuzz-report-dmDecryptor.json', JSON.stringify(failures, null, 2));
-if (failures.length > 0) {
-    console.log(`\nFuzzing finished with ${failures.length} failures.`);
-    process.exit(1);
-} else {
-    console.log("\nFuzzing finished with 0 failures.");
-    process.exit(0);
-}
+runFuzzer("dmDecryptor", fuzzDmDecryptor, 5000);

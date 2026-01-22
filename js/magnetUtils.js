@@ -55,6 +55,35 @@ export function normalizeAndAugmentMagnet(
     didChange = true;
   }
 
+  // Filter out known broken trackers to prevent console errors
+  const BROKEN_TRACKERS = [
+    "wss://tracker.dler.org/announce",
+    "wss://tracker.dler.org:443/announce",
+    "wss://tracker.ghostchu-services.top/announce",
+    "wss://tracker.ghostchu-services.top:443/announce",
+  ];
+
+  // We need to filter 'tr' params
+  // Since we don't have a remove function in shared, we rebuild params if needed
+  const currentTrackers = params
+    .filter((p) => p.key === "tr")
+    .map((p) => p.decoded || p.value);
+
+  const hasBroken = currentTrackers.some((t) => BROKEN_TRACKERS.includes(t));
+
+  if (hasBroken) {
+    const validParams = params.filter((p) => {
+      if (p.key !== "tr") return true;
+      const val = p.decoded || p.value;
+      return !BROKEN_TRACKERS.includes(val);
+    });
+
+    // Replace params content
+    params.length = 0;
+    params.push(...validParams);
+    didChange = true;
+  }
+
   const torrentHint = typeof torrentUrl === "string" && torrentUrl.trim()
     ? torrentUrl
     : typeof xs === "string"

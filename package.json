@@ -24,6 +24,9 @@
     "test:dm:unit": "node scripts/run-targeted-tests.mjs tests/dm-db.test.mjs tests/dm-decryptor.test.mjs tests/dm-normalization.test.mjs tests/nostr-send-direct-message.test.mjs",
     "test:dm:integration": "node scripts/run-targeted-tests.mjs tests/nostr/dm-direct-message-flow.test.mjs",
     "test:unit": "node scripts/run-unit-tests.mjs",
+    "test:unit:shard1": "cross-env UNIT_TEST_SHARD=1/3 node scripts/run-unit-tests.mjs",
+    "test:unit:shard2": "cross-env UNIT_TEST_SHARD=2/3 node scripts/run-unit-tests.mjs",
+    "test:unit:shard3": "cross-env UNIT_TEST_SHARD=3/3 node scripts/run-unit-tests.mjs",
     "telemetry:aggregate": "node scripts/telemetry-aggregator.mjs"
   },
   "devDependencies": {

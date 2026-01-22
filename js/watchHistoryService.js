@@ -615,12 +615,15 @@ function scheduleRepublishForQueue(actorKey) {
           actorKey,
           queue,
           keysToClear,
-          snapshotStartTime
+          snapshotStartTime,
         );
         await updateFingerprintCache(
           actorKey,
           publishResult.items || latestItems,
         );
+        if (queue.items.size > 0) {
+          scheduleRepublishForQueue(actorKey);
+        }
       } else if (!publishResult?.retryable) {
         // If not retryable, we clear the scheduled flag to allow new attempts later
         queue.republishScheduled = false;

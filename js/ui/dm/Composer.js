@@ -9,6 +9,8 @@ function createElement(doc, tag, className, text) {
   return element;
 }
 
+import { formatZapAmount } from "./zapHelpers.js";
+
 export function Composer({
   document: doc,
   placeholder = "Write a message…",
@@ -18,6 +20,8 @@ export function Composer({
   zapRecipient = null,
   zapConfig = null,
   onSend,
+  onZap,
+  zapStats = null,
 } = {}) {
   if (!doc) {
     throw new Error("Composer requires a document reference.");
@@ -105,7 +109,65 @@ export function Composer({
   button.setAttribute("aria-label", "Send message");
 
   actions.appendChild(tools);
-  actions.appendChild(button);
+
+  // Zap Button
+  // We use dm-composer__send as a base for layout/size compatibility, but tweak styles.
+  // Using accent-action-button to apply accent color on hover, and px-2 for icon squareness.
+  const zapBtn = createElement(doc, "button", "dm-composer__send accent-action-button px-2");
+  zapBtn.type = "button";
+  zapBtn.setAttribute("aria-label", "Zap");
+  zapBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>`;
+
+  if (typeof onZap === "function") {
+    zapBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        onZap();
+    });
+
+    const buttonGroup = createElement(doc, "div", "flex items-center gap-2");
+
+    // Zap Stats Pill
+    if (zapStats && typeof zapStats === "object") {
+        // Reuse class from MessageThread for consistent styling
+        const zapSummary = createElement(doc, "div", "dm-message-thread__zap-summary");
+
+        // Zaps Label
+        const labelSpan = createElement(doc, "span", "dm-message-thread__zap-label", "Zaps");
+        zapSummary.appendChild(labelSpan);
+
+        // Conversation Total
+        // We need formatZapAmount. Since we can't import dynamically easily here (without changing module type or build),
+        // we assume formatZapAmount is available or we pass formatted strings.
+        // BUT, looking at file structure, Composer is a module. I should import it at the top.
+        // I will add the import in a separate block.
+        // Assuming formatZapAmount is imported.
+
+        const conversationTotal = createElement(
+          doc,
+          "span",
+          "dm-message-thread__zap-total",
+          formatZapAmount(zapStats.conversationTotal || 0)
+        );
+        zapSummary.appendChild(conversationTotal);
+
+        // Profile Total
+        const profileTotal = createElement(
+          doc,
+          "span",
+          "dm-message-thread__zap-profile",
+          `Profile: ${formatZapAmount(zapStats.profileTotal || 0)}`
+        );
+        zapSummary.appendChild(profileTotal);
+
+        buttonGroup.appendChild(zapSummary);
+    }
+
+    buttonGroup.appendChild(zapBtn);
+    buttonGroup.appendChild(button);
+    actions.appendChild(buttonGroup);
+  } else {
+    actions.appendChild(button);
+  }
 
   const status = createElement(doc, "div", "dm-composer__status");
   if (state === "error") {

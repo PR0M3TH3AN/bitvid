@@ -60,6 +60,7 @@
       import moderationService from "/js/services/moderationService.js";
 
       const STORAGE_KEY = "bitvid:moderation:fixture-overrides";
+      const READY_FLAG = "__moderationFixturesReady__";
       // These fixtures mirror the upstream defaults in config/instance-config.js.
       // Update the numbers alongside DEFAULT_BLUR_THRESHOLD, DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
       // DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD, and DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD when they change.
@@ -282,6 +283,7 @@
       }
 
       window.__MODERATION_FIXTURE_STORAGE_KEY__ = STORAGE_KEY;
+      window[READY_FLAG] = false;
 
       function loadOverrides() {
         try {
@@ -593,12 +595,24 @@
           card.onModerationOverride = () => {
             overrides = setOverride(overrides, video.id, { showAnyway: true });
             refreshModeration();
+            try {
+              document.dispatchEvent(
+                new CustomEvent("video:moderation-override", {
+                  detail: { video }
+                })
+              );
+            } catch {
+              /* ignore fixture event errors */
+            }
             return true;
           };
         }
 
         const root = card.getRoot();
         root.dataset.testId = fixture.key;
+        if (fixture.enableOverride) {
+          root.dataset.moderationOverrideAvailable = "true";
+        }
         return { card, root, refreshModeration };
       }
 
@@ -688,6 +702,7 @@
       }
 
       renderFixtures();
+      window[READY_FLAG] = true;
     </script>
   </body>
 </html>

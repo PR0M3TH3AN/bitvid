@@ -30,6 +30,7 @@ If we later introduce **dual-licensing** options (e.g., commercial licenses for 
 * Add tests where reasonable; keep UI accessible.
 * Follow existing formatting/lint rules.
 * Update docs and user-facing text when behavior changes.
+* Do not commit `css/tailwind.generated.css`; it is generated at build time.
 
 ## Agent PR Conventions
 

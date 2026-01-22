@@ -64,6 +64,7 @@ import {
   openStaticModal
 } from "./ui/components/staticModalAccessibility.js";
 import { setModalState as setGlobalModalState } from "./state/appState.js";
+import { attachFeedInfoPopover } from "./ui/components/FeedInfoPopover.js";
 
 const getApp = () => getApplication();
 
@@ -3701,6 +3702,14 @@ export async function initChannelProfileView() {
       "No npub found in hash (e.g. #view=channel-profile&npub=...)"
     );
     return;
+  }
+
+  const infoTrigger = document.getElementById("channelInfoTrigger");
+  if (infoTrigger) {
+    attachFeedInfoPopover(
+      infoTrigger,
+      "Videos published by this creator."
+    );
   }
 
   currentChannelHex = null;
