@@ -937,14 +937,14 @@ export default class LoginModalController {
       passphraseFields.hidden = !shouldShow;
       if (passphraseInput instanceof HTMLInputElement) {
         passphraseInput.disabled = !shouldShow;
-        passphraseInput.required = shouldShow;
+        passphraseInput.required = false;
         if (!shouldShow) {
           passphraseInput.value = "";
         }
       }
       if (passphraseConfirm instanceof HTMLInputElement) {
         passphraseConfirm.disabled = !shouldShow;
-        passphraseConfirm.required = shouldShow;
+        passphraseConfirm.required = false;
         if (!shouldShow) {
           passphraseConfirm.value = "";
         }
@@ -959,14 +959,14 @@ export default class LoginModalController {
       }
       if (unlockPassphrase instanceof HTMLInputElement) {
         unlockPassphrase.disabled = !usingUnlock;
-        unlockPassphrase.required = usingUnlock;
+        unlockPassphrase.required = false;
         if (!usingUnlock) {
           unlockPassphrase.value = "";
         }
       }
       if (secretField instanceof HTMLTextAreaElement) {
         secretField.disabled = usingUnlock;
-        secretField.required = !usingUnlock;
+        secretField.required = false;
         if (usingUnlock) {
           secretField.value = "";
         }
