@@ -5,7 +5,8 @@ import crypto from 'node:crypto';
 // Configuration
 const ARTIFACTS_DIR = 'artifacts';
 const REPORTS_DIR = 'ai/reports';
-const LOG_FILES = ['test_output.log', 'server.log', 'python_server.log', 'npm_output.log'];
+// We will dynamically discover log files in main(), but these are explicit targets if found.
+const EXPLICIT_LOG_FILES = ['python_server.log', 'server.log', 'npm_output.log'];
 
 // Regex patterns for PII sanitization
 const PII_PATTERNS = [
@@ -56,11 +57,11 @@ function suggestOwner(stack) {
 // Collectors
 // -----------------------------------------------------------------------------
 
-function collectUnitTests() {
+function collectUnitTests(logFile) {
     const errors = [];
-    const logFile = 'test_output.log';
     if (!fs.existsSync(logFile)) return errors;
 
+    console.log(`Parsing unit test log: ${logFile}`);
     const content = fs.readFileSync(logFile, 'utf8');
     const lines = content.split('\n');
     let currentError = null;
@@ -76,7 +77,7 @@ function collectUnitTests() {
             }
             const title = line.replace(/^not ok \d+ - /, '').trim();
             currentError = {
-                source: 'unit-test',
+                source: `unit-test:${path.basename(logFile)}`,
                 title: sanitize(title),
                 details: [],
                 severity: 'High'
@@ -85,18 +86,36 @@ function collectUnitTests() {
             continue;
         }
 
+        // Detect generic JS errors in output that aren't strictly TAP failures but cause crashes
+        if (line.match(/^Error:/) || line.match(/^TypeError:/) || line.match(/^ReferenceError:/)) {
+             // If we are already inside a TAP failure block, this is likely detail
+             if (insideErrorBlock && currentError) {
+                 currentError.details.push(sanitize(line));
+             } else {
+                 // Independent error (crash?)
+                 if (currentError) {
+                     errors.push(currentError);
+                 }
+                 currentError = {
+                    source: `unit-test-crash:${path.basename(logFile)}`,
+                    title: sanitize(line.trim()),
+                    details: [sanitize(line.trim())],
+                    severity: 'Critical'
+                 };
+                 insideErrorBlock = true; // Treat as error block
+             }
+             continue;
+        }
+
         // End of failure block detection (heuristic)
-        // TAP ok line, or start of a new test section, or unexpected unindented line that looks like a header
         if (insideErrorBlock) {
-             if (line.match(/^(ok \d+|# tests \d+|1\.\.\d+|TAP version)/)) {
+             // TAP ok line, or start of a new test section (Running tests/...), or TAP version
+             if (line.match(/^(ok \d+|# tests \d+|1\.\.\d+|TAP version|→ Running )/)) {
                  insideErrorBlock = false;
                  errors.push(currentError);
                  currentError = null;
              } else {
                  // Capture detail lines
-                 // If line is empty or indented, it's likely part of the error
-                 // If it's unindented but not a TAP command, it might still be part of it (console logs)
-                 // We'll be greedy here.
                  currentError.details.push(sanitize(line));
              }
         }
@@ -110,7 +129,7 @@ function collectUnitTests() {
     errors.forEach(e => {
         const fullText = e.details.join('\n');
         // Try to extract stack trace
-        const stackMatch = fullText.match(/stack: \|-([\s\S]+?)(?:\n\s*\w+:|$)/) || fullText.match(/Error:([\s\S]+)/);
+        const stackMatch = fullText.match(/stack: \|-([\s\S]+?)(?:\n\s*\w+:|$)/) || fullText.match(/(?:Error|Exception):([\s\S]+)/);
         if (stackMatch) {
             e.stack = stackMatch[1].trim();
         } else {
@@ -132,11 +151,9 @@ function collectGenericLogs(filepath, sourceName) {
     let currentError = null;
 
     for (const line of lines) {
-        // Simple heuristic for generic logs: look for "Error:" or "Exception:"
-        // and capture following lines that look like stack traces (start with 'at ' or are indented)
-
         const isErrorStart = /Error:|Exception:|FAIL|CRITICAL/.test(line);
-        const isStackLine = /^\s+at /.test(line) || /^\s+/.test(line); // Indented lines often follow errors
+        // Indented lines or lines starting with 'at ' often follow errors
+        const isStackLine = /^\s+at /.test(line) || /^\s+/.test(line);
 
         if (isErrorStart) {
             if (currentError) {
@@ -151,7 +168,7 @@ function collectGenericLogs(filepath, sourceName) {
         } else if (currentError && isStackLine) {
             currentError.details.push(sanitize(line.trim()));
         } else if (currentError) {
-            // End of error block
+            // End of error block if we hit a non-indented line
             errors.push(currentError);
             currentError = null;
         }
@@ -239,8 +256,6 @@ function aggregate(errors) {
         grouped[key].sources.add(err.source);
         // Escalating severity if we see critical
         if (err.severity === 'Critical') grouped[key].severity = 'Critical';
-
-        // Update title if new one is longer/better (optional, keeping first for now)
     }
 
     return Object.values(grouped).sort((a, b) => {
@@ -331,14 +346,18 @@ async function main() {
     // 1. Collect
     const errors = [];
 
-    // Unit Tests
-    const unitTestErrors = collectUnitTests();
-    console.log(`Collected ${unitTestErrors.length} unit test errors.`);
-    errors.push(...unitTestErrors);
+    // Unit Tests - Dynamically find test_unit*.log
+    const files = fs.readdirSync('.');
+    const testLogs = files.filter(f => f.startsWith('test_unit') && f.endsWith('.log'));
 
-    // Server Logs
-    for (const logFile of LOG_FILES) {
-        if (logFile === 'test_output.log') continue; // Handled by collectUnitTests
+    for (const logFile of testLogs) {
+        const unitTestErrors = collectUnitTests(logFile);
+        console.log(`Collected ${unitTestErrors.length} unit test errors from ${logFile}.`);
+        errors.push(...unitTestErrors);
+    }
+
+    // Explicit generic logs
+    for (const logFile of EXPLICIT_LOG_FILES) {
         const genericErrors = collectGenericLogs(logFile, logFile);
         console.log(`Collected ${genericErrors.length} errors from ${logFile}.`);
         errors.push(...genericErrors);
