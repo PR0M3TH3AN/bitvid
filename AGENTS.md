@@ -2,6 +2,8 @@
 
 This guide tells AI agents how to keep bitvid aligned with the current product direction. Follow it whenever you touch code, content, or documentation inside this repository.
 
+**Important:** Before starting any development or debugging, please review `KNOWN_ISSUES.md`. This file documents pre-existing test failures, environmental quirks, and architectural limitations that you should be aware of to avoid unnecessary investigation.
+
 For any nostr related work, please review the nip documentation located in /docs/nips before begining work.
 
 **Comment publishing guardrail:** Session actors are limited to passive telemetry (e.g., view counters). Always require the logged-in Nostr signer when sending video comments through [`js/nostr/commentEvents.js`](js/nostr/commentEvents.js). See the reminder in [`docs/nostr-event-schemas.md`](docs/nostr-event-schemas.md#event-catalogue) for context.
