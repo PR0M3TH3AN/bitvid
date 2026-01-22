@@ -74,6 +74,12 @@ To set up the project locally:
    npm run lint
    ```
 
+5. **Git Hooks (Optional)**:
+   We provide a script to set up a git pre-commit hook that runs linting and CSS builds automatically before you commit.
+   ```bash
+   ./scripts/setup-pre-commit.sh
+   ```
+
 For a full guide, see the [Local Setup section in README.md](./README.md#local-setup).
 
 ## Dev Container
