@@ -45,7 +45,7 @@ test.describe("design system kitchen sink", () => {
 
       await page.addStyleTag({
         content:
-          "*, *::before, *::after { transition-duration: 0s !important; animation-duration: 0s !important; animation-delay: 0s !important; caret-color: transparent !important; }"
+          "*, *::before, *::after { transition-duration: 0s !important; animation-duration: 0s !important; animation-delay: 0s !important; caret-color: transparent !important; } ::-webkit-scrollbar { display: none; } body { -ms-overflow-style: none; scrollbar-width: none; }"
       });
 
       await page.evaluate((value) => {
@@ -131,7 +131,7 @@ test.describe("video modal mobile regression", () => {
 
       await page.addStyleTag({
         content:
-          "*, *::before, *::after { transition-duration: 0s !important; animation-duration: 0s !important; animation-delay: 0s !important; caret-color: transparent !important; }"
+          "*, *::before, *::after { transition-duration: 0s !important; animation-duration: 0s !important; animation-delay: 0s !important; caret-color: transparent !important; } ::-webkit-scrollbar { display: none; } body { -ms-overflow-style: none; scrollbar-width: none; }"
       });
 
       await page.evaluate(() => {
@@ -193,15 +193,15 @@ test.describe("video modal mobile regression", () => {
       const diffRatio = diffPixelCount / (actual.width * actual.height);
 
       if (diffPixelCount > 0) {
-        await testInfo.attach(`${variant.baselineKey}-actual.png`, {
+        await testInfo.attach(`${VIDEO_MODAL_BASELINE_KEY}-actual.png`, {
           body: screenshotBuffer,
           contentType: "image/png"
         });
-        await testInfo.attach(`${variant.baselineKey}-baseline.png`, {
+        await testInfo.attach(`${VIDEO_MODAL_BASELINE_KEY}-baseline.png`, {
           body: baselineBuffer,
           contentType: "image/png"
         });
-        await testInfo.attach(`${variant.baselineKey}-diff.png`, {
+        await testInfo.attach(`${VIDEO_MODAL_BASELINE_KEY}-diff.png`, {
           body: PNG.sync.write(diff),
           contentType: "image/png"
         });
