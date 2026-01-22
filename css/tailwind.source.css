@@ -4594,23 +4594,26 @@
   }
 
   #app[data-sidebar-state="collapsed"] {
-    margin-left: var(--sidebar-width-collapsed);
-    width: calc(100vw - var(--sidebar-width-collapsed));
-    max-width: calc(100vw - var(--sidebar-width-collapsed));
+    margin-left: calc(
+      var(--sidebar-width-collapsed) + var(--sidebar-content-gap)
+    );
+    width: calc(
+      100vw - var(--sidebar-width-collapsed) - var(--sidebar-content-gap)
+    );
+    max-width: calc(
+      100vw - var(--sidebar-width-collapsed) - var(--sidebar-content-gap)
+    );
   }
 
   #app[data-sidebar-state="expanded"] {
-    margin-left: max(
-      var(--sidebar-width-expanded-base),
-      var(--sidebar-dropup-content-width)
+    margin-left: calc(
+      var(--sidebar-width-expanded) + var(--sidebar-content-gap)
     );
-    width: min(
-      calc(100vw - var(--sidebar-width-expanded-base)),
-      calc(100vw - var(--sidebar-dropup-content-width))
+    width: calc(
+      100vw - var(--sidebar-width-expanded) - var(--sidebar-content-gap)
     );
-    max-width: min(
-      calc(100vw - var(--sidebar-width-expanded-base)),
-      calc(100vw - var(--sidebar-dropup-content-width))
+    max-width: calc(
+      100vw - var(--sidebar-width-expanded) - var(--sidebar-content-gap)
     );
   }
 
