@@ -647,242 +647,6 @@ async function bootstrapInterface() {
   await loadSidebar("components/sidebar.html", "sidebarContainer");
   devLogger.log("Sidebar loaded.");
 
-  try {
-    await applicationReadyPromise;
-  } catch (error) {
-    // fall through
-  }
-
-  if (application && typeof application.hydrateSidebarNavigation === "function") {
-    try {
-      application.hydrateSidebarNavigation();
-    } catch (error) {
-      devLogger.warn("[Interface] Failed to hydrate sidebar navigation:", error);
-    }
-  }
-
-  bindOptionalExternalLink({
-    selector: "[data-blog-link]",
-    url: BLOG_URL,
-    label: "Sidebar blog link",
-  });
-
-  bindOptionalExternalLink({
-    selector: "[data-nostr-link]",
-    url: NOSTR_URL,
-    label: "Sidebar Nostr link",
-  });
-
-  bindOptionalExternalLink({
-    selector: "[data-community-link]",
-    url: COMMUNITY_URL,
-    label: "Sidebar community link",
-  });
-
-  bindOptionalExternalLink({
-    selector: "[data-github-link]",
-    url: GITHUB_URL,
-    label: "Sidebar GitHub link",
-  });
-
-  bindOptionalExternalLink({
-    selector: "[data-beta-link]",
-    url: BETA_URL,
-    label: "Sidebar Beta link",
-  });
-
-  bindOptionalExternalLink({
-    selector: "[data-dns-link]",
-    url: DNS_URL,
-    label: "Sidebar DNS link",
-  });
-
-  bindOptionalExternalLink({
-    selector: "[data-tip-jar-link]",
-    url: TIP_JAR_URL,
-    label: "Sidebar Tip Jar link",
-  });
-
-  const headerSearchForm = document.getElementById("headerSearchForm");
-  if (headerSearchForm) {
-    headerSearchForm.addEventListener("submit", async (event) => {
-      event.preventDefault();
-
-      try {
-        await applicationReadyPromise;
-      } catch (error) {
-        // Continue even if app fails full initialization, if possible.
-      }
-
-      const input = document.getElementById("headerSearchInput");
-      const query = input && input.value ? input.value.trim() : "";
-
-      if (!query) {
-        return;
-      }
-
-      // Check if it's an npub
-      try {
-        if (
-          window.NostrTools &&
-          window.NostrTools.nip19 &&
-          query.startsWith("npub1")
-        ) {
-          const decoded = window.NostrTools.nip19.decode(query);
-          if (decoded && decoded.type === "npub") {
-            setHashView(`channel-profile&npub=${encodeURIComponent(query)}`);
-            return;
-          }
-        }
-      } catch (error) {
-        // Not a valid npub, proceed to search
-      }
-
-      const parsedFilters = parseFilterQuery(query);
-      if (parsedFilters.errors.length > 0) {
-        devLogger.warn("[Search] Filter parsing errors", parsedFilters.errors);
-      }
-      const nextState = {
-        text: parsedFilters.text || "",
-        filters: parsedFilters.filters,
-      };
-      setSearchFilterState(nextState);
-      setHashView(buildSearchHashFromState(nextState));
-    });
-  }
-
-  // Mobile Search Logic
-  const mobileSearchFab = document.getElementById("mobileSearchFab");
-  const mobileSearchContainer = document.getElementById(
-    "mobileSearchContainer",
-  );
-  const mobileSearchForm = document.getElementById("mobileSearchForm");
-  const mobileSearchInput = document.getElementById("mobileSearchInput");
-
-  if (mobileSearchFab && mobileSearchContainer) {
-    const openMobileSearch = () => {
-      mobileSearchFab.classList.add("hidden");
-      mobileSearchContainer.classList.remove("hidden");
-      if (mobileSearchInput) {
-        mobileSearchInput.focus();
-      }
-    };
-
-    const closeMobileSearch = () => {
-      mobileSearchContainer.classList.add("hidden");
-      mobileSearchFab.classList.remove("hidden");
-    };
-
-    mobileSearchFab.addEventListener("click", (e) => {
-      e.stopPropagation(); // Prevent document click from immediately closing it
-      openMobileSearch();
-    });
-
-    // Close when clicking outside
-    document.addEventListener("click", (event) => {
-      // If mobile search is not visible, do nothing
-      if (mobileSearchContainer.classList.contains("hidden")) {
-        return;
-      }
-
-      // If click is on the FAB, do nothing (handled by FAB listener)
-      if (mobileSearchFab.contains(event.target)) {
-        return;
-      }
-
-      // If click is inside the search container, do nothing
-      if (mobileSearchContainer.contains(event.target)) {
-        return;
-      }
-
-      // Otherwise, close it
-      closeMobileSearch();
-    });
-
-    // Prevent clicks inside the container from closing it (redundant with above check but safe)
-    mobileSearchContainer.addEventListener("click", (e) => {
-      e.stopPropagation();
-    });
-  }
-
-  if (mobileSearchForm) {
-    mobileSearchForm.addEventListener("submit", async (event) => {
-      event.preventDefault();
-
-      try {
-        await applicationReadyPromise;
-      } catch (error) {
-        // Continue even if app fails full initialization, if possible.
-      }
-
-      const query =
-        mobileSearchInput && mobileSearchInput.value
-          ? mobileSearchInput.value.trim()
-          : "";
-
-      if (!query) {
-        return;
-      }
-
-      // Check if it's an npub (Copy logic from headerSearchForm)
-      try {
-        if (
-          window.NostrTools &&
-          window.NostrTools.nip19 &&
-          query.startsWith("npub1")
-        ) {
-          const decoded = window.NostrTools.nip19.decode(query);
-          if (decoded && decoded.type === "npub") {
-            setHashView(`channel-profile&npub=${encodeURIComponent(query)}`);
-            // Close search on submit
-            mobileSearchContainer.classList.add("hidden");
-            mobileSearchFab.classList.remove("hidden");
-            return;
-          }
-        }
-      } catch (error) {
-        // Not a valid npub, proceed to search
-      }
-
-      const parsedFilters = parseFilterQuery(query);
-      if (parsedFilters.errors.length > 0) {
-        devLogger.warn("[Search] Filter parsing errors", parsedFilters.errors);
-      }
-      const nextState = {
-        text: parsedFilters.text || "",
-        filters: parsedFilters.filters,
-      };
-      setSearchFilterState(nextState);
-      setHashView(buildSearchHashFromState(nextState));
-      // Close search on submit
-      mobileSearchContainer.classList.add("hidden");
-      mobileSearchFab.classList.remove("hidden");
-    });
-  }
-
-  const searchFilterButtons = document.querySelectorAll(".header-search__filter");
-  const applySearchFilters = (filters) => {
-    const currentState = getSearchFilterState();
-    const nextState = {
-      text: currentState.text || "",
-      filters,
-    };
-    setSearchFilterState(nextState);
-    setHashView(buildSearchHashFromState(nextState));
-  };
-  const clearSearchFilters = () => {
-    resetSearchFilters();
-    const nextState = getSearchFilterState();
-    setHashView(buildSearchHashFromState(nextState));
-  };
-  searchFilterButtons.forEach((button) => {
-    attachSearchFiltersPopover(button, {
-      getState: getSearchFilterState,
-      onApply: applySearchFilters,
-      onReset: clearSearchFilters,
-    });
-  });
-
   const sidebar = document.getElementById("sidebar");
   const collapseToggle = document.getElementById("sidebarCollapseToggle");
   if (sidebar && !sidebar.hasAttribute("data-footer-state")) {
@@ -1219,6 +983,242 @@ async function bootstrapInterface() {
   } else {
     updateSidebarDropupContentWidth();
   }
+
+  try {
+    await applicationReadyPromise;
+  } catch (error) {
+    // fall through
+  }
+
+  if (application && typeof application.hydrateSidebarNavigation === "function") {
+    try {
+      application.hydrateSidebarNavigation();
+    } catch (error) {
+      devLogger.warn("[Interface] Failed to hydrate sidebar navigation:", error);
+    }
+  }
+
+  bindOptionalExternalLink({
+    selector: "[data-blog-link]",
+    url: BLOG_URL,
+    label: "Sidebar blog link",
+  });
+
+  bindOptionalExternalLink({
+    selector: "[data-nostr-link]",
+    url: NOSTR_URL,
+    label: "Sidebar Nostr link",
+  });
+
+  bindOptionalExternalLink({
+    selector: "[data-community-link]",
+    url: COMMUNITY_URL,
+    label: "Sidebar community link",
+  });
+
+  bindOptionalExternalLink({
+    selector: "[data-github-link]",
+    url: GITHUB_URL,
+    label: "Sidebar GitHub link",
+  });
+
+  bindOptionalExternalLink({
+    selector: "[data-beta-link]",
+    url: BETA_URL,
+    label: "Sidebar Beta link",
+  });
+
+  bindOptionalExternalLink({
+    selector: "[data-dns-link]",
+    url: DNS_URL,
+    label: "Sidebar DNS link",
+  });
+
+  bindOptionalExternalLink({
+    selector: "[data-tip-jar-link]",
+    url: TIP_JAR_URL,
+    label: "Sidebar Tip Jar link",
+  });
+
+  const headerSearchForm = document.getElementById("headerSearchForm");
+  if (headerSearchForm) {
+    headerSearchForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      try {
+        await applicationReadyPromise;
+      } catch (error) {
+        // Continue even if app fails full initialization, if possible.
+      }
+
+      const input = document.getElementById("headerSearchInput");
+      const query = input && input.value ? input.value.trim() : "";
+
+      if (!query) {
+        return;
+      }
+
+      // Check if it's an npub
+      try {
+        if (
+          window.NostrTools &&
+          window.NostrTools.nip19 &&
+          query.startsWith("npub1")
+        ) {
+          const decoded = window.NostrTools.nip19.decode(query);
+          if (decoded && decoded.type === "npub") {
+            setHashView(`channel-profile&npub=${encodeURIComponent(query)}`);
+            return;
+          }
+        }
+      } catch (error) {
+        // Not a valid npub, proceed to search
+      }
+
+      const parsedFilters = parseFilterQuery(query);
+      if (parsedFilters.errors.length > 0) {
+        devLogger.warn("[Search] Filter parsing errors", parsedFilters.errors);
+      }
+      const nextState = {
+        text: parsedFilters.text || "",
+        filters: parsedFilters.filters,
+      };
+      setSearchFilterState(nextState);
+      setHashView(buildSearchHashFromState(nextState));
+    });
+  }
+
+  // Mobile Search Logic
+  const mobileSearchFab = document.getElementById("mobileSearchFab");
+  const mobileSearchContainer = document.getElementById(
+    "mobileSearchContainer",
+  );
+  const mobileSearchForm = document.getElementById("mobileSearchForm");
+  const mobileSearchInput = document.getElementById("mobileSearchInput");
+
+  if (mobileSearchFab && mobileSearchContainer) {
+    const openMobileSearch = () => {
+      mobileSearchFab.classList.add("hidden");
+      mobileSearchContainer.classList.remove("hidden");
+      if (mobileSearchInput) {
+        mobileSearchInput.focus();
+      }
+    };
+
+    const closeMobileSearch = () => {
+      mobileSearchContainer.classList.add("hidden");
+      mobileSearchFab.classList.remove("hidden");
+    };
+
+    mobileSearchFab.addEventListener("click", (e) => {
+      e.stopPropagation(); // Prevent document click from immediately closing it
+      openMobileSearch();
+    });
+
+    // Close when clicking outside
+    document.addEventListener("click", (event) => {
+      // If mobile search is not visible, do nothing
+      if (mobileSearchContainer.classList.contains("hidden")) {
+        return;
+      }
+
+      // If click is on the FAB, do nothing (handled by FAB listener)
+      if (mobileSearchFab.contains(event.target)) {
+        return;
+      }
+
+      // If click is inside the search container, do nothing
+      if (mobileSearchContainer.contains(event.target)) {
+        return;
+      }
+
+      // Otherwise, close it
+      closeMobileSearch();
+    });
+
+    // Prevent clicks inside the container from closing it (redundant with above check but safe)
+    mobileSearchContainer.addEventListener("click", (e) => {
+      e.stopPropagation();
+    });
+  }
+
+  if (mobileSearchForm) {
+    mobileSearchForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      try {
+        await applicationReadyPromise;
+      } catch (error) {
+        // Continue even if app fails full initialization, if possible.
+      }
+
+      const query =
+        mobileSearchInput && mobileSearchInput.value
+          ? mobileSearchInput.value.trim()
+          : "";
+
+      if (!query) {
+        return;
+      }
+
+      // Check if it's an npub (Copy logic from headerSearchForm)
+      try {
+        if (
+          window.NostrTools &&
+          window.NostrTools.nip19 &&
+          query.startsWith("npub1")
+        ) {
+          const decoded = window.NostrTools.nip19.decode(query);
+          if (decoded && decoded.type === "npub") {
+            setHashView(`channel-profile&npub=${encodeURIComponent(query)}`);
+            // Close search on submit
+            mobileSearchContainer.classList.add("hidden");
+            mobileSearchFab.classList.remove("hidden");
+            return;
+          }
+        }
+      } catch (error) {
+        // Not a valid npub, proceed to search
+      }
+
+      const parsedFilters = parseFilterQuery(query);
+      if (parsedFilters.errors.length > 0) {
+        devLogger.warn("[Search] Filter parsing errors", parsedFilters.errors);
+      }
+      const nextState = {
+        text: parsedFilters.text || "",
+        filters: parsedFilters.filters,
+      };
+      setSearchFilterState(nextState);
+      setHashView(buildSearchHashFromState(nextState));
+      // Close search on submit
+      mobileSearchContainer.classList.add("hidden");
+      mobileSearchFab.classList.remove("hidden");
+    });
+  }
+
+  const searchFilterButtons = document.querySelectorAll(".header-search__filter");
+  const applySearchFilters = (filters) => {
+    const currentState = getSearchFilterState();
+    const nextState = {
+      text: currentState.text || "",
+      filters,
+    };
+    setSearchFilterState(nextState);
+    setHashView(buildSearchHashFromState(nextState));
+  };
+  const clearSearchFilters = () => {
+    resetSearchFilters();
+    const nextState = getSearchFilterState();
+    setHashView(buildSearchHashFromState(nextState));
+  };
+  searchFilterButtons.forEach((button) => {
+    attachSearchFiltersPopover(button, {
+      getState: getSearchFilterState,
+      onApply: applySearchFilters,
+      onReset: clearSearchFilters,
+    });
+  });
 
   try {
     const sidebarModule = await import("./sidebar.js");
