@@ -311,3 +311,27 @@ device, etc.) should remain on-device via the
 Refer to the [`WatchHistoryService`](../js/watchHistoryService.js) for queue
 management hooks and metadata toggle controls that complement these schema
 definitions.【F:js/watchHistoryService.js†L695-L776】【F:js/watchHistoryService.js†L1040-L1093】
+
+## Validation
+
+bitvid now enforces schema validation at runtime during development. Every event
+builder automatically runs the generated event against its definition in
+`validateEventAgainstSchema` when `isDevMode` is true. Violations (missing
+required tags, invalid JSON content, etc.) are logged to the console via
+`devLogger`.
+
+### Continuous Integration
+
+A standalone validation suite runs in CI to ensure that all builders produce
+valid events:
+
+```bash
+# Run the validation script
+node scripts/agent/validate-events.mjs
+
+# Run the unit test suite
+npm run test:unit
+```
+
+When modifying schemas or builders, use `scripts/agent/validate-events.mjs` to
+verify your changes locally.

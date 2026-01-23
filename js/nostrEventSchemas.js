@@ -870,13 +870,19 @@ export function buildVideoMirrorEvent(params) {
       }
     });
   }
-  return {
+  const event = {
     kind: schema?.kind ?? 1063,
     pubkey,
     created_at,
     tags: combinedTags,
     content: typeof content === "string" ? content : String(content ?? ""),
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.VIDEO_MIRROR, event);
+  }
+
+  return event;
 }
 
 export function buildRepostEvent(params) {
@@ -986,13 +992,19 @@ export function buildRepostEvent(params) {
     }
   }
 
-  return {
+  const event = {
     kind: resolvedKind,
     pubkey,
     created_at,
     tags,
     content,
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.REPOST, event);
+  }
+
+  return event;
 }
 
 export function buildShareEvent(params) {
@@ -1093,13 +1105,19 @@ export function buildShareEvent(params) {
 
   const resolvedContent = ensureValidUtf8Content(content);
 
-  return {
+  const event = {
     kind: schema?.kind ?? 1,
     pubkey,
     created_at,
     tags,
     content: resolvedContent,
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.SHARE, event);
+  }
+
+  return event;
 }
 
 export function buildRelayListEvent(params) {
@@ -1164,13 +1182,19 @@ export function buildRelayListEvent(params) {
     tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
   }
 
-  return {
+  const event = {
     kind: schema?.kind ?? 10002,
     pubkey,
     created_at,
     tags,
     content: "",
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.RELAY_LIST, event);
+  }
+
+  return event;
 }
 
 export function buildDmRelayListEvent(params) {
@@ -1200,13 +1224,19 @@ export function buildDmRelayListEvent(params) {
     tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
   }
 
-  return {
+  const event = {
     kind: schema?.kind ?? 10050,
     pubkey,
     created_at,
     tags,
     content: "",
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.DM_RELAY_LIST, event);
+  }
+
+  return event;
 }
 
 export function buildProfileMetadataEvent(params) {
@@ -1236,13 +1266,19 @@ export function buildProfileMetadataEvent(params) {
     }
   }
 
-  return {
+  const event = {
     kind: schema?.kind ?? 0,
     pubkey,
     created_at,
     tags,
     content: serializedContent,
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.PROFILE_METADATA, event);
+  }
+
+  return event;
 }
 
 export function buildMuteListEvent(params) {
@@ -1277,13 +1313,19 @@ export function buildMuteListEvent(params) {
     tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
   }
 
-  return {
+  const event = {
     kind: schema?.kind ?? 10000,
     pubkey,
     created_at,
     tags,
     content: typeof content === "string" ? content : "",
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.MUTE_LIST, event);
+  }
+
+  return event;
 }
 
 export function buildDeletionEvent(params) {
@@ -1322,13 +1364,19 @@ export function buildDeletionEvent(params) {
     tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
   }
 
-  return {
+  const event = {
     kind: schema?.kind ?? 5,
     pubkey,
     created_at,
     tags,
     content: typeof reason === "string" ? reason : "",
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.DELETION, event);
+  }
+
+  return event;
 }
 
 export function buildLegacyDirectMessageEvent(params) {
@@ -1353,13 +1401,19 @@ export function buildLegacyDirectMessageEvent(params) {
     tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
   }
 
-  return {
+  const event = {
     kind: schema?.kind ?? 4,
     pubkey,
     created_at,
     tags,
     content: typeof ciphertext === "string" ? ciphertext : "",
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.LEGACY_DM, event);
+  }
+
+  return event;
 }
 
 export function buildDmAttachmentEvent(params) {
@@ -1403,13 +1457,19 @@ export function buildDmAttachmentEvent(params) {
     tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
   }
 
-  return {
+  const event = {
     kind: schema?.kind ?? 15,
     pubkey,
     created_at,
     tags,
     content: "",
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.DM_ATTACHMENT, event);
+  }
+
+  return event;
 }
 
 export function buildDmReadReceiptEvent(params) {
@@ -1444,13 +1504,19 @@ export function buildDmReadReceiptEvent(params) {
     tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
   }
 
-  return {
+  const event = {
     kind: schema?.kind ?? 20001,
     pubkey,
     created_at,
     tags,
     content: "",
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.DM_READ_RECEIPT, event);
+  }
+
+  return event;
 }
 
 export function buildDmTypingIndicatorEvent(params) {
@@ -1489,13 +1555,19 @@ export function buildDmTypingIndicatorEvent(params) {
     tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
   }
 
-  return {
+  const event = {
     kind: schema?.kind ?? 20002,
     pubkey,
     created_at,
     tags,
     content: "",
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.DM_TYPING, event);
+  }
+
+  return event;
 }
 
 export function buildViewEvent(params) {
@@ -1550,13 +1622,19 @@ export function buildViewEvent(params) {
 
   const resolvedContent = ensureValidUtf8Content(content);
 
-  return {
+  const event = {
     kind: schema?.kind ?? WATCH_HISTORY_KIND,
     pubkey,
     created_at,
     tags,
     content: resolvedContent,
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.VIEW_EVENT, event);
+  }
+
+  return event;
 }
 
 export function buildZapRequestEvent(params) {
@@ -1624,13 +1702,19 @@ export function buildZapRequestEvent(params) {
 
   const resolvedContent = ensureValidUtf8Content(content);
 
-  return {
+  const event = {
     kind: schema?.kind ?? 9734,
     pubkey,
     created_at,
     tags,
     content: resolvedContent,
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.ZAP_REQUEST, event);
+  }
+
+  return event;
 }
 
 export function buildReactionEvent(params) {
@@ -1756,13 +1840,19 @@ export function buildReactionEvent(params) {
 
   const resolvedContent = ensureValidUtf8Content(content);
 
-  return {
+  const event = {
     kind: schema?.kind ?? 7,
     pubkey,
     created_at,
     tags,
     content: resolvedContent,
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.VIDEO_REACTION, event);
+  }
+
+  return event;
 }
 
 export function buildCommentEvent(params) {
@@ -2001,13 +2091,19 @@ export function buildCommentEvent(params) {
 
   const resolvedContent = ensureValidUtf8Content(content);
 
-  return {
+  const event = {
     kind: schema?.kind ?? 1111,
     pubkey,
     created_at,
     tags,
     content: resolvedContent,
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.VIDEO_COMMENT, event);
+  }
+
+  return event;
 }
 
 export function buildWatchHistoryEvent(params) {
@@ -2043,13 +2139,19 @@ export function buildWatchHistoryEvent(params) {
 
   appendSchemaTags(tags, schema);
 
-  return {
+  const event = {
     kind: schema?.kind ?? WATCH_HISTORY_KIND,
     pubkey,
     created_at: Number.isFinite(created_at) ? created_at : Math.floor(Date.now() / 1000),
     tags,
     content: typeof content === "string" ? content : String(content ?? ""),
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.WATCH_HISTORY, event);
+  }
+
+  return event;
 }
 
 export function buildSubscriptionListEvent(params) {
@@ -2072,13 +2174,20 @@ export function buildSubscriptionListEvent(params) {
     tags.push(["encrypted", normalizedEncryption]);
   }
   appendSchemaTags(tags, schema);
-  return {
+
+  const event = {
     kind: schema?.kind ?? 30000,
     pubkey,
     created_at,
     tags,
     content: typeof content === "string" ? content : String(content ?? ""),
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.SUBSCRIPTION_LIST, event);
+  }
+
+  return event;
 }
 
 export function buildBlockListEvent(params) {
@@ -2101,13 +2210,20 @@ export function buildBlockListEvent(params) {
     tags.push(["encrypted", normalizedEncryption]);
   }
   appendSchemaTags(tags, schema);
-  return {
+
+  const event = {
     kind: schema?.kind ?? 10000,
     pubkey,
     created_at,
     tags,
     content: typeof content === "string" ? content : String(content ?? ""),
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.USER_BLOCK_LIST, event);
+  }
+
+  return event;
 }
 
 export function buildHashtagPreferenceEvent(params) {
@@ -2124,13 +2240,20 @@ export function buildHashtagPreferenceEvent(params) {
     tags.push([identifierName, identifierValue]);
   }
   appendSchemaTags(tags, schema);
-  return {
+
+  const event = {
     kind: schema?.kind ?? 30015,
     pubkey,
     created_at,
     tags,
     content: typeof content === "string" ? content : String(content ?? ""),
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.HASHTAG_PREFERENCES, event);
+  }
+
+  return event;
 }
 
 function resolveAdminNoteType(listKey) {
@@ -2178,13 +2301,23 @@ export function buildAdminListEvent(listKey, params) {
     }
   });
   appendSchemaTags(tags, schema);
-  return {
+
+  const event = {
     kind: schema?.kind ?? 30000,
     pubkey,
     created_at,
     tags,
     content: "",
   };
+
+  if (isDevMode) {
+    const resolvedType = resolveAdminNoteType(listKey);
+    if (resolvedType) {
+      validateEventAgainstSchema(resolvedType, event);
+    }
+  }
+
+  return event;
 }
 
 function hasTag(tags, tagName, tagValue = null) {
