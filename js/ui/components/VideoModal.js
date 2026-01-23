@@ -2165,7 +2165,7 @@ export class VideoModal {
       }
     }
 
-    return "#000000";
+    return "rgb(0, 0, 0)";
   }
 
   clearAmbientCanvas() {
