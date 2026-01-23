@@ -2,19 +2,34 @@
 
 import { spawnSync } from "node:child_process";
 
-const SEARCH_PATTERN = '\\b#[0-9a-fA-F]{3,8}\\b';
+// Use PCRE2 lookbehind to avoid:
+// 1. Matches preceded by a word character (e.g. `Issue#123`)
+// 2. Matches preceded by `&` (e.g. HTML entities `&#039;`)
+const SEARCH_PATTERN = '(?<!&|[\\w])#[0-9a-fA-F]{3,8}\\b';
+
 // Allow-list tokens and vector logos so brand assets can keep their baked colors.
 const IGNORED_GLOBS = [
   '!css/tokens.css',
   '!**/*.svg',
   '!**/node_modules/**',
-  '!.git/**'
+  '!.git/**',
+  '!**/*.min.js',
+  '!**/*.map',
+  '!css/tailwind.generated.css',
+  '!dist/**',
+  '!build/**',
+  '!vendor/**',
+  '!js/utils/qrcode.js',
+  '!**/dist/**',
+  '!REMEDIATION_REPORT.md',
+  '!scripts/daily-design-system-audit.mjs'
 ];
 
 const rgArgs = [
   '--color=never',
   '--no-heading',
-  '-n'
+  '-n',
+  '-P' // Enable PCRE2 for lookbehind support
 ];
 
 for (const glob of IGNORED_GLOBS) {

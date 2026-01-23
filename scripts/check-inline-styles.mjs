@@ -38,6 +38,7 @@ const IGNORED_FILES = new Set([
   "js/webtorrent.min.js",
   "js/webtorrent.min.js.map",
   "scripts/check-inline-styles.mjs",
+  "scripts/daily-design-system-audit.mjs",
   "sw.min.js",
 ]);
 
