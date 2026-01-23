@@ -216,8 +216,6 @@ export class HashtagStripHelper {
     this.container = null;
     this._tagStrip = null;
     this._sortedTags = [];
-    this.tagStateResolver = null;
-    this.activateHandler = null;
   }
 
   _resolveTagState(tag) {
