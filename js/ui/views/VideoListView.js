@@ -599,10 +599,16 @@ export class VideoListView {
       return displayVideos;
     }
 
-    displayVideos.sort(
-      (a, b) =>
-        this.getVideoPostedAtForSort(b) - this.getVideoPostedAtForSort(a),
-    );
+    const preserveOrder =
+      normalizedMetadata?.sortOrder === "explore" ||
+      normalizedMetadata?.preserveOrder === true;
+
+    if (!preserveOrder) {
+      displayVideos.sort(
+        (a, b) =>
+          this.getVideoPostedAtForSort(b) - this.getVideoPostedAtForSort(a),
+      );
+    }
     this.currentVideos = displayVideos.slice();
 
     const signaturePayload = displayVideos.map((video) => ({
