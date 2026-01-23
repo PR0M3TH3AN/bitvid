@@ -2433,13 +2433,12 @@
   }
 
   .video-tag-strip--scroll::-webkit-scrollbar-track {
-    background:
-      linear-gradient(
-        to bottom,
-        transparent calc(50% - 0.5px),
-        var(--scrollbar-track) calc(50% - 0.5px) calc(50% + 0.5px),
-        transparent calc(50% + 0.5px)
-      );
+    background: linear-gradient(
+      to bottom,
+      transparent calc(50% - 0.5px),
+      var(--scrollbar-track) calc(50% - 0.5px) calc(50% + 0.5px),
+      transparent calc(50% + 0.5px)
+    );
   }
 
   .video-tag-strip--scroll::-webkit-scrollbar-thumb {
