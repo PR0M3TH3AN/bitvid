@@ -88,9 +88,9 @@ export function ConversationList({
                 list.scrollTo({ top: 40, behavior: "smooth" });
                 setTimeout(() => {
                   list.scrollTo({ top: 0, behavior: "smooth" });
-                }, 600);
+                }, 800);
               }
-            }, 300);
+            }, 600);
           }
         }, { threshold: 0.1 });
         observer.observe(list);
@@ -101,7 +101,7 @@ export function ConversationList({
             list.scrollTo({ top: 40, behavior: "smooth" });
             setTimeout(() => {
               list.scrollTo({ top: 0, behavior: "smooth" });
-            }, 600);
+            }, 800);
           }
         }, 600);
       }

@@ -114,6 +114,7 @@ const DEFAULT_ZAP_RECEIPTS = [
 export class AppShell {
   constructor({
     document: doc,
+    currentUserAvatarUrl = "",
     conversations = DEFAULT_CONVERSATIONS,
     activeConversationId = DEFAULT_CONVERSATIONS[0]?.id || "",
     conversationState = "idle",
@@ -168,7 +169,7 @@ export class AppShell {
       doc,
       "h1",
       "dm-app-shell__title text-lg font-bold",
-      "Direct Messages",
+      "Conversations",
     );
     sidebarHeader.appendChild(sidebarTitle);
 
@@ -219,6 +220,7 @@ export class AppShell {
     main.appendChild(
       MessageThread({
         document: doc,
+        currentUserAvatarUrl,
         contact: activeConversation,
         messages,
         state: threadState,

@@ -13,6 +13,7 @@ export function MessageBubble({
   document: doc,
   message = {},
   variant = "incoming",
+  avatarSrc = "",
 } = {}) {
   if (!doc) {
     throw new Error("MessageBubble requires a document reference.");
@@ -24,12 +25,19 @@ export function MessageBubble({
     status = "sent",
   } = message;
 
-  const wrapper = createElement(doc, "div", "dm-message-bubble");
-  wrapper.classList.add(`dm-message-bubble--${variant}`);
-  wrapper.dataset.status = status;
+  const row = createElement(doc, "div", "dm-message-row");
+  row.classList.add(`dm-message-row--${variant}`);
+
+  const avatar = createElement(doc, "img", "dm-message-avatar");
+  avatar.src = avatarSrc || "assets/svg/default-profile.svg";
+  avatar.alt = variant === "outgoing" ? "Me" : "Sender";
+
+  const bubble = createElement(doc, "div", "dm-message-bubble");
+  bubble.classList.add(`dm-message-bubble--${variant}`);
+  bubble.dataset.status = status;
 
   const content = createElement(doc, "div", "dm-message-bubble__content", body);
-  wrapper.appendChild(content);
+  bubble.appendChild(content);
 
   const meta = createElement(doc, "div", "dm-message-bubble__meta");
   if (timestamp) {
@@ -55,6 +63,15 @@ export function MessageBubble({
     meta.appendChild(statusLabel);
   }
 
-  wrapper.appendChild(meta);
-  return wrapper;
+  bubble.appendChild(meta);
+
+  if (variant === "outgoing") {
+    row.appendChild(bubble);
+    row.appendChild(avatar);
+  } else {
+    row.appendChild(avatar);
+    row.appendChild(bubble);
+  }
+
+  return row;
 }

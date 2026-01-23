@@ -4413,6 +4413,11 @@ export class ProfileModalController {
       activeThread?.latestMessage,
     );
 
+    const currentUserSummary = this.resolveProfileSummaryForPubkey(
+      this.resolveActiveDmActor(),
+    );
+    const currentUserAvatarUrl = currentUserSummary?.avatarSrc || "";
+
     container.innerHTML = "";
 
     try {
@@ -4420,6 +4425,7 @@ export class ProfileModalController {
 
       this.dmAppShell = new AppShell({
         document,
+        currentUserAvatarUrl,
         conversations,
         activeConversationId,
         conversationState,

@@ -5312,8 +5312,33 @@
     border-radius: var(--radius-md);
   }
 
+  .dm-message-row {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--space-xs);
+    width: 100%;
+  }
+
+  .dm-message-row--incoming {
+    justify-content: flex-start;
+  }
+
+  .dm-message-row--outgoing {
+    justify-content: flex-end;
+  }
+
+  .dm-message-avatar {
+    width: var(--space-xl);
+    height: var(--space-xl);
+    flex-shrink: 0;
+    border-radius: var(--radius-full);
+    object-fit: cover;
+    background-color: var(--surface-sunken);
+    border: var(--border-width-hairline) solid var(--border-subtle);
+  }
+
   .dm-message-bubble {
-    max-width: 85%;
+    max-width: 75%;
     display: flex;
     flex-direction: column;
     gap: var(--space-2xs);
@@ -5325,14 +5350,14 @@
   }
 
   .dm-message-bubble--incoming {
-    align-self: flex-start;
+    border-bottom-left-radius: var(--radius-sm);
   }
 
   .dm-message-bubble--outgoing {
-    align-self: flex-end;
     background: var(--color-accent);
     color: var(--color-white);
     border-color: var(--color-accent-strong);
+    border-bottom-right-radius: var(--radius-sm);
   }
 
   .dm-message-bubble--outgoing .dm-message-bubble__meta,
