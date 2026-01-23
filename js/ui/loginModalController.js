@@ -293,6 +293,7 @@ export default class LoginModalController {
     this.modalCloseObserver = null;
     this.modalCloseIntervalId = null;
     this.isSelectionInProgress = false;
+    this.nip46AutoStartTimer = null;
 
     this.initializeRemoteSignerStatus();
     this.initialized = false;
@@ -1486,7 +1487,14 @@ export default class LoginModalController {
       if (cancelButton instanceof HTMLButtonElement) {
         cancelHandler = (event) => {
           event.preventDefault();
-          finish(null, { keepMounted: false });
+          if (settled) {
+            this.rejectPendingTask(this.createCancellationError(), {
+              type: "add-profile",
+            });
+            cleanup();
+          } else {
+            finish(null, { keepMounted: false });
+          }
         };
         cancelButton.addEventListener("click", cancelHandler);
       }
@@ -1566,7 +1574,7 @@ export default class LoginModalController {
       }
 
       // Kick off the handshake generation
-      setTimeout(autoStart, 0);
+      this.nip46AutoStartTimer = setTimeout(autoStart, 0);
     });
   }
 
@@ -2471,6 +2479,13 @@ export default class LoginModalController {
       }
     }
     this.modalCloseIntervalId = null;
+
+    if (this.nip46AutoStartTimer) {
+      if (this.window && typeof this.window.clearTimeout === "function") {
+        this.window.clearTimeout(this.nip46AutoStartTimer);
+      }
+      this.nip46AutoStartTimer = null;
+    }
 
     if (this.pendingTask && typeof this.pendingTask.reject === "function") {
       try {
