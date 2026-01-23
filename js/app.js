@@ -6282,11 +6282,15 @@ class Application {
         reason: normalizedReason,
         engine: "unavailable",
       };
+      if (runtime?.ageGroup && !metadata.ageGroup) {
+        metadata.ageGroup = runtime.ageGroup;
+      }
       this.latestFeedMetadata = metadata;
       this.videosMap = this.nostrService.getVideosMap();
       if (this.videoListView) {
         this.videoListView.state.videosMap = this.videosMap;
       }
+      this.updateFeedTelemetryMetadata("kids", [], metadata);
       this.renderVideoList({ videos: fallback, metadata });
       return Promise.resolve({ videos: fallback, metadata });
     }
@@ -6301,12 +6305,18 @@ class Application {
         if (normalizedReason) {
           metadata.reason = normalizedReason;
         }
+        if (runtime?.ageGroup && !metadata.ageGroup) {
+          metadata.ageGroup = runtime.ageGroup;
+        }
 
         this.latestFeedMetadata = metadata;
         this.videosMap = this.nostrService.getVideosMap();
         if (this.videoListView) {
           this.videoListView.state.videosMap = this.videosMap;
         }
+
+        const items = Array.isArray(result?.items) ? result.items : [];
+        this.updateFeedTelemetryMetadata("kids", items, metadata);
 
         const payload = { videos, metadata };
         this.renderVideoList(payload);
@@ -6318,11 +6328,15 @@ class Application {
           reason: normalizedReason || "error:kids-feed",
           error: true,
         };
+        if (runtime?.ageGroup && !metadata.ageGroup) {
+          metadata.ageGroup = runtime.ageGroup;
+        }
         this.latestFeedMetadata = metadata;
         this.videosMap = this.nostrService.getVideosMap();
         if (this.videoListView) {
           this.videoListView.state.videosMap = this.videosMap;
         }
+        this.updateFeedTelemetryMetadata("kids", [], metadata);
         const payload = { videos: fallback, metadata };
         this.renderVideoList(payload);
         return payload;
@@ -6789,6 +6803,9 @@ class Application {
     const state = {
       matchedTagsById: new Map(),
       matchReasonsById: new Map(),
+      kidsScoreById: new Map(),
+      moderationById: new Map(),
+      ageGroup: "",
       lastImpressionSignature: "",
       activePlayback: null,
     };
@@ -6817,22 +6834,30 @@ class Application {
     this.feedTelemetryState.activeFeed = normalized;
   }
 
+  isFeedActive(feedName = "") {
+    const normalized =
+      typeof feedName === "string" ? feedName.trim().toLowerCase() : "";
+    return Boolean(normalized && this.feedTelemetryState?.activeFeed === normalized);
+  }
+
   isForYouFeedActive() {
     return this.feedTelemetryState?.activeFeed === "for-you";
   }
 
-  updateForYouTelemetryMetadata(items = [], metadata = {}) {
-    if (!this.isForYouFeedActive()) {
+  updateFeedTelemetryMetadata(feedName = "", items = [], metadata = {}) {
+    if (!this.isFeedActive(feedName)) {
       return;
     }
 
-    const forYouState = this.getFeedTelemetryState("for-you");
-    if (!forYouState) {
+    const feedState = this.getFeedTelemetryState(feedName);
+    if (!feedState) {
       return;
     }
 
     const matchedTagsById = new Map();
     const matchReasonsById = new Map();
+    const kidsScoreById = new Map();
+    const moderationById = new Map();
 
     if (Array.isArray(items)) {
       items.forEach((item) => {
@@ -6846,6 +6871,16 @@ class Application {
             ? item.metadata.matchedInterests
             : [];
         matchedTagsById.set(videoId, matched);
+
+        const kidsScoreRaw = Number(item?.metadata?.kidsScore);
+        if (Number.isFinite(kidsScoreRaw)) {
+          kidsScoreById.set(videoId, kidsScoreRaw);
+        }
+
+        const moderationPayload = this.buildModerationTelemetry(item?.video);
+        if (moderationPayload) {
+          moderationById.set(videoId, moderationPayload);
+        }
       });
     }
 
@@ -6866,8 +6901,18 @@ class Application {
       matchReasonsById.set(videoId, reasons);
     });
 
-    forYouState.matchedTagsById = matchedTagsById;
-    forYouState.matchReasonsById = matchReasonsById;
+    const ageGroup =
+      typeof metadata?.ageGroup === "string" ? metadata.ageGroup.trim() : "";
+
+    feedState.matchedTagsById = matchedTagsById;
+    feedState.matchReasonsById = matchReasonsById;
+    feedState.kidsScoreById = kidsScoreById;
+    feedState.moderationById = moderationById;
+    feedState.ageGroup = ageGroup;
+  }
+
+  updateForYouTelemetryMetadata(items = [], metadata = {}) {
+    this.updateFeedTelemetryMetadata("for-you", items, metadata);
   }
 
   resolveVideoForTelemetry(videoId) {
@@ -6897,13 +6942,43 @@ class Application {
     return index >= 0 ? index : null;
   }
 
-  buildForYouTelemetryPayload({ video, videoId, position } = {}) {
-    if (!this.isForYouFeedActive()) {
+  buildModerationTelemetry(video) {
+    if (!video || typeof video !== "object") {
       return null;
     }
 
-    const forYouState = this.getFeedTelemetryState("for-you");
-    if (!forYouState) {
+    const moderation =
+      video.moderation && typeof video.moderation === "object"
+        ? video.moderation
+        : null;
+    if (!moderation) {
+      return null;
+    }
+
+    const payload = {
+      hidden: moderation.hidden === true,
+      blurThumbnail: moderation.blurThumbnail === true,
+      blockAutoplay: moderation.blockAutoplay === true,
+      viewerOverride: moderation.viewerOverride?.showAnyway === true,
+      trustedMuted: moderation.trustedMuted === true,
+    };
+
+    const reportType =
+      typeof moderation.reportType === "string" ? moderation.reportType : "";
+    if (reportType) {
+      payload.reportType = reportType;
+    }
+
+    return payload;
+  }
+
+  buildFeedTelemetryPayload(feedName = "", { video, videoId, position } = {}) {
+    if (!this.isFeedActive(feedName)) {
+      return null;
+    }
+
+    const feedState = this.getFeedTelemetryState(feedName);
+    if (!feedState) {
       return null;
     }
 
@@ -6917,33 +6992,53 @@ class Application {
       return null;
     }
 
-    const matchedTagsRaw = forYouState.matchedTagsById?.get(eventId) || [];
-    const matchedTags = Array.isArray(matchedTagsRaw)
-      ? Array.from(
-          new Set(
-            matchedTagsRaw
-              .filter((tag) => typeof tag === "string")
-              .map((tag) => tag.trim())
-              .filter(Boolean),
-          ),
-        )
-      : [];
-
-    const whyRaw = forYouState.matchReasonsById?.get(eventId) || [];
-    const why = Array.isArray(whyRaw)
-      ? whyRaw.map((entry) => ({
-          stage: typeof entry.stage === "string" ? entry.stage : "",
-          reason: typeof entry.reason === "string" ? entry.reason : "",
-        }))
-      : [];
-
     const payload = {
-      feed: "for-you",
+      feed: feedName,
       eventId,
       videoId: eventId,
-      matchedTags,
-      why,
     };
+
+    if (feedName === "for-you") {
+      const matchedTagsRaw = feedState.matchedTagsById?.get(eventId) || [];
+      const matchedTags = Array.isArray(matchedTagsRaw)
+        ? Array.from(
+            new Set(
+              matchedTagsRaw
+                .filter((tag) => typeof tag === "string")
+                .map((tag) => tag.trim())
+                .filter(Boolean),
+            ),
+          )
+        : [];
+
+      const whyRaw = feedState.matchReasonsById?.get(eventId) || [];
+      const why = Array.isArray(whyRaw)
+        ? whyRaw.map((entry) => ({
+            stage: typeof entry.stage === "string" ? entry.stage : "",
+            reason: typeof entry.reason === "string" ? entry.reason : "",
+          }))
+        : [];
+
+      payload.matchedTags = matchedTags;
+      payload.why = why;
+    }
+
+    const ageGroup =
+      typeof feedState.ageGroup === "string" ? feedState.ageGroup : "";
+    if (ageGroup) {
+      payload.ageGroup = ageGroup;
+    }
+
+    const kidsScore = feedState.kidsScoreById?.get(eventId);
+    if (Number.isFinite(kidsScore)) {
+      payload.kidsScore = kidsScore;
+    }
+
+    const moderationPayload =
+      this.buildModerationTelemetry(video) || feedState.moderationById?.get(eventId);
+    if (moderationPayload) {
+      payload.moderation = moderationPayload;
+    }
 
     const videoRootId =
       typeof video?.videoRootId === "string" ? video.videoRootId : "";
@@ -6961,6 +7056,14 @@ class Application {
     }
 
     return payload;
+  }
+
+  buildForYouTelemetryPayload({ video, videoId, position } = {}) {
+    return this.buildFeedTelemetryPayload("for-you", {
+      video,
+      videoId,
+      position,
+    });
   }
 
   emitTelemetryEvent(eventName, payload) {
@@ -6989,6 +7092,43 @@ class Application {
     }
   }
 
+  resolveFeedTelemetryEventName(feedName = "", suffix = "") {
+    const normalized =
+      typeof feedName === "string" ? feedName.trim().toLowerCase() : "";
+    if (!normalized || !suffix) {
+      return "";
+    }
+
+    const prefixMap = new Map([
+      ["for-you", "for_you"],
+      ["kids", "kids_feed"],
+    ]);
+
+    const prefix = prefixMap.get(normalized);
+    if (!prefix) {
+      return "";
+    }
+
+    return `${prefix}_${suffix}`;
+  }
+
+  emitFeedTelemetryEvent(
+    feedName = "",
+    eventName = "",
+    { video, videoId, position } = {},
+  ) {
+    const payload = this.buildFeedTelemetryPayload(feedName, {
+      video,
+      videoId,
+      position,
+    });
+    if (!payload) {
+      return false;
+    }
+
+    return this.emitTelemetryEvent(eventName, payload);
+  }
+
   emitForYouTelemetryEvent(eventName, { video, videoId, position } = {}) {
     const payload = this.buildForYouTelemetryPayload({
       video,
@@ -7002,13 +7142,17 @@ class Application {
     return this.emitTelemetryEvent(eventName, payload);
   }
 
-  emitForYouImpressions(videos = []) {
-    if (!this.isForYouFeedActive() || !Array.isArray(videos)) {
+  emitFeedImpressions(videos = [], { feedName } = {}) {
+    const normalized =
+      typeof feedName === "string"
+        ? feedName.trim().toLowerCase()
+        : this.feedTelemetryState?.activeFeed || "";
+    if (!normalized || !Array.isArray(videos)) {
       return;
     }
 
-    const forYouState = this.getFeedTelemetryState("for-you");
-    if (!forYouState) {
+    const feedState = this.getFeedTelemetryState(normalized);
+    if (!feedState) {
       return;
     }
 
@@ -7017,14 +7161,19 @@ class Application {
       .filter(Boolean)
       .join("|");
 
-    if (signature && signature === forYouState.lastImpressionSignature) {
+    if (signature && signature === feedState.lastImpressionSignature) {
       return;
     }
 
-    forYouState.lastImpressionSignature = signature;
+    feedState.lastImpressionSignature = signature;
+
+    const eventName = this.resolveFeedTelemetryEventName(normalized, "impression");
+    if (!eventName) {
+      return;
+    }
 
     videos.forEach((video, index) => {
-      this.emitForYouTelemetryEvent("for_you_impression", {
+      this.emitFeedTelemetryEvent(normalized, eventName, {
         video,
         videoId: video?.id,
         position: index,
@@ -7032,43 +7181,61 @@ class Application {
     });
   }
 
-  recordForYouClick(videoId) {
-    if (!this.isForYouFeedActive() || !videoId) {
+  emitForYouImpressions(videos = []) {
+    this.emitFeedImpressions(videos, { feedName: "for-you" });
+  }
+
+  recordFeedClick(videoId, { feedName } = {}) {
+    const normalized =
+      typeof feedName === "string"
+        ? feedName.trim().toLowerCase()
+        : this.feedTelemetryState?.activeFeed || "";
+    if (!normalized || !videoId) {
       return;
     }
 
-    const forYouState = this.getFeedTelemetryState("for-you");
-    if (!forYouState) {
+    const feedState = this.getFeedTelemetryState(normalized);
+    if (!feedState) {
+      return;
+    }
+
+    const eventName = this.resolveFeedTelemetryEventName(normalized, "click");
+    if (!eventName) {
       return;
     }
 
     const video = this.resolveVideoForTelemetry(videoId);
     const position = this.resolveVideoIndex(videoId);
 
-    forYouState.activePlayback = {
-      feed: "for-you",
+    feedState.activePlayback = {
+      feed: normalized,
       videoId,
     };
 
-    this.emitForYouTelemetryEvent("for_you_click", {
+    this.emitFeedTelemetryEvent(normalized, eventName, {
       video,
       videoId,
       position,
     });
   }
 
+  recordForYouClick(videoId) {
+    this.recordFeedClick(videoId, { feedName: "for-you" });
+  }
+
   handleFeedViewTelemetry(detail = {}) {
-    if (!this.isForYouFeedActive()) {
+    const activeFeed = this.feedTelemetryState?.activeFeed || "";
+    if (!activeFeed) {
       return;
     }
 
-    const forYouState = this.getFeedTelemetryState("for-you");
-    if (!forYouState) {
+    const feedState = this.getFeedTelemetryState(activeFeed);
+    if (!feedState) {
       return;
     }
 
-    const activePlayback = forYouState.activePlayback;
-    if (!activePlayback || activePlayback.feed !== "for-you") {
+    const activePlayback = feedState.activePlayback;
+    if (!activePlayback || activePlayback.feed !== activeFeed) {
       return;
     }
 
@@ -7089,7 +7256,7 @@ class Application {
     }
 
     const video = this.resolveVideoForTelemetry(currentVideoId);
-    const payload = this.buildForYouTelemetryPayload({
+    const payload = this.buildFeedTelemetryPayload(activeFeed, {
       video,
       videoId: currentVideoId,
     });
@@ -7101,8 +7268,13 @@ class Application {
       payload.pointerKey = pointerKey;
     }
 
-    this.emitTelemetryEvent("for_you_watch", payload);
-    forYouState.activePlayback = null;
+    const eventName = this.resolveFeedTelemetryEventName(activeFeed, "watch");
+    if (!eventName) {
+      return;
+    }
+
+    this.emitTelemetryEvent(eventName, payload);
+    feedState.activePlayback = null;
   }
 
   async renderVideoList(payload) {
@@ -7147,7 +7319,7 @@ class Application {
       : [];
 
     this.videoListView.render(decoratedVideos, metadata);
-    this.emitForYouImpressions(decoratedVideos);
+    this.emitFeedImpressions(decoratedVideos);
 
     if (typeof this.refreshVisibleModerationUi === "function") {
       const renderReason =
