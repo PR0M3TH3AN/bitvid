@@ -590,7 +590,22 @@ async function fetchLatestListEvent(filter, contextLabel = "admin-list") {
 
 async function loadNostrList(identifier) {
   const dTagValue = `${ADMIN_LIST_NAMESPACE}:${identifier}`;
-  const event = await fetchLatestListEvent({ "#d": [dTagValue] }, identifier);
+  let superAdminHex = "";
+  try {
+    superAdminHex = decodeNpubToHex(ADMIN_SUPER_NPUB);
+  } catch (error) {
+    devLogger.warn(
+      `[adminListStore] Failed to decode super admin npub for ${identifier} lookup:`,
+      error,
+    );
+  }
+
+  const filter = { "#d": [dTagValue] };
+  if (superAdminHex) {
+    filter.authors = [superAdminHex];
+  }
+
+  const event = await fetchLatestListEvent(filter, identifier);
   return event ? extractNpubsFromEvent(event) : [];
 }
 
