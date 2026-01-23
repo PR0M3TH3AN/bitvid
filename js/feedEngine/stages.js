@@ -275,8 +275,10 @@ export function createResolvePostedAtStage({
 
 export function createTagPreferenceFilterStage({
   stageName = "tag-preference-filter",
+  matchInterests = true,
 } = {}) {
   return async function tagPreferenceFilterStage(items = [], context = {}) {
+    const shouldMatchInterests = matchInterests !== false;
     const tagPreferences = context?.runtime?.tagPreferences;
     const interests = normalizeTagSet(tagPreferences?.interests);
     const disinterests = normalizeTagSet(tagPreferences?.disinterests);
@@ -340,7 +342,7 @@ export function createTagPreferenceFilterStage({
       let matchedInterests = [];
       if (interests.size) {
         matchedInterests = [...videoTags].filter((tag) => interests.has(tag));
-        if (matchedInterests.length === 0) {
+        if (shouldMatchInterests && matchedInterests.length === 0) {
           context?.addWhy?.({
             stage: stageName,
             type: "filter",
