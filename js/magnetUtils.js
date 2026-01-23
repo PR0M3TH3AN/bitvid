@@ -16,15 +16,17 @@ export const safeDecodeMagnet = sharedSafeDecodeMagnet;
 
 export function normalizeAndAugmentMagnet(
   rawValue,
-  {
+  options = {}
+) {
+  const {
     webSeed,
     torrentUrl,
     xs,
     extraTrackers = [],
     logger,
     appProtocol,
-  } = {}
-) {
+  } = options || {};
+
   const safeExtraTrackers = Array.isArray(extraTrackers) ? extraTrackers : [];
 
   const {
