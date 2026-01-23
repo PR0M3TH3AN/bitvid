@@ -53,6 +53,13 @@ Hosted URLs remain the preferred playback path, and you can still add a magnet o
 4. **Operator playbook**: If a deployment causes playback regressions, flip the relevant feature flags back to their default values in `js/constants.js` and redeploy. Capture the rollback steps in AGENTS.md and the PR description so the Main channel stays stable.
 5. **Deep dive**: See [`docs/playback-fallback.md`](docs/playback-fallback.md) for the call flow into `playbackService`, magnet normalization details, and fallback hand-off points.
 
+### Embed player
+
+- **Embed URL format**: `/embed.html?pointer=<naddr-or-nevent>&playback=<url|torrent>`. The `pointer` can be a NIP-19 `naddr`/`nevent`, a `kind:pubkey:d` string, or a raw hex event id. The `playback` query param forces CDN (`url`) or WebTorrent (`torrent`) mode; omit it to let bitvid choose automatically.
+- **Same-origin requirement**: To reuse session-actor storage for view counters, the embed must be served from the same origin as the parent page (so the iframe can access the same storage bucket).
+- **Framing headers**: If you intend to embed across sites, ensure your hosting headers allow framing (e.g., Netlify `_headers` with `Content-Security-Policy: frame-ancestors *` or a narrowed allowlist).
+- **X-Frame-Options**: Do not set `X-Frame-Options: DENY` or `SAMEORIGIN` if cross-site embedding is required.
+
 ### Watch history & view counts
 
 - **Encrypted watch history**: When you opt into watch history, bitvid stores entries locally and syncs them as NIP-04 encrypted events so only your keys can decrypt them. The History view and the Profile modal’s History tab hydrate from relays when available and gracefully fall back to the local cache when offline.
