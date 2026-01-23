@@ -8,7 +8,14 @@ import { formatShortNpub } from "./utils/formatters.js";
 import { sanitizeProfileMediaUrl } from "./utils/profileMedia.js";
 import { devLogger } from "./utils/logger.js";
 import { attachFeedInfoPopover } from "./ui/components/FeedInfoPopover.js";
-import { parseFilterQuery } from "./search/searchFilters.js";
+import { setHashView } from "./hashView.js";
+import {
+  buildSearchHashFromState,
+  getSearchFilterState,
+  resetSearchFilters,
+  setSearchFilterState,
+  syncSearchFilterStateFromHash,
+} from "./search/searchFilterState.js";
 
 function getApp() {
   return getApplication();
@@ -101,16 +108,13 @@ function renderProfileCards(profiles, container) {
 let currentSearchToken = 0;
 
 export async function initSearchView() {
-  const hashParams = new URLSearchParams(window.location.hash.split("?")[1] || window.location.hash.slice(1));
-  // The hash format is #view=search&q=...&filters=...
-  // URLSearchParams handles 'view=search&q=...' correctly if we pass the string after #
-  const rawQuery = hashParams.get("q") || "";
-  const rawFilters = hashParams.get("filters") || "";
-  const parsedQuery = parseFilterQuery([rawQuery, rawFilters].filter(Boolean).join(" "));
+  const parsedQuery = syncSearchFilterStateFromHash(window.location.hash);
   if (parsedQuery.errors.length > 0) {
     devLogger.warn("[Search] Filter parsing errors", parsedQuery.errors);
   }
   const query = parsedQuery.text || "";
+
+  renderActiveFilters(parsedQuery.filters);
 
   const titleEl = document.getElementById("searchTitle");
   if (titleEl) {
@@ -165,6 +169,215 @@ export async function initSearchView() {
         videoList.innerHTML = `<p class="text-sm text-critical col-span-full">Failed to load videos.</p>`;
     }
   });
+}
+
+const formatDateLabel = (timestampSeconds) => {
+  if (!Number.isFinite(timestampSeconds)) return "";
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  return formatter.format(new Date(timestampSeconds * 1000));
+};
+
+const formatDurationLabel = (seconds) => {
+  if (!Number.isFinite(seconds)) return "";
+  if (seconds % 3600 === 0) {
+    return `${seconds / 3600}h`;
+  }
+  if (seconds % 60 === 0) {
+    return `${seconds / 60}m`;
+  }
+  return `${seconds}s`;
+};
+
+function buildNextFilters() {
+  const current = getSearchFilterState();
+  const filters = current.filters || {};
+  return {
+    ...filters,
+    dateRange: { ...filters.dateRange },
+    duration: { ...filters.duration },
+    authorPubkeys: Array.isArray(filters.authorPubkeys)
+      ? [...filters.authorPubkeys]
+      : [],
+    tags: Array.isArray(filters.tags) ? [...filters.tags] : [],
+  };
+}
+
+function applyFiltersAndRefresh(nextFilters) {
+  const current = getSearchFilterState();
+  const nextState = {
+    text: current.text || "",
+    filters: nextFilters,
+  };
+  setSearchFilterState(nextState);
+  setHashView(buildSearchHashFromState(nextState));
+}
+
+function renderActiveFilters(filters) {
+  const wrapper = document.getElementById("searchActiveFilters");
+  const list = document.getElementById("searchActiveFiltersList");
+  const clearBtn = document.getElementById("searchActiveFiltersClear");
+  if (!wrapper || !list || !clearBtn) {
+    return;
+  }
+
+  list.innerHTML = "";
+  const pills = [];
+
+  filters.authorPubkeys?.forEach((author) => {
+    pills.push({
+      label: `Author: ${author}`,
+      onRemove: () => {
+        const nextFilters = buildNextFilters();
+        nextFilters.authorPubkeys = nextFilters.authorPubkeys.filter(
+          (value) => value !== author,
+        );
+        applyFiltersAndRefresh(nextFilters);
+      },
+    });
+  });
+
+  filters.tags?.forEach((tag) => {
+    pills.push({
+      label: `#${tag}`,
+      onRemove: () => {
+        const nextFilters = buildNextFilters();
+        nextFilters.tags = nextFilters.tags.filter((value) => value !== tag);
+        applyFiltersAndRefresh(nextFilters);
+      },
+    });
+  });
+
+  if (Number.isFinite(filters.kind)) {
+    pills.push({
+      label: `Kind: ${filters.kind}`,
+      onRemove: () => {
+        const nextFilters = buildNextFilters();
+        nextFilters.kind = null;
+        applyFiltersAndRefresh(nextFilters);
+      },
+    });
+  }
+
+  if (filters.relay) {
+    pills.push({
+      label: `Relay: ${filters.relay}`,
+      onRemove: () => {
+        const nextFilters = buildNextFilters();
+        nextFilters.relay = null;
+        applyFiltersAndRefresh(nextFilters);
+      },
+    });
+  }
+
+  if (Number.isFinite(filters.dateRange?.after)) {
+    pills.push({
+      label: `After: ${formatDateLabel(filters.dateRange.after)}`,
+      onRemove: () => {
+        const nextFilters = buildNextFilters();
+        nextFilters.dateRange.after = null;
+        applyFiltersAndRefresh(nextFilters);
+      },
+    });
+  }
+
+  if (Number.isFinite(filters.dateRange?.before)) {
+    pills.push({
+      label: `Before: ${formatDateLabel(filters.dateRange.before)}`,
+      onRemove: () => {
+        const nextFilters = buildNextFilters();
+        nextFilters.dateRange.before = null;
+        applyFiltersAndRefresh(nextFilters);
+      },
+    });
+  }
+
+  if (Number.isFinite(filters.duration?.minSeconds)) {
+    pills.push({
+      label: `Min duration: ${formatDurationLabel(filters.duration.minSeconds)}`,
+      onRemove: () => {
+        const nextFilters = buildNextFilters();
+        nextFilters.duration.minSeconds = null;
+        applyFiltersAndRefresh(nextFilters);
+      },
+    });
+  }
+
+  if (Number.isFinite(filters.duration?.maxSeconds)) {
+    pills.push({
+      label: `Max duration: ${formatDurationLabel(filters.duration.maxSeconds)}`,
+      onRemove: () => {
+        const nextFilters = buildNextFilters();
+        nextFilters.duration.maxSeconds = null;
+        applyFiltersAndRefresh(nextFilters);
+      },
+    });
+  }
+
+  if (filters.hasMagnet === true) {
+    pills.push({
+      label: "Has magnet",
+      onRemove: () => {
+        const nextFilters = buildNextFilters();
+        nextFilters.hasMagnet = null;
+        applyFiltersAndRefresh(nextFilters);
+      },
+    });
+  }
+
+  if (filters.hasUrl === true) {
+    pills.push({
+      label: "Has URL",
+      onRemove: () => {
+        const nextFilters = buildNextFilters();
+        nextFilters.hasUrl = null;
+        applyFiltersAndRefresh(nextFilters);
+      },
+    });
+  }
+
+  if (filters.nsfw && filters.nsfw !== "any") {
+    pills.push({
+      label: `NSFW: ${filters.nsfw}`,
+      onRemove: () => {
+        const nextFilters = buildNextFilters();
+        nextFilters.nsfw = "any";
+        applyFiltersAndRefresh(nextFilters);
+      },
+    });
+  }
+
+  if (!pills.length) {
+    wrapper.classList.add("hidden");
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  pills.forEach((pill) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className =
+      "search-filter-chip inline-flex items-center gap-2 text-xs";
+    const label = document.createElement("span");
+    label.textContent = pill.label;
+    const remove = document.createElement("span");
+    remove.setAttribute("aria-hidden", "true");
+    remove.textContent = "✕";
+    button.append(label, remove);
+    button.addEventListener("click", pill.onRemove);
+    fragment.appendChild(button);
+  });
+  list.appendChild(fragment);
+
+  wrapper.classList.remove("hidden");
+  clearBtn.onclick = () => {
+    resetSearchFilters();
+    const nextState = getSearchFilterState();
+    setHashView(buildSearchHashFromState(nextState));
+  };
 }
 
 async function renderSearchVideos(videos, container, app) {
