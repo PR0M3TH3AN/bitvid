@@ -29,12 +29,14 @@ export function ConversationList({
 
   const root = createElement(doc, "section", "dm-conversation-list");
   const header = createElement(doc, "div", "dm-conversation-list__header");
-  header.appendChild(createElement(doc, "h2", "dm-conversation-list__title", "Messages"));
+  // We removed the redundant "Messages" title here.
+  // If we need spacing/alignment for the button, justify-end in CSS handles it.
+
   if (typeof onMarkAllRead === "function") {
     const markAllButton = createElement(
       doc,
       "button",
-      "btn-ghost",
+      "btn-ghost ml-auto",
       "Mark all as read",
     );
     markAllButton.type = "button";
@@ -45,7 +47,10 @@ export function ConversationList({
     });
     header.appendChild(markAllButton);
   }
-  root.appendChild(header);
+
+  if (header.hasChildNodes()) {
+    root.appendChild(header);
+  }
 
   const list = createElement(doc, "div", "dm-conversation-list__items no-scrollbar");
   list.setAttribute("role", "listbox");

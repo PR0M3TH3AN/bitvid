@@ -5060,7 +5060,8 @@
   .profile-modal .dm-app-shell {
     min-height: 0;
     height: auto;
-    padding: var(--space-md);
+    padding: 0;
+    gap: var(--space-md);
   }
 
   .dm-app-shell__sidebar,
@@ -5075,6 +5076,10 @@
   .profile-modal .dm-app-shell__main {
     height: auto;
     min-height: 0;
+    border: none;
+    box-shadow: none;
+    background: transparent;
+    padding: 0;
   }
 
   .dm-app-shell__sidebar {
@@ -5878,7 +5883,7 @@
     }
 
     .profile-modal .dm-conversation-list {
-      height: 100%;
+      flex: 1;
       min-height: 0;
       display: flex;
       flex-direction: column;
@@ -5888,10 +5893,11 @@
       flex: 1;
       overflow-y: auto;
       min-height: 0;
+      @apply no-scrollbar;
     }
 
     .profile-modal .dm-message-thread {
-      height: 100%;
+      flex: 1;
       min-height: 0;
       display: flex;
       flex-direction: column;
@@ -5901,6 +5907,7 @@
       flex: 1;
       overflow-y: auto;
       min-height: 0;
+      @apply no-scrollbar;
     }
   }
 
