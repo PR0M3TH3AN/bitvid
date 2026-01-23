@@ -18,10 +18,13 @@ import {
 } from "./themeController.js";
 import { setHashView } from "./hashView.js";
 import { devLogger, userLogger } from "./utils/logger.js";
+import { parseFilterQuery } from "./search/searchFilters.js";
 import {
-  parseFilterQuery,
-  serializeFiltersToQuery,
-} from "./search/searchFilters.js";
+  buildSearchHashFromState,
+  getSearchFilterState,
+  resetSearchFilters,
+  setSearchFilterState,
+} from "./search/searchFilterState.js";
 import {
   prepareStaticModal,
   openStaticModal,
@@ -49,6 +52,7 @@ import { nostrClient } from "./nostrClientFacade.js";
 import { userBlocks } from "./userBlocks.js";
 import { relayManager } from "./relayManager.js";
 import createApplication from "./bootstrap.js";
+import attachSearchFiltersPopover from "./ui/components/SearchFiltersPopover.js";
 
 validateInstanceConfig();
 
@@ -738,16 +742,12 @@ async function bootstrapInterface() {
       if (parsedFilters.errors.length > 0) {
         devLogger.warn("[Search] Filter parsing errors", parsedFilters.errors);
       }
-      const params = new URLSearchParams();
-      if (parsedFilters.text) {
-        params.set("q", parsedFilters.text);
-      }
-      const serializedFilters = serializeFiltersToQuery(parsedFilters.filters);
-      if (serializedFilters) {
-        params.set("filters", serializedFilters);
-      }
-      const queryString = params.toString();
-      setHashView(queryString ? `search&${queryString}` : "search");
+      const nextState = {
+        text: parsedFilters.text || "",
+        filters: parsedFilters.filters,
+      };
+      setSearchFilterState(nextState);
+      setHashView(buildSearchHashFromState(nextState));
     });
   }
 
@@ -848,21 +848,40 @@ async function bootstrapInterface() {
       if (parsedFilters.errors.length > 0) {
         devLogger.warn("[Search] Filter parsing errors", parsedFilters.errors);
       }
-      const params = new URLSearchParams();
-      if (parsedFilters.text) {
-        params.set("q", parsedFilters.text);
-      }
-      const serializedFilters = serializeFiltersToQuery(parsedFilters.filters);
-      if (serializedFilters) {
-        params.set("filters", serializedFilters);
-      }
-      const queryString = params.toString();
-      setHashView(queryString ? `search&${queryString}` : "search");
+      const nextState = {
+        text: parsedFilters.text || "",
+        filters: parsedFilters.filters,
+      };
+      setSearchFilterState(nextState);
+      setHashView(buildSearchHashFromState(nextState));
       // Close search on submit
       mobileSearchContainer.classList.add("hidden");
       mobileSearchFab.classList.remove("hidden");
     });
   }
+
+  const searchFilterButtons = document.querySelectorAll(".header-search__filter");
+  const applySearchFilters = (filters) => {
+    const currentState = getSearchFilterState();
+    const nextState = {
+      text: currentState.text || "",
+      filters,
+    };
+    setSearchFilterState(nextState);
+    setHashView(buildSearchHashFromState(nextState));
+  };
+  const clearSearchFilters = () => {
+    resetSearchFilters();
+    const nextState = getSearchFilterState();
+    setHashView(buildSearchHashFromState(nextState));
+  };
+  searchFilterButtons.forEach((button) => {
+    attachSearchFiltersPopover(button, {
+      getState: getSearchFilterState,
+      onApply: applySearchFilters,
+      onReset: clearSearchFilters,
+    });
+  });
 
   const sidebar = document.getElementById("sidebar");
   const collapseToggle = document.getElementById("sidebarCollapseToggle");

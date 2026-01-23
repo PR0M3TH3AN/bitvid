@@ -1,4 +1,5 @@
 import createPopover from "../overlay/popoverEngine.js";
+import { DEFAULT_FILTERS } from "../../search/searchFilters.js";
 
 const FOCUSABLE_SELECTOR =
   "a[href], button:not([disabled]), input:not([disabled]):not([type=\"hidden\"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex=\"-1\"])";
@@ -115,6 +116,32 @@ function buildLabeledInput(doc, { id, label, type = "text", placeholder } = {}) 
   return { wrapper, inputEl };
 }
 
+const parseDateInputValue = (value) => {
+  if (!value) return null;
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) {
+    return null;
+  }
+  return Math.floor(parsed / 1000);
+};
+
+const formatDateInputValue = (timestampSeconds) => {
+  if (!Number.isFinite(timestampSeconds)) {
+    return "";
+  }
+  const date = new Date(timestampSeconds * 1000);
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const normalizeTagValue = (value) =>
+  value
+    .split(/[, ]+/)
+    .map((tag) => tag.trim().replace(/^#/, ""))
+    .filter(Boolean);
+
 export function attachSearchFiltersPopover(triggerElement, options = {}) {
   if (!triggerElement) {
     return null;
@@ -124,6 +151,8 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
   if (!doc) {
     return null;
   }
+
+  let controlState = null;
 
   const render = ({ container, close }) => {
     const panel = createElement(doc, "div", {
@@ -170,7 +199,15 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
     const chipRow = createElement(doc, "div", {
       className: "flex flex-wrap gap-2",
     });
-    ["24h", "7d", "30d", "90d", "All time"].forEach((label) => {
+    const dateChips = [];
+    const dateChipValues = [
+      { label: "24h", days: 1 },
+      { label: "7d", days: 7 },
+      { label: "30d", days: 30 },
+      { label: "90d", days: 90 },
+      { label: "All time", days: null },
+    ];
+    dateChipValues.forEach(({ label, days }) => {
       const chip = createElement(doc, "button", {
         className:
           "search-filter-chip focus-ring",
@@ -178,22 +215,50 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
         attrs: { type: "button", "aria-pressed": "false" },
       });
       chip.dataset.state = "off";
-      chip.addEventListener("click", () => toggleChip(chip));
+      chip.addEventListener("click", () => {
+        dateChips.forEach((entry) => {
+          entry.button.setAttribute("aria-pressed", "false");
+          entry.button.dataset.state = "off";
+        });
+        chip.setAttribute("aria-pressed", "true");
+        chip.dataset.state = "on";
+        if (days === null) {
+          startInputEl.value = "";
+          endInputEl.value = "";
+          return;
+        }
+        const now = new Date();
+        const start = new Date();
+        start.setDate(now.getDate() - days);
+        startInputEl.value = formatDateInputValue(
+          Math.floor(start.getTime() / 1000),
+        );
+        endInputEl.value = formatDateInputValue(
+          Math.floor(now.getTime() / 1000),
+        );
+      });
+      dateChips.push({ button: chip, days });
       chipRow.appendChild(chip);
     });
     const dateInputs = createElement(doc, "div", {
       className: "grid gap-3 sm:grid-cols-2",
     });
-    const { wrapper: startWrapper } = buildLabeledInput(doc, {
+    const { wrapper: startWrapper, inputEl: startInputEl } = buildLabeledInput(
+      doc,
+      {
       id: "search-filters-date-start",
       label: "Start date",
       type: "date",
-    });
-    const { wrapper: endWrapper } = buildLabeledInput(doc, {
+      },
+    );
+    const { wrapper: endWrapper, inputEl: endInputEl } = buildLabeledInput(
+      doc,
+      {
       id: "search-filters-date-end",
       label: "End date",
       type: "date",
-    });
+      },
+    );
     dateInputs.append(startWrapper, endWrapper);
     dateSection.append(chipRow, dateInputs);
     panel.appendChild(dateSection);
@@ -224,11 +289,14 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
     sortSection.appendChild(sortSelect);
     panel.appendChild(sortSection);
 
-    const { wrapper: authorWrapper } = buildLabeledInput(doc, {
+    const { wrapper: authorWrapper, inputEl: authorInput } = buildLabeledInput(
+      doc,
+      {
       id: "search-filters-author",
       label: "Author",
       placeholder: "npub1...",
-    });
+      },
+    );
     panel.appendChild(authorWrapper);
 
     const tagSection = createElement(doc, "div", {
@@ -247,6 +315,7 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
     const tagList = createElement(doc, "div", {
       className: "flex flex-wrap gap-2",
     });
+    const tagChips = new Map();
     ["nostr", "music", "live"].forEach((tag) => {
       const chip = createElement(doc, "button", {
         className: "search-filter-chip focus-ring",
@@ -255,6 +324,7 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
       });
       chip.dataset.state = "on";
       chip.addEventListener("click", () => toggleChip(chip));
+      tagChips.set(tag, chip);
       tagList.appendChild(chip);
     });
     tagSection.append(tagInput, tagList);
@@ -272,6 +342,7 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
     const durationGrid = createElement(doc, "div", {
       className: "grid gap-2",
     });
+    const durationChecks = {};
     [
       { id: "duration-short", label: "Short (under 5 min)" },
       { id: "duration-medium", label: "Medium (5-20 min)" },
@@ -286,6 +357,7 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
         className: "checkbox",
         attrs: { id, type: "checkbox" },
       });
+      durationChecks[id] = checkbox;
       row.append(checkbox, createElement(doc, "span", { text: label }));
       durationGrid.appendChild(row);
     });
@@ -320,10 +392,9 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
       row.append(text, toggle);
       return row;
     };
-    toggleSection.append(
-      toggleRow("NSFW content", "search-filters-nsfw"),
-      toggleRow("Followed only", "search-filters-followed"),
-    );
+    const nsfwToggle = toggleRow("NSFW content", "search-filters-nsfw");
+    const followedToggle = toggleRow("Followed only", "search-filters-followed");
+    toggleSection.append(nsfwToggle, followedToggle);
     panel.appendChild(toggleSection);
 
     const footer = createElement(doc, "div", {
@@ -339,33 +410,118 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
       text: "Apply filters",
       attrs: { type: "button" },
     });
-    resetButton.addEventListener("click", () => {
-      const chips = panel.querySelectorAll(".search-filter-chip");
-      chips.forEach((chip) => {
-        chip.setAttribute("aria-pressed", "false");
-        chip.dataset.state = "off";
+    const applyStateToControls = (filters = DEFAULT_FILTERS) => {
+      const safeFilters = filters || DEFAULT_FILTERS;
+      startInputEl.value = formatDateInputValue(safeFilters.dateRange?.after);
+      endInputEl.value = formatDateInputValue(safeFilters.dateRange?.before);
+      const hasDateRange =
+        Number.isFinite(safeFilters.dateRange?.after) ||
+        Number.isFinite(safeFilters.dateRange?.before);
+      dateChips.forEach(({ button, days }) => {
+        const isAllTime = days === null && !hasDateRange;
+        button.setAttribute("aria-pressed", isAllTime ? "true" : "false");
+        button.dataset.state = isAllTime ? "on" : "off";
       });
-      panel.querySelectorAll("input").forEach((input) => {
-        if (input.type === "checkbox") {
-          input.checked = false;
-        } else {
-          input.value = "";
+      authorInput.value = safeFilters.authorPubkeys?.join(", ") || "";
+      tagInput.value = "";
+      tagChips.forEach((chip, tag) => {
+        const isActive = safeFilters.tags?.includes(tag);
+        chip.setAttribute("aria-pressed", isActive ? "true" : "false");
+        chip.dataset.state = isActive ? "on" : "off";
+      });
+      const extraTags = (safeFilters.tags || []).filter(
+        (tag) => !tagChips.has(tag),
+      );
+      if (extraTags.length) {
+        tagInput.value = extraTags.join(", ");
+      }
+      Object.values(durationChecks).forEach((checkbox) => {
+        checkbox.checked = false;
+      });
+      const minSeconds = safeFilters.duration?.minSeconds ?? null;
+      const maxSeconds = safeFilters.duration?.maxSeconds ?? null;
+      if (minSeconds === null && maxSeconds === 300) {
+        durationChecks["duration-short"].checked = true;
+      } else if (minSeconds === 300 && maxSeconds === 1200) {
+        durationChecks["duration-medium"].checked = true;
+      } else if (minSeconds === 1200 && maxSeconds === null) {
+        durationChecks["duration-long"].checked = true;
+      }
+      const nsfwSwitch = nsfwToggle.querySelector(".switch");
+      if (nsfwSwitch) {
+        const isOn = safeFilters.nsfw === "true" || safeFilters.nsfw === "only";
+        nsfwSwitch.setAttribute("aria-checked", isOn ? "true" : "false");
+        nsfwSwitch.classList.toggle("is-on", isOn);
+      }
+      const followedSwitch = followedToggle.querySelector(".switch");
+      if (followedSwitch) {
+        followedSwitch.setAttribute("aria-checked", "false");
+        followedSwitch.classList.remove("is-on");
+      }
+      if (sortSelect) {
+        sortSelect.selectedIndex = 0;
+      }
+    };
+
+    const buildFiltersFromControls = () => {
+      const filters = {
+        ...DEFAULT_FILTERS,
+        dateRange: { ...DEFAULT_FILTERS.dateRange },
+        duration: { ...DEFAULT_FILTERS.duration },
+      };
+      filters.dateRange.after = parseDateInputValue(startInputEl.value);
+      filters.dateRange.before = parseDateInputValue(endInputEl.value);
+      const authorValues = authorInput.value
+        .split(/[, ]+/)
+        .map((value) => value.trim())
+        .filter(Boolean);
+      filters.authorPubkeys = authorValues;
+      const selectedTags = new Set();
+      tagChips.forEach((chip, tag) => {
+        if (chip.getAttribute("aria-pressed") === "true") {
+          selectedTags.add(tag);
         }
       });
-      panel.querySelectorAll("select").forEach((select) => {
-        select.selectedIndex = 0;
-      });
-      panel.querySelectorAll(".switch").forEach((toggle) => {
-        toggle.setAttribute("aria-checked", "false");
-        toggle.classList.remove("is-on");
-      });
+      normalizeTagValue(tagInput.value).forEach((tag) =>
+        selectedTags.add(tag),
+      );
+      filters.tags = Array.from(selectedTags);
+      const ranges = [];
+      if (durationChecks["duration-short"].checked) {
+        ranges.push({ min: null, max: 300 });
+      }
+      if (durationChecks["duration-medium"].checked) {
+        ranges.push({ min: 300, max: 1200 });
+      }
+      if (durationChecks["duration-long"].checked) {
+        ranges.push({ min: 1200, max: null });
+      }
+      if (ranges.length) {
+        const mins = ranges
+          .map((range) => range.min)
+          .filter((value) => value !== null);
+        const maxes = ranges
+          .map((range) => range.max)
+          .filter((value) => value !== null);
+        filters.duration.minSeconds = mins.length ? Math.min(...mins) : null;
+        filters.duration.maxSeconds = maxes.length ? Math.max(...maxes) : null;
+      }
+      const nsfwSwitch = nsfwToggle.querySelector(".switch");
+      if (nsfwSwitch?.getAttribute("aria-checked") === "true") {
+        filters.nsfw = "true";
+      }
+      return filters;
+    };
+
+    resetButton.addEventListener("click", () => {
+      applyStateToControls(DEFAULT_FILTERS);
       if (typeof options.onReset === "function") {
         options.onReset();
       }
     });
     applyButton.addEventListener("click", () => {
       if (typeof options.onApply === "function") {
-        options.onApply();
+        options.onApply(buildFiltersFromControls());
       }
       close();
     });
@@ -374,6 +530,10 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
 
     trapFocus(panel);
     container.appendChild(panel);
+
+    controlState = {
+      applyStateToControls,
+    };
     return panel;
   };
 
@@ -385,7 +545,17 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
 
   triggerElement.addEventListener("click", async (event) => {
     event.preventDefault();
-    await popover.toggle();
+    if (popover.isOpen()) {
+      popover.close();
+      return;
+    }
+    popover.preload();
+    if (controlState?.applyStateToControls) {
+      const nextState =
+        typeof options.getState === "function" ? options.getState() : null;
+      controlState.applyStateToControls(nextState?.filters || DEFAULT_FILTERS);
+    }
+    await popover.open();
   });
 
   return popover;
