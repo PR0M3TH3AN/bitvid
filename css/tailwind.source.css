@@ -5856,17 +5856,51 @@
     .profile-modal .dm-app-shell {
       flex-direction: row;
       align-items: stretch;
+      height: calc(100vh - var(--space-4xl));
+      min-height: 0;
     }
 
     .profile-modal .dm-app-shell__sidebar {
       flex: 0 0 var(--size-18rem);
       max-width: var(--size-20rem);
-      height: auto;
+      height: 100%;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
     }
 
     .profile-modal .dm-app-shell__main {
       flex: 1 1 auto;
-      height: auto;
+      height: 100%;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .profile-modal .dm-conversation-list {
+      height: 100%;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .profile-modal .dm-conversation-list__items {
+      flex: 1;
+      overflow-y: auto;
+      min-height: 0;
+    }
+
+    .profile-modal .dm-message-thread {
+      height: 100%;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .profile-modal .dm-message-thread__timeline {
+      flex: 1;
+      overflow-y: auto;
+      min-height: 0;
     }
   }
 
