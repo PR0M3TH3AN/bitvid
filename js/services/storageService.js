@@ -34,10 +34,74 @@ export const PROVIDERS = Object.freeze({
   GENERIC: "generic_s3",
 });
 
+function resolveConnectionMeta(config) {
+  return config?.meta || {};
+}
+
+function resolveBucket(config) {
+  return config.bucket || resolveConnectionMeta(config).bucket;
+}
+
+function resolveRegion(config) {
+  return config.region || resolveConnectionMeta(config).region;
+}
+
+function resolveEndpoint(config) {
+  return config.endpoint || resolveConnectionMeta(config).endpoint;
+}
+
+function resolveR2Endpoint(config) {
+  const accountId =
+    config.accountId || resolveConnectionMeta(config).accountId || "";
+  if (!accountId) {
+    return resolveEndpoint(config);
+  }
+  return `https://${accountId}.r2.cloudflarestorage.com`;
+}
+
+function resolveForcePathStyle(config, fallback = false) {
+  const meta = resolveConnectionMeta(config);
+  if (typeof config.forcePathStyle === "boolean") {
+    return config.forcePathStyle;
+  }
+  if (typeof meta.forcePathStyle === "boolean") {
+    return meta.forcePathStyle;
+  }
+  return fallback;
+}
+
+function buildS3TestConfig(config, overrides = {}) {
+  return {
+    accessKeyId: config.accessKeyId,
+    secretAccessKey: config.secretAccessKey,
+    bucket: resolveBucket(config),
+    region: resolveRegion(config),
+    endpoint: resolveEndpoint(config),
+    forcePathStyle: resolveForcePathStyle(config),
+    ...overrides,
+  };
+}
+
 const PROVIDER_TESTS = {
-  [PROVIDERS.R2]: testS3Connection,
-  [PROVIDERS.S3]: testS3Connection,
-  [PROVIDERS.GENERIC]: testS3Connection,
+  [PROVIDERS.R2]: (config) =>
+    testS3Connection(
+      buildS3TestConfig(config, {
+        endpoint: resolveR2Endpoint(config),
+        forcePathStyle: true,
+      })
+    ),
+  [PROVIDERS.S3]: (config) =>
+    testS3Connection(
+      buildS3TestConfig(config, {
+        forcePathStyle: resolveForcePathStyle(config, false),
+      })
+    ),
+  [PROVIDERS.GENERIC]: (config) =>
+    testS3Connection(
+      buildS3TestConfig(config, {
+        forcePathStyle: resolveForcePathStyle(config, true),
+      })
+    ),
 };
 
 function hexToBytes(hex) {

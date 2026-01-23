@@ -1,81 +1,28 @@
 // js/storage/r2-s3.js
 
-const AWS_SDK_SPECIFIER = "https://esm.sh/@aws-sdk/client-s3@3.637.0?bundle";
-
-const disableNetworkImports = Boolean(
-  globalThis?.__BITVID_DISABLE_NETWORK_IMPORTS__
-);
-
-let awsSdk = null;
-let awsSdkLoadError = null;
-let awsSdkLoadPromise = null;
-
-function assignAwsSdk(module) {
-  if (!module) {
-    return;
-  }
-
-  awsSdk = {
-    S3Client: module.S3Client,
-    CreateBucketCommand: module.CreateBucketCommand,
-    CreateMultipartUploadCommand: module.CreateMultipartUploadCommand,
-    UploadPartCommand: module.UploadPartCommand,
-    CompleteMultipartUploadCommand: module.CompleteMultipartUploadCommand,
-    AbortMultipartUploadCommand: module.AbortMultipartUploadCommand,
-    ListBucketsCommand: module.ListBucketsCommand,
-    HeadBucketCommand: module.HeadBucketCommand,
-    PutBucketCorsCommand: module.PutBucketCorsCommand,
-    DeleteObjectCommand: module.DeleteObjectCommand,
-  };
-}
-
-async function loadAwsSdkModule() {
-  if (awsSdk || awsSdkLoadError) {
-    return awsSdk;
-  }
-
-  if (!awsSdkLoadPromise) {
-    if (disableNetworkImports) {
-      awsSdkLoadError = new Error(
-        "Cloudflare R2 SDK network import has been disabled."
-      );
-      return null;
-    }
-
-    awsSdkLoadPromise = import(AWS_SDK_SPECIFIER)
-      .then((module) => {
-        assignAwsSdk(module);
-        return awsSdk;
-      })
-      .catch((error) => {
-        awsSdkLoadError = error || new Error("Failed to load R2 SDK module");
-        throw awsSdkLoadError;
-      });
-  }
-
-  try {
-    return await awsSdkLoadPromise;
-  } catch (error) {
-    awsSdkLoadError = error;
-    throw error;
-  }
-}
+import {
+  ensureS3SdkLoaded,
+  getS3SdkLoadError,
+  isS3SdkAvailable,
+  makeS3Client,
+  requireAwsSdk,
+} from "./s3-client.js";
 
 export async function testS3Connection(config) {
   if (!config) {
     throw new Error("Configuration required for testing S3 connection.");
   }
 
-  await ensureR2SdkLoaded();
+  await ensureS3SdkLoaded();
 
   const { ListBucketsCommand, HeadBucketCommand } = requireAwsSdk();
 
-  const s3 = makeR2Client({
-    accountId: config.accountId,
-    accessKeyId: config.accessKeyId,
-    secretAccessKey: config.secretAccessKey,
+  const s3 = makeS3Client({
     endpoint: config.endpoint,
     region: config.region,
+    accessKeyId: config.accessKeyId,
+    secretAccessKey: config.secretAccessKey,
+    forcePathStyle: config.forcePathStyle,
   });
 
   // If bucket is specified, we check that specific bucket (permissions + existence).
@@ -108,37 +55,16 @@ export async function testS3Connection(config) {
   }
 }
 
-function requireAwsSdk() {
-  if (awsSdk) {
-    return awsSdk;
-  }
-
-  if (awsSdkLoadError) {
-    throw awsSdkLoadError;
-  }
-
-  throw new Error(
-    "Cloudflare R2 SDK has not finished loading. Call ensureR2SdkLoaded() first."
-  );
-}
-
 export function ensureR2SdkLoaded() {
-  return loadAwsSdkModule();
+  return ensureS3SdkLoaded();
 }
 
 export function getR2SdkLoadError() {
-  return awsSdkLoadError;
+  return getS3SdkLoadError();
 }
 
 export function isR2SdkAvailable() {
-  return Boolean(awsSdk);
-}
-
-if (!disableNetworkImports) {
-  // Begin loading immediately in environments that support network imports.
-  loadAwsSdkModule().catch(() => {
-    // Errors are captured for later inspection by getR2SdkLoadError().
-  });
+  return isS3SdkAvailable();
 }
 
 function computeCacheControl(key) {
@@ -173,14 +99,14 @@ export function makeR2Client({
     throw new Error("Missing S3/R2 credentials");
   }
 
-  const { S3Client } = requireAwsSdk();
   const finalEndpoint =
     endpoint || `https://${accountId}.r2.cloudflarestorage.com`;
 
-  return new S3Client({
+  return makeS3Client({
     region: region || "auto",
     endpoint: finalEndpoint,
-    credentials: { accessKeyId, secretAccessKey },
+    accessKeyId,
+    secretAccessKey,
     forcePathStyle: true,
   });
 }
