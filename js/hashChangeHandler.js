@@ -71,6 +71,10 @@ export function createHashChangeHandler({
       typeof window !== "undefined" && window.location && window.location.hash
         ? window.location.hash
         : "";
+    if (hash === "#kids") {
+      window.location.hash = "#view=kids";
+      return;
+    }
     const match = hash.match(/^#view=([^&]+)/);
 
     try {
