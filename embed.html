@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>bitvid | Embed</title>
+
+    <meta name="description" content="Watch embedded bitvid videos." />
+    <meta name="robots" content="noindex,follow" />
+
+    <meta name="theme-color" content="var(--color-page)" />
+    <script>
+      (() => {
+        try {
+          const STORAGE_KEY = "bitvid:theme";
+          const root = document.documentElement;
+          const themeMeta = document.querySelector('meta[name="theme-color"]');
+          const fallbackColors = {
+            dark: "rgb(15, 23, 42)",
+            light: "rgb(248, 250, 252)",
+          };
+          const prefersDark =
+            window.matchMedia &&
+            window.matchMedia("(prefers-color-scheme: dark)").matches;
+          const storedTheme = window.localStorage.getItem(STORAGE_KEY);
+          let resolvedTheme = storedTheme || (prefersDark ? "dark" : "light");
+
+          if (resolvedTheme === "default") {
+            resolvedTheme = "dark";
+          }
+
+          if (resolvedTheme) {
+            root.dataset.theme = resolvedTheme;
+          }
+
+          const updateThemeColor = () => {
+            if (!themeMeta) {
+              return;
+            }
+
+            const computedThemeColor =
+              (window.getComputedStyle &&
+                getComputedStyle(root).getPropertyValue("--color-page").trim()) ||
+              "";
+            const metaColor =
+              computedThemeColor ||
+              fallbackColors[resolvedTheme] ||
+              fallbackColors[prefersDark ? "dark" : "light"];
+
+            if (metaColor) {
+              themeMeta.content = metaColor;
+            }
+          };
+
+          updateThemeColor();
+
+          if (document.readyState === "loading") {
+            document.addEventListener("DOMContentLoaded", updateThemeColor, {
+              once: true,
+            });
+          } else if ("requestAnimationFrame" in window) {
+            window.requestAnimationFrame(updateThemeColor);
+          }
+        } catch (error) {
+          /* no-op */
+        }
+      })();
+    </script>
+
+    <link href="css/tailwind.generated.css?v=2024.11.09" rel="stylesheet" />
+  </head>
+  <body class="min-h-screen bg-surface text-text" data-ds="new">
+    <main
+      id="embedRoot"
+      class="mx-auto flex min-h-screen w-full max-w-5xl flex-col px-4 py-6"
+    >
+      <section
+        class="flex flex-col gap-4 rounded-2xl border border-border bg-surface-alt/60 p-4 shadow-sm"
+      >
+        <div
+          class="aspect-video w-full overflow-hidden rounded-xl border border-border/70 bg-surface"
+        >
+          <video
+            id="embedVideo"
+            class="h-full w-full"
+            controls
+            playsinline
+            preload="metadata"
+          ></video>
+        </div>
+        <p
+          id="embedStatus"
+          class="text-sm text-muted"
+          role="status"
+          aria-live="polite"
+        >
+          Loading video…
+        </p>
+      </section>
+    </main>
+
+    <script type="module" src="js/nostrToolsBootstrap.js?v=2024.11.09"></script>
+    <script type="module" src="js/embed.js?v=2024.11.09"></script>
+  </body>
+</html>
