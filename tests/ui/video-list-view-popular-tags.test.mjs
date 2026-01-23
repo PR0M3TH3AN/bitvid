@@ -6,11 +6,11 @@ import { VideoListView } from "../../js/ui/views/VideoListView.js";
 
 function createViewDom() {
   const dom = new JSDOM(
-    "<!DOCTYPE html><body><section><div id=\"recentVideoTags\" hidden></div><div id=\"videoList\"></div></section></body>"
+    "<!DOCTYPE html><body><section><div id=\"videoListTags\" hidden></div><div id=\"videoList\"></div></section></body>"
   );
   const { document } = dom.window;
   const listRoot = document.getElementById("videoList");
-  const tagsRoot = document.getElementById("recentVideoTags");
+  const tagsRoot = document.getElementById("videoListTags");
 
   // Mock IntersectionObserver for VideoCard (both on window and global for module access)
   const MockIntersectionObserver = class IntersectionObserver {
