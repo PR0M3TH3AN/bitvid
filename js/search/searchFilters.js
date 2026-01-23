@@ -4,17 +4,6 @@ const DATE_FORMAT_OPTIONS = {
   day: "2-digit",
 };
 
-export const SORT_OPTIONS = [
-  { value: "relevance", label: "Relevance" },
-  { value: "newest", label: "Newest" },
-  { value: "oldest", label: "Oldest" },
-  { value: "views", label: "Most Views" },
-  { value: "zaps", label: "Most Zaps", experimental: true },
-  { value: "reactions", label: "Most Reactions/Comments", experimental: true },
-];
-
-const SORT_VALUES = new Set(SORT_OPTIONS.map((option) => option.value));
-
 export const DEFAULT_FILTERS = {
   dateRange: {
     after: null,
@@ -30,7 +19,6 @@ export const DEFAULT_FILTERS = {
   },
   hasMagnet: null,
   hasUrl: null,
-  hasTranscript: null,
   nsfw: "any",
   relay: null,
   kind: null,
@@ -47,51 +35,30 @@ const cloneDefaultFilters = () => ({
   duration: { ...DEFAULT_FILTERS.duration },
   hasMagnet: DEFAULT_FILTERS.hasMagnet,
   hasUrl: DEFAULT_FILTERS.hasUrl,
-  hasTranscript: DEFAULT_FILTERS.hasTranscript,
   nsfw: DEFAULT_FILTERS.nsfw,
   relay: DEFAULT_FILTERS.relay,
   kind: DEFAULT_FILTERS.kind,
 });
 
+const normalizeWhitespace = (input) =>
+  input.replace(/\s+/g, " ").trim();
+
 const tokenizeQuery = (input) => {
   const tokens = [];
   let current = "";
-  let currentIsPhrase = false;
   let inQuotes = false;
-  let sawUnclosedQuote = false;
 
   for (let i = 0; i < input.length; i += 1) {
     const char = input[i];
-
-    if (char === "\\" && input[i + 1] === '"') {
-      current += '"';
-      i += 1;
-      continue;
-    }
-
-    if (char === '"') {
-      if (inQuotes) {
-        tokens.push({ value: current, isPhrase: true });
-        current = "";
-        currentIsPhrase = false;
-        inQuotes = false;
-      } else {
-        if (current) {
-          tokens.push({ value: current, isPhrase: currentIsPhrase });
-          current = "";
-          currentIsPhrase = false;
-        }
-        inQuotes = true;
-        currentIsPhrase = true;
-      }
+    if (char === '"' && input[i - 1] !== "\\") {
+      inQuotes = !inQuotes;
       continue;
     }
 
     if (!inQuotes && /\s/.test(char)) {
       if (current) {
-        tokens.push({ value: current, isPhrase: currentIsPhrase });
+        tokens.push(current);
         current = "";
-        currentIsPhrase = false;
       }
       continue;
     }
@@ -100,14 +67,10 @@ const tokenizeQuery = (input) => {
   }
 
   if (current) {
-    tokens.push({ value: current, isPhrase: currentIsPhrase });
+    tokens.push(current);
   }
 
-  if (inQuotes) {
-    sawUnclosedQuote = true;
-  }
-
-  return { tokens, sawUnclosedQuote };
+  return tokens;
 };
 
 const parseDateValue = (value) => {
@@ -180,37 +143,29 @@ const formatDurationValue = (seconds) => {
 };
 
 export function parseFilterQuery(inputString = "") {
-  const normalized = String(inputString || "").trim();
-  const { tokens, sawUnclosedQuote } = tokenizeQuery(normalized);
+  const normalized = normalizeWhitespace(String(inputString || ""));
+  const tokens = tokenizeQuery(normalized);
   const filters = cloneDefaultFilters();
   const errors = [];
   const textTokens = [];
 
-  if (sawUnclosedQuote) {
-    errors.push({ token: "\"", message: "Missing closing quote." });
-  }
-
   for (const token of tokens) {
-    if (!token?.value) continue;
-    const upperToken = token.value.toUpperCase();
-    if (!token.isPhrase && BOOLEAN_OPERATORS.has(upperToken)) {
-      textTokens.push({ type: "operator", value: upperToken, isPhrase: false });
+    if (!token) continue;
+    const upperToken = token.toUpperCase();
+    if (BOOLEAN_OPERATORS.has(upperToken)) {
+      textTokens.push({ type: "operator", value: upperToken });
       continue;
     }
 
-    const keyValue = parseKeyValueToken(token.value);
+    const keyValue = parseKeyValueToken(token);
     if (!keyValue) {
-      textTokens.push({
-        type: "term",
-        value: token.value,
-        isPhrase: Boolean(token.isPhrase || token.value.includes(" ")),
-      });
+      textTokens.push({ type: "term", value: token, isPhrase: token.includes(" ") });
       continue;
     }
 
     const { key, value } = keyValue;
     if (!value) {
-      errors.push({ token: token.value, message: "Filter value is missing." });
+      errors.push({ token, message: "Filter value is missing." });
       continue;
     }
 
@@ -218,7 +173,7 @@ export function parseFilterQuery(inputString = "") {
       case "author": {
         const values = value.split(",").map((entry) => entry.trim()).filter(Boolean);
         if (values.length === 0) {
-          errors.push({ token: token.value, message: "Author value is empty." });
+          errors.push({ token, message: "Author value is empty." });
           break;
         }
         filters.authorPubkeys.push(...values);
@@ -230,7 +185,7 @@ export function parseFilterQuery(inputString = "") {
           .map((entry) => entry.trim().replace(/^#/, ""))
           .filter(Boolean);
         if (values.length === 0) {
-          errors.push({ token: token.value, message: "Tag value is empty." });
+          errors.push({ token, message: "Tag value is empty." });
           break;
         }
         filters.tags.push(...values);
@@ -239,7 +194,7 @@ export function parseFilterQuery(inputString = "") {
       case "kind": {
         const parsed = Number.parseInt(value, 10);
         if (!Number.isFinite(parsed)) {
-          errors.push({ token: token.value, message: "Kind must be an integer." });
+          errors.push({ token, message: "Kind must be an integer." });
           break;
         }
         filters.kind = parsed;
@@ -252,7 +207,7 @@ export function parseFilterQuery(inputString = "") {
       case "after": {
         const parsed = parseDateValue(value);
         if (parsed.error) {
-          errors.push({ token: token.value, message: parsed.error });
+          errors.push({ token, message: parsed.error });
           break;
         }
         filters.dateRange.after = parsed.value;
@@ -261,7 +216,7 @@ export function parseFilterQuery(inputString = "") {
       case "before": {
         const parsed = parseDateValue(value);
         if (parsed.error) {
-          errors.push({ token: token.value, message: parsed.error });
+          errors.push({ token, message: parsed.error });
           break;
         }
         filters.dateRange.before = parsed.value;
@@ -270,17 +225,14 @@ export function parseFilterQuery(inputString = "") {
       case "duration": {
         const match = value.match(/^(<=|>=|<|>)(.+)$/);
         if (!match) {
-          errors.push({
-            token: token.value,
-            message: "Duration must use < or > operators.",
-          });
+          errors.push({ token, message: "Duration must use < or > operators." });
           break;
         }
         const operator = match[1];
         const durationValue = match[2].trim();
         const parsed = parseDurationValue(durationValue);
         if (parsed.error) {
-          errors.push({ token: token.value, message: parsed.error });
+          errors.push({ token, message: parsed.error });
           break;
         }
         applyDurationFilter(filters, operator, parsed.value);
@@ -292,13 +244,8 @@ export function parseFilterQuery(inputString = "") {
           filters.hasMagnet = true;
         } else if (normalizedValue === "url") {
           filters.hasUrl = true;
-        } else if (normalizedValue === "transcript") {
-          filters.hasTranscript = true;
         } else {
-          errors.push({
-            token: token.value,
-            message: "Has filter supports magnet, url, or transcript.",
-          });
+          errors.push({ token, message: "Has filter supports magnet or url." });
         }
         break;
       }
@@ -307,37 +254,18 @@ export function parseFilterQuery(inputString = "") {
         if (["any", "true", "false", "only", "safe"].includes(normalizedValue)) {
           filters.nsfw = normalizedValue === "safe" ? "false" : normalizedValue;
         } else {
-          errors.push({
-            token: token.value,
-            message: "NSFW filter supports any/true/false/only.",
-          });
+          errors.push({ token, message: "NSFW filter supports any/true/false/only." });
         }
-        break;
-      }
-      case "sort": {
-        const normalizedValue = value.toLowerCase();
-        if (!SORT_VALUES.has(normalizedValue)) {
-          errors.push({ token: token.value, message: "Sort filter is invalid." });
-          break;
-        }
-        filters.sort = normalizedValue;
         break;
       }
       default:
-        errors.push({ token: token.value, message: `Unknown filter "${key}".` });
+        errors.push({ token, message: `Unknown filter "${key}".` });
     }
   }
 
   const text = textTokens
-    .map((token) => {
-      if (token.type === "operator") {
-        return token.value;
-      }
-      if (token.isPhrase) {
-        return `"${token.value}"`;
-      }
-      return token.value;
-    })
+    .filter((token) => token.type === "term")
+    .map((token) => token.value)
     .join(" ");
 
   return {
@@ -395,16 +323,8 @@ export function serializeFiltersToQuery(filters = DEFAULT_FILTERS) {
     tokens.push("has:url");
   }
 
-  if (filters.hasTranscript === true) {
-    tokens.push("has:transcript");
-  }
-
   if (filters.nsfw && filters.nsfw !== "any") {
     tokens.push(`nsfw:${filters.nsfw}`);
-  }
-
-  if (filters.sort && filters.sort !== DEFAULT_FILTERS.sort) {
-    tokens.push(`sort:${filters.sort}`);
   }
 
   return tokens.join(" ");
