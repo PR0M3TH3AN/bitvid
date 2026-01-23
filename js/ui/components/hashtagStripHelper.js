@@ -200,6 +200,8 @@ export class HashtagStripHelper {
       this._tagStrip = strip;
       if (!this.scrollable) {
         trimTagPillStripToFit({ strip, container: root });
+      } else {
+        this._triggerScrollHint();
       }
       root.hidden = strip.childElementCount === 0;
     } finally {
@@ -216,6 +218,44 @@ export class HashtagStripHelper {
     this.container = null;
     this._tagStrip = null;
     this._sortedTags = [];
+  }
+
+  _triggerScrollHint() {
+    const strip = this._tagStrip;
+    if (!strip) {
+      return;
+    }
+
+    if (
+      this.window &&
+      typeof this.window.requestAnimationFrame === "function" &&
+      typeof strip.scrollTo === "function"
+    ) {
+      this.window.requestAnimationFrame(() => {
+        if (!strip.isConnected) {
+          return;
+        }
+
+        if (strip.scrollWidth > strip.clientWidth) {
+          if (this.window && typeof this.window.setTimeout === "function") {
+            this.window.setTimeout(() => {
+              if (!strip.isConnected || strip.scrollLeft !== 0) {
+                return;
+              }
+
+              strip.scrollTo({ left: 40, behavior: "smooth" });
+
+              this.window.setTimeout(() => {
+                if (!strip.isConnected) {
+                  return;
+                }
+                strip.scrollTo({ left: 0, behavior: "smooth" });
+              }, 800);
+            }, 600);
+          }
+        }
+      });
+    }
   }
 
   _resolveTagState(tag) {
