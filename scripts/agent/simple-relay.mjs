@@ -1,86 +1,98 @@
-import { WebSocketServer } from 'ws';
+import { WebSocketServer } from "ws";
+import { matchFilters } from "nostr-tools/filter";
 
-const PORT = process.env.PORT || 8008;
-const wss = new WebSocketServer({ port: PORT });
+export function startRelay(port = 8888) {
+  const wss = new WebSocketServer({ port });
+  const events = new Map(); // id -> event
+  const maxEvents = 10000;
+  const subs = new Map(); // ws -> Map(subId -> filters)
 
-// Simple in-memory store for REQ matching
-const events = [];
-// In a real relay we would handle subscription updates, but for smoke tests
-// we mostly do one-off queries or expect immediate results.
-// We won't implement persistent subscription matching for new events here
-// to keep it simple, unless needed (smoke test waits 500ms then fetches, so one-off is fine).
+  console.log(`Simple relay starting on port ${port}`);
 
-console.log(`Simple relay running on ws://localhost:${PORT}`);
+  wss.on("connection", (ws) => {
+    subs.set(ws, new Map());
 
-wss.on('connection', (ws) => {
-  ws.on('message', (message) => {
-    try {
-      const data = JSON.parse(message);
-      if (!Array.isArray(data)) return;
+    ws.on("message", (message) => {
+      try {
+        const data = JSON.parse(message);
+        if (!Array.isArray(data)) return;
 
-      const [type, ...payload] = data;
+        const [type, ...payload] = data;
 
-      if (type === 'EVENT') {
-        const [event] = payload;
-
-        // Validation check
-        if (!event.id || !event.sig) {
-            ws.send(JSON.stringify(['OK', event.id, false, 'invalid: missing id or sig']));
+        if (type === "EVENT") {
+          const event = payload[0];
+          if (!event || !event.id) {
+            ws.send(JSON.stringify(["NOTICE", "Invalid event"]));
             return;
-        }
+          }
 
-        // Simulate storage
-        events.push(event);
-        if (events.length > 2000) events.shift(); // Keep memory low
+          // Basic validation (optional, but good for sanity)
+          // We won't verify signature here to save CPU for the load test runner,
+          // assuming the client does it. But a real relay would.
+          // For load testing "relay writes", we primarily care about the I/O and handling overhead.
 
-        // Simulate relay processing time (random 5-50ms)
-        setTimeout(() => {
-            if (ws.readyState === ws.OPEN) {
-                ws.send(JSON.stringify(['OK', event.id, true, 'saved']));
-            }
-        }, Math.random() * 45 + 5);
+          if (!events.has(event.id)) {
+            events.set(event.id, event);
 
-      } else if (type === 'REQ') {
-        const subId = payload[0];
-        const filters = payload.slice(1);
-        console.log(`REQ ${subId}`, JSON.stringify(filters));
-
-        // Simple match against stored events
-        const matched = events.filter(event => {
-            // Event matches if it matches ANY of the filters
-            return filters.some(filter => {
-                if (filter.ids && !filter.ids.includes(event.id)) return false;
-                if (filter.kinds && !filter.kinds.includes(event.kind)) return false;
-                if (filter.authors && !filter.authors.includes(event.pubkey)) return false;
-
-                // Tag matching (e.g. #p, #d, #t)
-                for (const key in filter) {
-                    if (key.startsWith('#')) {
-                        const tagName = key.slice(1);
-                        const tagValues = filter[key];
-                        // Check if event has a tag [tagName, value] where value is in tagValues
-                        const hasTag = event.tags && event.tags.some(t => t[0] === tagName && tagValues.includes(t[1]));
-                        if (!hasTag) return false;
-                    }
+            // Broadcast to matching subs
+            for (const [client, clientSubs] of subs.entries()) {
+              if (client.readyState !== 1) continue; // OPEN
+              for (const [subId, filters] of clientSubs.entries()) {
+                if (matchFilters(filters, event)) {
+                  client.send(JSON.stringify(["EVENT", subId, event]));
                 }
-                return true;
-            });
-        });
+              }
+            }
+          }
 
-        console.log(`Matched ${matched.length} events for REQ ${subId}`);
+          ws.send(JSON.stringify(["OK", event.id, true, "saved"]));
+        } else if (type === "REQ") {
+          const subId = payload[0];
+          const filters = payload.slice(1);
 
-        matched.forEach(event => {
-             ws.send(JSON.stringify(['EVENT', subId, event]));
-        });
+          if (typeof subId !== "string") return;
 
-        ws.send(JSON.stringify(['EOSE', subId]));
+          subs.get(ws).set(subId, filters);
 
-      } else if (type === 'CLOSE') {
-          // No-op
+          // Send stored events
+          for (const event of events.values()) {
+            if (matchFilters(filters, event)) {
+              ws.send(JSON.stringify(["EVENT", subId, event]));
+            }
+          }
+          ws.send(JSON.stringify(["EOSE", subId]));
+        } else if (type === "CLOSE") {
+          const subId = payload[0];
+          if (typeof subId === "string") {
+            subs.get(ws).delete(subId);
+          }
+        }
+      } catch (err) {
+        console.error("Relay error processing message:", err);
       }
-    } catch (e) {
-      // ignore invalid JSON
-      console.error(e);
-    }
+    });
+
+    ws.on("close", () => {
+      subs.delete(ws);
+    });
+
+    ws.on("error", (err) => {
+      console.error("Relay connection error:", err);
+    });
   });
-});
+
+  return {
+    close: () => {
+      return new Promise((resolve) => {
+        wss.close(resolve);
+      });
+    },
+    port
+  };
+}
+
+// Allow running standalone
+import { fileURLToPath } from "url";
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  startRelay(process.env.PORT ? parseInt(process.env.PORT) : 8888);
+}
