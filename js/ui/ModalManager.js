@@ -177,6 +177,7 @@ export default class ModalManager {
       setGlobalModalState,
       container: modalContainer,
       fallbackThumbnailSrc: this.assets.fallbackThumbnailSrc,
+      onPost: (payload) => app.handleShareNostrPost(payload),
     });
     app.shareNostrModal = this.shareNostrModal;
 
