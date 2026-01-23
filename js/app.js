@@ -6566,7 +6566,7 @@ class Application {
     devLogger.log("Starting loadKidsVideos... (forceFetch =", forceFetch, ")");
     this.setFeedTelemetryContext("kids");
 
-    const container = this.mountVideoListView({ includeTags: false });
+    const container = this.mountVideoListView({ includeTags: true });
     const hasCachedVideos =
       this.nostrService &&
       Array.isArray(this.nostrService.getFilteredActiveVideos()) &&
