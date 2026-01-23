@@ -10,9 +10,6 @@ import { devLogger } from "./utils/logger.js";
 import { ALLOW_NSFW_CONTENT } from "./config.js";
 import { attachFeedInfoPopover } from "./ui/components/FeedInfoPopover.js";
 import { setHashView } from "./hashView.js";
-import { sanitizeRelayList } from "./nostr/nip46Client.js";
-import { setSearchFacetCounts } from "./search/searchFacetState.js";
-import { subscribeToVideoViewCount, unsubscribeFromVideoViewCount } from "./viewCounter.js";
 import {
   buildSearchHashFromState,
   getSearchFilterState,
@@ -20,7 +17,6 @@ import {
   setSearchFilterState,
   syncSearchFilterStateFromHash,
 } from "./search/searchFilterState.js";
-import { DEFAULT_FILTERS, SORT_OPTIONS } from "./search/searchFilters.js";
 
 function getApp() {
   return getApplication();
@@ -301,7 +297,7 @@ export async function initSearchView() {
   if (infoTrigger) {
     attachFeedInfoPopover(
       infoTrigger,
-      "Results matching your search query. Use tokens like author:, tag:, kind:, relay:, after:, before:, duration:<, has:magnet/url/transcript, and boolean operators with quoted phrases."
+      "Results matching your search query. Use tokens like author:, tag:, kind:, relay:, after:, before:, duration:<, and has:magnet/url."
     );
   }
 
@@ -325,7 +321,7 @@ export async function initSearchView() {
   const searchToken = ++currentSearchToken;
 
   // 1. Search Profiles
-  performProfileSearch(query, searchToken, parsedQuery.filters).then(profiles => {
+  performProfileSearch(query, searchToken).then(profiles => {
     if (searchToken !== currentSearchToken) return;
     renderProfileCards(profiles, channelList);
   }).catch(err => {
@@ -371,105 +367,6 @@ const formatDurationLabel = (seconds) => {
     return `${seconds / 60}m`;
   }
   return `${seconds}s`;
-};
-
-const resolveSortLabel = (sortValue) => {
-  const option = SORT_OPTIONS.find((entry) => entry.value === sortValue);
-  if (!option) return sortValue;
-  const suffix = option.experimental ? " (experimental)" : "";
-  return `${option.label}${suffix}`;
-};
-
-const getVideoMetricValue = (video, candidates = []) => {
-  if (!video || typeof video !== "object") {
-    return null;
-  }
-  for (const candidate of candidates) {
-    if (!candidate) continue;
-    const value = video[candidate];
-    if (Number.isFinite(value)) {
-      return Number(value);
-    }
-  }
-  return null;
-};
-
-const getVideoZapCount = (video) => {
-  const direct = getVideoMetricValue(video, [
-    "zapCount",
-    "zapTotal",
-    "zapTotalSats",
-    "zapTotalMsats",
-  ]);
-  if (direct !== null) {
-    return direct;
-  }
-  if (video?.zaps && typeof video.zaps === "object") {
-    const nested = getVideoMetricValue(video.zaps, ["count", "total"]);
-    if (nested !== null) {
-      return nested;
-    }
-  }
-  return null;
-};
-
-const getVideoReactionCount = (video) => {
-  const direct = getVideoMetricValue(video, [
-    "reactionCount",
-    "reactionsCount",
-    "commentCount",
-    "commentsCount",
-  ]);
-  if (direct !== null) {
-    return direct;
-  }
-  if (video?.reactions && typeof video.reactions === "object") {
-    const nested = getVideoMetricValue(video.reactions, ["total", "count"]);
-    if (nested !== null) {
-      return nested;
-    }
-  }
-  return null;
-};
-
-const getViewCountSnapshot = (video, app, relays) => {
-  if (!video) {
-    return { total: null, known: false };
-  }
-  const pointerInfo =
-    typeof app?.deriveVideoPointerInfo === "function"
-      ? app.deriveVideoPointerInfo(video)
-      : null;
-  if (!pointerInfo?.pointer) {
-    return { total: null, known: false };
-  }
-  let snapshot = null;
-  let token = null;
-  try {
-    token = subscribeToVideoViewCount(
-      pointerInfo.pointer,
-      (next) => {
-        snapshot = next;
-      },
-      relays?.length ? { relays } : undefined,
-    );
-  } catch (error) {
-    devLogger.warn("[Search] Unable to subscribe to view count.", error);
-    return { total: null, known: false };
-  } finally {
-    if (token) {
-      try {
-        unsubscribeFromVideoViewCount(pointerInfo.pointer, token);
-      } catch (error) {
-        devLogger.warn("[Search] Unable to unsubscribe from view count.", error);
-      }
-    }
-  }
-
-  const total = Number.isFinite(snapshot?.total) ? Number(snapshot.total) : null;
-  const known =
-    Number.isFinite(snapshot?.lastSyncedAt) && snapshot.lastSyncedAt > 0;
-  return { total, known };
 };
 
 function buildNextFilters() {
@@ -619,34 +516,12 @@ function renderActiveFilters(filters) {
     });
   }
 
-  if (filters.hasTranscript === true) {
-    pills.push({
-      label: "Has transcript",
-      onRemove: () => {
-        const nextFilters = buildNextFilters();
-        nextFilters.hasTranscript = null;
-        applyFiltersAndRefresh(nextFilters);
-      },
-    });
-  }
-
   if (filters.nsfw && filters.nsfw !== "any") {
     pills.push({
       label: `NSFW: ${filters.nsfw}`,
       onRemove: () => {
         const nextFilters = buildNextFilters();
         nextFilters.nsfw = "any";
-        applyFiltersAndRefresh(nextFilters);
-      },
-    });
-  }
-
-  if (filters.sort && filters.sort !== DEFAULT_FILTERS.sort) {
-    pills.push({
-      label: `Sort: ${resolveSortLabel(filters.sort)}`,
-      onRemove: () => {
-        const nextFilters = buildNextFilters();
-        nextFilters.sort = DEFAULT_FILTERS.sort;
         applyFiltersAndRefresh(nextFilters);
       },
     });
@@ -785,18 +660,11 @@ async function renderSearchVideos(videos, container, app) {
     container.appendChild(fragment);
 }
 
-async function performProfileSearch(query, token, filters = {}) {
+async function performProfileSearch(query, token) {
     if (!query) return [];
 
     const normalizedQuery = query.toLowerCase();
     const uniqueProfiles = new Map();
-    const authorFilterSet = new Set(
-        Array.isArray(filters?.authorPubkeys)
-            ? filters.authorPubkeys.map((author) => String(author || "").toLowerCase())
-            : []
-    );
-    const afterDate = Number.isFinite(filters?.dateRange?.after) ? filters.dateRange.after : null;
-    const beforeDate = Number.isFinite(filters?.dateRange?.before) ? filters.dateRange.before : null;
 
     // 1. Local Search (Scan known authors in cache)
     if (nostrClient?.activeMap instanceof Map) {
@@ -845,38 +713,13 @@ async function performProfileSearch(query, token, filters = {}) {
 
     // 2. Relay Search (NIP-50)
     if (nostrClient && nostrClient.pool) {
-        const relaySelection = filters?.relay ? sanitizeRelayList([filters.relay]) : null;
-        const relays = relaySelection?.length
-            ? relaySelection
-            : Array.isArray(nostrClient.relays)
-            ? nostrClient.relays
-            : [];
+        const relays = nostrClient.relays || [];
         if (relays.length > 0) {
             const filter = {
-                kinds: [Number.isFinite(filters?.kind) ? filters.kind : 0],
+                kinds: [0],
                 search: query,
                 limit: 20
             };
-            const authorFilters = Array.isArray(filters?.authorPubkeys)
-                ? filters.authorPubkeys.filter((author) => typeof author === "string" && author)
-                : [];
-            if (authorFilters.length > 0) {
-                filter.authors = authorFilters;
-            }
-            if (Number.isFinite(afterDate)) {
-                filter.since = afterDate;
-            }
-            if (Number.isFinite(beforeDate)) {
-                filter.until = beforeDate;
-            }
-            const tagFilters = Array.isArray(filters?.tags)
-                ? filters.tags
-                      .map((tag) => String(tag || "").trim().toLowerCase())
-                      .filter(Boolean)
-                : [];
-            if (tagFilters.length > 0) {
-                filter["#t"] = Array.from(new Set(tagFilters));
-            }
 
             try {
                 const events = await nostrClient.pool.list(relays, [filter]);
@@ -908,20 +751,7 @@ async function performProfileSearch(query, token, filters = {}) {
     if (currentSearchToken !== token) return [];
 
     // Convert map to array and sort by something relevant (maybe creation time or exact match?)
-    return Array.from(uniqueProfiles.values()).filter((profile) => {
-        if (!profile) return false;
-        if (authorFilterSet.size > 0) {
-            const pubkey = typeof profile.pubkey === "string" ? profile.pubkey.toLowerCase() : "";
-            if (!pubkey || !authorFilterSet.has(pubkey)) return false;
-        }
-        if (Number.isFinite(afterDate) && (!Number.isFinite(profile.created_at) || profile.created_at < afterDate)) {
-            return false;
-        }
-        if (Number.isFinite(beforeDate) && (!Number.isFinite(profile.created_at) || profile.created_at > beforeDate)) {
-            return false;
-        }
-        return true;
-    });
+    return Array.from(uniqueProfiles.values());
 }
 
 async function performVideoSearch(query, token, filters = {}) {
@@ -959,10 +789,9 @@ async function performVideoSearch(query, token, filters = {}) {
         : null;
     const hasMagnet = filters?.hasMagnet === true;
     const hasUrl = filters?.hasUrl === true;
-    const hasTranscript = filters?.hasTranscript === true;
     const nsfwFilter = typeof filters?.nsfw === "string" ? filters.nsfw : "any";
 
-    const matchesRelayFilters = (video) => {
+    const matchesCustomFilters = (video) => {
         if (!video) return false;
 
         if (authorSet.size > 0) {
@@ -988,20 +817,8 @@ async function performVideoSearch(query, token, filters = {}) {
             return false;
         }
 
-        return true;
-    };
-
-    const matchesUnsupportedFilters = (video) => {
-        if (!video) return false;
-
         if (hasMagnet && !video.magnet) return false;
         if (hasUrl && !video.url) return false;
-        if (hasTranscript) {
-            const textTracks = Array.isArray(video.nip71?.textTracks)
-                ? video.nip71.textTracks
-                : [];
-            if (!textTracks.length) return false;
-        }
 
         if (Number.isFinite(minDuration) || Number.isFinite(maxDuration)) {
             const duration = Number(video.nip71?.duration);
@@ -1055,49 +872,23 @@ async function performVideoSearch(query, token, filters = {}) {
 
     if (currentSearchToken !== token) return [];
 
-    const filteredLocalMatches = applyAccessFilters(localMatches).filter(
-        (video) => matchesRelayFilters(video) && matchesUnsupportedFilters(video)
-    );
+    const filteredLocalMatches = applyAccessFilters(localMatches).filter(matchesCustomFilters);
 
     // 2. Relay Search
     let relayVideos = [];
-    const relaySelection = filters?.relay ? sanitizeRelayList([filters.relay]) : null;
-    const relays = relaySelection?.length
-        ? relaySelection
-        : Array.isArray(nostrClient.relays)
-        ? nostrClient.relays
-        : [];
+    const relays = nostrClient.relays || [];
 
     if (relays.length > 0 && nostrClient.pool) {
         const filter = {
-            kinds: [Number.isFinite(filters?.kind) ? filters.kind : 30078],
+            kinds: [30078],
             limit: 50
         };
 
-        const authorFilters = Array.isArray(filters?.authorPubkeys)
-            ? filters.authorPubkeys.filter((author) => typeof author === "string" && author)
-            : [];
-        if (authorFilters.length > 0) {
-            filter.authors = authorFilters;
+        if (isHashtag) {
+            filter["#t"] = [term];
+        } else {
+            filter.search = term;
         }
-        if (Number.isFinite(afterDate)) {
-            filter.since = afterDate;
-        }
-        if (Number.isFinite(beforeDate)) {
-            filter.until = beforeDate;
-        }
-        const tagFilters = new Set(
-            Array.isArray(filters?.tags)
-                ? filters.tags.map((tag) => String(tag || "").trim().toLowerCase()).filter(Boolean)
-                : []
-        );
-        if (isHashtag && term) {
-            tagFilters.add(term.toLowerCase());
-        }
-        if (tagFilters.size > 0) {
-            filter["#t"] = Array.from(tagFilters);
-        }
-        filter.search = term;
 
         try {
             const events = await nostrClient.pool.list(relays, [filter]);
@@ -1122,9 +913,7 @@ async function performVideoSearch(query, token, filters = {}) {
 
     if (currentSearchToken !== token) return [];
 
-    const filteredRelayVideos = applyAccessFilters(relayVideos).filter(
-        (video) => matchesRelayFilters(video) && matchesUnsupportedFilters(video)
-    );
+    const filteredRelayVideos = applyAccessFilters(relayVideos).filter(matchesCustomFilters);
 
     // Deduplicate by ID
     const unique = new Map();
@@ -1139,87 +928,6 @@ async function performVideoSearch(query, token, filters = {}) {
         if (!unique.has(v.id)) unique.set(v.id, v);
     }
 
-    const entries = Array.from(unique.values()).map((video, index) => ({
-        video,
-        index,
-        createdAt: Number.isFinite(video?.created_at) ? Number(video.created_at) : 0
-    }));
-
-    const sortByNewest = () =>
-        entries
-            .slice()
-            .sort((a, b) => (b.createdAt - a.createdAt) || (a.index - b.index));
-
-    const sortByOldest = () =>
-        entries
-            .slice()
-            .sort((a, b) => (a.createdAt - b.createdAt) || (a.index - b.index));
-
-    const sortByMetric = (metricKey, metricResolver) => {
-        let hasUnknown = false;
-        const enriched = entries.map((entry) => {
-            const metricValue = metricResolver(entry.video);
-            if (!Number.isFinite(metricValue)) {
-                hasUnknown = true;
-            }
-            return {
-                ...entry,
-                [metricKey]: Number.isFinite(metricValue) ? Number(metricValue) : 0
-            };
-        });
-
-        if (hasUnknown) {
-            return sortByNewest();
-        }
-
-        return enriched
-            .sort((a, b) =>
-                (b[metricKey] - a[metricKey]) ||
-                (b.createdAt - a.createdAt) ||
-                (a.index - b.index)
-            );
-    };
-
-    const sortByViews = () => {
-        let hasUnknown = false;
-        const viewCountRelays = relaySelection?.length ? relaySelection : null;
-        const enriched = entries.map((entry) => {
-            const snapshot = getViewCountSnapshot(entry.video, app, viewCountRelays);
-            if (!snapshot.known || !Number.isFinite(snapshot.total)) {
-                hasUnknown = true;
-            }
-            return {
-                ...entry,
-                viewCount: Number.isFinite(snapshot.total) ? Number(snapshot.total) : 0
-            };
-        });
-
-        if (hasUnknown) {
-            return sortByNewest();
-        }
-
-        return enriched
-            .sort((a, b) =>
-                (b.viewCount - a.viewCount) ||
-                (b.createdAt - a.createdAt) ||
-                (a.index - b.index)
-            );
-    };
-
-    const sortMode = typeof filters?.sort === "string" ? filters.sort : DEFAULT_FILTERS.sort;
-    let sortedEntries = sortByNewest();
-
-    if (sortMode === "oldest") {
-        sortedEntries = sortByOldest();
-    } else if (sortMode === "views") {
-        sortedEntries = sortByViews();
-    } else if (sortMode === "zaps") {
-        sortedEntries = sortByMetric("zapCount", getVideoZapCount);
-    } else if (sortMode === "reactions") {
-        sortedEntries = sortByMetric("reactionCount", getVideoReactionCount);
-    } else if (sortMode === "newest" || sortMode === "relevance") {
-        sortedEntries = sortByNewest();
-    }
-
-    return sortedEntries.map((entry) => entry.video);
+    // Sort by creation date (newest first)
+    return Array.from(unique.values()).sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
 }
