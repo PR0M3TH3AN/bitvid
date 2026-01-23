@@ -4,6 +4,7 @@ import {
   DEFAULT_TRUST_SEED_NPUBS as CONFIG_DEFAULT_TRUST_SEED_NPUBS,
   DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD as CONFIG_DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
   DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD as CONFIG_DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
+  IS_DEV_MODE,
 } from "./config.js";
 
 function coerceNonNegativeInteger(value, fallback) {
@@ -147,7 +148,7 @@ const DEFAULT_FLAGS = Object.freeze({
   FEATURE_WATCH_HISTORY_V2: true,
   FEATURE_PUBLISH_NIP71: false,
   FEATURE_HASHTAG_PREFERENCES: false,
-  FEATURE_SEARCH_FILTERS: false,
+  FEATURE_SEARCH_FILTERS: Boolean(IS_DEV_MODE),
   FEATURE_TRUST_SEEDS: true, // Rollback: disable to drop baseline trust seeds without code changes.
   FEATURE_TRUSTED_HIDE_CONTROLS: true,
   FEATURE_IMPROVED_COMMENT_FETCHING: true, // Default true for comment persistence fixes
