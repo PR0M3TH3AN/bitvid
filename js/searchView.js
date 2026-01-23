@@ -10,6 +10,7 @@ import { devLogger } from "./utils/logger.js";
 import { ALLOW_NSFW_CONTENT } from "./config.js";
 import { attachFeedInfoPopover } from "./ui/components/FeedInfoPopover.js";
 import { setHashView } from "./hashView.js";
+import { sanitizeRelayList } from "./nostr/nip46Client.js";
 import {
   buildSearchHashFromState,
   getSearchFilterState,
@@ -149,7 +150,7 @@ export async function initSearchView() {
   const searchToken = ++currentSearchToken;
 
   // 1. Search Profiles
-  performProfileSearch(query, searchToken).then(profiles => {
+  performProfileSearch(query, searchToken, parsedQuery.filters).then(profiles => {
     if (searchToken !== currentSearchToken) return;
     renderProfileCards(profiles, channelList);
   }).catch(err => {
@@ -484,11 +485,18 @@ async function renderSearchVideos(videos, container, app) {
     container.appendChild(fragment);
 }
 
-async function performProfileSearch(query, token) {
+async function performProfileSearch(query, token, filters = {}) {
     if (!query) return [];
 
     const normalizedQuery = query.toLowerCase();
     const uniqueProfiles = new Map();
+    const authorFilterSet = new Set(
+        Array.isArray(filters?.authorPubkeys)
+            ? filters.authorPubkeys.map((author) => String(author || "").toLowerCase())
+            : []
+    );
+    const afterDate = Number.isFinite(filters?.dateRange?.after) ? filters.dateRange.after : null;
+    const beforeDate = Number.isFinite(filters?.dateRange?.before) ? filters.dateRange.before : null;
 
     // 1. Local Search (Scan known authors in cache)
     if (nostrClient?.activeMap instanceof Map) {
@@ -537,13 +545,38 @@ async function performProfileSearch(query, token) {
 
     // 2. Relay Search (NIP-50)
     if (nostrClient && nostrClient.pool) {
-        const relays = nostrClient.relays || [];
+        const relaySelection = filters?.relay ? sanitizeRelayList([filters.relay]) : null;
+        const relays = relaySelection?.length
+            ? relaySelection
+            : Array.isArray(nostrClient.relays)
+            ? nostrClient.relays
+            : [];
         if (relays.length > 0) {
             const filter = {
-                kinds: [0],
+                kinds: [Number.isFinite(filters?.kind) ? filters.kind : 0],
                 search: query,
                 limit: 20
             };
+            const authorFilters = Array.isArray(filters?.authorPubkeys)
+                ? filters.authorPubkeys.filter((author) => typeof author === "string" && author)
+                : [];
+            if (authorFilters.length > 0) {
+                filter.authors = authorFilters;
+            }
+            if (Number.isFinite(afterDate)) {
+                filter.since = afterDate;
+            }
+            if (Number.isFinite(beforeDate)) {
+                filter.until = beforeDate;
+            }
+            const tagFilters = Array.isArray(filters?.tags)
+                ? filters.tags
+                      .map((tag) => String(tag || "").trim().toLowerCase())
+                      .filter(Boolean)
+                : [];
+            if (tagFilters.length > 0) {
+                filter["#t"] = Array.from(new Set(tagFilters));
+            }
 
             try {
                 const events = await nostrClient.pool.list(relays, [filter]);
@@ -575,7 +608,20 @@ async function performProfileSearch(query, token) {
     if (currentSearchToken !== token) return [];
 
     // Convert map to array and sort by something relevant (maybe creation time or exact match?)
-    return Array.from(uniqueProfiles.values());
+    return Array.from(uniqueProfiles.values()).filter((profile) => {
+        if (!profile) return false;
+        if (authorFilterSet.size > 0) {
+            const pubkey = typeof profile.pubkey === "string" ? profile.pubkey.toLowerCase() : "";
+            if (!pubkey || !authorFilterSet.has(pubkey)) return false;
+        }
+        if (Number.isFinite(afterDate) && (!Number.isFinite(profile.created_at) || profile.created_at < afterDate)) {
+            return false;
+        }
+        if (Number.isFinite(beforeDate) && (!Number.isFinite(profile.created_at) || profile.created_at > beforeDate)) {
+            return false;
+        }
+        return true;
+    });
 }
 
 async function performVideoSearch(query, token, filters = {}) {
@@ -615,7 +661,7 @@ async function performVideoSearch(query, token, filters = {}) {
     const hasUrl = filters?.hasUrl === true;
     const nsfwFilter = typeof filters?.nsfw === "string" ? filters.nsfw : "any";
 
-    const matchesCustomFilters = (video) => {
+    const matchesRelayFilters = (video) => {
         if (!video) return false;
 
         if (authorSet.size > 0) {
@@ -640,6 +686,12 @@ async function performVideoSearch(query, token, filters = {}) {
         if (Number.isFinite(beforeDate) && (!Number.isFinite(video.created_at) || video.created_at > beforeDate)) {
             return false;
         }
+
+        return true;
+    };
+
+    const matchesUnsupportedFilters = (video) => {
+        if (!video) return false;
 
         if (hasMagnet && !video.magnet) return false;
         if (hasUrl && !video.url) return false;
@@ -696,23 +748,49 @@ async function performVideoSearch(query, token, filters = {}) {
 
     if (currentSearchToken !== token) return [];
 
-    const filteredLocalMatches = applyAccessFilters(localMatches).filter(matchesCustomFilters);
+    const filteredLocalMatches = applyAccessFilters(localMatches).filter(
+        (video) => matchesRelayFilters(video) && matchesUnsupportedFilters(video)
+    );
 
     // 2. Relay Search
     let relayVideos = [];
-    const relays = nostrClient.relays || [];
+    const relaySelection = filters?.relay ? sanitizeRelayList([filters.relay]) : null;
+    const relays = relaySelection?.length
+        ? relaySelection
+        : Array.isArray(nostrClient.relays)
+        ? nostrClient.relays
+        : [];
 
     if (relays.length > 0 && nostrClient.pool) {
         const filter = {
-            kinds: [30078],
+            kinds: [Number.isFinite(filters?.kind) ? filters.kind : 30078],
             limit: 50
         };
 
-        if (isHashtag) {
-            filter["#t"] = [term];
-        } else {
-            filter.search = term;
+        const authorFilters = Array.isArray(filters?.authorPubkeys)
+            ? filters.authorPubkeys.filter((author) => typeof author === "string" && author)
+            : [];
+        if (authorFilters.length > 0) {
+            filter.authors = authorFilters;
         }
+        if (Number.isFinite(afterDate)) {
+            filter.since = afterDate;
+        }
+        if (Number.isFinite(beforeDate)) {
+            filter.until = beforeDate;
+        }
+        const tagFilters = new Set(
+            Array.isArray(filters?.tags)
+                ? filters.tags.map((tag) => String(tag || "").trim().toLowerCase()).filter(Boolean)
+                : []
+        );
+        if (isHashtag && term) {
+            tagFilters.add(term.toLowerCase());
+        }
+        if (tagFilters.size > 0) {
+            filter["#t"] = Array.from(tagFilters);
+        }
+        filter.search = term;
 
         try {
             const events = await nostrClient.pool.list(relays, [filter]);
@@ -733,7 +811,9 @@ async function performVideoSearch(query, token, filters = {}) {
 
     if (currentSearchToken !== token) return [];
 
-    const filteredRelayVideos = applyAccessFilters(relayVideos).filter(matchesCustomFilters);
+    const filteredRelayVideos = applyAccessFilters(relayVideos).filter(
+        (video) => matchesRelayFilters(video) && matchesUnsupportedFilters(video)
+    );
 
     // Deduplicate by ID
     const unique = new Map();
