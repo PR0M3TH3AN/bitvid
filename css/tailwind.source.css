@@ -5829,7 +5829,7 @@
     min-height: var(--space-md);
   }
 
-  @media (max-width: 767.98px) {
+  @media (max-width: calc(theme("screens.md") - 0.02px)) {
     .dm-app-shell[data-dm-view="list"] .dm-app-shell__main {
       display: none !important;
     }

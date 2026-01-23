@@ -35,15 +35,8 @@ const VALUE_ALLOWLIST = new Map([
       // Ignore matches inside var() declarations that happen to contain units in the name
       (value, snippet) =>
         snippet.includes(`var(--`) && snippet.includes(value),
-      // Mobile breakpoint used in media query
-      (value) => value === "767.98px",
-    ],
-  ],
-  [
-    "js/ui/components/VideoCard.js",
-    [
-      // Desktop breakpoint used in media query match
-      (value) => value === "1024px",
+      // Safe literal for media query calculation where vars are not supported
+      (value) => value === "0.02px",
     ],
   ],
 ]);
@@ -263,11 +256,7 @@ function collectViolations(filePath, content) {
   return violations;
 }
 
-const LEGACY_BRACKET_ALLOWLIST = new Set([
-  "min-h-[80px]",
-  "min-h-[96px]",
-  "w-[calc(100%-3rem)]",
-]);
+const LEGACY_BRACKET_ALLOWLIST = new Set([]);
 
 function isAllowedBracketUtility(bracketValue) {
   const inner = bracketValue.slice(1, -1).trim().toLowerCase();
@@ -281,10 +270,6 @@ function isAllowedBracketUtility(bracketValue) {
 
   if (LEGACY_BRACKET_ALLOWLIST.has(bracketValue)) {
     return true;
-  }
-
-  if (inner === "80px" || inner === "96px" || inner === "calc(100%-3rem)") {
-      return true;
   }
 
   return false;
