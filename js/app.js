@@ -9389,6 +9389,7 @@ class Application {
     this.commentController?.load(null);
 
     const shareUrl = this.buildShareUrlFromEventId(this.currentVideo.id);
+    const urlObj = new URL(window.location.href);
     urlObj.searchParams.delete("v");
     const cleaned = `${urlObj.pathname}${urlObj.search}${urlObj.hash}`;
     window.history.replaceState({}, "", cleaned);
