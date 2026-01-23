@@ -490,6 +490,12 @@
     @apply border-accent-strong bg-accent-strong text-white;
   }
 
+  @media (min-width: theme("screens.md")) {
+    .search-filters-panel.is-advanced-open {
+      width: 40rem;
+    }
+  }
+
   [data-popover-arrow="true"] {
     left: var(--popover-arrow-left, auto);
     right: var(--popover-arrow-right, auto);
