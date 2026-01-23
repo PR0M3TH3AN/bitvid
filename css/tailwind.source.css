@@ -482,6 +482,14 @@
     @apply pointer-events-none scale-95 opacity-0;
   }
 
+  .search-filter-chip {
+    @apply inline-flex items-center gap-2 rounded-full border border-border-subtle bg-surface-alt px-3 py-1 text-xs font-medium text-text transition-colors duration-base ease-out;
+  }
+
+  .search-filter-chip[data-state="on"] {
+    @apply border-accent-strong bg-accent-strong text-white;
+  }
+
   [data-popover-arrow="true"] {
     left: var(--popover-arrow-left, auto);
     right: var(--popover-arrow-right, auto);
