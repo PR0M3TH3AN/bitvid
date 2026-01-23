@@ -1299,8 +1299,21 @@ export default class LoginModalController {
         qrContainer.innerHTML = "";
         // Force high-contrast black-on-white for the QR code to ensure
         // it remains readable and scannable regardless of the application theme.
-        const qrLightColor = "#ffffff";
-        const qrDarkColor = "#000000";
+        // We resolve these from the unified token system to ensure consistency.
+        let qrLightColor = "#ffffff";
+        let qrDarkColor = "#000000";
+
+        if (this.window && typeof this.window.getComputedStyle === "function") {
+          try {
+            const style = this.window.getComputedStyle(this.document.documentElement);
+            const white = style.getPropertyValue("--color-white").trim();
+            const black = style.getPropertyValue("--color-black").trim();
+            if (white) qrLightColor = white;
+            if (black) qrDarkColor = black;
+          } catch (error) {
+            // Fallback to hardcoded values if style resolution fails
+          }
+        }
 
         if (uri) {
           try {
