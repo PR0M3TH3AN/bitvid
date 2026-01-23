@@ -1,5 +1,9 @@
 import createPopover from "../overlay/popoverEngine.js";
-import { DEFAULT_FILTERS } from "../../search/searchFilters.js";
+import {
+  DEFAULT_FILTERS,
+  parseFilterQuery,
+} from "../../search/searchFilters.js";
+import { subscribeSearchFacetCounts } from "../../search/searchFacetState.js";
 import { FEATURE_SEARCH_FILTERS } from "../../constants.js";
 
 const FOCUSABLE_SELECTOR =
