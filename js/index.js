@@ -18,10 +18,7 @@ import {
 } from "./themeController.js";
 import { setHashView } from "./hashView.js";
 import { devLogger, userLogger } from "./utils/logger.js";
-import {
-  parseFilterQuery,
-  serializeFiltersToQuery,
-} from "./search/searchFilters.js";
+import { parseFilterQuery } from "./search/searchFilters.js";
 import {
   buildSearchHashFromState,
   getSearchFilterState,
