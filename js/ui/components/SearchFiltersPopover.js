@@ -15,6 +15,7 @@ const FOCUSABLE_SELECTOR =
   "a[href], button:not([disabled]), input:not([disabled]):not([type=\"hidden\"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex=\"-1\"])";
 
 const SEARCH_PRESET_STORAGE_KEY = "bitvid:searchPresets";
+let searchFilterPanelIdCounter = 0;
 
 function resolveDocument(documentRef) {
   if (documentRef && documentRef.nodeType === 9) {
@@ -24,6 +25,11 @@ function resolveDocument(documentRef) {
     return document;
   }
   return null;
+}
+
+function buildFilterId(prefix) {
+  searchFilterPanelIdCounter += 1;
+  return `${prefix}-${searchFilterPanelIdCounter}`;
 }
 
 function createElement(doc, tagName, { className, text, attrs } = {}) {
@@ -52,6 +58,79 @@ function collectFocusable(panel) {
   return Array.from(panel.querySelectorAll(FOCUSABLE_SELECTOR)).filter(
     (el) => !el.hasAttribute("disabled") && el.getAttribute("aria-hidden") !== "true",
   );
+}
+
+function isEditableTarget(target) {
+  if (!target || target.nodeType !== 1) {
+    return false;
+  }
+  const element = target;
+  const tagName = element.tagName?.toLowerCase?.() || "";
+  if (tagName === "input" || tagName === "textarea" || tagName === "select") {
+    return true;
+  }
+  if (element.isContentEditable) {
+    return true;
+  }
+  if (typeof element.closest === "function") {
+    return Boolean(element.closest("input, textarea, select, [contenteditable=\"true\"]"));
+  }
+  return false;
+}
+
+function isElementVisible(element) {
+  if (!element) {
+    return false;
+  }
+  if (element.getClientRects().length === 0) {
+    return false;
+  }
+  return true;
+}
+
+function enableArrowNavigation(listElement, { selector = "button" } = {}) {
+  if (!listElement) {
+    return () => {};
+  }
+
+  const handler = (event) => {
+    if (
+      event.key !== "ArrowLeft" &&
+      event.key !== "ArrowRight" &&
+      event.key !== "ArrowUp" &&
+      event.key !== "ArrowDown"
+    ) {
+      return;
+    }
+    const target = event.target;
+    if (!target || !listElement.contains(target)) {
+      return;
+    }
+    const items = Array.from(listElement.querySelectorAll(selector)).filter(
+      (item) =>
+        item instanceof HTMLElement &&
+        !item.hasAttribute("disabled") &&
+        item.getAttribute("aria-hidden") !== "true",
+    );
+    if (!items.length) {
+      return;
+    }
+    const index = items.indexOf(target);
+    if (index < 0) {
+      return;
+    }
+    event.preventDefault();
+    const direction =
+      event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : -1;
+    const nextIndex = (index + direction + items.length) % items.length;
+    const nextItem = items[nextIndex];
+    if (nextItem && typeof nextItem.focus === "function") {
+      nextItem.focus();
+    }
+  };
+
+  listElement.addEventListener("keydown", handler);
+  return () => listElement.removeEventListener("keydown", handler);
 }
 
 function trapFocus(panel) {
@@ -225,10 +304,11 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
   let suggestedFacetUnsubscribe = null;
 
   const render = ({ container, close }) => {
+    const headingId = buildFilterId("search-filters-heading");
     const panel = createElement(doc, "div", {
       className:
         "popover-panel w-80 max-w-full space-y-5 md:w-96",
-      attrs: { "aria-label": "Search filters" },
+      attrs: { "aria-labelledby": headingId },
     });
     panel.dataset.popoverVariant = "filters";
 
@@ -246,6 +326,7 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
       createElement(doc, "h3", {
         className: "text-base font-semibold text-text-strong",
         text: "Search filters",
+        attrs: { id: headingId },
       }),
     );
     const closeButton = createElement(doc, "button", {
@@ -351,6 +432,7 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
     const chipRow = createElement(doc, "div", {
       className: "flex flex-wrap gap-2",
     });
+    enableArrowNavigation(chipRow);
     const dateChips = [];
     const dateChipValues = [
       { label: "24h", days: 1 },
@@ -418,15 +500,28 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
     const sortSection = createElement(doc, "div", {
       className: "bv-stack bv-stack--tight",
     });
+    const sortHeadingId = buildFilterId("search-filters-sort-heading");
+    const sortDescriptionId = buildFilterId("search-filters-sort-description");
     sortSection.appendChild(
       createElement(doc, "p", {
         className: "text-xs font-semibold uppercase tracking-wide text-muted",
         text: "Sort",
+        attrs: { id: sortHeadingId },
+      }),
+    );
+    sortSection.appendChild(
+      createElement(doc, "p", {
+        className: "text-xs text-muted",
+        text: "Choose the order for search results.",
+        attrs: { id: sortDescriptionId },
       }),
     );
     const sortSelect = createElement(doc, "select", {
       className: "select w-full",
-      attrs: { "aria-label": "Sort results" },
+      attrs: {
+        "aria-labelledby": sortHeadingId,
+        "aria-describedby": sortDescriptionId,
+      },
     });
     const enableExperimentalSorts = options.enableExperimentalSorts === true;
     SORT_OPTIONS.forEach((sortOption) => {
@@ -483,6 +578,7 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
     const tagList = createElement(doc, "div", {
       className: "flex flex-wrap gap-2",
     });
+    enableArrowNavigation(tagList);
     const tagChips = new Map();
     ["nostr", "music", "live"].forEach((tag) => {
       const chip = createElement(doc, "button", {
@@ -544,6 +640,7 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
     const hasChipRow = createElement(doc, "div", {
       className: "flex flex-wrap gap-2",
     });
+    enableArrowNavigation(hasChipRow);
     const hasChips = new Map();
     [
       { key: "magnet", label: "Magnet" },
@@ -1040,10 +1137,8 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
     return parsed;
   };
 
-  triggerElement.addEventListener("click", async (event) => {
-    event.preventDefault();
+  const openPopover = async () => {
     if (popover.isOpen()) {
-      popover.close();
       return;
     }
     popover.preload();
@@ -1062,9 +1157,54 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
       controlState.refreshPresets();
     }
     await popover.open();
+  };
+
+  triggerElement.addEventListener("click", async (event) => {
+    event.preventDefault();
+    if (popover.isOpen()) {
+      popover.close();
+      return;
+    }
+    await openPopover();
   });
 
+  const shortcutHandler = (event) => {
+    if (
+      event.defaultPrevented ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.shiftKey
+    ) {
+      return;
+    }
+    if (isEditableTarget(event.target)) {
+      return;
+    }
+    if ((event.key === "f" || event.key === "F") && isElementVisible(triggerElement)) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      void openPopover();
+    }
+    if (event.key === "Escape" && popover.isOpen()) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      popover.close();
+    }
+  };
+
+  doc.addEventListener("keydown", shortcutHandler);
+
   popover.syncFromQueryInput = syncFromQueryInput;
+
+  const originalDestroyPopover = popover.destroy?.bind(popover);
+  popover.destroy = (...args) => {
+    doc.removeEventListener("keydown", shortcutHandler);
+    if (originalDestroyPopover) {
+      return originalDestroyPopover(...args);
+    }
+    return undefined;
+  };
 
   return popover;
 }
