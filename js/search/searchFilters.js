@@ -4,6 +4,17 @@ const DATE_FORMAT_OPTIONS = {
   day: "2-digit",
 };
 
+export const SORT_OPTIONS = [
+  { value: "relevance", label: "Relevance" },
+  { value: "newest", label: "Newest" },
+  { value: "oldest", label: "Oldest" },
+  { value: "views", label: "Most Views" },
+  { value: "zaps", label: "Most Zaps", experimental: true },
+  { value: "reactions", label: "Most Reactions/Comments", experimental: true },
+];
+
+const SORT_VALUES = new Set(SORT_OPTIONS.map((option) => option.value));
+
 export const DEFAULT_FILTERS = {
   dateRange: {
     after: null,
@@ -258,6 +269,15 @@ export function parseFilterQuery(inputString = "") {
         }
         break;
       }
+      case "sort": {
+        const normalizedValue = value.toLowerCase();
+        if (!SORT_VALUES.has(normalizedValue)) {
+          errors.push({ token, message: "Sort filter is invalid." });
+          break;
+        }
+        filters.sort = normalizedValue;
+        break;
+      }
       default:
         errors.push({ token, message: `Unknown filter "${key}".` });
     }
@@ -325,6 +345,10 @@ export function serializeFiltersToQuery(filters = DEFAULT_FILTERS) {
 
   if (filters.nsfw && filters.nsfw !== "any") {
     tokens.push(`nsfw:${filters.nsfw}`);
+  }
+
+  if (filters.sort && filters.sort !== DEFAULT_FILTERS.sort) {
+    tokens.push(`sort:${filters.sort}`);
   }
 
   return tokens.join(" ");
