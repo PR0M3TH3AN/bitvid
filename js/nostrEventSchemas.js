@@ -60,6 +60,20 @@ let cachedUtf8Encoder = null;
 const ADDITIONAL_POINTER_TAGS = new Set(["p", "e"]);
 const HEX_32_BYTE_REGEX = /^[0-9a-f]{64}$/i;
 
+function safeStringify(value) {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (value === null || value === undefined) {
+    return "";
+  }
+  try {
+    return String(value);
+  } catch (err) {
+    return "";
+  }
+}
+
 function normalizePointerIdentifier(value) {
   if (typeof value !== "string") {
     return "";
@@ -875,7 +889,7 @@ export function buildVideoMirrorEvent(params) {
     pubkey,
     created_at,
     tags: combinedTags,
-    content: typeof content === "string" ? content : String(content ?? ""),
+    content: safeStringify(content),
   };
 
   if (isDevMode) {
@@ -2144,7 +2158,7 @@ export function buildWatchHistoryEvent(params) {
     pubkey,
     created_at: Number.isFinite(created_at) ? created_at : Math.floor(Date.now() / 1000),
     tags,
-    content: typeof content === "string" ? content : String(content ?? ""),
+    content: safeStringify(content),
   };
 
   if (isDevMode) {
@@ -2180,7 +2194,7 @@ export function buildSubscriptionListEvent(params) {
     pubkey,
     created_at,
     tags,
-    content: typeof content === "string" ? content : String(content ?? ""),
+    content: safeStringify(content),
   };
 
   if (isDevMode) {
@@ -2216,7 +2230,7 @@ export function buildBlockListEvent(params) {
     pubkey,
     created_at,
     tags,
-    content: typeof content === "string" ? content : String(content ?? ""),
+    content: safeStringify(content),
   };
 
   if (isDevMode) {
@@ -2246,7 +2260,7 @@ export function buildHashtagPreferenceEvent(params) {
     pubkey,
     created_at,
     tags,
-    content: typeof content === "string" ? content : String(content ?? ""),
+    content: safeStringify(content),
   };
 
   if (isDevMode) {
