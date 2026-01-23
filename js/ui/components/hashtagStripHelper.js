@@ -243,10 +243,16 @@ export class HashtagStripHelper {
     }
 
     try {
+      const trigger =
+        detail?.button ||
+        detail?.event?.currentTarget ||
+        detail?.event?.target?.closest?.("button[data-tag]") ||
+        null;
       this.activateHandler({
         tag,
         event: detail?.event || null,
-        trigger: detail?.button || null,
+        trigger,
+        button: trigger,
         context: this.context,
       });
     } catch (error) {

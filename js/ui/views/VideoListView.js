@@ -1289,8 +1289,13 @@ export class VideoListView {
       detail && typeof detail === "object" ? detail : { tag: detail };
     const tag = candidate.tag;
     const event = candidate.event || options.event || null;
-    const trigger =
-      candidate.trigger || candidate.button || options.button || null;
+    let trigger = candidate.trigger || candidate.button || options.button || null;
+    if (!trigger && event && event.target) {
+      trigger =
+        event.target.closest?.("button[data-tag]") ||
+        event.currentTarget ||
+        null;
+    }
     const context =
       typeof candidate.context === "string" && candidate.context
         ? candidate.context
