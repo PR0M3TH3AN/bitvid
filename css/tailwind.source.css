@@ -2423,6 +2423,26 @@
     overflow-x: auto;
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
+    padding-bottom: var(--space-2xs);
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
+
+  .video-tag-strip--scroll::-webkit-scrollbar {
+    height: var(--scrollbar-thin-width);
+  }
+
+  .video-tag-strip--scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .video-tag-strip--scroll::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: var(--radius-sm);
+  }
+
+  .video-tag-strip--scroll::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover);
   }
 
   .video-tag-pill {
