@@ -180,6 +180,7 @@ export class VideoListView {
       document: this.document,
       window: this.window,
       logger: userLogger,
+      scrollable: true,
     });
     this.popularTagHelper.setContext("popular-tags");
     this.popularTagHelper.setActivateHandler((detail) =>

@@ -2419,6 +2419,12 @@
     overflow: hidden;
   }
 
+  .video-tag-strip--scroll {
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+
   .video-tag-pill {
     @apply inline-flex items-center gap-2 rounded-full border border-status-neutral-border bg-status-neutral-surface px-3 py-1 text-2xs font-medium text-status-neutral-on;
     @apply relative justify-center whitespace-nowrap transition;

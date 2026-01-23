@@ -12,12 +12,14 @@ export class HashtagStripHelper {
     window: win = null,
     logger,
     context = "",
+    scrollable = false,
   } = {}) {
     this.document = doc || (typeof document !== "undefined" ? document : null);
     this.window = win || this.document?.defaultView ||
       (typeof window !== "undefined" ? window : null);
     this.logger = logger || userLogger;
     this.context = typeof context === "string" ? context : "";
+    this.scrollable = scrollable === true;
 
     this.container = null;
     this._tagStrip = null;
@@ -191,11 +193,14 @@ export class HashtagStripHelper {
         onTagActivate: (tag, detail = {}) =>
           this._handleTagActivate(tag, detail),
         getTagState: (tag) => this._resolveTagState(tag),
+        scrollable: this.scrollable,
       });
 
       root.appendChild(strip);
       this._tagStrip = strip;
-      trimTagPillStripToFit({ strip, container: root });
+      if (!this.scrollable) {
+        trimTagPillStripToFit({ strip, container: root });
+      }
       root.hidden = strip.childElementCount === 0;
     } finally {
       this._isApplyingTrim = false;

@@ -213,12 +213,16 @@ export function renderTagPillStrip({
   tags = [],
   onTagActivate,
   getTagState,
+  scrollable = false,
 } = {}) {
   const resolvedDocument = resolveDocument(doc);
   assertDocument(resolvedDocument);
 
   const root = resolvedDocument.createElement("div");
   root.classList.add("video-tag-strip");
+  if (scrollable) {
+    root.classList.add("video-tag-strip--scroll");
+  }
 
   const buttons = tags.map((tag) =>
     createTagButton({
