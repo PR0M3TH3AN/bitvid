@@ -52,7 +52,7 @@ import { nostrClient } from "./nostrClientFacade.js";
 import { userBlocks } from "./userBlocks.js";
 import { relayManager } from "./relayManager.js";
 import createApplication from "./bootstrap.js";
-import attachSearchFiltersPopover from "./ui/components/SearchFiltersPopover.js";
+import SearchFilterModal from "./ui/components/SearchFilterModal.js";
 
 validateInstanceConfig();
 
@@ -615,6 +615,7 @@ async function bootstrapInterface() {
     loadModal("components/general-feedback-form.html"),
     loadModal("components/feature-request-form.html"),
     loadModal("components/bug-fix-form.html"),
+    loadModal("components/search-filter-modal.html"),
   ]);
 
   devLogger.log("Modals loaded.");
@@ -1197,26 +1198,14 @@ async function bootstrapInterface() {
     });
   }
 
+  SearchFilterModal.init();
+
   const searchFilterButtons = document.querySelectorAll(".header-search__filter");
-  const applySearchFilters = (filters) => {
-    const currentState = getSearchFilterState();
-    const nextState = {
-      text: currentState.text || "",
-      filters,
-    };
-    setSearchFilterState(nextState);
-    setHashView(buildSearchHashFromState(nextState));
-  };
-  const clearSearchFilters = () => {
-    resetSearchFilters();
-    const nextState = getSearchFilterState();
-    setHashView(buildSearchHashFromState(nextState));
-  };
   searchFilterButtons.forEach((button) => {
-    attachSearchFiltersPopover(button, {
-      getState: getSearchFilterState,
-      onApply: applySearchFilters,
-      onReset: clearSearchFilters,
+    button.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      SearchFilterModal.open();
     });
   });
 
