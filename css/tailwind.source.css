@@ -2423,26 +2423,28 @@
     overflow-x: auto;
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
-    padding-bottom: var(--space-2xs);
+    padding-bottom: var(--space-xs);
     scrollbar-width: thin;
     scrollbar-color: var(--scrollbar-thumb) transparent;
   }
 
   .video-tag-strip--scroll::-webkit-scrollbar {
-    height: var(--scrollbar-thin-width);
+    height: 4px;
   }
 
   .video-tag-strip--scroll::-webkit-scrollbar-track {
-    background: transparent;
+    background:
+      linear-gradient(
+        to bottom,
+        transparent calc(50% - 0.5px),
+        var(--scrollbar-track) calc(50% - 0.5px) calc(50% + 0.5px),
+        transparent calc(50% + 0.5px)
+      );
   }
 
   .video-tag-strip--scroll::-webkit-scrollbar-thumb {
     background: var(--scrollbar-thumb);
-    border-radius: var(--radius-sm);
-  }
-
-  .video-tag-strip--scroll::-webkit-scrollbar-thumb:hover {
-    background: var(--scrollbar-thumb-hover);
+    border-radius: var(--radius-pill);
   }
 
   .video-tag-pill {
