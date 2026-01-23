@@ -423,15 +423,16 @@ function waitForTransaction(tx) {
 /**
  * Persists video events and tombstones to IndexedDB.
  *
- * Schema:
+ * **Schema:**
  * - `events`: Store for video objects. Key: `id`.
  * - `tombstones`: Store for deletion timestamps. Key: `key`.
  * - `meta`: Store for versioning and timestamps. Key: `key`.
  *
- * Strategy:
+ * **Strategy: Incremental Persistence**
  * - Snapshots are saved periodically (debounced).
  * - "Fingerprints" (hashes/stringified) are tracked to minimize writes.
- * - If the TTL expires, the cache is cleared on restore.
+ * - Only changed items are written to IDB; unchanged items are skipped.
+ * - If the TTL expires, the cache is cleared on restore to force a fresh fetch.
  */
 class EventsCacheStore {
   /**
@@ -3695,14 +3696,14 @@ export class NostrClient {
   }
 
   /**
-   * Initializes the client.
+   * Initializes the client and bootstraps the network layer.
    *
-   * Flow:
-   * 1. Restores local data (IndexedDB/localStorage) to render the UI immediately ("stale-while-revalidate").
-   * 2. Schedules the restoration of any stored NIP-46 remote signer session.
-   * 3. Initializes the NostrTools `SimplePool` and connects to the configured relays.
+   * **Boot Sequence:**
+   * 1. **Offline Restore**: Loads cached events from IndexedDB/localStorage to render the UI immediately (Stale-While-Revalidate).
+   * 2. **Session Restore**: Attempts to reconnect to a stored NIP-46 remote signer (if any).
+   * 3. **Network Connect**: Initializes `SimplePool` and establishes WebSocket connections to relays.
    *
-   * @returns {Promise<void>} Resolves when relays are connected (or at least attempted).
+   * @returns {Promise<void>} Resolves when the relay pool is initialized and connections are attempted.
    */
   async init() {
     devLogger.log("Connecting to relays...");
@@ -5159,21 +5160,21 @@ export class NostrClient {
   }
 
   /**
-   * Publishes a video event (Kind 30078).
+   * Publishes a new video event (Kind 30078) to the network.
    *
-   * This constructs a V3 video note which includes:
-   * - Core metadata (title, description, thumbnail).
-   * - `magnet`: The Magnet URI (XT=InfoHash, WS=WebSeed, XS=TorrentMetadata).
-   * - `url`: The direct HTTP URL (WebSeed).
+   * **Payload Construction:**
+   * - Creates a V3 video note with `magnet`, `url` (WebSeed), and core metadata.
+   * - Generates a unique `d` tag and `videoRootId` for this new series.
    *
-   * Side Effects:
-   * - NIP-94 Mirror: Optionally publishes a Kind 1063 file header event if a hosted URL is provided.
-   * - NIP-71: Optionally publishes a Kind 22 (Video Wrapper) for categorization if metadata is provided.
+   * **Side Effects (in order):**
+   * 1. **Primary Event**: Signs and publishes the Kind 30078 Video Note.
+   * 2. **NIP-94 Mirror**: If a hosted `url` is provided, publishes a Kind 1063 File Header event (for clients that only support NIP-94).
+   * 3. **NIP-71 Metadata**: If categories/tags are present, publishes a Kind 22 Video Wrapper event linked to the primary event.
    *
-   * @param {object} videoPayload - The video metadata and form data.
+   * @param {object} videoPayload - The video metadata, form data, and NIP-71 attributes.
    * @param {string} pubkey - The public key of the publisher.
-   * @returns {Promise<import("nostr-tools").Event>} The signed and published event.
-   * @throws {Error} If not logged in or publishing fails.
+   * @returns {Promise<import("nostr-tools").Event>} The signed and published Kind 30078 event.
+   * @throws {Error} If not logged in or if the primary publish fails.
    */
   async publishVideo(videoPayload, pubkey) {
     if (!pubkey) throw new Error("Not logged in to publish video.");
@@ -5528,15 +5529,15 @@ export class NostrClient {
   }
 
   /**
-   * Edits a video by creating a new event that reuses the existing d tag
-   * so subsequent publishes overwrite the same NIP-33 addressable record
-   * while keeping the original videoRootId.
+   * Edits an existing video by publishing a new version (Kind 30078).
    *
-   * This version forces version=2 for the original note and uses
-   * lowercase comparison for public keys.
+   * **Mechanism:**
+   * - Reuses the original `d` tag to ensure NIP-33 addressability (clients see the edit as the "latest" version).
+   * - Preserves the `videoRootId` to maintain the history chain.
+   * - Enforces ownership (pubkey match).
    *
    * @param {object} originalEventStub - The original video event (must have `id`).
-   * @param {object} updatedData - The new metadata to apply.
+   * @param {object} updatedData - The new metadata to apply (title, magnet, NIP-71, etc.).
    * @param {string} userPubkey - The public key of the editor (must match owner).
    * @returns {Promise<import("nostr-tools").Event>} The signed and published edit event.
    * @throws {Error} If permission denied, ownership mismatch, or publish failure.
@@ -6435,22 +6436,25 @@ export class NostrClient {
   }
 
   /**
-   * Subscribes to Kind 30078 video events from relays.
+   * Subscribes to Kind 30078 video events from relays using a buffered stream.
    *
-   * Strategy: "Buffering & Debouncing"
+   * **Why Buffer?**
    * Relays often send bursts of events (e.g., historical dumps or new floods).
    * Processing every single event immediately would cause layout thrashing and UI lag.
    *
-   * Instead, we:
-   * 1. Push incoming events into `eventBuffer`.
-   * 2. Schedule a flush operation (`flushEventBuffer`) with a short delay (75ms).
-   * 3. When the flush runs, we process the entire batch:
-   *    - Convert/Validate events.
-   *    - Update the `activeMap` (latest version logic).
-   *    - Persist to local cache.
-   *    - Notify the UI (`onVideo`).
+   * **The Algorithm:**
+   * 1. **Buffer**: Push all incoming events into `eventBuffer`.
+   * 2. **Debounce**: Schedule `flushEventBuffer` to run after 75ms of silence or inactivity.
+   * 3. **Batch Process**:
+   *    - Convert events to internal Video objects.
+   *    - Filter out invalids or duplicates.
+   *    - Apply "Last-Write-Wins" logic against `activeMap`.
+   *    - Notify the UI (`onVideo`) once per batch.
+   * 4. **Persist**: Save the batch to IndexedDB to warm up the cache for next reload.
    *
-   * This ensures O(1) renders per batch instead of O(N) renders per event.
+   * **Invariants:**
+   * - `activeMap` always holds the latest valid version of a video.
+   * - Deleted events (Tombstones) are never surfaced to `onVideo`.
    *
    * @param {function(object): void} onVideo - Callback fired when new valid videos are processed. Receives the `Video` object.
    * @param {{ since?: number, until?: number, limit?: number }} [options] - Filter options.
@@ -6487,7 +6491,9 @@ export class NostrClient {
     const sub = this.pool.sub(this.relays, [filter]);
     const invalidDuringSub = [];
 
-    // We'll collect events here instead of processing them instantly
+    // BUFFERING STATE
+    // We collect events here instead of processing them instantly to avoid
+    // 1000s of React re-renders during the initial relay dump.
     let eventBuffer = [];
     const EVENT_FLUSH_DEBOUNCE_MS = 75;
     let flushTimerId = null;
@@ -6554,7 +6560,9 @@ export class NostrClient {
             continue;
           }
 
-          // Latest-wins logic: only update activeMap if this version is newer
+          // LATEST-WINS LOGIC
+          // We only update the UI if the incoming video is newer than what we have.
+          // This handles the "Edit" case where multiple versions exist on relays.
           const prevActive = this.activeMap.get(activeKey);
           if (!prevActive || video.created_at > prevActive.created_at) {
             this.activeMap.set(activeKey, video);
@@ -7386,21 +7394,25 @@ export class NostrClient {
   }
 
   /**
-   * Fetches the complete edit history for a video.
+   * Fetches and reconstructs the full edit history of a video.
    *
-   * Why this is complex:
-   * 1. **Video Root ID**: Modern videos use a `videoRootId` inside the JSON content to link versions.
-   * 2. **NIP-33 `d` Tags**: Relays index by the `d` tag, not the JSON content.
-   * 3. **Legacy Data**: Older videos might not have a `videoRootId` and rely solely on the `d` tag or even the original Event ID.
+   * **The Problem:**
+   * Nostr events are immutable. "Editing" a video creates a NEW event.
+   * We need to find all previous versions to show a history log or allow reverting.
    *
-   * Strategy:
-   * - First, check local memory (`allEvents`) for matches on `videoRootId` OR `d` tag.
-   * - If the root event is missing locally, fetch it by ID.
-   * - If we suspect missing history (e.g., only 1 version found), perform a relay query for the specific `d` tag.
-   * - Merge and sort all findings to present a linear history.
+   * **The Linking Logic:**
+   * 1. **Modern**: Versions share a `videoRootId` field in their content.
+   * 2. **NIP-33**: Versions share the same `d` tag.
+   * 3. **Legacy**: Older versions might only be linked by the `d` tag or lack a root pointer entirely.
    *
-   * @param {object} video - The video object to find history for.
-   * @returns {Promise<object[]>} Sorted array of video objects (newest first).
+   * **Algorithm:**
+   * 1. **Local Scan**: Search `allEvents` for any event matching the target's `videoRootId` OR `d` tag.
+   * 2. **Root Recovery**: If the `videoRootId` refers to an event we don't have, fetch it specifically (to establish the timeline start).
+   * 3. **Relay Query**: If local history is sparse (<= 1 version), query relays for all events with the same `d` tag.
+   * 4. **Merge & Sort**: Combine all findings, filter out unrelated events, and sort by `created_at` descending.
+   *
+   * @param {object} video - The target video to find history for.
+   * @returns {Promise<object[]>} A promise resolving to an array of Video objects (Newest -> Oldest).
    */
   async hydrateVideoHistory(video) {
     if (!video || typeof video !== "object") {
@@ -7434,9 +7446,10 @@ export class NostrClient {
           typeof candidate.videoRootId === "string" ? candidate.videoRootId : "";
         const candidateDTag = this.resolveEventDTag(candidate, video);
 
-        // A video is "the same" if:
+        // HISTORY MATCHING LOGIC
+        // A video is part of the same history if:
         // 1. It shares the same V3 `videoRootId`.
-        // 2. It shares the same NIP-33 `d` tag (for addressable updates).
+        // 2. It shares the same NIP-33 `d` tag (addressable events).
         const sameRoot = targetRoot && candidateRoot === targetRoot;
         const sameD = targetDTag && candidateDTag === targetDTag;
 
