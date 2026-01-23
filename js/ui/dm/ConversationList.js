@@ -47,7 +47,7 @@ export function ConversationList({
   }
   root.appendChild(header);
 
-  const list = createElement(doc, "div", "dm-conversation-list__items");
+  const list = createElement(doc, "div", "dm-conversation-list__items no-scrollbar");
   list.setAttribute("role", "listbox");
   list.setAttribute("aria-label", "Conversation list");
 
@@ -75,6 +75,18 @@ export function ConversationList({
       });
       list.appendChild(row);
     });
+
+    // Peek animation
+    if (conversations.length > 0) {
+      setTimeout(() => {
+        if (list.scrollHeight > list.clientHeight) {
+          list.scrollTo({ top: 40, behavior: "smooth" });
+          setTimeout(() => {
+            list.scrollTo({ top: 0, behavior: "smooth" });
+          }, 600);
+        }
+      }, 600);
+    }
   }
 
   list.addEventListener("keydown", (event) => {

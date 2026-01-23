@@ -93,7 +93,7 @@ export function MessageThread({
   }
   root.appendChild(header);
 
-  const timeline = createElement(doc, "div", "dm-message-thread__timeline");
+  const timeline = createElement(doc, "div", "dm-message-thread__timeline no-scrollbar");
   timeline.setAttribute("role", "log");
   timeline.setAttribute("aria-live", "polite");
 
@@ -137,11 +137,25 @@ export function MessageThread({
     });
   }
 
-  // Scroll to bottom
+  // Scroll to bottom and peek
   if (messages.length > 0) {
-      setTimeout(() => {
-        timeline.scrollTop = timeline.scrollHeight;
-      }, 0);
+    setTimeout(() => {
+      timeline.scrollTop = timeline.scrollHeight;
+
+      if (timeline.scrollHeight > timeline.clientHeight) {
+        setTimeout(() => {
+          const targetScroll = Math.max(0, timeline.scrollTop - 40);
+          timeline.scrollTo({ top: targetScroll, behavior: "smooth" });
+
+          setTimeout(() => {
+            timeline.scrollTo({
+              top: timeline.scrollHeight,
+              behavior: "smooth",
+            });
+          }, 600);
+        }, 600);
+      }
+    }, 0);
   }
 
   root.appendChild(timeline);
