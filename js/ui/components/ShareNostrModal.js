@@ -355,6 +355,10 @@ export class ShareNostrModal {
       typeof payload?.pubkey === "string" && payload.pubkey.trim()
         ? payload.pubkey.trim()
         : "";
+    const authorName =
+      typeof payload?.authorName === "string" && payload.authorName.trim()
+        ? payload.authorName.trim()
+        : "";
 
     if (this.textarea) {
       this.textarea.value = this.buildShareContent({
@@ -369,7 +373,10 @@ export class ShareNostrModal {
     }
 
     if (this.previewMeta) {
-      this.previewMeta.textContent = pubkey ? `Author: ${pubkey}` : "Author info unavailable";
+      const displayAuthor = authorName || pubkey;
+      this.previewMeta.textContent = displayAuthor
+        ? `Author: ${displayAuthor}`
+        : "Author info unavailable";
     }
 
     if (this.previewUrl) {
