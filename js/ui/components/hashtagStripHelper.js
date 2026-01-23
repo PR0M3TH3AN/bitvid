@@ -7,11 +7,17 @@ import {
 } from "./tagPillList.js";
 
 export class HashtagStripHelper {
-  constructor({ document: doc = null, window: win = null, logger } = {}) {
+  constructor({
+    document: doc = null,
+    window: win = null,
+    logger,
+    context = "",
+  } = {}) {
     this.document = doc || (typeof document !== "undefined" ? document : null);
     this.window = win || this.document?.defaultView ||
       (typeof window !== "undefined" ? window : null);
     this.logger = logger || userLogger;
+    this.context = typeof context === "string" ? context : "";
 
     this.container = null;
     this._tagStrip = null;
@@ -132,6 +138,14 @@ export class HashtagStripHelper {
     this.activateHandler = typeof handler === "function" ? handler : null;
   }
 
+  setContext(context) {
+    this.context = typeof context === "string" ? context : "";
+  }
+
+  refreshTagPreferenceStates() {
+    this.refreshTagStates();
+  }
+
   refreshTagStates() {
     if (!this._tagStrip) {
       return;
@@ -224,7 +238,11 @@ export class HashtagStripHelper {
     }
 
     try {
-      this.activateHandler(tag, detail);
+      this.activateHandler({
+        tag,
+        trigger: detail?.button || null,
+        context: this.context,
+      });
     } catch (error) {
       this.logger?.warn?.(
         "[HashtagStripHelper] Tag activation handler threw an error:",
