@@ -3727,16 +3727,16 @@
     z-index: var(--z-modal-top-content);
   }
 
-  #modalContainer > #shareNostrModal {
-    z-index: var(--z-modal-top-root);
+  #shareNostrModal {
+    z-index: var(--z-modal-peak-root) !important;
   }
 
-  #modalContainer > #shareNostrModal > .bv-modal-backdrop {
-    z-index: var(--z-modal-top-overlay);
+  #shareNostrModal > .bv-modal-backdrop {
+    z-index: var(--z-modal-peak-overlay) !important;
   }
 
-  #modalContainer > #shareNostrModal .bv-modal__panel {
-    z-index: var(--z-modal-top-content);
+  #shareNostrModal .bv-modal__panel {
+    z-index: var(--z-modal-peak-content) !important;
   }
 
   .bv-modal[data-nested-modal-active="true"] {
