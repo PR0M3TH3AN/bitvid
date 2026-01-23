@@ -171,6 +171,8 @@ import { updateWatchHistoryListWithDefaultClient } from "./nostrWatchHistoryFaca
 | Admin whitelist (`NOTE_TYPES.ADMIN_WHITELIST`) | `30000` | `['d', 'bitvid:admin:whitelist']`, repeated `['p', <pubkey>]` entries | Empty content |
 | Profile metadata (`NOTE_TYPES.PROFILE_METADATA`) | `0` | `['d', ...]` is not used | JSON payload with NIP-01 fields (`name`, `about`, `picture`, `nip05`, etc.) |
 | Mute list (`NOTE_TYPES.MUTE_LIST`) | `10000` | Repeated `['p', <pubkey>]` tags for blocked/muted users | Optional content (often encrypted) |
+| Deletion (`NOTE_TYPES.DELETION`) | `5` | `['e', <event id>]` or `['a', <coordinate>]` | Reason for deletion |
+| Legacy Direct Message (`NOTE_TYPES.LEGACY_DM`) | `4` | `['p', <recipient pubkey>]` | NIP-04 encrypted ciphertext |
 | Zap request (`NOTE_TYPES.ZAP_REQUEST`) | `9734` | `['p', <recipient pubkey>]` plus optional `['e', <event id>]`, `['a', <coordinate>]`, `['amount', <msats>]`, `['lnurl', <bech32>]`, and `['relays', ...]` for receipt publishing | Optional plaintext zap note |
 | Zap receipt (`NOTE_TYPES.ZAP_RECEIPT`) | `9735` | `['bolt11', <invoice>]`, `['description', <zap request JSON>]`, `['p', <recipient pubkey>]` plus optional `['e', <event id>]` and `['a', <coordinate>]` | Empty content; receipts are published by the recipient's LNURL server |
 

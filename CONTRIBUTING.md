@@ -105,6 +105,12 @@ To set up the project locally:
    ```
    *Note: Unit tests may take a few minutes to complete.*
 
+   You can also run end-to-end and visual tests:
+   ```bash
+   npm run test:e2e
+   npm run test:visual
+   ```
+
 4. **Format & Lint**:
    ```bash
    npm run format
