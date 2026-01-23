@@ -29,7 +29,7 @@ function getChangedFiles() {
       }
       console.log(`Fetching ${remote}/${baseRef} from ${baseUrl}...`);
       try {
-        execSync(`git fetch ${remote} ${baseRef} --depth=1`, { stdio: 'ignore' });
+        execSync(`git fetch ${remote} ${baseRef}`, { stdio: 'ignore' });
       } catch (e) {
         console.error(`Failed to fetch ${remote}/${baseRef}:`, e.message);
       }
