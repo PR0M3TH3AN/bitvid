@@ -5857,11 +5857,17 @@
     }
   }
 
+  /* Ensure the profile pane for messages takes full height */
+  #profilePaneMessages {
+    height: 100%;
+    min-height: 0;
+  }
+
   @media (min-width: theme("screens.md")) {
     .profile-modal .dm-app-shell {
       flex-direction: row;
       align-items: stretch;
-      height: calc(100vh - var(--space-4xl));
+      height: 100%;
       min-height: 0;
     }
 
@@ -5893,6 +5899,7 @@
       flex: 1;
       overflow-y: auto;
       min-height: 0;
+      overscroll-behavior-y: contain;
       @apply no-scrollbar;
     }
 
@@ -5907,6 +5914,7 @@
       flex: 1;
       overflow-y: auto;
       min-height: 0;
+      overscroll-behavior-y: contain;
       @apply no-scrollbar;
     }
   }
