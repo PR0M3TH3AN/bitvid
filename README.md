@@ -139,6 +139,7 @@ http://localhost:8000
 - **Run DM unit tests**: `npm run test:dm:unit`
 - **Run DM integration tests**: `npm run test:dm:integration`
 - **Run headless E2E tests**: `npm run test:e2e`
+- **Cancel CI runs**: See [`docs/cancelling-ci-runs.md`](docs/cancelling-ci-runs.md) for a script to clear pending workflows.
 
 ### Running Tests in Docker
 
