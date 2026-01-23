@@ -172,7 +172,7 @@ Use these artifacts to inspect the UI state at the moment of failure and diagnos
 
 ### Send your first video post
 
-Use the event builders in `js/nostrEventSchemas.js` to construct valid video notes.
+Use the event builders in `js/nostrEventSchemas.js` (the source of truth for all event definitions) to construct valid video notes.
 
 ```javascript
 import { buildVideoPostEvent } from "./js/nostrEventSchemas.js";
