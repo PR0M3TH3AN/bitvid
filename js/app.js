@@ -78,6 +78,10 @@ import {
   assertAnyRelayAccepted,
 } from "./nostrPublish.js";
 import {
+  getActiveSigner,
+  onActiveSignerChanged,
+} from "./nostrClientRegistry.js";
+import {
   initViewCounter,
   subscribeToVideoViewCount,
   unsubscribeFromVideoViewCount,
@@ -311,6 +315,12 @@ class Application {
 
     this.initializeModerationActionController();
     this.initializeSimilarContentController();
+
+    this.handleShareNostrSignerChange = () => {
+      this.updateShareNostrAuthState({ reason: "signer-change" });
+    };
+    onActiveSignerChanged(this.handleShareNostrSignerChange);
+    this.updateShareNostrAuthState({ reason: "init" });
   }
 
   get modalVideo() {
@@ -4042,6 +4052,21 @@ class Application {
     return true;
   }
 
+  updateShareNostrAuthState({ reason = "" } = {}) {
+    if (!this.videoModal?.setShareNostrAuthState) {
+      return;
+    }
+
+    const isLoggedIn = this.isUserLoggedIn();
+    const hasSigner = Boolean(getActiveSigner());
+
+    this.videoModal.setShareNostrAuthState({
+      isLoggedIn,
+      hasSigner,
+      reason,
+    });
+  }
+
   async updateActiveNwcSettings(partial = {}) {
     return this.nwcSettingsService.updateActiveNwcSettings(partial);
   }
@@ -4296,6 +4321,7 @@ class Application {
 
     this.applyAuthenticatedUiState();
     this.commentController?.refreshAuthState?.();
+    this.updateShareNostrAuthState({ reason: "auth-login" });
     if (typeof this.refreshUnreadDmIndicator === "function") {
       void this.refreshUnreadDmIndicator({ reason: "auth-login" });
     }
@@ -4551,6 +4577,7 @@ class Application {
     }
 
     this.applyLoggedOutUiState();
+    this.updateShareNostrAuthState({ reason: "auth-logout" });
     if (typeof this.refreshUnreadDmIndicator === "function") {
       void this.refreshUnreadDmIndicator({ reason: "auth-logout" });
     } else if (this.appChromeController?.setUnreadDmIndicator) {

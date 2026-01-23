@@ -313,6 +313,7 @@ export function createVideoShareMenuPanel({
   document: documentRef = null,
   video = null,
   isLoggedIn = false,
+  hasSigner = false,
   hasMagnet = false,
   hasCdn = false,
   designSystem = null,
@@ -338,10 +339,13 @@ export function createVideoShareMenuPanel({
     action: "share-nostr",
     dataset: { eventId: metadata.id },
   });
-  if (!isLoggedIn) {
+  const canShareOnNostr = Boolean(isLoggedIn) && Boolean(hasSigner);
+  if (!canShareOnNostr) {
     nostrBtn.disabled = true;
     nostrBtn.classList.add("opacity-50", "cursor-not-allowed");
-    nostrBtn.title = "Log in to share on Nostr";
+    nostrBtn.title = isLoggedIn
+      ? "Connect a Nostr signer to share"
+      : "Log in to share on Nostr";
   }
 
   const magnetBtn = appendMenuAction(doc, list, {
@@ -488,4 +492,3 @@ export function createVideoSettingsMenuPanel({
 
   return panel;
 }
-
