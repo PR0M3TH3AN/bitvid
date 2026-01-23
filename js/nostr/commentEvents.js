@@ -1110,6 +1110,7 @@ export async function publishComment(
   {
     shouldRequestExtensionPermissions,
     DEFAULT_NIP07_PERMISSION_METHODS,
+    resolveActiveSigner,
   } = {},
 ) {
   if (!client?.pool) {
@@ -1121,7 +1122,7 @@ export async function publishComment(
       "Publishing comments is not allowed for session actors."
     );
     error.code = "session-actor-publish-blocked";
-    return { ok: false, error };
+    return { ok: false, error: "session-actor-publish-blocked", details: error };
   }
 
   const descriptor = normalizeCommentTarget(targetInput, options);
@@ -1189,7 +1190,9 @@ export async function publishComment(
 
   let signedEvent = null;
 
-  const signer = getActiveSigner();
+  const signer = resolveActiveSigner
+    ? resolveActiveSigner()
+    : getActiveSigner();
 
   if (!signer || typeof signer.signEvent !== "function") {
     const error = new Error(
@@ -1560,4 +1563,5 @@ export const __testExports = {
   normalizeCommentTarget,
   createVideoCommentFilters,
   isVideoCommentEvent,
+  commentCache,
 };

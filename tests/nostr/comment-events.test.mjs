@@ -1,4 +1,4 @@
-import test from "node:test";
+import test, { afterEach } from "node:test";
 import assert from "node:assert/strict";
 
 import {
@@ -10,7 +10,13 @@ import {
   __testExports,
 } from "../../js/nostr/commentEvents.js";
 
-const { normalizeCommentTarget, isVideoCommentEvent } = __testExports;
+const { normalizeCommentTarget, isVideoCommentEvent, commentCache } = __testExports;
+
+afterEach(() => {
+  if (commentCache) {
+    commentCache.clear();
+  }
+});
 
 function createMockClient({
   actorPubkey = "actor-pubkey",
@@ -151,7 +157,7 @@ test("publishComment rejects when active signer is unavailable", async () => {
   );
 
   assert.equal(result.ok, false, "publish should fail without an active signer");
-  assert.equal(result.error, "auth-required", "missing signer should yield auth-required");
+  assert.equal(result.error, "session-actor-publish-blocked", "session actor should yield session-actor-publish-blocked");
   assert.equal(publishCalls.length, 0, "publish should not be attempted without a signer");
 });
 
