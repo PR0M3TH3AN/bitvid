@@ -37,6 +37,8 @@ import {
   createActiveNostrSource,
   createBlacklistFilterStage,
   createDedupeByRootStage,
+  createExploreDiversitySorter,
+  createExploreScorerStage,
   createModerationStage,
   createResolvePostedAtStage,
   createTagPreferenceFilterStage,
@@ -5603,6 +5605,83 @@ class Application {
     }
   }
 
+  /**
+   * Register the "explore" feed pipeline.
+   */
+  registerExploreFeed() {
+    if (!this.feedEngine || typeof this.feedEngine.registerFeed !== "function") {
+      return null;
+    }
+
+    const existingDefinition =
+      typeof this.feedEngine.getFeedDefinition === "function"
+        ? this.feedEngine.getFeedDefinition("explore")
+        : null;
+    if (existingDefinition) {
+      return existingDefinition;
+    }
+
+    try {
+      const app = this;
+      const resolveThresholdFromApp = (key) => ({ runtimeValue, defaultValue }) => {
+        if (
+          Number.isFinite(runtimeValue) ||
+          runtimeValue === Number.POSITIVE_INFINITY
+        ) {
+          return runtimeValue;
+        }
+
+        if (app && typeof app.getActiveModerationThresholds === "function") {
+          const active = app.getActiveModerationThresholds();
+          const candidate = active && typeof active === "object" ? active[key] : undefined;
+          if (
+            Number.isFinite(candidate) ||
+            candidate === Number.POSITIVE_INFINITY
+          ) {
+            return candidate;
+          }
+        }
+
+        return defaultValue;
+      };
+      return this.feedEngine.registerFeed("explore", {
+        source: createActiveNostrSource({ service: this.nostrService }),
+        stages: [
+          createTagPreferenceFilterStage({
+            stageName: "tag-disinterest-filter",
+            matchInterests: false,
+          }),
+          createBlacklistFilterStage({
+            shouldIncludeVideo: (video, options) =>
+              this.nostrService.shouldIncludeVideo(video, options),
+          }),
+          createDedupeByRootStage({
+            dedupe: (videos) => this.dedupeVideosByRoot(videos),
+          }),
+          createModerationStage({
+            getService: () => this.nostrService.getModerationService(),
+            autoplayThreshold: resolveThresholdFromApp("autoplayBlockThreshold"),
+            blurThreshold: resolveThresholdFromApp("blurThreshold"),
+            trustedMuteHideThreshold: resolveThresholdFromApp("trustedMuteHideThreshold"),
+            trustedReportHideThreshold: resolveThresholdFromApp("trustedSpamHideThreshold"),
+          }),
+          createResolvePostedAtStage(),
+          createExploreScorerStage(),
+        ],
+        sorter: createExploreDiversitySorter(),
+        hooks: {
+          timestamps: {
+            getKnownVideoPostedAt: (video) => this.getKnownVideoPostedAt(video),
+            resolveVideoPostedAt: (video) => this.resolveVideoPostedAt(video),
+          },
+        },
+      });
+    } catch (error) {
+      devLogger.warn("[Application] Failed to register explore feed:", error);
+      return null;
+    }
+  }
+
   registerSubscriptionsFeed() {
     if (!this.feedEngine || typeof this.feedEngine.registerFeed !== "function") {
       return null;
@@ -5733,6 +5812,53 @@ class Application {
     };
   }
 
+  buildExploreFeedRuntime() {
+    const blacklist =
+      this.blacklistedEventIds instanceof Set
+        ? new Set(this.blacklistedEventIds)
+        : new Set();
+
+    const preferenceSource =
+      this.hashtagPreferencesSnapshot &&
+      typeof this.hashtagPreferencesSnapshot === "object"
+        ? this.hashtagPreferencesSnapshot
+        : typeof this.createHashtagPreferencesSnapshot === "function"
+        ? this.createHashtagPreferencesSnapshot()
+        : typeof this.getHashtagPreferences === "function"
+        ? this.getHashtagPreferences()
+        : {};
+    const { interests = [], disinterests = [] } = preferenceSource || {};
+    const moderationThresholds = this.getActiveModerationThresholds();
+
+    const watchHistoryTagCounts =
+      this.watchHistoryTagCounts instanceof Map
+        ? new Map(this.watchHistoryTagCounts)
+        : this.watchHistoryTagCounts &&
+          typeof this.watchHistoryTagCounts === "object"
+        ? { ...this.watchHistoryTagCounts }
+        : undefined;
+    const exploreTagIdf =
+      this.exploreTagIdf instanceof Map
+        ? new Map(this.exploreTagIdf)
+        : this.exploreTagIdf && typeof this.exploreTagIdf === "object"
+        ? { ...this.exploreTagIdf }
+        : undefined;
+
+    return {
+      blacklistedEventIds: blacklist,
+      isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
+      tagPreferences: {
+        interests: Array.isArray(interests) ? [...interests] : [],
+        disinterests: Array.isArray(disinterests) ? [...disinterests] : [],
+      },
+      watchHistoryTagCounts,
+      exploreTagIdf,
+      moderationThresholds: moderationThresholds
+        ? { ...moderationThresholds }
+        : undefined,
+    };
+  }
+
   buildRecentFeedRuntime() {
     const blacklist =
       this.blacklistedEventIds instanceof Set
@@ -5806,6 +5932,63 @@ class Application {
           this.videoListView.state.videosMap = this.videosMap;
         }
         this.updateForYouTelemetryMetadata([], metadata);
+        const payload = { videos: fallback, metadata };
+        this.renderVideoList(payload);
+        return payload;
+      });
+  }
+
+  refreshExploreFeed({ reason, fallbackVideos } = {}) {
+    const runtime = this.buildExploreFeedRuntime();
+    const normalizedReason = typeof reason === "string" ? reason : undefined;
+    const fallback = Array.isArray(fallbackVideos) ? fallbackVideos : [];
+
+    if (!this.feedEngine || typeof this.feedEngine.run !== "function") {
+      const metadata = {
+        reason: normalizedReason,
+        engine: "unavailable",
+      };
+      this.latestFeedMetadata = metadata;
+      this.videosMap = this.nostrService.getVideosMap();
+      if (this.videoListView) {
+        this.videoListView.state.videosMap = this.videosMap;
+      }
+      this.renderVideoList({ videos: fallback, metadata });
+      return Promise.resolve({ videos: fallback, metadata });
+    }
+
+    return this.feedEngine
+      .run("explore", { runtime })
+      .then((result) => {
+        const videos = Array.isArray(result?.videos) ? result.videos : [];
+        const metadata = {
+          ...(result?.metadata || {}),
+        };
+        if (normalizedReason) {
+          metadata.reason = normalizedReason;
+        }
+
+        this.latestFeedMetadata = metadata;
+        this.videosMap = this.nostrService.getVideosMap();
+        if (this.videoListView) {
+          this.videoListView.state.videosMap = this.videosMap;
+        }
+
+        const payload = { videos, metadata };
+        this.renderVideoList(payload);
+        return payload;
+      })
+      .catch((error) => {
+        devLogger.error("[Application] Failed to run explore feed:", error);
+        const metadata = {
+          reason: normalizedReason || "error:explore-feed",
+          error: true,
+        };
+        this.latestFeedMetadata = metadata;
+        this.videosMap = this.nostrService.getVideosMap();
+        if (this.videoListView) {
+          this.videoListView.state.videosMap = this.videosMap;
+        }
         const payload = { videos: fallback, metadata };
         this.renderVideoList(payload);
         return payload;
@@ -5959,6 +6142,54 @@ class Application {
       await initialRefreshPromise;
     } else if (!Array.isArray(videos) || videos.length === 0) {
       await this.refreshForYouFeed({ reason: "initial", fallbackVideos: [] });
+    }
+
+    this.videoSubscription = this.nostrService.getVideoSubscription() || null;
+    this.videosMap = this.nostrService.getVideosMap();
+    if (this.videoListView) {
+      this.videoListView.state.videosMap = this.videosMap;
+    }
+  }
+
+  async loadExploreVideos(forceFetch = false) {
+    devLogger.log("Starting loadExploreVideos... (forceFetch =", forceFetch, ")");
+    this.setFeedTelemetryContext("explore");
+
+    const container = this.mountVideoListView({ includeTags: false });
+    const hasCachedVideos =
+      this.nostrService &&
+      Array.isArray(this.nostrService.getFilteredActiveVideos()) &&
+      this.nostrService.getFilteredActiveVideos().length > 0;
+
+    if (!hasCachedVideos) {
+      if (this.videoListView && container) {
+        this.videoListView.showLoading("Fetching explore videos…");
+      } else if (container) {
+        container.innerHTML = getSidebarLoadingMarkup("Fetching explore videos…");
+      }
+    }
+
+    let initialRefreshPromise = null;
+
+    const videos = await this.nostrService.loadVideos({
+      forceFetch,
+      blacklistedEventIds: this.blacklistedEventIds,
+      isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
+      onVideos: (payload, detail = {}) => {
+        const promise = this.refreshExploreFeed({
+          reason: detail?.reason,
+          fallbackVideos: payload,
+        });
+        if (!initialRefreshPromise) {
+          initialRefreshPromise = promise;
+        }
+      },
+    });
+
+    if (initialRefreshPromise) {
+      await initialRefreshPromise;
+    } else if (!Array.isArray(videos) || videos.length === 0) {
+      await this.refreshExploreFeed({ reason: "initial", fallbackVideos: [] });
     }
 
     this.videoSubscription = this.nostrService.getVideoSubscription() || null;
@@ -6271,29 +6502,57 @@ class Application {
     }
   }
 
-  setFeedTelemetryContext(feedName = "") {
+  getFeedTelemetryState(feedName = "") {
     if (!this.feedTelemetryState || typeof this.feedTelemetryState !== "object") {
       this.feedTelemetryState = {
         activeFeed: "",
-        matchedTagsById: new Map(),
-        matchReasonsById: new Map(),
-        lastImpressionSignature: "",
-        activePlayback: null,
+        feeds: new Map(),
       };
+    }
+
+    if (!(this.feedTelemetryState.feeds instanceof Map)) {
+      this.feedTelemetryState.feeds = new Map();
     }
 
     const normalized =
       typeof feedName === "string" ? feedName.trim().toLowerCase() : "";
-    if (this.feedTelemetryState.activeFeed !== normalized) {
-      this.feedTelemetryState.lastImpressionSignature = "";
-      this.feedTelemetryState.activePlayback = null;
+    if (!normalized) {
+      return null;
     }
-    this.feedTelemetryState.activeFeed = normalized;
 
-    if (normalized !== "for-you") {
-      this.feedTelemetryState.matchedTagsById = new Map();
-      this.feedTelemetryState.matchReasonsById = new Map();
+    if (this.feedTelemetryState.feeds.has(normalized)) {
+      return this.feedTelemetryState.feeds.get(normalized);
     }
+
+    const state = {
+      matchedTagsById: new Map(),
+      matchReasonsById: new Map(),
+      lastImpressionSignature: "",
+      activePlayback: null,
+    };
+    this.feedTelemetryState.feeds.set(normalized, state);
+    return state;
+  }
+
+  setFeedTelemetryContext(feedName = "") {
+    const normalized =
+      typeof feedName === "string" ? feedName.trim().toLowerCase() : "";
+    const previousFeed = this.feedTelemetryState?.activeFeed || "";
+    if (previousFeed && previousFeed !== normalized) {
+      const previousState = this.getFeedTelemetryState(previousFeed);
+      if (previousState) {
+        previousState.lastImpressionSignature = "";
+        previousState.activePlayback = null;
+      }
+    }
+
+    const nextState = this.getFeedTelemetryState(normalized);
+    if (previousFeed !== normalized && nextState) {
+      nextState.lastImpressionSignature = "";
+      nextState.activePlayback = null;
+    }
+
+    this.feedTelemetryState.activeFeed = normalized;
   }
 
   isForYouFeedActive() {
@@ -6302,6 +6561,11 @@ class Application {
 
   updateForYouTelemetryMetadata(items = [], metadata = {}) {
     if (!this.isForYouFeedActive()) {
+      return;
+    }
+
+    const forYouState = this.getFeedTelemetryState("for-you");
+    if (!forYouState) {
       return;
     }
 
@@ -6340,8 +6604,8 @@ class Application {
       matchReasonsById.set(videoId, reasons);
     });
 
-    this.feedTelemetryState.matchedTagsById = matchedTagsById;
-    this.feedTelemetryState.matchReasonsById = matchReasonsById;
+    forYouState.matchedTagsById = matchedTagsById;
+    forYouState.matchReasonsById = matchReasonsById;
   }
 
   resolveVideoForTelemetry(videoId) {
@@ -6376,6 +6640,11 @@ class Application {
       return null;
     }
 
+    const forYouState = this.getFeedTelemetryState("for-you");
+    if (!forYouState) {
+      return null;
+    }
+
     const eventId =
       typeof videoId === "string" && videoId
         ? videoId
@@ -6386,8 +6655,7 @@ class Application {
       return null;
     }
 
-    const matchedTagsRaw =
-      this.feedTelemetryState?.matchedTagsById?.get(eventId) || [];
+    const matchedTagsRaw = forYouState.matchedTagsById?.get(eventId) || [];
     const matchedTags = Array.isArray(matchedTagsRaw)
       ? Array.from(
           new Set(
@@ -6399,7 +6667,7 @@ class Application {
         )
       : [];
 
-    const whyRaw = this.feedTelemetryState?.matchReasonsById?.get(eventId) || [];
+    const whyRaw = forYouState.matchReasonsById?.get(eventId) || [];
     const why = Array.isArray(whyRaw)
       ? whyRaw.map((entry) => ({
           stage: typeof entry.stage === "string" ? entry.stage : "",
@@ -6477,19 +6745,21 @@ class Application {
       return;
     }
 
+    const forYouState = this.getFeedTelemetryState("for-you");
+    if (!forYouState) {
+      return;
+    }
+
     const signature = videos
       .map((video) => (typeof video?.id === "string" ? video.id : ""))
       .filter(Boolean)
       .join("|");
 
-    if (
-      signature &&
-      signature === this.feedTelemetryState.lastImpressionSignature
-    ) {
+    if (signature && signature === forYouState.lastImpressionSignature) {
       return;
     }
 
-    this.feedTelemetryState.lastImpressionSignature = signature;
+    forYouState.lastImpressionSignature = signature;
 
     videos.forEach((video, index) => {
       this.emitForYouTelemetryEvent("for_you_impression", {
@@ -6505,10 +6775,15 @@ class Application {
       return;
     }
 
+    const forYouState = this.getFeedTelemetryState("for-you");
+    if (!forYouState) {
+      return;
+    }
+
     const video = this.resolveVideoForTelemetry(videoId);
     const position = this.resolveVideoIndex(videoId);
 
-    this.feedTelemetryState.activePlayback = {
+    forYouState.activePlayback = {
       feed: "for-you",
       videoId,
     };
@@ -6525,7 +6800,12 @@ class Application {
       return;
     }
 
-    const activePlayback = this.feedTelemetryState?.activePlayback;
+    const forYouState = this.getFeedTelemetryState("for-you");
+    if (!forYouState) {
+      return;
+    }
+
+    const activePlayback = forYouState.activePlayback;
     if (!activePlayback || activePlayback.feed !== "for-you") {
       return;
     }
@@ -6560,7 +6840,7 @@ class Application {
     }
 
     this.emitTelemetryEvent("for_you_watch", payload);
-    this.feedTelemetryState.activePlayback = null;
+    forYouState.activePlayback = null;
   }
 
   async renderVideoList(payload) {
@@ -8469,12 +8749,12 @@ class Application {
       this.currentVideo.pointerKey = this.currentVideoPointerKey;
     }
 
+    const forYouState = this.getFeedTelemetryState("for-you");
     if (
-      this.feedTelemetryState?.activePlayback?.feed === "for-you" &&
-      this.feedTelemetryState.activePlayback.videoId === eventId
+      forYouState?.activePlayback?.feed === "for-you" &&
+      forYouState.activePlayback.videoId === eventId
     ) {
-      this.feedTelemetryState.activePlayback.pointerKey =
-        this.currentVideoPointerKey || null;
+      forYouState.activePlayback.pointerKey = this.currentVideoPointerKey || null;
     }
 
     this.subscribeModalViewCount(

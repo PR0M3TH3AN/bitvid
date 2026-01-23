@@ -119,11 +119,22 @@ export const viewInitRegistry = {
   },
   explore: () => {
     devLogger.log("Explore view loaded.");
+    const app = getApplication();
+    if (app && typeof app.loadExploreVideos === "function") {
+      if (typeof app.mountVideoListView === "function") {
+        app.mountVideoListView({ includeTags: false });
+      }
+      app.loadExploreVideos();
+    }
+    const refreshApp = getApplication();
+    if (refreshApp && typeof refreshApp.forceRefreshAllProfiles === "function") {
+      refreshApp.forceRefreshAllProfiles();
+    }
     const infoTrigger = document.getElementById("exploreInfoTrigger");
     if (infoTrigger) {
       attachFeedInfoPopover(
         infoTrigger,
-        "Coming soon."
+        "Discovery feed blended for freshness, novelty, and diversity."
       );
     }
   },

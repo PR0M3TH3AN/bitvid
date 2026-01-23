@@ -264,6 +264,7 @@ export default class ApplicationBootstrap {
     }
     app.registerRecentFeed();
     app.registerForYouFeed();
+    app.registerExploreFeed();
     app.registerSubscriptionsFeed();
     app.registerWatchHistoryFeed();
 
