@@ -648,6 +648,9 @@
           );
           section.appendChild(cardRoot);
 
+          // Force refresh after attach to ensure visibility state is correct
+          refreshModeration();
+
           if (fixture.blockToggle && fixture.blockToggle.pubkey) {
             const toggleWrapper = document.createElement("div");
             toggleWrapper.classList.add("fixture-toggle");
@@ -702,7 +705,13 @@
       }
 
       renderFixtures();
-      window[READY_FLAG] = true;
+
+      // Delay the ready signal slightly to ensure layout and observers have settled
+      setTimeout(() => {
+        window[READY_FLAG] = true;
+        document.body.dataset.ready = "true";
+        window.dispatchEvent(new CustomEvent("moderation-fixtures-ready"));
+      }, 50);
     </script>
   </body>
 </html>

@@ -230,4 +230,4 @@ export function createFeedEngine({ logger } = {}) {
   };
 }
 
-export { DEFAULT_FEED_CONFIG, DEFAULT_CONFIG_SCHEMA };
+export { };

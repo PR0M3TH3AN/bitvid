@@ -112,6 +112,7 @@ To run **bitvid** locally:
    ```bash
    npm run build
    ```
+
    (This generates `css/tailwind.generated.css`, which is gitignored and required for styling.)
 
 4. Start a local server:
@@ -138,6 +139,36 @@ http://localhost:8000
 - **Run DM unit tests**: `npm run test:dm:unit`
 - **Run DM integration tests**: `npm run test:dm:integration`
 - **Run headless E2E tests**: `npm run test:e2e`
+
+### Running Tests in Docker
+
+To run Playwright tests in a consistent containerized environment, use the provided Docker script:
+
+```bash
+./scripts/run-playwright-docker.sh [command]
+```
+
+- **Default**: Runs `npm run test:visual`.
+- **Custom command**: Pass any command as an argument, e.g., `./scripts/run-playwright-docker.sh npm run test:e2e`.
+
+The script:
+
+1. Builds the `bitvid-playwright` Docker image (based on `mcr.microsoft.com/playwright`).
+2. Mounts the current directory to `/app` (allowing source changes to be reflected immediately).
+3. Uses an anonymous volume for `/app/node_modules` to preserve the container's Linux-specific dependencies.
+4. Outputs test artifacts to `artifacts/test-results` (accessible on the host).
+
+### Visual Regression Debugging
+
+Visual regression tests (`test:visual`) are configured to retain screenshots, videos, and traces when they fail. These artifacts are stored in the `artifacts/test-results` directory.
+
+To quickly view the location of these artifacts:
+
+```bash
+./scripts/show-artifacts.sh
+```
+
+Use these artifacts to inspect the UI state at the moment of failure and diagnose rendering issues or regressions.
 
 ### Send your first video post
 

@@ -1,19 +1,20 @@
 // js/feedEngine/index.js
 
-export {
-  createFeedEngine,
-  DEFAULT_FEED_CONFIG,
-  DEFAULT_CONFIG_SCHEMA,
-} from "./engine.js";
+export { createFeedEngine } from "./engine.js";
 export {
   createDedupeByRootStage,
   createBlacklistFilterStage,
+  createDisinterestFilterStage,
   createTagPreferenceFilterStage,
   createWatchHistorySuppressionStage,
   createModerationStage,
   createResolvePostedAtStage,
 } from "./stages.js";
-export { createChronologicalSorter } from "./sorters.js";
+export { createExploreScorerStage } from "./exploreScoring.js";
+export {
+  createChronologicalSorter,
+  createExploreDiversitySorter,
+} from "./sorters.js";
 export {
   createActiveNostrSource,
   createSubscriptionAuthorsSource,

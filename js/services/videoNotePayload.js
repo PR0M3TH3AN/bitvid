@@ -1,4 +1,5 @@
-import { extractMagnetHints, normalizeAndAugmentMagnet } from "../magnet.js";
+import { extractMagnetHints } from "../magnetShared.js";
+import { normalizeAndAugmentMagnet } from "../magnetUtils.js";
 
 export const VIDEO_NOTE_ERROR_CODES = {
   MISSING_TITLE: "missing_title",
@@ -387,12 +388,12 @@ export function normalizeVideoNotePayload(input) {
       wsList.push(legacyFormData.url);
     }
 
-    const normalizedMagnet = normalizeAndAugmentMagnet(legacyFormData.magnet, {
-      ws: wsList,
+    const result = normalizeAndAugmentMagnet(legacyFormData.magnet, {
+      webSeed: wsList,
       xs,
     });
-    legacyFormData.magnet = normalizedMagnet;
-    const hints = extractMagnetHints(normalizedMagnet);
+    legacyFormData.magnet = result.magnet;
+    const hints = extractMagnetHints(result.magnet);
     legacyFormData.ws = hints.ws || "";
     legacyFormData.xs = hints.xs || "";
   } else {

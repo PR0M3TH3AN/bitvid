@@ -68,7 +68,10 @@ constructed today behave exactly like the existing UI.
 | --- | --- |
 | `createDedupeByRootStage` | Reuses the application’s `dedupeVideosByRoot` helper (falling back to `dedupeToNewestByRoot`) to drop older versions of the same videoRoot. Adds "why" metadata for removed entries. |
 | `createBlacklistFilterStage` | Calls `nostrService.shouldIncludeVideo(...)` so moderators and block lists stay enforced. Each rejection logs a "blacklist" reason in the why-trail. |
+| `createTagPreferenceFilterStage` | Normalizes interest/disinterest tags via `normalizeHashtag`, drops videos that match disinterests, and (by default) filters out videos that do not match interest tags. Set `enforceInterests: false` to keep items even when they lack interest tags. |
+| `createDisinterestFilterStage` | Normalizes tag preferences via `normalizeHashtag` and drops videos that match disinterests without excluding items that lack interest tags (useful for Explore-style feeds). |
 | `createWatchHistorySuppressionStage` | Invokes feed-provided hooks to optionally suppress watched items. Useful for per-feed watch history preferences. |
+| `createExploreScorerStage` | Computes `metadata.exploreScore` and `metadata.exploreComponents` using novelty, freshness, tag overlap, and popularity signals. Emits `addWhy()` entries for dominant positives and disinterest overlap. |
 
 Stages receive `(items, context)` and should return the transformed list. They
 can rely on `context.addWhy(...)` to annotate decisions without mutating the
@@ -77,8 +80,30 @@ items in place.
 ## Sorting & Decorators
 
 `createChronologicalSorter` is the baseline sorter that orders DTOs by
-`video.created_at` (newest first by default). Additional decorators can run
-after sorting to attach extra metadata or inject presentation hints.
+`video.created_at` (newest first by default). Explore feeds can apply
+`createExploreDiversitySorter` to Maximal Marginal Relevance (MMR) re-rank
+items for tag diversity while still respecting `metadata.exploreScore`.
+Additional decorators can run after sorting to attach extra metadata or inject
+presentation hints.
+
+## Explore Feed Pipeline
+
+Explore builds on the standard feed engine stages with a scoring + diversity
+pass. The current Explore pipeline is:
+
+1. `createDisinterestFilterStage` — drop disinterested tags early.
+2. `createBlacklistFilterStage` — enforce NSFW/privacy/author block policies.
+3. `createDedupeByRootStage` — keep the newest root version.
+4. `createModerationStage` — apply moderation blur/autoplay/hide rules.
+5. `createResolvePostedAtStage` — hydrate `rootCreatedAt` timestamps.
+6. `createExploreScorerStage` — calculate explore scores/components.
+7. `createExploreDiversitySorter` — re-rank by MMR to improve tag variety.
+
+Explore expects additional runtime inputs:
+
+- `tagPreferences` — `{ interests, disinterests }` arrays for preference-aware scoring.
+- `watchHistoryTagCounts` — map/object of tag counts for novelty + history similarity.
+- `exploreTagIdf` — IDF weights for tag vectors (Map or object).
 
 ## Configuration Hooks
 

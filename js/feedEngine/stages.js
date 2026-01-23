@@ -275,103 +275,144 @@ export function createResolvePostedAtStage({
 
 export function createTagPreferenceFilterStage({
   stageName = "tag-preference-filter",
+  enforceInterests,
+  matchInterests = true,
 } = {}) {
+  const shouldMatchInterests =
+    typeof enforceInterests === "boolean"
+      ? enforceInterests
+      : matchInterests !== false;
+
   return async function tagPreferenceFilterStage(items = [], context = {}) {
-    const tagPreferences = context?.runtime?.tagPreferences;
-    const interests = normalizeTagSet(tagPreferences?.interests);
-    const disinterests = normalizeTagSet(tagPreferences?.disinterests);
-    if (!interests.size && !disinterests.size) {
-      return items;
-    }
-
-    const results = [];
-
-    for (const item of items) {
-      const video = item?.video;
-      if (!video || typeof video !== "object") {
-        results.push(item);
-        continue;
-      }
-
-      const videoTags = new Set();
-      if (Array.isArray(video.tags)) {
-        for (const tag of video.tags) {
-          if (Array.isArray(tag) && tag[0] === "t" && typeof tag[1] === "string") {
-            const normalized = normalizeHashtag(tag[1]);
-            if (normalized) {
-              videoTags.add(normalized);
-            }
-          }
-        }
-      }
-
-      if (Array.isArray(video.nip71?.hashtags)) {
-        for (const tag of video.nip71.hashtags) {
-          if (typeof tag === "string") {
-            const normalized = normalizeHashtag(tag);
-            if (normalized) {
-              videoTags.add(normalized);
-            }
-          }
-        }
-      }
-
-      let disinterested = false;
-      if (disinterests.size) {
-        for (const tag of videoTags) {
-          if (disinterests.has(tag)) {
-            disinterested = true;
-            break;
-          }
-        }
-      }
-
-      if (disinterested) {
-        context?.addWhy?.({
-          stage: stageName,
-          type: "filter",
-          reason: "disinterested-tag",
-          videoId: typeof video.id === "string" ? video.id : null,
-          pubkey: typeof video.pubkey === "string" ? video.pubkey : null,
-        });
-        continue;
-      }
-
-      let matchedInterests = [];
-      if (interests.size) {
-        matchedInterests = [...videoTags].filter((tag) => interests.has(tag));
-        if (matchedInterests.length === 0) {
-          context?.addWhy?.({
-            stage: stageName,
-            type: "filter",
-            reason: "no-interest-match",
-            videoId: typeof video.id === "string" ? video.id : null,
-            pubkey: typeof video.pubkey === "string" ? video.pubkey : null,
-          });
-          continue;
-        }
-      }
-
-      if (matchedInterests.length > 0) {
-        if (!isPlainObject(item.metadata)) {
-          item.metadata = {};
-        }
-        item.metadata.matchedInterests = matchedInterests;
-        context?.addWhy?.({
-          stage: stageName,
-          type: "filter",
-          reason: "matched-interests",
-          videoId: typeof video.id === "string" ? video.id : null,
-          pubkey: typeof video.pubkey === "string" ? video.pubkey : null,
-          tags: matchedInterests,
-        });
-      }
-
-      results.push(item);
-    }
-
-    return results;
+    return filterByTagPreferences({
+      items,
+      context,
+      stageName,
+      enforceInterests: shouldMatchInterests,
+    });
   };
+}
+
+export function createDisinterestFilterStage({
+  stageName = "tag-disinterest-filter",
+} = {}) {
+  return async function disinterestFilterStage(items = [], context = {}) {
+    return filterByTagPreferences({
+      items,
+      context,
+      stageName,
+      enforceInterests: false,
+    });
+  };
+}
+
+function collectVideoTags(video) {
+  const videoTags = new Set();
+
+  if (Array.isArray(video.tags)) {
+    for (const tag of video.tags) {
+      if (Array.isArray(tag) && tag[0] === "t" && typeof tag[1] === "string") {
+        const normalized = normalizeHashtag(tag[1]);
+        if (normalized) {
+          videoTags.add(normalized);
+        }
+      }
+    }
+  }
+
+  if (Array.isArray(video.nip71?.hashtags)) {
+    for (const tag of video.nip71.hashtags) {
+      if (typeof tag === "string") {
+        const normalized = normalizeHashtag(tag);
+        if (normalized) {
+          videoTags.add(normalized);
+        }
+      }
+    }
+  }
+
+  return videoTags;
+}
+
+function filterByTagPreferences({
+  items = [],
+  context = {},
+  stageName,
+  enforceInterests,
+}) {
+  const tagPreferences = context?.runtime?.tagPreferences;
+  const interests = normalizeTagSet(tagPreferences?.interests);
+  const disinterests = normalizeTagSet(tagPreferences?.disinterests);
+  if (!interests.size && !disinterests.size) {
+    return items;
+  }
+
+  const results = [];
+
+  for (const item of items) {
+    const video = item?.video;
+    if (!video || typeof video !== "object") {
+      results.push(item);
+      continue;
+    }
+
+    const videoTags = collectVideoTags(video);
+
+    let disinterested = false;
+    if (disinterests.size) {
+      for (const tag of videoTags) {
+        if (disinterests.has(tag)) {
+          disinterested = true;
+          break;
+        }
+      }
+    }
+
+    if (disinterested) {
+      context?.addWhy?.({
+        stage: stageName,
+        type: "filter",
+        reason: "disinterested-tag",
+        videoId: typeof video.id === "string" ? video.id : null,
+        pubkey: typeof video.pubkey === "string" ? video.pubkey : null,
+      });
+      continue;
+    }
+
+    let matchedInterests = [];
+    if (interests.size) {
+      matchedInterests = [...videoTags].filter((tag) => interests.has(tag));
+      if (enforceInterests && matchedInterests.length === 0) {
+        context?.addWhy?.({
+          stage: stageName,
+          type: "filter",
+          reason: "no-interest-match",
+          videoId: typeof video.id === "string" ? video.id : null,
+          pubkey: typeof video.pubkey === "string" ? video.pubkey : null,
+        });
+        continue;
+      }
+    }
+
+    if (matchedInterests.length > 0) {
+      if (!isPlainObject(item.metadata)) {
+        item.metadata = {};
+      }
+      item.metadata.matchedInterests = matchedInterests;
+      context?.addWhy?.({
+        stage: stageName,
+        type: "filter",
+        reason: "matched-interests",
+        videoId: typeof video.id === "string" ? video.id : null,
+        pubkey: typeof video.pubkey === "string" ? video.pubkey : null,
+        tags: matchedInterests,
+      });
+    }
+
+    results.push(item);
+  }
+
+  return results;
 }
 
 export function createBlacklistFilterStage({

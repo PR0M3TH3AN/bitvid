@@ -1,6 +1,7 @@
 // js/viewManager.js
 import { initChannelProfileView } from "./channelProfile.js";
 import { initForYouView } from "./forYouView.js";
+import { initExploreView } from "./exploreView.js";
 import { subscriptions } from "./subscriptions.js";
 import { getApplication } from "./applicationContext.js";
 import { ASSET_VERSION } from "../config/asset-version.js";
@@ -118,13 +119,17 @@ export const viewInitRegistry = {
     }
   },
   explore: () => {
-    devLogger.log("Explore view loaded.");
-    const infoTrigger = document.getElementById("exploreInfoTrigger");
-    if (infoTrigger) {
-      attachFeedInfoPopover(
-        infoTrigger,
-        "Coming soon."
-      );
+    initExploreView();
+    const app = getApplication();
+    if (app && typeof app.loadExploreVideos === "function") {
+      if (typeof app.mountVideoListView === "function") {
+        app.mountVideoListView({ includeTags: false });
+      }
+      app.loadExploreVideos();
+    }
+    const refreshApp = getApplication();
+    if (refreshApp && typeof refreshApp.forceRefreshAllProfiles === "function") {
+      refreshApp.forceRefreshAllProfiles();
     }
   },
   history: async () => {

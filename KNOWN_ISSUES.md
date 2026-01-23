@@ -6,6 +6,7 @@
 - `npm run test:unit` consistently times out in the CI environment due to resource constraints. Targeted testing (`test:dm:unit`, `test:dm:integration`) is recommended.
 
 ### Visual Regression Tests (`test:visual`)
+- **Artifact Retention**: Visual tests are configured to retain screenshots, traces, and videos on failure to assist with debugging. These artifacts can be found in `artifacts/test-results/`.
 - **Moderation UI (`tests/visual/moderation.spec.ts`)**: The "Show anyway" button and related moderation badges fail to render in the test environment, causing `toBeVisible()` assertions to fail. The logic for creating the button appears correct (`allowOverride` is true), but the button element is not found in the DOM during the test execution. This might be due to a race condition in the test fixture's state initialization or an environment-specific rendering issue.
 - **Sidebar Layout (`tests/visual/overlay-layers.spec.ts`)**: The `mobile sidebar shares desktop rail behavior` test fails. The expected margin for the app container does not match the computed margin in the test environment (diff of ~45px). Attempts to fix this by adjusting CSS margin calculations were incomplete and reverted to avoid instability.
 - **Kitchen Sink (`tests/visual/kitchen-sink.spec.ts`)**: Minor pixel mismatch (width 1292 vs expected 1280) in snapshot comparison.

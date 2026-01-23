@@ -36,6 +36,9 @@ Once the feed engine is involved, additional filtering happens inside
   - Invokes `nostrService.shouldIncludeVideo` again within the pipeline so that
     blacklist/author-block/NSFW/privacy gates remain enforced for feed-sourced
     items.
+- **`createDisinterestFilterStage()`**
+  - Drops videos that match a viewer’s disinterested tags. Explore uses this
+    stage to remove “not interested” matches before scoring and reranking.
 - **`hasDisinterestedTag(video, tagPreferences)`**
   - Interprets **tag disinterest** preferences, returning `true` when a video’s
     tags match a user’s “not interested” preferences.
@@ -73,6 +76,8 @@ videos that have already survived the filtering stages above.
 3. **Sorter**
    - The feed’s configured sorter (for example, chronological or relevance)
      orders the surviving entries.
+   - Explore uses `createExploreDiversitySorter` to re-rank scored items so
+     top results include a broader spread of tags.
 4. **Render**
    - The feed engine hands the final list to `VideoListView`, which renders
      grids in `views/most-recent-videos.html`, `views/subscriptions.html`, and

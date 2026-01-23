@@ -1,4 +1,5 @@
-import { extractMagnetHints, normalizeAndAugmentMagnet } from "../../magnet.js";
+import { extractMagnetHints } from "../../magnetShared.js";
+import { normalizeAndAugmentMagnet } from "../../magnetUtils.js";
 import { createModalAccessibility } from "./modalAccessibility.js";
 import { Nip71FormManager } from "./nip71FormManager.js";
 
@@ -1038,12 +1039,12 @@ export class EditModal {
     }
 
     if (finalMagnet) {
-      const normalizedMagnet = normalizeAndAugmentMagnet(finalMagnet, {
-        ws: finalWs,
+      const result = normalizeAndAugmentMagnet(finalMagnet, {
+        webSeed: finalWs,
         xs: finalXs,
       });
-      finalMagnet = normalizedMagnet;
-      const hints = extractMagnetHints(normalizedMagnet);
+      finalMagnet = result.magnet;
+      const hints = extractMagnetHints(finalMagnet);
       finalWs = hints.ws;
       finalXs = hints.xs;
     } else {
