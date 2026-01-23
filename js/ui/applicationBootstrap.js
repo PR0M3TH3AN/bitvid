@@ -9,6 +9,7 @@ import PlaybackService from "../services/playbackService.js";
 import AuthService from "../services/authService.js";
 import DiscussionCountService from "../services/discussionCountService.js";
 import CommentThreadService from "../services/commentThreadService.js";
+import ExploreDataService from "../services/exploreDataService.js";
 import hashtagPreferences, {
   HASHTAG_PREFERENCES_EVENTS,
 } from "../services/hashtagPreferencesService.js";
@@ -133,6 +134,7 @@ export default class ApplicationBootstrap {
     app.relayManager = relayManager;
     app.activeIntervals = [];
     app.watchHistoryTelemetry = null;
+    app.exploreDataService = null;
     app.authEventUnsubscribes = [];
     app.unsubscribeFromNostrService = null;
     app.designSystemContext = {
@@ -290,6 +292,19 @@ export default class ApplicationBootstrap {
       ingestLocalViewEvent,
       onViewLogged: (detail) => app.handleFeedViewTelemetry(detail),
     });
+
+    app.exploreDataService =
+      this.services.exploreDataService ||
+      new ExploreDataService({
+        watchHistoryService,
+        nostrService: app.nostrService,
+        getActiveActor: () =>
+          typeof app.pubkey === "string" && app.pubkey ? app.pubkey : "",
+        logger: devLogger,
+      });
+    if (app.exploreDataService && typeof app.exploreDataService.initialize === "function") {
+      app.exploreDataService.initialize();
+    }
 
     const playbackDependencies = {
       torrentClient: this.services.torrentClient || torrentClient,
