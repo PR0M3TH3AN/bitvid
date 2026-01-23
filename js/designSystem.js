@@ -6,6 +6,8 @@ const FALLBACK_CONTEXT = Object.freeze({
   isNew: () => true,
 });
 
+export const BREAKPOINT_LG = 1024;
+
 export function getDesignSystemMode() {
   return NEW_MODE;
 }
