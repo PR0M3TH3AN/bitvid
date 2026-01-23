@@ -1402,12 +1402,12 @@ export class NostrService {
   }
 
   async ensureAccessControlReady() {
-    if (!this.accessControl || typeof this.accessControl.ensureReady !== "function") {
+    if (!this.accessControl || typeof this.accessControl.waitForReady !== "function") {
       return;
     }
 
     try {
-      await this.accessControl.ensureReady();
+      await this.accessControl.waitForReady();
     } catch (error) {
       userLogger.warn(
         "[nostrService] Failed to ensure access control lists are ready:",

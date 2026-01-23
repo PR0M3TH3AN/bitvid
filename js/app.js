@@ -3776,7 +3776,7 @@ class Application {
     try {
       switch (action) {
         case "ensure-ready":
-          await accessControl.ensureReady();
+          await accessControl.waitForReady();
           context.ok = true;
           break;
         case "add-moderator":
@@ -8286,7 +8286,7 @@ class Application {
     }
 
     try {
-      await accessControl.ensureReady();
+      await accessControl.waitForReady();
     } catch (error) {
       devLogger.warn(
         "Failed to ensure admin lists were loaded before playback:",
