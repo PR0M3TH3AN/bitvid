@@ -8,6 +8,7 @@ import { formatShortNpub } from "./utils/formatters.js";
 import { sanitizeProfileMediaUrl } from "./utils/profileMedia.js";
 import { devLogger } from "./utils/logger.js";
 import { attachFeedInfoPopover } from "./ui/components/FeedInfoPopover.js";
+import { parseFilterQuery } from "./search/searchFilters.js";
 
 function getApp() {
   return getApplication();
@@ -101,9 +102,15 @@ let currentSearchToken = 0;
 
 export async function initSearchView() {
   const hashParams = new URLSearchParams(window.location.hash.split("?")[1] || window.location.hash.slice(1));
-  // The hash format is #view=search&q=...
+  // The hash format is #view=search&q=...&filters=...
   // URLSearchParams handles 'view=search&q=...' correctly if we pass the string after #
-  const query = hashParams.get("q") || "";
+  const rawQuery = hashParams.get("q") || "";
+  const rawFilters = hashParams.get("filters") || "";
+  const parsedQuery = parseFilterQuery([rawQuery, rawFilters].filter(Boolean).join(" "));
+  if (parsedQuery.errors.length > 0) {
+    devLogger.warn("[Search] Filter parsing errors", parsedQuery.errors);
+  }
+  const query = parsedQuery.text || "";
 
   const titleEl = document.getElementById("searchTitle");
   if (titleEl) {
@@ -114,7 +121,7 @@ export async function initSearchView() {
   if (infoTrigger) {
     attachFeedInfoPopover(
       infoTrigger,
-      "Results matching your search query."
+      "Results matching your search query. Use tokens like author:, tag:, kind:, relay:, after:, before:, duration:<, and has:magnet/url."
     );
   }
 

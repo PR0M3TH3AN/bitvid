@@ -19,6 +19,10 @@ import {
 import { setHashView } from "./hashView.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import {
+  parseFilterQuery,
+  serializeFiltersToQuery,
+} from "./search/searchFilters.js";
+import {
   prepareStaticModal,
   openStaticModal,
   closeStaticModal,
@@ -730,7 +734,20 @@ async function bootstrapInterface() {
         // Not a valid npub, proceed to search
       }
 
-      setHashView(`search&q=${encodeURIComponent(query)}`);
+      const parsedFilters = parseFilterQuery(query);
+      if (parsedFilters.errors.length > 0) {
+        devLogger.warn("[Search] Filter parsing errors", parsedFilters.errors);
+      }
+      const params = new URLSearchParams();
+      if (parsedFilters.text) {
+        params.set("q", parsedFilters.text);
+      }
+      const serializedFilters = serializeFiltersToQuery(parsedFilters.filters);
+      if (serializedFilters) {
+        params.set("filters", serializedFilters);
+      }
+      const queryString = params.toString();
+      setHashView(queryString ? `search&${queryString}` : "search");
     });
   }
 
@@ -827,7 +844,20 @@ async function bootstrapInterface() {
         // Not a valid npub, proceed to search
       }
 
-      setHashView(`search&q=${encodeURIComponent(query)}`);
+      const parsedFilters = parseFilterQuery(query);
+      if (parsedFilters.errors.length > 0) {
+        devLogger.warn("[Search] Filter parsing errors", parsedFilters.errors);
+      }
+      const params = new URLSearchParams();
+      if (parsedFilters.text) {
+        params.set("q", parsedFilters.text);
+      }
+      const serializedFilters = serializeFiltersToQuery(parsedFilters.filters);
+      if (serializedFilters) {
+        params.set("filters", serializedFilters);
+      }
+      const queryString = params.toString();
+      setHashView(queryString ? `search&${queryString}` : "search");
       // Close search on submit
       mobileSearchContainer.classList.add("hidden");
       mobileSearchFab.classList.remove("hidden");
