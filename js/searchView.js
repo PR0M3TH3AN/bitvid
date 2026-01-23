@@ -7,6 +7,7 @@ import { escapeHTML } from "./utils/domUtils.js";
 import { formatShortNpub } from "./utils/formatters.js";
 import { sanitizeProfileMediaUrl } from "./utils/profileMedia.js";
 import { devLogger } from "./utils/logger.js";
+import { ALLOW_NSFW_CONTENT } from "./config.js";
 import { attachFeedInfoPopover } from "./ui/components/FeedInfoPopover.js";
 import { setHashView } from "./hashView.js";
 import {
@@ -159,7 +160,7 @@ export async function initSearchView() {
   });
 
   // 2. Search Videos
-  performVideoSearch(query, searchToken).then(videos => {
+  performVideoSearch(query, searchToken, parsedQuery.filters).then(videos => {
     if (searchToken !== currentSearchToken) return;
     const app = getApp();
     renderSearchVideos(videos, videoList, app);
@@ -577,12 +578,94 @@ async function performProfileSearch(query, token) {
     return Array.from(uniqueProfiles.values());
 }
 
-async function performVideoSearch(query, token) {
+async function performVideoSearch(query, token, filters = {}) {
     if (!nostrClient) return [];
 
     const isHashtag = query.startsWith("#");
     const term = isHashtag ? query.slice(1) : query;
     const lowerTerm = term.toLowerCase();
+    const app = getApp();
+    const nostrService = app?.nostrService;
+    const filterOptions = {
+        blacklistedEventIds:
+            app?.blacklistedEventIds instanceof Set ? new Set(app.blacklistedEventIds) : new Set(),
+        isAuthorBlocked:
+            typeof app?.isAuthorBlocked === "function" ? (pubkey) => app.isAuthorBlocked(pubkey) : () => false
+    };
+    const applyAccessFilters = (videos) =>
+        nostrService?.filterVideos ? nostrService.filterVideos(videos, filterOptions) : videos;
+
+    const authorSet = new Set(
+        Array.isArray(filters?.authorPubkeys)
+            ? filters.authorPubkeys.map((author) => author.toLowerCase())
+            : []
+    );
+    const tagSet = new Set(
+        Array.isArray(filters?.tags) ? filters.tags.map((tag) => tag.toLowerCase()) : []
+    );
+    const afterDate = Number.isFinite(filters?.dateRange?.after) ? filters.dateRange.after : null;
+    const beforeDate = Number.isFinite(filters?.dateRange?.before) ? filters.dateRange.before : null;
+    const minDuration = Number.isFinite(filters?.duration?.minSeconds)
+        ? filters.duration.minSeconds
+        : null;
+    const maxDuration = Number.isFinite(filters?.duration?.maxSeconds)
+        ? filters.duration.maxSeconds
+        : null;
+    const hasMagnet = filters?.hasMagnet === true;
+    const hasUrl = filters?.hasUrl === true;
+    const nsfwFilter = typeof filters?.nsfw === "string" ? filters.nsfw : "any";
+
+    const matchesCustomFilters = (video) => {
+        if (!video) return false;
+
+        if (authorSet.size > 0) {
+            const pubkey = typeof video.pubkey === "string" ? video.pubkey.toLowerCase() : "";
+            if (!pubkey || !authorSet.has(pubkey)) return false;
+        }
+
+        if (tagSet.size > 0) {
+            const tags = Array.isArray(video.tags) ? video.tags : [];
+            const hasTag = tags.some((tag) => {
+                if (Array.isArray(tag)) {
+                    return tag[0] === "t" && tagSet.has(String(tag[1] || "").toLowerCase());
+                }
+                return tagSet.has(String(tag || "").toLowerCase());
+            });
+            if (!hasTag) return false;
+        }
+
+        if (Number.isFinite(afterDate) && (!Number.isFinite(video.created_at) || video.created_at < afterDate)) {
+            return false;
+        }
+        if (Number.isFinite(beforeDate) && (!Number.isFinite(video.created_at) || video.created_at > beforeDate)) {
+            return false;
+        }
+
+        if (hasMagnet && !video.magnet) return false;
+        if (hasUrl && !video.url) return false;
+
+        if (Number.isFinite(minDuration) || Number.isFinite(maxDuration)) {
+            const duration = Number(video.nip71?.duration);
+            if (!Number.isFinite(duration)) return false;
+            if (Number.isFinite(minDuration) && duration < minDuration) return false;
+            if (Number.isFinite(maxDuration) && duration > maxDuration) return false;
+        }
+
+        if (ALLOW_NSFW_CONTENT !== true && video.isNsfw === true) {
+            return false;
+        }
+
+        if (ALLOW_NSFW_CONTENT === true) {
+            if ((nsfwFilter === "true" || nsfwFilter === "only") && video.isNsfw !== true) {
+                return false;
+            }
+            if (nsfwFilter === "false" && video.isNsfw === true) {
+                return false;
+            }
+        }
+
+        return true;
+    };
 
     // 1. Local Search (Cache)
     const localMatches = [];
@@ -612,6 +695,8 @@ async function performVideoSearch(query, token) {
     }
 
     if (currentSearchToken !== token) return [];
+
+    const filteredLocalMatches = applyAccessFilters(localMatches).filter(matchesCustomFilters);
 
     // 2. Relay Search
     let relayVideos = [];
@@ -648,16 +733,18 @@ async function performVideoSearch(query, token) {
 
     if (currentSearchToken !== token) return [];
 
+    const filteredRelayVideos = applyAccessFilters(relayVideos).filter(matchesCustomFilters);
+
     // Deduplicate by ID
     const unique = new Map();
 
     // Add local matches first
-    for (const v of localMatches) {
+    for (const v of filteredLocalMatches) {
         if (!unique.has(v.id)) unique.set(v.id, v);
     }
 
     // Add relay matches (overwriting local if needed, or ignoring duplicates)
-    for (const v of relayVideos) {
+    for (const v of filteredRelayVideos) {
         if (!unique.has(v.id)) unique.set(v.id, v);
     }
 
