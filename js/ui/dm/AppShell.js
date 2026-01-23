@@ -162,8 +162,7 @@ export class AppShell {
       (receipt) => receipt.conversationId === activeConversation.id,
     );
 
-    const sidebar = createElement(doc, "aside", "dm-app-shell__sidebar");
-    sidebar.style.background = "transparent";
+    const sidebar = createElement(doc, "aside", "dm-app-shell__sidebar bg-transparent");
     const sidebarHeader = createElement(doc, "div", "dm-app-shell__sidebar-header flex items-center justify-between p-4 relative");
     const sidebarTitle = createElement(
       doc,
