@@ -33,7 +33,7 @@ export default class VideoListViewController {
     if (this.isElement(popularTagsContainer)) {
       popularTags = popularTagsContainer;
     } else if (includeTags) {
-      popularTags = this.getElementById("recentVideoTags");
+      popularTags = this.getElementById("videoListTags");
     }
 
     if (typeof view.setPopularTagsContainer === "function") {
@@ -87,7 +87,7 @@ export default class VideoListViewController {
     if (this.isElement(popularTagsContainer)) {
       tagsRoot = popularTagsContainer;
     } else {
-      tagsRoot = this.getElementById("recentVideoTags");
+      tagsRoot = this.getElementById("videoListTags");
     }
     if (typeof view.setPopularTagsContainer === "function") {
       view.setPopularTagsContainer(this.isElement(tagsRoot) ? tagsRoot : null);

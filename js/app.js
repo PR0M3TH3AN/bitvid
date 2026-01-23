@@ -2821,7 +2821,7 @@ class Application {
 
     let tagsRoot = null;
     if (includeTags) {
-      tagsRoot = document.getElementById("recentVideoTags");
+      tagsRoot = document.getElementById("videoListTags");
     }
     this.videoListPopularTags = tagsRoot || null;
     if (typeof this.videoListView.setPopularTagsContainer === "function") {
@@ -2870,7 +2870,7 @@ class Application {
         : "Refreshing videos…";
 
     this.videoList = isElement(container) ? container : null;
-    const tagsRoot = document.getElementById("recentVideoTags");
+    const tagsRoot = document.getElementById("videoListTags");
     this.videoListPopularTags = isElement(tagsRoot) ? tagsRoot : null;
     if (typeof this.videoListView.setPopularTagsContainer === "function") {
       this.videoListView.setPopularTagsContainer(this.videoListPopularTags);
