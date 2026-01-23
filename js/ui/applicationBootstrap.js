@@ -945,7 +945,7 @@ export default class ApplicationBootstrap {
       trigger,
     }) => {
       if (videoId) {
-        app.recordForYouClick(videoId);
+        app.recordFeedClick(videoId);
       }
       if (videoId) {
         Promise.resolve(
