@@ -5952,12 +5952,20 @@ class Application {
     const runtime = this.buildExploreFeedRuntime();
     const normalizedReason = typeof reason === "string" ? reason : undefined;
     const fallback = Array.isArray(fallbackVideos) ? fallbackVideos : [];
+    const applyExploreOrderingMetadata = (source) => {
+      const next = source && typeof source === "object" ? { ...source } : {};
+      if (!next.sortOrder) {
+        next.sortOrder = "explore";
+      }
+      next.preserveOrder = true;
+      return next;
+    };
 
     if (!this.feedEngine || typeof this.feedEngine.run !== "function") {
-      const metadata = {
+      const metadata = applyExploreOrderingMetadata({
         reason: normalizedReason,
         engine: "unavailable",
-      };
+      });
       this.latestFeedMetadata = metadata;
       this.videosMap = this.nostrService.getVideosMap();
       if (this.videoListView) {
@@ -5971,12 +5979,10 @@ class Application {
       .run("explore", { runtime })
       .then((result) => {
         const videos = Array.isArray(result?.videos) ? result.videos : [];
-        const metadata = {
+        const metadata = applyExploreOrderingMetadata({
           ...(result?.metadata || {}),
-        };
-        if (normalizedReason) {
-          metadata.reason = normalizedReason;
-        }
+          ...(normalizedReason ? { reason: normalizedReason } : {}),
+        });
 
         this.latestFeedMetadata = metadata;
         this.videosMap = this.nostrService.getVideosMap();
@@ -5990,10 +5996,10 @@ class Application {
       })
       .catch((error) => {
         devLogger.error("[Application] Failed to run explore feed:", error);
-        const metadata = {
+        const metadata = applyExploreOrderingMetadata({
           reason: normalizedReason || "error:explore-feed",
           error: true,
-        };
+        });
         this.latestFeedMetadata = metadata;
         this.videosMap = this.nostrService.getVideosMap();
         if (this.videoListView) {
