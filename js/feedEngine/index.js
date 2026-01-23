@@ -4,6 +4,7 @@ export { createFeedEngine } from "./engine.js";
 export {
   createDedupeByRootStage,
   createBlacklistFilterStage,
+  createDisinterestFilterStage,
   createTagPreferenceFilterStage,
   createWatchHistorySuppressionStage,
   createModerationStage,

@@ -68,6 +68,8 @@ constructed today behave exactly like the existing UI.
 | --- | --- |
 | `createDedupeByRootStage` | Reuses the application’s `dedupeVideosByRoot` helper (falling back to `dedupeToNewestByRoot`) to drop older versions of the same videoRoot. Adds "why" metadata for removed entries. |
 | `createBlacklistFilterStage` | Calls `nostrService.shouldIncludeVideo(...)` so moderators and block lists stay enforced. Each rejection logs a "blacklist" reason in the why-trail. |
+| `createTagPreferenceFilterStage` | Normalizes interest/disinterest tags via `normalizeHashtag`, drops videos that match disinterests, and (by default) filters out videos that do not match interest tags. Set `enforceInterests: false` to keep items even when they lack interest tags. |
+| `createDisinterestFilterStage` | Normalizes tag preferences via `normalizeHashtag` and drops videos that match disinterests without excluding items that lack interest tags (useful for Explore-style feeds). |
 | `createWatchHistorySuppressionStage` | Invokes feed-provided hooks to optionally suppress watched items. Useful for per-feed watch history preferences. |
 
 Stages receive `(items, context)` and should return the transformed list. They

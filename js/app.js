@@ -36,6 +36,7 @@ import {
   createFeedEngine,
   createActiveNostrSource,
   createBlacklistFilterStage,
+  createDisinterestFilterStage,
   createDedupeByRootStage,
   createExploreDiversitySorter,
   createExploreScorerStage,
@@ -5647,10 +5648,7 @@ class Application {
       return this.feedEngine.registerFeed("explore", {
         source: createActiveNostrSource({ service: this.nostrService }),
         stages: [
-          createTagPreferenceFilterStage({
-            stageName: "tag-disinterest-filter",
-            matchInterests: false,
-          }),
+          createDisinterestFilterStage(),
           createBlacklistFilterStage({
             shouldIncludeVideo: (video, options) =>
               this.nostrService.shouldIncludeVideo(video, options),
