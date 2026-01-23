@@ -153,6 +153,8 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
   }
 
   let controlState = null;
+  let suggestedFacetRenderer = null;
+  let suggestedFacetUnsubscribe = null;
 
   const render = ({ container, close }) => {
     const panel = createElement(doc, "div", {
