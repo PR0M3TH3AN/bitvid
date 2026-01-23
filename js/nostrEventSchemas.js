@@ -16,6 +16,7 @@ export const NOTE_TYPES = Object.freeze({
   NIP71_VIDEO: "nip71Video",
   NIP71_SHORT_VIDEO: "nip71ShortVideo",
   REPOST: "repost",
+  SHARE: "share",
   RELAY_LIST: "relayList",
   VIEW_EVENT: "viewEvent",
   VIDEO_REACTION: "videoReaction",
@@ -281,6 +282,19 @@ const BASE_SCHEMAS = {
     content: {
       format: "json",
       description: "Content field contains the JSON-serialized event being reposted.",
+    },
+  },
+  [NOTE_TYPES.SHARE]: {
+    type: NOTE_TYPES.SHARE,
+    label: "Share note",
+    kind: 1,
+    relayTagName: "r",
+    readMarker: "read",
+    writeMarker: "write",
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      format: "text",
+      description: "Plaintext share note referencing a video.",
     },
   },
   [NOTE_TYPES.NIP71_VIDEO]: {
@@ -978,6 +992,115 @@ export function buildRepostEvent(params) {
     created_at,
     tags,
     content,
+  };
+}
+
+export function buildShareEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    content = "",
+    video = null,
+    relays = [],
+    additionalTags = [],
+  } = params || {};
+  const schema = getNostrEventSchema(NOTE_TYPES.SHARE);
+  const tags = [];
+  const relayTagName = schema?.relayTagName || "r";
+  const readMarker = schema?.readMarker || "read";
+  const writeMarker = schema?.writeMarker || "write";
+
+  const normalizedVideoId =
+    typeof video?.id === "string" ? video.id.trim() : "";
+  if (normalizedVideoId) {
+    tags.push(["e", normalizedVideoId, "", "mention"]);
+  }
+
+  const normalizedVideoPubkey =
+    typeof video?.pubkey === "string" ? video.pubkey.trim() : "";
+  if (normalizedVideoPubkey) {
+    tags.push(["p", normalizedVideoPubkey, "", "mention"]);
+  }
+
+  const seenRelayTags = new Set();
+
+  const pushRelayTag = (url, marker) => {
+    const normalizedUrl = typeof url === "string" ? url.trim() : "";
+    if (!normalizedUrl) {
+      return;
+    }
+    const normalizedMarker =
+      typeof marker === "string" ? marker.trim().toLowerCase() : "";
+    const resolvedMarker =
+      normalizedMarker === "read" || normalizedMarker === "write"
+        ? normalizedMarker
+        : "";
+    const dedupeKey = `${normalizedUrl}|${resolvedMarker}`;
+    if (seenRelayTags.has(dedupeKey)) {
+      return;
+    }
+    seenRelayTags.add(dedupeKey);
+    if (resolvedMarker) {
+      const markerValue = resolvedMarker === "read" ? readMarker : writeMarker;
+      tags.push([relayTagName, normalizedUrl, markerValue]);
+    } else {
+      tags.push([relayTagName, normalizedUrl]);
+    }
+  };
+
+  if (Array.isArray(relays)) {
+    relays.forEach((entry) => {
+      if (typeof entry === "string") {
+        pushRelayTag(entry, "");
+        return;
+      }
+
+      if (Array.isArray(entry) && entry.length) {
+        if (entry[0] === relayTagName) {
+          pushRelayTag(entry[1], entry[2]);
+          return;
+        }
+        pushRelayTag(entry[0], entry[1]);
+        return;
+      }
+
+      if (entry && typeof entry === "object") {
+        const url =
+          typeof entry.url === "string"
+            ? entry.url
+            : typeof entry.relay === "string"
+            ? entry.relay
+            : "";
+        let marker = "";
+        if (typeof entry.mode === "string") {
+          marker = entry.mode;
+        } else if (typeof entry.marker === "string") {
+          marker = entry.marker;
+        } else if (entry.read === true && entry.write === false) {
+          marker = "read";
+        } else if (entry.write === true && entry.read === false) {
+          marker = "write";
+        }
+        pushRelayTag(url, marker);
+      }
+    });
+  }
+
+  appendSchemaTags(tags, schema);
+
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
+  }
+
+  const resolvedContent = ensureValidUtf8Content(content);
+
+  return {
+    kind: schema?.kind ?? 1,
+    pubkey,
+    created_at,
+    tags,
+    content: resolvedContent,
   };
 }
 

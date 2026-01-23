@@ -72,7 +72,7 @@ import createPopover from "./ui/overlay/popoverEngine.js";
 import { createVideoSettingsMenuPanel } from "./ui/components/videoMenuRenderers.js";
 import moderationService from "./services/moderationService.js";
 import { sanitizeRelayList } from "./nostr/nip46Client.js";
-import { buildDmRelayListEvent } from "./nostrEventSchemas.js";
+import { buildDmRelayListEvent, buildShareEvent } from "./nostrEventSchemas.js";
 import {
   publishEventToRelays,
   assertAnyRelayAccepted,
@@ -81,6 +81,8 @@ import {
   getActiveSigner,
   onActiveSignerChanged,
 } from "./nostrClientRegistry.js";
+import { queueSignEvent } from "./nostr/signRequestQueue.js";
+import { DEFAULT_NIP07_PERMISSION_METHODS } from "./nostr/nip07Permissions.js";
 import {
   initViewCounter,
   subscribeToVideoViewCount,
@@ -10206,6 +10208,168 @@ class Application {
       this.videoListPopularTags.hidden = true;
     }
     this.videoListPopularTags = null;
+  }
+
+  async handleShareNostrPost(payload = {}) {
+    const video = payload?.video || null;
+    const videoId = typeof video?.id === "string" ? video.id.trim() : "";
+    const videoTitle =
+      typeof video?.title === "string" ? video.title.trim() : "";
+    const videoPubkey =
+      typeof video?.pubkey === "string" ? video.pubkey.trim() : "";
+
+    if (!videoId || !videoTitle) {
+      userLogger.warn("[Application] Share post missing video details.");
+      this.showError("Missing video details for sharing.");
+      throw new Error("share-missing-video-details");
+    }
+
+    const signer = getActiveSigner();
+    if (!signer || typeof signer.signEvent !== "function") {
+      userLogger.warn("[Application] No active signer available for share.");
+      this.showError("Connect a Nostr signer to share.");
+      throw new Error("share-missing-signer");
+    }
+
+    const activePubkey = this.normalizeHexPubkey(this.pubkey);
+    const signerPubkey = this.normalizeHexPubkey(signer.pubkey);
+    const eventPubkey = activePubkey || signerPubkey;
+
+    if (!eventPubkey) {
+      userLogger.warn("[Application] Share post missing active pubkey.");
+      this.showError("Please log in to share on Nostr.");
+      throw new Error("share-missing-pubkey");
+    }
+
+    if (activePubkey && signerPubkey && activePubkey !== signerPubkey) {
+      userLogger.error(
+        "[Application] Active signer does not match current account for share.",
+      );
+      this.showError("Active signer does not match your account.");
+      throw new Error("share-signer-mismatch");
+    }
+
+    if (!nostrClient?.pool) {
+      userLogger.error("[Application] Share publish failed: relays not ready.");
+      this.showError("Nostr relays are not ready yet. Please try again.");
+      throw new Error("share-relays-unavailable");
+    }
+
+    const relayEntries = Array.isArray(payload?.relays) ? payload.relays : [];
+    const relayUrls = relayEntries
+      .map((entry) => {
+        if (typeof entry === "string") {
+          return entry;
+        }
+        if (Array.isArray(entry) && entry.length) {
+          if (entry[0] === "r") {
+            return typeof entry[1] === "string" ? entry[1] : "";
+          }
+          return typeof entry[0] === "string" ? entry[0] : "";
+        }
+        if (entry && typeof entry === "object") {
+          if (typeof entry.url === "string") {
+            return entry.url;
+          }
+          if (typeof entry.relay === "string") {
+            return entry.relay;
+          }
+        }
+        return "";
+      })
+      .filter(Boolean);
+    const relayTargets = sanitizeRelayList(relayUrls);
+
+    if (!relayTargets.length) {
+      userLogger.warn("[Application] Share post missing relay targets.");
+      this.showError("Please choose at least one relay to share to.");
+      throw new Error("share-missing-relays");
+    }
+
+    if (signer.type === "extension" && nostrClient.ensureExtensionPermissions) {
+      const permissionResult = await nostrClient.ensureExtensionPermissions(
+        DEFAULT_NIP07_PERMISSION_METHODS,
+      );
+      if (!permissionResult?.ok) {
+        userLogger.warn(
+          "[Application] Share publish blocked by signer permissions.",
+          permissionResult?.error,
+        );
+        this.showError("Signer permissions are required to post.");
+        throw new Error("share-permission-denied");
+      }
+    }
+
+    const event = buildShareEvent({
+      pubkey: eventPubkey,
+      created_at: Math.floor(Date.now() / 1000),
+      content: typeof payload?.content === "string" ? payload.content : "",
+      video: { id: videoId, pubkey: videoPubkey },
+      relays: relayEntries,
+    });
+
+    let signedEvent;
+    try {
+      signedEvent = await queueSignEvent(signer, event);
+    } catch (error) {
+      userLogger.error("[Application] Failed to sign share event.", error);
+      this.showError("Unable to sign the share event.");
+      throw error;
+    }
+
+    const publishResults = await publishEventToRelays(
+      nostrClient.pool,
+      relayTargets,
+      signedEvent,
+    );
+
+    let publishSummary;
+    try {
+      publishSummary = assertAnyRelayAccepted(publishResults, {
+        context: "share note",
+      });
+    } catch (publishError) {
+      if (publishError?.relayFailures?.length) {
+        publishError.relayFailures.forEach(
+          ({ url, error: relayError, reason }) => {
+            userLogger.error(
+              `[Application] Relay ${url} rejected share note: ${reason}`,
+              relayError || reason,
+            );
+          },
+        );
+      }
+      this.showError("Failed to share on Nostr. Please try again.");
+      throw publishError;
+    }
+
+    if (publishSummary.failed.length) {
+      publishSummary.failed.forEach(({ url, error: relayError }) => {
+        const reason =
+          relayError instanceof Error
+            ? relayError.message
+            : relayError
+            ? String(relayError)
+            : "publish failed";
+        userLogger.warn(
+          `[Application] Relay ${url} did not accept share note: ${reason}`,
+          relayError,
+        );
+      });
+    }
+
+    userLogger.info(
+      "[Application] Share note published.",
+      publishSummary.accepted.map(({ url }) => url),
+    );
+    this.showSuccess("Shared to Nostr!");
+
+    return {
+      ok: true,
+      event: signedEvent,
+      accepted: publishSummary.accepted.map(({ url }) => url),
+      failed: publishSummary.failed.map(({ url }) => url),
+    };
   }
 
   shareActiveVideo() {
