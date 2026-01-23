@@ -97,11 +97,13 @@ To set up the project locally:
    ```bash
    npm run build
    ```
+   (This runs `npm run build:css` to generate Tailwind styles.)
 
 3. **Run Tests**:
    ```bash
    npm run test:unit
    ```
+   *Note: Unit tests may take a few minutes to complete.*
 
 4. **Format & Lint**:
    ```bash
@@ -116,6 +118,13 @@ To set up the project locally:
    ```
 
 For a full guide, see the [Local Setup section in README.md](./README.md#local-setup).
+
+### Troubleshooting
+
+- **Browserslist Warning**: If you see `Browserslist: caniuse-lite is outdated` during the build, run:
+  ```bash
+  npx update-browserslist-db@latest
+  ```
 
 ## Dev Container
 
