@@ -6092,14 +6092,121 @@ class Application {
         ? new Set(this.blacklistedEventIds)
         : new Set();
 
+    const feedDefinition =
+      this.feedEngine && typeof this.feedEngine.getFeedDefinition === "function"
+        ? this.feedEngine.getFeedDefinition("kids")
+        : null;
+    const configDefaults =
+      feedDefinition && typeof feedDefinition.configDefaults === "object"
+        ? feedDefinition.configDefaults
+        : {};
+
+    const runtimeOverrides =
+      this.kidsFeedRuntime && typeof this.kidsFeedRuntime === "object"
+        ? this.kidsFeedRuntime
+        : {};
+    const runtimeConfig =
+      this.kidsFeedConfig && typeof this.kidsFeedConfig === "object"
+        ? this.kidsFeedConfig
+        : {};
+
+    const resolveStringArray = (...candidates) => {
+      for (const candidate of candidates) {
+        if (!Array.isArray(candidate)) {
+          continue;
+        }
+        return candidate
+          .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+          .filter(Boolean);
+      }
+      return [];
+    };
+
+    const disallowedWarnings = resolveStringArray(
+      runtimeOverrides.disallowedWarnings,
+      runtimeConfig.disallowedWarnings,
+      configDefaults.disallowedWarnings,
+    );
+    const kidsEducationalTags = resolveStringArray(
+      runtimeOverrides.kidsEducationalTags,
+      runtimeOverrides.educationalTags,
+      runtimeConfig.kidsEducationalTags,
+      runtimeConfig.educationalTags,
+      configDefaults.educationalTags,
+    );
+    const trustedAuthors = resolveStringArray(
+      runtimeOverrides.trustedAuthors,
+      runtimeConfig.trustedAuthors,
+    );
+
+    const ageGroupCandidates = [
+      runtimeOverrides.ageGroup,
+      runtimeConfig.ageGroup,
+      configDefaults.ageGroup,
+    ];
+    let ageGroup = "";
+    for (const candidate of ageGroupCandidates) {
+      if (typeof candidate !== "string") {
+        continue;
+      }
+      const trimmed = candidate.trim();
+      if (trimmed) {
+        ageGroup = trimmed;
+        break;
+      }
+    }
+
+    const runtimeModerationOverrides =
+      runtimeOverrides.moderationThresholds &&
+      typeof runtimeOverrides.moderationThresholds === "object"
+        ? runtimeOverrides.moderationThresholds
+        : null;
+    const configModerationOverrides =
+      runtimeConfig.moderationThresholds &&
+      typeof runtimeConfig.moderationThresholds === "object"
+        ? runtimeConfig.moderationThresholds
+        : null;
+    const kidsThresholdOverrides =
+      runtimeModerationOverrides || configModerationOverrides
+        ? {
+            ...(configModerationOverrides || {}),
+            ...(runtimeModerationOverrides || {}),
+          }
+        : null;
+
     const moderationThresholds = this.getActiveModerationThresholds();
+    const resolvedModerationThresholds =
+      moderationThresholds || kidsThresholdOverrides
+        ? {
+            ...(moderationThresholds || {}),
+            ...(kidsThresholdOverrides || {}),
+          }
+        : undefined;
+
+    const parentalAllowlist = resolveStringArray(
+      runtimeOverrides.parentalAllowlist,
+      runtimeOverrides.allowlist,
+      runtimeConfig.parentalAllowlist,
+      runtimeConfig.allowlist,
+    );
+    const parentalBlocklist = resolveStringArray(
+      runtimeOverrides.parentalBlocklist,
+      runtimeOverrides.blocklist,
+      runtimeConfig.parentalBlocklist,
+      runtimeConfig.blocklist,
+    );
 
     return {
       blacklistedEventIds: blacklist,
       isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
-      moderationThresholds: moderationThresholds
-        ? { ...moderationThresholds }
-        : undefined,
+      disallowedWarnings,
+      kidsEducationalTags,
+      educationalTags: kidsEducationalTags,
+      trustedAuthors,
+      ageGroup: ageGroup || undefined,
+      moderationThresholds: resolvedModerationThresholds,
+      parentalAllowlist,
+      parentalBlocklist,
     };
   }
 
