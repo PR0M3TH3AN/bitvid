@@ -4,6 +4,10 @@ import {
   closeStaticModal,
 } from "./staticModalAccessibility.js";
 import logger from "../../utils/logger.js";
+import {
+  resolveVideoPointer,
+  buildVideoAddressPointer,
+} from "../../utils/videoPointer.js";
 
 const DEFAULT_WIDTH = 640;
 const DEFAULT_HEIGHT = 360;
@@ -61,6 +65,8 @@ export class EmbedVideoModal {
     this.widthInput = null;
     this.heightInput = null;
     this.snippetTextarea = null;
+    this.statusText = null;
+    this.statusTextDefault = "";
 
     this.activeVideo = null;
     this.bound = false;
@@ -119,6 +125,9 @@ export class EmbedVideoModal {
     this.widthInput = modal.querySelector("#embedVideoWidth");
     this.heightInput = modal.querySelector("#embedVideoHeight");
     this.snippetTextarea = modal.querySelector("#embedVideoSnippet");
+    this.statusText = modal.querySelector("#embedVideoStatus");
+    this.statusTextDefault =
+      (this.statusText?.textContent && this.statusText.textContent.trim()) || "";
   }
 
   bindEvents() {
@@ -180,6 +189,8 @@ export class EmbedVideoModal {
         this.sourceP2p.checked = true;
       }
     }
+
+    this.setStatus(this.statusTextDefault);
   }
 
   getSelectedSource() {
@@ -192,41 +203,154 @@ export class EmbedVideoModal {
     return "";
   }
 
-  buildEmbedUrl(source) {
-    if (!this.activeVideo) {
-      return "";
+  setStatus(message, tone = "default") {
+    if (!this.statusText) {
+      return;
     }
 
-    const rawShareUrl =
-      (isNonEmptyString(this.activeVideo.shareUrl) && this.activeVideo.shareUrl.trim()) ||
-      (this.getShareUrl && this.getShareUrl(this.activeVideo.id)) ||
-      "";
+    const toneClassMap = {
+      default: "text-muted",
+      error: "text-status-danger-on",
+    };
 
-    if (!rawShareUrl) {
-      return "";
+    const normalizedMessage =
+      typeof message === "string" ? message.trim() : "";
+    this.statusText.textContent =
+      normalizedMessage || this.statusTextDefault || "";
+
+    Object.values(toneClassMap).forEach((cls) => {
+      this.statusText.classList.remove(cls);
+    });
+
+    const nextClass = toneClassMap[tone] || toneClassMap.default;
+    this.statusText.classList.add(nextClass);
+  }
+
+  resolvePointerEncoding() {
+    if (!this.activeVideo) {
+      return { encodedPointer: "", error: "No video available to embed." };
+    }
+
+    const addressPointer = buildVideoAddressPointer(this.activeVideo, {
+      logger: logger.user,
+    });
+    const addressSegments = addressPointer.split(":");
+    const identifier =
+      addressSegments.length > 2 ? addressSegments.slice(2).join(":") : "";
+    const pointerInfo = resolveVideoPointer({
+      kind: this.activeVideo.kind,
+      pubkey: this.activeVideo.pubkey,
+      dTag: identifier,
+      fallbackEventId: this.activeVideo.id,
+      relay:
+        (isNonEmptyString(this.activeVideo.relay) &&
+          this.activeVideo.relay.trim()) ||
+        "",
+    });
+
+    if (!pointerInfo?.pointer?.length) {
+      return {
+        encodedPointer: "",
+        error: "Unable to determine a pointer for this video.",
+      };
+    }
+
+    const nip19 = window?.NostrTools?.nip19;
+    if (!nip19?.naddrEncode || !nip19?.neventEncode) {
+      return {
+        encodedPointer: "",
+        error: "NostrTools is unavailable for encoding this embed pointer.",
+      };
+    }
+
+    const [pointerType, pointerValue, pointerRelay] = pointerInfo.pointer;
+    const relays =
+      typeof pointerRelay === "string" && pointerRelay.trim()
+        ? [pointerRelay.trim()]
+        : undefined;
+
+    if (pointerType === "a") {
+      const segments = typeof pointerValue === "string" ? pointerValue.split(":") : [];
+      const kind = segments[0] ? Number(segments[0]) : NaN;
+      const pubkey = segments[1] ? segments[1].trim() : "";
+      const pointerIdentifier = segments.length > 2 ? segments.slice(2).join(":") : "";
+
+      if (!Number.isFinite(kind) || !pubkey || !pointerIdentifier) {
+        return {
+          encodedPointer: "",
+          error: "Unable to encode the address pointer for this video.",
+        };
+      }
+
+      return {
+        encodedPointer: nip19.naddrEncode({
+          kind,
+          pubkey,
+          identifier: pointerIdentifier,
+          relays,
+        }),
+        error: "",
+      };
+    }
+
+    if (pointerType === "e") {
+      const eventId = typeof pointerValue === "string" ? pointerValue.trim() : "";
+      if (!eventId) {
+        return {
+          encodedPointer: "",
+          error: "Unable to encode the event pointer for this video.",
+        };
+      }
+
+      return {
+        encodedPointer: nip19.neventEncode({
+          id: eventId,
+          relays,
+        }),
+        error: "",
+      };
+    }
+
+    return {
+      encodedPointer: "",
+      error: "Unable to determine a pointer for this video.",
+    };
+  }
+
+  buildEmbedUrl(source) {
+    const { encodedPointer, error } = this.resolvePointerEncoding();
+    if (error) {
+      return { url: "", error };
     }
 
     try {
-      const url = new URL(rawShareUrl, this.document?.location?.origin || window.location.origin);
+      const url = new URL(
+        "/embed.html",
+        this.document?.location?.origin || window.location.origin
+      );
+      url.searchParams.set("pointer", encodedPointer);
       if (isNonEmptyString(source)) {
-        url.searchParams.set("source", source);
+        url.searchParams.set("playback", source);
       }
-      return url.toString();
+      return { url: url.toString(), error: "" };
     } catch (error) {
       logger.user.warn("Embed modal could not build embed URL.", error);
-      return rawShareUrl;
+      return {
+        url: "",
+        error: "Unable to build the embed URL for this video.",
+      };
     }
   }
 
   buildEmbedSnippet() {
     if (!this.activeVideo) {
-      return "";
+      return { snippet: "", error: "No video available to embed." };
     }
 
     const source = this.getSelectedSource();
-    const embedUrl = this.buildEmbedUrl(source);
+    const { url: embedUrl, error } = this.buildEmbedUrl(source);
     if (!embedUrl) {
-      return "";
+      return { snippet: "", error };
     }
 
     const width = resolveDimension(this.widthInput?.value, DEFAULT_WIDTH);
@@ -235,7 +359,10 @@ export class EmbedVideoModal {
       (isNonEmptyString(this.activeVideo.title) && this.activeVideo.title.trim()) ||
       "Bitvid video";
 
-    return `<iframe src="${escapeAttribute(embedUrl)}" width="${width}" height="${height}" loading="lazy" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen title="${escapeAttribute(title)}"></iframe>`;
+    return {
+      snippet: `<iframe src="${escapeAttribute(embedUrl)}" width="${width}" height="${height}" loading="lazy" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen title="${escapeAttribute(title)}"></iframe>`,
+      error: "",
+    };
   }
 
   updateSnippet() {
@@ -243,10 +370,15 @@ export class EmbedVideoModal {
       return;
     }
 
-    const snippet = this.buildEmbedSnippet();
+    const { snippet, error } = this.buildEmbedSnippet();
     this.snippetTextarea.value = snippet;
     if (this.copyButton) {
       this.copyButton.disabled = !snippet;
+    }
+    if (error) {
+      this.setStatus(error, "error");
+    } else {
+      this.setStatus(this.statusTextDefault);
     }
   }
 
