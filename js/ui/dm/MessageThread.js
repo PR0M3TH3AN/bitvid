@@ -93,7 +93,7 @@ export function MessageThread({
   }
   root.appendChild(header);
 
-  const timeline = createElement(doc, "div", "dm-message-thread__timeline");
+  const timeline = createElement(doc, "div", "dm-message-thread__timeline no-scrollbar");
   timeline.setAttribute("role", "log");
   timeline.setAttribute("aria-live", "polite");
 
@@ -137,11 +137,43 @@ export function MessageThread({
     });
   }
 
-  // Scroll to bottom
+  // Scroll to bottom and peek
   if (messages.length > 0) {
+    const animate = () => {
+      timeline.scrollTop = timeline.scrollHeight;
+
+      if (timeline.scrollHeight > timeline.clientHeight) {
+        setTimeout(() => {
+          const targetScroll = Math.max(0, timeline.scrollTop - 40);
+          timeline.scrollTo({ top: targetScroll, behavior: "smooth" });
+
+          setTimeout(() => {
+            timeline.scrollTo({
+              top: timeline.scrollHeight,
+              behavior: "smooth",
+            });
+          }, 600);
+        }, 600);
+      }
+    };
+
+    if (typeof IntersectionObserver !== "undefined") {
+      const observer = new IntersectionObserver((entries) => {
+        const entry = entries[0];
+        if (entry.isIntersecting) {
+          observer.disconnect();
+          // First ensure we are at bottom
+          timeline.scrollTop = timeline.scrollHeight;
+          setTimeout(animate, 300);
+        }
+      }, { threshold: 0.1 });
+      observer.observe(timeline);
+    } else {
       setTimeout(() => {
         timeline.scrollTop = timeline.scrollHeight;
+        animate();
       }, 0);
+    }
   }
 
   root.appendChild(timeline);
