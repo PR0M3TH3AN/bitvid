@@ -129,7 +129,7 @@ export async function initSearchView() {
   if (infoTrigger) {
     attachFeedInfoPopover(
       infoTrigger,
-      "Results matching your search query. Use tokens like author:, tag:, kind:, relay:, after:, before:, duration:<, and has:magnet/url."
+      "Results matching your search query. Use tokens like author:, tag:, kind:, relay:, after:, before:, duration:<, has:magnet/url/transcript, and boolean operators with quoted phrases."
     );
   }
 
@@ -437,6 +437,17 @@ function renderActiveFilters(filters) {
       onRemove: () => {
         const nextFilters = buildNextFilters();
         nextFilters.hasUrl = null;
+        applyFiltersAndRefresh(nextFilters);
+      },
+    });
+  }
+
+  if (filters.hasTranscript === true) {
+    pills.push({
+      label: "Has transcript",
+      onRemove: () => {
+        const nextFilters = buildNextFilters();
+        nextFilters.hasTranscript = null;
         applyFiltersAndRefresh(nextFilters);
       },
     });
@@ -771,6 +782,7 @@ async function performVideoSearch(query, token, filters = {}) {
         : null;
     const hasMagnet = filters?.hasMagnet === true;
     const hasUrl = filters?.hasUrl === true;
+    const hasTranscript = filters?.hasTranscript === true;
     const nsfwFilter = typeof filters?.nsfw === "string" ? filters.nsfw : "any";
 
     const matchesRelayFilters = (video) => {
@@ -807,6 +819,12 @@ async function performVideoSearch(query, token, filters = {}) {
 
         if (hasMagnet && !video.magnet) return false;
         if (hasUrl && !video.url) return false;
+        if (hasTranscript) {
+            const textTracks = Array.isArray(video.nip71?.textTracks)
+                ? video.nip71.textTracks
+                : [];
+            if (!textTracks.length) return false;
+        }
 
         if (Number.isFinite(minDuration) || Number.isFinite(maxDuration)) {
             const duration = Number(video.nip71?.duration);
