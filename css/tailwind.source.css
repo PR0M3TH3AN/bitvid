@@ -3063,6 +3063,20 @@
     overflow-x: hidden;
   }
 
+  /* Specific override for messages pane to prevent parent scrolling on desktop */
+  @media (min-width: theme("screens.md")) {
+    #profilePaneMessages {
+      height: 100%;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    #dmAppShellMount {
+      height: 100%;
+      min-height: 0;
+    }
+  }
+
   .profile-pane.hidden {
     display: none !important;
   }
@@ -5060,7 +5074,8 @@
   .profile-modal .dm-app-shell {
     min-height: 0;
     height: auto;
-    padding: var(--space-md);
+    padding: 0;
+    gap: var(--space-md);
   }
 
   .dm-app-shell__sidebar,
@@ -5075,6 +5090,10 @@
   .profile-modal .dm-app-shell__main {
     height: auto;
     min-height: 0;
+    border: none;
+    box-shadow: none;
+    background: transparent;
+    padding: 0;
   }
 
   .dm-app-shell__sidebar {
@@ -5312,8 +5331,33 @@
     border-radius: var(--radius-md);
   }
 
+  .dm-message-row {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--space-xs);
+    width: 100%;
+  }
+
+  .dm-message-row--incoming {
+    justify-content: flex-start;
+  }
+
+  .dm-message-row--outgoing {
+    justify-content: flex-end;
+  }
+
+  .dm-message-avatar {
+    width: var(--space-xl);
+    height: var(--space-xl);
+    flex-shrink: 0;
+    border-radius: var(--radius-full);
+    object-fit: cover;
+    background-color: var(--surface-sunken);
+    border: var(--border-width-hairline) solid var(--border-subtle);
+  }
+
   .dm-message-bubble {
-    max-width: 85%;
+    max-width: 75%;
     display: flex;
     flex-direction: column;
     gap: var(--space-2xs);
@@ -5325,14 +5369,14 @@
   }
 
   .dm-message-bubble--incoming {
-    align-self: flex-start;
+    border-bottom-left-radius: var(--radius-sm);
   }
 
   .dm-message-bubble--outgoing {
-    align-self: flex-end;
     background: var(--color-accent);
     color: var(--color-white);
     border-color: var(--color-accent-strong);
+    border-bottom-right-radius: var(--radius-sm);
   }
 
   .dm-message-bubble--outgoing .dm-message-bubble__meta,
@@ -5827,21 +5871,65 @@
     }
   }
 
+  /* Ensure the profile pane for messages takes full height */
+  #profilePaneMessages {
+    height: 100%;
+    min-height: 0;
+  }
+
   @media (min-width: theme("screens.md")) {
     .profile-modal .dm-app-shell {
       flex-direction: row;
       align-items: stretch;
+      height: 100%;
+      min-height: 0;
     }
 
     .profile-modal .dm-app-shell__sidebar {
       flex: 0 0 var(--size-18rem);
       max-width: var(--size-20rem);
-      height: auto;
+      height: 100%;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
     }
 
     .profile-modal .dm-app-shell__main {
       flex: 1 1 auto;
-      height: auto;
+      height: 100%;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .profile-modal .dm-conversation-list {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .profile-modal .dm-conversation-list__items {
+      flex: 1;
+      overflow-y: auto;
+      min-height: 0;
+      overscroll-behavior-y: contain;
+      @apply no-scrollbar;
+    }
+
+    .profile-modal .dm-message-thread {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .profile-modal .dm-message-thread__timeline {
+      flex: 1;
+      overflow-y: auto;
+      min-height: 0;
+      overscroll-behavior-y: contain;
+      @apply no-scrollbar;
     }
   }
 
@@ -5986,9 +6074,10 @@
 }
 
 .no-scrollbar {
-  scrollbar-width: none;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
 }
 
 .no-scrollbar::-webkit-scrollbar {
-  display: none;
+  display: none !important;
 }

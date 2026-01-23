@@ -1,7 +1,6 @@
 import { Composer } from "./Composer.js";
 import { ConversationList } from "./ConversationList.js";
 import { MessageThread } from "./MessageThread.js";
-import { NotificationCenter } from "./NotificationCenter.js";
 import { DMPrivacySettings } from "./DMPrivacySettings.js";
 import { aggregateZapTotals } from "./zapHelpers.js";
 import { createZapInterface } from "./ZapInterface.js";
@@ -114,6 +113,7 @@ const DEFAULT_ZAP_RECEIPTS = [
 export class AppShell {
   constructor({
     document: doc,
+    currentUserAvatarUrl = "",
     conversations = DEFAULT_CONVERSATIONS,
     activeConversationId = DEFAULT_CONVERSATIONS[0]?.id || "",
     conversationState = "idle",
@@ -124,7 +124,6 @@ export class AppShell {
     composerState = "idle",
     privacyMode = "nip04",
     dmPrivacySettings = { readReceiptsEnabled: false, typingIndicatorsEnabled: false },
-    notifications = [],
     signingAdapter = null,
     zapConfig = null,
     mobileView = "list",
@@ -168,7 +167,7 @@ export class AppShell {
       doc,
       "h1",
       "dm-app-shell__title text-lg font-bold",
-      "Direct Messages",
+      "Conversations",
     );
     sidebarHeader.appendChild(sidebarTitle);
 
@@ -219,6 +218,7 @@ export class AppShell {
     main.appendChild(
       MessageThread({
         document: doc,
+        currentUserAvatarUrl,
         contact: activeConversation,
         messages,
         state: threadState,
@@ -248,12 +248,6 @@ export class AppShell {
         zapConfig
       });
 
-      // Position it relative to the composer or just absolute in main
-      // The extracted createZapInterface uses 'absolute bottom-16 right-4' which positions it nicely
-      // relative to the container if the container is relative.
-      // main usually has relative positioning or we can append to root.
-      // AppShell root has absolute positioning context maybe?
-      // If main is the container, we append there.
       main.appendChild(zapInterface);
     };
 
@@ -274,12 +268,6 @@ export class AppShell {
             conversationTotal: conversationZapTotalSats,
             profileTotal: profileZapTotalSats
         }
-      }),
-    );
-    main.appendChild(
-      NotificationCenter({
-        document: doc,
-        notices: notifications,
       }),
     );
 

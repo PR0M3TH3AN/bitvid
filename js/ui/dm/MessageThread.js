@@ -16,6 +16,7 @@ export function MessageThread({
   document: doc,
   contact = {},
   messages = [],
+  currentUserAvatarUrl = "",
   state = "idle",
   errorType = "",
   privacyMode = "nip04",
@@ -128,10 +129,12 @@ export function MessageThread({
         timeline.appendChild(DayDivider({ document: doc, label: message.label }));
         return;
       }
+      const isOutgoing = message.direction === "outgoing";
       const bubble = MessageBubble({
         document: doc,
         message,
-        variant: message.direction === "outgoing" ? "outgoing" : "incoming",
+        variant: isOutgoing ? "outgoing" : "incoming",
+        avatarSrc: isOutgoing ? currentUserAvatarUrl : (contact.avatarSrc || ""),
       });
       timeline.appendChild(bubble);
     });
@@ -152,7 +155,7 @@ export function MessageThread({
               top: timeline.scrollHeight,
               behavior: "smooth",
             });
-          }, 600);
+          }, 800);
         }, 600);
       }
     };
