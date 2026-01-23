@@ -4,13 +4,14 @@ import { nostrClient } from "./nostrClientFacade.js";
 import { getApplication } from "./applicationContext.js";
 import { renderChannelVideosFromList } from "./channelProfile.js";
 import { escapeHTML } from "./utils/domUtils.js";
-import { formatShortNpub } from "./utils/formatters.js";
+import { formatShortNpub, truncateMiddle } from "./utils/formatters.js";
 import { sanitizeProfileMediaUrl } from "./utils/profileMedia.js";
 import { devLogger } from "./utils/logger.js";
 import { ALLOW_NSFW_CONTENT } from "./config.js";
 import { attachFeedInfoPopover } from "./ui/components/FeedInfoPopover.js";
 import { setHashView } from "./hashView.js";
 import { sanitizeRelayList } from "./nostr/nip46Client.js";
+import { setSearchFacetCounts } from "./search/searchFacetState.js";
 import { subscribeToVideoViewCount, unsubscribeFromVideoViewCount } from "./viewCounter.js";
 import {
   buildSearchHashFromState,
@@ -26,6 +27,177 @@ function getApp() {
 }
 
 const FALLBACK_AVATAR = "assets/svg/default-profile.svg";
+const EMPTY_FACET_COUNTS = { tags: [], authors: [], relays: [] };
+const MAX_FACET_RESULTS = {
+  tags: 8,
+  authors: 6,
+  relays: 6,
+};
+
+const normalizeFacetText = (value) => {
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value.trim();
+};
+
+const resolveShortPubkeyLabel = (pubkey) => {
+  const trimmed = normalizeFacetText(pubkey);
+  if (!trimmed) {
+    return "";
+  }
+  let npub = "";
+  try {
+    if (window.NostrTools && window.NostrTools.nip19) {
+      npub = window.NostrTools.nip19.npubEncode(trimmed);
+    }
+  } catch (error) {
+    // ignore
+  }
+  const formattedNpub = formatShortNpub(npub);
+  if (formattedNpub) {
+    return formattedNpub;
+  }
+  return truncateMiddle(trimmed, 18);
+};
+
+const resolveAuthorFacetLabel = (video) => {
+  const name = normalizeFacetText(video?.authorName);
+  if (name) {
+    return name;
+  }
+  const npub = normalizeFacetText(video?.authorNpub);
+  if (npub) {
+    return formatShortNpub(npub) || npub;
+  }
+  return resolveShortPubkeyLabel(video?.pubkey);
+};
+
+const extractRelayHints = (event) => {
+  if (!event || typeof event !== "object") {
+    return [];
+  }
+  const relayCandidates = [];
+  const relayCollections = [event.relays, event.seenOn, event.seen_on];
+  relayCollections.forEach((collection) => {
+    if (Array.isArray(collection)) {
+      relayCandidates.push(...collection);
+    }
+  });
+  if (typeof event.relay === "string") {
+    relayCandidates.push(event.relay);
+  }
+  return Array.from(
+    new Set(
+      relayCandidates
+        .map((value) => normalizeFacetText(String(value)))
+        .filter(Boolean),
+    ),
+  );
+};
+
+const normalizeTagFacetValue = (value) =>
+  normalizeFacetText(value)
+    .replace(/^#/, "")
+    .toLowerCase();
+
+const buildFacetEntries = (map, limit) => {
+  if (!map.size) {
+    return [];
+  }
+  return Array.from(map.values())
+    .sort((a, b) => (b.count - a.count) || a.label.localeCompare(b.label))
+    .slice(0, limit);
+};
+
+const buildSearchFacetCounts = (videos = []) => {
+  const tagCounts = new Map();
+  const authorCounts = new Map();
+  const relayCounts = new Map();
+
+  videos.forEach((video) => {
+    if (!video) {
+      return;
+    }
+
+    const authorKey = normalizeFacetText(video.pubkey || "");
+    if (authorKey) {
+      const label = resolveAuthorFacetLabel(video) || authorKey;
+      const entry = authorCounts.get(authorKey) || {
+        value: authorKey,
+        label,
+        count: 0,
+      };
+      entry.count += 1;
+      if (!entry.label && label) {
+        entry.label = label;
+      }
+      authorCounts.set(authorKey, entry);
+    }
+
+    const tagSet = new Set();
+    if (Array.isArray(video.tags)) {
+      video.tags.forEach((tag) => {
+        if (Array.isArray(tag)) {
+          if (tag[0] === "t") {
+            const normalized = normalizeTagFacetValue(tag[1] || "");
+            if (normalized) {
+              tagSet.add(normalized);
+            }
+          }
+          return;
+        }
+        const normalized = normalizeTagFacetValue(tag);
+        if (normalized) {
+          tagSet.add(normalized);
+        }
+      });
+    }
+    tagSet.forEach((tag) => {
+      const label = `#${tag}`;
+      const entry = tagCounts.get(tag) || { value: tag, label, count: 0 };
+      entry.count += 1;
+      tagCounts.set(tag, entry);
+    });
+
+    const relaySet = new Set();
+    if (Array.isArray(video.relays)) {
+      video.relays.forEach((relay) => {
+        const normalized = normalizeFacetText(relay);
+        if (normalized) {
+          relaySet.add(normalized);
+        }
+      });
+    }
+    if (Array.isArray(video.relayHints)) {
+      video.relayHints.forEach((relay) => {
+        const normalized = normalizeFacetText(relay);
+        if (normalized) {
+          relaySet.add(normalized);
+        }
+      });
+    }
+    const relayField = normalizeFacetText(video.relay || video.eventRelay || "");
+    if (relayField) {
+      relaySet.add(relayField);
+    }
+    relaySet.forEach((relay) => {
+      const entry = relayCounts.get(relay) || {
+        value: relay,
+        label: relay,
+        count: 0,
+      };
+      entry.count += 1;
+      relayCounts.set(relay, entry);
+    });
+  });
+
+  return {
+    tags: buildFacetEntries(tagCounts, MAX_FACET_RESULTS.tags),
+    authors: buildFacetEntries(authorCounts, MAX_FACET_RESULTS.authors),
+    relays: buildFacetEntries(relayCounts, MAX_FACET_RESULTS.relays),
+  };
+};
 
 function renderProfileCards(profiles, container) {
   if (!container) return;
@@ -146,6 +318,7 @@ export async function initSearchView() {
   if (!query) {
     if (channelList) channelList.innerHTML = `<p class="text-sm text-muted col-span-full">Please enter a search term.</p>`;
     if (videoList) videoList.innerHTML = `<p class="text-sm text-muted col-span-full">Please enter a search term.</p>`;
+    setSearchFacetCounts(EMPTY_FACET_COUNTS);
     return;
   }
 
@@ -166,11 +339,15 @@ export async function initSearchView() {
   performVideoSearch(query, searchToken, parsedQuery.filters).then(videos => {
     if (searchToken !== currentSearchToken) return;
     const app = getApp();
+    setSearchFacetCounts(buildSearchFacetCounts(videos));
     renderSearchVideos(videos, videoList, app);
   }).catch(err => {
     devLogger.warn("[Search] Video search failed", err);
     if (videoList && searchToken === currentSearchToken) {
         videoList.innerHTML = `<p class="text-sm text-critical col-span-full">Failed to load videos.</p>`;
+    }
+    if (searchToken === currentSearchToken) {
+      setSearchFacetCounts(EMPTY_FACET_COUNTS);
     }
   });
 }
@@ -930,6 +1107,10 @@ async function performVideoSearch(query, token, filters = {}) {
                 relayVideos = events.map(evt => {
                     const vid = convertEventToVideo(evt);
                     if (vid.invalid) return null;
+                    const relayHints = extractRelayHints(evt);
+                    if (relayHints.length) {
+                        return { ...vid, relayHints };
+                    }
                     return vid;
                 }).filter(Boolean);
             }

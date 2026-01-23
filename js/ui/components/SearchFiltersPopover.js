@@ -5,6 +5,10 @@ import {
   parseFilterQuery,
   serializeFiltersToQuery,
 } from "../../search/searchFilters.js";
+import {
+  getSearchFacetCounts,
+  subscribeSearchFacetCounts,
+} from "../../search/searchFacetState.js";
 import { userLogger } from "../../utils/logger.js";
 
 const FOCUSABLE_SELECTOR =
@@ -217,6 +221,8 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
   }
 
   let controlState = null;
+  let suggestedFacetRenderer = null;
+  let suggestedFacetUnsubscribe = null;
 
   const render = ({ container, close }) => {
     const panel = createElement(doc, "div", {
@@ -256,6 +262,82 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
       attrs: { role: "status", "aria-live": "polite" },
     });
     panel.appendChild(parseMessage);
+
+    const suggestedSection = createElement(doc, "section", {
+      className: "bv-stack bv-stack--tight",
+    });
+    const suggestedHeading = createElement(doc, "p", {
+      className: "text-xs font-semibold uppercase tracking-wide text-muted",
+      text: "Suggested facets",
+    });
+    const suggestedGroups = createElement(doc, "div", {
+      className: "bv-stack bv-stack--tight",
+    });
+    const suggestedEmpty = createElement(doc, "p", {
+      className: "text-xs text-muted",
+      text: "Run a search to see suggested facets.",
+    });
+    suggestedSection.append(suggestedHeading, suggestedGroups, suggestedEmpty);
+    panel.appendChild(suggestedSection);
+
+    const renderSuggestedFacets = (facets = {}) => {
+      suggestedGroups.innerHTML = "";
+      const tags = Array.isArray(facets.tags) ? facets.tags : [];
+      const authors = Array.isArray(facets.authors) ? facets.authors : [];
+      const relays = Array.isArray(facets.relays) ? facets.relays : [];
+
+      const addFacetGroup = (title, items = []) => {
+        if (!items.length) {
+          return;
+        }
+        const group = createElement(doc, "div", {
+          className: "bv-stack bv-stack--tight",
+        });
+        group.appendChild(
+          createElement(doc, "p", {
+            className:
+              "text-xs font-semibold uppercase tracking-wide text-muted",
+            text: title,
+          }),
+        );
+        const list = createElement(doc, "div", {
+          className: "flex flex-wrap gap-2",
+        });
+        items.forEach((item) => {
+          const label =
+            typeof item?.label === "string" ? item.label : item?.value || "";
+          if (!label) {
+            return;
+          }
+          const count = Number.isFinite(item?.count)
+            ? Number(item.count)
+            : 0;
+          const chip = createElement(doc, "span", {
+            className: "search-filter-chip",
+            text: `${label} (${count})`,
+          });
+          list.appendChild(chip);
+        });
+        group.appendChild(list);
+        suggestedGroups.appendChild(group);
+      };
+
+      addFacetGroup("Tags", tags);
+      addFacetGroup("Authors", authors);
+      addFacetGroup("Relays", relays);
+
+      const hasSuggestions = Boolean(
+        suggestedGroups.children && suggestedGroups.children.length > 0,
+      );
+      suggestedEmpty.classList.toggle("hidden", hasSuggestions);
+    };
+
+    suggestedFacetRenderer = renderSuggestedFacets;
+    const initialFacets =
+      typeof options.getSuggestedFacets === "function"
+        ? options.getSuggestedFacets()
+        : getSearchFacetCounts();
+    renderSuggestedFacets(initialFacets);
 
     const dateSection = createElement(doc, "div", {
       className: "bv-stack bv-stack--tight",
@@ -920,6 +1002,26 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
     document: doc,
     restoreFocusOnClose: true,
   });
+
+  if (!suggestedFacetUnsubscribe) {
+    suggestedFacetUnsubscribe = subscribeSearchFacetCounts((next) => {
+      if (typeof suggestedFacetRenderer === "function") {
+        suggestedFacetRenderer(next);
+      }
+    });
+  }
+  const originalDestroy = popover.destroy?.bind(popover);
+  popover.destroy = (...args) => {
+    if (suggestedFacetUnsubscribe) {
+      suggestedFacetUnsubscribe();
+      suggestedFacetUnsubscribe = null;
+    }
+    suggestedFacetRenderer = null;
+    if (originalDestroy) {
+      return originalDestroy(...args);
+    }
+    return undefined;
+  };
 
   const syncFromQueryInput = (rawQuery) => {
     if (typeof rawQuery !== "string") {
