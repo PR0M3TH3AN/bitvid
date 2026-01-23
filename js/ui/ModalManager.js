@@ -5,6 +5,7 @@ import { truncateMiddle, formatShortNpub } from "../utils/formatters.js";
 import { showLoginRequiredToZapNotification } from "../payments/zapNotifications.js";
 import { VideoModal } from "./components/VideoModal.js";
 import { RevertModal } from "./components/RevertModal.js";
+import { ShareNostrModal } from "./components/ShareNostrModal.js";
 import initUploadModal from "./initUploadModal.js";
 import initEditModal from "./initEditModal.js";
 import initDeleteModal from "./initDeleteModal.js";
@@ -49,6 +50,7 @@ export default class ModalManager {
     this.videoModalHandlers = {};
 
     this.eventDetailsModal = null;
+    this.shareNostrModal = null;
 
     this.zapController = null;
   }
@@ -169,6 +171,14 @@ export default class ModalManager {
     this.deleteCancelHandler = deleteModalSetup.handlers.cancel;
     app.deleteModal = this.deleteModal;
     app.deleteModalEvents = this.deleteModalEvents;
+
+    this.shareNostrModal = new ShareNostrModal({
+      removeTrackingScripts,
+      setGlobalModalState,
+      container: modalContainer,
+      fallbackThumbnailSrc: this.assets.fallbackThumbnailSrc,
+    });
+    app.shareNostrModal = this.shareNostrModal;
 
     this.videoModal =
       (typeof this.ui.videoModal === "function"
@@ -696,6 +706,18 @@ export default class ModalManager {
           devLogger.warn("[ModalManager] Failed to destroy edit modal:", error);
         }
       }
+    }
+
+    if (this.shareNostrModal && typeof this.shareNostrModal.close === "function") {
+      try {
+        this.shareNostrModal.close();
+      } catch (error) {
+        devLogger.warn("[ModalManager] Failed to close share Nostr modal:", error);
+      }
+    }
+    this.shareNostrModal = null;
+    if (app.shareNostrModal) {
+      app.shareNostrModal = null;
     }
 
     if (this.revertModal && this.revertConfirmHandler) {

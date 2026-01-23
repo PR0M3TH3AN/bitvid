@@ -474,10 +474,11 @@ class Application {
           this.videoModal &&
           typeof this.videoModal.addEventListener === "function"
         ) {
-          this.videoModal.addEventListener("video:share-nostr", () => {
-            this.showStatus(
-              "Sharing on Nostr is not implemented yet. Coming soon!",
-            );
+          this.videoModal.addEventListener("video:share-nostr", (event) => {
+            this.openShareNostrModal({
+              video: event?.detail?.video || null,
+              triggerElement: event?.detail?.trigger || null,
+            });
           });
 
           this.videoModal.addEventListener("video:copy-cdn", (event) => {
@@ -10223,6 +10224,43 @@ class Application {
       .writeText(shareUrl)
       .then(() => this.showSuccess("Video link copied to clipboard!"))
       .catch(() => this.showError("Failed to copy the link."));
+  }
+
+  async openShareNostrModal({ video, triggerElement } = {}) {
+    const targetVideo =
+      video && typeof video === "object" ? video : this.currentVideo || null;
+    if (!targetVideo) {
+      this.showError("No video is available to share.");
+      return;
+    }
+
+    if (!this.shareNostrModal) {
+      devLogger.warn("[Application] Share Nostr modal is unavailable.");
+      this.showError("Share modal is not ready yet.");
+      return;
+    }
+
+    const shareUrl =
+      typeof targetVideo.shareUrl === "string" && targetVideo.shareUrl.trim()
+        ? targetVideo.shareUrl.trim()
+        : this.buildShareUrlFromEventId(targetVideo.id);
+    const payload = {
+      id: targetVideo.id,
+      title: targetVideo.title,
+      pubkey: targetVideo.pubkey,
+      thumbnail: targetVideo.thumbnail,
+      shareUrl,
+    };
+
+    try {
+      await this.shareNostrModal.open({
+        video: payload,
+        triggerElement,
+      });
+    } catch (error) {
+      devLogger.error("[Application] Failed to open Share Nostr modal:", error);
+      this.showError("Unable to open the share modal.");
+    }
   }
 
   /**
