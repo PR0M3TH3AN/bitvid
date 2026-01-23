@@ -245,6 +245,7 @@ export class HashtagStripHelper {
     try {
       this.activateHandler({
         tag,
+        event: detail?.event || null,
         trigger: detail?.button || null,
         context: this.context,
       });
