@@ -17,14 +17,22 @@ export default class VideoListViewController {
     );
   }
 
-  mount({ container = null, view, currentVideoList = null, includeTags = true } = {}) {
+  mount({
+    container = null,
+    popularTagsContainer = null,
+    view,
+    currentVideoList = null,
+    includeTags = true,
+  } = {}) {
     if (!view) {
       return { videoList: currentVideoList || null, popularTags: null };
     }
 
     const target = container || this.getElementById("videoList");
     let popularTags = null;
-    if (includeTags) {
+    if (this.isElement(popularTagsContainer)) {
+      popularTags = popularTagsContainer;
+    } else if (includeTags) {
       popularTags = this.getElementById("recentVideoTags");
     }
 
@@ -45,6 +53,7 @@ export default class VideoListViewController {
     reason,
     postLoginResult,
     currentVideoList = null,
+    popularTagsContainer = null,
   } = {}) {
     if (!view) {
       return {
@@ -74,7 +83,12 @@ export default class VideoListViewController {
         ? "Applying your filters…"
         : "Refreshing videos…";
 
-    const tagsRoot = this.getElementById("recentVideoTags");
+    let tagsRoot = null;
+    if (this.isElement(popularTagsContainer)) {
+      tagsRoot = popularTagsContainer;
+    } else {
+      tagsRoot = this.getElementById("recentVideoTags");
+    }
     if (typeof view.setPopularTagsContainer === "function") {
       view.setPopularTagsContainer(this.isElement(tagsRoot) ? tagsRoot : null);
     }

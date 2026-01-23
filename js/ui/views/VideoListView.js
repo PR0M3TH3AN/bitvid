@@ -1,16 +1,11 @@
 import { VideoCard } from "../components/VideoCard.js";
-import {
-  renderTagPillStrip,
-  applyTagPreferenceState,
-  trimTagPillStripToFit,
-} from "../components/tagPillList.js";
+import { HashtagStripHelper } from "../components/hashtagStripHelper.js";
 import {
   subscribeToVideoViewCount,
   unsubscribeFromVideoViewCount,
 } from "../../viewCounter.js";
 import { normalizeDesignSystemContext } from "../../designSystem.js";
 import { userLogger } from "../../utils/logger.js";
-import { collectVideoTags } from "../../utils/videoTags.js";
 
 const EMPTY_VIDEO_LIST_SIGNATURE = "__EMPTY__";
 
@@ -180,20 +175,15 @@ export class VideoListView {
     this.currentVideos = [];
     this.lastRenderedVideoSignature = null;
     this._lastRenderedVideoListElement = null;
-    this.popularTagsRoot = null;
-    this._popularTagStrip = null;
-    this._popularTagsSortedList = [];
-    this._popularTagResizeObserver = null;
-    this._popularTagResizeHandler = null;
-    this._popularTagResizeCancel = null;
-    this._popularTagResizeScheduled = false;
-    this._isApplyingPopularTagTrim = false;
-    this._handlePopularTagResize = () => {
-      if (this._isApplyingPopularTagTrim) {
-        return;
-      }
-      this.renderPopularTagStrip();
-    };
+
+    this.popularTagHelper = new HashtagStripHelper({
+      document: this.document,
+      window: this.window,
+      logger: userLogger,
+    });
+    this.popularTagHelper.setActivateHandler((tag, detail) =>
+      this.handlePopularTagActivate(tag, detail),
+    );
 
     this.handlers = {
       playback: null,
@@ -206,8 +196,6 @@ export class VideoListView {
       moderationHide: null,
       tagActivate: null,
     };
-
-    this.tagPreferenceStateResolver = null;
 
     this.allowNsfw = allowNsfw !== false;
     this.designSystem = normalizeDesignSystemContext(designSystem);
@@ -281,14 +269,9 @@ export class VideoListView {
     this.currentVideos = [];
     this.lastRenderedVideoSignature = null;
     this._lastRenderedVideoListElement = null;
-    this._teardownPopularTagResizeObserver();
-    if (this.popularTagsRoot) {
-      this.popularTagsRoot.textContent = "";
-      this.popularTagsRoot.hidden = true;
+    if (this.popularTagHelper) {
+      this.popularTagHelper.destroy();
     }
-    this.popularTagsRoot = null;
-    this._popularTagStrip = null;
-    this._popularTagsSortedList = [];
   }
 
   setPlaybackHandler(handler) {
@@ -330,228 +313,21 @@ export class VideoListView {
   }
 
   setTagPreferenceStateResolver(resolver) {
-    this.tagPreferenceStateResolver =
-      typeof resolver === "function" ? resolver : null;
+    if (this.popularTagHelper) {
+      this.popularTagHelper.setTagStateResolver(resolver);
+    }
   }
 
   setPopularTagsContainer(container) {
-    this._teardownPopularTagResizeObserver();
-    if (this.popularTagsRoot && this.popularTagsRoot !== container) {
-      this.popularTagsRoot.textContent = "";
-      this.popularTagsRoot.hidden = true;
-    }
-
-    this.popularTagsRoot = container || null;
-    this._popularTagStrip = null;
-
-    if (this.popularTagsRoot) {
-      this.popularTagsRoot.textContent = "";
-      this.popularTagsRoot.hidden = true;
-      if (this._popularTagsSortedList.length) {
-        this.renderPopularTagStrip();
-        this._ensurePopularTagResizeObserver();
-      }
+    if (this.popularTagHelper) {
+      this.popularTagHelper.mount(container || null);
     }
   }
 
   updatePopularTags(videos) {
-    const root = this.popularTagsRoot;
-    if (!root) {
-      return;
+    if (this.popularTagHelper) {
+      this.popularTagHelper.update(videos);
     }
-
-    if (!Array.isArray(videos) || videos.length === 0) {
-      this._popularTagsSortedList = [];
-      this.renderPopularTagStrip();
-      this._teardownPopularTagResizeObserver();
-      return;
-    }
-
-    const counts = new Map();
-    const displayNames = new Map();
-
-    videos.forEach((video) => {
-      const tags = collectVideoTags(video);
-      tags.forEach((tag) => {
-        if (typeof tag !== "string" || !tag) {
-          return;
-        }
-        const lower = tag.toLowerCase();
-        counts.set(lower, (counts.get(lower) || 0) + 1);
-        if (!displayNames.has(lower)) {
-          displayNames.set(lower, tag);
-        }
-      });
-    });
-
-    if (!counts.size) {
-      this._popularTagsSortedList = [];
-      this.renderPopularTagStrip();
-      this._teardownPopularTagResizeObserver();
-      return;
-    }
-
-    const tagEntries = Array.from(counts.entries()).map(([lower, count]) => ({
-      count,
-      tag: displayNames.get(lower) || lower,
-    }));
-
-    tagEntries.sort((a, b) => {
-      if (b.count !== a.count) {
-        return b.count - a.count;
-      }
-      const lowerA = a.tag.toLowerCase();
-      const lowerB = b.tag.toLowerCase();
-      if (lowerA === lowerB) {
-        return a.tag.localeCompare(b.tag);
-      }
-      return lowerA.localeCompare(lowerB);
-    });
-
-    this._popularTagsSortedList = tagEntries.map((entry) => entry.tag);
-    this.renderPopularTagStrip();
-    if (this._popularTagsSortedList.length) {
-      this._ensurePopularTagResizeObserver();
-    } else {
-      this._teardownPopularTagResizeObserver();
-    }
-  }
-
-  renderPopularTagStrip() {
-    const root = this.popularTagsRoot;
-    if (!root) {
-      return;
-    }
-
-    const tags = Array.isArray(this._popularTagsSortedList)
-      ? [...this._popularTagsSortedList]
-      : [];
-
-    this._isApplyingPopularTagTrim = true;
-
-      try {
-        root.textContent = "";
-        this._popularTagStrip = null;
-
-        if (!tags.length) {
-          root.hidden = true;
-          return;
-        }
-
-        const doc = this.document || root.ownerDocument || null;
-        if (!doc) {
-          root.hidden = true;
-          this._teardownPopularTagResizeObserver();
-          return;
-        }
-
-      const { root: strip } = renderTagPillStrip({
-        document: doc,
-        tags,
-        onTagActivate: (tag, detail = {}) =>
-          this.handlePopularTagActivate(tag, detail),
-        getTagState: (tag) => this.resolveTagPreferenceState(tag),
-      });
-
-      root.appendChild(strip);
-      this._popularTagStrip = strip;
-      trimTagPillStripToFit({ strip, container: root });
-      root.hidden = strip.childElementCount === 0;
-    } finally {
-      this._isApplyingPopularTagTrim = false;
-    }
-  }
-
-  _ensurePopularTagResizeObserver() {
-    const root = this.popularTagsRoot;
-    if (!root || this._popularTagResizeObserver || this._popularTagResizeHandler) {
-      return;
-    }
-
-    const resizeObserverCtor =
-      (this.window && this.window.ResizeObserver) ||
-      (typeof globalThis !== "undefined" ? globalThis.ResizeObserver : null);
-
-    if (typeof resizeObserverCtor === "function") {
-      this._popularTagResizeObserver = new resizeObserverCtor(() => {
-        this._handlePopularTagResize();
-      });
-      this._popularTagResizeObserver.observe(root);
-      return;
-    }
-
-    if (!this.window) {
-      return;
-    }
-
-    const schedule = (callback) => {
-      if (this._popularTagResizeScheduled) {
-        return;
-      }
-      this._popularTagResizeScheduled = true;
-
-      if (typeof this.window.requestAnimationFrame === "function") {
-        const frameId = this.window.requestAnimationFrame(() => {
-          this._popularTagResizeScheduled = false;
-          this._popularTagResizeCancel = null;
-          callback();
-        });
-        this._popularTagResizeCancel = () => {
-          this.window.cancelAnimationFrame(frameId);
-          this._popularTagResizeCancel = null;
-          this._popularTagResizeScheduled = false;
-        };
-      } else {
-        const timeoutId = this.window.setTimeout(() => {
-          this._popularTagResizeScheduled = false;
-          this._popularTagResizeCancel = null;
-          callback();
-        }, 50);
-        this._popularTagResizeCancel = () => {
-          this.window.clearTimeout(timeoutId);
-          this._popularTagResizeCancel = null;
-          this._popularTagResizeScheduled = false;
-        };
-      }
-    };
-
-    const handler = () => {
-      schedule(() => {
-        if (!this.popularTagsRoot) {
-          return;
-        }
-        this._handlePopularTagResize();
-      });
-    };
-
-    this.window.addEventListener("resize", handler);
-    this._popularTagResizeHandler = handler;
-  }
-
-  _teardownPopularTagResizeObserver() {
-    if (this._popularTagResizeObserver) {
-      try {
-        this._popularTagResizeObserver.disconnect();
-      } catch (error) {
-        // Ignore disconnect errors.
-      }
-    }
-    this._popularTagResizeObserver = null;
-
-    if (this._popularTagResizeHandler && this.window) {
-      this.window.removeEventListener("resize", this._popularTagResizeHandler);
-    }
-    this._popularTagResizeHandler = null;
-
-    if (typeof this._popularTagResizeCancel === "function") {
-      try {
-        this._popularTagResizeCancel();
-      } catch (error) {
-        // Ignore cancellation errors.
-      }
-    }
-    this._popularTagResizeCancel = null;
-    this._popularTagResizeScheduled = false;
   }
 
   render(videos, metadata = null) {
@@ -1500,34 +1276,10 @@ export class VideoListView {
     this.emitSelected(detail);
   }
 
-  resolveTagPreferenceState(tag) {
-    const resolver = this.tagPreferenceStateResolver;
-    if (typeof resolver !== "function") {
-      return "neutral";
-    }
-
-    try {
-      return resolver(tag);
-    } catch (error) {
-      userLogger.warn(
-        "[VideoListView] Failed to resolve tag preference state:",
-        error,
-      );
-      return "neutral";
-    }
-  }
-
   refreshTagPreferenceStates() {
-    if (!this._popularTagStrip) {
-      return;
+    if (this.popularTagHelper) {
+      this.popularTagHelper.refreshTagStates();
     }
-
-    const buttons = this._popularTagStrip.querySelectorAll("button[data-tag]");
-    buttons.forEach((button) => {
-      const tag = button.dataset.tag || "";
-      const state = this.resolveTagPreferenceState(tag);
-      applyTagPreferenceState(button, state);
-    });
   }
 
   handlePopularTagActivate(tag, { event = null, button = null } = {}) {
