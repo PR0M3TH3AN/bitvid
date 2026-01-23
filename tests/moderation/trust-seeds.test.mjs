@@ -158,6 +158,9 @@ test("bootstrap seeds track editor roster and ignore whitelist-only changes", as
     ensureReady: async () => {
       ensureReadyCalls += 1;
     },
+    waitForReady: async () => {
+      ensureReadyCalls += 1;
+    },
     getEditors: () => {
       getEditorsCalls += 1;
       return currentEditors;

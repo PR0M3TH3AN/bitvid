@@ -449,6 +449,13 @@ class AccessControl {
     return Promise.resolve();
   }
 
+  async waitForReady() {
+    if (this.hasLoaded) {
+      return;
+    }
+    return this.refresh();
+  }
+
   whitelistMode() {
     return this.whitelistEnabled;
   }
