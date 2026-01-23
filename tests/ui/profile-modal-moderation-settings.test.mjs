@@ -147,7 +147,9 @@ beforeEach(async () => {
     services: {
       relayManager: {},
       userBlocks: {},
-      nostrClient: {},
+      nostrClient: {
+        ensurePool: async () => {},
+      },
       accessControl: {},
       getCurrentUserNpub: () => null,
       moderationSettings: moderationService,
@@ -226,6 +228,7 @@ test("moderation settings save updates service and disables control", async () =
     blurThreshold: 5,
     autoplayBlockThreshold: 4,
     trustedMuteHideThreshold: 2,
+    trustedMuteHideThresholds: {},
     trustedSpamHideThreshold: 6,
   });
   assert.equal(controller.moderationSaveButton.disabled, true);
@@ -262,6 +265,7 @@ test("moderation reset restores defaults and clearing inputs uses defaults", asy
     blurThreshold: DEFAULT_BLUR_THRESHOLD,
     autoplayBlockThreshold: DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
     trustedMuteHideThreshold: DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
+    trustedMuteHideThresholds: {},
     trustedSpamHideThreshold: DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
   });
   assert.equal(controller.moderationBlurInput.value, DEFAULT_BLUR_STRING);
@@ -288,6 +292,7 @@ test("moderation reset restores defaults and clearing inputs uses defaults", asy
     blurThreshold: 7,
     autoplayBlockThreshold: DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
     trustedMuteHideThreshold: DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
+    trustedMuteHideThresholds: {},
     trustedSpamHideThreshold: 8,
   });
 
@@ -315,6 +320,7 @@ test("moderation reset restores defaults and clearing inputs uses defaults", asy
     blurThreshold: DEFAULT_BLUR_THRESHOLD,
     autoplayBlockThreshold: DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
     trustedMuteHideThreshold: DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
+    trustedMuteHideThresholds: {},
     trustedSpamHideThreshold: DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
   });
 });
