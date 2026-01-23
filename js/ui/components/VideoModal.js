@@ -2797,10 +2797,6 @@ export class VideoModal {
   }
 
   updateSourceAvailability(video) {
-    if (!this.sourceToggleContainer) {
-      return;
-    }
-
     const hasUrl = Boolean(
       typeof video?.url === "string" && video.url.trim()
     );
@@ -2808,6 +2804,12 @@ export class VideoModal {
       (typeof video?.magnet === "string" && video.magnet.trim()) ||
         video?.torrentSupported
     );
+
+    this.setShareEnabled(hasUrl || hasMagnet);
+
+    if (!this.sourceToggleContainer) {
+      return;
+    }
 
     if (hasUrl || hasMagnet) {
       this.sourceToggleContainer.removeAttribute("hidden");
