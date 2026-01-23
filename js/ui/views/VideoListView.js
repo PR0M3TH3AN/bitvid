@@ -181,8 +181,9 @@ export class VideoListView {
       window: this.window,
       logger: userLogger,
     });
-    this.popularTagHelper.setActivateHandler((tag, detail) =>
-      this.handlePopularTagActivate(tag, detail),
+    this.popularTagHelper.setContext("popular-tags");
+    this.popularTagHelper.setActivateHandler((detail) =>
+      this.handlePopularTagActivate(detail),
     );
 
     this.handlers = {
@@ -1278,27 +1279,37 @@ export class VideoListView {
 
   refreshTagPreferenceStates() {
     if (this.popularTagHelper) {
-      this.popularTagHelper.refreshTagStates();
+      this.popularTagHelper.refreshTagPreferenceStates();
     }
   }
 
-  handlePopularTagActivate(tag, { event = null, button = null } = {}) {
+  handlePopularTagActivate(detail = {}, options = {}) {
+    const candidate =
+      detail && typeof detail === "object" ? detail : { tag: detail };
+    const tag = candidate.tag;
+    const event = candidate.event || options.event || null;
+    const trigger =
+      candidate.trigger || candidate.button || options.button || null;
+    const context =
+      typeof candidate.context === "string" && candidate.context
+        ? candidate.context
+        : "popular-tags";
     const normalizedTag =
       typeof tag === "string" && tag.trim() ? tag.trim() : String(tag ?? "");
     if (!normalizedTag) {
       return;
     }
 
-    const detail = {
+    const payload = {
       tag: normalizedTag,
       event,
-      trigger: button,
-      context: "popular-tags",
+      trigger,
+      context,
     };
 
     if (typeof this.handlers.tagActivate === "function") {
       try {
-        this.handlers.tagActivate(detail);
+        this.handlers.tagActivate(payload);
       } catch (error) {
         userLogger.warn(
           "[VideoListView] Tag activation handler threw an error:",
@@ -1307,6 +1318,6 @@ export class VideoListView {
       }
     }
 
-    this.emit("tag:activate", detail);
+    this.emit("tag:activate", payload);
   }
 }
