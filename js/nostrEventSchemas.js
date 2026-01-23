@@ -1010,14 +1010,12 @@ export function buildShareEvent(params) {
   const readMarker = schema?.readMarker || "read";
   const writeMarker = schema?.writeMarker || "write";
 
-  const normalizedVideoId =
-    typeof video?.id === "string" ? video.id.trim() : "";
+  const normalizedVideoId = normalizePointerIdentifier(video?.id);
   if (normalizedVideoId) {
     tags.push(["e", normalizedVideoId, "", "mention"]);
   }
 
-  const normalizedVideoPubkey =
-    typeof video?.pubkey === "string" ? video.pubkey.trim() : "";
+  const normalizedVideoPubkey = normalizePointerIdentifier(video?.pubkey);
   if (normalizedVideoPubkey) {
     tags.push(["p", normalizedVideoPubkey, "", "mention"]);
   }
