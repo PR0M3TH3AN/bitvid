@@ -163,7 +163,7 @@ export class AppShell {
     );
 
     const sidebar = createElement(doc, "aside", "dm-app-shell__sidebar");
-    sidebar.style.background = "transparent";
+    sidebar.classList.add("bg-transparent");
     const sidebarHeader = createElement(doc, "div", "dm-app-shell__sidebar-header flex items-center justify-between p-4 relative");
     const sidebarTitle = createElement(
       doc,

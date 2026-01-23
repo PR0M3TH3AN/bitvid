@@ -4483,7 +4483,7 @@ export class ProfileModalController {
       return;
     }
 
-    root.style.background = "transparent";
+    root.classList.add("bg-transparent");
     container.appendChild(root);
 
     if (actor && activeConversationId) {

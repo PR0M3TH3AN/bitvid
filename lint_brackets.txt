@@ -1,0 +1,3 @@
+
+> bitvid@1.0.0 lint:tailwind-brackets
+> node scripts/check-design-tokens.mjs --check=brackets
