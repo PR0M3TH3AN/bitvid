@@ -1892,6 +1892,7 @@ export class ProfileModalController {
       featureBannerSelector: "#profileHistoryFeatureBanner",
       sessionWarningSelector: "#profileHistorySessionWarning",
       emptyCopy: "You haven’t watched any videos yet.",
+      variant: "modal",
       remove: (payload) =>
         this.callbacks.onHistoryReady({
           ...(typeof payload === "object" && payload ? payload : {}),
