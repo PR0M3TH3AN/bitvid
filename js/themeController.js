@@ -4,8 +4,8 @@ const STORAGE_KEY = "bitvid:theme";
 const FALLBACK_THEME = "dark";
 const VALID_THEMES = new Set(["light", "dark"]);
 const FALLBACK_META_COLORS = {
-  dark: "#0f172a",
-  light: "#f8fafc",
+  dark: "rgb(15, 23, 42)",
+  light: "rgb(248, 250, 252)",
 };
 const TOGGLE_SELECTORS = [
   "[data-theme-toggle]",

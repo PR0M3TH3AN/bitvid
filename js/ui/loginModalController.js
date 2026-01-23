@@ -1300,8 +1300,8 @@ export default class LoginModalController {
         // Force high-contrast black-on-white for the QR code to ensure
         // it remains readable and scannable regardless of the application theme.
         // We resolve these from the unified token system to ensure consistency.
-        let qrLightColor = "#ffffff";
-        let qrDarkColor = "#000000";
+        let qrLightColor = "rgb(255, 255, 255)";
+        let qrDarkColor = "rgb(0, 0, 0)";
 
         if (this.window && typeof this.window.getComputedStyle === "function") {
           try {

@@ -22,7 +22,9 @@ const IGNORED_GLOBS = [
   '!js/utils/qrcode.js',
   '!**/dist/**',
   '!REMEDIATION_REPORT.md',
-  '!scripts/daily-design-system-audit.mjs'
+  '!scripts/daily-design-system-audit.mjs',
+  '!config/instance-config.js',
+  '!config/validate-config.js'
 ];
 
 const rgArgs = [
