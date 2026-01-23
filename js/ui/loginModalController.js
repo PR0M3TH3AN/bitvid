@@ -1297,28 +1297,11 @@ export default class LoginModalController {
 
       if (qrContainer instanceof HTMLElement) {
         qrContainer.innerHTML = "";
-        const resolveTokenColor = (tokenName, fallback) => {
-          if (!tokenName) {
-            return fallback;
-          }
-          const doc = this.document;
-          const win = this.window;
-          if (!doc || !win || typeof win.getComputedStyle !== "function") {
-            return fallback;
-          }
-          const root = doc.documentElement;
-          if (!root) {
-            return fallback;
-          }
-          const computed = win.getComputedStyle(root);
-          if (!computed) {
-            return fallback;
-          }
-          const value = computed.getPropertyValue(tokenName);
-          return value && value.trim() ? value.trim() : fallback;
-        };
-        const qrLightColor = resolveTokenColor("--color-white", "#ffffff");
-        const qrDarkColor = resolveTokenColor("--color-black", "#000000");
+        // Force high-contrast black-on-white for the QR code to ensure
+        // it remains readable and scannable regardless of the application theme.
+        const qrLightColor = "#ffffff";
+        const qrDarkColor = "#000000";
+
         if (uri) {
           try {
             qrInstance = renderQrCode(qrContainer, uri, {
