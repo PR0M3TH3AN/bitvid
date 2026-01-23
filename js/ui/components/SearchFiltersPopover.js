@@ -1,8 +1,16 @@
 import createPopover from "../overlay/popoverEngine.js";
-import { DEFAULT_FILTERS } from "../../search/searchFilters.js";
+import {
+  DEFAULT_FILTERS,
+  SORT_OPTIONS,
+  parseFilterQuery,
+  serializeFiltersToQuery,
+} from "../../search/searchFilters.js";
+import { userLogger } from "../../utils/logger.js";
 
 const FOCUSABLE_SELECTOR =
   "a[href], button:not([disabled]), input:not([disabled]):not([type=\"hidden\"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex=\"-1\"])";
+
+const SEARCH_PRESET_STORAGE_KEY = "bitvid:searchPresets";
 
 function resolveDocument(documentRef) {
   if (documentRef && documentRef.nodeType === 9) {
@@ -141,6 +149,62 @@ const normalizeTagValue = (value) =>
     .split(/[, ]+/)
     .map((tag) => tag.trim().replace(/^#/, ""))
     .filter(Boolean);
+
+const normalizePresetEntry = (entry) => {
+  if (!entry || typeof entry !== "object") {
+    return null;
+  }
+  const name =
+    typeof entry.name === "string" ? entry.name.trim() : "";
+  const filters =
+    typeof entry.filters === "string" ? entry.filters.trim() : "";
+  if (!name) {
+    return null;
+  }
+  return { name, filters };
+};
+
+const readSearchPresets = () => {
+  if (typeof window === "undefined" || !window.localStorage) {
+    return [];
+  }
+  try {
+    const raw = window.localStorage.getItem(SEARCH_PRESET_STORAGE_KEY);
+    if (!raw) {
+      return [];
+    }
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed
+      .map(normalizePresetEntry)
+      .filter(Boolean)
+      .map((preset) => ({
+        name: preset.name,
+        filters: preset.filters || "",
+      }));
+  } catch (error) {
+    userLogger.warn("[Search presets] Unable to read saved presets:", error);
+    return [];
+  }
+};
+
+const writeSearchPresets = (presets) => {
+  if (typeof window === "undefined" || !window.localStorage) {
+    return false;
+  }
+  try {
+    window.localStorage.setItem(
+      SEARCH_PRESET_STORAGE_KEY,
+      JSON.stringify(presets),
+    );
+    return true;
+  } catch (error) {
+    userLogger.warn("[Search presets] Unable to save presets:", error);
+    return false;
+  }
+};
 
 export function attachSearchFiltersPopover(triggerElement, options = {}) {
   if (!triggerElement) {
@@ -397,12 +461,69 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
     toggleSection.append(nsfwToggle, followedToggle);
     panel.appendChild(toggleSection);
 
+    const presetSection = createElement(doc, "div", {
+      className: "bv-stack bv-stack--tight",
+    });
+    presetSection.appendChild(
+      createElement(doc, "p", {
+        className: "text-xs font-semibold uppercase tracking-wide text-muted",
+        text: "Presets",
+      }),
+    );
+    const presetRow = createElement(doc, "div", {
+      className: "flex flex-wrap items-center gap-2",
+    });
+    const presetSelect = createElement(doc, "select", {
+      className: "select flex-1",
+      attrs: { "aria-label": "Saved search presets" },
+    });
+    const presetPlaceholder = createElement(doc, "option", {
+      text: "Select preset",
+      attrs: { value: "" },
+    });
+    presetSelect.appendChild(presetPlaceholder);
+    const applyPresetButton = createElement(doc, "button", {
+      className: "btn-ghost text-sm",
+      text: "Apply preset",
+      attrs: { type: "button" },
+    });
+    presetRow.append(presetSelect, applyPresetButton);
+    const presetSaveRow = createElement(doc, "div", {
+      className: "flex flex-wrap items-center gap-2",
+    });
+    const presetNameInput = createElement(doc, "input", {
+      className: "input flex-1",
+      attrs: { type: "text", placeholder: "Preset name" },
+    });
+    const savePresetButton = createElement(doc, "button", {
+      className: "btn-ghost text-sm",
+      text: "Save preset",
+      attrs: { type: "button" },
+    });
+    presetSaveRow.append(presetNameInput, savePresetButton);
+    presetSection.append(presetRow, presetSaveRow);
+    panel.appendChild(presetSection);
+
+    const statusMessage = createElement(doc, "p", {
+      className: "text-xs text-muted hidden",
+      attrs: { role: "status", "aria-live": "polite" },
+    });
+    panel.appendChild(statusMessage);
+
     const footer = createElement(doc, "div", {
       className: "flex items-center justify-between gap-3 border-t border-border/60 pt-4",
+    });
+    const footerActions = createElement(doc, "div", {
+      className: "flex flex-wrap items-center gap-2",
     });
     const resetButton = createElement(doc, "button", {
       className: "btn-ghost text-sm",
       text: "Reset",
+      attrs: { type: "button" },
+    });
+    const copyLinkButton = createElement(doc, "button", {
+      className: "btn-ghost text-sm",
+      text: "Copy search link",
       attrs: { type: "button" },
     });
     const applyButton = createElement(doc, "button", {
@@ -513,8 +634,158 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
       return filters;
     };
 
+    const resolveSearchLink = () => {
+      if (typeof window === "undefined") {
+        return "";
+      }
+      const rawQuery =
+        typeof options.getQueryInputValue === "function"
+          ? options.getQueryInputValue() || ""
+          : "";
+      const parsed = parseFilterQuery(rawQuery);
+      const nextFilters = buildFiltersFromControls();
+      const params = new URLSearchParams();
+      if (parsed.text) {
+        params.set("q", parsed.text);
+      }
+      const serialized = serializeFiltersToQuery(nextFilters);
+      if (serialized) {
+        params.set("filters", serialized);
+      }
+      const hashSuffix = params.toString();
+      const hash = hashSuffix ? `#view=search&${hashSuffix}` : "#view=search";
+      const url = new URL(window.location.href);
+      url.hash = hash;
+      return url.toString();
+    };
+
+    const setStatusMessage = (message, tone = "muted") => {
+      if (!statusMessage) {
+        return;
+      }
+      if (!message) {
+        statusMessage.textContent = "";
+        statusMessage.classList.add("hidden");
+        statusMessage.classList.remove("text-warning");
+        statusMessage.classList.add("text-muted");
+        return;
+      }
+      statusMessage.textContent = message;
+      statusMessage.classList.remove("hidden");
+      if (tone === "warning") {
+        statusMessage.classList.add("text-warning");
+        statusMessage.classList.remove("text-muted");
+      } else {
+        statusMessage.classList.remove("text-warning");
+        statusMessage.classList.add("text-muted");
+      }
+    };
+
+    const presetState = {
+      presets: [],
+      presetMap: new Map(),
+    };
+
+    const updatePresetSelect = (presets) => {
+      presetState.presets = presets;
+      presetState.presetMap = new Map(
+        presets.map((preset) => [preset.name, preset.filters]),
+      );
+      while (presetSelect.options.length > 1) {
+        presetSelect.remove(1);
+      }
+      presets.forEach((preset) => {
+        const option = createElement(doc, "option", {
+          text: preset.name,
+          attrs: { value: preset.name },
+        });
+        presetSelect.appendChild(option);
+      });
+    };
+
+    const refreshPresets = () => {
+      const presets = readSearchPresets();
+      updatePresetSelect(presets);
+    };
+
+    presetSelect.addEventListener("change", () => {
+      const selectedName = presetSelect.value;
+      if (!selectedName) {
+        return;
+      }
+      const serialized = presetState.presetMap.get(selectedName) || "";
+      const parsed = parseFilterQuery(serialized);
+      applyStateToControls(parsed.filters || DEFAULT_FILTERS);
+      setStatusMessage("Preset loaded. Apply filters to search.");
+    });
+
+    applyPresetButton.addEventListener("click", () => {
+      const selectedName = presetSelect.value;
+      if (!selectedName) {
+        setStatusMessage("Choose a preset to apply.", "warning");
+        return;
+      }
+      const serialized = presetState.presetMap.get(selectedName) || "";
+      const parsed = parseFilterQuery(serialized);
+      if (typeof options.onApply === "function") {
+        options.onApply(parsed.filters || DEFAULT_FILTERS);
+      }
+      close();
+    });
+
+    savePresetButton.addEventListener("click", () => {
+      const name = presetNameInput.value.trim();
+      if (!name) {
+        setStatusMessage("Enter a name to save this preset.", "warning");
+        return;
+      }
+      const filters = buildFiltersFromControls();
+      const serialized = serializeFiltersToQuery(filters);
+      const existing = presetState.presets.filter(
+        (preset) => preset.name !== name,
+      );
+      const nextPresets = [
+        ...existing,
+        { name, filters: serialized },
+      ];
+      const saved = writeSearchPresets(nextPresets);
+      if (!saved) {
+        setStatusMessage("Unable to save preset right now.", "warning");
+        return;
+      }
+      presetNameInput.value = "";
+      updatePresetSelect(nextPresets);
+      presetSelect.value = name;
+      setStatusMessage("Preset saved.");
+    });
+
+    copyLinkButton.addEventListener("click", async () => {
+      const link = resolveSearchLink();
+      if (!link) {
+        setStatusMessage("Unable to build a search link.", "warning");
+        return;
+      }
+      if (
+        typeof navigator === "undefined" ||
+        !navigator.clipboard ||
+        typeof navigator.clipboard.writeText !== "function"
+      ) {
+        setStatusMessage("Clipboard access is unavailable.", "warning");
+        userLogger.warn("[Search presets] Clipboard API unavailable.");
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(link);
+        setStatusMessage("Search link copied.");
+      } catch (error) {
+        userLogger.warn("[Search presets] Failed to copy search link:", error);
+        setStatusMessage("Unable to copy link.", "warning");
+      }
+    });
+
     resetButton.addEventListener("click", () => {
       applyStateToControls(DEFAULT_FILTERS);
+      setStatusMessage("");
       if (typeof options.onReset === "function") {
         options.onReset();
       }
@@ -523,9 +794,11 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
       if (typeof options.onApply === "function") {
         options.onApply(buildFiltersFromControls());
       }
+      setStatusMessage("");
       close();
     });
-    footer.append(resetButton, applyButton);
+    footerActions.append(resetButton, copyLinkButton);
+    footer.append(footerActions, applyButton);
     panel.appendChild(footer);
 
     trapFocus(panel);
@@ -533,7 +806,27 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
 
     controlState = {
       applyStateToControls,
+      setParseErrors: (errors = []) => {
+        if (!parseMessage) return;
+        if (!errors?.length) {
+          parseMessage.textContent = "";
+          parseMessage.classList.add("hidden");
+          return;
+        }
+        const message = errors
+          .map((error) =>
+            error?.token
+              ? `${error.token} (${error.message})`
+              : error?.message,
+          )
+          .filter(Boolean)
+          .join(" • ");
+        parseMessage.textContent = message || "Some filters could not be parsed.";
+        parseMessage.classList.remove("hidden");
+      },
+      refreshPresets,
     };
+    refreshPresets();
     return panel;
   };
 
@@ -554,6 +847,9 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
       const nextState =
         typeof options.getState === "function" ? options.getState() : null;
       controlState.applyStateToControls(nextState?.filters || DEFAULT_FILTERS);
+    }
+    if (controlState?.refreshPresets) {
+      controlState.refreshPresets();
     }
     await popover.open();
   });
