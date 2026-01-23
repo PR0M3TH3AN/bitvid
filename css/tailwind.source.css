@@ -3727,6 +3727,18 @@
     z-index: var(--z-modal-top-content);
   }
 
+  #modalContainer > #shareNostrModal {
+    z-index: var(--z-modal-top-root);
+  }
+
+  #modalContainer > #shareNostrModal > .bv-modal-backdrop {
+    z-index: var(--z-modal-top-overlay);
+  }
+
+  #modalContainer > #shareNostrModal .bv-modal__panel {
+    z-index: var(--z-modal-top-content);
+  }
+
   .bv-modal[data-nested-modal-active="true"] {
     pointer-events: none;
     visibility: hidden;
