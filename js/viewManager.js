@@ -1,6 +1,7 @@
 // js/viewManager.js
 import { initChannelProfileView } from "./channelProfile.js";
 import { initForYouView } from "./forYouView.js";
+import { initKidsView } from "./kidsView.js";
 import { initExploreView } from "./exploreView.js";
 import { subscriptions } from "./subscriptions.js";
 import { getApplication } from "./applicationContext.js";
@@ -113,6 +114,20 @@ export const viewInitRegistry = {
       app.loadForYouVideos();
     }
     // Force profile updates after the new view is in place.
+    const refreshApp = getApplication();
+    if (refreshApp && typeof refreshApp.forceRefreshAllProfiles === "function") {
+      refreshApp.forceRefreshAllProfiles();
+    }
+  },
+  kids: () => {
+    initKidsView();
+    const app = getApplication();
+    if (app && typeof app.loadKidsVideos === "function") {
+      if (typeof app.mountVideoListView === "function") {
+        app.mountVideoListView();
+      }
+      app.loadKidsVideos();
+    }
     const refreshApp = getApplication();
     if (refreshApp && typeof refreshApp.forceRefreshAllProfiles === "function") {
       refreshApp.forceRefreshAllProfiles();

@@ -16,6 +16,7 @@ export const NOTE_TYPES = Object.freeze({
   NIP71_VIDEO: "nip71Video",
   NIP71_SHORT_VIDEO: "nip71ShortVideo",
   REPOST: "repost",
+  SHARE: "share",
   RELAY_LIST: "relayList",
   VIEW_EVENT: "viewEvent",
   VIDEO_REACTION: "videoReaction",
@@ -58,6 +59,20 @@ let cachedUtf8Encoder = null;
 
 const ADDITIONAL_POINTER_TAGS = new Set(["p", "e"]);
 const HEX_32_BYTE_REGEX = /^[0-9a-f]{64}$/i;
+
+function safeStringify(value) {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (value === null || value === undefined) {
+    return "";
+  }
+  try {
+    return String(value);
+  } catch (err) {
+    return "";
+  }
+}
 
 function normalizePointerIdentifier(value) {
   if (typeof value !== "string") {
@@ -281,6 +296,19 @@ const BASE_SCHEMAS = {
     content: {
       format: "json",
       description: "Content field contains the JSON-serialized event being reposted.",
+    },
+  },
+  [NOTE_TYPES.SHARE]: {
+    type: NOTE_TYPES.SHARE,
+    label: "Share note",
+    kind: 1,
+    relayTagName: "r",
+    readMarker: "read",
+    writeMarker: "write",
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      format: "text",
+      description: "Plaintext share note referencing a video.",
     },
   },
   [NOTE_TYPES.NIP71_VIDEO]: {
@@ -856,13 +884,19 @@ export function buildVideoMirrorEvent(params) {
       }
     });
   }
-  return {
+  const event = {
     kind: schema?.kind ?? 1063,
     pubkey,
     created_at,
     tags: combinedTags,
-    content: typeof content === "string" ? content : String(content ?? ""),
+    content: safeStringify(content),
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.VIDEO_MIRROR, event);
+  }
+
+  return event;
 }
 
 export function buildRepostEvent(params) {
@@ -972,13 +1006,132 @@ export function buildRepostEvent(params) {
     }
   }
 
-  return {
+  const event = {
     kind: resolvedKind,
     pubkey,
     created_at,
     tags,
     content,
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.REPOST, event);
+  }
+
+  return event;
+}
+
+export function buildShareEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    content = "",
+    video = null,
+    relays = [],
+    additionalTags = [],
+  } = params || {};
+  const schema = getNostrEventSchema(NOTE_TYPES.SHARE);
+  const tags = [];
+  const relayTagName = schema?.relayTagName || "r";
+  const readMarker = schema?.readMarker || "read";
+  const writeMarker = schema?.writeMarker || "write";
+
+  const normalizedVideoId = normalizePointerIdentifier(video?.id);
+  if (normalizedVideoId) {
+    tags.push(["e", normalizedVideoId, "", "mention"]);
+  }
+
+  const normalizedVideoPubkey = normalizePointerIdentifier(video?.pubkey);
+  if (normalizedVideoPubkey) {
+    tags.push(["p", normalizedVideoPubkey, "", "mention"]);
+  }
+
+  const seenRelayTags = new Set();
+
+  const pushRelayTag = (url, marker) => {
+    const normalizedUrl = typeof url === "string" ? url.trim() : "";
+    if (!normalizedUrl) {
+      return;
+    }
+    const normalizedMarker =
+      typeof marker === "string" ? marker.trim().toLowerCase() : "";
+    const resolvedMarker =
+      normalizedMarker === "read" || normalizedMarker === "write"
+        ? normalizedMarker
+        : "";
+    const dedupeKey = `${normalizedUrl}|${resolvedMarker}`;
+    if (seenRelayTags.has(dedupeKey)) {
+      return;
+    }
+    seenRelayTags.add(dedupeKey);
+    if (resolvedMarker) {
+      const markerValue = resolvedMarker === "read" ? readMarker : writeMarker;
+      tags.push([relayTagName, normalizedUrl, markerValue]);
+    } else {
+      tags.push([relayTagName, normalizedUrl]);
+    }
+  };
+
+  if (Array.isArray(relays)) {
+    relays.forEach((entry) => {
+      if (typeof entry === "string") {
+        pushRelayTag(entry, "");
+        return;
+      }
+
+      if (Array.isArray(entry) && entry.length) {
+        if (entry[0] === relayTagName) {
+          pushRelayTag(entry[1], entry[2]);
+          return;
+        }
+        pushRelayTag(entry[0], entry[1]);
+        return;
+      }
+
+      if (entry && typeof entry === "object") {
+        const url =
+          typeof entry.url === "string"
+            ? entry.url
+            : typeof entry.relay === "string"
+            ? entry.relay
+            : "";
+        let marker = "";
+        if (typeof entry.mode === "string") {
+          marker = entry.mode;
+        } else if (typeof entry.marker === "string") {
+          marker = entry.marker;
+        } else if (entry.read === true && entry.write === false) {
+          marker = "read";
+        } else if (entry.write === true && entry.read === false) {
+          marker = "write";
+        }
+        pushRelayTag(url, marker);
+      }
+    });
+  }
+
+  appendSchemaTags(tags, schema);
+
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
+  }
+
+  const resolvedContent = ensureValidUtf8Content(content);
+
+  const event = {
+    kind: schema?.kind ?? 1,
+    pubkey,
+    created_at,
+    tags,
+    content: resolvedContent,
+  };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.SHARE, event);
+  }
+
+  return event;
 }
 
 export function buildRelayListEvent(params) {
@@ -1043,13 +1196,19 @@ export function buildRelayListEvent(params) {
     tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
   }
 
-  return {
+  const event = {
     kind: schema?.kind ?? 10002,
     pubkey,
     created_at,
     tags,
     content: "",
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.RELAY_LIST, event);
+  }
+
+  return event;
 }
 
 export function buildDmRelayListEvent(params) {
@@ -1079,13 +1238,19 @@ export function buildDmRelayListEvent(params) {
     tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
   }
 
-  return {
+  const event = {
     kind: schema?.kind ?? 10050,
     pubkey,
     created_at,
     tags,
     content: "",
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.DM_RELAY_LIST, event);
+  }
+
+  return event;
 }
 
 export function buildProfileMetadataEvent(params) {
@@ -1115,13 +1280,19 @@ export function buildProfileMetadataEvent(params) {
     }
   }
 
-  return {
+  const event = {
     kind: schema?.kind ?? 0,
     pubkey,
     created_at,
     tags,
     content: serializedContent,
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.PROFILE_METADATA, event);
+  }
+
+  return event;
 }
 
 export function buildMuteListEvent(params) {
@@ -1156,13 +1327,19 @@ export function buildMuteListEvent(params) {
     tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
   }
 
-  return {
+  const event = {
     kind: schema?.kind ?? 10000,
     pubkey,
     created_at,
     tags,
     content: typeof content === "string" ? content : "",
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.MUTE_LIST, event);
+  }
+
+  return event;
 }
 
 export function buildDeletionEvent(params) {
@@ -1201,13 +1378,19 @@ export function buildDeletionEvent(params) {
     tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
   }
 
-  return {
+  const event = {
     kind: schema?.kind ?? 5,
     pubkey,
     created_at,
     tags,
     content: typeof reason === "string" ? reason : "",
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.DELETION, event);
+  }
+
+  return event;
 }
 
 export function buildLegacyDirectMessageEvent(params) {
@@ -1232,13 +1415,19 @@ export function buildLegacyDirectMessageEvent(params) {
     tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
   }
 
-  return {
+  const event = {
     kind: schema?.kind ?? 4,
     pubkey,
     created_at,
     tags,
     content: typeof ciphertext === "string" ? ciphertext : "",
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.LEGACY_DM, event);
+  }
+
+  return event;
 }
 
 export function buildDmAttachmentEvent(params) {
@@ -1282,13 +1471,19 @@ export function buildDmAttachmentEvent(params) {
     tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
   }
 
-  return {
+  const event = {
     kind: schema?.kind ?? 15,
     pubkey,
     created_at,
     tags,
     content: "",
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.DM_ATTACHMENT, event);
+  }
+
+  return event;
 }
 
 export function buildDmReadReceiptEvent(params) {
@@ -1323,13 +1518,19 @@ export function buildDmReadReceiptEvent(params) {
     tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
   }
 
-  return {
+  const event = {
     kind: schema?.kind ?? 20001,
     pubkey,
     created_at,
     tags,
     content: "",
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.DM_READ_RECEIPT, event);
+  }
+
+  return event;
 }
 
 export function buildDmTypingIndicatorEvent(params) {
@@ -1368,13 +1569,19 @@ export function buildDmTypingIndicatorEvent(params) {
     tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
   }
 
-  return {
+  const event = {
     kind: schema?.kind ?? 20002,
     pubkey,
     created_at,
     tags,
     content: "",
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.DM_TYPING, event);
+  }
+
+  return event;
 }
 
 export function buildViewEvent(params) {
@@ -1429,13 +1636,19 @@ export function buildViewEvent(params) {
 
   const resolvedContent = ensureValidUtf8Content(content);
 
-  return {
+  const event = {
     kind: schema?.kind ?? WATCH_HISTORY_KIND,
     pubkey,
     created_at,
     tags,
     content: resolvedContent,
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.VIEW_EVENT, event);
+  }
+
+  return event;
 }
 
 export function buildZapRequestEvent(params) {
@@ -1503,13 +1716,19 @@ export function buildZapRequestEvent(params) {
 
   const resolvedContent = ensureValidUtf8Content(content);
 
-  return {
+  const event = {
     kind: schema?.kind ?? 9734,
     pubkey,
     created_at,
     tags,
     content: resolvedContent,
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.ZAP_REQUEST, event);
+  }
+
+  return event;
 }
 
 export function buildReactionEvent(params) {
@@ -1635,13 +1854,19 @@ export function buildReactionEvent(params) {
 
   const resolvedContent = ensureValidUtf8Content(content);
 
-  return {
+  const event = {
     kind: schema?.kind ?? 7,
     pubkey,
     created_at,
     tags,
     content: resolvedContent,
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.VIDEO_REACTION, event);
+  }
+
+  return event;
 }
 
 export function buildCommentEvent(params) {
@@ -1880,13 +2105,19 @@ export function buildCommentEvent(params) {
 
   const resolvedContent = ensureValidUtf8Content(content);
 
-  return {
+  const event = {
     kind: schema?.kind ?? 1111,
     pubkey,
     created_at,
     tags,
     content: resolvedContent,
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.VIDEO_COMMENT, event);
+  }
+
+  return event;
 }
 
 export function buildWatchHistoryEvent(params) {
@@ -1922,13 +2153,19 @@ export function buildWatchHistoryEvent(params) {
 
   appendSchemaTags(tags, schema);
 
-  return {
+  const event = {
     kind: schema?.kind ?? WATCH_HISTORY_KIND,
     pubkey,
     created_at: Number.isFinite(created_at) ? created_at : Math.floor(Date.now() / 1000),
     tags,
-    content: typeof content === "string" ? content : String(content ?? ""),
+    content: safeStringify(content),
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.WATCH_HISTORY, event);
+  }
+
+  return event;
 }
 
 export function buildSubscriptionListEvent(params) {
@@ -1951,13 +2188,20 @@ export function buildSubscriptionListEvent(params) {
     tags.push(["encrypted", normalizedEncryption]);
   }
   appendSchemaTags(tags, schema);
-  return {
+
+  const event = {
     kind: schema?.kind ?? 30000,
     pubkey,
     created_at,
     tags,
-    content: typeof content === "string" ? content : String(content ?? ""),
+    content: safeStringify(content),
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.SUBSCRIPTION_LIST, event);
+  }
+
+  return event;
 }
 
 export function buildBlockListEvent(params) {
@@ -1980,13 +2224,20 @@ export function buildBlockListEvent(params) {
     tags.push(["encrypted", normalizedEncryption]);
   }
   appendSchemaTags(tags, schema);
-  return {
+
+  const event = {
     kind: schema?.kind ?? 10000,
     pubkey,
     created_at,
     tags,
-    content: typeof content === "string" ? content : String(content ?? ""),
+    content: safeStringify(content),
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.USER_BLOCK_LIST, event);
+  }
+
+  return event;
 }
 
 export function buildHashtagPreferenceEvent(params) {
@@ -2003,13 +2254,20 @@ export function buildHashtagPreferenceEvent(params) {
     tags.push([identifierName, identifierValue]);
   }
   appendSchemaTags(tags, schema);
-  return {
+
+  const event = {
     kind: schema?.kind ?? 30015,
     pubkey,
     created_at,
     tags,
-    content: typeof content === "string" ? content : String(content ?? ""),
+    content: safeStringify(content),
   };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.HASHTAG_PREFERENCES, event);
+  }
+
+  return event;
 }
 
 function resolveAdminNoteType(listKey) {
@@ -2057,13 +2315,23 @@ export function buildAdminListEvent(listKey, params) {
     }
   });
   appendSchemaTags(tags, schema);
-  return {
+
+  const event = {
     kind: schema?.kind ?? 30000,
     pubkey,
     created_at,
     tags,
     content: "",
   };
+
+  if (isDevMode) {
+    const resolvedType = resolveAdminNoteType(listKey);
+    if (resolvedType) {
+      validateEventAgainstSchema(resolvedType, event);
+    }
+  }
+
+  return event;
 }
 
 function hasTag(tags, tagName, tagValue = null) {

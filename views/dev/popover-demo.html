@@ -50,6 +50,25 @@
       </section>
 
       <section class="space-y-6">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+          <div class="bv-stack bv-stack--tight">
+            <h2 class="text-2xl font-semibold text-text">Search filters</h2>
+            <p class="text-sm text-muted">
+              Open the popover to review the MVP filter controls and keyboard
+              navigation behaviors.
+            </p>
+          </div>
+          <button
+            type="button"
+            class="btn-ghost"
+            data-demo-search-filters
+          >
+            Open filters
+          </button>
+        </div>
+      </section>
+
+      <section class="space-y-6">
         <div class="flex items-center justify-between gap-4">
           <div>
             <h2 class="text-2xl font-semibold text-text">Modal actions</h2>
@@ -130,6 +149,7 @@
     <script type="module">
       import ensureOverlayRoot from "../../js/ui/overlay/overlayRoot.js";
       import createPopover from "../../js/ui/overlay/popoverEngine.js";
+      import attachSearchFiltersPopover from "../../js/ui/components/SearchFiltersPopover.js";
 
       const doc = document;
       ensureOverlayRoot(doc);
@@ -199,6 +219,11 @@
           { label: "Share link", action: "share" },
           { label: "Report", action: "report", variant: "critical" },
         ],
+      });
+
+      const filterButton = doc.querySelector("[data-demo-search-filters]");
+      const filterPopover = attachSearchFiltersPopover(filterButton, {
+        placement: "bottom-start",
       });
 
       const modal = doc.querySelector("[data-demo-modal]");
@@ -277,6 +302,7 @@
       doc.addEventListener("visibilitychange", () => {
         if (doc.visibilityState === "hidden") {
           cardPopover?.close?.({ restoreFocus: false });
+          filterPopover?.close?.({ restoreFocus: false });
           modalPopover?.close?.({ restoreFocus: false });
         }
       });

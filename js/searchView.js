@@ -4,16 +4,196 @@ import { nostrClient } from "./nostrClientFacade.js";
 import { getApplication } from "./applicationContext.js";
 import { renderChannelVideosFromList } from "./channelProfile.js";
 import { escapeHTML } from "./utils/domUtils.js";
-import { formatShortNpub } from "./utils/formatters.js";
+import { formatShortNpub, truncateMiddle } from "./utils/formatters.js";
 import { sanitizeProfileMediaUrl } from "./utils/profileMedia.js";
 import { devLogger } from "./utils/logger.js";
 import { attachFeedInfoPopover } from "./ui/components/FeedInfoPopover.js";
+import { setHashView } from "./hashView.js";
+import {
+  buildSearchHashFromState,
+  getSearchFilterState,
+  resetSearchFilters,
+  setSearchFilterState,
+  syncSearchFilterStateFromHash,
+} from "./search/searchFilterState.js";
+import { buildVideoSearchFilterMatcher } from "./search/searchFilterMatchers.js";
 
 function getApp() {
   return getApplication();
 }
 
 const FALLBACK_AVATAR = "assets/svg/default-profile.svg";
+const EMPTY_FACET_COUNTS = { tags: [], authors: [], relays: [] };
+const MAX_FACET_RESULTS = {
+  tags: 8,
+  authors: 6,
+  relays: 6,
+};
+
+const normalizeFacetText = (value) => {
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value.trim();
+};
+
+const resolveShortPubkeyLabel = (pubkey) => {
+  const trimmed = normalizeFacetText(pubkey);
+  if (!trimmed) {
+    return "";
+  }
+  let npub = "";
+  try {
+    if (window.NostrTools && window.NostrTools.nip19) {
+      npub = window.NostrTools.nip19.npubEncode(trimmed);
+    }
+  } catch (error) {
+    // ignore
+  }
+  const formattedNpub = formatShortNpub(npub);
+  if (formattedNpub) {
+    return formattedNpub;
+  }
+  return truncateMiddle(trimmed, 18);
+};
+
+const resolveAuthorFacetLabel = (video) => {
+  const name = normalizeFacetText(video?.authorName);
+  if (name) {
+    return name;
+  }
+  const npub = normalizeFacetText(video?.authorNpub);
+  if (npub) {
+    return formatShortNpub(npub) || npub;
+  }
+  return resolveShortPubkeyLabel(video?.pubkey);
+};
+
+const extractRelayHints = (event) => {
+  if (!event || typeof event !== "object") {
+    return [];
+  }
+  const relayCandidates = [];
+  const relayCollections = [event.relays, event.seenOn, event.seen_on];
+  relayCollections.forEach((collection) => {
+    if (Array.isArray(collection)) {
+      relayCandidates.push(...collection);
+    }
+  });
+  if (typeof event.relay === "string") {
+    relayCandidates.push(event.relay);
+  }
+  return Array.from(
+    new Set(
+      relayCandidates
+        .map((value) => normalizeFacetText(String(value)))
+        .filter(Boolean),
+    ),
+  );
+};
+
+const normalizeTagFacetValue = (value) =>
+  normalizeFacetText(value)
+    .replace(/^#/, "")
+    .toLowerCase();
+
+const buildFacetEntries = (map, limit) => {
+  if (!map.size) {
+    return [];
+  }
+  return Array.from(map.values())
+    .sort((a, b) => (b.count - a.count) || a.label.localeCompare(b.label))
+    .slice(0, limit);
+};
+
+const buildSearchFacetCounts = (videos = []) => {
+  const tagCounts = new Map();
+  const authorCounts = new Map();
+  const relayCounts = new Map();
+
+  videos.forEach((video) => {
+    if (!video) {
+      return;
+    }
+
+    const authorKey = normalizeFacetText(video.pubkey || "");
+    if (authorKey) {
+      const label = resolveAuthorFacetLabel(video) || authorKey;
+      const entry = authorCounts.get(authorKey) || {
+        value: authorKey,
+        label,
+        count: 0,
+      };
+      entry.count += 1;
+      if (!entry.label && label) {
+        entry.label = label;
+      }
+      authorCounts.set(authorKey, entry);
+    }
+
+    const tagSet = new Set();
+    if (Array.isArray(video.tags)) {
+      video.tags.forEach((tag) => {
+        if (Array.isArray(tag)) {
+          if (tag[0] === "t") {
+            const normalized = normalizeTagFacetValue(tag[1] || "");
+            if (normalized) {
+              tagSet.add(normalized);
+            }
+          }
+          return;
+        }
+        const normalized = normalizeTagFacetValue(tag);
+        if (normalized) {
+          tagSet.add(normalized);
+        }
+      });
+    }
+    tagSet.forEach((tag) => {
+      const label = `#${tag}`;
+      const entry = tagCounts.get(tag) || { value: tag, label, count: 0 };
+      entry.count += 1;
+      tagCounts.set(tag, entry);
+    });
+
+    const relaySet = new Set();
+    if (Array.isArray(video.relays)) {
+      video.relays.forEach((relay) => {
+        const normalized = normalizeFacetText(relay);
+        if (normalized) {
+          relaySet.add(normalized);
+        }
+      });
+    }
+    if (Array.isArray(video.relayHints)) {
+      video.relayHints.forEach((relay) => {
+        const normalized = normalizeFacetText(relay);
+        if (normalized) {
+          relaySet.add(normalized);
+        }
+      });
+    }
+    const relayField = normalizeFacetText(video.relay || video.eventRelay || "");
+    if (relayField) {
+      relaySet.add(relayField);
+    }
+    relaySet.forEach((relay) => {
+      const entry = relayCounts.get(relay) || {
+        value: relay,
+        label: relay,
+        count: 0,
+      };
+      entry.count += 1;
+      relayCounts.set(relay, entry);
+    });
+  });
+
+  return {
+    tags: buildFacetEntries(tagCounts, MAX_FACET_RESULTS.tags),
+    authors: buildFacetEntries(authorCounts, MAX_FACET_RESULTS.authors),
+    relays: buildFacetEntries(relayCounts, MAX_FACET_RESULTS.relays),
+  };
+};
 
 function renderProfileCards(profiles, container) {
   if (!container) return;
@@ -100,10 +280,13 @@ function renderProfileCards(profiles, container) {
 let currentSearchToken = 0;
 
 export async function initSearchView() {
-  const hashParams = new URLSearchParams(window.location.hash.split("?")[1] || window.location.hash.slice(1));
-  // The hash format is #view=search&q=...
-  // URLSearchParams handles 'view=search&q=...' correctly if we pass the string after #
-  const query = hashParams.get("q") || "";
+  const parsedQuery = syncSearchFilterStateFromHash(window.location.hash);
+  if (parsedQuery.errors.length > 0) {
+    devLogger.warn("[Search] Filter parsing errors", parsedQuery.errors);
+  }
+  const query = parsedQuery.text || "";
+
+  renderActiveFilters(parsedQuery.filters);
 
   const titleEl = document.getElementById("searchTitle");
   if (titleEl) {
@@ -114,7 +297,7 @@ export async function initSearchView() {
   if (infoTrigger) {
     attachFeedInfoPopover(
       infoTrigger,
-      "Results matching your search query."
+      "Results matching your search query. Use tokens like author:, tag:, kind:, relay:, after:, before:, duration:<, and has:magnet/url."
     );
   }
 
@@ -131,6 +314,7 @@ export async function initSearchView() {
   if (!query) {
     if (channelList) channelList.innerHTML = `<p class="text-sm text-muted col-span-full">Please enter a search term.</p>`;
     if (videoList) videoList.innerHTML = `<p class="text-sm text-muted col-span-full">Please enter a search term.</p>`;
+    setSearchFacetCounts(EMPTY_FACET_COUNTS);
     return;
   }
 
@@ -148,16 +332,229 @@ export async function initSearchView() {
   });
 
   // 2. Search Videos
-  performVideoSearch(query, searchToken).then(videos => {
+  performVideoSearch(query, searchToken, parsedQuery.filters).then(videos => {
     if (searchToken !== currentSearchToken) return;
     const app = getApp();
+    setSearchFacetCounts(buildSearchFacetCounts(videos));
     renderSearchVideos(videos, videoList, app);
   }).catch(err => {
     devLogger.warn("[Search] Video search failed", err);
     if (videoList && searchToken === currentSearchToken) {
         videoList.innerHTML = `<p class="text-sm text-critical col-span-full">Failed to load videos.</p>`;
     }
+    if (searchToken === currentSearchToken) {
+      setSearchFacetCounts(EMPTY_FACET_COUNTS);
+    }
   });
+}
+
+const formatDateLabel = (timestampSeconds) => {
+  if (!Number.isFinite(timestampSeconds)) return "";
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  return formatter.format(new Date(timestampSeconds * 1000));
+};
+
+const formatDurationLabel = (seconds) => {
+  if (!Number.isFinite(seconds)) return "";
+  if (seconds % 3600 === 0) {
+    return `${seconds / 3600}h`;
+  }
+  if (seconds % 60 === 0) {
+    return `${seconds / 60}m`;
+  }
+  return `${seconds}s`;
+};
+
+function buildNextFilters() {
+  const current = getSearchFilterState();
+  const filters = current.filters || {};
+  return {
+    ...filters,
+    dateRange: { ...filters.dateRange },
+    duration: { ...filters.duration },
+    authorPubkeys: Array.isArray(filters.authorPubkeys)
+      ? [...filters.authorPubkeys]
+      : [],
+    tags: Array.isArray(filters.tags) ? [...filters.tags] : [],
+  };
+}
+
+function applyFiltersAndRefresh(nextFilters) {
+  const current = getSearchFilterState();
+  const nextState = {
+    text: current.text || "",
+    filters: nextFilters,
+  };
+  setSearchFilterState(nextState);
+  setHashView(buildSearchHashFromState(nextState));
+}
+
+function renderActiveFilters(filters) {
+  const wrapper = document.getElementById("searchActiveFilters");
+  const list = document.getElementById("searchActiveFiltersList");
+  const clearBtn = document.getElementById("searchActiveFiltersClear");
+  if (!wrapper || !list || !clearBtn) {
+    return;
+  }
+
+  list.innerHTML = "";
+  const pills = [];
+
+  filters.authorPubkeys?.forEach((author) => {
+    pills.push({
+      label: `Author: ${author}`,
+      onRemove: () => {
+        const nextFilters = buildNextFilters();
+        nextFilters.authorPubkeys = nextFilters.authorPubkeys.filter(
+          (value) => value !== author,
+        );
+        applyFiltersAndRefresh(nextFilters);
+      },
+    });
+  });
+
+  filters.tags?.forEach((tag) => {
+    pills.push({
+      label: `#${tag}`,
+      onRemove: () => {
+        const nextFilters = buildNextFilters();
+        nextFilters.tags = nextFilters.tags.filter((value) => value !== tag);
+        applyFiltersAndRefresh(nextFilters);
+      },
+    });
+  });
+
+  if (Number.isFinite(filters.kind)) {
+    pills.push({
+      label: `Kind: ${filters.kind}`,
+      onRemove: () => {
+        const nextFilters = buildNextFilters();
+        nextFilters.kind = null;
+        applyFiltersAndRefresh(nextFilters);
+      },
+    });
+  }
+
+  if (filters.relay) {
+    pills.push({
+      label: `Relay: ${filters.relay}`,
+      onRemove: () => {
+        const nextFilters = buildNextFilters();
+        nextFilters.relay = null;
+        applyFiltersAndRefresh(nextFilters);
+      },
+    });
+  }
+
+  if (Number.isFinite(filters.dateRange?.after)) {
+    pills.push({
+      label: `After: ${formatDateLabel(filters.dateRange.after)}`,
+      onRemove: () => {
+        const nextFilters = buildNextFilters();
+        nextFilters.dateRange.after = null;
+        applyFiltersAndRefresh(nextFilters);
+      },
+    });
+  }
+
+  if (Number.isFinite(filters.dateRange?.before)) {
+    pills.push({
+      label: `Before: ${formatDateLabel(filters.dateRange.before)}`,
+      onRemove: () => {
+        const nextFilters = buildNextFilters();
+        nextFilters.dateRange.before = null;
+        applyFiltersAndRefresh(nextFilters);
+      },
+    });
+  }
+
+  if (Number.isFinite(filters.duration?.minSeconds)) {
+    pills.push({
+      label: `Min duration: ${formatDurationLabel(filters.duration.minSeconds)}`,
+      onRemove: () => {
+        const nextFilters = buildNextFilters();
+        nextFilters.duration.minSeconds = null;
+        applyFiltersAndRefresh(nextFilters);
+      },
+    });
+  }
+
+  if (Number.isFinite(filters.duration?.maxSeconds)) {
+    pills.push({
+      label: `Max duration: ${formatDurationLabel(filters.duration.maxSeconds)}`,
+      onRemove: () => {
+        const nextFilters = buildNextFilters();
+        nextFilters.duration.maxSeconds = null;
+        applyFiltersAndRefresh(nextFilters);
+      },
+    });
+  }
+
+  if (filters.hasMagnet === true) {
+    pills.push({
+      label: "Has magnet",
+      onRemove: () => {
+        const nextFilters = buildNextFilters();
+        nextFilters.hasMagnet = null;
+        applyFiltersAndRefresh(nextFilters);
+      },
+    });
+  }
+
+  if (filters.hasUrl === true) {
+    pills.push({
+      label: "Has URL",
+      onRemove: () => {
+        const nextFilters = buildNextFilters();
+        nextFilters.hasUrl = null;
+        applyFiltersAndRefresh(nextFilters);
+      },
+    });
+  }
+
+  if (filters.nsfw && filters.nsfw !== "any") {
+    pills.push({
+      label: `NSFW: ${filters.nsfw}`,
+      onRemove: () => {
+        const nextFilters = buildNextFilters();
+        nextFilters.nsfw = "any";
+        applyFiltersAndRefresh(nextFilters);
+      },
+    });
+  }
+
+  if (!pills.length) {
+    wrapper.classList.add("hidden");
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  pills.forEach((pill) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className =
+      "search-filter-chip inline-flex items-center gap-2 text-xs";
+    const label = document.createElement("span");
+    label.textContent = pill.label;
+    const remove = document.createElement("span");
+    remove.setAttribute("aria-hidden", "true");
+    remove.textContent = "✕";
+    button.append(label, remove);
+    button.addEventListener("click", pill.onRemove);
+    fragment.appendChild(button);
+  });
+  list.appendChild(fragment);
+
+  wrapper.classList.remove("hidden");
+  clearBtn.onclick = () => {
+    resetSearchFilters();
+    const nextState = getSearchFilterState();
+    setHashView(buildSearchHashFromState(nextState));
+  };
 }
 
 async function renderSearchVideos(videos, container, app) {
@@ -357,12 +754,24 @@ async function performProfileSearch(query, token) {
     return Array.from(uniqueProfiles.values());
 }
 
-async function performVideoSearch(query, token) {
+async function performVideoSearch(query, token, filters = {}) {
     if (!nostrClient) return [];
 
     const isHashtag = query.startsWith("#");
     const term = isHashtag ? query.slice(1) : query;
     const lowerTerm = term.toLowerCase();
+    const app = getApp();
+    const nostrService = app?.nostrService;
+    const filterOptions = {
+        blacklistedEventIds:
+            app?.blacklistedEventIds instanceof Set ? new Set(app.blacklistedEventIds) : new Set(),
+        isAuthorBlocked:
+            typeof app?.isAuthorBlocked === "function" ? (pubkey) => app.isAuthorBlocked(pubkey) : () => false
+    };
+    const applyAccessFilters = (videos) =>
+        nostrService?.filterVideos ? nostrService.filterVideos(videos, filterOptions) : videos;
+
+    const matchesCustomFilters = buildVideoSearchFilterMatcher(filters);
 
     // 1. Local Search (Cache)
     const localMatches = [];
@@ -393,6 +802,8 @@ async function performVideoSearch(query, token) {
 
     if (currentSearchToken !== token) return [];
 
+    const filteredLocalMatches = applyAccessFilters(localMatches).filter(matchesCustomFilters);
+
     // 2. Relay Search
     let relayVideos = [];
     const relays = nostrClient.relays || [];
@@ -417,6 +828,10 @@ async function performVideoSearch(query, token) {
                 relayVideos = events.map(evt => {
                     const vid = convertEventToVideo(evt);
                     if (vid.invalid) return null;
+                    const relayHints = extractRelayHints(evt);
+                    if (relayHints.length) {
+                        return { ...vid, relayHints };
+                    }
                     return vid;
                 }).filter(Boolean);
             }
@@ -428,16 +843,18 @@ async function performVideoSearch(query, token) {
 
     if (currentSearchToken !== token) return [];
 
+    const filteredRelayVideos = applyAccessFilters(relayVideos).filter(matchesCustomFilters);
+
     // Deduplicate by ID
     const unique = new Map();
 
     // Add local matches first
-    for (const v of localMatches) {
+    for (const v of filteredLocalMatches) {
         if (!unique.has(v.id)) unique.set(v.id, v);
     }
 
     // Add relay matches (overwriting local if needed, or ignoring duplicates)
-    for (const v of relayVideos) {
+    for (const v of filteredRelayVideos) {
         if (!unique.has(v.id)) unique.set(v.id, v);
     }
 

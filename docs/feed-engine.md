@@ -128,6 +128,16 @@ Hooks can be provided globally when registering the feed or per-execution via
 uses this mechanism so Phase 1 feeds can plug in actor-specific suppression
 logic later without changing the core pipeline.
 
+## Feed configuration overview
+
+The feed registry in `js/app.js` registers each feed with a `defaultConfig` and
+optional `configSchema`. The Kids feed (`kids`) is the first feed to ship with a
+custom schema:
+
+| Feed | Config schema summary |
+| --- | --- |
+| `kids` | `ageGroup` (`toddler`/`preschool`/`early`/`older`), `educationalTags` (string array), `disallowedWarnings` (string array) — see [`docs/feeds/kids-feed.md`](feeds/kids-feed.md) for the full behavior and defaults. |
+
 ## Why-Metadata
 
 `context.addWhy()` records structured audit entries. All built-in stages use it

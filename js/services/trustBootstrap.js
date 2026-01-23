@@ -64,7 +64,7 @@ async function waitForRelaysReady({ timeoutMs = TRUST_SEED_READY_TIMEOUT_MS } = 
 }
 
 async function waitForAccessControl({ timeoutMs = TRUST_SEED_READY_TIMEOUT_MS } = {}) {
-  if (!accessControl || typeof accessControl.ensureReady !== "function") {
+  if (!accessControl || typeof accessControl.waitForReady !== "function") {
     return { ok: true, timedOut: false };
   }
 
@@ -72,12 +72,12 @@ async function waitForAccessControl({ timeoutMs = TRUST_SEED_READY_TIMEOUT_MS } 
   const timeoutPromise = new Promise((_, reject) => {
     setTimeout(() => {
       timedOut = true;
-      reject(new Error("accessControl ensureReady timed out"));
+      reject(new Error("accessControl ready check timed out"));
     }, timeoutMs);
   });
 
   try {
-    await Promise.race([accessControl.ensureReady(), timeoutPromise]);
+    await Promise.race([accessControl.waitForReady(), timeoutPromise]);
     return { ok: true, timedOut: false };
   } catch (error) {
     if (timedOut) {

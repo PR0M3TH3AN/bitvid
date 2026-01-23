@@ -103,8 +103,14 @@ To run **bitvid** locally:
 
 2. Install dependencies:
 
+   If you cloned the repo but haven’t run `npm install`/`npm ci`, `npx` won’t find the local `tailwindcss`.
+
    ```bash
+   # reproducible install (preferred for CI / locks)
    npm ci
+
+   # or if you want to install/upgrade packages
+   npm install
    ```
 
 3. Build the project:
@@ -139,6 +145,7 @@ http://localhost:8000
 - **Run DM unit tests**: `npm run test:dm:unit`
 - **Run DM integration tests**: `npm run test:dm:integration`
 - **Run headless E2E tests**: `npm run test:e2e`
+- **Cancel CI runs**: See [`docs/cancelling-ci-runs.md`](docs/cancelling-ci-runs.md) for a script to clear pending workflows.
 
 ### Running Tests in Docker
 
@@ -172,7 +179,7 @@ Use these artifacts to inspect the UI state at the moment of failure and diagnos
 
 ### Send your first video post
 
-Use the event builders in `js/nostrEventSchemas.js` to construct valid video notes.
+Use the event builders in `js/nostrEventSchemas.js` (the source of truth for all event definitions) to construct valid video notes.
 
 ```javascript
 import { buildVideoPostEvent } from "./js/nostrEventSchemas.js";

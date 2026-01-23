@@ -1,4 +1,7 @@
-import { normalizeDesignSystemContext } from "../../designSystem.js";
+import {
+  normalizeDesignSystemContext,
+  BREAKPOINT_LG,
+} from "../../designSystem.js";
 import { updateVideoCardSourceVisibility } from "../../utils/cardSourceVisibility.js";
 import { sanitizeProfileMediaUrl } from "../../utils/profileMedia.js";
 import { userLogger } from "../../utils/logger.js";
@@ -3046,7 +3049,7 @@ export class VideoCard {
           // Prevent active state on desktop to avoid conflicting with hover
           const isDesktop =
             typeof window !== "undefined" &&
-            window.matchMedia("(min-width: 1024px)").matches;
+            window.matchMedia(`(min-width: ${BREAKPOINT_LG}px)`).matches;
 
           for (const entry of entries) {
             if (isDesktop) {

@@ -8,6 +8,10 @@ permissions:
   contents: write
   pull-requests: write
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   agent-review:
     runs-on: ubuntu-latest
@@ -24,6 +28,11 @@ jobs:
         with:
           node-version: 20
           cache: 'npm'
+
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/PR0M3TH3AN/bitvid.git || true
+          git fetch upstream
 
       - name: Run Agent Review
         env:

@@ -232,7 +232,9 @@ function normalizeHistoryItems(rawItems) {
       ? candidate.watchedAt
       : Number.isFinite(candidate?.timestamp)
         ? candidate.timestamp
-        : null;
+        : Number.isFinite(pointer?.watchedAt)
+          ? pointer.watchedAt
+          : null;
     const watchedAt =
       watchedAtRaw !== null ? Math.max(0, Math.floor(watchedAtRaw)) : 0;
     normalized.push({
@@ -1117,17 +1119,34 @@ function refreshRegisteredHistoryCards(video, context, pointerKeys = null) {
   });
 }
 
-export function buildHistoryCard({ item, video, profile }) {
+export function buildHistoryCard({ item, video, profile, variant }) {
+  const isCompact = variant === "compact" || variant === "modal";
+
   const article = document.createElement("article");
-  article.className = "watch-history-card";
-  article.dataset.pointerKey = item.pointerKey;
-  article.dataset.historyCard = "true";
-  if (video?.isPrivate) {
-    article.classList.add("watch-history-card--private");
+  article.className =
+    "watch-history-card group relative flex flex-row items-start gap-4 p-3 sm:p-4 rounded-lg transition-colors";
+  if (!isCompact) {
+    article.classList.add("hover:bg-surface-panel-hover", "hover:shadow-sm");
+  } else {
+    article.classList.add("hover:bg-surface-highlight");
   }
 
-  const primary = document.createElement("div");
-  primary.className = "watch-history-card__primary";
+  if (video?.isPrivate) {
+    article.classList.add(
+      "border",
+      "border-status-info",
+      "border-opacity-40",
+      "bg-surface-alt"
+    );
+  }
+
+  article.dataset.pointerKey = item.pointerKey;
+  article.dataset.historyCard = "true";
+
+  const pointerVideoId = getPointerVideoId(video, item.pointer);
+  if (pointerVideoId) {
+    article.dataset.videoId = pointerVideoId;
+  }
 
   const playbackData = (() => {
     if (!video) {
@@ -1143,10 +1162,10 @@ export function buildHistoryCard({ item, video, profile }) {
     return { url, magnet: magnetRaw };
   })();
 
-  const pointerVideoId = getPointerVideoId(video, item.pointer);
-
+  // --- Thumbnail Column ---
   const thumbnailLink = document.createElement("a");
-  thumbnailLink.className = "watch-history-card__thumbnail";
+  const thumbnailSizeClass = isCompact ? "w-28 sm:w-32" : "w-32 sm:w-48";
+  thumbnailLink.className = `relative block flex-shrink-0 aspect-video rounded-md overflow-hidden bg-surface-alt hover:opacity-90 transition-opacity ${thumbnailSizeClass}`;
   thumbnailLink.href = "#";
   thumbnailLink.dataset.historyAction = "play";
   thumbnailLink.dataset.pointerKey = item.pointerKey;
@@ -1160,9 +1179,8 @@ export function buildHistoryCard({ item, video, profile }) {
     thumbnailLink.dataset.playMagnet = playbackData.magnet;
   }
 
-  const thumbnailInner = document.createElement("div");
-  thumbnailInner.className = "watch-history-card__thumbnailInner";
   const thumbnailImg = document.createElement("img");
+  thumbnailImg.className = "w-full h-full object-cover";
   thumbnailImg.alt = video?.title || "Video thumbnail";
   const thumbnailSrc =
     video && typeof video.thumbnail === "string" && video.thumbnail.trim()
@@ -1171,14 +1189,19 @@ export function buildHistoryCard({ item, video, profile }) {
   thumbnailImg.src = thumbnailSrc;
   thumbnailImg.loading = "lazy";
   thumbnailImg.decoding = "async";
-  thumbnailInner.appendChild(thumbnailImg);
-  thumbnailLink.appendChild(thumbnailInner);
+  thumbnailLink.appendChild(thumbnailImg);
 
-  const details = document.createElement("div");
-  details.className = "watch-history-card__details";
+  // --- Content Column ---
+  const content = document.createElement("div");
+  content.className = "flex flex-col flex-1 min-w-0 gap-1.5";
+
+  // Title Row
+  const header = document.createElement("div");
+  header.className = "flex justify-between items-start gap-2";
 
   const titleLink = document.createElement("a");
-  titleLink.className = "watch-history-card__title";
+  titleLink.className =
+    "text-sm font-semibold text-text line-clamp-2 leading-snug hover:text-accent transition-colors";
   titleLink.href = "#";
   titleLink.dataset.historyAction = "play";
   titleLink.dataset.pointerKey = item.pointerKey;
@@ -1193,164 +1216,160 @@ export function buildHistoryCard({ item, video, profile }) {
   }
   titleLink.textContent = video?.title || "Untitled video";
 
-  const created = document.createElement("p");
-  created.className = "watch-history-card__created";
-  const createdAt = Number.isFinite(video?.created_at)
-    ? video.created_at
-    : null;
-  created.textContent = createdAt
-    ? `Published ${formatRelativeTime(createdAt)}`
-    : "Published date unavailable";
+  header.appendChild(titleLink);
+  content.appendChild(header);
 
-  details.appendChild(titleLink);
-  details.appendChild(created);
-  const moderationMount = document.createElement("div");
-  moderationMount.className = "watch-history-card__moderation flex flex-wrap items-center gap-sm";
-  details.appendChild(moderationMount);
+  // Author Row
+  const authorRow = document.createElement("div");
+  authorRow.className = "flex items-center gap-2";
 
-  primary.appendChild(thumbnailLink);
-  primary.appendChild(details);
-
-  const meta = document.createElement("div");
-  meta.className = "watch-history-card__meta";
-
-  const watched = document.createElement("p");
-  watched.className = "watch-history-card__watched";
-  watched.textContent = item.watchedAt
-    ? `Watched ${formatRelativeTime(item.watchedAt)}`
-    : "Watched time unavailable";
-  meta.appendChild(watched);
-
-  const creator = document.createElement("div");
-  creator.className = "watch-history-card__creator";
-
-  const creatorAvatarButton = document.createElement("button");
-  creatorAvatarButton.type = "button";
-  creatorAvatarButton.className = "watch-history-card__creatorAvatar";
-  creatorAvatarButton.dataset.historyAction = "channel";
-  creatorAvatarButton.dataset.pointerKey = item.pointerKey;
+  const avatarBtn = document.createElement("button");
+  avatarBtn.type = "button";
+  avatarBtn.className =
+    "flex-shrink-0 w-5 h-5 rounded-full overflow-hidden bg-surface-alt hover:opacity-80 transition-opacity";
+  avatarBtn.dataset.historyAction = "channel";
+  avatarBtn.dataset.pointerKey = item.pointerKey;
   if (video?.pubkey) {
-    creatorAvatarButton.dataset.author = video.pubkey;
+    avatarBtn.dataset.author = video.pubkey;
   }
+
   const avatarImg = document.createElement("img");
+  avatarImg.className = "w-full h-full object-cover";
   const avatarSrc =
     profile && typeof profile.picture === "string" && profile.picture.trim()
       ? profile.picture.trim()
       : FALLBACK_AVATAR;
   avatarImg.src = avatarSrc;
-  avatarImg.alt = profile?.name || profile?.display_name || "Creator avatar";
-  creatorAvatarButton.appendChild(avatarImg);
+  avatarImg.alt = profile?.name || "Avatar";
+  avatarBtn.appendChild(avatarImg);
 
-  const creatorNameButton = document.createElement("button");
-  creatorNameButton.type = "button";
-  creatorNameButton.className = "watch-history-card__creatorName";
-  creatorNameButton.dataset.historyAction = "channel";
-  creatorNameButton.dataset.pointerKey = item.pointerKey;
+  const authorNameBtn = document.createElement("button");
+  authorNameBtn.type = "button";
+  authorNameBtn.className =
+    "text-xs font-medium text-muted hover:text-text transition-colors truncate";
+  authorNameBtn.dataset.historyAction = "channel";
+  authorNameBtn.dataset.pointerKey = item.pointerKey;
   if (video?.pubkey) {
-    creatorNameButton.dataset.author = video.pubkey;
+    authorNameBtn.dataset.author = video.pubkey;
   }
+
   const app = getAppInstance();
   let creatorLabel =
     profile?.display_name || profile?.name || profile?.username || "Unknown";
   if ((!creatorLabel || creatorLabel === "Unknown") && video?.pubkey) {
     const encoded = app?.safeEncodeNpub?.(video.pubkey) || "";
-    creatorLabel = formatShortNpub(encoded) || encoded || video.pubkey.slice(0, 8).concat("…");
+    creatorLabel =
+      formatShortNpub(encoded) || encoded || video.pubkey.slice(0, 8).concat("…");
   }
-  creatorNameButton.textContent = creatorLabel;
+  authorNameBtn.textContent = creatorLabel;
 
-  creator.appendChild(creatorAvatarButton);
-  creator.appendChild(creatorNameButton);
-  meta.appendChild(creator);
+  authorRow.appendChild(avatarBtn);
+  authorRow.appendChild(authorNameBtn);
+  content.appendChild(authorRow);
 
-  const actions = document.createElement("div");
-  actions.className = "watch-history-card__actions";
+  // Moderation Badge Mount
+  const moderationMount = document.createElement("div");
+  moderationMount.className = "flex flex-wrap items-center gap-2 mt-0.5";
+  content.appendChild(moderationMount);
 
-  const playButton = document.createElement("button");
-  playButton.type = "button";
-  playButton.className =
-    "watch-history-card__action watch-history-card__action--primary";
-  playButton.dataset.historyAction = "play";
-  playButton.dataset.pointerKey = item.pointerKey;
-  if (pointerVideoId) {
-    playButton.dataset.videoId = pointerVideoId;
-  }
-  if (playbackData.url) {
-    playButton.dataset.playUrl = encodeURIComponent(playbackData.url);
-  }
-  if (playbackData.magnet) {
-    playButton.dataset.playMagnet = playbackData.magnet;
-  }
-  playButton.textContent = "Play";
+  // Meta Row (Timestamp)
+  const metaRow = document.createElement("div");
+  metaRow.className =
+    "flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-strong mt-auto pt-1";
 
-  const channelButton = document.createElement("button");
-  channelButton.type = "button";
-  channelButton.className = "watch-history-card__action";
-  channelButton.dataset.historyAction = "channel";
-  channelButton.dataset.pointerKey = item.pointerKey;
-  if (video?.pubkey) {
-    channelButton.dataset.author = video.pubkey;
+  if (item.watchedAt) {
+    const watchedSpan = document.createElement("span");
+    watchedSpan.textContent = formatRelativeTime(item.watchedAt);
+    watchedSpan.title = new Date(item.watchedAt * 1000).toLocaleString();
+    metaRow.appendChild(watchedSpan);
+  } else {
+    const unknownSpan = document.createElement("span");
+    unknownSpan.textContent = "Time unavailable";
+    metaRow.appendChild(unknownSpan);
   }
-  channelButton.textContent = "Open channel";
 
-  const removeButton = document.createElement("button");
-  removeButton.type = "button";
-  removeButton.className =
-    "watch-history-card__action watch-history-card__action--danger";
-  removeButton.dataset.variant = "danger";
-  removeButton.dataset.historyAction = "remove";
-  removeButton.dataset.pointerKey = item.pointerKey;
-  removeButton.textContent = "Remove from history";
-  if (item.pointer?.type) {
-    removeButton.dataset.pointerType = item.pointer.type;
-  }
-  if (item.pointer?.value) {
-    removeButton.dataset.pointerValue = item.pointer.value;
-  }
-  if (item.pointer?.relay) {
-    removeButton.dataset.pointerRelay = item.pointer.relay;
-  }
-  if (Number.isFinite(item.watchedAt)) {
-    removeButton.dataset.pointerWatchedAt = String(item.watchedAt);
-  }
-  if (item.pointer?.session === true) {
-    removeButton.dataset.pointerSession = "true";
-  }
-  removeButton.setAttribute(
-    "aria-label",
-    "Remove this history entry (sync may take a moment)."
-  );
-  removeButton.title =
-    "Removes this entry from history. Relay sync may take a moment.";
+  if (video?.created_at) {
+    const sep = document.createElement("span");
+    sep.className = "text-muted/40";
+    sep.textContent = "•";
+    metaRow.appendChild(sep);
 
-  actions.appendChild(playButton);
-  actions.appendChild(channelButton);
-  actions.appendChild(removeButton);
-
-  meta.appendChild(actions);
-
-  article.appendChild(primary);
-  article.appendChild(meta);
-
-  if (pointerVideoId) {
-    article.dataset.videoId = pointerVideoId;
+    const pubSpan = document.createElement("span");
+    pubSpan.textContent = `Published ${formatRelativeTime(video.created_at)}`;
+    metaRow.appendChild(pubSpan);
   }
+
+  content.appendChild(metaRow);
+
+  // Actions Row
+  const actionsRow = document.createElement("div");
+  actionsRow.className =
+    "flex flex-wrap items-center gap-4 mt-2 pt-2 border-t border-border/40";
+
+  const createActionBtn = (label, action, btnVariant = "default") => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `text-xs font-semibold ${
+      btnVariant === "danger"
+        ? "text-status-danger hover:text-status-danger-strong"
+        : "text-muted hover:text-text"
+    } transition-colors`;
+    btn.textContent = label;
+    btn.dataset.historyAction = action;
+    btn.dataset.pointerKey = item.pointerKey;
+
+    if (action === "play") {
+      if (pointerVideoId) btn.dataset.videoId = pointerVideoId;
+      if (playbackData.url)
+        btn.dataset.playUrl = encodeURIComponent(playbackData.url);
+      if (playbackData.magnet)
+        btn.dataset.playMagnet = playbackData.magnet;
+    } else if (action === "channel" && video?.pubkey) {
+      btn.dataset.author = video.pubkey;
+    } else if (action === "remove") {
+      if (item.pointer?.type) btn.dataset.pointerType = item.pointer.type;
+      if (item.pointer?.value) btn.dataset.pointerValue = item.pointer.value;
+      if (item.pointer?.relay) btn.dataset.pointerRelay = item.pointer.relay;
+      if (Number.isFinite(item.watchedAt))
+        btn.dataset.pointerWatchedAt = String(item.watchedAt);
+      if (item.pointer?.session === true)
+        btn.dataset.pointerSession = "true";
+      btn.title = "Remove from history";
+    }
+    return btn;
+  };
+
+  const playBtn = createActionBtn("Play now", "play", "default");
+  playBtn.classList.add("text-accent", "hover:text-accent-strong");
+
+  const channelBtn = createActionBtn("Channel", "channel");
+  const removeBtn = createActionBtn("Remove", "remove", "danger");
+
+  actionsRow.appendChild(playBtn);
+  actionsRow.appendChild(channelBtn);
+  actionsRow.appendChild(removeBtn);
+
+  content.appendChild(actionsRow);
+
+  article.appendChild(thumbnailLink);
+  article.appendChild(content);
 
   const moderationContext = normalizeVideoModerationContext(video?.moderation);
   const cardRef = {
     pointerKey: item.pointerKey,
     article,
-    primary,
-    meta,
-    details,
+    primary: thumbnailLink,
+    meta: content,
+    details: content,
     badgeMount: moderationMount,
-    thumbnailInner,
+    thumbnailInner: null,
     thumbnailLink,
     titleLink,
-    playButton,
-    channelButton,
-    removeButton,
-    creatorNameButton,
-    avatarButton: creatorAvatarButton,
+    playButton: playBtn,
+    channelButton: channelBtn,
+    removeButton: removeBtn,
+    creatorNameButton: authorNameBtn,
+    avatarButton: avatarBtn,
     video: video || null,
     hiddenContainer: null,
     badgeEl: null,
@@ -1420,7 +1439,8 @@ export function createWatchHistoryRenderer(config = {}) {
         return controller.handleWatchHistoryRemoval(payload);
       }
       return defaultRemoveHandler(payload);
-    }
+    },
+    variant = "default"
   } = config;
 
   const syncEnabled =
@@ -1979,7 +1999,8 @@ export function createWatchHistoryRenderer(config = {}) {
       const card = buildHistoryCard({
         item: entry,
         video: entry.metadata?.video || null,
-        profile: entry.metadata?.profile || null
+        profile: entry.metadata?.profile || null,
+        variant
       });
       container.list.appendChild(card);
     });

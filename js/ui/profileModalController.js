@@ -1892,6 +1892,7 @@ export class ProfileModalController {
       featureBannerSelector: "#profileHistoryFeatureBanner",
       sessionWarningSelector: "#profileHistorySessionWarning",
       emptyCopy: "You haven’t watched any videos yet.",
+      variant: "modal",
       remove: (payload) =>
         this.callbacks.onHistoryReady({
           ...(typeof payload === "object" && payload ? payload : {}),
@@ -4412,6 +4413,11 @@ export class ProfileModalController {
       activeThread?.latestMessage,
     );
 
+    const currentUserSummary = this.resolveProfileSummaryForPubkey(
+      this.resolveActiveDmActor(),
+    );
+    const currentUserAvatarUrl = currentUserSummary?.avatarSrc || "";
+
     container.innerHTML = "";
 
     try {
@@ -4419,6 +4425,7 @@ export class ProfileModalController {
 
       this.dmAppShell = new AppShell({
         document,
+        currentUserAvatarUrl,
         conversations,
         activeConversationId,
         conversationState,
@@ -4434,6 +4441,9 @@ export class ProfileModalController {
         mobileView: this.dmMobileView || "list",
         onSelectConversation: (conversation) => {
           void this.handleDmConversationSelect(conversation);
+        },
+        onRefreshConversations: () => {
+          this.populateProfileMessages({ force: true });
         },
         onBack: () => {
           this.dmMobileView = "list";
@@ -4473,6 +4483,7 @@ export class ProfileModalController {
       return;
     }
 
+    root.classList.add("bg-transparent");
     container.appendChild(root);
 
     if (actor && activeConversationId) {

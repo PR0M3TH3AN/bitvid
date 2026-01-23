@@ -411,3 +411,50 @@ export function createExploreDiversitySorter({
     return selected.concat(orderedRest);
   };
 }
+
+export function createKidsScoreSorter({
+  stageName = "kids-score-sorter",
+} = {}) {
+  return function kidsScoreSorter(items = [], context = {}) {
+    if (!Array.isArray(items)) {
+      return [];
+    }
+
+    const copy = [...items];
+    copy.sort((a, b) => {
+      const aScore = Number(a?.metadata?.kidsScore);
+      const bScore = Number(b?.metadata?.kidsScore);
+      const aHasScore = Number.isFinite(aScore);
+      const bHasScore = Number.isFinite(bScore);
+      const normalizedAScore = aHasScore ? aScore : Number.NEGATIVE_INFINITY;
+      const normalizedBScore = bHasScore ? bScore : Number.NEGATIVE_INFINITY;
+
+      if (normalizedAScore !== normalizedBScore) {
+        return normalizedBScore - normalizedAScore;
+      }
+
+      const aRootCreatedAt = Number(a?.video?.rootCreatedAt);
+      const bRootCreatedAt = Number(b?.video?.rootCreatedAt);
+      const normalizedARoot =
+        Number.isFinite(aRootCreatedAt) ? aRootCreatedAt : Number.NEGATIVE_INFINITY;
+      const normalizedBRoot =
+        Number.isFinite(bRootCreatedAt) ? bRootCreatedAt : Number.NEGATIVE_INFINITY;
+
+      if (normalizedARoot !== normalizedBRoot) {
+        return normalizedBRoot - normalizedARoot;
+      }
+
+      return stableVideoId(a).localeCompare(stableVideoId(b));
+    });
+
+    if (context?.addWhy && typeof context.addWhy === "function") {
+      context.addWhy({
+        stage: stageName,
+        type: "sort",
+        reason: "kids-score",
+      });
+    }
+
+    return copy;
+  };
+}

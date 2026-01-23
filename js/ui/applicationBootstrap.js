@@ -266,6 +266,7 @@ export default class ApplicationBootstrap {
     }
     app.registerRecentFeed();
     app.registerForYouFeed();
+    app.registerKidsFeed();
     app.registerExploreFeed();
     app.registerSubscriptionsFeed();
     app.registerWatchHistoryFeed();
@@ -944,7 +945,7 @@ export default class ApplicationBootstrap {
       trigger,
     }) => {
       if (videoId) {
-        app.recordForYouClick(videoId);
+        app.recordFeedClick(videoId);
       }
       if (videoId) {
         Promise.resolve(

@@ -6,9 +6,14 @@ on:
       - main
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     strategy:
       matrix:
         node-version: [20]
@@ -76,6 +81,7 @@ jobs:
 
   unit-tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -119,6 +125,7 @@ jobs:
 
   dm-unit-tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       matrix:
         node-version: [20]
@@ -158,6 +165,7 @@ jobs:
 
   dm-integration-tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       matrix:
         node-version: [20]
@@ -197,6 +205,7 @@ jobs:
 
   e2e-headless:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     strategy:
       matrix:
         node-version: [20]

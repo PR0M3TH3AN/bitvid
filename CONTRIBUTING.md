@@ -49,6 +49,41 @@ Automated agents contributing to this repository should follow these rules:
 4. Push your branch and open a Pull Request against the `main` branch.
 5. Provide a clear description of the problem and solution.
 
+## CI Behavior and Operations
+
+### Concurrency (superseded runs)
+
+The `CI` workflow is configured with `concurrency.cancel-in-progress: true`, which means when you push new commits to the same PR or branch, any in-flight run for the same workflow group is canceled automatically. This keeps the latest changes running and stops superseded runs from burning capacity. If you need to cancel runs manually (for example, stuck or obviously outdated runs), operators can use the GitHub CLI:
+
+```bash
+gh run list --workflow=CI --limit 10
+gh run list --workflow=CI --limit 10 | awk 'NR>1 {print $1}' | xargs -n1 gh run cancel
+```
+
+If a run refuses to cancel normally, GitHub provides a `force-cancel` endpoint. We only use this in the automated cleanup workflow (below) or when a normal `gh run cancel` does not take effect.
+
+### Job timeouts
+
+Each job in the `CI` workflow has an explicit timeout:
+
+- `build`: 45 minutes
+- `unit-tests` (sharded): 30 minutes
+- `dm-unit-tests`: 20 minutes
+- `dm-integration-tests`: 30 minutes
+- `e2e-headless`: 45 minutes
+
+If a job exceeds its timeout, the runner terminates it automatically, so keep an eye on the longest-running suites when adjusting tests.
+
+### Cleanup workflow (manual invocation)
+
+The `Cleanup stuck workflow runs` workflow cancels queued or in-progress runs older than the configured stale threshold (currently 2 hours). It runs on a schedule every 30 minutes, but you can also trigger it manually:
+
+```bash
+gh workflow run "Cleanup stuck workflow runs"
+```
+
+This workflow uses the `force-cancel` endpoint to ensure stalled runs are terminated reliably, so prefer it for true stuck runs instead of normal cancellation.
+
 ## Development Setup
 
 To set up the project locally:
@@ -62,10 +97,18 @@ To set up the project locally:
    ```bash
    npm run build
    ```
+   (This runs `npm run build:css` to generate Tailwind styles.)
 
 3. **Run Tests**:
    ```bash
    npm run test:unit
+   ```
+   *Note: Unit tests may take a few minutes to complete.*
+
+   You can also run end-to-end and visual tests:
+   ```bash
+   npm run test:e2e
+   npm run test:visual
    ```
 
 4. **Format & Lint**:
@@ -81,6 +124,13 @@ To set up the project locally:
    ```
 
 For a full guide, see the [Local Setup section in README.md](./README.md#local-setup).
+
+### Troubleshooting
+
+- **Browserslist Warning**: If you see `Browserslist: caniuse-lite is outdated` during the build, run:
+  ```bash
+  npx update-browserslist-db@latest
+  ```
 
 ## Dev Container
 

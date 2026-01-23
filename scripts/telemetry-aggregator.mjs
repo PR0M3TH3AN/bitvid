@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 // Configuration
 const ARTIFACTS_DIR = 'artifacts';
 const REPORTS_DIR = 'ai/reports';
-const LOG_FILES = ['test_output.log', 'server.log', 'python_server.log', 'npm_output.log'];
+const LOG_FILES = ['test_unit.log', 'test_unit_debug.log', 'server.log', 'serve.log', 'test_output.log', 'python_server.log', 'npm_output.log'];
 
 // Regex patterns for PII sanitization
 const PII_PATTERNS = [
@@ -326,6 +326,11 @@ function generateJSONArtifact(aggregates) {
 // -----------------------------------------------------------------------------
 
 async function main() {
+    if (process.env.ENABLE_TELEMETRY !== 'true') {
+        console.log('Telemetry is opt-in. Set ENABLE_TELEMETRY=true to run.');
+        process.exit(0);
+    }
+
     console.log('Starting Telemetry Aggregation...');
 
     // 1. Collect

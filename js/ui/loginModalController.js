@@ -293,6 +293,7 @@ export default class LoginModalController {
     this.modalCloseObserver = null;
     this.modalCloseIntervalId = null;
     this.isSelectionInProgress = false;
+    this.nip46AutoStartTimer = null;
 
     this.initializeRemoteSignerStatus();
     this.initialized = false;
@@ -1296,28 +1297,24 @@ export default class LoginModalController {
 
       if (qrContainer instanceof HTMLElement) {
         qrContainer.innerHTML = "";
-        const resolveTokenColor = (tokenName, fallback) => {
-          if (!tokenName) {
-            return fallback;
+        // Force high-contrast black-on-white for the QR code to ensure
+        // it remains readable and scannable regardless of the application theme.
+        // We resolve these from the unified token system to ensure consistency.
+        let qrLightColor = "rgb(255, 255, 255)";
+        let qrDarkColor = "rgb(0, 0, 0)";
+
+        if (this.window && typeof this.window.getComputedStyle === "function") {
+          try {
+            const style = this.window.getComputedStyle(this.document.documentElement);
+            const white = style.getPropertyValue("--color-white").trim();
+            const black = style.getPropertyValue("--color-black").trim();
+            if (white) qrLightColor = white;
+            if (black) qrDarkColor = black;
+          } catch (error) {
+            // Fallback to hardcoded values if style resolution fails
           }
-          const doc = this.document;
-          const win = this.window;
-          if (!doc || !win || typeof win.getComputedStyle !== "function") {
-            return fallback;
-          }
-          const root = doc.documentElement;
-          if (!root) {
-            return fallback;
-          }
-          const computed = win.getComputedStyle(root);
-          if (!computed) {
-            return fallback;
-          }
-          const value = computed.getPropertyValue(tokenName);
-          return value && value.trim() ? value.trim() : fallback;
-        };
-        const qrLightColor = resolveTokenColor("--color-white", "#ffffff");
-        const qrDarkColor = resolveTokenColor("--color-black", "#000000");
+        }
+
         if (uri) {
           try {
             qrInstance = renderQrCode(qrContainer, uri, {
@@ -1486,7 +1483,14 @@ export default class LoginModalController {
       if (cancelButton instanceof HTMLButtonElement) {
         cancelHandler = (event) => {
           event.preventDefault();
-          finish(null, { keepMounted: false });
+          if (settled) {
+            this.rejectPendingTask(this.createCancellationError(), {
+              type: "add-profile",
+            });
+            cleanup();
+          } else {
+            finish(null, { keepMounted: false });
+          }
         };
         cancelButton.addEventListener("click", cancelHandler);
       }
@@ -1566,7 +1570,7 @@ export default class LoginModalController {
       }
 
       // Kick off the handshake generation
-      setTimeout(autoStart, 0);
+      this.nip46AutoStartTimer = setTimeout(autoStart, 0);
     });
   }
 
@@ -2471,6 +2475,13 @@ export default class LoginModalController {
       }
     }
     this.modalCloseIntervalId = null;
+
+    if (this.nip46AutoStartTimer) {
+      if (this.window && typeof this.window.clearTimeout === "function") {
+        this.window.clearTimeout(this.nip46AutoStartTimer);
+      }
+      this.nip46AutoStartTimer = null;
+    }
 
     if (this.pendingTask && typeof this.pendingTask.reject === "function") {
       try {

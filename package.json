@@ -4,6 +4,8 @@
   "type": "module",
   "version": "1.0.0",
   "scripts": {
+    "start": "npm run build && npx serve",
+    "serve": "npx serve",
     "build": "npm run build:css",
     "build:css": "npx tailwindcss -c tailwind.config.cjs -i css/tailwind.source.css -o css/tailwind.generated.css --minify",
     "build:beacon:bundle": "node scripts/build-beacon.mjs",
@@ -42,7 +44,7 @@
     "playwright": "^1.57.0",
     "pngjs": "^7.0.0",
     "postcss": "^8.4.41",
-    "prettier": "^3.8.0",
+    "prettier": "^3.8.1",
     "prettier-plugin-tailwindcss": "^0.6.5",
     "stylelint": "^16.26.1",
     "stylelint-config-standard": "^36.0.1",

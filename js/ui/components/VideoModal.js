@@ -244,6 +244,10 @@ export class VideoModal {
       reason: "",
       parentCommentId: null,
     };
+    this.shareNostrAuthState = {
+      isLoggedIn: false,
+      hasSigner: false,
+    };
     this.commentThreadContext = {
       videoEventId: "",
       parentCommentId: null,
@@ -2161,7 +2165,7 @@ export class VideoModal {
       }
     }
 
-    return "#000000";
+    return "rgb(0, 0, 0)";
   }
 
   clearAmbientCanvas() {
@@ -2578,9 +2582,8 @@ export class VideoModal {
   }
 
   buildModalShareMenuPanel({ document: doc, close }) {
-    const isLoggedIn =
-      this.commentComposerState.reason !== "login-required" &&
-      !this.commentComposerState.disabled;
+    const isLoggedIn = this.shareNostrAuthState.isLoggedIn;
+    const hasSigner = this.shareNostrAuthState.hasSigner;
 
     const hasMagnet = Boolean(
       (typeof this.activeVideo?.magnet === "string" &&
@@ -2596,6 +2599,7 @@ export class VideoModal {
       document: doc,
       video: this.activeVideo,
       isLoggedIn,
+      hasSigner,
       hasMagnet,
       hasCdn,
       context: "modal",
@@ -2669,6 +2673,27 @@ export class VideoModal {
     if (existingPanel && existingPanel.parentNode) {
       existingPanel.parentNode.replaceChild(nextPanel, existingPanel);
     }
+  }
+
+  setShareNostrAuthState({ isLoggedIn, hasSigner } = {}) {
+    const nextIsLoggedIn = Boolean(isLoggedIn);
+    const nextHasSigner = Boolean(hasSigner);
+    const previous = this.shareNostrAuthState;
+
+    if (
+      previous &&
+      previous.isLoggedIn === nextIsLoggedIn &&
+      previous.hasSigner === nextHasSigner
+    ) {
+      return;
+    }
+
+    this.shareNostrAuthState = {
+      isLoggedIn: nextIsLoggedIn,
+      hasSigner: nextHasSigner,
+    };
+
+    this.refreshModalShareMenuPanel();
   }
 
   buildModalMoreMenuPanel({ document: doc, close }) {
@@ -2772,10 +2797,6 @@ export class VideoModal {
   }
 
   updateSourceAvailability(video) {
-    if (!this.sourceToggleContainer) {
-      return;
-    }
-
     const hasUrl = Boolean(
       typeof video?.url === "string" && video.url.trim()
     );
@@ -2783,6 +2804,12 @@ export class VideoModal {
       (typeof video?.magnet === "string" && video.magnet.trim()) ||
         video?.torrentSupported
     );
+
+    this.setShareEnabled(hasUrl || hasMagnet);
+
+    if (!this.sourceToggleContainer) {
+      return;
+    }
 
     if (hasUrl || hasMagnet) {
       this.sourceToggleContainer.removeAttribute("hidden");
