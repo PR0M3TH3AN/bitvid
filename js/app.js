@@ -6086,6 +6086,23 @@ class Application {
     };
   }
 
+  buildKidsFeedRuntime() {
+    const blacklist =
+      this.blacklistedEventIds instanceof Set
+        ? new Set(this.blacklistedEventIds)
+        : new Set();
+
+    const moderationThresholds = this.getActiveModerationThresholds();
+
+    return {
+      blacklistedEventIds: blacklist,
+      isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
+      moderationThresholds: moderationThresholds
+        ? { ...moderationThresholds }
+        : undefined,
+    };
+  }
+
   refreshForYouFeed({ reason, fallbackVideos } = {}) {
     const runtime = this.buildForYouFeedRuntime();
     const normalizedReason = typeof reason === "string" ? reason : undefined;
@@ -6142,6 +6159,63 @@ class Application {
           this.videoListView.state.videosMap = this.videosMap;
         }
         this.updateForYouTelemetryMetadata([], metadata);
+        const payload = { videos: fallback, metadata };
+        this.renderVideoList(payload);
+        return payload;
+      });
+  }
+
+  refreshKidsFeed({ reason, fallbackVideos } = {}) {
+    const runtime = this.buildKidsFeedRuntime();
+    const normalizedReason = typeof reason === "string" ? reason : undefined;
+    const fallback = Array.isArray(fallbackVideos) ? fallbackVideos : [];
+
+    if (!this.feedEngine || typeof this.feedEngine.run !== "function") {
+      const metadata = {
+        reason: normalizedReason,
+        engine: "unavailable",
+      };
+      this.latestFeedMetadata = metadata;
+      this.videosMap = this.nostrService.getVideosMap();
+      if (this.videoListView) {
+        this.videoListView.state.videosMap = this.videosMap;
+      }
+      this.renderVideoList({ videos: fallback, metadata });
+      return Promise.resolve({ videos: fallback, metadata });
+    }
+
+    return this.feedEngine
+      .run("kids", { runtime })
+      .then((result) => {
+        const videos = Array.isArray(result?.videos) ? result.videos : [];
+        const metadata = {
+          ...(result?.metadata || {}),
+        };
+        if (normalizedReason) {
+          metadata.reason = normalizedReason;
+        }
+
+        this.latestFeedMetadata = metadata;
+        this.videosMap = this.nostrService.getVideosMap();
+        if (this.videoListView) {
+          this.videoListView.state.videosMap = this.videosMap;
+        }
+
+        const payload = { videos, metadata };
+        this.renderVideoList(payload);
+        return payload;
+      })
+      .catch((error) => {
+        devLogger.error("[Application] Failed to run kids feed:", error);
+        const metadata = {
+          reason: normalizedReason || "error:kids-feed",
+          error: true,
+        };
+        this.latestFeedMetadata = metadata;
+        this.videosMap = this.nostrService.getVideosMap();
+        if (this.videoListView) {
+          this.videoListView.state.videosMap = this.videosMap;
+        }
         const payload = { videos: fallback, metadata };
         this.renderVideoList(payload);
         return payload;
@@ -6358,6 +6432,54 @@ class Application {
       await initialRefreshPromise;
     } else if (!Array.isArray(videos) || videos.length === 0) {
       await this.refreshForYouFeed({ reason: "initial", fallbackVideos: [] });
+    }
+
+    this.videoSubscription = this.nostrService.getVideoSubscription() || null;
+    this.videosMap = this.nostrService.getVideosMap();
+    if (this.videoListView) {
+      this.videoListView.state.videosMap = this.videosMap;
+    }
+  }
+
+  async loadKidsVideos(forceFetch = false) {
+    devLogger.log("Starting loadKidsVideos... (forceFetch =", forceFetch, ")");
+    this.setFeedTelemetryContext("kids");
+
+    const container = this.mountVideoListView({ includeTags: false });
+    const hasCachedVideos =
+      this.nostrService &&
+      Array.isArray(this.nostrService.getFilteredActiveVideos()) &&
+      this.nostrService.getFilteredActiveVideos().length > 0;
+
+    if (!hasCachedVideos) {
+      if (this.videoListView && container) {
+        this.videoListView.showLoading("Fetching kids videos…");
+      } else if (container) {
+        container.innerHTML = getSidebarLoadingMarkup("Fetching kids videos…");
+      }
+    }
+
+    let initialRefreshPromise = null;
+
+    const videos = await this.nostrService.loadVideos({
+      forceFetch,
+      blacklistedEventIds: this.blacklistedEventIds,
+      isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
+      onVideos: (payload, detail = {}) => {
+        const promise = this.refreshKidsFeed({
+          reason: detail?.reason,
+          fallbackVideos: payload,
+        });
+        if (!initialRefreshPromise) {
+          initialRefreshPromise = promise;
+        }
+      },
+    });
+
+    if (initialRefreshPromise) {
+      await initialRefreshPromise;
+    } else if (!Array.isArray(videos) || videos.length === 0) {
+      await this.refreshKidsFeed({ reason: "initial", fallbackVideos: [] });
     }
 
     this.videoSubscription = this.nostrService.getVideoSubscription() || null;
