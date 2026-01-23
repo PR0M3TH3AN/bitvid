@@ -11,6 +11,7 @@ import { ALLOW_NSFW_CONTENT } from "./config.js";
 import { attachFeedInfoPopover } from "./ui/components/FeedInfoPopover.js";
 import { setHashView } from "./hashView.js";
 import { sanitizeRelayList } from "./nostr/nip46Client.js";
+import { subscribeToVideoViewCount, unsubscribeFromVideoViewCount } from "./viewCounter.js";
 import {
   buildSearchHashFromState,
   getSearchFilterState,
@@ -18,6 +19,7 @@ import {
   setSearchFilterState,
   syncSearchFilterStateFromHash,
 } from "./search/searchFilterState.js";
+import { DEFAULT_FILTERS, SORT_OPTIONS } from "./search/searchFilters.js";
 
 function getApp() {
   return getApplication();
@@ -194,6 +196,105 @@ const formatDurationLabel = (seconds) => {
   return `${seconds}s`;
 };
 
+const resolveSortLabel = (sortValue) => {
+  const option = SORT_OPTIONS.find((entry) => entry.value === sortValue);
+  if (!option) return sortValue;
+  const suffix = option.experimental ? " (experimental)" : "";
+  return `${option.label}${suffix}`;
+};
+
+const getVideoMetricValue = (video, candidates = []) => {
+  if (!video || typeof video !== "object") {
+    return null;
+  }
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const value = video[candidate];
+    if (Number.isFinite(value)) {
+      return Number(value);
+    }
+  }
+  return null;
+};
+
+const getVideoZapCount = (video) => {
+  const direct = getVideoMetricValue(video, [
+    "zapCount",
+    "zapTotal",
+    "zapTotalSats",
+    "zapTotalMsats",
+  ]);
+  if (direct !== null) {
+    return direct;
+  }
+  if (video?.zaps && typeof video.zaps === "object") {
+    const nested = getVideoMetricValue(video.zaps, ["count", "total"]);
+    if (nested !== null) {
+      return nested;
+    }
+  }
+  return null;
+};
+
+const getVideoReactionCount = (video) => {
+  const direct = getVideoMetricValue(video, [
+    "reactionCount",
+    "reactionsCount",
+    "commentCount",
+    "commentsCount",
+  ]);
+  if (direct !== null) {
+    return direct;
+  }
+  if (video?.reactions && typeof video.reactions === "object") {
+    const nested = getVideoMetricValue(video.reactions, ["total", "count"]);
+    if (nested !== null) {
+      return nested;
+    }
+  }
+  return null;
+};
+
+const getViewCountSnapshot = (video, app, relays) => {
+  if (!video) {
+    return { total: null, known: false };
+  }
+  const pointerInfo =
+    typeof app?.deriveVideoPointerInfo === "function"
+      ? app.deriveVideoPointerInfo(video)
+      : null;
+  if (!pointerInfo?.pointer) {
+    return { total: null, known: false };
+  }
+  let snapshot = null;
+  let token = null;
+  try {
+    token = subscribeToVideoViewCount(
+      pointerInfo.pointer,
+      (next) => {
+        snapshot = next;
+      },
+      relays?.length ? { relays } : undefined,
+    );
+  } catch (error) {
+    devLogger.warn("[Search] Unable to subscribe to view count.", error);
+    return { total: null, known: false };
+  } finally {
+    if (token) {
+      try {
+        unsubscribeFromVideoViewCount(pointerInfo.pointer, token);
+      } catch (error) {
+        devLogger.warn("[Search] Unable to unsubscribe from view count.", error);
+      }
+    }
+  }
+
+  const total = Number.isFinite(snapshot?.total) ? Number(snapshot.total) : null;
+  const known =
+    Number.isFinite(snapshot?.lastSyncedAt) && snapshot.lastSyncedAt > 0;
+  return { total, known };
+};
+
 function buildNextFilters() {
   const current = getSearchFilterState();
   const filters = current.filters || {};
@@ -347,6 +448,17 @@ function renderActiveFilters(filters) {
       onRemove: () => {
         const nextFilters = buildNextFilters();
         nextFilters.nsfw = "any";
+        applyFiltersAndRefresh(nextFilters);
+      },
+    });
+  }
+
+  if (filters.sort && filters.sort !== DEFAULT_FILTERS.sort) {
+    pills.push({
+      label: `Sort: ${resolveSortLabel(filters.sort)}`,
+      onRemove: () => {
+        const nextFilters = buildNextFilters();
+        nextFilters.sort = DEFAULT_FILTERS.sort;
         applyFiltersAndRefresh(nextFilters);
       },
     });
@@ -828,6 +940,87 @@ async function performVideoSearch(query, token, filters = {}) {
         if (!unique.has(v.id)) unique.set(v.id, v);
     }
 
-    // Sort by creation date (newest first)
-    return Array.from(unique.values()).sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+    const entries = Array.from(unique.values()).map((video, index) => ({
+        video,
+        index,
+        createdAt: Number.isFinite(video?.created_at) ? Number(video.created_at) : 0
+    }));
+
+    const sortByNewest = () =>
+        entries
+            .slice()
+            .sort((a, b) => (b.createdAt - a.createdAt) || (a.index - b.index));
+
+    const sortByOldest = () =>
+        entries
+            .slice()
+            .sort((a, b) => (a.createdAt - b.createdAt) || (a.index - b.index));
+
+    const sortByMetric = (metricKey, metricResolver) => {
+        let hasUnknown = false;
+        const enriched = entries.map((entry) => {
+            const metricValue = metricResolver(entry.video);
+            if (!Number.isFinite(metricValue)) {
+                hasUnknown = true;
+            }
+            return {
+                ...entry,
+                [metricKey]: Number.isFinite(metricValue) ? Number(metricValue) : 0
+            };
+        });
+
+        if (hasUnknown) {
+            return sortByNewest();
+        }
+
+        return enriched
+            .sort((a, b) =>
+                (b[metricKey] - a[metricKey]) ||
+                (b.createdAt - a.createdAt) ||
+                (a.index - b.index)
+            );
+    };
+
+    const sortByViews = () => {
+        let hasUnknown = false;
+        const viewCountRelays = relaySelection?.length ? relaySelection : null;
+        const enriched = entries.map((entry) => {
+            const snapshot = getViewCountSnapshot(entry.video, app, viewCountRelays);
+            if (!snapshot.known || !Number.isFinite(snapshot.total)) {
+                hasUnknown = true;
+            }
+            return {
+                ...entry,
+                viewCount: Number.isFinite(snapshot.total) ? Number(snapshot.total) : 0
+            };
+        });
+
+        if (hasUnknown) {
+            return sortByNewest();
+        }
+
+        return enriched
+            .sort((a, b) =>
+                (b.viewCount - a.viewCount) ||
+                (b.createdAt - a.createdAt) ||
+                (a.index - b.index)
+            );
+    };
+
+    const sortMode = typeof filters?.sort === "string" ? filters.sort : DEFAULT_FILTERS.sort;
+    let sortedEntries = sortByNewest();
+
+    if (sortMode === "oldest") {
+        sortedEntries = sortByOldest();
+    } else if (sortMode === "views") {
+        sortedEntries = sortByViews();
+    } else if (sortMode === "zaps") {
+        sortedEntries = sortByMetric("zapCount", getVideoZapCount);
+    } else if (sortMode === "reactions") {
+        sortedEntries = sortByMetric("reactionCount", getVideoReactionCount);
+    } else if (sortMode === "newest" || sortMode === "relevance") {
+        sortedEntries = sortByNewest();
+    }
+
+    return sortedEntries.map((entry) => entry.video);
 }

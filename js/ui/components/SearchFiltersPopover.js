@@ -1,5 +1,5 @@
 import createPopover from "../overlay/popoverEngine.js";
-import { DEFAULT_FILTERS } from "../../search/searchFilters.js";
+import { DEFAULT_FILTERS, SORT_OPTIONS } from "../../search/searchFilters.js";
 
 const FOCUSABLE_SELECTOR =
   "a[href], button:not([disabled]), input:not([disabled]):not([type=\"hidden\"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex=\"-1\"])";
@@ -276,14 +276,16 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
       className: "select w-full",
       attrs: { "aria-label": "Sort results" },
     });
-    [
-      { label: "Most recent", value: "recent" },
-      { label: "Most viewed", value: "views" },
-      { label: "Trending", value: "trending" },
-      { label: "Longest", value: "longest" },
-    ].forEach(({ label, value }) => {
-      const option = createElement(doc, "option", { text: label });
-      option.value = value;
+    const enableExperimentalSorts = options.enableExperimentalSorts === true;
+    SORT_OPTIONS.forEach((sortOption) => {
+      const suffix = sortOption.experimental ? " (experimental)" : "";
+      const option = createElement(doc, "option", {
+        text: `${sortOption.label}${suffix}`,
+      });
+      option.value = sortOption.value;
+      if (sortOption.experimental && !enableExperimentalSorts) {
+        option.disabled = true;
+      }
       sortSelect.appendChild(option);
     });
     sortSection.appendChild(sortSelect);
@@ -459,7 +461,7 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
         followedSwitch.classList.remove("is-on");
       }
       if (sortSelect) {
-        sortSelect.selectedIndex = 0;
+        sortSelect.value = safeFilters.sort || DEFAULT_FILTERS.sort;
       }
     };
 
@@ -509,6 +511,9 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
       const nsfwSwitch = nsfwToggle.querySelector(".switch");
       if (nsfwSwitch?.getAttribute("aria-checked") === "true") {
         filters.nsfw = "true";
+      }
+      if (sortSelect?.value) {
+        filters.sort = sortSelect.value;
       }
       return filters;
     };
