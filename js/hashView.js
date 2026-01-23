@@ -14,14 +14,16 @@ export function getHashViewName() {
   return viewName.trim();
 }
 
-export function setHashView(viewName) {
+export function setHashView(viewName, options = {}) {
   if (typeof window === "undefined") {
     return;
   }
 
   const url = new URL(window.location.href);
   url.searchParams.delete("modal");
-  url.searchParams.delete("v");
+  if (!options?.preserveVideoParam) {
+    url.searchParams.delete("v");
+  }
   const newUrl = url.pathname + url.search + `#view=${viewName}`;
   window.history.replaceState({}, "", newUrl);
 

@@ -4332,8 +4332,11 @@ class Application {
     const currentView = getHashViewName();
     const normalizedView =
       typeof currentView === "string" ? currentView.toLowerCase() : "";
+    const urlParams = new URLSearchParams(window.location.search);
+    const hasVideoParam = urlParams.has("v");
+
     if (!normalizedView || normalizedView === "most-recent-videos") {
-      setHashView("for-you");
+      setHashView("for-you", { preserveVideoParam: hasVideoParam });
     }
 
     const rawProviderId =
