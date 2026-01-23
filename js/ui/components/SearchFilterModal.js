@@ -11,6 +11,7 @@ import {
 } from "../../search/searchFilterState.js";
 import { DEFAULT_FILTERS } from "../../search/searchFilters.js";
 import { setHashView } from "../../hashView.js";
+import { ALLOW_NSFW_CONTENT } from "../../config.js";
 
 const MODAL_ID = "searchFilterModal";
 
@@ -127,11 +128,19 @@ function init() {
 
   // NSFW Toggle
   if (nsfwToggle) {
-    nsfwToggle.addEventListener("click", () => {
-      const isChecked = nsfwToggle.getAttribute("aria-checked") === "true";
-      nsfwToggle.setAttribute("aria-checked", !isChecked);
-      nsfwToggle.classList.toggle("is-on", !isChecked);
-    });
+    if (!ALLOW_NSFW_CONTENT) {
+      nsfwToggle.disabled = true;
+      nsfwToggle.setAttribute("aria-disabled", "true");
+      nsfwToggle.title = "NSFW content is disabled on this instance.";
+      // Visual disabled state is usually handled by CSS for [disabled], but we can enforce:
+      nsfwToggle.classList.add("opacity-50", "cursor-not-allowed");
+    } else {
+      nsfwToggle.addEventListener("click", () => {
+        const isChecked = nsfwToggle.getAttribute("aria-checked") === "true";
+        nsfwToggle.setAttribute("aria-checked", !isChecked);
+        nsfwToggle.classList.toggle("is-on", !isChecked);
+      });
+    }
   }
 
   prepareStaticModal({ id: MODAL_ID });
@@ -293,9 +302,14 @@ function syncStateToControls(filters) {
   });
 
   // NSFW
-  const nsfwIsOn = safeFilters.nsfw === "true" || safeFilters.nsfw === "only";
-  nsfwToggle.setAttribute("aria-checked", nsfwIsOn);
-  nsfwToggle.classList.toggle("is-on", nsfwIsOn);
+  if (ALLOW_NSFW_CONTENT) {
+    const nsfwIsOn = safeFilters.nsfw === "true" || safeFilters.nsfw === "only";
+    nsfwToggle.setAttribute("aria-checked", nsfwIsOn);
+    nsfwToggle.classList.toggle("is-on", nsfwIsOn);
+  } else {
+    nsfwToggle.setAttribute("aria-checked", "false");
+    nsfwToggle.classList.remove("is-on");
+  }
 
   // Auto-expand Advanced if needed
   const hasAdvancedFilters =
