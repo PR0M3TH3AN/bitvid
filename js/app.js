@@ -5811,6 +5811,10 @@ class Application {
   }
 
   buildExploreFeedRuntime() {
+    const exploreDataService =
+      this.exploreDataService && typeof this.exploreDataService === "object"
+        ? this.exploreDataService
+        : null;
     const blacklist =
       this.blacklistedEventIds instanceof Set
         ? new Set(this.blacklistedEventIds)
@@ -5828,18 +5832,26 @@ class Application {
     const { interests = [], disinterests = [] } = preferenceSource || {};
     const moderationThresholds = this.getActiveModerationThresholds();
 
+    const watchHistorySource =
+      exploreDataService && typeof exploreDataService.getWatchHistoryTagCounts === "function"
+        ? exploreDataService.getWatchHistoryTagCounts()
+        : this.watchHistoryTagCounts;
     const watchHistoryTagCounts =
-      this.watchHistoryTagCounts instanceof Map
-        ? new Map(this.watchHistoryTagCounts)
-        : this.watchHistoryTagCounts &&
-          typeof this.watchHistoryTagCounts === "object"
-        ? { ...this.watchHistoryTagCounts }
+      watchHistorySource instanceof Map
+        ? new Map(watchHistorySource)
+        : watchHistorySource && typeof watchHistorySource === "object"
+        ? { ...watchHistorySource }
         : undefined;
+
+    const exploreTagSource =
+      exploreDataService && typeof exploreDataService.getTagIdf === "function"
+        ? exploreDataService.getTagIdf()
+        : this.exploreTagIdf;
     const exploreTagIdf =
-      this.exploreTagIdf instanceof Map
-        ? new Map(this.exploreTagIdf)
-        : this.exploreTagIdf && typeof this.exploreTagIdf === "object"
-        ? { ...this.exploreTagIdf }
+      exploreTagSource instanceof Map
+        ? new Map(exploreTagSource)
+        : exploreTagSource && typeof exploreTagSource === "object"
+        ? { ...exploreTagSource }
         : undefined;
 
     return {
@@ -9953,6 +9965,18 @@ class Application {
         );
       }
       this.watchHistoryTelemetry = null;
+    }
+
+    if (this.exploreDataService && typeof this.exploreDataService.destroy === "function") {
+      try {
+        this.exploreDataService.destroy();
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to destroy explore data service:",
+          error,
+        );
+      }
+      this.exploreDataService = null;
     }
 
     if (typeof this.unsubscribeFromHashtagPreferencesChange === "function") {
