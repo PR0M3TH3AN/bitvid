@@ -3063,6 +3063,20 @@
     overflow-x: hidden;
   }
 
+  /* Specific override for messages pane to prevent parent scrolling on desktop */
+  @media (min-width: theme("screens.md")) {
+    #profilePaneMessages {
+      height: 100%;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    #dmAppShellMount {
+      height: 100%;
+      min-height: 0;
+    }
+  }
+
   .profile-pane.hidden {
     display: none !important;
   }
@@ -6060,9 +6074,10 @@
 }
 
 .no-scrollbar {
-  scrollbar-width: none;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
 }
 
 .no-scrollbar::-webkit-scrollbar {
-  display: none;
+  display: none !important;
 }
