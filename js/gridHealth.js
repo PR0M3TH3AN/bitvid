@@ -158,7 +158,7 @@ function normalizeResult(result) {
   };
 }
 
-function queueProbe(magnet, cacheKey, priority = 0) {
+function queueProbe(magnet, cacheKey, priority = 0, webSeeds = []) {
   if (!magnet) {
     return Promise.resolve(null);
   }
@@ -180,6 +180,7 @@ function queueProbe(magnet, cacheKey, priority = 0) {
             timeoutMs: PROBE_TIMEOUT_MS,
             maxWebConns: 2,
             polls: PROBE_POLL_COUNT,
+            urlList: webSeeds,
           })
           .catch((err) => ({
             healthy: false,
@@ -584,7 +585,11 @@ function handleCardVisible({ card, pendingByCard, priority = 0 }) {
 
   setBadge(card, "checking");
 
-  const probePromise = queueProbe(magnet, infoHash, priority);
+  const encodedUrl = card.dataset.urlHealthUrl || "";
+  const webSeed = encodedUrl ? decodeURIComponent(encodedUrl) : "";
+  const webSeeds = webSeed ? [webSeed] : [];
+
+  const probePromise = queueProbe(magnet, infoHash, priority, webSeeds);
 
   pendingByCard.set(card, probePromise);
 

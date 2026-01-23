@@ -161,6 +161,7 @@ import {
 import ApplicationBootstrap from "./ui/applicationBootstrap.js";
 import EngagementController from "./ui/engagementController.js";
 import SimilarContentController from "./ui/similarContentController.js";
+import UrlHealthController from "./ui/urlHealthController.js";
 import VideoModalCommentController from "./ui/videoModalCommentController.js";
 import TorrentStatusController from "./ui/torrentStatusController.js";
 import ModerationActionController from "./services/moderationActionController.js";
@@ -298,6 +299,28 @@ class Application {
 
     this.moderationDecorator = new ModerationDecorator({
       getProfileCacheEntry: (pubkey) => this.getProfileCacheEntry(pubkey),
+    });
+
+    this.urlHealthController = new UrlHealthController({
+      state: {
+        getCachedUrlHealth: (eventId, url) =>
+          this.getCachedUrlHealth(eventId, url),
+        storeUrlHealth: (eventId, url, result, ttl) =>
+          this.storeUrlHealth(eventId, url, result, ttl),
+        getInFlightUrlProbe,
+        setInFlightUrlProbe,
+      },
+      utils: {
+        updateVideoCardSourceVisibility,
+      },
+      logger: devLogger,
+      constants: {
+        URL_PROBE_TIMEOUT_MS,
+        urlHealthConstants,
+      },
+      callbacks: {
+        getVideoListView: () => this.videoListView,
+      },
     });
 
     this.engagementController = new EngagementController({
@@ -6282,23 +6305,7 @@ class Application {
    * one place avoids subtle mismatches when we tweak copy or classes later.
    */
   getUrlHealthPlaceholderMarkup(options = {}) {
-    const includeMargin = options?.includeMargin !== false;
-    const classes = ["badge", "url-health-badge", "text-muted"];
-    if (includeMargin) {
-      classes.push("mt-sm");
-    }
-
-    return `
-      <span
-        class="${classes.join(" ")}"
-        data-url-health-state="checking"
-        data-variant="neutral"
-        aria-live="polite"
-        role="status"
-      >
-        ⏳ CDN
-      </span>
-    `;
+    return this.urlHealthController.getUrlHealthPlaceholderMarkup(options);
   }
 
   getTorrentHealthBadgeMarkup(options = {}) {
@@ -6334,178 +6341,11 @@ class Application {
   }
 
   updateUrlHealthBadge(badgeEl, state, videoId) {
-    if (!badgeEl) {
-      return;
-    }
-
-    if (videoId && badgeEl.dataset.urlHealthFor && badgeEl.dataset.urlHealthFor !== videoId) {
-      return;
-    }
-
-    if (!badgeEl.isConnected) {
-      if (typeof requestAnimationFrame === "function") {
-        requestAnimationFrame(() => {
-          if (badgeEl.isConnected) {
-            this.updateUrlHealthBadge(badgeEl, state, videoId);
-          }
-        });
-      }
-      return;
-    }
-
-    const status = state?.status || "checking";
-    const fallbackMessages = {
-      healthy: "✅ CDN",
-      offline: "❌ CDN",
-      unknown: "⚠️ CDN",
-      timeout: "⚠️ CDN timed out",
-      checking: "⏳ CDN",
-    };
-    const message =
-      state?.message ||
-      fallbackMessages[status] ||
-      fallbackMessages.checking;
-
-    const hadCompactMargin =
-      badgeEl.classList.contains("mt-sm") || badgeEl.classList.contains("mt-3");
-    badgeEl.dataset.urlHealthState = status;
-    const cardEl = badgeEl.closest(".card[data-video-id]");
-    if (cardEl) {
-      cardEl.dataset.urlHealthState = status;
-      updateVideoCardSourceVisibility(cardEl);
-    }
-    badgeEl.setAttribute("aria-live", "polite");
-    badgeEl.setAttribute("role", status === "offline" ? "alert" : "status");
-    badgeEl.textContent = message;
-
-    const classes = ["badge", "url-health-badge"];
-    if (hadCompactMargin) {
-      classes.push("mt-sm");
-    }
-    badgeEl.className = classes.join(" ");
-
-    const variantMap = {
-      healthy: "success",
-      offline: "critical",
-      unknown: "neutral",
-      timeout: "neutral",
-      checking: "neutral",
-    };
-    const variant = variantMap[status];
-    if (variant) {
-      badgeEl.dataset.variant = variant;
-    } else if (badgeEl.dataset.variant) {
-      delete badgeEl.dataset.variant;
-    }
-
-    if (
-      videoId &&
-      this.videoListView &&
-      typeof this.videoListView.cacheUrlHealth === "function"
-    ) {
-      this.videoListView.cacheUrlHealth(videoId, {
-        status,
-        message,
-        lastCheckedAt: Number.isFinite(state?.lastCheckedAt)
-          ? state.lastCheckedAt
-          : undefined,
-      });
-    }
+    return this.urlHealthController.updateUrlHealthBadge(badgeEl, state, videoId);
   }
 
-  handleUrlHealthBadge({ video, url, badgeEl }) {
-    if (!video?.id || !badgeEl || !url) {
-      return;
-    }
-
-    const eventId = video.id;
-    const trimmedUrl = typeof url === "string" ? url.trim() : "";
-    if (!trimmedUrl) {
-      return;
-    }
-
-    badgeEl.dataset.urlHealthFor = eventId;
-
-    const cached = this.getCachedUrlHealth(eventId, trimmedUrl);
-    if (cached) {
-      this.updateUrlHealthBadge(badgeEl, cached, eventId);
-      return;
-    }
-
-    this.updateUrlHealthBadge(badgeEl, { status: "checking" }, eventId);
-
-    const probeOptions = { confirmPlayable: true };
-    const existingProbe = getInFlightUrlProbe(eventId, trimmedUrl, probeOptions);
-    if (existingProbe) {
-      existingProbe
-        .then((entry) => {
-          if (entry) {
-            this.updateUrlHealthBadge(badgeEl, entry, eventId);
-          }
-        })
-        .catch((err) => {
-          devLogger.warn(
-            `[urlHealth] cached probe promise rejected for ${trimmedUrl}:`,
-            err
-          );
-        });
-      return;
-    }
-
-    const probePromise = this.probeUrl(trimmedUrl, probeOptions)
-      .then((result) => {
-        const outcome = result?.outcome || "error";
-        let entry;
-
-        if (outcome === "ok") {
-          entry = { status: "healthy", message: "✅ CDN" };
-        } else if (outcome === "opaque" || outcome === "unknown") {
-          entry = {
-            status: "unknown",
-            message: "⚠️ CDN",
-          };
-        } else if (outcome === "timeout") {
-          entry = {
-            status: "timeout",
-            message: "⚠️ CDN timed out",
-          };
-        } else {
-          entry = {
-            status: "offline",
-            message: "❌ CDN",
-          };
-        }
-
-        const ttlOverride =
-          entry.status === "timeout" || entry.status === "unknown"
-            ? urlHealthConstants.URL_HEALTH_TIMEOUT_RETRY_MS
-            : undefined;
-
-        return this.storeUrlHealth(eventId, trimmedUrl, entry, ttlOverride);
-      })
-      .catch((err) => {
-        devLogger.warn(`[urlHealth] probe failed for ${trimmedUrl}:`, err);
-        const entry = {
-          status: "offline",
-          message: "❌ CDN",
-        };
-        return this.storeUrlHealth(eventId, trimmedUrl, entry);
-      });
-
-    setInFlightUrlProbe(eventId, trimmedUrl, probePromise, probeOptions);
-
-    probePromise
-      .then((entry) => {
-        if (entry) {
-          this.updateUrlHealthBadge(badgeEl, entry, eventId);
-        }
-      })
-      .catch((err) => {
-        devLogger.warn(
-          `[urlHealth] probe promise rejected post-cache for ${trimmedUrl}:`,
-          err
-        );
-      });
+  handleUrlHealthBadge(payload) {
+    return this.urlHealthController.handleUrlHealthBadge(payload);
   }
 
   handleStreamHealthBadgeUpdate(detail) {
@@ -7965,226 +7805,12 @@ class Application {
     }
   }
 
-  async probeUrlWithVideoElement(url, timeoutMs = URL_PROBE_TIMEOUT_MS) {
-    const trimmed = typeof url === "string" ? url.trim() : "";
-    if (!trimmed || typeof document === "undefined") {
-      return { outcome: "error" };
-    }
-
-    return new Promise((resolve) => {
-      const video = document.createElement("video");
-      let settled = false;
-      let timeoutId = null;
-
-      const cleanup = () => {
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-        }
-        video.removeEventListener("loadeddata", handleSuccess);
-        video.removeEventListener("canplay", handleSuccess);
-        video.removeEventListener("error", handleError);
-        try {
-          video.pause();
-        } catch (err) {
-          // ignore pause failures (e.g. if never played)
-        }
-        try {
-          video.removeAttribute("src");
-          video.load();
-        } catch (err) {
-          // ignore cleanup failures
-        }
-      };
-
-      const settle = (result) => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        cleanup();
-        resolve(result);
-      };
-
-      const handleSuccess = () => {
-        settle({ outcome: "ok" });
-      };
-
-      const handleError = () => {
-        settle({ outcome: "error" });
-      };
-
-      if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
-        timeoutId = setTimeout(() => {
-          settle({ outcome: "timeout" });
-        }, timeoutMs);
-      }
-
-      try {
-        video.preload = "metadata";
-        video.muted = true;
-        video.playsInline = true;
-        video.addEventListener("loadeddata", handleSuccess, { once: true });
-        video.addEventListener("canplay", handleSuccess, { once: true });
-        video.addEventListener("error", handleError, { once: true });
-        video.src = trimmed;
-        video.load();
-      } catch (err) {
-        settle({ outcome: "error", error: err });
-      }
-    });
+  async probeUrlWithVideoElement(url, timeoutMs) {
+    return this.urlHealthController.probeUrlWithVideoElement(url, timeoutMs);
   }
 
   async probeUrl(url, options = {}) {
-    const trimmed = typeof url === "string" ? url.trim() : "";
-    if (!trimmed) {
-      return { outcome: "invalid" };
-    }
-
-    const confirmPlayable = options?.confirmPlayable === true;
-
-    const confirmWithVideoElement = async () => {
-      if (!confirmPlayable) {
-        return null;
-      }
-
-      const initialTimeout =
-        Number.isFinite(options?.videoProbeTimeoutMs) &&
-        options.videoProbeTimeoutMs > 0
-          ? options.videoProbeTimeoutMs
-          : URL_PROBE_TIMEOUT_MS;
-
-      const attemptWithTimeout = async (timeoutMs) => {
-        try {
-          const result = await this.probeUrlWithVideoElement(trimmed, timeoutMs);
-          if (result && result.outcome) {
-            return result;
-          }
-        } catch (err) {
-          devLogger.warn(
-            `[probeUrl] Video element probe threw for ${trimmed}:`,
-            err
-          );
-        }
-        return null;
-      };
-
-      let result = await attemptWithTimeout(initialTimeout);
-
-      if (
-        result &&
-        result.outcome === "timeout" &&
-        Number.isFinite(urlHealthConstants.URL_PROBE_TIMEOUT_RETRY_MS) &&
-        urlHealthConstants.URL_PROBE_TIMEOUT_RETRY_MS > initialTimeout
-      ) {
-        const retryResult = await attemptWithTimeout(
-          urlHealthConstants.URL_PROBE_TIMEOUT_RETRY_MS
-        );
-        if (retryResult) {
-          result = { ...retryResult, retriedAfterTimeout: true };
-        }
-      }
-
-      return result;
-    };
-
-    const supportsAbort = typeof AbortController !== "undefined";
-    const controller = supportsAbort ? new AbortController() : null;
-    let timeoutId = null;
-
-    const racers = [
-      fetch(trimmed, {
-        method: "HEAD",
-        mode: "no-cors",
-        cache: "no-store",
-        signal: controller ? controller.signal : undefined,
-      }),
-    ];
-
-    if (Number.isFinite(URL_PROBE_TIMEOUT_MS) && URL_PROBE_TIMEOUT_MS > 0) {
-      racers.push(
-        new Promise((resolve) => {
-          timeoutId = setTimeout(() => {
-            if (controller) {
-              try {
-                controller.abort();
-              } catch (err) {
-                // ignore abort errors
-              }
-            }
-            resolve({ outcome: "timeout" });
-          }, URL_PROBE_TIMEOUT_MS);
-        })
-      );
-    }
-
-    let responseOrTimeout;
-    try {
-      responseOrTimeout = await Promise.race(racers);
-    } catch (err) {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-      devLogger.warn(`[probeUrl] HEAD request failed for ${trimmed}:`, err);
-      const fallback = await confirmWithVideoElement();
-      if (fallback) {
-        return fallback;
-      }
-      return confirmPlayable
-        ? { outcome: "error", error: err }
-        : { outcome: "unknown", error: err };
-    }
-
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
-
-    if (responseOrTimeout && responseOrTimeout.outcome === "timeout") {
-      const fallback = await confirmWithVideoElement();
-      if (fallback) {
-        return fallback;
-      }
-      return confirmPlayable ? { outcome: "timeout" } : { outcome: "unknown" };
-    }
-
-    const response = responseOrTimeout;
-    if (!response) {
-      return { outcome: "error" };
-    }
-
-    if (response.type === "opaque") {
-      const fallback = await confirmWithVideoElement();
-      if (fallback) {
-        return fallback;
-      }
-      return { outcome: confirmPlayable ? "opaque" : "unknown" };
-    }
-
-    if (!response.ok) {
-      const fallback = await confirmWithVideoElement();
-      if (fallback) {
-        return fallback;
-      }
-      return {
-        outcome: "bad",
-        status: response.status,
-      };
-    }
-
-    const playbackCheck = await confirmWithVideoElement();
-    if (playbackCheck) {
-      if (playbackCheck.outcome === "ok") {
-        return {
-          ...playbackCheck,
-          status: response.status,
-        };
-      }
-      return playbackCheck;
-    }
-
-    return {
-      outcome: "ok",
-      status: response.status,
-    };
+    return this.urlHealthController.probeUrl(url, options);
   }
 
   async playHttp(videoEl, url) {

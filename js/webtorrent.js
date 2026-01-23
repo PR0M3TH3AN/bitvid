@@ -175,7 +175,7 @@ export class TorrentClient {
    */
   async probePeers(
     magnetURI,
-    { timeoutMs = 8000, maxWebConns = 2, polls = 3 } = {}
+    { timeoutMs = 8000, maxWebConns = 2, polls = 3, urlList = [] } = {}
   ) {
     const magnet = typeof magnetURI === "string" ? magnetURI.trim() : "";
     if (!magnet) {
@@ -194,7 +194,9 @@ export class TorrentClient {
     const { magnet: augmentedMagnet, appended, hasProbeTrackers } =
       appendProbeTrackers(magnet, trackers);
 
-    const hasWebSeed = magnet.includes("ws=") || magnet.includes("webSeed=");
+    const hasMagnetWebSeed = magnet.includes("ws=") || magnet.includes("webSeed=");
+    const hasExplicitWebSeed = Array.isArray(urlList) && urlList.length > 0;
+    const hasWebSeed = hasMagnetWebSeed || hasExplicitWebSeed;
 
     if (!hasProbeTrackers && !hasWebSeed) {
       return {
@@ -270,10 +272,14 @@ export class TorrentClient {
       };
 
       try {
-        torrent = client.add(augmentedMagnet, {
+        const addOptions = {
           announce: trackers,
           maxWebConns: safeMaxWebConns,
-        });
+        };
+        if (hasExplicitWebSeed) {
+          addOptions.urlList = urlList;
+        }
+        torrent = client.add(augmentedMagnet, addOptions);
       } catch (err) {
         finalize({
           reason: "error",
