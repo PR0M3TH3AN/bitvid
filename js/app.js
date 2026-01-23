@@ -40,6 +40,9 @@ import {
   createDedupeByRootStage,
   createExploreDiversitySorter,
   createExploreScorerStage,
+  createKidsAudienceFilterStage,
+  createKidsScorerStage,
+  createKidsScoreSorter,
   createModerationStage,
   createResolvePostedAtStage,
   createTagPreferenceFilterStage,
@@ -5658,6 +5661,147 @@ class Application {
       });
     } catch (error) {
       devLogger.warn("[Application] Failed to register for-you feed:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Register the "kids" feed pipeline.
+   */
+  registerKidsFeed() {
+    if (!this.feedEngine || typeof this.feedEngine.registerFeed !== "function") {
+      return null;
+    }
+
+    const existingDefinition =
+      typeof this.feedEngine.getFeedDefinition === "function"
+        ? this.feedEngine.getFeedDefinition("kids")
+        : null;
+    if (existingDefinition) {
+      return existingDefinition;
+    }
+
+    try {
+      const app = this;
+      const resolveThresholdFromApp = (key, kidsDefault) => ({
+        runtimeValue,
+        defaultValue,
+      }) => {
+        if (
+          Number.isFinite(runtimeValue) ||
+          runtimeValue === Number.POSITIVE_INFINITY
+        ) {
+          return runtimeValue;
+        }
+
+        if (app && typeof app.getActiveModerationThresholds === "function") {
+          const active = app.getActiveModerationThresholds();
+          const candidate = active && typeof active === "object" ? active[key] : undefined;
+          if (
+            Number.isFinite(candidate) ||
+            candidate === Number.POSITIVE_INFINITY
+          ) {
+            return candidate;
+          }
+        }
+
+        if (
+          Number.isFinite(kidsDefault) ||
+          kidsDefault === Number.POSITIVE_INFINITY
+        ) {
+          return kidsDefault;
+        }
+
+        return defaultValue;
+      };
+
+      const kidsDefaults = {
+        blurThreshold: 1,
+        trustedReportHideThreshold: 1,
+        trustedMuteHideThreshold: 1,
+      };
+
+      const disallowedWarnings = [
+        "nudity",
+        "sexual",
+        "graphic-violence",
+        "self-harm",
+        "drugs",
+      ];
+
+      const moderationStages = ["nudity", "violence", "self-harm"].map(
+        (reportType) =>
+          createModerationStage({
+            stageName: `kids-moderation-${reportType}`,
+            reportType,
+            getService: () => this.nostrService.getModerationService(),
+            autoplayThreshold: resolveThresholdFromApp("autoplayBlockThreshold"),
+            blurThreshold: resolveThresholdFromApp(
+              "blurThreshold",
+              kidsDefaults.blurThreshold,
+            ),
+            trustedMuteHideThreshold: resolveThresholdFromApp(
+              "trustedMuteHideThreshold",
+              kidsDefaults.trustedMuteHideThreshold,
+            ),
+            trustedReportHideThreshold: resolveThresholdFromApp(
+              "trustedSpamHideThreshold",
+              kidsDefaults.trustedReportHideThreshold,
+            ),
+          }),
+      );
+
+      return this.feedEngine.registerFeed("kids", {
+        source: createActiveNostrSource({ service: this.nostrService }),
+        stages: [
+          createBlacklistFilterStage({
+            shouldIncludeVideo: (video, options) =>
+              this.nostrService.shouldIncludeVideo(video, options),
+          }),
+          createKidsAudienceFilterStage({
+            disallowedWarnings,
+          }),
+          ...moderationStages,
+          createResolvePostedAtStage(),
+          createDedupeByRootStage({
+            dedupe: (videos) => this.dedupeVideosByRoot(videos),
+          }),
+          createKidsScorerStage(),
+        ],
+        sorter: createKidsScoreSorter(),
+        defaultConfig: {
+          ageGroup: "preschool",
+          educationalTags: [],
+          disallowedWarnings,
+        },
+        configSchema: {
+          ageGroup: {
+            type: "enum",
+            values: ["toddler", "preschool", "early", "older"],
+            description: "Target age group used for kids scoring defaults.",
+            default: "preschool",
+          },
+          educationalTags: {
+            type: "string[]",
+            description: "Optional educational tag overrides for kids scoring.",
+            default: [],
+          },
+          disallowedWarnings: {
+            type: "string[]",
+            description:
+              "Content warnings that should exclude videos from the kids feed.",
+            default: disallowedWarnings,
+          },
+        },
+        hooks: {
+          timestamps: {
+            getKnownVideoPostedAt: (video) => this.getKnownVideoPostedAt(video),
+            resolveVideoPostedAt: (video) => this.resolveVideoPostedAt(video),
+          },
+        },
+      });
+    } catch (error) {
+      devLogger.warn("[Application] Failed to register kids feed:", error);
       return null;
     }
   }

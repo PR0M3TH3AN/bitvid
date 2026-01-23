@@ -250,15 +250,48 @@ export function createKidsScorerStage({
   weights,
   ...options
 } = {}) {
+  const resolveAgeGroupFromContext = (context) => {
+    const candidates = [context?.runtime?.ageGroup, context?.config?.ageGroup, ageGroup];
+    for (const candidate of candidates) {
+      if (typeof candidate !== "string") {
+        continue;
+      }
+      const trimmed = candidate.trim();
+      if (trimmed) {
+        return trimmed;
+      }
+    }
+    return ageGroup;
+  };
+
+  const resolveEducationalTagsFromContext = (context) => {
+    const candidates = [
+      context?.runtime?.educationalTags,
+      context?.config?.educationalTags,
+      educationalTags,
+    ];
+    for (const candidate of candidates) {
+      if (candidate !== undefined && candidate !== null) {
+        return candidate;
+      }
+    }
+    return null;
+  };
+
   return async function kidsScorerStage(items = [], context = {}) {
     if (!Array.isArray(items) || items.length === 0) {
       return items;
     }
 
-    const ageProfile = resolveAgeProfile(ageGroup);
+    const resolvedAgeGroup = resolveAgeGroupFromContext(context);
+    const ageProfile = resolveAgeProfile(resolvedAgeGroup);
     const preferredTags = normalizeTagSet(ageProfile.preferredTags);
     const defaultEducationalTags = normalizeTagSet(ageProfile.educationalTags);
-    const educationalTagSet = educationalTags ? normalizeTagSet(educationalTags) : defaultEducationalTags;
+    const resolvedEducationalTags = resolveEducationalTagsFromContext(context);
+    const educationalTagSet =
+      resolvedEducationalTags !== null
+        ? normalizeTagSet(resolvedEducationalTags)
+        : defaultEducationalTags;
     const resolvedWeights = resolveWeights({ weights, ...options }, context);
     const freshnessHalfLifeDays = resolveFreshnessHalfLife(options, context);
     const popularityMax = resolvePopularityMax(options, context);
