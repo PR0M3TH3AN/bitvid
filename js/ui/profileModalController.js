@@ -4442,6 +4442,9 @@ export class ProfileModalController {
         onSelectConversation: (conversation) => {
           void this.handleDmConversationSelect(conversation);
         },
+        onRefreshConversations: () => {
+          this.populateProfileMessages({ force: true });
+        },
         onBack: () => {
           this.dmMobileView = "list";
           void this.renderDmAppShell(this.directMessagesCache, {
