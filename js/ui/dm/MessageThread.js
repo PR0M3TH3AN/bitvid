@@ -139,7 +139,7 @@ export function MessageThread({
 
   // Scroll to bottom and peek
   if (messages.length > 0) {
-    setTimeout(() => {
+    const animate = () => {
       timeline.scrollTop = timeline.scrollHeight;
 
       if (timeline.scrollHeight > timeline.clientHeight) {
@@ -155,7 +155,25 @@ export function MessageThread({
           }, 600);
         }, 600);
       }
-    }, 0);
+    };
+
+    if (typeof IntersectionObserver !== "undefined") {
+      const observer = new IntersectionObserver((entries) => {
+        const entry = entries[0];
+        if (entry.isIntersecting) {
+          observer.disconnect();
+          // First ensure we are at bottom
+          timeline.scrollTop = timeline.scrollHeight;
+          setTimeout(animate, 300);
+        }
+      }, { threshold: 0.1 });
+      observer.observe(timeline);
+    } else {
+      setTimeout(() => {
+        timeline.scrollTop = timeline.scrollHeight;
+        animate();
+      }, 0);
+    }
   }
 
   root.appendChild(timeline);

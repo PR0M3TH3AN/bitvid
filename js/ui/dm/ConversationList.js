@@ -78,14 +78,33 @@ export function ConversationList({
 
     // Peek animation
     if (conversations.length > 0) {
-      setTimeout(() => {
-        if (list.scrollHeight > list.clientHeight) {
-          list.scrollTo({ top: 40, behavior: "smooth" });
-          setTimeout(() => {
-            list.scrollTo({ top: 0, behavior: "smooth" });
-          }, 600);
-        }
-      }, 600);
+      if (typeof IntersectionObserver !== "undefined") {
+        const observer = new IntersectionObserver((entries) => {
+          const entry = entries[0];
+          if (entry.isIntersecting) {
+            observer.disconnect();
+            setTimeout(() => {
+              if (list.scrollHeight > list.clientHeight) {
+                list.scrollTo({ top: 40, behavior: "smooth" });
+                setTimeout(() => {
+                  list.scrollTo({ top: 0, behavior: "smooth" });
+                }, 600);
+              }
+            }, 300);
+          }
+        }, { threshold: 0.1 });
+        observer.observe(list);
+      } else {
+        // Fallback for no IntersectionObserver (e.g. some tests or very old browsers)
+        setTimeout(() => {
+          if (list.scrollHeight > list.clientHeight) {
+            list.scrollTo({ top: 40, behavior: "smooth" });
+            setTimeout(() => {
+              list.scrollTo({ top: 0, behavior: "smooth" });
+            }, 600);
+          }
+        }, 600);
+      }
     }
   }
 
