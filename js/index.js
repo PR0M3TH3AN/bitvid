@@ -18,7 +18,10 @@ import {
 } from "./themeController.js";
 import { setHashView } from "./hashView.js";
 import { devLogger, userLogger } from "./utils/logger.js";
-import { parseFilterQuery } from "./search/searchFilters.js";
+import {
+  parseFilterQuery,
+  serializeFiltersToQuery,
+} from "./search/searchFilters.js";
 import {
   buildSearchHashFromState,
   getSearchFilterState,
@@ -703,7 +706,49 @@ async function bootstrapInterface() {
     label: "Sidebar Tip Jar link",
   });
 
+  const buildSearchQueryString = (text, filters) => {
+    const serializedFilters = serializeFiltersToQuery(filters);
+    return [text, serializedFilters].filter(Boolean).join(" ").trim();
+  };
+
+  const updateSearchParseMessage = (messageEl, errors = []) => {
+    if (!(messageEl instanceof HTMLElement)) {
+      return;
+    }
+    if (!errors?.length) {
+      messageEl.textContent = "";
+      messageEl.classList.add("hidden");
+      return;
+    }
+    const message = errors
+      .map((error) =>
+        error?.token ? `${error.token} (${error.message})` : error?.message,
+      )
+      .filter(Boolean)
+      .join(" • ");
+    messageEl.textContent = message || "Some filters could not be parsed.";
+    messageEl.classList.remove("hidden");
+  };
+
+  const updateSearchInputsValue = (value, sourceInput = null) => {
+    const inputs = [
+      document.getElementById("headerSearchInput"),
+      document.getElementById("mobileSearchInput"),
+    ];
+    inputs.forEach((input) => {
+      if (!(input instanceof HTMLInputElement)) {
+        return;
+      }
+      if (sourceInput && input === sourceInput) {
+        input.value = value;
+        return;
+      }
+      input.value = value;
+    });
+  };
+
   const headerSearchForm = document.getElementById("headerSearchForm");
+  const headerSearchMessage = document.getElementById("headerSearchMessage");
   if (headerSearchForm) {
     headerSearchForm.addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -742,12 +787,19 @@ async function bootstrapInterface() {
       if (parsedFilters.errors.length > 0) {
         devLogger.warn("[Search] Filter parsing errors", parsedFilters.errors);
       }
+      updateSearchParseMessage(headerSearchMessage, parsedFilters.errors);
       const nextState = {
         text: parsedFilters.text || "",
         filters: parsedFilters.filters,
       };
       setSearchFilterState(nextState);
       setHashView(buildSearchHashFromState(nextState));
+      if (parsedFilters.errors.length === 0) {
+        updateSearchInputsValue(
+          buildSearchQueryString(parsedFilters.text, parsedFilters.filters),
+          input,
+        );
+      }
     });
   }
 
@@ -758,6 +810,7 @@ async function bootstrapInterface() {
   );
   const mobileSearchForm = document.getElementById("mobileSearchForm");
   const mobileSearchInput = document.getElementById("mobileSearchInput");
+  const mobileSearchMessage = document.getElementById("mobileSearchMessage");
 
   if (mobileSearchFab && mobileSearchContainer) {
     const openMobileSearch = () => {
@@ -848,12 +901,19 @@ async function bootstrapInterface() {
       if (parsedFilters.errors.length > 0) {
         devLogger.warn("[Search] Filter parsing errors", parsedFilters.errors);
       }
+      updateSearchParseMessage(mobileSearchMessage, parsedFilters.errors);
       const nextState = {
         text: parsedFilters.text || "",
         filters: parsedFilters.filters,
       };
       setSearchFilterState(nextState);
       setHashView(buildSearchHashFromState(nextState));
+      if (parsedFilters.errors.length === 0) {
+        updateSearchInputsValue(
+          buildSearchQueryString(parsedFilters.text, parsedFilters.filters),
+          mobileSearchInput,
+        );
+      }
       // Close search on submit
       mobileSearchContainer.classList.add("hidden");
       mobileSearchFab.classList.remove("hidden");
@@ -861,26 +921,57 @@ async function bootstrapInterface() {
   }
 
   const searchFilterButtons = document.querySelectorAll(".header-search__filter");
-  const applySearchFilters = (filters) => {
-    const currentState = getSearchFilterState();
+  const applySearchFilters = (filters, context = {}) => {
+    const rawQuery = context.input?.value || "";
+    const parsed = parseFilterQuery(rawQuery);
+    updateSearchParseMessage(context.messageEl, parsed.errors);
     const nextState = {
-      text: currentState.text || "",
+      text: parsed.text || "",
       filters,
     };
     setSearchFilterState(nextState);
     setHashView(buildSearchHashFromState(nextState));
+    const nextQuery = buildSearchQueryString(nextState.text, nextState.filters);
+    updateSearchInputsValue(nextQuery, context.input || null);
+    const refreshed = parseFilterQuery(nextQuery);
+    updateSearchParseMessage(context.messageEl, refreshed.errors);
   };
-  const clearSearchFilters = () => {
-    resetSearchFilters();
+  const clearSearchFilters = (context = {}) => {
+    const rawQuery = context.input?.value || "";
+    const parsed = parseFilterQuery(rawQuery);
+    resetSearchFilters({ notify: false });
     const nextState = getSearchFilterState();
+    nextState.text = parsed.text || "";
+    setSearchFilterState(nextState);
     setHashView(buildSearchHashFromState(nextState));
+    updateSearchInputsValue(nextState.text, context.input || null);
+    updateSearchParseMessage(context.messageEl, []);
   };
   searchFilterButtons.forEach((button) => {
-    attachSearchFiltersPopover(button, {
+    const form = button.closest("form");
+    const input = form?.querySelector("input[type=\"search\"]") || null;
+    const messageEl = form?.parentElement?.querySelector(
+      "[data-search-parse-message]",
+    );
+    const popover = attachSearchFiltersPopover(button, {
       getState: getSearchFilterState,
-      onApply: applySearchFilters,
-      onReset: clearSearchFilters,
+      getQueryInputValue: () => (input?.value ? input.value : ""),
+      onQueryParsed: (parsed) => {
+        updateSearchParseMessage(messageEl, parsed.errors);
+      },
+      onApply: (filters) =>
+        applySearchFilters(filters, { input, messageEl }),
+      onReset: () => clearSearchFilters({ input, messageEl }),
     });
+    if (input && popover) {
+      input.addEventListener("input", () => {
+        if (!popover.isOpen()) {
+          return;
+        }
+        const parsed = popover.syncFromQueryInput(input.value || "");
+        updateSearchParseMessage(messageEl, parsed.errors);
+      });
+    }
   });
 
   const sidebar = document.getElementById("sidebar");

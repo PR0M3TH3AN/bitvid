@@ -24,6 +24,8 @@ const cloneFilters = (filters = DEFAULT_FILTERS) => ({
   hasMagnet:
     typeof filters?.hasMagnet === "boolean" ? filters.hasMagnet : null,
   hasUrl: typeof filters?.hasUrl === "boolean" ? filters.hasUrl : null,
+  hasTranscript:
+    typeof filters?.hasTranscript === "boolean" ? filters.hasTranscript : null,
   nsfw: filters?.nsfw ?? DEFAULT_FILTERS.nsfw,
   relay: filters?.relay ?? DEFAULT_FILTERS.relay,
   kind:

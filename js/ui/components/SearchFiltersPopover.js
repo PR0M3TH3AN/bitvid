@@ -1,5 +1,9 @@
 import createPopover from "../overlay/popoverEngine.js";
-import { DEFAULT_FILTERS, SORT_OPTIONS } from "../../search/searchFilters.js";
+import {
+  DEFAULT_FILTERS,
+  SORT_OPTIONS,
+  parseFilterQuery,
+} from "../../search/searchFilters.js";
 
 const FOCUSABLE_SELECTOR =
   "a[href], button:not([disabled]), input:not([disabled]):not([type=\"hidden\"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex=\"-1\"])";
@@ -187,6 +191,12 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
     header.append(heading, closeButton);
     panel.appendChild(header);
 
+    const parseMessage = createElement(doc, "p", {
+      className: "text-xs text-warning hidden",
+      attrs: { role: "status", "aria-live": "polite" },
+    });
+    panel.appendChild(parseMessage);
+
     const dateSection = createElement(doc, "div", {
       className: "bv-stack bv-stack--tight",
     });
@@ -299,7 +309,21 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
       placeholder: "npub1...",
       },
     );
-    panel.appendChild(authorWrapper);
+    const { wrapper: kindWrapper, inputEl: kindInput } = buildLabeledInput(doc, {
+      id: "search-filters-kind",
+      label: "Kind",
+      type: "number",
+      placeholder: "30078",
+    });
+    const { wrapper: relayWrapper, inputEl: relayInput } = buildLabeledInput(
+      doc,
+      {
+      id: "search-filters-relay",
+      label: "Relay",
+      placeholder: "wss://relay.example.com",
+      },
+    );
+    panel.append(authorWrapper, kindWrapper, relayWrapper);
 
     const tagSection = createElement(doc, "div", {
       className: "bv-stack bv-stack--tight",
@@ -365,6 +389,37 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
     });
     durationSection.appendChild(durationGrid);
     panel.appendChild(durationSection);
+
+    const hasSection = createElement(doc, "div", {
+      className: "bv-stack bv-stack--tight",
+    });
+    hasSection.appendChild(
+      createElement(doc, "p", {
+        className: "text-xs font-semibold uppercase tracking-wide text-muted",
+        text: "Has",
+      }),
+    );
+    const hasChipRow = createElement(doc, "div", {
+      className: "flex flex-wrap gap-2",
+    });
+    const hasChips = new Map();
+    [
+      { key: "magnet", label: "Magnet" },
+      { key: "url", label: "URL" },
+      { key: "transcript", label: "Transcript" },
+    ].forEach(({ key, label }) => {
+      const chip = createElement(doc, "button", {
+        className: "search-filter-chip focus-ring",
+        text: label,
+        attrs: { type: "button", "aria-pressed": "false" },
+      });
+      chip.dataset.state = "off";
+      chip.addEventListener("click", () => toggleChip(chip));
+      hasChips.set(key, chip);
+      hasChipRow.appendChild(chip);
+    });
+    hasSection.appendChild(hasChipRow);
+    panel.appendChild(hasSection);
 
     const toggleSection = createElement(doc, "div", {
       className: "grid gap-3",
@@ -463,6 +518,20 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
       if (sortSelect) {
         sortSelect.value = safeFilters.sort || DEFAULT_FILTERS.sort;
       }
+      kindInput.value = Number.isFinite(safeFilters.kind)
+        ? String(safeFilters.kind)
+        : "";
+      relayInput.value = safeFilters.relay || "";
+      const hasFlags = {
+        magnet: safeFilters.hasMagnet === true,
+        url: safeFilters.hasUrl === true,
+        transcript: safeFilters.hasTranscript === true,
+      };
+      hasChips.forEach((chip, key) => {
+        const isOn = hasFlags[key] === true;
+        chip.setAttribute("aria-pressed", isOn ? "true" : "false");
+        chip.dataset.state = isOn ? "on" : "off";
+      });
     };
 
     const buildFiltersFromControls = () => {
@@ -478,6 +547,9 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
         .map((value) => value.trim())
         .filter(Boolean);
       filters.authorPubkeys = authorValues;
+      const kindValue = Number.parseInt(kindInput.value, 10);
+      filters.kind = Number.isFinite(kindValue) ? kindValue : null;
+      filters.relay = relayInput.value.trim() || null;
       const selectedTags = new Set();
       tagChips.forEach((chip, tag) => {
         if (chip.getAttribute("aria-pressed") === "true") {
@@ -515,6 +587,18 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
       if (sortSelect?.value) {
         filters.sort = sortSelect.value;
       }
+      filters.hasMagnet =
+        hasChips.get("magnet")?.getAttribute("aria-pressed") === "true"
+          ? true
+          : null;
+      filters.hasUrl =
+        hasChips.get("url")?.getAttribute("aria-pressed") === "true"
+          ? true
+          : null;
+      filters.hasTranscript =
+        hasChips.get("transcript")?.getAttribute("aria-pressed") === "true"
+          ? true
+          : null;
       return filters;
     };
 
@@ -538,6 +622,24 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
 
     controlState = {
       applyStateToControls,
+      setParseErrors: (errors = []) => {
+        if (!parseMessage) return;
+        if (!errors?.length) {
+          parseMessage.textContent = "";
+          parseMessage.classList.add("hidden");
+          return;
+        }
+        const message = errors
+          .map((error) =>
+            error?.token
+              ? `${error.token} (${error.message})`
+              : error?.message,
+          )
+          .filter(Boolean)
+          .join(" • ");
+        parseMessage.textContent = message || "Some filters could not be parsed.";
+        parseMessage.classList.remove("hidden");
+      },
     };
     return panel;
   };
@@ -548,6 +650,23 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
     restoreFocusOnClose: true,
   });
 
+  const syncFromQueryInput = (rawQuery) => {
+    if (typeof rawQuery !== "string") {
+      return { filters: DEFAULT_FILTERS, text: "", tokens: [], errors: [] };
+    }
+    const parsed = parseFilterQuery(rawQuery);
+    if (controlState?.applyStateToControls) {
+      controlState.applyStateToControls(parsed.filters || DEFAULT_FILTERS);
+    }
+    if (controlState?.setParseErrors) {
+      controlState.setParseErrors(parsed.errors || []);
+    }
+    if (typeof options.onQueryParsed === "function") {
+      options.onQueryParsed(parsed);
+    }
+    return parsed;
+  };
+
   triggerElement.addEventListener("click", async (event) => {
     event.preventDefault();
     if (popover.isOpen()) {
@@ -555,13 +674,21 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
       return;
     }
     popover.preload();
-    if (controlState?.applyStateToControls) {
+    const rawQuery =
+      typeof options.getQueryInputValue === "function"
+        ? options.getQueryInputValue()
+        : null;
+    if (rawQuery !== null) {
+      syncFromQueryInput(rawQuery);
+    } else if (controlState?.applyStateToControls) {
       const nextState =
         typeof options.getState === "function" ? options.getState() : null;
       controlState.applyStateToControls(nextState?.filters || DEFAULT_FILTERS);
     }
     await popover.open();
   });
+
+  popover.syncFromQueryInput = syncFromQueryInput;
 
   return popover;
 }
