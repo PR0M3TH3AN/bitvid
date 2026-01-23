@@ -1,5 +1,6 @@
 import createPopover from "../overlay/popoverEngine.js";
 import { DEFAULT_FILTERS } from "../../search/searchFilters.js";
+import { FEATURE_SEARCH_FILTERS } from "../../constants.js";
 
 const FOCUSABLE_SELECTOR =
   "a[href], button:not([disabled]), input:not([disabled]):not([type=\"hidden\"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex=\"-1\"])";
@@ -239,9 +240,10 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
 
   const render = ({ container, close }) => {
     const headingId = buildFilterId("search-filters-heading");
+    const advancedPanelId = buildFilterId("search-filters-advanced");
     const panel = createElement(doc, "div", {
       className:
-        "popover-panel w-80 max-w-full space-y-5 md:w-96",
+        "popover-panel search-filters-panel w-80 max-w-full space-y-5 md:w-96",
       attrs: { "aria-labelledby": headingId },
     });
     panel.dataset.popoverVariant = "filters";
@@ -398,136 +400,203 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
     );
     panel.appendChild(authorWrapper);
 
-    const tagSection = createElement(doc, "div", {
-      className: "bv-stack bv-stack--tight",
-    });
-    tagSection.appendChild(
-      createElement(doc, "p", {
-        className: "text-xs font-semibold uppercase tracking-wide text-muted",
-        text: "Tags",
-      }),
-    );
-    const tagInput = createElement(doc, "input", {
-      className: "input w-full",
-      attrs: { type: "text", placeholder: "Add tag or keyword" },
-    });
-    const tagList = createElement(doc, "div", {
-      className: "flex flex-wrap gap-2",
-    });
-    enableArrowNavigation(tagList);
-    const tagChips = new Map();
-    ["nostr", "music", "live"].forEach((tag) => {
-      const chip = createElement(doc, "button", {
-        className: "search-filter-chip focus-ring",
-        text: `#${tag}`,
-        attrs: { type: "button", "aria-pressed": "true" },
-      });
-      chip.dataset.state = "on";
-      chip.addEventListener("click", () => toggleChip(chip));
-      tagChips.set(tag, chip);
-      tagList.appendChild(chip);
-    });
-    tagSection.append(tagInput, tagList);
-    panel.appendChild(tagSection);
+    let advancedToggleButton = null;
+    let advancedChevron = null;
+    let advancedContent = null;
+    let setAdvancedOpen = null;
+    let tagSection = null;
+    let tagInput = null;
+    let tagChips = null;
+    let durationSection = null;
+    let durationChecks = null;
+    let hasSection = null;
+    let hasChips = null;
+    let toggleSection = null;
+    let nsfwToggle = null;
+    let followedToggle = null;
 
-    const durationSection = createElement(doc, "div", {
-      className: "bv-stack bv-stack--tight",
-    });
-    durationSection.appendChild(
-      createElement(doc, "p", {
-        className: "text-xs font-semibold uppercase tracking-wide text-muted",
-        text: "Duration",
-      }),
-    );
-    const durationGrid = createElement(doc, "div", {
-      className: "grid gap-2",
-    });
-    const durationChecks = {};
-    [
-      { id: "duration-short", label: "Short (under 5 min)" },
-      { id: "duration-medium", label: "Medium (5-20 min)" },
-      { id: "duration-long", label: "Long (20+ min)" },
-      { id: "duration-live", label: "Live sessions" },
-    ].forEach(({ id, label }) => {
-      const row = createElement(doc, "label", {
-        className: "flex items-center gap-3 text-sm text-text",
-        attrs: { for: id },
-      });
-      const checkbox = createElement(doc, "input", {
-        className: "checkbox",
-        attrs: { id, type: "checkbox" },
-      });
-      durationChecks[id] = checkbox;
-      row.append(checkbox, createElement(doc, "span", { text: label }));
-      durationGrid.appendChild(row);
-    });
-    durationSection.appendChild(durationGrid);
-    panel.appendChild(durationSection);
-
-    const hasSection = createElement(doc, "div", {
-      className: "bv-stack bv-stack--tight",
-    });
-    hasSection.appendChild(
-      createElement(doc, "p", {
-        className: "text-xs font-semibold uppercase tracking-wide text-muted",
-        text: "Has",
-      }),
-    );
-    const hasChipRow = createElement(doc, "div", {
-      className: "flex flex-wrap gap-2",
-    });
-    enableArrowNavigation(hasChipRow);
-    const hasChips = new Map();
-    [
-      { key: "magnet", label: "Magnet" },
-      { key: "url", label: "URL" },
-      { key: "transcript", label: "Transcript" },
-    ].forEach(({ key, label }) => {
-      const chip = createElement(doc, "button", {
-        className: "search-filter-chip focus-ring",
-        text: label,
-        attrs: { type: "button", "aria-pressed": "false" },
-      });
-      chip.dataset.state = "off";
-      chip.addEventListener("click", () => toggleChip(chip));
-      hasChips.set(key, chip);
-      hasChipRow.appendChild(chip);
-    });
-    hasSection.appendChild(hasChipRow);
-    panel.appendChild(hasSection);
-
-    const toggleSection = createElement(doc, "div", {
-      className: "grid gap-3",
-    });
-    const toggleRow = (label, id) => {
-      const row = createElement(doc, "div", {
-        className: "flex items-center justify-between gap-3",
-      });
-      const text = createElement(doc, "div", {
+    if (FEATURE_SEARCH_FILTERS) {
+      const advancedSection = createElement(doc, "div", {
         className: "bv-stack bv-stack--tight",
       });
-      text.append(
+      advancedToggleButton = createElement(doc, "button", {
+        className:
+          "btn-ghost flex w-full items-center justify-between text-sm font-medium",
+        attrs: {
+          type: "button",
+          "aria-expanded": "false",
+          "aria-controls": advancedPanelId,
+        },
+      });
+      advancedChevron = createElement(doc, "span", {
+        className: "text-muted",
+        text: "▾",
+        attrs: { "aria-hidden": "true" },
+      });
+      advancedToggleButton.append(
+        createElement(doc, "span", { text: "Advanced filters" }),
+        advancedChevron,
+      );
+      advancedContent = createElement(doc, "div", {
+        className: "search-filters-advanced hidden grid gap-5 md:grid-cols-2",
+        attrs: { id: advancedPanelId },
+      });
+
+      setAdvancedOpen = (isOpen) => {
+        if (!advancedContent || !advancedToggleButton) {
+          return;
+        }
+        advancedContent.classList.toggle("hidden", !isOpen);
+        advancedToggleButton.setAttribute(
+          "aria-expanded",
+          isOpen ? "true" : "false",
+        );
+        if (advancedChevron) {
+          advancedChevron.textContent = isOpen ? "▴" : "▾";
+        }
+        panel.classList.toggle("is-advanced-open", isOpen);
+      };
+
+      advancedToggleButton.addEventListener("click", () => {
+        const isExpanded =
+          advancedToggleButton.getAttribute("aria-expanded") === "true";
+        setAdvancedOpen(!isExpanded);
+      });
+
+      tagSection = createElement(doc, "div", {
+        className: "bv-stack bv-stack--tight md:col-span-2",
+      });
+      tagSection.appendChild(
         createElement(doc, "p", {
-          className: "text-sm font-medium text-text",
-          text: label,
-        }),
-        createElement(doc, "p", {
-          className: "text-xs text-muted",
-          text: `Toggle ${label.toLowerCase()}`,
+          className: "text-xs font-semibold uppercase tracking-wide text-muted",
+          text: "Tags",
         }),
       );
-      const toggle = createElement(doc, "button", {
-        className: "switch",
-        attrs: { type: "button", role: "switch", "aria-checked": "false", id },
+      tagInput = createElement(doc, "input", {
+        className: "input w-full",
+        attrs: { type: "text", placeholder: "Add tag or keyword" },
       });
-      toggle.addEventListener("click", () => toggleSwitch(toggle));
-      row.append(text, toggle);
-      return row;
-    };
-    const nsfwToggle = toggleRow("NSFW content", "search-filters-nsfw");
-    const followedToggle = toggleRow("Followed only", "search-filters-followed");
-    toggleSection.append(nsfwToggle, followedToggle);
-    panel.appendChild(toggleSection);
+      const tagList = createElement(doc, "div", {
+        className: "flex flex-wrap gap-2",
+      });
+      enableArrowNavigation(tagList);
+      tagChips = new Map();
+      ["nostr", "music", "live"].forEach((tag) => {
+        const chip = createElement(doc, "button", {
+          className: "search-filter-chip focus-ring",
+          text: `#${tag}`,
+          attrs: { type: "button", "aria-pressed": "true" },
+        });
+        chip.dataset.state = "on";
+        chip.addEventListener("click", () => toggleChip(chip));
+        tagChips.set(tag, chip);
+        tagList.appendChild(chip);
+      });
+      tagSection.append(tagInput, tagList);
+      advancedContent.appendChild(tagSection);
+
+      durationSection = createElement(doc, "div", {
+        className: "bv-stack bv-stack--tight",
+      });
+      durationSection.appendChild(
+        createElement(doc, "p", {
+          className: "text-xs font-semibold uppercase tracking-wide text-muted",
+          text: "Duration",
+        }),
+      );
+      const durationGrid = createElement(doc, "div", {
+        className: "grid gap-2",
+      });
+      durationChecks = {};
+      [
+        { id: "duration-short", label: "Short (under 5 min)" },
+        { id: "duration-medium", label: "Medium (5-20 min)" },
+        { id: "duration-long", label: "Long (20+ min)" },
+        { id: "duration-live", label: "Live sessions" },
+      ].forEach(({ id, label }) => {
+        const row = createElement(doc, "label", {
+          className: "flex items-center gap-3 text-sm text-text",
+          attrs: { for: id },
+        });
+        const checkbox = createElement(doc, "input", {
+          className: "checkbox",
+          attrs: { id, type: "checkbox" },
+        });
+        durationChecks[id] = checkbox;
+        row.append(checkbox, createElement(doc, "span", { text: label }));
+        durationGrid.appendChild(row);
+      });
+      durationSection.appendChild(durationGrid);
+      advancedContent.appendChild(durationSection);
+
+      hasSection = createElement(doc, "div", {
+        className: "bv-stack bv-stack--tight",
+      });
+      hasSection.appendChild(
+        createElement(doc, "p", {
+          className: "text-xs font-semibold uppercase tracking-wide text-muted",
+          text: "Has",
+        }),
+      );
+      const hasChipRow = createElement(doc, "div", {
+        className: "flex flex-wrap gap-2",
+      });
+      enableArrowNavigation(hasChipRow);
+      hasChips = new Map();
+      [
+        { key: "magnet", label: "Magnet" },
+        { key: "url", label: "URL" },
+        { key: "transcript", label: "Transcript" },
+      ].forEach(({ key, label }) => {
+        const chip = createElement(doc, "button", {
+          className: "search-filter-chip focus-ring",
+          text: label,
+          attrs: { type: "button", "aria-pressed": "false" },
+        });
+        chip.dataset.state = "off";
+        chip.addEventListener("click", () => toggleChip(chip));
+        hasChips.set(key, chip);
+        hasChipRow.appendChild(chip);
+      });
+      hasSection.appendChild(hasChipRow);
+      advancedContent.appendChild(hasSection);
+
+      toggleSection = createElement(doc, "div", {
+        className: "grid gap-3 md:col-span-2",
+      });
+      const toggleRow = (label, id) => {
+        const row = createElement(doc, "div", {
+          className: "flex items-center justify-between gap-3",
+        });
+        const text = createElement(doc, "div", {
+          className: "bv-stack bv-stack--tight",
+        });
+        text.append(
+          createElement(doc, "p", {
+            className: "text-sm font-medium text-text",
+            text: label,
+          }),
+          createElement(doc, "p", {
+            className: "text-xs text-muted",
+            text: `Toggle ${label.toLowerCase()}`,
+          }),
+        );
+        const toggle = createElement(doc, "button", {
+          className: "switch",
+          attrs: { type: "button", role: "switch", "aria-checked": "false", id },
+        });
+        toggle.addEventListener("click", () => toggleSwitch(toggle));
+        row.append(text, toggle);
+        return row;
+      };
+      nsfwToggle = toggleRow("NSFW content", "search-filters-nsfw");
+      followedToggle = toggleRow("Followed only", "search-filters-followed");
+      toggleSection.append(nsfwToggle, followedToggle);
+      advancedContent.appendChild(toggleSection);
+
+      advancedSection.append(advancedToggleButton, advancedContent);
+      panel.appendChild(advancedSection);
+    }
 
     const footer = createElement(doc, "div", {
       className: "flex items-center justify-between gap-3 border-t border-border/60 pt-4",
@@ -555,43 +624,57 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
         button.dataset.state = isAllTime ? "on" : "off";
       });
       authorInput.value = safeFilters.authorPubkeys?.join(", ") || "";
-      tagInput.value = "";
-      tagChips.forEach((chip, tag) => {
-        const isActive = safeFilters.tags?.includes(tag);
-        chip.setAttribute("aria-pressed", isActive ? "true" : "false");
-        chip.dataset.state = isActive ? "on" : "off";
-      });
-      const extraTags = (safeFilters.tags || []).filter(
-        (tag) => !tagChips.has(tag),
-      );
-      if (extraTags.length) {
-        tagInput.value = extraTags.join(", ");
+      if (tagInput && tagChips) {
+        tagInput.value = "";
+        tagChips.forEach((chip, tag) => {
+          const isActive = safeFilters.tags?.includes(tag);
+          chip.setAttribute("aria-pressed", isActive ? "true" : "false");
+          chip.dataset.state = isActive ? "on" : "off";
+        });
+        const extraTags = (safeFilters.tags || []).filter(
+          (tag) => !tagChips.has(tag),
+        );
+        if (extraTags.length) {
+          tagInput.value = extraTags.join(", ");
+        }
       }
-      Object.values(durationChecks).forEach((checkbox) => {
-        checkbox.checked = false;
-      });
-      const minSeconds = safeFilters.duration?.minSeconds ?? null;
-      const maxSeconds = safeFilters.duration?.maxSeconds ?? null;
-      if (minSeconds === null && maxSeconds === 300) {
-        durationChecks["duration-short"].checked = true;
-      } else if (minSeconds === 300 && maxSeconds === 1200) {
-        durationChecks["duration-medium"].checked = true;
-      } else if (minSeconds === 1200 && maxSeconds === null) {
-        durationChecks["duration-long"].checked = true;
+      if (durationChecks) {
+        Object.values(durationChecks).forEach((checkbox) => {
+          checkbox.checked = false;
+        });
+        const minSeconds = safeFilters.duration?.minSeconds ?? null;
+        const maxSeconds = safeFilters.duration?.maxSeconds ?? null;
+        if (minSeconds === null && maxSeconds === 300) {
+          durationChecks["duration-short"].checked = true;
+        } else if (minSeconds === 300 && maxSeconds === 1200) {
+          durationChecks["duration-medium"].checked = true;
+        } else if (minSeconds === 1200 && maxSeconds === null) {
+          durationChecks["duration-long"].checked = true;
+        }
       }
-      const nsfwSwitch = nsfwToggle.querySelector(".switch");
+      const nsfwSwitch = nsfwToggle?.querySelector(".switch");
       if (nsfwSwitch) {
         const isOn = safeFilters.nsfw === "true" || safeFilters.nsfw === "only";
         nsfwSwitch.setAttribute("aria-checked", isOn ? "true" : "false");
         nsfwSwitch.classList.toggle("is-on", isOn);
       }
-      const followedSwitch = followedToggle.querySelector(".switch");
+      const followedSwitch = followedToggle?.querySelector(".switch");
       if (followedSwitch) {
         followedSwitch.setAttribute("aria-checked", "false");
         followedSwitch.classList.remove("is-on");
       }
       if (sortSelect) {
         sortSelect.selectedIndex = 0;
+      }
+      if (setAdvancedOpen) {
+        const hasAdvanced =
+          (safeFilters.tags && safeFilters.tags.length > 0) ||
+          Number.isFinite(safeFilters.duration?.minSeconds) ||
+          Number.isFinite(safeFilters.duration?.maxSeconds) ||
+          safeFilters.hasMagnet === true ||
+          safeFilters.hasUrl === true ||
+          (safeFilters.nsfw && safeFilters.nsfw !== "any");
+        setAdvancedOpen(hasAdvanced);
       }
     };
 
@@ -608,37 +691,41 @@ export function attachSearchFiltersPopover(triggerElement, options = {}) {
         .map((value) => value.trim())
         .filter(Boolean);
       filters.authorPubkeys = authorValues;
-      const selectedTags = new Set();
-      tagChips.forEach((chip, tag) => {
-        if (chip.getAttribute("aria-pressed") === "true") {
-          selectedTags.add(tag);
+      if (tagChips && tagInput) {
+        const selectedTags = new Set();
+        tagChips.forEach((chip, tag) => {
+          if (chip.getAttribute("aria-pressed") === "true") {
+            selectedTags.add(tag);
+          }
+        });
+        normalizeTagValue(tagInput.value).forEach((tag) =>
+          selectedTags.add(tag),
+        );
+        filters.tags = Array.from(selectedTags);
+      }
+      if (durationChecks) {
+        const ranges = [];
+        if (durationChecks["duration-short"].checked) {
+          ranges.push({ min: null, max: 300 });
         }
-      });
-      normalizeTagValue(tagInput.value).forEach((tag) =>
-        selectedTags.add(tag),
-      );
-      filters.tags = Array.from(selectedTags);
-      const ranges = [];
-      if (durationChecks["duration-short"].checked) {
-        ranges.push({ min: null, max: 300 });
+        if (durationChecks["duration-medium"].checked) {
+          ranges.push({ min: 300, max: 1200 });
+        }
+        if (durationChecks["duration-long"].checked) {
+          ranges.push({ min: 1200, max: null });
+        }
+        if (ranges.length) {
+          const mins = ranges
+            .map((range) => range.min)
+            .filter((value) => value !== null);
+          const maxes = ranges
+            .map((range) => range.max)
+            .filter((value) => value !== null);
+          filters.duration.minSeconds = mins.length ? Math.min(...mins) : null;
+          filters.duration.maxSeconds = maxes.length ? Math.max(...maxes) : null;
+        }
       }
-      if (durationChecks["duration-medium"].checked) {
-        ranges.push({ min: 300, max: 1200 });
-      }
-      if (durationChecks["duration-long"].checked) {
-        ranges.push({ min: 1200, max: null });
-      }
-      if (ranges.length) {
-        const mins = ranges
-          .map((range) => range.min)
-          .filter((value) => value !== null);
-        const maxes = ranges
-          .map((range) => range.max)
-          .filter((value) => value !== null);
-        filters.duration.minSeconds = mins.length ? Math.min(...mins) : null;
-        filters.duration.maxSeconds = maxes.length ? Math.max(...maxes) : null;
-      }
-      const nsfwSwitch = nsfwToggle.querySelector(".switch");
+      const nsfwSwitch = nsfwToggle?.querySelector(".switch");
       if (nsfwSwitch?.getAttribute("aria-checked") === "true") {
         filters.nsfw = "true";
       }

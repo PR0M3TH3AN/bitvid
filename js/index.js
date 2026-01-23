@@ -42,7 +42,6 @@ import {
   LOCKDOWN_TITLE,
   LOCKDOWN_MESSAGE,
 } from "./config.js";
-import { FEATURE_SEARCH_FILTERS } from "./constants.js";
 import { createHashChangeHandler } from "./hashChangeHandler.js";
 import AuthService from "./services/authService.js";
 import getAuthProvider, {
@@ -1214,10 +1213,6 @@ async function bootstrapInterface() {
     setHashView(buildSearchHashFromState(nextState));
   };
   searchFilterButtons.forEach((button) => {
-    if (!FEATURE_SEARCH_FILTERS) {
-      button.classList.add("hidden");
-      return;
-    }
     attachSearchFiltersPopover(button, {
       getState: getSearchFilterState,
       onApply: applySearchFilters,
