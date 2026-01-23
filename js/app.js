@@ -10041,6 +10041,7 @@ class Application {
       id: targetVideo.id,
       title: targetVideo.title,
       pubkey: targetVideo.pubkey,
+      authorName: targetVideo.creatorName || targetVideo.authorName || "",
       thumbnail: targetVideo.thumbnail,
       shareUrl,
     };
