@@ -11,6 +11,7 @@ export {
   createResolvePostedAtStage,
 } from "./stages.js";
 export { createExploreScorerStage } from "./exploreScoring.js";
+export { createKidsAudienceFilterStage } from "./kidsAudienceFilterStage.js";
 export {
   createChronologicalSorter,
   createExploreDiversitySorter,
