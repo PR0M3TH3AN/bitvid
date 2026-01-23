@@ -16,6 +16,7 @@ export { createKidsAudienceFilterStage } from "./kidsAudienceFilterStage.js";
 export {
   createChronologicalSorter,
   createExploreDiversitySorter,
+  createKidsScoreSorter,
 } from "./sorters.js";
 export {
   createActiveNostrSource,
