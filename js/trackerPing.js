@@ -221,10 +221,3 @@ export async function trackerPing(magnet, trackers) {
   });
 }
 
-export function getTrackerStateSnapshot() {
-  const snapshot = {};
-  trackerState.forEach((value, key) => {
-    snapshot[key] = { ...value };
-  });
-  return snapshot;
-}

@@ -52,37 +52,6 @@ export function buildS3ObjectUrl({
   return buildS3PublicUrl({ endpoint, bucket, key, forcePathStyle });
 }
 
-export function buildS3MediaUrls({
-  publicBaseUrl,
-  endpoint,
-  bucket,
-  forcePathStyle,
-  videoKey,
-  torrentKey,
-  thumbnailKey,
-} = {}) {
-  const normalizedBase = normalizeS3PublicBaseUrl(publicBaseUrl);
-  const resolvedBase =
-    normalizedBase ||
-    buildS3PublicUrl({ endpoint, bucket, forcePathStyle });
-
-  const buildUrl = (key) =>
-    buildS3ObjectUrl({
-      publicBaseUrl: normalizedBase,
-      endpoint,
-      bucket,
-      key,
-      forcePathStyle,
-    });
-
-  return {
-    publicBaseUrl: resolvedBase,
-    videoUrl: buildUrl(videoKey),
-    torrentUrl: buildUrl(torrentKey),
-    thumbnailUrl: buildUrl(thumbnailKey),
-  };
-}
-
 export function validateS3Connection({
   endpoint,
   region,

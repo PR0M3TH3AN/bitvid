@@ -61,18 +61,6 @@ export async function testS3Connection(config) {
   }
 }
 
-export function ensureR2SdkLoaded() {
-  return ensureS3SdkLoaded();
-}
-
-export function getR2SdkLoadError() {
-  return getS3SdkLoadError();
-}
-
-export function isR2SdkAvailable() {
-  return isS3SdkAvailable();
-}
-
 export function makeR2Client({
   accountId,
   accessKeyId,

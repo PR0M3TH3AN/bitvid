@@ -406,10 +406,6 @@ export function setUrlFirstEnabled(next) {
   return URL_FIRST_ENABLED;
 }
 
-export function getWatchHistoryV2Enabled() {
-  return FEATURE_WATCH_HISTORY_V2 === true;
-}
-
 export function setWssTrackers(next) {
   runtimeFlags.WSS_TRACKERS = next;
   return WSS_TRACKERS;

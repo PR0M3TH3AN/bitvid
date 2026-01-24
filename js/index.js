@@ -1313,19 +1313,6 @@ if (document.readyState === "loading") {
 -------------------------------------------- */
 
 /**
- * Sets a query param (e.g. ?modal=xxx or ?v=yyy),
- * removing any "#view=..." from the hash to avoid collisions.
- */
-export function setQueryParam(key, value) {
-  const url = new URL(window.location.href);
-  url.hash = "";
-  url.searchParams.set(key, value);
-  const newUrl = url.pathname + url.search;
-  window.history.replaceState({}, "", newUrl);
-  handleQueryParams();
-}
-
-/**
  * Check the current URL for ?modal=..., ?v=..., etc.
  * Open the correct modals or disclaimers as needed.
  */

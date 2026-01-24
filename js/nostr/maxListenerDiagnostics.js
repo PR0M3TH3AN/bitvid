@@ -93,9 +93,3 @@ function patchProcessEmitWarning() {
 }
 
 patchProcessEmitWarning();
-
-export function refreshMaxListenerPreference() {
-  // The shim dynamically checks the verbose flag on each invocation, so there
-  // is nothing else to refresh right now. This placeholder remains for API
-  // parity if runtime toggling ever requires additional work.
-}

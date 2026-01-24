@@ -22,6 +22,7 @@ const IGNORED_GLOBS = [
   '!js/utils/qrcode.js',
   '!**/dist/**',
   '!REMEDIATION_REPORT.md',
+  '!CHANGELOG.md',
   '!scripts/daily-design-system-audit.mjs',
   '!config/instance-config.js',
   '!config/validate-config.js'
