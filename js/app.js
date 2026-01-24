@@ -917,36 +917,7 @@ class Application {
           );
         }) || Promise.resolve();
 
-      // 6) Load the default view ONLY if there's no #view= already
-      if (!window.location.hash || !window.location.hash.startsWith("#view=")) {
-        devLogger.log(
-          "[app.init()] No #view= in the URL, loading default home view"
-        );
-        const defaultView = this.isUserLoggedIn()
-          ? "views/for-you.html"
-          : "views/most-recent-videos.html";
-        if (typeof this.loadView === "function") {
-          await Promise.all([
-            this.loadView(defaultView),
-            watchHistoryInitPromise,
-          ]);
-        } else {
-          await watchHistoryInitPromise;
-        }
-      } else {
-        devLogger.log(
-          "[app.init()] Found hash:",
-          window.location.hash,
-          "so skipping default load"
-        );
-        await watchHistoryInitPromise;
-      }
-
-      // 7. Once loaded, get a reference to #videoList
-      this.mountVideoListView();
-
-      // 8. Subscribe or fetch videos
-      await this.loadVideos();
+      await watchHistoryInitPromise;
 
       // 9. Check URL ?v= param
       this.checkUrlParams();
