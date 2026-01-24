@@ -396,6 +396,11 @@ const startEmbed = async () => {
       forcedSource: playback || undefined,
       trigger: videoEl,
     });
+
+    if (app.videoModal && typeof app.videoModal.setShareUrl === "function") {
+      const shareUrl = app.buildShareUrlFromEventId(video.id);
+      app.videoModal.setShareUrl(shareUrl);
+    }
   } catch (error) {
     devLogger.warn("[embed] Playback failed:", error);
     setStatus("Playback failed. Please try again.", "error");

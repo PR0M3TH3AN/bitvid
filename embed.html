@@ -69,28 +69,110 @@
 
     <link href="css/tailwind.generated.css?v=2024.11.09" rel="stylesheet" />
   </head>
-  <body class="min-h-screen bg-surface text-text" data-ds="new">
+  <body class="h-screen w-screen overflow-hidden bg-transparent text-text" data-ds="new">
     <main
       id="embedRoot"
-      class="mx-auto flex min-h-screen w-full max-w-5xl flex-col px-4 py-6"
+      class="flex h-full w-full flex-col items-center justify-center"
     >
       <section
-        class="flex flex-col gap-4 rounded-2xl border border-border bg-surface-alt/60 p-4 shadow-sm"
+        class="relative group flex h-full w-full flex-col items-center justify-center overflow-hidden"
       >
+        <video
+          id="embedVideo"
+          class="h-full w-full object-contain bg-black"
+          controls
+          playsinline
+          preload="metadata"
+        ></video>
+
+        <!-- Overlay -->
         <div
-          class="aspect-video w-full overflow-hidden rounded-xl border border-border/70 bg-surface"
+          id="embedOverlay"
+          class="pointer-events-none absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-black/80 via-transparent to-transparent p-4 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
         >
-          <video
-            id="embedVideo"
-            class="h-full w-full"
-            controls
-            playsinline
-            preload="metadata"
-          ></video>
+          <div class="pointer-events-auto flex w-full items-end justify-between">
+            <a
+              id="embedWatchButton"
+              href="#"
+              target="_blank"
+              class="flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white/20 backdrop-blur-md"
+            >
+              <img
+                src="assets/svg/bitvid-logo-light-mode.svg"
+                alt="BitVid"
+                class="h-4 w-auto"
+              />
+              <span>Watch on BitVid</span>
+            </a>
+
+            <div
+              class="flex items-center gap-3 text-xs font-medium text-white drop-shadow-md"
+            >
+              <span
+                id="embedViewCount"
+                class="flex items-center gap-1.5"
+                title="Views"
+              >
+                <svg
+                  class="h-4 w-4 text-white/80"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                  ></path>
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                  ></path>
+                </svg>
+                <span data-view-count-text>--</span>
+              </span>
+              <span
+                id="embedLikeCount"
+                class="flex items-center gap-1.5"
+                title="Likes"
+              >
+                <svg
+                  class="h-3.5 w-3.5 text-white/80"
+                  fill="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"
+                  ></path>
+                </svg>
+                <span data-count>--</span>
+              </span>
+              <span
+                id="embedDislikeCount"
+                class="flex items-center gap-1.5"
+                title="Dislikes"
+              >
+                <svg
+                  class="h-3.5 w-3.5 text-white/80"
+                  fill="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3"
+                  ></path>
+                </svg>
+                <span data-count>--</span>
+              </span>
+            </div>
+          </div>
         </div>
+
         <p
           id="embedStatus"
-          class="text-sm text-muted"
+          class="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-md bg-black/60 px-3 py-1 text-sm text-white/90 backdrop-blur-sm"
           role="status"
           aria-live="polite"
         >
