@@ -4902,7 +4902,13 @@ class Application {
 
   resetTorrentStats() {
     if (this.videoModal) {
-      this.videoModal.resetStats();
+      if (typeof this.videoModal.resetStats === "function") {
+        this.videoModal.resetStats();
+      } else {
+        devLogger.info(
+          "[Application] resetTorrentStats: videoModal.resetStats not available in this context — skipping."
+        );
+      }
     }
   }
 

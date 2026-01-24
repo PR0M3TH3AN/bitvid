@@ -1218,6 +1218,7 @@ export class NostrClient {
     this.sessionActorCipherClosures = null;
     this.sessionActorCipherClosuresPrivateKey = null;
     this.countUnsupportedRelays = new Set();
+    this.isInitialized = false;
     this.nip46Client = null;
     this.remoteSignerListeners = new Set();
     this.sessionActorListeners = new Set();
@@ -3735,6 +3736,11 @@ export class NostrClient {
    * @returns {Promise<void>} Resolves when the relay pool is initialized and connections are attempted.
    */
   async init() {
+    if (this.isInitialized) {
+      return;
+    }
+    this.isInitialized = true;
+
     devLogger.log("Connecting to relays...");
 
     // 1. Restore cache for immediate UI render (Stale-While-Revalidate)

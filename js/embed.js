@@ -75,6 +75,10 @@ class EmbedVideoModal {
     return this.video;
   }
 
+  resetStats() {
+    // No-op for embed view
+  }
+
   updateStatus(message) {
     setStatus(message, "default");
   }
@@ -353,6 +357,11 @@ const setPointerState = ({ video, hint } = {}) => {
 };
 
 const startEmbed = async () => {
+  if (window.__bitvidEmbedStarted) {
+    return;
+  }
+  window.__bitvidEmbedStarted = true;
+
   if (!(videoEl instanceof HTMLVideoElement)) {
     setStatus("Embed video element is missing.", "error");
     return;
