@@ -1,3 +1,7 @@
+/**
+ * Smoke test script for verifying key flows (login, video publish, DM).
+ * Run with: node scripts/agent/smoke-test.mjs
+ */
 import { chromium } from 'playwright';
 import { spawn } from 'child_process';
 import { startRelay } from './simple-relay.mjs';
