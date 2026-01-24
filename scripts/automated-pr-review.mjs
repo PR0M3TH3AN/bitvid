@@ -6,7 +6,10 @@ import path from 'node:path';
 const SENSITIVE_PATHS = [
   /^js\/nostr\//,
   /^js\/storage\//,
-  /^js\/dmDecryptor\.js$/
+  /^js\/dmDecryptor\.js$/,
+  /^js\/services\/storageService\.js$/,
+  /^js\/services\/attachmentService\.js$/,
+  /^js\/services\/hashtagPreferencesService\.js$/
 ];
 
 function runCommand(command, args = [], options = {}) {
@@ -65,6 +68,22 @@ function getChangedFiles() {
   }
 }
 
+function checkReleaseChannel(changedFiles) {
+  const baseRef = process.env.GITHUB_BASE_REF || 'main';
+  const warnings = [];
+
+  if (baseRef === 'main') {
+    const criticalFiles = ['js/constants.js', 'config/instance-config.js'];
+    const modifiedCriticalFiles = changedFiles.filter(f => criticalFiles.includes(f));
+
+    if (modifiedCriticalFiles.length > 0) {
+      warnings.push(`⚠️ **Release Channel Warning**: This PR targets \`main\` but modifies the following critical configuration files: ${modifiedCriticalFiles.map(f => `\`${f}\``).join(', ')}.`);
+      warnings.push(`> **Guidance:** \`main\` is the production track. Ensure feature flags in \`js/constants.js\` are set to safe defaults (usually \`false\`) and \`config/instance-config.js\` has production-appropriate settings (e.g. \`IS_DEV_MODE\`).`);
+    }
+  }
+  return warnings;
+}
+
 async function main() {
   console.log('Starting Automated PR Review...');
   let commentBody = '## 🤖 Automated PR Review\n\n';
@@ -118,6 +137,13 @@ async function main() {
     SENSITIVE_PATHS.some(pattern => pattern.test(file))
   );
 
+  // Release Channel Check
+  const channelWarnings = checkReleaseChannel(changedFiles);
+  if (channelWarnings.length > 0) {
+      commentBody += '### 🚀 Release Channel Checks\n\n';
+      channelWarnings.forEach(w => commentBody += `${w}\n\n`);
+  }
+
   if (sensitiveChanges.length > 0) {
     commentBody += '### 🛡️ Guardrails\n\n';
     commentBody += 'This PR modifies sensitive files. **Security and Protocol Review Required.**\n';
@@ -126,6 +152,17 @@ async function main() {
     sensitiveChanges.forEach(f => commentBody += `- ${f}\n`);
     commentBody += '\n</details>\n\n';
   }
+
+  // Audit Log
+  commentBody += '### 📝 Audit Log\n\n';
+  commentBody += '| Check | Status | Details |\n';
+  commentBody += '| :--- | :--- | :--- |\n';
+  commentBody += `| **Formatting** | ${hasFormatChanges ? '⚠️ Changes' : '✅ Pass'} | ${hasFormatChanges ? 'Fixes applied/suggested' : 'No issues'} |\n`;
+  commentBody += `| **Lint** | ${lintRes.status === 0 ? '✅ Pass' : '⚠️ Warnings'} | ${lintRes.status === 0 ? '-' : 'See output above'} |\n`;
+  commentBody += `| **Unit Tests** | ${testRes.status === 0 ? '✅ Pass' : '❌ Fail'} | ${testRes.status === 0 ? '-' : 'See failures above'} |\n`;
+  commentBody += `| **Security** | ${sensitiveChanges.length > 0 ? '🛡️ Review Req' : '✅ Pass'} | ${sensitiveChanges.length > 0 ? `${sensitiveChanges.length} sensitive files` : 'No sensitive files'} |\n`;
+  commentBody += `| **Release Channel** | ${channelWarnings.length > 0 ? '⚠️ Warning' : '✅ Pass'} | ${channelWarnings.length > 0 ? 'Critical config modified' : 'Safe'} |\n`;
+  commentBody += '\n';
 
   // 6. Post Comment (if in CI)
   if (process.env.GITHUB_TOKEN && process.env.PR_NUMBER) {
@@ -142,8 +179,35 @@ async function main() {
 
             commentBody += '> **✅ Micro-fixes applied:** Formatting fixes have been committed to this branch.\n\n';
         } catch (e) {
-            console.error('Failed to auto-commit/push:', e.message);
-            commentBody += '> **ℹ️ Micro-fixes available:** Formatting issues were found, but I could not automatically commit the fixes (likely due to permissions on a fork). Please run `npm run format` locally and push.\n\n';
+            console.error('Failed to push to PR branch:', e.message);
+
+            // Fallback: Create a new branch and open a PR
+            try {
+                console.log('Attempting to create a follow-up PR with fixes...');
+                const prNumber = process.env.PR_NUMBER;
+                const fixBranchName = `agent-fix/pr-${prNumber}-${Date.now()}`;
+
+                // Push the current HEAD (with fixes) to a new branch on origin
+                execSync(`git push origin HEAD:refs/heads/${fixBranchName}`);
+
+                const baseRef = process.env.GITHUB_BASE_REF || 'main';
+                const prTitle = `fix(ai): formatting fixes for PR #${prNumber}`;
+                const prBody = `This PR applies automated formatting fixes for PR #${prNumber}.`;
+
+                const ghCmd = ['pr', 'create', '--base', baseRef, '--head', fixBranchName, '--title', prTitle, '--body', prBody];
+                const ghRes = spawnSync('gh', ghCmd, { encoding: 'utf-8' });
+
+                if (ghRes.status === 0) {
+                     const newPrUrl = ghRes.stdout.trim();
+                     commentBody += `> **ℹ️ Micro-fixes available:** I could not push to your branch, but I have created a follow-up PR with the fixes: ${newPrUrl}\n\n`;
+                } else {
+                     throw new Error(`gh pr create failed: ${ghRes.stderr}`);
+                }
+
+            } catch (fallbackError) {
+                console.error('Failed to create follow-up PR:', fallbackError.message);
+                commentBody += '> **ℹ️ Micro-fixes available:** Formatting issues were found. Please run `npm run format` locally and push.\n\n';
+            }
         }
     }
 
