@@ -7,6 +7,7 @@ import { VideoModal } from "./components/VideoModal.js";
 import { RevertModal } from "./components/RevertModal.js";
 import { ShareNostrModal } from "./components/ShareNostrModal.js";
 import { EmbedVideoModal } from "./components/EmbedVideoModal.js";
+import { EmbedPlayerModal } from "./components/EmbedPlayerModal.js";
 import initUploadModal from "./initUploadModal.js";
 import initEditModal from "./initEditModal.js";
 import initDeleteModal from "./initDeleteModal.js";
@@ -195,29 +196,36 @@ export default class ModalManager {
     });
     app.embedVideoModal = this.embedVideoModal;
 
+    const isEmbedMode = typeof window !== "undefined" && window.location.pathname.endsWith("/embed.html");
+
     this.videoModal =
       (typeof this.ui.videoModal === "function"
         ? this.ui.videoModal({ app })
         : this.ui.videoModal) ||
-      new VideoModal({
-        removeTrackingScripts,
-        setGlobalModalState,
-        document: doc,
-        logger: {
-          log: (message, ...args) => app.log(message, ...args),
-        },
-        mediaLoader: app.mediaLoader,
-        assets: {
-          fallbackThumbnailSrc: this.assets.fallbackThumbnailSrc,
-        },
-        state: {
-          loadedThumbnails: app.loadedThumbnails,
-        },
-        helpers: {
-          safeEncodeNpub: (pubkey) => app.safeEncodeNpub(pubkey),
-          formatShortNpub: (value) => formatShortNpub(value),
-        },
-      });
+      (isEmbedMode
+        ? new EmbedPlayerModal({
+            document: doc,
+            logger: { log: (...a) => app.log(...a) },
+          })
+        : new VideoModal({
+            removeTrackingScripts,
+            setGlobalModalState,
+            document: doc,
+            logger: {
+              log: (message, ...args) => app.log(message, ...args),
+            },
+            mediaLoader: app.mediaLoader,
+            assets: {
+              fallbackThumbnailSrc: this.assets.fallbackThumbnailSrc,
+            },
+            state: {
+              loadedThumbnails: app.loadedThumbnails,
+            },
+            helpers: {
+              safeEncodeNpub: (pubkey) => app.safeEncodeNpub(pubkey),
+              formatShortNpub: (value) => formatShortNpub(value),
+            },
+          }));
 
     if (
       this.videoModal &&

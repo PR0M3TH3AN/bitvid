@@ -4906,7 +4906,7 @@ class Application {
         this.videoModal.resetStats();
       } else {
         devLogger.info(
-          "[Application] resetTorrentStats: videoModal.resetStats not available in this context — skipping."
+          "[Application] resetTorrentStats: videoModal.resetStats not available — skipping."
         );
       }
     }

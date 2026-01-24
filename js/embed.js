@@ -5,13 +5,52 @@ import { resolveVideoPointer } from "./utils/videoPointer.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import { nostrToolsReady } from "./nostrToolsBootstrap.js";
 
+// Diagnostic forwarder for embed debugging
+function postToParent(type, payload) {
+  try {
+    if (window.parent !== window) {
+      window.parent.postMessage({ __bitvid_debug: true, type, payload }, "*");
+    }
+  } catch (e) {
+    /* no-op */
+  }
+}
+
+window.addEventListener("error", (ev) => {
+  postToParent("error", {
+    message: ev.message,
+    filename: ev.filename,
+    lineno: ev.lineno,
+    colno: ev.colno,
+    stack: ev.error && ev.error.stack,
+  });
+});
+
+window.addEventListener("unhandledrejection", (ev) => {
+  postToParent("unhandledrejection", {
+    reason: (ev.reason && ev.reason.stack) || String(ev.reason),
+  });
+});
+
+["log", "info", "warn", "error", "debug"].forEach((level) => {
+  if (console[level]) {
+    const orig = console[level].bind(console);
+    console[level] = (...args) => {
+      postToParent("console", {
+        level,
+        args: args.map((a) => (typeof a === "string" ? a : String(a))),
+      });
+      orig(...args);
+    };
+  }
+});
+
 const POINTER_PARAM = "pointer";
 const PLAYBACK_PARAM = "playback";
 const HEX64_REGEX = /^[0-9a-f]{64}$/i;
 
 const statusEl = document.getElementById("embedStatus");
 const videoEl = document.getElementById("embedVideo");
-const rootEl = document.getElementById("embedRoot");
 
 const toneClasses = {
   default: "text-muted",
@@ -24,8 +63,7 @@ const setStatus = (message, tone = "default") => {
     return;
   }
 
-  const normalizedMessage =
-    typeof message === "string" ? message.trim() : "";
+  const normalizedMessage = typeof message === "string" ? message.trim() : "";
   statusEl.textContent = normalizedMessage;
 
   Object.values(toneClasses).forEach((className) => {
@@ -40,102 +78,15 @@ const setStatus = (message, tone = "default") => {
   }
 };
 
-class EmbedVideoModal {
-  constructor({ root, video, status } = {}) {
-    this.root = root || null;
-    this.video = video || null;
-    this.status = status || null;
-    this.eventTarget = new EventTarget();
-  }
-
-  addEventListener(...args) {
-    this.eventTarget.addEventListener(...args);
-  }
-
-  removeEventListener(...args) {
-    this.eventTarget.removeEventListener(...args);
-  }
-
-  dispatchEvent(event) {
-    return this.eventTarget.dispatchEvent(event);
-  }
-
-  getRoot() {
-    return this.root;
-  }
-
-  getVideoElement() {
-    return this.video;
-  }
-
-  setVideoElement(videoElement) {
-    if (videoElement instanceof HTMLVideoElement) {
-      this.video = videoElement;
-    }
-    return this.video;
-  }
-
-  resetStats() {
-    // No-op for embed view
-  }
-
-  updateStatus(message) {
-    setStatus(message, "default");
-  }
-
-  applyLoadingPoster() {
-    setStatus("Preparing playback…", "default");
-  }
-
-  forceRemovePoster() {
-    return false;
-  }
-
-  clearPosterCleanup() {}
-
-  setTorrentStatsVisibility(isVisible) {
-    if (!this.root) {
-      return;
-    }
-    this.root.dataset.torrentStats = isVisible ? "true" : "false";
-  }
-
-  open() {
-    return this.root;
-  }
-
-  close() {}
-
-  async load() {
-    if (!this.video || !(this.video instanceof HTMLVideoElement)) {
-      throw new Error("Embed video element is missing.");
-    }
-    return this.root;
-  }
-}
-
-const embedModal = new EmbedVideoModal({
-  root: rootEl,
-  video: videoEl,
-  status: statusEl,
-});
-
-const app = new Application({
-  ui: {
-    videoModal: embedModal,
-  },
-});
+// ModalManager will instantiate EmbedPlayerModal automatically when running in embed mode.
+const app = new Application();
 
 app.showError = (message) => {
-  const normalizedMessage =
-    typeof message === "string" ? message.trim() : "";
+  const normalizedMessage = typeof message === "string" ? message.trim() : "";
   if (normalizedMessage) {
     userLogger.error(normalizedMessage);
   }
-  setStatus(
-    normalizedMessage || "Playback failed. Please try again.",
-    "error",
-  );
+  setStatus(normalizedMessage || "Playback failed. Please try again.", "error");
 };
 
 app.showStatus = (message) => {
@@ -228,8 +179,8 @@ const buildRelayList = (relays) => {
     new Set(
       combined
         .map((relay) => (typeof relay === "string" ? relay.trim() : ""))
-        .filter(Boolean),
-    ),
+        .filter(Boolean)
+    )
   );
 };
 
@@ -308,7 +259,7 @@ const resolveEventFromPointer = async (pointer) => {
         if (Array.isArray(events) && events.length) {
           const flattened = events.flat().filter(Boolean);
           rawEvent = flattened.sort(
-            (a, b) => (b.created_at || 0) - (a.created_at || 0),
+            (a, b) => (b.created_at || 0) - (a.created_at || 0)
           )[0];
         }
       } catch (error) {
