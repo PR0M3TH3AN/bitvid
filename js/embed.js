@@ -388,6 +388,14 @@ const startEmbed = async () => {
     return;
   }
 
+  if (app.videoModal && typeof app.videoModal.load === "function") {
+    try {
+      await app.videoModal.load();
+    } catch (error) {
+      devLogger.warn("[embed] Failed to early-load video modal:", error);
+    }
+  }
+
   app.currentVideo = video;
   setPointerState({ video, hint: resolved?.pointerHint || null });
 
