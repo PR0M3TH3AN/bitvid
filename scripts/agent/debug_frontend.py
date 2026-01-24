@@ -1,8 +1,9 @@
-import sys
 from playwright.sync_api import sync_playwright
+import sys
 
 def run():
     with sync_playwright() as p:
+        # Launch browser
         browser = p.chromium.launch()
         page = browser.new_page()
 
@@ -12,12 +13,14 @@ def run():
         # Listen for uncaught exceptions
         page.on("pageerror", lambda exc: print(f"pageerror: {exc}"))
 
-        # Listen for failed network requests
+        # Listen for failed requests
         page.on("requestfailed", lambda req: print(f"requestfailed: {req.url} {req.failure}"))
 
-        print("Navigating to http://localhost:8000 ...")
         try:
-            page.goto("http://localhost:8000", wait_until="networkidle")
+            print("Navigating to http://localhost:8000")
+            page.goto("http://localhost:8000")
+            # Wait for a bit to capture initial errors
+            page.wait_for_timeout(5000)
         except Exception as e:
             print(f"Navigation failed: {e}")
 
