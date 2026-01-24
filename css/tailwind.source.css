@@ -492,7 +492,7 @@
 
   @media (min-width: theme("screens.md")) {
     .search-filters-panel.is-advanced-open {
-      width: 40rem;
+      width: var(--size-40rem);
     }
   }
 
