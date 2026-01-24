@@ -152,6 +152,7 @@ http://localhost:8000
 - **Run DM unit tests**: `npm run test:dm:unit`
 - **Run DM integration tests**: `npm run test:dm:integration`
 - **Run headless E2E tests**: `npm run test:e2e`
+- **Run visual regression tests**: `npm run test:visual`
 - **Cancel CI runs**: See [`docs/cancelling-ci-runs.md`](docs/cancelling-ci-runs.md) for a script to clear pending workflows.
 
 ### Running Tests in Docker
@@ -191,6 +192,7 @@ Use the event builders in `js/nostrEventSchemas.js` (the source of truth for all
 ```javascript
 import { buildVideoPostEvent } from "./js/nostrEventSchemas.js";
 
+// 1. Build the event object (useful for inspection or custom publishing)
 const event = buildVideoPostEvent({
   // Provide your hex pubkey (not npub)
   pubkey: "your_pubkey_hex",
@@ -206,7 +208,25 @@ const event = buildVideoPostEvent({
   }
 });
 
-console.log("Event to publish:", event);
+console.log("Event constructed:", event);
+
+// 2. Publish using the high-level client (requires browser/extension or active signer)
+/*
+import { nostrClient } from "./js/nostrClientFacade.js";
+
+// Ensure client is connected
+await nostrClient.init();
+
+// Login (prompts NIP-07 extension)
+await nostrClient.login();
+
+// Publish! (Handles signing and relay broadcasting)
+await nostrClient.publishVideo({
+  title: "My First Video",
+  url: "https://example.com/video.mp4",
+  description: "Published via bitvid SDK"
+}, nostrClient.pubkey);
+*/
 ```
 
 ### CSS build pipeline
