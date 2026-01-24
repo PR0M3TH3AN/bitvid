@@ -112,6 +112,7 @@ import {
 } from "./ui/components/staticModalAccessibility.js";
 import LoginModalController from "./ui/loginModalController.js";
 import TagPreferenceMenuController from "./ui/tagPreferenceMenuController.js";
+import ReactionController from "./ui/reactionController.js";
 import { pointerArrayToKey } from "./utils/pointer.js";
 import resolveVideoPointer, {
   buildVideoAddressPointer,
@@ -254,11 +255,39 @@ class Application {
       onRemovePoster: (reason) => this.forceRemoveModalPoster(reason),
     });
 
+    this.reactionController = new ReactionController({
+      services: { reactionCounter },
+      ui: {
+        getVideoModal: () => this.videoModal,
+        showError: (msg) => this.showError(msg),
+      },
+      state: {
+        getCurrentVideo: () => this.currentVideo,
+        getCurrentVideoPointer: () => this.currentVideoPointer,
+        getCurrentVideoPointerKey: () => this.currentVideoPointerKey,
+      },
+      callbacks: {
+        isUserLoggedIn: () => this.isUserLoggedIn(),
+        normalizeHexPubkey: (val) => this.normalizeHexPubkey(val),
+        getPubkey: () => this.pubkey,
+      },
+    });
+
     this.unsubscribeFromPubkeyState = subscribeToAppStateKey(
       "pubkey",
       (next, previous) => {
         if (next !== previous) {
           this.renderSavedProfiles();
+          if (
+            this.reactionController &&
+            this.currentVideoPointer &&
+            this.currentVideoPointerKey
+          ) {
+            this.reactionController.subscribe(
+              this.currentVideoPointer,
+              this.currentVideoPointerKey
+            );
+          }
         }
       }
     );
@@ -1344,122 +1373,6 @@ class Application {
     }
   }
 
-  resetModalReactionState() {
-    this.modalReactionState = {
-      counts: { "+": 0, "-": 0 },
-      total: 0,
-      userReaction: "",
-    };
-    if (this.videoModal?.updateReactionSummary) {
-      this.videoModal.updateReactionSummary({
-        total: 0,
-        counts: { "+": 0, "-": 0 },
-        userReaction: "",
-      });
-    }
-  }
-
-  teardownModalReactionSubscription() {
-    if (typeof this.modalReactionUnsub === "function") {
-      try {
-        this.modalReactionUnsub();
-      } catch (error) {
-        devLogger.warn(
-          "[reaction] Failed to tear down modal subscription:",
-          error,
-        );
-      }
-    }
-    this.modalReactionUnsub = null;
-    this.modalReactionPointerKey = null;
-    this.resetModalReactionState();
-  }
-
-  subscribeModalReactions(pointer, pointerKey) {
-    if (!this.videoModal?.updateReactionSummary) {
-      this.teardownModalReactionSubscription();
-      return;
-    }
-
-    this.teardownModalReactionSubscription();
-
-    if (!pointer || !pointerKey) {
-      return;
-    }
-
-    try {
-      const normalizedUser = this.normalizeHexPubkey(this.pubkey);
-      const unsubscribe = reactionCounter.subscribe(pointer, (snapshot) => {
-        const counts = { ...this.modalReactionState.counts };
-        if (snapshot?.counts && typeof snapshot.counts === "object") {
-          for (const [key, value] of Object.entries(snapshot.counts)) {
-            counts[key] = this.normalizeReactionCount(value);
-          }
-        }
-        if (!Object.prototype.hasOwnProperty.call(counts, "+")) {
-          counts["+"] = 0;
-        }
-        if (!Object.prototype.hasOwnProperty.call(counts, "-")) {
-          counts["-"] = 0;
-        }
-
-        let total = Number.isFinite(snapshot?.total)
-          ? Math.max(0, Number(snapshot.total))
-          : 0;
-        if (!Number.isFinite(total) || total === 0) {
-          total = 0;
-          for (const value of Object.values(counts)) {
-            total += this.normalizeReactionCount(value);
-          }
-        }
-
-        let userReaction = "";
-        if (normalizedUser && snapshot?.reactions) {
-          const record = snapshot.reactions[normalizedUser] || null;
-          if (record && typeof record.content === "string") {
-            userReaction =
-              record.content === "+"
-                ? "+"
-                : record.content === "-"
-                  ? "-"
-                  : "";
-          }
-        }
-
-        this.modalReactionState = {
-          counts,
-          total,
-          userReaction,
-        };
-        this.videoModal.updateReactionSummary({
-          total,
-          counts,
-          userReaction,
-        });
-      });
-
-      this.modalReactionPointerKey = pointerKey;
-      this.modalReactionUnsub = () => {
-        try {
-          unsubscribe?.();
-        } catch (error) {
-          devLogger.warn(
-            "[reaction] Failed to tear down modal subscription:",
-            error,
-          );
-        } finally {
-          this.modalReactionUnsub = null;
-          this.modalReactionPointerKey = null;
-        }
-      };
-    } catch (error) {
-      devLogger.warn(
-        "[reaction] Failed to subscribe modal reaction counter:",
-        error,
-      );
-      this.resetModalReactionState();
-    }
-  }
 
   initializeCommentController() {
     if (!this.commentThreadService || !this.videoModal) {
@@ -1591,206 +1504,9 @@ class Application {
     }
   }
 
-  applyModalReactionOptimisticUpdate(nextReaction) {
-    if (nextReaction !== "+" && nextReaction !== "-") {
-      return null;
-    }
-
-    const previousCounts = {
-      ...(this.modalReactionState?.counts || {}),
-    };
-    const previousTotalValue = Number.isFinite(this.modalReactionState?.total)
-      ? Math.max(0, Number(this.modalReactionState.total))
-      : null;
-    const previousReaction = this.modalReactionState?.userReaction || "";
-
-    const likeBefore = this.normalizeReactionCount(previousCounts["+"]);
-    const dislikeBefore = this.normalizeReactionCount(previousCounts["-"]);
-    const otherCounts = {};
-    for (const [key, value] of Object.entries(previousCounts)) {
-      if (key === "+" || key === "-") {
-        continue;
-      }
-      otherCounts[key] = this.normalizeReactionCount(value);
-    }
-
-    let likeCount = likeBefore;
-    let dislikeCount = dislikeBefore;
-
-    if (previousReaction === "+") {
-      likeCount = Math.max(0, likeCount - 1);
-    } else if (previousReaction === "-") {
-      dislikeCount = Math.max(0, dislikeCount - 1);
-    }
-
-    if (nextReaction === "+") {
-      likeCount += 1;
-    } else if (nextReaction === "-") {
-      dislikeCount += 1;
-    }
-
-    const updatedCounts = {
-      ...previousCounts,
-      "+": likeCount,
-      "-": dislikeCount,
-    };
-
-    let updatedTotal = likeCount + dislikeCount;
-    for (const value of Object.values(otherCounts)) {
-      updatedTotal += this.normalizeReactionCount(value);
-    }
-
-    this.modalReactionState = {
-      counts: updatedCounts,
-      total: updatedTotal,
-      userReaction: nextReaction,
-    };
-
-    if (this.videoModal?.updateReactionSummary) {
-      this.videoModal.updateReactionSummary({
-        total: updatedTotal,
-        counts: updatedCounts,
-        userReaction: nextReaction,
-      });
-    }
-
-    const fallbackPreviousTotal = Number.isFinite(previousTotalValue)
-      ? previousTotalValue
-      : likeBefore +
-        dislikeBefore +
-        Object.values(otherCounts).reduce(
-          (sum, value) => sum + this.normalizeReactionCount(value),
-          0
-        );
-
-    return {
-      counts: previousCounts,
-      total: fallbackPreviousTotal,
-      userReaction: previousReaction,
-    };
-  }
-
-  restoreModalReactionSnapshot(snapshot) {
-    if (!snapshot) {
-      return;
-    }
-
-    const countsInput =
-      snapshot.counts && typeof snapshot.counts === "object"
-        ? snapshot.counts
-        : {};
-    const counts = { ...countsInput };
-    for (const [key, value] of Object.entries(counts)) {
-      counts[key] = this.normalizeReactionCount(value);
-    }
-    if (!Object.prototype.hasOwnProperty.call(counts, "+")) {
-      counts["+"] = 0;
-    }
-    if (!Object.prototype.hasOwnProperty.call(counts, "-")) {
-      counts["-"] = 0;
-    }
-
-    let total = Number.isFinite(snapshot.total)
-      ? Math.max(0, Number(snapshot.total))
-      : 0;
-    if (!Number.isFinite(total) || total === 0) {
-      total = 0;
-      for (const value of Object.values(counts)) {
-        total += this.normalizeReactionCount(value);
-      }
-    }
-
-    const userReaction =
-      snapshot.userReaction === "+"
-        ? "+"
-        : snapshot.userReaction === "-"
-          ? "-"
-          : "";
-
-    this.modalReactionState = {
-      counts,
-      total,
-      userReaction,
-    };
-
-    if (this.videoModal?.updateReactionSummary) {
-      this.videoModal.updateReactionSummary({
-        total,
-        counts,
-        userReaction,
-      });
-    }
-  }
-
   async handleVideoReaction(detail = {}) {
-    if (!this.videoModal) {
-      return;
-    }
-
-    const requestedReaction =
-      typeof detail.reaction === "string" ? detail.reaction : "";
-    const normalizedReaction =
-      requestedReaction === "+"
-        ? "+"
-        : requestedReaction === "-"
-          ? "-"
-          : "";
-
-    if (!normalizedReaction) {
-      return;
-    }
-
-    const previousReaction = this.modalReactionState?.userReaction || "";
-    const pointer = this.currentVideoPointer;
-    const pointerKey = this.currentVideoPointerKey || pointerArrayToKey(pointer);
-    if (!pointer || !pointerKey) {
-      if (this.videoModal) {
-        this.videoModal.setUserReaction(previousReaction);
-      }
-      devLogger.info(
-        "[reaction] Ignoring reaction request until modal pointer is available.",
-      );
-      return;
-    }
-    if (normalizedReaction === previousReaction) {
-      return;
-    }
-
-    if (!this.isUserLoggedIn()) {
-      this.showError("Please login to react to videos.");
-      this.videoModal.setUserReaction(previousReaction);
-      return;
-    }
-
-    let rollbackSnapshot = null;
-    try {
-      rollbackSnapshot = this.applyModalReactionOptimisticUpdate(
-        normalizedReaction
-      );
-    } catch (error) {
-      devLogger.warn("[reaction] Failed to apply optimistic reaction state:", error);
-    }
-
-    try {
-      const result = await reactionCounter.publish(pointer, {
-        content: normalizedReaction,
-        video: this.currentVideo,
-        currentVideoPubkey: this.currentVideo?.pubkey,
-        pointerKey,
-      });
-
-      if (!result?.ok) {
-        if (rollbackSnapshot) {
-          this.restoreModalReactionSnapshot(rollbackSnapshot);
-        }
-        this.showError("Failed to send reaction. Please try again.");
-      }
-    } catch (error) {
-      devLogger.warn("[reaction] Failed to publish reaction:", error);
-      if (rollbackSnapshot) {
-        this.restoreModalReactionSnapshot(rollbackSnapshot);
-      }
-      this.showError("Failed to send reaction. Please try again.");
+    if (this.reactionController) {
+      return this.reactionController.handleReaction(detail);
     }
   }
 
@@ -8981,7 +8697,7 @@ class Application {
       this.currentVideoPointer,
       this.currentVideoPointerKey
     );
-    this.subscribeModalReactions(
+    this.reactionController.subscribe(
       this.currentVideoPointer,
       this.currentVideoPointerKey
     );
@@ -9320,7 +9036,7 @@ class Application {
     this.currentVideoPointer = null;
     this.currentVideoPointerKey = null;
     this.subscribeModalViewCount(null, null);
-    this.subscribeModalReactions(null, null);
+    this.reactionController.subscribe(null, null);
     this.pendingModeratedPlayback = null;
     const sanitizedUrl = typeof url === "string" ? url.trim() : "";
     const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
