@@ -1,452 +1,454 @@
 npm warn exec The following package was not found and will be installed: serve@14.2.5
  INFO  Accepting connections at http://localhost:3000
- HTTP  1/24/2026 10:39:03 PM ::1 GET /embed.html
- HTTP  1/24/2026 10:39:03 PM ::1 Returned 301 in 387 ms
- HTTP  1/24/2026 10:39:03 PM ::1 GET /embed
- HTTP  1/24/2026 10:39:03 PM ::1 Returned 200 in 15 ms
- HTTP  1/24/2026 10:39:03 PM ::1 GET /css/tailwind.generated.css?v=2024.11.09
- HTTP  1/24/2026 10:39:03 PM ::1 GET /assets/svg/bitvid-logo-light-mode.svg
- HTTP  1/24/2026 10:39:03 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:03 PM ::1 Returned 200 in 11 ms
- HTTP  1/24/2026 10:39:03 PM ::1 GET /js/nostrToolsBootstrap.js?v=2024.11.09
- HTTP  1/24/2026 10:39:03 PM ::1 GET /js/embed.js?v=2024.11.09
- HTTP  1/24/2026 10:39:03 PM ::1 Returned 200 in 8 ms
- HTTP  1/24/2026 10:39:03 PM ::1 Returned 200 in 7 ms
- HTTP  1/24/2026 10:39:03 PM ::1 GET /js/utils/logger.js
- HTTP  1/24/2026 10:39:03 PM ::1 GET /js/app.js
- HTTP  1/24/2026 10:39:03 PM ::1 GET /js/nostrClientFacade.js
- HTTP  1/24/2026 10:39:03 PM ::1 GET /js/nostr/index.js
- HTTP  1/24/2026 10:39:03 PM ::1 GET /js/utils/videoPointer.js
- HTTP  1/24/2026 10:39:03 PM ::1 GET /js/nostrToolsBootstrap.js
- HTTP  1/24/2026 10:39:03 PM ::1 Returned 200 in 10 ms
- HTTP  1/24/2026 10:39:03 PM ::1 Returned 200 in 13 ms
- HTTP  1/24/2026 10:39:03 PM ::1 Returned 200 in 22 ms
- HTTP  1/24/2026 10:39:03 PM ::1 Returned 200 in 20 ms
- HTTP  1/24/2026 10:39:03 PM ::1 Returned 200 in 22 ms
- HTTP  1/24/2026 10:39:03 PM ::1 Returned 200 in 34 ms
- HTTP  1/24/2026 10:39:03 PM ::1 GET /js/nostr/defaultClient.js
- HTTP  1/24/2026 10:39:03 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:03 PM ::1 GET /js/nostrClientRegistry.js
- HTTP  1/24/2026 10:39:03 PM ::1 Returned 200 in 3 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/nostr/client.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 7 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/nostr/nip07Permissions.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/nostr/nip71.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 7 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/nostr/watchHistory.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 12 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/nostr/watchHistoryBindings.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/nostr/viewEvents.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/nostr/reactionEvents.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/nostr/commentEvents.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/config.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/utils/pointer.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/utils/hex.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/nostrViewEventsFacade.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/webtorrent.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/embedDiagnostics.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/accessControl.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/magnetUtils.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/playbackUtils.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 7 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/constants.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 2 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/gridHealth.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/urlHealthObserver.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/utils/cardSourceVisibility.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/utils/videoTags.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/utils/hashtagNormalization.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/utils/profileMedia.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 7 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/lists.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/userBlocks.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/relayManager.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/feedEngine/index.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/watchHistoryService.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/services/r2Service.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/services/videoNotePayload.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/services/authProviders/index.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/services/hashtagPreferencesService.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/r2-quick.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/sidebarLoading.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/subscriptions.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/channelProfile.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/watchHistoryDebug.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/overlay/popoverEngine.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/components/videoMenuRenderers.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/services/moderationService.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 11 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 7 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 8 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 7 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/nostr/nip46Client.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 8 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/nostrEventSchemas.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/nostrPublish.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/nostr/signRequestQueue.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/viewCounter.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/payments/zapSplit.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/utils/formatters.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 9 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 7 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 7 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 8 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 7 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 9 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/reactionCounter.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/utils/domUtils.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/components/staticModalAccessibility.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/loginModalController.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/tagPreferenceMenuController.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/reactionController.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/utils/magnetValidators.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 2 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/utils/videoDeduper.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/utils/serviceWorkerFallbackMessages.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/utils/profileBatchFetcher.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/utils/videoTimestamps.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 3 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 3 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 3 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 3 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/designSystem.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/hashView.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/state/appState.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/state/cache.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/applicationBootstrap.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/engagementController.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 3 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/similarContentController.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/urlHealthController.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/videoModalCommentController.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 3 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/torrentStatusController.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/services/moderationActionController.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/services/moderationDecorator.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/services/trustBootstrap.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/videoEventUtils.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/magnetShared.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/nostr/toolkit.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/nostr/cachePolicies.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/state/profileCache.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /vendor/crypto-helpers.bundle.min.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/nostr/syncMetadataStore.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/nostr/dmSignalEvents.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 3 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 3 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 3 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/nostr/countDiagnostics.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/nostr/maxListenerDiagnostics.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/nostr/publishHelpers.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/nostr/nip04WorkerClient.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/nostr/dmDecryptWorkerClient.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/nostr/dmDecryptDiagnostics.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/utils/lruCache.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/storage/dmDb.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/services/dmNostrService.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/nostr/sessionActor.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/nostr/signerHelpers.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/nostr/adapters/nip07Adapter.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/nostr/adapters/nsecAdapter.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 2 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/nostr/adapters/nip46Adapter.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /config/instance-config.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/nostr/viewEventBindings.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/adminListStore.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/webtorrent.min.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/utils/safeDecode.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/dom/cardObserver.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 7 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 2 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/magnets.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 2 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/utils/storage.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/feedEngine/engine.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/feedEngine/stages.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/feedEngine/exploreScoring.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/feedEngine/kidsScoring.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/feedEngine/kidsAudienceFilterStage.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 3 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 3 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/feedEngine/sorters.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/feedEngine/sources.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/feedEngine/watchHistoryFeed.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/applicationContext.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/r2.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/storage/r2-mgmt.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 3 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 3 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 3 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 3 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 3 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/storage/r2-s3.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/storage/s3-multipart.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/storage/s3-client.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/services/storageService.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/services/authProviders/nip07.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/services/authProviders/nip46.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 2 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 3 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/services/authProviders/nsec.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/services/authProviders/generate.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/views/VideoListView.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/services/nostrService.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/designSystem/metrics.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/overlay/overlayRoot.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 7 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 7 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 7 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 7 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 8 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 7 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /vendor/floating-ui.dom.bundle.min.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/nostr/nip46Queue.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/components/VideoCard.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 2 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/moderationUiHelpers.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/moderationCopy.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/payments/zapSharedState.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/payments/zapNotifications.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/payments/lnurl.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/payments/platformAddress.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/payments/nwcClient.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/components/FeedInfoPopover.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/payments/zapReceiptValidator.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/payments/platformFee.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 7 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/components/modalAccessibility.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 2 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/components/tagPreferenceMenu.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/utils/qrcode.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/state/profileSettingsStore.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/utils/mediaLoader.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/historyView.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/watchHistoryController.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/services/watchHistoryTelemetry.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/services/playbackService.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/services/authService.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/services/discussionCountService.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/services/commentThreadService.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/services/exploreDataService.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/services/nwcSettingsService.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/services/relayHealthService.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/profileIdentityController.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/videoListViewController.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/profileModalController.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/moreMenuController.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 8 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/appChromeController.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/ModalManager.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/feedEngine/utils.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/components/hashtagStripHelper.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/designSystem/dynamicStyles.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 9 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 10 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 10 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 10 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 12 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/attachments/attachmentUtils.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/directMessagesStore.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/services/dmNotificationManager.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/payments/zapMessages.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/nostrWatchHistoryFacade.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/nwcSettings.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 3 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 3 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/components/tagPillList.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/components/VideoModal.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 2 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 3 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/components/RevertModal.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/components/ShareNostrModal.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/components/EmbedVideoModal.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/components/EmbedPlayerModal.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/initUploadModal.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 9 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 12 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 14 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 14 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/initEditModal.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/initDeleteModal.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/components/EventDetailsModal.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/zapController.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/dm/index.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/services/s3Service.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 9 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/services/attachmentService.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/utils/linkPreviewSettings.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 1 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/components/nip71FormManager.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/components/UploadModal.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/ambientBackground.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/components/video-modal/commentsController.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/components/video-modal/reactionsController.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/components/video-modal/similarContentController.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/components/video-modal/moderationController.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/components/video-modal/utils/commentAvatar.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/components/SimilarContentCard.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/services/linkPreviewService.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/dm/AppShell.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/dm/Avatar.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/dm/ContactRow.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/dm/ConversationList.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/dm/MessageThread.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/dm/MessageBubble.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/dm/Composer.js
- HTTP  1/24/2026 10:39:04 PM ::1 GET /js/ui/dm/NotificationCenter.js
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 3 ms
- HTTP  1/24/2026 10:39:04 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:05 PM ::1 GET /js/ui/dm/DayDivider.js
- HTTP  1/24/2026 10:39:05 PM ::1 GET /js/ui/dm/ZapReceiptList.js
- HTTP  1/24/2026 10:39:05 PM ::1 GET /js/ui/dm/zapHelpers.js
- HTTP  1/24/2026 10:39:05 PM ::1 GET /js/ui/components/EditModal.js
- HTTP  1/24/2026 10:39:05 PM ::1 GET /js/ui/components/DeleteModal.js
- HTTP  1/24/2026 10:39:05 PM ::1 GET /js/storage/s3-url.js
- HTTP  1/24/2026 10:39:05 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:05 PM ::1 Returned 200 in 5 ms
- HTTP  1/24/2026 10:39:05 PM ::1 Returned 200 in 6 ms
- HTTP  1/24/2026 10:39:05 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:05 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:05 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:05 PM ::1 GET /js/utils/torrentHash.js
- HTTP  1/24/2026 10:39:05 PM ::1 GET /js/ui/dm/DMPrivacySettings.js
- HTTP  1/24/2026 10:39:05 PM ::1 Returned 200 in 4 ms
- HTTP  1/24/2026 10:39:05 PM ::1 Returned 200 in 2 ms
- HTTP  1/24/2026 10:39:05 PM ::1 GET /js/ui/dm/ZapInterface.js
- HTTP  1/24/2026 10:39:05 PM ::1 Returned 200 in 3 ms
- HTTP  1/24/2026 10:39:05 PM ::1 GET /js/payments/zapRequests.js
- HTTP  1/24/2026 10:39:05 PM ::1 Returned 200 in 2 ms
+ HTTP  1/24/2026 11:17:38 PM ::1 GET /embed.html
+ HTTP  1/24/2026 11:17:38 PM ::1 Returned 301 in 407 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /embed
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 14 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /css/tailwind.generated.css?v=2024.11.09
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /assets/svg/bitvid-logo-light-mode.svg
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 5 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 13 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/nostrToolsBootstrap.js?v=2024.11.09
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/embed.js?v=2024.11.09
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 6 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 8 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/utils/logger.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/app.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/nostrClientFacade.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/nostr/index.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/utils/videoPointer.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/nostrToolsBootstrap.js
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 13 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 10 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 13 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 10 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 21 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 33 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/nostr/defaultClient.js
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 1 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/nostrClientRegistry.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/config.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/nostr/client.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/nostr/nip07Permissions.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/nostr/nip71.js
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 9 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 11 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 14 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 15 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/nostr/watchHistory.js
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 27 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 37 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/nostr/watchHistoryBindings.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/nostr/viewEvents.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/nostr/reactionEvents.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/nostr/commentEvents.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/utils/pointer.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/utils/hex.js
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 9 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 9 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 8 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 11 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 10 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 11 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/nostrViewEventsFacade.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/webtorrent.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/embedDiagnostics.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/accessControl.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/magnetUtils.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/playbackUtils.js
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/constants.js
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 3 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/gridHealth.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/urlHealthObserver.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/utils/cardSourceVisibility.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/utils/videoTags.js
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 6 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 6 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/utils/hashtagNormalization.js
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 5 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/utils/profileMedia.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/lists.js
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 9 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/userBlocks.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/relayManager.js
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 8 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 8 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 5 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/feedEngine/index.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/watchHistoryService.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/services/r2Service.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/services/videoNotePayload.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/services/authProviders/index.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/services/hashtagPreferencesService.js
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 3 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/r2-quick.js
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 3 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/sidebarLoading.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/subscriptions.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/channelProfile.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/watchHistoryDebug.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/ui/overlay/popoverEngine.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/ui/components/videoMenuRenderers.js
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 7 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 8 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 7 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 7 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 7 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 10 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/services/moderationService.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/nostr/nip46Client.js
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 6 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 7 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/nostrEventSchemas.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/nostrPublish.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/nostr/signRequestQueue.js
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 7 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 11 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 9 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/viewCounter.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/payments/zapSplit.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/utils/formatters.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/reactionCounter.js
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 8 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 8 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/utils/domUtils.js
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 9 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 8 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/ui/components/staticModalAccessibility.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/ui/loginModalController.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/ui/tagPreferenceMenuController.js
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 9 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 9 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/ui/reactionController.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/utils/magnetValidators.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/utils/videoDeduper.js
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 8 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 9 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 8 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/utils/serviceWorkerFallbackMessages.js
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 8 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 7 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 5 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/utils/profileBatchFetcher.js
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 1 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/utils/videoTimestamps.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/designSystem.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/hashView.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/state/appState.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/state/cache.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/ui/applicationBootstrap.js
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 5 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 5 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 5 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 5 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/ui/engagementController.js
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 1 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/ui/similarContentController.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/ui/urlHealthController.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/ui/videoModalCommentController.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/ui/torrentStatusController.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/services/moderationActionController.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/services/moderationDecorator.js
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 5 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 5 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 7 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 6 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/services/trustBootstrap.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /config/instance-config.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/videoEventUtils.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/magnetShared.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/nostr/toolkit.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/nostr/cachePolicies.js
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 5 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 5 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/state/profileCache.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /vendor/crypto-helpers.bundle.min.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/nostr/syncMetadataStore.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/nostr/dmSignalEvents.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/nostr/countDiagnostics.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/nostr/maxListenerDiagnostics.js
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 5 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 5 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 6 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 6 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/nostr/publishHelpers.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/nostr/nip04WorkerClient.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/nostr/dmDecryptWorkerClient.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/nostr/dmDecryptDiagnostics.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/utils/lruCache.js
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/storage/dmDb.js
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 7 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 7 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 7 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 8 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 7 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 7 ms
+ HTTP  1/24/2026 11:17:39 PM ::1 GET /js/services/dmNostrService.js
+ HTTP  1/24/2026 11:17:39 PM ::1 Returned 200 in 1 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/nostr/sessionActor.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/nostr/signerHelpers.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/nostr/adapters/nip07Adapter.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/nostr/adapters/nsecAdapter.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/nostr/adapters/nip46Adapter.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/nostr/viewEventBindings.js
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 10 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 10 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 10 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 9 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 10 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 7 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/webtorrent.min.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/utils/safeDecode.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/dom/cardObserver.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/adminListStore.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/magnets.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/utils/storage.js
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 3 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 3 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 3 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 11 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/feedEngine/engine.js
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 2 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/feedEngine/stages.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/feedEngine/exploreScoring.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/feedEngine/kidsScoring.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/feedEngine/kidsAudienceFilterStage.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/feedEngine/sorters.js
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 17 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 17 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 17 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 23 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 13 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/feedEngine/sources.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/feedEngine/watchHistoryFeed.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/services/authProviders/nip07.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/services/authProviders/nip46.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/services/authProviders/nsec.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/services/authProviders/generate.js
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 6 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 5 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 6 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 6 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/applicationContext.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/r2.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/storage/r2-mgmt.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/storage/r2-s3.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/storage/s3-multipart.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/storage/s3-client.js
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 7 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 7 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 7 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 7 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 7 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/services/storageService.js
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 2 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/views/VideoListView.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/services/nostrService.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/designSystem/metrics.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/overlay/overlayRoot.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /vendor/floating-ui.dom.bundle.min.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/nostr/nip46Queue.js
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 5 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 6 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 6 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 6 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 6 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 7 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/payments/lnurl.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/payments/nwcClient.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/payments/platformAddress.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/payments/zapReceiptValidator.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/payments/platformFee.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/components/VideoCard.js
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 5 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 5 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 5 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 6 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 6 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 8 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/moderationUiHelpers.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/moderationCopy.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/payments/zapSharedState.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/payments/zapNotifications.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/components/FeedInfoPopover.js
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 21 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 20 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 19 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 17 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 18 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/components/modalAccessibility.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/components/tagPreferenceMenu.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/utils/qrcode.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/utils/mediaLoader.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/historyView.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/watchHistoryController.js
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 5 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 5 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/services/watchHistoryTelemetry.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/services/playbackService.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/services/authService.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/services/discussionCountService.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/services/commentThreadService.js
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 3 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/services/exploreDataService.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/services/nwcSettingsService.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/services/relayHealthService.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/profileIdentityController.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/videoListViewController.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/profileModalController.js
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 9 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 9 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 10 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 10 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 11 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 14 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/moreMenuController.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/appChromeController.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/ModalManager.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/state/profileSettingsStore.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/feedEngine/utils.js
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 5 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 5 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/components/hashtagStripHelper.js
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 1 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/designSystem/dynamicStyles.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/attachments/attachmentUtils.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/directMessagesStore.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/services/dmNotificationManager.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/payments/zapMessages.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/nostrWatchHistoryFacade.js
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 5 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 5 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 5 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/nwcSettings.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/dm/index.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/services/s3Service.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/services/attachmentService.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/utils/linkPreviewSettings.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/components/tagPillList.js
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 3 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 3 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 3 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 3 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/components/VideoModal.js
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 3 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/components/RevertModal.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/components/ShareNostrModal.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/components/EmbedVideoModal.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/components/EmbedPlayerModal.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/initUploadModal.js
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 14 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 16 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 13 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 14 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 13 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/initEditModal.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/initDeleteModal.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/components/EventDetailsModal.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/zapController.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/dm/AppShell.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/dm/Avatar.js
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 3 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 3 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 3 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 3 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 3 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 3 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/dm/ContactRow.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/dm/ConversationList.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/dm/MessageThread.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/dm/MessageBubble.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/dm/Composer.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/dm/NotificationCenter.js
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 3 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 3 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 3 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 3 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/dm/DayDivider.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/dm/ZapReceiptList.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/dm/zapHelpers.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/storage/s3-url.js
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 2 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 2 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 2 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 2 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/components/UploadModal.js
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 3 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/components/nip71FormManager.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/ambientBackground.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/components/video-modal/commentsController.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/components/video-modal/reactionsController.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/components/video-modal/similarContentController.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/components/video-modal/moderationController.js
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 6 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 6 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 5 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 5 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 5 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 5 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/components/video-modal/utils/commentAvatar.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/components/SimilarContentCard.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/services/linkPreviewService.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/components/EditModal.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/dm/DMPrivacySettings.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/dm/ZapInterface.js
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 6 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 5 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 5 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 5 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 4 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 5 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/ui/components/DeleteModal.js
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/utils/torrentHash.js
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 3 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 2 ms
+ HTTP  1/24/2026 11:17:40 PM ::1 GET /js/payments/zapRequests.js
+ HTTP  1/24/2026 11:17:40 PM ::1 Returned 200 in 3 ms
+
+ INFO  Gracefully shutting down. Please wait...
