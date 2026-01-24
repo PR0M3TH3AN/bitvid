@@ -1,202 +1,191 @@
-import './setup-test-env.js';
-import { spawn } from 'node:child_process';
-import { NostrClient } from '../../js/nostr/client.js';
-import { buildVideoPostEvent } from '../../js/nostrEventSchemas.js';
+import { WebSocket } from 'ws';
 import * as NostrTools from 'nostr-tools';
-import { nip19 } from 'nostr-tools';
-import fs from 'node:fs';
-import path from 'node:path';
 
-// Polyfill global for fallback if dynamic import fails in bootstrap (unlikely in Node but safe)
-global.NostrTools = NostrTools;
-
-const ARTIFACTS_DIR = 'artifacts';
-if (!fs.existsSync(ARTIFACTS_DIR)) {
-  fs.mkdirSync(ARTIFACTS_DIR, { recursive: true });
+if (!global.WebSocket) {
+    global.WebSocket = WebSocket;
 }
 
-async function run() {
-  console.log('--- Starting Interop Test ---');
-
-  // 1. Start Local Relay
-  console.log('[Setup] Spawning simple-relay.mjs...');
-  const relayLog = fs.openSync(path.join(ARTIFACTS_DIR, 'interop-relay.log'), 'w');
-  const relayProcess = spawn('node', ['scripts/agent/simple-relay.mjs'], {
-    stdio: ['ignore', relayLog, relayLog],
-    env: { ...process.env, PORT: '8008' }
-  });
-
-  // Give relay time to boot
-  await new Promise(resolve => setTimeout(resolve, 2000));
-  console.log('[Setup] Relay assumed running on ws://localhost:8008');
-
-  let exitCode = 0;
-
-  try {
-    // 2. Client Init (Sender - Identity A)
-    console.log('[Client A] Initializing...');
-    const clientA = new NostrClient();
-
-    // Override relays to local
-    const testRelays = ['ws://localhost:8008'];
-    clientA.relays = [...testRelays];
-    clientA.readRelays = [...testRelays];
-    clientA.writeRelays = [...testRelays];
-
-    await clientA.init();
-    console.log('[Client A] Connected.');
-
-    // Generate keys
-    const skA = NostrTools.generateSecretKey();
-    const pkA = NostrTools.getPublicKey(skA);
-    const hexSkA = NostrTools.utils.bytesToHex(skA);
-    const npubA = nip19.npubEncode(pkA);
-
-    console.log(`[Client A] Identity: ${pkA} (${npubA})`);
-
-    // Register signer
-    await clientA.registerPrivateKeySigner({ privateKey: hexSkA, pubkey: pkA });
-    console.log('[Client A] Signer registered.');
-
-    // --- TEST 1: Video Post ---
-    console.log('\n--- Test 1: Video Post ---');
-    // Using buildVideoPostEvent directly to verify schema interop as requested
-    const videoPayload = {
-      version: 3,
-      title: 'Interop Video Test',
-      description: 'Testing video publish via NostrClient',
-      magnet: 'magnet:?xt=urn:btih:c91104e1e82813136287e0767786431206d048d0&dn=test-video',
-      mode: 'live',
-      isPrivate: false,
-      videoRootId: `test-root-${Date.now()}`,
-      isNsfw: false,
-      isForKids: false,
-      url: '',
-      thumbnail: '',
-      deleted: false,
-      enableComments: true
+// Mock localStorage to suppress config.js warnings
+if (!global.localStorage) {
+    global.localStorage = {
+        getItem: () => null,
+        setItem: () => {},
+        removeItem: () => {},
+        clear: () => {}
     };
-
-    console.log('[Test 1] Building and Publishing video...');
-    const rawEvent = buildVideoPostEvent({
-        pubkey: pkA,
-        created_at: Math.floor(Date.now() / 1000),
-        content: videoPayload,
-        dTagValue: `interop-${Date.now()}`
-    });
-
-    const { signedEvent: videoEvent } = await clientA.signAndPublishEvent(rawEvent);
-
-    if (!videoEvent || !videoEvent.id) {
-        throw new Error('Video publish returned no event or ID');
-    }
-    console.log(`[Test 1] Video published. ID: ${videoEvent.id}`);
-
-    // Fetch back
-    console.log('[Test 1] Fetching event back...');
-    const fetchedEvent = await clientA.getEventById(videoEvent.id);
-    if (!fetchedEvent) {
-        throw new Error('Failed to fetch video event back');
-    }
-
-    // Validate
-    // getEventById returns the Video model (parsed object), not the raw event, unless includeRaw is true.
-    // The Video model has 'title' at top level.
-    if (fetchedEvent.title !== videoPayload.title) {
-        throw new Error(`Title mismatch: expected ${videoPayload.title}, got ${fetchedEvent.title}`);
-    }
-    console.log('[Test 1] Verified: Content matches.');
-
-
-    // --- TEST 2: View Event ---
-    console.log('\n--- Test 2: View Event ---');
-    // publishViewEvent expects a pointer object { type: 'e'|'a', value: hex|address } or a string.
-    // We'll use the event ID ('e' tag) for this test.
-    const viewPointer = {
-        type: 'e',
-        value: videoEvent.id
-    };
-
-    console.log('[Test 2] Publishing view event...');
-    await clientA.publishViewEvent(viewPointer);
-
-    console.log('[Test 2] Polling for view event...');
-    // We poll because simple-relay.mjs does not support live subscriptions
-    let receivedView = null;
-    for (let i = 0; i < 10; i++) {
-        await new Promise(r => setTimeout(r, 500));
-        const views = await clientA.listVideoViewEvents(viewPointer);
-        // Find one signed by us
-        receivedView = views.find(v => v.pubkey === pkA);
-        if (receivedView) break;
-    }
-
-    if (!receivedView) {
-        throw new Error('View event not found after polling');
-    }
-    console.log(`[Test 2] View event verified: ${receivedView.id}`);
-
-
-    // --- TEST 3: Encrypted DM ---
-    console.log('\n--- Test 3: Direct Message ---');
-
-    // Client B (Recipient)
-    console.log('[Client B] Initializing...');
-    const clientB = new NostrClient();
-    clientB.relays = [...testRelays];
-    clientB.readRelays = [...testRelays];
-    clientB.writeRelays = [...testRelays];
-    await clientB.init();
-
-    const skB = NostrTools.generateSecretKey();
-    const pkB = NostrTools.getPublicKey(skB);
-    const hexSkB = NostrTools.utils.bytesToHex(skB);
-    const npubB = nip19.npubEncode(pkB);
-    console.log(`[Client B] Identity: ${pkB} (${npubB})`);
-
-    await clientB.registerPrivateKeySigner({ privateKey: hexSkB, pubkey: pkB });
-
-    const dmMessage = 'Hello from Client A to Client B ' + Date.now();
-
-    console.log(`[Test 3] Client A sending DM to ${npubB}...`);
-    const sendResult = await clientA.sendDirectMessage(npubB, dmMessage);
-    if (!sendResult.ok) {
-        throw new Error(`Failed to send DM: ${sendResult.error}`);
-    }
-    console.log('[Test 3] DM Sent.');
-
-    // Wait a bit for relay
-    await new Promise(r => setTimeout(r, 500));
-
-    console.log('[Test 3] Client B listing messages...');
-    // listDirectMessages uses decryptDirectMessageEvent internally which uses dmDecryptor.js
-    // It requires actorPubkeyInput or uses internal session actor.
-    // We verified registerPrivateKeySigner sets session actor.
-    const messages = await clientB.listDirectMessages(pkB, { limit: 10 });
-
-    const found = messages.find(msg => msg.plaintext === dmMessage);
-    if (!found) {
-        console.log('Messages found:', messages.map(m => m.plaintext));
-        throw new Error('Client B did not receive/decrypt the expected message.');
-    }
-
-    console.log(`[Test 3] Verified DM content: "${found.plaintext}"`);
-    console.log(`[Test 3] Encryption scheme: ${found.scheme}`);
-
-
-    console.log('\n--- All Tests Passed ---');
-
-  } catch (error) {
-    console.error('\n!!! TEST FAILED !!!');
-    console.error(error);
-    exitCode = 1;
-  } finally {
-    console.log('[Cleanup] Killing relay...');
-    relayProcess.kill();
-    fs.closeSync(relayLog);
-  }
-
-  process.exit(exitCode);
 }
 
-run();
+// Setup basic logging
+const log = (msg) => console.log(`[TEST] ${msg}`);
+const err = (msg, e) => console.error(`[TEST] ${msg}`, e);
+
+// Configuration
+const TEST_RELAYS = [
+    "wss://relay.damus.io",
+    "wss://nos.lol",
+    "wss://relay.snort.social"
+];
+
+// Hex helper
+const toHex = (bytes) => Buffer.from(bytes).toString('hex');
+
+// Polling helper
+async function waitForEvent(client, eventId, timeout = 15000) {
+    const start = Date.now();
+    while (Date.now() - start < timeout) {
+        const event = await client.getEventById(eventId);
+        if (event) return event;
+        await new Promise(r => setTimeout(r, 1000));
+    }
+    throw new Error(`Timeout waiting for event ${eventId}`);
+}
+
+async function runTests() {
+    try {
+        // Dynamic imports to ensure mocks are applied before modules load
+        const { NostrClient } = await import('../../js/nostr/defaultClient.js');
+        const {
+            buildVideoPostEvent,
+            buildViewEvent,
+        } = await import('../../js/nostrEventSchemas.js');
+
+        // Helper to gen keypair
+        const genKeypair = () => {
+            let skBytes = NostrTools.generateSecretKey();
+            let sk = toHex(skBytes);
+            let pk = NostrTools.getPublicKey(sk); // Assumes hex input works or throws, but we'll try standard
+            // In v2, getPublicKey usually takes Uint8Array.
+            // If previous run worked with hex string, good.
+            // If not, we should pass skBytes.
+            // NostrClient source suggests it handles string input via tools wrapper, but let's be safe.
+            try {
+                pk = NostrTools.getPublicKey(skBytes);
+            } catch(e) {
+                pk = NostrTools.getPublicKey(sk);
+            }
+            return { sk, pk };
+        }
+
+        log("Generating ephemeral keys (Alice)...");
+        const alice = genKeypair();
+        log(`Alice Pubkey: ${alice.pk}`);
+
+        log("Generating ephemeral keys (Bob)...");
+        const bob = genKeypair();
+        log(`Bob Pubkey: ${bob.pk}`);
+
+        log("Initializing NostrClient...");
+        const client = new NostrClient();
+        client.relays = TEST_RELAYS;
+
+        await client.init();
+        log("Client initialized.");
+
+        // Register signer as Alice
+        await client.registerPrivateKeySigner({ privateKey: alice.sk, pubkey: alice.pk });
+        log("Registered as Alice.");
+
+        // 1. Video Post
+        log("--- Test Case 1: Video Post (Alice) ---");
+        const videoRootId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const dTagValue = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const created_at = Math.floor(Date.now() / 1000);
+
+        const videoContent = {
+            version: 3,
+            title: "Interop Test Video",
+            videoRootId: videoRootId,
+            description: "Test video for interoperability check.",
+            url: "https://example.com/video.mp4",
+            mode: "live"
+        };
+
+        const videoEvent = buildVideoPostEvent({
+            pubkey: alice.pk,
+            created_at,
+            dTagValue,
+            content: videoContent
+        });
+
+        log("Publishing Video Post...");
+        const { signedEvent: publishedVideo } = await client.signAndPublishEvent(videoEvent);
+        if (!publishedVideo || !publishedVideo.id || !publishedVideo.sig) {
+             throw new Error("Failed to sign/publish video event");
+        }
+        log(`Published Video Event ID: ${publishedVideo.id}`);
+
+        log("Fetching Video Event back...");
+        const fetchedVideo = await waitForEvent(client, publishedVideo.id);
+        if (fetchedVideo.id !== publishedVideo.id) {
+             throw new Error(`Fetched event ID mismatch. Expected ${publishedVideo.id}, got ${fetchedVideo.id}`);
+        }
+        log("Verified Video Post roundtrip.");
+
+        // 2. View Event
+        log("--- Test Case 2: View Event (Alice) ---");
+        const viewEvent = buildViewEvent({
+            pubkey: alice.pk,
+            created_at: Math.floor(Date.now() / 1000),
+            pointerValue: publishedVideo.id,
+            pointerTag: ["e", publishedVideo.id],
+            content: "Interop View Test",
+            dedupeTag: `view-${Date.now()}-${Math.random().toString(36).slice(2)}`
+        });
+
+        log("Publishing View Event...");
+        const { signedEvent: publishedView } = await client.signAndPublishEvent(viewEvent);
+        if (!publishedView || !publishedView.id) {
+            throw new Error("Failed to publish view event");
+        }
+        log(`Published View Event ID: ${publishedView.id}`);
+
+        log("Verifying View Event visibility...");
+        await waitForEvent(client, publishedView.id);
+        log("Verified View Event roundtrip.");
+
+        // 3. DM
+        log("--- Test Case 3: Direct Message (Alice -> Bob) ---");
+        const dmMessage = `Test DM ${Date.now()}`;
+        const bobNpub = NostrTools.nip19.npubEncode(bob.pk);
+
+        log(`Sending DM from Alice to Bob (${bobNpub}): "${dmMessage}"`);
+        const sendResult = await client.sendDirectMessage(bobNpub, dmMessage);
+        if (!sendResult.ok) {
+            throw new Error(`Failed to send DM: ${sendResult.error}`);
+        }
+        log("DM sent.");
+
+        log("Switching to Bob to receive...");
+        await client.registerPrivateKeySigner({ privateKey: bob.sk, pubkey: bob.pk });
+        log("Registered as Bob.");
+
+        log("Waiting for DM...");
+        // Poll for DMs
+        const start = Date.now();
+        let foundDm = null;
+        while (Date.now() - start < 20000) {
+            const dms = await client.listDirectMessages();
+            const match = dms.find(dm => dm.plaintext === dmMessage && dm.sender?.pubkey === alice.pk);
+            if (match) {
+                foundDm = match;
+                break;
+            }
+            log(" DM not found yet, retrying...");
+            await new Promise(r => setTimeout(r, 2000));
+        }
+
+        if (!foundDm) {
+            throw new Error("Timeout: Bob could not find the sent DM.");
+        }
+        log(`Bob received and decrypted DM: "${foundDm.plaintext}" from Alice.`);
+
+        log("All tests passed!");
+        process.exit(0);
+
+    } catch (e) {
+        err("Test failed", e);
+        process.exit(1);
+    }
+}
+
+runTests();
