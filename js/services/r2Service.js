@@ -5,7 +5,7 @@
  *
  * Key Responsibilities:
  * - Managing user R2 credentials and bucket settings.
- * - performing S3-compatible multipart uploads (via `js/storage/r2-s3.js`).
+ * - performing S3-compatible multipart uploads (via `js/storage/s3-multipart.js`).
  * - Orchestrating the "Hybrid" video hosting strategy:
  *   1. Videos are uploaded to R2 (S3) for reliable direct hosting.
  *   2. A `.torrent` file is generated and uploaded alongside the video.
@@ -33,13 +33,13 @@ import {
   setManagedDomain,
   deriveShortSubdomain,
 } from "../storage/r2-mgmt.js";
+import { makeR2Client } from "../storage/r2-s3.js";
 import {
-  makeR2Client,
   multipartUpload,
   ensureBucketCors,
   ensureBucketExists,
   deleteObject,
-} from "../storage/r2-s3.js";
+} from "../storage/s3-multipart.js";
 import { truncateMiddle } from "../utils/formatters.js";
 import { userLogger } from "../utils/logger.js";
 import {
@@ -531,7 +531,11 @@ class R2Service {
 
         // Attempt to auto-create the bucket (requires Admin keys, but harmless if fails)
         try {
-          await ensureBucketExists({ s3, bucket: bucketName });
+          await ensureBucketExists({
+            s3,
+            bucket: bucketName,
+            region: settings.region,
+          });
         } catch (createErr) {
           // 403 Forbidden is expected if keys are "Object Read & Write" only.
           // We proceed assuming the user might have created it manually.
@@ -546,6 +550,7 @@ class R2Service {
             s3,
             bucket: bucketName,
             origins: corsOrigins,
+            region: settings.region,
           });
         }
       } catch (corsErr) {
@@ -645,7 +650,11 @@ class R2Service {
 
       // 2. Ensure bucket (best effort)
       try {
-        await ensureBucketExists({ s3, bucket: bucketName });
+        await ensureBucketExists({
+          s3,
+          bucket: bucketName,
+          region: settings.region,
+        });
       } catch (setupErr) {
         userLogger.warn("Bucket creation/check warning during verification:", setupErr);
         // Continue, assuming bucket might already exist and be configured
@@ -659,6 +668,7 @@ class R2Service {
             s3,
             bucket: bucketName,
             origins: corsOrigins,
+            region: settings.region,
           });
         }
       } catch (corsErr) {
@@ -673,6 +683,8 @@ class R2Service {
         key: verifyKey,
         file,
         contentType: "text/plain",
+        createBucketIfMissing: true,
+        region: settings.region,
       });
 
       // 4. Verify Public Access (Fetch)
@@ -886,19 +898,21 @@ class R2Service {
         const thumbKey = key.replace(/\.[^/.]+$/, "") + `.thumb.${thumbExt}`;
 
         try {
-            await multipartUpload({
-                s3,
-                bucket: bucketEntry.bucket,
-                key: thumbKey,
-                file: thumbnailFile,
-                contentType: thumbnailFile.type || "image/jpeg",
-            });
-            const thumbUrl = buildPublicUrl(bucketEntry.publicBaseUrl, thumbKey);
-            if (typeof metadata === "object") {
-                metadata.thumbnail = thumbUrl;
-            }
+          await multipartUpload({
+            s3,
+            bucket: bucketEntry.bucket,
+            key: thumbKey,
+            file: thumbnailFile,
+            contentType: thumbnailFile.type || "image/jpeg",
+            createBucketIfMissing: true,
+            region: effectiveSettings.region,
+          });
+          const thumbUrl = buildPublicUrl(bucketEntry.publicBaseUrl, thumbKey);
+          if (typeof metadata === "object") {
+            metadata.thumbnail = thumbUrl;
+          }
         } catch (err) {
-            userLogger.warn("Thumbnail upload failed, continuing with video...", err);
+          userLogger.warn("Thumbnail upload failed, continuing with video...", err);
         }
       }
 
@@ -910,6 +924,8 @@ class R2Service {
         key,
         file,
         contentType: file.type,
+        createBucketIfMissing: true,
+        region: effectiveSettings.region,
         onProgress: (fraction) => {
           this.updateCloudflareProgress(fraction);
         },
@@ -928,6 +944,8 @@ class R2Service {
             key: torrentKey,
             file: torrentFile,
             contentType: "application/x-bittorrent",
+            createBucketIfMissing: true,
+            region: effectiveSettings.region,
           });
           if (!torrentUrl) {
              torrentUrl = buildPublicUrl(bucketEntry.publicBaseUrl, torrentKey);
@@ -1085,6 +1103,8 @@ class R2Service {
       key,
       file,
       contentType: file.type || "application/octet-stream",
+      createBucketIfMissing: true,
+      region,
       onProgress: (fraction) => {
         if (typeof onProgress === "function") {
           onProgress(fraction);

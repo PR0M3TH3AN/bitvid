@@ -57,7 +57,7 @@ The app will attempt to upload a small test file to verify the credentials and p
     - `StorageService` handles the NIP-44/04 decryption of the Master Key and subsequent decryption of the R2 connection payload.
 
 2.  **Upload Execution:**
-    - `r2Service.multipartUpload()` uses the standard AWS SDK commands (`CreateMultipartUpload`, `UploadPart`, etc.) via the generic `makeR2Client` adapter.
+    - `r2Service.multipartUpload()` uses the standard AWS SDK commands (`CreateMultipartUpload`, `UploadPart`, etc.) via `js/storage/s3-multipart.js` and the `makeR2Client` adapter.
     - The adapter automatically constructs the R2 endpoint (`https://<accountId>.r2.cloudflarestorage.com`) using the stored `accountId`.
 
 3.  **Publish:**
@@ -81,7 +81,8 @@ R2 credentials are no longer stored in plain `bitvidSettings`. They are encapsul
 ## Environment / global flags
 - `globalThis.__BITVID_DISABLE_NETWORK_IMPORTS__`: disables the AWS SDK network import used by the
   R2 S3 client loader (`js/storage/r2-s3.js`). When true, uploads will fail with a load error until
-  the SDK is bundled or otherwise provided.
+  the SDK is bundled or otherwise provided. Multipart helpers live in `js/storage/s3-multipart.js` and
+  rely on the same SDK import.
 
 ## Security considerations
 
