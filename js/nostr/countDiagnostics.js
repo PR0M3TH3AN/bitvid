@@ -59,7 +59,3 @@ export function logViewCountFailure(error) {
     key: "view-count-failure",
   });
 }
-
-export function resetCountWarningHistory() {
-  seenWarningKeys.clear();
-}

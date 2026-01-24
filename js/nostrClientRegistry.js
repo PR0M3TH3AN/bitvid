@@ -261,8 +261,3 @@ export function onActiveSignerChanged(callback) {
 export function offActiveSignerChanged(callback) {
   activeSignerListeners.delete(callback);
 }
-
-export const __nostrClientRegistryTestHooks = {
-  clearNostrClientRegistration,
-  clearActiveSigner,
-};

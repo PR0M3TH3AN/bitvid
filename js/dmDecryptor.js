@@ -621,11 +621,3 @@ export async function decryptDM(event, context = {}) {
 
   return decryptLegacyDm(event, decryptors, actorPubkey);
 }
-
-export const __testUtils = {
-  cloneEvent,
-  normalizeHex,
-  parseEncryptionHints,
-  collectRecipients,
-  orderDecryptors,
-};

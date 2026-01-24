@@ -669,7 +669,3 @@ export function attachHealthBadges(container, options = {}) {
   }
   gridCardObserver.observe(container);
 }
-
-export function refreshHealthBadges(container) {
-  gridCardObserver.refresh(container);
-}

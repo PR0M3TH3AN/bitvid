@@ -1166,10 +1166,6 @@ function normalizeDmPrivacySettings(partial = {}) {
   };
 }
 
-export function getDefaultDmPrivacySettings() {
-  return createDefaultDmPrivacySettings();
-}
-
 export function getDmPrivacySettingsForPubkey(pubkey) {
   const key = getDmPrivacyStoreKeyForPubkey(pubkey);
   const settings = ensureDmPrivacySettingsForKey(key);
@@ -1460,10 +1456,6 @@ export function resetModerationSettings({ persist = true } = {}) {
   }
 
   return ensureModerationSettingsForKey(key);
-}
-
-export function getModerationOverridesMap() {
-  return moderationOverrides;
 }
 
 export function getModerationOverridesList() {
