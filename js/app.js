@@ -3,6 +3,7 @@
 import { nostrClient } from "./nostrClientFacade.js";
 import { recordVideoView } from "./nostrViewEventsFacade.js";
 import { torrentClient } from "./webtorrent.js";
+import { emit } from "./embedDiagnostics.js";
 import {
   isDevMode,
   ADMIN_SUPER_NPUB,
@@ -4901,14 +4902,16 @@ class Application {
   }
 
   resetTorrentStats() {
-    if (this.videoModal) {
-      if (typeof this.videoModal.resetStats === "function") {
+    try {
+      if (this.videoModal && typeof this.videoModal.resetStats === "function") {
         this.videoModal.resetStats();
       } else {
         devLogger.info(
           "[Application] resetTorrentStats: videoModal.resetStats not available — skipping."
         );
       }
+    } catch (err) {
+      devLogger.warn("[Application] resetTorrentStats failed", err);
     }
   }
 
@@ -8192,6 +8195,16 @@ class Application {
    */
   async playVideoWithFallback(options = {}) {
     const { url = "", magnet = "", trigger, forcedSource } = options || {};
+
+    emit("playback-decision", {
+      method: forcedSource || (magnet ? "webtorrent" : "url"), // heuristic
+      details: {
+        url: Boolean(url),
+        magnet: Boolean(magnet),
+        forcedSource,
+      },
+    });
+
     const hasTrigger = Object.prototype.hasOwnProperty.call(
       options || {},
       "trigger"
@@ -8458,6 +8471,11 @@ class Application {
     if (!result || result.error) {
       return result;
     }
+
+    emit("playback-started", {
+      method: result.source,
+      details: { startedAt: Date.now() },
+    });
 
     return result;
   }

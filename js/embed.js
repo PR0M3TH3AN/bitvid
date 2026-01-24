@@ -5,45 +5,38 @@ import { resolveVideoPointer } from "./utils/videoPointer.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import { nostrToolsReady } from "./nostrToolsBootstrap.js";
 
-// Diagnostic forwarder for embed debugging
-function postToParent(type, payload) {
-  try {
-    if (window.parent !== window) {
-      window.parent.postMessage({ __bitvid_debug: true, type, payload }, "*");
-    }
-  } catch (e) {
-    /* no-op */
-  }
-}
-
-window.addEventListener("error", (ev) => {
-  postToParent("error", {
-    message: ev.message,
-    filename: ev.filename,
-    lineno: ev.lineno,
-    colno: ev.colno,
-    stack: ev.error && ev.error.stack,
-  });
-});
-
-window.addEventListener("unhandledrejection", (ev) => {
-  postToParent("unhandledrejection", {
-    reason: (ev.reason && ev.reason.stack) || String(ev.reason),
-  });
-});
-
-["log", "info", "warn", "error", "debug"].forEach((level) => {
-  if (console[level]) {
-    const orig = console[level].bind(console);
-    console[level] = (...args) => {
-      postToParent("console", {
-        level,
-        args: args.map((a) => (typeof a === "string" ? a : String(a))),
-      });
-      orig(...args);
-    };
-  }
-});
+// early in embed bootstrap (insert before any heavy init)
+const urlParams = new URLSearchParams(window.location.search);
+const embedDebugEnabled =
+  urlParams.get("embed_debug") === "1" || urlParams.get("debug") === "embed";
+let diag = null;
+const diagPromise = embedDebugEnabled
+  ? import("./embedDiagnostics.js")
+      .then((m) => {
+        diag = m.initEmbedDiagnostics({ enabled: true });
+        // immediately signal startup
+        diag.emit("embed-start", {
+          url: location.href,
+          userAgent: navigator.userAgent,
+        });
+      })
+      .catch((e) => {
+        try {
+          if (window.parent && window.parent !== window) {
+            window.parent.postMessage(
+              {
+                __bitvid_debug: true,
+                type: "embed-diag-failed",
+                payload: { error: String(e) },
+              },
+              "*"
+            );
+          }
+        } catch (e2) {
+          /* no-op */
+        }
+      })
+  : Promise.resolve();
 
 const POINTER_PARAM = "pointer";
 const PLAYBACK_PARAM = "playback";
@@ -110,9 +103,11 @@ const resolvePlaybackPreference = (value) => {
 
 const ensureNostrReady = async () => {
   try {
-    await nostrToolsReady;
+    const toolkitResult = await nostrToolsReady;
+    diag?.emit("nostr-tools-ready", { ok: Boolean(toolkitResult) });
   } catch (error) {
     userLogger.warn("[embed] Failed to initialize NostrTools:", error);
+    diag?.emit("nostr-tools-ready", { ok: false, error: String(error) });
   }
 
   try {
@@ -175,13 +170,15 @@ const buildRelayList = (relays) => {
     ...(Array.isArray(nostrClient.relays) ? nostrClient.relays : []),
   ];
 
-  return Array.from(
+  const result = Array.from(
     new Set(
       combined
         .map((relay) => (typeof relay === "string" ? relay.trim() : ""))
         .filter(Boolean)
     )
   );
+  diag?.emit("relay-list", { relays: result });
+  return result;
 };
 
 const resolveEventFromPointer = async (pointer) => {
@@ -196,6 +193,7 @@ const resolveEventFromPointer = async (pointer) => {
     let video = null;
 
     if (eventId) {
+      diag?.emit("event-request", { type: "start", id: eventId });
       if (relays.length) {
         try {
           const raw = await nostrClient.fetchRawEventById(eventId, {
@@ -212,6 +210,12 @@ const resolveEventFromPointer = async (pointer) => {
       if (!video) {
         video = await nostrClient.getEventById(eventId);
       }
+      diag?.emit("event-request", {
+        type: "done",
+        id: eventId,
+        found: Boolean(video),
+        videoRootId: video?.videoRootId,
+      });
     }
 
     return {
@@ -235,6 +239,10 @@ const resolveEventFromPointer = async (pointer) => {
       return { video: null, pointerHint: null };
     }
 
+    diag?.emit("event-request", {
+      type: "start",
+      naddr: { kind, pubkey, identifier },
+    });
     await nostrClient.ensurePool();
     const pool = nostrClient.pool;
     const relayList = buildRelayList(relays);
@@ -268,6 +276,12 @@ const resolveEventFromPointer = async (pointer) => {
     }
 
     const video = rawEvent ? convertEventToVideo(rawEvent) : null;
+    diag?.emit("event-request", {
+      type: "done",
+      naddr: { kind, pubkey, identifier },
+      found: Boolean(video),
+      videoRootId: video?.videoRootId,
+    });
 
     return {
       video,
@@ -301,6 +315,10 @@ const setPointerState = ({ video, hint } = {}) => {
   app.currentVideoPointer = pointerInfo?.pointer || null;
   app.currentVideoPointerKey = pointerInfo?.key || null;
 
+  if (pointerInfo) {
+    diag?.emit("pointer-resolved", pointerInfo);
+  }
+
   if (app.currentVideo) {
     app.currentVideo.pointer = app.currentVideoPointer;
     app.currentVideo.pointerKey = app.currentVideoPointerKey;
@@ -312,6 +330,12 @@ const startEmbed = async () => {
     return;
   }
   window.__bitvidEmbedStarted = true;
+
+  try {
+    await diagPromise;
+  } catch (error) {
+    // Should be caught above, but just in case
+  }
 
   if (!(videoEl instanceof HTMLVideoElement)) {
     setStatus("Embed video element is missing.", "error");
