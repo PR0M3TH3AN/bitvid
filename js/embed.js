@@ -323,6 +323,20 @@ const setPointerState = ({ video, hint } = {}) => {
     app.currentVideo.pointer = app.currentVideoPointer;
     app.currentVideo.pointerKey = app.currentVideoPointerKey;
   }
+
+  // Ensure stats subscriptions are active since we don't go through playVideoByEventId
+  if (app.subscribeModalViewCount) {
+    app.subscribeModalViewCount(
+      app.currentVideoPointer,
+      app.currentVideoPointerKey
+    );
+  }
+  if (app.reactionController && app.reactionController.subscribe) {
+    app.reactionController.subscribe(
+      app.currentVideoPointer,
+      app.currentVideoPointerKey
+    );
+  }
 };
 
 const startEmbed = async () => {
