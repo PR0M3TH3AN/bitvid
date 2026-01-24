@@ -429,9 +429,9 @@ function waitForTransaction(tx) {
  * - `meta`: Store for versioning and timestamps. Key: `key`.
  *
  * **Strategy: Incremental Persistence**
- * - Snapshots are saved periodically (debounced).
- * - "Fingerprints" (hashes/stringified) are tracked to minimize writes.
- * - Only changed items are written to IDB; unchanged items are skipped.
+ * - Snapshots are saved periodically (debounced) to avoid write trashing.
+ * - "Fingerprints" (hashes/stringified) are tracked in memory to minimize I/O.
+ * - Only changed items (where fingerprint differs) are written to IDB.
  * - If the TTL expires, the cache is cleared on restore to force a fresh fetch.
  */
 class EventsCacheStore {
@@ -440,9 +440,13 @@ class EventsCacheStore {
    * Tracks fingerprints of persisted items to avoid redundant writes.
    */
   constructor() {
+    /** @type {Promise<IDBDatabase>|null} Singleton promise for opening the DB */
     this.dbPromise = null;
+    /** @type {Map<string, string>} Map of Event ID -> JSON Fingerprint */
     this.persistedEventFingerprints = new Map();
+    /** @type {Map<string, string>} Map of Tombstone Key -> Fingerprint */
     this.persistedTombstoneFingerprints = new Map();
+    /** @type {boolean} Whether we have loaded existing fingerprints from IDB */
     this.hasLoadedFingerprints = false;
   }
 
@@ -1047,10 +1051,15 @@ export class NostrClient {
      * The underlying pool of relay connections.
      */
     this.pool = null;
+    /** @type {Promise<import("nostr-tools").SimplePool>|null} Promise for the pool initialization */
     this.poolPromise = null;
+    /** @type {string|null} The currently logged-in user's hex public key */
     this.pubkey = null;
+    /** @type {string[]} List of all configured relay URLs */
     this.relays = sanitizeRelayList(Array.from(DEFAULT_RELAY_URLS));
+    /** @type {string[]} List of relays preferred for reading (subset of relays) */
     this.readRelays = Array.from(this.relays);
+    /** @type {string[]} List of relays preferred for writing (subset of relays) */
     this.writeRelays = Array.from(this.relays);
 
     /**
@@ -3376,6 +3385,26 @@ export class NostrClient {
     return this.syncMetadataStore.getPerRelayLastSeen(kind, effectivePubkey, dTag);
   }
 
+  /**
+   * Fetches a list of events incrementally from multiple relays, respecting `lastSeen` timestamps per relay.
+   *
+   * **Optimization Strategy:**
+   * - Checks `SyncMetadataStore` for the last known `created_at` timestamp for this query on each relay.
+   * - If a timestamp exists, it requests `since: lastSeen + 1` to fetch only new items.
+   * - If the incremental fetch fails (or returns nothing when we expected updates), it falls back to a full fetch.
+   * - Updates the `SyncMetadataStore` with the new max `created_at` on success.
+   *
+   * **Concurrency:**
+   * - Batches relay requests in chunks of 4 to avoid saturating network connections.
+   *
+   * @param {object} params
+   * @param {number} params.kind - The event kind to fetch (e.g. 10000 for mute list).
+   * @param {string} params.pubkey - The author's pubkey.
+   * @param {string} [params.dTag] - Optional d-tag for addressable events (NIP-33).
+   * @param {string[]} [params.relayUrls] - List of relays to query. Defaults to client's configured relays.
+   * @param {function} [params.fetchFn] - Custom fetch function (mocks or specialized logic). Defaults to `pool.list`.
+   * @returns {Promise<import("nostr-tools").Event[]>} Deduplicated list of events found across all relays.
+   */
   async fetchListIncrementally({ kind, pubkey, dTag, relayUrls, fetchFn } = {}) {
     if (!kind || !pubkey) {
       throw new Error("fetchListIncrementally requires kind and pubkey");
@@ -5945,8 +5974,14 @@ export class NostrClient {
 
   /**
    * Deletes all versions of a video.
-   * 1. Reverts every known version (soft delete) by publishing a `deleted: true` update for each `d` tag or root.
-   * 2. Publishes Kind 5 (NIP-09) deletion events for all event IDs and NIP-33 addresses.
+   *
+   * **Process:**
+   * 1. **Hydration**: Ensures the full edit history is loaded so we know all `d` tags and Event IDs.
+   * 2. **Soft Delete (Revert)**: Publishes a new update with `deleted: true` for every unique `d` tag/root found.
+   *    This clears the content for clients that just resolve the "latest" version.
+   * 3. **Hard Delete (NIP-09)**: Publishes a Kind 5 event referencing ALL known Event IDs (`e` tags) and
+   *    NIP-33 addresses (`a` tags). Relays compliant with NIP-09 will physically remove the events.
+   * 4. **Tombstoning**: Updates local state to ensure the deleted video doesn't reappear from cache.
    *
    * @param {string} videoRootId - The root ID of the video series.
    * @param {string} pubkey - The owner's public key.
