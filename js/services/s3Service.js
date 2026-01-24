@@ -1,5 +1,10 @@
 import { ensureS3SdkLoaded, makeS3Client } from "../storage/s3-client.js";
 import { ensureBucketCors, ensureBucketExists } from "../storage/s3-multipart.js";
+import {
+  buildS3PublicUrl,
+  buildS3UrlFromBase,
+  normalizeS3PublicBaseUrl,
+} from "../storage/s3-url.js";
 import { userLogger } from "../utils/logger.js";
 
 function normalizeEndpoint(endpoint) {
@@ -27,25 +32,55 @@ export function derivePublicBaseUrl({
   bucket,
   forcePathStyle,
 } = {}) {
-  const normalizedEndpoint = normalizeEndpoint(endpoint);
-  const normalizedBucket = normalizeBucket(bucket);
-  if (!normalizedEndpoint || !normalizedBucket) {
+  return buildS3PublicUrl({ endpoint, bucket, forcePathStyle });
+}
+
+export function buildS3ObjectUrl({
+  publicBaseUrl,
+  endpoint,
+  bucket,
+  key,
+  forcePathStyle,
+} = {}) {
+  const normalizedBase = normalizeS3PublicBaseUrl(publicBaseUrl);
+  if (!key) {
     return "";
   }
-
-  const url = new URL(normalizedEndpoint);
-  url.hash = "";
-  url.search = "";
-
-  if (forcePathStyle) {
-    const basePath = url.pathname.replace(/\/+$/, "");
-    const prefix = basePath === "/" ? "" : basePath;
-    url.pathname = `${prefix}/${normalizedBucket}`;
-  } else if (!url.hostname.startsWith(`${normalizedBucket}.`)) {
-    url.hostname = `${normalizedBucket}.${url.hostname}`;
+  if (normalizedBase) {
+    return buildS3UrlFromBase({ publicBaseUrl: normalizedBase, key });
   }
+  return buildS3PublicUrl({ endpoint, bucket, key, forcePathStyle });
+}
 
-  return url.toString().replace(/\/+$/, "");
+export function buildS3MediaUrls({
+  publicBaseUrl,
+  endpoint,
+  bucket,
+  forcePathStyle,
+  videoKey,
+  torrentKey,
+  thumbnailKey,
+} = {}) {
+  const normalizedBase = normalizeS3PublicBaseUrl(publicBaseUrl);
+  const resolvedBase =
+    normalizedBase ||
+    buildS3PublicUrl({ endpoint, bucket, forcePathStyle });
+
+  const buildUrl = (key) =>
+    buildS3ObjectUrl({
+      publicBaseUrl: normalizedBase,
+      endpoint,
+      bucket,
+      key,
+      forcePathStyle,
+    });
+
+  return {
+    publicBaseUrl: resolvedBase,
+    videoUrl: buildUrl(videoKey),
+    torrentUrl: buildUrl(torrentKey),
+    thumbnailUrl: buildUrl(thumbnailKey),
+  };
 }
 
 export function validateS3Connection({
@@ -55,12 +90,14 @@ export function validateS3Connection({
   secretAccessKey,
   bucket,
   forcePathStyle,
+  publicBaseUrl,
 } = {}) {
   const normalizedEndpoint = normalizeEndpoint(endpoint);
   const normalizedBucket = normalizeBucket(bucket);
   const normalizedRegion = normalizeRegion(region);
   const normalizedAccessKeyId = String(accessKeyId || "").trim();
   const normalizedSecretAccessKey = String(secretAccessKey || "").trim();
+  const normalizedPublicBaseUrl = normalizeS3PublicBaseUrl(publicBaseUrl);
 
   if (!normalizedEndpoint) {
     throw new Error("S3 endpoint is required.");
@@ -81,13 +118,15 @@ export function validateS3Connection({
     throw new Error("S3 forcePathStyle setting must be true or false.");
   }
 
-  const publicBaseUrl = derivePublicBaseUrl({
-    endpoint: normalizedEndpoint,
-    bucket: normalizedBucket,
-    forcePathStyle,
-  });
+  const resolvedPublicBaseUrl =
+    normalizedPublicBaseUrl ||
+    derivePublicBaseUrl({
+      endpoint: normalizedEndpoint,
+      bucket: normalizedBucket,
+      forcePathStyle,
+    });
 
-  if (!publicBaseUrl) {
+  if (!resolvedPublicBaseUrl) {
     throw new Error("Unable to derive a public base URL for the S3 bucket.");
   }
 
@@ -98,7 +137,7 @@ export function validateS3Connection({
     secretAccessKey: normalizedSecretAccessKey,
     bucket: normalizedBucket,
     forcePathStyle,
-    publicBaseUrl,
+    publicBaseUrl: resolvedPublicBaseUrl,
   };
 }
 
@@ -124,6 +163,7 @@ export async function prepareS3Connection({
   bucket,
   forcePathStyle,
   origins,
+  publicBaseUrl,
 } = {}) {
   const normalized = validateS3Connection({
     endpoint,
@@ -132,6 +172,7 @@ export async function prepareS3Connection({
     secretAccessKey,
     bucket,
     forcePathStyle,
+    publicBaseUrl,
   });
 
   await ensureS3SdkLoaded();

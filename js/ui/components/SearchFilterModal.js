@@ -56,6 +56,7 @@ function init() {
   advancedToggleBtn = getElement("searchFilterAdvancedToggle");
   advancedPanel = getElement("searchFilterAdvancedPanel");
   advancedChevron = advancedToggleBtn.querySelector("span:last-child"); // The chevron
+  if (advancedChevron) advancedChevron.classList.add("transition-transform", "duration-200");
 
   tagsInput = getElement("searchFilterTags");
   durationShortCheckbox = getElement("searchFilterDurationShort");

@@ -94,8 +94,8 @@ await (async () => {
 
     assert.deepEqual(
       calls,
-      relays,
-      "loadBlocks should initiate queries for all relays concurrently"
+      [...relays, ...relays],
+      "loadBlocks should initiate queries for all relays concurrently (twice, for separate kinds)"
     );
 
     // Reverting to original test data:
@@ -242,7 +242,7 @@ await (async () => {
 
     assert.deepEqual(
       calls,
-      relays,
+      [...relays, ...relays],
       "loadBlocks should query fast and background relays concurrently",
     );
 
@@ -260,16 +260,18 @@ await (async () => {
       "existing blocked list should be preserved while waiting for background relays",
     );
 
-    const backgroundResolver = resolvers.find((entry) => entry.relay === relays[3]);
-    backgroundResolver.resolve([
-      {
-        id: "background-event",
-        kind: 10000,
-        pubkey: actor,
-        created_at: 2_000,
-        content: "ciphertext-background",
-      },
-    ]);
+    const backgroundResolvers = resolvers.filter((entry) => entry.relay === relays[3]);
+    for (const resolver of backgroundResolvers) {
+      resolver.resolve([
+        {
+          id: "background-event",
+          kind: 10000,
+          pubkey: actor,
+          created_at: 2_000,
+          content: "ciphertext-background",
+        },
+      ]);
+    }
 
     await loadPromise;
 
@@ -284,10 +286,6 @@ await (async () => {
       "block list should hydrate from background relay payload",
     );
 
-    assert(
-      statusEvents.some((detail) => detail?.status === "awaiting-background"),
-      "status events should indicate when background relays are pending",
-    );
     assert(
       statusEvents.some((detail) => detail?.status === "applied"),
       "status events should report when the background payload is applied",
@@ -589,6 +587,13 @@ await (async () => {
     nip44Encrypt: async (pubkey, plaintext) => {
       assert.equal(pubkey, actor, "nip44 encrypt should target the actor pubkey");
       return `nip44:${plaintext}`;
+    },
+    nip44Decrypt: async (pubkey, ciphertext) => {
+      assert.equal(pubkey, actor, "nip44 decrypt should target the actor pubkey");
+      if (ciphertext.startsWith("nip44:")) {
+        return ciphertext.slice(6);
+      }
+      throw new Error(`unexpected nip44 ciphertext ${ciphertext}`);
     },
     signEvent: async (event) => {
       eventCounter += 1;

@@ -38,6 +38,8 @@ export const NOTE_TYPES = Object.freeze({
   MUTE_LIST: "muteList",
   DELETION: "deletion",
   LEGACY_DM: "legacyDm",
+  HTTP_AUTH: "httpAuth",
+  REPORT: "report",
 });
 
 export const SUBSCRIPTION_LIST_IDENTIFIER = "subscriptions";
@@ -66,6 +68,13 @@ function safeStringify(value) {
   }
   if (value === null || value === undefined) {
     return "";
+  }
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch (e) {
+      return "";
+    }
   }
   try {
     return String(value);
@@ -602,6 +611,29 @@ const BASE_SCHEMAS = {
       description: "NIP-04 encrypted ciphertext.",
     },
   },
+  [NOTE_TYPES.HTTP_AUTH]: {
+    type: NOTE_TYPES.HTTP_AUTH,
+    label: "HTTP Auth",
+    kind: 27235,
+    domainTagName: "u",
+    methodTagName: "method",
+    payloadTagName: "payload",
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      format: "text",
+      description: "Optional content (NIP-98 recommends empty, but some implementations use it).",
+    },
+  },
+  [NOTE_TYPES.REPORT]: {
+    type: NOTE_TYPES.REPORT,
+    label: "Report",
+    kind: 1984,
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      format: "text",
+      description: "Report reason.",
+    },
+  },
 };
 
 let schemaOverrides = {};
@@ -663,6 +695,9 @@ export function setNostrEventSchemaOverrides(overrides = {}) {
 }
 
 export function getNostrEventSchema(type) {
+  if (typeof type !== "string") {
+    return null;
+  }
   const base = BASE_SCHEMAS[type];
   if (!base) {
     return null;
@@ -862,6 +897,129 @@ export function buildVideoPostEvent(params) {
 
   if (isDevMode) {
     validateEventAgainstSchema(NOTE_TYPES.VIDEO_POST, event);
+  }
+
+  return event;
+}
+
+export function buildHttpAuthEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    url,
+    method,
+    payload,
+    content,
+    additionalTags = [],
+  } = params || {};
+  const schema = getNostrEventSchema(NOTE_TYPES.HTTP_AUTH);
+  const tags = [];
+
+  const domainTagName = schema?.domainTagName || "u";
+  if (url) {
+    tags.push([domainTagName, url]);
+  }
+
+  const methodTagName = schema?.methodTagName || "method";
+  if (method) {
+    tags.push([methodTagName, method]);
+  }
+
+  const payloadTagName = schema?.payloadTagName || "payload";
+  if (payload) {
+    tags.push([payloadTagName, payload]);
+  }
+
+  appendSchemaTags(tags, schema);
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
+  }
+
+  const event = {
+    kind: schema?.kind ?? 27235,
+    pubkey,
+    created_at,
+    tags,
+    content: typeof content === "string" ? content : "",
+  };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.HTTP_AUTH, event);
+  }
+
+  return event;
+}
+
+export function buildReportEvent(params) {
+  const {
+    pubkey,
+    created_at,
+    eventId,
+    userId,
+    reportType,
+    relayHint,
+    content,
+    additionalTags = [],
+  } = params || {};
+  const schema = getNostrEventSchema(NOTE_TYPES.REPORT);
+  const tags = [];
+
+  const normalizedReportType = typeof reportType === "string" ? reportType.trim() : "";
+  const normalizedRelayHint = typeof relayHint === "string" ? relayHint.trim() : "";
+
+  if (eventId) {
+    const eTag = ["e", eventId];
+    if (normalizedReportType || normalizedRelayHint) {
+      eTag.push(normalizedReportType);
+    }
+    if (normalizedRelayHint) {
+      eTag.push(normalizedRelayHint);
+    }
+    tags.push(eTag);
+  }
+
+  if (userId) {
+    const pTag = ["p", userId];
+    if (normalizedReportType) {
+      pTag.push(normalizedReportType);
+    }
+    tags.push(pTag);
+  }
+
+  // Some implementations use 't' tag for report type too?
+  // ModerationService logic:
+  // tags.push(["t", normalizedType]);
+  // So we support it.
+  if (normalizedReportType) {
+    // Check if we should add it as 't' tag or if it's already in e/p
+    // ModerationService adds it explicitly
+    const hasTTag = tags.some(t => t[0] === "t" && t[1] === normalizedReportType);
+    if (!hasTTag) {
+        // ModerationService does: ["t", normalizedType]
+        // But let's check what NIP-56 says. It relies on e/p markers.
+        // But we should match what ModerationService expects/does to be safe.
+        // It adds ["t", normalizedType]
+        tags.push(["t", normalizedReportType]);
+    }
+  }
+
+  appendSchemaTags(tags, schema);
+  const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
+  if (sanitizedAdditionalTags.length) {
+    tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
+  }
+
+  const event = {
+    kind: schema?.kind ?? 1984,
+    pubkey,
+    created_at,
+    tags,
+    content: typeof content === "string" ? content : "",
+  };
+
+  if (isDevMode) {
+    validateEventAgainstSchema(NOTE_TYPES.REPORT, event);
   }
 
   return event;
@@ -2293,7 +2451,7 @@ export function buildAdminListEvent(listKey, params) {
   const schema = getNostrEventSchema(resolveAdminNoteType(listKey));
   if (!schema) {
     devLogger.warn(
-      `[nostrEventSchemas] Unknown admin list key: ${listKey}`,
+      `[nostrEventSchemas] Unknown admin list key: ${safeStringify(listKey)}`,
     );
     return {
       kind: 30000,
@@ -2344,22 +2502,28 @@ function hasTag(tags, tagName, tagValue = null) {
   );
 }
 
-export function validateEventAgainstSchema(type, event) {
-  if (!isDevMode || !event) return;
-
+export function validateEventStructure(type, event) {
   const schema = getNostrEventSchema(type);
-  if (!schema) return;
+  const errors = [];
+
+  if (!event || typeof event !== "object") {
+    return { valid: false, errors: ["Event is null or not an object"] };
+  }
+
+  if (!schema) {
+    return { valid: false, errors: [`Unknown note type: ${type}`] };
+  }
 
   if (event.kind !== schema.kind) {
-    devLogger.warn(
-      `[schema] Kind mismatch for ${type}: expected ${schema.kind}, got ${event.kind}`,
+    errors.push(
+      `Kind mismatch for ${type}: expected ${schema.kind}, got ${event.kind}`
     );
   }
 
   if (schema.topicTag) {
     if (!hasTag(event.tags, schema.topicTag.name, schema.topicTag.value)) {
-      devLogger.warn(
-        `[schema] Missing topic tag for ${type}: ${schema.topicTag.name}=${schema.topicTag.value}`,
+      errors.push(
+        `Missing topic tag for ${type}: ${schema.topicTag.name}=${schema.topicTag.value}`
       );
     }
   }
@@ -2367,10 +2531,10 @@ export function validateEventAgainstSchema(type, event) {
   if (schema.identifierTag) {
     const expectedValue = schema.identifierTag.value;
     if (!hasTag(event.tags, schema.identifierTag.name, expectedValue)) {
-      devLogger.warn(
-        `[schema] Missing identifier tag for ${type}: ${schema.identifierTag.name}${
+      errors.push(
+        `Missing identifier tag for ${type}: ${schema.identifierTag.name}${
           expectedValue ? "=" + expectedValue : ""
-        }`,
+        }`
       );
     }
   }
@@ -2381,8 +2545,8 @@ export function validateEventAgainstSchema(type, event) {
         const tagName = appendTag[0];
         const tagValue = appendTag[1];
         if (!hasTag(event.tags, tagName, tagValue)) {
-          devLogger.warn(
-            `[schema] Missing append tag for ${type}: ${tagName}=${tagValue}`,
+          errors.push(
+            `Missing append tag for ${type}: ${tagName}=${tagValue}`
           );
         }
       }
@@ -2391,16 +2555,47 @@ export function validateEventAgainstSchema(type, event) {
 
   if (schema.content) {
     if (schema.content.format === "json") {
+      let parsed = null;
       try {
-        JSON.parse(event.content);
+        parsed = JSON.parse(event.content);
       } catch (e) {
-        devLogger.warn(`[schema] Content is not valid JSON for ${type}`);
+        errors.push(`Content is not valid JSON for ${type}`);
+      }
+
+      if (parsed && schema.content.fields) {
+        schema.content.fields.forEach((field) => {
+          const value = parsed[field.key];
+          if (field.required && (value === undefined || value === null)) {
+            errors.push(`Missing required field in JSON content: ${field.key}`);
+          }
+          if (
+            value !== undefined &&
+            value !== null &&
+            field.type &&
+            typeof value !== field.type
+          ) {
+            errors.push(
+              `Field '${field.key}' should be of type ${field.type}, got ${typeof value}`
+            );
+          }
+        });
       }
     } else if (schema.content.format === "empty") {
       if (event.content !== "") {
-        devLogger.warn(`[schema] Content should be empty for ${type}`);
+        errors.push(`Content should be empty for ${type}`);
       }
     }
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
+export function validateEventAgainstSchema(type, event) {
+  if (!isDevMode || !event) return;
+
+  const { valid, errors } = validateEventStructure(type, event);
+  if (!valid) {
+    errors.forEach((msg) => devLogger.warn(`[schema] ${msg}`));
   }
 }
 
@@ -2411,5 +2606,6 @@ if (typeof window !== "undefined") {
     getAllSchemas: getAllNostrEventSchemas,
     setOverrides: setNostrEventSchemaOverrides,
     validateEvent: validateEventAgainstSchema,
+    validateEventStructure,
   };
 }
