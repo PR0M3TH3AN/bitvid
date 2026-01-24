@@ -4,6 +4,16 @@ import { convertEventToVideo, getDTagValueFromTags } from "./nostr/index.js";
 import { resolveVideoPointer } from "./utils/videoPointer.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import { nostrToolsReady } from "./nostrToolsBootstrap.js";
+import { THEME_ACCENT_OVERRIDES } from "../config/instance-config.js";
+
+// Set accent color from instance config
+try {
+  const accent = THEME_ACCENT_OVERRIDES?.light?.accent || "#ff6b6b";
+  document.documentElement.style.setProperty("--bitvid-accent", accent);
+} catch (e) {
+  // Fallback if config is missing or malformed
+  document.documentElement.style.setProperty("--bitvid-accent", "#ff6b6b");
+}
 
 // early in embed bootstrap (insert before any heavy init)
 const urlParams = new URLSearchParams(window.location.search);

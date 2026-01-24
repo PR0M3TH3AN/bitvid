@@ -6099,3 +6099,50 @@
 .no-scrollbar::-webkit-scrollbar {
   display: none !important;
 }
+
+/* Embed & Video Modal Fixes */
+@layer components {
+  /* ensure the video fills the stage and doesn't show a black strip */
+  #embedVideo,
+  .video-modal__video,
+  .video-modal__video > .video-modal__media,
+  .video-modal__video video#modalVideo,
+  .video-modal__video .video-modal__media {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: cover;
+    object-position: center center;
+    background: transparent !important;
+    padding: 0;
+    margin: 0;
+    box-sizing: border-box;
+  }
+
+  /* make sure the stage wrapper doesn’t add bottom padding/space */
+  .video-modal__stage,
+  .video-modal__video {
+    padding: 0;
+    margin: 0;
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+  }
+
+  /* if there is an ambient canvas or overlay, ensure it doesn't change layout */
+  .video-modal__ambient,
+  .video-modal__ambient-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+
+  /* Logo accent wiring */
+  .bv-logo__accent {
+    fill: var(--bitvid-accent, var(--logo-accent-color));
+  }
+}
