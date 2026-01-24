@@ -210,6 +210,7 @@
   --z-modal-peak-root: 165;
   --z-modal-peak-overlay: 175;
   --z-modal-peak-content: 185;
+  --z-modal-always-top: 200;
   --overlay-backdrop-color: var(--color-overlay-backdrop);
   --overlay-backdrop-blur: 12px;
   --sidebar-width-expanded-base: 16rem;
