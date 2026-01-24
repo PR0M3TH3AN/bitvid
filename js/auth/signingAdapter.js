@@ -2,6 +2,7 @@ import { bytesToHex } from "../../vendor/crypto-helpers.bundle.min.js";
 import { signEventWithPrivateKey } from "../nostr/publishHelpers.js";
 import { ensureNostrTools, getCachedNostrTools } from "../nostr/toolkit.js";
 import { normalizeActorKey } from "../nostr/watchHistory.js";
+import { buildHttpAuthEvent } from "../nostrEventSchemas.js";
 
 const DEFAULT_TEST_PUBKEY = "f".repeat(64);
 const DEFAULT_DEV_DISPLAY_NAME = "Ephemeral dev signer";
@@ -119,16 +120,15 @@ export function createEphemeralDevSigningAdapter({
     signEventWithPrivateKey({ ...event, pubkey: await ensurePubkey() }, ensurePrivateKey());
 
   const signMessage = async (message) => {
-    const signed = signEventWithPrivateKey(
-      {
-        kind: 27235,
-        created_at: getSigningTimestamp(),
-        tags: [["u", "bitvid:signing-adapter"]],
-        content: typeof message === "string" ? message : String(message ?? ""),
-        pubkey: await ensurePubkey(),
-      },
-      ensurePrivateKey(),
-    );
+    const pubkey = await ensurePubkey();
+    const event = buildHttpAuthEvent({
+      pubkey,
+      created_at: getSigningTimestamp(),
+      url: "bitvid:signing-adapter",
+      content: typeof message === "string" ? message : String(message ?? ""),
+    });
+
+    const signed = signEventWithPrivateKey(event, ensurePrivateKey());
     if (!signed || typeof signed.sig !== "string") {
       throw new Error("Failed to sign message.");
     }

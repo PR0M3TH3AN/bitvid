@@ -6,6 +6,7 @@ import {
 import { publishEventToRelays, assertAnyRelayAccepted } from "../nostrPublish.js";
 import { accessControl } from "../accessControl.js";
 import { userBlocks, USER_BLOCK_EVENTS } from "../userBlocks.js";
+import { buildReportEvent } from "../nostrEventSchemas.js";
 import logger from "../utils/logger.js";
 
 const AUTOPLAY_TRUST_THRESHOLD = 1;
@@ -2499,24 +2500,15 @@ export class ModerationService {
     const sanitizedRelayHint =
       typeof relayHint === "string" ? relayHint.trim() : "";
 
-    const eventTag = ["e", normalizedEventId, normalizedType];
-    if (sanitizedRelayHint) {
-      eventTag.push(sanitizedRelayHint);
-    }
-
-    const tags = [
-      eventTag,
-      ["p", normalizedTarget, normalizedType],
-      ["t", normalizedType],
-    ];
-
-    const event = {
-      kind: 1984,
-      created_at: Math.floor(Date.now() / 1000),
-      tags,
-      content: typeof content === "string" ? content : "",
+    const event = buildReportEvent({
       pubkey: reporterPubkey,
-    };
+      created_at: Math.floor(Date.now() / 1000),
+      eventId: normalizedEventId,
+      userId: normalizedTarget,
+      reportType: normalizedType,
+      relayHint: sanitizedRelayHint,
+      content: typeof content === "string" ? content : "",
+    });
 
     let signedEvent;
     try {
