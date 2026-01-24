@@ -4923,8 +4923,19 @@ class Application {
   }
 
   getShareUrlBase() {
+    if (typeof BITVID_WEBSITE_URL === "string" && BITVID_WEBSITE_URL) {
+      // Ensure no trailing slash for consistency if desired, though buildShareUrlFromNevent
+      // appends ?v=... so trailing slash is fine if URL ctor handles it.
+      // BITVID_WEBSITE_URL usually has a trailing slash in config, but let's be safe.
+      return BITVID_WEBSITE_URL.replace(/\/$/, "");
+    }
+
     try {
       const current = new URL(window.location.href);
+      // If we are in the embed, we want to strip that filename.
+      if (current.pathname.endsWith("/embed.html")) {
+        return `${current.origin}${current.pathname.replace(/\/embed\.html$/, "")}`;
+      }
       return `${current.origin}${current.pathname}`;
     } catch (err) {
       const origin = window.location?.origin || "";
