@@ -98,8 +98,14 @@ export class EmbedVideoModal {
       const wrapper = this.document.createElement("div");
       wrapper.innerHTML = html;
       this.removeTrackingScripts(wrapper);
-      this.container.appendChild(wrapper);
-      modal = wrapper.querySelector("#embedVideoModal");
+
+      const fragment = this.document.createDocumentFragment();
+      while (wrapper.firstChild) {
+        fragment.appendChild(wrapper.firstChild);
+      }
+      this.container.appendChild(fragment);
+
+      modal = this.container.querySelector("#embedVideoModal");
     }
 
     if (!modal) {
