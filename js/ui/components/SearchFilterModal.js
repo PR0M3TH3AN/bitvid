@@ -168,10 +168,10 @@ function toggleAdvanced(forceState = null) {
 
   if (newState) {
     advancedPanel.classList.remove("hidden");
-    advancedChevron.style.transform = "rotate(180deg)";
+    advancedChevron.classList.add("rotate-180");
   } else {
     advancedPanel.classList.add("hidden");
-    advancedChevron.style.transform = "rotate(0deg)";
+    advancedChevron.classList.remove("rotate-180");
   }
 }
 
