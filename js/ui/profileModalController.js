@@ -31,6 +31,7 @@ import {
   extractAttachmentsFromMessage,
   formatAttachmentSize,
 } from "../attachments/attachmentUtils.js";
+import { getCorsOrigins, prepareS3Connection } from "../services/s3Service.js";
 import {
   clearAttachmentCache,
   downloadAttachment,
@@ -9131,7 +9132,7 @@ export class ProfileModalController {
     if (!storageService) return;
 
     const provider = this.storageProviderInput?.value || "cloudflare_r2";
-    const endpointOrAccount = this.storageEndpointInput?.value?.trim() || "";
+    let endpointOrAccount = this.storageEndpointInput?.value?.trim() || "";
     const region = this.storageRegionInput?.value?.trim() || "auto";
     const accessKeyId = this.storageAccessKeyInput?.value?.trim() || "";
     const secretAccessKey = this.storageSecretKeyInput?.value?.trim() || "";
@@ -9144,6 +9145,9 @@ export class ProfileModalController {
         return;
     }
 
+    let publicBaseUrl = "";
+    let forcePathStyle = provider === PROVIDERS.GENERIC;
+
     const payload = {
         provider,
         accessKeyId,
@@ -9155,7 +9159,30 @@ export class ProfileModalController {
     if (provider === "cloudflare_r2") {
         payload.accountId = endpointOrAccount;
     } else {
+        try {
+          const normalized = await prepareS3Connection({
+            endpoint: endpointOrAccount,
+            region,
+            accessKeyId,
+            secretAccessKey,
+            bucket,
+            forcePathStyle,
+            origins: getCorsOrigins(),
+          });
+          endpointOrAccount = normalized.endpoint;
+          publicBaseUrl = normalized.publicBaseUrl;
+          forcePathStyle = normalized.forcePathStyle;
+        } catch (error) {
+          devLogger.error("Failed to validate S3 connection:", error);
+          this.setStorageFormStatus(
+            error?.message || "Invalid S3 configuration.",
+            "error"
+          );
+          return;
+        }
+
         payload.endpoint = endpointOrAccount;
+        payload.forcePathStyle = forcePathStyle;
     }
 
     const meta = {
@@ -9174,6 +9201,10 @@ export class ProfileModalController {
     // We can store it in meta if we want to show it in UI without decrypting.
     if (provider === "cloudflare_r2") {
         meta.accountId = endpointOrAccount;
+    } else {
+        meta.publicBaseUrl = publicBaseUrl;
+        meta.baseDomain = publicBaseUrl;
+        meta.forcePathStyle = forcePathStyle;
     }
 
     this.setStorageFormStatus("Saving...", "info");
@@ -9204,6 +9235,7 @@ export class ProfileModalController {
     const accessKeyId = this.storageAccessKeyInput?.value?.trim() || "";
     const secretAccessKey = this.storageSecretKeyInput?.value?.trim() || "";
     const bucket = this.storageBucketInput?.value?.trim() || "";
+    const forcePathStyle = provider === PROVIDERS.GENERIC;
 
     if (!accessKeyId || !secretAccessKey || !endpointOrAccount) {
         this.setStorageFormStatus("Missing credentials for test.", "error");
@@ -9224,6 +9256,7 @@ export class ProfileModalController {
       config.accountId = endpointOrAccount;
     } else {
       config.endpoint = endpointOrAccount;
+      config.forcePathStyle = forcePathStyle;
     }
 
     try {
