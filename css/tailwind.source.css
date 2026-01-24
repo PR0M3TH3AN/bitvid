@@ -3793,6 +3793,10 @@
     z-index: var(--z-modal-content);
   }
 
+  .modal-always-on-top {
+    z-index: var(--z-modal-always-top) !important;
+  }
+
   #playerModal {
     position: fixed;
     inset: 0;

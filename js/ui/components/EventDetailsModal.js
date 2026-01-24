@@ -135,7 +135,7 @@ export class EventDetailsModal {
     const container = this.document.getElementById("modalContainer") || this.document.body;
     const modal = this.document.createElement("div");
     modal.id = "eventDetailsModal";
-    modal.className = "bv-modal z-[140] hidden items-center justify-center p-4";
+    modal.className = "bv-modal modal-always-on-top hidden items-center justify-center p-4";
     modal.innerHTML = this.buildMarkup();
 
     this.root = modal;
