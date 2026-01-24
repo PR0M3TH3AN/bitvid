@@ -94,9 +94,6 @@ function collectUnitTests() {
                  currentError = null;
              } else {
                  // Capture detail lines
-                 // If line is empty or indented, it's likely part of the error
-                 // If it's unindented but not a TAP command, it might still be part of it (console logs)
-                 // We'll be greedy here.
                  currentError.details.push(sanitize(line));
              }
         }
@@ -175,28 +172,85 @@ function collectSmokeTests() {
     const errors = [];
     if (!fs.existsSync(ARTIFACTS_DIR)) return errors;
 
-    const files = fs.readdirSync(ARTIFACTS_DIR).filter(f => f.startsWith('smoke-report-') && f.endsWith('.json'));
+    // Look for smoke-summary-*.json
+    const files = fs.readdirSync(ARTIFACTS_DIR).filter(f => f.startsWith('smoke-summary-') && f.endsWith('.json'));
 
     for (const file of files) {
         try {
             const content = JSON.parse(fs.readFileSync(path.join(ARTIFACTS_DIR, file), 'utf8'));
-            if (content.stats && content.stats.failures > 0) {
-                const failedSteps = content.stats.details.filter(d => !d.success);
-                for (const step of failedSteps) {
-                    const sanitizedError = sanitize(step.error);
-                    errors.push({
-                        source: 'smoke-test',
-                        title: sanitize(`Smoke Test Failed: ${step.name}`),
-                        details: [sanitizedError],
-                        stack: sanitizedError,
-                        fingerprint: getFingerprint(sanitizedError + step.name),
-                        severity: 'Critical',
-                        owner: suggestOwner(sanitizedError) || 'QA Team'
-                    });
-                }
+
+            // Expected format: { timestamp, status, error, logs }
+            if (content.status === 'failure') {
+                const errorMsg = content.error || 'Unknown Smoke Test Failure';
+                const sanitizedError = sanitize(errorMsg);
+
+                // Combine relevant logs if available for context
+                const logs = (content.logs || [])
+                    .map(l => sanitize(l))
+                    .join('\n')
+                    .substring(0, 2000); // Limit size
+
+                errors.push({
+                    source: 'smoke-test',
+                    title: `Smoke Test Failed: ${sanitizedError.split('\n')[0]}`,
+                    details: content.logs ? content.logs.map(sanitize) : [],
+                    stack: sanitizedError + (logs ? '\n\nContext Logs:\n' + logs : ''),
+                    fingerprint: getFingerprint(sanitizedError),
+                    severity: 'Critical',
+                    owner: suggestOwner(sanitizedError) || 'QA Team'
+                });
             }
         } catch (err) {
-            console.warn(`Failed to parse smoke report ${file}:`, err.message);
+            console.warn(`Failed to parse smoke summary ${file}:`, err.message);
+        }
+    }
+    return errors;
+}
+
+function collectFuzzReports() {
+    const errors = [];
+    if (!fs.existsSync(ARTIFACTS_DIR)) return errors;
+
+    // Look for fuzz-report-*.json
+    const files = fs.readdirSync(ARTIFACTS_DIR).filter(f => f.startsWith('fuzz-report-') && f.endsWith('.json'));
+
+    for (const file of files) {
+        try {
+            const content = JSON.parse(fs.readFileSync(path.join(ARTIFACTS_DIR, file), 'utf8'));
+
+            // Support both 'crashes' (fuzz-shared.mjs) and 'issues' (fuzz-lib.mjs)
+            const crashes = content.crashes || content.issues || [];
+
+            for (const crash of crashes) {
+                // Crash structure might vary slightly
+                // fuzz-shared: { error: { message, stack }, reproducer }
+                // fuzz-lib: { message, stack, hash, input }
+
+                let message = crash.message;
+                let stack = crash.stack;
+
+                if (!message && crash.error) {
+                    message = crash.error.message;
+                    stack = crash.error.stack;
+                }
+
+                if (!message) continue;
+
+                const sanitizedMessage = sanitize(message);
+                const sanitizedStack = sanitize(stack || message);
+
+                errors.push({
+                    source: `fuzz-test:${content.target || 'unknown'}`,
+                    title: `Fuzz Crash: ${sanitizedMessage}`,
+                    details: [sanitizedStack],
+                    stack: sanitizedStack,
+                    fingerprint: getFingerprint(sanitizedStack),
+                    severity: 'High',
+                    owner: suggestOwner(sanitizedStack)
+                });
+            }
+        } catch (err) {
+            console.warn(`Failed to parse fuzz report ${file}:`, err.message);
         }
     }
     return errors;
@@ -206,10 +260,13 @@ function collectAgentLogs() {
     const errors = [];
     if (!fs.existsSync(ARTIFACTS_DIR)) return errors;
 
-    // Look for any .log files in artifacts that aren't the main ones we already checked (if any)
+    // Look for any .log files in artifacts
     const files = fs.readdirSync(ARTIFACTS_DIR).filter(f => f.endsWith('.log'));
 
     for (const file of files) {
+        // Avoid reparsing if we have specific logic (though generic is fine for now)
+        if (file === 'test_output.log') continue;
+
         errors.push(...collectGenericLogs(path.join(ARTIFACTS_DIR, file), `agent-log:${file}`));
     }
     return errors;
@@ -239,8 +296,6 @@ function aggregate(errors) {
         grouped[key].sources.add(err.source);
         // Escalating severity if we see critical
         if (err.severity === 'Critical') grouped[key].severity = 'Critical';
-
-        // Update title if new one is longer/better (optional, keeping first for now)
     }
 
     return Object.values(grouped).sort((a, b) => {
@@ -326,7 +381,8 @@ function generateJSONArtifact(aggregates) {
 // -----------------------------------------------------------------------------
 
 async function main() {
-    if (process.env.ENABLE_TELEMETRY !== 'true') {
+    const enabled = process.env.ENABLE_TELEMETRY === 'true' || process.env.ENABLE_TELEMETRY === '1';
+    if (!enabled) {
         console.log('Telemetry is opt-in. Set ENABLE_TELEMETRY=true to run.');
         process.exit(0);
     }
@@ -353,6 +409,11 @@ async function main() {
     const smokeTestErrors = collectSmokeTests();
     console.log(`Collected ${smokeTestErrors.length} smoke test errors.`);
     errors.push(...smokeTestErrors);
+
+    // Fuzz Reports
+    const fuzzErrors = collectFuzzReports();
+    console.log(`Collected ${fuzzErrors.length} fuzz reports.`);
+    errors.push(...fuzzErrors);
 
     // Agent Logs
     const agentErrors = collectAgentLogs();
