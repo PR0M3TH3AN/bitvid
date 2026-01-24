@@ -390,16 +390,6 @@ class Application {
     }
   }
 
-  hideModal() {
-    if (this.videoModal) {
-      this.videoModal.close();
-    }
-    if (this.reactionController) {
-      this.reactionController.unsubscribe();
-    }
-    // Also clear the active modal state if tracked elsewhere, though videoModal.close() usually handles it.
-  }
-
   loadSavedProfilesFromStorage() {
     const result = this.authService.loadSavedProfilesFromStorage();
     this.renderSavedProfiles();
@@ -4492,7 +4482,9 @@ class Application {
           this.playbackService.cleanupWatchdog();
         }
         this.teardownModalViewCountSubscription();
-        this.teardownModalReactionSubscription();
+        if (this.reactionController) {
+          this.reactionController.unsubscribe();
+        }
 
         if (!preserveObservers && this.mediaLoader) {
           this.mediaLoader.disconnect();
@@ -5163,7 +5155,9 @@ class Application {
     this.cancelPendingViewLogging();
     this.clearActiveIntervals();
     this.teardownModalViewCountSubscription();
-    this.teardownModalReactionSubscription();
+    if (this.reactionController) {
+      this.reactionController.unsubscribe();
+    }
     this.pendingModeratedPlayback = null;
     if (
       this.videoModal &&
