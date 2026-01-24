@@ -663,6 +663,9 @@ export function setNostrEventSchemaOverrides(overrides = {}) {
 }
 
 export function getNostrEventSchema(type) {
+  if (typeof type !== "string") {
+    return null;
+  }
   const base = BASE_SCHEMAS[type];
   if (!base) {
     return null;
@@ -2293,7 +2296,7 @@ export function buildAdminListEvent(listKey, params) {
   const schema = getNostrEventSchema(resolveAdminNoteType(listKey));
   if (!schema) {
     devLogger.warn(
-      `[nostrEventSchemas] Unknown admin list key: ${listKey}`,
+      `[nostrEventSchemas] Unknown admin list key: ${safeStringify(listKey)}`,
     );
     return {
       kind: 30000,
