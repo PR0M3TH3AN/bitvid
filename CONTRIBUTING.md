@@ -132,6 +132,10 @@ For a full guide, see the [Local Setup section in README.md](./README.md#local-s
   npx update-browserslist-db@latest
   ```
 
+- **Unit Test Hangs**: `npm run test:unit` may occasionally hang after completion due to open handles. If this happens, use `Ctrl+C` to exit. For CI or faster local runs, consider running specific shards (e.g., `npm run test:unit:shard1`).
+
+- **Linting Failures**: `npm run lint` includes checks for inline styles (e.g., `style="..."` or `.style.prop = ...`). Move these styles to CSS classes or design tokens to pass linting.
+
 ## Dev Container
 
 This project includes a `.devcontainer` configuration for VS Code. It provides a pre-configured environment with Node.js 22 and necessary extensions.
