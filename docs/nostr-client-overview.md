@@ -81,6 +81,22 @@ Relays are slow and sometimes fail.
 - **Offline-First**: We restore from IndexedDB immediately on boot (`init`).
 - **Fingerprinting**: We hash events before writing to IDB. If `JSON.stringify(video)` hasn't changed, we skip the write syscall. This reduces I/O freezing on mobile devices.
 
+## Advanced Topics
+
+### Version History Reconstruction (`hydrateVideoHistory`)
+Since edits create new events, a video might have 10+ versions scattered across relays.
+`hydrateVideoHistory` stitches them together by:
+1.  **Scanning Local Cache**: Finds all events matching the `videoRootId`.
+2.  **Relay Fallback**: If local history is sparse, queries relays for `kind: 30078` + `#d` tag.
+3.  **Root Recovery**: Explicitly fetches the original "Root" event if missing, to establish the timeline start.
+
+### Optimized List Fetching (`fetchListIncrementally`)
+Used for things like Mute Lists (Kind 10000) or Pin Lists.
+- **Last-Seen Check**: Tracks the `created_at` of the last item seen from *each* relay.
+- **Delta Sync**: Asks for `since: lastSeen + 1`.
+- **Fallback**: If the delta sync fails, performs a full fetch to ensure consistency.
+- **Concurrency**: Batches requests to 4 relays at a time to prevent browser network saturation.
+
 ## When to change
 
 - **Update `EVENTS_CACHE_VERSION`**: If you change the internal `Video` object structure (e.g., rename fields in `convertEventToVideo`), bump the DB version in `EventsCacheStore` to force a wipe/rebuild on client devices.
