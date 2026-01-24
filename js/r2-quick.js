@@ -6,7 +6,8 @@ import {
   attachCustomDomainAndWait,
   setManagedDomain,
 } from "./storage/r2-mgmt.js";
-import { makeR2Client, multipartUpload } from "./storage/r2-s3.js";
+import { makeR2Client } from "./storage/r2-s3.js";
+import { multipartUpload } from "./storage/s3-multipart.js";
 import { userLogger } from "./utils/logger.js";
 
 const STORAGE_KEY = "bitvid:quickR2Settings";
@@ -364,6 +365,7 @@ export function initQuickR2Upload(app) {
         key,
         file,
         contentType: file.type,
+        createBucketIfMissing: true,
         onProgress: (fraction) => {
           if (typeof fraction !== "number" || !isFinite(fraction)) {
             return;
