@@ -40,6 +40,7 @@ import {
   ensureBucketExists,
   deleteObject,
 } from "../storage/s3-multipart.js";
+import { ensureS3SdkLoaded, makeS3Client } from "../storage/s3-client.js";
 import { truncateMiddle } from "../utils/formatters.js";
 import { userLogger } from "../utils/logger.js";
 import {
@@ -406,16 +407,31 @@ class R2Service {
                 target.id
               );
               if (details) {
+                const provider =
+                  details.provider || details.meta?.provider || "";
+                const publicBaseUrl =
+                  details.meta?.publicBaseUrl ||
+                  details.meta?.baseDomain ||
+                  details.meta?.publicUrl ||
+                  "";
+                const forcePathStyle =
+                  typeof details.forcePathStyle === "boolean"
+                    ? details.forcePathStyle
+                    : typeof details.meta?.forcePathStyle === "boolean"
+                    ? details.meta.forcePathStyle
+                    : undefined;
                 // Map to R2 settings format
                 return {
+                  provider,
                   accountId: details.accountId || details.meta?.accountId || "",
                   endpoint: details.endpoint || details.meta?.endpoint || "",
                   bucket: details.bucket || details.meta?.bucket || "",
                   region: details.region || details.meta?.region || "auto",
                   accessKeyId: details.accessKeyId || "",
                   secretAccessKey: details.secretAccessKey || "",
-                  baseDomain:
-                    details.meta?.baseDomain || details.meta?.publicUrl || "",
+                  baseDomain: publicBaseUrl,
+                  publicBaseUrl,
+                  forcePathStyle,
                   isLegacy: false,
                 };
               }
@@ -1069,11 +1085,13 @@ class R2Service {
 
   async uploadFile({
     file,
+    provider,
     accountId,
     accessKeyId,
     secretAccessKey,
     endpoint,
     region,
+    forcePathStyle,
     bucket,
     key,
     onProgress,
@@ -1089,13 +1107,27 @@ class R2Service {
       throw new Error("Missing required parameters for uploadFile");
     }
 
-    const s3 = makeR2Client({
-      accountId,
-      accessKeyId,
-      secretAccessKey,
-      endpoint,
-      region,
-    });
+    let s3 = null;
+    const useR2 = provider === "cloudflare_r2" || Boolean(accountId);
+
+    if (useR2) {
+      s3 = makeR2Client({
+        accountId,
+        accessKeyId,
+        secretAccessKey,
+        endpoint,
+        region,
+      });
+    } else {
+      await ensureS3SdkLoaded();
+      s3 = makeS3Client({
+        endpoint,
+        region,
+        accessKeyId,
+        secretAccessKey,
+        forcePathStyle: Boolean(forcePathStyle),
+      });
+    }
 
     await multipartUpload({
       s3,
