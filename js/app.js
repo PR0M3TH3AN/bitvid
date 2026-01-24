@@ -394,6 +394,9 @@ class Application {
     if (this.videoModal) {
       this.videoModal.close();
     }
+    if (this.reactionController) {
+      this.reactionController.unsubscribe();
+    }
     // Also clear the active modal state if tracked elsewhere, though videoModal.close() usually handles it.
   }
 
