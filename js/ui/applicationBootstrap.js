@@ -18,6 +18,7 @@ import nostrService from "../services/nostrService.js";
 import storageService from "../services/storageService.js";
 import watchHistoryService from "../watchHistoryService.js";
 import r2Service from "../services/r2Service.js";
+import s3UploadService from "../services/s3UploadService.js";
 import RelayHealthService from "../services/relayHealthService.js";
 import { createFeedEngine } from "../feedEngine/index.js";
 import { URL_FIRST_ENABLED } from "../constants.js";
@@ -187,6 +188,7 @@ export default class ApplicationBootstrap {
 
     app.nostrService = this.services.nostrService || nostrService;
     app.r2Service = this.services.r2Service || r2Service;
+    app.s3Service = this.services.s3Service || s3UploadService;
 
     app.feedEngine =
       this.services.feedEngine ||

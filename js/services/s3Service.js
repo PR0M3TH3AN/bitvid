@@ -133,6 +133,7 @@ export async function prepareS3Connection({
   forcePathStyle,
   origins,
   publicBaseUrl,
+  createBucketIfMissing = true,
 } = {}) {
   const normalized = validateS3Connection({
     endpoint,
@@ -154,14 +155,16 @@ export async function prepareS3Connection({
     forcePathStyle: normalized.forcePathStyle,
   });
 
-  try {
-    await ensureBucketExists({
-      s3,
-      bucket: normalized.bucket,
-      region: normalized.region,
-    });
-  } catch (error) {
-    userLogger.warn("Failed to ensure S3 bucket exists:", error);
+  if (createBucketIfMissing) {
+    try {
+      await ensureBucketExists({
+        s3,
+        bucket: normalized.bucket,
+        region: normalized.region,
+      });
+    } catch (error) {
+      userLogger.warn("Failed to ensure S3 bucket exists:", error);
+    }
   }
 
   const allowedOrigins = Array.isArray(origins) ? origins : [];

@@ -10,6 +10,7 @@ import {
 } from "./applicationContext.js";
 import nostrService from "./services/nostrService.js";
 import r2Service from "./services/r2Service.js";
+import s3UploadService from "./services/s3UploadService.js";
 import { loadView, viewInitRegistry } from "./viewManager.js";
 import { applyDesignSystemAttributes } from "./designSystem.js";
 import {
@@ -385,6 +386,7 @@ function startApplication() {
       services: {
         nostrService,
         r2Service,
+        s3Service: s3UploadService,
       },
       loadView,
     });
