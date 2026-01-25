@@ -700,7 +700,7 @@ export class UploadModal {
       let torrentPublicUrl = "";
 
       // Validate baseDomain
-      const baseDomain = settings.baseDomain || settings.meta?.baseDomain;
+      const baseDomain = settings.baseDomain || settings.meta?.baseDomain || settings.meta?.prefix;
       if (!baseDomain) {
           throw new Error("Missing Public URL (Base Domain) in settings.");
       }
