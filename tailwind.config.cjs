@@ -3,6 +3,7 @@ const typography = require("@tailwindcss/typography");
 module.exports = {
   content: [
     "./index.html",
+    "./embed.html",
     "./components/**/*.html",
     "./views/**/*.html",
     "./js/**/*.js",
