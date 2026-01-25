@@ -311,7 +311,7 @@ export const __testExports = {
   normalizePermissionMethod,
 };
 
-export function waitForNip07Extension(timeoutMs = 1500) {
+export function waitForNip07Extension(timeoutMs = 5000) {
   return new Promise((resolve, reject) => {
     if (typeof window !== "undefined" && window.nostr) {
       resolve(window.nostr);
