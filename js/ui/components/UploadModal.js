@@ -79,11 +79,35 @@ export class UploadModal {
     this.isStorageUnlocked = false;
     this.storageConfigured = false;
 
+    // Upload State
+    this.videoUploadState = {
+        status: 'idle', // idle, uploading, complete, error
+        progress: 0,
+        url: '',
+        key: '',
+        file: null,
+    };
+    this.thumbnailUploadState = {
+        status: 'idle',
+        progress: 0,
+        url: '',
+        key: '',
+        file: null,
+    };
+    this.torrentState = {
+        status: 'idle',
+        infoHash: '',
+        magnet: '',
+        url: '', // xs (torrent file url)
+        file: null,
+    };
+
     // UI References
     this.form = null;
     this.modeButtons = {};
     this.sourceSections = {};
     this.inputs = {};
+    this.results = {}; // New results section
     this.toggles = {};
     this.submitButton = null;
     this.submitStatus = null;
@@ -98,7 +122,7 @@ export class UploadModal {
 
     // Automation
     this.summaryLocked = true;
-    this.isUploading = false;
+    this.isUploading = false; // Global lock
   }
 
   // --- Core Lifecycle ---
@@ -131,7 +155,7 @@ export class UploadModal {
       this.cacheElements();
       this.bindEvents();
       this.setupModalAccessibility();
-      this.registerStorageSubscriptions();
+      // this.registerStorageSubscriptions(); // We handle progress locally per file now
 
       // Initial State
       if (this.storageService) {
@@ -173,6 +197,8 @@ export class UploadModal {
         settings: $("#section-storage-settings"),
         advanced: $("#section-advanced"),
         progress: $("#upload-progress-container"),
+        thumbnailProgress: $("#thumbnail-progress-container"),
+        results: $("#upload-results-container"),
     };
 
     this.storageViews = {
@@ -199,6 +225,14 @@ export class UploadModal {
 
         // Progress
         progress: $("#input-progress"),
+        thumbnailProgress: $("#thumbnail-progress"),
+    };
+
+    // Results (Generated Links)
+    this.results = {
+        videoUrl: $("#result-video-url"),
+        magnet: $("#result-magnet"),
+        torrentUrl: $("#result-torrent-url"),
     };
 
     // Toggles/Buttons
@@ -221,6 +255,8 @@ export class UploadModal {
         storageLock: $("#storage-lock-status"),
         uploadMain: $("#upload-status-text"),
         uploadPercent: $("#upload-percent-text"),
+        thumbnailMain: $("#thumbnail-status-text"),
+        thumbnailPercent: $("#thumbnail-percent-text"),
         summaryProvider: $("#summary-provider"),
         summaryBucket: $("#summary-bucket"),
         summaryUrlStyle: $("#summary-url-style"),
@@ -250,7 +286,7 @@ export class UploadModal {
         this.toggles.storageUnlock.addEventListener("click", () => this.handleUnlock());
     }
 
-    // Manage Storage (Summary View)
+    // Manage Storage
     if (this.toggles.manageStorage) {
         this.toggles.manageStorage.addEventListener("click", () => {
             if (this.onRequestStorageSettings) {
@@ -260,10 +296,9 @@ export class UploadModal {
         });
     }
 
-    // Configure Storage (Empty View)
     if (this.toggles.configureStorage) {
         this.toggles.configureStorage.addEventListener("click", (e) => {
-            e.preventDefault(); // Prevent form submission
+            e.preventDefault();
             if (this.onRequestStorageSettings) {
                 this.close();
                 this.onRequestStorageSettings();
@@ -276,6 +311,11 @@ export class UploadModal {
     this.setupMutuallyExclusiveCheckboxes(this.toggles.nsfw, this.toggles.kids);
     this.setupNsfwToContentWarning();
     this.setupThumbnailInput();
+
+    // File Selection (Triggers upload immediately)
+    if (this.inputs.file) {
+        this.inputs.file.addEventListener("change", (e) => this.handleVideoSelection(e));
+    }
 
     // Close
     this.closeButton.addEventListener("click", () => this.close());
@@ -292,7 +332,6 @@ export class UploadModal {
     // UI Updates
     const isUpload = mode === "upload";
 
-    // Toggle Buttons
     this.modeButtons.upload.setAttribute("aria-pressed", isUpload);
     this.modeButtons.upload.classList.toggle("bg-surface", isUpload);
     this.modeButtons.upload.classList.toggle("text-text", isUpload);
@@ -309,6 +348,10 @@ export class UploadModal {
     if (isUpload) {
         this.sourceSections.upload.classList.remove("hidden");
         this.sourceSections.external.classList.add("hidden");
+        // Show results if we have them
+        if (this.videoUploadState.url || this.torrentState.magnet) {
+             this.sourceSections.results.classList.remove("hidden");
+        }
 
         if (this.toggles.browseThumbnail) {
             this.toggles.browseThumbnail.classList.remove("hidden");
@@ -316,14 +359,14 @@ export class UploadModal {
     } else {
         this.sourceSections.upload.classList.add("hidden");
         this.sourceSections.external.classList.remove("hidden");
+        this.sourceSections.results.classList.add("hidden");
 
         if (this.toggles.browseThumbnail) {
             this.toggles.browseThumbnail.classList.add("hidden");
         }
     }
 
-    // Update Button Text
-    this.submitButton.textContent = isUpload ? "Upload & Publish" : "Publish Video";
+    this.submitButton.textContent = isUpload ? "Publish Video" : "Publish Video";
   }
 
   setupAccordion(btn, section) {
@@ -333,7 +376,6 @@ export class UploadModal {
           if (isHidden) {
               section.classList.remove("hidden");
               btn.setAttribute("aria-expanded", "true");
-              // Rotate icon if exists
               const icon = btn.querySelector("svg");
               if (icon) icon.classList.add("rotate-90");
           } else {
@@ -402,9 +444,10 @@ export class UploadModal {
       thumbnailFile.addEventListener("change", () => {
           const file = thumbnailFile.files?.[0];
           if (file) {
-              thumbnail.value = ""; // Clear explicit URL
+              thumbnail.value = "";
               thumbnail.placeholder = `Selected: ${file.name}`;
               thumbnail.disabled = true;
+              this.handleThumbnailSelection(file); // Trigger upload immediately
           } else {
               thumbnail.placeholder = "https://example.com/thumbnail.jpg";
               thumbnail.disabled = false;
@@ -412,7 +455,272 @@ export class UploadModal {
       });
   }
 
-  // --- R2/Storage Integration ---
+  // --- Immediate Upload Handlers ---
+
+  async handleVideoSelection(e) {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      if (!this.storageConfigured) {
+          alert("Please configure storage before selecting a file.");
+          e.target.value = ""; // Clear selection
+          return;
+      }
+      if (!this.isStorageUnlocked) {
+          alert("Please unlock storage before selecting a file.");
+          e.target.value = "";
+          return;
+      }
+
+      // Reset Video State
+      this.videoUploadState = {
+          status: 'uploading',
+          progress: 0,
+          url: '',
+          key: '',
+          file: file,
+      };
+      // Reset Torrent State
+      this.torrentState = {
+          status: 'pending',
+          infoHash: '',
+          magnet: '',
+          url: '',
+          file: null,
+      };
+
+      // Show UI
+      this.sourceSections.progress.classList.remove("hidden");
+      this.sourceSections.results.classList.remove("hidden");
+      this.results.videoUrl.value = "Uploading...";
+      this.results.magnet.value = "Pending...";
+      this.results.torrentUrl.value = "Pending...";
+
+      this.updateVideoProgress(0, "Preparing upload...");
+
+      try {
+          // 1. Prepare Upload (Get Creds & Bucket)
+          const pubkey = this.getCurrentPubkey();
+          const npub = this.safeEncodeNpub(pubkey);
+          const service = this.activeProvider === PROVIDERS.R2 || this.activeProvider === "cloudflare_r2"
+              ? this.r2Service
+              : this.s3Service;
+
+          const { settings, bucketEntry } = await service.prepareUpload(npub, { credentials: this.activeCredentials });
+
+          // 2. Determine Keys
+          const videoKey = buildR2Key(npub, file);
+          const baseDomain = bucketEntry.publicBaseUrl;
+
+          // Note: buildPublicUrl works for both if the base is clean
+          // For S3, buildS3ObjectUrl might be safer if we have complex paths, but prepareUpload standardizes on publicBaseUrl
+          let videoPublicUrl = "";
+          if (this.activeProvider === PROVIDERS.R2 || this.activeProvider === "cloudflare_r2") {
+               videoPublicUrl = buildPublicUrl(baseDomain, videoKey);
+          } else {
+               videoPublicUrl = buildS3ObjectUrl({
+                   publicBaseUrl: baseDomain,
+                   key: videoKey,
+                   // For S3 we might need forcePathStyle if publicBaseUrl isn't set, but prepareUpload enforces it.
+               });
+          }
+
+          // 3. Start Video Upload
+          this.updateVideoProgress(0, "Uploading video...");
+          const uploadPromise = service.uploadFile({
+              file,
+              bucket: bucketEntry.bucket,
+              key: videoKey,
+              // Spread settings carefully
+              endpoint: settings.endpoint,
+              region: settings.region,
+              accessKeyId: settings.accessKeyId,
+              secretAccessKey: settings.secretAccessKey,
+              forcePathStyle: settings.forcePathStyle,
+              createBucketIfMissing: true,
+              onProgress: (fraction) => {
+                  this.updateVideoProgress(fraction);
+              }
+          });
+
+          // 4. Calculate Info Hash (Parallel if possible, but JS single thread limits this.
+          // Since createTorrentMetadata reads the file, it might contend with upload read.
+          // Let's do it concurrently and hope the browser handles file I/O well.
+          this.updateVideoProgress(null, "Uploading & Calculating Hash...");
+
+          const torrentPromise = this.generateTorrentMetadata({ file, videoPublicUrl });
+
+          const [uploadResult, torrentResult] = await Promise.all([uploadPromise, torrentPromise]);
+
+          // Video Complete
+          this.videoUploadState.status = 'complete';
+          this.videoUploadState.url = videoPublicUrl;
+          this.videoUploadState.key = videoKey;
+          this.results.videoUrl.value = videoPublicUrl;
+          this.updateVideoProgress(1, "Video uploaded.");
+
+          // 5. Handle Torrent Result & Upload .torrent file
+          if (torrentResult.hasValidInfoHash && torrentResult.torrentFile) {
+              const baseKey = videoKey.replace(/\.[^/.]+$/, "");
+              const torrentKey = (baseKey && baseKey !== videoKey) ? `${baseKey}.torrent` : `${videoKey}.torrent`;
+
+              let torrentPublicUrl = "";
+              if (this.activeProvider === PROVIDERS.R2 || this.activeProvider === "cloudflare_r2") {
+                   torrentPublicUrl = buildPublicUrl(baseDomain, torrentKey);
+              } else {
+                   torrentPublicUrl = buildS3ObjectUrl({ publicBaseUrl: baseDomain, key: torrentKey });
+              }
+
+              this.updateVideoProgress(1, "Uploading torrent metadata...");
+
+              await service.uploadFile({
+                  file: torrentResult.torrentFile,
+                  bucket: bucketEntry.bucket,
+                  key: torrentKey,
+                  endpoint: settings.endpoint,
+                  region: settings.region,
+                  accessKeyId: settings.accessKeyId,
+                  secretAccessKey: settings.secretAccessKey,
+                  forcePathStyle: settings.forcePathStyle,
+                  createBucketIfMissing: true,
+              });
+
+              this.torrentState.status = 'complete';
+              this.torrentState.infoHash = torrentResult.infoHash;
+              this.torrentState.url = torrentPublicUrl;
+              this.torrentState.file = torrentResult.torrentFile;
+
+              // Construct Magnet
+              const encodedDn = encodeURIComponent(file.name);
+              const encodedWs = encodeURIComponent(videoPublicUrl);
+              const encodedXs = encodeURIComponent(torrentPublicUrl);
+              const magnet = `magnet:?xt=urn:btih:${torrentResult.infoHash}&dn=${encodedDn}&ws=${encodedWs}&xs=${encodedXs}`;
+
+              this.torrentState.magnet = magnet;
+
+              this.results.magnet.value = magnet;
+              this.results.torrentUrl.value = torrentPublicUrl;
+
+              this.updateVideoProgress(1, "Ready to publish!");
+          } else {
+              this.torrentState.status = 'skipped'; // Failed hash or invalid
+              this.updateVideoProgress(1, "Upload complete (No torrent fallback).");
+              this.results.magnet.value = "Not available (Info Hash failed)";
+              this.results.torrentUrl.value = "Not available";
+          }
+
+      } catch (err) {
+          userLogger.error("Video upload sequence failed:", err);
+          this.videoUploadState.status = 'error';
+          this.updateVideoProgress(null, "Upload failed.");
+          alert(`Upload failed: ${err.message}`);
+
+          this.sourceSections.progress.classList.add("hidden");
+          this.inputs.file.value = ""; // Reset
+      }
+  }
+
+  async handleThumbnailSelection(file) {
+      if (!this.storageConfigured || !this.isStorageUnlocked) {
+          // We can't upload yet. Just hold it in state or warn?
+          // Since UI disables the browse button until unlocked (mostly), we assume safe.
+          // But if they just unlocked, we're good.
+          return;
+      }
+
+      this.thumbnailUploadState = {
+          status: 'uploading',
+          progress: 0,
+          url: '',
+          key: '',
+          file: file,
+      };
+
+      this.sourceSections.thumbnailProgress.classList.remove("hidden");
+      this.updateThumbnailProgress(0, "Uploading thumbnail...");
+
+      try {
+          const pubkey = this.getCurrentPubkey();
+          const npub = this.safeEncodeNpub(pubkey);
+          const service = this.activeProvider === PROVIDERS.R2 || this.activeProvider === "cloudflare_r2"
+              ? this.r2Service
+              : this.s3Service;
+
+          const { settings, bucketEntry } = await service.prepareUpload(npub, { credentials: this.activeCredentials });
+
+          // Derive Key (randomish or based on file)
+          // We don't have the video key here easily if video isn't selected yet.
+          // Use a standalone key structure: npub/thumbnails/timestamp-name
+          const timestamp = Date.now();
+          const cleanName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+          const key = `${npub}/thumbnails/${timestamp}-${cleanName}`;
+
+          const baseDomain = bucketEntry.publicBaseUrl;
+          let publicUrl = "";
+          if (this.activeProvider === PROVIDERS.R2 || this.activeProvider === "cloudflare_r2") {
+              publicUrl = buildPublicUrl(baseDomain, key);
+          } else {
+              publicUrl = buildS3ObjectUrl({ publicBaseUrl: baseDomain, key });
+          }
+
+          await service.uploadFile({
+              file,
+              bucket: bucketEntry.bucket,
+              key,
+              endpoint: settings.endpoint,
+              region: settings.region,
+              accessKeyId: settings.accessKeyId,
+              secretAccessKey: settings.secretAccessKey,
+              forcePathStyle: settings.forcePathStyle,
+              createBucketIfMissing: true,
+              onProgress: (fraction) => this.updateThumbnailProgress(fraction)
+          });
+
+          this.thumbnailUploadState.status = 'complete';
+          this.thumbnailUploadState.url = publicUrl;
+          this.inputs.thumbnail.value = publicUrl;
+
+          this.updateThumbnailProgress(1, "Thumbnail uploaded.");
+
+          // Hide progress after a delay
+          setTimeout(() => {
+              this.sourceSections.thumbnailProgress.classList.add("hidden");
+          }, 2000);
+
+      } catch (err) {
+          userLogger.error("Thumbnail upload failed:", err);
+          this.thumbnailUploadState.status = 'error';
+          this.updateThumbnailProgress(null, "Failed.");
+          alert("Thumbnail upload failed.");
+      }
+  }
+
+
+  updateVideoProgress(fraction, text) {
+      if (text) this.statusText.uploadMain.textContent = text;
+
+      if (fraction === null) {
+           // Indeterminate or error
+           return;
+      }
+
+      const pct = Math.round(fraction * 100);
+      this.inputs.progress.value = pct;
+      this.statusText.uploadPercent.textContent = `${pct}%`;
+  }
+
+  updateThumbnailProgress(fraction, text) {
+      if (text) this.statusText.thumbnailMain.textContent = text;
+
+      if (fraction === null) return;
+
+      const pct = Math.round(fraction * 100);
+      this.inputs.thumbnailProgress.value = pct;
+      this.statusText.thumbnailPercent.textContent = `${pct}%`;
+  }
+
+
+  // --- R2/Storage Integration (View Only now) ---
 
   async refreshState() {
     if (this.storageService) {
@@ -581,56 +889,27 @@ export class UploadModal {
       return "Uploads will target your S3-compatible bucket.";
   }
 
-  registerStorageSubscriptions() {
-      const services = [this.r2Service, this.s3Service].filter(
-          (service) => service && typeof service.on === "function"
-      );
-
-      // Clear old
-      this.r2Unsubscribes.forEach(u => u && u());
-      this.r2Unsubscribes = [];
-
-      services.forEach((service) => {
-          const sub = (evt, fn) => {
-              const unsub = service.on(evt, fn);
-              if (unsub) this.r2Unsubscribes.push(unsub);
-          };
-
-          sub("uploadProgress", ({ fraction }) => this.updateProgress(fraction));
-          sub("uploadStatus", ({ message, variant }) => this.updateUploadStatus(message, variant));
-          sub("uploadStateChange", ({ isUploading }) => {
-              this.isUploading = isUploading;
-              this.submitButton.disabled = isUploading;
-          });
-      });
-  }
-
-  updateProgress(fraction) {
-      const container = this.sourceSections.progress;
-      const bar = this.inputs.progress;
-      const txt = this.statusText.uploadPercent;
-
-      if (fraction === null || fraction < 0 || isNaN(fraction)) {
-          container.classList.add("hidden");
-          return;
-      }
-
-      container.classList.remove("hidden");
-      const pct = Math.round(fraction * 100);
-      bar.value = pct;
-      txt.textContent = `${pct}%`;
-  }
-
-  updateUploadStatus(msg, variant) {
-      if (this.statusText.uploadMain) {
-          this.statusText.uploadMain.textContent = msg;
-      }
-  }
 
   // --- Submission ---
 
   async handleSubmit() {
-      if (this.isUploading) return;
+      // Check upload state
+      if (this.activeSource === "upload") {
+          if (this.videoUploadState.status === 'uploading' || this.thumbnailUploadState.status === 'uploading') {
+              alert("Please wait for uploads to complete.");
+              return;
+          }
+          if (this.videoUploadState.status === 'error') {
+              alert("Video upload failed. Please try again.");
+              return;
+          }
+          if (this.videoUploadState.status !== 'complete') {
+               // Fallback: If no file selected, maybe they want to submit without a new file?
+               // (Not supported in this simplified modal, assume file required)
+               alert("Please select a video file and wait for it to upload.");
+               return;
+          }
+      }
 
       const audienceFlags = {
           isNsfw: this.toggles.nsfw?.checked || false,
@@ -660,219 +939,38 @@ export class UploadModal {
 
       try {
           if (this.activeSource === "upload") {
-             await this.handleUploadFlow(metadata);
+             // We already have the URLs in state
+             metadata.url = this.videoUploadState.url;
+             metadata.magnet = this.torrentState.magnet || "";
+             metadata.ws = this.videoUploadState.url; // WebSeed is same as R2 URL
+             metadata.xs = this.torrentState.url || "";
+
+             // NIP-71 IMETA for the main video
+             // We construct a primary imeta entry for the uploaded file
+             const imeta = {
+                 url: this.videoUploadState.url,
+                 m: this.videoUploadState.file?.type || "video/mp4",
+                 x: this.torrentState.infoHash || "",
+             };
+
+             // Merge with user provided imeta if any
+             if (!metadata.nip71) metadata.nip71 = {};
+             if (!metadata.nip71.imeta) metadata.nip71.imeta = [];
+             metadata.nip71.imeta.unshift(imeta);
+
+             await this.publish(metadata);
+
           } else {
              await this.handleExternalFlow(metadata);
           }
       } catch (err) {
-          userLogger.error("Upload failed", err);
+          userLogger.error("Submission failed", err);
           this.showError(err.message || "An unexpected error occurred.");
       }
   }
 
-  async handleUploadFlow(metadata) {
-      const file = this.inputs.file?.files?.[0];
-      if (!file) throw new Error("Please select a video file to upload.");
-
-      if (!this.storageConfigured) throw new Error("Please configure storage first.");
-      if (!this.activeCredentials) throw new Error("Storage is locked. Please unlock it to upload.");
-
-      // Check if we have R2 or Generic S3 credentials
-      const isR2 = this.activeProvider === PROVIDERS.R2 || this.activeProvider === "cloudflare_r2";
-
-      return isR2
-        ? this.handleR2UploadFlow(metadata, file)
-        : this.handleS3UploadFlow(metadata, file);
-  }
-
-  async handleR2UploadFlow(metadata, file) {
-      const thumbnailFile = this.inputs.thumbnailFile?.files?.[0];
-      const settings = this.activeCredentials;
-
-      const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
-      if (!pubkey) throw new Error("Please login to publish.");
-
-      const npub = this.safeEncodeNpub(pubkey);
-
-      let videoKey = "";
-      let videoPublicUrl = "";
-      let torrentKey = "";
-      let torrentPublicUrl = "";
-
-      // Validate baseDomain
-      const baseDomain = settings.baseDomain || settings.meta?.baseDomain || settings.meta?.prefix;
-      if (!baseDomain) {
-          throw new Error("Missing Public URL (Base Domain) in settings.");
-      }
-
-      try {
-          videoKey = buildR2Key(npub, file);
-          videoPublicUrl = buildPublicUrl(baseDomain, videoKey);
-
-          const baseKey = videoKey.replace(/\.[^/.]+$/, "");
-          torrentKey = (baseKey && baseKey !== videoKey) ? `${baseKey}.torrent` : `${videoKey}.torrent`;
-          torrentPublicUrl = buildPublicUrl(baseDomain, torrentKey);
-      } catch (prepErr) {
-          userLogger.warn("Failed to pre-calculate R2 keys:", prepErr);
-      }
-
-      const { infoHash, torrentFile, hasValidInfoHash } = await this.generateTorrentMetadata({
-          file,
-          videoPublicUrl,
-      });
-
-      if (!hasValidInfoHash) {
-          const proceed = confirm(
-            "We couldn't calculate a valid info hash. Publishing will continue with URL-first playback only, and WebTorrent fallback will be unavailable. Continue?"
-          );
-          if (!proceed) {
-              this.updateUploadStatus(
-                "Upload canceled. A valid info hash is required for WebTorrent fallback.",
-                "warning"
-              );
-              this.isUploading = false;
-              this.submitButton.disabled = false;
-              this.updateProgress(null);
-              return;
-          }
-          this.updateUploadStatus(
-            "Continuing without WebTorrent fallback (info hash unavailable).",
-            "warning"
-          );
-      }
-
-      // Reconstruct simple settings object expected by r2Service if needed
-      // r2Service expects: { accountId, accessKeyId, secretAccessKey, baseDomain }
-      // Our stored credential object has flat properties for keys.
-      const uploadSettings = {
-          accountId: settings.accountId,
-          accessKeyId: settings.accessKeyId,
-          secretAccessKey: settings.secretAccessKey,
-          baseDomain: baseDomain,
-      };
-
-      await this.r2Service.uploadVideo({
-          npub,
-          file,
-          thumbnailFile,
-          torrentFile,
-          metadata,
-          infoHash: hasValidInfoHash ? infoHash : "",
-          settingsInput: null, // No manual input
-          explicitCredentials: uploadSettings,
-          publishVideoNote: this.publishVideoNote,
-          onReset: () => this.resetForm(),
-          forcedVideoKey: videoKey,
-          forcedVideoUrl: videoPublicUrl,
-          forcedTorrentKey: torrentKey,
-          forcedTorrentUrl: torrentPublicUrl,
-      });
-  }
-
-  async handleS3UploadFlow(metadata, file) {
-      const thumbnailFile = this.inputs.thumbnailFile?.files?.[0];
-      const settings = this.activeCredentials;
-
-      if (!this.s3Service) throw new Error("S3 upload service is unavailable.");
-
-      const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
-      if (!pubkey) throw new Error("Please login to publish.");
-
-      const npub = this.safeEncodeNpub(pubkey);
-
-      // Reconstruct settings object for s3Service
-      // s3Service expects: { endpoint, region, bucket, accessKeyId, secretAccessKey, publicBaseUrl, forcePathStyle }
-      const uploadSettings = {
-          endpoint: settings.endpoint || settings.meta?.endpoint,
-          region: settings.region || settings.meta?.region || "auto",
-          bucket: settings.bucket || settings.meta?.bucket,
-          accessKeyId: settings.accessKeyId,
-          secretAccessKey: settings.secretAccessKey,
-          publicBaseUrl: settings.meta?.publicBaseUrl,
-          forcePathStyle: settings.forcePathStyle, // might be boolean in root or meta?
-      };
-
-      // Ensure forcePathStyle is boolean
-      if (typeof uploadSettings.forcePathStyle !== 'boolean') {
-          uploadSettings.forcePathStyle = !!settings.meta?.forcePathStyle;
-      }
-
-      let videoKey = "";
-      let videoPublicUrl = "";
-      let torrentKey = "";
-      let torrentPublicUrl = "";
-
-      try {
-          videoKey = buildR2Key(npub, file);
-          videoPublicUrl = buildS3ObjectUrl({
-              publicBaseUrl: uploadSettings.publicBaseUrl,
-              endpoint: uploadSettings.endpoint,
-              bucket: uploadSettings.bucket,
-              key: videoKey,
-              forcePathStyle: uploadSettings.forcePathStyle,
-          });
-          const baseKey = videoKey.replace(/\.[^/.]+$/, "");
-          torrentKey = (baseKey && baseKey !== videoKey) ? `${baseKey}.torrent` : `${videoKey}.torrent`;
-          torrentPublicUrl = buildS3ObjectUrl({
-              publicBaseUrl: uploadSettings.publicBaseUrl,
-              endpoint: uploadSettings.endpoint,
-              bucket: uploadSettings.bucket,
-              key: torrentKey,
-              forcePathStyle: uploadSettings.forcePathStyle,
-          });
-      } catch (prepErr) {
-          userLogger.warn("Failed to pre-calculate S3 keys:", prepErr);
-      }
-
-      const { infoHash, torrentFile, hasValidInfoHash } = await this.generateTorrentMetadata({
-          file,
-          videoPublicUrl,
-      });
-
-      if (!hasValidInfoHash) {
-          const proceed = confirm(
-            "We couldn't calculate a valid info hash. Publishing will continue with URL-first playback only, and WebTorrent fallback will be unavailable. Continue?"
-          );
-          if (!proceed) {
-              this.updateUploadStatus(
-                "Upload canceled. A valid info hash is required for WebTorrent fallback.",
-                "warning"
-              );
-              this.isUploading = false;
-              this.submitButton.disabled = false;
-              this.updateProgress(null);
-              return;
-              }
-          this.updateUploadStatus(
-            "Continuing without WebTorrent fallback (info hash unavailable).",
-            "warning"
-          );
-      }
-
-      await this.s3Service.uploadVideo({
-          npub,
-          file,
-          thumbnailFile,
-          torrentFile,
-          metadata,
-          infoHash: hasValidInfoHash ? infoHash : "",
-          settings: uploadSettings,
-          createBucketIfMissing: !!settings.meta?.createBucketIfMissing, // Use meta flag if present
-          publishVideoNote: this.publishVideoNote,
-          onReset: () => this.resetForm(),
-          forcedVideoKey: videoKey,
-          forcedVideoUrl: videoPublicUrl,
-          forcedTorrentKey: torrentKey,
-          forcedTorrentUrl: torrentPublicUrl,
-      });
-  }
-
   async generateTorrentMetadata({ file, videoPublicUrl } = {}) {
-      this.isUploading = true;
-      this.submitButton.disabled = true;
-      this.updateUploadStatus("Calculating Info Hash...", "info");
-      this.updateProgress(0);
-
+      // Helper used by immediate upload flow
       let infoHash = "";
       let torrentFile = null;
 
@@ -917,13 +1015,16 @@ export class UploadModal {
          if (!confirm("Magnet-only uploads require active seeding. Proceed?")) return;
       }
 
+      await this.publish(metadata);
+  }
+
+  async publish(metadata) {
       // Normalize & Publish
       const { payload, errors } = normalizeVideoNotePayload(metadata);
       if (errors.length) {
           throw new Error(getVideoNoteErrorMessage(errors[0]));
       }
 
-      // Simulate async publish
       this.submitButton.disabled = true;
       this.submitButton.textContent = "Publishing...";
 
@@ -948,7 +1049,15 @@ export class UploadModal {
       this.toggles.comments.checked = true;
       this.toggles.nsfw.checked = false;
       this.toggles.kids.checked = false;
-      this.updateProgress(null);
+
+      // Reset State
+      this.videoUploadState = { status: 'idle', progress: 0, url: '', key: '', file: null };
+      this.thumbnailUploadState = { status: 'idle', progress: 0, url: '', key: '', file: null };
+      this.torrentState = { status: 'idle', infoHash: '', magnet: '', url: '', file: null };
+
+      this.sourceSections.progress.classList.add("hidden");
+      this.sourceSections.thumbnailProgress.classList.add("hidden");
+      this.sourceSections.results.classList.add("hidden");
 
       // Reset thumbnail UI
       if (this.inputs.thumbnail) {

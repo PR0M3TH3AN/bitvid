@@ -98,6 +98,68 @@ class S3UploadService {
     return prepared;
   }
 
+  async prepareUpload(settings = {}, { createBucketIfMissing = true } = {}) {
+    const prepared = await this.verifyConnection({ settings, createBucketIfMissing });
+    return {
+      settings: prepared,
+      bucketEntry: {
+        bucket: prepared.bucket,
+        publicBaseUrl: prepared.publicBaseUrl,
+      },
+    };
+  }
+
+  async uploadFile({
+    file,
+    endpoint,
+    region,
+    accessKeyId,
+    secretAccessKey,
+    forcePathStyle,
+    bucket,
+    key,
+    onProgress,
+    createBucketIfMissing = true,
+  } = {}) {
+    if (
+      !file ||
+      !bucket ||
+      !key ||
+      !endpoint ||
+      !accessKeyId ||
+      !secretAccessKey
+    ) {
+      throw new Error("Missing required parameters for uploadFile");
+    }
+
+    await ensureS3SdkLoaded();
+
+    const s3 = makeS3Client({
+      endpoint,
+      region,
+      accessKeyId,
+      secretAccessKey,
+      forcePathStyle: Boolean(forcePathStyle),
+    });
+
+    await multipartUpload({
+      s3,
+      bucket,
+      key,
+      file,
+      contentType: file.type || "application/octet-stream",
+      createBucketIfMissing,
+      region,
+      onProgress: (fraction) => {
+        if (typeof onProgress === "function") {
+          onProgress(fraction);
+        }
+      },
+    });
+
+    return { bucket, key };
+  }
+
   async uploadVideo({
     npub = "",
     file = null,

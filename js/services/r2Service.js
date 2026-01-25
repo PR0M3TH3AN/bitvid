@@ -42,7 +42,7 @@ import {
 } from "../storage/s3-multipart.js";
 import { ensureS3SdkLoaded, makeS3Client } from "../storage/s3-client.js";
 import { truncateMiddle } from "../utils/formatters.js";
-import { userLogger } from "../utils/logger.js";
+import { userLogger, devLogger } from "../utils/logger.js";
 import {
   getVideoNoteErrorMessage,
   normalizeVideoNotePayload,
@@ -555,7 +555,7 @@ class R2Service {
         } catch (createErr) {
           // 403 Forbidden is expected if keys are "Object Read & Write" only.
           // We proceed assuming the user might have created it manually.
-          userLogger.debug(
+          devLogger.debug(
             "Auto-creation of bucket failed (likely permission issue), proceeding...",
             createErr
           );
@@ -747,6 +747,50 @@ class R2Service {
   async updateCloudflareBucketPreview({ hasPubkey = false, npub = "" } = {}) {
      // No-op for now or just simplified text, since we rely on user input mostly.
      return;
+  }
+
+  /**
+   * Prepares for an upload by resolving credentials and ensuring the bucket exists.
+   * @param {string} npub
+   * @param {object} options
+   * @returns {Promise<{settings: object, bucketEntry: object}>}
+   */
+  async prepareUpload(npub, { credentials } = {}) {
+    // Resolve settings from StorageService if explicitCredentials missing
+    let effectiveSettings = credentials;
+    if (!effectiveSettings) {
+      effectiveSettings = await this.resolveConnection(npub);
+    }
+    if (!effectiveSettings) {
+      effectiveSettings = this.cloudflareSettings || {};
+    }
+
+    const accountId = (effectiveSettings.accountId || "").trim();
+    const accessKeyId = (effectiveSettings.accessKeyId || "").trim();
+    const secretAccessKey = (effectiveSettings.secretAccessKey || "").trim();
+
+    if (!accountId || !accessKeyId || !secretAccessKey) {
+      throw new Error("Missing R2 credentials. Unlock your storage or save settings.");
+    }
+
+    let bucketResult = null;
+    try {
+      bucketResult = await this.ensureBucketConfigForNpub(npub, {
+        credentials: effectiveSettings,
+      });
+    } catch (err) {
+      userLogger.error("Failed to prepare R2 bucket:", err);
+      throw new Error(err?.message ? `Bucket setup failed: ${err.message}` : "Bucket setup failed.");
+    }
+
+    const bucketEntry =
+      bucketResult?.entry || this.cloudflareSettings?.buckets?.[npub];
+
+    if (!bucketEntry || !bucketEntry.publicBaseUrl) {
+      throw new Error("Bucket is missing a public URL. Check your settings.");
+    }
+
+    return { settings: effectiveSettings, bucketEntry };
   }
 
   /**

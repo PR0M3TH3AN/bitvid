@@ -103,6 +103,27 @@
                     ></progress>
                 </div>
 
+                <!-- Generated Links (Results) -->
+                <div id="upload-results-container" class="space-y-3 bg-surface/30 p-3 rounded-lg border border-border/50 hidden">
+                    <h4 class="text-xs font-semibold text-text uppercase tracking-wider">Generated Links</h4>
+
+                    <div class="space-y-1">
+                        <label class="text-xs text-muted">Video URL</label>
+                        <input id="result-video-url" type="text" readonly class="input input-sm text-xs bg-surface-alt font-mono text-muted" placeholder="Pending..." />
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3">
+                         <div class="space-y-1">
+                            <label class="text-xs text-muted">Magnet URI</label>
+                            <input id="result-magnet" type="text" readonly class="input input-sm text-xs bg-surface-alt font-mono text-muted" placeholder="Pending..." />
+                        </div>
+                         <div class="space-y-1">
+                            <label class="text-xs text-muted">Torrent URL (xs)</label>
+                            <input id="result-torrent-url" type="text" readonly class="input input-sm text-xs bg-surface-alt font-mono text-muted" placeholder="Pending..." />
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Storage Configuration Toggle -->
                 <div class="border-t border-border/50 pt-2">
                     <button
@@ -208,6 +229,19 @@
                           >
                              Browse...
                           </button>
+                    </div>
+                    <!-- Thumbnail Progress -->
+                     <div id="thumbnail-progress-container" class="space-y-1 hidden mt-2">
+                        <div class="flex justify-between text-xs">
+                            <span id="thumbnail-status-text" class="text-text font-medium">Uploading Thumbnail...</span>
+                            <span id="thumbnail-percent-text" class="text-muted">0%</span>
+                        </div>
+                        <progress
+                            id="thumbnail-progress"
+                            class="progress progress--surface w-full h-1.5"
+                            max="100"
+                            value="0"
+                        ></progress>
                     </div>
                 </div>
 
