@@ -319,11 +319,14 @@
 
                                 <div id="quickS3ManifestContainer" class="hidden space-y-2">
                                     <label for="quickS3ManifestJson" class="text-xs font-medium text-text">Manifest JSON</label>
+                                    <p class="text-4xs text-muted leading-tight">
+                                        The manifest must be produced externally. This app does not create or sign presigned URLs.
+                                    </p>
                                     <textarea
                                         id="quickS3ManifestJson"
                                         rows="6"
                                         class="textarea text-xs font-mono"
-                                        placeholder='{"uploadId": "...", "partUrls": ["..."]}'
+                                        placeholder='{"bucket": "...", "key": "...", "uploadId": "...", "parts": [{"partNumber": 1, "url": "..."}]}'
                                     ></textarea>
                                 </div>
 
