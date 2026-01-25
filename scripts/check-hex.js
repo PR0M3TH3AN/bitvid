@@ -28,7 +28,8 @@ const IGNORED_GLOBS = [
   '!config/validate-config.js',
   '!js/embed.js',
   '!tests/unit/embed-accent.test.mjs',
-  '!tests/visual/embed-layout.spec.ts'
+  '!tests/visual/embed-layout.spec.ts',
+  '!ai/**'
 ];
 
 const rgArgs = [

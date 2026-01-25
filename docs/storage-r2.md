@@ -2,7 +2,11 @@
 
 ## Purpose and scope
 
-`js/services/r2Service.js` is the specialized provider handler for Cloudflare R2 uploads. While the new **Storage Tab** (powered by `StorageService`) manages the secure storage of credentials, `r2Service` is responsible for:
+`js/services/r2Service.js` is the specialized provider handler for Cloudflare R2 uploads. It implements one of the supported **S3 Upload Modes** (specifically Mode 1: Browser-held keys).
+
+> **Security Note:** This integration requires storing encrypted credentials in the browser. See [`README.md`](../README.md) and [`docs/storage-tab-design.md`](./storage-tab-design.md) for security warnings and alternative upload modes for untrusted environments.
+
+While the new **Storage Tab** (powered by `StorageService`) manages the secure storage of credentials, `r2Service` is responsible for:
 
 - Uploading the selected video/HLS asset via multipart S3 uploads.
 - Verifying public access via the configured Public Bucket URL.
