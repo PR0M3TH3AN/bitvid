@@ -91,45 +91,67 @@ export async function uploadWithManifest({
   manifest,
   onProgress
 }) {
-  // manifest: { uploadId, partUrls: string[], completeUrl?: string }
-  if (!manifest || !Array.isArray(manifest.partUrls) || manifest.partUrls.length === 0) {
-    throw new Error("Invalid manifest: partUrls required.");
+  // manifest: {
+  //   bucket: string,
+  //   key: string,
+  //   uploadId: string,
+  //   parts: { partNumber: number, url: string }[],
+  //   completeUrl?: string,
+  //   partSize?: number
+  // }
+  if (!manifest || !Array.isArray(manifest.parts) || manifest.parts.length === 0) {
+    throw new Error("Invalid manifest: 'parts' array required.");
   }
 
-  const partUrls = manifest.partUrls;
-  const partCount = partUrls.length;
+  // Ensure parts are sorted
+  const parts = [...manifest.parts].sort((a, b) => a.partNumber - b.partNumber);
+
   const fileSize = file.size;
-  // Calculate part size. We assume the manifest was generated for this file size.
-  // We divide equally, last part takes remainder.
-  const partSize = Math.ceil(fileSize / partCount);
+  const partCount = parts.length;
+
+  // Determine part size
+  // If not provided, assume standard S3 splitting (equal parts except last)
+  const partSize = manifest.partSize || Math.ceil(fileSize / partCount);
 
   const etags = [];
   let uploadedBytes = 0;
 
   for (let i = 0; i < partCount; i++) {
-    const start = i * partSize;
-    if (start >= fileSize) break; // Should not happen if calc is right
+    const part = parts[i];
+    const partNum = part.partNumber;
+    const url = part.url;
+
+    // Calculate byte range
+    const index = i;
+    const start = index * partSize;
+    if (start >= fileSize) break;
+
     const end = Math.min(start + partSize, fileSize);
     const chunk = file.slice(start, end);
-    const url = partUrls[i];
 
-    // Simple PUT to presigned URL
-    const response = await fetch(url, {
-      method: 'PUT',
-      body: chunk
-    });
+    try {
+        const response = await fetch(url, {
+          method: 'PUT',
+          body: chunk
+        });
 
-    if (!response.ok) {
-      throw new Error(`Failed to upload part ${i+1}: ${response.statusText}`);
-    }
+        if (!response.ok) {
+          throw new Error(`Failed to upload part ${partNum}: ${response.status} ${response.statusText}`);
+        }
 
-    const etag = response.headers.get('ETag');
-    // ETag is often needed for completion.
-    etags.push({ PartNumber: i + 1, ETag: etag });
-    uploadedBytes += chunk.size;
+        const etag = response.headers.get('ETag');
+        if (!etag) {
+             userLogger.warn(`Part ${partNum} uploaded but no ETag header received.`);
+        }
 
-    if (onProgress) {
-      onProgress(uploadedBytes / fileSize);
+        etags.push({ PartNumber: partNum, ETag: etag });
+        uploadedBytes += chunk.size;
+
+        if (onProgress) {
+          onProgress(uploadedBytes / fileSize);
+        }
+    } catch (err) {
+        throw new Error(`Network error uploading part ${partNum}: ${err.message}`);
     }
   }
 

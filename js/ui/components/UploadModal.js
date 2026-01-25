@@ -1410,11 +1410,20 @@ export class UploadModal {
           this.updateProgress(0);
 
           try {
-              await uploadWithManifest({
+              const etags = await uploadWithManifest({
                   file,
                   manifest,
                   onProgress: (fraction) => this.updateProgress(fraction),
               });
+
+              if (!manifest.completeUrl) {
+                  this.updateUploadStatus("Parts uploaded. Action required.", "warning");
+                  const msg = "Upload parts finished. Please complete the upload in your provider console.";
+                  userLogger.info("ETags for manual completion:", JSON.stringify({ Parts: etags }, null, 2));
+                  alert(`${msg}\n\nETags have been logged to the console.`);
+                  this.showSuccess(msg);
+                  return;
+              }
 
               this.updateUploadStatus("Processing metadata...", "info");
 
