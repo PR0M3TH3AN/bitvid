@@ -9,7 +9,8 @@ const SENSITIVE_PATHS = [
   /^js\/dmDecryptor\.js$/,
   /^js\/services\/storageService\.js$/,
   /^js\/services\/attachmentService\.js$/,
-  /^js\/services\/hashtagPreferencesService\.js$/
+  /^js\/services\/hashtagPreferencesService\.js$/,
+  /^js\/utils\/storage\.js$/
 ];
 
 function runCommand(command, args = [], options = {}) {
@@ -92,7 +93,7 @@ async function main() {
   let microFixesStatus = '';
 
   // 1. Install Dependencies
-  if (process.env.CI) {
+  if (process.env.CI || process.argv.includes('--force-ci')) {
       runCommand('npm', ['ci']);
   }
 
@@ -206,7 +207,7 @@ async function main() {
 
             } catch (fallbackError) {
                 console.error('Failed to create follow-up PR:', fallbackError.message);
-                commentBody += '> **ℹ️ Micro-fixes available:** Formatting issues were found. Please run `npm run format` locally and push.\n\n';
+                commentBody += '> **ℹ️ Micro-fixes available:** Formatting issues were found. Please apply `npm run format` and re-run tests.\n\n';
             }
         }
     }
