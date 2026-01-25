@@ -155,4 +155,21 @@ describe("StorageService", () => {
     assert.strictEqual(c1.meta.defaultForUploads, false);
     assert.strictEqual(c2.meta.defaultForUploads, true);
   });
+
+  test("saveConnection() with defaultForUploads=true clears other defaults", async () => {
+    await storageService.unlock(pubkey, { signer: mockSigner });
+
+    // Save first connection as default
+    await storageService.saveConnection(pubkey, "conn_1", { provider: PROVIDERS.R2 }, { defaultForUploads: true });
+
+    // Save second connection as default
+    await storageService.saveConnection(pubkey, "conn_2", { provider: PROVIDERS.S3 }, { defaultForUploads: true });
+
+    const conns = await storageService.listConnections(pubkey);
+    const c1 = conns.find(c => c.id === "conn_1");
+    const c2 = conns.find(c => c.id === "conn_2");
+
+    assert.strictEqual(c1.meta.defaultForUploads, false);
+    assert.strictEqual(c2.meta.defaultForUploads, true);
+  });
 });
