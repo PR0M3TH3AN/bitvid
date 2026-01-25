@@ -5,7 +5,10 @@ import crypto from 'node:crypto';
 // Configuration
 const ARTIFACTS_DIR = 'artifacts';
 const REPORTS_DIR = 'ai/reports';
-const LOG_FILES = ['test_unit.log', 'test_unit_debug.log', 'server.log', 'serve.log', 'test_output.log', 'python_server.log', 'npm_output.log'];
+// TAP formatted logs
+const UNIT_TEST_LOGS = ['test_unit.log', 'test_unit_debug.log', 'test_output.log'];
+// Generic logs (subset of original list, excluding TAP logs)
+const GENERIC_LOG_FILES = ['server.log', 'serve.log', 'python_server.log', 'npm_output.log'];
 
 // Regex patterns for PII sanitization
 const PII_PATTERNS = [
@@ -56,9 +59,8 @@ function suggestOwner(stack) {
 // Collectors
 // -----------------------------------------------------------------------------
 
-function collectUnitTests() {
+function collectUnitTests(logFile = 'test_output.log') {
     const errors = [];
-    const logFile = 'test_output.log';
     if (!fs.existsSync(logFile)) return errors;
 
     const content = fs.readFileSync(logFile, 'utf8');
@@ -76,7 +78,7 @@ function collectUnitTests() {
             }
             const title = line.replace(/^not ok \d+ - /, '').trim();
             currentError = {
-                source: 'unit-test',
+                source: `unit-test:${logFile}`,
                 title: sanitize(title),
                 details: [],
                 severity: 'High'
@@ -264,8 +266,8 @@ function collectAgentLogs() {
     const files = fs.readdirSync(ARTIFACTS_DIR).filter(f => f.endsWith('.log'));
 
     for (const file of files) {
-        // Avoid reparsing if we have specific logic (though generic is fine for now)
-        if (file === 'test_output.log') continue;
+        // Avoid reparsing if we have specific logic
+        if (UNIT_TEST_LOGS.includes(file)) continue;
 
         errors.push(...collectGenericLogs(path.join(ARTIFACTS_DIR, file), `agent-log:${file}`));
     }
@@ -392,33 +394,44 @@ async function main() {
     // 1. Collect
     const errors = [];
 
-    // Unit Tests
-    const unitTestErrors = collectUnitTests();
-    console.log(`Collected ${unitTestErrors.length} unit test errors.`);
-    errors.push(...unitTestErrors);
+    // Unit Tests (TAP logs)
+    for (const logFile of UNIT_TEST_LOGS) {
+        const unitErrors = collectUnitTests(logFile);
+        if (unitErrors.length > 0) {
+            console.log(`Collected ${unitErrors.length} unit test errors from ${logFile}.`);
+            errors.push(...unitErrors);
+        }
+    }
 
-    // Server Logs
-    for (const logFile of LOG_FILES) {
-        if (logFile === 'test_output.log') continue; // Handled by collectUnitTests
+    // Generic Logs
+    for (const logFile of GENERIC_LOG_FILES) {
         const genericErrors = collectGenericLogs(logFile, logFile);
-        console.log(`Collected ${genericErrors.length} errors from ${logFile}.`);
-        errors.push(...genericErrors);
+        if (genericErrors.length > 0) {
+            console.log(`Collected ${genericErrors.length} errors from ${logFile}.`);
+            errors.push(...genericErrors);
+        }
     }
 
     // Smoke Tests
     const smokeTestErrors = collectSmokeTests();
-    console.log(`Collected ${smokeTestErrors.length} smoke test errors.`);
-    errors.push(...smokeTestErrors);
+    if (smokeTestErrors.length > 0) {
+        console.log(`Collected ${smokeTestErrors.length} smoke test errors.`);
+        errors.push(...smokeTestErrors);
+    }
 
     // Fuzz Reports
     const fuzzErrors = collectFuzzReports();
-    console.log(`Collected ${fuzzErrors.length} fuzz reports.`);
-    errors.push(...fuzzErrors);
+    if (fuzzErrors.length > 0) {
+        console.log(`Collected ${fuzzErrors.length} fuzz reports.`);
+        errors.push(...fuzzErrors);
+    }
 
     // Agent Logs
     const agentErrors = collectAgentLogs();
-    console.log(`Collected ${agentErrors.length} agent log errors.`);
-    errors.push(...agentErrors);
+    if (agentErrors.length > 0) {
+        console.log(`Collected ${agentErrors.length} agent log errors.`);
+        errors.push(...agentErrors);
+    }
 
     // 2. Aggregate
     const aggregates = aggregate(errors);
