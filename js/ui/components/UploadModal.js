@@ -760,9 +760,18 @@ export class UploadModal {
             const bucketName = targetConn.meta?.bucket || "Unknown Bucket";
             const urlStyle = this.describeUrlStyle(targetConn.provider, targetConn.meta?.forcePathStyle);
 
-            if (this.statusText.summaryProvider) this.statusText.summaryProvider.textContent = providerName;
-            if (this.statusText.summaryBucket) this.statusText.summaryBucket.textContent = bucketName;
-            if (this.statusText.summaryUrlStyle) this.statusText.summaryUrlStyle.textContent = urlStyle;
+            if (this.statusText.summaryProvider) {
+                this.statusText.summaryProvider.textContent = providerName;
+                this.statusText.summaryProvider.title = providerName;
+            }
+            if (this.statusText.summaryBucket) {
+                this.statusText.summaryBucket.textContent = bucketName;
+                this.statusText.summaryBucket.title = bucketName;
+            }
+            if (this.statusText.summaryUrlStyle) {
+                this.statusText.summaryUrlStyle.textContent = urlStyle;
+                this.statusText.summaryUrlStyle.title = urlStyle;
+            }
             if (this.statusText.summaryCopy) this.statusText.summaryCopy.textContent = this.getSummaryCopy(targetConn.provider);
 
             if (this.isStorageUnlocked) {
