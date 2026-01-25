@@ -5,19 +5,16 @@ import { userLogger } from "../../utils/logger.js";
 import {
   getVideoNoteErrorMessage,
   normalizeVideoNotePayload,
-  VIDEO_NOTE_ERROR_CODES,
 } from "../../services/videoNotePayload.js";
 import { createTorrentMetadata } from "../../utils/torrentHash.js";
 import { sanitizeBucketName } from "../../storage/r2-mgmt.js";
 import { buildR2Key, buildPublicUrl } from "../../r2.js";
 import { buildS3ObjectUrl } from "../../services/s3Service.js";
 import { PROVIDERS } from "../../services/storageService.js";
-import { loadS3Settings, saveS3Settings } from "../../storage/s3-settings.js";
 import {
   getActiveSigner,
   requestDefaultExtensionPermissions,
 } from "../../nostrClientFacade.js";
-import { uploadWithManifest } from "../../s3-quick.js";
 
 const INFO_HASH_PATTERN = /^[a-f0-9]{40}$/;
 
@@ -75,11 +72,11 @@ export class UploadModal {
     this.root = null;
     this.isVisible = false;
     this.activeSource = "upload"; // 'upload' | 'external'
-    this.activeStorageProvider = PROVIDERS.R2;
-    this.cloudflareSettings = this.r2Service?.getSettings?.() || null;
-    this.s3Settings = null;
+
+    // Internal state for credentials
+    this.activeCredentials = null;
+    this.activeProvider = null;
     this.isStorageUnlocked = false;
-    this.activeConnectionId = null;
     this.storageConfigured = false;
 
     // UI References
@@ -90,7 +87,7 @@ export class UploadModal {
     this.toggles = {};
     this.submitButton = null;
     this.submitStatus = null;
-    this.summaryView = {};
+    this.storageViews = {};
 
     // Logic/State
     this.nip71FormManager = new Nip71FormManager();
@@ -140,10 +137,7 @@ export class UploadModal {
       if (this.storageService) {
         const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
         this.isStorageUnlocked = pubkey ? this.storageService.isUnlocked(pubkey) : false;
-        // Even if locked, we want to know if there's *potentially* a connection saved to show correct UI state (locked vs empty)
         await this.loadFromStorage();
-      } else {
-        await this.loadLegacyStorageSettings();
       }
       this.updateLockUi();
       this.setSourceMode("upload");
@@ -183,24 +177,7 @@ export class UploadModal {
 
     this.storageViews = {
         summary: $("#storage-summary-view"),
-        form: $("#storage-form-view"),
-    };
-
-    this.storageProviders = {
-        r2: $("#btn-storage-provider-r2"),
-        s3: $("#btn-storage-provider-s3"),
-    };
-
-    this.storageProviderSections = {
-        r2: $("#section-storage-r2"),
-        s3: $("#section-storage-s3"),
-    };
-
-    this.toggles.s3Manifest = $("#quickS3ManifestToggle");
-    this.inputs.s3ManifestJson = $("#quickS3ManifestJson");
-    this.containers = {
-        s3Credentials: $("#quickS3CredentialsContainer"),
-        s3Manifest: $("#quickS3ManifestContainer"),
+        empty: $("#storage-empty-view"),
     };
 
     // Inputs (Common)
@@ -213,20 +190,6 @@ export class UploadModal {
         url: $("#input-url"),
         magnet: $("#input-magnet"),
 
-        // Settings
-        r2BucketName: $("#input-r2-bucket-name"),
-        r2Account: $("#input-r2-account"),
-        r2Key: $("#input-r2-key"),
-        r2Secret: $("#input-r2-secret"),
-        r2Domain: $("#input-r2-domain"), // Public URL
-
-        s3Endpoint: $("#input-s3-endpoint"),
-        s3Region: $("#input-s3-region"),
-        s3Bucket: $("#input-s3-bucket"),
-        s3Key: $("#input-s3-key"),
-        s3Secret: $("#input-s3-secret"),
-        s3PublicBase: $("#input-s3-public-base"),
-
         // Advanced (Manual or NIP71 managed)
         ws: $("#input-ws"),
         xs: $("#input-xs"),
@@ -238,17 +201,6 @@ export class UploadModal {
         progress: $("#input-progress"),
     };
 
-    // Wizard Containers
-    this.wizard = {
-        step1: $("#step-credentials"),
-        step2: $("#step-verification"),
-        nextBtn: $("#btn-next-step"),
-        backBtn: $("#btn-back-step"),
-        errorContainer: $("#container-verification-error"),
-        errorText: $("#text-verification-error"),
-        guideLink: $("#link-cloudflare-guide"),
-    };
-
     // Toggles/Buttons
     this.toggles = {
         nsfw: $("#check-nsfw"),
@@ -258,21 +210,14 @@ export class UploadModal {
 
         advanced: $("#btn-advanced-toggle"),
         storageSettings: $("#btn-storage-settings"),
-        saveSettings: $("#btn-save-settings"), // Verify & Save
-        saveS3Settings: $("#btn-save-s3-settings"),
         browseThumbnail: $("#btn-thumbnail-file"),
-        r2HelpLink: $("#link-r2-help"),
-        copyBucket: $("#btn-copy-bucket"),
         storageUnlock: $("#btn-storage-unlock"),
         manageStorage: $("#btn-manage-storage"),
-
-        s3ForcePathStyle: $("#check-s3-path-style"),
-        s3CreateBucket: $("#check-s3-create-bucket"),
+        configureStorage: $("#btn-configure-storage"),
     };
 
     // Status text
     this.statusText = {
-        storage: $("#storage-status"),
         storageLock: $("#storage-lock-status"),
         uploadMain: $("#upload-status-text"),
         uploadPercent: $("#upload-percent-text"),
@@ -294,91 +239,31 @@ export class UploadModal {
     this.setupAccordion(this.toggles.advanced, this.sourceSections.advanced);
     this.setupAccordion(this.toggles.storageSettings, this.sourceSections.settings);
 
-    if (this.storageProviders.r2) {
-        this.storageProviders.r2.addEventListener("click", () =>
-            this.setStorageProvider(PROVIDERS.R2)
-        );
-    }
-    if (this.storageProviders.s3) {
-        this.storageProviders.s3.addEventListener("click", () =>
-            this.setStorageProvider(PROVIDERS.GENERIC)
-        );
-    }
-
-    if (this.toggles.s3Manifest) {
-        this.toggles.s3Manifest.addEventListener("change", () => {
-            const checked = this.toggles.s3Manifest.checked;
-            if (this.containers.s3Credentials) {
-                this.containers.s3Credentials.classList.toggle("hidden", checked);
-            }
-            if (this.containers.s3Manifest) {
-                this.containers.s3Manifest.classList.toggle("hidden", !checked);
-            }
-            // Hide save button if manifest
-            if (this.toggles.saveS3Settings) {
-                this.toggles.saveS3Settings.parentElement.classList.toggle("hidden", checked);
-            }
-        });
-    }
-
     // Form Submission
     this.form.addEventListener("submit", (e) => {
         e.preventDefault();
         this.handleSubmit();
     });
 
-    // Wizard: Step 1 Next
-    if (this.wizard.nextBtn) {
-        this.wizard.nextBtn.addEventListener("click", () => this.goToVerificationStep());
-    }
-
-    // Wizard: Step 2 Back
-    if (this.wizard.backBtn) {
-        this.wizard.backBtn.addEventListener("click", () => this.goToCredentialsStep());
-    }
-
-    // Settings Save (Verify & Save)
-    if (this.toggles.saveSettings) {
-        this.toggles.saveSettings.addEventListener("click", async () => {
-            await this.handleVerifyAndSaveR2();
-        });
-    }
-
-    if (this.toggles.saveS3Settings) {
-        this.toggles.saveS3Settings.addEventListener("click", async () => {
-            await this.handleVerifyAndSaveS3();
-        });
-    }
-
-    // Help Link
-    if (this.toggles.r2HelpLink) {
-        this.toggles.r2HelpLink.addEventListener("click", () => {
-            this.close();
-        });
-    }
-
-    // Copy Bucket Name
-    if (this.toggles.copyBucket && this.inputs.r2BucketName) {
-        this.toggles.copyBucket.addEventListener("click", () => {
-            const val = this.inputs.r2BucketName.value;
-            if (val) {
-                navigator.clipboard.writeText(val).then(() => {
-                    const original = this.toggles.copyBucket.textContent;
-                    this.toggles.copyBucket.textContent = "Copied!";
-                    setTimeout(() => this.toggles.copyBucket.textContent = original, 1500);
-                });
-            }
-        });
-    }
-
     // Storage Unlock
     if (this.toggles.storageUnlock) {
         this.toggles.storageUnlock.addEventListener("click", () => this.handleUnlock());
     }
 
-    // Manage Storage
+    // Manage Storage (Summary View)
     if (this.toggles.manageStorage) {
         this.toggles.manageStorage.addEventListener("click", () => {
+            if (this.onRequestStorageSettings) {
+                this.close();
+                this.onRequestStorageSettings();
+            }
+        });
+    }
+
+    // Configure Storage (Empty View)
+    if (this.toggles.configureStorage) {
+        this.toggles.configureStorage.addEventListener("click", (e) => {
+            e.preventDefault(); // Prevent form submission
             if (this.onRequestStorageSettings) {
                 this.close();
                 this.onRequestStorageSettings();
@@ -425,20 +310,9 @@ export class UploadModal {
         this.sourceSections.upload.classList.remove("hidden");
         this.sourceSections.external.classList.add("hidden");
 
-        // Auto-show settings if missing or not configured
-        if (!this.storageConfigured && !this.hasValidActiveStorageSettings() && this.sourceSections.settings.classList.contains("hidden")) {
-            this.toggles.storageSettings.click(); // Expand
-        } else if (this.storageConfigured) {
-            // Keep collapsed if configured, per requirements
-        }
-
         if (this.toggles.browseThumbnail) {
             this.toggles.browseThumbnail.classList.remove("hidden");
         }
-
-        // Populate derived bucket name
-        this.populateBucketName();
-
     } else {
         this.sourceSections.upload.classList.add("hidden");
         this.sourceSections.external.classList.remove("hidden");
@@ -471,55 +345,7 @@ export class UploadModal {
       });
   }
 
-  setStorageProvider(provider) {
-      const normalizedProvider =
-        provider === PROVIDERS.R2 ? PROVIDERS.R2 : PROVIDERS.GENERIC;
-      this.activeStorageProvider = normalizedProvider;
-
-      const isR2 = normalizedProvider === PROVIDERS.R2;
-      if (this.storageProviders.r2) {
-          this.storageProviders.r2.setAttribute("aria-pressed", isR2);
-          this.storageProviders.r2.classList.toggle("bg-surface", isR2);
-          this.storageProviders.r2.classList.toggle("text-text", isR2);
-          this.storageProviders.r2.classList.toggle("shadow-sm", isR2);
-          this.storageProviders.r2.classList.toggle("text-muted", !isR2);
-      }
-      if (this.storageProviders.s3) {
-          this.storageProviders.s3.setAttribute("aria-pressed", !isR2);
-          this.storageProviders.s3.classList.toggle("bg-surface", !isR2);
-          this.storageProviders.s3.classList.toggle("text-text", !isR2);
-          this.storageProviders.s3.classList.toggle("shadow-sm", !isR2);
-          this.storageProviders.s3.classList.toggle("text-muted", isR2);
-      }
-
-      if (this.storageProviderSections.r2) {
-          this.storageProviderSections.r2.classList.toggle("hidden", !isR2);
-      }
-      if (this.storageProviderSections.s3) {
-          this.storageProviderSections.s3.classList.toggle("hidden", isR2);
-      }
-
-      if (isR2) {
-          this.goToCredentialsStep();
-          this.populateBucketName();
-      }
-
-      this.updateStorageStatus(this.hasValidActiveStorageSettings(), this.getProviderLabel(normalizedProvider));
-  }
-
   // --- Automation Helpers ---
-
-  populateBucketName() {
-      if (this.activeStorageProvider !== PROVIDERS.R2) {
-          return;
-      }
-      const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
-      if (pubkey && this.safeEncodeNpub && this.inputs.r2BucketName) {
-          const npub = this.safeEncodeNpub(pubkey);
-          const bucketName = sanitizeBucketName(npub);
-          this.inputs.r2BucketName.value = bucketName;
-      }
-  }
 
   setupDescriptionMirror() {
       const { description, summary } = this.inputs;
@@ -586,7 +412,7 @@ export class UploadModal {
       });
   }
 
-  // --- R2 Integration ---
+  // --- R2/Storage Integration ---
 
   async refreshState() {
     if (this.storageService) {
@@ -595,72 +421,33 @@ export class UploadModal {
       this.updateLockUi();
 
       await this.loadFromStorage();
-    } else if (this.r2Service && typeof this.r2Service.loadSettings === "function") {
-      await this.loadLegacyStorageSettings();
     }
-  }
-
-  // Legacy fallback loader (renamed for clarity if desired, but keeping signature safe)
-  async loadR2Settings() {
-      // Fallback legacy load if storage service not used/available
-      if (!this.r2Service?.loadSettings) return;
-      const settings = await this.r2Service.loadSettings();
-      this.cloudflareSettings = settings || {};
-      this.fillR2SettingsForm(this.cloudflareSettings);
-      this.updateStorageStatus(this.hasValidR2Settings(), this.getProviderLabel(PROVIDERS.R2));
-
-      // Legacy mode implies no storage service or not used
-      this.toggleStorageView("form");
-      return settings;
-  }
-
-  async loadS3Settings() {
-      const settings = await loadS3Settings();
-      this.s3Settings = settings || {};
-      this.fillS3SettingsForm(this.s3Settings);
-      this.updateStorageStatus(this.hasValidS3Settings(), this.getProviderLabel(PROVIDERS.GENERIC));
-      return settings;
-  }
-
-  async loadLegacyStorageSettings() {
-      await this.loadR2Settings();
-      await this.loadS3Settings();
-
-      if (this.hasValidS3Settings()) {
-          this.setStorageProvider(PROVIDERS.GENERIC);
-      } else {
-          this.setStorageProvider(PROVIDERS.R2);
-      }
   }
 
   async loadFromStorage() {
       if (!this.storageService) return;
       const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
 
-      this.cloudflareSettings = null;
-      this.s3Settings = null;
-      this.activeConnectionId = null;
-      this.storageConfigured = false;
-
       if (!pubkey) {
-          this.toggleStorageView("form");
+          this.activeCredentials = null;
+          this.activeProvider = null;
+          this.storageConfigured = false;
+          this.toggleStorageView("empty");
           return;
       }
 
       try {
         const connections = await this.storageService.listConnections(pubkey);
-        // Prefer default connection, fallback to R2
+        // Prefer default connection
         const defaultConn = connections.find(c => c.meta?.defaultForUploads);
-        const targetConn =
-          defaultConn ||
-          connections.find(c => c.provider === PROVIDERS.R2 || c.provider === "cloudflare_r2") ||
-          connections.find(c => c.provider === PROVIDERS.GENERIC || c.provider === PROVIDERS.S3);
+        const targetConn = defaultConn || connections[0];
 
         if (targetConn) {
             this.storageConfigured = true;
-            this.toggleStorageView("summary");
+            this.activeProvider = targetConn.provider;
 
-            // Populate Summary
+            // UI Updates
+            this.toggleStorageView("summary");
             const providerName = this.getProviderLabel(targetConn.provider || targetConn.meta?.provider);
             const bucketName = targetConn.meta?.bucket || "Unknown Bucket";
             const urlStyle = this.describeUrlStyle(targetConn.provider, targetConn.meta?.forcePathStyle);
@@ -670,65 +457,41 @@ export class UploadModal {
             if (this.statusText.summaryUrlStyle) this.statusText.summaryUrlStyle.textContent = urlStyle;
             if (this.statusText.summaryCopy) this.statusText.summaryCopy.textContent = this.getSummaryCopy(targetConn.provider);
 
-            this.setStorageProvider(targetConn.provider === PROVIDERS.R2 ? PROVIDERS.R2 : PROVIDERS.GENERIC);
-
             if (this.isStorageUnlocked) {
                 const details = await this.storageService.getConnection(pubkey, targetConn.id);
                 if (details) {
-                    if (targetConn.provider === PROVIDERS.R2) {
-                        // R2 settings struct: accountId, accessKeyId, secretAccessKey, baseDomain
-                        this.cloudflareSettings = {
-                            accountId: details.accountId,
-                            accessKeyId: details.accessKeyId,
-                            secretAccessKey: details.secretAccessKey,
-                            baseDomain: details.meta?.baseDomain || "",
-                            endpoint: details.endpoint,
-                            region: details.region,
-                            bucket: details.bucket,
-                        };
-                        this.fillR2SettingsForm(this.cloudflareSettings);
-                        this.updateStorageStatus(true, providerName);
-                    } else {
-                        this.s3Settings = {
-                            endpoint: details.endpoint || details.meta?.endpoint || "",
-                            region: details.region || details.meta?.region || "",
-                            bucket: details.bucket || details.meta?.bucket || "",
-                            accessKeyId: details.accessKeyId || "",
-                            secretAccessKey: details.secretAccessKey || "",
-                            forcePathStyle: typeof details.forcePathStyle === "boolean"
-                              ? details.forcePathStyle
-                              : Boolean(details.meta?.forcePathStyle),
-                            publicBaseUrl: details.meta?.publicBaseUrl || details.meta?.baseDomain || "",
-                            createBucketIfMissing: Boolean(details.meta?.createBucketIfMissing),
-                        };
-                        this.fillS3SettingsForm(this.s3Settings);
-                        this.updateStorageStatus(true, providerName);
-                    }
-                    this.activeConnectionId = targetConn.id;
+                    this.activeCredentials = details;
+                } else {
+                    this.activeCredentials = null; // Should not happen if unlocked
                 }
             } else {
-                // Locked state, can't get details yet
-                this.updateStorageStatus(false);
+                this.activeCredentials = null; // Locked
             }
         } else {
             // No connections configured
-            this.toggleStorageView("form");
-            this.setStorageProvider(PROVIDERS.R2);
+            this.storageConfigured = false;
+            this.activeCredentials = null;
+            this.activeProvider = null;
+            this.toggleStorageView("empty");
         }
+        this.updateLockUi();
+
       } catch (err) {
           userLogger.error("Failed to load connection", err);
-          this.toggleStorageView("form");
-          this.setStorageProvider(PROVIDERS.R2);
+          this.toggleStorageView("empty");
+          this.activeCredentials = null;
+          this.storageConfigured = false;
+          this.updateLockUi();
       }
   }
 
   toggleStorageView(viewName) {
       if (viewName === "summary") {
           this.storageViews.summary.classList.remove("hidden");
-          this.storageViews.form.classList.add("hidden");
+          this.storageViews.empty.classList.add("hidden");
       } else {
           this.storageViews.summary.classList.add("hidden");
-          this.storageViews.form.classList.remove("hidden");
+          this.storageViews.empty.classList.remove("hidden");
       }
   }
 
@@ -791,312 +554,6 @@ export class UploadModal {
           } else {
               this.toggles.storageUnlock.classList.add("hidden");
           }
-      }
-      if (this.statusText.storage) {
-          if (locked && this.storageConfigured) {
-              this.statusText.storage.classList.add("hidden"); // Summary view has its own status area
-          } else if (locked) {
-              this.statusText.storage.classList.add("hidden");
-              this.statusText.storage.textContent = "";
-          } else {
-              this.statusText.storage.classList.remove("hidden");
-          }
-      }
-  }
-
-  hasValidR2Settings() {
-      const s = this.cloudflareSettings;
-      return Boolean(s?.accountId && s?.accessKeyId && s?.secretAccessKey && s?.baseDomain);
-  }
-
-  hasValidS3Settings() {
-      const s = this.s3Settings || this.collectS3SettingsForm();
-      return Boolean(s?.endpoint && s?.accessKeyId && s?.secretAccessKey && s?.bucket);
-  }
-
-  hasValidActiveStorageSettings() {
-      return this.activeStorageProvider === PROVIDERS.R2 ? this.hasValidR2Settings() : this.hasValidS3Settings();
-  }
-
-  fillR2SettingsForm(s) {
-      if (this.inputs.r2Account) this.inputs.r2Account.value = s.accountId || "";
-      if (this.inputs.r2Key) this.inputs.r2Key.value = s.accessKeyId || "";
-      if (this.inputs.r2Secret) this.inputs.r2Secret.value = s.secretAccessKey || "";
-      if (this.inputs.r2Domain) this.inputs.r2Domain.value = s.baseDomain || "";
-  }
-
-  fillS3SettingsForm(s) {
-      if (this.inputs.s3Endpoint) this.inputs.s3Endpoint.value = s.endpoint || "";
-      if (this.inputs.s3Region) this.inputs.s3Region.value = s.region || "auto";
-      if (this.inputs.s3Bucket) this.inputs.s3Bucket.value = s.bucket || "";
-      if (this.inputs.s3Key) this.inputs.s3Key.value = s.accessKeyId || "";
-      if (this.inputs.s3Secret) this.inputs.s3Secret.value = s.secretAccessKey || "";
-      if (this.inputs.s3PublicBase) this.inputs.s3PublicBase.value = s.publicBaseUrl || "";
-      if (this.toggles.s3ForcePathStyle) this.toggles.s3ForcePathStyle.checked = Boolean(s.forcePathStyle);
-      if (this.toggles.s3CreateBucket) this.toggles.s3CreateBucket.checked = Boolean(s.createBucketIfMissing);
-  }
-
-  collectR2SettingsForm() {
-      return {
-          accountId: this.inputs.r2Account?.value?.trim() || "",
-          accessKeyId: this.inputs.r2Key?.value?.trim() || "",
-          secretAccessKey: this.inputs.r2Secret?.value?.trim() || "",
-          baseDomain: this.inputs.r2Domain?.value?.trim() || "", // Public URL
-      };
-  }
-
-  collectS3SettingsForm() {
-      return {
-          endpoint: this.inputs.s3Endpoint?.value?.trim() || "",
-          region: this.inputs.s3Region?.value?.trim() || "auto",
-          bucket: this.inputs.s3Bucket?.value?.trim() || "",
-          accessKeyId: this.inputs.s3Key?.value?.trim() || "",
-          secretAccessKey: this.inputs.s3Secret?.value?.trim() || "",
-          publicBaseUrl: this.inputs.s3PublicBase?.value?.trim() || "",
-          forcePathStyle: Boolean(this.toggles.s3ForcePathStyle?.checked),
-          createBucketIfMissing: Boolean(this.toggles.s3CreateBucket?.checked),
-      };
-  }
-
-  goToVerificationStep() {
-      if (this.activeStorageProvider !== PROVIDERS.R2) {
-          return;
-      }
-      // Validate Step 1
-      const accountId = this.inputs.r2Account?.value?.trim();
-      const keyId = this.inputs.r2Key?.value?.trim();
-      const secret = this.inputs.r2Secret?.value?.trim();
-
-      if (!accountId || !keyId || !secret) {
-          alert("Please fill in Account ID/Endpoint, Access Key ID, and Secret Access Key.");
-          return;
-      }
-
-      // Transition
-      this.wizard.step1.classList.add("hidden");
-      this.wizard.step2.classList.remove("hidden");
-
-      // Auto-focus URL if empty
-      if (!this.inputs.r2Domain.value) {
-          this.inputs.r2Domain.focus();
-      }
-  }
-
-  goToCredentialsStep() {
-      if (this.activeStorageProvider !== PROVIDERS.R2) {
-          return;
-      }
-      this.wizard.step2.classList.add("hidden");
-      this.wizard.step1.classList.remove("hidden");
-      this.wizard.errorContainer.classList.add("hidden");
-  }
-
-  async handleVerifyAndSaveR2() {
-      const btn = this.toggles.saveSettings;
-      const originalText = btn.textContent;
-
-      // Clear previous error
-      this.wizard.errorContainer.classList.add("hidden");
-
-      const settings = this.collectR2SettingsForm();
-      const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
-      const npub = pubkey ? this.safeEncodeNpub(pubkey) : null;
-
-      if (!settings.baseDomain) {
-           this.wizard.errorText.textContent = "Public URL is required.";
-           this.wizard.errorContainer.classList.remove("hidden");
-           return;
-      }
-
-      // 1. Verify
-      btn.disabled = true;
-      btn.textContent = "Verifying...";
-
-      try {
-          const verification = await this.r2Service.verifyPublicAccess({ settings, npub });
-
-          if (!verification.success) {
-              btn.disabled = false;
-              btn.textContent = originalText;
-
-              this.wizard.errorText.textContent = verification.error || "Verification failed.";
-              this.wizard.errorContainer.classList.remove("hidden");
-
-              // Dynamic Cloudflare Link
-              // https://dash.cloudflare.com/?to=/:account/r2/default/buckets/:bucket/settings
-              if (settings.accountId && npub && !settings.accountId.includes("://")) {
-                  const bucketName = this.inputs.r2BucketName?.value || "";
-                  const cfLink = `https://dash.cloudflare.com/?to=/${settings.accountId}/r2/default/buckets/${bucketName}/settings`;
-                  this.wizard.guideLink.href = cfLink;
-              } else {
-                  this.wizard.guideLink.href = "https://dash.cloudflare.com";
-              }
-              return;
-          }
-
-          // 2. Save on Success
-          btn.textContent = "Saving...";
-
-          if (this.storageService && this.isStorageUnlocked) {
-              const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
-              if (pubkey) {
-                  // Save to secure storage
-                  const connectionId = this.activeConnectionId || `r2-${Date.now()}`;
-
-                  // Heuristic for provider type
-                  let provider = PROVIDERS.GENERIC;
-                  let payload = {
-                      accessKeyId: settings.accessKeyId,
-                      secretAccessKey: settings.secretAccessKey,
-                  };
-
-                  // If account ID doesn't look like a URL, assume R2/S3-account-based
-                  if (settings.accountId && !settings.accountId.includes("://")) {
-                      provider = PROVIDERS.R2;
-                      payload.accountId = settings.accountId;
-                  } else {
-                      payload.endpoint = settings.accountId;
-                  }
-
-                  await this.storageService.saveConnection(pubkey, connectionId, {
-                      provider,
-                      ...payload,
-                  }, {
-                      provider,
-                      label: provider === PROVIDERS.R2 ? "Default R2" : "Default S3",
-                      baseDomain: settings.baseDomain,
-                      defaultForUploads: true,
-                      bucket: this.inputs.r2BucketName?.value || sanitizeBucketName(npub)
-                  });
-                  this.activeConnectionId = connectionId;
-              }
-          } else {
-              // Legacy fallback
-              await this.r2Service.saveSettings(settings);
-          }
-
-          this.cloudflareSettings = settings;
-          this.updateStorageStatus(true, this.getProviderLabel(PROVIDERS.R2));
-
-          btn.disabled = false;
-          btn.textContent = "Saved & Ready!";
-
-          setTimeout(() => {
-              btn.textContent = originalText;
-              // Collapse
-              this.sourceSections.settings.classList.add("hidden");
-              this.toggles.storageSettings.setAttribute("aria-expanded", "false");
-              // Reset wizard to start for next edit
-              this.goToCredentialsStep();
-              // Reload state to potentially switch to summary view
-              this.loadFromStorage();
-          }, 1500);
-      } catch (err) {
-          userLogger.error("Verification crashed:", err);
-          btn.disabled = false;
-          btn.textContent = originalText;
-          this.wizard.errorText.textContent = "Unexpected error during verification.";
-          this.wizard.errorContainer.classList.remove("hidden");
-      }
-  }
-
-  async handleVerifyAndSaveS3() {
-      const btn = this.toggles.saveS3Settings;
-      if (!btn) return;
-      const originalText = btn.textContent;
-
-      const settings = this.collectS3SettingsForm();
-      const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
-
-      btn.disabled = true;
-      btn.textContent = "Verifying...";
-
-      let normalized = null;
-      try {
-          if (!this.s3Service || typeof this.s3Service.verifyConnection !== "function") {
-              throw new Error("S3 service unavailable.");
-          }
-          normalized = await this.s3Service.verifyConnection({
-              settings,
-              createBucketIfMissing: settings.createBucketIfMissing,
-          });
-      } catch (err) {
-          btn.disabled = false;
-          btn.textContent = originalText;
-          const message = err?.message || "Invalid S3 configuration.";
-          this.showError(message);
-          return;
-      }
-
-      try {
-          btn.textContent = "Saving...";
-          if (this.storageService && this.isStorageUnlocked && pubkey) {
-              const connectionId = this.activeConnectionId || `s3-${Date.now()}`;
-              await this.storageService.saveConnection(
-                  pubkey,
-                  connectionId,
-                  {
-                      provider: PROVIDERS.GENERIC,
-                      endpoint: normalized.endpoint,
-                      region: normalized.region,
-                      bucket: normalized.bucket,
-                      accessKeyId: normalized.accessKeyId,
-                      secretAccessKey: normalized.secretAccessKey,
-                      forcePathStyle: normalized.forcePathStyle,
-                  },
-                  {
-                      provider: PROVIDERS.GENERIC,
-                      label: "Default S3",
-                      defaultForUploads: true,
-                      endpoint: normalized.endpoint,
-                      region: normalized.region,
-                      bucket: normalized.bucket,
-                      publicBaseUrl: normalized.publicBaseUrl,
-                      baseDomain: normalized.publicBaseUrl,
-                      forcePathStyle: normalized.forcePathStyle,
-                      createBucketIfMissing: settings.createBucketIfMissing,
-                  }
-              );
-              this.activeConnectionId = connectionId;
-          } else {
-              await saveS3Settings({
-                  ...normalized,
-                  createBucketIfMissing: settings.createBucketIfMissing,
-              });
-          }
-
-          this.s3Settings = {
-              ...normalized,
-              createBucketIfMissing: settings.createBucketIfMissing,
-          };
-
-          this.updateStorageStatus(true, this.getProviderLabel(PROVIDERS.GENERIC));
-
-          btn.disabled = false;
-          btn.textContent = "Saved & Ready!";
-
-          setTimeout(() => {
-              btn.textContent = originalText;
-              this.sourceSections.settings.classList.add("hidden");
-              this.toggles.storageSettings.setAttribute("aria-expanded", "false");
-              if (this.storageService) {
-                  this.loadFromStorage();
-              }
-          }, 1500);
-      } catch (err) {
-          userLogger.error("S3 verification crashed:", err);
-          btn.disabled = false;
-          btn.textContent = originalText;
-          this.showError("Unexpected error during S3 verification.");
-      }
-  }
-
-  updateStorageStatus(isValid, providerLabel) {
-      if (this.statusText.storage) {
-          const baseText = isValid ? "Ready" : "Missing Credentials";
-          const label = providerLabel ? ` (${providerLabel})` : "";
-          this.statusText.storage.textContent = baseText + label;
-          this.statusText.storage.className = isValid ? "text-xs text-accent" : "text-xs text-critical";
       }
   }
 
@@ -1167,7 +624,6 @@ export class UploadModal {
   updateUploadStatus(msg, variant) {
       if (this.statusText.uploadMain) {
           this.statusText.uploadMain.textContent = msg;
-          // Could style based on variant (error/success)
       }
   }
 
@@ -1215,19 +671,23 @@ export class UploadModal {
   }
 
   async handleUploadFlow(metadata) {
-      if (this.activeStorageProvider === PROVIDERS.R2) {
-          return this.handleR2UploadFlow(metadata);
-      }
-      return this.handleS3UploadFlow(metadata);
-  }
-
-  async handleR2UploadFlow(metadata) {
       const file = this.inputs.file?.files?.[0];
       if (!file) throw new Error("Please select a video file to upload.");
 
-      const thumbnailFile = this.inputs.thumbnailFile?.files?.[0];
+      if (!this.storageConfigured) throw new Error("Please configure storage first.");
+      if (!this.activeCredentials) throw new Error("Storage is locked. Please unlock it to upload.");
 
-      if (!this.hasValidR2Settings()) throw new Error("Please configure Cloudflare R2 credentials.");
+      // Check if we have R2 or Generic S3 credentials
+      const isR2 = this.activeProvider === PROVIDERS.R2 || this.activeProvider === "cloudflare_r2";
+
+      return isR2
+        ? this.handleR2UploadFlow(metadata, file)
+        : this.handleS3UploadFlow(metadata, file);
+  }
+
+  async handleR2UploadFlow(metadata, file) {
+      const thumbnailFile = this.inputs.thumbnailFile?.files?.[0];
+      const settings = this.activeCredentials;
 
       const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
       if (!pubkey) throw new Error("Please login to publish.");
@@ -1239,18 +699,19 @@ export class UploadModal {
       let torrentKey = "";
       let torrentPublicUrl = "";
 
-      try {
-          const currentSettings = this.collectR2SettingsForm();
-          if (!currentSettings.baseDomain) {
-              throw new Error("Missing Public URL (Base Domain) in settings.");
-          }
+      // Validate baseDomain
+      const baseDomain = settings.baseDomain || settings.meta?.baseDomain;
+      if (!baseDomain) {
+          throw new Error("Missing Public URL (Base Domain) in settings.");
+      }
 
+      try {
           videoKey = buildR2Key(npub, file);
-          videoPublicUrl = buildPublicUrl(currentSettings.baseDomain, videoKey);
+          videoPublicUrl = buildPublicUrl(baseDomain, videoKey);
 
           const baseKey = videoKey.replace(/\.[^/.]+$/, "");
           torrentKey = (baseKey && baseKey !== videoKey) ? `${baseKey}.torrent` : `${videoKey}.torrent`;
-          torrentPublicUrl = buildPublicUrl(currentSettings.baseDomain, torrentKey);
+          torrentPublicUrl = buildPublicUrl(baseDomain, torrentKey);
       } catch (prepErr) {
           userLogger.warn("Failed to pre-calculate R2 keys:", prepErr);
       }
@@ -1280,10 +741,15 @@ export class UploadModal {
           );
       }
 
-      let explicitCredentials = null;
-      if (this.storageService && this.isStorageUnlocked && this.hasValidR2Settings()) {
-          explicitCredentials = this.collectR2SettingsForm();
-      }
+      // Reconstruct simple settings object expected by r2Service if needed
+      // r2Service expects: { accountId, accessKeyId, secretAccessKey, baseDomain }
+      // Our stored credential object has flat properties for keys.
+      const uploadSettings = {
+          accountId: settings.accountId,
+          accessKeyId: settings.accessKeyId,
+          secretAccessKey: settings.secretAccessKey,
+          baseDomain: baseDomain,
+      };
 
       await this.r2Service.uploadVideo({
           npub,
@@ -1292,8 +758,8 @@ export class UploadModal {
           torrentFile,
           metadata,
           infoHash: hasValidInfoHash ? infoHash : "",
-          settingsInput: explicitCredentials ? null : this.collectR2SettingsForm(),
-          explicitCredentials,
+          settingsInput: null, // No manual input
+          explicitCredentials: uploadSettings,
           publishVideoNote: this.publishVideoNote,
           onReset: () => this.resetForm(),
           forcedVideoKey: videoKey,
@@ -1303,172 +769,102 @@ export class UploadModal {
       });
   }
 
-  async handleS3UploadFlow(metadata) {
-      const file = this.inputs.file?.files?.[0];
-      if (!file) throw new Error("Please select a video file to upload.");
+  async handleS3UploadFlow(metadata, file) {
+      const thumbnailFile = this.inputs.thumbnailFile?.files?.[0];
+      const settings = this.activeCredentials;
 
-      const isManifest = this.toggles.s3Manifest?.checked;
-
-      // Manifest Validation
-      let manifest = null;
-      if (isManifest) {
-          const json = this.inputs.s3ManifestJson?.value?.trim();
-          if (!json) throw new Error("Please paste the presigned manifest JSON.");
-          try {
-              manifest = JSON.parse(json);
-          } catch (e) {
-              throw new Error("Invalid Manifest JSON.");
-          }
-      } else {
-          if (!this.hasValidS3Settings()) throw new Error("Please configure S3 storage credentials.");
-          if (!this.s3Service) throw new Error("S3 upload service is unavailable.");
-      }
+      if (!this.s3Service) throw new Error("S3 upload service is unavailable.");
 
       const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
       if (!pubkey) throw new Error("Please login to publish.");
 
       const npub = this.safeEncodeNpub(pubkey);
 
-      // If NOT using manifest, we proceed with standard flow (keys)
-      if (!isManifest) {
-          const thumbnailFile = this.inputs.thumbnailFile?.files?.[0];
-          const settings = this.collectS3SettingsForm();
+      // Reconstruct settings object for s3Service
+      // s3Service expects: { endpoint, region, bucket, accessKeyId, secretAccessKey, publicBaseUrl, forcePathStyle }
+      const uploadSettings = {
+          endpoint: settings.endpoint || settings.meta?.endpoint,
+          region: settings.region || settings.meta?.region || "auto",
+          bucket: settings.bucket || settings.meta?.bucket,
+          accessKeyId: settings.accessKeyId,
+          secretAccessKey: settings.secretAccessKey,
+          publicBaseUrl: settings.meta?.publicBaseUrl,
+          forcePathStyle: settings.forcePathStyle, // might be boolean in root or meta?
+      };
 
-          let videoKey = "";
-          let videoPublicUrl = "";
-          let torrentKey = "";
-          let torrentPublicUrl = "";
+      // Ensure forcePathStyle is boolean
+      if (typeof uploadSettings.forcePathStyle !== 'boolean') {
+          uploadSettings.forcePathStyle = !!settings.meta?.forcePathStyle;
+      }
 
-          try {
-              videoKey = buildR2Key(npub, file);
-              videoPublicUrl = buildS3ObjectUrl({
-                  publicBaseUrl: settings.publicBaseUrl,
-                  endpoint: settings.endpoint,
-                  bucket: settings.bucket,
-                  key: videoKey,
-                  forcePathStyle: settings.forcePathStyle,
-              });
-              const baseKey = videoKey.replace(/\.[^/.]+$/, "");
-              torrentKey = (baseKey && baseKey !== videoKey) ? `${baseKey}.torrent` : `${videoKey}.torrent`;
-              torrentPublicUrl = buildS3ObjectUrl({
-                  publicBaseUrl: settings.publicBaseUrl,
-                  endpoint: settings.endpoint,
-                  bucket: settings.bucket,
-                  key: torrentKey,
-                  forcePathStyle: settings.forcePathStyle,
-              });
-          } catch (prepErr) {
-              userLogger.warn("Failed to pre-calculate S3 keys:", prepErr);
-          }
+      let videoKey = "";
+      let videoPublicUrl = "";
+      let torrentKey = "";
+      let torrentPublicUrl = "";
 
-          const { infoHash, torrentFile, hasValidInfoHash } = await this.generateTorrentMetadata({
-              file,
-              videoPublicUrl,
+      try {
+          videoKey = buildR2Key(npub, file);
+          videoPublicUrl = buildS3ObjectUrl({
+              publicBaseUrl: uploadSettings.publicBaseUrl,
+              endpoint: uploadSettings.endpoint,
+              bucket: uploadSettings.bucket,
+              key: videoKey,
+              forcePathStyle: uploadSettings.forcePathStyle,
           });
+          const baseKey = videoKey.replace(/\.[^/.]+$/, "");
+          torrentKey = (baseKey && baseKey !== videoKey) ? `${baseKey}.torrent` : `${videoKey}.torrent`;
+          torrentPublicUrl = buildS3ObjectUrl({
+              publicBaseUrl: uploadSettings.publicBaseUrl,
+              endpoint: uploadSettings.endpoint,
+              bucket: uploadSettings.bucket,
+              key: torrentKey,
+              forcePathStyle: uploadSettings.forcePathStyle,
+          });
+      } catch (prepErr) {
+          userLogger.warn("Failed to pre-calculate S3 keys:", prepErr);
+      }
 
-          if (!hasValidInfoHash) {
-              const proceed = confirm(
-                "We couldn't calculate a valid info hash. Publishing will continue with URL-first playback only, and WebTorrent fallback will be unavailable. Continue?"
-              );
-              if (!proceed) {
-                  this.updateUploadStatus(
-                    "Upload canceled. A valid info hash is required for WebTorrent fallback.",
-                    "warning"
-                  );
-                  this.isUploading = false;
-                  this.submitButton.disabled = false;
-                  this.updateProgress(null);
-                  return;
-                  }
+      const { infoHash, torrentFile, hasValidInfoHash } = await this.generateTorrentMetadata({
+          file,
+          videoPublicUrl,
+      });
+
+      if (!hasValidInfoHash) {
+          const proceed = confirm(
+            "We couldn't calculate a valid info hash. Publishing will continue with URL-first playback only, and WebTorrent fallback will be unavailable. Continue?"
+          );
+          if (!proceed) {
               this.updateUploadStatus(
-                "Continuing without WebTorrent fallback (info hash unavailable).",
+                "Upload canceled. A valid info hash is required for WebTorrent fallback.",
                 "warning"
               );
-          }
-
-          await this.s3Service.uploadVideo({
-              npub,
-              file,
-              thumbnailFile,
-              torrentFile,
-              metadata,
-              infoHash: hasValidInfoHash ? infoHash : "",
-              settings,
-              createBucketIfMissing: settings.createBucketIfMissing,
-              publishVideoNote: this.publishVideoNote,
-              onReset: () => this.resetForm(),
-              forcedVideoKey: videoKey,
-              forcedVideoUrl: videoPublicUrl,
-              forcedTorrentKey: torrentKey,
-              forcedTorrentUrl: torrentPublicUrl,
-          });
-      } else {
-          // Manifest Flow
-          this.isUploading = true;
-          this.submitButton.disabled = true;
-          this.updateUploadStatus("Uploading via manifest...", "info");
-          this.updateProgress(0);
-
-          try {
-              const etags = await uploadWithManifest({
-                  file,
-                  manifest,
-                  onProgress: (fraction) => this.updateProgress(fraction),
-              });
-
-              if (!manifest.completeUrl) {
-                  this.updateUploadStatus("Parts uploaded. Action required.", "warning");
-                  const msg = "Upload parts finished. Please complete the upload in your provider console.";
-                  userLogger.info("ETags for manual completion:", JSON.stringify({ Parts: etags }, null, 2));
-                  alert(`${msg}\n\nETags have been logged to the console.`);
-                  this.showSuccess(msg);
-                  return;
-              }
-
-              this.updateUploadStatus("Processing metadata...", "info");
-
-              // We can't upload thumbnail/torrent without keys or manifest for them.
-              // We assume user handles that or we proceed with just the video.
-              // We need to publish the video note.
-
-              // Determine URL from manifest or use what we have?
-              // If manifest has `publicUrl`, use it.
-              let finalUrl = manifest.publicUrl || "";
-
-              // Update metadata
-              metadata.url = finalUrl || metadata.url;
-              if (!metadata.url) {
-                   // If we can't determine URL, we can't really publish a useful video note unless we use magnet only?
-                   // Or we warn the user.
-                   // For now, we'll try to publish what we have.
-                   userLogger.warn("Manifest upload complete but public URL is unknown. Video note might be incomplete.");
-              }
-
-              // Normalize & Publish
-              const { payload, errors } = normalizeVideoNotePayload(metadata);
-              if (errors.length) {
-                  throw new Error(getVideoNoteErrorMessage(errors[0]));
-              }
-
-              if (this.publishVideoNote) {
-                  this.updateUploadStatus("Publishing event...", "info");
-                  await this.publishVideoNote(payload);
-                  this.showSuccess("Video uploaded and published!");
-                  this.close();
-                  this.resetForm();
-              } else {
-                  this.showSuccess("Upload complete (publishing skipped).");
-              }
-
-          } catch (err) {
-              userLogger.error("Manifest upload failed:", err);
-              this.showError(err.message || "Upload failed.");
-          } finally {
               this.isUploading = false;
               this.submitButton.disabled = false;
               this.updateProgress(null);
-          }
+              return;
+              }
+          this.updateUploadStatus(
+            "Continuing without WebTorrent fallback (info hash unavailable).",
+            "warning"
+          );
       }
+
+      await this.s3Service.uploadVideo({
+          npub,
+          file,
+          thumbnailFile,
+          torrentFile,
+          metadata,
+          infoHash: hasValidInfoHash ? infoHash : "",
+          settings: uploadSettings,
+          createBucketIfMissing: !!settings.meta?.createBucketIfMissing, // Use meta flag if present
+          publishVideoNote: this.publishVideoNote,
+          onReset: () => this.resetForm(),
+          forcedVideoKey: videoKey,
+          forcedVideoUrl: videoPublicUrl,
+          forcedTorrentKey: torrentKey,
+          forcedTorrentUrl: torrentPublicUrl,
+      });
   }
 
   async generateTorrentMetadata({ file, videoPublicUrl } = {}) {
@@ -1553,7 +949,6 @@ export class UploadModal {
       this.toggles.nsfw.checked = false;
       this.toggles.kids.checked = false;
       this.updateProgress(null);
-      this.populateBucketName(); // Re-populate if user logged in
 
       // Reset thumbnail UI
       if (this.inputs.thumbnail) {
@@ -1572,16 +967,16 @@ export class UploadModal {
     this.root.classList.remove("hidden");
     this.setGlobalModalState("upload", true);
     this.isVisible = true;
-    this.populateBucketName(); // Ensure bucket name is fresh on open
 
     // Refresh lock state on open
     if (this.storageService) {
         const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
         this.isStorageUnlocked = pubkey ? this.storageService.isUnlocked(pubkey) : false;
         this.updateLockUi();
-        if (this.isStorageUnlocked) {
-            this.loadFromStorage();
-        }
+        // Always attempt load to refresh configuration status (even if locked)
+        this.loadFromStorage().catch(err => {
+            userLogger.warn("Failed to refresh storage state on open:", err);
+        });
     }
 
     this.modalAccessibility?.activate({ triggerElement });

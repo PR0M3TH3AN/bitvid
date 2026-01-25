@@ -115,7 +115,7 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
-                        <span>Storage Configuration</span>
+                        <span>Storage Status</span>
                     </button>
 
                     <!-- Storage Settings Container -->
@@ -128,7 +128,7 @@
                                 <div class="flex items-center gap-2">
                                     <span id="storage-lock-status" class="text-xs text-muted">Locked 🔒</span>
                                     <button type="button" id="btn-storage-unlock" class="text-xs text-accent hover:underline hidden">Unlock</button>
-                                    <button type="button" id="btn-manage-storage" class="text-xs text-muted hover:text-text hover:underline">Manage Storage</button>
+                                    <button type="button" id="btn-manage-storage" class="text-xs text-muted hover:text-text hover:underline">Manage</button>
                                 </div>
                             </div>
                             <div class="grid grid-cols-3 gap-2 text-xs">
@@ -150,190 +150,18 @@
                             </p>
                         </div>
 
-                        <!-- Editable Form (Legacy/Fallback) -->
-                        <div id="storage-form-view" class="space-y-4">
-                            <div class="flex items-center justify-between">
-                                <h4 class="text-sm font-semibold text-text">Storage Credentials</h4>
-                                <span id="storage-status" class="text-xs text-muted hidden">Stored locally</span>
-                            </div>
-                            <div class="mb-2">
-                                <p class="text-xs text-muted">
-                                    Required for direct file uploads.
-                                    <a href="#view=upload-content" id="link-r2-help" class="text-accent hover:underline font-medium ml-1">
-                                        Read the storage setup guide.
-                                    </a>
-                                </p>
-                            </div>
-
-                            <!-- Provider Selector -->
-                            <div class="flex justify-center">
-                                <div
-                                    class="inline-flex items-center rounded-full bg-surface-alt p-1 text-xs shadow-inner"
-                                    role="group"
-                                    aria-label="Storage provider selector"
-                                >
-                                    <button
-                                        type="button"
-                                        id="btn-storage-provider-r2"
-                                        class="rounded-full px-4 py-1 font-medium transition-colors text-text bg-surface shadow-sm"
-                                        aria-pressed="true"
-                                    >
-                                        Cloudflare
-                                    </button>
-                                    <button
-                                        type="button"
-                                        id="btn-storage-provider-s3"
-                                        class="rounded-full px-4 py-1 font-medium transition-colors text-muted hover:text-text"
-                                        aria-pressed="false"
-                                    >
-                                        S3 Compatible
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div id="section-storage-r2" class="space-y-4">
-                                <!-- Target Bucket Display -->
-                                <div class="space-y-1">
-                                    <label for="input-r2-bucket-name" class="text-xs font-medium text-text">Target Bucket Name (Required)</label>
-                                    <div class="flex gap-2">
-                                        <input
-                                            id="input-r2-bucket-name"
-                                            type="text"
-                                            class="input text-xs bg-surface-alt text-muted cursor-text select-all"
-                                            readonly
-                                            placeholder="Log in to see your bucket name"
-                                        />
-                                        <button
-                                            type="button"
-                                            id="btn-copy-bucket"
-                                            class="btn-ghost px-2 text-xs border border-border/30"
-                                            aria-label="Copy bucket name"
-                                        >
-                                            Copy
-                                        </button>
-                                    </div>
-                                    <p class="text-4xs text-muted">Create a bucket with this exact name in Cloudflare R2.</p>
-                                </div>
-
-                                <!-- Step 1: Credentials -->
-                                <div id="step-credentials" class="space-y-3">
-                                    <div class="space-y-1">
-                                        <label for="input-r2-account" class="text-xs font-medium text-text">Account ID / Endpoint</label>
-                                        <input id="input-r2-account" type="text" class="input text-xs" placeholder="xxxxxxxx... or https://..." />
-                                    </div>
-                                    <div class="grid gap-3 md:grid-cols-2">
-                                         <div class="space-y-1">
-                                            <label for="input-r2-key" class="text-xs font-medium text-text">Access Key ID</label>
-                                            <input id="input-r2-key" type="text" class="input text-xs" placeholder="AKIA..." />
-                                        </div>
-                                        <div class="space-y-1">
-                                            <label for="input-r2-secret" class="text-xs font-medium text-text">Secret Access Key</label>
-                                            <input id="input-r2-secret" type="password" class="input text-xs" />
-                                        </div>
-                                    </div>
-                                    <div class="flex justify-end gap-2 pt-2">
-                                        <button type="button" id="btn-next-step" class="btn btn-sm">Next</button>
-                                    </div>
-                                </div>
-
-                                <!-- Step 2: Verification -->
-                                <div id="step-verification" class="hidden space-y-3 pt-2 border-t border-border/30">
-                                    <div class="space-y-1">
-                                        <label for="input-r2-domain" class="text-xs font-medium text-text">Public URL</label>
-                                        <input id="input-r2-domain" type="text" class="input text-xs" placeholder="https://pub-xxx.r2.dev" />
-                                        <p class="text-4xs text-muted leading-tight">
-                                            The public URL where your files will be accessible.
-                                        </p>
-                                    </div>
-
-                                    <!-- Error Container for Verification Failures -->
-                                    <div id="container-verification-error" class="hidden bg-critical/10 border border-critical/30 rounded p-3 text-xs text-critical space-y-2">
-                                        <p id="text-verification-error" class="font-medium">Verification Failed</p>
-                                        <a id="link-cloudflare-guide" href="#" target="_blank" class="block text-center bg-critical/10 hover:bg-critical/20 py-1.5 rounded font-medium transition-colors">
-                                            Check Provider Settings &rarr;
-                                        </a>
-                                    </div>
-
-                                    <div class="flex justify-end gap-2 pt-2">
-                                        <button type="button" id="btn-back-step" class="btn-ghost px-2 text-xs">Back</button>
-                                        <button type="button" id="btn-save-settings" class="btn btn-sm">Verify & Save</button>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div id="section-storage-s3" class="hidden space-y-4">
-                                <p class="text-xs text-muted">
-                                    Configure a generic S3-compatible bucket for direct uploads.
-                                </p>
-                                <p class="text-xs text-status-warning bg-status-warning/10 p-2 rounded">
-                                    Warning: Browser-held keys are only safe for trusted operators.
-                                </p>
-
-                                <div class="flex items-center gap-2">
-                                    <input type="checkbox" id="quickS3ManifestToggle" class="checkbox" />
-                                    <label for="quickS3ManifestToggle" class="text-xs font-medium text-text select-none">
-                                        Use presigned manifest
-                                    </label>
-                                </div>
-
-                                <div id="quickS3CredentialsContainer" class="space-y-4">
-                                    <div class="space-y-1">
-                                        <label for="input-s3-endpoint" class="text-xs font-medium text-text">Endpoint</label>
-                                        <input id="input-s3-endpoint" type="text" class="input text-xs" placeholder="https://host[:port]" />
-                                    </div>
-                                    <div class="grid gap-3 md:grid-cols-2">
-                                        <div class="space-y-1">
-                                            <label for="input-s3-region" class="text-xs font-medium text-text">Region (optional)</label>
-                                            <input id="input-s3-region" type="text" class="input text-xs" placeholder="auto" />
-                                        </div>
-                                        <div class="space-y-1">
-                                            <label for="input-s3-bucket" class="text-xs font-medium text-text">Bucket (explicit override if needed)</label>
-                                            <input id="input-s3-bucket" type="text" class="input text-xs" placeholder="my-bucket" />
-                                        </div>
-                                    </div>
-                                    <div class="grid gap-3 md:grid-cols-2">
-                                        <div class="space-y-1">
-                                            <label for="input-s3-key" class="text-xs font-medium text-text">Access Key ID</label>
-                                            <input id="input-s3-key" type="text" class="input text-xs" placeholder="AKIA..." />
-                                        </div>
-                                        <div class="space-y-1">
-                                            <label for="input-s3-secret" class="text-xs font-medium text-text">Secret Access Key</label>
-                                            <input id="input-s3-secret" type="password" class="input text-xs" />
-                                        </div>
-                                    </div>
-                                    <div class="space-y-1">
-                                        <label for="input-s3-public-base" class="text-xs font-medium text-text">Public Base URL Override</label>
-                                        <input id="input-s3-public-base" type="text" class="input text-xs" placeholder="https://cdn.example.com/bucket" />
-                                    </div>
-                                    <div class="flex flex-wrap gap-4 text-xs text-muted">
-                                        <label class="flex items-center gap-2 cursor-pointer select-none">
-                                            <input type="checkbox" id="check-s3-path-style" class="checkbox" />
-                                            <span>Force path-style URLs</span>
-                                        </label>
-                                        <label class="flex items-center gap-2 cursor-pointer select-none">
-                                            <input type="checkbox" id="check-s3-create-bucket" class="checkbox" />
-                                            <span>Create bucket if missing</span>
-                                        </label>
-                                    </div>
-                                </div>
-
-                                <div id="quickS3ManifestContainer" class="hidden space-y-2">
-                                    <label for="quickS3ManifestJson" class="text-xs font-medium text-text">Manifest JSON</label>
-                                    <p class="text-4xs text-muted leading-tight">
-                                        The manifest must be produced externally. This app does not create or sign presigned URLs.
-                                    </p>
-                                    <textarea
-                                        id="quickS3ManifestJson"
-                                        rows="6"
-                                        class="textarea text-xs font-mono"
-                                        placeholder='{"bucket": "...", "key": "...", "uploadId": "...", "parts": [{"partNumber": 1, "url": "..."}]}'
-                                    ></textarea>
-                                </div>
-
-                                <div class="flex justify-end gap-2 pt-2">
-                                    <button type="button" id="btn-save-s3-settings" class="btn btn-sm">Verify & Save</button>
-                                </div>
-                            </div>
+                        <!-- Empty State / Not Configured -->
+                        <div id="storage-empty-view" class="space-y-4 text-center py-4">
+                            <p class="text-sm text-muted">
+                                Storage is not configured.
+                            </p>
+                            <button
+                                type="button"
+                                id="btn-configure-storage"
+                                class="btn btn-sm btn-secondary"
+                            >
+                                Configure Storage
+                            </button>
                         </div>
                     </div>
                 </div>
