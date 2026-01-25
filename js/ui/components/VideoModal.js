@@ -390,6 +390,81 @@ export class VideoModal {
     ) {
       this.modalVideo = videoElement;
       this.bindVideoEvents();
+
+      try {
+        if (this.modalVideo) {
+          // give the element the fill class so CSS can control layout
+          this.modalVideo.classList.add("video-modal__media--fill");
+
+          // ensure the stage/wrapper allow stretching (safety)
+          const videoWrap =
+            this.playerModal?.querySelector(".video-modal__video") ||
+            this.document.querySelector(".video-modal__video");
+
+          if (videoWrap) {
+            videoWrap.style.display = "flex";
+            videoWrap.style.alignItems = "stretch";
+            videoWrap.style.justifyContent = "center";
+            videoWrap.style.padding = "0";
+          }
+
+          // choose object-fit dynamically after metadata loads so we can inspect intrinsic size:
+          const decideObjectFit = () => {
+            try {
+              const vw =
+                this.modalVideo.videoWidth ||
+                this.modalVideo.naturalWidth ||
+                this.modalVideo.clientWidth;
+              const vh =
+                this.modalVideo.videoHeight ||
+                this.modalVideo.naturalHeight ||
+                this.modalVideo.clientHeight;
+              const wrap = this.modalVideo.parentElement;
+              const cw = wrap ? wrap.clientWidth : this.modalVideo.clientWidth;
+              const ch = wrap ? wrap.clientHeight : this.modalVideo.clientHeight;
+
+              // If we can't compute, default to cover
+              if (!vw || !vh || !cw || !ch) {
+                this.modalVideo.style.objectFit = "cover";
+                return;
+              }
+
+              const videoRatio = vw / vh;
+              const containerRatio = cw / ch;
+              const diff = Math.abs(containerRatio - videoRatio);
+
+              // if aspect ratios are close, prefer contain to avoid cropping small edges,
+              // otherwise use cover to avoid large letterbox bars
+              const THRESHOLD = 0.12; // tweakable
+              this.modalVideo.style.objectFit =
+                diff > THRESHOLD ? "cover" : "contain";
+            } catch (e) {
+              this.modalVideo.style.objectFit = "cover";
+            }
+          };
+
+          if (this.modalVideo.readyState >= 1) {
+            // metadata already available
+            decideObjectFit();
+          } else {
+            const onMeta = () => {
+              decideObjectFit();
+              this.modalVideo.removeEventListener("loadedmetadata", onMeta);
+            };
+            this.modalVideo.addEventListener("loadedmetadata", onMeta);
+          }
+
+          // always ensure background transparent
+          this.modalVideo.style.background = "transparent";
+          this.modalVideo.style.objectPosition = "center center";
+        }
+      } catch (err) {
+        // swallow, but log for diagnostics
+        this.logger?.log?.(
+          "[VideoModal] setVideoElement style enforcement failed",
+          err
+        );
+      }
     } else {
       this.modalVideo = null;
     }
