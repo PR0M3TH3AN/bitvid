@@ -3801,7 +3801,6 @@
     position: fixed;
     inset: 0;
     z-index: var(--z-modal-player);
-    display: none;
     flex-direction: column;
     align-items: stretch;
     justify-content: flex-start;
@@ -3820,10 +3819,6 @@
     overflow-y: auto;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
-  }
-
-  #playerModal.flex {
-    display: block;
   }
 
   #modalVideo {
