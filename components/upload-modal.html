@@ -131,7 +131,7 @@
                                     <button type="button" id="btn-manage-storage" class="text-xs text-muted hover:text-text hover:underline">Manage Storage</button>
                                 </div>
                             </div>
-                            <div class="grid grid-cols-2 gap-2 text-xs">
+                            <div class="grid grid-cols-3 gap-2 text-xs">
                                 <div>
                                     <span class="block text-muted">Provider</span>
                                     <span id="summary-provider" class="font-medium text-text">--</span>
@@ -140,9 +140,13 @@
                                     <span class="block text-muted">Bucket</span>
                                     <span id="summary-bucket" class="font-medium text-text">--</span>
                                 </div>
+                                <div>
+                                    <span class="block text-muted">URL Style</span>
+                                    <span id="summary-url-style" class="font-medium text-text">--</span>
+                                </div>
                             </div>
-                            <p class="text-xs text-muted">
-                                Your videos will be uploaded to this bucket.
+                            <p id="summary-copy" class="text-xs text-muted">
+                                Your videos will be uploaded using this storage provider.
                             </p>
                         </div>
 
@@ -156,76 +160,151 @@
                                 <p class="text-xs text-muted">
                                     Required for direct file uploads.
                                     <a href="#view=upload-content" id="link-r2-help" class="text-accent hover:underline font-medium ml-1">
-                                        Read the setup guide.
+                                        Read the storage setup guide.
                                     </a>
                                 </p>
                             </div>
 
-                             <!-- Target Bucket Display -->
-                            <div class="space-y-1">
-                                <label for="input-r2-bucket-name" class="text-xs font-medium text-text">Target Bucket Name (Required)</label>
-                                <div class="flex gap-2">
-                                    <input
-                                        id="input-r2-bucket-name"
-                                        type="text"
-                                        class="input text-xs bg-surface-alt text-muted cursor-text select-all"
-                                        readonly
-                                        placeholder="Log in to see your bucket name"
-                                    />
+                            <!-- Provider Selector -->
+                            <div class="flex justify-center">
+                                <div
+                                    class="inline-flex items-center rounded-full bg-surface-alt p-1 text-xs shadow-inner"
+                                    role="group"
+                                    aria-label="Storage provider selector"
+                                >
                                     <button
                                         type="button"
-                                        id="btn-copy-bucket"
-                                        class="btn-ghost px-2 text-xs border border-border/30"
-                                        aria-label="Copy bucket name"
+                                        id="btn-storage-provider-r2"
+                                        class="rounded-full px-4 py-1 font-medium transition-colors text-text bg-surface shadow-sm"
+                                        aria-pressed="true"
                                     >
-                                        Copy
+                                        Cloudflare
+                                    </button>
+                                    <button
+                                        type="button"
+                                        id="btn-storage-provider-s3"
+                                        class="rounded-full px-4 py-1 font-medium transition-colors text-muted hover:text-text"
+                                        aria-pressed="false"
+                                    >
+                                        S3 Compatible
                                     </button>
                                 </div>
-                                <p class="text-4xs text-muted">Create a bucket with this exact name in your storage provider.</p>
                             </div>
 
-                            <!-- Step 1: Credentials -->
-                            <div id="step-credentials" class="space-y-3">
+                            <div id="section-storage-r2" class="space-y-4">
+                                <!-- Target Bucket Display -->
                                 <div class="space-y-1">
-                                    <label for="input-r2-account" class="text-xs font-medium text-text">Account ID / Endpoint</label>
-                                    <input id="input-r2-account" type="text" class="input text-xs" placeholder="xxxxxxxx... or https://..." />
+                                    <label for="input-r2-bucket-name" class="text-xs font-medium text-text">Target Bucket Name (Required)</label>
+                                    <div class="flex gap-2">
+                                        <input
+                                            id="input-r2-bucket-name"
+                                            type="text"
+                                            class="input text-xs bg-surface-alt text-muted cursor-text select-all"
+                                            readonly
+                                            placeholder="Log in to see your bucket name"
+                                        />
+                                        <button
+                                            type="button"
+                                            id="btn-copy-bucket"
+                                            class="btn-ghost px-2 text-xs border border-border/30"
+                                            aria-label="Copy bucket name"
+                                        >
+                                            Copy
+                                        </button>
+                                    </div>
+                                    <p class="text-4xs text-muted">Create a bucket with this exact name in Cloudflare R2.</p>
+                                </div>
+
+                                <!-- Step 1: Credentials -->
+                                <div id="step-credentials" class="space-y-3">
+                                    <div class="space-y-1">
+                                        <label for="input-r2-account" class="text-xs font-medium text-text">Account ID / Endpoint</label>
+                                        <input id="input-r2-account" type="text" class="input text-xs" placeholder="xxxxxxxx... or https://..." />
+                                    </div>
+                                    <div class="grid gap-3 md:grid-cols-2">
+                                         <div class="space-y-1">
+                                            <label for="input-r2-key" class="text-xs font-medium text-text">Access Key ID</label>
+                                            <input id="input-r2-key" type="text" class="input text-xs" placeholder="AKIA..." />
+                                        </div>
+                                        <div class="space-y-1">
+                                            <label for="input-r2-secret" class="text-xs font-medium text-text">Secret Access Key</label>
+                                            <input id="input-r2-secret" type="password" class="input text-xs" />
+                                        </div>
+                                    </div>
+                                    <div class="flex justify-end gap-2 pt-2">
+                                        <button type="button" id="btn-next-step" class="btn btn-sm">Next</button>
+                                    </div>
+                                </div>
+
+                                <!-- Step 2: Verification -->
+                                <div id="step-verification" class="hidden space-y-3 pt-2 border-t border-border/30">
+                                    <div class="space-y-1">
+                                        <label for="input-r2-domain" class="text-xs font-medium text-text">Public URL</label>
+                                        <input id="input-r2-domain" type="text" class="input text-xs" placeholder="https://pub-xxx.r2.dev" />
+                                        <p class="text-4xs text-muted leading-tight">
+                                            The public URL where your files will be accessible.
+                                        </p>
+                                    </div>
+
+                                    <!-- Error Container for Verification Failures -->
+                                    <div id="container-verification-error" class="hidden bg-critical/10 border border-critical/30 rounded p-3 text-xs text-critical space-y-2">
+                                        <p id="text-verification-error" class="font-medium">Verification Failed</p>
+                                        <a id="link-cloudflare-guide" href="#" target="_blank" class="block text-center bg-critical/10 hover:bg-critical/20 py-1.5 rounded font-medium transition-colors">
+                                            Check Provider Settings &rarr;
+                                        </a>
+                                    </div>
+
+                                    <div class="flex justify-end gap-2 pt-2">
+                                        <button type="button" id="btn-back-step" class="btn-ghost px-2 text-xs">Back</button>
+                                        <button type="button" id="btn-save-settings" class="btn btn-sm">Verify & Save</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div id="section-storage-s3" class="hidden space-y-4">
+                                <p class="text-xs text-muted">
+                                    Configure a generic S3-compatible bucket for direct uploads.
+                                </p>
+                                <div class="space-y-1">
+                                    <label for="input-s3-endpoint" class="text-xs font-medium text-text">Endpoint</label>
+                                    <input id="input-s3-endpoint" type="text" class="input text-xs" placeholder="https://host[:port]" />
                                 </div>
                                 <div class="grid gap-3 md:grid-cols-2">
-                                     <div class="space-y-1">
-                                        <label for="input-r2-key" class="text-xs font-medium text-text">Access Key ID</label>
-                                        <input id="input-r2-key" type="text" class="input text-xs" placeholder="AKIA..." />
+                                    <div class="space-y-1">
+                                        <label for="input-s3-region" class="text-xs font-medium text-text">Region (optional)</label>
+                                        <input id="input-s3-region" type="text" class="input text-xs" placeholder="auto" />
                                     </div>
                                     <div class="space-y-1">
-                                        <label for="input-r2-secret" class="text-xs font-medium text-text">Secret Access Key</label>
-                                        <input id="input-r2-secret" type="password" class="input text-xs" />
+                                        <label for="input-s3-bucket" class="text-xs font-medium text-text">Bucket (explicit override if needed)</label>
+                                        <input id="input-s3-bucket" type="text" class="input text-xs" placeholder="my-bucket" />
                                     </div>
                                 </div>
-                                <div class="flex justify-end gap-2 pt-2">
-                                    <button type="button" id="btn-next-step" class="btn btn-sm">Next</button>
+                                <div class="grid gap-3 md:grid-cols-2">
+                                    <div class="space-y-1">
+                                        <label for="input-s3-key" class="text-xs font-medium text-text">Access Key ID</label>
+                                        <input id="input-s3-key" type="text" class="input text-xs" placeholder="AKIA..." />
+                                    </div>
+                                    <div class="space-y-1">
+                                        <label for="input-s3-secret" class="text-xs font-medium text-text">Secret Access Key</label>
+                                        <input id="input-s3-secret" type="password" class="input text-xs" />
+                                    </div>
                                 </div>
-                            </div>
-
-                            <!-- Step 2: Verification -->
-                            <div id="step-verification" class="hidden space-y-3 pt-2 border-t border-border/30">
                                 <div class="space-y-1">
-                                    <label for="input-r2-domain" class="text-xs font-medium text-text">Public URL</label>
-                                    <input id="input-r2-domain" type="text" class="input text-xs" placeholder="https://pub-xxx.r2.dev" />
-                                    <p class="text-4xs text-muted leading-tight">
-                                        The public URL where your files will be accessible.
-                                    </p>
+                                    <label for="input-s3-public-base" class="text-xs font-medium text-text">Public Base URL Override</label>
+                                    <input id="input-s3-public-base" type="text" class="input text-xs" placeholder="https://cdn.example.com/bucket" />
                                 </div>
-
-                                <!-- Error Container for Verification Failures -->
-                                <div id="container-verification-error" class="hidden bg-critical/10 border border-critical/30 rounded p-3 text-xs text-critical space-y-2">
-                                    <p id="text-verification-error" class="font-medium">Verification Failed</p>
-                                    <a id="link-cloudflare-guide" href="#" target="_blank" class="block text-center bg-critical/10 hover:bg-critical/20 py-1.5 rounded font-medium transition-colors">
-                                        Check Provider Settings &rarr;
-                                    </a>
+                                <div class="flex flex-wrap gap-4 text-xs text-muted">
+                                    <label class="flex items-center gap-2 cursor-pointer select-none">
+                                        <input type="checkbox" id="check-s3-path-style" class="checkbox" />
+                                        <span>Force path-style URLs</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 cursor-pointer select-none">
+                                        <input type="checkbox" id="check-s3-create-bucket" class="checkbox" />
+                                        <span>Create bucket if missing</span>
+                                    </label>
                                 </div>
-
                                 <div class="flex justify-end gap-2 pt-2">
-                                    <button type="button" id="btn-back-step" class="btn-ghost px-2 text-xs">Back</button>
-                                    <button type="button" id="btn-save-settings" class="btn btn-sm">Verify & Save</button>
+                                    <button type="button" id="btn-save-s3-settings" class="btn btn-sm">Verify & Save</button>
                                 </div>
                             </div>
                         </div>

@@ -70,6 +70,7 @@ export default class ModalManager {
       services: {
         authService: app.authService,
         r2Service: app.r2Service,
+        s3Service: app.s3Service,
         storageService: this.services.storageService,
       },
       utilities: {
