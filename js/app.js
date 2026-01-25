@@ -279,6 +279,7 @@ class Application {
       (next, previous) => {
         if (next !== previous) {
           this.renderSavedProfiles();
+          this.updateShareNostrAuthState({ reason: "pubkey-change" });
           if (
             this.reactionController &&
             this.currentVideoPointer &&
