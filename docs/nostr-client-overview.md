@@ -97,6 +97,46 @@ Used for things like Mute Lists (Kind 10000) or Pin Lists.
 - **Fallback**: If the delta sync fails, performs a full fetch to ensure consistency.
 - **Concurrency**: Batches requests to 4 relays at a time to prevent browser network saturation.
 
+### Video Deletion Flow (`deleteAllVersions`)
+
+Nostr's immutability makes "deleting" a video series complex, as multiple edit versions might exist across relays.
+`deleteAllVersions` handles this via a multi-stage process:
+
+1.  **Hydration**: Calls `hydrateVideoHistory` to find *every* event related to the video (scanning by `videoRootId` and `d` tag).
+2.  **Soft Delete (Revert)**: For each unique version identifier (Root + D-Tag combination), it publishes a new event with `deleted: true` and cleared content. This ensures clients resolving the "latest" version see the deletion immediately.
+3.  **Hard Delete (NIP-09)**: Publishes a Kind 5 Deletion Request referencing the Event IDs of *all* versions found. Compliant relays will physically remove the data.
+4.  **Tombstoning**: Updates the local `tombstones` map with the deletion timestamp to preventing caching mechanisms from resurrecting old versions.
+
+```mermaid
+sequenceDiagram
+    participant UI as VideoEditModal
+    participant Client as NostrClient
+    participant Relay
+
+    UI->>Client: deleteAllVersions(rootId)
+    activate Client
+
+    Note right of Client: 1. Find all versions
+    Client->>Client: hydrateVideoHistory(video)
+    Client->>Relay: Query (Kind 30078 + #d)
+    Relay-->>Client: Events [v1, v2, v3]
+
+    Note right of Client: 2. Soft Delete (Revert)
+    loop For each unique branch
+        Client->>Relay: Publish Kind 30078 (deleted=true)
+    end
+
+    Note right of Client: 3. Hard Delete (NIP-09)
+    Client->>Relay: Publish Kind 5 (referencing v1, v2, v3 ids)
+
+    Note right of Client: 4. Local Cleanup
+    Client->>Client: recordTombstone(rootId)
+    Client->>Client: saveLocalData()
+
+    Client-->>UI: Success
+    deactivate Client
+```
+
 ## When to change
 
 - **Update `EVENTS_CACHE_VERSION`**: If you change the internal `Video` object structure (e.g., rename fields in `convertEventToVideo`), bump the DB version in `EventsCacheStore` to force a wipe/rebuild on client devices.

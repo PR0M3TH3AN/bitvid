@@ -1554,6 +1554,25 @@ export class NostrClient {
     return signer;
   }
 
+  /**
+   * Waits for a remote signer (Nostr Connect) to acknowledge a connection request.
+   *
+   * **Protocol (NIP-46):**
+   * - Subscribes to Kind 24133 (NIP-46 RPC) events addressed to the client.
+   * - Decrypts incoming messages using the ephemeral `clientPrivateKey`.
+   * - Looks for "connect" acknowledgement or "auth_url" challenges.
+   *
+   * @param {object} params
+   * @param {string} params.clientPrivateKey - Ephemeral private key for the handshake.
+   * @param {string} params.clientPublicKey - Ephemeral public key.
+   * @param {string[]} params.relays - Relay list for the handshake.
+   * @param {string} [params.secret] - Optional secret to validate the "ack" response.
+   * @param {function} [params.onAuthUrl] - Callback for out-of-band auth challenges.
+   * @param {function} [params.onStatus] - Callback for status updates.
+   * @param {number} [params.timeoutMs] - Max wait time.
+   * @param {string} [params.expectedRemotePubkey] - If known, filters events to this sender.
+   * @returns {Promise<{remotePubkey: string, eventPubkey: string, response: object, algorithm: string}>}
+   */
   async waitForRemoteSignerHandshake({
     clientPrivateKey,
     clientPublicKey,
@@ -2203,6 +2222,19 @@ export class NostrClient {
     }
   }
 
+  /**
+   * Reconnects to a previously persisted NIP-46 remote signer session.
+   *
+   * **Usage:**
+   * Called during `init()` to restore the session without user interaction.
+   * It reads credentials from localStorage (`bitvid:nip46:session`), validates them,
+   * and re-establishes the RPC subscription.
+   *
+   * @param {object} [options]
+   * @param {boolean} [options.silent=false] - Suppress error logs if restore fails.
+   * @param {boolean} [options.forgetOnError=false] - Auto-delete session if invalid.
+   * @returns {Promise<{pubkey: string, signer: object}>}
+   */
   async useStoredRemoteSigner(options = {}) {
     const normalizedOptions =
       options && typeof options === "object" ? options : {};
@@ -2355,6 +2387,12 @@ export class NostrClient {
     return attempt;
   }
 
+  /**
+   * Terminates the NIP-46 remote signer connection.
+   *
+   * @param {object} [options]
+   * @param {boolean} [options.keepStored=true] - If false, wipes the session from localStorage.
+   */
   async disconnectRemoteSigner({ keepStored = true } = {}) {
     this.pendingRemoteSignerRestore = null;
     if (this.nip46Client) {
@@ -2385,6 +2423,16 @@ export class NostrClient {
     });
   }
 
+  /**
+   * Records a deletion timestamp for a video identifier (Tombstoning).
+   *
+   * **Purpose:**
+   * Enforces "Eventual Consistency". If we receive an old version of a video
+   * *after* we've seen it was deleted, this tombstone ensures we ignore the zombie event.
+   *
+   * @param {string} activeKey - The unique key (root ID or pubkey:dTag).
+   * @param {number} createdAt - The timestamp of the deletion event.
+   */
   recordTombstone(activeKey, createdAt) {
     const key = typeof activeKey === "string" ? activeKey.trim() : "";
     if (!key) {
@@ -2460,6 +2508,13 @@ export class NostrClient {
     return createdAtValue > 0 && createdAtValue <= normalizedTombstone;
   }
 
+  /**
+   * Checks if a video event is superseded by a known tombstone.
+   * If so, marks the video object as `deleted = true`.
+   *
+   * @param {object} video - The video object to check.
+   * @returns {boolean} True if the video was marked deleted by a tombstone.
+   */
   applyTombstoneGuard(video) {
     if (!video || typeof video !== "object") {
       return false;
@@ -2714,6 +2769,13 @@ export class NostrClient {
     return earliest;
   }
 
+  /**
+   * Attempts to load a "Session Actor" (Ephemeral Key) from storage.
+   * Session actors are used for non-critical signing (e.g. view telemetry)
+   * to avoid nagging the user for NIP-07 signatures constantly.
+   *
+   * @returns {object|null} The session actor object if found.
+   */
   restoreSessionActorFromStorage() {
     const entry = readStoredSessionActorEntry();
     if (!entry) {
@@ -3152,6 +3214,18 @@ export class NostrClient {
     return { pubkey: normalizedPubkey };
   }
 
+  /**
+   * Returns a valid public key for ephemeral signing ("Session Actor").
+   *
+   * **Priority:**
+   * 1. **Active Signer**: If the user is logged in and the signer is non-promiscuous (local nsec), use it.
+   * 2. **Existing Session**: If we already have a generated ephemeral key, use it.
+   * 3. **Restored Session**: Try to load one from storage.
+   * 4. **Mint New**: Generate a new random keypair and save it.
+   *
+   * @param {boolean} [forceRenew=false] - Force generation of a new keypair.
+   * @returns {Promise<string|null>} The pubkey of the session actor.
+   */
   async ensureSessionActor(forceRenew = false) {
     const normalizedLogged =
       typeof this.pubkey === "string" && this.pubkey
@@ -3867,7 +3941,20 @@ export class NostrClient {
   }
 
   /**
-   * Attempt login with a Nostr extension
+   * Authenticates the user via a NIP-07 browser extension (e.g., Alby, nos2x).
+   *
+   * **Process:**
+   * 1. Checks for `window.nostr` presence.
+   * 2. Requests permissions (sign_event, nip04, etc.) via `ensureExtensionPermissions`.
+   * 3. Retrieves the public key.
+   * 4. Validates access control (whitelist/blacklist) via `accessControl`.
+   * 5. Sets the active signer to a `Nip07Adapter`.
+   *
+   * @param {object} [options]
+   * @param {boolean} [options.allowAccountSelection=false] - Whether to prompt the extension to select an account (NIP-07 extension).
+   * @param {string} [options.expectPubkey] - Enforce that the login matches a specific pubkey.
+   * @returns {Promise<string>} The authenticated public key (hex).
+   * @throws {Error} If extension is missing, permissions denied, or account blocked.
    */
   async login(options = {}) {
     try {
@@ -3988,6 +4075,16 @@ export class NostrClient {
     }
   }
 
+  /**
+   * Logs out the current user and clears all session state.
+   *
+   * **Cleanup:**
+   * - Clears `this.pubkey` and notifies the global signer registry.
+   * - Wipes session actor (ephemeral keys).
+   * - Disconnects NIP-46 remote signer (if active).
+   * - Clears Watch History cache.
+   * - Resets permissions cache.
+   */
   logout() {
     const previousPubkey = this.pubkey;
     this.pubkey = null;
