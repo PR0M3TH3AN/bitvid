@@ -9224,6 +9224,9 @@ export class ProfileModalController {
     // We can store it in meta if we want to show it in UI without decrypting.
     if (provider === "cloudflare_r2") {
         meta.accountId = endpointOrAccount;
+        // For R2, the "Prefix" input serves as the Public Base URL (e.g. https://pub-xxx.r2.dev)
+        meta.publicBaseUrl = prefix;
+        meta.baseDomain = prefix;
     } else {
         meta.publicBaseUrl = publicBaseUrl;
         meta.baseDomain = publicBaseUrl;
