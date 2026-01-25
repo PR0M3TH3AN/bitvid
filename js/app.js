@@ -8713,11 +8713,21 @@ class Application {
     // this.setShareButtonState(true); // Moved to after showModalWithPoster
 
     const nevent = window.NostrTools.nip19.neventEncode({ id: eventId });
-    const pushUrl =
+    let pushUrl =
       this.buildShareUrlFromNevent(nevent) ||
       `${this.getShareUrlBase() || window.location.pathname}?v=${encodeURIComponent(
         nevent
       )}`;
+
+    try {
+      const targetUrl = new URL(pushUrl, window.location.origin);
+      if (targetUrl.origin !== window.location.origin) {
+        pushUrl = `${window.location.pathname}${targetUrl.search}${targetUrl.hash}`;
+      }
+    } catch (err) {
+      devLogger.warn("[Application] Failed to normalize pushState URL:", err);
+    }
+
     window.history.pushState({}, "", pushUrl);
 
     this.zapController?.resetState();
