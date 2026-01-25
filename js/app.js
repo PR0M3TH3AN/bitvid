@@ -6187,50 +6187,70 @@ class Application {
    * Subscribe to videos (older + new) and render them as they come in.
    */
   async loadVideos(forceFetch = false) {
-    devLogger.log("Starting loadVideos... (forceFetch =", forceFetch, ")");
-    this.setFeedTelemetryContext("recent");
-
-    const container = this.mountVideoListView();
-    const hasCachedVideos =
-      this.nostrService &&
-      Array.isArray(this.nostrService.getFilteredActiveVideos()) &&
-      this.nostrService.getFilteredActiveVideos().length > 0;
-
-    if (!hasCachedVideos) {
-      if (this.videoListView && container) {
-        this.videoListView.showLoading("Fetching recent videos…");
-      } else if (container) {
-        container.innerHTML = getSidebarLoadingMarkup("Fetching recent videos…");
-      }
+    if (this.loadVideosPromise && !forceFetch) {
+      devLogger.log("Reusing in-flight loadVideos request.");
+      return this.loadVideosPromise;
     }
 
-    let initialRefreshPromise = null;
+    const now = Date.now();
+    if (this.lastLoadVideosTime && (now - this.lastLoadVideosTime < 2000) && !forceFetch) {
+      devLogger.log("Skipping redundant loadVideos request (cooldown).");
+      return Promise.resolve();
+    }
+    this.lastLoadVideosTime = now;
 
-    const videos = await this.nostrService.loadVideos({
-      forceFetch,
-      blacklistedEventIds: this.blacklistedEventIds,
-      isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
-      onVideos: (payload, detail = {}) => {
-        const promise = this.refreshRecentFeed({
-          reason: detail?.reason,
-          fallbackVideos: payload,
-        });
-        if (!initialRefreshPromise) {
-          initialRefreshPromise = promise;
+    this.loadVideosPromise = (async () => {
+      devLogger.log("Starting loadVideos... (forceFetch =", forceFetch, ")");
+      this.setFeedTelemetryContext("recent");
+
+      const container = this.mountVideoListView();
+      const hasCachedVideos =
+        this.nostrService &&
+        Array.isArray(this.nostrService.getFilteredActiveVideos()) &&
+        this.nostrService.getFilteredActiveVideos().length > 0;
+
+      if (!hasCachedVideos) {
+        if (this.videoListView && container) {
+          this.videoListView.showLoading("Fetching recent videos…");
+        } else if (container) {
+          container.innerHTML = getSidebarLoadingMarkup("Fetching recent videos…");
         }
-      },
-    });
+      }
 
-    if (initialRefreshPromise) {
-      await initialRefreshPromise;
-    } else if (!Array.isArray(videos) || videos.length === 0) {
-      await this.refreshRecentFeed({ reason: "initial", fallbackVideos: [] });
-    }
+      let initialRefreshPromise = null;
 
-    this.videoSubscription = this.nostrService.getVideoSubscription() || null;
-    this.videosMap = this.nostrService.getVideosMap();
-    if (this.videoListView) {
-      this.videoListView.state.videosMap = this.videosMap;
+      const videos = await this.nostrService.loadVideos({
+        forceFetch,
+        blacklistedEventIds: this.blacklistedEventIds,
+        isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
+        onVideos: (payload, detail = {}) => {
+          const promise = this.refreshRecentFeed({
+            reason: detail?.reason,
+            fallbackVideos: payload,
+          });
+          if (!initialRefreshPromise) {
+            initialRefreshPromise = promise;
+          }
+        },
+      });
+
+      if (initialRefreshPromise) {
+        await initialRefreshPromise;
+      } else if (!Array.isArray(videos) || videos.length === 0) {
+        await this.refreshRecentFeed({ reason: "initial", fallbackVideos: [] });
+      }
+
+      this.videoSubscription = this.nostrService.getVideoSubscription() || null;
+      this.videosMap = this.nostrService.getVideosMap();
+      if (this.videoListView) {
+        this.videoListView.state.videosMap = this.videosMap;
+      }
+    })();
+
+    try {
+      await this.loadVideosPromise;
+    } finally {
+      this.loadVideosPromise = null;
     }
   }
 
