@@ -8974,6 +8974,8 @@ export class ProfileModalController {
     const storageService = this.services.storageService;
     const pubkey = this.normalizeHexPubkey(this.getActivePubkey());
 
+    this.handleClearStorage();
+
     if (!pubkey) {
       // Not logged in
       if (this.storageUnlockSection) this.storageUnlockSection.classList.add("hidden");
@@ -9300,6 +9302,8 @@ export class ProfileModalController {
     this.storageBucketInput.value = "";
     this.storagePrefixInput.value = "";
     this.storageDefaultInput.checked = false;
+    this.storageProviderInput.value = "cloudflare_r2";
+    this.updateStorageFormVisibility();
     this.setStorageFormStatus("", "info");
   }
 
