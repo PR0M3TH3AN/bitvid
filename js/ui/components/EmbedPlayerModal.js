@@ -15,8 +15,8 @@ export class EmbedPlayerModal {
 
     this.toneClasses = {
       default: "text-white/90",
-      error: "text-red-400",
-      success: "text-green-400",
+      error: "text-status-danger",
+      success: "text-status-success",
     };
   }
 
@@ -197,10 +197,10 @@ export class EmbedPlayerModal {
         if (label) label.textContent = this.formatCount(dislikeCount);
 
         if (userReaction === '-') {
-            this.dislikeCountEl.classList.add("text-red-400");
+            this.dislikeCountEl.classList.add("text-status-danger");
             this.dislikeCountEl.classList.remove("text-white/80");
         } else {
-            this.dislikeCountEl.classList.remove("text-red-400");
+            this.dislikeCountEl.classList.remove("text-status-danger");
             this.dislikeCountEl.classList.add("text-white/80");
         }
     }
