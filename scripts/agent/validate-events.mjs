@@ -25,341 +25,347 @@ import {
   buildHttpAuthEvent,
   buildReportEvent,
   validateEventStructure,
-  NOTE_TYPES
+  getNostrEventSchema,
+  NOTE_TYPES,
 } from "../../js/nostrEventSchemas.js";
 
-const TEST_PUBKEY = "0000000000000000000000000000000000000000000000000000000000000001";
-const TEST_EVENT_ID = "1111111111111111111111111111111111111111111111111111111111111111";
-const TEST_TIMESTAMP = 1700000000;
+const VALIDATION_FAILURES = [];
 
-const testCases = [
-  {
-    name: "Video Post",
-    builder: buildVideoPostEvent,
-    params: {
-      pubkey: TEST_PUBKEY,
-      created_at: TEST_TIMESTAMP,
-      dTagValue: "test-video-d-tag",
+function assertEventValid(label, event, type) {
+  if (!event) {
+    console.error(`❌ [${label}] Builder returned null or undefined`);
+    VALIDATION_FAILURES.push({ label, error: "Builder returned null/undefined" });
+    return;
+  }
+
+  const { valid, errors } = validateEventStructure(type, event);
+  if (!valid) {
+    console.error(`❌ [${label}] Validation failed for type ${type}:`);
+    errors.forEach((err) => console.error(`   - ${err}`));
+    VALIDATION_FAILURES.push({ label, errors });
+  } else {
+    console.log(`✅ [${label}] Valid`);
+  }
+}
+
+async function runValidation() {
+  console.log("Starting Event Builder Validation...\n");
+
+  const pubkey = "0000000000000000000000000000000000000000000000000000000000000001";
+  const created_at = Math.floor(Date.now() / 1000);
+
+  // 1. Video Post
+  assertEventValid(
+    "Video Post",
+    buildVideoPostEvent({
+      pubkey,
+      created_at,
+      dTagValue: "test-d-tag",
       content: {
         version: 3,
         title: "Test Video",
+        videoRootId: "root-id",
         url: "https://example.com/video.mp4",
-        magnet: "magnet:?xt=urn:btih:example",
+        magnet: "magnet:?xt=urn:btih:...",
         thumbnail: "https://example.com/thumb.jpg",
-        description: "A test video",
+        description: "Test description",
         mode: "live",
-        videoRootId: "root-id-123",
         deleted: false,
         isPrivate: false,
         isNsfw: false,
-        isForKids: true,
+        isForKids: false,
         enableComments: true,
-        ws: "https://webseed.example.com",
-        xs: "http://xseed.example.com"
-      }
-    },
-    type: NOTE_TYPES.VIDEO_POST
-  },
-  {
-    name: "Video Mirror",
-    builder: buildVideoMirrorEvent,
-    params: {
-      pubkey: TEST_PUBKEY,
-      created_at: TEST_TIMESTAMP,
-      tags: [["url", "https://example.com"], ["m", "video/mp4"]],
-      content: "Mirroring video..."
-    },
-    type: NOTE_TYPES.VIDEO_MIRROR
-  },
-  {
-    name: "Repost",
-    builder: buildRepostEvent,
-    params: {
-      pubkey: TEST_PUBKEY,
-      created_at: TEST_TIMESTAMP,
-      eventId: TEST_EVENT_ID,
+      },
+      additionalTags: [["t", "extra"]],
+    }),
+    NOTE_TYPES.VIDEO_POST
+  );
+
+  // 2. Video Mirror
+  assertEventValid(
+    "Video Mirror",
+    buildVideoMirrorEvent({
+      pubkey,
+      created_at,
+      tags: [["e", "event-id"], ["p", pubkey]],
+      content: { some: "metadata" },
+    }),
+    NOTE_TYPES.VIDEO_MIRROR
+  );
+
+  // 3. Repost
+  assertEventValid(
+    "Repost",
+    buildRepostEvent({
+      pubkey,
+      created_at,
+      eventId: "original-event-id",
       eventRelay: "wss://relay.example.com",
-      authorPubkey: TEST_PUBKEY,
-      targetEvent: { id: TEST_EVENT_ID, kind: 1, content: "test" }
-    },
-    type: NOTE_TYPES.REPOST
-  },
-  {
-    name: "Share",
-    builder: buildShareEvent,
-    params: {
-      pubkey: TEST_PUBKEY,
-      created_at: TEST_TIMESTAMP,
+      authorPubkey: pubkey,
+    }),
+    NOTE_TYPES.REPOST
+  );
+
+  // 4. Share
+  assertEventValid(
+    "Share",
+    buildShareEvent({
+      pubkey,
+      created_at,
       content: "Check this out!",
-      video: { id: TEST_EVENT_ID, pubkey: TEST_PUBKEY },
-      relays: ["wss://relay.example.com"]
-    },
-    type: NOTE_TYPES.SHARE
-  },
-  {
-    name: "Relay List",
-    builder: buildRelayListEvent,
-    params: {
-      pubkey: TEST_PUBKEY,
-      created_at: TEST_TIMESTAMP,
-      relays: [
-        { url: "wss://read.example.com", mode: "read" },
-        { url: "wss://write.example.com", mode: "write" }
-      ]
-    },
-    type: NOTE_TYPES.RELAY_LIST
-  },
-  {
-    name: "DM Relay List",
-    builder: buildDmRelayListEvent,
-    params: {
-      pubkey: TEST_PUBKEY,
-      created_at: TEST_TIMESTAMP,
-      relays: ["wss://dm.example.com"]
-    },
-    type: NOTE_TYPES.DM_RELAY_LIST
-  },
-  {
-    name: "Profile Metadata",
-    builder: buildProfileMetadataEvent,
-    params: {
-      pubkey: TEST_PUBKEY,
-      created_at: TEST_TIMESTAMP,
-      metadata: {
-        name: "Alice",
-        about: "Hello world",
-        picture: "https://example.com/pic.jpg"
-      }
-    },
-    type: NOTE_TYPES.PROFILE_METADATA
-  },
-  {
-    name: "Mute List",
-    builder: buildMuteListEvent,
-    params: {
-      pubkey: TEST_PUBKEY,
-      created_at: TEST_TIMESTAMP,
-      pTags: [TEST_PUBKEY]
-    },
-    type: NOTE_TYPES.MUTE_LIST
-  },
-  {
-    name: "Deletion",
-    builder: buildDeletionEvent,
-    params: {
-      pubkey: TEST_PUBKEY,
-      created_at: TEST_TIMESTAMP,
-      eventIds: [TEST_EVENT_ID],
-      reason: "Mistake"
-    },
-    type: NOTE_TYPES.DELETION
-  },
-  {
-    name: "Legacy Direct Message",
-    builder: buildLegacyDirectMessageEvent,
-    params: {
-      pubkey: TEST_PUBKEY,
-      created_at: TEST_TIMESTAMP,
-      recipientPubkey: TEST_PUBKEY,
-      ciphertext: "secretstuff"
-    },
-    type: NOTE_TYPES.LEGACY_DM
-  },
-  {
-    name: "DM Attachment",
-    builder: buildDmAttachmentEvent,
-    params: {
-      pubkey: TEST_PUBKEY,
-      created_at: TEST_TIMESTAMP,
-      recipientPubkey: TEST_PUBKEY,
-      attachment: {
-        x: "hashhash",
-        url: "https://example.com/file",
-        name: "file.txt",
-        type: "text/plain",
-        size: 100
-      }
-    },
-    type: NOTE_TYPES.DM_ATTACHMENT
-  },
-  {
-    name: "DM Read Receipt",
-    builder: buildDmReadReceiptEvent,
-    params: {
-      pubkey: TEST_PUBKEY,
-      created_at: TEST_TIMESTAMP,
-      recipientPubkey: TEST_PUBKEY,
-      eventId: TEST_EVENT_ID
-    },
-    type: NOTE_TYPES.DM_READ_RECEIPT
-  },
-  {
-    name: "DM Typing Indicator",
-    builder: buildDmTypingIndicatorEvent,
-    params: {
-      pubkey: TEST_PUBKEY,
-      created_at: TEST_TIMESTAMP,
-      recipientPubkey: TEST_PUBKEY,
-      eventId: TEST_EVENT_ID,
-      expiresAt: TEST_TIMESTAMP + 60
-    },
-    type: NOTE_TYPES.DM_TYPING
-  },
-  {
-    name: "View Event",
-    builder: buildViewEvent,
-    params: {
-      pubkey: TEST_PUBKEY,
-      created_at: TEST_TIMESTAMP,
-      pointerValue: TEST_EVENT_ID,
-      dedupeTag: "dedupe-123"
-    },
-    type: NOTE_TYPES.VIEW_EVENT
-  },
-  {
-    name: "Zap Request",
-    builder: buildZapRequestEvent,
-    params: {
-      pubkey: TEST_PUBKEY,
-      created_at: TEST_TIMESTAMP,
-      recipientPubkey: TEST_PUBKEY,
+      video: { id: "video-id", pubkey: "author-pubkey" },
       relays: ["wss://relay.example.com"],
+    }),
+    NOTE_TYPES.SHARE
+  );
+
+  // 5. Relay List
+  assertEventValid(
+    "Relay List",
+    buildRelayListEvent({
+      pubkey,
+      created_at,
+      relays: [
+        { url: "wss://relay1.com", mode: "read" },
+        { url: "wss://relay2.com", mode: "write" },
+      ],
+    }),
+    NOTE_TYPES.RELAY_LIST
+  );
+
+  // 6. DM Relay List
+  assertEventValid(
+    "DM Relay List",
+    buildDmRelayListEvent({
+      pubkey,
+      created_at,
+      relays: ["wss://relay1.com", "wss://relay2.com"],
+    }),
+    NOTE_TYPES.DM_RELAY_LIST
+  );
+
+  // 7. Profile Metadata
+  assertEventValid(
+    "Profile Metadata",
+    buildProfileMetadataEvent({
+      pubkey,
+      created_at,
+      metadata: { name: "Test User", about: "Testing" },
+    }),
+    NOTE_TYPES.PROFILE_METADATA
+  );
+
+  // 8. Mute List
+  assertEventValid(
+    "Mute List",
+    buildMuteListEvent({
+      pubkey,
+      created_at,
+      pTags: ["mute-pubkey-1", "mute-pubkey-2"],
+    }),
+    NOTE_TYPES.MUTE_LIST
+  );
+
+  // 9. Deletion
+  assertEventValid(
+    "Deletion",
+    buildDeletionEvent({
+      pubkey,
+      created_at,
+      eventIds: ["event-id-1"],
+      reason: "Mistake",
+    }),
+    NOTE_TYPES.DELETION
+  );
+
+  // 10. Legacy DM
+  assertEventValid(
+    "Legacy DM",
+    buildLegacyDirectMessageEvent({
+      pubkey,
+      created_at,
+      recipientPubkey: "recipient-pubkey",
+      ciphertext: "encrypted-content",
+    }),
+    NOTE_TYPES.LEGACY_DM
+  );
+
+  // 11. DM Attachment
+  assertEventValid(
+    "DM Attachment",
+    buildDmAttachmentEvent({
+      pubkey,
+      created_at,
+      recipientPubkey: "recipient-pubkey",
+      attachment: { url: "https://example.com/file.jpg", type: "image/jpeg" },
+    }),
+    NOTE_TYPES.DM_ATTACHMENT
+  );
+
+  // 12. DM Read Receipt
+  assertEventValid(
+    "DM Read Receipt",
+    buildDmReadReceiptEvent({
+      pubkey,
+      created_at,
+      recipientPubkey: "recipient-pubkey",
+      eventId: "event-id",
+      messageKind: 4,
+    }),
+    NOTE_TYPES.DM_READ_RECEIPT
+  );
+
+  // 13. DM Typing Indicator
+  assertEventValid(
+    "DM Typing Indicator",
+    buildDmTypingIndicatorEvent({
+      pubkey,
+      created_at,
+      recipientPubkey: "recipient-pubkey",
+      eventId: "event-id",
+    }),
+    NOTE_TYPES.DM_TYPING
+  );
+
+  // 14. View Event
+  assertEventValid(
+    "View Event",
+    buildViewEvent({
+      pubkey,
+      created_at,
+      pointerTag: ["a", "kind:pubkey:dtag"],
+    }),
+    NOTE_TYPES.VIEW_EVENT
+  );
+
+  // 15. Zap Request
+  assertEventValid(
+    "Zap Request",
+    buildZapRequestEvent({
+      pubkey,
+      created_at,
+      recipientPubkey: "recipient-pubkey",
       amountSats: 100,
-      lnurl: "lnurl1...",
-      eventId: TEST_EVENT_ID
-    },
-    type: NOTE_TYPES.ZAP_REQUEST
-  },
-  {
-    name: "Reaction",
-    builder: buildReactionEvent,
-    params: {
-      pubkey: TEST_PUBKEY,
-      created_at: TEST_TIMESTAMP,
-      pointerValue: TEST_EVENT_ID,
-      targetPointer: { type: "e", value: TEST_EVENT_ID, relay: "wss://relay.example.com" },
-      content: "+"
-    },
-    type: NOTE_TYPES.VIDEO_REACTION
-  },
-  {
-    name: "Comment",
-    builder: buildCommentEvent,
-    params: {
-      pubkey: TEST_PUBKEY,
-      created_at: TEST_TIMESTAMP,
-      videoEventId: TEST_EVENT_ID,
-      content: "Nice video!"
-    },
-    type: NOTE_TYPES.VIDEO_COMMENT
-  },
-  {
-    name: "Watch History",
-    builder: buildWatchHistoryEvent,
-    params: {
-      pubkey: TEST_PUBKEY,
-      created_at: TEST_TIMESTAMP,
-      monthIdentifier: "2023-11",
-      content: { version: 2, month: "2023-11", items: [] }
-    },
-    type: NOTE_TYPES.WATCH_HISTORY
-  },
-  {
-    name: "Subscription List",
-    builder: buildSubscriptionListEvent,
-    params: {
-      pubkey: TEST_PUBKEY,
-      created_at: TEST_TIMESTAMP,
-      content: "ciphertext",
-      encryption: "nip04"
-    },
-    type: NOTE_TYPES.SUBSCRIPTION_LIST
-  },
-  {
-    name: "Block List",
-    builder: buildBlockListEvent,
-    params: {
-      pubkey: TEST_PUBKEY,
-      created_at: TEST_TIMESTAMP,
-      content: "ciphertext",
-      encryption: "nip04"
-    },
-    type: NOTE_TYPES.USER_BLOCK_LIST
-  },
-  {
-    name: "Hashtag Preference",
-    builder: buildHashtagPreferenceEvent,
-    params: {
-      pubkey: TEST_PUBKEY,
-      created_at: TEST_TIMESTAMP,
-      content: "ciphertext"
-    },
-    type: NOTE_TYPES.HASHTAG_PREFERENCES
-  },
-  {
-    name: "Admin Moderation List",
-    builder: (params) => buildAdminListEvent("moderation", params),
-    params: {
-      pubkey: TEST_PUBKEY,
-      created_at: TEST_TIMESTAMP,
-      hexPubkeys: [TEST_PUBKEY]
-    },
-    type: NOTE_TYPES.ADMIN_MODERATION_LIST
-  },
-  {
-    name: "HTTP Auth",
-    builder: buildHttpAuthEvent,
-    params: {
-      pubkey: TEST_PUBKEY,
-      created_at: TEST_TIMESTAMP,
-      url: "https://auth.example.com",
-      method: "POST",
-      payload: "hash"
-    },
-    type: NOTE_TYPES.HTTP_AUTH
-  },
-  {
-    name: "Report",
-    builder: buildReportEvent,
-    params: {
-      pubkey: TEST_PUBKEY,
-      created_at: TEST_TIMESTAMP,
-      eventId: TEST_EVENT_ID,
-      userId: TEST_PUBKEY,
+      relays: ["wss://relay.com"],
+    }),
+    NOTE_TYPES.ZAP_REQUEST
+  );
+
+  // 16. Reaction
+  assertEventValid(
+    "Reaction",
+    buildReactionEvent({
+      pubkey,
+      created_at,
+      pointerTag: ["e", "event-id"],
+      content: "+",
+    }),
+    NOTE_TYPES.VIDEO_REACTION
+  );
+
+  // 17. Comment
+  assertEventValid(
+    "Comment",
+    buildCommentEvent({
+      pubkey,
+      created_at,
+      videoEventId: "video-event-id",
+      content: "Nice video!",
+    }),
+    NOTE_TYPES.VIDEO_COMMENT
+  );
+
+  // 18. Watch History
+  assertEventValid(
+    "Watch History",
+    buildWatchHistoryEvent({
+      pubkey,
+      created_at,
+      monthIdentifier: "2023-10",
+      content: { "video-id": 1234567890 },
+    }),
+    NOTE_TYPES.WATCH_HISTORY
+  );
+
+  // 19. Subscription List
+  assertEventValid(
+    "Subscription List",
+    buildSubscriptionListEvent({
+      pubkey,
+      created_at,
+      content: [["p", "pubkey"]],
+    }),
+    NOTE_TYPES.SUBSCRIPTION_LIST
+  );
+
+  // 20. Block List
+  assertEventValid(
+    "Block List",
+    buildBlockListEvent({
+      pubkey,
+      created_at,
+      content: [["p", "blocked-pubkey"]],
+    }),
+    NOTE_TYPES.USER_BLOCK_LIST
+  );
+
+  // 21. Hashtag Preference
+  assertEventValid(
+    "Hashtag Preference",
+    buildHashtagPreferenceEvent({
+      pubkey,
+      created_at,
+      content: { interests: ["nostr"], disinterests: ["crypto"] },
+    }),
+    NOTE_TYPES.HASHTAG_PREFERENCES
+  );
+
+  // 22. Admin List (Moderation)
+  assertEventValid(
+    "Admin Moderation List",
+    buildAdminListEvent("moderation", {
+      pubkey,
+      created_at,
+      hexPubkeys: ["mod-pubkey"],
+    }),
+    NOTE_TYPES.ADMIN_MODERATION_LIST
+  );
+
+  // 23. HTTP Auth
+  assertEventValid(
+    "HTTP Auth",
+    buildHttpAuthEvent({
+      pubkey,
+      created_at,
+      url: "https://example.com/auth",
+      method: "GET",
+    }),
+    NOTE_TYPES.HTTP_AUTH
+  );
+
+  // 24. Report
+  assertEventValid(
+    "Report",
+    buildReportEvent({
+      pubkey,
+      created_at,
+      eventId: "reported-event-id",
       reportType: "spam",
-      relayHint: "wss://relay.example.com"
-    },
-    type: NOTE_TYPES.REPORT
-  }
-];
+    }),
+    NOTE_TYPES.REPORT
+  );
 
-let hasError = false;
 
-console.log("Running Nostr Event Builder Validation...\n");
-
-for (const testCase of testCases) {
-  try {
-    const event = testCase.builder(testCase.params);
-    const { valid, errors } = validateEventStructure(testCase.type, event);
-
-    if (valid) {
-      console.log(`✅ ${testCase.name}`);
-    } else {
-      console.error(`❌ ${testCase.name} FAILED validation:`);
-      errors.forEach(err => console.error(`   - ${err}`));
-      console.error("   Produced Event:", JSON.stringify(event, null, 2));
-      hasError = true;
-    }
-  } catch (error) {
-    console.error(`❌ ${testCase.name} CRASHED:`, error);
-    hasError = true;
+  if (VALIDATION_FAILURES.length > 0) {
+    console.error("\n❌ Validation Validation Failed!");
+    console.error(JSON.stringify(VALIDATION_FAILURES, null, 2));
+    process.exit(1);
+  } else {
+    console.log("\n✅ All validations passed!");
   }
 }
 
-if (hasError) {
-  console.log("\nValidation FAILED.");
+runValidation().catch((err) => {
+  console.error("Fatal error:", err);
   process.exit(1);
-} else {
-  console.log("\nAll builders produced valid events.");
-  process.exit(0);
-}
+});

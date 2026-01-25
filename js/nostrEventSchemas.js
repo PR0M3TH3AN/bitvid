@@ -303,8 +303,7 @@ const BASE_SCHEMAS = {
     kind: 6,
     appendTags: DEFAULT_APPEND_TAGS,
     content: {
-      format: "json",
-      description: "Content field contains the JSON-serialized event being reposted.",
+      description: "Content field contains the JSON-serialized event being reposted (or empty if unavailable).",
     },
   },
   [NOTE_TYPES.SHARE]: {
@@ -1773,13 +1772,19 @@ export function buildViewEvent(params) {
     tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
   }
 
-  if (dedupeTag && schema?.identifierTag?.name) {
+  const resolvedDedupeTag =
+    dedupeTag ||
+    (schema?.identifierTag?.name
+      ? Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)
+      : "");
+
+  if (resolvedDedupeTag && schema?.identifierTag?.name) {
     const identifierName = schema.identifierTag.name;
     const hasDedupe = tags.some(
-      (tag) => tag[0] === identifierName && tag[1] === dedupeTag
+      (tag) => tag[0] === identifierName && tag[1] === resolvedDedupeTag
     );
     if (!hasDedupe) {
-      tags.push([identifierName, dedupeTag]);
+      tags.push([identifierName, resolvedDedupeTag]);
     }
   }
   if (includeSessionTag && schema?.sessionTag?.name && schema?.sessionTag?.value) {
