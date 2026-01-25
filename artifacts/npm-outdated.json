@@ -1,11 +1,4 @@
 {
-  "@playwright/test": {
-    "current": "1.57.0",
-    "wanted": "1.58.0",
-    "latest": "1.58.0",
-    "dependent": "app",
-    "location": "/app/node_modules/@playwright/test"
-  },
   "cross-env": {
     "current": "7.0.3",
     "wanted": "7.0.3",
@@ -41,13 +34,6 @@
     "dependent": "app",
     "location": "/app/node_modules/pixelmatch"
   },
-  "playwright": {
-    "current": "1.57.0",
-    "wanted": "1.58.0",
-    "latest": "1.58.0",
-    "dependent": "app",
-    "location": "/app/node_modules/playwright"
-  },
   "prettier-plugin-tailwindcss": {
     "current": "0.6.14",
     "wanted": "0.6.14",
@@ -61,13 +47,6 @@
     "latest": "17.0.0",
     "dependent": "app",
     "location": "/app/node_modules/stylelint"
-  },
-  "stylelint-config-standard": {
-    "current": "36.0.1",
-    "wanted": "36.0.1",
-    "latest": "40.0.0",
-    "dependent": "app",
-    "location": "/app/node_modules/stylelint-config-standard"
   },
   "tailwindcss": {
     "current": "3.4.19",
