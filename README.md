@@ -437,33 +437,13 @@ placeholder at “—” and development builds log a warning—so mixed deploym
 
 ### How to Contribute
 
-1. **Fork and Clone**:
-   ```bash
-   git clone https://github.com/PR0M3TH3AN/bitvid.git
-   cd bitvid
-   ```
-2. **Create a Branch**:
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
-3. **Install Dependencies**:
-   ```bash
-   npm ci
-   ```
-4. **Make Changes**:
-   - Ensure your code follows best practices and is well-documented.
-5. **Test**:
-   - Run unit tests: `npm run test:unit` (or a shard like `npm run test:unit:shard1`)
-   - Validate the site functionality locally before submitting.
-6. **Submit a Pull Request**:
-   - Explain your changes and reference any related issues.
+Please see [`CONTRIBUTING.md`](./CONTRIBUTING.md) for detailed setup instructions, code guidelines, and agent PR conventions.
 
-### Contribution Guidelines
-
-- Follow the [GPL-3.0-or-later License](LICENSE).
-- Use clear, concise commit messages.
-- Respect the existing coding style and architecture.
-- Run the manual QA script (see below) and note results in PR descriptions for changes that affect upload or playback.
+1. **Fork and Clone** the repository.
+2. **Create a Branch** for your feature or fix.
+3. **Install Dependencies** with `npm ci`.
+4. **Make Changes** and ensure tests pass.
+5. **Submit a Pull Request** with a clear description.
 
 ---
 

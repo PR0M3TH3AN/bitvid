@@ -45,10 +45,11 @@ Automated agents contributing to this repository should follow these rules:
 
 1. Fork the repository and create a new branch from `main`.
 2. Make your changes, adding tests if applicable.
-3. Run `npm run test:unit` and `npm run lint` to ensure quality.
+3. Run `npm run format`, `npm run test:unit`, and `npm run lint` to ensure quality.
 4. (Optional) Run `npm run test:visual` if you made UI changes.
-5. Push your branch and open a Pull Request against the `main` branch.
-5. Provide a clear description of the problem and solution.
+5. (Optional) Run domain-specific tests if relevant (e.g., `npm run test:dm:unit` for Direct Messages).
+6. Push your branch and open a Pull Request against the `main` branch.
+7. Provide a clear description of the problem and solution.
 
 ## CI Behavior and Operations
 
@@ -110,6 +111,12 @@ To set up the project locally:
    ```bash
    npm run test:e2e
    npm run test:visual
+   ```
+
+   For Direct Message features, run:
+   ```bash
+   npm run test:dm:unit
+   npm run test:dm:integration
    ```
 
 4. **Format & Lint**:
