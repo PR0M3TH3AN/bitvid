@@ -123,6 +123,10 @@ export class UploadModal {
     // Automation
     this.summaryLocked = true;
     this.isUploading = false; // Global lock
+
+    // Upload Session IDs (to guard against zombie callbacks)
+    this.videoUploadId = 0;
+    this.thumbnailUploadId = 0;
   }
 
   // --- Core Lifecycle ---
@@ -472,6 +476,9 @@ export class UploadModal {
           return;
       }
 
+      // Start new session
+      const currentUploadId = ++this.videoUploadId;
+
       // Reset Video State
       this.videoUploadState = {
           status: 'uploading',
@@ -508,6 +515,8 @@ export class UploadModal {
 
           const { settings, bucketEntry } = await service.prepareUpload(npub, { credentials: this.activeCredentials });
 
+          if (this.videoUploadId !== currentUploadId) return;
+
           // 2. Determine Keys
           const videoKey = buildR2Key(npub, file);
           const baseDomain = bucketEntry.publicBaseUrl;
@@ -539,7 +548,9 @@ export class UploadModal {
               forcePathStyle: settings.forcePathStyle,
               createBucketIfMissing: true,
               onProgress: (fraction) => {
-                  this.updateVideoProgress(fraction);
+                  if (this.videoUploadId === currentUploadId) {
+                      this.updateVideoProgress(fraction);
+                  }
               }
           });
 
@@ -551,6 +562,8 @@ export class UploadModal {
           const torrentPromise = this.generateTorrentMetadata({ file, videoPublicUrl });
 
           const [uploadResult, torrentResult] = await Promise.all([uploadPromise, torrentPromise]);
+
+          if (this.videoUploadId !== currentUploadId) return;
 
           // Video Complete
           this.videoUploadState.status = 'complete';
@@ -585,6 +598,8 @@ export class UploadModal {
                   createBucketIfMissing: true,
               });
 
+              if (this.videoUploadId !== currentUploadId) return;
+
               this.torrentState.status = 'complete';
               this.torrentState.infoHash = torrentResult.infoHash;
               this.torrentState.url = torrentPublicUrl;
@@ -610,6 +625,8 @@ export class UploadModal {
           }
 
       } catch (err) {
+          if (this.videoUploadId !== currentUploadId) return;
+
           userLogger.error("Video upload sequence failed:", err);
           this.videoUploadState.status = 'error';
           this.updateVideoProgress(null, "Upload failed.");
@@ -627,6 +644,8 @@ export class UploadModal {
           // But if they just unlocked, we're good.
           return;
       }
+
+      const currentUploadId = ++this.thumbnailUploadId;
 
       this.thumbnailUploadState = {
           status: 'uploading',
@@ -647,6 +666,8 @@ export class UploadModal {
               : this.s3Service;
 
           const { settings, bucketEntry } = await service.prepareUpload(npub, { credentials: this.activeCredentials });
+
+          if (this.thumbnailUploadId !== currentUploadId) return;
 
           // Derive Key (randomish or based on file)
           // We don't have the video key here easily if video isn't selected yet.
@@ -673,8 +694,14 @@ export class UploadModal {
               secretAccessKey: settings.secretAccessKey,
               forcePathStyle: settings.forcePathStyle,
               createBucketIfMissing: true,
-              onProgress: (fraction) => this.updateThumbnailProgress(fraction)
+              onProgress: (fraction) => {
+                  if (this.thumbnailUploadId === currentUploadId) {
+                      this.updateThumbnailProgress(fraction);
+                  }
+              }
           });
+
+          if (this.thumbnailUploadId !== currentUploadId) return;
 
           this.thumbnailUploadState.status = 'complete';
           this.thumbnailUploadState.url = publicUrl;
@@ -684,10 +711,14 @@ export class UploadModal {
 
           // Hide progress after a delay
           setTimeout(() => {
-              this.sourceSections.thumbnailProgress.classList.add("hidden");
+              if (this.thumbnailUploadId === currentUploadId) {
+                  this.sourceSections.thumbnailProgress.classList.add("hidden");
+              }
           }, 2000);
 
       } catch (err) {
+          if (this.thumbnailUploadId !== currentUploadId) return;
+
           userLogger.error("Thumbnail upload failed:", err);
           this.thumbnailUploadState.status = 'error';
           this.updateThumbnailProgress(null, "Failed.");
@@ -1050,6 +1081,66 @@ export class UploadModal {
       }
   }
 
+  resetUploads() {
+    // Invalidate active uploads
+    this.videoUploadId++;
+    this.thumbnailUploadId++;
+
+    // Reset State
+    this.videoUploadState = {
+      status: 'idle',
+      progress: 0,
+      url: '',
+      key: '',
+      file: null,
+    };
+    this.thumbnailUploadState = {
+      status: 'idle',
+      progress: 0,
+      url: '',
+      key: '',
+      file: null,
+    };
+    this.torrentState = {
+      status: 'idle',
+      infoHash: '',
+      magnet: '',
+      url: '', // xs (torrent file url)
+      file: null,
+    };
+
+    // Reset UI
+    if (this.sourceSections.progress) {
+        this.sourceSections.progress.classList.add("hidden");
+    }
+    if (this.sourceSections.thumbnailProgress) {
+        this.sourceSections.thumbnailProgress.classList.add("hidden");
+    }
+    if (this.sourceSections.results) {
+        this.sourceSections.results.classList.add("hidden");
+    }
+
+    // Clear Result Inputs
+    if (this.results.videoUrl) this.results.videoUrl.value = "";
+    if (this.results.magnet) this.results.magnet.value = "";
+    if (this.results.torrentUrl) this.results.torrentUrl.value = "";
+
+    // Reset Inputs
+    if (this.inputs.file) {
+        this.inputs.file.value = "";
+    }
+    if (this.inputs.thumbnailFile) {
+        this.inputs.thumbnailFile.value = "";
+    }
+    // Re-enable thumbnail input if it was disabled by an upload
+    if (this.inputs.thumbnail) {
+        this.inputs.thumbnail.disabled = false;
+        if (this.inputs.thumbnail.placeholder && this.inputs.thumbnail.placeholder.startsWith("Selected:")) {
+             this.inputs.thumbnail.placeholder = "https://example.com/thumbnail.jpg";
+        }
+    }
+  }
+
   resetForm() {
       this.form.reset();
       this.nip71FormManager.resetSection("main");
@@ -1059,23 +1150,7 @@ export class UploadModal {
       this.toggles.nsfw.checked = false;
       this.toggles.kids.checked = false;
 
-      // Reset State
-      this.videoUploadState = { status: 'idle', progress: 0, url: '', key: '', file: null };
-      this.thumbnailUploadState = { status: 'idle', progress: 0, url: '', key: '', file: null };
-      this.torrentState = { status: 'idle', infoHash: '', magnet: '', url: '', file: null };
-
-      this.sourceSections.progress.classList.add("hidden");
-      this.sourceSections.thumbnailProgress.classList.add("hidden");
-      this.sourceSections.results.classList.add("hidden");
-
-      // Reset thumbnail UI
-      if (this.inputs.thumbnail) {
-          this.inputs.thumbnail.disabled = false;
-          this.inputs.thumbnail.placeholder = "https://example.com/thumbnail.jpg";
-      }
-      if (this.inputs.thumbnailFile) {
-          this.inputs.thumbnailFile.value = "";
-      }
+      this.resetUploads();
   }
 
   // --- Modal Control ---
@@ -1102,6 +1177,7 @@ export class UploadModal {
 
   close() {
     if (!this.root) return;
+    this.resetUploads();
     this.root.classList.add("hidden");
     this.setGlobalModalState("upload", false);
     this.isVisible = false;
