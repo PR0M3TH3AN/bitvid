@@ -479,6 +479,12 @@ export class UploadModal {
       // Start new session
       const currentUploadId = ++this.videoUploadId;
 
+      // Reset UI classes
+      if (this.statusText.uploadMain) {
+          this.statusText.uploadMain.classList.remove("text-critical");
+          this.statusText.uploadMain.classList.add("text-text");
+      }
+
       // Reset Video State
       this.videoUploadState = {
           status: 'uploading',
@@ -630,9 +636,18 @@ export class UploadModal {
           userLogger.error("Video upload sequence failed:", err);
           this.videoUploadState.status = 'error';
           this.updateVideoProgress(null, "Upload failed.");
+
+          if (this.statusText.uploadMain) {
+              this.statusText.uploadMain.classList.remove("text-text");
+              this.statusText.uploadMain.classList.add("text-critical");
+          }
+
+          if (this.results.videoUrl) this.results.videoUrl.value = "Upload Failed";
+          if (this.results.magnet) this.results.magnet.value = "Upload Failed";
+          if (this.results.torrentUrl) this.results.torrentUrl.value = "Upload Failed";
+
           alert(`Upload failed: ${err.message}`);
 
-          this.sourceSections.progress.classList.add("hidden");
           this.inputs.file.value = ""; // Reset
       }
   }
