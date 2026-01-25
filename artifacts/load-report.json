@@ -1,0 +1,97 @@
+{
+  "timestamp": "2026-01-25T19:12:13.640Z",
+  "config": {
+    "duration": 60,
+    "clients": 100,
+    "rate": 1,
+    "relay": "ws://localhost:8889",
+    "force": false
+  },
+  "metrics": {
+    "total_sent": 6219,
+    "total_received": 6219,
+    "errors": 0,
+    "throughput_sent": 103.65,
+    "throughput_recv": 103.65,
+    "latency_ms": {
+      "p50": 0.4525159999998323,
+      "p95": 0.9470979999969131,
+      "p99": 7.444698999999673
+    },
+    "operation_times_ms": {
+      "build_avg": 0.05414333365494229,
+      "sign_avg": 5.486003140054635
+    },
+    "resource_usage": [
+      {
+        "timestamp": 1769368278643,
+        "cpuPercent": 63.94,
+        "rss": 97239040,
+        "heapUsed": 16337816
+      },
+      {
+        "timestamp": 1769368283643,
+        "cpuPercent": 64.36,
+        "rss": 98402304,
+        "heapUsed": 20259576
+      },
+      {
+        "timestamp": 1769368288642,
+        "cpuPercent": 63.86,
+        "rss": 98762752,
+        "heapUsed": 17659632
+      },
+      {
+        "timestamp": 1769368293643,
+        "cpuPercent": 61.32,
+        "rss": 99790848,
+        "heapUsed": 18155016
+      },
+      {
+        "timestamp": 1769368298645,
+        "cpuPercent": 61.19,
+        "rss": 100999168,
+        "heapUsed": 15496016
+      },
+      {
+        "timestamp": 1769368303646,
+        "cpuPercent": 63.12,
+        "rss": 102313984,
+        "heapUsed": 16290368
+      },
+      {
+        "timestamp": 1769368308649,
+        "cpuPercent": 61.61,
+        "rss": 105914368,
+        "heapUsed": 22963352
+      },
+      {
+        "timestamp": 1769368313653,
+        "cpuPercent": 60.4,
+        "rss": 106831872,
+        "heapUsed": 21787144
+      },
+      {
+        "timestamp": 1769368318653,
+        "cpuPercent": 60.86,
+        "rss": 120463360,
+        "heapUsed": 17511208
+      },
+      {
+        "timestamp": 1769368323657,
+        "cpuPercent": 60.52,
+        "rss": 120987648,
+        "heapUsed": 19454880
+      },
+      {
+        "timestamp": 1769368328657,
+        "cpuPercent": 59.65,
+        "rss": 121643008,
+        "heapUsed": 21375032
+      }
+    ],
+    "error_breakdown": {}
+  },
+  "bottlenecks": [],
+  "remediation": []
+}

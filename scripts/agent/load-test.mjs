@@ -24,10 +24,7 @@ if (!fs.existsSync(ARTIFACTS_DIR)) {
 const DEFAULT_CONFIG = {
   duration: 600, // seconds
   clients: 1000,
-  rate: 0.1, // events per second per client? No, that would be 100 events/sec.
-            // Let's interpret 'rate' as TOTAL events per second to target,
-            // OR rate per client.
-            // If I have 1000 clients and rate 0.1, that's 100 events/sec. That's reasonable.
+  rate: 0.1, // events per second per client
   relay: 'ws://localhost:8889',
 };
 
@@ -38,6 +35,7 @@ const { values: args } = parseArgs({
     clients: { type: 'string', short: 'c' },
     rate: { type: 'string', short: 'r' },
     relay: { type: 'string', short: 'u' }, // u for url
+    force: { type: 'boolean', short: 'f' },
   },
 });
 
@@ -46,10 +44,22 @@ const config = {
   clients: args.clients ? parseInt(args.clients) : DEFAULT_CONFIG.clients,
   rate: args.rate ? parseFloat(args.rate) : DEFAULT_CONFIG.rate,
   relay: args.relay || DEFAULT_CONFIG.relay,
+  force: args.force || false,
 };
 
 console.log('--- Load Test Configuration ---');
 console.log(JSON.stringify(config, null, 2));
+
+// Guardrail: Public Relay
+if (!config.force) {
+  const u = new URL(config.relay);
+  const isLocal = ['localhost', '127.0.0.1', '0.0.0.0'].includes(u.hostname) || u.hostname.endsWith('.local');
+  if (!isLocal) {
+    console.error(`[Guardrail] ERROR: Target relay ${config.relay} does not appear to be local.`);
+    console.error('Use --force to override (NOT RECOMMENDED for public relays).');
+    process.exit(1);
+  }
+}
 
 // --- State ---
 const activeClients = []; // { ws, sk, pk, pendingEvents: Map<id, startTime> }
@@ -104,7 +114,6 @@ async function waitForPort(port) {
       });
       return;
     } catch (e) {
-      // console.log('Retrying connection...', e.message);
       await new Promise(r => setTimeout(r, retryInterval));
     }
   }
@@ -163,7 +172,14 @@ function createClient() {
 async function run() {
   try {
     // 1. Start Relay
-    await startRelay();
+    // Only start if we are targeting the default local port, assuming we manage it.
+    // If user provided a custom URL, we assume they manage the relay unless it matches our default logic.
+    // For simplicity, we always try to start the relay if it's on localhost and port matches default or we can detect it's not running.
+    // But per instructions "Use a local relay", let's always try to start it if it's the default port, or fail if port is taken.
+    // Actually, let's just try to start it.
+    await startRelay().catch(e => {
+        console.log('[Setup] Could not start relay (maybe already running?):', e.message);
+    });
 
     // 2. Init Clients
     console.log(`[Setup] Connecting ${config.clients} clients...`);
@@ -188,19 +204,35 @@ async function run() {
     console.log(`[Load] Target rate: ${totalRate.toFixed(2)} events/sec`);
 
     let running = true;
+    let lastCpu = process.cpuUsage();
+    let lastTime = performance.now();
 
     // Monitoring Loop
     const monitorInterval = setInterval(() => {
+      const now = performance.now();
       const cpu = process.cpuUsage();
-      const mem = process.memoryUsage();
-      metrics.resourceUsage.push({
-        timestamp: Date.now(),
-        cpuUser: cpu.user,
-        cpuSystem: cpu.system,
-        rss: mem.rss,
-        heapUsed: mem.heapUsed,
-      });
-      console.log(`[Monitor] Sent: ${metrics.sent}, Recv: ${metrics.received}, Errors: ${metrics.errors}, Latency p50: ${calculatePercentile(metrics.latencies, 50).toFixed(2)}ms`);
+      const elapsedMs = now - lastTime;
+
+      if (elapsedMs > 0) {
+        const userDeltaUs = cpu.user - lastCpu.user;
+        const systemDeltaUs = cpu.system - lastCpu.system;
+        const totalDeltaUs = userDeltaUs + systemDeltaUs;
+        const cpuPercent = (totalDeltaUs / (elapsedMs * 1000)) * 100; // us / (ms * 1000) = fraction
+
+        const mem = process.memoryUsage();
+        metrics.resourceUsage.push({
+          timestamp: Date.now(),
+          cpuPercent: parseFloat(cpuPercent.toFixed(2)),
+          rss: mem.rss,
+          heapUsed: mem.heapUsed,
+        });
+
+        lastCpu = cpu;
+        lastTime = now;
+
+        const p50 = calculatePercentile(metrics.latencies, 50);
+        console.log(`[Monitor] Sent: ${metrics.sent}, Recv: ${metrics.received}, Errors: ${metrics.errors}, Latency p50: ${p50.toFixed(2)}ms, CPU: ${cpuPercent.toFixed(1)}%`);
+      }
     }, 5000);
 
     // Event Loop
@@ -219,14 +251,14 @@ async function run() {
           let event;
           const buildStart = performance.now();
           const now = Math.floor(Date.now() / 1000);
-          const hexPk = client.pk; // getPublicKey returns hex in v2
+          const hexPk = client.pk;
 
           if (isHeavy) {
             // Video Post
             const content = {
               version: 3,
               title: `Load Test Video ${Date.now()}`,
-              description: 'A description for load testing purposes. '.repeat(50), // make it larger
+              description: 'A description for load testing purposes. '.repeat(50),
               magnet: `magnet:?xt=urn:btih:${Math.random().toString(16).slice(2).repeat(10)}`,
               mode: 'live',
               videoRootId: `load-${Date.now()}-${Math.random()}`,
@@ -252,9 +284,6 @@ async function run() {
 
           // Sign
           const signStart = performance.now();
-          // We need to pass event to finalizeEvent.
-          // Note: build*Event returns a plain object.
-          // nostr-tools v2 finalizeEvent takes (t, secretKey)
           const signedEvent = NostrTools.finalizeEvent(event, client.sk);
           metrics.operationTimes.sign.push(performance.now() - signStart);
 
@@ -272,10 +301,7 @@ async function run() {
         const elapsed = performance.now() - iterationStart;
         const delay = Math.max(0, intervalMs - elapsed);
         if (delay > 0) await new Promise(r => setTimeout(r, delay));
-        else {
-             // Yield to event loop if we are falling behind
-             await new Promise(r => setImmediate(r));
-        }
+        else await new Promise(r => setImmediate(r));
       }
       running = false;
     };
@@ -300,6 +326,7 @@ async function run() {
       console.log('[Teardown] Killing relay...');
       relayProcess.kill();
     }
+    process.exit(0);
   }
 }
 
@@ -337,7 +364,7 @@ function generateReport() {
     remediation: []
   };
 
-  // Simple heuristics for bottlenecks
+  // Heuristics
   if (report.metrics.latency_ms.p99 > 1000) {
     report.bottlenecks.push('High P99 Latency (>1s)');
     report.remediation.push('Relay might be overloaded or network saturated. Investigate relay event loop lag.');
@@ -347,16 +374,29 @@ function generateReport() {
     report.remediation.push('Check error breakdown.');
   }
 
-  // Hot functions proxy
-  if (report.metrics.operation_times_ms.sign_avg > 10) {
-     report.bottlenecks.push('Signing is slow');
+  // Hot functions proxy / Crypto bottleneck
+  const signAvg = report.metrics.operation_times_ms.sign_avg;
+  if (signAvg > 10) {
+     report.bottlenecks.push(`Signing is slow (${signAvg.toFixed(2)}ms)`);
      report.remediation.push('Optimize signing or offload to worker.');
   }
 
-  const filename = `load-report-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+  if (signAvg > 50) {
+    report.bottlenecks.push('Cryptographic bottleneck');
+    report.remediation.push('Mark as requires-security-review. Check if running in a constrained environment or if crypto implementation is suboptimal.');
+  }
+
+  // Report File
+  const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, ''); // YYYYMMDD
+  const filename = `load-report-${dateStr}.json`;
   const reportPath = path.join(ARTIFACTS_DIR, filename);
   fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
-  console.log(`[Report] Saved to ${reportPath}`);
+
+  // Also save as load-report.json
+  const latestPath = path.join(ARTIFACTS_DIR, 'load-report.json');
+  fs.copyFileSync(reportPath, latestPath);
+
+  console.log(`[Report] Saved to ${reportPath} and ${latestPath}`);
 }
 
 run();
