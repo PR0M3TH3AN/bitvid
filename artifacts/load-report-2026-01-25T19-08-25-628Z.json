@@ -1,0 +1,37 @@
+{
+  "timestamp": "2026-01-25T19:08:25.628Z",
+  "config": {
+    "duration": 5,
+    "clients": 10,
+    "rate": 1,
+    "relay": "ws://localhost:8889"
+  },
+  "metrics": {
+    "total_sent": 51,
+    "total_received": 51,
+    "errors": 0,
+    "throughput_sent": 10.2,
+    "throughput_recv": 10.2,
+    "latency_ms": {
+      "p50": 0.8110580000000027,
+      "p95": 1.366897999999992,
+      "p99": 3.3182230000002164
+    },
+    "operation_times_ms": {
+      "build_avg": 0.160458607843158,
+      "sign_avg": 6.053091784313705
+    },
+    "resource_usage": [
+      {
+        "timestamp": 1769368105533,
+        "cpuUser": 778796,
+        "cpuSystem": 118523,
+        "rss": 88248320,
+        "heapUsed": 12950504
+      }
+    ],
+    "error_breakdown": {}
+  },
+  "bottlenecks": [],
+  "remediation": []
+}
