@@ -4,6 +4,17 @@ This document describes the design and architecture of the **Storage Tab** (mana
 
 The system allows users to securely store and manage multiple cloud storage connections (Providers) for video hosting. The architecture prioritizes security (encryption at rest), extensibility (adapter pattern), and provider flexibility (Generic S3 vs. specific implementations like Cloudflare R2).
 
+## Supported Upload Modes
+
+The storage system supports three primary modes for handling video uploads:
+
+1.  **Browser-held S3 keys (trusted operator only):**
+    The user enters S3 credentials (Access Key/Secret Key) into the Storage Tab. These keys are encrypted and stored in the browser's IndexedDB. This mode offers the smoothest UX but carries higher risk.
+2.  **Manual upload via provider console:**
+    The user uploads the file manually to their provider (e.g., R2 dashboard) and simply provides the public URL. This bypasses the need for the browser to hold write credentials.
+3.  **Operator-provided presigned manifests:**
+    The user provides a JSON manifest generated externally (e.g., by a CLI tool or backend service). This manifest contains presigned URLs for uploading parts, allowing the browser to upload without ever seeing the long-lived credentials.
+
 ## 1. Core Architecture: `StorageService`
 
 The `StorageService` (`js/services/storageService.js`) acts as the secure vault for connection secrets. It sits between the UI and the actual storage providers.
@@ -99,7 +110,8 @@ A specialized profile of S3 with specific constraints to improve UX.
 
 ### Local Storage & XSS
 *   **Risk:** The encrypted data resides in the browser's **IndexedDB**. While encrypted at rest, a malicious script (XSS attack) running in the context of the application could potentially request the signer to decrypt the Master Key or read the decrypted key from memory if the session is active.
-*   **Mitigation:** The application must maintain strict Content Security Policy (CSP) and dependency hygiene to prevent XSS.
+*   **Warning:** Because of this risk, **Mode 1 (Browser-held keys)** should only be used on **self-hosted, trusted deployments** where the operator controls the environment. Do not enter high-value credentials on public, untrusted, or shared instances.
+*   **Mitigation:** The application must maintain strict Content Security Policy (CSP) and dependency hygiene to prevent XSS. Use Mode 2 or 3 for higher security assurance in untrusted environments.
 
 ### Ephemeral Key Derivation (Kind 22242)
 To consistently derive or verify keys without publishing sensitive data, the system uses a **Storage Challenge Event**.
