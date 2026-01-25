@@ -310,3 +310,28 @@ export const __testExports = {
   clearStoredNip07Permissions,
   normalizePermissionMethod,
 };
+
+export function waitForNip07Extension(timeoutMs = 1500) {
+  return new Promise((resolve, reject) => {
+    if (typeof window !== "undefined" && window.nostr) {
+      resolve(window.nostr);
+      return;
+    }
+
+    if (typeof window === "undefined") {
+      reject(new Error("Not running in a browser environment."));
+      return;
+    }
+
+    const start = Date.now();
+    const interval = setInterval(() => {
+      if (window.nostr) {
+        clearInterval(interval);
+        resolve(window.nostr);
+      } else if (Date.now() - start > timeoutMs) {
+        clearInterval(interval);
+        reject(new Error("Nostr extension not found within timeout."));
+      }
+    }, 50);
+  });
+}
