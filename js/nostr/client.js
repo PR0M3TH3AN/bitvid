@@ -139,6 +139,7 @@ import {
   requestEnablePermissions,
   runNip07WithRetry,
   writeStoredNip07Permissions,
+  waitForNip07Extension,
 } from "./nip07Permissions.js";
 import {
   clearStoredSessionActor as clearStoredSessionActorEntry,
@@ -3958,6 +3959,12 @@ export class NostrClient {
    */
   async login(options = {}) {
     try {
+      try {
+        await waitForNip07Extension();
+      } catch (waitError) {
+        devLogger.log("Timed out waiting for extension injection:", waitError);
+      }
+
       const extension = window.nostr;
       if (!extension) {
         devLogger.log("No Nostr extension found");

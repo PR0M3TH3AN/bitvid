@@ -6,6 +6,7 @@ import {
   writeStoredNip07Permissions,
   clearStoredNip07Permissions,
   requestEnablePermissions,
+  waitForNip07Extension,
 } from "../../js/nostr/nip07Permissions.js";
 
 test("writeStoredNip07Permissions normalizes and persists granted methods", () => {
@@ -73,4 +74,57 @@ test("requestEnablePermissions reports unavailable extension", async () => {
   const result = await requestEnablePermissions(null, ["sign_event"]);
   assert.strictEqual(result.ok, false);
   assert.strictEqual(result.error?.message, "extension-unavailable");
+});
+
+test("waitForNip07Extension resolves when extension is present", async () => {
+  const originalWindow = globalThis.window;
+  globalThis.window = { nostr: { dummy: true } };
+  try {
+    const result = await waitForNip07Extension();
+    assert.deepStrictEqual(result, { dummy: true });
+  } finally {
+    if (originalWindow === undefined) {
+      delete globalThis.window;
+    } else {
+      globalThis.window = originalWindow;
+    }
+  }
+});
+
+test("waitForNip07Extension resolves when extension appears later", async () => {
+  const originalWindow = globalThis.window;
+  globalThis.window = {}; // No nostr yet
+
+  setTimeout(() => {
+    globalThis.window.nostr = { later: true };
+  }, 50);
+
+  try {
+    const result = await waitForNip07Extension(500);
+    assert.deepStrictEqual(result, { later: true });
+  } finally {
+    if (originalWindow === undefined) {
+      delete globalThis.window;
+    } else {
+      globalThis.window = originalWindow;
+    }
+  }
+});
+
+test("waitForNip07Extension rejects when extension never appears", async () => {
+  const originalWindow = globalThis.window;
+  globalThis.window = {}; // No nostr
+
+  try {
+    await waitForNip07Extension(100);
+    assert.fail("Should have rejected");
+  } catch (error) {
+    assert.strictEqual(error.message, "Nostr extension not found within timeout.");
+  } finally {
+    if (originalWindow === undefined) {
+      delete globalThis.window;
+    } else {
+      globalThis.window = originalWindow;
+    }
+  }
 });
