@@ -418,6 +418,16 @@ export class StorageService {
       account.connections = {};
     }
 
+    // If this connection is being set as default, unset others
+    if (meta.defaultForUploads) {
+      for (const key in account.connections) {
+        const conn = account.connections[key];
+        if (conn.meta) {
+          conn.meta.defaultForUploads = false;
+        }
+      }
+    }
+
     account.connections[connectionId] = {
       id: connectionId,
       provider: payload.provider || meta.provider,
