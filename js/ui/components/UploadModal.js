@@ -17,6 +17,7 @@ import {
   getActiveSigner,
   requestDefaultExtensionPermissions,
 } from "../../nostrClientFacade.js";
+import { uploadWithManifest } from "../../s3-quick.js";
 
 const INFO_HASH_PATTERN = /^[a-f0-9]{40}$/;
 
@@ -195,6 +196,13 @@ export class UploadModal {
         s3: $("#section-storage-s3"),
     };
 
+    this.toggles.s3Manifest = $("#quickS3ManifestToggle");
+    this.inputs.s3ManifestJson = $("#quickS3ManifestJson");
+    this.containers = {
+        s3Credentials: $("#quickS3CredentialsContainer"),
+        s3Manifest: $("#quickS3ManifestContainer"),
+    };
+
     // Inputs (Common)
     this.inputs = {
         title: $("#input-title"),
@@ -295,6 +303,22 @@ export class UploadModal {
         this.storageProviders.s3.addEventListener("click", () =>
             this.setStorageProvider(PROVIDERS.GENERIC)
         );
+    }
+
+    if (this.toggles.s3Manifest) {
+        this.toggles.s3Manifest.addEventListener("change", () => {
+            const checked = this.toggles.s3Manifest.checked;
+            if (this.containers.s3Credentials) {
+                this.containers.s3Credentials.classList.toggle("hidden", checked);
+            }
+            if (this.containers.s3Manifest) {
+                this.containers.s3Manifest.classList.toggle("hidden", !checked);
+            }
+            // Hide save button if manifest
+            if (this.toggles.saveS3Settings) {
+                this.toggles.saveS3Settings.parentElement.classList.toggle("hidden", checked);
+            }
+        });
     }
 
     // Form Submission
@@ -1283,85 +1307,159 @@ export class UploadModal {
       const file = this.inputs.file?.files?.[0];
       if (!file) throw new Error("Please select a video file to upload.");
 
-      const thumbnailFile = this.inputs.thumbnailFile?.files?.[0];
+      const isManifest = this.toggles.s3Manifest?.checked;
 
-      if (!this.hasValidS3Settings()) throw new Error("Please configure S3 storage credentials.");
-      if (!this.s3Service) throw new Error("S3 upload service is unavailable.");
+      // Manifest Validation
+      let manifest = null;
+      if (isManifest) {
+          const json = this.inputs.s3ManifestJson?.value?.trim();
+          if (!json) throw new Error("Please paste the presigned manifest JSON.");
+          try {
+              manifest = JSON.parse(json);
+          } catch (e) {
+              throw new Error("Invalid Manifest JSON.");
+          }
+      } else {
+          if (!this.hasValidS3Settings()) throw new Error("Please configure S3 storage credentials.");
+          if (!this.s3Service) throw new Error("S3 upload service is unavailable.");
+      }
 
       const pubkey = this.getCurrentPubkey ? this.getCurrentPubkey() : null;
       if (!pubkey) throw new Error("Please login to publish.");
 
       const npub = this.safeEncodeNpub(pubkey);
-      const settings = this.collectS3SettingsForm();
 
-      let videoKey = "";
-      let videoPublicUrl = "";
-      let torrentKey = "";
-      let torrentPublicUrl = "";
+      // If NOT using manifest, we proceed with standard flow (keys)
+      if (!isManifest) {
+          const thumbnailFile = this.inputs.thumbnailFile?.files?.[0];
+          const settings = this.collectS3SettingsForm();
 
-      try {
-          videoKey = buildR2Key(npub, file);
-          videoPublicUrl = buildS3ObjectUrl({
-              publicBaseUrl: settings.publicBaseUrl,
-              endpoint: settings.endpoint,
-              bucket: settings.bucket,
-              key: videoKey,
-              forcePathStyle: settings.forcePathStyle,
+          let videoKey = "";
+          let videoPublicUrl = "";
+          let torrentKey = "";
+          let torrentPublicUrl = "";
+
+          try {
+              videoKey = buildR2Key(npub, file);
+              videoPublicUrl = buildS3ObjectUrl({
+                  publicBaseUrl: settings.publicBaseUrl,
+                  endpoint: settings.endpoint,
+                  bucket: settings.bucket,
+                  key: videoKey,
+                  forcePathStyle: settings.forcePathStyle,
+              });
+              const baseKey = videoKey.replace(/\.[^/.]+$/, "");
+              torrentKey = (baseKey && baseKey !== videoKey) ? `${baseKey}.torrent` : `${videoKey}.torrent`;
+              torrentPublicUrl = buildS3ObjectUrl({
+                  publicBaseUrl: settings.publicBaseUrl,
+                  endpoint: settings.endpoint,
+                  bucket: settings.bucket,
+                  key: torrentKey,
+                  forcePathStyle: settings.forcePathStyle,
+              });
+          } catch (prepErr) {
+              userLogger.warn("Failed to pre-calculate S3 keys:", prepErr);
+          }
+
+          const { infoHash, torrentFile, hasValidInfoHash } = await this.generateTorrentMetadata({
+              file,
+              videoPublicUrl,
           });
-          const baseKey = videoKey.replace(/\.[^/.]+$/, "");
-          torrentKey = (baseKey && baseKey !== videoKey) ? `${baseKey}.torrent` : `${videoKey}.torrent`;
-          torrentPublicUrl = buildS3ObjectUrl({
-              publicBaseUrl: settings.publicBaseUrl,
-              endpoint: settings.endpoint,
-              bucket: settings.bucket,
-              key: torrentKey,
-              forcePathStyle: settings.forcePathStyle,
-          });
-      } catch (prepErr) {
-          userLogger.warn("Failed to pre-calculate S3 keys:", prepErr);
-      }
 
-      const { infoHash, torrentFile, hasValidInfoHash } = await this.generateTorrentMetadata({
-          file,
-          videoPublicUrl,
-      });
-
-      if (!hasValidInfoHash) {
-          const proceed = confirm(
-            "We couldn't calculate a valid info hash. Publishing will continue with URL-first playback only, and WebTorrent fallback will be unavailable. Continue?"
-          );
-          if (!proceed) {
+          if (!hasValidInfoHash) {
+              const proceed = confirm(
+                "We couldn't calculate a valid info hash. Publishing will continue with URL-first playback only, and WebTorrent fallback will be unavailable. Continue?"
+              );
+              if (!proceed) {
+                  this.updateUploadStatus(
+                    "Upload canceled. A valid info hash is required for WebTorrent fallback.",
+                    "warning"
+                  );
+                  this.isUploading = false;
+                  this.submitButton.disabled = false;
+                  this.updateProgress(null);
+                  return;
+                  }
               this.updateUploadStatus(
-                "Upload canceled. A valid info hash is required for WebTorrent fallback.",
+                "Continuing without WebTorrent fallback (info hash unavailable).",
                 "warning"
               );
+          }
+
+          await this.s3Service.uploadVideo({
+              npub,
+              file,
+              thumbnailFile,
+              torrentFile,
+              metadata,
+              infoHash: hasValidInfoHash ? infoHash : "",
+              settings,
+              createBucketIfMissing: settings.createBucketIfMissing,
+              publishVideoNote: this.publishVideoNote,
+              onReset: () => this.resetForm(),
+              forcedVideoKey: videoKey,
+              forcedVideoUrl: videoPublicUrl,
+              forcedTorrentKey: torrentKey,
+              forcedTorrentUrl: torrentPublicUrl,
+          });
+      } else {
+          // Manifest Flow
+          this.isUploading = true;
+          this.submitButton.disabled = true;
+          this.updateUploadStatus("Uploading via manifest...", "info");
+          this.updateProgress(0);
+
+          try {
+              await uploadWithManifest({
+                  file,
+                  manifest,
+                  onProgress: (fraction) => this.updateProgress(fraction),
+              });
+
+              this.updateUploadStatus("Processing metadata...", "info");
+
+              // We can't upload thumbnail/torrent without keys or manifest for them.
+              // We assume user handles that or we proceed with just the video.
+              // We need to publish the video note.
+
+              // Determine URL from manifest or use what we have?
+              // If manifest has `publicUrl`, use it.
+              let finalUrl = manifest.publicUrl || "";
+
+              // Update metadata
+              metadata.url = finalUrl || metadata.url;
+              if (!metadata.url) {
+                   // If we can't determine URL, we can't really publish a useful video note unless we use magnet only?
+                   // Or we warn the user.
+                   // For now, we'll try to publish what we have.
+                   userLogger.warn("Manifest upload complete but public URL is unknown. Video note might be incomplete.");
+              }
+
+              // Normalize & Publish
+              const { payload, errors } = normalizeVideoNotePayload(metadata);
+              if (errors.length) {
+                  throw new Error(getVideoNoteErrorMessage(errors[0]));
+              }
+
+              if (this.publishVideoNote) {
+                  this.updateUploadStatus("Publishing event...", "info");
+                  await this.publishVideoNote(payload);
+                  this.showSuccess("Video uploaded and published!");
+                  this.close();
+                  this.resetForm();
+              } else {
+                  this.showSuccess("Upload complete (publishing skipped).");
+              }
+
+          } catch (err) {
+              userLogger.error("Manifest upload failed:", err);
+              this.showError(err.message || "Upload failed.");
+          } finally {
               this.isUploading = false;
               this.submitButton.disabled = false;
               this.updateProgress(null);
-              return;
           }
-          this.updateUploadStatus(
-            "Continuing without WebTorrent fallback (info hash unavailable).",
-            "warning"
-          );
       }
-
-      await this.s3Service.uploadVideo({
-          npub,
-          file,
-          thumbnailFile,
-          torrentFile,
-          metadata,
-          infoHash: hasValidInfoHash ? infoHash : "",
-          settings,
-          createBucketIfMissing: settings.createBucketIfMissing,
-          publishVideoNote: this.publishVideoNote,
-          onReset: () => this.resetForm(),
-          forcedVideoKey: videoKey,
-          forcedVideoUrl: videoPublicUrl,
-          forcedTorrentKey: torrentKey,
-          forcedTorrentUrl: torrentPublicUrl,
-      });
   }
 
   async generateTorrentMetadata({ file, videoPublicUrl } = {}) {
