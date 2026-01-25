@@ -9095,33 +9095,53 @@ export class ProfileModalController {
     // ProfileModalController imports getActiveSigner.
 
     if (!signer) {
-        this.showError("No active signer found. Please login.");
-        return;
+      this.showError("No active signer found. Please login.");
+      return;
+    }
+
+    if (
+      signer.pubkey &&
+      this.normalizeHexPubkey(signer.pubkey) !== pubkey
+    ) {
+      this.showError(
+        `Signer account (${signer.pubkey.slice(
+          0,
+          8,
+        )}...) does not match profile (${pubkey.slice(
+          0,
+          8,
+        )}...). Please switch accounts in your extension.`,
+      );
+      return;
     }
 
     const storageService = this.services.storageService;
     if (!storageService) {
-        this.showError("Storage service unavailable.");
-        return;
+      this.showError("Storage service unavailable.");
+      return;
     }
 
     if (this.storageUnlockBtn) {
-        this.storageUnlockBtn.disabled = true;
-        this.storageUnlockBtn.textContent = "Unlocking...";
+      this.storageUnlockBtn.disabled = true;
+      this.storageUnlockBtn.textContent = "Unlocking...";
     }
 
     try {
-        await storageService.unlock(pubkey, { signer });
-        this.showSuccess("Storage unlocked.");
-        this.populateStoragePane();
+      await storageService.unlock(pubkey, { signer });
+      this.showSuccess("Storage unlocked.");
+      this.populateStoragePane();
     } catch (error) {
-        devLogger.error("Failed to unlock storage:", error);
-        this.showError("Failed to unlock storage. Ensure your signer supports NIP-04/44.");
+      devLogger.error("Failed to unlock storage:", error);
+      const message =
+        error && typeof error.message === "string"
+          ? error.message
+          : "Failed to unlock storage. Ensure your signer supports NIP-04/44.";
+      this.showError(message);
     } finally {
-        if (this.storageUnlockBtn) {
-            this.storageUnlockBtn.disabled = false;
-            this.storageUnlockBtn.textContent = "Unlock Storage";
-        }
+      if (this.storageUnlockBtn) {
+        this.storageUnlockBtn.disabled = false;
+        this.storageUnlockBtn.textContent = "Unlock Storage";
+      }
     }
   }
 
