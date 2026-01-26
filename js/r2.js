@@ -211,11 +211,11 @@ function guessExtension(file) {
   }
 }
 
-export function buildR2Key(npub, file) {
-  const now = new Date();
-  const year = now.getUTCFullYear();
-  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
+export function buildR2Key(npub, file, identifier = "") {
   const safeNpub = String(npub || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+  const safeIdentifier = String(identifier || "")
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "");
   const baseName = typeof file?.name === "string" ? file.name : "video";
@@ -226,7 +226,8 @@ export function buildR2Key(npub, file) {
     .replace(/^-+|-+$/g, "");
   const safeSlug = slug || "video";
   const ext = guessExtension(file);
-  return `u/${safeNpub}/${year}/${month}/${safeSlug}.${ext}`;
+  const namespace = safeIdentifier || "uploads";
+  return `u/${safeNpub}/${namespace}/${safeSlug}.${ext}`;
 }
 
 export function buildPublicUrl(baseUrl, key) {

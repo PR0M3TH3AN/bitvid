@@ -215,6 +215,11 @@ class S3UploadService {
     try {
       await ensureS3SdkLoaded();
 
+      const normalizedInfoHash = normalizeInfoHash(infoHash);
+      const keyIdentifier = isValidInfoHash(normalizedInfoHash)
+        ? normalizedInfoHash
+        : "";
+
       const s3 = makeS3Client({
         endpoint: normalized.endpoint,
         region: normalized.region,
@@ -223,7 +228,7 @@ class S3UploadService {
         forcePathStyle: Boolean(normalized.forcePathStyle),
       });
 
-      const key = forcedVideoKey || buildR2Key(npub, file);
+      const key = forcedVideoKey || buildR2Key(npub, file, keyIdentifier);
       const publicUrl =
         forcedVideoUrl ||
         buildS3ObjectUrl({

@@ -8914,7 +8914,9 @@ export class ProfileModalController {
         return;
       }
 
-      const key = buildR2Key(pubkey, file);
+      const keyIdentifier =
+        type === "picture" ? "profile-picture" : "profile-banner";
+      const key = buildR2Key(pubkey, file, keyIdentifier);
       await r2Service.uploadFile({
         file,
         ...credentials,

@@ -356,7 +356,8 @@ export async function uploadAttachment({
   }
 
   const prepared = await prepareAttachmentUpload({ file, encrypt });
-  const key = typeof buildKey === "function" ? buildKey(pubkey, file) : "";
+  const key =
+    typeof buildKey === "function" ? buildKey(pubkey, file, prepared.sha256) : "";
   if (!key) {
     throw new Error("Unable to derive storage key for attachment.");
   }

@@ -6,7 +6,10 @@ import {
   getVideoNoteErrorMessage,
   normalizeVideoNotePayload,
 } from "../../services/videoNotePayload.js";
-import { createTorrentMetadata } from "../../utils/torrentHash.js";
+import {
+  calculateTorrentInfoHash,
+  createTorrentMetadata,
+} from "../../utils/torrentHash.js";
 import { sanitizeBucketName } from "../../storage/r2-mgmt.js";
 import { buildR2Key, buildPublicUrl } from "../../r2.js";
 import { buildS3ObjectUrl } from "../../services/s3Service.js";
@@ -524,7 +527,8 @@ export class UploadModal {
           if (this.videoUploadId !== currentUploadId) return;
 
           // 2. Determine Keys
-          const videoKey = buildR2Key(npub, file);
+          const identifier = await this.resolveUploadIdentifier(file);
+          const videoKey = buildR2Key(npub, file, identifier);
           const baseDomain = bucketEntry.publicBaseUrl;
 
           // Note: buildPublicUrl works for both if the base is clean
@@ -1086,6 +1090,19 @@ export class UploadModal {
           torrentFile,
           hasValidInfoHash,
       };
+  }
+
+  async resolveUploadIdentifier(file) {
+      try {
+          const infoHash = await calculateTorrentInfoHash(file);
+          const normalized = normalizeInfoHash(infoHash);
+          if (isValidInfoHash(normalized)) {
+              return normalized;
+          }
+      } catch (hashErr) {
+          userLogger.warn("Failed to precompute info hash for storage key:", hashErr);
+      }
+      return "";
   }
 
   async handleExternalFlow(metadata) {
