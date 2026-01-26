@@ -40,9 +40,19 @@ function resolveNip44Module(extension) {
   return nip44;
 }
 
-export async function createNip07Adapter(extension) {
-  const resolvedExtension = extension || (typeof window !== "undefined" ? window?.nostr : null);
-  if (!resolvedExtension) {
+export async function createNip07Adapter(initialExtension) {
+  const getExtension = () => {
+    if (typeof window !== "undefined" && window.nostr) {
+      return window.nostr;
+    }
+    return initialExtension || null;
+  };
+
+  // We use the initial extension state to determine which methods to expose.
+  // This matches standard behavior where capabilities are negotiated at login.
+  const bootstrapExtension = getExtension();
+
+  if (!bootstrapExtension) {
     return {
       type: "nip07",
       pubkey: "",
@@ -65,64 +75,89 @@ export async function createNip07Adapter(extension) {
     };
   }
 
-  const getPublicKey =
-    typeof resolvedExtension.getPublicKey === "function"
-      ? resolvedExtension.getPublicKey.bind(resolvedExtension)
-      : null;
-  const pubkey = getPublicKey ? normalizeActorKey(await getPublicKey()) : "";
+  const getPublicKey = async () => {
+    const ext = getExtension();
+    if (typeof ext?.getPublicKey !== "function") {
+      throw new Error("NIP-07 extension missing getPublicKey.");
+    }
+    return ext.getPublicKey();
+  };
 
-  const nip04 =
-    resolvedExtension.nip04 && typeof resolvedExtension.nip04 === "object"
-      ? resolvedExtension.nip04
-      : null;
-  const nip44 = resolveNip44Module(resolvedExtension);
+  const pubkey =
+    typeof bootstrapExtension.getPublicKey === "function"
+      ? normalizeActorKey(await getPublicKey())
+      : "";
 
-  const nip04Encrypt =
-    nip04 && typeof nip04.encrypt === "function"
-      ? (pubkey, plaintext) =>
-          retryNip07Call(() => nip04.encrypt(pubkey, plaintext), "nip04.encrypt")
-      : null;
+  const hasNip04 =
+    bootstrapExtension.nip04 && typeof bootstrapExtension.nip04 === "object";
 
-  const nip04Decrypt =
-    nip04 && typeof nip04.decrypt === "function"
-      ? (pubkey, ciphertext) =>
-          retryNip07Call(() => nip04.decrypt(pubkey, ciphertext), "nip04.decrypt")
-      : null;
+  const bootstrapNip44 = resolveNip44Module(bootstrapExtension);
+  const hasNip44 = !!bootstrapNip44;
 
-  const nip44Encrypt =
-    nip44 && typeof nip44.encrypt === "function"
-      ? (pubkey, plaintext) =>
-          retryNip07Call(() => nip44.encrypt(pubkey, plaintext), "nip44.encrypt")
-      : null;
+  // Wrapper builders to ensure dynamic lookup at call time
+  const createNip04Encrypt = () => (pubkey, plaintext) => {
+    const ext = getExtension();
+    const nip04 = ext?.nip04;
+    if (!nip04 || typeof nip04.encrypt !== "function") {
+      throw new Error("NIP-04 encryption unavailable on active extension.");
+    }
+    return retryNip07Call(() => nip04.encrypt(pubkey, plaintext), "nip04.encrypt");
+  };
 
-  const nip44Decrypt =
-    nip44 && typeof nip44.decrypt === "function"
-      ? (pubkey, ciphertext) =>
-          retryNip07Call(() => nip44.decrypt(pubkey, ciphertext), "nip44.decrypt")
-      : null;
+  const createNip04Decrypt = () => (pubkey, ciphertext) => {
+    const ext = getExtension();
+    const nip04 = ext?.nip04;
+    if (!nip04 || typeof nip04.decrypt !== "function") {
+      throw new Error("NIP-04 decryption unavailable on active extension.");
+    }
+    return retryNip07Call(() => nip04.decrypt(pubkey, ciphertext), "nip04.decrypt");
+  };
+
+  const createNip44Encrypt = () => (pubkey, plaintext) => {
+    const ext = getExtension();
+    const nip44 = resolveNip44Module(ext);
+    if (!nip44 || typeof nip44.encrypt !== "function") {
+      throw new Error("NIP-44 encryption unavailable on active extension.");
+    }
+    return retryNip07Call(() => nip44.encrypt(pubkey, plaintext), "nip44.encrypt");
+  };
+
+  const createNip44Decrypt = () => (pubkey, ciphertext) => {
+    const ext = getExtension();
+    const nip44 = resolveNip44Module(ext);
+    if (!nip44 || typeof nip44.decrypt !== "function") {
+      throw new Error("NIP-44 decryption unavailable on active extension.");
+    }
+    return retryNip07Call(() => nip44.decrypt(pubkey, ciphertext), "nip44.decrypt");
+  };
 
   const requestPermissions = async (methods = []) => {
-    if (typeof resolvedExtension.requestPermissions === "function") {
+    const ext = getExtension();
+    if (!ext) {
+      return { ok: false, error: new Error("extension-unavailable") };
+    }
+
+    if (typeof ext.requestPermissions === "function") {
       return retryNip07Call(
         () =>
-          resolvedExtension.requestPermissions({
+          ext.requestPermissions({
             permissions: Array.isArray(methods) ? methods : [],
           }),
         "extension.requestPermissions",
       );
     }
 
-    if (typeof resolvedExtension.enable === "function") {
+    if (typeof ext.enable === "function") {
       if (Array.isArray(methods) && methods.length) {
         return retryNip07Call(
           () =>
-            resolvedExtension.enable({
+            ext.enable({
               permissions: methods.map((method) => ({ method })),
             }),
           "extension.enable",
         );
       }
-      return retryNip07Call(() => resolvedExtension.enable(), "extension.enable");
+      return retryNip07Call(() => ext.enable(), "extension.enable");
     }
 
     return { ok: false, error: new Error("permission-request-unavailable") };
@@ -131,41 +166,51 @@ export async function createNip07Adapter(extension) {
   const signer = {
     type: "nip07",
     pubkey,
-    metadata: async () =>
-      typeof resolvedExtension.getMetadata === "function"
-        ? retryNip07Call(() => resolvedExtension.getMetadata(), "extension.getMetadata")
-        : null,
-    relays: async () =>
-      typeof resolvedExtension.getRelays === "function"
-        ? retryNip07Call(() => resolvedExtension.getRelays(), "extension.getRelays")
-        : null,
+    metadata: async () => {
+      const ext = getExtension();
+      return typeof ext?.getMetadata === "function"
+        ? retryNip07Call(() => ext.getMetadata(), "extension.getMetadata")
+        : null;
+    },
+    relays: async () => {
+      const ext = getExtension();
+      return typeof ext?.getRelays === "function"
+        ? retryNip07Call(() => ext.getRelays(), "extension.getRelays")
+        : null;
+    },
     signEvent: async (event) => {
-      if (typeof resolvedExtension.signEvent !== "function") {
+      const ext = getExtension();
+      if (typeof ext?.signEvent !== "function") {
         throw new Error("NIP-07 extension missing signEvent.");
       }
-      return retryNip07Call(() => resolvedExtension.signEvent(event), "extension.signEvent");
+      return retryNip07Call(() => ext.signEvent(event), "extension.signEvent");
     },
     requestPermissions,
     destroy: async () => {},
-    canSign: () => typeof resolvedExtension.signEvent === "function",
+    canSign: () => typeof getExtension()?.signEvent === "function",
     capabilities: {
-      sign: typeof resolvedExtension.signEvent === "function",
-      nip44: Boolean(nip44Encrypt || nip44Decrypt),
-      nip04: Boolean(nip04Encrypt || nip04Decrypt),
+      sign: typeof bootstrapExtension.signEvent === "function",
+      nip44: hasNip44,
+      nip04: hasNip04,
     },
   };
 
-  if (nip04Encrypt) {
-    signer.nip04Encrypt = nip04Encrypt;
+  if (hasNip04) {
+    if (typeof bootstrapExtension.nip04.encrypt === "function") {
+      signer.nip04Encrypt = createNip04Encrypt();
+    }
+    if (typeof bootstrapExtension.nip04.decrypt === "function") {
+      signer.nip04Decrypt = createNip04Decrypt();
+    }
   }
-  if (nip04Decrypt) {
-    signer.nip04Decrypt = nip04Decrypt;
-  }
-  if (nip44Encrypt) {
-    signer.nip44Encrypt = nip44Encrypt;
-  }
-  if (nip44Decrypt) {
-    signer.nip44Decrypt = nip44Decrypt;
+
+  if (hasNip44) {
+    if (typeof bootstrapNip44.encrypt === "function") {
+      signer.nip44Encrypt = createNip44Encrypt();
+    }
+    if (typeof bootstrapNip44.decrypt === "function") {
+      signer.nip44Decrypt = createNip44Decrypt();
+    }
   }
 
   return signer;
