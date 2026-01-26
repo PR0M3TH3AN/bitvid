@@ -63,14 +63,46 @@ export async function testS3Connection(config) {
     try {
       // 1. Upload
       userLogger.info(`[Storage Test] Uploading temporary file "${testKey}"...`);
-      await s3.send(
-        new PutObjectCommand({
-          Bucket: config.bucket,
-          Key: testKey,
-          Body: fileContent,
-          ContentType: "text/plain",
-        })
-      );
+      const uploadParams = {
+        Bucket: config.bucket,
+        Key: testKey,
+        Body: fileContent,
+        ContentType: "text/plain",
+      };
+
+      try {
+        await s3.send(new PutObjectCommand(uploadParams));
+      } catch (err) {
+        // Detect CORS/Network failure on upload (often TypeError: Failed to fetch)
+        const isNetworkOrCors =
+          err instanceof TypeError ||
+          (err.name === "TypeError" &&
+            (err.message.includes("fetch") || err.message.includes("Network")));
+
+        if (isNetworkOrCors && typeof window !== "undefined") {
+          userLogger.warn(
+            "[Storage Test] Upload failed likely due to CORS. Attempting to update bucket CORS configuration..."
+          );
+          try {
+            await ensureBucketCors({
+              s3,
+              bucket: config.bucket,
+              origins: [window.location.origin],
+              merge: true,
+            });
+            userLogger.info("[Storage Test] CORS updated. Retrying upload...");
+            await s3.send(new PutObjectCommand(uploadParams));
+          } catch (corsErr) {
+            userLogger.warn(
+              "[Storage Test] Failed to update CORS or retry upload:",
+              corsErr
+            );
+            throw err; // Throw original error if retry fails
+          }
+        } else {
+          throw err;
+        }
+      }
       userLogger.info("[Storage Test] Upload successful.");
 
       // 2. Retrieve

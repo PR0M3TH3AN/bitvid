@@ -91,7 +91,13 @@ export async function ensureBucketExists({ s3, bucket, region } = {}) {
   }
 }
 
-export async function ensureBucketCors({ s3, bucket, origins, region } = {}) {
+export async function ensureBucketCors({
+  s3,
+  bucket,
+  origins,
+  region,
+  merge = true,
+} = {}) {
   if (!s3) {
     throw new Error("S3 client is required to configure CORS");
   }
@@ -99,7 +105,7 @@ export async function ensureBucketCors({ s3, bucket, origins, region } = {}) {
     throw new Error("Bucket name is required to configure CORS");
   }
 
-  const { PutBucketCorsCommand } = requireAwsSdk();
+  const { PutBucketCorsCommand, GetBucketCorsCommand } = requireAwsSdk();
 
   const allowedOrigins = (origins || []).filter(Boolean);
   if (allowedOrigins.length === 0) {
@@ -108,23 +114,77 @@ export async function ensureBucketCors({ s3, bucket, origins, region } = {}) {
 
   await ensureBucketExists({ s3, bucket, region });
 
+  const desiredRule = {
+    AllowedHeaders: ["*"],
+    AllowedMethods: ["GET", "HEAD", "PUT", "POST", "DELETE", "OPTIONS"],
+    ExposeHeaders: [
+      "ETag",
+      "Content-Length",
+      "Content-Range",
+      "Accept-Ranges",
+    ],
+    MaxAgeSeconds: 3600,
+  };
+
+  let rules = [];
+
+  if (merge) {
+    try {
+      const current = await s3.send(
+        new GetBucketCorsCommand({ Bucket: bucket })
+      );
+      if (current.CORSConfiguration?.CORSRules) {
+        rules = current.CORSConfiguration.CORSRules;
+      }
+    } catch (err) {
+      // Ignore 404 or other fetch errors, start fresh
+    }
+  }
+
+  // Iterate over provided origins to ensure each is covered
+  for (const origin of allowedOrigins) {
+    const existingRule = rules.find(
+      (r) =>
+        (r.AllowedOrigins || []).includes(origin) ||
+        (r.AllowedOrigins || []).includes("*")
+    );
+
+    if (existingRule) {
+      // Update existing rule to be permissive enough
+      if (!existingRule.AllowedHeaders?.includes("*")) {
+        existingRule.AllowedHeaders = ["*"];
+      }
+      // Ensure methods
+      const methods = new Set(existingRule.AllowedMethods || []);
+      desiredRule.AllowedMethods.forEach((m) => methods.add(m));
+      existingRule.AllowedMethods = Array.from(methods);
+
+      // Ensure ExposeHeaders
+      const exposed = new Set(existingRule.ExposeHeaders || []);
+      desiredRule.ExposeHeaders.forEach((h) => exposed.add(h));
+      existingRule.ExposeHeaders = Array.from(exposed);
+    } else {
+      // If no matching rule, add a new one for this origin.
+      // We explicitly set AllowedOrigins to just this origin to be specific.
+      rules.unshift({
+        ...desiredRule,
+        AllowedOrigins: [origin],
+      });
+    }
+  }
+
+  // Fallback if no rules exist yet (no merge, or merge found nothing)
+  if (rules.length === 0) {
+    rules.push({
+      ...desiredRule,
+      AllowedOrigins: allowedOrigins,
+    });
+  }
+
   const command = new PutBucketCorsCommand({
     Bucket: bucket,
     CORSConfiguration: {
-      CORSRules: [
-        {
-          AllowedHeaders: ["*"],
-          AllowedMethods: ["GET", "HEAD", "PUT", "POST", "DELETE", "OPTIONS"],
-          AllowedOrigins: allowedOrigins,
-          ExposeHeaders: [
-            "ETag",
-            "Content-Length",
-            "Content-Range",
-            "Accept-Ranges",
-          ],
-          MaxAgeSeconds: 3600,
-        },
-      ],
+      CORSRules: rules,
     },
   });
 
