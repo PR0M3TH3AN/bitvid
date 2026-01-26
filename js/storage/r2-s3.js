@@ -13,6 +13,7 @@ import {
   deleteObject,
   multipartUpload,
 } from "./s3-multipart.js";
+import { userLogger } from "../utils/logger.js";
 
 export async function testS3Connection(config) {
   if (!config) {
@@ -21,7 +22,13 @@ export async function testS3Connection(config) {
 
   await ensureS3SdkLoaded();
 
-  const { ListBucketsCommand, HeadBucketCommand } = requireAwsSdk();
+  const {
+    ListBucketsCommand,
+    HeadBucketCommand,
+    PutObjectCommand,
+    GetObjectCommand,
+    DeleteObjectCommand,
+  } = requireAwsSdk();
 
   const s3 = makeS3Client({
     endpoint: config.endpoint,
@@ -31,11 +38,12 @@ export async function testS3Connection(config) {
     forcePathStyle: config.forcePathStyle,
   });
 
-  // If bucket is specified, we check that specific bucket (permissions + existence).
+  // If bucket is specified, we perform a rigorous Read/Write/Delete test.
   if (config.bucket) {
+    userLogger.info(`[Storage Test] Checking accessibility of bucket "${config.bucket}"...`);
     try {
       await s3.send(new HeadBucketCommand({ Bucket: config.bucket }));
-      return { success: true, message: `Successfully connected to bucket "${config.bucket}".` };
+      userLogger.info(`[Storage Test] Bucket "${config.bucket}" exists and is accessible.`);
     } catch (error) {
       const status = error?.$metadata?.httpStatusCode || 0;
       if (status === 403) {
@@ -45,12 +53,74 @@ export async function testS3Connection(config) {
       }
       throw error;
     }
+
+    // Prepare temp file
+    const timestamp = Date.now();
+    const testKey = `bitvid-test-connection-${timestamp}.txt`;
+    const fileContent = `bitvid storage test ${timestamp}`;
+
+    try {
+      // 1. Upload
+      userLogger.info(`[Storage Test] Uploading temporary file "${testKey}"...`);
+      await s3.send(
+        new PutObjectCommand({
+          Bucket: config.bucket,
+          Key: testKey,
+          Body: fileContent,
+          ContentType: "text/plain",
+        })
+      );
+      userLogger.info("[Storage Test] Upload successful.");
+
+      // 2. Retrieve
+      userLogger.info(`[Storage Test] Verifying file retrieval for "${testKey}"...`);
+      await s3.send(
+        new GetObjectCommand({
+          Bucket: config.bucket,
+          Key: testKey,
+        })
+      );
+      userLogger.info("[Storage Test] File retrieval successful.");
+
+      // 3. Delete
+      userLogger.info(`[Storage Test] Cleaning up temporary file "${testKey}"...`);
+      await s3.send(
+        new DeleteObjectCommand({
+          Bucket: config.bucket,
+          Key: testKey,
+        })
+      );
+      userLogger.info("[Storage Test] Cleanup successful.");
+
+      return {
+        success: true,
+        message: `Connection verified! Successfully uploaded, retrieved, and deleted test file in "${config.bucket}".`,
+      };
+    } catch (error) {
+      userLogger.error("[Storage Test] Operation failed:", error);
+
+      // Attempt cleanup if upload succeeded but retrieval failed
+      try {
+        await s3.send(
+          new DeleteObjectCommand({
+            Bucket: config.bucket,
+            Key: testKey,
+          })
+        ).catch(() => {});
+      } catch (cleanupErr) {
+        // ignore
+      }
+
+      throw error;
+    }
   }
 
   // Otherwise, we just list buckets to verify credentials.
+  userLogger.info("[Storage Test] No bucket specified. Listing buckets to verify credentials...");
   try {
     const response = await s3.send(new ListBucketsCommand({}));
     const count = response.Buckets ? response.Buckets.length : 0;
+    userLogger.info(`[Storage Test] Connection successful. Found ${count} buckets.`);
     return { success: true, message: `Connection successful. Found ${count} buckets.` };
   } catch (error) {
     const status = error?.$metadata?.httpStatusCode || 0;
