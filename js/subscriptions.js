@@ -310,7 +310,7 @@ class SubscriptionsManager {
     const normalizedUserPubkey = normalizeHexPubkey(userPubkey) || userPubkey;
 
     // 1. Attempt to load from cache first
-    const cached = profileCache.get("subscriptions");
+    const cached = profileCache.getProfileData(normalizedUserPubkey, "subscriptions");
     if (Array.isArray(cached)) {
       devLogger.log("[SubscriptionsManager] Loaded subscriptions from cache.");
       this.subscribedPubkeys = new Set(cached);
