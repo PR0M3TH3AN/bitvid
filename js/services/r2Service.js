@@ -491,10 +491,21 @@ class R2Service {
           });
         }
       } catch (corsErr) {
+        const resolvedEndpoint =
+          settings.endpoint ||
+          (accountId ? `https://${accountId}.r2.cloudflarestorage.com` : "");
+        const corsContext = {
+          bucketName,
+          endpoint: resolvedEndpoint,
+          region: settings.region || "",
+          corsOrigins,
+        };
         userLogger.warn(
           "Failed to ensure R2 bucket/CORS configuration via access keys. Ensure the bucket exists and you have permissions.",
+          corsContext,
           corsErr
         );
+        devLogger.warn("R2 bucket/CORS configuration details.", corsContext, corsErr);
       }
     }
 
