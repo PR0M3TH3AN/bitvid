@@ -1773,6 +1773,7 @@ export class ProfileModalController {
     this.storageSecretKeyInput = document.getElementById("storageSecretKey") || null;
     this.storageBucketInput = document.getElementById("storageBucket") || null;
     this.storagePrefixInput = document.getElementById("storagePrefix") || null;
+    this.storagePrefixWarning = document.getElementById("storagePrefixWarning") || null;
     this.storageDefaultInput = document.getElementById("storageDefault") || null;
     this.storageR2Helper = document.getElementById("storageR2Helper") || null;
 
@@ -5440,6 +5441,12 @@ export class ProfileModalController {
       });
     }
 
+    if (this.storagePrefixInput instanceof HTMLElement) {
+      this.storagePrefixInput.addEventListener("input", () => {
+        this.handlePublicUrlInput();
+      });
+    }
+
     if (this.profileEditBtn instanceof HTMLElement) {
       this.profileEditBtn.addEventListener("click", () => {
         this.handleEditProfile();
@@ -9046,6 +9053,25 @@ export class ProfileModalController {
     if (this.storageDefaultInput) this.storageDefaultInput.checked = !!defaultForUploads;
 
     this.updateStorageFormVisibility();
+    this.handlePublicUrlInput();
+  }
+
+  handlePublicUrlInput() {
+    if (!this.storagePrefixInput || !this.storagePrefixWarning) return;
+    const value = this.storagePrefixInput.value.trim().toLowerCase();
+
+    if (
+      value.includes(".r2.cloudflarestorage.com") ||
+      value.includes(".s3.") ||
+      value.includes(".amazonaws.com")
+    ) {
+      this.storagePrefixWarning.textContent =
+        "This looks like your S3 Endpoint. Please enter your Public Access URL (e.g. r2.dev) instead.";
+      this.storagePrefixWarning.classList.remove("hidden");
+    } else {
+      this.storagePrefixWarning.textContent = "";
+      this.storagePrefixWarning.classList.add("hidden");
+    }
   }
 
   updateStorageFormVisibility() {
@@ -9053,37 +9079,30 @@ export class ProfileModalController {
     const isR2 = provider === "cloudflare_r2";
 
     if (this.storageEndpointInput) {
-       // Hide generic endpoint for R2 as it is constructed from accountId (which we might map to endpoint or add field)
-       // The prompt said "Endpoint (for generic S3; can be hidden or preset for R2)"
-       // R2 uses accountId. r2Service expects accountId.
-       // We can overload "Endpoint" to be Account ID for R2 in the UI if we want, or add a field.
-       // The form has "Endpoint" and "Region".
-       // Let's hide Endpoint for R2 and assume we can parse account ID from existing R2 logic or add a field?
-       // Wait, the prompt requested: "Endpoint (for generic S3; can be hidden or preset for R2)".
-       // R2 needs Account ID. The generic form has Endpoint.
-       // I'll re-purpose Endpoint label or visibility based on provider.
-       // Actually, I'll keep it simple: Hide endpoint for R2. But where does User enter Account ID?
-       // `r2Service` uses `accountId`.
-       // I will repurpose the "Endpoint" input to be "Account ID" when R2 is selected, or add a field.
-       // The HTML I added has `storageEndpoint`.
-       // Let's toggle the label/placeholder.
-       const label = this.storageEndpointInput.parentElement.querySelector("span");
-       if (isR2) {
-         if (label) label.textContent = "Cloudflare Account ID";
-         this.storageEndpointInput.placeholder = "Account ID from Cloudflare dashboard";
-         this.storageEndpointInput.parentElement.classList.remove("hidden");
-         this.storageEndpointInput.type = "text";
-       } else {
-         if (label) label.textContent = "Endpoint URL";
-         this.storageEndpointInput.placeholder = "https://s3.example.com";
-         this.storageEndpointInput.parentElement.classList.remove("hidden");
-         this.storageEndpointInput.type = "url";
-       }
+      const label = this.storageEndpointInput.parentElement.querySelector("span");
+      if (isR2) {
+        if (label) label.textContent = "Cloudflare Account ID";
+        this.storageEndpointInput.placeholder =
+          "Account ID from Cloudflare dashboard";
+        this.storageEndpointInput.parentElement.classList.remove("hidden");
+        this.storageEndpointInput.type = "text";
+        if (this.storagePrefixInput) {
+          this.storagePrefixInput.placeholder = "https://pub-xxx.r2.dev";
+        }
+      } else {
+        if (label) label.textContent = "Endpoint URL";
+        this.storageEndpointInput.placeholder = "https://s3.example.com";
+        this.storageEndpointInput.parentElement.classList.remove("hidden");
+        this.storageEndpointInput.type = "url";
+        if (this.storagePrefixInput) {
+          this.storagePrefixInput.placeholder = "https://cdn.example.com";
+        }
+      }
     }
 
     if (this.storageR2Helper) {
-        if (isR2) this.storageR2Helper.classList.remove("hidden");
-        else this.storageR2Helper.classList.add("hidden");
+      if (isR2) this.storageR2Helper.classList.remove("hidden");
+      else this.storageR2Helper.classList.add("hidden");
     }
   }
 
@@ -9166,6 +9185,19 @@ export class ProfileModalController {
     if (!accessKeyId || !secretAccessKey || !bucket || !endpointOrAccount) {
         this.setStorageFormStatus("Please fill in all required fields.", "error");
         return;
+    }
+
+    if (
+      provider === "cloudflare_r2" &&
+      (prefix.includes(".r2.cloudflarestorage.com") ||
+        prefix.includes(".s3.") ||
+        prefix.includes(".amazonaws.com"))
+    ) {
+      this.setStorageFormStatus(
+        "Invalid Public URL. Please use your R2.dev or custom domain.",
+        "error",
+      );
+      return;
     }
 
     let publicBaseUrl = "";
