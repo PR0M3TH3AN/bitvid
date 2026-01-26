@@ -2896,6 +2896,7 @@ export class ProfileModalController {
     if (enabled && !relayHints.length) {
       this.showStatus(
         "Privacy warning: this recipient has not shared NIP-17 relays, so we'll use your default relays.",
+        { autoHideMs: 5000 },
       );
     }
 
@@ -3513,6 +3514,7 @@ export class ProfileModalController {
     if (useNip17 && !recipientRelayHints.length) {
       this.showStatus(
         "Privacy warning: this recipient has not shared NIP-17 relays, so we'll use your default relays.",
+        { autoHideMs: 5000 },
       );
     }
 
@@ -3568,6 +3570,7 @@ export class ProfileModalController {
         if (result?.warning === "dm-relays-fallback") {
           this.showStatus(
             "Privacy warning: this message used default relays because no NIP-17 relay list was found.",
+            { autoHideMs: 5000 },
           );
         }
         void this.populateProfileMessages({ force: true, reason: "send-message" });
@@ -4740,6 +4743,7 @@ export class ProfileModalController {
     if (useNip17 && !recipientRelayHints.length) {
       this.showStatus(
         "Privacy warning: this recipient has not shared NIP-17 relays, so we'll use your default relays.",
+        { autoHideMs: 5000 },
       );
     }
 
@@ -4768,6 +4772,7 @@ export class ProfileModalController {
         if (result?.warning === "dm-relays-fallback") {
           this.showStatus(
             "Privacy warning: this message used default relays because no NIP-17 relay list was found.",
+            { autoHideMs: 5000 },
           );
         }
         if (
@@ -5045,6 +5050,7 @@ export class ProfileModalController {
 
     this.showStatus(
       "Privacy warning: direct messages are using your default relays because no NIP-17 relay list is available.",
+      { autoHideMs: 5000 },
     );
   }
 
