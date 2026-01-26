@@ -4,12 +4,13 @@ import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
 
 import { nostrClient } from "../js/nostrClientFacade.js";
-import { getActiveSigner, setActiveSigner } from "../js/nostr/client.js";
+import { getActiveSigner, setActiveSigner, clearActiveSigner } from "../js/nostr/client.js";
 import { subscriptions } from "../js/subscriptions.js";
 import { setApplication } from "../js/applicationContext.js";
 import nostrService from "../js/services/nostrService.js";
 import moderationService from "../js/services/moderationService.js";
 import { getNostrEventSchema, NOTE_TYPES } from "../js/nostrEventSchemas.js";
+import { profileCache } from "../js/state/profileCache.js";
 
 test("loadSubscriptions aggregates relay results when one rejects", async () => {
   const SubscriptionsManager = subscriptions.constructor;
@@ -71,6 +72,8 @@ test("loadSubscriptions aggregates relay results when one rejects", async () => 
 
   const decryptCalls = [];
   globalThis.window.nostr = {
+    getPublicKey: async () => "0000000000000000000000000000000000000000000000000000000000000123",
+    signEvent: async () => ({}),
     nip04: {
       async decrypt(_pubkey, ciphertext) {
         decryptCalls.push(ciphertext);
@@ -83,7 +86,7 @@ test("loadSubscriptions aggregates relay results when one rejects", async () => 
   };
 
   try {
-    await manager.loadSubscriptions("user-pubkey-123");
+    await manager.loadSubscriptions("0000000000000000000000000000000000000000000000000000000000000123");
 
     assert.deepEqual(
       Array.from(manager.subscribedPubkeys),
@@ -130,6 +133,9 @@ test("loadSubscriptions aggregates relay results when one rejects", async () => 
       delete globalThis.window;
     }
     localStorage.clear();
+    profileCache.memoryCache.clear();
+    profileCache.activePubkey = null;
+    clearActiveSigner();
   }
 });
 
@@ -170,7 +176,7 @@ test("loadSubscriptions queries the correct subscription list kind", async () =>
   nostrClient.ensureExtensionPermissions = async () => ({ ok: true });
 
   try {
-    await manager.loadSubscriptions("user-pubkey-legacy");
+    await manager.loadSubscriptions("0000000000000000000000000000000000000000000000000000000000000002");
 
     assert.ok(
       capturedFilters.length > 0,
@@ -210,6 +216,9 @@ test("loadSubscriptions queries the correct subscription list kind", async () =>
       delete globalThis.window;
     }
     localStorage.clear();
+    profileCache.memoryCache.clear();
+    profileCache.activePubkey = null;
+    clearActiveSigner();
   }
 });
 
@@ -225,12 +234,6 @@ test("loadSubscriptions falls back to nip44 when hinted", async () => {
     : nostrClient.writeRelays;
   const originalPool = nostrClient.pool;
   const originalEnsurePermissions = nostrClient.ensureExtensionPermissions;
-
-  const hadWindow = typeof globalThis.window !== "undefined";
-  if (!hadWindow) {
-    globalThis.window = {};
-  }
-  const originalWindowNostr = globalThis.window.nostr;
 
   const relayUrls = ["wss://relay-nip44.example"];
   nostrClient.relays = relayUrls;
@@ -252,23 +255,20 @@ test("loadSubscriptions falls back to nip44 when hinted", async () => {
   nostrClient.ensureExtensionPermissions = async () => ({ ok: true });
 
   const decryptCalls = { nip04: 0, nip44: 0 };
-  globalThis.window.nostr = {
-    nip04: {
-      async decrypt() {
-        decryptCalls.nip04 += 1;
-        throw new Error("nip04 unavailable");
-      },
+  setActiveSigner({
+    pubkey: "0000000000000000000000000000000000000000000000000000000000000005",
+    async nip04Decrypt() {
+      decryptCalls.nip04 += 1;
+      throw new Error("nip04 unavailable");
     },
-    nip44: {
-      async decrypt(_pubkey, ciphertext) {
-        decryptCalls.nip44 += 1;
-        return JSON.stringify([["p", "pub-nip44", ciphertext]]);
-      },
+    async nip44Decrypt(_pubkey, ciphertext) {
+      decryptCalls.nip44 += 1;
+      return JSON.stringify([["p", "pub-nip44", ciphertext]]);
     },
-  };
+  });
 
   try {
-    await manager.loadSubscriptions("user-pubkey-123");
+    await manager.loadSubscriptions("0000000000000000000000000000000000000000000000000000000000000005");
 
     assert.deepEqual(
       Array.from(manager.subscribedPubkeys),
@@ -292,15 +292,10 @@ test("loadSubscriptions falls back to nip44 when hinted", async () => {
     nostrClient.writeRelays = originalWriteRelays;
     nostrClient.pool = originalPool;
     nostrClient.ensureExtensionPermissions = originalEnsurePermissions;
-    if (typeof originalWindowNostr === "undefined") {
-      delete globalThis.window.nostr;
-    } else {
-      globalThis.window.nostr = originalWindowNostr;
-    }
-    if (!hadWindow) {
-      delete globalThis.window;
-    }
     localStorage.clear();
+    profileCache.memoryCache.clear();
+    profileCache.activePubkey = null;
+    clearActiveSigner();
   }
 });
 
@@ -316,12 +311,6 @@ test("loadSubscriptions handles nip44.v2 decryptors", async () => {
     : nostrClient.writeRelays;
   const originalPool = nostrClient.pool;
   const originalEnsurePermissions = nostrClient.ensureExtensionPermissions;
-
-  const hadWindow = typeof globalThis.window !== "undefined";
-  if (!hadWindow) {
-    globalThis.window = {};
-  }
-  const originalWindowNostr = globalThis.window.nostr;
 
   const relayUrls = ["wss://relay-nip44-v2.example"];
   nostrClient.relays = relayUrls;
@@ -343,19 +332,16 @@ test("loadSubscriptions handles nip44.v2 decryptors", async () => {
   nostrClient.ensureExtensionPermissions = async () => ({ ok: true });
 
   const decryptCalls = { nip04: 0, nip44: 0, nip44_v2: 0 };
-  globalThis.window.nostr = {
-    nip44: {
-      v2: {
-        async decrypt(_pubkey, ciphertext) {
-          decryptCalls.nip44_v2 += 1;
-        return JSON.stringify([["p", "pub-nip44-v2"], ["t", ciphertext]]);
-        },
-      },
+  setActiveSigner({
+    pubkey: "0000000000000000000000000000000000000000000000000000000000000006",
+    async nip44Decrypt(_pubkey, ciphertext) {
+      decryptCalls.nip44_v2 += 1;
+      return JSON.stringify([["p", "pub-nip44-v2"], ["t", ciphertext]]);
     },
-  };
+  });
 
   try {
-    await manager.loadSubscriptions("user-pubkey-123");
+    await manager.loadSubscriptions("0000000000000000000000000000000000000000000000000000000000000006");
 
     assert.deepEqual(
       Array.from(manager.subscribedPubkeys),
@@ -384,15 +370,10 @@ test("loadSubscriptions handles nip44.v2 decryptors", async () => {
     nostrClient.writeRelays = originalWriteRelays;
     nostrClient.pool = originalPool;
     nostrClient.ensureExtensionPermissions = originalEnsurePermissions;
-    if (typeof originalWindowNostr === "undefined") {
-      delete globalThis.window.nostr;
-    } else {
-      globalThis.window.nostr = originalWindowNostr;
-    }
-    if (!hadWindow) {
-      delete globalThis.window;
-    }
     localStorage.clear();
+    profileCache.memoryCache.clear();
+    profileCache.activePubkey = null;
+    clearActiveSigner();
   }
 });
 
@@ -408,12 +389,6 @@ test("loadSubscriptions prefers nip44 decryptors when both are available", async
     : nostrClient.writeRelays;
   const originalPool = nostrClient.pool;
   const originalEnsurePermissions = nostrClient.ensureExtensionPermissions;
-
-  const hadWindow = typeof globalThis.window !== "undefined";
-  if (!hadWindow) {
-    globalThis.window = {};
-  }
-  const originalWindowNostr = globalThis.window.nostr;
 
   const relayUrls = ["wss://relay-nip44-pref.example"];
   nostrClient.relays = relayUrls;
@@ -435,25 +410,20 @@ test("loadSubscriptions prefers nip44 decryptors when both are available", async
   nostrClient.ensureExtensionPermissions = async () => ({ ok: true });
 
   const decryptCalls = { nip04: 0, nip44: 0 };
-  globalThis.window.nostr = {
-    nip04: {
-      async decrypt() {
-        decryptCalls.nip04 += 1;
-        return JSON.stringify([["p", "pub-nip04"]]);
-      },
+  setActiveSigner({
+    pubkey: "0000000000000000000000000000000000000000000000000000000000000003",
+    async nip04Decrypt() {
+      decryptCalls.nip04 += 1;
+      return JSON.stringify([["p", "pub-nip04"]]);
     },
-    nip44: {
-      v2: {
-        async decrypt(_pubkey, ciphertext) {
-          decryptCalls.nip44 += 1;
-          return JSON.stringify([["p", "pub-nip44-pref", ciphertext]]);
-        },
-      },
+    async nip44Decrypt(_pubkey, ciphertext) {
+      decryptCalls.nip44 += 1;
+      return JSON.stringify([["p", "pub-nip44-pref", ciphertext]]);
     },
-  };
+  });
 
   try {
-    await manager.loadSubscriptions("user-pubkey-123");
+    await manager.loadSubscriptions("0000000000000000000000000000000000000000000000000000000000000003");
 
     assert.deepEqual(
       Array.from(manager.subscribedPubkeys),
@@ -467,15 +437,10 @@ test("loadSubscriptions prefers nip44 decryptors when both are available", async
     nostrClient.writeRelays = originalWriteRelays;
     nostrClient.pool = originalPool;
     nostrClient.ensureExtensionPermissions = originalEnsurePermissions;
-    if (typeof originalWindowNostr === "undefined") {
-      delete globalThis.window.nostr;
-    } else {
-      globalThis.window.nostr = originalWindowNostr;
-    }
-    if (!hadWindow) {
-      delete globalThis.window;
-    }
     localStorage.clear();
+    profileCache.memoryCache.clear();
+    profileCache.activePubkey = null;
+    clearActiveSigner();
   }
 });
 
@@ -526,7 +491,7 @@ test(
 
     const decryptCalls = [];
     setActiveSigner({
-      pubkey: "user-pubkey-123",
+      pubkey: "0000000000000000000000000000000000000000000000000000000000000004",
       async nip04Decrypt(pubkey, ciphertext) {
         decryptCalls.push({ pubkey, ciphertext });
         return JSON.stringify([["p", "pub-direct"]]);
@@ -534,13 +499,13 @@ test(
     });
 
     try {
-      await manager.loadSubscriptions("user-pubkey-123");
+      await manager.loadSubscriptions("0000000000000000000000000000000000000000000000000000000000000004");
 
       assert.equal(permissionCalls, 0, "should not request extension permissions");
       assert.equal(decryptCalls.length, 1, "signer decrypt should be invoked once");
       assert.deepEqual(
         decryptCalls[0],
-        { pubkey: "user-pubkey-123", ciphertext: "cipher-direct" },
+        { pubkey: "0000000000000000000000000000000000000000000000000000000000000004", ciphertext: "cipher-direct" },
         "signer decrypt should receive the expected arguments",
       );
       assert.deepEqual(
@@ -563,6 +528,9 @@ test(
         delete globalThis.window;
       }
       localStorage.clear();
+    profileCache.memoryCache.clear();
+    profileCache.activePubkey = null;
+    clearActiveSigner();
     }
   },
 );

@@ -737,8 +737,6 @@ class UserBlockListManager {
         blockedPubkeys: Array.from(this.blockedPubkeys),
         source: "local",
       });
-      emitStatus({ status: "settled" });
-      return;
     }
 
     const applyBlockedPubkeys = (nextValues, meta = {}) => {
