@@ -92,7 +92,12 @@ function openSettingsDb() {
   });
 }
 
-export async function loadR2Settings() {
+/**
+ * Legacy R2 settings loader (deprecated).
+ * Used only for one-time migration into StorageService.
+ * @deprecated
+ */
+export async function loadLegacyR2Settings() {
   try {
     const db = await openSettingsDb();
     if (db) {
@@ -126,36 +131,12 @@ export async function loadR2Settings() {
   return normalizeSettings(null);
 }
 
-export async function saveR2Settings(settings) {
-  const normalized = normalizeSettings(settings);
-
-  let db = null;
-  try {
-    db = await openSettingsDb();
-  } catch (err) {
-    userLogger.warn("Unable to open IndexedDB, continuing with fallback:", err);
-  }
-
-  if (db) {
-    await new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_NAME, "readwrite");
-      const store = tx.objectStore(STORE_NAME);
-      const req = store.put(normalized, SETTINGS_KEY);
-      req.onsuccess = () => resolve();
-      req.onerror = () =>
-        reject(req.error || new Error("Failed to save R2 settings"));
-    });
-  } else if (typeof localStorage !== "undefined") {
-    localStorage.setItem(
-      LOCALSTORAGE_FALLBACK_KEY,
-      JSON.stringify(normalized)
-    );
-  }
-
-  return normalized;
-}
-
-export async function clearR2Settings() {
+/**
+ * Legacy R2 settings clearer (deprecated).
+ * Used only after successful migration into StorageService.
+ * @deprecated
+ */
+export async function clearLegacyR2Settings() {
   let cleared = false;
   try {
     const db = await openSettingsDb();

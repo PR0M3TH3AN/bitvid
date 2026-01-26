@@ -6,7 +6,7 @@
 
 > **Security Note:** This integration requires storing encrypted credentials in the browser. See [`README.md`](../README.md) and [`docs/storage-tab-design.md`](./storage-tab-design.md) for security warnings and alternative upload modes for untrusted environments.
 
-While the new **Storage Tab** (powered by `StorageService`) manages the secure storage of credentials, `r2Service` is responsible for:
+The **Storage Tab** (powered by `StorageService`) is the single supported configuration path for R2 credentials. `r2Service` is responsible for:
 
 - Uploading the selected video/HLS asset via multipart S3 uploads.
 - Verifying public access via the configured Public Bucket URL.
@@ -69,7 +69,7 @@ The app will attempt to upload a small test file to verify the credentials and p
 
 ## Configuration keys
 
-R2 credentials are no longer stored in plain `bitvidSettings`. They are encapsulated within the `StorageService` data model.
+R2 credentials are no longer stored in plain `bitvidSettings`. They are encapsulated within the `StorageService` data model. Legacy `r2Settings` are migrated into `StorageService` on first unlock and then cleared.
 
 **R2 Connection Profile (Encrypted):**
 - `provider`: `cloudflare_r2`

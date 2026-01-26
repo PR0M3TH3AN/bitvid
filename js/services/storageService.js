@@ -1,4 +1,5 @@
 import { userLogger } from "../utils/logger.js";
+import { clearLegacyR2Settings, loadLegacyR2Settings } from "../r2.js";
 import { bytesToHex } from "../../vendor/crypto-helpers.bundle.min.js";
 import { testS3Connection } from "../storage/r2-s3.js";
 
@@ -107,6 +108,18 @@ function buildS3TestConfig(config, overrides = {}) {
     publicBaseUrl: resolvePublicBaseUrl(config),
     ...overrides,
   };
+}
+
+function encodeNpub(pubkey) {
+  if (!pubkey) return null;
+  try {
+    if (typeof window !== "undefined" && window.NostrTools?.nip19?.npubEncode) {
+      return window.NostrTools.nip19.npubEncode(pubkey);
+    }
+  } catch (err) {
+    userLogger.warn("[StorageService] Failed to encode npub for migration:", err);
+  }
+  return null;
 }
 
 const PROVIDER_TESTS = {
@@ -404,6 +417,8 @@ export class StorageService {
 
     this.masterKeys.set(pubkey, masterKey);
     userLogger.log(`[StorageService] Unlocked storage for ${pubkey.slice(0, 8)}...`);
+
+    await this._migrateLegacyR2Settings(pubkey);
   }
 
   /**
@@ -586,6 +601,72 @@ export class StorageService {
     }
 
     return this.testAccess(connection.provider, connection);
+  }
+
+  async _migrateLegacyR2Settings(pubkey) {
+    let legacySettings = null;
+    try {
+      legacySettings = await loadLegacyR2Settings();
+    } catch (err) {
+      userLogger.warn("[StorageService] Legacy R2 settings load failed:", err);
+      return;
+    }
+
+    if (
+      !legacySettings ||
+      !legacySettings.accountId ||
+      !legacySettings.accessKeyId ||
+      !legacySettings.secretAccessKey ||
+      !legacySettings.baseDomain
+    ) {
+      return;
+    }
+
+    const existingConnections = await this.listConnections(pubkey);
+    const hasR2 = existingConnections.some(
+      (connection) => connection.provider === PROVIDERS.R2
+    );
+    if (hasR2) {
+      return;
+    }
+
+    const npub = encodeNpub(pubkey);
+    const legacyEntry =
+      npub && legacySettings.buckets ? legacySettings.buckets[npub] : null;
+    const publicBaseUrl =
+      legacyEntry?.publicBaseUrl || legacySettings.baseDomain || "";
+
+    const payload = {
+      provider: PROVIDERS.R2,
+      accountId: legacySettings.accountId,
+      accessKeyId: legacySettings.accessKeyId,
+      secretAccessKey: legacySettings.secretAccessKey,
+      bucket: legacyEntry?.bucket || "",
+    };
+    const meta = {
+      provider: PROVIDERS.R2,
+      label: "Cloudflare R2 (Migrated)",
+      publicBaseUrl,
+      baseDomain: publicBaseUrl,
+      defaultForUploads: existingConnections.length === 0,
+      migratedFromLegacy: true,
+    };
+
+    const baseId = "cloudflare-r2-migrated";
+    let connectionId = baseId;
+    let suffix = 1;
+    while (existingConnections.some((conn) => conn.id === connectionId)) {
+      connectionId = `${baseId}-${suffix}`;
+      suffix += 1;
+    }
+
+    try {
+      await this.saveConnection(pubkey, connectionId, payload, meta);
+      await clearLegacyR2Settings();
+      userLogger.log("[StorageService] Migrated legacy R2 settings.");
+    } catch (err) {
+      userLogger.warn("[StorageService] Legacy R2 migration failed:", err);
+    }
   }
 }
 

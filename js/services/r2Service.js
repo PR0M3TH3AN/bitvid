@@ -17,13 +17,8 @@
  */
 
 import {
-  loadR2Settings,
-  saveR2Settings,
-  clearR2Settings,
   buildR2Key,
   buildPublicUrl,
-  mergeBucketEntry,
-  sanitizeBaseDomain,
 } from "../r2.js";
 import {
   sanitizeBucketName,
@@ -290,101 +285,24 @@ class R2Service {
   }
 
   async loadSettings() {
-    try {
-      const settings = await loadR2Settings();
-      this.setSettings(settings);
-      this.populateCloudflareSettingsInputs(settings);
-      return settings;
-    } catch (err) {
-      userLogger.error("Failed to load Cloudflare settings:", err);
-      this.setSettings(createDefaultSettings());
-      this.populateCloudflareSettingsInputs(this.getSettings());
-      this.setCloudflareSettingsStatus(
-        "Failed to load saved settings.",
-        "error"
-      );
-      throw err;
-    }
+    const settings = createDefaultSettings();
+    this.setSettings(settings);
+    this.populateCloudflareSettingsInputs(settings);
+    this.setCloudflareSettingsStatus(
+      "Legacy Cloudflare settings have been retired. Use the Storage tab.",
+      "warning"
+    );
+    return settings;
   }
 
   async handleCloudflareSettingsSubmit(formValues = {}, { quiet = false } = {}) {
-    // Legacy support wrapper: redirects to storageService if possible, or warns.
-    // For now, we allow saving to legacy for backward compatibility if explicit flow isn't used,
-    // but we prefer to use storageService.
-
-    const accountId = String(formValues.accountId || "").trim();
-    const accessKeyId = String(formValues.accessKeyId || "").trim();
-    const secretAccessKey = String(formValues.secretAccessKey || "").trim();
-    const baseDomain = sanitizeBaseDomain(formValues.baseDomain || ""); // This is the Public Bucket URL
-
-    if (baseDomain.includes(".r2.cloudflarestorage.com")) {
-      if (!quiet) {
-        this.setCloudflareSettingsStatus(
-          "It looks like you entered the S3 API URL. Please use your Public Bucket URL (e.g. https://pub-xxx.r2.dev or your custom domain).",
-          "error"
-        );
-      }
-      return false;
+    if (!quiet) {
+      this.setCloudflareSettingsStatus(
+        "Legacy settings are disabled. Configure Cloudflare R2 in the Storage tab.",
+        "error"
+      );
     }
-
-    if (!accountId || !accessKeyId || !secretAccessKey) {
-      if (!quiet) {
-        this.setCloudflareSettingsStatus(
-          "Account ID, Access Key ID, and Secret are required.",
-          "error"
-        );
-      }
-      return false;
-    }
-
-    if (!baseDomain) {
-      if (!quiet) {
-        this.setCloudflareSettingsStatus(
-          "Public Bucket URL is required (e.g., https://pub-xxx.r2.dev).",
-          "error"
-        );
-      }
-      return false;
-    }
-
-    // Try to save to StorageService if available and unlocked
-    // We can't easily know the active pubkey here unless passed or inferred from context.
-    // Since this method is legacy, we'll default to legacy behavior but warn.
-
-    let buckets = { ...(this.getSettings().buckets || {}) };
-    const previousAccount = this.getSettings().accountId || "";
-    const previousBaseDomain = this.getSettings().baseDomain || "";
-
-    if (previousAccount !== accountId || previousBaseDomain !== baseDomain) {
-      buckets = {};
-    }
-
-    const updatedSettings = {
-      accountId,
-      accessKeyId,
-      secretAccessKey,
-      baseDomain,
-      buckets,
-    };
-
-    try {
-      const saved = await saveR2Settings(updatedSettings);
-      this.setSettings(saved);
-      this.populateCloudflareSettingsInputs(saved);
-      if (!quiet) {
-        this.setCloudflareSettingsStatus("Settings saved locally.", "success");
-      }
-      return true;
-    } catch (err) {
-      userLogger.error("Failed to save Cloudflare settings:", err);
-      if (!quiet) {
-        this.setCloudflareSettingsStatus(
-          "Failed to save settings. Check console for details.",
-          "error"
-        );
-      }
-      return false;
-    }
+    return false;
   }
 
   async saveSettings(formValues = {}, options = {}) {
@@ -462,33 +380,17 @@ class R2Service {
       }
     }
 
-    // 2. Fallback to legacy
-    const legacy = this.cloudflareSettings;
-    if (
-      legacy &&
-      legacy.accountId &&
-      legacy.accessKeyId &&
-      legacy.secretAccessKey
-    ) {
-      return { ...legacy, isLegacy: true };
-    }
-
     return null;
   }
 
   async handleCloudflareClearSettings() {
-    try {
-      await clearR2Settings();
-      const refreshed = await loadR2Settings();
-      this.setSettings(refreshed);
-      this.populateCloudflareSettingsInputs(refreshed);
-      this.setCloudflareSettingsStatus("Settings cleared.", "success");
-      return true;
-    } catch (err) {
-      userLogger.error("Failed to clear Cloudflare settings:", err);
-      this.setCloudflareSettingsStatus("Failed to clear settings.", "error");
-      return false;
-    }
+    this.setSettings(createDefaultSettings());
+    this.populateCloudflareSettingsInputs(this.getSettings());
+    this.setCloudflareSettingsStatus(
+      "Legacy settings are no longer supported. Clear settings in the Storage tab.",
+      "warning"
+    );
+    return false;
   }
 
   async clearSettings() {
@@ -606,35 +508,6 @@ class R2Service {
       domainType: "manual",
       lastUpdated: Date.now(),
     };
-
-    // If using legacy settings, we save the bucket mapping.
-    // If using StorageService (settings.isLegacy === false), we do NOT save to legacy store
-    // to avoid partial state or overwriting. We just return the manual entry.
-    if (settings.isLegacy !== false) {
-      const currentSettings = this.getSettings();
-      if (!this.cloudflareSettings) {
-        this.cloudflareSettings = currentSettings;
-      }
-      let entry = currentSettings.buckets?.[npub];
-      let savedEntry = entry;
-
-      if (
-        !entry ||
-        entry.bucket !== manualEntry.bucket ||
-        entry.publicBaseUrl !== manualEntry.publicBaseUrl
-      ) {
-        const updatedSettings = await saveR2Settings(
-          mergeBucketEntry(currentSettings, npub, manualEntry)
-        );
-        this.setSettings(updatedSettings);
-        savedEntry = updatedSettings.buckets?.[npub] || manualEntry;
-      }
-      return {
-        entry: savedEntry,
-        usedManagedFallback: false,
-        customDomainStatus: "manual",
-      };
-    }
 
     return {
       entry: manualEntry,
@@ -797,7 +670,7 @@ class R2Service {
       bucket: effectiveSettings.bucket || "",
       baseDomain: effectiveSettings.baseDomain || "",
       publicBaseUrl: effectiveSettings.publicBaseUrl || "",
-      isLegacy: effectiveSettings.isLegacy !== false,
+      legacyFallback: Boolean(effectiveSettings.isLegacy),
     });
 
     if (!accountId || !accessKeyId || !secretAccessKey) {
@@ -858,19 +731,12 @@ class R2Service {
     forcedTorrentKey = "",
     forcedTorrentUrl = "",
   } = {}) {
-    // If no explicit credentials, we might save settingsInput to legacy DB.
-    // If explicitCredentials ARE provided, we skip saving and use them directly.
-    if (!explicitCredentials && settingsInput) {
-      const saved = await this.handleCloudflareSettingsSubmit(settingsInput, {
-        quiet: true,
-      });
-      if (!saved) {
-        this.setCloudflareUploadStatus(
-          "Fix your R2 settings before uploading.",
-          "error"
-        );
-        return false;
-      }
+    if (settingsInput) {
+      this.setCloudflareUploadStatus(
+        "Legacy Cloudflare settings are disabled. Configure R2 in the Storage tab.",
+        "error"
+      );
+      return false;
     }
 
     if (!npub) {
