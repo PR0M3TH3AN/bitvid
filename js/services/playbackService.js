@@ -1,4 +1,5 @@
 import { userLogger } from "../utils/logger.js";
+import { PLAYBACK_START_TIMEOUT } from "../constants.js";
 // js/services/playbackService.js
 
 /**
@@ -70,6 +71,7 @@ export class PlaybackService {
     isValidMagnetUri,
     urlFirstEnabled = true,
     analyticsCallbacks = {},
+    playbackStartTimeout = PLAYBACK_START_TIMEOUT,
   } = {}) {
     if (typeof logger === "function") {
       this.logger = logger;
@@ -84,6 +86,7 @@ export class PlaybackService {
     this.isValidMagnetUri = isValidMagnetUri;
     this.urlFirstEnabled = !!urlFirstEnabled;
     this.analyticsCallbacks = analyticsCallbacks || {};
+    this.playbackStartTimeout = playbackStartTimeout;
     this.currentSession = null;
   }
 
@@ -261,7 +264,10 @@ export class PlaybackService {
   }
 
   createSession(options = {}) {
-    const session = new PlaybackSession(this, options);
+    const session = new PlaybackSession(this, {
+      ...options,
+      playbackStartTimeout: this.playbackStartTimeout,
+    });
     this.currentSession = session;
     return session;
   }
@@ -480,6 +486,7 @@ class PlaybackSession extends SimpleEventEmitter {
       autoplay,
       unsupportedBtihMessage = DEFAULT_UNSUPPORTED_BTITH_MESSAGE,
       forcedSource = null,
+      playbackStartTimeout = PLAYBACK_START_TIMEOUT,
     } = this.options;
 
     this.result = { source: null };
@@ -550,57 +557,40 @@ class PlaybackSession extends SimpleEventEmitter {
         );
       }
 
-      // -- Fallback Logic --
-      // This function switches from the "URL" path to the "Torrent" path.
-      let fallbackStarted = false;
-      const startTorrentFallback = async (reason) => {
-        if (fallbackStarted) {
-          this.service.log(
-            `[playVideoWithFallback] Duplicate fallback request ignored (${reason}).`
-          );
-          return null;
+      const resetVideoElement = () => {
+        if (!activeVideoEl) return;
+        try {
+          activeVideoEl.pause();
+        } catch (err) {
+          this.service.log("[playVideoWithFallback] Pause threw during reset:", err);
         }
-        fallbackStarted = true;
+        try {
+          activeVideoEl.removeAttribute("src");
+        } catch (err) {
+          // ignore
+        }
+        activeVideoEl.src = "";
+        activeVideoEl.srcObject = null;
+        try {
+          activeVideoEl.load();
+        } catch (err) {
+          this.service.log("[playVideoWithFallback] Load threw during reset:", err);
+        }
+      };
+
+      // --- Attempt Torrent Logic ---
+      let torrentAttempted = false;
+      const attemptTorrentPlayback = async (reason) => {
+        if (torrentAttempted) return null;
+        torrentAttempted = true;
+
         this.cleanupWatchdog();
         cleanupHostedUrlStatusListeners();
         cleanupDebugListeners();
-
-        // Reset the video element state so WebTorrent can take over clean.
-        if (activeVideoEl) {
-          try {
-            activeVideoEl.pause();
-          } catch (err) {
-            this.service.log(
-              "[playVideoWithFallback] Ignoring pause error before torrent fallback:",
-              err
-            );
-          }
-          try {
-            activeVideoEl.removeAttribute("src");
-          } catch (err) {
-            // ignore attribute removal errors
-          }
-          activeVideoEl.src = "";
-          activeVideoEl.srcObject = null;
-          try {
-            activeVideoEl.load();
-          } catch (err) {
-            this.service.log(
-              "[playVideoWithFallback] Ignoring load error before torrent fallback:",
-              err
-            );
-          }
-        }
+        resetVideoElement();
 
         if (!this.magnetForPlayback) {
-          const message =
-            "Hosted playback failed and no magnet fallback is available.";
-          this.emit("status", { message });
-          this.emit("sourcechange", { source: null });
-          const error = new Error(message);
-          this.service.handleAnalyticsEvent("error", { error });
-          this.emit("error", { error, message });
-          this.result = { source: null, error };
+          // No magnet available to try
           return null;
         }
 
@@ -609,33 +599,29 @@ class PlaybackSession extends SimpleEventEmitter {
         this.emit("fallback", { reason });
 
         if (typeof playViaWebTorrent !== "function") {
-          const error = new Error("No torrent playback handler provided.");
-          this.service.handleAnalyticsEvent("error", { error });
-          this.emit("error", { error, message: error.message });
-          this.result = { source: null, error };
-          return null;
+          throw new Error("No torrent playback handler provided.");
         }
 
-        // Delegate to the WebTorrent driver (see js/webtorrent.js interactions in app.js)
         const torrentInstance = await playViaWebTorrent(this.magnetForPlayback, {
           fallbackMagnet: this.fallbackMagnet,
           urlList: webSeedCandidates,
         });
+
         this.service.handleAnalyticsEvent("sourcechange", { source: "torrent" });
         this.emit("sourcechange", { source: "torrent" });
         if (typeof autoplay === "function") {
           autoplay();
         }
-        this.result = { source: "torrent", torrentInstance };
-        return torrentInstance;
+
+        const result = { source: "torrent", torrentInstance };
+        this.result = result;
+        return result;
       };
 
-      // -- Primary Path: Direct URL --
-      if (
-        this.service.urlFirstEnabled &&
-        httpsUrl &&
-        forcedSource !== "torrent"
-      ) {
+      // --- Attempt URL Logic ---
+      const attemptHostedPlayback = async () => {
+        if (!httpsUrl) return null;
+
         this.emit("status", { message: "Checking hosted URL..." });
         this.service.log(
           `[playVideoWithFallback] Probing hosted URL ${httpsUrl} (readyState=${activeVideoEl.readyState} networkState=${activeVideoEl.networkState}).`
@@ -644,20 +630,18 @@ class PlaybackSession extends SimpleEventEmitter {
         let hostedStatusResolved = false;
         const hostedStatusHandlers = [];
         const addHostedStatusListener = (eventName, handler, options) => {
-          if (!activeVideoEl) {
-            return;
-          }
+          if (!activeVideoEl) return;
           activeVideoEl.addEventListener(eventName, handler, options);
           hostedStatusHandlers.push([eventName, handler, options]);
         };
+
         const markHostedUrlAsLive = () => {
-          if (hostedStatusResolved) {
-            return;
-          }
+          if (hostedStatusResolved) return;
           hostedStatusResolved = true;
           this.emit("status", { message: HOSTED_URL_SUCCESS_MESSAGE });
           cleanupHostedUrlStatusListeners();
         };
+
         const maybeMarkHostedUrl = () => {
           if (
             hostedStatusResolved ||
@@ -670,6 +654,7 @@ class PlaybackSession extends SimpleEventEmitter {
             markHostedUrlAsLive();
           }
         };
+
         cleanupHostedUrlStatusListeners = () => {
           if (!hostedStatusHandlers.length || !activeVideoEl) {
             hostedStatusHandlers.length = 0;
@@ -682,6 +667,7 @@ class PlaybackSession extends SimpleEventEmitter {
           hostedStatusHandlers.length = 0;
           cleanupHostedUrlStatusListeners = () => {};
         };
+
         addHostedStatusListener("playing", markHostedUrlAsLive, { once: true });
         addHostedStatusListener("loadeddata", maybeMarkHostedUrl);
         addHostedStatusListener("canplay", maybeMarkHostedUrl);
@@ -718,23 +704,18 @@ class PlaybackSession extends SimpleEventEmitter {
 
           const playbackOutcomePromise = new Promise((resolve) => {
             outcomeResolver = (value) => {
-              if (outcomeResolved) {
-                return;
-              }
+              if (outcomeResolved) return;
               outcomeResolved = true;
               resolve(value);
             };
           });
 
-          // Install the watchdogs before we assign src and play.
           const attachWatchdogs = ({ stallMs = 8000 } = {}) => {
             this.registerWatchdogs(activeVideoEl, {
               stallMs,
               onSuccess: () => outcomeResolver({ status: "success" }),
               onFallback: (reason) => {
                 if (autoplayBlocked && reason === "stall") {
-                  // If browser blocked autoplay, a stall is expected (video is paused).
-                  // Don't fallback yet; wait for user interaction.
                   this.service.log(
                     "[playVideoWithFallback] Autoplay blocked; waiting for user gesture before falling back."
                   );
@@ -742,15 +723,15 @@ class PlaybackSession extends SimpleEventEmitter {
                     message: "Press play to start the hosted video.",
                   });
                   this.emit("autoplay-blocked", { reason });
-                  attachWatchdogs({ stallMs: 0 }); // Disable timer
+                  attachWatchdogs({ stallMs: 0 });
                   return;
                 }
-
                 outcomeResolver({ status: "fallback", reason });
               },
             });
           };
 
+          // Use default stall timeout here; the initial start timeout is handled by the race wrapper
           attachWatchdogs({ stallMs: 8000 });
 
           const handleFatalPlaybackError = (err) => {
@@ -804,39 +785,133 @@ class PlaybackSession extends SimpleEventEmitter {
             this.emit("sourcechange", { source: "url" });
             cleanupHostedUrlStatusListeners();
             cleanupDebugListeners();
-            this.result = { source: "url" };
-            return this.result;
+            const result = { source: "url" };
+            this.result = result;
+            return result;
           }
 
-          // If we are here, the watchdog triggered a fallback.
-          const fallbackReason =
-            playbackOutcome?.reason || "watchdog-triggered";
-          const torrentInstance = await startTorrentFallback(fallbackReason);
-          this.result = torrentInstance
-            ? { source: "torrent", torrentInstance }
-            : this.result;
-          return this.result;
+          // Fallback triggered
+          const fallbackReason = playbackOutcome?.reason || "watchdog-triggered";
+          return { status: "fallback", reason: fallbackReason };
         }
 
-        this.service.log(
-          `[playVideoWithFallback] Hosted URL probe reported "${probeOutcome}"; deferring to WebTorrent.`
-        );
         cleanupHostedUrlStatusListeners();
         cleanupDebugListeners();
+        return { status: "fallback", reason: "probe-failed" };
+      };
+
+      // --- Timeout Wrapper ---
+      const withTimeout = (promise, ms, label = "Operation") => {
+        if (!ms || ms <= 0) return promise;
+        return new Promise((resolve, reject) => {
+          const timer = setTimeout(() => {
+            this.service.log(`[playVideoWithFallback] ${label} timed out after ${ms}ms.`);
+            resolve({ status: "fallback", reason: "timeout", source: "timeout" });
+          }, ms);
+
+          promise
+            .then((result) => {
+              clearTimeout(timer);
+              resolve(result);
+            })
+            .catch((err) => {
+              clearTimeout(timer);
+              reject(err);
+            });
+        });
+      };
+
+      // --- Execution Flow ---
+
+      let tryUrlFirst = this.service.urlFirstEnabled;
+      if (forcedSource === "url") tryUrlFirst = true;
+      if (forcedSource === "torrent") tryUrlFirst = false;
+
+      const effectiveTimeout = forcedSource ? 0 : playbackStartTimeout;
+
+      if (tryUrlFirst) {
+        if (httpsUrl) {
+          // Wrap URL attempt in timeout
+          const urlResult = await withTimeout(
+            attemptHostedPlayback(),
+            effectiveTimeout,
+            "URL Playback"
+          );
+
+          if (urlResult && urlResult.source === "url") {
+            return urlResult;
+          }
+
+          // If timeout or failure, proceed to fallback
+          if (urlResult?.reason === "timeout") {
+            // Need to ensure URL probing/playback is effectively cancelled
+            this.cleanupWatchdog();
+            cleanupHostedUrlStatusListeners();
+            resetVideoElement();
+          }
+
+          const fallbackReason = urlResult?.reason || "url-unavailable";
+          if (this.magnetForPlayback && forcedSource !== "url") {
+            return await attemptTorrentPlayback(fallbackReason);
+          }
+        } else if (this.magnetForPlayback && forcedSource !== "url") {
+          return await attemptTorrentPlayback("url-missing");
+        }
+      } else {
+        // Try Torrent First
+        if (this.magnetForPlayback) {
+          try {
+            // Wrap Torrent attempt in timeout
+            const torrentResult = await withTimeout(
+              attemptTorrentPlayback("preference"),
+              effectiveTimeout,
+              "Torrent Playback"
+            );
+
+            if (torrentResult && torrentResult.source === "torrent") {
+              return torrentResult;
+            }
+
+            if (torrentResult?.reason === "timeout") {
+              this.service.log(
+                "[playVideoWithFallback] Torrent timed out; cleaning up."
+              );
+              if (
+                this.service.torrentClient &&
+                typeof this.service.torrentClient.cleanup === "function"
+              ) {
+                await this.service.torrentClient.cleanup();
+              }
+              resetVideoElement();
+            }
+          } catch (err) {
+            this.service.log(
+              "[playVideoWithFallback] Torrent preference failed, trying URL:",
+              err
+            );
+            if (
+              this.service.torrentClient &&
+              typeof this.service.torrentClient.cleanup === "function"
+            ) {
+              await this.service.torrentClient.cleanup();
+            }
+            resetVideoElement();
+          }
+        }
+
+        // Fallback to URL
+        if (httpsUrl && forcedSource !== "torrent") {
+          const urlResult = await attemptHostedPlayback();
+          if (urlResult && urlResult.source === "url") {
+            return urlResult;
+          }
+        }
       }
 
-      // -- Secondary Path: Magnet / Torrent --
-      if (this.magnetForPlayback) {
-        const torrentInstance = await startTorrentFallback("magnet-primary");
-        this.result = torrentInstance
-          ? { source: "torrent", torrentInstance }
-          : this.result;
-        return this.result;
-      }
-
-      const message = this.magnetProvided && !this.magnetForPlayback
-        ? unsupportedBtihMessage
-        : "No playable source found.";
+      const message =
+        this.magnetProvided && !this.magnetForPlayback
+          ? unsupportedBtihMessage
+          : "No playable source found.";
       this.emit("status", { message });
       this.service.handleAnalyticsEvent("sourcechange", { source: null });
       this.emit("sourcechange", { source: null });
@@ -848,9 +923,10 @@ class PlaybackSession extends SimpleEventEmitter {
       return this.result;
     } catch (error) {
       this.service.log("Error in playVideoWithFallback:", error);
-      const message = error && error.message
-        ? `Playback error: ${error.message}`
-        : "Playback error";
+      const message =
+        error && error.message
+          ? `Playback error: ${error.message}`
+          : "Playback error";
       this.service.handleAnalyticsEvent("error", { error });
       this.emit("error", { error, message });
       this.result = { source: null, error };

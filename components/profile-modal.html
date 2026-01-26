@@ -835,9 +835,19 @@
                             Enter your Cloudflare R2 credentials. Your Account ID (from dashboard) is used to connect. For Public Access URL, use your custom domain or R2.dev subdomain. Ensure the token has "Object Read & Write" permissions.
                         </div>
 
+                        <!-- S3 Helper -->
+                        <div id="storageS3Helper" class="card border border-info/30 bg-info/10 p-3 text-xs text-info hidden">
+                            Enter your S3-compatible storage details. The Endpoint URL is your provider's API address (e.g., https://s3.amazonaws.com or your MinIO URL).
+                        </div>
+
                         <label class="block text-sm text-muted-strong hidden" for="storageEndpoint">
                             <span class="mb-2 block font-medium">Endpoint</span>
                             <input id="storageEndpoint" type="url" class="input" placeholder="https://..." />
+                        </label>
+
+                        <label class="hidden items-center gap-2 text-sm text-muted-strong" id="storageForcePathStyleLabel">
+                            <input id="storageForcePathStyle" type="checkbox" class="checkbox" checked />
+                            <span>Force Path Style</span>
                         </label>
 
                         <label class="block text-sm text-muted-strong" for="storageRegion">
