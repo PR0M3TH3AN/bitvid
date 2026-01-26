@@ -9064,20 +9064,8 @@ export class ProfileModalController {
 
   handlePublicUrlInput() {
     if (!this.storagePrefixInput || !this.storagePrefixWarning) return;
-    const value = this.storagePrefixInput.value.trim().toLowerCase();
-
-    if (
-      value.includes(".r2.cloudflarestorage.com") ||
-      value.includes(".s3.") ||
-      value.includes(".amazonaws.com")
-    ) {
-      this.storagePrefixWarning.textContent =
-        "This looks like your S3 Endpoint. Please enter your Public Access URL (e.g. r2.dev) instead.";
-      this.storagePrefixWarning.classList.remove("hidden");
-    } else {
-      this.storagePrefixWarning.textContent = "";
-      this.storagePrefixWarning.classList.add("hidden");
-    }
+    this.storagePrefixWarning.textContent = "";
+    this.storagePrefixWarning.classList.add("hidden");
   }
 
   updateStorageFormVisibility() {
