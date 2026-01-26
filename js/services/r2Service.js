@@ -611,7 +611,11 @@ class R2Service {
     // If using StorageService (settings.isLegacy === false), we do NOT save to legacy store
     // to avoid partial state or overwriting. We just return the manual entry.
     if (settings.isLegacy !== false) {
-      let entry = this.cloudflareSettings.buckets?.[npub];
+      const currentSettings = this.getSettings();
+      if (!this.cloudflareSettings) {
+        this.cloudflareSettings = currentSettings;
+      }
+      let entry = currentSettings.buckets?.[npub];
       let savedEntry = entry;
 
       if (
@@ -620,7 +624,7 @@ class R2Service {
         entry.publicBaseUrl !== manualEntry.publicBaseUrl
       ) {
         const updatedSettings = await saveR2Settings(
-          mergeBucketEntry(this.getSettings(), npub, manualEntry)
+          mergeBucketEntry(currentSettings, npub, manualEntry)
         );
         this.setSettings(updatedSettings);
         savedEntry = updatedSettings.buckets?.[npub] || manualEntry;
