@@ -1037,6 +1037,15 @@ class R2Service {
     key,
     onProgress,
   } = {}) {
+    devLogger.debug("r2Service.uploadFile validation inputs", {
+      hasFile: Boolean(file),
+      hasBucket: Boolean(bucket),
+      hasKey: Boolean(key),
+      hasAccountId: Boolean(accountId),
+      hasEndpoint: Boolean(endpoint),
+      hasAccessKeyId: Boolean(accessKeyId),
+      hasSecretAccessKey: Boolean(secretAccessKey),
+    });
     if (
       !file ||
       !bucket ||

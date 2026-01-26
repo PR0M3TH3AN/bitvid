@@ -1,7 +1,7 @@
 // components/UploadModal.js
 import { createModalAccessibility } from "./modalAccessibility.js";
 import { Nip71FormManager } from "./nip71FormManager.js";
-import { userLogger } from "../../utils/logger.js";
+import { devLogger, userLogger } from "../../utils/logger.js";
 import {
   getVideoNoteErrorMessage,
   normalizeVideoNotePayload,
@@ -542,6 +542,15 @@ export class UploadModal {
 
           // 3. Start Video Upload
           this.updateVideoProgress(0, "Uploading video...");
+          devLogger.debug("UploadModal uploadFile settings presence", {
+              hasAccountId: Boolean(settings.accountId),
+              hasEndpoint: Boolean(settings.endpoint),
+              hasProvider: Boolean(settings.provider),
+              hasRegion: Boolean(settings.region),
+              hasAccessKeyId: Boolean(settings.accessKeyId),
+              hasSecretAccessKey: Boolean(settings.secretAccessKey),
+              hasForcePathStyle: settings.forcePathStyle !== undefined,
+          });
           const uploadPromise = service.uploadFile({
               file,
               bucket: bucketEntry.bucket,
@@ -594,6 +603,15 @@ export class UploadModal {
 
               this.updateVideoProgress(1, "Uploading torrent metadata...");
 
+              devLogger.debug("UploadModal uploadFile settings presence", {
+                  hasAccountId: Boolean(settings.accountId),
+                  hasEndpoint: Boolean(settings.endpoint),
+                  hasProvider: Boolean(settings.provider),
+                  hasRegion: Boolean(settings.region),
+                  hasAccessKeyId: Boolean(settings.accessKeyId),
+                  hasSecretAccessKey: Boolean(settings.secretAccessKey),
+                  hasForcePathStyle: settings.forcePathStyle !== undefined,
+              });
               await service.uploadFile({
                   file: torrentResult.torrentFile,
                   bucket: bucketEntry.bucket,
@@ -703,6 +721,15 @@ export class UploadModal {
               publicUrl = buildS3ObjectUrl({ publicBaseUrl: baseDomain, key });
           }
 
+          devLogger.debug("UploadModal uploadFile settings presence", {
+              hasAccountId: Boolean(settings.accountId),
+              hasEndpoint: Boolean(settings.endpoint),
+              hasProvider: Boolean(settings.provider),
+              hasRegion: Boolean(settings.region),
+              hasAccessKeyId: Boolean(settings.accessKeyId),
+              hasSecretAccessKey: Boolean(settings.secretAccessKey),
+              hasForcePathStyle: settings.forcePathStyle !== undefined,
+          });
           await service.uploadFile({
               file,
               bucket: bucketEntry.bucket,
