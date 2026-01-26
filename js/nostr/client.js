@@ -2584,6 +2584,16 @@ export class NostrClient {
     );
 
     if (!outstanding.length) {
+      // Even if permissions are cached, we must ensure the extension object is actually
+      // injected and available on the window before returning success.
+      // This prevents race conditions where the app loads faster than the extension.
+      if (typeof window !== "undefined" && !window.nostr) {
+        try {
+          await waitForNip07Extension(3000);
+        } catch (error) {
+          return { ok: false, error: new Error("extension-unavailable") };
+        }
+      }
       return { ok: true };
     }
 
@@ -2618,8 +2628,20 @@ export class NostrClient {
       return existingSigner;
     }
 
-    const extension =
+    let extension =
       typeof window !== "undefined" && window && window.nostr ? window.nostr : null;
+
+    // If the extension is missing but we have cached permissions, it implies the user
+    // previously logged in with an extension. We should wait briefly for injection
+    // to resolve the common race condition where the app loads faster than the extension.
+    if (!extension && this.extensionPermissionCache && this.extensionPermissionCache.size > 0) {
+      try {
+        extension = await waitForNip07Extension(3000);
+      } catch (error) {
+        // Fall through to existing signer check
+      }
+    }
+
     if (!extension) {
       return existingSigner;
     }
