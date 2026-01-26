@@ -275,7 +275,7 @@ export async function requestEnablePermissions(
     // If we fall back to standard enable() (null), allow the full user interaction time.
     const variantTimeoutOverrides = options
       ? {
-          timeoutMs: 3000,
+          timeoutMs: Math.min(3000, getEnableVariantTimeoutMs()),
           retryMultiplier: 1,
         }
       : {
