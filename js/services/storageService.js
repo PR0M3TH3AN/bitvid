@@ -50,6 +50,32 @@ function resolveEndpoint(config) {
   return config.endpoint || resolveConnectionMeta(config).endpoint;
 }
 
+function resolvePublicBaseUrl(config) {
+  const meta = resolveConnectionMeta(config);
+  return (
+    config.publicBaseUrl ||
+    config.baseDomain ||
+    config.publicUrl ||
+    meta.publicBaseUrl ||
+    meta.baseDomain ||
+    meta.publicUrl ||
+    meta.publicAccessUrl ||
+    meta.publicBucketUrl ||
+    ""
+  );
+}
+
+function normalizeConnectionMeta(meta = {}, config = {}) {
+  const normalized = { ...meta };
+  const publicBaseUrl = resolvePublicBaseUrl({ ...config, meta });
+  if (publicBaseUrl) {
+    normalized.publicBaseUrl = publicBaseUrl;
+    normalized.baseDomain = publicBaseUrl;
+    normalized.publicUrl = publicBaseUrl;
+  }
+  return normalized;
+}
+
 function resolveR2Endpoint(config) {
   const accountId =
     config.accountId || resolveConnectionMeta(config).accountId || "";
@@ -78,7 +104,7 @@ function buildS3TestConfig(config, overrides = {}) {
     region: resolveRegion(config),
     endpoint: resolveEndpoint(config),
     forcePathStyle: resolveForcePathStyle(config),
-    publicBaseUrl: config.publicBaseUrl,
+    publicBaseUrl: resolvePublicBaseUrl(config),
     ...overrides,
   };
 }
@@ -414,6 +440,7 @@ export class StorageService {
     const masterKey = this.masterKeys.get(pubkey);
     const encrypted = await this._encryptPayload(payload, masterKey);
     const account = (await this._getAccount(pubkey)) || { pubkey, connections: {} };
+    const normalizedMeta = normalizeConnectionMeta(meta, payload);
 
     if (!account.connections) {
       account.connections = {};
@@ -433,7 +460,7 @@ export class StorageService {
       id: connectionId,
       provider: payload.provider || meta.provider,
       meta: {
-        ...meta,
+        ...normalizedMeta,
         lastSaved: Date.now(),
         provider: payload.provider || meta.provider,
       },
@@ -460,10 +487,18 @@ export class StorageService {
 
     const masterKey = this.masterKeys.get(pubkey);
     const payload = await this._decryptPayload(conn.encrypted, masterKey);
+    const normalizedMeta = normalizeConnectionMeta(conn.meta, payload);
+    const publicBaseUrl = resolvePublicBaseUrl({
+      ...payload,
+      meta: normalizedMeta,
+    });
+    const baseDomain = publicBaseUrl || payload.baseDomain || normalizedMeta.baseDomain || "";
 
     return {
       ...payload,
-      meta: conn.meta,
+      publicBaseUrl,
+      baseDomain,
+      meta: normalizedMeta,
     };
   }
 
