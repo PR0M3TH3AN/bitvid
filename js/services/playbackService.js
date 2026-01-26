@@ -1,4 +1,5 @@
 import { userLogger } from "../utils/logger.js";
+import { PLAYBACK_START_TIMEOUT } from "../constants.js";
 // js/services/playbackService.js
 
 /**
@@ -70,6 +71,7 @@ export class PlaybackService {
     isValidMagnetUri,
     urlFirstEnabled = true,
     analyticsCallbacks = {},
+    playbackStartTimeout = PLAYBACK_START_TIMEOUT,
   } = {}) {
     if (typeof logger === "function") {
       this.logger = logger;
@@ -84,6 +86,7 @@ export class PlaybackService {
     this.isValidMagnetUri = isValidMagnetUri;
     this.urlFirstEnabled = !!urlFirstEnabled;
     this.analyticsCallbacks = analyticsCallbacks || {};
+    this.playbackStartTimeout = playbackStartTimeout;
     this.currentSession = null;
   }
 
@@ -261,7 +264,10 @@ export class PlaybackService {
   }
 
   createSession(options = {}) {
-    const session = new PlaybackSession(this, options);
+    const session = new PlaybackSession(this, {
+      ...options,
+      playbackStartTimeout: this.playbackStartTimeout,
+    });
     this.currentSession = session;
     return session;
   }
@@ -480,6 +486,7 @@ class PlaybackSession extends SimpleEventEmitter {
       autoplay,
       unsupportedBtihMessage = DEFAULT_UNSUPPORTED_BTITH_MESSAGE,
       forcedSource = null,
+      playbackStartTimeout = PLAYBACK_START_TIMEOUT,
     } = this.options;
 
     this.result = { source: null };
@@ -724,6 +731,7 @@ class PlaybackSession extends SimpleEventEmitter {
             });
           };
 
+          // Use default stall timeout here; the initial start timeout is handled by the race wrapper
           attachWatchdogs({ stallMs: 8000 });
 
           const handleFatalPlaybackError = (err) => {
@@ -792,6 +800,27 @@ class PlaybackSession extends SimpleEventEmitter {
         return { status: "fallback", reason: "probe-failed" };
       };
 
+      // --- Timeout Wrapper ---
+      const withTimeout = (promise, ms, label = "Operation") => {
+        if (!ms || ms <= 0) return promise;
+        return new Promise((resolve, reject) => {
+          const timer = setTimeout(() => {
+            this.service.log(`[playVideoWithFallback] ${label} timed out after ${ms}ms.`);
+            resolve({ status: "fallback", reason: "timeout", source: "timeout" });
+          }, ms);
+
+          promise
+            .then((result) => {
+              clearTimeout(timer);
+              resolve(result);
+            })
+            .catch((err) => {
+              clearTimeout(timer);
+              reject(err);
+            });
+        });
+      };
+
       // --- Execution Flow ---
 
       let tryUrlFirst = this.service.urlFirstEnabled;
@@ -800,28 +829,60 @@ class PlaybackSession extends SimpleEventEmitter {
 
       if (tryUrlFirst) {
         if (httpsUrl) {
-          const urlResult = await attemptHostedPlayback();
+          // Wrap URL attempt in timeout
+          const urlResult = await withTimeout(
+            attemptHostedPlayback(),
+            playbackStartTimeout,
+            "URL Playback"
+          );
+
           if (urlResult && urlResult.source === "url") {
             return urlResult;
           }
-          // URL Failed, try Torrent
+
+          // If timeout or failure, proceed to fallback
+          if (urlResult?.reason === "timeout") {
+            // Need to ensure URL probing/playback is effectively cancelled
+            this.cleanupWatchdog();
+            cleanupHostedUrlStatusListeners();
+            resetVideoElement();
+          }
+
           const fallbackReason = urlResult?.reason || "url-unavailable";
           if (this.magnetForPlayback) {
             return await attemptTorrentPlayback(fallbackReason);
           }
         } else if (this.magnetForPlayback) {
-          // No URL, try Torrent
           return await attemptTorrentPlayback("url-missing");
         }
       } else {
         // Try Torrent First
         if (this.magnetForPlayback) {
           try {
-            const torrentResult = await attemptTorrentPlayback("preference");
-            if (torrentResult) return torrentResult;
+            // Wrap Torrent attempt in timeout
+            const torrentResult = await withTimeout(
+              attemptTorrentPlayback("preference"),
+              playbackStartTimeout,
+              "Torrent Playback"
+            );
+
+            if (torrentResult && torrentResult.source === "torrent") {
+              return torrentResult;
+            }
+
+            if (torrentResult?.reason === "timeout") {
+               this.service.log("[playVideoWithFallback] Torrent timed out; cleaning up.");
+               if (
+                this.service.torrentClient &&
+                typeof this.service.torrentClient.cleanup === "function"
+              ) {
+                await this.service.torrentClient.cleanup();
+              }
+              resetVideoElement();
+            }
+
           } catch (err) {
             this.service.log("[playVideoWithFallback] Torrent preference failed, trying URL:", err);
-            // Clean up before trying URL
             if (
               this.service.torrentClient &&
               typeof this.service.torrentClient.cleanup === "function"
