@@ -5326,7 +5326,8 @@ export class NostrClient {
    *
    * **Payload Construction:**
    * - Creates a V3 video note with `magnet`, `url` (WebSeed), and core metadata.
-   * - Generates a unique `d` tag and `videoRootId` for this new series.
+   * - Generates a unique `d` tag and `videoRootId` for this new series unless
+   *   an explicit identifier is provided in the upload payload.
    *
    * **Side Effects (in order):**
    * 1. **Primary Event**: Signs and publishes the Kind 30078 Video Note.
@@ -5383,9 +5384,26 @@ export class NostrClient {
 
     const createdAt = Math.floor(Date.now() / 1000);
 
-    // brand-new root & d
-    const videoRootId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const dTagValue = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const seriesIdentifierCandidates = [
+      videoData.videoRootId,
+      videoData.seriesId,
+      videoData.seriesIdentifier,
+    ];
+    let seriesIdentifier = "";
+    for (const candidate of seriesIdentifierCandidates) {
+      const normalized = typeof candidate === "string" ? candidate.trim() : "";
+      if (normalized) {
+        seriesIdentifier = normalized;
+        break;
+      }
+    }
+
+    if (!seriesIdentifier) {
+      seriesIdentifier = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    }
+
+    const videoRootId = seriesIdentifier;
+    const dTagValue = seriesIdentifier;
 
     const finalEnableComments =
       videoData.enableComments === false ? false : true;
@@ -5434,7 +5452,7 @@ export class NostrClient {
       additionalTags: nip71Tags,
     });
 
-    devLogger.log("Publish event with brand-new root:", videoRootId);
+    devLogger.log("Publish event with series identifier:", videoRootId);
     devLogger.log("Event content:", event.content);
 
     try {
