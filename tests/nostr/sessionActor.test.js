@@ -49,26 +49,6 @@ test("encryptSessionPrivateKey + decryptSessionPrivateKey roundtrip", async () =
   assert.strictEqual(decrypted, privateKey);
 });
 
-test("persistSessionActor stores plain-text session actors", () => {
-  clearStoredSessionActor();
-
-  persistSessionActor({
-    pubkey: "npub1test",
-    privateKey: "b".repeat(64),
-    createdAt: 123,
-  });
-
-  const raw = globalThis.localStorage.getItem(SESSION_ACTOR_STORAGE_KEY);
-  assert.ok(raw, "session actor should be persisted");
-
-  const parsed = JSON.parse(raw);
-  assert.deepStrictEqual(parsed, {
-    pubkey: "npub1test",
-    privateKey: "b".repeat(64),
-    createdAt: 123,
-  });
-});
-
 test("persistSessionActor stores encrypted payload metadata", async () => {
   clearStoredSessionActor();
 
@@ -106,11 +86,16 @@ test("persistSessionActor stores encrypted payload metadata", async () => {
   assert.strictEqual(parsed.privateKeyEncrypted, encrypted.ciphertext);
 });
 
-test("clearStoredSessionActor removes persisted payload", () => {
+test("clearStoredSessionActor removes persisted payload", async () => {
   clearStoredSessionActor();
+  const privateKey = "d".repeat(64);
+  const passphrase = "cleanup time";
+  const encrypted = await encryptSessionPrivateKey(privateKey, passphrase);
+
   persistSessionActor({
     pubkey: "npub1cleanup",
-    privateKey: "d".repeat(64),
+    privateKeyEncrypted: encrypted.ciphertext,
+    encryption: encrypted,
   });
   assert.ok(globalThis.localStorage.getItem(SESSION_ACTOR_STORAGE_KEY));
 
