@@ -26,6 +26,8 @@ function assignAwsSdk(module) {
     HeadBucketCommand: module.HeadBucketCommand,
     PutBucketCorsCommand: module.PutBucketCorsCommand,
     DeleteObjectCommand: module.DeleteObjectCommand,
+    PutObjectCommand: module.PutObjectCommand,
+    GetObjectCommand: module.GetObjectCommand,
   };
 }
 
