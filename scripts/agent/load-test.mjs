@@ -12,7 +12,8 @@ import { performance } from 'node:perf_hooks';
 global.NostrTools = NostrTools;
 
 // Import Schema Builders
-import { buildVideoPostEvent, buildViewEvent } from '../../js/nostrEventSchemas.js';
+import { buildVideoPostEvent, buildViewEvent, buildVideoMirrorEvent } from '../../js/nostrEventSchemas.js';
+import { buildNip71VideoEvent } from '../../js/nostr/nip71.js';
 
 // --- Configuration ---
 const ARTIFACTS_DIR = 'artifacts';
@@ -253,6 +254,8 @@ async function run() {
           const now = Math.floor(Date.now() / 1000);
           const hexPk = client.pk;
 
+          const eventsToSend = [];
+
           if (isHeavy) {
             // Video Post
             const content = {
@@ -260,17 +263,56 @@ async function run() {
               title: `Load Test Video ${Date.now()}`,
               description: 'A description for load testing purposes. '.repeat(50),
               magnet: `magnet:?xt=urn:btih:${Math.random().toString(16).slice(2).repeat(10)}`,
+              url: `https://example.com/video-${Date.now()}.mp4`,
+              thumbnail: `https://example.com/thumb-${Date.now()}.jpg`,
               mode: 'live',
               videoRootId: `load-${Date.now()}-${Math.random()}`,
               isNsfw: false,
               isForKids: false,
             };
-            event = buildVideoPostEvent({
+
+            const rootEvent = buildVideoPostEvent({
               pubkey: hexPk,
               created_at: now,
               content,
               dTagValue: content.videoRootId
             });
+            eventsToSend.push(rootEvent);
+
+            // Mirror Event (NIP-94)
+            const mirrorEvent = buildVideoMirrorEvent({
+                pubkey: hexPk,
+                created_at: now,
+                tags: [['e', rootEvent.id], ['d', content.videoRootId]],
+                content: {
+                    url: content.url,
+                    magnet: content.magnet,
+                    thumbnail: content.thumbnail,
+                    title: content.title
+                }
+            });
+            eventsToSend.push(mirrorEvent);
+
+            // NIP-71 Metadata
+            const nip71Event = buildNip71VideoEvent({
+                metadata: {
+                    kind: 21,
+                    title: content.title,
+                    summary: content.description.slice(0, 200),
+                    publishedAt: now,
+                    hashtags: ['loadtest', 'stress'],
+                },
+                pubkey: hexPk,
+                title: content.title,
+                createdAt: now,
+                pointerIdentifiers: {
+                    videoRootId: content.videoRootId,
+                    dTag: content.videoRootId,
+                    eventId: rootEvent.id
+                }
+            });
+            if (nip71Event) eventsToSend.push(nip71Event);
+
           } else {
             // View Event
             event = buildViewEvent({
@@ -279,18 +321,26 @@ async function run() {
               pointerValue: `load-video-${Math.random()}`,
               pointerTag: ['d', `load-video-${Math.random()}`]
             });
+            eventsToSend.push(event);
           }
           metrics.operationTimes.build.push(performance.now() - buildStart);
 
           // Sign
-          const signStart = performance.now();
-          const signedEvent = NostrTools.finalizeEvent(event, client.sk);
-          metrics.operationTimes.sign.push(performance.now() - signStart);
+          const signedEvents = [];
+          for (const ev of eventsToSend) {
+             const t0 = performance.now();
+             const signed = NostrTools.finalizeEvent(ev, client.sk);
+             const t1 = performance.now();
+             metrics.operationTimes.sign.push(t1 - t0);
+             signedEvents.push(signed);
+          }
 
           // Publish
-          client.pendingEvents.set(signedEvent.id, performance.now());
-          client.ws.send(JSON.stringify(['EVENT', signedEvent]));
-          metrics.sent++;
+          for (const signedEvent of signedEvents) {
+             client.pendingEvents.set(signedEvent.id, performance.now());
+             client.ws.send(JSON.stringify(['EVENT', signedEvent]));
+             metrics.sent++;
+          }
 
         } catch (e) {
           console.error('Error generating/sending event:', e);
