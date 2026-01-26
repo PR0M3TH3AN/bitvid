@@ -25,20 +25,26 @@ To allow your browser to upload files directly to Cloudflare, you must allow Cro
 
 1. Still in your bucket's **Settings** tab, scroll down to **"CORS Policy"**.
 2. Click **"Add CORS Policy"** (or Edit).
-3. Paste the following JSON configuration:
+3. Paste the following JSON configuration (update the origins to match your dev/prod domains):
 
 ```json
 [
   {
-    "AllowedOrigins": ["*"],
+    "AllowedOrigins": ["http://127.0.0.1:5500", "https://bitvid.network"],
     "AllowedMethods": ["GET", "PUT", "POST", "DELETE", "HEAD"],
-    "AllowedHeaders": ["*"],
+    "AllowedHeaders": [
+      "authorization",
+      "content-type",
+      "x-amz-*",
+      "x-amz-content-sha256",
+      "x-amz-date"
+    ],
     "ExposeHeaders": ["ETag", "Content-Length", "Content-Range", "Accept-Ranges"],
     "MaxAgeSeconds": 3600
   }
 ]
 ```
-> **Note:** You can replace `"*"` in `AllowedOrigins` with your specific domain (e.g., `["https://bitvid.network"]`) for tighter security, but `"*"` is easiest for getting started.
+> **Note:** Replace the `AllowedOrigins` values with the exact origins you use in development and production. This CORS policy must be configured on the **R2 bucket’s CORS settings** for the **S3 endpoint** (not just the public `r2.dev` URL), since uploads use the S3 API.
 
 4. Click **"Save"**.
 
