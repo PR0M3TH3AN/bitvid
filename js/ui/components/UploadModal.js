@@ -1017,6 +1017,7 @@ export class UploadModal {
           magnet: "",
           ws: this.inputs.ws?.value?.trim() || "",
           xs: this.inputs.xs?.value?.trim() || "",
+          infoHash: this.torrentState.infoHash || "",
       };
 
       // NIP-71 Advanced Data
