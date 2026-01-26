@@ -134,7 +134,8 @@ describe("StorageService", () => {
         region: "us-east-1",
         bucket: "my-bucket",
         accessKeyId: "minio-key",
-        secretAccessKey: "minio-secret"
+        secretAccessKey: "minio-secret",
+        forcePathStyle: true
     };
     const meta = {
         label: "Local Minio",
@@ -151,6 +152,7 @@ describe("StorageService", () => {
     assert.strictEqual(retrieved.region, "us-east-1", "Region should be preserved");
     assert.strictEqual(retrieved.bucket, "my-bucket", "Bucket should be preserved");
     assert.strictEqual(retrieved.accessKeyId, "minio-key");
+    assert.strictEqual(retrieved.forcePathStyle, true, "ForcePathStyle should be preserved");
     assert.strictEqual(retrieved.meta.defaultForUploads, true);
   });
 

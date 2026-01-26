@@ -1776,6 +1776,9 @@ export class ProfileModalController {
     this.storagePrefixWarning = document.getElementById("storagePrefixWarning") || null;
     this.storageDefaultInput = document.getElementById("storageDefault") || null;
     this.storageR2Helper = document.getElementById("storageR2Helper") || null;
+    this.storageS3Helper = document.getElementById("storageS3Helper") || null;
+    this.storageForcePathStyleInput = document.getElementById("storageForcePathStyle") || null;
+    this.storageForcePathStyleLabel = document.getElementById("storageForcePathStyleLabel") || null;
 
     // Backwards-compatible aliases retained for application code that still
     // mirrors DOM references from the controller. These should be removed once
@@ -9042,8 +9045,8 @@ export class ProfileModalController {
 
   fillStorageForm(conn) {
     if (!conn) return;
-    const { provider, accessKeyId, secretAccessKey, accountId: payloadAccountId, endpoint: payloadEndpoint } = conn;
-    const { endpoint, region, bucket, prefix, defaultForUploads, accountId } = conn.meta || {};
+    const { provider, accessKeyId, secretAccessKey, accountId: payloadAccountId, endpoint: payloadEndpoint, forcePathStyle: payloadForcePathStyle } = conn;
+    const { endpoint, region, bucket, prefix, defaultForUploads, accountId, forcePathStyle: metaForcePathStyle } = conn.meta || {};
 
     if (this.storageProviderInput) this.storageProviderInput.value = provider || "cloudflare_r2";
 
@@ -9057,6 +9060,17 @@ export class ProfileModalController {
     if (this.storageBucketInput) this.storageBucketInput.value = bucket || "";
     if (this.storagePrefixInput) this.storagePrefixInput.value = prefix || "";
     if (this.storageDefaultInput) this.storageDefaultInput.checked = !!defaultForUploads;
+
+    if (this.storageForcePathStyleInput) {
+      if (typeof payloadForcePathStyle === "boolean") {
+        this.storageForcePathStyleInput.checked = payloadForcePathStyle;
+      } else if (typeof metaForcePathStyle === "boolean") {
+        this.storageForcePathStyleInput.checked = metaForcePathStyle;
+      } else {
+        // Default to true for S3 if unspecified
+        this.storageForcePathStyleInput.checked = true;
+      }
+    }
 
     this.updateStorageFormVisibility();
     this.handlePublicUrlInput();
@@ -9097,6 +9111,20 @@ export class ProfileModalController {
     if (this.storageR2Helper) {
       if (isR2) this.storageR2Helper.classList.remove("hidden");
       else this.storageR2Helper.classList.add("hidden");
+    }
+
+    if (this.storageS3Helper) {
+      if (!isR2) this.storageS3Helper.classList.remove("hidden");
+      else this.storageS3Helper.classList.add("hidden");
+    }
+
+    if (this.storageForcePathStyleLabel) {
+      if (!isR2) this.storageForcePathStyleLabel.classList.remove("hidden", "flex");
+      else this.storageForcePathStyleLabel.classList.add("hidden");
+
+      if (!isR2) {
+        this.storageForcePathStyleLabel.classList.add("flex");
+      }
     }
   }
 
@@ -9195,7 +9223,11 @@ export class ProfileModalController {
     }
 
     let publicBaseUrl = "";
-    let forcePathStyle = provider === PROVIDERS.GENERIC;
+    // For Generic S3, respect the user's checkbox selection.
+    let forcePathStyle = false;
+    if (provider === PROVIDERS.GENERIC) {
+      forcePathStyle = this.storageForcePathStyleInput?.checked ?? true;
+    }
 
     const payload = {
         provider,
@@ -9287,7 +9319,12 @@ export class ProfileModalController {
     const accessKeyId = this.storageAccessKeyInput?.value?.trim() || "";
     const secretAccessKey = this.storageSecretKeyInput?.value?.trim() || "";
     const bucket = this.storageBucketInput?.value?.trim() || "";
-    const forcePathStyle = provider === PROVIDERS.GENERIC;
+
+    // Checkbox is only relevant for Generic S3
+    const forcePathStyle = provider === PROVIDERS.GENERIC
+      ? (this.storageForcePathStyleInput?.checked ?? true)
+      : false;
+
     const publicBaseUrl = this.storagePrefixInput?.value?.trim() || "";
 
     if (!accessKeyId || !secretAccessKey || !endpointOrAccount) {
@@ -9348,6 +9385,9 @@ export class ProfileModalController {
     this.storagePrefixInput.value = "";
     this.storageDefaultInput.checked = false;
     this.storageProviderInput.value = "cloudflare_r2";
+    if (this.storageForcePathStyleInput) {
+      this.storageForcePathStyleInput.checked = true;
+    }
     this.updateStorageFormVisibility();
     this.setStorageFormStatus("", "info");
   }
