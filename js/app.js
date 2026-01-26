@@ -112,6 +112,7 @@ import {
   closeStaticModal,
 } from "./ui/components/staticModalAccessibility.js";
 import LoginModalController from "./ui/loginModalController.js";
+import EditModalController from "./ui/editModalController.js";
 import TagPreferenceMenuController from "./ui/tagPreferenceMenuController.js";
 import ReactionController from "./ui/reactionController.js";
 import { pointerArrayToKey } from "./utils/pointer.js";
@@ -389,6 +390,35 @@ class Application {
 
     this.initializeModerationActionController();
     this.initializeSimilarContentController();
+
+    this.editModalController = new EditModalController({
+      services: {
+        nostrService: {
+          fetchVideos: (...args) => this.nostrService.fetchVideos(...args),
+          handleEditVideoSubmit: (...args) =>
+            this.nostrService.handleEditVideoSubmit(...args),
+        },
+      },
+      state: {
+        getPubkey: () => this.pubkey,
+        getBlacklistedEventIds: () => this.blacklistedEventIds,
+        getVideosMap: () => this.videosMap,
+      },
+      ui: {
+        getEditModal: () => this.editModal,
+        showError: (msg) => this.showError(msg),
+        showSuccess: (msg) => this.showSuccess(msg),
+      },
+      callbacks: {
+        loadVideos: () => this.loadVideos(),
+        forceRefreshAllProfiles: () => this.forceRefreshAllProfiles(),
+        isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
+      },
+      helpers: {
+        normalizeActionTarget: (t) => this.normalizeActionTarget(t),
+        resolveVideoActionTarget: (opts) => this.resolveVideoActionTarget(opts),
+      },
+    });
 
     this.handleShareNostrSignerChange = () => {
       this.updateShareNostrAuthState({ reason: "signer-change" });
@@ -7775,85 +7805,14 @@ class Application {
    * Handle "Edit Video" from gear menu.
    */
   async handleEditModalSubmit(event) {
-    const detail = event?.detail || {};
-    const { originalEvent, updatedData } = detail;
-    if (!originalEvent || !updatedData) {
-      return;
-    }
-
-    if (!this.pubkey) {
-      this.showError("Please login to edit videos.");
-      if (this.editModal?.setSubmitState) {
-        this.editModal.setSubmitState({ pending: false });
-      }
-      return;
-    }
-
-    try {
-      await this.nostrService.handleEditVideoSubmit({
-        originalEvent,
-        updatedData,
-        pubkey: this.pubkey,
-      });
-      await this.loadVideos();
-      this.videosMap.clear();
-      this.showSuccess("Video updated successfully!");
-      if (this.editModal?.setSubmitState) {
-        this.editModal.setSubmitState({ pending: false });
-      }
-      this.editModal.close();
-      this.forceRefreshAllProfiles();
-    } catch (error) {
-      devLogger.error("Failed to edit video:", error);
-      this.showError("Failed to edit video. Please try again.");
-      if (this.editModal?.setSubmitState) {
-        this.editModal.setSubmitState({ pending: false });
-      }
+    if (this.editModalController) {
+      return this.editModalController.handleSubmit(event);
     }
   }
 
   async handleEditVideo(target) {
-    try {
-      const normalizedTarget = this.normalizeActionTarget(target);
-      const { triggerElement } = normalizedTarget;
-      const latestVideos = await this.nostrService.fetchVideos({
-        blacklistedEventIds: this.blacklistedEventIds,
-        isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
-      });
-      const video = await this.resolveVideoActionTarget({
-        ...normalizedTarget,
-        preloadedList: latestVideos,
-      });
-
-      // 2) Basic ownership checks
-      if (!this.pubkey) {
-        this.showError("Please login to edit videos.");
-        return;
-      }
-      const userPubkey = (this.pubkey || "").toLowerCase();
-      const videoPubkey = (video?.pubkey || "").toLowerCase();
-      if (!video || !videoPubkey || videoPubkey !== userPubkey) {
-        this.showError("You do not own this video.");
-        return;
-      }
-
-      try {
-        await this.editModal.load();
-      } catch (error) {
-        devLogger.error("Failed to load edit modal:", error);
-        this.showError(`Failed to initialize edit modal: ${error.message}`);
-        return;
-      }
-
-      try {
-        await this.editModal.open(video, { triggerElement });
-      } catch (error) {
-        devLogger.error("Failed to open edit modal:", error);
-        this.showError("Edit modal is not available right now.");
-      }
-    } catch (err) {
-      devLogger.error("Failed to edit video:", err);
-      this.showError("Failed to edit video. Please try again.");
+    if (this.editModalController) {
+      return this.editModalController.open(target);
     }
   }
 

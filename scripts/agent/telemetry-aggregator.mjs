@@ -61,9 +61,13 @@ function suggestOwner(stack) {
 
 function collectUnitTests(logFile = 'test_output.log') {
     const errors = [];
-    if (!fs.existsSync(logFile)) return errors;
+    // Check root and artifacts dir
+    const potentialPaths = [logFile, path.join(ARTIFACTS_DIR, logFile)];
+    const filepath = potentialPaths.find(p => fs.existsSync(p));
 
-    const content = fs.readFileSync(logFile, 'utf8');
+    if (!filepath) return errors;
+
+    const content = fs.readFileSync(filepath, 'utf8');
     const lines = content.split('\n');
     let currentError = null;
     let insideErrorBlock = false;
@@ -182,7 +186,7 @@ function collectSmokeTests() {
             const content = JSON.parse(fs.readFileSync(path.join(ARTIFACTS_DIR, file), 'utf8'));
 
             // Expected format: { timestamp, status, error, logs }
-            if (content.status === 'failure') {
+            if (content.status && (content.status.toLowerCase() === 'failure' || content.status.toLowerCase() === 'fail')) {
                 const errorMsg = content.error || 'Unknown Smoke Test Failure';
                 const sanitizedError = sanitize(errorMsg);
 
@@ -253,6 +257,62 @@ function collectFuzzReports() {
             }
         } catch (err) {
             console.warn(`Failed to parse fuzz report ${file}:`, err.message);
+        }
+    }
+    return errors;
+}
+
+function collectLoadTests() {
+    const errors = [];
+    if (!fs.existsSync(ARTIFACTS_DIR)) return errors;
+
+    const files = fs.readdirSync(ARTIFACTS_DIR).filter(f => f.startsWith('load-report-') && f.endsWith('.json'));
+    // Also check load-report.json
+    if (fs.existsSync(path.join(ARTIFACTS_DIR, 'load-report.json'))) {
+        files.push('load-report.json');
+    }
+
+    const uniqueFiles = [...new Set(files)];
+
+    for (const file of uniqueFiles) {
+        try {
+            const content = JSON.parse(fs.readFileSync(path.join(ARTIFACTS_DIR, file), 'utf8'));
+
+            // Check for explicit errors
+            if (content.metrics && content.metrics.errors > 0) {
+                 const errorBreakdown = content.metrics.error_breakdown ? JSON.stringify(content.metrics.error_breakdown, null, 2) : 'No breakdown';
+                 const sanitizedBreakdown = sanitize(errorBreakdown);
+                 errors.push({
+                    source: `load-test:${file}`,
+                    title: `Load Test Errors: ${content.metrics.errors} failures`,
+                    details: [sanitizedBreakdown],
+                    stack: `Load Test Errors:\n${sanitizedBreakdown}`,
+                    fingerprint: getFingerprint(`load-test-errors-${sanitizedBreakdown}`),
+                    severity: 'High',
+                    owner: 'P2P Team'
+                });
+            }
+
+            // Check for bottlenecks
+            if (content.bottlenecks && content.bottlenecks.length > 0) {
+                for (let i = 0; i < content.bottlenecks.length; i++) {
+                     const bn = content.bottlenecks[i];
+                     const rem = content.remediation ? content.remediation[i] : '';
+                     const sanitizedBn = sanitize(bn);
+                     errors.push({
+                        source: `load-test:${file}`,
+                        title: `Load Test Bottleneck: ${sanitizedBn}`,
+                        details: [sanitize(rem)],
+                        stack: `Bottleneck: ${sanitizedBn}\nRemediation: ${sanitize(rem)}`,
+                        fingerprint: getFingerprint(`load-test-bottleneck-${sanitizedBn}`),
+                        severity: 'Medium',
+                        owner: 'P2P Team'
+                     });
+                }
+            }
+
+        } catch (err) {
+            console.warn(`Failed to parse load report ${file}:`, err.message);
         }
     }
     return errors;
@@ -417,6 +477,13 @@ async function main() {
     if (smokeTestErrors.length > 0) {
         console.log(`Collected ${smokeTestErrors.length} smoke test errors.`);
         errors.push(...smokeTestErrors);
+    }
+
+    // Load Tests
+    const loadTestErrors = collectLoadTests();
+    if (loadTestErrors.length > 0) {
+        console.log(`Collected ${loadTestErrors.length} load test errors.`);
+        errors.push(...loadTestErrors);
     }
 
     // Fuzz Reports

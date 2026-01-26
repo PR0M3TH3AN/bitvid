@@ -124,6 +124,7 @@ To set up the project locally:
    npm run format
    npm run lint
    ```
+   *Note: `npm run format` currently only targets CSS, HTML, and Markdown files.*
 
 5. **Git Hooks (Optional)**:
    We provide a script to set up a git pre-commit hook that runs linting and CSS builds automatically before you commit.

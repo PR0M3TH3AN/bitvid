@@ -1,371 +1,272 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { WebSocket } from 'ws';
 
-import {
-  buildVideoPostEvent,
-  buildVideoMirrorEvent,
-  buildRepostEvent,
-  buildShareEvent,
-  buildRelayListEvent,
-  buildDmRelayListEvent,
-  buildProfileMetadataEvent,
-  buildMuteListEvent,
-  buildDeletionEvent,
-  buildLegacyDirectMessageEvent,
-  buildDmAttachmentEvent,
-  buildDmReadReceiptEvent,
-  buildDmTypingIndicatorEvent,
-  buildViewEvent,
-  buildZapRequestEvent,
-  buildReactionEvent,
-  buildCommentEvent,
-  buildWatchHistoryEvent,
-  buildSubscriptionListEvent,
-  buildBlockListEvent,
-  buildHashtagPreferenceEvent,
-  buildAdminListEvent,
-  buildHttpAuthEvent,
-  buildReportEvent,
-  validateEventStructure,
-  getNostrEventSchema,
-  NOTE_TYPES,
-} from "../../js/nostrEventSchemas.js";
-
-const VALIDATION_FAILURES = [];
-
-function assertEventValid(label, event, type) {
-  if (!event) {
-    console.error(`❌ [${label}] Builder returned null or undefined`);
-    VALIDATION_FAILURES.push({ label, error: "Builder returned null/undefined" });
-    return;
-  }
-
-  const { valid, errors } = validateEventStructure(type, event);
-  if (!valid) {
-    console.error(`❌ [${label}] Validation failed for type ${type}:`);
-    errors.forEach((err) => console.error(`   - ${err}`));
-    VALIDATION_FAILURES.push({ label, errors });
-  } else {
-    console.log(`✅ [${label}] Valid`);
-  }
+// Polyfills
+if (typeof globalThis.crypto === 'undefined') {
+  globalThis.crypto = crypto;
+}
+if (typeof globalThis.WebSocket === 'undefined') {
+  globalThis.WebSocket = WebSocket;
+}
+if (typeof globalThis.localStorage === 'undefined') {
+  globalThis.localStorage = {
+    getItem: () => null,
+    setItem: () => {},
+    removeItem: () => {},
+    clear: () => {}
+  };
+}
+if (typeof globalThis.window === 'undefined') {
+  globalThis.window = globalThis;
 }
 
-async function runValidation() {
-  console.log("Starting Event Builder Validation...\n");
+// Helper to load module
+const loadModule = async (filePath) => {
+  return import(path.resolve(process.cwd(), filePath));
+};
+
+async function main() {
+  const schemasModule = await loadModule('js/nostrEventSchemas.js');
+  const {
+    validateEventStructure,
+    NOTE_TYPES,
+    buildVideoPostEvent,
+    buildHttpAuthEvent,
+    buildReportEvent,
+    buildVideoMirrorEvent,
+    buildRepostEvent,
+    buildShareEvent,
+    buildRelayListEvent,
+    buildDmRelayListEvent,
+    buildProfileMetadataEvent,
+    buildMuteListEvent,
+    buildDeletionEvent,
+    buildLegacyDirectMessageEvent,
+    buildDmAttachmentEvent,
+    buildDmReadReceiptEvent,
+    buildDmTypingIndicatorEvent,
+    buildViewEvent,
+    buildZapRequestEvent,
+    buildReactionEvent,
+    buildCommentEvent,
+    buildWatchHistoryEvent,
+    buildSubscriptionListEvent,
+    buildBlockListEvent,
+    buildHashtagPreferenceEvent,
+    buildAdminListEvent
+  } = schemasModule;
+
+  console.log("Starting Event Schema Validation...");
+
+  let failureCount = 0;
+
+  const validate = (type, builder, params, label) => {
+    try {
+        const event = builder(params);
+        const { valid, errors } = validateEventStructure(type, event);
+        if (!valid) {
+            console.error(`[FAIL] ${label} (${type})`);
+            errors.forEach(err => console.error(`  - ${err}`));
+            console.error(`  Event:`, JSON.stringify(event, null, 2));
+            failureCount++;
+        } else {
+            console.log(`[PASS] ${label} (${type})`);
+        }
+    } catch (e) {
+        console.error(`[ERROR] Exception in builder for ${label} (${type})`);
+        console.error(e);
+        failureCount++;
+    }
+  };
 
   const pubkey = "0000000000000000000000000000000000000000000000000000000000000001";
   const created_at = Math.floor(Date.now() / 1000);
 
-  // 1. Video Post
-  assertEventValid(
-    "Video Post",
-    buildVideoPostEvent({
-      pubkey,
-      created_at,
-      dTagValue: "test-d-tag",
-      content: {
+  // Test Cases
+  validate(NOTE_TYPES.VIDEO_POST, buildVideoPostEvent, {
+    pubkey,
+    created_at,
+    dTagValue: "test-video-id",
+    content: {
         version: 3,
         title: "Test Video",
         videoRootId: "root-id",
-        url: "https://example.com/video.mp4",
-        magnet: "magnet:?xt=urn:btih:...",
-        thumbnail: "https://example.com/thumb.jpg",
-        description: "Test description",
-        mode: "live",
-        deleted: false,
-        isPrivate: false,
-        isNsfw: false,
-        isForKids: false,
-        enableComments: true,
-      },
-      additionalTags: [["t", "extra"]],
-    }),
-    NOTE_TYPES.VIDEO_POST
-  );
+    }
+  }, "Basic Video Post");
 
-  // 2. Video Mirror
-  assertEventValid(
-    "Video Mirror",
-    buildVideoMirrorEvent({
+  validate(NOTE_TYPES.HTTP_AUTH, buildHttpAuthEvent, {
       pubkey,
       created_at,
-      tags: [["e", "event-id"], ["p", pubkey]],
-      content: { some: "metadata" },
-    }),
-    NOTE_TYPES.VIDEO_MIRROR
-  );
+      url: "https://example.com/login",
+      method: "POST"
+  }, "HTTP Auth");
 
-  // 3. Repost
-  assertEventValid(
-    "Repost",
-    buildRepostEvent({
+  validate(NOTE_TYPES.REPORT, buildReportEvent, {
       pubkey,
       created_at,
-      eventId: "original-event-id",
-      eventRelay: "wss://relay.example.com",
-      authorPubkey: pubkey,
-    }),
-    NOTE_TYPES.REPOST
-  );
+      eventId: "e".repeat(64),
+      reportType: "spam"
+  }, "Report");
 
-  // 4. Share
-  assertEventValid(
-    "Share",
-    buildShareEvent({
+  validate(NOTE_TYPES.VIDEO_MIRROR, buildVideoMirrorEvent, {
       pubkey,
       created_at,
-      content: "Check this out!",
-      video: { id: "video-id", pubkey: "author-pubkey" },
-      relays: ["wss://relay.example.com"],
-    }),
-    NOTE_TYPES.SHARE
-  );
+      content: "mirror content"
+  }, "Video Mirror");
 
-  // 5. Relay List
-  assertEventValid(
-    "Relay List",
-    buildRelayListEvent({
+  validate(NOTE_TYPES.REPOST, buildRepostEvent, {
       pubkey,
       created_at,
-      relays: [
-        { url: "wss://relay1.com", mode: "read" },
-        { url: "wss://relay2.com", mode: "write" },
-      ],
-    }),
-    NOTE_TYPES.RELAY_LIST
-  );
+      eventId: "e".repeat(64),
+      targetKind: 1 // Text Note Repost (Kind 6)
+  }, "Repost");
 
-  // 6. DM Relay List
-  assertEventValid(
-    "DM Relay List",
-    buildDmRelayListEvent({
+  validate(NOTE_TYPES.GENERIC_REPOST, buildRepostEvent, {
       pubkey,
       created_at,
-      relays: ["wss://relay1.com", "wss://relay2.com"],
-    }),
-    NOTE_TYPES.DM_RELAY_LIST
-  );
+      eventId: "e".repeat(64),
+      targetKind: 30078 // Video Post Repost (Kind 16)
+  }, "Generic Repost");
 
-  // 7. Profile Metadata
-  assertEventValid(
-    "Profile Metadata",
-    buildProfileMetadataEvent({
+  validate(NOTE_TYPES.SHARE, buildShareEvent, {
       pubkey,
       created_at,
-      metadata: { name: "Test User", about: "Testing" },
-    }),
-    NOTE_TYPES.PROFILE_METADATA
-  );
+      content: "Check this out",
+      video: { id: "e".repeat(64), pubkey: "p".repeat(64) }
+  }, "Share");
 
-  // 8. Mute List
-  assertEventValid(
-    "Mute List",
-    buildMuteListEvent({
+  validate(NOTE_TYPES.RELAY_LIST, buildRelayListEvent, {
       pubkey,
       created_at,
-      pTags: ["mute-pubkey-1", "mute-pubkey-2"],
-    }),
-    NOTE_TYPES.MUTE_LIST
-  );
+      relays: ["wss://relay.example.com"]
+  }, "Relay List");
 
-  // 9. Deletion
-  assertEventValid(
-    "Deletion",
-    buildDeletionEvent({
+  validate(NOTE_TYPES.DM_RELAY_LIST, buildDmRelayListEvent, {
       pubkey,
       created_at,
-      eventIds: ["event-id-1"],
-      reason: "Mistake",
-    }),
-    NOTE_TYPES.DELETION
-  );
+      relays: ["wss://dm.example.com"]
+  }, "DM Relay List");
 
-  // 10. Legacy DM
-  assertEventValid(
-    "Legacy DM",
-    buildLegacyDirectMessageEvent({
+  validate(NOTE_TYPES.PROFILE_METADATA, buildProfileMetadataEvent, {
       pubkey,
       created_at,
-      recipientPubkey: "recipient-pubkey",
-      ciphertext: "encrypted-content",
-    }),
-    NOTE_TYPES.LEGACY_DM
-  );
+      metadata: { name: "Test User" }
+  }, "Profile Metadata");
 
-  // 11. DM Attachment
-  assertEventValid(
-    "DM Attachment",
-    buildDmAttachmentEvent({
+  validate(NOTE_TYPES.MUTE_LIST, buildMuteListEvent, {
       pubkey,
       created_at,
-      recipientPubkey: "recipient-pubkey",
-      attachment: { url: "https://example.com/file.jpg", type: "image/jpeg" },
-    }),
-    NOTE_TYPES.DM_ATTACHMENT
-  );
+      pTags: ["p".repeat(64)]
+  }, "Mute List");
 
-  // 12. DM Read Receipt
-  assertEventValid(
-    "DM Read Receipt",
-    buildDmReadReceiptEvent({
+  validate(NOTE_TYPES.DELETION, buildDeletionEvent, {
       pubkey,
       created_at,
-      recipientPubkey: "recipient-pubkey",
-      eventId: "event-id",
-      messageKind: 4,
-    }),
-    NOTE_TYPES.DM_READ_RECEIPT
-  );
+      eventIds: ["e".repeat(64)]
+  }, "Deletion");
 
-  // 13. DM Typing Indicator
-  assertEventValid(
-    "DM Typing Indicator",
-    buildDmTypingIndicatorEvent({
+  validate(NOTE_TYPES.LEGACY_DM, buildLegacyDirectMessageEvent, {
       pubkey,
       created_at,
-      recipientPubkey: "recipient-pubkey",
-      eventId: "event-id",
-    }),
-    NOTE_TYPES.DM_TYPING
-  );
+      recipientPubkey: "p".repeat(64),
+      ciphertext: "encrypted"
+  }, "Legacy DM");
 
-  // 14. View Event
-  assertEventValid(
-    "View Event",
-    buildViewEvent({
+  validate(NOTE_TYPES.DM_ATTACHMENT, buildDmAttachmentEvent, {
       pubkey,
       created_at,
-      pointerTag: ["a", "kind:pubkey:dtag"],
-    }),
-    NOTE_TYPES.VIEW_EVENT
-  );
+      recipientPubkey: "p".repeat(64),
+      attachment: { url: "https://example.com/file.jpg", x: "hash" }
+  }, "DM Attachment");
 
-  // 15. Zap Request
-  assertEventValid(
-    "Zap Request",
-    buildZapRequestEvent({
+  validate(NOTE_TYPES.DM_READ_RECEIPT, buildDmReadReceiptEvent, {
       pubkey,
       created_at,
-      recipientPubkey: "recipient-pubkey",
+      recipientPubkey: "p".repeat(64),
+      eventId: "e".repeat(64)
+  }, "DM Read Receipt");
+
+  validate(NOTE_TYPES.DM_TYPING, buildDmTypingIndicatorEvent, {
+      pubkey,
+      created_at,
+      recipientPubkey: "p".repeat(64)
+  }, "DM Typing Indicator");
+
+  validate(NOTE_TYPES.VIEW_EVENT, buildViewEvent, {
+      pubkey,
+      created_at,
+      pointerTag: ["e", "eventid", "relay"]
+  }, "View Event");
+
+  validate(NOTE_TYPES.ZAP_REQUEST, buildZapRequestEvent, {
+      pubkey,
+      created_at,
+      recipientPubkey: "p".repeat(64),
       amountSats: 100,
-      relays: ["wss://relay.com"],
-    }),
-    NOTE_TYPES.ZAP_REQUEST
-  );
+      lnurl: "lnurl1...",
+      relays: ["wss://relay.damus.io"]
+  }, "Zap Request");
 
-  // 16. Reaction
-  assertEventValid(
-    "Reaction",
-    buildReactionEvent({
+  validate(NOTE_TYPES.VIDEO_REACTION, buildReactionEvent, {
       pubkey,
       created_at,
-      pointerTag: ["e", "event-id"],
       content: "+",
-    }),
-    NOTE_TYPES.VIDEO_REACTION
-  );
+      targetPointer: { type: "e", value: "e".repeat(64) }
+  }, "Reaction");
 
-  // 17. Comment
-  assertEventValid(
-    "Comment",
-    buildCommentEvent({
+  validate(NOTE_TYPES.VIDEO_COMMENT, buildCommentEvent, {
       pubkey,
       created_at,
-      videoEventId: "video-event-id",
-      content: "Nice video!",
-    }),
-    NOTE_TYPES.VIDEO_COMMENT
-  );
+      content: "Great video!",
+      videoEventId: "e".repeat(64)
+  }, "Comment");
 
-  // 18. Watch History
-  assertEventValid(
-    "Watch History",
-    buildWatchHistoryEvent({
+  validate(NOTE_TYPES.WATCH_HISTORY, buildWatchHistoryEvent, {
       pubkey,
       created_at,
-      monthIdentifier: "2023-10",
-      content: { "video-id": 1234567890 },
-    }),
-    NOTE_TYPES.WATCH_HISTORY
-  );
+      content: {},
+      monthIdentifier: "2023-10" // Required for valid event
+  }, "Watch History");
 
-  // 19. Subscription List
-  assertEventValid(
-    "Subscription List",
-    buildSubscriptionListEvent({
+  validate(NOTE_TYPES.SUBSCRIPTION_LIST, buildSubscriptionListEvent, {
       pubkey,
       created_at,
-      content: [["p", "pubkey"]],
-    }),
-    NOTE_TYPES.SUBSCRIPTION_LIST
-  );
+      content: "encrypted_subs"
+  }, "Subscription List");
 
-  // 20. Block List
-  assertEventValid(
-    "Block List",
-    buildBlockListEvent({
+  validate(NOTE_TYPES.USER_BLOCK_LIST, buildBlockListEvent, {
       pubkey,
       created_at,
-      content: [["p", "blocked-pubkey"]],
-    }),
-    NOTE_TYPES.USER_BLOCK_LIST
-  );
+      content: "encrypted_blocks"
+  }, "Block List");
 
-  // 21. Hashtag Preference
-  assertEventValid(
-    "Hashtag Preference",
-    buildHashtagPreferenceEvent({
+  validate(NOTE_TYPES.HASHTAG_PREFERENCES, buildHashtagPreferenceEvent, {
       pubkey,
       created_at,
-      content: { interests: ["nostr"], disinterests: ["crypto"] },
-    }),
-    NOTE_TYPES.HASHTAG_PREFERENCES
-  );
+      content: "encrypted_prefs"
+  }, "Hashtag Preferences");
 
-  // 22. Admin List (Moderation)
-  assertEventValid(
-    "Admin Moderation List",
-    buildAdminListEvent("moderation", {
+  // Admin Lists
+  const adminBuilder = (params) => buildAdminListEvent("moderation", params);
+  validate(NOTE_TYPES.ADMIN_MODERATION_LIST, adminBuilder, {
       pubkey,
       created_at,
-      hexPubkeys: ["mod-pubkey"],
-    }),
-    NOTE_TYPES.ADMIN_MODERATION_LIST
-  );
-
-  // 23. HTTP Auth
-  assertEventValid(
-    "HTTP Auth",
-    buildHttpAuthEvent({
-      pubkey,
-      created_at,
-      url: "https://example.com/auth",
-      method: "GET",
-    }),
-    NOTE_TYPES.HTTP_AUTH
-  );
-
-  // 24. Report
-  assertEventValid(
-    "Report",
-    buildReportEvent({
-      pubkey,
-      created_at,
-      eventId: "reported-event-id",
-      reportType: "spam",
-    }),
-    NOTE_TYPES.REPORT
-  );
+      hexPubkeys: ["p".repeat(64)]
+  }, "Admin Moderation List");
 
 
-  if (VALIDATION_FAILURES.length > 0) {
-    console.error("\n❌ Validation Validation Failed!");
-    console.error(JSON.stringify(VALIDATION_FAILURES, null, 2));
-    process.exit(1);
+  if (failureCount > 0) {
+      console.log(`\nValidation complete with ${failureCount} failures.`);
+      process.exit(1);
   } else {
-    console.log("\n✅ All validations passed!");
+      console.log("\nAll checks passed!");
+      process.exit(0);
   }
 }
 
-runValidation().catch((err) => {
-  console.error("Fatal error:", err);
-  process.exit(1);
+main().catch(err => {
+    console.error("Fatal error:", err);
+    process.exit(1);
 });

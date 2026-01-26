@@ -8,7 +8,7 @@ if (originalCrypto === undefined) {
     value: webcrypto,
     configurable: true,
     writable: false,
-    enumerable: false,
+    enumerable: false
   });
 }
 
@@ -18,7 +18,7 @@ import {
   persistSessionActor,
   readStoredSessionActorEntry,
   clearStoredSessionActor,
-  SESSION_ACTOR_STORAGE_KEY,
+  SESSION_ACTOR_STORAGE_KEY
 } from "../../js/nostr/sessionActor.js";
 
 test.after(() => {
@@ -41,9 +41,9 @@ test("encryptSessionPrivateKey + decryptSessionPrivateKey roundtrip", async () =
   const decrypted = await decryptSessionPrivateKey(
     {
       privateKeyEncrypted: encrypted.ciphertext,
-      encryption: encrypted,
+      encryption: encrypted
     },
-    passphrase,
+    passphrase
   );
 
   assert.strictEqual(decrypted, privateKey);
@@ -60,7 +60,7 @@ test("persistSessionActor stores encrypted payload metadata", async () => {
     pubkey: "npub1encrypted",
     privateKeyEncrypted: encrypted.ciphertext,
     encryption: encrypted,
-    createdAt: 456,
+    createdAt: 456
   });
 
   const entry = readStoredSessionActorEntry();
@@ -74,7 +74,7 @@ test("persistSessionActor stores encrypted payload metadata", async () => {
     salt: encrypted.salt,
     iv: encrypted.iv,
     iterations: encrypted.iterations,
-    hash: encrypted.hash,
+    hash: encrypted.hash
   });
   assert.strictEqual(entry.createdAt, 456);
 
@@ -102,6 +102,6 @@ test("clearStoredSessionActor removes persisted payload", async () => {
   clearStoredSessionActor();
   assert.strictEqual(
     globalThis.localStorage.getItem(SESSION_ACTOR_STORAGE_KEY),
-    null,
+    null
   );
 });
