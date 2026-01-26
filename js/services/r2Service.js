@@ -114,9 +114,20 @@ function safeDecodeNpub(npub) {
 }
 
 class R2Service {
-  constructor() {
+  constructor({
+    makeR2Client: makeR2ClientOverride,
+    multipartUpload: multipartUploadOverride,
+    ensureBucketExists: ensureBucketExistsOverride,
+    ensureBucketCors: ensureBucketCorsOverride,
+    deleteObject: deleteObjectOverride,
+  } = {}) {
     this.listeners = new Map();
     this.cloudflareSettings = null;
+    this.makeR2Client = makeR2ClientOverride || makeR2Client;
+    this.multipartUpload = multipartUploadOverride || multipartUpload;
+    this.ensureBucketExists = ensureBucketExistsOverride || ensureBucketExists;
+    this.ensureBucketCors = ensureBucketCorsOverride || ensureBucketCors;
+    this.deleteObject = deleteObjectOverride || deleteObject;
   }
 
   on(event, handler) {
@@ -481,7 +492,7 @@ class R2Service {
     // We attempt to ensure the bucket exists and CORS is set up using the S3 keys if possible.
     if (accessKeyId && secretAccessKey) {
       try {
-        const s3 = makeR2Client({
+        const s3 = this.makeR2Client({
           accountId,
           accessKeyId,
           secretAccessKey,
@@ -491,7 +502,7 @@ class R2Service {
 
         // Attempt to auto-create the bucket (requires Admin keys, but harmless if fails)
         try {
-          await ensureBucketExists({
+          await this.ensureBucketExists({
             s3,
             bucket: bucketName,
             region: settings.region,
@@ -506,7 +517,7 @@ class R2Service {
         }
 
         if (corsOrigins.length > 0) {
-          await ensureBucketCors({
+          await this.ensureBucketCors({
             s3,
             bucket: bucketName,
             origins: corsOrigins,
@@ -587,7 +598,7 @@ class R2Service {
 
     try {
       // 1. Initialize S3
-      const s3 = makeR2Client({
+      const s3 = this.makeR2Client({
         accountId,
         accessKeyId,
         secretAccessKey,
@@ -597,7 +608,7 @@ class R2Service {
 
       // 2. Ensure bucket (best effort)
       try {
-        await ensureBucketExists({
+        await this.ensureBucketExists({
           s3,
           bucket: bucketName,
           region: settings.region,
@@ -611,7 +622,7 @@ class R2Service {
       try {
         const corsOrigins = this.getCorsOrigins();
         if (corsOrigins.length > 0) {
-          await ensureBucketCors({
+          await this.ensureBucketCors({
             s3,
             bucket: bucketName,
             origins: corsOrigins,
@@ -624,7 +635,7 @@ class R2Service {
 
       // 4. Upload Test File
       const file = new File([verifyContent], "verify.txt", { type: "text/plain" });
-      await multipartUpload({
+      await this.multipartUpload({
         s3,
         bucket: bucketName,
         key: verifyKey,
@@ -642,7 +653,7 @@ class R2Service {
 
       if (!response.ok) {
         // Cleanup attempt
-        try { await deleteObject({ s3, bucket: bucketName, key: verifyKey }); } catch (e) {}
+        try { await this.deleteObject({ s3, bucket: bucketName, key: verifyKey }); } catch (e) {}
 
         if (response.status === 404) {
            return { success: false, error: "File not found. Check your Public Bucket URL." };
@@ -653,7 +664,7 @@ class R2Service {
       const text = await response.text();
 
       // Cleanup
-      try { await deleteObject({ s3, bucket: bucketName, key: verifyKey }); } catch (e) {}
+      try { await this.deleteObject({ s3, bucket: bucketName, key: verifyKey }); } catch (e) {}
 
       if (text.trim() !== verifyContent) {
         return { success: false, error: "Content mismatch. URL might be pointing elsewhere." };
@@ -882,7 +893,7 @@ class R2Service {
     };
 
     try {
-      const s3 = makeR2Client({
+      const s3 = this.makeR2Client({
         accountId,
         accessKeyId,
         secretAccessKey,
@@ -896,7 +907,7 @@ class R2Service {
         const thumbKey = key.replace(/\.[^/.]+$/, "") + `.thumb.${thumbExt}`;
 
         try {
-          await multipartUpload({
+          await this.multipartUpload({
             s3,
             bucket: bucketEntry.bucket,
             key: thumbKey,
@@ -916,7 +927,7 @@ class R2Service {
 
       this.setCloudflareUploadStatus(statusMessage, "info");
 
-      await multipartUpload({
+      await this.multipartUpload({
         s3,
         bucket: bucketEntry.bucket,
         key,
@@ -936,7 +947,7 @@ class R2Service {
         this.setCloudflareUploadStatus("Uploading torrent metadata...", "info");
         const torrentKey = buildTorrentKey();
         try {
-          await multipartUpload({
+          await this.multipartUpload({
             s3,
             bucket: bucketEntry.bucket,
             key: torrentKey,
@@ -1102,7 +1113,7 @@ class R2Service {
     const useR2 = provider === "cloudflare_r2" || Boolean(accountId);
 
     if (useR2) {
-      s3 = makeR2Client({
+      s3 = this.makeR2Client({
         accountId,
         accessKeyId,
         secretAccessKey,
@@ -1120,7 +1131,7 @@ class R2Service {
       });
     }
 
-    await multipartUpload({
+    await this.multipartUpload({
       s3,
       bucket,
       key,
