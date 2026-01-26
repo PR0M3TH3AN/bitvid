@@ -435,7 +435,7 @@ export const ENSURE_PRESENCE_REBROADCAST_COOLDOWN_SECONDS = 5 * 60;
  * - "url": Try CDN/URL first, fall back to WebTorrent.
  * - "torrent": Try WebTorrent first, fall back to CDN/URL.
  */
-export const DEFAULT_PLAYBACK_SOURCE = "url";
+export const DEFAULT_PLAYBACK_SOURCE = "torrent";
 
 /**
  * Timeout (in milliseconds) for the initial playback attempt.
