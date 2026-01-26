@@ -35,7 +35,7 @@ If we later introduce **dual-licensing** options (e.g., commercial licenses for 
 ## Agent PR Conventions
 
 Automated agents contributing to this repository should follow these rules:
-- **Atomic Commits**: Keep changes small and self-contained.
+- **Atomic Commits**: Keep changes small, focused, and self-contained.
 - **Descriptive Titles**: Use clear, semantic titles (e.g., `fix(ui): resolve upload modal overflow`).
 - **Commit Messages**: Use the convention `type(scope): description (agent)` (e.g., `fix(ai): formatting (agent)` or `docs(ai): update quickstart (agent)`).
 - **Reference Issues**: Link to relevant issues in the PR description.
