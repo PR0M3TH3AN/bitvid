@@ -436,3 +436,13 @@ export const ENSURE_PRESENCE_REBROADCAST_COOLDOWN_SECONDS = 5 * 60;
  * - "torrent": Try WebTorrent first, fall back to CDN/URL.
  */
 export const DEFAULT_PLAYBACK_SOURCE = "url";
+
+/**
+ * Timeout (in milliseconds) for the initial playback attempt.
+ *
+ * If the preferred source (URL or Torrent) does not reach the "playing" state
+ * within this window, the player will automatically switch to the fallback
+ * source. This prevents users from staring at a loading spinner indefinitely
+ * if the primary source is slow or stalled.
+ */
+export const DEFAULT_PLAYBACK_START_TIMEOUT = 3000;
