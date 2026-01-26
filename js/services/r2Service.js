@@ -61,6 +61,25 @@ function isValidInfoHash(value) {
   return INFO_HASH_PATTERN.test(value);
 }
 
+function buildCorsGuidance({ accountId } = {}) {
+  const origin =
+    typeof window !== "undefined" && window.location
+      ? window.location.origin
+      : "";
+  const originLabel = origin && origin !== "null" ? origin : "<your-app-origin>";
+  const endpoint = accountId
+    ? `https://${accountId}.r2.cloudflarestorage.com`
+    : "https://<account>.r2.cloudflarestorage.com";
+
+  return [
+    "This is likely a CORS issue.",
+    `Configure CORS on the R2 S3 API endpoint (${endpoint}) — not just the public domain.`,
+    `Add AllowedOrigins: ${originLabel} (and any other origins),`,
+    "AllowedMethods: GET, HEAD, PUT, POST, DELETE, OPTIONS,",
+    "and AllowedHeaders: *.",
+  ].join(" ");
+}
+
 function createDefaultSettings() {
   return {
     accountId: "",
@@ -737,8 +756,7 @@ class R2Service {
         errorMessage.includes("Failed to fetch") ||
         errorMessage.includes("NetworkError")
       ) {
-        errorMessage +=
-          " This is likely a CORS issue. Please enable CORS in your Cloudflare R2 bucket settings. Also verify that the Bucket Name exists and your API Token has 'Object Read & Write' permissions.";
+        errorMessage += ` ${buildCorsGuidance({ accountId })} Also verify that the Bucket Name exists and your API Token has 'Object Read & Write' permissions.`;
       }
       return { success: false, error: errorMessage };
     }
