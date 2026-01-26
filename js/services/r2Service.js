@@ -769,6 +769,15 @@ class R2Service {
     const accessKeyId = (effectiveSettings.accessKeyId || "").trim();
     const secretAccessKey = (effectiveSettings.secretAccessKey || "").trim();
 
+    devLogger.debug("[R2] prepareUpload resolved settings", {
+      provider: effectiveSettings.provider || "",
+      accountId: accountId ? truncateMiddle(accountId, 6) : "",
+      bucket: effectiveSettings.bucket || "",
+      baseDomain: effectiveSettings.baseDomain || "",
+      publicBaseUrl: effectiveSettings.publicBaseUrl || "",
+      isLegacy: effectiveSettings.isLegacy !== false,
+    });
+
     if (!accountId || !accessKeyId || !secretAccessKey) {
       throw new Error("Missing R2 credentials. Unlock your storage or save settings.");
     }
