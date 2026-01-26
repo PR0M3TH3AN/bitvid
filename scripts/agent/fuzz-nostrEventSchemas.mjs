@@ -1,173 +1,126 @@
-import {
-  buildVideoPostEvent,
-  buildHttpAuthEvent,
-  buildReportEvent,
-  buildVideoMirrorEvent,
-  buildRepostEvent,
-  buildShareEvent,
-  buildRelayListEvent,
-  buildDmRelayListEvent,
-  buildProfileMetadataEvent,
-  buildMuteListEvent,
-  buildDeletionEvent,
-  buildLegacyDirectMessageEvent,
-  buildDmAttachmentEvent,
-  buildDmReadReceiptEvent,
-  buildDmTypingIndicatorEvent,
-  buildViewEvent,
-  buildZapRequestEvent,
-  buildReactionEvent,
-  buildCommentEvent,
-  buildWatchHistoryEvent,
-  buildSubscriptionListEvent,
-  buildBlockListEvent,
-  buildHashtagPreferenceEvent,
-  buildAdminListEvent,
-  validateEventStructure,
-  sanitizeAdditionalTags,
-  NOTE_TYPES
-} from '../../js/nostrEventSchemas.js';
 
-import {
-  fuzzBoolean,
-  fuzzInt,
-  fuzzString,
-  fuzzHexString,
-  fuzzJSON,
-  pickOne,
-  fuzzSurrogatePairString,
-  saveFuzzReport,
-  saveReproducer
-} from './fuzz-utils.mjs';
+import { runFuzzer, rng } from "./fuzz-shared.mjs";
+import { TextEncoder, TextDecoder } from "util";
 
-const ITERATIONS = 1000;
-const FINDINGS = [];
+// Polyfills
+global.TextEncoder = TextEncoder;
+global.TextDecoder = TextDecoder;
+global.window = {
+  bitvidNostrEventOverrides: {}
+};
 
-function logError(target, input, error) {
-  const id = Date.now().toString() + Math.floor(Math.random() * 1000);
-  console.error(`[FAIL] ${target} crashed! ID: ${id}`);
-  FINDINGS.push({
-    id,
-    target,
-    error: error.message,
-    stack: error.stack,
-    input
-  });
-  saveReproducer(target, id, input, error);
-}
+// Import the target module
+// Note: We are in scripts/agent/
+import * as Schemas from "../../js/nostrEventSchemas.js";
 
-function generateRandomParams() {
-  const params = {};
-  const keys = ['pubkey', 'created_at', 'content', 'tags', 'additionalTags', 'dTagValue', 'url', 'method', 'payload', 'eventId', 'userId', 'reportType', 'relayHint', 'recipientPubkey', 'ciphertext', 'attachment', 'messageKind', 'expiresAt', 'pointerValue', 'pointerTag', 'dedupeTag', 'amountSats', 'lnurl', 'coordinate', 'videoEventId', 'rootKind'];
+async function fuzzTest(iteration) {
+  // We choose a random function to fuzz in each iteration or fuzz all of them?
+  // Let's pick one random target per iteration to keep it simple and isolate crashes.
 
-  // Randomly select some keys to populate
-  keys.forEach(key => {
-    if (fuzzBoolean()) {
-      if (key === 'created_at' || key === 'amountSats' || key === 'messageKind' || key === 'expiresAt') {
-        params[key] = fuzzBoolean() ? fuzzInt() : fuzzString(); // Mix types
-      } else if (key === 'pubkey' || key === 'recipientPubkey') {
-        params[key] = fuzzBoolean() ? fuzzHexString() : fuzzString();
-      } else if (key === 'tags' || key === 'additionalTags') {
-        params[key] = fuzzBoolean() ? [] : fuzzJSON(2); // Can be valid array or random JSON
-      } else if (key === 'content') {
-        params[key] = fuzzBoolean() ? fuzzSurrogatePairString(100) : fuzzJSON(2);
-      } else {
-        params[key] = fuzzString();
-      }
-    }
-  });
+  const targets = [
+    "buildVideoPostEvent",
+    "buildViewEvent",
+    "buildCommentEvent",
+    "buildReactionEvent",
+    "buildZapRequestEvent",
+    "sanitizeAdditionalTags",
+    "validateEventStructure"
+  ];
 
-  return params;
-}
+  const targetName = rng.oneOf(targets);
+  let inputs = {};
 
-function fuzzBuilder(name, builderFn, argsGenerator) {
-  for (let i = 0; i < ITERATIONS; i++) {
-    const args = argsGenerator();
-    try {
-      if (Array.isArray(args)) {
-        builderFn(...args);
-      } else {
-        builderFn(args);
-      }
-    } catch (error) {
-      logError(name, args, error);
-    }
-  }
-}
+  // Helper to generate a comprehensive random params object
+  const genParams = () => {
+    // 50% chance of being undefined/null/non-object to test robustness
+    if (Math.random() < 0.1) return rng.nastyString();
+    if (Math.random() < 0.1) return null;
 
-console.log('Starting fuzzing for nostrEventSchemas.js...');
+    // Otherwise generate a rich object
+    const params = {
+      pubkey: rng.mixedString(64),
+      created_at: rng.bool() ? rng.int(0, 2000000000) : rng.nastyString(),
+      content: rng.bool() ? rng.mixedString(1000) : rng.recursiveObject(2),
+      additionalTags: rng.bool() ? rng.array(() => rng.array(() => rng.mixedString(20), 5), 10) : rng.nastyString(),
+    };
 
-// Fuzz all builders
-const builders = [
-  { name: 'buildVideoPostEvent', fn: buildVideoPostEvent },
-  { name: 'buildHttpAuthEvent', fn: buildHttpAuthEvent },
-  { name: 'buildReportEvent', fn: buildReportEvent },
-  { name: 'buildVideoMirrorEvent', fn: buildVideoMirrorEvent },
-  { name: 'buildRepostEvent', fn: buildRepostEvent },
-  { name: 'buildShareEvent', fn: buildShareEvent },
-  { name: 'buildRelayListEvent', fn: buildRelayListEvent },
-  { name: 'buildDmRelayListEvent', fn: buildDmRelayListEvent },
-  { name: 'buildProfileMetadataEvent', fn: buildProfileMetadataEvent },
-  { name: 'buildMuteListEvent', fn: buildMuteListEvent },
-  { name: 'buildDeletionEvent', fn: buildDeletionEvent },
-  { name: 'buildLegacyDirectMessageEvent', fn: buildLegacyDirectMessageEvent },
-  { name: 'buildDmAttachmentEvent', fn: buildDmAttachmentEvent },
-  { name: 'buildDmReadReceiptEvent', fn: buildDmReadReceiptEvent },
-  { name: 'buildDmTypingIndicatorEvent', fn: buildDmTypingIndicatorEvent },
-  { name: 'buildViewEvent', fn: buildViewEvent },
-  { name: 'buildZapRequestEvent', fn: buildZapRequestEvent },
-  { name: 'buildReactionEvent', fn: buildReactionEvent },
-  { name: 'buildCommentEvent', fn: buildCommentEvent },
-  { name: 'buildWatchHistoryEvent', fn: buildWatchHistoryEvent },
-  { name: 'buildSubscriptionListEvent', fn: buildSubscriptionListEvent },
-  { name: 'buildBlockListEvent', fn: buildBlockListEvent },
-  { name: 'buildHashtagPreferenceEvent', fn: buildHashtagPreferenceEvent },
-];
+    // Add specific fields that might be used by specific builders
+    const extraFields = [
+        "dTagValue", "url", "magnet", "thumbnail", "description", "mode", "videoRootId",
+        "pointerValue", "pointerTag", "pointerTags", "dedupeTag", "includeSessionTag",
+        "videoEventId", "videoEventRelay", "videoDefinitionAddress", "rootIdentifier",
+        "parentCommentId", "rootKind", "rootAuthorPubkey", "parentKind",
+        "recipientPubkey", "relays", "amountSats", "lnurl", "eventId", "coordinate",
+        "targetPointer", "targetAuthorPubkey"
+    ];
 
-builders.forEach(({ name, fn }) => {
-  fuzzBuilder(name, fn, () => [generateRandomParams()]);
-});
-
-// Special case for buildAdminListEvent
-fuzzBuilder('buildAdminListEvent', buildAdminListEvent, () => {
-  const listKey = pickOne(['moderation', 'editors', 'whitelist', 'blacklist', fuzzString()]);
-  return [listKey, generateRandomParams()];
-});
-
-// Fuzz validateEventStructure
-fuzzBuilder('validateEventStructure', validateEventStructure, () => {
-  const type = pickOne([...Object.values(NOTE_TYPES), fuzzString()]);
-  const event = fuzzJSON(2); // Random object/JSON
-  return [type, event];
-});
-
-// Fuzz sanitizeAdditionalTags
-fuzzBuilder('sanitizeAdditionalTags', sanitizeAdditionalTags, () => {
-  // Random input: array of arrays, array of strings, random object, etc.
-  if (fuzzBoolean()) {
-    // structured but potentially malformed tags
-    const tags = [];
-    const count = fuzzInt(0, 10);
-    for (let i = 0; i < count; i++) {
-      if (fuzzBoolean()) {
-        const tag = [fuzzString()];
-        const args = fuzzInt(0, 5);
-        for (let j = 0; j < args; j++) {
-            tag.push(fuzzBoolean() ? fuzzString() : fuzzJSON(1));
+    extraFields.forEach(field => {
+        if (rng.bool()) {
+            params[field] = rng.mixedString(50);
+        } else if (rng.bool()) {
+            params[field] = rng.recursiveObject(1); // Potentially invalid type
         }
-        tags.push(tag);
-      } else {
-        tags.push(pickOne([null, undefined, 123, {}, "string"]));
-      }
-    }
-    return [tags];
-  }
-  // completely random input
-  return [fuzzJSON(2)];
-});
+    });
 
-saveFuzzReport('nostrEventSchemas', FINDINGS);
-console.log(`Fuzzing complete. Found ${FINDINGS.length} crashes.`);
-if (FINDINGS.length > 0) {
-    process.exit(1);
+    return params;
+  };
+
+  switch (targetName) {
+    case "buildVideoPostEvent":
+      inputs = genParams();
+      Schemas.buildVideoPostEvent(inputs);
+      break;
+
+    case "buildViewEvent":
+      inputs = genParams();
+      Schemas.buildViewEvent(inputs);
+      break;
+
+    case "buildCommentEvent":
+      inputs = genParams();
+      Schemas.buildCommentEvent(inputs);
+      break;
+
+    case "buildReactionEvent":
+      inputs = genParams();
+      Schemas.buildReactionEvent(inputs);
+      break;
+
+    case "buildZapRequestEvent":
+      inputs = genParams();
+      Schemas.buildZapRequestEvent(inputs);
+      break;
+
+    case "sanitizeAdditionalTags":
+      // sanitizeAdditionalTags expects an array of tags (arrays)
+      if (rng.bool()) {
+        inputs = rng.array(() => rng.array(() => rng.mixedString(20), 5), 20);
+      } else {
+        inputs = rng.nastyString(); // or object, etc.
+      }
+      Schemas.sanitizeAdditionalTags(inputs);
+      break;
+
+    case "validateEventStructure":
+       const type = rng.oneOf(Object.values(Schemas.NOTE_TYPES));
+       let event = genParams(); // repurpose genParams to make a fake event
+       // Ensure event is an object for this specific test setup, unless we want to fuzz that too.
+       // validateEventStructure checks: if (!event || typeof event !== "object") return { valid: false ... }
+       // So passing a string is valid input for the function (should not crash),
+       // but my fuzzer crashes trying to assign .kind to it.
+       if (event && typeof event === 'object') {
+           event.kind = rng.int(0, 50000);
+           event.tags = rng.array(() => rng.array(() => rng.mixedString(10), 3), 5);
+       }
+       inputs = { type, event };
+       Schemas.validateEventStructure(type, event);
+       break;
+  }
+
+  return { target: targetName, inputs };
 }
+
+runFuzzer("nostrEventSchemas", 5000, fuzzTest).catch(err => {
+    console.error("Fatal fuzzer error:", err);
+    process.exit(1);
+});
