@@ -5044,10 +5044,22 @@ export class ProfileModalController {
 
   handleDirectMessagesError(detail = {}) {
     const error = detail?.error || detail?.failure || detail;
-    userLogger.warn(
-      "[profileModal] Direct message sync issue detected:",
-      error,
-    );
+    const reason = detail?.context?.reason || "";
+    const errorCode = error?.code || "";
+
+    const isBenign =
+      reason === "no-decryptors" ||
+      errorCode === "decryption-failed" ||
+      (typeof error === "string" && error.includes("no-decryptors"));
+
+    if (isBenign) {
+      devLogger.info("[profileModal] Direct message sync info:", error);
+    } else {
+      userLogger.warn(
+        "[profileModal] Direct message sync issue detected:",
+        error,
+      );
+    }
 
     if (this.activeMessagesRequest) {
       return;
