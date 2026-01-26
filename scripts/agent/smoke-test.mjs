@@ -38,7 +38,7 @@ import http from 'http';
 
 const ARTIFACTS_DIR = 'artifacts';
 const LOG_FILE = path.join(ARTIFACTS_DIR, `smoke-${new Date().toISOString().split('T')[0].replace(/-/g, '')}.log`);
-const REPORT_FILE = path.join(ARTIFACTS_DIR, 'smoke-report.json');
+const REPORT_FILE = path.join(ARTIFACTS_DIR, `smoke-summary-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
 const UI_SCREENSHOT = path.join(ARTIFACTS_DIR, 'smoke-ui.png');
 
 if (!fs.existsSync(ARTIFACTS_DIR)) {
@@ -285,12 +285,16 @@ async function runSmokeTest() {
 
     } catch (error) {
         log(`Smoke Test Failed: ${error.stack}`, 'ERROR');
-        summary.status = "FAIL";
+        summary.status = "failure";
         summary.error = error.message;
         exitCode = 1;
     } finally {
         // --- Write Report ---
         try {
+            if (fs.existsSync(LOG_FILE)) {
+                const logs = fs.readFileSync(LOG_FILE, 'utf8').split('\n').filter(Boolean);
+                summary.logs = logs;
+            }
             fs.writeFileSync(REPORT_FILE, JSON.stringify(summary, null, 2));
             log(`Summary written to ${REPORT_FILE}`);
         } catch (e) {
