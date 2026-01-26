@@ -827,12 +827,14 @@ class PlaybackSession extends SimpleEventEmitter {
       if (forcedSource === "url") tryUrlFirst = true;
       if (forcedSource === "torrent") tryUrlFirst = false;
 
+      const effectiveTimeout = forcedSource ? 0 : playbackStartTimeout;
+
       if (tryUrlFirst) {
         if (httpsUrl) {
           // Wrap URL attempt in timeout
           const urlResult = await withTimeout(
             attemptHostedPlayback(),
-            playbackStartTimeout,
+            effectiveTimeout,
             "URL Playback"
           );
 
@@ -849,10 +851,10 @@ class PlaybackSession extends SimpleEventEmitter {
           }
 
           const fallbackReason = urlResult?.reason || "url-unavailable";
-          if (this.magnetForPlayback) {
+          if (this.magnetForPlayback && forcedSource !== "url") {
             return await attemptTorrentPlayback(fallbackReason);
           }
-        } else if (this.magnetForPlayback) {
+        } else if (this.magnetForPlayback && forcedSource !== "url") {
           return await attemptTorrentPlayback("url-missing");
         }
       } else {
@@ -862,7 +864,7 @@ class PlaybackSession extends SimpleEventEmitter {
             // Wrap Torrent attempt in timeout
             const torrentResult = await withTimeout(
               attemptTorrentPlayback("preference"),
-              playbackStartTimeout,
+              effectiveTimeout,
               "Torrent Playback"
             );
 
@@ -871,8 +873,10 @@ class PlaybackSession extends SimpleEventEmitter {
             }
 
             if (torrentResult?.reason === "timeout") {
-               this.service.log("[playVideoWithFallback] Torrent timed out; cleaning up.");
-               if (
+              this.service.log(
+                "[playVideoWithFallback] Torrent timed out; cleaning up."
+              );
+              if (
                 this.service.torrentClient &&
                 typeof this.service.torrentClient.cleanup === "function"
               ) {
@@ -880,9 +884,11 @@ class PlaybackSession extends SimpleEventEmitter {
               }
               resetVideoElement();
             }
-
           } catch (err) {
-            this.service.log("[playVideoWithFallback] Torrent preference failed, trying URL:", err);
+            this.service.log(
+              "[playVideoWithFallback] Torrent preference failed, trying URL:",
+              err
+            );
             if (
               this.service.torrentClient &&
               typeof this.service.torrentClient.cleanup === "function"
@@ -894,7 +900,7 @@ class PlaybackSession extends SimpleEventEmitter {
         }
 
         // Fallback to URL
-        if (httpsUrl) {
+        if (httpsUrl && forcedSource !== "torrent") {
           const urlResult = await attemptHostedPlayback();
           if (urlResult && urlResult.source === "url") {
             return urlResult;
