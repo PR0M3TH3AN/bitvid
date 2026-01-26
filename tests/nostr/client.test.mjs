@@ -85,6 +85,40 @@ describe("NostrClient", () => {
       // pool.list is called with ([url], [filter]), so arguments[1] is an array
       assert.equal(filter[0].since, 101);
     });
+
+    it("should override lastSeen with explicit since parameter", async () => {
+      // Mock syncMetadataStore to return something high
+      client.syncMetadataStore.getLastSeen = () => 500;
+
+      await client.fetchListIncrementally({
+        kind: 1,
+        pubkey: "abc",
+        relayUrls: ["wss://relay.example.com"],
+        since: 100 // Explicit override, should be used instead of 500
+      });
+
+      // Verify filter used 'since + 1'
+      const call = mockPool.list.mock.calls[0];
+      const filter = call.arguments[1];
+      assert.equal(filter[0].since, 101);
+    });
+
+    it("should force full fetch if since is 0", async () => {
+      // Mock syncMetadataStore to return something
+      client.syncMetadataStore.getLastSeen = () => 500;
+
+      await client.fetchListIncrementally({
+        kind: 1,
+        pubkey: "abc",
+        relayUrls: ["wss://relay.example.com"],
+        since: 0 // Force full fetch
+      });
+
+      const call = mockPool.list.mock.calls[0];
+      const filter = call.arguments[1];
+      // Should NOT have 'since' property
+      assert.equal(filter[0].since, undefined);
+    });
   });
 
   describe("subscribeVideos", () => {

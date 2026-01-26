@@ -3482,7 +3482,14 @@ export class NostrClient {
    * @param {function} [params.fetchFn] - Custom fetch function (mocks or specialized logic). Defaults to `pool.list`.
    * @returns {Promise<import("nostr-tools").Event[]>} Deduplicated list of events found across all relays.
    */
-  async fetchListIncrementally({ kind, pubkey, dTag, relayUrls, fetchFn } = {}) {
+  async fetchListIncrementally({
+    kind,
+    pubkey,
+    dTag,
+    relayUrls,
+    fetchFn,
+    since,
+  } = {}) {
     if (!kind || !pubkey) {
       throw new Error("fetchListIncrementally requires kind and pubkey");
     }
@@ -3514,7 +3521,23 @@ export class NostrClient {
 
     for (const chunk of chunks) {
       const promises = chunk.map(async (relayUrl) => {
-        const lastSeen = this.getSyncLastSeen(kind, normalizedPubkey, dTag, relayUrl);
+        let lastSeen = this.getSyncLastSeen(
+          kind,
+          normalizedPubkey,
+          dTag,
+          relayUrl,
+        );
+
+        // If an explicit 'since' override is provided, use it instead of storage.
+        // This allows services to anchor fetching to their own known state.
+        if (since !== undefined) {
+          const overrideSince = Number(since);
+          lastSeen =
+            Number.isFinite(overrideSince) && overrideSince >= 0
+              ? Math.floor(overrideSince)
+              : 0;
+        }
+
         const filter = {
           kinds: [kind],
           authors: [normalizedPubkey],
