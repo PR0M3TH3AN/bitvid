@@ -4163,11 +4163,28 @@ function renderSubscribeButton(channelHex) {
         }
         return;
       }
+
+      // Optimistic UI update
+      const wasSubscribed = toggleBtn.dataset.state === "subscribed";
+      const nextState = wasSubscribed ? "unsubscribed" : "subscribed";
+      const label = toggleBtn.querySelector("span");
+
+      toggleBtn.dataset.state = nextState;
+      if (label) {
+        label.textContent = nextState === "subscribed" ? "Unsubscribe" : "Subscribe";
+      }
+
       try {
         await subscriptions.toggleChannel(channelHex, currentApp.pubkey);
-        // Re-render the button so it toggles state
+        // Re-render to ensure state is perfectly synced with the service
         renderSubscribeButton(channelHex);
       } catch (err) {
+        // Revert UI on failure
+        toggleBtn.dataset.state = wasSubscribed ? "subscribed" : "unsubscribed";
+        if (label) {
+          label.textContent = wasSubscribed ? "Unsubscribe" : "Subscribe";
+        }
+
         userLogger.error("Failed to update subscription:", err);
         const permissionErrorCodes = new Set([
           "extension-permission-denied",

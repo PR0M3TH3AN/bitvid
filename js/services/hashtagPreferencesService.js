@@ -285,7 +285,7 @@ class HashtagPreferencesService {
   loadFromCache(pubkey) {
     // profileCache internally uses activePubkey, but we should verify if it matches
     try {
-      let cached = profileCache.get("interests");
+      let cached = profileCache.getProfileData(pubkey, "interests");
 
       // Legacy fallback migration
       if (!cached && typeof localStorage !== "undefined") {
