@@ -1,9 +1,39 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 
 const REPORT_FILE = "REMEDIATION_REPORT.md";
+
+// Map of safe auto-fixes for Tailwind colors
+const SAFE_FIXES = {
+  // Text Colors
+  "text-red-600": "text-status-danger",
+  "text-red-500": "text-status-danger",
+  "text-blue-600": "text-status-info",
+  "text-blue-500": "text-status-info",
+  "text-green-600": "text-status-success",
+  "text-green-500": "text-status-success",
+  "text-yellow-500": "text-status-warning",
+  "text-yellow-600": "text-status-warning",
+  "text-gray-500": "text-muted",
+  "text-gray-400": "text-subtle",
+  "text-gray-900": "text-primary",
+  "text-white": "text-white",
+  "text-black": "text-black",
+
+  // Background Colors (Solid)
+  "bg-red-600": "bg-status-danger",
+  "bg-blue-600": "bg-status-info",
+  "bg-green-600": "bg-status-success",
+  "bg-yellow-500": "bg-status-warning",
+
+  // Background Colors (Surface/Light)
+  "bg-red-50": "bg-status-danger-surface",
+  "bg-blue-50": "bg-status-info-surface",
+  "bg-green-50": "bg-status-success-surface",
+  "bg-yellow-50": "bg-status-warning-surface",
+};
 
 const CHECKS = [
   { name: "CSS", command: "npm", args: ["run", "lint:css"] },
@@ -22,6 +52,8 @@ const VIOLATIONS = {
   "Bracket Utilities": [],
   "Tailwind Palette": []
 };
+
+let autoFixesApplied = [];
 
 function runCheck(check) {
   console.log(`Running ${check.name}...`);
@@ -44,15 +76,12 @@ function parseOutput(category, output) {
       if (match) {
         violations.push({
           file: match[1],
-          line: match[2],
+          line: parseInt(match[2], 10),
           snippet: match[3].trim()
         });
       }
     }
   } else if (category === "Inline Styles") {
-    // js/ui/violation-test.js:2 — Direct .style usage
-    //   document.body.style.color = "red";
-    // The script prints file:line - label, then snippet on next line.
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
       const match = line.match(/^(.+?):(\d+)\s+—\s+(.+)$/);
@@ -60,15 +89,13 @@ function parseOutput(category, output) {
         const snippet = lines[i + 1] ? lines[i + 1].trim() : "";
         violations.push({
           file: match[1],
-          line: match[2],
+          line: parseInt(match[2], 10),
           snippet: snippet,
           label: match[3]
         });
       }
     }
   } else if (category === "Raw Lengths" || category === "Bracket Utilities") {
-    // file:line → value
-    //   snippet
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
       const match = line.match(/^(.+?):(\d+)\s+→\s+(.+)$/);
@@ -76,7 +103,7 @@ function parseOutput(category, output) {
         const snippet = lines[i + 1] ? lines[i + 1].trim() : "";
         violations.push({
           file: match[1],
-          line: match[2],
+          line: parseInt(match[2], 10),
           snippet: snippet,
           value: match[3]
         });
@@ -84,35 +111,87 @@ function parseOutput(category, output) {
     }
   } else if (category === "Tailwind Palette") {
     // file:line → value
-    // No snippet? check-tailwind-colors.mjs prints: console.error(`${violation.file}:${violation.line} → ${violation.value}`);
     for (const line of lines) {
       const match = line.trim().match(/^(.+?):(\d+)\s+→\s+(.+)$/);
       if (match) {
         violations.push({
           file: match[1],
-          line: match[2],
+          line: parseInt(match[2], 10),
           value: match[3],
-          snippet: match[3] // Use value as snippet for now
+          snippet: match[3]
         });
       }
     }
   } else if (category === "CSS") {
-    // stylelint output
-    // css/tailwind.source.css
-    //  5757:3  ✖  Expected ...
-    // Just capture raw lines for now if we can't parse easily
-    // But since stylelint passed in my tests, I might not need complex parsing yet.
-    // If it fails, I'll just dump the output.
     if (output.includes("✖") || output.includes("error")) {
        violations.push({
          file: "stylelint output",
          line: 0,
-         snippet: output.trim() // Simplification
+         snippet: output.trim()
        });
     }
   }
 
   return violations;
+}
+
+function autoFixViolations(violations) {
+  console.log("Applying auto-fixes...");
+
+  // Group by file to read/write once per file
+  const filesToFix = {};
+
+  // Process Tailwind Palette
+  for (const v of violations["Tailwind Palette"]) {
+    const fix = SAFE_FIXES[v.value];
+    if (fix) {
+      if (!filesToFix[v.file]) {
+        filesToFix[v.file] = [];
+      }
+      filesToFix[v.file].push({ ...v, fix });
+    }
+  }
+
+  for (const file in filesToFix) {
+    try {
+      let content = readFileSync(file, "utf8");
+      const changes = filesToFix[file];
+      // Sort changes by line descending to avoid index shifting if we were using indices (but we use replace by line)
+      // Actually, we replace specific tokens.
+
+      let modified = false;
+
+      for (const item of changes) {
+        // We look for the class in the content.
+        // Be careful: if the class appears multiple times in the file.
+        // The violation has a line number.
+
+        const lines = content.split("\n");
+        const lineContent = lines[item.line - 1]; // 1-based index
+
+        if (lineContent && lineContent.includes(item.value)) {
+          // Replace using regex to ensure word boundary
+          const regex = new RegExp(`\\b${item.value}\\b`, 'g');
+          const newLineContent = lineContent.replace(regex, item.fix);
+
+          if (newLineContent !== lineContent) {
+            lines[item.line - 1] = newLineContent;
+            content = lines.join("\n");
+
+            autoFixesApplied.push(`${file}:${item.line} Replaced ${item.value} with ${item.fix}`);
+            modified = true;
+          }
+        }
+      }
+
+      if (modified) {
+        writeFileSync(file, content);
+        console.log(`Fixed ${changes.length} issues in ${file}`);
+      }
+    } catch (e) {
+      console.error(`Failed to fix ${file}:`, e.message);
+    }
+  }
 }
 
 function generateReport(violations) {
@@ -123,18 +202,36 @@ function generateReport(violations) {
     totalViolations += violations[category].length;
   }
 
-  if (totalViolations === 0) {
+  // Subtract fixed items from total counts effectively?
+  // For the report, we usually show what was found and what was fixed.
+
+  if (totalViolations === 0 && autoFixesApplied.length === 0) {
     report += "Headline: ✓ No violations\n";
   } else {
-    report += `Headline: ⚠️ ${totalViolations} violations found\n`;
+    report += `Headline: ⚠️ ${totalViolations} violations found (before auto-fix)\n`;
   }
 
   report += "\n";
 
+  if (autoFixesApplied.length > 0) {
+    report += "## Auto-fixes Applied\n";
+    report += `Total count: ${autoFixesApplied.length}\n\n`;
+    report += "| Fix |\n";
+    report += "|---|\n";
+    for (const fix of autoFixesApplied) {
+       report += `| ${fix} |\n`;
+    }
+    report += "\n";
+  }
+
   for (const category of Object.keys(violations)) {
     const list = violations[category];
+    // Filter out items that were fixed?
+    // Doing strict matching is hard without tracking IDs.
+    // We'll report all detected violations, and note that auto-fixes were attempted.
+
     report += `## ${category}\n`;
-    report += `Total count: ${list.length}\n\n`;
+    report += `Total count detection: ${list.length}\n\n`;
 
     if (list.length > 0) {
       report += "| File | Line | Snippet |\n";
@@ -156,13 +253,20 @@ function generateReport(violations) {
 
   report += "## Next Steps\n";
   report += "- [ ] Review violations\n";
-  report += "- [ ] Apply auto-fixes (if safe)\n";
+  if (autoFixesApplied.length > 0) {
+     report += "- [x] Apply auto-fixes (completed)\n";
+  } else {
+     report += "- [ ] Apply auto-fixes (if safe)\n";
+  }
   report += "- [ ] Open remediation PR\n";
 
   return report;
 }
 
 async function main() {
+  const args = process.argv.slice(2);
+  const shouldFix = args.includes("--fix");
+
   for (const check of CHECKS) {
     const { success, output } = runCheck(check);
     if (!success) {
@@ -171,11 +275,25 @@ async function main() {
     }
   }
 
+  if (shouldFix) {
+    autoFixViolations(VIOLATIONS);
+  }
+
   const report = generateReport(VIOLATIONS);
   writeFileSync(REPORT_FILE, report);
   console.log(`Report generated at ${REPORT_FILE}`);
 
   const totalViolations = Object.values(VIOLATIONS).reduce((acc, list) => acc + list.length, 0);
+
+  // If we fixed everything, we might want to return 0?
+  // But we usually want to signal that violations were found.
+  // The acceptance criteria says "npm run lint passes (exit code 0)".
+  // This script is a wrapper. If it auto-fixes, maybe it should verify again?
+
+  // For now, we exit with failure if any violations were found initially,
+  // to ensure visibility in CI logs, unless we want to treat auto-fixed as "success".
+  // But the prompt says "If a configurable threshold ... is exceeded ...".
+
   process.exit(totalViolations > 0 ? 1 : 0);
 }
 
