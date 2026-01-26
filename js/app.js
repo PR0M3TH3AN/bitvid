@@ -511,14 +511,14 @@ class Application {
 
   isAuthorBlocked(pubkey) {
     try {
+      const normalized = this.normalizeHexPubkey(pubkey);
       if (userBlocks && typeof userBlocks.isBlocked === "function") {
-        if (userBlocks.isBlocked(pubkey)) {
+        if (normalized && userBlocks.isBlocked(normalized)) {
           return true;
         }
       }
 
       if (!this.isUserLoggedIn()) {
-        const normalized = this.normalizeHexPubkey(pubkey);
         if (
           normalized &&
           moderationService &&
