@@ -4,6 +4,7 @@ import test from "node:test";
 
 import { nostrClient } from "../js/nostrClientFacade.js";
 import { NostrClient, __testExports } from "../js/nostr/client.js";
+import nip07Provider from "../js/services/authProviders/nip07.js";
 import { accessControl } from "../js/accessControl.js";
 
 const {
@@ -150,7 +151,8 @@ function setupLoginEnvironment({ enableImpl, getPublicKey = HEX_PUBKEY } = {}) {
 test("NIP-07 login requests decrypt permissions upfront", async () => {
   const env = setupLoginEnvironment();
   try {
-    const pubkey = await nostrClient.login();
+    const result = await nip07Provider.login({ nostrClient });
+    const pubkey = result.pubkey;
     assert.equal(pubkey, HEX_PUBKEY);
     assert.ok(env.enableCalls.length >= 1, "extension.enable should be invoked");
     assert.ok(
@@ -208,7 +210,8 @@ test("NIP-07 decrypt reuses cached extension permissions", async () => {
       },
     };
 
-    const pubkey = await nostrClient.login();
+    const result = await nip07Provider.login({ nostrClient });
+    const pubkey = result.pubkey;
     assert.equal(pubkey, HEX_PUBKEY);
     for (const method of EXPECTED_ENCRYPTION_PERMISSIONS) {
       assert.ok(
@@ -306,7 +309,8 @@ test("NIP-07 login falls back when structured permissions fail", async () => {
   });
 
   try {
-    const pubkey = await nostrClient.login();
+    const result = await nip07Provider.login({ nostrClient });
+    const pubkey = result.pubkey;
     assert.equal(pubkey, HEX_PUBKEY);
     assert.ok(env.enableCalls.length >= 2, "should retry with alternate payloads");
     const [objectCall, stringCall, plainCall] = env.enableCalls;
@@ -346,7 +350,8 @@ test("NIP-07 login supports extensions that only allow enable() without payload"
   });
 
   try {
-    const pubkey = await nostrClient.login();
+    const result = await nip07Provider.login({ nostrClient });
+    const pubkey = result.pubkey;
     assert.equal(pubkey, HEX_PUBKEY);
     assert.equal(
       env.enableCalls.length,
@@ -398,7 +403,8 @@ test("NIP-07 login quickly retries when a permission payload stalls", async () =
 
   try {
     const start = Date.now();
-    const pubkey = await nostrClient.login();
+    const result = await nip07Provider.login({ nostrClient });
+    const pubkey = result.pubkey;
     const duration = Date.now() - start;
     assert.equal(pubkey, HEX_PUBKEY);
     assert.ok(
@@ -432,7 +438,7 @@ test("NIP-07 login surfaces enable permission errors", async () => {
   });
 
   try {
-    await assert.rejects(() => nostrClient.login(), /permission denied/);
+    await assert.rejects(() => nip07Provider.login({ nostrClient }), /permission denied/);
   } finally {
     env.restore();
     nostrClient.logout();

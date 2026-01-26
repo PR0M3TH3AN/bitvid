@@ -374,18 +374,6 @@ export default class AuthService {
     const detailAuthType =
       typeof authType === "string" && authType.trim() ? authType.trim() : "nip07";
 
-    if (authType === "nip07") {
-      const permissionResult = await requestDefaultExtensionPermissions();
-      if (!permissionResult.ok) {
-        const error = new Error(
-          "The NIP-07 extension denied the permission request required to finish logging in.",
-        );
-        error.code = "extension-permission-denied";
-        error.cause = permissionResult.error;
-        throw error;
-      }
-    }
-
     const trimmed = typeof pubkey === "string" ? pubkey.trim() : "";
     if (!trimmed) {
       return { pubkey: null, providerId, authType: detailAuthType, signer };
