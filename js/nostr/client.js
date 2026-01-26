@@ -2642,6 +2642,12 @@ export class NostrClient {
       }
     }
 
+    // Check if a signer appeared while we were waiting (e.g. NIP-46 or concurrent NIP-07 logic)
+    const recheckedSigner = resolveActiveSigner(normalizedPubkey);
+    if (recheckedSigner && typeof recheckedSigner.signEvent === "function") {
+      return recheckedSigner;
+    }
+
     if (!extension) {
       return existingSigner;
     }
