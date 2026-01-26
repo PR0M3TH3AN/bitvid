@@ -9294,10 +9294,24 @@ export class ProfileModalController {
     const secretAccessKey = this.storageSecretKeyInput?.value?.trim() || "";
     const bucket = this.storageBucketInput?.value?.trim() || "";
     const forcePathStyle = provider === PROVIDERS.GENERIC;
+    const publicBaseUrl = this.storagePrefixInput?.value?.trim() || "";
 
     if (!accessKeyId || !secretAccessKey || !endpointOrAccount) {
         this.setStorageFormStatus("Missing credentials for test.", "error");
         return;
+    }
+
+    if (
+      provider === "cloudflare_r2" &&
+      (publicBaseUrl.includes(".r2.cloudflarestorage.com") ||
+        publicBaseUrl.includes(".s3.") ||
+        publicBaseUrl.includes(".amazonaws.com"))
+    ) {
+      this.setStorageFormStatus(
+        "Invalid Public URL. Please use your R2.dev or custom domain.",
+        "error",
+      );
+      return;
     }
 
     this.setStorageFormStatus("Testing connection...", "info");
@@ -9312,6 +9326,8 @@ export class ProfileModalController {
 
     if (provider === "cloudflare_r2") {
       config.accountId = endpointOrAccount;
+      config.publicBaseUrl = publicBaseUrl;
+      config.baseDomain = publicBaseUrl;
     } else {
       config.endpoint = endpointOrAccount;
       config.forcePathStyle = forcePathStyle;
