@@ -262,7 +262,7 @@ package scripts to keep formatting, linting, and generated output consistent:
 
 ```bash
 npm install               # install Prettier, Stylelint, and Tailwind toolchain
-npm run format            # format CSS/HTML/JS/MD with Prettier + tailwindcss plugin
+npm run format            # format CSS/HTML/MD with Prettier + tailwindcss plugin
 npm run lint              # run CSS, hex color, inline-style, design-token, and Tailwind color/bracket guards in one pass
 npm run lint:css          # enforce token usage and forbid raw hex colors
 npm run lint:inline-styles # fail CI if inline style attributes or element.style usage slip in
