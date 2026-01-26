@@ -6,7 +6,7 @@
 
 > **Security Note:** This integration requires storing encrypted credentials in the browser. See [`README.md`](../README.md) and [`docs/storage-tab-design.md`](./storage-tab-design.md) for security warnings and alternative upload modes for untrusted environments.
 
-The **Storage Tab** (powered by `StorageService`) is the single supported configuration path for R2 credentials. `r2Service` is responsible for:
+The **Storage Tab** (powered by `StorageService`) is the single supported configuration path for R2 credentials. The deprecated quick-upload panel (`quickR2Section` / `js/r2-quick.js`) has been removed to avoid conflicting credential sources. `r2Service` is responsible for:
 
 - Uploading the selected video/HLS asset via multipart S3 uploads.
 - Verifying public access via the configured Public Bucket URL.
