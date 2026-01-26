@@ -3959,13 +3959,36 @@ export class NostrClient {
    */
   async login(options = {}) {
     try {
-      try {
-        await waitForNip07Extension();
-      } catch (waitError) {
-        devLogger.log("Timed out waiting for extension injection:", waitError);
+      let extension = null;
+      let attempts = 0;
+      const maxAttempts = 3;
+
+      while (!extension && attempts < maxAttempts) {
+        try {
+          await waitForNip07Extension();
+          extension = window.nostr;
+        } catch (waitError) {
+          devLogger.log(
+            `Timed out waiting for extension injection (attempt ${
+              attempts + 1
+            }/${maxAttempts}):`,
+            waitError,
+          );
+        }
+
+        if (extension) {
+          break;
+        }
+
+        attempts++;
+        if (attempts < maxAttempts) {
+          devLogger.log("Retrying NIP-07 detection...");
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
       }
 
-      const extension = window.nostr;
+      extension = window.nostr;
+
       if (!extension) {
         devLogger.log("No Nostr extension found");
         throw new Error(
