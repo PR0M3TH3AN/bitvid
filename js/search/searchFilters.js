@@ -329,12 +329,3 @@ export function serializeFiltersToQuery(filters = DEFAULT_FILTERS) {
 
   return tokens.join(" ");
 }
-
-export function filtersToHashParams(filters = DEFAULT_FILTERS) {
-  const params = new URLSearchParams();
-  const serialized = serializeFiltersToQuery(filters);
-  if (serialized) {
-    params.set("filters", serialized);
-  }
-  return params;
-}

@@ -22,6 +22,7 @@ import WebTorrent from "./webtorrent.min.js";
 import { WSS_TRACKERS } from "./constants.js";
 import { safeDecodeURIComponent } from "./utils/safeDecode.js";
 import { devLogger, userLogger } from "./utils/logger.js";
+import { emit } from "./embedDiagnostics.js";
 
 const DEFAULT_PROBE_TRACKERS = Object.freeze([...WSS_TRACKERS]);
 
@@ -224,6 +225,8 @@ export class TorrentClient {
         ? performance.now()
         : Date.now();
 
+    emit("torrent-probe-start", { magnet: augmentedMagnet });
+
     return new Promise((resolve) => {
       let settled = false;
       let torrent = null;
@@ -259,7 +262,7 @@ export class TorrentClient {
         const isHealthy = Boolean(overrides.healthy);
         const peersCount = Number.isFinite(overrides.peers) ? overrides.peers : 0;
 
-        resolve({
+        const result = {
           healthy: isHealthy,
           peers: peersCount,
           reason: isHealthy ? "peer" : "timeout",
@@ -268,7 +271,9 @@ export class TorrentClient {
           usedTrackers: trackers,
           durationMs: Math.max(0, endedAt - startedAt),
           ...overrides,
-        });
+        };
+        emit("torrent-probe-result", result);
+        resolve(result);
       };
 
       try {
@@ -859,6 +864,7 @@ export class TorrentClient {
    */
   async streamVideo(magnetURI, videoElement, opts = {}) {
     try {
+      emit("torrent-stream-start", { magnet: magnetURI });
       // 1) Make sure we have a WebTorrent client and a valid SW registration.
       const initResult = await this.init();
       const serviceWorkerReady =

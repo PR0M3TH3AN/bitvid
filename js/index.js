@@ -10,6 +10,7 @@ import {
 } from "./applicationContext.js";
 import nostrService from "./services/nostrService.js";
 import r2Service from "./services/r2Service.js";
+import s3UploadService from "./services/s3UploadService.js";
 import { loadView, viewInitRegistry } from "./viewManager.js";
 import { applyDesignSystemAttributes } from "./designSystem.js";
 import {
@@ -385,6 +386,7 @@ function startApplication() {
       services: {
         nostrService,
         r2Service,
+        s3Service: s3UploadService,
       },
       loadView,
     });
@@ -1311,19 +1313,6 @@ if (document.readyState === "loading") {
 /* -------------------------------------------
    HELPER FUNCTIONS FOR QUERY AND HASH
 -------------------------------------------- */
-
-/**
- * Sets a query param (e.g. ?modal=xxx or ?v=yyy),
- * removing any "#view=..." from the hash to avoid collisions.
- */
-export function setQueryParam(key, value) {
-  const url = new URL(window.location.href);
-  url.hash = "";
-  url.searchParams.set(key, value);
-  const newUrl = url.pathname + url.search;
-  window.history.replaceState({}, "", newUrl);
-  handleQueryParams();
-}
 
 /**
  * Check the current URL for ?modal=..., ?v=..., etc.

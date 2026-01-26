@@ -96,8 +96,3 @@ export function applyDesignSystemAttributes(root = null) {
 
   return mode;
 }
-
-export function subscribeToDesignSystemChanges(listener) {
-  void listener;
-  return () => {};
-}

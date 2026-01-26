@@ -319,8 +319,6 @@ export const setThemeAccentOverrides = (overrides) => {
   applyAccentOverrides(root, theme);
 };
 
-export const getThemeAccentOverrides = () => cloneAccentOverrides(accentOverrides);
-
 export const setTheme = (theme) => {
   if (!isBrowser()) {
     currentTheme = normalizeTheme(theme) || FALLBACK_THEME;

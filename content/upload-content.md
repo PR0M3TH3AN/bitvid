@@ -25,12 +25,13 @@ To allow your browser to upload files directly to Cloudflare, you must allow Cro
 
 1. Still in your bucket's **Settings** tab, scroll down to **"CORS Policy"**.
 2. Click **"Add CORS Policy"** (or Edit).
-3. Paste the following JSON configuration:
+3. **Important:** Browser uploads use the AWS JavaScript SDK, which sends the `amz-sdk-invocation-id`, `amz-sdk-request`, and `x-amz-user-agent` headers. The simplest working setup is to allow all headers by setting `AllowedHeaders: ["*"]`.
+4. Paste the following JSON configuration and **explicitly list every allowed app origin** (the scheme, host, and port must match exactly):
 
 ```json
 [
   {
-    "AllowedOrigins": ["*"],
+    "AllowedOrigins": ["http://127.0.0.1:5500", "https://bitvid.network"],
     "AllowedMethods": ["GET", "PUT", "POST", "DELETE", "HEAD"],
     "AllowedHeaders": ["*"],
     "ExposeHeaders": ["ETag", "Content-Length", "Content-Range", "Accept-Ranges"],
@@ -38,9 +39,9 @@ To allow your browser to upload files directly to Cloudflare, you must allow Cro
   }
 ]
 ```
-> **Note:** You can replace `"*"` in `AllowedOrigins` with your specific domain (e.g., `["https://bitvid.network"]`) for tighter security, but `"*"` is easiest for getting started.
+> **Note:** Replace the `AllowedOrigins` values with the exact origins you use in development and production (the scheme and port must match exactly). Apply this policy on the **bucket’s S3 API endpoint**, not just the public URL or custom domain. Uploads go through the **S3 API endpoint** (`<account>.r2.cloudflarestorage.com`), and Cloudflare’s UI does **not** require adding `OPTIONS` to `AllowedMethods`.
 
-4. Click **"Save"**.
+5. Click **"Save"**.
 
 ### 3. Create an API Token
 

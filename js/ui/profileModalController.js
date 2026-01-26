@@ -31,12 +31,14 @@ import {
   extractAttachmentsFromMessage,
   formatAttachmentSize,
 } from "../attachments/attachmentUtils.js";
+import { getCorsOrigins, prepareS3Connection } from "../services/s3Service.js";
 import {
   clearAttachmentCache,
   downloadAttachment,
   uploadAttachment,
   getAttachmentCacheStats,
 } from "../services/attachmentService.js";
+import { PROVIDERS } from "../services/storageService.js";
 import {
   getLinkPreviewSettings,
   setLinkPreviewAutoFetch,
@@ -1771,6 +1773,7 @@ export class ProfileModalController {
     this.storageSecretKeyInput = document.getElementById("storageSecretKey") || null;
     this.storageBucketInput = document.getElementById("storageBucket") || null;
     this.storagePrefixInput = document.getElementById("storagePrefix") || null;
+    this.storagePrefixWarning = document.getElementById("storagePrefixWarning") || null;
     this.storageDefaultInput = document.getElementById("storageDefault") || null;
     this.storageR2Helper = document.getElementById("storageR2Helper") || null;
 
@@ -2893,6 +2896,7 @@ export class ProfileModalController {
     if (enabled && !relayHints.length) {
       this.showStatus(
         "Privacy warning: this recipient has not shared NIP-17 relays, so we'll use your default relays.",
+        { autoHideMs: 5000 },
       );
     }
 
@@ -3510,6 +3514,7 @@ export class ProfileModalController {
     if (useNip17 && !recipientRelayHints.length) {
       this.showStatus(
         "Privacy warning: this recipient has not shared NIP-17 relays, so we'll use your default relays.",
+        { autoHideMs: 5000 },
       );
     }
 
@@ -3565,6 +3570,7 @@ export class ProfileModalController {
         if (result?.warning === "dm-relays-fallback") {
           this.showStatus(
             "Privacy warning: this message used default relays because no NIP-17 relay list was found.",
+            { autoHideMs: 5000 },
           );
         }
         void this.populateProfileMessages({ force: true, reason: "send-message" });
@@ -4737,6 +4743,7 @@ export class ProfileModalController {
     if (useNip17 && !recipientRelayHints.length) {
       this.showStatus(
         "Privacy warning: this recipient has not shared NIP-17 relays, so we'll use your default relays.",
+        { autoHideMs: 5000 },
       );
     }
 
@@ -4765,6 +4772,7 @@ export class ProfileModalController {
         if (result?.warning === "dm-relays-fallback") {
           this.showStatus(
             "Privacy warning: this message used default relays because no NIP-17 relay list was found.",
+            { autoHideMs: 5000 },
           );
         }
         if (
@@ -5042,6 +5050,7 @@ export class ProfileModalController {
 
     this.showStatus(
       "Privacy warning: direct messages are using your default relays because no NIP-17 relay list is available.",
+      { autoHideMs: 5000 },
     );
   }
 
@@ -5435,6 +5444,12 @@ export class ProfileModalController {
     if (this.storageProviderInput instanceof HTMLElement) {
       this.storageProviderInput.addEventListener("change", () => {
         this.updateStorageFormVisibility();
+      });
+    }
+
+    if (this.storagePrefixInput instanceof HTMLElement) {
+      this.storagePrefixInput.addEventListener("input", () => {
+        this.handlePublicUrlInput();
       });
     }
 
@@ -8972,6 +8987,8 @@ export class ProfileModalController {
     const storageService = this.services.storageService;
     const pubkey = this.normalizeHexPubkey(this.getActivePubkey());
 
+    this.handleClearStorage();
+
     if (!pubkey) {
       // Not logged in
       if (this.storageUnlockSection) this.storageUnlockSection.classList.add("hidden");
@@ -9042,6 +9059,13 @@ export class ProfileModalController {
     if (this.storageDefaultInput) this.storageDefaultInput.checked = !!defaultForUploads;
 
     this.updateStorageFormVisibility();
+    this.handlePublicUrlInput();
+  }
+
+  handlePublicUrlInput() {
+    if (!this.storagePrefixInput || !this.storagePrefixWarning) return;
+    this.storagePrefixWarning.textContent = "";
+    this.storagePrefixWarning.classList.add("hidden");
   }
 
   updateStorageFormVisibility() {
@@ -9049,37 +9073,30 @@ export class ProfileModalController {
     const isR2 = provider === "cloudflare_r2";
 
     if (this.storageEndpointInput) {
-       // Hide generic endpoint for R2 as it is constructed from accountId (which we might map to endpoint or add field)
-       // The prompt said "Endpoint (for generic S3; can be hidden or preset for R2)"
-       // R2 uses accountId. r2Service expects accountId.
-       // We can overload "Endpoint" to be Account ID for R2 in the UI if we want, or add a field.
-       // The form has "Endpoint" and "Region".
-       // Let's hide Endpoint for R2 and assume we can parse account ID from existing R2 logic or add a field?
-       // Wait, the prompt requested: "Endpoint (for generic S3; can be hidden or preset for R2)".
-       // R2 needs Account ID. The generic form has Endpoint.
-       // I'll re-purpose Endpoint label or visibility based on provider.
-       // Actually, I'll keep it simple: Hide endpoint for R2. But where does User enter Account ID?
-       // `r2Service` uses `accountId`.
-       // I will repurpose the "Endpoint" input to be "Account ID" when R2 is selected, or add a field.
-       // The HTML I added has `storageEndpoint`.
-       // Let's toggle the label/placeholder.
-       const label = this.storageEndpointInput.parentElement.querySelector("span");
-       if (isR2) {
-         if (label) label.textContent = "Cloudflare Account ID";
-         this.storageEndpointInput.placeholder = "Account ID from Cloudflare dashboard";
-         this.storageEndpointInput.parentElement.classList.remove("hidden");
-         this.storageEndpointInput.type = "text";
-       } else {
-         if (label) label.textContent = "Endpoint URL";
-         this.storageEndpointInput.placeholder = "https://s3.example.com";
-         this.storageEndpointInput.parentElement.classList.remove("hidden");
-         this.storageEndpointInput.type = "url";
-       }
+      const label = this.storageEndpointInput.parentElement.querySelector("span");
+      if (isR2) {
+        if (label) label.textContent = "Cloudflare Account ID";
+        this.storageEndpointInput.placeholder =
+          "Account ID from Cloudflare dashboard";
+        this.storageEndpointInput.parentElement.classList.remove("hidden");
+        this.storageEndpointInput.type = "text";
+        if (this.storagePrefixInput) {
+          this.storagePrefixInput.placeholder = "https://pub-xxx.r2.dev";
+        }
+      } else {
+        if (label) label.textContent = "Endpoint URL";
+        this.storageEndpointInput.placeholder = "https://s3.example.com";
+        this.storageEndpointInput.parentElement.classList.remove("hidden");
+        this.storageEndpointInput.type = "url";
+        if (this.storagePrefixInput) {
+          this.storagePrefixInput.placeholder = "https://cdn.example.com";
+        }
+      }
     }
 
     if (this.storageR2Helper) {
-        if (isR2) this.storageR2Helper.classList.remove("hidden");
-        else this.storageR2Helper.classList.add("hidden");
+      if (isR2) this.storageR2Helper.classList.remove("hidden");
+      else this.storageR2Helper.classList.add("hidden");
     }
   }
 
@@ -9093,33 +9110,53 @@ export class ProfileModalController {
     // ProfileModalController imports getActiveSigner.
 
     if (!signer) {
-        this.showError("No active signer found. Please login.");
-        return;
+      this.showError("No active signer found. Please login.");
+      return;
+    }
+
+    if (
+      signer.pubkey &&
+      this.normalizeHexPubkey(signer.pubkey) !== pubkey
+    ) {
+      this.showError(
+        `Signer account (${signer.pubkey.slice(
+          0,
+          8,
+        )}...) does not match profile (${pubkey.slice(
+          0,
+          8,
+        )}...). Please switch accounts in your extension.`,
+      );
+      return;
     }
 
     const storageService = this.services.storageService;
     if (!storageService) {
-        this.showError("Storage service unavailable.");
-        return;
+      this.showError("Storage service unavailable.");
+      return;
     }
 
     if (this.storageUnlockBtn) {
-        this.storageUnlockBtn.disabled = true;
-        this.storageUnlockBtn.textContent = "Unlocking...";
+      this.storageUnlockBtn.disabled = true;
+      this.storageUnlockBtn.textContent = "Unlocking...";
     }
 
     try {
-        await storageService.unlock(pubkey, { signer });
-        this.showSuccess("Storage unlocked.");
-        this.populateStoragePane();
+      await storageService.unlock(pubkey, { signer });
+      this.showSuccess("Storage unlocked.");
+      this.populateStoragePane();
     } catch (error) {
-        devLogger.error("Failed to unlock storage:", error);
-        this.showError("Failed to unlock storage. Ensure your signer supports NIP-04/44.");
+      devLogger.error("Failed to unlock storage:", error);
+      const message =
+        error && typeof error.message === "string"
+          ? error.message
+          : "Failed to unlock storage. Ensure your signer supports NIP-04/44.";
+      this.showError(message);
     } finally {
-        if (this.storageUnlockBtn) {
-            this.storageUnlockBtn.disabled = false;
-            this.storageUnlockBtn.textContent = "Unlock Storage";
-        }
+      if (this.storageUnlockBtn) {
+        this.storageUnlockBtn.disabled = false;
+        this.storageUnlockBtn.textContent = "Unlock Storage";
+      }
     }
   }
 
@@ -9131,7 +9168,7 @@ export class ProfileModalController {
     if (!storageService) return;
 
     const provider = this.storageProviderInput?.value || "cloudflare_r2";
-    const endpointOrAccount = this.storageEndpointInput?.value?.trim() || "";
+    let endpointOrAccount = this.storageEndpointInput?.value?.trim() || "";
     const region = this.storageRegionInput?.value?.trim() || "auto";
     const accessKeyId = this.storageAccessKeyInput?.value?.trim() || "";
     const secretAccessKey = this.storageSecretKeyInput?.value?.trim() || "";
@@ -9144,6 +9181,22 @@ export class ProfileModalController {
         return;
     }
 
+    if (
+      provider === "cloudflare_r2" &&
+      (prefix.includes(".r2.cloudflarestorage.com") ||
+        prefix.includes(".s3.") ||
+        prefix.includes(".amazonaws.com"))
+    ) {
+      this.setStorageFormStatus(
+        "Invalid Public URL. Please use your R2.dev or custom domain.",
+        "error",
+      );
+      return;
+    }
+
+    let publicBaseUrl = "";
+    let forcePathStyle = provider === PROVIDERS.GENERIC;
+
     const payload = {
         provider,
         accessKeyId,
@@ -9155,7 +9208,30 @@ export class ProfileModalController {
     if (provider === "cloudflare_r2") {
         payload.accountId = endpointOrAccount;
     } else {
+        try {
+          const normalized = await prepareS3Connection({
+            endpoint: endpointOrAccount,
+            region,
+            accessKeyId,
+            secretAccessKey,
+            bucket,
+            forcePathStyle,
+            origins: getCorsOrigins(),
+          });
+          endpointOrAccount = normalized.endpoint;
+          publicBaseUrl = normalized.publicBaseUrl;
+          forcePathStyle = normalized.forcePathStyle;
+        } catch (error) {
+          devLogger.error("Failed to validate S3 connection:", error);
+          this.setStorageFormStatus(
+            error?.message || "Invalid S3 configuration.",
+            "error"
+          );
+          return;
+        }
+
         payload.endpoint = endpointOrAccount;
+        payload.forcePathStyle = forcePathStyle;
     }
 
     const meta = {
@@ -9174,6 +9250,13 @@ export class ProfileModalController {
     // We can store it in meta if we want to show it in UI without decrypting.
     if (provider === "cloudflare_r2") {
         meta.accountId = endpointOrAccount;
+        // For R2, the "Prefix" input serves as the Public Base URL (e.g. https://pub-xxx.r2.dev)
+        meta.publicBaseUrl = prefix;
+        meta.baseDomain = prefix;
+    } else {
+        meta.publicBaseUrl = publicBaseUrl;
+        meta.baseDomain = publicBaseUrl;
+        meta.forcePathStyle = forcePathStyle;
     }
 
     this.setStorageFormStatus("Saving...", "info");
@@ -9204,10 +9287,25 @@ export class ProfileModalController {
     const accessKeyId = this.storageAccessKeyInput?.value?.trim() || "";
     const secretAccessKey = this.storageSecretKeyInput?.value?.trim() || "";
     const bucket = this.storageBucketInput?.value?.trim() || "";
+    const forcePathStyle = provider === PROVIDERS.GENERIC;
+    const publicBaseUrl = this.storagePrefixInput?.value?.trim() || "";
 
     if (!accessKeyId || !secretAccessKey || !endpointOrAccount) {
         this.setStorageFormStatus("Missing credentials for test.", "error");
         return;
+    }
+
+    if (
+      provider === "cloudflare_r2" &&
+      (publicBaseUrl.includes(".r2.cloudflarestorage.com") ||
+        publicBaseUrl.includes(".s3.") ||
+        publicBaseUrl.includes(".amazonaws.com"))
+    ) {
+      this.setStorageFormStatus(
+        "Invalid Public URL. Please use your R2.dev or custom domain.",
+        "error",
+      );
+      return;
     }
 
     this.setStorageFormStatus("Testing connection...", "info");
@@ -9222,8 +9320,11 @@ export class ProfileModalController {
 
     if (provider === "cloudflare_r2") {
       config.accountId = endpointOrAccount;
+      config.publicBaseUrl = publicBaseUrl;
+      config.baseDomain = publicBaseUrl;
     } else {
       config.endpoint = endpointOrAccount;
+      config.forcePathStyle = forcePathStyle;
     }
 
     try {
@@ -9246,6 +9347,8 @@ export class ProfileModalController {
     this.storageBucketInput.value = "";
     this.storagePrefixInput.value = "";
     this.storageDefaultInput.checked = false;
+    this.storageProviderInput.value = "cloudflare_r2";
+    this.updateStorageFormVisibility();
     this.setStorageFormStatus("", "info");
   }
 

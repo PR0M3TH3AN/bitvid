@@ -152,6 +152,7 @@ export class VideoModal {
     this.creatorNpub = null;
     this.copyMagnetBtn = null;
     this.shareBtn = null;
+    this.embedBtn = null;
     this.modalZapBtn = null;
     this.modalMoreBtn = null;
     this.reactionButtons = {
@@ -297,6 +298,7 @@ export class VideoModal {
 
     this.handleCopyRequest = this.handleCopyRequest.bind(this);
     this.handleShareRequest = this.handleShareRequest.bind(this);
+    this.handleEmbedRequest = this.handleEmbedRequest.bind(this);
     this.handleCreatorNavigation = this.handleCreatorNavigation.bind(this);
     this.handleModalMoreButtonClick = this.handleModalMoreButtonClick.bind(this);
     this.handleReactionClick = this.handleReactionClick.bind(this);
@@ -388,6 +390,81 @@ export class VideoModal {
     ) {
       this.modalVideo = videoElement;
       this.bindVideoEvents();
+
+      try {
+        if (this.modalVideo) {
+          // give the element the fill class so CSS can control layout
+          this.modalVideo.classList.add("video-modal__media--fill");
+
+          // ensure the stage/wrapper allow stretching (safety)
+          const videoWrap =
+            this.playerModal?.querySelector(".video-modal__video") ||
+            this.document.querySelector(".video-modal__video");
+
+          if (videoWrap) {
+            videoWrap.style.display = "flex";
+            videoWrap.style.alignItems = "stretch";
+            videoWrap.style.justifyContent = "center";
+            videoWrap.style.padding = "0";
+          }
+
+          // choose object-fit dynamically after metadata loads so we can inspect intrinsic size:
+          const decideObjectFit = () => {
+            try {
+              const vw =
+                this.modalVideo.videoWidth ||
+                this.modalVideo.naturalWidth ||
+                this.modalVideo.clientWidth;
+              const vh =
+                this.modalVideo.videoHeight ||
+                this.modalVideo.naturalHeight ||
+                this.modalVideo.clientHeight;
+              const wrap = this.modalVideo.parentElement;
+              const cw = wrap ? wrap.clientWidth : this.modalVideo.clientWidth;
+              const ch = wrap ? wrap.clientHeight : this.modalVideo.clientHeight;
+
+              // If we can't compute, default to cover
+              if (!vw || !vh || !cw || !ch) {
+                this.modalVideo.style.objectFit = "cover";
+                return;
+              }
+
+              const videoRatio = vw / vh;
+              const containerRatio = cw / ch;
+              const diff = Math.abs(containerRatio - videoRatio);
+
+              // if aspect ratios are close, prefer contain to avoid cropping small edges,
+              // otherwise use cover to avoid large letterbox bars
+              const THRESHOLD = 0.12; // tweakable
+              this.modalVideo.style.objectFit =
+                diff > THRESHOLD ? "cover" : "contain";
+            } catch (e) {
+              this.modalVideo.style.objectFit = "cover";
+            }
+          };
+
+          if (this.modalVideo.readyState >= 1) {
+            // metadata already available
+            decideObjectFit();
+          } else {
+            const onMeta = () => {
+              decideObjectFit();
+              this.modalVideo.removeEventListener("loadedmetadata", onMeta);
+            };
+            this.modalVideo.addEventListener("loadedmetadata", onMeta);
+          }
+
+          // always ensure background transparent
+          this.modalVideo.style.background = "transparent";
+          this.modalVideo.style.objectPosition = "center center";
+        }
+      } catch (err) {
+        // swallow, but log for diagnostics
+        this.logger?.log?.(
+          "[VideoModal] setVideoElement style enforcement failed",
+          err
+        );
+      }
     } else {
       this.modalVideo = null;
     }
@@ -631,6 +708,7 @@ export class VideoModal {
     this.creatorNpub = playerModal.querySelector("#creatorNpub") || null;
     this.copyMagnetBtn = playerModal.querySelector("#copyMagnetBtn") || null;
     this.shareBtn = playerModal.querySelector("#shareBtn") || null;
+    this.embedBtn = playerModal.querySelector("#embedBtn") || null;
     this.modalZapBtn = playerModal.querySelector("#modalZapBtn") || null;
     this.modalMoreBtn = playerModal.querySelector("#modalMoreBtn") || null;
     this.reactionsController.initialize({ playerModal });
@@ -723,6 +801,7 @@ export class VideoModal {
     this.setZapVisibility(false);
     this.setCopyEnabled(false);
     this.setShareEnabled(false);
+    this.setEmbedEnabled(false);
     this.resetStats();
 
     this.attachAmbientGlow();
@@ -2232,6 +2311,9 @@ export class VideoModal {
       this.shareBtn.dataset.modalMenuHandler = "true";
       this.shareBtn.addEventListener("click", this.handleShareRequest);
     }
+    if (this.embedBtn) {
+      this.embedBtn.addEventListener("click", this.handleEmbedRequest);
+    }
 
     if (this.modalZapBtn) {
       this.modalZapBtn.addEventListener("click", (event) => {
@@ -2804,8 +2886,10 @@ export class VideoModal {
       (typeof video?.magnet === "string" && video.magnet.trim()) ||
         video?.torrentSupported
     );
+    const hasPointer = this.hasResolvablePointer(video);
 
     this.setShareEnabled(hasUrl || hasMagnet);
+    this.setEmbedEnabled(hasPointer);
 
     if (!this.sourceToggleContainer) {
       return;
@@ -2863,6 +2947,15 @@ export class VideoModal {
     } else {
       this.modalSharePopover?.open?.();
     }
+  }
+
+  handleEmbedRequest(event) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    if (this.embedBtn?.disabled) {
+      return;
+    }
+    this.dispatch("video:embed", { video: this.activeVideo });
   }
 
   handleCreatorNavigation(event) {
@@ -3683,6 +3776,52 @@ export class VideoModal {
     this.shareBtn.setAttribute("aria-disabled", (!enabled).toString());
     this.shareBtn.classList.toggle("opacity-50", !enabled);
     this.shareBtn.classList.toggle("cursor-not-allowed", !enabled);
+  }
+
+  setEmbedEnabled(enabled) {
+    if (!this.embedBtn) {
+      return;
+    }
+    this.embedBtn.disabled = !enabled;
+    this.embedBtn.setAttribute("aria-disabled", (!enabled).toString());
+    this.embedBtn.classList.toggle("opacity-50", !enabled);
+    this.embedBtn.classList.toggle("cursor-not-allowed", !enabled);
+  }
+
+  hasResolvablePointer(video) {
+    const candidateInfo =
+      video && typeof video.pointerInfo === "object" ? video.pointerInfo : null;
+    let pointer = candidateInfo?.pointer ?? null;
+    let key =
+      typeof candidateInfo?.key === "string" && candidateInfo.key
+        ? candidateInfo.key
+        : typeof candidateInfo?.pointerKey === "string" && candidateInfo.pointerKey
+          ? candidateInfo.pointerKey
+          : "";
+
+    if (!pointer) {
+      pointer = video?.pointer ?? video?.pointerTag ?? null;
+    }
+
+    if (!key) {
+      const keyCandidates = [
+        video?.pointerKey,
+        video?.pointerId,
+        video?.pointerIdentifier,
+      ];
+      for (const candidateKey of keyCandidates) {
+        if (typeof candidateKey === "string" && candidateKey.trim()) {
+          key = candidateKey.trim();
+          break;
+        }
+      }
+    }
+
+    if (!key && pointer) {
+      key = this.derivePointerKeyFromInput(pointer);
+    }
+
+    return Boolean(key);
   }
 
   setZapVisibility(visible, options = {}) {

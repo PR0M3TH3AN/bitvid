@@ -753,7 +753,3 @@ class RelayPreferencesManager {
 }
 
 export const relayManager = new RelayPreferencesManager();
-
-export function normalizeRelayUrlForDisplay(value) {
-  return normalizeRelayUrl(value);
-}

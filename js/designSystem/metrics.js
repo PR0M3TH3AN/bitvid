@@ -185,10 +185,6 @@ export function getBreakpointLg(options = {}) {
   return readDesignToken("--breakpoint-lg", options);
 }
 
-export function getBreakpointLgPx(options = {}) {
-  return readDesignTokenAsPixels("--breakpoint-lg", options);
-}
-
 export function getPopoverBackdropBlur(options = {}) {
   return readDesignToken("--popover-backdrop-blur", options);
 }

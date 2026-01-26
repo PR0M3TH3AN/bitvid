@@ -1011,6 +1011,10 @@ export class VideoListView {
       return;
     }
 
+    if (!Array.isArray(videos) || videos.length === 0) {
+      return;
+    }
+
     const activeIds = new Set();
     videos.forEach((video) => {
       if (video && typeof video.id === "string" && video.id) {

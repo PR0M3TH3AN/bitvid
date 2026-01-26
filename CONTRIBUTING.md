@@ -45,9 +45,11 @@ Automated agents contributing to this repository should follow these rules:
 
 1. Fork the repository and create a new branch from `main`.
 2. Make your changes, adding tests if applicable.
-3. Run `npm run test:unit` and `npm run lint` to ensure quality.
-4. Push your branch and open a Pull Request against the `main` branch.
-5. Provide a clear description of the problem and solution.
+3. Run `npm run format`, `npm run test:unit`, and `npm run lint` to ensure quality.
+4. (Optional) Run `npm run test:visual` if you made UI changes.
+5. (Optional) Run domain-specific tests if relevant (e.g., `npm run test:dm:unit` for Direct Messages).
+6. Push your branch and open a Pull Request against the `main` branch.
+7. Provide a clear description of the problem and solution.
 
 ## CI Behavior and Operations
 
@@ -111,11 +113,18 @@ To set up the project locally:
    npm run test:visual
    ```
 
+   For Direct Message features, run:
+   ```bash
+   npm run test:dm:unit
+   npm run test:dm:integration
+   ```
+
 4. **Format & Lint**:
    ```bash
    npm run format
    npm run lint
    ```
+   *Note: `npm run format` currently only targets CSS, HTML, and Markdown files.*
 
 5. **Git Hooks (Optional)**:
    We provide a script to set up a git pre-commit hook that runs linting and CSS builds automatically before you commit.
@@ -131,6 +140,10 @@ For a full guide, see the [Local Setup section in README.md](./README.md#local-s
   ```bash
   npx update-browserslist-db@latest
   ```
+
+- **Unit Test Hangs**: `npm run test:unit` may occasionally hang after completion due to open handles. If this happens, use `Ctrl+C` to exit. For CI or faster local runs, consider running specific shards (e.g., `npm run test:unit:shard1`).
+
+- **Linting Failures**: `npm run lint` includes checks for inline styles (e.g., `style="..."` or `.style.prop = ...`). Move these styles to CSS classes or design tokens to pass linting.
 
 ## Dev Container
 

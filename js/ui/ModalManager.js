@@ -6,6 +6,8 @@ import { showLoginRequiredToZapNotification } from "../payments/zapNotifications
 import { VideoModal } from "./components/VideoModal.js";
 import { RevertModal } from "./components/RevertModal.js";
 import { ShareNostrModal } from "./components/ShareNostrModal.js";
+import { EmbedVideoModal } from "./components/EmbedVideoModal.js";
+import { EmbedPlayerModal } from "./components/EmbedPlayerModal.js";
 import initUploadModal from "./initUploadModal.js";
 import initEditModal from "./initEditModal.js";
 import initDeleteModal from "./initDeleteModal.js";
@@ -51,6 +53,7 @@ export default class ModalManager {
 
     this.eventDetailsModal = null;
     this.shareNostrModal = null;
+    this.embedVideoModal = null;
 
     this.zapController = null;
   }
@@ -67,6 +70,7 @@ export default class ModalManager {
       services: {
         authService: app.authService,
         r2Service: app.r2Service,
+        s3Service: app.s3Service,
         storageService: this.services.storageService,
       },
       utilities: {
@@ -181,29 +185,48 @@ export default class ModalManager {
     });
     app.shareNostrModal = this.shareNostrModal;
 
+    this.embedVideoModal = new EmbedVideoModal({
+      removeTrackingScripts,
+      container: modalContainer,
+      document: doc,
+      getShareUrl: (eventId) => app.buildShareUrlFromEventId(eventId),
+      callbacks: {
+        showSuccess: (message) => app.showSuccess(message),
+        showError: (message) => app.showError(message),
+      },
+    });
+    app.embedVideoModal = this.embedVideoModal;
+
+    const isEmbedMode = typeof window !== "undefined" && window.location.pathname.endsWith("/embed.html");
+
     this.videoModal =
       (typeof this.ui.videoModal === "function"
         ? this.ui.videoModal({ app })
         : this.ui.videoModal) ||
-      new VideoModal({
-        removeTrackingScripts,
-        setGlobalModalState,
-        document: doc,
-        logger: {
-          log: (message, ...args) => app.log(message, ...args),
-        },
-        mediaLoader: app.mediaLoader,
-        assets: {
-          fallbackThumbnailSrc: this.assets.fallbackThumbnailSrc,
-        },
-        state: {
-          loadedThumbnails: app.loadedThumbnails,
-        },
-        helpers: {
-          safeEncodeNpub: (pubkey) => app.safeEncodeNpub(pubkey),
-          formatShortNpub: (value) => formatShortNpub(value),
-        },
-      });
+      (isEmbedMode
+        ? new EmbedPlayerModal({
+            document: doc,
+            logger: { log: (...a) => app.log(...a) },
+          })
+        : new VideoModal({
+            removeTrackingScripts,
+            setGlobalModalState,
+            document: doc,
+            logger: {
+              log: (message, ...args) => app.log(message, ...args),
+            },
+            mediaLoader: app.mediaLoader,
+            assets: {
+              fallbackThumbnailSrc: this.assets.fallbackThumbnailSrc,
+            },
+            state: {
+              loadedThumbnails: app.loadedThumbnails,
+            },
+            helpers: {
+              safeEncodeNpub: (pubkey) => app.safeEncodeNpub(pubkey),
+              formatShortNpub: (value) => formatShortNpub(value),
+            },
+          }));
 
     if (
       this.videoModal &&
@@ -267,6 +290,31 @@ export default class ModalManager {
     this.videoModal.addEventListener(
       "video:share",
       this.videoModalHandlers.share,
+    );
+
+    this.videoModalHandlers.embed = (event) => {
+      const detail = event?.detail || {};
+      const targetVideo =
+        detail && typeof detail.video === "object"
+          ? detail.video
+          : app.currentVideo || null;
+      if (!targetVideo) {
+        app.showError("No video is available to embed.");
+        return;
+      }
+      Promise.resolve(
+        this.embedVideoModal?.open({
+          video: targetVideo,
+          triggerElement: event?.target || null,
+        }),
+      ).catch((error) => {
+        devLogger.error("[ModalManager] Failed to open embed modal:", error);
+        app.showError("Unable to open the embed modal.");
+      });
+    };
+    this.videoModal.addEventListener(
+      "video:embed",
+      this.videoModalHandlers.embed,
     );
 
     this.videoModalHandlers.moderationOverride = (event) => {
@@ -721,6 +769,18 @@ export default class ModalManager {
       app.shareNostrModal = null;
     }
 
+    if (this.embedVideoModal && typeof this.embedVideoModal.close === "function") {
+      try {
+        this.embedVideoModal.close();
+      } catch (error) {
+        devLogger.warn("[ModalManager] Failed to close embed modal:", error);
+      }
+    }
+    this.embedVideoModal = null;
+    if (app.embedVideoModal) {
+      app.embedVideoModal = null;
+    }
+
     if (this.revertModal && this.revertConfirmHandler) {
       try {
         this.revertModal.removeEventListener(
@@ -792,6 +852,9 @@ export default class ModalManager {
             break;
           case "share":
             eventName = "video:share";
+            break;
+          case "embed":
+            eventName = "video:embed";
             break;
           case "moderationOverride":
             eventName = "video:moderation-override";
@@ -886,6 +949,7 @@ export default class ModalManager {
     app.videoModal = null;
     app.eventDetailsModal = null;
     app.zapController = null;
+    app.embedVideoModal = null;
 
     this.uploadModal = null;
     this.uploadModalEvents = null;
@@ -903,5 +967,6 @@ export default class ModalManager {
     this.videoModalHandlers = {};
     this.eventDetailsModal = null;
     this.zapController = null;
+    this.embedVideoModal = null;
   }
 }

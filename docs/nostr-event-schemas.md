@@ -147,7 +147,8 @@ import { updateWatchHistoryListWithDefaultClient } from "./nostrWatchHistoryFaca
 | --- | --- | --- | --- |
 | Video post (`NOTE_TYPES.VIDEO_POST`) | `30078` | `['t','video']`, `['d', <stable video identifier>]` plus optional schema append tags | JSON payload using Content Schema v3 (`version`, `title`, optional `url`, `magnet`, `thumbnail`, `description`, `mode`, `videoRootId`, `deleted`, `isPrivate`, `isNsfw`, `isForKids`, `enableComments`, `ws`, `xs`) |
 | NIP-94 mirror (`NOTE_TYPES.VIDEO_MIRROR`) | `1063` | Tags forwarded from `publishVideo` (URL, mime type, thumbnail, alt text, magnet) | Plain text alt description |
-| Repost (`NOTE_TYPES.REPOST`) | `6` | `['e', <event id>, <relay?>]` with optional address pointer `['a', <kind:pubkey:identifier>, <relay?>]`, and `['p', <pubkey>]` when the origin author is known; inherits schema append tags | JSON-serialized event being reposted |
+| Repost (`NOTE_TYPES.REPOST`) | `6` | `['e', <event id>, <relay?>]` with optional address pointer `['a', <kind:pubkey:identifier>, <relay?>]`, and `['p', <pubkey>]` when the origin author is known; inherits schema append tags | JSON-serialized event being reposted (or empty if unavailable) |
+| Generic Repost (`NOTE_TYPES.GENERIC_REPOST`) | `16` | Same as Repost; specific for non-text kinds (e.g. videos). | Same as Repost. |
 | Share note (`NOTE_TYPES.SHARE`) | `1` | `['e', <video id>, '', 'mention']` plus `['p', <video pubkey>, '', 'mention']` when available; repeating `['r', <relay url>, <read/write?>]` tags for relay hints; inherits schema append tags | Plain text share content from the compose modal |
 | Video reaction (`NOTE_TYPES.VIDEO_REACTION`) | `7` | `['e', <event id>, <relay?>]` or `['a', <kind:pubkey:identifier>, <relay?>]`, and `['p', <author pubkey>]` | Reaction content (e.g. `+`, `-`, or emoji) |
 | Video comment (`NOTE_TYPES.VIDEO_COMMENT`) | `1111` | NIP-22 root scope tags `['A'\|`E`\|`I`, <pointer>, <relay?>?], `['K', <root kind>]`, and `['P', <root author pubkey>, <relay?>?]` plus parent metadata `['E'\|`I`, <parent pointer>, <relay?>?, <author?>], `['K', <parent kind>]`, `['P', <parent author>, <relay?>?]`; inherits schema append tags | Plain text body sanitized to valid UTF-8 |
@@ -175,6 +176,8 @@ import { updateWatchHistoryListWithDefaultClient } from "./nostrWatchHistoryFaca
 | Legacy Direct Message (`NOTE_TYPES.LEGACY_DM`) | `4` | `['p', <recipient pubkey>]` | NIP-04 encrypted ciphertext |
 | Zap request (`NOTE_TYPES.ZAP_REQUEST`) | `9734` | `['p', <recipient pubkey>]` plus optional `['e', <event id>]`, `['a', <coordinate>]`, `['amount', <msats>]`, `['lnurl', <bech32>]`, and `['relays', ...]` for receipt publishing | Optional plaintext zap note |
 | Zap receipt (`NOTE_TYPES.ZAP_RECEIPT`) | `9735` | `['bolt11', <invoice>]`, `['description', <zap request JSON>]`, `['p', <recipient pubkey>]` plus optional `['e', <event id>]` and `['a', <coordinate>]` | Empty content; receipts are published by the recipient's LNURL server |
+| HTTP Auth (`NOTE_TYPES.HTTP_AUTH`) | `27235` | `['u', <url>]`, `['method', <http method>]`, `['payload', <payload hash>]` | Optional plaintext content (NIP-98 recommends empty, but implementations may vary) |
+| Report (`NOTE_TYPES.REPORT`) | `1984` | `['e', <event id>, <report type>]`, `['p', <pubkey>, <report type>]`, and optional `['t', <report type>]` | Plaintext report reason |
 
 ### Share notes (kind `1`)
 
@@ -317,10 +320,10 @@ definitions.【F:js/watchHistoryService.js†L695-L776】【F:js/watchHistorySer
 ## Validation
 
 bitvid now enforces schema validation at runtime during development. Every event
-builder automatically runs the generated event against its definition in
-`validateEventAgainstSchema` when `isDevMode` is true. Violations (missing
-required tags, invalid JSON content, etc.) are logged to the console via
-`devLogger`.
+builder automatically runs the generated event against its definition using
+`validateEventStructure` (called via `validateEventAgainstSchema`) when
+`isDevMode` is true. Violations (missing required tags, invalid JSON content,
+type mismatches, etc.) are logged to the console via `devLogger`.
 
 ### Continuous Integration
 

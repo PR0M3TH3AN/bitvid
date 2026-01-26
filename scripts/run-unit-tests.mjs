@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
+import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -101,14 +102,28 @@ async function run() {
     return;
   }
 
+  const logFile = path.join(rootDir, "artifacts", "test_unit.log");
+  if (!fs.existsSync(path.dirname(logFile))) {
+    fs.mkdirSync(path.dirname(logFile), { recursive: true });
+  }
+  const logStream = fs.createWriteStream(logFile);
+
   for (const testFile of selectedTests) {
     const relativePath = path.relative(rootDir, testFile);
     console.log(`\n→ Running ${relativePath}`);
+    logStream.write(`\n→ Running ${relativePath}\n`);
 
     await new Promise((resolve, reject) => {
       const child = spawn(process.execPath, ["--import", setupImport.href, testFile], {
-        stdio: "inherit",
+        stdio: ["inherit", "pipe", "pipe"],
       });
+
+      child.stdout.pipe(process.stdout, { end: false });
+      child.stdout.pipe(logStream, { end: false });
+
+      child.stderr.pipe(process.stderr, { end: false });
+      child.stderr.pipe(logStream, { end: false });
+
       let finished = false;
       let timeoutId = null;
 

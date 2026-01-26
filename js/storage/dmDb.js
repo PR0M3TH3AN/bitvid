@@ -519,15 +519,6 @@ export async function listConversations() {
   }
 }
 
-export function describeDmDbSchema() {
-  return {
-    name: DB_NAME,
-    version: DB_VERSION,
-    stores: STORES,
-    migrations: MIGRATIONS.map((migration) => migration.version),
-  };
-}
-
 export async function clearDmDb() {
   try {
     const db = await openDmDb();
@@ -558,6 +549,3 @@ export async function clearDmDb() {
     return false;
   }
 }
-
-export const dmDbStores = STORES;
-export const dmDbVersion = DB_VERSION;

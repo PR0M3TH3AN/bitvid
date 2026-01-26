@@ -69,14 +69,6 @@ export function resetSearchFilters(options = {}) {
   }
 }
 
-export function subscribeSearchFilterState(listener) {
-  if (typeof listener !== "function") {
-    return () => {};
-  }
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
-
 export function syncSearchFilterStateFromHash(hash = "") {
   const hashString =
     typeof hash === "string" && hash ? hash : window?.location?.hash || "";

@@ -2,7 +2,7 @@
 
 # bitvid - Decentralized Video Sharing
 
-**bitvid** is a decentralized platform where users can share videos and follow creators with privacy and freedom. Built with a static site architecture, it’s lightweight, efficient, and fully decentralized, making it ideal for hosting or local deployment.
+**bitvid** is a decentralized platform where users can share videos and follow creators with privacy and freedom. Built with a static site architecture, it operates entirely as a **static client**—it does not run a backend server, hold custody of user keys, or sign requests on behalf of users. All signing and state management happen client-side or via a connected Nostr signer.
 
 ---
 
@@ -12,7 +12,7 @@
 - **Channel profile pages**: The [channel view](views/channel-profile.html) and `js/channelProfile.js` render banners, playlists, links, and follow stats so every creator has a branded landing page.
 - **Audience flags**: The [Upload](components/upload-modal.html) and [Edit Video](components/edit-video-modal.html) modals expose **NSFW** and **For Kids** toggles that map straight to note metadata for safer discovery.
 - **Richer metadata repeaters**: Configure variants, captions, segments, participants, references, and hashtags directly in the Upload modal so posts ship with structured context.
-- **Cloudflare R2 Uploads**: Publish through the modal’s Cloudflare flow with progress tracking and credential helpers.
+- **Flexible S3 Uploads**: Publish using browser-held keys, manual uploads, or presigned manifests.
 - **Encrypted Watch History**: Sync viewing activity privately through the NIP-04 encrypted pipeline with local fallbacks.
 - **Live View Counters**: Subscribe to view events and see totals update in real time on video cards and the video modal.
 - **Lightning Zaps**: Tip creators with Lightning payments via the Zap controls in the video modal.
@@ -38,12 +38,20 @@ Open the **Upload** modal from the header toolbar and start by selecting the NIP
 
 Both upload modes expose metadata repeaters for **variants** and **hashtags**, while the [Edit Video](components/edit-video-modal.html) modal offers the full suite (including **captions/text tracks**, **segments**, **participants**, and **references**). Use these when you have multiple playback qualities (variants), accessibility tracks (captions), multipart drops (segments), discoverability tags (hashtags), credited collaborators (participants), or cross-posts/threads (references). Skip any repeater you don’t need—the base schema stays valid without them.
 
-Pick the flow that matches your source material:
+Pick the flow that matches your source material. Supported S3 upload modes include:
 
-- **External Link (hosted URL or magnet)**: Provide a title plus an HTTPS video URL and/or a WebTorrent magnet. The form requires at least one transport, validates `ws=`/`xs=` hints, keeps magnets raw by decoding them with `safeDecodeMagnet()` before publish, and applies whatever metadata repeaters you configured. If you submit a magnet without a hosted URL, the modal warns that availability depends on peers seeding the torrent.
-- **Upload File (direct R2 upload)**: Enter your Cloudflare credentials in the guided form, optionally expand the **Advanced options** accordion to override pathing or access controls, then drop media files for bitvid to upload through the R2 API. The modal tracks progress, applies your metadata selections, auto-fills the primary `imeta` variant once the upload completes, and publishes the resulting R2 URL back into the note automatically.
+1.  **Browser-held S3 keys (trusted operator only):** Enter your S3 credentials in the Storage tab to upload directly from the browser.
+    > **Security Warning:** This mode requires storing encrypted credentials in the browser's IndexedDB. While keys are encrypted at rest, they are decrypted in memory during use. Use this mode only on self-hosted, trusted deployments where you control the environment. Do not enter high-value credentials on public or untrusted instances.
+2.  **Manual upload via provider console:** Upload your file to your storage provider (e.g., R2, S3) manually, then paste the public URL into the upload form.
+3.  **Operator-provided presigned manifests:** Use a presigned JSON manifest prepared externally to authorize the upload without exposing long-lived credentials to the browser.
 
-Hosted URLs remain the preferred playback path, and you can still add a magnet or supplemental web seeds when using either mode. Use the **Private** toggle to keep the resulting card visible only to you, and lean on the repeaters whenever you want to surface richer context or alternate assets as outlined in the event schema reference.
+**Upload File (direct S3 upload)**:
+If you are using **Mode 1** (Browser-held keys), enter your credentials in the guided form or Storage tab. Optionally expand the **Advanced options** accordion to override pathing or access controls, then drop media files for bitvid to upload through the S3 API. The modal tracks progress, applies your metadata selections, auto-fills the primary `imeta` variant once the upload completes, and publishes the resulting URL back into the note automatically.
+
+**External Link (hosted URL or magnet)**:
+For **Mode 2** (Manual upload) or external content, provide a title plus an HTTPS video URL and/or a WebTorrent magnet. The form requires at least one transport, validates `ws=`/`xs=` hints, keeps magnets raw by decoding them with `safeDecodeMagnet()` before publish, and applies whatever metadata repeaters you configured. If you submit a magnet without a hosted URL, the modal warns that availability depends on peers seeding the torrent.
+
+Hosted URLs remain the preferred playback path, and you can still add a magnet or supplemental web seeds when using any mode. Use the **Private** toggle to keep the resulting card visible only to you, and lean on the repeaters whenever you want to surface richer context or alternate assets as outlined in the event schema reference.
 
 ### How playback works
 
@@ -52,6 +60,13 @@ Hosted URLs remain the preferred playback path, and you can still add a magnet o
 3. **Safety checks**: Magnets are decoded with `safeDecodeMagnet()` and normalized via `normalizeAndAugmentMagnet()` before reaching WebTorrent. Trackers remain WSS-only to satisfy browser constraints.
 4. **Operator playbook**: If a deployment causes playback regressions, flip the relevant feature flags back to their default values in `js/constants.js` and redeploy. Capture the rollback steps in AGENTS.md and the PR description so the Main channel stays stable.
 5. **Deep dive**: See [`docs/playback-fallback.md`](docs/playback-fallback.md) for the call flow into `playbackService`, magnet normalization details, and fallback hand-off points.
+
+### Embed player
+
+- **Embed URL format**: `/embed.html?pointer=<naddr-or-nevent>&playback=<url|torrent>`. The `pointer` can be a NIP-19 `naddr`/`nevent`, a `kind:pubkey:d` string, or a raw hex event id. The `playback` query param forces CDN (`url`) or WebTorrent (`torrent`) mode; omit it to let bitvid choose automatically.
+- **Same-origin requirement**: To reuse session-actor storage for view counters, the embed must be served from the same origin as the parent page (so the iframe can access the same storage bucket).
+- **Framing headers**: If you intend to embed across sites, ensure your hosting headers allow framing (e.g., Netlify `_headers` with `Content-Security-Policy: frame-ancestors *` or a narrowed allowlist).
+- **X-Frame-Options**: Do not set `X-Frame-Options: DENY` or `SAMEORIGIN` if cross-site embedding is required.
 
 ### Watch history & view counts
 
@@ -145,6 +160,7 @@ http://localhost:8000
 - **Run DM unit tests**: `npm run test:dm:unit`
 - **Run DM integration tests**: `npm run test:dm:integration`
 - **Run headless E2E tests**: `npm run test:e2e`
+- **Run visual regression tests**: `npm run test:visual`
 - **Cancel CI runs**: See [`docs/cancelling-ci-runs.md`](docs/cancelling-ci-runs.md) for a script to clear pending workflows.
 
 ### Running Tests in Docker
@@ -184,6 +200,7 @@ Use the event builders in `js/nostrEventSchemas.js` (the source of truth for all
 ```javascript
 import { buildVideoPostEvent } from "./js/nostrEventSchemas.js";
 
+// 1. Build the event object (useful for inspection or custom publishing)
 const event = buildVideoPostEvent({
   // Provide your hex pubkey (not npub)
   pubkey: "your_pubkey_hex",
@@ -199,7 +216,25 @@ const event = buildVideoPostEvent({
   }
 });
 
-console.log("Event to publish:", event);
+console.log("Event constructed:", event);
+
+// 2. Publish using the high-level client (requires browser/extension or active signer)
+/*
+import { nostrClient } from "./js/nostrClientFacade.js";
+
+// Ensure client is connected
+await nostrClient.init();
+
+// Login (prompts NIP-07 extension)
+await nostrClient.login();
+
+// Publish! (Handles signing and relay broadcasting)
+await nostrClient.publishVideo({
+  title: "My First Video",
+  url: "https://example.com/video.mp4",
+  description: "Published via bitvid SDK"
+}, nostrClient.pubkey);
+*/
 ```
 
 ### CSS build pipeline
@@ -227,7 +262,7 @@ package scripts to keep formatting, linting, and generated output consistent:
 
 ```bash
 npm install               # install Prettier, Stylelint, and Tailwind toolchain
-npm run format            # format CSS/HTML/JS/MD with Prettier + tailwindcss plugin
+npm run format            # format CSS/HTML/MD with Prettier + tailwindcss plugin
 npm run lint              # run CSS, hex color, inline-style, design-token, and Tailwind color/bracket guards in one pass
 npm run lint:css          # enforce token usage and forbid raw hex colors
 npm run lint:inline-styles # fail CI if inline style attributes or element.style usage slip in
@@ -410,33 +445,13 @@ placeholder at “—” and development builds log a warning—so mixed deploym
 
 ### How to Contribute
 
-1. **Fork and Clone**:
-   ```bash
-   git clone https://github.com/PR0M3TH3AN/bitvid.git
-   cd bitvid
-   ```
-2. **Create a Branch**:
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
-3. **Install Dependencies**:
-   ```bash
-   npm ci
-   ```
-4. **Make Changes**:
-   - Ensure your code follows best practices and is well-documented.
-5. **Test**:
-   - Run unit tests: `npm run test:unit` (or a shard like `npm run test:unit:shard1`)
-   - Validate the site functionality locally before submitting.
-6. **Submit a Pull Request**:
-   - Explain your changes and reference any related issues.
+Please see [`CONTRIBUTING.md`](./CONTRIBUTING.md) for detailed setup instructions, code guidelines, and agent PR conventions.
 
-### Contribution Guidelines
-
-- Follow the [GPL-3.0-or-later License](LICENSE).
-- Use clear, concise commit messages.
-- Respect the existing coding style and architecture.
-- Run the manual QA script (see below) and note results in PR descriptions for changes that affect upload or playback.
+1. **Fork and Clone** the repository.
+2. **Create a Branch** for your feature or fix.
+3. **Install Dependencies** with `npm ci`.
+4. **Make Changes** and ensure tests pass.
+5. **Submit a Pull Request** with a clear description.
 
 ---
 

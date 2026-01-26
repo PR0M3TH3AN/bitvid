@@ -826,13 +826,13 @@
                             <span class="mb-2 block font-medium">Provider</span>
                             <select id="storageProvider" class="input">
                                 <option value="cloudflare_r2" selected>Cloudflare R2</option>
-                                <option value="aws_s3" disabled>S3 Compatible (Coming Soon)</option>
+                                <option value="generic_s3">Custom S3</option>
                             </select>
                         </label>
 
                         <!-- R2 Helper -->
                         <div id="storageR2Helper" class="card border border-info/30 bg-info/10 p-3 text-xs text-info">
-                            Enter your Cloudflare R2 credentials. You can find these in your Cloudflare dashboard under R2 > Manage R2 API Tokens. Ensure the token has "Object Read & Write" permissions.
+                            Enter your Cloudflare R2 credentials. Your Account ID (from dashboard) is used to connect. For Public Access URL, use your custom domain or R2.dev subdomain. Ensure the token has "Object Read & Write" permissions.
                         </div>
 
                         <label class="block text-sm text-muted-strong hidden" for="storageEndpoint">
@@ -861,10 +861,11 @@
                         </label>
 
                         <label class="block text-sm text-muted-strong" for="storagePrefix">
-                            <span class="mb-2 block font-medium">Public URL / Prefix</span>
+                            <span class="mb-2 block font-medium">Public Access URL</span>
                             <input id="storagePrefix" type="url" class="input" placeholder="https://pub-xxx.r2.dev" />
+                            <div id="storagePrefixWarning" class="hidden mt-2 text-xs text-status-warning"></div>
                             <span class="mt-1 block text-xs text-muted">
-                                The public URL where your files will be accessible.
+                                The public URL where your files will be accessible (CDN).
                             </span>
                         </label>
 

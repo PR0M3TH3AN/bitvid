@@ -20,13 +20,14 @@ function runCommand(command, args = [], options = {}) {
     encoding: 'utf-8',
     stdio: ['ignore', 'pipe', 'pipe'],
     shell: false,
+    maxBuffer: 10 * 1024 * 1024,
     ...options
   });
 }
 
 function checkGhAvailability() {
   try {
-    const res = spawnSync('gh', ['--version'], { encoding: 'utf-8' });
+    const res = runCommand('gh', ['--version']);
     return res.status === 0;
   } catch (e) {
     return false;
@@ -35,10 +36,10 @@ function checkGhAvailability() {
 
 function getChangedFiles(baseBranch = 'origin/main') {
   try {
-    const res = spawnSync('git', ['diff', '--name-only', `${baseBranch}...HEAD`], { encoding: 'utf-8' });
+    const res = runCommand('git', ['diff', '--name-only', `${baseBranch}...HEAD`]);
     if (res.status !== 0) {
         // Fallback: use local changes
-        const local = spawnSync('git', ['diff', '--name-only', 'HEAD'], { encoding: 'utf-8' });
+        const local = runCommand('git', ['diff', '--name-only', 'HEAD']);
         return local.stdout ? local.stdout.trim().split('\n').filter(Boolean) : [];
     }
     return res.stdout.trim().split('\n').filter(Boolean);
@@ -81,7 +82,7 @@ async function reviewContext(contextName, options) {
     // 1. Install dependencies
     if (!options.noInstall) {
       log('Installing dependencies (npm ci)...');
-      const ciResult = spawnSync('npm', ['ci'], { encoding: 'utf-8', shell: true });
+      const ciResult = runCommand('npm', ['ci'], { shell: true });
       if (ciResult.status !== 0) {
         report.push(`## 🚨 Dependency Installation Failed`);
         report.push('`npm ci` failed. Please check `package-lock.json`.');
@@ -97,8 +98,8 @@ async function reviewContext(contextName, options) {
     // 2. Format
     if (!failed) {
       log('Running formatter...');
-      spawnSync('npm', ['run', 'format'], { shell: true });
-      const gitStatus = spawnSync('git', ['status', '--porcelain'], { encoding: 'utf-8' });
+      runCommand('npm', ['run', 'format'], { shell: true });
+      const gitStatus = runCommand('git', ['status', '--porcelain']);
       const formattedFiles = gitStatus.stdout.split('\n')
         .filter(line => line.match(/^ M/)) // Modified files
         .map(line => line.substring(3).trim());
@@ -156,7 +157,7 @@ async function reviewContext(contextName, options) {
            // However, keeping them might be good for running tests on clean code?
            // But if tests rely on formatting (unlikely), it matters.
            // Usually we revert so the working tree matches the PR state for further analysis.
-           spawnSync('git', ['checkout', '.'], { stdio: 'ignore' });
+           runCommand('git', ['checkout', '.'], { stdio: 'ignore' });
         }
       } else {
         report.push(`## ✅ Formatting`);
@@ -167,7 +168,7 @@ async function reviewContext(contextName, options) {
     // 3. Lint
     if (!failed) {
       log('Running linter...');
-      const lintResult = spawnSync('npm', ['run', 'lint'], { encoding: 'utf-8', shell: true });
+      const lintResult = runCommand('npm', ['run', 'lint'], { shell: true });
       if (lintResult.status !== 0) {
         report.push(`## ⚠️ Linter Warnings/Errors`);
         report.push('`npm run lint` reported issues:');
@@ -201,7 +202,7 @@ async function reviewContext(contextName, options) {
     // 4. Unit Tests
     if (!failed) {
       log('Running unit tests...');
-      const testResult = spawnSync('npm', ['run', 'test:unit'], { encoding: 'utf-8', shell: true, timeout: 300000 });
+      const testResult = runCommand('npm', ['run', 'test:unit'], { shell: true, timeout: 300000 });
       if (testResult.error && testResult.error.code === 'ETIMEDOUT') {
          report.push(`## ❌ Test Timeout`);
          report.push('`npm run test:unit` timed out after 5 minutes.');
@@ -278,7 +279,7 @@ async function main() {
     }
     log('Fetching open PRs...');
     try {
-        const prsJson = spawnSync('gh', ['pr', 'list', '--json', 'number,headRefName,baseRefName,url'], { encoding: 'utf-8' });
+        const prsJson = runCommand('gh', ['pr', 'list', '--json', 'number,headRefName,baseRefName,url']);
         if (prsJson.status !== 0) throw new Error(prsJson.stderr);
         const prs = JSON.parse(prsJson.stdout);
         log(`Found ${prs.length} open PRs.`);
@@ -286,14 +287,14 @@ async function main() {
         for (const pr of prs) {
             log(`Checking out PR #${pr.number} (${pr.headRefName})...`);
             try {
-                spawnSync('gh', ['pr', 'checkout', pr.number]);
+                runCommand('gh', ['pr', 'checkout', pr.number]);
                 // Pass baseBranch from PR details
                 options.baseBranch = pr.baseRefName;
                 const report = await reviewContext(`PR #${pr.number}`, options);
                 const tempFile = `pr_review_${pr.number}.md`;
                 fs.writeFileSync(tempFile, report);
                 log(`Posting comment to PR #${pr.number}...`);
-                spawnSync('gh', ['pr', 'comment', pr.number, '-F', tempFile]);
+                runCommand('gh', ['pr', 'comment', pr.number, '-F', tempFile]);
                 fs.unlinkSync(tempFile);
             } catch (e) {
                 log(`Failed to process PR #${pr.number}: ${e.message}`);
@@ -311,13 +312,13 @@ async function main() {
       log(`Checking out PR #${options.pr}...`);
       try {
           // Fetch base branch first
-          const viewRes = spawnSync('gh', ['pr', 'view', options.pr, '--json', 'baseRefName'], { encoding: 'utf-8' });
+          const viewRes = runCommand('gh', ['pr', 'view', options.pr, '--json', 'baseRefName']);
           if (viewRes.status === 0) {
               const prDetails = JSON.parse(viewRes.stdout);
               options.baseBranch = prDetails.baseRefName;
           }
 
-          const res = spawnSync('gh', ['pr', 'checkout', options.pr], { encoding: 'utf-8' });
+          const res = runCommand('gh', ['pr', 'checkout', options.pr]);
           if (res.status !== 0) throw new Error(res.stderr);
 
           const report = await reviewContext(`PR #${options.pr}`, options);
@@ -332,8 +333,8 @@ async function main() {
       let originalBranch;
       if (branchArg) {
           try {
-              originalBranch = spawnSync('git', ['branch', '--show-current'], { encoding: 'utf-8' }).stdout.trim();
-              const res = spawnSync('git', ['checkout', branchArg]);
+              originalBranch = runCommand('git', ['branch', '--show-current']).stdout.trim();
+              const res = runCommand('git', ['checkout', branchArg]);
               if (res.status !== 0) throw new Error(`Could not checkout ${branchArg}`);
           } catch(e) {
               console.error(e.message);
@@ -341,7 +342,7 @@ async function main() {
           }
       }
 
-      const currentBranch = spawnSync('git', ['branch', '--show-current'], { encoding: 'utf-8' }).stdout.trim();
+      const currentBranch = runCommand('git', ['branch', '--show-current']).stdout.trim();
       // Logic for local run: can we guess the target?
       // Usually local run is 'against' something.
       // But we can just skip or default.
@@ -354,7 +355,7 @@ async function main() {
       log(`Report saved to ${LOG_FILE}`);
 
       if (originalBranch) {
-          spawnSync('git', ['checkout', originalBranch]);
+          runCommand('git', ['checkout', originalBranch]);
       }
   }
 }

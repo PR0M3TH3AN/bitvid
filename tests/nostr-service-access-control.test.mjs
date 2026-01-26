@@ -64,6 +64,22 @@ test.after(() => {
 
 function createServiceWithAccessControl() {
   const service = new NostrService();
+
+  const mockNostrClient = {
+    ensurePool: async () => {},
+    pubkey: whitelistHex,
+    sessionActor: null,
+    pool: {
+      list: async () => [],
+      sub: () => ({ on: () => {}, unsub: () => {} }),
+    },
+    relays: [],
+  };
+  service.nostrClient = mockNostrClient;
+  if (service.moderationService) {
+    service.moderationService.setNostrClient(mockNostrClient);
+  }
+
   const accessControl = new AccessControl();
   accessControl._hydrateFromCache = () => {};
   accessControl._scheduleHydrateFromCache = () => {};
@@ -136,7 +152,7 @@ test("shouldIncludeVideo always returns true for the viewer's own video", () => 
     pubkey: whitelistHex,
   };
 
-  service.nostrClient = { pubkey: whitelistHex };
+  // service.nostrClient already set in createServiceWithAccessControl
 
   const blacklistedEventIds = new Set([video.id]);
   assert.equal(
@@ -148,7 +164,19 @@ test("shouldIncludeVideo always returns true for the viewer's own video", () => 
 test("shouldIncludeVideo allows access when access control would deny the author", () => {
   const service = new NostrService();
   service.accessControl = { canAccess: () => false };
-  service.nostrClient = { pubkey: whitelistHex };
+  service.nostrClient = {
+    pubkey: whitelistHex,
+    ensurePool: async () => {},
+    sessionActor: null,
+    pool: {
+      list: async () => [],
+      sub: () => ({ on: () => {}, unsub: () => {} }),
+    },
+    relays: [],
+  };
+  if (service.moderationService) {
+    service.moderationService.setNostrClient(service.nostrClient);
+  }
 
   const video = {
     id: "access-control-denied-video",

@@ -2,7 +2,11 @@
 
 ## Purpose and scope
 
-`js/services/r2Service.js` is the specialized provider handler for Cloudflare R2 uploads. While the new **Storage Tab** (powered by `StorageService`) manages the secure storage of credentials, `r2Service` is responsible for:
+`js/services/r2Service.js` is the specialized provider handler for Cloudflare R2 uploads. It implements one of the supported **S3 Upload Modes** (specifically Mode 1: Browser-held keys).
+
+> **Security Note:** This integration requires storing encrypted credentials in the browser. See [`README.md`](../README.md) and [`docs/storage-tab-design.md`](./storage-tab-design.md) for security warnings and alternative upload modes for untrusted environments.
+
+The **Storage Tab** (powered by `StorageService`) is the single supported configuration path for R2 credentials. The deprecated quick-upload panel (`quickR2Section` / `js/r2-quick.js`) has been removed to avoid conflicting credential sources. `r2Service` is responsible for:
 
 - Uploading the selected video/HLS asset via multipart S3 uploads.
 - Verifying public access via the configured Public Bucket URL.
@@ -29,11 +33,13 @@ To enable R2 uploads, you must provide Cloudflare S3-compatible credentials and 
 ### Step 1: Create Bucket & Enable Public Access
 1.  Log in to the **Cloudflare Dashboard**.
 2.  Navigate to **R2** -> **Create Bucket**.
-3.  In the bucket settings, enable **Public Access** (R2.dev subdomain) or connect a custom domain.
-4.  Copy the **Public Bucket URL** (e.g., `https://pub-xxxxxx.r2.dev`).
+3.  **Use the exact bucket name derived by the app.** bitvid derives the bucket name from your npub (sanitized), and the bucket configured in Cloudflare **must exactly match** what the app expects. If the app logs show `bucketName: 'npub1qxduthz4p8v5zsu-ftrlaz'`, create/configure that exact bucket name in Cloudflare and paste it into the dashboard before moving on.
+4.  In the bucket settings, enable **Public Access** (R2.dev subdomain) or connect a custom domain.
+5.  Copy the **Public Bucket URL** (e.g., `https://pub-xxxxxx.r2.dev`).
 
 ### Step 2: Configure CORS
 Manually add a CORS policy in the bucket settings to allow uploads from your app's origin (or `*`).
+(CORS must be configured on the **S3 API endpoint bucket**, not the public URL domain.)
 (See `content/upload-content.md` for the recommended JSON configuration).
 
 ### Step 3: Create S3 Credentials
@@ -57,7 +63,7 @@ The app will attempt to upload a small test file to verify the credentials and p
     - `StorageService` handles the NIP-44/04 decryption of the Master Key and subsequent decryption of the R2 connection payload.
 
 2.  **Upload Execution:**
-    - `r2Service.multipartUpload()` uses the standard AWS SDK commands (`CreateMultipartUpload`, `UploadPart`, etc.) via the generic `makeR2Client` adapter.
+    - `r2Service.multipartUpload()` uses the standard AWS SDK commands (`CreateMultipartUpload`, `UploadPart`, etc.) via `js/storage/s3-multipart.js` and the `makeR2Client` adapter.
     - The adapter automatically constructs the R2 endpoint (`https://<accountId>.r2.cloudflarestorage.com`) using the stored `accountId`.
 
 3.  **Publish:**
@@ -65,7 +71,7 @@ The app will attempt to upload a small test file to verify the credentials and p
 
 ## Configuration keys
 
-R2 credentials are no longer stored in plain `bitvidSettings`. They are encapsulated within the `StorageService` data model.
+R2 credentials are no longer stored in plain `bitvidSettings`. They are encapsulated within the `StorageService` data model. Legacy `r2Settings` are migrated into `StorageService` on first unlock and then cleared.
 
 **R2 Connection Profile (Encrypted):**
 - `provider`: `cloudflare_r2`
@@ -81,7 +87,8 @@ R2 credentials are no longer stored in plain `bitvidSettings`. They are encapsul
 ## Environment / global flags
 - `globalThis.__BITVID_DISABLE_NETWORK_IMPORTS__`: disables the AWS SDK network import used by the
   R2 S3 client loader (`js/storage/r2-s3.js`). When true, uploads will fail with a load error until
-  the SDK is bundled or otherwise provided.
+  the SDK is bundled or otherwise provided. Multipart helpers live in `js/storage/s3-multipart.js` and
+  rely on the same SDK import.
 
 ## Security considerations
 

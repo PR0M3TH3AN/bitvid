@@ -56,6 +56,7 @@ function init() {
   advancedToggleBtn = getElement("searchFilterAdvancedToggle");
   advancedPanel = getElement("searchFilterAdvancedPanel");
   advancedChevron = advancedToggleBtn.querySelector("span:last-child"); // The chevron
+  if (advancedChevron) advancedChevron.classList.add("transition-transform", "duration-200");
 
   tagsInput = getElement("searchFilterTags");
   durationShortCheckbox = getElement("searchFilterDurationShort");
@@ -168,10 +169,12 @@ function toggleAdvanced(forceState = null) {
 
   if (newState) {
     advancedPanel.classList.remove("hidden");
-    advancedChevron.style.transform = "rotate(180deg)";
+    advancedChevron.classList.add("rotate-180");
+    advancedChevron.classList.remove("rotate-0");
   } else {
     advancedPanel.classList.add("hidden");
-    advancedChevron.style.transform = "rotate(0deg)";
+    advancedChevron.classList.add("rotate-0");
+    advancedChevron.classList.remove("rotate-180");
   }
 }
 

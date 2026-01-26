@@ -1,292 +1,331 @@
-/**
- * Agent Smoke Test
- * Verified flows: Login, Publish (Video), DM Decrypt (NIP-04/44)
- */
+import { WebSocket } from 'ws';
+global.WebSocket = WebSocket;
+
+import crypto from 'node:crypto';
+if (!global.crypto) {
+  global.crypto = crypto.webcrypto || crypto;
+}
+
+// Polyfill localStorage
+if (typeof global.localStorage === "undefined") {
+    global.localStorage = {
+        _data: new Map(),
+        getItem(key) { return this._data.get(key) || null; },
+        setItem(key, value) { this._data.set(key, String(value)); },
+        removeItem(key) { this._data.delete(key); },
+        clear() { this._data.clear(); },
+        key(n) { return Array.from(this._data.keys())[n] || null; },
+        get length() { return this._data.size; }
+    };
+}
+
+// Polyfill window for code that checks window.nostr etc
+if (typeof global.window === "undefined") {
+    global.window = global;
+}
+
+import "fake-indexeddb/auto";
+import { startRelay } from './simple-relay.mjs';
+import { NostrClient } from '../../js/nostr/client.js';
+import { buildVideoPostEvent } from '../../js/nostrEventSchemas.js';
+import { decryptDM } from '../../js/dmDecryptor.js';
+import * as NostrTools from 'nostr-tools';
 import { chromium } from 'playwright';
 import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import http from 'http';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const ROOT_DIR = path.resolve(__dirname, '../..');
-const ARTIFACTS_DIR = path.join(ROOT_DIR, 'artifacts');
+const ARTIFACTS_DIR = 'artifacts';
+const LOG_FILE = path.join(ARTIFACTS_DIR, `smoke-${new Date().toISOString().split('T')[0].replace(/-/g, '')}.log`);
+const REPORT_FILE = path.join(ARTIFACTS_DIR, `smoke-summary-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
+const UI_SCREENSHOT = path.join(ARTIFACTS_DIR, 'smoke-ui.png');
 
 if (!fs.existsSync(ARTIFACTS_DIR)) {
-  fs.mkdirSync(ARTIFACTS_DIR);
+    fs.mkdirSync(ARTIFACTS_DIR);
 }
 
-const DATE_STR = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-const LOG_FILE = path.join(ARTIFACTS_DIR, `smoke-${DATE_STR}.log`);
-
-function log(message) {
-  const line = `[${new Date().toISOString()}] ${message}`;
-  console.log(line);
-  fs.appendFileSync(LOG_FILE, line + '\n');
+// Logging helper
+function log(msg, type = 'INFO') {
+    const timestamp = new Date().toISOString();
+    const line = `[${timestamp}] [${type}] ${msg}`;
+    console.log(line);
+    fs.appendFileSync(LOG_FILE, line + '\n');
 }
 
-async function startProcess(command, args, name) {
-  log(`Starting ${name}...`);
-  const proc = spawn(command, args, {
-    cwd: ROOT_DIR,
-    stdio: 'pipe', // Capture output
-    env: process.env
-  });
-
-  proc.stdout.on('data', (data) => {
-    log(`[${name}] ${data.toString().trim()}`);
-  });
-
-  proc.stderr.on('data', (data) => {
-     log(`[${name} ERR] ${data.toString().trim()}`);
-  });
-
-  proc.on('error', (err) => {
-    log(`[${name}] Failed to start: ${err.message}`);
-  });
-
-  // Give it a moment to start
-  await new Promise(resolve => setTimeout(resolve, 2000));
-  return proc;
+function bytesToHex(bytes) {
+    return Buffer.from(bytes).toString('hex');
 }
 
-async function run() {
-  let serverProcess;
-  let relayProcess;
-  let browser;
-  let exitCode = 0;
+// Helper to wait for server
+function waitForServer(url, timeoutMs = 10000) {
+    const start = Date.now();
+    return new Promise((resolve, reject) => {
+        const check = () => {
+            const req = http.get(url, (res) => {
+                if (res.statusCode === 200) {
+                    resolve(true);
+                } else {
+                    retry();
+                }
+            });
+            req.on('error', retry);
+            req.end();
+        };
 
-  try {
-    // 1. Start Relay
-    relayProcess = await startProcess('node', ['scripts/agent/simple-relay.mjs'], 'LocalRelay');
+        const retry = () => {
+            if (Date.now() - start > timeoutMs) {
+                reject(new Error(`Server at ${url} did not respond within ${timeoutMs}ms`));
+            } else {
+                setTimeout(check, 500);
+            }
+        };
 
-    // 2. Start Web Server
-    serverProcess = await startProcess('python3', ['-m', 'http.server', '8000'], 'WebServer');
-
-    log('Launching browser...');
-    browser = await chromium.launch({ headless: true });
-    const page = await browser.newPage();
-
-    page.on('console', msg => {
-      const type = msg.type();
-      const text = msg.text();
-      if (text.startsWith('[SmokeTest]')) {
-          log(text);
-      } else if (type === 'error') {
-          log(`BROWSER ERROR: ${text}`);
-      }
+        check();
     });
+}
 
-    page.on('pageerror', err => {
-      log(`PAGE ERROR: ${err.message}`);
-    });
+async function runSmokeTest() {
+    log("Starting Smoke Test...");
+    let relay;
+    let serverProcess;
+    let exitCode = 0;
+    const summary = {
+        timestamp: new Date().toISOString(),
+        steps: {}
+    };
 
-    log('Navigating to http://127.0.0.1:8000 ...');
-    await page.goto('http://127.0.0.1:8000');
+    try {
+        // --- Step 1: Start Infrastructure ---
+        log("Step 1: Starting Infrastructure");
 
-    // Wait for App and NostrTools
-    log('Waiting for app and NostrTools...');
-    await page.waitForFunction(() => window.NostrTools && document.querySelector('#app'), { timeout: 15000 });
-    log('App loaded and NostrTools available.');
+        // Start Relay
+        const RELAY_PORT = 8899;
+        relay = startRelay(RELAY_PORT);
+        const RELAY_URL = `ws://localhost:${RELAY_PORT}`;
+        log(`Relay started at ${RELAY_URL}`);
+        summary.steps.relay = "SUCCESS";
 
-    // Inject test logic
-    log('Running in-page smoke test logic...');
+        // Start Web Server
+        log("Starting web server (npx serve)...");
+        serverProcess = spawn('npx', ['serve', '-p', '3000'], {
+            stdio: 'ignore', // Suppress serve output to avoid clutter, or pipe to log if needed
+            shell: true,
+            detached: false // Ensure we can kill it
+        });
 
-    const result = await page.evaluate(async () => {
-      const logs = [];
-      function pageLog(m) {
-          const msg = `[SmokeTest] ${m}`;
-          console.log(msg);
-          logs.push(msg);
-      }
+        await waitForServer('http://localhost:3000');
+        log("Web server is up at http://localhost:3000");
+        summary.steps.server = "SUCCESS";
 
-      try {
-        const RELAY_URL = 'ws://localhost:8008';
-        pageLog(`Test Relay: ${RELAY_URL}`);
+        // --- Step 2: Protocol Smoke Test (Headless Client) ---
+        log("Step 2: Protocol Smoke Test");
 
-        // 1. Import Modules
-        const { nostrClient } = await import('./js/nostrClientFacade.js');
-        const { decryptDM } = await import('./js/dmDecryptor.js');
-        const NostrTools = window.NostrTools;
+        const client = new NostrClient();
+        client.relays = [RELAY_URL];
+        client.readRelays = [RELAY_URL];
+        client.writeRelays = [RELAY_URL];
 
-        if (!nostrClient) throw new Error('nostrClient import failed');
-        if (!decryptDM) throw new Error('decryptDM import failed');
+        log("Initializing NostrClient...");
+        await client.init();
+        log("NostrClient initialized and connected.");
 
-        // 2. Configure Client
-        pageLog('Configuring nostrClient...');
-        nostrClient.relays = [RELAY_URL];
-        nostrClient.writeRelays = [RELAY_URL];
-        nostrClient.readRelays = [RELAY_URL];
+        // Generate Identity
+        const secretKey = NostrTools.generateSecretKey();
+        const privateKey = bytesToHex(secretKey);
+        const pubkey = NostrTools.getPublicKey(secretKey);
+        log(`Generated Identity: ${pubkey}`);
 
-        // Force connection logic if needed, but adding to relays list usually triggers connection attempt in client
-        // Check pool if available
-        if (nostrClient.pool) {
-            await nostrClient.pool.ensureRelay(RELAY_URL);
-        }
+        await client.registerPrivateKeySigner({
+            privateKey: privateKey,
+            pubkey: pubkey,
+            persist: false
+        });
+        log("Identity registered.");
 
-        // Wait for connection
-        pageLog('Waiting for relay connection...');
-        await new Promise(r => setTimeout(r, 1000));
-
-        // 3. Generate Identity & Login
-        pageLog('Generating ephemeral keys...');
-
-        // Helper since NostrTools.bytesToHex might be missing depending on version/bundle
-        function toHex(bytes) {
-            return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
-        }
-
-        const skBytes = NostrTools.generateSecretKey();
-        const sk = toHex(skBytes);
-        const pk = NostrTools.getPublicKey(skBytes);
-        pageLog(`Generated Pubkey: ${pk}`);
-
-        await nostrClient.registerPrivateKeySigner({ privateKey: sk, pubkey: pk });
-        pageLog('Logged in.');
-
-        // 4. Publish Video
-        pageLog('Publishing VIDEO_POST...');
-        const videoRootId = `smoke-${Date.now()}`;
-        const videoPayload = {
-            legacyFormData: {
-                title: `Smoke Test Video ${Date.now()}`,
-                description: 'Smoke test artifact',
-                url: 'https://example.com/smoke.mp4',
-                magnet: 'magnet:?xt=urn:btih:c9e15763f722f23e98ce29a8c0c4000000000000&dn=smoke',
-                mimeType: 'video/mp4',
+        // A. Video Flow
+        log("--- Subtest: Video Flow ---");
+        const videoEvent = buildVideoPostEvent({
+            pubkey: pubkey,
+            created_at: Math.floor(Date.now() / 1000),
+            dTagValue: `smoke-${Date.now()}`,
+            content: {
+                version: 3,
+                title: "Smoke Test Video",
+                description: "Smoke testing video publish",
+                url: "https://example.com/smoke.mp4",
+                magnet: "magnet:?xt=urn:btih:1234567890abcdef&dn=smoke",
                 isForKids: false,
                 isNsfw: false,
-                isPrivate: true
-            },
-            fileSha256: '0000000000000000000000000000000000000000000000000000000000000000'
+                enableComments: true,
+                videoRootId: `root-${Date.now()}`,
+                mode: "live"
+            }
+        });
+
+        const { signedEvent: publishedVideo } = await client.signAndPublishEvent(videoEvent);
+        log(`Video Published: ${publishedVideo.id}`);
+
+        await new Promise(r => setTimeout(r, 100)); // Allow propagation
+        const fetchedVideo = await client.getEventById(publishedVideo.id);
+        if (!fetchedVideo) throw new Error("Failed to fetch published video");
+        if (fetchedVideo.title !== "Smoke Test Video") throw new Error("Fetched video title mismatch");
+        log("Video verified.");
+        summary.steps.video_flow = "SUCCESS";
+
+        // B. View Flow
+        log("--- Subtest: View Flow ---");
+        const videoPointer = {
+            type: 'e',
+            value: publishedVideo.id,
+            relay: RELAY_URL
         };
+        const viewResult = await client.publishViewEvent(videoPointer);
+        log(`View Event Published: ${viewResult.id}`);
+        summary.steps.view_flow = "SUCCESS";
 
-        const pubEvent = await nostrClient.publishVideo(videoPayload, pk);
-        if (!pubEvent || !pubEvent.id) throw new Error('Publish failed, no event returned');
-        pageLog(`Video published: ${pubEvent.id}`);
+        // C. DM Flow
+        log("--- Subtest: DM Flow ---");
+        const dmMessage = "Smoke Test DM Payload";
+        const dmResult = await client.sendDirectMessage(NostrTools.nip19.npubEncode(pubkey), dmMessage);
+        if (!dmResult.ok) throw new Error(`DM Send Failed: ${dmResult.error}`);
+        log("DM Sent.");
 
-        // 5. Verify Video Readback
-        pageLog('Verifying video readback...');
-        await new Promise(r => setTimeout(r, 500)); // Propagate
-        const fetched = await nostrClient.getEventById(pubEvent.id);
-        if (!fetched || fetched.id !== pubEvent.id) throw new Error('Failed to fetch video event');
-        pageLog('Video verified.');
-
-        // 6. DM Flow (Self-DM)
-        pageLog('Testing DM flow (Self-Send)...');
-        const message = `Smoke DM ${Date.now()}`;
-        const npub = NostrTools.nip19.npubEncode(pk);
-
-        const dmRes = await nostrClient.sendDirectMessage(npub, message);
-        if (!dmRes.ok) throw new Error(`DM Send failed: ${dmRes.error}`);
-        pageLog('DM sent.');
-
-        // 7. Fetch & Decrypt
-        pageLog('Fetching DM...');
         await new Promise(r => setTimeout(r, 500));
 
-        // We use listDirectMessages which handles fetching and decrypting usually,
-        // BUT the prompt asks to "verify decryption via js/dmDecryptor.js".
-        // `nostrClient.listDirectMessages` might use `dmDecryptor` internally or have its own logic.
-        // Let's manually fetch the raw event and decrypt it to be sure we are testing `dmDecryptor.js`.
-
-        const filter = {
-            kinds: [4, 1059],
-            '#p': [pk],
-            limit: 10
-        };
-        const events = await nostrClient.pool.list([RELAY_URL], [filter]);
-        const targetEvent = events.find(e => e.pubkey === pk); // Sent by self
-
-        if (!targetEvent) throw new Error('DM event not found on relay');
-        pageLog(`Found DM event kind ${targetEvent.kind}`);
-
-        // Setup Decrypt Context
-        const decryptors = [];
-
-        // NIP-44
-        if (NostrTools.nip44) {
-             decryptors.push({
-                 scheme: 'nip44',
-                 decrypt: (pk, ct) => NostrTools.nip44.decrypt(sk, pk, ct),
-                 priority: 1,
-                 supportsGiftWrap: true
-             });
+        // C1. Verify via listDirectMessages (High level)
+        const dms = await client.listDirectMessages(pubkey);
+        const foundDm = dms.find(dm => dm.plaintext === dmMessage);
+        if (!foundDm) {
+             // Debug info
+             log(`DMs found: ${dms.length}`);
+             if (dms.length) log(`First DM plaintext: ${dms[0].plaintext}`);
+             throw new Error("DM not found via listDirectMessages");
         }
-        // NIP-04
-        if (NostrTools.nip04) {
-             decryptors.push({
-                 scheme: 'nip04',
-                 decrypt: async (pk, ct) => NostrTools.nip04.decrypt(sk, pk, ct),
-                 priority: 0
-             });
-        }
+        log("DM verified via listDirectMessages.");
 
-        const context = {
-            actorPubkey: pk,
-            decryptors
+        // C2. Verify via raw event + decryptDM (Low level)
+        // We find the event ID from the high level list or list pool directly.
+        // Let's use the ID from the found message.
+        const dmEventId = foundDm.event.id;
+        const rawDmEvent = await client.fetchRawEventById(dmEventId);
+        if (!rawDmEvent) throw new Error("Failed to fetch raw DM event");
+
+        log("Decrypting raw DM event manually...");
+        // We need decryptors context.
+        // We can re-use NostrClient's logic or manually invoke the decryptor using the private key.
+        // Since decryptDM requires a context with decryptors, let's assume we can build it similarly to the client.
+        // However, accessing private key from client might be tricky if it's encapsulated in adapter.
+        // But we have `privateKey` variable here!
+
+        // We can define a decryptor function using the known private key.
+        const myDecryptor = {
+             scheme: 'nip04',
+             decrypt: async (pk, ciphertext) => {
+                 return await NostrTools.nip04.decrypt(privateKey, pk, ciphertext);
+             }
         };
 
-        pageLog('Decrypting...');
-        const decrypted = await decryptDM(targetEvent, context);
+        // Note: NostrTools.nip04.decrypt(privateKey, senderPubkey, ciphertext)
+        // Here sender is self, so `pubkey`.
 
-        if (!decrypted.ok) {
-            console.error('Decryption errors:', decrypted.errors);
-            throw new Error('Decryption failed');
+        const decryptContext = {
+            actorPubkey: pubkey,
+            decryptors: [
+                {
+                    scheme: 'nip04',
+                    decrypt: async (targetPubkey, ciphertext) => {
+                         // NIP-04: decrypt(privKey, pubKey, ciphertext)
+                         // Here, since we are receiver, we use our privKey.
+                         // The targetPubkey passed by decryptDM for legacy DMs (kind 4) is the sender's pubkey.
+                         return await NostrTools.nip04.decrypt(privateKey, targetPubkey, ciphertext);
+                    },
+                    priority: 1
+                }
+            ]
+        };
+
+        const manualDecryptResult = await decryptDM(rawDmEvent, decryptContext);
+        if (!manualDecryptResult.ok) {
+            log(`Manual decryption failed: ${JSON.stringify(manualDecryptResult.errors)}`, 'ERROR');
+            throw new Error("Manual decryption failed");
+        }
+        if (manualDecryptResult.plaintext !== dmMessage) {
+             throw new Error(`Manual decryption mismatch. Got: ${manualDecryptResult.plaintext}`);
+        }
+        log("DM verified via manual decryptDM.");
+        summary.steps.dm_flow = "SUCCESS";
+
+        // --- Step 3: UI Smoke Test (Headless Browser) ---
+        log("Step 3: UI Smoke Test");
+        log("Launching browser...");
+        const browser = await chromium.launch();
+        const page = await browser.newPage();
+
+        try {
+            await page.goto('http://localhost:3000', { waitUntil: 'networkidle' });
+            const title = await page.title();
+            log(`Page Title: ${title}`);
+
+            // Take screenshot
+            await page.screenshot({ path: UI_SCREENSHOT });
+            log(`Screenshot saved to ${UI_SCREENSHOT}`);
+
+            summary.steps.ui_test = "SUCCESS";
+        } catch (e) {
+            log(`UI Test Failed: ${e.message}`, 'ERROR');
+            summary.steps.ui_test = "FAILED";
+            throw e;
+        } finally {
+            await browser.close();
         }
 
-        if (decrypted.plaintext !== message) {
-             throw new Error(`Message mismatch: Got "${decrypted.plaintext}", expected "${message}"`);
+        summary.status = "PASS";
+        log("Smoke Test Completed Successfully.");
+
+    } catch (error) {
+        log(`Smoke Test Failed: ${error.stack}`, 'ERROR');
+        summary.status = "failure";
+        summary.error = error.message;
+        exitCode = 1;
+    } finally {
+        // --- Write Report ---
+        try {
+            if (fs.existsSync(LOG_FILE)) {
+                const logs = fs.readFileSync(LOG_FILE, 'utf8').split('\n').filter(Boolean);
+                summary.logs = logs;
+            }
+            fs.writeFileSync(REPORT_FILE, JSON.stringify(summary, null, 2));
+            log(`Summary written to ${REPORT_FILE}`);
+        } catch (e) {
+            log(`Failed to write report: ${e.message}`, 'ERROR');
         }
 
-        pageLog('Decryption verified!');
+        // --- Cleanup ---
+        log("Cleaning up...");
 
-        return { success: true, logs };
+        // Try to close client connections to allow relay to close gracefully
+        // Note: client variable is not in scope here if defined inside try block.
+        // But for this script, we can rely on process.exit() to clean up if we skip await.
 
-      } catch (e) {
-        pageLog(`FATAL: ${e.message}`);
-        return { success: false, error: e.message, stack: e.stack, logs };
-      }
-    });
+        try {
+            if (relay && relay.close) {
+                // Don't await indefinitely
+                await Promise.race([
+                    relay.close(),
+                    new Promise(r => setTimeout(r, 2000))
+                ]);
+            }
+        } catch (e) {
+            log(`Relay close error: ${e.message}`, 'WARN');
+        }
 
-    if (result.success) {
-      log('SMOKE TEST PASSED');
-      const summary = {
-        timestamp: new Date().toISOString(),
-        status: 'success',
-        logs: result.logs
-      };
-      fs.writeFileSync(path.join(ARTIFACTS_DIR, `smoke-summary-${DATE_STR}.json`), JSON.stringify(summary, null, 2));
-    } else {
-      log('SMOKE TEST FAILED');
-      log(`Error: ${result.error}`);
+        if (serverProcess) {
+            serverProcess.kill();
+        }
 
-      const screenshotPath = path.join(ARTIFACTS_DIR, `smoke-fail-${DATE_STR}.png`);
-      await page.screenshot({ path: screenshotPath });
-      log(`Screenshot saved: ${screenshotPath}`);
-
-      const summary = {
-        timestamp: new Date().toISOString(),
-        status: 'failure',
-        error: result.error,
-        logs: result.logs
-      };
-      fs.writeFileSync(path.join(ARTIFACTS_DIR, `smoke-summary-${DATE_STR}.json`), JSON.stringify(summary, null, 2));
-      exitCode = 1;
+        process.exit(exitCode);
     }
-
-  } catch (err) {
-    log(`SCRIPT ERROR: ${err.message}`);
-    console.error(err);
-    exitCode = 1;
-  } finally {
-    if (browser) await browser.close();
-    if (serverProcess) serverProcess.kill();
-    if (relayProcess) relayProcess.kill();
-  }
-
-  process.exit(exitCode);
 }
 
-run();
+runSmokeTest();

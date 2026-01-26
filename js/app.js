@@ -3,6 +3,7 @@
 import { nostrClient } from "./nostrClientFacade.js";
 import { recordVideoView } from "./nostrViewEventsFacade.js";
 import { torrentClient } from "./webtorrent.js";
+import { emit } from "./embedDiagnostics.js";
 import {
   isDevMode,
   ADMIN_SUPER_NPUB,
@@ -52,6 +53,7 @@ import {
 } from "./feedEngine/index.js";
 import watchHistoryService from "./watchHistoryService.js";
 import r2Service from "./services/r2Service.js";
+import storageService from "./services/storageService.js";
 import {
   getVideoNoteErrorMessage,
   normalizeVideoNotePayload,
@@ -62,7 +64,6 @@ import getAuthProvider, {
 import hashtagPreferences, {
   HASHTAG_PREFERENCES_EVENTS,
 } from "./services/hashtagPreferencesService.js";
-import { initQuickR2Upload } from "./r2-quick.js";
 import { getSidebarLoadingMarkup } from "./sidebarLoading.js";
 import { subscriptions } from "./subscriptions.js";
 import {
@@ -111,7 +112,9 @@ import {
   closeStaticModal,
 } from "./ui/components/staticModalAccessibility.js";
 import LoginModalController from "./ui/loginModalController.js";
+import EditModalController from "./ui/editModalController.js";
 import TagPreferenceMenuController from "./ui/tagPreferenceMenuController.js";
+import ReactionController from "./ui/reactionController.js";
 import { pointerArrayToKey } from "./utils/pointer.js";
 import resolveVideoPointer, {
   buildVideoAddressPointer,
@@ -167,6 +170,7 @@ import SimilarContentController from "./ui/similarContentController.js";
 import UrlHealthController from "./ui/urlHealthController.js";
 import VideoModalCommentController from "./ui/videoModalCommentController.js";
 import TorrentStatusController from "./ui/torrentStatusController.js";
+import ShareNostrController from "./ui/shareNostrController.js";
 import ModerationActionController from "./services/moderationActionController.js";
 import ModerationDecorator from "./services/moderationDecorator.js";
 import { bootstrapTrustedSeeds } from "./services/trustBootstrap.js";
@@ -254,11 +258,40 @@ class Application {
       onRemovePoster: (reason) => this.forceRemoveModalPoster(reason),
     });
 
+    this.reactionController = new ReactionController({
+      services: { reactionCounter },
+      ui: {
+        getVideoModal: () => this.videoModal,
+        showError: (msg) => this.showError(msg),
+      },
+      state: {
+        getCurrentVideo: () => this.currentVideo,
+        getCurrentVideoPointer: () => this.currentVideoPointer,
+        getCurrentVideoPointerKey: () => this.currentVideoPointerKey,
+      },
+      callbacks: {
+        isUserLoggedIn: () => this.isUserLoggedIn(),
+        normalizeHexPubkey: (val) => this.normalizeHexPubkey(val),
+        getPubkey: () => this.pubkey,
+      },
+    });
+
     this.unsubscribeFromPubkeyState = subscribeToAppStateKey(
       "pubkey",
       (next, previous) => {
         if (next !== previous) {
           this.renderSavedProfiles();
+          this.updateShareNostrAuthState({ reason: "pubkey-change" });
+          if (
+            this.reactionController &&
+            this.currentVideoPointer &&
+            this.currentVideoPointerKey
+          ) {
+            this.reactionController.subscribe(
+              this.currentVideoPointer,
+              this.currentVideoPointerKey
+            );
+          }
         }
       }
     );
@@ -341,8 +374,51 @@ class Application {
       },
     });
 
+    this.shareNostrController = new ShareNostrController({
+      ui: {
+        showError: (msg) => this.showError(msg),
+        showSuccess: (msg) => this.showSuccess(msg),
+        getModal: () => this.shareNostrModal,
+      },
+      state: {
+        getPubkey: () => this.pubkey,
+        normalizeHexPubkey: (key) => this.normalizeHexPubkey(key),
+        getCurrentVideo: () => this.currentVideo,
+        buildShareUrlFromEventId: (id) => this.buildShareUrlFromEventId(id),
+      },
+    });
+
     this.initializeModerationActionController();
     this.initializeSimilarContentController();
+
+    this.editModalController = new EditModalController({
+      services: {
+        nostrService: {
+          fetchVideos: (...args) => this.nostrService.fetchVideos(...args),
+          handleEditVideoSubmit: (...args) =>
+            this.nostrService.handleEditVideoSubmit(...args),
+        },
+      },
+      state: {
+        getPubkey: () => this.pubkey,
+        getBlacklistedEventIds: () => this.blacklistedEventIds,
+        getVideosMap: () => this.videosMap,
+      },
+      ui: {
+        getEditModal: () => this.editModal,
+        showError: (msg) => this.showError(msg),
+        showSuccess: (msg) => this.showSuccess(msg),
+      },
+      callbacks: {
+        loadVideos: () => this.loadVideos(),
+        forceRefreshAllProfiles: () => this.forceRefreshAllProfiles(),
+        isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
+      },
+      helpers: {
+        normalizeActionTarget: (t) => this.normalizeActionTarget(t),
+        resolveVideoActionTarget: (opts) => this.resolveVideoActionTarget(opts),
+      },
+    });
 
     this.handleShareNostrSignerChange = () => {
       this.updateShareNostrAuthState({ reason: "signer-change" });
@@ -359,13 +435,6 @@ class Application {
     if (this.videoModal) {
       this.videoModal.setVideoElement(videoElement);
     }
-  }
-
-  hideModal() {
-    if (this.videoModal) {
-      this.videoModal.close();
-    }
-    // Also clear the active modal state if tracked elsewhere, though videoModal.close() usually handles it.
   }
 
   loadSavedProfilesFromStorage() {
@@ -615,15 +684,10 @@ class Application {
         }
       });
 
-      const uploadModalPromise = this.uploadModal
-        .load()
-        .catch((error) => {
-          devLogger.error("initUploadModal failed:", error);
-          this.showError(`Failed to initialize upload modal: ${error.message}`);
-        })
-        .finally(() => {
-          initQuickR2Upload(this);
-        });
+      const uploadModalPromise = this.uploadModal.load().catch((error) => {
+        devLogger.error("initUploadModal failed:", error);
+        this.showError(`Failed to initialize upload modal: ${error.message}`);
+      });
 
       const editModalPromise = this.editModal.load().catch((error) => {
         devLogger.error("Failed to load edit modal:", error);
@@ -895,36 +959,7 @@ class Application {
           );
         }) || Promise.resolve();
 
-      // 6) Load the default view ONLY if there's no #view= already
-      if (!window.location.hash || !window.location.hash.startsWith("#view=")) {
-        devLogger.log(
-          "[app.init()] No #view= in the URL, loading default home view"
-        );
-        const defaultView = this.isUserLoggedIn()
-          ? "views/for-you.html"
-          : "views/most-recent-videos.html";
-        if (typeof this.loadView === "function") {
-          await Promise.all([
-            this.loadView(defaultView),
-            watchHistoryInitPromise,
-          ]);
-        } else {
-          await watchHistoryInitPromise;
-        }
-      } else {
-        devLogger.log(
-          "[app.init()] Found hash:",
-          window.location.hash,
-          "so skipping default load"
-        );
-        await watchHistoryInitPromise;
-      }
-
-      // 7. Once loaded, get a reference to #videoList
-      this.mountVideoListView();
-
-      // 8. Subscribe or fetch videos
-      await this.loadVideos();
+      await watchHistoryInitPromise;
 
       // 9. Check URL ?v= param
       this.checkUrlParams();
@@ -1344,122 +1379,6 @@ class Application {
     }
   }
 
-  resetModalReactionState() {
-    this.modalReactionState = {
-      counts: { "+": 0, "-": 0 },
-      total: 0,
-      userReaction: "",
-    };
-    if (this.videoModal?.updateReactionSummary) {
-      this.videoModal.updateReactionSummary({
-        total: 0,
-        counts: { "+": 0, "-": 0 },
-        userReaction: "",
-      });
-    }
-  }
-
-  teardownModalReactionSubscription() {
-    if (typeof this.modalReactionUnsub === "function") {
-      try {
-        this.modalReactionUnsub();
-      } catch (error) {
-        devLogger.warn(
-          "[reaction] Failed to tear down modal subscription:",
-          error,
-        );
-      }
-    }
-    this.modalReactionUnsub = null;
-    this.modalReactionPointerKey = null;
-    this.resetModalReactionState();
-  }
-
-  subscribeModalReactions(pointer, pointerKey) {
-    if (!this.videoModal?.updateReactionSummary) {
-      this.teardownModalReactionSubscription();
-      return;
-    }
-
-    this.teardownModalReactionSubscription();
-
-    if (!pointer || !pointerKey) {
-      return;
-    }
-
-    try {
-      const normalizedUser = this.normalizeHexPubkey(this.pubkey);
-      const unsubscribe = reactionCounter.subscribe(pointer, (snapshot) => {
-        const counts = { ...this.modalReactionState.counts };
-        if (snapshot?.counts && typeof snapshot.counts === "object") {
-          for (const [key, value] of Object.entries(snapshot.counts)) {
-            counts[key] = this.normalizeReactionCount(value);
-          }
-        }
-        if (!Object.prototype.hasOwnProperty.call(counts, "+")) {
-          counts["+"] = 0;
-        }
-        if (!Object.prototype.hasOwnProperty.call(counts, "-")) {
-          counts["-"] = 0;
-        }
-
-        let total = Number.isFinite(snapshot?.total)
-          ? Math.max(0, Number(snapshot.total))
-          : 0;
-        if (!Number.isFinite(total) || total === 0) {
-          total = 0;
-          for (const value of Object.values(counts)) {
-            total += this.normalizeReactionCount(value);
-          }
-        }
-
-        let userReaction = "";
-        if (normalizedUser && snapshot?.reactions) {
-          const record = snapshot.reactions[normalizedUser] || null;
-          if (record && typeof record.content === "string") {
-            userReaction =
-              record.content === "+"
-                ? "+"
-                : record.content === "-"
-                  ? "-"
-                  : "";
-          }
-        }
-
-        this.modalReactionState = {
-          counts,
-          total,
-          userReaction,
-        };
-        this.videoModal.updateReactionSummary({
-          total,
-          counts,
-          userReaction,
-        });
-      });
-
-      this.modalReactionPointerKey = pointerKey;
-      this.modalReactionUnsub = () => {
-        try {
-          unsubscribe?.();
-        } catch (error) {
-          devLogger.warn(
-            "[reaction] Failed to tear down modal subscription:",
-            error,
-          );
-        } finally {
-          this.modalReactionUnsub = null;
-          this.modalReactionPointerKey = null;
-        }
-      };
-    } catch (error) {
-      devLogger.warn(
-        "[reaction] Failed to subscribe modal reaction counter:",
-        error,
-      );
-      this.resetModalReactionState();
-    }
-  }
 
   initializeCommentController() {
     if (!this.commentThreadService || !this.videoModal) {
@@ -1591,206 +1510,9 @@ class Application {
     }
   }
 
-  applyModalReactionOptimisticUpdate(nextReaction) {
-    if (nextReaction !== "+" && nextReaction !== "-") {
-      return null;
-    }
-
-    const previousCounts = {
-      ...(this.modalReactionState?.counts || {}),
-    };
-    const previousTotalValue = Number.isFinite(this.modalReactionState?.total)
-      ? Math.max(0, Number(this.modalReactionState.total))
-      : null;
-    const previousReaction = this.modalReactionState?.userReaction || "";
-
-    const likeBefore = this.normalizeReactionCount(previousCounts["+"]);
-    const dislikeBefore = this.normalizeReactionCount(previousCounts["-"]);
-    const otherCounts = {};
-    for (const [key, value] of Object.entries(previousCounts)) {
-      if (key === "+" || key === "-") {
-        continue;
-      }
-      otherCounts[key] = this.normalizeReactionCount(value);
-    }
-
-    let likeCount = likeBefore;
-    let dislikeCount = dislikeBefore;
-
-    if (previousReaction === "+") {
-      likeCount = Math.max(0, likeCount - 1);
-    } else if (previousReaction === "-") {
-      dislikeCount = Math.max(0, dislikeCount - 1);
-    }
-
-    if (nextReaction === "+") {
-      likeCount += 1;
-    } else if (nextReaction === "-") {
-      dislikeCount += 1;
-    }
-
-    const updatedCounts = {
-      ...previousCounts,
-      "+": likeCount,
-      "-": dislikeCount,
-    };
-
-    let updatedTotal = likeCount + dislikeCount;
-    for (const value of Object.values(otherCounts)) {
-      updatedTotal += this.normalizeReactionCount(value);
-    }
-
-    this.modalReactionState = {
-      counts: updatedCounts,
-      total: updatedTotal,
-      userReaction: nextReaction,
-    };
-
-    if (this.videoModal?.updateReactionSummary) {
-      this.videoModal.updateReactionSummary({
-        total: updatedTotal,
-        counts: updatedCounts,
-        userReaction: nextReaction,
-      });
-    }
-
-    const fallbackPreviousTotal = Number.isFinite(previousTotalValue)
-      ? previousTotalValue
-      : likeBefore +
-        dislikeBefore +
-        Object.values(otherCounts).reduce(
-          (sum, value) => sum + this.normalizeReactionCount(value),
-          0
-        );
-
-    return {
-      counts: previousCounts,
-      total: fallbackPreviousTotal,
-      userReaction: previousReaction,
-    };
-  }
-
-  restoreModalReactionSnapshot(snapshot) {
-    if (!snapshot) {
-      return;
-    }
-
-    const countsInput =
-      snapshot.counts && typeof snapshot.counts === "object"
-        ? snapshot.counts
-        : {};
-    const counts = { ...countsInput };
-    for (const [key, value] of Object.entries(counts)) {
-      counts[key] = this.normalizeReactionCount(value);
-    }
-    if (!Object.prototype.hasOwnProperty.call(counts, "+")) {
-      counts["+"] = 0;
-    }
-    if (!Object.prototype.hasOwnProperty.call(counts, "-")) {
-      counts["-"] = 0;
-    }
-
-    let total = Number.isFinite(snapshot.total)
-      ? Math.max(0, Number(snapshot.total))
-      : 0;
-    if (!Number.isFinite(total) || total === 0) {
-      total = 0;
-      for (const value of Object.values(counts)) {
-        total += this.normalizeReactionCount(value);
-      }
-    }
-
-    const userReaction =
-      snapshot.userReaction === "+"
-        ? "+"
-        : snapshot.userReaction === "-"
-          ? "-"
-          : "";
-
-    this.modalReactionState = {
-      counts,
-      total,
-      userReaction,
-    };
-
-    if (this.videoModal?.updateReactionSummary) {
-      this.videoModal.updateReactionSummary({
-        total,
-        counts,
-        userReaction,
-      });
-    }
-  }
-
   async handleVideoReaction(detail = {}) {
-    if (!this.videoModal) {
-      return;
-    }
-
-    const requestedReaction =
-      typeof detail.reaction === "string" ? detail.reaction : "";
-    const normalizedReaction =
-      requestedReaction === "+"
-        ? "+"
-        : requestedReaction === "-"
-          ? "-"
-          : "";
-
-    if (!normalizedReaction) {
-      return;
-    }
-
-    const previousReaction = this.modalReactionState?.userReaction || "";
-    const pointer = this.currentVideoPointer;
-    const pointerKey = this.currentVideoPointerKey || pointerArrayToKey(pointer);
-    if (!pointer || !pointerKey) {
-      if (this.videoModal) {
-        this.videoModal.setUserReaction(previousReaction);
-      }
-      devLogger.info(
-        "[reaction] Ignoring reaction request until modal pointer is available.",
-      );
-      return;
-    }
-    if (normalizedReaction === previousReaction) {
-      return;
-    }
-
-    if (!this.isUserLoggedIn()) {
-      this.showError("Please login to react to videos.");
-      this.videoModal.setUserReaction(previousReaction);
-      return;
-    }
-
-    let rollbackSnapshot = null;
-    try {
-      rollbackSnapshot = this.applyModalReactionOptimisticUpdate(
-        normalizedReaction
-      );
-    } catch (error) {
-      devLogger.warn("[reaction] Failed to apply optimistic reaction state:", error);
-    }
-
-    try {
-      const result = await reactionCounter.publish(pointer, {
-        content: normalizedReaction,
-        video: this.currentVideo,
-        currentVideoPubkey: this.currentVideo?.pubkey,
-        pointerKey,
-      });
-
-      if (!result?.ok) {
-        if (rollbackSnapshot) {
-          this.restoreModalReactionSnapshot(rollbackSnapshot);
-        }
-        this.showError("Failed to send reaction. Please try again.");
-      }
-    } catch (error) {
-      devLogger.warn("[reaction] Failed to publish reaction:", error);
-      if (rollbackSnapshot) {
-        this.restoreModalReactionSnapshot(rollbackSnapshot);
-      }
-      this.showError("Failed to send reaction. Please try again.");
+    if (this.reactionController) {
+      return this.reactionController.handleReaction(detail);
     }
   }
 
@@ -4773,7 +4495,9 @@ class Application {
           this.playbackService.cleanupWatchdog();
         }
         this.teardownModalViewCountSubscription();
-        this.teardownModalReactionSubscription();
+        if (this.reactionController) {
+          this.reactionController.unsubscribe();
+        }
 
         if (!preserveObservers && this.mediaLoader) {
           this.mediaLoader.disconnect();
@@ -5219,8 +4943,16 @@ class Application {
   }
 
   resetTorrentStats() {
-    if (this.videoModal) {
-      this.videoModal.resetStats();
+    try {
+      if (this.videoModal && typeof this.videoModal.resetStats === "function") {
+        this.videoModal.resetStats();
+      } else {
+        devLogger.info(
+          "[Application] resetTorrentStats: videoModal.resetStats not available — skipping."
+        );
+      }
+    } catch (err) {
+      devLogger.warn("[Application] resetTorrentStats failed", err);
     }
   }
 
@@ -5232,8 +4964,19 @@ class Application {
   }
 
   getShareUrlBase() {
+    if (typeof BITVID_WEBSITE_URL === "string" && BITVID_WEBSITE_URL) {
+      // Ensure no trailing slash for consistency if desired, though buildShareUrlFromNevent
+      // appends ?v=... so trailing slash is fine if URL ctor handles it.
+      // BITVID_WEBSITE_URL usually has a trailing slash in config, but let's be safe.
+      return BITVID_WEBSITE_URL.replace(/\/$/, "");
+    }
+
     try {
       const current = new URL(window.location.href);
+      // If we are in the embed, we want to strip that filename.
+      if (current.pathname.endsWith("/embed.html")) {
+        return `${current.origin}${current.pathname.replace(/\/embed\.html$/, "")}`;
+      }
       return `${current.origin}${current.pathname}`;
     } catch (err) {
       const origin = window.location?.origin || "";
@@ -5444,7 +5187,9 @@ class Application {
     this.cancelPendingViewLogging();
     this.clearActiveIntervals();
     this.teardownModalViewCountSubscription();
-    this.teardownModalReactionSubscription();
+    if (this.reactionController) {
+      this.reactionController.unsubscribe();
+    }
     this.pendingModeratedPlayback = null;
     if (
       this.videoModal &&
@@ -6467,50 +6212,70 @@ class Application {
    * Subscribe to videos (older + new) and render them as they come in.
    */
   async loadVideos(forceFetch = false) {
-    devLogger.log("Starting loadVideos... (forceFetch =", forceFetch, ")");
-    this.setFeedTelemetryContext("recent");
-
-    const container = this.mountVideoListView();
-    const hasCachedVideos =
-      this.nostrService &&
-      Array.isArray(this.nostrService.getFilteredActiveVideos()) &&
-      this.nostrService.getFilteredActiveVideos().length > 0;
-
-    if (!hasCachedVideos) {
-      if (this.videoListView && container) {
-        this.videoListView.showLoading("Fetching recent videos…");
-      } else if (container) {
-        container.innerHTML = getSidebarLoadingMarkup("Fetching recent videos…");
-      }
+    if (this.loadVideosPromise && !forceFetch) {
+      devLogger.log("Reusing in-flight loadVideos request.");
+      return this.loadVideosPromise;
     }
 
-    let initialRefreshPromise = null;
+    const now = Date.now();
+    if (this.lastLoadVideosTime && (now - this.lastLoadVideosTime < 2000) && !forceFetch) {
+      devLogger.log("Skipping redundant loadVideos request (cooldown).");
+      return Promise.resolve();
+    }
+    this.lastLoadVideosTime = now;
 
-    const videos = await this.nostrService.loadVideos({
-      forceFetch,
-      blacklistedEventIds: this.blacklistedEventIds,
-      isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
-      onVideos: (payload, detail = {}) => {
-        const promise = this.refreshRecentFeed({
-          reason: detail?.reason,
-          fallbackVideos: payload,
-        });
-        if (!initialRefreshPromise) {
-          initialRefreshPromise = promise;
+    this.loadVideosPromise = (async () => {
+      devLogger.log("Starting loadVideos... (forceFetch =", forceFetch, ")");
+      this.setFeedTelemetryContext("recent");
+
+      const container = this.mountVideoListView();
+      const hasCachedVideos =
+        this.nostrService &&
+        Array.isArray(this.nostrService.getFilteredActiveVideos()) &&
+        this.nostrService.getFilteredActiveVideos().length > 0;
+
+      if (!hasCachedVideos) {
+        if (this.videoListView && container) {
+          this.videoListView.showLoading("Fetching recent videos…");
+        } else if (container) {
+          container.innerHTML = getSidebarLoadingMarkup("Fetching recent videos…");
         }
-      },
-    });
+      }
 
-    if (initialRefreshPromise) {
-      await initialRefreshPromise;
-    } else if (!Array.isArray(videos) || videos.length === 0) {
-      await this.refreshRecentFeed({ reason: "initial", fallbackVideos: [] });
-    }
+      let initialRefreshPromise = null;
 
-    this.videoSubscription = this.nostrService.getVideoSubscription() || null;
-    this.videosMap = this.nostrService.getVideosMap();
-    if (this.videoListView) {
-      this.videoListView.state.videosMap = this.videosMap;
+      const videos = await this.nostrService.loadVideos({
+        forceFetch,
+        blacklistedEventIds: this.blacklistedEventIds,
+        isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
+        onVideos: (payload, detail = {}) => {
+          const promise = this.refreshRecentFeed({
+            reason: detail?.reason,
+            fallbackVideos: payload,
+          });
+          if (!initialRefreshPromise) {
+            initialRefreshPromise = promise;
+          }
+        },
+      });
+
+      if (initialRefreshPromise) {
+        await initialRefreshPromise;
+      } else if (!Array.isArray(videos) || videos.length === 0) {
+        await this.refreshRecentFeed({ reason: "initial", fallbackVideos: [] });
+      }
+
+      this.videoSubscription = this.nostrService.getVideoSubscription() || null;
+      this.videosMap = this.nostrService.getVideosMap();
+      if (this.videoListView) {
+        this.videoListView.state.videosMap = this.videosMap;
+      }
+    })();
+
+    try {
+      await this.loadVideosPromise;
+    } finally {
+      this.loadVideosPromise = null;
     }
   }
 
@@ -8040,85 +7805,14 @@ class Application {
    * Handle "Edit Video" from gear menu.
    */
   async handleEditModalSubmit(event) {
-    const detail = event?.detail || {};
-    const { originalEvent, updatedData } = detail;
-    if (!originalEvent || !updatedData) {
-      return;
-    }
-
-    if (!this.pubkey) {
-      this.showError("Please login to edit videos.");
-      if (this.editModal?.setSubmitState) {
-        this.editModal.setSubmitState({ pending: false });
-      }
-      return;
-    }
-
-    try {
-      await this.nostrService.handleEditVideoSubmit({
-        originalEvent,
-        updatedData,
-        pubkey: this.pubkey,
-      });
-      await this.loadVideos();
-      this.videosMap.clear();
-      this.showSuccess("Video updated successfully!");
-      if (this.editModal?.setSubmitState) {
-        this.editModal.setSubmitState({ pending: false });
-      }
-      this.editModal.close();
-      this.forceRefreshAllProfiles();
-    } catch (error) {
-      devLogger.error("Failed to edit video:", error);
-      this.showError("Failed to edit video. Please try again.");
-      if (this.editModal?.setSubmitState) {
-        this.editModal.setSubmitState({ pending: false });
-      }
+    if (this.editModalController) {
+      return this.editModalController.handleSubmit(event);
     }
   }
 
   async handleEditVideo(target) {
-    try {
-      const normalizedTarget = this.normalizeActionTarget(target);
-      const { triggerElement } = normalizedTarget;
-      const latestVideos = await this.nostrService.fetchVideos({
-        blacklistedEventIds: this.blacklistedEventIds,
-        isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
-      });
-      const video = await this.resolveVideoActionTarget({
-        ...normalizedTarget,
-        preloadedList: latestVideos,
-      });
-
-      // 2) Basic ownership checks
-      if (!this.pubkey) {
-        this.showError("Please login to edit videos.");
-        return;
-      }
-      const userPubkey = (this.pubkey || "").toLowerCase();
-      const videoPubkey = (video?.pubkey || "").toLowerCase();
-      if (!video || !videoPubkey || videoPubkey !== userPubkey) {
-        this.showError("You do not own this video.");
-        return;
-      }
-
-      try {
-        await this.editModal.load();
-      } catch (error) {
-        devLogger.error("Failed to load edit modal:", error);
-        this.showError(`Failed to initialize edit modal: ${error.message}`);
-        return;
-      }
-
-      try {
-        await this.editModal.open(video, { triggerElement });
-      } catch (error) {
-        devLogger.error("Failed to open edit modal:", error);
-        this.showError("Edit modal is not available right now.");
-      }
-    } catch (err) {
-      devLogger.error("Failed to edit video:", err);
-      this.showError("Failed to edit video. Please try again.");
+    if (this.editModalController) {
+      return this.editModalController.open(target);
     }
   }
 
@@ -8502,6 +8196,16 @@ class Application {
    */
   async playVideoWithFallback(options = {}) {
     const { url = "", magnet = "", trigger, forcedSource } = options || {};
+
+    emit("playback-decision", {
+      method: forcedSource || (magnet ? "webtorrent" : "url"), // heuristic
+      details: {
+        url: Boolean(url),
+        magnet: Boolean(magnet),
+        forcedSource,
+      },
+    });
+
     const hasTrigger = Object.prototype.hasOwnProperty.call(
       options || {},
       "trigger"
@@ -8769,6 +8473,11 @@ class Application {
       return result;
     }
 
+    emit("playback-started", {
+      method: result.source,
+      details: { startedAt: Date.now() },
+    });
+
     return result;
   }
 
@@ -8981,7 +8690,7 @@ class Application {
       this.currentVideoPointer,
       this.currentVideoPointerKey
     );
-    this.subscribeModalReactions(
+    this.reactionController.subscribe(
       this.currentVideoPointer,
       this.currentVideoPointerKey
     );
@@ -8993,11 +8702,21 @@ class Application {
     // this.setShareButtonState(true); // Moved to after showModalWithPoster
 
     const nevent = window.NostrTools.nip19.neventEncode({ id: eventId });
-    const pushUrl =
+    let pushUrl =
       this.buildShareUrlFromNevent(nevent) ||
       `${this.getShareUrlBase() || window.location.pathname}?v=${encodeURIComponent(
         nevent
       )}`;
+
+    try {
+      const targetUrl = new URL(pushUrl, window.location.origin);
+      if (targetUrl.origin !== window.location.origin) {
+        pushUrl = `${window.location.pathname}${targetUrl.search}${targetUrl.hash}`;
+      }
+    } catch (err) {
+      devLogger.warn("[Application] Failed to normalize pushState URL:", err);
+    }
+
     window.history.pushState({}, "", pushUrl);
 
     this.zapController?.resetState();
@@ -9320,7 +9039,7 @@ class Application {
     this.currentVideoPointer = null;
     this.currentVideoPointerKey = null;
     this.subscribeModalViewCount(null, null);
-    this.subscribeModalReactions(null, null);
+    this.reactionController.subscribe(null, null);
     this.pendingModeratedPlayback = null;
     const sanitizedUrl = typeof url === "string" ? url.trim() : "";
     const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
@@ -10386,165 +10105,9 @@ class Application {
   }
 
   async handleShareNostrPost(payload = {}) {
-    const video = payload?.video || null;
-    const videoId = typeof video?.id === "string" ? video.id.trim() : "";
-    const videoTitle =
-      typeof video?.title === "string" ? video.title.trim() : "";
-    const videoPubkey =
-      typeof video?.pubkey === "string" ? video.pubkey.trim() : "";
-
-    if (!videoId || !videoTitle) {
-      userLogger.warn("[Application] Share post missing video details.");
-      this.showError("Missing video details for sharing.");
-      throw new Error("share-missing-video-details");
+    if (this.shareNostrController) {
+      return this.shareNostrController.handleShare(payload);
     }
-
-    const signer = getActiveSigner();
-    if (!signer || typeof signer.signEvent !== "function") {
-      userLogger.warn("[Application] No active signer available for share.");
-      this.showError("Connect a Nostr signer to share.");
-      throw new Error("share-missing-signer");
-    }
-
-    const activePubkey = this.normalizeHexPubkey(this.pubkey);
-    const signerPubkey = this.normalizeHexPubkey(signer.pubkey);
-    const eventPubkey = activePubkey || signerPubkey;
-
-    if (!eventPubkey) {
-      userLogger.warn("[Application] Share post missing active pubkey.");
-      this.showError("Please log in to share on Nostr.");
-      throw new Error("share-missing-pubkey");
-    }
-
-    if (activePubkey && signerPubkey && activePubkey !== signerPubkey) {
-      userLogger.error(
-        "[Application] Active signer does not match current account for share.",
-      );
-      this.showError("Active signer does not match your account.");
-      throw new Error("share-signer-mismatch");
-    }
-
-    if (!nostrClient?.pool) {
-      userLogger.error("[Application] Share publish failed: relays not ready.");
-      this.showError("Nostr relays are not ready yet. Please try again.");
-      throw new Error("share-relays-unavailable");
-    }
-
-    const relayEntries = Array.isArray(payload?.relays) ? payload.relays : [];
-    const relayUrls = relayEntries
-      .map((entry) => {
-        if (typeof entry === "string") {
-          return entry;
-        }
-        if (Array.isArray(entry) && entry.length) {
-          if (entry[0] === "r") {
-            return typeof entry[1] === "string" ? entry[1] : "";
-          }
-          return typeof entry[0] === "string" ? entry[0] : "";
-        }
-        if (entry && typeof entry === "object") {
-          if (typeof entry.url === "string") {
-            return entry.url;
-          }
-          if (typeof entry.relay === "string") {
-            return entry.relay;
-          }
-        }
-        return "";
-      })
-      .filter(Boolean);
-    const relayTargets = sanitizeRelayList(relayUrls);
-
-    if (!relayTargets.length) {
-      userLogger.warn("[Application] Share post missing relay targets.");
-      this.showError("Please choose at least one relay to share to.");
-      throw new Error("share-missing-relays");
-    }
-
-    if (signer.type === "extension" && nostrClient.ensureExtensionPermissions) {
-      const permissionResult = await nostrClient.ensureExtensionPermissions(
-        DEFAULT_NIP07_PERMISSION_METHODS,
-      );
-      if (!permissionResult?.ok) {
-        userLogger.warn(
-          "[Application] Share publish blocked by signer permissions.",
-          permissionResult?.error,
-        );
-        this.showError("Signer permissions are required to post.");
-        throw new Error("share-permission-denied");
-      }
-    }
-
-    const event = buildShareEvent({
-      pubkey: eventPubkey,
-      created_at: Math.floor(Date.now() / 1000),
-      content: typeof payload?.content === "string" ? payload.content : "",
-      video: { id: videoId, pubkey: videoPubkey },
-      relays: relayEntries,
-    });
-
-    let signedEvent;
-    try {
-      signedEvent = await queueSignEvent(signer, event);
-    } catch (error) {
-      userLogger.error("[Application] Failed to sign share event.", error);
-      this.showError("Unable to sign the share event.");
-      throw error;
-    }
-
-    const publishResults = await publishEventToRelays(
-      nostrClient.pool,
-      relayTargets,
-      signedEvent,
-    );
-
-    let publishSummary;
-    try {
-      publishSummary = assertAnyRelayAccepted(publishResults, {
-        context: "share note",
-      });
-    } catch (publishError) {
-      if (publishError?.relayFailures?.length) {
-        publishError.relayFailures.forEach(
-          ({ url, error: relayError, reason }) => {
-            userLogger.error(
-              `[Application] Relay ${url} rejected share note: ${reason}`,
-              relayError || reason,
-            );
-          },
-        );
-      }
-      this.showError("Failed to share on Nostr. Please try again.");
-      throw publishError;
-    }
-
-    if (publishSummary.failed.length) {
-      publishSummary.failed.forEach(({ url, error: relayError }) => {
-        const reason =
-          relayError instanceof Error
-            ? relayError.message
-            : relayError
-            ? String(relayError)
-            : "publish failed";
-        userLogger.warn(
-          `[Application] Relay ${url} did not accept share note: ${reason}`,
-          relayError,
-        );
-      });
-    }
-
-    userLogger.info(
-      "[Application] Share note published.",
-      publishSummary.accepted.map(({ url }) => url),
-    );
-    this.showSuccess("Shared to Nostr!");
-
-    return {
-      ok: true,
-      event: signedEvent,
-      accepted: publishSummary.accepted.map(({ url }) => url),
-      failed: publishSummary.failed.map(({ url }) => url),
-    };
   }
 
   shareActiveVideo() {
@@ -10566,40 +10129,8 @@ class Application {
   }
 
   async openShareNostrModal({ video, triggerElement } = {}) {
-    const targetVideo =
-      video && typeof video === "object" ? video : this.currentVideo || null;
-    if (!targetVideo) {
-      this.showError("No video is available to share.");
-      return;
-    }
-
-    if (!this.shareNostrModal) {
-      devLogger.warn("[Application] Share Nostr modal is unavailable.");
-      this.showError("Share modal is not ready yet.");
-      return;
-    }
-
-    const shareUrl =
-      typeof targetVideo.shareUrl === "string" && targetVideo.shareUrl.trim()
-        ? targetVideo.shareUrl.trim()
-        : this.buildShareUrlFromEventId(targetVideo.id);
-    const payload = {
-      id: targetVideo.id,
-      title: targetVideo.title,
-      pubkey: targetVideo.pubkey,
-      authorName: targetVideo.creatorName || targetVideo.authorName || "",
-      thumbnail: targetVideo.thumbnail,
-      shareUrl,
-    };
-
-    try {
-      await this.shareNostrModal.open({
-        video: payload,
-        triggerElement,
-      });
-    } catch (error) {
-      devLogger.error("[Application] Failed to open Share Nostr modal:", error);
-      this.showError("Unable to open the share modal.");
+    if (this.shareNostrController) {
+      return this.shareNostrController.openModal({ video, triggerElement });
     }
   }
 

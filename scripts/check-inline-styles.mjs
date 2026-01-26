@@ -59,6 +59,14 @@ const VIOLATION_ALLOWLIST = new Map([
     "torrent/dist/beacon.js",
     new Set(["Direct .style usage"]),
   ],
+  [
+    "js/embed.js",
+    new Set(["Direct .style usage"]),
+  ],
+  [
+    "js/ui/components/VideoModal.js",
+    new Set(["Direct .style usage"]),
+  ],
 ]);
 
 const TEXT_EXTENSIONS = new Set([

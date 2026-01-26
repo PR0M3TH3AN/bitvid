@@ -1625,10 +1625,6 @@ export async function sendPayment(
   }
 }
 
-export function getActiveWalletContext() {
-  return activeState?.context || null;
-}
-
 export function resetWalletClient() {
   closeSocket();
 }

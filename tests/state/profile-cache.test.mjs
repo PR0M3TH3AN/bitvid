@@ -106,3 +106,53 @@ test("ProfileCache: setProfile normalizes and saves", () => {
   const stored = profileCache.getProfile(pubkey);
   assert.deepEqual(stored, entry.profile);
 });
+
+test("ProfileCache: emits events on active profile change", () => {
+  let eventDetail = null;
+  const pubkey = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+  const unsubscribe = profileCache.subscribe((event, detail) => {
+    if (event === "profileChanged") {
+      eventDetail = detail;
+    }
+  });
+
+  profileCache.setActiveProfile(pubkey);
+  assert.deepEqual(eventDetail, { pubkey });
+  unsubscribe();
+});
+
+test("ProfileCache: respects TTL expiration", () => {
+  const pubkey = "1111111111111111111111111111111111111111111111111111111111111111";
+  const section = "watchHistory"; // 24h TTL
+  const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
+  // Create expired data
+  const data = { history: [], savedAt: Date.now() - (ONE_DAY_MS + 1000) };
+  const key = profileCache.getStorageKey(pubkey, section);
+  globalThis.localStorage.setItem(key, JSON.stringify(data));
+
+  // Ensure memory is empty
+  profileCache.clearMemoryCache(pubkey);
+
+  const result = profileCache.getProfileData(pubkey, section);
+  assert.equal(result, null);
+});
+
+test("ProfileCache: setProfile sanitizes XSS in media URLs", () => {
+  const pubkey = "2222222222222222222222222222222222222222222222222222222222222222";
+  const rawProfile = {
+    name: "Hacker",
+    picture: "javascript:alert(1)",
+    banner: "javascript:alert(2)",
+  };
+
+  const entry = profileCache.setProfile(pubkey, rawProfile);
+
+  // sanitizeProfileMediaUrl returns null or fallback for invalid schemes
+  // "assets/svg/default-profile.svg" is default for picture
+  assert.equal(entry.profile.picture, "assets/svg/default-profile.svg");
+
+  // banner might be undefined if invalid
+  assert.equal(entry.profile.banner, undefined);
+});

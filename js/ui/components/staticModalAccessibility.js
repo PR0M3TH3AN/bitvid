@@ -140,28 +140,3 @@ export function closeStaticModal(target, { document: providedDocument } = {}) {
   return true;
 }
 
-export function toggleStaticModal(target, shouldOpen, options = {}) {
-  if (shouldOpen) {
-    return openStaticModal(target, options);
-  }
-  return closeStaticModal(target, options);
-}
-
-export function destroyStaticModal(target, { document: providedDocument } = {}) {
-  const doc = resolveDocument(providedDocument);
-  const root = resolveRoot(target, doc);
-  if (!root) {
-    return false;
-  }
-  const record = accessibilityByModal.get(root);
-  if (!record) {
-    return false;
-  }
-  try {
-    record.accessibility.destroy?.();
-  } finally {
-    accessibilityByModal.delete(root);
-  }
-  synchronizeDocumentModalState(record.document);
-  return true;
-}
