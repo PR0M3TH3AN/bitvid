@@ -1220,6 +1220,7 @@ export class NostrClient {
     this.sessionActorCipherClosures = null;
     this.sessionActorCipherClosuresPrivateKey = null;
     this.countUnsupportedRelays = new Set();
+    this.unreachableRelays = new Set();
     this.isInitialized = false;
     this.nip46Client = null;
     this.remoteSignerListeners = new Set();
@@ -3503,7 +3504,7 @@ export class NostrClient {
       ? relayUrls
       : this.relays;
 
-    const normalizedRelays = sanitizeRelayList(relaysToUse);
+    const normalizedRelays = sanitizeRelayList(this.getHealthyRelays(relaysToUse));
     const results = [];
     const concurrencyLimit = 4;
 
@@ -3943,7 +3944,7 @@ export class NostrClient {
   // `unsub` to avoid leaking subscriptions. Note: any future change must still
   // provide a lightweight readiness check with similar timeout semantics.
   async connectToRelays() {
-    return Promise.all(
+    const results = await Promise.all(
       this.relays.map(
         (url) =>
           new Promise((resolve) => {
@@ -3963,6 +3964,27 @@ export class NostrClient {
           })
       )
     );
+
+    for (const result of results) {
+      if (result.success) {
+        this.unreachableRelays.delete(result.url);
+      } else {
+        this.unreachableRelays.add(result.url);
+        if (isDevMode) {
+          devLogger.warn(`[nostr] Marked relay as unreachable: ${result.url}`);
+        }
+      }
+    }
+
+    return results;
+  }
+
+  getHealthyRelays(candidates) {
+    const source = Array.isArray(candidates) ? candidates : this.relays;
+    if (!this.unreachableRelays.size) {
+      return source;
+    }
+    return source.filter((url) => !this.unreachableRelays.has(url));
   }
 
   /**
@@ -4426,7 +4448,7 @@ export class NostrClient {
       : Array.isArray(this.readRelays) && this.readRelays.length
       ? this.readRelays
       : this.relays;
-    const relays = sanitizeRelayList(relayCandidates);
+    const relays = sanitizeRelayList(this.getHealthyRelays(relayCandidates));
     const relaysToUse = relays.length ? relays : Array.from(DEFAULT_RELAY_URLS);
 
     const filters = buildDmFilters(
@@ -4498,7 +4520,7 @@ export class NostrClient {
       : Array.isArray(this.readRelays) && this.readRelays.length
       ? this.readRelays
       : this.relays;
-    const relays = sanitizeRelayList(relayCandidates);
+    const relays = sanitizeRelayList(this.getHealthyRelays(relayCandidates));
     const relaysToUse = relays.length ? relays : Array.from(DEFAULT_RELAY_URLS);
 
     const filters = buildDmFilters(actorPubkeyInput, options);
@@ -6749,7 +6771,7 @@ export class NostrClient {
 
     devLogger.log("[subscribeVideos] Subscribing with filter:", filter);
 
-    const sub = this.pool.sub(this.relays, [filter]);
+    const sub = this.pool.sub(this.getHealthyRelays(this.relays), [filter]);
     const invalidDuringSub = [];
 
     // BUFFERING STATE
@@ -7017,7 +7039,7 @@ export class NostrClient {
 
     try {
       await Promise.all(
-        this.relays.map(async (url) => {
+        this.getHealthyRelays(this.relays).map(async (url) => {
           const events = await this.pool.list([url], [filter]);
           for (const evt of events) {
             if (evt && evt.id) {
@@ -7117,15 +7139,7 @@ export class NostrClient {
       Array.isArray(options?.relays) && options.relays.length
         ? options.relays
         : this.relays;
-    const relays = Array.isArray(relayCandidatesRaw)
-      ? Array.from(
-          new Set(
-            relayCandidatesRaw
-              .map((url) => (typeof url === "string" ? url.trim() : ""))
-              .filter(Boolean)
-          )
-        )
-      : [];
+    const relays = sanitizeRelayList(this.getHealthyRelays(relayCandidatesRaw));
 
     if (!relays.length) {
       return null;
@@ -7765,7 +7779,7 @@ export class NostrClient {
       }
 
       try {
-        const rootEvent = await this.pool.get(this.relays, { ids: [normalizedRoot] });
+        const rootEvent = await this.pool.get(this.getHealthyRelays(this.relays), { ids: [normalizedRoot] });
         if (rootEvent && rootEvent.id === normalizedRoot) {
           this.rawEvents.set(rootEvent.id, rootEvent);
           const parsed = convertEventToVideo(rootEvent);
@@ -7808,7 +7822,7 @@ export class NostrClient {
 
       try {
         const perRelay = await Promise.all(
-            this.relays.map(async (url) => {
+            this.getHealthyRelays(this.relays).map(async (url) => {
               try {
                 const events = await this.pool.list([url], [filter]);
                 return events || [];
