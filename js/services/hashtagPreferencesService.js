@@ -477,12 +477,20 @@ class HashtagPreferencesService {
       // fetchListIncrementally takes a single kind.
       // kinds is array of [canonicalKind, legacyKind] if different.
 
-      const promises = kinds.map(kind => nostrClient.fetchListIncrementally({
-        kind,
-        pubkey: normalized,
-        dTag: HASHTAG_IDENTIFIER,
-        relayUrls: relays
-      }));
+      // Anchor the fetch to the service's current state to prevent desync.
+      // If we have cached data, we ask for updates since that timestamp.
+      // If we have no data, we force a full fetch (since=0).
+      const since = wasLoadedForUser ? Number(this.eventCreatedAt) || 0 : 0;
+
+      const promises = kinds.map((kind) =>
+        nostrClient.fetchListIncrementally({
+          kind,
+          pubkey: normalized,
+          dTag: HASHTAG_IDENTIFIER,
+          relayUrls: relays,
+          since,
+        }),
+      );
 
       const results = await Promise.all(promises);
       events = results.flat();
