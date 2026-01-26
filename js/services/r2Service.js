@@ -322,23 +322,23 @@ class R2Service {
     const pubkey = safeDecodeNpub(npub);
     if (pubkey && storageService) {
       try {
-        if (storageService.isUnlocked(pubkey)) {
-          const connections = await storageService.listConnections(pubkey);
-          if (Array.isArray(connections) && connections.length > 0) {
-            let target = connections.find(
-              (c) => c.meta && c.meta.defaultForUploads
+        const connections = await storageService.listConnections(pubkey);
+        if (Array.isArray(connections) && connections.length > 0) {
+          let target = connections.find(
+            (c) => c.meta && c.meta.defaultForUploads
+          );
+          if (!target) {
+            // Prefer R2, else first
+            target = connections.find(
+              (c) => c.provider === "cloudflare_r2"
             );
-            if (!target) {
-              // Prefer R2, else first
-              target = connections.find(
-                (c) => c.provider === "cloudflare_r2"
-              );
-            }
-            if (!target) {
-              target = connections[0];
-            }
+          }
+          if (!target) {
+            target = connections[0];
+          }
 
-            if (target) {
+          if (target) {
+            if (storageService.isUnlocked(pubkey)) {
               const details = await storageService.getConnection(
                 pubkey,
                 target.id
@@ -372,6 +372,28 @@ class R2Service {
                   isLegacy: false,
                 };
               }
+            } else if (target.provider === "cloudflare_r2") {
+              const meta = target.meta || {};
+              const publicBaseUrl =
+                meta.publicBaseUrl || meta.baseDomain || meta.publicUrl || "";
+              const forcePathStyle =
+                typeof meta.forcePathStyle === "boolean"
+                  ? meta.forcePathStyle
+                  : undefined;
+              return {
+                provider: target.provider,
+                accountId: meta.accountId || "",
+                endpoint: meta.endpoint || "",
+                bucket: meta.bucket || "",
+                region: meta.region || "auto",
+                accessKeyId: "",
+                secretAccessKey: "",
+                baseDomain: publicBaseUrl,
+                publicBaseUrl,
+                forcePathStyle,
+                isLegacy: false,
+                storageLocked: true,
+              };
             }
           }
         }
@@ -681,10 +703,16 @@ class R2Service {
       bucket: effectiveSettings.bucket || "",
       baseDomain: effectiveSettings.baseDomain || "",
       publicBaseUrl: effectiveSettings.publicBaseUrl || "",
+      storageLocked: Boolean(effectiveSettings.storageLocked),
       legacyFallback: Boolean(effectiveSettings.isLegacy),
     });
 
     if (!accountId || !accessKeyId || !secretAccessKey) {
+      if (effectiveSettings?.storageLocked) {
+        throw new Error(
+          "Storage is locked — unlock storage to use saved R2 bucket settings."
+        );
+      }
       throw new Error("Missing R2 credentials. Unlock your storage or save settings.");
     }
 
