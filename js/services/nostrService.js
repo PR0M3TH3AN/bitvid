@@ -1709,6 +1709,7 @@ export class NostrService {
       }
 
       // Re-populate cache indexing
+      this.cacheVideos(Array.from(localAll.values()));
       this.ensureVideosMap();
       this.markAuthorIndexDirty();
 
