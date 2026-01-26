@@ -8,3 +8,4 @@ tests/visual/__snapshots__/
 artifacts/
 css/tailwind.generated.css
 ai/reports/
+*.log

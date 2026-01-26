@@ -149,7 +149,6 @@
     <script type="module">
       import ensureOverlayRoot from "../../js/ui/overlay/overlayRoot.js";
       import createPopover from "../../js/ui/overlay/popoverEngine.js";
-      import attachSearchFiltersPopover from "../../js/ui/components/SearchFiltersPopover.js";
 
       const doc = document;
       ensureOverlayRoot(doc);
@@ -222,7 +221,13 @@
       });
 
       const filterButton = doc.querySelector("[data-demo-search-filters]");
-      const filterPopover = attachSearchFiltersPopover(filterButton, {
+      const filterPopover = wirePopover(filterButton, {
+        heading: "Search filters",
+        actions: [
+          { label: "Sort by Date", action: "sort-date" },
+          { label: "Sort by Popularity", action: "sort-pop" },
+          { label: "Show NSFW", action: "nsfw" },
+        ],
         placement: "bottom-start",
       });
 
