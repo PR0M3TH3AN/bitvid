@@ -445,4 +445,4 @@ export const DEFAULT_PLAYBACK_SOURCE = "torrent";
  * source. This prevents users from staring at a loading spinner indefinitely
  * if the primary source is slow or stalled.
  */
-export const DEFAULT_PLAYBACK_START_TIMEOUT = 3000;
+export const DEFAULT_PLAYBACK_START_TIMEOUT = 2000;
