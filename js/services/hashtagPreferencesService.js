@@ -505,6 +505,14 @@ class HashtagPreferencesService {
     }
 
     if (!events.length) {
+      if (fetchError) {
+        userLogger.warn(
+          `${LOG_PREFIX} Failed to load hashtag preferences (keeping local state if any).`,
+          fetchError,
+        );
+        return;
+      }
+
       // If we failed to fetch (network error) but already have data for this user,
       // preserve the existing state instead of wiping it.
       // If fetchListIncrementally returns empty, it means no new updates or full fetch yielded nothing.

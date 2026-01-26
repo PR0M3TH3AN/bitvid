@@ -270,12 +270,21 @@ export async function requestEnablePermissions(
 
   let lastError = null;
   for (const options of permissionVariants) {
+    // If specific permissions are requested (variants 1 & 2), fail fast (3s)
+    // to avoid hanging if the extension doesn't support the structured format.
+    // If we fall back to standard enable() (null), allow the full user interaction time.
     const variantTimeoutOverrides = options
       ? {
-          timeoutMs: Math.min(NIP07_LOGIN_TIMEOUT_MS, getEnableVariantTimeoutMs()),
+          timeoutMs: 3000,
           retryMultiplier: 1,
         }
-      : { retryMultiplier: 1 };
+      : {
+          timeoutMs: Math.min(
+            NIP07_LOGIN_TIMEOUT_MS,
+            getEnableVariantTimeoutMs(),
+          ),
+          retryMultiplier: 1,
+        };
 
     try {
       await runNip07WithRetry(

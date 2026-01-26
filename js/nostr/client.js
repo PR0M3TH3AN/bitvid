@@ -3520,6 +3520,9 @@ export class NostrClient {
       chunks.push(normalizedRelays.slice(i, i + concurrencyLimit));
     }
 
+    let anySuccess = false;
+    const failures = [];
+
     for (const chunk of chunks) {
       const promises = chunk.map(async (relayUrl) => {
         let lastSeen = this.getSyncLastSeen(
@@ -3587,7 +3590,7 @@ export class NostrClient {
             this.updateSyncLastSeen(kind, normalizedPubkey, dTag, relayUrl, maxCreated);
           }
 
-          return events;
+          return { events, ok: true };
         } catch (error) {
           // Fallback to full fetch if incremental failed or if relay error
           if (!doFullFetch) {
@@ -3606,24 +3609,36 @@ export class NostrClient {
               if (maxCreated > 0) {
                  this.updateSyncLastSeen(kind, normalizedPubkey, dTag, relayUrl, maxCreated);
               }
-              return events || [];
+              return { events: events || [], ok: true };
             } catch (fallbackError) {
               devLogger.warn(`[fetchListIncrementally] Full fetch fallback failed for ${relayUrl}`, fallbackError);
-              return [];
+              return { error: fallbackError, ok: false };
             }
           } else {
              devLogger.warn(`[fetchListIncrementally] Fetch failed for ${relayUrl}`, error);
-             return [];
+             return { error, ok: false };
           }
         }
       });
 
       const chunkResults = await Promise.all(promises);
       for (const res of chunkResults) {
-        if (Array.isArray(res)) {
-          results.push(...res);
+        if (res.ok) {
+          anySuccess = true;
+          if (Array.isArray(res.events)) {
+            results.push(...res.events);
+          }
+        } else {
+          failures.push(res.error);
         }
       }
+    }
+
+    if (!anySuccess && normalizedRelays.length > 0) {
+      const error = new Error("All relays failed to fetch list.");
+      error.code = "fetch-failed";
+      error.failures = failures;
+      throw error;
     }
 
     // Deduplicate by ID
