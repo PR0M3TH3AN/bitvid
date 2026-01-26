@@ -548,29 +548,22 @@ async function fetchLatestListEvent(filter, contextLabel = "admin-list") {
   }
 
   let events = [];
-  try {
-    if (pubkey) {
-      events = await nostrClient.fetchListIncrementally({
-        kind,
-        pubkey,
-        dTag,
-        relayUrls: relays
-      });
-    } else {
-       // Fallback for non-specific queries
-       const normalizedFilter = {
-         kinds: [kind],
-         limit: 50
-       };
-       if (dTag) normalizedFilter["#d"] = [dTag];
-       if (filter.authors) normalizedFilter.authors = filter.authors;
-       events = await nostrClient.pool.list(relays, [normalizedFilter]);
-    }
-  } catch (error) {
-    devLogger.warn(
-      `[adminListStore] Fetch failed for ${contextLabel}:`,
-      error,
-    );
+  if (pubkey) {
+    events = await nostrClient.fetchListIncrementally({
+      kind,
+      pubkey,
+      dTag,
+      relayUrls: relays
+    });
+  } else {
+      // Fallback for non-specific queries
+      const normalizedFilter = {
+        kinds: [kind],
+        limit: 50
+      };
+      if (dTag) normalizedFilter["#d"] = [dTag];
+      if (filter.authors) normalizedFilter.authors = filter.authors;
+      events = await nostrClient.pool.list(relays, [normalizedFilter]);
   }
 
   if (!events || !events.length) {

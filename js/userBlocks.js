@@ -1096,10 +1096,7 @@ class UserBlockListManager {
 
 
     } catch (error) {
-      userLogger.error("[UserBlockList] loadBlocks failed:", error);
-      applyBlockedPubkeys([], { source: "fast", reason: "load-error", error });
-      this.blockEventId = null;
-      this.blockEventCreatedAt = null;
+      userLogger.error("[UserBlockList] loadBlocks failed (keeping local state):", error);
       emitStatus({ status: "error", error });
     } finally {
       this.loaded = true;
