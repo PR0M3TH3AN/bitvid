@@ -154,8 +154,10 @@ http://localhost:8000
 
 ### Quickstart Commands
 
-- **Run unit tests**: `npm run test:unit`
-- **Format code**: `npm run format`
+See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the full developer guide.
+
+- **Run unit tests**: `npm run test:unit` (Required before PRs)
+- **Format code**: `npm run format` (Required before PRs)
 - **Lint code**: `npm run lint`
 - **Run DM unit tests**: `npm run test:dm:unit`
 - **Run DM integration tests**: `npm run test:dm:integration`
@@ -212,7 +214,7 @@ const event = buildVideoPostEvent({
     videoRootId: "my-first-video", // Logical ID, typically matches the d-tag
     url: "https://example.com/video.mp4",
     description: "This is a test video post sent via the SDK."
-    // magnet: "magnet:?xt=urn:btih:..." // Optional fallback
+    // magnet: "magnet:?xt=urn:btih:..." // Optional fallback (provide the raw magnet string)
   }
 });
 
