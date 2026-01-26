@@ -1,5 +1,18 @@
 // js/nostr/nip46Client.js
 
+/**
+ * NIP-46 (Nostr Connect) Client Implementation.
+ *
+ * This module provides a client for the Nostr Connect protocol, allowing the application
+ * to delegate event signing to a remote signer (e.g., a "Bunker" or mobile wallet).
+ *
+ * Key components:
+ * - `Nip46RpcClient`: The main class managing the RPC session.
+ * - `parseNip46ConnectionString`: URI parser for `bunker://` and `nostrconnect://`.
+ *
+ * For a detailed architecture overview, see `docs/nip46-client-overview.md`.
+ */
+
 import { isDevMode } from "../config.js";
 import {
   DEFAULT_RELAY_URLS,
@@ -30,6 +43,10 @@ export const NIP46_ENCRYPTION_ALGORITHMS = Object.freeze([
   "nip04",
 ]);
 
+/**
+ * resolves the appropriate storage mechanism (localStorage or polyfill) for NIP-46 sessions.
+ * @returns {Storage|null} The storage interface or null if unavailable.
+ */
 export function getNip46Storage() {
   if (typeof localStorage !== "undefined" && localStorage) {
     return localStorage;
@@ -42,6 +59,13 @@ export function getNip46Storage() {
   return null;
 }
 
+/**
+ * Cleans and normalizes a list of relay URLs.
+ * Removes duplicates, trailing slashes, and invalid URLs.
+ *
+ * @param {string[]} list - The raw list of relay URLs.
+ * @returns {string[]} The sanitized list of relay URLs.
+ */
 export function sanitizeRelayList(list) {
   const seen = new Set();
   const sanitized = [];
@@ -86,6 +110,13 @@ export function sanitizeRelayList(list) {
   return sanitized;
 }
 
+/**
+ * Validates and normalizes a NIP-46 session object from storage.
+ * Ensures strict schema compliance to prevent prototype pollution or corrupted state.
+ *
+ * @param {object} candidate - The raw session object from storage.
+ * @returns {object|null} The valid session object or null if invalid.
+ */
 export function sanitizeStoredNip46Session(candidate) {
   if (!candidate || typeof candidate !== "object") {
     return null;
@@ -484,6 +515,13 @@ export function normalizeNostrPubkey(candidate) {
   return trimmed.toLowerCase();
 }
 
+/**
+ * Parses a NIP-46 connection URI (bunker:// or nostrconnect://) into a structured configuration.
+ * Handles decoding of standard params (relay, secret, perms) and bunker-specific logic (user hints).
+ *
+ * @param {string} uri - The connection URI.
+ * @returns {object|null} The parsed configuration object or null if invalid.
+ */
 export function parseNip46ConnectionString(uri) {
   const value = typeof uri === "string" ? uri.trim() : "";
   if (!value) {
@@ -1066,6 +1104,17 @@ function resolveAvailableNip46Ciphers(
   return available;
 }
 
+/**
+ * Creates an encryption interface (encrypt/decrypt) for NIP-46 communication.
+ * Automatically selects the best available algorithm (NIP-44 v2 preferred) supported by the environment.
+ *
+ * @param {object} tools - The nostr-tools library instance.
+ * @param {string} privateKey - The local client's private key (hex).
+ * @param {string} remotePubkey - The remote signer's public key (hex).
+ * @param {object} [options] - Configuration options.
+ * @param {string} [options.preferredAlgorithm] - Force a specific algorithm ("nip44.v2", "nip04").
+ * @returns {object} An object with `encrypt(text)` and `decrypt(text)` methods.
+ */
 export function createNip46Cipher(tools, privateKey, remotePubkey, options = {}) {
   const available = resolveAvailableNip46Ciphers(tools, privateKey, remotePubkey, options);
 
@@ -1076,6 +1125,15 @@ export function createNip46Cipher(tools, privateKey, remotePubkey, options = {})
   return available[0];
 }
 
+/**
+ * Attempts to decrypt a NIP-46 payload using all available encryption algorithms.
+ * Useful when the specific algorithm used by the remote signer is unknown (e.g., during handshake).
+ *
+ * @param {string} privateKey - The local client's private key.
+ * @param {string} remotePubkey - The remote signer's public key.
+ * @param {string} ciphertext - The encrypted payload.
+ * @returns {Promise<object>} The decrypted result containing `{ plaintext, algorithm }`.
+ */
 export async function decryptNip46PayloadWithKeys(privateKey, remotePubkey, ciphertext) {
   const tools = (await ensureNostrTools()) || getCachedNostrTools();
   if (!tools) {
@@ -1333,7 +1391,28 @@ export async function attemptDecryptNip46HandshakePayload({
   });
   throw failure;
 }
+
+/**
+ * Manages a NIP-46 (Nostr Connect) remote signing session.
+ * Handles the RPC loop: Encrypt Request -> Publish Event -> Wait for Response -> Decrypt.
+ *
+ * It uses a "Stale-While-Revalidate" approach for subscriptions and maintains a
+ * priority queue for requests to avoid rate-limiting issues with relays.
+ */
 export class Nip46RpcClient {
+  /**
+   * @param {object} config
+   * @param {NostrClient} [config.nostrClient] - The main app client (for pool/relays).
+   * @param {string} config.clientPrivateKey - The ephemeral local private key (hex).
+   * @param {string} [config.clientPublicKey] - The ephemeral local public key (hex).
+   * @param {string} config.remotePubkey - The remote signer's public key (hex).
+   * @param {string[]} [config.relays] - List of relay URLs to use for the RPC channel.
+   * @param {string} [config.encryption] - Preferred encryption algorithm ("nip44.v2" or "nip04").
+   * @param {string} [config.secret] - Optional shared secret (for initial connection verification).
+   * @param {string} [config.permissions] - Requested permissions (comma-separated).
+   * @param {object} [config.metadata] - Metadata to identify this app to the signer.
+   * @param {function} [config.signEvent] - Function to sign the RPC request events.
+   */
   constructor({
     nostrClient,
     clientPrivateKey,
@@ -1647,6 +1726,18 @@ export class Nip46RpcClient {
     this.pendingRequests.clear();
   }
 
+  /**
+   * Sends an RPC command to the remote signer and awaits the response.
+   * Handles encryption, signing, publishing, and timeouts.
+   *
+   * @param {string} method - The RPC method name (e.g., "connect", "sign_event").
+   * @param {Array} [params=[]] - The parameters for the method.
+   * @param {object} [options={}] - Options for this specific call.
+   * @param {number} [options.timeoutMs] - Timeout in milliseconds.
+   * @param {number} [options.priority] - Priority level (High/Normal/Low).
+   * @param {number} [options.retries] - Number of retry attempts.
+   * @returns {Promise<any>} The result from the remote signer.
+   */
   async sendRpc(method, params = [], options = {}) {
     if (this.destroyed) {
       throw new Error("Remote signer session has been disposed.");
@@ -1855,6 +1946,14 @@ export class Nip46RpcClient {
     }, priority);
   }
 
+  /**
+   * Initiates the connection handshake ("connect" method).
+   * Verifies that the remote signer acknowledges the shared secret (if one exists).
+   *
+   * @param {object} [opts]
+   * @param {string} [opts.permissions] - Override permissions to request.
+   * @returns {Promise<string>} The response result (usually "ack").
+   */
   async connect({ permissions } = {}) {
     const params = [this.remotePubkey];
     const requestedPermissions = permissions || this.permissions || "";
@@ -1935,6 +2034,14 @@ export class Nip46RpcClient {
     }
   }
 
+  /**
+   * Requests the remote signer to sign a Nostr event.
+   *
+   * @param {object} event - The raw event object (unsigned).
+   * @param {object} [options]
+   * @param {number} [options.timeoutMs] - Custom timeout.
+   * @returns {Promise<object>} The fully signed event object.
+   */
   async signEvent(event, options = {}) {
     if (!event || typeof event !== "object") {
       throw new Error("A Nostr event is required for remote signing.");
