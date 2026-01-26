@@ -528,6 +528,7 @@ export class ModerationService {
 
     this.contactSubscription = null;
     this.contactListPromise = null;
+    this.lastContactEventId = null;
 
     this.reportEvents = new Map();
     this.reportSummaries = new Map();
@@ -1074,6 +1075,9 @@ export class ModerationService {
     }
 
     for (const value of next) {
+      if (previous.has(value)) {
+        continue;
+      }
       this.subscribeToTrustedMuteList(value).catch((error) => {
         this.log(
           `(moderationService) failed to subscribe to trusted mute list for ${value}`,
@@ -1988,6 +1992,10 @@ export class ModerationService {
       return;
     }
 
+    if (event.id && event.id === this.lastContactEventId) {
+      return;
+    }
+
     const nextSet = new Set();
     for (const tag of event.tags) {
       if (!Array.isArray(tag) || tag[0] !== "p") {
@@ -1997,6 +2005,26 @@ export class ModerationService {
       if (candidate) {
         nextSet.add(candidate);
       }
+    }
+
+    if (this.viewerContacts instanceof Set && this.viewerContacts.size === nextSet.size) {
+      let changed = false;
+      for (const value of nextSet) {
+        if (!this.viewerContacts.has(value)) {
+          changed = true;
+          break;
+        }
+      }
+      if (!changed) {
+        if (event.id) {
+          this.lastContactEventId = event.id;
+        }
+        return;
+      }
+    }
+
+    if (event.id) {
+      this.lastContactEventId = event.id;
     }
 
     this.rebuildTrustedContacts(nextSet, { previous: previousContacts });
