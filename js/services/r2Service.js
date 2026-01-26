@@ -575,7 +575,7 @@ class R2Service {
       return { success: false, error: "Incomplete credentials or missing public URL." };
     }
 
-    const bucketName = sanitizeBucketName(npub);
+    const bucketName = settings.bucket || settings.meta?.bucket || sanitizeBucketName(npub);
     const verifyKey = `.verify-${Date.now()}-${Math.random().toString(36).substring(7)}.txt`;
     const verifyContent = "bitvid-verification";
     const publicUrl = buildPublicUrl(baseDomain, verifyKey);
