@@ -341,6 +341,9 @@ class HashtagPreferencesService {
 
     if (!hadInterest || removedFromDisinterests) {
       this.emitChange("interest-added", { tag: normalized });
+      this.publish().catch((err) =>
+        userLogger.warn(`${LOG_PREFIX} Auto-save failed`, err),
+      );
       return true;
     }
 
@@ -355,6 +358,9 @@ class HashtagPreferencesService {
 
     this.interests.delete(normalized);
     this.emitChange("interest-removed", { tag: normalized });
+    this.publish().catch((err) =>
+      userLogger.warn(`${LOG_PREFIX} Auto-save failed`, err),
+    );
     return true;
   }
 
@@ -370,6 +376,9 @@ class HashtagPreferencesService {
 
     if (!hadDisinterest || removedFromInterests) {
       this.emitChange("disinterest-added", { tag: normalized });
+      this.publish().catch((err) =>
+        userLogger.warn(`${LOG_PREFIX} Auto-save failed`, err),
+      );
       return true;
     }
 
@@ -384,6 +393,9 @@ class HashtagPreferencesService {
 
     this.disinterests.delete(normalized);
     this.emitChange("disinterest-removed", { tag: normalized });
+    this.publish().catch((err) =>
+      userLogger.warn(`${LOG_PREFIX} Auto-save failed`, err),
+    );
     return true;
   }
 
@@ -567,9 +579,11 @@ class HashtagPreferencesService {
     const currentCreatedAt = Number(this.eventCreatedAt) || 0;
     const latestCreatedAt = Number(latest.created_at) || 0;
 
-    if (wasLoadedForUser && currentCreatedAt > latestCreatedAt) {
-      userLogger.warn(
-        `${LOG_PREFIX} Ignoring stale preferences event (remote: ${latestCreatedAt}, local: ${currentCreatedAt}).`,
+    // Protection against overwriting optimistic updates:
+    // If the local version is newer (because user just edited), ignore the remote fetch.
+    if (wasLoadedForUser && currentCreatedAt >= latestCreatedAt) {
+      devLogger.log(
+        `${LOG_PREFIX} Ignoring stale/concurrent preferences event (remote: ${latestCreatedAt}, local: ${currentCreatedAt}).`,
       );
       return;
     }

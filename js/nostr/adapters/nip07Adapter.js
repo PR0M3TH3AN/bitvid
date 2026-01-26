@@ -1,6 +1,30 @@
 // js/nostr/adapters/nip07Adapter.js
 
 import { normalizeActorKey } from "../watchHistory.js";
+import { runNip07WithRetry } from "../nip07Permissions.js";
+
+async function retryNip07Call(operation, label) {
+  let lastError = null;
+  const attempts = 2; // Retry once on failure
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await runNip07WithRetry(operation, { label });
+    } catch (error) {
+      lastError = error;
+      // Don't retry if user explicitly rejected
+      if (
+        error?.message?.toLowerCase().includes("denied") ||
+        error?.message?.toLowerCase().includes("rejected")
+      ) {
+        throw error;
+      }
+      if (i < attempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    }
+  }
+  throw lastError;
+}
 
 function resolveNip44Module(extension) {
   const nip44 = extension?.nip44 && typeof extension.nip44 === "object" ? extension.nip44 : null;
@@ -54,27 +78,51 @@ export async function createNip07Adapter(extension) {
   const nip44 = resolveNip44Module(resolvedExtension);
 
   const nip04Encrypt =
-    nip04 && typeof nip04.encrypt === "function" ? nip04.encrypt.bind(nip04) : null;
+    nip04 && typeof nip04.encrypt === "function"
+      ? (pubkey, plaintext) =>
+          retryNip07Call(() => nip04.encrypt(pubkey, plaintext), "nip04.encrypt")
+      : null;
+
   const nip04Decrypt =
-    nip04 && typeof nip04.decrypt === "function" ? nip04.decrypt.bind(nip04) : null;
+    nip04 && typeof nip04.decrypt === "function"
+      ? (pubkey, ciphertext) =>
+          retryNip07Call(() => nip04.decrypt(pubkey, ciphertext), "nip04.decrypt")
+      : null;
 
   const nip44Encrypt =
-    nip44 && typeof nip44.encrypt === "function" ? nip44.encrypt.bind(nip44) : null;
+    nip44 && typeof nip44.encrypt === "function"
+      ? (pubkey, plaintext) =>
+          retryNip07Call(() => nip44.encrypt(pubkey, plaintext), "nip44.encrypt")
+      : null;
+
   const nip44Decrypt =
-    nip44 && typeof nip44.decrypt === "function" ? nip44.decrypt.bind(nip44) : null;
+    nip44 && typeof nip44.decrypt === "function"
+      ? (pubkey, ciphertext) =>
+          retryNip07Call(() => nip44.decrypt(pubkey, ciphertext), "nip44.decrypt")
+      : null;
 
   const requestPermissions = async (methods = []) => {
     if (typeof resolvedExtension.requestPermissions === "function") {
-      return resolvedExtension.requestPermissions({
-        permissions: Array.isArray(methods) ? methods : [],
-      });
+      return retryNip07Call(
+        () =>
+          resolvedExtension.requestPermissions({
+            permissions: Array.isArray(methods) ? methods : [],
+          }),
+        "extension.requestPermissions",
+      );
     }
 
     if (typeof resolvedExtension.enable === "function") {
       if (Array.isArray(methods) && methods.length) {
-        return resolvedExtension.enable({ permissions: methods.map((method) => ({ method })) });
+        return retryNip07Call(
+          () =>
+            resolvedExtension.enable({
+              permissions: methods.map((method) => ({ method })),
+            }),
+          "extension.enable",
+        );
       }
-      return resolvedExtension.enable();
+      return retryNip07Call(() => resolvedExtension.enable(), "extension.enable");
     }
 
     return { ok: false, error: new Error("permission-request-unavailable") };
@@ -85,17 +133,17 @@ export async function createNip07Adapter(extension) {
     pubkey,
     metadata: async () =>
       typeof resolvedExtension.getMetadata === "function"
-        ? resolvedExtension.getMetadata()
+        ? retryNip07Call(() => resolvedExtension.getMetadata(), "extension.getMetadata")
         : null,
     relays: async () =>
       typeof resolvedExtension.getRelays === "function"
-        ? resolvedExtension.getRelays()
+        ? retryNip07Call(() => resolvedExtension.getRelays(), "extension.getRelays")
         : null,
     signEvent: async (event) => {
       if (typeof resolvedExtension.signEvent !== "function") {
         throw new Error("NIP-07 extension missing signEvent.");
       }
-      return resolvedExtension.signEvent(event);
+      return retryNip07Call(() => resolvedExtension.signEvent(event), "extension.signEvent");
     },
     requestPermissions,
     destroy: async () => {},
