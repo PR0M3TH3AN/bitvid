@@ -64,7 +64,6 @@ import getAuthProvider, {
 import hashtagPreferences, {
   HASHTAG_PREFERENCES_EVENTS,
 } from "./services/hashtagPreferencesService.js";
-import { initQuickR2Upload } from "./r2-quick.js";
 import { getSidebarLoadingMarkup } from "./sidebarLoading.js";
 import { subscriptions } from "./subscriptions.js";
 import {
@@ -655,15 +654,10 @@ class Application {
         }
       });
 
-      const uploadModalPromise = this.uploadModal
-        .load()
-        .catch((error) => {
-          devLogger.error("initUploadModal failed:", error);
-          this.showError(`Failed to initialize upload modal: ${error.message}`);
-        })
-        .finally(() => {
-          initQuickR2Upload(this);
-        });
+      const uploadModalPromise = this.uploadModal.load().catch((error) => {
+        devLogger.error("initUploadModal failed:", error);
+        this.showError(`Failed to initialize upload modal: ${error.message}`);
+      });
 
       const editModalPromise = this.editModal.load().catch((error) => {
         devLogger.error("Failed to load edit modal:", error);
