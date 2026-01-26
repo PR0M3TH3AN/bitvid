@@ -327,7 +327,7 @@ class S3UploadService {
         return false;
       }
 
-      const normalizedInfoHash = normalizeInfoHash(infoHash);
+      // normalizedInfoHash is already calculated above
       const hasValidInfoHash = isValidInfoHash(normalizedInfoHash);
       let generatedMagnet = "";
       let generatedWs = "";
