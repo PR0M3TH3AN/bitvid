@@ -95,7 +95,7 @@ test("clearStoredSessionActor removes persisted payload", async () => {
   persistSessionActor({
     pubkey: "npub1cleanup",
     privateKeyEncrypted: encrypted.ciphertext,
-    encryption: encrypted
+    encryption: encrypted,
   });
   assert.ok(globalThis.localStorage.getItem(SESSION_ACTOR_STORAGE_KEY));
 
