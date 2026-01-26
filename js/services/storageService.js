@@ -78,6 +78,7 @@ function buildS3TestConfig(config, overrides = {}) {
     region: resolveRegion(config),
     endpoint: resolveEndpoint(config),
     forcePathStyle: resolveForcePathStyle(config),
+    publicBaseUrl: config.publicBaseUrl,
     ...overrides,
   };
 }

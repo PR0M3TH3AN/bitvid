@@ -14,6 +14,7 @@ import {
   multipartUpload,
 } from "./s3-multipart.js";
 import { userLogger } from "../utils/logger.js";
+import { buildPublicUrl } from "../r2.js";
 
 export async function testS3Connection(config) {
   if (!config) {
@@ -82,7 +83,32 @@ export async function testS3Connection(config) {
       );
       userLogger.info("[Storage Test] File retrieval successful.");
 
-      // 3. Delete
+      // 3. Public URL check
+      let warnings = [];
+      if (config.publicBaseUrl) {
+        userLogger.info(`[Storage Test] Verifying public access via ${config.publicBaseUrl}...`);
+        const publicUrl = buildPublicUrl(config.publicBaseUrl, testKey);
+        try {
+          const response = await fetch(publicUrl, { method: "HEAD", cache: "no-cache" });
+          if (response.ok) {
+            userLogger.info("[Storage Test] Public access confirmed.");
+          } else {
+            const msg = `[Storage Test] WARNING: Public access failed (HTTP ${response.status}). Check your Public URL and CORS settings.`;
+            userLogger.warn(msg);
+            warnings.push(msg);
+          }
+        } catch (fetchErr) {
+          const msg = `[Storage Test] WARNING: Public access check failed: ${fetchErr.message}. Check CORS.`;
+          userLogger.warn(msg);
+          warnings.push(msg);
+        }
+      } else {
+        const msg = "[Storage Test] WARNING: Public Bucket URL is missing. Uploads will fail until this is configured.";
+        userLogger.warn(msg);
+        warnings.push(msg);
+      }
+
+      // 4. Delete
       userLogger.info(`[Storage Test] Cleaning up temporary file "${testKey}"...`);
       await s3.send(
         new DeleteObjectCommand({
@@ -92,9 +118,10 @@ export async function testS3Connection(config) {
       );
       userLogger.info("[Storage Test] Cleanup successful.");
 
+      const successMessage = `Connection verified! Successfully uploaded, retrieved, and deleted test file in "${config.bucket}".`;
       return {
         success: true,
-        message: `Connection verified! Successfully uploaded, retrieved, and deleted test file in "${config.bucket}".`,
+        message: warnings.length ? `${successMessage} ${warnings.join(" ")}` : successMessage,
       };
     } catch (error) {
       userLogger.error("[Storage Test] Operation failed:", error);
