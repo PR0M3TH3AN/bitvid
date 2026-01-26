@@ -355,6 +355,7 @@ class S3UploadService {
         description: metadata?.description ?? "",
         ws: generatedWs || (metadata?.ws ?? ""),
         xs: torrentUrl || (metadata?.xs ?? ""),
+        infoHash: hasValidInfoHash ? normalizedInfoHash : "",
         enableComments: metadata?.enableComments,
         isNsfw: metadata?.isNsfw,
         isForKids: metadata?.isForKids,

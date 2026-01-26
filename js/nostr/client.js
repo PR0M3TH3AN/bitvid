@@ -21,6 +21,7 @@ import { isDevMode } from "../config.js";
 import { FEATURE_PUBLISH_NIP71 } from "../constants.js";
 import { accessControl } from "../accessControl.js";
 import { bytesToHex, sha256 } from "../../vendor/crypto-helpers.bundle.min.js";
+import { infoHashFromMagnet } from "../magnets.js";
 // 🔧 merged conflicting changes from codex/update-video-publishing-and-parsing-logic vs unstable
 import {
   buildNip71MetadataTags,
@@ -5415,6 +5416,20 @@ export class NostrClient {
       typeof videoData.ws === "string" ? videoData.ws.trim() : "";
     const finalXs =
       typeof videoData.xs === "string" ? videoData.xs.trim() : "";
+    const infoHashCandidates = [videoData.infoHash];
+    let infoHash = "";
+    for (const candidate of infoHashCandidates) {
+      const normalized = infoHashFromMagnet(candidate);
+      if (normalized) {
+        infoHash = normalized;
+        break;
+      }
+    }
+    if (!infoHash && finalMagnet) {
+      infoHash = infoHashFromMagnet(finalMagnet) || "";
+    }
+    const fileSha256 = normalizeHexHash(videoData.fileSha256);
+    const originalFileSha256 = normalizeHexHash(videoData.originalFileSha256);
 
     const contentObject = {
       version: 3,
@@ -5431,6 +5446,18 @@ export class NostrClient {
       isForKids: finalIsForKids,
       enableComments: finalEnableComments,
     };
+
+    if (infoHash) {
+      contentObject.infoHash = infoHash;
+    }
+
+    if (fileSha256) {
+      contentObject.fileSha256 = fileSha256;
+    }
+
+    if (originalFileSha256) {
+      contentObject.originalFileSha256 = originalFileSha256;
+    }
 
     if (finalWs) {
       contentObject.ws = finalWs;
@@ -5805,6 +5832,19 @@ export class NostrClient {
           ? false
           : true;
 
+    const updatedInfoHash = infoHashFromMagnet(updatedData?.infoHash || "");
+    let infoHash =
+      updatedInfoHash ||
+      infoHashFromMagnet(finalMagnet) ||
+      infoHashFromMagnet(baseEvent.infoHash) ||
+      "";
+    const fileSha256 =
+      normalizeHexHash(updatedData?.fileSha256) ||
+      normalizeHexHash(baseEvent.fileSha256);
+    const originalFileSha256 =
+      normalizeHexHash(updatedData?.originalFileSha256) ||
+      normalizeHexHash(baseEvent.originalFileSha256);
+
     // Use the existing videoRootId (or fall back to the base event's ID)
     const oldRootId = baseEvent.videoRootId || baseEvent.id;
 
@@ -5836,6 +5876,18 @@ export class NostrClient {
       mode: updatedData.mode ?? baseEvent.mode ?? "live",
       enableComments: finalEnableComments,
     };
+
+    if (infoHash) {
+      contentObject.infoHash = infoHash;
+    }
+
+    if (fileSha256) {
+      contentObject.fileSha256 = fileSha256;
+    }
+
+    if (originalFileSha256) {
+      contentObject.originalFileSha256 = originalFileSha256;
+    }
 
     if (finalWs) {
       contentObject.ws = finalWs;

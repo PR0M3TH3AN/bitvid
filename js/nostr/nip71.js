@@ -1403,6 +1403,17 @@ export function convertEventToVideo(event = {}) {
   const enableComments =
     parsedContent.enableComments === false ? false : true;
 
+  const normalizeSha256 = (candidate) => {
+    if (typeof candidate !== "string") {
+      return "";
+    }
+    const normalized = candidate.trim().toLowerCase();
+    if (!normalized) {
+      return "";
+    }
+    return /^[0-9a-f]{64}$/.test(normalized) ? normalized : "";
+  };
+
   let infoHash = "";
   const pushInfoHash = (candidate) => {
     if (typeof candidate !== "string") {
@@ -1417,6 +1428,8 @@ export function convertEventToVideo(event = {}) {
   };
 
   pushInfoHash(parsedContent.infoHash);
+  const fileSha256 = normalizeSha256(parsedContent.fileSha256);
+  const originalFileSha256 = normalizeSha256(parsedContent.originalFileSha256);
 
   if (!infoHash && magnet) {
     const match = magnet.match(/xt=urn:btih:([0-9a-z]+)/i);
@@ -1476,6 +1489,8 @@ export function convertEventToVideo(event = {}) {
     magnet,
     rawMagnet,
     infoHash,
+    fileSha256,
+    originalFileSha256,
     thumbnail,
     description,
     mode,
