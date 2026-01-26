@@ -16,6 +16,7 @@ export const NOTE_TYPES = Object.freeze({
   NIP71_VIDEO: "nip71Video",
   NIP71_SHORT_VIDEO: "nip71ShortVideo",
   REPOST: "repost",
+  GENERIC_REPOST: "genericRepost",
   SHARE: "share",
   RELAY_LIST: "relayList",
   VIEW_EVENT: "viewEvent",
@@ -301,6 +302,15 @@ const BASE_SCHEMAS = {
     type: NOTE_TYPES.REPOST,
     label: "NIP-18 repost",
     kind: 6,
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      description: "Content field contains the JSON-serialized event being reposted (or empty if unavailable).",
+    },
+  },
+  [NOTE_TYPES.GENERIC_REPOST]: {
+    type: NOTE_TYPES.GENERIC_REPOST,
+    label: "Generic repost",
+    kind: 16,
     appendTags: DEFAULT_APPEND_TAGS,
     content: {
       description: "Content field contains the JSON-serialized event being reposted (or empty if unavailable).",
@@ -1172,7 +1182,8 @@ export function buildRepostEvent(params) {
   };
 
   if (isDevMode) {
-    validateEventAgainstSchema(NOTE_TYPES.REPOST, event);
+    const type = event.kind === 16 ? NOTE_TYPES.GENERIC_REPOST : NOTE_TYPES.REPOST;
+    validateEventAgainstSchema(type, event);
   }
 
   return event;
