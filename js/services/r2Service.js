@@ -844,6 +844,11 @@ class R2Service {
     this.updateCloudflareProgress(0);
     this.setCloudflareUploading(true);
 
+    const normalizedInfoHash = normalizeInfoHash(infoHash);
+    const keyIdentifier = isValidInfoHash(normalizedInfoHash)
+      ? normalizedInfoHash
+      : "";
+
     let bucketResult = null;
     try {
       bucketResult = await this.ensureBucketConfigForNpub(npub, {
@@ -880,7 +885,7 @@ class R2Service {
     this.setCloudflareUploadStatus(statusMessage, "info");
 
     // Use forced keys if provided, otherwise generate them
-    const key = forcedVideoKey || buildR2Key(npub, file);
+    const key = forcedVideoKey || buildR2Key(npub, file, keyIdentifier);
     const publicUrl = forcedVideoUrl || buildPublicUrl(bucketEntry.publicBaseUrl, key);
 
     const buildTorrentKey = () => {
@@ -978,7 +983,6 @@ class R2Service {
         // - `xs` (eXact Source): The URL to the .torrent file on R2. This allows
         //   clients to fetch metadata (file structure, piece hashes) instantly via HTTP
         //   instead of waiting to fetch it from the DHT (which can take minutes).
-        const normalizedInfoHash = normalizeInfoHash(infoHash);
         const hasValidInfoHash = isValidInfoHash(normalizedInfoHash);
         let generatedMagnet = "";
         let generatedWs = "";
