@@ -475,7 +475,8 @@ class R2Service {
 
     // We no longer support automated bucket creation or domain management via API token.
     // We assume the user has created the bucket with the correct name and configured the public domain.
-    const bucketName = settings.bucket || sanitizeBucketName(npub);
+    const bucketName =
+      settings.bucket || settings.meta?.bucket || sanitizeBucketName(npub);
 
     // We attempt to ensure the bucket exists and CORS is set up using the S3 keys if possible.
     if (accessKeyId && secretAccessKey) {
@@ -574,7 +575,8 @@ class R2Service {
       return { success: false, error: "Incomplete credentials or missing public URL." };
     }
 
-    const bucketName = sanitizeBucketName(npub);
+    const bucketName =
+      settings.bucket || settings.meta?.bucket || sanitizeBucketName(npub);
     const verifyKey = `.verify-${Date.now()}-${Math.random().toString(36).substring(7)}.txt`;
     const verifyContent = "bitvid-verification";
     const publicUrl = buildPublicUrl(baseDomain, verifyKey);
