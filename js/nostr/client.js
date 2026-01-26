@@ -3534,7 +3534,7 @@ export class NostrClient {
 
     const normalizedRelays = sanitizeRelayList(this.getHealthyRelays(relaysToUse));
     const results = [];
-    const concurrencyLimit = 4;
+    const concurrencyLimit = 8;
 
     // We'll use the pool's list method if fetchFn isn't provided,
     // but we need to call it per-relay.
@@ -3594,7 +3594,13 @@ export class NostrClient {
         }
 
         try {
-          let events = await actualFetchFn(relayUrl, filter);
+          // Wrap fetch with a timeout to prevent hanging on slow relays
+          let events = await withRequestTimeout(
+            actualFetchFn(relayUrl, filter),
+            6000,
+            null,
+            `Fetch from ${relayUrl} timed out`
+          );
 
           // If incremental returned empty, we assume no updates (success).
           // But if we did a full fetch (no since), empty means empty.
@@ -3624,7 +3630,12 @@ export class NostrClient {
           if (!doFullFetch) {
             try {
               delete filter.since;
-              const events = await actualFetchFn(relayUrl, filter);
+              const events = await withRequestTimeout(
+                actualFetchFn(relayUrl, filter),
+                6000,
+                null,
+                `Full fetch fallback from ${relayUrl} timed out`
+              );
               // Update lastSeen on success of fallback
               let maxCreated = 0;
               if (Array.isArray(events)) {
@@ -4028,170 +4039,6 @@ export class NostrClient {
       return source;
     }
     return source.filter((url) => !this.unreachableRelays.has(url));
-  }
-
-  /**
-   * Authenticates the user via a NIP-07 browser extension (e.g., Alby, nos2x).
-   *
-   * **Process:**
-   * 1. Checks for `window.nostr` presence.
-   * 2. Requests permissions (sign_event, nip04, etc.) via `ensureExtensionPermissions`.
-   * 3. Retrieves the public key.
-   * 4. Validates access control (whitelist/blacklist) via `accessControl`.
-   * 5. Sets the active signer to a `Nip07Adapter`.
-   *
-   * @param {object} [options]
-   * @param {boolean} [options.allowAccountSelection=false] - Whether to prompt the extension to select an account (NIP-07 extension).
-   * @param {string} [options.expectPubkey] - Enforce that the login matches a specific pubkey.
-   * @returns {Promise<string>} The authenticated public key (hex).
-   * @throws {Error} If extension is missing, permissions denied, or account blocked.
-   */
-  async login(options = {}) {
-    try {
-      let extension = null;
-      let attempts = 0;
-      const maxAttempts = 3;
-
-      while (!extension && attempts < maxAttempts) {
-        try {
-          await waitForNip07Extension();
-          extension = window.nostr;
-        } catch (waitError) {
-          devLogger.log(
-            `Timed out waiting for extension injection (attempt ${
-              attempts + 1
-            }/${maxAttempts}):`,
-            waitError,
-          );
-        }
-
-        if (extension) {
-          break;
-        }
-
-        attempts++;
-        if (attempts < maxAttempts) {
-          devLogger.log("Retrying NIP-07 detection...");
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-        }
-      }
-
-      extension = window.nostr;
-
-      if (!extension) {
-        devLogger.log("No Nostr extension found");
-        throw new Error(
-          "Please install a Nostr extension (Alby, nos2x, etc.)."
-        );
-      }
-
-      const { allowAccountSelection = false, expectPubkey } =
-        typeof options === "object" && options !== null ? options : {};
-      const normalizedExpectedPubkey =
-        typeof expectPubkey === "string" && expectPubkey.trim()
-          ? expectPubkey.trim().toLowerCase()
-          : null;
-
-      if (typeof extension.getPublicKey !== "function") {
-        throw new Error(
-          "This NIP-07 extension is missing getPublicKey support. Please update the extension."
-        );
-      }
-
-      const permissionResult = await this.ensureExtensionPermissions(
-        DEFAULT_NIP07_PERMISSION_METHODS,
-      );
-      if (!permissionResult.ok) {
-        const denialMessage =
-          'The NIP-07 extension reported "permission denied". Please approve the prompt and try again.';
-        const denialError = new Error(denialMessage);
-        if (permissionResult.error) {
-          denialError.cause = permissionResult.error;
-        }
-        throw denialError;
-      }
-
-      if (allowAccountSelection && typeof extension.selectAccounts === "function") {
-        try {
-          const selection = await runNip07WithRetry(
-            () => extension.selectAccounts(expectPubkey ? [expectPubkey] : undefined),
-            { label: "extension.selectAccounts" }
-          );
-
-          const didCancelSelection =
-            selection === undefined ||
-            selection === null ||
-            selection === false ||
-            (Array.isArray(selection) && selection.length === 0);
-
-          if (didCancelSelection) {
-            throw new Error("Account selection was cancelled.");
-          }
-        } catch (selectionErr) {
-          const message =
-            selectionErr && typeof selectionErr.message === "string"
-              ? selectionErr.message
-              : "Account selection was cancelled.";
-          throw new Error(message);
-        }
-      }
-      const pubkey = await runNip07WithRetry(() => extension.getPublicKey(), {
-        label: "extension.getPublicKey",
-      });
-      if (!pubkey || typeof pubkey !== "string") {
-        throw new Error(
-          "The NIP-07 extension did not return a public key. Please try again."
-        );
-      }
-
-      if (
-        normalizedExpectedPubkey &&
-        pubkey.toLowerCase() !== normalizedExpectedPubkey
-      ) {
-        throw new Error(
-          "The selected account doesn't match the expected profile. Please try again."
-        );
-      }
-      const nip19Tools = await ensureNostrTools();
-      const npubEncode = nip19Tools?.nip19?.npubEncode;
-      if (typeof npubEncode !== "function") {
-        throw new Error("NostrTools nip19 encoder is unavailable.");
-      }
-      const npub = npubEncode(pubkey);
-
-      devLogger.log("Got pubkey:", pubkey);
-              devLogger.log("Converted to npub:", npub);
-              devLogger.log("Whitelist:", accessControl.getWhitelist());
-              devLogger.log("Blacklist:", accessControl.getBlacklist());
-      // Access control
-      if (!accessControl.canAccess(npub)) {
-        if (accessControl.isBlacklisted(npub)) {
-          throw new Error("Your account has been blocked on this platform.");
-        } else {
-          throw new Error("Access restricted to admins and moderators users only.");
-        }
-      }
-      this.pubkey = pubkey;
-      devLogger.log("Logged in with extension. Pubkey:", this.pubkey);
-
-      const adapter = await createNip07Adapter(extension);
-      adapter.pubkey = pubkey;
-      setActiveSigner(adapter);
-
-      const postLoginPermissions = await this.ensureExtensionPermissions(
-        DEFAULT_NIP07_PERMISSION_METHODS,
-      );
-      if (!postLoginPermissions.ok && postLoginPermissions.error) {
-        userLogger.warn(
-          "[nostr] Extension permissions were not fully granted after login:",
-          postLoginPermissions.error,
-        );
-      }
-      return this.pubkey;
-    } catch (err) {
-      userLogger.error("Login error:", err);
-      throw err;
-    }
   }
 
   /**
