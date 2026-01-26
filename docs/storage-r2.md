@@ -33,11 +33,13 @@ To enable R2 uploads, you must provide Cloudflare S3-compatible credentials and 
 ### Step 1: Create Bucket & Enable Public Access
 1.  Log in to the **Cloudflare Dashboard**.
 2.  Navigate to **R2** -> **Create Bucket**.
-3.  In the bucket settings, enable **Public Access** (R2.dev subdomain) or connect a custom domain.
-4.  Copy the **Public Bucket URL** (e.g., `https://pub-xxxxxx.r2.dev`).
+3.  **Use the exact bucket name derived by the app.** bitvid derives the bucket name from your npub (sanitized), and the bucket configured in Cloudflare **must exactly match** what the app expects. If the app logs show `bucketName: 'npub1qxduthz4p8v5zsu-ftrlaz'`, create/configure that exact bucket name in Cloudflare and paste it into the dashboard before moving on.
+4.  In the bucket settings, enable **Public Access** (R2.dev subdomain) or connect a custom domain.
+5.  Copy the **Public Bucket URL** (e.g., `https://pub-xxxxxx.r2.dev`).
 
 ### Step 2: Configure CORS
 Manually add a CORS policy in the bucket settings to allow uploads from your app's origin (or `*`).
+(CORS must be configured on the **S3 API endpoint bucket**, not the public URL domain.)
 (See `content/upload-content.md` for the recommended JSON configuration).
 
 ### Step 3: Create S3 Credentials
