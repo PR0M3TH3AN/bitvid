@@ -523,7 +523,7 @@ export class UploadModal {
           // 1. Compute Identifier (Info Hash / Fingerprint) before generating keys
           const identifier = await this.resolveUploadIdentifier(file);
 
-          if (this.videoUploadId !== currentUploadId) return;
+          if (this.videoUploadId !== currentUploadId) return; // Zombie guard
 
           // 2. Prepare Upload (Get Creds & Bucket)
           const pubkey = this.getCurrentPubkey();
@@ -534,7 +534,7 @@ export class UploadModal {
 
           const { settings, bucketEntry } = await service.prepareUpload(npub, { credentials: this.activeCredentials });
 
-          if (this.videoUploadId !== currentUploadId) return;
+          if (this.videoUploadId !== currentUploadId) return; // Zombie guard
 
           // 3. Determine Keys
           const videoKey = buildR2Key(npub, file, identifier);
@@ -593,7 +593,7 @@ export class UploadModal {
 
           const [uploadResult, torrentResult] = await Promise.all([uploadPromise, torrentPromise]);
 
-          if (this.videoUploadId !== currentUploadId) return;
+          if (this.videoUploadId !== currentUploadId) return; // Zombie guard
 
           // Video Complete
           this.videoUploadState.status = 'complete';
@@ -651,7 +651,7 @@ export class UploadModal {
                   createBucketIfMissing: true,
               });
 
-              if (this.videoUploadId !== currentUploadId) return;
+              if (this.videoUploadId !== currentUploadId) return; // Zombie guard
 
               this.torrentState.status = 'complete';
               this.torrentState.infoHash = torrentResult.infoHash;
@@ -678,7 +678,7 @@ export class UploadModal {
           }
 
       } catch (err) {
-          if (this.videoUploadId !== currentUploadId) return;
+          if (this.videoUploadId !== currentUploadId) return; // Zombie guard
 
           userLogger.error("Video upload sequence failed:", err);
           this.videoUploadState.status = 'error';
