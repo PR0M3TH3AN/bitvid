@@ -1,0 +1,75 @@
+name: Daily Design System Audit
+
+on:
+  schedule:
+    - cron: '0 9 * * *' # Run daily at 09:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  audit:
+    name: Audit Design System
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout unstable branch
+        uses: actions/checkout@v4
+        with:
+          ref: unstable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Verify gh CLI availability
+        run: gh --version
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Design System Audit (with fix)
+        id: audit
+        run: node scripts/daily-design-system-audit.mjs --fix
+        continue-on-error: true
+
+      - name: Check for changes
+        id: git-check
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "changes=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Pull Request
+        if: steps.git-check.outputs.changes == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "ds-audit/$(date +%Y-%m-%d)"
+          git add .
+          git commit -m "chore: Apply daily design system remediation"
+          git push origin HEAD
+          gh pr create \
+            --title "Daily Design System Remediation" \
+            --body-file REMEDIATION_REPORT.md \
+            --base unstable \
+            --head "ds-audit/$(date +%Y-%m-%d)" \
+            --label "design-system"
+
+      - name: Create Issue on Failure (No Fixes)
+        if: steps.audit.outcome == 'failure' && steps.git-check.outputs.changes == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --title "⚠️ Design System Violations Detected" \
+            --body-file REMEDIATION_REPORT.md \
+            --label "design-system"
