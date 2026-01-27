@@ -3643,7 +3643,7 @@ export class NostrClient {
           // Wrap fetch with a timeout to prevent hanging on slow relays
           let events = await withRequestTimeout(
             actualFetchFn(relayUrl, filter),
-            6000,
+            4000,
             null,
             `Fetch from ${relayUrl} timed out`
           );
@@ -3678,7 +3678,7 @@ export class NostrClient {
               delete filter.since;
               const events = await withRequestTimeout(
                 actualFetchFn(relayUrl, filter),
-                6000,
+                4000,
                 null,
                 `Full fetch fallback from ${relayUrl} timed out`
               );

@@ -467,7 +467,20 @@ class SubscriptionsManager {
         return;
       }
 
-      const decryptResult = await this.decryptSubscriptionEvent(newest, userPubkey);
+      let decryptResult;
+      try {
+        const decryptPromise = this.decryptSubscriptionEvent(newest, userPubkey);
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(
+            () => reject(new Error("Decryption timed out after 15s")),
+            15000,
+          ),
+        );
+        decryptResult = await Promise.race([decryptPromise, timeoutPromise]);
+      } catch (error) {
+        decryptResult = { ok: false, error };
+      }
+
       if (!decryptResult.ok) {
         userLogger.error(
           "[SubscriptionsManager] Failed to decrypt subscription list:",
