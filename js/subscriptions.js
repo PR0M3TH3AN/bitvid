@@ -480,19 +480,49 @@ class SubscriptionsManager {
         timeoutMs: 12000,
       });
 
-      // Also check session actor if different?
-      // The original code checked both userPubkey and sessionActor.pubkey.
-      // fetchListIncrementally takes a single pubkey.
-      // If we want to check session actor too, we need another call.
-      // However, usually the subscription list belongs to the logged in user (userPubkey).
-      // The session actor logic in original code:
-      // const sessionActorPubkey = normalizeHexPubkey(nostrClient?.sessionActor?.pubkey);
-      // ... authors: [normalizedUserPubkey, sessionActorPubkey]
-      // Since fetchListIncrementally filters by author=pubkey, we only query for normalizedUserPubkey here.
-      // If session actor support is critical for some delegation case, it needs a separate fetch.
-      // Assuming userPubkey is the primary target for subscriptions.
+      const normalizedSessionActorPubkey = normalizeNostrPubkey(
+        nostrClient?.sessionActor?.pubkey,
+      );
+      const shouldFetchSessionActor =
+        normalizedSessionActorPubkey &&
+        normalizedSessionActorPubkey !== normalizedUserPubkey;
+      if (shouldFetchSessionActor) {
+        const sessionCachedSnapshot = parseCachedSubscriptionSnapshot(
+          profileCache.getProfileData(
+            normalizedSessionActorPubkey,
+            "subscriptions",
+          ),
+        );
+        const shouldForceSessionFetch = !sessionCachedSnapshot.hasSnapshot;
+        const sessionEvents = await nostrClient.fetchListIncrementally({
+          kind: SUBSCRIPTION_SET_KIND,
+          pubkey: normalizedSessionActorPubkey,
+          dTag: SUBSCRIPTION_LIST_IDENTIFIER,
+          relayUrls,
+          since: shouldForceSessionFetch ? 0 : undefined,
+          timeoutMs: 12000,
+        });
+        if (sessionEvents.length) {
+          events = events.concat(sessionEvents);
+        }
+      }
 
-      if (!events.length) {
+      const mergedEvents = [];
+      if (events.length) {
+        const deduped = new Map();
+        for (const event of events) {
+          if (!event || typeof event !== "object" || !event.id) {
+            continue;
+          }
+          const existing = deduped.get(event.id);
+          if (!existing || (event.created_at ?? 0) > (existing.created_at ?? 0)) {
+            deduped.set(event.id, event);
+          }
+        }
+        mergedEvents.push(...deduped.values());
+      }
+
+      if (!mergedEvents.length) {
         if (!this.loaded) {
           // If we have nothing loaded and found nothing, maybe user has no list.
           // But we shouldn't wipe blindly if incremental fetch just returned no *new* events.
@@ -516,8 +546,8 @@ class SubscriptionsManager {
       }
 
       // Sort by created_at desc, pick newest
-      events.sort((a, b) => b.created_at - a.created_at);
-      const newest = events[0];
+      mergedEvents.sort((a, b) => b.created_at - a.created_at);
+      const newest = mergedEvents[0];
 
       // Any event returned here is effectively "new information" (or re-fetched full state).
       // fetchListIncrementally already handles the "newer than last sync" logic per relay,
