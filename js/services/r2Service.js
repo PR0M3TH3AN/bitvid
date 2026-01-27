@@ -39,6 +39,10 @@ import { ensureS3SdkLoaded, makeS3Client } from "../storage/s3-client.js";
 import { truncateMiddle } from "../utils/formatters.js";
 import { userLogger, devLogger } from "../utils/logger.js";
 import {
+  buildStoragePointerValue,
+  buildStoragePrefixFromKey,
+} from "../utils/storagePointer.js";
+import {
   getVideoNoteErrorMessage,
   normalizeVideoNotePayload,
   VIDEO_NOTE_ERROR_CODES,
@@ -1033,12 +1037,22 @@ class R2Service {
           );
         }
 
+        const storagePrefix = buildStoragePrefixFromKey({
+          publicBaseUrl: bucketEntry.publicBaseUrl,
+          key,
+        });
+        const storagePointer = buildStoragePointerValue({
+          provider: "r2",
+          prefix: storagePrefix,
+        });
+
         const rawVideoPayload = {
           title,
           url: publicUrl, // Primary URL
           magnet: generatedMagnet || (metadata?.magnet ?? ""),
           thumbnail: metadata?.thumbnail ?? "",
           description: metadata?.description ?? "",
+          storagePointer,
           ws: generatedWs || (metadata?.ws ?? ""),
           xs: torrentUrl || (metadata?.xs ?? ""),
           infoHash: hasValidInfoHash ? normalizedInfoHash : "",

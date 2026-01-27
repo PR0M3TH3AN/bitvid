@@ -9,6 +9,10 @@ import {
 } from "./s3Service.js";
 import { userLogger } from "../utils/logger.js";
 import {
+  buildStoragePointerValue,
+  buildStoragePrefixFromKey,
+} from "../utils/storagePointer.js";
+import {
   getVideoNoteErrorMessage,
   normalizeVideoNotePayload,
   VIDEO_NOTE_ERROR_CODES,
@@ -370,12 +374,22 @@ class S3UploadService {
         );
       }
 
+      const storagePrefix = buildStoragePrefixFromKey({
+        publicBaseUrl: normalized.publicBaseUrl,
+        key,
+      });
+      const storagePointer = buildStoragePointerValue({
+        provider: "s3",
+        prefix: storagePrefix,
+      });
+
       const rawVideoPayload = {
         title,
         url: publicUrl,
         magnet: generatedMagnet || (metadata?.magnet ?? ""),
         thumbnail: metadata?.thumbnail ?? "",
         description: metadata?.description ?? "",
+        storagePointer,
         ws: generatedWs || (metadata?.ws ?? ""),
         xs: torrentUrl || (metadata?.xs ?? ""),
         infoHash: hasValidInfoHash ? normalizedInfoHash : "",

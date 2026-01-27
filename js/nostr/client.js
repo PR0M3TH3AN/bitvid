@@ -37,6 +37,12 @@ import {
   stringFromInput,
 } from "./nip71.js";
 import {
+  buildStoragePointerValue,
+  deriveStoragePointerFromUrl,
+  getStoragePointerFromTags,
+  normalizeStoragePointer,
+} from "../utils/storagePointer.js";
+import {
   createWatchHistoryManager,
   normalizePointerInput,
   pointerKey,
@@ -816,6 +822,40 @@ function normalizeHexHash(candidate) {
     return "";
   }
   return HEX64_REGEX.test(trimmed) ? trimmed : "";
+}
+
+function resolveStoragePointerValue({
+  storagePointer,
+  url,
+  infoHash,
+  fallbackId,
+  provider,
+} = {}) {
+  const normalized = normalizeStoragePointer(storagePointer);
+  if (normalized) {
+    return normalized;
+  }
+
+  const derivedFromUrl = deriveStoragePointerFromUrl(url, provider || "url");
+  if (derivedFromUrl) {
+    return derivedFromUrl;
+  }
+
+  if (typeof infoHash === "string" && infoHash.trim()) {
+    return buildStoragePointerValue({
+      provider: "btih",
+      prefix: infoHash.trim().toLowerCase(),
+    });
+  }
+
+  if (typeof fallbackId === "string" && fallbackId.trim()) {
+    return buildStoragePointerValue({
+      provider: "nostr",
+      prefix: fallbackId.trim(),
+    });
+  }
+
+  return "";
 }
 
 const BlobConstructor = typeof Blob !== "undefined" ? Blob : null;
@@ -5365,6 +5405,13 @@ export class NostrClient {
     }
     const fileSha256 = normalizeHexHash(videoData.fileSha256);
     const originalFileSha256 = normalizeHexHash(videoData.originalFileSha256);
+    const storagePointer = resolveStoragePointerValue({
+      storagePointer: videoData.storagePointer,
+      url: finalUrl,
+      infoHash,
+      fallbackId: videoRootId,
+      provider: videoData.storageProvider,
+    });
 
     const contentObject = {
       version: 3,
@@ -5406,12 +5453,15 @@ export class NostrClient {
       nip71Metadata && typeof nip71Metadata === "object" ? nip71Metadata : null
     );
 
+    const additionalTags = storagePointer
+      ? [["s", storagePointer], ...nip71Tags]
+      : nip71Tags;
     const event = buildVideoPostEvent({
       pubkey: normalizedPubkey,
       created_at: createdAt,
       dTagValue,
       content: contentObject,
-      additionalTags: nip71Tags,
+      additionalTags,
     });
 
     devLogger.log("Publish event with series identifier:", videoRootId);
@@ -5782,6 +5832,16 @@ export class NostrClient {
 
     // Use the existing videoRootId (or fall back to the base event's ID)
     const oldRootId = baseEvent.videoRootId || baseEvent.id;
+    const storagePointer = resolveStoragePointerValue({
+      storagePointer:
+        updatedData?.storagePointer ||
+        baseEvent.storagePointer ||
+        getStoragePointerFromTags(baseEvent.tags),
+      url: finalUrl,
+      infoHash,
+      fallbackId: oldRootId,
+      provider: updatedData?.storageProvider || baseEvent.storageProvider,
+    });
 
     const preservedDTag = this.resolveEventDTag(baseEvent, originalEventStub);
     const fallbackDTag =
@@ -5847,12 +5907,15 @@ export class NostrClient {
 
     const nip71Tags = buildNip71MetadataTags(metadataForTags);
 
+    const additionalTags = storagePointer
+      ? [["s", storagePointer], ...nip71Tags]
+      : nip71Tags;
     const event = buildVideoPostEvent({
       pubkey: userPubkeyLower,
       created_at: Math.floor(Date.now() / 1000),
       dTagValue: finalDTagValue,
       content: contentObject,
-      additionalTags: nip71Tags,
+      additionalTags,
     });
 
     devLogger.log("Creating edited event with root ID:", oldRootId);
@@ -6022,11 +6085,19 @@ export class NostrClient {
       mode: oldContent.mode || "live",
     };
 
+    const storagePointer = resolveStoragePointerValue({
+      storagePointer: getStoragePointerFromTags(baseEvent.tags),
+      url: oldContent.url,
+      infoHash: oldContent.infoHash,
+      fallbackId: finalRootId,
+    });
+    const additionalTags = storagePointer ? [["s", storagePointer]] : [];
     const event = buildVideoPostEvent({
       pubkey,
       created_at: Math.floor(Date.now() / 1000),
       dTagValue: stableDTag,
       content: contentObject,
+      additionalTags,
     });
 
     await this.ensureActiveSignerForPubkey(pubkey);

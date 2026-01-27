@@ -1,6 +1,10 @@
 import { extractMagnetHints } from "../magnetShared.js";
 import { normalizeAndAugmentMagnet } from "../magnetUtils.js";
 import { infoHashFromMagnet } from "../magnets.js";
+import {
+  deriveStoragePointerFromUrl,
+  normalizeStoragePointer,
+} from "../utils/storagePointer.js";
 
 export const VIDEO_NOTE_ERROR_CODES = {
   MISSING_TITLE: "missing_title",
@@ -340,6 +344,12 @@ export function normalizeVideoNotePayload(input) {
   const description = normalizeString(legacyPayload?.description || "");
   const ws = normalizeString(legacyPayload?.ws || "");
   const xs = normalizeString(legacyPayload?.xs || "");
+  const storagePointer = normalizeStoragePointer(
+    legacyPayload?.storagePointer || legacyPayload?.storage || ""
+  );
+  const storageProvider = normalizeString(
+    legacyPayload?.storageProvider || ""
+  );
   const infoHash = normalizeInfoHash(legacyPayload?.infoHash || "");
   const fileSha256 = normalizeSha256Hex(legacyPayload?.fileSha256 || "");
   const originalFileSha256 = normalizeSha256Hex(
@@ -424,6 +434,16 @@ export function normalizeVideoNotePayload(input) {
   } else {
     legacyFormData.ws = "";
     legacyFormData.xs = "";
+  }
+
+  const derivedStoragePointer =
+    storagePointer ||
+    deriveStoragePointerFromUrl(
+      legacyFormData.url,
+      storageProvider || "url"
+    );
+  if (derivedStoragePointer) {
+    legacyFormData.storagePointer = derivedStoragePointer;
   }
 
   const derivedInfoHash =
