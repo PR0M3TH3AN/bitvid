@@ -235,12 +235,13 @@ async function main() {
       console.error('Error posting comment:', e);
     }
 
-  } else {
-    console.log('Not in CI or missing tokens. Printing report to stdout:');
-    console.log('---------------------------------------------------');
-    console.log(commentBody);
-    console.log('---------------------------------------------------');
   }
+
+  // Always print the report to stdout so it's visible in logs (especially if posting fails or for debugging)
+  console.log('---------------------------------------------------');
+  console.log('PR Review Report:');
+  console.log(commentBody);
+  console.log('---------------------------------------------------');
 
     if (hasFailures) {
       process.exit(1);
