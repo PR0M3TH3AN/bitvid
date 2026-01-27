@@ -1,5 +1,5 @@
 import { deriveTitleFromEvent } from "../videoEventUtils.js";
-import { extractMagnetHints } from "../magnetShared.js";
+import { extractBtihFromMagnet, extractMagnetHints } from "../magnetShared.js";
 import { devLogger } from "../utils/logger.js";
 import { getCachedNostrTools } from "./toolkit.js";
 
@@ -1432,9 +1432,9 @@ export function convertEventToVideo(event = {}) {
   const originalFileSha256 = normalizeSha256(parsedContent.originalFileSha256);
 
   if (!infoHash && magnet) {
-    const match = magnet.match(/xt=urn:btih:([0-9a-z]+)/i);
-    if (match && match[1]) {
-      pushInfoHash(match[1]);
+    const extracted = extractBtihFromMagnet(magnet);
+    if (extracted) {
+      infoHash = extracted;
     }
   }
 

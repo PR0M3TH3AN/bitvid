@@ -6,13 +6,17 @@ import {
   ensureTrackers,
   ensureTorrentHint,
   ensureWebSeeds,
+  extractBtihFromMagnet as sharedExtractBtihFromMagnet,
   normalizeMagnetInput,
+  normalizeInfoHash as sharedNormalizeInfoHash,
   resolveAppProtocol,
   safeDecodeMagnet as sharedSafeDecodeMagnet,
 } from "./magnetShared.js";
 
 export { WSS_TRACKERS };
 export const safeDecodeMagnet = sharedSafeDecodeMagnet;
+export const extractBtihFromMagnet = sharedExtractBtihFromMagnet;
+export const normalizeInfoHash = sharedNormalizeInfoHash;
 
 export function normalizeAndAugmentMagnet(
   rawValue,
