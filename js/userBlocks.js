@@ -1011,9 +1011,20 @@ class UserBlockListManager {
         let decryptionError = null;
 
         try {
-          const [muteList, blockList] = await Promise.all([
+          const decryptPromise = Promise.all([
             decryptEvent(newestMute),
             decryptEvent(newestBlock),
+          ]);
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(
+              () => reject(new Error("Decryption timed out after 15s")),
+              15000,
+            ),
+          );
+
+          const [muteList, blockList] = await Promise.race([
+            decryptPromise,
+            timeoutPromise,
           ]);
 
           muteList.forEach((pk) => mergedPubkeys.add(pk));

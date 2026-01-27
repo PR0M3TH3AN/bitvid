@@ -19,7 +19,9 @@ async function retryNip07Call(operation, label) {
         throw error;
       }
       if (i < attempts - 1) {
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        const isChannelClosed = error?.message?.includes("message channel closed");
+        const delay = isChannelClosed ? 250 : 100;
+        await new Promise((resolve) => setTimeout(resolve, delay));
       }
     }
   }

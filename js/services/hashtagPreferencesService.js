@@ -588,7 +588,20 @@ class HashtagPreferencesService {
       return;
     }
 
-    const decryptResult = await this.decryptEvent(latest, normalized);
+    let decryptResult;
+    try {
+      const decryptPromise = this.decryptEvent(latest, normalized);
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(
+          () => reject(new Error("Decryption timed out after 15s")),
+          15000,
+        ),
+      );
+      decryptResult = await Promise.race([decryptPromise, timeoutPromise]);
+    } catch (error) {
+      decryptResult = { ok: false, error };
+    }
+
     if (!decryptResult.ok) {
       userLogger.warn(
         `${LOG_PREFIX} Failed to decrypt hashtag preferences`,
