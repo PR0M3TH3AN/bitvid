@@ -99,7 +99,7 @@ await (async () => {
     assert.deepEqual(
       calls,
       [...relays, ...relays],
-      "loadBlocks should initiate queries for all relays concurrently (twice, for separate kinds)"
+      "loadBlocks should initiate queries for all relays concurrently (twice, for block list and mute list)"
     );
 
     // Reverting to original test data:
@@ -1219,7 +1219,7 @@ await (async () => {
   })();
 
 await (async () => {
-  // Test: Prioritize 'd=user-blocks' tagged lists over newer plain lists
+  // Test: Merge 'd=user-blocks' tagged lists with plain lists
   const actor = "a".repeat(64);
   const taggedBlocked = "b".repeat(64);
   const plainBlocked = "c".repeat(64);
@@ -1273,7 +1273,7 @@ await (async () => {
 
     const blocked = userBlocks.getBlockedPubkeys();
     assert.ok(blocked.includes(taggedBlocked), "Should include pubkey from tagged list");
-    assert.ok(!blocked.includes(plainBlocked), "Should NOT include pubkey from plain list (fallback ignored)");
+    assert.ok(blocked.includes(plainBlocked), "Should include pubkey from plain list (merged)");
   } finally {
     relayManager.setEntries(originalRelayEntries, { allowEmpty: false, updateClient: false });
     nostrClient.relays = originalRelays;
