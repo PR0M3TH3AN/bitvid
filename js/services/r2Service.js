@@ -44,6 +44,7 @@ import {
   VIDEO_NOTE_ERROR_CODES,
 } from "./videoNotePayload.js";
 import storageService from "./storageService.js";
+import { calculateTorrentInfoHash } from "../utils/torrentHash.js";
 
 const STATUS_VARIANTS = new Set(["info", "success", "error", "warning"]);
 const INFO_HASH_PATTERN = /^[a-f0-9]{40}$/;
@@ -54,6 +55,26 @@ function normalizeInfoHash(value) {
 
 function isValidInfoHash(value) {
   return INFO_HASH_PATTERN.test(value);
+}
+
+async function resolveUploadIdentifier({ infoHash = "", file = null } = {}) {
+  const normalizedInfoHash = normalizeInfoHash(infoHash);
+  if (isValidInfoHash(normalizedInfoHash)) {
+    return normalizedInfoHash;
+  }
+  if (!file) {
+    return "";
+  }
+  try {
+    const computedHash = await calculateTorrentInfoHash(file);
+    const normalizedComputed = normalizeInfoHash(computedHash);
+    if (isValidInfoHash(normalizedComputed)) {
+      return normalizedComputed;
+    }
+  } catch (err) {
+    userLogger.warn("Failed to precompute info hash for storage key:", err);
+  }
+  return "";
 }
 
 function buildCorsGuidance({ accountId } = {}) {
@@ -844,10 +865,9 @@ class R2Service {
     this.updateCloudflareProgress(0);
     this.setCloudflareUploading(true);
 
-    const normalizedInfoHash = normalizeInfoHash(infoHash);
-    const keyIdentifier = isValidInfoHash(normalizedInfoHash)
-      ? normalizedInfoHash
-      : "";
+    const keyIdentifier = await resolveUploadIdentifier({ infoHash, file });
+    const normalizedInfoHash = normalizeInfoHash(infoHash || keyIdentifier);
+    const hasValidInfoHash = isValidInfoHash(normalizedInfoHash);
 
     let bucketResult = null;
     try {
@@ -983,7 +1003,6 @@ class R2Service {
         // - `xs` (eXact Source): The URL to the .torrent file on R2. This allows
         //   clients to fetch metadata (file structure, piece hashes) instantly via HTTP
         //   instead of waiting to fetch it from the DHT (which can take minutes).
-        const hasValidInfoHash = isValidInfoHash(normalizedInfoHash);
         let generatedMagnet = "";
         let generatedWs = "";
 
