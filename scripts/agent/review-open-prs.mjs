@@ -21,8 +21,6 @@ function getOpenPRs() {
             return [];
         }
         if (res.status !== 0) {
-            // Only log stderr if it's not just "no pull requests found" or similar non-critical output
-            // But gh usually exits 0 even if empty.
             console.error('Error fetching PRs:', res.stderr);
             return [];
         }
@@ -62,8 +60,8 @@ async function main() {
                 ...process.env,
                 PR_NUMBER: pr.number.toString(),
                 GITHUB_BASE_REF: pr.baseRefName,
-                // Assuming origin is the base repo for simplicity in this agent script
-                GITHUB_BASE_REPO_URL: '' // automated-pr-review handles missing URL by using origin
+                // Assuming origin is the base repo or gh pr checkout handled the remote setup.
+                // automated-pr-review.mjs handles missing GITHUB_BASE_REPO_URL by defaulting to upstream/origin.
             };
 
             // Run Review Script
