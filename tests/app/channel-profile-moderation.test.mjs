@@ -16,6 +16,7 @@ import { setApplication } from "../../js/applicationContext.js";
 import { normalizeVideoModerationContext } from "../../js/ui/moderationUiHelpers.js";
 import { buildModerationBadgeText } from "../../js/ui/moderationCopy.js";
 import { withMockedNostrTools, createModerationAppHarness } from "../helpers/moderation-test-helpers.mjs";
+import { waitFor } from "../test-helpers/wait-for.mjs";
 
 function setupDom(t) {
   const dom = new JSDOM(
@@ -92,8 +93,7 @@ function createVideoFixture(overrides = {}) {
   };
 }
 
-// flaky: JSDOM/CI timeout issues and potential leaks
-test.skip("renderChannelVideosFromList decorates videos before storing", async (t) => {
+test("renderChannelVideosFromList decorates videos before storing", async (t) => {
   const { document } = setupDom(t);
   withMockedNostrTools(t);
 
@@ -147,8 +147,7 @@ test.skip("renderChannelVideosFromList decorates videos before storing", async (
   assert.equal(stored.moderation.decoratedByTest, true);
 });
 
-// flaky: JSDOM/CI timeout issues and potential leaks
-test.skip("renderChannelVideosFromList applies moderation blur without existing metadata", async (t) => {
+test("renderChannelVideosFromList applies moderation blur without existing metadata", async (t) => {
   const { document } = setupDom(t);
   withMockedNostrTools(t);
 
@@ -235,8 +234,7 @@ test.skip("renderChannelVideosFromList applies moderation blur without existing 
   assert.equal(bannerEl.dataset.visualState, "blurred");
 });
 
-// flaky: JSDOM/CI timeout issues and potential leaks
-test.skip("applyChannelVisualBlur blurs banner and avatar when viewer mutes author", async (t) => {
+test("applyChannelVisualBlur blurs banner and avatar when viewer mutes author", async (t) => {
   const { document } = setupDom(t);
   withMockedNostrTools(t);
 
@@ -261,8 +259,7 @@ test.skip("applyChannelVisualBlur blurs banner and avatar when viewer mutes auth
   assert.equal(avatarEl.dataset.visualState, "blurred");
 });
 
-// flaky: JSDOM/CI timeout issues and potential leaks
-test.skip("moderation override clears channel blur via event wiring", async (t) => {
+test("moderation override clears channel blur via event wiring", async (t) => {
   const { document } = setupDom(t);
   withMockedNostrTools(t);
 
@@ -329,8 +326,7 @@ test.skip("moderation override clears channel blur via event wiring", async (t) 
   assert.equal(avatarEl.dataset.visualState, undefined);
 });
 
-// flaky: JSDOM/CI timeout issues and potential leaks
-test.skip("channel header moderation badge reflects blur state and override actions", async (t) => {
+test("channel header moderation badge reflects blur state and override actions", async (t) => {
   const { document } = setupDom(t);
   withMockedNostrTools(t);
 
@@ -413,8 +409,9 @@ test.skip("channel header moderation badge reflects blur state and override acti
   assert.ok(overrideButton, "override control is available");
 
   overrideButton.click();
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  assert.equal(overrideCalls, 1);
+  await waitFor(() => {
+    assert.equal(overrideCalls, 1);
+  });
   const updatedVideo = app.videosMap.get(video.id);
   if (!updatedVideo.moderation || typeof updatedVideo.moderation !== "object") {
     updatedVideo.moderation = {};
@@ -440,8 +437,7 @@ test.skip("channel header moderation badge reflects blur state and override acti
   assert.ok(overrideText.startsWith("Showing despite"));
 });
 
-// flaky: JSDOM/CI timeout issues and potential leaks
-test.skip("channel video cards update moderation state in place when summary changes", async (t) => {
+test("channel video cards update moderation state in place when summary changes", async (t) => {
   const { document } = setupDom(t);
   withMockedNostrTools(t);
 
