@@ -531,37 +531,6 @@ class SubscriptionsManager {
         ? newest.created_at
         : null;
 
-      const signer = getActiveSigner();
-      const signerHasNip04 = typeof signer?.nip04Decrypt === "function";
-      const signerHasNip44 = typeof signer?.nip44Decrypt === "function";
-      const hints = extractEncryptionHints(newest);
-      const requiresNip44 = hints.includes("nip44") || hints.includes("nip44_v2");
-      const requiresNip04 =
-        !hints.length || hints.includes("nip04") || !requiresNip44;
-
-      let permissionResult = { ok: true };
-      const signerCoversRequiredSchemes =
-        (!requiresNip04 || signerHasNip04) && (!requiresNip44 || signerHasNip44);
-
-      if (!signerCoversRequiredSchemes) {
-        permissionResult = await requestDefaultExtensionPermissions();
-      }
-
-      if (!permissionResult.ok) {
-        userLogger.warn(
-          "[SubscriptionsManager] Extension permissions denied while loading subscriptions; treating list as empty.",
-          permissionResult.error,
-        );
-        // Permission denied is definitive enough to stop trying to use this event
-        if (!this.loaded) {
-          this.subscribedPubkeys.clear();
-          this.subsEventId = null;
-          this.subsEventCreatedAt = null;
-          this.loaded = true;
-        }
-        return;
-      }
-
       let decryptResult;
       try {
         const decryptPromise = this.decryptSubscriptionEvent(newest, userPubkey);
@@ -747,6 +716,57 @@ class SubscriptionsManager {
       return { ok: false, error };
     }
 
+    const hints = extractEncryptionHints(event);
+    const requiresNip44 = hints.includes("nip44") || hints.includes("nip44_v2");
+    const requiresNip04 = !hints.length || hints.includes("nip04") || !requiresNip44;
+
+    const signerHasRequiredDecryptors = (candidate) => {
+      const hasNip04 = typeof candidate?.nip04Decrypt === "function";
+      const hasNip44 = typeof candidate?.nip44Decrypt === "function";
+      return (!requiresNip44 || hasNip44) && (!requiresNip04 || hasNip04);
+    };
+
+    let signer = getActiveSigner();
+    if (
+      !signer ||
+      (!signerHasRequiredDecryptors(signer) &&
+        typeof nostrClient?.ensureActiveSignerForPubkey === "function")
+    ) {
+      signer = await nostrClient.ensureActiveSignerForPubkey(userPubkey);
+    }
+
+    const signerHasNip04 = typeof signer?.nip04Decrypt === "function";
+    const signerHasNip44 = typeof signer?.nip44Decrypt === "function";
+
+    const nostrApi = typeof window !== "undefined" ? window?.nostr : null;
+    const windowHasNip04 = typeof nostrApi?.nip04?.decrypt === "function";
+    const windowHasNip44 =
+      (nostrApi?.nip44 && typeof nostrApi.nip44.decrypt === "function") ||
+      (nostrApi?.nip44?.v2 && typeof nostrApi.nip44.v2.decrypt === "function");
+
+    if (
+      (!signerHasNip44 && !windowHasNip44 && requiresNip44) ||
+      (!signerHasNip04 && !windowHasNip04 && requiresNip04)
+    ) {
+      try {
+        const permissionResult = await requestDefaultExtensionPermissions();
+        if (!permissionResult?.ok) {
+          const error =
+            permissionResult?.error instanceof Error
+              ? permissionResult.error
+              : new Error(
+                  "Extension permissions denied while decrypting subscriptions."
+                );
+          error.code = "nostr-permission-denied";
+          return { ok: false, error };
+        }
+      } catch (error) {
+        const wrapped = error instanceof Error ? error : new Error(String(error));
+        wrapped.code = "nostr-permission-error";
+        return { ok: false, error: wrapped };
+      }
+    }
+
     const decryptors = new Map();
     const registerDecryptor = (scheme, handler) => {
       if (!scheme || typeof handler !== "function" || decryptors.has(scheme)) {
@@ -755,19 +775,53 @@ class SubscriptionsManager {
       decryptors.set(scheme, handler);
     };
 
-    let signer = getActiveSigner();
-    if (!signer && typeof nostrClient?.ensureActiveSignerForPubkey === "function") {
-      signer = await nostrClient.ensureActiveSignerForPubkey(userPubkey);
+    if (signerHasNip44) {
+      registerDecryptor("nip44", (payload) => signer.nip44Decrypt(userPubkey, payload));
+      registerDecryptor(
+        "nip44_v2",
+        (payload) => signer.nip44Decrypt(userPubkey, payload)
+      );
     }
-    const signerHasNip04 = typeof signer?.nip04Decrypt === "function";
-    const signerHasNip44 = typeof signer?.nip44Decrypt === "function";
 
     if (signerHasNip04) {
       registerDecryptor("nip04", (payload) => signer.nip04Decrypt(userPubkey, payload));
     }
 
-    if (signerHasNip44) {
-      registerDecryptor("nip44", (payload) => signer.nip44Decrypt(userPubkey, payload));
+    if (nostrApi) {
+      if (typeof nostrApi.nip04?.decrypt === "function") {
+        registerDecryptor(
+          "nip04",
+          (payload) => nostrApi.nip04.decrypt(userPubkey, payload)
+        );
+      }
+
+      const nip44 =
+        nostrApi.nip44 && typeof nostrApi.nip44 === "object"
+          ? nostrApi.nip44
+          : null;
+      if (nip44) {
+        if (typeof nip44.decrypt === "function") {
+          registerDecryptor(
+            "nip44",
+            (payload) => nip44.decrypt(userPubkey, payload)
+          );
+        }
+
+        const nip44v2 =
+          nip44.v2 && typeof nip44.v2 === "object" ? nip44.v2 : null;
+        if (nip44v2 && typeof nip44v2.decrypt === "function") {
+          registerDecryptor(
+            "nip44_v2",
+            (payload) => nip44v2.decrypt(userPubkey, payload)
+          );
+          if (!decryptors.has("nip44")) {
+            registerDecryptor(
+              "nip44",
+              (payload) => nip44v2.decrypt(userPubkey, payload)
+            );
+          }
+        }
+      }
     }
 
     if (!decryptors.size) {
