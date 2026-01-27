@@ -451,6 +451,7 @@ class SubscriptionsManager {
         dTag: SUBSCRIPTION_LIST_IDENTIFIER,
         relayUrls,
         since: shouldForceFullFetch ? 0 : undefined,
+        timeoutMs: 12000,
       });
 
       // Also check session actor if different?

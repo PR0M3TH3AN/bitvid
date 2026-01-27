@@ -1115,6 +1115,7 @@ class UserBlockListManager {
           pubkey: normalized,
           relayUrls: relays,
           since: fetchSince,
+          timeoutMs: 12000,
         }),
         nostrClient.fetchListIncrementally({
           kind: 30002,
@@ -1122,6 +1123,7 @@ class UserBlockListManager {
           dTag: BLOCK_LIST_IDENTIFIER,
           relayUrls: relays,
           since: fetchSince,
+          timeoutMs: 12000,
         }),
       ]);
 
