@@ -160,11 +160,11 @@ export class UploadModal {
       wrapper.innerHTML = html;
       this.removeTrackingScripts(wrapper);
 
-      targetContainer.appendChild(wrapper.firstElementChild);
-      this.root = targetContainer.querySelector("#uploadModal");
-      if (!this.root && targetContainer.lastElementChild && targetContainer.lastElementChild.id === "uploadModal") {
-          this.root = targetContainer.lastElementChild;
-      }
+      const modalRoot = wrapper.querySelector("#uploadModal");
+      if (!modalRoot) throw new Error("UploadModal template must contain #uploadModal element");
+
+      targetContainer.appendChild(modalRoot);
+      this.root = modalRoot;
       this.container = targetContainer;
 
       this.cacheElements();
