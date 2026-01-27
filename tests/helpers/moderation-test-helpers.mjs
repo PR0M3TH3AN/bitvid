@@ -272,6 +272,16 @@ export async function createModerationAppHarness(options = {}) {
   app.getActiveModerationThresholds =
     Application.prototype.getActiveModerationThresholds;
 
+  if (options.userBlocks) {
+    app.isAuthorBlocked = function (pubkey) {
+      const normalized = this.normalizeHexPubkey(pubkey);
+      if (normalized && options.userBlocks.isBlocked(normalized)) {
+        return true;
+      }
+      return Application.prototype.isAuthorBlocked.call(this, pubkey);
+    };
+  }
+
   app.defaultModerationSettings = getDefaultModerationSettings();
   app.moderationSettings = { ...app.defaultModerationSettings };
 
