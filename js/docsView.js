@@ -206,7 +206,7 @@ function updateActiveToc(slug) {
   const links = tocState.linkLookup.get(slug);
   if (links) {
     links.forEach((link) => {
-      link.setAttribute("aria-current", "true");
+      link.setAttribute("aria-current", "page");
       link.classList.remove("text-muted");
       link.classList.add("text-text-strong", "font-semibold");
     });
