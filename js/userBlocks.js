@@ -18,6 +18,7 @@ import {
   assertAnyRelayAccepted,
 } from "./nostrPublish.js";
 import { profileCache } from "./state/profileCache.js";
+import { DEFAULT_RELAY_URLS } from "./nostr/toolkit.js";
 
 class TinyEventEmitter {
   constructor() {
@@ -71,6 +72,14 @@ export const USER_BLOCK_EVENTS = Object.freeze({
 const FAST_BLOCKLIST_RELAY_LIMIT = 3;
 const FAST_BLOCKLIST_TIMEOUT_MS = 2500;
 const BACKGROUND_BLOCKLIST_TIMEOUT_MS = 6000;
+
+function sanitizeRelayList(candidate) {
+  return Array.isArray(candidate)
+    ? candidate
+        .map((url) => (typeof url === "string" ? url.trim() : ""))
+        .filter(Boolean)
+    : [];
+}
 
 function normalizeEncryptionToken(value) {
   if (typeof value !== "string") {
@@ -726,7 +735,27 @@ class UserBlockListManager {
       }
     };
 
-    emitStatus({ status: "loading", relays: Array.from(nostrClient.relays || []) });
+    const relaySet = new Set();
+    const addRelays = (candidate) => {
+      const sanitized = sanitizeRelayList(candidate);
+      for (const relay of sanitized) {
+        relaySet.add(relay);
+      }
+    };
+
+    addRelays(nostrClient.relays);
+    if (!relaySet.size) {
+      addRelays(nostrClient.readRelays);
+    }
+    if (!relaySet.size) {
+      addRelays(nostrClient.writeRelays);
+    }
+    if (!relaySet.size) {
+      addRelays(DEFAULT_RELAY_URLS);
+    }
+
+    const relays = Array.from(relaySet);
+    emitStatus({ status: "loading", relays });
 
     const localBlocks = this._loadLocal(normalized);
     const hasLocalData = !!localBlocks;
@@ -872,10 +901,6 @@ class UserBlockListManager {
     };
 
     try {
-      const relays = Array.isArray(nostrClient.relays)
-        ? nostrClient.relays.filter((relay) => typeof relay === "string" && relay)
-        : [];
-
       if (!relays.length) {
         // Only clear if truly no relays, though loadBlocks with no relays is weird.
         if (!this.loaded) {
