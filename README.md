@@ -59,10 +59,10 @@ Every video note ships with a stable series identifier so edits and deletes can 
 
 Storage tags hang off that identifier to make asset discovery deterministic:
 
-* **Storage pointer (`s` tag)**: The note includes `['s', '<provider>:<prefix>']`. If you don’t supply a pointer, bitvid derives one from the hosted URL (preferred), the torrent info hash (as `btih:<hash>`), or finally the `videoRootId` fallback (`nostr:<videoRootId>`).【F:js/nostr/client.js†L823-L862】
-* **Prefix derivation**: For URL-based assets, the prefix is the public base URL plus the object key **without** its file extension. For example, `/uploads/demo/video.mp4` becomes `/uploads/demo/video`.【F:js/utils/storagePointer.js†L56-L88】
-* **`info.json` location**: The companion metadata file lives at `<prefix>.info.json`. If the storage prefix is not an absolute URL, the UI uses the hosted URL’s origin to build the prefix before appending `.info.json` (and falls back to the raw prefix when no URL is available).【F:js/utils/storagePointer.js†L90-L129】
-* **`info.json` contents**: The file is expected to describe the stored assets that back the note—typically the hosted URLs and optional WebTorrent metadata (info hash, web seeds, torrent URL) along with the derived prefix—so the UI can hydrate asset metadata even when the note only carries minimal fields.
+- **Storage pointer (`s` tag)**: The note includes `['s', '<provider>:<prefix>']`. If you don’t supply a pointer, bitvid derives one from the hosted URL (preferred), the torrent info hash (as `btih:<hash>`), or finally the `videoRootId` fallback (`nostr:<videoRootId>`).【F:js/nostr/client.js†L823-L862】
+- **Prefix derivation**: For URL-based assets, the prefix is the public base URL plus the object key **without** its file extension. For example, `/uploads/demo/video.mp4` becomes `/uploads/demo/video`.【F:js/utils/storagePointer.js†L56-L88】
+- **`info.json` location**: The companion metadata file lives at `<prefix>.info.json`. If the storage prefix is not an absolute URL, the UI uses the hosted URL’s origin to build the prefix before appending `.info.json` (and falls back to the raw prefix when no URL is available).【F:js/utils/storagePointer.js†L90-L129】
+- **`info.json` contents**: The file is expected to describe the stored assets that back the note—typically the hosted URLs and optional WebTorrent metadata (info hash, web seeds, torrent URL) along with the derived prefix—so the UI can hydrate asset metadata even when the note only carries minimal fields.
 
 **How the UI resolves assets**
 
