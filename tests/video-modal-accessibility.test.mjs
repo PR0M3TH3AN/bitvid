@@ -33,6 +33,16 @@ export async function setupModal({ lazyLoad = false } = {}) {
   globalThis.Event = window.Event;
   globalThis.Node = window.Node;
   globalThis.EventTarget = window.EventTarget;
+
+  if (typeof window.HTMLMediaElement !== "undefined") {
+    window.HTMLMediaElement.prototype.pause = function () {};
+    window.HTMLMediaElement.prototype.load = function () {};
+  }
+  if (typeof window.HTMLVideoElement !== "undefined") {
+    window.HTMLVideoElement.prototype.pause = function () {};
+    window.HTMLVideoElement.prototype.load = function () {};
+  }
+
   try {
     Object.defineProperty(globalThis, "navigator", {
       value: window.navigator,
@@ -141,6 +151,8 @@ export async function setupModal({ lazyLoad = false } = {}) {
       send() {}
     };
   }
+
+  window.scrollTo = () => {};
 
   applyDesignSystemAttributes(document);
 
@@ -432,6 +444,16 @@ async function setupPlaybackHarness() {
   globalThis.Event = window.Event;
   globalThis.Node = window.Node;
   globalThis.EventTarget = window.EventTarget;
+
+  if (typeof window.HTMLMediaElement !== "undefined") {
+    if (!window.HTMLMediaElement.prototype.pause) {
+      window.HTMLMediaElement.prototype.pause = function () {};
+    }
+    if (!window.HTMLMediaElement.prototype.load) {
+      window.HTMLMediaElement.prototype.load = function () {};
+    }
+  }
+
   try {
     Object.defineProperty(globalThis, "navigator", {
       value: window.navigator,
@@ -530,6 +552,8 @@ async function setupPlaybackHarness() {
       send() {}
     };
   }
+
+  window.scrollTo = () => {};
 
   window.NostrTools = {
     nip19: {
