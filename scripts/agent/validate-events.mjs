@@ -1,3 +1,10 @@
+/**
+ * Event Schema Validation Tool
+ *
+ * Scans the codebase for event builder usage and verifies that the output
+ * conforms to the defined schemas in `js/nostrEventSchemas.js`.
+ */
+
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
