@@ -63,11 +63,12 @@ function createTagButton({ doc, tag, onTagActivate, getTagState }) {
   button.type = "button";
   button.classList.add("pill", "video-tag-pill", "focus-ring");
   button.dataset.tag = tag;
-  button.title = `#${tag}`;
+  const displayTag = tag.startsWith("#") ? tag : `#${tag}`;
+  button.title = displayTag;
 
   const label = doc.createElement("span");
   label.className = "video-tag-pill__label";
-  label.textContent = `#${tag}`;
+  label.textContent = displayTag;
 
   const icon = doc.createElement("span");
   icon.className = "video-tag-pill__icon";
