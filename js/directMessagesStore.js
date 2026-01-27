@@ -192,16 +192,20 @@ export async function loadDirectMessageSnapshot(pubkey) {
   try {
     const db = await openSettingsDb();
     if (db) {
-      const stored = await new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE_NAME, "readonly");
-        const store = tx.objectStore(STORE_NAME);
-        const request = store.get(dbKey);
-        request.onsuccess = () => resolve(request.result || []);
-        request.onerror = () =>
-          reject(request.error || new Error("Failed to load snapshot"));
-      });
+      try {
+        const stored = await new Promise((resolve, reject) => {
+          const tx = db.transaction(STORE_NAME, "readonly");
+          const store = tx.objectStore(STORE_NAME);
+          const request = store.get(dbKey);
+          request.onsuccess = () => resolve(request.result || []);
+          request.onerror = () =>
+            reject(request.error || new Error("Failed to load snapshot"));
+        });
 
-      return normalizeSnapshotList(stored);
+        return normalizeSnapshotList(stored);
+      } finally {
+        db.close();
+      }
     }
   } catch (error) {
     userLogger.warn(
@@ -244,15 +248,19 @@ export async function saveDirectMessageSnapshot(pubkey, snapshot) {
   try {
     const db = await openSettingsDb();
     if (db) {
-      await new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE_NAME, "readwrite");
-        const store = tx.objectStore(STORE_NAME);
-        const request = store.put(normalizedSnapshot, dbKey);
-        request.onsuccess = () => resolve();
-        request.onerror = () =>
-          reject(request.error || new Error("Failed to write snapshot"));
-      });
-      return normalizedSnapshot;
+      try {
+        await new Promise((resolve, reject) => {
+          const tx = db.transaction(STORE_NAME, "readwrite");
+          const store = tx.objectStore(STORE_NAME);
+          const request = store.put(normalizedSnapshot, dbKey);
+          request.onsuccess = () => resolve();
+          request.onerror = () =>
+            reject(request.error || new Error("Failed to write snapshot"));
+        });
+        return normalizedSnapshot;
+      } finally {
+        db.close();
+      }
     }
   } catch (error) {
     userLogger.warn(
@@ -290,15 +298,19 @@ export async function clearDirectMessageSnapshot(pubkey) {
   try {
     const db = await openSettingsDb();
     if (db) {
-      await new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE_NAME, "readwrite");
-        const store = tx.objectStore(STORE_NAME);
-        const request = store.delete(dbKey);
-        request.onsuccess = () => resolve();
-        request.onerror = () =>
-          reject(request.error || new Error("Failed to clear snapshot"));
-      });
-      cleared = true;
+      try {
+        await new Promise((resolve, reject) => {
+          const tx = db.transaction(STORE_NAME, "readwrite");
+          const store = tx.objectStore(STORE_NAME);
+          const request = store.delete(dbKey);
+          request.onsuccess = () => resolve();
+          request.onerror = () =>
+            reject(request.error || new Error("Failed to clear snapshot"));
+        });
+        cleared = true;
+      } finally {
+        db.close();
+      }
     }
   } catch (error) {
     userLogger.warn(
