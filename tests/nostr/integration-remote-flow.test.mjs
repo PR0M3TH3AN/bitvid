@@ -13,7 +13,11 @@ import {
 const {
   nostrClient,
 } = await import("../../js/nostrClientFacade.js");
+const { default: nip07Provider } = await import(
+  "../../js/services/authProviders/nip07.js"
+);
 const { clearActiveSigner } = await import("../../js/nostr/client.js");
+const { Nip46RpcClient } = await import("../../js/nostr/nip46Client.js");
 const { accessControl } = await import("../../js/accessControl.js");
 const { WATCH_HISTORY_KIND } = await import("../../js/config.js");
 const { normalizeActorKey } = await import("../../js/nostr/watchHistory.js");
@@ -224,13 +228,16 @@ test("nostr login + remote signing + publish + watch history integration", async
     }
   });
 
-  const loginResult = await nostrClient.login();
+  const loginResponse = await nip07Provider.login({ nostrClient });
+  const loginResult = loginResponse.pubkey;
+  nostrClient.pubkey = loginResult;
+  nostrClient.sessionActor = null;
   assert.equal(loginResult, userPubkey);
   extensionSignCount = 0;
 
-  const remoteSigner = {
-    type: "nip46",
-    pubkey: userPubkey,
+  const mockRpcClient = Object.create(Nip46RpcClient.prototype);
+  Object.assign(mockRpcClient, {
+    userPubkey,
     async signEvent(event) {
       remoteSignCount += 1;
       return finalizeWithKey(event, userSecret, userPubkey);
@@ -242,15 +249,16 @@ test("nostr login + remote signing + publish + watch history integration", async
     nip04Decrypt(pubkey, ciphertext) {
       return nip04.decrypt(userSecret, pubkey, ciphertext);
     },
-  };
-
-  nostrClient.installNip46Client(
-    {
-      getActiveSigner: () => remoteSigner,
-      destroy() {},
+    async getUserPubkey() {
+      return userPubkey;
     },
-    { userPubkey },
-  );
+    destroy() {},
+    destroyed: false,
+    relays: [],
+    metadata: {},
+  });
+
+  nostrClient.installNip46Client(mockRpcClient, { userPubkey });
 
   const viewPointer = {
     type: "e",
