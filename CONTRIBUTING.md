@@ -91,6 +91,7 @@ This workflow uses the `force-cancel` endpoint to ensure stalled runs are termin
 To set up the project locally:
 
 1. **Install Dependencies**:
+   Use `npm ci` to ensure you get the exact dependencies from `package-lock.json`.
    ```bash
    npm ci
    ```
@@ -105,7 +106,7 @@ To set up the project locally:
    ```bash
    npm run test:unit
    ```
-   *Note: Unit tests may take a few minutes to complete.*
+   *Note: Unit tests may take a few minutes to complete. To speed up local iterations, you can run a specific shard (e.g., `npm run test:unit:shard1`).*
 
    You can also run end-to-end and visual tests:
    ```bash
@@ -147,12 +148,15 @@ For a full guide, see the [Local Setup section in README.md](./README.md#local-s
 
 ## Dev Container
 
-This project includes a `.devcontainer` configuration for VS Code. It provides a pre-configured environment with Node.js 22 and necessary extensions.
+This project includes a `.devcontainer` configuration for VS Code. It provides a pre-configured environment with Node.js 22, the GitHub CLI, and necessary extensions.
 
 To use it:
 1. Open the project in VS Code.
 2. When prompted, re-open in Container (or use the command palette: "Dev Containers: Reopen in Container").
-3. The container will automatically install dependencies and run the build.
+3. The container will automatically:
+   - Install NPM dependencies (`npm ci`)
+   - Run the build (`npm run build`)
+   - Install Playwright browsers (so you can run `npm run test:visual`)
 
 ## Security
 

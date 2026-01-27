@@ -144,14 +144,10 @@ To run **bitvid** locally:
 
 2. Install dependencies:
 
-   If you cloned the repo but haven’t run `npm install`/`npm ci`, `npx` won’t find the local `tailwindcss`.
+   Use `npm ci` to install dependencies exactly as specified in `package-lock.json`. This ensures `npx` finds the correct local `tailwindcss` version.
 
    ```bash
-   # reproducible install (preferred for CI / locks)
    npm ci
-
-   # or if you want to install/upgrade packages
-   npm install
    ```
 
 3. Build the project:
