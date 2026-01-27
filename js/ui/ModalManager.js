@@ -705,10 +705,12 @@ export default class ModalManager {
 
     if (this.uploadModal && this.uploadSubmitHandler) {
       try {
-        this.uploadModal.removeEventListener(
-          "upload:submit",
-          this.uploadSubmitHandler,
-        );
+        if (typeof this.uploadModal.removeEventListener === "function") {
+          this.uploadModal.removeEventListener(
+            "upload:submit",
+            this.uploadSubmitHandler,
+          );
+        }
       } catch (error) {
         devLogger.warn("[ModalManager] Failed to remove upload submit handler:", error);
       }
