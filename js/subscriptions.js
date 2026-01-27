@@ -208,6 +208,58 @@ function parseSubscriptionPlaintext(plaintext) {
   return [];
 }
 
+function parseCachedSubscriptionSnapshot(cached) {
+  if (Array.isArray(cached)) {
+    const normalized = cached.map((value) => normalizeHexPubkey(value)).filter(Boolean);
+    return {
+      subscribedPubkeys: normalized,
+      eventId: null,
+      createdAt: null,
+      hasSnapshot: true,
+    };
+  }
+
+  if (cached && typeof cached === "object") {
+    const listCandidate = Array.isArray(cached.subscribedPubkeys)
+      ? cached.subscribedPubkeys
+      : Array.isArray(cached.subPubkeys)
+        ? cached.subPubkeys
+        : [];
+    const normalized = listCandidate
+      .map((value) => normalizeHexPubkey(value))
+      .filter(Boolean);
+    const eventId = typeof cached.eventId === "string" ? cached.eventId : null;
+    const createdAtRaw = cached.createdAt;
+    const createdAtCandidate =
+      typeof createdAtRaw === "number"
+        ? createdAtRaw
+        : typeof createdAtRaw === "string" && createdAtRaw.trim()
+          ? Number(createdAtRaw)
+          : Number.NaN;
+    const createdAt = Number.isFinite(createdAtCandidate)
+      ? Math.floor(createdAtCandidate)
+      : null;
+    const hasSnapshot =
+      Array.isArray(cached.subscribedPubkeys) ||
+      Array.isArray(cached.subPubkeys) ||
+      Boolean(eventId) ||
+      Number.isFinite(createdAtCandidate);
+    return {
+      subscribedPubkeys: normalized,
+      eventId,
+      createdAt,
+      hasSnapshot,
+    };
+  }
+
+  return {
+    subscribedPubkeys: [],
+    eventId: null,
+    createdAt: null,
+    hasSnapshot: false,
+  };
+}
+
 const getApp = () => getApplication();
 
 const listVideoViewEventsApi = (pointer, options) =>
@@ -269,6 +321,7 @@ class SubscriptionsManager {
   constructor() {
     this.subscribedPubkeys = new Set();
     this.subsEventId = null;
+    this.subsEventCreatedAt = null;
     this.currentUserPubkey = null;
     this.loaded = false;
     this.loadingPromise = null;
@@ -311,9 +364,12 @@ class SubscriptionsManager {
 
     // 1. Attempt to load from cache first
     const cached = profileCache.getProfileData(normalizedUserPubkey, "subscriptions");
-    if (Array.isArray(cached)) {
+    const cachedSnapshot = parseCachedSubscriptionSnapshot(cached);
+    if (cachedSnapshot.hasSnapshot) {
       devLogger.log("[SubscriptionsManager] Loaded subscriptions from cache.");
-      this.subscribedPubkeys = new Set(cached);
+      this.subscribedPubkeys = new Set(cachedSnapshot.subscribedPubkeys);
+      this.subsEventId = cachedSnapshot.eventId;
+      this.subsEventCreatedAt = cachedSnapshot.createdAt;
       this.currentUserPubkey = normalizedUserPubkey;
       this.loaded = true;
 
@@ -330,7 +386,11 @@ class SubscriptionsManager {
 
   saveToCache(userPubkey) {
     // We assume userPubkey matches active profile, enforced by profileCache
-    profileCache.set("subscriptions", Array.from(this.subscribedPubkeys));
+    profileCache.set("subscriptions", {
+      subscribedPubkeys: Array.from(this.subscribedPubkeys),
+      eventId: this.subsEventId,
+      createdAt: this.subsEventCreatedAt,
+    });
   }
 
   on(eventName, handler) {
@@ -381,11 +441,16 @@ class SubscriptionsManager {
       }
 
       // Use incremental fetch helper
+      const cachedSnapshot = parseCachedSubscriptionSnapshot(
+        profileCache.getProfileData(normalizedUserPubkey, "subscriptions"),
+      );
+      const shouldForceFullFetch = !cachedSnapshot.hasSnapshot;
       let events = await nostrClient.fetchListIncrementally({
         kind: SUBSCRIPTION_SET_KIND,
         pubkey: normalizedUserPubkey,
         dTag: SUBSCRIPTION_LIST_IDENTIFIER,
-        relayUrls
+        relayUrls,
+        since: shouldForceFullFetch ? 0 : undefined,
       });
 
       // Also check session actor if different?
@@ -413,6 +478,7 @@ class SubscriptionsManager {
           // If we have NO cached data (this.loaded = false), and we get [], we assume empty list.
           this.subscribedPubkeys.clear();
           this.subsEventId = null;
+          this.subsEventCreatedAt = null;
           this.loaded = true;
         } else {
            // We have data loaded, and relays returned nothing.
@@ -426,16 +492,14 @@ class SubscriptionsManager {
       events.sort((a, b) => b.created_at - a.created_at);
       const newest = events[0];
 
-      // Check if newest is actually newer than what we have
-      // If we loaded from cache, we might not have the event object, just the pubkeys.
-      // But we don't store the event timestamp in cache currently?
-      // profileCache only stores the array.
-      // Wait, we don't persist the event ID or created_at in profileCache for subscriptions.
-      // So we can't strictly compare timestamps against cache.
-      // However, fetchListIncrementally already handles the "newer than last sync" logic per relay.
-      // So any event returned here is effectively "new information" (or re-fetched full state).
+      // Any event returned here is effectively "new information" (or re-fetched full state).
+      // fetchListIncrementally already handles the "newer than last sync" logic per relay,
+      // and we persist event metadata for additional cache context.
 
       this.subsEventId = newest.id;
+      this.subsEventCreatedAt = Number.isFinite(newest.created_at)
+        ? newest.created_at
+        : null;
 
       const signer = getActiveSigner();
       const signerHasNip04 = typeof signer?.nip04Decrypt === "function";
@@ -462,6 +526,7 @@ class SubscriptionsManager {
         if (!this.loaded) {
           this.subscribedPubkeys.clear();
           this.subsEventId = null;
+          this.subsEventCreatedAt = null;
           this.loaded = true;
         }
         return;
@@ -489,6 +554,7 @@ class SubscriptionsManager {
         if (!this.loaded) {
           this.subscribedPubkeys.clear();
           this.subsEventId = null;
+          this.subsEventCreatedAt = null;
           this.loaded = true;
         }
         return;
@@ -541,6 +607,7 @@ class SubscriptionsManager {
   reset() {
     this.subscribedPubkeys.clear();
     this.subsEventId = null;
+    this.subsEventCreatedAt = null;
     this.currentUserPubkey = null;
     this.loaded = false;
     this.lastRunOptions = null;
@@ -946,6 +1013,8 @@ class SubscriptionsManager {
     }
 
     this.subsEventId = signedEvent.id;
+    this.subsEventCreatedAt = signedEvent.created_at;
+    this.saveToCache(userPubkey);
     const acceptedUrls = publishSummary.accepted.map(({ url }) => url);
     devLogger.log(
       "Subscription list published, event id:",
