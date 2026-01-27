@@ -1,4 +1,4 @@
-import { test, describe, it, before, after } from "node:test";
+import { test, describe, it, before, after, beforeEach } from "node:test";
 import assert from "node:assert";
 import { createUiDom } from "./helpers/jsdom-test-helpers.mjs";
 
@@ -108,6 +108,13 @@ describe("UploadModal Integration", () => {
     if (dom) dom.cleanup();
   });
 
+  beforeEach(() => {
+      // Ensure clean DOM state
+      if (global.document && global.document.body) {
+          global.document.body.innerHTML = '';
+      }
+  });
+
   it("should detect default R2 connection and show summary when loaded and unlocked", async () => {
       // Setup Mock Data
       const pubkey = "pk1";
@@ -170,13 +177,10 @@ describe("UploadModal Integration", () => {
           meta: { bucket: "locked-bucket" }
       }];
 
-      // Setup DOM - Reuse existing container or create if missing (cleaned by load)
-      let container = document.getElementById("modalContainer");
-      if (!container) {
-          container = document.createElement("div");
-          container.id = "modalContainer";
-          document.body.appendChild(container);
-      }
+      // Setup DOM - Create new container
+      const container = document.createElement("div");
+      container.id = "modalContainer";
+      document.body.appendChild(container);
 
       // Re-instantiate
       const modal = new UploadModal({
