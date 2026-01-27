@@ -36,13 +36,21 @@ function getDocSlugFromHash() {
   return params.get("doc") || "";
 }
 
-function setDocsHash(slug) {
+function setDocsHash(slug, { replace = false } = {}) {
   if (typeof window === "undefined") {
     return;
   }
-  const url = new URL(window.location.href);
-  url.hash = `view=${DOCS_VIEW_NAME}&doc=${encodeURIComponent(slug)}`;
-  window.history.replaceState({}, "", url.toString());
+  const nextHash = `view=${DOCS_VIEW_NAME}&doc=${encodeURIComponent(slug)}`;
+  if (replace) {
+    const url = new URL(window.location.href);
+    url.hash = nextHash;
+    window.history.replaceState({}, "", url.toString());
+    return;
+  }
+  if (window.location.hash === `#${nextHash}`) {
+    return;
+  }
+  window.location.hash = nextHash;
 }
 
 function indexItems(items, parent = null) {
@@ -68,6 +76,20 @@ function buildLink(item) {
   link.className = "text-sm text-muted transition-colors hover:text-text-strong";
   link.dataset.slug = item.slug;
   link.dataset.docsTocItem = "true";
+  link.addEventListener("click", (event) => {
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return;
+    }
+    event.preventDefault();
+    setDocsHash(item.slug);
+  });
   if (!tocState.linkLookup.has(item.slug)) {
     tocState.linkLookup.set(item.slug, new Set());
   }
@@ -159,10 +181,6 @@ function renderToc(items) {
 }
 
 function updateActiveToc(slug) {
-  if (!slug) {
-    return;
-  }
-
   const previousLinks = tocState.linkLookup.get(tocState.activeSlug);
   if (previousLinks) {
     previousLinks.forEach((link) => {
@@ -172,16 +190,19 @@ function updateActiveToc(slug) {
     });
   }
 
+  tocState.activeSlug = slug || "";
+  if (!slug) {
+    return;
+  }
+
   const links = tocState.linkLookup.get(slug);
   if (links) {
     links.forEach((link) => {
-      link.setAttribute("aria-current", "page");
+      link.setAttribute("aria-current", "true");
       link.classList.remove("text-muted");
       link.classList.add("text-text-strong", "font-semibold");
     });
   }
-
-  tocState.activeSlug = slug;
 
   let current = slug;
   while (tocState.parentLookup.has(current)) {
@@ -296,7 +317,7 @@ async function handleHashChange() {
   }
 
   if (!currentSlug) {
-    setDocsHash(slug);
+    setDocsHash(slug, { replace: true });
   }
 
   if (slug === tocState.activeSlug) {
