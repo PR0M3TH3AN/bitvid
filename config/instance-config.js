@@ -108,7 +108,7 @@ export const COMMUNITY_URL = "https://groups.nip29.com/?relay=wss://relay.groups
  * string) to hide the link entirely.
  */
 export const NOSTR_URL =
-  "https://primal.net/p/npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe";
+  "https://nostrudel.ninja/u/npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe";
 
 /**
  * Optional external destination for the GitHub menu link.
