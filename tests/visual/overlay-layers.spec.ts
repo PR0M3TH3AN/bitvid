@@ -129,6 +129,9 @@ test.describe("overlay layering tokens", () => {
       document.getElementById("sidebar")?.classList.contains("sidebar-expanded")
     );
 
+    // Wait for sidebar transition to complete
+    await page.waitForTimeout(500);
+
     const expandedLayout = await page.evaluate(() => {
       const sidebar = document.getElementById("sidebar");
       const app = document.getElementById("app");
