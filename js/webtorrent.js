@@ -166,6 +166,9 @@ export class TorrentClient {
   ensureClientForProbe() {
     if (!this.probeClient) {
       this.probeClient = new this.WebTorrentClass();
+      if (typeof this.probeClient.setMaxListeners === "function") {
+        this.probeClient.setMaxListeners(0);
+      }
     }
     return this.probeClient;
   }
@@ -366,6 +369,9 @@ export class TorrentClient {
   async init() {
     if (!this.client) {
       this.client = new this.WebTorrentClass();
+      if (typeof this.client.setMaxListeners === "function") {
+        this.client.setMaxListeners(0);
+      }
     }
 
     if (this.serviceWorkerDisabled) {
