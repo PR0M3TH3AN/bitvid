@@ -34,11 +34,36 @@ function restoreNostrClient() {
     : originalWriteRelays;
 }
 
-test.beforeEach(() => {
+test.beforeEach(async () => {
   hashtagPreferences.reset();
   restoreNostrClient();
   window.nostr = originalWindowNostr;
-  clearActiveSigner();
+
+  // Setup default mock signer to prevent auto-save errors
+  setActiveSigner({
+    signEvent: async (e) => ({ ...e, id: "fake" }),
+    nip44Encrypt: async () => "encrypted",
+    nip04Encrypt: async () => "encrypted",
+  });
+
+  // Setup default pool mock for publish and list
+  nostrClient.pool = {
+    list: async () => [],
+    publish: (urls, event) => ({
+      on: (eventName, handler) => {
+        if (eventName === "ok") {
+          setTimeout(() => handler(), 0);
+        }
+        return true;
+      },
+    }),
+  };
+
+  // Ensure writeRelays are set
+  nostrClient.writeRelays = ["wss://mock.relay"];
+
+  // Ensure active pubkey is set for publish operations
+  await hashtagPreferences.load("0".repeat(64));
 });
 
 test.after(() => {
