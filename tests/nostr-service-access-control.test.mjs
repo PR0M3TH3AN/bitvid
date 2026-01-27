@@ -4,6 +4,13 @@ import test from "node:test";
 import "./test-helpers/setup-localstorage.mjs";
 import { AccessControl } from "../js/accessControl.js";
 import { NostrService } from "../js/services/nostrService.js";
+import moderationService from "../js/services/moderationService.js";
+
+// Stub moderation service methods that trigger background timers
+if (moderationService) {
+  moderationService.scheduleTrustedMuteSubscriptionRefresh = () => {};
+  moderationService.refreshTrustedMuteSubscriptions = async () => {};
+}
 
 if (typeof globalThis.window === "undefined") {
   globalThis.window = {};
