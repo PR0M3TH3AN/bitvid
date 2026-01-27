@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { writeFileSync, readFileSync } from "node:fs";
 
 const REPORT_FILE = "REMEDIATION_REPORT.md";
+const SHOULD_FIX = process.argv.includes("--fix");
 
 const CHECKS = [
   { name: "CSS", command: "npm", args: ["run", "lint:css"] },
@@ -162,6 +163,67 @@ function generateReport(violations) {
   return report;
 }
 
+function applyAutoFixes(violations) {
+  console.log("Attempting to apply auto-fixes...");
+  let fixesApplied = 0;
+
+  const violationsByFile = {};
+
+  for (const category in violations) {
+    for (const v of violations[category]) {
+      const filePath = v.file.startsWith("./") ? v.file.slice(2) : v.file;
+      if (!violationsByFile[filePath]) violationsByFile[filePath] = [];
+      violationsByFile[filePath].push({ ...v, category });
+    }
+  }
+
+  for (const file of Object.keys(violationsByFile)) {
+    try {
+      let content = readFileSync(file, "utf8");
+      let originalContent = content;
+
+      for (const v of violationsByFile[file]) {
+        if (v.category === "Hex Colors") {
+          content = content.replaceAll("#000000", "var(--color-black)");
+          content = content.replaceAll("#ffffff", "var(--color-white)");
+        }
+        if (v.category === "Tailwind Palette") {
+          // Simple semantic mappings
+          if (v.value.includes("red-500")) {
+            const newValue = v.value.replace("red-500", "status-danger");
+            content = content.replaceAll(v.value, newValue);
+          }
+          if (v.value.includes("green-500")) {
+            const newValue = v.value.replace("green-500", "status-success");
+            content = content.replaceAll(v.value, newValue);
+          }
+          if (v.value.includes("blue-500")) {
+            const newValue = v.value.replace("blue-500", "status-info");
+            content = content.replaceAll(v.value, newValue);
+          }
+          if (v.value.includes("yellow-500")) {
+            const newValue = v.value.replace("yellow-500", "status-warning");
+            content = content.replaceAll(v.value, newValue);
+          }
+        }
+      }
+
+      if (content !== originalContent) {
+        writeFileSync(file, content);
+        fixesApplied++;
+        console.log(`Fixed violations in ${file}`);
+      }
+    } catch (e) {
+      console.error(`Failed to fix ${file}: ${e.message}`);
+    }
+  }
+
+  if (fixesApplied === 0) {
+    console.log("No auto-fixes available for current violations.");
+  }
+  return fixesApplied > 0;
+}
+
 async function main() {
   for (const check of CHECKS) {
     const { success, output } = runCheck(check);
@@ -171,11 +233,16 @@ async function main() {
     }
   }
 
+  const totalViolations = Object.values(VIOLATIONS).reduce((acc, list) => acc + list.length, 0);
+
+  if (totalViolations > 0 && SHOULD_FIX) {
+    applyAutoFixes(VIOLATIONS);
+  }
+
   const report = generateReport(VIOLATIONS);
   writeFileSync(REPORT_FILE, report);
   console.log(`Report generated at ${REPORT_FILE}`);
 
-  const totalViolations = Object.values(VIOLATIONS).reduce((acc, list) => acc + list.length, 0);
   process.exit(totalViolations > 0 ? 1 : 0);
 }
 
