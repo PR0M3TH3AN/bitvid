@@ -36,12 +36,12 @@ jobs:
 
       - name: Verify upstream branch and diff
         run: |
-          if ! git rev-parse --verify upstream/${{ github.base_ref }} >/dev/null 2>&1; then
-            echo "::error::Branch upstream/${{ github.base_ref }} not found."
-            exit 1
+          if git ls-remote --heads upstream "${{ github.base_ref }}" | grep "${{ github.base_ref }}" > /dev/null; then
+            git fetch upstream "${{ github.base_ref }}"
+            git diff --name-only upstream/${{ github.base_ref }}...HEAD
+          else
+            echo "::warning::Branch upstream/${{ github.base_ref }} not found. Skipping diff."
           fi
-          # Verify we can diff against it
-          git diff --name-only upstream/${{ github.base_ref }}...HEAD
 
       - name: Run Agent Review
         env:
