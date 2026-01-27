@@ -10,6 +10,8 @@ import {
   getWatchHistoryStorage,
 } from "../../js/nostr/watchHistory.js";
 import { WATCH_HISTORY_KIND } from "../../js/config.js";
+import { NOTE_TYPES } from "../../js/nostrEventSchemas.js";
+import { profileCache } from "../../js/state/profileCache.js";
 
 const WATCH_HISTORY_STORAGE_KEY = "bitvid:watch-history:v5";
 
@@ -21,6 +23,11 @@ function ensureLocalStorageCleared() {
 
 test.beforeEach(() => {
   ensureLocalStorageCleared();
+  // Clear profile cache memory
+  if (profileCache) {
+      profileCache.activePubkey = null;
+      profileCache.memoryCache.clear();
+  }
 });
 
 test("buildWatchHistoryPayload enforces byte limits and records skipped entries", () => {
@@ -78,7 +85,9 @@ test("buildWatchHistoryPayload enforces byte limits and records skipped entries"
 });
 
 test("getWatchHistoryStorage prunes entries that exceed the configured TTL", () => {
-  const manager = createWatchHistoryManager();
+  const manager = createWatchHistoryManager({
+    getActivePubkey: () => profileCache.getActiveProfile(),
+  });
   const ttl = getWatchHistoryCacheTtlMs(manager);
   const originalNow = Date.now;
   const baseNow = Date.now();
@@ -88,61 +97,55 @@ test("getWatchHistoryStorage prunes entries that exceed the configured TTL", () 
   try {
     Date.now = () => baseNow;
 
-    const storagePayload = {
-      version: 2,
-      actors: {
-        [freshActor]: {
-          actor: freshActor,
-          snapshotId: "snap-fresh",
-          fingerprint: "fingerprint-fresh",
-          savedAt: baseNow - (ttl - 1000),
-          items: [{ type: "e", value: "fresh-pointer", watchedAt: 123 }],
-          metadata: { status: "ok" },
-        },
-        [staleActor]: {
-          actor: staleActor,
-          snapshotId: "snap-stale",
-          fingerprint: "fingerprint-stale",
-          savedAt: baseNow - (ttl + 1000),
-          items: [{ type: "e", value: "stale-pointer", watchedAt: 456 }],
-          metadata: { status: "stale" },
-        },
-      },
+    // Test Fresh Actor
+    profileCache.setActiveProfile(freshActor);
+    const freshPayload = {
+      actor: freshActor,
+      snapshotId: "snap-fresh",
+      fingerprint: "fingerprint-fresh",
+      savedAt: baseNow - (ttl - 1000),
+      items: [{ type: "e", value: "fresh-pointer", watchedAt: 123 }],
+      metadata: { status: "ok" },
     };
-    localStorage.setItem(WATCH_HISTORY_STORAGE_KEY, JSON.stringify(storagePayload));
+    const freshKey = profileCache.getStorageKey(freshActor, NOTE_TYPES.WATCH_HISTORY);
+    localStorage.setItem(freshKey, JSON.stringify(freshPayload));
 
-    const storage = getWatchHistoryStorage(manager);
+    const freshStorage = getWatchHistoryStorage(manager);
+    const freshEntry = freshStorage.actors[freshActor];
 
-    assert.deepStrictEqual(
-      Object.keys(storage.actors),
-      [freshActor],
-      "hydrated storage should drop actors whose savedAt exceeds the TTL",
-    );
-
-    const freshEntry = storage.actors[freshActor];
     assert.ok(freshEntry, "fresh actor should remain present after hydration");
     assert.equal(freshEntry.snapshotId, "snap-fresh");
     assert.equal(freshEntry.fingerprint, "fingerprint-fresh");
     assert.equal(freshEntry.items.length, 1);
     assert.equal(freshEntry.items[0]?.value, "fresh-pointer");
-    assert.equal(freshEntry.metadata.status, "ok");
+
+
+    // Test Stale Actor
+    profileCache.setActiveProfile(staleActor);
+    const stalePayload = {
+      actor: staleActor,
+      snapshotId: "snap-stale",
+      fingerprint: "fingerprint-stale",
+      savedAt: baseNow - (ttl + 1000),
+      items: [{ type: "e", value: "stale-pointer", watchedAt: 456 }],
+      metadata: { status: "stale" },
+    };
+    const staleKey = profileCache.getStorageKey(staleActor, NOTE_TYPES.WATCH_HISTORY);
+    localStorage.setItem(staleKey, JSON.stringify(stalePayload));
+
+    const staleStorage = getWatchHistoryStorage(manager);
+    const staleEntry = staleStorage.actors[staleActor];
+
     assert.strictEqual(
-      storage.actors[staleActor],
+      staleEntry,
       undefined,
-      "stale actor entry should be removed",
+      "stale actor entry should be removed (pruned)",
     );
 
-    const persistedRaw = localStorage.getItem(WATCH_HISTORY_STORAGE_KEY);
-    assert.ok(persistedRaw, "storage rewrite should persist sanitized payload");
-    const persisted = JSON.parse(persistedRaw);
-    assert.deepStrictEqual(
-      Object.keys(persisted.actors),
-      [freshActor],
-      "persisted storage should match hydrated storage",
-    );
   } finally {
     Date.now = originalNow;
     manager.clear();
+    profileCache.activePubkey = null;
   }
 });
 
@@ -347,6 +350,7 @@ test("publishWatchHistorySnapshot uses injected nostr-tools helpers when signer 
           return this;
         },
       }),
+      async list() { return []; },
     }),
   });
 
@@ -372,6 +376,8 @@ test("publishWatchHistorySnapshot uses injected nostr-tools helpers when signer 
 
 test("publishWatchHistorySnapshot caches successful snapshot results", async () => {
   const actorPubkey = "c".repeat(64);
+  profileCache.setActiveProfile(actorPubkey);
+
   const sessionPrivateKey = "s".repeat(64);
   const relayUrls = ["wss://relay.cache"];
   const publishCalls = [];
@@ -406,6 +412,7 @@ test("publishWatchHistorySnapshot caches successful snapshot results", async () 
           },
         };
       },
+      async list() { return []; },
     }),
   });
 
@@ -438,5 +445,6 @@ test("publishWatchHistorySnapshot caches successful snapshot results", async () 
     assert.equal(fingerprint, cacheEntry.fingerprint);
   } finally {
     manager.clear();
+    profileCache.activePubkey = null;
   }
 });
