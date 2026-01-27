@@ -247,12 +247,10 @@ test(
     t.after(cleanup);
 
     const visibilityCalls = [];
-    const instrumentedModal = {
-      ...modal,
-      setCommentsVisibility: (isVisible) => {
-        visibilityCalls.push(isVisible);
-        modal.setCommentsVisibility(isVisible);
-      },
+    const instrumentedModal = Object.create(modal);
+    instrumentedModal.setCommentsVisibility = (isVisible) => {
+      visibilityCalls.push(isVisible);
+      modal.setCommentsVisibility(isVisible);
     };
 
     const snapshot = {
@@ -398,6 +396,7 @@ test(
           },
         ],
       ]),
+      childrenByParent: new Map([[null, ["c1"]]]),
       commentIds: ["c1"],
       profiles: new Map([["ABCD", { name: "Mixed Case" }]]),
     });
@@ -477,6 +476,7 @@ test(
           },
         ],
       ]),
+      childrenByParent: new Map([[null, ["comment-2"]]]),
       commentIds: ["comment-2"],
       profiles: new Map(),
     };

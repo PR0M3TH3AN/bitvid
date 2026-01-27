@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import "./test-setup.mjs";
 
 import { setupModal } from "./video-modal-accessibility.test.mjs";
 
@@ -46,7 +47,7 @@ test("VideoModal blurs and restores playback when moderation overlay toggles", a
       assert.ok(stage, "video stage should exist");
       assert.equal(stage.dataset.visualState, "blurred");
 
-      const overlay = document.querySelector("[data-moderation-overlay]");
+      const overlay = document.querySelector("[data-moderation-bar]");
       assert.ok(overlay, "moderation overlay should be rendered");
       assert.equal(overlay.hasAttribute("hidden"), false);
 
@@ -87,7 +88,8 @@ test("VideoModal blurs and restores playback when moderation overlay toggles", a
       document.dispatchEvent(overrideSignal);
 
       assert.equal(stage.dataset.visualState, undefined);
-      assert.equal(overlay.hasAttribute("hidden"), true);
+      assert.equal(overlay.hasAttribute("hidden"), false);
+      assert.equal(overlay.dataset.overlayState, "override");
 
       const restoreButton = document.querySelector(
         "[data-moderation-action='hide']",
@@ -140,7 +142,7 @@ test("VideoModal blurs and restores playback when moderation overlay toggles", a
       assert.ok(stage, "video stage should exist");
       assert.equal(stage.dataset.visualState, "blurred");
 
-      const overlay = document.querySelector("[data-moderation-overlay]");
+      const overlay = document.querySelector("[data-moderation-bar]");
       assert.ok(overlay, "moderation overlay should be rendered");
       assert.equal(overlay.hasAttribute("hidden"), false);
 

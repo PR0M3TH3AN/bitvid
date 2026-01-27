@@ -121,6 +121,8 @@ test.describe("overlay layering tokens", () => {
     expect(initialLayout.state).toBe("collapsed");
     expect(Math.abs(initialLayout.marginLeft - initialLayout.collapsedMargin)).toBeLessThan(0.5);
 
+    // Ensure the toggle is initialized
+    await expect(collapseToggle).toHaveAttribute("data-state", /.*/);
     await collapseToggle.click();
 
     await page.waitForFunction(() =>
