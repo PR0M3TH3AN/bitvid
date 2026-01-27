@@ -3580,7 +3580,29 @@ export class NostrClient {
       ? relayUrls
       : this.relays;
 
-    const normalizedRelays = sanitizeRelayList(this.getHealthyRelays(relaysToUse));
+    const healthyCandidates = this.getHealthyRelays(relaysToUse);
+    const readPreferences = new Set(Array.isArray(this.readRelays) ? this.readRelays : []);
+
+    // Sort relays: prefer user's read relays first
+    const sortedRelays = healthyCandidates.sort((a, b) => {
+      const aPreferred = readPreferences.has(a);
+      const bPreferred = readPreferences.has(b);
+      if (aPreferred && !bPreferred) return -1;
+      if (!aPreferred && bPreferred) return 1;
+      return 0;
+    });
+
+    // Cap the number of relays to avoid excessive requests
+    const cappedRelays = sortedRelays.slice(0, 8);
+    const normalizedRelays = sanitizeRelayList(cappedRelays);
+
+    if (isDevMode) {
+      devLogger.log("[fetchListIncrementally] Selected relays:", {
+        count: normalizedRelays.length,
+        relays: normalizedRelays,
+      });
+    }
+
     const results = [];
     const concurrencyLimit = 8;
 
@@ -3706,6 +3728,7 @@ export class NostrClient {
             }
           } else {
              devLogger.warn(`[fetchListIncrementally] Fetch failed for ${relayUrl}`, error);
+             this.markRelayUnreachable(relayUrl);
              return { error, ok: false };
           }
         }
@@ -4082,6 +4105,25 @@ export class NostrClient {
     }
 
     return results;
+  }
+
+  markRelayUnreachable(url, ttlMs = 60000) {
+    if (!url || typeof url !== "string") {
+      return;
+    }
+    const normalized = url.trim();
+    if (!normalized) {
+      return;
+    }
+    this.unreachableRelays.add(normalized);
+    if (ttlMs > 0) {
+      setTimeout(() => {
+        this.unreachableRelays.delete(normalized);
+        if (isDevMode) {
+          devLogger.debug(`[nostr] Cleared temporary failure mark for ${normalized}`);
+        }
+      }, ttlMs);
+    }
   }
 
   getHealthyRelays(candidates) {

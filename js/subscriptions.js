@@ -11,6 +11,7 @@ import {
   subscribeVideoViewEvents,
 } from "./nostrViewEventsFacade.js";
 import { DEFAULT_RELAY_URLS } from "./nostr/toolkit.js";
+import { relayManager } from "./relayManager.js";
 import {
   buildSubscriptionListEvent,
   SUBSCRIPTION_LIST_IDENTIFIER,
@@ -429,36 +430,8 @@ class SubscriptionsManager {
     try {
       const normalizedUserPubkey = normalizeHexPubkey(userPubkey) || userPubkey;
 
-      const relaySet = new Set();
-      const addRelayCandidates = (candidates) => {
-        if (!candidates) {
-          return;
-        }
-        const iterable = Array.isArray(candidates)
-          ? candidates
-          : candidates instanceof Set
-          ? Array.from(candidates)
-          : [];
-        for (const candidate of iterable) {
-          if (typeof candidate !== "string") {
-            continue;
-          }
-          const trimmed = candidate.trim();
-          if (trimmed) {
-            relaySet.add(trimmed);
-          }
-        }
-      };
-
-      addRelayCandidates(nostrClient.relays);
-      if (!relaySet.size) {
-        addRelayCandidates(nostrClient.readRelays);
-      }
-      if (!relaySet.size) {
-        addRelayCandidates(DEFAULT_RELAY_URLS);
-      }
-
-      const relayUrls = Array.from(relaySet);
+      const readRelays = relayManager.getReadRelayUrls();
+      const relayUrls = readRelays.length > 0 ? readRelays : Array.from(DEFAULT_RELAY_URLS);
       if (!relayUrls.length) {
         devLogger.warn(
           "[SubscriptionsManager] No relay URLs available while loading subscriptions.",

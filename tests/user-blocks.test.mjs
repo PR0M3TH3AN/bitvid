@@ -8,6 +8,7 @@ const {
 const { setActiveSigner, clearActiveSigner, getActiveSigner } = await import(
   "../js/nostr/client.js"
 );
+const { relayManager } = await import("../js/relayManager.js");
 
 if (typeof globalThis.window === "undefined") {
   globalThis.window = {};
@@ -32,6 +33,9 @@ await (async () => {
     "wss://relay-two.example",
     "wss://relay-three.example",
   ];
+
+  const originalRelayEntries = relayManager.getEntries();
+  relayManager.setEntries(relays.map(url => ({ url, mode: "both" })), { allowEmpty: false, updateClient: false });
 
   const originalNostr = window.nostr;
   const originalPool = nostrClient.pool;
@@ -147,6 +151,7 @@ await (async () => {
       "decrypted block list should hydrate from newest event"
     );
   } finally {
+    relayManager.setEntries(originalRelayEntries, { allowEmpty: false, updateClient: false });
     userBlocks.blockedPubkeys = originalBlocked;
     userBlocks.blockEventId = originalBlockEventId;
     userBlocks.muteEventId = originalMuteEventId;
@@ -169,6 +174,9 @@ await (async () => {
     "wss://fast-three.example",
     "wss://background.example",
   ];
+
+  const originalRelayEntries = relayManager.getEntries();
+  relayManager.setEntries(relays.map(url => ({ url, mode: "both" })), { allowEmpty: false, updateClient: false });
 
   const originalNostr = window.nostr;
   const originalPool = nostrClient.pool;
@@ -302,6 +310,7 @@ await (async () => {
   } finally {
     unsubscribeStatus?.();
     unsubscribeChange?.();
+    relayManager.setEntries(originalRelayEntries, { allowEmpty: false, updateClient: false });
     userBlocks.blockedPubkeys = originalBlocked;
     userBlocks.blockEventId = originalBlockEventId;
     userBlocks.blockEventCreatedAt = originalBlockEventCreatedAt;
@@ -520,7 +529,11 @@ await (async () => {
 
   const signedEvents = [];
 
-  nostrClient.relays = ["wss://direct-signer.example"];
+  const relayUrls = ["wss://direct-signer.example"];
+  const originalRelayEntries = relayManager.getEntries();
+  relayManager.setEntries(relayUrls.map(url => ({ url, mode: "both" })), { allowEmpty: false, updateClient: false });
+
+  nostrClient.relays = relayUrls;
   nostrClient.writeRelays = nostrClient.relays;
   nostrClient.pool = {
     publish: (_targets, event) => {
@@ -662,6 +675,7 @@ await (async () => {
       "mute list event should include p-tags for blocked pubkeys",
     );
   } finally {
+    relayManager.setEntries(originalRelayEntries, { allowEmpty: false, updateClient: false });
     userBlocks.blockedPubkeys = originalBlocked;
     userBlocks.blockEventId = originalBlockEventId;
     userBlocks.blockEventCreatedAt = originalBlockEventCreatedAt;
@@ -866,6 +880,9 @@ await (async () => {
   clearActiveSigner();
 
   const relayUrls = ["wss://relay-nip44-read.example"];
+  const originalRelayEntries = relayManager.getEntries();
+  relayManager.setEntries(relayUrls.map(url => ({ url, mode: "both" })), { allowEmpty: false, updateClient: false });
+
   nostrClient.relays = relayUrls;
   nostrClient.ensureExtensionPermissions = async () => ({ ok: true });
 
@@ -908,6 +925,7 @@ await (async () => {
     assert.equal(decryptCalls.nip44, 1, "nip44 decryptor should be preferred");
     assert.equal(decryptCalls.nip04, 0, "nip04 decryptor should not be used");
   } finally {
+    relayManager.setEntries(originalRelayEntries, { allowEmpty: false, updateClient: false });
     window.nostr = originalNostr;
     nostrClient.relays = originalRelays;
     nostrClient.pool = originalPool;
@@ -1088,7 +1106,11 @@ await (async () => {
     const originalRelays = Array.isArray(nostrClient.relays) ? [...nostrClient.relays] : nostrClient.relays;
     const originalPool = nostrClient.pool;
 
-    nostrClient.relays = ["wss://tag-only.example"];
+    const relayUrls = ["wss://tag-only.example"];
+    const originalRelayEntries = relayManager.getEntries();
+    relayManager.setEntries(relayUrls.map(url => ({ url, mode: "both" })), { allowEmpty: false, updateClient: false });
+
+    nostrClient.relays = relayUrls;
     nostrClient.pool = {
       list: async () => [
         {
@@ -1109,6 +1131,7 @@ await (async () => {
       assert.equal(manager.blockedPubkeys.size, 1, "should have exactly one blocked pubkey");
       assert.equal(manager.blockEventId, "event-tag-only", "should track the correct event ID");
     } finally {
+      relayManager.setEntries(originalRelayEntries, { allowEmpty: false, updateClient: false });
       nostrClient.relays = originalRelays;
       nostrClient.pool = originalPool;
     }
@@ -1125,7 +1148,11 @@ await (async () => {
     const originalRelays = Array.isArray(nostrClient.relays) ? [...nostrClient.relays] : nostrClient.relays;
     const originalPool = nostrClient.pool;
 
-    nostrClient.relays = ["wss://tag-only-whitespace.example"];
+    const relayUrls = ["wss://tag-only-whitespace.example"];
+    const originalRelayEntries = relayManager.getEntries();
+    relayManager.setEntries(relayUrls.map(url => ({ url, mode: "both" })), { allowEmpty: false, updateClient: false });
+
+    nostrClient.relays = relayUrls;
     nostrClient.pool = {
       list: async () => [
         {
@@ -1144,6 +1171,7 @@ await (async () => {
 
       assert(manager.blockedPubkeys.has(blockedHex), "should load blocked pubkeys from p-tags when content is whitespace");
     } finally {
+      relayManager.setEntries(originalRelayEntries, { allowEmpty: false, updateClient: false });
       nostrClient.relays = originalRelays;
       nostrClient.pool = originalPool;
     }
@@ -1161,7 +1189,11 @@ await (async () => {
     const originalRelays = Array.isArray(nostrClient.relays) ? [...nostrClient.relays] : nostrClient.relays;
     const originalPool = nostrClient.pool;
 
-    nostrClient.relays = ["wss://empty-clear.example"];
+    const relayUrls = ["wss://empty-clear.example"];
+    const originalRelayEntries = relayManager.getEntries();
+    relayManager.setEntries(relayUrls.map(url => ({ url, mode: "both" })), { allowEmpty: false, updateClient: false });
+
+    nostrClient.relays = relayUrls;
     nostrClient.pool = {
       list: async () => [
         {
@@ -1180,6 +1212,7 @@ await (async () => {
 
       assert.equal(manager.blockedPubkeys.size, 0, "should clear block list when content and tags are empty");
     } finally {
+      relayManager.setEntries(originalRelayEntries, { allowEmpty: false, updateClient: false });
       nostrClient.relays = originalRelays;
       nostrClient.pool = originalPool;
     }
@@ -1195,7 +1228,11 @@ await (async () => {
   const originalPool = nostrClient.pool;
   const originalNostr = window.nostr;
 
-  nostrClient.relays = ["wss://repro.example"];
+  const relayUrls = ["wss://repro.example"];
+  const originalRelayEntries = relayManager.getEntries();
+  relayManager.setEntries(relayUrls.map(url => ({ url, mode: "both" })), { allowEmpty: false, updateClient: false });
+
+  nostrClient.relays = relayUrls;
 
   window.nostr = {
     nip04: {
@@ -1238,6 +1275,7 @@ await (async () => {
     assert.ok(blocked.includes(taggedBlocked), "Should include pubkey from tagged list");
     assert.ok(!blocked.includes(plainBlocked), "Should NOT include pubkey from plain list (fallback ignored)");
   } finally {
+    relayManager.setEntries(originalRelayEntries, { allowEmpty: false, updateClient: false });
     nostrClient.relays = originalRelays;
     nostrClient.pool = originalPool;
     window.nostr = originalNostr;
