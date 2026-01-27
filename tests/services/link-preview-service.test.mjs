@@ -95,16 +95,22 @@ test("LinkPreviewService", async (t) => {
   await t.test("respects TTL", async () => {
     // Set a preview that is expired
     const expiredService = new LinkPreviewService({ ttlMs: -1000 });
-    // Initialize DB first to ensure we write to the same place
-    await expiredService.init();
+    try {
+      // Initialize DB first to ensure we write to the same place
+      await expiredService.init();
 
-    await expiredService.setCachedPreview("https://expired.com", { title: "Expired" });
+      await expiredService.setCachedPreview("https://expired.com", { title: "Expired" });
 
-    const cached = await expiredService.getCachedPreview("https://expired.com");
-    assert.equal(cached, null);
+      // Ensure time advances since TTL is clamped to 0
+      await new Promise((r) => setTimeout(r, 10));
 
-    if (expiredService.db) {
-      expiredService.db.close();
+      const cached = await expiredService.getCachedPreview("https://expired.com");
+      assert.equal(cached, null);
+    } finally {
+      if (expiredService.db) {
+        expiredService.db.close();
+        expiredService.db = null;
+      }
     }
   });
 
