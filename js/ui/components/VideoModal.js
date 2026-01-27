@@ -38,7 +38,6 @@ import {
   formatShortNpub as defaultFormatShortNpub,
 } from "../../utils/formatters.js";
 import { sanitizeProfileMediaUrl } from "../../utils/profileMedia.js";
-import { normalizeHashtag } from "../../utils/hashtagNormalization.js";
 import { getBreakpointLg } from "../../designSystem/metrics.js";
 import { LinkPreviewService } from "../../services/linkPreviewService.js";
 import {
@@ -3224,19 +3223,29 @@ export class VideoModal {
       }
 
       const raw = typeof entry === "string" ? entry : String(entry ?? "");
-      const trimmed = normalizeHashtag(raw);
+      const trimmed = raw.trim();
 
       if (!trimmed) {
         continue;
       }
 
-      const key = trimmed.toLocaleLowerCase();
+      let key = trimmed.toLowerCase();
+      if (key.startsWith("#")) {
+        key = key.slice(1);
+      }
+
+      if (!key) {
+        continue;
+      }
+
       if (seen.has(key)) {
         continue;
       }
 
       seen.add(key);
-      normalized.push(trimmed);
+
+      const display = trimmed.startsWith("#") ? trimmed : `#${trimmed}`;
+      normalized.push(display);
     }
 
     return normalized.sort((a, b) =>

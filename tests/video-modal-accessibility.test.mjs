@@ -33,9 +33,8 @@ export async function setupModal({ lazyLoad = false } = {}) {
   // jsdom defines HTMLMediaElement but .pause/.load throw "Not implemented".
   // Replace with safe no-ops for tests that just depend on calls happening.
   if (window.HTMLMediaElement && window.HTMLMediaElement.prototype) {
-    const proto = window.HTMLMediaElement.prototype;
-    proto.pause = () => {};
-    proto.load = () => {};
+    window.HTMLMediaElement.prototype.pause = function () {};
+    window.HTMLMediaElement.prototype.load = function () {};
   }
 
   globalThis.HTMLElement = window.HTMLElement;
@@ -46,15 +45,6 @@ export async function setupModal({ lazyLoad = false } = {}) {
   globalThis.Event = window.Event;
   globalThis.Node = window.Node;
   globalThis.EventTarget = window.EventTarget;
-
-  if (typeof window.HTMLMediaElement !== "undefined") {
-    window.HTMLMediaElement.prototype.pause = function () {};
-    window.HTMLMediaElement.prototype.load = function () {};
-  }
-  if (typeof window.HTMLVideoElement !== "undefined") {
-    window.HTMLVideoElement.prototype.pause = function () {};
-    window.HTMLVideoElement.prototype.load = function () {};
-  }
 
   try {
     Object.defineProperty(globalThis, "navigator", {
@@ -458,13 +448,9 @@ async function setupPlaybackHarness() {
   globalThis.Node = window.Node;
   globalThis.EventTarget = window.EventTarget;
 
-  if (typeof window.HTMLMediaElement !== "undefined") {
-    if (!window.HTMLMediaElement.prototype.pause) {
-      window.HTMLMediaElement.prototype.pause = function () {};
-    }
-    if (!window.HTMLMediaElement.prototype.load) {
-      window.HTMLMediaElement.prototype.load = function () {};
-    }
+  if (window.HTMLMediaElement && window.HTMLMediaElement.prototype) {
+    window.HTMLMediaElement.prototype.pause = function () {};
+    window.HTMLMediaElement.prototype.load = function () {};
   }
 
   try {
