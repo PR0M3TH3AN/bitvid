@@ -158,6 +158,14 @@ To use it:
    - Run the build (`npm run build`)
    - Install Playwright browsers (so you can run `npm run test:visual`)
 
+## Key Documentation
+
+Before starting your work, please review these key documents:
+
+- **[AGENTS.md](./AGENTS.md)**: Architectural guidelines, mission statement, and troubleshooting tips.
+- **[Nostr Event Schemas](./docs/nostr-event-schemas.md)**: The source of truth for all Nostr events published by the application.
+- **[Playback Fallback](./docs/playback-fallback.md)**: Details on the URL-first playback strategy and WebTorrent fallback mechanism.
+
 ## Security
 
 If you find a vulnerability, please email **[security@bitvid.network](mailto:security@bitvid.network)**. We’ll coordinate a responsible disclosure window before public release.
