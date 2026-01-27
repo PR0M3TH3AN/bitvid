@@ -76,7 +76,7 @@ test("VideoListView renders sorted popular tag pills", () => {
   assert.equal(buttons.length, 3);
   assert.deepEqual(
     Array.from(buttons, (button) => button.dataset.tag),
-    ["Nostr", "Video", "Learning"],
+    ["#Nostr", "#Video", "#Learning"],
   );
 });
 
@@ -90,7 +90,7 @@ test("VideoListView applies tag preference variants to popular tags", () => {
   view.mount(listRoot);
   view.setPopularTagsContainer(tagsRoot);
   view.setTagPreferenceStateResolver((tag) =>
-    tag === "Nostr" ? "interest" : tag === "Video" ? "disinterest" : "neutral",
+    tag === "#Nostr" ? "interest" : tag === "#Video" ? "disinterest" : "neutral",
   );
 
   const videos = [
