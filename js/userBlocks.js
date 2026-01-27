@@ -72,6 +72,8 @@ export const USER_BLOCK_EVENTS = Object.freeze({
 const FAST_BLOCKLIST_RELAY_LIMIT = 3;
 const FAST_BLOCKLIST_TIMEOUT_MS = 2500;
 const BACKGROUND_BLOCKLIST_TIMEOUT_MS = 6000;
+const DECRYPT_TIMEOUT_MS = 90000;
+const DECRYPT_RETRY_DELAY_MS = 10000;
 
 function sanitizeRelayList(candidate) {
   return Array.isArray(candidate)
@@ -643,6 +645,7 @@ class UserBlockListManager {
     this.loaded = false;
     this.emitter = new TinyEventEmitter();
     this.seedStateCache = new Map();
+    this.decryptRetryTimeoutId = null;
 
     profileCache.subscribe((event, detail) => {
       if (event === "profileChanged") {
@@ -664,6 +667,10 @@ class UserBlockListManager {
     this.muteEventId = null;
     this.muteEventCreatedAt = null;
     this.loaded = false;
+    if (this.decryptRetryTimeoutId) {
+      clearTimeout(this.decryptRetryTimeoutId);
+      this.decryptRetryTimeoutId = null;
+    }
   }
 
   on(eventName, handler) {
@@ -672,6 +679,32 @@ class UserBlockListManager {
 
   getBlockedPubkeys() {
     return Array.from(this.blockedPubkeys);
+  }
+
+  scheduleDecryptRetry(userPubkey, error) {
+    if (!userPubkey) {
+      return;
+    }
+    if (this.decryptRetryTimeoutId) {
+      clearTimeout(this.decryptRetryTimeoutId);
+    }
+    this.decryptRetryTimeoutId = setTimeout(() => {
+      this.decryptRetryTimeoutId = null;
+      if (this.activePubkey !== userPubkey) {
+        return;
+      }
+      this.loadBlocks(userPubkey, {
+        since: Number.isFinite(this.blockEventCreatedAt)
+          ? this.blockEventCreatedAt
+          : undefined,
+      }).catch((retryError) => {
+        userLogger.warn("[UserBlockList] Decryption retry failed:", retryError);
+      });
+    }, DECRYPT_RETRY_DELAY_MS);
+    devLogger.log(
+      `[UserBlockList] Decryption timed out; scheduling retry in ${DECRYPT_RETRY_DELAY_MS / 1000}s.`,
+      error,
+    );
   }
 
   isBlocked(pubkey) {
@@ -1064,8 +1097,14 @@ class UserBlockListManager {
           ]);
           const timeoutPromise = new Promise((_, reject) =>
             setTimeout(
-              () => reject(new Error("Decryption timed out after 15s")),
-              15000,
+              () => {
+                const timeoutError = new Error(
+                  `Decryption timed out after ${DECRYPT_TIMEOUT_MS / 1000}s`,
+                );
+                timeoutError.code = "user-blocklist-decrypt-timeout";
+                reject(timeoutError);
+              },
+              DECRYPT_TIMEOUT_MS,
             ),
           );
 
@@ -1082,6 +1121,15 @@ class UserBlockListManager {
         }
 
         if (decryptionError) {
+          if (decryptionError.code === "user-blocklist-decrypt-timeout") {
+            this.blockedPubkeys = previousState.blockedPubkeys;
+            this.blockEventId = previousState.blockEventId;
+            this.blockEventCreatedAt = previousState.blockEventCreatedAt;
+            this.loaded = true;
+            emitStatus({ status: "settled" });
+            this.scheduleDecryptRetry(normalized, decryptionError);
+            return;
+          }
           userLogger.warn(
             "[UserBlockList] Decryption failed during merge.",
             decryptionError,

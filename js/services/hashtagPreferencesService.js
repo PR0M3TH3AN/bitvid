@@ -23,6 +23,8 @@ const LOG_PREFIX = "[HashtagPreferences]";
 const HASHTAG_IDENTIFIER = "bitvid:tag-preferences";
 const HEX64_REGEX = /^[0-9a-f]{64}$/i;
 const DEFAULT_VERSION = 1;
+const DECRYPT_TIMEOUT_MS = 90000;
+const DECRYPT_RETRY_DELAY_MS = 10000;
 
 class TinyEventEmitter {
   constructor() {
@@ -235,6 +237,7 @@ class HashtagPreferencesService {
     this.eventCreatedAt = null;
     this.loaded = false;
     this.preferencesVersion = DEFAULT_VERSION;
+    this.decryptRetryTimeoutId = null;
 
     profileCache.subscribe((event, detail) => {
       if (event === "profileChanged") {
@@ -262,6 +265,10 @@ class HashtagPreferencesService {
     this.eventCreatedAt = null;
     this.loaded = false;
     this.preferencesVersion = DEFAULT_VERSION;
+    if (this.decryptRetryTimeoutId) {
+      clearTimeout(this.decryptRetryTimeoutId);
+      this.decryptRetryTimeoutId = null;
+    }
     this.emitChange("reset");
   }
 
@@ -414,6 +421,29 @@ class HashtagPreferencesService {
     } catch (error) {
       userLogger.warn(`${LOG_PREFIX} Failed to emit change event`, error);
     }
+  }
+
+  scheduleDecryptRetry(pubkey, error) {
+    const normalized = normalizeHexPubkey(pubkey);
+    if (!normalized) {
+      return;
+    }
+    if (this.decryptRetryTimeoutId) {
+      clearTimeout(this.decryptRetryTimeoutId);
+    }
+    this.decryptRetryTimeoutId = setTimeout(() => {
+      this.decryptRetryTimeoutId = null;
+      if (this.activePubkey && this.activePubkey !== normalized) {
+        return;
+      }
+      this.load(normalized).catch((retryError) => {
+        userLogger.warn(`${LOG_PREFIX} Decryption retry failed`, retryError);
+      });
+    }, DECRYPT_RETRY_DELAY_MS);
+    devLogger.log(
+      `${LOG_PREFIX} Decryption timed out; scheduling retry in ${DECRYPT_RETRY_DELAY_MS / 1000}s.`,
+      error,
+    );
   }
 
   async load(pubkey) {
@@ -610,8 +640,14 @@ class HashtagPreferencesService {
       const decryptPromise = this.decryptEvent(latest, normalized);
       const timeoutPromise = new Promise((_, reject) =>
         setTimeout(
-          () => reject(new Error("Decryption timed out after 15s")),
-          15000,
+          () => {
+            const timeoutError = new Error(
+              `Decryption timed out after ${DECRYPT_TIMEOUT_MS / 1000}s`,
+            );
+            timeoutError.code = "hashtag-preferences-decrypt-timeout";
+            reject(timeoutError);
+          },
+          DECRYPT_TIMEOUT_MS,
         ),
       );
       decryptResult = await Promise.race([decryptPromise, timeoutPromise]);
@@ -624,6 +660,14 @@ class HashtagPreferencesService {
         `${LOG_PREFIX} Failed to decrypt hashtag preferences`,
         decryptResult.error,
       );
+
+      if (decryptResult.error?.code === "hashtag-preferences-decrypt-timeout") {
+        if (!wasLoadedForUser && !this.loaded) {
+          this.loaded = true;
+        }
+        this.scheduleDecryptRetry(normalized, decryptResult.error);
+        return;
+      }
 
       // If we already have loaded preferences (e.g. from cache), preserve them
       // rather than wiping everything just because the remote update couldn't be decrypted.
