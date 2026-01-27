@@ -1,7 +1,11 @@
+import { createModalAccessibility } from "./ui/components/modalAccessibility.js";
 import logger from "./utils/logger.js";
 
 const TOC_URL = "content/docs/toc.json";
 const DOCS_VIEW_NAME = "docs";
+const TOC_DRAWER_ID = "docsTocDrawer";
+const TOC_DRAWER_NAV_ID = "docsTocDrawerNav";
+const TOC_LIST_ID = "docsTocList";
 
 const tocState = {
   items: [],
@@ -10,6 +14,13 @@ const tocState = {
   linkLookup: new Map(),
   groupLookup: new Map(),
   activeSlug: "",
+  drawer: {
+    root: null,
+    panel: null,
+    toggle: null,
+    accessibility: null,
+    isOpen: false,
+  },
 };
 
 function getHashParams() {
@@ -56,11 +67,15 @@ function buildLink(item) {
   link.textContent = item.title || item.slug;
   link.className = "text-sm text-muted transition-colors hover:text-text-strong";
   link.dataset.slug = item.slug;
-  tocState.linkLookup.set(item.slug, link);
+  link.dataset.docsTocItem = "true";
+  if (!tocState.linkLookup.has(item.slug)) {
+    tocState.linkLookup.set(item.slug, new Set());
+  }
+  tocState.linkLookup.get(item.slug)?.add(link);
   return link;
 }
 
-function buildToggleButton(item, controlsId, expanded) {
+function buildToggleButton(item, controlsId, expanded, groupList) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "btn-ghost btn-xs";
@@ -73,15 +88,14 @@ function buildToggleButton(item, controlsId, expanded) {
     const nextExpanded = !isExpanded;
     button.setAttribute("aria-expanded", nextExpanded ? "true" : "false");
     button.textContent = nextExpanded ? "Hide" : "Show";
-    const group = tocState.groupLookup.get(item.slug);
-    if (group?.list) {
-      group.list.hidden = !nextExpanded;
+    if (groupList) {
+      groupList.hidden = !nextExpanded;
     }
   });
   return button;
 }
 
-function renderTocItems(items, container, level = 0) {
+function renderTocItems(items, container, level = 0, groupPrefix = "docs-toc") {
   const list = document.createElement("ul");
   list.className = "bv-stack bv-stack--tight";
   list.setAttribute("role", "list");
@@ -99,21 +113,25 @@ function renderTocItems(items, container, level = 0) {
     const link = buildLink(item);
     row.appendChild(link);
 
-    if (Array.isArray(item.children) && item.children.length > 0) {
-      const groupId = `docs-toc-group-${item.slug}`;
-      const expanded = level === 0;
-      const toggle = buildToggleButton(item, groupId, expanded);
-      row.appendChild(toggle);
+    listItem.appendChild(row);
 
-      const childList = renderTocItems(item.children, listItem, level + 1);
+    if (Array.isArray(item.children) && item.children.length > 0) {
+      const groupId = `${groupPrefix}-group-${item.slug}`;
+      const expanded = level === 0;
+      const childList = renderTocItems(item.children, listItem, level + 1, groupPrefix);
       childList.id = groupId;
       childList.classList.add("ml-md", "border-l", "border-border", "pl-md");
       childList.hidden = !expanded;
 
-      tocState.groupLookup.set(item.slug, { button: toggle, list: childList });
+      const toggle = buildToggleButton(item, groupId, expanded, childList);
+      row.appendChild(toggle);
+
+      if (!tocState.groupLookup.has(item.slug)) {
+        tocState.groupLookup.set(item.slug, new Set());
+      }
+      tocState.groupLookup.get(item.slug)?.add({ button: toggle, list: childList });
     }
 
-    listItem.appendChild(row);
     list.appendChild(listItem);
   });
 
@@ -122,20 +140,22 @@ function renderTocItems(items, container, level = 0) {
 }
 
 function renderToc(items) {
-  const tocRoot = document.getElementById("docsToc");
-  if (!tocRoot) {
+  const tocRoot = document.getElementById(TOC_LIST_ID);
+  const tocDrawerRoot = document.getElementById(TOC_DRAWER_NAV_ID);
+  const roots = [tocRoot, tocDrawerRoot].filter(Boolean);
+  if (roots.length === 0) {
     logger.user.warn("Docs table of contents container not found.");
     return;
   }
 
-  tocRoot.innerHTML = "";
+  tocState.linkLookup.clear();
+  tocState.groupLookup.clear();
 
-  const heading = document.createElement("p");
-  heading.className = "text-xs font-semibold uppercase tracking-wide text-muted";
-  heading.textContent = "On this page";
-  tocRoot.appendChild(heading);
-
-  renderTocItems(items, tocRoot);
+  roots.forEach((root) => {
+    root.innerHTML = "";
+    const groupPrefix = root.id ? `docs-${root.id}` : "docs-toc";
+    renderTocItems(items, root, 0, groupPrefix);
+  });
 }
 
 function updateActiveToc(slug) {
@@ -143,18 +163,22 @@ function updateActiveToc(slug) {
     return;
   }
 
-  const previousLink = tocState.linkLookup.get(tocState.activeSlug);
-  if (previousLink) {
-    previousLink.removeAttribute("aria-current");
-    previousLink.classList.remove("text-text-strong", "font-semibold");
-    previousLink.classList.add("text-muted");
+  const previousLinks = tocState.linkLookup.get(tocState.activeSlug);
+  if (previousLinks) {
+    previousLinks.forEach((link) => {
+      link.removeAttribute("aria-current");
+      link.classList.remove("text-text-strong", "font-semibold");
+      link.classList.add("text-muted");
+    });
   }
 
-  const link = tocState.linkLookup.get(slug);
-  if (link) {
-    link.setAttribute("aria-current", "page");
-    link.classList.remove("text-muted");
-    link.classList.add("text-text-strong", "font-semibold");
+  const links = tocState.linkLookup.get(slug);
+  if (links) {
+    links.forEach((link) => {
+      link.setAttribute("aria-current", "page");
+      link.classList.remove("text-muted");
+      link.classList.add("text-text-strong", "font-semibold");
+    });
   }
 
   tocState.activeSlug = slug;
@@ -162,11 +186,15 @@ function updateActiveToc(slug) {
   let current = slug;
   while (tocState.parentLookup.has(current)) {
     const parentSlug = tocState.parentLookup.get(current);
-    const group = tocState.groupLookup.get(parentSlug);
-    if (group?.button && group?.list) {
-      group.button.setAttribute("aria-expanded", "true");
-      group.button.textContent = "Hide";
-      group.list.hidden = false;
+    const groups = tocState.groupLookup.get(parentSlug);
+    if (groups) {
+      groups.forEach((group) => {
+        if (group?.button && group?.list) {
+          group.button.setAttribute("aria-expanded", "true");
+          group.button.textContent = "Hide";
+          group.list.hidden = false;
+        }
+      });
     }
     current = parentSlug;
   }
@@ -284,6 +312,110 @@ async function handleHashChange() {
   await renderMarkdown(item.path);
   updateActiveToc(slug);
   updateDocumentTitle(item.title || "Docs");
+  if (tocState.drawer.isOpen) {
+    closeTocDrawer();
+  }
+}
+
+function updateDrawerState(nextState) {
+  tocState.drawer.isOpen = nextState;
+  if (tocState.drawer.toggle) {
+    tocState.drawer.toggle.setAttribute("aria-expanded", nextState ? "true" : "false");
+  }
+  if (!tocState.drawer.root) {
+    return;
+  }
+  const doc =
+    typeof document !== "undefined" && document ? document : tocState.drawer.root.ownerDocument;
+  if (nextState) {
+    tocState.drawer.root.classList.remove("hidden");
+    tocState.drawer.root.setAttribute("data-open", "true");
+    doc?.documentElement?.classList.add("modal-open");
+    doc?.body?.classList.add("modal-open");
+    tocState.drawer.accessibility?.activate({
+      triggerElement: tocState.drawer.toggle,
+    });
+  } else {
+    tocState.drawer.root.classList.add("hidden");
+    tocState.drawer.root.setAttribute("data-open", "false");
+    tocState.drawer.accessibility?.deactivate();
+    if (doc) {
+      const openModals = doc.querySelectorAll(".bv-modal:not(.hidden)");
+      if (openModals.length === 0) {
+        doc.documentElement?.classList.remove("modal-open");
+        doc.body?.classList.remove("modal-open");
+      }
+    }
+  }
+}
+
+function focusFirstDrawerItem() {
+  const panel = tocState.drawer.panel;
+  if (!panel) {
+    return;
+  }
+  const firstLink = panel.querySelector("[data-docs-toc-item]");
+  if (firstLink && typeof firstLink.focus === "function") {
+    firstLink.focus({ preventScroll: true });
+    return;
+  }
+  if (typeof panel.focus === "function") {
+    panel.focus({ preventScroll: true });
+  }
+}
+
+function openTocDrawer() {
+  if (tocState.drawer.isOpen) {
+    return;
+  }
+  updateDrawerState(true);
+  const schedule =
+    typeof requestAnimationFrame === "function"
+      ? requestAnimationFrame
+      : (callback) => setTimeout(callback, 0);
+  schedule(() => {
+    focusFirstDrawerItem();
+  });
+}
+
+function closeTocDrawer() {
+  if (!tocState.drawer.isOpen) {
+    return;
+  }
+  updateDrawerState(false);
+}
+
+function setupTocDrawer() {
+  if (typeof document === "undefined") {
+    return;
+  }
+  const drawerRoot = document.getElementById(TOC_DRAWER_ID);
+  const drawerPanel = drawerRoot?.querySelector("[data-docs-toc-panel]") || null;
+  const drawerToggle = document.querySelector("[data-docs-toc-toggle]");
+  if (!drawerRoot || !drawerPanel || !drawerToggle) {
+    return;
+  }
+
+  tocState.drawer.root = drawerRoot;
+  tocState.drawer.panel = drawerPanel;
+  tocState.drawer.toggle = drawerToggle;
+  tocState.drawer.accessibility = createModalAccessibility({
+    root: drawerRoot,
+    panel: drawerPanel,
+    backdrop: drawerRoot.querySelector(".bv-modal-backdrop"),
+    document,
+    onRequestClose: () => {
+      closeTocDrawer();
+    },
+  });
+
+  drawerToggle.addEventListener("click", () => {
+    if (tocState.drawer.isOpen) {
+      closeTocDrawer();
+    } else {
+      openTocDrawer();
+    }
+  });
 }
 
 async function initDocsView() {
@@ -291,11 +423,12 @@ async function initDocsView() {
     tocState.items = await fetchToc();
     indexItems(tocState.items);
     renderToc(tocState.items);
+    setupTocDrawer();
     window.addEventListener("hashchange", handleHashChange);
     await handleHashChange();
   } catch (error) {
     logger.user.error("Failed to initialize docs view.", error);
-    const tocRoot = document.getElementById("docsToc");
+    const tocRoot = document.getElementById(TOC_LIST_ID);
     if (tocRoot) {
       tocRoot.innerHTML =
         '<p class="text-critical-strong">Unable to load docs table of contents.</p>';

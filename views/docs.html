@@ -2,9 +2,15 @@
 <section class="bv-stack" data-ds="new" aria-labelledby="docsHeading">
   <article class="card p-lg">
     <div class="flex flex-col gap-lg lg:flex-row">
-      <nav id="docsToc" class="bv-stack bv-stack--tight lg:w-64 lg:shrink-0" aria-label="Table of contents">
+      <nav
+        id="docsToc"
+        class="bv-stack bv-stack--tight hidden lg:block lg:w-64 lg:shrink-0"
+        aria-label="Table of contents"
+      >
         <p class="text-xs font-semibold uppercase tracking-wide text-muted">On this page</p>
-        <div class="text-sm text-muted">Loading contents...</div>
+        <div id="docsTocList" class="bv-stack bv-stack--tight text-sm text-muted">
+          Loading contents...
+        </div>
       </nav>
       <main id="docsContent" class="bv-stack bv-stack--tight flex-1">
         <header class="flex flex-wrap items-center justify-between gap-2">
@@ -14,8 +20,9 @@
           <button
             type="button"
             class="btn-ghost lg:hidden"
-            aria-controls="docsToc"
+            aria-controls="docsTocDrawer"
             aria-expanded="false"
+            data-docs-toc-toggle
           >
             Contents
           </button>
@@ -26,4 +33,30 @@
       </main>
     </div>
   </article>
+  <div
+    id="docsTocDrawer"
+    class="bv-modal hidden lg:hidden items-stretch justify-end"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Documentation table of contents"
+    data-docs-toc-drawer
+    data-open="false"
+  >
+    <div class="bv-modal-backdrop" data-dismiss></div>
+    <div class="bv-modal__panel modal-sheet w-full max-w-sm" data-docs-toc-panel>
+      <div class="bv-stack bv-stack--tight">
+        <div class="flex items-center justify-between gap-2">
+          <p class="text-xs font-semibold uppercase tracking-wide text-muted">On this page</p>
+          <button type="button" class="btn-ghost btn-xs" data-dismiss>
+            Close
+          </button>
+        </div>
+        <nav
+          id="docsTocDrawerNav"
+          class="bv-stack bv-stack--tight"
+          aria-label="Table of contents"
+        ></nav>
+      </div>
+    </div>
+  </div>
 </section>
