@@ -308,6 +308,4 @@ async function initDocsView() {
   }
 }
 
-initDocsView();
-
 export { initDocsView };

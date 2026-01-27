@@ -9,6 +9,7 @@ import { ASSET_VERSION } from "../config/asset-version.js";
 import { applyDesignSystemAttributes } from "./designSystem.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import { attachFeedInfoPopover } from "./ui/components/FeedInfoPopover.js";
+import { initDocsView } from "./docsView.js";
 
 const TRACKING_SCRIPT_PATTERN = /(?:^|\/)tracking\.js(?:$|\?)/;
 
@@ -146,6 +147,9 @@ export const viewInitRegistry = {
     if (refreshApp && typeof refreshApp.forceRefreshAllProfiles === "function") {
       refreshApp.forceRefreshAllProfiles();
     }
+  },
+  docs: async () => {
+    await initDocsView();
   },
   history: async () => {
     try {
