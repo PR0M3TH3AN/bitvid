@@ -163,7 +163,7 @@ import { updateWatchHistoryListWithDefaultClient } from "./nostrWatchHistoryFaca
 
 > **Publishing note:** Session actors only emit passive telemetry (for example, view counters) and must **not** sign video comments. Require a logged-in Nostr signer for comment publishing via [`commentEvents`](../js/nostr/commentEvents.js).
 
-Video posts now include a required storage pointer tag (`['s', '<provider>:<prefix>']`). The `<prefix>` should resolve to the public storage base for the video assets (for example, a public bucket URL plus the object key without its extension). Clients derive `info.json` by appending `.info.json` to the prefix (or by combining a path-style prefix with the hosted URL origin if needed).
+Video posts now include a required storage pointer tag (`['s', '<provider>:<prefix>']`). The `buildVideoPostEvent` helper automatically generates this tag from available metadata (`infoHash`, `url`, or `videoRootId`) if it is omitted from the input. The `<prefix>` should resolve to the public storage base for the video assets (for example, a public bucket URL plus the object key without its extension). Clients derive `info.json` by appending `.info.json` to the prefix (or by combining a path-style prefix with the hosted URL origin if needed).
 
 Video posts should treat `videoRootId` as the stable series identifier that remains unchanged across edits and deletes. File fingerprints such as `infoHash` or `fileSha256` live alongside the content payload so media swaps do not break the version chain.
 
