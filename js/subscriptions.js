@@ -33,6 +33,8 @@ import { profileCache } from "./state/profileCache.js";
 
 const SUBSCRIPTION_SET_KIND =
   getNostrEventSchema(NOTE_TYPES.SUBSCRIPTION_LIST)?.kind ?? 30000;
+const DECRYPT_TIMEOUT_MS = 90000;
+const DECRYPT_RETRY_DELAY_MS = 10000;
 
 function normalizeHexPubkey(value) {
   if (typeof value !== "string") {
@@ -335,6 +337,7 @@ class SubscriptionsManager {
     this.isRunningFeed = false;
     this.hasRenderedOnce = false;
     this.emitter = new TinyEventEmitter();
+    this.decryptRetryTimeoutId = null;
     this.ensureNostrServiceListener();
 
     profileCache.subscribe((event, detail) => {
@@ -395,6 +398,29 @@ class SubscriptionsManager {
 
   on(eventName, handler) {
     return this.emitter.on(eventName, handler);
+  }
+
+  scheduleDecryptRetry(userPubkey, error) {
+    const normalized = normalizeHexPubkey(userPubkey) || userPubkey;
+    if (!normalized) {
+      return;
+    }
+    if (this.decryptRetryTimeoutId) {
+      clearTimeout(this.decryptRetryTimeoutId);
+    }
+    this.decryptRetryTimeoutId = setTimeout(() => {
+      this.decryptRetryTimeoutId = null;
+      if (this.currentUserPubkey && this.currentUserPubkey !== normalized) {
+        return;
+      }
+      this.updateFromRelays(normalized).catch((retryError) => {
+        userLogger.warn("[SubscriptionsManager] Decryption retry failed:", retryError);
+      });
+    }, DECRYPT_RETRY_DELAY_MS);
+    devLogger.log(
+      `[SubscriptionsManager] Decryption timed out; scheduling retry in ${DECRYPT_RETRY_DELAY_MS / 1000}s.`,
+      error,
+    );
   }
 
   async updateFromRelays(userPubkey) {
@@ -538,8 +564,14 @@ class SubscriptionsManager {
         const decryptPromise = this.decryptSubscriptionEvent(newest, userPubkey);
         const timeoutPromise = new Promise((_, reject) =>
           setTimeout(
-            () => reject(new Error("Decryption timed out after 15s")),
-            15000,
+            () => {
+              const timeoutError = new Error(
+                `Decryption timed out after ${DECRYPT_TIMEOUT_MS / 1000}s`,
+              );
+              timeoutError.code = "subscriptions-decrypt-timeout";
+              reject(timeoutError);
+            },
+            DECRYPT_TIMEOUT_MS,
           ),
         );
         decryptResult = await Promise.race([decryptPromise, timeoutPromise]);
@@ -548,6 +580,13 @@ class SubscriptionsManager {
       }
 
       if (!decryptResult.ok) {
+        if (decryptResult.error?.code === "subscriptions-decrypt-timeout") {
+          if (!this.loaded && !cachedSnapshot.hasSnapshot) {
+            this.loaded = true;
+          }
+          this.scheduleDecryptRetry(normalizedUserPubkey, decryptResult.error);
+          return;
+        }
         userLogger.error(
           "[SubscriptionsManager] Failed to decrypt subscription list:",
           decryptResult.error,
@@ -614,6 +653,10 @@ class SubscriptionsManager {
     this.lastRunOptions = null;
     this.lastResult = null;
     this.hasRenderedOnce = false;
+    if (this.decryptRetryTimeoutId) {
+      clearTimeout(this.decryptRetryTimeoutId);
+      this.decryptRetryTimeoutId = null;
+    }
     this.emitter.emit("change", { action: "reset", subscribedPubkeys: [] });
   }
 
