@@ -13,6 +13,7 @@ import {
   normalizeVideoNotePayload,
   VIDEO_NOTE_ERROR_CODES,
 } from "./videoNotePayload.js";
+import { calculateTorrentInfoHash } from "../utils/torrentHash.js";
 
 const STATUS_VARIANTS = new Set(["info", "success", "error", "warning"]);
 const INFO_HASH_PATTERN = /^[a-f0-9]{40}$/;
@@ -23,6 +24,26 @@ function normalizeInfoHash(value) {
 
 function isValidInfoHash(value) {
   return INFO_HASH_PATTERN.test(value);
+}
+
+async function resolveUploadIdentifier({ infoHash = "", file = null } = {}) {
+  const normalizedInfoHash = normalizeInfoHash(infoHash);
+  if (isValidInfoHash(normalizedInfoHash)) {
+    return normalizedInfoHash;
+  }
+  if (!file) {
+    return "";
+  }
+  try {
+    const computedHash = await calculateTorrentInfoHash(file);
+    const normalizedComputed = normalizeInfoHash(computedHash);
+    if (isValidInfoHash(normalizedComputed)) {
+      return normalizedComputed;
+    }
+  } catch (err) {
+    userLogger.warn("Failed to precompute info hash for storage key:", err);
+  }
+  return "";
 }
 
 class S3UploadService {
@@ -215,10 +236,9 @@ class S3UploadService {
     try {
       await ensureS3SdkLoaded();
 
-      const normalizedInfoHash = normalizeInfoHash(infoHash);
-      const keyIdentifier = isValidInfoHash(normalizedInfoHash)
-        ? normalizedInfoHash
-        : "";
+      const keyIdentifier = await resolveUploadIdentifier({ infoHash, file });
+      const normalizedInfoHash = normalizeInfoHash(infoHash || keyIdentifier);
+      const hasValidInfoHash = isValidInfoHash(normalizedInfoHash);
 
       const s3 = makeS3Client({
         endpoint: normalized.endpoint,
@@ -327,8 +347,6 @@ class S3UploadService {
         return false;
       }
 
-      // normalizedInfoHash is already calculated above
-      const hasValidInfoHash = isValidInfoHash(normalizedInfoHash);
       let generatedMagnet = "";
       let generatedWs = "";
 

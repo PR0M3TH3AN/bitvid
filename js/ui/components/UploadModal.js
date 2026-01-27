@@ -515,7 +515,12 @@ export class UploadModal {
       this.updateVideoProgress(0, "Preparing upload...");
 
       try {
-          // 1. Prepare Upload (Get Creds & Bucket)
+          // 1. Compute Identifier (Info Hash / Fingerprint) before generating keys
+          const identifier = await this.resolveUploadIdentifier(file);
+
+          if (this.videoUploadId !== currentUploadId) return;
+
+          // 2. Prepare Upload (Get Creds & Bucket)
           const pubkey = this.getCurrentPubkey();
           const npub = this.safeEncodeNpub(pubkey);
           const service = this.activeProvider === PROVIDERS.R2 || this.activeProvider === "cloudflare_r2"
@@ -526,8 +531,7 @@ export class UploadModal {
 
           if (this.videoUploadId !== currentUploadId) return;
 
-          // 2. Determine Keys
-          const identifier = await this.resolveUploadIdentifier(file);
+          // 3. Determine Keys
           const videoKey = buildR2Key(npub, file, identifier);
           const baseDomain = bucketEntry.publicBaseUrl;
 
