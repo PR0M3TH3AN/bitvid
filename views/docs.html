@@ -1,0 +1,31 @@
+<!-- views/docs.html -->
+<section class="bv-stack" data-ds="new" aria-labelledby="docsHeading">
+  <article class="card p-lg">
+    <div class="flex flex-col gap-lg lg:flex-row">
+      <nav id="docsToc" class="bv-stack bv-stack--tight lg:w-64 lg:shrink-0" aria-label="Table of contents">
+        <p class="text-xs font-semibold uppercase tracking-wide text-muted">On this page</p>
+        <div class="text-sm text-muted">Loading contents...</div>
+      </nav>
+      <main id="docsContent" class="bv-stack bv-stack--tight flex-1">
+        <header class="flex flex-wrap items-center justify-between gap-2">
+          <h2 id="docsHeading" class="text-2xl font-semibold text-text-strong">
+            Docs
+          </h2>
+          <button
+            type="button"
+            class="btn-ghost lg:hidden"
+            aria-controls="docsToc"
+            aria-expanded="false"
+          >
+            Contents
+          </button>
+        </header>
+        <div id="markdown-container" class="markdown-prose">
+          <p class="text-muted-strong">Loading content...</p>
+        </div>
+      </main>
+    </div>
+  </article>
+</section>
+
+<script type="module" src="/js/docsView.js"></script>
