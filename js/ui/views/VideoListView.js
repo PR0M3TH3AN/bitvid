@@ -1041,6 +1041,10 @@ export class VideoListView {
       (target?.dataset && typeof target.dataset.playMagnet === "string"
         ? target.dataset.playMagnet
         : null) ?? target?.getAttribute?.("data-play-magnet") ?? "";
+    const rawInfoJsonValue =
+      (target?.dataset && typeof target.dataset.infoJson === "string"
+        ? target.dataset.infoJson
+        : null) ?? target?.getAttribute?.("data-info-json") ?? "";
 
     let url = "";
     if (rawUrlValue) {
@@ -1052,10 +1056,18 @@ export class VideoListView {
     }
 
     const magnet = typeof rawMagnetValue === "string" ? rawMagnetValue : "";
+    let infoJsonUrl = "";
+    if (rawInfoJsonValue) {
+      try {
+        infoJsonUrl = decodeURIComponent(rawInfoJsonValue);
+      } catch (error) {
+        infoJsonUrl = rawInfoJsonValue;
+      }
+    }
     const videoId =
       target?.dataset?.videoId || target?.getAttribute?.("data-video-id") || video?.id || "";
 
-    return { videoId, url, magnet, video, trigger: element };
+    return { videoId, url, magnet, infoJsonUrl, video, trigger: element };
   }
 
   emitSelected(detail) {

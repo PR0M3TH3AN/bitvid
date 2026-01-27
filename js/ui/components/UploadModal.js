@@ -15,6 +15,11 @@ import { buildR2Key, buildPublicUrl } from "../../r2.js";
 import { buildS3ObjectUrl } from "../../services/s3Service.js";
 import { PROVIDERS } from "../../services/storageService.js";
 import {
+  buildStoragePointerValue,
+  buildStoragePrefixFromKey,
+  deriveStoragePointerFromUrl,
+} from "../../utils/storagePointer.js";
+import {
   getActiveSigner,
   requestDefaultExtensionPermissions,
 } from "../../nostrClientFacade.js";
@@ -594,6 +599,18 @@ export class UploadModal {
           this.videoUploadState.status = 'complete';
           this.videoUploadState.url = videoPublicUrl;
           this.videoUploadState.key = videoKey;
+          const storagePrefix = buildStoragePrefixFromKey({
+              publicBaseUrl: baseDomain,
+              key: videoKey,
+          });
+          const providerLabel =
+              this.activeProvider === PROVIDERS.R2 || this.activeProvider === "cloudflare_r2"
+                ? "r2"
+                : "s3";
+          this.videoUploadState.storagePointer = buildStoragePointerValue({
+              provider: providerLabel,
+              prefix: storagePrefix,
+          });
           this.results.videoUrl.value = videoPublicUrl;
           this.updateVideoProgress(1, "Video uploaded.");
 
@@ -1023,6 +1040,7 @@ export class UploadModal {
           // These might be empty depending on mode, filled below
           url: "",
           magnet: "",
+          storagePointer: "",
           ws: this.inputs.ws?.value?.trim() || "",
           xs: this.inputs.xs?.value?.trim() || "",
           infoHash: this.torrentState.infoHash || "",
@@ -1039,6 +1057,13 @@ export class UploadModal {
              // We already have the URLs in state
              metadata.url = this.videoUploadState.url;
              metadata.magnet = this.torrentState.magnet || "";
+             const providerLabel =
+                 this.activeProvider === PROVIDERS.R2 || this.activeProvider === "cloudflare_r2"
+                   ? "r2"
+                   : "s3";
+             metadata.storagePointer =
+                 this.videoUploadState.storagePointer ||
+                 deriveStoragePointerFromUrl(metadata.url, providerLabel);
              metadata.ws = this.videoUploadState.url; // WebSeed is same as R2 URL
              metadata.xs = this.torrentState.url || "";
 
@@ -1112,6 +1137,8 @@ export class UploadModal {
   async handleExternalFlow(metadata) {
       metadata.url = this.inputs.url?.value?.trim() || "";
       metadata.magnet = this.inputs.magnet?.value?.trim() || "";
+      metadata.storagePointer =
+          metadata.storagePointer || deriveStoragePointerFromUrl(metadata.url, "url");
 
       const hasUrl = metadata.url.length > 0;
       const hasMagnet = metadata.magnet.length > 0;
@@ -1162,6 +1189,7 @@ export class UploadModal {
       progress: 0,
       url: '',
       key: '',
+      storagePointer: '',
       file: null,
     };
     this.thumbnailUploadState = {

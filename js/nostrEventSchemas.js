@@ -265,6 +265,7 @@ const BASE_SCHEMAS = {
     kind: 30078,
     topicTag: { name: "t", value: "video" },
     identifierTag: { name: "d" },
+    requiredTagNames: ["s"],
     appendTags: DEFAULT_APPEND_TAGS,
     content: {
       format: "json",
@@ -2521,6 +2522,19 @@ function hasTag(tags, tagName, tagValue = null) {
   );
 }
 
+function hasTagName(tags, tagName) {
+  if (!Array.isArray(tags)) return false;
+  return tags.some((tag) => {
+    if (!Array.isArray(tag) || tag[0] !== tagName) {
+      return false;
+    }
+    if (tag.length < 2 || typeof tag[1] !== "string") {
+      return false;
+    }
+    return tag[1].trim().length > 0;
+  });
+}
+
 export function validateEventStructure(type, event) {
   const schema = getNostrEventSchema(type);
   const errors = [];
@@ -2556,6 +2570,14 @@ export function validateEventStructure(type, event) {
         }`
       );
     }
+  }
+
+  if (Array.isArray(schema.requiredTagNames)) {
+    schema.requiredTagNames.forEach((tagName) => {
+      if (!hasTagName(event.tags, tagName)) {
+        errors.push(`Missing required tag for ${type}: ${tagName}`);
+      }
+    });
   }
 
   if (schema.appendTags) {

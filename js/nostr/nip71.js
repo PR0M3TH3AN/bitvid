@@ -1,6 +1,10 @@
 import { deriveTitleFromEvent } from "../videoEventUtils.js";
 import { extractBtihFromMagnet, extractMagnetHints } from "../magnetShared.js";
 import { devLogger } from "../utils/logger.js";
+import {
+  getStoragePointerFromTags,
+  resolveInfoJsonUrl,
+} from "../utils/storagePointer.js";
 import { getCachedNostrTools } from "./toolkit.js";
 
 function stringFromInput(value) {
@@ -1476,6 +1480,11 @@ export function convertEventToVideo(event = {}) {
     : { ws: "", xs: "" };
   const ws = wsField || magnetHints.ws || "";
   const xs = xsField || magnetHints.xs || "";
+  const storagePointer = getStoragePointerFromTags(tags);
+  const infoJsonUrl = resolveInfoJsonUrl({
+    storagePointer,
+    url,
+  });
 
   return {
     id: event.id,
@@ -1497,6 +1506,8 @@ export function convertEventToVideo(event = {}) {
     deleted,
     ws,
     xs,
+    storagePointer,
+    infoJsonUrl,
     enableComments,
     pubkey: event.pubkey,
     created_at: event.created_at,
