@@ -463,3 +463,95 @@ test(
   },
 );
 
+test(
+  "load falls back to window.nostr when active signer is missing",
+  { concurrency: false },
+  async (t) => {
+    const pubkey = "abcdef".repeat(10) + "1234";
+
+    // Ensure no active signer (override beforeEach)
+    clearActiveSigner();
+
+    // Mock window.nostr
+    window.nostr = {
+        nip04: {
+            decrypt: async (pk, ciphertext) => {
+                if (pk !== pubkey) throw new Error("Wrong pubkey");
+                if (ciphertext === "window-encrypted") {
+                    return JSON.stringify({
+                        version: 1,
+                        interests: ["WindowSuccess"],
+                        disinterests: []
+                    });
+                }
+                throw new Error("Decrypt failed");
+            }
+        }
+    };
+
+    // Mock pool list to return an event
+    nostrClient.pool = {
+        list: async () => [{
+            id: "evt1",
+            created_at: 1000,
+            pubkey,
+            content: "window-encrypted",
+            tags: [["encrypted", "nip04"]]
+        }]
+    };
+
+    relayManager.setEntries([{ url: "wss://relay.fallback", mode: "both" }], { allowEmpty: false, updateClient: false });
+
+    await hashtagPreferences.load(pubkey);
+
+    assert.deepEqual(hashtagPreferences.getInterests(), ["windowsuccess"]);
+  }
+);
+
+test(
+    "load falls back to window.nostr when active signer lacks decrypt capabilities",
+    { concurrency: false },
+    async (t) => {
+      const pubkey = "abcdef".repeat(10) + "5678";
+
+      // Set a signer that can sign but NOT decrypt (override beforeEach)
+      setActiveSigner({
+          signEvent: async (e) => ({ ...e, id: "fake" }),
+          // No nip04Decrypt or nip44Decrypt
+      });
+
+      // Mock window.nostr
+      window.nostr = {
+          nip04: {
+              decrypt: async (pk, ciphertext) => {
+                  if (pk !== pubkey) throw new Error("Wrong pubkey");
+                  if (ciphertext === "window-encrypted-2") {
+                      return JSON.stringify({
+                          version: 1,
+                          interests: ["SignerFallback"],
+                          disinterests: []
+                      });
+                  }
+                  throw new Error("Decrypt failed");
+              }
+          }
+      };
+
+      // Mock pool list to return an event
+      nostrClient.pool = {
+          list: async () => [{
+              id: "evt2",
+              created_at: 1000,
+              pubkey,
+              content: "window-encrypted-2",
+              tags: [["encrypted", "nip04"]]
+          }]
+      };
+
+      relayManager.setEntries([{ url: "wss://relay.fallback", mode: "both" }], { allowEmpty: false, updateClient: false });
+
+      await hashtagPreferences.load(pubkey);
+
+      assert.deepEqual(hashtagPreferences.getInterests(), ["signerfallback"]);
+    }
+  );

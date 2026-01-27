@@ -726,22 +726,76 @@ class HashtagPreferencesService {
     }
 
     const decryptors = new Map();
-    const registerDecryptor = (scheme, handler) => {
+    const sources = new Map();
+    const registerDecryptor = (scheme, handler, source = "unknown") => {
       if (!scheme || typeof handler !== "function" || decryptors.has(scheme)) {
         return;
       }
       decryptors.set(scheme, handler);
+      sources.set(scheme, source);
     };
 
     if (signerHasNip44) {
-      registerDecryptor("nip44", (payload) => signer.nip44Decrypt(userPubkey, payload));
-      registerDecryptor("nip44_v2", (payload) =>
-        signer.nip44Decrypt(userPubkey, payload),
+      registerDecryptor(
+        "nip44",
+        (payload) => signer.nip44Decrypt(userPubkey, payload),
+        "active-signer",
+      );
+      registerDecryptor(
+        "nip44_v2",
+        (payload) => signer.nip44Decrypt(userPubkey, payload),
+        "active-signer",
       );
     }
 
     if (signerHasNip04) {
-      registerDecryptor("nip04", (payload) => signer.nip04Decrypt(userPubkey, payload));
+      registerDecryptor(
+        "nip04",
+        (payload) => signer.nip04Decrypt(userPubkey, payload),
+        "active-signer",
+      );
+    }
+
+    const nostrApi = typeof window !== "undefined" ? window?.nostr : null;
+    if (nostrApi) {
+      if (typeof nostrApi.nip04?.decrypt === "function") {
+        registerDecryptor(
+          "nip04",
+          (payload) => nostrApi.nip04.decrypt(userPubkey, payload),
+          "extension",
+        );
+      }
+
+      const nip44 =
+        nostrApi.nip44 && typeof nostrApi.nip44 === "object"
+          ? nostrApi.nip44
+          : null;
+      if (nip44) {
+        if (typeof nip44.decrypt === "function") {
+          registerDecryptor(
+            "nip44",
+            (payload) => nip44.decrypt(userPubkey, payload),
+            "extension",
+          );
+        }
+
+        const nip44v2 =
+          nip44.v2 && typeof nip44.v2 === "object" ? nip44.v2 : null;
+        if (nip44v2 && typeof nip44v2.decrypt === "function") {
+          registerDecryptor(
+            "nip44_v2",
+            (payload) => nip44v2.decrypt(userPubkey, payload),
+            "extension",
+          );
+          if (!decryptors.has("nip44")) {
+            registerDecryptor(
+              "nip44",
+              (payload) => nip44v2.decrypt(userPubkey, payload),
+              "extension",
+            );
+          }
+        }
+      }
     }
 
     if (!decryptors.size) {
@@ -760,6 +814,14 @@ class HashtagPreferencesService {
       if (!decryptFn) {
         continue;
       }
+      const source = sources.get(scheme);
+
+      if (source === "extension") {
+        userLogger.info(
+          `${LOG_PREFIX} Attempting decryption via window.nostr fallback (${scheme})`,
+        );
+      }
+
       try {
         const plaintext = await decryptFn(ciphertext);
         if (typeof plaintext !== "string") {
@@ -771,6 +833,12 @@ class HashtagPreferencesService {
         }
         return { ok: true, plaintext, scheme };
       } catch (error) {
+        if (source === "extension") {
+          userLogger.warn(
+            `${LOG_PREFIX} window.nostr fallback decryption failed (${scheme})`,
+            error,
+          );
+        }
         attemptErrors.push({ scheme, error });
       }
     }
