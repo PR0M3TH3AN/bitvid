@@ -13,7 +13,7 @@ import {
   ALLOW_NSFW_CONTENT,
 } from "./config.js";
 import { accessControl } from "./accessControl.js";
-import { safeDecodeMagnet } from "./magnetUtils.js";
+import { extractBtihFromMagnet, safeDecodeMagnet } from "./magnetUtils.js";
 import { deriveTorrentPlaybackConfig } from "./playbackUtils.js";
 import {
   URL_FIRST_ENABLED,
@@ -8571,9 +8571,9 @@ class Application {
       typeof video.infoHash === "string" ? video.infoHash.trim().toLowerCase() : "";
     const fallbackMagnetForCandidate = fallbackMagnetCandidate || "";
     if (!legacyInfoHash && fallbackMagnetForCandidate) {
-      const match = fallbackMagnetForCandidate.match(/xt=urn:btih:([0-9a-z]+)/i);
-      if (match && match[1]) {
-        legacyInfoHash = match[1].toLowerCase();
+      const extracted = extractBtihFromMagnet(fallbackMagnetForCandidate);
+      if (extracted) {
+        legacyInfoHash = extracted;
       }
     }
 
