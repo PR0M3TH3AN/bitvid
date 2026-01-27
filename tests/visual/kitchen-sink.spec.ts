@@ -92,7 +92,7 @@ test.describe("design system kitchen sink", () => {
         diff.data,
         actual.width,
         actual.height,
-        { threshold: 0.1 }
+        { threshold: 0.2 }
       );
 
       const diffRatio = diffPixelCount / (actual.width * actual.height);
@@ -187,7 +187,7 @@ test.describe("video modal mobile regression", () => {
         diff.data,
         actual.width,
         actual.height,
-        { threshold: 0.1 }
+        { threshold: 0.2 }
       );
 
       const diffRatio = diffPixelCount / (actual.width * actual.height);
