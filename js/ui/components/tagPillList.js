@@ -62,8 +62,8 @@ function createTagButton({ doc, tag, onTagActivate, getTagState }) {
   const button = doc.createElement("button");
   button.type = "button";
   button.classList.add("pill", "video-tag-pill", "focus-ring");
-  button.dataset.tag = tag;
   const displayTag = tag.startsWith("#") ? tag : `#${tag}`;
+  button.dataset.tag = displayTag;
   button.title = displayTag;
 
   const label = doc.createElement("span");
@@ -95,7 +95,7 @@ function createTagButton({ doc, tag, onTagActivate, getTagState }) {
 
   if (getTagState) {
     try {
-      const state = getTagState(tag);
+      const state = getTagState(displayTag);
       applyPreferenceState(button, state);
     } catch (error) {
       // Ignore state resolution errors; leave button in neutral state.
@@ -106,7 +106,7 @@ function createTagButton({ doc, tag, onTagActivate, getTagState }) {
 
   if (onTagActivate) {
     const handler = (event) => {
-      onTagActivate(tag, { event, button });
+      onTagActivate(displayTag, { event, button });
     };
     button.addEventListener("click", handler);
     // Store the handler for cleanup when the strip is updated.
