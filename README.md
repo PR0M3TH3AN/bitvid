@@ -187,6 +187,10 @@ See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the full developer guide.
 - **Run visual regression tests**: `npm run test:visual`
 - **Cancel CI runs**: See [`docs/cancelling-ci-runs.md`](docs/cancelling-ci-runs.md) for a script to clear pending workflows.
 
+### Docs navigation & TOC updates
+
+The docs viewer reads `content/docs/toc.json` to build the sidebar tree and map `doc` slugs to Markdown files. Each entry defines the label shown in the UI and the slug used in deep links. Add new docs content by creating a Markdown file under `content/` (or a subfolder) and then adding a matching entry in `content/docs/toc.json` that points to the new slug. Keep the slug and filename in sync so the reader can resolve the Markdown content and the sidebar link. Deep links follow the format `#view=docs&doc=<slug>` (for example, `#view=docs&doc=getting-started`). QA acceptance criteria for new docs include: the sidebar link appears, the deep link opens the correct document, the mobile drawer lists the new item, and the Markdown renders as expected (headings, lists, links, etc.).【F:content/docs/toc.json†L1-L5】
+
 ### Running Tests in Docker
 
 To run Playwright tests in a consistent containerized environment, use the provided Docker script:
