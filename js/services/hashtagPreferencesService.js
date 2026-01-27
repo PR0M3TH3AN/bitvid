@@ -517,6 +517,7 @@ class HashtagPreferencesService {
           dTag: HASHTAG_IDENTIFIER,
           relayUrls: relays,
           since,
+          timeoutMs: 12000,
         }),
       );
 

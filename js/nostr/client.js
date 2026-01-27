@@ -3549,6 +3549,7 @@ export class NostrClient {
    * @param {string} [params.dTag] - Optional d-tag for addressable events (NIP-33).
    * @param {string[]} [params.relayUrls] - List of relays to query. Defaults to client's configured relays.
    * @param {function} [params.fetchFn] - Custom fetch function (mocks or specialized logic). Defaults to `pool.list`.
+   * @param {number} [params.timeoutMs] - Optional per-relay timeout for list fetches; defaults to a higher list-friendly baseline.
    * @returns {Promise<import("nostr-tools").Event[]>} Deduplicated list of events found across all relays.
    */
   async fetchListIncrementally({
@@ -3558,6 +3559,7 @@ export class NostrClient {
     relayUrls,
     fetchFn,
     since,
+    timeoutMs = 10000,
   } = {}) {
     // Explanation:
     // Optimizes network usage by only fetching "new" events from each relay.
@@ -3639,11 +3641,14 @@ export class NostrClient {
           doFullFetch = false;
         }
 
+        // Allow callers to override list fetch timeouts without changing non-list query behavior.
+        const listTimeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 10000;
+
         try {
           // Wrap fetch with a timeout to prevent hanging on slow relays
           let events = await withRequestTimeout(
             actualFetchFn(relayUrl, filter),
-            4000,
+            listTimeoutMs,
             null,
             `Fetch from ${relayUrl} timed out`
           );
@@ -3678,7 +3683,7 @@ export class NostrClient {
               delete filter.since;
               const events = await withRequestTimeout(
                 actualFetchFn(relayUrl, filter),
-                4000,
+                listTimeoutMs,
                 null,
                 `Full fetch fallback from ${relayUrl} timed out`
               );
