@@ -25,6 +25,19 @@ export async function setupModal({ lazyLoad = false } = {}) {
 
   globalThis.window = window;
   globalThis.document = document;
+  globalThis.navigator = window.navigator || { userAgent: "node.js" };
+
+  // stub window.scrollTo so floating/popover code doesn't throw
+  window.scrollTo = () => {};
+
+  // jsdom defines HTMLMediaElement but .pause/.load throw "Not implemented".
+  // Replace with safe no-ops for tests that just depend on calls happening.
+  if (window.HTMLMediaElement && window.HTMLMediaElement.prototype) {
+    const proto = window.HTMLMediaElement.prototype;
+    proto.pause = () => {};
+    proto.load = () => {};
+  }
+
   globalThis.HTMLElement = window.HTMLElement;
   globalThis.HTMLVideoElement = window.HTMLVideoElement;
   globalThis.Element = window.Element;
