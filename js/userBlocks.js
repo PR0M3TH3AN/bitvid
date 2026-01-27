@@ -19,6 +19,7 @@ import {
 } from "./nostrPublish.js";
 import { profileCache } from "./state/profileCache.js";
 import { DEFAULT_RELAY_URLS } from "./nostr/toolkit.js";
+import { relayManager } from "./relayManager.js";
 
 class TinyEventEmitter {
   constructor() {
@@ -768,26 +769,8 @@ class UserBlockListManager {
       }
     };
 
-    const relaySet = new Set();
-    const addRelays = (candidate) => {
-      const sanitized = sanitizeRelayList(candidate);
-      for (const relay of sanitized) {
-        relaySet.add(relay);
-      }
-    };
-
-    addRelays(nostrClient.relays);
-    if (!relaySet.size) {
-      addRelays(nostrClient.readRelays);
-    }
-    if (!relaySet.size) {
-      addRelays(nostrClient.writeRelays);
-    }
-    if (!relaySet.size) {
-      addRelays(DEFAULT_RELAY_URLS);
-    }
-
-    const relays = Array.from(relaySet);
+    const readRelays = relayManager.getReadRelayUrls();
+    const relays = readRelays.length > 0 ? readRelays : Array.from(DEFAULT_RELAY_URLS);
     emitStatus({ status: "loading", relays });
 
     const localBlocks = this._loadLocal(normalized);

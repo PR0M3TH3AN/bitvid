@@ -10,6 +10,7 @@ const [{ nostrClient }, { setActiveSigner, clearActiveSigner }] =
     import("../js/nostrClientFacade.js"),
     import("../js/nostr/client.js"),
   ]);
+const { relayManager } = await import("../js/relayManager.js");
 
 if (typeof globalThis.window === "undefined") {
   globalThis.window = {};
@@ -22,6 +23,7 @@ const originalRelays = Array.isArray(nostrClient.relays)
 const originalWriteRelays = Array.isArray(nostrClient.writeRelays)
   ? [...nostrClient.writeRelays]
   : nostrClient.writeRelays;
+const originalRelayEntries = relayManager.getEntries();
 const originalWindowNostr = window.nostr;
 
 function restoreNostrClient() {
@@ -34,9 +36,14 @@ function restoreNostrClient() {
     : originalWriteRelays;
 }
 
+function restoreRelayManager() {
+  relayManager.setEntries(originalRelayEntries, { allowEmpty: true, updateClient: false });
+}
+
 test.beforeEach(async () => {
   hashtagPreferences.reset();
   restoreNostrClient();
+  restoreRelayManager();
   window.nostr = originalWindowNostr;
 
   // Setup default mock signer to prevent auto-save errors
@@ -68,6 +75,7 @@ test.beforeEach(async () => {
 
 test.after(() => {
   restoreNostrClient();
+  restoreRelayManager();
   window.nostr = originalWindowNostr;
   clearActiveSigner();
 });
@@ -116,6 +124,7 @@ test(
     };
     nostrClient.relays = ["wss://relay.one"];
     nostrClient.writeRelays = ["wss://relay.one"];
+    relayManager.setEntries([{ url: "wss://relay.one", mode: "both" }], { allowEmpty: false, updateClient: false });
 
     await hashtagPreferences.load(pubkey);
 
@@ -156,6 +165,7 @@ test(
     };
     nostrClient.relays = ["wss://relay.two"];
     nostrClient.writeRelays = ["wss://relay.two"];
+    relayManager.setEntries([{ url: "wss://relay.two", mode: "both" }], { allowEmpty: false, updateClient: false });
 
     await hashtagPreferences.load(pubkey);
 
@@ -201,6 +211,7 @@ test(
     };
     nostrClient.relays = ["wss://relay.retry"];
     nostrClient.writeRelays = ["wss://relay.retry"];
+    relayManager.setEntries([{ url: "wss://relay.retry", mode: "both" }], { allowEmpty: false, updateClient: false });
 
     await hashtagPreferences.load(pubkey);
 
@@ -259,6 +270,7 @@ test(
     };
     nostrClient.relays = ["wss://relay.publish"];
     nostrClient.writeRelays = ["wss://relay.publish"];
+    relayManager.setEntries([{ url: "wss://relay.publish", mode: "both" }], { allowEmpty: false, updateClient: false });
 
     await hashtagPreferences.load(pubkey);
     hashtagPreferences.addInterest("TagA");
@@ -331,6 +343,7 @@ test(
     };
     nostrClient.relays = ["wss://relay.window"];
     nostrClient.writeRelays = ["wss://relay.window"];
+    relayManager.setEntries([{ url: "wss://relay.window", mode: "both" }], { allowEmpty: false, updateClient: false });
 
     await hashtagPreferences.load(pubkey);
     hashtagPreferences.addInterest("WindowTag");
@@ -420,6 +433,7 @@ test(
     };
     nostrClient.relays = ["wss://relay.tie"];
     nostrClient.writeRelays = ["wss://relay.tie"];
+    relayManager.setEntries([{ url: "wss://relay.tie", mode: "both" }], { allowEmpty: false, updateClient: false });
 
     await hashtagPreferences.load(pubkey);
 

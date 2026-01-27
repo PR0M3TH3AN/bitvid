@@ -11,6 +11,7 @@ import nostrService from "../js/services/nostrService.js";
 import moderationService from "../js/services/moderationService.js";
 import { getNostrEventSchema, NOTE_TYPES } from "../js/nostrEventSchemas.js";
 import { profileCache } from "../js/state/profileCache.js";
+import { relayManager } from "../js/relayManager.js";
 
 test("loadSubscriptions aggregates relay results when one rejects", async () => {
   const SubscriptionsManager = subscriptions.constructor;
@@ -38,6 +39,9 @@ test("loadSubscriptions aggregates relay results when one rejects", async () => 
   ];
   nostrClient.relays = relayUrls;
   nostrClient.writeRelays = relayUrls;
+
+  const originalRelayEntries = relayManager.getEntries();
+  relayManager.setEntries(relayUrls.map(url => ({ url, mode: "both" })), { allowEmpty: false, updateClient: false });
 
   const eventsByRelay = {
     "wss://relay-a.example": [
@@ -120,6 +124,7 @@ test("loadSubscriptions aggregates relay results when one rejects", async () => 
       );
     }
   } finally {
+    relayManager.setEntries(originalRelayEntries, { allowEmpty: false, updateClient: false });
     nostrClient.relays = originalRelays;
     nostrClient.writeRelays = originalWriteRelays;
     nostrClient.pool = originalPool;
