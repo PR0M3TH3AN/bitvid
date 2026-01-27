@@ -162,6 +162,9 @@ export class UploadModal {
 
       targetContainer.appendChild(wrapper.firstElementChild);
       this.root = targetContainer.querySelector("#uploadModal");
+      if (!this.root && targetContainer.lastElementChild && targetContainer.lastElementChild.id === "uploadModal") {
+          this.root = targetContainer.lastElementChild;
+      }
       this.container = targetContainer;
 
       this.cacheElements();
