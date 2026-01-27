@@ -85,10 +85,10 @@ test("VideoModal trims tag strip to fit modal width", async (t) => {
   assert.ok(root, "tag container should be available after hydrate");
 
   modal.setTagPreferenceStateResolver((tag) => {
-    if (tag === "alpha") {
+    if (tag === "#alpha") {
       return "interest";
     }
-    if (tag === "beta") {
+    if (tag === "#beta") {
       return "disinterest";
     }
     return "neutral";
@@ -143,7 +143,7 @@ test("VideoModal trims tag strip to fit modal width", async (t) => {
   assert.equal(trimmedButtons.length, 2, "tag list should be trimmed to fit");
   assert.deepEqual(
     trimmedButtons.map((button) => button.dataset.tag),
-    ["alpha", "beta"],
+    ["#alpha", "#beta"],
     "leading tags should remain after trimming",
   );
   assert.equal(
@@ -185,7 +185,7 @@ test("VideoModal trims tag strip to fit modal width", async (t) => {
   );
   assert.deepEqual(
     expandedButtons.map((button) => button.dataset.tag),
-    ["alpha", "beta", "delta"],
+    ["#alpha", "#beta", "#delta"],
     "reflow should restore full list order before trimming",
   );
 });
