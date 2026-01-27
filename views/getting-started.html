@@ -30,7 +30,7 @@
     const loadMarkdown = async () => {
       try {
         // Fetch the Markdown file
-        const response = await fetch("content/getting-started.md");
+        const response = await fetch("content/docs/getting-started.md");
         if (!response.ok) {
           throw new Error("Failed to load getting-started.md");
         }

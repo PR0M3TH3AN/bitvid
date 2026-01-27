@@ -26,7 +26,7 @@
 
     const loadMarkdown = async () => {
       try {
-        const response = await fetch("content/links.md");
+        const response = await fetch("content/docs/community/links.md");
         if (!response.ok) {
           throw new Error("Failed to load links.md");
         }

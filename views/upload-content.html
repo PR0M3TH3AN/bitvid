@@ -29,7 +29,7 @@
 
     const loadMarkdown = async () => {
       try {
-        const response = await fetch("content/upload-content.md");
+        const response = await fetch("content/docs/guides/upload-content.md");
         if (!response.ok) {
           throw new Error("Failed to load upload-content.md");
         }

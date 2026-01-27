@@ -27,7 +27,7 @@
     const loadMarkdown = async () => {
       try {
         // Fetch your roadmap markdown
-        const response = await fetch("content/roadmap.md");
+        const response = await fetch("content/docs/roadmap.md");
         if (!response.ok) {
           throw new Error("Failed to load roadmap.md");
         }
