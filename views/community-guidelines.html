@@ -30,7 +30,7 @@
     const loadMarkdown = async () => {
       try {
         // Fetch the markdown file (change path if needed)
-        const response = await fetch("content/community-guidelines.md");
+        const response = await fetch("content/docs/community/community-guidelines.md");
         if (!response.ok) {
           throw new Error("Failed to load community-guidelines.md");
         }

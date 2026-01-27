@@ -365,7 +365,9 @@ function resolveDocItem(slug) {
 }
 
 async function fetchToc() {
+  logger.dev.log("fetchToc: fetching", TOC_URL);
   const response = await fetch(TOC_URL);
+  logger.dev.log("fetchToc: response status", response.status);
   if (!response.ok) {
     throw new Error(`Failed to load TOC (${response.status})`);
   }
@@ -407,6 +409,8 @@ async function renderMarkdown(path) {
 
   try {
     clearScrollSpy();
+    logger.dev.log("renderMarkdown: fetching", path);
+
     if (!window.marked || typeof window.marked.parse !== "function") {
       throw new Error("Markdown renderer is unavailable.");
     }
@@ -584,8 +588,10 @@ function setupTocDrawer() {
 }
 
 async function initDocsView() {
+  logger.dev.log("initDocsView: starting");
   try {
     tocState.items = await fetchToc();
+    logger.dev.log("initDocsView: TOC items loaded", tocState.items);
     indexItems(tocState.items);
     renderToc(tocState.items);
     setupTocDrawer();
