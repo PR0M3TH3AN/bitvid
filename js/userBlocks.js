@@ -753,13 +753,28 @@ class UserBlockListManager {
     };
 
     const resolveDecryptors = async (event) => {
-      const signer = getActiveSigner();
-      const signerHasNip04 = typeof signer?.nip04Decrypt === "function";
-      const signerHasNip44 = typeof signer?.nip44Decrypt === "function";
+      let signer = getActiveSigner();
 
       const hints = extractEncryptionHints(event);
       const requiresNip44 = hints.includes("nip44") || hints.includes("nip44_v2");
       const requiresNip04 = !hints.length || hints.includes("nip04");
+
+      const signerHasRequiredDecryptors = (candidate) => {
+        const hasNip04 = typeof candidate?.nip04Decrypt === "function";
+        const hasNip44 = typeof candidate?.nip44Decrypt === "function";
+        return (!requiresNip44 || hasNip44) && (!requiresNip04 || hasNip04);
+      };
+
+      if (
+        !signer ||
+        (!signerHasRequiredDecryptors(signer) &&
+          typeof nostrClient?.ensureActiveSignerForPubkey === "function")
+      ) {
+        signer = await nostrClient.ensureActiveSignerForPubkey(normalized);
+      }
+
+      const signerHasNip04 = typeof signer?.nip04Decrypt === "function";
+      const signerHasNip44 = typeof signer?.nip44Decrypt === "function";
 
       let permissionError = null;
       if ((!signerHasNip44 && requiresNip44) || (!signerHasNip04 && requiresNip04)) {
@@ -878,6 +893,13 @@ class UserBlockListManager {
         events,
         { skipIfEmpty = false, source = "fast" } = {},
       ) => {
+        const previousState = {
+          blockedPubkeys: new Set(this.blockedPubkeys),
+          blockEventId: this.blockEventId,
+          blockEventCreatedAt: this.blockEventCreatedAt,
+          loaded: this.loaded,
+        };
+
         if (!Array.isArray(events) || !events.length) {
           if (skipIfEmpty) {
             return;
@@ -1039,7 +1061,9 @@ class UserBlockListManager {
             "[UserBlockList] Decryption failed during merge.",
             decryptionError,
           );
-          this.reset();
+          this.blockedPubkeys = previousState.blockedPubkeys;
+          this.blockEventId = previousState.blockEventId;
+          this.blockEventCreatedAt = previousState.blockEventCreatedAt;
           this.loaded = true;
           emitStatus({
             status: "error",
