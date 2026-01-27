@@ -1,12 +1,15 @@
 import './setup-test-env.js';
 import { parseArgs } from 'node:util';
-import { spawn } from 'node:child_process';
+import { spawn, exec } from 'node:child_process';
 import { fileURLToPath } from 'url';
 import NodeWebSocket from 'ws';
 import * as NostrTools from 'nostr-tools';
 import fs from 'node:fs';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
+import util from 'node:util';
+
+const execAsync = util.promisify(exec);
 
 // Polyfill global NostrTools for app modules
 global.NostrTools = NostrTools;
@@ -76,6 +79,7 @@ const metrics = {
     sign: [],
   },
   resourceUsage: [],
+  relayResourceUsage: [], // { timestamp, cpu, mem }
 };
 
 // --- Helpers ---
@@ -96,7 +100,7 @@ async function startRelay() {
 
   // Wait for port
   await waitForPort(parseInt(port));
-  console.log('[Setup] Relay started.');
+  console.log('[Setup] Relay started (PID: ' + relayProcess.pid + ').');
 }
 
 async function waitForPort(port) {
@@ -119,6 +123,20 @@ async function waitForPort(port) {
     }
   }
   throw new Error(`Relay did not start on port ${port}`);
+}
+
+async function getProcessStats(pid) {
+  try {
+    // Output: %CPU %MEM
+    const { stdout } = await execAsync(`ps -p ${pid} -o %cpu,%mem --no-headers`);
+    const [cpu, mem] = stdout.trim().split(/\s+/);
+    return {
+      cpu: parseFloat(cpu) || 0,
+      mem: parseFloat(mem) || 0
+    };
+  } catch (e) {
+    return null;
+  }
 }
 
 function createClient() {
@@ -177,7 +195,6 @@ async function run() {
     // If user provided a custom URL, we assume they manage the relay unless it matches our default logic.
     // For simplicity, we always try to start the relay if it's on localhost and port matches default or we can detect it's not running.
     // But per instructions "Use a local relay", let's always try to start it if it's the default port, or fail if port is taken.
-    // Actually, let's just try to start it.
     await startRelay().catch(e => {
         console.log('[Setup] Could not start relay (maybe already running?):', e.message);
     });
@@ -195,6 +212,7 @@ async function run() {
 
     // 3. Load Loop
     console.log('[Load] Starting load generation...');
+    console.log('[Load] Requirements: 10% Video Post (multipart), 90% View Event');
     const startTime = performance.now();
     const endTime = startTime + (config.duration * 1000);
 
@@ -209,7 +227,7 @@ async function run() {
     let lastTime = performance.now();
 
     // Monitoring Loop
-    const monitorInterval = setInterval(() => {
+    const monitorInterval = setInterval(async () => {
       const now = performance.now();
       const cpu = process.cpuUsage();
       const elapsedMs = now - lastTime;
@@ -228,11 +246,22 @@ async function run() {
           heapUsed: mem.heapUsed,
         });
 
+        if (relayProcess) {
+            const stats = await getProcessStats(relayProcess.pid);
+            if (stats) {
+                metrics.relayResourceUsage.push({
+                    timestamp: Date.now(),
+                    cpuPercent: stats.cpu,
+                    memPercent: stats.mem
+                });
+            }
+        }
+
         lastCpu = cpu;
         lastTime = now;
 
         const p50 = calculatePercentile(metrics.latencies, 50);
-        console.log(`[Monitor] Sent: ${metrics.sent}, Recv: ${metrics.received}, Errors: ${metrics.errors}, Latency p50: ${p50.toFixed(2)}ms, CPU: ${cpuPercent.toFixed(1)}%`);
+        console.log(`[Monitor] Sent: ${metrics.sent}, Recv: ${metrics.received}, Errors: ${metrics.errors}, Latency p50: ${p50.toFixed(2)}ms, Runner CPU: ${cpuPercent.toFixed(1)}%`);
       }
     }, 5000);
 
@@ -249,7 +278,6 @@ async function run() {
         const isHeavy = Math.random() < 0.1;
 
         try {
-          let event;
           const buildStart = performance.now();
           const now = Math.floor(Date.now() / 1000);
           const hexPk = client.pk;
@@ -315,7 +343,7 @@ async function run() {
 
           } else {
             // View Event
-            event = buildViewEvent({
+            const event = buildViewEvent({
               pubkey: hexPk,
               created_at: now,
               pointerValue: `load-video-${Math.random()}`,
@@ -388,6 +416,8 @@ function calculatePercentile(data, percentile) {
 }
 
 function generateReport() {
+  const signAvg = metrics.operationTimes.sign.reduce((a, b) => a + b, 0) / metrics.operationTimes.sign.length || 0;
+
   const report = {
     timestamp: new Date().toISOString(),
     config,
@@ -405,9 +435,10 @@ function generateReport() {
       },
       operation_times_ms: {
         build_avg: metrics.operationTimes.build.reduce((a, b) => a + b, 0) / metrics.operationTimes.build.length || 0,
-        sign_avg: metrics.operationTimes.sign.reduce((a, b) => a + b, 0) / metrics.operationTimes.sign.length || 0,
+        sign_avg: signAvg,
       },
       resource_usage: metrics.resourceUsage,
+      relay_resource_usage: metrics.relayResourceUsage,
       error_breakdown: metrics.errorCounts,
     },
     bottlenecks: [],
@@ -425,7 +456,6 @@ function generateReport() {
   }
 
   // Hot functions proxy / Crypto bottleneck
-  const signAvg = report.metrics.operation_times_ms.sign_avg;
   if (signAvg > 10) {
      report.bottlenecks.push(`Signing is slow (${signAvg.toFixed(2)}ms)`);
      report.remediation.push('Optimize signing or offload to worker.');
@@ -442,7 +472,7 @@ function generateReport() {
   const reportPath = path.join(ARTIFACTS_DIR, filename);
   fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
 
-  // Also save as load-report.json
+  // Also save as load-report.json for convenience
   const latestPath = path.join(ARTIFACTS_DIR, 'load-report.json');
   fs.copyFileSync(reportPath, latestPath);
 
