@@ -15,12 +15,27 @@ globalThis.URL = URL;
 
 test("LinkPreviewService", async (t) => {
   const originalFetch = globalThis.fetch;
+  let service;
 
-  t.afterEach(() => {
-    globalThis.fetch = originalFetch;
+  t.beforeEach(() => {
+    service = new LinkPreviewService({ ttlMs: 1000 });
   });
 
-  const service = new LinkPreviewService({ ttlMs: 1000 });
+  t.afterEach(async () => {
+    globalThis.fetch = originalFetch;
+    if (service && service.db) {
+      service.db.close();
+    }
+    await new Promise((resolve, reject) => {
+      const request = indexedDB.deleteDatabase("bitvid-link-previews");
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+      request.onblocked = () => {
+        // Log warning if blocked, though strictly closing connections should prevent this
+        console.warn("[LinkPreviewService Test] Database deletion blocked");
+      };
+    });
+  });
 
   await t.test("initializes IndexedDB", async () => {
     const db = await service.init();
@@ -83,6 +98,10 @@ test("LinkPreviewService", async (t) => {
 
     const cached = await expiredService.getCachedPreview("https://expired.com");
     assert.equal(cached, null);
+
+    if (expiredService.db) {
+      expiredService.db.close();
+    }
   });
 
   await t.test("deletePreview removes from cache", async () => {
