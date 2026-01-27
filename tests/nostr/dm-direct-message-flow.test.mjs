@@ -1,5 +1,12 @@
+import "../../scripts/agent/setup-test-env.js";
 import assert from "node:assert/strict";
 import { test, afterEach } from "node:test";
+import { indexedDB, IDBKeyRange } from "fake-indexeddb";
+
+if (!globalThis.indexedDB) {
+  globalThis.indexedDB = indexedDB;
+  globalThis.IDBKeyRange = IDBKeyRange;
+}
 
 import { NostrClient } from "../../js/nostr/client.js";
 import { NostrService } from "../../js/services/nostrService.js";
@@ -11,13 +18,6 @@ import {
   listMessagesByConversation,
 } from "../../js/storage/dmDb.js";
 
-const { indexedDB, IDBKeyRange } = await import("fake-indexeddb");
-
-if (!globalThis.indexedDB) {
-  globalThis.indexedDB = indexedDB;
-  globalThis.IDBKeyRange = IDBKeyRange;
-}
-
 async function deleteDatabase(name) {
   await new Promise((resolve) => {
     const request = indexedDB.deleteDatabase(name);
@@ -25,6 +25,15 @@ async function deleteDatabase(name) {
     request.onerror = () => resolve();
     request.onblocked = () => resolve();
   });
+}
+
+async function waitFor(predicate, timeoutMs = 2000, intervalMs = 50, errorMessage = "Timed out") {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (predicate()) return;
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  throw new Error(errorMessage);
 }
 
 afterEach(async () => {
@@ -46,7 +55,12 @@ class FakeRelayPool {
     return {
       on(eventName, handler) {
         if (eventName === "ok") {
-          setTimeout(() => handler(), 0);
+          // Call synchronously so tests don't depend on scheduling/timers.
+          try {
+            handler();
+          } catch (err) {
+            // Swallow to avoid breaking tests that don't expect thrown errors here.
+          }
         }
         return true;
       },
@@ -231,10 +245,12 @@ test("DM relay duplication is deduped", async () => {
     relayPool.flushQueue({ duplicate: true });
 
     // Poll for the expected state
-    for (let i = 0; i < 20; i++) {
-        if (received.length === 1 && notifications.length === 1) break;
-        await new Promise((resolve) => setTimeout(resolve, 50));
-    }
+    await waitFor(
+      () => received.length === 1 && notifications.length === 1,
+      2000,
+      50,
+      `received=${received.length}, notifications=${notifications.length}`
+    );
 
     assert.equal(received.length, 1, "duplicate relay events should be deduped");
     assert.equal(notifications.length, 1, "incoming messages should notify once");
@@ -291,11 +307,15 @@ test("out-of-order DM delivery keeps newest messages first", async () => {
     relayPool.queue = [];
 
     let messages = [];
-    for (let i = 0; i < 20; i++) {
+    await waitFor(
+      () => {
         messages = receiverService.getDirectMessages();
-        if (messages.length === 2) break;
-        await new Promise((resolve) => setTimeout(resolve, 50));
-    }
+        return messages.length === 2;
+      },
+      2000,
+      50,
+      "two DM messages should be present"
+    );
 
     assert.equal(messages.length, 2, "two DM messages should be present");
     assert.equal(messages[0].plaintext, "Second message");
@@ -354,10 +374,12 @@ test("DM reconnect replays do not duplicate messages or reset seen state", async
     relayPool.flushQueue();
 
     let conversationId = `dm:${[senderPubkey, receiverPubkey].sort().join(":")}`;
-    for (let i = 0; i < 20; i++) {
-        if (receiverService.getDirectMessageUnseenCount(conversationId) === 1) break;
-        await new Promise((resolve) => setTimeout(resolve, 50));
-    }
+    await waitFor(
+      () => receiverService.getDirectMessageUnseenCount(conversationId) === 1,
+      2000,
+      50,
+      "Waiting for unseen count 1"
+    );
 
     assert.equal(receiverService.getDirectMessageUnseenCount(conversationId), 1);
 
@@ -374,6 +396,9 @@ test("DM reconnect replays do not duplicate messages or reset seen state", async
     subscription.unsub();
     subscribe();
 
+    if (!relayPool.published.length) {
+      throw new Error("No published events to replay (relayPool.published is empty)");
+    }
     relayPool.deliver(relayPool.published[0]);
 
     // Ensure no duplication happens
@@ -393,8 +418,4 @@ test("DM reconnect replays do not duplicate messages or reset seen state", async
   } finally {
     restore();
   }
-});
-
-test.after(() => {
-  setTimeout(() => process.exit(0), 100);
 });

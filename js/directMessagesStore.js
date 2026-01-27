@@ -201,6 +201,7 @@ export async function loadDirectMessageSnapshot(pubkey) {
           request.onerror = () =>
             reject(request.error || new Error("Failed to load snapshot"));
         });
+
         return normalizeSnapshotList(stored);
       } finally {
         db.close();
