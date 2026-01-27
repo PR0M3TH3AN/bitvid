@@ -55,6 +55,8 @@
   "license": "GPL-3.0-or-later",
   "dependencies": {
     "@floating-ui/dom": "^1.7.4",
+    "highlight.js": "^11.11.1",
+    "marked": "^17.0.1",
     "ws": "^8.19.0"
   }
 }
