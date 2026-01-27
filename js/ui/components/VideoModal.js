@@ -3244,7 +3244,7 @@ export class VideoModal {
 
       seen.add(key);
 
-      const display = trimmed.startsWith("#") ? trimmed : `#${trimmed}`;
+      const display = trimmed.startsWith("#") ? trimmed.slice(1) : trimmed;
       normalized.push(display);
     }
 

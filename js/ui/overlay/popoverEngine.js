@@ -320,7 +320,9 @@ export function createPopover(trigger, render, options = {}) {
   }
 
   function getView() {
-    return documentRef?.defaultView || globalThis;
+    if (typeof window !== "undefined") return window;
+    if (typeof globalThis !== "undefined") return globalThis;
+    return undefined;
   }
 
   function focusWithoutScroll(node) {
@@ -774,7 +776,15 @@ export function createPopover(trigger, render, options = {}) {
   }
 
   async function updatePosition() {
+    if (typeof window === "undefined") {
+      return;
+    }
+
     if (!anchor || !panel) {
+      return;
+    }
+
+    if (anchor.isConnected === false || panel.isConnected === false) {
       return;
     }
 
@@ -848,6 +858,9 @@ export function createPopover(trigger, render, options = {}) {
 
       syncPopoverStyles();
     } catch (error) {
+      if (error instanceof ReferenceError && error.message.includes("window")) {
+        return;
+      }
       logger.user.error("[popover] positioning failed", error);
     }
   }
