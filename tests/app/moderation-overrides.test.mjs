@@ -135,6 +135,7 @@ test("handleModerationBlock requests a block, clears overrides, and refreshes hi
   });
   app.pubkey = "f".repeat(64);
   app.isUserLoggedIn = () => true;
+  app.isAuthorBlocked = () => mockUserBlocks.isBlocked();
   app.showStatus = mock.fn(() => {});
   app.showError = mock.fn(() => {});
   app.onVideosShouldRefresh = mock.fn(async () => {});
