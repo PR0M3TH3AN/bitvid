@@ -3559,6 +3559,12 @@ export class NostrClient {
     fetchFn,
     since,
   } = {}) {
+    // Explanation:
+    // Optimizes network usage by only fetching "new" events from each relay.
+    // It uses `SyncMetadataStore` to track the `created_at` of the last seen event per relay.
+    // - If we have a `lastSeen` timestamp, we request `since: lastSeen + 1`.
+    // - If that returns nothing (or fails), we might fall back to a full fetch depending on context.
+    // - Updates the `lastSeen` timestamp upon success.
     if (!kind || !pubkey) {
       throw new Error("fetchListIncrementally requires kind and pubkey");
     }
@@ -6589,6 +6595,12 @@ export class NostrClient {
    * @private
    */
   async persistLocalData(reason = "unspecified") {
+    // Strategy:
+    // 1. Try to persist to IndexedDB (preferred, large capacity).
+    // 2. If IDB fails or returns false, fall back to LocalStorage (limited capacity).
+    // The `EventsCacheStore` handles differential updates (only saving changed fingerprints)
+    // to keep IDB writes fast.
+
     const payload = this.buildCachePayload();
     const startedAt = Date.now();
     let summary = null;
@@ -6705,6 +6717,12 @@ export class NostrClient {
    * @returns {import("nostr-tools").Sub} The subscription object. Call `unsub()` to stop.
    */
   subscribeVideos(onVideo, options = {}) {
+    // Explanation:
+    // This method handles the primary video feed. It uses a buffering strategy to
+    // prevent UI thrashing when thousands of events arrive at once (e.g. initial load).
+    // Incoming events are pushed to `eventBuffer` and processed in batches
+    // via `flushEventBuffer` which is debounced.
+
     const { since, until, limit } = options;
     const latestCachedCreatedAt = this.getLatestCachedCreatedAt();
 
@@ -6738,6 +6756,7 @@ export class NostrClient {
     // BUFFERING STATE
     // We collect events here instead of processing them instantly to avoid
     // 1000s of React re-renders during the initial relay dump.
+    // The buffer acts as a pressure valve between the network and the UI.
     let eventBuffer = [];
     const EVENT_FLUSH_DEBOUNCE_MS = 75;
     let flushTimerId = null;
@@ -6748,6 +6767,13 @@ export class NostrClient {
      * This batch processing is critical for performance during the initial
      * relay dump (thousands of events). It prevents React from re-rendering
      * for every single event.
+     *
+     * Algorithm:
+     * 1. Drain the buffer.
+     * 2. Validate & Convert events to Video objects.
+     * 3. Apply tombstones (filter out known deleted items).
+     * 4. Update `activeMap` (Last-Write-Wins based on created_at).
+     * 5. Persist the new state to cache.
      */
     const flushEventBuffer = () => {
       if (!eventBuffer.length) {
@@ -7651,6 +7677,17 @@ export class NostrClient {
    * @returns {Promise<object[]>} A promise resolving to an array of Video objects (Newest -> Oldest).
    */
   async hydrateVideoHistory(video) {
+    // Explanation:
+    // This method reconstructs the edit history of a video series.
+    // Since Nostr events are immutable, "editing" creates a new event.
+    // We link these events together using:
+    // 1. `videoRootId` (V3 canonical ID)
+    // 2. `d` tag (NIP-33 addressability)
+    // 3. Fallback: Matching ID for legacy V1/V2 posts
+    //
+    // The method first checks local cache (`allEvents`), and if data is sparse,
+    // queries relays for the specific `d` tag to find missing links.
+
     if (!video || typeof video !== "object") {
       return [];
     }
