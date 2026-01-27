@@ -25,7 +25,11 @@ test("LinkPreviewService", async (t) => {
     globalThis.fetch = originalFetch;
     if (service && service.db) {
       service.db.close();
+      service.db = null;
     }
+    // Yield to allow connection close events to propagate
+    await new Promise((resolve) => setImmediate(resolve));
+
     await new Promise((resolve, reject) => {
       const request = indexedDB.deleteDatabase("bitvid-link-previews");
       request.onsuccess = () => resolve();
