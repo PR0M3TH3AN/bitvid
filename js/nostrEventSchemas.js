@@ -701,7 +701,16 @@ function resolveOverride(type) {
 
 export function setNostrEventSchemaOverrides(overrides = {}) {
   if (overrides && typeof overrides === "object") {
-    schemaOverrides = overrides;
+    try {
+      JSON.stringify(overrides);
+      schemaOverrides = overrides;
+    } catch (error) {
+      devLogger.warn(
+        "[nostrEventSchemas] Invalid overrides provided (circular structure?):",
+        error
+      );
+      schemaOverrides = {};
+    }
   } else {
     schemaOverrides = {};
   }
