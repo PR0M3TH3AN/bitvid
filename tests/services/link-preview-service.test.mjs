@@ -14,6 +14,12 @@ globalThis.DOMParser = dom.window.DOMParser;
 globalThis.URL = URL;
 
 test("LinkPreviewService", async (t) => {
+  const originalFetch = globalThis.fetch;
+
+  t.afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
   const service = new LinkPreviewService({ ttlMs: 1000 });
 
   await t.test("initializes IndexedDB", async () => {
