@@ -15,7 +15,12 @@ const SENSITIVE_PATHS = [
 
 function runCommand(command, args = [], options = {}) {
   console.log(`\n> ${command} ${args.join(' ')}`);
-  return spawnSync(command, args, { stdio: 'pipe', encoding: 'utf-8', ...options });
+  const result = spawnSync(command, args, { stdio: 'pipe', encoding: 'utf-8', ...options });
+
+  if (result.error) {
+    throw new Error(`Failed to execute command "${command}": ${result.error.message}`);
+  }
+  return result;
 }
 
 function getChangedFiles() {
@@ -33,14 +38,14 @@ function getChangedFiles() {
       }
       console.log(`Fetching ${remote}/${baseRef} from ${baseUrl}...`);
       try {
-        execSync(`git fetch ${remote} ${baseRef}`, { stdio: 'ignore' });
+        execSync(`git fetch ${remote} ${baseRef}`, { stdio: 'pipe', encoding: 'utf-8' });
       } catch (e) {
-        console.error(`Failed to fetch ${remote}/${baseRef}:`, e.message);
+        console.error(`Failed to fetch ${remote}/${baseRef}:`, e.stderr || e.message);
       }
     } else {
       // Fallback for local testing or if env var missing
       try {
-        execSync(`git fetch origin ${baseRef} --depth=1`, { stdio: 'ignore' });
+        execSync(`git fetch origin ${baseRef} --depth=1`, { stdio: 'pipe', encoding: 'utf-8' });
       } catch (e) {
         // Ignore
       }
@@ -53,7 +58,7 @@ function getChangedFiles() {
     const output = execSync(cmd, { encoding: 'utf-8' });
     return output.split('\n').filter(Boolean).map(f => f.trim());
   } catch (error) {
-    console.error('Error getting changed files:', error.message);
+    console.error('Error getting changed files:', error.stderr || error.message);
     // Fallback: try 2-dot diff if 3-dot failed (e.g. shallow clone issues)
     try {
        const baseRef = process.env.GITHUB_BASE_REF || 'main';
@@ -63,7 +68,7 @@ function getChangedFiles() {
        const output = execSync(cmd, { encoding: 'utf-8' });
        return output.split('\n').filter(Boolean).map(f => f.trim());
     } catch (e) {
-       console.error('Fallback diff failed:', e.message);
+       console.error('Fallback diff failed:', e.stderr || e.message);
        return [];
     }
   }
@@ -86,9 +91,10 @@ function checkReleaseChannel(changedFiles) {
 }
 
 async function main() {
-  console.log('Starting Automated PR Review...');
-  let commentBody = '## 🤖 Automated PR Review\n\n';
-  let hasFailures = false;
+  try {
+    console.log('Starting Automated PR Review...');
+    let commentBody = '## 🤖 Automated PR Review\n\n';
+    let hasFailures = false;
   let hasFormatChanges = false;
   let microFixesStatus = '';
 
@@ -167,6 +173,9 @@ async function main() {
 
   // 6. Post Comment (if in CI)
   if (process.env.GITHUB_TOKEN && process.env.PR_NUMBER) {
+    // Verify gh CLI is available
+    console.log('Verifying GitHub CLI...');
+    runCommand('gh', ['--version']);
 
     // Attempt Micro-fixes
     if (hasFormatChanges) {
@@ -233,9 +242,16 @@ async function main() {
     console.log('---------------------------------------------------');
   }
 
-  if (hasFailures) {
+    if (hasFailures) {
+      process.exit(1);
+    }
+  } catch (error) {
+    console.error('Automated PR Review failed:', error);
     process.exit(1);
   }
 }
 
-main();
+main().catch(error => {
+  console.error('Unhandled error in main execution:', error);
+  process.exit(1);
+});
