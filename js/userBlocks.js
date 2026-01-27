@@ -1124,7 +1124,11 @@ class UserBlockListManager {
   }
 
   _loadLocal(actorHex) {
-    const cached = profileCache.get("blocks");
+    const normalizedActorHex = normalizeHex(actorHex);
+    if (!normalizedActorHex) {
+      return null;
+    }
+    const cached = profileCache.getProfileData(normalizedActorHex, "blocks");
     if (Array.isArray(cached)) {
       return new Set(cached);
     }
@@ -1132,7 +1136,15 @@ class UserBlockListManager {
   }
 
   _saveLocal(actorHex) {
-    profileCache.set("blocks", Array.from(this.blockedPubkeys));
+    const normalizedActorHex = normalizeHex(actorHex);
+    if (!normalizedActorHex) {
+      return;
+    }
+    profileCache.setProfileData(
+      normalizedActorHex,
+      "blocks",
+      Array.from(this.blockedPubkeys),
+    );
   }
 
   _getSeedState(actorHex) {
@@ -1145,7 +1157,8 @@ class UserBlockListManager {
       return this.seedStateCache.get(normalized);
     }
 
-    const stored = profileCache.get("blocks_meta") || {};
+    const stored =
+      profileCache.getProfileData(normalized, "blocks_meta") || {};
     const seeded = !!stored.seeded;
     const removals = new Set(Array.isArray(stored.removals) ? stored.removals : []);
 
@@ -1160,7 +1173,7 @@ class UserBlockListManager {
     const state = this.seedStateCache.get(normalized);
     if (!state) return;
 
-    profileCache.set("blocks_meta", {
+    profileCache.setProfileData(normalized, "blocks_meta", {
       seeded: state.seeded,
       removals: Array.from(state.removals),
     });
