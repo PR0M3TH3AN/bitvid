@@ -174,7 +174,11 @@ export async function setupModal({ lazyLoad = false } = {}) {
 
   // Force override getContext to silence JSDOM "Not implemented" error
   try {
-    window.HTMLCanvasElement.prototype.getContext = () => null;
+    window.HTMLCanvasElement.prototype.getContext = () => ({
+      fillStyle: "",
+      fillRect: () => {},
+      drawImage: () => {},
+    });
   } catch (err) {
     // ignore
   }
