@@ -17,6 +17,7 @@ import {
 import { userLogger, devLogger } from "../utils/logger.js";
 import { normalizeHashtag } from "../utils/hashtagNormalization.js";
 import { profileCache } from "../state/profileCache.js";
+import { DEFAULT_RELAY_URLS } from "../nostr/toolkit.js";
 
 const LOG_PREFIX = "[HashtagPreferences]";
 const HASHTAG_IDENTIFIER = "bitvid:tag-preferences";
@@ -455,11 +456,26 @@ class HashtagPreferencesService {
       return;
     }
 
-    const relays = sanitizeRelayList(
-      Array.isArray(nostrClient.relays)
-        ? nostrClient.relays
-        : nostrClient.writeRelays,
-    );
+    const relaySet = new Set();
+    const addRelays = (candidate) => {
+      const sanitized = sanitizeRelayList(candidate);
+      for (const relay of sanitized) {
+        relaySet.add(relay);
+      }
+    };
+
+    addRelays(nostrClient.relays);
+    if (!relaySet.size) {
+      addRelays(nostrClient.readRelays);
+    }
+    if (!relaySet.size) {
+      addRelays(nostrClient.writeRelays);
+    }
+    if (!relaySet.size) {
+      addRelays(DEFAULT_RELAY_URLS);
+    }
+
+    const relays = Array.from(relaySet);
     if (!relays.length) {
       if (wasLoadedForUser) {
         userLogger.warn(
