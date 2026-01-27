@@ -1,4 +1,4 @@
-import { test, describe, it, before, after } from "node:test";
+import { test, describe, it, before, after, beforeEach, afterEach } from "node:test";
 import assert from "node:assert";
 import { createUiDom } from "./helpers/jsdom-test-helpers.mjs";
 
@@ -27,27 +27,6 @@ describe("UploadModal Reset Logic", () => {
           return {};
       }
   };
-
-  before(async () => {
-    process.env.NODE_ENV = 'test';
-    dom = createUiDom();
-    global.window = dom.window;
-    global.self = dom.window;
-    global.document = dom.document;
-    global.EventTarget = dom.window.EventTarget;
-    global.alert = (msg) => { console.log("ALERT CALLED:", msg); };
-    global.HTMLElement = dom.window.HTMLElement;
-    global.HTMLInputElement = dom.window.HTMLInputElement;
-    global.HTMLButtonElement = dom.window.HTMLButtonElement;
-    global.HTMLDivElement = dom.window.HTMLDivElement;
-
-    const module = await import("../../js/ui/components/UploadModal.js");
-    UploadModal = module.UploadModal;
-  });
-
-  after(() => {
-    if (dom) dom.cleanup();
-  });
 
   const mockHtml = `
       <div id="uploadModal" class="hidden">
@@ -102,12 +81,39 @@ describe("UploadModal Reset Logic", () => {
       </div>
   `;
 
+  before(async () => {
+    process.env.NODE_ENV = 'test';
+    dom = createUiDom();
+    global.window = dom.window;
+    global.self = dom.window;
+    global.document = dom.document;
+    global.EventTarget = dom.window.EventTarget;
+    global.alert = (msg) => { console.log("ALERT CALLED:", msg); };
+    global.HTMLElement = dom.window.HTMLElement;
+    global.HTMLInputElement = dom.window.HTMLInputElement;
+    global.HTMLButtonElement = dom.window.HTMLButtonElement;
+    global.HTMLDivElement = dom.window.HTMLDivElement;
+
+    const module = await import("../../js/ui/components/UploadModal.js");
+    UploadModal = module.UploadModal;
+  });
+
+  beforeEach(() => {
+    global.fetch = async () => ({ ok: true, text: async () => mockHtml });
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  after(() => {
+    if (dom) dom.cleanup();
+  });
+
   it("should reset upload state and inputs when resetUploads is called", async () => {
       const container = document.createElement("div");
       container.id = "modalContainer";
       document.body.appendChild(container);
-
-      global.fetch = async () => ({ ok: true, text: async () => mockHtml });
 
       const modal = new UploadModal({
           storageService: mockStorageService,
