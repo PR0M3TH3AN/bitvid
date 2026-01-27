@@ -199,7 +199,7 @@ async function getApplicationClass() {
   return cachedApplicationClass;
 }
 
-export async function createModerationAppHarness() {
+export async function createModerationAppHarness(options = {}) {
   const Application = await getApplicationClass();
   const app = Object.create(Application.prototype);
 
@@ -222,7 +222,7 @@ export async function createModerationAppHarness() {
 
   app.moderationActionController = new ModerationActionController({
     services: {
-      userBlocks,
+      userBlocks: options.userBlocks || userBlocks,
       setModerationOverride,
       clearModerationOverride,
     },
