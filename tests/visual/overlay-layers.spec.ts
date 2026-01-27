@@ -121,11 +121,16 @@ test.describe("overlay layering tokens", () => {
     expect(initialLayout.state).toBe("collapsed");
     expect(Math.abs(initialLayout.marginLeft - initialLayout.collapsedMargin)).toBeLessThan(0.5);
 
+    // Ensure the toggle is initialized
+    await expect(collapseToggle).toHaveAttribute("data-state", /.*/);
     await collapseToggle.click();
 
     await page.waitForFunction(() =>
       document.getElementById("sidebar")?.classList.contains("sidebar-expanded")
     );
+
+    // Wait for sidebar transition to complete
+    await page.waitForTimeout(500);
 
     const expandedLayout = await page.evaluate(() => {
       const sidebar = document.getElementById("sidebar");

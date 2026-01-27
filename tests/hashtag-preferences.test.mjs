@@ -34,11 +34,36 @@ function restoreNostrClient() {
     : originalWriteRelays;
 }
 
-test.beforeEach(() => {
+test.beforeEach(async () => {
   hashtagPreferences.reset();
   restoreNostrClient();
   window.nostr = originalWindowNostr;
-  clearActiveSigner();
+
+  // Setup default mock signer to prevent auto-save errors
+  setActiveSigner({
+    signEvent: async (e) => ({ ...e, id: "fake" }),
+    nip44Encrypt: async () => "encrypted",
+    nip04Encrypt: async () => "encrypted",
+  });
+
+  // Setup default pool mock for publish and list
+  nostrClient.pool = {
+    list: async () => [],
+    publish: (urls, event) => ({
+      on: (eventName, handler) => {
+        if (eventName === "ok") {
+          setTimeout(() => handler(), 0);
+        }
+        return true;
+      },
+    }),
+  };
+
+  // Ensure writeRelays are set
+  nostrClient.writeRelays = ["wss://mock.relay"];
+
+  // Ensure active pubkey is set for publish operations
+  await hashtagPreferences.load("0".repeat(64));
 });
 
 test.after(() => {
@@ -242,16 +267,19 @@ test(
     const signedEvent = await hashtagPreferences.publish();
     assert.equal(signedEvent.id, "signed-event");
 
-    assert.equal(plaintextCalls.length, 1);
-    assert.equal(plaintextCalls[0].target, pubkey);
-    const payload = JSON.parse(plaintextCalls[0].plaintext);
+    // Expect 3 calls: addInterest (auto-save), addDisinterest (auto-save), manual publish
+    assert.equal(plaintextCalls.length, 3);
+    const lastCall = plaintextCalls[plaintextCalls.length - 1];
+    assert.equal(lastCall.target, pubkey);
+    const payload = JSON.parse(lastCall.plaintext);
     assert.equal(payload.version, 1);
     assert.deepEqual(payload.interests, ["taga"]);
     assert.deepEqual(payload.disinterests, ["tagb"]);
 
-    assert.equal(publishedEvents.length, 1);
-    const publishedEvent = publishedEvents[0].event;
-    assert.deepEqual(publishedEvents[0].urls, ["wss://relay.publish"]);
+    // Expect 3 publish events
+    assert.equal(publishedEvents.length, 3);
+    const publishedEvent = publishedEvents[publishedEvents.length - 1].event;
+    assert.deepEqual(publishedEvents[publishedEvents.length - 1].urls, ["wss://relay.publish"]);
     assert.equal(publishedEvent.kind, 30015);
     const encryptedTag = publishedEvent.tags.find(
       (tag) => Array.isArray(tag) && tag[0] === "encrypted",
@@ -310,16 +338,18 @@ test(
     const signedEvent = await hashtagPreferences.publish();
 
     assert.equal(signedEvent.id, "signed-window");
-    // We expect 1 call since the first scheme (nip44_v2) succeeds
-    assert.equal(encryptCalls.length, 1);
-    assert.equal(encryptCalls[0].scheme, "nip44_call");
-    assert.equal(encryptCalls[0].target, pubkey);
-    assert.ok(encryptCalls[0].plaintext.includes("windowtag"));
+    // Expect 2 calls: addInterest (auto-save) + manual publish
+    assert.equal(encryptCalls.length, 2);
+    const lastEncryptCall = encryptCalls[encryptCalls.length - 1];
+    assert.equal(lastEncryptCall.scheme, "nip44_call");
+    assert.equal(lastEncryptCall.target, pubkey);
+    assert.ok(lastEncryptCall.plaintext.includes("windowtag"));
 
-    assert.equal(publishedEvents.length, 1);
-    assert.deepEqual(publishedEvents[0].urls, ["wss://relay.window"]);
-    assert.equal(publishedEvents[0].event.kind, 30015);
-    const encryptedTag = publishedEvents[0].event.tags.find(
+    assert.equal(publishedEvents.length, 2);
+    const lastPublished = publishedEvents[publishedEvents.length - 1];
+    assert.deepEqual(lastPublished.urls, ["wss://relay.window"]);
+    assert.equal(lastPublished.event.kind, 30015);
+    const encryptedTag = lastPublished.event.tags.find(
       (tag) => Array.isArray(tag) && tag[0] === "encrypted",
     );
     // nip44_v2 is the first tried scheme, so it is the one used

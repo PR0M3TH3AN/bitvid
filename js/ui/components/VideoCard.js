@@ -2667,6 +2667,13 @@ export class VideoCard {
       if (!el) return;
       el.dataset.playUrl = encodeURIComponent(this.playbackUrl || "");
       el.dataset.playMagnet = this.playbackMagnet || "";
+      const infoJsonUrl =
+        typeof this.video?.infoJsonUrl === "string" ? this.video.infoJsonUrl : "";
+      if (infoJsonUrl) {
+        el.dataset.infoJson = encodeURIComponent(infoJsonUrl);
+      } else if (el.dataset.infoJson) {
+        delete el.dataset.infoJson;
+      }
       if (this.magnetProvided) {
         el.dataset.torrentSupported = this.magnetSupported ? "true" : "false";
       } else if (el.dataset.torrentSupported) {

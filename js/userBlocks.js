@@ -729,6 +729,8 @@ class UserBlockListManager {
     emitStatus({ status: "loading", relays: Array.from(nostrClient.relays || []) });
 
     const localBlocks = this._loadLocal(normalized);
+    const hasLocalData = !!localBlocks;
+
     if (localBlocks) {
       this.blockedPubkeys = localBlocks;
       this.loaded = true;
@@ -737,8 +739,6 @@ class UserBlockListManager {
         blockedPubkeys: Array.from(this.blockedPubkeys),
         source: "local",
       });
-      emitStatus({ status: "settled" });
-      return;
     }
 
     const applyBlockedPubkeys = (nextValues, meta = {}) => {
@@ -1069,18 +1069,24 @@ class UserBlockListManager {
         }
       };
 
+      // If we don't have local data, we must ignore the sync metadata and force a full fetch (since: 0).
+      // Otherwise, we might miss data if the metadata store says we are up-to-date but the actual list is missing.
+      const fetchSince = hasLocalData ? undefined : 0;
+
       // Concurrent incremental fetch for both kinds
       const [muteEvents, blockEvents] = await Promise.all([
         nostrClient.fetchListIncrementally({
           kind: 10000,
           pubkey: normalized,
           relayUrls: relays,
+          since: fetchSince,
         }),
         nostrClient.fetchListIncrementally({
           kind: 30002,
           pubkey: normalized,
           dTag: BLOCK_LIST_IDENTIFIER,
           relayUrls: relays,
+          since: fetchSince,
         }),
       ]);
 
@@ -1098,10 +1104,7 @@ class UserBlockListManager {
 
 
     } catch (error) {
-      userLogger.error("[UserBlockList] loadBlocks failed:", error);
-      applyBlockedPubkeys([], { source: "fast", reason: "load-error", error });
-      this.blockEventId = null;
-      this.blockEventCreatedAt = null;
+      userLogger.error("[UserBlockList] loadBlocks failed (keeping local state):", error);
       emitStatus({ status: "error", error });
     } finally {
       this.loaded = true;

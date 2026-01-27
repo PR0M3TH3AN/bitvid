@@ -1,29 +1,4 @@
-import { WebSocket } from 'ws';
-global.WebSocket = WebSocket;
-
-import crypto from 'node:crypto';
-if (!global.crypto) {
-  global.crypto = crypto.webcrypto || crypto;
-}
-
-// Polyfill localStorage
-if (typeof global.localStorage === "undefined") {
-    global.localStorage = {
-        _data: new Map(),
-        getItem(key) { return this._data.get(key) || null; },
-        setItem(key, value) { this._data.set(key, String(value)); },
-        removeItem(key) { this._data.delete(key); },
-        clear() { this._data.clear(); },
-        key(n) { return Array.from(this._data.keys())[n] || null; },
-        get length() { return this._data.size; }
-    };
-}
-
-// Polyfill window for code that checks window.nostr etc
-if (typeof global.window === "undefined") {
-    global.window = global;
-}
-
+import './setup-test-env.js';
 import "fake-indexeddb/auto";
 import { startRelay } from './simple-relay.mjs';
 import { NostrClient } from '../../js/nostr/client.js';
@@ -181,7 +156,7 @@ async function runSmokeTest() {
             relay: RELAY_URL
         };
         const viewResult = await client.publishViewEvent(videoPointer);
-        log(`View Event Published: ${viewResult.id}`);
+        log(`View Event Published: ${viewResult.event ? viewResult.event.id : 'undefined'}`);
         summary.steps.view_flow = "SUCCESS";
 
         // C. DM Flow
@@ -212,23 +187,6 @@ async function runSmokeTest() {
         if (!rawDmEvent) throw new Error("Failed to fetch raw DM event");
 
         log("Decrypting raw DM event manually...");
-        // We need decryptors context.
-        // We can re-use NostrClient's logic or manually invoke the decryptor using the private key.
-        // Since decryptDM requires a context with decryptors, let's assume we can build it similarly to the client.
-        // However, accessing private key from client might be tricky if it's encapsulated in adapter.
-        // But we have `privateKey` variable here!
-
-        // We can define a decryptor function using the known private key.
-        const myDecryptor = {
-             scheme: 'nip04',
-             decrypt: async (pk, ciphertext) => {
-                 return await NostrTools.nip04.decrypt(privateKey, pk, ciphertext);
-             }
-        };
-
-        // Note: NostrTools.nip04.decrypt(privateKey, senderPubkey, ciphertext)
-        // Here sender is self, so `pubkey`.
-
         const decryptContext = {
             actorPubkey: pubkey,
             decryptors: [
@@ -303,10 +261,6 @@ async function runSmokeTest() {
 
         // --- Cleanup ---
         log("Cleaning up...");
-
-        // Try to close client connections to allow relay to close gracefully
-        // Note: client variable is not in scope here if defined inside try block.
-        // But for this script, we can rely on process.exit() to clean up if we skip await.
 
         try {
             if (relay && relay.close) {

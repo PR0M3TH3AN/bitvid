@@ -33,7 +33,12 @@ const event = buildVideoPostEvent({
   pubkey,
   created_at: Math.floor(Date.now() / 1000),
   dTagValue: "debug-video",
-  content: { version: 3, title: "Test", videoRootId: "debug" },
+  content: {
+    version: 3,
+    title: "Test",
+    videoRootId: "debug",
+    infoHash: "0123456789abcdef0123456789abcdef01234567",
+  },
 });
 ```
 
@@ -145,7 +150,7 @@ import { updateWatchHistoryListWithDefaultClient } from "./nostrWatchHistoryFaca
 
 | Note | Kind (default) | Tags | Content format |
 | --- | --- | --- | --- |
-| Video post (`NOTE_TYPES.VIDEO_POST`) | `30078` | `['t','video']`, `['d', <stable video identifier>]` plus optional schema append tags | JSON payload using Content Schema v3 (`version`, `title`, optional `url`, `magnet`, `thumbnail`, `description`, `mode`, `videoRootId`, `deleted`, `isPrivate`, `isNsfw`, `isForKids`, `enableComments`, `ws`, `xs`) |
+| Video post (`NOTE_TYPES.VIDEO_POST`) | `30078` | `['t','video']`, `['d', <stable video identifier>]`, `['s', <storage pointer>]` plus optional schema append tags | JSON payload using Content Schema v3 (`version`, `title`, optional `url`, `magnet`, `thumbnail`, `description`, `mode`, `videoRootId`, `deleted`, `isPrivate`, `isNsfw`, `isForKids`, `enableComments`, `infoHash`, `fileSha256`, `originalFileSha256`, `ws`, `xs`) |
 | NIP-94 mirror (`NOTE_TYPES.VIDEO_MIRROR`) | `1063` | Tags forwarded from `publishVideo` (URL, mime type, thumbnail, alt text, magnet) | Plain text alt description |
 | Repost (`NOTE_TYPES.REPOST`) | `6` | `['e', <event id>, <relay?>]` with optional address pointer `['a', <kind:pubkey:identifier>, <relay?>]`, and `['p', <pubkey>]` when the origin author is known; inherits schema append tags | JSON-serialized event being reposted (or empty if unavailable) |
 | Generic Repost (`NOTE_TYPES.GENERIC_REPOST`) | `16` | Same as Repost; specific for non-text kinds (e.g. videos). | Same as Repost. |
@@ -157,6 +162,10 @@ import { updateWatchHistoryListWithDefaultClient } from "./nostrWatchHistoryFaca
 | DM typing indicator (`NOTE_TYPES.DM_TYPING`) | `20002` | `['p', <recipient pubkey>]`, optional `['e', <conversation event id>]`, `['t','typing']`, `['expiration', <unix seconds>]`; inherits schema append tags | Empty content; ephemeral typing indicator that expires quickly |
 
 > **Publishing note:** Session actors only emit passive telemetry (for example, view counters) and must **not** sign video comments. Require a logged-in Nostr signer for comment publishing via [`commentEvents`](../js/nostr/commentEvents.js).
+
+Video posts now include a required storage pointer tag (`['s', '<provider>:<prefix>']`). The `<prefix>` should resolve to the public storage base for the video assets (for example, a public bucket URL plus the object key without its extension). Clients derive `info.json` by appending `.info.json` to the prefix (or by combining a path-style prefix with the hosted URL origin if needed).
+
+Video posts should treat `videoRootId` as the stable series identifier that remains unchanged across edits and deletes. File fingerprints such as `infoHash` or `fileSha256` live alongside the content payload so media swaps do not break the version chain.
 
 | NIP-71 video (`NOTE_TYPES.NIP71_VIDEO`) | `21` | `['title', <title>]`, optional `['published_at', <unix seconds>]`, optional `['alt', <text>]`, repeated `['imeta', ...]` entries describing NIP-92 media variants, optional `['duration', <seconds>]`, repeated `['text-track', <url>, <kind>, <language>]`, optional `['content-warning', <reason>]`, repeated `['segment', <start>, <end>, <title>, <thumbnail>]`, repeated hashtags `['t', <tag>]`, repeated participants `['p', <pubkey>, <relay?>]`, repeated references `['r', <url>]` | Plain text summary carried in the content field. Publishing is gated by the `FEATURE_PUBLISH_NIP71` runtime flag while the rollout stabilizes. |
 | NIP-71 short video (`NOTE_TYPES.NIP71_SHORT_VIDEO`) | `22` | Same as `NOTE_TYPES.NIP71_VIDEO`; the kind differentiates short-form presentations. | Plain text summary; gated by `FEATURE_PUBLISH_NIP71`. |

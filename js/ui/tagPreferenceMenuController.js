@@ -237,16 +237,16 @@ export default class TagPreferenceMenuController {
     try {
       switch (action) {
         case TAG_PREFERENCE_ACTIONS.ADD_INTEREST:
-          result = service.addInterest(tag);
+          result = await service.addInterest(tag);
           break;
         case TAG_PREFERENCE_ACTIONS.REMOVE_INTEREST:
-          result = service.removeInterest(tag);
+          result = await service.removeInterest(tag);
           break;
         case TAG_PREFERENCE_ACTIONS.ADD_DISINTEREST:
-          result = service.addDisinterest(tag);
+          result = await service.addDisinterest(tag);
           break;
         case TAG_PREFERENCE_ACTIONS.REMOVE_DISINTEREST:
-          result = service.removeDisinterest(tag);
+          result = await service.removeDisinterest(tag);
           break;
         default:
           userLogger.warn(`[TagPreferenceMenu] Unhandled action: ${action}`);

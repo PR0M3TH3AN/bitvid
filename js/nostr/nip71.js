@@ -1,6 +1,10 @@
 import { deriveTitleFromEvent } from "../videoEventUtils.js";
-import { extractMagnetHints } from "../magnetShared.js";
+import { extractBtihFromMagnet, extractMagnetHints } from "../magnetShared.js";
 import { devLogger } from "../utils/logger.js";
+import {
+  getStoragePointerFromTags,
+  resolveInfoJsonUrl,
+} from "../utils/storagePointer.js";
 import { getCachedNostrTools } from "./toolkit.js";
 
 function stringFromInput(value) {
@@ -1403,6 +1407,17 @@ export function convertEventToVideo(event = {}) {
   const enableComments =
     parsedContent.enableComments === false ? false : true;
 
+  const normalizeSha256 = (candidate) => {
+    if (typeof candidate !== "string") {
+      return "";
+    }
+    const normalized = candidate.trim().toLowerCase();
+    if (!normalized) {
+      return "";
+    }
+    return /^[0-9a-f]{64}$/.test(normalized) ? normalized : "";
+  };
+
   let infoHash = "";
   const pushInfoHash = (candidate) => {
     if (typeof candidate !== "string") {
@@ -1417,11 +1432,13 @@ export function convertEventToVideo(event = {}) {
   };
 
   pushInfoHash(parsedContent.infoHash);
+  const fileSha256 = normalizeSha256(parsedContent.fileSha256);
+  const originalFileSha256 = normalizeSha256(parsedContent.originalFileSha256);
 
   if (!infoHash && magnet) {
-    const match = magnet.match(/xt=urn:btih:([0-9a-z]+)/i);
-    if (match && match[1]) {
-      pushInfoHash(match[1]);
+    const extracted = extractBtihFromMagnet(magnet);
+    if (extracted) {
+      infoHash = extracted;
     }
   }
 
@@ -1463,6 +1480,11 @@ export function convertEventToVideo(event = {}) {
     : { ws: "", xs: "" };
   const ws = wsField || magnetHints.ws || "";
   const xs = xsField || magnetHints.xs || "";
+  const storagePointer = getStoragePointerFromTags(tags);
+  const infoJsonUrl = resolveInfoJsonUrl({
+    storagePointer,
+    url,
+  });
 
   return {
     id: event.id,
@@ -1476,12 +1498,16 @@ export function convertEventToVideo(event = {}) {
     magnet,
     rawMagnet,
     infoHash,
+    fileSha256,
+    originalFileSha256,
     thumbnail,
     description,
     mode,
     deleted,
     ws,
     xs,
+    storagePointer,
+    infoJsonUrl,
     enableComments,
     pubkey: event.pubkey,
     created_at: event.created_at,

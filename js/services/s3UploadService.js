@@ -9,10 +9,15 @@ import {
 } from "./s3Service.js";
 import { userLogger } from "../utils/logger.js";
 import {
+  buildStoragePointerValue,
+  buildStoragePrefixFromKey,
+} from "../utils/storagePointer.js";
+import {
   getVideoNoteErrorMessage,
   normalizeVideoNotePayload,
   VIDEO_NOTE_ERROR_CODES,
 } from "./videoNotePayload.js";
+import { calculateTorrentInfoHash } from "../utils/torrentHash.js";
 
 const STATUS_VARIANTS = new Set(["info", "success", "error", "warning"]);
 const INFO_HASH_PATTERN = /^[a-f0-9]{40}$/;
@@ -23,6 +28,26 @@ function normalizeInfoHash(value) {
 
 function isValidInfoHash(value) {
   return INFO_HASH_PATTERN.test(value);
+}
+
+async function resolveUploadIdentifier({ infoHash = "", file = null } = {}) {
+  const normalizedInfoHash = normalizeInfoHash(infoHash);
+  if (isValidInfoHash(normalizedInfoHash)) {
+    return normalizedInfoHash;
+  }
+  if (!file) {
+    return "";
+  }
+  try {
+    const computedHash = await calculateTorrentInfoHash(file);
+    const normalizedComputed = normalizeInfoHash(computedHash);
+    if (isValidInfoHash(normalizedComputed)) {
+      return normalizedComputed;
+    }
+  } catch (err) {
+    userLogger.warn("Failed to precompute info hash for storage key:", err);
+  }
+  return "";
 }
 
 class S3UploadService {
@@ -215,6 +240,10 @@ class S3UploadService {
     try {
       await ensureS3SdkLoaded();
 
+      const keyIdentifier = await resolveUploadIdentifier({ infoHash, file });
+      const normalizedInfoHash = normalizeInfoHash(infoHash || keyIdentifier);
+      const hasValidInfoHash = isValidInfoHash(normalizedInfoHash);
+
       const s3 = makeS3Client({
         endpoint: normalized.endpoint,
         region: normalized.region,
@@ -223,7 +252,7 @@ class S3UploadService {
         forcePathStyle: Boolean(normalized.forcePathStyle),
       });
 
-      const key = forcedVideoKey || buildR2Key(npub, file);
+      const key = forcedVideoKey || buildR2Key(npub, file, keyIdentifier);
       const publicUrl =
         forcedVideoUrl ||
         buildS3ObjectUrl({
@@ -322,8 +351,6 @@ class S3UploadService {
         return false;
       }
 
-      const normalizedInfoHash = normalizeInfoHash(infoHash);
-      const hasValidInfoHash = isValidInfoHash(normalizedInfoHash);
       let generatedMagnet = "";
       let generatedWs = "";
 
@@ -347,14 +374,25 @@ class S3UploadService {
         );
       }
 
+      const storagePrefix = buildStoragePrefixFromKey({
+        publicBaseUrl: normalized.publicBaseUrl,
+        key,
+      });
+      const storagePointer = buildStoragePointerValue({
+        provider: "s3",
+        prefix: storagePrefix,
+      });
+
       const rawVideoPayload = {
         title,
         url: publicUrl,
         magnet: generatedMagnet || (metadata?.magnet ?? ""),
         thumbnail: metadata?.thumbnail ?? "",
         description: metadata?.description ?? "",
+        storagePointer,
         ws: generatedWs || (metadata?.ws ?? ""),
         xs: torrentUrl || (metadata?.xs ?? ""),
+        infoHash: hasValidInfoHash ? normalizedInfoHash : "",
         enableComments: metadata?.enableComments,
         isNsfw: metadata?.isNsfw,
         isForKids: metadata?.isForKids,

@@ -5,9 +5,11 @@ import {
 } from "./utils/safeDecode.js";
 
 const HEX_INFO_HASH = /^[0-9a-f]{40}$/i;
+const BASE32_INFO_HASH = /^[a-z2-7]{32}$/i;
 const BTIH_PREFIX = "urn:btih:";
 const MAGNET_SCHEME = "magnet:";
 const ENCODED_BTih_PATTERN = /xt=urn%3Abtih%3A([0-9a-z]+)/gi;
+const BASE32_ALPHABET = "abcdefghijklmnopqrstuvwxyz234567";
 
 export function safeDecodeMagnet(value) {
   if (typeof value !== "string") {
@@ -54,6 +56,96 @@ export function normalizeForComparison(value) {
   } catch (err) {
     return trimmed.replace(/\/?$/, "").toLowerCase();
   }
+}
+
+function decodeBase32ToHex(value) {
+  if (typeof value !== "string" || !value) {
+    return "";
+  }
+
+  const normalized = value.toLowerCase();
+  let bits = 0;
+  let buffer = 0;
+  const bytes = [];
+
+  for (const char of normalized) {
+    const index = BASE32_ALPHABET.indexOf(char);
+    if (index === -1) {
+      return "";
+    }
+    buffer = (buffer << 5) | index;
+    bits += 5;
+    if (bits >= 8) {
+      bits -= 8;
+      const byte = (buffer >> bits) & 0xff;
+      bytes.push(byte);
+    }
+  }
+
+  if (!bytes.length) {
+    return "";
+  }
+
+  return bytes.map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+export function normalizeInfoHash(value) {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  if (!trimmed) {
+    return "";
+  }
+  if (HEX_INFO_HASH.test(trimmed)) {
+    return trimmed.toLowerCase();
+  }
+  if (BASE32_INFO_HASH.test(trimmed)) {
+    const hex = decodeBase32ToHex(trimmed);
+    return hex ? hex.toLowerCase() : "";
+  }
+  return "";
+}
+
+function extractInfoHashFromXt(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+  const lower = trimmed.toLowerCase();
+  if (!lower.startsWith(BTIH_PREFIX)) {
+    return "";
+  }
+  return normalizeInfoHash(trimmed.slice(BTIH_PREFIX.length));
+}
+
+export function extractBtihFromMagnet(rawValue) {
+  const decoded = safeDecodeMagnet(rawValue);
+  const { initial, isMagnet, params } = normalizeMagnetInput(decoded);
+
+  if (!initial) {
+    return "";
+  }
+
+  if (!isMagnet) {
+    if (initial.toLowerCase().startsWith(BTIH_PREFIX)) {
+      return normalizeInfoHash(initial.slice(BTIH_PREFIX.length));
+    }
+    return normalizeInfoHash(initial);
+  }
+
+  for (const param of params) {
+    if (param.lowerKey !== "xt") {
+      continue;
+    }
+    const candidate = param.decoded || param.value;
+    const normalized = extractInfoHashFromXt(candidate);
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return "";
 }
 
 function createParam(key, value) {
@@ -342,4 +434,3 @@ export function extractMagnetHints(rawValue) {
   }
   return hints;
 }
-

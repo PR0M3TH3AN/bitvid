@@ -285,7 +285,7 @@ class HashtagPreferencesService {
   loadFromCache(pubkey) {
     // profileCache internally uses activePubkey, but we should verify if it matches
     try {
-      let cached = profileCache.get("interests");
+      let cached = profileCache.getProfileData(pubkey, "interests");
 
       // Legacy fallback migration
       if (!cached && typeof localStorage !== "undefined") {
@@ -341,6 +341,9 @@ class HashtagPreferencesService {
 
     if (!hadInterest || removedFromDisinterests) {
       this.emitChange("interest-added", { tag: normalized });
+      this.publish().catch((err) =>
+        userLogger.warn(`${LOG_PREFIX} Auto-save failed`, err),
+      );
       return true;
     }
 
@@ -355,6 +358,9 @@ class HashtagPreferencesService {
 
     this.interests.delete(normalized);
     this.emitChange("interest-removed", { tag: normalized });
+    this.publish().catch((err) =>
+      userLogger.warn(`${LOG_PREFIX} Auto-save failed`, err),
+    );
     return true;
   }
 
@@ -370,6 +376,9 @@ class HashtagPreferencesService {
 
     if (!hadDisinterest || removedFromInterests) {
       this.emitChange("disinterest-added", { tag: normalized });
+      this.publish().catch((err) =>
+        userLogger.warn(`${LOG_PREFIX} Auto-save failed`, err),
+      );
       return true;
     }
 
@@ -384,6 +393,9 @@ class HashtagPreferencesService {
 
     this.disinterests.delete(normalized);
     this.emitChange("disinterest-removed", { tag: normalized });
+    this.publish().catch((err) =>
+      userLogger.warn(`${LOG_PREFIX} Auto-save failed`, err),
+    );
     return true;
   }
 
@@ -477,12 +489,20 @@ class HashtagPreferencesService {
       // fetchListIncrementally takes a single kind.
       // kinds is array of [canonicalKind, legacyKind] if different.
 
-      const promises = kinds.map(kind => nostrClient.fetchListIncrementally({
-        kind,
-        pubkey: normalized,
-        dTag: HASHTAG_IDENTIFIER,
-        relayUrls: relays
-      }));
+      // Anchor the fetch to the service's current state to prevent desync.
+      // If we have cached data, we ask for updates since that timestamp.
+      // If we have no data, we force a full fetch (since=0).
+      const since = wasLoadedForUser ? Number(this.eventCreatedAt) || 0 : 0;
+
+      const promises = kinds.map((kind) =>
+        nostrClient.fetchListIncrementally({
+          kind,
+          pubkey: normalized,
+          dTag: HASHTAG_IDENTIFIER,
+          relayUrls: relays,
+          since,
+        }),
+      );
 
       const results = await Promise.all(promises);
       events = results.flat();
@@ -497,6 +517,14 @@ class HashtagPreferencesService {
     }
 
     if (!events.length) {
+      if (fetchError) {
+        userLogger.warn(
+          `${LOG_PREFIX} Failed to load hashtag preferences (keeping local state if any).`,
+          fetchError,
+        );
+        return;
+      }
+
       // If we failed to fetch (network error) but already have data for this user,
       // preserve the existing state instead of wiping it.
       // If fetchListIncrementally returns empty, it means no new updates or full fetch yielded nothing.
@@ -551,9 +579,11 @@ class HashtagPreferencesService {
     const currentCreatedAt = Number(this.eventCreatedAt) || 0;
     const latestCreatedAt = Number(latest.created_at) || 0;
 
-    if (wasLoadedForUser && currentCreatedAt > latestCreatedAt) {
-      userLogger.warn(
-        `${LOG_PREFIX} Ignoring stale preferences event (remote: ${latestCreatedAt}, local: ${currentCreatedAt}).`,
+    // Protection against overwriting optimistic updates:
+    // If the local version is newer (because user just edited), ignore the remote fetch.
+    if (wasLoadedForUser && currentCreatedAt >= latestCreatedAt) {
+      devLogger.log(
+        `${LOG_PREFIX} Ignoring stale/concurrent preferences event (remote: ${latestCreatedAt}, local: ${currentCreatedAt}).`,
       );
       return;
     }

@@ -34,6 +34,15 @@ jobs:
           git remote add upstream https://github.com/PR0M3TH3AN/bitvid.git || true
           git fetch upstream
 
+      - name: Verify upstream branch and diff
+        run: |
+          if git ls-remote --heads upstream "${{ github.base_ref }}" | grep "${{ github.base_ref }}" > /dev/null; then
+            git fetch upstream "${{ github.base_ref }}"
+            git diff --name-only upstream/${{ github.base_ref }}...HEAD
+          else
+            echo "::warning::Branch upstream/${{ github.base_ref }} not found. Skipping diff."
+          fi
+
       - name: Run Agent Review
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

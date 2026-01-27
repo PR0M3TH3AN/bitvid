@@ -21,6 +21,7 @@ import { isDevMode } from "../config.js";
 import { FEATURE_PUBLISH_NIP71 } from "../constants.js";
 import { accessControl } from "../accessControl.js";
 import { bytesToHex, sha256 } from "../../vendor/crypto-helpers.bundle.min.js";
+import { infoHashFromMagnet } from "../magnets.js";
 // 🔧 merged conflicting changes from codex/update-video-publishing-and-parsing-logic vs unstable
 import {
   buildNip71MetadataTags,
@@ -35,6 +36,12 @@ import {
   buildVideoPointerValue,
   stringFromInput,
 } from "./nip71.js";
+import {
+  buildStoragePointerValue,
+  deriveStoragePointerFromUrl,
+  getStoragePointerFromTags,
+  normalizeStoragePointer,
+} from "../utils/storagePointer.js";
 import {
   createWatchHistoryManager,
   normalizePointerInput,
@@ -817,6 +824,40 @@ function normalizeHexHash(candidate) {
   return HEX64_REGEX.test(trimmed) ? trimmed : "";
 }
 
+function resolveStoragePointerValue({
+  storagePointer,
+  url,
+  infoHash,
+  fallbackId,
+  provider,
+} = {}) {
+  const normalized = normalizeStoragePointer(storagePointer);
+  if (normalized) {
+    return normalized;
+  }
+
+  const derivedFromUrl = deriveStoragePointerFromUrl(url, provider || "url");
+  if (derivedFromUrl) {
+    return derivedFromUrl;
+  }
+
+  if (typeof infoHash === "string" && infoHash.trim()) {
+    return buildStoragePointerValue({
+      provider: "btih",
+      prefix: infoHash.trim().toLowerCase(),
+    });
+  }
+
+  if (typeof fallbackId === "string" && fallbackId.trim()) {
+    return buildStoragePointerValue({
+      provider: "nostr",
+      prefix: fallbackId.trim(),
+    });
+  }
+
+  return "";
+}
+
 const BlobConstructor = typeof Blob !== "undefined" ? Blob : null;
 let sharedTextEncoder = null;
 
@@ -1219,6 +1260,7 @@ export class NostrClient {
     this.sessionActorCipherClosures = null;
     this.sessionActorCipherClosuresPrivateKey = null;
     this.countUnsupportedRelays = new Set();
+    this.unreachableRelays = new Set();
     this.isInitialized = false;
     this.nip46Client = null;
     this.remoteSignerListeners = new Set();
@@ -2582,6 +2624,16 @@ export class NostrClient {
     );
 
     if (!outstanding.length) {
+      // Even if permissions are cached, we must ensure the extension object is actually
+      // injected and available on the window before returning success.
+      // This prevents race conditions where the app loads faster than the extension.
+      if (typeof window !== "undefined" && !window.nostr) {
+        try {
+          await waitForNip07Extension(3000);
+        } catch (error) {
+          return { ok: false, error: new Error("extension-unavailable") };
+        }
+      }
       return { ok: true };
     }
 
@@ -2616,8 +2668,26 @@ export class NostrClient {
       return existingSigner;
     }
 
-    const extension =
+    let extension =
       typeof window !== "undefined" && window && window.nostr ? window.nostr : null;
+
+    // If the extension is missing but we have cached permissions, it implies the user
+    // previously logged in with an extension. We should wait briefly for injection
+    // to resolve the common race condition where the app loads faster than the extension.
+    if (!extension && this.extensionPermissionCache && this.extensionPermissionCache.size > 0) {
+      try {
+        extension = await waitForNip07Extension(3000);
+      } catch (error) {
+        // Fall through to existing signer check
+      }
+    }
+
+    // Check if a signer appeared while we were waiting (e.g. NIP-46 or concurrent NIP-07 logic)
+    const recheckedSigner = resolveActiveSigner(normalizedPubkey);
+    if (recheckedSigner && typeof recheckedSigner.signEvent === "function") {
+      return recheckedSigner;
+    }
+
     if (!extension) {
       return existingSigner;
     }
@@ -3481,7 +3551,14 @@ export class NostrClient {
    * @param {function} [params.fetchFn] - Custom fetch function (mocks or specialized logic). Defaults to `pool.list`.
    * @returns {Promise<import("nostr-tools").Event[]>} Deduplicated list of events found across all relays.
    */
-  async fetchListIncrementally({ kind, pubkey, dTag, relayUrls, fetchFn } = {}) {
+  async fetchListIncrementally({
+    kind,
+    pubkey,
+    dTag,
+    relayUrls,
+    fetchFn,
+    since,
+  } = {}) {
     if (!kind || !pubkey) {
       throw new Error("fetchListIncrementally requires kind and pubkey");
     }
@@ -3495,9 +3572,9 @@ export class NostrClient {
       ? relayUrls
       : this.relays;
 
-    const normalizedRelays = sanitizeRelayList(relaysToUse);
+    const normalizedRelays = sanitizeRelayList(this.getHealthyRelays(relaysToUse));
     const results = [];
-    const concurrencyLimit = 4;
+    const concurrencyLimit = 8;
 
     // We'll use the pool's list method if fetchFn isn't provided,
     // but we need to call it per-relay.
@@ -3511,9 +3588,28 @@ export class NostrClient {
       chunks.push(normalizedRelays.slice(i, i + concurrencyLimit));
     }
 
+    let anySuccess = false;
+    const failures = [];
+
     for (const chunk of chunks) {
       const promises = chunk.map(async (relayUrl) => {
-        const lastSeen = this.getSyncLastSeen(kind, normalizedPubkey, dTag, relayUrl);
+        let lastSeen = this.getSyncLastSeen(
+          kind,
+          normalizedPubkey,
+          dTag,
+          relayUrl,
+        );
+
+        // If an explicit 'since' override is provided, use it instead of storage.
+        // This allows services to anchor fetching to their own known state.
+        if (since !== undefined) {
+          const overrideSince = Number(since);
+          lastSeen =
+            Number.isFinite(overrideSince) && overrideSince >= 0
+              ? Math.floor(overrideSince)
+              : 0;
+        }
+
         const filter = {
           kinds: [kind],
           authors: [normalizedPubkey],
@@ -3538,7 +3634,13 @@ export class NostrClient {
         }
 
         try {
-          let events = await actualFetchFn(relayUrl, filter);
+          // Wrap fetch with a timeout to prevent hanging on slow relays
+          let events = await withRequestTimeout(
+            actualFetchFn(relayUrl, filter),
+            6000,
+            null,
+            `Fetch from ${relayUrl} timed out`
+          );
 
           // If incremental returned empty, we assume no updates (success).
           // But if we did a full fetch (no since), empty means empty.
@@ -3562,13 +3664,18 @@ export class NostrClient {
             this.updateSyncLastSeen(kind, normalizedPubkey, dTag, relayUrl, maxCreated);
           }
 
-          return events;
+          return { events, ok: true };
         } catch (error) {
           // Fallback to full fetch if incremental failed or if relay error
           if (!doFullFetch) {
             try {
               delete filter.since;
-              const events = await actualFetchFn(relayUrl, filter);
+              const events = await withRequestTimeout(
+                actualFetchFn(relayUrl, filter),
+                6000,
+                null,
+                `Full fetch fallback from ${relayUrl} timed out`
+              );
               // Update lastSeen on success of fallback
               let maxCreated = 0;
               if (Array.isArray(events)) {
@@ -3581,24 +3688,36 @@ export class NostrClient {
               if (maxCreated > 0) {
                  this.updateSyncLastSeen(kind, normalizedPubkey, dTag, relayUrl, maxCreated);
               }
-              return events || [];
+              return { events: events || [], ok: true };
             } catch (fallbackError) {
               devLogger.warn(`[fetchListIncrementally] Full fetch fallback failed for ${relayUrl}`, fallbackError);
-              return [];
+              return { error: fallbackError, ok: false };
             }
           } else {
              devLogger.warn(`[fetchListIncrementally] Fetch failed for ${relayUrl}`, error);
-             return [];
+             return { error, ok: false };
           }
         }
       });
 
       const chunkResults = await Promise.all(promises);
       for (const res of chunkResults) {
-        if (Array.isArray(res)) {
-          results.push(...res);
+        if (res.ok) {
+          anySuccess = true;
+          if (Array.isArray(res.events)) {
+            results.push(...res.events);
+          }
+        } else {
+          failures.push(res.error);
         }
       }
+    }
+
+    if (!anySuccess && normalizedRelays.length > 0) {
+      const error = new Error("All relays failed to fetch list.");
+      error.code = "fetch-failed";
+      error.failures = failures;
+      throw error;
     }
 
     // Deduplicate by ID
@@ -3919,7 +4038,7 @@ export class NostrClient {
   // `unsub` to avoid leaking subscriptions. Note: any future change must still
   // provide a lightweight readiness check with similar timeout semantics.
   async connectToRelays() {
-    return Promise.all(
+    const results = await Promise.all(
       this.relays.map(
         (url) =>
           new Promise((resolve) => {
@@ -3939,170 +4058,27 @@ export class NostrClient {
           })
       )
     );
+
+    for (const result of results) {
+      if (result.success) {
+        this.unreachableRelays.delete(result.url);
+      } else {
+        this.unreachableRelays.add(result.url);
+        if (isDevMode) {
+          devLogger.warn(`[nostr] Marked relay as unreachable: ${result.url}`);
+        }
+      }
+    }
+
+    return results;
   }
 
-  /**
-   * Authenticates the user via a NIP-07 browser extension (e.g., Alby, nos2x).
-   *
-   * **Process:**
-   * 1. Checks for `window.nostr` presence.
-   * 2. Requests permissions (sign_event, nip04, etc.) via `ensureExtensionPermissions`.
-   * 3. Retrieves the public key.
-   * 4. Validates access control (whitelist/blacklist) via `accessControl`.
-   * 5. Sets the active signer to a `Nip07Adapter`.
-   *
-   * @param {object} [options]
-   * @param {boolean} [options.allowAccountSelection=false] - Whether to prompt the extension to select an account (NIP-07 extension).
-   * @param {string} [options.expectPubkey] - Enforce that the login matches a specific pubkey.
-   * @returns {Promise<string>} The authenticated public key (hex).
-   * @throws {Error} If extension is missing, permissions denied, or account blocked.
-   */
-  async login(options = {}) {
-    try {
-      let extension = null;
-      let attempts = 0;
-      const maxAttempts = 3;
-
-      while (!extension && attempts < maxAttempts) {
-        try {
-          await waitForNip07Extension();
-          extension = window.nostr;
-        } catch (waitError) {
-          devLogger.log(
-            `Timed out waiting for extension injection (attempt ${
-              attempts + 1
-            }/${maxAttempts}):`,
-            waitError,
-          );
-        }
-
-        if (extension) {
-          break;
-        }
-
-        attempts++;
-        if (attempts < maxAttempts) {
-          devLogger.log("Retrying NIP-07 detection...");
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-        }
-      }
-
-      extension = window.nostr;
-
-      if (!extension) {
-        devLogger.log("No Nostr extension found");
-        throw new Error(
-          "Please install a Nostr extension (Alby, nos2x, etc.)."
-        );
-      }
-
-      const { allowAccountSelection = false, expectPubkey } =
-        typeof options === "object" && options !== null ? options : {};
-      const normalizedExpectedPubkey =
-        typeof expectPubkey === "string" && expectPubkey.trim()
-          ? expectPubkey.trim().toLowerCase()
-          : null;
-
-      if (typeof extension.getPublicKey !== "function") {
-        throw new Error(
-          "This NIP-07 extension is missing getPublicKey support. Please update the extension."
-        );
-      }
-
-      const permissionResult = await this.ensureExtensionPermissions(
-        DEFAULT_NIP07_PERMISSION_METHODS,
-      );
-      if (!permissionResult.ok) {
-        const denialMessage =
-          'The NIP-07 extension reported "permission denied". Please approve the prompt and try again.';
-        const denialError = new Error(denialMessage);
-        if (permissionResult.error) {
-          denialError.cause = permissionResult.error;
-        }
-        throw denialError;
-      }
-
-      if (allowAccountSelection && typeof extension.selectAccounts === "function") {
-        try {
-          const selection = await runNip07WithRetry(
-            () => extension.selectAccounts(expectPubkey ? [expectPubkey] : undefined),
-            { label: "extension.selectAccounts" }
-          );
-
-          const didCancelSelection =
-            selection === undefined ||
-            selection === null ||
-            selection === false ||
-            (Array.isArray(selection) && selection.length === 0);
-
-          if (didCancelSelection) {
-            throw new Error("Account selection was cancelled.");
-          }
-        } catch (selectionErr) {
-          const message =
-            selectionErr && typeof selectionErr.message === "string"
-              ? selectionErr.message
-              : "Account selection was cancelled.";
-          throw new Error(message);
-        }
-      }
-      const pubkey = await runNip07WithRetry(() => extension.getPublicKey(), {
-        label: "extension.getPublicKey",
-      });
-      if (!pubkey || typeof pubkey !== "string") {
-        throw new Error(
-          "The NIP-07 extension did not return a public key. Please try again."
-        );
-      }
-
-      if (
-        normalizedExpectedPubkey &&
-        pubkey.toLowerCase() !== normalizedExpectedPubkey
-      ) {
-        throw new Error(
-          "The selected account doesn't match the expected profile. Please try again."
-        );
-      }
-      const nip19Tools = await ensureNostrTools();
-      const npubEncode = nip19Tools?.nip19?.npubEncode;
-      if (typeof npubEncode !== "function") {
-        throw new Error("NostrTools nip19 encoder is unavailable.");
-      }
-      const npub = npubEncode(pubkey);
-
-      devLogger.log("Got pubkey:", pubkey);
-              devLogger.log("Converted to npub:", npub);
-              devLogger.log("Whitelist:", accessControl.getWhitelist());
-              devLogger.log("Blacklist:", accessControl.getBlacklist());
-      // Access control
-      if (!accessControl.canAccess(npub)) {
-        if (accessControl.isBlacklisted(npub)) {
-          throw new Error("Your account has been blocked on this platform.");
-        } else {
-          throw new Error("Access restricted to admins and moderators users only.");
-        }
-      }
-      this.pubkey = pubkey;
-      devLogger.log("Logged in with extension. Pubkey:", this.pubkey);
-
-      const adapter = await createNip07Adapter(extension);
-      adapter.pubkey = pubkey;
-      setActiveSigner(adapter);
-
-      const postLoginPermissions = await this.ensureExtensionPermissions(
-        DEFAULT_NIP07_PERMISSION_METHODS,
-      );
-      if (!postLoginPermissions.ok && postLoginPermissions.error) {
-        userLogger.warn(
-          "[nostr] Extension permissions were not fully granted after login:",
-          postLoginPermissions.error,
-        );
-      }
-      return this.pubkey;
-    } catch (err) {
-      userLogger.error("Login error:", err);
-      throw err;
+  getHealthyRelays(candidates) {
+    const source = Array.isArray(candidates) ? candidates : this.relays;
+    if (!this.unreachableRelays.size) {
+      return source;
     }
+    return source.filter((url) => !this.unreachableRelays.has(url));
   }
 
   /**
@@ -4402,7 +4378,7 @@ export class NostrClient {
       : Array.isArray(this.readRelays) && this.readRelays.length
       ? this.readRelays
       : this.relays;
-    const relays = sanitizeRelayList(relayCandidates);
+    const relays = sanitizeRelayList(this.getHealthyRelays(relayCandidates));
     const relaysToUse = relays.length ? relays : Array.from(DEFAULT_RELAY_URLS);
 
     const filters = buildDmFilters(
@@ -4474,7 +4450,7 @@ export class NostrClient {
       : Array.isArray(this.readRelays) && this.readRelays.length
       ? this.readRelays
       : this.relays;
-    const relays = sanitizeRelayList(relayCandidates);
+    const relays = sanitizeRelayList(this.getHealthyRelays(relayCandidates));
     const relaysToUse = relays.length ? relays : Array.from(DEFAULT_RELAY_URLS);
 
     const filters = buildDmFilters(actorPubkeyInput, options);
@@ -5326,7 +5302,8 @@ export class NostrClient {
    *
    * **Payload Construction:**
    * - Creates a V3 video note with `magnet`, `url` (WebSeed), and core metadata.
-   * - Generates a unique `d` tag and `videoRootId` for this new series.
+   * - Generates a unique `d` tag and `videoRootId` for this new series unless
+   *   an explicit identifier is provided in the upload payload.
    *
    * **Side Effects (in order):**
    * 1. **Primary Event**: Signs and publishes the Kind 30078 Video Note.
@@ -5383,9 +5360,26 @@ export class NostrClient {
 
     const createdAt = Math.floor(Date.now() / 1000);
 
-    // brand-new root & d
-    const videoRootId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const dTagValue = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const seriesIdentifierCandidates = [
+      videoData.videoRootId,
+      videoData.seriesId,
+      videoData.seriesIdentifier,
+    ];
+    let seriesIdentifier = "";
+    for (const candidate of seriesIdentifierCandidates) {
+      const normalized = typeof candidate === "string" ? candidate.trim() : "";
+      if (normalized) {
+        seriesIdentifier = normalized;
+        break;
+      }
+    }
+
+    if (!seriesIdentifier) {
+      seriesIdentifier = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    }
+
+    const videoRootId = seriesIdentifier;
+    const dTagValue = seriesIdentifier;
 
     const finalEnableComments =
       videoData.enableComments === false ? false : true;
@@ -5397,6 +5391,27 @@ export class NostrClient {
       typeof videoData.ws === "string" ? videoData.ws.trim() : "";
     const finalXs =
       typeof videoData.xs === "string" ? videoData.xs.trim() : "";
+    const infoHashCandidates = [videoData.infoHash];
+    let infoHash = "";
+    for (const candidate of infoHashCandidates) {
+      const normalized = infoHashFromMagnet(candidate);
+      if (normalized) {
+        infoHash = normalized;
+        break;
+      }
+    }
+    if (!infoHash && finalMagnet) {
+      infoHash = infoHashFromMagnet(finalMagnet) || "";
+    }
+    const fileSha256 = normalizeHexHash(videoData.fileSha256);
+    const originalFileSha256 = normalizeHexHash(videoData.originalFileSha256);
+    const storagePointer = resolveStoragePointerValue({
+      storagePointer: videoData.storagePointer,
+      url: finalUrl,
+      infoHash,
+      fallbackId: videoRootId,
+      provider: videoData.storageProvider,
+    });
 
     const contentObject = {
       version: 3,
@@ -5414,6 +5429,18 @@ export class NostrClient {
       enableComments: finalEnableComments,
     };
 
+    if (infoHash) {
+      contentObject.infoHash = infoHash;
+    }
+
+    if (fileSha256) {
+      contentObject.fileSha256 = fileSha256;
+    }
+
+    if (originalFileSha256) {
+      contentObject.originalFileSha256 = originalFileSha256;
+    }
+
     if (finalWs) {
       contentObject.ws = finalWs;
     }
@@ -5426,15 +5453,18 @@ export class NostrClient {
       nip71Metadata && typeof nip71Metadata === "object" ? nip71Metadata : null
     );
 
+    const additionalTags = storagePointer
+      ? [["s", storagePointer], ...nip71Tags]
+      : nip71Tags;
     const event = buildVideoPostEvent({
       pubkey: normalizedPubkey,
       created_at: createdAt,
       dTagValue,
       content: contentObject,
-      additionalTags: nip71Tags,
+      additionalTags,
     });
 
-    devLogger.log("Publish event with brand-new root:", videoRootId);
+    devLogger.log("Publish event with series identifier:", videoRootId);
     devLogger.log("Event content:", event.content);
 
     try {
@@ -5787,8 +5817,31 @@ export class NostrClient {
           ? false
           : true;
 
+    const updatedInfoHash = infoHashFromMagnet(updatedData?.infoHash || "");
+    let infoHash =
+      updatedInfoHash ||
+      infoHashFromMagnet(finalMagnet) ||
+      infoHashFromMagnet(baseEvent.infoHash) ||
+      "";
+    const fileSha256 =
+      normalizeHexHash(updatedData?.fileSha256) ||
+      normalizeHexHash(baseEvent.fileSha256);
+    const originalFileSha256 =
+      normalizeHexHash(updatedData?.originalFileSha256) ||
+      normalizeHexHash(baseEvent.originalFileSha256);
+
     // Use the existing videoRootId (or fall back to the base event's ID)
     const oldRootId = baseEvent.videoRootId || baseEvent.id;
+    const storagePointer = resolveStoragePointerValue({
+      storagePointer:
+        updatedData?.storagePointer ||
+        baseEvent.storagePointer ||
+        getStoragePointerFromTags(baseEvent.tags),
+      url: finalUrl,
+      infoHash,
+      fallbackId: oldRootId,
+      provider: updatedData?.storageProvider || baseEvent.storageProvider,
+    });
 
     const preservedDTag = this.resolveEventDTag(baseEvent, originalEventStub);
     const fallbackDTag =
@@ -5819,6 +5872,18 @@ export class NostrClient {
       enableComments: finalEnableComments,
     };
 
+    if (infoHash) {
+      contentObject.infoHash = infoHash;
+    }
+
+    if (fileSha256) {
+      contentObject.fileSha256 = fileSha256;
+    }
+
+    if (originalFileSha256) {
+      contentObject.originalFileSha256 = originalFileSha256;
+    }
+
     if (finalWs) {
       contentObject.ws = finalWs;
     }
@@ -5842,12 +5907,15 @@ export class NostrClient {
 
     const nip71Tags = buildNip71MetadataTags(metadataForTags);
 
+    const additionalTags = storagePointer
+      ? [["s", storagePointer], ...nip71Tags]
+      : nip71Tags;
     const event = buildVideoPostEvent({
       pubkey: userPubkeyLower,
       created_at: Math.floor(Date.now() / 1000),
       dTagValue: finalDTagValue,
       content: contentObject,
-      additionalTags: nip71Tags,
+      additionalTags,
     });
 
     devLogger.log("Creating edited event with root ID:", oldRootId);
@@ -6017,11 +6085,19 @@ export class NostrClient {
       mode: oldContent.mode || "live",
     };
 
+    const storagePointer = resolveStoragePointerValue({
+      storagePointer: getStoragePointerFromTags(baseEvent.tags),
+      url: oldContent.url,
+      infoHash: oldContent.infoHash,
+      fallbackId: finalRootId,
+    });
+    const additionalTags = storagePointer ? [["s", storagePointer]] : [];
     const event = buildVideoPostEvent({
       pubkey,
       created_at: Math.floor(Date.now() / 1000),
       dTagValue: stableDTag,
       content: contentObject,
+      additionalTags,
     });
 
     await this.ensureActiveSignerForPubkey(pubkey);
@@ -6656,7 +6732,7 @@ export class NostrClient {
 
     devLogger.log("[subscribeVideos] Subscribing with filter:", filter);
 
-    const sub = this.pool.sub(this.relays, [filter]);
+    const sub = this.pool.sub(this.getHealthyRelays(this.relays), [filter]);
     const invalidDuringSub = [];
 
     // BUFFERING STATE
@@ -6924,7 +7000,7 @@ export class NostrClient {
 
     try {
       await Promise.all(
-        this.relays.map(async (url) => {
+        this.getHealthyRelays(this.relays).map(async (url) => {
           const events = await this.pool.list([url], [filter]);
           for (const evt of events) {
             if (evt && evt.id) {
@@ -7024,15 +7100,7 @@ export class NostrClient {
       Array.isArray(options?.relays) && options.relays.length
         ? options.relays
         : this.relays;
-    const relays = Array.isArray(relayCandidatesRaw)
-      ? Array.from(
-          new Set(
-            relayCandidatesRaw
-              .map((url) => (typeof url === "string" ? url.trim() : ""))
-              .filter(Boolean)
-          )
-        )
-      : [];
+    const relays = sanitizeRelayList(this.getHealthyRelays(relayCandidatesRaw));
 
     if (!relays.length) {
       return null;
@@ -7672,7 +7740,7 @@ export class NostrClient {
       }
 
       try {
-        const rootEvent = await this.pool.get(this.relays, { ids: [normalizedRoot] });
+        const rootEvent = await this.pool.get(this.getHealthyRelays(this.relays), { ids: [normalizedRoot] });
         if (rootEvent && rootEvent.id === normalizedRoot) {
           this.rawEvents.set(rootEvent.id, rootEvent);
           const parsed = convertEventToVideo(rootEvent);
@@ -7715,7 +7783,7 @@ export class NostrClient {
 
       try {
         const perRelay = await Promise.all(
-            this.relays.map(async (url) => {
+            this.getHealthyRelays(this.relays).map(async (url) => {
               try {
                 const events = await this.pool.list([url], [filter]);
                 return events || [];

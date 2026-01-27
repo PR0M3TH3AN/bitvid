@@ -215,6 +215,50 @@ const listVideoViewEventsApi = (pointer, options) =>
 const subscribeVideoViewEventsApi = (pointer, options) =>
   subscribeVideoViewEvents(nostrClient, pointer, options);
 
+class TinyEventEmitter {
+  constructor() {
+    this.listeners = new Map();
+  }
+
+  on(eventName, handler) {
+    if (typeof eventName !== "string" || typeof handler !== "function") {
+      return () => {};
+    }
+
+    if (!this.listeners.has(eventName)) {
+      this.listeners.set(eventName, new Set());
+    }
+
+    const handlers = this.listeners.get(eventName);
+    handlers.add(handler);
+
+    return () => {
+      handlers.delete(handler);
+      if (!handlers.size) {
+        this.listeners.delete(eventName);
+      }
+    };
+  }
+
+  emit(eventName, detail) {
+    const handlers = this.listeners.get(eventName);
+    if (!handlers || !handlers.size) {
+      return;
+    }
+
+    for (const handler of Array.from(handlers)) {
+      try {
+        handler(detail);
+      } catch (error) {
+        userLogger.warn(
+          `[SubscriptionsManager] listener for "${eventName}" threw an error`,
+          error,
+        );
+      }
+    }
+  }
+}
+
 /**
  * Manages the user's subscription list (kind=30000 follow set) *privately*,
  * using encrypted NIP-51 tag arrays (NIP-04/NIP-44) for the content field.
@@ -237,6 +281,7 @@ class SubscriptionsManager {
     this.scheduledRefreshDetail = null;
     this.isRunningFeed = false;
     this.hasRenderedOnce = false;
+    this.emitter = new TinyEventEmitter();
     this.ensureNostrServiceListener();
 
     profileCache.subscribe((event, detail) => {
@@ -265,7 +310,7 @@ class SubscriptionsManager {
     const normalizedUserPubkey = normalizeHexPubkey(userPubkey) || userPubkey;
 
     // 1. Attempt to load from cache first
-    const cached = profileCache.get("subscriptions");
+    const cached = profileCache.getProfileData(normalizedUserPubkey, "subscriptions");
     if (Array.isArray(cached)) {
       devLogger.log("[SubscriptionsManager] Loaded subscriptions from cache.");
       this.subscribedPubkeys = new Set(cached);
@@ -286,6 +331,10 @@ class SubscriptionsManager {
   saveToCache(userPubkey) {
     // We assume userPubkey matches active profile, enforced by profileCache
     profileCache.set("subscriptions", Array.from(this.subscribedPubkeys));
+  }
+
+  on(eventName, handler) {
+    return this.emitter.on(eventName, handler);
   }
 
   async updateFromRelays(userPubkey) {
@@ -458,6 +507,10 @@ class SubscriptionsManager {
       }
 
       if (changed) {
+        this.emitter.emit("change", {
+          action: "sync",
+          subscribedPubkeys: Array.from(this.subscribedPubkeys),
+        });
         devLogger.log("[SubscriptionsManager] Subscription list updated from relays, refreshing feed.");
         this.refreshActiveFeed({ reason: "subscription-update-background" }).catch((error) => {
           userLogger.warn(
@@ -480,6 +533,7 @@ class SubscriptionsManager {
     this.lastRunOptions = null;
     this.lastResult = null;
     this.hasRenderedOnce = false;
+    this.emitter.emit("change", { action: "reset", subscribedPubkeys: [] });
   }
 
   async ensureLoaded(actorHex) {
@@ -644,6 +698,11 @@ class SubscriptionsManager {
     }
     this.subscribedPubkeys.add(normalizedChannel);
     this.saveToCache(userPubkey);
+    this.emitter.emit("change", {
+      action: "add",
+      channel: normalizedChannel,
+      subscribedPubkeys: Array.from(this.subscribedPubkeys),
+    });
     await this.publishSubscriptionList(userPubkey);
     this.refreshActiveFeed({ reason: "subscription-update" }).catch((error) => {
       userLogger.warn(
@@ -669,6 +728,11 @@ class SubscriptionsManager {
     }
     this.subscribedPubkeys.delete(normalizedChannel);
     this.saveToCache(userPubkey);
+    this.emitter.emit("change", {
+      action: "remove",
+      channel: normalizedChannel,
+      subscribedPubkeys: Array.from(this.subscribedPubkeys),
+    });
     await this.publishSubscriptionList(userPubkey);
     this.refreshActiveFeed({ reason: "subscription-update" }).catch((error) => {
       userLogger.warn(

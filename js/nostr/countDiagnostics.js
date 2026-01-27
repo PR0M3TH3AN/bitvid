@@ -43,6 +43,13 @@ export function logCountTimeoutCleanupFailure(error) {
 export function logRelayCountFailure(url, error) {
   const normalizedUrl =
     typeof url === "string" && url.trim() ? url.trim() : "(unknown relay)";
+
+  const errorMessage = error && typeof error.message === "string" ? error.message : String(error);
+  if (errorMessage.includes("Failed to connect to relay")) {
+    // Suppress connection failures from warning logs to reduce noise
+    return;
+  }
+
   logCountWarning(`[nostr] COUNT request failed on ${normalizedUrl}:`, [error], {
     key: `relay:${normalizedUrl}`,
   });

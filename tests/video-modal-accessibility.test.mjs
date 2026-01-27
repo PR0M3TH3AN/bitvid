@@ -25,6 +25,18 @@ export async function setupModal({ lazyLoad = false } = {}) {
 
   globalThis.window = window;
   globalThis.document = document;
+  globalThis.navigator = window.navigator || { userAgent: "node.js" };
+
+  // stub window.scrollTo so floating/popover code doesn't throw
+  window.scrollTo = () => {};
+
+  // jsdom defines HTMLMediaElement but .pause/.load throw "Not implemented".
+  // Replace with safe no-ops for tests that just depend on calls happening.
+  if (window.HTMLMediaElement && window.HTMLMediaElement.prototype) {
+    window.HTMLMediaElement.prototype.pause = function () {};
+    window.HTMLMediaElement.prototype.load = function () {};
+  }
+
   globalThis.HTMLElement = window.HTMLElement;
   globalThis.HTMLVideoElement = window.HTMLVideoElement;
   globalThis.Element = window.Element;
@@ -33,6 +45,7 @@ export async function setupModal({ lazyLoad = false } = {}) {
   globalThis.Event = window.Event;
   globalThis.Node = window.Node;
   globalThis.EventTarget = window.EventTarget;
+
   try {
     Object.defineProperty(globalThis, "navigator", {
       value: window.navigator,
@@ -142,6 +155,8 @@ export async function setupModal({ lazyLoad = false } = {}) {
     };
   }
 
+  window.scrollTo = () => {};
+
   applyDesignSystemAttributes(document);
 
   if (!window.ResizeObserver) {
@@ -159,7 +174,11 @@ export async function setupModal({ lazyLoad = false } = {}) {
 
   // Force override getContext to silence JSDOM "Not implemented" error
   try {
-    window.HTMLCanvasElement.prototype.getContext = () => null;
+    window.HTMLCanvasElement.prototype.getContext = () => ({
+      fillStyle: "",
+      fillRect: () => {},
+      drawImage: () => {},
+    });
   } catch (err) {
     // ignore
   }
@@ -432,6 +451,12 @@ async function setupPlaybackHarness() {
   globalThis.Event = window.Event;
   globalThis.Node = window.Node;
   globalThis.EventTarget = window.EventTarget;
+
+  if (window.HTMLMediaElement && window.HTMLMediaElement.prototype) {
+    window.HTMLMediaElement.prototype.pause = function () {};
+    window.HTMLMediaElement.prototype.load = function () {};
+  }
+
   try {
     Object.defineProperty(globalThis, "navigator", {
       value: window.navigator,
@@ -530,6 +555,8 @@ async function setupPlaybackHarness() {
       send() {}
     };
   }
+
+  window.scrollTo = () => {};
 
   window.NostrTools = {
     nip19: {

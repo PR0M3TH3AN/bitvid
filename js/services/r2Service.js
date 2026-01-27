@@ -39,11 +39,16 @@ import { ensureS3SdkLoaded, makeS3Client } from "../storage/s3-client.js";
 import { truncateMiddle } from "../utils/formatters.js";
 import { userLogger, devLogger } from "../utils/logger.js";
 import {
+  buildStoragePointerValue,
+  buildStoragePrefixFromKey,
+} from "../utils/storagePointer.js";
+import {
   getVideoNoteErrorMessage,
   normalizeVideoNotePayload,
   VIDEO_NOTE_ERROR_CODES,
 } from "./videoNotePayload.js";
 import storageService from "./storageService.js";
+import { calculateTorrentInfoHash } from "../utils/torrentHash.js";
 
 const STATUS_VARIANTS = new Set(["info", "success", "error", "warning"]);
 const INFO_HASH_PATTERN = /^[a-f0-9]{40}$/;
@@ -54,6 +59,26 @@ function normalizeInfoHash(value) {
 
 function isValidInfoHash(value) {
   return INFO_HASH_PATTERN.test(value);
+}
+
+async function resolveUploadIdentifier({ infoHash = "", file = null } = {}) {
+  const normalizedInfoHash = normalizeInfoHash(infoHash);
+  if (isValidInfoHash(normalizedInfoHash)) {
+    return normalizedInfoHash;
+  }
+  if (!file) {
+    return "";
+  }
+  try {
+    const computedHash = await calculateTorrentInfoHash(file);
+    const normalizedComputed = normalizeInfoHash(computedHash);
+    if (isValidInfoHash(normalizedComputed)) {
+      return normalizedComputed;
+    }
+  } catch (err) {
+    userLogger.warn("Failed to precompute info hash for storage key:", err);
+  }
+  return "";
 }
 
 function buildCorsGuidance({ accountId } = {}) {
@@ -844,6 +869,10 @@ class R2Service {
     this.updateCloudflareProgress(0);
     this.setCloudflareUploading(true);
 
+    const keyIdentifier = await resolveUploadIdentifier({ infoHash, file });
+    const normalizedInfoHash = normalizeInfoHash(infoHash || keyIdentifier);
+    const hasValidInfoHash = isValidInfoHash(normalizedInfoHash);
+
     let bucketResult = null;
     try {
       bucketResult = await this.ensureBucketConfigForNpub(npub, {
@@ -880,7 +909,7 @@ class R2Service {
     this.setCloudflareUploadStatus(statusMessage, "info");
 
     // Use forced keys if provided, otherwise generate them
-    const key = forcedVideoKey || buildR2Key(npub, file);
+    const key = forcedVideoKey || buildR2Key(npub, file, keyIdentifier);
     const publicUrl = forcedVideoUrl || buildPublicUrl(bucketEntry.publicBaseUrl, key);
 
     const buildTorrentKey = () => {
@@ -978,8 +1007,6 @@ class R2Service {
         // - `xs` (eXact Source): The URL to the .torrent file on R2. This allows
         //   clients to fetch metadata (file structure, piece hashes) instantly via HTTP
         //   instead of waiting to fetch it from the DHT (which can take minutes).
-        const normalizedInfoHash = normalizeInfoHash(infoHash);
-        const hasValidInfoHash = isValidInfoHash(normalizedInfoHash);
         let generatedMagnet = "";
         let generatedWs = "";
 
@@ -1010,14 +1037,25 @@ class R2Service {
           );
         }
 
+        const storagePrefix = buildStoragePrefixFromKey({
+          publicBaseUrl: bucketEntry.publicBaseUrl,
+          key,
+        });
+        const storagePointer = buildStoragePointerValue({
+          provider: "r2",
+          prefix: storagePrefix,
+        });
+
         const rawVideoPayload = {
           title,
           url: publicUrl, // Primary URL
           magnet: generatedMagnet || (metadata?.magnet ?? ""),
           thumbnail: metadata?.thumbnail ?? "",
           description: metadata?.description ?? "",
+          storagePointer,
           ws: generatedWs || (metadata?.ws ?? ""),
           xs: torrentUrl || (metadata?.xs ?? ""),
+          infoHash: hasValidInfoHash ? normalizedInfoHash : "",
           enableComments: metadata?.enableComments,
           isNsfw: metadata?.isNsfw,
           isForKids: metadata?.isForKids,

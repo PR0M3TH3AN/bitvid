@@ -29,8 +29,10 @@ describe("UploadModal Reset Logic", () => {
   };
 
   before(async () => {
+    process.env.NODE_ENV = 'test';
     dom = createUiDom();
     global.window = dom.window;
+    global.self = dom.window;
     global.document = dom.document;
     global.EventTarget = dom.window.EventTarget;
     global.alert = (msg) => { console.log("ALERT CALLED:", msg); };
@@ -167,6 +169,10 @@ describe("UploadModal Reset Logic", () => {
       modal.activeProvider = "cloudflare_r2";
       modal.activeCredentials = { accountId: 'acc', accessKeyId: 'key', secretAccessKey: 'sec' };
 
+      // Mock generateTorrentMetadata BEFORE calling handleVideoSelection
+      modal.generateTorrentMetadata = async () => ({ hasValidInfoHash: false });
+      modal.resolveUploadIdentifier = async () => "mock-identifier";
+
       // Start upload
       const file = { name: "video.mp4" };
       const event = { target: { files: [file], value: "video.mp4" } };
@@ -185,12 +191,6 @@ describe("UploadModal Reset Logic", () => {
 
       // Now let the upload promise resolve
       resolveUpload({ bucket: 'b', key: 'k' });
-
-      // Also need to handle generateTorrentMetadata which might be awaited
-      // Assuming it resolves quickly or we mock it too.
-      // UploadModal mocks `generateTorrentMetadata` internally? No, it's a method on instance or imported.
-      // It calls `this.generateTorrentMetadata`. We can spy/mock it.
-      modal.generateTorrentMetadata = async () => ({ hasValidInfoHash: false });
 
       await uploadPromise;
 

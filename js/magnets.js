@@ -1,35 +1,4 @@
-const BASE32_ALPHABET = "abcdefghijklmnopqrstuvwxyz234567";
-
-function decodeBase32ToHex(value) {
-  if (typeof value !== "string" || !value) {
-    return "";
-  }
-
-  const normalized = value.toLowerCase();
-  let bits = 0;
-  let buffer = 0;
-  const bytes = [];
-
-  for (const char of normalized) {
-    const index = BASE32_ALPHABET.indexOf(char);
-    if (index === -1) {
-      return "";
-    }
-    buffer = (buffer << 5) | index;
-    bits += 5;
-    if (bits >= 8) {
-      bits -= 8;
-      const byte = (buffer >> bits) & 0xff;
-      bytes.push(byte);
-    }
-  }
-
-  if (bytes.length === 0) {
-    return "";
-  }
-
-  return bytes.map((byte) => byte.toString(16).padStart(2, "0")).join("");
-}
+import { extractBtihFromMagnet, normalizeInfoHash } from "./magnetShared.js";
 
 function extractInfoHashFromXt(value) {
   if (typeof value !== "string") {
@@ -50,32 +19,12 @@ function extractInfoHashFromXt(value) {
   return normalizeInfoHash(payload);
 }
 
-function normalizeInfoHash(candidate) {
-  const trimmed = typeof candidate === "string" ? candidate.trim() : "";
-  if (!trimmed) {
-    return null;
-  }
-  if (/^[0-9a-f]{40}$/i.test(trimmed)) {
-    return trimmed.toLowerCase();
-  }
-  if (/^[a-z2-7]{32}$/i.test(trimmed)) {
-    const hex = decodeBase32ToHex(trimmed);
-    return hex ? hex.toLowerCase() : null;
-  }
-  return null;
-}
-
 export function infoHashFromMagnet(magnet) {
   if (typeof magnet !== "string") {
     return null;
   }
-  const direct = normalizeInfoHash(magnet);
-  if (direct) {
-    return direct;
-  }
-  const parsed = parseMagnetLite(magnet);
-  const hash = typeof parsed.infoHash === "string" ? parsed.infoHash : "";
-  return hash ? hash.toLowerCase() : null;
+  const extracted = extractBtihFromMagnet(magnet);
+  return extracted || null;
 }
 
 export function trackersFromMagnet(magnet) {

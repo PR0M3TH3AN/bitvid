@@ -528,6 +528,7 @@ export class ModerationService {
 
     this.contactSubscription = null;
     this.contactListPromise = null;
+    this.lastContactEventId = null;
 
     this.reportEvents = new Map();
     this.reportSummaries = new Map();
@@ -536,8 +537,11 @@ export class ModerationService {
 
     this.trustedMuteLists = new Map();
     this.trustedMutedAuthors = new Map();
-    this.trustedMuteSubscriptions = new Map();
+    this.trustedMuteSubscriptions = new Map(); // Kept for legacy/individual manual subs if needed, but primary logic is now batched
     this.trustedSeedOnly = false;
+
+    this.batchedMuteSubscriptions = [];
+    this.muteRefreshTimer = null;
 
     this.emitter = new SimpleEventEmitter((message, error) => {
       try {
@@ -1010,6 +1014,7 @@ export class ModerationService {
   clearTrustedMuteTracking({ previousContacts = null } = {}) {
     void previousContacts;
 
+    // Clear legacy individual subscriptions
     for (const [pubkey, entry] of this.trustedMuteSubscriptions.entries()) {
       if (entry && typeof entry.unsub === "function") {
         try {
@@ -1019,8 +1024,15 @@ export class ModerationService {
         }
       }
     }
-
     this.trustedMuteSubscriptions.clear();
+
+    // Clear batched subscriptions
+    this.teardownBatchedMuteSubscriptions();
+
+    if (this.muteRefreshTimer) {
+      clearTimeout(this.muteRefreshTimer);
+      this.muteRefreshTimer = null;
+    }
 
     for (const [author, aggregate] of this.trustedMutedAuthors.entries()) {
       if (aggregate && aggregate.muters instanceof Map) {
@@ -1040,6 +1052,21 @@ export class ModerationService {
     this.rebuildTrustedContacts(new Set(), { previous: emptyPrevious });
   }
 
+  teardownBatchedMuteSubscriptions() {
+    if (Array.isArray(this.batchedMuteSubscriptions)) {
+      for (const sub of this.batchedMuteSubscriptions) {
+        if (sub && typeof sub.unsub === "function") {
+          try {
+            sub.unsub();
+          } catch (error) {
+            this.log("[moderationService] failed to unsub batched subscription", error);
+          }
+        }
+      }
+    }
+    this.batchedMuteSubscriptions = [];
+  }
+
   isTrustedMuteOwner(pubkey) {
     const normalized = normalizeHex(pubkey);
     if (!normalized) {
@@ -1052,34 +1079,78 @@ export class ModerationService {
   }
 
   reconcileTrustedMuteSubscriptions(previousSet, nextSet) {
-    const previous = previousSet instanceof Set ? new Set(previousSet) : new Set();
-    const next = nextSet instanceof Set ? new Set(nextSet) : new Set();
+    this.scheduleTrustedMuteSubscriptionRefresh();
+  }
 
-    this.log("[moderationService] reconcileTrustedMuteSubscriptions", {
-      previous: previous.size,
-      next: next.size,
-    });
-
-    if (this.viewerPubkey) {
-      if (this.trustedMuteSubscriptions.has(this.viewerPubkey)) {
-        previous.add(this.viewerPubkey);
-      }
-      next.add(this.viewerPubkey);
+  scheduleTrustedMuteSubscriptionRefresh() {
+    if (this.muteRefreshTimer) {
+      clearTimeout(this.muteRefreshTimer);
     }
 
-    for (const value of previous) {
-      if (!next.has(value)) {
-        this.teardownTrustedMuteSubscription(value);
-      }
-    }
-
-    for (const value of next) {
-      this.subscribeToTrustedMuteList(value).catch((error) => {
-        this.log(
-          `(moderationService) failed to subscribe to trusted mute list for ${value}`,
-          error,
-        );
+    this.muteRefreshTimer = setTimeout(() => {
+      this.refreshTrustedMuteSubscriptions().catch((error) => {
+        this.log("[moderationService] refreshTrustedMuteSubscriptions failed", error);
       });
+    }, 2000);
+  }
+
+  async refreshTrustedMuteSubscriptions() {
+    this.muteRefreshTimer = null;
+
+    const targets = new Set();
+    if (this.trustedContacts instanceof Set) {
+      for (const contact of this.trustedContacts) {
+        targets.add(contact);
+      }
+    }
+    if (this.viewerPubkey) {
+      targets.add(this.viewerPubkey);
+    }
+
+    if (targets.size === 0) {
+      this.teardownBatchedMuteSubscriptions();
+      return;
+    }
+
+    try {
+      await this.ensurePool();
+    } catch (error) {
+      this.log("[moderationService] ensurePool failed during mute refresh", error);
+      return;
+    }
+
+    const relays = resolveRelayList(this.nostrClient);
+    if (!relays.length) {
+      this.log("[moderationService] no relays available for mute refresh");
+      return;
+    }
+
+    this.teardownBatchedMuteSubscriptions();
+
+    const authors = Array.from(targets);
+    const BATCH_SIZE = 400;
+    const chunks = [];
+
+    for (let i = 0; i < authors.length; i += BATCH_SIZE) {
+      chunks.push(authors.slice(i, i + BATCH_SIZE));
+    }
+
+    this.log(`[moderationService] Refreshing mute subscriptions for ${authors.length} authors in ${chunks.length} batches`);
+
+    for (const chunk of chunks) {
+      const filter = { kinds: [10000], authors: chunk };
+      try {
+        const sub = this.nostrClient.pool.sub(relays, [filter]);
+        sub.on("event", (event) => {
+          this.ingestTrustedMuteEvent(event);
+        });
+        sub.on("eose", () => {
+          // Optional: handle EOSE if needed, e.g., for loading indicators
+        });
+        this.batchedMuteSubscriptions.push(sub);
+      } catch (error) {
+        this.log("[moderationService] failed to create batched subscription", error);
+      }
     }
   }
 
@@ -1101,125 +1172,13 @@ export class ModerationService {
   }
 
   async subscribeToTrustedMuteList(pubkey) {
-    const normalized = normalizeHex(pubkey);
-    if (!normalized || !this.isTrustedMuteOwner(normalized)) {
-      return;
-    }
-
-    let record = this.trustedMuteSubscriptions.get(normalized);
-    if (!record) {
-      record = { unsub: null, promise: null };
-      this.trustedMuteSubscriptions.set(normalized, record);
-    } else if (record.promise) {
-      try {
-        await record.promise;
-      } catch {
-        /* noop */
-      }
-      return;
-    } else if (typeof record.unsub === "function") {
-      this.log(`[moderationService] already subscribed to ${normalized}`);
-      return;
-    }
-
-    this.log(`[moderationService] subscribing to trusted mute list for ${normalized}`);
-
-    record.promise = (async () => {
-      try {
-        await this.ensurePool();
-      } catch (error) {
-        this.log(
-          `(moderationService) ensurePool failed while subscribing to trusted mute list for ${normalized}`,
-          error,
-        );
-        return;
-      }
-
-      if (!this.isTrustedMuteOwner(normalized)) {
-        return;
-      }
-
-      const relays = resolveRelayList(this.nostrClient);
-      if (!relays.length) {
-        this.log(`[moderationService] no relays available for ${normalized}`);
-        return;
-      }
-
-      const filter = { kinds: [10000], authors: [normalized], limit: 1 };
-
-      let events = [];
-      try {
-        events = await this.nostrClient.pool.list(relays, [filter]);
-      } catch (error) {
-        this.log(
-          `(moderationService) failed to backfill trusted mute list for ${normalized}`,
-          error,
-        );
-        events = [];
-      }
-
-      if (Array.isArray(events) && events.length) {
-        let latest = null;
-        for (const event of events) {
-          if (!event || ensureNumber(event.created_at) <= 0) {
-            continue;
-          }
-          if (!latest || ensureNumber(event.created_at) > ensureNumber(latest.created_at)) {
-            latest = event;
-          }
-        }
-        if (latest) {
-          this.ingestTrustedMuteEvent(latest);
-        }
-      } else {
-        this.replaceTrustedMuteList(normalized, new Set(), { createdAt: 0, eventId: "" });
-      }
-
-      if (!this.isTrustedMuteOwner(normalized)) {
-        return;
-      }
-
-      try {
-        const sub = this.nostrClient.pool.sub(relays, [filter]);
-        sub.on("event", (event) => {
-          this.ingestTrustedMuteEvent(event);
-        });
-        sub.on("eose", () => {});
-        record.unsub = typeof sub.unsub === "function" ? () => sub.unsub() : null;
-        this.log(`[moderationService] subscribed to trusted mute list for ${normalized}`);
-      } catch (error) {
-        this.log(
-          `(moderationService) failed to subscribe to trusted mute list for ${normalized}`,
-          error,
-        );
-      }
-    })();
-
-    try {
-      await record.promise;
-    } catch (error) {
-      this.log("[moderationService] trusted mute subscription promise rejected", error);
-    } finally {
-      record.promise = null;
-    }
+    // Deprecated: Logic moved to batched subscription refresh
+    return this.scheduleTrustedMuteSubscriptionRefresh();
   }
 
   teardownTrustedMuteSubscription(pubkey) {
-    const normalized = normalizeHex(pubkey);
-    if (!normalized) {
-      return;
-    }
-
-    const record = this.trustedMuteSubscriptions.get(normalized);
-    if (record && typeof record.unsub === "function") {
-      try {
-        record.unsub();
-      } catch (error) {
-        this.log("[moderationService] failed to teardown trusted mute subscription", error);
-      }
-    }
-    this.trustedMuteSubscriptions.delete(normalized);
-    this.replaceTrustedMuteList(normalized, new Set(), { createdAt: 0, eventId: "" });
+    // Deprecated: Logic moved to batched subscription refresh
+    return this.scheduleTrustedMuteSubscriptionRefresh();
   }
 
   replaceTrustedMuteList(ownerPubkey, mutedAuthors, { createdAt = 0, eventId = "" } = {}) {
@@ -1988,6 +1947,10 @@ export class ModerationService {
       return;
     }
 
+    if (event.id && event.id === this.lastContactEventId) {
+      return;
+    }
+
     const nextSet = new Set();
     for (const tag of event.tags) {
       if (!Array.isArray(tag) || tag[0] !== "p") {
@@ -1997,6 +1960,26 @@ export class ModerationService {
       if (candidate) {
         nextSet.add(candidate);
       }
+    }
+
+    if (this.viewerContacts instanceof Set && this.viewerContacts.size === nextSet.size) {
+      let changed = false;
+      for (const value of nextSet) {
+        if (!this.viewerContacts.has(value)) {
+          changed = true;
+          break;
+        }
+      }
+      if (!changed) {
+        if (event.id) {
+          this.lastContactEventId = event.id;
+        }
+        return;
+      }
+    }
+
+    if (event.id) {
+      this.lastContactEventId = event.id;
     }
 
     this.rebuildTrustedContacts(nextSet, { previous: previousContacts });

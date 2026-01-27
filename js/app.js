@@ -13,7 +13,7 @@ import {
   ALLOW_NSFW_CONTENT,
 } from "./config.js";
 import { accessControl } from "./accessControl.js";
-import { safeDecodeMagnet } from "./magnetUtils.js";
+import { extractBtihFromMagnet, safeDecodeMagnet } from "./magnetUtils.js";
 import { deriveTorrentPlaybackConfig } from "./playbackUtils.js";
 import {
   URL_FIRST_ENABLED,
@@ -113,6 +113,7 @@ import {
 } from "./ui/components/staticModalAccessibility.js";
 import LoginModalController from "./ui/loginModalController.js";
 import EditModalController from "./ui/editModalController.js";
+import RevertModalController from "./ui/revertModalController.js";
 import TagPreferenceMenuController from "./ui/tagPreferenceMenuController.js";
 import ReactionController from "./ui/reactionController.js";
 import { pointerArrayToKey } from "./utils/pointer.js";
@@ -417,6 +418,32 @@ class Application {
       helpers: {
         normalizeActionTarget: (t) => this.normalizeActionTarget(t),
         resolveVideoActionTarget: (opts) => this.resolveVideoActionTarget(opts),
+      },
+    });
+
+    this.revertModalController = new RevertModalController({
+      revertModal: this.modalManager?.revertModal,
+      services: {
+        nostrService: this.nostrService,
+        nostrClient: nostrClient,
+      },
+      state: {
+        getPubkey: () => this.pubkey,
+        getBlacklistedEventIds: () => this.blacklistedEventIds,
+      },
+      ui: {
+        showError: (msg) => this.showError(msg),
+        showSuccess: (msg) => this.showSuccess(msg),
+      },
+      callbacks: {
+        loadVideos: () => this.loadVideos(),
+        forceRefreshAllProfiles: () => this.forceRefreshAllProfiles(),
+        isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
+      },
+      helpers: {
+        normalizeActionTarget: (t) => this.normalizeActionTarget(t),
+        resolveVideoActionTarget: (opts) => this.resolveVideoActionTarget(opts),
+        formatAbsoluteTimestamp: (ts) => this.formatAbsoluteTimestamp(ts),
       },
     });
 
@@ -7817,96 +7844,14 @@ class Application {
   }
 
   async handleRevertVideo(target) {
-    try {
-      const normalizedTarget = this.normalizeActionTarget(target);
-      const { triggerElement } = normalizedTarget;
-      const activeVideos = await this.nostrService.fetchVideos({
-        blacklistedEventIds: this.blacklistedEventIds,
-        isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
-      });
-      const video = await this.resolveVideoActionTarget({
-        ...normalizedTarget,
-        preloadedList: activeVideos,
-      });
-
-      if (!this.pubkey) {
-        this.showError("Please login to revert.");
-        return;
-      }
-      const userPubkey = (this.pubkey || "").toLowerCase();
-      const videoPubkey = (video?.pubkey || "").toLowerCase();
-      if (!video || !videoPubkey || videoPubkey !== userPubkey) {
-        this.showError("You do not own this video.");
-        return;
-      }
-
-      if (!this.revertModal) {
-        this.showError("Revert modal is not available right now.");
-        return;
-      }
-
-      const loaded = await this.revertModal.load();
-      if (!loaded) {
-        this.showError("Revert modal is not available right now.");
-        return;
-      }
-
-      const history = await nostrClient.hydrateVideoHistory(video);
-
-      this.revertModal.setHistory(video, history);
-      this.revertModal.open({ video }, { triggerElement });
-    } catch (err) {
-      devLogger.error("Failed to revert video:", err);
-      this.showError("Failed to load revision history. Please try again.");
+    if (this.revertModalController) {
+      return this.revertModalController.open(target);
     }
   }
 
   async handleRevertModalConfirm(event) {
-    const detail = event?.detail || {};
-    const target = detail.target;
-    const entries = Array.isArray(detail.entries)
-      ? detail.entries.slice()
-      : [];
-
-    if (!target || !entries.length) {
-      return;
-    }
-
-    if (!this.pubkey) {
-      this.showError("Please login to revert.");
-      return;
-    }
-
-    if (!this.revertModal) {
-      this.showError("Revert modal is not available right now.");
-      return;
-    }
-
-    this.revertModal.setBusy(true, "Reverting…");
-
-    try {
-      for (const entry of entries) {
-        await nostrClient.revertVideo(
-          {
-            id: entry.id,
-            pubkey: entry.pubkey,
-            tags: entry.tags,
-          },
-          this.pubkey
-        );
-      }
-
-      await this.loadVideos();
-
-      const timestampLabel = this.formatAbsoluteTimestamp(target.created_at);
-      this.showSuccess(`Reverted to revision from ${timestampLabel}.`);
-      this.revertModal.close();
-      this.forceRefreshAllProfiles();
-    } catch (err) {
-      devLogger.error("Failed to revert video:", err);
-      this.showError("Failed to revert video. Please try again.");
-    } finally {
-      this.revertModal.setBusy(false);
+    if (this.revertModalController) {
+      return this.revertModalController.handleConfirm(event);
     }
   }
 
@@ -8571,9 +8516,9 @@ class Application {
       typeof video.infoHash === "string" ? video.infoHash.trim().toLowerCase() : "";
     const fallbackMagnetForCandidate = fallbackMagnetCandidate || "";
     if (!legacyInfoHash && fallbackMagnetForCandidate) {
-      const match = fallbackMagnetForCandidate.match(/xt=urn:btih:([0-9a-z]+)/i);
-      if (match && match[1]) {
-        legacyInfoHash = match[1].toLowerCase();
+      const extracted = extractBtihFromMagnet(fallbackMagnetForCandidate);
+      if (extracted) {
+        legacyInfoHash = extracted;
       }
     }
 

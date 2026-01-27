@@ -53,6 +53,32 @@ For **Mode 2** (Manual upload) or external content, provide a title plus an HTTP
 
 Hosted URLs remain the preferred playback path, and you can still add a magnet or supplemental web seeds when using any mode. Use the **Private** toggle to keep the resulting card visible only to you, and lean on the repeaters whenever you want to surface richer context or alternate assets as outlined in the event schema reference.
 
+### User content identifiers & storage layout
+
+Every video note ships with a stable series identifier so edits and deletes can be stitched together reliably. bitvid sets both the `videoRootId` (content payload) and the NIP-33 `d` tag to the same value. When you publish, the identifier is chosen from the first provided value in `videoRootId`, `seriesId`, or `seriesIdentifier`; if none are supplied, bitvid generates a timestamp-based fallback. Keep this identifier stable across edits so older versions collapse correctly in the UI.【F:js/nostr/client.js†L5348-L5389】
+
+Storage tags hang off that identifier to make asset discovery deterministic:
+
+- **Storage pointer (`s` tag)**: The note includes `['s', '<provider>:<prefix>']`. If you don’t supply a pointer, bitvid derives one from the hosted URL (preferred), the torrent info hash (as `btih:<hash>`), or finally the `videoRootId` fallback (`nostr:<videoRootId>`).【F:js/nostr/client.js†L823-L862】
+- **Prefix derivation**: For URL-based assets, the prefix is the public base URL plus the object key **without** its file extension. For example, `/uploads/demo/video.mp4` becomes `/uploads/demo/video`.【F:js/utils/storagePointer.js†L56-L88】
+- **`info.json` location**: The companion metadata file lives at `<prefix>.info.json`. If the storage prefix is not an absolute URL, the UI uses the hosted URL’s origin to build the prefix before appending `.info.json` (and falls back to the raw prefix when no URL is available).【F:js/utils/storagePointer.js†L90-L129】
+- **`info.json` contents**: The file is expected to describe the stored assets that back the note—typically the hosted URLs and optional WebTorrent metadata (info hash, web seeds, torrent URL) along with the derived prefix—so the UI can hydrate asset metadata even when the note only carries minimal fields.
+
+**How the UI resolves assets**
+
+1. The NIP-71 parser reads the `s` tag and hosted URL from the note, then computes `infoJsonUrl` from the storage pointer and URL fallback rules.【F:js/nostr/nip71.js†L1479-L1510】【F:js/utils/storagePointer.js†L90-L129】
+2. Video cards embed the hosted URL, magnet, and `infoJsonUrl` as `data-play-url`, `data-play-magnet`, and `data-info-json` attributes for click handlers to consume.【F:js/ui/components/VideoCard.js†L2641-L2687】
+3. When a card is clicked, the view extracts those attributes; if `infoJsonUrl` is missing, playback still proceeds using the hosted URL/magnet from the note without the extra metadata file.【F:js/ui/views/VideoListView.js†L1032-L1072】
+
+**Example object key layout**
+
+```
+Storage pointer (s tag): s3:https://cdn.example.com/uploads/demo/video
+Hosted asset:            https://cdn.example.com/uploads/demo/video.mp4
+Torrent metadata:        https://cdn.example.com/uploads/demo/video.torrent
+Info JSON:               https://cdn.example.com/uploads/demo/video.info.json
+```
+
 ### How playback works
 
 1. **URL-first**: `playVideoWithFallback({ url, magnet })` attempts the hosted URL immediately. Healthy URLs deliver the full experience without touching P2P resources.

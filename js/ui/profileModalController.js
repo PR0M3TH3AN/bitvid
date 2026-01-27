@@ -1407,6 +1407,24 @@ export class ProfileModalController {
     this.addAccountButtonState = null;
     this.adminEmptyMessages = new Map();
     this.hashtagPreferencesUnsubscribe = null;
+
+    if (
+      this.subscriptionsService &&
+      typeof this.subscriptionsService.on === "function"
+    ) {
+      this.subscriptionsService.on("change", () => {
+        void this.populateSubscriptionsList();
+      });
+    }
+
+    if (
+      this.services.userBlocks &&
+      typeof this.services.userBlocks.on === "function"
+    ) {
+      this.services.userBlocks.on("change", () => {
+        this.populateBlockedList();
+      });
+    }
   }
 
   async load() {
@@ -5026,10 +5044,22 @@ export class ProfileModalController {
 
   handleDirectMessagesError(detail = {}) {
     const error = detail?.error || detail?.failure || detail;
-    userLogger.warn(
-      "[profileModal] Direct message sync issue detected:",
-      error,
-    );
+    const reason = detail?.context?.reason || "";
+    const errorCode = error?.code || "";
+
+    const isBenign =
+      reason === "no-decryptors" ||
+      errorCode === "decryption-failed" ||
+      (typeof error === "string" && error.includes("no-decryptors"));
+
+    if (isBenign) {
+      devLogger.info("[profileModal] Direct message sync info:", error);
+    } else {
+      userLogger.warn(
+        "[profileModal] Direct message sync issue detected:",
+        error,
+      );
+    }
 
     if (this.activeMessagesRequest) {
       return;
@@ -6765,11 +6795,16 @@ export class ProfileModalController {
     const shouldStayInMenu = keepMenuView && isMobile;
     this.setMobileView(shouldStayInMenu ? "menu" : "pane");
 
+    const activeHex = this.normalizeHexPubkey(this.getActivePubkey());
+
     if (target === "history") {
       void this.populateProfileWatchHistory();
     } else if (target === "relays") {
       this.populateProfileRelays();
-      void this.refreshRelayHealthPanel({ forceRefresh: true, reason: "pane-select" });
+      void this.refreshRelayHealthPanel({
+        forceRefresh: true,
+        reason: "pane-select",
+      });
     } else if (target === "messages") {
       this.resumeProfileMessages();
       void this.populateProfileMessages({ reason: "pane-select" });
@@ -6781,8 +6816,14 @@ export class ProfileModalController {
     } else if (target === "hashtags") {
       this.populateHashtagPreferences();
     } else if (target === "subscriptions") {
+      if (activeHex && this.subscriptionsService) {
+        this.subscriptionsService.loadSubscriptions(activeHex).catch(noop);
+      }
       void this.populateSubscriptionsList();
     } else if (target === "blocked") {
+      if (activeHex && this.services.userBlocks) {
+        this.services.userBlocks.loadBlocks(activeHex).catch(noop);
+      }
       this.populateBlockedList();
     } else if (target === "safety") {
       this.refreshModerationSettingsUi();
@@ -8008,17 +8049,6 @@ export class ProfileModalController {
       if (Array.isArray(subscriptions) && subscriptions.length) {
         sourceEntries = subscriptions;
       } else {
-        if (typeof service.ensureLoaded === "function") {
-          try {
-            await service.ensureLoaded(activeHex);
-          } catch (error) {
-            devLogger.warn(
-              "[profileModal] Failed to ensure subscriptions before populating subscriptions list:",
-              error,
-            );
-          }
-        }
-
         if (typeof service.getSubscribedAuthors === "function") {
           try {
             sourceEntries = service.getSubscribedAuthors() || [];
@@ -12697,14 +12727,21 @@ export class ProfileModalController {
       this.setActivePubkey(activePubkey);
     }
 
-    await this.hydrateActiveWalletSettings(activePubkey);
+    const walletPromise = this.hydrateActiveWalletSettings(activePubkey);
+    const adminPromise = this.refreshAdminPaneState().catch((error) => {
+      userLogger.warn("Failed to refresh admin pane after login:", error);
+    });
 
     this.renderSavedProfiles();
 
-    try {
-      await this.refreshAdminPaneState();
-    } catch (error) {
-      userLogger.warn("Failed to refresh admin pane after login:", error);
+    // Trigger aggressive parallel fetches
+    if (activePubkey) {
+      if (this.services.userBlocks) {
+        this.services.userBlocks.loadBlocks(activePubkey).catch(noop);
+      }
+      if (this.subscriptionsService) {
+        this.subscriptionsService.loadSubscriptions(activePubkey).catch(noop);
+      }
     }
 
     this.populateBlockedList();
@@ -12716,8 +12753,10 @@ export class ProfileModalController {
     this.handleActiveDmIdentityChanged(activePubkey);
     void this.refreshDmRelayPreferences({ force: true });
 
-    postLoginPromise
+    // Ensure critical state is settled if possible, but don't block initial rendering
+    Promise.all([walletPromise, adminPromise, postLoginPromise])
       .then(() => {
+        // Re-run population to ensure any late-arriving data is reflected
         this.populateBlockedList();
         void this.populateSubscriptionsList();
         void this.populateFriendsList();

@@ -6,11 +6,19 @@ import {
   getVideoNoteErrorMessage,
   normalizeVideoNotePayload,
 } from "../../services/videoNotePayload.js";
-import { createTorrentMetadata } from "../../utils/torrentHash.js";
+import {
+  calculateTorrentInfoHash,
+  createTorrentMetadata,
+} from "../../utils/torrentHash.js";
 import { sanitizeBucketName } from "../../storage/r2-mgmt.js";
 import { buildR2Key, buildPublicUrl } from "../../r2.js";
 import { buildS3ObjectUrl } from "../../services/s3Service.js";
 import { PROVIDERS } from "../../services/storageService.js";
+import {
+  buildStoragePointerValue,
+  buildStoragePrefixFromKey,
+  deriveStoragePointerFromUrl,
+} from "../../utils/storagePointer.js";
 import {
   getActiveSigner,
   requestDefaultExtensionPermissions,
@@ -512,7 +520,12 @@ export class UploadModal {
       this.updateVideoProgress(0, "Preparing upload...");
 
       try {
-          // 1. Prepare Upload (Get Creds & Bucket)
+          // 1. Compute Identifier (Info Hash / Fingerprint) before generating keys
+          const identifier = await this.resolveUploadIdentifier(file);
+
+          if (this.videoUploadId !== currentUploadId) return; // Zombie guard
+
+          // 2. Prepare Upload (Get Creds & Bucket)
           const pubkey = this.getCurrentPubkey();
           const npub = this.safeEncodeNpub(pubkey);
           const service = this.activeProvider === PROVIDERS.R2 || this.activeProvider === "cloudflare_r2"
@@ -521,10 +534,10 @@ export class UploadModal {
 
           const { settings, bucketEntry } = await service.prepareUpload(npub, { credentials: this.activeCredentials });
 
-          if (this.videoUploadId !== currentUploadId) return;
+          if (this.videoUploadId !== currentUploadId) return; // Zombie guard
 
-          // 2. Determine Keys
-          const videoKey = buildR2Key(npub, file);
+          // 3. Determine Keys
+          const videoKey = buildR2Key(npub, file, identifier);
           const baseDomain = bucketEntry.publicBaseUrl;
 
           // Note: buildPublicUrl works for both if the base is clean
@@ -580,12 +593,24 @@ export class UploadModal {
 
           const [uploadResult, torrentResult] = await Promise.all([uploadPromise, torrentPromise]);
 
-          if (this.videoUploadId !== currentUploadId) return;
+          if (this.videoUploadId !== currentUploadId) return; // Zombie guard
 
           // Video Complete
           this.videoUploadState.status = 'complete';
           this.videoUploadState.url = videoPublicUrl;
           this.videoUploadState.key = videoKey;
+          const storagePrefix = buildStoragePrefixFromKey({
+              publicBaseUrl: baseDomain,
+              key: videoKey,
+          });
+          const providerLabel =
+              this.activeProvider === PROVIDERS.R2 || this.activeProvider === "cloudflare_r2"
+                ? "r2"
+                : "s3";
+          this.videoUploadState.storagePointer = buildStoragePointerValue({
+              provider: providerLabel,
+              prefix: storagePrefix,
+          });
           this.results.videoUrl.value = videoPublicUrl;
           this.updateVideoProgress(1, "Video uploaded.");
 
@@ -626,7 +651,7 @@ export class UploadModal {
                   createBucketIfMissing: true,
               });
 
-              if (this.videoUploadId !== currentUploadId) return;
+              if (this.videoUploadId !== currentUploadId) return; // Zombie guard
 
               this.torrentState.status = 'complete';
               this.torrentState.infoHash = torrentResult.infoHash;
@@ -653,7 +678,7 @@ export class UploadModal {
           }
 
       } catch (err) {
-          if (this.videoUploadId !== currentUploadId) return;
+          if (this.videoUploadId !== currentUploadId) return; // Zombie guard
 
           userLogger.error("Video upload sequence failed:", err);
           this.videoUploadState.status = 'error';
@@ -1015,8 +1040,10 @@ export class UploadModal {
           // These might be empty depending on mode, filled below
           url: "",
           magnet: "",
+          storagePointer: "",
           ws: this.inputs.ws?.value?.trim() || "",
           xs: this.inputs.xs?.value?.trim() || "",
+          infoHash: this.torrentState.infoHash || "",
       };
 
       // NIP-71 Advanced Data
@@ -1030,6 +1057,13 @@ export class UploadModal {
              // We already have the URLs in state
              metadata.url = this.videoUploadState.url;
              metadata.magnet = this.torrentState.magnet || "";
+             const providerLabel =
+                 this.activeProvider === PROVIDERS.R2 || this.activeProvider === "cloudflare_r2"
+                   ? "r2"
+                   : "s3";
+             metadata.storagePointer =
+                 this.videoUploadState.storagePointer ||
+                 deriveStoragePointerFromUrl(metadata.url, providerLabel);
              metadata.ws = this.videoUploadState.url; // WebSeed is same as R2 URL
              metadata.xs = this.torrentState.url || "";
 
@@ -1087,9 +1121,24 @@ export class UploadModal {
       };
   }
 
+  async resolveUploadIdentifier(file) {
+      try {
+          const infoHash = await calculateTorrentInfoHash(file);
+          const normalized = normalizeInfoHash(infoHash);
+          if (isValidInfoHash(normalized)) {
+              return normalized;
+          }
+      } catch (hashErr) {
+          userLogger.warn("Failed to precompute info hash for storage key:", hashErr);
+      }
+      return "";
+  }
+
   async handleExternalFlow(metadata) {
       metadata.url = this.inputs.url?.value?.trim() || "";
       metadata.magnet = this.inputs.magnet?.value?.trim() || "";
+      metadata.storagePointer =
+          metadata.storagePointer || deriveStoragePointerFromUrl(metadata.url, "url");
 
       const hasUrl = metadata.url.length > 0;
       const hasMagnet = metadata.magnet.length > 0;
@@ -1140,6 +1189,7 @@ export class UploadModal {
       progress: 0,
       url: '',
       key: '',
+      storagePointer: '',
       file: null,
     };
     this.thumbnailUploadState = {

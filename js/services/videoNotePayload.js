@@ -1,5 +1,10 @@
 import { extractMagnetHints } from "../magnetShared.js";
 import { normalizeAndAugmentMagnet } from "../magnetUtils.js";
+import { infoHashFromMagnet } from "../magnets.js";
+import {
+  deriveStoragePointerFromUrl,
+  normalizeStoragePointer,
+} from "../utils/storagePointer.js";
 
 export const VIDEO_NOTE_ERROR_CODES = {
   MISSING_TITLE: "missing_title",
@@ -27,6 +32,25 @@ function normalizeString(value) {
     return Number.isFinite(value) ? String(value).trim() : "";
   }
   return String(value ?? "").trim();
+}
+
+function normalizeSha256Hex(value) {
+  if (value === undefined || value === null) {
+    return "";
+  }
+  const normalized = normalizeString(value).toLowerCase();
+  if (!normalized) {
+    return "";
+  }
+  return /^[0-9a-f]{64}$/.test(normalized) ? normalized : "";
+}
+
+function normalizeInfoHash(value) {
+  if (value === undefined || value === null) {
+    return "";
+  }
+  const normalized = infoHashFromMagnet(normalizeString(value));
+  return typeof normalized === "string" && normalized ? normalized : "";
 }
 
 function parseNumberOrNull(value) {
@@ -320,6 +344,17 @@ export function normalizeVideoNotePayload(input) {
   const description = normalizeString(legacyPayload?.description || "");
   const ws = normalizeString(legacyPayload?.ws || "");
   const xs = normalizeString(legacyPayload?.xs || "");
+  const storagePointer = normalizeStoragePointer(
+    legacyPayload?.storagePointer || legacyPayload?.storage || ""
+  );
+  const storageProvider = normalizeString(
+    legacyPayload?.storageProvider || ""
+  );
+  const infoHash = normalizeInfoHash(legacyPayload?.infoHash || "");
+  const fileSha256 = normalizeSha256Hex(legacyPayload?.fileSha256 || "");
+  const originalFileSha256 = normalizeSha256Hex(
+    legacyPayload?.originalFileSha256 || ""
+  );
   const rawMode = normalizeString(legacyPayload?.mode || "");
   const normalizedMode = rawMode && rawMode.toLowerCase() === "dev" ? "dev" : "live";
   const enableComments = normalizeBooleanFlag(legacyPayload?.enableComments, true);
@@ -399,6 +434,30 @@ export function normalizeVideoNotePayload(input) {
   } else {
     legacyFormData.ws = "";
     legacyFormData.xs = "";
+  }
+
+  const derivedStoragePointer =
+    storagePointer ||
+    deriveStoragePointerFromUrl(
+      legacyFormData.url,
+      storageProvider || "url"
+    );
+  if (derivedStoragePointer) {
+    legacyFormData.storagePointer = derivedStoragePointer;
+  }
+
+  const derivedInfoHash =
+    infoHash || normalizeInfoHash(legacyFormData.magnet) || "";
+  if (derivedInfoHash) {
+    legacyFormData.infoHash = derivedInfoHash;
+  }
+
+  if (fileSha256) {
+    legacyFormData.fileSha256 = fileSha256;
+  }
+
+  if (originalFileSha256) {
+    legacyFormData.originalFileSha256 = originalFileSha256;
   }
 
   const publishPayload = {
