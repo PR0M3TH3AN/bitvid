@@ -272,6 +272,14 @@ nostrClient.pool = {
       throw new Error("list failure for authors");
     }
 
+    if (listFailureMode === "throw-community") {
+      const fullSourceTag = `${ADMIN_LIST_NAMESPACE}:${ADMIN_COMMUNITY_BLACKLIST_SOURCES}`;
+      const fullPrefix = `${ADMIN_LIST_NAMESPACE}:${ADMIN_COMMUNITY_BLACKLIST_PREFIX}`;
+      if (dTag === fullSourceTag || dTag.startsWith(fullPrefix)) {
+        throw new Error("list failure for community");
+      }
+    }
+
     const key = `${authorKey}::${dTag}`;
     const fallbackKey = `*::${dTag}`;
     const event = listEventRegistry.get(key) || listEventRegistry.get(fallbackKey);
@@ -451,7 +459,7 @@ assert.deepEqual(
 setListFailureMode(null);
 
 resetListRegistry();
-setListFailureMode("throw-authors");
+setListFailureMode("throw-community");
 
 registerListEvent({
   dTag: editorsDTag,

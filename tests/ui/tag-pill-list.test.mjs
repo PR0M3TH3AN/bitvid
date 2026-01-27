@@ -25,7 +25,7 @@ test("renderTagPillStrip builds buttons with labels and icons", () => {
     assert.ok(button.classList.contains("pill"));
     assert.ok(button.classList.contains("video-tag-pill"));
     assert.ok(button.classList.contains("focus-ring"));
-    assert.equal(button.dataset.tag, tag);
+    assert.equal(button.dataset.tag, `#${tag}`);
     assert.equal(button.title, `#${tag}`);
     assert.equal(button.dataset.preferenceState, "neutral");
     assert.equal(button.hasAttribute("data-variant"), false);
@@ -50,7 +50,7 @@ test("renderTagPillStrip applies preference state styling", () => {
     document,
     tags: ["nostr", "video"],
     getTagState(tag) {
-      return tag === "nostr" ? "interest" : "disinterest";
+      return tag === "#nostr" ? "interest" : "disinterest";
     },
   });
 
@@ -76,7 +76,7 @@ test("renderTagPillStrip wires the activation callback", () => {
   buttons[0].click();
 
   assert.equal(activations.length, 1);
-  assert.equal(activations[0].tag, "nostr");
+  assert.equal(activations[0].tag, "#nostr");
   assert.equal(activations[0].button, buttons[0]);
   assert(activations[0].event instanceof document.defaultView.Event);
 });
@@ -97,7 +97,7 @@ test("updateTagPillStrip replaces buttons and rewires handlers", () => {
   document.body.append(root);
 
   initialButtons[0].click();
-  assert.deepEqual(firstActivations, ["nostr"]);
+  assert.deepEqual(firstActivations, ["#nostr"]);
 
   const { buttons: updatedButtons } = updateTagPillStrip({
     root,
@@ -110,7 +110,7 @@ test("updateTagPillStrip replaces buttons and rewires handlers", () => {
   });
 
   assert.equal(root.querySelectorAll("button").length, 1);
-  assert.equal(updatedButtons[0].dataset.tag, "video");
+  assert.equal(updatedButtons[0].dataset.tag, "#video");
 
   const updatedIcon = updatedButtons[0].querySelector(".video-tag-pill__icon svg");
   assert(updatedIcon, "updated button should contain the svg icon");
@@ -119,8 +119,8 @@ test("updateTagPillStrip replaces buttons and rewires handlers", () => {
 
   // Ensure the old handler is removed by dispatching a click on the detached button.
   initialButtons[0].dispatchEvent(new document.defaultView.Event("click", { bubbles: true }));
-  assert.deepEqual(firstActivations, ["nostr"]);
+  assert.deepEqual(firstActivations, ["#nostr"]);
 
   updatedButtons[0].click();
-  assert.deepEqual(secondActivations, [{ tag: "video", button: updatedButtons[0] }]);
+  assert.deepEqual(secondActivations, [{ tag: "#video", button: updatedButtons[0] }]);
 });
