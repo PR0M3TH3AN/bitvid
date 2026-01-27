@@ -21,10 +21,10 @@ import { buildModerationBadgeText } from "./ui/moderationCopy.js";
 import { formatShortNpub } from "./utils/formatters.js";
 import { attachFeedInfoPopover } from "./ui/components/FeedInfoPopover.js";
 
-export const WATCH_HISTORY_EMPTY_COPY =
+const WATCH_HISTORY_EMPTY_COPY =
   "Your watch history is empty. Watch some videos to populate this list.";
 
-export const WATCH_HISTORY_DISABLED_COPY =
+const WATCH_HISTORY_DISABLED_COPY =
   "Watch history sync is unavailable. Connect a NIP-07 extension or log in to enable syncing.";
 
 const DEFAULT_WATCH_HISTORY_BATCH_SIZE = 12;
@@ -2494,7 +2494,7 @@ export function createWatchHistoryRenderer(config = {}) {
   return renderer;
 }
 
-export const watchHistoryRenderer = createWatchHistoryRenderer();
+const watchHistoryRenderer = createWatchHistoryRenderer();
 
 export async function initHistoryView() {
   const infoTrigger = document.getElementById("historyInfoTrigger");
