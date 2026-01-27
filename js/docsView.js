@@ -105,21 +105,35 @@ function buildLink(item) {
   return link;
 }
 
+function getChevronIcon(expanded) {
+  if (expanded) {
+    // Chevron Down
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
+      <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+    </svg>`;
+  }
+  // Chevron Right
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
+    <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+  </svg>`;
+}
+
 function buildToggleButton(item, controlsId, expanded, groupList) {
   const button = document.createElement("button");
   button.type = "button";
-  button.className = "btn-ghost btn-xs";
+  button.className = "btn-ghost btn-xs btn-square text-muted hover:text-text-primary";
   button.setAttribute("aria-expanded", expanded ? "true" : "false");
   button.setAttribute("aria-controls", controlsId);
   button.setAttribute("aria-label", `Toggle ${item.title || item.slug} section`);
-  button.textContent = expanded ? "Hide" : "Show";
+  button.innerHTML = getChevronIcon(expanded);
   button.addEventListener("click", () => {
     const isExpanded = button.getAttribute("aria-expanded") === "true";
     const nextExpanded = !isExpanded;
     button.setAttribute("aria-expanded", nextExpanded ? "true" : "false");
-    button.textContent = nextExpanded ? "Hide" : "Show";
+    button.innerHTML = getChevronIcon(nextExpanded);
     if (groupList) {
       groupList.hidden = !nextExpanded;
+      groupList.classList.toggle("hidden", !nextExpanded);
     }
   });
   return button;
@@ -152,6 +166,9 @@ function renderTocItems(items, container, level = 0, groupPrefix = "docs-toc") {
       childList.id = groupId;
       childList.classList.add("ml-md", "border-l", "border-border", "pl-md");
       childList.hidden = !expanded;
+      if (!expanded) {
+        childList.classList.add("hidden");
+      }
 
       const toggle = buildToggleButton(item, groupId, expanded, childList);
       row.appendChild(toggle);
@@ -220,8 +237,9 @@ function updateActiveToc(slug) {
       groups.forEach((group) => {
         if (group?.button && group?.list) {
           group.button.setAttribute("aria-expanded", "true");
-          group.button.textContent = "Hide";
+          group.button.innerHTML = getChevronIcon(true);
           group.list.hidden = false;
+          group.list.classList.remove("hidden");
         }
       });
     }
