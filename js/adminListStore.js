@@ -202,6 +202,7 @@ function sanitizeAdminState(state = {}) {
     normalizeNpub(ADMIN_SUPER_NPUB),
     ...ADMIN_EDITORS_NPUBS.map(normalizeNpub),
     ...sanitizedEditors.map(normalizeNpub),
+    ...sanitizedWhitelist.map(normalizeNpub),
   ]);
 
   const sanitizedBlacklist = sanitizeNpubList(state.blacklist || []).filter(
