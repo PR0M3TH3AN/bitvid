@@ -23,6 +23,14 @@ const tocState = {
   },
 };
 
+const scrollSpyState = {
+  headings: [],
+  linkLookup: new Map(),
+  activeId: "",
+  rafId: null,
+  onScroll: null,
+};
+
 function getHashParams() {
   const hash = typeof window !== "undefined" ? window.location.hash : "";
   return new URLSearchParams(hash.startsWith("#") ? hash.slice(1) : hash);
@@ -221,6 +229,134 @@ function updateActiveToc(slug) {
   }
 }
 
+function resetSectionHighlight() {
+  const previousLinks = scrollSpyState.linkLookup.get(scrollSpyState.activeId);
+  if (previousLinks) {
+    previousLinks.forEach((link) => {
+      link.removeAttribute("data-docs-section-current");
+      link.classList.remove("text-text-strong", "font-semibold");
+      link.classList.add("text-muted");
+    });
+  }
+  scrollSpyState.activeId = "";
+}
+
+function clearScrollSpy() {
+  if (scrollSpyState.onScroll && typeof window !== "undefined") {
+    window.removeEventListener("scroll", scrollSpyState.onScroll);
+    window.removeEventListener("resize", scrollSpyState.onScroll);
+  }
+  if (scrollSpyState.rafId && typeof cancelAnimationFrame === "function") {
+    cancelAnimationFrame(scrollSpyState.rafId);
+  }
+  scrollSpyState.rafId = null;
+  scrollSpyState.onScroll = null;
+  scrollSpyState.headings = [];
+  scrollSpyState.linkLookup = new Map();
+  resetSectionHighlight();
+}
+
+function setActiveSection(id) {
+  if (!id || id === scrollSpyState.activeId) {
+    return;
+  }
+  resetSectionHighlight();
+  scrollSpyState.activeId = id;
+  const links = scrollSpyState.linkLookup.get(id);
+  if (!links) {
+    return;
+  }
+  links.forEach((link) => {
+    link.setAttribute("data-docs-section-current", "true");
+    link.classList.remove("text-muted");
+    link.classList.add("text-text-strong", "font-semibold");
+  });
+}
+
+function resolveSectionLinks() {
+  const linkLookup = new Map();
+  if (typeof document === "undefined") {
+    return linkLookup;
+  }
+  const links = document.querySelectorAll(`[data-docs-toc-item][href*="#"]`);
+  links.forEach((link) => {
+    const rawHref = link.getAttribute("href") || "";
+    const hashIndex = rawHref.indexOf("#");
+    if (hashIndex === -1) {
+      return;
+    }
+    const fragment = rawHref.slice(hashIndex + 1);
+    if (!fragment || fragment.includes("view=")) {
+      return;
+    }
+    const decoded = decodeURIComponent(fragment.split("?")[0]);
+    if (!decoded) {
+      return;
+    }
+    if (!linkLookup.has(decoded)) {
+      linkLookup.set(decoded, new Set());
+    }
+    linkLookup.get(decoded)?.add(link);
+  });
+  return linkLookup;
+}
+
+function setupScrollSpy(container) {
+  clearScrollSpy();
+  if (typeof window === "undefined" || !container) {
+    return;
+  }
+
+  const headings = Array.from(
+    container.querySelectorAll("h2[id], h3[id], h4[id], h5[id]")
+  );
+  if (headings.length === 0) {
+    return;
+  }
+
+  const linkLookup = resolveSectionLinks();
+  if (linkLookup.size === 0) {
+    return;
+  }
+
+  const trackedHeadings = headings.filter((heading) => linkLookup.has(heading.id));
+  if (trackedHeadings.length === 0) {
+    return;
+  }
+
+  scrollSpyState.headings = trackedHeadings;
+  scrollSpyState.linkLookup = linkLookup;
+
+  const updateActiveFromScroll = () => {
+    scrollSpyState.rafId = null;
+    const offset = 96;
+    let nextId = scrollSpyState.headings[0]?.id || "";
+    for (const heading of scrollSpyState.headings) {
+      const top = heading.getBoundingClientRect().top - offset;
+      if (top <= 0) {
+        nextId = heading.id;
+      } else {
+        break;
+      }
+    }
+    if (nextId) {
+      setActiveSection(nextId);
+    }
+  };
+
+  const onScroll = () => {
+    if (scrollSpyState.rafId) {
+      return;
+    }
+    scrollSpyState.rafId = requestAnimationFrame(updateActiveFromScroll);
+  };
+
+  scrollSpyState.onScroll = onScroll;
+  window.addEventListener("scroll", onScroll, { passive: true });
+  window.addEventListener("resize", onScroll);
+  onScroll();
+}
+
 function resolveDocItem(slug) {
   if (!slug) {
     return null;
@@ -270,6 +406,7 @@ async function renderMarkdown(path) {
   }
 
   try {
+    clearScrollSpy();
     if (!window.marked || typeof window.marked.parse !== "function") {
       throw new Error("Markdown renderer is unavailable.");
     }
@@ -282,6 +419,13 @@ async function renderMarkdown(path) {
     const html = window.marked.parse(markdownText);
     container.innerHTML = html;
     highlightCodeBlocks(container);
+    const schedule =
+      typeof requestIdleCallback === "function"
+        ? requestIdleCallback
+        : (callback) => requestAnimationFrame(callback);
+    schedule(() => {
+      setupScrollSpy(container);
+    });
   } catch (error) {
     logger.user.error("Error loading docs content.", error);
     container.innerHTML =
