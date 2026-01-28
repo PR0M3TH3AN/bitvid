@@ -1954,18 +1954,12 @@ export class NostrClient {
       );
     }
 
-    const permissionResult = await this.ensureExtensionPermissions(
-      DEFAULT_NIP07_PERMISSION_METHODS,
+    const initialPubkey = await runNip07WithRetry(
+      () => extension.getPublicKey(),
+      {
+        label: "extension.getPublicKey",
+      },
     );
-    if (!permissionResult.ok) {
-      const denialMessage =
-        'The NIP-07 extension reported "permission denied". Please approve the prompt and try again.';
-      const denialError = new Error(denialMessage);
-      if (permissionResult.error) {
-        denialError.cause = permissionResult.error;
-      }
-      throw denialError;
-    }
 
     if (
       allowAccountSelection &&
@@ -1996,9 +1990,12 @@ export class NostrClient {
       }
     }
 
-    const pubkey = await runNip07WithRetry(() => extension.getPublicKey(), {
-      label: "extension.getPublicKey",
-    });
+    const pubkey =
+      allowAccountSelection && typeof extension.selectAccounts === "function"
+        ? await runNip07WithRetry(() => extension.getPublicKey(), {
+            label: "extension.getPublicKey",
+          })
+        : initialPubkey;
 
     if (!pubkey || typeof pubkey !== "string") {
       throw new Error(
@@ -2038,15 +2035,6 @@ export class NostrClient {
     const adapter = await createNip07Adapter(extension);
     adapter.pubkey = pubkey;
     setActiveSigner(adapter);
-
-    this.ensureExtensionPermissions(DEFAULT_NIP07_PERMISSION_METHODS).catch(
-      (err) => {
-        userLogger.warn(
-          "[nostr] Extension permissions were not fully granted after login:",
-          err,
-        );
-      },
-    );
 
     return { pubkey, signer: adapter };
   }
