@@ -8111,7 +8111,13 @@ export class ProfileModalController {
 
     this.blockList.innerHTML = "";
 
+    const blocksLoaded = this.services.userBlocks?.loaded === true;
     if (!deduped.length) {
+      if (this.blockListLoadingState === "loading" && !blocksLoaded) {
+        this.blockListEmpty.classList.add("hidden");
+        this.blockList.classList.add("hidden");
+        return;
+      }
       this.blockListEmpty.classList.remove("hidden");
       this.blockList.classList.add("hidden");
       if (this.blockListLoadingState === "loading") {
@@ -8319,7 +8325,13 @@ export class ProfileModalController {
 
       this.subscriptionList.innerHTML = "";
 
+      const subscriptionsLoaded = service.loaded === true;
       if (!deduped.length) {
+        if (this.subscriptionsLoadingState === "loading" && !subscriptionsLoaded) {
+          this.subscriptionListEmpty.classList.add("hidden");
+          this.subscriptionList.classList.add("hidden");
+          return;
+        }
         this.subscriptionListEmpty.classList.remove("hidden");
         this.subscriptionList.classList.add("hidden");
         if (this.subscriptionsLoadingState === "loading") {
@@ -12939,6 +12951,8 @@ export class ProfileModalController {
 
     // Trigger aggressive parallel fetches
     if (activePubkey) {
+      this.setBlockListLoadingState("loading");
+      this.setSubscriptionsLoadingState("loading");
       if (this.services.userBlocks) {
         this.services.userBlocks.loadBlocks(activePubkey).catch(noop);
       }
@@ -13004,6 +13018,8 @@ export class ProfileModalController {
 
     this.profileSwitcherSelectionPubkey = null;
     this.renderSavedProfiles();
+    this.setBlockListLoadingState("idle");
+    this.setSubscriptionsLoadingState("idle");
 
     try {
       await this.refreshAdminPaneState();

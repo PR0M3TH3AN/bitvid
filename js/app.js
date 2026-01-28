@@ -3272,17 +3272,25 @@ class Application {
         );
       }
 
-      try {
-        await this.nostrService.loadDirectMessages({
-          actorPubkey: activePubkey,
-          limit: 50,
-          initialLoad: true,
-        });
-      } catch (error) {
-        devLogger.warn(
-          "[Application] Failed to sync direct messages during login:",
-          error,
-        );
+      const activePubkey =
+        this.normalizeHexPubkey(getActiveProfilePubkey()) || this.pubkey;
+      if (
+        activePubkey &&
+        this.nostrService &&
+        typeof this.nostrService.loadDirectMessages === "function"
+      ) {
+        this.nostrService
+          .loadDirectMessages({
+            actorPubkey: activePubkey,
+            limit: 50,
+            initialLoad: true,
+          })
+          .catch((error) => {
+            devLogger.warn(
+              "[Application] Failed to sync direct messages during login:",
+              error,
+            );
+          });
       }
     }
 
@@ -4263,13 +4271,6 @@ class Application {
         devLogger.error("Post-login hydration failed:", error);
       });
 
-    let postLoginResult = null;
-    try {
-      postLoginResult = await postLoginPromise;
-    } catch (error) {
-      devLogger.error("Post-login processing failed:", error);
-    }
-
     await nwcPromise;
     // We do not await hashtagPreferencesPromise here; it loads in the background.
 
@@ -4280,6 +4281,26 @@ class Application {
         "[Application] Failed to refresh admin lists after login:",
         error,
       );
+    }
+
+    const scheduleLoginRefresh = (reason) => {
+      try {
+        this.lastIdentityRefreshPromise = this.refreshAllVideoGrids({
+          reason,
+          forceMainReload: true,
+        });
+        return this.lastIdentityRefreshPromise;
+      } catch (error) {
+        devLogger.error("Failed to refresh video grids after login:", error);
+        this.lastIdentityRefreshPromise = null;
+        return null;
+      }
+    };
+
+    try {
+      this.reinitializeVideoListView({ reason: "login" });
+    } catch (error) {
+      devLogger.warn("Failed to reinitialize video list view after login:", error);
     }
 
     if (activePubkey) {
@@ -4314,16 +4335,40 @@ class Application {
       // If it times out, the UI will refresh reactively when the data arrives.
       const blockLoadPromise = userBlocks.ensureLoaded(activePubkey);
       const blockLoadTimeout = new Promise((resolve) =>
-        setTimeout(resolve, 2000)
+        setTimeout(() => resolve({ timedOut: true }), 2000)
       );
-      try {
-        await Promise.race([blockLoadPromise, blockLoadTimeout]);
-      } catch (error) {
-        devLogger.warn(
-          "[Application] Block list load timed out or failed:",
-          error
-        );
-      }
+
+      Promise.race([
+        blockLoadPromise
+          .then(() => ({ timedOut: false }))
+          .catch((error) => ({ error })),
+        blockLoadTimeout,
+      ])
+        .then((result) => {
+          if (result?.error) {
+            devLogger.warn(
+              "[Application] Block list load timed out or failed:",
+              result.error
+            );
+          } else if (result?.timedOut) {
+            devLogger.warn(
+              "[Application] Block list load timed out:",
+              result
+            );
+          }
+          const refreshPromise = scheduleLoginRefresh("auth-login");
+          if (refreshPromise && typeof refreshPromise.finally === "function") {
+            refreshPromise.finally(() => {
+              this.lastIdentityRefreshPromise = null;
+            });
+          } else {
+            this.lastIdentityRefreshPromise = null;
+          }
+        })
+        .catch((error) => {
+          devLogger.error("Failed to refresh video grids after login:", error);
+          this.lastIdentityRefreshPromise = null;
+        });
 
       // Load subscriptions in the background to avoid blocking the main feed.
       subscriptions.ensureLoaded(activePubkey).catch((error) => {
@@ -4332,24 +4377,33 @@ class Application {
           error
         );
       });
-    }
 
-    try {
-      this.reinitializeVideoListView({ reason: "login", postLoginResult });
-    } catch (error) {
-      devLogger.warn("Failed to reinitialize video list view after login:", error);
-    }
-
-    try {
-      this.lastIdentityRefreshPromise = this.refreshAllVideoGrids({
-        reason: "auth-login",
-        forceMainReload: true,
-      });
-      await this.lastIdentityRefreshPromise;
-    } catch (error) {
-      devLogger.error("Failed to refresh video grids after login:", error);
-    } finally {
-      this.lastIdentityRefreshPromise = null;
+      if (
+        this.nostrService &&
+        typeof this.nostrService.loadDirectMessages === "function"
+      ) {
+        this.nostrService
+          .loadDirectMessages({
+            actorPubkey: activePubkey,
+            limit: 50,
+            initialLoad: true,
+          })
+          .catch((error) => {
+            devLogger.warn(
+              "[Application] Failed to sync direct messages during login:",
+              error
+            );
+          });
+      }
+    } else {
+      const refreshPromise = scheduleLoginRefresh("auth-login");
+      if (refreshPromise && typeof refreshPromise.finally === "function") {
+        refreshPromise.finally(() => {
+          this.lastIdentityRefreshPromise = null;
+        });
+      } else {
+        this.lastIdentityRefreshPromise = null;
+      }
     }
 
     this.forceRefreshAllProfiles();
