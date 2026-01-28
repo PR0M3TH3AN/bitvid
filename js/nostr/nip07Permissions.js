@@ -338,10 +338,10 @@ export async function requestEnablePermissions(
   const enableTimeoutMs = getEnableVariantTimeoutMs();
   const loginTimeoutMs = getNip07LoginTimeoutMs();
   const shortEnableTimeoutMs = Math.min(5_000, enableTimeoutMs);
-  const explicitEnableTimeoutMs = Math.max(
-    enableTimeoutMs,
-    Math.min(15_000, loginTimeoutMs),
-  );
+  const explicitEnableTimeoutMs =
+    enableTimeoutMs < 1000
+      ? enableTimeoutMs
+      : Math.max(enableTimeoutMs, Math.min(15_000, loginTimeoutMs));
 
   let lastError = null;
   for (const options of permissionVariants) {
