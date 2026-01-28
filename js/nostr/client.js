@@ -1900,6 +1900,157 @@ export class NostrClient {
    * 4. **Authorize**: Handles any `auth_url` challenges if the signer requires out-of-band approval.
    * 5. **Session**: Stores the session metadata locally (if `remember: true`) to allow auto-reconnect.
    */
+  async loginWithExtension(options = {}) {
+    let extension = null;
+    let attempts = 0;
+    const maxAttempts = 3;
+
+    // Optimistic check: if window.nostr is already there, use it immediately.
+    if (typeof window !== "undefined" && window.nostr) {
+      extension = window.nostr;
+    } else {
+      while (!extension && attempts < maxAttempts) {
+        try {
+          // Fast wait for the first attempt, slightly longer for retries
+          const timeout = attempts === 0 ? 1500 : 3000;
+          await waitForNip07Extension(timeout);
+          extension = window.nostr;
+        } catch (waitError) {
+          devLogger.log(
+            `Timed out waiting for extension injection (attempt ${
+              attempts + 1
+            }/${maxAttempts}):`,
+            waitError,
+          );
+        }
+
+        if (extension) {
+          break;
+        }
+
+        attempts++;
+        if (attempts < maxAttempts) {
+          devLogger.log("Retrying NIP-07 detection...");
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+      }
+    }
+
+    if (!extension) {
+      devLogger.log("No Nostr extension found");
+      throw new Error("Please install a Nostr extension (Alby, nos2x, etc.).");
+    }
+
+    const { allowAccountSelection = false, expectPubkey } =
+      typeof options === "object" && options !== null ? options : {};
+    const normalizedExpectedPubkey =
+      typeof expectPubkey === "string" && expectPubkey.trim()
+        ? expectPubkey.trim().toLowerCase()
+        : null;
+
+    if (typeof extension.getPublicKey !== "function") {
+      throw new Error(
+        "This NIP-07 extension is missing getPublicKey support. Please update the extension.",
+      );
+    }
+
+    const permissionResult = await this.ensureExtensionPermissions(
+      DEFAULT_NIP07_PERMISSION_METHODS,
+    );
+    if (!permissionResult.ok) {
+      const denialMessage =
+        'The NIP-07 extension reported "permission denied". Please approve the prompt and try again.';
+      const denialError = new Error(denialMessage);
+      if (permissionResult.error) {
+        denialError.cause = permissionResult.error;
+      }
+      throw denialError;
+    }
+
+    if (
+      allowAccountSelection &&
+      typeof extension.selectAccounts === "function"
+    ) {
+      try {
+        const selection = await runNip07WithRetry(
+          () =>
+            extension.selectAccounts(expectPubkey ? [expectPubkey] : undefined),
+          { label: "extension.selectAccounts" },
+        );
+
+        const didCancelSelection =
+          selection === undefined ||
+          selection === null ||
+          selection === false ||
+          (Array.isArray(selection) && selection.length === 0);
+
+        if (didCancelSelection) {
+          throw new Error("Account selection was cancelled.");
+        }
+      } catch (selectionErr) {
+        const message =
+          selectionErr && typeof selectionErr.message === "string"
+            ? selectionErr.message
+            : "Account selection was cancelled.";
+        throw new Error(message);
+      }
+    }
+
+    const pubkey = await runNip07WithRetry(() => extension.getPublicKey(), {
+      label: "extension.getPublicKey",
+    });
+
+    if (!pubkey || typeof pubkey !== "string") {
+      throw new Error(
+        "The NIP-07 extension did not return a public key. Please try again.",
+      );
+    }
+
+    if (
+      normalizedExpectedPubkey &&
+      pubkey.toLowerCase() !== normalizedExpectedPubkey
+    ) {
+      throw new Error(
+        "The selected account doesn't match the expected profile. Please try again.",
+      );
+    }
+
+    if (typeof options.validator === "function") {
+      try {
+        const isValid = await options.validator(pubkey);
+        if (!isValid) {
+          throw new Error("Access denied.");
+        }
+      } catch (validationError) {
+        const message =
+          validationError instanceof Error
+            ? validationError.message
+            : "Access denied.";
+        const error = new Error(message);
+        error.code = "access-denied";
+        if (validationError instanceof Error) {
+          error.cause = validationError;
+        }
+        throw error;
+      }
+    }
+
+    const adapter = await createNip07Adapter(extension);
+    adapter.pubkey = pubkey;
+    setActiveSigner(adapter);
+
+    this.ensureExtensionPermissions(DEFAULT_NIP07_PERMISSION_METHODS).catch(
+      (err) => {
+        userLogger.warn(
+          "[nostr] Extension permissions were not fully granted after login:",
+          err,
+        );
+      },
+    );
+
+    return { pubkey, signer: adapter };
+  }
+
   async connectRemoteSigner({
     connectionString,
     remember = true,
@@ -2201,6 +2352,25 @@ export class NostrClient {
         remotePubkey: summarizeHexForLog(remotePubkey),
         userPubkey: summarizeHexForLog(userPubkey),
       });
+
+      if (typeof options?.validator === "function") {
+        try {
+          const isValid = await options.validator(userPubkey);
+          if (!isValid) {
+            throw new Error("Access denied.");
+          }
+        } catch (validationError) {
+          const message =
+            validationError instanceof Error
+              ? validationError.message
+              : "Access denied.";
+          const error = new Error(message);
+          error.code = "access-denied";
+          client.destroy(); // Cleanup client since we won't use it
+          throw error;
+        }
+      }
+
       client.metadata = metadata;
       const signer = await this.installNip46Client(client, { userPubkey });
 
@@ -2296,6 +2466,7 @@ export class NostrClient {
       options && typeof options === "object" ? options : {};
     const silent = normalizedOptions.silent === true;
     const forgetOnError = normalizedOptions.forgetOnError === true;
+    const validator = typeof normalizedOptions.validator === "function" ? normalizedOptions.validator : null;
 
     const stored = readStoredNip46Session();
     if (!stored) {
@@ -2344,6 +2515,25 @@ export class NostrClient {
       await client.ensureSubscription();
       await client.connect({ permissions: stored.permissions });
       const userPubkey = await client.getUserPubkey();
+
+      if (validator) {
+        try {
+          const isValid = await validator(userPubkey);
+          if (!isValid) {
+            throw new Error("Access denied.");
+          }
+        } catch (validationError) {
+          const message =
+            validationError instanceof Error
+              ? validationError.message
+              : "Access denied.";
+          const error = new Error(message);
+          error.code = "access-denied";
+          client.destroy();
+          throw error;
+        }
+      }
+
       client.metadata = stored.metadata;
       const signer = await this.installNip46Client(client, { userPubkey });
 
@@ -3122,6 +3312,7 @@ export class NostrClient {
     pubkey,
     persist = false,
     passphrase,
+    validator,
   } = {}) {
     const normalizedPrivateKey =
       typeof privateKey === "string" && HEX64_REGEX.test(privateKey)
@@ -3156,6 +3347,23 @@ export class NostrClient {
 
     if (!normalizedPubkey) {
       throw new Error("Unable to resolve the public key for this private key.");
+    }
+
+    if (typeof validator === "function") {
+      try {
+        const isValid = await validator(normalizedPubkey);
+        if (!isValid) {
+          throw new Error("Access denied.");
+        }
+      } catch (validationError) {
+        const message =
+          validationError instanceof Error
+            ? validationError.message
+            : "Access denied.";
+        const error = new Error(message);
+        error.code = "access-denied";
+        throw error;
+      }
     }
 
     this.sessionActor = {

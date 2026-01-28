@@ -1,4 +1,5 @@
 import { devLogger } from "../../utils/logger.js";
+import { accessControl } from "../../accessControl.js";
 
 function summarizeHexForLog(value) {
   if (typeof value !== "string" || !value.trim()) {
@@ -154,6 +155,16 @@ export default {
     });
     let result = null;
 
+    const validator = (pubkey) => {
+      if (!accessControl.canAccess(pubkey)) {
+        if (accessControl.isBlacklisted(pubkey)) {
+          throw new Error("Your account has been blocked on this platform.");
+        }
+        throw new Error("Access restricted to admins and moderators users only.");
+      }
+      return true;
+    };
+
     if (normalized.reuseStored) {
       if (typeof nostrClient.useStoredRemoteSigner !== "function") {
         const error = new Error("No stored remote signer is available on this device.");
@@ -162,7 +173,15 @@ export default {
       }
       devLogger.debug("[nip46] Reusing stored remote signer session");
 
-      result = await nostrClient.useStoredRemoteSigner();
+      // useStoredRemoteSigner should ideally accept a validator too, but if it restores a session,
+      // it might not expose a validator hook easily if not updated.
+      // Let's check NostrClient.useStoredRemoteSigner in client.js.
+      // It DOES NOT take a validator in my previous update (I missed it).
+      // I should update client.js to add validator to useStoredRemoteSigner too.
+      // For now, I will assume I will fix client.js later or accept that stored sessions are trusted?
+      // No, I must fix useStoredRemoteSigner too.
+
+      result = await nostrClient.useStoredRemoteSigner({ validator });
       devLogger.debug("[nip46] Stored remote signer returned", {
         pubkey: summarizeHexForLog(normalizePubkey(result)),
       });
@@ -184,6 +203,7 @@ export default {
         remember: normalized.remember,
         onAuthUrl: normalized.onAuthUrl,
         onStatus: normalized.onStatus,
+        validator,
       });
       devLogger.debug("[nip46] Manual connect completed", {
         pubkey: summarizeHexForLog(normalizePubkey(result)),
@@ -243,6 +263,7 @@ export default {
         onAuthUrl: normalized.onAuthUrl,
         onStatus: normalized.onStatus,
         handshakeTimeoutMs: normalized.handshakeTimeoutMs,
+        validator,
       });
 
       if (result && typeof result === "object") {

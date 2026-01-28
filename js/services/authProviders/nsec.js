@@ -1,3 +1,5 @@
+import { accessControl } from "../../accessControl.js";
+
 const PROVIDER_ID = "nsec";
 const PROVIDER_LABEL = "nsec or seed (direct private key)";
 const PROVIDER_DESCRIPTION =
@@ -131,11 +133,22 @@ export default {
       throw error;
     }
 
+    const validator = (pubkey) => {
+      if (!accessControl.canAccess(pubkey)) {
+        if (accessControl.isBlacklisted(pubkey)) {
+          throw new Error("Your account has been blocked on this platform.");
+        }
+        throw new Error("Access restricted to admins and moderators users only.");
+      }
+      return true;
+    };
+
     const registrationResult = await nostrClient.registerPrivateKeySigner({
       privateKey,
       pubkey,
       persist: shouldPersist,
       passphrase: shouldPersist ? passphrase : undefined,
+      validator,
     });
 
     const registeredPubkey = normalizePubkey(registrationResult) || pubkey;
