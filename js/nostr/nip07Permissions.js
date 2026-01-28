@@ -314,32 +314,36 @@ export async function requestEnablePermissions(
         .filter(Boolean)
     : [];
 
-  const permissionVariants = [];
+  const permissionVariants = [null];
   if (normalized.length) {
     permissionVariants.push({
       permissions: normalized.map((method) => ({ method })),
     });
     permissionVariants.push({ permissions: normalized });
   }
-  permissionVariants.push(null);
+
+  const enableTimeoutMs = getEnableVariantTimeoutMs();
+  const primaryEnableTimeoutMs = Math.min(15_000, enableTimeoutMs);
+  const fallbackEnableTimeoutMs = Math.min(
+    NIP07_LOGIN_TIMEOUT_MS,
+    enableTimeoutMs,
+  );
 
   let lastError = null;
   for (const options of permissionVariants) {
-    // If specific permissions are requested (variants 1 & 2), fail fast (3s)
-    // to avoid hanging if the extension doesn't support the structured format.
-    // If we fall back to standard enable() (null), allow the full user interaction time.
-    const variantTimeoutOverrides = options
-      ? {
-          timeoutMs: Math.min(3000, getEnableVariantTimeoutMs()),
-          retryMultiplier: 1,
-        }
-      : {
-          timeoutMs: Math.min(
-            NIP07_LOGIN_TIMEOUT_MS,
-            getEnableVariantTimeoutMs(),
-          ),
-          retryMultiplier: 1,
-        };
+    // Prefer the null enable() call with a shorter interactive window.
+    // If it is rejected, try explicit-permission variants with a longer timeout
+    // to accommodate extensions that require structured permissions.
+    const variantTimeoutOverrides =
+      options === null
+        ? {
+            timeoutMs: primaryEnableTimeoutMs,
+            retryMultiplier: 1,
+          }
+        : {
+            timeoutMs: fallbackEnableTimeoutMs,
+            retryMultiplier: 1,
+          };
 
     try {
       await runNip07WithRetry(
