@@ -25,7 +25,26 @@ async function fuzzTest(iteration) {
     "buildZapRequestEvent",
     "sanitizeAdditionalTags",
     "validateEventStructure",
-    "setNostrEventSchemaOverrides"
+    "setNostrEventSchemaOverrides",
+    "buildRepostEvent",
+    "buildShareEvent",
+    "buildRelayListEvent",
+    "buildDmRelayListEvent",
+    "buildProfileMetadataEvent",
+    "buildMuteListEvent",
+    "buildDeletionEvent",
+    "buildLegacyDirectMessageEvent",
+    "buildDmAttachmentEvent",
+    "buildDmReadReceiptEvent",
+    "buildDmTypingIndicatorEvent",
+    "buildWatchHistoryEvent",
+    "buildSubscriptionListEvent",
+    "buildBlockListEvent",
+    "buildHashtagPreferenceEvent",
+    "buildAdminListEvent",
+    "buildHttpAuthEvent",
+    "buildReportEvent",
+    "buildVideoMirrorEvent"
   ];
 
   const targetName = rng.oneOf(targets);
@@ -33,7 +52,7 @@ async function fuzzTest(iteration) {
 
   // Helper to generate a comprehensive random params object
   const genParams = () => {
-    // 50% chance of being undefined/null/non-object to test robustness
+    // 10% chance of being undefined/null/non-object to test robustness
     if (Math.random() < 0.1) return rng.nastyString();
     if (Math.random() < 0.1) return null;
 
@@ -52,14 +71,27 @@ async function fuzzTest(iteration) {
         "videoEventId", "videoEventRelay", "videoDefinitionAddress", "rootIdentifier",
         "parentCommentId", "rootKind", "rootAuthorPubkey", "parentKind",
         "recipientPubkey", "relays", "amountSats", "lnurl", "eventId", "coordinate",
-        "targetPointer", "targetAuthorPubkey"
+        "targetPointer", "targetAuthorPubkey",
+        // Added fields
+        "repostKind", "targetKind", "targetEvent", "serializedEvent",
+        "video", "metadata", "pTags", "encrypted", "encryptionTag",
+        "eventIds", "addresses", "reason", "ciphertext", "attachment",
+        "messageKind", "expiresAt", "monthIdentifier", "hexPubkeys",
+        "payload", "reportType", "address", "addressRelay", "authorPubkey",
+        "eventRelay", "method", "userId", "relayHint"
     ];
 
     extraFields.forEach(field => {
         if (rng.bool()) {
             params[field] = rng.mixedString(50);
         } else if (rng.bool()) {
-            params[field] = rng.recursiveObject(1); // Potentially invalid type
+            if (field === "targetEvent" || field === "video" || field === "attachment" || field === "metadata") {
+                params[field] = rng.recursiveObject(2);
+            } else if (field === "relays" || field === "pTags" || field === "eventIds" || field === "addresses" || field === "hexPubkeys") {
+                params[field] = rng.array(() => rng.mixedString(64), 5);
+            } else {
+                params[field] = rng.recursiveObject(1); // Potentially invalid type
+            }
         }
     });
 
@@ -132,12 +164,91 @@ async function fuzzTest(iteration) {
        // Trigger usage
        Schemas.getNostrEventSchema(randomType);
        break;
+
+    case "buildRepostEvent":
+        inputs = genParams();
+        Schemas.buildRepostEvent(inputs);
+        break;
+    case "buildShareEvent":
+        inputs = genParams();
+        Schemas.buildShareEvent(inputs);
+        break;
+    case "buildRelayListEvent":
+        inputs = genParams();
+        Schemas.buildRelayListEvent(inputs);
+        break;
+    case "buildDmRelayListEvent":
+        inputs = genParams();
+        Schemas.buildDmRelayListEvent(inputs);
+        break;
+    case "buildProfileMetadataEvent":
+        inputs = genParams();
+        Schemas.buildProfileMetadataEvent(inputs);
+        break;
+    case "buildMuteListEvent":
+        inputs = genParams();
+        Schemas.buildMuteListEvent(inputs);
+        break;
+    case "buildDeletionEvent":
+        inputs = genParams();
+        Schemas.buildDeletionEvent(inputs);
+        break;
+    case "buildLegacyDirectMessageEvent":
+        inputs = genParams();
+        Schemas.buildLegacyDirectMessageEvent(inputs);
+        break;
+    case "buildDmAttachmentEvent":
+        inputs = genParams();
+        Schemas.buildDmAttachmentEvent(inputs);
+        break;
+    case "buildDmReadReceiptEvent":
+        inputs = genParams();
+        Schemas.buildDmReadReceiptEvent(inputs);
+        break;
+    case "buildDmTypingIndicatorEvent":
+        inputs = genParams();
+        Schemas.buildDmTypingIndicatorEvent(inputs);
+        break;
+    case "buildWatchHistoryEvent":
+        inputs = genParams();
+        Schemas.buildWatchHistoryEvent(inputs);
+        break;
+    case "buildSubscriptionListEvent":
+        inputs = genParams();
+        Schemas.buildSubscriptionListEvent(inputs);
+        break;
+    case "buildBlockListEvent":
+        inputs = genParams();
+        Schemas.buildBlockListEvent(inputs);
+        break;
+    case "buildHashtagPreferenceEvent":
+        inputs = genParams();
+        Schemas.buildHashtagPreferenceEvent(inputs);
+        break;
+    case "buildAdminListEvent":
+        inputs = genParams();
+        // buildAdminListEvent(listKey, params)
+        const listKey = rng.oneOf(["moderation", "editors", "whitelist", "blacklist", "communityBlacklistSources", rng.nastyString()]);
+        Schemas.buildAdminListEvent(listKey, inputs);
+        break;
+    case "buildHttpAuthEvent":
+        inputs = genParams();
+        Schemas.buildHttpAuthEvent(inputs);
+        break;
+    case "buildReportEvent":
+        inputs = genParams();
+        Schemas.buildReportEvent(inputs);
+        break;
+    case "buildVideoMirrorEvent":
+        inputs = genParams();
+        Schemas.buildVideoMirrorEvent(inputs);
+        break;
   }
 
   return { target: targetName, inputs };
 }
 
-runFuzzer("nostrEventSchemas", 5000, fuzzTest).catch(err => {
+runFuzzer("nostrEventSchemas", 10000, fuzzTest).catch(err => {
     console.error("Fatal fuzzer error:", err);
     process.exit(1);
 });
