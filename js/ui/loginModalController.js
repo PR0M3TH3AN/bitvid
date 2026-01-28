@@ -1487,6 +1487,7 @@ export default class LoginModalController {
             this.rejectPendingTask(this.createCancellationError(), {
               type: "add-profile",
             });
+            this.handleProviderDisconnect("nip46");
             cleanup();
           } else {
             finish(null, { keepMounted: false });
@@ -2389,6 +2390,13 @@ export default class LoginModalController {
         });
 
         if (consumed) {
+          return;
+        }
+
+        if (
+          rejectionError.code === "login-cancelled" ||
+          rejectionError.code === "user-cancelled"
+        ) {
           return;
         }
 

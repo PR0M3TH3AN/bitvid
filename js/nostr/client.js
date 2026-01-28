@@ -1263,6 +1263,7 @@ export class NostrClient {
     this.unreachableRelays = new Set();
     this.isInitialized = false;
     this.nip46Client = null;
+    this.pendingHandshakeCancel = null;
     this.remoteSignerListeners = new Set();
     this.sessionActorListeners = new Set();
     const storedRemoteSigner = this.getStoredNip46Metadata();
@@ -1708,6 +1709,9 @@ export class NostrClient {
           return;
         }
         settled = true;
+        if (this.pendingHandshakeCancel === cancelHandshake) {
+          this.pendingHandshakeCancel = null;
+        }
         try {
           subscription?.unsub?.();
         } catch (error) {
@@ -1717,6 +1721,15 @@ export class NostrClient {
           clearTimeout(timeoutId);
         }
       };
+
+      const cancelHandshake = () => {
+        cleanup();
+        const error = new Error("Remote signer connection cancelled.");
+        error.code = "login-cancelled";
+        reject(error);
+      };
+
+      this.pendingHandshakeCancel = cancelHandshake;
 
       const timeoutId = setTimeout(() => {
         cleanup();
@@ -2438,6 +2451,16 @@ export class NostrClient {
    */
   async disconnectRemoteSigner({ keepStored = true } = {}) {
     this.pendingRemoteSignerRestore = null;
+
+    if (this.pendingHandshakeCancel) {
+      try {
+        this.pendingHandshakeCancel();
+      } catch (error) {
+        devLogger.warn("[nostr] Failed to cancel pending handshake:", error);
+      }
+      this.pendingHandshakeCancel = null;
+    }
+
     if (this.nip46Client) {
       try {
         await this.nip46Client.destroy();
