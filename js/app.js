@@ -4097,6 +4097,15 @@ class Application {
       this.resetViewLoggingState();
     }
 
+    // Stop existing feed subscription to prioritize user data sync
+    if (
+      this.videoSubscription &&
+      typeof this.videoSubscription.unsub === "function"
+    ) {
+      this.videoSubscription.unsub();
+      this.videoSubscription = null;
+    }
+
     this.applyAuthenticatedUiState();
     this.commentController?.refreshAuthState?.();
     this.updateShareNostrAuthState({ reason: "auth-login" });
@@ -4278,6 +4287,15 @@ class Application {
             error,
           );
         }
+      }
+
+      try {
+        await subscriptions.ensureLoaded(activePubkey);
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to load subscriptions during login:",
+          error,
+        );
       }
     }
 
