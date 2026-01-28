@@ -20,7 +20,7 @@ import {
 import { profileCache } from "./state/profileCache.js";
 import { DEFAULT_RELAY_URLS } from "./nostr/toolkit.js";
 import { relayManager } from "./relayManager.js";
-import { runNip07WithRetry } from "./nostr/nip07Permissions.js";
+import { runNip07WithRetry, NIP07_PRIORITY } from "./nostr/nip07Permissions.js";
 
 class TinyEventEmitter {
   constructor() {
@@ -852,12 +852,18 @@ class UserBlockListManager {
       if (signerHasNip44) {
         registerDecryptor(
           "nip44",
-          (payload) => signer.nip44Decrypt(normalized, payload),
+          (payload) =>
+            signer.nip44Decrypt(normalized, payload, {
+              priority: NIP07_PRIORITY.HIGH,
+            }),
           "active-signer",
         );
         registerDecryptor(
           "nip44_v2",
-          (payload) => signer.nip44Decrypt(normalized, payload),
+          (payload) =>
+            signer.nip44Decrypt(normalized, payload, {
+              priority: NIP07_PRIORITY.HIGH,
+            }),
           "active-signer",
         );
       }
@@ -865,7 +871,10 @@ class UserBlockListManager {
       if (signerHasNip04) {
         registerDecryptor(
           "nip04",
-          (payload) => signer.nip04Decrypt(normalized, payload),
+          (payload) =>
+            signer.nip04Decrypt(normalized, payload, {
+              priority: NIP07_PRIORITY.HIGH,
+            }),
           "active-signer",
         );
       }
@@ -878,7 +887,7 @@ class UserBlockListManager {
             (payload) =>
               runNip07WithRetry(
                 () => nostrApi.nip04.decrypt(normalized, payload),
-                { label: "nip04.decrypt" },
+                { label: "nip04.decrypt", priority: NIP07_PRIORITY.HIGH },
               ),
             "extension",
           );
@@ -895,6 +904,7 @@ class UserBlockListManager {
               (payload) =>
                 runNip07WithRetry(() => nip44.decrypt(normalized, payload), {
                   label: "nip44.decrypt",
+                  priority: NIP07_PRIORITY.HIGH,
                 }),
               "extension",
             );
@@ -908,6 +918,7 @@ class UserBlockListManager {
               (payload) =>
                 runNip07WithRetry(() => nip44v2.decrypt(normalized, payload), {
                   label: "nip44.v2.decrypt",
+                  priority: NIP07_PRIORITY.HIGH,
                 }),
               "extension",
             );
@@ -917,7 +928,7 @@ class UserBlockListManager {
                 (payload) =>
                   runNip07WithRetry(
                     () => nip44v2.decrypt(normalized, payload),
-                    { label: "nip44.v2.decrypt" },
+                    { label: "nip44.v2.decrypt", priority: NIP07_PRIORITY.HIGH },
                   ),
                 "extension",
               );
