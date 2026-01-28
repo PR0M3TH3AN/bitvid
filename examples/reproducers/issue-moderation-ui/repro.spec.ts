@@ -1,69 +1,43 @@
 import { expect, test } from "@playwright/test";
 
 const FIXTURE_URL = "/docs/moderation/fixtures/index.html";
-const STORAGE_KEY = "bitvid:moderation:fixture-overrides";
-const SENTINEL_KEY = "__moderationFixturesInit__";
 const RESTORE_BUTTON_LABEL = "Restore default moderation";
 
 async function waitForFixtureReady(page) {
   await page.waitForSelector('body[data-ready="true"]');
 }
 
-function setupStorageReset(page) {
-  return page.addInitScript(({ storageKey, sentinelKey }) => {
-    try {
-      const session = window.sessionStorage;
-      const local = window.localStorage;
-      if (session && !session.getItem(sentinelKey)) {
-        local?.removeItem(storageKey);
-        session.setItem(sentinelKey, "1");
-      }
-    } catch {
-      /* ignore reset failures in tests */
-    }
-  }, { storageKey: STORAGE_KEY, sentinelKey: SENTINEL_KEY });
-}
-
-test.beforeEach(async ({ page }) => {
-  await setupStorageReset(page);
-});
-
-test.afterEach(async ({ page }) => {
-  try {
-    await page.evaluate(({ key, sentinel }) => {
-      window.localStorage?.removeItem(key);
-      window.sessionStorage?.removeItem(sentinel);
-    }, { key: STORAGE_KEY, sentinel: SENTINEL_KEY });
-  } catch {
-    // ignore cleanup errors when page already closed
-  }
-});
-
-test.describe("moderation fixtures reproducer", () => {
-  test("show anyway override persists across reloads", async ({ page }) => {
+test("repro: show anyway override button visibility", async ({ page }) => {
+    // 1. Navigate to fixture
     await page.goto(FIXTURE_URL, { waitUntil: "networkidle" });
     await waitForFixtureReady(page);
 
+    // 2. Locate the card that should have the button
     const overrideCard = page.locator('[data-test-id="show-anyway"]');
-    const thumbnail = overrideCard.locator('img[data-video-thumbnail]');
 
+    // 3. Verify it has the override available attribute
     await expect(overrideCard).toHaveAttribute(
       "data-moderation-override-available",
       "true"
     );
+
+    // 4. Locate the button
     const showAnywayButton = overrideCard.getByRole("button", { name: "Show anyway" });
     const restoreButtonQuery = overrideCard.getByRole("button", {
       name: RESTORE_BUTTON_LABEL,
     });
 
-    await expect(overrideCard).toHaveAttribute("data-autoplay-policy", "blocked");
-    await expect(thumbnail).toHaveAttribute("data-thumbnail-state", "blurred");
-
-    // Uncommenting the failing check to reproduce the bug
+    // 5. Assert visibility (this is expected to fail)
+    console.log("Checking visibility of 'Show anyway' button...");
     await expect(showAnywayButton).toBeVisible();
-    await expect(restoreButtonQuery).toHaveCount(0);
 
-    // Uncommenting the failing action to reproduce the bug
+    console.log("'Show anyway' button is visible. Attempting click...");
+    // 6. Click (this is expected to fail/timeout if not visible)
     await showAnywayButton.click({ force: true });
-  });
+
+    // 7. Verify state change
+    await expect(overrideCard).toHaveAttribute(
+      "data-moderation-override",
+      "show-anyway"
+    );
 });

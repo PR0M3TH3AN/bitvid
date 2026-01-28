@@ -8,54 +8,61 @@ import { spawnSync } from "node:child_process";
 const SEARCH_PATTERN = '(?<!&|[\\w])#[0-9a-fA-F]{3,8}\\b';
 
 // Allow-list tokens and vector logos so brand assets can keep their baked colors.
+// These are translated to git pathspec exclusions.
 const IGNORED_GLOBS = [
-  '!css/tokens.css',
-  '!**/*.svg',
-  '!**/node_modules/**',
-  '!.git/**',
-  '!**/*.min.js',
-  '!**/*.map',
-  '!css/tailwind.generated.css',
-  '!dist/**',
-  '!build/**',
-  '!vendor/**',
-  '!js/utils/qrcode.js',
-  '!**/dist/**',
-  '!REMEDIATION_REPORT.md',
-  '!CHANGELOG.md',
-  '!scripts/daily-design-system-audit.mjs',
-  '!config/instance-config.js',
-  '!config/validate-config.js',
-  '!js/embed.js',
-  '!tests/unit/embed-accent.test.mjs',
-  '!tests/visual/embed-layout.spec.ts',
-  '!ai/**'
+  'css/tokens.css',
+  '**/*.svg',
+  '**/node_modules/**',
+  '.git/**',
+  '**/*.min.js',
+  '**/*.map',
+  'css/tailwind.generated.css',
+  'dist/**',
+  'build/**',
+  'vendor/**',
+  'js/utils/qrcode.js',
+  '**/dist/**',
+  'REMEDIATION_REPORT.md',
+  'CHANGELOG.md',
+  'scripts/daily-design-system-audit.mjs',
+  'config/instance-config.js',
+  'config/validate-config.js',
+  'js/embed.js',
+  'tests/unit/embed-accent.test.mjs',
+  'tests/visual/embed-layout.spec.ts',
+  'ai/**',
+  '**/*.ai'
 ];
 
-const rgArgs = [
-  '--color=never',
-  '--no-heading',
+const gitArgs = [
+  'grep',
   '-n',
-  '-P' // Enable PCRE2 for lookbehind support
+  '-I', // Ignore binary files
+  '-P', // Enable PCRE2 for lookbehind support
+  SEARCH_PATTERN,
+  '--',
+  '.'
 ];
 
+// Add exclusions
 for (const glob of IGNORED_GLOBS) {
-  rgArgs.push('--glob', glob);
+  gitArgs.push(`:(exclude)${glob}`);
 }
 
-rgArgs.push('--regexp', SEARCH_PATTERN, '.');
-
-const result = spawnSync('rg', rgArgs, { encoding: 'utf8' });
+// We rely on 'git' being available and 'git grep' supporting -P.
+// Typically available in most CI/dev environments.
+const result = spawnSync('git', gitArgs, { encoding: 'utf8' });
 
 if (result.error) {
-  console.error('Failed to execute ripgrep:', result.error.message);
+  console.error('Failed to execute git grep:', result.error.message);
   process.exit(2);
 }
 
-// ripgrep exits with:
-//   0 when matches are found,
-//   1 when no matches are found,
+// git grep exits with:
+//   0 when matches are found (failure for us),
+//   1 when no matches are found (success for us),
 //   2+ on errors.
+
 if (result.status === 0 && result.stdout.trim()) {
   console.error('Hex colors detected outside tokens or SVG assets:');
   console.error(result.stdout.trimEnd());
@@ -64,7 +71,7 @@ if (result.status === 0 && result.stdout.trim()) {
 }
 
 if (result.status && result.status !== 1) {
-  console.error('ripgrep reported an error while scanning for hex values.');
+  console.error('git grep reported an error while scanning for hex values.');
   if (result.stderr) {
     console.error(result.stderr.trimEnd());
   }

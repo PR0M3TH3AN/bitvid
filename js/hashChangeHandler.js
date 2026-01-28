@@ -1,5 +1,14 @@
 import { devLogger as defaultDevLogger, userLogger as defaultUserLogger } from "./utils/logger.js";
 
+const LEGACY_DOCS_VIEWS = {
+  about: "about",
+  "community-guidelines": "community-guidelines",
+  "getting-started": "getting-started",
+  "upload-content": "upload-content",
+  roadmap: "roadmap",
+  links: "links"
+};
+
 const createLoggerFacade = (logger, fallback) => {
   if (logger && typeof logger === "object") {
     return {
@@ -32,6 +41,7 @@ export function createHashChangeHandler({
 } = {}) {
   const devLog = createLoggerFacade(devLogger, noopLogger);
   const userLog = createLoggerFacade(userLogger, noopLogger);
+  let currentViewName = null;
 
   const getReadyPromise = () => {
     if (typeof getApplicationReady === "function") {
@@ -82,7 +92,14 @@ export function createHashChangeHandler({
         const defaultViewName = resolveIsLoggedIn()
           ? "for-you"
           : "most-recent-videos";
+
+        if (defaultViewName === currentViewName) {
+          return;
+        }
+
         await loadView(`views/${defaultViewName}.html`);
+        currentViewName = defaultViewName;
+
         const initFn = viewInitRegistry?.[defaultViewName];
         if (typeof initFn === "function") {
           await initFn();
@@ -91,11 +108,24 @@ export function createHashChangeHandler({
       }
 
       const viewName = match[1];
+
+      if (Object.prototype.hasOwnProperty.call(LEGACY_DOCS_VIEWS, viewName)) {
+        const docSlug = LEGACY_DOCS_VIEWS[viewName];
+        window.location.hash = `#view=docs&doc=${docSlug}`;
+        return;
+      }
+
+      if (viewName === currentViewName) {
+        return;
+      }
+
       if (typeof viewName === "string" && viewName.toLowerCase() === "history") {
       }
       const viewUrl = `views/${viewName}.html`;
 
       await loadView(viewUrl);
+      currentViewName = viewName;
+
       const initFn = viewInitRegistry?.[viewName];
       if (typeof initFn === "function") {
         await initFn();

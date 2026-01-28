@@ -16,7 +16,71 @@ async function fuzzTest(iteration) {
   // Randomize window protocol sometimes
   global.window.location.protocol = rng.bool() ? "https:" : "http:";
 
-  const rawValue = rng.mixedString(100);
+  const genMagnet = () => {
+    if (rng.bool()) return rng.mixedString(100); // Random garbage
+
+    // Construct semi-valid magnet
+    let magnet = "magnet:?";
+    const params = [];
+
+    // xt (Exact Topic)
+    if (rng.bool()) {
+        const hash = rng.bool() ? rng.mixedString(40) : "urn:btih:" + rng.mixedString(40);
+        params.push(`xt=${hash}`);
+    }
+
+    // dn (Display Name)
+    if (rng.bool()) {
+        const val = rng.mixedString(20);
+        try {
+            params.push(`dn=${encodeURIComponent(val)}`);
+        } catch {
+            params.push(`dn=${val}`);
+        }
+    }
+
+    // tr (Trackers)
+    if (rng.bool()) {
+        const trackers = rng.array(() => {
+            const proto = rng.oneOf(["udp", "http", "https", "wss", "ws"]);
+            const val = `${proto}://${rng.mixedString(20)}`;
+            try {
+                return encodeURIComponent(val);
+            } catch {
+                return val;
+            }
+        }, 5);
+        trackers.forEach(t => params.push(`tr=${t}`));
+    }
+
+    // ws (Web Seeds)
+    if (rng.bool()) {
+         const val = "https://" + rng.mixedString(20);
+         try {
+             params.push(`ws=${encodeURIComponent(val)}`);
+         } catch {
+             params.push(`ws=${val}`);
+         }
+    }
+
+    // Random params
+    if (rng.bool()) {
+        params.push(`${rng.string(5)}=${rng.mixedString(10)}`);
+    }
+
+    magnet += params.join("&");
+
+    // Corrupt it
+    if (Math.random() < 0.2) {
+        // Inject garbage
+        const pos = rng.int(0, magnet.length);
+        magnet = magnet.slice(0, pos) + rng.nastyString() + magnet.slice(pos);
+    }
+
+    return magnet;
+  };
+
+  const rawValue = genMagnet();
 
   const genOptions = () => {
     if (rng.bool()) return null;

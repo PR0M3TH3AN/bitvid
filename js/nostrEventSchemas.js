@@ -9,6 +9,10 @@ import {
   WATCH_HISTORY_LIST_IDENTIFIER,
   WATCH_HISTORY_VERSION_TAG_VALUE,
 } from "./config.js";
+import {
+  buildStoragePointerValue,
+  deriveStoragePointerFromUrl,
+} from "./utils/storagePointer.js";
 
 export const NOTE_TYPES = Object.freeze({
   VIDEO_POST: "videoPost",
@@ -697,7 +701,16 @@ function resolveOverride(type) {
 
 export function setNostrEventSchemaOverrides(overrides = {}) {
   if (overrides && typeof overrides === "object") {
-    schemaOverrides = overrides;
+    try {
+      JSON.stringify(overrides);
+      schemaOverrides = overrides;
+    } catch (error) {
+      devLogger.warn(
+        "[nostrEventSchemas] Invalid overrides provided (circular structure?):",
+        error
+      );
+      schemaOverrides = {};
+    }
   } else {
     schemaOverrides = {};
   }
@@ -887,6 +900,38 @@ export function buildVideoPostEvent(params) {
   const sanitizedAdditionalTags = sanitizeAdditionalTags(additionalTags);
   if (sanitizedAdditionalTags.length) {
     tags.push(...sanitizedAdditionalTags.map((tag) => tag.slice()));
+  }
+
+  const hasSTag = tags.some((t) => t[0] === "s");
+  if (!hasSTag) {
+    let contentObj = content;
+    if (typeof content === "string") {
+      try {
+        contentObj = JSON.parse(content);
+      } catch (e) {
+        contentObj = {};
+      }
+    }
+    contentObj = contentObj || {};
+
+    let pointer = "";
+    if (contentObj.infoHash) {
+      pointer = buildStoragePointerValue({
+        provider: "btih",
+        prefix: contentObj.infoHash,
+      });
+    } else if (contentObj.url) {
+      pointer = deriveStoragePointerFromUrl(contentObj.url);
+    }
+
+    if (!pointer && (dTagValue || contentObj.videoRootId)) {
+      const prefix = dTagValue || contentObj.videoRootId;
+      pointer = buildStoragePointerValue({ provider: "nostr", prefix });
+    }
+
+    if (pointer) {
+      tags.push(["s", pointer]);
+    }
   }
 
   let serializedContent = "";

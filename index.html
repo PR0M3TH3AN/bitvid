@@ -111,7 +111,8 @@
       so browsers pick up the latest sidebar markup and styling without
       hard-refreshing around CDN caches.
     -->
-    <link href="css/tailwind.generated.css?v=2024.11.09" rel="stylesheet" />
+    <link href="css/tailwind.generated.css?v=2024.11.09-2" rel="stylesheet" />
+    <link href="css/docs.css?v=2024.11.09-2" rel="stylesheet" />
   </head>
   <body class="sidebar-collapsed" data-ds="new">
     <!--
@@ -418,18 +419,9 @@
     </div>
 
     <!-- Additional Scripts -->
-    <!-- Bootstraps nostr-tools before other modules rely on nostrToolsReady -->
-    <script type="module" src="js/nostrToolsBootstrap.js?v=2024.11.09"></script>
-    <script type="module" src="js/config.js?v=2024.11.09"></script>
-    <script type="module" src="js/lists.js?v=2024.11.09"></script>
-    <script type="module" src="js/accessControl.js?v=2024.11.09"></script>
-    <script type="module" src="js/webtorrent.js?v=2024.11.09"></script>
-    <script type="module" src="js/viewManager.js?v=2024.11.09"></script>
-    <script type="module" src="js/bootstrap.js?v=2024.11.09"></script>
-    <script type="module" src="js/disclaimer.js?v=2024.11.09"></script>
     <script type="module" src="js/index.js?v=2024.11.09"></script>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+    <script src="vendor/marked.min.js"></script>
+    <script src="vendor/highlight.min.js"></script>
     <div id="uiOverlay" data-overlay-root aria-hidden="true"></div>
   </body>
 </html>

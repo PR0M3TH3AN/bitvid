@@ -199,7 +199,7 @@ async function getApplicationClass() {
   return cachedApplicationClass;
 }
 
-export async function createModerationAppHarness() {
+export async function createModerationAppHarness(options = {}) {
   const Application = await getApplicationClass();
   const app = Object.create(Application.prototype);
 
@@ -222,7 +222,7 @@ export async function createModerationAppHarness() {
 
   app.moderationActionController = new ModerationActionController({
     services: {
-      userBlocks,
+      userBlocks: options.userBlocks || userBlocks,
       setModerationOverride,
       clearModerationOverride,
     },
@@ -271,6 +271,16 @@ export async function createModerationAppHarness() {
     Application.prototype.normalizeModerationSettings;
   app.getActiveModerationThresholds =
     Application.prototype.getActiveModerationThresholds;
+
+  if (options.userBlocks) {
+    app.isAuthorBlocked = function (pubkey) {
+      const normalized = this.normalizeHexPubkey(pubkey);
+      if (normalized && options.userBlocks.isBlocked(normalized)) {
+        return true;
+      }
+      return Application.prototype.isAuthorBlocked.call(this, pubkey);
+    };
+  }
 
   app.defaultModerationSettings = getDefaultModerationSettings();
   app.moderationSettings = { ...app.defaultModerationSettings };

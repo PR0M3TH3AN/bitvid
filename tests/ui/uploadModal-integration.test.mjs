@@ -1,4 +1,4 @@
-import { test, describe, it, before, after } from "node:test";
+import { test, describe, it, before, after, beforeEach } from "node:test";
 import assert from "node:assert";
 import { createUiDom } from "./helpers/jsdom-test-helpers.mjs";
 
@@ -16,6 +16,66 @@ describe("UploadModal Integration", () => {
       isMock: true
   };
 
+  // Updated Mock HTML matching refactored component
+  const mockHtml = `
+  <div id="uploadModal" class="hidden">
+    <form id="unifiedUploadForm">
+      <button id="btn-mode-upload"></button>
+      <button id="btn-mode-external"></button>
+      <div id="section-source-upload">
+         <button id="btn-storage-settings"></button>
+
+         <!-- Storage Settings Container -->
+         <div id="section-storage-settings" class="hidden">
+            <!-- Summary View -->
+            <div id="storage-summary-view" class="hidden">
+                <span id="storage-lock-status">Locked 🔒</span>
+                <button id="btn-storage-unlock" class="hidden">Unlock</button>
+                <button id="btn-manage-storage">Manage</button>
+                <span id="summary-provider">--</span>
+                <span id="summary-bucket">--</span>
+                <span id="summary-url-style">--</span>
+                <span id="summary-copy"></span>
+            </div>
+
+            <!-- Empty View -->
+            <div id="storage-empty-view" class="hidden">
+                <button id="btn-configure-storage">Configure Storage</button>
+            </div>
+         </div>
+
+         <div id="upload-status-text"></div>
+         <div id="upload-percent-text"></div>
+         <progress id="input-progress"></progress>
+      </div>
+      <div id="section-source-external"></div>
+
+      <!-- Inputs -->
+      <input id="input-title" />
+      <textarea id="input-description"></textarea>
+      <input id="input-thumbnail" />
+      <input id="input-thumbnail-file" />
+      <input id="input-file" />
+      <input id="input-url" />
+      <input id="input-magnet" />
+
+      <input id="check-nsfw" type="checkbox" />
+      <input id="check-kids" type="checkbox" />
+      <input id="check-comments" type="checkbox" />
+      <input id="check-summary-unlock" type="checkbox" />
+
+      <button id="btn-advanced-toggle"></button>
+      <button id="btn-thumbnail-file"></button>
+
+      <div id="section-advanced"></div>
+
+      <button id="btn-submit"></button>
+      <div id="submit-status"></div>
+    </form>
+    <button id="closeUploadModal"></button>
+  </div>
+  `;
+
   before(async () => {
     dom = createUiDom();
     global.window = dom.window;
@@ -29,6 +89,16 @@ describe("UploadModal Integration", () => {
     global.HTMLButtonElement = dom.window.HTMLButtonElement;
     global.HTMLDivElement = dom.window.HTMLDivElement;
 
+    global.fetch = async (url) => {
+        if (url.includes("upload-modal.html")) {
+            return {
+                ok: true,
+                text: async () => mockHtml
+            };
+        }
+        return { ok: false };
+    };
+
     // Load UploadModal class
     const module = await import("../../js/ui/components/UploadModal.js");
     UploadModal = module.UploadModal;
@@ -36,6 +106,13 @@ describe("UploadModal Integration", () => {
 
   after(() => {
     if (dom) dom.cleanup();
+  });
+
+  beforeEach(() => {
+      // Ensure clean DOM state
+      if (global.document && global.document.body) {
+          global.document.body.innerHTML = '';
+      }
   });
 
   it("should detect default R2 connection and show summary when loaded and unlocked", async () => {
@@ -66,76 +143,6 @@ describe("UploadModal Integration", () => {
           removeTrackingScripts: () => {},
           setGlobalModalState: () => {},
       });
-
-      // Updated Mock HTML matching refactored component
-      const mockHtml = `
-      <div id="uploadModal" class="hidden">
-        <form id="unifiedUploadForm">
-          <button id="btn-mode-upload"></button>
-          <button id="btn-mode-external"></button>
-          <div id="section-source-upload">
-             <button id="btn-storage-settings"></button>
-
-             <!-- Storage Settings Container -->
-             <div id="section-storage-settings" class="hidden">
-                <!-- Summary View -->
-                <div id="storage-summary-view" class="hidden">
-                    <span id="storage-lock-status">Locked 🔒</span>
-                    <button id="btn-storage-unlock" class="hidden">Unlock</button>
-                    <button id="btn-manage-storage">Manage</button>
-                    <span id="summary-provider">--</span>
-                    <span id="summary-bucket">--</span>
-                    <span id="summary-url-style">--</span>
-                    <span id="summary-copy"></span>
-                </div>
-
-                <!-- Empty View -->
-                <div id="storage-empty-view" class="hidden">
-                    <button id="btn-configure-storage">Configure Storage</button>
-                </div>
-             </div>
-
-             <div id="upload-status-text"></div>
-             <div id="upload-percent-text"></div>
-             <progress id="input-progress"></progress>
-          </div>
-          <div id="section-source-external"></div>
-
-          <!-- Inputs -->
-          <input id="input-title" />
-          <textarea id="input-description"></textarea>
-          <input id="input-thumbnail" />
-          <input id="input-thumbnail-file" />
-          <input id="input-file" />
-          <input id="input-url" />
-          <input id="input-magnet" />
-
-          <input id="check-nsfw" type="checkbox" />
-          <input id="check-kids" type="checkbox" />
-          <input id="check-comments" type="checkbox" />
-          <input id="check-summary-unlock" type="checkbox" />
-
-          <button id="btn-advanced-toggle"></button>
-          <button id="btn-thumbnail-file"></button>
-
-          <div id="section-advanced"></div>
-
-          <button id="btn-submit"></button>
-          <div id="submit-status"></div>
-        </form>
-        <button id="closeUploadModal"></button>
-      </div>
-      `;
-
-      global.fetch = async (url) => {
-          if (url.includes("upload-modal.html")) {
-              return {
-                  ok: true,
-                  text: async () => mockHtml
-              };
-          }
-          return { ok: false };
-      };
 
       await modal.load({ container });
 
@@ -170,9 +177,9 @@ describe("UploadModal Integration", () => {
           meta: { bucket: "locked-bucket" }
       }];
 
-      // Setup DOM
+      // Setup DOM - Create new container
       const container = document.createElement("div");
-      container.id = "modalContainer2"; // Different ID to avoid collision if DOM persists
+      container.id = "modalContainer";
       document.body.appendChild(container);
 
       // Re-instantiate

@@ -4970,7 +4970,10 @@ export class ProfileModalController {
   }
 
   handleDirectMessagesUpdated(detail = {}) {
-    if (this.activeMessagesRequest) {
+    if (
+      this.activeMessagesRequest &&
+      detail?.reason !== "load-incremental"
+    ) {
       return;
     }
 
@@ -12450,91 +12453,99 @@ export class ProfileModalController {
       this.previouslyFocusedElement = activeElement;
     }
 
+    // Render the header (saved profiles) synchronously so the modal doesn't look empty.
+    // This is generally fast as it only touches the top section.
     this.renderSavedProfiles();
-    this.refreshWalletPaneState();
-    this.refreshModerationSettingsUi();
-    this.syncLinkPreviewSettingsUi();
+
+    // Show the modal immediately to prevent UI lag.
+    this.open(pane);
+
     const hasBlockHydrator =
       this.services.userBlocks &&
       typeof this.services.userBlocks.ensureLoaded === "function";
 
     if (hasBlockHydrator) {
       this.setBlockListLoadingState("loading");
-    } else {
-      this.populateBlockedList();
     }
 
-    this.open(pane);
+    // Defer expensive operations to the next animation frame to allow the modal to paint.
+    requestAnimationFrame(() => {
+      this.refreshWalletPaneState();
+      this.refreshModerationSettingsUi();
+      this.syncLinkPreviewSettingsUi();
 
-    const backgroundTasks = [];
+      if (!hasBlockHydrator) {
+        this.populateBlockedList();
+      }
 
-    backgroundTasks.push(
-      Promise.resolve()
-        .then(() => this.refreshAdminPaneState())
-        .catch((error) => {
-          userLogger.error(
-            "Failed to refresh admin pane while opening profile modal:",
-            error,
-          );
-        }),
-    );
+      const backgroundTasks = [];
 
-    backgroundTasks.push(
-      Promise.resolve().then(() => {
-        try {
-          this.populateProfileRelays();
-        } catch (error) {
-          userLogger.warn(
-            "Failed to populate relay list while opening profile modal:",
-            error,
-          );
-        }
-      }),
-    );
-
-    if (hasBlockHydrator) {
-      const activeHex = this.normalizeHexPubkey(this.getActivePubkey());
       backgroundTasks.push(
         Promise.resolve()
-          .then(() => this.services.userBlocks.ensureLoaded(activeHex))
-          .then(() => {
-            try {
-              this.populateBlockedList();
-            } catch (error) {
+          .then(() => this.refreshAdminPaneState())
+          .catch((error) => {
+            userLogger.error(
+              "Failed to refresh admin pane while opening profile modal:",
+              error,
+            );
+          }),
+      );
+
+      backgroundTasks.push(
+        Promise.resolve().then(() => {
+          try {
+            this.populateProfileRelays();
+          } catch (error) {
+            userLogger.warn(
+              "Failed to populate relay list while opening profile modal:",
+              error,
+            );
+          }
+        }),
+      );
+
+      if (hasBlockHydrator) {
+        const activeHex = this.normalizeHexPubkey(this.getActivePubkey());
+        backgroundTasks.push(
+          Promise.resolve()
+            .then(() => this.services.userBlocks.ensureLoaded(activeHex))
+            .then(() => {
+              try {
+                this.populateBlockedList();
+              } catch (error) {
+                userLogger.warn(
+                  "Failed to render blocked creators after hydration:",
+                  error,
+                );
+                this.setBlockListLoadingState("error", {
+                  message: "Blocked creators may be out of date. Try again later.",
+                });
+              }
+            })
+            .catch((error) => {
               userLogger.warn(
-                "Failed to render blocked creators after hydration:",
+                "Failed to refresh user block list while opening profile modal:",
                 error,
               );
               this.setBlockListLoadingState("error", {
-                message:
-                  "Blocked creators may be out of date. Try again later.",
+                message: "Blocked creators may be out of date. Try again later.",
               });
-            }
-          })
-          .catch((error) => {
-            userLogger.warn(
-              "Failed to refresh user block list while opening profile modal:",
-              error,
-            );
-            this.setBlockListLoadingState("error", {
-              message:
-                "Blocked creators may be out of date. Try again later.",
-            });
-            try {
-              this.populateBlockedList();
-            } catch (populateError) {
-              userLogger.warn(
-                "Failed to render blocked creators after hydration failure:",
-                populateError,
-              );
-            }
-          }),
-      );
-    }
+              try {
+                this.populateBlockedList();
+              } catch (populateError) {
+                userLogger.warn(
+                  "Failed to render blocked creators after hydration failure:",
+                  populateError,
+                );
+              }
+            }),
+        );
+      }
 
-    if (backgroundTasks.length) {
-      void Promise.allSettled(backgroundTasks);
-    }
+      if (backgroundTasks.length) {
+        void Promise.allSettled(backgroundTasks);
+      }
+    });
 
     return true;
   }

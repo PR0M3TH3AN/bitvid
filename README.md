@@ -144,14 +144,10 @@ To run **bitvid** locally:
 
 2. Install dependencies:
 
-   If you cloned the repo but haven’t run `npm install`/`npm ci`, `npx` won’t find the local `tailwindcss`.
+   Use `npm ci` to install dependencies exactly as specified in `package-lock.json`. This ensures `npx` finds the correct local `tailwindcss` version.
 
    ```bash
-   # reproducible install (preferred for CI / locks)
    npm ci
-
-   # or if you want to install/upgrade packages
-   npm install
    ```
 
 3. Build the project:
@@ -178,18 +174,27 @@ To run **bitvid** locally:
 http://localhost:8000
 ```
 
-### Quickstart Commands
+### Developer Quickstart
 
 See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the full developer guide.
 
+**Verify your work:**
+
 - **Run unit tests**: `npm run test:unit` (Required before PRs)
 - **Format code**: `npm run format` (Required before PRs)
-- **Lint code**: `npm run lint`
+- **Lint code**: `npm run lint` (Checks for CSS, hex colors, inline styles)
+
+**Other commands:**
+
 - **Run DM unit tests**: `npm run test:dm:unit`
 - **Run DM integration tests**: `npm run test:dm:integration`
 - **Run headless E2E tests**: `npm run test:e2e`
 - **Run visual regression tests**: `npm run test:visual`
 - **Cancel CI runs**: See [`docs/cancelling-ci-runs.md`](docs/cancelling-ci-runs.md) for a script to clear pending workflows.
+
+### Docs navigation & TOC updates
+
+The docs viewer reads `content/docs/toc.json` to build the sidebar tree and map `doc` slugs to Markdown files. Each entry defines the label shown in the UI and the slug used in deep links. Add new docs content by creating a Markdown file under `content/` (or a subfolder) and then adding a matching entry in `content/docs/toc.json` that points to the new slug. Keep the slug and filename in sync so the reader can resolve the Markdown content and the sidebar link. Deep links follow the format `#view=docs&doc=<slug>` (for example, `#view=docs&doc=getting-started`). QA acceptance criteria for new docs include: the sidebar link appears, the deep link opens the correct document, the mobile drawer lists the new item, and the Markdown renders as expected (headings, lists, links, etc.).【F:content/docs/toc.json†L1-L5】
 
 ### Running Tests in Docker
 
@@ -233,11 +238,11 @@ const event = buildVideoPostEvent({
   // Provide your hex pubkey (not npub)
   pubkey: "your_pubkey_hex",
   created_at: Math.floor(Date.now() / 1000),
-  dTagValue: "my-first-video", // The stable identifier (d-tag) for this video
+  dTagValue: "my-first-video", // The stable identifier (d-tag) for this video series
   content: {
     version: 3,
     title: "My First Video",
-    videoRootId: "my-first-video", // Logical ID, typically matches the d-tag
+    videoRootId: "my-first-video", // Logical ID, matches the d-tag
     url: "https://example.com/video.mp4",
     description: "This is a test video post sent via the SDK."
     // magnet: "magnet:?xt=urn:btih:..." // Optional fallback (provide the raw magnet string)

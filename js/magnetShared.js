@@ -36,7 +36,7 @@ export function safeDecodeMagnet(value) {
   return decoded;
 }
 
-export function normalizeForComparison(value) {
+function normalizeForComparison(value) {
   if (typeof value !== "string") {
     return "";
   }
@@ -258,7 +258,7 @@ export function buildMagnetUri(normalizedScheme, params, fragment) {
   return `${normalizedScheme}${queryString ? `?${queryString}` : ""}${fragment || ""}`;
 }
 
-export function appendUniqueParam(params, key, value) {
+function appendUniqueParam(params, key, value) {
   if (!Array.isArray(params)) {
     return false;
   }
@@ -305,7 +305,7 @@ export function ensureTrackers(params, trackers = WSS_TRACKERS) {
   return didMutate;
 }
 
-export function sanitizeHttpUrl(candidate) {
+function sanitizeHttpUrl(candidate) {
   if (typeof candidate !== "string") {
     return "";
   }
@@ -401,22 +401,6 @@ export function ensureWebSeeds(
     }
   }
   return didMutate;
-}
-
-export function formatAbsoluteUrl(candidate) {
-  if (typeof candidate !== "string") {
-    return "";
-  }
-  const trimmed = candidate.trim();
-  if (!trimmed) {
-    return "";
-  }
-  try {
-    const parsed = new URL(trimmed);
-    return parsed.toString();
-  } catch (err) {
-    return trimmed;
-  }
 }
 
 export function extractMagnetHints(rawValue) {

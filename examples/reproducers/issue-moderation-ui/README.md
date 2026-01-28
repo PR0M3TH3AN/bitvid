@@ -1,19 +1,24 @@
-# Moderation UI "Show Anyway" Bug Reproducer
+# Moderation UI "Show Anyway" Button Visibility Issue Reproducer
 
-This reproducer demonstrates the failure of the "Show anyway" button visibility check and click action in the moderation UI fixtures.
+This reproducer demonstrates the issue where the "Show anyway" button in the moderation UI is not visible (or not interactable) in the test environment, even though the logic seems correct.
 
 ## Issue Description
+- **Known Issue**: `KNOWN_ISSUES.md`: Moderation UI (`tests/visual/moderation.spec.ts`): The "Show anyway" button and related moderation badges fail to render in the test environment, causing `toBeVisible()` assertions to fail.
+- **Symptoms**: `Error: element(s) not found` when asserting visibility of the "Show anyway" button.
 
-In the moderation UI tests, the "Show anyway" button fails to be visible or clickable in the test environment (headless mode), even though the logic seems correct. This prevents verifying the "show anyway" override functionality.
+## How to Run
 
-## Running the Reproducer
+1.  Navigate to the repository root.
+2.  Ensure dependencies are installed and the project is built:
+    ```bash
+    npm ci
+    npm run build
+    npx playwright install chromium
+    ```
+3.  Run the reproducer script using the provided config:
+    ```bash
+    npx playwright test -c examples/reproducers/issue-moderation-ui/playwright.config.ts
+    ```
 
-To run the reproducer script:
-
-```bash
-npx playwright test examples/reproducers/issue-moderation-ui/repro.spec.ts
-```
-
-## Expected Result
-
-The test should fail with a timeout waiting for the "Show anyway" button to be visible or clickable.
+## Expected Output
+The test `repro: show anyway override button visibility` should **fail** with a timeout or "element not found" error on the assertion `await expect(showAnywayButton).toBeVisible();`.

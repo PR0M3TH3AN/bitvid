@@ -5,9 +5,7 @@ import crypto from 'node:crypto';
 // Configuration
 const ARTIFACTS_DIR = 'artifacts';
 const REPORTS_DIR = 'ai/reports';
-// TAP formatted logs
-const UNIT_TEST_LOGS = ['test_unit.log', 'test_unit_debug.log', 'test_output.log'];
-// Generic logs (subset of original list, excluding TAP logs)
+// Generic logs
 const GENERIC_LOG_FILES = ['server.log', 'serve.log', 'python_server.log', 'npm_output.log'];
 
 // Regex patterns for PII sanitization
@@ -59,13 +57,25 @@ function suggestOwner(stack) {
 // Collectors
 // -----------------------------------------------------------------------------
 
-function collectUnitTests(logFile = 'test_output.log') {
-    const errors = [];
-    // Check root and artifacts dir
-    const potentialPaths = [logFile, path.join(ARTIFACTS_DIR, logFile)];
-    const filepath = potentialPaths.find(p => fs.existsSync(p));
+function findUnitTestLogs() {
+    const logs = [];
+    if (fs.existsSync('.')) {
+        const rootFiles = fs.readdirSync('.').filter(f => f.match(/^test_unit.*\.log$/) || f === 'test_output.log');
+        logs.push(...rootFiles);
+    }
 
-    if (!filepath) return errors;
+    if (fs.existsSync(ARTIFACTS_DIR)) {
+        const artifactFiles = fs.readdirSync(ARTIFACTS_DIR)
+            .filter(f => f.match(/^test_unit.*\.log$/) || f === 'test_output.log')
+            .map(f => path.join(ARTIFACTS_DIR, f));
+        logs.push(...artifactFiles);
+    }
+    return [...new Set(logs)]; // Unique paths
+}
+
+function collectUnitTests(filepath) {
+    const errors = [];
+    if (!fs.existsSync(filepath)) return errors;
 
     const content = fs.readFileSync(filepath, 'utf8');
     const lines = content.split('\n');
@@ -82,7 +92,7 @@ function collectUnitTests(logFile = 'test_output.log') {
             }
             const title = line.replace(/^not ok \d+ - /, '').trim();
             currentError = {
-                source: `unit-test:${logFile}`,
+                source: `unit-test:${path.basename(filepath)}`,
                 title: sanitize(title),
                 details: [],
                 severity: 'High'
@@ -327,7 +337,8 @@ function collectAgentLogs() {
 
     for (const file of files) {
         // Avoid reparsing if we have specific logic
-        if (UNIT_TEST_LOGS.includes(file)) continue;
+        if (file.match(/^test_unit.*\.log$/) || file === 'test_output.log') continue;
+        if (GENERIC_LOG_FILES.includes(file)) continue;
 
         errors.push(...collectGenericLogs(path.join(ARTIFACTS_DIR, file), `agent-log:${file}`));
     }
@@ -455,7 +466,8 @@ async function main() {
     const errors = [];
 
     // Unit Tests (TAP logs)
-    for (const logFile of UNIT_TEST_LOGS) {
+    const unitTestLogs = findUnitTestLogs();
+    for (const logFile of unitTestLogs) {
         const unitErrors = collectUnitTests(logFile);
         if (unitErrors.length > 0) {
             console.log(`Collected ${unitErrors.length} unit test errors from ${logFile}.`);
@@ -465,10 +477,16 @@ async function main() {
 
     // Generic Logs
     for (const logFile of GENERIC_LOG_FILES) {
-        const genericErrors = collectGenericLogs(logFile, logFile);
-        if (genericErrors.length > 0) {
-            console.log(`Collected ${genericErrors.length} errors from ${logFile}.`);
-            errors.push(...genericErrors);
+        // Check root
+        if (fs.existsSync(logFile)) {
+             const genericErrors = collectGenericLogs(logFile, logFile);
+             if (genericErrors.length > 0) errors.push(...genericErrors);
+        }
+        // Check artifacts
+        const artifactPath = path.join(ARTIFACTS_DIR, logFile);
+        if (fs.existsSync(artifactPath)) {
+             const genericErrors = collectGenericLogs(artifactPath, logFile);
+             if (genericErrors.length > 0) errors.push(...genericErrors);
         }
     }
 

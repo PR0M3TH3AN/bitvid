@@ -25,12 +25,19 @@ const DmDecryptor = await import(tempPath);
 
 async function fuzzTest(iteration) {
   const genEvent = () => {
+    const tags = rng.array(() => rng.array(() => rng.mixedString(20), 5), 5);
+    if (rng.bool()) {
+        // Circular tag structure
+        const circularTag = ["p"];
+        circularTag.push(circularTag); // Circular reference
+        tags.push(circularTag);
+    }
     return {
       kind: rng.oneOf([4, 1059, rng.int(0, 20000)]),
       pubkey: rng.mixedString(64),
       created_at: rng.int(0, 2000000000),
       content: rng.mixedString(100),
-      tags: rng.array(() => rng.array(() => rng.mixedString(20), 5), 5)
+      tags
     };
   };
 

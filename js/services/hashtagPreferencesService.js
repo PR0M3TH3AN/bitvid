@@ -17,11 +17,15 @@ import {
 import { userLogger, devLogger } from "../utils/logger.js";
 import { normalizeHashtag } from "../utils/hashtagNormalization.js";
 import { profileCache } from "../state/profileCache.js";
+import { DEFAULT_RELAY_URLS } from "../nostr/toolkit.js";
+import { relayManager } from "../relayManager.js";
 
 const LOG_PREFIX = "[HashtagPreferences]";
 const HASHTAG_IDENTIFIER = "bitvid:tag-preferences";
 const HEX64_REGEX = /^[0-9a-f]{64}$/i;
 const DEFAULT_VERSION = 1;
+const DECRYPT_TIMEOUT_MS = 90000;
+const DECRYPT_RETRY_DELAY_MS = 10000;
 
 class TinyEventEmitter {
   constructor() {
@@ -234,6 +238,7 @@ class HashtagPreferencesService {
     this.eventCreatedAt = null;
     this.loaded = false;
     this.preferencesVersion = DEFAULT_VERSION;
+    this.decryptRetryTimeoutId = null;
 
     profileCache.subscribe((event, detail) => {
       if (event === "profileChanged") {
@@ -261,6 +266,10 @@ class HashtagPreferencesService {
     this.eventCreatedAt = null;
     this.loaded = false;
     this.preferencesVersion = DEFAULT_VERSION;
+    if (this.decryptRetryTimeoutId) {
+      clearTimeout(this.decryptRetryTimeoutId);
+      this.decryptRetryTimeoutId = null;
+    }
     this.emitChange("reset");
   }
 
@@ -415,6 +424,29 @@ class HashtagPreferencesService {
     }
   }
 
+  scheduleDecryptRetry(pubkey, error) {
+    const normalized = normalizeHexPubkey(pubkey);
+    if (!normalized) {
+      return;
+    }
+    if (this.decryptRetryTimeoutId) {
+      clearTimeout(this.decryptRetryTimeoutId);
+    }
+    this.decryptRetryTimeoutId = setTimeout(() => {
+      this.decryptRetryTimeoutId = null;
+      if (this.activePubkey && this.activePubkey !== normalized) {
+        return;
+      }
+      this.load(normalized).catch((retryError) => {
+        userLogger.warn(`${LOG_PREFIX} Decryption retry failed`, retryError);
+      });
+    }, DECRYPT_RETRY_DELAY_MS);
+    devLogger.log(
+      `${LOG_PREFIX} Decryption timed out; scheduling retry in ${DECRYPT_RETRY_DELAY_MS / 1000}s.`,
+      error,
+    );
+  }
+
   async load(pubkey) {
     const normalized = normalizeHexPubkey(pubkey);
     let wasLoadedForUser =
@@ -455,11 +487,8 @@ class HashtagPreferencesService {
       return;
     }
 
-    const relays = sanitizeRelayList(
-      Array.isArray(nostrClient.relays)
-        ? nostrClient.relays
-        : nostrClient.writeRelays,
-    );
+    const readRelays = relayManager.getReadRelayUrls();
+    const relays = readRelays.length > 0 ? readRelays : Array.from(DEFAULT_RELAY_URLS);
     if (!relays.length) {
       if (wasLoadedForUser) {
         userLogger.warn(
@@ -501,6 +530,7 @@ class HashtagPreferencesService {
           dTag: HASHTAG_IDENTIFIER,
           relayUrls: relays,
           since,
+          timeoutMs: 12000,
         }),
       );
 
@@ -588,12 +618,39 @@ class HashtagPreferencesService {
       return;
     }
 
-    const decryptResult = await this.decryptEvent(latest, normalized);
+    let decryptResult;
+    try {
+      const decryptPromise = this.decryptEvent(latest, normalized);
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(
+          () => {
+            const timeoutError = new Error(
+              `Decryption timed out after ${DECRYPT_TIMEOUT_MS / 1000}s`,
+            );
+            timeoutError.code = "hashtag-preferences-decrypt-timeout";
+            reject(timeoutError);
+          },
+          DECRYPT_TIMEOUT_MS,
+        ),
+      );
+      decryptResult = await Promise.race([decryptPromise, timeoutPromise]);
+    } catch (error) {
+      decryptResult = { ok: false, error };
+    }
+
     if (!decryptResult.ok) {
       userLogger.warn(
         `${LOG_PREFIX} Failed to decrypt hashtag preferences`,
         decryptResult.error,
       );
+
+      if (decryptResult.error?.code === "hashtag-preferences-decrypt-timeout") {
+        if (!wasLoadedForUser && !this.loaded) {
+          this.loaded = true;
+        }
+        this.scheduleDecryptRetry(normalized, decryptResult.error);
+        return;
+      }
 
       // If we already have loaded preferences (e.g. from cache), preserve them
       // rather than wiping everything just because the remote update couldn't be decrypted.
@@ -669,22 +726,76 @@ class HashtagPreferencesService {
     }
 
     const decryptors = new Map();
-    const registerDecryptor = (scheme, handler) => {
+    const sources = new Map();
+    const registerDecryptor = (scheme, handler, source = "unknown") => {
       if (!scheme || typeof handler !== "function" || decryptors.has(scheme)) {
         return;
       }
       decryptors.set(scheme, handler);
+      sources.set(scheme, source);
     };
 
     if (signerHasNip44) {
-      registerDecryptor("nip44", (payload) => signer.nip44Decrypt(userPubkey, payload));
-      registerDecryptor("nip44_v2", (payload) =>
-        signer.nip44Decrypt(userPubkey, payload),
+      registerDecryptor(
+        "nip44",
+        (payload) => signer.nip44Decrypt(userPubkey, payload),
+        "active-signer",
+      );
+      registerDecryptor(
+        "nip44_v2",
+        (payload) => signer.nip44Decrypt(userPubkey, payload),
+        "active-signer",
       );
     }
 
     if (signerHasNip04) {
-      registerDecryptor("nip04", (payload) => signer.nip04Decrypt(userPubkey, payload));
+      registerDecryptor(
+        "nip04",
+        (payload) => signer.nip04Decrypt(userPubkey, payload),
+        "active-signer",
+      );
+    }
+
+    const nostrApi = typeof window !== "undefined" ? window?.nostr : null;
+    if (nostrApi) {
+      if (typeof nostrApi.nip04?.decrypt === "function") {
+        registerDecryptor(
+          "nip04",
+          (payload) => nostrApi.nip04.decrypt(userPubkey, payload),
+          "extension",
+        );
+      }
+
+      const nip44 =
+        nostrApi.nip44 && typeof nostrApi.nip44 === "object"
+          ? nostrApi.nip44
+          : null;
+      if (nip44) {
+        if (typeof nip44.decrypt === "function") {
+          registerDecryptor(
+            "nip44",
+            (payload) => nip44.decrypt(userPubkey, payload),
+            "extension",
+          );
+        }
+
+        const nip44v2 =
+          nip44.v2 && typeof nip44.v2 === "object" ? nip44.v2 : null;
+        if (nip44v2 && typeof nip44v2.decrypt === "function") {
+          registerDecryptor(
+            "nip44_v2",
+            (payload) => nip44v2.decrypt(userPubkey, payload),
+            "extension",
+          );
+          if (!decryptors.has("nip44")) {
+            registerDecryptor(
+              "nip44",
+              (payload) => nip44v2.decrypt(userPubkey, payload),
+              "extension",
+            );
+          }
+        }
+      }
     }
 
     if (!decryptors.size) {
@@ -703,6 +814,14 @@ class HashtagPreferencesService {
       if (!decryptFn) {
         continue;
       }
+      const source = sources.get(scheme);
+
+      if (source === "extension") {
+        userLogger.info(
+          `${LOG_PREFIX} Attempting decryption via window.nostr fallback (${scheme})`,
+        );
+      }
+
       try {
         const plaintext = await decryptFn(ciphertext);
         if (typeof plaintext !== "string") {
@@ -714,6 +833,12 @@ class HashtagPreferencesService {
         }
         return { ok: true, plaintext, scheme };
       } catch (error) {
+        if (source === "extension") {
+          userLogger.warn(
+            `${LOG_PREFIX} window.nostr fallback decryption failed (${scheme})`,
+            error,
+          );
+        }
         attemptErrors.push({ scheme, error });
       }
     }

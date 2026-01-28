@@ -1263,6 +1263,7 @@ export class NostrClient {
     this.unreachableRelays = new Set();
     this.isInitialized = false;
     this.nip46Client = null;
+    this.pendingHandshakeCancel = null;
     this.remoteSignerListeners = new Set();
     this.sessionActorListeners = new Set();
     const storedRemoteSigner = this.getStoredNip46Metadata();
@@ -1708,6 +1709,9 @@ export class NostrClient {
           return;
         }
         settled = true;
+        if (this.pendingHandshakeCancel === cancelHandshake) {
+          this.pendingHandshakeCancel = null;
+        }
         try {
           subscription?.unsub?.();
         } catch (error) {
@@ -1717,6 +1721,15 @@ export class NostrClient {
           clearTimeout(timeoutId);
         }
       };
+
+      const cancelHandshake = () => {
+        cleanup();
+        const error = new Error("Remote signer connection cancelled.");
+        error.code = "login-cancelled";
+        reject(error);
+      };
+
+      this.pendingHandshakeCancel = cancelHandshake;
 
       const timeoutId = setTimeout(() => {
         cleanup();
@@ -2438,6 +2451,16 @@ export class NostrClient {
    */
   async disconnectRemoteSigner({ keepStored = true } = {}) {
     this.pendingRemoteSignerRestore = null;
+
+    if (this.pendingHandshakeCancel) {
+      try {
+        this.pendingHandshakeCancel();
+      } catch (error) {
+        devLogger.warn("[nostr] Failed to cancel pending handshake:", error);
+      }
+      this.pendingHandshakeCancel = null;
+    }
+
     if (this.nip46Client) {
       try {
         await this.nip46Client.destroy();
@@ -3549,6 +3572,7 @@ export class NostrClient {
    * @param {string} [params.dTag] - Optional d-tag for addressable events (NIP-33).
    * @param {string[]} [params.relayUrls] - List of relays to query. Defaults to client's configured relays.
    * @param {function} [params.fetchFn] - Custom fetch function (mocks or specialized logic). Defaults to `pool.list`.
+   * @param {number} [params.timeoutMs] - Optional per-relay timeout for list fetches; defaults to a higher list-friendly baseline.
    * @returns {Promise<import("nostr-tools").Event[]>} Deduplicated list of events found across all relays.
    */
   async fetchListIncrementally({
@@ -3558,7 +3582,14 @@ export class NostrClient {
     relayUrls,
     fetchFn,
     since,
+    timeoutMs = 10000,
   } = {}) {
+    // Explanation:
+    // Optimizes network usage by only fetching "new" events from each relay.
+    // It uses `SyncMetadataStore` to track the `created_at` of the last seen event per relay.
+    // - If we have a `lastSeen` timestamp, we request `since: lastSeen + 1`.
+    // - If that returns nothing (or fails), we might fall back to a full fetch depending on context.
+    // - Updates the `lastSeen` timestamp upon success.
     if (!kind || !pubkey) {
       throw new Error("fetchListIncrementally requires kind and pubkey");
     }
@@ -3572,7 +3603,29 @@ export class NostrClient {
       ? relayUrls
       : this.relays;
 
-    const normalizedRelays = sanitizeRelayList(this.getHealthyRelays(relaysToUse));
+    const healthyCandidates = this.getHealthyRelays(relaysToUse);
+    const readPreferences = new Set(Array.isArray(this.readRelays) ? this.readRelays : []);
+
+    // Sort relays: prefer user's read relays first
+    const sortedRelays = healthyCandidates.sort((a, b) => {
+      const aPreferred = readPreferences.has(a);
+      const bPreferred = readPreferences.has(b);
+      if (aPreferred && !bPreferred) return -1;
+      if (!aPreferred && bPreferred) return 1;
+      return 0;
+    });
+
+    // Cap the number of relays to avoid excessive requests
+    const cappedRelays = sortedRelays.slice(0, 8);
+    const normalizedRelays = sanitizeRelayList(cappedRelays);
+
+    if (isDevMode) {
+      devLogger.log("[fetchListIncrementally] Selected relays:", {
+        count: normalizedRelays.length,
+        relays: normalizedRelays,
+      });
+    }
+
     const results = [];
     const concurrencyLimit = 8;
 
@@ -3633,11 +3686,14 @@ export class NostrClient {
           doFullFetch = false;
         }
 
+        // Allow callers to override list fetch timeouts without changing non-list query behavior.
+        const listTimeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 10000;
+
         try {
           // Wrap fetch with a timeout to prevent hanging on slow relays
           let events = await withRequestTimeout(
             actualFetchFn(relayUrl, filter),
-            6000,
+            listTimeoutMs,
             null,
             `Fetch from ${relayUrl} timed out`
           );
@@ -3672,7 +3728,7 @@ export class NostrClient {
               delete filter.since;
               const events = await withRequestTimeout(
                 actualFetchFn(relayUrl, filter),
-                6000,
+                listTimeoutMs,
                 null,
                 `Full fetch fallback from ${relayUrl} timed out`
               );
@@ -3695,6 +3751,7 @@ export class NostrClient {
             }
           } else {
              devLogger.warn(`[fetchListIncrementally] Fetch failed for ${relayUrl}`, error);
+             this.markRelayUnreachable(relayUrl);
              return { error, ok: false };
           }
         }
@@ -4073,6 +4130,25 @@ export class NostrClient {
     return results;
   }
 
+  markRelayUnreachable(url, ttlMs = 60000) {
+    if (!url || typeof url !== "string") {
+      return;
+    }
+    const normalized = url.trim();
+    if (!normalized) {
+      return;
+    }
+    this.unreachableRelays.add(normalized);
+    if (ttlMs > 0) {
+      setTimeout(() => {
+        this.unreachableRelays.delete(normalized);
+        if (isDevMode) {
+          devLogger.debug(`[nostr] Cleared temporary failure mark for ${normalized}`);
+        }
+      }, ttlMs);
+    }
+  }
+
   getHealthyRelays(candidates) {
     const source = Array.isArray(candidates) ? candidates : this.relays;
     if (!this.unreachableRelays.size) {
@@ -4427,6 +4503,13 @@ export class NostrClient {
         });
         if (decrypted?.ok) {
           messages.push(decrypted);
+          if (typeof options.onMessage === "function") {
+            try {
+              options.onMessage(decrypted);
+            } catch (error) {
+              devLogger.warn("[nostr] onMessage callback threw:", error);
+            }
+          }
         }
       } catch (error) {
         devLogger.warn("[nostr] Failed to decrypt DM event during list.", {
@@ -6589,6 +6672,12 @@ export class NostrClient {
    * @private
    */
   async persistLocalData(reason = "unspecified") {
+    // Strategy:
+    // 1. Try to persist to IndexedDB (preferred, large capacity).
+    // 2. If IDB fails or returns false, fall back to LocalStorage (limited capacity).
+    // The `EventsCacheStore` handles differential updates (only saving changed fingerprints)
+    // to keep IDB writes fast.
+
     const payload = this.buildCachePayload();
     const startedAt = Date.now();
     let summary = null;
@@ -6705,6 +6794,12 @@ export class NostrClient {
    * @returns {import("nostr-tools").Sub} The subscription object. Call `unsub()` to stop.
    */
   subscribeVideos(onVideo, options = {}) {
+    // Explanation:
+    // This method handles the primary video feed. It uses a buffering strategy to
+    // prevent UI thrashing when thousands of events arrive at once (e.g. initial load).
+    // Incoming events are pushed to `eventBuffer` and processed in batches
+    // via `flushEventBuffer` which is debounced.
+
     const { since, until, limit } = options;
     const latestCachedCreatedAt = this.getLatestCachedCreatedAt();
 
@@ -6738,6 +6833,7 @@ export class NostrClient {
     // BUFFERING STATE
     // We collect events here instead of processing them instantly to avoid
     // 1000s of React re-renders during the initial relay dump.
+    // The buffer acts as a pressure valve between the network and the UI.
     let eventBuffer = [];
     const EVENT_FLUSH_DEBOUNCE_MS = 75;
     let flushTimerId = null;
@@ -6748,6 +6844,13 @@ export class NostrClient {
      * This batch processing is critical for performance during the initial
      * relay dump (thousands of events). It prevents React from re-rendering
      * for every single event.
+     *
+     * Algorithm:
+     * 1. Drain the buffer.
+     * 2. Validate & Convert events to Video objects.
+     * 3. Apply tombstones (filter out known deleted items).
+     * 4. Update `activeMap` (Last-Write-Wins based on created_at).
+     * 5. Persist the new state to cache.
      */
     const flushEventBuffer = () => {
       if (!eventBuffer.length) {
@@ -7651,6 +7754,17 @@ export class NostrClient {
    * @returns {Promise<object[]>} A promise resolving to an array of Video objects (Newest -> Oldest).
    */
   async hydrateVideoHistory(video) {
+    // Explanation:
+    // This method reconstructs the edit history of a video series.
+    // Since Nostr events are immutable, "editing" creates a new event.
+    // We link these events together using:
+    // 1. `videoRootId` (V3 canonical ID)
+    // 2. `d` tag (NIP-33 addressability)
+    // 3. Fallback: Matching ID for legacy V1/V2 posts
+    //
+    // The method first checks local cache (`allEvents`), and if data is sparse,
+    // queries relays for the specific `d` tag to find missing links.
+
     if (!video || typeof video !== "object") {
       return [];
     }

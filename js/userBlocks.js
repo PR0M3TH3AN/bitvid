@@ -18,6 +18,8 @@ import {
   assertAnyRelayAccepted,
 } from "./nostrPublish.js";
 import { profileCache } from "./state/profileCache.js";
+import { DEFAULT_RELAY_URLS } from "./nostr/toolkit.js";
+import { relayManager } from "./relayManager.js";
 
 class TinyEventEmitter {
   constructor() {
@@ -71,6 +73,16 @@ export const USER_BLOCK_EVENTS = Object.freeze({
 const FAST_BLOCKLIST_RELAY_LIMIT = 3;
 const FAST_BLOCKLIST_TIMEOUT_MS = 2500;
 const BACKGROUND_BLOCKLIST_TIMEOUT_MS = 6000;
+const DECRYPT_TIMEOUT_MS = 90000;
+const DECRYPT_RETRY_DELAY_MS = 10000;
+
+function sanitizeRelayList(candidate) {
+  return Array.isArray(candidate)
+    ? candidate
+        .map((url) => (typeof url === "string" ? url.trim() : ""))
+        .filter(Boolean)
+    : [];
+}
 
 function normalizeEncryptionToken(value) {
   if (typeof value !== "string") {
@@ -634,6 +646,7 @@ class UserBlockListManager {
     this.loaded = false;
     this.emitter = new TinyEventEmitter();
     this.seedStateCache = new Map();
+    this.decryptRetryTimeoutId = null;
 
     profileCache.subscribe((event, detail) => {
       if (event === "profileChanged") {
@@ -655,6 +668,10 @@ class UserBlockListManager {
     this.muteEventId = null;
     this.muteEventCreatedAt = null;
     this.loaded = false;
+    if (this.decryptRetryTimeoutId) {
+      clearTimeout(this.decryptRetryTimeoutId);
+      this.decryptRetryTimeoutId = null;
+    }
   }
 
   on(eventName, handler) {
@@ -663,6 +680,32 @@ class UserBlockListManager {
 
   getBlockedPubkeys() {
     return Array.from(this.blockedPubkeys);
+  }
+
+  scheduleDecryptRetry(userPubkey, error) {
+    if (!userPubkey) {
+      return;
+    }
+    if (this.decryptRetryTimeoutId) {
+      clearTimeout(this.decryptRetryTimeoutId);
+    }
+    this.decryptRetryTimeoutId = setTimeout(() => {
+      this.decryptRetryTimeoutId = null;
+      if (this.activePubkey !== userPubkey) {
+        return;
+      }
+      this.loadBlocks(userPubkey, {
+        since: Number.isFinite(this.blockEventCreatedAt)
+          ? this.blockEventCreatedAt
+          : undefined,
+      }).catch((retryError) => {
+        userLogger.warn("[UserBlockList] Decryption retry failed:", retryError);
+      });
+    }, DECRYPT_RETRY_DELAY_MS);
+    devLogger.log(
+      `[UserBlockList] Decryption timed out; scheduling retry in ${DECRYPT_RETRY_DELAY_MS / 1000}s.`,
+      error,
+    );
   }
 
   isBlocked(pubkey) {
@@ -726,7 +769,9 @@ class UserBlockListManager {
       }
     };
 
-    emitStatus({ status: "loading", relays: Array.from(nostrClient.relays || []) });
+    const readRelays = relayManager.getReadRelayUrls();
+    const relays = readRelays.length > 0 ? readRelays : Array.from(DEFAULT_RELAY_URLS);
+    emitStatus({ status: "loading", relays });
 
     const localBlocks = this._loadLocal(normalized);
     const hasLocalData = !!localBlocks;
@@ -753,13 +798,28 @@ class UserBlockListManager {
     };
 
     const resolveDecryptors = async (event) => {
-      const signer = getActiveSigner();
-      const signerHasNip04 = typeof signer?.nip04Decrypt === "function";
-      const signerHasNip44 = typeof signer?.nip44Decrypt === "function";
+      let signer = getActiveSigner();
 
       const hints = extractEncryptionHints(event);
       const requiresNip44 = hints.includes("nip44") || hints.includes("nip44_v2");
       const requiresNip04 = !hints.length || hints.includes("nip04");
+
+      const signerHasRequiredDecryptors = (candidate) => {
+        const hasNip04 = typeof candidate?.nip04Decrypt === "function";
+        const hasNip44 = typeof candidate?.nip44Decrypt === "function";
+        return (!requiresNip44 || hasNip44) && (!requiresNip04 || hasNip04);
+      };
+
+      if (
+        !signer ||
+        (!signerHasRequiredDecryptors(signer) &&
+          typeof nostrClient?.ensureActiveSignerForPubkey === "function")
+      ) {
+        signer = await nostrClient.ensureActiveSignerForPubkey(normalized);
+      }
+
+      const signerHasNip04 = typeof signer?.nip04Decrypt === "function";
+      const signerHasNip44 = typeof signer?.nip44Decrypt === "function";
 
       let permissionError = null;
       if ((!signerHasNip44 && requiresNip44) || (!signerHasNip04 && requiresNip04)) {
@@ -857,10 +917,6 @@ class UserBlockListManager {
     };
 
     try {
-      const relays = Array.isArray(nostrClient.relays)
-        ? nostrClient.relays.filter((relay) => typeof relay === "string" && relay)
-        : [];
-
       if (!relays.length) {
         // Only clear if truly no relays, though loadBlocks with no relays is weird.
         if (!this.loaded) {
@@ -878,6 +934,13 @@ class UserBlockListManager {
         events,
         { skipIfEmpty = false, source = "fast" } = {},
       ) => {
+        const previousState = {
+          blockedPubkeys: new Set(this.blockedPubkeys),
+          blockEventId: this.blockEventId,
+          blockEventCreatedAt: this.blockEventCreatedAt,
+          loaded: this.loaded,
+        };
+
         if (!Array.isArray(events) || !events.length) {
           if (skipIfEmpty) {
             return;
@@ -923,26 +986,19 @@ class UserBlockListManager {
           return;
         }
 
-        // Separate by kind to merge distinct lists (Block vs Mute)
-        const muteEvents = validEvents.filter((e) => e.kind === 10000);
-
-        // Prioritize tagged mute lists (Bitvid) over plain ones (others)
-        const taggedMutes = muteEvents
-          .filter((e) => isTaggedBlockListEvent(e))
-          .sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0));
-
-        const plainMutes = muteEvents
-          .filter((e) => !isTaggedBlockListEvent(e))
-          .sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0));
-
-        const newestMute =
-          taggedMutes.length > 0 ? taggedMutes[0] : plainMutes[0] || null;
-
+        // Separate by logic (Block vs Mute)
+        // Block: Kind 10000 with d=user-blocks OR Kind 30002 (legacy)
         const blockEvents = validEvents
-          .filter((e) => e.kind === 30002)
+          .filter((e) => isTaggedBlockListEvent(e) || e.kind === 30002)
+          .sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0));
+
+        // Mute: Kind 10000 WITHOUT d=user-blocks
+        const muteEvents = validEvents
+          .filter((e) => e.kind === 10000 && !isTaggedBlockListEvent(e))
           .sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0));
 
         const newestBlock = blockEvents[0] || null;
+        const newestMute = muteEvents[0] || null;
 
         const newestMuteTime = Number.isFinite(newestMute?.created_at)
           ? newestMute.created_at
@@ -1011,9 +1067,26 @@ class UserBlockListManager {
         let decryptionError = null;
 
         try {
-          const [muteList, blockList] = await Promise.all([
+          const decryptPromise = Promise.all([
             decryptEvent(newestMute),
             decryptEvent(newestBlock),
+          ]);
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(
+              () => {
+                const timeoutError = new Error(
+                  `Decryption timed out after ${DECRYPT_TIMEOUT_MS / 1000}s`,
+                );
+                timeoutError.code = "user-blocklist-decrypt-timeout";
+                reject(timeoutError);
+              },
+              DECRYPT_TIMEOUT_MS,
+            ),
+          );
+
+          const [muteList, blockList] = await Promise.race([
+            decryptPromise,
+            timeoutPromise,
           ]);
 
           muteList.forEach((pk) => mergedPubkeys.add(pk));
@@ -1024,11 +1097,22 @@ class UserBlockListManager {
         }
 
         if (decryptionError) {
+          if (decryptionError.code === "user-blocklist-decrypt-timeout") {
+            this.blockedPubkeys = previousState.blockedPubkeys;
+            this.blockEventId = previousState.blockEventId;
+            this.blockEventCreatedAt = previousState.blockEventCreatedAt;
+            this.loaded = true;
+            emitStatus({ status: "settled" });
+            this.scheduleDecryptRetry(normalized, decryptionError);
+            return;
+          }
           userLogger.warn(
             "[UserBlockList] Decryption failed during merge.",
             decryptionError,
           );
-          this.reset();
+          this.blockedPubkeys = previousState.blockedPubkeys;
+          this.blockEventId = previousState.blockEventId;
+          this.blockEventCreatedAt = previousState.blockEventCreatedAt;
           this.loaded = true;
           emitStatus({
             status: "error",
@@ -1080,13 +1164,15 @@ class UserBlockListManager {
           pubkey: normalized,
           relayUrls: relays,
           since: fetchSince,
+          timeoutMs: 12000,
         }),
         nostrClient.fetchListIncrementally({
-          kind: 30002,
+          kind: 10000,
           pubkey: normalized,
           dTag: BLOCK_LIST_IDENTIFIER,
           relayUrls: relays,
           since: fetchSince,
+          timeoutMs: 12000,
         }),
       ]);
 
@@ -1113,7 +1199,11 @@ class UserBlockListManager {
   }
 
   _loadLocal(actorHex) {
-    const cached = profileCache.get("blocks");
+    const normalizedActorHex = normalizeHex(actorHex);
+    if (!normalizedActorHex) {
+      return null;
+    }
+    const cached = profileCache.getProfileData(normalizedActorHex, "blocks");
     if (Array.isArray(cached)) {
       return new Set(cached);
     }
@@ -1121,7 +1211,15 @@ class UserBlockListManager {
   }
 
   _saveLocal(actorHex) {
-    profileCache.set("blocks", Array.from(this.blockedPubkeys));
+    const normalizedActorHex = normalizeHex(actorHex);
+    if (!normalizedActorHex) {
+      return;
+    }
+    profileCache.setProfileData(
+      normalizedActorHex,
+      "blocks",
+      Array.from(this.blockedPubkeys),
+    );
   }
 
   _getSeedState(actorHex) {
@@ -1134,7 +1232,8 @@ class UserBlockListManager {
       return this.seedStateCache.get(normalized);
     }
 
-    const stored = profileCache.get("blocks_meta") || {};
+    const stored =
+      profileCache.getProfileData(normalized, "blocks_meta") || {};
     const seeded = !!stored.seeded;
     const removals = new Set(Array.isArray(stored.removals) ? stored.removals : []);
 
@@ -1149,7 +1248,7 @@ class UserBlockListManager {
     const state = this.seedStateCache.get(normalized);
     if (!state) return;
 
-    profileCache.set("blocks_meta", {
+    profileCache.setProfileData(normalized, "blocks_meta", {
       seeded: state.seeded,
       removals: Array.from(state.removals),
     });

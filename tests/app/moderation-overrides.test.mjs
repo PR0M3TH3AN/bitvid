@@ -112,7 +112,21 @@ test("handleModerationOverride resumes deferred playback", async (t) => {
 test("handleModerationBlock requests a block, clears overrides, and refreshes hidden state", async (t) => {
   withMockedNostrTools(t);
 
-  const app = await createModerationAppHarness();
+  const ensureLoadedMock = mock.fn(async () => {});
+  let blockedState = false;
+  const addBlockMock = mock.fn(async () => {
+    blockedState = true;
+    return { ok: true };
+  });
+  const isBlockedMock = mock.fn(() => blockedState);
+
+  const mockUserBlocks = {
+    ensureLoaded: ensureLoadedMock,
+    addBlock: addBlockMock,
+    isBlocked: isBlockedMock,
+  };
+
+  const app = await createModerationAppHarness({ userBlocks: mockUserBlocks });
   app.getActiveModerationThresholds = () => ({
     autoplayBlockThreshold: Number.POSITIVE_INFINITY,
     blurThreshold: Number.POSITIVE_INFINITY,
@@ -179,28 +193,6 @@ test("handleModerationBlock requests a block, clears overrides, and refreshes hi
     },
   };
 
-  const originalEnsureLoaded = userBlocks.ensureLoaded;
-  const originalAddBlock = userBlocks.addBlock;
-  const originalIsBlocked = userBlocks.isBlocked;
-
-  const ensureLoadedMock = mock.fn(async () => {});
-  let blockedState = false;
-  const addBlockMock = mock.fn(async () => {
-    blockedState = true;
-    return { ok: true };
-  });
-  const isBlockedMock = mock.fn(() => blockedState);
-
-  userBlocks.ensureLoaded = ensureLoadedMock;
-  userBlocks.addBlock = addBlockMock;
-  userBlocks.isBlocked = isBlockedMock;
-
-  t.after(() => {
-    userBlocks.ensureLoaded = originalEnsureLoaded;
-    userBlocks.addBlock = originalAddBlock;
-    userBlocks.isBlocked = originalIsBlocked;
-  });
-
   await app.handleModerationOverride({ video: incomingVideo, card });
 
   assert.equal(storedVideo.moderation.viewerOverride?.showAnyway, true);
@@ -237,29 +229,21 @@ test("handleModerationBlock requests a block, clears overrides, and refreshes hi
 test("handleModerationBlock returns false when viewer is logged out", async (t) => {
   withMockedNostrTools(t);
 
-  const app = await createModerationAppHarness();
-  app.pubkey = "f".repeat(64);
-  app.isUserLoggedIn = () => false;
-  app.showStatus = mock.fn(() => {});
-  app.showError = mock.fn(() => {});
-
-  const originalEnsureLoaded = userBlocks.ensureLoaded;
-  const originalAddBlock = userBlocks.addBlock;
-  const originalIsBlocked = userBlocks.isBlocked;
-
   const ensureLoadedMock = mock.fn(async () => {});
   const addBlockMock = mock.fn(async () => ({ ok: true }));
   const isBlockedMock = mock.fn(() => false);
 
-  userBlocks.ensureLoaded = ensureLoadedMock;
-  userBlocks.addBlock = addBlockMock;
-  userBlocks.isBlocked = isBlockedMock;
+  const mockUserBlocks = {
+    ensureLoaded: ensureLoadedMock,
+    addBlock: addBlockMock,
+    isBlocked: isBlockedMock,
+  };
 
-  t.after(() => {
-    userBlocks.ensureLoaded = originalEnsureLoaded;
-    userBlocks.addBlock = originalAddBlock;
-    userBlocks.isBlocked = originalIsBlocked;
-  });
+  const app = await createModerationAppHarness({ userBlocks: mockUserBlocks });
+  app.pubkey = "f".repeat(64);
+  app.isUserLoggedIn = () => false;
+  app.showStatus = mock.fn(() => {});
+  app.showError = mock.fn(() => {});
 
   const video = {
     id: "c".repeat(64),

@@ -1,7 +1,10 @@
 {
 	"name": "bitvid",
 	"image": "mcr.microsoft.com/devcontainers/javascript-node:22",
-	"postCreateCommand": "npm ci && npm run build",
+	"features": {
+		"ghcr.io/devcontainers/features/github-cli:1": {}
+	},
+	"postCreateCommand": "npm ci && npm run build && npx playwright install",
 	"customizations": {
 		"vscode": {
 			"extensions": [

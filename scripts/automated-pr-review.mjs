@@ -6,7 +6,10 @@ import path from 'node:path';
 const SENSITIVE_PATHS = [
   /^js\/nostr\//,
   /^js\/storage\//,
+  /^js\/auth\//,
   /^js\/dmDecryptor\.js$/,
+  /^js\/magnetUtils\.js$/,
+  /^js\/nostr\/adapters\/nip07Adapter\.js$/,
   /^js\/services\/storageService\.js$/,
   /^js\/services\/attachmentService\.js$/,
   /^js\/services\/hashtagPreferencesService\.js$/,
@@ -86,6 +89,13 @@ function checkReleaseChannel(changedFiles) {
       warnings.push(`⚠️ **Release Channel Warning**: This PR targets \`main\` but modifies the following critical configuration files: ${modifiedCriticalFiles.map(f => `\`${f}\``).join(', ')}.`);
       warnings.push(`> **Guidance:** \`main\` is the production track. Ensure feature flags in \`js/constants.js\` are set to safe defaults (usually \`false\`) and \`config/instance-config.js\` has production-appropriate settings (e.g. \`IS_DEV_MODE\`).`);
     }
+  } else if (baseRef === 'unstable') {
+     const criticalFiles = ['js/constants.js'];
+     const modifiedCriticalFiles = changedFiles.filter(f => criticalFiles.includes(f));
+     if (modifiedCriticalFiles.length > 0) {
+         warnings.push(`ℹ️ **Release Channel Info**: This PR targets \`unstable\`.`);
+         warnings.push(`> **Guidance:** \`unstable\` is the experimentation lane. If you are adding risky behavior, gate it behind feature flags in \`js/constants.js\` and document the toggle/rollback plan. See \`AGENTS.md\` for details.`);
+     }
   }
   return warnings;
 }
@@ -235,12 +245,13 @@ async function main() {
       console.error('Error posting comment:', e);
     }
 
-  } else {
-    console.log('Not in CI or missing tokens. Printing report to stdout:');
-    console.log('---------------------------------------------------');
-    console.log(commentBody);
-    console.log('---------------------------------------------------');
   }
+
+  // Always print the report to stdout so it's visible in logs (especially if posting fails or for debugging)
+  console.log('---------------------------------------------------');
+  console.log('PR Review Report:');
+  console.log(commentBody);
+  console.log('---------------------------------------------------');
 
     if (hasFailures) {
       process.exit(1);

@@ -24,7 +24,8 @@ async function fuzzTest(iteration) {
     "buildReactionEvent",
     "buildZapRequestEvent",
     "sanitizeAdditionalTags",
-    "validateEventStructure"
+    "validateEventStructure",
+    "setNostrEventSchemaOverrides"
   ];
 
   const targetName = rng.oneOf(targets);
@@ -114,6 +115,22 @@ async function fuzzTest(iteration) {
        }
        inputs = { type, event };
        Schemas.validateEventStructure(type, event);
+       break;
+
+    case "setNostrEventSchemaOverrides":
+       const randomType = rng.oneOf(Object.values(Schemas.NOTE_TYPES));
+       if (rng.bool()) {
+           // Circular object
+           const obj = { foo: "bar" };
+           obj.self = obj;
+           inputs = { [randomType]: obj };
+       } else {
+           inputs = { [randomType]: genParams() };
+       }
+       // If we set overrides, we should also trigger usage of them to see if it crashes later
+       Schemas.setNostrEventSchemaOverrides(inputs);
+       // Trigger usage
+       Schemas.getNostrEventSchema(randomType);
        break;
   }
 

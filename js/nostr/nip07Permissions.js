@@ -192,26 +192,13 @@ export async function runNip07WithRetry(
     retryMultiplier = 2,
   } = {},
 ) {
-  let hasStarted = false;
-  let cachedPromise = null;
-
-  const getOrStartOperation = () => {
-    if (!hasStarted) {
-      hasStarted = true;
-      try {
-        cachedPromise = Promise.resolve(operation());
-      } catch (error) {
-        hasStarted = false;
-        cachedPromise = null;
-        throw error;
-      }
-    }
-
-    return cachedPromise;
-  };
+  // We wrap the operation invocation to ensure it returns a fresh promise each time
+  // we attempt it. This is critical for retries: if the first attempt stalls (dropped
+  // by extension), re-awaiting the same promise would just keep waiting on the dead request.
+  const invokeOperation = () => Promise.resolve(operation());
 
   try {
-    return await withNip07Timeout(getOrStartOperation, {
+    return await withNip07Timeout(invokeOperation, {
       timeoutMs,
       message: NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE,
     });
@@ -230,10 +217,11 @@ export async function runNip07WithRetry(
     );
 
     devLogger.warn(
-      `[nostr] ${label} taking longer than ${timeoutMs}ms. Waiting up to ${extendedTimeout}ms for extension response.`,
+      `[nostr] ${label} taking longer than ${timeoutMs}ms. Retrying with ${extendedTimeout}ms timeout.`,
     );
 
-    return withNip07Timeout(getOrStartOperation, {
+    // On retry, we invoke operation() again to send a fresh request to the extension.
+    return withNip07Timeout(invokeOperation, {
       timeoutMs: extendedTimeout,
       message: NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE,
     });
