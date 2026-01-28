@@ -1,15 +1,14 @@
 import { devLogger, userLogger } from "../utils/logger.js";
 
-export const NIP07_LOGIN_TIMEOUT_MS = 60_000; // 60 seconds
+export const NIP07_LOGIN_TIMEOUT_MS = 20_000; // 20 seconds
 export const NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE =
   "Timed out waiting for the NIP-07 extension. Confirm the extension prompt in your browser toolbar and try again.";
 const NIP07_PERMISSIONS_STORAGE_KEY = "bitvid:nip07:permissions";
 
 // Give the NIP-07 extension enough time to surface its approval prompt and let
-// users unlock/authorize it. Seven seconds proved too aggressive once vendors
-// started requiring an unlock step, so we extend the window substantially while
+// users unlock/authorize it. The default is tuned to keep login responsive while
 // still allowing manual overrides via __BITVID_NIP07_ENABLE_VARIANT_TIMEOUT_MS__.
-const DEFAULT_ENABLE_VARIANT_TIMEOUT_MS = 45_000;
+const DEFAULT_ENABLE_VARIANT_TIMEOUT_MS = 5_000;
 
 export const DEFAULT_NIP07_ENCRYPTION_METHODS = Object.freeze([
   // Encryption helpers — request both legacy NIP-04 and modern NIP-44 upfront
@@ -88,6 +87,21 @@ class Nip07RequestQueue {
 // when multiple components (blocks, DMs, auth) query the extension simultaneously,
 // while allowing critical tasks (e.g. blocklist decryption) to jump the line.
 const requestQueue = new Nip07RequestQueue();
+
+export function getNip07LoginTimeoutMs() {
+  const overrideValue =
+    typeof globalThis !== "undefined" &&
+    globalThis !== null &&
+    Number.isFinite(globalThis.__BITVID_NIP07_LOGIN_TIMEOUT_MS__)
+      ? Math.floor(globalThis.__BITVID_NIP07_LOGIN_TIMEOUT_MS__)
+      : null;
+
+  if (overrideValue !== null && overrideValue > 0) {
+    return Math.max(1_000, overrideValue);
+  }
+
+  return NIP07_LOGIN_TIMEOUT_MS;
+}
 
 export function getEnableVariantTimeoutMs() {
   const overrideValue =
@@ -207,7 +221,7 @@ export function clearStoredNip07Permissions() {
 export function withNip07Timeout(
   operation,
   {
-    timeoutMs = NIP07_LOGIN_TIMEOUT_MS,
+    timeoutMs = getNip07LoginTimeoutMs(),
     message = NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE,
   } = {},
 ) {
@@ -215,7 +229,7 @@ export function withNip07Timeout(
   const effectiveTimeout =
     Number.isFinite(numericTimeout) && numericTimeout > 0
       ? numericTimeout
-      : NIP07_LOGIN_TIMEOUT_MS;
+      : getNip07LoginTimeoutMs();
 
   let timeoutId;
   const timeoutPromise = new Promise((_, reject) => {
@@ -247,7 +261,7 @@ export async function runNip07WithRetry(
   operation,
   {
     label = "NIP-07 operation",
-    timeoutMs = NIP07_LOGIN_TIMEOUT_MS,
+    timeoutMs = getNip07LoginTimeoutMs(),
     retryMultiplier = 2,
     priority = NIP07_PRIORITY.NORMAL,
   } = {},
@@ -322,9 +336,10 @@ export async function requestEnablePermissions(
   }
 
   const enableTimeoutMs = getEnableVariantTimeoutMs();
+  const loginTimeoutMs = getNip07LoginTimeoutMs();
   const primaryEnableTimeoutMs = Math.min(15_000, enableTimeoutMs);
   const fallbackEnableTimeoutMs = Math.min(
-    NIP07_LOGIN_TIMEOUT_MS,
+    loginTimeoutMs,
     enableTimeoutMs,
   );
 
@@ -372,6 +387,7 @@ export const __testExports = {
   runNip07WithRetry,
   withNip07Timeout,
   getEnableVariantTimeoutMs,
+  getNip07LoginTimeoutMs,
   readStoredNip07Permissions,
   writeStoredNip07Permissions,
   clearStoredNip07Permissions,
