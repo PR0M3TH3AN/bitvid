@@ -31,6 +31,7 @@ import { devLogger, userLogger } from "./utils/logger.js";
 import moderationService from "./services/moderationService.js";
 import nostrService from "./services/nostrService.js";
 import { profileCache } from "./state/profileCache.js";
+import { runNip07WithRetry, NIP07_PRIORITY } from "./nostr/nip07Permissions.js";
 
 const SUBSCRIPTION_SET_KIND =
   getNostrEventSchema(NOTE_TYPES.SUBSCRIPTION_LIST)?.kind ?? 30000;
@@ -776,22 +777,36 @@ class SubscriptionsManager {
     };
 
     if (signerHasNip44) {
-      registerDecryptor("nip44", (payload) => signer.nip44Decrypt(userPubkey, payload));
-      registerDecryptor(
-        "nip44_v2",
-        (payload) => signer.nip44Decrypt(userPubkey, payload)
+      registerDecryptor("nip44", (payload) =>
+        signer.nip44Decrypt(userPubkey, payload, {
+          priority: NIP07_PRIORITY.HIGH,
+        }),
+      );
+      registerDecryptor("nip44_v2", (payload) =>
+        signer.nip44Decrypt(userPubkey, payload, {
+          priority: NIP07_PRIORITY.HIGH,
+        }),
       );
     }
 
     if (signerHasNip04) {
-      registerDecryptor("nip04", (payload) => signer.nip04Decrypt(userPubkey, payload));
+      registerDecryptor("nip04", (payload) =>
+        signer.nip04Decrypt(userPubkey, payload, {
+          priority: NIP07_PRIORITY.HIGH,
+        }),
+      );
     }
 
     if (nostrApi) {
       if (typeof nostrApi.nip04?.decrypt === "function") {
-        registerDecryptor(
-          "nip04",
-          (payload) => nostrApi.nip04.decrypt(userPubkey, payload)
+        registerDecryptor("nip04", (payload) =>
+          runNip07WithRetry(
+            () => nostrApi.nip04.decrypt(userPubkey, payload),
+            {
+              label: "nip04.decrypt",
+              priority: NIP07_PRIORITY.HIGH,
+            },
+          ),
         );
       }
 
@@ -801,23 +816,38 @@ class SubscriptionsManager {
           : null;
       if (nip44) {
         if (typeof nip44.decrypt === "function") {
-          registerDecryptor(
-            "nip44",
-            (payload) => nip44.decrypt(userPubkey, payload)
+          registerDecryptor("nip44", (payload) =>
+            runNip07WithRetry(
+              () => nip44.decrypt(userPubkey, payload),
+              {
+                label: "nip44.decrypt",
+                priority: NIP07_PRIORITY.HIGH,
+              },
+            ),
           );
         }
 
         const nip44v2 =
           nip44.v2 && typeof nip44.v2 === "object" ? nip44.v2 : null;
         if (nip44v2 && typeof nip44v2.decrypt === "function") {
-          registerDecryptor(
-            "nip44_v2",
-            (payload) => nip44v2.decrypt(userPubkey, payload)
+          registerDecryptor("nip44_v2", (payload) =>
+            runNip07WithRetry(
+              () => nip44v2.decrypt(userPubkey, payload),
+              {
+                label: "nip44.v2.decrypt",
+                priority: NIP07_PRIORITY.HIGH,
+              },
+            ),
           );
           if (!decryptors.has("nip44")) {
-            registerDecryptor(
-              "nip44",
-              (payload) => nip44v2.decrypt(userPubkey, payload)
+            registerDecryptor("nip44", (payload) =>
+              runNip07WithRetry(
+                () => nip44v2.decrypt(userPubkey, payload),
+                {
+                  label: "nip44.v2.decrypt",
+                  priority: NIP07_PRIORITY.HIGH,
+                },
+              ),
             );
           }
         }

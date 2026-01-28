@@ -30,10 +30,65 @@ export const DEFAULT_NIP07_PERMISSION_METHODS = Object.freeze([
   ...DEFAULT_NIP07_ENCRYPTION_METHODS,
 ]);
 
-// Module-level mutex to serialize NIP-07 extension requests.
+export const NIP07_PRIORITY = Object.freeze({
+  HIGH: 10,
+  NORMAL: 5,
+  LOW: 1,
+});
+
+class Nip07RequestQueue {
+  constructor() {
+    this.queue = [];
+    this.running = false;
+  }
+
+  enqueue(task, priority = NIP07_PRIORITY.NORMAL) {
+    return new Promise((resolve, reject) => {
+      this.queue.push({
+        task,
+        priority: Number.isFinite(priority) ? priority : NIP07_PRIORITY.NORMAL,
+        resolve,
+        reject,
+        addedAt: Date.now(),
+      });
+      // Sort by priority (descending), then by insertion time (ascending) for fairness
+      this.queue.sort((a, b) => {
+        if (b.priority !== a.priority) {
+          return b.priority - a.priority;
+        }
+        return a.addedAt - b.addedAt;
+      });
+      this.process();
+    });
+  }
+
+  async process() {
+    if (this.running) return;
+    this.running = true;
+
+    while (this.queue.length > 0) {
+      const item = this.queue.shift();
+      if (!item) break;
+
+      const { task, resolve, reject } = item;
+
+      try {
+        const result = await task();
+        resolve(result);
+      } catch (error) {
+        reject(error);
+      }
+    }
+
+    this.running = false;
+  }
+}
+
+// Module-level priority queue to serialize NIP-07 extension requests.
 // This prevents "message channel closed" errors caused by race conditions
-// when multiple components (blocks, DMs, auth) query the extension simultaneously.
-let nip07Queue = Promise.resolve();
+// when multiple components (blocks, DMs, auth) query the extension simultaneously,
+// while allowing critical tasks (e.g. blocklist decryption) to jump the line.
+const requestQueue = new Nip07RequestQueue();
 
 export function getEnableVariantTimeoutMs() {
   const overrideValue =
@@ -195,6 +250,7 @@ export async function runNip07WithRetry(
     label = "NIP-07 operation",
     timeoutMs = NIP07_LOGIN_TIMEOUT_MS,
     retryMultiplier = 2,
+    priority = NIP07_PRIORITY.NORMAL,
   } = {},
 ) {
   // We wrap the entire retry logic in a queue task to ensure only one
@@ -236,22 +292,7 @@ export async function runNip07WithRetry(
     }
   };
 
-  const queueItem = nip07Queue.then(() =>
-    executeTask().then(
-      (res) => ({ ok: true, value: res }),
-      (err) => ({ ok: false, error: err }),
-    ),
-  );
-
-  // Advance the queue pointer
-  nip07Queue = queueItem.then(() => {});
-
-  // Await the specific result for this call
-  const result = await queueItem;
-  if (result.ok) {
-    return result.value;
-  }
-  throw result.error;
+  return requestQueue.enqueue(executeTask, priority);
 }
 
 export async function requestEnablePermissions(

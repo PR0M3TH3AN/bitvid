@@ -65,16 +65,20 @@ export async function createNip46Adapter(client) {
   };
 
   if (typeof resolvedClient.nip04Encrypt === "function") {
-    signer.nip04Encrypt = resolvedClient.nip04Encrypt.bind(resolvedClient);
+    signer.nip04Encrypt = (pubkey, plaintext, options) =>
+      resolvedClient.nip04Encrypt(pubkey, plaintext, options);
   }
   if (typeof resolvedClient.nip04Decrypt === "function") {
-    signer.nip04Decrypt = resolvedClient.nip04Decrypt.bind(resolvedClient);
+    signer.nip04Decrypt = (pubkey, ciphertext, options) =>
+      resolvedClient.nip04Decrypt(pubkey, ciphertext, options);
   }
   if (typeof resolvedClient.nip44Encrypt === "function") {
-    signer.nip44Encrypt = resolvedClient.nip44Encrypt.bind(resolvedClient);
+    signer.nip44Encrypt = (pubkey, plaintext, options) =>
+      resolvedClient.nip44Encrypt(pubkey, plaintext, options);
   }
   if (typeof resolvedClient.nip44Decrypt === "function") {
-    signer.nip44Decrypt = resolvedClient.nip44Decrypt.bind(resolvedClient);
+    signer.nip44Decrypt = (pubkey, ciphertext, options) =>
+      resolvedClient.nip44Decrypt(pubkey, ciphertext, options);
   }
 
   signer.capabilities.nip04 = Boolean(
