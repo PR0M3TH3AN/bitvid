@@ -4,10 +4,10 @@
   "type": "module",
   "version": "1.0.0",
   "scripts": {
-    "start": "npm run build && serve",
-    "serve": "serve",
+    "start": "npm run build && npx serve",
+    "serve": "npx serve",
     "build": "npm run build:css",
-    "build:css": "tailwindcss -c tailwind.config.cjs -i css/tailwind.source.css -o css/tailwind.generated.css --minify",
+    "build:css": "npx tailwindcss -c tailwind.config.cjs -i css/tailwind.source.css -o css/tailwind.generated.css --minify",
     "build:beacon:bundle": "node scripts/build-beacon.mjs",
     "build:beacon": "npm run build:beacon:bundle && npm run lint:inline-styles",
     "ci:beacon": "npm run build:beacon",
