@@ -101,7 +101,7 @@ async function fuzzTest(iteration) {
   return { rawValue, options };
 }
 
-runFuzzer("magnetUtils", 5000, fuzzTest).catch(err => {
+runFuzzer("magnetUtils", 10000, fuzzTest).catch(err => {
     console.error("Fatal fuzzer error:", err);
     process.exit(1);
 });

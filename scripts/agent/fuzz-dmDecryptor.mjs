@@ -69,7 +69,7 @@ async function fuzzTest(iteration) {
   return { event, context };
 }
 
-runFuzzer("dmDecryptor", 5000, fuzzTest)
+runFuzzer("dmDecryptor", 10000, fuzzTest)
   .catch(err => {
     console.error("Fatal fuzzer error:", err);
     process.exit(1);
