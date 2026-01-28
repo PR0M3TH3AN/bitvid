@@ -19,7 +19,6 @@
 
 import { isDevMode } from "../config.js";
 import { FEATURE_PUBLISH_NIP71 } from "../constants.js";
-import { accessControl } from "../accessControl.js";
 import { bytesToHex, sha256 } from "../../vendor/crypto-helpers.bundle.min.js";
 import { infoHashFromMagnet } from "../magnets.js";
 // 🔧 merged conflicting changes from codex/update-video-publishing-and-parsing-logic vs unstable
