@@ -4970,7 +4970,10 @@ export class ProfileModalController {
   }
 
   handleDirectMessagesUpdated(detail = {}) {
-    if (this.activeMessagesRequest) {
+    if (
+      this.activeMessagesRequest &&
+      detail?.reason !== "load-incremental"
+    ) {
       return;
     }
 

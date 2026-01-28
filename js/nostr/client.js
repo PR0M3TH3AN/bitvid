@@ -4480,6 +4480,13 @@ export class NostrClient {
         });
         if (decrypted?.ok) {
           messages.push(decrypted);
+          if (typeof options.onMessage === "function") {
+            try {
+              options.onMessage(decrypted);
+            } catch (error) {
+              devLogger.warn("[nostr] onMessage callback threw:", error);
+            }
+          }
         }
       } catch (error) {
         devLogger.warn("[nostr] Failed to decrypt DM event during list.", {

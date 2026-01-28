@@ -958,6 +958,9 @@ export class NostrService {
         ...options,
         limit: resolvedLimit,
         decryptLimit: resolvedDecryptLimit,
+        onMessage: (message) => {
+          this.applyDirectMessage(message, { reason: "load-incremental" });
+        },
       });
     } catch (error) {
       userLogger.warn("[nostrService] Failed to load direct messages", error);
