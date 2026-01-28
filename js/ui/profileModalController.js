@@ -1592,6 +1592,10 @@ export class ProfileModalController {
 
     this.blockList = document.getElementById("blockedList") || null;
     this.blockListEmpty = document.getElementById("blockedEmpty") || null;
+    this.blockListEmptyDefaultText =
+      this.blockListEmpty instanceof HTMLElement
+        ? this.blockListEmpty.textContent.trim()
+        : "";
     this.blockInput = document.getElementById("blockedInput") || null;
     this.addBlockedButton = document.getElementById("addBlockedBtn") || null;
 
@@ -8035,10 +8039,10 @@ export class ProfileModalController {
       return;
     }
 
-    const sourceEntries =
-      Array.isArray(blocked) && blocked.length
-        ? blocked
-        : this.services.userBlocks.getBlockedPubkeys();
+    const hasExplicitList = Array.isArray(blocked);
+    const sourceEntries = hasExplicitList
+      ? blocked
+      : this.services.userBlocks.getBlockedPubkeys();
 
     const normalizedEntries = [];
     const pushEntry = (hex, label) => {
@@ -12710,40 +12714,54 @@ export class ProfileModalController {
 
       if (hasBlockHydrator) {
         const activeHex = this.normalizeHexPubkey(this.getActivePubkey());
-        backgroundTasks.push(
-          Promise.resolve()
-            .then(() => this.services.userBlocks.ensureLoaded(activeHex))
-            .then(() => {
-              try {
-                this.populateBlockedList();
-              } catch (error) {
+        if (!activeHex) {
+          this.setBlockListLoadingState("idle");
+          if (this.blockListEmpty instanceof HTMLElement) {
+            this.blockListEmpty.textContent =
+              "Connect a Nostr signer to load your mute list.";
+          }
+          this.populateBlockedList([]);
+        } else {
+          if (this.blockListEmpty instanceof HTMLElement) {
+            this.blockListEmpty.textContent =
+              this.blockListEmptyDefaultText ||
+              "You haven’t blocked any creators yet.";
+          }
+          backgroundTasks.push(
+            Promise.resolve()
+              .then(() => this.services.userBlocks.ensureLoaded(activeHex))
+              .then(() => {
+                try {
+                  this.populateBlockedList();
+                } catch (error) {
+                  userLogger.warn(
+                    "Failed to render blocked creators after hydration:",
+                    error,
+                  );
+                  this.setBlockListLoadingState("error", {
+                    message: "Blocked creators may be out of date. Try again later.",
+                  });
+                }
+              })
+              .catch((error) => {
                 userLogger.warn(
-                  "Failed to render blocked creators after hydration:",
+                  "Failed to refresh user block list while opening profile modal:",
                   error,
                 );
                 this.setBlockListLoadingState("error", {
                   message: "Blocked creators may be out of date. Try again later.",
                 });
-              }
-            })
-            .catch((error) => {
-              userLogger.warn(
-                "Failed to refresh user block list while opening profile modal:",
-                error,
-              );
-              this.setBlockListLoadingState("error", {
-                message: "Blocked creators may be out of date. Try again later.",
-              });
-              try {
-                this.populateBlockedList();
-              } catch (populateError) {
-                userLogger.warn(
-                  "Failed to render blocked creators after hydration failure:",
-                  populateError,
-                );
-              }
-            }),
-        );
+                try {
+                  this.populateBlockedList();
+                } catch (populateError) {
+                  userLogger.warn(
+                    "Failed to render blocked creators after hydration failure:",
+                    populateError,
+                  );
+                }
+              }),
+          );
+        }
       }
 
       if (backgroundTasks.length) {
