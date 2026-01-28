@@ -22,12 +22,11 @@ export const DEFAULT_NIP07_ENCRYPTION_METHODS = Object.freeze([
 ]);
 
 export const DEFAULT_NIP07_PERMISSION_METHODS = Object.freeze([
-  // Core auth + relay metadata
+  // Core auth + relay metadata (encryption permissions requested on demand)
   "get_public_key",
   "sign_event",
   "read_relays",
   "write_relays",
-  ...DEFAULT_NIP07_ENCRYPTION_METHODS,
 ]);
 
 export const NIP07_PRIORITY = Object.freeze({

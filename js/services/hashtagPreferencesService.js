@@ -717,7 +717,14 @@ class HashtagPreferencesService {
       (!signerHasNip04 && requiresNip04)
     ) {
       try {
-        await requestDefaultExtensionPermissions();
+        const permissionMethods = [];
+        if (requiresNip04) {
+          permissionMethods.push("nip04.decrypt");
+        }
+        if (requiresNip44) {
+          permissionMethods.push("nip44.decrypt", "nip44.v2.decrypt");
+        }
+        await requestDefaultExtensionPermissions(permissionMethods);
       } catch (error) {
         userLogger.warn(
           `${LOG_PREFIX} Extension permissions request failed while loading preferences`,
@@ -920,7 +927,15 @@ class HashtagPreferencesService {
     }
 
     if (signer.type === "extension") {
-      const permissionResult = await requestDefaultExtensionPermissions();
+      const permissionMethods = ["sign_event"];
+      if (typeof signer.nip04Encrypt === "function") {
+        permissionMethods.push("nip04.encrypt");
+      }
+      if (typeof signer.nip44Encrypt === "function") {
+        permissionMethods.push("nip44.encrypt", "nip44.v2.encrypt");
+      }
+      const permissionResult =
+        await requestDefaultExtensionPermissions(permissionMethods);
       if (!permissionResult?.ok) {
         const error = new Error(
           "The active signer must allow encryption and signing before publishing preferences.",

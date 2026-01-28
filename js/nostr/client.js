@@ -201,6 +201,7 @@ import {
   clearActiveSigner as clearActiveSignerInRegistry,
   logoutSigner as logoutSignerFromRegistry,
   resolveActiveSigner as resolveActiveSignerFromRegistry,
+  requestDefaultExtensionPermissions,
 } from "../nostrClientRegistry.js";
 import { createNip07Adapter } from "./adapters/nip07Adapter.js";
 import { createNsecAdapter } from "./adapters/nsecAdapter.js";
@@ -1014,6 +1015,63 @@ function buildDmFilters(actorPubkey, { since, until, limit } = {}) {
   }
 
   return filters;
+}
+
+function normalizeDmEncryptionHint(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value.trim().toLowerCase().replace(/[^a-z0-9_.-]/g, "");
+}
+
+function resolveDmDecryptPermissionMethods(event) {
+  if (!event || typeof event !== "object") {
+    return [];
+  }
+
+  const kind = Number.isFinite(event.kind) ? event.kind : null;
+  if (kind === 1059) {
+    return ["nip44.decrypt", "nip44.v2.decrypt"];
+  }
+
+  const tags = Array.isArray(event.tags) ? event.tags : [];
+  let requiresNip44 = false;
+  let requiresNip04 = false;
+
+  for (const tag of tags) {
+    if (!Array.isArray(tag) || tag.length < 2) {
+      continue;
+    }
+    const label = typeof tag[0] === "string" ? tag[0].trim().toLowerCase() : "";
+    if (label !== "encrypted" && label !== "encryption") {
+      continue;
+    }
+    for (let index = 1; index < tag.length; index += 1) {
+      const normalized = normalizeDmEncryptionHint(tag[index]);
+      if (!normalized) {
+        continue;
+      }
+      if (normalized.includes("nip44")) {
+        requiresNip44 = true;
+      }
+      if (normalized.includes("nip04")) {
+        requiresNip04 = true;
+      }
+    }
+  }
+
+  if (!requiresNip04 && !requiresNip44 && kind === 4) {
+    requiresNip04 = true;
+  }
+
+  const methods = [];
+  if (requiresNip04) {
+    methods.push("nip04.decrypt");
+  }
+  if (requiresNip44) {
+    methods.push("nip44.decrypt", "nip44.v2.decrypt");
+  }
+  return methods;
 }
 
 
@@ -4650,7 +4708,10 @@ export class NostrClient {
     return { actorPubkey: normalizedActor, decryptors };
   }
 
-  async decryptDirectMessageEvent(event, { actorPubkey } = {}) {
+  async decryptDirectMessageEvent(
+    event,
+    { actorPubkey, onPermissionRequest } = {},
+  ) {
     const eventId = typeof event?.id === "string" ? event.id : "";
     if (eventId) {
       const cached = this.dmDecryptCache.get(eventId);
@@ -4661,6 +4722,50 @@ export class NostrClient {
 
     const decryptDM = await this.ensureDmDecryptor();
     const context = await this.buildDmDecryptContext(actorPubkey);
+    const permissionMethods = resolveDmDecryptPermissionMethods(event);
+    const needsExtensionPermission =
+      permissionMethods.length &&
+      typeof window !== "undefined" &&
+      window?.nostr &&
+      !this.hasRequiredExtensionPermissions(permissionMethods) &&
+      context.decryptors.some(
+        (candidate) => candidate?.source === "extension",
+      );
+
+    if (needsExtensionPermission) {
+      if (typeof onPermissionRequest === "function") {
+        onPermissionRequest({
+          status: "decrypting",
+          methods: permissionMethods,
+          eventId,
+        });
+      }
+
+      const permissionResult =
+        await requestDefaultExtensionPermissions(permissionMethods);
+      if (!permissionResult?.ok) {
+        const error = new Error("extension-permission-denied");
+        error.code = "extension-permission-denied";
+        error.cause = permissionResult?.error || null;
+        if (typeof onPermissionRequest === "function") {
+          onPermissionRequest({
+            status: "error",
+            methods: permissionMethods,
+            eventId,
+            error,
+          });
+        }
+        return { ok: false, error };
+      }
+
+      if (typeof onPermissionRequest === "function") {
+        onPermissionRequest({
+          status: "ready",
+          methods: permissionMethods,
+          eventId,
+        });
+      }
+    }
 
     let result;
     try {
@@ -4693,6 +4798,10 @@ export class NostrClient {
     const decryptLimit =
       Number.isFinite(options?.decryptLimit) && options.decryptLimit > 0
         ? Math.floor(options.decryptLimit)
+        : null;
+    const onPermissionRequest =
+      typeof options?.onPermissionRequest === "function"
+        ? options.onPermissionRequest
         : null;
 
     const relayCandidates = Array.isArray(options.relays)
@@ -4746,6 +4855,7 @@ export class NostrClient {
       try {
         const decrypted = await this.decryptDirectMessageEvent(event, {
           actorPubkey: context.actorPubkey || actorPubkeyInput,
+          onPermissionRequest,
         });
         if (decrypted?.ok) {
           messages.push(decrypted);
@@ -4830,6 +4940,10 @@ export class NostrClient {
 
           const result = await this.decryptDirectMessageEvent(event, {
             actorPubkey: context.actorPubkey || actorPubkeyInput,
+            onPermissionRequest:
+              typeof options?.onPermissionRequest === "function"
+                ? options.onPermissionRequest
+                : null,
           });
 
           if (result?.ok) {
