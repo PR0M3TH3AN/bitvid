@@ -220,6 +220,15 @@ export const ADMIN_WHITELIST_MODE_STORAGE_KEY = "bitvid_admin_whitelist_mode";
 export const DEFAULT_WHITELIST_MODE_ENABLED = true;
 
 /**
+ * Whether bitvid should clear stored NIP-07 permissions when users log out.
+ *
+ * Set this to `true` if your environment requires removing cached extension
+ * permissions on logout (e.g., shared devices). Leave it `false` to preserve
+ * permissions so returning users do not need to reauthorize the extension.
+ */
+export const CLEAR_NIP07_PERMISSIONS_ON_LOGOUT = false;
+
+/**
  * Whether the public client should display content flagged as NSFW.
  *
  * When set to `false`, bitvid filters out any video notes marked with the

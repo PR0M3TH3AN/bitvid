@@ -17,7 +17,7 @@
  * - Signer Management: Orchestrates NIP-07 (Extension), NIP-46 (Remote/Bunker), and NIP-01 (Local nsec) signers.
  */
 
-import { isDevMode } from "../config.js";
+import { CLEAR_NIP07_PERMISSIONS_ON_LOGOUT, isDevMode } from "../config.js";
 import { FEATURE_PUBLISH_NIP71 } from "../constants.js";
 import { bytesToHex, sha256 } from "../../vendor/crypto-helpers.bundle.min.js";
 import { infoHashFromMagnet } from "../magnets.js";
@@ -4396,9 +4396,9 @@ export class NostrClient {
    * - Wipes session actor (ephemeral keys).
    * - Disconnects NIP-46 remote signer (if active).
    * - Clears Watch History cache.
-   * - Resets permissions cache.
+   * - Optionally clears stored NIP-07 permissions.
    */
-  logout() {
+  logout({ clearNip07Permissions = null } = {}) {
     const previousPubkey = this.pubkey;
     this.pubkey = null;
     logoutSigner(previousPubkey);
@@ -4432,13 +4432,20 @@ export class NostrClient {
     }
 
     this.watchHistory.clear();
-    if (
-      this.extensionPermissionCache &&
-      typeof this.extensionPermissionCache.clear === "function"
-    ) {
-      this.extensionPermissionCache.clear();
+    const shouldClearNip07Permissions =
+      typeof clearNip07Permissions === "boolean"
+        ? clearNip07Permissions
+        : CLEAR_NIP07_PERMISSIONS_ON_LOGOUT;
+
+    if (shouldClearNip07Permissions) {
+      if (
+        this.extensionPermissionCache &&
+        typeof this.extensionPermissionCache.clear === "function"
+      ) {
+        this.extensionPermissionCache.clear();
+      }
+      clearStoredNip07Permissions();
     }
-    clearStoredNip07Permissions();
     devLogger.log("User logged out.");
   }
 
