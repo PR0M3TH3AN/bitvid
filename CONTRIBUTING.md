@@ -40,6 +40,7 @@ Automated agents contributing to this repository should follow these rules:
 - **Commit Messages**: Use the convention `type(scope): description (agent)` (e.g., `fix(ai): formatting (agent)` or `docs(ai): update quickstart (agent)`).
 - **Reference Issues**: Link to relevant issues in the PR description.
 - **Review AGENTS.md**: Always consult `AGENTS.md` for specific architectural guidelines and constraints before starting work.
+- **Efficiency**: Prefer running targeted or sharded tests (e.g., `npm run test:unit:shard1`) to conserve resources during iteration.
 
 ## Submitting a Pull Request
 
