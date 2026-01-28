@@ -986,26 +986,19 @@ class UserBlockListManager {
           return;
         }
 
-        // Separate by kind to merge distinct lists (Block vs Mute)
-        const muteEvents = validEvents.filter((e) => e.kind === 10000);
-
-        // Prioritize tagged mute lists (Bitvid) over plain ones (others)
-        const taggedMutes = muteEvents
-          .filter((e) => isTaggedBlockListEvent(e))
-          .sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0));
-
-        const plainMutes = muteEvents
-          .filter((e) => !isTaggedBlockListEvent(e))
-          .sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0));
-
-        const newestMute =
-          taggedMutes.length > 0 ? taggedMutes[0] : plainMutes[0] || null;
-
+        // Separate by logic (Block vs Mute)
+        // Block: Kind 10000 with d=user-blocks OR Kind 30002 (legacy)
         const blockEvents = validEvents
-          .filter((e) => e.kind === 30002)
+          .filter((e) => isTaggedBlockListEvent(e) || e.kind === 30002)
+          .sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0));
+
+        // Mute: Kind 10000 WITHOUT d=user-blocks
+        const muteEvents = validEvents
+          .filter((e) => e.kind === 10000 && !isTaggedBlockListEvent(e))
           .sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0));
 
         const newestBlock = blockEvents[0] || null;
+        const newestMute = muteEvents[0] || null;
 
         const newestMuteTime = Number.isFinite(newestMute?.created_at)
           ? newestMute.created_at
@@ -1174,7 +1167,7 @@ class UserBlockListManager {
           timeoutMs: 12000,
         }),
         nostrClient.fetchListIncrementally({
-          kind: 30002,
+          kind: 10000,
           pubkey: normalized,
           dTag: BLOCK_LIST_IDENTIFIER,
           relayUrls: relays,
