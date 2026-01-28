@@ -27,6 +27,9 @@ const HEX64_REGEX = /^[0-9a-f]{64}$/i;
 const DEFAULT_VERSION = 1;
 const DECRYPT_TIMEOUT_MS = 90000;
 const DECRYPT_RETRY_DELAY_MS = 10000;
+const FAST_RELAY_LIMIT = 3;
+const FAST_RELAY_TIMEOUT_MS = 4000;
+const FULL_RELAY_TIMEOUT_MS = 12000;
 
 class TinyEventEmitter {
   constructor() {
@@ -448,7 +451,8 @@ class HashtagPreferencesService {
     );
   }
 
-  async load(pubkey) {
+  async load(pubkey, options = {}) {
+    const { skipFastRelays = false, isBackground = false, skipCache = false } = options;
     const normalized = normalizeHexPubkey(pubkey);
     let wasLoadedForUser =
       this.activePubkey &&
@@ -464,7 +468,7 @@ class HashtagPreferencesService {
     }
 
     // Try cache first
-    if (this.loadFromCache(normalized)) {
+    if (!skipCache && this.loadFromCache(normalized)) {
       wasLoadedForUser = true;
     }
 
@@ -523,20 +527,43 @@ class HashtagPreferencesService {
       // If we have cached data, we ask for updates since that timestamp.
       // If we have no data, we force a full fetch (since=0).
       const since = wasLoadedForUser ? Number(this.eventCreatedAt) || 0 : 0;
+      const fastRelays = relays.slice(0, FAST_RELAY_LIMIT);
+      const shouldUseFastRelays =
+        !skipFastRelays && fastRelays.length > 0 && fastRelays.length < relays.length;
+      const initialRelays = shouldUseFastRelays ? fastRelays : relays;
+      const initialTimeoutMs = shouldUseFastRelays
+        ? FAST_RELAY_TIMEOUT_MS
+        : FULL_RELAY_TIMEOUT_MS;
 
-      const promises = kinds.map((kind) =>
-        nostrClient.fetchListIncrementally({
-          kind,
-          pubkey: normalized,
-          dTag: HASHTAG_IDENTIFIER,
-          relayUrls: relays,
-          since,
-          timeoutMs: 12000,
-        }),
-      );
+      const fetchFromRelays = async (relayList, timeoutMs) => {
+        const promises = kinds.map((kind) =>
+          nostrClient.fetchListIncrementally({
+            kind,
+            pubkey: normalized,
+            dTag: HASHTAG_IDENTIFIER,
+            relayUrls: relayList,
+            since,
+            timeoutMs,
+          }),
+        );
 
-      const results = await Promise.all(promises);
-      events = results.flat();
+        const results = await Promise.all(promises);
+        return results.flat();
+      };
+
+      events = await fetchFromRelays(initialRelays, initialTimeoutMs);
+      if (!events.length && shouldUseFastRelays && !isBackground) {
+        devLogger.log(
+          `${LOG_PREFIX} Fast relay fetch returned no events; continuing in background.`,
+        );
+        this.load(normalized, {
+          skipFastRelays: true,
+          isBackground: true,
+          skipCache: true,
+        }).catch((error) => {
+          devLogger.warn(`${LOG_PREFIX} Background refresh failed`, error);
+        });
+      }
 
     } catch (error) {
       fetchError = error;

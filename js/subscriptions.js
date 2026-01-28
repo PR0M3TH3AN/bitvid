@@ -38,6 +38,9 @@ const SUBSCRIPTION_SET_KIND =
   getNostrEventSchema(NOTE_TYPES.SUBSCRIPTION_LIST)?.kind ?? 30000;
 const DECRYPT_TIMEOUT_MS = 90000;
 const DECRYPT_RETRY_DELAY_MS = 10000;
+const FAST_RELAY_LIMIT = 3;
+const FAST_RELAY_TIMEOUT_MS = 4000;
+const FULL_RELAY_TIMEOUT_MS = 12000;
 
 function normalizeHexPubkey(value) {
   if (typeof value !== "string") {
@@ -448,14 +451,16 @@ class SubscriptionsManager {
     );
   }
 
-  async updateFromRelays(userPubkey) {
+  async updateFromRelays(userPubkey, options = {}) {
     if (!userPubkey) return;
 
     try {
       const normalizedUserPubkey = normalizeHexPubkey(userPubkey) || userPubkey;
+      const { relayUrlsOverride, skipFastRelays = false, isBackground = false } = options;
 
       const readRelays = relayManager.getReadRelayUrls();
-      const relayUrls = readRelays.length > 0 ? readRelays : Array.from(DEFAULT_RELAY_URLS);
+      const fallbackRelayUrls = readRelays.length > 0 ? readRelays : Array.from(DEFAULT_RELAY_URLS);
+      const relayUrls = relayUrlsOverride?.length ? relayUrlsOverride : fallbackRelayUrls;
       if (!relayUrls.length) {
         devLogger.warn(
           "[SubscriptionsManager] No relay URLs available while loading subscriptions.",
@@ -463,45 +468,75 @@ class SubscriptionsManager {
         return;
       }
 
+      const fastRelayUrls = relayUrls.slice(0, FAST_RELAY_LIMIT);
+      const shouldUseFastRelays =
+        !skipFastRelays && fastRelayUrls.length > 0 && fastRelayUrls.length < relayUrls.length;
+      const initialRelayUrls = shouldUseFastRelays ? fastRelayUrls : relayUrls;
+      const initialTimeoutMs = shouldUseFastRelays
+        ? FAST_RELAY_TIMEOUT_MS
+        : FULL_RELAY_TIMEOUT_MS;
+
       // Use incremental fetch helper
       const cachedSnapshot = parseCachedSubscriptionSnapshot(
         profileCache.getProfileData(normalizedUserPubkey, "subscriptions"),
       );
       const shouldForceFullFetch = !cachedSnapshot.hasSnapshot;
-      let events = await nostrClient.fetchListIncrementally({
-        kind: SUBSCRIPTION_SET_KIND,
-        pubkey: normalizedUserPubkey,
-        dTag: SUBSCRIPTION_LIST_IDENTIFIER,
-        relayUrls,
-        since: shouldForceFullFetch ? 0 : undefined,
-        timeoutMs: 12000,
-      });
-
       const normalizedSessionActorPubkey = normalizeNostrPubkey(
         nostrClient?.sessionActor?.pubkey,
       );
       const shouldFetchSessionActor =
         normalizedSessionActorPubkey &&
         normalizedSessionActorPubkey !== normalizedUserPubkey;
-      if (shouldFetchSessionActor) {
-        const sessionCachedSnapshot = parseCachedSubscriptionSnapshot(
-          profileCache.getProfileData(
-            normalizedSessionActorPubkey,
-            "subscriptions",
-          ),
-        );
-        const shouldForceSessionFetch = !sessionCachedSnapshot.hasSnapshot;
-        const sessionEvents = await nostrClient.fetchListIncrementally({
+
+      const fetchFromRelays = async (relayList, timeoutMs) => {
+        let events = await nostrClient.fetchListIncrementally({
           kind: SUBSCRIPTION_SET_KIND,
-          pubkey: normalizedSessionActorPubkey,
+          pubkey: normalizedUserPubkey,
           dTag: SUBSCRIPTION_LIST_IDENTIFIER,
-          relayUrls,
-          since: shouldForceSessionFetch ? 0 : undefined,
-          timeoutMs: 12000,
+          relayUrls: relayList,
+          since: shouldForceFullFetch ? 0 : undefined,
+          timeoutMs,
         });
-        if (sessionEvents.length) {
-          events = events.concat(sessionEvents);
+
+        if (shouldFetchSessionActor) {
+          const sessionCachedSnapshot = parseCachedSubscriptionSnapshot(
+            profileCache.getProfileData(
+              normalizedSessionActorPubkey,
+              "subscriptions",
+            ),
+          );
+          const shouldForceSessionFetch = !sessionCachedSnapshot.hasSnapshot;
+          const sessionEvents = await nostrClient.fetchListIncrementally({
+            kind: SUBSCRIPTION_SET_KIND,
+            pubkey: normalizedSessionActorPubkey,
+            dTag: SUBSCRIPTION_LIST_IDENTIFIER,
+            relayUrls: relayList,
+            since: shouldForceSessionFetch ? 0 : undefined,
+            timeoutMs,
+          });
+          if (sessionEvents.length) {
+            events = events.concat(sessionEvents);
+          }
         }
+
+        return events;
+      };
+
+      let events = await fetchFromRelays(initialRelayUrls, initialTimeoutMs);
+      if (!events.length && shouldUseFastRelays && !isBackground) {
+        devLogger.log(
+          "[SubscriptionsManager] Fast relay fetch returned no events; continuing in background.",
+        );
+        this.updateFromRelays(normalizedUserPubkey, {
+          relayUrlsOverride: relayUrls,
+          skipFastRelays: true,
+          isBackground: true,
+        }).catch((error) => {
+          devLogger.warn(
+            "[SubscriptionsManager] Background relay refresh failed:",
+            error,
+          );
+        });
       }
 
       const mergedEvents = [];
