@@ -341,11 +341,11 @@ valid events:
 
 ```bash
 # Run the validation script
-node scripts/agent/validate-events.mjs
+node scripts/agent/validate-events.test.mjs
 
 # Run the unit test suite
 npm run test:unit
 ```
 
-When modifying schemas or builders, use `scripts/agent/validate-events.mjs` to
+When modifying schemas or builders, use `scripts/agent/validate-events.test.mjs` to
 verify your changes locally.

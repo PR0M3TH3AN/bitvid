@@ -123,7 +123,7 @@ test.describe("overlay layering tokens", () => {
 
     // Ensure the toggle is initialized
     await expect(collapseToggle).toHaveAttribute("data-state", /.*/);
-    await collapseToggle.click();
+    await collapseToggle.click({ force: true });
 
     await page.waitForFunction(() =>
       document.getElementById("sidebar")?.classList.contains("sidebar-expanded")

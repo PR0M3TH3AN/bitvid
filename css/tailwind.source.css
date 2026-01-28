@@ -4753,14 +4753,6 @@
   }
 
   @media (min-width: theme("screens.md")) {
-    .sidebar-panel__header {
-      display: flex;
-    }
-
-    .sidebar-collapse-toggle {
-      display: inline-flex;
-    }
-
     #sidebar {
       transform: translateX(0) !important;
       width: var(--sidebar-width);
