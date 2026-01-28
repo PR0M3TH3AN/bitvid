@@ -357,6 +357,28 @@ class SubscriptionsManager {
     });
   }
 
+  emitStatus(detail = {}) {
+    this.emitter.emit("status", detail);
+
+    if (detail?.status !== "loading") {
+      return;
+    }
+
+    const message =
+      typeof detail?.message === "string" && detail.message.trim()
+        ? detail.message.trim()
+        : "Decrypting subscriptions…";
+    const container =
+      this.lastContainerId &&
+      typeof document !== "undefined" &&
+      document.getElementById
+        ? document.getElementById(this.lastContainerId)
+        : null;
+    if (container) {
+      container.innerHTML = getSidebarLoadingMarkup(message);
+    }
+  }
+
   /**
    * Decrypt the subscription list from kind=30000 (d="subscriptions").
    */
@@ -751,9 +773,21 @@ class SubscriptionsManager {
       (!signerHasNip04 && !windowHasNip04 && requiresNip04)
     ) {
       try {
-        const hasCachedPermissions = hasDefaultExtensionPermissions();
+        const permissionMethods = [];
+        if (requiresNip04) {
+          permissionMethods.push("nip04.decrypt");
+        }
+        if (requiresNip44) {
+          permissionMethods.push("nip44.decrypt", "nip44.v2.decrypt");
+        }
+        const hasCachedPermissions = hasDefaultExtensionPermissions(permissionMethods);
         if (!hasCachedPermissions) {
-          const permissionResult = await requestDefaultExtensionPermissions();
+          this.emitStatus({
+            status: "loading",
+            message: "Decrypting subscriptions…",
+          });
+          const permissionResult =
+            await requestDefaultExtensionPermissions(permissionMethods);
           if (!permissionResult?.ok) {
             const error =
               permissionResult?.error instanceof Error
@@ -769,6 +803,8 @@ class SubscriptionsManager {
         const wrapped = error instanceof Error ? error : new Error(String(error));
         wrapped.code = "nostr-permission-error";
         return { ok: false, error: wrapped };
+      } finally {
+        this.emitStatus({ status: "idle" });
       }
     }
 
@@ -983,9 +1019,18 @@ class SubscriptionsManager {
     }
 
     if (signer.type === "extension") {
-      const hasCachedPermissions = hasDefaultExtensionPermissions();
+      const permissionMethods = ["sign_event"];
+      if (typeof signer.nip04Encrypt === "function") {
+        permissionMethods.push("nip04.encrypt");
+      }
+      if (typeof signer.nip44Encrypt === "function") {
+        permissionMethods.push("nip44.encrypt", "nip44.v2.encrypt");
+      }
+      const hasCachedPermissions =
+        hasDefaultExtensionPermissions(permissionMethods);
       if (!hasCachedPermissions) {
-        const permissionResult = await requestDefaultExtensionPermissions();
+        const permissionResult =
+          await requestDefaultExtensionPermissions(permissionMethods);
         if (!permissionResult.ok) {
           userLogger.warn(
             "[SubscriptionsManager] Signer permissions denied while updating subscriptions.",

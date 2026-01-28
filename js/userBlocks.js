@@ -825,7 +825,20 @@ class UserBlockListManager {
       let permissionError = null;
       if ((!signerHasNip44 && requiresNip44) || (!signerHasNip04 && requiresNip04)) {
         try {
-          const permissionResult = await requestDefaultExtensionPermissions();
+          const permissionMethods = [];
+          if (requiresNip04) {
+            permissionMethods.push("nip04.decrypt");
+          }
+          if (requiresNip44) {
+            permissionMethods.push("nip44.decrypt", "nip44.v2.decrypt");
+          }
+          emitStatus({
+            status: "loading",
+            message: "Decrypting blocked creators…",
+            reason: "permissions",
+          });
+          const permissionResult =
+            await requestDefaultExtensionPermissions(permissionMethods);
           if (!permissionResult?.ok) {
             permissionError =
               permissionResult?.error instanceof Error
@@ -836,6 +849,8 @@ class UserBlockListManager {
           }
         } catch (error) {
           permissionError = error instanceof Error ? error : new Error(String(error));
+        } finally {
+          emitStatus({ status: "settled", reason: "permissions" });
         }
       }
 
@@ -1789,7 +1804,15 @@ class UserBlockListManager {
     }
 
     if (signer.type === "extension") {
-      const permissionResult = await requestDefaultExtensionPermissions();
+      const permissionMethods = ["sign_event"];
+      if (typeof signer.nip04Encrypt === "function") {
+        permissionMethods.push("nip04.encrypt");
+      }
+      if (typeof signer.nip44Encrypt === "function") {
+        permissionMethods.push("nip44.encrypt", "nip44.v2.encrypt");
+      }
+      const permissionResult =
+        await requestDefaultExtensionPermissions(permissionMethods);
       if (!permissionResult.ok) {
         userLogger.warn(
           "[UserBlockList] Signer permissions denied while updating the block list.",
