@@ -718,12 +718,12 @@ class UserBlockListManager {
   }
 
   async ensureLoaded(userPubkey) {
-    if (this.loaded) {
+    const normalized = normalizeHex(userPubkey);
+    if (!normalized) {
       return;
     }
 
-    const normalized = normalizeHex(userPubkey);
-    if (!normalized) {
+    if (this.loaded && this.activePubkey === normalized) {
       return;
     }
 
