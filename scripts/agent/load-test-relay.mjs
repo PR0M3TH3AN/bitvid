@@ -68,6 +68,10 @@ export function startRelay(port = 8889) {
           if (typeof subId === "string") {
             subs.get(ws).delete(subId);
           }
+        } else if (type === "COUNT") {
+          const subId = payload[0];
+          // Dummy count support
+          ws.send(JSON.stringify(["COUNT", subId, { count: 0 }]));
         }
       } catch (err) {
         // console.error("Relay error processing message:", err);
