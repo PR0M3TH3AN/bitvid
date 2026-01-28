@@ -2116,15 +2116,6 @@ export class NostrClient {
     adapter.pubkey = pubkey;
     setActiveSigner(adapter);
 
-    const permissionResult = await this.ensureExtensionPermissions([
-      ...DEFAULT_NIP07_PERMISSION_METHODS,
-      ...DEFAULT_NIP07_ENCRYPTION_METHODS,
-    ]);
-
-    if (!permissionResult.ok) {
-      throw permissionResult.error;
-    }
-
     return { pubkey, signer: adapter };
   }
 
