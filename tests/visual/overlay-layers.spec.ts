@@ -130,12 +130,24 @@ test.describe("overlay layering tokens", () => {
     await expect(collapseToggle).toHaveAttribute("data-state", /.*/);
     await collapseToggle.click({ force: true });
 
-    await page.waitForFunction(() =>
-      document.getElementById("sidebar")?.classList.contains("sidebar-expanded")
-    );
+    await page.waitForFunction(() => {
+      const sidebar = document.getElementById("sidebar");
+      return (
+        sidebar?.classList.contains("sidebar-expanded") &&
+        !sidebar?.classList.contains("sidebar-collapsed")
+      );
+    });
 
     // Wait for sidebar transition to complete
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(1000);
+
+    // Ensure the footer button is scrolled into view (especially for mobile viewports)
+    await page.evaluate(() => {
+      const sidebar = document.getElementById("sidebar");
+      if (sidebar) {
+        sidebar.scrollTop = sidebar.scrollHeight;
+      }
+    });
 
     const expandedLayout = await page.evaluate(() => {
       const sidebar = document.getElementById("sidebar");
