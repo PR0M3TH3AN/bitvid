@@ -180,7 +180,7 @@ See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the full developer guide.
 
 **Verify your work:**
 
-- **Run unit tests**: `npm run test:unit` (Required before PRs)
+- **Run unit tests**: `npm run test:unit` (Required before PRs). _Tip: Use `npm run test:unit:shard1` for faster local feedback._
 - **Format code**: `npm run format` (Required before PRs)
 - **Lint code**: `npm run lint` (Checks for CSS, hex colors, inline styles)
 
@@ -228,7 +228,7 @@ Use these artifacts to inspect the UI state at the moment of failure and diagnos
 
 ### Send your first video post
 
-Use the event builders in `js/nostrEventSchemas.js` (the source of truth for all event definitions) to construct valid video notes.
+Use the event builders in `js/nostrEventSchemas.js` (the source of truth for all event definitions) to construct valid video notes. See [`docs/nostr-event-schemas.md`](docs/nostr-event-schemas.md) for full schema documentation.
 
 ```javascript
 import { buildVideoPostEvent } from "./js/nostrEventSchemas.js";
