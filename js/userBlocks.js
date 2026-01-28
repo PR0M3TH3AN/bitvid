@@ -73,7 +73,7 @@ export const USER_BLOCK_EVENTS = Object.freeze({
 
 const FAST_BLOCKLIST_RELAY_LIMIT = 3;
 const FAST_BLOCKLIST_TIMEOUT_MS = 2500;
-const BACKGROUND_BLOCKLIST_TIMEOUT_MS = 6000;
+const FULL_BLOCKLIST_TIMEOUT_MS = 12000;
 const DECRYPT_TIMEOUT_MS = 90000;
 const DECRYPT_RETRY_DELAY_MS = 10000;
 
@@ -751,28 +751,39 @@ class UserBlockListManager {
         return;
       }
 
-      try {
-        statusCallback?.(detail);
-      } catch (callbackError) {
-        userLogger.warn(
-          "[UserBlockList] statusCallback threw while emitting status",
-          callbackError,
-        );
-      }
+      if (!options.isBackground) {
+        try {
+          statusCallback?.(detail);
+        } catch (callbackError) {
+          userLogger.warn(
+            "[UserBlockList] statusCallback threw while emitting status",
+            callbackError,
+          );
+        }
 
-      try {
-        this.emitter.emit(USER_BLOCK_EVENTS.STATUS, detail);
-      } catch (emitterError) {
-        userLogger.warn(
-          "[UserBlockList] Failed to dispatch status event",
-          emitterError,
-        );
+        try {
+          this.emitter.emit(USER_BLOCK_EVENTS.STATUS, detail);
+        } catch (emitterError) {
+          userLogger.warn(
+            "[UserBlockList] Failed to dispatch status event",
+            emitterError,
+          );
+        }
       }
     };
 
     const readRelays = relayManager.getReadRelayUrls();
     const relays = readRelays.length > 0 ? readRelays : Array.from(DEFAULT_RELAY_URLS);
-    emitStatus({ status: "loading", relays });
+    const fastRelays = relays.slice(0, FAST_BLOCKLIST_RELAY_LIMIT);
+    const shouldUseFastRelays =
+      !options.skipFastRelays &&
+      fastRelays.length > 0 &&
+      fastRelays.length < relays.length;
+    const initialRelays = shouldUseFastRelays ? fastRelays : relays;
+    const initialTimeoutMs = shouldUseFastRelays
+      ? FAST_BLOCKLIST_TIMEOUT_MS
+      : FULL_BLOCKLIST_TIMEOUT_MS;
+    emitStatus({ status: "loading", relays: initialRelays });
 
     const localBlocks = this._loadLocal(normalized);
     const hasLocalData = !!localBlocks;
@@ -1206,17 +1217,17 @@ class UserBlockListManager {
         nostrClient.fetchListIncrementally({
           kind: 10000,
           pubkey: normalized,
-          relayUrls: relays,
+          relayUrls: initialRelays,
           since: fetchSince,
-          timeoutMs: 12000,
+          timeoutMs: initialTimeoutMs,
         }),
         nostrClient.fetchListIncrementally({
           kind: 10000,
           pubkey: normalized,
           dTag: BLOCK_LIST_IDENTIFIER,
-          relayUrls: relays,
+          relayUrls: initialRelays,
           since: fetchSince,
-          timeoutMs: 12000,
+          timeoutMs: initialTimeoutMs,
         }),
       ]);
 
@@ -1224,6 +1235,21 @@ class UserBlockListManager {
 
       // If combined is empty, check if we have loaded state
       if (!combined.length) {
+         if (shouldUseFastRelays && !options.isBackground) {
+            devLogger.log(
+              "[UserBlockList] Fast relay fetch returned no events; continuing in background.",
+            );
+            this.loadBlocks(normalized, {
+              ...options,
+              skipFastRelays: true,
+              isBackground: true,
+            }).catch((error) => {
+              devLogger.warn(
+                "[UserBlockList] Background relay refresh failed:",
+                error,
+              );
+            });
+         }
          if (!this.loaded) {
             // Assuming empty if we have no prior state
             await applyEvents([], { source: "incremental" });
