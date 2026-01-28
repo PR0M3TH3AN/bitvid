@@ -45,6 +45,11 @@ test.describe("overlay layering tokens", () => {
 
     await dismissDisclaimerModal(page);
 
+    // Wait for initial fade-in to complete so opacity doesn't interfere with visibility checks
+    await page.waitForFunction(
+      () => !document.getElementById("sidebar")?.classList.contains("fade-in")
+    );
+
     await expect(page.locator("#mobileMenuBtn")).toHaveCount(0);
 
     const collapseToggle = page.locator("#sidebarCollapseToggle");
