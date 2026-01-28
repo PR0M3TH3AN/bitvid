@@ -1,4 +1,5 @@
 import { accessControl } from "../../accessControl.js";
+import { devLogger } from "../../utils/logger.js";
 
 const PROVIDER_ID = "nip07";
 const PROVIDER_LABEL = "extension (nip-07)";
@@ -74,6 +75,16 @@ export default {
     };
 
     const result = await nostrClient.loginWithExtension({ ...options, validator });
+    if (typeof nostrClient.ensureDmDecryptor === "function") {
+      Promise.resolve()
+        .then(() => nostrClient.ensureDmDecryptor())
+        .catch((error) => {
+          devLogger.warn(
+            "[auth:nip07] Failed to preload DM decryptor:",
+            error,
+          );
+        });
+    }
     const pubkey = normalizePubkey(result);
     const signer =
       result && typeof result === "object" && result.signer
