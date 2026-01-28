@@ -449,6 +449,12 @@ artifacts now that the deploy pipeline owns the build step.
   - Re-exports `isDevMode` (derived from `IS_DEV_MODE`) for modules, publishes
     `window.__BITVID_DEV_MODE__`, and centralizes the global configuration
     surface.
+- **Runtime globals**:
+  - `window.__BITVID_NIP07_LOGIN_TIMEOUT_MS__` overrides the default NIP-07
+    login timeout (milliseconds) used when waiting for extension responses.
+  - `window.__BITVID_NIP07_ENABLE_VARIANT_TIMEOUT_MS__` overrides the timeout
+    (milliseconds) for `nostr.enable()` permission variants. Values must be
+    positive to take effect.
 - **`js/utils/logger.js`**:
   - Provides the shared `logger` utility. Route user-facing errors through
     `logger.user` and keep experimental diagnostics on `logger.dev` so operators
