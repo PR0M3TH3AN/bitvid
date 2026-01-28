@@ -7,6 +7,7 @@
 
 export {
   nostrClient,
+  hasDefaultExtensionPermissions,
   requestDefaultExtensionPermissions,
 } from "./nostr/defaultClient.js";
 

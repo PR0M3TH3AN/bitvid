@@ -395,6 +395,16 @@ function shouldRequestExtensionPermissions(signer) {
   return signer.type === "extension";
 }
 
+function normalizePermissionMethods(methods) {
+  if (!Array.isArray(methods)) {
+    return [];
+  }
+  const normalized = methods
+    .map((method) => normalizePermissionMethod(method))
+    .filter(Boolean);
+  return Array.from(new Set(normalized));
+}
+
 const EVENTS_CACHE_STORAGE_KEY = "bitvid:eventsCache:v1";
 // We use the policy TTL, but currently the storage backend is hardcoded to IDB (with localStorage fallback).
 // Future refactors should make EventsCacheStore dynamic based on CACHE_POLICIES[NOTE_TYPES.VIDEO_POST].storage.
@@ -1156,7 +1166,9 @@ export class NostrClient {
       getActivePubkey: () => this.pubkey,
       getSessionActor: () => this.sessionActor,
       ensureSessionActor: () => this.ensureSessionActor(),
-      ensureExtensionPermissions: (...args) => this.ensureExtensionPermissions(...args),
+      ensureExtensionPermissions: (...args) => this.ensureExtensionPermissionsGate(...args),
+      hasRequiredExtensionPermissions: (...args) =>
+        this.hasRequiredExtensionPermissions(...args),
       resolveActiveSigner,
       shouldRequestExtensionPermissions,
       signEventWithPrivateKey,
@@ -1266,6 +1278,7 @@ export class NostrClient {
     this.pendingHandshakeCancel = null;
     this.remoteSignerListeners = new Set();
     this.sessionActorListeners = new Set();
+    this.extensionPermissionRequestPromise = null;
     const storedRemoteSigner = this.getStoredNip46Metadata();
     this.remoteSignerStatus = {
       state: storedRemoteSigner.hasSession ? "stored" : "idle",
@@ -2776,16 +2789,8 @@ export class NostrClient {
       this.extensionPermissionCache = new Set();
     }
 
-    if (!Array.isArray(methods)) {
-      return;
-    }
-
     let didChange = false;
-    for (const method of methods) {
-      const normalized = normalizePermissionMethod(method);
-      if (!normalized) {
-        continue;
-      }
+    for (const normalized of normalizePermissionMethods(methods)) {
       if (!this.extensionPermissionCache.has(normalized)) {
         didChange = true;
       }
@@ -2801,20 +2806,50 @@ export class NostrClient {
     }
   }
 
-  async ensureExtensionPermissions(methods = DEFAULT_NIP07_PERMISSION_METHODS) {
-    if (!Array.isArray(methods)) {
-      methods = [];
+  hasRequiredExtensionPermissions(
+    methods = DEFAULT_NIP07_PERMISSION_METHODS,
+  ) {
+    const normalized = normalizePermissionMethods(methods);
+    if (!normalized.length) {
+      return true;
+    }
+    if (!this.extensionPermissionCache) {
+      return false;
+    }
+    return normalized.every((method) => this.extensionPermissionCache.has(method));
+  }
+
+  async ensureExtensionPermissionsGate(
+    methods = DEFAULT_NIP07_PERMISSION_METHODS,
+  ) {
+    const normalized = normalizePermissionMethods(methods);
+    if (!normalized.length) {
+      return { ok: true };
     }
 
-    const normalized = Array.from(
-      new Set(
-        methods
-          .map((method) =>
-            typeof method === "string" && method.trim() ? method.trim() : "",
-          )
-          .filter(Boolean),
-      ),
-    );
+    if (this.hasRequiredExtensionPermissions(normalized)) {
+      return { ok: true, cached: true };
+    }
+
+    if (this.extensionPermissionRequestPromise) {
+      return this.extensionPermissionRequestPromise;
+    }
+
+    const requestPromise = this.ensureExtensionPermissions(normalized)
+      .catch((error) => ({ ok: false, error }))
+      .finally(() => {
+        if (this.extensionPermissionRequestPromise === requestPromise) {
+          this.extensionPermissionRequestPromise = null;
+        }
+      });
+
+    this.extensionPermissionRequestPromise = requestPromise;
+
+    return requestPromise;
+  }
+
+  async ensureExtensionPermissions(methods = DEFAULT_NIP07_PERMISSION_METHODS) {
+    const normalized = normalizePermissionMethods(methods);
 
     if (!normalized.length) {
       return { ok: true };

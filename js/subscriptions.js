@@ -1,6 +1,7 @@
 // js/subscriptions.js
 import {
   getActiveSigner,
+  hasDefaultExtensionPermissions,
   nostrClient,
   requestDefaultExtensionPermissions,
 } from "./nostrClientFacade.js";
@@ -750,16 +751,19 @@ class SubscriptionsManager {
       (!signerHasNip04 && !windowHasNip04 && requiresNip04)
     ) {
       try {
-        const permissionResult = await requestDefaultExtensionPermissions();
-        if (!permissionResult?.ok) {
-          const error =
-            permissionResult?.error instanceof Error
-              ? permissionResult.error
-              : new Error(
-                  "Extension permissions denied while decrypting subscriptions."
-                );
-          error.code = "nostr-permission-denied";
-          return { ok: false, error };
+        const hasCachedPermissions = hasDefaultExtensionPermissions();
+        if (!hasCachedPermissions) {
+          const permissionResult = await requestDefaultExtensionPermissions();
+          if (!permissionResult?.ok) {
+            const error =
+              permissionResult?.error instanceof Error
+                ? permissionResult.error
+                : new Error(
+                    "Extension permissions denied while decrypting subscriptions."
+                  );
+            error.code = "nostr-permission-denied";
+            return { ok: false, error };
+          }
         }
       } catch (error) {
         const wrapped = error instanceof Error ? error : new Error(String(error));
@@ -979,18 +983,21 @@ class SubscriptionsManager {
     }
 
     if (signer.type === "extension") {
-      const permissionResult = await requestDefaultExtensionPermissions();
-      if (!permissionResult.ok) {
-        userLogger.warn(
-          "[SubscriptionsManager] Signer permissions denied while updating subscriptions.",
-          permissionResult.error,
-        );
-        const error = new Error(
-          "The active signer must allow encryption and signing before updating subscriptions.",
-        );
-        error.code = "extension-permission-denied";
-        error.cause = permissionResult.error;
-        throw error;
+      const hasCachedPermissions = hasDefaultExtensionPermissions();
+      if (!hasCachedPermissions) {
+        const permissionResult = await requestDefaultExtensionPermissions();
+        if (!permissionResult.ok) {
+          userLogger.warn(
+            "[SubscriptionsManager] Signer permissions denied while updating subscriptions.",
+            permissionResult.error,
+          );
+          const error = new Error(
+            "The active signer must allow encryption and signing before updating subscriptions.",
+          );
+          error.code = "extension-permission-denied";
+          error.cause = permissionResult.error;
+          throw error;
+        }
       }
     }
 
