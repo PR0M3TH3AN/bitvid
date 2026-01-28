@@ -958,24 +958,6 @@ export class NostrService {
         ...options,
         limit: resolvedLimit,
         decryptLimit: resolvedDecryptLimit,
-        onPermissionRequest: (detail = {}) => {
-          const status = detail?.status;
-          if (status === "decrypting") {
-            this.emit("directMessages:status", {
-              status,
-              message: "Decrypting direct messages…",
-              methods: detail?.methods || [],
-              eventId: detail?.eventId || null,
-            });
-          } else if (status === "ready") {
-            this.emit("directMessages:status", { status: "ready" });
-          } else if (status === "error") {
-            this.emit("directMessages:status", {
-              status: "error",
-              error: detail?.error || null,
-            });
-          }
-        },
         onMessage: (message) => {
           this.applyDirectMessage(message, { reason: "load-incremental" });
         },
@@ -1095,24 +1077,6 @@ export class NostrService {
         {
           relays: resolvedRelays,
           onEvent: handlers.onEvent,
-          onPermissionRequest: (detail = {}) => {
-            const status = detail?.status;
-            if (status === "decrypting") {
-              this.emit("directMessages:status", {
-                status,
-                message: "Decrypting direct messages…",
-                methods: detail?.methods || [],
-                eventId: detail?.eventId || null,
-              });
-            } else if (status === "ready") {
-              this.emit("directMessages:status", { status: "ready" });
-            } else if (status === "error") {
-              this.emit("directMessages:status", {
-                status: "error",
-                error: detail?.error || null,
-              });
-            }
-          },
           onMessage: (message, context = {}) => {
             this.applyDirectMessage(message, {
               reason: "subscription",

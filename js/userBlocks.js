@@ -73,7 +73,7 @@ export const USER_BLOCK_EVENTS = Object.freeze({
 
 const FAST_BLOCKLIST_RELAY_LIMIT = 3;
 const FAST_BLOCKLIST_TIMEOUT_MS = 2500;
-const FULL_BLOCKLIST_TIMEOUT_MS = 12000;
+const BACKGROUND_BLOCKLIST_TIMEOUT_MS = 6000;
 const DECRYPT_TIMEOUT_MS = 90000;
 const DECRYPT_RETRY_DELAY_MS = 10000;
 
@@ -718,12 +718,12 @@ class UserBlockListManager {
   }
 
   async ensureLoaded(userPubkey) {
-    const normalized = normalizeHex(userPubkey);
-    if (!normalized) {
+    if (this.loaded) {
       return;
     }
 
-    if (this.loaded && this.activePubkey === normalized) {
+    const normalized = normalizeHex(userPubkey);
+    if (!normalized) {
       return;
     }
 
@@ -751,39 +751,28 @@ class UserBlockListManager {
         return;
       }
 
-      if (!options.isBackground) {
-        try {
-          statusCallback?.(detail);
-        } catch (callbackError) {
-          userLogger.warn(
-            "[UserBlockList] statusCallback threw while emitting status",
-            callbackError,
-          );
-        }
+      try {
+        statusCallback?.(detail);
+      } catch (callbackError) {
+        userLogger.warn(
+          "[UserBlockList] statusCallback threw while emitting status",
+          callbackError,
+        );
+      }
 
-        try {
-          this.emitter.emit(USER_BLOCK_EVENTS.STATUS, detail);
-        } catch (emitterError) {
-          userLogger.warn(
-            "[UserBlockList] Failed to dispatch status event",
-            emitterError,
-          );
-        }
+      try {
+        this.emitter.emit(USER_BLOCK_EVENTS.STATUS, detail);
+      } catch (emitterError) {
+        userLogger.warn(
+          "[UserBlockList] Failed to dispatch status event",
+          emitterError,
+        );
       }
     };
 
     const readRelays = relayManager.getReadRelayUrls();
     const relays = readRelays.length > 0 ? readRelays : Array.from(DEFAULT_RELAY_URLS);
-    const fastRelays = relays.slice(0, FAST_BLOCKLIST_RELAY_LIMIT);
-    const shouldUseFastRelays =
-      !options.skipFastRelays &&
-      fastRelays.length > 0 &&
-      fastRelays.length < relays.length;
-    const initialRelays = shouldUseFastRelays ? fastRelays : relays;
-    const initialTimeoutMs = shouldUseFastRelays
-      ? FAST_BLOCKLIST_TIMEOUT_MS
-      : FULL_BLOCKLIST_TIMEOUT_MS;
-    emitStatus({ status: "loading", relays: initialRelays });
+    emitStatus({ status: "loading", relays });
 
     const localBlocks = this._loadLocal(normalized);
     const hasLocalData = !!localBlocks;
@@ -836,20 +825,7 @@ class UserBlockListManager {
       let permissionError = null;
       if ((!signerHasNip44 && requiresNip44) || (!signerHasNip04 && requiresNip04)) {
         try {
-          const permissionMethods = [];
-          if (requiresNip04) {
-            permissionMethods.push("nip04.decrypt");
-          }
-          if (requiresNip44) {
-            permissionMethods.push("nip44.decrypt", "nip44.v2.decrypt");
-          }
-          emitStatus({
-            status: "loading",
-            message: "Decrypting blocked creators…",
-            reason: "permissions",
-          });
-          const permissionResult =
-            await requestDefaultExtensionPermissions(permissionMethods);
+          const permissionResult = await requestDefaultExtensionPermissions();
           if (!permissionResult?.ok) {
             permissionError =
               permissionResult?.error instanceof Error
@@ -860,8 +836,6 @@ class UserBlockListManager {
           }
         } catch (error) {
           permissionError = error instanceof Error ? error : new Error(String(error));
-        } finally {
-          emitStatus({ status: "settled", reason: "permissions" });
         }
       }
 
@@ -1217,17 +1191,17 @@ class UserBlockListManager {
         nostrClient.fetchListIncrementally({
           kind: 10000,
           pubkey: normalized,
-          relayUrls: initialRelays,
+          relayUrls: relays,
           since: fetchSince,
-          timeoutMs: initialTimeoutMs,
+          timeoutMs: 12000,
         }),
         nostrClient.fetchListIncrementally({
           kind: 10000,
           pubkey: normalized,
           dTag: BLOCK_LIST_IDENTIFIER,
-          relayUrls: initialRelays,
+          relayUrls: relays,
           since: fetchSince,
-          timeoutMs: initialTimeoutMs,
+          timeoutMs: 12000,
         }),
       ]);
 
@@ -1235,21 +1209,6 @@ class UserBlockListManager {
 
       // If combined is empty, check if we have loaded state
       if (!combined.length) {
-         if (shouldUseFastRelays && !options.isBackground) {
-            devLogger.log(
-              "[UserBlockList] Fast relay fetch returned no events; continuing in background.",
-            );
-            this.loadBlocks(normalized, {
-              ...options,
-              skipFastRelays: true,
-              isBackground: true,
-            }).catch((error) => {
-              devLogger.warn(
-                "[UserBlockList] Background relay refresh failed:",
-                error,
-              );
-            });
-         }
          if (!this.loaded) {
             // Assuming empty if we have no prior state
             await applyEvents([], { source: "incremental" });
@@ -1830,15 +1789,7 @@ class UserBlockListManager {
     }
 
     if (signer.type === "extension") {
-      const permissionMethods = ["sign_event"];
-      if (typeof signer.nip04Encrypt === "function") {
-        permissionMethods.push("nip04.encrypt");
-      }
-      if (typeof signer.nip44Encrypt === "function") {
-        permissionMethods.push("nip44.encrypt", "nip44.v2.encrypt");
-      }
-      const permissionResult =
-        await requestDefaultExtensionPermissions(permissionMethods);
+      const permissionResult = await requestDefaultExtensionPermissions();
       if (!permissionResult.ok) {
         userLogger.warn(
           "[UserBlockList] Signer permissions denied while updating the block list.",

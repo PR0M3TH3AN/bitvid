@@ -27,9 +27,6 @@ const HEX64_REGEX = /^[0-9a-f]{64}$/i;
 const DEFAULT_VERSION = 1;
 const DECRYPT_TIMEOUT_MS = 90000;
 const DECRYPT_RETRY_DELAY_MS = 10000;
-const FAST_RELAY_LIMIT = 3;
-const FAST_RELAY_TIMEOUT_MS = 4000;
-const FULL_RELAY_TIMEOUT_MS = 12000;
 
 class TinyEventEmitter {
   constructor() {
@@ -451,8 +448,7 @@ class HashtagPreferencesService {
     );
   }
 
-  async load(pubkey, options = {}) {
-    const { skipFastRelays = false, isBackground = false, skipCache = false } = options;
+  async load(pubkey) {
     const normalized = normalizeHexPubkey(pubkey);
     let wasLoadedForUser =
       this.activePubkey &&
@@ -468,7 +464,7 @@ class HashtagPreferencesService {
     }
 
     // Try cache first
-    if (!skipCache && this.loadFromCache(normalized)) {
+    if (this.loadFromCache(normalized)) {
       wasLoadedForUser = true;
     }
 
@@ -527,43 +523,20 @@ class HashtagPreferencesService {
       // If we have cached data, we ask for updates since that timestamp.
       // If we have no data, we force a full fetch (since=0).
       const since = wasLoadedForUser ? Number(this.eventCreatedAt) || 0 : 0;
-      const fastRelays = relays.slice(0, FAST_RELAY_LIMIT);
-      const shouldUseFastRelays =
-        !skipFastRelays && fastRelays.length > 0 && fastRelays.length < relays.length;
-      const initialRelays = shouldUseFastRelays ? fastRelays : relays;
-      const initialTimeoutMs = shouldUseFastRelays
-        ? FAST_RELAY_TIMEOUT_MS
-        : FULL_RELAY_TIMEOUT_MS;
 
-      const fetchFromRelays = async (relayList, timeoutMs) => {
-        const promises = kinds.map((kind) =>
-          nostrClient.fetchListIncrementally({
-            kind,
-            pubkey: normalized,
-            dTag: HASHTAG_IDENTIFIER,
-            relayUrls: relayList,
-            since,
-            timeoutMs,
-          }),
-        );
+      const promises = kinds.map((kind) =>
+        nostrClient.fetchListIncrementally({
+          kind,
+          pubkey: normalized,
+          dTag: HASHTAG_IDENTIFIER,
+          relayUrls: relays,
+          since,
+          timeoutMs: 12000,
+        }),
+      );
 
-        const results = await Promise.all(promises);
-        return results.flat();
-      };
-
-      events = await fetchFromRelays(initialRelays, initialTimeoutMs);
-      if (!events.length && shouldUseFastRelays && !isBackground) {
-        devLogger.log(
-          `${LOG_PREFIX} Fast relay fetch returned no events; continuing in background.`,
-        );
-        this.load(normalized, {
-          skipFastRelays: true,
-          isBackground: true,
-          skipCache: true,
-        }).catch((error) => {
-          devLogger.warn(`${LOG_PREFIX} Background refresh failed`, error);
-        });
-      }
+      const results = await Promise.all(promises);
+      events = results.flat();
 
     } catch (error) {
       fetchError = error;
@@ -744,14 +717,7 @@ class HashtagPreferencesService {
       (!signerHasNip04 && requiresNip04)
     ) {
       try {
-        const permissionMethods = [];
-        if (requiresNip04) {
-          permissionMethods.push("nip04.decrypt");
-        }
-        if (requiresNip44) {
-          permissionMethods.push("nip44.decrypt", "nip44.v2.decrypt");
-        }
-        await requestDefaultExtensionPermissions(permissionMethods);
+        await requestDefaultExtensionPermissions();
       } catch (error) {
         userLogger.warn(
           `${LOG_PREFIX} Extension permissions request failed while loading preferences`,
@@ -954,15 +920,7 @@ class HashtagPreferencesService {
     }
 
     if (signer.type === "extension") {
-      const permissionMethods = ["sign_event"];
-      if (typeof signer.nip04Encrypt === "function") {
-        permissionMethods.push("nip04.encrypt");
-      }
-      if (typeof signer.nip44Encrypt === "function") {
-        permissionMethods.push("nip44.encrypt", "nip44.v2.encrypt");
-      }
-      const permissionResult =
-        await requestDefaultExtensionPermissions(permissionMethods);
+      const permissionResult = await requestDefaultExtensionPermissions();
       if (!permissionResult?.ok) {
         const error = new Error(
           "The active signer must allow encryption and signing before publishing preferences.",
