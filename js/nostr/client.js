@@ -139,6 +139,7 @@ import {
 import {
   DEFAULT_NIP07_ENCRYPTION_METHODS,
   DEFAULT_NIP07_PERMISSION_METHODS,
+  NIP07_PRIORITY,
   clearStoredNip07Permissions,
   normalizePermissionMethod,
   readStoredNip07Permissions,
@@ -4514,7 +4515,11 @@ export class NostrClient {
       ) {
         addCandidate(
           "nip44",
-          activeSigner.nip44Decrypt.bind(activeSigner),
+          (pubkey, ciphertext, options) =>
+            activeSigner.nip44Decrypt(pubkey, ciphertext, {
+              ...options,
+              priority: NIP07_PRIORITY.HIGH,
+            }),
           {
             priority: -20,
             source: activeSigner.type || "signer",
@@ -4528,7 +4533,11 @@ export class NostrClient {
       ) {
         addCandidate(
           "nip04",
-          activeSigner.nip04Decrypt.bind(activeSigner),
+          (pubkey, ciphertext, options) =>
+            activeSigner.nip04Decrypt(pubkey, ciphertext, {
+              ...options,
+              priority: NIP07_PRIORITY.HIGH,
+            }),
           {
             priority: -10,
             source: activeSigner.type || "signer",

@@ -3271,6 +3271,19 @@ class Application {
           error,
         );
       }
+
+      try {
+        await this.nostrService.loadDirectMessages({
+          actorPubkey: activePubkey,
+          limit: 50,
+          initialLoad: true,
+        });
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to sync direct messages during login:",
+          error,
+        );
+      }
     }
 
     try {
