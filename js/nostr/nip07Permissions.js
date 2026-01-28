@@ -337,10 +337,10 @@ export async function requestEnablePermissions(
 
   const enableTimeoutMs = getEnableVariantTimeoutMs();
   const loginTimeoutMs = getNip07LoginTimeoutMs();
-  const primaryEnableTimeoutMs = Math.min(15_000, enableTimeoutMs);
-  const fallbackEnableTimeoutMs = Math.min(
-    loginTimeoutMs,
+  const shortEnableTimeoutMs = Math.min(5_000, enableTimeoutMs);
+  const explicitEnableTimeoutMs = Math.max(
     enableTimeoutMs,
+    Math.min(15_000, loginTimeoutMs),
   );
 
   let lastError = null;
@@ -351,11 +351,11 @@ export async function requestEnablePermissions(
     const variantTimeoutOverrides =
       options === null
         ? {
-            timeoutMs: primaryEnableTimeoutMs,
+            timeoutMs: shortEnableTimeoutMs,
             retryMultiplier: 1,
           }
         : {
-            timeoutMs: fallbackEnableTimeoutMs,
+            timeoutMs: explicitEnableTimeoutMs,
             retryMultiplier: 1,
           };
 
