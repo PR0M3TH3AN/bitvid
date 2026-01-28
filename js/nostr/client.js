@@ -2103,6 +2103,15 @@ export class NostrClient {
       }
     }
 
+    const permissionResult = await this.ensureExtensionPermissions([
+      ...DEFAULT_NIP07_PERMISSION_METHODS,
+      ...DEFAULT_NIP07_ENCRYPTION_METHODS,
+    ]);
+
+    if (!permissionResult.ok) {
+      throw permissionResult.error;
+    }
+
     const adapter = await createNip07Adapter(extension);
     adapter.pubkey = pubkey;
     setActiveSigner(adapter);
