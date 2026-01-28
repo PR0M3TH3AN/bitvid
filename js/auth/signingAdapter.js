@@ -3,6 +3,7 @@ import { signEventWithPrivateKey } from "../nostr/publishHelpers.js";
 import { ensureNostrTools, getCachedNostrTools } from "../nostr/toolkit.js";
 import { normalizeActorKey } from "../nostr/watchHistory.js";
 import { buildHttpAuthEvent } from "../nostrEventSchemas.js";
+import { runNip07WithRetry } from "../nostr/nip07Permissions.js";
 
 const DEFAULT_TEST_PUBKEY = "f".repeat(64);
 const DEFAULT_DEV_DISPLAY_NAME = "Ephemeral dev signer";
@@ -31,22 +32,37 @@ export function createNip07SigningAdapter({ extension } = {}) {
     (typeof window !== "undefined" && window?.nostr ? window.nostr : null);
 
   const getPubkey = async () => {
-    if (!resolvedExtension || typeof resolvedExtension.getPublicKey !== "function") {
+    if (
+      !resolvedExtension ||
+      typeof resolvedExtension.getPublicKey !== "function"
+    ) {
       throw new Error("NIP-07 extension is unavailable.");
     }
-    return normalizePubkey(await resolvedExtension.getPublicKey());
+    return normalizePubkey(
+      await runNip07WithRetry(() => resolvedExtension.getPublicKey(), {
+        label: "extension.getPublicKey",
+      }),
+    );
   };
 
   const getDisplayName = async () => {
-    if (!resolvedExtension || typeof resolvedExtension.getMetadata !== "function") {
+    if (
+      !resolvedExtension ||
+      typeof resolvedExtension.getMetadata !== "function"
+    ) {
       return "";
     }
-    const metadata = await resolvedExtension.getMetadata();
+    const metadata = await runNip07WithRetry(
+      () => resolvedExtension.getMetadata(),
+      { label: "extension.getMetadata" },
+    );
     if (!metadata || typeof metadata !== "object") {
       return "";
     }
     const displayName =
-      typeof metadata.display_name === "string" ? metadata.display_name.trim() : "";
+      typeof metadata.display_name === "string"
+        ? metadata.display_name.trim()
+        : "";
     if (displayName) {
       return displayName;
     }
@@ -54,17 +70,27 @@ export function createNip07SigningAdapter({ extension } = {}) {
   };
 
   const signEvent = async (event) => {
-    if (!resolvedExtension || typeof resolvedExtension.signEvent !== "function") {
+    if (
+      !resolvedExtension ||
+      typeof resolvedExtension.signEvent !== "function"
+    ) {
       throw new Error("NIP-07 extension is missing signEvent.");
     }
-    return resolvedExtension.signEvent(event);
+    return runNip07WithRetry(() => resolvedExtension.signEvent(event), {
+      label: "extension.signEvent",
+    });
   };
 
   const signMessage = async (message) => {
-    if (!resolvedExtension || typeof resolvedExtension.signMessage !== "function") {
+    if (
+      !resolvedExtension ||
+      typeof resolvedExtension.signMessage !== "function"
+    ) {
       throw new Error("NIP-07 extension does not support signMessage.");
     }
-    return resolvedExtension.signMessage(message);
+    return runNip07WithRetry(() => resolvedExtension.signMessage(message), {
+      label: "extension.signMessage",
+    });
   };
 
   return {

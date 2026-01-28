@@ -30,6 +30,11 @@ export const DEFAULT_NIP07_PERMISSION_METHODS = Object.freeze([
   ...DEFAULT_NIP07_ENCRYPTION_METHODS,
 ]);
 
+// Module-level mutex to serialize NIP-07 extension requests.
+// This prevents "message channel closed" errors caused by race conditions
+// when multiple components (blocks, DMs, auth) query the extension simultaneously.
+let nip07Queue = Promise.resolve();
+
 export function getEnableVariantTimeoutMs() {
   const overrideValue =
     typeof globalThis !== "undefined" &&
@@ -192,40 +197,61 @@ export async function runNip07WithRetry(
     retryMultiplier = 2,
   } = {},
 ) {
-  // We wrap the operation invocation to ensure it returns a fresh promise each time
-  // we attempt it. This is critical for retries: if the first attempt stalls (dropped
-  // by extension), re-awaiting the same promise would just keep waiting on the dead request.
-  const invokeOperation = () => Promise.resolve(operation());
+  // We wrap the entire retry logic in a queue task to ensure only one
+  // request hits the extension at a time.
+  const executeTask = async () => {
+    // We wrap the operation invocation to ensure it returns a fresh promise each time
+    // we attempt it. This is critical for retries: if the first attempt stalls (dropped
+    // by extension), re-awaiting the same promise would just keep waiting on the dead request.
+    const invokeOperation = () => Promise.resolve(operation());
 
-  try {
-    return await withNip07Timeout(invokeOperation, {
-      timeoutMs,
-      message: NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE,
-    });
-  } catch (error) {
-    const isTimeoutError =
-      error instanceof Error &&
-      error.message === NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE;
+    try {
+      return await withNip07Timeout(invokeOperation, {
+        timeoutMs,
+        message: NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE,
+      });
+    } catch (error) {
+      const isTimeoutError =
+        error instanceof Error &&
+        error.message === NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE;
 
-    if (!isTimeoutError || retryMultiplier <= 1) {
-      throw error;
+      if (!isTimeoutError || retryMultiplier <= 1) {
+        throw error;
+      }
+
+      const extendedTimeout = Math.max(
+        timeoutMs,
+        Math.round(timeoutMs * retryMultiplier),
+      );
+
+      devLogger.warn(
+        `[nostr] ${label} taking longer than ${timeoutMs}ms. Retrying with ${extendedTimeout}ms timeout.`,
+      );
+
+      // On retry, we invoke operation() again to send a fresh request to the extension.
+      return withNip07Timeout(invokeOperation, {
+        timeoutMs: extendedTimeout,
+        message: NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE,
+      });
     }
+  };
 
-    const extendedTimeout = Math.max(
-      timeoutMs,
-      Math.round(timeoutMs * retryMultiplier),
-    );
+  const queueItem = nip07Queue.then(() =>
+    executeTask().then(
+      (res) => ({ ok: true, value: res }),
+      (err) => ({ ok: false, error: err }),
+    ),
+  );
 
-    devLogger.warn(
-      `[nostr] ${label} taking longer than ${timeoutMs}ms. Retrying with ${extendedTimeout}ms timeout.`,
-    );
+  // Advance the queue pointer
+  nip07Queue = queueItem.then(() => {});
 
-    // On retry, we invoke operation() again to send a fresh request to the extension.
-    return withNip07Timeout(invokeOperation, {
-      timeoutMs: extendedTimeout,
-      message: NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE,
-    });
+  // Await the specific result for this call
+  const result = await queueItem;
+  if (result.ok) {
+    return result.value;
   }
+  throw result.error;
 }
 
 export async function requestEnablePermissions(

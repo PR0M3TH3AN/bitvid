@@ -19,6 +19,7 @@ import { normalizeHashtag } from "../utils/hashtagNormalization.js";
 import { profileCache } from "../state/profileCache.js";
 import { DEFAULT_RELAY_URLS } from "../nostr/toolkit.js";
 import { relayManager } from "../relayManager.js";
+import { runNip07WithRetry } from "../nostr/nip07Permissions.js";
 
 const LOG_PREFIX = "[HashtagPreferences]";
 const HASHTAG_IDENTIFIER = "bitvid:tag-preferences";
@@ -761,7 +762,11 @@ class HashtagPreferencesService {
       if (typeof nostrApi.nip04?.decrypt === "function") {
         registerDecryptor(
           "nip04",
-          (payload) => nostrApi.nip04.decrypt(userPubkey, payload),
+          (payload) =>
+            runNip07WithRetry(
+              () => nostrApi.nip04.decrypt(userPubkey, payload),
+              { label: "nip04.decrypt" },
+            ),
           "extension",
         );
       }
@@ -774,7 +779,10 @@ class HashtagPreferencesService {
         if (typeof nip44.decrypt === "function") {
           registerDecryptor(
             "nip44",
-            (payload) => nip44.decrypt(userPubkey, payload),
+            (payload) =>
+              runNip07WithRetry(() => nip44.decrypt(userPubkey, payload), {
+                label: "nip44.decrypt",
+              }),
             "extension",
           );
         }
@@ -784,13 +792,19 @@ class HashtagPreferencesService {
         if (nip44v2 && typeof nip44v2.decrypt === "function") {
           registerDecryptor(
             "nip44_v2",
-            (payload) => nip44v2.decrypt(userPubkey, payload),
+            (payload) =>
+              runNip07WithRetry(() => nip44v2.decrypt(userPubkey, payload), {
+                label: "nip44.v2.decrypt",
+              }),
             "extension",
           );
           if (!decryptors.has("nip44")) {
             registerDecryptor(
               "nip44",
-              (payload) => nip44v2.decrypt(userPubkey, payload),
+              (payload) =>
+                runNip07WithRetry(() => nip44v2.decrypt(userPubkey, payload), {
+                  label: "nip44.v2.decrypt",
+                }),
               "extension",
             );
           }
