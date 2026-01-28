@@ -225,15 +225,19 @@ export class VideoPlaybackController {
   }
 
   preparePlaybackLogging(videoEl) {
+    const watchHistoryTelemetry =
+      typeof this.services.getWatchHistoryTelemetry === "function"
+        ? this.services.getWatchHistoryTelemetry()
+        : this.services.watchHistoryTelemetry;
+
     if (
-      this.services.watchHistoryTelemetry &&
-      typeof this.services.watchHistoryTelemetry.preparePlaybackLogging ===
-        "function"
+      watchHistoryTelemetry &&
+      typeof watchHistoryTelemetry.preparePlaybackLogging === "function"
     ) {
       const currentVideo = this.state.getCurrentVideo();
       const pointerKey = currentVideo?.pointerKey || null;
 
-      this.services.watchHistoryTelemetry.preparePlaybackLogging({
+      watchHistoryTelemetry.preparePlaybackLogging({
         videoElement: videoEl,
         video: currentVideo,
         pointerKey,
@@ -249,7 +253,7 @@ export class VideoPlaybackController {
   async playViaWebTorrent(magnet, { fallbackMagnet = "", urlList = [] } = {}) {
     const { torrentClient } = this.services;
     if (!torrentClient) {
-        throw new Error("Torrent client service is not available.");
+      throw new Error("Torrent client service is not available.");
     }
 
     const sanitizedUrlList = Array.isArray(urlList)
@@ -448,18 +452,23 @@ export class VideoPlaybackController {
     await this.waitForCleanup();
     this.cancelPendingViewLogging();
 
+    const playbackService =
+      typeof this.services.getPlaybackService === "function"
+        ? this.services.getPlaybackService()
+        : this.services.playbackService;
+
     if (
       previousSource === "torrent" &&
       sanitizedUrl &&
-      this.services.playbackService &&
-      this.services.playbackService.torrentClient &&
-      typeof this.services.playbackService.torrentClient.cleanup === "function"
+      playbackService &&
+      playbackService.torrentClient &&
+      typeof playbackService.torrentClient.cleanup === "function"
     ) {
       try {
         this.log(
           "[playVideoWithFallback] Previous playback used WebTorrent; cleaning up before preparing hosted session.",
         );
-        await this.services.playbackService.torrentClient.cleanup();
+        await playbackService.torrentClient.cleanup();
       } catch (error) {
         devLogger.warn(
           "[playVideoWithFallback] Pre-playback torrent cleanup threw:",
@@ -556,7 +565,12 @@ export class VideoPlaybackController {
       applyModalLoadingPoster();
     }
 
-    const session = this.services.playbackService.createSession({
+    if (!playbackService) {
+      this.ui.showError("Playback service is not available.");
+      return { source: null, error: new Error("Playback service missing") };
+    }
+
+    const session = playbackService.createSession({
       url: sanitizedUrl,
       magnet: trimmedMagnet,
       requestSignature,

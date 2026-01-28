@@ -250,9 +250,9 @@ class Application {
 
     this.videoPlaybackController = new VideoPlaybackController({
       services: {
-        playbackService: this.playbackService,
+        getPlaybackService: () => this.playbackService,
         torrentClient,
-        watchHistoryTelemetry: this.watchHistoryTelemetry,
+        getWatchHistoryTelemetry: () => this.watchHistoryTelemetry,
       },
       state: {
         getVideoModal: () => this.videoModal,
@@ -4606,9 +4606,12 @@ class Application {
 
         const modalVideoEl = this.modalVideo;
         if (modalVideoEl) {
-          const refreshedModal = this.teardownVideoElement(modalVideoEl, {
-            replaceNode: true,
-          });
+          const refreshedModal = this.videoPlaybackController.teardownVideoElement(
+            modalVideoEl,
+            {
+              replaceNode: true,
+            },
+          );
           if (refreshedModal) {
             this.modalVideo = refreshedModal;
             if (

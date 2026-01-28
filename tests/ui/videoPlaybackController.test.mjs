@@ -30,6 +30,10 @@ describe("VideoPlaybackController", () => {
       },
     };
 
+    // Add getters
+    mockServices.getPlaybackService = () => mockServices.playbackService;
+    mockServices.getWatchHistoryTelemetry = () => mockServices.watchHistoryTelemetry;
+
     const mockVideoElement = {
       pause: mock.fn(),
       load: mock.fn(),
