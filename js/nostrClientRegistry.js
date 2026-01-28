@@ -88,6 +88,10 @@ export function registerNostrClient(client, options = {}) {
   ) {
     requestPermissionsDelegate = (...args) =>
       registeredNostrClient.ensureExtensionPermissions(...args);
+    if (typeof registeredNostrClient.ensureExtensionPermissionsGate === "function") {
+      requestPermissionsDelegate = (...args) =>
+        registeredNostrClient.ensureExtensionPermissionsGate(...args);
+    }
     return;
   }
 

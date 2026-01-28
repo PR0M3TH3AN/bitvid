@@ -435,10 +435,21 @@ export async function publishVideoReaction(
 
   if (canUseActiveSigner) {
     let permissionResult = { ok: true };
-    if (shouldRequestExtensionPermissions(signer)) {
-      permissionResult = await client.ensureExtensionPermissions(
-        DEFAULT_NIP07_PERMISSION_METHODS
-      );
+    const hasCachedPermissions =
+      typeof client?.hasRequiredExtensionPermissions === "function" &&
+      client.hasRequiredExtensionPermissions(DEFAULT_NIP07_PERMISSION_METHODS);
+
+    if (shouldRequestExtensionPermissions(signer) && !hasCachedPermissions) {
+      const permissionGate =
+        typeof client?.ensureExtensionPermissionsGate === "function"
+          ? client.ensureExtensionPermissionsGate.bind(client)
+          : typeof client?.ensureExtensionPermissions === "function"
+            ? client.ensureExtensionPermissions.bind(client)
+            : null;
+
+      if (permissionGate) {
+        permissionResult = await permissionGate(DEFAULT_NIP07_PERMISSION_METHODS);
+      }
     }
     if (permissionResult.ok) {
       try {
