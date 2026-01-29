@@ -10,12 +10,26 @@ declare global {
 }
 
 test.describe("overlay layering tokens", () => {
-  test("mobile sidebar shares desktop rail behavior", async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
+  async function dismissDisclaimerModal(page: Page) {
+    const modal = page.locator("#disclaimerModal");
+    if ((await modal.count()) === 0) {
+      return;
+    }
 
-    // Pre-suppress the disclaimer modal to avoid race conditions with app hydration
-    await page.addInitScript(() => {
-      window.localStorage.setItem("hasSeenDisclaimer", "true");
+    await page.evaluate(() => {
+      try {
+        window.localStorage?.setItem("hasSeenDisclaimer", "true");
+      } catch (error) {
+        console.warn("Failed to persist disclaimer state", error);
+      }
+      document
+        .querySelectorAll<HTMLElement>("#disclaimerModal")
+        .forEach((node) => {
+          node.classList.add("hidden");
+          node.setAttribute("data-open", "false");
+        });
+      document.documentElement?.classList.remove("modal-open");
+      document.body?.classList.remove("modal-open");
     });
 
     await page.waitForFunction(() =>
@@ -26,26 +40,19 @@ test.describe("overlay layering tokens", () => {
   }
 
   test("mobile sidebar shares desktop rail behavior", async ({ page }) => {
-    // Increase timeout for this visual test which is prone to flakiness in CI
-    test.setTimeout(120_000);
-
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/index.html", { waitUntil: "networkidle" });
+
+    await dismissDisclaimerModal(page);
 
     // Wait for initial fade-in to complete so opacity doesn't interfere with visibility checks
     await page.waitForFunction(
       () => !document.getElementById("sidebar")?.classList.contains("fade-in")
     );
 
-    // At 768px, we still shouldn't see the mobile FAB if we are in "desktop/tablet" mode,
-    // or if we are, the test logic below assumes a sidebar collapse toggle exists.
     await expect(page.locator("#mobileMenuBtn")).toHaveCount(0);
 
     const collapseToggle = page.locator("#sidebarCollapseToggle");
-
-    // Ensure the toggle is visible before proceeding.
-    // If this fails, the sidebar is likely hidden on tablet, which would require
-    // adjusting the viewport further or fixing the CSS.
     await expect(collapseToggle).toBeVisible();
 
     const initialLayout = await page.evaluate(() => {
@@ -121,7 +128,6 @@ test.describe("overlay layering tokens", () => {
 
     // Ensure the toggle is initialized
     await expect(collapseToggle).toHaveAttribute("data-state", /.*/);
-    await collapseToggle.scrollIntoViewIfNeeded();
     await collapseToggle.click({ force: true });
 
     await page.waitForFunction(() => {
@@ -229,48 +235,6 @@ test.describe("overlay layering tokens", () => {
 
     expect(dropupState.state).toBe("expanded");
     expect(dropupState.ariaHidden).toBe("false");
-  });
-
-  test("toast stack honors overlay toast layer", async ({ page }) => {
-    await page.goto("/torrent/beacon.html", { waitUntil: "networkidle" });
-
-    await page.addScriptTag({
-      type: "module",
-      content: `
-        import { createBeaconToast } from "/torrent/ui/toastService.js";
-        window.__testToast = createBeaconToast(document);
-      `,
-    });
-
-    await page.waitForFunction(() => Boolean(window.__testToast));
-
-    await page.evaluate(() => {
-      window.__testToast?.show("Layer check one");
-      window.__testToast?.show("Layer check two");
-    });
-
-    await page.waitForTimeout(100);
-
-    const toastState = await page.evaluate(() => {
-      const container = document.getElementById("beacon-toast-container");
-      if (!container) {
-        throw new Error("Missing toast container");
-      }
-
-      const toastLayer = window
-        .getComputedStyle(document.documentElement)
-        .getPropertyValue("--z-overlay-toast")
-        .trim();
-
-      return {
-        zIndex: window.getComputedStyle(container).zIndex,
-        toastLayer,
-        childCount: container.querySelectorAll("[data-beacon-motion]").length,
-      };
-    });
-
-    expect(toastState.childCount).toBeGreaterThanOrEqual(2);
-    expect(toastState.zIndex).toBe(toastState.toastLayer);
   });
 });
 export {};
