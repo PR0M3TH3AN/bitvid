@@ -328,13 +328,13 @@ export async function requestEnablePermissions(
     : [];
 
   const permissionVariants = [];
-  permissionVariants.push(null);
   if (normalized.length) {
     permissionVariants.push({
       permissions: normalized.map((method) => ({ method })),
     });
     permissionVariants.push({ permissions: normalized });
   }
+  permissionVariants.push(null);
 
   const enableTimeoutMs = getEnableVariantTimeoutMs();
   const loginTimeoutMs = getNip07LoginTimeoutMs();
