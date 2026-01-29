@@ -3861,7 +3861,7 @@ export class NostrClient {
     const pool = await this.ensurePool();
     const actualFetchFn = typeof fetchFn === "function"
       ? fetchFn
-      : (r, f) => pool.list([r], [f]);
+      : (r, f, timeout) => pool.list([r], [f], { timeout });
 
     const chunks = [];
     for (let i = 0; i < normalizedRelays.length; i += concurrencyLimit) {
@@ -3919,7 +3919,7 @@ export class NostrClient {
         try {
           // Wrap fetch with a timeout to prevent hanging on slow relays
           let events = await withRequestTimeout(
-            actualFetchFn(relayUrl, filter),
+            actualFetchFn(relayUrl, filter, listTimeoutMs),
             listTimeoutMs,
             null,
             `Fetch from ${relayUrl} timed out`
@@ -3954,7 +3954,7 @@ export class NostrClient {
             try {
               delete filter.since;
               const events = await withRequestTimeout(
-                actualFetchFn(relayUrl, filter),
+                actualFetchFn(relayUrl, filter, listTimeoutMs),
                 listTimeoutMs,
                 null,
                 `Full fetch fallback from ${relayUrl} timed out`
