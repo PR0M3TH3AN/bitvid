@@ -15,6 +15,9 @@ test.describe("toast service in full DOM", () => {
       `,
     });
 
+    // Wait for module to load and initialize __toast to prevent race conditions
+    await page.waitForFunction(() => (window as any).__toast);
+
     await page.evaluate(() => {
       window.__toast?.success("Sticky toast", { sticky: true });
       window.__toast?.info("Transient toast", { duration: 800 });
