@@ -41,6 +41,9 @@ test.describe("overlay layering tokens", () => {
 
   test("mobile sidebar shares desktop rail behavior", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => {
+      window.localStorage.setItem("hasSeenDisclaimer", "true");
+    });
     await page.goto("/index.html", { waitUntil: "networkidle" });
 
     await dismissDisclaimerModal(page);
@@ -53,6 +56,7 @@ test.describe("overlay layering tokens", () => {
     await expect(page.locator("#mobileMenuBtn")).toHaveCount(0);
 
     const collapseToggle = page.locator("#sidebarCollapseToggle");
+    await collapseToggle.scrollIntoViewIfNeeded();
     await expect(collapseToggle).toBeVisible();
 
     const initialLayout = await page.evaluate(() => {
@@ -149,6 +153,9 @@ test.describe("overlay layering tokens", () => {
       }
     });
 
+    // Wait for scroll to settle and layout to stabilize
+    await page.waitForTimeout(500);
+
     const expandedLayout = await page.evaluate(() => {
       const sidebar = document.getElementById("sidebar");
       const app = document.getElementById("app");
@@ -218,6 +225,7 @@ test.describe("overlay layering tokens", () => {
     expect(Math.abs(expandedLayout.marginLeft - expandedLayout.expectedMargin)).toBeLessThan(0.5);
 
     const footerButton = page.locator("#footerDropdownButton");
+    await footerButton.scrollIntoViewIfNeeded();
     await expect(footerButton).toBeVisible();
     await footerButton.click();
     await expect(footerButton).toHaveAttribute("aria-expanded", "true");
