@@ -1,0 +1,18 @@
+{
+  "hash": "f5565f667ef0bd28",
+  "message": "missing-event-relay",
+  "stack": "Error: missing-event-relay\n    at buildRepostEvent (file:///app/js/nostrEventSchemas.js:869:13)\n    at test (file:///app/scripts/agent/fuzz-nostr-schemas.mjs:91:9)\n    at Fuzzer.runFuzzLoop (file:///app/scripts/agent/fuzz-lib.mjs:142:15)",
+  "input": {
+    "target": "buildRepostEvent",
+    "params": {
+      "pubkey": "7e8b1efc8fef112e00addea54f4ff10ca29ab88ca2ab5e36a7fb0822627f2a3b",
+      "created_at": 1768926859,
+      "content": "ፂ킆ⅷ隰\ude47\udc98烥낷쪾⸛꒻ᕬ㦑屔\udef5㷣\ud8e7鄬䀟࠭ᩝ\udd6c䥶村\udffe\ud878嶁\udf84㩓䂹\ud81b㑤쇼᷒抪࿨燉䷓\udaf5哐冡\udbfa\uda10",
+      "additionalTags": [],
+      "dTagValue": "Go7SKAG4O3",
+      "eventId": "5374e07583039dbf7be03119c6d5e0c7ea8545ce55050620e1021b5ce7fc6924",
+      "M5lVs": {}
+    }
+  },
+  "timestamp": "2026-01-20T16:34:19.526Z"
+}

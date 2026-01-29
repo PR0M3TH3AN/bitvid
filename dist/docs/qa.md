@@ -1,0 +1,53 @@
+# bitvid Manual QA Script
+
+Run this checklist before publishing releases or merging changes that touch upload or playback flows. Copy/paste the steps into QA tickets when requesting validation.
+
+> **Note:** Align every UI styling review with the token-first rules in [`AGENTS.md`](../AGENTS.md) and the [README CSS build pipeline](../README.md#css-build-pipeline). When QA covers styling changes, run `npm run lint:css` (and any related build/test scripts) to catch regressions early.
+
+Before starting, open `docs/kitchen-sink.html` in a browser to review the modal surface reference. Spin up the static dev server (`python -m http.server 8000` or `npx serve`) and load `views/dev/popover-demo.html` to sanity-check overlay menus following [docs/menus.md](./menus.md). With those pages as your visual baseline, perform this quick accessibility spot check in the running app:
+
+Automated regression coverage now exercises these flows on the unified design-system variant:
+
+* `tests/video-modal-accessibility.test.mjs` validates sticky header transitions, scroll locking, zap popover accessibility, and now verifies the video shell drops sticky positioning on mobile breakpoints.
+* `tests/modal-accessibility.test.mjs` mirrors upload/edit modal accessibility along with their form validation and mode toggles.
+* `tests/profile-modal-controller.test.mjs` verifies profile modal focus restoration and navigation button state changes.
+
+`tests/visual/kitchen-sink.spec.ts` captures design-system snapshots for the kitchen sink and the video modal. When modal styles change, run `npm run test:visual:update` to refresh both the desktop and mobile baselines.
+
+* Launch the site, trigger any video card or thumbnail to open the playback modal, and keep track of the element you used to open it.
+* Scroll the modal content down and back up; confirm the sticky navigation bar hides on downward scroll and reappears when you reverse direction.
+* Activate the zap button to display the popover and tab through its fields to confirm focus stays within the dialog; press `Escape` to close it and ensure focus returns to the zap trigger.
+* Close the video modal first with `Escape` and again by clicking the dimmed backdrop; in both cases, focus should move back to the original trigger element you used to open the modal.
+* Repeat the accessibility spot check for the Upload, Edit, and Revert modals along with static dialogs (Login, Application form, Content appeals, Feedback, Feature request, Bug report, and Disclaimer). Ensure `Tab`/`Shift+Tab` stay within each modal and that pressing `Escape` or clicking a dismissible backdrop closes the dialog and restores focus to the opener.
+
+1. **Upload Modal Smoke Test**
+   - Open the Upload modal, verify title is required, and ensure either a hosted URL or a magnet (or both) must be supplied.
+   - Submit three variants: URL-only, magnet-only, and both URL + magnet. Confirm success messaging or event publication in each case.
+2. **URL-First Playback**
+   - For a post with both URL and magnet, play the video and confirm the hosted URL loads first (inspect network requests or logs).
+   - Simulate a dead URL (offline mode or request blocker) and confirm playback falls back to WebTorrent without breaking the UI.
+3. **Magnet Safety**
+   - Paste an encoded magnet and confirm `safeDecodeMagnet()` outputs the raw string before playback.
+   - Ensure `normalizeAndAugmentMagnet()` adds provided `ws=` / `xs=` hints while keeping the original `xt` hash intact.
+4. **P2P Hints & Trackers**
+   - Confirm magnets generated through the modal include HTTPS `ws=` seeds and optional HTTPS `xs=` torrent URLs when supplied.
+   - Check that tracker arrays originate from `js/constants.js` and only include WSS endpoints.
+5. **Cross-Browser Verification**
+   - Spot-check Chromium and Firefox (desktop) for console warnings about CORS, Range requests, or tracker connectivity.
+   - Optionally validate on mobile Safari/Chrome if the change targets mobile UX.
+6. **Saved Profile Metadata Refresh**
+   - In the browser devtools console/storage panel, delete `bitvid:profileCache:v1` but keep `bitvid:savedProfiles:v1` populated with Nostr pubkeys that lack stored names/avatars.
+   - Reload the page and open the profile switcher; confirm avatars and display names populate automatically without manual refresh.
+7. **View Logging Per Identity**
+   - Play the same video until a view event is logged, then log out (or switch to a different pubkey) and repeat the playback.
+   - Confirm two distinct view events appear (e.g., via relay logs or UI counters) and the aggregated view count increments twice.
+
+8. **Direct key login (nsec)**
+   - Choose the "Direct key" option in the login modal and confirm the warning copy reads `"Unsafe by default" — imported keys stay decrypted only for this session unless you protect them with a passphrase.`
+   - Sign in with a new nsec or mnemonic, opt into remembering it, and verify the passphrase prompt blocks submission until both passphrase fields match.
+   - Reload the page, select "Unlock saved key", enter the passphrase, and confirm the account unlocks without re-entering the secret.
+   - Publish a video while logged in with the direct-key provider and confirm the resulting event is signed (relays accept it) and the UI reports success.
+   - While still signed in via the direct-key provider, send a direct message to a second account and confirm it decrypts successfully on the recipient before release.
+   - Log out and ensure the session clears decrypted key material; stored keys should require the passphrase to unlock again.
+
+Document findings (pass/fail notes plus relevant screenshots or logs) so they can be attached to release or PR notes.

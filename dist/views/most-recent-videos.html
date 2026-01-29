@@ -1,0 +1,43 @@
+<!-- views/most-recent-videos.html -->
+<section data-ds="new">
+  <!-- You can have a heading if you want -->
+  <div class="flex items-center gap-2 mb-4">
+    <h2 class="text-xl font-semibold text-text">Recently Added Videos</h2>
+    <button
+      type="button"
+      id="recentInfoTrigger"
+      class="text-muted hover:text-text focus:outline-none transition-colors"
+      aria-label="How is this feed sorted?"
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        class="w-5 h-5"
+        aria-hidden="true"
+      >
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="16" x2="12" y2="12"></line>
+        <line x1="12" y1="8" x2="12.01" y2="8"></line>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Video List -->
+  <div id="videoListTags" class="mb-4" hidden></div>
+  <div id="videoList" class="bv-grid-video">
+    <div class="sidebar-loading-wrapper" role="status" aria-live="polite">
+      <div class="sidebar-loading-indicator">
+        <span
+          class="status-spinner status-spinner--inline"
+          aria-hidden="true"
+        ></span>
+        <span class="sidebar-loading-text">Fetching recent videos…</span>
+      </div>
+    </div>
+  </div>
+</section>

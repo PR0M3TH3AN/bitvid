@@ -30,6 +30,9 @@ test.describe("overlay layering tokens", () => {
     test.setTimeout(120_000);
 
     await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => {
+      window.localStorage.setItem("hasSeenDisclaimer", "true");
+    });
     await page.goto("/index.html", { waitUntil: "networkidle" });
 
     // Wait for initial fade-in to complete so opacity doesn't interfere with visibility checks
@@ -42,10 +45,7 @@ test.describe("overlay layering tokens", () => {
     await expect(page.locator("#mobileMenuBtn")).toHaveCount(0);
 
     const collapseToggle = page.locator("#sidebarCollapseToggle");
-
-    // Ensure the toggle is visible before proceeding.
-    // If this fails, the sidebar is likely hidden on tablet, which would require
-    // adjusting the viewport further or fixing the CSS.
+    await collapseToggle.scrollIntoViewIfNeeded();
     await expect(collapseToggle).toBeVisible();
 
     const initialLayout = await page.evaluate(() => {
@@ -144,6 +144,9 @@ test.describe("overlay layering tokens", () => {
       }
     });
 
+    // Wait for scroll to settle and layout to stabilize
+    await page.waitForTimeout(500);
+
     const expandedLayout = await page.evaluate(() => {
       const sidebar = document.getElementById("sidebar");
       const app = document.getElementById("app");
@@ -213,6 +216,7 @@ test.describe("overlay layering tokens", () => {
     expect(Math.abs(expandedLayout.marginLeft - expandedLayout.expectedMargin)).toBeLessThan(0.5);
 
     const footerButton = page.locator("#footerDropdownButton");
+    await footerButton.scrollIntoViewIfNeeded();
     await expect(footerButton).toBeVisible();
     await footerButton.click();
     await expect(footerButton).toHaveAttribute("aria-expanded", "true");

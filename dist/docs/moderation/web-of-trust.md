@@ -1,0 +1,105 @@
+# Web-of-Trust Policy (bitvid)
+
+## Graph terms
+- **F1 (friends)**: pubkeys you follow.
+- **F2**: friends-of-friends (off by default for Home; allowed for Discovery).
+- **Trusted report**: a NIP-56 report from an F1 account.
+
+## Signals we use
+- NIP-56 reports by type (`nudity`, `spam`, `illegal`, `impersonation`, etc.).
+- NIP-51 lists:
+  - 10000 mute list → downrank/hide author content.
+  - 30000 categorized people → optional admin lists (see below).
+- (Optional) reputation score from a reputation source (e.g., PageRank/DVM) for **Discovery** only.
+- Super Admin + active moderators are always treated as trust seeds for anonymous/default visitors. `DEFAULT_TRUST_SEED_NPUBS` in [`config/instance-config.js`](../../config/instance-config.js) only activates when those live moderator lists cannot be fetched.
+
+## Default thresholds (can be tuned)
+- `blurThumbnail = trustedReportCount(event,'nudity') >= DEFAULT_BLUR_THRESHOLD`
+- `hideAutoplay = trustedReportCount(event,'nudity') >= DEFAULT_AUTOPLAY_BLOCK_THRESHOLD`
+- `downrankIfMutedByF1 = true`
+- `hideIfTrustedMuteCount(author, category) >= trustedMuteHideThresholds[category] ?? DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD`
+- `hideIfTrustedSpamReports(event) >= DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD`
+
+Threshold constants are exported from [`config/instance-config.js`](../../config/instance-config.js) so operators can change the defaults without touching moderation code. Inspect the `DEFAULT_BLUR_THRESHOLD`, `DEFAULT_AUTOPLAY_BLOCK_THRESHOLD`, `DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD`, and `DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD` exports to set your policy. The upstream repo includes example values (blur at 1, autoplay block at 1, trusted mute hide at 20, trusted spam hide at 1), but treat those as guidance rather than hard-coded requirements. Per-category trusted mute hide thresholds now live in moderation settings as `trustedMuteHideThresholds` (e.g., `{ spam: 5, nudity: 10 }`), and any category not present falls back to the default trusted mute hide threshold. When evaluating trusted mutes we use the content's report type if available, otherwise we fall back to any category metadata attached to trusted mute list entries.
+
+### Trusted mute decay window
+- Trusted mute counts are **time-bounded**: only mute lists updated within the rolling window (currently 60 days) contribute to `trustedMuteCount`.
+- If an F1 account has not refreshed its mute list within the window, its mutes are treated as expired until a newer list is ingested.
+- This window acts as a rate-limit/decay mechanism so stale mutes do not accumulate indefinitely.
+
+### Why these numbers?
+- F1-only reports resist Sybil attacks.
+- Blur is reversible; hiding autoplay reduces accidental exposure.
+
+## Admin lists (opt-in)
+- We recognize curated lists using `30000` events:
+  - `['d','bitvid:admin:blacklist']` → hard-hide when subscribed.
+- `['d','bitvid:admin:whitelist']` → improves Discovery ranking when subscribed but no longer bypasses moderation gates.
+  - `['d','bitvid:admin:editors']` → trusted channel editors.
+- Users can subscribe/unsubscribe any time.
+
+### Decision precedence
+
+1. **Personal blocks win first.** If a viewer blocks an author or reporter, we ignore their content and reports regardless of admin lists.
+2. **Admin blacklist applies next.** Entries on `bitvid:admin:blacklist` are hard-hidden and their reports suppressed before looking at thresholds.
+3. **F1 thresholds run last.** Blur/autoplay gating only evaluates trusted-report counts after personal blocks and admin blacklists. Admin whitelists contribute to Discovery ranking when a viewer subscribes, but they never override moderation gates or a viewer block.
+
+## Pseudocode
+
+```ts
+type Hex = string;
+
+interface Report {
+  reporter: Hex; // F1 must include this key
+  type: 'nudity'|'spam'|'illegal'|'impersonation'|'malware'|'profanity'|'other';
+  targetEvent: string;
+}
+
+function trustedReportCount(eventId: string, type: Report['type'], viewerFollows: Set<Hex>, reports: Report[]): number {
+  return reports.filter(r => r.targetEvent === eventId && r.type === type && viewerFollows.has(r.reporter)).length;
+}
+
+function shouldBlurThumb(eventId: string, ctx: Ctx): boolean {
+  return trustedReportCount(eventId, 'nudity', ctx.viewerFollows, ctx.reports) >= DEFAULT_BLUR_THRESHOLD;
+}
+
+function shouldHideAutoplay(eventId: string, ctx: Ctx): boolean {
+  return trustedReportCount(eventId, 'nudity', ctx.viewerFollows, ctx.reports) >= DEFAULT_AUTOPLAY_BLOCK_THRESHOLD;
+}
+
+function shouldHideForTrustedMute(authorHex: string, ctx: Ctx, category: Report['type']): boolean {
+  const thresholds = ctx.trustedMuteHideThresholds || {};
+  const threshold = thresholds[category] ?? DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD;
+  return ctx.trustedMuteCount(authorHex, category) >= threshold;
+}
+
+function shouldHideForTrustedSpam(eventId: string, ctx: Ctx): boolean {
+  return trustedReportCount(eventId, 'spam', ctx.viewerFollows, ctx.reports) >= DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD;
+}
+```
+
+## UI rules
+
+* Always show a reason chip: e.g., `Blurred · 3 friends reported “nudity” · Show anyway`.
+* Respect per-viewer choices (global off, per-channel off).
+* Never bury the override.
+
+## Discovery (optional reputation)
+
+* Home feed: **never** gated by reputation.
+* Discovery/Trending: may require a minimum score (pluggable `ReputationSource`).
+* Keep a toggle in Settings to disable reputation gating.
+
+```ts
+interface ReputationSource {
+  // returns 0..1 rank per pubkey for a given perspective
+  rank(pubkeys: Hex[], perspective?: Hex): Promise<Record<Hex, number>>;
+}
+```
+
+## Anti-abuse hardening
+
+* Count unique F1 reporters only (dedupe by pubkey).
+* Minimum account age or minimum “being-followed” count for reporters (optional).
+* Rate-limit rapid report bursts per reporter.
+* Ignore reports from muted or blocked reporters.

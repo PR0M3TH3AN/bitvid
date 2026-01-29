@@ -1,0 +1,311 @@
+<!--
+  Sidebar fades in once when hydrated on the client. js/index.js removes the
+  helper classes after the initial animation to avoid flashes each time we
+  re-render navigation links.
+-->
+<aside
+  id="sidebar"
+  class="fade-in fade-in-delay-100 sidebar-collapsed"
+  data-state="collapsed"
+  data-ds="new"
+>
+  <div class="sidebar__inner">
+    <div class="sidebar-scroll">
+      <!-- Primary navigation -->
+      <section class="sidebar-panel sidebar-panel--primary">
+        <div class="sidebar-panel__header">
+          <button
+            id="sidebarCollapseToggle"
+            type="button"
+            class="sidebar-collapse-toggle"
+            aria-controls="sidebar"
+            aria-expanded="false"
+            aria-label="Expand sidebar"
+            title="Expand sidebar"
+          >
+            <svg
+              data-sidebar-chevron
+              class="sidebar-collapse-toggle__icon sidebar-toggle-icon--rotated"
+              aria-hidden="true"
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M10 6l6 6-6 6" />
+            </svg>
+          </button>
+        </div>
+        <nav class="sidebar-nav" aria-label="Primary">
+          <a
+            id="forYouLink"
+            href="#view=for-you"
+            class="sidebar-nav-link hidden"
+            title="For You"
+          >
+            <img
+              src="assets/svg/for-you-feed-icon.svg"
+              alt=""
+              aria-hidden="true"
+              class="sidebar-icon"
+            />
+            <span class="sidebar-text">For You</span>
+          </a>
+          <a href="#view=most-recent-videos" class="sidebar-nav-link" title="Recently Added">
+            <img
+              src="assets/svg/globe-icon.svg"
+              alt=""
+              aria-hidden="true"
+              class="sidebar-icon"
+            />
+            <span class="sidebar-text">Recently Added</span>
+          </a>
+          <a href="#view=kids" class="sidebar-nav-link" title="For Kids">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              class="sidebar-icon"
+              aria-hidden="true"
+              fill="currentColor"
+            >
+              <path
+                d="M12 2c5.514 0 10 4.486 10 10s-4.486 10-10 10-10-4.486-10-10 4.486-10 10-10zm0-2c-6.627 0-12 5.373-12 12s5.373 12 12 12 12-5.373 12-12-5.373-12-12-12zm6 14h-12c.331 1.465 2.827 4 6.001 4 3.134 0 5.666-2.521 5.999-4zm0-3.998l-.755.506s-.503-.948-1.746-.948c-1.207 0-1.745.948-1.745.948l-.754-.506c.281-.748 1.205-2.002 2.499-2.002 1.295 0 2.218 1.254 2.501 2.002zm-7 0l-.755.506s-.503-.948-1.746-.948c-1.207 0-1.745.948-1.745.948l-.754-.506c.281-.748 1.205-2.002 2.499-2.002 1.295 0 2.218 1.254 2.501 2.002z"
+              />
+            </svg>
+            <span class="sidebar-text">For Kids</span>
+          </a>
+          <a
+            id="exploreLink"
+            href="#view=explore"
+            class="sidebar-nav-link hidden"
+            title="Explore"
+          >
+            <img
+              src="assets/svg/explore-icon.svg"
+              alt=""
+              aria-hidden="true"
+              class="sidebar-icon"
+            />
+            <span class="sidebar-text">Explore</span>
+          </a>
+          <a
+            id="subscriptionsLink"
+            href="#view=subscriptions"
+            class="sidebar-nav-link hidden"
+            title="Subscriptions"
+          >
+            <img
+              src="assets/svg/subscriptions-icon.svg"
+              alt=""
+              aria-hidden="true"
+              class="sidebar-icon"
+            />
+            <span class="sidebar-text">Subscriptions</span>
+          </a>
+          <a href="#view=history" class="sidebar-nav-link" title="History">
+            <img
+              src="assets/svg/history-icon.svg"
+              alt=""
+              aria-hidden="true"
+              class="sidebar-icon"
+            />
+            <span class="sidebar-text">History</span>
+          </a>
+        </nav>
+      </section>
+
+      <!-- Footer Links Toggle -->
+      <footer class="sidebar-footer" data-footer-state="collapsed">
+        <button
+          id="footerDropdownButton"
+          type="button"
+          class="sidebar-dropup-trigger"
+          aria-expanded="false"
+          aria-controls="footerLinksContainer"
+        >
+          <img
+            src="assets/svg/ellipsis.svg"
+            alt=""
+            aria-hidden="true"
+            class="sidebar-icon sidebar-dropup-trigger__glyph"
+          />
+          <span id="footerDropdownText" class="sidebar-text">More</span>
+          <svg
+            id="footerDropdownIcon"
+            class="sidebar-dropup-trigger__chevron"
+            aria-hidden="true"
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+        </button>
+
+        <!-- Footer Links Container -->
+        <div
+          id="footerLinksContainer"
+          class="sidebar-dropup-panel"
+          aria-hidden="true"
+          data-state="collapsed"
+        >
+          <nav class="sidebar-dropup-panel__inner" aria-label="Secondary">
+            <a href="#view=docs" class="sidebar-nav-link sidebar-nav-link--sub" title="Docs">
+              <img
+                src="assets/svg/getting-started-icon.svg"
+                alt=""
+                aria-hidden="true"
+                class="sidebar-icon"
+              />
+              <span class="sidebar-text">Docs</span>
+            </a>
+            <a
+              href="#"
+              data-blog-link
+              class="sidebar-nav-link sidebar-nav-link--sub"
+              title="Blog"
+              rel="noopener noreferrer"
+            >
+              <img
+                src="assets/svg/blog-icon.svg"
+                alt=""
+                aria-hidden="true"
+                class="sidebar-icon"
+              />
+              <span class="sidebar-text">Blog</span>
+            </a>
+            <a
+              href="#"
+              data-nostr-link
+              class="sidebar-nav-link sidebar-nav-link--sub"
+              title="Nostr"
+              rel="noopener noreferrer"
+            >
+              <img
+                src="assets/svg/nostr-icon.svg"
+                alt=""
+                aria-hidden="true"
+                class="sidebar-icon"
+              />
+              <span class="sidebar-text">Nostr</span>
+            </a>
+            <a
+              href="#"
+              data-community-link
+              class="sidebar-nav-link sidebar-nav-link--sub"
+              title="Community"
+              rel="noopener noreferrer"
+            >
+              <svg
+                class="sidebar-icon"
+                width="24"
+                height="24"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="currentColor"
+                fill-rule="evenodd"
+                clip-rule="evenodd"
+                aria-hidden="true"
+              >
+                <path
+                  d="M24 20h-3v4l-5.333-4h-7.667v-4h2v2h6.333l2.667 2v-2h3v-8.001h-2v-2h4v12.001zm-6-6h-9.667l-5.333 4v-4h-3v-14.001h18v14.001zm-13-8c.552 0 1 .448 1 1s-.448 1-1 1-1-.448-1-1 .448-1 1-1zm4 0c.552 0 1 .448 1 1s-.448 1-1 1-1-.448-1-1 .448-1 1-1zm4 0c.552 0 1 .448 1 1s-.448 1-1 1-1-.448-1-1 .448-1 1-1z"
+                />
+              </svg>
+              <span class="sidebar-text">Community</span>
+            </a>
+            <a
+              href="#"
+              data-github-link
+              class="sidebar-nav-link sidebar-nav-link--sub"
+              title="GitHub"
+              rel="noopener noreferrer"
+            >
+              <img
+                src="assets/svg/github-icon.svg"
+                alt=""
+                aria-hidden="true"
+                class="sidebar-icon"
+              />
+              <span class="sidebar-text">GitHub</span>
+            </a>
+            <a
+              href="torrent/beacon.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="sidebar-nav-link sidebar-nav-link--sub"
+              title="βeacon"
+            >
+              <img
+                src="assets/svg/beacon-icon.svg"
+                alt=""
+                aria-hidden="true"
+                class="sidebar-icon"
+              />
+              <span class="sidebar-text">βeacon</span>
+            </a>
+            <a
+              href="#"
+              data-beta-link
+              class="sidebar-nav-link sidebar-nav-link--sub"
+              title="Beta"
+              rel="noopener noreferrer"
+            >
+              <img
+                src="assets/svg/beta-icon.svg"
+                alt=""
+                aria-hidden="true"
+                class="sidebar-icon"
+              />
+              <span class="sidebar-text">Beta</span>
+            </a>
+            <a
+              href="#"
+              data-dns-link
+              class="sidebar-nav-link sidebar-nav-link--sub"
+              title="DNS"
+              rel="noopener noreferrer"
+            >
+              <img
+                src="assets/svg/dns-icon.svg"
+                alt=""
+                aria-hidden="true"
+                class="sidebar-icon"
+              />
+              <span class="sidebar-text">DNS</span>
+            </a>
+            <a
+              href="#"
+              data-tip-jar-link
+              class="sidebar-nav-link sidebar-nav-link--sub"
+              title="Tip Jar"
+              rel="noopener noreferrer"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                class="sidebar-icon"
+                aria-hidden="true"
+                fill="currentColor"
+              >
+                <path
+                  d="M12 2c5.514 0 10 4.486 10 10s-4.486 10-10 10-10-4.486-10-10 4.486-10 10-10zm0-2c-6.627 0-12 5.373-12 12s5.373 12 12 12 12-5.373 12-12-5.373-12-12-12zm0 18v-1.511h-.5v1.511h-1v-1.511h-2.484l.25-1.489h.539c.442 0 .695-.425.695-.854v-4.444c0-.416-.242-.702-.683-.702h-.817v-1.5h2.5v-1.5h1v1.5h.5v-1.5h1v1.526c2.158.073 3.012.891 3.257 1.812.29 1.09-.429 2.005-1.046 2.228.75.192 1.789.746 1.789 2.026 0 1.742-1.344 2.908-4 2.908v1.5h-1zm-.5-5.503v2.503c1.984 0 3.344-.188 3.344-1.258 0-1.148-1.469-1.245-3.344-1.245zm0-.997c1.105 0 2.789-.078 2.789-1.25 0-1-1.039-1.25-2.789-1.25v2.5z"
+                />
+              </svg>
+              <span class="sidebar-text">Tip Jar</span>
+            </a>
+          </nav>
+        </div>
+      </footer>
+    </div>
+  </div>
+</aside>

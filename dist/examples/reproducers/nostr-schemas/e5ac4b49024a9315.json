@@ -1,0 +1,47 @@
+{
+  "hash": "e5ac4b49024a9315",
+  "message": "missing-event-relay",
+  "stack": "Error: missing-event-relay\n    at buildRepostEvent (file:///app/js/nostrEventSchemas.js:869:13)\n    at test (file:///app/scripts/agent/fuzz-nostr-schemas.mjs:91:9)\n    at Fuzzer.runFuzzLoop (file:///app/scripts/agent/fuzz-lib.mjs:142:15)",
+  "input": {
+    "target": "buildRepostEvent",
+    "params": {
+      "pubkey": "63a10c52b6909024935c9e0b2a2c68e3db1ea1115f2434b50a797fb559b58bca",
+      "created_at": 1768926859,
+      "additionalTags": [
+        [
+          "Elx3b",
+          "MmFA1VNdgc"
+        ],
+        [
+          "I3ybr",
+          "XJDkDHqKnS"
+        ],
+        [
+          "ktZT5",
+          "YVcLFQ1tgg"
+        ],
+        [
+          "rViGm",
+          "Y58vBKHbbM"
+        ],
+        [
+          "HjDaJ",
+          "ZY4F4o1jts"
+        ]
+      ],
+      "dTagValue": "CU7mmWlnIL",
+      "eventId": "728ee10a08594bde492cccd82af025639361b8ff608da37e5110d4bc4b98d785",
+      "XP1x6": [
+        {
+          "PsmRN": [
+            true
+          ],
+          "EHNwp": 872.9927942691252,
+          "oHHhu": "ⲉ㿙㘅磳쓿ֆ垜\ud8c7嘮ᭀᣵ򰿪\udd8d㨔\uda9d\ud933≄뎡\ude03\udaed旍菜㉉厕\udd94\udc2e쏞笒뚏\udb05ℛ鼇憑샄\udff4",
+          "iT9Mb": 7962.070659919705
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-01-20T16:34:19.546Z"
+}
