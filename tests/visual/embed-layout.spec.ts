@@ -7,12 +7,15 @@ test.describe("embed layout and styling", () => {
     await page.goto("/embed.html?pointer=nevent123", { waitUntil: "domcontentloaded" });
 
     // 1. Verify CSS Variable
-    const accentColor = await page.evaluate(() => {
-      return getComputedStyle(document.documentElement).getPropertyValue("--bitvid-accent").trim();
-    });
     // The configured color is #540011 (from config/instance-config.js)
     const expectedAccent = THEME_ACCENT_OVERRIDES?.light?.accent || "#ff6b6b";
-    expect(accentColor).toBe(expectedAccent);
+
+    // Wait for the accent color to be applied by js/embed.js
+    await expect.poll(async () => {
+      return page.evaluate(() => {
+        return getComputedStyle(document.documentElement).getPropertyValue("--bitvid-accent").trim();
+      });
+    }).toBe(expectedAccent);
 
     // 2. Verify Video Element Styling
     const video = page.locator("#embedVideo");
