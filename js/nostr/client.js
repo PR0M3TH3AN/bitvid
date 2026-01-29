@@ -3814,10 +3814,27 @@ export class NostrClient {
       : this.relays;
 
     const healthyCandidates = this.getHealthyRelays(relaysToUse);
+    let relayCandidates = healthyCandidates;
+    if (!healthyCandidates.length && relaysToUse.length) {
+      const sanitizedFallback = sanitizeRelayList(relaysToUse);
+      const defaultFallback = sanitizeRelayList(Array.from(DEFAULT_RELAY_URLS));
+      relayCandidates = sanitizedFallback.length
+        ? sanitizedFallback
+        : defaultFallback.length
+          ? defaultFallback
+          : sanitizeRelayList(Array.from(RELAY_URLS));
+      devLogger.warn(
+        "[fetchListIncrementally] Healthy relays exhausted; using fallback relay list for one-off fetch.",
+        {
+          requested: relaysToUse,
+          fallback: relayCandidates,
+        },
+      );
+    }
     const readPreferences = new Set(Array.isArray(this.readRelays) ? this.readRelays : []);
 
     // Sort relays: prefer user's read relays first
-    const sortedRelays = healthyCandidates.sort((a, b) => {
+    const sortedRelays = relayCandidates.sort((a, b) => {
       const aPreferred = readPreferences.has(a);
       const bPreferred = readPreferences.has(b);
       if (aPreferred && !bPreferred) return -1;
