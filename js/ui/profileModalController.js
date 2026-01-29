@@ -1318,10 +1318,16 @@ export class ProfileModalController {
     this.hashtagInterestEmpty = null;
     this.hashtagInterestInput = null;
     this.addHashtagInterestButton = null;
+    this.profileHashtagInterestRefreshBtn = null;
     this.hashtagDisinterestList = null;
     this.hashtagDisinterestEmpty = null;
     this.hashtagDisinterestInput = null;
     this.addHashtagDisinterestButton = null;
+    this.profileHashtagDisinterestRefreshBtn = null;
+    this.profileSubscriptionsRefreshBtn = null;
+    this.profileFriendsRefreshBtn = null;
+    this.profileBlockedRefreshBtn = null;
+    this.profileRelayRefreshBtn = null;
     this.moderationSettingsCard = null;
     this.moderationBlurInput = null;
     this.moderationAutoplayInput = null;
@@ -1340,6 +1346,7 @@ export class ProfileModalController {
     this.adminModeratorList = null;
     this.addModeratorButton = null;
     this.moderatorInput = null;
+    this.adminModeratorsRefreshBtn = null;
     this.adminModeratorsSection = null;
     this.adminModeratorsEmpty = null;
     this.adminAddModeratorButton = null;
@@ -1349,6 +1356,7 @@ export class ProfileModalController {
     this.whitelistList = null;
     this.addWhitelistButton = null;
     this.whitelistInput = null;
+    this.adminWhitelistRefreshBtn = null;
     this.adminWhitelistSection = null;
     this.adminWhitelistEmpty = null;
     this.adminWhitelistList = null;
@@ -1359,6 +1367,7 @@ export class ProfileModalController {
     this.blacklistList = null;
     this.addBlacklistButton = null;
     this.blacklistInput = null;
+    this.adminBlacklistRefreshBtn = null;
     this.adminBlacklistSection = null;
     this.adminBlacklistEmpty = null;
     this.adminBlacklistList = null;
@@ -1572,20 +1581,28 @@ export class ProfileModalController {
       document.getElementById("relayHealthRefreshBtn") || null;
     this.relayHealthTelemetryToggle =
       document.getElementById("relayHealthTelemetryOptIn") || null;
+    this.profileRelayRefreshBtn =
+      document.getElementById("relayListRefreshBtn") || null;
 
     this.subscriptionList =
       document.getElementById("subscriptionsList") || null;
     this.subscriptionListEmpty =
       document.getElementById("subscriptionsEmpty") || null;
+    this.profileSubscriptionsRefreshBtn =
+      document.getElementById("subscriptionsRefreshBtn") || null;
     this.friendList = document.getElementById("friendsList") || null;
     this.friendListEmpty = document.getElementById("friendsEmpty") || null;
     this.friendInput = document.getElementById("friendsInput") || null;
     this.addFriendButton = document.getElementById("addFriendBtn") || null;
+    this.profileFriendsRefreshBtn =
+      document.getElementById("friendsRefreshBtn") || null;
 
     this.blockList = document.getElementById("blockedList") || null;
     this.blockListEmpty = document.getElementById("blockedEmpty") || null;
     this.blockInput = document.getElementById("blockedInput") || null;
     this.addBlockedButton = document.getElementById("addBlockedBtn") || null;
+    this.profileBlockedRefreshBtn =
+      document.getElementById("blockedRefreshBtn") || null;
 
     this.profileMessagesPane =
       document.getElementById("profilePaneMessages") || null;
@@ -1698,6 +1715,8 @@ export class ProfileModalController {
       document.getElementById("profileHashtagInterestInput") || null;
     this.addHashtagInterestButton =
       document.getElementById("profileAddHashtagInterestBtn") || null;
+    this.profileHashtagInterestRefreshBtn =
+      document.getElementById("profileHashtagInterestRefreshBtn") || null;
     this.hashtagDisinterestList =
       document.getElementById("profileHashtagDisinterestList") || null;
     this.hashtagDisinterestEmpty =
@@ -1706,6 +1725,8 @@ export class ProfileModalController {
       document.getElementById("profileHashtagDisinterestInput") || null;
     this.addHashtagDisinterestButton =
       document.getElementById("profileAddHashtagDisinterestBtn") || null;
+    this.profileHashtagDisinterestRefreshBtn =
+      document.getElementById("profileHashtagDisinterestRefreshBtn") || null;
 
     this.profileRelayList = this.relayList;
     this.profileRelayInput = this.relayInput;
@@ -1774,6 +1795,8 @@ export class ProfileModalController {
       document.getElementById("adminAddModeratorBtn") || null;
     this.moderatorInput =
       document.getElementById("adminModeratorInput") || null;
+    this.adminModeratorsRefreshBtn =
+      document.getElementById("adminModeratorsRefreshBtn") || null;
 
     this.storageUnlockBtn = document.getElementById("profileStorageUnlockBtn") || null;
     this.storageSaveBtn = document.getElementById("storageSaveBtn") || null;
@@ -1815,6 +1838,8 @@ export class ProfileModalController {
       document.getElementById("adminAddWhitelistBtn") || null;
     this.whitelistInput =
       document.getElementById("adminWhitelistInput") || null;
+    this.adminWhitelistRefreshBtn =
+      document.getElementById("adminWhitelistRefreshBtn") || null;
     this.blacklistSection =
       document.getElementById("adminBlacklistSection") || null;
     this.blacklistEmpty =
@@ -1825,6 +1850,33 @@ export class ProfileModalController {
       document.getElementById("adminAddBlacklistBtn") || null;
     this.blacklistInput =
       document.getElementById("adminBlacklistInput") || null;
+    this.adminBlacklistRefreshBtn =
+      document.getElementById("adminBlacklistRefreshBtn") || null;
+
+    const ensureAriaLabel = (button, label) => {
+      if (!(button instanceof HTMLElement)) {
+        return;
+      }
+      if (!button.getAttribute("aria-label")) {
+        button.setAttribute("aria-label", label);
+      }
+    };
+
+    ensureAriaLabel(this.profileRelayRefreshBtn, "Refresh relay list");
+    ensureAriaLabel(
+      this.profileHashtagInterestRefreshBtn,
+      "Refresh interest hashtags",
+    );
+    ensureAriaLabel(
+      this.profileHashtagDisinterestRefreshBtn,
+      "Refresh disinterest hashtags",
+    );
+    ensureAriaLabel(this.profileSubscriptionsRefreshBtn, "Refresh subscriptions");
+    ensureAriaLabel(this.profileFriendsRefreshBtn, "Refresh friends");
+    ensureAriaLabel(this.profileBlockedRefreshBtn, "Refresh blocked creators");
+    ensureAriaLabel(this.adminModeratorsRefreshBtn, "Refresh moderators");
+    ensureAriaLabel(this.adminWhitelistRefreshBtn, "Refresh whitelist");
+    ensureAriaLabel(this.adminBlacklistRefreshBtn, "Refresh blacklist");
 
     this.adminWhitelistSection = this.whitelistSection;
     this.adminWhitelistEmpty = this.whitelistEmpty;
@@ -5158,6 +5210,27 @@ export class ProfileModalController {
       });
     }
 
+    if (this.profileRelayRefreshBtn instanceof HTMLElement) {
+      this.profileRelayRefreshBtn.addEventListener("click", () => {
+        const activeHex = this.normalizeHexPubkey(this.getActivePubkey());
+        if (!activeHex) {
+          return;
+        }
+        const service = this.services.relayManager;
+        if (!service || typeof service.loadRelayList !== "function") {
+          return;
+        }
+        void service
+          .loadRelayList(activeHex)
+          .then(() => {
+            this.populateProfileRelays();
+          })
+          .catch((error) => {
+            devLogger.warn("[profileModal] Failed to refresh relay list:", error);
+          });
+      });
+    }
+
     if (this.relayHealthRefreshButton instanceof HTMLElement) {
       this.relayHealthRefreshButton.addEventListener("click", () => {
         void this.refreshRelayHealthPanel({ forceRefresh: true, reason: "manual" });
@@ -5176,6 +5249,27 @@ export class ProfileModalController {
       });
     }
 
+    if (this.profileBlockedRefreshBtn instanceof HTMLElement) {
+      this.profileBlockedRefreshBtn.addEventListener("click", () => {
+        const activeHex = this.normalizeHexPubkey(this.getActivePubkey());
+        if (!activeHex) {
+          return;
+        }
+        const blocksService = this.services.userBlocks;
+        if (!blocksService || typeof blocksService.loadBlocks !== "function") {
+          return;
+        }
+        void blocksService
+          .loadBlocks(activeHex)
+          .then(() => {
+            this.populateBlockedList();
+          })
+          .catch((error) => {
+            devLogger.warn("[profileModal] Failed to refresh blocked list:", error);
+          });
+      });
+    }
+
     if (this.blockInput instanceof HTMLElement) {
       this.blockInput.addEventListener("keydown", (event) => {
         if (event.key === "Enter") {
@@ -5185,10 +5279,91 @@ export class ProfileModalController {
       });
     }
 
+    if (this.profileSubscriptionsRefreshBtn instanceof HTMLElement) {
+      this.profileSubscriptionsRefreshBtn.addEventListener("click", () => {
+        const activeHex = this.normalizeHexPubkey(this.getActivePubkey());
+        if (!activeHex) {
+          return;
+        }
+        const service = this.subscriptionsService;
+        if (!service || typeof service.loadSubscriptions !== "function") {
+          return;
+        }
+        void service
+          .loadSubscriptions(activeHex)
+          .then(() => {
+            void this.populateSubscriptionsList();
+          })
+          .catch((error) => {
+            devLogger.warn(
+              "[profileModal] Failed to refresh subscriptions list:",
+              error,
+            );
+          });
+      });
+    }
+
+    if (this.profileFriendsRefreshBtn instanceof HTMLElement) {
+      this.profileFriendsRefreshBtn.addEventListener("click", () => {
+        const activeHex = this.normalizeHexPubkey(this.getActivePubkey());
+        if (!activeHex) {
+          return;
+        }
+        const moderationService = this.moderationService;
+        const refreshPromise =
+          moderationService &&
+          typeof moderationService.ensureViewerContactsLoaded === "function"
+            ? moderationService.ensureViewerContactsLoaded(activeHex)
+            : this.subscriptionsService &&
+              typeof this.subscriptionsService.ensureLoaded === "function"
+            ? this.subscriptionsService.ensureLoaded(activeHex)
+            : null;
+
+        void Promise.resolve(refreshPromise)
+          .then(() => {
+            this.populateFriendsList();
+          })
+          .catch((error) => {
+            devLogger.warn("[profileModal] Failed to refresh friends list:", error);
+          });
+      });
+    }
+
     if (this.addHashtagInterestButton instanceof HTMLElement) {
       this.addHashtagInterestButton.addEventListener("click", () => {
         void this.handleAddHashtagPreference("interest");
       });
+    }
+
+    const handleHashtagRefresh = () => {
+      const activeHex = this.normalizeHexPubkey(this.getActivePubkey());
+      if (!activeHex) {
+        return;
+      }
+      const service = this.hashtagPreferencesService;
+      if (!service || typeof service.load !== "function") {
+        return;
+      }
+      void service.load(activeHex).catch((error) => {
+        devLogger.warn(
+          "[profileModal] Failed to refresh hashtag preferences:",
+          error,
+        );
+      });
+    };
+
+    if (this.profileHashtagInterestRefreshBtn instanceof HTMLElement) {
+      this.profileHashtagInterestRefreshBtn.addEventListener(
+        "click",
+        handleHashtagRefresh,
+      );
+    }
+
+    if (this.profileHashtagDisinterestRefreshBtn instanceof HTMLElement) {
+      this.profileHashtagDisinterestRefreshBtn.addEventListener(
+        "click",
+        handleHashtagRefresh,
+      );
     }
 
     if (this.hashtagInterestInput instanceof HTMLElement) {
@@ -5414,6 +5589,21 @@ export class ProfileModalController {
       });
     }
 
+    if (this.adminModeratorsRefreshBtn instanceof HTMLElement) {
+      this.adminModeratorsRefreshBtn.addEventListener("click", () => {
+        const service = this.services.accessControl;
+        if (!service || typeof service.refresh !== "function") {
+          return;
+        }
+        void service
+          .refresh()
+          .then(() => this.refreshAdminPaneState())
+          .catch((error) => {
+            devLogger.warn("[profileModal] Failed to refresh moderators:", error);
+          });
+      });
+    }
+
     if (this.moderatorInput instanceof HTMLElement) {
       this.moderatorInput.addEventListener("keydown", (event) => {
         if (event.key === "Enter") {
@@ -5429,6 +5619,21 @@ export class ProfileModalController {
       });
     }
 
+    if (this.adminWhitelistRefreshBtn instanceof HTMLElement) {
+      this.adminWhitelistRefreshBtn.addEventListener("click", () => {
+        const service = this.services.accessControl;
+        if (!service || typeof service.refresh !== "function") {
+          return;
+        }
+        void service
+          .refresh()
+          .then(() => this.refreshAdminPaneState())
+          .catch((error) => {
+            devLogger.warn("[profileModal] Failed to refresh whitelist:", error);
+          });
+      });
+    }
+
     if (this.whitelistInput instanceof HTMLElement) {
       this.whitelistInput.addEventListener("keydown", (event) => {
         if (event.key === "Enter") {
@@ -5441,6 +5646,21 @@ export class ProfileModalController {
     if (this.addBlacklistButton instanceof HTMLElement) {
       this.addBlacklistButton.addEventListener("click", () => {
         void this.handleAdminListMutation("blacklist", "add");
+      });
+    }
+
+    if (this.adminBlacklistRefreshBtn instanceof HTMLElement) {
+      this.adminBlacklistRefreshBtn.addEventListener("click", () => {
+        const service = this.services.accessControl;
+        if (!service || typeof service.refresh !== "function") {
+          return;
+        }
+        void service
+          .refresh()
+          .then(() => this.refreshAdminPaneState())
+          .catch((error) => {
+            devLogger.warn("[profileModal] Failed to refresh blacklist:", error);
+          });
       });
     }
 
