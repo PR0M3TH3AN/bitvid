@@ -150,29 +150,25 @@ To run **bitvid** locally:
    npm ci
    ```
 
-3. Build the project:
+3. Start the application:
 
    ```bash
-   npm run build
+   npm start
    ```
 
-   (This generates `css/tailwind.generated.css`, which is gitignored and required for styling.)
+   This command builds the project (generating `css/tailwind.generated.css`) and starts a local server.
 
-4. Start a local server:
-   - Using Python:
-     ```bash
-     python -m http.server 8000
-     ```
-   - Or with Node.js:
-     ```bash
-     npx serve
-     ```
+4. Open the site in your browser:
 
-5. Open the site in your browser:
+   ```
+   http://localhost:3000
+   ```
 
-```
-http://localhost:8000
-```
+   _Note: If you prefer manual steps, you can run `npm run build` followed by `npx serve` or `python -m http.server 8000`._
+
+### Dev Container
+
+This project includes a `.devcontainer` configuration. If you use VS Code, you can open the project in a container to get a pre-configured environment with all dependencies installed.
 
 ### Developer Quickstart
 

@@ -97,7 +97,13 @@ To set up the project locally:
    npm ci
    ```
 
-2. **Build**:
+2. **Start the Application**:
+   ```bash
+   npm start
+   ```
+   This builds the project and starts a local server.
+
+   **Or, build manually:**
    ```bash
    npm run build
    ```
