@@ -1,6 +1,0 @@
-{
-  "function": "buildAdminListEvent",
-  "input": "{\"repostKind\":true,\"listKey\":{},\"content\":false,\"q?F#3\":true}",
-  "error": "Error: toString throw",
-  "stack": "Error: toString throw\n    at Object.toString (file:///app/scripts/agent/fuzz-schemas.mjs:83:31)\n    at Module.buildAdminListEvent (file:///app/js/nostrEventSchemas.js:2296:54)\n    at fn (file:///app/scripts/agent/fuzz-schemas.mjs:152:64)\n    at run (file:///app/scripts/agent/fuzz-schemas.mjs:167:32)\n    at file:///app/scripts/agent/fuzz-schemas.mjs:216:1"
-}
