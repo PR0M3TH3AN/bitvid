@@ -11,6 +11,9 @@ declare global {
 
 test.describe("overlay layering tokens", () => {
   test("mobile sidebar shares desktop rail behavior", async ({ page }) => {
+    // Increase timeout for this visual test which is prone to flakiness in CI
+    test.setTimeout(120_000);
+
     await page.setViewportSize({ width: 390, height: 844 });
 
     // Pre-suppress the disclaimer modal to avoid race conditions with app hydration
@@ -18,21 +21,6 @@ test.describe("overlay layering tokens", () => {
       window.localStorage.setItem("hasSeenDisclaimer", "true");
     });
 
-    await page.waitForFunction(() =>
-      Array.from(
-        document.querySelectorAll("#disclaimerModal")
-      ).every((modalElement) => modalElement.classList.contains("hidden"))
-    );
-  }
-
-  test("mobile sidebar shares desktop rail behavior", async ({ page }) => {
-    // Increase timeout for this visual test which is prone to flakiness in CI
-    test.setTimeout(120_000);
-
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.addInitScript(() => {
-      window.localStorage.setItem("hasSeenDisclaimer", "true");
-    });
     await page.goto("/index.html", { waitUntil: "networkidle" });
 
     // Wait for initial fade-in to complete so opacity doesn't interfere with visibility checks
