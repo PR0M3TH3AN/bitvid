@@ -1530,12 +1530,7 @@ class WatchHistoryManager {
 
     if (activeSigner) {
       if (this.deps.shouldRequestExtensionPermissions?.(activeSigner)) {
-        const hasCachedPermissions =
-          typeof this.deps.hasRequiredExtensionPermissions === "function" &&
-          this.deps.hasRequiredExtensionPermissions(DEFAULT_NIP07_PERMISSION_METHODS);
-        if (!hasCachedPermissions) {
-          await this.deps.ensureExtensionPermissions?.(DEFAULT_NIP07_PERMISSION_METHODS);
-        }
+        await this.deps.ensureExtensionPermissions?.(DEFAULT_NIP07_PERMISSION_METHODS);
       }
 
       const encryptors = [];
@@ -1868,12 +1863,7 @@ class WatchHistoryManager {
     const decryptSigner = canUseActiveSignerDecrypt ? signer : null;
 
     if (decryptSigner && this.deps.shouldRequestExtensionPermissions?.(decryptSigner)) {
-      const hasCachedPermissions =
-        typeof this.deps.hasRequiredExtensionPermissions === "function" &&
-        this.deps.hasRequiredExtensionPermissions(DEFAULT_NIP07_PERMISSION_METHODS);
-      if (!hasCachedPermissions) {
-        await this.deps.ensureExtensionPermissions?.(DEFAULT_NIP07_PERMISSION_METHODS);
-      }
+      await this.deps.ensureExtensionPermissions?.(DEFAULT_NIP07_PERMISSION_METHODS);
     }
 
     devLogger.info("[nostr] Fetching watch history from relays.", {

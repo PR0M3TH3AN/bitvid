@@ -1,7 +1,6 @@
 // js/subscriptions.js
 import {
   getActiveSigner,
-  hasDefaultExtensionPermissions,
   nostrClient,
   requestDefaultExtensionPermissions,
 } from "./nostrClientFacade.js";
@@ -38,9 +37,6 @@ const SUBSCRIPTION_SET_KIND =
   getNostrEventSchema(NOTE_TYPES.SUBSCRIPTION_LIST)?.kind ?? 30000;
 const DECRYPT_TIMEOUT_MS = 90000;
 const DECRYPT_RETRY_DELAY_MS = 10000;
-const FAST_RELAY_LIMIT = 3;
-const FAST_RELAY_TIMEOUT_MS = 4000;
-const FULL_RELAY_TIMEOUT_MS = 12000;
 
 function normalizeHexPubkey(value) {
   if (typeof value !== "string") {
@@ -360,28 +356,6 @@ class SubscriptionsManager {
     });
   }
 
-  emitStatus(detail = {}) {
-    this.emitter.emit("status", detail);
-
-    if (detail?.status !== "loading") {
-      return;
-    }
-
-    const message =
-      typeof detail?.message === "string" && detail.message.trim()
-        ? detail.message.trim()
-        : "Decrypting subscriptions…";
-    const container =
-      this.lastContainerId &&
-      typeof document !== "undefined" &&
-      document.getElementById
-        ? document.getElementById(this.lastContainerId)
-        : null;
-    if (container) {
-      container.innerHTML = getSidebarLoadingMarkup(message);
-    }
-  }
-
   /**
    * Decrypt the subscription list from kind=30000 (d="subscriptions").
    */
@@ -451,16 +425,14 @@ class SubscriptionsManager {
     );
   }
 
-  async updateFromRelays(userPubkey, options = {}) {
+  async updateFromRelays(userPubkey) {
     if (!userPubkey) return;
 
     try {
       const normalizedUserPubkey = normalizeHexPubkey(userPubkey) || userPubkey;
-      const { relayUrlsOverride, skipFastRelays = false, isBackground = false } = options;
 
       const readRelays = relayManager.getReadRelayUrls();
-      const fallbackRelayUrls = readRelays.length > 0 ? readRelays : Array.from(DEFAULT_RELAY_URLS);
-      const relayUrls = relayUrlsOverride?.length ? relayUrlsOverride : fallbackRelayUrls;
+      const relayUrls = readRelays.length > 0 ? readRelays : Array.from(DEFAULT_RELAY_URLS);
       if (!relayUrls.length) {
         devLogger.warn(
           "[SubscriptionsManager] No relay URLs available while loading subscriptions.",
@@ -468,75 +440,45 @@ class SubscriptionsManager {
         return;
       }
 
-      const fastRelayUrls = relayUrls.slice(0, FAST_RELAY_LIMIT);
-      const shouldUseFastRelays =
-        !skipFastRelays && fastRelayUrls.length > 0 && fastRelayUrls.length < relayUrls.length;
-      const initialRelayUrls = shouldUseFastRelays ? fastRelayUrls : relayUrls;
-      const initialTimeoutMs = shouldUseFastRelays
-        ? FAST_RELAY_TIMEOUT_MS
-        : FULL_RELAY_TIMEOUT_MS;
-
       // Use incremental fetch helper
       const cachedSnapshot = parseCachedSubscriptionSnapshot(
         profileCache.getProfileData(normalizedUserPubkey, "subscriptions"),
       );
       const shouldForceFullFetch = !cachedSnapshot.hasSnapshot;
+      let events = await nostrClient.fetchListIncrementally({
+        kind: SUBSCRIPTION_SET_KIND,
+        pubkey: normalizedUserPubkey,
+        dTag: SUBSCRIPTION_LIST_IDENTIFIER,
+        relayUrls,
+        since: shouldForceFullFetch ? 0 : undefined,
+        timeoutMs: 12000,
+      });
+
       const normalizedSessionActorPubkey = normalizeNostrPubkey(
         nostrClient?.sessionActor?.pubkey,
       );
       const shouldFetchSessionActor =
         normalizedSessionActorPubkey &&
         normalizedSessionActorPubkey !== normalizedUserPubkey;
-
-      const fetchFromRelays = async (relayList, timeoutMs) => {
-        let events = await nostrClient.fetchListIncrementally({
-          kind: SUBSCRIPTION_SET_KIND,
-          pubkey: normalizedUserPubkey,
-          dTag: SUBSCRIPTION_LIST_IDENTIFIER,
-          relayUrls: relayList,
-          since: shouldForceFullFetch ? 0 : undefined,
-          timeoutMs,
-        });
-
-        if (shouldFetchSessionActor) {
-          const sessionCachedSnapshot = parseCachedSubscriptionSnapshot(
-            profileCache.getProfileData(
-              normalizedSessionActorPubkey,
-              "subscriptions",
-            ),
-          );
-          const shouldForceSessionFetch = !sessionCachedSnapshot.hasSnapshot;
-          const sessionEvents = await nostrClient.fetchListIncrementally({
-            kind: SUBSCRIPTION_SET_KIND,
-            pubkey: normalizedSessionActorPubkey,
-            dTag: SUBSCRIPTION_LIST_IDENTIFIER,
-            relayUrls: relayList,
-            since: shouldForceSessionFetch ? 0 : undefined,
-            timeoutMs,
-          });
-          if (sessionEvents.length) {
-            events = events.concat(sessionEvents);
-          }
-        }
-
-        return events;
-      };
-
-      let events = await fetchFromRelays(initialRelayUrls, initialTimeoutMs);
-      if (!events.length && shouldUseFastRelays && !isBackground) {
-        devLogger.log(
-          "[SubscriptionsManager] Fast relay fetch returned no events; continuing in background.",
+      if (shouldFetchSessionActor) {
+        const sessionCachedSnapshot = parseCachedSubscriptionSnapshot(
+          profileCache.getProfileData(
+            normalizedSessionActorPubkey,
+            "subscriptions",
+          ),
         );
-        this.updateFromRelays(normalizedUserPubkey, {
-          relayUrlsOverride: relayUrls,
-          skipFastRelays: true,
-          isBackground: true,
-        }).catch((error) => {
-          devLogger.warn(
-            "[SubscriptionsManager] Background relay refresh failed:",
-            error,
-          );
+        const shouldForceSessionFetch = !sessionCachedSnapshot.hasSnapshot;
+        const sessionEvents = await nostrClient.fetchListIncrementally({
+          kind: SUBSCRIPTION_SET_KIND,
+          pubkey: normalizedSessionActorPubkey,
+          dTag: SUBSCRIPTION_LIST_IDENTIFIER,
+          relayUrls,
+          since: shouldForceSessionFetch ? 0 : undefined,
+          timeoutMs: 12000,
         });
+        if (sessionEvents.length) {
+          events = events.concat(sessionEvents);
+        }
       }
 
       const mergedEvents = [];
@@ -808,38 +750,21 @@ class SubscriptionsManager {
       (!signerHasNip04 && !windowHasNip04 && requiresNip04)
     ) {
       try {
-        const permissionMethods = [];
-        if (requiresNip04) {
-          permissionMethods.push("nip04.decrypt");
-        }
-        if (requiresNip44) {
-          permissionMethods.push("nip44.decrypt", "nip44.v2.decrypt");
-        }
-        const hasCachedPermissions = hasDefaultExtensionPermissions(permissionMethods);
-        if (!hasCachedPermissions) {
-          this.emitStatus({
-            status: "loading",
-            message: "Decrypting subscriptions…",
-          });
-          const permissionResult =
-            await requestDefaultExtensionPermissions(permissionMethods);
-          if (!permissionResult?.ok) {
-            const error =
-              permissionResult?.error instanceof Error
-                ? permissionResult.error
-                : new Error(
-                    "Extension permissions denied while decrypting subscriptions."
-                  );
-            error.code = "nostr-permission-denied";
-            return { ok: false, error };
-          }
+        const permissionResult = await requestDefaultExtensionPermissions();
+        if (!permissionResult?.ok) {
+          const error =
+            permissionResult?.error instanceof Error
+              ? permissionResult.error
+              : new Error(
+                  "Extension permissions denied while decrypting subscriptions."
+                );
+          error.code = "nostr-permission-denied";
+          return { ok: false, error };
         }
       } catch (error) {
         const wrapped = error instanceof Error ? error : new Error(String(error));
         wrapped.code = "nostr-permission-error";
         return { ok: false, error: wrapped };
-      } finally {
-        this.emitStatus({ status: "idle" });
       }
     }
 
@@ -1054,30 +979,18 @@ class SubscriptionsManager {
     }
 
     if (signer.type === "extension") {
-      const permissionMethods = ["sign_event"];
-      if (typeof signer.nip04Encrypt === "function") {
-        permissionMethods.push("nip04.encrypt");
-      }
-      if (typeof signer.nip44Encrypt === "function") {
-        permissionMethods.push("nip44.encrypt", "nip44.v2.encrypt");
-      }
-      const hasCachedPermissions =
-        hasDefaultExtensionPermissions(permissionMethods);
-      if (!hasCachedPermissions) {
-        const permissionResult =
-          await requestDefaultExtensionPermissions(permissionMethods);
-        if (!permissionResult.ok) {
-          userLogger.warn(
-            "[SubscriptionsManager] Signer permissions denied while updating subscriptions.",
-            permissionResult.error,
-          );
-          const error = new Error(
-            "The active signer must allow encryption and signing before updating subscriptions.",
-          );
-          error.code = "extension-permission-denied";
-          error.cause = permissionResult.error;
-          throw error;
-        }
+      const permissionResult = await requestDefaultExtensionPermissions();
+      if (!permissionResult.ok) {
+        userLogger.warn(
+          "[SubscriptionsManager] Signer permissions denied while updating subscriptions.",
+          permissionResult.error,
+        );
+        const error = new Error(
+          "The active signer must allow encryption and signing before updating subscriptions.",
+        );
+        error.code = "extension-permission-denied";
+        error.cause = permissionResult.error;
+        throw error;
       }
     }
 

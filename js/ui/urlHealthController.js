@@ -323,10 +323,6 @@ export default class UrlHealthController {
       return { outcome: "invalid" };
     }
 
-    if (trimmed.toLowerCase().endsWith(".torrent")) {
-      return { outcome: "invalid" };
-    }
-
     const confirmPlayable = options?.confirmPlayable === true;
     const defaultTimeout = this.constants.URL_PROBE_TIMEOUT_MS || 5000;
     const urlHealthConstants = this.constants.urlHealthConstants || {};
