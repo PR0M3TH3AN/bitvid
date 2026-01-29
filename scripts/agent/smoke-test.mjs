@@ -8,7 +8,6 @@ import {
     buildLegacyDirectMessageEvent
 } from '../../js/nostrEventSchemas.js';
 import { generateSecretKey, getPublicKey } from 'nostr-tools';
-import { bytesToHex } from '../../vendor/crypto-helpers.bundle.min.js';
 import { chromium } from 'playwright';
 import { spawn } from 'child_process';
 import fs from 'fs';
@@ -33,6 +32,7 @@ function log(message) {
 }
 
 // Generate Keys
+const bytesToHex = (bytes) => Buffer.from(bytes).toString('hex');
 const EPHEMERAL_SK_BYTES = generateSecretKey();
 const EPHEMERAL_SK = bytesToHex(EPHEMERAL_SK_BYTES);
 const EPHEMERAL_PK = getPublicKey(EPHEMERAL_SK_BYTES);
