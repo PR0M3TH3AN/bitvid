@@ -395,6 +395,12 @@ function shouldRequestExtensionPermissions(signer) {
   return signer.type === "extension";
 }
 
+const RELAY_CONNECT_TIMEOUT_MS = 5000;
+const RELAY_RECONNECT_BASE_DELAY_MS = 2000;
+const RELAY_RECONNECT_MAX_DELAY_MS = 60000;
+const RELAY_RECONNECT_MAX_ATTEMPTS = 5;
+const RELAY_CIRCUIT_BREAKER_THRESHOLD = 3;
+const RELAY_CIRCUIT_BREAKER_COOLDOWN_MS = 10 * 60 * 1000;
 const EVENTS_CACHE_STORAGE_KEY = "bitvid:eventsCache:v1";
 // We use the policy TTL, but currently the storage backend is hardcoded to IDB (with localStorage fallback).
 // Future refactors should make EventsCacheStore dynamic based on CACHE_POLICIES[NOTE_TYPES.VIDEO_POST].storage.
@@ -1279,6 +1285,9 @@ export class NostrClient {
     this.unreachableRelays = new Set();
     this.relayBackoff = new Map();
     this.relayFailureCounts = new Map();
+    this.relayCircuitBreakers = new Map();
+    this.relayReconnectTimer = null;
+    this.relayReconnectAttempt = 0;
     this.isInitialized = false;
     this.nip46Client = null;
     this.pendingHandshakeCancel = null;
@@ -4311,7 +4320,7 @@ export class NostrClient {
    * 3. Connects to configured relays.
    * 4. Restores any persistent remote signer sessions.
    *
-   * @returns {Promise<void>} Resolves when at least one relay is connected.
+   * @returns {Promise<void>} Resolves after the initial relay connection attempt completes.
    */
   async init() {
     if (this.isInitialized) {
@@ -4337,11 +4346,16 @@ export class NostrClient {
         .filter((r) => r.success)
         .map((r) => r.url);
       if (successfulRelays.length === 0) {
-        throw new Error("No relays connected");
+        userLogger.warn(
+          "[nostr] No relays connected during init. Retrying in the background.",
+        );
+        this.scheduleRelayReconnect({ reason: "initial-connect-failed" });
+      } else {
+        this.resetRelayReconnectState();
+        devLogger.log(
+          `Connected to ${successfulRelays.length} relay(s)`,
+        );
       }
-      devLogger.log(
-        `Connected to ${successfulRelays.length} relay(s)`,
-      );
     } catch (err) {
       userLogger.error("Nostr init failed:", err);
       throw err;
@@ -4432,6 +4446,9 @@ export class NostrClient {
    */
   async connectToRelays() {
     const relayTargets = this.getHealthyRelays(this.relays);
+    if (!relayTargets.length) {
+      return [];
+    }
     const results = await Promise.all(
       relayTargets.map(
         (url) =>
@@ -4440,7 +4457,7 @@ export class NostrClient {
             const timeout = setTimeout(() => {
               sub.unsub();
               resolve({ url, success: false });
-            }, 5000);
+            }, RELAY_CONNECT_TIMEOUT_MS);
 
             const succeed = () => {
               clearTimeout(timeout);
@@ -4469,6 +4486,65 @@ export class NostrClient {
     return results;
   }
 
+  resolveRelayReconnectDelayMs(attempt) {
+    const safeAttempt = Number.isFinite(attempt) ? Math.max(0, attempt) : 0;
+    const computed = RELAY_RECONNECT_BASE_DELAY_MS * Math.pow(2, safeAttempt);
+    return Math.min(RELAY_RECONNECT_MAX_DELAY_MS, computed);
+  }
+
+  resetRelayReconnectState() {
+    this.relayReconnectAttempt = 0;
+    if (this.relayReconnectTimer) {
+      clearTimeout(this.relayReconnectTimer);
+      this.relayReconnectTimer = null;
+    }
+  }
+
+  scheduleRelayReconnect({ reason = "retry" } = {}) {
+    if (this.relayReconnectTimer) {
+      return;
+    }
+    if (this.relayReconnectAttempt >= RELAY_RECONNECT_MAX_ATTEMPTS) {
+      if (isDevMode) {
+        devLogger.debug(
+          "[nostr] Relay reconnect attempts exhausted.",
+          {
+            attempts: this.relayReconnectAttempt,
+            reason,
+          },
+        );
+      }
+      return;
+    }
+
+    const delayMs = this.resolveRelayReconnectDelayMs(this.relayReconnectAttempt);
+    const attemptNumber = this.relayReconnectAttempt + 1;
+    this.relayReconnectAttempt = attemptNumber;
+
+    if (isDevMode) {
+      devLogger.debug("[nostr] Scheduling relay reconnect attempt.", {
+        attempt: attemptNumber,
+        delayMs,
+        reason,
+      });
+    }
+
+    this.relayReconnectTimer = setTimeout(async () => {
+      this.relayReconnectTimer = null;
+      try {
+        const results = await this.connectToRelays();
+        const successful = results.some((result) => result.success);
+        if (successful) {
+          this.resetRelayReconnectState();
+          return;
+        }
+      } catch (error) {
+        devLogger.warn("[nostr] Relay reconnect attempt failed:", error);
+      }
+      this.scheduleRelayReconnect({ reason: "reconnect-failed" });
+    }, delayMs);
+  }
+
   resolveRelayBackoffMs(failureCount, ttlOverride) {
     const baseMs = 15000;
     const maxMs = 5 * 60 * 1000;
@@ -4494,6 +4570,7 @@ export class NostrClient {
     this.relayBackoff.delete(normalized);
     this.relayFailureCounts.delete(normalized);
     this.unreachableRelays.delete(normalized);
+    this.relayCircuitBreakers.delete(normalized);
   }
 
   markRelayUnreachable(url, ttlMs = 60000, { reason = null } = {}) {
@@ -4515,6 +4592,28 @@ export class NostrClient {
       reason,
     });
     this.unreachableRelays.add(normalized);
+    if (nextFailureCount >= RELAY_CIRCUIT_BREAKER_THRESHOLD) {
+      const now = Date.now();
+      const openUntil = now + RELAY_CIRCUIT_BREAKER_COOLDOWN_MS;
+      const existing = this.relayCircuitBreakers.get(normalized);
+      const nextOpenUntil =
+        existing && Number.isFinite(existing.openUntil)
+          ? Math.max(existing.openUntil, openUntil)
+          : openUntil;
+      this.relayCircuitBreakers.set(normalized, {
+        openUntil: nextOpenUntil,
+        failureCount: nextFailureCount,
+        reason,
+      });
+      if (isDevMode) {
+        devLogger.debug("[nostr] Circuit breaker opened for relay.", {
+          relay: normalized,
+          openUntil: nextOpenUntil,
+          failureCount: nextFailureCount,
+          reason,
+        });
+      }
+    }
     if (isDevMode) {
       devLogger.debug(
         `[nostr] Relay backoff set for ${normalized} (${backoffMs}ms).`,
@@ -4529,6 +4628,19 @@ export class NostrClient {
     }
     const now = Date.now();
     return source.filter((url) => {
+      const circuit = this.relayCircuitBreakers.get(url);
+      if (circuit && Number.isFinite(circuit.openUntil)) {
+        if (circuit.openUntil > now) {
+          return false;
+        }
+        this.relayCircuitBreakers.delete(url);
+        this.relayFailureCounts.delete(url);
+        this.unreachableRelays.delete(url);
+        this.relayBackoff.delete(url);
+        if (isDevMode) {
+          devLogger.debug(`[nostr] Circuit breaker reset for ${url}.`);
+        }
+      }
       if (!this.unreachableRelays.has(url)) {
         return true;
       }
