@@ -623,7 +623,9 @@ export default class AuthService {
       postLoginError: null,
     };
 
-    const { detail: postLoginDetail, completionPromise } = this.applyPostLoginState();
+    const { detail: postLoginDetail, completionPromise } = this.applyPostLoginState({
+      deferBlocks: true,
+    });
     detail.postLogin = postLoginDetail;
 
     const postLoginPromise = Promise.resolve(completionPromise)
@@ -680,13 +682,13 @@ export default class AuthService {
     return detail;
   }
 
-  applyPostLoginState() {
+  applyPostLoginState({ deferBlocks = false } = {}) {
     const activePubkey = this.normalizeHexPubkey(getPubkey()) || getPubkey();
     const cachedEntry = activePubkey ? this.getProfileCacheEntry(activePubkey) : null;
     const cachedProfile = cachedEntry?.profile || FALLBACK_PROFILE;
     const detail = {
       pubkey: activePubkey || null,
-      blocksLoaded: false,
+      blocksLoaded: deferBlocks ? null : false,
       relaysLoaded: false,
       profile: cachedProfile,
     };
@@ -699,23 +701,11 @@ export default class AuthService {
 
     const operations = [];
 
-    if (this.userBlocks && typeof this.userBlocks.loadBlocks === "function") {
-      operations.push({
-        name: "blocksLoaded",
-        promise: schedule(() => this.userBlocks.loadBlocks(activePubkey)),
-        onFulfilled: () => true,
-        onRejected: (error) => {
-          this.log("[AuthService] Failed to load block list", error);
-          return false;
-        },
-        emit: (value, error) => {
-          this.emit("blocksLoaded", {
-            pubkey: activePubkey,
-            blocksLoaded: value,
-            error: error ?? null,
-          });
-        },
-      });
+    if (!deferBlocks) {
+      const blocksOperation = this.createBlocksLoadOperation(activePubkey, schedule);
+      if (blocksOperation) {
+        operations.push(blocksOperation);
+      }
     }
 
     if (this.relayManager && typeof this.relayManager.loadRelayList === "function") {
@@ -782,6 +772,53 @@ export default class AuthService {
     const completionPromise = Promise.allSettled(wrappedPromises).then(() => detail);
 
     return { detail, completionPromise };
+  }
+
+  createBlocksLoadOperation(activePubkey, schedule = (callback) => Promise.resolve().then(() => callback())) {
+    if (!this.userBlocks || typeof this.userBlocks.loadBlocks !== "function") {
+      return null;
+    }
+
+    return {
+      name: "blocksLoaded",
+      promise: schedule(() => this.userBlocks.loadBlocks(activePubkey)),
+      onFulfilled: () => true,
+      onRejected: (error) => {
+        this.log("[AuthService] Failed to load block list", error);
+        return false;
+      },
+      emit: (value, error) => {
+        this.emit("blocksLoaded", {
+          pubkey: activePubkey,
+          blocksLoaded: value,
+          error: error ?? null,
+        });
+      },
+    };
+  }
+
+  async loadBlocksForPubkey(pubkey) {
+    const normalized = this.normalizeHexPubkey(pubkey) ||
+      (typeof pubkey === "string" ? pubkey.trim() : "");
+    if (!normalized) {
+      return false;
+    }
+
+    const operation = this.createBlocksLoadOperation(normalized);
+    if (!operation) {
+      return false;
+    }
+
+    try {
+      const value = await operation.promise;
+      const resolved = operation.onFulfilled(value);
+      operation.emit?.(resolved, null);
+      return resolved;
+    } catch (error) {
+      const resolved = operation.onRejected(error);
+      operation.emit?.(resolved, error);
+      return resolved;
+    }
   }
 
   async logout() {

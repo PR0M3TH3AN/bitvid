@@ -982,6 +982,8 @@ export class NostrService {
       : Number.isFinite(decryptLimitCandidate) && decryptLimitCandidate > 0
       ? Math.floor(decryptLimitCandidate)
       : null;
+    const sinceCandidate = Number(options.since);
+    const untilCandidate = Number(options.until);
 
     if (resolvedDecryptLimit && resolvedDecryptLimit > resolvedLimit) {
       resolvedDecryptLimit = resolvedLimit;
@@ -1006,6 +1008,27 @@ export class NostrService {
 
     this.dmActorPubkey = normalizedActor;
 
+    let resolvedSince =
+      Number.isFinite(sinceCandidate) && sinceCandidate >= 0
+        ? Math.floor(sinceCandidate)
+        : null;
+    const resolvedUntil =
+      Number.isFinite(untilCandidate) && untilCandidate >= 0
+        ? Math.floor(untilCandidate)
+        : null;
+    if (resolvedSince === null && initialLoad) {
+      let latestTimestamp = 0;
+      for (const message of Array.isArray(this.dmMessages) ? this.dmMessages : []) {
+        const timestamp = Number(message?.timestamp);
+        if (Number.isFinite(timestamp) && timestamp > latestTimestamp) {
+          latestTimestamp = timestamp;
+        }
+      }
+      if (latestTimestamp > 0) {
+        resolvedSince = Math.max(latestTimestamp - 60, 0);
+      }
+    }
+
     let messages = [];
     try {
       messages = await this.nostrClient.listDirectMessages(normalizedActor, {
@@ -1013,6 +1036,8 @@ export class NostrService {
         ...options,
         limit: resolvedLimit,
         decryptLimit: resolvedDecryptLimit,
+        ...(resolvedSince !== null ? { since: resolvedSince } : {}),
+        ...(resolvedUntil !== null ? { until: resolvedUntil } : {}),
         onMessage: (message) => {
           this.applyDirectMessage(message, { reason: "load-incremental" });
         },

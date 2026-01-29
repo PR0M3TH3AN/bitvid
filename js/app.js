@@ -2698,7 +2698,7 @@ class Application {
     }
 
     const messageContext =
-      reason === "login" && postLoginResult?.blocksLoaded !== false
+      reason === "login" && postLoginResult?.blocksLoaded === true
         ? "Applying your filters…"
         : "Refreshing videos…";
 
@@ -4285,56 +4285,96 @@ class Application {
       authLoadingState: this.authLoadingState,
     });
 
-    const dmTasks = [];
-    if (activePubkey) {
-      dmTasks.push(
-        Promise.resolve()
-          .then(() =>
-            this.nostrService.loadDirectMessages({
-              actorPubkey: activePubkey,
-              limit: 50,
-              initialLoad: true,
-            }),
-          )
-          .catch((error) => {
-            devLogger.warn(
-              "[Application] Failed to sync direct messages during login:",
-              error,
-            );
-            throw error;
-          }),
-      );
+    const accessControlReadyPromise =
+      accessControl && typeof accessControl.ensureReady === "function"
+        ? Promise.resolve()
+            .then(() => accessControl.ensureReady())
+            .catch((error) => {
+              userLogger.error(
+                "[Application] Failed to refresh admin lists after login:",
+                error,
+              );
+              throw error;
+            })
+        : null;
 
-      if (typeof this.nostrService.ensureDirectMessageSubscription === "function") {
+    const scheduleAfterFirstRender = () =>
+      new Promise((resolve) => {
+        if (typeof requestAnimationFrame === "function") {
+          requestAnimationFrame(() => requestAnimationFrame(resolve));
+        } else {
+          setTimeout(resolve, 0);
+        }
+      });
+
+    const tier1ReadyPromise = Promise.allSettled(
+      [postLoginPromise, accessControlReadyPromise].filter(Boolean),
+    );
+
+    const startDmHydration = () => {
+      const dmTasks = [];
+      if (activePubkey) {
         dmTasks.push(
           Promise.resolve()
             .then(() =>
-              this.nostrService.ensureDirectMessageSubscription({
+              this.nostrService.loadDirectMessages({
                 actorPubkey: activePubkey,
+                limit: 50,
+                decryptLimit: 50,
+                initialLoad: true,
               }),
             )
             .catch((error) => {
               devLogger.warn(
-                "[Application] Failed to subscribe to direct messages during login:",
+                "[Application] Failed to sync direct messages during login:",
                 error,
               );
               throw error;
             }),
         );
-      }
-    }
 
-    const dmStatePromise = dmTasks.length
-      ? Promise.allSettled(dmTasks).then((results) => {
-          const success = results.every(
-            (result) => result.status === "fulfilled",
+        if (
+          typeof this.nostrService.ensureDirectMessageSubscription === "function"
+        ) {
+          dmTasks.push(
+            Promise.resolve()
+              .then(() =>
+                this.nostrService.ensureDirectMessageSubscription({
+                  actorPubkey: activePubkey,
+                }),
+              )
+              .catch((error) => {
+                devLogger.warn(
+                  "[Application] Failed to subscribe to direct messages during login:",
+                  error,
+                );
+                throw error;
+              }),
           );
-          this.updateAuthLoadingState({
-            dms: success ? "ready" : "error",
-          });
-          return success;
-        })
-      : Promise.resolve(this.updateAuthLoadingState({ dms: "idle" }));
+        }
+      }
+
+      return dmTasks.length
+        ? Promise.allSettled(dmTasks).then((results) => {
+            const success = results.every(
+              (result) => result.status === "fulfilled",
+            );
+            this.updateAuthLoadingState({
+              dms: success ? "ready" : "error",
+            });
+            return success;
+          })
+        : Promise.resolve(this.updateAuthLoadingState({ dms: "idle" }));
+    };
+
+    const dmStatePromise = tier1ReadyPromise
+      .then(() => scheduleAfterFirstRender())
+      .then(() => startDmHydration())
+      .catch((error) => {
+        devLogger.warn("[Application] Delayed DM hydration failed:", error);
+        this.updateAuthLoadingState({ dms: "error" });
+        return false;
+      });
 
     const nwcPromise = Promise.resolve()
       .then(() => this.nwcSettingsService.onLogin(loginContext))
@@ -4382,36 +4422,18 @@ class Application {
       });
 
     const listTasks = [];
-    const accessControlReadyPromise =
-      accessControl && typeof accessControl.ensureReady === "function"
-        ? Promise.resolve()
-            .then(() => accessControl.ensureReady())
-            .catch((error) => {
-              userLogger.error(
-                "[Application] Failed to refresh admin lists after login:",
-                error,
-              );
-              throw error;
-            })
-        : null;
-    if (activePubkey) {
+    if (activePubkey && typeof this.authService.loadBlocksForPubkey === "function") {
       listTasks.push(
-        postLoginPromise.then((postLogin) => {
-          const blocksLoaded = postLogin?.blocksLoaded !== false;
-          const relaysLoaded = postLogin?.relaysLoaded !== false;
-          if (!blocksLoaded || !relaysLoaded) {
-            const listError = new Error("Post-login list hydration incomplete.");
-            listError.blocksLoaded = blocksLoaded;
-            listError.relaysLoaded = relaysLoaded;
-            throw listError;
-          }
-          return { blocksLoaded, relaysLoaded };
-        }),
+        tier1ReadyPromise
+          .then(() => this.authService.loadBlocksForPubkey(activePubkey))
+          .catch((error) => {
+            devLogger.warn(
+              "[Application] Failed to load blocks during login:",
+              error,
+            );
+            throw error;
+          }),
       );
-    }
-
-    if (accessControlReadyPromise) {
-      listTasks.push(accessControlReadyPromise);
     }
 
     if (
@@ -4420,8 +4442,12 @@ class Application {
       typeof subscriptions.ensureLoaded === "function"
     ) {
       listTasks.push(
-        subscriptions
-          .ensureLoaded(activePubkey, { allowPermissionPrompt: false })
+        tier1ReadyPromise
+          .then(() =>
+            subscriptions.ensureLoaded(activePubkey, {
+              allowPermissionPrompt: false,
+            }),
+          )
           .catch((error) => {
             devLogger.warn(
               "[Application] Failed to load subscriptions during login:",
