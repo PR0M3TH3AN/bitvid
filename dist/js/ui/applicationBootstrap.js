@@ -34,6 +34,7 @@ import ProfileModalController from "./profileModalController.js";
 import LoginModalController from "./loginModalController.js";
 import { VideoListView } from "./views/VideoListView.js";
 import MoreMenuController from "./moreMenuController.js";
+import VideoSettingsMenuController from "./videoSettingsMenuController.js";
 import AppChromeController from "./appChromeController.js";
 import { getSidebarLoadingMarkup } from "../sidebarLoading.js";
 import { isWatchHistoryDebugEnabled } from "../watchHistoryDebug.js";
@@ -671,7 +672,10 @@ export default class ApplicationBootstrap {
       },
     });
     app.moreMenuController.setVideoModal(app.videoModal);
-    app.videoSettingsPopovers = new Map();
+    app.videoSettingsMenuController = new VideoSettingsMenuController({
+      designSystem: app.designSystemContext,
+      isDevMode,
+    });
     app.tagPreferencePopovers = new Map();
 
     app.subscriptionsLink = null;

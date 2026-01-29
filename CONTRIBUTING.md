@@ -35,6 +35,7 @@ If we later introduce **dual-licensing** options (e.g., commercial licenses for 
 ## Agent PR Conventions
 
 Automated agents contributing to this repository should follow these rules:
+
 - **Atomic Commits**: Keep changes small, focused, and self-contained.
 - **Descriptive Titles**: Use clear, semantic titles (e.g., `fix(ui): resolve upload modal overflow`).
 - **Commit Messages**: Use the convention `type(scope): description (agent)` (e.g., `fix(ai): formatting (agent)` or `docs(ai): update quickstart (agent)`).
@@ -46,7 +47,7 @@ Automated agents contributing to this repository should follow these rules:
 
 1. Fork the repository and create a new branch from `main`.
 2. Make your changes, adding tests if applicable.
-3. Run `npm run format`, `npm run lint`, and unit tests (e.g. `npm run test:unit` or a shard like `npm run test:unit:shard1`) to ensure quality.
+3. Run `npm run format`, `npm run lint`, and unit tests (e.g. `npm run test:unit` or a shard like `npm run test:unit:shard1`) to ensure quality before pushing.
 4. (Optional) Run `npm run test:visual` if you made UI changes.
 5. (Optional) Run domain-specific tests if relevant (e.g., `npm run test:dm:unit` for Direct Messages).
 6. Push your branch and open a Pull Request against the `main` branch.
@@ -132,7 +133,7 @@ To set up the project locally:
    npm run format
    npm run lint
    ```
-   *Note: `npm run format` currently only targets CSS, HTML, and Markdown files.*
+   *Note: `npm run format` currently targets CSS, HTML, Markdown, and Tailwind config files.*
 
 5. **Git Hooks (Optional)**:
    We provide a script to set up a git pre-commit hook that runs linting and CSS builds automatically before you commit.
