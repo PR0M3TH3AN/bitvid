@@ -249,6 +249,7 @@ class Application {
     this.modalCreatorProfileRequestToken = null;
     this.dmRecipientPubkey = null;
     this.dmRelayHints = new Map();
+    this.authLoadingState = { profile: "idle", lists: "idle", dms: "idle" };
 
     this.commentController = null;
     this.initializeCommentController();
@@ -1091,6 +1092,43 @@ class Application {
       devLogger.warn("[Application] Failed to dispatch auth change event:", error);
       return false;
     }
+  }
+
+  dispatchAuthLoadingState(detail = {}) {
+    if (typeof window === "undefined" || typeof window.dispatchEvent !== "function") {
+      return false;
+    }
+
+    try {
+      const payload = { ...(typeof detail === "object" && detail ? detail : {}) };
+      window.dispatchEvent(new CustomEvent("bitvid:auth-loading-state", { detail: payload }));
+      return true;
+    } catch (error) {
+      devLogger.warn("[Application] Failed to dispatch auth loading state:", error);
+      return false;
+    }
+  }
+
+  updateAuthLoadingState(partial = {}) {
+    const baseState =
+      this.authLoadingState && typeof this.authLoadingState === "object"
+        ? this.authLoadingState
+        : { profile: "idle", lists: "idle", dms: "idle" };
+    const nextState = {
+      ...baseState,
+      ...(partial && typeof partial === "object" ? partial : {}),
+    };
+    this.authLoadingState = nextState;
+
+    const root = typeof document !== "undefined" ? document.documentElement : null;
+    if (root) {
+      root.dataset.authProfileLoading = nextState.profile || "idle";
+      root.dataset.authListsLoading = nextState.lists || "idle";
+      root.dataset.authDmsLoading = nextState.dms || "idle";
+    }
+
+    this.dispatchAuthLoadingState(nextState);
+    return nextState;
   }
 
   normalizeModalTrigger(candidate) {
@@ -4163,17 +4201,19 @@ class Application {
     };
     const activePubkey = detail?.pubkey || this.pubkey;
 
-    try {
-      await this.handleModerationSettingsChange({
-        settings: getModerationSettings(),
-        skipRefresh: true,
+    Promise.resolve()
+      .then(() =>
+        this.handleModerationSettingsChange({
+          settings: getModerationSettings(),
+          skipRefresh: true,
+        }),
+      )
+      .catch((error) => {
+        devLogger.warn(
+          "Failed to sync moderation settings after login:",
+          error,
+        );
       });
-    } catch (error) {
-      devLogger.warn(
-        "Failed to sync moderation settings after login:",
-        error,
-      );
-    }
 
     if (loginContext.identityChanged) {
       this.resetHashtagPreferencesState();
@@ -4230,40 +4270,71 @@ class Application {
       }
     }
 
+    const initialLoadingState = {
+      profile: activePubkey ? "loading" : "idle",
+      lists: activePubkey ? "loading" : "idle",
+      dms: activePubkey ? "loading" : "idle",
+    };
+    this.updateAuthLoadingState(initialLoadingState);
+
     this.dispatchAuthChange({
       status: "login",
       loggedIn: true,
       pubkey: loginContext.pubkey || null,
       previousPubkey: loginContext.previousPubkey || null,
+      authLoadingState: this.authLoadingState,
     });
 
+    const dmTasks = [];
     if (activePubkey) {
-      try {
-        await this.nostrService.loadDirectMessages({
-          actorPubkey: activePubkey,
-          limit: 50,
-          initialLoad: true,
-        });
-      } catch (error) {
-        devLogger.warn(
-          "[Application] Failed to sync direct messages during login:",
-          error,
-        );
-      }
+      dmTasks.push(
+        Promise.resolve()
+          .then(() =>
+            this.nostrService.loadDirectMessages({
+              actorPubkey: activePubkey,
+              limit: 50,
+              initialLoad: true,
+            }),
+          )
+          .catch((error) => {
+            devLogger.warn(
+              "[Application] Failed to sync direct messages during login:",
+              error,
+            );
+            throw error;
+          }),
+      );
 
       if (typeof this.nostrService.ensureDirectMessageSubscription === "function") {
-        try {
-          await this.nostrService.ensureDirectMessageSubscription({
-            actorPubkey: activePubkey,
-          });
-        } catch (error) {
-          devLogger.warn(
-            "[Application] Failed to subscribe to direct messages during login:",
-            error,
-          );
-        }
+        dmTasks.push(
+          Promise.resolve()
+            .then(() =>
+              this.nostrService.ensureDirectMessageSubscription({
+                actorPubkey: activePubkey,
+              }),
+            )
+            .catch((error) => {
+              devLogger.warn(
+                "[Application] Failed to subscribe to direct messages during login:",
+                error,
+              );
+              throw error;
+            }),
+        );
       }
     }
+
+    const dmStatePromise = dmTasks.length
+      ? Promise.allSettled(dmTasks).then((results) => {
+          const success = results.every(
+            (result) => result.status === "fulfilled",
+          );
+          this.updateAuthLoadingState({
+            dms: success ? "ready" : "error",
+          });
+          return success;
+        })
+      : Promise.resolve(this.updateAuthLoadingState({ dms: "idle" }));
 
     const nwcPromise = Promise.resolve()
       .then(() => this.nwcSettingsService.onLogin(loginContext))
@@ -4293,39 +4364,108 @@ class Application {
       this.renderSavedProfiles();
     }
 
-    postLoginPromise
+    const profileStatePromise = postLoginPromise
       .then((postLogin) => {
         if (activePubkey && postLogin?.profile) {
           this.updateActiveProfileUI(activePubkey, postLogin.profile);
         }
         this.forceRefreshAllProfiles();
+        this.updateAuthLoadingState({
+          profile: postLogin?.profile ? "ready" : "error",
+        });
+        return postLogin;
       })
       .catch((error) => {
         devLogger.error("Post-login hydration failed:", error);
+        this.updateAuthLoadingState({ profile: "error" });
+        return null;
       });
 
-    await nwcPromise;
-    // We do not await hashtagPreferencesPromise here; it loads in the background.
-
-    try {
-      await accessControl.ensureReady();
-    } catch (error) {
-      userLogger.error(
-        "[Application] Failed to refresh admin lists after login:",
-        error,
+    const listTasks = [];
+    const accessControlReadyPromise =
+      accessControl && typeof accessControl.ensureReady === "function"
+        ? Promise.resolve()
+            .then(() => accessControl.ensureReady())
+            .catch((error) => {
+              userLogger.error(
+                "[Application] Failed to refresh admin lists after login:",
+                error,
+              );
+              throw error;
+            })
+        : null;
+    if (activePubkey) {
+      listTasks.push(
+        postLoginPromise.then((postLogin) => {
+          const blocksLoaded = postLogin?.blocksLoaded !== false;
+          const relaysLoaded = postLogin?.relaysLoaded !== false;
+          if (!blocksLoaded || !relaysLoaded) {
+            const listError = new Error("Post-login list hydration incomplete.");
+            listError.blocksLoaded = blocksLoaded;
+            listError.relaysLoaded = relaysLoaded;
+            throw listError;
+          }
+          return { blocksLoaded, relaysLoaded };
+        }),
       );
     }
 
+    if (accessControlReadyPromise) {
+      listTasks.push(accessControlReadyPromise);
+    }
+
+    if (
+      activePubkey &&
+      subscriptions &&
+      typeof subscriptions.ensureLoaded === "function"
+    ) {
+      listTasks.push(
+        subscriptions
+          .ensureLoaded(activePubkey, { allowPermissionPrompt: false })
+          .catch((error) => {
+            devLogger.warn(
+              "[Application] Failed to load subscriptions during login:",
+              error,
+            );
+            throw error;
+          }),
+      );
+    }
+
+    const listStatePromise = listTasks.length
+      ? Promise.allSettled(listTasks).then((results) => {
+          const success = results.every(
+            (result) => result.status === "fulfilled",
+          );
+          this.updateAuthLoadingState({
+            lists: success ? "ready" : "error",
+          });
+          return success;
+        })
+      : Promise.resolve(this.updateAuthLoadingState({ lists: "idle" }));
+
+    void Promise.allSettled([
+      profileStatePromise,
+      listStatePromise,
+      dmStatePromise,
+    ]);
+    void nwcPromise;
+    // We do not await hashtagPreferencesPromise here; it loads in the background.
+
     if (activePubkey) {
-      const aggregatedBlacklist = accessControl.getBlacklist();
+      const seedBlacklist = () => {
+        const aggregatedBlacklist = accessControl.getBlacklist();
+        return userBlocks.seedWithNpubs(
+          activePubkey,
+          Array.isArray(aggregatedBlacklist) ? aggregatedBlacklist : [],
+        );
+      };
 
       // Background the seeding process because it involves publishing events,
       // which can block the login flow significantly.
-      userBlocks
-        .seedWithNpubs(
-          activePubkey,
-          Array.isArray(aggregatedBlacklist) ? aggregatedBlacklist : []
-        )
+      Promise.resolve(accessControlReadyPromise)
+        .catch(() => null)
+        .then(() => seedBlacklist())
         .catch((error) => {
           if (
             error?.code === "extension-permission-denied" ||
@@ -4334,25 +4474,17 @@ class Application {
           ) {
             userLogger.error(
               "[Application] Failed to seed shared block list after login:",
-              error
+              error,
             );
           } else {
             devLogger.error(
               "[Application] Unexpected error while seeding shared block list:",
-              error
+              error,
             );
           }
         });
 
-      // Load subscriptions in the background to avoid blocking the main feed.
-      subscriptions
-        .ensureLoaded(activePubkey, { allowPermissionPrompt: false })
-        .catch((error) => {
-        devLogger.warn(
-          "[Application] Failed to load subscriptions during login:",
-          error
-        );
-      });
+      // Subscriptions are loaded in list tasks to align with per-category loading states.
     }
 
     try {
@@ -4361,22 +4493,29 @@ class Application {
       devLogger.warn("Failed to reinitialize video list view after login:", error);
     }
 
-    try {
-      this.lastIdentityRefreshPromise = this.refreshAllVideoGrids({
-        reason: "auth-login",
-        forceMainReload: true,
+    this.lastIdentityRefreshPromise = this.refreshAllVideoGrids({
+      reason: "auth-login",
+      forceMainReload: true,
+    });
+    this.lastIdentityRefreshPromise
+      .catch((error) => {
+        devLogger.error("Failed to refresh video grids after login:", error);
+      })
+      .finally(() => {
+        this.lastIdentityRefreshPromise = null;
       });
-      await this.lastIdentityRefreshPromise;
-    } catch (error) {
-      devLogger.error("Failed to refresh video grids after login:", error);
-    } finally {
-      this.lastIdentityRefreshPromise = null;
-    }
 
     this.forceRefreshAllProfiles();
 
     if (this.uploadModal?.refreshCloudflareBucketPreview) {
-      await this.uploadModal.refreshCloudflareBucketPreview();
+      Promise.resolve()
+        .then(() => this.uploadModal.refreshCloudflareBucketPreview())
+        .catch((error) => {
+          devLogger.warn(
+            "[Application] Failed to refresh cloudflare bucket preview after login:",
+            error,
+          );
+        });
     }
   }
 
@@ -4464,6 +4603,7 @@ class Application {
     this.pendingModalZapOpen = false;
 
     this.resetHashtagPreferencesState();
+    this.updateAuthLoadingState({ profile: "idle", lists: "idle", dms: "idle" });
 
     await this.nwcSettingsService.onLogout({
       pubkey: detail?.pubkey || this.pubkey,
