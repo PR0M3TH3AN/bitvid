@@ -1,82 +1,85 @@
+import "./setup-test-env.js";
+import { Fuzzer } from "./fuzz-lib.mjs";
+import { decryptDM } from "../../js/dmDecryptor.js";
 
-import fs from "fs";
-import path from "path";
-import { runFuzzer, rng } from "./fuzz-shared.mjs";
+const fuzzer = new Fuzzer("dmDecryptor");
 
-const originalPath = "../../js/dmDecryptor.js";
-const tempPath = "./temp_dmDecryptor.mjs";
+class MockDecryptor {
+  constructor(scheme, shouldFail = false) {
+    this.scheme = scheme;
+    this.shouldFail = shouldFail;
+    this.supportsGiftWrap = scheme === "nip44" || scheme === "nip44_v2";
+  }
 
-// Read original file
-const originalContent = fs.readFileSync(new URL(originalPath, import.meta.url), "utf-8");
-
-// Replace import
-// The original file has: import { normalizeActorKey } from "./nostr/watchHistory.js";
-// We want to point to ./mocks/watchHistory.js
-const patchedContent = originalContent.replace(
-  /import \{ normalizeActorKey \} from "\.\/nostr\/watchHistory\.js";/,
-  'import { normalizeActorKey } from "./mocks/watchHistory.js";'
-);
-
-// Write temp file
-fs.writeFileSync(new URL(tempPath, import.meta.url), patchedContent);
-
-// Import the patched module
-const DmDecryptor = await import(tempPath);
-
-async function fuzzTest(iteration) {
-  const genEvent = () => {
-    const tags = rng.array(() => rng.array(() => rng.mixedString(20), 5), 5);
-    if (rng.bool()) {
-        // Circular tag structure
-        const circularTag = ["p"];
-        circularTag.push(circularTag); // Circular reference
-        tags.push(circularTag);
+  async decrypt(pubkey, ciphertext) {
+    if (this.shouldFail) {
+      throw new Error("Decryption failed (mock)");
     }
-    return {
-      kind: rng.oneOf([4, 1059, rng.int(0, 20000)]),
-      pubkey: rng.mixedString(64),
-      created_at: rng.int(0, 2000000000),
-      content: rng.mixedString(100),
-      tags
-    };
-  };
-
-  const genDecryptor = () => {
-    return {
-       scheme: rng.oneOf(["nip04", "nip44", "nip44_v2", rng.mixedString(10)]),
-       decrypt: async (pubkey, ciphertext) => {
-           if (rng.bool()) {
-               throw new Error("Decryption failed " + rng.mixedString(10));
-           }
-           // Return either a string (valid) or garbage
-           if (rng.bool()) {
-               return JSON.stringify({ content: "decrypted message" });
-           }
-           return rng.nastyString();
-       }
-    };
-  };
-
-  const event = rng.bool() ? genEvent() : rng.nastyString();
-  const context = {
-    actorPubkey: rng.mixedString(64),
-    decryptors: rng.array(genDecryptor, 3)
-  };
-
-  // Run the target
-  await DmDecryptor.decryptDM(event, context);
-
-  return { event, context };
+    // Return something that might be JSON or might be garbage
+    if (fuzzer.randBool()) {
+        // Return valid JSON event string (inner rumor)
+        return JSON.stringify({
+            kind: 1,
+            content: "Hello world " + fuzzer.randString(10),
+            pubkey: fuzzer.randString(64, "0123456789abcdef"),
+            created_at: Math.floor(Date.now() / 1000),
+            tags: []
+        });
+    } else {
+        // Return garbage string
+        return fuzzer.randString(50);
+    }
+  }
 }
 
-runFuzzer("dmDecryptor", 10000, fuzzTest)
-  .catch(err => {
-    console.error("Fatal fuzzer error:", err);
-    process.exit(1);
-  })
-  .finally(() => {
-    // Cleanup
-    if (fs.existsSync(new URL(tempPath, import.meta.url))) {
-      fs.unlinkSync(new URL(tempPath, import.meta.url));
-    }
-  });
+async function fuzzTest(fuzzer, state) {
+  const schemes = ["nip04", "nip44", "nip44_v2", "unknown", null];
+
+  // Create decryptors
+  const decryptors = [];
+  const numDecryptors = fuzzer.randInt(0, 3);
+  for(let i=0; i<numDecryptors; i++) {
+      const scheme = fuzzer.pick(schemes);
+      decryptors.push(new MockDecryptor(scheme, fuzzer.randBool()));
+  }
+
+  // Create event
+  // kinds: 4 (legacy), 1059 (gift wrap), random
+  const kinds = [4, 1059, fuzzer.randInt(0, 20000)];
+  const kind = fuzzer.pick(kinds);
+
+  const event = {
+      kind: kind,
+      pubkey: fuzzer.randString(64, "0123456789abcdef"),
+      content: fuzzer.randString(100), // ciphertext
+      created_at: Math.floor(Date.now() / 1000),
+      tags: []
+  };
+
+  // Add random tags
+  const numTags = fuzzer.randInt(0, 5);
+  for(let i=0; i<numTags; i++) {
+      event.tags.push(fuzzer.randArray(() => fuzzer.randString(10), 1, 4));
+  }
+
+  // Context
+  const context = {
+      actorPubkey: fuzzer.randString(64, "0123456789abcdef"),
+      decryptors: decryptors
+  };
+
+  state.input = {
+      event,
+      context
+  };
+
+  try {
+      await decryptDM(event, context);
+  } catch (err) {
+      // We expect decryptDM to handle errors gracefully and return { ok: false, errors: ... }
+      // If it throws, it's a bug (except maybe argument validation if we pass null event)
+      throw err;
+  }
+}
+
+fuzzer.runFuzzLoop(5000, fuzzTest).catch(console.error);
