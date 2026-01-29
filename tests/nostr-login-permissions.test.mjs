@@ -312,18 +312,13 @@ test("NIP-07 login falls back when structured permissions fail", async () => {
     const result = await nip07Provider.login({ nostrClient });
     const pubkey = result.pubkey;
     assert.equal(pubkey, HEX_PUBKEY);
-    assert.ok(env.enableCalls.length >= 3, "should retry with alternate payloads");
-    const [plainCall, objectCall, stringCall] = env.enableCalls;
-    assert.equal(
-      plainCall,
-      undefined,
-      "plain enable() should be attempted first",
-    );
+    assert.ok(env.enableCalls.length >= 2, "should retry with alternate payloads");
+    const [objectCall, stringCall] = env.enableCalls;
     assert.ok(Array.isArray(objectCall?.permissions));
     assert.equal(
       typeof objectCall.permissions[0],
       "object",
-      "structured permission request should be attempted",
+      "structured permission request should be attempted first",
     );
     assert.ok(Array.isArray(stringCall?.permissions));
     assert.equal(
@@ -355,11 +350,13 @@ test("NIP-07 login supports extensions that only allow enable() without payload"
     assert.equal(pubkey, HEX_PUBKEY);
     assert.equal(
       env.enableCalls.length,
-      1,
-      "should succeed with plain enable() immediately",
+      3,
+      "should fall back to plain enable() after explicit variants fail",
     );
-    const [plainCall] = env.enableCalls;
-    assert.equal(plainCall, undefined, "first attempt should use plain enable()");
+    const [objectCall, stringCall, plainCall] = env.enableCalls;
+    assert.ok(Array.isArray(objectCall?.permissions));
+    assert.ok(Array.isArray(stringCall?.permissions));
+    assert.equal(plainCall, undefined, "last attempt should use plain enable()");
   } finally {
     env.restore();
     nostrClient.logout();
@@ -399,9 +396,8 @@ test("NIP-07 login quickly retries when a permission payload stalls", async () =
       duration < 500,
       `login should fall back quickly from stalled enable payloads (duration: ${duration}ms)`,
     );
-    assert.equal(env.enableCalls.length, 3, "should attempt plain, structured and string payload variants");
-    const [plainCall, objectCall, stringCall] = env.enableCalls;
-    assert.equal(plainCall, undefined);
+    assert.equal(env.enableCalls.length, 2, "should attempt structured and string payload variants before success");
+    const [objectCall, stringCall] = env.enableCalls;
     assert.ok(Array.isArray(objectCall?.permissions));
     assert.equal(typeof objectCall.permissions[0], "object");
     assert.ok(Array.isArray(stringCall?.permissions));
