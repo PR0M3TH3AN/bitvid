@@ -26,6 +26,7 @@ import { profileCache } from "../state/profileCache.js";
 import getDefaultAuthProvider, {
   providers as defaultAuthProviders,
 } from "./authProviders/index.js";
+import { fetchProfileMetadata } from "./profileMetadataService.js";
 
 class SimpleEventEmitter {
   constructor(logger = null) {
@@ -1158,44 +1159,16 @@ export default class AuthService {
     }
 
     try {
-      const results = await Promise.all(
-        this.nostrClient.relays.map((relayUrl) =>
-          this.nostrClient.pool.list([relayUrl], [
-            { kinds: [0], authors: [normalized], limit: 1 },
-          ])
-        )
-      );
+      const result = await fetchProfileMetadata(normalized, {
+        nostr: this.nostrClient,
+      });
 
-      const events = results.flat();
-      let newest = null;
-      for (const event of events) {
-        if (!event || event.pubkey !== normalized || !event.content) {
-          continue;
-        }
-        if (!newest || event.created_at > newest.created_at) {
-          newest = event;
-        }
+      if (result?.event && typeof this.nostrClient?.handleEvent === "function") {
+        this.nostrClient.handleEvent(result.event);
       }
 
-      if (newest) {
-        if (this.nostrClient && typeof this.nostrClient.handleEvent === "function") {
-          this.nostrClient.handleEvent(newest);
-        }
-        if (newest.content) {
-          const data = JSON.parse(newest.content);
-          const profile = {
-            name: data.display_name || data.name || FALLBACK_PROFILE.name,
-            picture: data.picture || FALLBACK_PROFILE.picture,
-            about: typeof data.about === "string" ? data.about : FALLBACK_PROFILE.about,
-            website:
-              typeof data.website === "string" ? data.website : FALLBACK_PROFILE.website,
-            banner:
-              typeof data.banner === "string" ? data.banner : FALLBACK_PROFILE.banner,
-            lud16: typeof data.lud16 === "string" ? data.lud16 : FALLBACK_PROFILE.lud16,
-            lud06: typeof data.lud06 === "string" ? data.lud06 : FALLBACK_PROFILE.lud06,
-          };
-          return profile;
-        }
+      if (result?.profile) {
+        return result.profile;
       }
     } catch (error) {
       this.log("[AuthService] Failed to fetch profile", error);
