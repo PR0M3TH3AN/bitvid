@@ -991,8 +991,8 @@ function buildDmFilters(actorPubkey, { since, until, limit } = {}) {
   const normalizedSince = Number.isFinite(since) ? Math.floor(since) : undefined;
   const normalizedUntil = Number.isFinite(until) ? Math.floor(until) : undefined;
 
-  const baseFilterPayload = (kind) => {
-    const payload = { kinds: [kind] };
+  const baseFilterPayload = (kinds) => {
+    const payload = { kinds: Array.isArray(kinds) ? kinds : [kinds] };
     if (normalizedLimit !== undefined) {
       payload.limit = normalizedLimit;
     }
@@ -1006,20 +1006,15 @@ function buildDmFilters(actorPubkey, { since, until, limit } = {}) {
   };
 
   if (normalizedActor) {
-    const authorFilter = baseFilterPayload(4);
+    const authorFilter = baseFilterPayload(DM_EVENT_KINDS);
     authorFilter.authors = [normalizedActor];
     filters.push(authorFilter);
 
-    const directFilter = baseFilterPayload(4);
+    const directFilter = baseFilterPayload(DM_EVENT_KINDS);
     directFilter["#p"] = [normalizedActor];
     filters.push(directFilter);
-
-    const giftWrapFilter = baseFilterPayload(1059);
-    giftWrapFilter["#p"] = [normalizedActor];
-    filters.push(giftWrapFilter);
   } else {
-    const fallbackFilter = baseFilterPayload(DM_EVENT_KINDS[0]);
-    fallbackFilter.kinds = DM_EVENT_KINDS.slice();
+    const fallbackFilter = baseFilterPayload(DM_EVENT_KINDS);
     filters.push(fallbackFilter);
   }
 
