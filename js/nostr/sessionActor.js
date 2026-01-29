@@ -487,10 +487,21 @@ export function isSessionActor(nostrClient) {
   return !!sa && sa.source !== "nsec";
 }
 
+function _closeSessionActorDb() {
+  if (sessionActorDbPromise) {
+    return sessionActorDbPromise.then((db) => {
+      db.close();
+      sessionActorDbPromise = null;
+    });
+  }
+  return Promise.resolve();
+}
+
 export const __testExports = {
   arrayBufferToBase64,
   base64ToUint8Array,
   deriveSessionEncryptionKey,
   generateRandomBytes,
   isSubtleCryptoAvailable,
+  _closeSessionActorDb,
 };
