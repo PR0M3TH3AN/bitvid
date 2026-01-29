@@ -166,6 +166,12 @@ To run **bitvid** locally:
 
    _Note: If you prefer manual steps, you can run `npm run build` followed by `npx serve` or `python -m http.server 8000`._
 
+#### Quick Reference
+
+- **Run unit tests**: `npm run test:unit`
+- **Format code**: `npm run format`
+- **Lint code**: `npm run lint`
+
 ### Dev Container
 
 This project includes a `.devcontainer` configuration. If you use VS Code, you can open the project in a container to get a pre-configured environment with all dependencies installed.
@@ -222,9 +228,9 @@ To quickly view the location of these artifacts:
 
 Use these artifacts to inspect the UI state at the moment of failure and diagnose rendering issues or regressions.
 
-### Send your first video post
+### Quickstart: Send your first video post
 
-Use the event builders in `js/nostrEventSchemas.js` (the source of truth for all event definitions) to construct valid video notes. See [`docs/nostr-event-schemas.md`](docs/nostr-event-schemas.md) for full schema documentation.
+To programmatically publish videos, use the event builders in `js/nostrEventSchemas.js` (the source of truth for all event definitions) to construct valid video notes. See [`docs/nostr-event-schemas.md`](docs/nostr-event-schemas.md) for full schema documentation.
 
 ```javascript
 import { buildVideoPostEvent } from "./js/nostrEventSchemas.js";
@@ -279,7 +285,7 @@ package scripts to keep formatting, linting, and generated output consistent:
 - **Core scripts:**
 
   ```bash
-  npm run format    # normalize CSS/HTML/JS/MD sources with Prettier + tailwindcss plugin
+  npm run format    # normalize CSS/HTML/MD/Config sources with Prettier + tailwindcss plugin
   npm run lint:css  # enforce design token usage and guard against raw hex colors
   npm run build     # run the Tailwind build locally (output remains gitignored)
   ```
@@ -308,7 +314,7 @@ commands from the repo root:
 1. Install dependencies (only required after cloning or when packages change):
 
    ```bash
-   npm install
+   npm ci
    ```
 
 2. Rebuild the Tailwind bundle for local verification (the output stays
