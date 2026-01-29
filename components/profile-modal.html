@@ -1355,50 +1355,6 @@
               role="tabpanel"
               aria-labelledby="profileNavMessages"
             >
-              <div id="profileMessagesRelayPanel" class="card space-y-4 p-5">
-                <div class="space-y-2">
-                  <h3 class="text-base font-semibold text-text">DM relay hints</h3>
-                  <p class="text-sm text-muted">
-                    Publish relay hints for direct messages as <span class="font-medium">kind:10050</span> events. Use WSS-only relay URLs so encrypted DM delivery stays secure.
-                  </p>
-                </div>
-                <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
-                  <label class="flex-1 text-sm text-muted-strong" for="profileMessagesRelayInput">
-                    <span class="mb-2 block font-medium">Add a DM relay</span>
-                    <input
-                      id="profileMessagesRelayInput"
-                      type="text"
-                      inputmode="url"
-                      autocomplete="off"
-                      class="input"
-                      placeholder="wss://relay.example.com"
-                    />
-                  </label>
-                  <button
-                    id="profileMessagesRelayAdd"
-                    type="button"
-                    class="btn focus-ring"
-                  >
-                    Add relay
-                  </button>
-                </div>
-                <div class="flex flex-wrap items-center gap-2">
-                  <button
-                    id="profileMessagesRelayPublish"
-                    type="button"
-                    class="btn-ghost focus-ring text-xs"
-                  >
-                    Publish relay hints
-                  </button>
-                  <span
-                    id="profileMessagesRelayStatus"
-                    class="text-xs text-muted"
-                    role="status"
-                    aria-live="polite"
-                  ></span>
-                </div>
-                <ul id="profileMessagesRelayList" class="grid-stack" data-orientation="vertical"></ul>
-              </div>
               <div id="dmAppShellMount"></div>
             </section>
             <section
