@@ -40,12 +40,13 @@ Automated agents contributing to this repository should follow these rules:
 - **Commit Messages**: Use the convention `type(scope): description (agent)` (e.g., `fix(ai): formatting (agent)` or `docs(ai): update quickstart (agent)`).
 - **Reference Issues**: Link to relevant issues in the PR description.
 - **Review AGENTS.md**: Always consult `AGENTS.md` for specific architectural guidelines and constraints before starting work.
+- **Efficiency**: Prefer running targeted or sharded tests (e.g., `npm run test:unit:shard1`) to conserve resources during iteration.
 
 ## Submitting a Pull Request
 
 1. Fork the repository and create a new branch from `main`.
 2. Make your changes, adding tests if applicable.
-3. Run `npm run format`, `npm run test:unit`, and `npm run lint` to ensure quality.
+3. Run `npm run format`, `npm run lint`, and unit tests (e.g. `npm run test:unit` or a shard like `npm run test:unit:shard1`) to ensure quality.
 4. (Optional) Run `npm run test:visual` if you made UI changes.
 5. (Optional) Run domain-specific tests if relevant (e.g., `npm run test:dm:unit` for Direct Messages).
 6. Push your branch and open a Pull Request against the `main` branch.
@@ -106,7 +107,7 @@ To set up the project locally:
    ```bash
    npm run test:unit
    ```
-   *Note: Unit tests may take a few minutes to complete. To speed up local iterations, you can run a specific shard (e.g., `npm run test:unit:shard1`).*
+   *Note: Running the full suite (`npm run test:unit`) is resource-intensive and may time out in some environments. We strongly recommend using sharded runs for local development: `npm run test:unit:shard1`.*
 
    You can also run end-to-end and visual tests:
    ```bash

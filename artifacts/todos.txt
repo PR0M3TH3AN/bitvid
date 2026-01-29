@@ -1,9 +1,9 @@
 js/ui/profileModalController.js:203:      "Formats npub strings for display using the canonical short representation (npubXXXX…XXXX).",
-vendor/highlight.min.js:62:begin:"[ ]*(?=(TODO|FIXME|NOTE|BUG|OPTIMIZE|HACK|XXX):)",
-vendor/highlight.min.js:63:end:/(TODO|FIXME|NOTE|BUG|OPTIMIZE|HACK|XXX):/,excludeBegin:!0,relevance:0})
 tests/visual/moderation.spec.ts:89:    // TODO: Investigate why visibility check fails in fixture environment (headless)
 tests/visual/moderation.spec.ts:93:    // TODO: Investigate why click times out in fixture environment (headless)
 tests/visual/moderation.spec.ts:166:    // TODO: Investigate visibility check failure
 tests/visual/moderation.spec.ts:170:    // TODO: Investigate click timeout failure
 tests/visual/moderation.spec.ts:219:    // TODO: Investigate visibility check failure
 tests/visual/moderation.spec.ts:223:    // TODO: Investigate click timeout failure
+
+Note: The TODOs in tests/visual/moderation.spec.ts are already tracked in issues/todo-moderation-tests.md. No other actionable TODOs found.

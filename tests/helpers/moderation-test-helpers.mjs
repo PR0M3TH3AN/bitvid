@@ -271,6 +271,7 @@ export async function createModerationAppHarness(options = {}) {
     Application.prototype.normalizeModerationSettings;
   app.getActiveModerationThresholds =
     Application.prototype.getActiveModerationThresholds;
+  app.normalizeHexPubkey = Application.prototype.normalizeHexPubkey;
 
   if (options.userBlocks) {
     app.isAuthorBlocked = function (pubkey) {

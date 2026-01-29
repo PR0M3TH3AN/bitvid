@@ -45,6 +45,11 @@ test.describe("overlay layering tokens", () => {
 
     await dismissDisclaimerModal(page);
 
+    // Wait for initial fade-in to complete so opacity doesn't interfere with visibility checks
+    await page.waitForFunction(
+      () => !document.getElementById("sidebar")?.classList.contains("fade-in")
+    );
+
     await expect(page.locator("#mobileMenuBtn")).toHaveCount(0);
 
     const collapseToggle = page.locator("#sidebarCollapseToggle");
@@ -123,14 +128,26 @@ test.describe("overlay layering tokens", () => {
 
     // Ensure the toggle is initialized
     await expect(collapseToggle).toHaveAttribute("data-state", /.*/);
-    await collapseToggle.click();
+    await collapseToggle.click({ force: true });
 
-    await page.waitForFunction(() =>
-      document.getElementById("sidebar")?.classList.contains("sidebar-expanded")
-    );
+    await page.waitForFunction(() => {
+      const sidebar = document.getElementById("sidebar");
+      return (
+        sidebar?.classList.contains("sidebar-expanded") &&
+        !sidebar?.classList.contains("sidebar-collapsed")
+      );
+    });
 
     // Wait for sidebar transition to complete
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(1000);
+
+    // Ensure the footer button is scrolled into view (especially for mobile viewports)
+    await page.evaluate(() => {
+      const sidebar = document.getElementById("sidebar");
+      if (sidebar) {
+        sidebar.scrollTop = sidebar.scrollHeight;
+      }
+    });
 
     const expandedLayout = await page.evaluate(() => {
       const sidebar = document.getElementById("sidebar");

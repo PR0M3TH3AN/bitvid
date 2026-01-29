@@ -20,6 +20,7 @@ import {
 import { profileCache } from "./state/profileCache.js";
 import { DEFAULT_RELAY_URLS } from "./nostr/toolkit.js";
 import { relayManager } from "./relayManager.js";
+import { runNip07WithRetry, NIP07_PRIORITY } from "./nostr/nip07Permissions.js";
 
 class TinyEventEmitter {
   constructor() {
@@ -851,12 +852,18 @@ class UserBlockListManager {
       if (signerHasNip44) {
         registerDecryptor(
           "nip44",
-          (payload) => signer.nip44Decrypt(normalized, payload),
+          (payload) =>
+            signer.nip44Decrypt(normalized, payload, {
+              priority: NIP07_PRIORITY.HIGH,
+            }),
           "active-signer",
         );
         registerDecryptor(
           "nip44_v2",
-          (payload) => signer.nip44Decrypt(normalized, payload),
+          (payload) =>
+            signer.nip44Decrypt(normalized, payload, {
+              priority: NIP07_PRIORITY.HIGH,
+            }),
           "active-signer",
         );
       }
@@ -864,7 +871,10 @@ class UserBlockListManager {
       if (signerHasNip04) {
         registerDecryptor(
           "nip04",
-          (payload) => signer.nip04Decrypt(normalized, payload),
+          (payload) =>
+            signer.nip04Decrypt(normalized, payload, {
+              priority: NIP07_PRIORITY.HIGH,
+            }),
           "active-signer",
         );
       }
@@ -874,33 +884,52 @@ class UserBlockListManager {
         if (typeof nostrApi.nip04?.decrypt === "function") {
           registerDecryptor(
             "nip04",
-            (payload) => nostrApi.nip04.decrypt(normalized, payload),
+            (payload) =>
+              runNip07WithRetry(
+                () => nostrApi.nip04.decrypt(normalized, payload),
+                { label: "nip04.decrypt", priority: NIP07_PRIORITY.HIGH },
+              ),
             "extension",
           );
         }
 
         const nip44 =
-          nostrApi.nip44 && typeof nostrApi.nip44 === "object" ? nostrApi.nip44 : null;
+          nostrApi.nip44 && typeof nostrApi.nip44 === "object"
+            ? nostrApi.nip44
+            : null;
         if (nip44) {
           if (typeof nip44.decrypt === "function") {
             registerDecryptor(
               "nip44",
-              (payload) => nip44.decrypt(normalized, payload),
+              (payload) =>
+                runNip07WithRetry(() => nip44.decrypt(normalized, payload), {
+                  label: "nip44.decrypt",
+                  priority: NIP07_PRIORITY.HIGH,
+                }),
               "extension",
             );
           }
 
-          const nip44v2 = nip44.v2 && typeof nip44.v2 === "object" ? nip44.v2 : null;
+          const nip44v2 =
+            nip44.v2 && typeof nip44.v2 === "object" ? nip44.v2 : null;
           if (nip44v2 && typeof nip44v2.decrypt === "function") {
             registerDecryptor(
               "nip44_v2",
-              (payload) => nip44v2.decrypt(normalized, payload),
+              (payload) =>
+                runNip07WithRetry(() => nip44v2.decrypt(normalized, payload), {
+                  label: "nip44.v2.decrypt",
+                  priority: NIP07_PRIORITY.HIGH,
+                }),
               "extension",
             );
             if (!decryptors.has("nip44")) {
               registerDecryptor(
                 "nip44",
-                (payload) => nip44v2.decrypt(normalized, payload),
+                (payload) =>
+                  runNip07WithRetry(
+                    () => nip44v2.decrypt(normalized, payload),
+                    { label: "nip44.v2.decrypt", priority: NIP07_PRIORITY.HIGH },
+                  ),
                 "extension",
               );
             }

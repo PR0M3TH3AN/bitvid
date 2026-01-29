@@ -28,8 +28,8 @@ module.exports = {
   theme: {
     extend: {
       screens: {
-        xs: "30rem",
-        compact: "25rem"
+        xs: "480px",
+        compact: "400px"
       },
       colors: {
         page: "var(--color-page)",

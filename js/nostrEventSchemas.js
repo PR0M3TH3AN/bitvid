@@ -2532,11 +2532,13 @@ export function buildAdminListEvent(listKey, params) {
     tags.push([schema.identifierTag.name, schema.identifierTag.value]);
   }
   const participantTagName = schema?.participantTagName || "p";
-  hexPubkeys.forEach((hex) => {
-    if (typeof hex === "string" && hex.trim()) {
-      tags.push([participantTagName, hex.trim()]);
-    }
-  });
+  if (Array.isArray(hexPubkeys)) {
+    hexPubkeys.forEach((hex) => {
+      if (typeof hex === "string" && hex.trim()) {
+        tags.push([participantTagName, hex.trim()]);
+      }
+    });
+  }
   appendSchemaTags(tags, schema);
 
   const event = {

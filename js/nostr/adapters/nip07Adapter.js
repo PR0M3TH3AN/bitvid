@@ -3,12 +3,12 @@
 import { normalizeActorKey } from "../watchHistory.js";
 import { runNip07WithRetry } from "../nip07Permissions.js";
 
-async function retryNip07Call(operation, label) {
+async function retryNip07Call(operation, label, priority) {
   let lastError = null;
   const attempts = 2; // Retry once on failure
   for (let i = 0; i < attempts; i++) {
     try {
-      return await runNip07WithRetry(operation, { label });
+      return await runNip07WithRetry(operation, { label, priority });
     } catch (error) {
       lastError = error;
       // Don't retry if user explicitly rejected
@@ -97,40 +97,56 @@ export async function createNip07Adapter(initialExtension) {
   const hasNip44 = !!bootstrapNip44;
 
   // Wrapper builders to ensure dynamic lookup at call time
-  const createNip04Encrypt = () => (pubkey, plaintext) => {
+  const createNip04Encrypt = () => (pubkey, plaintext, options = {}) => {
     const ext = getExtension();
     const nip04 = ext?.nip04;
     if (!nip04 || typeof nip04.encrypt !== "function") {
       throw new Error("NIP-04 encryption unavailable on active extension.");
     }
-    return retryNip07Call(() => nip04.encrypt(pubkey, plaintext), "nip04.encrypt");
+    return retryNip07Call(
+      () => nip04.encrypt(pubkey, plaintext),
+      "nip04.encrypt",
+      options?.priority,
+    );
   };
 
-  const createNip04Decrypt = () => (pubkey, ciphertext) => {
+  const createNip04Decrypt = () => (pubkey, ciphertext, options = {}) => {
     const ext = getExtension();
     const nip04 = ext?.nip04;
     if (!nip04 || typeof nip04.decrypt !== "function") {
       throw new Error("NIP-04 decryption unavailable on active extension.");
     }
-    return retryNip07Call(() => nip04.decrypt(pubkey, ciphertext), "nip04.decrypt");
+    return retryNip07Call(
+      () => nip04.decrypt(pubkey, ciphertext),
+      "nip04.decrypt",
+      options?.priority,
+    );
   };
 
-  const createNip44Encrypt = () => (pubkey, plaintext) => {
+  const createNip44Encrypt = () => (pubkey, plaintext, options = {}) => {
     const ext = getExtension();
     const nip44 = resolveNip44Module(ext);
     if (!nip44 || typeof nip44.encrypt !== "function") {
       throw new Error("NIP-44 encryption unavailable on active extension.");
     }
-    return retryNip07Call(() => nip44.encrypt(pubkey, plaintext), "nip44.encrypt");
+    return retryNip07Call(
+      () => nip44.encrypt(pubkey, plaintext),
+      "nip44.encrypt",
+      options?.priority,
+    );
   };
 
-  const createNip44Decrypt = () => (pubkey, ciphertext) => {
+  const createNip44Decrypt = () => (pubkey, ciphertext, options = {}) => {
     const ext = getExtension();
     const nip44 = resolveNip44Module(ext);
     if (!nip44 || typeof nip44.decrypt !== "function") {
       throw new Error("NIP-44 decryption unavailable on active extension.");
     }
-    return retryNip07Call(() => nip44.decrypt(pubkey, ciphertext), "nip44.decrypt");
+    return retryNip07Call(
+      () => nip44.decrypt(pubkey, ciphertext),
+      "nip44.decrypt",
+      options?.priority,
+    );
   };
 
   const requestPermissions = async (methods = []) => {

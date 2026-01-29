@@ -3271,6 +3271,19 @@ class Application {
           error,
         );
       }
+
+      try {
+        await this.nostrService.loadDirectMessages({
+          actorPubkey: activePubkey,
+          limit: 50,
+          initialLoad: true,
+        });
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to sync direct messages during login:",
+          error,
+        );
+      }
     }
 
     try {
@@ -4097,6 +4110,15 @@ class Application {
       this.resetViewLoggingState();
     }
 
+    // Stop existing feed subscription to prioritize user data sync
+    if (
+      this.videoSubscription &&
+      typeof this.videoSubscription.unsub === "function"
+    ) {
+      this.videoSubscription.unsub();
+      this.videoSubscription = null;
+    }
+
     this.applyAuthenticatedUiState();
     this.commentController?.refreshAuthState?.();
     this.updateShareNostrAuthState({ reason: "auth-login" });
@@ -4156,7 +4178,12 @@ class Application {
 
     const hashtagPreferencesPromise = Promise.resolve(
       this.loadHashtagPreferencesForPubkey(loginContext.pubkey),
-    );
+    ).catch((error) => {
+      devLogger.warn(
+        "[Application] Background hashtag preferences load failed:",
+        error
+      );
+    });
 
     if (this.zapController) {
       try {
@@ -4244,7 +4271,7 @@ class Application {
     }
 
     await nwcPromise;
-    await hashtagPreferencesPromise;
+    // We do not await hashtagPreferencesPromise here; it loads in the background.
 
     try {
       await accessControl.ensureReady();
@@ -4257,28 +4284,54 @@ class Application {
 
     if (activePubkey) {
       const aggregatedBlacklist = accessControl.getBlacklist();
-      try {
-        await userBlocks.seedWithNpubs(
+
+      // Background the seeding process because it involves publishing events,
+      // which can block the login flow significantly.
+      userBlocks
+        .seedWithNpubs(
           activePubkey,
-          Array.isArray(aggregatedBlacklist) ? aggregatedBlacklist : [],
-        );
+          Array.isArray(aggregatedBlacklist) ? aggregatedBlacklist : []
+        )
+        .catch((error) => {
+          if (
+            error?.code === "extension-permission-denied" ||
+            error?.code === "nip04-missing" ||
+            error?.name === "RelayPublishError"
+          ) {
+            userLogger.error(
+              "[Application] Failed to seed shared block list after login:",
+              error
+            );
+          } else {
+            devLogger.error(
+              "[Application] Unexpected error while seeding shared block list:",
+              error
+            );
+          }
+        });
+
+      // Attempt to load blocks with a short timeout so we don't block the UI forever.
+      // If it times out, the UI will refresh reactively when the data arrives.
+      const blockLoadPromise = userBlocks.ensureLoaded(activePubkey);
+      const blockLoadTimeout = new Promise((resolve) =>
+        setTimeout(resolve, 2000)
+      );
+      try {
+        await Promise.race([blockLoadPromise, blockLoadTimeout]);
       } catch (error) {
-        if (
-          error?.code === "extension-permission-denied" ||
-          error?.code === "nip04-missing" ||
-          error?.name === "RelayPublishError"
-        ) {
-          userLogger.error(
-            "[Application] Failed to seed shared block list after login:",
-            error,
-          );
-        } else {
-          devLogger.error(
-            "[Application] Unexpected error while seeding shared block list:",
-            error,
-          );
-        }
+        devLogger.warn(
+          "[Application] Block list load timed out or failed:",
+          error
+        );
       }
+
+      // Load subscriptions in the background to avoid blocking the main feed.
+      subscriptions.ensureLoaded(activePubkey).catch((error) => {
+        devLogger.warn(
+          "[Application] Failed to load subscriptions during login:",
+          error
+        );
+      });
     }
 
     try {
