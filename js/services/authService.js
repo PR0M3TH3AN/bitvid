@@ -837,6 +837,14 @@ export default class AuthService {
     setActiveProfilePubkey(null, { persist: true });
 
     try {
+      if (profileCache && typeof profileCache.reset === "function") {
+        profileCache.reset();
+      }
+    } catch (error) {
+      this.log("[AuthService] profileCache.reset threw", error);
+    }
+
+    try {
       resetModerationSettings({ persist: true });
     } catch (error) {
       this.log(

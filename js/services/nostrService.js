@@ -754,6 +754,13 @@ export class NostrService {
     if (this.dmPreviewCache) {
       this.dmPreviewCache.clear();
     }
+    if (this.dmNotificationManager?.reset) {
+      try {
+        this.dmNotificationManager.reset();
+      } catch (error) {
+        userLogger.warn("[nostrService] Failed to reset DM notifications cache", error);
+      }
+    }
     const activeActor = normalizeHexPubkey(
       typeof actorPubkey === "string" && actorPubkey
         ? actorPubkey

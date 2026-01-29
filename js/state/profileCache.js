@@ -346,6 +346,14 @@ class ProfileCache {
     this.emit("runtimeCleared", { pubkey: normalized });
   }
 
+  reset() {
+    const previousPubkey = this.activePubkey;
+    this.activePubkey = null;
+    this.memoryCache.clear();
+    this.emit("profileChanged", { pubkey: null, previousPubkey: previousPubkey || null });
+    this.emit("reset", { previousPubkey: previousPubkey || null });
+  }
+
   subscribe(callback) {
     this.listeners.add(callback);
     return () => this.listeners.delete(callback);
