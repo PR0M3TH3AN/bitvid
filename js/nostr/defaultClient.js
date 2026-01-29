@@ -15,19 +15,13 @@ export const nostrClient = new NostrClient();
 registerNostrClient(nostrClient, {
   requestPermissions: (
     methods = DEFAULT_NIP07_PERMISSION_METHODS,
-  ) => nostrClient.ensureExtensionPermissionsGate(methods),
+  ) => nostrClient.ensureExtensionPermissions(methods),
 });
 
 export function requestDefaultExtensionPermissions(
   methods = DEFAULT_NIP07_PERMISSION_METHODS,
 ) {
   return requestRegisteredPermissions(methods);
-}
-
-export function hasDefaultExtensionPermissions(
-  methods = DEFAULT_NIP07_PERMISSION_METHODS,
-) {
-  return nostrClient.hasRequiredExtensionPermissions(methods);
 }
 
 export {

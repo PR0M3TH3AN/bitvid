@@ -326,6 +326,11 @@ test("NIP-07 login falls back when structured permissions fail", async () => {
       "string",
       "string-based permissions should be attempted after structured payloads",
     );
+    assert.equal(
+      plainCall,
+      undefined,
+      "plain enable() should only be attempted if prior payloads fail",
+    );
   } finally {
     env.restore();
     nostrClient.logout();

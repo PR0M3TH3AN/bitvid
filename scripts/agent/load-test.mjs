@@ -466,13 +466,6 @@ function generateReport() {
     report.remediation.push('Mark as requires-security-review. Check if running in a constrained environment or if crypto implementation is suboptimal.');
   }
 
-  if (report.bottlenecks.length === 0) {
-    report.bottlenecks.push('None detected');
-  }
-  if (report.remediation.length === 0) {
-    report.remediation.push('None required');
-  }
-
   // Report File
   const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, ''); // YYYYMMDD
   const filename = `load-report-${dateStr}.json`;

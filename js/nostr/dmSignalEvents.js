@@ -101,21 +101,10 @@ export async function publishDmReadReceipt(
       ? shouldRequestExtensionPermissions(signer)
       : false;
 
-  const hasCachedPermissions =
-    typeof client?.hasRequiredExtensionPermissions === "function" &&
-    client.hasRequiredExtensionPermissions(DEFAULT_NIP07_PERMISSION_METHODS);
-
-  if (shouldRequestPermissions && !hasCachedPermissions) {
-    const permissionGate =
-      typeof client?.ensureExtensionPermissionsGate === "function"
-        ? client.ensureExtensionPermissionsGate.bind(client)
-        : typeof client?.ensureExtensionPermissions === "function"
-          ? client.ensureExtensionPermissions.bind(client)
-          : null;
-
-    if (permissionGate) {
-      permissionResult = await permissionGate(DEFAULT_NIP07_PERMISSION_METHODS);
-    }
+  if (shouldRequestPermissions) {
+    permissionResult = await client.ensureExtensionPermissions(
+      DEFAULT_NIP07_PERMISSION_METHODS,
+    );
   }
 
   if (!permissionResult.ok) {
@@ -253,21 +242,10 @@ export async function publishDmTypingIndicator(
       ? shouldRequestExtensionPermissions(signer)
       : false;
 
-  const hasCachedPermissions =
-    typeof client?.hasRequiredExtensionPermissions === "function" &&
-    client.hasRequiredExtensionPermissions(DEFAULT_NIP07_PERMISSION_METHODS);
-
-  if (shouldRequestPermissions && !hasCachedPermissions) {
-    const permissionGate =
-      typeof client?.ensureExtensionPermissionsGate === "function"
-        ? client.ensureExtensionPermissionsGate.bind(client)
-        : typeof client?.ensureExtensionPermissions === "function"
-          ? client.ensureExtensionPermissions.bind(client)
-          : null;
-
-    if (permissionGate) {
-      permissionResult = await permissionGate(DEFAULT_NIP07_PERMISSION_METHODS);
-    }
+  if (shouldRequestPermissions) {
+    permissionResult = await client.ensureExtensionPermissions(
+      DEFAULT_NIP07_PERMISSION_METHODS,
+    );
   }
 
   if (!permissionResult.ok) {
