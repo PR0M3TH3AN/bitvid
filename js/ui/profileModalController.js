@@ -1646,16 +1646,7 @@ export class ProfileModalController {
       document.getElementById("profileMessagesPrivacyToggle") || null;
     this.profileMessagesPrivacyMode =
       document.getElementById("profileMessagesPrivacyMode") || null;
-    this.profileMessagesRelayList =
-      document.getElementById("profileMessagesRelayList") || null;
-    this.profileMessagesRelayInput =
-      document.getElementById("profileMessagesRelayInput") || null;
-    this.profileMessagesRelayAddButton =
-      document.getElementById("profileMessagesRelayAdd") || null;
-    this.profileMessagesRelayPublishButton =
-      document.getElementById("profileMessagesRelayPublish") || null;
-    this.profileMessagesRelayStatus =
-      document.getElementById("profileMessagesRelayStatus") || null;
+    this.cacheDmRelayElements();
     this.profileMessagesUnreadDot =
       document.getElementById("profileMessagesUnreadDot") || null;
     this.dmAppShellContainer =
@@ -2249,6 +2240,63 @@ export class ProfileModalController {
 
   handleLinkPreviewToggle(enabled) {
     setLinkPreviewAutoFetch(Boolean(enabled));
+  }
+
+  cacheDmRelayElements() {
+    this.profileMessagesRelayList =
+      document.getElementById("profileMessagesRelayList") || null;
+    this.profileMessagesRelayInput =
+      document.getElementById("profileMessagesRelayInput") || null;
+    this.profileMessagesRelayAddButton =
+      document.getElementById("profileMessagesRelayAdd") || null;
+    this.profileMessagesRelayPublishButton =
+      document.getElementById("profileMessagesRelayPublish") || null;
+    this.profileMessagesRelayStatus =
+      document.getElementById("profileMessagesRelayStatus") || null;
+  }
+
+  bindDmRelayControls() {
+    const bindOnce = (element, eventName, handler, key) => {
+      if (!(element instanceof HTMLElement)) {
+        return;
+      }
+      const datasetKey = key || "dmRelayBound";
+      if (element.dataset[datasetKey] === "true") {
+        return;
+      }
+      element.dataset[datasetKey] = "true";
+      element.addEventListener(eventName, handler);
+    };
+
+    bindOnce(
+      this.profileMessagesRelayAddButton,
+      "click",
+      () => {
+        void this.handleAddDmRelayPreference();
+      },
+      "dmRelayAddBound",
+    );
+
+    bindOnce(
+      this.profileMessagesRelayInput,
+      "keydown",
+      (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          void this.handleAddDmRelayPreference();
+        }
+      },
+      "dmRelayInputBound",
+    );
+
+    bindOnce(
+      this.profileMessagesRelayPublishButton,
+      "click",
+      () => {
+        void this.handlePublishDmRelayPreferences();
+      },
+      "dmRelayPublishBound",
+    );
   }
 
   async refreshDmRelayPreferences({ force = false } = {}) {
@@ -4545,6 +4593,11 @@ export class ProfileModalController {
         onToggleTypingIndicators: (enabled) => {
           this.handleTypingIndicatorsToggle(enabled);
         },
+        onOpenSettings: () => {
+          this.cacheDmRelayElements();
+          this.bindDmRelayControls();
+          this.populateDmRelayPreferences();
+        },
       });
     } catch (error) {
       this.dmAppShell = null;
@@ -5428,26 +5481,7 @@ export class ProfileModalController {
       });
     }
 
-    if (this.profileMessagesRelayAddButton instanceof HTMLElement) {
-      this.profileMessagesRelayAddButton.addEventListener("click", () => {
-        void this.handleAddDmRelayPreference();
-      });
-    }
-
-    if (this.profileMessagesRelayInput instanceof HTMLElement) {
-      this.profileMessagesRelayInput.addEventListener("keydown", (event) => {
-        if (event.key === "Enter") {
-          event.preventDefault();
-          void this.handleAddDmRelayPreference();
-        }
-      });
-    }
-
-    if (this.profileMessagesRelayPublishButton instanceof HTMLElement) {
-      this.profileMessagesRelayPublishButton.addEventListener("click", () => {
-        void this.handlePublishDmRelayPreferences();
-      });
-    }
+    this.bindDmRelayControls();
 
     if (this.profileMessageSendButton instanceof HTMLElement) {
       this.profileMessageSendButton.addEventListener("click", () => {
