@@ -3279,17 +3279,20 @@ class Application {
         );
       }
 
-      try {
-        await this.nostrService.loadDirectMessages({
-          actorPubkey: activePubkey,
-          limit: 50,
-          initialLoad: true,
-        });
-      } catch (error) {
-        devLogger.warn(
-          "[Application] Failed to sync direct messages during login:",
-          error,
-        );
+      const activePubkey = this.pubkey;
+      if (activePubkey) {
+        try {
+          await this.nostrService.loadDirectMessages({
+            actorPubkey: activePubkey,
+            limit: 50,
+            initialLoad: true,
+          });
+        } catch (error) {
+          devLogger.warn(
+            "[Application] Failed to sync direct messages during login:",
+            error,
+          );
+        }
       }
     }
 
@@ -4158,6 +4161,7 @@ class Application {
       previousPubkey: detail?.previousPubkey,
       identityChanged: Boolean(detail?.identityChanged),
     };
+    const activePubkey = detail?.pubkey || this.pubkey;
 
     try {
       await this.handleModerationSettingsChange({
@@ -4231,6 +4235,34 @@ class Application {
       previousPubkey: loginContext.previousPubkey || null,
     });
 
+    if (activePubkey) {
+      try {
+        await this.nostrService.loadDirectMessages({
+          actorPubkey: activePubkey,
+          limit: 50,
+          initialLoad: true,
+        });
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to sync direct messages during login:",
+          error,
+        );
+      }
+
+      if (typeof this.nostrService.ensureDirectMessageSubscription === "function") {
+        try {
+          await this.nostrService.ensureDirectMessageSubscription({
+            actorPubkey: activePubkey,
+          });
+        } catch (error) {
+          devLogger.warn(
+            "[Application] Failed to subscribe to direct messages during login:",
+            error,
+          );
+        }
+      }
+    }
+
     const nwcPromise = Promise.resolve()
       .then(() => this.nwcSettingsService.onLogin(loginContext))
       .catch((error) => {
@@ -4259,7 +4291,6 @@ class Application {
       this.renderSavedProfiles();
     }
 
-    const activePubkey = detail?.pubkey || this.pubkey;
     postLoginPromise
       .then((postLogin) => {
         if (activePubkey && postLogin?.profile) {
