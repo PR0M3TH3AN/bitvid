@@ -4706,6 +4706,22 @@ class Application {
       }
     }
 
+    if (typeof this.nostrService?.stopDirectMessageSubscription === "function") {
+      try {
+        this.nostrService.stopDirectMessageSubscription();
+      } catch (error) {
+        devLogger.warn("Failed to stop DM subscription during logout:", error);
+      }
+    }
+
+    if (typeof this.nostrService?.clearDirectMessages === "function") {
+      try {
+        this.nostrService.clearDirectMessages({ emit: true });
+      } catch (error) {
+        devLogger.warn("Failed to clear cached DMs during logout:", error);
+      }
+    }
+
     if (typeof this.nostrService?.clearVideoSubscription === "function") {
       try {
         this.nostrService.clearVideoSubscription();

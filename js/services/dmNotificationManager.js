@@ -46,6 +46,11 @@ export class DmNotificationManager {
     return this.focusedConversationId;
   }
 
+  reset() {
+    this.conversationCache.clear();
+    this.focusedConversationId = "";
+  }
+
   setFocusedConversation(conversationId, isFocused = true) {
     if (typeof conversationId !== "string") {
       return;
