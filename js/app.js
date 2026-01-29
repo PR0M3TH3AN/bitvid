@@ -183,6 +183,7 @@ const UNSUPPORTED_BTITH_MESSAGE =
 const FALLBACK_THUMBNAIL_SRC = "/assets/jpg/video-thumbnail-fallback.jpg";
 const VIDEO_EVENT_KIND = 30078;
 const HEX64_REGEX = /^[0-9a-f]{64}$/i;
+const RELAY_UI_BATCH_DELAY_MS = 250;
 /**
  * Simple IntersectionObserver-based lazy loader for images (or videos).
  *
@@ -250,6 +251,7 @@ class Application {
     this.dmRecipientPubkey = null;
     this.dmRelayHints = new Map();
     this.authLoadingState = { profile: "idle", lists: "idle", dms: "idle" };
+    this.relayUiRefreshTimeout = null;
 
     this.commentController = null;
     this.initializeCommentController();
@@ -4576,24 +4578,46 @@ class Application {
       return;
     }
 
-    if (this.profileController) {
-      try {
-        this.profileController.populateProfileRelays();
-      } catch (error) {
-        devLogger.warn(
-          "[Application] Failed to refresh profile relays after relays loaded:",
-          error,
-        );
-      }
+    this.scheduleRelayUiRefresh();
+  }
 
-      try {
-        void this.profileController.refreshDmRelayPreferences({ force: true });
-      } catch (error) {
-        devLogger.warn(
-          "[Application] Failed to refresh DM relay preferences after relays loaded:",
-          error,
-        );
-      }
+  scheduleRelayUiRefresh() {
+    if (this.relayUiRefreshTimeout) {
+      return;
+    }
+
+    const scheduleTimeout =
+      typeof window !== "undefined" && typeof window.setTimeout === "function"
+        ? window.setTimeout.bind(window)
+        : setTimeout;
+
+    this.relayUiRefreshTimeout = scheduleTimeout(() => {
+      this.relayUiRefreshTimeout = null;
+      this.flushRelayUiRefresh();
+    }, RELAY_UI_BATCH_DELAY_MS);
+  }
+
+  flushRelayUiRefresh() {
+    if (!this.profileController) {
+      return;
+    }
+
+    try {
+      this.profileController.populateProfileRelays();
+    } catch (error) {
+      devLogger.warn(
+        "[Application] Failed to refresh profile relays after relays loaded:",
+        error,
+      );
+    }
+
+    try {
+      void this.profileController.refreshDmRelayPreferences({ force: true });
+    } catch (error) {
+      devLogger.warn(
+        "[Application] Failed to refresh DM relay preferences after relays loaded:",
+        error,
+      );
     }
   }
 
