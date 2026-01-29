@@ -1314,6 +1314,7 @@ export class ProfileModalController {
     this.walletStatusText = null;
     this.profileWalletStatusText = null;
     this.hashtagStatusText = null;
+    this.hashtagBackgroundLoading = false;
     this.hashtagInterestList = null;
     this.hashtagInterestEmpty = null;
     this.hashtagInterestInput = null;
@@ -1324,6 +1325,8 @@ export class ProfileModalController {
     this.hashtagDisinterestInput = null;
     this.addHashtagDisinterestButton = null;
     this.profileHashtagDisinterestRefreshBtn = null;
+    this.subscriptionsStatusText = null;
+    this.subscriptionsBackgroundLoading = false;
     this.profileSubscriptionsRefreshBtn = null;
     this.profileFriendsRefreshBtn = null;
     this.profileBlockedRefreshBtn = null;
@@ -1421,8 +1424,8 @@ export class ProfileModalController {
       this.subscriptionsService &&
       typeof this.subscriptionsService.on === "function"
     ) {
-      this.subscriptionsService.on("change", () => {
-        void this.populateSubscriptionsList();
+      this.subscriptionsService.on("change", (detail) => {
+        this.handleSubscriptionsChange(detail);
       });
     }
 
@@ -1718,6 +1721,8 @@ export class ProfileModalController {
       document.getElementById("profileAddHashtagDisinterestBtn") || null;
     this.profileHashtagDisinterestRefreshBtn =
       document.getElementById("profileHashtagDisinterestRefreshBtn") || null;
+    this.subscriptionsStatusText =
+      document.getElementById("subscriptionsStatus") || null;
 
     this.profileRelayList = this.relayList;
     this.profileRelayInput = this.relayInput;
@@ -5343,7 +5348,7 @@ export class ProfileModalController {
           return;
         }
         void service
-          .loadSubscriptions(activeHex)
+          .loadSubscriptions(activeHex, { allowPermissionPrompt: true })
           .then(() => {
             void this.populateSubscriptionsList();
           })
@@ -5397,7 +5402,9 @@ export class ProfileModalController {
       if (!service || typeof service.load !== "function") {
         return;
       }
-      void service.load(activeHex).catch((error) => {
+      void service
+        .load(activeHex, { allowPermissionPrompt: true })
+        .catch((error) => {
         devLogger.warn(
           "[profileModal] Failed to refresh hashtag preferences:",
           error,
@@ -7072,11 +7079,20 @@ export class ProfileModalController {
       this.populateStoragePane();
     } else if (target === "hashtags") {
       this.populateHashtagPreferences();
+      if (activeHex && this.hashtagPreferencesService) {
+        this.hashtagPreferencesService
+          .load(activeHex, { allowPermissionPrompt: true })
+          .catch(noop);
+      }
+      this.refreshHashtagBackgroundStatus();
     } else if (target === "subscriptions") {
       if (activeHex && this.subscriptionsService) {
-        this.subscriptionsService.loadSubscriptions(activeHex).catch(noop);
+        this.subscriptionsService
+          .loadSubscriptions(activeHex, { allowPermissionPrompt: true })
+          .catch(noop);
       }
       void this.populateSubscriptionsList();
+      this.refreshSubscriptionsBackgroundStatus();
     } else if (target === "blocked") {
       if (activeHex && this.services.userBlocks) {
         this.services.userBlocks.loadBlocks(activeHex).catch(noop);
@@ -7762,6 +7778,89 @@ export class ProfileModalController {
     }
   }
 
+  setSubscriptionsStatus(message = "", tone = "muted") {
+    if (!(this.subscriptionsStatusText instanceof HTMLElement)) {
+      return;
+    }
+
+    const classList = this.subscriptionsStatusText.classList;
+    classList.remove(
+      "text-status-success",
+      "text-status-warning",
+      "text-status-danger",
+      "text-status-info",
+      "text-muted",
+    );
+
+    const normalized =
+      typeof message === "string" && message.trim() ? message.trim() : "";
+
+    if (!normalized) {
+      this.subscriptionsStatusText.textContent = "";
+      this.subscriptionsStatusText.classList.add("text-muted", "hidden");
+      return;
+    }
+
+    this.subscriptionsStatusText.textContent = normalized;
+    this.subscriptionsStatusText.classList.remove("hidden");
+
+    switch (tone) {
+      case "success":
+        classList.add("text-status-success");
+        break;
+      case "warning":
+      case "error":
+        classList.add("text-status-warning");
+        break;
+      case "info":
+        classList.add("text-status-info");
+        break;
+      default:
+        classList.add("text-muted");
+        break;
+    }
+  }
+
+  refreshHashtagBackgroundStatus() {
+    const isBackground = this.hashtagPreferencesService?.backgroundLoading === true;
+    const statusText = this.hashtagStatusText?.textContent?.trim?.() || "";
+
+    if (isBackground && !this.hashtagBackgroundLoading) {
+      this.hashtagBackgroundLoading = true;
+      if (!statusText) {
+        this.setHashtagStatus("Loading in background…", "info");
+      }
+      return;
+    }
+
+    if (!isBackground && this.hashtagBackgroundLoading) {
+      if (statusText === "Loading in background…") {
+        this.setHashtagStatus("", "muted");
+      }
+      this.hashtagBackgroundLoading = false;
+    }
+  }
+
+  refreshSubscriptionsBackgroundStatus() {
+    const isBackground = this.subscriptionsService?.backgroundLoading === true;
+    const statusText = this.subscriptionsStatusText?.textContent?.trim?.() || "";
+
+    if (isBackground && !this.subscriptionsBackgroundLoading) {
+      this.subscriptionsBackgroundLoading = true;
+      if (!statusText) {
+        this.setSubscriptionsStatus("Loading in background…", "info");
+      }
+      return;
+    }
+
+    if (!isBackground && this.subscriptionsBackgroundLoading) {
+      if (statusText === "Loading in background…") {
+        this.setSubscriptionsStatus("", "muted");
+      }
+      this.subscriptionsBackgroundLoading = false;
+    }
+  }
+
   clearHashtagInputs() {
     if (this.hashtagInterestInput instanceof HTMLInputElement) {
       this.hashtagInterestInput.value = "";
@@ -7780,6 +7879,7 @@ export class ProfileModalController {
     if (!snapshot.interests.length && !snapshot.disinterests.length) {
       this.setHashtagStatus("", "muted");
     }
+    this.refreshHashtagBackgroundStatus();
   }
 
   renderHashtagList(type, tags) {
@@ -8097,7 +8197,45 @@ export class ProfileModalController {
       detail && typeof detail.preferences === "object"
         ? detail.preferences
         : detail;
+    const action = typeof detail?.action === "string" ? detail.action : "";
+
+    if (action === "background-loading") {
+      this.hashtagBackgroundLoading = true;
+      this.setHashtagStatus("Loading in background…", "info");
+    } else if (
+      (action === "sync" || action === "background-loaded" || action === "reset") &&
+      this.hashtagBackgroundLoading
+    ) {
+      const statusText = this.hashtagStatusText?.textContent?.trim?.() || "";
+      if (statusText === "Loading in background…") {
+        this.setHashtagStatus("", "muted");
+      }
+      this.hashtagBackgroundLoading = false;
+    }
+
     this.populateHashtagPreferences(preferences);
+    this.refreshHashtagBackgroundStatus();
+  }
+
+  handleSubscriptionsChange(detail = {}) {
+    const action = typeof detail?.action === "string" ? detail.action : "";
+
+    if (action === "background-loading") {
+      this.subscriptionsBackgroundLoading = true;
+      this.setSubscriptionsStatus("Loading in background…", "info");
+    } else if (
+      (action === "sync" || action === "background-loaded" || action === "reset") &&
+      this.subscriptionsBackgroundLoading
+    ) {
+      const statusText = this.subscriptionsStatusText?.textContent?.trim?.() || "";
+      if (statusText === "Loading in background…") {
+        this.setSubscriptionsStatus("", "muted");
+      }
+      this.subscriptionsBackgroundLoading = false;
+    }
+
+    void this.populateSubscriptionsList();
+    this.refreshSubscriptionsBackgroundStatus();
   }
 
   populateBlockedList(blocked = null) {
@@ -8291,12 +8429,14 @@ export class ProfileModalController {
     const service = this.subscriptionsService;
     if (!service) {
       this.clearSubscriptionsList();
+      this.refreshSubscriptionsBackgroundStatus();
       return;
     }
 
     const activeHex = this.normalizeHexPubkey(this.getActivePubkey());
     if (!activeHex) {
       this.clearSubscriptionsList();
+      this.refreshSubscriptionsBackgroundStatus();
       return;
     }
 
@@ -8395,6 +8535,7 @@ export class ProfileModalController {
       if (!deduped.length) {
         this.subscriptionListEmpty.classList.remove("hidden");
         this.subscriptionList.classList.add("hidden");
+        this.refreshSubscriptionsBackgroundStatus();
         return;
       }
 
@@ -8491,6 +8632,7 @@ export class ProfileModalController {
           );
         }
       }
+      this.refreshSubscriptionsBackgroundStatus();
     } catch (error) {
       devLogger.warn("[profileModal] Failed to populate subscriptions list:", error);
     }
@@ -13005,7 +13147,9 @@ export class ProfileModalController {
         this.services.userBlocks.loadBlocks(activePubkey).catch(noop);
       }
       if (this.subscriptionsService) {
-        this.subscriptionsService.loadSubscriptions(activePubkey).catch(noop);
+        this.subscriptionsService
+          .loadSubscriptions(activePubkey, { allowPermissionPrompt: false })
+          .catch(noop);
       }
     }
 
