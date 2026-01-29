@@ -3814,10 +3814,27 @@ export class NostrClient {
       : this.relays;
 
     const healthyCandidates = this.getHealthyRelays(relaysToUse);
+    let relayCandidates = healthyCandidates;
+    if (!healthyCandidates.length && relaysToUse.length) {
+      const sanitizedFallback = sanitizeRelayList(relaysToUse);
+      const defaultFallback = sanitizeRelayList(Array.from(DEFAULT_RELAY_URLS));
+      relayCandidates = sanitizedFallback.length
+        ? sanitizedFallback
+        : defaultFallback.length
+          ? defaultFallback
+          : sanitizeRelayList(Array.from(RELAY_URLS));
+      devLogger.warn(
+        "[fetchListIncrementally] Healthy relays exhausted; using fallback relay list for one-off fetch.",
+        {
+          requested: relaysToUse,
+          fallback: relayCandidates,
+        },
+      );
+    }
     const readPreferences = new Set(Array.isArray(this.readRelays) ? this.readRelays : []);
 
     // Sort relays: prefer user's read relays first
-    const sortedRelays = healthyCandidates.sort((a, b) => {
+    const sortedRelays = relayCandidates.sort((a, b) => {
       const aPreferred = readPreferences.has(a);
       const bPreferred = readPreferences.has(b);
       if (aPreferred && !bPreferred) return -1;
@@ -3844,7 +3861,7 @@ export class NostrClient {
     const pool = await this.ensurePool();
     const actualFetchFn = typeof fetchFn === "function"
       ? fetchFn
-      : (r, f) => pool.list([r], [f]);
+      : (r, f, timeout) => pool.list([r], [f], { timeout });
 
     const chunks = [];
     for (let i = 0; i < normalizedRelays.length; i += concurrencyLimit) {
@@ -3902,7 +3919,7 @@ export class NostrClient {
         try {
           // Wrap fetch with a timeout to prevent hanging on slow relays
           let events = await withRequestTimeout(
-            actualFetchFn(relayUrl, filter),
+            actualFetchFn(relayUrl, filter, listTimeoutMs),
             listTimeoutMs,
             null,
             `Fetch from ${relayUrl} timed out`
@@ -3937,7 +3954,7 @@ export class NostrClient {
             try {
               delete filter.since;
               const events = await withRequestTimeout(
-                actualFetchFn(relayUrl, filter),
+                actualFetchFn(relayUrl, filter, listTimeoutMs),
                 listTimeoutMs,
                 null,
                 `Full fetch fallback from ${relayUrl} timed out`
