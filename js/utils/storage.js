@@ -4,11 +4,11 @@ import { userLogger } from "./logger.js";
 const URL_HEALTH_STORAGE_PREFIX = "bitvid:urlHealth:";
 const TORRENT_PROBE_STORAGE_PREFIX = "bitvid:torrentProbe:";
 
-export function getUrlHealthStorageKey(eventId) {
+function getUrlHealthStorageKey(eventId) {
   return `${URL_HEALTH_STORAGE_PREFIX}${eventId}`;
 }
 
-export function getTorrentProbeStorageKey(infoHash) {
+function getTorrentProbeStorageKey(infoHash) {
   return `${TORRENT_PROBE_STORAGE_PREFIX}${infoHash}`;
 }
 
