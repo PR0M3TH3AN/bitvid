@@ -1488,7 +1488,7 @@ class Application {
       this.videoModal.setViewCountPointer(pointerKey);
     }
     try {
-      const token = subscribeToVideoViewCount(pointer, ({ total, status }) => {
+      const token = subscribeToVideoViewCount(pointer, ({ total, status, partial }) => {
         const latestViewEl = this.videoModal?.getViewCountElement() || null;
         if (!latestViewEl) {
           return;
@@ -1497,10 +1497,12 @@ class Application {
         if (Number.isFinite(total)) {
           const numeric = Number(total);
           if (this.videoModal) {
+            const label = this.formatViewCountLabel(numeric);
             this.videoModal.updateViewCountLabel(
-              this.formatViewCountLabel(numeric)
+              partial ? `${label} (partial)` : label
             );
           }
+          latestViewEl.dataset.viewCountState = partial ? "partial" : "ready";
           return;
         }
 
@@ -1508,10 +1510,12 @@ class Application {
           if (this.videoModal) {
             this.videoModal.updateViewCountLabel("Loading views…");
           }
+          latestViewEl.dataset.viewCountState = "hydrating";
         } else {
           if (this.videoModal) {
             this.videoModal.updateViewCountLabel("– views");
           }
+          latestViewEl.dataset.viewCountState = status;
         }
       });
 

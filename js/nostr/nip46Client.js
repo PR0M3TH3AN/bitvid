@@ -43,6 +43,28 @@ export const NIP46_ENCRYPTION_ALGORITHMS = Object.freeze([
   "nip04",
 ]);
 
+function isSecureRelayContext() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  const protocol = window?.location?.protocol;
+  return protocol === "https:";
+}
+
+function resolveRelayProtocol(protocol, { enforceTls = false } = {}) {
+  if (!protocol) {
+    return null;
+  }
+  const normalized = protocol.toLowerCase();
+  if (normalized === "wss:") {
+    return "wss:";
+  }
+  if (normalized === "ws:") {
+    return enforceTls ? "wss:" : "ws:";
+  }
+  return null;
+}
+
 /**
  * resolves the appropriate storage mechanism (localStorage or polyfill) for NIP-46 sessions.
  * @returns {Storage|null} The storage interface or null if unavailable.
@@ -72,6 +94,7 @@ export function sanitizeRelayList(list) {
   if (!Array.isArray(list)) {
     return sanitized;
   }
+  const enforceTls = isSecureRelayContext();
 
   list.forEach((value) => {
     if (typeof value !== "string") {
@@ -90,14 +113,27 @@ export function sanitizeRelayList(list) {
 
     let normalized = trimmed.replace(/\/+$/, "");
     try {
-      const parsed = new URL(trimmed);
+      const parsed = new URL(normalized);
       if (!parsed.hostname) {
         return;
+      }
+      const resolvedProtocol = resolveRelayProtocol(parsed.protocol, {
+        enforceTls,
+      });
+      if (!resolvedProtocol) {
+        return;
+      }
+      if (parsed.protocol !== resolvedProtocol) {
+        parsed.protocol = resolvedProtocol;
       }
       const pathname = parsed.pathname.replace(/\/+$/, "");
       normalized = `${parsed.protocol}//${parsed.host}${pathname}${parsed.search || ""}`;
     } catch (error) {
       // Ignore URL parsing failures and fall back to the trimmed string.
+    }
+
+    if (enforceTls && normalized.startsWith("ws://")) {
+      return;
     }
 
     if (seen.has(normalized)) {
