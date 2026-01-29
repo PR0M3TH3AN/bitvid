@@ -1,31 +1,27 @@
-import sys
-import time
 from playwright.sync_api import sync_playwright
+import sys
 
 def run():
     with sync_playwright() as p:
-        # Launch browser (headless by default)
         browser = p.chromium.launch()
         page = browser.new_page()
 
-        # Capture console messages
-        page.on("console", lambda msg: print(f"console:{msg.type}: {msg.text}"))
+        # Subscribe to console messages
+        page.on("console", lambda msg: print(f"CONSOLE: {msg.type}: {msg.text}"))
 
-        # Capture uncaught exceptions
-        page.on("pageerror", lambda exc: print(f"pageerror: {exc}"))
+        # Subscribe to page errors (uncaught exceptions)
+        page.on("pageerror", lambda exc: print(f"PAGEERROR: {exc}"))
 
-        # Capture failed requests
-        page.on("requestfailed", lambda request: print(f"requestfailed: {request.url} {request.failure}"))
+        # Subscribe to failed requests
+        page.on("requestfailed", lambda req: print(f"REQUESTFAILED: {req.url} {req.failure}"))
 
         try:
-            print("Navigating to http://localhost:8000...")
+            print("Navigating to http://localhost:8000 ...")
             page.goto("http://localhost:8000")
-
-            # Wait for some time to catch initialization errors
-            time.sleep(5)
-
+            # Wait a bit for page to initialize
+            page.wait_for_timeout(5000)
         except Exception as e:
-            print(f"Script error: {e}")
+            print(f"ERROR: {e}")
         finally:
             browser.close()
 
