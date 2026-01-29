@@ -480,6 +480,61 @@ function buildSnapshotFromMessages(messages, actorPubkey = "", resolvePreview = 
   );
 }
 
+function normalizeDirectMessagePayload(message) {
+  if (!message || message.ok !== true) {
+    return null;
+  }
+
+  const eventId = typeof message?.event?.id === "string" ? message.event.id : "";
+  if (!eventId) {
+    return null;
+  }
+
+  const timestamp =
+    Number.isFinite(message?.timestamp)
+      ? message.timestamp
+      : Number.isFinite(message?.message?.created_at)
+      ? message.message.created_at
+      : Number.isFinite(message?.event?.created_at)
+      ? message.event.created_at
+      : Date.now() / 1000;
+
+  return {
+    ...message,
+    timestamp,
+  };
+}
+
+function mergeDirectMessageCache(existingMessages, incomingMessages) {
+  const mergedIndex = new Map();
+
+  const upsert = (message) => {
+    const normalized = normalizeDirectMessagePayload(message);
+    if (!normalized) {
+      return;
+    }
+
+    const eventId = normalized.event.id;
+    const existing = mergedIndex.get(eventId);
+    if (!existing || normalized.timestamp >= (existing.timestamp || 0)) {
+      mergedIndex.set(eventId, normalized);
+    }
+  };
+
+  for (const message of Array.isArray(existingMessages) ? existingMessages : []) {
+    upsert(message);
+  }
+
+  for (const message of Array.isArray(incomingMessages) ? incomingMessages : []) {
+    upsert(message);
+  }
+
+  const mergedMessages = Array.from(mergedIndex.values());
+  mergedMessages.sort((a, b) => (b?.timestamp || 0) - (a?.timestamp || 0));
+
+  return { messages: mergedMessages, index: mergedIndex };
+}
+
 function hydrateMessagesFromSnapshot(snapshot, actorPubkey = "") {
   const normalizedActor = normalizeHexPubkey(actorPubkey);
   const hydrated = [];
@@ -968,37 +1023,19 @@ export class NostrService {
     }
 
     const collected = [];
-    const index = new Map();
 
     for (const message of Array.isArray(messages) ? messages : []) {
-      if (!message || message.ok !== true) {
+      const normalized = normalizeDirectMessagePayload(message);
+      if (!normalized) {
         continue;
       }
 
-      const eventId = message?.event?.id;
-      if (typeof eventId !== "string" || !eventId) {
-        continue;
-      }
-
-      const normalized = {
-        ...message,
-        timestamp:
-          Number.isFinite(message?.timestamp)
-            ? message.timestamp
-            : Number.isFinite(message?.message?.created_at)
-            ? message.message.created_at
-            : Number.isFinite(message?.event?.created_at)
-            ? message.event.created_at
-            : Date.now() / 1000,
-      };
-
-      index.set(eventId, normalized);
       collected.push(normalized);
     }
 
-    collected.sort((a, b) => (b?.timestamp || 0) - (a?.timestamp || 0));
-    this.dmMessageIndex = index;
-    this.dmMessages = collected;
+    const merged = mergeDirectMessageCache(this.dmMessages, collected);
+    this.dmMessageIndex = merged.index;
+    this.dmMessages = merged.messages;
 
     const snapshot = this.getDirectMessages();
 
