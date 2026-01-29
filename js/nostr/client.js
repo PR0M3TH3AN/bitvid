@@ -1261,6 +1261,8 @@ export class NostrClient {
     this.sessionActorCipherClosuresPrivateKey = null;
     this.countUnsupportedRelays = new Set();
     this.unreachableRelays = new Set();
+    this.relayBackoff = new Map();
+    this.relayFailureCounts = new Map();
     this.isInitialized = false;
     this.nip46Client = null;
     this.pendingHandshakeCancel = null;
@@ -4303,8 +4305,9 @@ export class NostrClient {
   // `unsub` to avoid leaking subscriptions. Note: any future change must still
   // provide a lightweight readiness check with similar timeout semantics.
   async connectToRelays() {
+    const relayTargets = this.getHealthyRelays(this.relays);
     const results = await Promise.all(
-      this.relays.map(
+      relayTargets.map(
         (url) =>
           new Promise((resolve) => {
             const sub = this.pool.sub([url], [{ kinds: [0], limit: 1 }]);
@@ -4326,9 +4329,11 @@ export class NostrClient {
 
     for (const result of results) {
       if (result.success) {
-        this.unreachableRelays.delete(result.url);
+        this.clearRelayBackoff(result.url);
       } else {
-        this.unreachableRelays.add(result.url);
+        this.markRelayUnreachable(result.url, 60000, {
+          reason: "connect-timeout",
+        });
         if (isDevMode) {
           devLogger.warn(`[nostr] Marked relay as unreachable: ${result.url}`);
         }
@@ -4338,7 +4343,21 @@ export class NostrClient {
     return results;
   }
 
-  markRelayUnreachable(url, ttlMs = 60000) {
+  resolveRelayBackoffMs(failureCount, ttlOverride) {
+    const baseMs = 15000;
+    const maxMs = 5 * 60 * 1000;
+    const computed = Math.min(
+      maxMs,
+      baseMs * Math.pow(2, Math.max(0, failureCount - 1))
+    );
+    const override = Number(ttlOverride);
+    if (Number.isFinite(override) && override > 0) {
+      return Math.max(computed, Math.floor(override));
+    }
+    return computed;
+  }
+
+  clearRelayBackoff(url) {
     if (!url || typeof url !== "string") {
       return;
     }
@@ -4346,14 +4365,34 @@ export class NostrClient {
     if (!normalized) {
       return;
     }
+    this.relayBackoff.delete(normalized);
+    this.relayFailureCounts.delete(normalized);
+    this.unreachableRelays.delete(normalized);
+  }
+
+  markRelayUnreachable(url, ttlMs = 60000, { reason = null } = {}) {
+    if (!url || typeof url !== "string") {
+      return;
+    }
+    const normalized = url.trim();
+    if (!normalized) {
+      return;
+    }
+    const nextFailureCount = (this.relayFailureCounts.get(normalized) || 0) + 1;
+    this.relayFailureCounts.set(normalized, nextFailureCount);
+    const backoffMs = this.resolveRelayBackoffMs(nextFailureCount, ttlMs);
+    const retryAt = Date.now() + backoffMs;
+    this.relayBackoff.set(normalized, {
+      retryAt,
+      backoffMs,
+      failureCount: nextFailureCount,
+      reason,
+    });
     this.unreachableRelays.add(normalized);
-    if (ttlMs > 0) {
-      setTimeout(() => {
-        this.unreachableRelays.delete(normalized);
-        if (isDevMode) {
-          devLogger.debug(`[nostr] Cleared temporary failure mark for ${normalized}`);
-        }
-      }, ttlMs);
+    if (isDevMode) {
+      devLogger.debug(
+        `[nostr] Relay backoff set for ${normalized} (${backoffMs}ms).`,
+      );
     }
   }
 
@@ -4362,7 +4401,26 @@ export class NostrClient {
     if (!this.unreachableRelays.size) {
       return source;
     }
-    return source.filter((url) => !this.unreachableRelays.has(url));
+    const now = Date.now();
+    return source.filter((url) => {
+      if (!this.unreachableRelays.has(url)) {
+        return true;
+      }
+      const entry = this.relayBackoff.get(url);
+      if (!entry) {
+        return false;
+      }
+      if (Number.isFinite(entry.retryAt) && entry.retryAt > now) {
+        return false;
+      }
+      this.relayBackoff.delete(url);
+      this.relayFailureCounts.delete(url);
+      this.unreachableRelays.delete(url);
+      if (isDevMode) {
+        devLogger.debug(`[nostr] Relay backoff expired for ${url}.`);
+      }
+      return true;
+    });
   }
 
   /**
@@ -7764,13 +7822,25 @@ export class NostrClient {
     try {
       relay = await this.pool.ensureRelay(normalizedUrl);
     } catch (error) {
-      throw new Error(`Failed to connect to relay ${normalizedUrl}`);
+      const connectError = new Error(
+        `Failed to connect to relay ${normalizedUrl}`
+      );
+      connectError.code = "relay-connect-failed";
+      this.markRelayUnreachable(normalizedUrl, 60000, {
+        reason: "connect-failed",
+      });
+      throw connectError;
     }
 
     if (!relay) {
-      throw new Error(
+      const relayError = new Error(
         `Relay ${normalizedUrl} is unavailable for COUNT requests.`
       );
+      relayError.code = "relay-unavailable";
+      this.markRelayUnreachable(normalizedUrl, 60000, {
+        reason: "relay-unavailable",
+      });
+      throw relayError;
     }
 
     const frame = ["COUNT", requestId, ...normalizedFilters];
@@ -7822,16 +7892,27 @@ export class NostrClient {
     }
 
     const timeoutMs = this.getRequestTimeoutMs(options.timeoutMs);
-    const rawResult = await withRequestTimeout(
-      countPromise,
-      timeoutMs,
-      () => {
-        if (relay?.openCountRequests instanceof Map) {
-          relay.openCountRequests.delete(requestId);
-        }
-      },
-      `COUNT request timed out after ${timeoutMs}ms`
-    );
+    let rawResult;
+    try {
+      rawResult = await withRequestTimeout(
+        countPromise,
+        timeoutMs,
+        () => {
+          if (relay?.openCountRequests instanceof Map) {
+            relay.openCountRequests.delete(requestId);
+          }
+        },
+        `COUNT request timed out after ${timeoutMs}ms`
+      );
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message.includes("COUNT request timed out")
+      ) {
+        error.code = "count-timeout";
+      }
+      throw error;
+    }
 
     const countValue = this.extractCountValue(rawResult);
     return ["COUNT", requestId, { count: countValue }];
@@ -7840,7 +7921,7 @@ export class NostrClient {
   async countEventsAcrossRelays(filters, options = {}) {
     const normalizedFilters = this.normalizeCountFilters(filters);
     if (!normalizedFilters.length) {
-      return { total: 0, best: null, perRelay: [] };
+      return { total: 0, best: null, perRelay: [], partial: false };
     }
 
     const relayList =
@@ -7854,6 +7935,8 @@ export class NostrClient {
       .map((url) => (typeof url === "string" ? url.trim() : ""))
       .filter(Boolean);
 
+    const eligibleRelays = this.getHealthyRelays(normalizedRelayList);
+    const eligibleRelaySet = new Set(eligibleRelays);
     const activeRelays = [];
     const precomputedEntries = [];
 
@@ -7868,6 +7951,15 @@ export class NostrClient {
         });
         continue;
       }
+      if (!eligibleRelaySet.has(url)) {
+        precomputedEntries.push({
+          url,
+          ok: false,
+          skipped: true,
+          reason: "backoff",
+        });
+        continue;
+      }
       activeRelays.push(url);
     }
 
@@ -7878,15 +7970,28 @@ export class NostrClient {
             timeoutMs: options.timeoutMs,
           });
           const count = this.extractCountValue(frame?.[2]);
+          this.clearRelayBackoff(url);
           return { url, ok: true, frame, count };
         } catch (error) {
           const isUnsupported = error?.code === "count-unsupported";
+          const isTimeout =
+            error?.code === "count-timeout" || error?.code === "timeout";
           if (isUnsupported) {
             this.countUnsupportedRelays.add(url);
           } else {
             logRelayCountFailure(url, error);
+            this.markRelayUnreachable(url, 60000, {
+              reason: isTimeout ? "count-timeout" : "count-error",
+            });
           }
-          return { url, ok: false, error, unsupported: isUnsupported };
+          return {
+            url,
+            ok: false,
+            error,
+            unsupported: isUnsupported,
+            timedOut: isTimeout,
+            errorCode: error?.code || null,
+          };
         }
       })
     );
@@ -7940,11 +8045,15 @@ export class NostrClient {
     });
 
     const total = bestEstimate ? bestEstimate.count : 0;
+    const partial = perRelayResults.some(
+      (entry) => entry?.timedOut || entry?.skipped
+    );
 
     return {
       total,
       best: bestEstimate,
       perRelay,
+      partial,
     };
   }
 

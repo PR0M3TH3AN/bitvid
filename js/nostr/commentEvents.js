@@ -13,6 +13,7 @@ import { CACHE_POLICIES } from "./cachePolicies.js";
 import { isSessionActor } from "./sessionActor.js";
 import { queueSignEvent } from "./signRequestQueue.js";
 import { getActiveSigner } from "../nostrClientRegistry.js";
+import { sanitizeRelayList as sanitizeRelayUrls } from "./nip46Client.js";
 
 const COMMENT_EVENT_SCHEMA = getNostrEventSchema(NOTE_TYPES.VIDEO_COMMENT);
 const CACHE_POLICY = CACHE_POLICIES[NOTE_TYPES.VIDEO_COMMENT];
@@ -32,13 +33,15 @@ function getAllowedCommentKinds() {
   return ALLOWED_COMMENT_KINDS.slice();
 }
 function sanitizeRelayList(primary, fallback) {
-  if (Array.isArray(primary) && primary.length) {
-    return primary;
+  const primaryList = sanitizeRelayUrls(Array.isArray(primary) ? primary : []);
+  if (primaryList.length) {
+    return primaryList;
   }
-  if (Array.isArray(fallback) && fallback.length) {
-    return fallback;
+  const fallbackList = sanitizeRelayUrls(Array.isArray(fallback) ? fallback : []);
+  if (fallbackList.length) {
+    return fallbackList;
   }
-  return RELAY_URLS;
+  return sanitizeRelayUrls(RELAY_URLS);
 }
 
 function normalizeRelay(candidate) {

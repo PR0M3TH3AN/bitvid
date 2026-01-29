@@ -4,6 +4,8 @@ import { COMMENT_EVENT_KIND } from "../nostr/commentEvents.js";
 
 const DEFAULT_MAX_DISCUSSION_COUNT_VIDEOS = 24;
 const COUNT_UNSUPPORTED_TITLE = "Relay does not support NIP-45 COUNT queries.";
+const COUNT_PARTIAL_TITLE =
+  "Some relays timed out. Comment counts may be partial.";
 
 function toPositiveInteger(value, fallback) {
   const numeric = Number(value);
@@ -99,10 +101,11 @@ export default class DiscussionCountService {
           }
 
           const total = Number(result?.total);
+          const isPartial = Boolean(result?.partial);
           const normalized =
             Number.isFinite(total) && total >= 0 ? Math.floor(total) : 0;
           this.videoDiscussionCountCache.set(video.id, normalized);
-          this.updateDiscussionCountElement(container, normalized);
+          this.updateDiscussionCountElement(container, normalized, { partial: isPartial });
           return result;
         })
         .catch((error) => {
@@ -204,7 +207,7 @@ export default class DiscussionCountService {
     element.removeAttribute("title");
   }
 
-  updateDiscussionCountElement(element, count) {
+  updateDiscussionCountElement(element, count, { partial = false } = {}) {
     if (!element) {
       return;
     }
@@ -217,9 +220,13 @@ export default class DiscussionCountService {
     const numeric = Number(count);
     const safeValue =
       Number.isFinite(numeric) && numeric >= 0 ? Math.floor(numeric) : 0;
-    element.dataset.countState = "ready";
+    element.dataset.countState = partial ? "partial" : "ready";
     valueEl.textContent = safeValue.toLocaleString();
-    element.removeAttribute("title");
+    if (partial) {
+      element.title = COUNT_PARTIAL_TITLE;
+    } else {
+      element.removeAttribute("title");
+    }
   }
 
   markDiscussionCountError(element, { unsupported = false } = {}) {
