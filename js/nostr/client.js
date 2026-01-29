@@ -1319,6 +1319,10 @@ export class NostrClient {
 
     this.extensionPermissionCache =
       storedPermissions instanceof Set ? storedPermissions : new Set();
+    this.extensionReady = false;
+    this.extensionPermissionsGranted = this.hasCachedExtensionPermissions(
+      DEFAULT_NIP07_PERMISSION_METHODS,
+    );
   }
 
   getStoredNip46Metadata() {
@@ -1924,8 +1928,16 @@ export class NostrClient {
     const maxAttempts = 3;
 
     // Optimistic check: if window.nostr is already there, use it immediately.
-    if (typeof window !== "undefined" && window.nostr) {
+    if (this.extensionReady && typeof window !== "undefined") {
+      extension = window.nostr || null;
+      if (!extension) {
+        this.extensionReady = false;
+      }
+    }
+
+    if (!extension && typeof window !== "undefined" && window.nostr) {
       extension = window.nostr;
+      this.extensionReady = true;
     } else {
       while (!extension && attempts < maxAttempts) {
         try {
@@ -1933,6 +1945,7 @@ export class NostrClient {
           const timeout = attempts === 0 ? 1500 : 3000;
           await waitForNip07Extension(timeout);
           extension = window.nostr;
+          this.extensionReady = Boolean(extension);
         } catch (waitError) {
           devLogger.log(
             `Timed out waiting for extension injection (attempt ${
@@ -2057,14 +2070,16 @@ export class NostrClient {
     adapter.pubkey = pubkey;
     setActiveSigner(adapter);
 
-    this.ensureExtensionPermissions(DEFAULT_NIP07_PERMISSION_METHODS).catch(
-      (err) => {
-        userLogger.warn(
-          "[nostr] Extension permissions were not fully granted after login:",
-          err,
-        );
-      },
-    );
+    if (!this.extensionPermissionsGranted && !permissionResult.ok) {
+      this.ensureExtensionPermissions(DEFAULT_NIP07_PERMISSION_METHODS).catch(
+        (err) => {
+          userLogger.warn(
+            "[nostr] Extension permissions were not fully granted after login:",
+            err,
+          );
+        },
+      );
+    }
 
     return { pubkey, signer: adapter };
   }
@@ -2829,6 +2844,43 @@ export class NostrClient {
         // Ignore storage persistence issues in non-browser environments
       }
     }
+
+    this.extensionPermissionsGranted = this.hasCachedExtensionPermissions(
+      DEFAULT_NIP07_PERMISSION_METHODS,
+    );
+  }
+
+  hasCachedExtensionPermissions(methods = DEFAULT_NIP07_PERMISSION_METHODS) {
+    if (!Array.isArray(methods)) {
+      return true;
+    }
+
+    const normalized = methods
+      .map((method) => normalizePermissionMethod(method))
+      .filter(Boolean);
+
+    if (!normalized.length) {
+      return true;
+    }
+
+    if (!this.extensionPermissionCache) {
+      return false;
+    }
+
+    return normalized.every((method) => this.extensionPermissionCache.has(method));
+  }
+
+  warmupExtension() {
+    const extension =
+      typeof window !== "undefined" && window && window.nostr ? window.nostr : null;
+    this.extensionReady = Boolean(extension);
+    this.extensionPermissionsGranted = this.hasCachedExtensionPermissions(
+      DEFAULT_NIP07_PERMISSION_METHODS,
+    );
+    return {
+      ready: this.extensionReady,
+      permissionsGranted: this.extensionPermissionsGranted,
+    };
   }
 
   async ensureExtensionPermissions(methods = DEFAULT_NIP07_PERMISSION_METHODS) {
@@ -2865,13 +2917,20 @@ export class NostrClient {
           return { ok: false, error: new Error("extension-unavailable") };
         }
       }
+      this.extensionReady =
+        typeof window !== "undefined" && window && Boolean(window.nostr);
+      this.extensionPermissionsGranted = this.hasCachedExtensionPermissions(
+        DEFAULT_NIP07_PERMISSION_METHODS,
+      );
       return { ok: true };
     }
 
     const extension = typeof window !== "undefined" ? window.nostr : null;
     if (!extension) {
+      this.extensionReady = false;
       return { ok: false, error: new Error("extension-unavailable") };
     }
+    this.extensionReady = true;
 
     const enableResult = await requestEnablePermissions(extension, outstanding, {
       isDevMode,
@@ -2879,6 +2938,9 @@ export class NostrClient {
 
     if (enableResult?.ok) {
       this.markExtensionPermissions(outstanding);
+      this.extensionPermissionsGranted = this.hasCachedExtensionPermissions(
+        DEFAULT_NIP07_PERMISSION_METHODS,
+      );
       return enableResult;
     }
 
@@ -4538,6 +4600,8 @@ export class NostrClient {
       this.extensionPermissionCache.clear();
     }
     clearStoredNip07Permissions();
+    this.extensionReady = false;
+    this.extensionPermissionsGranted = false;
     devLogger.log("User logged out.");
   }
 

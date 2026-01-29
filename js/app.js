@@ -571,6 +571,10 @@ class Application {
         this.loadView = module?.loadView || null;
       }
 
+      if (nostrClient && typeof nostrClient.warmupExtension === "function") {
+        nostrClient.warmupExtension();
+      }
+
       // Force update of any registered service workers to ensure latest code is used.
       if ("serviceWorker" in navigator) {
         navigator.serviceWorker.getRegistrations().then((registrations) => {
