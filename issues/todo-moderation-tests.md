@@ -14,3 +14,6 @@ Visual regression tests for moderation features (blurring, blocking autoplay, tr
 **Next Steps:**
 - Run tests in docker container using `./scripts/run-playwright-docker.sh` to reproduce.
 - Debug the fixture environment or wait conditions.
+
+## Visual Regression Flakes
+- `tests/visual/overlay-layers.spec.ts`: "mobile sidebar shares desktop rail behavior" skipped due to timeouts waiting for `#sidebar` to lose `fade-in` class.
