@@ -614,6 +614,7 @@ export class NostrService {
     this.dmMessageIndex = new Map();
     this.dmSubscription = null;
     this.dmActorPubkey = null;
+    this.dmSubscriptionRelays = null;
     this.dmHydratedFromSnapshot = false;
     this.dmNotificationManager = new DmNotificationManager({
       logger: userLogger,
@@ -1111,13 +1112,24 @@ export class NostrService {
       if (this.dmActorPubkey === normalizedActor) {
         devLogger.log(
           "[nostrService] Reusing existing DM subscription for active actor.",
-          { actorPubkey: normalizedActor },
+          {
+            actorPubkey: normalizedActor,
+            relays: Array.isArray(this.dmSubscriptionRelays)
+              ? this.dmSubscriptionRelays
+              : [],
+          },
         );
         return this.dmSubscription;
       }
       devLogger.log(
         "[nostrService] Replacing existing DM subscription for new actor.",
-        { previous: this.dmActorPubkey, next: normalizedActor },
+        {
+          previous: this.dmActorPubkey,
+          next: normalizedActor,
+          previousRelays: Array.isArray(this.dmSubscriptionRelays)
+            ? this.dmSubscriptionRelays
+            : [],
+        },
       );
       this.stopDirectMessageSubscription();
     }
@@ -1222,6 +1234,9 @@ export class NostrService {
 
       this.dmSubscription = subscription;
       this.dmActorPubkey = normalizedActor;
+      this.dmSubscriptionRelays = Array.isArray(resolvedRelays)
+        ? resolvedRelays.slice()
+        : [];
       devLogger.log("[nostrService] DM subscription activated.", {
         actorPubkey: normalizedActor,
         relays: resolvedRelays,
@@ -1257,6 +1272,7 @@ export class NostrService {
       }
     }
     this.dmSubscription = null;
+    this.dmSubscriptionRelays = null;
   }
 
   async persistDirectMessageSnapshot(actorPubkey = null, messages = null) {

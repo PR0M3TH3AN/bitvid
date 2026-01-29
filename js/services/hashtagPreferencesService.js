@@ -20,6 +20,7 @@ import { profileCache } from "../state/profileCache.js";
 import { DEFAULT_RELAY_URLS } from "../nostr/toolkit.js";
 import { relayManager } from "../relayManager.js";
 import { runNip07WithRetry, NIP07_PRIORITY } from "../nostr/nip07Permissions.js";
+import { relaySubscriptionService } from "./relaySubscriptionService.js";
 
 const LOG_PREFIX = "[HashtagPreferences]";
 const HASHTAG_IDENTIFIER = "bitvid:tag-preferences";
@@ -243,6 +244,7 @@ class HashtagPreferencesService {
     this.decryptRetryTimeoutId = null;
     this.loadPromise = null;
     this.loadingPubkey = null;
+    this.subscriptionKey = null;
 
     profileCache.subscribe((event, detail) => {
       if (event === "profileChanged") {
@@ -264,6 +266,7 @@ class HashtagPreferencesService {
   }
 
   reset() {
+    this.stopHashtagPreferencesSubscription();
     this.interests = new Set();
     this.disinterests = new Set();
     this.eventId = null;
@@ -278,6 +281,56 @@ class HashtagPreferencesService {
     this.loadPromise = null;
     this.loadingPubkey = null;
     this.emitChange("reset");
+  }
+
+  stopHashtagPreferencesSubscription() {
+    if (this.subscriptionKey) {
+      relaySubscriptionService.stopSubscription(this.subscriptionKey, "reset");
+      this.subscriptionKey = null;
+    }
+  }
+
+  ensureHashtagPreferencesSubscription(pubkey, relays) {
+    const normalized = normalizeHexPubkey(pubkey);
+    if (!normalized || !nostrClient?.pool) {
+      return null;
+    }
+
+    const schema = getNostrEventSchema(NOTE_TYPES.HASHTAG_PREFERENCES);
+    const canonicalKind = schema?.kind ?? 30015;
+    const legacyKind = 30005;
+    const kinds = canonicalKind === legacyKind
+      ? [canonicalKind]
+      : [canonicalKind, legacyKind];
+
+    const filters = kinds.map((kind) => ({
+      kinds: [kind],
+      authors: [normalized],
+      "#d": [HASHTAG_IDENTIFIER],
+    }));
+
+    const key = `hashtags:${normalized}`;
+    this.subscriptionKey = key;
+
+    return relaySubscriptionService.ensureSubscription({
+      key,
+      pool: nostrClient.pool,
+      relays,
+      filters,
+      label: "hashtag-preferences",
+      onEvent: (event) => this.handleHashtagPreferencesEvent(event),
+    });
+  }
+
+  handleHashtagPreferencesEvent(event) {
+    const normalized = normalizeHexPubkey(event?.pubkey);
+    if (!normalized || normalized !== this.activePubkey) {
+      return;
+    }
+
+    this.load(normalized, { allowPermissionPrompt: false }).catch((error) => {
+      devLogger.warn(`${LOG_PREFIX} Failed to refresh after hashtag event`, error);
+    });
   }
 
   saveToCache() {
@@ -564,6 +617,17 @@ class HashtagPreferencesService {
       }
       return;
     }
+    if (!nostrClient?.pool && typeof nostrClient?.ensurePool === "function") {
+      try {
+        await nostrClient.ensurePool();
+      } catch (error) {
+        devLogger.warn(
+          `${LOG_PREFIX} Failed to initialize relay pool for subscription`,
+          error,
+        );
+      }
+    }
+    this.ensureHashtagPreferencesSubscription(normalized, relays);
 
     const schema = getNostrEventSchema(NOTE_TYPES.HASHTAG_PREFERENCES);
     const canonicalKind = schema?.kind ?? 30015;

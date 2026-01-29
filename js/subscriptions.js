@@ -32,6 +32,7 @@ import moderationService from "./services/moderationService.js";
 import nostrService from "./services/nostrService.js";
 import { profileCache } from "./state/profileCache.js";
 import { runNip07WithRetry, NIP07_PRIORITY } from "./nostr/nip07Permissions.js";
+import { relaySubscriptionService } from "./services/relaySubscriptionService.js";
 
 const SUBSCRIPTION_SET_KIND =
   getNostrEventSchema(NOTE_TYPES.SUBSCRIPTION_LIST)?.kind ?? 30000;
@@ -342,6 +343,7 @@ class SubscriptionsManager {
     this.emitter = new TinyEventEmitter();
     this.decryptRetryTimeoutId = null;
     this.ensureNostrServiceListener();
+    this.subscriptionKey = null;
 
     profileCache.subscribe((event, detail) => {
       if (event === "profileChanged") {
@@ -463,6 +465,17 @@ class SubscriptionsManager {
         }
         return;
       }
+      if (!nostrClient?.pool && typeof nostrClient?.ensurePool === "function") {
+        try {
+          await nostrClient.ensurePool();
+        } catch (error) {
+          devLogger.warn(
+            "[SubscriptionsManager] Failed to initialize relay pool for subscription",
+            error,
+          );
+        }
+      }
+      this.ensureSubscriptionListSubscription(normalizedUserPubkey, relayUrls);
 
       // Use incremental fetch helper
       const cachedSnapshot = parseCachedSubscriptionSnapshot(
@@ -674,6 +687,7 @@ class SubscriptionsManager {
   }
 
   reset() {
+    this.stopSubscriptionListSubscription();
     this.subscribedPubkeys.clear();
     this.subsEventId = null;
     this.subsEventCreatedAt = null;
@@ -688,6 +702,55 @@ class SubscriptionsManager {
       this.decryptRetryTimeoutId = null;
     }
     this.emitter.emit("change", { action: "reset", subscribedPubkeys: [] });
+  }
+
+  stopSubscriptionListSubscription() {
+    if (this.subscriptionKey) {
+      relaySubscriptionService.stopSubscription(this.subscriptionKey, "reset");
+      this.subscriptionKey = null;
+    }
+  }
+
+  ensureSubscriptionListSubscription(userPubkey, relays) {
+    const normalized = normalizeHexPubkey(userPubkey);
+    if (!normalized || !nostrClient?.pool) {
+      return null;
+    }
+
+    const key = `subscriptions:${normalized}`;
+    this.subscriptionKey = key;
+
+    const filters = [
+      {
+        kinds: [SUBSCRIPTION_SET_KIND],
+        authors: [normalized],
+        "#d": [SUBSCRIPTION_LIST_IDENTIFIER],
+      },
+    ];
+
+    return relaySubscriptionService.ensureSubscription({
+      key,
+      pool: nostrClient.pool,
+      relays,
+      filters,
+      label: "subscription-list",
+      onEvent: (event) => this.handleSubscriptionListEvent(event),
+    });
+  }
+
+  handleSubscriptionListEvent(event) {
+    const normalized = normalizeHexPubkey(event?.pubkey);
+    if (!normalized || normalized !== this.currentUserPubkey) {
+      return;
+    }
+
+    this.updateFromRelays(normalized, { allowPermissionPrompt: false })
+      .catch((error) => {
+        devLogger.warn(
+          "[SubscriptionsManager] Failed to refresh after subscription list event",
+          error,
+        );
+      });
   }
 
   async ensureLoaded(actorHex, options = {}) {

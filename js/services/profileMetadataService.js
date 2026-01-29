@@ -1,5 +1,6 @@
 import { nostrClient } from "../nostrClientFacade.js";
 import { devLogger } from "../utils/logger.js";
+import { relaySubscriptionService } from "./relaySubscriptionService.js";
 
 const DEFAULT_PROFILE_IMAGE = "assets/svg/default-profile.svg";
 const HEX64_REGEX = /^[0-9a-f]{64}$/i;
@@ -247,4 +248,46 @@ export async function fetchProfileMetadata(pubkey, options = {}) {
   });
 
   return results.get(normalized) || null;
+}
+
+export function ensureProfileMetadataSubscription({
+  pubkey,
+  nostr = nostrClient,
+  relays = null,
+  logger = devLogger,
+  defaultProfileImage = DEFAULT_PROFILE_IMAGE,
+  onProfile,
+} = {}) {
+  const normalized = normalizePubkey(pubkey);
+  if (!normalized || !nostr?.pool) {
+    return null;
+  }
+
+  const relayUrls = resolveRelays(relays, nostr);
+  const filters = [{ kinds: [0], authors: [normalized], limit: 1 }];
+  const key = `profile:${normalized}`;
+
+  return relaySubscriptionService.ensureSubscription({
+    key,
+    pool: nostr.pool,
+    relays: relayUrls,
+    filters,
+    label: "profile-metadata",
+    onEvent: (event) => {
+      if (!event || event.pubkey !== normalized) {
+        return;
+      }
+      const profile = parseProfileEvent(event, defaultProfileImage);
+      if (!profile) {
+        return;
+      }
+      if (typeof onProfile === "function") {
+        try {
+          onProfile({ profile, event });
+        } catch (error) {
+          logger.warn("[profileMetadata] onProfile callback threw", error);
+        }
+      }
+    },
+  });
 }
