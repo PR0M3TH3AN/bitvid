@@ -873,6 +873,11 @@ export class TorrentClient {
       emit("torrent-stream-start", { magnet: magnetURI });
       // 1) Make sure we have a WebTorrent client and a valid SW registration.
       const initResult = await this.init();
+
+      if (!this.client) {
+        throw new Error("Client destroyed during initialization");
+      }
+
       const serviceWorkerReady =
         !!(initResult?.serviceWorkerReady && this.swRegistration);
 

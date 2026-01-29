@@ -46,6 +46,10 @@ export function sanitizeProfileMediaUrl(value) {
     return trimmed;
   }
 
+  if (trimmed === "images/robot.png") {
+    return "";
+  }
+
   if (/^ipfs:\/\//i.test(trimmed)) {
     return normalizeIpfsGatewayUrl(trimmed);
   }
