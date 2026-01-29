@@ -144,8 +144,9 @@ test.describe("overlay layering tokens", () => {
     // Ensure the footer button is scrolled into view (especially for mobile viewports)
     await page.evaluate(() => {
       const sidebar = document.getElementById("sidebar");
-      if (sidebar) {
-        sidebar.scrollTop = sidebar.scrollHeight;
+      const footerBtn = document.getElementById("footerDropdownButton");
+      if (sidebar && footerBtn) {
+        footerBtn.scrollIntoView({ block: "center", inline: "center" });
       }
     });
 

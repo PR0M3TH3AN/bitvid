@@ -9,8 +9,8 @@ export default defineConfig({
   outputDir: "artifacts/test-results",
   timeout: 60_000,
   reporter: process.env.CI
-    ? [["github"], ["html", { open: "never" }], ["json", { outputFile: "artifacts/test-results/results.json" }]]
-    : [["list"], ["html", { open: "never" }], ["json", { outputFile: "artifacts/test-results/results.json" }]],
+    ? [["github"], ["html", { open: "never" }]]
+    : [["list"], ["html", { open: "never" }]],
   use: {
     baseURL: BASE_URL,
     viewport: { width: 1280, height: 720 },
