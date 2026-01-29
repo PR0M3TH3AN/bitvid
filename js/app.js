@@ -4311,21 +4311,6 @@ class Application {
           }
         });
 
-      // Attempt to load blocks with a short timeout so we don't block the UI forever.
-      // If it times out, the UI will refresh reactively when the data arrives.
-      const blockLoadPromise = userBlocks.ensureLoaded(activePubkey);
-      const blockLoadTimeout = new Promise((resolve) =>
-        setTimeout(resolve, 2000)
-      );
-      try {
-        await Promise.race([blockLoadPromise, blockLoadTimeout]);
-      } catch (error) {
-        devLogger.warn(
-          "[Application] Block list load timed out or failed:",
-          error
-        );
-      }
-
       // Load subscriptions in the background to avoid blocking the main feed.
       subscriptions.ensureLoaded(activePubkey).catch((error) => {
         devLogger.warn(
