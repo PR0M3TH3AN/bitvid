@@ -462,6 +462,12 @@ class EventsCacheStore {
     return typeof indexedDB !== "undefined";
   }
 
+  /**
+   * Opens (or returns existing) connection to the IndexedDB database.
+   * Handles schema upgrades (creating object stores).
+   *
+   * @returns {Promise<IDBDatabase|null>} The database instance or null if not supported.
+   */
   async getDb() {
     if (!this.isSupported()) {
       return null;
@@ -507,6 +513,14 @@ class EventsCacheStore {
     return `ts:${timestamp}`;
   }
 
+  /**
+   * Pre-loads fingerprints of all persisted items into memory.
+   *
+   * This is critical for the "Incremental Persistence" strategy. By knowing
+   * what is already on disk (via fingerprints), we can avoid writing unchanged records.
+   *
+   * @param {IDBDatabase} db - The database instance.
+   */
   async ensureFingerprintsLoaded(db) {
     if (this.hasLoadedFingerprints || !db) {
       return;
@@ -1086,6 +1100,8 @@ export class NostrClient {
    * - State tracking (allEvents, activeMap).
    * - Signer negotiation (NIP-07, NIP-46, local).
    * - Background caching with IndexedDB.
+   *
+   * For a detailed architectural overview, see `docs/nostr-client-overview.md`.
    */
   constructor() {
     /**
@@ -3685,6 +3701,18 @@ export class NostrClient {
     return this.allEvents.size > 0;
   }
 
+  /**
+   * Restores application state from the best available local cache.
+   *
+   * 1. Attempts to load from `IndexedDB` (preferred).
+   * 2. Falls back to `localStorage` if IDB fails or is empty.
+   * 3. Rehydrates `allEvents`, `activeMap`, and `tombstones`.
+   *
+   * This implements the "Stale-While-Revalidate" pattern: the UI renders
+   * immediately with this data while network requests proceed in the background.
+   *
+   * @returns {Promise<boolean>} True if data was successfully restored.
+   */
   async restoreLocalData() {
     if (this.hasRestoredLocalData) {
       return this.allEvents.size > 0;
@@ -4196,6 +4224,16 @@ export class NostrClient {
    *
    * @returns {Promise<void>} Resolves when the relay pool is initialized and connections are attempted.
    */
+  /**
+   * Main entry point for the client.
+   *
+   * 1. Restores local state from IndexedDB (Stale-While-Revalidate).
+   * 2. Initializes the relay connection pool.
+   * 3. Connects to configured relays.
+   * 4. Restores any persistent remote signer sessions.
+   *
+   * @returns {Promise<void>} Resolves when at least one relay is connected.
+   */
   async init() {
     if (this.isInitialized) {
       return;
@@ -4304,6 +4342,15 @@ export class NostrClient {
   // while the 5s timer guards against relays that never respond. We immediately
   // `unsub` to avoid leaking subscriptions. Note: any future change must still
   // provide a lightweight readiness check with similar timeout semantics.
+  /**
+   * Connects to all configured relays in parallel.
+   *
+   * - Skips relays that are already connected.
+   * - Updates internal connectivity state.
+   * - Does NOT throw if individual relays fail, but returns a summary.
+   *
+   * @returns {Promise<Array<{url: string, success: boolean}>>} Connection results.
+   */
   async connectToRelays() {
     const relayTargets = this.getHealthyRelays(this.relays);
     const results = await Promise.all(
@@ -6899,12 +6946,16 @@ export class NostrClient {
   }
 
   /**
-   * Schedules a persistence task to save the current state (events, tombstones) to local storage.
+   * Schedules a persistence operation to save current state to cache.
+   *
+   * - Uses a debounce strategy (75ms) to prevent write thrashing during bursts.
+   * - Can be forced to run immediately via `options.immediate`.
+   * - Coordinates with `requestIdleCallback` to avoid blocking the main thread.
    *
    * @param {string} [reason="unspecified"] - Debug label for why persistence was triggered.
-   * @param {object} [options]
-   * @param {boolean} [options.immediate=false] - If true, bypasses the debounce timer and saves immediately.
-   * @returns {Promise<boolean>} A promise resolving to whether persistence succeeded.
+   * @param {object} [options] - Configuration.
+   * @param {boolean} [options.immediate=false] - If true, bypasses debounce and persists immediately.
+   * @returns {Promise<boolean>|null} The persistence promise or null if debounced.
    */
   saveLocalData(reason = "unspecified", options = {}) {
     const { immediate = false } = options;
