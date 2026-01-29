@@ -1,0 +1,1543 @@
+<!-- components/profile-modal.html -->
+<div
+  id="profileModal"
+  class="bv-modal hidden"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="profileModalTitle"
+  tabindex="-1"
+  data-ds="new"
+  data-mobile-view="menu"
+>
+  <div class="bv-modal-backdrop"></div>
+
+  <div
+    class="bv-modal__panel profile-modal w-full h-full max-w-none rounded-none border-none p-0"
+    tabindex="-1"
+    data-mobile-view="menu"
+  >
+    <div class="profile-modal__content">
+      <!-- Modal Header -->
+      <div class="modal-header profile-modal__header">
+        <div class="profile-modal__header-title">
+          <button
+            id="profileModalBack"
+            type="button"
+            class="modal-back btn-ghost focus-ring hidden"
+            aria-hidden="true"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M15 19l-7-7 7-7"
+              />
+            </svg>
+            <span class="text-xs font-medium">Menu</span>
+          </button>
+          <h2 id="profileModalTitle" class="text-lg font-bold text-text">Profile</h2>
+        </div>
+        <button id="closeProfileModal" class="modal-close">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-6 w-6"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M6 18L18 6M6 6l12 12"
+            />
+          </svg>
+        </button>
+      </div>
+
+      <!-- Modal Body -->
+      <div class="profile-modal__body">
+        <div
+          class="profile-modal__layout"
+          data-profile-layout
+          data-mobile-view="menu"
+        >
+          <!-- Left navigation column -->
+          <div class="profile-modal__menu" data-profile-mobile-menu aria-hidden="false">
+            <nav class="profile-modal__nav" aria-label="Profile sections">
+              <button
+                id="profileNavAccount"
+                type="button"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneAccount"
+                aria-selected="true"
+                data-state="active"
+              >
+                <svg
+                  class="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                Account
+              </button>
+              <button
+                id="profileNavRelays"
+                type="button"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneRelays"
+                aria-selected="false"
+              >
+                <svg
+                  class="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 01-2 2v4a2 2 0 012 2h14a2 2 0 012-2v-4a2 2 0 01-2-2m-2-4h.01M17 16h.01"
+                  />
+                </svg>
+                Relays
+              </button>
+              <button
+                id="profileNavWallet"
+                type="button"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneWallet"
+                aria-selected="false"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-4 w-4"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                </svg>
+                Wallet
+              </button>
+              <button
+                id="profileNavStorage"
+                type="button"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneStorage"
+                aria-selected="false"
+              >
+                <svg
+                  class="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"
+                  />
+                </svg>
+                Storage
+              </button>
+              <button
+                id="profileNavHashtags"
+                type="button"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneHashtags"
+                aria-selected="false"
+              >
+                <svg
+                  class="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"
+                  />
+                </svg>
+                Hashtags
+              </button>
+              <button
+                id="profileNavSubscriptions"
+                type="button"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneSubscriptions"
+                aria-selected="false"
+              >
+                <svg
+                  class="h-4 w-4"
+                  viewBox="0 0 24 24"
+                  version="1.1"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="currentColor"
+                  fill-rule="evenodd"
+                  clip-rule="evenodd"
+                  stroke-linejoin="round"
+                  stroke-miterlimit="2"
+                >
+                  <path
+                    d="M21.698,10.658L24,12L11.998,19L0,12L2.301,10.658L11.998,16.316L21.698,10.658ZM11.998,21.315L2.301,15.657L0,17L11.998,24L24,17L21.698,15.658L11.998,21.315ZM24,7L11.998,-0L0,7L11.998,14L24,7Z"
+                    fill-rule="nonzero"
+                  />
+                </svg>
+                Subscriptions
+              </button>
+              <button
+                id="profileNavFriends"
+                type="button"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneFriends"
+                aria-selected="false"
+              >
+                <svg
+                  class="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"
+                  />
+                </svg>
+                Friends
+              </button>
+              <button
+                id="profileNavSafety"
+                type="button"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneSafety"
+                aria-selected="false"
+              >
+                <svg
+                  class="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
+                  />
+                </svg>
+                Safety
+              </button>
+              <button
+                id="profileNavBlocked"
+                type="button"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneBlocked"
+                aria-selected="false"
+              >
+                <svg
+                  class="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
+                  />
+                </svg>
+                Blocked
+              </button>
+              <button
+                id="profileNavMessages"
+                type="button"
+                class="btn-ghost focus-ring relative w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneMessages"
+                aria-selected="false"
+              >
+                <svg
+                  class="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                  />
+                </svg>
+                Messages
+                <span
+                  id="profileMessagesUnreadDot"
+                  class="profile-nav__unread-dot"
+                  aria-hidden="true"
+                ></span>
+              </button>
+              <button
+                id="profileNavHistory"
+                type="button"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneHistory"
+                aria-selected="false"
+              >
+                <svg
+                  class="h-4 w-4"
+                  viewBox="0 0 24 24"
+                  version="1.1"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="currentColor"
+                  fill-rule="evenodd"
+                  clip-rule="evenodd"
+                  stroke-linejoin="round"
+                  stroke-miterlimit="2"
+                >
+                  <g transform="matrix(1,0,0,1,12,12)">
+                    <g transform="matrix(1,0,0,1,-12,-12)">
+                      <path
+                        d="M12,2C6.486,2 2,6.486 2,12C2,17.514 6.486,22 12,22C17.514,22 22,17.514 22,12C22,6.486 17.514,2 12,2ZM12,4C16.411,4 20,7.589 20,12C20,16.411 16.411,20 12,20C7.589,20 4,16.411 4,12C4,7.589 7.589,4 12,4ZM11,7C10.448,7 10,7.448 10,8L10,13C10,13.266 10.105,13.52 10.293,13.707L13.293,16.707C13.683,17.098 14.317,17.098 14.707,16.707C15.098,16.317 15.098,15.683 14.707,15.293L12,12.586L12,8C12,7.448 11.552,7 11,7Z"
+                        fill-rule="nonzero"
+                      />
+                    </g>
+                  </g>
+                </svg>
+                Watch history
+              </button>
+              <button
+                id="profileNavAdmin"
+                type="button"
+                class="btn-ghost focus-ring hidden w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneAdmin"
+                aria-selected="false"
+              >
+                <svg
+                  class="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                  />
+                </svg>
+                Admin (Moderation)
+              </button>
+              <button
+                id="profileMobileLogoutBtn"
+                type="button"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium mt-6 lg:hidden"
+                data-variant="critical"
+              >
+                <svg
+                  class="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                  />
+                </svg>
+                Logout
+              </button>
+            </nav>
+          </div>
+
+          <!-- Right content panes -->
+          <div
+            class="profile-modal__pane-wrapper"
+            data-profile-mobile-pane
+            aria-hidden="true"
+          >
+            <div id="profileModalPanes" class="profile-modal__panes">
+            <section
+              id="profilePaneAccount"
+              class="profile-pane space-y-6"
+              role="tabpanel"
+              aria-labelledby="profileNavAccount"
+            >
+              <!--
+                The account pane now relies on bespoke CSS (see css/tailwind.source.css under
+                the "profile modal" section) so we are not dependent on utility
+                classes that may be purged or overridden by other builds.
+              -->
+              <div id="profileSwitcherTray" class="card space-y-5 p-5">
+                <div class="flex flex-wrap items-start gap-4">
+                  <div class="space-y-2">
+                    <h3 class="text-base font-semibold text-text">Switch profiles</h3>
+                    <p class="text-sm text-muted">
+                      Save multiple Nostr profiles so you can swap identities without leaving bitvid.
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  class="card profile-modal__active-profile"
+                  aria-label="Current Nostr profile"
+                  aria-pressed="true"
+                  role="button"
+                  tabindex="0"
+                  data-state="active"
+                >
+                  <span
+                    class="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-accent/50 bg-surface"
+                  >
+                    <img
+                      id="profileModalAvatar"
+                      src="/assets/svg/default-profile.svg"
+                      alt="Active profile avatar"
+                      class="h-full w-full object-cover"
+                    />
+                  </span>
+                  <div class="profile-modal__active-details">
+                    <div class="profile-modal__active-meta">
+                      <span class="text-3xs font-semibold uppercase tracking-extra-wide text-accent">
+                        Active profile
+                      </span>
+                    </div>
+                    <span id="profileModalName" class="truncate text-sm font-semibold text-text">Loading...</span>
+                    <span id="profileModalNpub" class="break-all font-mono text-xs text-muted">npub1...</span>
+                  </div>
+                  <div class="flex flex-wrap items-center gap-2 profile-modal__actions">
+                    <a
+                      id="profileChannelLink"
+                      href="#"
+                      class="btn-ghost focus-ring hidden text-xs"
+                    >
+                      View channel
+                    </a>
+                    <button
+                      id="profileEditBtn"
+                      type="button"
+                      class="btn-ghost focus-ring text-xs"
+                    >
+                      Edit profile
+                    </button>
+                  </div>
+                </div>
+
+                <div
+                  id="profileSwitcherList"
+                  class="grid-stack"
+                  aria-live="polite"
+                  aria-label="Additional Nostr profiles"
+                  role="list"
+                  data-orientation="vertical"
+                ></div>
+
+                <button
+                  type="button"
+                  id="profileAddAccountBtn"
+                  class="profile-modal__add-profile"
+                  aria-label="Add a new Nostr profile"
+                >
+                  <span class="profile-modal__add-profile-icon" aria-hidden="true">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <line x1="12" y1="5" x2="12" y2="19" />
+                      <line x1="5" y1="12" x2="19" y2="12" />
+                    </svg>
+                  </span>
+                  <span class="flex flex-col text-left">
+                    <span data-profile-add-title class="text-sm font-semibold text-text">Add profile</span>
+                    <span data-profile-add-hint class="text-xs text-muted-strong">Link another npub</span>
+                  </span>
+                </button>
+
+                <p class="text-sm text-muted">
+                  Profiles you add here will stay on this device so you can quickly switch before posting or moderating.
+                </p>
+              </div>
+            </section>
+
+            <section
+              id="profilePaneEdit"
+              class="profile-pane hidden space-y-6"
+              role="tabpanel"
+              aria-label="Edit profile"
+            >
+              <div class="flex items-center gap-2 mb-4">
+                <button
+                  id="profileEditBackBtn"
+                  type="button"
+                  class="btn-ghost focus-ring p-1 -ml-1 text-muted hover:text-text"
+                  aria-label="Back to account"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" />
+                  </svg>
+                </button>
+                <h3 class="text-lg font-bold text-text">Edit Profile</h3>
+              </div>
+
+              <div class="space-y-5">
+                <!-- Basic Info -->
+                <div class="grid gap-4 sm:grid-cols-2">
+                  <label class="block text-sm text-muted-strong" for="editNameInput">
+                    <span class="mb-2 block font-medium">Username</span>
+                    <input
+                      id="editNameInput"
+                      type="text"
+                      class="input"
+                      placeholder="Name"
+                    />
+                  </label>
+                  <label class="block text-sm text-muted-strong" for="editDisplayNameInput">
+                    <span class="mb-2 block font-medium">Display Name</span>
+                    <input
+                      id="editDisplayNameInput"
+                      type="text"
+                      class="input"
+                      placeholder="Display Name (optional)"
+                    />
+                  </label>
+                </div>
+
+                <label class="block text-sm text-muted-strong" for="editAboutInput">
+                  <span class="mb-2 block font-medium">About</span>
+                  <textarea
+                    id="editAboutInput"
+                    class="input min-h-[var(--size-80px)]"
+                    placeholder="Tell us about yourself..."
+                  ></textarea>
+                </label>
+
+                <label class="block text-sm text-muted-strong" for="editWebsiteInput">
+                  <span class="mb-2 block font-medium">Website</span>
+                  <input
+                    id="editWebsiteInput"
+                    type="url"
+                    class="input"
+                    placeholder="https://example.com"
+                  />
+                </label>
+
+                <!-- Verifications -->
+                <div class="grid gap-4 sm:grid-cols-2">
+                  <label class="block text-sm text-muted-strong" for="editNip05Input">
+                    <span class="mb-2 block font-medium">NIP-05 Verification</span>
+                    <input
+                      id="editNip05Input"
+                      type="text"
+                      class="input"
+                      placeholder="name@domain.com"
+                    />
+                  </label>
+                  <label class="block text-sm text-muted-strong" for="editLud16Input">
+                    <span class="mb-2 block font-medium">Lightning Address (LUD16)</span>
+                    <input
+                      id="editLud16Input"
+                      type="text"
+                      class="input"
+                      placeholder="name@provider.com"
+                    />
+                  </label>
+                </div>
+
+                <!-- Images -->
+                <div class="space-y-4">
+                  <div class="flex flex-col gap-2">
+                    <label class="block text-sm text-muted-strong" for="editPictureInput">
+                      <span class="mb-2 block font-medium">Profile Picture URL</span>
+                    </label>
+                    <div class="flex gap-2">
+                      <input
+                        id="editPictureInput"
+                        type="url"
+                        class="input flex-1"
+                        placeholder="https://..."
+                      />
+                      <input type="file" id="editPictureFile" hidden accept="image/*" />
+                      <button
+                        id="editPictureUploadBtn"
+                        type="button"
+                        class="btn-ghost focus-ring"
+                        title="Upload profile picture"
+                      >
+                        Upload
+                      </button>
+                    </div>
+                    <div id="editPictureStorageHint" class="text-xs text-muted hidden">
+                      <a href="#" id="editPictureConfigureLink" class="underline hover:text-text">Configure storage</a> to enable uploads.
+                    </div>
+                  </div>
+
+                  <div class="flex flex-col gap-2">
+                    <label class="block text-sm text-muted-strong" for="editBannerInput">
+                      <span class="mb-2 block font-medium">Banner Image URL</span>
+                    </label>
+                    <div class="flex gap-2">
+                      <input
+                        id="editBannerInput"
+                        type="url"
+                        class="input flex-1"
+                        placeholder="https://..."
+                      />
+                      <input type="file" id="editBannerFile" hidden accept="image/*" />
+                      <button
+                        id="editBannerUploadBtn"
+                        type="button"
+                        class="btn-ghost focus-ring"
+                        title="Upload banner image"
+                      >
+                        Upload
+                      </button>
+                    </div>
+                    <div id="editBannerStorageHint" class="text-xs text-muted hidden">
+                      <a href="#" id="editBannerConfigureLink" class="underline hover:text-text">Configure storage</a> to enable uploads.
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Actions -->
+                <div class="flex flex-wrap items-center gap-3 pt-4 border-t border-border/60">
+                  <button
+                    id="editSaveBtn"
+                    type="button"
+                    class="btn focus-ring"
+                  >
+                    Save Profile
+                  </button>
+                  <button
+                    id="editCancelBtn"
+                    type="button"
+                    class="btn-ghost focus-ring"
+                  >
+                    Cancel
+                  </button>
+                </div>
+                <p id="editStatusText" class="text-sm text-muted" role="status" aria-live="polite"></p>
+              </div>
+            </section>
+
+            <section
+              id="profilePaneRelays"
+              class="profile-pane hidden space-y-6"
+              role="tabpanel"
+              aria-labelledby="profileNavRelays"
+            >
+              <div class="space-y-4">
+                <p class="text-sm text-muted">
+                  Configure the relays bitvid will use to discover and publish your videos.
+                </p>
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <label class="flex-1 text-sm text-muted-strong" for="relayInput">
+                    <span class="mb-2 block font-medium">Add a relay</span>
+                    <input
+                      id="relayInput"
+                      type="url"
+                      placeholder="wss://relay.example.com"
+                      class="input"
+                    />
+                  </label>
+                  <div class="flex gap-2">
+                    <button
+                      id="addRelayBtn"
+                      type="button"
+                      class="btn focus-ring"
+                    >
+                      Add relay
+                    </button>
+                    <button
+                      id="restoreRelaysBtn"
+                      type="button"
+                      class="btn-ghost focus-ring"
+                    >
+                      Restore defaults
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <ul id="relayList" class="grid-stack" data-orientation="vertical"></ul>
+              <div id="relayHealthPanel" class="card space-y-4 p-5">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                  <div class="space-y-1">
+                    <h3 class="text-base font-semibold text-text">Relay health</h3>
+                    <p class="text-sm text-muted">
+                      Monitor connectivity, latency, and errors for your configured relays.
+                    </p>
+                  </div>
+                  <button
+                    id="relayHealthRefreshBtn"
+                    type="button"
+                    class="btn-ghost focus-ring text-xs"
+                  >
+                    Refresh
+                  </button>
+                </div>
+                <label
+                  for="relayHealthTelemetryOptIn"
+                  class="inline-flex items-center gap-2 text-xs font-medium text-muted-strong"
+                >
+                  <input
+                    id="relayHealthTelemetryOptIn"
+                    type="checkbox"
+                    class="checkbox"
+                  />
+                  Share relay health telemetry
+                </label>
+                <p class="text-xs text-muted">
+                  Telemetry is opt-in and only includes relay URLs, latency, and error counts.
+                </p>
+                <ul id="relayHealthList" class="grid-stack" data-orientation="vertical"></ul>
+                <p
+                  id="relayHealthStatus"
+                  class="text-xs text-muted"
+                  role="status"
+                  aria-live="polite"
+                ></p>
+              </div>
+            </section>
+
+            <section
+              id="profilePaneWallet"
+              class="profile-pane hidden space-y-6"
+              role="tabpanel"
+              aria-labelledby="profileNavWallet"
+            >
+              <div class="space-y-4">
+                <p class="text-sm text-muted">
+                  Connect a Nostr Wallet Connect (NWC) compatible wallet to zap creators directly from bitvid.
+                </p>
+                <div class="space-y-4">
+                  <label class="block text-sm text-muted-strong" for="profileWalletUri">
+                    <span class="mb-2 block font-medium">Wallet Connect URI</span>
+                    <input
+                      id="profileWalletUri"
+                      type="url"
+                      placeholder="nostr+walletconnect://<public-key>?relay=wss://relay.example.com"
+                      class="input"
+                    />
+                  </label>
+                  <label class="block text-sm text-muted-strong" for="profileWalletDefaultZap">
+                    <span class="mb-2 block font-medium">Default zap amount (sats)</span>
+                    <input
+                      id="profileWalletDefaultZap"
+                      type="number"
+                      inputmode="numeric"
+                      min="0"
+                      step="1"
+                      placeholder="500"
+                      class="input"
+                    />
+                  </label>
+                </div>
+                <div class="flex flex-wrap items-center gap-3">
+                  <button
+                    id="profileWalletSave"
+                    type="button"
+                    class="btn focus-ring"
+                  >
+                    Save wallet
+                  </button>
+                  <button
+                    id="profileWalletTest"
+                    type="button"
+                    class="btn-ghost focus-ring"
+                  >
+                    Test connection
+                  </button>
+                  <button
+                    id="profileWalletDisconnect"
+                    type="button"
+                    class="btn focus-ring"
+                    data-variant="danger"
+                  >
+                    Disconnect wallet
+                  </button>
+                </div>
+                <p
+                  id="profileWalletStatus"
+                  class="text-sm text-muted"
+                  role="status"
+                  aria-live="polite"
+                ></p>
+              </div>
+            </section>
+
+            <section
+              id="profilePaneStorage"
+              class="profile-pane hidden space-y-6"
+              role="tabpanel"
+              aria-labelledby="profileNavStorage"
+            >
+              <div class="space-y-4">
+                <div class="flex items-center justify-between">
+                  <h3 class="text-base font-semibold text-text">Storage Connections</h3>
+                  <div id="profileStorageStatus" class="text-xs text-muted"></div>
+                </div>
+                <p class="text-sm text-muted">
+                  Configure external storage providers for your uploads. Credentials are encrypted on your device.
+                </p>
+
+                <!-- Unlock UI -->
+                <div id="profileStorageUnlock" class="card space-y-4 p-5 hidden">
+                    <p class="text-sm text-muted">
+                        Unlock your secure storage to manage connections.
+                    </p>
+                    <button id="profileStorageUnlockBtn" type="button" class="btn focus-ring">
+                        Unlock Storage
+                    </button>
+                </div>
+
+                <!-- Connection Form -->
+                <div id="profileStorageForm" class="space-y-5 hidden">
+                    <div class="grid gap-4">
+                        <label class="block text-sm text-muted-strong" for="storageProvider">
+                            <span class="mb-2 block font-medium">Provider</span>
+                            <select id="storageProvider" class="input">
+                                <option value="cloudflare_r2" selected>Cloudflare R2</option>
+                                <option value="generic_s3">Custom S3</option>
+                            </select>
+                        </label>
+
+                        <!-- R2 Helper -->
+                        <div id="storageR2Helper" class="card border border-info/30 bg-info/10 p-3 text-xs text-info">
+                            Enter your Cloudflare R2 credentials. Your Account ID (from dashboard) is used to connect. For Public Access URL, use your custom domain or R2.dev subdomain. Ensure the token has "Object Read & Write" permissions.
+                        </div>
+
+                        <!-- S3 Helper -->
+                        <div id="storageS3Helper" class="card border border-info/30 bg-info/10 p-3 text-xs text-info hidden">
+                            Enter your S3-compatible storage details. The Endpoint URL is your provider's API address (e.g., https://s3.amazonaws.com or your MinIO URL).
+                        </div>
+
+                        <label class="block text-sm text-muted-strong hidden" for="storageEndpoint">
+                            <span class="mb-2 block font-medium">Endpoint</span>
+                            <input id="storageEndpoint" type="url" class="input" placeholder="https://..." />
+                        </label>
+
+                        <label class="hidden items-center gap-2 text-sm text-muted-strong" id="storageForcePathStyleLabel">
+                            <input id="storageForcePathStyle" type="checkbox" class="checkbox" checked />
+                            <span>Force Path Style</span>
+                        </label>
+
+                        <label class="block text-sm text-muted-strong" for="storageRegion">
+                            <span class="mb-2 block font-medium">Region</span>
+                            <input id="storageRegion" type="text" class="input" placeholder="auto" value="auto" />
+                        </label>
+
+                        <label class="block text-sm text-muted-strong" for="storageAccessKey">
+                            <span class="mb-2 block font-medium">Access Key ID</span>
+                            <input id="storageAccessKey" type="text" class="input" />
+                        </label>
+
+                        <label class="block text-sm text-muted-strong" for="storageSecretKey">
+                            <span class="mb-2 block font-medium">Secret Access Key</span>
+                            <input id="storageSecretKey" type="password" class="input" />
+                        </label>
+
+                        <label class="block text-sm text-muted-strong" for="storageBucket">
+                            <span class="mb-2 block font-medium">Bucket Name</span>
+                            <input id="storageBucket" type="text" class="input" />
+                        </label>
+
+                        <label class="block text-sm text-muted-strong" for="storagePrefix">
+                            <span class="mb-2 block font-medium">Public Access URL</span>
+                            <input id="storagePrefix" type="url" class="input" placeholder="https://pub-xxx.r2.dev" />
+                            <div id="storagePrefixWarning" class="hidden mt-2 text-xs text-status-warning"></div>
+                            <span class="mt-1 block text-xs text-muted">
+                                The public URL where your files will be accessible (CDN).
+                            </span>
+                        </label>
+
+                        <label class="flex items-center gap-2 text-sm text-muted-strong">
+                            <input id="storageDefault" type="checkbox" class="checkbox" />
+                            <span>Use as default for uploads</span>
+                        </label>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-3">
+                        <button id="storageSaveBtn" type="button" class="btn focus-ring">
+                            Save Connection
+                        </button>
+                        <button id="storageTestBtn" type="button" class="btn-ghost focus-ring">
+                            Test Connection
+                        </button>
+                        <button id="storageClearBtn" type="button" class="btn-ghost focus-ring text-status-danger">
+                            Clear
+                        </button>
+                    </div>
+                    <p id="storageFormStatus" class="text-sm" role="status" aria-live="polite"></p>
+                </div>
+              </div>
+            </section>
+
+            <section
+              id="profilePaneHashtags"
+              class="profile-pane hidden space-y-6"
+              role="tabpanel"
+              aria-labelledby="profileNavHashtags"
+            >
+              <div class="space-y-3">
+                <p class="text-sm text-muted">
+                  Follow or mute hashtags to personalize the videos we show you.
+                </p>
+                <p
+                  id="profileHashtagStatus"
+                  class="text-sm text-muted"
+                  role="status"
+                  aria-live="polite"
+                ></p>
+              </div>
+
+              <div class="card space-y-4 p-5">
+                <div class="space-y-1">
+                  <h3 class="text-base font-semibold text-text">Interests</h3>
+                  <p class="text-sm text-muted">
+                    Videos tagged with these hashtags will be highlighted for you.
+                  </p>
+                </div>
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <label
+                    class="flex-1 text-sm text-muted-strong"
+                    for="profileHashtagInterestInput"
+                  >
+                    <span class="mb-2 block font-medium">Add a hashtag</span>
+                    <input
+                      id="profileHashtagInterestInput"
+                      type="text"
+                      inputmode="text"
+                      autocomplete="off"
+                      class="input"
+                      placeholder="nostr"
+                    />
+                  </label>
+                  <button
+                    id="profileAddHashtagInterestBtn"
+                    type="button"
+                    class="btn focus-ring"
+                  >
+                    Add interest
+                  </button>
+                </div>
+                <p
+                  id="profileHashtagInterestEmpty"
+                  class="card border border-dashed border-border/60 p-4 text-center text-sm text-muted"
+                >
+                  You haven’t added any interest hashtags yet.
+                </p>
+                <ul
+                  id="profileHashtagInterestList"
+                  class="profile-hashtag-list"
+                  data-orientation="horizontal"
+                ></ul>
+              </div>
+
+              <div class="card space-y-4 p-5">
+                <div class="space-y-1">
+                  <h3 class="text-base font-semibold text-text">Disinterests</h3>
+                  <p class="text-sm text-muted">
+                    We’ll de-emphasize or hide videos using these hashtags.
+                  </p>
+                </div>
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <label
+                    class="flex-1 text-sm text-muted-strong"
+                    for="profileHashtagDisinterestInput"
+                  >
+                    <span class="mb-2 block font-medium">Add a hashtag</span>
+                    <input
+                      id="profileHashtagDisinterestInput"
+                      type="text"
+                      inputmode="text"
+                      autocomplete="off"
+                      class="input"
+                      placeholder="spam"
+                    />
+                  </label>
+                  <button
+                    id="profileAddHashtagDisinterestBtn"
+                    type="button"
+                    class="btn focus-ring"
+                  >
+                    Add disinterest
+                  </button>
+                </div>
+                <p
+                  id="profileHashtagDisinterestEmpty"
+                  class="card border border-dashed border-border/60 p-4 text-center text-sm text-muted"
+                >
+                  You haven’t muted any hashtags yet.
+                </p>
+                <ul
+                  id="profileHashtagDisinterestList"
+                  class="profile-hashtag-list"
+                  data-orientation="horizontal"
+                ></ul>
+              </div>
+            </section>
+
+            <section
+              id="profilePaneSubscriptions"
+              class="profile-pane hidden space-y-4"
+              role="tabpanel"
+              aria-labelledby="profileNavSubscriptions"
+            >
+              <p class="text-sm text-muted">
+                These are the creators you’ve subscribed to directly in bitvid.
+              </p>
+              <div
+                id="subscriptionsEmpty"
+                class="card border border-dashed border-border/60 p-6 text-center text-sm text-muted"
+              >
+                You haven’t subscribed to any creators yet.
+              </div>
+              <ul id="subscriptionsList" class="grid-stack" data-orientation="vertical"></ul>
+            </section>
+
+            <section
+              id="profilePaneFriends"
+              class="profile-pane hidden space-y-4"
+              role="tabpanel"
+              aria-labelledby="profileNavFriends"
+            >
+              <p class="text-sm text-muted">
+                Add friends to spotlight creators you want to keep up with across bitvid.
+              </p>
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+                <label class="flex-1 text-sm text-muted-strong" for="friendsInput">
+                  <span class="mb-2 block font-medium">Creator npub</span>
+                  <input
+                    id="friendsInput"
+                    type="text"
+                    inputmode="text"
+                    autocomplete="off"
+                    class="input"
+                    placeholder="npub1..."
+                  />
+                </label>
+                <button id="addFriendBtn" type="button" class="btn focus-ring">
+                  Add friend
+                </button>
+              </div>
+              <div
+                id="friendsEmpty"
+                class="card border border-dashed border-border/60 p-6 text-center text-sm text-muted"
+              >
+                You haven’t added any friends yet.
+              </div>
+              <ul id="friendsList" class="grid-stack" data-orientation="vertical"></ul>
+            </section>
+
+            <section
+              id="profilePaneSafety"
+              class="profile-pane hidden space-y-6"
+              role="tabpanel"
+              aria-labelledby="profileNavSafety"
+            >
+              <div id="profileModerationSettings" class="card space-y-5 p-5">
+                <div class="space-y-2">
+                  <h3 class="text-base font-semibold text-text">Safety</h3>
+                  <p class="text-sm text-muted">
+                    Choose how many trusted reports or mutes it takes to blur thumbnails, block autoplay previews, or hide videos entirely.
+                    Lower numbers are stricter.
+                  </p>
+                  <div class="rounded-lg border border-border bg-bg-muted p-3 text-xs text-muted">
+                    <p>
+                      Trusted counts include your first-degree follows (F1) plus seeded moderators.
+                    </p>
+                    <dl class="mt-2 grid gap-1">
+                      <div class="flex items-center justify-between gap-3">
+                        <dt>Trusted contacts</dt>
+                        <dd id="profileModerationTrustedContactsCount" class="font-semibold text-text">0</dd>
+                      </div>
+                      <div class="flex items-center justify-between gap-3">
+                        <dt>Active trusted mute contributors</dt>
+                        <dd id="profileModerationTrustedMuteCount" class="font-semibold text-text">0</dd>
+                      </div>
+                      <div class="flex items-center justify-between gap-3">
+                        <dt>Active trusted report contributors</dt>
+                        <dd id="profileModerationTrustedReportCount" class="font-semibold text-text">0</dd>
+                      </div>
+                    </dl>
+                    <p
+                      id="profileModerationSeedOnlyIndicator"
+                      class="mt-2 flex items-center gap-1 text-xs text-warning-strong"
+                      hidden
+                    >
+                      <span aria-hidden="true">●</span>
+                      <span>Seeded moderators only</span>
+                    </p>
+                  </div>
+                </div>
+                <div class="grid gap-4 sm:grid-cols-2">
+                  <label
+                    class="block text-sm text-muted-strong"
+                    for="profileModerationBlurThreshold"
+                  >
+                    <span class="mb-2 block font-medium">Blur after trusted reports</span>
+                    <input
+                      id="profileModerationBlurThreshold"
+                      type="number"
+                      inputmode="numeric"
+                      min="0"
+                      step="1"
+                      class="input"
+                    />
+                    <span class="mt-1 block text-xs text-muted">
+                      Thumbnails blur when trusted contacts report nudity at or above this count.
+                    </span>
+                  </label>
+                  <label
+                    class="block text-sm text-muted-strong"
+                    for="profileModerationAutoplayThreshold"
+                  >
+                    <span class="mb-2 block font-medium">Block autoplay after reports</span>
+                    <input
+                      id="profileModerationAutoplayThreshold"
+                      type="number"
+                      inputmode="numeric"
+                      min="0"
+                      step="1"
+                      class="input"
+                    />
+                    <span class="mt-1 block text-xs text-muted">
+                      Autoplay previews pause once trusted reports meet this threshold.
+                    </span>
+                  </label>
+                </div>
+                <div
+                  class="grid gap-4 sm:grid-cols-2"
+                  data-role="trusted-hide-controls"
+                >
+                  <label
+                    class="block text-sm text-muted-strong"
+                    for="profileModerationMuteHideThreshold"
+                    data-role="trusted-hide-control"
+                  >
+                    <span class="mb-2 block font-medium">Hide after trusted mutes</span>
+                    <input
+                      id="profileModerationMuteHideThreshold"
+                      type="number"
+                      inputmode="numeric"
+                      min="0"
+                      step="1"
+                      class="input"
+                    />
+                    <span class="mt-1 block text-xs text-muted">
+                      Hide videos when this many trusted contacts add the author to their mute list.
+                    </span>
+                  </label>
+                  <label
+                    class="block text-sm text-muted-strong"
+                    for="profileModerationSpamHideThreshold"
+                    data-role="trusted-hide-control"
+                  >
+                    <span class="mb-2 block font-medium">Hide after trusted spam reports</span>
+                    <input
+                      id="profileModerationSpamHideThreshold"
+                      type="number"
+                      inputmode="numeric"
+                      min="0"
+                      step="1"
+                      class="input"
+                    />
+                    <span class="mt-1 block text-xs text-muted">
+                      Hide videos entirely once trusted contacts report spam at or above this count.
+                    </span>
+                  </label>
+                </div>
+                <div class="flex flex-wrap items-center gap-3">
+                  <button
+                    id="profileModerationSave"
+                    type="button"
+                    class="btn focus-ring"
+                    disabled
+                  >
+                    Save moderation settings
+                  </button>
+                  <button
+                    id="profileModerationReset"
+                    type="button"
+                    class="btn-ghost focus-ring"
+                  >
+                    Restore defaults
+                  </button>
+                </div>
+                <p
+                  id="profileModerationStatus"
+                  class="text-sm text-muted"
+                  role="status"
+                  aria-live="polite"
+                ></p>
+                <div class="space-y-3 border-t border-border/60 pt-4">
+                  <div class="space-y-1">
+                    <h4 class="text-sm font-semibold text-text">Active overrides</h4>
+                    <p class="text-xs text-muted">
+                      Videos you unblocked with “Show anyway” stay listed here until reset.
+                    </p>
+                  </div>
+                  <div
+                    id="profileModerationOverridesEmpty"
+                    class="card border border-dashed border-border/60 p-4 text-center text-xs text-muted"
+                  >
+                    No moderation overrides yet.
+                  </div>
+                  <ul
+                    id="profileModerationOverridesList"
+                    class="grid-stack hidden"
+                    data-orientation="vertical"
+                  ></ul>
+                </div>
+              </div>
+
+              <div id="profileLinkPreviewSettings" class="card space-y-4 p-5">
+                <div class="space-y-2">
+                  <h3 class="text-base font-semibold text-text">Link previews</h3>
+                  <p class="text-sm text-muted">
+                    Control when bitvid fetches link preview metadata. Disable auto-fetch to review new domains before previews load.
+                  </p>
+                </div>
+                <label
+                  for="profileLinkPreviewAutoToggle"
+                  class="inline-flex items-center gap-2 text-xs font-medium text-muted-strong"
+                >
+                  <input
+                    id="profileLinkPreviewAutoToggle"
+                    type="checkbox"
+                    class="checkbox"
+                  />
+                  Auto-fetch previews from new domains
+                </label>
+              </div>
+            </section>
+
+            <section
+              id="profilePaneBlocked"
+              class="profile-pane hidden space-y-4"
+              role="tabpanel"
+              aria-labelledby="profileNavBlocked"
+            >
+              <p class="text-sm text-muted">
+                Creators you block are hidden from your bitvid experience. This
+                list is private to your account.
+              </p>
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+                <label class="flex-1 text-sm text-muted-strong" for="blockedInput">
+                  <span class="mb-2 block font-medium">Creator npub</span>
+                  <input
+                    id="blockedInput"
+                    type="text"
+                    inputmode="text"
+                    autocomplete="off"
+                    class="input"
+                    placeholder="npub1..."
+                  />
+                </label>
+                <button
+                  id="addBlockedBtn"
+                  type="button"
+                  class="btn focus-ring"
+                >
+                  Block creator
+                </button>
+              </div>
+              <div
+                id="blockedEmpty"
+                class="card border border-dashed border-border/60 p-6 text-center text-sm text-muted"
+              >
+                You haven’t blocked any creators yet.
+              </div>
+              <ul id="blockedList" class="grid-stack" data-orientation="vertical"></ul>
+            </section>
+            <section
+              id="profilePaneMessages"
+              class="profile-pane hidden"
+              role="tabpanel"
+              aria-labelledby="profileNavMessages"
+            >
+              <div id="dmAppShellMount"></div>
+            </section>
+            <section
+              id="profilePaneHistory"
+              class="profile-pane hidden space-y-4"
+              role="tabpanel"
+              aria-labelledby="profileNavHistory"
+            >
+              <p class="text-sm text-muted">
+                Your recently watched videos appear here so you can jump back into favorites.
+              </p>
+              <div
+                id="profileHistoryFeatureBanner"
+                class="card hidden border border-status-warning-border bg-status-warning-surface px-4 py-3 text-sm text-status-warning-on"
+                role="status"
+                aria-live="polite"
+              ></div>
+              <div class="space-y-4">
+                <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div
+                    class="flex flex-wrap gap-2"
+                    role="group"
+                    aria-label="Watch history actions"
+                  >
+                    <button
+                      id="profileHistoryClear"
+                      type="button"
+                      class="btn-ghost focus-ring inline-flex items-center gap-2"
+                      data-size="sm"
+                    >
+                      Clear local cache
+                    </button>
+                    <button
+                      id="profileHistoryRefresh"
+                      type="button"
+                      class="btn-ghost focus-ring inline-flex items-center gap-2"
+                      data-size="sm"
+                    >
+                      Refresh
+                    </button>
+                  </div>
+                </div>
+                <div
+                  id="profileHistoryPrivacyBanner"
+                  class="card hidden border border-status-info-border bg-status-info-surface px-4 py-3 text-sm text-status-info-on"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <p id="profileHistoryPrivacyMessage" class="mb-2"></p>
+                  <div class="flex flex-wrap items-center gap-2">
+                    <button
+                      id="profileHistoryPrivacyDismiss"
+                      type="button"
+                      class="btn-ghost focus-ring text-xs"
+                    >
+                      Dismiss
+                    </button>
+                    <button
+                      id="profileHistoryPrivacyToggle"
+                      type="button"
+                      class="btn-ghost focus-ring text-xs hidden"
+                    >
+                      Change settings
+                    </button>
+                  </div>
+                </div>
+                <p id="profileHistoryInfo" class="text-xs text-muted"></p>
+                <div
+                  id="profileHistorySessionWarning"
+                  class="hidden pill"
+                  data-variant="warning"
+                  role="status"
+                  aria-live="polite"
+                >
+                  Session actor in use. Connect a NIP-07 extension to publish as your main profile.
+                </div>
+                <div id="profileHistoryLoading" class="py-6">
+                  <div id="profileHistoryStatus">
+                    <div
+                      class="sidebar-loading-wrapper"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      <div class="sidebar-loading-indicator">
+                        <span
+                          class="status-spinner status-spinner--inline"
+                          aria-hidden="true"
+                        ></span>
+                        <span class="sidebar-loading-text"
+                          >Fetching watch history from relays…</span
+                        >
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div
+                  id="profileHistoryError"
+                  class="card hidden border border-critical/40 bg-critical/10 px-4 py-3 text-sm text-critical"
+                  role="alert"
+                  aria-live="assertive"
+                ></div>
+                <div
+                  id="profileHistoryEmpty"
+                  class="card hidden border border-dashed border-border/60 p-6 text-center text-sm text-muted"
+                >
+                  You haven’t watched any videos yet.
+                </div>
+                <div id="profileHistoryScroll" class="relative">
+                  <div
+                    id="profileHistoryGrid"
+                    class="grid-stack hidden"
+                    data-variant="cards"
+                    data-orientation="vertical"
+                    role="list"
+                  ></div>
+                  <div id="profileHistorySentinel" class="h-1 w-full"></div>
+                </div>
+              </div>
+            </section>
+            <section
+              id="profilePaneAdmin"
+              class="profile-pane hidden space-y-6"
+              role="tabpanel"
+              aria-labelledby="profileNavAdmin"
+            >
+              <div class="space-y-2">
+                <h3 class="text-base font-semibold text-text">Platform moderation</h3>
+                <p class="text-sm text-muted">
+                  Manage bitvid’s moderator roles and creator allow/block lists. Changes apply instantly across the app.
+                </p>
+              </div>
+
+              <div id="adminModeratorsSection" class="space-y-4 hidden" aria-hidden="true">
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <h4 class="text-base font-semibold text-text">Moderators</h4>
+                  <p class="text-xs uppercase tracking-wide text-muted">
+                    Super Admin only
+                  </p>
+                </div>
+                <p class="text-sm text-muted">
+                  Moderators can edit the whitelist and blacklist but cannot manage other moderators or whitelist mode.
+                </p>
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <label class="flex-1 text-sm text-muted-strong" for="adminModeratorInput">
+                    <span class="mb-2 block font-medium">Moderator npub</span>
+                    <input
+                      id="adminModeratorInput"
+                      type="text"
+                      inputmode="text"
+                      autocomplete="off"
+                      class="input"
+                      placeholder="npub1..."
+                    />
+                  </label>
+                  <button
+                    id="adminAddModeratorBtn"
+                    type="button"
+                    class="btn focus-ring"
+                  >
+                    Add moderator
+                  </button>
+                </div>
+                <div
+                  id="adminModeratorsEmpty"
+                  class="card border border-dashed border-border/60 p-4 text-center text-sm text-muted"
+                >
+                  No moderators configured yet.
+                </div>
+                <ul id="adminModeratorList" class="grid-stack" data-orientation="vertical"></ul>
+              </div>
+
+              <div id="adminWhitelistSection" class="space-y-4">
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <h4 class="text-base font-semibold text-text">Whitelist</h4>
+                </div>
+                <p class="text-sm text-muted">
+                  Creators listed here remain visible when whitelist mode is enabled. Accounts can appear in both lists, and the blacklist always takes precedence.
+                </p>
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <label class="flex-1 text-sm text-muted-strong" for="adminWhitelistInput">
+                    <span class="mb-2 block font-medium">Creator npub</span>
+                    <input
+                      id="adminWhitelistInput"
+                      type="text"
+                      inputmode="text"
+                      autocomplete="off"
+                      class="input"
+                      placeholder="npub1..."
+                    />
+                  </label>
+                  <button
+                    id="adminAddWhitelistBtn"
+                    type="button"
+                    class="btn focus-ring"
+                  >
+                    Add to whitelist
+                  </button>
+                </div>
+                <div
+                  id="adminWhitelistEmpty"
+                  class="card border border-dashed border-border/60 p-4 text-center text-sm text-muted"
+                >
+                  No whitelisted creators yet.
+                </div>
+                <ul id="adminWhitelistList" class="grid-stack" data-orientation="vertical"></ul>
+              </div>
+
+              <div id="adminBlacklistSection" class="space-y-4">
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <h4 class="text-base font-semibold text-text">Blacklist</h4>
+                </div>
+                <p class="text-sm text-muted">
+                  Creators on the blacklist are hidden from bitvid everywhere. Accounts can appear in both lists, and the blacklist always takes precedence.
+                </p>
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <label class="flex-1 text-sm text-muted-strong" for="adminBlacklistInput">
+                    <span class="mb-2 block font-medium">Creator npub</span>
+                    <input
+                      id="adminBlacklistInput"
+                      type="text"
+                      inputmode="text"
+                      autocomplete="off"
+                      class="input"
+                      placeholder="npub1..."
+                    />
+                  </label>
+                  <button
+                    id="adminAddBlacklistBtn"
+                    type="button"
+                    class="btn focus-ring"
+                  >
+                    Add to blacklist
+                  </button>
+                </div>
+                <div
+                  id="adminBlacklistEmpty"
+                  class="card border border-dashed border-border/60 p-4 text-center text-sm text-muted"
+                >
+                  No blacklisted creators yet.
+                </div>
+                <ul id="adminBlacklistList" class="grid-stack" data-orientation="vertical"></ul>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="hidden lg:flex items-center justify-end gap-3 border-t border-border/60 p-4">
+        <button id="profileLogoutBtn" class="btn focus-ring" data-variant="danger">
+          Logout
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,283 @@
+import { Composer } from "./Composer.js";
+import { ConversationList } from "./ConversationList.js";
+import { MessageThread } from "./MessageThread.js";
+import { DMPrivacySettings } from "./DMPrivacySettings.js";
+import { aggregateZapTotals } from "./zapHelpers.js";
+import { createZapInterface } from "./ZapInterface.js";
+
+function createElement(doc, tag, className, text) {
+  const element = doc.createElement(tag);
+  if (className) {
+    element.className = className;
+  }
+  if (typeof text === "string") {
+    element.textContent = text;
+  }
+  return element;
+}
+
+const DEFAULT_CONVERSATIONS = [
+  {
+    id: "conv-1",
+    name: "Nia Nova",
+    preview: "The relay looks stable now.",
+    timestamp: "2m",
+    unreadCount: 2,
+    status: "Online",
+    avatarSrc: "",
+    pubkey: "82341f882b6eabcd2ba7f1ef90aad961cf074af15b9ef44a09f9d2a8fbfbe6a2",
+    lightningAddress: "nia@zap.lol",
+    relayHints: ["wss://relay.damus.io", "wss://nostr.wine"],
+  },
+  {
+    id: "conv-2",
+    name: "Orbit Ops",
+    preview: "Can you share the stream link?",
+    timestamp: "1h",
+    unreadCount: 0,
+    status: "Away",
+    avatarSrc: "",
+    pubkey: "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52",
+    lightningAddress: "ops@getalby.com",
+    relayHints: ["wss://relay.primal.net"],
+  },
+];
+
+const DEFAULT_MESSAGES = [
+  { type: "day", label: "Today" },
+  {
+    id: "msg-1",
+    direction: "incoming",
+    body: "Hey! The new DM view looks promising.",
+    timestamp: "09:12",
+  },
+  {
+    id: "msg-2",
+    direction: "outgoing",
+    body: "Thanks! I'm wiring up the layout and keyboard flow now.",
+    timestamp: "09:14",
+    status: "pending",
+  },
+  {
+    id: "msg-3",
+    direction: "outgoing",
+    body: "Next up: privacy mode toggles and attachment rails.",
+    timestamp: "09:16",
+    status: "sent",
+  },
+  {
+    id: "msg-4",
+    direction: "outgoing",
+    body: "I can resend if this didn't go through.",
+    timestamp: "09:18",
+    status: "failed",
+  },
+];
+
+const DEFAULT_ZAP_RECEIPTS = [
+  {
+    id: "zap-1",
+    kind: 9735,
+    conversationId: "conv-1",
+    profileId: "82341f882b6eabcd2ba7f1ef90aad961cf074af15b9ef44a09f9d2a8fbfbe6a2",
+    senderName: "You",
+    amountSats: 120,
+    note: "For the quick relay fix!",
+    timestamp: "09:20",
+    status: "confirmed",
+  },
+  {
+    id: "zap-2",
+    kind: 9735,
+    conversationId: "conv-1",
+    profileId: "82341f882b6eabcd2ba7f1ef90aad961cf074af15b9ef44a09f9d2a8fbfbe6a2",
+    senderName: "Nia Nova",
+    amountSats: 42,
+    note: "Thanks for testing the DM flow.",
+    timestamp: "09:22",
+    status: "confirmed",
+  },
+  {
+    id: "zap-3",
+    kind: 9735,
+    conversationId: "conv-2",
+    profileId: "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52",
+    senderName: "You",
+    amountSats: 250,
+    note: "Ops support fund.",
+    timestamp: "Yesterday",
+    status: "pending",
+  },
+];
+
+export class AppShell {
+  constructor({
+    document: doc,
+    currentUserAvatarUrl = "",
+    conversations = DEFAULT_CONVERSATIONS,
+    activeConversationId = DEFAULT_CONVERSATIONS[0]?.id || "",
+    conversationState = "idle",
+    messages = DEFAULT_MESSAGES,
+    zapReceipts = DEFAULT_ZAP_RECEIPTS,
+    threadState = "idle",
+    threadErrorType = "",
+    composerState = "idle",
+    privacyMode = "nip04",
+    dmPrivacySettings = { readReceiptsEnabled: false, typingIndicatorsEnabled: false },
+    signingAdapter = null,
+    zapConfig = null,
+    mobileView = "list",
+    onSelectConversation,
+    onSendMessage,
+    onSendZap,
+    onMarkConversationRead,
+    onMarkAllRead,
+    onToggleReadReceipts,
+    onToggleTypingIndicators,
+    onRefreshConversations,
+    onBack,
+  } = {}) {
+    if (!doc) {
+      throw new Error("AppShell requires a document reference.");
+    }
+
+    this.document = doc;
+    this.root = createElement(doc, "div", "dm-app-shell");
+    if (typeof mobileView === "string") {
+      this.root.dataset.dmView = mobileView;
+    }
+
+    const { totalsByConversation, totalsByProfile } = aggregateZapTotals(zapReceipts);
+    const enrichedConversations = conversations.map((conversation) => ({
+      ...conversation,
+      zapTotalSats: totalsByConversation.get(conversation.id) || 0,
+      profileZapTotalSats: totalsByProfile.get(conversation.pubkey) || 0,
+    }));
+
+    const activeConversation =
+      enrichedConversations.find((conversation) => conversation.id === activeConversationId) ||
+      enrichedConversations[0] ||
+      {};
+    const activeZapReceipts = zapReceipts.filter(
+      (receipt) => receipt.conversationId === activeConversation.id,
+    );
+
+    const sidebar = createElement(doc, "aside", "dm-app-shell__sidebar bg-transparent");
+    const sidebarHeader = createElement(doc, "div", "dm-app-shell__sidebar-header flex items-center justify-between p-4 relative");
+    const sidebarTitle = createElement(
+      doc,
+      "h1",
+      "dm-app-shell__title text-lg font-bold",
+      "Conversations",
+    );
+    sidebarHeader.appendChild(sidebarTitle);
+
+    const settingsBtn = createElement(doc, "button", "icon-button accent-action-button");
+    settingsBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0" stroke-linecap="round" stroke-linejoin="round" class="icon-image w-5 h-5"><path d="M24,13.616L24,10.384C22.349,9.797 21.306,9.632 20.781,8.365L20.781,8.364C20.254,7.093 20.881,6.23 21.628,4.657L19.343,2.372C17.782,3.114 16.91,3.747 15.636,3.219L15.635,3.219C14.366,2.693 14.2,1.643 13.616,0L10.384,0C9.802,1.635 9.635,2.692 8.365,3.219L8.364,3.219C7.093,3.747 6.232,3.121 4.657,2.372L2.372,4.657C3.117,6.225 3.747,7.091 3.219,8.364C2.692,9.635 1.635,9.802 0,10.384L0,13.616C1.632,14.196 2.692,14.365 3.219,15.635C3.749,16.917 3.105,17.801 2.372,19.342L4.657,21.628C6.219,20.885 7.091,20.253 8.364,20.781L8.365,20.781C9.635,21.307 9.801,22.36 10.384,24L13.616,24C14.198,22.364 14.366,21.31 15.643,20.778L15.644,20.778C16.906,20.254 17.764,20.879 19.342,21.629L21.627,19.343C20.883,17.78 20.252,16.91 20.779,15.637C21.306,14.366 22.367,14.197 24,13.616ZM12,16C9.791,16 8,14.209 8,12C8,9.791 9.791,8 12,8C14.209,8 16,9.791 16,12C16,14.209 14.209,16 12,16Z" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"></path></svg>`;
+    settingsBtn.ariaLabel = "Direct message settings";
+    settingsBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      let popover = sidebar.querySelector(".dm-settings-popover");
+      if (popover) {
+        popover.remove();
+        return;
+      }
+      popover = DMPrivacySettings({
+        document: doc,
+        readReceiptsEnabled: dmPrivacySettings.readReceiptsEnabled,
+        typingIndicatorsEnabled: dmPrivacySettings.typingIndicatorsEnabled,
+        onToggleReadReceipts,
+        onToggleTypingIndicators,
+      });
+      popover.classList.add("dm-settings-popover", "absolute", "z-50", "right-4", "top-12", "bg-surface", "border", "border-border", "rounded-xl");
+      sidebarHeader.appendChild(popover);
+
+      const closeHandler = (event) => {
+        if (!popover.contains(event.target) && event.target !== settingsBtn && !settingsBtn.contains(event.target)) {
+          popover.remove();
+          doc.removeEventListener("click", closeHandler);
+        }
+      };
+      doc.addEventListener("click", closeHandler);
+    });
+    sidebarHeader.appendChild(settingsBtn);
+    sidebar.appendChild(sidebarHeader);
+
+    sidebar.appendChild(
+      ConversationList({
+        document: doc,
+        conversations: enrichedConversations,
+        activeId: activeConversationId,
+        state: conversationState,
+        onSelect: onSelectConversation,
+        onMarkAllRead,
+        onRefresh: onRefreshConversations,
+      }),
+    );
+
+    const main = createElement(doc, "main", "dm-app-shell__main");
+
+    main.appendChild(
+      MessageThread({
+        document: doc,
+        currentUserAvatarUrl,
+        contact: activeConversation,
+        messages,
+        state: threadState,
+        errorType: threadErrorType,
+        privacyMode,
+        zapReceipts: activeZapReceipts,
+        conversationZapTotalSats:
+          totalsByConversation.get(activeConversation.id) || 0,
+        profileZapTotalSats: totalsByProfile.get(activeConversation.pubkey) || 0,
+        onMarkRead: onMarkConversationRead,
+        onSendZap,
+        onBack,
+        zapConfig,
+      }),
+    );
+    const handleZapTrigger = () => {
+      const existingInterface = main.querySelector(".dm-zap-interface");
+      if (existingInterface) {
+        existingInterface.remove();
+        return;
+      }
+
+      const zapInterface = createZapInterface(doc, {
+        contact: activeConversation,
+        zapReceipts: activeZapReceipts,
+        onSendZap,
+        zapConfig
+      });
+
+      main.appendChild(zapInterface);
+    };
+
+    const conversationZapTotalSats = totalsByConversation.get(activeConversation.id) || 0;
+    const profileZapTotalSats = totalsByProfile.get(activeConversation.pubkey) || 0;
+
+    main.appendChild(
+      Composer({
+        document: doc,
+        state: composerState,
+        privacyMode,
+        signingAdapter,
+        zapRecipient: activeConversation,
+        zapConfig,
+        onSend: onSendMessage,
+        onZap: handleZapTrigger,
+        zapStats: {
+            conversationTotal: conversationZapTotalSats,
+            profileTotal: profileZapTotalSats
+        }
+      }),
+    );
+
+    this.root.appendChild(sidebar);
+    this.root.appendChild(main);
+  }
+
+  getRoot() {
+    return this.root;
+  }
+}
