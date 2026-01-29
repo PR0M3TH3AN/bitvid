@@ -9,8 +9,7 @@ import { startRelay } from './load-test-relay.mjs';
 import {
     buildVideoPostEvent,
     buildViewEvent,
-    buildLegacyDirectMessageEvent,
-    NOTE_TYPES
+    buildLegacyDirectMessageEvent
 } from '../../js/nostrEventSchemas.js';
 import { decryptDM } from '../../js/dmDecryptor.js';
 import { generateSecretKey, getPublicKey } from 'nostr-tools';
