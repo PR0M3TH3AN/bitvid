@@ -10,3 +10,4 @@ css/tailwind.generated.css
 ai/reports/
 *.log
 coverage/
+dist/

@@ -1,0 +1,209 @@
+<!-- components/revert-video-modal.html -->
+<div
+  id="revertVideoModal"
+  class="bv-modal hidden items-start justify-center md:items-center"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="revertModalTitle"
+  aria-describedby="revertModalSubtitle"
+  data-ds="new"
+>
+  <div
+    id="revertVideoModalOverlay"
+    class="bv-modal-backdrop"
+    data-dismiss
+  ></div>
+
+  <div class="modal-sheet max-h-modal-sheet overflow-hidden" tabindex="-1">
+      <div class="modal-header transition-transform duration-150">
+        <div class="flex flex-col">
+          <h2 id="revertModalTitle" class="text-xl font-bold text-text">
+            Revert Video Note
+          </h2>
+          <p id="revertModalSubtitle" class="text-xs text-muted">
+            Review previous versions before restoring an older state.
+          </p>
+        </div>
+        <button
+          id="closeRevertVideoModal"
+          class="modal-close"
+          type="button"
+          aria-label="Close revert modal"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-6 w-6"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M6 18L18 6M6 6l12 12"
+            />
+          </svg>
+        </button>
+      </div>
+
+      <div class="modal-body space-y-6 overflow-y-auto max-h-modal-body">
+        <div
+          class="rounded-md border border-border/60 bg-panel/60 p-4 text-sm text-muted-strong"
+        >
+          <p>
+            Selecting an older version will mark any newer edits as reverted.
+            The previous revision will become the active note on the relays.
+          </p>
+          <p class="mt-2 text-xs text-muted">
+            Versions are grouped by their
+            <code
+              class="rounded border border-border/60 bg-surface/60 px-1 py-0.5 text-2xs"
+              >d</code
+            >
+            tag or shared
+            <code
+              class="rounded border border-border/60 bg-surface/60 px-1 py-0.5 text-2xs"
+              >videoRootId</code
+            >. This ensures legacy clients see consistent history when multiple
+            edits were published, and keeps audience flags (NSFW / for kids)
+            aligned with the Upload modal.
+          </p>
+        </div>
+
+        <div class="revert-modal__layout">
+          <aside class="space-y-4">
+            <div class="flex items-center justify-between">
+              <h3 class="text-sm font-semibold text-text">
+                Revision history
+              </h3>
+              <span
+                id="revertHistoryCount"
+                class="rounded-full bg-panel px-2 py-0.5 text-xs text-muted"
+              ></span>
+            </div>
+            <div
+              id="revertVersionsList"
+              class="space-y-2 overflow-y-auto pr-1 max-h-modal-pane"
+            ></div>
+          </aside>
+
+          <section
+            id="revertVersionDetails"
+            class="rounded-lg border border-border/70 bg-surface/70 p-4 text-sm text-text"
+            aria-live="polite"
+          >
+            <!-- NOTE: Keep Upload/Edit metadata fields mirrored when adjusting these sections. -->
+            <div
+              class="space-y-6"
+              aria-labelledby="revertVersionPlaceholderHeading"
+            >
+              <div class="space-y-2 text-center">
+                <h3
+                  id="revertVersionPlaceholderHeading"
+                  class="text-sm font-semibold text-text"
+                >
+                  Revision metadata
+                </h3>
+                <p id="revertVersionPlaceholder" class="text-sm text-muted">
+                  Select an earlier revision to inspect its metadata.
+                </p>
+              </div>
+
+              <section class="space-y-2">
+                <h4
+                  class="text-xs font-semibold uppercase tracking-wide text-muted"
+                >
+                  Playback sources
+                </h4>
+                <dl class="grid gap-2 text-xs text-muted sm:grid-cols-2">
+                  <div class="space-y-1">
+                    <dt class="font-semibold text-muted-strong">Hosted URL</dt>
+                    <dd class="text-muted">Awaiting selection</dd>
+                  </div>
+                  <div class="space-y-1">
+                    <dt class="font-semibold text-muted-strong">Magnet</dt>
+                    <dd class="text-muted">Awaiting selection</dd>
+                  </div>
+                </dl>
+              </section>
+
+              <section class="space-y-2">
+                <h4
+                  class="text-xs font-semibold uppercase tracking-wide text-muted"
+                >
+                  Audience flags
+                </h4>
+                <dl class="grid gap-2 text-xs text-muted sm:grid-cols-2">
+                  <div class="space-y-1">
+                    <dt class="font-semibold text-muted-strong">NSFW flag</dt>
+                    <dd class="text-muted">Awaiting selection</dd>
+                  </div>
+                  <div class="space-y-1">
+                    <dt class="font-semibold text-muted-strong">For kids flag</dt>
+                    <dd class="text-muted">Awaiting selection</dd>
+                  </div>
+                </dl>
+              </section>
+
+              <section class="space-y-2">
+                <h4
+                  class="text-xs font-semibold uppercase tracking-wide text-muted"
+                >
+                  NIP-71 event metadata
+                </h4>
+                <dl class="grid gap-2 text-xs text-muted sm:grid-cols-2">
+                  <div class="space-y-1">
+                    <dt class="font-semibold text-muted-strong">Kind</dt>
+                    <dd class="text-muted">Awaiting selection</dd>
+                  </div>
+                  <div class="space-y-1">
+                    <dt class="font-semibold text-muted-strong">Duration</dt>
+                    <dd class="text-muted">Awaiting selection</dd>
+                  </div>
+                  <div class="space-y-1 sm:col-span-2">
+                    <dt class="font-semibold text-muted-strong">Summary</dt>
+                    <dd class="text-muted">Awaiting selection</dd>
+                  </div>
+                </dl>
+              </section>
+
+              <section class="space-y-2">
+                <h4
+                  class="text-xs font-semibold uppercase tracking-wide text-muted"
+                >
+                  NIP-71 media metadata
+                </h4>
+                <p class="text-xs text-muted">
+                  Media variants, text tracks, chapters, hashtags, participants,
+                  and references will appear once a revision is selected.
+                </p>
+              </section>
+            </div>
+          </section>
+        </div>
+
+        <p id="revertSelectionStatus" class="text-xs text-muted"></p>
+
+        <div class="flex flex-col gap-3 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            id="cancelRevertVideo"
+            class="btn-ghost w-full sm:w-auto"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            id="confirmRevertVideo"
+            class="btn w-full sm:w-auto"
+            data-variant="critical"
+            disabled
+          >
+            Revert to selected version
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
