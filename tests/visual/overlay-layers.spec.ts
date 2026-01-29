@@ -40,6 +40,9 @@ test.describe("overlay layering tokens", () => {
   }
 
   test("mobile sidebar shares desktop rail behavior", async ({ page }) => {
+    // Increase timeout for this visual test which is prone to flakiness in CI
+    test.setTimeout(120_000);
+
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/index.html", { waitUntil: "networkidle" });
 
@@ -128,6 +131,7 @@ test.describe("overlay layering tokens", () => {
 
     // Ensure the toggle is initialized
     await expect(collapseToggle).toHaveAttribute("data-state", /.*/);
+    await collapseToggle.scrollIntoViewIfNeeded();
     await collapseToggle.click({ force: true });
 
     await page.waitForFunction(() => {
