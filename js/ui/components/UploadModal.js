@@ -940,8 +940,7 @@ export class UploadModal {
 
       try {
           if (signer?.type === "extension") {
-              const permissionResult =
-                await requestDefaultExtensionPermissions(["nip04.decrypt"]);
+              const permissionResult = await requestDefaultExtensionPermissions();
               if (!permissionResult?.ok) {
                   alert("Extension permissions are required to unlock storage.");
                   return;

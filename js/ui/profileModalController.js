@@ -1270,8 +1270,6 @@ export class ProfileModalController {
     this.blockListEmpty = null;
     this.blockListStatus = null;
     this.blockListLoadingState = "idle";
-    this.subscriptionsStatus = null;
-    this.subscriptionsLoadingState = "idle";
     this.blockInput = null;
     this.addBlockedButton = null;
     this.profileBlockedList = null;
@@ -1417,9 +1415,6 @@ export class ProfileModalController {
       this.subscriptionsService.on("change", () => {
         void this.populateSubscriptionsList();
       });
-      this.subscriptionsService.on("status", (detail) => {
-        this.handleSubscriptionsStatus(detail);
-      });
     }
 
     if (
@@ -1428,9 +1423,6 @@ export class ProfileModalController {
     ) {
       this.services.userBlocks.on("change", () => {
         this.populateBlockedList();
-      });
-      this.services.userBlocks.on("status", (detail) => {
-        this.handleBlockListStatus(detail);
       });
     }
   }
@@ -1592,10 +1584,6 @@ export class ProfileModalController {
 
     this.blockList = document.getElementById("blockedList") || null;
     this.blockListEmpty = document.getElementById("blockedEmpty") || null;
-    this.blockListEmptyDefaultText =
-      this.blockListEmpty instanceof HTMLElement
-        ? this.blockListEmpty.textContent.trim()
-        : "";
     this.blockInput = document.getElementById("blockedInput") || null;
     this.addBlockedButton = document.getElementById("addBlockedBtn") || null;
 
@@ -1964,9 +1952,6 @@ export class ProfileModalController {
 
     subscribe("directMessages:updated", (detail) => {
       this.handleDirectMessagesUpdated(detail);
-    });
-    subscribe("directMessages:status", (detail) => {
-      this.handleDirectMessagesStatus(detail);
     });
     subscribe("directMessages:cleared", () => {
       this.handleDirectMessagesCleared();
@@ -5033,38 +5018,6 @@ export class ProfileModalController {
       });
   }
 
-  handleDirectMessagesStatus(detail = {}) {
-    const status = typeof detail?.status === "string" ? detail.status : "";
-    if (status === "decrypting") {
-      this.setMessagesLoadingState("loading", {
-        message:
-          typeof detail?.message === "string" && detail.message.trim()
-            ? detail.message.trim()
-            : "Decrypting direct messages…",
-      });
-      return;
-    }
-
-    if (status === "error") {
-      this.setMessagesLoadingState("error", {
-        message:
-          "Unable to decrypt direct messages. Check your extension permissions.",
-      });
-      return;
-    }
-
-    if (status === "ready" && this.messagesLoadingState === "loading") {
-      const actor = this.resolveActiveDmActor();
-      if (!actor) {
-        this.setMessagesLoadingState("unauthenticated");
-      } else if (!this.directMessagesCache.length) {
-        this.setMessagesLoadingState("empty");
-      } else {
-        this.setMessagesLoadingState("ready");
-      }
-    }
-  }
-
   handleDirectMessagesCleared() {
     if (this.activeMessagesRequest) {
       return;
@@ -7440,144 +7393,6 @@ export class ProfileModalController {
     }
   }
 
-  handleBlockListStatus(detail = {}) {
-    const status = typeof detail?.status === "string" ? detail.status : "";
-    const message =
-      typeof detail?.message === "string" && detail.message.trim()
-        ? detail.message.trim()
-        : "";
-
-    if (status === "loading") {
-      this.setBlockListLoadingState("loading", { message });
-      return;
-    }
-
-    if (status === "error") {
-      this.setBlockListLoadingState("error", { message });
-      return;
-    }
-
-    if (status) {
-      this.setBlockListLoadingState("idle");
-    }
-  }
-
-  ensureSubscriptionsStatusElement() {
-    if (this.subscriptionsStatus instanceof HTMLElement) {
-      return this.subscriptionsStatus;
-    }
-
-    const anchor =
-      this.subscriptionList instanceof HTMLElement
-        ? this.subscriptionList
-        : this.subscriptionListEmpty instanceof HTMLElement
-        ? this.subscriptionListEmpty
-        : null;
-
-    if (!anchor || !(anchor.parentElement instanceof HTMLElement)) {
-      return null;
-    }
-
-    const existing = anchor.parentElement.querySelector(
-      '[data-role="subscriptions-status"]',
-    );
-    if (existing instanceof HTMLElement) {
-      this.subscriptionsStatus = existing;
-      return existing;
-    }
-
-    const status = document.createElement("div");
-    status.dataset.role = "subscriptions-status";
-    status.className = "mt-4 flex items-center gap-3 text-sm text-muted hidden";
-    status.setAttribute("role", "status");
-    status.setAttribute("aria-live", "polite");
-
-    if (this.subscriptionList instanceof HTMLElement) {
-      anchor.parentElement.insertBefore(status, this.subscriptionList);
-    } else {
-      anchor.parentElement.appendChild(status);
-    }
-
-    this.subscriptionsStatus = status;
-    return status;
-  }
-
-  setSubscriptionsLoadingState(state = "idle", options = {}) {
-    const statusEl = this.ensureSubscriptionsStatusElement();
-    if (!statusEl) {
-      this.subscriptionsLoadingState = state;
-      return;
-    }
-
-    const message =
-      typeof options.message === "string" && options.message.trim()
-        ? options.message.trim()
-        : "";
-
-    statusEl.innerHTML = "";
-    statusEl.classList.remove("text-status-warning");
-    statusEl.classList.add("text-muted");
-    statusEl.classList.add("hidden");
-
-    this.subscriptionsLoadingState = state;
-
-    if (state === "loading") {
-      if (this.subscriptionListEmpty instanceof HTMLElement) {
-        this.subscriptionListEmpty.classList.add("hidden");
-      }
-
-      const spinner = document.createElement("span");
-      spinner.className = "status-spinner status-spinner--inline";
-      spinner.setAttribute("aria-hidden", "true");
-
-      const text = document.createElement("span");
-      text.textContent = message || "Loading subscriptions…";
-
-      statusEl.appendChild(spinner);
-      statusEl.appendChild(text);
-      statusEl.classList.remove("hidden");
-      return;
-    }
-
-    if (state === "error") {
-      statusEl.classList.remove("text-muted");
-      statusEl.classList.add("text-status-warning");
-
-      if (this.subscriptionListEmpty instanceof HTMLElement) {
-        this.subscriptionListEmpty.classList.add("hidden");
-      }
-
-      const text = document.createElement("span");
-      text.textContent =
-        message || "Subscriptions may be out of date. Try again later.";
-
-      statusEl.appendChild(text);
-      statusEl.classList.remove("hidden");
-    }
-  }
-
-  handleSubscriptionsStatus(detail = {}) {
-    const status = typeof detail?.status === "string" ? detail.status : "";
-    const message =
-      typeof detail?.message === "string" && detail.message.trim()
-        ? detail.message.trim()
-        : "";
-
-    if (status === "loading") {
-      this.setSubscriptionsLoadingState("loading", { message });
-      return;
-    }
-
-    if (status === "error") {
-      this.setSubscriptionsLoadingState("error", { message });
-      return;
-    }
-
-    if (status) {
-      this.setSubscriptionsLoadingState("idle");
-    }
-  }
-
   normalizeHashtagTag(value) {
     return normalizeHashtag(value);
   }
@@ -8039,10 +7854,10 @@ export class ProfileModalController {
       return;
     }
 
-    const hasExplicitList = Array.isArray(blocked);
-    const sourceEntries = hasExplicitList
-      ? blocked
-      : this.services.userBlocks.getBlockedPubkeys();
+    const sourceEntries =
+      Array.isArray(blocked) && blocked.length
+        ? blocked
+        : this.services.userBlocks.getBlockedPubkeys();
 
     const normalizedEntries = [];
     const pushEntry = (hex, label) => {
@@ -8115,13 +7930,7 @@ export class ProfileModalController {
 
     this.blockList.innerHTML = "";
 
-    const blocksLoaded = this.services.userBlocks?.loaded === true;
     if (!deduped.length) {
-      if (this.blockListLoadingState === "loading" && !blocksLoaded) {
-        this.blockListEmpty.classList.add("hidden");
-        this.blockList.classList.add("hidden");
-        return;
-      }
       this.blockListEmpty.classList.remove("hidden");
       this.blockList.classList.add("hidden");
       if (this.blockListLoadingState === "loading") {
@@ -8329,18 +8138,9 @@ export class ProfileModalController {
 
       this.subscriptionList.innerHTML = "";
 
-      const subscriptionsLoaded = service.loaded === true;
       if (!deduped.length) {
-        if (this.subscriptionsLoadingState === "loading" && !subscriptionsLoaded) {
-          this.subscriptionListEmpty.classList.add("hidden");
-          this.subscriptionList.classList.add("hidden");
-          return;
-        }
         this.subscriptionListEmpty.classList.remove("hidden");
         this.subscriptionList.classList.add("hidden");
-        if (this.subscriptionsLoadingState === "loading") {
-          this.setSubscriptionsLoadingState("idle");
-        }
         return;
       }
 
@@ -8424,10 +8224,6 @@ export class ProfileModalController {
         this.subscriptionList.appendChild(item);
       });
 
-      if (this.subscriptionsLoadingState === "loading") {
-        this.setSubscriptionsLoadingState("idle");
-      }
-
       if (
         entriesNeedingFetch.size &&
         typeof this.services.batchFetchProfiles === "function"
@@ -8454,10 +8250,6 @@ export class ProfileModalController {
 
     if (this.subscriptionListEmpty instanceof HTMLElement) {
       this.subscriptionListEmpty.classList.remove("hidden");
-    }
-
-    if (this.subscriptionsLoadingState === "loading") {
-      this.setSubscriptionsLoadingState("idle");
     }
   }
 
@@ -12714,54 +12506,40 @@ export class ProfileModalController {
 
       if (hasBlockHydrator) {
         const activeHex = this.normalizeHexPubkey(this.getActivePubkey());
-        if (!activeHex) {
-          this.setBlockListLoadingState("idle");
-          if (this.blockListEmpty instanceof HTMLElement) {
-            this.blockListEmpty.textContent =
-              "Connect a Nostr signer to load your mute list.";
-          }
-          this.populateBlockedList([]);
-        } else {
-          if (this.blockListEmpty instanceof HTMLElement) {
-            this.blockListEmpty.textContent =
-              this.blockListEmptyDefaultText ||
-              "You haven’t blocked any creators yet.";
-          }
-          backgroundTasks.push(
-            Promise.resolve()
-              .then(() => this.services.userBlocks.ensureLoaded(activeHex))
-              .then(() => {
-                try {
-                  this.populateBlockedList();
-                } catch (error) {
-                  userLogger.warn(
-                    "Failed to render blocked creators after hydration:",
-                    error,
-                  );
-                  this.setBlockListLoadingState("error", {
-                    message: "Blocked creators may be out of date. Try again later.",
-                  });
-                }
-              })
-              .catch((error) => {
+        backgroundTasks.push(
+          Promise.resolve()
+            .then(() => this.services.userBlocks.ensureLoaded(activeHex))
+            .then(() => {
+              try {
+                this.populateBlockedList();
+              } catch (error) {
                 userLogger.warn(
-                  "Failed to refresh user block list while opening profile modal:",
+                  "Failed to render blocked creators after hydration:",
                   error,
                 );
                 this.setBlockListLoadingState("error", {
                   message: "Blocked creators may be out of date. Try again later.",
                 });
-                try {
-                  this.populateBlockedList();
-                } catch (populateError) {
-                  userLogger.warn(
-                    "Failed to render blocked creators after hydration failure:",
-                    populateError,
-                  );
-                }
-              }),
-          );
-        }
+              }
+            })
+            .catch((error) => {
+              userLogger.warn(
+                "Failed to refresh user block list while opening profile modal:",
+                error,
+              );
+              this.setBlockListLoadingState("error", {
+                message: "Blocked creators may be out of date. Try again later.",
+              });
+              try {
+                this.populateBlockedList();
+              } catch (populateError) {
+                userLogger.warn(
+                  "Failed to render blocked creators after hydration failure:",
+                  populateError,
+                );
+              }
+            }),
+        );
       }
 
       if (backgroundTasks.length) {
@@ -12969,8 +12747,6 @@ export class ProfileModalController {
 
     // Trigger aggressive parallel fetches
     if (activePubkey) {
-      this.setBlockListLoadingState("loading");
-      this.setSubscriptionsLoadingState("loading");
       if (this.services.userBlocks) {
         this.services.userBlocks.loadBlocks(activePubkey).catch(noop);
       }
@@ -13036,8 +12812,6 @@ export class ProfileModalController {
 
     this.profileSwitcherSelectionPubkey = null;
     this.renderSavedProfiles();
-    this.setBlockListLoadingState("idle");
-    this.setSubscriptionsLoadingState("idle");
 
     try {
       await this.refreshAdminPaneState();

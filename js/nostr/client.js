@@ -17,7 +17,7 @@
  * - Signer Management: Orchestrates NIP-07 (Extension), NIP-46 (Remote/Bunker), and NIP-01 (Local nsec) signers.
  */
 
-import { CLEAR_NIP07_PERMISSIONS_ON_LOGOUT, isDevMode } from "../config.js";
+import { isDevMode } from "../config.js";
 import { FEATURE_PUBLISH_NIP71 } from "../constants.js";
 import { bytesToHex, sha256 } from "../../vendor/crypto-helpers.bundle.min.js";
 import { infoHashFromMagnet } from "../magnets.js";
@@ -201,7 +201,6 @@ import {
   clearActiveSigner as clearActiveSignerInRegistry,
   logoutSigner as logoutSignerFromRegistry,
   resolveActiveSigner as resolveActiveSignerFromRegistry,
-  requestDefaultExtensionPermissions,
 } from "../nostrClientRegistry.js";
 import { createNip07Adapter } from "./adapters/nip07Adapter.js";
 import { createNsecAdapter } from "./adapters/nsecAdapter.js";
@@ -394,16 +393,6 @@ function shouldRequestExtensionPermissions(signer) {
     return false;
   }
   return signer.type === "extension";
-}
-
-function normalizePermissionMethods(methods) {
-  if (!Array.isArray(methods)) {
-    return [];
-  }
-  const normalized = methods
-    .map((method) => normalizePermissionMethod(method))
-    .filter(Boolean);
-  return Array.from(new Set(normalized));
 }
 
 const EVENTS_CACHE_STORAGE_KEY = "bitvid:eventsCache:v1";
@@ -1017,63 +1006,6 @@ function buildDmFilters(actorPubkey, { since, until, limit } = {}) {
   return filters;
 }
 
-function normalizeDmEncryptionHint(value) {
-  if (typeof value !== "string") {
-    return "";
-  }
-  return value.trim().toLowerCase().replace(/[^a-z0-9_.-]/g, "");
-}
-
-function resolveDmDecryptPermissionMethods(event) {
-  if (!event || typeof event !== "object") {
-    return [];
-  }
-
-  const kind = Number.isFinite(event.kind) ? event.kind : null;
-  if (kind === 1059) {
-    return ["nip44.decrypt", "nip44.v2.decrypt"];
-  }
-
-  const tags = Array.isArray(event.tags) ? event.tags : [];
-  let requiresNip44 = false;
-  let requiresNip04 = false;
-
-  for (const tag of tags) {
-    if (!Array.isArray(tag) || tag.length < 2) {
-      continue;
-    }
-    const label = typeof tag[0] === "string" ? tag[0].trim().toLowerCase() : "";
-    if (label !== "encrypted" && label !== "encryption") {
-      continue;
-    }
-    for (let index = 1; index < tag.length; index += 1) {
-      const normalized = normalizeDmEncryptionHint(tag[index]);
-      if (!normalized) {
-        continue;
-      }
-      if (normalized.includes("nip44")) {
-        requiresNip44 = true;
-      }
-      if (normalized.includes("nip04")) {
-        requiresNip04 = true;
-      }
-    }
-  }
-
-  if (!requiresNip04 && !requiresNip44 && kind === 4) {
-    requiresNip04 = true;
-  }
-
-  const methods = [];
-  if (requiresNip04) {
-    methods.push("nip04.decrypt");
-  }
-  if (requiresNip44) {
-    methods.push("nip44.decrypt", "nip44.v2.decrypt");
-  }
-  return methods;
-}
-
 
 const EXTENSION_MIME_MAP = Object.freeze(
   Object.fromEntries(
@@ -1224,9 +1156,7 @@ export class NostrClient {
       getActivePubkey: () => this.pubkey,
       getSessionActor: () => this.sessionActor,
       ensureSessionActor: () => this.ensureSessionActor(),
-      ensureExtensionPermissions: (...args) => this.ensureExtensionPermissionsGate(...args),
-      hasRequiredExtensionPermissions: (...args) =>
-        this.hasRequiredExtensionPermissions(...args),
+      ensureExtensionPermissions: (...args) => this.ensureExtensionPermissions(...args),
       resolveActiveSigner,
       shouldRequestExtensionPermissions,
       signEventWithPrivateKey,
@@ -1336,7 +1266,6 @@ export class NostrClient {
     this.pendingHandshakeCancel = null;
     this.remoteSignerListeners = new Set();
     this.sessionActorListeners = new Set();
-    this.extensionPermissionRequestPromise = null;
     const storedRemoteSigner = this.getStoredNip46Metadata();
     this.remoteSignerStatus = {
       state: storedRemoteSigner.hasSession ? "stored" : "idle",
@@ -2025,12 +1954,18 @@ export class NostrClient {
       );
     }
 
-    const initialPubkey = await runNip07WithRetry(
-      () => extension.getPublicKey(),
-      {
-        label: "extension.getPublicKey",
-      },
+    const permissionResult = await this.ensureExtensionPermissions(
+      DEFAULT_NIP07_PERMISSION_METHODS,
     );
+    if (!permissionResult.ok) {
+      const denialMessage =
+        'The NIP-07 extension reported "permission denied". Please approve the prompt and try again.';
+      const denialError = new Error(denialMessage);
+      if (permissionResult.error) {
+        denialError.cause = permissionResult.error;
+      }
+      throw denialError;
+    }
 
     if (
       allowAccountSelection &&
@@ -2061,12 +1996,9 @@ export class NostrClient {
       }
     }
 
-    const pubkey =
-      allowAccountSelection && typeof extension.selectAccounts === "function"
-        ? await runNip07WithRetry(() => extension.getPublicKey(), {
-            label: "extension.getPublicKey",
-          })
-        : initialPubkey;
+    const pubkey = await runNip07WithRetry(() => extension.getPublicKey(), {
+      label: "extension.getPublicKey",
+    });
 
     if (!pubkey || typeof pubkey !== "string") {
       throw new Error(
@@ -2103,18 +2035,18 @@ export class NostrClient {
       }
     }
 
-    const permissionResult = await this.ensureExtensionPermissions([
-      ...DEFAULT_NIP07_PERMISSION_METHODS,
-      ...DEFAULT_NIP07_ENCRYPTION_METHODS,
-    ]);
-
-    if (!permissionResult.ok) {
-      throw permissionResult.error;
-    }
-
     const adapter = await createNip07Adapter(extension);
     adapter.pubkey = pubkey;
     setActiveSigner(adapter);
+
+    this.ensureExtensionPermissions(DEFAULT_NIP07_PERMISSION_METHODS).catch(
+      (err) => {
+        userLogger.warn(
+          "[nostr] Extension permissions were not fully granted after login:",
+          err,
+        );
+      },
+    );
 
     return { pubkey, signer: adapter };
   }
@@ -2856,8 +2788,16 @@ export class NostrClient {
       this.extensionPermissionCache = new Set();
     }
 
+    if (!Array.isArray(methods)) {
+      return;
+    }
+
     let didChange = false;
-    for (const normalized of normalizePermissionMethods(methods)) {
+    for (const method of methods) {
+      const normalized = normalizePermissionMethod(method);
+      if (!normalized) {
+        continue;
+      }
       if (!this.extensionPermissionCache.has(normalized)) {
         didChange = true;
       }
@@ -2873,50 +2813,20 @@ export class NostrClient {
     }
   }
 
-  hasRequiredExtensionPermissions(
-    methods = DEFAULT_NIP07_PERMISSION_METHODS,
-  ) {
-    const normalized = normalizePermissionMethods(methods);
-    if (!normalized.length) {
-      return true;
-    }
-    if (!this.extensionPermissionCache) {
-      return false;
-    }
-    return normalized.every((method) => this.extensionPermissionCache.has(method));
-  }
-
-  async ensureExtensionPermissionsGate(
-    methods = DEFAULT_NIP07_PERMISSION_METHODS,
-  ) {
-    const normalized = normalizePermissionMethods(methods);
-    if (!normalized.length) {
-      return { ok: true };
-    }
-
-    if (this.hasRequiredExtensionPermissions(normalized)) {
-      return { ok: true, cached: true };
-    }
-
-    if (this.extensionPermissionRequestPromise) {
-      return this.extensionPermissionRequestPromise;
-    }
-
-    const requestPromise = this.ensureExtensionPermissions(normalized)
-      .catch((error) => ({ ok: false, error }))
-      .finally(() => {
-        if (this.extensionPermissionRequestPromise === requestPromise) {
-          this.extensionPermissionRequestPromise = null;
-        }
-      });
-
-    this.extensionPermissionRequestPromise = requestPromise;
-
-    return requestPromise;
-  }
-
   async ensureExtensionPermissions(methods = DEFAULT_NIP07_PERMISSION_METHODS) {
-    const normalized = normalizePermissionMethods(methods);
+    if (!Array.isArray(methods)) {
+      methods = [];
+    }
+
+    const normalized = Array.from(
+      new Set(
+        methods
+          .map((method) =>
+            typeof method === "string" && method.trim() ? method.trim() : "",
+          )
+          .filter(Boolean),
+      ),
+    );
 
     if (!normalized.length) {
       return { ok: true };
@@ -4463,9 +4373,9 @@ export class NostrClient {
    * - Wipes session actor (ephemeral keys).
    * - Disconnects NIP-46 remote signer (if active).
    * - Clears Watch History cache.
-   * - Optionally clears stored NIP-07 permissions.
+   * - Resets permissions cache.
    */
-  logout({ clearNip07Permissions = null } = {}) {
+  logout() {
     const previousPubkey = this.pubkey;
     this.pubkey = null;
     logoutSigner(previousPubkey);
@@ -4499,20 +4409,13 @@ export class NostrClient {
     }
 
     this.watchHistory.clear();
-    const shouldClearNip07Permissions =
-      typeof clearNip07Permissions === "boolean"
-        ? clearNip07Permissions
-        : CLEAR_NIP07_PERMISSIONS_ON_LOGOUT;
-
-    if (shouldClearNip07Permissions) {
-      if (
-        this.extensionPermissionCache &&
-        typeof this.extensionPermissionCache.clear === "function"
-      ) {
-        this.extensionPermissionCache.clear();
-      }
-      clearStoredNip07Permissions();
+    if (
+      this.extensionPermissionCache &&
+      typeof this.extensionPermissionCache.clear === "function"
+    ) {
+      this.extensionPermissionCache.clear();
     }
+    clearStoredNip07Permissions();
     devLogger.log("User logged out.");
   }
 
@@ -4717,10 +4620,7 @@ export class NostrClient {
     return { actorPubkey: normalizedActor, decryptors };
   }
 
-  async decryptDirectMessageEvent(
-    event,
-    { actorPubkey, onPermissionRequest } = {},
-  ) {
+  async decryptDirectMessageEvent(event, { actorPubkey } = {}) {
     const eventId = typeof event?.id === "string" ? event.id : "";
     if (eventId) {
       const cached = this.dmDecryptCache.get(eventId);
@@ -4731,50 +4631,6 @@ export class NostrClient {
 
     const decryptDM = await this.ensureDmDecryptor();
     const context = await this.buildDmDecryptContext(actorPubkey);
-    const permissionMethods = resolveDmDecryptPermissionMethods(event);
-    const needsExtensionPermission =
-      permissionMethods.length &&
-      typeof window !== "undefined" &&
-      window?.nostr &&
-      !this.hasRequiredExtensionPermissions(permissionMethods) &&
-      context.decryptors.some(
-        (candidate) => candidate?.source === "extension",
-      );
-
-    if (needsExtensionPermission) {
-      if (typeof onPermissionRequest === "function") {
-        onPermissionRequest({
-          status: "decrypting",
-          methods: permissionMethods,
-          eventId,
-        });
-      }
-
-      const permissionResult =
-        await requestDefaultExtensionPermissions(permissionMethods);
-      if (!permissionResult?.ok) {
-        const error = new Error("extension-permission-denied");
-        error.code = "extension-permission-denied";
-        error.cause = permissionResult?.error || null;
-        if (typeof onPermissionRequest === "function") {
-          onPermissionRequest({
-            status: "error",
-            methods: permissionMethods,
-            eventId,
-            error,
-          });
-        }
-        return { ok: false, error };
-      }
-
-      if (typeof onPermissionRequest === "function") {
-        onPermissionRequest({
-          status: "ready",
-          methods: permissionMethods,
-          eventId,
-        });
-      }
-    }
 
     let result;
     try {
@@ -4807,10 +4663,6 @@ export class NostrClient {
     const decryptLimit =
       Number.isFinite(options?.decryptLimit) && options.decryptLimit > 0
         ? Math.floor(options.decryptLimit)
-        : null;
-    const onPermissionRequest =
-      typeof options?.onPermissionRequest === "function"
-        ? options.onPermissionRequest
         : null;
 
     const relayCandidates = Array.isArray(options.relays)
@@ -4864,7 +4716,6 @@ export class NostrClient {
       try {
         const decrypted = await this.decryptDirectMessageEvent(event, {
           actorPubkey: context.actorPubkey || actorPubkeyInput,
-          onPermissionRequest,
         });
         if (decrypted?.ok) {
           messages.push(decrypted);
@@ -4949,10 +4800,6 @@ export class NostrClient {
 
           const result = await this.decryptDirectMessageEvent(event, {
             actorPubkey: context.actorPubkey || actorPubkeyInput,
-            onPermissionRequest:
-              typeof options?.onPermissionRequest === "function"
-                ? options.onPermissionRequest
-                : null,
           });
 
           if (result?.ok) {
