@@ -7,7 +7,7 @@ const REPORT_FILE = "REMEDIATION_REPORT.md";
 const SHOULD_FIX = process.argv.includes("--fix");
 
 const CHECKS = [
-  { name: "CSS", command: "npm", args: ["run", "lint:css"] },
+  { name: "CSS", command: "npx", args: ["stylelint", "css/tailwind.source.css", "css/tokens.css", "css/docs.css"] },
   { name: "Hex Colors", command: "npm", args: ["run", "lint:hex"] },
   { name: "Inline Styles", command: "npm", args: ["run", "lint:inline-styles"] },
   { name: "Raw Lengths", command: "npm", args: ["run", "lint:tokens"] }, // check-design-tokens --check=tokens
