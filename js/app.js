@@ -2389,7 +2389,7 @@ class Application {
     this.tagPreferenceMenuController.refreshActiveMenus();
   }
 
-  async loadHashtagPreferencesForPubkey(pubkey) {
+  async loadHashtagPreferencesForPubkey(pubkey, options = {}) {
     if (
       !this.hashtagPreferences ||
       typeof this.hashtagPreferences.load !== "function"
@@ -2398,7 +2398,7 @@ class Application {
     }
 
     try {
-      await this.hashtagPreferences.load(pubkey);
+      await this.hashtagPreferences.load(pubkey, options);
       return true;
     } catch (error) {
       devLogger.error(
@@ -4189,7 +4189,9 @@ class Application {
     }
 
     const hashtagPreferencesPromise = Promise.resolve(
-      this.loadHashtagPreferencesForPubkey(loginContext.pubkey),
+      this.loadHashtagPreferencesForPubkey(loginContext.pubkey, {
+        allowPermissionPrompt: false,
+      }),
     ).catch((error) => {
       devLogger.warn(
         "[Application] Background hashtag preferences load failed:",
@@ -4343,7 +4345,9 @@ class Application {
         });
 
       // Load subscriptions in the background to avoid blocking the main feed.
-      subscriptions.ensureLoaded(activePubkey).catch((error) => {
+      subscriptions
+        .ensureLoaded(activePubkey, { allowPermissionPrompt: false })
+        .catch((error) => {
         devLogger.warn(
           "[Application] Failed to load subscriptions during login:",
           error

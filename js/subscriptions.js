@@ -329,6 +329,7 @@ class SubscriptionsManager {
     this.currentUserPubkey = null;
     this.loaded = false;
     this.loadingPromise = null;
+    this.backgroundLoading = false;
     this.subscriptionListView = null;
     this.lastRunOptions = null;
     this.lastResult = null;
@@ -350,7 +351,9 @@ class SubscriptionsManager {
       } else if (event === "runtimeCleared" && detail.pubkey === this.currentUserPubkey) {
         this.reset();
         if (this.currentUserPubkey) {
-          this.loadSubscriptions(this.currentUserPubkey);
+          this.loadSubscriptions(this.currentUserPubkey, {
+            allowPermissionPrompt: false,
+          });
         }
       }
     });
@@ -359,12 +362,13 @@ class SubscriptionsManager {
   /**
    * Decrypt the subscription list from kind=30000 (d="subscriptions").
    */
-  async loadSubscriptions(userPubkey) {
+  async loadSubscriptions(userPubkey, options = {}) {
     if (!userPubkey) {
       userLogger.warn("[SubscriptionsManager] No pubkey => cannot load subs.");
       return;
     }
 
+    const allowPermissionPrompt = options?.allowPermissionPrompt !== false;
     const normalizedUserPubkey = normalizeHexPubkey(userPubkey) || userPubkey;
 
     // 1. Attempt to load from cache first
@@ -379,14 +383,25 @@ class SubscriptionsManager {
       this.loaded = true;
 
       // Trigger background update
-      this.updateFromRelays(userPubkey).catch((err) => {
+      if (!allowPermissionPrompt && !this.backgroundLoading) {
+        this.backgroundLoading = true;
+        this.emitter.emit("change", {
+          action: "background-loading",
+          subscribedPubkeys: Array.from(this.subscribedPubkeys),
+          background: true,
+        });
+      } else if (allowPermissionPrompt) {
+        this.backgroundLoading = false;
+      }
+
+      this.updateFromRelays(userPubkey, { allowPermissionPrompt }).catch((err) => {
         devLogger.warn("[SubscriptionsManager] Background update failed:", err);
       });
       return;
     }
 
     // 2. If no cache, must wait for relays
-    await this.updateFromRelays(userPubkey);
+    await this.updateFromRelays(userPubkey, { allowPermissionPrompt });
   }
 
   saveToCache(userPubkey) {
@@ -402,7 +417,7 @@ class SubscriptionsManager {
     return this.emitter.on(eventName, handler);
   }
 
-  scheduleDecryptRetry(userPubkey, error) {
+  scheduleDecryptRetry(userPubkey, error, options = {}) {
     const normalized = normalizeHexPubkey(userPubkey) || userPubkey;
     if (!normalized) {
       return;
@@ -415,7 +430,7 @@ class SubscriptionsManager {
       if (this.currentUserPubkey && this.currentUserPubkey !== normalized) {
         return;
       }
-      this.updateFromRelays(normalized).catch((retryError) => {
+      this.updateFromRelays(normalized, options).catch((retryError) => {
         userLogger.warn("[SubscriptionsManager] Decryption retry failed:", retryError);
       });
     }, DECRYPT_RETRY_DELAY_MS);
@@ -425,10 +440,12 @@ class SubscriptionsManager {
     );
   }
 
-  async updateFromRelays(userPubkey) {
+  async updateFromRelays(userPubkey, options = {}) {
     if (!userPubkey) return;
 
     try {
+      const allowPermissionPrompt = options?.allowPermissionPrompt !== false;
+      const wasBackgroundLoading = this.backgroundLoading;
       const normalizedUserPubkey = normalizeHexPubkey(userPubkey) || userPubkey;
 
       const readRelays = relayManager.getReadRelayUrls();
@@ -437,6 +454,13 @@ class SubscriptionsManager {
         devLogger.warn(
           "[SubscriptionsManager] No relay URLs available while loading subscriptions.",
         );
+        if (wasBackgroundLoading) {
+          this.backgroundLoading = false;
+          this.emitter.emit("change", {
+            action: "background-loaded",
+            subscribedPubkeys: Array.from(this.subscribedPubkeys),
+          });
+        }
         return;
       }
 
@@ -516,6 +540,13 @@ class SubscriptionsManager {
            // This means no updates. We keep what we have.
            devLogger.log("[SubscriptionsManager] No updates from relays.");
         }
+        if (wasBackgroundLoading) {
+          this.backgroundLoading = false;
+          this.emitter.emit("change", {
+            action: "background-loaded",
+            subscribedPubkeys: Array.from(this.subscribedPubkeys),
+          });
+        }
         return;
       }
 
@@ -534,7 +565,9 @@ class SubscriptionsManager {
 
       let decryptResult;
       try {
-        const decryptPromise = this.decryptSubscriptionEvent(newest, userPubkey);
+        const decryptPromise = this.decryptSubscriptionEvent(newest, userPubkey, {
+          allowPermissionPrompt,
+        });
         const timeoutPromise = new Promise((_, reject) =>
           setTimeout(
             () => {
@@ -557,13 +590,28 @@ class SubscriptionsManager {
           if (!this.loaded && !cachedSnapshot.hasSnapshot) {
             this.loaded = true;
           }
-          this.scheduleDecryptRetry(normalizedUserPubkey, decryptResult.error);
+          this.scheduleDecryptRetry(normalizedUserPubkey, decryptResult.error, {
+            allowPermissionPrompt,
+          });
+          return;
+        }
+        if (
+          !allowPermissionPrompt &&
+          decryptResult.error?.code === "subscriptions-permission-required"
+        ) {
           return;
         }
         userLogger.error(
           "[SubscriptionsManager] Failed to decrypt subscription list:",
           decryptResult.error,
         );
+        if (wasBackgroundLoading) {
+          this.backgroundLoading = false;
+          this.emitter.emit("change", {
+            action: "background-loaded",
+            subscribedPubkeys: Array.from(this.subscribedPubkeys),
+          });
+        }
         if (!this.loaded) {
           this.subscribedPubkeys.clear();
           this.subsEventId = null;
@@ -583,6 +631,9 @@ class SubscriptionsManager {
       this.subscribedPubkeys = newSet;
       this.currentUserPubkey = normalizedUserPubkey;
       this.loaded = true;
+      if (wasBackgroundLoading) {
+        this.backgroundLoading = false;
+      }
 
       // Update persistent cache
       this.saveToCache(normalizedUserPubkey);
@@ -610,6 +661,11 @@ class SubscriptionsManager {
             error
           );
         });
+      } else if (wasBackgroundLoading) {
+        this.emitter.emit("change", {
+          action: "background-loaded",
+          subscribedPubkeys: Array.from(this.subscribedPubkeys),
+        });
       }
 
     } catch (err) {
@@ -623,6 +679,7 @@ class SubscriptionsManager {
     this.subsEventCreatedAt = null;
     this.currentUserPubkey = null;
     this.loaded = false;
+    this.backgroundLoading = false;
     this.lastRunOptions = null;
     this.lastResult = null;
     this.hasRenderedOnce = false;
@@ -633,7 +690,7 @@ class SubscriptionsManager {
     this.emitter.emit("change", { action: "reset", subscribedPubkeys: [] });
   }
 
-  async ensureLoaded(actorHex) {
+  async ensureLoaded(actorHex, options = {}) {
     devLogger.log("[SubscriptionsManager] ensureLoaded start", actorHex);
     const normalizedActor = normalizeHexPubkey(actorHex) || actorHex;
     if (!normalizedActor) {
@@ -655,7 +712,7 @@ class SubscriptionsManager {
       return;
     }
 
-    const loader = this.loadSubscriptions(normalizedActor);
+    const loader = this.loadSubscriptions(normalizedActor, options);
     this.loadingPromise = loader;
 
     try {
@@ -709,7 +766,7 @@ class SubscriptionsManager {
     return Array.from(this.subscribedPubkeys);
   }
 
-  async decryptSubscriptionEvent(event, userPubkey) {
+  async decryptSubscriptionEvent(event, userPubkey, options = {}) {
     const ciphertext = typeof event?.content === "string" ? event.content : "";
     if (!ciphertext) {
       const error = new Error("Subscription event is missing ciphertext content.");
@@ -717,6 +774,7 @@ class SubscriptionsManager {
       return { ok: false, error };
     }
 
+    const allowPermissionPrompt = options?.allowPermissionPrompt !== false;
     const hints = extractEncryptionHints(event);
     const requiresNip44 = hints.includes("nip44") || hints.includes("nip44_v2");
     const requiresNip04 = !hints.length || hints.includes("nip04") || !requiresNip44;
@@ -731,7 +789,8 @@ class SubscriptionsManager {
     if (
       !signer ||
       (!signerHasRequiredDecryptors(signer) &&
-        typeof nostrClient?.ensureActiveSignerForPubkey === "function")
+        typeof nostrClient?.ensureActiveSignerForPubkey === "function" &&
+        allowPermissionPrompt)
     ) {
       signer = await nostrClient.ensureActiveSignerForPubkey(userPubkey);
     }
@@ -739,7 +798,11 @@ class SubscriptionsManager {
     const signerHasNip04 = typeof signer?.nip04Decrypt === "function";
     const signerHasNip44 = typeof signer?.nip44Decrypt === "function";
 
-    const nostrApi = typeof window !== "undefined" ? window?.nostr : null;
+    const nostrApi = allowPermissionPrompt
+      ? typeof window !== "undefined"
+        ? window?.nostr
+        : null
+      : null;
     const windowHasNip04 = typeof nostrApi?.nip04?.decrypt === "function";
     const windowHasNip44 =
       (nostrApi?.nip44 && typeof nostrApi.nip44.decrypt === "function") ||
@@ -749,6 +812,13 @@ class SubscriptionsManager {
       (!signerHasNip44 && !windowHasNip44 && requiresNip44) ||
       (!signerHasNip04 && !windowHasNip04 && requiresNip04)
     ) {
+      if (!allowPermissionPrompt) {
+        const error = new Error(
+          "Decrypt permissions are required to read subscriptions."
+        );
+        error.code = "subscriptions-permission-required";
+        return { ok: false, error };
+      }
       try {
         const permissionResult = await requestDefaultExtensionPermissions();
         if (!permissionResult?.ok) {
