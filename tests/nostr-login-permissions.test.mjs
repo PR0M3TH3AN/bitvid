@@ -315,7 +315,7 @@ test("NIP-07 login falls back when structured permissions fail", async () => {
     // With Structured -> String -> Plain order, this succeeds at step 2 (String).
     // So we expect 2 calls.
     assert.ok(env.enableCalls.length >= 2, "should retry with alternate payloads");
-    const [objectCall, stringCall] = env.enableCalls;
+    const [objectCall, stringCall, plainCall] = env.enableCalls;
     assert.ok(Array.isArray(objectCall?.permissions));
     assert.equal(
       typeof objectCall.permissions[0],
