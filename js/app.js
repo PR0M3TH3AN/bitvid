@@ -4309,9 +4309,20 @@ class Application {
         }
       });
 
-    const tier1ReadyPromise = Promise.allSettled(
-      [postLoginPromise, accessControlReadyPromise].filter(Boolean),
-    );
+    const cachedProfile =
+      detail?.postLogin && typeof detail.postLogin === "object"
+        ? detail.postLogin.profile || null
+        : null;
+    if (activePubkey && cachedProfile) {
+      try {
+        this.updateActiveProfileUI(activePubkey, cachedProfile);
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to apply cached profile during login:",
+          error,
+        );
+      }
+    }
 
     const startDmHydration = () => {
       const dmTasks = [];
@@ -4369,7 +4380,7 @@ class Application {
         : Promise.resolve(this.updateAuthLoadingState({ dms: "idle" }));
     };
 
-    const dmStatePromise = tier1ReadyPromise
+    const dmStatePromise = Promise.resolve()
       .then(() => scheduleAfterFirstRender())
       .then(() => startDmHydration())
       .catch((error) => {
@@ -4406,14 +4417,15 @@ class Application {
       this.renderSavedProfiles();
     }
 
-    const profileStatePromise = postLoginPromise
+    const profileStatePromise = Promise.resolve(postLoginPromise)
       .then((postLogin) => {
-        if (activePubkey && postLogin?.profile) {
-          this.updateActiveProfileUI(activePubkey, postLogin.profile);
+        const nextProfile = postLogin?.profile || cachedProfile;
+        if (activePubkey && nextProfile) {
+          this.updateActiveProfileUI(activePubkey, nextProfile);
         }
         this.forceRefreshAllProfiles();
         this.updateAuthLoadingState({
-          profile: postLogin?.profile ? "ready" : "error",
+          profile: nextProfile ? "ready" : "error",
         });
         return postLogin;
       })
@@ -4426,7 +4438,7 @@ class Application {
     const listTasks = [];
     if (activePubkey && typeof this.authService.loadBlocksForPubkey === "function") {
       listTasks.push(
-        tier1ReadyPromise
+        Promise.resolve()
           .then(() => this.authService.loadBlocksForPubkey(activePubkey))
           .catch((error) => {
             devLogger.warn(
@@ -4444,7 +4456,7 @@ class Application {
       typeof subscriptions.ensureLoaded === "function"
     ) {
       listTasks.push(
-        tier1ReadyPromise
+        Promise.resolve()
           .then(() =>
             subscriptions.ensureLoaded(activePubkey, {
               allowPermissionPrompt: false,
