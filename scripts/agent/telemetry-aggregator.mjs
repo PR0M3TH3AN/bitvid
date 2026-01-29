@@ -196,7 +196,11 @@ function collectSmokeTests() {
             const content = JSON.parse(fs.readFileSync(path.join(ARTIFACTS_DIR, file), 'utf8'));
 
             // Expected format: { timestamp, status, error, logs }
-            if (content.status && (content.status.toLowerCase() === 'failure' || content.status.toLowerCase() === 'fail')) {
+            // Also handle { timestamp, success: false, logFile } from smoke-test.mjs
+            if (
+                (content.status && (content.status.toLowerCase() === 'failure' || content.status.toLowerCase() === 'fail')) ||
+                (content.success === false)
+            ) {
                 const errorMsg = content.error || 'Unknown Smoke Test Failure';
                 const sanitizedError = sanitize(errorMsg);
 
@@ -220,6 +224,68 @@ function collectSmokeTests() {
             console.warn(`Failed to parse smoke summary ${file}:`, err.message);
         }
     }
+    return errors;
+}
+
+function collectPlaywrightTests() {
+    const errors = [];
+    const resultsPath = path.join(ARTIFACTS_DIR, 'test-results', 'results.json');
+
+    if (!fs.existsSync(resultsPath)) return errors;
+
+    try {
+        const content = JSON.parse(fs.readFileSync(resultsPath, 'utf8'));
+
+        // Iterate over suites recursively or just check failures
+        // Playwright JSON structure: { suites: [ { specs: [ { tests: [ { results: [ { status, error } ] } ] } ] } ] }
+
+        function processSuite(suite) {
+            if (suite.specs) {
+                for (const spec of suite.specs) {
+                    processSpec(spec);
+                }
+            }
+            if (suite.suites) {
+                for (const childSuite of suite.suites) {
+                    processSuite(childSuite);
+                }
+            }
+        }
+
+        function processSpec(spec) {
+            for (const test of spec.tests || []) {
+                for (const result of test.results || []) {
+                    if (result.status === 'failed' || result.status === 'timedOut') {
+                         const error = result.error || {};
+                         const message = error.message || 'Unknown Playwright Error';
+                         const stack = error.stack || message;
+
+                         const sanitizedMessage = sanitize(message);
+                         const sanitizedStack = sanitize(stack);
+
+                         errors.push({
+                             source: `playwright:${spec.title}`,
+                             title: `Playwright Failure: ${spec.title}`,
+                             details: [sanitizedMessage],
+                             stack: sanitizedStack,
+                             fingerprint: getFingerprint(sanitizedStack),
+                             severity: 'High',
+                             owner: 'QA Team' // Default owner for e2e failures
+                         });
+                    }
+                }
+            }
+        }
+
+        if (content.suites) {
+            for (const suite of content.suites) {
+                processSuite(suite);
+            }
+        }
+    } catch (err) {
+        console.warn('Failed to parse Playwright results:', err.message);
+    }
+
     return errors;
 }
 
@@ -502,6 +568,13 @@ async function main() {
     if (loadTestErrors.length > 0) {
         console.log(`Collected ${loadTestErrors.length} load test errors.`);
         errors.push(...loadTestErrors);
+    }
+
+    // Playwright Tests
+    const playwrightErrors = collectPlaywrightTests();
+    if (playwrightErrors.length > 0) {
+        console.log(`Collected ${playwrightErrors.length} Playwright test errors.`);
+        errors.push(...playwrightErrors);
     }
 
     // Fuzz Reports
