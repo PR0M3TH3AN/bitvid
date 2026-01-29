@@ -409,6 +409,30 @@ export default class ApplicationBootstrap {
         }
       }),
     );
+    app.authEventUnsubscribes.push(
+      app.authService.on("blocksLoaded", (detail) => {
+        try {
+          app.handleBlocksLoaded(detail);
+        } catch (error) {
+          devLogger.warn(
+            "Failed to process blocks loaded event:",
+            error,
+          );
+        }
+      }),
+    );
+    app.authEventUnsubscribes.push(
+      app.authService.on("relaysLoaded", (detail) => {
+        try {
+          app.handleRelaysLoaded(detail);
+        } catch (error) {
+          devLogger.warn(
+            "Failed to process relays loaded event:",
+            error,
+          );
+        }
+      }),
+    );
 
     app.commentThreadService =
       this.services.commentThreadService ||

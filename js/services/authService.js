@@ -622,8 +622,10 @@ export default class AuthService {
       postLoginError: null,
     };
 
-    const postLoginPromise = Promise.resolve()
-      .then(() => this.applyPostLoginState())
+    const { detail: postLoginDetail, completionPromise } = this.applyPostLoginState();
+    detail.postLogin = postLoginDetail;
+
+    const postLoginPromise = Promise.resolve(completionPromise)
       .then((postLogin) => {
         detail.postLogin = postLogin;
         detail.postLoginError = null;
@@ -677,17 +679,19 @@ export default class AuthService {
     return detail;
   }
 
-  async applyPostLoginState() {
+  applyPostLoginState() {
     const activePubkey = this.normalizeHexPubkey(getPubkey()) || getPubkey();
+    const cachedEntry = activePubkey ? this.getProfileCacheEntry(activePubkey) : null;
+    const cachedProfile = cachedEntry?.profile || FALLBACK_PROFILE;
     const detail = {
       pubkey: activePubkey || null,
       blocksLoaded: false,
       relaysLoaded: false,
-      profile: null,
+      profile: cachedProfile,
     };
 
     if (!activePubkey) {
-      return detail;
+      return { detail, completionPromise: Promise.resolve(detail) };
     }
 
     const schedule = (callback) => Promise.resolve().then(() => callback());
@@ -703,6 +707,13 @@ export default class AuthService {
           this.log("[AuthService] Failed to load block list", error);
           return false;
         },
+        emit: (value, error) => {
+          this.emit("blocksLoaded", {
+            pubkey: activePubkey,
+            blocksLoaded: value,
+            error: error ?? null,
+          });
+        },
       });
     }
 
@@ -715,37 +726,61 @@ export default class AuthService {
           this.log("[AuthService] Failed to load relay list", error);
           return false;
         },
+        emit: (value, error) => {
+          this.emit("relaysLoaded", {
+            pubkey: activePubkey,
+            relaysLoaded: value,
+            error: error ?? null,
+          });
+        },
       });
     }
 
     operations.push({
       name: "profile",
       promise: schedule(() => this.loadOwnProfile(activePubkey)),
-      onFulfilled: (value) => value,
+      onFulfilled: (value) => {
+        const profile = value || FALLBACK_PROFILE;
+        this.setProfileCacheEntry(activePubkey, profile, {
+          persist: true,
+          reason: "post-login",
+        });
+        return profile;
+      },
       onRejected: (error) => {
         this.log("[AuthService] Failed to load own profile", error);
-        return null;
+        const fallbackProfile = cachedProfile || FALLBACK_PROFILE;
+        this.setProfileCacheEntry(activePubkey, fallbackProfile, {
+          persist: true,
+          reason: "post-login-fallback",
+        });
+        return fallbackProfile;
       },
     });
 
-    const settled = await Promise.allSettled(
-      operations.map((operation) => operation.promise)
+    const wrappedPromises = operations.map((operation) =>
+      operation.promise
+        .then((value) => {
+          const resolved = operation.onFulfilled(value);
+          detail[operation.name] = resolved;
+          if (typeof operation.emit === "function") {
+            operation.emit(resolved, null);
+          }
+          return resolved;
+        })
+        .catch((error) => {
+          const resolved = operation.onRejected(error);
+          detail[operation.name] = resolved;
+          if (typeof operation.emit === "function") {
+            operation.emit(resolved, error);
+          }
+          return resolved;
+        }),
     );
 
-    settled.forEach((result, index) => {
-      const operation = operations[index];
-      if (!operation) {
-        return;
-      }
+    const completionPromise = Promise.allSettled(wrappedPromises).then(() => detail);
 
-      if (result.status === "fulfilled") {
-        detail[operation.name] = operation.onFulfilled(result.value);
-      } else {
-        detail[operation.name] = operation.onRejected(result.reason);
-      }
-    });
-
-    return detail;
+    return { detail, completionPromise };
   }
 
   async logout() {

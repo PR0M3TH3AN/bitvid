@@ -4104,6 +4104,7 @@ class Application {
       detail && typeof detail.postLoginPromise?.then === "function"
         ? detail.postLoginPromise
         : Promise.resolve(detail?.postLogin ?? null);
+    const postLoginResult = detail?.postLogin ?? null;
 
     if (detail && typeof detail === "object") {
       try {
@@ -4270,13 +4271,6 @@ class Application {
         devLogger.error("Post-login hydration failed:", error);
       });
 
-    let postLoginResult = null;
-    try {
-      postLoginResult = await postLoginPromise;
-    } catch (error) {
-      devLogger.error("Post-login processing failed:", error);
-    }
-
     await nwcPromise;
     // We do not await hashtagPreferencesPromise here; it loads in the background.
 
@@ -4363,6 +4357,58 @@ class Application {
 
     if (this.uploadModal?.refreshCloudflareBucketPreview) {
       await this.uploadModal.refreshCloudflareBucketPreview();
+    }
+  }
+
+  handleBlocksLoaded(detail = {}) {
+    if (detail?.blocksLoaded !== true) {
+      return;
+    }
+
+    if (this.profileController) {
+      try {
+        this.profileController.populateBlockedList();
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to refresh blocked list after blocks loaded:",
+          error,
+        );
+      }
+    }
+
+    try {
+      void this.onVideosShouldRefresh({ reason: "blocks-loaded" });
+    } catch (error) {
+      devLogger.warn(
+        "[Application] Failed to refresh videos after blocks loaded:",
+        error,
+      );
+    }
+  }
+
+  handleRelaysLoaded(detail = {}) {
+    if (detail?.relaysLoaded !== true) {
+      return;
+    }
+
+    if (this.profileController) {
+      try {
+        this.profileController.populateProfileRelays();
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to refresh profile relays after relays loaded:",
+          error,
+        );
+      }
+
+      try {
+        void this.profileController.refreshDmRelayPreferences({ force: true });
+      } catch (error) {
+        devLogger.warn(
+          "[Application] Failed to refresh DM relay preferences after relays loaded:",
+          error,
+        );
+      }
     }
   }
 
