@@ -39,24 +39,23 @@ const EPHEMERAL_PK = getPublicKey(EPHEMERAL_SK_BYTES);
 
 async function startHttpServer() {
     log('Starting HTTP Server...');
-    // Prefer `serve` if available, else python
-    return new Promise((resolve, reject) => {
-        const serve = spawn('npx', ['serve', '.', '-p', String(HTTP_PORT)], {
-            stdio: 'ignore', // Suppress output for cleaner logs, or pipe if needed
-            shell: true
-        });
-
-        // Give it a moment to boot
-        setTimeout(() => {
-            log('HTTP Server started (assumed ready).');
-            resolve(serve);
-        }, 2000);
-
-        serve.on('error', (err) => {
-            log(`HTTP Server failed to start: ${err.message}`);
-            reject(err);
-        });
+    const serve = spawn('npx', ['serve', '.', '-p', String(HTTP_PORT)], {
+        stdio: 'ignore',
+        shell: true
     });
+
+    const maxRetries = 20;
+    for (let i = 0; i < maxRetries; i++) {
+        try {
+            await fetch(HTTP_URL);
+            log('HTTP Server is ready.');
+            return serve;
+        } catch (e) {
+            await new Promise(r => setTimeout(r, 250));
+        }
+    }
+    serve.kill();
+    throw new Error('HTTP Server failed to start within timeout.');
 }
 
 async function runSmokeTest() {
@@ -70,6 +69,7 @@ async function runSmokeTest() {
     let httpServer;
     let browser;
     let nodeClient;
+    let exitCode = 0;
 
     try {
         log('--- Smoke Test Started ---');
@@ -236,7 +236,7 @@ async function runSmokeTest() {
     } catch (err) {
         log(`--- Smoke Test FAILED: ${err.message} ---`);
         if (err.stack) log(err.stack);
-        process.exit(1);
+        exitCode = 1;
     } finally {
         // Cleanup
         log('Cleaning up...');
@@ -250,7 +250,7 @@ async function runSmokeTest() {
         if (httpServer) httpServer.kill();
         if (relayServer) await relayServer.close();
 
-        process.exit(0);
+        process.exit(exitCode);
     }
 }
 
