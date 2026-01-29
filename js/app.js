@@ -219,6 +219,14 @@ class Application {
     setStoredCurrentVideo(value ?? null);
   }
 
+  get activeProfilePubkey() {
+    return getActiveProfilePubkey();
+  }
+
+  get savedProfiles() {
+    return getSavedProfiles();
+  }
+
   constructor({ services = {}, ui = {}, helpers = {}, loadView: viewLoader } = {}) {
     this.loadView = typeof viewLoader === "function" ? viewLoader : null;
 
