@@ -313,7 +313,7 @@ test("NIP-07 login falls back when structured permissions fail", async () => {
     const pubkey = result.pubkey;
     assert.equal(pubkey, HEX_PUBKEY);
     assert.ok(env.enableCalls.length >= 2, "should retry with alternate payloads");
-    const [objectCall, stringCall] = env.enableCalls;
+    const [objectCall, stringCall, plainCall] = env.enableCalls;
     assert.ok(Array.isArray(objectCall?.permissions));
     assert.equal(
       typeof objectCall.permissions[0],
