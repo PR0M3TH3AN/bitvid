@@ -1032,14 +1032,25 @@ export class NostrService {
   }
 
   async ensureDirectMessageSubscription({ actorPubkey, relays, ...handlers } = {}) {
-    if (this.dmSubscription) {
-      return this.dmSubscription;
-    }
-
     const activeActor = actorPubkey || this.resolveActiveDmActor();
     const normalizedActor = normalizeHexPubkey(activeActor);
     if (!normalizedActor) {
       return null;
+    }
+
+    if (this.dmSubscription) {
+      if (this.dmActorPubkey === normalizedActor) {
+        devLogger.log(
+          "[nostrService] Reusing existing DM subscription for active actor.",
+          { actorPubkey: normalizedActor },
+        );
+        return this.dmSubscription;
+      }
+      devLogger.log(
+        "[nostrService] Replacing existing DM subscription for new actor.",
+        { previous: this.dmActorPubkey, next: normalizedActor },
+      );
+      this.stopDirectMessageSubscription();
     }
 
     let resolvedRelays = Array.isArray(relays) ? relays : null;
@@ -1142,6 +1153,10 @@ export class NostrService {
 
       this.dmSubscription = subscription;
       this.dmActorPubkey = normalizedActor;
+      devLogger.log("[nostrService] DM subscription activated.", {
+        actorPubkey: normalizedActor,
+        relays: resolvedRelays,
+      });
       this.emit("directMessages:subscribed", { subscription });
       if (relaySelection?.warning === DM_RELAY_WARNING_FALLBACK) {
         this.emit("directMessages:relayWarning", {

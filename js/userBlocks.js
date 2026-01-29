@@ -680,6 +680,8 @@ class UserBlockListManager {
     this.emitter = new TinyEventEmitter();
     this.seedStateCache = new Map();
     this.decryptRetryTimeoutId = null;
+    this.loadPromise = null;
+    this.loadingPubkey = null;
 
     profileCache.subscribe((event, detail) => {
       if (event === "profileChanged") {
@@ -705,6 +707,8 @@ class UserBlockListManager {
       clearTimeout(this.decryptRetryTimeoutId);
       this.decryptRetryTimeoutId = null;
     }
+    this.loadPromise = null;
+    this.loadingPubkey = null;
   }
 
   on(eventName, handler) {
@@ -766,6 +770,38 @@ class UserBlockListManager {
   }
 
   async loadBlocks(userPubkey, options = {}) {
+    const normalized = normalizeHex(userPubkey);
+
+    if (this.loadPromise && this.loadingPubkey === normalized) {
+      devLogger.log("[UserBlockList] Reusing in-flight block list load.", {
+        pubkey: normalized,
+      });
+      return this.loadPromise;
+    }
+
+    if (this.loadPromise && this.loadingPubkey && this.loadingPubkey !== normalized) {
+      devLogger.log("[UserBlockList] Waiting for existing block list load to settle.", {
+        previous: this.loadingPubkey,
+        next: normalized,
+      });
+      await this.loadPromise.catch(() => {});
+    }
+
+    const loadPromise = this.loadBlocksInternal(normalized, options);
+    this.loadPromise = loadPromise;
+    this.loadingPubkey = normalized;
+
+    try {
+      return await loadPromise;
+    } finally {
+      if (this.loadPromise === loadPromise) {
+        this.loadPromise = null;
+        this.loadingPubkey = null;
+      }
+    }
+  }
+
+  async loadBlocksInternal(userPubkey, options = {}) {
     const normalized = normalizeHex(userPubkey);
     this.activePubkey = normalized;
 

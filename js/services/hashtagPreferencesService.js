@@ -241,6 +241,8 @@ class HashtagPreferencesService {
     this.backgroundLoading = false;
     this.preferencesVersion = DEFAULT_VERSION;
     this.decryptRetryTimeoutId = null;
+    this.loadPromise = null;
+    this.loadingPubkey = null;
 
     profileCache.subscribe((event, detail) => {
       if (event === "profileChanged") {
@@ -273,6 +275,8 @@ class HashtagPreferencesService {
       clearTimeout(this.decryptRetryTimeoutId);
       this.decryptRetryTimeoutId = null;
     }
+    this.loadPromise = null;
+    this.loadingPubkey = null;
     this.emitChange("reset");
   }
 
@@ -451,6 +455,38 @@ class HashtagPreferencesService {
   }
 
   async load(pubkey, options = {}) {
+    const normalized = normalizeHexPubkey(pubkey);
+
+    if (this.loadPromise && this.loadingPubkey === normalized) {
+      devLogger.log(`${LOG_PREFIX} Reusing in-flight preferences load.`, {
+        pubkey: normalized,
+      });
+      return this.loadPromise;
+    }
+
+    if (this.loadPromise && this.loadingPubkey && this.loadingPubkey !== normalized) {
+      devLogger.log(`${LOG_PREFIX} Waiting for existing preferences load to settle.`, {
+        previous: this.loadingPubkey,
+        next: normalized,
+      });
+      await this.loadPromise.catch(() => {});
+    }
+
+    const loadPromise = this.loadInternal(normalized, options);
+    this.loadPromise = loadPromise;
+    this.loadingPubkey = normalized;
+
+    try {
+      return await loadPromise;
+    } finally {
+      if (this.loadPromise === loadPromise) {
+        this.loadPromise = null;
+        this.loadingPubkey = null;
+      }
+    }
+  }
+
+  async loadInternal(pubkey, options = {}) {
     const normalized = normalizeHexPubkey(pubkey);
     const allowPermissionPrompt = options?.allowPermissionPrompt !== false;
     let wasLoadedForUser =
