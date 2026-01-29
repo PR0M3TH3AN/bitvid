@@ -16,6 +16,10 @@ import { createChannelProfileMenuPanel } from "./ui/components/videoMenuRenderer
 import { ALLOW_NSFW_CONTENT } from "./config.js";
 import { sanitizeProfileMediaUrl } from "./utils/profileMedia.js";
 import moderationService from "./services/moderationService.js";
+import {
+  fetchProfileMetadata,
+  ensureProfileMetadataSubscription,
+} from "./services/profileMetadataService.js";
 import { createModerationStage } from "./feedEngine/stages.js";
 import {
   DEFAULT_AUTOPLAY_BLOCK_THRESHOLD,
@@ -5099,31 +5103,20 @@ async function fetchChannelProfileFromRelays(pubkey) {
   }
 
   try {
-    const events = await pool.list(relayUrls, [
-      { kinds: [0], authors: [pubkey], limit: 1 }
-    ]);
+    const profileEntry = await fetchProfileMetadata(pubkey, {
+      nostr: nostrClient,
+      relays: relayUrls,
+      logger: devLogger,
+    });
 
-    let newestEvent = null;
-    for (const event of Array.isArray(events) ? events : []) {
-      if (!event || !event.content) {
-        continue;
-      }
-      if (!newestEvent || event.created_at > newestEvent.created_at) {
-        newestEvent = event;
-      }
+    if (!profileEntry) {
+      return { event: null, profile: {} };
     }
 
-    if (newestEvent?.content) {
-      try {
-        const meta = JSON.parse(newestEvent.content);
-        return { event: newestEvent, profile: meta };
-      } catch (error) {
-        userLogger.warn("Failed to parse channel metadata payload:", error);
-        return { event: newestEvent, profile: {} };
-      }
-    }
-
-    return { event: newestEvent, profile: {} };
+    return {
+      event: profileEntry.event || null,
+      profile: profileEntry.profile || {},
+    };
   } catch (error) {
     throw error;
   }
@@ -5212,6 +5205,23 @@ async function loadUserProfile(pubkey) {
       pubkey,
       npub: currentChannelNpub,
       loadToken
+    });
+
+    ensureProfileMetadataSubscription({
+      pubkey,
+      nostr: nostrClient,
+      onProfile: ({ profile, event }) => {
+        if (loadToken !== currentProfileLoadToken) {
+          return;
+        }
+        applyChannelProfileMetadata({
+          profile,
+          event,
+          pubkey,
+          npub: currentChannelNpub,
+          loadToken,
+        });
+      },
     });
   } catch (error) {
     if (loadToken === currentProfileLoadToken) {

@@ -21,6 +21,7 @@ import { profileCache } from "./state/profileCache.js";
 import { DEFAULT_RELAY_URLS } from "./nostr/toolkit.js";
 import { relayManager } from "./relayManager.js";
 import { runNip07WithRetry, NIP07_PRIORITY } from "./nostr/nip07Permissions.js";
+import { relaySubscriptionService } from "./services/relaySubscriptionService.js";
 
 class TinyEventEmitter {
   constructor() {
@@ -682,6 +683,7 @@ class UserBlockListManager {
     this.decryptRetryTimeoutId = null;
     this.loadPromise = null;
     this.loadingPubkey = null;
+    this.blockListSubscriptionKey = null;
 
     profileCache.subscribe((event, detail) => {
       if (event === "profileChanged") {
@@ -696,6 +698,7 @@ class UserBlockListManager {
   }
 
   reset() {
+    this.stopBlockListSubscription();
     this.blockedPubkeys.clear();
     this.blockEventId = null;
     this.blockEventCreatedAt = null;
@@ -709,6 +712,54 @@ class UserBlockListManager {
     }
     this.loadPromise = null;
     this.loadingPubkey = null;
+  }
+
+  stopBlockListSubscription() {
+    if (this.blockListSubscriptionKey) {
+      relaySubscriptionService.stopSubscription(
+        this.blockListSubscriptionKey,
+        "reset",
+      );
+      this.blockListSubscriptionKey = null;
+    }
+  }
+
+  ensureBlockListSubscription(userPubkey, relays) {
+    const normalized = normalizeHex(userPubkey);
+    if (!normalized || !nostrClient?.pool) {
+      return null;
+    }
+
+    const key = `block-list:${normalized}`;
+    this.blockListSubscriptionKey = key;
+
+    const filters = [
+      { kinds: [10000], authors: [normalized] },
+      { kinds: [30002], authors: [normalized], "#d": [BLOCK_LIST_IDENTIFIER] },
+    ];
+
+    return relaySubscriptionService.ensureSubscription({
+      key,
+      pool: nostrClient.pool,
+      relays,
+      filters,
+      label: "block-list",
+      onEvent: (event) => this.handleBlockListEvent(event),
+    });
+  }
+
+  handleBlockListEvent(event) {
+    const normalized = normalizeHex(event?.pubkey);
+    if (!normalized || normalized !== this.activePubkey) {
+      return;
+    }
+    if (!isUserBlockListEvent(event)) {
+      return;
+    }
+
+    this.loadBlocks(normalized).catch((error) => {
+      devLogger.warn("[UserBlockList] Failed to refresh after block list event", error);
+    });
   }
 
   on(eventName, handler) {
@@ -844,6 +895,14 @@ class UserBlockListManager {
     const readRelays = relayManager.getReadRelayUrls();
     const relays = readRelays.length > 0 ? readRelays : Array.from(DEFAULT_RELAY_URLS);
     emitStatus({ status: "loading", relays });
+    if (!nostrClient?.pool && typeof nostrClient?.ensurePool === "function") {
+      try {
+        await nostrClient.ensurePool();
+      } catch (error) {
+        devLogger.warn("[UserBlockList] Failed to initialize relay pool for subscription", error);
+      }
+    }
+    this.ensureBlockListSubscription(normalized, relays);
 
     const localBlocks = this._loadLocal(normalized);
     const hasLocalData = !!localBlocks;

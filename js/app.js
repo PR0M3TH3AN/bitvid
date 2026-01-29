@@ -64,6 +64,10 @@ import getAuthProvider, {
 import hashtagPreferences, {
   HASHTAG_PREFERENCES_EVENTS,
 } from "./services/hashtagPreferencesService.js";
+import {
+  fetchProfileMetadata,
+  ensureProfileMetadataSubscription,
+} from "./services/profileMetadataService.js";
 import { getSidebarLoadingMarkup } from "./sidebarLoading.js";
 import { subscriptions } from "./subscriptions.js";
 import {
@@ -9561,45 +9565,43 @@ class Application {
       Array.isArray(nostrClient?.relays) && nostrClient.relays.length
         ? nostrClient.relays
         : null;
-    if (!relayList || !nostrClient?.pool || typeof nostrClient.pool.list !== "function") {
+    if (!relayList) {
       return;
     }
 
-    const events = await nostrClient.pool.list(relayList, [
-      { kinds: [0], authors: [normalized], limit: 1 },
-    ]);
+    const profileEntry = await fetchProfileMetadata(normalized, {
+      nostr: nostrClient,
+      relays: relayList,
+      logger: devLogger,
+    });
 
     if (this.modalCreatorProfileRequestToken !== requestToken) {
       return;
     }
 
-    const newest = Array.isArray(events)
-      ? events.reduce((latest, event) => {
-          if (!event || typeof event !== "object") {
-            return latest;
-          }
-          const eventPubkey = this.normalizeHexPubkey(event.pubkey);
-          if (eventPubkey && eventPubkey !== normalized) {
-            return latest;
-          }
-          const createdAt = Number.isFinite(event.created_at) ? event.created_at : 0;
-          if (!latest || createdAt > latest.createdAt) {
-            return { createdAt, event };
-          }
-          return latest;
-        }, null)
-      : null;
-
-    if (!newest || !newest.event) {
+    if (!profileEntry?.event) {
       if (this.modalCreatorProfileRequestToken === requestToken) {
         this.modalCreatorProfileRequestToken = null;
       }
       return;
     }
 
+    ensureProfileMetadataSubscription({
+      pubkey: normalized,
+      nostr: nostrClient,
+      relays: relayList,
+      onProfile: ({ profile }) => {
+        if (typeof this.setProfileCacheEntry === "function" && profile) {
+          this.setProfileCacheEntry(normalized, profile);
+        }
+      },
+    });
+
     let parsed = null;
     try {
-      parsed = newest.event.content ? JSON.parse(newest.event.content) : null;
+      parsed = profileEntry.event.content
+        ? JSON.parse(profileEntry.event.content)
+        : null;
     } catch (error) {
       devLogger.warn(
         `[Application] Failed to parse creator profile content for ${normalized}:`,
