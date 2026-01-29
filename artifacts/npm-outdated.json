@@ -13,6 +13,13 @@
     "dependent": "app",
     "location": "/app/node_modules/esbuild"
   },
+  "nostr-tools": {
+    "current": "2.20.0",
+    "wanted": "2.21.0",
+    "latest": "2.21.0",
+    "dependent": "app",
+    "location": "/app/node_modules/nostr-tools"
+  },
   "pixelmatch": {
     "current": "5.3.0",
     "wanted": "5.3.0",
