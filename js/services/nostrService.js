@@ -176,6 +176,30 @@ function sanitizeSnapshotTimestamp(value) {
   return floored;
 }
 
+function resolveDirectMessageCreatedAt(message) {
+  const createdAt = sanitizeSnapshotTimestamp(
+    message?.message?.created_at ??
+      message?.event?.created_at ??
+      message?.created_at ??
+      message?.timestamp,
+  );
+
+  if (createdAt) {
+    return createdAt;
+  }
+
+  return Math.floor(Date.now() / 1000);
+}
+
+function resolveDirectMessageSortValue(message) {
+  return sanitizeSnapshotTimestamp(
+    message?.created_at ??
+      message?.timestamp ??
+      message?.message?.created_at ??
+      message?.event?.created_at,
+  );
+}
+
 const SNAPSHOT_PREVIEW_LIMIT = 160;
 
 function sanitizeSnapshotPreview(value) {
@@ -240,11 +264,7 @@ function resolvePreviewCacheKey(message) {
       : typeof message?.remotePubkey === "string"
       ? message.remotePubkey.trim()
       : "";
-  const timestamp = Number.isFinite(message?.timestamp)
-    ? Math.floor(message.timestamp)
-    : Number.isFinite(message?.message?.created_at)
-    ? Math.floor(message.message.created_at)
-    : 0;
+  const timestamp = resolveDirectMessageSortValue(message);
 
   if (remote && timestamp) {
     return `snapshot:${remote}:${timestamp}`;
@@ -401,11 +421,7 @@ function normalizeDirectMessageRecord(message, actorPubkey = "") {
     receiverPubkey = senderPubkey === actor ? remote : actor;
   }
 
-  const createdAt = sanitizeSnapshotTimestamp(
-    message?.message?.created_at ??
-      message?.event?.created_at ??
-      message?.timestamp,
-  );
+  const createdAt = resolveDirectMessageCreatedAt(message);
 
   const kind =
     Number.isFinite(message?.message?.kind)
@@ -459,7 +475,7 @@ function buildSnapshotFromMessages(messages, actorPubkey = "", resolvePreview = 
       continue;
     }
 
-    const timestamp = sanitizeSnapshotTimestamp(message.timestamp);
+    const timestamp = resolveDirectMessageSortValue(message);
     const preview =
       typeof resolvePreview === "function"
         ? resolvePreview(message)
@@ -490,18 +506,12 @@ function normalizeDirectMessagePayload(message) {
     return null;
   }
 
-  const timestamp =
-    Number.isFinite(message?.timestamp)
-      ? message.timestamp
-      : Number.isFinite(message?.message?.created_at)
-      ? message.message.created_at
-      : Number.isFinite(message?.event?.created_at)
-      ? message.event.created_at
-      : Date.now() / 1000;
+  const createdAt = resolveDirectMessageCreatedAt(message);
 
   return {
     ...message,
-    timestamp,
+    created_at: createdAt,
+    timestamp: createdAt,
   };
 }
 
@@ -516,7 +526,10 @@ function mergeDirectMessageCache(existingMessages, incomingMessages) {
 
     const eventId = normalized.event.id;
     const existing = mergedIndex.get(eventId);
-    if (!existing || normalized.timestamp >= (existing.timestamp || 0)) {
+    if (
+      !existing ||
+      normalized.created_at >= resolveDirectMessageSortValue(existing)
+    ) {
       mergedIndex.set(eventId, normalized);
     }
   };
@@ -530,7 +543,9 @@ function mergeDirectMessageCache(existingMessages, incomingMessages) {
   }
 
   const mergedMessages = Array.from(mergedIndex.values());
-  mergedMessages.sort((a, b) => (b?.timestamp || 0) - (a?.timestamp || 0));
+  mergedMessages.sort(
+    (a, b) => resolveDirectMessageSortValue(b) - resolveDirectMessageSortValue(a),
+  );
 
   return { messages: mergedMessages, index: mergedIndex };
 }
@@ -856,17 +871,10 @@ export class NostrService {
       return;
     }
 
-    const normalized = {
-      ...message,
-      timestamp:
-        Number.isFinite(message?.timestamp)
-          ? message.timestamp
-          : Number.isFinite(message?.message?.created_at)
-          ? message.message.created_at
-          : Number.isFinite(message?.event?.created_at)
-          ? message.event.created_at
-          : Date.now() / 1000,
-    };
+    const normalized = normalizeDirectMessagePayload(message);
+    if (!normalized) {
+      return;
+    }
 
     this.dmMessageIndex.set(eventId, normalized);
 
@@ -891,7 +899,9 @@ export class NostrService {
       this.dmMessages.push(normalized);
     }
 
-    this.dmMessages.sort((a, b) => (b?.timestamp || 0) - (a?.timestamp || 0));
+    this.dmMessages.sort(
+      (a, b) => resolveDirectMessageSortValue(b) - resolveDirectMessageSortValue(a),
+    );
     if (actor) {
       this.dmActorPubkey = actor;
     }
@@ -954,8 +964,14 @@ export class NostrService {
       return this.getDirectMessages();
     }
 
-    this.dmMessages = hydrated;
-    this.dmMessageIndex = new Map();
+    if (force) {
+      this.dmMessages = [];
+      this.dmMessageIndex = new Map();
+    }
+
+    const merged = mergeDirectMessageCache(this.dmMessages, hydrated);
+    this.dmMessageIndex = merged.index;
+    this.dmMessages = merged.messages;
     this.dmHydratedFromSnapshot = hydrated.length > 0;
 
     const snapshot = this.getDirectMessages();
@@ -1027,8 +1043,8 @@ export class NostrService {
     if (resolvedSince === null && initialLoad) {
       let latestTimestamp = 0;
       for (const message of Array.isArray(this.dmMessages) ? this.dmMessages : []) {
-        const timestamp = Number(message?.timestamp);
-        if (Number.isFinite(timestamp) && timestamp > latestTimestamp) {
+        const timestamp = resolveDirectMessageSortValue(message);
+        if (timestamp > latestTimestamp) {
           latestTimestamp = timestamp;
         }
       }
