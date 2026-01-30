@@ -6,6 +6,10 @@ import {
   resolveInfoJsonUrl,
 } from "../utils/storagePointer.js";
 import { getCachedNostrTools } from "./toolkit.js";
+import {
+  validateEventAgainstSchema,
+  NOTE_TYPES,
+} from "../nostrEventSchemas.js";
 
 function stringFromInput(value) {
   if (value === null || value === undefined) {
@@ -934,13 +938,20 @@ export function buildNip71VideoEvent({
     tags.push(...pointerTags);
   }
 
-  return {
+  const event = {
     kind: normalizeNip71Kind(metadata.kind),
     pubkey: normalizedPubkey,
     created_at: timestamp,
     tags,
     content: summary,
   };
+
+  validateEventAgainstSchema(
+    event.kind === 22 ? NOTE_TYPES.NIP71_SHORT_VIDEO : NOTE_TYPES.NIP71_VIDEO,
+    event,
+  );
+
+  return event;
 }
 
 export function collectNip71PointerRequests(videos = []) {
