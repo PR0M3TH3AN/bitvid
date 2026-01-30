@@ -273,7 +273,9 @@ function createController(options = {}) {
       }
       return hashtagStore.disinterests.delete(normalized);
     },
+    load: async () => {},
     publish: async () => ({ ok: true }),
+    load: async () => {},
     on: () => () => {},
     load: async () => {},
   };
