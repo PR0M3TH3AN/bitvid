@@ -491,7 +491,7 @@ class SubscriptionsManager {
         pubkey: normalizedUserPubkey,
         dTag: SUBSCRIPTION_LIST_IDENTIFIER,
         relayUrls,
-        since: shouldForceFullFetch ? 0 : undefined,
+        since: shouldForceFullFetch ? 0 : (cachedSnapshot.createdAt || 0),
         timeoutMs: 12000,
       });
 
@@ -514,7 +514,7 @@ class SubscriptionsManager {
           pubkey: normalizedSessionActorPubkey,
           dTag: SUBSCRIPTION_LIST_IDENTIFIER,
           relayUrls,
-          since: shouldForceSessionFetch ? 0 : undefined,
+          since: shouldForceSessionFetch ? 0 : (sessionCachedSnapshot.createdAt || 0),
           timeoutMs: 12000,
         });
         if (sessionEvents.length) {

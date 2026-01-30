@@ -3053,11 +3053,19 @@ export class NostrClient {
       return existingSigner;
     }
 
+    // Optimization: Check if a signer was registered while we were waiting for the extension call
+    const raceWinner = resolveActiveSigner(extensionPubkey || normalizedPubkey);
+    if (raceWinner && typeof raceWinner.signEvent === "function") {
+      return raceWinner;
+    }
+
     if (typeof extension.signEvent !== "function") {
       return existingSigner;
     }
 
-    const adapter = await createNip07Adapter(extension);
+    const adapter = await createNip07Adapter(extension, {
+      preloadedPubkey: extensionPubkey,
+    });
     if (extensionPubkey) {
       adapter.pubkey = extensionPubkey;
     }
