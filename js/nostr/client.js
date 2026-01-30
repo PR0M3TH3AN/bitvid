@@ -358,7 +358,13 @@ function setActiveSigner(signer) {
 
   hydrateExtensionSignerCapabilities(signer);
   attachNipMethodAliases(signer);
-  signer.capabilities = resolveSignerCapabilities(signer);
+
+  const capsDescriptor = Object.getOwnPropertyDescriptor(signer, "capabilities");
+  const isGetter = capsDescriptor && typeof capsDescriptor.get === "function";
+
+  if (!isGetter) {
+    signer.capabilities = resolveSignerCapabilities(signer);
+  }
 
   const pubkey =
     typeof signer.pubkey === "string" && signer.pubkey.trim()
@@ -376,7 +382,15 @@ function getActiveSigner() {
   hydrateExtensionSignerCapabilities(signer);
   attachNipMethodAliases(signer);
   if (signer && typeof signer === "object") {
-    signer.capabilities = resolveSignerCapabilities(signer);
+    const capsDescriptor = Object.getOwnPropertyDescriptor(
+      signer,
+      "capabilities",
+    );
+    const isGetter = capsDescriptor && typeof capsDescriptor.get === "function";
+
+    if (!isGetter) {
+      signer.capabilities = resolveSignerCapabilities(signer);
+    }
   }
   return signer;
 }
@@ -394,7 +408,15 @@ function resolveActiveSigner(pubkey) {
   hydrateExtensionSignerCapabilities(signer);
   attachNipMethodAliases(signer);
   if (signer && typeof signer === "object") {
-    signer.capabilities = resolveSignerCapabilities(signer);
+    const capsDescriptor = Object.getOwnPropertyDescriptor(
+      signer,
+      "capabilities",
+    );
+    const isGetter = capsDescriptor && typeof capsDescriptor.get === "function";
+
+    if (!isGetter) {
+      signer.capabilities = resolveSignerCapabilities(signer);
+    }
   }
   return signer;
 }

@@ -212,7 +212,7 @@ export async function createNip07Adapter(initialExtension) {
   Object.defineProperty(signer, "capabilities", {
     get: () => {
       const ext = getExtension();
-      const hasNip04 = ext?.nip04 && typeof ext.nip04 === "object";
+      const hasNip04 = !!(ext?.nip04 && typeof ext.nip04 === "object");
       const hasNip44 = !!resolveNip44Module(ext);
       return {
         sign: typeof ext?.signEvent === "function",
