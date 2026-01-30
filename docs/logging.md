@@ -59,10 +59,23 @@ The source of truth lives in `config/instance-config.js`:
 
 - Set `IS_DEV_MODE = true` while developing locally so the dev logger and other
   diagnostics are available.
-- Flip `IS_DEV_MODE = false` before shipping a production build. This change
-  propagates to `isDevMode` (the module export), `window.__BITVID_DEV_MODE__`,
-  and `logger.dev`, silencing development-only messages.
+- Keep `IS_DEV_MODE = false` for production builds. This value propagates to
+  `isDevMode` (the module export), `window.__BITVID_DEV_MODE__`, and
+  `logger.dev`, silencing development-only messages.
 
 Always commit the flag change alongside deployment-ready configuration tweaks.
 Forgetting to update the flag leaves verbose traces in user consoles and can
 expose experimental behavior intended only for QA environments.
+
+If you need to enable dev logging without editing `config/instance-config.js`,
+inject a runtime override before `js/config.js` loads:
+
+```html
+<script>
+  window.__BITVID_DEV_MODE_OVERRIDE__ = true;
+  window.__BITVID_VERBOSE_DEV_MODE_OVERRIDE__ = true;
+</script>
+```
+
+Overrides accept boolean values or the strings `"true"` / `"false"` so they can
+be injected by a build pipeline.
