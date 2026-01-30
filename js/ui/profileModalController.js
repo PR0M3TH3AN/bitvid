@@ -1252,6 +1252,9 @@ export class ProfileModalController {
     this.addRelayButton = null;
     this.restoreRelaysButton = null;
     this.relayHealthPanel = null;
+    this.relayHealthSummary = null;
+    this.relayHealthCounts = null;
+    this.relayHealthMessage = null;
     this.relayHealthList = null;
     this.relayHealthStatus = null;
     this.relayHealthRefreshButton = null;
@@ -1579,6 +1582,12 @@ export class ProfileModalController {
       document.getElementById("restoreRelaysBtn") || null;
     this.relayHealthPanel =
       document.getElementById("relayHealthPanel") || null;
+    this.relayHealthSummary =
+      document.getElementById("relayHealthSummary") || null;
+    this.relayHealthCounts =
+      document.getElementById("relayHealthCounts") || null;
+    this.relayHealthMessage =
+      document.getElementById("relayHealthMessage") || null;
     this.relayHealthList =
       document.getElementById("relayHealthList") || null;
     this.relayHealthStatus =
@@ -7294,11 +7303,45 @@ export class ProfileModalController {
     this.relayHealthStatus.textContent = text;
   }
 
+  updateRelayHealthSummary(snapshot = []) {
+    if (!this.relayHealthCounts || !this.relayHealthMessage) {
+      return;
+    }
+
+    const entries = Array.isArray(snapshot) ? snapshot : [];
+    const total = entries.length;
+    const healthy = entries.filter((entry) => entry.connected).length;
+    const failed = Math.max(0, total - healthy);
+
+    this.relayHealthCounts.textContent = `${healthy} healthy • ${failed} failed`;
+
+    let message = "";
+    if (!total) {
+      message = "No relays configured.";
+    } else if (failed > 0) {
+      message =
+        failed === total
+          ? "All relays are unreachable. Check your connection or update your relay list."
+          : `${failed} relay${failed === 1 ? "" : "s"} unreachable. Playback and publishing may be delayed.`;
+    } else {
+      message = "All relays reachable.";
+    }
+
+    this.relayHealthMessage.className = "mt-1 text-xs text-muted";
+    if (failed > 0) {
+      this.relayHealthMessage.classList.add("text-status-warning");
+    } else if (total > 0) {
+      this.relayHealthMessage.classList.add("text-status-success");
+    }
+    this.relayHealthMessage.textContent = message;
+  }
+
   renderRelayHealthSnapshot(snapshot = []) {
     if (!this.relayHealthList) {
       return;
     }
 
+    this.updateRelayHealthSummary(snapshot);
     this.relayHealthList.innerHTML = "";
 
     if (!snapshot.length) {
