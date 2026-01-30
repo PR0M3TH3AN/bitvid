@@ -132,6 +132,10 @@ class RelayHealthService {
     if (Number.isFinite(latencyMs)) {
       state.lastLatencyMs = Math.max(0, Math.round(latencyMs));
     }
+
+    if (this.nostrClient && typeof this.nostrClient.clearRelayBackoff === "function") {
+      this.nostrClient.clearRelayBackoff(relayUrl);
+    }
   }
 
   recordRelayFailure(relayUrl, error) {
@@ -140,6 +144,12 @@ class RelayHealthService {
     state.errorCount += 1;
     state.lastCheckedAt = Date.now();
     state.lastErrorAt = Date.now();
+
+    if (this.nostrClient && typeof this.nostrClient.markRelayUnreachable === "function") {
+      this.nostrClient.markRelayUnreachable(relayUrl, 60000, {
+        reason: "relay-health-failed",
+      });
+    }
 
     this.logger.dev.warn("[relayHealth] Relay check failed.", {
       relayUrl,

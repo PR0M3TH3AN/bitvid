@@ -415,6 +415,8 @@ const RELAY_RECONNECT_MAX_DELAY_MS = 60000;
 const RELAY_RECONNECT_MAX_ATTEMPTS = 5;
 const RELAY_CIRCUIT_BREAKER_THRESHOLD = 3;
 const RELAY_CIRCUIT_BREAKER_COOLDOWN_MS = 10 * 60 * 1000;
+const RELAY_FAILURE_WINDOW_MS = 5 * 60 * 1000;
+const RELAY_FAILURE_WINDOW_THRESHOLD = 3;
 const EVENTS_CACHE_STORAGE_KEY = "bitvid:eventsCache:v1";
 // We use the policy TTL, but currently the storage backend is hardcoded to IDB (with localStorage fallback).
 // Future refactors should make EventsCacheStore dynamic based on CACHE_POLICIES[NOTE_TYPES.VIDEO_POST].storage.
@@ -1294,6 +1296,7 @@ export class NostrClient {
     this.unreachableRelays = new Set();
     this.relayBackoff = new Map();
     this.relayFailureCounts = new Map();
+    this.relayFailureWindows = new Map();
     this.relayCircuitBreakers = new Map();
     this.relayReconnectTimer = null;
     this.relayReconnectAttempt = 0;
@@ -4578,8 +4581,28 @@ export class NostrClient {
     }
     this.relayBackoff.delete(normalized);
     this.relayFailureCounts.delete(normalized);
+    this.relayFailureWindows.delete(normalized);
     this.unreachableRelays.delete(normalized);
     this.relayCircuitBreakers.delete(normalized);
+  }
+
+  recordRelayFailureWindow(url) {
+    if (!url || typeof url !== "string") {
+      return 0;
+    }
+    const normalized = url.trim();
+    if (!normalized) {
+      return 0;
+    }
+    const now = Date.now();
+    const cutoff = now - RELAY_FAILURE_WINDOW_MS;
+    const history = this.relayFailureWindows.get(normalized) || [];
+    const filtered = history.filter(
+      (timestamp) => Number.isFinite(timestamp) && timestamp >= cutoff,
+    );
+    filtered.push(now);
+    this.relayFailureWindows.set(normalized, filtered);
+    return filtered.length;
   }
 
   markRelayUnreachable(url, ttlMs = 60000, { reason = null } = {}) {
@@ -4590,6 +4613,7 @@ export class NostrClient {
     if (!normalized) {
       return;
     }
+    const windowFailureCount = this.recordRelayFailureWindow(normalized);
     const nextFailureCount = (this.relayFailureCounts.get(normalized) || 0) + 1;
     this.relayFailureCounts.set(normalized, nextFailureCount);
     const backoffMs = this.resolveRelayBackoffMs(nextFailureCount, ttlMs);
@@ -4601,7 +4625,7 @@ export class NostrClient {
       reason,
     });
     this.unreachableRelays.add(normalized);
-    if (nextFailureCount >= RELAY_CIRCUIT_BREAKER_THRESHOLD) {
+    if (windowFailureCount >= RELAY_FAILURE_WINDOW_THRESHOLD) {
       const now = Date.now();
       const openUntil = now + RELAY_CIRCUIT_BREAKER_COOLDOWN_MS;
       const existing = this.relayCircuitBreakers.get(normalized);
@@ -4609,17 +4633,18 @@ export class NostrClient {
         existing && Number.isFinite(existing.openUntil)
           ? Math.max(existing.openUntil, openUntil)
           : openUntil;
+      const circuitReason = reason || "windowed-failures";
       this.relayCircuitBreakers.set(normalized, {
         openUntil: nextOpenUntil,
         failureCount: nextFailureCount,
-        reason,
+        reason: circuitReason,
       });
       if (isDevMode) {
         devLogger.debug("[nostr] Circuit breaker opened for relay.", {
           relay: normalized,
           openUntil: nextOpenUntil,
           failureCount: nextFailureCount,
-          reason,
+          reason: circuitReason,
         });
       }
     }
@@ -4644,6 +4669,7 @@ export class NostrClient {
         }
         this.relayCircuitBreakers.delete(url);
         this.relayFailureCounts.delete(url);
+        this.relayFailureWindows.delete(url);
         this.unreachableRelays.delete(url);
         this.relayBackoff.delete(url);
         if (isDevMode) {
@@ -4662,6 +4688,7 @@ export class NostrClient {
       }
       this.relayBackoff.delete(url);
       this.relayFailureCounts.delete(url);
+      this.relayFailureWindows.delete(url);
       this.unreachableRelays.delete(url);
       if (isDevMode) {
         devLogger.debug(`[nostr] Relay backoff expired for ${url}.`);

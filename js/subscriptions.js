@@ -5,7 +5,7 @@ import {
   requestDefaultExtensionPermissions,
 } from "./nostrClientFacade.js";
 import { convertEventToVideo as sharedConvertEventToVideo } from "./nostr/index.js";
-import { normalizeNostrPubkey } from "./nostr/nip46Client.js";
+import { normalizeNostrPubkey, sanitizeRelayList } from "./nostr/nip46Client.js";
 import {
   listVideoViewEvents,
   subscribeVideoViewEvents,
@@ -1228,13 +1228,6 @@ class SubscriptionsManager {
       userLogger.error("Failed to sign subscription list:", signErr);
       throw signErr;
     }
-
-    const sanitizeRelayList = (candidate) =>
-      Array.isArray(candidate)
-        ? candidate
-            .map((url) => (typeof url === "string" ? url.trim() : ""))
-            .filter(Boolean)
-        : [];
 
     const writeRelays = sanitizeRelayList(nostrClient.writeRelays);
     const fallbackRelays = writeRelays.length

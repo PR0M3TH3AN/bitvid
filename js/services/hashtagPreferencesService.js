@@ -15,6 +15,7 @@ import {
   assertAnyRelayAccepted,
 } from "../nostrPublish.js";
 import { userLogger, devLogger } from "../utils/logger.js";
+import { sanitizeRelayList } from "../nostr/nip46Client.js";
 import { normalizeHashtag } from "../utils/hashtagNormalization.js";
 import { profileCache } from "../state/profileCache.js";
 import { DEFAULT_RELAY_URLS } from "../nostr/toolkit.js";
@@ -96,14 +97,6 @@ function normalizeHexPubkey(pubkey) {
   }
 
   return null;
-}
-
-function sanitizeRelayList(candidate) {
-  return Array.isArray(candidate)
-    ? candidate
-        .map((url) => (typeof url === "string" ? url.trim() : ""))
-        .filter(Boolean)
-    : [];
 }
 
 function normalizeEncryptionToken(value) {
