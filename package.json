@@ -37,7 +37,7 @@
     "@playwright/test": "^1.58.0",
     "@tailwindcss/typography": "^0.5.15",
     "autoprefixer": "^10.4.23",
-    "cross-env": "^7.0.3",
+    "cross-env": "^10.1.0",
     "esbuild": "^0.25.12",
     "fake-indexeddb": "^6.2.5",
     "nostr-tools": "^2.19.4",
