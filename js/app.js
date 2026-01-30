@@ -4080,10 +4080,6 @@ class Application {
     const urlParams = new URLSearchParams(window.location.search);
     const hasVideoParam = urlParams.has("v");
 
-    if (!normalizedView || normalizedView === "most-recent-videos") {
-      setHashView("for-you", { preserveVideoParam: hasVideoParam });
-    }
-
     const rawProviderId =
       typeof detail?.providerId === "string" ? detail.providerId.trim() : "";
     const rawAuthType =
@@ -4100,75 +4096,6 @@ class Application {
     };
     const activePubkey = detail?.pubkey || this.pubkey;
 
-    Promise.resolve()
-      .then(() =>
-        this.handleModerationSettingsChange({
-          settings: getModerationSettings(),
-          skipRefresh: true,
-        }),
-      )
-      .catch((error) => {
-        devLogger.warn(
-          "Failed to sync moderation settings after login:",
-          error,
-        );
-      });
-
-    if (loginContext.identityChanged) {
-      this.resetHashtagPreferencesState();
-      try {
-        this.watchHistoryTelemetry?.resetPlaybackLoggingState?.();
-        this.watchHistoryTelemetry?.refreshPreferenceSettings?.();
-      } catch (error) {
-        devLogger.warn(
-          "Failed to refresh watch history telemetry after identity change:",
-          error,
-        );
-      }
-    }
-
-    const hashtagPreferencesPromise = Promise.resolve(
-      this.loadHashtagPreferencesForPubkey(loginContext.pubkey, {
-        allowPermissionPrompt: false,
-      }),
-    ).catch((error) => {
-      devLogger.warn(
-        "[Application] Background hashtag preferences load failed:",
-        error
-      );
-    });
-
-    if (this.zapController) {
-      try {
-        this.zapController.setVisibility(
-          Boolean(this.currentVideo?.lightningAddress),
-        );
-      } catch (error) {
-        devLogger.warn("[Application] Failed to refresh zap visibility after login:", error);
-      }
-    }
-
-    const shouldReopenZap = this.pendingModalZapOpen;
-    this.pendingModalZapOpen = false;
-    if (shouldReopenZap) {
-      const hasLightning = Boolean(this.currentVideo?.lightningAddress);
-      if (hasLightning && this.videoModal?.openZapDialog) {
-        Promise.resolve()
-          .then(() => this.videoModal.openZapDialog())
-          .then((opened) => {
-            if (opened) {
-              this.zapController?.open();
-            }
-          })
-          .catch((error) => {
-            devLogger.warn(
-              "[Application] Failed to reopen zap dialog after login:",
-              error,
-            );
-          });
-      }
-    }
-
     const initialLoadingState = {
       profile: activePubkey ? "loading" : "idle",
       lists: activePubkey ? "loading" : "idle",
@@ -4184,28 +4111,6 @@ class Application {
       authLoadingState: this.authLoadingState,
     });
 
-    const accessControlReadyPromise =
-      accessControl && typeof accessControl.ensureReady === "function"
-        ? Promise.resolve()
-            .then(() => accessControl.ensureReady())
-            .catch((error) => {
-              userLogger.error(
-                "[Application] Failed to refresh admin lists after login:",
-                error,
-              );
-              throw error;
-            })
-        : null;
-
-    const scheduleAfterFirstRender = () =>
-      new Promise((resolve) => {
-        if (typeof requestAnimationFrame === "function") {
-          requestAnimationFrame(() => requestAnimationFrame(resolve));
-        } else {
-          setTimeout(resolve, 0);
-        }
-      });
-
     const cachedProfile =
       detail?.postLogin && typeof detail.postLogin === "object"
         ? detail.postLogin.profile || null
@@ -4220,78 +4125,6 @@ class Application {
         );
       }
     }
-
-    const startDmHydration = () => {
-      const dmTasks = [];
-      if (activePubkey) {
-        dmTasks.push(
-          Promise.resolve()
-            .then(() =>
-              this.nostrService.loadDirectMessages({
-                actorPubkey: activePubkey,
-                limit: 50,
-                decryptLimit: 50,
-                initialLoad: true,
-              }),
-            )
-            .catch((error) => {
-              devLogger.warn(
-                "[Application] Failed to sync direct messages during login:",
-                error,
-              );
-              throw error;
-            }),
-        );
-
-        if (
-          typeof this.nostrService.ensureDirectMessageSubscription === "function"
-        ) {
-          dmTasks.push(
-            Promise.resolve()
-              .then(() =>
-                this.nostrService.ensureDirectMessageSubscription({
-                  actorPubkey: activePubkey,
-                }),
-              )
-              .catch((error) => {
-                devLogger.warn(
-                  "[Application] Failed to subscribe to direct messages during login:",
-                  error,
-                );
-                throw error;
-              }),
-          );
-        }
-      }
-
-      return dmTasks.length
-        ? Promise.allSettled(dmTasks).then((results) => {
-            const success = results.every(
-              (result) => result.status === "fulfilled",
-            );
-            this.updateAuthLoadingState({
-              dms: success ? "ready" : "error",
-            });
-            return success;
-          })
-        : Promise.resolve(this.updateAuthLoadingState({ dms: "idle" }));
-    };
-
-    const dmStatePromise = Promise.resolve()
-      .then(() => scheduleAfterFirstRender())
-      .then(() => startDmHydration())
-      .catch((error) => {
-        devLogger.warn("[Application] Delayed DM hydration failed:", error);
-        this.updateAuthLoadingState({ dms: "error" });
-        return false;
-      });
-
-    const nwcPromise = Promise.resolve()
-      .then(() => this.nwcSettingsService.onLogin(loginContext))
-      .catch((error) => {
-        devLogger.error("Failed to process NWC settings during login:", error);
-        return null;
-      });
 
     if (this.profileController) {
       try {
@@ -4314,8 +4147,22 @@ class Application {
       this.renderSavedProfiles();
     }
 
+    const accessControlReadyPromise =
+      accessControl && typeof accessControl.ensureReady === "function"
+        ? Promise.resolve()
+            .then(() => accessControl.ensureReady())
+            .catch((error) => {
+              userLogger.error(
+                "[Application] Failed to refresh admin lists after login:",
+                error,
+              );
+              throw error;
+            })
+        : null;
+
     const profileStatePromise = Promise.resolve(postLoginPromise)
-      .then((postLogin) => {
+      .then(async (postLogin) => {
+        // 1. Relays and Profile are now loaded (sequentially or efficiently by authService)
         const nextProfile = postLogin?.profile || cachedProfile;
         if (activePubkey && nextProfile) {
           this.updateActiveProfileUI(activePubkey, nextProfile);
