@@ -428,6 +428,54 @@ function shouldRequestExtensionPermissions(signer) {
   return signer.type === "extension";
 }
 
+const PERMISSION_STATUS_AUTO_HIDE_MS = 12_000;
+const ENCRYPTION_METHOD_PREFIXES = ["nip04.", "nip44."];
+
+function hasEncryptionPermissionMethods(methods) {
+  if (!Array.isArray(methods)) {
+    return false;
+  }
+  return methods.some((method) =>
+    ENCRYPTION_METHOD_PREFIXES.some((prefix) => method.startsWith(prefix)),
+  );
+}
+
+function hasSigningPermissionMethods(methods) {
+  if (!Array.isArray(methods)) {
+    return false;
+  }
+  return methods.some(
+    (method) => method === "sign_event" || method === "get_public_key",
+  );
+}
+
+function resolvePermissionStatusMessage(methods, context) {
+  const normalizedContext =
+    typeof context === "string" ? context.trim().toLowerCase() : "";
+
+  if (normalizedContext === "dm") {
+    return "Approve the extension prompt to enable encrypted direct messages.";
+  }
+  if (normalizedContext === "lists") {
+    return "Approve the extension prompt to access your encrypted lists.";
+  }
+
+  const includesEncryption = hasEncryptionPermissionMethods(methods);
+  const includesSigning = hasSigningPermissionMethods(methods);
+
+  if (includesEncryption && includesSigning) {
+    return "Approve the extension prompt to enable signing and encrypted features (DMs, subscriptions, block lists).";
+  }
+  if (includesEncryption) {
+    return "Approve the extension prompt to enable encrypted features like DMs and private lists.";
+  }
+  if (includesSigning) {
+    return "Approve the extension prompt to enable signing.";
+  }
+
+  return "Approve the extension prompt to continue.";
+}
+
 const RELAY_CONNECT_TIMEOUT_MS = 5000;
 const RELAY_RECONNECT_BASE_DELAY_MS = 2000;
 const RELAY_RECONNECT_MAX_DELAY_MS = 60000;
@@ -1367,6 +1415,7 @@ export class NostrClient {
     this.extensionPermissionsGranted = this.hasCachedExtensionPermissions(
       DEFAULT_NIP07_PERMISSION_METHODS,
     );
+    this.extensionPermissionStatusHandler = null;
   }
 
   getStoredNip46Metadata() {
@@ -2031,6 +2080,7 @@ export class NostrClient {
 
     const permissionResult = await this.ensureExtensionPermissions(
       DEFAULT_NIP07_CORE_METHODS,
+      { context: "login", logMetrics: true, showStatus: false },
     );
     if (!permissionResult.ok) {
       const denialMessage =
@@ -2115,17 +2165,6 @@ export class NostrClient {
     });
     adapter.pubkey = pubkey;
     setActiveSigner(adapter);
-
-    if (!this.extensionPermissionsGranted) {
-      try {
-        await this.ensureExtensionPermissions(DEFAULT_NIP07_PERMISSION_METHODS);
-      } catch (err) {
-        userLogger.warn(
-          "[nostr] Extension permissions were not fully granted after login:",
-          err,
-        );
-      }
-    }
 
     return { pubkey, signer: adapter };
   }
@@ -2916,6 +2955,26 @@ export class NostrClient {
     return normalized.every((method) => this.extensionPermissionCache.has(method));
   }
 
+  setExtensionPermissionStatusHandler(handler) {
+    this.extensionPermissionStatusHandler =
+      typeof handler === "function" ? handler : null;
+  }
+
+  emitExtensionPermissionStatus(status) {
+    if (typeof this.extensionPermissionStatusHandler !== "function") {
+      return;
+    }
+
+    try {
+      this.extensionPermissionStatusHandler(status);
+    } catch (error) {
+      devLogger.warn(
+        "[nostr] Extension permission status handler threw:",
+        error,
+      );
+    }
+  }
+
   warmupExtension() {
     const extension =
       typeof window !== "undefined" && window && window.nostr ? window.nostr : null;
@@ -2929,10 +2988,15 @@ export class NostrClient {
     };
   }
 
-  async ensureExtensionPermissions(methods = DEFAULT_NIP07_PERMISSION_METHODS) {
+  async ensureExtensionPermissions(
+    methods = DEFAULT_NIP07_PERMISSION_METHODS,
+    options = {},
+  ) {
     if (!Array.isArray(methods)) {
       methods = [];
     }
+
+    const config = options && typeof options === "object" ? options : {};
 
     const normalized = Array.from(
       new Set(
@@ -2978,9 +3042,69 @@ export class NostrClient {
     }
     this.extensionReady = true;
 
+    const statusHandler =
+      typeof config.onStatus === "function"
+        ? config.onStatus
+        : this.extensionPermissionStatusHandler;
+    const shouldShowStatus = config.showStatus !== false;
+    const statusMessage =
+      typeof config.statusMessage === "string" && config.statusMessage.trim()
+        ? config.statusMessage.trim()
+        : resolvePermissionStatusMessage(normalized, config.context);
+    const statusAutoHideMs = Number.isFinite(config.autoHideMs)
+      ? config.autoHideMs
+      : PERMISSION_STATUS_AUTO_HIDE_MS;
+    const shouldShowSpinner = config.showSpinner !== false;
+
+    if (statusHandler && shouldShowStatus && statusMessage) {
+      try {
+        statusHandler({
+          phase: "permission",
+          state: "prompt",
+          context:
+            typeof config.context === "string" ? config.context.trim() : "",
+          message: statusMessage,
+          methods: outstanding.slice(),
+          autoHideMs: statusAutoHideMs,
+          showSpinner: shouldShowSpinner,
+        });
+      } catch (error) {
+        devLogger.warn(
+          "[nostr] Failed to emit extension permission status:",
+          error,
+        );
+      }
+    }
+
+    const shouldLogMetrics = config.logMetrics === true;
+    const now =
+      typeof performance !== "undefined" &&
+      typeof performance.now === "function"
+        ? () => performance.now()
+        : () => Date.now();
+    const metricsStart = shouldLogMetrics ? now() : null;
+
     const enableResult = await requestEnablePermissions(extension, outstanding, {
       isDevMode,
     });
+
+    if (shouldLogMetrics && metricsStart !== null) {
+      const metricsContext =
+        typeof config.metricsLabel === "string" && config.metricsLabel.trim()
+          ? config.metricsLabel.trim()
+          : typeof config.context === "string" && config.context.trim()
+            ? config.context.trim()
+            : "permissions";
+      const durationMs = Math.max(0, Math.round(now() - metricsStart));
+      userLogger.info(
+        `[nostr] extension.enable duration (${metricsContext})`,
+        {
+          durationMs,
+          requestedCount: outstanding.length,
+          ok: Boolean(enableResult?.ok),
+        },
+      );
+    }
 
     if (enableResult?.ok) {
       this.markExtensionPermissions(outstanding);
@@ -4943,6 +5067,7 @@ export class NostrClient {
     ) {
       extensionPermissionResult = await this.ensureExtensionPermissions(
         DEFAULT_NIP07_ENCRYPTION_METHODS,
+        { context: "dm" },
       );
       if (!extensionPermissionResult?.ok) {
         devLogger.warn(
@@ -5400,6 +5525,7 @@ export class NostrClient {
     if (shouldRequestExtensionPermissions(signer)) {
       const permissionResult = await this.ensureExtensionPermissions(
         DEFAULT_NIP07_ENCRYPTION_METHODS,
+        { context: "dm" },
       );
       if (!permissionResult.ok) {
         userLogger.warn(
