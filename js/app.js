@@ -4179,54 +4179,119 @@ class Application {
         return null;
       });
 
-    const listTasks = [];
-    if (activePubkey && typeof this.authService.loadBlocksForPubkey === "function") {
-      listTasks.push(
-        Promise.resolve()
-          .then(() => this.authService.loadBlocksForPubkey(activePubkey))
-          .catch((error) => {
+    // Chain list loading to profile state to ensure relays are loaded first.
+    const listStatePromise = profileStatePromise.then(() => {
+      const tasks = [];
+      if (activePubkey && typeof this.authService.loadBlocksForPubkey === "function") {
+        tasks.push(
+          this.authService.loadBlocksForPubkey(activePubkey).catch((error) => {
             devLogger.warn(
               "[Application] Failed to load blocks during login:",
               error,
             );
             throw error;
           }),
-      );
-    }
+        );
+      }
 
-    if (
-      activePubkey &&
-      subscriptions &&
-      typeof subscriptions.ensureLoaded === "function"
-    ) {
-      listTasks.push(
-        Promise.resolve()
-          .then(() =>
-            subscriptions.ensureLoaded(activePubkey, {
-              allowPermissionPrompt: false,
-            }),
-          )
-          .catch((error) => {
+      if (
+        activePubkey &&
+        subscriptions &&
+        typeof subscriptions.ensureLoaded === "function"
+      ) {
+        tasks.push(
+          subscriptions.ensureLoaded(activePubkey, {
+            allowPermissionPrompt: false,
+          }).catch((error) => {
             devLogger.warn(
               "[Application] Failed to load subscriptions during login:",
               error,
             );
             throw error;
           }),
-      );
-    }
+        );
+      }
 
-    const listStatePromise = listTasks.length
-      ? Promise.allSettled(listTasks).then((results) => {
-          const success = results.every(
-            (result) => result.status === "fulfilled",
-          );
-          this.updateAuthLoadingState({
-            lists: success ? "ready" : "error",
+      if (!tasks.length) {
+        this.updateAuthLoadingState({ lists: "idle" });
+        return Promise.resolve(true);
+      }
+
+      return Promise.allSettled(tasks).then((results) => {
+        const success = results.every(
+          (result) => result.status === "fulfilled",
+        );
+        this.updateAuthLoadingState({
+          lists: success ? "ready" : "error",
+        });
+        return success;
+      });
+    });
+
+    const dmStatePromise = profileStatePromise.then(() => {
+      if (
+        activePubkey &&
+        this.nostrService &&
+        typeof this.nostrService.loadDirectMessages === "function"
+      ) {
+        return this.nostrService
+          .loadDirectMessages({
+            actorPubkey: activePubkey,
+            limit: 50,
+            initialLoad: true,
+          })
+          .then(() => {
+            this.updateAuthLoadingState({ dms: "ready" });
+          })
+          .catch((error) => {
+            devLogger.warn(
+              "[Application] Failed to load direct messages during login:",
+              error,
+            );
+            this.updateAuthLoadingState({ dms: "error" });
           });
-          return success;
-        })
-      : Promise.resolve(this.updateAuthLoadingState({ lists: "idle" }));
+      }
+      this.updateAuthLoadingState({ dms: "idle" });
+      return Promise.resolve();
+    });
+
+    const nwcPromise = profileStatePromise.then(() => {
+      if (
+        activePubkey &&
+        this.nwcSettingsService &&
+        typeof this.nwcSettingsService.hydrateNwcSettingsForPubkey === "function"
+      ) {
+        return this.nwcSettingsService
+          .hydrateNwcSettingsForPubkey(activePubkey)
+          .catch((error) => {
+            devLogger.warn(
+              "[Application] Failed to hydrate NWC settings during login:",
+              error,
+            );
+          });
+      }
+      return Promise.resolve();
+    });
+
+    const hashtagPreferencesPromise = profileStatePromise.then(() => {
+      if (
+        activePubkey &&
+        this.hashtagPreferences &&
+        typeof this.hashtagPreferences.load === "function"
+      ) {
+        return this.hashtagPreferences
+          .load(activePubkey, {
+            allowPermissionPrompt: false,
+          })
+          .catch((error) => {
+            devLogger.warn(
+              "[Application] Failed to load hashtag preferences during login:",
+              error,
+            );
+          });
+      }
+      return Promise.resolve();
+    });
 
     void Promise.allSettled([
       profileStatePromise,
@@ -4234,7 +4299,7 @@ class Application {
       dmStatePromise,
     ]);
     void nwcPromise;
-    // We do not await hashtagPreferencesPromise here; it loads in the background.
+    void hashtagPreferencesPromise;
 
     if (activePubkey) {
       const seedBlacklist = () => {
