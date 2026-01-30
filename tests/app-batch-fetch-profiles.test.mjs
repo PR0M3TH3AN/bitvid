@@ -51,7 +51,7 @@ test("batchFetchProfiles handles fast and failing relays", async () => {
     : [];
   const originalReadRelays = Array.isArray(nostrClient.readRelays)
     ? [...nostrClient.readRelays]
-    : [];
+    : nostrClient.readRelays;
   const originalWriteRelays = Array.isArray(nostrClient.writeRelays)
     ? [...nostrClient.writeRelays]
     : nostrClient.writeRelays;

@@ -275,7 +275,7 @@ function createController(options = {}) {
     },
     load: async () => {},
     publish: async () => ({ ok: true }),
-    load: async () => {},
+    load: async () => true,
     on: () => () => {},
     load: async () => {},
   };
