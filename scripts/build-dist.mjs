@@ -38,7 +38,8 @@ function copyFile(src, dest) {
   if (fs.existsSync(src)) {
     fs.copyFileSync(src, dest);
   } else {
-    console.warn(`Warning: Source file ${src} does not exist.`);
+    console.error(`Error: Source file ${src} does not exist.`);
+    process.exit(1);
   }
 }
 
