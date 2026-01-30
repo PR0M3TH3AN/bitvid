@@ -1,27 +1,45 @@
 # Developer Onboarding Audit Report
 
-**Date:** 2023-10-24
-**Auditor:** AI Agent
+**Date:** 2026-01-30
+**Agent:** Jules
 
 ## Summary
-The onboarding process was audited by simulating a fresh checkout and executing the documented steps. All commands succeeded without errors. The documentation was updated to reflect a more streamlined workflow using `npm start`.
 
-## Findings
+The onboarding process was audited by simulating a fresh developer checkout. While the basic installation and build steps completed successfully, the unit test suite contained failures that required code fixes.
 
-### 1. Command Execution
-The following commands were executed from a clean state (simulated):
-- `npm ci`: **Success** (Installed 314 packages)
-- `npm run build:css`: **Success** (Generated `css/tailwind.generated.css`)
-- `npm run format`: **Success** (Formatted files)
+## Steps Executed
 
-### 2. Documentation
-- **Observation:** `README.md` and `CONTRIBUTING.md` had slightly diverging instructions for building and starting the server. `README.md` suggested manual build then `python` or `npx serve`. `CONTRIBUTING.md` focused on `npm run build`.
-- **Action:** Both documents were updated to recommend `npm start` as the primary command, which handles both building and serving. This simplifies the onboarding process.
+1.  **Dependencies**: `npm ci` (Success)
+2.  **Build**: `npm run build:css` (Success, with warning)
+3.  **Format**: `npm run format` (Success)
+4.  **Lint**: `npm run lint` (Success)
+5.  **Tests**: `npm run test:unit` (Failure initially)
 
-### 3. Dev Container
-- **Observation:** The project has a valid `.devcontainer/devcontainer.json`.
-- **Action:** Added `"forwardPorts": [3000]` to the configuration to automatically expose the development server port when running in a container.
+## Findings & Fixes
+
+### 1. Unit Test Failure: `tests/app-batch-fetch-profiles.test.mjs`
+
+*   **Issue**: The test failed with `expected a query per relay. 4 !== 2`.
+*   **Cause**: The test mocked `nostrClient.relays` and `writeRelays` but not `readRelays`. The `profileMetadataService` (used by the batch fetcher) prioritizes `readRelays`, which defaulted to the 4 configured production relays instead of the 2 test mocks.
+*   **Fix**: Updated the test to explicitly mock `nostrClient.readRelays` to match the test configuration.
+
+### 2. Unit Test Failure: `tests/profile-modal-controller.test.mjs`
+
+*   **Issue**: The test failed with `TypeError: this.hashtagPreferencesService.load is not a function`.
+*   **Cause**: The mock implementation of `hashtagPreferencesService` in the test setup was missing the `load()` method, which is called by the controller logic.
+*   **Fix**: Added a stub `load: async () => {}` to the `baseHashtagPreferences` mock object in the test file.
+
+### 3. Build Warning: `caniuse-lite is outdated`
+
+*   **Issue**: `npm run build:css` outputs a warning: `Browserslist: caniuse-lite is outdated`.
+*   **Action**: Executed `npx update-browserslist-db@latest`.
+*   **Status**: The warning may persist depending on the environment cache or nested dependencies, but the build process is functional.
 
 ## Recommendations
-- Use `npm start` for local development.
-- Use the Dev Container for a guaranteed reproducible environment if local setup issues arise.
+
+*   **Tests**: It is recommended to run unit tests in shards (`npm run test:unit:shard1` etc.) locally if the full suite times out, as observed in this environment.
+*   **Documentation**: The `CONTRIBUTING.md` guide is generally accurate.
+
+## Conclusion
+
+The onboarding friction was primarily due to bit-rot in unit tests. These have been corrected. The environment is now ready for development.
