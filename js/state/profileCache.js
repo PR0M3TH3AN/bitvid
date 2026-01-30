@@ -166,21 +166,39 @@ class ProfileCache {
       return null;
     }
 
+    const existingEntry = this.getProfileData(normalizedPubkey, "profile");
+    const existingProfile = existingEntry?.profile || {};
+
+    const existingName = sanitizeProfileString(existingProfile.name);
+    const existingPicture = sanitizeProfileMediaUrl(existingProfile.picture);
+    const existingAbout = sanitizeProfileString(existingProfile.about);
+    const existingWebsite = sanitizeProfileString(existingProfile.website);
+    const existingBanner = sanitizeProfileMediaUrl(existingProfile.banner);
+    const existingLud16 = sanitizeProfileString(existingProfile.lud16);
+    const existingLud06 = sanitizeProfileString(existingProfile.lud06);
+    const existingLightningAddress = sanitizeProfileString(
+      existingProfile.lightningAddress,
+    );
+
     const normalized = {
       name:
         sanitizeProfileString(profile.name || profile.display_name) ||
+        existingName ||
         "Unknown",
       picture:
         sanitizeProfileMediaUrl(profile.picture || profile.image) ||
+        existingPicture ||
         "assets/svg/default-profile.svg",
     };
 
-    const about = sanitizeProfileString(profile.about || profile.aboutMe);
+    const about =
+      sanitizeProfileString(profile.about || profile.aboutMe) || existingAbout;
     if (about) {
       normalized.about = about;
     }
 
-    const website = sanitizeProfileString(profile.website || profile.url);
+    const website =
+      sanitizeProfileString(profile.website || profile.url) || existingWebsite;
     if (website) {
       normalized.website = website;
     }
@@ -191,18 +209,19 @@ class ProfileCache {
         profile.background ||
         profile.cover ||
         profile.cover_image ||
-        profile.coverImage
+        profile.coverImage,
     );
-    if (banner) {
-      normalized.banner = banner;
+    const resolvedBanner = banner || existingBanner;
+    if (resolvedBanner) {
+      normalized.banner = resolvedBanner;
     }
 
-    const lud16 = sanitizeProfileString(profile.lud16);
+    const lud16 = sanitizeProfileString(profile.lud16) || existingLud16;
     if (lud16) {
       normalized.lud16 = lud16;
     }
 
-    const lud06 = sanitizeProfileString(profile.lud06);
+    const lud06 = sanitizeProfileString(profile.lud06) || existingLud06;
     if (lud06) {
       normalized.lud06 = lud06;
     }
@@ -212,8 +231,11 @@ class ProfileCache {
       lud16,
       lud06,
     ].filter(Boolean);
-    if (lightningCandidates.length) {
-      normalized.lightningAddress = lightningCandidates[0];
+    const resolvedLightningAddress = lightningCandidates.length
+      ? lightningCandidates[0]
+      : existingLightningAddress;
+    if (resolvedLightningAddress) {
+      normalized.lightningAddress = resolvedLightningAddress;
     }
 
     const entry = {
