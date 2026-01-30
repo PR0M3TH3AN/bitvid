@@ -908,11 +908,14 @@ class UserBlockListManager {
     }
     this.ensureBlockListSubscription(normalized, relays);
 
-    const localBlocks = this._loadLocal(normalized);
-    const hasLocalData = !!localBlocks;
+    const localData = this._loadLocal(normalized);
+    const hasLocalData = !!localData;
 
-    if (localBlocks) {
-      this.blockedPubkeys = localBlocks;
+    if (localData) {
+      this.blockedPubkeys = localData.blockedPubkeys;
+      if (Number.isFinite(localData.createdAt)) {
+        this.blockEventCreatedAt = localData.createdAt;
+      }
       this.loaded = true;
       this.emitter.emit(USER_BLOCK_EVENTS.CHANGE, {
         action: "sync",
@@ -1385,9 +1388,13 @@ class UserBlockListManager {
         }
       };
 
-      // If we don't have local data, we must ignore the sync metadata and force a full fetch (since: 0).
-      // Otherwise, we might miss data if the metadata store says we are up-to-date but the actual list is missing.
-      const fetchSince = hasLocalData ? undefined : 0;
+      // Anchor the fetch to the service's current state to prevent desync.
+      // If we have cached data, we ask for updates since that timestamp.
+      // If we have no data, we force a full fetch (since=0).
+      const fetchSince =
+        hasLocalData && Number.isFinite(this.blockEventCreatedAt)
+          ? this.blockEventCreatedAt
+          : 0;
 
       // Concurrent incremental fetch for both kinds
       const [muteEvents, blockEvents] = await Promise.all([
@@ -1437,7 +1444,15 @@ class UserBlockListManager {
     }
     const cached = profileCache.getProfileData(normalizedActorHex, "blocks");
     if (Array.isArray(cached)) {
-      return new Set(cached);
+      return { blockedPubkeys: new Set(cached), createdAt: null };
+    }
+    if (cached && typeof cached === "object") {
+      return {
+        blockedPubkeys: new Set(
+          Array.isArray(cached.blockedPubkeys) ? cached.blockedPubkeys : [],
+        ),
+        createdAt: Number.isFinite(cached.createdAt) ? cached.createdAt : null,
+      };
     }
     return null;
   }
@@ -1447,11 +1462,11 @@ class UserBlockListManager {
     if (!normalizedActorHex) {
       return;
     }
-    profileCache.setProfileData(
-      normalizedActorHex,
-      "blocks",
-      Array.from(this.blockedPubkeys),
-    );
+    profileCache.setProfileData(normalizedActorHex, "blocks", {
+      blockedPubkeys: Array.from(this.blockedPubkeys),
+      createdAt: this.blockEventCreatedAt,
+      version: 1,
+    });
   }
 
   _getSeedState(actorHex) {

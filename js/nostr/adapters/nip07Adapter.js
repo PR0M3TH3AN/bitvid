@@ -42,7 +42,7 @@ function resolveNip44Module(extension) {
   return nip44;
 }
 
-export async function createNip07Adapter(initialExtension) {
+export async function createNip07Adapter(initialExtension, { preloadedPubkey } = {}) {
   const getExtension = () => {
     if (typeof window !== "undefined" && window.nostr) {
       return window.nostr;
@@ -86,9 +86,10 @@ export async function createNip07Adapter(initialExtension) {
   };
 
   const pubkey =
-    typeof bootstrapExtension.getPublicKey === "function"
+    preloadedPubkey ||
+    (typeof bootstrapExtension.getPublicKey === "function"
       ? normalizeActorKey(await getPublicKey())
-      : "";
+      : "");
 
   // Wrapper builders to ensure dynamic lookup at call time
   const createNip04Encrypt = () => (pubkey, plaintext, options = {}) => {

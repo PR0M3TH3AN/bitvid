@@ -1,3 +1,4 @@
+import "./test-helpers/setup-localstorage.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
