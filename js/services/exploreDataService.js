@@ -6,6 +6,9 @@ import { buildVideoAddressPointer } from "../utils/videoPointer.js";
 const DEFAULT_IDF_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const DEFAULT_HISTORY_REFRESH_INTERVAL_MS = 60 * 1000;
 const DEFAULT_REFRESH_DEBOUNCE_MS = 200;
+const YIELD_CHUNK_SIZE = 500;
+
+const yieldToMain = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 function normalizeAddressKey(value) {
   if (typeof value !== "string") {
@@ -99,7 +102,8 @@ export async function buildWatchHistoryTagCounts({
     return counts;
   }
 
-  for (const entry of items) {
+  for (let i = 0; i < items.length; i++) {
+    const entry = items[i];
     const pointer = normalizePointerInput(entry?.pointer || entry);
     let video = entry?.video || entry?.metadata?.video || null;
 
@@ -123,12 +127,16 @@ export async function buildWatchHistoryTagCounts({
     for (const tag of tags) {
       counts.set(tag, (counts.get(tag) || 0) + 1);
     }
+
+    if (i > 0 && i % YIELD_CHUNK_SIZE === 0) {
+      await yieldToMain();
+    }
   }
 
   return counts;
 }
 
-export function buildTagIdf({ videos } = {}) {
+export async function buildTagIdf({ videos } = {}) {
   const idf = new Map();
   const list = Array.isArray(videos) ? videos : [];
   if (!list.length) {
@@ -138,22 +146,30 @@ export function buildTagIdf({ videos } = {}) {
   const docFrequency = new Map();
   const totalDocs = list.length;
 
-  for (const video of list) {
+  for (let i = 0; i < list.length; i++) {
+    const video = list[i];
     const tags = collectVideoTags(video);
-    if (!tags.size) {
-      continue;
+    if (tags.size) {
+      for (const tag of tags) {
+        docFrequency.set(tag, (docFrequency.get(tag) || 0) + 1);
+      }
     }
 
-    for (const tag of tags) {
-      docFrequency.set(tag, (docFrequency.get(tag) || 0) + 1);
+    if (i > 0 && i % YIELD_CHUNK_SIZE === 0) {
+      await yieldToMain();
     }
   }
 
+  let processedCount = 0;
   for (const [tag, df] of docFrequency.entries()) {
     const ratio = (totalDocs + 1) / (df + 1);
     const value = 1 + Math.log(ratio);
     if (Number.isFinite(value) && value > 0) {
       idf.set(tag, value);
+    }
+    processedCount++;
+    if (processedCount % YIELD_CHUNK_SIZE === 0) {
+      await yieldToMain();
     }
   }
 
@@ -310,7 +326,7 @@ export default class ExploreDataService {
     }
   }
 
-  refreshTagIdf({ force = false, videos, reason } = {}) {
+  async refreshTagIdf({ force = false, videos, reason } = {}) {
     const now = Date.now();
     if (!force && this.tagIdfUpdatedAt) {
       const elapsed = now - this.tagIdfUpdatedAt;
@@ -326,7 +342,7 @@ export default class ExploreDataService {
       : [];
 
     try {
-      this.tagIdf = buildTagIdf({ videos: sourceVideos });
+      this.tagIdf = await buildTagIdf({ videos: sourceVideos });
       this.tagIdfUpdatedAt = now;
     } catch (error) {
       if (this.logger?.warn) {
