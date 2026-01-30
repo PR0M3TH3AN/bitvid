@@ -23,7 +23,7 @@ import { WSS_TRACKERS } from "./constants.js";
 import { safeDecodeURIComponent } from "./utils/safeDecode.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import { emit } from "./embedDiagnostics.js";
-import { infoHashFromMagnet, webSeedsFromMagnet } from "./magnets.js";
+import { infoHashFromMagnet } from "./magnets.js";
 
 const DEFAULT_PROBE_TRACKERS = Object.freeze([...WSS_TRACKERS]);
 
@@ -960,18 +960,15 @@ export class TorrentClient {
       }
 
       const isFirefoxBrowser = this.isFirefox();
-      const explicitUrls = Array.isArray(opts?.urlList)
+      const candidateUrls = Array.isArray(opts?.urlList)
         ? opts.urlList
             .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
             .filter((entry) => /^https?:\/\//i.test(entry))
         : [];
 
-      const magnetUrls = webSeedsFromMagnet(effectiveMagnetURI);
-      const combinedUrls = [...new Set([...explicitUrls, ...magnetUrls])];
-
       const chromeOptions = { strategy: "sequential" };
-      if (combinedUrls.length) {
-        chromeOptions.urlList = combinedUrls;
+      if (candidateUrls.length) {
+        chromeOptions.urlList = candidateUrls;
       }
 
       return new Promise((resolve, reject) => {
