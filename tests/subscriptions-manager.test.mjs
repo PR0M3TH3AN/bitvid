@@ -542,6 +542,114 @@ test(
 );
 
 test(
+  "loadSubscriptions retries permission-required decrypts only when enabled",
+  async () => {
+    const SubscriptionsManager = subscriptions.constructor;
+    const manager = new SubscriptionsManager();
+
+    const originalRelays = Array.isArray(nostrClient.relays)
+      ? [...nostrClient.relays]
+      : nostrClient.relays;
+    const originalWriteRelays = Array.isArray(nostrClient.writeRelays)
+      ? [...nostrClient.writeRelays]
+      : nostrClient.writeRelays;
+    const originalPool = nostrClient.pool;
+    const originalFetchIncremental = nostrClient.fetchListIncrementally;
+    const originalEnsurePermissions = nostrClient.ensureExtensionPermissions;
+    const originalSigner = getActiveSigner();
+    const originalEnsureSubscription = manager.ensureSubscriptionListSubscription;
+
+    const hadWindow = typeof globalThis.window !== "undefined";
+    if (!hadWindow) {
+      globalThis.window = {};
+    }
+    const originalWindowNostr = globalThis.window.nostr;
+
+    const relayUrls = ["wss://relay-permission.example"];
+    nostrClient.relays = relayUrls;
+    nostrClient.writeRelays = relayUrls;
+
+    const originalRelayEntries = relayManager.getEntries();
+    relayManager.setEntries(relayUrls.map(url => ({ url, mode: "both" })), { allowEmpty: false, updateClient: false });
+
+    const actor = "f".repeat(64);
+    const event = {
+      id: "event-permission",
+      created_at: 100,
+      pubkey: actor,
+      content: "cipher-permission",
+      tags: [["encrypted", "nip04"]],
+    };
+
+    nostrClient.pool = {};
+    nostrClient.fetchListIncrementally = async () => [event];
+    nostrClient.ensureExtensionPermissions = async () => ({ ok: true });
+    manager.ensureSubscriptionListSubscription = () => null;
+    clearActiveSigner();
+
+    const decryptCalls = [];
+    manager.decryptSubscriptionEvent = async (_event, _pubkey, options) => {
+      decryptCalls.push(options);
+      if (!options?.allowPermissionPrompt) {
+        const error = new Error("permissions required");
+        error.code = "subscriptions-permission-required";
+        return { ok: false, error };
+      }
+      return { ok: true, plaintext: JSON.stringify([["p", "pub-allowed"]]) };
+    };
+
+    try {
+      await manager.updateFromRelays(actor, { allowPermissionPrompt: false });
+
+      assert.equal(
+        decryptCalls.length,
+        1,
+        "should attempt decryption once without retry",
+      );
+      assert.equal(
+        manager.subscribedPubkeys.size,
+        0,
+        "subscriptions should remain empty when permissions are deferred",
+      );
+
+      await manager.updateFromRelays(actor, { allowPermissionPrompt: true });
+
+      assert.equal(
+        decryptCalls.length,
+        2,
+        "explicit permission prompts should trigger a retry",
+      );
+      assert.deepEqual(
+        Array.from(manager.subscribedPubkeys),
+        ["pub-allowed"],
+        "retry with permission prompts should populate subscriptions",
+      );
+    } finally {
+      relayManager.setEntries(originalRelayEntries, { allowEmpty: false, updateClient: false });
+      nostrClient.relays = originalRelays;
+      nostrClient.writeRelays = originalWriteRelays;
+      nostrClient.pool = originalPool;
+      nostrClient.fetchListIncrementally = originalFetchIncremental;
+      nostrClient.ensureExtensionPermissions = originalEnsurePermissions;
+      manager.ensureSubscriptionListSubscription = originalEnsureSubscription;
+      setActiveSigner(originalSigner);
+      if (typeof originalWindowNostr === "undefined") {
+        delete globalThis.window.nostr;
+      } else {
+        globalThis.window.nostr = originalWindowNostr;
+      }
+      if (!hadWindow) {
+        delete globalThis.window;
+      }
+      localStorage.clear();
+      profileCache.memoryCache.clear();
+      profileCache.activePubkey = null;
+      clearActiveSigner();
+    }
+  },
+);
+
+test(
   "showSubscriptionVideos waits for nostrService warm-up and refreshes after updates",
   async () => {
     const SubscriptionsManager = subscriptions.constructor;

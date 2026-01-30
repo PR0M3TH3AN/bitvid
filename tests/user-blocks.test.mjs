@@ -696,6 +696,102 @@ await (async () => {
 })();
 
 await (async () => {
+  const actor = "9".repeat(64);
+  const relays = ["wss://relay-login-mode.example"];
+
+  const originalRelayEntries = relayManager.getEntries();
+  relayManager.setEntries(relays.map(url => ({ url, mode: "both" })), { allowEmpty: false, updateClient: false });
+
+  const originalPool = nostrClient.pool;
+  const originalRelays = Array.isArray(nostrClient.relays)
+    ? [...nostrClient.relays]
+    : nostrClient.relays;
+  const originalWriteRelays = Array.isArray(nostrClient.writeRelays)
+    ? [...nostrClient.writeRelays]
+    : nostrClient.writeRelays;
+  const originalEnsurePermissions = nostrClient.ensureExtensionPermissions;
+  const originalSigner = getActiveSigner();
+  const originalNostr = window.nostr;
+  const originalBlocked = new Set(userBlocks.blockedPubkeys);
+  const originalBlockEventId = userBlocks.blockEventId;
+  const originalBlockEventCreatedAt = userBlocks.blockEventCreatedAt;
+  const originalMuteEventId = userBlocks.muteEventId;
+  const originalMuteEventCreatedAt = userBlocks.muteEventCreatedAt;
+  const originalLoaded = userBlocks.loaded;
+
+  let permissionRequests = 0;
+  nostrClient.ensureExtensionPermissions = async () => {
+    permissionRequests += 1;
+    return { ok: true };
+  };
+
+  nostrClient.relays = relays;
+  nostrClient.writeRelays = relays;
+  nostrClient.pool = {
+    list: async () => [
+      {
+        id: "event-login",
+        kind: 10000,
+        created_at: 100,
+        pubkey: actor,
+        content: "cipher-login",
+        tags: [["encrypted", "nip04"]],
+      },
+    ],
+  };
+
+  const statusEvents = [];
+  const unsubscribeStatus = userBlocks.on(USER_BLOCK_EVENTS.STATUS, (detail) => {
+    statusEvents.push(detail);
+  });
+
+  clearActiveSigner();
+  window.nostr = undefined;
+
+  try {
+    const start = Date.now();
+    await userBlocks.loadBlocks(actor, { allowPermissionPrompt: false });
+    const duration = Date.now() - start;
+
+    assert.equal(
+      permissionRequests,
+      0,
+      "login-mode load should not request extension permissions",
+    );
+    assert.ok(
+      duration < 200,
+      `login-mode load should settle quickly (duration: ${duration}ms)`,
+    );
+
+    const permissionStatus = statusEvents.find(
+      (detail) => detail?.status === "permission-required",
+    );
+    assert.ok(permissionStatus, "login-mode load should emit permission-required status");
+    assert.equal(permissionStatus.allowPermissionPrompt, false);
+  } finally {
+    if (typeof unsubscribeStatus === "function") {
+      unsubscribeStatus();
+    }
+    relayManager.setEntries(originalRelayEntries, { allowEmpty: false, updateClient: false });
+    userBlocks.blockedPubkeys = originalBlocked;
+    userBlocks.blockEventId = originalBlockEventId;
+    userBlocks.blockEventCreatedAt = originalBlockEventCreatedAt;
+    userBlocks.muteEventId = originalMuteEventId;
+    userBlocks.muteEventCreatedAt = originalMuteEventCreatedAt;
+    userBlocks.loaded = originalLoaded;
+    nostrClient.pool = originalPool;
+    nostrClient.relays = originalRelays;
+    nostrClient.writeRelays = originalWriteRelays;
+    nostrClient.ensureExtensionPermissions = originalEnsurePermissions;
+    window.nostr = originalNostr;
+    clearActiveSigner();
+    if (originalSigner) {
+      setActiveSigner(originalSigner);
+    }
+  }
+})();
+
+await (async () => {
   const actor = "1".repeat(64);
   const blocked = "2".repeat(64);
 

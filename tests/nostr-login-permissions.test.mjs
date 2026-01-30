@@ -456,6 +456,42 @@ test("NIP-07 login quickly retries when a permission payload stalls", async () =
   }
 });
 
+test("NIP-07 login does not wait for deferred permission grants", async () => {
+  clearStoredPermissions();
+  const env = setupLoginEnvironment();
+  const originalEnsurePermissions = nostrClient.ensureExtensionPermissions;
+  let completionPromise;
+
+  nostrClient.ensureExtensionPermissions = async () => {
+    completionPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error("permission denied")), 300);
+    });
+    return { ok: true, completionPromise };
+  };
+
+  try {
+    const start = Date.now();
+    const result = await nip07Provider.login({ nostrClient });
+    const duration = Date.now() - start;
+    assert.equal(result.pubkey, HEX_PUBKEY);
+    assert.ok(
+      duration < 200,
+      `login should resolve before deferred permission grants (duration: ${duration}ms)`,
+    );
+    assert.ok(completionPromise, "completionPromise should be captured");
+    await assert.rejects(
+      completionPromise,
+      /permission denied/,
+      "deferred permission grants should still reject",
+    );
+  } finally {
+    nostrClient.ensureExtensionPermissions = originalEnsurePermissions;
+    env.restore();
+    nostrClient.logout();
+    clearStoredPermissions();
+  }
+});
+
 test("NIP-07 login surfaces enable permission errors", async () => {
   clearStoredPermissions();
   const env = setupLoginEnvironment({
