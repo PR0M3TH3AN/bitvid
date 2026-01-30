@@ -47,6 +47,10 @@ function copyDir(src, dest) {
   fs.mkdirSync(dest, { recursive: true });
   const entries = fs.readdirSync(src, { withFileTypes: true });
   for (const entry of entries) {
+    // Exclude reproducers from distribution
+    if (src.endsWith('examples') && entry.name === 'reproducers') {
+      continue;
+    }
     const srcPath = path.join(src, entry.name);
     const destPath = path.join(dest, entry.name);
     if (entry.isDirectory()) {
