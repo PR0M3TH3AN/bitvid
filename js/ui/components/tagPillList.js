@@ -237,32 +237,3 @@ export function renderTagPillStrip({
 
   return { root, buttons };
 }
-
-export function updateTagPillStrip({
-  root,
-  tags = [],
-  onTagActivate,
-  getTagState,
-  document: doc,
-} = {}) {
-  if (!root) {
-    throw new Error("A root element is required to update the tag pill strip.");
-  }
-
-  const resolvedDocument = resolveDocument(doc ?? root?.ownerDocument);
-  assertDocument(resolvedDocument);
-
-  cleanupExistingButtons(root);
-
-  const buttons = tags.map((tag) =>
-    createTagButton({
-      doc: resolvedDocument,
-      tag,
-      onTagActivate,
-      getTagState,
-    }),
-  );
-  root.append(...buttons);
-
-  return { root, buttons };
-}
