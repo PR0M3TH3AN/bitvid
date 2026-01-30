@@ -276,6 +276,7 @@ function createController(options = {}) {
     load: async () => {},
     publish: async () => ({ ok: true }),
     on: () => () => {},
+    load: async () => {},
   };
 
   const hashtagPreferences = {
