@@ -5212,6 +5212,15 @@ export class ProfileModalController {
     const error = detail?.error || detail?.failure || detail;
     const reason = detail?.context?.reason || "";
     const errorCode = error?.code || "";
+    const errorMessage =
+      typeof error === "string"
+        ? error
+        : typeof error?.message === "string"
+          ? error.message
+          : "";
+    const requiresNip44Decryptor =
+      typeof errorMessage === "string" &&
+      errorMessage.includes("Gift wrap events require a NIP-44 decryptor");
 
     const isBenign =
       reason === "no-decryptors" ||
@@ -5228,6 +5237,21 @@ export class ProfileModalController {
     }
 
     if (this.activeMessagesRequest) {
+      return;
+    }
+
+    if (requiresNip44Decryptor) {
+      const nip44Message =
+        "NIP-17 direct messages require a NIP-44-capable signer or extension. Unlock or update your extension to continue.";
+      if (!this.directMessagesCache.length) {
+        this.setMessagesLoadingState("error", {
+          message: nip44Message,
+        });
+        return;
+      }
+
+      this.setMessagesAnnouncement(nip44Message);
+      this.updateMessagesReloadState();
       return;
     }
 
