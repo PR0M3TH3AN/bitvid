@@ -2088,15 +2088,15 @@ export class NostrClient {
     adapter.pubkey = pubkey;
     setActiveSigner(adapter);
 
-    if (!this.extensionPermissionsGranted && !permissionResult.ok) {
-      this.ensureExtensionPermissions(DEFAULT_NIP07_PERMISSION_METHODS).catch(
-        (err) => {
-          userLogger.warn(
-            "[nostr] Extension permissions were not fully granted after login:",
-            err,
-          );
-        },
-      );
+    if (!this.extensionPermissionsGranted) {
+      try {
+        await this.ensureExtensionPermissions(DEFAULT_NIP07_PERMISSION_METHODS);
+      } catch (err) {
+        userLogger.warn(
+          "[nostr] Extension permissions were not fully granted after login:",
+          err,
+        );
+      }
     }
 
     return { pubkey, signer: adapter };
