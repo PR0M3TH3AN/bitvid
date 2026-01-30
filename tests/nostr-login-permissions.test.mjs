@@ -76,7 +76,20 @@ function setupLoginEnvironment({ enableImpl, getPublicKey = HEX_PUBKEY } = {}) {
 
   windowRef.NostrTools = toolkitStub;
   global.NostrTools = toolkitStub;
-  global.__BITVID_CANONICAL_NOSTR_TOOLS__ = toolkitStub;
+  // Use Object.defineProperty to override potential read-only global from bootstrap
+  try {
+    Object.defineProperty(global, "__BITVID_CANONICAL_NOSTR_TOOLS__", {
+      value: toolkitStub,
+      writable: true,
+      configurable: true,
+    });
+  } catch (e) {
+    try {
+      global.__BITVID_CANONICAL_NOSTR_TOOLS__ = toolkitStub;
+    } catch (ignore) {
+      // Ignore assignment errors if property is read-only
+    }
+  }
   global.nostrToolsReady = Promise.resolve({ ok: true, value: toolkitStub });
 
   const originalAccessControl = {

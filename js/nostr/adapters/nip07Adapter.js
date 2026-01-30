@@ -90,12 +90,6 @@ export async function createNip07Adapter(initialExtension) {
       ? normalizeActorKey(await getPublicKey())
       : "";
 
-  const hasNip04 =
-    bootstrapExtension.nip04 && typeof bootstrapExtension.nip04 === "object";
-
-  const bootstrapNip44 = resolveNip44Module(bootstrapExtension);
-  const hasNip44 = !!bootstrapNip44;
-
   // Wrapper builders to ensure dynamic lookup at call time
   const createNip04Encrypt = () => (pubkey, plaintext, options = {}) => {
     const ext = getExtension();
@@ -206,30 +200,29 @@ export async function createNip07Adapter(initialExtension) {
     requestPermissions,
     destroy: async () => {},
     canSign: () => typeof getExtension()?.signEvent === "function",
-    capabilities: {
-      sign: typeof bootstrapExtension.signEvent === "function",
-      nip44: hasNip44,
-      nip04: hasNip04,
-    },
+    // Always expose these methods; they perform their own existence checks at runtime.
+    // This handles race conditions where NIP-04/44 APIs are injected lazily.
+    nip04Encrypt: createNip04Encrypt(),
+    nip04Decrypt: createNip04Decrypt(),
+    nip44Encrypt: createNip44Encrypt(),
+    nip44Decrypt: createNip44Decrypt(),
   };
 
-  if (hasNip04) {
-    if (typeof bootstrapExtension.nip04.encrypt === "function") {
-      signer.nip04Encrypt = createNip04Encrypt();
-    }
-    if (typeof bootstrapExtension.nip04.decrypt === "function") {
-      signer.nip04Decrypt = createNip04Decrypt();
-    }
-  }
-
-  if (hasNip44) {
-    if (typeof bootstrapNip44.encrypt === "function") {
-      signer.nip44Encrypt = createNip44Encrypt();
-    }
-    if (typeof bootstrapNip44.decrypt === "function") {
-      signer.nip44Decrypt = createNip44Decrypt();
-    }
-  }
+  // Define capabilities as dynamic properties to reflect current extension state
+  Object.defineProperty(signer, "capabilities", {
+    get: () => {
+      const ext = getExtension();
+      const hasNip04 = !!(ext?.nip04 && typeof ext.nip04 === "object");
+      const hasNip44 = !!resolveNip44Module(ext);
+      return {
+        sign: typeof ext?.signEvent === "function",
+        nip44: hasNip44,
+        nip04: hasNip04,
+      };
+    },
+    enumerable: true,
+    configurable: true,
+  });
 
   return signer;
 }
