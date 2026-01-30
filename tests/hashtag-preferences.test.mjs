@@ -222,6 +222,90 @@ test(
 );
 
 test(
+  "load defers permission-required decrypts until explicitly enabled",
+  { concurrency: false },
+  async () => {
+    const pubkey = "e".repeat(64);
+
+    const relayUrls = ["wss://relay-permissions.example"];
+    const originalRelayEntries = relayManager.getEntries();
+    relayManager.setEntries(relayUrls.map(url => ({ url, mode: "both" })), { allowEmpty: false, updateClient: false });
+
+    const originalFetchIncremental = nostrClient.fetchListIncrementally;
+    const originalRelays = Array.isArray(nostrClient.relays)
+      ? [...nostrClient.relays]
+      : nostrClient.relays;
+    const originalWriteRelays = Array.isArray(nostrClient.writeRelays)
+      ? [...nostrClient.writeRelays]
+      : nostrClient.writeRelays;
+    const originalWindowNostr = window.nostr;
+
+    const event = {
+      id: "pref-permission",
+      created_at: 400,
+      pubkey,
+      content: "cipher-permission",
+      tags: [["encrypted", "nip04"]],
+    };
+
+    let fetchCalls = 0;
+    nostrClient.fetchListIncrementally = async () => {
+      fetchCalls += 1;
+      return fetchCalls === 1 ? [event] : [];
+    };
+    nostrClient.relays = relayUrls;
+    nostrClient.writeRelays = relayUrls;
+
+    const decryptCalls = [];
+    window.nostr = {
+      nip04: {
+        decrypt: async () => {
+          decryptCalls.push("nip04");
+          return JSON.stringify({
+            version: 1,
+            interests: ["Late"],
+            disinterests: [],
+          });
+        },
+      },
+    };
+
+    clearActiveSigner();
+
+    try {
+      await hashtagPreferences.load(pubkey, { allowPermissionPrompt: false });
+
+      assert.equal(
+        decryptCalls.length,
+        0,
+        "decryption should be skipped when permissions are deferred",
+      );
+      assert.equal(
+        hashtagPreferences.lastLoadError?.code,
+        "hashtag-preferences-permission-required",
+        "permission-required errors should be captured for deferred prompts",
+      );
+      assert.deepEqual(hashtagPreferences.getInterests(), []);
+
+      await hashtagPreferences.load(pubkey, { allowPermissionPrompt: true });
+
+      assert.equal(
+        decryptCalls.length,
+        1,
+        "explicit permission prompts should retry decryption",
+      );
+      assert.deepEqual(hashtagPreferences.getInterests(), ["late"]);
+    } finally {
+      relayManager.setEntries(originalRelayEntries, { allowEmpty: true, updateClient: false });
+      nostrClient.fetchListIncrementally = originalFetchIncremental;
+      nostrClient.relays = originalRelays;
+      nostrClient.writeRelays = originalWriteRelays;
+      window.nostr = originalWindowNostr;
+    }
+  },
+);
+
+test(
   "interest and disinterest lists remain exclusive",
   { concurrency: false },
   () => {
