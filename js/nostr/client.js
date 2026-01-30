@@ -323,7 +323,12 @@ function resolveSignerCapabilities(signer) {
 }
 
 function hydrateExtensionSignerCapabilities(signer) {
-  if (!signer || typeof signer !== "object" || signer.type !== "extension") {
+  if (!signer || typeof signer !== "object") {
+    return;
+  }
+
+  const signerType = typeof signer.type === "string" ? signer.type : "";
+  if (signerType !== "extension" && signerType !== "nip07") {
     return;
   }
 
@@ -371,6 +376,10 @@ function setActiveSigner(signer) {
 function getActiveSigner() {
   const signer = getActiveSignerFromRegistry();
   hydrateExtensionSignerCapabilities(signer);
+  attachNipMethodAliases(signer);
+  if (signer && typeof signer === "object") {
+    signer.capabilities = resolveSignerCapabilities(signer);
+  }
   return signer;
 }
 
@@ -385,6 +394,10 @@ function logoutSigner(pubkey) {
 function resolveActiveSigner(pubkey) {
   const signer = resolveActiveSignerFromRegistry(pubkey);
   hydrateExtensionSignerCapabilities(signer);
+  attachNipMethodAliases(signer);
+  if (signer && typeof signer === "object") {
+    signer.capabilities = resolveSignerCapabilities(signer);
+  }
   return signer;
 }
 
