@@ -60,6 +60,7 @@ test("batchFetchProfiles handles fast and failing relays", async () => {
   nostrClient.writeRelays = [FAST_RELAY, FAIL_RELAY];
   nostrClient.pool = {
     list: (relays, filters) => {
+      // console.log("pool.list called with relays:", relays);
       poolListCalls.push({ relays, filters });
       const relayUrl = Array.isArray(relays) ? relays[0] : undefined;
       if (relayUrl === FAST_RELAY) {
@@ -95,6 +96,9 @@ test("batchFetchProfiles handles fast and failing relays", async () => {
     nostrClient.writeRelays = originalWriteRelays;
     nostrClient.pool = originalPool;
   }
+
+  // console.log("poolListCalls.length:", poolListCalls.length);
+  // console.log("nostrClient.relays:", nostrClient.relays);
 
   assert.equal(poolListCalls.length, 2, "expected a query per relay");
 
