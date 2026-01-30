@@ -40,7 +40,7 @@ import { relaySubscriptionService } from "./services/relaySubscriptionService.js
 
 const SUBSCRIPTION_SET_KIND =
   getNostrEventSchema(NOTE_TYPES.SUBSCRIPTION_LIST)?.kind ?? 30000;
-const DECRYPT_TIMEOUT_MS = 90000;
+const DECRYPT_TIMEOUT_MS = 15000;
 const DECRYPT_RETRY_DELAY_MS = 10000;
 
 function normalizeHexPubkey(value) {
@@ -937,13 +937,19 @@ class SubscriptionsManager {
     }
 
     if (nostrApi) {
+      const decrypterOptions = {
+        priority: NIP07_PRIORITY.HIGH,
+        timeoutMs: 12000,
+        retryMultiplier: 1,
+      };
+
       if (typeof nostrApi.nip04?.decrypt === "function") {
         registerDecryptor("nip04", (payload) =>
           runNip07WithRetry(
             () => nostrApi.nip04.decrypt(userPubkey, payload),
             {
               label: "nip04.decrypt",
-              priority: NIP07_PRIORITY.HIGH,
+              ...decrypterOptions,
             },
           ),
         );
@@ -960,7 +966,7 @@ class SubscriptionsManager {
               () => nip44.decrypt(userPubkey, payload),
               {
                 label: "nip44.decrypt",
-                priority: NIP07_PRIORITY.HIGH,
+                ...decrypterOptions,
               },
             ),
           );
@@ -974,7 +980,7 @@ class SubscriptionsManager {
               () => nip44v2.decrypt(userPubkey, payload),
               {
                 label: "nip44.v2.decrypt",
-                priority: NIP07_PRIORITY.HIGH,
+                ...decrypterOptions,
               },
             ),
           );
@@ -984,7 +990,7 @@ class SubscriptionsManager {
                 () => nip44v2.decrypt(userPubkey, payload),
                 {
                   label: "nip44.v2.decrypt",
-                  priority: NIP07_PRIORITY.HIGH,
+                  ...decrypterOptions,
                 },
               ),
             );

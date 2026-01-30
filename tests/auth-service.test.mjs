@@ -121,6 +121,57 @@ await (async () => {
   resetState();
   setPubkey(SAMPLE_PUBKEY);
 
+  const calls = [];
+  // We leave resolveBlocks undefined/pending forever to simulate slow/hanging blocks
+  let resolveBlocks;
+
+  const service = new AuthService({
+    userBlocks: {
+      loadBlocks: () => {
+        calls.push("blocks:start");
+        return new Promise((resolve) => {
+          resolveBlocks = resolve;
+        });
+      },
+    },
+    relayManager: {
+      loadRelayList: () => {
+        calls.push("relays:start");
+        return Promise.resolve("relays");
+      },
+    },
+  });
+
+  service.loadOwnProfile = () => {
+    calls.push("profile:start");
+    return Promise.resolve({ name: "Test User" });
+  };
+
+  // Test deferBlocks: true
+  const promise = service.applyPostLoginState({ deferBlocks: true });
+
+  await new Promise((resolve) => setTimeout(resolve, 10));
+
+  // Blocks should NOT be started if deferred
+  // Wait, deferBlocks just means it's not awaited in completionPromise?
+  // No, checking code:
+  // if (!deferBlocks) { const blocksOperation = this.createBlocksLoadOperation... }
+  // So it shouldn't even be called/pushed to concurrentOps.
+
+  assert.deepEqual(calls, ["relays:start", "profile:start"]);
+
+  const result = await promise;
+  // This should resolve even if blocks are not loaded
+  await result.completionPromise;
+
+  assert.equal(result.detail.blocksLoaded, null);
+  assert.equal(result.detail.relaysLoaded, true);
+})();
+
+await (async () => {
+  resetState();
+  setPubkey(SAMPLE_PUBKEY);
+
   const logs = [];
   const service = new AuthService({
     userBlocks: {
