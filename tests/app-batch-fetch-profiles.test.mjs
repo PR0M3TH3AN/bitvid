@@ -52,12 +52,20 @@ test("batchFetchProfiles handles fast and failing relays", async () => {
   const originalWriteRelays = Array.isArray(nostrClient.writeRelays)
     ? [...nostrClient.writeRelays]
     : nostrClient.writeRelays;
+  // Make sure to backup readRelays too
+  const originalReadRelays = Array.isArray(nostrClient.readRelays)
+    ? [...nostrClient.readRelays]
+    : nostrClient.readRelays;
+
   const originalPool = nostrClient.pool;
 
   const poolListCalls = [];
 
   nostrClient.relays = [FAST_RELAY, FAIL_RELAY];
   nostrClient.writeRelays = [FAST_RELAY, FAIL_RELAY];
+  // Mock readRelays to match relays, avoiding duplicate/extra queries if the implementation prioritizes them
+  nostrClient.readRelays = [FAST_RELAY, FAIL_RELAY];
+
   nostrClient.pool = {
     list: (relays, filters) => {
       poolListCalls.push({ relays, filters });
@@ -93,6 +101,7 @@ test("batchFetchProfiles handles fast and failing relays", async () => {
   } finally {
     nostrClient.relays = originalRelays;
     nostrClient.writeRelays = originalWriteRelays;
+    nostrClient.readRelays = originalReadRelays;
     nostrClient.pool = originalPool;
   }
 
