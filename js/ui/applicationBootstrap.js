@@ -717,6 +717,29 @@ export default class ApplicationBootstrap {
     app.lastExperimentalWarningKey = null;
     app.lastExperimentalWarningAt = 0;
 
+    if (
+      nostrClient &&
+      typeof nostrClient.setExtensionPermissionStatusHandler === "function"
+    ) {
+      nostrClient.setExtensionPermissionStatusHandler((status) => {
+        if (!status || typeof status !== "object") {
+          return;
+        }
+        const message =
+          typeof status.message === "string" ? status.message.trim() : "";
+        if (!message) {
+          return;
+        }
+        const autoHideMs = Number.isFinite(status.autoHideMs)
+          ? status.autoHideMs
+          : 12000;
+        const showSpinner = status.showSpinner !== false;
+        if (typeof app.showStatus === "function") {
+          app.showStatus(message, { autoHideMs, showSpinner });
+        }
+      });
+    }
+
     app.pubkey = null;
     app.currentMagnetUri = null;
     app.currentVideo = null;
