@@ -275,6 +275,11 @@ class Application {
     this.dmRelayHints = new Map();
     this.authLoadingState = { profile: "idle", lists: "idle", dms: "idle" };
     this.relayUiRefreshTimeout = null;
+    this.activeIntervals = [];
+    this.torrentStatusIntervalId = null;
+    this.torrentStatusNodes = null;
+    this.torrentStatusVisibilityHandler = null;
+    this.torrentStatusPageHideHandler = null;
 
     this.commentController = null;
     this.initializeCommentController();
@@ -1195,7 +1200,9 @@ class Application {
    * Show the modal and set the "Please stand by" poster on the video.
    */
   async showModalWithPoster(video = this.currentVideo, options = {}) {
-    return this.videoModalController.showModalWithPoster(video, options);
+    const result = await this.videoModalController.showModalWithPoster(video, options);
+    this.cacheTorrentStatusNodes();
+    return result;
   }
 
   applyModalLoadingPoster() {
@@ -4872,11 +4879,81 @@ class Application {
   }
 
   clearActiveIntervals() {
-    if (!Array.isArray(this.activeIntervals) || !this.activeIntervals.length) {
+    if (Array.isArray(this.activeIntervals)) {
+      this.activeIntervals.forEach((id) => clearInterval(id));
+    }
+    this.activeIntervals = [];
+    this.torrentStatusIntervalId = null;
+  }
+
+  cacheTorrentStatusNodes() {
+    const doc =
+      (this.videoModal && this.videoModal.document) ||
+      (typeof document !== "undefined" ? document : null);
+    if (!doc || typeof doc.getElementById !== "function") {
+      this.torrentStatusNodes = null;
       return;
     }
-    this.activeIntervals.forEach((id) => clearInterval(id));
-    this.activeIntervals = [];
+    this.torrentStatusNodes = {
+      status: doc.getElementById("status"),
+      progress: doc.getElementById("progress"),
+      peers: doc.getElementById("peers"),
+      speed: doc.getElementById("speed"),
+      downloaded: doc.getElementById("downloaded"),
+    };
+  }
+
+  clearTorrentStatusNodes() {
+    this.torrentStatusNodes = null;
+  }
+
+  removeActiveInterval(intervalId) {
+    if (!intervalId || !Array.isArray(this.activeIntervals)) {
+      return;
+    }
+    this.activeIntervals = this.activeIntervals.filter((id) => id !== intervalId);
+  }
+
+  addTorrentStatusVisibilityHandlers({ onPause, onResume, onClose } = {}) {
+    this.removeTorrentStatusVisibilityHandlers();
+    const handleVisibilityChange = () => {
+      if (!document.body.contains(this.modalVideo)) {
+        if (typeof onClose === "function") {
+          onClose();
+        }
+        this.removeTorrentStatusVisibilityHandlers();
+        return;
+      }
+      if (document.visibilityState === "hidden") {
+        if (typeof onPause === "function") {
+          onPause();
+        }
+        return;
+      }
+      if (typeof onResume === "function") {
+        onResume();
+      }
+    };
+    const handlePageHide = () => {
+      if (typeof onPause === "function") {
+        onPause();
+      }
+    };
+    this.torrentStatusVisibilityHandler = handleVisibilityChange;
+    this.torrentStatusPageHideHandler = handlePageHide;
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pagehide", handlePageHide);
+  }
+
+  removeTorrentStatusVisibilityHandlers() {
+    if (this.torrentStatusVisibilityHandler) {
+      document.removeEventListener("visibilitychange", this.torrentStatusVisibilityHandler);
+      this.torrentStatusVisibilityHandler = null;
+    }
+    if (this.torrentStatusPageHideHandler) {
+      window.removeEventListener("pagehide", this.torrentStatusPageHideHandler);
+      this.torrentStatusPageHideHandler = null;
+    }
   }
 
   cancelPendingViewLogging() {
@@ -5382,25 +5459,16 @@ class Application {
       return;
     }
 
-    const updateInterval = setInterval(() => {
+    this.cacheTorrentStatusNodes();
+
+    const updateMirrorStatus = () => {
       if (!document.body.contains(this.modalVideo)) {
-        clearInterval(updateInterval);
+        this.stopTorrentStatusInterval();
+        this.removeTorrentStatusVisibilityHandlers();
         return;
       }
       this.updateTorrentStatus(torrentInstance);
-    }, 3000);
-    this.activeIntervals.push(updateInterval);
-
-    const mirrorInterval = setInterval(() => {
-      if (!document.body.contains(this.modalVideo)) {
-        clearInterval(mirrorInterval);
-        return;
-      }
-      const status = document.getElementById("status");
-      const progress = document.getElementById("progress");
-      const peers = document.getElementById("peers");
-      const speed = document.getElementById("speed");
-      const downloaded = document.getElementById("downloaded");
+      const { status, progress, peers, speed, downloaded } = this.torrentStatusNodes || {};
       if (this.videoModal) {
         if (status) {
           this.videoModal.updateStatus(status.textContent);
@@ -5428,8 +5496,37 @@ class Application {
           this.videoModal.updateDownloaded(downloaded.textContent);
         }
       }
-    }, 3000);
-    this.activeIntervals.push(mirrorInterval);
+    };
+
+    this.stopTorrentStatusInterval();
+    this.startTorrentStatusInterval(updateMirrorStatus);
+
+    this.addTorrentStatusVisibilityHandlers({
+      onPause: () => this.stopTorrentStatusInterval(),
+      onResume: () => this.startTorrentStatusInterval(updateMirrorStatus),
+      onClose: () => this.stopTorrentStatusInterval(),
+    });
+  }
+
+  startTorrentStatusInterval(callback) {
+    if (this.torrentStatusIntervalId) {
+      return;
+    }
+    if (document.visibilityState === "hidden") {
+      return;
+    }
+    const intervalId = setInterval(callback, 3000);
+    this.torrentStatusIntervalId = intervalId;
+    this.activeIntervals.push(intervalId);
+  }
+
+  stopTorrentStatusInterval() {
+    if (!this.torrentStatusIntervalId) {
+      return;
+    }
+    clearInterval(this.torrentStatusIntervalId);
+    this.removeActiveInterval(this.torrentStatusIntervalId);
+    this.torrentStatusIntervalId = null;
   }
 
   /**
@@ -5439,6 +5536,7 @@ class Application {
     // 1) Clear timers/listeners immediately so playback stats stop updating
     this.cancelPendingViewLogging();
     this.clearActiveIntervals();
+    this.removeTorrentStatusVisibilityHandlers();
     this.teardownModalViewCountSubscription();
     if (this.reactionController) {
       this.reactionController.unsubscribe();
@@ -5483,6 +5581,7 @@ class Application {
     this.lastModalTrigger = null;
 
     this.currentMagnetUri = null;
+    this.clearTorrentStatusNodes();
 
     // 3) Kick off heavy cleanup work asynchronously. We still await it so
     // callers that depend on teardown finishing behave the same, but the
