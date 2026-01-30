@@ -11,6 +11,8 @@ if (!globalThis.window.NostrTools) {
   globalThis.window.NostrTools = {};
 }
 
+globalThis.__BITVID_DEV_MODE_OVERRIDE__ = true;
+
 const mockNip19 = {
   decode(value) {
     if (typeof value !== "string") {

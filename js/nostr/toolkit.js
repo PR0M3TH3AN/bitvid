@@ -335,8 +335,6 @@ export function resolveSimplePoolConstructor(tools, scope = globalScope) {
   return null;
 }
 
-export { isSimplePoolConstructor, unwrapSimplePool };
-
 export function shimLegacySimplePoolMethods(pool) {
   if (!pool || typeof pool !== "object" || pool[SIMPLE_POOL_SHIM_KEY]) {
     return pool || null;
