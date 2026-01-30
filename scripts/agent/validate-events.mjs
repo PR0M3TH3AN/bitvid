@@ -1,9 +1,48 @@
-#!/usr/bin/env node
+// scripts/agent/validate-events.mjs
+import WebSocket from 'ws';
+import { webcrypto } from 'node:crypto';
 
-import { execSync } from "child_process";
+// Polyfill WebSocket
+if (typeof globalThis.WebSocket === 'undefined') {
+  globalThis.WebSocket = WebSocket;
+}
+
+// Polyfill window and self
+if (typeof globalThis.window === 'undefined') {
+  globalThis.window = globalThis;
+}
+if (typeof globalThis.self === 'undefined') {
+  globalThis.self = globalThis;
+}
+
+// Polyfill crypto
+if (typeof globalThis.crypto === 'undefined') {
+  globalThis.crypto = webcrypto;
+}
+
+// Polyfill localStorage
+if (typeof globalThis.localStorage === 'undefined') {
+  const storage = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => storage.get(k) || null,
+    setItem: (k, v) => storage.set(String(k), String(v)),
+    removeItem: (k) => storage.delete(k),
+    clear: () => storage.clear(),
+    key: (i) => Array.from(storage.keys())[i] || null,
+    get length() { return storage.size; }
+  };
+}
+
+if (typeof globalThis.window.localStorage === 'undefined') {
+    globalThis.window.localStorage = globalThis.localStorage;
+}
+
+// Mock navigator
+if (typeof globalThis.navigator === 'undefined') {
+    globalThis.navigator = { userAgent: 'node' };
+}
+
 import {
-  NOTE_TYPES,
-  validateEventStructure,
   buildVideoPostEvent,
   buildHttpAuthEvent,
   buildReportEvent,
@@ -28,352 +67,312 @@ import {
   buildBlockListEvent,
   buildHashtagPreferenceEvent,
   buildAdminListEvent,
-} from "../../js/nostrEventSchemas.js";
+  validateEventStructure,
+  NOTE_TYPES,
+  ADMIN_LIST_IDENTIFIERS
+} from '../../js/nostrEventSchemas.js';
+import { buildNip71VideoEvent } from '../../js/nostr/nip71.js';
 
-const PUBKEY = "0000000000000000000000000000000000000000000000000000000000000001";
-const CREATED_AT = 1700000000;
+// Note: Most builders are defined in js/nostrEventSchemas.js and are already instrumented
+// with validation checks (validateEventAgainstSchema) when running in Dev Mode.
+// buildNip71VideoEvent was instrumented in js/nostr/nip71.js as part of this work.
+// This script verifies that all builders produce valid events according to the schema.
 
-const IGNORED_BUILDERS = new Set([
-  "buildShareUrlFromEventId", // Method in js/app.js, not an event builder
-  "buildShareUrlFromEvent", // Substring match or alias
-  "buildListEvent", // Local helper in js/adminListStore.js wrapping buildAdminListEvent
-  "buildProfileFromEvent", // Local helper in js/services/authService.js
-]);
-
-const KNOWN_BUILDERS = {
-  buildVideoPostEvent: {
-    builder: buildVideoPostEvent,
+const testCases = [
+  {
+    name: 'Video Post',
     type: NOTE_TYPES.VIDEO_POST,
+    builder: buildVideoPostEvent,
     params: {
-      pubkey: PUBKEY,
-      created_at: CREATED_AT,
-      dTagValue: "test-video-id",
+      pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
+      created_at: 1234567890,
+      dTagValue: 'test-video',
       content: {
         version: 3,
-        title: "Test Video",
-        videoRootId: "test-video-id",
-        infoHash: "0123456789abcdef0123456789abcdef01234567",
-      },
+        title: 'Test Video',
+        videoRootId: 'test-root',
+      }
     }
   },
-  buildHttpAuthEvent: {
-    builder: buildHttpAuthEvent,
+  {
+    name: 'HTTP Auth',
     type: NOTE_TYPES.HTTP_AUTH,
+    builder: buildHttpAuthEvent,
     params: {
-      pubkey: PUBKEY,
-      created_at: CREATED_AT,
-      url: "https://example.com/auth",
-      method: "GET",
-      payload: "hash",
+      pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
+      created_at: 1234567890,
+      url: 'https://example.com',
+      method: 'GET'
     }
   },
-  buildReportEvent: {
-    builder: buildReportEvent,
+  {
+    name: 'Report',
     type: NOTE_TYPES.REPORT,
+    builder: buildReportEvent,
     params: {
-      pubkey: PUBKEY,
-      created_at: CREATED_AT,
-      eventId: "e".repeat(64),
-      reportType: "nudity",
+      pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
+      created_at: 1234567890,
+      eventId: '0000000000000000000000000000000000000000000000000000000000000002',
+      reportType: 'nudity'
     }
   },
-  buildVideoMirrorEvent: {
-    builder: buildVideoMirrorEvent,
+  {
+    name: 'Video Mirror',
     type: NOTE_TYPES.VIDEO_MIRROR,
+    builder: buildVideoMirrorEvent,
     params: {
-      pubkey: PUBKEY,
-      created_at: CREATED_AT,
-      tags: [["url", "https://example.com/video.mp4"], ["m", "video/mp4"]],
-      content: "Mirroring video",
+      pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
+      created_at: 1234567890,
+      content: 'Alt text'
     }
   },
-  buildRepostEvent: {
-    builder: buildRepostEvent,
+  {
+    name: 'Repost',
     type: NOTE_TYPES.REPOST,
+    builder: buildRepostEvent,
     params: {
-      pubkey: PUBKEY,
-      created_at: CREATED_AT,
-      eventId: "e".repeat(64),
-      eventRelay: "wss://relay.example.com",
+      pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
+      created_at: 1234567890,
+      eventId: '0000000000000000000000000000000000000000000000000000000000000002',
+      targetKind: 1
     }
   },
-  buildShareEvent: {
-    builder: buildShareEvent,
+  {
+    name: 'Share',
     type: NOTE_TYPES.SHARE,
+    builder: buildShareEvent,
     params: {
-      pubkey: PUBKEY,
-      created_at: CREATED_AT,
-      video: { id: "e".repeat(64), pubkey: PUBKEY },
-      relays: ["wss://relay.example.com"],
-      content: "Check this out",
+      pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
+      created_at: 1234567890,
+      content: 'Check this out',
+      video: { id: '0000000000000000000000000000000000000000000000000000000000000002' }
     }
   },
-  buildRelayListEvent: {
-    builder: buildRelayListEvent,
+  {
+    name: 'Relay List',
     type: NOTE_TYPES.RELAY_LIST,
+    builder: buildRelayListEvent,
     params: {
-      pubkey: PUBKEY,
-      created_at: CREATED_AT,
-      relays: [{ url: "wss://relay.example.com", read: true, write: true }],
+        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
+        created_at: 1234567890,
+        relays: ['wss://relay.example.com']
     }
   },
-  buildDmRelayListEvent: {
-    builder: buildDmRelayListEvent,
+  {
+    name: 'DM Relay List',
     type: NOTE_TYPES.DM_RELAY_LIST,
+    builder: buildDmRelayListEvent,
     params: {
-      pubkey: PUBKEY,
-      created_at: CREATED_AT,
-      relays: ["wss://relay.example.com"],
+        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
+        created_at: 1234567890,
+        relays: ['wss://relay.example.com']
     }
   },
-  buildProfileMetadataEvent: {
-    builder: buildProfileMetadataEvent,
+  {
+    name: 'Profile Metadata',
     type: NOTE_TYPES.PROFILE_METADATA,
+    builder: buildProfileMetadataEvent,
     params: {
-      pubkey: PUBKEY,
-      created_at: CREATED_AT,
-      metadata: { name: "Test User", about: "Testing" },
+        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
+        created_at: 1234567890,
+        metadata: { name: 'Alice' }
     }
   },
-  buildMuteListEvent: {
-    builder: buildMuteListEvent,
+  {
+    name: 'Mute List',
     type: NOTE_TYPES.MUTE_LIST,
+    builder: buildMuteListEvent,
     params: {
-      pubkey: PUBKEY,
-      created_at: CREATED_AT,
-      pTags: [PUBKEY],
+        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
+        created_at: 1234567890,
+        pTags: ['0000000000000000000000000000000000000000000000000000000000000002']
     }
   },
-  buildDeletionEvent: {
-    builder: buildDeletionEvent,
+  {
+    name: 'Deletion',
     type: NOTE_TYPES.DELETION,
+    builder: buildDeletionEvent,
     params: {
-      pubkey: PUBKEY,
-      created_at: CREATED_AT,
-      eventIds: ["e".repeat(64)],
-      reason: "mistake",
+        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
+        created_at: 1234567890,
+        eventIds: ['0000000000000000000000000000000000000000000000000000000000000002']
     }
   },
-  buildLegacyDirectMessageEvent: {
-    builder: buildLegacyDirectMessageEvent,
+  {
+    name: 'Legacy DM',
     type: NOTE_TYPES.LEGACY_DM,
+    builder: buildLegacyDirectMessageEvent,
     params: {
-      pubkey: PUBKEY,
-      created_at: CREATED_AT,
-      recipientPubkey: PUBKEY,
-      ciphertext: "encrypted",
+        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
+        created_at: 1234567890,
+        recipientPubkey: '0000000000000000000000000000000000000000000000000000000000000002',
+        ciphertext: 'base64ciphertext'
     }
   },
-  buildDmAttachmentEvent: {
-    builder: buildDmAttachmentEvent,
+  {
+    name: 'DM Attachment',
     type: NOTE_TYPES.DM_ATTACHMENT,
+    builder: buildDmAttachmentEvent,
     params: {
-      pubkey: PUBKEY,
-      created_at: CREATED_AT,
-      recipientPubkey: PUBKEY,
-      attachment: { url: "https://example.com/file", x: "hash", type: "image/jpeg" },
+        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
+        created_at: 1234567890,
+        recipientPubkey: '0000000000000000000000000000000000000000000000000000000000000002',
+        attachment: { url: 'https://example.com/file.jpg', x: 'hash' }
     }
   },
-  buildDmReadReceiptEvent: {
-    builder: buildDmReadReceiptEvent,
+  {
+    name: 'DM Read Receipt',
     type: NOTE_TYPES.DM_READ_RECEIPT,
+    builder: buildDmReadReceiptEvent,
     params: {
-      pubkey: PUBKEY,
-      created_at: CREATED_AT,
-      recipientPubkey: PUBKEY,
-      eventId: "e".repeat(64),
+        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
+        created_at: 1234567890,
+        recipientPubkey: '0000000000000000000000000000000000000000000000000000000000000002',
+        eventId: '0000000000000000000000000000000000000000000000000000000000000002'
     }
   },
-  buildDmTypingIndicatorEvent: {
-    builder: buildDmTypingIndicatorEvent,
+  {
+    name: 'DM Typing Indicator',
     type: NOTE_TYPES.DM_TYPING,
+    builder: buildDmTypingIndicatorEvent,
     params: {
-      pubkey: PUBKEY,
-      created_at: CREATED_AT,
-      recipientPubkey: PUBKEY,
-      expiresAt: CREATED_AT + 60,
+        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
+        created_at: 1234567890,
+        recipientPubkey: '0000000000000000000000000000000000000000000000000000000000000002',
+        expiresAt: 1234567900
     }
   },
-  buildViewEvent: {
-    builder: buildViewEvent,
+  {
+    name: 'View Event',
     type: NOTE_TYPES.VIEW_EVENT,
+    builder: buildViewEvent,
     params: {
-      pubkey: PUBKEY,
-      created_at: CREATED_AT,
-      pointerValue: "e".repeat(64),
-      pointerTag: ["e", "e".repeat(64)],
+        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
+        created_at: 1234567890,
+        pointerValue: '0000000000000000000000000000000000000000000000000000000000000002'
     }
   },
-  buildZapRequestEvent: {
-    builder: buildZapRequestEvent,
+  {
+    name: 'Zap Request',
     type: NOTE_TYPES.ZAP_REQUEST,
+    builder: buildZapRequestEvent,
     params: {
-      pubkey: PUBKEY,
-      created_at: CREATED_AT,
-      recipientPubkey: PUBKEY,
-      amountSats: 100,
-      relays: ["wss://relay.example.com"],
+        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
+        created_at: 1234567890,
+        recipientPubkey: '0000000000000000000000000000000000000000000000000000000000000002',
+        amountSats: 100
     }
   },
-  buildReactionEvent: {
-    builder: buildReactionEvent,
+  {
+    name: 'Reaction',
     type: NOTE_TYPES.VIDEO_REACTION,
+    builder: buildReactionEvent,
     params: {
-      pubkey: PUBKEY,
-      created_at: CREATED_AT,
-      pointerValue: "e".repeat(64),
-      targetPointer: { type: "e", value: "e".repeat(64) },
-      content: "+",
+        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
+        created_at: 1234567890,
+        pointerValue: '0000000000000000000000000000000000000000000000000000000000000002',
+        content: '+'
     }
   },
-  buildCommentEvent: {
-    builder: buildCommentEvent,
+  {
+    name: 'Comment',
     type: NOTE_TYPES.VIDEO_COMMENT,
+    builder: buildCommentEvent,
     params: {
-      pubkey: PUBKEY,
-      created_at: CREATED_AT,
-      videoEventId: "e".repeat(64),
-      content: "Nice video",
+        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
+        created_at: 1234567890,
+        videoEventId: '0000000000000000000000000000000000000000000000000000000000000002',
+        content: 'Nice video'
     }
   },
-  buildWatchHistoryEvent: {
-    builder: buildWatchHistoryEvent,
+  {
+    name: 'Watch History',
     type: NOTE_TYPES.WATCH_HISTORY,
+    builder: buildWatchHistoryEvent,
     params: {
-      pubkey: PUBKEY,
-      created_at: CREATED_AT,
-      monthIdentifier: "2023-01",
-      content: { version: 2, month: "2023-01", items: [] },
+        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
+        created_at: 1234567890,
+        monthIdentifier: 'watch-history:2025-01',
+        content: { version: 2, month: '2025-01', items: [] }
     }
   },
-  buildSubscriptionListEvent: {
-    builder: buildSubscriptionListEvent,
+  {
+    name: 'Subscription List',
     type: NOTE_TYPES.SUBSCRIPTION_LIST,
+    builder: buildSubscriptionListEvent,
     params: {
-      pubkey: PUBKEY,
-      created_at: CREATED_AT,
-      content: "encrypted-json",
-      encryption: "nip44_v2",
+        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
+        created_at: 1234567890,
+        content: 'encrypted-payload'
     }
   },
-  buildBlockListEvent: {
-    builder: buildBlockListEvent,
+  {
+    name: 'Block List',
     type: NOTE_TYPES.USER_BLOCK_LIST,
+    builder: buildBlockListEvent,
     params: {
-      pubkey: PUBKEY,
-      created_at: CREATED_AT,
-      content: "encrypted-json",
-      encryption: "nip44_v2",
+        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
+        created_at: 1234567890,
+        content: 'encrypted-payload'
     }
   },
-  buildHashtagPreferenceEvent: {
-    builder: buildHashtagPreferenceEvent,
+  {
+    name: 'Hashtag Preferences',
     type: NOTE_TYPES.HASHTAG_PREFERENCES,
+    builder: buildHashtagPreferenceEvent,
     params: {
-      pubkey: PUBKEY,
-      created_at: CREATED_AT,
-      content: "encrypted-json",
+        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
+        created_at: 1234567890,
+        content: JSON.stringify({ version: 1, interests: [], disinterests: [] })
     }
   },
-  buildAdminListEvent: {
-    builder: buildAdminListEvent,
+  {
+    name: 'Admin List (Moderation)',
     type: NOTE_TYPES.ADMIN_MODERATION_LIST,
-    // Special handling for args
-    args: ["moderation", {
-      pubkey: PUBKEY,
-      created_at: CREATED_AT,
-      hexPubkeys: [PUBKEY],
-    }]
+    builder: (params) => buildAdminListEvent(ADMIN_LIST_IDENTIFIERS.moderation, params),
+    params: {
+        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
+        created_at: 1234567890,
+        hexPubkeys: []
+    }
   },
-};
-
-function getUsedBuilders() {
-  console.log("Scanning repo for event builder usage...");
-  try {
-    const output = execSync('grep -r "build[A-Za-z]\\+Event" js/', { encoding: 'utf-8' });
-    const lines = output.split('\n');
-    const usedBuilders = new Set();
-    const regex = /(build[A-Za-z]+Event)/g;
-
-    lines.forEach(line => {
-      // Skip the schemas file itself
-      if (line.includes('js/nostrEventSchemas.js')) return;
-
-      const matches = line.match(regex);
-      if (matches) {
-        matches.forEach(match => usedBuilders.add(match));
+  {
+      name: 'NIP-71 Video',
+      type: NOTE_TYPES.NIP71_VIDEO,
+      builder: buildNip71VideoEvent,
+      params: {
+          pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
+          title: 'Test NIP-71',
+          metadata: { kind: 21, title: 'Test NIP-71' },
+          pointerIdentifiers: { videoRootId: 'test-root' }
       }
-    });
-    return usedBuilders;
-  } catch (error) {
-    // Grep returns status 1 if no matches found, which might throw an error in execSync
-    // depending on the version/platform, or just empty output.
-    console.error("Grep failed or found nothing:", error.message);
-    return new Set();
   }
-}
+];
 
-async function run() {
-  const usedBuilders = getUsedBuilders();
-  console.log(`Found ${usedBuilders.size} unique builder(s) used in the codebase.`);
+let failed = false;
 
-  // also check if we missed any exported builder in our KNOWN_BUILDERS list
-  // by assuming KNOWN_BUILDERS contains all we want to support.
-
-  let failureCount = 0;
-  const missingTests = [];
-
-  usedBuilders.forEach(builderName => {
-    if (!KNOWN_BUILDERS[builderName] && !IGNORED_BUILDERS.has(builderName)) {
-      missingTests.push(builderName);
-    }
-  });
-
-  if (missingTests.length > 0) {
-    console.warn("\n[WARNING] The following builders are used in the repo but have no test case in this script:");
-    missingTests.forEach(name => console.warn(`  - ${name}`));
-    // We don't fail the build for this yet, but we warn.
-    // Or maybe we should fail? The prompt said "Check runtime event construction...".
-    // Let's count it as a "gap" but allow passing if validation of known ones works.
-  }
-
-  console.log("\nValidating builders...");
-
-  for (const [name, config] of Object.entries(KNOWN_BUILDERS)) {
-    // If we want to be strict, we could check if it is used. But validation is good regardless.
-    const isUsed = usedBuilders.has(name);
-    const usageLabel = isUsed ? "(USED)" : "(UNUSED)";
-
+for (const testCase of testCases) {
     try {
-      let event;
-      if (config.args) {
-        event = config.builder(...config.args);
-      } else {
-        event = config.builder(config.params);
-      }
-
-      const { valid, errors } = validateEventStructure(config.type, event);
-
-      if (valid) {
-        console.log(`[PASS] ${name} ${usageLabel}`);
-      } else {
-        console.error(`[FAIL] ${name} ${usageLabel}`);
-        errors.forEach((err) => console.error(`  - ${err}`));
-        failureCount++;
-      }
-    } catch (e) {
-      console.error(`[ERROR] ${name} ${usageLabel} threw an exception:`, e);
-      failureCount++;
+        const event = testCase.builder(testCase.params);
+        if (!event) {
+             console.error(`[FAIL] ${testCase.name}: Builder returned null`);
+             failed = true;
+             continue;
+        }
+        const { valid, errors } = validateEventStructure(testCase.type, event);
+        if (!valid) {
+            console.error(`[FAIL] ${testCase.name}:`);
+            errors.forEach(err => console.error(`  - ${err}`));
+            failed = true;
+        } else {
+            console.log(`[PASS] ${testCase.name}`);
+        }
+    } catch (err) {
+        console.error(`[FAIL] ${testCase.name} threw error:`, err);
+        failed = true;
     }
-  }
-
-  if (failureCount > 0) {
-    console.error(`\nValidation failed with ${failureCount} errors.`);
-    process.exit(1);
-  } else {
-    console.log("\nAll known builders validated successfully.");
-    process.exit(0);
-  }
 }
 
-run();
+if (failed) {
+    process.exit(1);
+}

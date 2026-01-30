@@ -4,6 +4,9 @@ import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
+// Ensure NODE_ENV is set to "test" so that nostrToolsBootstrap.js uses the mock toolkit
+process.env.NODE_ENV = "test";
+
 const rootDir = path.dirname(fileURLToPath(new URL("../package.json", import.meta.url)));
 const testsDir = path.join(rootDir, "tests");
 const testFiles = [];
