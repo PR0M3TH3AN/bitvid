@@ -307,19 +307,16 @@ function resolveSignerCapabilities(signer) {
 
   return {
     sign:
-      typeof capabilities.sign === "boolean"
-        ? capabilities.sign
-        : typeof signer.signEvent === "function",
+      (typeof capabilities.sign === "boolean" && capabilities.sign) ||
+      typeof signer.signEvent === "function",
     nip44:
-      typeof capabilities.nip44 === "boolean"
-        ? capabilities.nip44
-        : typeof signer.nip44Encrypt === "function" ||
-          typeof signer.nip44Decrypt === "function",
+      (typeof capabilities.nip44 === "boolean" && capabilities.nip44) ||
+      typeof signer.nip44Encrypt === "function" ||
+      typeof signer.nip44Decrypt === "function",
     nip04:
-      typeof capabilities.nip04 === "boolean"
-        ? capabilities.nip04
-        : typeof signer.nip04Encrypt === "function" ||
-          typeof signer.nip04Decrypt === "function",
+      (typeof capabilities.nip04 === "boolean" && capabilities.nip04) ||
+      typeof signer.nip04Encrypt === "function" ||
+      typeof signer.nip04Decrypt === "function",
   };
 }
 

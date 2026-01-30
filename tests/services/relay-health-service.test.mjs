@@ -57,8 +57,10 @@ test("RelayHealthService: ensureRelayState creates default state", () => {
     connected: false,
     lastLatencyMs: null,
     errorCount: 0,
+    consecutiveFailures: 0,
     lastCheckedAt: null,
     lastErrorAt: null,
+    lastUserLogAt: null,
   });
 });
 
