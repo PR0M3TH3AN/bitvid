@@ -32,7 +32,9 @@ test("createNsecAdapter wires signing and cipher capabilities", async () => {
         configurable: true,
       });
     } catch (e) {
-      globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__ = canonicalTools;
+      try {
+        globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__ = canonicalTools;
+      } catch (ignore) {}
     }
     globalThis.NostrTools = canonicalTools;
     globalThis.nostrToolsReady = Promise.resolve({
@@ -70,7 +72,9 @@ test("createNsecAdapter wires signing and cipher capabilities", async () => {
           configurable: true,
         });
       } catch (e) {
-        globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__ = previousCanonical;
+        try {
+          globalThis.__BITVID_CANONICAL_NOSTR_TOOLS__ = previousCanonical;
+        } catch (ignore) {}
       }
     }
 

@@ -84,7 +84,11 @@ function setupLoginEnvironment({ enableImpl, getPublicKey = HEX_PUBKEY } = {}) {
       configurable: true,
     });
   } catch (e) {
-    global.__BITVID_CANONICAL_NOSTR_TOOLS__ = toolkitStub;
+    try {
+      global.__BITVID_CANONICAL_NOSTR_TOOLS__ = toolkitStub;
+    } catch (ignore) {
+      // Ignore assignment errors if property is read-only
+    }
   }
   global.nostrToolsReady = Promise.resolve({ ok: true, value: toolkitStub });
 

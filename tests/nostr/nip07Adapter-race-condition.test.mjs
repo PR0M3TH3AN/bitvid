@@ -1,3 +1,4 @@
+import '../test-helpers/setup-localstorage.mjs';
 import assert from 'node:assert';
 import { test, describe, beforeEach, afterEach } from 'node:test';
 import { createNip07Adapter } from '../../js/nostr/adapters/nip07Adapter.js';
