@@ -80,6 +80,7 @@ const FAST_BLOCKLIST_RELAY_LIMIT = 3;
 const FAST_BLOCKLIST_TIMEOUT_MS = 2500;
 const BACKGROUND_BLOCKLIST_TIMEOUT_MS = 6000;
 const DECRYPT_TIMEOUT_MS = 15000;
+const BACKGROUND_DECRYPT_TIMEOUT_MS = 2500;
 const DECRYPT_RETRY_DELAY_MS = 10000;
 const MAX_BLOCKLIST_ENTRIES = 5000;
 
@@ -871,6 +872,15 @@ class UserBlockListManager {
       : null;
     const statusCallback =
       typeof options?.statusCallback === "function" ? options.statusCallback : null;
+    const loadMode = options?.mode === "background" ? "background" : "interactive";
+    const allowPermissionPrompt =
+      options?.allowPermissionPrompt !== false && loadMode !== "background";
+    const decryptTimeoutMs = Number.isFinite(options?.decryptTimeoutMs)
+      ? Math.max(0, Math.floor(options.decryptTimeoutMs))
+      : allowPermissionPrompt
+        ? DECRYPT_TIMEOUT_MS
+        : BACKGROUND_DECRYPT_TIMEOUT_MS;
+    const nip07DecryptTimeoutMs = allowPermissionPrompt ? 12000 : 3000;
 
     const emitStatus = (detail) => {
       if (!detail || typeof detail !== "object") {
@@ -968,25 +978,34 @@ class UserBlockListManager {
 
       let permissionError = null;
       if ((!signerHasNip44 && requiresNip44) || (!signerHasNip04 && requiresNip04)) {
-        try {
-          const permissionResult = await requestDefaultExtensionPermissions(
-            DEFAULT_NIP07_ENCRYPTION_METHODS,
+        if (!allowPermissionPrompt) {
+          const error = new Error(
+            "Encryption permissions are required to decrypt the block list.",
           );
-          if (!permissionResult?.ok) {
-            const error =
-              permissionResult?.error instanceof Error
-                ? permissionResult.error
-                : new Error(
-                    "Extension encryption permissions are required to use the browser decryptor.",
-                  );
-            error.code = "user-blocklist-permission-required";
-            permissionError = error;
+          error.code = "user-blocklist-permission-required";
+          error.permissionRequestDeferred = true;
+          permissionError = error;
+        } else {
+          try {
+            const permissionResult = await requestDefaultExtensionPermissions(
+              DEFAULT_NIP07_ENCRYPTION_METHODS,
+            );
+            if (!permissionResult?.ok) {
+              const error =
+                permissionResult?.error instanceof Error
+                  ? permissionResult.error
+                  : new Error(
+                      "Extension encryption permissions are required to use the browser decryptor.",
+                    );
+              error.code = "user-blocklist-permission-required";
+              permissionError = error;
+            }
+          } catch (error) {
+            const wrapped =
+              error instanceof Error ? error : new Error(String(error));
+            wrapped.code = "user-blocklist-permission-required";
+            permissionError = wrapped;
           }
-        } catch (error) {
-          const wrapped =
-            error instanceof Error ? error : new Error(String(error));
-          wrapped.code = "user-blocklist-permission-required";
-          permissionError = wrapped;
         }
       }
 
@@ -1033,7 +1052,7 @@ class UserBlockListManager {
       const nostrApi = typeof window !== "undefined" ? window?.nostr : null;
       const decrypterOptions = {
         priority: NIP07_PRIORITY.HIGH,
-        timeoutMs: 12000,
+        timeoutMs: nip07DecryptTimeoutMs,
         retryMultiplier: 1,
       };
 
@@ -1092,6 +1111,10 @@ class UserBlockListManager {
             }
           }
         }
+      }
+
+      if (permissionError) {
+        permissionError.signerStatus = signerStatus;
       }
 
       return {
@@ -1291,13 +1314,13 @@ class UserBlockListManager {
             setTimeout(
               () => {
                 const timeoutError = new Error(
-                  `Decryption timed out after ${DECRYPT_TIMEOUT_MS / 1000}s`,
+                  `Decryption timed out after ${decryptTimeoutMs / 1000}s`,
                 );
                 timeoutError.code = "user-blocklist-decrypt-timeout";
                 timeoutError.signerStatus = resolveSignerStatus();
                 reject(timeoutError);
               },
-              DECRYPT_TIMEOUT_MS,
+              decryptTimeoutMs,
             ),
           );
 
@@ -1314,6 +1337,26 @@ class UserBlockListManager {
         }
 
         if (decryptionError) {
+          if (decryptionError.code === "user-blocklist-permission-required") {
+            const signerStatus =
+              decryptionError.signerStatus || resolveSignerStatus();
+            this.blockedPubkeys = previousState.blockedPubkeys;
+            this.blockEventId = previousState.blockEventId;
+            this.blockEventCreatedAt = previousState.blockEventCreatedAt;
+            this.loaded = true;
+            emitStatus({
+              status: "permission-required",
+              signerStatus,
+              source,
+              reason: "decryptor-permission",
+              allowPermissionPrompt,
+              mode: loadMode,
+              events: [newestMute?.id, newestBlock?.id].filter(Boolean),
+              error: decryptionError,
+            });
+            emitStatus({ status: "settled" });
+            return;
+          }
           if (decryptionError.code === "user-blocklist-decrypt-timeout") {
             const signerStatus =
               decryptionError.signerStatus || resolveSignerStatus();

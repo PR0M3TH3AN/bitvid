@@ -778,14 +778,18 @@ export default class AuthService {
     return { detail, completionPromise };
   }
 
-  createBlocksLoadOperation(activePubkey, schedule = (callback) => Promise.resolve().then(() => callback())) {
+  createBlocksLoadOperation(
+    activePubkey,
+    schedule = (callback) => Promise.resolve().then(() => callback()),
+    options = {},
+  ) {
     if (!this.userBlocks || typeof this.userBlocks.loadBlocks !== "function") {
       return null;
     }
 
     return {
       name: "blocksLoaded",
-      promise: schedule(() => this.userBlocks.loadBlocks(activePubkey)),
+      promise: schedule(() => this.userBlocks.loadBlocks(activePubkey, options)),
       onFulfilled: () => true,
       onRejected: (error) => {
         this.log("[AuthService] Failed to load block list", error);
@@ -801,14 +805,14 @@ export default class AuthService {
     };
   }
 
-  async loadBlocksForPubkey(pubkey) {
+  async loadBlocksForPubkey(pubkey, options = {}) {
     const normalized = this.normalizeHexPubkey(pubkey) ||
       (typeof pubkey === "string" ? pubkey.trim() : "");
     if (!normalized) {
       return false;
     }
 
-    const operation = this.createBlocksLoadOperation(normalized);
+    const operation = this.createBlocksLoadOperation(normalized, undefined, options);
     if (!operation) {
       return false;
     }
