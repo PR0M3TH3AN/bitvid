@@ -58,6 +58,7 @@ const TRUSTED_MUTE_HIDE_HELPER_TEXT =
   "Reaching this count hides cards (with “Show anyway”); lower signals only blur thumbnails or block autoplay.";
 const TYPING_INDICATOR_TTL_SECONDS = 15;
 const TYPING_INDICATOR_COOLDOWN_MS = 4000;
+const DIRECT_MESSAGES_BATCH_DELAY_MS = 250;
 
 const ADD_PROFILE_CANCELLATION_CODES = new Set([
   "login-cancelled",
@@ -1385,6 +1386,8 @@ export class ProfileModalController {
     this.directMessagesLastActor = null;
     this.directMessagesSubscription = null;
     this.directMessagesUnsubscribes = [];
+    this.directMessagesRenderTimeout = null;
+    this.pendingDirectMessagesUpdate = null;
     this.pendingMessagesRender = null;
     this.messagesStatusClearTimeout = null;
     this.dmPrivacyToggleTouched = false;
@@ -5079,28 +5082,49 @@ export class ProfileModalController {
     this.updateMessagesReloadState();
   }
 
-  handleDirectMessagesUpdated(detail = {}) {
-    if (
-      this.activeMessagesRequest &&
-      detail?.reason !== "load-incremental"
-    ) {
+  clearDirectMessagesUpdateQueue() {
+    if (this.directMessagesRenderTimeout) {
+      const clearTimeoutFn =
+        typeof window !== "undefined" && typeof window.clearTimeout === "function"
+          ? window.clearTimeout.bind(window)
+          : clearTimeout;
+      clearTimeoutFn(this.directMessagesRenderTimeout);
+      this.directMessagesRenderTimeout = null;
+    }
+    this.pendingDirectMessagesUpdate = null;
+  }
+
+  scheduleDirectMessagesRender(payload = null) {
+    if (!payload) {
       return;
     }
 
-    const messages = Array.isArray(detail?.messages)
-      ? detail.messages
-      : [];
-    this.directMessagesCache = messages;
+    this.pendingDirectMessagesUpdate = payload;
 
-    const actor = this.resolveActiveDmActor();
-    if (!actor) {
-      this.setMessagesLoadingState("unauthenticated");
+    if (this.directMessagesRenderTimeout) {
       return;
     }
 
-    this.directMessagesLastActor = actor;
+    const scheduleTimeout =
+      typeof window !== "undefined" && typeof window.setTimeout === "function"
+        ? window.setTimeout.bind(window)
+        : setTimeout;
 
-    void this.renderProfileMessages(messages, { actorPubkey: actor })
+    this.directMessagesRenderTimeout = scheduleTimeout(() => {
+      this.directMessagesRenderTimeout = null;
+      this.flushDirectMessagesRender();
+    }, DIRECT_MESSAGES_BATCH_DELAY_MS);
+  }
+
+  flushDirectMessagesRender() {
+    const pending = this.pendingDirectMessagesUpdate;
+    this.pendingDirectMessagesUpdate = null;
+    if (!pending) {
+      return;
+    }
+
+    const { messages, actorPubkey, reason } = pending;
+    void this.renderProfileMessages(messages, { actorPubkey })
       .then(() => {
         if (!messages.length) {
           this.setMessagesLoadingState("empty");
@@ -5108,8 +5132,6 @@ export class ProfileModalController {
           this.setMessagesLoadingState("ready");
         }
 
-        const reason =
-          typeof detail?.reason === "string" ? detail.reason : "";
         if (reason === "subscription") {
           this.setMessagesAnnouncement("New direct message received.");
         } else if (reason === "load") {
@@ -5128,11 +5150,40 @@ export class ProfileModalController {
       });
   }
 
+  handleDirectMessagesUpdated(detail = {}) {
+    if (
+      this.activeMessagesRequest &&
+      detail?.reason !== "load-incremental"
+    ) {
+      return;
+    }
+
+    const messages = Array.isArray(detail?.messages)
+      ? detail.messages
+      : [];
+    this.directMessagesCache = messages;
+
+    const actor = this.resolveActiveDmActor();
+    if (!actor) {
+      this.setMessagesLoadingState("unauthenticated");
+      this.clearDirectMessagesUpdateQueue();
+      return;
+    }
+
+    this.directMessagesLastActor = actor;
+    this.scheduleDirectMessagesRender({
+      messages,
+      actorPubkey: actor,
+      reason: typeof detail?.reason === "string" ? detail.reason : "",
+    });
+  }
+
   handleDirectMessagesCleared() {
     if (this.activeMessagesRequest) {
       return;
     }
 
+    this.clearDirectMessagesUpdateQueue();
     this.directMessagesCache = [];
     this.setDirectMessageRecipient(null, { reason: "clear" });
     if (this.profileMessagesList instanceof HTMLElement) {
