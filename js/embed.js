@@ -1,6 +1,7 @@
 import Application from "./app.js";
 import { nostrClient } from "./nostrClientFacade.js";
 import { convertEventToVideo, getDTagValueFromTags } from "./nostr/index.js";
+import { sanitizeRelayList } from "./nostr/nip46Client.js";
 import { resolveVideoPointer } from "./utils/videoPointer.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import { nostrToolsReady } from "./nostrToolsBootstrap.js";
@@ -180,13 +181,7 @@ const buildRelayList = (relays) => {
     ...(Array.isArray(nostrClient.relays) ? nostrClient.relays : []),
   ];
 
-  const result = Array.from(
-    new Set(
-      combined
-        .map((relay) => (typeof relay === "string" ? relay.trim() : ""))
-        .filter(Boolean)
-    )
-  );
+  const result = sanitizeRelayList(combined);
   diag?.emit("relay-list", { relays: result });
   return result;
 };

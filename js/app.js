@@ -275,6 +275,7 @@ class Application {
     this.dmRelayHints = new Map();
     this.authLoadingState = { profile: "idle", lists: "idle", dms: "idle" };
     this.relayUiRefreshTimeout = null;
+    this.lastRelayHealthWarningAt = 0;
     this.activeIntervals = [];
     this.torrentStatusIntervalId = null;
     this.torrentStatusNodes = null;
@@ -6567,6 +6568,35 @@ class Application {
       });
   }
 
+  checkRelayHealthWarning() {
+    if (!nostrClient || typeof nostrClient.getHealthyRelays !== "function") {
+      return false;
+    }
+
+    const relayCandidates = Array.isArray(nostrClient.relays) ? nostrClient.relays : [];
+    if (!relayCandidates.length) {
+      return false;
+    }
+
+    const healthyRelays = nostrClient.getHealthyRelays(relayCandidates);
+    if (healthyRelays.length) {
+      return false;
+    }
+
+    const now = Date.now();
+    const cooldownMs = 30000;
+    if (now - (this.lastRelayHealthWarningAt || 0) < cooldownMs) {
+      return true;
+    }
+
+    this.lastRelayHealthWarningAt = now;
+    this.showStatus(
+      "All configured relays are unhealthy. Data may be missing until a relay reconnects.",
+      { autoHideMs: 12000, showSpinner: false },
+    );
+    return true;
+  }
+
   /**
    * Subscribe to videos (older + new) and render them as they come in.
    */
@@ -6586,6 +6616,7 @@ class Application {
     this.loadVideosPromise = (async () => {
       devLogger.log("Starting loadVideos... (forceFetch =", forceFetch, ")");
       this.setFeedTelemetryContext("recent");
+      this.checkRelayHealthWarning();
 
       const container = this.mountVideoListView();
       const hasCachedVideos =
@@ -6641,6 +6672,7 @@ class Application {
   async loadForYouVideos(forceFetch = false) {
     devLogger.log("Starting loadForYouVideos... (forceFetch =", forceFetch, ")");
     this.setFeedTelemetryContext("for-you");
+    this.checkRelayHealthWarning();
 
     const container = this.mountVideoListView({ includeTags: false });
     const hasCachedVideos =
