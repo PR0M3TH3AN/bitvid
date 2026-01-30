@@ -20,7 +20,7 @@ The client maintains three primary state maps to ensure data consistency:
 
 *   **`activeMap`** (`Map<string, VideoObject>`):
     *   The "materialized view" used by the UI.
-    *   Keys are `videoRootId` (for versioned edits) or `pubkey:dTag` (for addressable events).
+    *   Keys are `videoRootId` (prefixed with `ROOT:`) for versioned edits, or `pubkey:dTag` for addressable events.
     *   Values are the *latest* valid version of the video.
     *   **Invariant**: Only one entry exists per "video entity", ensuring the UI displays the most recent edit.
 
@@ -36,7 +36,7 @@ The `subscribeVideos` method implements a buffered ingestion pipeline to handle 
 
 1.  **Subscription**: Opens a subscription to all connected relays.
 2.  **Buffering**: Incoming events are pushed to an `eventBuffer` array immediately.
-3.  **Debouncing**: A timer flushes the buffer every ~250ms (or when full).
+3.  **Debouncing**: A timer flushes the buffer every ~75ms (or when full).
 4.  **Processing (Flush)**:
     *   Events are parsed and validated.
     *   **Tombstone Check**: If an event predates a known deletion, it is discarded.

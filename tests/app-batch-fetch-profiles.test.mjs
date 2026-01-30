@@ -99,7 +99,6 @@ test("batchFetchProfiles handles fast and failing relays", async () => {
     nostrClient.relays = originalRelays;
     nostrClient.readRelays = originalReadRelays;
     nostrClient.writeRelays = originalWriteRelays;
-    nostrClient.readRelays = originalReadRelays;
     nostrClient.pool = originalPool;
   }
 
