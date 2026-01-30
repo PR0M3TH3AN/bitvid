@@ -1,3 +1,4 @@
+// Fuzz harness for js/dmDecryptor.js
 import "./setup-test-env.js";
 import { Fuzzer } from "./fuzz-lib.mjs";
 import { decryptDM } from "../../js/dmDecryptor.js";

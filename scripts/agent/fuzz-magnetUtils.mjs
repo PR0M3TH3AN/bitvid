@@ -1,3 +1,4 @@
+// Fuzz harness for js/magnetUtils.js
 import "./setup-test-env.js";
 import { Fuzzer } from "./fuzz-lib.mjs";
 import { normalizeAndAugmentMagnet } from "../../js/magnetUtils.js";
