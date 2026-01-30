@@ -431,8 +431,11 @@ artifacts now that the deploy pipeline owns the build step.
     preparing a new deployment.
   - See [`docs/instance-config.md`](docs/instance-config.md) for a full
     reference of every setting and how to tune it.
-  - Flip `IS_DEV_MODE` to `false` before shipping production builds. The flag
-    flows into `js/config.js` as `isDevMode`, seeds the
+  - `IS_DEV_MODE` and `IS_VERBOSE_DEV_MODE` default to `false` for production.
+    If you need dev logging in a staging or QA build without editing source,
+    inject `window.__BITVID_DEV_MODE_OVERRIDE__` and/or
+    `window.__BITVID_VERBOSE_DEV_MODE_OVERRIDE__` before `js/config.js` loads.
+    The flag flows into `js/config.js` as `isDevMode`, seeds the
     `window.__BITVID_DEV_MODE__` global for inline scripts, and gates whether the
     dev logging channel emits to the console. See
     [`docs/logging.md`](docs/logging.md) for rollout guidance.

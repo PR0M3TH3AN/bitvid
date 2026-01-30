@@ -147,19 +147,26 @@ function collectGenericLogs(filepath, sourceName) {
     for (const line of lines) {
         // Simple heuristic for generic logs: look for "Error:" or "Exception:"
         // and capture following lines that look like stack traces (start with 'at ' or are indented)
+        // Also support bracketed log levels like [ERROR], [FAIL], [CRITICAL], [WARN]
 
-        const isErrorStart = /Error:|Exception:|FAIL|CRITICAL/.test(line);
+        const errorMatch = line.match(/(?:\[\s*(?:ERROR|FAIL|CRITICAL|EXCEPTION|WARN|WARNING)\s*\])|(?:\b(?:Error|Exception|Warning):)|(?:\b(?:FAIL|CRITICAL)\b)/i);
+        const isErrorStart = !!errorMatch;
         const isStackLine = /^\s+at /.test(line) || /^\s+/.test(line); // Indented lines often follow errors
 
         if (isErrorStart) {
             if (currentError) {
                 errors.push(currentError);
             }
+
+            let severity = 'High';
+            if (line.match(/CRITICAL/i)) severity = 'Critical';
+            else if (line.match(/WARN|WARNING/i)) severity = 'Medium';
+
             currentError = {
                 source: sourceName,
                 title: sanitize(line.trim()),
                 details: [sanitize(line.trim())],
-                severity: 'High'
+                severity: severity
             };
         } else if (currentError && isStackLine) {
             currentError.details.push(sanitize(line.trim()));
