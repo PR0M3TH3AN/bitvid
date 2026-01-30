@@ -23,6 +23,7 @@ import { WSS_TRACKERS } from "./constants.js";
 import { safeDecodeURIComponent } from "./utils/safeDecode.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import { emit } from "./embedDiagnostics.js";
+import { infoHashFromMagnet } from "./magnets.js";
 
 const DEFAULT_PROBE_TRACKERS = Object.freeze([...WSS_TRACKERS]);
 
@@ -161,6 +162,8 @@ export class TorrentClient {
 
     // Timeout for SW operations
     this.TIMEOUT_DURATION = 60000;
+
+    this.probeInFlight = new Map();
   }
 
   ensureClientForProbe() {
@@ -179,7 +182,7 @@ export class TorrentClient {
    */
   async probePeers(
     magnetURI,
-    { timeoutMs = 8000, maxWebConns = 2, polls = 3, urlList = [] } = {}
+    { timeoutMs = 8000, maxWebConns = 2, polls = 2, urlList = [] } = {}
   ) {
     const magnet = typeof magnetURI === "string" ? magnetURI.trim() : "";
     if (!magnet) {
@@ -214,14 +217,21 @@ export class TorrentClient {
       };
     }
 
+    const infoHash = infoHashFromMagnet(magnet);
+    const probeKey = infoHash || null;
+
+    if (probeKey && this.probeInFlight.has(probeKey)) {
+      return this.probeInFlight.get(probeKey);
+    }
+
     const client = this.ensureClientForProbe();
     const safeTimeout = Math.max(0, normalizeNumber(timeoutMs, 8000));
-    const safePolls = Math.max(1, Math.floor(normalizeNumber(polls, 3)));
+    const safePolls = Math.max(0, Math.floor(normalizeNumber(polls, 2)));
     const safeMaxWebConns = Math.max(1, Math.floor(normalizeNumber(maxWebConns, 2)));
-    const pollInterval = Math.max(
-      250,
-      Math.floor(safeTimeout / Math.max(1, safePolls))
-    );
+    const pollInterval =
+      safePolls > 0
+        ? Math.max(1000, Math.floor(safeTimeout / Math.max(1, safePolls)))
+        : 0;
 
     const startedAt =
       typeof performance !== "undefined" && performance?.now
@@ -230,11 +240,12 @@ export class TorrentClient {
 
     emit("torrent-probe-start", { magnet: augmentedMagnet });
 
-    return new Promise((resolve) => {
+    const probePromise = new Promise((resolve) => {
       let settled = false;
       let torrent = null;
       let timeoutId = null;
       let pollId = null;
+      let pollStartId = null;
 
       const finalize = (overrides = {}) => {
         if (settled) {
@@ -248,6 +259,10 @@ export class TorrentClient {
         if (pollId) {
           clearInterval(pollId);
           pollId = null;
+        }
+        if (pollStartId) {
+          clearTimeout(pollStartId);
+          pollStartId = null;
         }
         if (torrent) {
           try {
@@ -328,16 +343,34 @@ export class TorrentClient {
         }, safeTimeout);
       }
 
-      pollId = setInterval(() => {
-        if (!torrent || settled) {
-          return;
-        }
-        const peers = Math.max(0, Math.floor(normalizeNumber(torrent.numPeers, 0)));
-        if (peers > 0) {
-          finalize({ healthy: true, peers, reason: "peer" });
-        }
-      }, pollInterval);
+      if (safePolls > 0 && pollInterval > 0) {
+        pollStartId = setTimeout(() => {
+          if (!torrent || settled) {
+            return;
+          }
+          pollId = setInterval(() => {
+            if (!torrent || settled) {
+              return;
+            }
+            const peers = Math.max(0, Math.floor(normalizeNumber(torrent.numPeers, 0)));
+            if (peers > 0) {
+              finalize({ healthy: true, peers, reason: "peer" });
+            }
+          }, pollInterval);
+        }, pollInterval);
+      }
     });
+
+    if (probeKey) {
+      this.probeInFlight.set(probeKey, probePromise);
+      probePromise.finally(() => {
+        if (this.probeInFlight.get(probeKey) === probePromise) {
+          this.probeInFlight.delete(probeKey);
+        }
+      });
+    }
+
+    return probePromise;
   }
 
   log(...args) {
