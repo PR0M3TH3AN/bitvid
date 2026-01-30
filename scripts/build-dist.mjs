@@ -40,6 +40,15 @@ function copyFile(src, dest) {
   } else {
     const message = `Error: Source file ${src} does not exist.`;
     console.error(message);
+    // Debug: list source directory to check what IS there
+    try {
+      console.log(`Source directory listing for context:`);
+      const dir = path.dirname(src);
+      console.log(fs.readdirSync(dir || '.'));
+    } catch (e) {
+      console.error('Failed to list source directory:', e);
+    }
+
     if (['_headers', '_redirects', 'index.html'].includes(path.basename(src))) {
       throw new Error(message);
     }
@@ -79,16 +88,22 @@ function main() {
   }
 
   // Verify critical CSS generation
-  const generatedCss = path.join(DIST, 'css', 'tailwind.generated.css');
-  if (!fs.existsSync(generatedCss) && !fs.existsSync(path.join('css', 'tailwind.generated.css'))) {
-     // tailwind might output to dist/css OR css/ then we copy.
-     // The command is: -o css/tailwind.generated.css
-     // So it should be in source 'css/', then copied by copyDir('css'...)
-     // Let's verify it exists in source 'css/'
-     if (!fs.existsSync(path.join('css', 'tailwind.generated.css'))) {
-         console.error('Error: css/tailwind.generated.css was not generated.');
-         process.exit(1);
+  const generatedCssSource = path.join('css', 'tailwind.generated.css');
+  const generatedCssDist = path.join(DIST, 'css', 'tailwind.generated.css');
+
+  if (!fs.existsSync(generatedCssSource) && !fs.existsSync(generatedCssDist)) {
+     console.error('Error: css/tailwind.generated.css was not generated.');
+     try {
+       console.log('Listing css/ directory:');
+       if (fs.existsSync('css')) {
+         console.log(fs.readdirSync('css'));
+       } else {
+         console.log('css/ directory does not exist.');
+       }
+     } catch (e) {
+       console.error('Failed to list css directory:', e);
      }
+     process.exit(1);
   }
 
   console.log('Copying directories...');
