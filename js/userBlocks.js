@@ -20,7 +20,11 @@ import {
 import { profileCache } from "./state/profileCache.js";
 import { DEFAULT_RELAY_URLS } from "./nostr/toolkit.js";
 import { relayManager } from "./relayManager.js";
-import { runNip07WithRetry, NIP07_PRIORITY } from "./nostr/nip07Permissions.js";
+import {
+  DEFAULT_NIP07_ENCRYPTION_METHODS,
+  runNip07WithRetry,
+  NIP07_PRIORITY,
+} from "./nostr/nip07Permissions.js";
 import { relaySubscriptionService } from "./services/relaySubscriptionService.js";
 
 class TinyEventEmitter {
@@ -962,17 +966,24 @@ class UserBlockListManager {
       let permissionError = null;
       if ((!signerHasNip44 && requiresNip44) || (!signerHasNip04 && requiresNip04)) {
         try {
-          const permissionResult = await requestDefaultExtensionPermissions();
+          const permissionResult = await requestDefaultExtensionPermissions(
+            DEFAULT_NIP07_ENCRYPTION_METHODS,
+          );
           if (!permissionResult?.ok) {
-            permissionError =
+            const error =
               permissionResult?.error instanceof Error
                 ? permissionResult.error
                 : new Error(
-                    "Extension permissions are required to use the browser decryptor.",
+                    "Extension encryption permissions are required to use the browser decryptor.",
                   );
+            error.code = "user-blocklist-permission-required";
+            permissionError = error;
           }
         } catch (error) {
-          permissionError = error instanceof Error ? error : new Error(String(error));
+          const wrapped =
+            error instanceof Error ? error : new Error(String(error));
+          wrapped.code = "user-blocklist-permission-required";
+          permissionError = wrapped;
         }
       }
 
@@ -1981,16 +1992,18 @@ class UserBlockListManager {
     }
 
     if (signer.type === "extension") {
-      const permissionResult = await requestDefaultExtensionPermissions();
+      const permissionResult = await requestDefaultExtensionPermissions(
+        DEFAULT_NIP07_ENCRYPTION_METHODS,
+      );
       if (!permissionResult.ok) {
         userLogger.warn(
           "[UserBlockList] Signer permissions denied while updating the block list.",
           permissionResult.error,
         );
         const err = new Error(
-          "The active signer must allow encryption and signing before updating the block list.",
+          "The active signer must allow encryption before updating the block list.",
         );
-        err.code = "extension-permission-denied";
+        err.code = "extension-encryption-permission-denied";
         err.cause = permissionResult.error;
         throw err;
       }

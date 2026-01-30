@@ -31,7 +31,11 @@ import { devLogger, userLogger } from "./utils/logger.js";
 import moderationService from "./services/moderationService.js";
 import nostrService from "./services/nostrService.js";
 import { profileCache } from "./state/profileCache.js";
-import { runNip07WithRetry, NIP07_PRIORITY } from "./nostr/nip07Permissions.js";
+import {
+  DEFAULT_NIP07_ENCRYPTION_METHODS,
+  runNip07WithRetry,
+  NIP07_PRIORITY,
+} from "./nostr/nip07Permissions.js";
 import { relaySubscriptionService } from "./services/relaySubscriptionService.js";
 
 const SUBSCRIPTION_SET_KIND =
@@ -883,7 +887,9 @@ class SubscriptionsManager {
         return { ok: false, error };
       }
       try {
-        const permissionResult = await requestDefaultExtensionPermissions();
+        const permissionResult = await requestDefaultExtensionPermissions(
+          DEFAULT_NIP07_ENCRYPTION_METHODS,
+        );
         if (!permissionResult?.ok) {
           const error =
             permissionResult?.error instanceof Error
@@ -1112,7 +1118,9 @@ class SubscriptionsManager {
     }
 
     if (signer.type === "extension") {
-      const permissionResult = await requestDefaultExtensionPermissions();
+      const permissionResult = await requestDefaultExtensionPermissions(
+        DEFAULT_NIP07_ENCRYPTION_METHODS,
+      );
       if (!permissionResult.ok) {
         userLogger.warn(
           "[SubscriptionsManager] Signer permissions denied while updating subscriptions.",

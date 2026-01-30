@@ -19,7 +19,11 @@ import { normalizeHashtag } from "../utils/hashtagNormalization.js";
 import { profileCache } from "../state/profileCache.js";
 import { DEFAULT_RELAY_URLS } from "../nostr/toolkit.js";
 import { relayManager } from "../relayManager.js";
-import { runNip07WithRetry, NIP07_PRIORITY } from "../nostr/nip07Permissions.js";
+import {
+  DEFAULT_NIP07_ENCRYPTION_METHODS,
+  runNip07WithRetry,
+  NIP07_PRIORITY,
+} from "../nostr/nip07Permissions.js";
 import { relaySubscriptionService } from "./relaySubscriptionService.js";
 
 const LOG_PREFIX = "[HashtagPreferences]";
@@ -901,12 +905,28 @@ class HashtagPreferencesService {
         return { ok: false, error };
       }
       try {
-        await requestDefaultExtensionPermissions();
+        const permissionResult = await requestDefaultExtensionPermissions(
+          DEFAULT_NIP07_ENCRYPTION_METHODS,
+        );
+        if (!permissionResult?.ok) {
+          const error =
+            permissionResult?.error instanceof Error
+              ? permissionResult.error
+              : new Error(
+                  "Extension encryption permissions are required to read hashtag preferences.",
+                );
+          error.code = "hashtag-preferences-permission-required";
+          return { ok: false, error };
+        }
       } catch (error) {
         userLogger.warn(
           `${LOG_PREFIX} Extension permissions request failed while loading preferences`,
           error,
         );
+        const wrapped =
+          error instanceof Error ? error : new Error(String(error));
+        wrapped.code = "hashtag-preferences-permission-required";
+        return { ok: false, error: wrapped };
       }
     }
 
@@ -1108,10 +1128,12 @@ class HashtagPreferencesService {
     }
 
     if (signer.type === "extension") {
-      const permissionResult = await requestDefaultExtensionPermissions();
+      const permissionResult = await requestDefaultExtensionPermissions(
+        DEFAULT_NIP07_ENCRYPTION_METHODS,
+      );
       if (!permissionResult?.ok) {
         const error = new Error(
-          "The active signer must allow encryption and signing before publishing preferences.",
+          "The active signer must allow encryption before publishing preferences.",
         );
         error.code = "hashtag-preferences-extension-denied";
         error.cause = permissionResult?.error || null;
