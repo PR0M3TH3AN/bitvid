@@ -7,7 +7,7 @@
     "start": "npm run build && npx serve",
     "serve": "npx serve",
     "build": "node scripts/build-dist.mjs",
-    "build:css": "npx tailwindcss -c tailwind.config.cjs -i css/tailwind.source.css -o css/tailwind.generated.css --minify",
+    "build:css": "tailwindcss -c tailwind.config.cjs -i css/tailwind.source.css -o css/tailwind.generated.css --minify",
     "build:beacon:bundle": "node scripts/build-beacon.mjs",
     "build:beacon": "npm run build:beacon:bundle && npm run lint:inline-styles",
     "ci:beacon": "npm run build:beacon",
