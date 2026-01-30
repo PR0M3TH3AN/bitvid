@@ -1195,6 +1195,7 @@ export class ProfileModalController {
       onTogglePrivacy: callbacks.onTogglePrivacy || noop,
       onOpenRelays: callbacks.onOpenRelays || noop,
       onPublishDmRelayPreferences: callbacks.onPublishDmRelayPreferences || noop,
+      onRequestPermissionPrompt: callbacks.onRequestPermissionPrompt || noop,
     };
 
     this.profileModal = null;
@@ -1331,6 +1332,15 @@ export class ProfileModalController {
     this.profileHashtagDisinterestRefreshBtn = null;
     this.subscriptionsStatusText = null;
     this.subscriptionsBackgroundLoading = false;
+    this.permissionPromptCta = null;
+    this.permissionPromptCtaMessage = null;
+    this.permissionPromptCtaButton = null;
+    this.permissionPromptCtaState = {
+      visible: false,
+      message: "",
+      buttonLabel: "Enable permissions",
+      busy: false,
+    };
     this.profileSubscriptionsRefreshBtn = null;
     this.profileFriendsRefreshBtn = null;
     this.profileBlockedRefreshBtn = null;
@@ -1512,6 +1522,12 @@ export class ProfileModalController {
     this.profileModalPaneWrapper =
       this.profileModalRoot?.querySelector("[data-profile-mobile-pane]") || null;
     this.profileModal = this.profileModalRoot;
+    this.permissionPromptCta =
+      document.getElementById("profilePermissionPrompt") || null;
+    this.permissionPromptCtaMessage =
+      document.getElementById("profilePermissionPromptMessage") || null;
+    this.permissionPromptCtaButton =
+      document.getElementById("profilePermissionPromptButton") || null;
     this.closeButton = document.getElementById("closeProfileModal") || null;
     this.profileModalBackButton =
       document.getElementById("profileModalBack") || null;
@@ -1735,6 +1751,7 @@ export class ProfileModalController {
       document.getElementById("profileHashtagDisinterestRefreshBtn") || null;
     this.subscriptionsStatusText =
       document.getElementById("subscriptionsStatus") || null;
+    this.applyPermissionPromptCtaState();
 
     this.profileRelayList = this.relayList;
     this.profileRelayInput = this.relayInput;
@@ -5334,6 +5351,12 @@ export class ProfileModalController {
       });
     }
 
+    if (this.permissionPromptCtaButton instanceof HTMLElement) {
+      this.permissionPromptCtaButton.addEventListener("click", () => {
+        this.callbacks.onRequestPermissionPrompt({ controller: this });
+      });
+    }
+
     Object.entries(this.navButtons).forEach(([name, button]) => {
       if (button instanceof HTMLElement) {
         button.addEventListener("click", () => {
@@ -7853,6 +7876,58 @@ export class ProfileModalController {
       interests: this.sanitizeHashtagList(interestsSource),
       disinterests: this.sanitizeHashtagList(disinterestsSource),
     };
+  }
+
+  setPermissionPromptCtaState(nextState = {}) {
+    if (!nextState || typeof nextState !== "object") {
+      return;
+    }
+
+    this.permissionPromptCtaState = {
+      ...this.permissionPromptCtaState,
+      ...nextState,
+    };
+
+    this.applyPermissionPromptCtaState();
+  }
+
+  applyPermissionPromptCtaState() {
+    if (!(this.permissionPromptCta instanceof HTMLElement)) {
+      return;
+    }
+
+    const fallbackMessage =
+      "Enable permissions to load your subscriptions and hashtag preferences.";
+    const {
+      visible,
+      message,
+      buttonLabel,
+      busy,
+    } = this.permissionPromptCtaState || {};
+    const normalizedMessage =
+      typeof message === "string" && message.trim()
+        ? message.trim()
+        : fallbackMessage;
+
+    this.permissionPromptCta.classList.toggle("hidden", !visible);
+    this.permissionPromptCta.setAttribute("aria-hidden", (!visible).toString());
+
+    if (this.permissionPromptCtaMessage instanceof HTMLElement) {
+      this.permissionPromptCtaMessage.textContent = normalizedMessage;
+    }
+
+    if (this.permissionPromptCtaButton instanceof HTMLButtonElement) {
+      const normalizedLabel =
+        typeof buttonLabel === "string" && buttonLabel.trim()
+          ? buttonLabel.trim()
+          : "Enable permissions";
+      this.permissionPromptCtaButton.textContent = normalizedLabel;
+      this.permissionPromptCtaButton.disabled = Boolean(busy);
+      this.permissionPromptCtaButton.setAttribute(
+        "aria-busy",
+        busy ? "true" : "false",
+      );
+    }
   }
 
   setHashtagStatus(message = "", tone = "muted") {

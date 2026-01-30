@@ -381,6 +381,24 @@
             data-profile-mobile-pane
             aria-hidden="true"
           >
+            <div
+              id="profilePermissionPrompt"
+              class="card hidden flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"
+              role="status"
+              aria-live="polite"
+            >
+              <p
+                id="profilePermissionPromptMessage"
+                class="text-sm text-muted"
+              ></p>
+              <button
+                id="profilePermissionPromptButton"
+                type="button"
+                class="btn focus-ring"
+              >
+                Enable permissions
+              </button>
+            </div>
             <div id="profileModalPanes" class="profile-modal__panes">
             <section
               id="profilePaneAccount"
