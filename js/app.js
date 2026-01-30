@@ -173,6 +173,7 @@ import EngagementController from "./ui/engagementController.js";
 import SimilarContentController from "./ui/similarContentController.js";
 import UrlHealthController from "./ui/urlHealthController.js";
 import VideoModalCommentController from "./ui/videoModalCommentController.js";
+import VideoModalController from "./ui/videoModalController.js";
 import TorrentStatusController from "./ui/torrentStatusController.js";
 import ShareNostrController from "./ui/shareNostrController.js";
 import ModerationActionController from "./services/moderationActionController.js";
@@ -258,6 +259,16 @@ class Application {
 
     const { modalManager } = this.bootstrapper.initialize();
     this.modalManager = modalManager;
+
+    this.videoModalController = new VideoModalController({
+      getVideoModal: () => this.videoModal,
+      callbacks: {
+        showError: (msg) => this.showError(msg),
+        getLastModalTrigger: () => this.lastModalTrigger,
+        setLastModalTrigger: (val) => this.setLastModalTrigger(val),
+        getCurrentVideo: () => this.currentVideo,
+      },
+    });
 
     this.modalCreatorProfileRequestToken = null;
     this.dmRecipientPubkey = null;
@@ -1184,162 +1195,21 @@ class Application {
    * Show the modal and set the "Please stand by" poster on the video.
    */
   async showModalWithPoster(video = this.currentVideo, options = {}) {
-    if (!this.videoModal) {
-      return null;
-    }
-
-    if (Object.prototype.hasOwnProperty.call(options || {}, "trigger")) {
-      this.setLastModalTrigger(options.trigger);
-    }
-
-    const targetVideo = video || this.currentVideo;
-    if (!targetVideo) {
-      this.log(
-        "[Application] Skipping video modal open; no target video is available.",
-      );
-      return null;
-    }
-
-    try {
-      const { root } = await this.ensureVideoModalReady({
-        ensureVideoElement: true,
-      });
-
-      if (!this.videoModal) {
-        return root || null;
-      }
-
-      this.videoModal.open(targetVideo, {
-        triggerElement: this.lastModalTrigger,
-      });
-      this.applyModalLoadingPoster();
-
-      return (
-        root ||
-        (typeof this.videoModal.getRoot === "function"
-          ? this.videoModal.getRoot()
-          : null)
-      );
-    } catch (error) {
-      devLogger.error(
-        "[Application] Failed to open the video modal before playback:",
-        error
-      );
-      this.showError("Could not open the video player. Please try again.");
-      return null;
-    }
+    return this.videoModalController.showModalWithPoster(video, options);
   }
 
   applyModalLoadingPoster() {
-    if (!this.videoModal) {
-      return;
-    }
-    this.videoModal.applyLoadingPoster();
+    this.videoModalController.applyModalLoadingPoster();
   }
 
   forceRemoveModalPoster(reason = "manual-clear") {
-    if (!this.videoModal) {
-      return false;
-    }
-    return this.videoModal.forceRemovePoster(reason);
+    return this.videoModalController.forceRemoveModalPoster(reason);
   }
 
   async ensureVideoModalReady({ ensureVideoElement = false } = {}) {
-    if (!this.videoModal) {
-      throw new Error("Video modal instance is not available.");
-    }
-
-    const getRoot = () =>
-      typeof this.videoModal.getRoot === "function"
-        ? this.videoModal.getRoot()
-        : null;
-    const getVideoElement = () =>
-      typeof this.videoModal.getVideoElement === "function"
-        ? this.videoModal.getVideoElement()
-        : null;
-
-    const existingRoot = getRoot();
-    const existingVideoElement = getVideoElement();
-    const rootConnected = Boolean(existingRoot && existingRoot.isConnected);
-    const hasVideoElement = Boolean(existingVideoElement);
-    const videoConnected = Boolean(
-      existingVideoElement && existingVideoElement.isConnected,
-    );
-
-    const needsRehydrate =
-      !rootConnected || !hasVideoElement || !videoConnected;
-
-    if (!needsRehydrate) {
-      this.modalVideo = existingVideoElement;
-
-      if (
-        existingVideoElement &&
-        this.videoModal &&
-        typeof this.videoModal.setVideoElement === "function"
-      ) {
-        const modalVideo =
-          typeof this.videoModal.getVideoElement === "function"
-            ? this.videoModal.getVideoElement()
-            : null;
-        if (modalVideo !== existingVideoElement) {
-          this.videoModal.setVideoElement(existingVideoElement);
-        }
-      }
-
-      return {
-        root: existingRoot,
-        videoElement: existingVideoElement,
-      };
-    }
-
-    if (!videoConnected) {
-      this.modalVideo = null;
-    }
-
-    if (!this.videoModalReadyPromise) {
-      if (typeof this.videoModal.load !== "function") {
-        throw new Error("Video modal does not expose a load() method.");
-      }
-      this.videoModalReadyPromise = Promise.resolve(this.videoModal.load());
-    }
-
-    try {
-      await this.videoModalReadyPromise;
-    } catch (error) {
-      this.videoModalReadyPromise = null;
-      throw error;
-    }
-
-    this.videoModalReadyPromise = null;
-
-    const readyRoot = getRoot();
-    const readyVideoElement = getVideoElement();
-    const readyVideoConnected = Boolean(
-      readyVideoElement && readyVideoElement.isConnected,
-    );
-
-    if (readyVideoConnected) {
-      this.modalVideo = readyVideoElement;
-      if (
-        this.videoModal &&
-        typeof this.videoModal.setVideoElement === "function"
-      ) {
-        this.videoModal.setVideoElement(readyVideoElement);
-      }
-    } else {
-      this.modalVideo = null;
-    }
-
-    if (ensureVideoElement && !readyVideoConnected) {
-      throw new Error(
-        "Video modal video element is missing after load().",
-      );
-    }
-
-    return {
-      root: readyRoot,
-      videoElement: readyVideoConnected ? readyVideoElement : null,
-    };
+    const result = await this.videoModalController.ensureVideoModalReady({ ensureVideoElement });
+    this.modalVideo = result.videoElement;
+    return result;
   }
 
   initializeSimilarContentController() {
@@ -10032,7 +9902,6 @@ class Application {
   destroy() {
     this.clearActiveIntervals();
     this.teardownModalViewCountSubscription();
-    this.videoModalReadyPromise = null;
 
     if (this.moderationActionController) {
       try {
