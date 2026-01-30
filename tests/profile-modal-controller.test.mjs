@@ -274,6 +274,7 @@ function createController(options = {}) {
       return hashtagStore.disinterests.delete(normalized);
     },
     publish: async () => ({ ok: true }),
+    load: async () => true,
     on: () => () => {},
   };
 
