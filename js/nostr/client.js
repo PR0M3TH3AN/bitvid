@@ -137,6 +137,7 @@ import {
   resolveDmRelaySelection,
 } from "../services/dmNostrService.js";
 import {
+  DEFAULT_NIP07_CORE_METHODS,
   DEFAULT_NIP07_ENCRYPTION_METHODS,
   DEFAULT_NIP07_PERMISSION_METHODS,
   NIP07_PRIORITY,
@@ -2003,7 +2004,7 @@ export class NostrClient {
     }
 
     const permissionResult = await this.ensureExtensionPermissions(
-      DEFAULT_NIP07_PERMISSION_METHODS,
+      DEFAULT_NIP07_CORE_METHODS,
     );
     if (!permissionResult.ok) {
       const denialMessage =
@@ -4813,7 +4814,23 @@ export class NostrClient {
       activeSigner = getActiveSigner();
     }
 
-    if (activeSigner) {
+    let extensionPermissionResult = null;
+    if (
+      activeSigner?.type === "extension" &&
+      typeof this.ensureExtensionPermissions === "function"
+    ) {
+      extensionPermissionResult = await this.ensureExtensionPermissions(
+        DEFAULT_NIP07_ENCRYPTION_METHODS,
+      );
+      if (!extensionPermissionResult?.ok) {
+        devLogger.warn(
+          "[nostr] Extension encryption permissions missing for DM decryption.",
+          extensionPermissionResult?.error,
+        );
+      }
+    }
+
+    if (activeSigner && extensionPermissionResult?.ok !== false) {
       const capabilities = resolveSignerCapabilities(activeSigner);
       if (
         capabilities.nip44 &&
@@ -5260,16 +5277,16 @@ export class NostrClient {
 
     if (shouldRequestExtensionPermissions(signer)) {
       const permissionResult = await this.ensureExtensionPermissions(
-        DEFAULT_NIP07_PERMISSION_METHODS,
+        DEFAULT_NIP07_ENCRYPTION_METHODS,
       );
       if (!permissionResult.ok) {
         userLogger.warn(
-          "[nostr] Cannot send direct message without extension permissions.",
+          "[nostr] Cannot send direct message without encryption permissions.",
           permissionResult.error,
         );
         return {
           ok: false,
-          error: "extension-permission-denied",
+          error: "extension-encryption-permission-denied",
           details: permissionResult.error,
         };
       }
@@ -6539,7 +6556,7 @@ export class NostrClient {
 
     if (shouldRequestExtensionPermissions(signer)) {
       const permissionResult = await this.ensureExtensionPermissions(
-        DEFAULT_NIP07_PERMISSION_METHODS,
+        DEFAULT_NIP07_CORE_METHODS,
       );
       if (!permissionResult.ok) {
         userLogger.warn(
@@ -6547,7 +6564,7 @@ export class NostrClient {
           permissionResult.error,
         );
         const error = new Error(
-          "The active signer must grant decrypt and sign permissions before editing a video.",
+          "The active signer must allow signing before editing a video.",
         );
         error.code = "extension-permission-denied";
         error.cause = permissionResult.error;
@@ -6718,7 +6735,7 @@ export class NostrClient {
 
     if (shouldRequestExtensionPermissions(signer)) {
       const permissionResult = await this.ensureExtensionPermissions(
-        DEFAULT_NIP07_PERMISSION_METHODS,
+        DEFAULT_NIP07_CORE_METHODS,
       );
       if (!permissionResult.ok) {
         userLogger.warn(
@@ -6726,7 +6743,7 @@ export class NostrClient {
           permissionResult.error,
         );
         const error = new Error(
-          "The active signer must grant decrypt and sign permissions before reverting a video.",
+          "The active signer must allow signing before reverting a video.",
         );
         error.code = "extension-permission-denied";
         error.cause = permissionResult.error;
@@ -7026,7 +7043,7 @@ export class NostrClient {
 
       if (shouldRequestExtensionPermissions(signer)) {
         const permissionResult = await this.ensureExtensionPermissions(
-          DEFAULT_NIP07_PERMISSION_METHODS,
+          DEFAULT_NIP07_CORE_METHODS,
         );
         if (!permissionResult.ok) {
           userLogger.warn(
@@ -7034,7 +7051,7 @@ export class NostrClient {
             permissionResult.error,
           );
           const error = new Error(
-            "The active signer must grant decrypt and sign permissions before deleting a video.",
+            "The active signer must allow signing before deleting a video.",
           );
           error.code = "extension-permission-denied";
           error.cause = permissionResult.error;

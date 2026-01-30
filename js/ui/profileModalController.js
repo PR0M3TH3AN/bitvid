@@ -3579,6 +3579,8 @@ export class ProfileModalController {
         return "We couldn’t create secure wrapper keys for NIP-17 delivery.";
       case "extension-permission-denied":
         return "Please grant your Nostr extension permission to send messages.";
+      case "extension-encryption-permission-denied":
+        return "Please grant your Nostr extension encryption permission to send messages.";
       case "missing-actor-pubkey":
         return "We couldn’t determine your public key to send this message.";
       case "nostr-uninitialized":
@@ -9213,6 +9215,9 @@ export class ProfileModalController {
         const message =
           mutationResult?.error?.code === "nip04-missing"
             ? "Your Nostr extension must support NIP-04 to manage private lists."
+            : mutationResult?.error?.code ===
+              "extension-encryption-permission-denied"
+            ? "Your Nostr extension must allow encryption to update your block list."
             : mutationResult?.error?.message ||
               "Failed to update your block list. Please try again.";
         context.error = mutationResult?.error || null;
@@ -9233,6 +9238,8 @@ export class ProfileModalController {
       const message =
         error?.code === "nip04-missing"
           ? "Your Nostr extension must support NIP-04 to manage private lists."
+          : error?.code === "extension-encryption-permission-denied"
+          ? "Your Nostr extension must allow encryption to update your block list."
           : "Failed to update your block list. Please try again.";
       this.showError(message);
     }
@@ -9283,6 +9290,9 @@ export class ProfileModalController {
         const message =
           mutationResult.error.code === "nip04-missing"
             ? "Your Nostr extension must support NIP-04 to manage private lists."
+            : mutationResult.error.code ===
+              "extension-encryption-permission-denied"
+            ? "Your Nostr extension must allow encryption to update your block list."
             : mutationResult.error.message ||
               "Failed to update your block list. Please try again.";
         if (message) {
@@ -9299,6 +9309,8 @@ export class ProfileModalController {
       const message =
         error?.code === "nip04-missing"
           ? "Your Nostr extension must support NIP-04 to manage private lists."
+          : error?.code === "extension-encryption-permission-denied"
+          ? "Your Nostr extension must allow encryption to update your block list."
           : "Failed to update your block list. Please try again.";
       this.showError(message);
     }

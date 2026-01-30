@@ -89,7 +89,7 @@ import {
   onActiveSignerChanged,
 } from "./nostrClientRegistry.js";
 import { queueSignEvent } from "./nostr/signRequestQueue.js";
-import { DEFAULT_NIP07_PERMISSION_METHODS } from "./nostr/nip07Permissions.js";
+import { DEFAULT_NIP07_CORE_METHODS } from "./nostr/nip07Permissions.js";
 import {
   initViewCounter,
   subscribeToVideoViewCount,
@@ -2027,7 +2027,9 @@ class Application {
       case "nip04-missing":
         return "Your Nostr extension must support NIP-04 to manage private block lists.";
       case "extension-permission-denied":
-        return "Permission to update your block list was denied by your Nostr extension.";
+        return "Your Nostr extension denied the encryption permissions needed to update your block list.";
+      case "extension-encryption-permission-denied":
+        return "Your Nostr extension denied the encryption permissions needed to update your block list.";
       case "sign-event-missing":
       case "signer-missing":
         return "Connect a Nostr signer that can encrypt and sign updates before managing block lists.";
@@ -2058,7 +2060,9 @@ class Application {
       case "hashtag-preferences-missing-signer":
         return "Connect a Nostr signer that supports encryption before managing hashtag preferences.";
       case "hashtag-preferences-extension-denied":
-        return "Permission to manage hashtag preferences was denied by your signer.";
+        return "Your signer denied the encryption permissions needed to manage hashtag preferences.";
+      case "hashtag-preferences-permission-required":
+        return "Your Nostr extension must grant encryption permissions to read hashtag preferences.";
       case "hashtag-preferences-no-decryptors":
         return "Unable to decrypt hashtag preferences with the active signer.";
       case "hashtag-preferences-decrypt-failed":
@@ -2694,7 +2698,9 @@ class Application {
     }
 
     if (signer.type === "extension" && nostrClient.ensureExtensionPermissions) {
-      const permissionResult = await nostrClient.ensureExtensionPermissions();
+      const permissionResult = await nostrClient.ensureExtensionPermissions(
+        DEFAULT_NIP07_CORE_METHODS,
+      );
       if (!permissionResult?.ok) {
         userLogger.warn(
           "[Application] Signer permissions denied while publishing DM relays.",
