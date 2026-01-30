@@ -1,0 +1,77 @@
+/* Docs layout + table of contents styling */
+#docsToc {
+  position: sticky;
+  top: var(--space-xl);
+  align-self: flex-start;
+  max-height: calc(100vh - var(--space-2xl));
+  overflow-y: auto;
+  padding: var(--space-md);
+  border: var(--border-width-hairline) solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background-color: var(--surface-sunken);
+  box-shadow: inset 0 0 0 var(--border-width-hairline)
+    var(--surface-overlay-darker);
+}
+
+#docsContent {
+  min-width: 0;
+}
+
+#docsContent .markdown-prose {
+  max-width: 72ch;
+}
+
+#docsTocList,
+#docsTocDrawerNav {
+  gap: var(--space-xs);
+}
+
+#docsTocList ul,
+#docsTocDrawerNav ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+#docsTocList li,
+#docsTocDrawerNav li {
+  margin: 0;
+}
+
+#docsTocList [data-docs-toc-item],
+#docsTocDrawerNav [data-docs-toc-item] {
+  display: block;
+  padding: var(--space-2xs) var(--space-xs);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  text-decoration: none;
+  transition:
+    background-color var(--motion-duration-fast) ease,
+    color var(--motion-duration-fast) ease;
+}
+
+#docsTocList [data-docs-toc-item]:hover,
+#docsTocDrawerNav [data-docs-toc-item]:hover,
+#docsTocList [data-docs-toc-item]:focus-visible,
+#docsTocDrawerNav [data-docs-toc-item]:focus-visible {
+  background-color: var(--surface-muted);
+  color: var(--text-primary);
+}
+
+#docsTocList [data-docs-toc-item][aria-current="page"],
+#docsTocDrawerNav [data-docs-toc-item][aria-current="page"] {
+  background-color: var(--surface-overlay-panel-soft);
+  color: var(--text-primary);
+}
+
+#docsTocList [data-docs-toc-item]:focus-visible,
+#docsTocDrawerNav [data-docs-toc-item]:focus-visible {
+  outline: var(--space-3xs) solid var(--color-accent);
+  outline-offset: var(--space-3xs);
+}
+
+#docsTocDrawerNav {
+  max-height: calc(100vh - var(--space-2xl));
+  overflow-y: auto;
+  padding-right: var(--space-2xs);
+}
