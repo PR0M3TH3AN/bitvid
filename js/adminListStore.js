@@ -270,7 +270,7 @@ export const readCachedAdminState = () => {
   }
 };
 
-const writeCachedAdminState = (state) => {
+export const writeCachedAdminState = (state) => {
   const policy = CACHE_POLICIES[NOTE_TYPES.ADMIN_MODERATION_LIST];
   if (policy?.storage !== STORAGE_TIERS.LOCAL_STORAGE) {
     return;
