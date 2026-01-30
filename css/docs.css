@@ -45,7 +45,8 @@
   border-radius: var(--radius-md);
   color: var(--text-muted);
   text-decoration: none;
-  transition: background-color var(--motion-duration-fast) ease,
+  transition:
+    background-color var(--motion-duration-fast) ease,
     color var(--motion-duration-fast) ease;
 }
 
