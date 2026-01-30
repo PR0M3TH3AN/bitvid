@@ -235,6 +235,7 @@ To programmatically publish videos, use the event builders in `js/nostrEventSche
 ```javascript
 import { buildVideoPostEvent } from "./js/nostrEventSchemas.js";
 
+// Ensure dependencies are installed (npm ci)
 // 1. Build the event object (useful for inspection or custom publishing)
 const event = buildVideoPostEvent({
   // Provide your hex pubkey (not npub)
