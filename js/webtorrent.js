@@ -27,6 +27,29 @@ import { infoHashFromMagnet } from "./magnets.js";
 
 const DEFAULT_PROBE_TRACKERS = Object.freeze([...WSS_TRACKERS]);
 
+function stripXsParameter(magnetURI) {
+  const trimmed = typeof magnetURI === "string" ? magnetURI.trim() : "";
+  if (
+    typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1")
+  ) {
+    try {
+      const [prefix, queryString] = trimmed.split("?");
+      if (queryString) {
+        const params = new URLSearchParams(queryString);
+        if (params.has("xs")) {
+          params.delete("xs");
+          return `${prefix}?${params.toString()}`;
+        }
+      }
+    } catch (err) {
+      // ignore
+    }
+  }
+  return trimmed;
+}
+
 function normalizeTrackerList(trackers) {
   const normalized = [];
   const seen = new Set();
@@ -184,7 +207,8 @@ export class TorrentClient {
     magnetURI,
     { timeoutMs = 8000, maxWebConns = 2, polls = 2, urlList = [] } = {}
   ) {
-    const magnet = typeof magnetURI === "string" ? magnetURI.trim() : "";
+    const magnet = stripXsParameter(magnetURI);
+
     if (!magnet) {
       return {
         healthy: false,
@@ -903,7 +927,17 @@ export class TorrentClient {
    */
   async streamVideo(magnetURI, videoElement, opts = {}) {
     try {
-      emit("torrent-stream-start", { magnet: magnetURI });
+      const effectiveMagnetURI = stripXsParameter(magnetURI);
+      if (
+        effectiveMagnetURI !==
+        (typeof magnetURI === "string" ? magnetURI.trim() : "")
+      ) {
+        this.log(
+          "[WebTorrent] Stripped 'xs' parameter to prevent CORS errors on localhost.",
+        );
+      }
+
+      emit("torrent-stream-start", { magnet: effectiveMagnetURI });
       // 1) Make sure we have a WebTorrent client and a valid SW registration.
       const initResult = await this.init();
 
@@ -942,7 +976,7 @@ export class TorrentClient {
         if (isFirefoxBrowser) {
           this.log("Starting torrent download (Firefox path)");
           this.client.add(
-            magnetURI,
+            effectiveMagnetURI,
             { ...chromeOptions, maxWebConns: 4 },
             (torrent) => {
               this.log("Torrent added (Firefox path):", torrent.name);
@@ -951,7 +985,7 @@ export class TorrentClient {
           );
         } else {
           this.log("Starting torrent download (Chrome path)");
-          this.client.add(magnetURI, chromeOptions, (torrent) => {
+          this.client.add(effectiveMagnetURI, chromeOptions, (torrent) => {
             this.log("Torrent added (Chrome path):", torrent.name);
             this.handleChromeTorrent(torrent, videoElement, resolve, reject);
           });
