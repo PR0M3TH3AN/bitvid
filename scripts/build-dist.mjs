@@ -38,8 +38,20 @@ function copyFile(src, dest) {
   if (fs.existsSync(src)) {
     fs.copyFileSync(src, dest);
   } else {
-    console.error(`Error: Source file ${src} does not exist.`);
-    process.exit(1);
+    const message = `Error: Source file ${src} does not exist.`;
+    console.error(message);
+    // Debug: list source directory to check what IS there
+    try {
+      console.log(`Source directory listing for context:`);
+      const dir = path.dirname(src);
+      console.log(fs.readdirSync(dir || '.'));
+    } catch (e) {
+      console.error('Failed to list source directory:', e);
+    }
+
+    if (['_headers', '_redirects', 'index.html'].includes(path.basename(src))) {
+      throw new Error(message);
+    }
   }
 }
 
@@ -73,6 +85,25 @@ function main() {
   console.log('Copying files...');
   for (const file of FILES_TO_COPY) {
     copyFile(file, path.join(DIST, file));
+  }
+
+  // Verify critical CSS generation
+  const generatedCssSource = path.join('css', 'tailwind.generated.css');
+  const generatedCssDist = path.join(DIST, 'css', 'tailwind.generated.css');
+
+  if (!fs.existsSync(generatedCssSource) && !fs.existsSync(generatedCssDist)) {
+     console.error('Error: css/tailwind.generated.css was not generated.');
+     try {
+       console.log('Listing css/ directory:');
+       if (fs.existsSync('css')) {
+         console.log(fs.readdirSync('css'));
+       } else {
+         console.log('css/ directory does not exist.');
+       }
+     } catch (e) {
+       console.error('Failed to list css directory:', e);
+     }
+     process.exit(1);
   }
 
   console.log('Copying directories...');
