@@ -13,6 +13,7 @@ import {
   setActiveProfilePubkey,
   getProfileCacheMap,
 } from "../js/state/cache.js";
+import { profileCache } from "../js/state/profileCache.js";
 
 if (typeof globalThis.window === "undefined") {
   globalThis.window = {};
@@ -61,6 +62,12 @@ function resetState() {
   if (cache && typeof cache.clear === "function") {
     cache.clear();
   }
+  if (profileCache && typeof profileCache.reset === "function") {
+    profileCache.reset();
+  }
+  if (typeof localStorage !== "undefined") {
+    localStorage.clear();
+  }
 }
 
 await (async () => {
@@ -94,13 +101,15 @@ await (async () => {
 
   const promise = service.applyPostLoginState();
 
-  await Promise.resolve();
+  await new Promise((resolve) => setTimeout(resolve, 10));
 
-  assert.deepEqual(calls, ["blocks:start", "relays:start", "profile:start"]);
+  assert.deepEqual(calls, ["relays:start", "blocks:start", "profile:start"]);
 
   resolveBlocks();
 
-  const detail = await promise;
+  const result = await promise;
+  const detail = result.detail;
+  await result.completionPromise;
 
   assert.equal(detail.pubkey, SAMPLE_PUBKEY);
   assert.equal(detail.blocksLoaded, true);
@@ -130,12 +139,22 @@ await (async () => {
 
   service.loadOwnProfile = () => Promise.reject(new Error("profile failed"));
 
-  const detail = await service.applyPostLoginState();
+  const result = service.applyPostLoginState();
+  const detail = result.detail;
+  await result.completionPromise;
 
   assert.equal(detail.pubkey, SAMPLE_PUBKEY);
   assert.equal(detail.blocksLoaded, false);
   assert.equal(detail.relaysLoaded, false);
-  assert.equal(detail.profile, null);
+  assert.deepEqual(detail.profile, {
+    name: "Unknown",
+    picture: "assets/svg/default-profile.svg",
+    about: "",
+    website: "",
+    banner: "",
+    lud16: "",
+    lud06: "",
+  });
 
   assert.equal(logs.length, 3);
   assert(logs.some(({ message }) => message.includes("block list")));
@@ -147,13 +166,23 @@ await (async () => {
   resetState();
 
   const service = new AuthService();
-  const detail = await service.applyPostLoginState();
+  const result = service.applyPostLoginState();
+  const detail = result.detail;
+  await result.completionPromise;
 
   assert.deepEqual(detail, {
     pubkey: null,
     blocksLoaded: false,
     relaysLoaded: false,
-    profile: null,
+    profile: {
+      name: "Unknown",
+      picture: "assets/svg/default-profile.svg",
+      about: "",
+      website: "",
+      banner: "",
+      lud16: "",
+      lud06: "",
+    },
   });
 })();
 
@@ -168,7 +197,10 @@ await (async () => {
     profile: { name: "Stub" },
   };
 
-  service.applyPostLoginState = async () => postLogin;
+  service.applyPostLoginState = () => ({
+    detail: postLogin,
+    completionPromise: Promise.resolve(postLogin),
+  });
 
   const detail = await service.login(SAMPLE_PUBKEY);
 

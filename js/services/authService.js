@@ -697,79 +697,83 @@ export default class AuthService {
       return { detail, completionPromise: Promise.resolve(detail) };
     }
 
+    const runOperation = async (operation) => {
+      try {
+        const value = await operation.promise;
+        const resolved = operation.onFulfilled(value);
+        detail[operation.name] = resolved;
+        if (typeof operation.emit === "function") {
+          operation.emit(resolved, null);
+        }
+        return resolved;
+      } catch (error) {
+        const resolved = operation.onRejected(error);
+        detail[operation.name] = resolved;
+        if (typeof operation.emit === "function") {
+          operation.emit(resolved, error);
+        }
+        return resolved;
+      }
+    };
+
     const schedule = (callback) => Promise.resolve().then(() => callback());
 
-    const operations = [];
-
-    if (!deferBlocks) {
-      const blocksOperation = this.createBlocksLoadOperation(activePubkey, schedule);
-      if (blocksOperation) {
-        operations.push(blocksOperation);
+    const completionPromise = (async () => {
+      if (this.relayManager && typeof this.relayManager.loadRelayList === "function") {
+        const relayOp = {
+          name: "relaysLoaded",
+          promise: schedule(() => this.relayManager.loadRelayList(activePubkey)),
+          onFulfilled: () => true,
+          onRejected: (error) => {
+            this.log("[AuthService] Failed to load relay list", error);
+            return false;
+          },
+          emit: (value, error) => {
+            this.emit("relaysLoaded", {
+              pubkey: activePubkey,
+              relaysLoaded: value,
+              error: error ?? null,
+            });
+          },
+        };
+        await runOperation(relayOp);
       }
-    }
 
-    if (this.relayManager && typeof this.relayManager.loadRelayList === "function") {
-      operations.push({
-        name: "relaysLoaded",
-        promise: schedule(() => this.relayManager.loadRelayList(activePubkey)),
-        onFulfilled: () => true,
-        onRejected: (error) => {
-          this.log("[AuthService] Failed to load relay list", error);
-          return false;
-        },
-        emit: (value, error) => {
-          this.emit("relaysLoaded", {
-            pubkey: activePubkey,
-            relaysLoaded: value,
-            error: error ?? null,
+      const concurrentOps = [];
+
+      if (!deferBlocks) {
+        const blocksOperation = this.createBlocksLoadOperation(activePubkey, schedule);
+        if (blocksOperation) {
+          concurrentOps.push(blocksOperation);
+        }
+      }
+
+      concurrentOps.push({
+        name: "profile",
+        promise: schedule(() => this.loadOwnProfile(activePubkey)),
+        onFulfilled: (value) => {
+          const profile = value || FALLBACK_PROFILE;
+          this.setProfileCacheEntry(activePubkey, profile, {
+            persist: true,
+            reason: "post-login",
           });
+          return profile;
+        },
+        onRejected: (error) => {
+          this.log("[AuthService] Failed to load own profile", error);
+          const fallbackProfile = cachedProfile || FALLBACK_PROFILE;
+          this.setProfileCacheEntry(activePubkey, fallbackProfile, {
+            persist: true,
+            reason: "post-login-fallback",
+          });
+          return fallbackProfile;
         },
       });
-    }
 
-    operations.push({
-      name: "profile",
-      promise: schedule(() => this.loadOwnProfile(activePubkey)),
-      onFulfilled: (value) => {
-        const profile = value || FALLBACK_PROFILE;
-        this.setProfileCacheEntry(activePubkey, profile, {
-          persist: true,
-          reason: "post-login",
-        });
-        return profile;
-      },
-      onRejected: (error) => {
-        this.log("[AuthService] Failed to load own profile", error);
-        const fallbackProfile = cachedProfile || FALLBACK_PROFILE;
-        this.setProfileCacheEntry(activePubkey, fallbackProfile, {
-          persist: true,
-          reason: "post-login-fallback",
-        });
-        return fallbackProfile;
-      },
-    });
+      await Promise.allSettled(concurrentOps.map(runOperation));
 
-    const wrappedPromises = operations.map((operation) =>
-      operation.promise
-        .then((value) => {
-          const resolved = operation.onFulfilled(value);
-          detail[operation.name] = resolved;
-          if (typeof operation.emit === "function") {
-            operation.emit(resolved, null);
-          }
-          return resolved;
-        })
-        .catch((error) => {
-          const resolved = operation.onRejected(error);
-          detail[operation.name] = resolved;
-          if (typeof operation.emit === "function") {
-            operation.emit(resolved, error);
-          }
-          return resolved;
-        }),
-    );
-
-    const completionPromise = Promise.allSettled(wrappedPromises).then(() => detail);
+      return detail;
+    })();
 
     return { detail, completionPromise };
   }
