@@ -65,6 +65,7 @@ const DEFAULT_UNSUPPORTED_BTITH_MESSAGE =
 const AUTH_STATUS_CODES = new Set([401, 403]);
 const SSL_ERROR_PATTERN = /(ssl|cert|certificate)/i;
 const CORS_ERROR_PATTERN = /cors/i;
+const PROBE_CACHE_TTL_MS = 45000;
 
 const getHostedUrlFailureDetails = (probeResult = {}) => {
   const outcome = probeResult?.outcome || "error";
@@ -241,6 +242,9 @@ export class PlaybackService {
     this.analyticsCallbacks = analyticsCallbacks || {};
     this.playbackStartTimeout = playbackStartTimeout;
     this.currentSession = null;
+    this.probeCache = new Map();
+    this.probeInFlight = new Map();
+    this.probeCacheTtlMs = PROBE_CACHE_TTL_MS;
   }
 
   log(...args) {
@@ -268,6 +272,76 @@ export class PlaybackService {
         this.log(`[PlaybackService] ${eventName} callback threw`, err);
       }
     }
+  }
+
+  getProbeCacheKey({ url, magnet }) {
+    const trimmedUrl = typeof url === "string" ? url.trim() : "";
+    const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
+    return `${trimmedUrl}::${trimmedMagnet}`;
+  }
+
+  pruneProbeCache(now = Date.now()) {
+    for (const [key, entry] of this.probeCache.entries()) {
+      if (!entry || !Number.isFinite(entry.expiresAt) || entry.expiresAt <= now) {
+        this.probeCache.delete(key);
+      }
+    }
+  }
+
+  getCachedProbeResult(cacheKey, now = Date.now()) {
+    this.pruneProbeCache(now);
+    const entry = this.probeCache.get(cacheKey);
+    if (!entry || entry.expiresAt <= now) {
+      return null;
+    }
+    return entry.result;
+  }
+
+  storeProbeResult(cacheKey, result, now = Date.now()) {
+    const ttl =
+      Number.isFinite(this.probeCacheTtlMs) && this.probeCacheTtlMs > 0
+        ? this.probeCacheTtlMs
+        : PROBE_CACHE_TTL_MS;
+    this.probeCache.set(cacheKey, { result, expiresAt: now + ttl });
+  }
+
+  async probeHostedUrl({ url, magnet, probeUrl } = {}) {
+    const sanitizedUrl = typeof url === "string" ? url.trim() : "";
+    if (!sanitizedUrl) {
+      return { outcome: "invalid" };
+    }
+    const cacheKey = this.getProbeCacheKey({
+      url: sanitizedUrl,
+      magnet,
+    });
+    const cachedResult = this.getCachedProbeResult(cacheKey);
+    if (cachedResult) {
+      return cachedResult;
+    }
+    const inFlight = this.probeInFlight.get(cacheKey);
+    if (inFlight) {
+      return inFlight;
+    }
+
+    const probePromise = (async () => {
+      try {
+        const result =
+          typeof probeUrl === "function"
+            ? await probeUrl(sanitizedUrl)
+            : { outcome: "error" };
+        this.storeProbeResult(cacheKey, result);
+        return result;
+      } catch (error) {
+        const result = { outcome: "error", error };
+        this.storeProbeResult(cacheKey, result);
+        return result;
+      } finally {
+        this.probeInFlight.delete(cacheKey);
+      }
+    })();
+
+    this.probeInFlight.set(cacheKey, probePromise);
+    return probePromise;
   }
 
   prepareVideoElement(videoElement) {
@@ -842,8 +916,11 @@ class PlaybackSession extends SimpleEventEmitter {
           { once: true }
         );
 
-        const probeResult =
-          typeof probeUrl === "function" ? await probeUrl(httpsUrl) : null;
+        const probeResult = await this.service.probeHostedUrl({
+          url: httpsUrl,
+          magnet: this.trimmedMagnet,
+          probeUrl,
+        });
         const probeOutcome = probeResult?.outcome || "error";
         const probeStatus = probeResult?.status || "unknown";
         const shouldAttemptHosted =

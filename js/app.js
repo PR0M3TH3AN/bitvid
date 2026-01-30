@@ -280,6 +280,7 @@ class Application {
     this.torrentStatusNodes = null;
     this.torrentStatusVisibilityHandler = null;
     this.torrentStatusPageHideHandler = null;
+    this.urlProbePromises = new Map();
 
     this.commentController = null;
     this.initializeCommentController();
@@ -8200,7 +8201,23 @@ class Application {
   }
 
   async probeUrl(url, options = {}) {
-    return this.urlHealthController.probeUrl(url, options);
+    const trimmed = typeof url === "string" ? url.trim() : "";
+    if (!trimmed) {
+      return this.urlHealthController.probeUrl(url, options);
+    }
+    const existing = this.urlProbePromises.get(trimmed);
+    if (existing) {
+      return existing;
+    }
+    const probePromise = (async () => {
+      try {
+        return await this.urlHealthController.probeUrl(trimmed, options);
+      } finally {
+        this.urlProbePromises.delete(trimmed);
+      }
+    })();
+    this.urlProbePromises.set(trimmed, probePromise);
+    return probePromise;
   }
 
   async playHttp(videoEl, url) {
