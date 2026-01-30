@@ -79,7 +79,7 @@ export const USER_BLOCK_EVENTS = Object.freeze({
 const FAST_BLOCKLIST_RELAY_LIMIT = 3;
 const FAST_BLOCKLIST_TIMEOUT_MS = 2500;
 const BACKGROUND_BLOCKLIST_TIMEOUT_MS = 6000;
-const DECRYPT_TIMEOUT_MS = 90000;
+const DECRYPT_TIMEOUT_MS = 15000;
 const DECRYPT_RETRY_DELAY_MS = 10000;
 const MAX_BLOCKLIST_ENTRIES = 5000;
 
@@ -1031,6 +1031,12 @@ class UserBlockListManager {
       }
 
       const nostrApi = typeof window !== "undefined" ? window?.nostr : null;
+      const decrypterOptions = {
+        priority: NIP07_PRIORITY.HIGH,
+        timeoutMs: 12000,
+        retryMultiplier: 1,
+      };
+
       if (nostrApi) {
         if (typeof nostrApi.nip04?.decrypt === "function") {
           registerDecryptor(
@@ -1038,7 +1044,7 @@ class UserBlockListManager {
             (payload) =>
               runNip07WithRetry(
                 () => nostrApi.nip04.decrypt(normalized, payload),
-                { label: "nip04.decrypt", priority: NIP07_PRIORITY.HIGH },
+                { label: "nip04.decrypt", ...decrypterOptions },
               ),
             "extension",
           );
@@ -1055,7 +1061,7 @@ class UserBlockListManager {
               (payload) =>
                 runNip07WithRetry(() => nip44.decrypt(normalized, payload), {
                   label: "nip44.decrypt",
-                  priority: NIP07_PRIORITY.HIGH,
+                  ...decrypterOptions,
                 }),
               "extension",
             );
@@ -1069,7 +1075,7 @@ class UserBlockListManager {
               (payload) =>
                 runNip07WithRetry(() => nip44v2.decrypt(normalized, payload), {
                   label: "nip44.v2.decrypt",
-                  priority: NIP07_PRIORITY.HIGH,
+                  ...decrypterOptions,
                 }),
               "extension",
             );
@@ -1079,7 +1085,7 @@ class UserBlockListManager {
                 (payload) =>
                   runNip07WithRetry(
                     () => nip44v2.decrypt(normalized, payload),
-                    { label: "nip44.v2.decrypt", priority: NIP07_PRIORITY.HIGH },
+                    { label: "nip44.v2.decrypt", ...decrypterOptions },
                   ),
                 "extension",
               );

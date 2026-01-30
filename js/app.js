@@ -276,6 +276,7 @@ class Application {
     this.authLoadingState = { profile: "idle", lists: "idle", dms: "idle" };
     this.relayUiRefreshTimeout = null;
     this.lastRelayHealthWarningAt = 0;
+    this.appStartedAt = Date.now();
     this.activeIntervals = [];
     this.torrentStatusIntervalId = null;
     this.torrentStatusNodes = null;
@@ -6485,6 +6486,13 @@ class Application {
       return false;
     }
 
+    // Give the app a grace period to establish initial connections before complaining.
+    const now = Date.now();
+    const GRACE_PERIOD_MS = 10000;
+    if (now - (this.appStartedAt || now) < GRACE_PERIOD_MS) {
+      return false;
+    }
+
     const relayCandidates = Array.isArray(nostrClient.relays) ? nostrClient.relays : [];
     if (!relayCandidates.length) {
       return false;
@@ -6495,7 +6503,6 @@ class Application {
       return false;
     }
 
-    const now = Date.now();
     const cooldownMs = 30000;
     if (now - (this.lastRelayHealthWarningAt || 0) < cooldownMs) {
       return true;

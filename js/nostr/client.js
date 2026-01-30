@@ -2110,7 +2110,9 @@ export class NostrClient {
       }
     }
 
-    const adapter = await createNip07Adapter(extension);
+    const adapter = await createNip07Adapter(extension, {
+      preloadedPubkey: pubkey,
+    });
     adapter.pubkey = pubkey;
     setActiveSigner(adapter);
 
