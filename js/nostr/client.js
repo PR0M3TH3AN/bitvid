@@ -3881,7 +3881,7 @@ export class NostrClient {
    * - Updates the `SyncMetadataStore` with the new max `created_at` on success.
    *
    * **Concurrency:**
-   * - Batches relay requests in chunks of 4 to avoid saturating network connections.
+   * - Batches relay requests in chunks of 8 to avoid saturating network connections.
    *
    * @param {object} params
    * @param {number} params.kind - The event kind to fetch (e.g. 10000 for mute list).
@@ -3889,6 +3889,7 @@ export class NostrClient {
    * @param {string} [params.dTag] - Optional d-tag for addressable events (NIP-33).
    * @param {string[]} [params.relayUrls] - List of relays to query. Defaults to client's configured relays.
    * @param {function} [params.fetchFn] - Custom fetch function (mocks or specialized logic). Defaults to `pool.list`.
+   * @param {number} [params.since] - Explicit start timestamp (overrides storage).
    * @param {number} [params.timeoutMs] - Optional per-relay timeout for list fetches; defaults to a higher list-friendly baseline.
    * @returns {Promise<import("nostr-tools").Event[]>} Deduplicated list of events found across all relays.
    */
