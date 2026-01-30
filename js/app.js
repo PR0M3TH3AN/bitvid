@@ -31,7 +31,7 @@ import { collectVideoTags } from "./utils/videoTags.js";
 import { normalizeHashtag } from "./utils/hashtagNormalization.js";
 import { sanitizeProfileMediaUrl } from "./utils/profileMedia.js";
 import { ADMIN_INITIAL_EVENT_BLACKLIST } from "./lists.js";
-import { userBlocks } from "./userBlocks.js";
+import { userBlocks, USER_BLOCK_EVENTS } from "./userBlocks.js";
 import { relayManager } from "./relayManager.js";
 import {
   createFeedEngine,
@@ -2134,6 +2134,9 @@ class Application {
       case "subscriptions-permission-required":
         this.capturePermissionPromptRequirement("subscriptions");
         break;
+      case "user-blocklist-permission-required":
+        this.capturePermissionPromptRequirement("user-blocks");
+        break;
       case "hashtag-preferences-permission-required":
         this.capturePermissionPromptRequirement("hashtag-preferences");
         break;
@@ -2145,9 +2148,22 @@ class Application {
   resolvePermissionPromptMessage() {
     const needsSubscriptions = this.permissionPromptPending.has("subscriptions");
     const needsHashtags = this.permissionPromptPending.has("hashtag-preferences");
+    const needsBlocks = this.permissionPromptPending.has("user-blocks");
 
+    if (needsBlocks && needsSubscriptions && needsHashtags) {
+      return "Unlock private lists and enable permissions to load your subscriptions and hashtag preferences.";
+    }
+    if (needsBlocks && needsSubscriptions) {
+      return "Unlock private lists and enable permissions to load your subscriptions.";
+    }
+    if (needsBlocks && needsHashtags) {
+      return "Unlock private lists and enable permissions to load your hashtag preferences.";
+    }
     if (needsSubscriptions && needsHashtags) {
       return "Enable permissions to load your subscriptions and hashtag preferences.";
+    }
+    if (needsBlocks) {
+      return "Unlock private lists to load your block list.";
     }
     if (needsSubscriptions) {
       return "Enable permissions to load your subscriptions.";
@@ -2596,6 +2612,14 @@ class Application {
       });
       moderationService.on("summary", () => {
         this.refreshVisibleModerationUi({ reason: "moderation-summary" });
+      });
+    }
+
+    if (userBlocks && typeof userBlocks.on === "function") {
+      userBlocks.on(USER_BLOCK_EVENTS.STATUS, (detail) => {
+        if (detail?.status === "permission-required") {
+          this.capturePermissionPromptRequirement("user-blocks");
+        }
       });
     }
 
@@ -4134,8 +4158,9 @@ class Application {
 
     const needsSubscriptions = this.permissionPromptPending.has("subscriptions");
     const needsHashtags = this.permissionPromptPending.has("hashtag-preferences");
+    const needsBlocks = this.permissionPromptPending.has("user-blocks");
 
-    if (!needsSubscriptions && !needsHashtags) {
+    if (!needsSubscriptions && !needsHashtags && !needsBlocks) {
       return;
     }
 
@@ -4173,6 +4198,32 @@ class Application {
           this.capturePermissionPromptFromError(error);
         });
       tasks.push(subscriptionTask);
+    }
+
+    if (needsBlocks && userBlocks?.loadBlocks) {
+      let permissionRequired = false;
+      const blocksTask = userBlocks
+        .loadBlocks(activePubkey, {
+          allowPermissionPrompt: true,
+          statusCallback: (detail) => {
+            if (detail?.status === "permission-required") {
+              permissionRequired = true;
+            }
+          },
+        })
+        .then(() => {
+          if (!permissionRequired) {
+            this.permissionPromptPending.delete("user-blocks");
+          }
+        })
+        .catch((error) => {
+          devLogger.warn(
+            "[Application] Failed to refresh block list after permission prompt:",
+            error,
+          );
+          this.capturePermissionPromptFromError(error);
+        });
+      tasks.push(blocksTask);
     }
 
     if (needsHashtags && this.hashtagPreferences?.load) {
@@ -4361,13 +4412,15 @@ class Application {
       const tasks = [];
       if (activePubkey && typeof this.authService.loadBlocksForPubkey === "function") {
         tasks.push(
-          this.authService.loadBlocksForPubkey(activePubkey).catch((error) => {
-            devLogger.warn(
-              "[Application] Failed to load blocks during login:",
-              error,
-            );
-            throw error;
-          }),
+          this.authService
+            .loadBlocksForPubkey(activePubkey, { allowPermissionPrompt: false })
+            .catch((error) => {
+              devLogger.warn(
+                "[Application] Failed to load blocks during login:",
+                error,
+              );
+              throw error;
+            }),
         );
       }
 
