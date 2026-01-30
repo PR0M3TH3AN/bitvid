@@ -843,7 +843,7 @@ export function buildVideoPointerValue(pubkey, videoRootId) {
   return `30078:${normalizedPubkey}:${normalizedRoot}`;
 }
 
-function buildNip71PointerTags({
+export function buildNip71PointerTags({
   pubkey = "",
   videoRootId = "",
   videoEventId = "",
