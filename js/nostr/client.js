@@ -413,10 +413,13 @@ const RELAY_CONNECT_TIMEOUT_MS = 5000;
 const RELAY_RECONNECT_BASE_DELAY_MS = 2000;
 const RELAY_RECONNECT_MAX_DELAY_MS = 60000;
 const RELAY_RECONNECT_MAX_ATTEMPTS = 5;
+const RELAY_BACKOFF_BASE_DELAY_MS = 1000;
+const RELAY_BACKOFF_MAX_DELAY_MS = 8000;
 const RELAY_CIRCUIT_BREAKER_THRESHOLD = 3;
 const RELAY_CIRCUIT_BREAKER_COOLDOWN_MS = 10 * 60 * 1000;
 const RELAY_FAILURE_WINDOW_MS = 5 * 60 * 1000;
 const RELAY_FAILURE_WINDOW_THRESHOLD = 3;
+const RELAY_SUMMARY_LOG_INTERVAL_MS = 30000;
 const EVENTS_CACHE_STORAGE_KEY = "bitvid:eventsCache:v1";
 // We use the policy TTL, but currently the storage backend is hardcoded to IDB (with localStorage fallback).
 // Future refactors should make EventsCacheStore dynamic based on CACHE_POLICIES[NOTE_TYPES.VIDEO_POST].storage.
@@ -1298,6 +1301,7 @@ export class NostrClient {
     this.relayFailureCounts = new Map();
     this.relayFailureWindows = new Map();
     this.relayCircuitBreakers = new Map();
+    this.relaySummaryLogTimestamps = new Map();
     this.relayReconnectTimer = null;
     this.relayReconnectAttempt = 0;
     this.isInitialized = false;
@@ -4557,16 +4561,41 @@ export class NostrClient {
     }, delayMs);
   }
 
+  logRelaySummary({
+    key,
+    level = "warn",
+    message,
+    payload,
+  } = {}) {
+    if (!key || !message) {
+      return;
+    }
+    const now = Date.now();
+    const lastLogged = this.relaySummaryLogTimestamps.get(key) || 0;
+    if (now - lastLogged < RELAY_SUMMARY_LOG_INTERVAL_MS) {
+      return;
+    }
+    this.relaySummaryLogTimestamps.set(key, now);
+    const channel = isDevMode ? devLogger : userLogger;
+    const logFn =
+      typeof channel[level] === "function" ? channel[level] : channel.warn;
+    if (payload) {
+      logFn(`[nostr] ${message}`, payload);
+    } else {
+      logFn(`[nostr] ${message}`);
+    }
+  }
+
   resolveRelayBackoffMs(failureCount, ttlOverride) {
-    const baseMs = 15000;
-    const maxMs = 5 * 60 * 1000;
+    const baseMs = RELAY_BACKOFF_BASE_DELAY_MS;
+    const maxMs = RELAY_BACKOFF_MAX_DELAY_MS;
     const computed = Math.min(
       maxMs,
       baseMs * Math.pow(2, Math.max(0, failureCount - 1))
     );
     const override = Number(ttlOverride);
     if (Number.isFinite(override) && override > 0) {
-      return Math.max(computed, Math.floor(override));
+      return Math.min(computed, Math.floor(override));
     }
     return computed;
   }
@@ -4579,11 +4608,24 @@ export class NostrClient {
     if (!normalized) {
       return;
     }
+    const hadBackoffState =
+      this.relayBackoff.has(normalized) ||
+      this.unreachableRelays.has(normalized) ||
+      this.relayFailureCounts.has(normalized) ||
+      this.relayCircuitBreakers.has(normalized);
     this.relayBackoff.delete(normalized);
     this.relayFailureCounts.delete(normalized);
     this.relayFailureWindows.delete(normalized);
     this.unreachableRelays.delete(normalized);
     this.relayCircuitBreakers.delete(normalized);
+    if (hadBackoffState) {
+      this.logRelaySummary({
+        key: `relay-recovered:${normalized}`,
+        level: "info",
+        message: "Relay recovered; backoff cleared.",
+        payload: { relay: normalized },
+      });
+    }
   }
 
   recordRelayFailureWindow(url) {
@@ -4625,7 +4667,10 @@ export class NostrClient {
       reason,
     });
     this.unreachableRelays.add(normalized);
-    if (windowFailureCount >= RELAY_FAILURE_WINDOW_THRESHOLD) {
+    const shouldOpenCircuit =
+      nextFailureCount >= RELAY_CIRCUIT_BREAKER_THRESHOLD ||
+      windowFailureCount >= RELAY_FAILURE_WINDOW_THRESHOLD;
+    if (shouldOpenCircuit) {
       const now = Date.now();
       const openUntil = now + RELAY_CIRCUIT_BREAKER_COOLDOWN_MS;
       const existing = this.relayCircuitBreakers.get(normalized);
@@ -4633,26 +4678,40 @@ export class NostrClient {
         existing && Number.isFinite(existing.openUntil)
           ? Math.max(existing.openUntil, openUntil)
           : openUntil;
-      const circuitReason = reason || "windowed-failures";
+      const circuitReason =
+        reason ||
+        (nextFailureCount >= RELAY_CIRCUIT_BREAKER_THRESHOLD
+          ? "consecutive-failures"
+          : "windowed-failures");
       this.relayCircuitBreakers.set(normalized, {
         openUntil: nextOpenUntil,
         failureCount: nextFailureCount,
         reason: circuitReason,
       });
-      if (isDevMode) {
-        devLogger.debug("[nostr] Circuit breaker opened for relay.", {
+      this.logRelaySummary({
+        key: `relay-circuit:${normalized}`,
+        level: "warn",
+        message: "Circuit breaker opened for relay.",
+        payload: {
           relay: normalized,
           openUntil: nextOpenUntil,
           failureCount: nextFailureCount,
           reason: circuitReason,
-        });
-      }
+        },
+      });
     }
-    if (isDevMode) {
-      devLogger.debug(
-        `[nostr] Relay backoff set for ${normalized} (${backoffMs}ms).`,
-      );
-    }
+    this.logRelaySummary({
+      key: `relay-backoff:${normalized}`,
+      level: "warn",
+      message: "Relay backoff applied.",
+      payload: {
+        relay: normalized,
+        backoffMs,
+        failureCount: nextFailureCount,
+        retryAt,
+        reason,
+      },
+    });
   }
 
   getHealthyRelays(candidates) {
@@ -4672,9 +4731,12 @@ export class NostrClient {
         this.relayFailureWindows.delete(url);
         this.unreachableRelays.delete(url);
         this.relayBackoff.delete(url);
-        if (isDevMode) {
-          devLogger.debug(`[nostr] Circuit breaker reset for ${url}.`);
-        }
+        this.logRelaySummary({
+          key: `relay-circuit-reset:${url}`,
+          level: "info",
+          message: "Circuit breaker reset for relay.",
+          payload: { relay: url },
+        });
       }
       if (!this.unreachableRelays.has(url)) {
         return true;
@@ -4690,9 +4752,12 @@ export class NostrClient {
       this.relayFailureCounts.delete(url);
       this.relayFailureWindows.delete(url);
       this.unreachableRelays.delete(url);
-      if (isDevMode) {
-        devLogger.debug(`[nostr] Relay backoff expired for ${url}.`);
-      }
+      this.logRelaySummary({
+        key: `relay-backoff-expired:${url}`,
+        level: "info",
+        message: "Relay backoff expired.",
+        payload: { relay: url },
+      });
       return true;
     });
   }
