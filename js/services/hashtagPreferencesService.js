@@ -242,6 +242,7 @@ class HashtagPreferencesService {
     this.loadPromise = null;
     this.loadingPubkey = null;
     this.subscriptionKey = null;
+    this.lastLoadError = null;
 
     profileCache.subscribe((event, detail) => {
       if (event === "profileChanged") {
@@ -271,6 +272,7 @@ class HashtagPreferencesService {
     this.loaded = false;
     this.backgroundLoading = false;
     this.preferencesVersion = DEFAULT_VERSION;
+    this.lastLoadError = null;
     if (this.decryptRetryTimeoutId) {
       clearTimeout(this.decryptRetryTimeoutId);
       this.decryptRetryTimeoutId = null;
@@ -539,6 +541,7 @@ class HashtagPreferencesService {
   async loadInternal(pubkey, options = {}) {
     const normalized = normalizeHexPubkey(pubkey);
     const allowPermissionPrompt = options?.allowPermissionPrompt !== false;
+    this.lastLoadError = null;
     let wasLoadedForUser =
       this.activePubkey &&
       this.activePubkey === normalized &&
@@ -790,6 +793,7 @@ class HashtagPreferencesService {
     }
 
     if (!decryptResult.ok) {
+      this.lastLoadError = decryptResult.error || null;
       userLogger.warn(
         `${LOG_PREFIX} Failed to decrypt hashtag preferences`,
         decryptResult.error,

@@ -339,6 +339,7 @@ class SubscriptionsManager {
     this.lastRunOptions = null;
     this.lastResult = null;
     this.lastContainerId = null;
+    this.lastLoadError = null;
     this.unsubscribeFromNostrUpdates = null;
     this.pendingRefreshPromise = null;
     this.scheduledRefreshDetail = null;
@@ -453,6 +454,7 @@ class SubscriptionsManager {
       const allowPermissionPrompt = options?.allowPermissionPrompt !== false;
       const wasBackgroundLoading = this.backgroundLoading;
       const normalizedUserPubkey = normalizeHexPubkey(userPubkey) || userPubkey;
+      this.lastLoadError = null;
 
       const readRelays = relayManager.getReadRelayUrls();
       const relayUrls = readRelays.length > 0 ? readRelays : Array.from(DEFAULT_RELAY_URLS);
@@ -603,6 +605,7 @@ class SubscriptionsManager {
       }
 
       if (!decryptResult.ok) {
+        this.lastLoadError = decryptResult.error || null;
         if (decryptResult.error?.code === "subscriptions-decrypt-timeout") {
           if (!this.loaded && !cachedSnapshot.hasSnapshot) {
             this.loaded = true;
@@ -686,6 +689,7 @@ class SubscriptionsManager {
       }
 
     } catch (err) {
+      this.lastLoadError = err || null;
       userLogger.error("[SubscriptionsManager] Failed to update subs from relays:", err);
     }
   }
@@ -701,6 +705,7 @@ class SubscriptionsManager {
     this.lastRunOptions = null;
     this.lastResult = null;
     this.hasRenderedOnce = false;
+    this.lastLoadError = null;
     if (this.decryptRetryTimeoutId) {
       clearTimeout(this.decryptRetryTimeoutId);
       this.decryptRetryTimeoutId = null;

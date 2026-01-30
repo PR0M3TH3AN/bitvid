@@ -274,6 +274,10 @@ class Application {
     this.dmRecipientPubkey = null;
     this.dmRelayHints = new Map();
     this.authLoadingState = { profile: "idle", lists: "idle", dms: "idle" };
+    this.permissionPromptShownForSession = false;
+    this.permissionPromptVisible = false;
+    this.permissionPromptInFlight = false;
+    this.permissionPromptPending = new Set();
     this.relayUiRefreshTimeout = null;
     this.lastRelayHealthWarningAt = 0;
     this.activeIntervals = [];
@@ -2090,6 +2094,84 @@ class Application {
         : "Failed to update hashtag preferences. Please try again.";
 
     return fallback;
+  }
+
+  resetPermissionPromptState() {
+    this.permissionPromptShownForSession = false;
+    this.permissionPromptVisible = false;
+    this.permissionPromptInFlight = false;
+    if (this.permissionPromptPending instanceof Set) {
+      this.permissionPromptPending.clear();
+    } else {
+      this.permissionPromptPending = new Set();
+    }
+    this.updatePermissionPromptCta();
+  }
+
+  capturePermissionPromptRequirement(source) {
+    const normalized =
+      typeof source === "string" ? source.trim().toLowerCase() : "";
+    if (!normalized) {
+      return;
+    }
+
+    this.permissionPromptPending.add(normalized);
+
+    if (!this.permissionPromptShownForSession) {
+      this.permissionPromptShownForSession = true;
+      this.permissionPromptVisible = true;
+    }
+
+    this.updatePermissionPromptCta();
+  }
+
+  capturePermissionPromptFromError(error) {
+    const code =
+      error && typeof error.code === "string" ? error.code.trim() : "";
+
+    switch (code) {
+      case "subscriptions-permission-required":
+        this.capturePermissionPromptRequirement("subscriptions");
+        break;
+      case "hashtag-preferences-permission-required":
+        this.capturePermissionPromptRequirement("hashtag-preferences");
+        break;
+      default:
+        break;
+    }
+  }
+
+  resolvePermissionPromptMessage() {
+    const needsSubscriptions = this.permissionPromptPending.has("subscriptions");
+    const needsHashtags = this.permissionPromptPending.has("hashtag-preferences");
+
+    if (needsSubscriptions && needsHashtags) {
+      return "Enable permissions to load your subscriptions and hashtag preferences.";
+    }
+    if (needsSubscriptions) {
+      return "Enable permissions to load your subscriptions.";
+    }
+    if (needsHashtags) {
+      return "Enable permissions to load your hashtag preferences.";
+    }
+    return "";
+  }
+
+  updatePermissionPromptCta() {
+    if (!this.profileController?.setPermissionPromptCtaState) {
+      return;
+    }
+
+    const shouldShow =
+      this.permissionPromptVisible && this.permissionPromptPending.size > 0;
+    const message = shouldShow ? this.resolvePermissionPromptMessage() : "";
+
+    this.profileController.setPermissionPromptCtaState({
+      visible: shouldShow,
+      message,
+      buttonLabel: "Enable permissions",
+      busy: this.permissionPromptInFlight,
+    });
   }
 
   normalizeHashtagPreferenceList(list) {
@@ -4039,6 +4121,98 @@ class Application {
     );
   }
 
+  async handlePermissionPromptRequest() {
+    if (this.permissionPromptInFlight) {
+      return;
+    }
+
+    const activePubkey = this.normalizeHexPubkey(this.pubkey);
+    if (!activePubkey) {
+      return;
+    }
+
+    const needsSubscriptions = this.permissionPromptPending.has("subscriptions");
+    const needsHashtags = this.permissionPromptPending.has("hashtag-preferences");
+
+    if (!needsSubscriptions && !needsHashtags) {
+      return;
+    }
+
+    this.permissionPromptInFlight = true;
+    this.updatePermissionPromptCta();
+
+    const tasks = [];
+
+    if (needsSubscriptions && subscriptions?.ensureLoaded) {
+      const subscriptionTask = subscriptions
+        .ensureLoaded(activePubkey, { allowPermissionPrompt: true })
+        .then(() => {
+          this.capturePermissionPromptFromError(subscriptions?.lastLoadError);
+          if (
+            subscriptions?.lastLoadError?.code !==
+            "subscriptions-permission-required"
+          ) {
+            this.permissionPromptPending.delete("subscriptions");
+            if (this.profileController) {
+              this.profileController.populateSubscriptionsList();
+            }
+            if (typeof subscriptions?.refreshActiveFeed === "function") {
+              return subscriptions.refreshActiveFeed({
+                reason: "permission-prompt",
+              });
+            }
+          }
+          return null;
+        })
+        .catch((error) => {
+          devLogger.warn(
+            "[Application] Failed to refresh subscriptions after permission prompt:",
+            error,
+          );
+          this.capturePermissionPromptFromError(error);
+        });
+      tasks.push(subscriptionTask);
+    }
+
+    if (needsHashtags && this.hashtagPreferences?.load) {
+      const hashtagTask = this.hashtagPreferences
+        .load(activePubkey, { allowPermissionPrompt: true })
+        .then(() => {
+          this.capturePermissionPromptFromError(
+            this.hashtagPreferences?.lastLoadError,
+          );
+          if (
+            this.hashtagPreferences?.lastLoadError?.code !==
+            "hashtag-preferences-permission-required"
+          ) {
+            this.permissionPromptPending.delete("hashtag-preferences");
+            this.updateCachedHashtagPreferences();
+            this.refreshTagPreferenceUi();
+            if (this.profileController) {
+              this.profileController.populateHashtagPreferences();
+            }
+          }
+        })
+        .catch((error) => {
+          devLogger.warn(
+            "[Application] Failed to refresh hashtag preferences after permission prompt:",
+            error,
+          );
+          this.capturePermissionPromptFromError(error);
+        });
+      tasks.push(hashtagTask);
+    }
+
+    await Promise.allSettled(tasks);
+
+    if (this.permissionPromptPending.size === 0) {
+      this.permissionPromptVisible = false;
+    }
+
+    this.permissionPromptInFlight = false;
+    this.updatePermissionPromptCta();
+  }
+
   async handleAuthLogin(detail = {}) {
     const postLoginPromise =
       detail && typeof detail.postLoginPromise?.then === "function"
@@ -4057,6 +4231,8 @@ class Application {
     if (detail?.identityChanged) {
       this.resetViewLoggingState();
     }
+
+    this.resetPermissionPromptState();
 
     // Stop existing feed subscription to prioritize user data sync
     if (
@@ -4202,13 +4378,20 @@ class Application {
         tasks.push(
           subscriptions.ensureLoaded(activePubkey, {
             allowPermissionPrompt: false,
-          }).catch((error) => {
-            devLogger.warn(
-              "[Application] Failed to load subscriptions during login:",
-              error,
-            );
-            throw error;
-          }),
+          })
+            .then(() => {
+              this.capturePermissionPromptFromError(
+                subscriptions?.lastLoadError,
+              );
+            })
+            .catch((error) => {
+              devLogger.warn(
+                "[Application] Failed to load subscriptions during login:",
+                error,
+              );
+              this.capturePermissionPromptFromError(error);
+              throw error;
+            }),
         );
       }
 
@@ -4283,11 +4466,17 @@ class Application {
           .load(activePubkey, {
             allowPermissionPrompt: false,
           })
+          .then(() => {
+            this.capturePermissionPromptFromError(
+              this.hashtagPreferences?.lastLoadError,
+            );
+          })
           .catch((error) => {
             devLogger.warn(
               "[Application] Failed to load hashtag preferences during login:",
               error,
             );
+            this.capturePermissionPromptFromError(error);
           });
       }
       return Promise.resolve();
@@ -4474,6 +4663,7 @@ class Application {
     this.pendingModalZapOpen = false;
 
     this.resetHashtagPreferencesState();
+    this.resetPermissionPromptState();
     this.updateAuthLoadingState({ profile: "idle", lists: "idle", dms: "idle" });
 
     await this.nwcSettingsService.onLogout({

@@ -604,6 +604,7 @@ export default class ApplicationBootstrap {
             app.handleProfilePrivacyToggle(payload),
           onPublishDmRelayPreferences: (payload) =>
             app.handleProfilePublishDmRelayPreferences(payload),
+          onRequestPermissionPrompt: () => app.handlePermissionPromptRequest(),
         };
 
         app.profileController = new ProfileModalController({
