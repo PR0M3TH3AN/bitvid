@@ -80,10 +80,8 @@ export const isVerboseDevMode =
   verboseDevModeOverride === null
     ? Boolean(IS_VERBOSE_DEV_MODE)
     : verboseDevModeOverride;
-export { IS_VERBOSE_DEV_MODE };
 
 export const isLockdownMode = Boolean(IS_LOCKDOWN_MODE);
-export { IS_LOCKDOWN_MODE };
 export { LOCKDOWN_TITLE, LOCKDOWN_MESSAGE };
 
 if (typeof window !== "undefined") {
@@ -110,7 +108,6 @@ export { TIP_JAR_URL };
 export { MAX_WALLET_DEFAULT_ZAP };
 export { PLATFORM_FEE_PERCENT };
 export { PLATFORM_LUD16_OVERRIDE };
-export { DEFAULT_RELAY_URLS_OVERRIDE };
 export const ADMIN_EDITORS_NPUBS = []; // Default moderators (optional)
 export const ADMIN_LIST_NAMESPACE = "bitvid:admin"; // Reserved for Nostr lists
 export const ADMIN_COMMUNITY_BLACKLIST_SOURCES = "community:blacklist:sources";

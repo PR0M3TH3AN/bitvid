@@ -307,19 +307,7 @@ const applyTheme = (theme, { persist = true } = {}) => {
   return normalized;
 };
 
-export const setThemeAccentOverrides = (overrides) => {
-  setAccentOverrides(overrides);
-
-  const root = getRootElement();
-  if (!root) {
-    return;
-  }
-
-  const theme = currentTheme || FALLBACK_THEME;
-  applyAccentOverrides(root, theme);
-};
-
-export const setTheme = (theme) => {
+const setTheme = (theme) => {
   if (!isBrowser()) {
     currentTheme = normalizeTheme(theme) || FALLBACK_THEME;
     return currentTheme;
