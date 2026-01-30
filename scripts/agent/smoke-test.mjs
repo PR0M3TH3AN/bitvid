@@ -233,6 +233,20 @@ async function runSmokeTest() {
 
         log('--- Smoke Test PASSED ---');
 
+        // Generate JSON Summary
+        const summary = {
+            timestamp: new Date().toISOString(),
+            status: "success",
+            details: {
+                videoEventId: publishedVideo.id,
+                dmEventId: publishedDM.id,
+                ephemeralPubkey: EPHEMERAL_PK
+            }
+        };
+        const summaryFile = path.join(ARTIFACTS_DIR, `smoke-summary-${new Date().toISOString().split('T')[0].replace(/-/g, '')}.json`);
+        fs.writeFileSync(summaryFile, JSON.stringify(summary, null, 2));
+        log(`Summary saved to ${summaryFile}`);
+
     } catch (err) {
         log(`--- Smoke Test FAILED: ${err.message} ---`);
         if (err.stack) log(err.stack);
