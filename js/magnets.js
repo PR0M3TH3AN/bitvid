@@ -49,14 +49,36 @@ export function trackersFromMagnet(magnet) {
   return Array.from(deduped);
 }
 
+export function webSeedsFromMagnet(magnet) {
+  if (typeof magnet !== "string") {
+    return [];
+  }
+  const parsed = parseMagnetLite(magnet);
+  if (!parsed || !Array.isArray(parsed.ws)) {
+    return [];
+  }
+  const deduped = new Set();
+  parsed.ws.forEach((url) => {
+    if (typeof url !== "string") {
+      return;
+    }
+    const trimmed = url.trim();
+    if (!trimmed) {
+      return;
+    }
+    deduped.add(trimmed);
+  });
+  return Array.from(deduped);
+}
+
 function parseMagnetLite(magnet) {
   if (typeof magnet !== "string") {
-    return { infoHash: "", announce: [] };
+    return { infoHash: "", announce: [], ws: [] };
   }
 
   const trimmed = magnet.trim();
   if (!trimmed) {
-    return { infoHash: "", announce: [] };
+    return { infoHash: "", announce: [], ws: [] };
   }
 
   const lower = trimmed.toLowerCase();
@@ -64,6 +86,7 @@ function parseMagnetLite(magnet) {
   const paramsPart = queryIndex >= 0 ? trimmed.slice(queryIndex + 1) : "";
   const params = paramsPart.split("&");
   const announce = [];
+  const ws = [];
   let infoHash = "";
 
   for (const param of params) {
@@ -89,8 +112,12 @@ function parseMagnetLite(magnet) {
       if (value) {
         announce.push(value);
       }
+    } else if (key === "ws" || key === "webseed") {
+      if (value) {
+        ws.push(value);
+      }
     }
   }
 
-  return { infoHash, announce };
+  return { infoHash, announce, ws };
 }
