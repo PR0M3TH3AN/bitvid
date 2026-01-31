@@ -6,10 +6,10 @@ import { nostrClient } from "../js/nostrClientFacade.js";
 import { NostrClient, __testExports } from "../js/nostr/client.js";
 import nip07Provider from "../js/services/authProviders/nip07.js";
 import { accessControl } from "../js/accessControl.js";
+import { DEFAULT_NIP07_ENCRYPTION_METHODS } from "../js/nostr/nip07Permissions.js";
 
 const {
   runNip07WithRetry,
-  DEFAULT_NIP07_ENCRYPTION_METHODS,
 } = __testExports ?? {};
 
 const EXPECTED_ENCRYPTION_PERMISSIONS = Array.isArray(
@@ -161,9 +161,7 @@ test("NIP-07 login requests decrypt permissions upfront", async () => {
     assert.equal(pubkey, HEX_PUBKEY);
     assert.ok(env.enableCalls.length >= 1, "extension.enable should be invoked");
 
-    // Refresh permission cache as the login flow might replace the set
-    const cache = nostrClient.extensionPermissionCache;
-
+    // Explicit checks for permissions we know should be there
     assert.ok(
       cache.has("nip04.encrypt"),
       "nip04.encrypt permission should be tracked as granted",
@@ -180,12 +178,15 @@ test("NIP-07 login requests decrypt permissions upfront", async () => {
       cache.has("nip44.decrypt"),
       "nip44.decrypt permission should be tracked as granted",
     );
+
+    // Dynamic check for all expected methods
     for (const method of EXPECTED_ENCRYPTION_PERMISSIONS) {
       assert.ok(
         cache.has(method),
         `${method} permission should be tracked as granted`,
       );
     }
+
     assert.ok(
       cache.has("sign_event"),
       "sign_event permission should be tracked as granted",

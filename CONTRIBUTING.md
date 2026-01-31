@@ -144,7 +144,8 @@ To set up the project locally:
    npm run lint
    ```
 
-   _Note: `npm run format` currently targets CSS, HTML, Markdown, and Tailwind config files. It does not format JavaScript source code._
+   _Note: `npm run format` currently targets CSS, HTML, Markdown, and Tailwind config files._
+   _Note: `npm run lint` checks for CSS errors, hex color usage (use tokens instead), inline styles, and design token compliance._
 
 5. **Git Hooks (Optional)**:
    We provide a script to set up a git pre-commit hook that runs linting and CSS builds automatically before you commit.
@@ -153,6 +154,16 @@ To set up the project locally:
    ```
 
 For a full guide, see the [Local Setup section in README.md](./README.md#local-setup).
+
+### Event Schema Validation
+
+When modifying event schemas or builders, verify your changes against the codebase and test suite:
+
+```bash
+node scripts/agent/validate-events.mjs
+```
+
+This script checks that all event builders produce valid events according to the definitions in `js/nostrEventSchemas.js`.
 
 ### Troubleshooting
 
