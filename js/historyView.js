@@ -2135,7 +2135,7 @@ export function createWatchHistoryRenderer(config = {}) {
           } else {
             userLogger.error(
               "[historyView] Failed to reset local watch history.",
-              error,
+              message,
             );
           }
         }

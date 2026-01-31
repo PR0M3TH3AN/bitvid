@@ -335,7 +335,7 @@ export class EventDetailsModal {
             }
           })
           .catch((error) => {
-            userLogger.error(
+            userLogger.warn(
               "[EventDetailsModal] Failed to fetch raw event:",
               error,
             );
@@ -442,7 +442,7 @@ export class EventDetailsModal {
         }
       }
     } catch (e) {
-      userLogger.error("[EventDetailsModal] Failed to load history", e);
+      userLogger.warn("[EventDetailsModal] Failed to load history", e);
     } finally {
       this.isLoadingHistory = false;
       this.updateNavigationState();
