@@ -346,23 +346,25 @@ export class TorrentClient {
 
       torrent.once("error", (err) => {
         const peers = Math.max(0, Math.floor(normalizeNumber(torrent?.numPeers, 0)));
+        const webseedOnly = peers === 0 && hasWebSeed;
         finalize({
-          healthy: false,
-          reason: "error",
+          healthy: webseedOnly,
+          reason: webseedOnly ? "webseed" : "error",
           error: toError(err),
           peers,
-          webseedOnly: peers === 0 && hasWebSeed,
+          webseedOnly,
         });
       });
 
       if (safeTimeout > 0) {
         timeoutId = setTimeout(() => {
           const peers = Math.max(0, Math.floor(normalizeNumber(torrent?.numPeers, 0)));
+          const webseedOnly = peers === 0 && hasWebSeed;
           finalize({
-            healthy: false,
+            healthy: webseedOnly,
             peers,
-            reason: "timeout",
-            webseedOnly: peers === 0 && hasWebSeed,
+            reason: webseedOnly ? "webseed" : "timeout",
+            webseedOnly,
           });
         }, safeTimeout);
       }
