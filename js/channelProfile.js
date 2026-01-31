@@ -2795,23 +2795,13 @@ async function runZapAttempt({ amount, overrideFee = null, walletSettings }) {
   });
   const videoEvent = getZapVideoEvent();
 
-  let previousOverride;
-  const hasGlobal = typeof globalThis !== "undefined";
-  if (
-    hasGlobal &&
-    typeof overrideFee === "number" &&
-    Number.isFinite(overrideFee)
-  ) {
-    previousOverride = globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
-    globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = overrideFee;
-  }
-
   try {
     const result = await splitAndZap(
       {
         videoEvent,
         amountSats: context.shares.total,
-        walletSettings: settings
+        walletSettings: settings,
+        overrideFee
       },
       dependencies
     );
@@ -2832,21 +2822,6 @@ async function runZapAttempt({ amount, overrideFee = null, walletSettings }) {
       error
     );
     throw error;
-  } finally {
-    if (
-      hasGlobal &&
-      typeof overrideFee === "number" &&
-      Number.isFinite(overrideFee)
-    ) {
-      if (typeof previousOverride === "number") {
-        globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = previousOverride;
-      } else if (
-        globalThis &&
-        "__BITVID_PLATFORM_FEE_OVERRIDE__" in globalThis
-      ) {
-        delete globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
-      }
-    }
   }
 }
 
@@ -2873,25 +2848,37 @@ async function executePendingRetry({ walletSettings }) {
 
   const aggregatedReceipts = [];
   const aggregatedTracker = [];
+  const nextRetryShares = [];
+  let lastError = null;
 
-  for (const share of shares) {
-    const overrideFee = share.type === "platform" ? 100 : 0;
-    try {
-      const attempt = await runZapAttempt({
+  const results = await Promise.allSettled(
+    shares.map((share) => {
+      const overrideFee = share.type === "platform" ? 100 : 0;
+      return runZapAttempt({
         amount: share.amount,
         overrideFee,
         walletSettings
       });
+    })
+  );
+
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i];
+    const share = shares[i];
+
+    if (result.status === "fulfilled") {
+      const attempt = result.value;
       if (!attempt) {
-        setZapStatus("", "neutral");
-        return;
+        continue;
       }
       if (attempt?.result?.receipts) {
         aggregatedReceipts.push(...attempt.result.receipts);
       } else if (Array.isArray(attempt?.shareTracker)) {
         aggregatedTracker.push(...attempt.shareTracker);
       }
-    } catch (error) {
+    } else {
+      const error = result.reason;
+      lastError = error;
       const tracker = Array.isArray(error?.__zapShareTracker)
         ? error.__zapShareTracker
         : [];
@@ -2912,18 +2899,26 @@ async function executePendingRetry({ walletSettings }) {
       const failureShares = tracker.filter(
         (entry) => entry && entry.status !== "success" && entry.amount > 0
       );
-      markZapRetryPending(failureShares.length ? failureShares : [share]);
-      const message = error?.message || "Retry failed.";
-      setZapStatus(message, "error");
-      app?.showError?.(message);
-      renderZapReceipts(
-        aggregatedTracker.length ? aggregatedTracker : tracker,
-        {
-          partial: true
-        }
-      );
-      return;
+      if (failureShares.length) {
+        nextRetryShares.push(...failureShares);
+      } else {
+        nextRetryShares.push(share);
+      }
     }
+  }
+
+  if (nextRetryShares.length > 0) {
+    markZapRetryPending(nextRetryShares);
+    const message = lastError?.message || "Retry failed.";
+    setZapStatus(message, "error");
+    app?.showError?.(message);
+    renderZapReceipts(
+      aggregatedTracker.length ? aggregatedTracker : [],
+      {
+        partial: true
+      }
+    );
+    return;
   }
 
   renderZapReceipts(

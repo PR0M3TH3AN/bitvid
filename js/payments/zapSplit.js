@@ -520,7 +520,13 @@ async function processShare({
 }
 
 export async function splitAndZap(
-  { videoEvent, amountSats, comment = "", walletSettings } = {},
+  {
+    videoEvent,
+    amountSats,
+    comment = "",
+    walletSettings,
+    overrideFee = null,
+  } = {},
   dependencies = {}
 ) {
   if (!videoEvent || typeof videoEvent !== "object") {
@@ -538,7 +544,11 @@ export async function splitAndZap(
     throw new Error("This creator has not configured a Lightning address yet.");
   }
 
-  const platformFee = clampPercent(getOverridePlatformFee());
+  const platformFee = clampPercent(
+    typeof overrideFee !== "undefined" && overrideFee !== null
+      ? resolvePlatformFeePercent(overrideFee)
+      : getOverridePlatformFee()
+  );
   const platformShare = Math.floor((amount * platformFee) / 100);
   const creatorShare = amount - platformShare;
 

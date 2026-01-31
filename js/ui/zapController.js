@@ -881,13 +881,6 @@ export default class ZapController {
     });
     const videoEvent = this.getActiveVideoEvent();
 
-    let previousOverride;
-    const hasGlobal = typeof globalThis !== "undefined";
-    if (hasGlobal && typeof overrideFee === "number" && Number.isFinite(overrideFee)) {
-      previousOverride = globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
-      globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = overrideFee;
-    }
-
     try {
       const result = await this.splitAndZap(
         {
@@ -895,6 +888,7 @@ export default class ZapController {
           amountSats: context.shares.total,
           comment: typeof comment === "string" ? comment : "",
           walletSettings: settings,
+          overrideFee,
         },
         dependencies
       );
@@ -937,17 +931,6 @@ export default class ZapController {
         error
       );
       throw error;
-    } finally {
-      if (hasGlobal && typeof overrideFee === "number" && Number.isFinite(overrideFee)) {
-        if (typeof previousOverride === "number") {
-          globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = previousOverride;
-        } else if (
-          globalThis &&
-          Object.prototype.hasOwnProperty.call(globalThis, "__BITVID_PLATFORM_FEE_OVERRIDE__")
-        ) {
-          delete globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
-        }
-      }
     }
   }
 
