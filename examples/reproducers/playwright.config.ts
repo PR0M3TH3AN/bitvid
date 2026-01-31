@@ -1,30 +1,18 @@
 import { defineConfig } from "@playwright/test";
-
-const HOST = process.env.PLAYWRIGHT_HOST ?? "127.0.0.1";
-const PORT = Number.parseInt(process.env.PLAYWRIGHT_PORT ?? "4173", 10);
-const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? `http://${HOST}:${PORT}`;
+import baseConfig from "../../playwright.config.ts";
 
 export default defineConfig({
-  testDir: "../../",
-  outputDir: "../../artifacts/test-results-repro",
-  timeout: 60_000,
-  reporter: [["list"]],
-  use: {
-    baseURL: BASE_URL,
-    viewport: { width: 1280, height: 720 },
-    ignoreHTTPSErrors: true,
+  ...baseConfig,
+  testDir: ".",
+  webServer: {
+    ...baseConfig.webServer,
+    cwd: "../../",
   },
   projects: [
     {
       name: "repro",
-      testMatch: "examples/reproducers/**/*.spec.ts",
+      testMatch: "**/*.spec.ts",
+      use: baseConfig.use,
     },
   ],
-  webServer: {
-    command: `npx http-server . -p ${PORT} -a ${HOST} -c-1 --silent`,
-    cwd: "../../",
-    url: `${BASE_URL}/docs/kitchen-sink.html`,
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-  },
 });

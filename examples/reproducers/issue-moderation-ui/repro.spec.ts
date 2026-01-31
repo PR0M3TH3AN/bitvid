@@ -40,6 +40,34 @@ test.afterEach(async ({ page }) => {
 });
 
 test.describe("moderation fixtures", () => {
+  test("blur fixture masks thumbnails and blocks autoplay", async ({ page }) => {
+    await page.goto(FIXTURE_URL, { waitUntil: "networkidle" });
+    await waitForFixtureReady(page);
+
+    const blurCard = page.locator('[data-test-id="blur-threshold"]');
+    const thumbnail = blurCard.locator('img[data-video-thumbnail]');
+
+    await expect(blurCard).toHaveAttribute("data-moderation-report-count", "3");
+    await expect(blurCard).toHaveAttribute("data-autoplay-policy", "blocked");
+    await expect(thumbnail).toHaveAttribute("data-thumbnail-state", "blurred");
+    await expect(blurCard).not.toHaveAttribute(
+      "data-moderation-override",
+      "show-anyway"
+    );
+  });
+
+  test("autoplay fixture disables preview without blurring", async ({ page }) => {
+    await page.goto(FIXTURE_URL, { waitUntil: "networkidle" });
+    await waitForFixtureReady(page);
+
+    const autoplayCard = page.locator('[data-test-id="autoplay-threshold"]');
+    const thumbnail = autoplayCard.locator('img[data-video-thumbnail]');
+
+    await expect(autoplayCard).toHaveAttribute("data-moderation-report-count", "2");
+    await expect(autoplayCard).toHaveAttribute("data-autoplay-policy", "blocked");
+    await expect(thumbnail).not.toHaveAttribute("data-thumbnail-state", "blurred");
+  });
+
   test("show anyway override persists across reloads", async ({ page }) => {
     await page.goto(FIXTURE_URL, { waitUntil: "networkidle" });
     await waitForFixtureReady(page);
@@ -59,14 +87,13 @@ test.describe("moderation fixtures", () => {
     await expect(overrideCard).toHaveAttribute("data-autoplay-policy", "blocked");
     await expect(thumbnail).toHaveAttribute("data-thumbnail-state", "blurred");
 
-    // Uncommented failures:
+    // Uncommented failing assertions
     await expect(showAnywayButton).toBeVisible();
     await expect(restoreButtonQuery).toHaveCount(0);
 
-    // Uncommented failure:
+    // Uncommented failing interactions
     await showAnywayButton.click({ force: true });
 
-    /*
     await expect(overrideCard).toHaveAttribute(
       "data-moderation-override",
       "show-anyway"
@@ -113,6 +140,105 @@ test.describe("moderation fixtures", () => {
     await expect(
       reloadedCard.getByRole("button", { name: "Show anyway" })
     ).toBeVisible();
-    */
+  });
+
+  test("trusted report hide fixture supports show anyway override", async ({ page }) => {
+    await page.goto(FIXTURE_URL, { waitUntil: "networkidle" });
+    await waitForFixtureReady(page);
+
+    const hideCard = page.locator('[data-test-id="trusted-report-hide"]');
+    const badge = hideCard.locator('[data-moderation-badge="true"]');
+
+    await expect(hideCard).toHaveAttribute(
+      "data-moderation-override-available",
+      "true"
+    );
+    const showAnywayButton = hideCard.getByRole("button", { name: "Show anyway" });
+    const restoreButtonQuery = hideCard.getByRole("button", {
+      name: RESTORE_BUTTON_LABEL,
+    });
+
+    await expect(hideCard).toHaveAttribute("data-moderation-hidden", "true");
+    await expect(hideCard).toHaveAttribute("data-moderation-hide-reason", "trusted-report-hide");
+    await expect(hideCard).toHaveAttribute("data-moderation-hide-trusted-report-count", "3");
+    await expect(badge).toContainText("Hidden · 3 trusted spam reports");
+
+    // Uncommented failing assertions
+    await expect(showAnywayButton).toBeVisible();
+    await expect(restoreButtonQuery).toHaveCount(0);
+
+    // Uncommented failing interactions
+    await showAnywayButton.click({ force: true });
+
+    await expect(hideCard).not.toHaveAttribute("data-moderation-hidden", "true");
+    await expect(hideCard).toHaveAttribute("data-moderation-override", "show-anyway");
+    await expect(hideCard.locator('[data-moderation-badge="true"]')).toContainText(
+      "Showing despite 3 trusted spam reports",
+    );
+
+    const restoreButton = hideCard.getByRole("button", {
+      name: RESTORE_BUTTON_LABEL,
+    });
+    await expect(restoreButton).toBeVisible();
+
+    await restoreButton.click();
+
+    await expect(hideCard).toHaveAttribute("data-moderation-hidden", "true");
+    await expect(hideCard).not.toHaveAttribute("data-moderation-override", "show-anyway");
+    await expect(hideCard.getByRole("button", { name: "Show anyway" })).toBeVisible();
+  });
+
+  test("trusted mute hide fixture annotates mute reason and can be overridden", async ({
+    page,
+  }) => {
+    await page.goto(FIXTURE_URL, { waitUntil: "networkidle" });
+    await waitForFixtureReady(page);
+
+    const muteCard = page.locator('[data-test-id="trusted-mute-hide"]');
+    const badge = muteCard.locator('[data-moderation-badge="true"]');
+    const thumbnail = muteCard.locator('img[data-video-thumbnail]');
+
+    await expect(muteCard).toHaveAttribute(
+      "data-moderation-override-available",
+      "true"
+    );
+    const showAnywayButton = muteCard.getByRole("button", { name: "Show anyway" });
+    const restoreButtonQuery = muteCard.getByRole("button", {
+      name: RESTORE_BUTTON_LABEL,
+    });
+
+    await expect(muteCard).toHaveAttribute("data-moderation-hidden", "true");
+    await expect(muteCard).toHaveAttribute("data-moderation-hide-reason", "trusted-mute-hide");
+    await expect(muteCard).toHaveAttribute("data-moderation-hide-trusted-mute-count", "1");
+    await expect(muteCard).toHaveAttribute("data-moderation-trusted-mute", "true");
+    await expect(muteCard).toHaveAttribute("data-moderation-trusted-mute-count", "1");
+    await expect(badge).toContainText("Hidden · 1 trusted mute");
+    await expect(thumbnail).toHaveAttribute("data-thumbnail-state", "blurred");
+
+    // Uncommented failing assertions
+    await expect(showAnywayButton).toBeVisible();
+    await expect(restoreButtonQuery).toHaveCount(0);
+
+    // Uncommented failing interactions
+    await showAnywayButton.click({ force: true });
+
+    await expect(muteCard).not.toHaveAttribute("data-moderation-hidden", "true");
+    await expect(muteCard).toHaveAttribute("data-moderation-override", "show-anyway");
+    await expect(muteCard.locator('[data-moderation-badge="true"]')).toContainText(
+      "Showing despite 1 trusted mute",
+    );
+    await expect(thumbnail).not.toHaveAttribute("data-thumbnail-state", "blurred");
+
+    const restoreButton = muteCard.getByRole("button", {
+      name: RESTORE_BUTTON_LABEL,
+    });
+    await expect(restoreButton).toBeVisible();
+
+    await restoreButton.click();
+
+    await expect(muteCard).toHaveAttribute("data-moderation-hidden", "true");
+    await expect(muteCard).not.toHaveAttribute("data-moderation-override", "show-anyway");
+    await expect(thumbnail).toHaveAttribute("data-thumbnail-state", "blurred");
+    await expect(muteCard.getByRole("button", { name: "Show anyway" })).toBeVisible();
   });
 });
