@@ -251,7 +251,7 @@ test(
     let fetchCalls = 0;
     nostrClient.fetchListIncrementally = async () => {
       fetchCalls += 1;
-      return [event];
+      return fetchCalls <= 4 ? [event] : [];
     };
     nostrClient.relays = relayUrls;
     nostrClient.writeRelays = relayUrls;
