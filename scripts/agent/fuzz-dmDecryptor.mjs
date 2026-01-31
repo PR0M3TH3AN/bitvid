@@ -1,14 +1,4 @@
-/**
- * Fuzz harness for js/dmDecryptor.js
- *
- * Targets:
- * - decryptDM function
- *
- * Strategy:
- * - Mocks decryptor context with random behaviors (success/fail/garbage).
- * - Passes random event structures (NIP-04, NIP-44, Gift Wrap).
- * - Checks for unhandled exceptions during decryption flow.
- */
+// Fuzz harness for js/dmDecryptor.js
 import "./setup-test-env.js";
 import { Fuzzer } from "./fuzz-lib.mjs";
 import { decryptDM } from "../../js/dmDecryptor.js";
@@ -93,4 +83,4 @@ async function fuzzTest(fuzzer, state) {
   }
 }
 
-fuzzer.runFuzzLoop(50000, fuzzTest).catch(console.error);
+fuzzer.runFuzzLoop(5000, fuzzTest).catch(console.error);

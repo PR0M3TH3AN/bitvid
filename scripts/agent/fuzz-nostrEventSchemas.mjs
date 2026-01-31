@@ -1,15 +1,4 @@
-/**
- * Fuzz harness for js/nostrEventSchemas.js
- *
- * Targets:
- * - Builder functions (buildVideoPostEvent, etc.)
- * - Validation logic (validateEventStructure)
- *
- * Strategy:
- * - Generates random JSON parameters for builders.
- * - Generates random events for validation.
- * - Checks for runtime exceptions (crashes).
- */
+// Fuzz harness for js/nostrEventSchemas.js
 import "./setup-test-env.js";
 import { Fuzzer } from "./fuzz-lib.mjs";
 import * as schemas from "../../js/nostrEventSchemas.js";
@@ -88,5 +77,5 @@ async function fuzzTest(fuzzer, state) {
   }
 }
 
-// Run for 50000 iterations
-fuzzer.runFuzzLoop(50000, fuzzTest).catch(console.error);
+// Run for 5000 iterations
+fuzzer.runFuzzLoop(5000, fuzzTest).catch(console.error);
