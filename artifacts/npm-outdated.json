@@ -1,10 +1,17 @@
 {
-  "cross-env": {
-    "current": "7.0.3",
-    "wanted": "7.0.3",
-    "latest": "10.1.0",
+  "@playwright/test": {
+    "current": "1.58.0",
+    "wanted": "1.58.1",
+    "latest": "1.58.1",
     "dependent": "app",
-    "location": "/app/node_modules/cross-env"
+    "location": "/app/node_modules/@playwright/test"
+  },
+  "autoprefixer": {
+    "current": "10.4.23",
+    "wanted": "10.4.24",
+    "latest": "10.4.24",
+    "dependent": "app",
+    "location": "/app/node_modules/autoprefixer"
   },
   "esbuild": {
     "current": "0.25.12",
@@ -15,8 +22,8 @@
   },
   "nostr-tools": {
     "current": "2.20.0",
-    "wanted": "2.21.0",
-    "latest": "2.21.0",
+    "wanted": "2.22.1",
+    "latest": "2.22.1",
     "dependent": "app",
     "location": "/app/node_modules/nostr-tools"
   },
@@ -26,6 +33,13 @@
     "latest": "7.1.0",
     "dependent": "app",
     "location": "/app/node_modules/pixelmatch"
+  },
+  "playwright": {
+    "current": "1.58.0",
+    "wanted": "1.58.1",
+    "latest": "1.58.1",
+    "dependent": "app",
+    "location": "/app/node_modules/playwright"
   },
   "prettier-plugin-tailwindcss": {
     "current": "0.6.14",
@@ -37,7 +51,7 @@
   "stylelint": {
     "current": "16.26.1",
     "wanted": "16.26.1",
-    "latest": "17.0.0",
+    "latest": "17.1.0",
     "dependent": "app",
     "location": "/app/node_modules/stylelint"
   },

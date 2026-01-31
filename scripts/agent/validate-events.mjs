@@ -69,7 +69,9 @@ import {
   buildAdminListEvent,
   validateEventStructure,
   NOTE_TYPES,
-  ADMIN_LIST_IDENTIFIERS
+  ADMIN_LIST_IDENTIFIERS,
+  getNostrEventSchema,
+  sanitizeAdditionalTags
 } from '../../js/nostrEventSchemas.js';
 import { buildNip71VideoEvent } from '../../js/nostr/nip71.js';
 
@@ -92,6 +94,22 @@ const testCases = [
         title: 'Test Video',
         videoRootId: 'test-root',
       }
+    }
+  },
+  {
+    name: 'Video Post (Usage Pattern)',
+    type: NOTE_TYPES.VIDEO_POST,
+    builder: buildVideoPostEvent,
+    params: {
+      pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
+      created_at: 1234567890,
+      dTagValue: 'test-video-usage',
+      content: {
+        version: 3,
+        title: 'Test Video Usage',
+        videoRootId: 'test-root-usage',
+      },
+      additionalTags: [['t', 'extra'], ['invalid']]
     }
   },
   {
@@ -156,6 +174,20 @@ const testCases = [
         pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
         created_at: 1234567890,
         relays: ['wss://relay.example.com']
+    }
+  },
+  {
+    name: 'Relay List (Usage Pattern)',
+    type: NOTE_TYPES.RELAY_LIST,
+    builder: buildRelayListEvent,
+    params: {
+        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
+        created_at: 1234567890,
+        relays: [
+            { url: 'wss://relay.read.com', mode: 'read' },
+            { url: 'wss://relay.write.com', mode: 'write' },
+            { url: 'wss://relay.both.com', mode: 'both' }
+        ]
     }
   },
   {
@@ -324,6 +356,16 @@ const testCases = [
         pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
         created_at: 1234567890,
         content: JSON.stringify({ version: 1, interests: [], disinterests: [] })
+    }
+  },
+  {
+    name: 'Hashtag Preferences (Encrypted)',
+    type: NOTE_TYPES.HASHTAG_PREFERENCES,
+    builder: buildHashtagPreferenceEvent,
+    params: {
+        pubkey: '0000000000000000000000000000000000000000000000000000000000000001',
+        created_at: 1234567890,
+        content: 'encrypted-content-string-nip44'
     }
   },
   {
