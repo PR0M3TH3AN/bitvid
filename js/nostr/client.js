@@ -4711,29 +4711,33 @@ export class NostrClient {
       decryptTargets = decryptTargets.slice(0, decryptLimit);
     }
 
-    const messages = [];
-    for (const event of decryptTargets) {
-      try {
-        const decrypted = await this.decryptDirectMessageEvent(event, {
-          actorPubkey: context.actorPubkey || actorPubkeyInput,
-        });
-        if (decrypted?.ok) {
-          messages.push(decrypted);
-          if (typeof options.onMessage === "function") {
-            try {
-              options.onMessage(decrypted);
-            } catch (error) {
-              devLogger.warn("[nostr] onMessage callback threw:", error);
+    const messages = (
+      await Promise.all(
+        decryptTargets.map(async (event) => {
+          try {
+            const decrypted = await this.decryptDirectMessageEvent(event, {
+              actorPubkey: context.actorPubkey || actorPubkeyInput,
+            });
+            if (decrypted?.ok) {
+              if (typeof options.onMessage === "function") {
+                try {
+                  options.onMessage(decrypted);
+                } catch (error) {
+                  devLogger.warn("[nostr] onMessage callback threw:", error);
+                }
+              }
+              return decrypted;
             }
+          } catch (error) {
+            devLogger.warn("[nostr] Failed to decrypt DM event during list.", {
+              error: sanitizeDecryptError(error),
+              event: summarizeDmEventForLog(event),
+            });
           }
-        }
-      } catch (error) {
-        devLogger.warn("[nostr] Failed to decrypt DM event during list.", {
-          error: sanitizeDecryptError(error),
-          event: summarizeDmEventForLog(event),
-        });
-      }
-    }
+          return null;
+        }),
+      )
+    ).filter((msg) => msg !== null);
 
     messages.sort((a, b) => (b?.timestamp || 0) - (a?.timestamp || 0));
     return messages;
