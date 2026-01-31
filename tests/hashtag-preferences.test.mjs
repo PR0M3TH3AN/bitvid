@@ -254,8 +254,6 @@ test(
     };
 
     nostrClient.fetchListIncrementally = async () => {
-      fetchCalls += 1;
-      // Always return the event so the second load call (with permissions) finds data
       return [event];
     };
     nostrClient.relays = relayUrls;
