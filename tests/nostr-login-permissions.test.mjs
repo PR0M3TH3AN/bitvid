@@ -168,30 +168,34 @@ test("NIP-07 login requests decrypt permissions upfront", async () => {
     const pubkey = result.pubkey;
     assert.equal(pubkey, HEX_PUBKEY);
     assert.ok(env.enableCalls.length >= 1, "extension.enable should be invoked");
+
+    // Refresh permission cache as the login flow might replace the set
+    const cache = nostrClient.extensionPermissionCache;
+
     assert.ok(
-      nostrClient.extensionPermissionCache.has("nip04.encrypt"),
+      cache.has("nip04.encrypt"),
       "nip04.encrypt permission should be tracked as granted",
     );
     assert.ok(
-      nostrClient.extensionPermissionCache.has("nip04.decrypt"),
+      cache.has("nip04.decrypt"),
       "nip04.decrypt permission should be tracked as granted",
     );
     assert.ok(
-      nostrClient.extensionPermissionCache.has("nip44.encrypt"),
+      cache.has("nip44.encrypt"),
       "nip44.encrypt permission should be tracked as granted",
     );
     assert.ok(
-      nostrClient.extensionPermissionCache.has("nip44.decrypt"),
+      cache.has("nip44.decrypt"),
       "nip44.decrypt permission should be tracked as granted",
     );
     for (const method of EXPECTED_ENCRYPTION_PERMISSIONS) {
       assert.ok(
-        nostrClient.extensionPermissionCache.has(method),
+        cache.has(method),
         `${method} permission should be tracked as granted`,
       );
     }
     assert.ok(
-      nostrClient.extensionPermissionCache.has("sign_event"),
+      cache.has("sign_event"),
       "sign_event permission should be tracked as granted",
     );
   } finally {
@@ -226,9 +230,13 @@ test("NIP-07 decrypt reuses cached extension permissions", async () => {
     const result = await nip07Provider.login({ nostrClient });
     const pubkey = result.pubkey;
     assert.equal(pubkey, HEX_PUBKEY);
+
+    // Refresh cache reference
+    const cache = nostrClient.extensionPermissionCache;
+
     for (const method of EXPECTED_ENCRYPTION_PERMISSIONS) {
       assert.ok(
-        nostrClient.extensionPermissionCache.has(method),
+        cache.has(method),
         `nostrClient should track ${method} after login`,
       );
     }

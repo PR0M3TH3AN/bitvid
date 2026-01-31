@@ -257,9 +257,13 @@ test(
     nostrClient.writeRelays = relayUrls;
 
     const decryptCalls = [];
+    const permissionState = { enabled: false };
     window.nostr = {
+      enable: async () => { permissionState.enabled = true; },
+      getPublicKey: async () => pubkey,
       nip04: {
         decrypt: async () => {
+          if (!permissionState.enabled) throw new Error("permission denied");
           decryptCalls.push("nip04");
           return JSON.stringify({
             version: 1,
